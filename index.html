@@ -729,9 +729,10 @@ function refreshOddsOnCards() {
 // ── ODDS API (REST + WS) ──────────────────────────────────────────────────────
 async function fetchOddsRest() {
   if(!oddsKey) return;
-  const url = `https://api.the-odds-api.com/v4/sports/${sport.ok}/odds/?apiKey=${oddsKey}&regions=us&markets=h2h,spreads,totals&oddsFormat=american`;
+  const targetUrl = `https://api.the-odds-api.com/v4/sports/${sport.ok}/odds/?apiKey=${oddsKey}&regions=us&markets=h2h,spreads,totals&oddsFormat=american`;
+  const proxyUrl  = `https://odds-proxy.eugenejrivera.workers.dev/?url=${encodeURIComponent(targetUrl)}`;
   try {
-    const r = await fetch(url);
+    const r = await fetch(proxyUrl);
     if(!r.ok) {
       const err = await r.json().catch(()=>({}));
       if(r.status===401) setPill('err','Invalid Key');
