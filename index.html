@@ -343,18 +343,63 @@ async function loadView() {
 }
 
 // ── SCORES ────────────────────────────────────────────────────────────────────
-async function doScores() {
-  const data = await espn(`${ESPN}/${sport.espn}/scoreboard`);
-  const events = data.events || [];
-  let h = `<div class="slabel">Today's Games</div>`;
-  if(!events.length) { h += `<div class="no-data">No games today — check back soon.</div>`; }
-  else {
-    h += `<div class="grid">`;
-    events.forEach((e,i) => { h += scoreCard(e,i); });
-    h += `</div>`;
+function getDates() {
+  // Returns today + next 2 days as YYYYMMDD strings
+  const dates = [];
+  for(let i = 0; i < 3; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() + i);
+    dates.push(d.toISOString().slice(0,10).replace(/-/g,''));
   }
+  return dates;
+}
+
+async function doScores() {
+  // Fetch today + next 2 days in parallel
+  const dates   = getDates();
+  const results = await Promise.allSettled(
+    dates.map(dt => espn(`${ESPN}/${sport.espn}/scoreboard?dates=${dt}`))
+  );
+
+  // Flatten all events, deduplicate by id
+  const seen = new Set();
+  const events = [];
+  results.forEach(r => {
+    if(r.status !== 'fulfilled') return;
+    (r.value.events || []).forEach(ev => {
+      if(!seen.has(ev.id)) { seen.add(ev.id); events.push(ev); }
+    });
+  });
+
+  // Sort: live first, then upcoming by date, then final
+  events.sort((a,b) => {
+    const order = s => s.status?.type?.state === 'in' ? 0 : s.status?.type?.state === 'pre' ? 1 : 2;
+    const diff = order(a) - order(b);
+    return diff !== 0 ? diff : new Date(a.date) - new Date(b.date);
+  });
+
+  // Group by day
+  const byDay = {};
+  events.forEach(ev => {
+    const day = new Date(ev.date).toLocaleDateString([], {weekday:'long', month:'short', day:'numeric'});
+    if(!byDay[day]) byDay[day] = [];
+    byDay[day].push(ev);
+  });
+
+  let h = '';
+  let cardIdx = 0;
+  if(!events.length) {
+    h = `<div class="no-data">No games scheduled — check back soon.</div>`;
+  } else {
+    Object.entries(byDay).forEach(([day, dayEvents]) => {
+      h += `<div class="slabel">${day}</div><div class="grid">`;
+      dayEvents.forEach(ev => { h += scoreCard(ev, cardIdx++); });
+      h += `</div>`;
+    });
+  }
+
   document.getElementById('app').innerHTML = h;
-  // fetch odds in background — never blocks render
+  // Fetch odds in background — never blocks render
   if(oddsKey) fetchOddsRest().catch(()=>{});
 }
 
