@@ -415,14 +415,14 @@ function scoreCard(ev, idx) {
   const hn  = home.team?.shortDisplayName || home.team?.displayName || 'Home';
   const an  = away.team?.shortDisplayName || away.team?.displayName || 'Away';
   const ok  = oKey(hn, an);
-  const oed = oddsCache[ok];
+  const oed = findOdds(hn, an);
   return `<div class="card ${st.live?'live':st.label==='FINAL'?'final':''}" style="animation-delay:${idx*.05}s"
     onclick="openBox('${esc(ev.id)}','${esc(ev.name||'')}','${esc(hn)}','${esc(an)}')">
     <div class="cstatus ${st.cls}">${st.label}</div>
     <div class="matchup">
       ${trow(away,aw)} <div class="div"></div> ${trow(home,hw)}
     </div>
-    <div class="odds-strip" data-ok="${ok}">
+    <div class="odds-strip" data-hn="${hn}" data-an="${an}">
       ${oed ? oddsStrip(oed) : oddsKey
         ? '<span class="odds-note">Loading odds…</span>'
         : '<span class="odds-note">Add <a onclick="openDrawer();event.stopPropagation()">Odds Key</a> for live lines</span>'}
@@ -697,7 +697,31 @@ function playerProps(playerName) {
 }
 
 // ── ODDS HELPERS ──────────────────────────────────────────────────────────────
-function oKey(a, b) { return [a,b].map(s=>s.toLowerCase().trim()).sort().join('|'); }
+// Normalize a team name to its last word (city names differ between APIs)
+// e.g. "Los Angeles Lakers" → "lakers", "Lakers" → "lakers"
+function teamSlug(name) {
+  return name.toLowerCase().trim().split(/\s+/).pop();
+}
+
+// Key using sorted last-words so "Lakers" matches "Los Angeles Lakers"
+function oKey(a, b) {
+  return [teamSlug(a), teamSlug(b)].sort().join('|');
+}
+
+// Find cached odds event for a card, trying slug match against all cached keys
+function findOdds(hn, an) {
+  const cardKey = oKey(hn, an);
+  // Direct hit
+  if(oddsCache[cardKey]) return oddsCache[cardKey];
+  // Fallback: scan all cached events for slug match
+  const hs = teamSlug(hn), as = teamSlug(an);
+  for(const ev of Object.values(oddsCache)) {
+    const ht = teamSlug(ev.home_team||'');
+    const at = teamSlug(ev.away_team||'');
+    if((ht===hs && at===as) || (ht===as && at===hs)) return ev;
+  }
+  return null;
+}
 
 function oddsStrip(ev) {
   const bk = (ev.bookmakers||[])[0];
@@ -725,7 +749,7 @@ function oddsPanel(hn, an) {
   if(!oddsKey) return `<div class="opanel"><div class="opanel-title">Betting Lines</div>
     <div style="color:var(--mut);font-size:.8rem;font-family:'Barlow Condensed',sans-serif">
       Add an <a onclick="openDrawer()" style="color:var(--acc3);cursor:pointer">Odds Key</a> for live lines from DraftKings, FanDuel, BetMGM & Caesars.</div></div>`;
-  const ev = oddsCache[oKey(hn, an)];
+  const ev = findOdds(hn, an);
   if(!ev) return `<div class="opanel"><div class="opanel-title">Betting Lines</div>
     <div style="color:var(--mut);font-size:.8rem;font-family:'Barlow Condensed',sans-serif">No odds available for this game yet.</div></div>`;
 
@@ -765,8 +789,8 @@ function oddsPanel(hn, an) {
 }
 
 function refreshOddsOnCards() {
-  document.querySelectorAll('[data-ok]').forEach(el => {
-    const ev = oddsCache[el.dataset.ok];
+  document.querySelectorAll('[data-hn]').forEach(el => {
+    const ev = findOdds(el.dataset.hn, el.dataset.an);
     if(ev) el.innerHTML = oddsStrip(ev);
   });
 }
