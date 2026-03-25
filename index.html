@@ -186,22 +186,6 @@ main{max-width:1200px;margin:0 auto;padding:1.25rem;position:relative;z-index:1}
 .sval{font-family:'Black Ops One',cursive;font-size:1.45rem;color:var(--acc);display:block}
 .slbl{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:.55rem;letter-spacing:.17em;text-transform:uppercase;color:var(--mut);display:block;margin-top:.18rem}
 
-/* SETTINGS DRAWER */
-.drawer-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:400;opacity:0;pointer-events:none;transition:opacity .22s}
-.drawer-overlay.open{opacity:1;pointer-events:all}
-.drawer{position:fixed;top:0;right:-360px;width:340px;max-width:90vw;height:100%;background:var(--surf);border-left:1px solid var(--bdr);z-index:401;padding:1.5rem;transition:right .25s;overflow-y:auto}
-.drawer-overlay.open .drawer{right:0}
-.drawer h2{font-family:'Black Ops One',cursive;font-size:1.1rem;color:var(--acc);margin-bottom:1.5rem}
-.drawer label{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:.68rem;letter-spacing:.18em;text-transform:uppercase;color:var(--mut);display:block;margin-bottom:.4rem}
-.drawer input{width:100%;background:var(--surf2);border:1px solid var(--bdr);border-radius:3px;padding:.6rem .85rem;color:var(--txt);font-family:'Barlow Condensed',sans-serif;font-size:.9rem;outline:none;margin-bottom:.75rem;transition:border-color .2s}
-.drawer input:focus{border-color:var(--acc3)}
-.drawer-note{font-size:.72rem;color:var(--mut);line-height:1.6;margin-bottom:1.25rem}
-.drawer-note a{color:var(--acc3);text-decoration:none}
-.drawer-btn{width:100%;background:var(--acc);color:#000;border:none;border-radius:3px;font-family:'Black Ops One',cursive;font-size:.9rem;letter-spacing:.08em;padding:.7rem;cursor:pointer;margin-bottom:.5rem;transition:opacity .2s}
-.drawer-btn:hover{opacity:.88}
-.drawer-clear{width:100%;background:none;border:1px solid var(--bdr);color:var(--mut);font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;padding:.5rem;border-radius:3px;cursor:pointer;transition:all .2s}
-.drawer-clear:hover{border-color:var(--acc2);color:var(--acc2)}
-
 /* LOADING / ERROR */
 .loading{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4rem 2rem;gap:.9rem}
 .spin{width:34px;height:34px;border:3px solid var(--bdr);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite}
@@ -222,8 +206,7 @@ main{max-width:1200px;margin:0 auto;padding:1.25rem;position:relative;z-index:1}
   </div>
   <div class="hdr-right">
     <span class="ts" id="ts"></span>
-    <div class="ws-pill" id="wsPill"><div class="ws-dot"></div><span id="wsLbl">No Odds</span></div>
-    <button class="icon-btn" onclick="openDrawer()">⚙ Odds Key</button>
+    <div class="ws-pill" id="wsPill"><div class="ws-dot"></div><span id="wsLbl">Odds</span></div>
     <button class="icon-btn" onclick="loadView()">↻</button>
   </div>
 </header>
@@ -249,26 +232,12 @@ main{max-width:1200px;margin:0 auto;padding:1.25rem;position:relative;z-index:1}
   </div>
 </div>
 
-<!-- SETTINGS DRAWER -->
-<div class="drawer-overlay" id="drawerOverlay" onclick="if(event.target===this)closeDrawer()">
-  <div class="drawer">
-    <h2>⚙ Odds Settings</h2>
-    <label>odds-api.io API Key</label>
-    <input type="password" id="keyInp" placeholder="Paste your key here…" autocomplete="off"/>
-    <p class="drawer-note">
-      Free key (no credit card) at <a href="https://the-odds-api.com" target="_blank">the-odds-api.com</a> — 500 req/month free.<br><br>
-      🔒 Your key is stored only in this browser tab's memory.<br><br>
-      Odds are fetched via the Anthropic API to bypass browser CORS restrictions — no server setup needed.
-    </p>
-    <button class="drawer-btn" onclick="applyKey()">Save & Connect</button>
-    <button class="drawer-clear" onclick="clearKey()">Clear Key / Disconnect</button>
-  </div>
-</div>
 
 <script>
 // ── CONSTANTS ────────────────────────────────────────────────────────────────
-const ESPN  = 'https://site.api.espn.com/apis/site/v2/sports';
-const ESPN2 = 'https://site.api.espn.com/apis/v2/sports';
+const ESPN   = 'https://site.api.espn.com/apis/site/v2/sports';
+const ESPN2  = 'https://site.api.espn.com/apis/v2/sports';
+const WORKER = 'https://odds-proxy.eugenejrivera.workers.dev';
 const SPORTS = [
   {id:'nba', label:'NBA 🏀', espn:'basketball/nba', ok:'basketball_nba'},
   {id:'nfl', label:'NFL 🏈', espn:'football/nfl',   ok:'americanfootball_nfl'},
@@ -276,25 +245,21 @@ const SPORTS = [
   {id:'mlb', label:'MLB ⚾', espn:'baseball/mlb',   ok:'baseball_mlb'},
   {id:'mls', label:'MLS ⚽', espn:'soccer/usa.1',   ok:'soccer_usa_mls'},
 ];
-const BOOKS = ['draftkings','fanguel','betmgm','caesars'];
-const BOOK_LABELS = {draftkings:'DraftKings',fanduel:'FanDuel',betmgm:'BetMGM',caesars:'Caesars'};
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
 let sport     = SPORTS[0];
 let view      = 'scores';
 let rTeam     = null;
-let oddsKey   = null;
-let oddsCache = {};  // normalized key → event odds object
-let wsConn    = null;
-let wsRetries = 0;
+let oddsCache = {};
 let pollTimer = null;
-let stimer    = null; // search debounce
+let stimer    = null;
 
 // ── INIT ─────────────────────────────────────────────────────────────────────
 buildSportTabs();
 document.querySelectorAll('.vtab').forEach(b => b.onclick = () => { setView(b.dataset.v); loadView(); });
-document.addEventListener('keydown', e => { if(e.key==='Escape'){closeModal();closeDrawer();} });
+document.addEventListener('keydown', e => { if(e.key==='Escape') closeModal(); });
 loadView();
+startOdds();
 setInterval(() => { if(view==='scores') loadView(); }, 60000);
 
 // ── SPORT TABS ────────────────────────────────────────────────────────────────
@@ -311,7 +276,7 @@ function buildSportTabs() {
       b.classList.add('on');
       setView('scores');
       loadView();
-      if(oddsKey) { closeWs(); startOdds(); }
+      startOdds();
     };
     nav.appendChild(b);
   });
@@ -399,8 +364,8 @@ async function doScores() {
   }
 
   document.getElementById('app').innerHTML = h;
-  // Fetch odds in background — never blocks render
-  if(oddsKey) fetchOddsRest().catch(()=>{});
+  refreshOddsOnCards();
+  fetchOddsRest().catch(()=>{});
 }
 
 function scoreCard(ev, idx) {
@@ -423,9 +388,7 @@ function scoreCard(ev, idx) {
       ${trow(away,aw)} <div class="div"></div> ${trow(home,hw)}
     </div>
     <div class="odds-strip" data-hn="${hn}" data-an="${an}">
-      ${oed ? oddsStrip(oed) : oddsKey
-        ? '<span class="odds-note">Loading odds…</span>'
-        : '<span class="odds-note">Add <a onclick="openDrawer();event.stopPropagation()">Odds Key</a> for live lines</span>'}
+      ${oed ? oddsStrip(oed) : '<span class="odds-note">Loading odds…</span>'}
     </div>
     <span class="hint">VIEW BOX SCORE →</span>
   </div>`;
@@ -670,9 +633,6 @@ async function openPlayer(pid, pname) {
 }
 
 function playerProps(playerName) {
-  if(!oddsKey) return `<div class="slabel" style="margin-bottom:.5rem">Player Props</div>
-    <div style="color:var(--mut);font-size:.8rem;font-family:'Barlow Condensed',sans-serif">Add an <a onclick="openDrawer()" style="color:var(--acc3);cursor:pointer">Odds Key</a> to see player props.</div>`;
-
   let rows = '';
   const last = playerName.split(' ').pop().toLowerCase();
   Object.values(oddsCache).forEach(ev => {
@@ -746,9 +706,6 @@ function oddsStrip(ev) {
 }
 
 function oddsPanel(hn, an) {
-  if(!oddsKey) return `<div class="opanel"><div class="opanel-title">Betting Lines</div>
-    <div style="color:var(--mut);font-size:.8rem;font-family:'Barlow Condensed',sans-serif">
-      Add an <a onclick="openDrawer()" style="color:var(--acc3);cursor:pointer">Odds Key</a> for live lines from DraftKings, FanDuel, BetMGM & Caesars.</div></div>`;
   const ev = findOdds(hn, an);
   if(!ev) return `<div class="opanel"><div class="opanel-title">Betting Lines</div>
     <div style="color:var(--mut);font-size:.8rem;font-family:'Barlow Condensed',sans-serif">No odds available for this game yet.</div></div>`;
@@ -797,84 +754,37 @@ function refreshOddsOnCards() {
 
 // ── ODDS API (REST + WS) ──────────────────────────────────────────────────────
 async function fetchOddsRest() {
-  if(!oddsKey) return;
-  const targetUrl = `https://api.the-odds-api.com/v4/sports/${sport.ok}/odds/?apiKey=${oddsKey}&regions=us&markets=h2h,spreads,totals&oddsFormat=american`;
-  const proxyUrl  = `https://odds-proxy.eugenejrivera.workers.dev/?url=${encodeURIComponent(targetUrl)}`;
+  const proxyUrl = `${WORKER}/?sport=${sport.ok}`;
   try {
     const r = await fetch(proxyUrl);
     if(!r.ok) {
-      const err = await r.json().catch(()=>({}));
-      if(r.status===401) setPill('err','Invalid Key');
-      else if(r.status===429) setPill('err','Quota Exceeded');
-      else setPill('err',`Error ${r.status}`);
+      setPill('err', `Error ${r.status}`);
       return;
     }
     const evs = await r.json();
     if(!Array.isArray(evs)) { setPill('err','Bad Response'); return; }
-
-    // DEBUG — log what the odds API returned
-    console.log('📊 Odds API returned', evs.length, 'events');
-    evs.forEach(ev => console.log('  odds team names:', ev.home_team, 'vs', ev.away_team));
-
     evs.forEach(ev => {
       const ht = ev.home_team||'';
       const at = ev.away_team||'';
       if(ht&&at) oddsCache[oKey(ht,at)] = ev;
     });
-
-    // DEBUG — log what ESPN cards are looking for
-    document.querySelectorAll('[data-hn]').forEach(el => {
-      const hn = el.dataset.hn, an = el.dataset.an;
-      const found = findOdds(hn, an);
-      console.log(`  card "${hn}" vs "${an}" → slug match: "${teamSlug(hn)}" vs "${teamSlug(an)}" → ${found ? '✅ MATCHED' : '❌ NO MATCH'}`);
-    });
-
     refreshOddsOnCards();
     setPill('on','Odds Live');
   } catch(e) {
     setPill('err','Network Error');
-    console.error('Odds fetch error:', e);
   }
 }
 
 function startOdds() {
-  if(!oddsKey) return;
   if(pollTimer) clearInterval(pollTimer);
-  fetchOddsRest(); // immediate first fetch
-  pollTimer = setInterval(fetchOddsRest, 30000); // then every 30s
-}
-
-function closeWs() {
-  // the-odds-api.com is REST-only (no WebSocket) — nothing to close
-}
-
-function tryWs() {
-  // the-odds-api.com does not support WebSocket — using REST polling instead
+  fetchOddsRest().catch(()=>{});
+  pollTimer = setInterval(()=>fetchOddsRest().catch(()=>{}), 30000);
 }
 
 function setPill(cls, label) {
   const el = document.getElementById('wsPill');
   el.className = 'ws-pill ' + cls;
   document.getElementById('wsLbl').textContent = label;
-}
-
-// ── SETTINGS DRAWER ───────────────────────────────────────────────────────────
-function openDrawer()  { document.getElementById('drawerOverlay').classList.add('open'); }
-function closeDrawer() { document.getElementById('drawerOverlay').classList.remove('open'); }
-function applyKey() {
-  const val = document.getElementById('keyInp').value.trim();
-  oddsKey = val||null;
-  closeDrawer();
-  if(oddsKey) { startOdds(); }
-  else { closeWs(); if(pollTimer){clearInterval(pollTimer);pollTimer=null;} setPill('','No Odds'); }
-}
-function clearKey() {
-  oddsKey = null; oddsCache = {};
-  document.getElementById('keyInp').value = '';
-  closeWs(); if(pollTimer){clearInterval(pollTimer);pollTimer=null;}
-  setPill('','No Odds');
-  closeDrawer();
-  if(view==='scores') doScores().catch(()=>{});
 }
 
 // ── PLAYER SEARCH ─────────────────────────────────────────────────────────────
