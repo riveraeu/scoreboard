@@ -729,49 +729,27 @@ function refreshOddsOnCards() {
 // ── ODDS API (REST + WS) ──────────────────────────────────────────────────────
 async function fetchOddsRest() {
   if(!oddsKey) return;
-  setPill('on', 'Fetching…');
+  const url = `https://api.the-odds-api.com/v4/sports/${sport.ok}/odds/?apiKey=${oddsKey}&regions=us&markets=h2h,spreads,totals&oddsFormat=american`;
   try {
-    // Use Claude as a server-side proxy to bypass CORS.
-    // Claude fetches the odds API server-side and returns the JSON.
-    const prompt = `Fetch this URL and return ONLY the raw JSON response, nothing else, no explanation, no markdown:
-https://api.the-odds-api.com/v4/sports/${sport.ok}/odds/?apiKey=${oddsKey}&regions=us&markets=h2h,spreads,totals&oddsFormat=american`;
-
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 4000,
-        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-        messages: [{ role: 'user', content: prompt }]
-      })
-    });
-
-    if(!r.ok) { setPill('err', `API Error ${r.status}`); return; }
-    const data = await r.json();
-
-    // Extract text from response content blocks
-    const text = (data.content||[])
-      .filter(b => b.type === 'text')
-      .map(b => b.text)
-      .join('');
-
-    // Parse the JSON odds data from Claude's response
-    const jsonMatch = text.match(/\[[\s\S]*\]/);
-    if(!jsonMatch) { setPill('err', 'No Odds Data'); return; }
-
-    const evs = JSON.parse(jsonMatch[0]);
-    if(!Array.isArray(evs)) { setPill('err', 'Bad Response'); return; }
-
+    const r = await fetch(url);
+    if(!r.ok) {
+      const err = await r.json().catch(()=>({}));
+      if(r.status===401) setPill('err','Invalid Key');
+      else if(r.status===429) setPill('err','Quota Exceeded');
+      else setPill('err',`Error ${r.status}`);
+      return;
+    }
+    const evs = await r.json();
+    if(!Array.isArray(evs)) { setPill('err','Bad Response'); return; }
     evs.forEach(ev => {
       const ht = ev.home_team||'';
       const at = ev.away_team||'';
       if(ht&&at) oddsCache[oKey(ht,at)] = ev;
     });
     refreshOddsOnCards();
-    setPill('on', 'Odds Live');
+    setPill('on','Odds Live');
   } catch(e) {
-    setPill('err', 'Fetch Failed');
+    setPill('err','Network Error');
   }
 }
 
