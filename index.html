@@ -811,15 +811,29 @@ async function fetchOddsRest() {
     }
     const evs = await r.json();
     if(!Array.isArray(evs)) { setPill('err','Bad Response'); return; }
+
+    // DEBUG — log what the odds API returned
+    console.log('📊 Odds API returned', evs.length, 'events');
+    evs.forEach(ev => console.log('  odds team names:', ev.home_team, 'vs', ev.away_team));
+
     evs.forEach(ev => {
       const ht = ev.home_team||'';
       const at = ev.away_team||'';
       if(ht&&at) oddsCache[oKey(ht,at)] = ev;
     });
+
+    // DEBUG — log what ESPN cards are looking for
+    document.querySelectorAll('[data-hn]').forEach(el => {
+      const hn = el.dataset.hn, an = el.dataset.an;
+      const found = findOdds(hn, an);
+      console.log(`  card "${hn}" vs "${an}" → slug match: "${teamSlug(hn)}" vs "${teamSlug(an)}" → ${found ? '✅ MATCHED' : '❌ NO MATCH'}`);
+    });
+
     refreshOddsOnCards();
     setPill('on','Odds Live');
   } catch(e) {
     setPill('err','Network Error');
+    console.error('Odds fetch error:', e);
   }
 }
 
