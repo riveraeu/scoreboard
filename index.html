@@ -162,8 +162,14 @@ function App() {
 
   const highlight = (name, q) => {
     const i = name.toLowerCase().indexOf(q.toLowerCase());
-    if (i === -1) return name;
-    return `${name.slice(0,i)}<strong style="color:#fff">${name.slice(i,i+q.length)}</strong>${name.slice(i+q.length)}`;
+    if (i === -1) return <span>{name}</span>;
+    return (
+      <span>
+        {name.slice(0, i)}
+        <strong style={{color:"#fff"}}>{name.slice(i, i + q.length)}</strong>
+        {name.slice(i + q.length)}
+      </span>
+    );
   };
 
   const statCfgs = STAT_CONFIGS[sport] || {};
@@ -223,7 +229,7 @@ function App() {
               >
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
                   <span>🏃</span>
-                  <span dangerouslySetInnerHTML={{__html: highlight(p.name, query)}} />
+                  {highlight(p.name, query)}
                 </div>
                 <span style={{color:"#484f58",fontSize:11}}>{p.team}</span>
               </div>
