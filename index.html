@@ -142,21 +142,27 @@ function App() {
 
     const seasonType = (data.seasonTypes || []).find(st => st.name === "Regular Season") || data.seasonTypes?.[0];
     const categories = seasonType?.categories || [];
-    console.log("seasonType:", seasonType?.displayName, "categories:", categories.length);
+
+    // Only use splitType "event" — these are individual game rows, not monthly/totals splits
+    const eventCats = categories.filter(cat => cat.splitType === "event" || cat.type === "event");
+    console.log("event categories:", eventCats.length, "all cats:", categories.map(c => `${c.name}(${c.splitType}/${c.type}:${c.events?.length})`));
 
     const eventMap = {};
-    categories.forEach(cat => {
+    (eventCats.length > 0 ? eventCats : categories.slice(0, 1)).forEach(cat => {
       (cat.events || []).forEach(ev => {
-        if (!eventMap[ev.eventId]) eventMap[ev.eventId] = {};
+        if (eventMap[ev.eventId]) return; // no overwrite
         const stats = ev.stats || [];
+        const game = {};
         stats.forEach((val, i) => {
           const lbl = (labels[i] || "").toUpperCase();
           const n = parseFloat(val);
-          if (!isNaN(n)) eventMap[ev.eventId][lbl] = n;
+          if (!isNaN(n)) game[lbl] = n;
         });
+        eventMap[ev.eventId] = game;
       });
     });
 
+    console.log("total unique games:", Object.keys(eventMap).length);
     console.log("eventMap sample:", JSON.stringify(Object.values(eventMap)[0]));
 
     Object.values(eventMap).forEach(game => {
