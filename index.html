@@ -129,28 +129,41 @@ function App() {
   }
 
   function parseGameLog(data, sport) {
-    // ESPN eventlog structure varies by sport — extract stat categories
     const result = {};
     const statConfigs = STAT_CONFIGS[sport] || {};
     Object.keys(statConfigs).forEach(k => result[k] = []);
 
-    const events = data.events?.items || [];
-    events.forEach(ev => {
-      const stats = ev.athlete?.statistics || ev.statistics || [];
-      // Map stats array to our keys — simplified extraction
-      // Full parsing depends on ESPN's label/category structure
-      stats.forEach(s => {
-        const name = (s.name || s.abbreviation || "").toLowerCase();
-        if (name.includes("pts") || name.includes("points")) result.points?.push(Number(s.value) || 0);
-        if (name.includes("reb")) result.rebounds?.push(Number(s.value) || 0);
-        if (name.includes("ast")) result.assists?.push(Number(s.value) || 0);
-        if (name.includes("passyds")) result.passingYards?.push(Number(s.value) || 0);
-        if (name.includes("runyds") || name.includes("rushyds")) result.rushingYards?.push(Number(s.value) || 0);
-        if (name.includes("td")) result.touchdowns?.push(Number(s.value) || 0);
-        if (name === "h" || name === "hits") result.hits?.push(Number(s.value) || 0);
-        if (name === "rbi") result.rbi?.push(Number(s.value) || 0);
+    console.log("raw gamelog keys:", Object.keys(data));
+    console.log("categories sample:", JSON.stringify(data.categories || data.seasonTypes || "none").slice(0, 600));
+
+    // ESPN site API format: data.categories[] each has labels[] and athletes[0].statistics[][]
+    // labels = ["PTS","REB","AST",...], statistics = [[28,9,12,...], [31,7,8,...], ...]  (per game)
+    const categories = data.seasonTypes?.[0]?.categories || data.categories || [];
+    categories.forEach(cat => {
+      const labels = cat.labels || [];
+      console.log("category:", cat.name, "labels:", labels);
+      const athleteStats = cat.athletes?.[0]?.statistics || [];
+      athleteStats.forEach(gameStats => {
+        // gameStats is an array of values matching labels
+        if (!Array.isArray(gameStats)) return;
+        gameStats.forEach((val, i) => {
+          const lbl = (labels[i] || "").toUpperCase();
+          const n = Number(val);
+          if (isNaN(n)) return;
+          if (lbl === "PTS")  result.points?.push(n);
+          if (lbl === "REB")  result.rebounds?.push(n);
+          if (lbl === "AST")  result.assists?.push(n);
+          if (lbl === "PYD" || lbl === "PASSYDS") result.passingYards?.push(n);
+          if (lbl === "RYD" || lbl === "RUSHYDS") result.rushingYards?.push(n);
+          if (lbl === "PTD" || lbl === "TD")      result.touchdowns?.push(n);
+          if (lbl === "H")    result.hits?.push(n);
+          if (lbl === "RBI")  result.rbi?.push(n);
+          if (lbl === "G")    result.goals?.push(n);
+        });
       });
     });
+
+    console.log("parsed result:", JSON.stringify(result).slice(0, 200));
     return result;
   }
 
