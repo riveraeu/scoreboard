@@ -85,21 +85,24 @@ function App() {
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
+  // Preload Jokic
+  React.useEffect(() => {
+    loadPlayer({ id: "3032977", name: "Nikola Jokic", team: "DEN" });
+  }, []);
+
   React.useEffect(() => {
     if (debouncedQuery.trim().length < 2) { setSuggestions([]); setShowDrop(false); return; }
     setSearching(true);
     fetch(`${WORKER}/athletes?sport=${sport}&q=${encodeURIComponent(debouncedQuery)}`)
       .then(r => r.json())
       .then(data => {
-        const items = (data.items || []).map(a => ({
-          id: a.id,
-          name: a.displayName || a.fullName,
-          team: a.team?.abbreviation || "",
-        }));
+        console.log("search response:", JSON.stringify(data));
+        const items = (data.items || []).map(a => ({ id: a.id, name: a.name, team: a.team || "" }));
+        console.log("mapped items:", items);
         setSuggestions(items);
         setShowDrop(items.length > 0);
       })
-      .catch(() => setSuggestions([]))
+      .catch(e => { console.error("search error:", e); setSuggestions([]); })
       .finally(() => setSearching(false));
   }, [debouncedQuery, sport]);
 
@@ -108,13 +111,17 @@ function App() {
     const id = Date.now(); fetchRef.current = id;
     try {
       const season = sport === "football/nfl" ? "2025" : "2026";
-      const res = await fetch(`${WORKER}/gamelog?sport=${sport}&athleteId=${p.id}&season=${season}`);
+      const url = `${WORKER}/gamelog?sport=${sport}&athleteId=${p.id}&season=${season}`;
+      console.log("fetching gamelog:", url);
+      const res = await fetch(url);
       const data = await res.json();
+      console.log("gamelog response:", JSON.stringify(data).slice(0, 500));
       if (fetchRef.current !== id) return;
-      // Parse ESPN eventlog into per-game stat arrays
       const parsed = parseGameLog(data, sport);
+      console.log("parsed logs:", parsed);
       setLogs(parsed);
     } catch(e) {
+      console.error("gamelog error:", e);
       if (fetchRef.current !== id) return;
       setError("Could not load game log: " + e.message);
     }
