@@ -137,13 +137,13 @@ function App() {
     console.log("categories sample:", JSON.stringify(data.categories || data.seasonTypes || "none").slice(0, 600));
 
     // ESPN format: top-level labels[], seasonTypes[].categories[].events[].stats[]
-    // Worker now returns flat {labels, events, totalGames}
     const labels = data.labels || [];
     const events = data.events || [];
     console.log("total games:", events.length, "labels:", labels);
 
     events.forEach(ev => {
       const stats = ev.stats || [];
+
       stats.forEach((val, i) => {
         const lbl = (labels[i] || "").toUpperCase();
         const n = parseFloat(val);
