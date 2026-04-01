@@ -137,45 +137,31 @@ function App() {
     console.log("categories sample:", JSON.stringify(data.categories || data.seasonTypes || "none").slice(0, 600));
 
     // ESPN format: top-level labels[], seasonTypes[].categories[].events[].stats[]
+    // Worker now returns flat {labels, events, totalGames}
     const labels = data.labels || [];
-    console.log("top-level labels:", labels);
+    const events = data.events || [];
+    console.log("total games:", events.length, "labels:", labels);
 
-    const seasonType = (data.seasonTypes || []).find(st => st.name === "Regular Season") || data.seasonTypes?.[0];
-    const categories = seasonType?.categories || [];
-
-    // Only use splitType "event" — these are individual game rows, not monthly/totals splits
-    const eventCats = categories.filter(cat => cat.splitType === "event" || cat.type === "event");
-    console.log("event categories:", eventCats.length, "all cats:", categories.map(c => `${c.name}(${c.splitType}/${c.type}:${c.events?.length})`));
-
-    const eventMap = {};
-    (eventCats.length > 0 ? eventCats : categories.slice(0, 1)).forEach(cat => {
-      (cat.events || []).forEach(ev => {
-        if (eventMap[ev.eventId]) return; // no overwrite
-        const stats = ev.stats || [];
-        const game = {};
-        stats.forEach((val, i) => {
-          const lbl = (labels[i] || "").toUpperCase();
-          const n = parseFloat(val);
-          if (!isNaN(n)) game[lbl] = n;
-        });
-        eventMap[ev.eventId] = game;
+    events.forEach(ev => {
+      const stats = ev.stats || [];
+      stats.forEach((val, i) => {
+        const lbl = (labels[i] || "").toUpperCase();
+        const n = parseFloat(val);
+        if (isNaN(n)) return;
+        if (lbl === "PTS") result.points?.push(n);
+        if (lbl === "REB") result.rebounds?.push(n);
+        if (lbl === "AST") result.assists?.push(n);
+        if (lbl === "PYD" || lbl === "PASSYDS") result.passingYards?.push(n);
+        if (lbl === "RYD" || lbl === "RUSHYDS") result.rushingYards?.push(n);
+        if (lbl === "PTD" || lbl === "TD")      result.touchdowns?.push(n);
+        if (lbl === "H")   result.hits?.push(n);
+        if (lbl === "RBI") result.rbi?.push(n);
+        if (lbl === "G")   result.goals?.push(n);
       });
     });
 
-    console.log("total unique games:", Object.keys(eventMap).length);
-    console.log("eventMap sample:", JSON.stringify(Object.values(eventMap)[0]));
-
-    Object.values(eventMap).forEach(game => {
-      if (game.PTS  !== undefined) result.points?.push(game.PTS);
-      if (game.REB  !== undefined) result.rebounds?.push(game.REB);
-      if (game.AST  !== undefined) result.assists?.push(game.AST);
-      if (game.PYD  !== undefined) result.passingYards?.push(game.PYD);
-      if (game.RYD  !== undefined) result.rushingYards?.push(game.RYD);
-      if (game.PTD  !== undefined) result.touchdowns?.push(game.PTD);
-      if (game.H    !== undefined) result.hits?.push(game.H);
-      if (game.RBI  !== undefined) result.rbi?.push(game.RBI);
-      if (game.G    !== undefined) result.goals?.push(game.G);
-    });
+    console.log("AST values:", result.assists);
+    console.log("PTS values:", result.points);
 
     console.log("parsed result:", JSON.stringify(result).slice(0, 200));
     return result;
