@@ -7,6 +7,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <script src="config.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: #0d1117; font-family: 'Segoe UI', sans-serif; }
@@ -15,8 +16,7 @@
 <body>
 <div id="root"></div>
 <script type="text/babel">
-// ⚠️ Replace with your Cloudflare Worker URL after deploying
-const WORKER = "https://odds-proxy.eugenejrivera.workers.dev";
+const WORKER = (typeof CONFIG !== "undefined" ? CONFIG.WORKER_URL : "https://YOUR_WORKER.YOUR_SUBDOMAIN.workers.dev");
 
 const SPORTS = [
   { label: "NBA",  value: "basketball/nba" },
