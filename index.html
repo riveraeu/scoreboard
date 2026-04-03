@@ -217,8 +217,14 @@ function App() {
   }
 
   function logout() {
-    localStorage.removeItem("sb_token"); localStorage.removeItem("sb_email");
-    setAuthToken(null); setAuthEmail(null);
+    localStorage.removeItem("sb_token");
+    localStorage.removeItem("sb_email");
+    localStorage.removeItem("scoreboard_tracked_plays");
+    localStorage.removeItem("scoreboard_bankroll");
+    setAuthToken(null);
+    setAuthEmail(null);
+    setTrackedPlays([]);
+    setBankrollState(1000);
   }
 
   // Auto-save picks to server whenever they change (debounced 1.5s)
