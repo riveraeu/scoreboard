@@ -439,10 +439,15 @@ function App() {
 
   // Fetch Kalshi odds — placed here so safeTab is already defined
   React.useEffect(() => {
-    const KALSHI_STATS = { points:"points", rebounds:"rebounds", assists:"assists", threePointers:"threePointers" };
-    const kalshiStat = KALSHI_STATS[safeTab];
-    if (!player || sport !== "basketball/nba" || !kalshiStat) { setKalshiOdds({}); return; }
-    fetch(`${WORKER}/kalshi?playerName=${encodeURIComponent(player.name)}&stat=${kalshiStat}`)
+    const KALSHI_STATS = {
+      "basketball/nba": { points:"points", rebounds:"rebounds", assists:"assists", threePointers:"threePointers" },
+      "hockey/nhl":     { goals:"goals", assists:"assists", shotsOnGoal:"shotsOnGoal", points:"points" },
+      "baseball/mlb":   { hits:"hits", homeRuns:"homeRuns", rbi:"rbi", strikeouts:"strikeouts", totalBases:"totalBases" },
+    };
+    const kalshiStat = KALSHI_STATS[sport]?.[safeTab];
+    if (!player || !kalshiStat) { setKalshiOdds({}); return; }
+    const sportSlug = sport.split("/")[1]; // "nba", "nhl", "mlb"
+    fetch(`${WORKER}/kalshi?playerName=${encodeURIComponent(player.name)}&stat=${kalshiStat}&sport=${sportSlug}`)
       .then(r => r.json())
       .then(data => {
         const map = {};
