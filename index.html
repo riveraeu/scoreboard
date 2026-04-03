@@ -100,6 +100,11 @@ function App() {
   const [testMode, setTestMode] = React.useState(false);
   const [expandedPlays, setExpandedPlays] = React.useState(new Set());
   const [trackedPlays, setTrackedPlays] = React.useState(() => {
+    // If logged in, server is authoritative — clear any stale local picks and start empty
+    if (localStorage.getItem("sb_token")) {
+      localStorage.removeItem("scoreboard_tracked_plays");
+      return [];
+    }
     try { return JSON.parse(localStorage.getItem("scoreboard_tracked_plays") || "[]"); } catch { return []; }
   });
   const [bankroll, setBankrollState] = React.useState(() => {
