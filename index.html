@@ -27,28 +27,43 @@ const SPORTS = [
 
 const STAT_CONFIGS = {
   "basketball/nba": {
-    points:   { label: "Points",   thresholds: [10,15,20,25,30,35,40], unit: "PTS" },
-    rebounds: { label: "Rebounds", thresholds: [4,6,8,10,12,14,16],    unit: "REB" },
-    assists:  { label: "Assists",  thresholds: [2,3,4,5,6,7,8,9,10],   unit: "AST" },
+    points:   { label: "Points",   thresholds: [10,15,20,25,30,35,40],    unit: "PTS" },
+    rebounds: { label: "Rebounds", thresholds: [4,6,8,10,12,14,16],       unit: "REB" },
+    assists:  { label: "Assists",  thresholds: [2,3,4,5,6,7,8,9,10],      unit: "AST" },
+    pra:      { label: "PRA",      thresholds: [20,25,30,35,40,45,50,60], unit: "PRA" },
+    threePointers: { label: "3-Pointers", thresholds: [1,2,3,4,5,6,7], unit: "3PM" },
   },
   "football/nfl": {
-    passingYards:  { label: "Pass Yds",  thresholds: [150,200,250,300,350,400], unit: "YDS" },
-    touchdowns:    { label: "Pass TDs",  thresholds: [1,2,3,4,5],              unit: "TD"  },
-    rushingYards:  { label: "Rush Yds",  thresholds: [25,50,75,100,125,150],   unit: "YDS" },
+    passingYards:   { label: "Pass Yds",    thresholds: [150,200,250,300,350,400], unit: "YDS" },
+    completions:    { label: "Completions", thresholds: [10,15,20,25,30,35],       unit: "CMP" },
+    attempts:       { label: "Attempts",    thresholds: [20,25,30,35,40,45],       unit: "ATT" },
+    rushingYards:   { label: "Rush Yds",    thresholds: [25,50,75,100,125,150],    unit: "YDS" },
+    receivingYards: { label: "Rec Yds",     thresholds: [25,50,75,100,125,150],    unit: "YDS" },
+    receptions:     { label: "Receptions",  thresholds: [2,3,4,5,6,7,8],          unit: "REC" },
   },
   "baseball/mlb": {
-    hits:    { label: "Hits",    thresholds: [1,2,3,4],       unit: "H"   },
-    rbi:     { label: "RBI",     thresholds: [1,2,3,4,5],     unit: "RBI" },
-    runs:    { label: "Runs",    thresholds: [1,2,3],         unit: "R"   },
+    hits:         { label: "Hits",          thresholds: [1,2,3,4],          unit: "H"  },
+    runsScored:   { label: "Runs Scored",   thresholds: [1,2,3],            unit: "R"  },
+    strikeouts:   { label: "Strikeouts",    thresholds: [3,4,5,6,7,8,9,10], unit: "K"  },
+    pitchingOuts: { label: "Inn. Pitched",  thresholds: [3,4,5,6,7],        unit: "IP" },
+    hitsAllowed:  { label: "Hits Allowed",  thresholds: [1,2,3,4,5,6,7,8],  unit: "HA" },
   },
   "hockey/nhl": {
-    points:  { label: "Points",  thresholds: [1,2,3,4],   unit: "PTS" },
-    goals:   { label: "Goals",   thresholds: [1,2,3],     unit: "G"   },
-    assists: { label: "Assists", thresholds: [1,2,3,4],   unit: "AST" },
+    shotsOnGoal: { label: "Shots on Goal", thresholds: [2,3,4,5,6,7,8],     unit: "SOG" },
+    points:      { label: "Points",        thresholds: [1,2,3,4],            unit: "PTS" },
+    saves:       { label: "Saves",         thresholds: [20,25,30,35,40,45],  unit: "SV"  },
   },
 };
 
 const getColor = p => p >= 80 ? "#3fb950" : p >= 60 ? "#58a6ff" : p >= 40 ? "#d29922" : "#f78166";
+const STAT_LABEL = {
+  points:"PTS", rebounds:"REB", assists:"AST", threePointers:"3PT",
+  goals:"G", shotsOnGoal:"SOG",
+  hits:"H", homeRuns:"HR", rbi:"RBI", strikeouts:"K", totalBases:"TB",
+  passingYards:"PASS YDS", rushingYards:"RUSH YDS", receivingYards:"REC YDS", touchdowns:"TD",
+};
+const SPORT_KEY = { nba:"basketball/nba", nfl:"football/nfl", nhl:"hockey/nhl", mlb:"baseball/mlb" };
+const SPORT_BADGE_COLOR = { nba:"#58a6ff", nhl:"#a5d8ff", mlb:"#3fb950", nfl:"#f78166" };
 
 function useDebounce(val, ms) {
   const [dv, setDv] = React.useState(val);
@@ -60,7 +75,9 @@ function useDebounce(val, ms) {
 }
 
 function App() {
-  const [sport, setSport] = React.useState("basketball/nba");
+  const [sport, setSport] = React.useState("basketball/nba"); // derived from selected player
+  const [perGame, setPerGame] = React.useState([]);
+  const [dvpData, setDvpData] = React.useState(null);
   const [query, setQuery] = React.useState("");
   const [suggestions, setSuggestions] = React.useState([]);
   const [showDrop, setShowDrop] = React.useState(false);
@@ -70,7 +87,19 @@ function App() {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState(null);
   const [activeTab, setActiveTab] = React.useState("points");
+  const [kalshiOdds, setKalshiOdds] = React.useState({});
+  const [showBreakdown, setShowBreakdown] = React.useState(false);
   const [searching, setSearching] = React.useState(false);
+  const [tonightPlays, setTonightPlays] = React.useState(null);
+  const [tonightLoading, setTonightLoading] = React.useState(true);
+  const [testMode, setTestMode] = React.useState(false);
+  const [expandedPlays, setExpandedPlays] = React.useState(new Set());
+  const [trackedPlays, setTrackedPlays] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem("scoreboard_tracked_plays") || "[]"); } catch { return []; }
+  });
+  const [bankroll, setBankrollState] = React.useState(() => {
+    return parseFloat(localStorage.getItem("scoreboard_bankroll") || "1000");
+  });
   const debouncedQuery = useDebounce(query, 300);
   const dropRef = React.useRef(null);
   const inputRef = React.useRef(null);
@@ -85,43 +114,88 @@ function App() {
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
-  // Preload Jokic
+  // Fetch tonight's plays on mount and when testMode toggles, then refresh every 3 minutes
   React.useEffect(() => {
-    loadPlayer({ id: "3112335", name: "Nikola Jokic", team: "DEN" });
-  }, []);
+    const load = () => {
+      const url = testMode ? `${WORKER}/tonight?mock=true` : `${WORKER}/tonight`;
+      fetch(url)
+        .then(r => r.json())
+        .then(data => { setTonightPlays(data.plays || []); setTonightLoading(false); })
+        .catch(() => { setTonightPlays([]); setTonightLoading(false); });
+    };
+    setTonightLoading(true);
+    load();
+    const interval = setInterval(load, 3 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [testMode]);
+
+  // Persist tracked plays to localStorage whenever they change
+  React.useEffect(() => {
+    localStorage.setItem("scoreboard_tracked_plays", JSON.stringify(trackedPlays));
+  }, [trackedPlays]);
+
+  function setBankroll(val) {
+    const n = Math.max(1, parseFloat(val) || 0);
+    setBankrollState(n);
+    localStorage.setItem("scoreboard_bankroll", String(n));
+  }
+  function trackPlay(play) {
+    const id = `${play.sport || "nba"}|${play.playerName}|${play.stat}|${play.threshold}`;
+    setTrackedPlays(prev => {
+      if (prev.find(p => p.id === id)) return prev;
+      return [{ ...play, id, trackedAt: Date.now(), result: null, units: 1 }, ...prev];
+    });
+  }
+  function untrackPlay(id) {
+    setTrackedPlays(prev => prev.filter(p => p.id !== id));
+  }
+  function setPlayResult(id, result) {
+    setTrackedPlays(prev => prev.map(p => p.id === id ? { ...p, result } : p));
+  }
+  function setPickUnits(id, units) {
+    const u = Math.max(0, parseFloat(units) || 0);
+    setTrackedPlays(prev => prev.map(p => p.id === id ? { ...p, units: u } : p));
+  }
+  // P&L helpers (American odds → decimal profit multiplier on stake)
+  function oddsToProfit(americanOdds) {
+    return americanOdds >= 0 ? americanOdds / 100 : 100 / Math.abs(americanOdds);
+  }
 
   React.useEffect(() => {
     if (debouncedQuery.trim().length < 2) { setSuggestions([]); setShowDrop(false); return; }
     setSearching(true);
-    fetch(`${WORKER}/athletes?sport=${sport}&q=${encodeURIComponent(debouncedQuery)}`)
+    fetch(`${WORKER}/athletes?q=${encodeURIComponent(debouncedQuery)}`)
       .then(r => r.json())
       .then(data => {
-        console.log("search response:", JSON.stringify(data));
-        const items = (data.items || []).map(a => ({ id: a.id, name: a.name, team: a.team || "" }));
-        console.log("mapped items:", items);
+        const items = (data.items || []);
         setSuggestions(items);
         setShowDrop(items.length > 0);
       })
       .catch(e => { console.error("search error:", e); setSuggestions([]); })
       .finally(() => setSearching(false));
-  }, [debouncedQuery, sport]);
+  }, [debouncedQuery]);
 
-  async function loadPlayer(p) {
-    setPlayer(p); setLogs(null); setError(null); setLoading(true);
+  async function loadPlayer(p, activeSport) {
+    const sp = activeSport || sport;
+    setPlayer(p); setLogs(null); setPerGame([]); setDvpData(null); setError(null); setLoading(true);
     const id = Date.now(); fetchRef.current = id;
     try {
-      const season = sport === "football/nfl" ? "2025" : "2026";
-      const url = `${WORKER}/gamelog?sport=${sport}&athleteId=${p.id}&season=${season}`;
-      console.log("fetching gamelog:", url);
-      const res = await fetch(url);
-      const data = await res.json();
-      console.log("gamelog response:", JSON.stringify(data).slice(0, 500));
+      const season = sp === "football/nfl" ? "2025" : "2026";
+      const [gameRes, dvpRes] = await Promise.all([
+        fetch(`${WORKER}/gamelog?sport=${sp}&athleteId=${p.id}&season=${season}`),
+        fetch(`${WORKER}/dvp?sport=${sp}&athleteId=${p.id}`),
+      ]);
+      const data = await gameRes.json();
       if (fetchRef.current !== id) return;
-      const parsed = parseGameLog(data, sport);
-      console.log("parsed logs:", parsed);
-      setLogs(parsed);
+      const { aggregated, perGame: pg } = parseGameLog(data, sp);
+      setLogs(aggregated);
+      setPerGame(pg);
+      if (dvpRes.ok) {
+        const dv = await dvpRes.json();
+        if (fetchRef.current !== id) return;
+        setDvpData(dv);
+      }
     } catch(e) {
-      console.error("gamelog error:", e);
       if (fetchRef.current !== id) return;
       setError("Could not load game log: " + e.message);
     }
@@ -133,43 +207,102 @@ function App() {
     const statConfigs = STAT_CONFIGS[sport] || {};
     Object.keys(statConfigs).forEach(k => result[k] = []);
 
-    console.log("raw gamelog keys:", Object.keys(data));
-    console.log("categories sample:", JSON.stringify(data.categories || data.seasonTypes || "none").slice(0, 600));
-
-    // ESPN format: top-level labels[], seasonTypes[].categories[].events[].stats[]
     const labels = data.labels || [];
     const events = data.events || [];
-    console.log("total games:", events.length, "labels:", labels);
+    const ul = labels.map(l => (l || "").toUpperCase());
+
+    // Helper: get numeric value at first occurrence of a label
+    const byLabel = (stats, lbl) => {
+      const i = ul.indexOf(lbl);
+      if (i === -1) return undefined;
+      const v = parseFloat(stats[i]);
+      return isNaN(v) ? undefined : v;
+    };
+
+    // NFL: YDS appears multiple times — pre-compute indices by context
+    const nflCols = {};
+    if (sport === "football/nfl") {
+      ul.forEach((lbl, i) => {
+        const prev = i > 0 ? ul[i - 1] : "";
+        if (lbl === "CMP")                       nflCols.cmp     = i;
+        if (lbl === "ATT")                       nflCols.att     = i;
+        if (lbl === "YDS" && prev === "ATT")     nflCols.passYds = i;
+        if (lbl === "YDS" && prev === "CAR")     nflCols.rushYds = i;
+        if (lbl === "REC")                       nflCols.rec     = i;
+        if (lbl === "TGTS")                      nflCols.tgts    = i;
+        if (lbl === "YDS" && prev === "TGTS")    nflCols.recYds  = i;
+      });
+    }
+
+    // MLB: pitcher vs hitter determined by presence of IP column
+    const isPitcher = sport === "baseball/mlb" && ul.includes("IP");
+
+    const perGame = [];
 
     events.forEach(ev => {
       const stats = ev.stats || [];
+      const col = key => {
+        const i = nflCols[key];
+        if (i === undefined) return undefined;
+        const v = parseFloat(stats[i]);
+        return isNaN(v) ? undefined : v;
+      };
+      const lv = lbl => byLabel(stats, lbl);
+      const gs = {}; // per-game stats for DvP
 
-      stats.forEach((val, i) => {
-        const lbl = (labels[i] || "").toUpperCase();
-        const n = parseFloat(val);
-        if (isNaN(n)) return;
-        if (lbl === "PTS") result.points?.push(n);
-        if (lbl === "REB") result.rebounds?.push(n);
-        if (lbl === "AST") result.assists?.push(n);
-        if (lbl === "PYD" || lbl === "PASSYDS") result.passingYards?.push(n);
-        if (lbl === "RYD" || lbl === "RUSHYDS") result.rushingYards?.push(n);
-        if (lbl === "PTD" || lbl === "TD")      result.touchdowns?.push(n);
-        if (lbl === "H")   result.hits?.push(n);
-        if (lbl === "RBI") result.rbi?.push(n);
-        if (lbl === "G")   result.goals?.push(n);
-      });
+      if (sport === "basketball/nba") {
+        const pts = lv("PTS"), reb = lv("REB"), ast = lv("AST");
+        if (pts !== undefined) { result.points?.push(pts); gs.points = pts; }
+        if (reb !== undefined) { result.rebounds?.push(reb); gs.rebounds = reb; }
+        if (ast !== undefined) { result.assists?.push(ast); gs.assists = ast; }
+        if (result.pra && pts !== undefined && reb !== undefined && ast !== undefined) {
+          const pra = pts + reb + ast; result.pra.push(pra); gs.pra = pra;
+        }
+        const tpm = lv("3PT");
+        if (tpm !== undefined) { result.threePointers?.push(tpm); gs.threePointers = tpm; }
+      }
+
+      if (sport === "football/nfl") {
+        if (col("passYds") !== undefined) { result.passingYards?.push(col("passYds")); gs.passingYards = col("passYds"); }
+        if (col("cmp")     !== undefined) { result.completions?.push(col("cmp")); gs.completions = col("cmp"); }
+        if (col("att")     !== undefined) { result.attempts?.push(col("att")); gs.attempts = col("att"); }
+        if (col("rushYds") !== undefined) { result.rushingYards?.push(col("rushYds")); gs.rushingYards = col("rushYds"); }
+        if (col("recYds")  !== undefined) { result.receivingYards?.push(col("recYds")); gs.receivingYards = col("recYds"); }
+        if (col("rec")     !== undefined) { result.receptions?.push(col("rec")); gs.receptions = col("rec"); }
+      }
+
+      if (sport === "baseball/mlb") {
+        if (isPitcher) {
+          const ip = lv("IP"), h = lv("H"), k = lv("K");
+          if (ip !== undefined) { result.pitchingOuts?.push(ip); gs.pitchingOuts = ip; }
+          if (h  !== undefined) { result.hitsAllowed?.push(h); gs.hitsAllowed = h; }
+          if (k  !== undefined) { result.strikeouts?.push(k); gs.strikeouts = k; }
+        } else {
+          const h = lv("H"), r = lv("R");
+          if (h !== undefined) { result.hits?.push(h); gs.hits = h; }
+          if (r !== undefined) { result.runsScored?.push(r); gs.runsScored = r; }
+        }
+      }
+
+      if (sport === "hockey/nhl") {
+        const sog = lv("SOG") ?? lv("S"), pts = lv("PTS"), sv = lv("SV");
+        if (sog !== undefined) { result.shotsOnGoal?.push(sog); gs.shotsOnGoal = sog; }
+        if (pts !== undefined) { result.points?.push(pts); gs.points = pts; }
+        if (sv  !== undefined) { result.saves?.push(sv); gs.saves = sv; }
+      }
+
+      perGame.push({ oppId: ev.oppId || null, oppAbbr: ev.oppAbbr || null, ...gs });
     });
 
-    console.log("AST values:", result.assists);
-    console.log("PTS values:", result.points);
-
-    console.log("parsed result:", JSON.stringify(result).slice(0, 200));
-    return result;
+    return { aggregated: result, perGame };
   }
 
-  const selectPlayer = p => {
+  const selectPlayer = (p, tab = null) => {
+    const newSport = p.sportKey || sport;
+    setSport(newSport);
+    setActiveTab(tab || Object.keys(STAT_CONFIGS[newSport] || {})[0] || "points");
     setQuery(""); setSuggestions([]); setShowDrop(false); setActiveIdx(-1);
-    loadPlayer(p);
+    loadPlayer(p, newSport);
   };
 
   const handleKeyDown = e => {
@@ -205,22 +338,23 @@ function App() {
     return { t, count, pct: totalGames > 0 ? (count/totalGames)*100 : 0 };
   });
 
+  // Fetch Kalshi odds — placed here so safeTab is already defined
+  React.useEffect(() => {
+    const KALSHI_STATS = { points:"points", rebounds:"rebounds", assists:"assists", threePointers:"threePointers" };
+    const kalshiStat = KALSHI_STATS[safeTab];
+    if (!player || sport !== "basketball/nba" || !kalshiStat) { setKalshiOdds({}); return; }
+    fetch(`${WORKER}/kalshi?playerName=${encodeURIComponent(player.name)}&stat=${kalshiStat}`)
+      .then(r => r.json())
+      .then(data => {
+        const map = {};
+        (data.markets || []).forEach(m => { map[m.threshold] = m; });
+        setKalshiOdds(map);
+      })
+      .catch(() => setKalshiOdds({}));
+  }, [player, safeTab, sport]);
+
   return (
     <div style={{maxWidth:640,margin:"0 auto",padding:"24px 16px"}}>
-
-      {/* Sport tabs */}
-      <div style={{display:"flex",gap:6,marginBottom:18}}>
-        {SPORTS.map(s => (
-          <button key={s.value} onClick={() => { setSport(s.value); setPlayer(null); setLogs(null); setActiveTab("points"); }}
-            style={{flex:1,padding:"9px 0",borderRadius:8,border:"1px solid",cursor:"pointer",fontSize:13,
-              borderColor: sport===s.value ? "#58a6ff":"#30363d",
-              background: sport===s.value ? "rgba(88,166,255,0.12)":"#161b22",
-              color: sport===s.value ? "#58a6ff":"#8b949e",
-              fontWeight: sport===s.value ? 700:400}}>
-            {s.label}
-          </button>
-        ))}
-      </div>
 
       {/* Search */}
       <div style={{position:"relative",marginBottom:22}}>
@@ -231,7 +365,7 @@ function App() {
           onChange={e => { setQuery(e.target.value); setActiveIdx(-1); }}
           onKeyDown={handleKeyDown}
           onFocus={() => suggestions.length > 0 && setShowDrop(true)}
-          placeholder={player ? `Search player… (${player.name})` : `Search ${SPORTS.find(s=>s.value===sport)?.label} player…`}
+          placeholder={player ? `Search player… (${player.name})` : "Search NFL, NBA, MLB, NHL players…"}
           style={{width:"100%",background:"#161b22",border:"1px solid #30363d",borderRadius:10,
             color:"#fff",fontSize:14,padding:"12px 14px 12px 40px",outline:"none"}}
         />
@@ -248,7 +382,17 @@ function App() {
                   display:"flex",alignItems:"center",justifyContent:"space-between"}}
               >
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
-                  <span>🏃</span>
+                  <img
+                    src={`${WORKER}/headshot?id=${p.id}&sport=${p.league || sport.split("/")[1]}`}
+                    alt={p.name}
+                    onError={e => {
+                      e.target.onerror = null;
+                      if (p.teamId && p.league) {
+                        e.target.src = `https://a.espncdn.com/i/teamlogos/${p.league}/500/${p.teamId}.png`;
+                      }
+                    }}
+                    style={{width:28,height:28,borderRadius:6,objectFit:"cover",background:"#21262d",flexShrink:0}}
+                  />
                   {highlight(p.name, query)}
                 </div>
                 <span style={{color:"#484f58",fontSize:11}}>{p.team}</span>
@@ -267,11 +411,9 @@ function App() {
             alt={player.name}
             style={{width:50,height:50,borderRadius:12,objectFit:"cover",background:"#161b22",flexShrink:0}}
           />
-          <div style={{background:"linear-gradient(135deg,#1a3a6b,#0066cc)",borderRadius:12,width:50,height:50,
-            display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>🏅</div>
-          <div>
+<div>
             <h1 style={{color:"#fff",margin:0,fontSize:19,fontWeight:700}}>{player.name}</h1>
-            <div style={{color:"#8b949e",fontSize:12}}>{player.team} · {SPORTS.find(s=>s.value===sport)?.label} 2025-26</div>
+            <div style={{color:"#8b949e",fontSize:12}}>{player.team} · {SPORTS.find(s=>s.value===(player.sportKey||sport))?.label} 2025-26</div>
           </div>
           <div style={{marginLeft:"auto",display:"flex",gap:8}}>
             {[["AVG",avg],["HIGH",hi],["GP",totalGames]].map(([l,v]) => (
@@ -300,51 +442,593 @@ function App() {
         </div>
       )}
 
-      {/* Chart */}
-      {player && (
-        <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:12,padding:"20px 22px"}}>
-          {loading ? (
-            <div style={{color:"#8b949e",textAlign:"center",padding:48,fontSize:13}}>⏳ Loading game log…</div>
-          ) : error ? (
-            <div style={{color:"#f78166",textAlign:"center",padding:48,fontSize:13}}>⚠️ {error}</div>
-          ) : totalGames === 0 ? (
-            <div style={{color:"#8b949e",textAlign:"center",padding:48,fontSize:13}}>No game data found.</div>
-          ) : (
-            <>
-              <div style={{color:"#8b949e",fontSize:12,marginBottom:18}}>
-                % of games recording <strong style={{color:"#c9d1d9"}}>at least N {cfg.unit}</strong>
-              </div>
-              {rates.map(({t,count,pct}) => {
-                const color = getColor(pct);
-                return (
-                  <div key={t} style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
-                    <div style={{color:"#8b949e",fontSize:13,width:40,textAlign:"right",flexShrink:0}}>{t}+</div>
-                    <div style={{flex:1,background:"#21262d",borderRadius:5,height:18,overflow:"hidden"}}>
-                      <div style={{width:`${pct}%`,background:color,height:"100%",borderRadius:5,transition:"width 0.5s ease",minWidth:pct>0?4:0}}/>
+      {/* Combined chart: Season + Soft Matchup + True Probability */}
+      {player && (() => {
+        const hasDvp = dvpData && perGame.length > 0 && !loading && totalGames > 0;
+        const WEAK_N = 10;
+        let dvpMap = {}, wTotal = 0, weakTeamList = [];
+
+        if (hasDvp) {
+          // Use softTeams from /dvp (byteam PTS-allowed top 10) if available — same set as /tonight uses.
+          // Fall back to position-specific DvP top 10 for non-NBA sports.
+          const softAbbrs = dvpData.softTeams?.[safeTab]?.length
+            ? new Set(dvpData.softTeams[safeTab])
+            : new Set((dvpData.teams || []).filter(t => t.rank <= WEAK_N).map(t => t.abbr));
+          const weakAbbrs = softAbbrs;
+          const weakGames = perGame.filter(g => weakAbbrs.has(g.oppAbbr));
+          wTotal = weakGames.length;
+          weakTeamList = (dvpData.teams || [])
+            .filter(t => weakAbbrs.has(t.abbr))
+            .filter(t => perGame.some(g => g.oppAbbr === t.abbr));
+          if (wTotal > 0) {
+            (cfg?.thresholds || []).forEach(t => {
+              const wCount = weakGames.filter(g => (g[safeTab] ?? -1) >= t).length;
+              dvpMap[t] = { wCount, wPct: (wCount / wTotal) * 100 };
+            });
+          }
+        }
+
+        const showTriple = hasDvp && wTotal > 0;
+
+        return (
+          <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:12,padding:"20px 22px"}}>
+            {loading ? (
+              <div style={{color:"#8b949e",textAlign:"center",padding:48,fontSize:13}}>⏳ Loading game log…</div>
+            ) : error ? (
+              <div style={{color:"#f78166",textAlign:"center",padding:48,fontSize:13}}>⚠️ {error}</div>
+            ) : totalGames === 0 ? (
+              <div style={{color:"#8b949e",textAlign:"center",padding:48,fontSize:13}}>No game data found.</div>
+            ) : (
+              <>
+                {/* Header */}
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:showTriple?4:16,flexWrap:"wrap"}}>
+                  <div style={{color:"#8b949e",fontSize:12}}>
+                    % of games hitting <strong style={{color:"#c9d1d9"}}>at least N {cfg.unit}</strong>
+                  </div>
+                  {showTriple && dvpData.position && (
+                    <span style={{background:"rgba(88,166,255,0.12)",border:"1px solid #58a6ff",borderRadius:6,
+                      padding:"1px 7px",fontSize:11,color:"#58a6ff",fontWeight:700,marginLeft:"auto"}}>
+                      {dvpData.position}
+                    </span>
+                  )}
+                </div>
+
+                {showTriple && (
+                  <div style={{color:"#484f58",fontSize:11,marginBottom:14}}>
+                    Soft matchup teams ({wTotal}/{totalGames}g): {weakTeamList.map(t => t.abbr).join(" · ")}
+                  </div>
+                )}
+
+                {/* Threshold rows — filter to Kalshi thresholds when available */}
+                {(() => {
+                  const hasKalshi = Object.keys(kalshiOdds).length > 0;
+                  const displayRates = hasKalshi ? rates.filter(({t}) => kalshiOdds[t]) : rates;
+                  return displayRates.map(({t, count, pct}) => {
+                    const dvp = dvpMap[t];
+                    const softPct = dvp?.wPct ?? null;
+                    const truePct = softPct !== null ? (pct + softPct) / 2 : null;
+                    const k = kalshiOdds[t];
+                    const oddsStr = k ? (k.americanOdds >= 0 ? `+${k.americanOdds}` : `${k.americanOdds}`) : null;
+                    const edge = (truePct !== null && k) ? truePct - k.pct : null;
+                    const edgeColor = edge === null ? null : edge > 3 ? "#3fb950" : edge < -3 ? "#f78166" : "#8b949e";
+                    const edgeStr = edge === null ? null : (edge >= 0 ? `+${edge.toFixed(1)}%` : `${edge.toFixed(1)}%`);
+
+                    if (!showTriple) {
+                      // Non-NBA / no DvP: season bar + optional Kalshi
+                      const color = getColor(pct);
+                      return (
+                        <div key={t} style={{display:"flex",gap:10,marginBottom:14,alignItems:"flex-start"}}>
+                          <div style={{color:"#8b949e",fontSize:13,width:40,textAlign:"right",flexShrink:0,paddingTop:2}}>{t}+</div>
+                          <div style={{flex:1,display:"flex",flexDirection:"column",gap:5}}>
+                            <div style={{display:"flex",alignItems:"center",gap:8}}>
+                              <div style={{flex:1,background:"#21262d",borderRadius:5,height:18,overflow:"hidden"}}>
+                                <div style={{width:`${pct}%`,background:color,height:"100%",borderRadius:5,transition:"width 0.5s ease",minWidth:pct>0?4:0}}/>
+                              </div>
+                              <div style={{color,fontSize:13,fontWeight:700,width:42,textAlign:"right",flexShrink:0}}>{pct.toFixed(1)}%</div>
+                              <div style={{color:"#484f58",fontSize:11,width:50,flexShrink:0}}>{count}/{totalGames}g</div>
+                            </div>
+                            {k && (
+                              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                                <div style={{flex:1,background:"#21262d",borderRadius:4,height:13,overflow:"hidden"}}>
+                                  <div style={{width:`${k.pct}%`,background:"#a855f7",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:k.pct>0?3:0}}/>
+                                </div>
+                                <div style={{color:"#a855f7",fontSize:11,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{k.pct}%</div>
+                                <div style={{color:"#6e40c9",fontSize:10,width:50,flexShrink:0}}>({oddsStr})</div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    // NBA triple mode: True probability + Kalshi primary, season/soft in drawer
+                    return (
+                      <div key={t} style={{marginBottom:14}}>
+                        <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+                          <div style={{color:"#8b949e",fontSize:13,width:40,textAlign:"right",flexShrink:0,paddingTop:2}}>{t}+</div>
+                          <div style={{flex:1,display:"flex",flexDirection:"column",gap:5}}>
+                            {/* True probability — primary */}
+                            <div style={{display:"flex",alignItems:"center",gap:8}}>
+                              <div style={{flex:1,background:"#21262d",borderRadius:4,height:16,overflow:"hidden"}}>
+                                <div style={{width:`${truePct}%`,background:"#e3b341",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:truePct>0?3:0}}/>
+                              </div>
+                              <div style={{color:"#e3b341",fontSize:13,fontWeight:700,width:42,textAlign:"right",flexShrink:0}}>{truePct.toFixed(1)}%</div>
+                              <div style={{width:50,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"flex-start",paddingLeft:2}}>
+                                {edgeStr && (
+                                  <span style={{background: edgeColor + "22", border:`1px solid ${edgeColor}`,
+                                    borderRadius:4, padding:"1px 5px", fontSize:10, fontWeight:700, color:edgeColor,
+                                    whiteSpace:"nowrap"}}>
+                                    {edgeStr}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            {/* Kalshi */}
+                            {k && (
+                              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                                <div style={{flex:1,background:"#21262d",borderRadius:4,height:13,overflow:"hidden"}}>
+                                  <div style={{width:`${k.pct}%`,background:"#a855f7",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:k.pct>0?3:0}}/>
+                                </div>
+                                <div style={{color:"#a855f7",fontSize:11,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{k.pct}%</div>
+                                <div style={{color:"#6e40c9",fontSize:10,width:50,flexShrink:0}}>({oddsStr})</div>
+                              </div>
+                            )}
+                            {/* Drawer: season + soft matchup */}
+                            {showBreakdown && (
+                              <div style={{borderLeft:"2px solid #30363d",paddingLeft:10,marginTop:2,display:"flex",flexDirection:"column",gap:4}}>
+                                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                                  <div style={{flex:1,background:"#21262d",borderRadius:4,height:11,overflow:"hidden"}}>
+                                    <div style={{width:`${pct}%`,background:"#58a6ff",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:pct>0?2:0}}/>
+                                  </div>
+                                  <div style={{color:"#58a6ff",fontSize:10,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{pct.toFixed(1)}%</div>
+                                  <div style={{color:"#484f58",fontSize:10,width:50,flexShrink:0}}>{count}/{totalGames}g</div>
+                                </div>
+                                {softPct !== null && (
+                                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                                    <div style={{flex:1,background:"#21262d",borderRadius:4,height:11,overflow:"hidden"}}>
+                                      <div style={{width:`${softPct}%`,background:"#3fb950",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:softPct>0?2:0}}/>
+                                    </div>
+                                    <div style={{color:"#3fb950",fontSize:10,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{softPct.toFixed(1)}%</div>
+                                    <div style={{color:"#484f58",fontSize:10,width:50,flexShrink:0}}>{dvp.wCount}/{wTotal}g</div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+
+                {/* Footer */}
+                <div style={{marginTop:8,paddingTop:12,borderTop:"1px solid #21262d",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+                  {showTriple && (
+                    <button onClick={() => setShowBreakdown(b => !b)}
+                      style={{background:"transparent",border:"1px solid #30363d",borderRadius:6,
+                        color:"#8b949e",fontSize:11,padding:"3px 10px",cursor:"pointer"}}>
+                      {showBreakdown ? "▲ Hide breakdown" : "▼ Show breakdown"}
+                    </button>
+                  )}
+                  <div style={{display:"flex",gap:12,flexWrap:"wrap",fontSize:11,color:"#484f58",marginLeft:"auto"}}>
+                    {showTriple
+                      ? <><span><span style={{color:"#e3b341",fontWeight:600}}>Gold</span> = true probability</span>
+                          {Object.keys(kalshiOdds).length > 0 && <span><span style={{color:"#a855f7",fontWeight:600}}>Purple</span> = Kalshi market</span>}
+                          {Object.keys(kalshiOdds).length > 0 && <span><span style={{color:"#3fb950",fontWeight:600}}>+edge</span> / <span style={{color:"#f78166",fontWeight:600}}>−edge</span> vs market</span>}</>
+                      : Object.keys(kalshiOdds).length > 0
+                        ? <span><span style={{color:"#a855f7",fontWeight:600}}>Kalshi</span> = live market odds</span>
+                        : [["#3fb950","≥80%"],["#58a6ff","60–79%"],["#d29922","40–59%"],["#f78166","<40%"]].map(([c,l]) => (
+                            <div key={l} style={{display:"flex",alignItems:"center",gap:4}}>
+                              <div style={{width:8,height:8,borderRadius:2,background:c}}/><span style={{color:"#8b949e"}}>{l}</span>
+                            </div>
+                          ))
+                    }
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        );
+      })()}
+
+      {!player && (
+        <div>
+          <div style={{display:"flex",alignItems:"center",marginBottom:14}}>
+            <div style={{color:"#c9d1d9",fontSize:15,fontWeight:700}}>
+              Plays
+              <span style={{color:"#484f58",fontSize:11,fontWeight:400,marginLeft:8}}>
+                implied ≥70% · edge ≥3%
+              </span>
+            </div>
+            <button onClick={() => setTestMode(m => !m)}
+              style={{marginLeft:"auto",fontSize:10,fontWeight:600,padding:"3px 10px",borderRadius:6,cursor:"pointer",border:"1px solid",
+                background: testMode ? "rgba(227,179,65,0.15)" : "transparent",
+                color: testMode ? "#e3b341" : "#484f58",
+                borderColor: testMode ? "#e3b341" : "#30363d"}}>
+              {testMode ? "TEST MODE" : "test"}
+            </button>
+          </div>
+          {tonightLoading ? (
+            <div style={{color:"#8b949e",textAlign:"center",padding:52,fontSize:13}}>
+              Loading plays…
+            </div>
+          ) : !tonightPlays || tonightPlays.length === 0 ? (
+            <div style={{color:"#484f58",textAlign:"center",padding:52,fontSize:13}}>
+              No qualifying plays found.
+            </div>
+          ) : (() => {
+            // Group plays by gameDate, sort dates ascending
+            const today = new Date().toISOString().slice(0,10);
+            const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0,10);
+            const grouped = {};
+            tonightPlays.forEach(play => {
+              const d = play.gameDate || today;
+              if (!grouped[d]) grouped[d] = [];
+              grouped[d].push(play);
+            });
+            const sortedDates = Object.keys(grouped).sort();
+
+            function dateLabel(d) {
+              if (d === today) return "Today";
+              if (d === tomorrow) return "Tomorrow";
+              const [yr, mo, dy] = d.split("-").map(Number);
+              return new Date(yr, mo-1, dy).toLocaleDateString("en-US", { weekday:"short", month:"short", day:"numeric" });
+            }
+
+            const STAT_FULL = {
+              points:"points", rebounds:"rebounds", assists:"assists", threePointers:"3-pointers",
+              goals:"goals", shotsOnGoal:"shots on goal",
+              hits:"hits", homeRuns:"home runs", rbi:"RBI", strikeouts:"strikeouts", totalBases:"total bases",
+              passingYards:"passing yards", rushingYards:"rushing yards", receivingYards:"receiving yards", touchdowns:"touchdowns",
+            };
+            const ordinal = n => n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3rd" : `${n}th`;
+
+            return sortedDates.map(date => (
+              <div key={date}>
+                {/* Date header */}
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,marginTop: date === sortedDates[0] ? 0 : 20}}>
+                  <div style={{color: date === today ? "#e3b341" : "#c9d1d9", fontSize:13, fontWeight:700}}>
+                    {dateLabel(date)}
+                  </div>
+                  <div style={{flex:1,height:1,background:"#21262d"}}/>
+                  <div style={{color:"#484f58",fontSize:11}}>{grouped[date].length} play{grouped[date].length !== 1 ? "s" : ""}</div>
+                </div>
+
+                {grouped[date].map((play) => {
+              const playKey = `${play.playerName}-${play.stat}-${play.threshold}`;
+              const oddsStr = play.americanOdds >= 0 ? `+${play.americanOdds}` : `${play.americanOdds}`;
+              const isExpanded = expandedPlays.has(playKey);
+              const trackId = `${play.sport || "nba"}|${play.playerName}|${play.stat}|${play.threshold}`;
+              const isTracked = trackedPlays.some(p => p.id === trackId);
+              const headshotUrl = play.playerId ? `${WORKER}/headshot?id=${play.playerId}&sport=${play.sport || "nba"}` : null;
+              return (
+                <div key={playKey}
+                  style={{background:"#161b22",border:"1px solid #30363d",borderRadius:12,
+                    padding:"14px 16px",marginBottom:10,transition:"border-color 0.15s"}}
+                  onMouseEnter={e => e.currentTarget.style.borderColor = "#58a6ff"}
+                  onMouseLeave={e => e.currentTarget.style.borderColor = "#30363d"}>
+                  {/* Header row — click navigates to player card */}
+                  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,cursor:"pointer"}}
+                    onClick={() => selectPlayer({ id: play.playerId, name: play.playerName, team: play.playerTeam, sportKey: SPORT_KEY[play.sport] || "basketball/nba" }, play.stat)}>
+                    {/* Headshot */}
+                    {headshotUrl && (
+                      <img src={headshotUrl} alt={play.playerName}
+                        style={{width:44,height:44,borderRadius:"50%",objectFit:"cover",objectPosition:"top",
+                          background:"#21262d",flexShrink:0,border:"1px solid #30363d"}}
+                        onError={e => { e.target.style.display="none"; }}/>
+                    )}
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        <div style={{color:"#fff",fontSize:14,fontWeight:700}}>{play.playerName}</div>
+                        {play.sport && play.sport !== "nba" && (
+                          <span style={{background:"transparent",border:`1px solid ${SPORT_BADGE_COLOR[play.sport]||"#8b949e"}`,
+                            borderRadius:4,padding:"1px 5px",fontSize:10,color:SPORT_BADGE_COLOR[play.sport]||"#8b949e",fontWeight:600,textTransform:"uppercase"}}>
+                            {play.sport}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{color:"#8b949e",fontSize:11,marginTop:2}}>
+                        {play.playerTeam} vs {play.opponent}{play.position ? ` · ${play.position}` : ""}
+                      </div>
                     </div>
-                    <div style={{color,fontSize:13,fontWeight:700,width:46,textAlign:"right",flexShrink:0}}>{pct.toFixed(1)}%</div>
-                    <div style={{color:"#484f58",fontSize:11,width:52,flexShrink:0}}>{count}/{totalGames}g</div>
+                    <div style={{display:"flex",alignItems:"center",gap:7,flexShrink:0}}>
+                      <span style={{background:"rgba(88,166,255,0.12)",border:"1px solid #58a6ff",
+                        borderRadius:6,padding:"2px 8px",fontSize:12,color:"#58a6ff",fontWeight:700,whiteSpace:"nowrap"}}>
+                        {play.threshold}+ {STAT_LABEL[play.stat] || play.stat}
+                      </span>
+                      <span style={{background:"rgba(63,185,80,0.13)",border:"1px solid #3fb950",
+                        borderRadius:6,padding:"2px 8px",fontSize:12,color:"#3fb950",fontWeight:700,whiteSpace:"nowrap"}}>
+                        +{play.edge}%
+                      </span>
+                      <button onClick={e => { e.stopPropagation(); isTracked ? untrackPlay(trackId) : trackPlay(play); }}
+                        title={isTracked ? "Remove from My Picks" : "Add to My Picks"}
+                        style={{background: isTracked ? "rgba(227,179,65,0.15)" : "transparent",
+                          border: `1px solid ${isTracked ? "#e3b341" : "#30363d"}`,
+                          borderRadius:6, padding:"2px 7px", cursor:"pointer",
+                          color: isTracked ? "#e3b341" : "#484f58", fontSize:14, lineHeight:1}}>
+                        {isTracked ? "★" : "☆"}
+                      </button>
+                    </div>
                   </div>
-                );
-              })}
-              <div style={{display:"flex",gap:14,flexWrap:"wrap",marginTop:18,paddingTop:14,borderTop:"1px solid #21262d"}}>
-                {[["#3fb950","≥ 80%"],["#58a6ff","60–79%"],["#d29922","40–59%"],["#f78166","< 40%"]].map(([color,label]) => (
-                  <div key={label} style={{display:"flex",alignItems:"center",gap:5}}>
-                    <div style={{width:9,height:9,borderRadius:2,background:color}}/>
-                    <span style={{color:"#8b949e",fontSize:11}}>{label}</span>
+                  {/* True probability bar */}
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}>
+                    <div style={{flex:1,background:"#21262d",borderRadius:4,height:14,overflow:"hidden"}}>
+                      <div style={{width:`${play.truePct}%`,background:"#e3b341",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:play.truePct>0?3:0}}/>
+                    </div>
+                    <div style={{color:"#e3b341",fontSize:12,fontWeight:700,width:42,textAlign:"right",flexShrink:0}}>{play.truePct}%</div>
+                    <div style={{color:"#484f58",fontSize:10,width:38,flexShrink:0}}>true</div>
                   </div>
-                ))}
-              </div>
-            </>
-          )}
+                  {/* Kalshi bar */}
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                    <div style={{flex:1,background:"#21262d",borderRadius:4,height:10,overflow:"hidden"}}>
+                      <div style={{width:`${play.kalshiPct}%`,background:"#a855f7",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:play.kalshiPct>0?3:0}}/>
+                    </div>
+                    <div style={{color:"#a855f7",fontSize:11,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{play.kalshiPct}%</div>
+                    <div style={{color:"#6e40c9",fontSize:10,width:38,flexShrink:0}}>({oddsStr})</div>
+                  </div>
+                  {/* Breakdown toggle */}
+                  <div style={{borderTop:"1px solid #21262d",paddingTop:8}}>
+                    <button onClick={e => { e.stopPropagation(); setExpandedPlays(s => { const n = new Set(s); n.has(playKey) ? n.delete(playKey) : n.add(playKey); return n; }); }}
+                      style={{background:"none",border:"none",color:"#484f58",fontSize:11,cursor:"pointer",padding:0,display:"flex",alignItems:"center",gap:4}}>
+                      {isExpanded ? "▲ hide breakdown" : "▼ show breakdown"}
+                    </button>
+                    {isExpanded && (
+                      <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:8}}>
+                        {/* Stat bars */}
+                        <div style={{display:"flex",flexDirection:"column",gap:5}}>
+                          <div style={{display:"flex",alignItems:"center",gap:8}}>
+                            <div style={{width:90,color:"#8b949e",fontSize:10,flexShrink:0}}>Season rate</div>
+                            <div style={{flex:1,background:"#21262d",borderRadius:3,height:8,overflow:"hidden"}}>
+                              <div style={{width:`${play.seasonPct}%`,background:"#58a6ff",height:"100%",borderRadius:3}}/>
+                            </div>
+                            <div style={{color:"#58a6ff",fontSize:11,fontWeight:600,width:38,textAlign:"right",flexShrink:0}}>{play.seasonPct}%</div>
+                          </div>
+                          {play.softPct !== null && (
+                            <div style={{display:"flex",alignItems:"center",gap:8}}>
+                              <div style={{width:90,color:"#8b949e",fontSize:10,flexShrink:0}}>vs weak matchup</div>
+                              <div style={{flex:1,background:"#21262d",borderRadius:3,height:8,overflow:"hidden"}}>
+                                <div style={{width:`${play.softPct}%`,background:"#3fb950",height:"100%",borderRadius:3}}/>
+                              </div>
+                              <div style={{color:"#3fb950",fontSize:11,fontWeight:600,width:38,textAlign:"right",flexShrink:0}}>{play.softPct}%</div>
+                            </div>
+                          )}
+                        </div>
+                        {/* Matchup explanation */}
+                        {play.oppRank && (
+                          <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.5}}>
+                            {(() => {
+                              const first = play.playerName.split(" ")[0];
+                              const opp = <span style={{color:"#c9d1d9",fontWeight:600}}>{play.opponent}</span>;
+                              const metricStr = play.oppMetricValue ? ` (${play.oppMetricValue} ${play.oppMetricUnit})` : "";
+                              const rank = <span style={{color:"#f78166",fontWeight:700}}>{ordinal(play.oppRank)} in {play.oppMetricLabel || "PPG allowed"}{metricStr}</span>;
+                              const hitRate = <span style={{color:"#3fb950",fontWeight:600}}>{play.softPct}%</span>;
+                              const games = play.softGames ? ` (${play.softGames} games)` : "";
+                              const contextKey = `${play.sport}|${play.stat}`;
+                              const context = {
+                                "nba|points":         <>one of the league's softest defenses for scoring.</>,
+                                "nba|rebounds":       <>one of the league's softest defenses for rebounding — they give up the most boards per game.</>,
+                                "nba|assists":        <>one of the league's softest defenses for playmaking — they allow the most assisted baskets per game.</>,
+                                "nba|threePointers":  <>one of the league's softest defenses from deep — they surrender the most made 3s per game.</>,
+                                "nhl|goals":          <>one of the weakest defensive teams in the NHL — they allow the most goals per game.</>,
+                                "nhl|assists":        <>one of the weakest defensive teams in the NHL — they allow the most goals per game, creating more scoring chances.</>,
+                                "nhl|points":         <>one of the weakest defensive teams in the NHL — they allow the most goals per game.</>,
+                                "nhl|shotsOnGoal":    <>one of the teams that allows the most shots on goal per game in the NHL.</>,
+                                "mlb|hits":           <>one of the easiest pitching matchups in the league — their staff has a high ERA this season.</>,
+                                "mlb|homeRuns":       <>one of the easiest pitching matchups in the league — their staff gives up the most extra-base hits.</>,
+                                "mlb|rbi":            <>one of the easiest pitching matchups in the league — their staff allows the most runs per game.</>,
+                                "mlb|strikeouts":     <>one of the teams that strikes out the most, making it a favorable matchup for pitcher K props.</>,
+                                "mlb|totalBases":     <>one of the easiest pitching matchups in the league — their staff allows lots of base hits.</>,
+                                "nfl|passingYards":   <>one of the softest defenses against the pass — they allow the most passing yards per game.</>,
+                                "nfl|rushingYards":   <>one of the softest defenses against the run — they allow the most rushing yards per game.</>,
+                                "nfl|receivingYards": <>one of the softest defenses in coverage — they allow the most receiving yards per game.</>,
+                                "nfl|touchdowns":     <>one of the softest defenses in the red zone — they allow the most passing yards and TDs per game.</>,
+                              }[contextKey] || <>one of the weakest defenses for this stat.</>;
+                              return <>{opp} ranks {rank} this season — {context} {first} has hit {play.threshold}+ {STAT_FULL[play.stat] || play.stat} in {hitRate} of games vs weak matchups{games}.</>;
+                            })()}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            </div>
+          ));
+        })()}
         </div>
       )}
 
-      {!player && !loading && (
-        <div style={{color:"#484f58",textAlign:"center",padding:60,fontSize:14}}>
-          Search for a player above to see their stat thresholds
-        </div>
-      )}
+      {/* My Picks — always visible, persisted across sessions */}
+      {trackedPlays.length > 0 && (() => {
+        const settled = trackedPlays.filter(p => p.result);
+        const wons = settled.filter(p => p.result === "won").length;
+
+        // P&L calculations (only settled picks with units set)
+        let totalStaked = 0, totalPL = 0;
+        settled.forEach(p => {
+          const stake = ((p.units || 0) / 100) * bankroll;
+          totalStaked += stake;
+          if (p.result === "won") totalPL += stake * oddsToProfit(p.americanOdds);
+          else totalPL -= stake;
+        });
+        const roi = totalStaked > 0 ? (totalPL / totalStaked) * 100 : null;
+        const plColor = totalPL > 0 ? "#3fb950" : totalPL < 0 ? "#f78166" : "#8b949e";
+        const fmt = n => (n >= 0 ? "+" : "") + "$" + Math.abs(n).toFixed(2);
+
+        return (
+          <div style={{marginTop:24}}>
+            {/* Header row */}
+            <div style={{display:"flex",alignItems:"center",marginBottom:12,gap:8,flexWrap:"wrap"}}>
+              <div style={{color:"#c9d1d9",fontSize:15,fontWeight:700}}>My Picks</div>
+              <span style={{background:"#21262d",borderRadius:10,padding:"1px 8px",fontSize:11,color:"#8b949e"}}>
+                {trackedPlays.length}
+              </span>
+              {settled.length > 0 && (
+                <span style={{fontSize:11,color:"#8b949e"}}>
+                  <span style={{color:"#3fb950",fontWeight:600}}>{wons}W</span>
+                  {" – "}
+                  <span style={{color:"#f78166",fontWeight:600}}>{settled.length - wons}L</span>
+                </span>
+              )}
+              {/* Bankroll input */}
+              <div style={{display:"flex",alignItems:"center",gap:6,marginLeft:"auto"}}>
+                <span style={{color:"#484f58",fontSize:11}}>Bankroll</span>
+                <div style={{display:"flex",alignItems:"center",background:"#0d1117",border:"1px solid #30363d",borderRadius:6,overflow:"hidden"}}>
+                  <span style={{color:"#8b949e",fontSize:12,padding:"2px 6px 2px 8px"}}>$</span>
+                  <input type="number" min="1" value={bankroll}
+                    onChange={e => setBankroll(e.target.value)}
+                    style={{background:"transparent",border:"none",outline:"none",color:"#c9d1d9",
+                      fontSize:12,width:70,padding:"3px 6px 3px 0"}}/>
+                </div>
+              </div>
+              <button onClick={() => { if (window.confirm("Clear all settled picks?")) setTrackedPlays(prev => prev.filter(p => !p.result)); }}
+                style={{fontSize:10,padding:"2px 8px",borderRadius:6,cursor:"pointer",
+                  border:"1px solid #30363d",background:"transparent",color:"#484f58"}}>
+                clear settled
+              </button>
+            </div>
+
+            {/* Pick cards */}
+            {trackedPlays.map(pick => {
+              const oddsStr = pick.americanOdds >= 0 ? `+${pick.americanOdds}` : `${pick.americanOdds}`;
+              const dateStr = new Date(pick.trackedAt).toLocaleDateString("en-US", { month:"short", day:"numeric" });
+              const resultColor = pick.result === "won" ? "#3fb950" : pick.result === "lost" ? "#f78166" : null;
+              const units = pick.units ?? 1;
+              const stake = (units / 100) * bankroll;
+              let pickPL = null;
+              if (pick.result === "won") pickPL = stake * oddsToProfit(pick.americanOdds);
+              else if (pick.result === "lost") pickPL = -stake;
+              const pickPLColor = pickPL > 0 ? "#3fb950" : pickPL < 0 ? "#f78166" : "#8b949e";
+              return (
+                <div key={pick.id} style={{background:"#161b22",
+                  border:`1px solid ${resultColor ? resultColor + "44" : "#30363d"}`,
+                  borderRadius:10, padding:"12px 14px", marginBottom:8}}>
+                  {/* Top row: name + result controls */}
+                  <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
+                    {/* Player info */}
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
+                        <span style={{color:"#fff",fontSize:13,fontWeight:700}}>{pick.playerName}</span>
+                        {pick.sport && pick.sport !== "nba" && (
+                          <span style={{border:`1px solid ${SPORT_BADGE_COLOR[pick.sport]||"#8b949e"}`,
+                            borderRadius:4,padding:"0px 4px",fontSize:9,color:SPORT_BADGE_COLOR[pick.sport]||"#8b949e",fontWeight:600,textTransform:"uppercase"}}>
+                            {pick.sport}
+                          </span>
+                        )}
+                        {pick.result && (
+                          <span style={{fontSize:11,fontWeight:700,color:resultColor,textTransform:"uppercase",letterSpacing:0.5}}>
+                            {pick.result === "won" ? "✓ Won" : "✗ Lost"}
+                          </span>
+                        )}
+                        {pickPL !== null && (
+                          <span style={{fontSize:11,fontWeight:700,color:pickPLColor,marginLeft:2}}>
+                            {fmt(pickPL)}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{color:"#8b949e",fontSize:11}}>
+                        {pick.playerTeam} vs {pick.opponent}
+                        {" · "}<span style={{color:"#58a6ff",fontWeight:600}}>{pick.threshold}+ {STAT_LABEL[pick.stat] || pick.stat}</span>
+                        {" · "}<span style={{color:"#a855f7"}}>{oddsStr}</span>
+                        {" · "}<span style={{color:"#e3b341"}}>{pick.truePct}% true</span>
+                        {" · "}<span style={{color:"#484f58"}}>{dateStr}</span>
+                      </div>
+                    </div>
+                    {/* Controls */}
+                    <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+                      {!pick.result ? (
+                        <>
+                          <button onClick={() => setPlayResult(pick.id, "won")}
+                            style={{background:"rgba(63,185,80,0.12)",border:"1px solid #3fb950",borderRadius:6,
+                              padding:"3px 10px",fontSize:11,fontWeight:600,color:"#3fb950",cursor:"pointer"}}>
+                            ✓ Won
+                          </button>
+                          <button onClick={() => setPlayResult(pick.id, "lost")}
+                            style={{background:"rgba(247,129,102,0.12)",border:"1px solid #f78166",borderRadius:6,
+                              padding:"3px 10px",fontSize:11,fontWeight:600,color:"#f78166",cursor:"pointer"}}>
+                            ✗ Lost
+                          </button>
+                        </>
+                      ) : (
+                        <button onClick={() => setPlayResult(pick.id, null)}
+                          style={{background:"transparent",border:"1px solid #30363d",borderRadius:6,
+                            padding:"3px 8px",fontSize:11,color:"#484f58",cursor:"pointer"}}>
+                          undo
+                        </button>
+                      )}
+                      <button onClick={() => untrackPlay(pick.id)} title="Remove"
+                        style={{background:"transparent",border:"1px solid #30363d",borderRadius:6,
+                          padding:"3px 7px",fontSize:12,color:"#484f58",cursor:"pointer"}}>
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                  {/* Unit size row */}
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginTop:10,paddingTop:8,borderTop:"1px solid #21262d"}}>
+                    <span style={{color:"#484f58",fontSize:11}}>Unit size</span>
+                    <div style={{display:"flex",alignItems:"center",background:"#0d1117",border:"1px solid #30363d",borderRadius:6,overflow:"hidden"}}>
+                      <input type="number" min="0" max="100" step="0.5" value={units}
+                        onChange={e => setPickUnits(pick.id, e.target.value)}
+                        style={{background:"transparent",border:"none",outline:"none",color:"#c9d1d9",
+                          fontSize:12,width:46,padding:"3px 4px 3px 8px",textAlign:"right"}}/>
+                      <span style={{color:"#8b949e",fontSize:12,padding:"2px 8px 2px 2px"}}>%</span>
+                    </div>
+                    <span style={{color:"#484f58",fontSize:11}}>
+                      = <span style={{color:"#8b949e"}}>${stake.toFixed(2)}</span>
+                      {" stake"}
+                    </span>
+                    {pick.result === "won" && (
+                      <span style={{fontSize:11,color:"#484f58",marginLeft:4}}>
+                        → win <span style={{color:"#3fb950",fontWeight:600}}>${(stake * oddsToProfit(pick.americanOdds)).toFixed(2)}</span>
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* P&L Summary */}
+            {settled.length > 0 && (
+              <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:10,padding:"14px 16px",marginTop:4}}>
+                <div style={{color:"#8b949e",fontSize:12,fontWeight:600,marginBottom:10,textTransform:"uppercase",letterSpacing:0.5}}>
+                  Summary
+                </div>
+                <div style={{display:"flex",gap:24,flexWrap:"wrap"}}>
+                  <div>
+                    <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Record</div>
+                    <div style={{fontSize:14,fontWeight:700}}>
+                      <span style={{color:"#3fb950"}}>{wons}W</span>
+                      <span style={{color:"#484f58"}}> – </span>
+                      <span style={{color:"#f78166"}}>{settled.length - wons}L</span>
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Total staked</div>
+                    <div style={{color:"#c9d1d9",fontSize:14,fontWeight:700}}>${totalStaked.toFixed(2)}</div>
+                  </div>
+                  <div>
+                    <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Net P&L</div>
+                    <div style={{color:plColor,fontSize:14,fontWeight:700}}>{fmt(totalPL)}</div>
+                  </div>
+                  {roi !== null && (
+                    <div>
+                      <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>ROI</div>
+                      <div style={{color:plColor,fontSize:14,fontWeight:700}}>
+                        {roi >= 0 ? "+" : ""}{roi.toFixed(1)}%
+                      </div>
+                    </div>
+                  )}
+                  <div>
+                    <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Bankroll now</div>
+                    <div style={{color:"#c9d1d9",fontSize:14,fontWeight:700}}>${(bankroll + totalPL).toFixed(2)}</div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       <div style={{color:"#484f58",fontSize:11,marginTop:12,textAlign:"center"}}>
         Powered by ESPN API · via Cloudflare Worker proxy
