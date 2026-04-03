@@ -50,11 +50,11 @@ const STAT_CONFIGS = {
     receptions:     { label: "Receptions",  thresholds: [2,3,4,5,6,7,8],          unit: "REC" },
   },
   "baseball/mlb": {
-    hits:         { label: "Hits",          thresholds: [1,2,3,4],          unit: "H"  },
-    runsScored:   { label: "Runs Scored",   thresholds: [1,2,3],            unit: "R"  },
-    strikeouts:   { label: "Strikeouts",    thresholds: [3,4,5,6,7,8,9,10], unit: "K"  },
-    pitchingOuts: { label: "Inn. Pitched",  thresholds: [3,4,5,6,7],        unit: "IP" },
-    hitsAllowed:  { label: "Hits Allowed",  thresholds: [1,2,3,4,5,6,7,8],  unit: "HA" },
+    hits:       { label: "Hits",        thresholds: [1,2,3,4],           unit: "H"  },
+    homeRuns:   { label: "Home Runs",   thresholds: [1,2],               unit: "HR" },
+    rbi:        { label: "RBI",         thresholds: [1,2,3,4],           unit: "RBI"},
+    totalBases: { label: "Total Bases", thresholds: [1,2,3,4,5],         unit: "TB" },
+    strikeouts: { label: "Strikeouts",  thresholds: [3,4,5,6,7,8,9,10], unit: "K"  },
   },
   "hockey/nhl": {
     shotsOnGoal: { label: "Shots on Goal", thresholds: [2,3,4,5,6,7,8],     unit: "SOG" },
@@ -372,14 +372,18 @@ function App() {
 
       if (sport === "baseball/mlb") {
         if (isPitcher) {
-          const ip = lv("IP"), h = lv("H"), k = lv("K");
-          if (ip !== undefined) { result.pitchingOuts?.push(ip); gs.pitchingOuts = ip; }
-          if (h  !== undefined) { result.hitsAllowed?.push(h); gs.hitsAllowed = h; }
-          if (k  !== undefined) { result.strikeouts?.push(k); gs.strikeouts = k; }
+          const k = lv("K");
+          if (k !== undefined) { result.strikeouts?.push(k); gs.strikeouts = k; }
         } else {
-          const h = lv("H"), r = lv("R");
-          if (h !== undefined) { result.hits?.push(h); gs.hits = h; }
-          if (r !== undefined) { result.runsScored?.push(r); gs.runsScored = r; }
+          const h = lv("H"), hr = lv("HR"), rbi = lv("RBI"), b2 = lv("2B"), b3 = lv("3B");
+          if (h   !== undefined) { result.hits?.push(h); gs.hits = h; }
+          if (hr  !== undefined) { result.homeRuns?.push(hr); gs.homeRuns = hr; }
+          if (rbi !== undefined) { result.rbi?.push(rbi); gs.rbi = rbi; }
+          // Total bases: H + 2B + 2*3B + 3*HR
+          if (h !== undefined && hr !== undefined && b2 !== undefined && b3 !== undefined) {
+            const tb = h + b2 + 2*b3 + 3*hr;
+            result.totalBases?.push(tb); gs.totalBases = tb;
+          }
         }
       }
 
