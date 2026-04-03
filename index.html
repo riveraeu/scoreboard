@@ -562,7 +562,13 @@ function App() {
 
       {/* Player header */}
               {player && (
-        <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:20}}>
+        <div style={{marginBottom:20}}>
+        <button onClick={() => { setPlayer(null); setQuery(""); }}
+          style={{background:"none",border:"none",color:"#8b949e",fontSize:13,cursor:"pointer",
+            padding:"0 0 12px 0",display:"flex",alignItems:"center",gap:4}}>
+          ← Back
+        </button>
+        <div style={{display:"flex",alignItems:"center",gap:14}}>
           <img
             key={player.id}
             src={WORKER + "/headshot?id=" + player.id + "&sport=" + sport.split("/")[1]}
@@ -581,6 +587,7 @@ function App() {
               </div>
             ))}
           </div>
+        </div>
         </div>
       )}
 
