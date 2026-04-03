@@ -810,7 +810,7 @@ function App() {
               </span>
             </div>
             <a href="#my-picks" className="picks-fab"
-              onClick={e => { e.preventDefault(); document.getElementById("my-picks")?.scrollIntoView({ behavior:"smooth", block:"start" }); }}
+              onClick={e => { e.preventDefault(); const el = document.getElementById("my-picks"); if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 16, behavior:"smooth" }); }}
               style={{marginLeft:"auto",fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:6,
                 border:"1px solid #30363d",color:"#8b949e",textDecoration:"none",lineHeight:"20px",cursor:"pointer"}}>
               My Picks ↓
