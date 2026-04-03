@@ -106,6 +106,15 @@ function App() {
     return parseFloat(localStorage.getItem("scoreboard_bankroll") || "1000");
   });
   const [calcOdds, setCalcOdds] = React.useState("");
+  const [authToken, setAuthToken] = React.useState(() => localStorage.getItem("sb_token") || null);
+  const [authEmail, setAuthEmail] = React.useState(() => localStorage.getItem("sb_email") || null);
+  const [showAuthModal, setShowAuthModal] = React.useState(false);
+  const [authMode, setAuthMode] = React.useState("login");
+  const [authForm, setAuthForm] = React.useState({ email:"", password:"" });
+  const [authError, setAuthError] = React.useState("");
+  const [authLoading, setAuthLoading] = React.useState(false);
+  const [syncStatus, setSyncStatus] = React.useState(null); // "saving"|"saved"|"error"
+  const syncTimer = React.useRef(null);
   const debouncedQuery = useDebounce(query, 300);
   const dropRef = React.useRef(null);
   const inputRef = React.useRef(null);
@@ -161,6 +170,79 @@ function App() {
   function oddsToProfit(americanOdds) {
     return americanOdds >= 0 ? americanOdds / 100 : 100 / Math.abs(americanOdds);
   }
+
+  // --- Auth ---
+  async function authSubmit(e) {
+    e.preventDefault();
+    setAuthError(""); setAuthLoading(true);
+    const endpoint = authMode === "login" ? "auth/login" : "auth/register";
+    try {
+      const r = await fetch(`${WORKER}/${endpoint}`, {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ email: authForm.email.trim(), password: authForm.password }),
+      });
+      const data = await r.json();
+      if (!r.ok) { setAuthError(data.error || "Something went wrong"); return; }
+      localStorage.setItem("sb_token", data.token);
+      localStorage.setItem("sb_email", data.email);
+      setAuthToken(data.token);
+      setAuthEmail(data.email);
+      setShowAuthModal(false);
+      setAuthForm({ email:"", password:"" });
+      // On login: load picks from server (server is authoritative)
+      // On register: push current local picks to server
+      if (authMode === "register") {
+        await savePicks(data.token, trackedPlays, bankroll);
+      } else {
+        const pr = await fetch(`${WORKER}/user/picks`, { headers:{"Authorization":`Bearer ${data.token}`} });
+        if (pr.ok) {
+          const pd = await pr.json();
+          setTrackedPlays(pd.picks || []);
+          if (pd.bankroll) setBankrollState(pd.bankroll);
+        }
+      }
+    } catch { setAuthError("Network error"); }
+    finally { setAuthLoading(false); }
+  }
+
+  async function savePicks(token, picks, roll) {
+    if (!token) return;
+    try {
+      await fetch(`${WORKER}/user/picks`, {
+        method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},
+        body: JSON.stringify({ picks, bankroll: roll }),
+      });
+      setSyncStatus("saved");
+    } catch { setSyncStatus("error"); }
+  }
+
+  function logout() {
+    localStorage.removeItem("sb_token"); localStorage.removeItem("sb_email");
+    setAuthToken(null); setAuthEmail(null);
+  }
+
+  // Auto-save picks to server whenever they change (debounced 1.5s)
+  React.useEffect(() => {
+    if (!authToken) return;
+    setSyncStatus("saving");
+    clearTimeout(syncTimer.current);
+    syncTimer.current = setTimeout(() => savePicks(authToken, trackedPlays, bankroll), 1500);
+    return () => clearTimeout(syncTimer.current);
+  }, [trackedPlays, bankroll, authToken]);
+
+  // Load picks from server on mount if token exists
+  React.useEffect(() => {
+    if (!authToken) return;
+    fetch(`${WORKER}/user/picks`, { headers:{"Authorization":`Bearer ${authToken}`} })
+      .then(r => r.ok ? r.json() : null)
+      .then(pd => {
+        if (pd) {
+          setTrackedPlays(pd.picks || []);
+          if (pd.bankroll) setBankrollState(pd.bankroll);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   React.useEffect(() => {
     if (debouncedQuery.trim().length < 2) { setSuggestions([]); setShowDrop(false); return; }
@@ -356,6 +438,64 @@ function App() {
 
   return (
     <div style={{maxWidth:1280,margin:"0 auto",padding:"24px 16px"}}>
+
+      {/* Auth modal */}
+      {showAuthModal && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
+          onClick={e => { if (e.target === e.currentTarget) setShowAuthModal(false); }}>
+          <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:14,padding:"28px 28px 24px",width:"100%",maxWidth:360}}>
+            <div style={{display:"flex",marginBottom:20,gap:0,border:"1px solid #30363d",borderRadius:8,overflow:"hidden"}}>
+              {["login","register"].map(m => (
+                <button key={m} onClick={() => { setAuthMode(m); setAuthError(""); }}
+                  style={{flex:1,padding:"8px 0",fontSize:13,fontWeight:600,cursor:"pointer",border:"none",
+                    background: authMode===m ? "rgba(88,166,255,0.15)" : "transparent",
+                    color: authMode===m ? "#58a6ff" : "#8b949e"}}>
+                  {m === "login" ? "Log in" : "Create account"}
+                </button>
+              ))}
+            </div>
+            <form onSubmit={authSubmit} style={{display:"flex",flexDirection:"column",gap:12}}>
+              <input type="email" placeholder="Email" required value={authForm.email}
+                onChange={e => setAuthForm(f => ({...f, email:e.target.value}))}
+                style={{background:"#0d1117",border:"1px solid #30363d",borderRadius:8,color:"#c9d1d9",
+                  fontSize:14,padding:"10px 14px",outline:"none",width:"100%"}}/>
+              <input type="password" placeholder="Password (min 6 chars)" required value={authForm.password}
+                onChange={e => setAuthForm(f => ({...f, password:e.target.value}))}
+                style={{background:"#0d1117",border:"1px solid #30363d",borderRadius:8,color:"#c9d1d9",
+                  fontSize:14,padding:"10px 14px",outline:"none",width:"100%"}}/>
+              {authError && <div style={{color:"#f78166",fontSize:12}}>{authError}</div>}
+              <button type="submit" disabled={authLoading}
+                style={{background:"#58a6ff",border:"none",borderRadius:8,color:"#0d1117",
+                  fontSize:14,fontWeight:700,padding:"10px 0",cursor:"pointer",opacity:authLoading?0.6:1}}>
+                {authLoading ? "…" : authMode === "login" ? "Log in" : "Create account"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Account bar */}
+      <div style={{maxWidth:640,margin:"0 auto 12px",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8}}>
+        {authEmail ? (
+          <>
+            <span style={{color:"#484f58",fontSize:11,display:"flex",alignItems:"center",gap:5}}>
+              <span style={{width:6,height:6,borderRadius:"50%",background: syncStatus==="saving"?"#e3b341":syncStatus==="error"?"#f78166":"#3fb950",display:"inline-block"}}/>
+              {authEmail}
+            </span>
+            <button onClick={logout}
+              style={{fontSize:11,padding:"2px 8px",borderRadius:6,cursor:"pointer",
+                border:"1px solid #30363d",background:"transparent",color:"#484f58"}}>
+              log out
+            </button>
+          </>
+        ) : (
+          <button onClick={() => { setShowAuthModal(true); setAuthMode("login"); setAuthError(""); }}
+            style={{fontSize:12,padding:"4px 12px",borderRadius:6,cursor:"pointer",
+              border:"1px solid #58a6ff",background:"transparent",color:"#58a6ff",fontWeight:600}}>
+            Log in / Sign up
+          </button>
+        )}
+      </div>
 
       {/* Search + player card — constrained width */}
       <div style={{maxWidth:640,margin:"0 auto"}}>
