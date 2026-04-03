@@ -139,10 +139,12 @@ function App() {
       .catch(() => { setTonightPlays([]); setTonightLoading(false); });
   }, [testMode]);
 
-  // Persist tracked plays to localStorage whenever they change
+  // Persist tracked plays to localStorage only when not logged in (server is source of truth when logged in)
   React.useEffect(() => {
-    localStorage.setItem("scoreboard_tracked_plays", JSON.stringify(trackedPlays));
-  }, [trackedPlays]);
+    if (!authToken) {
+      localStorage.setItem("scoreboard_tracked_plays", JSON.stringify(trackedPlays));
+    }
+  }, [trackedPlays, authToken]);
 
   function setBankroll(val) {
     const n = Math.max(1, parseFloat(val) || 0);
