@@ -980,28 +980,31 @@ function App() {
                     .map(p => {
                       const s = ((p.units ?? 1) / 100) * bankroll;
                       const pl = p.result === "won" ? s * oddsToProfit(p.americanOdds) : -s;
-                      return { pl, result: p.result, name: p.playerName.split(" ").slice(-1)[0], threshold: p.threshold, stat: STAT_LABEL[p.stat] || p.stat };
+                      return { pl, result: p.result, label: `${p.playerName.split(" ").slice(-1)[0]} ${p.threshold}+ ${STAT_LABEL[p.stat]||p.stat}` };
                     });
-                  const maxAbs = Math.max(...bars.map(b => Math.abs(b.pl)), 1);
-                  const BAR_H = 48;
+                  if (!bars.length) return null;
+                  const maxAbs = Math.max(...bars.map(b => Math.abs(b.pl)), 0.01);
+                  const HALF = 52;
                   return (
                     <div style={{marginTop:12,paddingTop:12,borderTop:"1px solid #21262d"}}>
-                      <div style={{display:"flex",alignItems:"flex-end",gap:3,height:BAR_H * 2 + 2,position:"relative"}}>
+                      <div style={{position:"relative",height: HALF * 2, display:"flex",gap:3,alignItems:"stretch"}}>
                         {/* Zero line */}
-                        <div style={{position:"absolute",left:0,right:0,top:"50%",height:1,background:"#30363d",transform:"translateY(-50%)"}}/>
+                        <div style={{position:"absolute",left:0,right:0,top:HALF,height:1,background:"#30363d",zIndex:1}}/>
                         {bars.map((b, i) => {
-                          const h = Math.max(Math.round((Math.abs(b.pl) / maxAbs) * BAR_H), 3);
+                          const h = Math.max(Math.round((Math.abs(b.pl) / maxAbs) * HALF), 3);
                           const isWin = b.result === "won";
                           return (
-                            <div key={i} title={`${b.name} ${b.threshold}+ ${b.stat}: ${b.pl >= 0 ? "+" : ""}$${b.pl.toFixed(2)}`}
-                              style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",
-                                justifyContent: isWin ? "flex-end" : "flex-start",
-                                height:"100%",cursor:"default",paddingTop: isWin ? "50%" : 0, paddingBottom: isWin ? 0 : "50%"}}>
-                              <div style={{width:"100%",height:h,background: isWin ? "#3fb950" : "#f78166",
+                            <div key={i} style={{flex:1,position:"relative"}}
+                              title={`${b.label}: ${b.pl >= 0 ? "+" : ""}$${b.pl.toFixed(2)}`}>
+                              <div style={{
+                                position:"absolute", left:0, right:0, height:h,
+                                top: isWin ? HALF - h : HALF,
+                                background: isWin ? "#3fb950" : "#f78166",
                                 borderRadius: isWin ? "3px 3px 0 0" : "0 0 3px 3px",
-                                opacity:0.85,transition:"opacity 0.15s"}}
-                                onMouseEnter={e => e.currentTarget.style.opacity = "1"}
-                                onMouseLeave={e => e.currentTarget.style.opacity = "0.85"}
+                                opacity:0.8, transition:"opacity 0.15s",
+                              }}
+                                onMouseEnter={e => e.currentTarget.style.opacity="1"}
+                                onMouseLeave={e => e.currentTarget.style.opacity="0.8"}
                               />
                             </div>
                           );
