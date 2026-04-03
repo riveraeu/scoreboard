@@ -918,13 +918,6 @@ function App() {
               <span style={{background:"#21262d",borderRadius:10,padding:"1px 8px",fontSize:11,color:"#8b949e"}}>
                 {trackedPlays.length}
               </span>
-              {settled.length > 0 && (
-                <span style={{fontSize:11,color:"#8b949e"}}>
-                  <span style={{color:"#3fb950",fontWeight:600}}>{wons}W</span>
-                  {" – "}
-                  <span style={{color:"#f78166",fontWeight:600}}>{settled.length - wons}L</span>
-                </span>
-              )}
               {/* Bankroll input */}
               <div style={{display:"flex",alignItems:"center",gap:6,marginLeft:"auto"}}>
                 <span style={{color:"#484f58",fontSize:11}}>Bankroll</span>
@@ -942,6 +935,45 @@ function App() {
                 clear settled
               </button>
             </div>
+
+            {/* P&L Summary */}
+            {settled.length > 0 && (
+              <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:10,padding:"12px 16px",marginBottom:12}}>
+                <div style={{display:"flex",gap:20,flexWrap:"wrap"}}>
+                  <div>
+                    <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Record</div>
+                    <div style={{fontSize:13,fontWeight:700}}>
+                      <span style={{color:"#3fb950"}}>{wons}W</span>
+                      <span style={{color:"#484f58"}}> – </span>
+                      <span style={{color:"#f78166"}}>{settled.length - wons}L</span>
+                      <span style={{color:"#8b949e",fontSize:11,fontWeight:400,marginLeft:5}}>
+                        ({((wons / settled.length) * 100).toFixed(0)}%)
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Total staked</div>
+                    <div style={{color:"#c9d1d9",fontSize:13,fontWeight:700}}>${totalStaked.toFixed(2)}</div>
+                  </div>
+                  <div>
+                    <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Net P&L</div>
+                    <div style={{color:plColor,fontSize:13,fontWeight:700}}>{fmt(totalPL)}</div>
+                  </div>
+                  {roi !== null && (
+                    <div>
+                      <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>ROI</div>
+                      <div style={{color:plColor,fontSize:13,fontWeight:700}}>
+                        {roi >= 0 ? "+" : ""}{roi.toFixed(1)}%
+                      </div>
+                    </div>
+                  )}
+                  <div>
+                    <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Bankroll now</div>
+                    <div style={{color:"#c9d1d9",fontSize:13,fontWeight:700}}>${(bankroll + totalPL).toFixed(2)}</div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Pick cards */}
             {trackedPlays.map(pick => {
@@ -1042,44 +1074,6 @@ function App() {
               );
             })}
 
-            {/* P&L Summary */}
-            {settled.length > 0 && (
-              <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:10,padding:"14px 16px",marginTop:4}}>
-                <div style={{color:"#8b949e",fontSize:12,fontWeight:600,marginBottom:10,textTransform:"uppercase",letterSpacing:0.5}}>
-                  Summary
-                </div>
-                <div style={{display:"flex",gap:24,flexWrap:"wrap"}}>
-                  <div>
-                    <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Record</div>
-                    <div style={{fontSize:14,fontWeight:700}}>
-                      <span style={{color:"#3fb950"}}>{wons}W</span>
-                      <span style={{color:"#484f58"}}> – </span>
-                      <span style={{color:"#f78166"}}>{settled.length - wons}L</span>
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Total staked</div>
-                    <div style={{color:"#c9d1d9",fontSize:14,fontWeight:700}}>${totalStaked.toFixed(2)}</div>
-                  </div>
-                  <div>
-                    <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Net P&L</div>
-                    <div style={{color:plColor,fontSize:14,fontWeight:700}}>{fmt(totalPL)}</div>
-                  </div>
-                  {roi !== null && (
-                    <div>
-                      <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>ROI</div>
-                      <div style={{color:plColor,fontSize:14,fontWeight:700}}>
-                        {roi >= 0 ? "+" : ""}{roi.toFixed(1)}%
-                      </div>
-                    </div>
-                  )}
-                  <div>
-                    <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Bankroll now</div>
-                    <div style={{color:"#c9d1d9",fontSize:14,fontWeight:700}}>${(bankroll + totalPL).toFixed(2)}</div>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         );
       })()}
