@@ -720,7 +720,7 @@ function App() {
           }
         }
 
-        const showTriple = hasDvp && (wTotal > 0 || (isMLB && totalGames25 > 0));
+        const showTriple = hasDvp && (wTotal > 0 || (isMLB && totalGames25 >= 5));
 
         return (
           <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:12,padding:"20px 22px"}}>
@@ -767,7 +767,7 @@ function App() {
                   return displayRates.map(({t, count, pct}) => {
                     const dvp = dvpMap[t];
                     const softPct = dvp?.wPct ?? null;
-                    const pct25 = isMLB ? (rates25Map[t] ?? null) : null;
+                    const pct25 = (isMLB && totalGames25 >= 5) ? (rates25Map[t] ?? null) : null;
                     const truePct = (() => {
                       if (isMLB) {
                         const parts = [pct, ...(pct25 !== null ? [pct25] : []), ...(softPct !== null ? [softPct] : [])];
@@ -887,7 +887,7 @@ function App() {
                                     <div style={{width:`${pct}%`,background:"#58a6ff",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:pct>0?2:0}}/>
                                   </div>
                                   <div style={{color:"#58a6ff",fontSize:10,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{pct.toFixed(1)}%</div>
-                                  <div style={{color:"#484f58",fontSize:10,width:50,flexShrink:0}}>{isMLB ? "2026" : `${count}/${totalGames}g`}</div>
+                                  <div style={{color:"#484f58",fontSize:10,width:50,flexShrink:0}}>{isMLB ? `2026 (${totalGames}g)` : `${count}/${totalGames}g`}</div>
                                 </div>
                                 {pct25 !== null && (
                                   <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -895,7 +895,7 @@ function App() {
                                       <div style={{width:`${pct25}%`,background:"#388bfd",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:pct25>0?2:0}}/>
                                     </div>
                                     <div style={{color:"#388bfd",fontSize:10,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{pct25.toFixed(1)}%</div>
-                                    <div style={{color:"#484f58",fontSize:10,width:50,flexShrink:0}}>2025</div>
+                                    <div style={{color:"#484f58",fontSize:10,width:50,flexShrink:0}}>2025 ({totalGames25}g)</div>
                                   </div>
                                 )}
                                 {softPct !== null && (
@@ -904,7 +904,7 @@ function App() {
                                       <div style={{width:`${softPct}%`,background:"#3fb950",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:softPct>0?2:0}}/>
                                     </div>
                                     <div style={{color:"#3fb950",fontSize:10,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{softPct.toFixed(1)}%</div>
-                                    <div style={{color:"#484f58",fontSize:10,width:50,flexShrink:0}}>{dvp?.wCount}/{wTotal}g</div>
+                                    <div style={{color:"#484f58",fontSize:10,width:50,flexShrink:0}}>{mlbH2HLabel ? `${wTotal}g` : `${dvp?.wCount}/${wTotal}g`}</div>
                                   </div>
                                 )}
                               </div>
@@ -1115,16 +1115,26 @@ function App() {
                         {/* Stat bars */}
                         <div style={{display:"flex",flexDirection:"column",gap:5}}>
                           <div style={{display:"flex",alignItems:"center",gap:8}}>
-                            <div style={{width:90,color:"#8b949e",fontSize:10,flexShrink:0}}>Season rate</div>
+                            <div style={{width:90,color:"#8b949e",fontSize:10,flexShrink:0}}>{play.sport === "mlb" ? "2026" : "Season rate"}</div>
                             <div style={{flex:1,background:"#21262d",borderRadius:3,height:8,overflow:"hidden"}}>
                               <div style={{width:`${play.seasonPct}%`,background:"#58a6ff",height:"100%",borderRadius:3}}/>
                             </div>
                             <div style={{color:"#58a6ff",fontSize:11,fontWeight:600,width:38,textAlign:"right",flexShrink:0}}>{play.seasonPct}%</div>
                           </div>
+                          {play.sport === "mlb" && play.pct25 !== null && (
+                            <div style={{display:"flex",alignItems:"center",gap:8}}>
+                              <div style={{width:90,color:"#8b949e",fontSize:10,flexShrink:0}}>2025{play.pct25Games ? ` (${play.pct25Games}g)` : ""}</div>
+                              <div style={{flex:1,background:"#21262d",borderRadius:3,height:8,overflow:"hidden"}}>
+                                <div style={{width:`${play.pct25}%`,background:"#388bfd",height:"100%",borderRadius:3}}/>
+                              </div>
+                              <div style={{color:"#388bfd",fontSize:11,fontWeight:600,width:38,textAlign:"right",flexShrink:0}}>{play.pct25}%</div>
+                            </div>
+                          )}
                           {play.softPct !== null && (
                             <div style={{display:"flex",alignItems:"center",gap:8}}>
                               <div style={{width:90,color:"#8b949e",fontSize:10,flexShrink:0}}>
                                 {play.oppRank === null ? (play.oppMetricLabel || "").replace(/\s*\(\d+g\)\s*$/, "") : "vs weak matchup"}
+                                {play.softGames ? ` (${play.softGames}g)` : ""}
                               </div>
                               <div style={{flex:1,background:"#21262d",borderRadius:3,height:8,overflow:"hidden"}}>
                                 <div style={{width:`${play.softPct}%`,background:"#3fb950",height:"100%",borderRadius:3}}/>
