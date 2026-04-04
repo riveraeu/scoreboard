@@ -919,8 +919,9 @@ function App() {
           <div style={{display:"flex",alignItems:"center",marginBottom:14}}>
             <div style={{color:"#c9d1d9",fontSize:15,fontWeight:700}}>
               {(() => {
-                const _today = new Date().toISOString().slice(0,10);
-                const _tmrw  = new Date(Date.now() + 86400000).toISOString().slice(0,10);
+                const _localDate = n => { const d = new Date(Date.now() + n*86400000); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+                const _today = _localDate(0);
+                const _tmrw  = _localDate(1);
                 const dates  = [...new Set((tonightPlays || []).map(p => p.gameDate).filter(Boolean))].sort();
                 const label  = dates.length === 0 ? null
                   : dates.every(d => d === _today) ? null
@@ -960,8 +961,9 @@ function App() {
               </div>
             );
             // Group plays by gameDate, sort dates ascending
-            const today = new Date().toISOString().slice(0,10);
-            const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0,10);
+            const localDate = n => { const d = new Date(Date.now() + n*86400000); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+            const today = localDate(0);
+            const tomorrow = localDate(1);
             const grouped = {};
             untrackedPlays.forEach(play => {
               const d = play.gameDate || today;
