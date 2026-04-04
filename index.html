@@ -918,7 +918,22 @@ function App() {
         <div>
           <div style={{display:"flex",alignItems:"center",marginBottom:14}}>
             <div style={{color:"#c9d1d9",fontSize:15,fontWeight:700}}>
-              Plays
+              {(() => {
+                const _today = new Date().toISOString().slice(0,10);
+                const _tmrw  = new Date(Date.now() + 86400000).toISOString().slice(0,10);
+                const dates  = [...new Set((tonightPlays || []).map(p => p.gameDate).filter(Boolean))].sort();
+                const label  = dates.length === 0 ? null
+                  : dates.every(d => d === _today) ? null
+                  : dates.map(d => {
+                      if (d === _today) return "Today";
+                      if (d === _tmrw)  return "Tomorrow";
+                      const [yr,mo,dy] = d.split("-").map(Number);
+                      return new Date(yr, mo-1, dy).toLocaleDateString("en-US", { weekday:"short", month:"short", day:"numeric" });
+                    }).join(" · ");
+                return label
+                  ? <><span style={{color:"#484f58",fontWeight:400,fontSize:13}}>Plays — </span>{label}</>
+                  : "Plays";
+              })()}
               <span style={{color:"#484f58",fontSize:11,fontWeight:400,marginLeft:8}}>
                 implied ≥70% · edge ≥3%
               </span>
