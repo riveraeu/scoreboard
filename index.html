@@ -87,6 +87,7 @@ function App() {
   const [perGame, setPerGame] = React.useState([]);
   const [dvpData, setDvpData] = React.useState(null);
   const [mlbIsPitcher, setMlbIsPitcher] = React.useState(null); // null = unknown, true/false for MLB
+  const [logs25, setLogs25] = React.useState(null); // MLB 2025 season aggregated (for truePct)
   const [query, setQuery] = React.useState("");
   const [suggestions, setSuggestions] = React.useState([]);
   const [showDrop, setShowDrop] = React.useState(false);
@@ -290,11 +291,10 @@ function App() {
 
   async function loadPlayer(p, activeSport) {
     const sp = activeSport || sport;
-    setPlayer(p); setLogs(null); setPerGame([]); setDvpData(null); setError(null); setLoading(true);
+    setPlayer(p); setLogs(null); setLogs25(null); setPerGame([]); setDvpData(null); setError(null); setLoading(true);
     const id = Date.now(); fetchRef.current = id;
     try {
       const teamParam = p.team ? `&team=${encodeURIComponent(p.team)}` : "";
-      let data, dvpRes;
       if (sp === "baseball/mlb") {
         // Fetch 3 seasons in parallel for full h2h history, plus dvp for tonight's matchup
         const [d26, d25, d24, dv] = await Promise.all([
@@ -303,28 +303,40 @@ function App() {
           fetch(`${WORKER}/gamelog?sport=${sp}&athleteId=${p.id}&season=2024`).then(r => r.ok ? r.json() : null).catch(() => null),
           fetch(`${WORKER}/dvp?sport=${sp}&athleteId=${p.id}${teamParam}`),
         ]);
-        dvpRes = dv;
+        if (fetchRef.current !== id) return;
+        // Merged gamelog for perGame (h2h filtering needs all career data)
         const base = d26 || d25 || d24;
-        const events = [...(d26?.events || []), ...(d25?.events || []), ...(d24?.events || [])];
-        data = base ? { labels: base.labels, events, totalGames: events.length } : { labels: [], events: [], totalGames: 0 };
+        const mergedEvents = [...(d26?.events || []), ...(d25?.events || []), ...(d24?.events || [])];
+        const mergedData = base ? { labels: base.labels, events: mergedEvents, totalGames: mergedEvents.length } : { labels: [], events: [], totalGames: 0 };
+        const { perGame: pg, isPitcher: isP } = parseGameLog(mergedData, sp);
+        // Season-specific aggregates for truePct (2026 = main bar, 2025 = secondary)
+        const { aggregated: agg26 } = d26 ? parseGameLog(d26, sp) : { aggregated: null };
+        const { aggregated: agg25 } = d25 ? parseGameLog(d25, sp) : { aggregated: null };
+        setLogs(agg26 || agg25);
+        setLogs25(agg25);
+        setPerGame(pg);
+        setMlbIsPitcher(isP);
+        if (dv.ok) {
+          const dvJson = await dv.json();
+          if (fetchRef.current !== id) return;
+          setDvpData(dvJson);
+        }
       } else {
         const season = sp === "football/nfl" ? "2025" : "2026";
         const [gameRes, dv] = await Promise.all([
           fetch(`${WORKER}/gamelog?sport=${sp}&athleteId=${p.id}&season=${season}`),
           fetch(`${WORKER}/dvp?sport=${sp}&athleteId=${p.id}${teamParam}`),
         ]);
-        dvpRes = dv;
-        data = await gameRes.json();
-      }
-      if (fetchRef.current !== id) return;
-      const { aggregated, perGame: pg, isPitcher: isP } = parseGameLog(data, sp);
-      setLogs(aggregated);
-      setPerGame(pg);
-      if (sp === "baseball/mlb") setMlbIsPitcher(isP);
-      if (dvpRes.ok) {
-        const dv = await dvpRes.json();
         if (fetchRef.current !== id) return;
-        setDvpData(dv);
+        const data = await gameRes.json();
+        const { aggregated, perGame: pg } = parseGameLog(data, sp);
+        setLogs(aggregated);
+        setPerGame(pg);
+        if (dv.ok) {
+          const dvJson = await dv.json();
+          if (fetchRef.current !== id) return;
+          setDvpData(dvJson);
+        }
       }
     } catch(e) {
       if (fetchRef.current !== id) return;
@@ -480,6 +492,14 @@ function App() {
     const count = activeLogs.filter(v => v >= t).length;
     return { t, count, pct: totalGames > 0 ? (count/totalGames)*100 : 0 };
   });
+  // MLB 2025 season rates (secondary bar for truePct blending)
+  const isMLB = sport === "baseball/mlb";
+  const activeLogs25 = isMLB ? (logs25?.[safeTab] ?? []) : [];
+  const totalGames25 = activeLogs25.length;
+  const rates25Map = isMLB ? Object.fromEntries((cfg?.thresholds || []).map(t => {
+    const count = activeLogs25.filter(v => v >= t).length;
+    return [t, totalGames25 > 0 ? (count / totalGames25) * 100 : null];
+  })) : {};
 
   // Fetch Kalshi odds — placed here so safeTab is already defined
   React.useEffect(() => {
@@ -700,7 +720,7 @@ function App() {
           }
         }
 
-        const showTriple = hasDvp && wTotal > 0;
+        const showTriple = hasDvp && (wTotal > 0 || (isMLB && totalGames25 > 0));
 
         return (
           <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:12,padding:"20px 22px"}}>
@@ -747,7 +767,14 @@ function App() {
                   return displayRates.map(({t, count, pct}) => {
                     const dvp = dvpMap[t];
                     const softPct = dvp?.wPct ?? null;
-                    const truePct = softPct !== null ? (pct + softPct) / 2 : null;
+                    const pct25 = isMLB ? (rates25Map[t] ?? null) : null;
+                    const truePct = (() => {
+                      if (isMLB) {
+                        const parts = [pct, ...(pct25 !== null ? [pct25] : []), ...(softPct !== null ? [softPct] : [])];
+                        return parts.length > 1 ? parts.reduce((a, b) => a + b, 0) / parts.length : null;
+                      }
+                      return softPct !== null ? (pct + softPct) / 2 : null;
+                    })();
                     const k = kalshiOdds[t];
                     const oddsStr = k ? (k.americanOdds >= 0 ? `+${k.americanOdds}` : `${k.americanOdds}`) : null;
                     const edge = (truePct !== null && k) ? truePct - k.pct : null;
@@ -860,15 +887,24 @@ function App() {
                                     <div style={{width:`${pct}%`,background:"#58a6ff",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:pct>0?2:0}}/>
                                   </div>
                                   <div style={{color:"#58a6ff",fontSize:10,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{pct.toFixed(1)}%</div>
-                                  <div style={{color:"#484f58",fontSize:10,width:50,flexShrink:0}}>{count}/{totalGames}g</div>
+                                  <div style={{color:"#484f58",fontSize:10,width:50,flexShrink:0}}>{isMLB ? "2026" : `${count}/${totalGames}g`}</div>
                                 </div>
+                                {pct25 !== null && (
+                                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                                    <div style={{flex:1,background:"#21262d",borderRadius:4,height:11,overflow:"hidden"}}>
+                                      <div style={{width:`${pct25}%`,background:"#388bfd",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:pct25>0?2:0}}/>
+                                    </div>
+                                    <div style={{color:"#388bfd",fontSize:10,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{pct25.toFixed(1)}%</div>
+                                    <div style={{color:"#484f58",fontSize:10,width:50,flexShrink:0}}>2025</div>
+                                  </div>
+                                )}
                                 {softPct !== null && (
                                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                                     <div style={{flex:1,background:"#21262d",borderRadius:4,height:11,overflow:"hidden"}}>
                                       <div style={{width:`${softPct}%`,background:"#3fb950",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:softPct>0?2:0}}/>
                                     </div>
                                     <div style={{color:"#3fb950",fontSize:10,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{softPct.toFixed(1)}%</div>
-                                    <div style={{color:"#484f58",fontSize:10,width:50,flexShrink:0}}>{dvp.wCount}/{wTotal}g</div>
+                                    <div style={{color:"#484f58",fontSize:10,width:50,flexShrink:0}}>{dvp?.wCount}/{wTotal}g</div>
                                   </div>
                                 )}
                               </div>
@@ -894,6 +930,8 @@ function App() {
                       ? <><span><span style={{color:"#e3b341",fontWeight:600}}>Gold</span> = true probability</span>
                           {Object.keys(kalshiOdds).length > 0 && <span><span style={{color:"#a855f7",fontWeight:600}}>Purple</span> = Kalshi market</span>}
                           {Object.keys(kalshiOdds).length > 0 && <span><span style={{color:"#3fb950",fontWeight:600}}>+edge</span> / <span style={{color:"#f78166",fontWeight:600}}>−edge</span> vs market</span>}
+                          {isMLB && <span><span style={{color:"#58a6ff",fontWeight:600}}>Blue</span> = 2026</span>}
+                          {isMLB && totalGames25 > 0 && <span><span style={{color:"#388bfd",fontWeight:600}}>Teal</span> = 2025</span>}
                           {isMLB && mlbH2HLabel && <span><span style={{color:"#3fb950",fontWeight:600}}>Green</span> = {mlbH2HLabel}</span>}</>
                       : Object.keys(kalshiOdds).length > 0
                         ? <span><span style={{color:"#a855f7",fontWeight:600}}>Kalshi</span> = live market odds</span>
