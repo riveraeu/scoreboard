@@ -75,41 +75,41 @@ const SPORT_KEY = { nba:"basketball/nba", nfl:"football/nfl", nhl:"hockey/nhl", 
 const TODAY = new Date().toISOString().slice(0, 10);
 const MOCK_PLAYS = [
   // ── MLB: Strikeouts ────────────────────────────────────────────────────────
+  // Log5 golden rule: pitcher 26.5%, lineup 27.3% → log5 ~31.6%, expectedKs 8.5, K-BB% 18.2
   {
     playerName:"Dylan Cease", playerId:656302, sport:"mlb", playerTeam:"SD", position:"SP",
-    opponent:"CLE", oppRank:null, oppMetricValue:null, oppMetricLabel:"vs CLE batters | lineup K% 27.3%", oppMetricUnit:"%",
+    opponent:"CLE", oppRank:null, oppMetricValue:null, oppMetricLabel:"vs CLE batters", oppMetricUnit:"%",
     stat:"strikeouts", threshold:6, kalshiPct:78, americanOdds:-130,
     seasonPct:74.0, blendGames:31, pct25:71.0, pct25Games:28, pct26:83.3, pct26Games:6,
     softPct:80.0, softGames:10, truePct:77.0, edge:5.2,
-    lineupKPct:27.3, pitcherKPct:26.5, gameDate:TODAY,
-    // → Golden rule: both ≥ 24% ⚡, has h2h history
+    lineupKPct:27.3, pitcherKPct:26.5, pitcherKBBPct:18.2, log5Avg:31.6, expectedKs:8.5, parkFactor:1.00, gameDate:TODAY,
   },
+  // Log5 golden rule, no h2h — pitcher 28.1% (excellent), lineup 25.8%
   {
     playerName:"Corbin Burnes", playerId:669203, sport:"mlb", playerTeam:"BAL", position:"SP",
-    opponent:"OAK", oppRank:null, oppMetricValue:null, oppMetricLabel:"vs OAK batters | lineup K% 25.8%", oppMetricUnit:"%",
+    opponent:"OAK", oppRank:null, oppMetricValue:null, oppMetricLabel:"vs OAK batters", oppMetricUnit:"%",
     stat:"strikeouts", threshold:7, kalshiPct:74, americanOdds:-110,
     seasonPct:76.0, blendGames:29, pct25:75.0, pct25Games:26, pct26:78.0, pct26Games:5,
     softPct:null, softGames:0, truePct:75.5, edge:4.5,
-    lineupKPct:25.8, pitcherKPct:28.1, gameDate:TODAY,
-    // → Golden rule: both ≥ 24% ⚡, no h2h history (season rate only)
+    lineupKPct:25.8, pitcherKPct:28.1, pitcherKBBPct:20.4, log5Avg:33.1, expectedKs:8.9, parkFactor:0.97, gameDate:TODAY,
   },
+  // Pitcher great (25.9%), lineup only above-avg (22.1%) — no golden rule, Log5 ~27.5%
   {
     playerName:"Zack Wheeler", playerId:554430, sport:"mlb", playerTeam:"PHI", position:"SP",
-    opponent:"MIA", oppRank:null, oppMetricValue:null, oppMetricLabel:"vs MIA batters | lineup K% 22.1%", oppMetricUnit:"%",
+    opponent:"MIA", oppRank:null, oppMetricValue:null, oppMetricLabel:"vs MIA batters", oppMetricUnit:"%",
     stat:"strikeouts", threshold:7, kalshiPct:71, americanOdds:-115,
     seasonPct:73.0, blendGames:33, pct25:72.0, pct25Games:30, pct26:75.0, pct26Games:4,
     softPct:66.7, softGames:6, truePct:72.5, edge:4.2,
-    lineupKPct:22.1, pitcherKPct:25.9, gameDate:TODAY,
-    // → Pitcher great (26%), lineup only above avg (22%) — no golden rule
+    lineupKPct:22.1, pitcherKPct:25.9, pitcherKBBPct:14.1, log5Avg:27.5, expectedKs:7.4, parkFactor:0.96, gameDate:TODAY,
   },
+  // Average pitcher (21.3%), no Log5 data — h2h present, park factor in effect (COL = 0.88)
   {
     playerName:"Logan Webb", playerId:657277, sport:"mlb", playerTeam:"SF", position:"SP",
     opponent:"COL", oppRank:null, oppMetricValue:null, oppMetricLabel:"vs COL batters", oppMetricUnit:"%",
     stat:"strikeouts", threshold:5, kalshiPct:75, americanOdds:-120,
     seasonPct:77.0, blendGames:25, pct25:76.0, pct25Games:22, pct26:80.0, pct26Games:5,
     softPct:75.0, softGames:8, truePct:76.5, edge:4.8,
-    lineupKPct:null, pitcherKPct:21.3, gameDate:TODAY,
-    // → No lineup K% data, pitcher average — h2h present
+    lineupKPct:null, pitcherKPct:21.3, pitcherKBBPct:9.8, log5Avg:null, expectedKs:null, parkFactor:0.88, gameDate:TODAY,
   },
   // ── MLB: Hitter ────────────────────────────────────────────────────────────
   {
@@ -1144,27 +1144,40 @@ function App() {
                       const h2h = dvpData?.h2h;
                       if (isMLB) {
                         if (safeTab === "strikeouts") {
-                          const lkp = h2h?.lineupKPct ?? null;
-                          const pkp = h2h?.pitcherKPct ?? null;
-                          const pitcherRating = pkp == null ? null : pkp >= 27 ? "Excellent" : pkp >= 24 ? "Great" : pkp >= 22 ? "Above Avg" : pkp >= 20 ? "Average" : "Below Avg";
-                          const pitcherColor  = pkp == null ? "#8b949e" : pkp >= 24 ? "#3fb950" : pkp >= 20 ? "#d29922" : "#f78166";
-                          const lineupRating  = lkp == null ? null : lkp >= 30 ? "Elite target" : lkp >= 25 ? "Prime target" : lkp >= 22 ? "Above avg" : "Below avg";
-                          const lineupColor   = lkp == null ? "#8b949e" : lkp >= 25 ? "#3fb950" : lkp >= 22 ? "#d29922" : "#8b949e";
-                          const goldenRule    = pkp != null && lkp != null && pkp >= 24 && lkp >= 24;
+                          const lkp   = h2h?.lineupKPct   ?? null;
+                          const pkp   = h2h?.pitcherKPct  ?? null;
+                          const kbb   = h2h?.pitcherKBBPct?? null;
+                          const l5    = h2h?.log5Avg      ?? null;
+                          const expK  = h2h?.expectedKs   ?? null;
+                          const pf    = h2h?.parkFactor   ?? null;
+
+                          const pkpRating = pkp == null ? null : pkp >= 27 ? "Excellent" : pkp >= 24 ? "Great" : pkp >= 22 ? "Above Avg" : pkp >= 20 ? "Average" : "Below Avg";
+                          const pkpColor  = pkp == null ? "#8b949e" : pkp >= 24 ? "#3fb950" : pkp >= 20 ? "#d29922" : "#f78166";
+                          const lkpRating = lkp == null ? null : lkp >= 30 ? "Elite" : lkp >= 25 ? "Prime" : lkp >= 22 ? "Above avg" : "Below avg";
+                          const lkpColor  = lkp == null ? "#8b949e" : lkp >= 25 ? "#3fb950" : lkp >= 22 ? "#d29922" : "#8b949e";
+                          const kbbRating = kbb == null ? null : kbb >= 18 ? "Elite" : kbb >= 12 ? "Strong" : kbb >= 6 ? "Average" : "Weak";
+                          const kbbColor  = kbb == null ? "#8b949e" : kbb >= 18 ? "#3fb950" : kbb >= 12 ? "#d29922" : "#f78166";
+                          const l5Color   = l5  == null ? "#8b949e" : l5  >= 28 ? "#3fb950" : l5  >= 24 ? "#d29922" : "#8b949e";
+                          const goldenRule = l5 != null && l5 >= 24;
+                          const parkNote   = pf != null && Math.abs(pf - 1.0) >= 0.03;
                           return (
                             <>
-                              {pkp != null && (
-                                <div>Pitcher K%: <span style={{color:pitcherColor,fontWeight:600}}>{pkp}%</span> <span style={{color:"#484f58"}}>({pitcherRating})</span> — league avg ~21.8%</div>
+                              {l5 != null && (
+                                <div style={{marginBottom:3}}>
+                                  <span style={{color:l5Color,fontWeight:700,fontSize:12}}>Log5 K%: {l5}%</span>
+                                  {expK != null && <span style={{color:"#484f58"}}> → ~{expK} expected Ks / start</span>}
+                                  {goldenRule && <span style={{color:"#3fb950",marginLeft:6}}>⚡ strong matchup</span>}
+                                </div>
                               )}
-                              {lkp != null && (
-                                <div>Lineup K%: <span style={{color:lineupColor,fontWeight:600}}>{lkp}%</span> <span style={{color:"#484f58"}}>({lineupRating})</span> — {mlbH2HOpp} batters vs RHP this season</div>
-                              )}
-                              {goldenRule && (
-                                <div style={{color:"#3fb950",marginTop:2}}>⚡ K-Differential golden rule met — both pitcher and lineup above 24%</div>
-                              )}
+                              <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+                                {pkp != null && <span>Pitcher K%: <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span> <span style={{color:"#484f58"}}>({pkpRating})</span></span>}
+                                {kbb != null && <span>K-BB%: <span style={{color:kbbColor,fontWeight:600}}>{kbb}%</span> <span style={{color:"#484f58"}}>({kbbRating})</span></span>}
+                                {lkp != null && <span>Lineup K%: <span style={{color:lkpColor,fontWeight:600}}>{lkp}%</span> <span style={{color:"#484f58"}}>({lkpRating})</span></span>}
+                              </div>
+                              {parkNote && <div style={{color:"#484f58",marginTop:2}}>Park factor: {pf > 1 ? "+" : ""}{((pf - 1)*100).toFixed(0)}% ({pf > 1 ? "K-friendly" : "K-suppressing"} venue)</div>}
                               {wTotal > 0
                                 ? <div style={{marginTop:2}}>{first} has <span style={{color:"#c9d1d9",fontWeight:600}}>{wTotal}</span> career start{wTotal>1?"s":""} vs {mlbH2HOpp}.</div>
-                                : <div style={{marginTop:2}}>No career h2h history vs {mlbH2HOpp} — qualifying on season K rate.</div>
+                                : <div style={{marginTop:2,color:"#484f58"}}>No career h2h history vs {mlbH2HOpp}.</div>
                               }
                             </>
                           );
@@ -1450,11 +1463,18 @@ function App() {
                               const first = play.playerName.split(" ")[0];
                               const opp = <span style={{color:"#c9d1d9",fontWeight:600}}>{play.opponent}</span>;
                               if (play.stat === "strikeouts") {
-                                const lkp = play.lineupKPct;
+                                const l5  = play.log5Avg;
+                                const expK= play.expectedKs;
                                 const pkp = play.pitcherKPct;
-                                const lkpStr = lkp != null ? <> Lineup K% <span style={{color:lkp>=24?"#3fb950":"#d29922",fontWeight:600}}>{lkp}%</span>{lkp>=24?" (prime target)":lkp>=22?" (above avg)":""}.</> : null;
-                                const pkpStr = pkp != null ? <> Pitcher K% <span style={{color:pkp>=24?"#3fb950":pkp>=20?"#d29922":"#f78166",fontWeight:600}}>{pkp}%</span>{pkp>=27?" (excellent)":pkp>=24?" (great)":pkp>=22?" (above avg)":""}.</> : null;
-                                return <>{first} qualifies on season K rate vs {opp}.{pkpStr}{lkpStr}{pkp>=24&&lkp>=24?<> <span style={{color:"#3fb950"}}>⚡ Both metrics above 24% — golden rule matchup.</span></>:null}</>;
+                                const kbb = play.pitcherKBBPct;
+                                const lkp = play.lineupKPct;
+                                const pf  = play.parkFactor;
+                                const parkNote = pf != null && Math.abs(pf - 1.0) >= 0.03 ? ` (${pf > 1 ? "K-friendly" : "K-suppressing"} park, ${pf > 1 ? "+" : ""}${((pf-1)*100).toFixed(0)}%)` : "";
+                                if (l5 != null) {
+                                  const l5Color = l5 >= 28 ? "#3fb950" : l5 >= 24 ? "#d29922" : "#8b949e";
+                                  return <>{first} qualifies vs {opp}. <span style={{color:l5Color,fontWeight:600}}>Log5 K%: {l5}%</span>{expK != null ? ` → ~${expK} expected Ks/start` : ""}{parkNote}.{l5>=24?<> <span style={{color:"#3fb950"}}>⚡ Strong matchup</span></>:null} Pitcher K%: <span style={{fontWeight:600}}>{pkp}%</span>{kbb != null ? `, K-BB%: ${kbb}%` : ""}. Lineup K%: <span style={{fontWeight:600}}>{lkp ?? "n/a"}%</span>.</>;
+                                }
+                                return <>{first} qualifies vs {opp}{pkp ? <> — pitcher K%: <span style={{fontWeight:600}}>{pkp}%</span></> : null}{lkp ? <>, lineup K%: <span style={{fontWeight:600}}>{lkp}%</span></> : null}{parkNote}.</>;
                               }
                               return <>{first} qualified based on season hit rate vs {opp} — not enough career h2h data to show matchup history yet.</>;
                             })()}
