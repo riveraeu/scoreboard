@@ -1332,7 +1332,7 @@ function App() {
                     <div style={{color:"#c9d1d9",fontSize:13,fontWeight:700}}>${(bankroll + totalPL).toFixed(2)}</div>
                   </div>
                 </div>
-                {/* Win/Loss bar chart */}
+                {/* P&L bar chart with date x-axis */}
                 {(() => {
                   const bars = [...trackedPlays]
                     .filter(p => p.result)
@@ -1340,35 +1340,61 @@ function App() {
                     .map(p => {
                       const s = ((p.units ?? 1) / 100) * bankroll;
                       const pl = p.result === "won" ? s * oddsToProfit(p.americanOdds) : -s;
-                      return { pl, result: p.result, label: `${p.playerName.split(" ").slice(-1)[0]} ${p.threshold}+ ${STAT_LABEL[p.stat]||p.stat}` };
+                      const dateLabel = new Date(p.trackedAt).toLocaleDateString("en-US", { month:"short", day:"numeric" });
+                      const barLabel = `${p.playerName.split(" ").slice(-1)[0]} ${p.threshold}+`;
+                      return { pl, result: p.result, dateLabel, barLabel };
                     });
                   if (!bars.length) return null;
                   const maxAbs = Math.max(...bars.map(b => Math.abs(b.pl)), 0.01);
-                  const HALF = 52;
+                  const HALF = 60;
+                  // Y-axis tick values
+                  const yMax = maxAbs;
+                  const yTicks = [yMax, yMax/2, 0, -yMax/2, -yMax];
                   return (
                     <div style={{marginTop:12,paddingTop:12,borderTop:"1px solid #21262d"}}>
-                      <div style={{position:"relative",height: HALF * 2, display:"flex",gap:3,alignItems:"stretch"}}>
-                        {/* Zero line */}
-                        <div style={{position:"absolute",left:0,right:0,top:HALF,height:1,background:"#30363d",zIndex:1}}/>
-                        {bars.map((b, i) => {
-                          const h = Math.max(Math.round((Math.abs(b.pl) / maxAbs) * HALF), 3);
-                          const isWin = b.result === "won";
-                          return (
-                            <div key={i} style={{flex:1,position:"relative"}}
-                              title={`${b.label}: ${b.pl >= 0 ? "+" : ""}$${b.pl.toFixed(2)}`}>
-                              <div style={{
-                                position:"absolute", left:0, right:0, height:h,
-                                top: isWin ? HALF - h : HALF,
-                                background: isWin ? "#3fb950" : "#f78166",
-                                borderRadius: isWin ? "3px 3px 0 0" : "0 0 3px 3px",
-                                opacity:0.8, transition:"opacity 0.15s",
-                              }}
-                                onMouseEnter={e => e.currentTarget.style.opacity="1"}
-                                onMouseLeave={e => e.currentTarget.style.opacity="0.8"}
-                              />
+                      <div style={{display:"flex",gap:4}}>
+                        {/* Y-axis labels */}
+                        <div style={{display:"flex",flexDirection:"column",justifyContent:"space-between",height:HALF*2+20,paddingBottom:20,flexShrink:0}}>
+                          {yTicks.map((v,i) => (
+                            <div key={i} style={{color:"#484f58",fontSize:9,textAlign:"right",lineHeight:1}}>
+                              {v >= 0 ? "+" : ""}${Math.abs(v).toFixed(v === 0 ? 0 : 1)}
                             </div>
-                          );
-                        })}
+                          ))}
+                        </div>
+                        {/* Bars + x-axis */}
+                        <div style={{flex:1,display:"flex",flexDirection:"column"}}>
+                          <div style={{position:"relative",height:HALF*2,display:"flex",gap:3,alignItems:"stretch"}}>
+                            {/* Zero line */}
+                            <div style={{position:"absolute",left:0,right:0,top:HALF,height:1,background:"#30363d",zIndex:1}}/>
+                            {bars.map((b, i) => {
+                              const h = Math.max(Math.round((Math.abs(b.pl) / maxAbs) * HALF), 3);
+                              const isWin = b.result === "won";
+                              return (
+                                <div key={i} style={{flex:1,position:"relative"}}
+                                  title={`${b.barLabel}: ${b.pl >= 0 ? "+" : ""}$${b.pl.toFixed(2)}`}>
+                                  <div style={{
+                                    position:"absolute", left:0, right:0, height:h,
+                                    top: isWin ? HALF - h : HALF,
+                                    background: isWin ? "#3fb950" : "#f78166",
+                                    borderRadius: isWin ? "3px 3px 0 0" : "0 0 3px 3px",
+                                    opacity:0.85, transition:"opacity 0.15s",
+                                  }}
+                                    onMouseEnter={e => e.currentTarget.style.opacity="1"}
+                                    onMouseLeave={e => e.currentTarget.style.opacity="0.85"}
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
+                          {/* X-axis date labels */}
+                          <div style={{display:"flex",gap:3,marginTop:3}}>
+                            {bars.map((b, i) => (
+                              <div key={i} style={{flex:1,textAlign:"center",color:"#484f58",fontSize:8,lineHeight:1.2,overflow:"hidden"}}>
+                                {b.dateLabel}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   );
@@ -1376,8 +1402,14 @@ function App() {
               </div>
             )}
 
-            {/* Pick cards */}
-            {trackedPlays.map(pick => {
+            {/* Pick cards — open first (newest→oldest), then settled (newest→oldest) */}
+            {[...trackedPlays]
+              .sort((a, b) => {
+                const aOpen = !a.result, bOpen = !b.result;
+                if (aOpen !== bOpen) return aOpen ? -1 : 1;
+                return b.trackedAt - a.trackedAt;
+              })
+              .map(pick => {
               const oddsStr = pick.americanOdds >= 0 ? `+${pick.americanOdds}` : `${pick.americanOdds}`;
               const dateStr = new Date(pick.trackedAt).toLocaleDateString("en-US", { month:"short", day:"numeric" });
               const resultColor = pick.result === "won" ? "#3fb950" : pick.result === "lost" ? "#f78166" : null;
