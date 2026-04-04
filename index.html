@@ -1178,7 +1178,7 @@ function App() {
                             {(() => {
                               const first = play.playerName.split(" ")[0];
                               const opp = <span style={{color:"#c9d1d9",fontWeight:600}}>{play.opponent}</span>;
-                              const metricStr = play.oppMetricValue ? ` (${play.oppMetricValue} ${play.oppMetricUnit})` : "";
+                              const metricStr = play.oppMetricValue ? ` (${play.oppMetricValue}${play.oppMetricUnit ? ` ${play.oppMetricUnit}` : ""})` : "";
                               const rank = <span style={{color:"#f78166",fontWeight:700}}>{ordinal(play.oppRank)} in {play.oppMetricLabel || "PPG allowed"}{metricStr}</span>;
                               const hitRate = <span style={{color:"#3fb950",fontWeight:600}}>{play.softPct}%</span>;
                               const games = play.softGames ? ` (${play.softGames} games)` : "";
