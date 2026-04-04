@@ -82,6 +82,112 @@ function useDebounce(val, ms) {
   return dv;
 }
 
+function AddPickModal({ onClose, onAdd }) {
+  const SPORT_STATS = {
+    nba: ["points","rebounds","assists","threePointers","pra"],
+    mlb: ["hits","homeRuns","rbi","totalBases","strikeouts"],
+    nfl: ["passingYards","rushingYards","receivingYards","receptions","completions","attempts"],
+    nhl: ["shotsOnGoal","points","saves"],
+  };
+  const STAT_LABELS = {
+    points:"Points", rebounds:"Rebounds", assists:"Assists", threePointers:"3-Pointers", pra:"PRA",
+    hits:"Hits", homeRuns:"Home Runs", rbi:"RBI", totalBases:"Total Bases", strikeouts:"Strikeouts",
+    passingYards:"Pass Yards", rushingYards:"Rush Yards", receivingYards:"Rec Yards",
+    receptions:"Receptions", completions:"Completions", attempts:"Attempts",
+    shotsOnGoal:"Shots on Goal", points:"Points", saves:"Saves",
+  };
+  const [form, setForm] = React.useState({ playerName:"", sport:"nba", stat:"points", threshold:"", americanOdds:"-110", units:"1" });
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  // Reset stat when sport changes
+  React.useEffect(() => {
+    set("stat", SPORT_STATS[form.sport][0]);
+  }, [form.sport]);
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    const threshold = parseFloat(form.threshold);
+    const americanOdds = parseInt(form.americanOdds);
+    if (!form.playerName.trim() || isNaN(threshold) || isNaN(americanOdds)) return;
+    const sportFull = { nba:"basketball/nba", mlb:"baseball/mlb", nfl:"football/nfl", nhl:"hockey/nhl" }[form.sport];
+    onAdd({
+      playerName: form.playerName.trim(),
+      sport: form.sport,
+      sportKey: sportFull,
+      stat: form.stat,
+      threshold,
+      americanOdds,
+      units: parseFloat(form.units) || 1,
+    });
+    onClose();
+  }
+
+  const inp = { background:"#0d1117", border:"1px solid #30363d", borderRadius:6, color:"#c9d1d9",
+    fontSize:13, padding:"7px 10px", width:"100%", outline:"none" };
+  const lbl = { color:"#8b949e", fontSize:11, marginBottom:4, display:"block" };
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:12,padding:24,width:"100%",maxWidth:380}}>
+        <div style={{display:"flex",alignItems:"center",marginBottom:20}}>
+          <span style={{color:"#fff",fontSize:16,fontWeight:700,flex:1}}>Add Pick</span>
+          <button onClick={onClose} style={{background:"none",border:"none",color:"#484f58",fontSize:18,cursor:"pointer",lineHeight:1}}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div style={{display:"grid",gap:14}}>
+            <div>
+              <label style={lbl}>Player Name</label>
+              <input style={inp} placeholder="e.g. Nikola Jokic" value={form.playerName}
+                onChange={e => set("playerName", e.target.value)} autoFocus />
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              <div>
+                <label style={lbl}>Sport</label>
+                <select style={inp} value={form.sport} onChange={e => set("sport", e.target.value)}>
+                  <option value="nba">NBA</option>
+                  <option value="mlb">MLB</option>
+                  <option value="nfl">NFL</option>
+                  <option value="nhl">NHL</option>
+                </select>
+              </div>
+              <div>
+                <label style={lbl}>Stat</label>
+                <select style={inp} value={form.stat} onChange={e => set("stat", e.target.value)}>
+                  {SPORT_STATS[form.sport].map(s => (
+                    <option key={s} value={s}>{STAT_LABELS[s] || s}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+              <div>
+                <label style={lbl}>Line (Over)</label>
+                <input style={inp} type="number" placeholder="20.5" step="0.5" value={form.threshold}
+                  onChange={e => set("threshold", e.target.value)} />
+              </div>
+              <div>
+                <label style={lbl}>Odds</label>
+                <input style={inp} type="number" placeholder="-110" value={form.americanOdds}
+                  onChange={e => set("americanOdds", e.target.value)} />
+              </div>
+              <div>
+                <label style={lbl}>Units %</label>
+                <input style={inp} type="number" placeholder="1" min="0" max="100" step="0.5" value={form.units}
+                  onChange={e => set("units", e.target.value)} />
+              </div>
+            </div>
+          </div>
+          <button type="submit" style={{marginTop:20,width:"100%",padding:"10px",borderRadius:8,
+            background:"#238636",border:"none",color:"#fff",fontSize:14,fontWeight:600,cursor:"pointer"}}>
+            Add Pick
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [sport, setSport] = React.useState("basketball/nba"); // derived from selected player
   const [perGame, setPerGame] = React.useState([]);
@@ -116,6 +222,7 @@ function App() {
     return parseFloat(localStorage.getItem("scoreboard_bankroll") || "1000");
   });
   const [calcOdds, setCalcOdds] = React.useState("");
+  const [showAddPick, setShowAddPick] = React.useState(false);
   const [authToken, setAuthToken] = React.useState(() => localStorage.getItem("sb_token") || null);
   const [authEmail, setAuthEmail] = React.useState(() => localStorage.getItem("sb_email") || null);
   const [showAuthModal, setShowAuthModal] = React.useState(false);
@@ -563,6 +670,14 @@ function App() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Add Pick modal */}
+      {showAddPick && (
+        <AddPickModal
+          onClose={() => setShowAddPick(false)}
+          onAdd={play => trackPlay(play)}
+        />
       )}
 
       {/* Account bar */}
@@ -1328,6 +1443,11 @@ function App() {
               <span style={{background:"#21262d",borderRadius:10,padding:"1px 8px",fontSize:11,color:"#8b949e"}}>
                 {trackedPlays.length}
               </span>
+              <button onClick={() => setShowAddPick(true)}
+                style={{fontSize:11,padding:"2px 10px",borderRadius:6,cursor:"pointer",
+                  border:"1px solid #238636",background:"rgba(35,134,54,0.15)",color:"#3fb950",fontWeight:600}}>
+                + Add
+              </button>
               {/* Bankroll input */}
               <div style={{display:"flex",alignItems:"center",gap:6,marginLeft:"auto"}}>
                 <span style={{color:"#484f58",fontSize:11}}>Bankroll</span>
