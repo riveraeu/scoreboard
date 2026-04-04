@@ -923,14 +923,10 @@ function App() {
                 const _today = _localDate(0);
                 const _tmrw  = _localDate(1);
                 const dates  = [...new Set((tonightPlays || []).map(p => p.gameDate).filter(Boolean))].sort();
+                const fmtDate = d => { const [yr,mo,dy] = d.split("-").map(Number); return new Date(yr, mo-1, dy).toLocaleDateString("en-US", { weekday:"short", month:"short", day:"numeric" }); };
                 const label  = dates.length === 0 ? null
                   : dates.every(d => d === _today) ? null
-                  : dates.map(d => {
-                      if (d === _today) return "Today";
-                      if (d === _tmrw)  return "Tomorrow";
-                      const [yr,mo,dy] = d.split("-").map(Number);
-                      return new Date(yr, mo-1, dy).toLocaleDateString("en-US", { weekday:"short", month:"short", day:"numeric" });
-                    }).join(" · ");
+                  : dates.filter(d => d !== _today).map(fmtDate).join(" · ");
                 return label
                   ? <><span style={{color:"#484f58",fontWeight:400,fontSize:13}}>Plays — </span>{label}</>
                   : "Plays";
