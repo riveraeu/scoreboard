@@ -86,6 +86,7 @@ function App() {
   const [sport, setSport] = React.useState("basketball/nba"); // derived from selected player
   const [perGame, setPerGame] = React.useState([]);
   const [dvpData, setDvpData] = React.useState(null);
+  const [mlbIsPitcher, setMlbIsPitcher] = React.useState(null); // null = unknown, true/false for MLB
   const [query, setQuery] = React.useState("");
   const [suggestions, setSuggestions] = React.useState([]);
   const [showDrop, setShowDrop] = React.useState(false);
@@ -123,6 +124,7 @@ function App() {
   const [authLoading, setAuthLoading] = React.useState(false);
   const [syncStatus, setSyncStatus] = React.useState(null); // "saving"|"saved"|"error"
   const syncTimer = React.useRef(null);
+  const picksLoaded = React.useRef(!localStorage.getItem("sb_token")); // true if no token (no server load needed)
   const debouncedQuery = useDebounce(query, 300);
   const dropRef = React.useRef(null);
   const inputRef = React.useRef(null);
@@ -238,8 +240,9 @@ function App() {
   }
 
   // Auto-save picks to server whenever they change (debounced 1.5s)
+  // Guard: don't save until server picks have been loaded — prevents overwriting with [] on mount
   React.useEffect(() => {
-    if (!authToken) return;
+    if (!authToken || !picksLoaded.current) return;
     setSyncStatus("saving");
     clearTimeout(syncTimer.current);
     syncTimer.current = setTimeout(() => savePicks(authToken, trackedPlays, bankroll), 1500);
@@ -250,14 +253,25 @@ function App() {
   React.useEffect(() => {
     if (!authToken) return;
     fetch(`${WORKER}/user/picks`, { headers:{"Authorization":`Bearer ${authToken}`} })
-      .then(r => r.ok ? r.json() : null)
+      .then(r => {
+        if (r.status === 401) {
+          // Token expired — clear auth state so user sees the logged-out experience
+          localStorage.removeItem("sb_token");
+          localStorage.removeItem("sb_email");
+          setAuthToken(null);
+          setAuthEmail(null);
+          return null;
+        }
+        return r.ok ? r.json() : null;
+      })
       .then(pd => {
         if (pd) {
           setTrackedPlays(pd.picks || []);
           if (pd.bankroll) setBankrollState(pd.bankroll);
         }
+        picksLoaded.current = true; // unblock auto-save now that server picks are loaded
       })
-      .catch(() => {});
+      .catch(() => { picksLoaded.current = true; }); // unblock even on error so future changes save
   }, []);
 
   React.useEffect(() => {
@@ -279,16 +293,34 @@ function App() {
     setPlayer(p); setLogs(null); setPerGame([]); setDvpData(null); setError(null); setLoading(true);
     const id = Date.now(); fetchRef.current = id;
     try {
-      const season = sp === "football/nfl" ? "2025" : "2026";
-      const [gameRes, dvpRes] = await Promise.all([
-        fetch(`${WORKER}/gamelog?sport=${sp}&athleteId=${p.id}&season=${season}`),
-        fetch(`${WORKER}/dvp?sport=${sp}&athleteId=${p.id}`),
-      ]);
-      const data = await gameRes.json();
+      const teamParam = p.team ? `&team=${encodeURIComponent(p.team)}` : "";
+      let data, dvpRes;
+      if (sp === "baseball/mlb") {
+        // Fetch 3 seasons in parallel for full h2h history, plus dvp for tonight's matchup
+        const [d26, d25, d24, dv] = await Promise.all([
+          fetch(`${WORKER}/gamelog?sport=${sp}&athleteId=${p.id}&season=2026`).then(r => r.ok ? r.json() : null).catch(() => null),
+          fetch(`${WORKER}/gamelog?sport=${sp}&athleteId=${p.id}&season=2025`).then(r => r.ok ? r.json() : null).catch(() => null),
+          fetch(`${WORKER}/gamelog?sport=${sp}&athleteId=${p.id}&season=2024`).then(r => r.ok ? r.json() : null).catch(() => null),
+          fetch(`${WORKER}/dvp?sport=${sp}&athleteId=${p.id}${teamParam}`),
+        ]);
+        dvpRes = dv;
+        const base = d26 || d25 || d24;
+        const events = [...(d26?.events || []), ...(d25?.events || []), ...(d24?.events || [])];
+        data = base ? { labels: base.labels, events, totalGames: events.length } : { labels: [], events: [], totalGames: 0 };
+      } else {
+        const season = sp === "football/nfl" ? "2025" : "2026";
+        const [gameRes, dv] = await Promise.all([
+          fetch(`${WORKER}/gamelog?sport=${sp}&athleteId=${p.id}&season=${season}`),
+          fetch(`${WORKER}/dvp?sport=${sp}&athleteId=${p.id}${teamParam}`),
+        ]);
+        dvpRes = dv;
+        data = await gameRes.json();
+      }
       if (fetchRef.current !== id) return;
-      const { aggregated, perGame: pg } = parseGameLog(data, sp);
+      const { aggregated, perGame: pg, isPitcher: isP } = parseGameLog(data, sp);
       setLogs(aggregated);
       setPerGame(pg);
+      if (sp === "baseball/mlb") setMlbIsPitcher(isP);
       if (dvpRes.ok) {
         const dv = await dvpRes.json();
         if (fetchRef.current !== id) return;
@@ -397,7 +429,7 @@ function App() {
       perGame.push({ oppId: ev.oppId || null, oppAbbr: ev.oppAbbr || null, ...gs });
     });
 
-    return { aggregated: result, perGame };
+    return { aggregated: result, perGame, isPitcher };
   }
 
   const selectPlayer = (p, tab = null) => {
@@ -428,7 +460,15 @@ function App() {
     );
   };
 
-  const statCfgs = STAT_CONFIGS[sport] || {};
+  const allStatCfgs = STAT_CONFIGS[sport] || {};
+  // For MLB, only show tabs relevant to the player's role once we know pitcher/hitter
+  const statCfgs = (() => {
+    if (sport !== "baseball/mlb" || mlbIsPitcher === null) return allStatCfgs;
+    const pitcherTabs = ["strikeouts"];
+    const hitterTabs  = ["hits", "homeRuns", "rbi", "totalBases"];
+    const allowed = mlbIsPitcher ? pitcherTabs : hitterTabs;
+    return Object.fromEntries(Object.entries(allStatCfgs).filter(([k]) => allowed.includes(k)));
+  })();
   const tabs = Object.keys(statCfgs);
   const safeTab = tabs.includes(activeTab) ? activeTab : tabs[0];
   const cfg = statCfgs[safeTab];
@@ -620,26 +660,43 @@ function App() {
       {/* Combined chart: Season + Soft Matchup + True Probability */}
       {player && (() => {
         const hasDvp = dvpData && perGame.length > 0 && !loading && totalGames > 0;
+        const isMLB = sport === "baseball/mlb";
         const WEAK_N = 10;
         let dvpMap = {}, wTotal = 0, weakTeamList = [];
+        let mlbH2HOpp = null, mlbH2HLabel = null;
 
         if (hasDvp) {
-          // Use softTeams from /dvp (byteam PTS-allowed top 10) if available — same set as /tonight uses.
-          // Fall back to position-specific DvP top 10 for non-NBA sports.
-          const softAbbrs = dvpData.softTeams?.[safeTab]?.length
-            ? new Set(dvpData.softTeams[safeTab])
-            : new Set((dvpData.teams || []).filter(t => t.rank <= WEAK_N).map(t => t.abbr));
-          const weakAbbrs = softAbbrs;
-          const weakGames = perGame.filter(g => weakAbbrs.has(g.oppAbbr));
-          wTotal = weakGames.length;
-          weakTeamList = (dvpData.teams || [])
-            .filter(t => weakAbbrs.has(t.abbr))
-            .filter(t => perGame.some(g => g.oppAbbr === t.abbr));
-          if (wTotal > 0) {
-            (cfg?.thresholds || []).forEach(t => {
-              const wCount = weakGames.filter(g => (g[safeTab] ?? -1) >= t).length;
-              dvpMap[t] = { wCount, wPct: (wCount / wTotal) * 100 };
-            });
+          if (isMLB && dvpData.h2h?.opp) {
+            // MLB h2h mode: use player's career games vs tonight's opponent
+            mlbH2HOpp = dvpData.h2h.opp;
+            const isPitcherTab = safeTab === "strikeouts";
+            mlbH2HLabel = isPitcherTab
+              ? `vs ${mlbH2HOpp} batters`
+              : dvpData.h2h.pitcherName ? `vs ${dvpData.h2h.pitcherName}` : `vs ${mlbH2HOpp}`;
+            const h2hGames = perGame.filter(g => g.oppAbbr === mlbH2HOpp && g[safeTab] !== undefined);
+            wTotal = h2hGames.length;
+            if (wTotal > 0) {
+              (cfg?.thresholds || []).forEach(t => {
+                const wCount = h2hGames.filter(g => (g[safeTab] ?? -1) >= t).length;
+                dvpMap[t] = { wCount, wPct: (wCount / wTotal) * 100 };
+              });
+            }
+          } else if (!isMLB) {
+            // NBA/NHL/NFL: soft team ranking mode
+            const softAbbrs = dvpData.softTeams?.[safeTab]?.length
+              ? new Set(dvpData.softTeams[safeTab])
+              : new Set((dvpData.teams || []).filter(t => t.rank <= WEAK_N).map(t => t.abbr));
+            const weakGames = perGame.filter(g => softAbbrs.has(g.oppAbbr));
+            wTotal = weakGames.length;
+            weakTeamList = (dvpData.teams || [])
+              .filter(t => softAbbrs.has(t.abbr))
+              .filter(t => perGame.some(g => g.oppAbbr === t.abbr));
+            if (wTotal > 0) {
+              (cfg?.thresholds || []).forEach(t => {
+                const wCount = weakGames.filter(g => (g[safeTab] ?? -1) >= t).length;
+                dvpMap[t] = { wCount, wPct: (wCount / wTotal) * 100 };
+              });
+            }
           }
         }
 
@@ -660,17 +717,26 @@ function App() {
                   <div style={{color:"#8b949e",fontSize:12}}>
                     % of games hitting <strong style={{color:"#c9d1d9"}}>at least N {cfg.unit}</strong>
                   </div>
-                  {showTriple && dvpData.position && (
+                  {showTriple && dvpData.position && !isMLB && (
                     <span style={{background:"rgba(88,166,255,0.12)",border:"1px solid #58a6ff",borderRadius:6,
                       padding:"1px 7px",fontSize:11,color:"#58a6ff",fontWeight:700,marginLeft:"auto"}}>
                       {dvpData.position}
+                    </span>
+                  )}
+                  {isMLB && dvpData?.h2h?.pitcherName && safeTab !== "strikeouts" && (
+                    <span style={{background:"rgba(248,190,77,0.12)",border:"1px solid #d29922",borderRadius:6,
+                      padding:"1px 7px",fontSize:11,color:"#d29922",fontWeight:600,marginLeft:"auto"}}>
+                      opp. SP: {dvpData.h2h.pitcherName}{dvpData.h2h.pitcherEra != null ? ` (${dvpData.h2h.pitcherEra} ERA)` : ""}
                     </span>
                   )}
                 </div>
 
                 {showTriple && (
                   <div style={{color:"#484f58",fontSize:11,marginBottom:14}}>
-                    Soft matchup teams ({wTotal}/{totalGames}g): {weakTeamList.map(t => t.abbr).join(" · ")}
+                    {isMLB && mlbH2HLabel
+                      ? <>{mlbH2HLabel} — <span style={{color:"#3fb950"}}>{wTotal}g</span> of career history</>
+                      : <>Soft matchup teams ({wTotal}/{totalGames}g): {weakTeamList.map(t => t.abbr).join(" · ")}</>
+                    }
                   </div>
                 )}
 
@@ -687,6 +753,42 @@ function App() {
                     const edge = (truePct !== null && k) ? truePct - k.pct : null;
                     const edgeColor = edge === null ? null : edge > 3 ? "#3fb950" : edge < -3 ? "#f78166" : "#8b949e";
                     const edgeStr = edge === null ? null : (edge >= 0 ? `+${edge.toFixed(1)}%` : `${edge.toFixed(1)}%`);
+
+                    // Show track button only when the play qualifies (same criteria as /tonight)
+                    // Use raw season pct as fallback when no h2h softPct is available
+                    const qualifyingPct = truePct !== null ? truePct : pct;
+                    const qualifies = k && k.pct >= 70 && (qualifyingPct - k.pct) >= 3;
+                    const sportSlug = sport.split("/")[1];
+                    const trackId = `${sportSlug}|${player.name}|${safeTab}|${t}`;
+                    const isTracked = trackedPlays.some(p => p.id === trackId);
+                    const trackBtn = qualifies ? (
+                      <button onClick={() => {
+                        if (isTracked) { untrackPlay(trackId); return; }
+                        trackPlay({
+                          sport: sportSlug,
+                          playerName: player.name,
+                          playerTeam: player.team || "",
+                          playerId: player.id,
+                          position: dvpData?.position || null,
+                          stat: safeTab,
+                          threshold: t,
+                          kalshiPct: k.pct,
+                          americanOdds: k.americanOdds,
+                          seasonPct: parseFloat(pct.toFixed(1)),
+                          softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
+                          truePct: truePct !== null ? parseFloat(truePct.toFixed(1)) : null,
+                          edge: parseFloat(edge.toFixed(1)),
+                        });
+                      }}
+                        title={isTracked ? "Remove from My Picks" : "Add to My Picks"}
+                        style={{background: isTracked ? "rgba(227,179,65,0.15)" : "transparent",
+                          border:`1px solid ${isTracked ? "#e3b341" : "#30363d"}`,
+                          borderRadius:6, padding:"1px 6px", cursor:"pointer",
+                          color: isTracked ? "#e3b341" : "#484f58", fontSize:13, lineHeight:1,
+                          flexShrink:0}}>
+                        {isTracked ? "★" : "☆"}
+                      </button>
+                    ) : null;
 
                     if (!showTriple) {
                       // Non-NBA / no DvP: season bar + optional Kalshi
@@ -709,6 +811,7 @@ function App() {
                                 </div>
                                 <div style={{color:"#a855f7",fontSize:11,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{k.pct}%</div>
                                 <div style={{color:"#6e40c9",fontSize:10,width:50,flexShrink:0}}>({oddsStr})</div>
+                                {trackBtn}
                               </div>
                             )}
                           </div>
@@ -716,7 +819,7 @@ function App() {
                       );
                     }
 
-                    // NBA triple mode: True probability + Kalshi primary, season/soft in drawer
+                    // Triple mode: True probability + Kalshi primary, season/soft in drawer
                     return (
                       <div key={t} style={{marginBottom:14}}>
                         <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
@@ -728,7 +831,7 @@ function App() {
                                 <div style={{width:`${truePct}%`,background:"#e3b341",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:truePct>0?3:0}}/>
                               </div>
                               <div style={{color:"#e3b341",fontSize:13,fontWeight:700,width:42,textAlign:"right",flexShrink:0}}>{truePct.toFixed(1)}%</div>
-                              <div style={{width:50,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"flex-start",paddingLeft:2}}>
+                              <div style={{width:50,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"flex-start",paddingLeft:2,gap:4}}>
                                 {edgeStr && (
                                   <span style={{background: edgeColor + "22", border:`1px solid ${edgeColor}`,
                                     borderRadius:4, padding:"1px 5px", fontSize:10, fontWeight:700, color:edgeColor,
@@ -736,6 +839,7 @@ function App() {
                                     {edgeStr}
                                   </span>
                                 )}
+                                {trackBtn}
                               </div>
                             </div>
                             {/* Kalshi */}
@@ -789,7 +893,8 @@ function App() {
                     {showTriple
                       ? <><span><span style={{color:"#e3b341",fontWeight:600}}>Gold</span> = true probability</span>
                           {Object.keys(kalshiOdds).length > 0 && <span><span style={{color:"#a855f7",fontWeight:600}}>Purple</span> = Kalshi market</span>}
-                          {Object.keys(kalshiOdds).length > 0 && <span><span style={{color:"#3fb950",fontWeight:600}}>+edge</span> / <span style={{color:"#f78166",fontWeight:600}}>−edge</span> vs market</span>}</>
+                          {Object.keys(kalshiOdds).length > 0 && <span><span style={{color:"#3fb950",fontWeight:600}}>+edge</span> / <span style={{color:"#f78166",fontWeight:600}}>−edge</span> vs market</span>}
+                          {isMLB && mlbH2HLabel && <span><span style={{color:"#3fb950",fontWeight:600}}>Green</span> = {mlbH2HLabel}</span>}</>
                       : Object.keys(kalshiOdds).length > 0
                         ? <span><span style={{color:"#a855f7",fontWeight:600}}>Kalshi</span> = live market odds</span>
                         : [["#3fb950","≥80%"],["#58a6ff","60–79%"],["#d29922","40–59%"],["#f78166","<40%"]].map(([c,l]) => (
@@ -967,7 +1072,9 @@ function App() {
                           </div>
                           {play.softPct !== null && (
                             <div style={{display:"flex",alignItems:"center",gap:8}}>
-                              <div style={{width:90,color:"#8b949e",fontSize:10,flexShrink:0}}>vs weak matchup</div>
+                              <div style={{width:90,color:"#8b949e",fontSize:10,flexShrink:0}}>
+                                {play.oppRank === null ? (play.oppMetricLabel || "").replace(/\s*\(\d+g\)\s*$/, "") : "vs weak matchup"}
+                              </div>
                               <div style={{flex:1,background:"#21262d",borderRadius:3,height:8,overflow:"hidden"}}>
                                 <div style={{width:`${play.softPct}%`,background:"#3fb950",height:"100%",borderRadius:3}}/>
                               </div>
@@ -975,7 +1082,36 @@ function App() {
                             </div>
                           )}
                         </div>
-                        {/* Matchup explanation */}
+                        {/* Matchup explanation — h2h (MLB player-vs-pitcher/batters) */}
+                        {play.oppRank === null && play.oppMetricLabel && play.softPct !== null && (
+                          <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.5}}>
+                            {(() => {
+                              const first = play.playerName.split(" ")[0];
+                              const matchup = <span style={{color:"#c9d1d9",fontWeight:600}}>{(play.oppMetricLabel || "").replace(/\s*\(\d+g\)\s*$/, "")}</span>;
+                              const hitRate = <span style={{color:"#3fb950",fontWeight:600}}>{play.softPct}%</span>;
+                              const games = play.softGames ? ` (${play.softGames} games)` : "";
+                              const statFull = STAT_FULL[play.stat] || play.stat;
+                              if (play.stat === "strikeouts") {
+                                return <>{first} has recorded {play.threshold}+ Ks in {hitRate} of career starts {matchup} — historically a strong K matchup for this pitcher{games}.</>;
+                              }
+                              return <>{first} has recorded {play.threshold}+ {statFull} in {hitRate} of career games {matchup}{games}.</>;
+                            })()}
+                          </div>
+                        )}
+                        {/* Matchup explanation — no h2h data, no ranking (e.g. new pitcher) */}
+                        {play.oppRank === null && (!play.oppMetricLabel || play.softPct === null) && play.sport === "mlb" && (
+                          <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.5}}>
+                            {(() => {
+                              const first = play.playerName.split(" ")[0];
+                              const opp = <span style={{color:"#c9d1d9",fontWeight:600}}>{play.opponent}</span>;
+                              if (play.stat === "strikeouts") {
+                                return <>{first} qualified based on season K rate vs {opp} — not enough career h2h data to show matchup history yet.</>;
+                              }
+                              return <>{first} qualified based on season hit rate vs {opp} — not enough career h2h data to show matchup history yet.</>;
+                            })()}
+                          </div>
+                        )}
+                        {/* Matchup explanation — team ranking (non-MLB h2h plays) */}
                         {play.oppRank && (
                           <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.5}}>
                             {(() => {
@@ -1005,7 +1141,7 @@ function App() {
                                 "nfl|receivingYards": <>one of the softest defenses in coverage — they allow the most receiving yards per game.</>,
                                 "nfl|touchdowns":     <>one of the softest defenses in the red zone — they allow the most passing yards and TDs per game.</>,
                               }[contextKey] || <>one of the weakest defenses for this stat.</>;
-                              return <>{opp} ranks {rank} this season — {context} {first} has hit {play.threshold}+ {STAT_FULL[play.stat] || play.stat} in {hitRate} of games vs weak matchups{games}.</>;
+                              return <>{opp} ranks {rank} this season — {context}{play.softPct !== null ? <> {first} has hit {play.threshold}+ {STAT_FULL[play.stat] || play.stat} in {hitRate} of games vs weak matchups{games}.</> : <> This is based on lineup tendencies — not enough career h2h data yet.</>}</>;
                             })()}
                           </div>
                         )}
