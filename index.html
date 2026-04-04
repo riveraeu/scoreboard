@@ -1051,13 +1051,29 @@ function App() {
                       if (isMLB) {
                         if (safeTab === "strikeouts") {
                           const lkp = h2h?.lineupKPct ?? null;
-                          const lkpNode = lkp != null
-                            ? <>Today's <span style={{color:"#c9d1d9",fontWeight:600}}>{mlbH2HOpp}</span> lineup strikes out <span style={{color:lkp>=21?"#3fb950":"#f78166",fontWeight:600}}>{lkp}%</span> of PAs — {lkp>=23?"high-K lineup":lkp>=21?"above league avg (~21%)":"below league avg (~21%)"}.</>
-                            : null;
-                          const h2hNode = wTotal > 0
-                            ? <>{first} has <span style={{color:"#c9d1d9",fontWeight:600}}>{wTotal}</span> career start{wTotal>1?"s":""} vs {mlbH2HOpp} in this gamelog.</>
-                            : <>No career h2h history vs {mlbH2HOpp} — qualifying on season K rate alone.</>;
-                          return <>{lkpNode}{lkpNode ? <> {h2hNode}</> : h2hNode}</>;
+                          const pkp = h2h?.pitcherKPct ?? null;
+                          const pitcherRating = pkp == null ? null : pkp >= 27 ? "Excellent" : pkp >= 24 ? "Great" : pkp >= 22 ? "Above Avg" : pkp >= 20 ? "Average" : "Below Avg";
+                          const pitcherColor  = pkp == null ? "#8b949e" : pkp >= 24 ? "#3fb950" : pkp >= 20 ? "#d29922" : "#f78166";
+                          const lineupRating  = lkp == null ? null : lkp >= 30 ? "Elite target" : lkp >= 25 ? "Prime target" : lkp >= 22 ? "Above avg" : "Below avg";
+                          const lineupColor   = lkp == null ? "#8b949e" : lkp >= 25 ? "#3fb950" : lkp >= 22 ? "#d29922" : "#8b949e";
+                          const goldenRule    = pkp != null && lkp != null && pkp >= 24 && lkp >= 24;
+                          return (
+                            <>
+                              {pkp != null && (
+                                <div>Pitcher K%: <span style={{color:pitcherColor,fontWeight:600}}>{pkp}%</span> <span style={{color:"#484f58"}}>({pitcherRating})</span> — league avg ~21.8%</div>
+                              )}
+                              {lkp != null && (
+                                <div>Lineup K%: <span style={{color:lineupColor,fontWeight:600}}>{lkp}%</span> <span style={{color:"#484f58"}}>({lineupRating})</span> — {mlbH2HOpp} batters vs RHP this season</div>
+                              )}
+                              {goldenRule && (
+                                <div style={{color:"#3fb950",marginTop:2}}>⚡ K-Differential golden rule met — both pitcher and lineup above 24%</div>
+                              )}
+                              {wTotal > 0
+                                ? <div style={{marginTop:2}}>{first} has <span style={{color:"#c9d1d9",fontWeight:600}}>{wTotal}</span> career start{wTotal>1?"s":""} vs {mlbH2HOpp}.</div>
+                                : <div style={{marginTop:2}}>No career h2h history vs {mlbH2HOpp} — qualifying on season K rate.</div>
+                              }
+                            </>
+                          );
                         }
                         // Hitter tab
                         if (h2h?.pitcherName) {
@@ -1331,7 +1347,11 @@ function App() {
                               const first = play.playerName.split(" ")[0];
                               const opp = <span style={{color:"#c9d1d9",fontWeight:600}}>{play.opponent}</span>;
                               if (play.stat === "strikeouts") {
-                                return <>{first} qualified based on season K rate vs {opp} — not enough career h2h data to show matchup history yet.</>;
+                                const lkp = play.lineupKPct;
+                                const pkp = play.pitcherKPct;
+                                const lkpStr = lkp != null ? <> Lineup K% <span style={{color:lkp>=24?"#3fb950":"#d29922",fontWeight:600}}>{lkp}%</span>{lkp>=24?" (prime target)":lkp>=22?" (above avg)":""}.</> : null;
+                                const pkpStr = pkp != null ? <> Pitcher K% <span style={{color:pkp>=24?"#3fb950":pkp>=20?"#d29922":"#f78166",fontWeight:600}}>{pkp}%</span>{pkp>=27?" (excellent)":pkp>=24?" (great)":pkp>=22?" (above avg)":""}.</> : null;
+                                return <>{first} qualifies on season K rate vs {opp}.{pkpStr}{lkpStr}{pkp>=24&&lkp>=24?<> <span style={{color:"#3fb950"}}>⚡ Both metrics above 24% — golden rule matchup.</span></>:null}</>;
                               }
                               return <>{first} qualified based on season hit rate vs {opp} — not enough career h2h data to show matchup history yet.</>;
                             })()}
