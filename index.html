@@ -1109,15 +1109,6 @@ function App() {
                                   <div style={{color:"#58a6ff",fontSize:10,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{pct.toFixed(1)}%</div>
                                   <div style={{color:"#484f58",fontSize:10,width:50,flexShrink:0}}>{isMLB ? `'25+'26 (${totalGames}g)` : `${count}/${totalGames}g`}</div>
                                 </div>
-                                {pct25 !== null && (
-                                  <div style={{display:"flex",alignItems:"center",gap:8}}>
-                                    <div style={{flex:1,background:"#21262d",borderRadius:4,height:11,overflow:"hidden"}}>
-                                      <div style={{width:`${pct25}%`,background:"#388bfd",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:pct25>0?2:0}}/>
-                                    </div>
-                                    <div style={{color:"#388bfd",fontSize:10,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{pct25.toFixed(1)}%</div>
-                                    <div style={{color:"#484f58",fontSize:10,width:50,flexShrink:0}}>2026 ({totalGames25}g)</div>
-                                  </div>
-                                )}
                                 {softPct !== null && (
                                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                                     <div style={{flex:1,background:"#21262d",borderRadius:4,height:11,overflow:"hidden"}}>
@@ -1219,7 +1210,6 @@ function App() {
                           {Object.keys(kalshiOdds).length > 0 && <span><span style={{color:"#a855f7",fontWeight:600}}>Purple</span> = Kalshi market</span>}
                           {Object.keys(kalshiOdds).length > 0 && <span><span style={{color:"#3fb950",fontWeight:600}}>+edge</span> / <span style={{color:"#f78166",fontWeight:600}}>−edge</span> vs market</span>}
                           {isMLB && <span><span style={{color:"#58a6ff",fontWeight:600}}>Blue</span> = '25+'26 blend</span>}
-                          {isMLB && totalGames25 > 0 && <span><span style={{color:"#388bfd",fontWeight:600}}>Teal</span> = 2026</span>}
                           {isMLB && mlbH2HLabel && <span><span style={{color:"#3fb950",fontWeight:600}}>Green</span> = {mlbH2HLabel}</span>}</>
                       : Object.keys(kalshiOdds).length > 0
                         ? <span><span style={{color:"#a855f7",fontWeight:600}}>Kalshi</span> = live market odds</span>
@@ -1418,15 +1408,6 @@ function App() {
                             </div>
                             <div style={{color:"#58a6ff",fontSize:11,fontWeight:600,width:38,textAlign:"right",flexShrink:0}}>{play.seasonPct}%</div>
                           </div>
-                          {play.sport === "mlb" && play.pct26 !== null && (
-                            <div style={{display:"flex",alignItems:"center",gap:8}}>
-                              <div style={{width:90,color:"#8b949e",fontSize:10,flexShrink:0}}>2026{play.pct26Games ? ` (${play.pct26Games}g)` : ""}</div>
-                              <div style={{flex:1,background:"#21262d",borderRadius:3,height:8,overflow:"hidden"}}>
-                                <div style={{width:`${play.pct26}%`,background:"#388bfd",height:"100%",borderRadius:3}}/>
-                              </div>
-                              <div style={{color:"#388bfd",fontSize:11,fontWeight:600,width:38,textAlign:"right",flexShrink:0}}>{play.pct26}%</div>
-                            </div>
-                          )}
                           {play.softPct !== null && (
                             <div style={{display:"flex",alignItems:"center",gap:8}}>
                               <div style={{width:90,color:"#8b949e",fontSize:10,flexShrink:0}}>
