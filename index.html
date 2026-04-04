@@ -71,6 +71,96 @@ const STAT_LABEL = {
   passingYards:"PASS YDS", rushingYards:"RUSH YDS", receivingYards:"REC YDS", touchdowns:"TD",
 };
 const SPORT_KEY = { nba:"basketball/nba", nfl:"football/nfl", nhl:"hockey/nhl", mlb:"baseball/mlb" };
+
+const TODAY = new Date().toISOString().slice(0, 10);
+const MOCK_PLAYS = [
+  // ── MLB: Strikeouts ────────────────────────────────────────────────────────
+  {
+    playerName:"Dylan Cease", playerId:656302, sport:"mlb", playerTeam:"SD", position:"SP",
+    opponent:"CLE", oppRank:null, oppMetricValue:null, oppMetricLabel:"vs CLE batters | lineup K% 27.3%", oppMetricUnit:"%",
+    stat:"strikeouts", threshold:6, kalshiPct:78, americanOdds:-130,
+    seasonPct:74.0, blendGames:31, pct25:71.0, pct25Games:28, pct26:83.3, pct26Games:6,
+    softPct:80.0, softGames:10, truePct:77.0, edge:5.2,
+    lineupKPct:27.3, pitcherKPct:26.5, gameDate:TODAY,
+    // → Golden rule: both ≥ 24% ⚡, has h2h history
+  },
+  {
+    playerName:"Corbin Burnes", playerId:669203, sport:"mlb", playerTeam:"BAL", position:"SP",
+    opponent:"OAK", oppRank:null, oppMetricValue:null, oppMetricLabel:"vs OAK batters | lineup K% 25.8%", oppMetricUnit:"%",
+    stat:"strikeouts", threshold:7, kalshiPct:74, americanOdds:-110,
+    seasonPct:76.0, blendGames:29, pct25:75.0, pct25Games:26, pct26:78.0, pct26Games:5,
+    softPct:null, softGames:0, truePct:75.5, edge:4.5,
+    lineupKPct:25.8, pitcherKPct:28.1, gameDate:TODAY,
+    // → Golden rule: both ≥ 24% ⚡, no h2h history (season rate only)
+  },
+  {
+    playerName:"Zack Wheeler", playerId:554430, sport:"mlb", playerTeam:"PHI", position:"SP",
+    opponent:"MIA", oppRank:null, oppMetricValue:null, oppMetricLabel:"vs MIA batters | lineup K% 22.1%", oppMetricUnit:"%",
+    stat:"strikeouts", threshold:7, kalshiPct:71, americanOdds:-115,
+    seasonPct:73.0, blendGames:33, pct25:72.0, pct25Games:30, pct26:75.0, pct26Games:4,
+    softPct:66.7, softGames:6, truePct:72.5, edge:4.2,
+    lineupKPct:22.1, pitcherKPct:25.9, gameDate:TODAY,
+    // → Pitcher great (26%), lineup only above avg (22%) — no golden rule
+  },
+  {
+    playerName:"Logan Webb", playerId:657277, sport:"mlb", playerTeam:"SF", position:"SP",
+    opponent:"COL", oppRank:null, oppMetricValue:null, oppMetricLabel:"vs COL batters", oppMetricUnit:"%",
+    stat:"strikeouts", threshold:5, kalshiPct:75, americanOdds:-120,
+    seasonPct:77.0, blendGames:25, pct25:76.0, pct25Games:22, pct26:80.0, pct26Games:5,
+    softPct:75.0, softGames:8, truePct:76.5, edge:4.8,
+    lineupKPct:null, pitcherKPct:21.3, gameDate:TODAY,
+    // → No lineup K% data, pitcher average — h2h present
+  },
+  // ── MLB: Hitter ────────────────────────────────────────────────────────────
+  {
+    playerName:"Freddie Freeman", playerId:518692, sport:"mlb", playerTeam:"LAD", position:"1B",
+    opponent:"ARI", oppRank:3, oppMetricValue:4.85, oppMetricLabel:"ERA allowed",
+    oppMetricUnit:"ERA",
+    stat:"hits", threshold:1, kalshiPct:78, americanOdds:-115,
+    seasonPct:80.0, blendGames:120, pct25:79.0, pct25Games:110, pct26:84.0, pct26Games:19,
+    softPct:83.3, softGames:18, truePct:81.5, edge:4.8,
+    lineupKPct:null, pitcherKPct:null, gameDate:TODAY,
+  },
+  {
+    playerName:"Juan Soto", playerId:665742, sport:"mlb", playerTeam:"NYY", position:"RF",
+    opponent:"BOS", oppRank:null, oppMetricValue:null, oppMetricLabel:"vs Chris Sale",
+    oppMetricUnit:"%",
+    stat:"hits", threshold:1, kalshiPct:76, americanOdds:-108,
+    seasonPct:78.0, blendGames:115, pct25:77.0, pct25Games:105, pct26:81.0, pct26Games:16,
+    softPct:72.7, softGames:11, truePct:77.0, edge:4.6,
+    lineupKPct:null, pitcherKPct:null, gameDate:TODAY,
+    // → h2h explanation vs named pitcher
+  },
+  // ── NBA ─────────────────────────────────────────────────────────────────────
+  {
+    playerName:"Nikola Jokic", playerId:3112335, sport:"nba", playerTeam:"DEN", position:"C",
+    opponent:"CHI", oppRank:2, oppMetricValue:24.1, oppMetricLabel:"PPG allowed to centers",
+    oppMetricUnit:"PPG",
+    stat:"points", threshold:25, kalshiPct:76, americanOdds:-115,
+    seasonPct:82.0, blendGames:68, pct25:null, pct25Games:0, pct26:null, pct26Games:0,
+    softPct:88.9, softGames:9, truePct:84.0, edge:9.3,
+    lineupKPct:null, pitcherKPct:null, gameDate:TODAY,
+  },
+  {
+    playerName:"Trae Young", playerId:4277905, sport:"nba", playerTeam:"ATL", position:"PG",
+    opponent:"WAS", oppRank:1, oppMetricValue:8.7, oppMetricLabel:"AST allowed to guards",
+    oppMetricUnit:"AST",
+    stat:"assists", threshold:8, kalshiPct:75, americanOdds:-112,
+    seasonPct:77.0, blendGames:65, pct25:null, pct25Games:0, pct26:null, pct26Games:0,
+    softPct:84.6, softGames:13, truePct:79.5, edge:6.7,
+    lineupKPct:null, pitcherKPct:null, gameDate:TODAY,
+  },
+  // ── NHL ─────────────────────────────────────────────────────────────────────
+  {
+    playerName:"Auston Matthews", playerId:4024123, sport:"nhl", playerTeam:"TOR", position:"C",
+    opponent:"BUF", oppRank:4, oppMetricValue:3.8, oppMetricLabel:"shots allowed per game",
+    oppMetricUnit:"SOG",
+    stat:"shotsOnGoal", threshold:4, kalshiPct:74, americanOdds:-110,
+    seasonPct:76.0, blendGames:72, pct25:null, pct25Games:0, pct26:null, pct26Games:0,
+    softPct:80.0, softGames:10, truePct:77.0, edge:5.1,
+    lineupKPct:null, pitcherKPct:null, gameDate:TODAY,
+  },
+];
 const SPORT_BADGE_COLOR = { nba:"#58a6ff", nhl:"#a5d8ff", mlb:"#3fb950", nfl:"#f78166" };
 
 function useDebounce(val, ms) {
@@ -249,9 +339,13 @@ function App() {
 
   // Fetch tonight's plays on mount and when testMode toggles
   React.useEffect(() => {
-    const url = testMode ? `${WORKER}/tonight?mock=true` : `${WORKER}/tonight`;
+    if (testMode) {
+      setTonightPlays(MOCK_PLAYS);
+      setTonightLoading(false);
+      return;
+    }
     setTonightLoading(true);
-    fetch(url)
+    fetch(`${WORKER}/tonight`)
       .then(r => r.json())
       .then(data => { setTonightPlays(data.plays || []); setTonightLoading(false); })
       .catch(() => { setTonightPlays([]); setTonightLoading(false); });
@@ -1154,12 +1248,21 @@ function App() {
                 implied ≥70% · edge ≥3%
               </span>
             </div>
-            <a href="#my-picks" className="picks-fab"
-              onClick={e => { e.preventDefault(); const el = document.getElementById("my-picks"); if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 16, behavior:"smooth" }); }}
-              style={{marginLeft:"auto",fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:6,
-                border:"1px solid #30363d",color:"#8b949e",textDecoration:"none",lineHeight:"20px",cursor:"pointer"}}>
-              My Picks ↓
-            </a>
+            <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6}}>
+              <button onClick={() => setTestMode(m => !m)}
+                style={{fontSize:10,padding:"2px 8px",borderRadius:6,cursor:"pointer",
+                  border:`1px solid ${testMode?"#e3b341":"#30363d"}`,
+                  background: testMode?"rgba(227,179,65,0.12)":"transparent",
+                  color: testMode?"#e3b341":"#484f58", fontWeight:600}}>
+                {testMode ? "⚗ mock" : "mock"}
+              </button>
+              <a href="#my-picks" className="picks-fab"
+                onClick={e => { e.preventDefault(); const el = document.getElementById("my-picks"); if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 16, behavior:"smooth" }); }}
+                style={{fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:6,
+                  border:"1px solid #30363d",color:"#8b949e",textDecoration:"none",lineHeight:"20px",cursor:"pointer"}}>
+                My Picks ↓
+              </a>
+            </div>
           </div>
           {tonightLoading ? (
             <div style={{color:"#8b949e",textAlign:"center",padding:52,fontSize:13}}>
