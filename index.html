@@ -1627,9 +1627,9 @@ function App() {
                           <div style={{display:"flex",alignItems:"center",gap:8}}>
                             <div style={{width:110,color:"#8b949e",fontSize:10,flexShrink:0,lineHeight:1.35}}>
                               {play.sport === "mlb" && play.stat === "strikeouts" ? (
-                                <span>{"Strikeout % \u201925+\u201926"}{play.blendGames ? ` (${play.blendGames} games)` : ""}</span>
+                                <span>Hit rate '25+'26{play.blendGames ? ` (${play.blendGames}g)` : ""}</span>
                               ) : play.sport === "mlb" ? (
-                                `\u201925+\u201926${play.blendGames ? ` (${play.blendGames}g)` : ""}`
+                                `'25+'26${play.blendGames ? ` (${play.blendGames}g)` : ""}`
                               ) : `Season rate${play.seasonGames ? ` (${play.seasonGames}g)` : ""}`}
                             </div>
                             <div style={{flex:1,background:"#21262d",borderRadius:3,height:8,overflow:"hidden"}}>
@@ -1652,7 +1652,7 @@ function App() {
                           {play.log5Pct != null && (
                             <div style={{display:"flex",alignItems:"center",gap:8}}>
                               <div style={{width:110,color:"#8b949e",fontSize:10,flexShrink:0,lineHeight:1.35}}>
-                                {`Strikeout % vs strong matchup \u201925+\u201926${play.blendGames ? ` (${play.blendGames} games)` : ""}`}
+                                Matchup proj. (Log5)
                               </div>
                               <div style={{flex:1,background:"#21262d",borderRadius:3,height:8,overflow:"hidden"}}>
                                 <div style={{width:`${play.log5Pct}%`,background:"#d2a8ff",height:"100%",borderRadius:3}}/>
