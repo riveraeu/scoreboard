@@ -339,7 +339,7 @@ function App() {
   const [bankroll, setBankrollState] = React.useState(() => {
     return parseFloat(localStorage.getItem("scoreboard_bankroll") || "1000");
   });
-  const [calcOdds, setCalcOdds] = React.useState("");
+  const [calcOdds, setCalcOdds] = React.useState("-");
   const [showAddPick, setShowAddPick] = React.useState(false);
   const [authToken, setAuthToken] = React.useState(() => localStorage.getItem("sb_token") || null);
   const [authEmail, setAuthEmail] = React.useState(() => localStorage.getItem("sb_email") || null);
@@ -1872,7 +1872,12 @@ function App() {
               <div style={{display:"flex",alignItems:"center",background:"#0d1117",border:"1px solid #30363d",
                 borderRadius:7,overflow:"hidden",flex:"0 0 auto"}}>
                 <input type="text" inputMode="numeric" placeholder="-110" value={calcOdds}
-                  onChange={e => setCalcOdds(e.target.value)}
+                  onChange={e => {
+                    let v = e.target.value;
+                    // Auto-prepend "-" if user types a bare number (no sign)
+                    if (v.length > 0 && v[0] !== "-" && v[0] !== "+") v = "-" + v;
+                    setCalcOdds(v);
+                  }}
                   style={{background:"transparent",border:"none",outline:"none",color:"#c9d1d9",
                     fontSize:14,width:80,padding:"7px 10px",textAlign:"center"}}/>
               </div>
