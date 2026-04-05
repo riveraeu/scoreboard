@@ -1294,6 +1294,19 @@ function App() {
                       // NBA / NHL position-specific DvP
                       if (dvpData?.position) {
                         const statLabel = {points:"scoring",rebounds:"rebounding",assists:"playmaking",threePointers:"3-point shooting",goals:"scoring",shotsOnGoal:"shots on goal"}[safeTab]||safeTab;
+                        const opp = player.opponent;
+                        const rank = player.oppRank;
+                        const metricVal = player.oppMetricValue;
+                        const isStrong = player.playIsStrong || (rank != null && rank <= 5);
+                        // If we have tonight's opponent context (navigated from play card), show specific matchup info
+                        if (opp && rank != null) {
+                          const rankDesc = rank === 1 ? "the most" : rank <= 3 ? "among the most" : rank <= 5 ? "among the most" : "a lot of";
+                          const metricStr = metricVal != null ? ` (${metricVal})` : "";
+                          return <>
+                            {first} faces <span style={{color:"#c9d1d9",fontWeight:600}}>{opp}</span> tonight — they rank <span style={{color:"#f78166",fontWeight:600}}>#{rank}</span> in {statLabel} allowed{metricStr}, giving up {rankDesc} in the league.
+                            {isStrong && <span style={{color:"#3fb950",fontWeight:600}}> ⚡ Strong matchup.</span>}
+                          </>;
+                        }
                         if (wTotal > 0) {
                           const softNames = weakTeamList.slice(0,4).map(t=>t.abbr).join(", ");
                           return <>As a <span style={{color:"#58a6ff",fontWeight:600}}>{dvpData.position}</span>, {first} has {wTotal} game{wTotal>1?"s":""} vs weak {statLabel} defenses{softNames?<> ({softNames})</>:<>.</>} — position-specific matchup data used.</>;
@@ -1512,7 +1525,7 @@ function App() {
                   onMouseLeave={e => e.currentTarget.style.borderColor = "#30363d"}>
                   {/* Header row — click navigates to player card */}
                   <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,cursor:"pointer"}}
-                    onClick={() => selectPlayer({ id: play.playerId, name: play.playerName, team: play.playerTeam, sportKey: SPORT_KEY[play.sport] || "basketball/nba" }, play.stat)}>
+                    onClick={() => selectPlayer({ id: play.playerId, name: play.playerName, team: play.playerTeam, sportKey: SPORT_KEY[play.sport] || "basketball/nba", opponent: play.opponent, oppRank: play.oppRank, oppMetricValue: play.oppMetricValue, oppMetricLabel: play.oppMetricLabel, playIsStrong: isStrongMatchup(play) }, play.stat)}>
                     {/* Headshot */}
                     {headshotUrl && (
                       <img src={headshotUrl} alt={play.playerName}
@@ -2119,7 +2132,7 @@ function App() {
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3,flexWrap:"wrap"}}>
                         {/* Clickable name → opens player card */}
-                        <span onClick={() => selectPlayer({ id: pick.playerId, name: pick.playerName, team: pick.playerTeam, sportKey: SPORT_KEY[pick.sport] || "basketball/nba" }, pick.stat)}
+                        <span onClick={() => selectPlayer({ id: pick.playerId, name: pick.playerName, team: pick.playerTeam, sportKey: SPORT_KEY[pick.sport] || "basketball/nba", opponent: pick.opponent, oppRank: pick.oppRank, oppMetricValue: pick.oppMetricValue, oppMetricLabel: pick.oppMetricLabel }, pick.stat)}
                           style={{color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",textDecoration:"underline",textDecorationColor:"#30363d",textUnderlineOffset:2}}>
                           {pick.playerName}
                         </span>
