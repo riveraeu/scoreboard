@@ -1798,19 +1798,21 @@ function App() {
                                 : kbb != null && kbb >= 14
                                 ? <> He also does a good job limiting walks, adding to his dominance.</>
                                 : null;
+                              const isProjected = play.lineupKPctProjected === true;
                               if (lkp != null && pkp != null) {
                                 const lineupDesc = lkp >= 26 ? "one of the highest strikeout rates in the league" : lkp >= 24 ? "a high strikeout rate" : "an above-average strikeout rate";
-                                const strongMatchup = l5 != null && l5 >= 24;
+                                const strongMatchup = !isProjected && l5 != null && l5 >= 24;
+                                const projectedNote = isProjected ? <span style={{color:"#8b949e",fontSize:10}}> (projected lineup — updates when official lineup posts)</span> : null;
                                 return <>
-                                  {first} is facing {opp}, a lineup with {lineupDesc} — their batters swing and miss at a high clip ({lkp}% K rate).{" "}
+                                  {first} is facing {opp}, a lineup with {lineupDesc} — their batters swing and miss at a high clip ({lkp}% K rate{isProjected ? ", est." : ""}).{" "}
                                   {strongMatchup ? <span style={{color:"#3fb950",fontWeight:600}}>⚡ Strong matchup.</span> : null}{" "}
-                                  {first} is an {pitcherRating} strikeout pitcher ({pkp}% K rate){kbbNote}{expK != null ? <>, projecting around <span style={{color:"#c9d1d9",fontWeight:600}}>~{expK} strikeouts</span> this start</> : null}.{parkNote}
+                                  {first} is an {pitcherRating} strikeout pitcher ({pkp}% K rate){kbbNote}{expK != null ? <>, projecting around <span style={{color:"#c9d1d9",fontWeight:600}}>~{expK} strikeouts</span> this start</> : null}.{parkNote}{projectedNote}
                                 </>;
                               }
                               if (pkp != null) {
                                 return <>{first} is an {pitcherRating} strikeout pitcher ({pkp}% K rate){kbbNote}{expK != null ? <>, projecting around ~{expK} strikeouts this start</> : null} against {opp}.{parkNote}</>;
                               }
-                              // No lineup K data yet — show season + h2h history
+                              // Fallback: no lineup or pitcher K data yet
                               {
                                 const seasonG = play.blendGames || play.seasonGames;
                                 const seasonRate = play.seasonPct;
@@ -1824,7 +1826,7 @@ function App() {
                                   : null;
                                 return <>
                                   {first} has reached {play.threshold}+ strikeouts in <span style={{color:"#3fb950",fontWeight:600}}>{seasonRate}%</span> of his {seasonG} starts this season.{yr25}{h2h}{" "}
-                                  Lineup K data not yet available — projection will update once lineups post.{parkNote}
+                                  Lineup data unavailable — projection will update once lineups post.{parkNote}
                                 </>;
                               }
                             })()}
