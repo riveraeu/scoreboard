@@ -2173,7 +2173,9 @@ function App() {
               })
               .map(pick => {
               const oddsStr = pick.americanOdds >= 0 ? `+${pick.americanOdds}` : `${pick.americanOdds}`;
-              const dateStr = new Date(pick.trackedAt).toLocaleDateString("en-US", { month:"short", day:"numeric" });
+              const dateStr = pick.gameDate
+                ? (() => { const [yr,mo,dy] = pick.gameDate.split("-").map(Number); return new Date(yr, mo-1, dy).toLocaleDateString("en-US", { month:"short", day:"numeric" }); })()
+                : new Date(pick.trackedAt).toLocaleDateString("en-US", { month:"short", day:"numeric" });
               const resultColor = pick.result === "won" ? "#3fb950" : pick.result === "lost" ? "#f78166" : null;
               const units = pick.units ?? 1;
               const stake = (units / 100) * bankroll;
