@@ -38,7 +38,6 @@ const STAT_CONFIGS = {
     points:   { label: "Points",   thresholds: [10,15,20,25,30,35,40],    unit: "PTS" },
     rebounds: { label: "Rebounds", thresholds: [4,6,8,10,12,14,16],       unit: "REB" },
     assists:  { label: "Assists",  thresholds: [2,3,4,5,6,7,8,9,10],      unit: "AST" },
-    pra:      { label: "PRA",      thresholds: [20,25,30,35,40,45,50,60], unit: "PRA" },
     threePointers: { label: "3-Pointers", thresholds: [1,2,3,4,5,6,7], unit: "3PM" },
   },
   "football/nfl": {
@@ -139,6 +138,7 @@ const MOCK_PLAYS = [
     stat:"points", threshold:25, kalshiPct:76, americanOdds:-115,
     seasonPct:82.0, blendGames:68, pct25:null, pct25Games:0, pct26:null, pct26Games:0,
     softPct:88.9, softGames:9, truePct:84.0, edge:9.3,
+    recentAvg:27.3, dvpFactor:1.22, projectedStat:33.3,
     lineupKPct:null, pitcherKPct:null, gameDate:TODAY,
   },
   {
@@ -148,6 +148,7 @@ const MOCK_PLAYS = [
     stat:"assists", threshold:8, kalshiPct:75, americanOdds:-112,
     seasonPct:77.0, blendGames:65, pct25:null, pct25Games:0, pct26:null, pct26Games:0,
     softPct:84.6, softGames:13, truePct:79.5, edge:6.7,
+    recentAvg:9.7, dvpFactor:1.18, projectedStat:11.4,
     lineupKPct:null, pitcherKPct:null, gameDate:TODAY,
   },
   // ── NHL ─────────────────────────────────────────────────────────────────────
@@ -174,13 +175,13 @@ function useDebounce(val, ms) {
 
 function AddPickModal({ onClose, onAdd }) {
   const SPORT_STATS = {
-    nba: ["points","rebounds","assists","threePointers","pra"],
+    nba: ["points","rebounds","assists","threePointers"],
     mlb: ["hits","homeRuns","rbi","totalBases","strikeouts"],
     nfl: ["passingYards","rushingYards","receivingYards","receptions","completions","attempts"],
     nhl: ["shotsOnGoal","points","saves"],
   };
   const STAT_LABELS = {
-    points:"Points", rebounds:"Rebounds", assists:"Assists", threePointers:"3-Pointers", pra:"PRA",
+    points:"Points", rebounds:"Rebounds", assists:"Assists", threePointers:"3-Pointers",
     hits:"Hits", homeRuns:"Home Runs", rbi:"RBI", totalBases:"Total Bases", strikeouts:"Strikeouts",
     passingYards:"Pass Yards", rushingYards:"Rush Yards", receivingYards:"Rec Yards",
     receptions:"Receptions", completions:"Completions", attempts:"Attempts",
@@ -607,9 +608,7 @@ function App() {
         if (pts !== undefined) { result.points?.push(pts); gs.points = pts; }
         if (reb !== undefined) { result.rebounds?.push(reb); gs.rebounds = reb; }
         if (ast !== undefined) { result.assists?.push(ast); gs.assists = ast; }
-        if (result.pra && pts !== undefined && reb !== undefined && ast !== undefined) {
-          const pra = pts + reb + ast; result.pra.push(pra); gs.pra = pra;
-        }
+
         const tpm = lv("3PT");
         if (tpm !== undefined) { result.threePointers?.push(tpm); gs.threePointers = tpm; }
       }
@@ -1284,6 +1283,7 @@ function App() {
             const isStrongMatchup = play => {
               if (play.sport === "mlb" && play.stat === "strikeouts") return play.log5Avg != null && play.log5Avg >= 24;
               if (play.sport === "mlb") return play.softPct != null;
+              if (play.sport === "nba") return play.oppRank != null && play.oppRank <= 5 && (play.projectedStat == null || play.projectedStat >= play.threshold);
               return play.oppRank != null && play.oppRank <= 5;
             };
             const untrackedPlays = (tonightPlays || []).filter(play => {
@@ -1527,37 +1527,52 @@ function App() {
                             })()}
                           </div>
                         )}
-                        {/* Matchup explanation — team ranking (non-MLB h2h plays) */}
+                        {/* Matchup explanation — team ranking (DVP-based plays) */}
                         {play.oppRank && (
                           <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.5}}>
                             {(() => {
                               const first = play.playerName.split(" ")[0];
                               const opp = <span style={{color:"#c9d1d9",fontWeight:600}}>{play.opponent}</span>;
-                              const metricStr = play.oppMetricValue ? ` (${play.oppMetricValue}${play.oppMetricUnit ? ` ${play.oppMetricUnit}` : ""})` : "";
-                              const rank = <span style={{color:"#f78166",fontWeight:700}}>{ordinal(play.oppRank)} in {play.oppMetricLabel || "PPG allowed"}{metricStr}</span>;
+                              const metricStr = play.oppMetricValue ? ` (${play.oppMetricValue} ${play.oppMetricUnit || ""})` : "";
+                              const rank = <span style={{color:"#f78166",fontWeight:700}}>{ordinal(play.oppRank)}-worst</span>;
                               const hitRate = <span style={{color:"#3fb950",fontWeight:600}}>{play.softPct}%</span>;
                               const games = play.softGames ? ` (${play.softGames} games)` : "";
-                              const contextKey = `${play.sport}|${play.stat}`;
+                              const proj = play.projectedStat;
+                              const recent = play.recentAvg;
+                              const dvp = play.dvpFactor;
+
+                              if (play.sport === "nba") {
+                                const statContext = {
+                                  points:       "their defense breaks down in the paint and on the perimeter — they give up the most points in the league",
+                                  rebounds:     "they shoot at a low clip and struggle on the offensive glass, creating more rebound opportunities for opponents",
+                                  assists:      "their help defense is porous — they allow the ball to move freely and give up the most open looks",
+                                  threePointers:"they surrender the most 3-point volume in the league — shooters get open looks all night",
+                                }[play.stat] || "they rank among the weakest defenses in the league for this stat";
+                                const projLine = proj != null
+                                  ? <> Based on {first}'s recent output{recent != null ? <> ({recent} avg last 10 games)</> : ""} and {opp}'s {Math.round((dvp - 1) * 100)}% above-average defensive generosity, the model projects <span style={{color:"#c9d1d9",fontWeight:700}}>~{proj}</span> tonight.</>
+                                  : null;
+                                return <>
+                                  {opp} ranks {rank} in {play.oppMetricLabel || "this stat"}{metricStr} — {statContext}.{projLine}
+                                  {play.softPct !== null && <> {first} has hit {play.threshold}+ {STAT_FULL[play.stat] || play.stat} in {hitRate} of games vs weak matchups{games}.</>}
+                                </>;
+                              }
+
+                              // NHL / NFL
                               const context = {
-                                "nba|points":         <>one of the league's softest defenses for scoring.</>,
-                                "nba|rebounds":       <>one of the league's softest defenses for rebounding — they give up the most boards per game.</>,
-                                "nba|assists":        <>one of the league's softest defenses for playmaking — they allow the most assisted baskets per game.</>,
-                                "nba|threePointers":  <>one of the league's softest defenses from deep — they surrender the most made 3s per game.</>,
-                                "nhl|goals":          <>one of the weakest defensive teams in the NHL — they allow the most goals per game.</>,
-                                "nhl|assists":        <>one of the weakest defensive teams in the NHL — they allow the most goals per game, creating more scoring chances.</>,
-                                "nhl|points":         <>one of the weakest defensive teams in the NHL — they allow the most goals per game.</>,
-                                "nhl|shotsOnGoal":    <>one of the teams that allows the most shots on goal per game in the NHL.</>,
-                                "mlb|hits":           <>one of the easiest pitching matchups in the league — their staff has a high ERA this season.</>,
-                                "mlb|homeRuns":       <>one of the easiest pitching matchups in the league — their staff gives up the most extra-base hits.</>,
-                                "mlb|rbi":            <>one of the easiest pitching matchups in the league — their staff allows the most runs per game.</>,
-                                "mlb|strikeouts":     <>a lineup that strikes out at a high rate — a favorable matchup for pitcher K props.</>,
-                                "mlb|totalBases":     <>one of the easiest pitching matchups in the league — their staff allows lots of base hits.</>,
-                                "nfl|passingYards":   <>one of the softest defenses against the pass — they allow the most passing yards per game.</>,
-                                "nfl|rushingYards":   <>one of the softest defenses against the run — they allow the most rushing yards per game.</>,
-                                "nfl|receivingYards": <>one of the softest defenses in coverage — they allow the most receiving yards per game.</>,
-                                "nfl|touchdowns":     <>one of the softest defenses in the red zone — they allow the most passing yards and TDs per game.</>,
-                              }[contextKey] || <>one of the weakest defenses for this stat.</>;
-                              return <>{opp} ranks {rank} this season — {context}{play.softPct !== null ? <> {first} has hit {play.threshold}+ {STAT_FULL[play.stat] || play.stat} in {hitRate} of games vs weak matchups{games}.</> : <> This is based on lineup tendencies — not enough career h2h data yet.</>}</>;
+                                "nhl|goals":          "one of the weakest defensive teams in the NHL — they allow the most goals per game",
+                                "nhl|assists":        "one of the weakest defensive teams in the NHL — they allow the most goals per game, creating more scoring chances",
+                                "nhl|points":         "one of the weakest defensive teams in the NHL — they allow the most goals per game",
+                                "nhl|shotsOnGoal":    "one of the teams that allows the most shots on goal per game in the NHL",
+                                "mlb|hits":           "one of the easiest pitching matchups in the league — their staff has a high ERA this season",
+                                "mlb|homeRuns":       "one of the easiest pitching matchups in the league — their staff gives up the most extra-base hits",
+                                "mlb|rbi":            "one of the easiest pitching matchups in the league — their staff allows the most runs per game",
+                                "mlb|totalBases":     "one of the easiest pitching matchups in the league — their staff allows lots of base hits",
+                                "nfl|passingYards":   "one of the softest defenses against the pass — they allow the most passing yards per game",
+                                "nfl|rushingYards":   "one of the softest defenses against the run — they allow the most rushing yards per game",
+                                "nfl|receivingYards": "one of the softest defenses in coverage — they allow the most receiving yards per game",
+                                "nfl|touchdowns":     "one of the softest defenses in the red zone — they allow the most passing yards and TDs per game",
+                              }[`${play.sport}|${play.stat}`] || "one of the weakest defenses for this stat";
+                              return <>{opp} ranks {rank} in {play.oppMetricLabel || "this stat"}{metricStr} this season — {context}.{play.softPct !== null ? <> {first} has hit {play.threshold}+ {STAT_FULL[play.stat] || play.stat} in {hitRate} of games vs weak matchups{games}.</> : <> This is based on defensive tendencies — not enough career h2h data yet.</>}</>;
                             })()}
                           </div>
                         )}
