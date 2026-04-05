@@ -1408,7 +1408,7 @@ function App() {
                             </div>
                             <div style={{color:"#58a6ff",fontSize:11,fontWeight:600,width:38,textAlign:"right",flexShrink:0}}>{play.seasonPct}%</div>
                           </div>
-                          {play.softPct !== null && (
+                          {play.softPct !== null && play.stat !== "strikeouts" && (
                             <div style={{display:"flex",alignItems:"center",gap:8}}>
                               <div style={{width:90,color:"#8b949e",fontSize:10,flexShrink:0}}>
                                 {play.oppRank === null ? (play.oppMetricLabel || "").replace(/\s*\(\d+g\)\s*$/, "") : "vs weak matchup"}
@@ -1422,7 +1422,7 @@ function App() {
                           )}
                           {play.log5Pct != null && (
                             <div style={{display:"flex",alignItems:"center",gap:8}}>
-                              <div style={{width:90,color:"#8b949e",fontSize:10,flexShrink:0}}>Log5 hit rate</div>
+                              <div style={{width:90,color:"#8b949e",fontSize:10,flexShrink:0}}>Matchup proj.</div>
                               <div style={{flex:1,background:"#21262d",borderRadius:3,height:8,overflow:"hidden"}}>
                                 <div style={{width:`${play.log5Pct}%`,background:"#d2a8ff",height:"100%",borderRadius:3}}/>
                               </div>
@@ -1430,8 +1430,8 @@ function App() {
                             </div>
                           )}
                         </div>
-                        {/* Matchup explanation — h2h (MLB player-vs-pitcher/batters) */}
-                        {play.oppRank === null && play.oppMetricLabel && play.softPct !== null && (
+                        {/* Matchup explanation — h2h (MLB non-strikeout player-vs-pitcher) */}
+                        {play.oppRank === null && play.oppMetricLabel && play.softPct !== null && play.stat !== "strikeouts" && (
                           <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.5}}>
                             {(() => {
                               const first = play.playerName.split(" ")[0];
@@ -1439,33 +1439,55 @@ function App() {
                               const hitRate = <span style={{color:"#3fb950",fontWeight:600}}>{play.softPct}%</span>;
                               const games = play.softGames ? ` (${play.softGames} games)` : "";
                               const statFull = STAT_FULL[play.stat] || play.stat;
-                              if (play.stat === "strikeouts") {
-                                return <>{first} has recorded {play.threshold}+ Ks in {hitRate} of career starts {matchup} — historically a strong K matchup for this pitcher{games}.</>;
-                              }
                               return <>{first} has recorded {play.threshold}+ {statFull} in {hitRate} of career games {matchup}{games}.</>;
                             })()}
                           </div>
                         )}
-                        {/* Matchup explanation — no h2h data, no ranking (e.g. new pitcher) */}
-                        {play.oppRank === null && (!play.oppMetricLabel || play.softPct === null) && play.sport === "mlb" && (
+                        {/* Matchup explanation — MLB strikeout props (unified, no h2h) */}
+                        {play.stat === "strikeouts" && play.sport === "mlb" && (
+                          <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.5}}>
+                            {(() => {
+                              const first = play.playerName.split(" ")[0];
+                              const opp   = <span style={{color:"#c9d1d9",fontWeight:600}}>{play.opponent}</span>;
+                              const pkp   = play.pitcherKPct;
+                              const kbb   = play.pitcherKBBPct;
+                              const lkp   = play.lineupKPct;
+                              const expK  = play.expectedKs;
+                              const pf    = play.parkFactor;
+                              const l5    = play.log5Avg;
+                              const parkNote = pf != null && Math.abs(pf - 1.0) >= 0.03
+                                ? <> The venue is a <span style={{color:"#c9d1d9"}}>{pf > 1 ? "strikeout-friendly" : "strikeout-suppressing"}</span> park ({pf > 1 ? "+" : ""}{((pf-1)*100).toFixed(0)}%).</>
+                                : null;
+                              const pitcherRating = pkp != null
+                                ? (pkp >= 28 ? "elite" : pkp >= 25 ? "above-average" : pkp >= 22 ? "solid" : "average")
+                                : null;
+                              const kbbNote = kbb != null && kbb >= 18
+                                ? <> He also limits free passes — his strikeout-to-walk dominance is among the best in the game.</>
+                                : kbb != null && kbb >= 14
+                                ? <> He also does a good job limiting walks, adding to his dominance.</>
+                                : null;
+                              if (lkp != null && pkp != null) {
+                                const lineupDesc = lkp >= 26 ? "one of the highest strikeout rates in the league" : lkp >= 24 ? "a high strikeout rate" : "an above-average strikeout rate";
+                                const strongMatchup = l5 != null && l5 >= 24;
+                                return <>
+                                  {first} is facing {opp}, a lineup with {lineupDesc} — their batters swing and miss at a high clip ({lkp}% K rate).{" "}
+                                  {strongMatchup ? <span style={{color:"#3fb950",fontWeight:600}}>⚡ Strong matchup.</span> : null}{" "}
+                                  {first} is an {pitcherRating} strikeout pitcher ({pkp}% K rate){kbbNote}{expK != null ? <>, projecting around <span style={{color:"#c9d1d9",fontWeight:600}}>~{expK} strikeouts</span> this start</> : null}.{parkNote}
+                                </>;
+                              }
+                              if (pkp != null) {
+                                return <>{first} is an {pitcherRating} strikeout pitcher ({pkp}% K rate){kbbNote}{expK != null ? <>, projecting around ~{expK} strikeouts this start</> : null} against {opp}.{parkNote}</>;
+                              }
+                              return <>{first} qualifies against {opp} based on a favorable strikeout matchup.{parkNote}</>;
+                            })()}
+                          </div>
+                        )}
+                        {/* Matchup explanation — no h2h data, no ranking (non-strikeout MLB) */}
+                        {play.oppRank === null && (!play.oppMetricLabel || play.softPct === null) && play.sport === "mlb" && play.stat !== "strikeouts" && (
                           <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.5}}>
                             {(() => {
                               const first = play.playerName.split(" ")[0];
                               const opp = <span style={{color:"#c9d1d9",fontWeight:600}}>{play.opponent}</span>;
-                              if (play.stat === "strikeouts") {
-                                const l5  = play.log5Avg;
-                                const expK= play.expectedKs;
-                                const pkp = play.pitcherKPct;
-                                const kbb = play.pitcherKBBPct;
-                                const lkp = play.lineupKPct;
-                                const pf  = play.parkFactor;
-                                const parkNote = pf != null && Math.abs(pf - 1.0) >= 0.03 ? ` (${pf > 1 ? "K-friendly" : "K-suppressing"} park, ${pf > 1 ? "+" : ""}${((pf-1)*100).toFixed(0)}%)` : "";
-                                if (l5 != null) {
-                                  const l5Color = l5 >= 28 ? "#3fb950" : l5 >= 24 ? "#d29922" : "#8b949e";
-                                  return <>{first} qualifies vs {opp}. <span style={{color:l5Color,fontWeight:600}}>Log5 K%: {l5}%</span>{expK != null ? ` → ~${expK} expected Ks/start` : ""}{parkNote}.{l5>=24?<> <span style={{color:"#3fb950"}}>⚡ Strong matchup</span></>:null} Pitcher K%: <span style={{fontWeight:600}}>{pkp}%</span>{kbb != null ? `, K-BB%: ${kbb}%` : ""}. Lineup K%: <span style={{fontWeight:600}}>{lkp ?? "n/a"}%</span>.</>;
-                                }
-                                return <>{first} qualifies vs {opp}{pkp ? <> — pitcher K%: <span style={{fontWeight:600}}>{pkp}%</span></> : null}{lkp ? <>, lineup K%: <span style={{fontWeight:600}}>{lkp}%</span></> : null}{parkNote}.</>;
-                              }
                               return <>{first} qualified based on season hit rate vs {opp} — not enough career h2h data to show matchup history yet.</>;
                             })()}
                           </div>
