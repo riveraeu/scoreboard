@@ -944,7 +944,7 @@ function App() {
         <div style={{display:"flex",alignItems:"center",gap:14}}>
           <img
             key={player.id}
-            src={WORKER + "/headshot?id=" + player.id + "&sport=" + sport.split("/")[1]}
+            src={`https://a.espncdn.com/i/headshots/${sport.split("/")[1]}/players/full/${player.id}.png`}
             alt={player.name}
             style={{width:50,height:50,borderRadius:12,objectFit:"cover",background:"#161b22",flexShrink:0}}
           />
@@ -1253,6 +1253,7 @@ function App() {
 
                           const pkpRating = pkp == null ? null : pkp >= 27 ? "Excellent" : pkp >= 24 ? "Great" : pkp >= 22 ? "Above Avg" : pkp >= 20 ? "Average" : "Below Avg";
                           const pkpColor  = pkp == null ? "#8b949e" : pkp >= 24 ? "#3fb950" : pkp >= 20 ? "#d29922" : "#f78166";
+                          const lkpProjected = h2h?.lineupKPctProjected === true;
                           const lkpRating = lkp == null ? null : lkp >= 30 ? "Elite" : lkp >= 25 ? "Prime" : lkp >= 22 ? "Above avg" : "Below avg";
                           const lkpColor  = lkp == null ? "#8b949e" : lkp >= 25 ? "#3fb950" : lkp >= 22 ? "#d29922" : "#8b949e";
                           const kbbRating = kbb == null ? null : kbb >= 18 ? "Elite" : kbb >= 12 ? "Strong" : kbb >= 6 ? "Average" : "Weak";
@@ -1272,7 +1273,7 @@ function App() {
                               <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
                                 {pkp != null && <span>Pitcher K%: <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span> <span style={{color:"#484f58"}}>({pkpRating})</span></span>}
                                 {kbb != null && <span>K-BB%: <span style={{color:kbbColor,fontWeight:600}}>{kbb}%</span> <span style={{color:"#484f58"}}>({kbbRating})</span></span>}
-                                {lkp != null && <span>Lineup K%: <span style={{color:lkpColor,fontWeight:600}}>{lkp}%</span> <span style={{color:"#484f58"}}>({lkpRating})</span></span>}
+                                {lkp != null && <span>Lineup K%: <span style={{color:lkpColor,fontWeight:600}}>{lkp}%</span> <span style={{color:"#484f58"}}>({lkpRating}{lkpProjected ? ", est." : ""})</span></span>}
                               </div>
                               {parkNote && <div style={{color:"#484f58",marginTop:2}}>Park factor: {pf > 1 ? "+" : ""}{((pf - 1)*100).toFixed(0)}% ({pf > 1 ? "K-friendly" : "K-suppressing"} venue)</div>}
                               {wTotal > 0
