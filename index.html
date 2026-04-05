@@ -1083,6 +1083,23 @@ function App() {
         // Explanation shows whenever dvp data is loaded — even for pitchers with 0 starts this season
         const showExplanation = dvpData && !loading && !error && (mlbH2HOpp || dvpData.position);
 
+        // Tonight plays for this player — keyed by "stat|threshold" for consistent truePct/Kalshi
+        const tonightPlayerMap = {};
+        if (tonightPlays && player) {
+          for (const p of tonightPlays) {
+            if (p.playerId === player.id || p.playerName === player.name) {
+              tonightPlayerMap[`${p.stat}|${p.threshold}`] = p;
+            }
+          }
+        }
+        // Tab-specific opponent rank from dvpData.rankMaps (NBA only)
+        const tabRankEntry = (!isMLB && dvpData?.rankMaps?.[safeTab] && player?.opponent)
+          ? (dvpData.rankMaps[safeTab][player.opponent] || null)
+          : null;
+        const tabOppRank = tabRankEntry?.rank ?? player?.oppRank ?? null;
+        const tabOppMetricValue = tabRankEntry?.value ?? player?.oppMetricValue ?? null;
+        const tabOppMetricLabel = tabRankEntry?.label ?? player?.oppMetricLabel ?? null;
+
         return (
           <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:12,padding:"20px 22px"}}>
             {loading ? (
@@ -1148,15 +1165,20 @@ function App() {
                     const softPct = isUnder ? (softPctRaw !== null ? 100 - softPctRaw : null) : softPctRaw;
                     const pct25Raw = (isMLB && totalGames25 >= 5) ? (rates25Map[t] ?? null) : null;
                     const pct25 = isUnder ? (pct25Raw !== null ? 100 - pct25Raw : null) : pct25Raw;
+                    // Prefer tonight endpoint's pre-computed truePct when available (same pipeline as play card)
+                    const tonightPlay = tonightPlayerMap[`${safeTab}|${t}`];
                     const truePct = (() => {
+                      if (tonightPlay && !isUnder) return tonightPlay.truePct;
                       if (isMLB) {
                         const parts = [pct, ...(pct25 !== null ? [pct25] : []), ...(softPct !== null ? [softPct] : [])];
                         return parts.length > 1 ? parts.reduce((a, b) => a + b, 0) / parts.length : null;
                       }
                       return softPct !== null ? (pct + softPct) / 2 : null;
                     })();
-                    // For Kalshi: "under" market implied = 100 - over implied
-                    const kRaw = kalshiOdds[t];
+                    // Prefer tonight endpoint's Kalshi data when available; fall back to live fetch
+                    const kRawLocal = kalshiOdds[t];
+                    const kTonightRaw = (tonightPlay && !isUnder) ? { pct: tonightPlay.kalshiPct, americanOdds: tonightPlay.americanOdds } : null;
+                    const kRaw = kTonightRaw || kRawLocal;
                     const k = (kRaw && isUnder) ? { ...kRaw, pct: 100 - kRaw.pct, americanOdds: kRaw.pct >= 50 ? Math.round(((kRaw.pct) / (100 - kRaw.pct)) * 100) : -Math.round(((100 - kRaw.pct) / kRaw.pct) * 100) } : kRaw;
                     const oddsStr = k ? (k.americanOdds >= 0 ? `+${k.americanOdds}` : `${k.americanOdds}`) : null;
                     const edge = (truePct !== null && k) ? truePct - k.pct : null;
@@ -1347,67 +1369,75 @@ function App() {
                       // NBA / NHL position-specific DvP
                       if (dvpData?.position) {
                         const opp = player.opponent;
-                        const rank = player.oppRank;
-                        const metricVal = player.oppMetricValue;
-                        const metricUnit = player.oppMetricUnit;
                         const statLabel = {points:"scoring",rebounds:"rebounding",assists:"playmaking",threePointers:"3-point shooting",goals:"scoring",shotsOnGoal:"shots on goal"}[safeTab]||safeTab;
 
-                        // Rich explanation when navigated from a play card (has full context)
-                        if (opp && rank != null && player.playSport) {
+                        // Use tab-specific rank from dvpData.rankMaps when available, else fall back to play's rank
+                        const rank = tabOppRank;
+                        const metricVal = tabOppMetricValue;
+                        const metricUnit = tabRankEntry?.unit ?? player?.oppMetricUnit;
+
+                        // Find the tonight play matching current tab for proj/recent/dvpFactor
+                        // Prefer the play for the exact threshold shown; fall back to player-level fields
+                        const tonightTabPlay = Object.values(tonightPlayerMap).find(p => p.stat === safeTab) || null;
+                        const proj = tonightTabPlay?.projectedStat ?? player.projectedStat ?? null;
+                        const recent = tonightTabPlay?.recentAvg ?? player.recentAvg ?? null;
+                        const dvpFactor = tonightTabPlay?.dvpFactor ?? player.dvpFactor ?? null;
+
+                        // Soft matchup hit rate — use tonight data for the play's threshold, else compute locally
+                        const tabTonightPlay = tonightPlayerMap[`${safeTab}|${player.playThreshold}`] || tonightTabPlay;
+                        const softPctDisplay = tabTonightPlay?.softPct ?? (dvpMap[player.playThreshold]?.wPct ?? null);
+                        const softGamesDisplay = tabTonightPlay?.softGames ?? wTotal;
+                        const thresholdDisplay = tabTonightPlay?.threshold ?? player.playThreshold;
+
+                        // Rich explanation when we have opponent context
+                        if (opp && rank != null) {
                           const metricStr = metricVal != null ? ` (${metricVal}${metricUnit ? " "+metricUnit : ""})` : "";
                           const oppEl = <span style={{color:"#c9d1d9",fontWeight:600}}>{opp}</span>;
                           const rankEl = <span style={{color:"#f78166",fontWeight:700}}>{ordinal(rank)}-worst</span>;
-                          const hitRate = player.playSoftPct != null ? <span style={{color:"#3fb950",fontWeight:600}}>{player.playSoftPct}%</span> : null;
-                          const games = player.playSoftGames ? ` (${player.playSoftGames} games)` : "";
-                          const proj = player.projectedStat;
-                          const recent = player.recentAvg;
-                          const dvp = player.dvpFactor;
+                          const hitRate = softPctDisplay != null ? <span style={{color:"#3fb950",fontWeight:600}}>{softPctDisplay.toFixed ? softPctDisplay.toFixed(1) : softPctDisplay}%</span> : null;
+                          const games = softGamesDisplay ? ` (${softGamesDisplay} games)` : "";
+                          const isNBA = sport === "basketball/nba";
+                          const isNHL = sport === "hockey/nhl";
 
-                          if (player.playSport === "nba") {
-                            const r = rank;
-                            const rankDesc = r === 1 ? "the most" : r <= 3 ? "among the most" : "a lot of";
+                          if (isNBA) {
+                            const rankDesc = rank === 1 ? "the most" : rank <= 3 ? "among the most" : "a lot of";
                             const statContext = {
                               points:       `their defense breaks down in the paint and on the perimeter — they give up ${rankDesc} points in the league`,
                               rebounds:     "they shoot at a low clip and struggle on the offensive glass, creating more rebound opportunities for opponents",
                               assists:      `their help defense is porous — they allow the ball to move freely and give up ${rankDesc} open looks`,
                               threePointers:`they surrender ${rankDesc} 3-point volume in the league — shooters get open looks all night`,
                             }[safeTab] || "they rank among the weakest defenses in the league for this stat";
-                            const dvpPct = dvp != null && dvp > 1 ? Math.round((dvp - 1) * 100) : null;
-                            const projLine = proj != null && dvp != null
+                            const dvpPct = dvpFactor != null && dvpFactor > 1 ? Math.round((dvpFactor - 1) * 100) : null;
+                            const projLine = proj != null && dvpFactor != null
                               ? <> Based on {first}'s recent output{recent != null ? <> ({recent} avg last 10 games)</> : ""}{dvpPct != null ? <> and {oppEl}'s <span style={{color:"#f78166"}}>{dvpPct}% above-average</span> defensive generosity</> : ""}, the model projects <span style={{color:"#c9d1d9",fontWeight:700}}>~{proj}</span> tonight.</>
                               : null;
                             return <>
-                              {oppEl} ranks {rankEl} in {player.oppMetricLabel || statLabel}{metricStr} — {statContext}.{projLine}
-                              {hitRate && <> {first} has hit {player.playThreshold}+ {STAT_FULL[safeTab] || safeTab} in {hitRate} of games vs weak matchups{games}.</>}
+                              {oppEl} ranks {rankEl} in {tabOppMetricLabel || statLabel}{metricStr} — {statContext}.{projLine}
+                              {hitRate && thresholdDisplay && <> {first} has hit {thresholdDisplay}+ {STAT_FULL[safeTab] || safeTab} in {hitRate} of games vs weak matchups{games}.</>}
                             </>;
                           }
 
-                          if (player.playSport === "nhl") {
-                            const r = rank;
-                            const nhlDesc = r === 1 ? "the most" : r <= 3 ? "among the most" : "a high volume of";
+                          if (isNHL) {
+                            const nhlDesc = rank === 1 ? "the most" : rank <= 3 ? "among the most" : "a high volume of";
                             const nhlContext = {
                               goals:   "their defense leaks goals — they give up shots from dangerous areas and their goaltender is performing below expectations",
                               assists: "their defense gives up high-danger chances, creating open looks for finishers and more assist opportunities for playmakers",
                               points:  `their defense is one of the most porous in the league — they allow ${nhlDesc} shot volume and goals`,
                             }[safeTab] || "they rank among the weakest defensive teams in the NHL";
-                            const dvpPct = dvp != null && dvp > 1 ? Math.round((dvp - 1) * 100) : null;
-                            const projLine = proj != null && dvp != null
+                            const dvpPct = dvpFactor != null && dvpFactor > 1 ? Math.round((dvpFactor - 1) * 100) : null;
+                            const projLine = proj != null && dvpFactor != null
                               ? <> {first} is averaging {recent != null ? <><span style={{color:"#c9d1d9",fontWeight:600}}>{recent}</span> {STAT_FULL[safeTab] || safeTab} per game</> : "at a strong rate"} recently{dvpPct != null ? <>, and {oppEl} allows <span style={{color:"#f78166"}}>{dvpPct}% more</span> than the league average</> : ""} — projecting around <span style={{color:"#c9d1d9",fontWeight:700}}>~{proj}</span> per game this matchup.</>
                               : null;
                             return <>
-                              {oppEl} ranks {rankEl} in {player.oppMetricLabel || "goals allowed"}{metricStr} — {nhlContext}.{projLine}
-                              {hitRate && <> {first} has recorded {player.playThreshold}+ {STAT_FULL[safeTab] || safeTab} in {hitRate} of games vs weak defenses{games}.</>}
+                              {oppEl} ranks {rankEl} in {tabOppMetricLabel || "goals allowed"}{metricStr} — {nhlContext}.{projLine}
+                              {hitRate && thresholdDisplay && <> {first} has recorded {thresholdDisplay}+ {STAT_FULL[safeTab] || safeTab} in {hitRate} of games vs weak defenses{games}.</>}
                             </>;
                           }
-                        }
 
-                        // Fallback: simple context when opened via search (no play data)
-                        if (opp && rank != null) {
-                          const rankDesc = rank === 1 ? "the most" : rank <= 5 ? "among the most" : "a lot of";
-                          const metricStr = metricVal != null ? ` (${metricVal})` : "";
-                          const isStrong = player.playIsStrong || rank <= 5;
+                          // Generic fallback for other sports
+                          const isStrong = rank <= 5;
                           return <>
-                            {first} faces <span style={{color:"#c9d1d9",fontWeight:600}}>{opp}</span> tonight — they rank <span style={{color:"#f78166",fontWeight:600}}>#{rank}</span> in {statLabel} allowed{metricStr}, giving up {rankDesc} in the league.
+                            {first} faces {oppEl} tonight — they rank <span style={{color:"#f78166",fontWeight:600}}>#{rank}</span> in {statLabel} allowed{metricStr}, giving up {rank === 1 ? "the most" : rank <= 5 ? "among the most" : "a lot of"} in the league.
                             {isStrong && <span style={{color:"#3fb950",fontWeight:600}}> ⚡ Strong matchup.</span>}
                           </>;
                         }
