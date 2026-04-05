@@ -312,6 +312,7 @@ function App() {
   const [testMode, setTestMode] = React.useState(false);
   const [strongOnly, setStrongOnly] = React.useState(true);
   const [sportFilter, setSportFilter] = React.useState([]); // empty = all sports
+  const [statFilter, setStatFilter] = React.useState([]);  // empty = all stats
   const [kInfoOpen, setKInfoOpen] = React.useState(false);
   const [playHistory, setPlayHistory] = React.useState([]);
   const [calibration, setCalibration] = React.useState({}); // { "sport:stat": { n, winRate, avgPredicted, corrFactor } }
@@ -1312,6 +1313,28 @@ function App() {
                   {s}
                 </button>;
               })}
+
+              {/* Stat filter pills — only show stats present in current plays */}
+              {(() => {
+                const plays = tonightPlays || [];
+                const statLabels = {points:"PTS",rebounds:"REB",assists:"AST",threePointers:"3PM",goals:"G",shotsOnGoal:"SOG",hits:"H",homeRuns:"HR",hrr:"HRR",strikeouts:"K",totalBases:"TB",passingYards:"PASS",rushingYards:"RUSH",receivingYards:"REC"};
+                const presentStats = [...new Set(plays.map(p => p.stat))].filter(s => statLabels[s]);
+                if (presentStats.length <= 1) return null;
+                return <>
+                  <div style={{width:1,height:14,background:"#30363d",margin:"0 2px"}} />
+                  {presentStats.map(s => {
+                    const active = statFilter.includes(s);
+                    return <button key={s} onClick={() => setStatFilter(prev => prev.includes(s) ? prev.filter(x=>x!==s) : [...prev,s])}
+                      style={{fontSize:10,padding:"2px 7px",borderRadius:6,cursor:"pointer",
+                        border:`1px solid ${active?"#94a3b8":"#30363d"}`,
+                        background: active?"rgba(148,163,184,0.12)":"transparent",
+                        color: active?"#94a3b8":"#484f58", fontWeight:600}}>
+                      {statLabels[s]}
+                    </button>;
+                  })}
+                </>;
+              })()}
+
               <div style={{width:1,height:14,background:"#30363d",margin:"0 2px"}} />
               <button onClick={() => setStrongOnly(m => !m)}
                 style={{fontSize:10,padding:"2px 8px",borderRadius:6,cursor:"pointer",
@@ -1346,6 +1369,7 @@ function App() {
             };
             const visiblePlays = (tonightPlays || []).filter(p => {
               if (sportFilter.length > 0 && !sportFilter.includes(p.sport)) return false;
+              if (statFilter.length > 0 && !statFilter.includes(p.stat)) return false;
               return !strongOnly || isStrongMatchup(p);
             });
             if (visiblePlays.length === 0) return null;
@@ -1454,6 +1478,7 @@ function App() {
               const trackId = `${play.sport || "nba"}|${play.playerName}|${play.stat}|${play.threshold}`;
               if (trackedPlays.some(p => p.id === trackId)) return false;
               if (sportFilter.length > 0 && !sportFilter.includes(play.sport)) return false;
+              if (statFilter.length > 0 && !statFilter.includes(play.stat)) return false;
               if (strongOnly && !isStrongMatchup(play)) return false;
               return true;
             });
@@ -1538,8 +1563,14 @@ function App() {
                           </span>
                         )}
                       </div>
-                      <div style={{color:"#8b949e",fontSize:11,marginTop:2}}>
-                        {play.playerTeam} vs {play.opponent}{play.position ? ` · ${play.position}` : ""}
+                      <div style={{color:"#8b949e",fontSize:11,marginTop:2,display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
+                        <span>{play.playerTeam} vs {play.opponent}{play.position ? ` · ${play.position}` : ""}</span>
+                        {play.isB2B && (
+                          <span title="Back-to-back: played yesterday" style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(248,113,113,0.15)",border:"1px solid #f87171",color:"#f87171"}}>B2B</span>
+                        )}
+                        {play.lowVolume && (
+                          <span title={`Kalshi market: ${play.kalshiVolume ?? 0} contracts traded`} style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(251,191,36,0.12)",border:"1px solid #fbbf24",color:"#fbbf24"}}>low vol</span>
+                        )}
                       </div>
                     </div>
                     <div style={{display:"flex",alignItems:"center",gap:7,flexShrink:0}}>
