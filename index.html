@@ -76,42 +76,42 @@ const MOCK_PLAYS = [
   // ── MLB: Strikeouts ────────────────────────────────────────────────────────
   // Log5 golden rule: pitcher 26.5%, lineup 27.3% → log5 ~31.6%, expectedKs 8.5, K-BB% 18.2
   {
-    playerName:"Dylan Cease", playerId:656302, sport:"mlb", playerTeam:"SD", position:"SP",
+    playerName:"Dylan Cease", playerId:null, sport:"mlb", playerTeam:"SD", position:"SP",
     opponent:"CLE", oppRank:null, oppMetricValue:null, oppMetricLabel:"vs CLE batters", oppMetricUnit:"%",
-    stat:"strikeouts", threshold:6, kalshiPct:78, americanOdds:-130,
+    stat:"strikeouts", threshold:6, kalshiPct:78, americanOdds:-355,
     seasonPct:74.0, blendGames:31, pct25:71.0, pct25Games:28, pct26:83.3, pct26Games:6,
     softPct:80.0, softGames:10, truePct:83.0, edge:5.0,
-    kelly:0.282, ev:0.177, historicalHitRate:80.0, historicalGames:10,
+    kelly:0.227, ev:0.064, historicalHitRate:80.0, historicalGames:10,
     lineupKPct:27.3, pitcherKPct:26.5, pitcherKBBPct:18.2, log5Avg:31.6, log5Pct:96.1, expectedKs:8.5, parkFactor:1.00, gameDate:TODAY,
   },
   // Log5 golden rule, no h2h — pitcher 28.1% (excellent), lineup 25.8%
   {
-    playerName:"Corbin Burnes", playerId:669203, sport:"mlb", playerTeam:"BAL", position:"SP",
+    playerName:"Corbin Burnes", playerId:null, sport:"mlb", playerTeam:"BAL", position:"SP",
     opponent:"OAK", oppRank:null, oppMetricValue:null, oppMetricLabel:"vs OAK batters", oppMetricUnit:"%",
-    stat:"strikeouts", threshold:7, kalshiPct:74, americanOdds:-110,
+    stat:"strikeouts", threshold:7, kalshiPct:74, americanOdds:-285,
     seasonPct:76.0, blendGames:29, pct25:75.0, pct25Games:26, pct26:78.0, pct26Games:5,
     softPct:null, softGames:0, truePct:83.1, edge:9.1,
-    kelly:0.357, ev:0.207, historicalHitRate:null, historicalGames:0,
+    kelly:0.350, ev:0.123, historicalHitRate:null, historicalGames:0,
     lineupKPct:25.8, pitcherKPct:28.1, pitcherKBBPct:20.4, log5Avg:33.1, log5Pct:90.2, expectedKs:8.9, parkFactor:0.97, gameDate:TODAY,
   },
   // Pitcher great (25.9%), lineup only above-avg (22.1%) — no golden rule, Log5 ~27.5%
   {
-    playerName:"Zack Wheeler", playerId:554430, sport:"mlb", playerTeam:"PHI", position:"SP",
+    playerName:"Zack Wheeler", playerId:null, sport:"mlb", playerTeam:"PHI", position:"SP",
     opponent:"MIA", oppRank:null, oppMetricValue:null, oppMetricLabel:"vs MIA batters", oppMetricUnit:"%",
-    stat:"strikeouts", threshold:7, kalshiPct:71, americanOdds:-115,
+    stat:"strikeouts", threshold:7, kalshiPct:71, americanOdds:-245,
     seasonPct:73.0, blendGames:33, pct25:72.0, pct25Games:30, pct26:75.0, pct26Games:4,
-    softPct:66.7, softGames:6, truePct:71.0, edge:4.0,
-    kelly:0.072, ev:0.044, historicalHitRate:66.7, historicalGames:6,
+    softPct:66.7, softGames:6, truePct:75.0, edge:4.0,
+    kelly:0.137, ev:0.056, historicalHitRate:66.7, historicalGames:6,
     lineupKPct:22.1, pitcherKPct:25.9, pitcherKBBPct:14.1, log5Avg:27.5, log5Pct:73.2, expectedKs:7.4, parkFactor:0.96, gameDate:TODAY,
   },
   // Average pitcher (21.3%), no Log5 data — h2h present, park factor in effect (COL = 0.88)
   {
-    playerName:"Logan Webb", playerId:657277, sport:"mlb", playerTeam:"SF", position:"SP",
+    playerName:"Logan Webb", playerId:null, sport:"mlb", playerTeam:"SF", position:"SP",
     opponent:"COL", oppRank:null, oppMetricValue:null, oppMetricLabel:"vs COL batters", oppMetricUnit:"%",
-    stat:"strikeouts", threshold:5, kalshiPct:75, americanOdds:-120,
+    stat:"strikeouts", threshold:5, kalshiPct:75, americanOdds:-300,
     seasonPct:77.0, blendGames:25, pct25:76.0, pct25Games:22, pct26:80.0, pct26Games:5,
-    softPct:75.0, softGames:8, truePct:76.0, edge:4.0,
-    kelly:0.155, ev:0.093, historicalHitRate:75.0, historicalGames:8,
+    softPct:75.0, softGames:8, truePct:79.0, edge:4.0,
+    kelly:0.159, ev:0.053, historicalHitRate:75.0, historicalGames:8,
     lineupKPct:null, pitcherKPct:21.3, pitcherKBBPct:9.8, log5Avg:null, log5Pct:null, expectedKs:null, parkFactor:0.88, gameDate:TODAY,
   },
   // ── MLB: Hitter ────────────────────────────────────────────────────────────
@@ -119,20 +119,20 @@ const MOCK_PLAYS = [
     playerName:"Freddie Freeman", playerId:28163, sport:"mlb", playerTeam:"LAD", position:"1B",
     opponent:"ARI", oppRank:3, oppMetricValue:4.85, oppMetricLabel:"ERA allowed",
     oppMetricUnit:"ERA",
-    stat:"hits", threshold:1, kalshiPct:78, americanOdds:-115,
+    stat:"hits", threshold:1, kalshiPct:78, americanOdds:-355,
     seasonPct:80.0, blendGames:120, pct25:79.0, pct25Games:110, pct26:84.0, pct26Games:19,
-    softPct:83.3, softGames:18, truePct:81.5, edge:4.8,
-    kelly:0.233, ev:0.141, historicalHitRate:83.3, historicalGames:18,
+    softPct:83.3, softGames:18, truePct:81.5, edge:3.5,
+    kelly:0.160, ev:0.045, historicalHitRate:83.3, historicalGames:18,
     lineupKPct:null, pitcherKPct:null, gameDate:TODAY,
   },
   {
     playerName:"Juan Soto", playerId:41011, sport:"mlb", playerTeam:"NYY", position:"RF",
     opponent:"BOS", oppRank:null, oppMetricValue:null, oppMetricLabel:"vs Chris Sale",
     oppMetricUnit:"%",
-    stat:"hits", threshold:1, kalshiPct:76, americanOdds:-108,
+    stat:"hits", threshold:1, kalshiPct:76, americanOdds:-317,
     seasonPct:78.0, blendGames:115, pct25:77.0, pct25Games:105, pct26:81.0, pct26Games:16,
-    softPct:72.7, softGames:11, truePct:77.0, edge:4.6,
-    kelly:0.210, ev:0.127, historicalHitRate:72.7, historicalGames:11,
+    softPct:72.7, softGames:11, truePct:80.0, edge:4.0,
+    kelly:0.168, ev:0.053, historicalHitRate:72.7, historicalGames:11,
     lineupKPct:null, pitcherKPct:null, gameDate:TODAY,
     // → h2h explanation vs named pitcher
   },
@@ -141,22 +141,22 @@ const MOCK_PLAYS = [
     playerName:"Nikola Jokic", playerId:3112335, sport:"nba", playerTeam:"DEN", position:"C",
     opponent:"CHI", oppRank:2, oppMetricValue:24.1, oppMetricLabel:"PPG allowed to centers",
     oppMetricUnit:"PPG",
-    stat:"points", threshold:25, kalshiPct:76, americanOdds:-115,
+    stat:"points", threshold:25, kalshiPct:76, americanOdds:-317,
     seasonPct:82.0, blendGames:68, pct25:null, pct25Games:0, pct26:null, pct26Games:0,
-    softPct:88.9, softGames:9, truePct:84.0, edge:9.3, seasonGames:68,
+    softPct:88.9, softGames:9, truePct:84.0, edge:8.0, seasonGames:68,
     recentAvg:27.3, dvpFactor:1.22, projectedStat:33.3,
-    kelly:0.290, ev:0.176, historicalHitRate:88.9, historicalGames:9,
+    kelly:0.332, ev:0.105, historicalHitRate:88.9, historicalGames:9,
     lineupKPct:null, pitcherKPct:null, gameDate:TODAY,
   },
   {
     playerName:"Trae Young", playerId:4277905, sport:"nba", playerTeam:"ATL", position:"PG",
     opponent:"WAS", oppRank:1, oppMetricValue:8.7, oppMetricLabel:"AST allowed to guards",
     oppMetricUnit:"AST",
-    stat:"assists", threshold:8, kalshiPct:75, americanOdds:-112,
+    stat:"assists", threshold:8, kalshiPct:75, americanOdds:-300,
     seasonPct:77.0, blendGames:65, pct25:null, pct25Games:0, pct26:null, pct26Games:0,
-    softPct:84.6, softGames:13, truePct:79.5, edge:6.7, seasonGames:65,
+    softPct:84.6, softGames:13, truePct:79.5, edge:4.5, seasonGames:65,
     recentAvg:9.7, dvpFactor:1.18, projectedStat:11.4,
-    kelly:0.242, ev:0.147, historicalHitRate:84.6, historicalGames:13,
+    kelly:0.180, ev:0.060, historicalHitRate:84.6, historicalGames:13,
     lineupKPct:null, pitcherKPct:null, gameDate:TODAY,
   },
   // ── NHL ─────────────────────────────────────────────────────────────────────
@@ -164,11 +164,11 @@ const MOCK_PLAYS = [
     playerName:"Auston Matthews", playerId:4024123, sport:"nhl", playerTeam:"TOR", position:"C",
     opponent:"BUF", oppRank:4, oppMetricValue:3.8, oppMetricLabel:"goals allowed per game",
     oppMetricUnit:"GAA",
-    stat:"goals", threshold:1, kalshiPct:74, americanOdds:-110,
+    stat:"goals", threshold:1, kalshiPct:74, americanOdds:-285,
     seasonPct:76.0, blendGames:72, pct25:null, pct25Games:0, pct26:null, pct26Games:0,
-    softPct:80.0, softGames:10, truePct:77.0, edge:5.1, seasonGames:72,
+    softPct:80.0, softGames:10, truePct:77.0, edge:3.0, seasonGames:72,
     recentAvg:0.52, dvpFactor:1.14, projectedStat:0.63,
-    kelly:0.177, ev:0.106, historicalHitRate:80.0, historicalGames:10,
+    kelly:0.114, ev:0.040, historicalHitRate:80.0, historicalGames:10,
     lineupKPct:null, pitcherKPct:null, gameDate:TODAY,
   },
 ];
@@ -312,6 +312,7 @@ function App() {
   const [testMode, setTestMode] = React.useState(false);
   const [strongOnly, setStrongOnly] = React.useState(true);
   const [kInfoOpen, setKInfoOpen] = React.useState(false);
+  const [playHistory, setPlayHistory] = React.useState([]);
   // Tiered unit sizing: combined truePct × edge signal
   // More edge = more conviction the market is wrong = larger unit
   const tierPct = (truePct, edge) => {
@@ -372,6 +373,14 @@ function App() {
       .then(data => { setTonightPlays(data.plays || []); setTonightLoading(false); })
       .catch(() => { setTonightPlays([]); setTonightLoading(false); });
   }, [testMode]);
+
+  // Fetch play history on mount
+  React.useEffect(() => {
+    fetch(`${WORKER}/plays/history`)
+      .then(r => r.json())
+      .then(d => setPlayHistory(d.history || []))
+      .catch(() => {});
+  }, []);
 
   // Persist tracked plays to localStorage only when not logged in (server is source of truth when logged in)
   React.useEffect(() => {
@@ -1371,6 +1380,30 @@ function App() {
                       </div>
                     )}
                   </div>
+                </div>
+              </div>
+            );
+          })()}
+          {/* Play history mini-chart — shown when history data available */}
+          {playHistory.length > 0 && (() => {
+            const maxCount = Math.max(...playHistory.map(h => h.count), 1);
+            return (
+              <div style={{background:"#0d1117",border:"1px solid #21262d",borderRadius:8,padding:"10px 14px",marginBottom:12}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                  <span style={{color:"#484f58",fontSize:10,textTransform:"uppercase",letterSpacing:".5px"}}>Play History</span>
+                  <div style={{flex:1,height:1,background:"#21262d"}}/>
+                  <span style={{color:"#8b949e",fontSize:10}}>{playHistory.length}d avg: {(playHistory.reduce((s,h)=>s+h.count,0)/playHistory.length).toFixed(1)} plays/night</span>
+                </div>
+                <div style={{display:"flex",alignItems:"flex-end",gap:3,height:40}}>
+                  {playHistory.slice().reverse().map((h, i) => {
+                    const barH = Math.max(3, Math.round((h.count / maxCount) * 40));
+                    const isToday = i === playHistory.length - 1;
+                    return (
+                      <div key={h.date} title={`${h.date}: ${h.count} plays, avg edge ${h.avgEdge?.toFixed(1)}%`}
+                        style={{flex:1,height:barH,background: isToday ? "#e3b341" : "#21262d",borderRadius:2,minWidth:4,
+                          border: isToday ? "1px solid #e3b341" : "none"}}/>
+                    );
+                  })}
                 </div>
               </div>
             );
