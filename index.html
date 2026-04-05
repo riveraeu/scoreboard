@@ -312,7 +312,8 @@ function App() {
   const [testMode, setTestMode] = React.useState(false);
   const [strongOnly, setStrongOnly] = React.useState(true);
   const [kInfoOpen, setKInfoOpen] = React.useState(false);
-  const [kellyMult, setKellyMult] = React.useState(0.5);
+  // Tiered unit sizing: 1% (70-80%), 3% (80-93%), 5% (93%+) of bankroll
+  const tierPct = truePct => truePct >= 93 ? 5 : truePct >= 80 ? 3 : 1;
   const kalshiCache = React.useRef({}); // memoize Kalshi fetches by "playerName|sport|stat"
   const [expandedPlays, setExpandedPlays] = React.useState(new Set());
   const [trackedPlays, setTrackedPlays] = React.useState(() => {
@@ -1303,56 +1304,55 @@ function App() {
               return play.oppRank != null && play.oppRank <= 5;
             };
             const visiblePlays = (tonightPlays || []).filter(p => !strongOnly || isStrongMatchup(p));
-            const totalEV = visiblePlays.reduce((s, p) => s + (p.ev || 0), 0);
-            const avgEdge = visiblePlays.length ? visiblePlays.reduce((s, p) => s + (p.edge || 0), 0) / visiblePlays.length : 0;
-            const avgKelly = visiblePlays.length ? visiblePlays.reduce((s, p) => s + (p.kelly || 0), 0) / visiblePlays.length : 0;
-            const unitSize = bankroll * avgKelly * kellyMult;
-            const projectedROI = totalEV * unitSize;
+            if (visiblePlays.length === 0) return null;
+            const tier1 = visiblePlays.filter(p => p.truePct < 80);
+            const tier2 = visiblePlays.filter(p => p.truePct >= 80 && p.truePct < 93);
+            const tier3 = visiblePlays.filter(p => p.truePct >= 93);
+            const totalExposure = tier1.length * bankroll * 0.01 + tier2.length * bankroll * 0.03 + tier3.length * bankroll * 0.05;
+            const avgEdge = visiblePlays.reduce((s, p) => s + (p.edge || 0), 0) / visiblePlays.length;
             const decOdds = p => p.americanOdds >= 0 ? p.americanOdds/100+1 : 100/Math.abs(p.americanOdds)+1;
-            const histROI = visiblePlays.filter(p => p.historicalHitRate != null).map(p => {
+            const totalEV = visiblePlays.reduce((s, p) => {
+              const stake = bankroll * tierPct(p.truePct) / 100;
+              const b = decOdds(p) - 1;
+              return s + stake * (p.truePct/100 * b - (1 - p.truePct/100));
+            }, 0);
+            const histROI = visiblePlays.filter(p => p.historicalHitRate != null && p.historicalGames >= 3).map(p => {
               const b = decOdds(p) - 1;
               return (p.historicalHitRate/100)*b - (1-p.historicalHitRate/100);
             });
             const avgHistROI = histROI.length ? histROI.reduce((a,b)=>a+b,0)/histROI.length*100 : null;
-            if (visiblePlays.length === 0) return null;
             return (
               <div style={{background:"#0d1117",border:"1px solid #21262d",borderRadius:8,padding:"10px 14px",marginBottom:12}}>
-                <div style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
-                  <div style={{display:"flex",alignItems:"center",gap:6}}>
-                    <span style={{color:"#484f58",fontSize:10,textTransform:"uppercase",letterSpacing:".5px"}}>Bankroll</span>
-                    <span style={{color:"#8b949e",fontSize:10}}>$</span>
+                <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+                  {/* Bankroll input */}
+                  <div style={{display:"flex",alignItems:"center",gap:5}}>
+                    <span style={{color:"#484f58",fontSize:10,textTransform:"uppercase",letterSpacing:".5px"}}>Bankroll $</span>
                     <input type="number" value={bankroll} onChange={e => setBankroll(e.target.value)}
                       style={{width:64,background:"#161b22",border:"1px solid #30363d",borderRadius:4,
                         color:"#c9d1d9",fontSize:11,padding:"2px 5px",textAlign:"right"}}/>
                   </div>
-                  <div style={{display:"flex",alignItems:"center",gap:6}}>
-                    <span style={{color:"#484f58",fontSize:10,textTransform:"uppercase",letterSpacing:".5px"}}>Kelly</span>
-                    <select value={kellyMult} onChange={e => setKellyMult(parseFloat(e.target.value))}
-                      style={{background:"#161b22",border:"1px solid #30363d",borderRadius:4,color:"#c9d1d9",fontSize:11,padding:"2px 5px"}}>
-                      <option value="0.25">¼ Kelly</option>
-                      <option value="0.5">½ Kelly</option>
-                      <option value="1.0">Full Kelly</option>
-                    </select>
+                  {/* Tier legend */}
+                  <div style={{display:"flex",gap:8,fontSize:10,color:"#484f58"}}>
+                    <span style={{color: tier1.length ? "#8b949e" : "#333d47"}}>1% ×{tier1.length}</span>
+                    <span style={{color: tier2.length ? "#e3b341" : "#333d47"}}>3% ×{tier2.length}</span>
+                    <span style={{color: tier3.length ? "#3fb950" : "#333d47"}}>5% ×{tier3.length}</span>
                   </div>
                   <div style={{flex:1,height:1,background:"#21262d"}}/>
-                  <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
+                  {/* Stats */}
+                  <div style={{display:"flex",gap:14,flexWrap:"wrap"}}>
                     <div style={{textAlign:"center"}}>
-                      <div style={{color:"#3fb950",fontSize:13,fontWeight:700}}>{visiblePlays.length}</div>
-                      <div style={{color:"#484f58",fontSize:9,textTransform:"uppercase"}}>plays</div>
+                      <div style={{color:"#c9d1d9",fontSize:13,fontWeight:700}}>${totalExposure.toFixed(0)}</div>
+                      <div style={{color:"#484f58",fontSize:9,textTransform:"uppercase"}}>tonight</div>
                     </div>
                     <div style={{textAlign:"center"}}>
                       <div style={{color:"#e3b341",fontSize:13,fontWeight:700}}>{avgEdge.toFixed(1)}%</div>
                       <div style={{color:"#484f58",fontSize:9,textTransform:"uppercase"}}>avg edge</div>
                     </div>
                     <div style={{textAlign:"center"}}>
-                      <div style={{color:"#58a6ff",fontSize:13,fontWeight:700}}>${unitSize.toFixed(0)}</div>
-                      <div style={{color:"#484f58",fontSize:9,textTransform:"uppercase"}}>unit size</div>
-                    </div>
-                    <div style={{textAlign:"center"}}>
                       <div style={{color: totalEV >= 0 ? "#3fb950" : "#f78166",fontSize:13,fontWeight:700}}>
-                        {totalEV >= 0 ? "+" : ""}{(totalEV*100).toFixed(1)}%
+                        {totalEV >= 0 ? "+$" : "-$"}{Math.abs(totalEV).toFixed(0)}
                       </div>
-                      <div style={{color:"#484f58",fontSize:9,textTransform:"uppercase"}}>exp EV</div>
+                      <div style={{color:"#484f58",fontSize:9,textTransform:"uppercase"}}>exp profit</div>
                     </div>
                     {avgHistROI !== null && (
                       <div style={{textAlign:"center"}}>
@@ -1501,24 +1501,32 @@ function App() {
                     <div style={{color:"#a855f7",fontSize:11,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{play.kalshiPct}%</div>
                     <div style={{color:"#6e40c9",fontSize:10,width:38,flexShrink:0}}>({oddsStr})</div>
                   </div>
-                  {/* Kelly / unit sizing row */}
-                  {play.kelly > 0 && (
-                    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
-                      <div style={{flex:1,display:"flex",gap:12,fontSize:10,color:"#484f58"}}>
-                        <span>Kelly: <span style={{color:"#58a6ff",fontWeight:600}}>{(play.kelly * kellyMult * 100).toFixed(1)}%</span></span>
-                        <span>Unit: <span style={{color:"#58a6ff",fontWeight:600}}>${(bankroll * play.kelly * kellyMult).toFixed(0)}</span></span>
-                        {play.historicalHitRate !== null && play.historicalGames >= 3 && (
-                          <span>Hist: <span style={{
-                            color: play.historicalHitRate >= play.truePct ? "#3fb950" : "#f78166",
-                            fontWeight:600
-                          }}>{play.historicalHitRate}%</span><span style={{color:"#333d47"}}> ({play.historicalGames}g)</span></span>
-                        )}
+                  {/* Tier / unit sizing row */}
+                  {(() => {
+                    const tp = tierPct(play.truePct);
+                    const tierColor = tp === 5 ? "#3fb950" : tp === 3 ? "#e3b341" : "#8b949e";
+                    const stake = bankroll * tp / 100;
+                    return (
+                      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
+                        <div style={{flex:1,display:"flex",gap:12,fontSize:10,color:"#484f58"}}>
+                          <span>
+                            <span style={{color:tierColor,fontWeight:700}}>{tp}%</span>
+                            <span style={{color:"#484f58"}}> tier · </span>
+                            <span style={{color:tierColor,fontWeight:600}}>${stake.toFixed(0)}</span>
+                          </span>
+                          {play.historicalHitRate !== null && play.historicalGames >= 3 && (
+                            <span>Hist: <span style={{
+                              color: play.historicalHitRate >= play.truePct ? "#3fb950" : "#f78166",
+                              fontWeight:600
+                            }}>{play.historicalHitRate}%</span><span style={{color:"#333d47"}}> ({play.historicalGames}g)</span></span>
+                          )}
+                        </div>
+                        <div style={{color: play.ev >= 0 ? "#3fb950" : "#f78166", fontSize:10, fontWeight:600, flexShrink:0}}>
+                          {play.ev >= 0 ? "+" : ""}{(play.ev * 100).toFixed(1)}% EV
+                        </div>
                       </div>
-                      <div style={{color: play.ev >= 0 ? "#3fb950" : "#f78166", fontSize:10, fontWeight:600, flexShrink:0}}>
-                        {play.ev >= 0 ? "+" : ""}{(play.ev * 100).toFixed(1)}% EV
-                      </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                   {/* Breakdown toggle */}
                   <div style={{borderTop:"1px solid #21262d",paddingTop:8}}>
                     <button onClick={e => { e.stopPropagation(); setExpandedPlays(s => { const n = new Set(s); n.has(playKey) ? n.delete(playKey) : n.add(playKey); return n; }); }}
