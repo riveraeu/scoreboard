@@ -76,7 +76,7 @@ const MOCK_PLAYS = [
   // ── MLB: Strikeouts ────────────────────────────────────────────────────────
   // Log5 golden rule: pitcher 26.5%, lineup 27.3% → log5 ~31.6%, expectedKs 8.5, K-BB% 18.2
   {
-    playerName:"Dylan Cease", playerId:null, sport:"mlb", playerTeam:"SD", position:"SP",
+    playerName:"Dylan Cease", playerId:"34943", sport:"mlb", playerTeam:"SD", position:"SP",
     opponent:"CLE", oppRank:null, oppMetricValue:null, oppMetricLabel:"vs CLE batters", oppMetricUnit:"%",
     stat:"strikeouts", threshold:6, kalshiPct:78, americanOdds:-355,
     seasonPct:74.0, blendGames:31, pct25:71.0, pct25Games:28, pct26:83.3, pct26Games:6,
@@ -86,7 +86,7 @@ const MOCK_PLAYS = [
   },
   // Log5 golden rule, no h2h — pitcher 28.1% (excellent), lineup 25.8%
   {
-    playerName:"Corbin Burnes", playerId:null, sport:"mlb", playerTeam:"BAL", position:"SP",
+    playerName:"Corbin Burnes", playerId:"39878", sport:"mlb", playerTeam:"BAL", position:"SP",
     opponent:"OAK", oppRank:null, oppMetricValue:null, oppMetricLabel:"vs OAK batters", oppMetricUnit:"%",
     stat:"strikeouts", threshold:7, kalshiPct:74, americanOdds:-285,
     seasonPct:76.0, blendGames:29, pct25:75.0, pct25Games:26, pct26:78.0, pct26Games:5,
@@ -96,7 +96,7 @@ const MOCK_PLAYS = [
   },
   // Pitcher great (25.9%), lineup only above-avg (22.1%) — no golden rule, Log5 ~27.5%
   {
-    playerName:"Zack Wheeler", playerId:null, sport:"mlb", playerTeam:"PHI", position:"SP",
+    playerName:"Zack Wheeler", playerId:"31267", sport:"mlb", playerTeam:"PHI", position:"SP",
     opponent:"MIA", oppRank:null, oppMetricValue:null, oppMetricLabel:"vs MIA batters", oppMetricUnit:"%",
     stat:"strikeouts", threshold:7, kalshiPct:71, americanOdds:-245,
     seasonPct:73.0, blendGames:33, pct25:72.0, pct25Games:30, pct26:75.0, pct26Games:4,
@@ -106,7 +106,7 @@ const MOCK_PLAYS = [
   },
   // Average pitcher (21.3%), no Log5 data — h2h present, park factor in effect (COL = 0.88)
   {
-    playerName:"Logan Webb", playerId:null, sport:"mlb", playerTeam:"SF", position:"SP",
+    playerName:"Logan Webb", playerId:"41216", sport:"mlb", playerTeam:"SF", position:"SP",
     opponent:"COL", oppRank:null, oppMetricValue:null, oppMetricLabel:"vs COL batters", oppMetricUnit:"%",
     stat:"strikeouts", threshold:5, kalshiPct:75, americanOdds:-300,
     seasonPct:77.0, blendGames:25, pct25:76.0, pct25Games:22, pct26:80.0, pct26Games:5,
@@ -1579,7 +1579,7 @@ function App() {
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:"flex",alignItems:"center",gap:6}}>
                         <div style={{color:"#fff",fontSize:14,fontWeight:700}}>{play.playerName}</div>
-                        {play.sport && play.sport !== "nba" && (
+                        {play.sport && (
                           <span style={{background:"transparent",border:`1px solid ${SPORT_BADGE_COLOR[play.sport]||"#8b949e"}`,
                             borderRadius:4,padding:"1px 5px",fontSize:10,color:SPORT_BADGE_COLOR[play.sport]||"#8b949e",fontWeight:600,textTransform:"uppercase"}}>
                             {play.sport}
@@ -2121,7 +2121,7 @@ function App() {
                           style={{color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",textDecoration:"underline",textDecorationColor:"#30363d",textUnderlineOffset:2}}>
                           {pick.playerName}
                         </span>
-                        {pick.sport && pick.sport !== "nba" && (
+                        {pick.sport && (
                           <span style={{border:`1px solid ${SPORT_BADGE_COLOR[pick.sport]||"#8b949e"}`,
                             borderRadius:4,padding:"0px 4px",fontSize:9,color:SPORT_BADGE_COLOR[pick.sport]||"#8b949e",fontWeight:600,textTransform:"uppercase"}}>
                             {pick.sport}
