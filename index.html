@@ -307,6 +307,7 @@ function App() {
   const [kalshiOdds, setKalshiOdds] = React.useState({});
   const [showBreakdown, setShowBreakdown] = React.useState(false);
   const [direction, setDirection] = React.useState("over"); // "over" | "under"
+  const [editPickId, setEditPickId] = React.useState(null); // pick.id being edited
   const [searching, setSearching] = React.useState(false);
   const [tonightPlays, setTonightPlays] = React.useState(null);
   const [tonightLoading, setTonightLoading] = React.useState(true);
@@ -2114,12 +2115,22 @@ function App() {
                   <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
                     {/* Player info */}
                     <div style={{flex:1,minWidth:0}}>
-                      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
-                        <span style={{color:"#fff",fontSize:13,fontWeight:700}}>{pick.playerName}</span>
+                      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3,flexWrap:"wrap"}}>
+                        {/* Clickable name → opens player card */}
+                        <span onClick={() => selectPlayer({ id: pick.playerId, name: pick.playerName, team: pick.playerTeam, sportKey: SPORT_KEY[pick.sport] || "basketball/nba" }, pick.stat)}
+                          style={{color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",textDecoration:"underline",textDecorationColor:"#30363d",textUnderlineOffset:2}}>
+                          {pick.playerName}
+                        </span>
                         {pick.sport && pick.sport !== "nba" && (
                           <span style={{border:`1px solid ${SPORT_BADGE_COLOR[pick.sport]||"#8b949e"}`,
                             borderRadius:4,padding:"0px 4px",fontSize:9,color:SPORT_BADGE_COLOR[pick.sport]||"#8b949e",fontWeight:600,textTransform:"uppercase"}}>
                             {pick.sport}
+                          </span>
+                        )}
+                        {pick.edge != null && (
+                          <span style={{background:"rgba(63,185,80,0.12)",border:"1px solid #3fb950",borderRadius:4,
+                            padding:"0px 5px",fontSize:10,color:"#3fb950",fontWeight:700}}>
+                            +{pick.edge}%
                           </span>
                         )}
                         {pick.result && (
@@ -2140,6 +2151,28 @@ function App() {
                         {" · "}<span style={{color:"#e3b341"}}>{pick.truePct}% true</span>
                         {" · "}<span style={{color:"#484f58"}}>{dateStr}</span>
                       </div>
+                      {/* Edit mode: threshold picker */}
+                      {editPickId === pick.id && (() => {
+                        const sportKey = SPORT_KEY[pick.sport] || "basketball/nba";
+                        const thresholds = STAT_CONFIGS[sportKey]?.[pick.stat]?.thresholds || [];
+                        return (
+                          <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:8}}>
+                            <span style={{color:"#484f58",fontSize:10,alignSelf:"center"}}>line:</span>
+                            {thresholds.map(th => (
+                              <button key={th} onClick={() => {
+                                setTrackedPlays(prev => prev.map(p => p.id === pick.id ? {...p, threshold: th, id: `${pick.sport}|${pick.playerName}|${pick.stat}|${th}`} : p));
+                                setEditPickId(null);
+                              }} style={{padding:"1px 7px",fontSize:10,fontWeight:700,borderRadius:4,cursor:"pointer",
+                                border:`1px solid ${th === pick.threshold ? "#58a6ff" : "#30363d"}`,
+                                background: th === pick.threshold ? "rgba(88,166,255,0.15)" : "transparent",
+                                color: th === pick.threshold ? "#58a6ff" : "#8b949e"}}>
+                                {th}+
+                              </button>
+                            ))}
+                            <button onClick={() => setEditPickId(null)} style={{padding:"1px 6px",fontSize:10,borderRadius:4,cursor:"pointer",border:"1px solid #30363d",background:"transparent",color:"#484f58"}}>done</button>
+                          </div>
+                        );
+                      })()}
                     </div>
                     {/* Controls */}
                     <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
@@ -2163,6 +2196,12 @@ function App() {
                           undo
                         </button>
                       )}
+                      <button onClick={() => setEditPickId(id => id === pick.id ? null : pick.id)} title="Edit line"
+                        style={{background: editPickId === pick.id ? "rgba(88,166,255,0.12)" : "transparent",
+                          border:`1px solid ${editPickId === pick.id ? "#58a6ff" : "#30363d"}`,borderRadius:6,
+                          padding:"3px 7px",fontSize:11,color: editPickId === pick.id ? "#58a6ff" : "#484f58",cursor:"pointer"}}>
+                        ✎
+                      </button>
                       <button onClick={() => untrackPlay(pick.id)} title="Remove"
                         style={{background:"transparent",border:"1px solid #30363d",borderRadius:6,
                           padding:"3px 7px",fontSize:12,color:"#484f58",cursor:"pointer"}}>
