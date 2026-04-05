@@ -159,6 +159,7 @@ const MOCK_PLAYS = [
     stat:"goals", threshold:1, kalshiPct:74, americanOdds:-110,
     seasonPct:76.0, blendGames:72, pct25:null, pct25Games:0, pct26:null, pct26Games:0,
     softPct:80.0, softGames:10, truePct:77.0, edge:5.1,
+    recentAvg:0.52, dvpFactor:1.14, projectedStat:0.63,
     lineupKPct:null, pitcherKPct:null, gameDate:TODAY,
   },
 ];
@@ -1287,6 +1288,7 @@ function App() {
               if (play.sport === "mlb" && play.stat === "strikeouts") return play.log5Avg != null && play.log5Avg >= 24;
               if (play.sport === "mlb") return play.softPct != null;
               if (play.sport === "nba") return play.oppRank != null && play.oppRank <= 5 && (play.projectedStat == null || play.projectedStat >= play.threshold);
+              if (play.sport === "nhl") return play.oppRank != null && play.oppRank <= 5 && (play.projectedStat == null || play.projectedStat >= play.threshold);
               return play.oppRank != null && play.oppRank <= 5;
             };
             const untrackedPlays = (tonightPlays || []).filter(play => {
@@ -1560,11 +1562,24 @@ function App() {
                                 </>;
                               }
 
-                              // NHL / NFL
+                              // NHL
+                              if (play.sport === "nhl") {
+                                const nhlContext = {
+                                  goals:   "their defense leaks goals — they give up shots from dangerous areas and their goaltender is performing below expectations",
+                                  assists: "their defense gives up high-danger chances, creating open looks for finishers and more assist opportunities for playmakers",
+                                  points:  "their defense is one of the most porous in the league — they allow both high shot volume and poor defensive zone coverage",
+                                }[play.stat] || "they rank among the weakest defensive teams in the NHL";
+                                const projLine = proj != null
+                                  ? <> Based on {first}'s recent pace{recent != null ? <> ({recent} per game last 10)</> : ""} and {opp}'s {Math.round((dvp - 1) * 100)}% above-average defensive vulnerability, the model projects <span style={{color:"#c9d1d9",fontWeight:700}}>~{proj}</span> tonight (includes home-ice factor).</>
+                                  : null;
+                                return <>
+                                  {opp} ranks {rank} in {play.oppMetricLabel || "goals allowed"}{metricStr} — {nhlContext}.{projLine}
+                                  {play.softPct !== null && <> {first} has recorded {play.threshold}+ {STAT_FULL[play.stat] || play.stat} in {hitRate} of games vs weak defenses{games}.</>}
+                                </>;
+                              }
+
+                              // NFL / MLB (non-strikeout)
                               const context = {
-                                "nhl|goals":          "one of the weakest defensive teams in the NHL — they allow the most goals per game",
-                                "nhl|assists":        "one of the weakest defensive teams in the NHL — they allow the most goals per game, creating more scoring chances",
-                                "nhl|points":         "one of the weakest defensive teams in the NHL — they allow the most goals per game",
                                 "mlb|hits":           "one of the easiest pitching matchups in the league — their staff has a high ERA this season",
                                 "mlb|homeRuns":       "one of the easiest pitching matchups in the league — their staff gives up the most extra-base hits",
                                 "mlb|hrr":            "one of the easiest pitching matchups in the league — their staff allows hits, runs, and RBIs at a high rate",
