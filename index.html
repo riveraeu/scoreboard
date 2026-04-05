@@ -299,7 +299,8 @@ function App() {
   const [tonightPlays, setTonightPlays] = React.useState(null);
   const [tonightLoading, setTonightLoading] = React.useState(true);
   const [testMode, setTestMode] = React.useState(false);
-  const [strongOnly, setStrongOnly] = React.useState(false);
+  const [strongOnly, setStrongOnly] = React.useState(true);
+  const [kInfoOpen, setKInfoOpen] = React.useState(false);
   const [expandedPlays, setExpandedPlays] = React.useState(new Set());
   const [trackedPlays, setTrackedPlays] = React.useState(() => {
     // If logged in, server is authoritative — clear any stale local picks and start empty
@@ -1315,7 +1316,6 @@ function App() {
               return new Date(yr, mo-1, dy).toLocaleDateString("en-US", { weekday:"short", month:"short", day:"numeric" });
             }
 
-            const [kInfoOpen, setKInfoOpen] = React.useState(false);
             const STAT_FULL = {
               points:"points", rebounds:"rebounds", assists:"assists", threePointers:"3-pointers",
               goals:"goals", shotsOnGoal:"shots on goal",
