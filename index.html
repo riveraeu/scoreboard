@@ -81,6 +81,7 @@ const MOCK_PLAYS = [
     stat:"strikeouts", threshold:6, kalshiPct:78, americanOdds:-130,
     seasonPct:74.0, blendGames:31, pct25:71.0, pct25Games:28, pct26:83.3, pct26Games:6,
     softPct:80.0, softGames:10, truePct:83.0, edge:5.0,
+    kelly:0.282, ev:0.177, historicalHitRate:80.0, historicalGames:10,
     lineupKPct:27.3, pitcherKPct:26.5, pitcherKBBPct:18.2, log5Avg:31.6, log5Pct:96.1, expectedKs:8.5, parkFactor:1.00, gameDate:TODAY,
   },
   // Log5 golden rule, no h2h — pitcher 28.1% (excellent), lineup 25.8%
@@ -90,6 +91,7 @@ const MOCK_PLAYS = [
     stat:"strikeouts", threshold:7, kalshiPct:74, americanOdds:-110,
     seasonPct:76.0, blendGames:29, pct25:75.0, pct25Games:26, pct26:78.0, pct26Games:5,
     softPct:null, softGames:0, truePct:83.1, edge:9.1,
+    kelly:0.357, ev:0.207, historicalHitRate:null, historicalGames:0,
     lineupKPct:25.8, pitcherKPct:28.1, pitcherKBBPct:20.4, log5Avg:33.1, log5Pct:90.2, expectedKs:8.9, parkFactor:0.97, gameDate:TODAY,
   },
   // Pitcher great (25.9%), lineup only above-avg (22.1%) — no golden rule, Log5 ~27.5%
@@ -99,6 +101,7 @@ const MOCK_PLAYS = [
     stat:"strikeouts", threshold:7, kalshiPct:71, americanOdds:-115,
     seasonPct:73.0, blendGames:33, pct25:72.0, pct25Games:30, pct26:75.0, pct26Games:4,
     softPct:66.7, softGames:6, truePct:71.0, edge:4.0,
+    kelly:0.072, ev:0.044, historicalHitRate:66.7, historicalGames:6,
     lineupKPct:22.1, pitcherKPct:25.9, pitcherKBBPct:14.1, log5Avg:27.5, log5Pct:73.2, expectedKs:7.4, parkFactor:0.96, gameDate:TODAY,
   },
   // Average pitcher (21.3%), no Log5 data — h2h present, park factor in effect (COL = 0.88)
@@ -108,6 +111,7 @@ const MOCK_PLAYS = [
     stat:"strikeouts", threshold:5, kalshiPct:75, americanOdds:-120,
     seasonPct:77.0, blendGames:25, pct25:76.0, pct25Games:22, pct26:80.0, pct26Games:5,
     softPct:75.0, softGames:8, truePct:76.0, edge:4.0,
+    kelly:0.155, ev:0.093, historicalHitRate:75.0, historicalGames:8,
     lineupKPct:null, pitcherKPct:21.3, pitcherKBBPct:9.8, log5Avg:null, log5Pct:null, expectedKs:null, parkFactor:0.88, gameDate:TODAY,
   },
   // ── MLB: Hitter ────────────────────────────────────────────────────────────
@@ -118,6 +122,7 @@ const MOCK_PLAYS = [
     stat:"hits", threshold:1, kalshiPct:78, americanOdds:-115,
     seasonPct:80.0, blendGames:120, pct25:79.0, pct25Games:110, pct26:84.0, pct26Games:19,
     softPct:83.3, softGames:18, truePct:81.5, edge:4.8,
+    kelly:0.233, ev:0.141, historicalHitRate:83.3, historicalGames:18,
     lineupKPct:null, pitcherKPct:null, gameDate:TODAY,
   },
   {
@@ -127,6 +132,7 @@ const MOCK_PLAYS = [
     stat:"hits", threshold:1, kalshiPct:76, americanOdds:-108,
     seasonPct:78.0, blendGames:115, pct25:77.0, pct25Games:105, pct26:81.0, pct26Games:16,
     softPct:72.7, softGames:11, truePct:77.0, edge:4.6,
+    kelly:0.210, ev:0.127, historicalHitRate:72.7, historicalGames:11,
     lineupKPct:null, pitcherKPct:null, gameDate:TODAY,
     // → h2h explanation vs named pitcher
   },
@@ -139,6 +145,7 @@ const MOCK_PLAYS = [
     seasonPct:82.0, blendGames:68, pct25:null, pct25Games:0, pct26:null, pct26Games:0,
     softPct:88.9, softGames:9, truePct:84.0, edge:9.3, seasonGames:68,
     recentAvg:27.3, dvpFactor:1.22, projectedStat:33.3,
+    kelly:0.290, ev:0.176, historicalHitRate:88.9, historicalGames:9,
     lineupKPct:null, pitcherKPct:null, gameDate:TODAY,
   },
   {
@@ -149,6 +156,7 @@ const MOCK_PLAYS = [
     seasonPct:77.0, blendGames:65, pct25:null, pct25Games:0, pct26:null, pct26Games:0,
     softPct:84.6, softGames:13, truePct:79.5, edge:6.7, seasonGames:65,
     recentAvg:9.7, dvpFactor:1.18, projectedStat:11.4,
+    kelly:0.242, ev:0.147, historicalHitRate:84.6, historicalGames:13,
     lineupKPct:null, pitcherKPct:null, gameDate:TODAY,
   },
   // ── NHL ─────────────────────────────────────────────────────────────────────
@@ -160,6 +168,7 @@ const MOCK_PLAYS = [
     seasonPct:76.0, blendGames:72, pct25:null, pct25Games:0, pct26:null, pct26Games:0,
     softPct:80.0, softGames:10, truePct:77.0, edge:5.1, seasonGames:72,
     recentAvg:0.52, dvpFactor:1.14, projectedStat:0.63,
+    kelly:0.177, ev:0.106, historicalHitRate:80.0, historicalGames:10,
     lineupKPct:null, pitcherKPct:null, gameDate:TODAY,
   },
 ];
@@ -303,6 +312,7 @@ function App() {
   const [testMode, setTestMode] = React.useState(false);
   const [strongOnly, setStrongOnly] = React.useState(true);
   const [kInfoOpen, setKInfoOpen] = React.useState(false);
+  const [kellyMult, setKellyMult] = React.useState(0.5);
   const kalshiCache = React.useRef({}); // memoize Kalshi fetches by "playerName|sport|stat"
   const [expandedPlays, setExpandedPlays] = React.useState(new Set());
   const [trackedPlays, setTrackedPlays] = React.useState(() => {
@@ -1283,6 +1293,80 @@ function App() {
               </a>
             </div>
           </div>
+          {/* ROI Summary panel */}
+          {!tonightLoading && (tonightPlays || []).length > 0 && (() => {
+            const isStrongMatchup = play => {
+              if (play.sport === "mlb" && play.stat === "strikeouts") return play.log5Avg != null && play.log5Avg >= 24;
+              if (play.sport === "mlb") return play.softPct != null;
+              if (play.sport === "nba") return play.oppRank != null && play.oppRank <= 5 && (play.projectedStat == null || play.projectedStat >= play.threshold * 0.95);
+              if (play.sport === "nhl") return play.oppRank != null && play.oppRank <= 5;
+              return play.oppRank != null && play.oppRank <= 5;
+            };
+            const visiblePlays = (tonightPlays || []).filter(p => !strongOnly || isStrongMatchup(p));
+            const totalEV = visiblePlays.reduce((s, p) => s + (p.ev || 0), 0);
+            const avgEdge = visiblePlays.length ? visiblePlays.reduce((s, p) => s + (p.edge || 0), 0) / visiblePlays.length : 0;
+            const avgKelly = visiblePlays.length ? visiblePlays.reduce((s, p) => s + (p.kelly || 0), 0) / visiblePlays.length : 0;
+            const unitSize = bankroll * avgKelly * kellyMult;
+            const projectedROI = totalEV * unitSize;
+            const decOdds = p => p.americanOdds >= 0 ? p.americanOdds/100+1 : 100/Math.abs(p.americanOdds)+1;
+            const histROI = visiblePlays.filter(p => p.historicalHitRate != null).map(p => {
+              const b = decOdds(p) - 1;
+              return (p.historicalHitRate/100)*b - (1-p.historicalHitRate/100);
+            });
+            const avgHistROI = histROI.length ? histROI.reduce((a,b)=>a+b,0)/histROI.length*100 : null;
+            if (visiblePlays.length === 0) return null;
+            return (
+              <div style={{background:"#0d1117",border:"1px solid #21262d",borderRadius:8,padding:"10px 14px",marginBottom:12}}>
+                <div style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <span style={{color:"#484f58",fontSize:10,textTransform:"uppercase",letterSpacing:".5px"}}>Bankroll</span>
+                    <span style={{color:"#8b949e",fontSize:10}}>$</span>
+                    <input type="number" value={bankroll} onChange={e => setBankroll(e.target.value)}
+                      style={{width:64,background:"#161b22",border:"1px solid #30363d",borderRadius:4,
+                        color:"#c9d1d9",fontSize:11,padding:"2px 5px",textAlign:"right"}}/>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <span style={{color:"#484f58",fontSize:10,textTransform:"uppercase",letterSpacing:".5px"}}>Kelly</span>
+                    <select value={kellyMult} onChange={e => setKellyMult(parseFloat(e.target.value))}
+                      style={{background:"#161b22",border:"1px solid #30363d",borderRadius:4,color:"#c9d1d9",fontSize:11,padding:"2px 5px"}}>
+                      <option value="0.25">¼ Kelly</option>
+                      <option value="0.5">½ Kelly</option>
+                      <option value="1.0">Full Kelly</option>
+                    </select>
+                  </div>
+                  <div style={{flex:1,height:1,background:"#21262d"}}/>
+                  <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
+                    <div style={{textAlign:"center"}}>
+                      <div style={{color:"#3fb950",fontSize:13,fontWeight:700}}>{visiblePlays.length}</div>
+                      <div style={{color:"#484f58",fontSize:9,textTransform:"uppercase"}}>plays</div>
+                    </div>
+                    <div style={{textAlign:"center"}}>
+                      <div style={{color:"#e3b341",fontSize:13,fontWeight:700}}>{avgEdge.toFixed(1)}%</div>
+                      <div style={{color:"#484f58",fontSize:9,textTransform:"uppercase"}}>avg edge</div>
+                    </div>
+                    <div style={{textAlign:"center"}}>
+                      <div style={{color:"#58a6ff",fontSize:13,fontWeight:700}}>${unitSize.toFixed(0)}</div>
+                      <div style={{color:"#484f58",fontSize:9,textTransform:"uppercase"}}>unit size</div>
+                    </div>
+                    <div style={{textAlign:"center"}}>
+                      <div style={{color: totalEV >= 0 ? "#3fb950" : "#f78166",fontSize:13,fontWeight:700}}>
+                        {totalEV >= 0 ? "+" : ""}{(totalEV*100).toFixed(1)}%
+                      </div>
+                      <div style={{color:"#484f58",fontSize:9,textTransform:"uppercase"}}>exp EV</div>
+                    </div>
+                    {avgHistROI !== null && (
+                      <div style={{textAlign:"center"}}>
+                        <div style={{color: avgHistROI >= 0 ? "#3fb950" : "#f78166",fontSize:13,fontWeight:700}}>
+                          {avgHistROI >= 0 ? "+" : ""}{avgHistROI.toFixed(1)}%
+                        </div>
+                        <div style={{color:"#484f58",fontSize:9,textTransform:"uppercase"}}>hist ROI</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
           {tonightLoading ? (
             <div style={{color:"#8b949e",textAlign:"center",padding:52,fontSize:13}}>
               Loading plays…
@@ -1291,7 +1375,7 @@ function App() {
             const isStrongMatchup = play => {
               if (play.sport === "mlb" && play.stat === "strikeouts") return play.log5Avg != null && play.log5Avg >= 24;
               if (play.sport === "mlb") return play.softPct != null;
-              if (play.sport === "nba") return play.oppRank != null && play.oppRank <= 5 && (play.projectedStat == null || play.projectedStat >= play.threshold);
+              if (play.sport === "nba") return play.oppRank != null && play.oppRank <= 5 && (play.projectedStat == null || play.projectedStat >= play.threshold * 0.95);
               // NHL: projectedStat is per-game rate (e.g. 0.6 goals/game), not comparable to threshold (1)
               if (play.sport === "nhl") return play.oppRank != null && play.oppRank <= 5;
               return play.oppRank != null && play.oppRank <= 5;
@@ -1417,6 +1501,24 @@ function App() {
                     <div style={{color:"#a855f7",fontSize:11,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{play.kalshiPct}%</div>
                     <div style={{color:"#6e40c9",fontSize:10,width:38,flexShrink:0}}>({oddsStr})</div>
                   </div>
+                  {/* Kelly / unit sizing row */}
+                  {play.kelly > 0 && (
+                    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
+                      <div style={{flex:1,display:"flex",gap:12,fontSize:10,color:"#484f58"}}>
+                        <span>Kelly: <span style={{color:"#58a6ff",fontWeight:600}}>{(play.kelly * kellyMult * 100).toFixed(1)}%</span></span>
+                        <span>Unit: <span style={{color:"#58a6ff",fontWeight:600}}>${(bankroll * play.kelly * kellyMult).toFixed(0)}</span></span>
+                        {play.historicalHitRate !== null && play.historicalGames >= 3 && (
+                          <span>Hist: <span style={{
+                            color: play.historicalHitRate >= play.truePct ? "#3fb950" : "#f78166",
+                            fontWeight:600
+                          }}>{play.historicalHitRate}%</span><span style={{color:"#333d47"}}> ({play.historicalGames}g)</span></span>
+                        )}
+                      </div>
+                      <div style={{color: play.ev >= 0 ? "#3fb950" : "#f78166", fontSize:10, fontWeight:600, flexShrink:0}}>
+                        {play.ev >= 0 ? "+" : ""}{(play.ev * 100).toFixed(1)}% EV
+                      </div>
+                    </div>
+                  )}
                   {/* Breakdown toggle */}
                   <div style={{borderTop:"1px solid #21262d",paddingTop:8}}>
                     <button onClick={e => { e.stopPropagation(); setExpandedPlays(s => { const n = new Set(s); n.has(playKey) ? n.delete(playKey) : n.add(playKey); return n; }); }}
