@@ -51,7 +51,7 @@ const STAT_CONFIGS = {
   "baseball/mlb": {
     hits:       { label: "Hits",        thresholds: [1,2,3,4],           unit: "H"  },
     homeRuns:   { label: "Home Runs",   thresholds: [1,2],               unit: "HR" },
-    rbi:        { label: "RBI",         thresholds: [1,2,3,4],           unit: "RBI"},
+    hrr:        { label: "H+R+RBI",     thresholds: [1,2,3,4,5,6],       unit: "HRR"},
     totalBases: { label: "Total Bases", thresholds: [1,2,3,4,5],         unit: "TB" },
     strikeouts: { label: "Strikeouts",  thresholds: [3,4,5,6,7,8,9,10], unit: "K"  },
   },
@@ -66,7 +66,7 @@ const getColor = p => p >= 80 ? "#3fb950" : p >= 60 ? "#58a6ff" : p >= 40 ? "#d2
 const STAT_LABEL = {
   points:"PTS", rebounds:"REB", assists:"AST", threePointers:"3PT",
   goals:"G", shotsOnGoal:"SOG",
-  hits:"H", homeRuns:"HR", rbi:"RBI", strikeouts:"K", totalBases:"TB",
+  hits:"H", homeRuns:"HR", hrr:"HRR", strikeouts:"K", totalBases:"TB",
   passingYards:"PASS YDS", rushingYards:"RUSH YDS", receivingYards:"REC YDS", touchdowns:"TD",
 };
 const SPORT_KEY = { nba:"basketball/nba", nfl:"football/nfl", nhl:"hockey/nhl", mlb:"baseball/mlb" };
@@ -154,9 +154,9 @@ const MOCK_PLAYS = [
   // ── NHL ─────────────────────────────────────────────────────────────────────
   {
     playerName:"Auston Matthews", playerId:4024123, sport:"nhl", playerTeam:"TOR", position:"C",
-    opponent:"BUF", oppRank:4, oppMetricValue:3.8, oppMetricLabel:"shots allowed per game",
-    oppMetricUnit:"SOG",
-    stat:"shotsOnGoal", threshold:4, kalshiPct:74, americanOdds:-110,
+    opponent:"BUF", oppRank:4, oppMetricValue:3.8, oppMetricLabel:"goals allowed per game",
+    oppMetricUnit:"GAA",
+    stat:"goals", threshold:1, kalshiPct:74, americanOdds:-110,
     seasonPct:76.0, blendGames:72, pct25:null, pct25Games:0, pct26:null, pct26Games:0,
     softPct:80.0, softGames:10, truePct:77.0, edge:5.1,
     lineupKPct:null, pitcherKPct:null, gameDate:TODAY,
@@ -176,13 +176,13 @@ function useDebounce(val, ms) {
 function AddPickModal({ onClose, onAdd }) {
   const SPORT_STATS = {
     nba: ["points","rebounds","assists","threePointers"],
-    mlb: ["hits","homeRuns","rbi","totalBases","strikeouts"],
+    mlb: ["hits","homeRuns","hrr","totalBases","strikeouts"],
     nfl: ["passingYards","rushingYards","receivingYards","receptions","completions","attempts"],
-    nhl: ["shotsOnGoal","points","saves"],
+    nhl: ["goals","assists","points"],
   };
   const STAT_LABELS = {
     points:"Points", rebounds:"Rebounds", assists:"Assists", threePointers:"3-Pointers",
-    hits:"Hits", homeRuns:"Home Runs", rbi:"RBI", totalBases:"Total Bases", strikeouts:"Strikeouts",
+    hits:"Hits", homeRuns:"Home Runs", hrr:"H+R+RBI", totalBases:"Total Bases", strikeouts:"Strikeouts",
     passingYards:"Pass Yards", rushingYards:"Rush Yards", receivingYards:"Rec Yards",
     receptions:"Receptions", completions:"Completions", attempts:"Attempts",
     shotsOnGoal:"Shots on Goal", points:"Points", saves:"Saves",
@@ -627,10 +627,13 @@ function App() {
           const k = lv("K");
           if (k !== undefined) { result.strikeouts?.push(k); gs.strikeouts = k; }
         } else {
-          const h = lv("H"), hr = lv("HR"), rbi = lv("RBI"), b2 = lv("2B"), b3 = lv("3B");
+          const h = lv("H"), hr = lv("HR"), rbi = lv("RBI"), r = lv("R"), b2 = lv("2B"), b3 = lv("3B");
           if (h   !== undefined) { result.hits?.push(h); gs.hits = h; }
           if (hr  !== undefined) { result.homeRuns?.push(hr); gs.homeRuns = hr; }
-          if (rbi !== undefined) { result.rbi?.push(rbi); gs.rbi = rbi; }
+          // H+R+RBI combined stat
+          if (h !== undefined && r !== undefined && rbi !== undefined) {
+            const hrr = h + r + rbi; result.hrr?.push(hrr); gs.hrr = hrr;
+          }
           // Total bases: H + 2B + 2*3B + 3*HR
           if (h !== undefined && hr !== undefined && b2 !== undefined && b3 !== undefined) {
             const tb = h + b2 + 2*b3 + 3*hr;
@@ -685,7 +688,7 @@ function App() {
   const statCfgs = (() => {
     if (sport !== "baseball/mlb" || mlbIsPitcher === null) return allStatCfgs;
     const pitcherTabs = ["strikeouts"];
-    const hitterTabs  = ["hits", "homeRuns", "rbi", "totalBases"];
+    const hitterTabs  = ["hits", "homeRuns", "hrr", "totalBases"];
     const allowed = mlbIsPitcher ? pitcherTabs : hitterTabs;
     return Object.fromEntries(Object.entries(allStatCfgs).filter(([k]) => allowed.includes(k)));
   })();
@@ -713,8 +716,8 @@ function App() {
   React.useEffect(() => {
     const KALSHI_STATS = {
       "basketball/nba": { points:"points", rebounds:"rebounds", assists:"assists", threePointers:"threePointers" },
-      "hockey/nhl":     { goals:"goals", assists:"assists", shotsOnGoal:"shotsOnGoal", points:"points" },
-      "baseball/mlb":   { hits:"hits", homeRuns:"homeRuns", rbi:"rbi", strikeouts:"strikeouts", totalBases:"totalBases" },
+      "hockey/nhl":     { goals:"goals", assists:"assists", points:"points" },
+      "baseball/mlb":   { hits:"hits", homeRuns:"homeRuns", hrr:"hrr", strikeouts:"strikeouts", totalBases:"totalBases" },
     };
     const kalshiStat = KALSHI_STATS[sport]?.[safeTab];
     if (!player || !kalshiStat) { setKalshiOdds({}); return; }
@@ -1318,8 +1321,8 @@ function App() {
 
             const STAT_FULL = {
               points:"points", rebounds:"rebounds", assists:"assists", threePointers:"3-pointers",
-              goals:"goals", shotsOnGoal:"shots on goal",
-              hits:"hits", homeRuns:"home runs", rbi:"RBI", strikeouts:"strikeouts", totalBases:"total bases",
+              goals:"goals",
+              hits:"hits", homeRuns:"home runs", hrr:"H+R+RBI", strikeouts:"strikeouts", totalBases:"total bases",
               passingYards:"passing yards", rushingYards:"rushing yards", receivingYards:"receiving yards", touchdowns:"touchdowns",
             };
             const ordinal = n => n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3rd" : `${n}th`;
@@ -1562,10 +1565,9 @@ function App() {
                                 "nhl|goals":          "one of the weakest defensive teams in the NHL — they allow the most goals per game",
                                 "nhl|assists":        "one of the weakest defensive teams in the NHL — they allow the most goals per game, creating more scoring chances",
                                 "nhl|points":         "one of the weakest defensive teams in the NHL — they allow the most goals per game",
-                                "nhl|shotsOnGoal":    "one of the teams that allows the most shots on goal per game in the NHL",
                                 "mlb|hits":           "one of the easiest pitching matchups in the league — their staff has a high ERA this season",
                                 "mlb|homeRuns":       "one of the easiest pitching matchups in the league — their staff gives up the most extra-base hits",
-                                "mlb|rbi":            "one of the easiest pitching matchups in the league — their staff allows the most runs per game",
+                                "mlb|hrr":            "one of the easiest pitching matchups in the league — their staff allows hits, runs, and RBIs at a high rate",
                                 "mlb|totalBases":     "one of the easiest pitching matchups in the league — their staff allows lots of base hits",
                                 "nfl|passingYards":   "one of the softest defenses against the pass — they allow the most passing yards per game",
                                 "nfl|rushingYards":   "one of the softest defenses against the run — they allow the most rushing yards per game",
