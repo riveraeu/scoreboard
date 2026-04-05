@@ -188,6 +188,51 @@ const MOCK_PLAYS = [
 ];
 const SPORT_BADGE_COLOR = { nba:"#58a6ff", nhl:"#a5d8ff", mlb:"#3fb950", nfl:"#f78166" };
 
+function DayBar({ day, HALF, maxAbs }) {
+  const [hovered, setHovered] = React.useState(false);
+  const isPos = day.pl >= 0;
+  const h = Math.max(Math.round((Math.abs(day.pl) / maxAbs) * HALF), 3);
+  return (
+    <div style={{flex:1, position:"relative", cursor:"default"}}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}>
+      <div style={{
+        position:"absolute", left:0, right:0, height:h,
+        top: isPos ? HALF - h : HALF,
+        background: isPos ? "#3fb950" : "#f78166",
+        borderRadius: isPos ? "3px 3px 0 0" : "0 0 3px 3px",
+        opacity: hovered ? 1 : 0.85, transition:"opacity 0.15s",
+      }}/>
+      {hovered && (
+        <div style={{
+          position:"absolute", bottom: HALF + 8, left:"50%", transform:"translateX(-50%)",
+          background:"#1c2128", border:"1px solid #30363d", borderRadius:6,
+          padding:"6px 8px", zIndex:100, whiteSpace:"nowrap", pointerEvents:"none",
+          fontSize:10, color:"#c9d1d9", minWidth:130,
+        }}>
+          <div style={{fontWeight:600, marginBottom:4, color:"#8b949e"}}>{day.dateLabel}</div>
+          {day.plays.map((p, i) => (
+            <div key={i} style={{display:"flex", justifyContent:"space-between", gap:12}}>
+              <span>{p.barLabel}</span>
+              <span style={{color: p.pl >= 0 ? "#3fb950" : "#f78166", fontWeight:600}}>
+                {p.pl >= 0 ? "+" : ""}${p.pl.toFixed(2)}
+              </span>
+            </div>
+          ))}
+          {day.plays.length > 1 && (
+            <div style={{marginTop:4, paddingTop:4, borderTop:"1px solid #30363d", display:"flex", justifyContent:"space-between"}}>
+              <span style={{color:"#484f58"}}>Net</span>
+              <span style={{color: day.pl >= 0 ? "#3fb950" : "#f78166", fontWeight:700}}>
+                {day.pl >= 0 ? "+" : ""}${day.pl.toFixed(2)}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function useDebounce(val, ms) {
   const [dv, setDv] = React.useState(val);
   React.useEffect(() => {
@@ -2001,22 +2046,31 @@ function App() {
                     <div style={{color:"#c9d1d9",fontSize:13,fontWeight:700}}>${(bankroll + totalPL).toFixed(2)}</div>
                   </div>
                 </div>
-                {/* P&L bar chart with date x-axis */}
+                {/* P&L bar chart — grouped by day */}
                 {(() => {
-                  const bars = [...trackedPlays]
+                  const playsWithPL = [...trackedPlays]
                     .filter(p => p.result)
-                    .sort((a, b) => a.trackedAt - b.trackedAt)
+                    .sort((a, b) => (a.gameDate || "").localeCompare(b.gameDate || "") || a.trackedAt - b.trackedAt)
                     .map(p => {
                       const s = ((p.units ?? 1) / 100) * bankroll;
                       const pl = p.result === "won" ? s * oddsToProfit(p.americanOdds) : -s;
-                      const dateLabel = new Date(p.trackedAt).toLocaleDateString("en-US", { month:"short", day:"numeric" });
-                      const barLabel = `${p.playerName.split(" ").slice(-1)[0]} ${p.threshold}+`;
-                      return { pl, result: p.result, dateLabel, barLabel };
+                      const dateKey = p.gameDate || new Date(p.trackedAt).toISOString().slice(0,10);
+                      const [yr,mo,dy] = dateKey.split("-").map(Number);
+                      const dateLabel = new Date(yr, mo-1, dy).toLocaleDateString("en-US", { month:"short", day:"numeric" });
+                      const barLabel = `${p.playerName} ${p.threshold}+ ${p.stat?.toUpperCase?.() || ""}`.trim();
+                      return { pl, dateKey, dateLabel, barLabel };
                     });
-                  if (!bars.length) return null;
-                  const maxAbs = Math.max(...bars.map(b => Math.abs(b.pl)), 0.01);
+                  if (!playsWithPL.length) return null;
+                  // Group by day
+                  const dayMap = {};
+                  playsWithPL.forEach(p => {
+                    if (!dayMap[p.dateKey]) dayMap[p.dateKey] = { dateKey: p.dateKey, dateLabel: p.dateLabel, pl: 0, plays: [] };
+                    dayMap[p.dateKey].pl += p.pl;
+                    dayMap[p.dateKey].plays.push(p);
+                  });
+                  const days = Object.values(dayMap).sort((a,b) => a.dateKey.localeCompare(b.dateKey));
+                  const maxAbs = Math.max(...days.map(d => Math.abs(d.pl)), 0.01);
                   const HALF = 60;
-                  // Y-axis tick values
                   const yMax = maxAbs;
                   const yTicks = [yMax, yMax/2, 0, -yMax/2, -yMax];
                   return (
@@ -2033,33 +2087,16 @@ function App() {
                         {/* Bars + x-axis */}
                         <div style={{flex:1,display:"flex",flexDirection:"column"}}>
                           <div style={{position:"relative",height:HALF*2,display:"flex",gap:3,alignItems:"stretch"}}>
-                            {/* Zero line */}
                             <div style={{position:"absolute",left:0,right:0,top:HALF,height:1,background:"#30363d",zIndex:1}}/>
-                            {bars.map((b, i) => {
-                              const h = Math.max(Math.round((Math.abs(b.pl) / maxAbs) * HALF), 3);
-                              const isWin = b.result === "won";
-                              return (
-                                <div key={i} style={{flex:1,position:"relative"}}
-                                  title={`${b.barLabel}: ${b.pl >= 0 ? "+" : ""}$${b.pl.toFixed(2)}`}>
-                                  <div style={{
-                                    position:"absolute", left:0, right:0, height:h,
-                                    top: isWin ? HALF - h : HALF,
-                                    background: isWin ? "#3fb950" : "#f78166",
-                                    borderRadius: isWin ? "3px 3px 0 0" : "0 0 3px 3px",
-                                    opacity:0.85, transition:"opacity 0.15s",
-                                  }}
-                                    onMouseEnter={e => e.currentTarget.style.opacity="1"}
-                                    onMouseLeave={e => e.currentTarget.style.opacity="0.85"}
-                                  />
-                                </div>
-                              );
-                            })}
+                            {days.map((day, i) => (
+                              <DayBar key={i} day={day} HALF={HALF} maxAbs={maxAbs} />
+                            ))}
                           </div>
                           {/* X-axis date labels */}
                           <div style={{display:"flex",gap:3,marginTop:3}}>
-                            {bars.map((b, i) => (
+                            {days.map((day, i) => (
                               <div key={i} style={{flex:1,textAlign:"center",color:"#484f58",fontSize:8,lineHeight:1.2,overflow:"hidden"}}>
-                                {b.dateLabel}
+                                {day.dateLabel}
                               </div>
                             ))}
                           </div>
