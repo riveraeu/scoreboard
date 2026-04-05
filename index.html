@@ -306,6 +306,7 @@ function App() {
   const [activeTab, setActiveTab] = React.useState("points");
   const [kalshiOdds, setKalshiOdds] = React.useState({});
   const [showBreakdown, setShowBreakdown] = React.useState(false);
+  const [direction, setDirection] = React.useState("over"); // "over" | "under"
   const [searching, setSearching] = React.useState(false);
   const [tonightPlays, setTonightPlays] = React.useState(null);
   const [tonightLoading, setTonightLoading] = React.useState(true);
@@ -929,7 +930,7 @@ function App() {
       {player && (
         <div style={{display:"flex",gap:6,marginBottom:18}}>
           {tabs.map(k => (
-            <button key={k} onClick={() => setActiveTab(k)} style={{flex:1,padding:"9px 0",borderRadius:8,
+            <button key={k} onClick={() => { setActiveTab(k); setDirection("over"); }} style={{flex:1,padding:"9px 0",borderRadius:8,
               border:"1px solid",cursor:"pointer",fontSize:13,
               borderColor: safeTab===k?"#58a6ff":"#30363d",
               background: safeTab===k?"rgba(88,166,255,0.12)":"#161b22",
@@ -1004,11 +1005,24 @@ function App() {
                 {/* Header */}
                 <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:showTriple?4:16,flexWrap:"wrap"}}>
                   <div style={{color:"#8b949e",fontSize:12}}>
-                    % of games hitting <strong style={{color:"#c9d1d9"}}>at least N {cfg.unit}</strong>
+                    % of games {direction === "over"
+                      ? <><strong style={{color:"#c9d1d9"}}>hitting</strong> at least N {cfg.unit}</>
+                      : <><strong style={{color:"#c9d1d9"}}>under</strong> N {cfg.unit}</>}
+                  </div>
+                  {/* Over/Under toggle */}
+                  <div style={{display:"flex",borderRadius:6,overflow:"hidden",border:"1px solid #30363d",marginLeft:"auto",flexShrink:0}}>
+                    {["over","under"].map(d => (
+                      <button key={d} onClick={() => setDirection(d)}
+                        style={{padding:"2px 10px",fontSize:11,fontWeight:700,cursor:"pointer",border:"none",
+                          background: direction===d ? (d==="over"?"rgba(63,185,80,0.18)":"rgba(248,113,113,0.18)") : "transparent",
+                          color: direction===d ? (d==="over"?"#3fb950":"#f87171") : "#484f58"}}>
+                        {d === "over" ? "+" : "−"}
+                      </button>
+                    ))}
                   </div>
                   {showTriple && dvpData.position && !isMLB && (
                     <span style={{background:"rgba(88,166,255,0.12)",border:"1px solid #58a6ff",borderRadius:6,
-                      padding:"1px 7px",fontSize:11,color:"#58a6ff",fontWeight:700,marginLeft:"auto"}}>
+                      padding:"1px 7px",fontSize:11,color:"#58a6ff",fontWeight:700}}>
                       {dvpData.position}
                     </span>
                   )}
@@ -1033,10 +1047,16 @@ function App() {
                 {(() => {
                   const hasKalshi = Object.keys(kalshiOdds).length > 0;
                   const displayRates = hasKalshi ? rates.filter(({t}) => kalshiOdds[t]) : rates;
-                  return displayRates.map(({t, count, pct}) => {
+                  return displayRates.map(({t, count: countOver, pct: pctOver}) => {
+                    const isUnder = direction === "under";
+                    // Flip all hit-rate values for "under" direction
+                    const count = isUnder ? (totalGames - countOver) : countOver;
+                    const pct   = isUnder ? 100 - pctOver : pctOver;
                     const dvp = dvpMap[t];
-                    const softPct = dvp?.wPct ?? null;
-                    const pct25 = (isMLB && totalGames25 >= 5) ? (rates25Map[t] ?? null) : null;
+                    const softPctRaw = dvp?.wPct ?? null;
+                    const softPct = isUnder ? (softPctRaw !== null ? 100 - softPctRaw : null) : softPctRaw;
+                    const pct25Raw = (isMLB && totalGames25 >= 5) ? (rates25Map[t] ?? null) : null;
+                    const pct25 = isUnder ? (pct25Raw !== null ? 100 - pct25Raw : null) : pct25Raw;
                     const truePct = (() => {
                       if (isMLB) {
                         const parts = [pct, ...(pct25 !== null ? [pct25] : []), ...(softPct !== null ? [softPct] : [])];
@@ -1044,7 +1064,9 @@ function App() {
                       }
                       return softPct !== null ? (pct + softPct) / 2 : null;
                     })();
-                    const k = kalshiOdds[t];
+                    // For Kalshi: "under" market implied = 100 - over implied
+                    const kRaw = kalshiOdds[t];
+                    const k = (kRaw && isUnder) ? { ...kRaw, pct: 100 - kRaw.pct, americanOdds: kRaw.pct >= 50 ? Math.round(((kRaw.pct) / (100 - kRaw.pct)) * 100) : -Math.round(((100 - kRaw.pct) / kRaw.pct) * 100) } : kRaw;
                     const oddsStr = k ? (k.americanOdds >= 0 ? `+${k.americanOdds}` : `${k.americanOdds}`) : null;
                     const edge = (truePct !== null && k) ? truePct - k.pct : null;
                     const edgeColor = edge === null ? null : edge > 3 ? "#3fb950" : edge < -3 ? "#f78166" : "#8b949e";
@@ -1091,7 +1113,7 @@ function App() {
                       const color = getColor(pct);
                       return (
                         <div key={t} style={{display:"flex",gap:10,marginBottom:14,alignItems:"flex-start"}}>
-                          <div style={{color:"#8b949e",fontSize:13,width:40,textAlign:"right",flexShrink:0,paddingTop:2}}>{t}+</div>
+                          <div style={{color:"#8b949e",fontSize:13,width:40,textAlign:"right",flexShrink:0,paddingTop:2}}>{isUnder ? `<${t}` : `${t}+`}</div>
                           <div style={{flex:1,display:"flex",flexDirection:"column",gap:5}}>
                             <div style={{display:"flex",alignItems:"center",gap:8}}>
                               <div style={{flex:1,background:"#21262d",borderRadius:5,height:18,overflow:"hidden"}}>
@@ -1119,7 +1141,7 @@ function App() {
                     return (
                       <div key={t} style={{marginBottom:14}}>
                         <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
-                          <div style={{color:"#8b949e",fontSize:13,width:40,textAlign:"right",flexShrink:0,paddingTop:2}}>{t}+</div>
+                          <div style={{color:"#8b949e",fontSize:13,width:40,textAlign:"right",flexShrink:0,paddingTop:2}}>{isUnder ? `<${t}` : `${t}+`}</div>
                           <div style={{flex:1,display:"flex",flexDirection:"column",gap:5}}>
                             {/* True probability — primary */}
                             <div style={{display:"flex",alignItems:"center",gap:8}}>
