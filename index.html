@@ -423,7 +423,7 @@ function App() {
       lsSet("cache:plays_history", h);
     }).catch(() => {});
 
-    const cachedCalib = lsGet("cache:calibration", 60 * 60 * 1000); // 1 hour TTL
+    const cachedCalib = lsGet("cache:calibration", 6 * 60 * 60 * 1000); // 6 hour TTL
     if (cachedCalib) { setCalibration(cachedCalib); }
     else fetch(`${WORKER}/calibration`).then(r => r.json()).then(d => {
       const c = d.calib || {};
