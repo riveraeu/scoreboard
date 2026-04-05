@@ -197,7 +197,7 @@ function AddPickModal({ onClose, onAdd }) {
     receptions:"Receptions", completions:"Completions", attempts:"Attempts",
     shotsOnGoal:"Shots on Goal", points:"Points", saves:"Saves",
   };
-  const [form, setForm] = React.useState({ playerName:"", sport:"nba", stat:"points", threshold:"", americanOdds:"-110", units:"1" });
+  const [form, setForm] = React.useState({ playerName:"", sport:"nba", stat:"points", threshold:"", americanOdds:"-110", truePct:"", units:"1" });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   // Reset stat when sport changes
@@ -211,6 +211,10 @@ function AddPickModal({ onClose, onAdd }) {
     const americanOdds = parseInt(form.americanOdds);
     if (!form.playerName.trim() || isNaN(threshold) || isNaN(americanOdds)) return;
     const sportFull = { nba:"basketball/nba", mlb:"baseball/mlb", nfl:"football/nfl", nhl:"hockey/nhl" }[form.sport];
+    const truePctVal = parseFloat(form.truePct);
+    const kalshiPct = americanOdds < 0
+      ? Math.abs(americanOdds) / (Math.abs(americanOdds) + 100) * 100
+      : 100 / (americanOdds + 100) * 100;
     onAdd({
       playerName: form.playerName.trim(),
       sport: form.sport,
@@ -218,6 +222,9 @@ function AddPickModal({ onClose, onAdd }) {
       stat: form.stat,
       threshold,
       americanOdds,
+      kalshiPct: parseFloat(kalshiPct.toFixed(1)),
+      truePct: !isNaN(truePctVal) ? truePctVal : null,
+      edge: !isNaN(truePctVal) ? parseFloat((truePctVal - kalshiPct).toFixed(1)) : null,
       units: parseFloat(form.units) || 1,
     });
     onClose();
@@ -261,7 +268,7 @@ function AddPickModal({ onClose, onAdd }) {
                 </select>
               </div>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
               <div>
                 <label style={lbl}>Line (Over)</label>
                 <input style={inp} type="number" placeholder="20.5" step="0.5" value={form.threshold}
@@ -271,6 +278,13 @@ function AddPickModal({ onClose, onAdd }) {
                 <label style={lbl}>Odds</label>
                 <input style={inp} type="number" placeholder="-110" value={form.americanOdds}
                   onChange={e => set("americanOdds", e.target.value)} />
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              <div>
+                <label style={lbl}>True Probability %</label>
+                <input style={inp} type="number" placeholder="75" min="0" max="100" step="0.1" value={form.truePct}
+                  onChange={e => set("truePct", e.target.value)} />
               </div>
               <div>
                 <label style={lbl}>Units %</label>
@@ -2156,25 +2170,45 @@ function App() {
                         {" · "}<span style={{color:"#e3b341"}}>{pick.truePct}% true</span>
                         {" · "}<span style={{color:"#484f58"}}>{dateStr}</span>
                       </div>
-                      {/* Edit mode: threshold picker */}
+                      {/* Edit mode: full inline form */}
                       {editPickId === pick.id && (() => {
-                        const sportKey = SPORT_KEY[pick.sport] || "basketball/nba";
-                        const thresholds = STAT_CONFIGS[sportKey]?.[pick.stat]?.thresholds || [];
+                        const SPORT_STATS_EDIT = {
+                          nba:["points","rebounds","assists","threePointers"],
+                          mlb:["hits","homeRuns","hrr","totalBases","strikeouts"],
+                          nfl:["passingYards","rushingYards","receivingYards","receptions"],
+                          nhl:["goals","assists","points","shotsOnGoal"],
+                        };
+                        const ei = { background:"#0d1117", border:"1px solid #30363d", borderRadius:5, color:"#c9d1d9", fontSize:12, padding:"4px 7px", outline:"none", width:"100%" };
                         return (
-                          <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:8}}>
-                            <span style={{color:"#484f58",fontSize:10,alignSelf:"center"}}>line:</span>
-                            {thresholds.map(th => (
-                              <button key={th} onClick={() => {
-                                setTrackedPlays(prev => prev.map(p => p.id === pick.id ? {...p, threshold: th, id: `${pick.sport}|${pick.playerName}|${pick.stat}|${th}`} : p));
-                                setEditPickId(null);
-                              }} style={{padding:"1px 7px",fontSize:10,fontWeight:700,borderRadius:4,cursor:"pointer",
-                                border:`1px solid ${th === pick.threshold ? "#58a6ff" : "#30363d"}`,
-                                background: th === pick.threshold ? "rgba(88,166,255,0.15)" : "transparent",
-                                color: th === pick.threshold ? "#58a6ff" : "#8b949e"}}>
-                                {th}+
-                              </button>
-                            ))}
-                            <button onClick={() => setEditPickId(null)} style={{padding:"1px 6px",fontSize:10,borderRadius:4,cursor:"pointer",border:"1px solid #30363d",background:"transparent",color:"#484f58"}}>done</button>
+                          <div style={{marginTop:10,padding:10,background:"#0d1117",borderRadius:7,border:"1px solid #30363d"}}>
+                            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+                              <div>
+                                <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Stat</div>
+                                <select style={ei} value={pick.stat}
+                                  onChange={e => setTrackedPlays(prev => prev.map(p => p.id === pick.id ? {...p, stat: e.target.value} : p))}>
+                                  {(SPORT_STATS_EDIT[pick.sport] || []).map(s => <option key={s} value={s}>{STAT_LABEL[s] || s}</option>)}
+                                </select>
+                              </div>
+                              <div>
+                                <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Line</div>
+                                <input style={ei} type="number" step="0.5" defaultValue={pick.threshold}
+                                  onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) setTrackedPlays(prev => prev.map(p => p.id === pick.id ? {...p, threshold: v} : p)); }} />
+                              </div>
+                              <div>
+                                <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Odds</div>
+                                <input style={ei} type="number" defaultValue={pick.americanOdds}
+                                  onBlur={e => { const v = parseInt(e.target.value); if (!isNaN(v)) setTrackedPlays(prev => prev.map(p => p.id === pick.id ? {...p, americanOdds: v, kalshiPct: parseFloat((v < 0 ? Math.abs(v)/(Math.abs(v)+100)*100 : 100/(v+100)*100).toFixed(1))} : p)); }} />
+                              </div>
+                              <div>
+                                <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>True Prob %</div>
+                                <input style={ei} type="number" min="0" max="100" step="0.1" defaultValue={pick.truePct ?? ""}
+                                  onBlur={e => { const v = parseFloat(e.target.value); setTrackedPlays(prev => prev.map(p => { if (p.id !== pick.id) return p; const kp = p.kalshiPct ?? p.americanOdds < 0 ? Math.abs(p.americanOdds)/(Math.abs(p.americanOdds)+100)*100 : 100/(p.americanOdds+100)*100; return {...p, truePct: isNaN(v) ? null : v, edge: isNaN(v) ? null : parseFloat((v - kp).toFixed(1))}; })); }} />
+                              </div>
+                            </div>
+                            <button onClick={() => setEditPickId(null)}
+                              style={{width:"100%",padding:"4px",borderRadius:5,background:"rgba(88,166,255,0.12)",border:"1px solid #58a6ff",color:"#58a6ff",fontSize:11,fontWeight:600,cursor:"pointer"}}>
+                              done
+                            </button>
                           </div>
                         );
                       })()}
