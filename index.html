@@ -137,7 +137,7 @@ const MOCK_PLAYS = [
     oppMetricUnit:"PPG",
     stat:"points", threshold:25, kalshiPct:76, americanOdds:-115,
     seasonPct:82.0, blendGames:68, pct25:null, pct25Games:0, pct26:null, pct26Games:0,
-    softPct:88.9, softGames:9, truePct:84.0, edge:9.3,
+    softPct:88.9, softGames:9, truePct:84.0, edge:9.3, seasonGames:68,
     recentAvg:27.3, dvpFactor:1.22, projectedStat:33.3,
     lineupKPct:null, pitcherKPct:null, gameDate:TODAY,
   },
@@ -147,7 +147,7 @@ const MOCK_PLAYS = [
     oppMetricUnit:"AST",
     stat:"assists", threshold:8, kalshiPct:75, americanOdds:-112,
     seasonPct:77.0, blendGames:65, pct25:null, pct25Games:0, pct26:null, pct26Games:0,
-    softPct:84.6, softGames:13, truePct:79.5, edge:6.7,
+    softPct:84.6, softGames:13, truePct:79.5, edge:6.7, seasonGames:65,
     recentAvg:9.7, dvpFactor:1.18, projectedStat:11.4,
     lineupKPct:null, pitcherKPct:null, gameDate:TODAY,
   },
@@ -158,7 +158,7 @@ const MOCK_PLAYS = [
     oppMetricUnit:"GAA",
     stat:"goals", threshold:1, kalshiPct:74, americanOdds:-110,
     seasonPct:76.0, blendGames:72, pct25:null, pct25Games:0, pct26:null, pct26Games:0,
-    softPct:80.0, softGames:10, truePct:77.0, edge:5.1,
+    softPct:80.0, softGames:10, truePct:77.0, edge:5.1, seasonGames:72,
     recentAvg:0.52, dvpFactor:1.14, projectedStat:0.63,
     lineupKPct:null, pitcherKPct:null, gameDate:TODAY,
   },
@@ -1288,7 +1288,8 @@ function App() {
               if (play.sport === "mlb" && play.stat === "strikeouts") return play.log5Avg != null && play.log5Avg >= 24;
               if (play.sport === "mlb") return play.softPct != null;
               if (play.sport === "nba") return play.oppRank != null && play.oppRank <= 5 && (play.projectedStat == null || play.projectedStat >= play.threshold);
-              if (play.sport === "nhl") return play.oppRank != null && play.oppRank <= 5 && (play.projectedStat == null || play.projectedStat >= play.threshold);
+              // NHL: projectedStat is per-game rate (e.g. 0.6 goals/game), not comparable to threshold (1)
+              if (play.sport === "nhl") return play.oppRank != null && play.oppRank <= 5;
               return play.oppRank != null && play.oppRank <= 5;
             };
             const untrackedPlays = (tonightPlays || []).filter(play => {
@@ -1428,7 +1429,7 @@ function App() {
                                 <span>{"Strikeout % \u201925+\u201926"}{play.blendGames ? ` (${play.blendGames} games)` : ""}</span>
                               ) : play.sport === "mlb" ? (
                                 `\u201925+\u201926${play.blendGames ? ` (${play.blendGames}g)` : ""}`
-                              ) : "Season rate"}
+                              ) : `Season rate${play.seasonGames ? ` (${play.seasonGames}g)` : ""}`}
                             </div>
                             <div style={{flex:1,background:"#21262d",borderRadius:3,height:8,overflow:"hidden"}}>
                               <div style={{width:`${play.seasonPct}%`,background:"#58a6ff",height:"100%",borderRadius:3}}/>
@@ -1553,8 +1554,9 @@ function App() {
                                   assists:      "their help defense is porous — they allow the ball to move freely and give up the most open looks",
                                   threePointers:"they surrender the most 3-point volume in the league — shooters get open looks all night",
                                 }[play.stat] || "they rank among the weakest defenses in the league for this stat";
-                                const projLine = proj != null
-                                  ? <> Based on {first}'s recent output{recent != null ? <> ({recent} avg last 10 games)</> : ""} and {opp}'s {Math.round((dvp - 1) * 100)}% above-average defensive generosity, the model projects <span style={{color:"#c9d1d9",fontWeight:700}}>~{proj}</span> tonight.</>
+                                const dvpPct = dvp != null && dvp > 1 ? Math.round((dvp - 1) * 100) : null;
+                                const projLine = proj != null && dvp != null
+                                  ? <> Based on {first}'s recent output{recent != null ? <> ({recent} avg last 10 games)</> : ""}{dvpPct != null ? <> and {opp}'s <span style={{color:"#f78166"}}>{dvpPct}% above-average</span> defensive generosity</> : ""}, the model projects <span style={{color:"#c9d1d9",fontWeight:700}}>~{proj}</span> tonight.</>
                                   : null;
                                 return <>
                                   {opp} ranks {rank} in {play.oppMetricLabel || "this stat"}{metricStr} — {statContext}.{projLine}
@@ -1569,8 +1571,11 @@ function App() {
                                   assists: "their defense gives up high-danger chances, creating open looks for finishers and more assist opportunities for playmakers",
                                   points:  "their defense is one of the most porous in the league — they allow both high shot volume and poor defensive zone coverage",
                                 }[play.stat] || "they rank among the weakest defensive teams in the NHL";
-                                const projLine = proj != null
-                                  ? <> Based on {first}'s recent pace{recent != null ? <> ({recent} per game last 10)</> : ""} and {opp}'s {Math.round((dvp - 1) * 100)}% above-average defensive vulnerability, the model projects <span style={{color:"#c9d1d9",fontWeight:700}}>~{proj}</span> tonight (includes home-ice factor).</>
+                                const dvpPct = dvp != null && dvp > 1 ? Math.round((dvp - 1) * 100) : null;
+                                // For NHL, projectedStat is expected output per game (e.g. 0.63 goals/game)
+                                // Only show projection line when dvp is available
+                                const projLine = proj != null && dvp != null
+                                  ? <> {first} is averaging {recent != null ? <><span style={{color:"#c9d1d9",fontWeight:600}}>{recent}</span> {STAT_FULL[play.stat] || play.stat} per game</> : "at a strong rate"} recently{dvpPct != null ? <>, and {opp} allows <span style={{color:"#f78166"}}>{dvpPct}% more</span> than the league average</> : ""} — projecting around <span style={{color:"#c9d1d9",fontWeight:700}}>~{proj}</span> per game this matchup.</>
                                   : null;
                                 return <>
                                   {opp} ranks {rank} in {play.oppMetricLabel || "goals allowed"}{metricStr} — {nhlContext}.{projLine}
