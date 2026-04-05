@@ -303,6 +303,7 @@ function App() {
   const [testMode, setTestMode] = React.useState(false);
   const [strongOnly, setStrongOnly] = React.useState(true);
   const [kInfoOpen, setKInfoOpen] = React.useState(false);
+  const kalshiCache = React.useRef({}); // memoize Kalshi fetches by "playerName|sport|stat"
   const [expandedPlays, setExpandedPlays] = React.useState(new Set());
   const [trackedPlays, setTrackedPlays] = React.useState(() => {
     // If logged in, server is authoritative — clear any stale local picks and start empty
@@ -722,12 +723,15 @@ function App() {
     };
     const kalshiStat = KALSHI_STATS[sport]?.[safeTab];
     if (!player || !kalshiStat) { setKalshiOdds({}); return; }
-    const sportSlug = sport.split("/")[1]; // "nba", "nhl", "mlb"
+    const cacheKey = `${player.name}|${sport.split("/")[1]}|${kalshiStat}`;
+    if (kalshiCache.current[cacheKey]) { setKalshiOdds(kalshiCache.current[cacheKey]); return; }
+    const sportSlug = sport.split("/")[1];
     fetch(`${WORKER}/kalshi?playerName=${encodeURIComponent(player.name)}&stat=${kalshiStat}&sport=${sportSlug}`)
       .then(r => r.json())
       .then(data => {
         const map = {};
         (data.markets || []).forEach(m => { map[m.threshold] = m; });
+        kalshiCache.current[cacheKey] = map;
         setKalshiOdds(map);
       })
       .catch(() => setKalshiOdds({}));
