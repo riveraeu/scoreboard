@@ -1918,6 +1918,15 @@ function App() {
         const roi = totalStaked > 0 ? (totalPL / totalStaked) * 100 : null;
         const plColor = totalPL > 0 ? "#3fb950" : totalPL < 0 ? "#f78166" : "#8b949e";
         const fmt = n => (n >= 0 ? "+" : "") + "$" + Math.abs(n).toFixed(2);
+        // Average odds across settled picks (average decimal odds → back to American)
+        const oddsSettled = settled.filter(p => p.americanOdds != null);
+        const avgDecOdds = oddsSettled.length > 0
+          ? oddsSettled.reduce((s, p) => s + (p.americanOdds >= 0 ? p.americanOdds/100+1 : 100/Math.abs(p.americanOdds)+1), 0) / oddsSettled.length
+          : null;
+        const avgAmerican = avgDecOdds != null
+          ? avgDecOdds >= 2 ? Math.round((avgDecOdds-1)*100) : Math.round(-100/(avgDecOdds-1))
+          : null;
+        const avgOddsStr = avgAmerican != null ? (avgAmerican >= 0 ? `+${avgAmerican}` : `${avgAmerican}`) : null;
 
         return (
           <div>
@@ -1979,6 +1988,12 @@ function App() {
                       <div style={{color:plColor,fontSize:13,fontWeight:700}}>
                         {roi >= 0 ? "+" : ""}{roi.toFixed(1)}%
                       </div>
+                    </div>
+                  )}
+                  {avgOddsStr && (
+                    <div>
+                      <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Avg odds</div>
+                      <div style={{color:"#c9d1d9",fontSize:13,fontWeight:700}}>{avgOddsStr}</div>
                     </div>
                   )}
                   <div>
