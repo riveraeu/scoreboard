@@ -47,6 +47,14 @@ const SPORTS = [
   { label: "NHL",  value: "hockey/nhl" },
 ];
 
+const STAT_FULL = {
+  points:"points", rebounds:"rebounds", assists:"assists", threePointers:"3-pointers",
+  goals:"goals",
+  hits:"hits", homeRuns:"home runs", hrr:"H+R+RBI", strikeouts:"strikeouts", totalBases:"total bases",
+  passingYards:"passing yards", rushingYards:"rushing yards", receivingYards:"receiving yards", touchdowns:"touchdowns",
+};
+const ordinal = n => n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3rd" : `${n}th`;
+
 const STAT_CONFIGS = {
   "basketball/nba": {
     points:   { label: "Points",   thresholds: [10,15,20,25,30,35,40],    unit: "PTS" },
@@ -1338,15 +1346,66 @@ function App() {
                       }
                       // NBA / NHL position-specific DvP
                       if (dvpData?.position) {
-                        const statLabel = {points:"scoring",rebounds:"rebounding",assists:"playmaking",threePointers:"3-point shooting",goals:"scoring",shotsOnGoal:"shots on goal"}[safeTab]||safeTab;
                         const opp = player.opponent;
                         const rank = player.oppRank;
                         const metricVal = player.oppMetricValue;
-                        const isStrong = player.playIsStrong || (rank != null && rank <= 5);
-                        // If we have tonight's opponent context (navigated from play card), show specific matchup info
+                        const metricUnit = player.oppMetricUnit;
+                        const statLabel = {points:"scoring",rebounds:"rebounding",assists:"playmaking",threePointers:"3-point shooting",goals:"scoring",shotsOnGoal:"shots on goal"}[safeTab]||safeTab;
+
+                        // Rich explanation when navigated from a play card (has full context)
+                        if (opp && rank != null && player.playSport) {
+                          const metricStr = metricVal != null ? ` (${metricVal}${metricUnit ? " "+metricUnit : ""})` : "";
+                          const oppEl = <span style={{color:"#c9d1d9",fontWeight:600}}>{opp}</span>;
+                          const rankEl = <span style={{color:"#f78166",fontWeight:700}}>{ordinal(rank)}-worst</span>;
+                          const hitRate = player.playSoftPct != null ? <span style={{color:"#3fb950",fontWeight:600}}>{player.playSoftPct}%</span> : null;
+                          const games = player.playSoftGames ? ` (${player.playSoftGames} games)` : "";
+                          const proj = player.projectedStat;
+                          const recent = player.recentAvg;
+                          const dvp = player.dvpFactor;
+
+                          if (player.playSport === "nba") {
+                            const r = rank;
+                            const rankDesc = r === 1 ? "the most" : r <= 3 ? "among the most" : "a lot of";
+                            const statContext = {
+                              points:       `their defense breaks down in the paint and on the perimeter — they give up ${rankDesc} points in the league`,
+                              rebounds:     "they shoot at a low clip and struggle on the offensive glass, creating more rebound opportunities for opponents",
+                              assists:      `their help defense is porous — they allow the ball to move freely and give up ${rankDesc} open looks`,
+                              threePointers:`they surrender ${rankDesc} 3-point volume in the league — shooters get open looks all night`,
+                            }[safeTab] || "they rank among the weakest defenses in the league for this stat";
+                            const dvpPct = dvp != null && dvp > 1 ? Math.round((dvp - 1) * 100) : null;
+                            const projLine = proj != null && dvp != null
+                              ? <> Based on {first}'s recent output{recent != null ? <> ({recent} avg last 10 games)</> : ""}{dvpPct != null ? <> and {oppEl}'s <span style={{color:"#f78166"}}>{dvpPct}% above-average</span> defensive generosity</> : ""}, the model projects <span style={{color:"#c9d1d9",fontWeight:700}}>~{proj}</span> tonight.</>
+                              : null;
+                            return <>
+                              {oppEl} ranks {rankEl} in {player.oppMetricLabel || statLabel}{metricStr} — {statContext}.{projLine}
+                              {hitRate && <> {first} has hit {player.playThreshold}+ {STAT_FULL[safeTab] || safeTab} in {hitRate} of games vs weak matchups{games}.</>}
+                            </>;
+                          }
+
+                          if (player.playSport === "nhl") {
+                            const r = rank;
+                            const nhlDesc = r === 1 ? "the most" : r <= 3 ? "among the most" : "a high volume of";
+                            const nhlContext = {
+                              goals:   "their defense leaks goals — they give up shots from dangerous areas and their goaltender is performing below expectations",
+                              assists: "their defense gives up high-danger chances, creating open looks for finishers and more assist opportunities for playmakers",
+                              points:  `their defense is one of the most porous in the league — they allow ${nhlDesc} shot volume and goals`,
+                            }[safeTab] || "they rank among the weakest defensive teams in the NHL";
+                            const dvpPct = dvp != null && dvp > 1 ? Math.round((dvp - 1) * 100) : null;
+                            const projLine = proj != null && dvp != null
+                              ? <> {first} is averaging {recent != null ? <><span style={{color:"#c9d1d9",fontWeight:600}}>{recent}</span> {STAT_FULL[safeTab] || safeTab} per game</> : "at a strong rate"} recently{dvpPct != null ? <>, and {oppEl} allows <span style={{color:"#f78166"}}>{dvpPct}% more</span> than the league average</> : ""} — projecting around <span style={{color:"#c9d1d9",fontWeight:700}}>~{proj}</span> per game this matchup.</>
+                              : null;
+                            return <>
+                              {oppEl} ranks {rankEl} in {player.oppMetricLabel || "goals allowed"}{metricStr} — {nhlContext}.{projLine}
+                              {hitRate && <> {first} has recorded {player.playThreshold}+ {STAT_FULL[safeTab] || safeTab} in {hitRate} of games vs weak defenses{games}.</>}
+                            </>;
+                          }
+                        }
+
+                        // Fallback: simple context when opened via search (no play data)
                         if (opp && rank != null) {
-                          const rankDesc = rank === 1 ? "the most" : rank <= 3 ? "among the most" : rank <= 5 ? "among the most" : "a lot of";
+                          const rankDesc = rank === 1 ? "the most" : rank <= 5 ? "among the most" : "a lot of";
                           const metricStr = metricVal != null ? ` (${metricVal})` : "";
+                          const isStrong = player.playIsStrong || rank <= 5;
                           return <>
                             {first} faces <span style={{color:"#c9d1d9",fontWeight:600}}>{opp}</span> tonight — they rank <span style={{color:"#f78166",fontWeight:600}}>#{rank}</span> in {statLabel} allowed{metricStr}, giving up {rankDesc} in the league.
                             {isStrong && <span style={{color:"#3fb950",fontWeight:600}}> ⚡ Strong matchup.</span>}
@@ -1531,14 +1590,6 @@ function App() {
               return new Date(yr, mo-1, dy).toLocaleDateString("en-US", { weekday:"short", month:"short", day:"numeric" });
             }
 
-            const STAT_FULL = {
-              points:"points", rebounds:"rebounds", assists:"assists", threePointers:"3-pointers",
-              goals:"goals",
-              hits:"hits", homeRuns:"home runs", hrr:"H+R+RBI", strikeouts:"strikeouts", totalBases:"total bases",
-              passingYards:"passing yards", rushingYards:"rushing yards", receivingYards:"receiving yards", touchdowns:"touchdowns",
-            };
-            const ordinal = n => n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3rd" : `${n}th`;
-
             return sortedDates.map(date => (
               <div key={date}>
                 {/* Date header */}
@@ -1570,7 +1621,7 @@ function App() {
                   onMouseLeave={e => e.currentTarget.style.borderColor = "#30363d"}>
                   {/* Header row — click navigates to player card */}
                   <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,cursor:"pointer"}}
-                    onClick={() => selectPlayer({ id: play.playerId, name: play.playerName, team: play.playerTeam, sportKey: SPORT_KEY[play.sport] || "basketball/nba", opponent: play.opponent, oppRank: play.oppRank, oppMetricValue: play.oppMetricValue, oppMetricLabel: play.oppMetricLabel, playIsStrong: isStrongMatchup(play) }, play.stat)}>
+                    onClick={() => selectPlayer({ id: play.playerId, name: play.playerName, team: play.playerTeam, sportKey: SPORT_KEY[play.sport] || "basketball/nba", opponent: play.opponent, oppRank: play.oppRank, oppMetricValue: play.oppMetricValue, oppMetricLabel: play.oppMetricLabel, oppMetricUnit: play.oppMetricUnit, playIsStrong: isStrongMatchup(play), projectedStat: play.projectedStat, recentAvg: play.recentAvg, dvpFactor: play.dvpFactor, playSoftPct: play.softPct, playSoftGames: play.softGames, playSport: play.sport, playThreshold: play.threshold, playStat: play.stat }, play.stat)}>
                     {/* Headshot */}
                     {headshotUrl && (
                       <img src={headshotUrl} alt={play.playerName}
