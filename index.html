@@ -1263,7 +1263,7 @@ function App() {
                                   <div style={{color:"#58a6ff",fontSize:10,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{pct.toFixed(1)}%</div>
                                   <div style={{color:"#484f58",fontSize:10,width:50,flexShrink:0}}>{isMLB ? `'25+'26 (${totalGames}g)` : `${count}/${totalGames}g`}</div>
                                 </div>
-                                {softPct !== null && (
+                                {softPct !== null && !(isMLB && safeTab === "strikeouts") && (
                                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                                     <div style={{flex:1,background:"#21262d",borderRadius:4,height:11,overflow:"hidden"}}>
                                       <div style={{width:`${softPct}%`,background:"#3fb950",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:softPct>0?2:0}}/>
@@ -1378,7 +1378,7 @@ function App() {
                           {Object.keys(kalshiOdds).length > 0 && <span><span style={{color:"#a855f7",fontWeight:600}}>Purple</span> = Kalshi market</span>}
                           {Object.keys(kalshiOdds).length > 0 && <span><span style={{color:"#3fb950",fontWeight:600}}>+edge</span> / <span style={{color:"#f78166",fontWeight:600}}>−edge</span> vs market</span>}
                           {isMLB && <span><span style={{color:"#58a6ff",fontWeight:600}}>Blue</span> = '25+'26 blend</span>}
-                          {isMLB && mlbH2HLabel && <span><span style={{color:"#3fb950",fontWeight:600}}>Green</span> = {mlbH2HLabel}</span>}</>
+                          {isMLB && mlbH2HLabel && safeTab !== "strikeouts" && <span><span style={{color:"#3fb950",fontWeight:600}}>Green</span> = {mlbH2HLabel}</span>}</>
                       : Object.keys(kalshiOdds).length > 0
                         ? <span><span style={{color:"#a855f7",fontWeight:600}}>Kalshi</span> = live market odds</span>
                         : [["#3fb950","≥80%"],["#58a6ff","60–79%"],["#d29922","40–59%"],["#f78166","<40%"]].map(([c,l]) => (
