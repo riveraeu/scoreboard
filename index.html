@@ -312,8 +312,14 @@ function App() {
   const [testMode, setTestMode] = React.useState(false);
   const [strongOnly, setStrongOnly] = React.useState(true);
   const [kInfoOpen, setKInfoOpen] = React.useState(false);
-  // Tiered unit sizing: 1% (70-80%), 3% (80-93%), 5% (93%+) of bankroll
-  const tierPct = truePct => truePct >= 93 ? 5 : truePct >= 80 ? 3 : 1;
+  // Tiered unit sizing: combined truePct × edge signal
+  // More edge = more conviction the market is wrong = larger unit
+  const tierPct = (truePct, edge) => {
+    const e = edge || 0;
+    if (truePct >= 93) return e > 10 ? 5 : e >= 5 ? 4 : 3;
+    if (truePct >= 80) return e > 10 ? 4 : e >= 5 ? 3 : 2;
+    return e > 10 ? 2 : 1;
+  };
   const kalshiCache = React.useRef({}); // memoize Kalshi fetches by "playerName|sport|stat"
   const [expandedPlays, setExpandedPlays] = React.useState(new Set());
   const [trackedPlays, setTrackedPlays] = React.useState(() => {
@@ -1305,14 +1311,14 @@ function App() {
             };
             const visiblePlays = (tonightPlays || []).filter(p => !strongOnly || isStrongMatchup(p));
             if (visiblePlays.length === 0) return null;
-            const tier1 = visiblePlays.filter(p => p.truePct < 80);
-            const tier2 = visiblePlays.filter(p => p.truePct >= 80 && p.truePct < 93);
-            const tier3 = visiblePlays.filter(p => p.truePct >= 93);
-            const totalExposure = tier1.length * bankroll * 0.01 + tier2.length * bankroll * 0.03 + tier3.length * bankroll * 0.05;
-            const avgEdge = visiblePlays.reduce((s, p) => s + (p.edge || 0), 0) / visiblePlays.length;
             const decOdds = p => p.americanOdds >= 0 ? p.americanOdds/100+1 : 100/Math.abs(p.americanOdds)+1;
+            const playTier = p => tierPct(p.truePct, p.edge);
+            // Group by tier % for legend display
+            const tierGroups = visiblePlays.reduce((acc, p) => { const t = playTier(p); acc[t] = (acc[t]||0)+1; return acc; }, {});
+            const totalExposure = visiblePlays.reduce((s, p) => s + bankroll * playTier(p) / 100, 0);
+            const avgEdge = visiblePlays.reduce((s, p) => s + (p.edge || 0), 0) / visiblePlays.length;
             const totalEV = visiblePlays.reduce((s, p) => {
-              const stake = bankroll * tierPct(p.truePct) / 100;
+              const stake = bankroll * playTier(p) / 100;
               const b = decOdds(p) - 1;
               return s + stake * (p.truePct/100 * b - (1 - p.truePct/100));
             }, 0);
@@ -1331,11 +1337,13 @@ function App() {
                       style={{width:64,background:"#161b22",border:"1px solid #30363d",borderRadius:4,
                         color:"#c9d1d9",fontSize:11,padding:"2px 5px",textAlign:"right"}}/>
                   </div>
-                  {/* Tier legend */}
-                  <div style={{display:"flex",gap:8,fontSize:10,color:"#484f58"}}>
-                    <span style={{color: tier1.length ? "#8b949e" : "#333d47"}}>1% ×{tier1.length}</span>
-                    <span style={{color: tier2.length ? "#e3b341" : "#333d47"}}>3% ×{tier2.length}</span>
-                    <span style={{color: tier3.length ? "#3fb950" : "#333d47"}}>5% ×{tier3.length}</span>
+                  {/* Tier legend — dynamic: shows all tiers present */}
+                  <div style={{display:"flex",gap:8,fontSize:10}}>
+                    {[1,2,3,4,5].filter(t => tierGroups[t]).map(t => (
+                      <span key={t} style={{color: t >= 4 ? "#3fb950" : t >= 3 ? "#e3b341" : t >= 2 ? "#58a6ff" : "#8b949e"}}>
+                        {t}% ×{tierGroups[t]}
+                      </span>
+                    ))}
                   </div>
                   <div style={{flex:1,height:1,background:"#21262d"}}/>
                   {/* Stats */}
@@ -1429,7 +1437,12 @@ function App() {
                   <div style={{color:"#484f58",fontSize:11}}>{grouped[date].length} play{grouped[date].length !== 1 ? "s" : ""}</div>
                 </div>
 
-                {grouped[date].map((play) => {
+                {[...grouped[date]].sort((a, b) => {
+                  // Sort by expected profit desc: stake × EV
+                  const evA = (bankroll * tierPct(a.truePct, a.edge) / 100) * (a.ev || 0);
+                  const evB = (bankroll * tierPct(b.truePct, b.edge) / 100) * (b.ev || 0);
+                  return evB - evA;
+                }).map((play) => {
               const playKey = `${play.playerName}-${play.stat}-${play.threshold}`;
               const oddsStr = play.americanOdds >= 0 ? `+${play.americanOdds}` : `${play.americanOdds}`;
               const isExpanded = expandedPlays.has(playKey);
@@ -1503,8 +1516,8 @@ function App() {
                   </div>
                   {/* Tier / unit sizing row */}
                   {(() => {
-                    const tp = tierPct(play.truePct);
-                    const tierColor = tp === 5 ? "#3fb950" : tp === 3 ? "#e3b341" : "#8b949e";
+                    const tp = tierPct(play.truePct, play.edge);
+                    const tierColor = tp >= 4 ? "#3fb950" : tp >= 3 ? "#e3b341" : tp >= 2 ? "#58a6ff" : "#8b949e";
                     const stake = bankroll * tp / 100;
                     return (
                       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
