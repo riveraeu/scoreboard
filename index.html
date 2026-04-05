@@ -346,11 +346,9 @@ function App() {
   const [tonightPlays, setTonightPlays] = React.useState(null);
   const [tonightLoading, setTonightLoading] = React.useState(true);
   const [testMode, setTestMode] = React.useState(false);
-  const [strongOnly, setStrongOnly] = React.useState(true);
   const [sportFilter, setSportFilter] = React.useState([]); // empty = all sports
   const [statFilter, setStatFilter] = React.useState([]);  // empty = all stats
   const [kInfoOpen, setKInfoOpen] = React.useState(false);
-  const [playHistory, setPlayHistory] = React.useState([]);
   const [calibration, setCalibration] = React.useState({}); // { "sport:stat": { n, winRate, avgPredicted, corrFactor } }
   // Tiered unit sizing: combined truePct × edge signal
   // More edge = more conviction the market is wrong = larger unit
@@ -413,16 +411,8 @@ function App() {
       .catch(() => { setTonightPlays([]); setTonightLoading(false); });
   }, [testMode]);
 
-  // Fetch play history + calibration on mount — localStorage cache prevents redundant Worker requests
+  // Fetch calibration on mount — localStorage cache prevents redundant Worker requests
   React.useEffect(() => {
-    const cachedHistory = lsGet("cache:plays_history", 5 * 60 * 1000); // 5 min TTL
-    if (cachedHistory) { setPlayHistory(cachedHistory); }
-    else fetch(`${WORKER}/plays/history`).then(r => r.json()).then(d => {
-      const h = d.history || [];
-      setPlayHistory(h);
-      lsSet("cache:plays_history", h);
-    }).catch(() => {});
-
     const cachedCalib = lsGet("cache:calibration", 6 * 60 * 60 * 1000); // 6 hour TTL
     if (cachedCalib) { setCalibration(cachedCalib); }
     else fetch(`${WORKER}/calibration`).then(r => r.json()).then(d => {
@@ -1406,13 +1396,6 @@ function App() {
               })()}
 
               <div style={{width:1,height:14,background:"#30363d",margin:"0 2px"}} />
-              <button onClick={() => setStrongOnly(m => !m)}
-                style={{fontSize:10,padding:"2px 8px",borderRadius:6,cursor:"pointer",
-                  border:`1px solid ${strongOnly?"#3fb950":"#30363d"}`,
-                  background: strongOnly?"rgba(63,185,80,0.12)":"transparent",
-                  color: strongOnly?"#3fb950":"#484f58", fontWeight:600}}>
-                ⚡ strong
-              </button>
               <button onClick={() => setTestMode(m => !m)}
                 style={{fontSize:10,padding:"2px 8px",borderRadius:6,cursor:"pointer",
                   border:`1px solid ${testMode?"#e3b341":"#30363d"}`,
@@ -1440,96 +1423,10 @@ function App() {
             const visiblePlays = (tonightPlays || []).filter(p => {
               if (sportFilter.length > 0 && !sportFilter.includes(p.sport)) return false;
               if (statFilter.length > 0 && !statFilter.includes(p.stat)) return false;
-              return !strongOnly || isStrongMatchup(p);
+              return true;
             });
             if (visiblePlays.length === 0) return null;
-            const decOdds = p => p.americanOdds >= 0 ? p.americanOdds/100+1 : 100/Math.abs(p.americanOdds)+1;
-            const playTier = p => tierPct(p.truePct, p.edge);
-            // Group by tier % for legend display
-            const tierGroups = visiblePlays.reduce((acc, p) => { const t = playTier(p); acc[t] = (acc[t]||0)+1; return acc; }, {});
-            const totalExposure = visiblePlays.reduce((s, p) => s + bankroll * playTier(p) / 100, 0);
-            const avgEdge = visiblePlays.reduce((s, p) => s + (p.edge || 0), 0) / visiblePlays.length;
-            const totalEV = visiblePlays.reduce((s, p) => {
-              const stake = bankroll * playTier(p) / 100;
-              const b = decOdds(p) - 1;
-              return s + stake * (p.truePct/100 * b - (1 - p.truePct/100));
-            }, 0);
-            const histROI = visiblePlays.filter(p => p.historicalHitRate != null && p.historicalGames >= 3).map(p => {
-              const b = decOdds(p) - 1;
-              return (p.historicalHitRate/100)*b - (1-p.historicalHitRate/100);
-            });
-            const avgHistROI = histROI.length ? histROI.reduce((a,b)=>a+b,0)/histROI.length*100 : null;
-            return (
-              <div style={{background:"#0d1117",border:"1px solid #21262d",borderRadius:8,padding:"10px 14px",marginBottom:12}}>
-                <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
-                  {/* Bankroll input */}
-                  <div style={{display:"flex",alignItems:"center",gap:5}}>
-                    <span style={{color:"#484f58",fontSize:10,textTransform:"uppercase",letterSpacing:".5px"}}>Bankroll $</span>
-                    <input type="number" value={bankroll} onChange={e => setBankroll(e.target.value)}
-                      style={{width:64,background:"#161b22",border:"1px solid #30363d",borderRadius:4,
-                        color:"#c9d1d9",fontSize:11,padding:"2px 5px",textAlign:"right"}}/>
-                  </div>
-                  {/* Tier legend — dynamic: shows all tiers present */}
-                  <div style={{display:"flex",gap:8,fontSize:10}}>
-                    {[1,2,3,4,5].filter(t => tierGroups[t]).map(t => (
-                      <span key={t} style={{color: t >= 4 ? "#3fb950" : t >= 3 ? "#e3b341" : t >= 2 ? "#58a6ff" : "#8b949e"}}>
-                        {t}% ×{tierGroups[t]}
-                      </span>
-                    ))}
-                  </div>
-                  <div style={{flex:1,height:1,background:"#21262d"}}/>
-                  {/* Stats */}
-                  <div style={{display:"flex",gap:14,flexWrap:"wrap"}}>
-                    <div style={{textAlign:"center"}}>
-                      <div style={{color:"#c9d1d9",fontSize:13,fontWeight:700}}>${totalExposure.toFixed(0)}</div>
-                      <div style={{color:"#484f58",fontSize:9,textTransform:"uppercase"}}>tonight</div>
-                    </div>
-                    <div style={{textAlign:"center"}}>
-                      <div style={{color:"#e3b341",fontSize:13,fontWeight:700}}>{avgEdge.toFixed(1)}%</div>
-                      <div style={{color:"#484f58",fontSize:9,textTransform:"uppercase"}}>avg edge</div>
-                    </div>
-                    <div style={{textAlign:"center"}}>
-                      <div style={{color: totalEV >= 0 ? "#3fb950" : "#f78166",fontSize:13,fontWeight:700}}>
-                        {totalEV >= 0 ? "+$" : "-$"}{Math.abs(totalEV).toFixed(0)}
-                      </div>
-                      <div style={{color:"#484f58",fontSize:9,textTransform:"uppercase"}}>exp profit</div>
-                    </div>
-                    {avgHistROI !== null && (
-                      <div style={{textAlign:"center"}}>
-                        <div style={{color: avgHistROI >= 0 ? "#3fb950" : "#f78166",fontSize:13,fontWeight:700}}>
-                          {avgHistROI >= 0 ? "+" : ""}{avgHistROI.toFixed(1)}%
-                        </div>
-                        <div style={{color:"#484f58",fontSize:9,textTransform:"uppercase"}}>hist ROI</div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
-          {/* Play history mini-chart — shown when history data available */}
-          {playHistory.length > 0 && (() => {
-            const maxCount = Math.max(...playHistory.map(h => h.count), 1);
-            return (
-              <div style={{background:"#0d1117",border:"1px solid #21262d",borderRadius:8,padding:"10px 14px",marginBottom:12}}>
-                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-                  <span style={{color:"#484f58",fontSize:10,textTransform:"uppercase",letterSpacing:".5px"}}>Play History</span>
-                  <div style={{flex:1,height:1,background:"#21262d"}}/>
-                  <span style={{color:"#8b949e",fontSize:10}}>{playHistory.length}d avg: {(playHistory.reduce((s,h)=>s+h.count,0)/playHistory.length).toFixed(1)} plays/night</span>
-                </div>
-                <div style={{display:"flex",alignItems:"flex-end",gap:3,height:40}}>
-                  {playHistory.slice().reverse().map((h, i) => {
-                    const barH = Math.max(3, Math.round((h.count / maxCount) * 40));
-                    const isToday = i === playHistory.length - 1;
-                    return (
-                      <div key={h.date} title={`${h.date}: ${h.count} plays, avg edge ${h.avgEdge?.toFixed(1)}%`}
-                        style={{flex:1,height:barH,background: isToday ? "#e3b341" : "#21262d",borderRadius:2,minWidth:4,
-                          border: isToday ? "1px solid #e3b341" : "none"}}/>
-                    );
-                  })}
-                </div>
-              </div>
-            );
+            return null; // ROI panel removed
           })()}
           {tonightLoading ? (
             <div style={{color:"#8b949e",textAlign:"center",padding:52,fontSize:13}}>
@@ -1549,7 +1446,6 @@ function App() {
               if (trackedPlays.some(p => p.id === trackId)) return false;
               if (sportFilter.length > 0 && !sportFilter.includes(play.sport)) return false;
               if (statFilter.length > 0 && !statFilter.includes(play.stat)) return false;
-              if (strongOnly && !isStrongMatchup(play)) return false;
               return true;
             });
             if (untrackedPlays.length === 0) return (
@@ -1638,8 +1534,8 @@ function App() {
                         {play.isB2B && (
                           <span title="Back-to-back: played yesterday" style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(248,113,113,0.15)",border:"1px solid #f87171",color:"#f87171"}}>B2B</span>
                         )}
-                        {play.lowVolume && (
-                          <span title={`Kalshi market: ${play.kalshiVolume ?? 0} contracts traded`} style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(251,191,36,0.12)",border:"1px solid #fbbf24",color:"#fbbf24"}}>low vol</span>
+                        {isStrongMatchup(play) && (
+                          <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(63,185,80,0.12)",border:"1px solid #3fb950",color:"#3fb950"}}>⚡ strong</span>
                         )}
                       </div>
                     </div>
