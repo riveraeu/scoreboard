@@ -1265,17 +1265,17 @@ function App() {
                             <>
                               {l5 != null && (
                                 <div style={{marginBottom:3}}>
-                                  <span style={{color:l5Color,fontWeight:700,fontSize:12}}>Log5 K%: {l5}%</span>
-                                  {expK != null && <span style={{color:"#484f58"}}> → ~{expK} expected Ks / start</span>}
+                                  <span style={{color:l5Color,fontWeight:700,fontSize:12}}>Matchup K rate: {l5}%</span>
+                                  {expK != null && <span style={{color:"#484f58"}}> → ~{expK} projected Ks</span>}
                                   {goldenRule && <span style={{color:"#3fb950",marginLeft:6}}>⚡ strong matchup</span>}
                                 </div>
                               )}
                               <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
-                                {pkp != null && <span>Pitcher K%: <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span> <span style={{color:"#484f58"}}>({pkpRating})</span></span>}
-                                {kbb != null && <span>K-BB%: <span style={{color:kbbColor,fontWeight:600}}>{kbb}%</span> <span style={{color:"#484f58"}}>({kbbRating})</span></span>}
-                                {lkp != null && <span>Lineup K%: <span style={{color:lkpColor,fontWeight:600}}>{lkp}%</span> <span style={{color:"#484f58"}}>({lkpRating}{lkpProjected ? ", est." : ""})</span></span>}
+                                {pkp != null && <span title="% of batters this pitcher strikes out">K rate: <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span> <span style={{color:"#484f58"}}>({pkpRating})</span></span>}
+                                {kbb != null && <span title="Strikeouts minus walks per batter faced — measures command and dominance">K-walk edge: <span style={{color:kbbColor,fontWeight:600}}>{kbb}%</span> <span style={{color:"#484f58"}}>({kbbRating})</span></span>}
+                                {lkp != null && <span title={lkpProjected ? "Based on projected lineup — updates when official lineup posts" : "% of at-bats this lineup strikes out"}>Opp. K rate: <span style={{color:lkpColor,fontWeight:600}}>{lkp}%</span> <span style={{color:"#484f58"}}>({lkpRating}{lkpProjected ? ", est." : ""})</span></span>}
                               </div>
-                              {parkNote && <div style={{color:"#484f58",marginTop:2}}>Park factor: {pf > 1 ? "+" : ""}{((pf - 1)*100).toFixed(0)}% ({pf > 1 ? "K-friendly" : "K-suppressing"} venue)</div>}
+                              {parkNote && <div style={{color:"#484f58",marginTop:2}}>Venue: {pf > 1 ? "+" : ""}{((pf - 1)*100).toFixed(0)}% {pf > 1 ? "strikeout-friendly" : "strikeout-suppressing"} park</div>}
                               {wTotal > 0
                                 ? <div style={{marginTop:2}}>{first} has <span style={{color:"#c9d1d9",fontWeight:600}}>{wTotal}</span> career start{wTotal>1?"s":""} vs {mlbH2HOpp}.</div>
                                 : <div style={{marginTop:2,color:"#484f58"}}>No career h2h history vs {mlbH2HOpp}.</div>
