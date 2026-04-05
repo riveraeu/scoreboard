@@ -113,7 +113,7 @@ const MOCK_PLAYS = [
   },
   // ── MLB: Hitter ────────────────────────────────────────────────────────────
   {
-    playerName:"Freddie Freeman", playerId:518692, sport:"mlb", playerTeam:"LAD", position:"1B",
+    playerName:"Freddie Freeman", playerId:28163, sport:"mlb", playerTeam:"LAD", position:"1B",
     opponent:"ARI", oppRank:3, oppMetricValue:4.85, oppMetricLabel:"ERA allowed",
     oppMetricUnit:"ERA",
     stat:"hits", threshold:1, kalshiPct:78, americanOdds:-115,
@@ -122,7 +122,7 @@ const MOCK_PLAYS = [
     lineupKPct:null, pitcherKPct:null, gameDate:TODAY,
   },
   {
-    playerName:"Juan Soto", playerId:665742, sport:"mlb", playerTeam:"NYY", position:"RF",
+    playerName:"Juan Soto", playerId:41011, sport:"mlb", playerTeam:"NYY", position:"RF",
     opponent:"BOS", oppRank:null, oppMetricValue:null, oppMetricLabel:"vs Chris Sale",
     oppMetricUnit:"%",
     stat:"hits", threshold:1, kalshiPct:76, americanOdds:-108,
@@ -299,6 +299,7 @@ function App() {
   const [tonightPlays, setTonightPlays] = React.useState(null);
   const [tonightLoading, setTonightLoading] = React.useState(true);
   const [testMode, setTestMode] = React.useState(false);
+  const [strongOnly, setStrongOnly] = React.useState(false);
   const [expandedPlays, setExpandedPlays] = React.useState(new Set());
   const [trackedPlays, setTrackedPlays] = React.useState(() => {
     // If logged in, server is authoritative — clear any stale local picks and start empty
@@ -1252,6 +1253,13 @@ function App() {
               </span>
             </div>
             <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6}}>
+              <button onClick={() => setStrongOnly(m => !m)}
+                style={{fontSize:10,padding:"2px 8px",borderRadius:6,cursor:"pointer",
+                  border:`1px solid ${strongOnly?"#3fb950":"#30363d"}`,
+                  background: strongOnly?"rgba(63,185,80,0.12)":"transparent",
+                  color: strongOnly?"#3fb950":"#484f58", fontWeight:600}}>
+                ⚡ strong
+              </button>
               <button onClick={() => setTestMode(m => !m)}
                 style={{fontSize:10,padding:"2px 8px",borderRadius:6,cursor:"pointer",
                   border:`1px solid ${testMode?"#e3b341":"#30363d"}`,
@@ -1272,9 +1280,16 @@ function App() {
               Loading plays…
             </div>
           ) : (() => {
+            const isStrongMatchup = play => {
+              if (play.sport === "mlb" && play.stat === "strikeouts") return play.log5Avg != null && play.log5Avg >= 24;
+              if (play.sport === "mlb") return play.softPct != null;
+              return play.oppRank != null && play.oppRank <= 5;
+            };
             const untrackedPlays = (tonightPlays || []).filter(play => {
               const trackId = `${play.sport || "nba"}|${play.playerName}|${play.stat}|${play.threshold}`;
-              return !trackedPlays.some(p => p.id === trackId);
+              if (trackedPlays.some(p => p.id === trackId)) return false;
+              if (strongOnly && !isStrongMatchup(play)) return false;
+              return true;
             });
             if (untrackedPlays.length === 0) return (
               <div style={{color:"#484f58",textAlign:"center",padding:52,fontSize:13}}>
@@ -1300,6 +1315,7 @@ function App() {
               return new Date(yr, mo-1, dy).toLocaleDateString("en-US", { weekday:"short", month:"short", day:"numeric" });
             }
 
+            const [kInfoOpen, setKInfoOpen] = React.useState(false);
             const STAT_FULL = {
               points:"points", rebounds:"rebounds", assists:"assists", threePointers:"3-pointers",
               goals:"goals", shotsOnGoal:"shots on goal",
@@ -1454,7 +1470,17 @@ function App() {
                         {/* Matchup explanation — MLB strikeout props (unified, no h2h) */}
                         {play.stat === "strikeouts" && play.sport === "mlb" && (
                           <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.5,position:"relative"}}>
-                            <span title={"How we identify strong K matchups:\n\n1. Matchup score \u2014 we combine the pitcher\u2019s K rate with each batter\u2019s individual K tendency to estimate a projected K rate for this specific lineup. A score \u2265 23% clears the bar.\n\n2. Lineup K rate (fallback) \u2014 if batter-level data isn\u2019t available, we require the opposing lineup to strikeout at \u2265 24% as a team.\n\n3. Pitcher floor \u2014 pitchers below a 20% K rate are excluded unless they have strong head-to-head history.\n\nThe Matchup proj. bar shows the estimated probability of recording the required strikeout total, given the pitcher\u2019s ability and this specific lineup\u2019s contact tendencies."} style={{position:"absolute",top:8,right:10,cursor:"help",color:"#484f58",fontSize:12,lineHeight:1}}>ⓘ</span>
+                            <span onClick={() => setKInfoOpen(o => !o)}
+                              style={{position:"absolute",top:8,right:10,cursor:"pointer",color:kInfoOpen?"#58a6ff":"#484f58",fontSize:12,lineHeight:1,userSelect:"none"}}>ⓘ</span>
+                            {kInfoOpen && (
+                              <div style={{background:"#21262d",border:"1px solid #30363d",borderRadius:8,padding:"10px 12px",marginBottom:8,fontSize:11,color:"#c9d1d9",lineHeight:1.6}}>
+                                <div style={{fontWeight:700,marginBottom:6,color:"#fff"}}>How we identify strong K matchups</div>
+                                <div style={{marginBottom:4}}><span style={{color:"#58a6ff",fontWeight:600}}>1. Matchup score</span> — We combine the pitcher's K rate with each batter's individual strikeout tendency to project a K rate for this specific lineup. A score of 23%+ clears the bar.</div>
+                                <div style={{marginBottom:4}}><span style={{color:"#58a6ff",fontWeight:600}}>2. Lineup K rate (fallback)</span> — If batter-level data isn't available, we require the opposing lineup to strikeout at 24%+ as a team.</div>
+                                <div style={{marginBottom:6}}><span style={{color:"#58a6ff",fontWeight:600}}>3. Pitcher floor</span> — Pitchers below a 20% K rate are excluded unless they have strong head-to-head history.</div>
+                                <div style={{color:"#8b949e"}}>The <span style={{color:"#d2a8ff"}}>Matchup proj.</span> bar shows the estimated probability of recording the required strikeout total, given the pitcher's ability and this lineup's contact tendencies.</div>
+                              </div>
+                            )}
                             {(() => {
                               const first = play.playerName.split(" ")[0];
                               const opp   = <span style={{color:"#c9d1d9",fontWeight:600}}>{play.opponent}</span>;
