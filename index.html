@@ -26,6 +26,20 @@
 <script type="text/babel">
 const WORKER = (typeof CONFIG !== "undefined" ? CONFIG.WORKER_URL : "https://YOUR_WORKER.YOUR_SUBDOMAIN.workers.dev");
 
+// Simple localStorage cache to avoid redundant Worker requests
+function lsGet(key, ttlMs) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const { ts, data } = JSON.parse(raw);
+    if (Date.now() - ts > ttlMs) return null;
+    return data;
+  } catch { return null; }
+}
+function lsSet(key, data) {
+  try { localStorage.setItem(key, JSON.stringify({ ts: Date.now(), data })); } catch {}
+}
+
 const SPORTS = [
   { label: "NBA",  value: "basketball/nba" },
   { label: "NFL",  value: "football/nfl" },
@@ -399,10 +413,23 @@ function App() {
       .catch(() => { setTonightPlays([]); setTonightLoading(false); });
   }, [testMode]);
 
-  // Fetch play history + calibration on mount
+  // Fetch play history + calibration on mount — localStorage cache prevents redundant Worker requests
   React.useEffect(() => {
-    fetch(`${WORKER}/plays/history`).then(r => r.json()).then(d => setPlayHistory(d.history || [])).catch(() => {});
-    fetch(`${WORKER}/calibration`).then(r => r.json()).then(d => setCalibration(d.calib || {})).catch(() => {});
+    const cachedHistory = lsGet("cache:plays_history", 5 * 60 * 1000); // 5 min TTL
+    if (cachedHistory) { setPlayHistory(cachedHistory); }
+    else fetch(`${WORKER}/plays/history`).then(r => r.json()).then(d => {
+      const h = d.history || [];
+      setPlayHistory(h);
+      lsSet("cache:plays_history", h);
+    }).catch(() => {});
+
+    const cachedCalib = lsGet("cache:calibration", 60 * 60 * 1000); // 1 hour TTL
+    if (cachedCalib) { setCalibration(cachedCalib); }
+    else fetch(`${WORKER}/calibration`).then(r => r.json()).then(d => {
+      const c = d.calib || {};
+      setCalibration(c);
+      lsSet("cache:calibration", c);
+    }).catch(() => {});
   }, []);
 
   // Persist tracked plays to localStorage only when not logged in (server is source of truth when logged in)
@@ -897,7 +924,7 @@ function App() {
               >
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
                   <img
-                    src={`${WORKER}/headshot?id=${p.id}&sport=${p.league || sport.split("/")[1]}`}
+                    src={`https://a.espncdn.com/i/headshots/${p.league || sport.split("/")[1]}/players/full/${p.id}.png`}
                     alt={p.name}
                     onError={e => {
                       e.target.onerror = null;
@@ -1579,7 +1606,7 @@ function App() {
               const isExpanded = expandedPlays.has(playKey);
               const trackId = `${play.sport || "nba"}|${play.playerName}|${play.stat}|${play.threshold}`;
               const isTracked = trackedPlays.some(p => p.id === trackId);
-              const headshotUrl = play.playerId ? `${WORKER}/headshot?id=${play.playerId}&sport=${play.sport || "nba"}` : null;
+              const headshotUrl = play.playerId ? `https://a.espncdn.com/i/headshots/${play.sport || "nba"}/players/full/${play.playerId}.png` : null;
               return (
                 <div key={playKey}
                   style={{background:"#161b22",border:"1px solid #30363d",borderRadius:12,
