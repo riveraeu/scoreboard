@@ -197,7 +197,7 @@ function AddPickModal({ onClose, onAdd }) {
     receptions:"Receptions", completions:"Completions", attempts:"Attempts",
     shotsOnGoal:"Shots on Goal", points:"Points", saves:"Saves",
   };
-  const [form, setForm] = React.useState({ playerName:"", sport:"nba", stat:"points", threshold:"", americanOdds:"-110", truePct:"", units:"1" });
+  const [form, setForm] = React.useState({ playerName:"", sport:"nba", stat:"points", threshold:"", americanOdds:"-110", truePct:"", units:"1", gameDate: new Date().toISOString().slice(0,10) });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   // Reset stat when sport changes
@@ -226,6 +226,7 @@ function AddPickModal({ onClose, onAdd }) {
       truePct: !isNaN(truePctVal) ? truePctVal : null,
       edge: !isNaN(truePctVal) ? parseFloat((truePctVal - kalshiPct).toFixed(1)) : null,
       units: parseFloat(form.units) || 1,
+      gameDate: form.gameDate || new Date().toISOString().slice(0,10),
     });
     onClose();
   }
@@ -280,7 +281,7 @@ function AddPickModal({ onClose, onAdd }) {
                   onChange={e => set("americanOdds", e.target.value)} />
               </div>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
               <div>
                 <label style={lbl}>True Probability %</label>
                 <input style={inp} type="number" placeholder="75" min="0" max="100" step="0.1" value={form.truePct}
@@ -290,6 +291,11 @@ function AddPickModal({ onClose, onAdd }) {
                 <label style={lbl}>Units %</label>
                 <input style={inp} type="number" placeholder="1" min="0" max="100" step="0.5" value={form.units}
                   onChange={e => set("units", e.target.value)} />
+              </div>
+              <div>
+                <label style={lbl}>Game Date</label>
+                <input style={inp} type="date" value={form.gameDate}
+                  onChange={e => set("gameDate", e.target.value)} />
               </div>
             </div>
           </div>
@@ -1806,11 +1812,13 @@ function App() {
                               const dvp = play.dvpFactor;
 
                               if (play.sport === "nba") {
+                                const r = play.oppRank;
+                                const rankDesc = r === 1 ? "the most" : r <= 3 ? "among the most" : "a lot of";
                                 const statContext = {
-                                  points:       "their defense breaks down in the paint and on the perimeter — they give up the most points in the league",
+                                  points:       `their defense breaks down in the paint and on the perimeter — they give up ${rankDesc} points in the league`,
                                   rebounds:     "they shoot at a low clip and struggle on the offensive glass, creating more rebound opportunities for opponents",
-                                  assists:      "their help defense is porous — they allow the ball to move freely and give up the most open looks",
-                                  threePointers:"they surrender the most 3-point volume in the league — shooters get open looks all night",
+                                  assists:      `their help defense is porous — they allow the ball to move freely and give up ${rankDesc} open looks`,
+                                  threePointers:`they surrender ${rankDesc} 3-point volume in the league — shooters get open looks all night`,
                                 }[play.stat] || "they rank among the weakest defenses in the league for this stat";
                                 const dvpPct = dvp != null && dvp > 1 ? Math.round((dvp - 1) * 100) : null;
                                 const projLine = proj != null && dvp != null
@@ -1824,10 +1832,12 @@ function App() {
 
                               // NHL
                               if (play.sport === "nhl") {
+                                const r2 = play.oppRank;
+                                const nhlDesc = r2 === 1 ? "the most" : r2 <= 3 ? "among the most" : "a high volume of";
                                 const nhlContext = {
-                                  goals:   "their defense leaks goals — they give up shots from dangerous areas and their goaltender is performing below expectations",
+                                  goals:   `their defense leaks goals — they give up shots from dangerous areas and their goaltender is performing below expectations`,
                                   assists: "their defense gives up high-danger chances, creating open looks for finishers and more assist opportunities for playmakers",
-                                  points:  "their defense is one of the most porous in the league — they allow both high shot volume and poor defensive zone coverage",
+                                  points:  `their defense is one of the most porous in the league — they allow ${nhlDesc} shot volume and goals`,
                                 }[play.stat] || "they rank among the weakest defensive teams in the NHL";
                                 const dvpPct = dvp != null && dvp > 1 ? Math.round((dvp - 1) * 100) : null;
                                 // For NHL, projectedStat is expected output per game (e.g. 0.63 goals/game)
