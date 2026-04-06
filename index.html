@@ -1360,7 +1360,6 @@ function App() {
                                 <div style={{marginBottom:3}}>
                                   <span style={{color:l5Color,fontWeight:700,fontSize:12}}>Matchup K rate: {l5}%</span>
                                   {expK != null && <span style={{color:"#484f58"}}> → ~{expK} projected Ks</span>}
-                                  {goldenRule && <span style={{color:"#3fb950",marginLeft:6}}>⚡ strong matchup</span>}
                                 </div>
                               )}
                               <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
@@ -1523,7 +1522,7 @@ function App() {
                   : "Plays";
               })()}
               <span style={{color:"#484f58",fontSize:11,fontWeight:400,marginLeft:8}}>
-                implied ≥70% · edge ≥3% · NBA: vs bottom-10 defense · MLB hitters: ERA ≥4.0 · NHL: all matchups
+                implied ≥70% · edge ≥3% · NBA: vs bottom-10 defense · MLB hitters: ERA ≥4.0 · MLB pitchers: lineup K-rate ≥22% · NHL: all matchups
               </span>
             </div>
             <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",justifyContent:"flex-end"}}>
@@ -1580,7 +1579,7 @@ function App() {
           {/* ROI Summary panel */}
           {!tonightLoading && (tonightPlays || []).length > 0 && (() => {
             const isStrongMatchup = play => {
-              if (play.sport === "mlb" && play.stat === "strikeouts") return play.log5Avg != null && play.log5Avg >= 24;
+              if (play.sport === "mlb" && play.stat === "strikeouts") return false; // matchup is a qualifying condition, not a signal
               if (play.sport === "mlb") return play.softPct != null;
               if (play.sport === "nba") return play.oppRank != null && play.oppRank <= 5 && (play.projectedStat == null || play.projectedStat >= play.threshold * 0.95);
               if (play.sport === "nhl") return play.oppRank != null && play.oppRank <= 5;
@@ -1600,7 +1599,7 @@ function App() {
             </div>
           ) : (() => {
             const isStrongMatchup = play => {
-              if (play.sport === "mlb" && play.stat === "strikeouts") return play.log5Avg != null && play.log5Avg >= 24;
+              if (play.sport === "mlb" && play.stat === "strikeouts") return false; // matchup is a qualifying condition, not a signal
               if (play.sport === "mlb") return play.softPct != null;
               if (play.sport === "nba") return play.oppRank != null && play.oppRank <= 5 && (play.projectedStat == null || play.projectedStat >= play.threshold * 0.95);
               // NHL: projectedStat is per-game rate (e.g. 0.6 goals/game), not comparable to threshold (1)
@@ -1625,11 +1624,11 @@ function App() {
                       if (qc === 0) return "No Kalshi markets found — check back later when tomorrow's markets open.";
                       if (filtered > 0 && pf === 0) return <>
                         <div>{qc} markets found — all filtered: tonight's opponents don't meet the soft matchup threshold.</div>
-                        <div style={{fontSize:11,marginTop:6,color:"#30363d"}}>NBA requires opponent in bottom 10 defense · MLB requires ERA ≥ 4.0 pitcher</div>
+                        <div style={{fontSize:11,marginTop:6,color:"#30363d"}}>NBA: vs bottom-10 defense · MLB hitters: ERA ≥4.0 · MLB pitchers: lineup K-rate ≥22%</div>
                       </>;
                       if (filtered > 0) return <>
                         <div>{qc} markets found · {filtered} filtered by matchup · {pf - (tonightPlays?.length ?? 0)} filtered by edge.</div>
-                        <div style={{fontSize:11,marginTop:6,color:"#30363d"}}>NBA requires opponent in bottom 10 defense · MLB requires ERA ≥ 4.0 pitcher</div>
+                        <div style={{fontSize:11,marginTop:6,color:"#30363d"}}>NBA: vs bottom-10 defense · MLB hitters: ERA ≥4.0 · MLB pitchers: lineup K-rate ≥22%</div>
                       </>;
                       return "No qualifying plays found.";
                     })()
@@ -1878,7 +1877,6 @@ function App() {
                                 const projectedNote = isProjected ? <span style={{color:"#8b949e",fontSize:10}}> (projected lineup — updates when official lineup posts)</span> : null;
                                 return <>
                                   {first} is facing {opp}, a lineup with {lineupDesc} — their batters swing and miss at a high clip ({lkp}% K rate{isProjected ? ", est." : ""}).{" "}
-                                  {strongMatchup ? <span style={{color:"#3fb950",fontWeight:600}}>⚡ Strong matchup.</span> : null}{" "}
                                   {first} is an {pitcherRating} strikeout pitcher ({pkp}% K rate){kbbNote}{expK != null ? <>, projecting around <span style={{color:"#c9d1d9",fontWeight:600}}>~{expK} strikeouts</span> this start</> : null}.{parkNote}{projectedNote}
                                 </>;
                               }
