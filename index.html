@@ -1354,7 +1354,7 @@ function App() {
                           const kbbColor  = kbb == null ? "#8b949e" : kbb >= 18 ? "#3fb950" : kbb >= 12 ? "#d29922" : "#f78166";
                           const l5Color   = l5  == null ? "#8b949e" : l5  >= 28 ? "#3fb950" : l5  >= 24 ? "#d29922" : "#8b949e";
                           const goldenRule = l5 != null && l5 >= 24;
-                          const parkNote   = pf != null && Math.abs(pf - 1.0) >= 0.03;
+                          const parkNote   = pf != null && Math.abs(pf - 1.0) >= 0.01;
                           return (
                             <>
                               {l5 != null && (
@@ -1840,7 +1840,7 @@ function App() {
                               const expK  = play.expectedKs;
                               const pf    = play.parkFactor;
                               const l5    = play.log5Avg;
-                              const parkNote = pf != null && Math.abs(pf - 1.0) >= 0.03
+                              const parkNote = pf != null && Math.abs(pf - 1.0) >= 0.01
                                 ? <> The venue is a <span style={{color:"#c9d1d9"}}>{pf > 1 ? "strikeout-friendly" : "strikeout-suppressing"}</span> park ({pf > 1 ? "+" : ""}{((pf-1)*100).toFixed(0)}%).</>
                                 : null;
                               const pitcherRating = pkp != null
