@@ -1287,6 +1287,7 @@ function App() {
                             {/* Drawer: season + soft matchup */}
                             {showBreakdown && (
                               <div style={{borderLeft:"2px solid #30363d",paddingLeft:10,marginTop:2,display:"flex",flexDirection:"column",gap:4}}>
+                                {/* Season hit rate (blue) */}
                                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                                   <div style={{flex:1,background:"#21262d",borderRadius:4,height:11,overflow:"hidden"}}>
                                     <div style={{width:`${pct}%`,background:"#58a6ff",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:pct>0?2:0}}/>
@@ -1294,7 +1295,23 @@ function App() {
                                   <div style={{color:"#58a6ff",fontSize:10,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{pct.toFixed(1)}%</div>
                                   <div style={{color:"#484f58",fontSize:10,width:50,flexShrink:0}}>{isMLB ? `'25+'26 (${totalGames}g)` : `${count}/${totalGames}g`}</div>
                                 </div>
-                                {softPct !== null && !(isMLB && safeTab === "strikeouts") && (
+                                {/* Log5+Poisson (purple) — pitcher strikeouts only */}
+                                {(() => {
+                                  const l5 = tonightPlay?.log5Pct ?? null;
+                                  const expK = tonightPlay?.expectedKs ?? null;
+                                  if (l5 === null || !(isMLB && safeTab === "strikeouts")) return null;
+                                  return (
+                                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                                      <div style={{flex:1,background:"#21262d",borderRadius:4,height:11,overflow:"hidden"}}>
+                                        <div style={{width:`${l5}%`,background:"#d2a8ff",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:l5>0?2:0}}/>
+                                      </div>
+                                      <div style={{color:"#d2a8ff",fontSize:10,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{l5.toFixed(1)}%</div>
+                                      <div style={{color:"#484f58",fontSize:10,width:50,flexShrink:0}}>{expK != null ? `${expK}K proj` : "log5"}</div>
+                                    </div>
+                                  );
+                                })()}
+                                {/* H2H / soft matchup (green) */}
+                                {softPct !== null && (
                                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                                     <div style={{flex:1,background:"#21262d",borderRadius:4,height:11,overflow:"hidden"}}>
                                       <div style={{width:`${softPct}%`,background:"#3fb950",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:softPct>0?2:0}}/>
@@ -1781,27 +1798,29 @@ function App() {
                             </div>
                             <div style={{color:"#58a6ff",fontSize:11,fontWeight:600,width:38,textAlign:"right",flexShrink:0}}>{play.seasonPct}%</div>
                           </div>
-                          {play.softPct !== null && play.stat !== "strikeouts" && (
+                          {play.log5Pct != null && (
                             <div style={{display:"flex",alignItems:"center",gap:8}}>
                               <div style={{width:110,color:"#8b949e",fontSize:10,flexShrink:0,lineHeight:1.35}}>
-                                {play.oppRank === null ? (play.oppMetricLabel || "").replace(/\s*\(\d+g\)\s*$/, "") : "vs weak matchup"}
+                                Log5+Poisson{play.expectedKs != null ? ` (${play.expectedKs}K proj)` : ""}
+                              </div>
+                              <div style={{flex:1,background:"#21262d",borderRadius:3,height:8,overflow:"hidden"}}>
+                                <div style={{width:`${play.log5Pct}%`,background:"#d2a8ff",height:"100%",borderRadius:3}}/>
+                              </div>
+                              <div style={{color:"#d2a8ff",fontSize:11,fontWeight:600,width:38,textAlign:"right",flexShrink:0}}>{play.log5Pct}%</div>
+                            </div>
+                          )}
+                          {play.softPct !== null && (
+                            <div style={{display:"flex",alignItems:"center",gap:8}}>
+                              <div style={{width:110,color:"#8b949e",fontSize:10,flexShrink:0,lineHeight:1.35}}>
+                                {play.stat === "strikeouts"
+                                  ? `vs ${play.opponent} career`
+                                  : play.oppRank === null ? (play.oppMetricLabel || "").replace(/\s*\(\d+g\)\s*$/, "") : "vs weak matchup"}
                                 {play.softGames ? ` (${play.softGames}g)` : ""}
                               </div>
                               <div style={{flex:1,background:"#21262d",borderRadius:3,height:8,overflow:"hidden"}}>
                                 <div style={{width:`${play.softPct}%`,background:"#3fb950",height:"100%",borderRadius:3}}/>
                               </div>
                               <div style={{color:"#3fb950",fontSize:11,fontWeight:600,width:38,textAlign:"right",flexShrink:0}}>{play.softPct}%</div>
-                            </div>
-                          )}
-                          {play.log5Pct != null && (
-                            <div style={{display:"flex",alignItems:"center",gap:8}}>
-                              <div style={{width:110,color:"#8b949e",fontSize:10,flexShrink:0,lineHeight:1.35}}>
-                                Matchup proj.
-                              </div>
-                              <div style={{flex:1,background:"#21262d",borderRadius:3,height:8,overflow:"hidden"}}>
-                                <div style={{width:`${play.log5Pct}%`,background:"#d2a8ff",height:"100%",borderRadius:3}}/>
-                              </div>
-                              <div style={{color:"#d2a8ff",fontSize:11,fontWeight:600,width:38,textAlign:"right",flexShrink:0}}>{play.log5Pct}%</div>
                             </div>
                           )}
                         </div>
