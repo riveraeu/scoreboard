@@ -1760,12 +1760,6 @@ function App() {
                             <span style={{color:"#484f58"}}> · </span>
                             <span style={{color:unitColor,fontWeight:600}}>${stake.toFixed(0)}</span>
                           </span>
-                          {play.historicalHitRate !== null && play.historicalGames >= 3 && (
-                            <span>Hist: <span style={{
-                              color: play.historicalHitRate >= play.truePct ? "#3fb950" : "#f78166",
-                              fontWeight:600
-                            }}>{play.historicalHitRate}%</span><span style={{color:"#333d47"}}> ({play.historicalGames}g)</span></span>
-                          )}
                         </div>
                         <div style={{color:"#3fb950",fontSize:10,fontWeight:600,flexShrink:0}}>
                           win +${profit.toFixed(0)}
