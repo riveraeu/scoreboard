@@ -1343,6 +1343,7 @@ function App() {
                     {(() => {
                       const first = player.name.split(" ")[0];
                       const h2h = dvpData?.h2h;
+                      const strongBadge = <span style={{display:"inline-block",fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(63,185,80,0.12)",border:"1px solid #3fb950",color:"#3fb950",marginLeft:5,verticalAlign:"middle"}}>⚡ strong matchup</span>;
                       if (isMLB) {
                         if (safeTab === "strikeouts") {
                           const lkp   = h2h?.lineupKPct   ?? null;
@@ -1374,12 +1375,14 @@ function App() {
                           const kbbColor  = kbb == null ? "#8b949e" : kbb >= 18 ? "#3fb950" : kbb >= 12 ? "#d29922" : "#f78166";
                           const l5Color   = l5  == null ? "#8b949e" : l5  >= 28 ? "#3fb950" : l5  >= 24 ? "#d29922" : "#8b949e";
                           const parkNote  = pf != null && Math.abs(pf - 1.0) >= 0.01;
+                          const isStrongPitcher = l5 != null && l5 >= 24;
                           return (
                             <>
                               {l5 != null && (
                                 <div style={{marginBottom:3}}>
                                   <span style={{color:l5Color,fontWeight:700,fontSize:12}}>Matchup K rate: {l5}%</span>
                                   {expK != null && <span style={{color:"#484f58"}}> → ~{expK} projected Ks</span>}
+                                  {isStrongPitcher && strongBadge}
                                 </div>
                               )}
                               <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
@@ -1401,7 +1404,7 @@ function App() {
                         if (h2h?.pitcherName) {
                           const era = h2h.pitcherEra;
                           const isSoft = era != null && era >= 4.0;
-                          return <><span style={{color:"#c9d1d9",fontWeight:600}}>{h2h.pitcherName}</span>{era!=null?` (${era} ERA)`:""} starts tonight — {isSoft?<span style={{color:"#3fb950"}}>above-avg ERA, favorable matchup</span>:<span style={{color:"#8b949e"}}>below-avg ERA</span>}. {wTotal>0?<>{first} has <span style={{color:"#c9d1d9",fontWeight:600}}>{wTotal}</span> career game{wTotal>1?"s":""} vs {mlbH2HOpp}.</>:<>No h2h history vs {mlbH2HOpp} yet.</>}</>;
+                          return <><span style={{color:"#c9d1d9",fontWeight:600}}>{h2h.pitcherName}</span>{era!=null?` (${era} ERA)`:""} starts tonight — {isSoft?<span style={{color:"#3fb950"}}>above-avg ERA, favorable matchup</span>:<span style={{color:"#8b949e"}}>below-avg ERA</span>}.{isSoft && strongBadge} {wTotal>0?<>{first} has <span style={{color:"#c9d1d9",fontWeight:600}}>{wTotal}</span> career game{wTotal>1?"s":""} vs {mlbH2HOpp}.</>:<>No h2h history vs {mlbH2HOpp} yet.</>}</>;
                         }
                         return <>{first} faces <span style={{color:"#c9d1d9",fontWeight:600}}>{mlbH2HOpp}</span> tonight. {wTotal>0?<>{first} has <span style={{color:"#c9d1d9",fontWeight:600}}>{wTotal}</span> career game{wTotal>1?"s":""} vs {mlbH2HOpp}.</>:<>No career h2h history vs {mlbH2HOpp} yet.</>}</>;
                       }
@@ -1447,8 +1450,9 @@ function App() {
                             const vsLabel = posLabel ? `vs ${posLabel}` : "in this stat";
                             const weakLabel = posLabel ? `weak ${posLabel} defenses` : "weak matchups";
                             const seasonPctDisplay = tonightTabPlay?.seasonPct ?? null;
+                            const isNBAStrong = tonightTabPlay?.softPct != null;
                             return <>
-                              {oppEl} <span style={{color:"#f78166",fontWeight:700}}>{ordinal(displayRank)}-worst</span> {vsLabel}{valueStr}. {seasonPctDisplay != null && <>{first} hits {thresholdDisplay}+ {STAT_FULL[safeTab] || safeTab} in <span style={{color:"#c9d1d9",fontWeight:600}}>{seasonPctDisplay}%</span> of games this season</>}{hitRate && thresholdDisplay && <>, and {hitRate} vs {weakLabel}{games}</>}.
+                              {oppEl} <span style={{color:"#f78166",fontWeight:700}}>{ordinal(displayRank)}-worst</span> {vsLabel}{valueStr}.{isNBAStrong && strongBadge} {seasonPctDisplay != null && <>{first} hits {thresholdDisplay}+ {STAT_FULL[safeTab] || safeTab} in <span style={{color:"#c9d1d9",fontWeight:600}}>{seasonPctDisplay}%</span> of games this season</>}{hitRate && thresholdDisplay && <>, and {hitRate} vs {weakLabel}{games}</>}.
                             </>;
                           }
 
@@ -1464,7 +1468,7 @@ function App() {
                               ? <> {first} is averaging {recent != null ? <><span style={{color:"#c9d1d9",fontWeight:600}}>{recent}</span> {STAT_FULL[safeTab] || safeTab} per game</> : "at a strong rate"} recently{dvpPct != null ? <>, and {oppEl} allows <span style={{color:"#f78166"}}>{dvpPct}% more</span> than the league average</> : ""} — projecting around <span style={{color:"#c9d1d9",fontWeight:700}}>~{proj}</span> per game this matchup.</>
                               : null;
                             return <>
-                              {oppEl} ranks {rankEl} in {tabOppMetricLabel || "goals allowed"}{metricStr} — {nhlContext}.{projLine}
+                              {oppEl} ranks {rankEl} in {tabOppMetricLabel || "goals allowed"}{metricStr} — {nhlContext}.{rank <= 5 && strongBadge}{projLine}
                               {hitRate && thresholdDisplay && <> {first} has recorded {thresholdDisplay}+ {STAT_FULL[safeTab] || safeTab} in {hitRate} of games vs weak defenses{games}.</>}
                             </>;
                           }
