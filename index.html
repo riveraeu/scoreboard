@@ -1418,7 +1418,7 @@ function App() {
                           const isNHL = sport === "hockey/nhl";
 
                           if (isNBA) {
-                            const posLabel = tonightTabPlay?.posGroup === "G" ? "guards" : tonightTabPlay?.posGroup === "F" ? "forwards" : tonightTabPlay?.posGroup === "C" ? "centers" : null;
+                            const posLabel = {PG:"point guards",SG:"shooting guards",SF:"small forwards",PF:"power forwards",C:"centers"}[tonightTabPlay?.posGroup] ?? null;
                             const displayRank = tonightTabPlay?.posDvpRank ?? rank;
                             const displayValue = tonightTabPlay?.posDvpValue ?? metricVal;
                             const statUnit = { points:"PPG", rebounds:"RPG", assists:"APG", threePointers:"3PM" }[safeTab] || metricUnit || "";
@@ -1920,7 +1920,7 @@ function App() {
                               const dvp = play.dvpFactor;
 
                               if (play.sport === "nba") {
-                                const posLabel = play.posGroup === "G" ? "guards" : play.posGroup === "F" ? "forwards" : play.posGroup === "C" ? "centers" : null;
+                                const posLabel = {PG:"point guards",SG:"shooting guards",SF:"small forwards",PF:"power forwards",C:"centers"}[play.posGroup] ?? null;
                                 const displayRank = play.posDvpRank ?? play.oppRank;
                                 const displayValue = play.posDvpValue ?? play.oppMetricValue;
                                 const statUnit = { points:"PPG", rebounds:"RPG", assists:"APG", threePointers:"3PM" }[play.stat] || play.oppMetricUnit || "";
