@@ -1004,7 +1004,7 @@ function App() {
           />
 <div>
             <h1 style={{color:"#fff",margin:0,fontSize:19,fontWeight:700}}>{player.name}</h1>
-            <div style={{color:"#8b949e",fontSize:12}}>{player.team} · {SPORTS.find(s=>s.value===(player.sportKey||sport))?.label} 2025-26</div>
+            <div style={{color:"#8b949e",fontSize:12}}>{player.team}{player.opponent ? <> · <span style={{color:"#58a6ff"}}>vs {player.opponent}</span></> : ""} · {SPORTS.find(s=>s.value===(player.sportKey||sport))?.label} 2025-26</div>
           </div>
           <div style={{marginLeft:"auto",display:"flex",gap:8}}>
             {[["AVG",avg],["HIGH",hi],["GP",totalGames]].map(([l,v]) => (
