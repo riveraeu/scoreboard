@@ -1418,21 +1418,16 @@ function App() {
                           const isNHL = sport === "hockey/nhl";
 
                           if (isNBA) {
-                            const rankDesc = rank === 1 ? "the most" : rank <= 3 ? "among the most" : "a lot of";
-                            const statContext = {
-                              points:       `their defense breaks down in the paint and on the perimeter — they give up ${rankDesc} points in the league`,
-                              rebounds:     "they shoot at a low clip and struggle on the offensive glass, creating more rebound opportunities for opponents",
-                              assists:      `their help defense is porous — they allow the ball to move freely and give up ${rankDesc} open looks`,
-                              threePointers:`they surrender ${rankDesc} 3-point volume in the league — shooters get open looks all night`,
-                            }[safeTab] || "they rank among the weakest defenses in the league for this stat";
                             const posLabel = tonightTabPlay?.posGroup === "G" ? "guards" : tonightTabPlay?.posGroup === "F" ? "forwards" : tonightTabPlay?.posGroup === "C" ? "centers" : null;
+                            const displayRank = tonightTabPlay?.posDvpRank ?? rank;
+                            const displayValue = tonightTabPlay?.posDvpValue ?? metricVal;
+                            const statUnit = { points:"PPG", rebounds:"RPG", assists:"APG", threePointers:"3PM" }[safeTab] || metricUnit || "";
+                            const valueStr = displayValue != null ? ` (${displayValue} ${statUnit})` : "";
+                            const vsLabel = posLabel ? `vs ${posLabel}` : "in this stat";
                             const weakLabel = posLabel ? `weak ${posLabel} defenses` : "weak matchups";
                             const seasonPctDisplay = tonightTabPlay?.seasonPct ?? null;
-                            const projNote = proj != null ? <span style={{color:"#484f58"}}>{recent != null ? ` · ${recent} avg last 10` : ""} · ~{proj} projected</span> : null;
                             return <>
-                              {oppEl} ranks {rankEl} in {tabOppMetricLabel || statLabel}{metricStr} — {statContext}.{" "}
-                              {seasonPctDisplay != null && <>{first} hits {thresholdDisplay}+ {STAT_FULL[safeTab] || safeTab} in <span style={{color:"#c9d1d9",fontWeight:600}}>{seasonPctDisplay}%</span> of games this season</>}
-                              {hitRate && thresholdDisplay && <>, and {hitRate} vs {weakLabel}{games}</>}.{projNote}
+                              {oppEl} <span style={{color:"#f78166",fontWeight:700}}>{ordinal(displayRank)}-worst</span> {vsLabel}{valueStr}. {seasonPctDisplay != null && <>{first} hits {thresholdDisplay}+ {STAT_FULL[safeTab] || safeTab} in <span style={{color:"#c9d1d9",fontWeight:600}}>{seasonPctDisplay}%</span> of games this season</>}{hitRate && thresholdDisplay && <>, and {hitRate} vs {weakLabel}{games}</>}.
                             </>;
                           }
 
@@ -1925,24 +1920,15 @@ function App() {
                               const dvp = play.dvpFactor;
 
                               if (play.sport === "nba") {
-                                const r = play.oppRank;
                                 const posLabel = play.posGroup === "G" ? "guards" : play.posGroup === "F" ? "forwards" : play.posGroup === "C" ? "centers" : null;
-                                const rankDesc = r === 1 ? "the most" : r <= 3 ? "among the most" : "a lot of";
-                                const statContext = {
-                                  points:       `their defense breaks down in the paint and on the perimeter — they give up ${rankDesc} points in the league`,
-                                  rebounds:     "they shoot at a low clip and struggle on the offensive glass, creating more rebound opportunities for opponents",
-                                  assists:      `their help defense is porous — they allow the ball to move freely and give up ${rankDesc} open looks`,
-                                  threePointers:`they surrender ${rankDesc} 3-point volume in the league — shooters get open looks all night`,
-                                }[play.stat] || "they rank among the weakest defenses in the league for this stat";
-                                const posDvpNote = play.posDvpRank != null && posLabel
-                                  ? <> <span style={{color:"#58a6ff",fontSize:10}}>({ordinal(play.posDvpRank)}-worst vs {posLabel}: {play.posDvpValue} {play.oppMetricUnit || ""})</span></>
-                                  : null;
+                                const displayRank = play.posDvpRank ?? play.oppRank;
+                                const displayValue = play.posDvpValue ?? play.oppMetricValue;
+                                const statUnit = { points:"PPG", rebounds:"RPG", assists:"APG", threePointers:"3PM" }[play.stat] || play.oppMetricUnit || "";
+                                const valueStr = displayValue != null ? ` (${displayValue} ${statUnit})` : "";
+                                const vsLabel = posLabel ? `vs ${posLabel}` : "in this stat";
                                 const weakLabel = posLabel ? `weak ${posLabel} defenses` : "weak matchups";
-                                const projNote = proj != null ? <span style={{color:"#484f58"}}>{recent != null ? ` · ${recent} avg last 10` : ""} · ~{proj} projected</span> : null;
                                 return <>
-                                  {opp} ranks {rank} in {play.oppMetricLabel || "this stat"}{metricStr}{posDvpNote} — {statContext}.{" "}
-                                  {first} hits {play.threshold}+ {STAT_FULL[play.stat] || play.stat} in <span style={{color:"#c9d1d9",fontWeight:600}}>{play.seasonPct}%</span> of games this season
-                                  {play.softPct !== null && <>, and {hitRate} vs {weakLabel}{games}</>}.{projNote}
+                                  {opp} <span style={{color:"#f78166",fontWeight:700}}>{ordinal(displayRank)}-worst</span> {vsLabel}{valueStr}. {first} hits {play.threshold}+ {STAT_FULL[play.stat] || play.stat} in <span style={{color:"#c9d1d9",fontWeight:600}}>{play.seasonPct}%</span> of games this season{play.softPct !== null && <>, and {hitRate} vs {weakLabel}{games}</>}.
                                 </>;
                               }
 
