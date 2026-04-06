@@ -1310,8 +1310,8 @@ function App() {
                                     </div>
                                   );
                                 })()}
-                                {/* H2H / soft matchup (green) — not shown for strikeouts (not in truePct blend) */}
-                                {softPct !== null && !(isMLB && safeTab === "strikeouts") && (
+                                {/* H2H / soft matchup (green) — strikeouts only shown when ≥3 starts (qualifies for truePct blend) */}
+                                {softPct !== null && (!(isMLB && safeTab === "strikeouts") || wTotal >= 3) && (
                                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                                     <div style={{flex:1,background:"#21262d",borderRadius:4,height:11,overflow:"hidden"}}>
                                       <div style={{width:`${softPct}%`,background:"#3fb950",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:softPct>0?2:0}}/>
@@ -1809,10 +1809,12 @@ function App() {
                               <div style={{color:"#d2a8ff",fontSize:11,fontWeight:600,width:38,textAlign:"right",flexShrink:0}}>{play.log5Pct}%</div>
                             </div>
                           )}
-                          {play.softPct !== null && play.stat !== "strikeouts" && (
+                          {play.softPct !== null && (play.stat !== "strikeouts" || (play.softGames ?? 0) >= 3) && (
                             <div style={{display:"flex",alignItems:"center",gap:8}}>
                               <div style={{width:110,color:"#8b949e",fontSize:10,flexShrink:0,lineHeight:1.35}}>
-                                {play.oppRank === null ? (play.oppMetricLabel || "").replace(/\s*\(\d+g\)\s*$/, "") : "vs weak matchup"}
+                                {play.stat === "strikeouts"
+                                  ? `vs ${play.opponent} career`
+                                  : play.oppRank === null ? (play.oppMetricLabel || "").replace(/\s*\(\d+g\)\s*$/, "") : "vs weak matchup"}
                                 {play.softGames ? ` (${play.softGames}g)` : ""}
                               </div>
                               <div style={{flex:1,background:"#21262d",borderRadius:3,height:8,overflow:"hidden"}}>
