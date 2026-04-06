@@ -403,6 +403,7 @@ function App() {
   const [sportFilter, setSportFilter] = React.useState([]); // empty = all sports
   const [statFilter, setStatFilter] = React.useState([]);  // empty = all stats
   const [kInfoOpen, setKInfoOpen] = React.useState(false);
+  const [showPlaysInfo, setShowPlaysInfo] = React.useState(false);
   const [calibration, setCalibration] = React.useState({}); // { "sport:stat": { n, winRate, avgPredicted, corrFactor } }
   // Tiered unit sizing: combined truePct × edge signal
   // More edge = more conviction the market is wrong = larger unit
@@ -1521,45 +1522,24 @@ function App() {
                   ? <><span style={{color:"#484f58",fontWeight:400,fontSize:13}}>Plays — </span>{label}</>
                   : "Plays";
               })()}
-              <span style={{color:"#484f58",fontSize:11,fontWeight:400,marginLeft:8}}>
-                implied ≥70% · edge ≥3% · NBA: vs bottom-10 defense · MLB hitters: ERA ≥4.0 · MLB pitchers: lineup K-rate ≥22% · NHL: all matchups
+              <span style={{position:"relative",marginLeft:6}}>
+                <span onClick={() => setShowPlaysInfo(o => !o)}
+                  style={{cursor:"pointer",color:showPlaysInfo?"#58a6ff":"#484f58",fontSize:13,lineHeight:1,userSelect:"none"}}>ⓘ</span>
+                {showPlaysInfo && (
+                  <div style={{position:"absolute",top:20,left:0,zIndex:99,width:300,background:"#161b22",border:"1px solid #30363d",borderRadius:8,padding:"10px 12px",fontSize:11,color:"#c9d1d9",lineHeight:1.6,boxShadow:"0 4px 16px rgba(0,0,0,0.5)"}}>
+                    <div style={{fontWeight:700,marginBottom:6,color:"#fff"}}>Play qualification criteria</div>
+                    <div style={{marginBottom:3}}><span style={{color:"#58a6ff"}}>Implied prob</span> ≥ 70% (Kalshi market price)</div>
+                    <div style={{marginBottom:3}}><span style={{color:"#3fb950"}}>Edge</span> ≥ 3% (true prob minus implied)</div>
+                    <div style={{marginTop:6,marginBottom:3,color:"#8b949e",fontWeight:600}}>Matchup gates</div>
+                    <div style={{marginBottom:3}}><span style={{color:"#f97316"}}>NBA</span> — opponent in bottom-10 defense per stat</div>
+                    <div style={{marginBottom:3}}><span style={{color:"#4ade80"}}>MLB hitters</span> — opposing starter ERA ≥ 4.0</div>
+                    <div style={{marginBottom:3}}><span style={{color:"#4ade80"}}>MLB pitchers</span> — opposing lineup K-rate ≥ 22%</div>
+                    <div><span style={{color:"#60a5fa"}}>NHL</span> — no matchup gate</div>
+                  </div>
+                )}
               </span>
             </div>
-            <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",justifyContent:"flex-end"}}>
-              {["nba","nhl","mlb","nfl"].map(s => {
-                const active = sportFilter.includes(s);
-                const colors = {nba:"#f97316",nhl:"#60a5fa",mlb:"#4ade80",nfl:"#a78bfa"};
-                const c = colors[s];
-                return <button key={s} onClick={() => setSportFilter(prev => prev.includes(s) ? prev.filter(x=>x!==s) : [...prev,s])}
-                  style={{fontSize:10,padding:"2px 7px",borderRadius:6,cursor:"pointer",
-                    border:`1px solid ${active?c:"#30363d"}`,
-                    background: active?`rgba(${s==="nba"?"249,115,22":s==="nhl"?"96,165,250":s==="mlb"?"74,222,128":"167,139,250"},0.12)`:"transparent",
-                    color: active?c:"#484f58", fontWeight:600, textTransform:"uppercase"}}>
-                  {s}
-                </button>;
-              })}
-
-              {/* Stat filter pills — only show stats present in current plays */}
-              {(() => {
-                const plays = tonightPlays || [];
-                const statLabels = {points:"PTS",rebounds:"REB",assists:"AST",threePointers:"3PM",goals:"G",shotsOnGoal:"SOG",hits:"H",homeRuns:"HR",hrr:"HRR",strikeouts:"K",totalBases:"TB",passingYards:"PASS",rushingYards:"RUSH",receivingYards:"REC"};
-                const presentStats = [...new Set(plays.map(p => p.stat))].filter(s => statLabels[s]);
-                if (presentStats.length <= 1) return null;
-                return <>
-                  <div style={{width:1,height:14,background:"#30363d",margin:"0 2px"}} />
-                  {presentStats.map(s => {
-                    const active = statFilter.includes(s);
-                    return <button key={s} onClick={() => setStatFilter(prev => prev.includes(s) ? prev.filter(x=>x!==s) : [...prev,s])}
-                      style={{fontSize:10,padding:"2px 7px",borderRadius:6,cursor:"pointer",
-                        border:`1px solid ${active?"#94a3b8":"#30363d"}`,
-                        background: active?"rgba(148,163,184,0.12)":"transparent",
-                        color: active?"#94a3b8":"#484f58", fontWeight:600}}>
-                      {statLabels[s]}
-                    </button>;
-                  })}
-                </>;
-              })()}
-
+            <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6}}>
               <div style={{width:1,height:14,background:"#30363d",margin:"0 2px"}} />
               <button onClick={() => setTestMode(m => !m)}
                 style={{fontSize:10,padding:"2px 8px",borderRadius:6,cursor:"pointer",
@@ -1838,7 +1818,7 @@ function App() {
                         )}
                         {/* Matchup explanation — MLB strikeout props (unified, no h2h) */}
                         {play.stat === "strikeouts" && play.sport === "mlb" && (
-                          <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.5,position:"relative"}}>
+                          <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",paddingRight:28,fontSize:11,color:"#8b949e",lineHeight:1.5,position:"relative"}}>
                             <span onClick={() => setKInfoOpen(o => !o)}
                               style={{position:"absolute",top:8,right:10,cursor:"pointer",color:kInfoOpen?"#58a6ff":"#484f58",fontSize:12,lineHeight:1,userSelect:"none"}}>ⓘ</span>
                             {kInfoOpen && (
