@@ -398,6 +398,7 @@ function App() {
   const [searching, setSearching] = React.useState(false);
   const [tonightPlays, setTonightPlays] = React.useState(null);
   const [tonightLoading, setTonightLoading] = React.useState(true);
+  const [tonightMeta, setTonightMeta] = React.useState(null);
   const [testMode, setTestMode] = React.useState(false);
   const [sportFilter, setSportFilter] = React.useState([]); // empty = all sports
   const [statFilter, setStatFilter] = React.useState([]);  // empty = all stats
@@ -460,7 +461,7 @@ function App() {
     setTonightLoading(true);
     fetch(`${WORKER}/tonight`)
       .then(r => r.json())
-      .then(data => { setTonightPlays(data.plays || []); setTonightLoading(false); })
+      .then(data => { setTonightPlays(data.plays || []); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); setTonightLoading(false); })
       .catch(() => { setTonightPlays([]); setTonightLoading(false); });
   }, [testMode]);
 
@@ -1597,8 +1598,25 @@ function App() {
               return true;
             });
             if (untrackedPlays.length === 0) return (
-              <div style={{color:"#484f58",textAlign:"center",padding:52,fontSize:13}}>
-                {tonightPlays?.length > 0 ? "All plays added to My Picks." : "No qualifying plays found."}
+              <div style={{color:"#484f58",textAlign:"center",padding:52,fontSize:13,lineHeight:1.6}}>
+                {tonightPlays?.length > 0
+                  ? "All plays added to My Picks."
+                  : (() => {
+                      const qc = tonightMeta?.qualifyingCount ?? 0;
+                      const pf = tonightMeta?.preFilteredCount ?? 0;
+                      const filtered = qc - pf;
+                      if (qc === 0) return "No Kalshi markets found — check back later when tomorrow's markets open.";
+                      if (filtered > 0 && pf === 0) return <>
+                        <div>{qc} markets found — all filtered: tonight's opponents don't meet the soft matchup threshold.</div>
+                        <div style={{fontSize:11,marginTop:6,color:"#30363d"}}>NBA requires opponent in bottom 10 defense · MLB requires ERA ≥ 4.0 pitcher</div>
+                      </>;
+                      if (filtered > 0) return <>
+                        <div>{qc} markets found · {filtered} filtered by matchup · {pf - (tonightPlays?.length ?? 0)} filtered by edge.</div>
+                        <div style={{fontSize:11,marginTop:6,color:"#30363d"}}>NBA requires opponent in bottom 10 defense · MLB requires ERA ≥ 4.0 pitcher</div>
+                      </>;
+                      return "No qualifying plays found.";
+                    })()
+                }
               </div>
             );
             // Group plays by gameDate, sort dates ascending
