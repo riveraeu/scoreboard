@@ -84,7 +84,7 @@ const STAT_CONFIGS = {
   },
 };
 
-const getColor = p => p >= 80 ? "#3fb950" : p >= 60 ? "#58a6ff" : p >= 40 ? "#d29922" : "#f78166";
+const getColor = p => p >= 60 ? "#58a6ff" : p >= 40 ? "#d29922" : "#f78166";
 const STAT_LABEL = {
   points:"PTS", rebounds:"REB", assists:"AST", threePointers:"3PT",
   goals:"G", shotsOnGoal:"SOG",
@@ -1318,14 +1318,19 @@ function App() {
                                     </div>
                                   );
                                 })()}
-                                {/* H2H / soft matchup (green) — strikeouts only shown when ≥3 starts (qualifies for truePct blend) */}
+                                {/* H2H / soft matchup — color by strength vs season rate */}
                                 {softPct !== null && (!(isMLB && safeTab === "strikeouts") || wTotal >= 3) && (
                                   <div style={{display:"flex",alignItems:"center",gap:8}}>
-                                    <div style={{flex:1,background:"#21262d",borderRadius:4,height:11,overflow:"hidden"}}>
-                                      <div style={{width:`${softPct}%`,background:"#3fb950",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:softPct>0?2:0}}/>
-                                    </div>
-                                    <div style={{color:"#3fb950",fontSize:10,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{softPct.toFixed(1)}%</div>
-                                    <div style={{color:"#484f58",fontSize:10,width:50,flexShrink:0}}>{mlbH2HLabel ? `${wTotal}g` : `${dvp?.wCount}/${wTotal}g`}</div>
+                                    {(() => {
+                                      const matchupColor = softPct >= pct + 5 ? "#3fb950" : softPct <= pct - 5 ? "#f78166" : "#c9d1d9";
+                                      return <>
+                                        <div style={{flex:1,background:"#21262d",borderRadius:4,height:11,overflow:"hidden"}}>
+                                          <div style={{width:`${softPct}%`,background:matchupColor,height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:softPct>0?2:0}}/>
+                                        </div>
+                                        <div style={{color:matchupColor,fontSize:10,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{softPct.toFixed(1)}%</div>
+                                        <div style={{color:"#484f58",fontSize:10,width:50,flexShrink:0}}>{mlbH2HLabel ? `${wTotal}g` : `${dvp?.wCount}/${wTotal}g`}</div>
+                                      </>;
+                                    })()}
                                   </div>
                                 )}
                               </div>
