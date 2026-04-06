@@ -1809,12 +1809,10 @@ function App() {
                               <div style={{color:"#d2a8ff",fontSize:11,fontWeight:600,width:38,textAlign:"right",flexShrink:0}}>{play.log5Pct}%</div>
                             </div>
                           )}
-                          {play.softPct !== null && (
+                          {play.softPct !== null && play.stat !== "strikeouts" && (
                             <div style={{display:"flex",alignItems:"center",gap:8}}>
                               <div style={{width:110,color:"#8b949e",fontSize:10,flexShrink:0,lineHeight:1.35}}>
-                                {play.stat === "strikeouts"
-                                  ? `vs ${play.opponent} career`
-                                  : play.oppRank === null ? (play.oppMetricLabel || "").replace(/\s*\(\d+g\)\s*$/, "") : "vs weak matchup"}
+                                {play.oppRank === null ? (play.oppMetricLabel || "").replace(/\s*\(\d+g\)\s*$/, "") : "vs weak matchup"}
                                 {play.softGames ? ` (${play.softGames}g)` : ""}
                               </div>
                               <div style={{flex:1,background:"#21262d",borderRadius:3,height:8,overflow:"hidden"}}>
