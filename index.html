@@ -806,6 +806,27 @@ function App() {
     loadPlayer(p, newSport);
   };
 
+  // Navigate to player card from a play/pick object — looks up ID by name if missing
+  const navigateToPlay = async (play) => {
+    const sportFull = SPORT_KEY[play.sport] || play.sportKey || "basketball/nba";
+    let pid = play.playerId;
+    if (!pid) {
+      try {
+        const r = await fetch(`${WORKER}/athletes?q=${encodeURIComponent(play.playerName)}`);
+        const d = await r.json();
+        const m = (d.athletes || []).find(a => a.name.toLowerCase() === play.playerName.toLowerCase()) || d.athletes?.[0];
+        if (m) pid = m.id;
+      } catch(e) {}
+    }
+    selectPlayer({ id: pid, name: play.playerName, team: play.playerTeam, sportKey: sportFull,
+      opponent: play.opponent, oppRank: play.oppRank, oppMetricValue: play.oppMetricValue,
+      oppMetricLabel: play.oppMetricLabel, oppMetricUnit: play.oppMetricUnit,
+      playIsStrong: play.playIsStrong, projectedStat: play.projectedStat,
+      recentAvg: play.recentAvg, dvpFactor: play.dvpFactor,
+      playSoftPct: play.softPct, playSoftGames: play.softGames,
+      playSport: play.sport, playThreshold: play.threshold, playStat: play.stat }, play.stat);
+  };
+
   const handleKeyDown = e => {
     if (!showDrop) return;
     if (e.key === "ArrowDown") { e.preventDefault(); setActiveIdx(i => Math.min(i+1, suggestions.length-1)); }
@@ -1697,7 +1718,7 @@ function App() {
                   onMouseLeave={e => e.currentTarget.style.borderColor = "#30363d"}>
                   {/* Header row — click navigates to player card */}
                   <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,cursor:"pointer"}}
-                    onClick={() => selectPlayer({ id: play.playerId, name: play.playerName, team: play.playerTeam, sportKey: SPORT_KEY[play.sport] || "basketball/nba", opponent: play.opponent, oppRank: play.oppRank, oppMetricValue: play.oppMetricValue, oppMetricLabel: play.oppMetricLabel, oppMetricUnit: play.oppMetricUnit, playIsStrong: isStrongMatchup(play), projectedStat: play.projectedStat, recentAvg: play.recentAvg, dvpFactor: play.dvpFactor, playSoftPct: play.softPct, playSoftGames: play.softGames, playSport: play.sport, playThreshold: play.threshold, playStat: play.stat }, play.stat)}>
+                    onClick={() => navigateToPlay(play)}>
                     {/* Headshot */}
                     {headshotUrl && (
                       <img src={headshotUrl} alt={play.playerName}
@@ -2298,7 +2319,7 @@ function App() {
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3,flexWrap:"wrap"}}>
                         {/* Clickable name → opens player card */}
-                        <span onClick={() => selectPlayer({ id: pick.playerId, name: pick.playerName, team: pick.playerTeam, sportKey: SPORT_KEY[pick.sport] || "basketball/nba", opponent: pick.opponent, oppRank: pick.oppRank, oppMetricValue: pick.oppMetricValue, oppMetricLabel: pick.oppMetricLabel }, pick.stat)}
+                        <span onClick={() => navigateToPlay(pick)}
                           style={{color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",textDecoration:"underline",textDecorationColor:"#30363d",textUnderlineOffset:2}}>
                           {pick.playerName}
                         </span>
