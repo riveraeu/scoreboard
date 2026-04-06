@@ -1925,6 +1925,8 @@ function App() {
 
                               if (play.sport === "nba") {
                                 const r = play.oppRank;
+                                const posLabel = play.posGroup === "G" ? "guards" : play.posGroup === "F" ? "forwards" : play.posGroup === "C" ? "centers" : null;
+                                const posSuffix = posLabel ? ` to ${posLabel}` : "";
                                 const rankDesc = r === 1 ? "the most" : r <= 3 ? "among the most" : "a lot of";
                                 const statContext = {
                                   points:       `their defense breaks down in the paint and on the perimeter — they give up ${rankDesc} points in the league`,
@@ -1933,11 +1935,14 @@ function App() {
                                   threePointers:`they surrender ${rankDesc} 3-point volume in the league — shooters get open looks all night`,
                                 }[play.stat] || "they rank among the weakest defenses in the league for this stat";
                                 const dvpPct = dvp != null && dvp > 1 ? Math.round((dvp - 1) * 100) : null;
+                                const posDvpNote = play.posDvpRank != null && posLabel
+                                  ? <> <span style={{color:"#58a6ff",fontSize:10}}>({ordinal(play.posDvpRank)}-worst vs {posLabel}: {play.posDvpValue} {play.oppMetricUnit || ""})</span></>
+                                  : null;
                                 const projLine = proj != null && dvp != null
-                                  ? <> Based on {first}'s recent output{recent != null ? <> ({recent} avg last 10 games)</> : ""}{dvpPct != null ? <> and {opp}'s <span style={{color:"#f78166"}}>{dvpPct}% above-average</span> defensive generosity</> : ""}, the model projects <span style={{color:"#c9d1d9",fontWeight:700}}>~{proj}</span> tonight.</>
+                                  ? <> Based on {first}'s recent output{recent != null ? <> ({recent} avg last 10 games)</> : ""}{dvpPct != null ? <> and {opp}'s <span style={{color:"#f78166"}}>{dvpPct}% above-average</span> defensive generosity{posSuffix}</> : ""}, the model projects <span style={{color:"#c9d1d9",fontWeight:700}}>~{proj}</span> tonight.</>
                                   : null;
                                 return <>
-                                  {opp} ranks {rank} in {play.oppMetricLabel || "this stat"}{metricStr} — {statContext}.{projLine}
+                                  {opp} ranks {rank} in {play.oppMetricLabel || "this stat"}{metricStr}{posDvpNote} — {statContext}.{projLine}
                                   {play.softPct !== null && <> {first} has hit {play.threshold}+ {STAT_FULL[play.stat] || play.stat} in {hitRate} of games vs weak matchups{games}.</>}
                                 </>;
                               }
