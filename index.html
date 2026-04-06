@@ -725,6 +725,7 @@ function App() {
 
     // MLB: pitcher vs hitter determined by presence of IP column
     const isPitcher = sport === "baseball/mlb" && ul.includes("IP");
+    if (isPitcher) { result.bb = []; result.ip = []; result.hitsAllowed = []; }
 
     const perGame = [];
 
@@ -761,7 +762,13 @@ function App() {
       if (sport === "baseball/mlb") {
         if (isPitcher) {
           const k = lv("K");
-          if (k !== undefined) { result.strikeouts?.push(k); gs.strikeouts = k; }
+          const bb = lv("BB");
+          const ip = lv("IP");
+          const ha = lv("H"); // hits allowed
+          if (k  !== undefined) { result.strikeouts?.push(k);  gs.strikeouts = k; }
+          if (bb !== undefined) { result.bb?.push(bb); gs.bb = bb; }
+          if (ip !== undefined) { result.ip?.push(ip); gs.ip = ip; }
+          if (ha !== undefined) { result.hitsAllowed?.push(ha); gs.hitsAllowed = ha; }
         } else {
           const h = lv("H"), hr = lv("HR"), rbi = lv("RBI"), r = lv("R"), b2 = lv("2B"), b3 = lv("3B");
           if (h   !== undefined) { result.hits?.push(h); gs.hits = h; }
@@ -1339,11 +1346,24 @@ function App() {
                       if (isMLB) {
                         if (safeTab === "strikeouts") {
                           const lkp   = h2h?.lineupKPct   ?? null;
-                          const pkp   = h2h?.pitcherKPct  ?? null;
-                          const kbb   = h2h?.pitcherKBBPct?? null;
                           const l5    = h2h?.log5Avg      ?? null;
                           const expK  = h2h?.expectedKs   ?? null;
                           const pf    = h2h?.parkFactor   ?? null;
+
+                          // Compute pitcher K% and K-BB% from season gamelog when dvp doesn't have it
+                          // (dvp only has these when pitcher is confirmed starter today)
+                          const glK  = logs25?.strikeouts  || logs?.strikeouts  || [];
+                          const glBB = logs25?.bb          || logs?.bb          || [];
+                          const glIP = logs25?.ip          || logs?.ip          || [];
+                          const glH  = logs25?.hitsAllowed || logs?.hitsAllowed || [];
+                          const sumK  = glK.reduce((a,b)=>a+b,0);
+                          const sumBB = glBB.reduce((a,b)=>a+b,0);
+                          const sumIP = glIP.reduce((a,b)=>a+b,0);
+                          const sumH  = glH.reduce((a,b)=>a+b,0);
+                          // BF ≈ 3*IP + H + BB (standard approximation when BF not available)
+                          const estBF = sumIP > 0 ? (sumIP * 3 + sumH + sumBB) : 0;
+                          const pkp = h2h?.pitcherKPct  ?? (estBF >= 50 ? parseFloat((sumK / estBF * 100).toFixed(1)) : null);
+                          const kbb = h2h?.pitcherKBBPct ?? (estBF >= 50 ? parseFloat(((sumK - sumBB) / estBF * 100).toFixed(1)) : null);
 
                           const pkpRating = pkp == null ? null : pkp >= 27 ? "Excellent" : pkp >= 24 ? "Great" : pkp >= 22 ? "Above Avg" : pkp >= 20 ? "Average" : "Below Avg";
                           const pkpColor  = pkp == null ? "#8b949e" : pkp >= 24 ? "#3fb950" : pkp >= 20 ? "#d29922" : "#f78166";
@@ -1353,8 +1373,7 @@ function App() {
                           const kbbRating = kbb == null ? null : kbb >= 18 ? "Elite" : kbb >= 12 ? "Strong" : kbb >= 6 ? "Average" : "Weak";
                           const kbbColor  = kbb == null ? "#8b949e" : kbb >= 18 ? "#3fb950" : kbb >= 12 ? "#d29922" : "#f78166";
                           const l5Color   = l5  == null ? "#8b949e" : l5  >= 28 ? "#3fb950" : l5  >= 24 ? "#d29922" : "#8b949e";
-                          const goldenRule = l5 != null && l5 >= 24;
-                          const parkNote   = pf != null && Math.abs(pf - 1.0) >= 0.01;
+                          const parkNote  = pf != null && Math.abs(pf - 1.0) >= 0.01;
                           return (
                             <>
                               {l5 != null && (
@@ -1369,9 +1388,11 @@ function App() {
                                 {lkp != null && <span title={lkpProjected ? "Based on projected lineup — updates when official lineup posts" : "% of at-bats this lineup strikes out"}>Opp. K rate: <span style={{color:lkpColor,fontWeight:600}}>{lkp}%</span> <span style={{color:"#484f58"}}>({lkpRating}{lkpProjected ? ", est." : ""})</span></span>}
                               </div>
                               {parkNote && <div style={{color:"#484f58",marginTop:2}}>Venue: {pf > 1 ? "+" : ""}{((pf - 1)*100).toFixed(0)}% {pf > 1 ? "strikeout-friendly" : "strikeout-suppressing"} park</div>}
-                              {wTotal > 0
-                                ? <div style={{marginTop:2}}>{first} has <span style={{color:"#c9d1d9",fontWeight:600}}>{wTotal}</span> career start{wTotal>1?"s":""} vs {mlbH2HOpp}.</div>
-                                : <div style={{marginTop:2,color:"#484f58"}}>No career h2h history vs {mlbH2HOpp}.</div>
+                              {mlbH2HOpp
+                                ? wTotal > 0
+                                  ? <div style={{marginTop:2}}>{first} has <span style={{color:"#c9d1d9",fontWeight:600}}>{wTotal}</span> career start{wTotal>1?"s":""} vs {mlbH2HOpp}.</div>
+                                  : <div style={{marginTop:2,color:"#484f58"}}>No career h2h history vs {mlbH2HOpp}.</div>
+                                : null
                               }
                             </>
                           );
