@@ -264,7 +264,8 @@ function AddPickModal({ onClose, onAdd }) {
     receptions:"Receptions", completions:"Completions", attempts:"Attempts",
     shotsOnGoal:"Shots on Goal", points:"Points", saves:"Saves",
   };
-  const [form, setForm] = React.useState({ playerName:"", sport:"nba", stat:"points", threshold:"", americanOdds:"-110", truePct:"", units:"1", gameDate: new Date().toISOString().slice(0,10) });
+  const suggestUnits = (odds) => { const o = parseInt(odds) || 0; return o <= -900 ? 5 : o <= -400 ? 4 : o <= -200 ? 3 : o <= -110 ? 2 : 1; };
+  const [form, setForm] = React.useState({ playerName:"", sport:"nba", stat:"points", threshold:"", americanOdds:"-110", truePct:"", units: String(suggestUnits("-110")), gameDate: new Date().toISOString().slice(0,10) });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   // Reset stat when sport changes
@@ -345,7 +346,7 @@ function AddPickModal({ onClose, onAdd }) {
               <div>
                 <label style={lbl}>Odds</label>
                 <input style={inp} type="number" placeholder="-110" value={form.americanOdds}
-                  onChange={e => set("americanOdds", e.target.value)} />
+                  onChange={e => { set("americanOdds", e.target.value); setForm(f => ({ ...f, americanOdds: e.target.value, units: String(suggestUnits(e.target.value)) })); }} />
               </div>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
@@ -1781,16 +1782,15 @@ function App() {
                   {/* Tier / unit sizing row */}
                   {(() => {
                     const units = tierUnits(play.americanOdds);
-                    const unitColor = units >= 5 ? "#3fb950" : units >= 3 ? "#e3b341" : "#8b949e";
                     const stake = bankroll * units / 100;
                     const profit = stake * oddsToProfit(play.americanOdds);
                     return (
                       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
                         <div style={{flex:1,display:"flex",gap:12,fontSize:10,color:"#484f58"}}>
                           <span>
-                            <span style={{color:unitColor,fontWeight:700}}>{units}u</span>
+                            <span style={{color:"#8b949e",fontWeight:700}}>{units}u</span>
                             <span style={{color:"#484f58"}}> · </span>
-                            <span style={{color:unitColor,fontWeight:600}}>${stake.toFixed(0)}</span>
+                            <span style={{color:"#8b949e",fontWeight:600}}>${stake.toFixed(0)}</span>
                           </span>
                         </div>
                         <div style={{color:"#3fb950",fontSize:10,fontWeight:600,flexShrink:0}}>
