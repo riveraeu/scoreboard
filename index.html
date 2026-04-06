@@ -1310,8 +1310,8 @@ function App() {
                                     </div>
                                   );
                                 })()}
-                                {/* H2H / soft matchup (green) */}
-                                {softPct !== null && (
+                                {/* H2H / soft matchup (green) — not shown for strikeouts (not in truePct blend) */}
+                                {softPct !== null && !(isMLB && safeTab === "strikeouts") && (
                                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                                     <div style={{flex:1,background:"#21262d",borderRadius:4,height:11,overflow:"hidden"}}>
                                       <div style={{width:`${softPct}%`,background:"#3fb950",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:softPct>0?2:0}}/>
