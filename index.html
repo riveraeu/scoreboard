@@ -405,13 +405,13 @@ function App() {
   const [kInfoOpen, setKInfoOpen] = React.useState(false);
   const [showPlaysInfo, setShowPlaysInfo] = React.useState(false);
   const [calibration, setCalibration] = React.useState({}); // { "sport:stat": { n, winRate, avgPredicted, corrFactor } }
-  // Tiered unit sizing: combined truePct × edge signal
-  // More edge = more conviction the market is wrong = larger unit
-  const tierPct = (truePct, edge) => {
-    const e = edge || 0;
-    if (truePct >= 93) return e > 10 ? 5 : e >= 5 ? 4 : 3;
-    if (truePct >= 80) return e > 10 ? 4 : e >= 5 ? 3 : 2;
-    return e > 10 ? 2 : 1;
+  // Tiered unit sizing: based on American odds (price reflects market conviction)
+  // Heavier favorites = market is more certain = we size up for the edge
+  const tierUnits = (americanOdds) => {
+    const o = americanOdds || 0;
+    if (o <= -900) return 5;
+    if (o <= -400) return 3;
+    return 1; // -233 to -399
   };
   const kalshiCache = React.useRef({}); // memoize Kalshi fetches by "playerName|sport|stat"
   const [expandedPlays, setExpandedPlays] = React.useState(new Set());
@@ -1647,8 +1647,8 @@ function App() {
 
                 {[...grouped[date]].sort((a, b) => {
                   // Sort by expected profit desc: stake × EV
-                  const evA = (bankroll * tierPct(a.truePct, a.edge) / 100) * (a.ev || 0);
-                  const evB = (bankroll * tierPct(b.truePct, b.edge) / 100) * (b.ev || 0);
+                  const evA = (bankroll * tierUnits(a.americanOdds) / 100) * (a.ev || 0);
+                  const evB = (bankroll * tierUnits(b.americanOdds) / 100) * (b.ev || 0);
                   return evB - evA;
                 }).map((play) => {
               const playKey = `${play.playerName}-${play.stat}-${play.threshold}`;
@@ -1730,16 +1730,17 @@ function App() {
                   </div>
                   {/* Tier / unit sizing row */}
                   {(() => {
-                    const tp = tierPct(play.truePct, play.edge);
-                    const tierColor = tp >= 4 ? "#3fb950" : tp >= 3 ? "#e3b341" : tp >= 2 ? "#58a6ff" : "#8b949e";
-                    const stake = bankroll * tp / 100;
+                    const units = tierUnits(play.americanOdds);
+                    const unitColor = units >= 5 ? "#3fb950" : units >= 3 ? "#e3b341" : "#8b949e";
+                    const stake = bankroll * units / 100;
+                    const profit = stake * oddsToProfit(play.americanOdds);
                     return (
                       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
                         <div style={{flex:1,display:"flex",gap:12,fontSize:10,color:"#484f58"}}>
                           <span>
-                            <span style={{color:tierColor,fontWeight:700}}>{tp}%</span>
-                            <span style={{color:"#484f58"}}> tier · </span>
-                            <span style={{color:tierColor,fontWeight:600}}>${stake.toFixed(0)}</span>
+                            <span style={{color:unitColor,fontWeight:700}}>{units}u</span>
+                            <span style={{color:"#484f58"}}> · </span>
+                            <span style={{color:unitColor,fontWeight:600}}>${stake.toFixed(0)}</span>
                           </span>
                           {play.historicalHitRate !== null && play.historicalGames >= 3 && (
                             <span>Hist: <span style={{
@@ -1748,8 +1749,8 @@ function App() {
                             }}>{play.historicalHitRate}%</span><span style={{color:"#333d47"}}> ({play.historicalGames}g)</span></span>
                           )}
                         </div>
-                        <div style={{color: play.ev >= 0 ? "#3fb950" : "#f78166", fontSize:10, fontWeight:600, flexShrink:0}}>
-                          {play.ev >= 0 ? "+" : ""}{(play.ev * 100).toFixed(1)}% EV
+                        <div style={{color:"#3fb950",fontSize:10,fontWeight:600,flexShrink:0}}>
+                          win +${profit.toFixed(0)}
                         </div>
                       </div>
                     );
