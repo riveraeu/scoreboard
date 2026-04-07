@@ -91,7 +91,8 @@ const STAT_CONFIGS = {
   },
 };
 
-const getColor = p => p >= 70 ? "#3fb950" : p >= 50 ? "#c9d1d9" : "#f78166";
+const getColor = () => "#8b949e";
+const matchupColor = (softPct, pct) => softPct != null ? (softPct >= pct + 5 ? "#3fb950" : softPct <= pct - 5 ? "#f78166" : "#c9d1d9") : "#c9d1d9";
 const STAT_LABEL = {
   points:"PTS", rebounds:"REB", assists:"AST", threePointers:"3PT",
   goals:"G", shotsOnGoal:"SOG",
@@ -1371,7 +1372,7 @@ function App() {
 
                     if (!showTriple) {
                       // Non-NBA / no DvP: season bar + optional Kalshi
-                      const color = getColor(pct);
+                      const color = "#8b949e";
                       return (
                         <div key={t} style={{display:"flex",gap:10,marginBottom:14,alignItems:"flex-start"}}>
                           <div style={{color:"#8b949e",fontSize:13,width:40,textAlign:"right",flexShrink:0,paddingTop:2}}>{isUnder ? `<${t}` : `${t}+`}</div>
@@ -1407,7 +1408,7 @@ function App() {
                             {/* True probability — primary (fall back to season rate if truePct unavailable) */}
                             {(() => {
                               const displayPct = truePct ?? pct;
-                              const displayColor = truePct !== null ? "#e3b341" : getColor(pct);
+                              const displayColor = truePct !== null ? "#e3b341" : matchupColor(softPct, pct);
                               return (
                                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                                   <div style={{flex:1,background:"#21262d",borderRadius:4,height:16,overflow:"hidden"}}>
@@ -1440,12 +1441,12 @@ function App() {
                             {/* Drawer: season + soft matchup */}
                             {showBreakdown && (
                               <div style={{borderLeft:"2px solid #30363d",paddingLeft:10,marginTop:2,display:"flex",flexDirection:"column",gap:4}}>
-                                {/* Season hit rate (blue) */}
+                                {/* Season hit rate (grey) */}
                                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                                   <div style={{flex:1,background:"#21262d",borderRadius:4,height:11,overflow:"hidden"}}>
-                                    <div style={{width:`${pct}%`,background:"#58a6ff",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:pct>0?2:0}}/>
+                                    <div style={{width:`${pct}%`,background:"#484f58",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:pct>0?2:0}}/>
                                   </div>
-                                  <div style={{color:"#58a6ff",fontSize:10,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{pct.toFixed(1)}%</div>
+                                  <div style={{color:"#8b949e",fontSize:10,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{pct.toFixed(1)}%</div>
                                   <div style={{color:"#484f58",fontSize:10,width:50,flexShrink:0}}>{isMLB ? `'25+'26 (${totalGames}g)` : `${count}/${totalGames}g`}</div>
                                 </div>
                                 {/* Soft matchup bar */}
@@ -1486,15 +1487,11 @@ function App() {
                       ? <><span><span style={{color:"#e3b341",fontWeight:600}}>Gold</span> = true probability</span>
                           {Object.keys(kalshiOdds).length > 0 && <span><span style={{color:"#a855f7",fontWeight:600}}>Purple</span> = Kalshi odds</span>}
                           {Object.keys(kalshiOdds).length > 0 && <span><span style={{color:"#3fb950",fontWeight:600}}>+edge</span> / <span style={{color:"#f78166",fontWeight:600}}>−edge</span> vs market</span>}
-                          {showBreakdown && <span><span style={{color:"#58a6ff",fontWeight:600}}>Blue</span> = season rate</span>}
+                          {showBreakdown && <span><span style={{color:"#8b949e",fontWeight:600}}>Grey</span> = season rate</span>}
                           {showBreakdown && <span><span style={{color:"#3fb950",fontWeight:600}}>Green</span> / <span style={{color:"#c9d1d9",fontWeight:600}}>White</span> / <span style={{color:"#f78166",fontWeight:600}}>Red</span> = matchup rate</span>}</>
                       : Object.keys(kalshiOdds).length > 0
                         ? <span><span style={{color:"#a855f7",fontWeight:600}}>Kalshi</span> = live market odds</span>
-                        : [["#3fb950","≥70%"],["#c9d1d9","50–69%"],["#f78166","<50%"]].map(([c,l]) => (
-                            <div key={l} style={{display:"flex",alignItems:"center",gap:4}}>
-                              <div style={{width:8,height:8,borderRadius:2,background:c}}/><span style={{color:"#8b949e"}}>{l}</span>
-                            </div>
-                          ))
+                        : <span style={{color:"#8b949e"}}>Season hit rate</span>
                     }
                   </div>
                 </div>
