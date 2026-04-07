@@ -2082,15 +2082,21 @@ async function buildPitcherKPct(mlbSched) {
       fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=pitching,type=season,season=2026,gameType=R)`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({}))
     ]);
     const pitcherStats = {};
+    const pitcherHandById = {};
     for (const person of [...res25.people || [], ...res26.people || []]) {
       const pid = person.id;
       if (!pid) continue;
+      if (person.pitchHand?.code) pitcherHandById[pid] = person.pitchHand.code;
       const split = person.stats?.[0]?.splits?.[0]?.stat;
       if (!split) continue;
       if (!pitcherStats[pid]) pitcherStats[pid] = { so: 0, bf: 0, bb: 0 };
       pitcherStats[pid].so += split.strikeOuts || 0;
       pitcherStats[pid].bf += split.battersFaced || 0;
       pitcherStats[pid].bb += split.baseOnBalls || 0;
+    }
+    // Fill in pitcherHand from People API for any missing entries
+    for (const [abbr, id] of Object.entries(pitcherByTeam)) {
+      if (!pitcherHand[abbr] && pitcherHandById[id]) pitcherHand[abbr] = pitcherHandById[id];
     }
     const pitcherKPct = {}, pitcherKBBPct = {};
     for (const [abbr, id] of Object.entries(pitcherByTeam)) {
