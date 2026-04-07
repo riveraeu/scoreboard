@@ -696,7 +696,11 @@ var worker_default = {
               gameTotal: _dvpGameOdds?.total ?? null,
               gameMoneyline: _dvpGameOdds?.moneyline ?? null
             } : null,
-            allLineupKPct: lineupKPct
+            allLineupKPct: _dvpPitcherHand === "R"
+              ? Object.fromEntries(Object.entries(mlbByteam.lineupKPctVR || {}).map(([t, v]) => [t, v ?? lineupKPct[t]]).filter(([, v]) => v != null))
+              : _dvpPitcherHand === "L"
+              ? Object.fromEntries(Object.entries(mlbByteam.lineupKPctVL || {}).map(([t, v]) => [t, v ?? lineupKPct[t]]).filter(([, v]) => v != null))
+              : lineupKPct
           }, 600);
         } else {
           return jsonResponse({ position, teams: [] }, 21600);
@@ -1413,15 +1417,20 @@ var worker_default = {
           }
           let softVals, softLabel, softUnit;
           if (sport === "mlb" && stat === "strikeouts") {
-            const allLineupKPct = sportByteam.mlb?.lineupKPct || {};
-            const _lkpAll2 = allLineupKPct[tonightOpp] ?? null;
-            const _lkpVR2 = sportByteam.mlb?.lineupKPctVR?.[tonightOpp] ?? null;
-            const _lkpVL2 = sportByteam.mlb?.lineupKPctVL?.[tonightOpp] ?? null;
-            const tonightLkp = _pitcherHand === "R" ? (_lkpVR2 ?? _lkpAll2) : _pitcherHand === "L" ? (_lkpVL2 ?? _lkpAll2) : _lkpAll2;
+            const allLineupKPctAll = sportByteam.mlb?.lineupKPct || {};
+            const allLineupKPctVR = sportByteam.mlb?.lineupKPctVR || {};
+            const allLineupKPctVL = sportByteam.mlb?.lineupKPctVL || {};
+            // Use hand-adjusted K rates for bucketing (fall back to overall if missing)
+            const handLineupKPct = _pitcherHand === "R"
+              ? Object.fromEntries(Object.keys(allLineupKPctAll).map(t => [t, allLineupKPctVR[t] ?? allLineupKPctAll[t]]))
+              : _pitcherHand === "L"
+              ? Object.fromEntries(Object.keys(allLineupKPctAll).map(t => [t, allLineupKPctVL[t] ?? allLineupKPctAll[t]]))
+              : allLineupKPctAll;
+            const tonightLkp = handLineupKPct[tonightOpp] ?? null;
             // Bucket tonight's opponent K rate: low (<20%), avg (20–24%), high (>=24%)
             const lkpBucket = tonightLkp == null ? null : tonightLkp >= 24 ? "high" : tonightLkp >= 20 ? "avg" : "low";
             const similarKAbbrs = new Set(
-              Object.entries(allLineupKPct)
+              Object.entries(handLineupKPct)
                 .filter(([, k]) => lkpBucket === "high" ? k >= 24 : lkpBucket === "avg" ? (k >= 20 && k < 24) : lkpBucket === "low" ? k < 20 : true)
                 .map(([a]) => a)
             );
