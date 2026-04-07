@@ -1904,10 +1904,10 @@ function App() {
                               const pf    = play.parkFactor;
                               const isProjected = play.lineupKPctProjected === true;
 
-                              const oppColor  = lkp != null ? (lkp >= 25 ? "#3fb950" : lkp < 22 ? "#f78166" : "#c9d1d9") : "#c9d1d9";
+                              const oppColor  = lkp != null ? (lkp >= 24 ? "#3fb950" : lkp < 20 ? "#f78166" : "#c9d1d9") : "#c9d1d9";
                               const expKColor = expK != null ? (expK >= play.threshold ? "#3fb950" : expK >= play.threshold - 1 ? "#c9d1d9" : "#f78166") : "#c9d1d9";
                               const pkpColor  = pkp == null ? "#8b949e" : pkp >= 24 ? "#3fb950" : pkp >= 20 ? "#c9d1d9" : "#f78166";
-                              const lkpColor  = lkp == null ? "#8b949e" : lkp >= 25 ? "#3fb950" : lkp >= 22 ? "#c9d1d9" : "#f78166";
+                              const lkpColor  = lkp == null ? "#8b949e" : lkp >= 24 ? "#3fb950" : lkp >= 20 ? "#c9d1d9" : "#f78166";
 
                               const metColor = c => c ? "#3fb950" : "#f78166";
                               const isStrongMatchup = play.isStrongMatchup ?? false;
