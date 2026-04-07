@@ -989,7 +989,7 @@ function App() {
       </div>
 
       {/* Search + player card — constrained width */}
-      <div style={{maxWidth:640,margin:"0 auto"}}>
+      <div style={{maxWidth:800,margin:"0 auto"}}>
       {/* Search */}
       <div style={{position:"relative",marginBottom:22}}>
         <span style={{position:"absolute",left:13,top:"50%",transform:"translateY(-50%)",fontSize:15,pointerEvents:"none",zIndex:1}}>
@@ -1195,7 +1195,7 @@ function App() {
                           return (
                             <>
                               {(() => {
-                                const oppName = MLB_TEAM[player.opponent] || player.opponent;
+                                const oppName = MLB_TEAM[mlbH2HOpp] || mlbH2HOpp;
                                 const pitcherTeamName = MLB_TEAM[player.team] || player.team;
                                 return <>
                                   {first} posts a{pkp != null ? <> <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span></> : " —"} K rate, facing the {oppName} who are striking out at <span style={{color:lkpColor,fontWeight:600}} title={lkpProjected ? "Based on projected lineup — updates when official lineup posts" : `% of at-bats this lineup strikes out${handLabel}`}>{lkp != null ? `${lkp}%` : "—"}</span>{handLabel && <span style={{color:"#8b949e"}}>{handLabel}</span>}{lkpProjected && <span style={{color:"#484f58",fontSize:10}}> (est.)</span>}. {(gameTotal != null || gameML != null) && <>The total for the match is <span style={{color:metColor(gameLineMeets),fontWeight:600}}>{gameTotal ?? "—"}</span> and the {pitcherTeamName} are favored at <span style={{color:metColor(gameLineMeets),fontWeight:600}}>{gameML != null ? `${gameML > 0 ? "+" : ""}${gameML}` : "—"}</span> line.</>}
@@ -1312,9 +1312,11 @@ function App() {
                     const count = isUnder ? (totalGames - countOver) : countOver;
                     const pct   = isUnder ? 100 - pctOver : pctOver;
                     const dvp = dvpMap[t];
-                    const tonightPlayForSoft = tonightPlayerMap[`${safeTab}|${t}`];
-                    const softPctRaw = (isMLB && safeTab === "strikeouts" && tonightPlayForSoft?.softPct != null)
-                      ? tonightPlayForSoft.softPct
+                    // For MLB, softPct context (pitcher K%, lineup K%) is shared across all thresholds
+                    const anyStatTonightPlay = tonightPlayerMap[`${safeTab}|${t}`] ||
+                      Object.entries(tonightPlayerMap).find(([k]) => k.startsWith(`${safeTab}|`))?.[1] || null;
+                    const softPctRaw = (isMLB && safeTab === "strikeouts" && anyStatTonightPlay?.softPct != null)
+                      ? anyStatTonightPlay.softPct
                       : (dvp?.wPct ?? null);
                     const softGamesLabel = (isMLB && safeTab === "strikeouts" && tonightPlayForSoft?.softPct != null)
                       ? (tonightPlayForSoft.softGames ? `${tonightPlayForSoft.softGames}g` : "")
@@ -1325,7 +1327,7 @@ function App() {
                     // Prefer tonight endpoint's pre-computed truePct when available (same pipeline as play card)
                     const tonightPlay = tonightPlayerMap[`${safeTab}|${t}`];
                     const truePct = (() => {
-                      if (tonightPlay && !isUnder) return tonightPlay.truePct;
+                      if (tonightPlay && !isUnder && tonightPlay.truePct != null) return tonightPlay.truePct;
                       if (isMLB) {
                         const parts = [pct, ...(pct25 !== null ? [pct25] : []), ...(softPct !== null ? [softPct] : [])];
                         return parts.length > 1 ? parts.reduce((a, b) => a + b, 0) / parts.length : null;
