@@ -672,7 +672,8 @@ var worker_default = {
               gameLineMeets: _dvpGameLineMeets,
               gameTotal: _dvpGameOdds?.total ?? null,
               gameMoneyline: _dvpGameOdds?.moneyline ?? null
-            } : null
+            } : null,
+            allLineupKPct: lineupKPct
           }, 600);
         } else {
           return jsonResponse({ position, teams: [] }, 21600);

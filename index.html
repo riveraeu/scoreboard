@@ -1123,15 +1123,35 @@ function App() {
                 dvpMap[t] = { wCount, wPct: (wCount / wTotal) * 100 };
               });
             }
-          } else if (mlbH2HOpp) {
-            // MLB: h2h hit rate vs resolved matchup opponent
-            const h2hGames = perGame.filter(g => g.oppAbbr === mlbH2HOpp && g[safeTab] !== undefined);
-            wTotal = h2hGames.length;
-            if (wTotal > 0) {
-              (cfg?.thresholds || []).forEach(t => {
-                const wCount = h2hGames.filter(g => (g[safeTab] ?? -1) >= t).length;
-                dvpMap[t] = { wCount, wPct: (wCount / wTotal) * 100 };
-              });
+          } else if (isMLB) {
+            const allLkp = dvpData?.allLineupKPct || {};
+            const tonightLkp = dvpData?.h2h?.lineupKPct ?? null;
+            if (safeTab === "strikeouts" && tonightLkp !== null && Object.keys(allLkp).length > 0) {
+              // Pitcher strikeouts: bucket by tonight's opponent K rate (low/avg/high)
+              const lkpBucket = tonightLkp >= 24 ? "high" : tonightLkp >= 20 ? "avg" : "low";
+              const similarKAbbrs = new Set(
+                Object.entries(allLkp)
+                  .filter(([, k]) => lkpBucket === "high" ? k >= 24 : lkpBucket === "avg" ? (k >= 20 && k < 24) : k < 20)
+                  .map(([a]) => a)
+              );
+              const bucketGames = perGame.filter(g => g.oppAbbr && similarKAbbrs.has(g.oppAbbr) && g[safeTab] !== undefined);
+              wTotal = bucketGames.length;
+              if (wTotal > 0) {
+                (cfg?.thresholds || []).forEach(t => {
+                  const wCount = bucketGames.filter(g => (g[safeTab] ?? -1) >= t).length;
+                  dvpMap[t] = { wCount, wPct: (wCount / wTotal) * 100 };
+                });
+              }
+            } else if (mlbH2HOpp) {
+              // Non-strikeout tabs: h2h vs resolved matchup opponent
+              const h2hGames = perGame.filter(g => g.oppAbbr === mlbH2HOpp && g[safeTab] !== undefined);
+              wTotal = h2hGames.length;
+              if (wTotal > 0) {
+                (cfg?.thresholds || []).forEach(t => {
+                  const wCount = h2hGames.filter(g => (g[safeTab] ?? -1) >= t).length;
+                  dvpMap[t] = { wCount, wPct: (wCount / wTotal) * 100 };
+                });
+              }
             }
           }
         }
@@ -1230,16 +1250,15 @@ function App() {
                           return (
                             <>
                               {(() => {
-                                const oppName = MLB_TEAM[mlbH2HOpp] || mlbH2HOpp;
+                                const oppName = MLB_TEAM[dvpData?.h2h?.opp || mlbH2HOpp] || dvpData?.h2h?.opp || mlbH2HOpp;
                                 const pitcherTeamName = MLB_TEAM[player.team] || player.team;
                                 return <>
                                   {first} posts a{pkp != null ? <> <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span></> : " —"} K rate, facing the {oppName} who are striking out at <span style={{color:lkpColor,fontWeight:600}} title={lkpProjected ? "Based on projected lineup — updates when official lineup posts" : `% of at-bats this lineup strikes out${handLabel}`}>{lkp != null ? `${lkp}%` : "—"}</span>{handLabel && <span style={{color:"#8b949e"}}>{handLabel}</span>}{lkpProjected && <span style={{color:"#484f58",fontSize:10}}> (est.)</span>}. {(gameTotal != null || gameML != null) && <>The total for the match is <span style={{color:metColor(gameLineMeets),fontWeight:600}}>{gameTotal ?? "—"}</span> and the {pitcherTeamName} are favored at <span style={{color:metColor(gameLineMeets),fontWeight:600}}>{gameML != null ? `${gameML > 0 ? "+" : ""}${gameML}` : "—"}</span> line.</>}
                                 </>;
                               })()}
-                              {(isLastMatchupFallback || (pf != null && Math.abs(pf - 1.0) >= 0.01)) && (
+                              {(pf != null && Math.abs(pf - 1.0) >= 0.01) && (
                                 <div style={{color:"#484f58",fontSize:10,marginTop:3}}>
-                                  {isLastMatchupFallback && <>Showing last start vs {mlbH2HOpp} — updates when next start is scheduled.</>}
-                                  {pf != null && Math.abs(pf - 1.0) >= 0.01 && <>{isLastMatchupFallback ? " " : ""}Venue: {pf > 1 ? "+" : ""}{((pf - 1)*100).toFixed(0)}% {pf > 1 ? "strikeout-friendly" : "strikeout-suppressing"} park.</>}
+                                  Venue: {pf > 1 ? "+" : ""}{((pf - 1)*100).toFixed(0)}% {pf > 1 ? "strikeout-friendly" : "strikeout-suppressing"} park.
                                 </div>
                               )}
                             </>
@@ -1352,13 +1371,17 @@ function App() {
                     // MLB: always use dvpMap h2h rate for consistency across all thresholds
                     // Non-MLB: prefer tonight play's pre-computed soft rate, fall back to dvpMap
                     const softPctRaw = isMLB
-                      ? (safeTab === "strikeouts" && tonightPlay?.softPct != null
-                          ? tonightPlay.softPct
-                          : (dvp?.wPct ?? null))
+                      ? (dvp?.wPct ?? null)
                       : (tonightPlay?.softPct != null ? tonightPlay.softPct : (dvp?.wPct ?? null));
+                    const _lkpBucketLabel = (() => {
+                      if (!isMLB || safeTab !== "strikeouts") return null;
+                      const lkp = dvpData?.h2h?.lineupKPct ?? null;
+                      if (lkp == null) return null;
+                      return lkp >= 24 ? "high" : lkp >= 20 ? "avg" : "low";
+                    })();
                     const softGamesLabel = isMLB
-                      ? (safeTab === "strikeouts" && tonightPlay?.softPct != null
-                          ? (tonightPlay.oppMetricLabel || "")
+                      ? (_lkpBucketLabel
+                          ? (dvp ? `vs ${_lkpBucketLabel}-K lineups (${dvp.wCount}/${wTotal}g)` : "")
                           : (dvp ? `vs ${mlbH2HOpp} (${dvp.wCount}/${wTotal}g)` : ""))
                       : (tonightPlay?.softPct != null
                           ? (tonightPlay.opponent ? `vs ${tonightPlay.opponent}${tonightPlay.softGames ? ` (${tonightPlay.softGames}g)` : ""}` : (tonightPlay.softGames ? `${tonightPlay.softGames}g` : ""))
