@@ -141,6 +141,14 @@ var worker_default = {
         await CACHE2.put(emailKey, JSON.stringify({ id: userId, email, passwordHash, salt }));
         const token = await makeJWT({ userId, email, exp: Date.now() + 30 * 24 * 60 * 60 * 1e3 }, JWT_SECRET);
         return jsonResponse({ token, userId, email });
+      } else if (path === "auth/list-users" && method === "GET") {
+        if (params.get("adminKey") !== (env?.ADMIN_KEY || "sb-admin-2026")) return errorResponse("Forbidden", 403);
+        const upUrl = env?.UPSTASH_REDIS_REST_URL;
+        const upAuth = `Bearer ${env?.UPSTASH_REDIS_REST_TOKEN}`;
+        if (!upUrl) return errorResponse("No Redis URL", 500);
+        const r = await fetch(upUrl, { method: "POST", headers: { Authorization: upAuth, "Content-Type": "application/json" }, body: JSON.stringify(["KEYS", "user:*"]) });
+        const { result } = await r.json();
+        return jsonResponse({ users: result || [] });
       } else if (path === "auth/reset" && method === "POST") {
         const { email, newPassword, adminKey } = await request.json();
         if (adminKey !== (env?.ADMIN_KEY || "sb-admin-2026")) return errorResponse("Forbidden", 403);
