@@ -54,6 +54,13 @@ const STAT_FULL = {
   passingYards:"passing yards", rushingYards:"rushing yards", receivingYards:"receiving yards", touchdowns:"touchdowns",
 };
 const ordinal = n => n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3rd" : `${n}th`;
+const MLB_TEAM = {
+  ARI:"Diamondbacks",ATL:"Braves",BAL:"Orioles",BOS:"Red Sox",CHC:"Cubs",CWS:"White Sox",
+  CIN:"Reds",CLE:"Guardians",COL:"Rockies",DET:"Tigers",HOU:"Astros",KC:"Royals",
+  LAA:"Angels",LAD:"Dodgers",MIA:"Marlins",MIL:"Brewers",MIN:"Twins",NYM:"Mets",
+  NYY:"Yankees",OAK:"Athletics",PHI:"Phillies",PIT:"Pirates",SD:"Padres",SEA:"Mariners",
+  SF:"Giants",STL:"Cardinals",TB:"Rays",TEX:"Rangers",TOR:"Blue Jays",WSH:"Nationals",
+};
 
 const STAT_CONFIGS = {
   "basketball/nba": {
@@ -1192,7 +1199,13 @@ function App() {
                           const criteriaMet = [pkpMeets, lkpMeets, gameLineMeets].filter(Boolean).length;
                           return (
                             <>
-                              {first} posts a{pkp != null ? <> <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span> K rate</> : " —"}{lkp != null ? <>, facing a lineup striking out at <span style={{color:lkpColor,fontWeight:600}} title={lkpProjected ? "Based on projected lineup — updates when official lineup posts" : `% of at-bats this lineup strikes out${handLabel}`}>{lkp}%{handLabel}</span>{lkpProjected && <span style={{color:"#484f58",fontSize:10}}> (est.)</span>}</> : ""}{(gameTotal != null || gameML != null) ? <>, with a <span style={{color:metColor(gameLineMeets),fontWeight:600}}>{gameTotal != null ? `${gameTotal}` : "—"} total</span> and <span style={{color:metColor(gameLineMeets),fontWeight:600}}>{gameML != null ? `${gameML > 0 ? "+" : ""}${gameML}` : "—"} line</span></> : ""}. <span style={{color:metColor(pkpMeets)}}>{pkpMeets?"✓":"✗"} K%</span> · <span style={{color:metColor(lkpMeets)}}>{lkpMeets?"✓":"✗"} Opp K%{handLabel}</span> · <span style={{color:metColor(gameLineMeets)}}>{gameLineMeets?"✓":"✗"} Game line</span>
+                              {(() => {
+                                const oppName = MLB_TEAM[player.opponent] || player.opponent;
+                                const pitcherTeamName = MLB_TEAM[player.team] || player.team;
+                                return <>
+                                  {first} posts a{pkp != null ? <> <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span></> : " —"} K rate{lkp != null ? <>, facing the <span style={{color:"#c9d1d9",fontWeight:600}}>{oppName}</span> who are striking out at <span style={{color:lkpColor,fontWeight:600}} title={lkpProjected ? "Based on projected lineup — updates when official lineup posts" : `% of at-bats this lineup strikes out${handLabel}`}>{lkp}%</span>{handLabel && <span style={{color:"#8b949e"}}>{handLabel}</span>}{lkpProjected && <span style={{color:"#484f58",fontSize:10}}> (est.)</span>}</> : ""}. {(gameTotal != null || gameML != null) && <>The total for the match is <span style={{color:metColor(gameLineMeets),fontWeight:600}}>{gameTotal ?? "—"}</span> and the {pitcherTeamName} are favored at <span style={{color:metColor(gameLineMeets),fontWeight:600}}>{gameML != null ? `${gameML > 0 ? "+" : ""}${gameML}` : "—"}</span> line.</>}
+                                </>;
+                              })()}
                               {mlbH2HOpp && (
                                 <div style={{color:"#484f58",fontSize:10,marginTop:3}}>
                                   {wTotal > 0 ? <>{first} has {wTotal} career start{wTotal>1?"s":""} vs {mlbH2HOpp}.</> : <>No career h2h history vs {mlbH2HOpp}.</>}
@@ -1850,7 +1863,13 @@ function App() {
                               const criteriaMet = [play.pkpMeets, play.lkpMeets, play.gameLineMeets].filter(Boolean).length;
                               return (
                                 <>
-                                  {first} posts a{pkp != null ? <> <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span> K rate</> : " —"}{lkp != null ? <>, facing a lineup striking out at <span style={{color:lkpColor,fontWeight:600}}>{lkp}%{handLabel}</span>{isProjected && <span style={{color:"#484f58",fontSize:10}}> (est.)</span>}</> : ""}{(gameTotal != null || gameML != null) ? <>, with a <span style={{color:metColor(play.gameLineMeets),fontWeight:600}}>{gameTotal != null ? `${gameTotal}` : "—"} total</span> and <span style={{color:metColor(play.gameLineMeets),fontWeight:600}}>{gameML != null ? `${gameML > 0 ? "+" : ""}${gameML}` : "—"} line</span></> : ""}. <span style={{color:metColor(play.pkpMeets)}}>{play.pkpMeets?"✓":"✗"} K%</span> · <span style={{color:metColor(play.lkpMeets)}}>{play.lkpMeets?"✓":"✗"} Opp K%{handLabel}</span> · <span style={{color:metColor(play.gameLineMeets)}}>{play.gameLineMeets?"✓":"✗"} Game line</span>
+                                  {(() => {
+                                    const oppName = MLB_TEAM[play.opponent] || play.opponent;
+                                    const pitcherTeamName = MLB_TEAM[play.playerTeam] || play.playerTeam;
+                                    return <>
+                                      {first} posts a{pkp != null ? <> <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span></> : " —"} K rate{lkp != null ? <>, facing the <span style={{color:"#c9d1d9",fontWeight:600}}>{oppName}</span> who are striking out at <span style={{color:lkpColor,fontWeight:600}}>{lkp}%</span>{handLabel && <span style={{color:"#8b949e"}}>{handLabel}</span>}{isProjected && <span style={{color:"#484f58",fontSize:10}}> (est.)</span>}</> : ""}. {(gameTotal != null || gameML != null) && <>The total for the match is <span style={{color:metColor(play.gameLineMeets),fontWeight:600}}>{gameTotal ?? "—"}</span> and the {pitcherTeamName} are favored at <span style={{color:metColor(play.gameLineMeets),fontWeight:600}}>{gameML != null ? `${gameML > 0 ? "+" : ""}${gameML}` : "—"}</span> line.</>}
+                                    </>;
+                                  })()}
                                   {pf != null && Math.abs(pf - 1.0) >= 0.01 && (
                                     <div style={{color:"#484f58",fontSize:10,marginTop:3}}>Venue: {pf > 1 ? "+" : ""}{((pf-1)*100).toFixed(0)}% {pf > 1 ? "strikeout-friendly" : "strikeout-suppressing"} park.</div>
                                   )}
