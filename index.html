@@ -507,7 +507,7 @@ function App() {
     localStorage.setItem("scoreboard_bankroll", String(n));
   }
   function trackPlay(play) {
-    const id = `${play.sport || "nba"}|${play.playerName}|${play.stat}|${play.threshold}`;
+    const id = `${play.sport || "nba"}|${play.playerName}|${play.stat}|${play.threshold}|${play.gameDate || ""}`;
     setTrackedPlays(prev => {
       if (prev.find(p => p.id === id)) return prev;
       return [{ ...play, id, trackedAt: Date.now(), result: null, units: 1 }, ...prev];
@@ -1339,7 +1339,7 @@ function App() {
                     const qualifyingPct = truePct !== null ? truePct : pct;
                     const qualifies = k && k.pct >= 70 && (qualifyingPct - k.pct) >= 3;
                     const sportSlug = sport.split("/")[1];
-                    const trackId = `${sportSlug}|${player.name}|${safeTab}|${t}`;
+                    const trackId = `${sportSlug}|${player.name}|${safeTab}|${t}|${tonightPlay?.gameDate || ""}`;
                     const isTracked = trackedPlays.some(p => p.id === trackId);
                     const trackBtn = qualifies ? (
                       <button onClick={() => {
@@ -1586,7 +1586,7 @@ function App() {
               return play.oppRank != null && play.oppRank <= 5;
             };
             const untrackedPlays = (tonightPlays || []).filter(play => {
-              const trackId = `${play.sport || "nba"}|${play.playerName}|${play.stat}|${play.threshold}`;
+              const trackId = `${play.sport || "nba"}|${play.playerName}|${play.stat}|${play.threshold}|${play.gameDate || ""}`;
               if (trackedPlays.some(p => p.id === trackId)) return false;
               if (sportFilter.length > 0 && !sportFilter.includes(play.sport)) return false;
               if (statFilter.length > 0 && !statFilter.includes(play.stat)) return false;
@@ -1653,7 +1653,7 @@ function App() {
               const playKey = `${play.playerName}-${play.stat}-${play.threshold}`;
               const oddsStr = play.americanOdds >= 0 ? `+${play.americanOdds}` : `${play.americanOdds}`;
               const isExpanded = expandedPlays.has(playKey);
-              const trackId = `${play.sport || "nba"}|${play.playerName}|${play.stat}|${play.threshold}`;
+              const trackId = `${play.sport || "nba"}|${play.playerName}|${play.stat}|${play.threshold}|${play.gameDate || ""}`;
               const isTracked = trackedPlays.some(p => p.id === trackId);
               const headshotUrl = play.playerId ? `https://a.espncdn.com/i/headshots/${play.sport || "nba"}/players/full/${play.playerId}.png` : null;
               return (
