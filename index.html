@@ -1328,7 +1328,7 @@ function App() {
                       if (tonightPlay && !isUnder && tonightPlay.truePct != null) return tonightPlay.truePct;
                       if (isMLB) {
                         const parts = [pct, ...(pct25 !== null ? [pct25] : []), ...(softPct !== null ? [softPct] : [])];
-                        return parts.length > 1 ? parts.reduce((a, b) => a + b, 0) / parts.length : null;
+                        return parts.reduce((a, b) => a + b, 0) / parts.length;
                       }
                       return softPct !== null ? (pct + softPct) / 2 : null;
                     })();
