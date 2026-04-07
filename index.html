@@ -508,9 +508,21 @@ function App() {
   }
   function trackPlay(play) {
     const id = `${play.sport || "nba"}|${play.playerName}|${play.stat}|${play.threshold}|${play.gameDate || ""}`;
+    const calcV = calcOdds.trim();
+    const calcN = parseInt(calcV, 10);
+    const hasCalcOdds = !isNaN(calcN) && calcV !== "" && calcV !== "-" && calcV !== "+";
+    const finalOdds = hasCalcOdds ? calcN : (play.americanOdds ?? -110);
+    const finalKalshiPct = hasCalcOdds
+      ? parseFloat((finalOdds < 0 ? Math.abs(finalOdds) / (Math.abs(finalOdds) + 100) * 100 : 100 / (finalOdds + 100) * 100).toFixed(1))
+      : play.kalshiPct;
     setTrackedPlays(prev => {
       if (prev.find(p => p.id === id)) return prev;
-      return [{ ...play, id, trackedAt: Date.now(), result: null, units: 1 }, ...prev];
+      return [{ ...play, id, trackedAt: Date.now(), result: null,
+        units: tierUnits(finalOdds),
+        americanOdds: finalOdds,
+        kalshiPct: finalKalshiPct,
+        edge: play.truePct != null ? parseFloat((play.truePct - finalKalshiPct).toFixed(1)) : play.edge,
+      }, ...prev];
     });
   }
   function untrackPlay(id) {
