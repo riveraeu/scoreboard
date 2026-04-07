@@ -1203,7 +1203,7 @@ function App() {
                                 const oppName = MLB_TEAM[player.opponent] || player.opponent;
                                 const pitcherTeamName = MLB_TEAM[player.team] || player.team;
                                 return <>
-                                  {first} posts a{pkp != null ? <> <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span></> : " —"} K rate{lkp != null ? <>, facing the <span style={{color:"#c9d1d9",fontWeight:600}}>{oppName}</span> who are striking out at <span style={{color:lkpColor,fontWeight:600}} title={lkpProjected ? "Based on projected lineup — updates when official lineup posts" : `% of at-bats this lineup strikes out${handLabel}`}>{lkp}%</span>{handLabel && <span style={{color:"#8b949e"}}>{handLabel}</span>}{lkpProjected && <span style={{color:"#484f58",fontSize:10}}> (est.)</span>}</> : ""}. {(gameTotal != null || gameML != null) && <>The total for the match is <span style={{color:metColor(gameLineMeets),fontWeight:600}}>{gameTotal ?? "—"}</span> and the {pitcherTeamName} are favored at <span style={{color:metColor(gameLineMeets),fontWeight:600}}>{gameML != null ? `${gameML > 0 ? "+" : ""}${gameML}` : "—"}</span> line.</>}
+                                  {first} posts a{pkp != null ? <> <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span></> : " —"} K rate, facing the {oppName} who are striking out at <span style={{color:lkpColor,fontWeight:600}} title={lkpProjected ? "Based on projected lineup — updates when official lineup posts" : `% of at-bats this lineup strikes out${handLabel}`}>{lkp != null ? `${lkp}%` : "—"}</span>{handLabel && <span style={{color:"#8b949e"}}>{handLabel}</span>}{lkpProjected && <span style={{color:"#484f58",fontSize:10}}> (est.)</span>}. {(gameTotal != null || gameML != null) && <>The total for the match is <span style={{color:metColor(gameLineMeets),fontWeight:600}}>{gameTotal ?? "—"}</span> and the {pitcherTeamName} are favored at <span style={{color:metColor(gameLineMeets),fontWeight:600}}>{gameML != null ? `${gameML > 0 ? "+" : ""}${gameML}` : "—"}</span> line.</>}
                                 </>;
                               })()}
                               {mlbH2HOpp && (
@@ -1451,21 +1451,6 @@ function App() {
                                   <div style={{color:"#58a6ff",fontSize:10,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{pct.toFixed(1)}%</div>
                                   <div style={{color:"#484f58",fontSize:10,width:50,flexShrink:0}}>{isMLB ? `'25+'26 (${totalGames}g)` : `${count}/${totalGames}g`}</div>
                                 </div>
-                                {/* Log5+Poisson (purple) — pitcher strikeouts only */}
-                                {(() => {
-                                  const l5 = tonightPlay?.log5Pct ?? null;
-                                  const expK = tonightPlay?.expectedKs ?? null;
-                                  if (l5 === null || !(isMLB && safeTab === "strikeouts")) return null;
-                                  return (
-                                    <div style={{display:"flex",alignItems:"center",gap:8}}>
-                                      <div style={{flex:1,background:"#21262d",borderRadius:4,height:11,overflow:"hidden"}}>
-                                        <div style={{width:`${l5}%`,background:"#d2a8ff",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:l5>0?2:0}}/>
-                                      </div>
-                                      <div style={{color:"#d2a8ff",fontSize:10,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{l5.toFixed(1)}%</div>
-                                      <div style={{color:"#484f58",fontSize:10,width:50,flexShrink:0}}>{expK != null ? `~${expK}K` : "model"}</div>
-                                    </div>
-                                  );
-                                })()}
                                 {/* H2H / soft matchup — color by strength vs season rate */}
                                 {softPct !== null && (!(isMLB && safeTab === "strikeouts") || wTotal >= 3) && (
                                   <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -1788,17 +1773,6 @@ function App() {
                             </div>
                             <div style={{color:"#58a6ff",fontSize:11,fontWeight:600,width:38,textAlign:"right",flexShrink:0}}>{play.seasonPct}%</div>
                           </div>
-                          {play.log5Pct != null && (
-                            <div style={{display:"flex",alignItems:"center",gap:8}}>
-                              <div style={{width:110,color:"#8b949e",fontSize:10,flexShrink:0,lineHeight:1.35}}>
-                                Model prob.{play.expectedKs != null ? ` (~${play.expectedKs}K)` : ""}
-                              </div>
-                              <div style={{flex:1,background:"#21262d",borderRadius:3,height:8,overflow:"hidden"}}>
-                                <div style={{width:`${play.log5Pct}%`,background:"#d2a8ff",height:"100%",borderRadius:3}}/>
-                              </div>
-                              <div style={{color:"#d2a8ff",fontSize:11,fontWeight:600,width:38,textAlign:"right",flexShrink:0}}>{play.log5Pct}%</div>
-                            </div>
-                          )}
                           {play.softPct !== null && (play.stat !== "strikeouts" || (play.softGames ?? 0) >= 3) && (
                             <div style={{display:"flex",alignItems:"center",gap:8}}>
                               <div style={{width:110,color:"#8b949e",fontSize:10,flexShrink:0,lineHeight:1.35}}>
@@ -1867,7 +1841,7 @@ function App() {
                                     const oppName = MLB_TEAM[play.opponent] || play.opponent;
                                     const pitcherTeamName = MLB_TEAM[play.playerTeam] || play.playerTeam;
                                     return <>
-                                      {first} posts a{pkp != null ? <> <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span></> : " —"} K rate{lkp != null ? <>, facing the <span style={{color:"#c9d1d9",fontWeight:600}}>{oppName}</span> who are striking out at <span style={{color:lkpColor,fontWeight:600}}>{lkp}%</span>{handLabel && <span style={{color:"#8b949e"}}>{handLabel}</span>}{isProjected && <span style={{color:"#484f58",fontSize:10}}> (est.)</span>}</> : ""}. {(gameTotal != null || gameML != null) && <>The total for the match is <span style={{color:metColor(play.gameLineMeets),fontWeight:600}}>{gameTotal ?? "—"}</span> and the {pitcherTeamName} are favored at <span style={{color:metColor(play.gameLineMeets),fontWeight:600}}>{gameML != null ? `${gameML > 0 ? "+" : ""}${gameML}` : "—"}</span> line.</>}
+                                      {first} posts a{pkp != null ? <> <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span></> : " —"} K rate, facing the {oppName} who are striking out at <span style={{color:lkpColor,fontWeight:600}}>{lkp != null ? `${lkp}%` : "—"}</span>{handLabel && <span style={{color:"#8b949e"}}>{handLabel}</span>}{isProjected && <span style={{color:"#484f58",fontSize:10}}> (est.)</span>}. {(gameTotal != null || gameML != null) && <>The total for the match is <span style={{color:metColor(play.gameLineMeets),fontWeight:600}}>{gameTotal ?? "—"}</span> and the {pitcherTeamName} are favored at <span style={{color:metColor(play.gameLineMeets),fontWeight:600}}>{gameML != null ? `${gameML > 0 ? "+" : ""}${gameML}` : "—"}</span> line.</>}
                                     </>;
                                   })()}
                                   {pf != null && Math.abs(pf - 1.0) >= 0.01 && (
