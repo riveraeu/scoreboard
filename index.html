@@ -1191,11 +1191,6 @@ function App() {
                           const metColor = c => c ? "#3fb950" : "#f78166";
                           return (
                             <>
-                              <div style={{marginBottom:3}}>
-                                {first} faces <span style={{color:oppColor,fontWeight:600}}>{mlbH2HOpp || "tonight's lineup"}</span>
-                                {expK != null && <>, projecting <span style={{color:expKColor,fontWeight:700}}>~{expK}K</span> this start</>}.
-                                {isStrongMatchup && strongBadge}
-                              </div>
                               {(pkp != null || lkp != null) && (
                                 <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:3}}>
                                   {pkp != null && <span title="% of batters this pitcher strikes out">K rate: <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span></span>}
@@ -1863,15 +1858,9 @@ function App() {
 
                               return (
                                 <>
-                                  <div style={{marginBottom:3}}>
-                                    {first} faces <span style={{color:oppColor,fontWeight:600}}>{play.opponent}</span>
-                                    {expK != null && <>, projecting <span style={{color:expKColor,fontWeight:700}}>~{expK}K</span> this start</>}.
-                                    {isStrongMatchup && <span style={{display:"inline-block",fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(63,185,80,0.12)",border:"1px solid #3fb950",color:"#3fb950",marginLeft:5,verticalAlign:"middle"}}>⚡ strong matchup</span>}
-                                  </div>
-                                  {(pkp != null || lkp != null || kbb != null) && (
+                                  {(pkp != null || lkp != null) && (
                                     <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:3}}>
                                       {pkp != null && <span>K rate: <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span></span>}
-                                      {kbb != null && <span>K-walk edge: <span style={{color:kbbColor,fontWeight:600}}>{kbb}%</span></span>}
                                       {lkp != null && <span>Opp K rate{handLabel}: <span style={{color:lkpColor,fontWeight:600}}>{lkp}%</span>{isProjected && <span style={{color:"#484f58",fontSize:10}}> (est.)</span>}</span>}
                                     </div>
                                   )}
