@@ -648,7 +648,7 @@ var worker_default = {
           const _dvpLkpAll = lineupKPct[tonightOpp] ?? null;
           const _dvpLkp = _dvpPitcherHand === "R" ? _dvpLkpVR ?? _dvpLkpAll : _dvpPitcherHand === "L" ? _dvpLkpVL ?? _dvpLkpAll : _dvpLkpAll;
           const _dvpLkpMeets = _dvpLkp != null && _dvpLkp > 23;
-          const _dvpGameLineMeets = _dvpGameOdds?.total != null && _dvpGameOdds?.moneyline != null && _dvpGameOdds.total < 8.5 && _dvpGameOdds.moneyline <= -150;
+          const _dvpGameLineMeets = _dvpGameOdds?.total != null && _dvpGameOdds?.moneyline != null && _dvpGameOdds.total < 8.5 && _dvpGameOdds.moneyline <= -145;
           const _dvpIsStrong = [_dvpPkpMeets, _dvpLkpMeets, _dvpGameLineMeets].filter(Boolean).length >= 2;
           return jsonResponse({
             position,
@@ -1385,7 +1385,7 @@ var worker_default = {
             const _go = sportByteam.mlb?.gameOdds?.[playerTeam] ?? null;
             pkpMeets = _pkp != null && _pkp > 25;
             lkpMeets = _lkp != null && _lkp > 23;
-            gameLineMeets = _go?.total != null && _go?.moneyline != null && _go.total < 8.5 && _go.moneyline <= -150;
+            gameLineMeets = _go?.total != null && _go?.moneyline != null && _go.total < 8.5 && _go.moneyline <= -145;
             isStrongMatchup = [pkpMeets, lkpMeets, gameLineMeets].filter(Boolean).length >= 2;
           }
           let softVals, softLabel, softUnit;
