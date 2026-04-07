@@ -811,22 +811,14 @@ var worker_default = {
         const normTeam = /* @__PURE__ */ __name((sport, a) => TEAM_NORM[sport]?.[a] || a, "normTeam");
         const seriesTickers = Object.keys(SERIES_CONFIG);
         async function fetchKalshiSeries(ticker) {
-          const freshKey = `kalshi:fresh:${ticker}`;
           const staleKey = `kalshi:stale:${ticker}`;
-          if (CACHE2 && !isBustCache) {
-            const cached = await CACHE2.get(freshKey, "json");
-            if (cached) return { data: cached, fromCache: true };
-          }
           const fetchOne = /* @__PURE__ */ __name(() => fetch(`https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=${ticker}&limit=1000&status=open`, {
             headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" },
             cf: { cacheEverything: false }
           }).then((r) => r.ok ? r.json() : null).catch(() => null), "fetchOne");
           const fresh = await fetchOne();
           if (fresh && (fresh.markets || []).length > 0) {
-            if (CACHE2) {
-              await CACHE2.put(freshKey, JSON.stringify(fresh), { expirationTtl: 900 });
-              await CACHE2.put(staleKey, JSON.stringify(fresh));
-            }
+            if (CACHE2) await CACHE2.put(staleKey, JSON.stringify(fresh));
             return { data: fresh, fromCache: false };
           }
           if (CACHE2) {
