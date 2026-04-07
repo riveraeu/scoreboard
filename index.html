@@ -1094,27 +1094,8 @@ function App() {
           const lastGame = [...perGame].reverse().find(g => g.oppAbbr && g.strikeouts !== undefined);
           if (lastGame?.oppAbbr) { mlbH2HOpp = lastGame.oppAbbr; isLastMatchupFallback = true; }
         }
-        let mlbH2HLabel = null;
-
-        if (dvpData && isMLB && mlbH2HOpp) {
-          const isPitcherTab = safeTab === "strikeouts";
-          mlbH2HLabel = isPitcherTab
-            ? `vs ${mlbH2HOpp} batters`
-            : dvpData.h2h.pitcherName ? `vs ${dvpData.h2h.pitcherName}` : `vs ${mlbH2HOpp}`;
-        }
-
         if (hasDvp) {
-          if (isMLB && mlbH2HOpp) {
-            // MLB h2h mode: use player's career games vs tonight's opponent
-            const h2hGames = perGame.filter(g => g.oppAbbr === mlbH2HOpp && g[safeTab] !== undefined);
-            wTotal = h2hGames.length;
-            if (wTotal > 0) {
-              (cfg?.thresholds || []).forEach(t => {
-                const wCount = h2hGames.filter(g => (g[safeTab] ?? -1) >= t).length;
-                dvpMap[t] = { wCount, wPct: (wCount / wTotal) * 100 };
-              });
-            }
-          } else if (!isMLB) {
+          if (!isMLB) {
             // NBA/NHL/NFL: soft team ranking mode
             const softAbbrs = dvpData.softTeams?.[safeTab]?.length
               ? new Set(dvpData.softTeams[safeTab])
@@ -1217,13 +1198,10 @@ function App() {
                                   {first} posts a{pkp != null ? <> <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span></> : " —"} K rate, facing the {oppName} who are striking out at <span style={{color:lkpColor,fontWeight:600}} title={lkpProjected ? "Based on projected lineup — updates when official lineup posts" : `% of at-bats this lineup strikes out${handLabel}`}>{lkp != null ? `${lkp}%` : "—"}</span>{handLabel && <span style={{color:"#8b949e"}}>{handLabel}</span>}{lkpProjected && <span style={{color:"#484f58",fontSize:10}}> (est.)</span>}. {(gameTotal != null || gameML != null) && <>The total for the match is <span style={{color:metColor(gameLineMeets),fontWeight:600}}>{gameTotal ?? "—"}</span> and the {pitcherTeamName} are favored at <span style={{color:metColor(gameLineMeets),fontWeight:600}}>{gameML != null ? `${gameML > 0 ? "+" : ""}${gameML}` : "—"}</span> line.</>}
                                 </>;
                               })()}
-                              {mlbH2HOpp && (
+                              {(isLastMatchupFallback || (pf != null && Math.abs(pf - 1.0) >= 0.01)) && (
                                 <div style={{color:"#484f58",fontSize:10,marginTop:3}}>
-                                  {isLastMatchupFallback
-                                    ? <>Showing last start vs {mlbH2HOpp} — updates when next start is scheduled.</>
-                                    : wTotal > 0 ? <>{first} has {wTotal} career start{wTotal>1?"s":""} vs {mlbH2HOpp}.</> : <>No career h2h history vs {mlbH2HOpp}.</>
-                                  }
-                                  {pf != null && Math.abs(pf - 1.0) >= 0.01 && <> Venue: {pf > 1 ? "+" : ""}{((pf - 1)*100).toFixed(0)}% {pf > 1 ? "strikeout-friendly" : "strikeout-suppressing"} park.</>}
+                                  {isLastMatchupFallback && <>Showing last start vs {mlbH2HOpp} — updates when next start is scheduled.</>}
+                                  {pf != null && Math.abs(pf - 1.0) >= 0.01 && <>{isLastMatchupFallback ? " " : ""}Venue: {pf > 1 ? "+" : ""}{((pf - 1)*100).toFixed(0)}% {pf > 1 ? "strikeout-friendly" : "strikeout-suppressing"} park.</>}
                                 </div>
                               )}
                             </>
@@ -1232,9 +1210,9 @@ function App() {
                         if (h2h?.pitcherName) {
                           const era = h2h.pitcherEra;
                           const isSoft = era != null && era >= 4.0;
-                          return <><span style={{color:"#c9d1d9",fontWeight:600}}>{h2h.pitcherName}</span>{era!=null?` (${era} ERA)`:""} starts tonight — {isSoft?<span style={{color:"#3fb950"}}>above-avg ERA, favorable matchup</span>:<span style={{color:"#8b949e"}}>below-avg ERA</span>}. {wTotal>0?<>{first} has <span style={{color:"#c9d1d9",fontWeight:600}}>{wTotal}</span> career game{wTotal>1?"s":""} vs {mlbH2HOpp}.</>:<>No h2h history vs {mlbH2HOpp} yet.</>}</>;
+                          return <><span style={{color:"#c9d1d9",fontWeight:600}}>{h2h.pitcherName}</span>{era!=null?` (${era} ERA)`:""} starts tonight — {isSoft?<span style={{color:"#3fb950"}}>above-avg ERA, favorable matchup</span>:<span style={{color:"#8b949e"}}>below-avg ERA</span>}.</>;
                         }
-                        return <>{first} faces <span style={{color:"#c9d1d9",fontWeight:600}}>{mlbH2HOpp}</span> tonight. {wTotal>0?<>{first} has <span style={{color:"#c9d1d9",fontWeight:600}}>{wTotal}</span> career game{wTotal>1?"s":""} vs {mlbH2HOpp}.</>:<>No career h2h history vs {mlbH2HOpp} yet.</>}</>;
+                        return <>{first} faces <span style={{color:"#c9d1d9",fontWeight:600}}>{mlbH2HOpp}</span> tonight.</>;
                       }
                       if (dvpData?.position) {
                         const opp = player.opponent;
@@ -1309,12 +1287,9 @@ function App() {
                   </div>
                 )}
 
-                {showTriple && (
+                {showTriple && !isMLB && (
                   <div style={{color:"#484f58",fontSize:11,marginBottom:14}}>
-                    {isMLB && mlbH2HLabel
-                      ? <>{mlbH2HLabel} — <span style={{color:"#3fb950"}}>{wTotal}g</span> of career history</>
-                      : <>Soft matchup teams ({wTotal}/{totalGames}g): {weakTeamList.map(t => t.abbr).join(" · ")}</>
-                    }
+                    Soft matchup teams ({wTotal}/{totalGames}g): {weakTeamList.map(t => t.abbr).join(" · ")}
                   </div>
                 )}
 
@@ -1328,7 +1303,13 @@ function App() {
                     const count = isUnder ? (totalGames - countOver) : countOver;
                     const pct   = isUnder ? 100 - pctOver : pctOver;
                     const dvp = dvpMap[t];
-                    const softPctRaw = dvp?.wPct ?? null;
+                    const tonightPlayForSoft = tonightPlayerMap[`${safeTab}|${t}`];
+                    const softPctRaw = (isMLB && safeTab === "strikeouts" && tonightPlayForSoft?.softPct != null)
+                      ? tonightPlayForSoft.softPct
+                      : (dvp?.wPct ?? null);
+                    const softGamesLabel = (isMLB && safeTab === "strikeouts" && tonightPlayForSoft?.softPct != null)
+                      ? (tonightPlayForSoft.softGames ? `${tonightPlayForSoft.softGames}g` : "")
+                      : (dvp ? `${dvp.wCount}/${wTotal}g` : "");
                     const softPct = isUnder ? (softPctRaw !== null ? 100 - softPctRaw : null) : softPctRaw;
                     const pct25Raw = (isMLB && totalGames25 >= 5) ? (rates25Map[t] ?? null) : null;
                     const pct25 = isUnder ? (pct25Raw !== null ? 100 - pct25Raw : null) : pct25Raw;
@@ -1467,8 +1448,8 @@ function App() {
                                   <div style={{color:"#58a6ff",fontSize:10,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{pct.toFixed(1)}%</div>
                                   <div style={{color:"#484f58",fontSize:10,width:50,flexShrink:0}}>{isMLB ? `'25+'26 (${totalGames}g)` : `${count}/${totalGames}g`}</div>
                                 </div>
-                                {/* H2H / soft matchup — color by strength vs season rate */}
-                                {softPct !== null && (!(isMLB && safeTab === "strikeouts") || wTotal >= 3) && (
+                                {/* Soft matchup bar */}
+                                {softPct !== null && (
                                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                                     {(() => {
                                       const matchupColor = softPct >= pct + 5 ? "#3fb950" : softPct <= pct - 5 ? "#f78166" : "#c9d1d9";
@@ -1477,7 +1458,7 @@ function App() {
                                           <div style={{width:`${softPct}%`,background:matchupColor,height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:softPct>0?2:0}}/>
                                         </div>
                                         <div style={{color:matchupColor,fontSize:10,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{softPct.toFixed(1)}%</div>
-                                        <div style={{color:"#484f58",fontSize:10,width:50,flexShrink:0}}>{mlbH2HLabel ? `${wTotal}g` : `${dvp?.wCount}/${wTotal}g`}</div>
+                                        <div style={{color:"#484f58",fontSize:10,width:50,flexShrink:0}}>{softGamesLabel}</div>
                                       </>;
                                     })()}
                                   </div>
