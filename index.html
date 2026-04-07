@@ -1088,6 +1088,12 @@ function App() {
         const WEAK_N = 10;
         let dvpMap = {}, wTotal = 0, weakTeamList = [];
         let mlbH2HOpp = isMLB ? (dvpData?.h2h?.opp || null) : null;
+        let isLastMatchupFallback = false;
+        // Fallback: when no tonight's game, use last opponent from game logs
+        if (isMLB && !mlbH2HOpp && safeTab === "strikeouts" && perGame.length > 0) {
+          const lastGame = [...perGame].reverse().find(g => g.oppAbbr && g.strikeouts !== undefined);
+          if (lastGame?.oppAbbr) { mlbH2HOpp = lastGame.oppAbbr; isLastMatchupFallback = true; }
+        }
         let mlbH2HLabel = null;
 
         if (dvpData && isMLB && mlbH2HOpp) {
@@ -1139,10 +1145,16 @@ function App() {
         const hasTonightData = Object.values(tonightPlayerMap).some(p => p.stat === safeTab);
         const showTriple = (hasDvp && (wTotal > 0 || (isMLB && totalGames25 >= 5))) || hasTonightData;
         // Explanation shows whenever dvp data is loaded — even for pitchers with 0 starts this season
+        // Fallback opponent for non-MLB sports when no tonight's game
+        const lastPerGameOpp = !player.opponent && !isMLB && perGame.length > 0
+          ? ([...perGame].reverse().find(g => g.oppAbbr)?.oppAbbr ?? null)
+          : null;
+        const effectiveOpp = player.opponent || lastPerGameOpp;
+        const isOppFallback = !player.opponent && !!lastPerGameOpp;
         const showExplanation = dvpData && !loading && !error && (mlbH2HOpp || dvpData.position);
         // Tab-specific opponent rank from dvpData.rankMaps (NBA only)
-        const tabRankEntry = (!isMLB && dvpData?.rankMaps?.[safeTab] && player?.opponent)
-          ? (dvpData.rankMaps[safeTab][player.opponent] || null)
+        const tabRankEntry = (!isMLB && dvpData?.rankMaps?.[safeTab] && effectiveOpp)
+          ? (dvpData.rankMaps[safeTab][effectiveOpp] || null)
           : null;
         const tabOppRank = tabRankEntry?.rank ?? player?.oppRank ?? null;
         const tabOppMetricValue = tabRankEntry?.value ?? player?.oppMetricValue ?? null;
@@ -1164,7 +1176,6 @@ function App() {
                     {(() => {
                       const first = player.name.split(" ")[0];
                       const h2h = dvpData?.h2h;
-                      const strongBadge = <span style={{display:"inline-block",fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(63,185,80,0.12)",border:"1px solid #3fb950",color:"#3fb950",marginLeft:5,verticalAlign:"middle"}}>⚡ strong matchup</span>;
                       if (isMLB) {
                         if (safeTab === "strikeouts") {
                           const lkp   = h2h?.lineupKPct   ?? null;
@@ -1208,7 +1219,10 @@ function App() {
                               })()}
                               {mlbH2HOpp && (
                                 <div style={{color:"#484f58",fontSize:10,marginTop:3}}>
-                                  {wTotal > 0 ? <>{first} has {wTotal} career start{wTotal>1?"s":""} vs {mlbH2HOpp}.</> : <>No career h2h history vs {mlbH2HOpp}.</>}
+                                  {isLastMatchupFallback
+                                    ? <>Showing last start vs {mlbH2HOpp} — updates when next start is scheduled.</>
+                                    : wTotal > 0 ? <>{first} has {wTotal} career start{wTotal>1?"s":""} vs {mlbH2HOpp}.</> : <>No career h2h history vs {mlbH2HOpp}.</>
+                                  }
                                   {pf != null && Math.abs(pf - 1.0) >= 0.01 && <> Venue: {pf > 1 ? "+" : ""}{((pf - 1)*100).toFixed(0)}% {pf > 1 ? "strikeout-friendly" : "strikeout-suppressing"} park.</>}
                                 </div>
                               )}
@@ -1218,7 +1232,7 @@ function App() {
                         if (h2h?.pitcherName) {
                           const era = h2h.pitcherEra;
                           const isSoft = era != null && era >= 4.0;
-                          return <><span style={{color:"#c9d1d9",fontWeight:600}}>{h2h.pitcherName}</span>{era!=null?` (${era} ERA)`:""} starts tonight — {isSoft?<span style={{color:"#3fb950"}}>above-avg ERA, favorable matchup</span>:<span style={{color:"#8b949e"}}>below-avg ERA</span>}.{isSoft && strongBadge} {wTotal>0?<>{first} has <span style={{color:"#c9d1d9",fontWeight:600}}>{wTotal}</span> career game{wTotal>1?"s":""} vs {mlbH2HOpp}.</>:<>No h2h history vs {mlbH2HOpp} yet.</>}</>;
+                          return <><span style={{color:"#c9d1d9",fontWeight:600}}>{h2h.pitcherName}</span>{era!=null?` (${era} ERA)`:""} starts tonight — {isSoft?<span style={{color:"#3fb950"}}>above-avg ERA, favorable matchup</span>:<span style={{color:"#8b949e"}}>below-avg ERA</span>}. {wTotal>0?<>{first} has <span style={{color:"#c9d1d9",fontWeight:600}}>{wTotal}</span> career game{wTotal>1?"s":""} vs {mlbH2HOpp}.</>:<>No h2h history vs {mlbH2HOpp} yet.</>}</>;
                         }
                         return <>{first} faces <span style={{color:"#c9d1d9",fontWeight:600}}>{mlbH2HOpp}</span> tonight. {wTotal>0?<>{first} has <span style={{color:"#c9d1d9",fontWeight:600}}>{wTotal}</span> career game{wTotal>1?"s":""} vs {mlbH2HOpp}.</>:<>No career h2h history vs {mlbH2HOpp} yet.</>}</>;
                       }
@@ -1236,7 +1250,8 @@ function App() {
                         const softPctDisplay = tabTonightPlay?.softPct ?? (dvpMap[player.playThreshold]?.wPct ?? null);
                         const softGamesDisplay = tabTonightPlay?.softGames ?? wTotal;
                         const thresholdDisplay = tabTonightPlay?.threshold ?? player.playThreshold;
-                        if (opp && rank != null) {
+                        if (effectiveOpp && rank != null) {
+                          const opp = effectiveOpp;
                           const metricStr = metricVal != null ? ` (${metricVal}${metricUnit ? " "+metricUnit : ""})` : "";
                           const oppEl = <span style={{color:"#c9d1d9",fontWeight:600}}>{opp}</span>;
                           const rankEl = <span style={{color:"#f78166",fontWeight:700}}>{ordinal(rank)}-worst</span>;
@@ -1254,10 +1269,11 @@ function App() {
                             const weakLabel = posLabel ? `weak ${posLabel} defenses` : "weak matchups";
                             const seasonPctDisplay = tonightTabPlay?.seasonPct ?? null;
                             const isNBAStrong = tonightTabPlay?.softPct != null;
-                            const isNBAHard = !isNBAStrong && player.opponent && (dvpData.hardTeams?.[safeTab] || []).includes(player.opponent);
+                            const isNBAHard = !isNBAStrong && effectiveOpp && (dvpData.hardTeams?.[safeTab] || []).includes(effectiveOpp);
                             const rankColor = isNBAStrong ? "#3fb950" : isNBAHard ? "#f78166" : "#c9d1d9";
                             return <>
-                              {oppEl} <span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}-worst</span> {vsLabel}{valueStr}.{isNBAStrong && strongBadge} {seasonPctDisplay != null && <>{first} hits {thresholdDisplay}+ {STAT_FULL[safeTab] || safeTab} in <span style={{color:"#c9d1d9",fontWeight:600}}>{seasonPctDisplay}%</span> of games this season</>}{hitRate && thresholdDisplay && <>, and {hitRate} vs {weakLabel}{games}</>}.
+                              {oppEl} <span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}-worst</span> {vsLabel}{valueStr}. {seasonPctDisplay != null && <>{first} hits {thresholdDisplay}+ {STAT_FULL[safeTab] || safeTab} in <span style={{color:"#c9d1d9",fontWeight:600}}>{seasonPctDisplay}%</span> of games this season</>}{hitRate && thresholdDisplay && <>, and {hitRate} vs {weakLabel}{games}</>}.
+                              {isOppFallback && <div style={{color:"#484f58",fontSize:10,marginTop:3}}>Showing last game vs {opp} — updates when next game is scheduled.</div>}
                             </>;
                           }
                           if (isNHL) {
@@ -1272,14 +1288,14 @@ function App() {
                               ? <> {first} is averaging {recent != null ? <><span style={{color:"#c9d1d9",fontWeight:600}}>{recent}</span> {STAT_FULL[safeTab] || safeTab} per game</> : "at a strong rate"} recently{dvpPct != null ? <>, and {oppEl} allows <span style={{color:"#f78166"}}>{dvpPct}% more</span> than the league average</> : ""} — projecting around <span style={{color:"#c9d1d9",fontWeight:700}}>~{proj}</span> per game this matchup.</>
                               : null;
                             return <>
-                              {oppEl} ranks {rankEl} in {tabOppMetricLabel || "goals allowed"}{metricStr} — {nhlContext}.{rank <= 5 && strongBadge}{projLine}
+                              {oppEl} ranks {rankEl} in {tabOppMetricLabel || "goals allowed"}{metricStr} — {nhlContext}.{projLine}
                               {hitRate && thresholdDisplay && <> {first} has recorded {thresholdDisplay}+ {STAT_FULL[safeTab] || safeTab} in {hitRate} of games vs weak defenses{games}.</>}
+                              {isOppFallback && <div style={{color:"#484f58",fontSize:10,marginTop:3}}>Showing last game vs {opp} — updates when next game is scheduled.</div>}
                             </>;
                           }
-                          const isStrong = rank <= 5;
                           return <>
-                            {first} faces {oppEl} tonight — they rank <span style={{color:"#f78166",fontWeight:600}}>#{rank}</span> in {statLabel} allowed{metricStr}, giving up {rank === 1 ? "the most" : rank <= 5 ? "among the most" : "a lot of"} in the league.
-                            {isStrong && <span style={{color:"#3fb950",fontWeight:600}}> ⚡ Strong matchup.</span>}
+                            {first} {isOppFallback ? "last faced" : "faces"} {oppEl} {isOppFallback ? "" : "tonight "}— they rank <span style={{color:"#f78166",fontWeight:600}}>#{rank}</span> in {statLabel} allowed{metricStr}, giving up {rank === 1 ? "the most" : rank <= 5 ? "among the most" : "a lot of"} in the league.
+                            {isOppFallback && <div style={{color:"#484f58",fontSize:10,marginTop:3}}>Showing last game vs {opp} — updates when next game is scheduled.</div>}
                           </>;
                         }
                         if (wTotal > 0) {
