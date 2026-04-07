@@ -37,7 +37,7 @@ function makeCache(env) {
       }
     };
   }
-  return CACHE || null;
+  try { return CACHE || null; } catch { return null; }
 }
 __name(makeCache, "makeCache");
 var normName = /* @__PURE__ */ __name((s) => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase(), "normName");
