@@ -2134,7 +2134,7 @@ function App() {
                 {/* P&L bar chart — grouped by day */}
                 {(() => {
                   const playsWithPL = [...trackedPlays]
-                    .filter(p => p.result)
+                    .filter(p => p.result && p.result !== "dnp")
                     .sort((a, b) => (a.gameDate || "").localeCompare(b.gameDate || "") || a.trackedAt - b.trackedAt)
                     .map(p => {
                       const s = ((p.units ?? 1) / 100) * bankroll;
