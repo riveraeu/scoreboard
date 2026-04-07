@@ -1127,6 +1127,11 @@ function App() {
         }
         const hasTonightData = Object.values(tonightPlayerMap).some(p => p.stat === safeTab);
         const showTriple = (hasDvp && (wTotal > 0 || (isMLB && totalGames25 >= 5))) || hasTonightData;
+        // Fallback: if dvpData.h2h is missing (team not found in probables), use tonight play data
+        if (isMLB && !mlbH2HOpp && safeTab === "strikeouts") {
+          const anyStrikeoutsPlay = Object.values(tonightPlayerMap).find(p => p.stat === "strikeouts");
+          if (anyStrikeoutsPlay?.opponent) mlbH2HOpp = anyStrikeoutsPlay.opponent;
+        }
         // Explanation shows whenever dvp data is loaded — even for pitchers with 0 starts this season
         // Fallback opponent for non-MLB sports when no tonight's game
         const tonightOpp = Object.values(tonightPlayerMap).find(p => p.opponent)?.opponent ?? null;
@@ -1135,7 +1140,7 @@ function App() {
           : null;
         const effectiveOpp = player.opponent || tonightOpp || lastPerGameOpp;
         const isOppFallback = !player.opponent && !tonightOpp && !!lastPerGameOpp;
-        const showExplanation = dvpData && !loading && !error && (mlbH2HOpp || dvpData.position);
+        const showExplanation = !loading && !error && (dvpData && (mlbH2HOpp || dvpData.position));
         // Tab-specific opponent rank from dvpData.rankMaps (NBA only)
         const tabRankEntry = (!isMLB && dvpData?.rankMaps?.[safeTab] && effectiveOpp)
           ? (dvpData.rankMaps[safeTab][effectiveOpp] || null)
@@ -1159,7 +1164,17 @@ function App() {
                   <div style={{background:"#0d1117",borderRadius:8,padding:"8px 12px",fontSize:11,color:"#8b949e",lineHeight:1.6,marginBottom:12}}>
                     {(() => {
                       const first = player.name.split(" ")[0];
-                      const h2h = dvpData?.h2h;
+                      // Fall back to tonight play data when dvp h2h is unavailable (e.g. probables cache miss)
+                      const h2h = dvpData?.h2h || (() => {
+                        if (!isMLB || safeTab !== "strikeouts") return null;
+                        const tp = Object.values(tonightPlayerMap).find(p => p.stat === "strikeouts");
+                        if (!tp) return null;
+                        return { opp: tp.opponent, lineupKPct: tp.lineupKPct, lineupKPctProjected: tp.lineupKPctProjected,
+                          pitcherKPct: tp.pitcherKPct, pitcherKBBPct: tp.pitcherKBBPct, log5Avg: tp.log5Avg,
+                          expectedKs: tp.expectedKs, parkFactor: tp.parkFactor, pitcherHand: tp.pitcherHand,
+                          isStrongMatchup: tp.isStrongMatchup, pkpMeets: tp.pkpMeets, lkpMeets: tp.lkpMeets,
+                          gameLineMeets: tp.gameLineMeets, gameTotal: tp.gameTotal, gameMoneyline: tp.gameMoneyline };
+                      })();
                       if (isMLB) {
                         if (safeTab === "strikeouts") {
                           const lkp   = h2h?.lineupKPct   ?? null;
@@ -1445,7 +1460,7 @@ function App() {
                                   <div style={{width:`${k.pct}%`,background:"#a855f7",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:k.pct>0?3:0}}/>
                                 </div>
                                 <div style={{color:"#a855f7",fontSize:11,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{k.pct}%</div>
-                                <div style={{color:"#6e40c9",fontSize:10,width:50,flexShrink:0}}>({oddsStr})</div>
+                                <div style={{color:"#6e40c9",fontSize:10,width:90,flexShrink:0}}>({oddsStr})</div>
                               </div>
                             )}
                             {/* Drawer: season + soft matchup */}
