@@ -266,7 +266,7 @@ function useDebounce(val, ms) {
   return dv;
 }
 
-function AddPickModal({ onClose, onAdd }) {
+function AddPickModal({ onClose, onAdd, initialOdds = "-110" }) {
   const SPORT_STATS = {
     nba: ["points","rebounds","assists","threePointers"],
     mlb: ["hits","homeRuns","hrr","totalBases","strikeouts"],
@@ -281,7 +281,7 @@ function AddPickModal({ onClose, onAdd }) {
     shotsOnGoal:"Shots on Goal", points:"Points", saves:"Saves",
   };
   const suggestUnits = (odds) => { const o = parseInt(odds) || 0; return o <= -900 ? 5 : o <= -400 ? 4 : o <= -200 ? 3 : o <= -110 ? 2 : 1; };
-  const [form, setForm] = React.useState({ playerName:"", sport:"nba", stat:"points", threshold:"", americanOdds:"-110", truePct:"", units: String(suggestUnits("-110")), gameDate: new Date().toISOString().slice(0,10) });
+  const [form, setForm] = React.useState({ playerName:"", sport:"nba", stat:"points", threshold:"", americanOdds:initialOdds, truePct:"", units: String(suggestUnits(initialOdds)), gameDate: new Date().toISOString().slice(0,10) });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   // Reset stat when sport changes
@@ -961,6 +961,7 @@ function App() {
         <AddPickModal
           onClose={() => setShowAddPick(false)}
           onAdd={play => trackPlay(play)}
+          initialOdds={(() => { const v = calcOdds.trim(); return (v && v !== "-" && v !== "+" && !isNaN(parseInt(v))) ? v : "-110"; })()}
         />
       )}
 
@@ -1052,7 +1053,7 @@ function App() {
           />
 <div>
             <h1 style={{color:"#fff",margin:0,fontSize:19,fontWeight:700}}>{player.name}</h1>
-            <div style={{color:"#8b949e",fontSize:12}}>{player.team}{player.opponent ? <> · <span style={{color:"#58a6ff"}}>vs {player.opponent}</span></> : ""} · {SPORTS.find(s=>s.value===(player.sportKey||sport))?.label} 2025-26</div>
+            <div style={{color:"#8b949e",fontSize:12}}>{player.team}{(() => { const opp = player.opponent || (tonightPlays || []).find(p => (p.playerId && p.playerId === player.id) || p.playerName?.toLowerCase() === player.name?.toLowerCase())?.opponent; return opp ? <> · <span style={{color:"#58a6ff"}}>vs {opp}</span></> : ""; })()} · {SPORTS.find(s=>s.value===(player.sportKey||sport))?.label} 2025-26</div>
           </div>
           <div style={{marginLeft:"auto",display:"flex",gap:8}}>
             {[["AVG",avg],["HIGH",hi],["GP",totalGames]].map(([l,v]) => (
@@ -1128,11 +1129,12 @@ function App() {
         const showTriple = (hasDvp && (wTotal > 0 || (isMLB && totalGames25 >= 5))) || hasTonightData;
         // Explanation shows whenever dvp data is loaded — even for pitchers with 0 starts this season
         // Fallback opponent for non-MLB sports when no tonight's game
-        const lastPerGameOpp = !player.opponent && !isMLB && perGame.length > 0
+        const tonightOpp = Object.values(tonightPlayerMap).find(p => p.opponent)?.opponent ?? null;
+        const lastPerGameOpp = !player.opponent && !tonightOpp && !isMLB && perGame.length > 0
           ? ([...perGame].reverse().find(g => g.oppAbbr)?.oppAbbr ?? null)
           : null;
-        const effectiveOpp = player.opponent || lastPerGameOpp;
-        const isOppFallback = !player.opponent && !!lastPerGameOpp;
+        const effectiveOpp = player.opponent || tonightOpp || lastPerGameOpp;
+        const isOppFallback = !player.opponent && !tonightOpp && !!lastPerGameOpp;
         const showExplanation = dvpData && !loading && !error && (mlbH2HOpp || dvpData.position);
         // Tab-specific opponent rank from dvpData.rankMaps (NBA only)
         const tabRankEntry = (!isMLB && dvpData?.rankMaps?.[safeTab] && effectiveOpp)
@@ -1187,7 +1189,7 @@ function App() {
                           const gameTotal = h2h?.gameTotal ?? null;
                           const gameML = h2h?.gameMoneyline ?? null;
                           const pitcherHand = h2h?.pitcherHand ?? null;
-                          const handLabel = pitcherHand === "R" ? " vs RHP" : pitcherHand === "L" ? " vs LHP" : "";
+                          const handLabel = pitcherHand === "R" ? " against RHP" : pitcherHand === "L" ? " against LHP" : "";
                           const metColor = c => c ? "#3fb950" : "#f78166";
                           const criteriaMet = [pkpMeets, lkpMeets, gameLineMeets].filter(Boolean).length;
                           return (
@@ -1247,12 +1249,17 @@ function App() {
                             const valueStr = displayValue != null ? ` (${displayValue})` : "";
                             const vsLabel = posGroup ? `at giving up ${statName} to ${posGroup}` : "in this stat";
                             const weakLabel = posLabel ? `weak ${posLabel} defenses` : "weak matchups";
-                            const seasonPctDisplay = tonightTabPlay?.seasonPct ?? null;
                             const isNBAStrong = tonightTabPlay?.softPct != null;
                             const isNBAHard = !isNBAStrong && effectiveOpp && (dvpData.hardTeams?.[safeTab] || []).includes(effectiveOpp);
                             const rankColor = isNBAStrong ? "#3fb950" : isNBAHard ? "#f78166" : "#c9d1d9";
+                            // Season hit rate: from tonight play if available, else compute from perGame
+                            const pgStatVals = perGame.filter(g => g[safeTab] !== undefined);
+                            const fallbackSeasonPct = pgStatVals.length >= 3 && thresholdDisplay != null
+                              ? parseFloat((pgStatVals.filter(g => g[safeTab] >= thresholdDisplay).length / pgStatVals.length * 100).toFixed(1))
+                              : null;
+                            const seasonPctDisplay = tonightTabPlay?.seasonPct ?? fallbackSeasonPct;
                             return <>
-                              {oppEl} <span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}-worst</span> {vsLabel}{valueStr}. {seasonPctDisplay != null && <>{first} hits {thresholdDisplay}+ {STAT_FULL[safeTab] || safeTab} in <span style={{color:"#c9d1d9",fontWeight:600}}>{seasonPctDisplay}%</span> of games this season</>}{hitRate && thresholdDisplay && <>, and {hitRate} vs {weakLabel}{games}</>}.
+                              {oppEl} <span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}-worst</span> {vsLabel}{valueStr}. {seasonPctDisplay != null && <>{first} hits {thresholdDisplay}+ {STAT_FULL[safeTab] || safeTab} in <span style={{color:"#c9d1d9",fontWeight:600}}>{seasonPctDisplay}%</span> of games this season</>}{isNBAStrong && hitRate && thresholdDisplay && <>, and {hitRate} vs {weakLabel}{games}</>}.
                               {isOppFallback && <div style={{color:"#484f58",fontSize:10,marginTop:3}}>Showing last game vs {opp} — updates when next game is scheduled.</div>}
                             </>;
                           }
@@ -1531,9 +1538,9 @@ function App() {
                     <div style={{marginBottom:3}}><span style={{color:"#58a6ff"}}>Implied prob</span> ≥ 70% (Kalshi market price)</div>
                     <div style={{marginBottom:3}}><span style={{color:"#3fb950"}}>Edge</span> ≥ 3% (true prob minus implied)</div>
                     <div style={{marginTop:6,marginBottom:3,color:"#8b949e",fontWeight:600}}>Matchup gates</div>
-                    <div style={{marginBottom:3}}><span style={{color:"#f97316"}}>NBA</span> — opponent in bottom-10 defense per stat</div>
+                    <div style={{marginBottom:3}}><span style={{color:"#f97316"}}>NBA</span> — opponent bottom-10 DvP for player's position</div>
                     <div style={{marginBottom:3}}><span style={{color:"#4ade80"}}>MLB hitters</span> — opposing starter ERA ≥ 4.0</div>
-                    <div style={{marginBottom:3}}><span style={{color:"#4ade80"}}>MLB pitchers</span> — opposing lineup K-rate ≥ 22%</div>
+                    <div style={{marginBottom:6}}><span style={{color:"#4ade80"}}>MLB pitchers</span> — 2 of 3: pitcher K% &gt;25%, lineup K% &gt;23% (vs handedness), game total &lt;8.5 with team favored (−125+)</div>
                     <div><span style={{color:"#60a5fa"}}>NHL</span> — no matchup gate</div>
                   </div>
                 )}
@@ -1676,12 +1683,6 @@ function App() {
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:"flex",alignItems:"center",gap:6}}>
                         <div style={{color:"#fff",fontSize:14,fontWeight:700}}>{play.playerName}</div>
-                        {play.sport && (
-                          <span style={{background:"transparent",border:`1px solid ${SPORT_BADGE_COLOR[play.sport]||"#8b949e"}`,
-                            borderRadius:4,padding:"1px 5px",fontSize:10,color:SPORT_BADGE_COLOR[play.sport]||"#8b949e",fontWeight:600,textTransform:"uppercase"}}>
-                            {play.sport}
-                          </span>
-                        )}
                       </div>
                       <div style={{color:"#8b949e",fontSize:11,marginTop:2,display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
                         <span>{play.playerTeam} vs {play.opponent}{play.position ? ` · ${play.position}` : ""}</span>
@@ -1764,9 +1765,9 @@ function App() {
                               ) : `Season rate${play.seasonGames ? ` (${play.seasonGames}g)` : ""}`}
                             </div>
                             <div style={{flex:1,background:"#21262d",borderRadius:3,height:8,overflow:"hidden"}}>
-                              <div style={{width:`${play.seasonPct}%`,background:"#58a6ff",height:"100%",borderRadius:3}}/>
+                              <div style={{width:`${play.seasonPct}%`,background:"#484f58",height:"100%",borderRadius:3}}/>
                             </div>
-                            <div style={{color:"#58a6ff",fontSize:11,fontWeight:600,width:38,textAlign:"right",flexShrink:0}}>{play.seasonPct}%</div>
+                            <div style={{color:"#8b949e",fontSize:11,fontWeight:600,width:38,textAlign:"right",flexShrink:0}}>{play.seasonPct}%</div>
                           </div>
                           {play.softPct !== null && (play.stat !== "strikeouts" || (play.softGames ?? 0) >= 3) && (
                             <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -1827,7 +1828,7 @@ function App() {
                               const isStrongMatchup = play.isStrongMatchup ?? false;
                               const gameTotal = play.gameTotal ?? null;
                               const gameML = play.gameMoneyline ?? null;
-                              const handLabel = play.pitcherHand === "R" ? " vs RHP" : play.pitcherHand === "L" ? " vs LHP" : "";
+                              const handLabel = play.pitcherHand === "R" ? " against RHP" : play.pitcherHand === "L" ? " against LHP" : "";
 
                               const criteriaMet = [play.pkpMeets, play.lkpMeets, play.gameLineMeets].filter(Boolean).length;
                               return (
@@ -1890,9 +1891,9 @@ function App() {
                                 const posLabel = {PG:"point guards",SG:"shooting guards",SF:"small forwards",PF:"power forwards",C:"centers"}[play.posGroup] ?? null;
                                 const displayRank = play.posDvpRank ?? play.oppRank;
                                 const displayValue = play.posDvpValue ?? play.oppMetricValue;
-                                const statUnit = { points:"PPG", rebounds:"RPG", assists:"APG", threePointers:"3PM" }[play.stat] || play.oppMetricUnit || "";
-                                const valueStr = displayValue != null ? ` (${displayValue} ${statUnit})` : "";
-                                const vsLabel = posLabel ? `vs ${posLabel}` : "in this stat";
+                                const statName = { points:"points", rebounds:"rebounds", assists:"assists", threePointers:"3-pointers" }[play.stat] || play.stat;
+                                const valueStr = displayValue != null ? ` (${displayValue})` : "";
+                                const vsLabel = play.posGroup ? `at giving up ${statName} to ${play.posGroup}` : "in this stat";
                                 const weakLabel = posLabel ? `weak ${posLabel} defenses` : "weak matchups";
                                 const rankColor = play.softPct !== null ? "#3fb950" : play.isHardMatchup ? "#f78166" : "#c9d1d9";
                                 return <>
