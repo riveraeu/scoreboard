@@ -1180,6 +1180,8 @@ function App() {
                           const gameLineMeets = h2h?.gameLineMeets ?? false;
                           const gameTotal = h2h?.gameTotal ?? null;
                           const gameML = h2h?.gameMoneyline ?? null;
+                          const pitcherHand = h2h?.pitcherHand ?? null;
+                          const handLabel = pitcherHand === "R" ? " vs RHP" : pitcherHand === "L" ? " vs LHP" : "";
                           const metColor = c => c ? "#3fb950" : "#f78166";
                           return (
                             <>
@@ -1192,12 +1194,12 @@ function App() {
                                 <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:3}}>
                                   {pkp != null && <span title="% of batters this pitcher strikes out">K rate: <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span></span>}
                                   {kbb != null && <span title="Strikeouts minus walks per batter faced">K-walk edge: <span style={{color:kbbColor,fontWeight:600}}>{kbb}%</span></span>}
-                                  {lkp != null && <span title={lkpProjected ? "Based on projected lineup — updates when official lineup posts" : "% of at-bats this lineup strikes out"}>Opp K rate: <span style={{color:lkpColor,fontWeight:600}}>{lkp}%</span>{lkpProjected && <span style={{color:"#484f58",fontSize:10}}> (est.)</span>}</span>}
+                                  {lkp != null && <span title={lkpProjected ? "Based on projected lineup — updates when official lineup posts" : `% of at-bats this lineup strikes out${handLabel}`}>Opp K rate{handLabel}: <span style={{color:lkpColor,fontWeight:600}}>{lkp}%</span>{lkpProjected && <span style={{color:"#484f58",fontSize:10}}> (est.)</span>}</span>}
                                 </div>
                               )}
                               <div style={{display:"flex",gap:10,flexWrap:"wrap",fontSize:10,color:"#8b949e"}}>
                                 <span><span style={{color:metColor(pkpMeets),fontWeight:700}}>{pkpMeets?"✓":"✗"}</span> Pitcher K% {pkp != null ? `${pkp}%` : "—"} {pkpMeets ? ">25%" : "(need >25%)"}</span>
-                                <span><span style={{color:metColor(lkpMeets),fontWeight:700}}>{lkpMeets?"✓":"✗"}</span> Opp K% {lkp != null ? `${lkp}%` : "—"} {lkpMeets ? ">23%" : "(need >23%)"}</span>
+                                <span><span style={{color:metColor(lkpMeets),fontWeight:700}}>{lkpMeets?"✓":"✗"}</span> Opp K%{handLabel} {lkp != null ? `${lkp}%` : "—"} {lkpMeets ? ">23%" : "(need >23%)"}</span>
                                 <span><span style={{color:metColor(gameLineMeets),fontWeight:700}}>{gameLineMeets?"✓":"✗"}</span> {gameTotal != null ? `Total ${gameTotal}` : "Total —"} / {gameML != null ? `ML ${gameML > 0 ? "+":""}${gameML}` : "ML —"}</span>
                               </div>
                               {mlbH2HOpp && (
@@ -1854,6 +1856,7 @@ function App() {
                               const isStrongMatchup = play.isStrongMatchup ?? false;
                               const gameTotal = play.gameTotal ?? null;
                               const gameML = play.gameMoneyline ?? null;
+                              const handLabel = play.pitcherHand === "R" ? " vs RHP" : play.pitcherHand === "L" ? " vs LHP" : "";
 
                               return (
                                 <>
@@ -1866,12 +1869,12 @@ function App() {
                                     <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:3}}>
                                       {pkp != null && <span>K rate: <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span></span>}
                                       {kbb != null && <span>K-walk edge: <span style={{color:kbbColor,fontWeight:600}}>{kbb}%</span></span>}
-                                      {lkp != null && <span>Opp K rate: <span style={{color:lkpColor,fontWeight:600}}>{lkp}%</span>{isProjected && <span style={{color:"#484f58",fontSize:10}}> (est.)</span>}</span>}
+                                      {lkp != null && <span>Opp K rate{handLabel}: <span style={{color:lkpColor,fontWeight:600}}>{lkp}%</span>{isProjected && <span style={{color:"#484f58",fontSize:10}}> (est.)</span>}</span>}
                                     </div>
                                   )}
                                   <div style={{display:"flex",gap:10,flexWrap:"wrap",fontSize:10,color:"#8b949e"}}>
                                     <span><span style={{color:metColor(play.pkpMeets),fontWeight:700}}>{play.pkpMeets?"✓":"✗"}</span> Pitcher K% {pkp != null ? `${pkp}%` : "—"} {play.pkpMeets ? ">25%" : "(need >25%)"}</span>
-                                    <span><span style={{color:metColor(play.lkpMeets),fontWeight:700}}>{play.lkpMeets?"✓":"✗"}</span> Opp K% {lkp != null ? `${lkp}%` : "—"} {play.lkpMeets ? ">23%" : "(need >23%)"}</span>
+                                    <span><span style={{color:metColor(play.lkpMeets),fontWeight:700}}>{play.lkpMeets?"✓":"✗"}</span> Opp K%{handLabel} {lkp != null ? `${lkp}%` : "—"} {play.lkpMeets ? ">23%" : "(need >23%)"}</span>
                                     <span><span style={{color:metColor(play.gameLineMeets),fontWeight:700}}>{play.gameLineMeets?"✓":"✗"}</span> {gameTotal != null ? `Total ${gameTotal}` : "Total —"} / {gameML != null ? `ML ${gameML > 0 ? "+":""}${gameML}` : "ML —"}</span>
                                   </div>
                                   {pf != null && Math.abs(pf - 1.0) >= 0.01 && (
