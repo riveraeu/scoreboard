@@ -91,7 +91,7 @@ const STAT_CONFIGS = {
   },
 };
 
-const getColor = p => p >= 60 ? "#58a6ff" : p >= 40 ? "#d29922" : "#f78166";
+const getColor = p => p >= 70 ? "#3fb950" : p >= 50 ? "#c9d1d9" : "#f78166";
 const STAT_LABEL = {
   points:"PTS", rebounds:"REB", assists:"AST", threePointers:"3PT",
   goals:"G", shotsOnGoal:"SOG",
@@ -1484,13 +1484,13 @@ function App() {
                   <div style={{display:"flex",gap:12,flexWrap:"wrap",fontSize:11,color:"#484f58",marginLeft:"auto"}}>
                     {showTriple
                       ? <><span><span style={{color:"#e3b341",fontWeight:600}}>Gold</span> = true probability</span>
-                          {Object.keys(kalshiOdds).length > 0 && <span><span style={{color:"#a855f7",fontWeight:600}}>Purple</span> = Kalshi market</span>}
+                          {Object.keys(kalshiOdds).length > 0 && <span><span style={{color:"#a855f7",fontWeight:600}}>Purple</span> = Kalshi odds</span>}
                           {Object.keys(kalshiOdds).length > 0 && <span><span style={{color:"#3fb950",fontWeight:600}}>+edge</span> / <span style={{color:"#f78166",fontWeight:600}}>−edge</span> vs market</span>}
-                          {isMLB && <span><span style={{color:"#58a6ff",fontWeight:600}}>Blue</span> = '25+'26 blend</span>}
-                          {isMLB && safeTab === "strikeouts" && <span><span style={{color:"#3fb950",fontWeight:600}}>Green</span> = strong matchup games</span>}</>
+                          {showBreakdown && <span><span style={{color:"#58a6ff",fontWeight:600}}>Blue</span> = season rate</span>}
+                          {showBreakdown && <span><span style={{color:"#3fb950",fontWeight:600}}>Green</span> / <span style={{color:"#c9d1d9",fontWeight:600}}>White</span> / <span style={{color:"#f78166",fontWeight:600}}>Red</span> = matchup rate</span>}</>
                       : Object.keys(kalshiOdds).length > 0
                         ? <span><span style={{color:"#a855f7",fontWeight:600}}>Kalshi</span> = live market odds</span>
-                        : [["#3fb950","≥80%"],["#58a6ff","60–79%"],["#d29922","40–59%"],["#f78166","<40%"]].map(([c,l]) => (
+                        : [["#3fb950","≥70%"],["#c9d1d9","50–69%"],["#f78166","<50%"]].map(([c,l]) => (
                             <div key={l} style={{display:"flex",alignItems:"center",gap:4}}>
                               <div style={{width:8,height:8,borderRadius:2,background:c}}/><span style={{color:"#8b949e"}}>{l}</span>
                             </div>
