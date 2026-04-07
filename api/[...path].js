@@ -1049,7 +1049,7 @@ var worker_default = {
           "Referer": "https://www.espn.com/",
           "Accept": "application/json"
         };
-        const MAX_PINFO_FETCHES = 10;
+        const MAX_PINFO_FETCHES = 100;
         const pInfoErrors = [];
         for (let i = 0; i < Math.min(keysNeedingInfo.length, MAX_PINFO_FETCHES); i++) {
           const key = keysNeedingInfo[i];
