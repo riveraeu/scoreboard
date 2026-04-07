@@ -255,6 +255,43 @@ var worker_default = {
         if (!athleteId) return errorResponse("athleteId required");
         const leagueSlug = sport.split("/")[1];
         const year = params.get("season") || params.get("year") || "";
+        const currentYear = (/* @__PURE__ */ new Date()).getFullYear();
+        const isPastSeason = year && parseInt(year) < currentYear;
+        // MLB: use ESPN JSON API directly (same source as tonight endpoint) for full game history
+        if (sport === "baseball/mlb") {
+          const mlbApiUrl = `https://site.web.api.espn.com/apis/common/v3/sports/baseball/mlb/athletes/${athleteId}/gamelog${year ? `?season=${year}` : ""}`;
+          const mlbRes = await fetch(mlbApiUrl, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              "Accept": "application/json",
+              "Accept-Language": "en-US,en;q=0.9",
+              "Referer": "https://www.espn.com/",
+              "Origin": "https://www.espn.com"
+            }
+          });
+          if (!mlbRes.ok) return errorResponse(`ESPN MLB API returned ${mlbRes.status}`, mlbRes.status);
+          const d = await mlbRes.json();
+          const labels = d.labels || [];
+          const reg = (d.seasonTypes || []).find((st) => st.displayName?.toLowerCase().includes("regular")) || d.seasonTypes?.[0];
+          const seenIds = /* @__PURE__ */ new Set();
+          const allEvents = [];
+          for (const cat of reg?.categories || []) {
+            for (const ev of cat.events || []) {
+              if (seenIds.has(ev.eventId)) continue;
+              const meta = d.events?.[ev.eventId];
+              if (!meta || meta.opponent?.isAllStar) continue;
+              seenIds.add(ev.eventId);
+              allEvents.push({
+                eventId: ev.eventId,
+                stats: ev.stats || [],
+                date: meta.date || null,
+                oppAbbr: meta.opponent?.abbreviation || null,
+                isHome: meta.home?.id === meta.atVs ? false : null
+              });
+            }
+          }
+          return jsonResponse({ labels, events: allEvents, totalGames: allEvents.length }, isPastSeason ? 86400 : 14400);
+        }
         const pageUrl = year ? `https://www.espn.com/${leagueSlug}/player/gamelog/_/id/${athleteId}/year/${year}` : `https://www.espn.com/${leagueSlug}/player/gamelog/_/id/${athleteId}`;
         const pageRes = await fetch(pageUrl, {
           headers: {
@@ -299,8 +336,6 @@ var worker_default = {
             });
           });
         });
-        const currentYear = (/* @__PURE__ */ new Date()).getFullYear();
-        const isPastSeason = year && parseInt(year) < currentYear;
         return jsonResponse({ labels, events: allEvents, totalGames: allEvents.length }, isPastSeason ? 86400 : 14400);
       } else if (path === "dvp/rebuild-pos") {
         const stage = params.get("stage") || "2";
@@ -613,7 +648,7 @@ var worker_default = {
           const _dvpLkpAll = lineupKPct[tonightOpp] ?? null;
           const _dvpLkp = _dvpPitcherHand === "R" ? _dvpLkpVR ?? _dvpLkpAll : _dvpPitcherHand === "L" ? _dvpLkpVL ?? _dvpLkpAll : _dvpLkpAll;
           const _dvpLkpMeets = _dvpLkp != null && _dvpLkp > 23;
-          const _dvpGameLineMeets = _dvpGameOdds?.total != null && _dvpGameOdds?.moneyline != null && _dvpGameOdds.total < 8.5 && _dvpGameOdds.moneyline < -125;
+          const _dvpGameLineMeets = _dvpGameOdds?.total != null && _dvpGameOdds?.moneyline != null && _dvpGameOdds.total < 8.5 && _dvpGameOdds.moneyline <= -150;
           const _dvpIsStrong = [_dvpPkpMeets, _dvpLkpMeets, _dvpGameLineMeets].filter(Boolean).length >= 2;
           return jsonResponse({
             position,
@@ -1126,7 +1161,7 @@ var worker_default = {
             }
             const d = await r.json();
             const ul = (d.labels || []).map((l) => (l || "").toUpperCase());
-            const reg = (d.seasonTypes || []).find((st) => st.displayName?.toLowerCase().includes("regular")) || d.seasonTypes?.[0];
+            const reg = (d.seasonTypes || []).find((st) => st.displayName?.toLowerCase().includes("regular")) || (d.seasonTypes?.length === 1 ? d.seasonTypes[0] : null);
             const events = [];
             const seenIds = /* @__PURE__ */ new Set();
             for (const cat of reg?.categories || []) {
@@ -1354,22 +1389,25 @@ var worker_default = {
             const _go = sportByteam.mlb?.gameOdds?.[playerTeam] ?? null;
             pkpMeets = _pkp != null && _pkp > 25;
             lkpMeets = _lkp != null && _lkp > 23;
-            gameLineMeets = _go?.total != null && _go?.moneyline != null && _go.total < 8.5 && _go.moneyline < -125;
+            gameLineMeets = _go?.total != null && _go?.moneyline != null && _go.total < 8.5 && _go.moneyline <= -150;
             isStrongMatchup = [pkpMeets, lkpMeets, gameLineMeets].filter(Boolean).length >= 2;
           }
           let softVals, softLabel, softUnit;
           if (sport === "mlb" && stat === "strikeouts") {
-            if (isStrongMatchup) {
-              const allLineupKPct = sportByteam.mlb?.lineupKPct || {};
-              const highKOppAbbrs = new Set(Object.entries(allLineupKPct).filter(([, k]) => k > 23).map(([a]) => a));
-              softVals = gl.events.filter((ev) => highKOppAbbrs.has(ev.oppAbbr)).map(getStat).filter((v) => !isNaN(v));
-              softLabel = `vs high-K lineups (strong matchup games)`;
-            } else {
-              softVals = gl.events.filter((ev) => ev.oppAbbr === tonightOpp).map(getStat).filter((v) => !isNaN(v));
-              const lkpVal = sportByteam.mlb?.lineupKPct?.[tonightOpp] ?? null;
-              const lkpStr = lkpVal !== null ? ` | lineup K% ${lkpVal}%` : "";
-              softLabel = `vs ${tonightOpp} batters${lkpStr}`;
-            }
+            const allLineupKPct = sportByteam.mlb?.lineupKPct || {};
+            const _lkpAll2 = allLineupKPct[tonightOpp] ?? null;
+            const _lkpVR2 = sportByteam.mlb?.lineupKPctVR?.[tonightOpp] ?? null;
+            const _lkpVL2 = sportByteam.mlb?.lineupKPctVL?.[tonightOpp] ?? null;
+            const tonightLkp = _pitcherHand === "R" ? (_lkpVR2 ?? _lkpAll2) : _pitcherHand === "L" ? (_lkpVL2 ?? _lkpAll2) : _lkpAll2;
+            // Bucket tonight's opponent K rate: low (<20%), avg (20–24%), high (>=24%)
+            const lkpBucket = tonightLkp == null ? null : tonightLkp >= 24 ? "high" : tonightLkp >= 20 ? "avg" : "low";
+            const similarKAbbrs = new Set(
+              Object.entries(allLineupKPct)
+                .filter(([, k]) => lkpBucket === "high" ? k >= 24 : lkpBucket === "avg" ? (k >= 20 && k < 24) : lkpBucket === "low" ? k < 20 : true)
+                .map(([a]) => a)
+            );
+            softVals = gl.events.filter((ev) => similarKAbbrs.size > 0 ? similarKAbbrs.has(ev.oppAbbr) : true).map(getStat).filter((v) => !isNaN(v));
+            softLabel = lkpBucket === "high" ? "vs high-K lineups" : lkpBucket === "avg" ? "vs avg-K lineups" : lkpBucket === "low" ? "vs low-K lineups" : "career";
             softUnit = "%";
           } else if (sport === "mlb") {
             const pitcherEntry = pitcherGamelogs[tonightOpp];
@@ -1879,7 +1917,7 @@ var MLB_ID_TO_ABBR = {
   142: "MIN",
   143: "PHI",
   144: "ATL",
-  145: "CWS",
+  145: "CHW",
   146: "MIA",
   147: "NYY",
   158: "MIL"
