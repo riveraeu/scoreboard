@@ -1318,8 +1318,8 @@ function App() {
                     const softPctRaw = (isMLB && safeTab === "strikeouts" && anyStatTonightPlay?.softPct != null)
                       ? anyStatTonightPlay.softPct
                       : (dvp?.wPct ?? null);
-                    const softGamesLabel = (isMLB && safeTab === "strikeouts" && tonightPlayForSoft?.softPct != null)
-                      ? (tonightPlayForSoft.softGames ? `${tonightPlayForSoft.softGames}g` : "")
+                    const softGamesLabel = (isMLB && safeTab === "strikeouts" && anyStatTonightPlay?.softPct != null)
+                      ? (anyStatTonightPlay.softGames ? `${anyStatTonightPlay.softGames}g` : "")
                       : (dvp ? `${dvp.wCount}/${wTotal}g` : "");
                     const softPct = isUnder ? (softPctRaw !== null ? 100 - softPctRaw : null) : softPctRaw;
                     const pct25Raw = (isMLB && totalGames25 >= 5) ? (rates25Map[t] ?? null) : null;
@@ -1595,11 +1595,19 @@ function App() {
               if (play.sport === "nhl") return play.oppRank != null && play.oppRank <= 5;
               return play.oppRank != null && play.oppRank <= 5;
             };
+            const impliedProb = odds => {
+              if (odds == null) return null;
+              if (odds < 0) return Math.abs(odds) / (Math.abs(odds) + 100) * 100;
+              if (odds > 0) return 100 / (odds + 100) * 100;
+              return null;
+            };
             const untrackedPlays = (tonightPlays || []).filter(play => {
               const trackId = `${play.sport || "nba"}|${play.playerName}|${play.stat}|${play.threshold}|${play.gameDate || ""}`;
               if (trackedPlays.some(p => p.id === trackId)) return false;
               if (sportFilter.length > 0 && !sportFilter.includes(play.sport)) return false;
               if (statFilter.length > 0 && !statFilter.includes(play.stat)) return false;
+              const ip = impliedProb(play.americanOdds);
+              if (ip !== null && ip > 93) return false;
               return true;
             });
             if (untrackedPlays.length === 0) return (
