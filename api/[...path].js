@@ -770,11 +770,6 @@ var worker_default = {
         __name(glCacheKey, "glCacheKey");
         const isDebugMode = params.get("debug") === "1";
         const isBustCache = params.get("bust") === "1";
-        if (!isDebugMode && !isBustCache && CACHE2) {
-          const todayCacheKey = `tonight:plays:${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`;
-          const cached = await CACHE2.get(todayCacheKey, "json").catch(() => null);
-          if (cached) return jsonResponse(cached, true);
-        }
         if (params.get("mock") === "true") {
           return jsonResponse({ plays: [
             { playerName: "Shai Gilgeous-Alexander", playerId: "4278073", sport: "nba", playerTeam: "OKC", position: "PG", opponent: "DAL", oppRank: 2, oppMetricValue: 119.8, oppMetricLabel: "PPG allowed", oppMetricUnit: "PPG", stat: "points", threshold: 30, kalshiPct: 74, americanOdds: -163, seasonPct: 78.4, softPct: 84.2, softGames: 11, truePct: 81.3, edge: 7.3, gameDate: "2026-04-07" },
@@ -1669,9 +1664,6 @@ var worker_default = {
         const playsResult = { plays, qualifyingCount: qualifyingMarkets.length, preFilteredCount: preFilteredMarkets.length };
         const sportsInPlays = new Set(plays.map((p) => p.sport));
         if (CACHE2 && sportsInPlays.size >= 2) {
-          const todayCacheKey = `tonight:plays:${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`;
-          await CACHE2.put(todayCacheKey, JSON.stringify(playsResult), { expirationTtl: 3600 }).catch(() => {
-          });
           const summary = {
             date: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10),
             count: plays.length,
