@@ -1167,37 +1167,34 @@ function App() {
                           const estBF = sumIP > 0 ? (sumIP * 3 + sumH + sumBB) : 0;
                           const pkp = h2h?.pitcherKPct  ?? (estBF >= 50 ? parseFloat((sumK / estBF * 100).toFixed(1)) : null);
                           const kbb = h2h?.pitcherKBBPct ?? (estBF >= 50 ? parseFloat(((sumK - sumBB) / estBF * 100).toFixed(1)) : null);
-                          const pkpRating = pkp == null ? null : pkp >= 27 ? "Excellent" : pkp >= 24 ? "Great" : pkp >= 22 ? "Above Avg" : pkp >= 20 ? "Average" : "Below Avg";
                           const pkpColor  = pkp == null ? "#8b949e" : pkp >= 24 ? "#3fb950" : pkp >= 20 ? "#d29922" : "#f78166";
                           const lkpProjected = h2h?.lineupKPctProjected === true;
-                          const lkpRating = lkp == null ? null : lkp >= 30 ? "Elite" : lkp >= 25 ? "Prime" : lkp >= 22 ? "Above avg" : "Below avg";
-                          const lkpColor  = lkp == null ? "#8b949e" : lkp >= 25 ? "#3fb950" : lkp >= 22 ? "#d29922" : "#8b949e";
-                          const kbbRating = kbb == null ? null : kbb >= 18 ? "Elite" : kbb >= 12 ? "Strong" : kbb >= 6 ? "Average" : "Weak";
+                          const lkpColor  = lkp == null ? "#8b949e" : lkp >= 25 ? "#3fb950" : lkp >= 22 ? "#d29922" : "#f78166";
                           const kbbColor  = kbb == null ? "#8b949e" : kbb >= 18 ? "#3fb950" : kbb >= 12 ? "#d29922" : "#f78166";
-                          const l5Color   = l5  == null ? "#8b949e" : l5  >= 28 ? "#3fb950" : l5  >= 24 ? "#d29922" : "#8b949e";
-                          const parkNote  = pf != null && Math.abs(pf - 1.0) >= 0.01;
+                          const oppColor  = lkp != null ? (lkp >= 25 ? "#3fb950" : lkp < 22 ? "#f78166" : "#c9d1d9") : "#c9d1d9";
+                          const strikeoutsThreshold = Object.entries(tonightPlayerMap).find(([k]) => k.startsWith("strikeouts|"))?.[1]?.threshold ?? null;
+                          const expKColor = expK != null && strikeoutsThreshold != null ? (expK >= strikeoutsThreshold ? "#3fb950" : expK >= strikeoutsThreshold - 1 ? "#d29922" : "#f78166") : "#c9d1d9";
                           const isStrongPitcher = l5 != null && l5 >= 24;
                           return (
                             <>
-                              {l5 != null && (
-                                <div style={{marginBottom:3}}>
-                                  <span style={{color:l5Color,fontWeight:700,fontSize:12}}>Matchup K rate: {l5}%</span>
-                                  {expK != null && <span style={{color:"#484f58"}}> → ~{expK} projected Ks</span>}
-                                  {isStrongPitcher && strongBadge}
+                              <div style={{marginBottom:3}}>
+                                {first} faces <span style={{color:oppColor,fontWeight:600}}>{mlbH2HOpp || "tonight's lineup"}</span>
+                                {expK != null && <>, projecting <span style={{color:expKColor,fontWeight:700}}>~{expK}K</span> this start</>}.
+                                {isStrongPitcher && strongBadge}
+                              </div>
+                              {(pkp != null || lkp != null || kbb != null) && (
+                                <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+                                  {pkp != null && <span title="% of batters this pitcher strikes out">K rate: <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span></span>}
+                                  {kbb != null && <span title="Strikeouts minus walks per batter faced">K-walk edge: <span style={{color:kbbColor,fontWeight:600}}>{kbb}%</span></span>}
+                                  {lkp != null && <span title={lkpProjected ? "Based on projected lineup — updates when official lineup posts" : "% of at-bats this lineup strikes out"}>Opp K rate: <span style={{color:lkpColor,fontWeight:600}}>{lkp}%</span>{lkpProjected && <span style={{color:"#484f58",fontSize:10}}> (est.)</span>}</span>}
                                 </div>
                               )}
-                              <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
-                                {pkp != null && <span title="% of batters this pitcher strikes out">K rate: <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span> <span style={{color:"#484f58"}}>({pkpRating})</span></span>}
-                                {kbb != null && <span title="Strikeouts minus walks per batter faced — measures command and dominance">K-walk edge: <span style={{color:kbbColor,fontWeight:600}}>{kbb}%</span> <span style={{color:"#484f58"}}>({kbbRating})</span></span>}
-                                {lkp != null && <span title={lkpProjected ? "Based on projected lineup — updates when official lineup posts" : "% of at-bats this lineup strikes out"}>Opp. K rate: <span style={{color:lkpColor,fontWeight:600}}>{lkp}%</span> <span style={{color:"#484f58"}}>({lkpRating}{lkpProjected ? ", est." : ""})</span></span>}
-                              </div>
-                              {parkNote && <div style={{color:"#484f58",marginTop:2}}>Venue: {pf > 1 ? "+" : ""}{((pf - 1)*100).toFixed(0)}% {pf > 1 ? "strikeout-friendly" : "strikeout-suppressing"} park</div>}
-                              {mlbH2HOpp
-                                ? wTotal > 0
-                                  ? <div style={{marginTop:2}}>{first} has <span style={{color:"#c9d1d9",fontWeight:600}}>{wTotal}</span> career start{wTotal>1?"s":""} vs {mlbH2HOpp}.</div>
-                                  : <div style={{marginTop:2,color:"#484f58"}}>No career h2h history vs {mlbH2HOpp}.</div>
-                                : null
-                              }
+                              {mlbH2HOpp && (
+                                <div style={{color:"#484f58",fontSize:10,marginTop:3}}>
+                                  {wTotal > 0 ? <>{first} has {wTotal} career start{wTotal>1?"s":""} vs {mlbH2HOpp}.</> : <>No career h2h history vs {mlbH2HOpp}.</>}
+                                  {pf != null && Math.abs(pf - 1.0) >= 0.01 && <> Venue: {pf > 1 ? "+" : ""}{((pf - 1)*100).toFixed(0)}% {pf > 1 ? "strikeout-friendly" : "strikeout-suppressing"} park.</>}
+                                </div>
+                              )}
                             </>
                           );
                         }
@@ -1829,54 +1826,46 @@ function App() {
                             )}
                             {(() => {
                               const first = play.playerName.split(" ")[0];
-                              const opp   = <span style={{color:"#c9d1d9",fontWeight:600}}>{play.opponent}</span>;
                               const pkp   = play.pitcherKPct;
                               const kbb   = play.pitcherKBBPct;
                               const lkp   = play.lineupKPct;
                               const expK  = play.expectedKs;
                               const pf    = play.parkFactor;
-                              const l5    = play.log5Avg;
-                              const parkNote = pf != null && Math.abs(pf - 1.0) >= 0.01
-                                ? <> The venue is a <span style={{color:"#c9d1d9"}}>{pf > 1 ? "strikeout-friendly" : "strikeout-suppressing"}</span> park ({pf > 1 ? "+" : ""}{((pf-1)*100).toFixed(0)}%).</>
-                                : null;
-                              const pitcherRating = pkp != null
-                                ? (pkp >= 28 ? "elite" : pkp >= 25 ? "above-average" : pkp >= 22 ? "solid" : "average")
-                                : null;
-                              const kbbNote = kbb != null && kbb >= 18
-                                ? <> He also limits free passes — his strikeout-to-walk dominance is among the best in the game.</>
-                                : kbb != null && kbb >= 14
-                                ? <> He also does a good job limiting walks, adding to his dominance.</>
-                                : null;
                               const isProjected = play.lineupKPctProjected === true;
-                              if (lkp != null && pkp != null) {
-                                const lineupDesc = lkp >= 26 ? "one of the highest strikeout rates in the league" : lkp >= 24 ? "a high strikeout rate" : "an above-average strikeout rate";
-                                const strongMatchup = !isProjected && l5 != null && l5 >= 24;
-                                const projectedNote = isProjected ? <span style={{color:"#8b949e",fontSize:10}}> (projected lineup — updates when official lineup posts)</span> : null;
-                                return <>
-                                  {first} is facing {opp}, a lineup with {lineupDesc} — their batters swing and miss at a high clip ({lkp}% K rate{isProjected ? ", est." : ""}).{" "}
-                                  {first} is an {pitcherRating} strikeout pitcher ({pkp}% K rate){kbbNote}{expK != null ? <>, projecting around <span style={{color:"#c9d1d9",fontWeight:600}}>~{expK} strikeouts</span> this start</> : null}.{parkNote}{projectedNote}
-                                </>;
-                              }
-                              if (pkp != null) {
-                                return <>{first} is an {pitcherRating} strikeout pitcher ({pkp}% K rate){kbbNote}{expK != null ? <>, projecting around ~{expK} strikeouts this start</> : null} against {opp}.{parkNote}</>;
-                              }
-                              // Fallback: no lineup or pitcher K data yet
-                              {
-                                const seasonG = play.blendGames || play.seasonGames;
-                                const seasonRate = play.seasonPct;
-                                const histRate = play.oppMetricValue != null ? play.oppMetricValue : null;
-                                const histGames = play.softGames || play.historicalGames || 0;
-                                const yr25 = play.pct25 != null && play.pct25Games >= 5
-                                  ? <> In 2025 he reached {play.threshold}+ Ks in <span style={{color:"#3fb950",fontWeight:600}}>{play.pct25}%</span> of {play.pct25Games} starts.</>
-                                  : null;
-                                const h2h = histRate != null && histGames >= 1
-                                  ? <> He's done it in <span style={{color:"#3fb950",fontWeight:600}}>{histRate}%</span> of his {histGames === 1 ? "1 career start" : `${histGames} starts`} against {opp}.</>
-                                  : null;
-                                return <>
-                                  {first} has reached {play.threshold}+ strikeouts in <span style={{color:"#3fb950",fontWeight:600}}>{seasonRate}%</span> of his {seasonG} starts this season.{yr25}{h2h}{" "}
-                                  Lineup data unavailable — projection will update once lineups post.{parkNote}
-                                </>;
-                              }
+
+                              const oppColor  = lkp != null ? (lkp >= 25 ? "#3fb950" : lkp < 22 ? "#f78166" : "#c9d1d9") : "#c9d1d9";
+                              const expKColor = expK != null ? (expK >= play.threshold ? "#3fb950" : expK >= play.threshold - 1 ? "#d29922" : "#f78166") : "#c9d1d9";
+                              const pkpColor  = pkp == null ? "#8b949e" : pkp >= 24 ? "#3fb950" : pkp >= 20 ? "#d29922" : "#f78166";
+                              const lkpColor  = lkp == null ? "#8b949e" : lkp >= 25 ? "#3fb950" : lkp >= 22 ? "#d29922" : "#f78166";
+                              const kbbColor  = kbb == null ? "#8b949e" : kbb >= 18 ? "#3fb950" : kbb >= 12 ? "#d29922" : "#f78166";
+
+                              const seasonG = play.blendGames || play.seasonGames;
+                              const yr25 = play.pct25 != null && play.pct25Games >= 5
+                                ? <> 2025: <span style={{color:"#3fb950",fontWeight:600}}>{play.pct25}%</span> in {play.pct25Games} starts.</>
+                                : null;
+                              const h2hNote = play.softPct != null && play.softGames >= 1
+                                ? <> H2H: <span style={{color:"#3fb950",fontWeight:600}}>{play.softPct}%</span> in {play.softGames === 1 ? "1 start" : `${play.softGames} starts`} vs {play.opponent}.</>
+                                : null;
+
+                              return (
+                                <>
+                                  <div style={{marginBottom:3}}>
+                                    {first} faces <span style={{color:oppColor,fontWeight:600}}>{play.opponent}</span>
+                                    {expK != null && <>, projecting <span style={{color:expKColor,fontWeight:700}}>~{expK}K</span> this start</>}.
+                                    {pkp == null && lkp == null && <> Season: <span style={{color:"#3fb950",fontWeight:600}}>{play.seasonPct}%</span> in {seasonG} starts.{yr25}{h2hNote}</>}
+                                  </div>
+                                  {(pkp != null || lkp != null || kbb != null) && (
+                                    <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+                                      {pkp != null && <span>K rate: <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span></span>}
+                                      {kbb != null && <span>K-walk edge: <span style={{color:kbbColor,fontWeight:600}}>{kbb}%</span></span>}
+                                      {lkp != null && <span>Opp K rate: <span style={{color:lkpColor,fontWeight:600}}>{lkp}%</span>{isProjected && <span style={{color:"#484f58",fontSize:10}}> (est.)</span>}</span>}
+                                    </div>
+                                  )}
+                                  {pf != null && Math.abs(pf - 1.0) >= 0.01 && (
+                                    <div style={{color:"#484f58",fontSize:10,marginTop:3}}>Venue: {pf > 1 ? "+" : ""}{((pf-1)*100).toFixed(0)}% {pf > 1 ? "strikeout-friendly" : "strikeout-suppressing"} park.</div>
+                                  )}
+                                </>
+                              );
                             })()}
                           </div>
                         )}
