@@ -1409,7 +1409,8 @@ function App() {
                     // Show track button only when the play qualifies (same criteria as /tonight)
                     // Use raw season pct as fallback when no h2h softPct is available
                     const qualifyingPct = truePct !== null ? truePct : pct;
-                    const qualifies = k && k.pct >= 70 && (qualifyingPct - k.pct) >= 3;
+                    const strongMatchupOk = !(isMLB && safeTab === "strikeouts") || (dvpData?.h2h?.isStrongMatchup === true);
+                    const qualifies = k && k.pct >= 70 && (qualifyingPct - k.pct) >= 3 && strongMatchupOk;
                     const sportSlug = sport.split("/")[1];
                     const trackId = `${sportSlug}|${player.name}|${safeTab}|${t}|${tonightPlay?.gameDate || ""}`;
                     const isTracked = trackedPlays.some(p => p.id === trackId);
