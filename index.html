@@ -96,45 +96,53 @@ const SPORT_KEY = { nba:"basketball/nba", nfl:"football/nfl", nhl:"hockey/nhl", 
 const TODAY = new Date().toISOString().slice(0, 10);
 const MOCK_PLAYS = [
   // ── MLB: Strikeouts ────────────────────────────────────────────────────────
-  // Log5 golden rule: pitcher 26.5%, lineup 27.3% → log5 ~31.6%, expectedKs 8.5, K-BB% 18.2
+  // 3/3 strong: pitcher 26.5% (✓>25), opp 27.3% vs RHP (✓>23), total 7.5 / ML -145 (✓)
   {
     playerName:"Dylan Cease", playerId:"34943", sport:"mlb", playerTeam:"SD", position:"SP",
-    opponent:"CLE", oppRank:null, oppMetricValue:null, oppMetricLabel:"vs CLE batters", oppMetricUnit:"%",
-    stat:"strikeouts", threshold:6, kalshiPct:78, americanOdds:-355,
+    opponent:"CLE", oppRank:null, oppMetricValue:null, oppMetricLabel:"vs high-K lineups", oppMetricUnit:"%",
+    stat:"strikeouts", threshold:6, kalshiPct:71, americanOdds:-245,
     seasonPct:74.0, blendGames:31, pct25:71.0, pct25Games:28, pct26:83.3, pct26Games:6,
-    softPct:80.0, softGames:10, truePct:83.0, edge:5.0,
-    kelly:0.227, ev:0.064, historicalHitRate:80.0, historicalGames:10,
-    lineupKPct:27.3, pitcherKPct:26.5, pitcherKBBPct:18.2, log5Avg:31.6, log5Pct:96.1, expectedKs:8.5, parkFactor:1.00, gameDate:TODAY,
+    softPct:80.0, softGames:10, truePct:77.0, edge:6.0,
+    kelly:0.227, ev:0.082, historicalHitRate:80.0, historicalGames:10,
+    lineupKPct:27.3, pitcherKPct:26.5, pitcherKBBPct:18.2, log5Avg:31.6, log5Pct:96.1, expectedKs:8.5, parkFactor:1.00,
+    isStrongMatchup:true, pkpMeets:true, lkpMeets:true, gameLineMeets:true,
+    gameTotal:7.5, gameMoneyline:-145, pitcherHand:"R", gameDate:TODAY,
   },
-  // Log5 golden rule, no h2h — pitcher 28.1% (excellent), lineup 25.8%
+  // 3/3 strong, no strong-matchup history — truePct = seasonPct only
   {
     playerName:"Corbin Burnes", playerId:"39878", sport:"mlb", playerTeam:"BAL", position:"SP",
-    opponent:"OAK", oppRank:null, oppMetricValue:null, oppMetricLabel:"vs OAK batters", oppMetricUnit:"%",
-    stat:"strikeouts", threshold:7, kalshiPct:74, americanOdds:-285,
+    opponent:"OAK", oppRank:null, oppMetricValue:null, oppMetricLabel:"vs high-K lineups", oppMetricUnit:"%",
+    stat:"strikeouts", threshold:7, kalshiPct:71, americanOdds:-245,
     seasonPct:76.0, blendGames:29, pct25:75.0, pct25Games:26, pct26:78.0, pct26Games:5,
-    softPct:null, softGames:0, truePct:83.1, edge:9.1,
-    kelly:0.350, ev:0.123, historicalHitRate:null, historicalGames:0,
-    lineupKPct:25.8, pitcherKPct:28.1, pitcherKBBPct:20.4, log5Avg:33.1, log5Pct:90.2, expectedKs:8.9, parkFactor:0.97, gameDate:TODAY,
+    softPct:null, softGames:0, truePct:76.0, edge:5.0,
+    kelly:0.179, ev:0.070, historicalHitRate:null, historicalGames:0,
+    lineupKPct:25.8, pitcherKPct:28.1, pitcherKBBPct:20.4, log5Avg:33.1, log5Pct:90.2, expectedKs:8.9, parkFactor:0.97,
+    isStrongMatchup:true, pkpMeets:true, lkpMeets:true, gameLineMeets:true,
+    gameTotal:8.0, gameMoneyline:-150, pitcherHand:"R", gameDate:TODAY,
   },
-  // Pitcher great (25.9%), lineup only above-avg (22.1%) — no golden rule, Log5 ~27.5%
+  // 2/3 strong: pitcher ✓, opp K 22.1% ✗ (below 23%), game line ✓ — still qualifies
   {
     playerName:"Zack Wheeler", playerId:"31267", sport:"mlb", playerTeam:"PHI", position:"SP",
-    opponent:"MIA", oppRank:null, oppMetricValue:null, oppMetricLabel:"vs MIA batters", oppMetricUnit:"%",
-    stat:"strikeouts", threshold:7, kalshiPct:71, americanOdds:-245,
+    opponent:"MIA", oppRank:null, oppMetricValue:null, oppMetricLabel:"vs high-K lineups", oppMetricUnit:"%",
+    stat:"strikeouts", threshold:7, kalshiPct:72, americanOdds:-257,
     seasonPct:73.0, blendGames:33, pct25:72.0, pct25Games:30, pct26:75.0, pct26Games:4,
-    softPct:66.7, softGames:6, truePct:75.0, edge:4.0,
-    kelly:0.137, ev:0.056, historicalHitRate:66.7, historicalGames:6,
-    lineupKPct:22.1, pitcherKPct:25.9, pitcherKBBPct:14.1, log5Avg:27.5, log5Pct:73.2, expectedKs:7.4, parkFactor:0.96, gameDate:TODAY,
+    softPct:78.0, softGames:9, truePct:75.5, edge:3.5,
+    kelly:0.124, ev:0.048, historicalHitRate:78.0, historicalGames:9,
+    lineupKPct:22.1, pitcherKPct:25.9, pitcherKBBPct:14.1, log5Avg:27.5, log5Pct:73.2, expectedKs:7.4, parkFactor:0.96,
+    isStrongMatchup:true, pkpMeets:true, lkpMeets:false, gameLineMeets:true,
+    gameTotal:7.5, gameMoneyline:-160, pitcherHand:"R", gameDate:TODAY,
   },
-  // Average pitcher (21.3%), no Log5 data — h2h present, park factor in effect (COL = 0.88)
+  // 2/3 strong: pitcher ✓, no lineup data (lkp null → ✗), game line ✓ — LH pitcher, suppressing park
   {
     playerName:"Logan Webb", playerId:"41216", sport:"mlb", playerTeam:"SF", position:"SP",
-    opponent:"COL", oppRank:null, oppMetricValue:null, oppMetricLabel:"vs COL batters", oppMetricUnit:"%",
-    stat:"strikeouts", threshold:5, kalshiPct:75, americanOdds:-300,
+    opponent:"COL", oppRank:null, oppMetricValue:null, oppMetricLabel:"vs high-K lineups", oppMetricUnit:"%",
+    stat:"strikeouts", threshold:5, kalshiPct:72, americanOdds:-257,
     seasonPct:77.0, blendGames:25, pct25:76.0, pct25Games:22, pct26:80.0, pct26Games:5,
-    softPct:75.0, softGames:8, truePct:79.0, edge:4.0,
-    kelly:0.159, ev:0.053, historicalHitRate:75.0, historicalGames:8,
-    lineupKPct:null, pitcherKPct:21.3, pitcherKBBPct:9.8, log5Avg:null, log5Pct:null, expectedKs:null, parkFactor:0.88, gameDate:TODAY,
+    softPct:79.0, softGames:8, truePct:78.0, edge:6.0,
+    kelly:0.224, ev:0.083, historicalHitRate:79.0, historicalGames:8,
+    lineupKPct:null, pitcherKPct:26.2, pitcherKBBPct:11.4, log5Avg:null, log5Pct:null, expectedKs:null, parkFactor:0.88,
+    isStrongMatchup:true, pkpMeets:true, lkpMeets:false, gameLineMeets:true,
+    gameTotal:8.0, gameMoneyline:-130, pitcherHand:"L", gameDate:TODAY,
   },
   // ── MLB: Hitter ────────────────────────────────────────────────────────────
   {
