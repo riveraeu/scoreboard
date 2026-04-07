@@ -217,6 +217,7 @@ var worker_default = {
           const sportSlug = a.sport;
           const leagueSlug = a.defaultLeagueSlug;
           let teamId = "";
+          let teamAbbr = "";
           try {
             const ar = await fetch(`${ESPN_CORE}/${sportSlug}/leagues/${leagueSlug}/athletes/${athleteId}`, {
               headers: { "User-Agent": "Mozilla/5.0" }
@@ -226,12 +227,18 @@ var worker_default = {
               const ref = ad.team?.["$ref"] || "";
               const m = ref.match(/\/teams\/(\d+)/);
               if (m) teamId = m[1];
+              if (ref) {
+                const tr = await fetch(ref, { headers: { "User-Agent": "Mozilla/5.0" } });
+                if (tr.ok) { const td = await tr.json(); if (td.abbreviation) teamAbbr = td.abbreviation; }
+              }
             }
           } catch {
           }
-          const rawSubtitle = a.subtitle || "";
-          const firstWord = rawSubtitle.split(/[\s·\-]+/)[0].toUpperCase();
-          const teamAbbr = /^[A-Z]{2,4}$/.test(firstWord) ? firstWord : rawSubtitle;
+          if (!teamAbbr) {
+            const rawSubtitle = a.subtitle || "";
+            const firstWord = rawSubtitle.split(/[\s·\-]+/)[0].toUpperCase();
+            teamAbbr = /^[A-Z]{2,4}$/.test(firstWord) ? firstWord : rawSubtitle;
+          }
           return {
             id: athleteId,
             name: a.displayName,
