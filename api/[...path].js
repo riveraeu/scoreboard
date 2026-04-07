@@ -1435,7 +1435,8 @@ var worker_default = {
                 .map(([a]) => a)
             );
             softVals = gl.events.filter((ev) => similarKAbbrs.size > 0 ? similarKAbbrs.has(ev.oppAbbr) : true).map(getStat).filter((v) => !isNaN(v));
-            softLabel = lkpBucket === "high" ? "vs high-K lineups" : lkpBucket === "avg" ? "vs avg-K lineups" : lkpBucket === "low" ? "vs low-K lineups" : "career";
+            const _handSuffix = _pitcherHand === "R" ? " vs RHP" : _pitcherHand === "L" ? " vs LHP" : "";
+            softLabel = lkpBucket === "high" ? `vs high-K lineups${_handSuffix}` : lkpBucket === "avg" ? `vs avg-K lineups${_handSuffix}` : lkpBucket === "low" ? `vs low-K lineups${_handSuffix}` : "career";
             softUnit = "%";
           } else if (sport === "mlb") {
             const pitcherEntry = pitcherGamelogs[tonightOpp];

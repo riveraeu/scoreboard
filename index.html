@@ -1383,9 +1383,13 @@ function App() {
                       if (lkp == null) return null;
                       return lkp >= 24 ? "high" : lkp >= 20 ? "avg" : "low";
                     })();
+                    const _pitcherHandLabel = (() => {
+                      const hand = dvpData?.h2h?.pitcherHand ?? null;
+                      return hand === "R" ? " vs RHP" : hand === "L" ? " vs LHP" : "";
+                    })();
                     const softGamesLabel = isMLB
                       ? (_lkpBucketLabel
-                          ? (dvp ? `vs ${_lkpBucketLabel}-K lineups (${dvp.wCount}/${wTotal}g)` : "")
+                          ? (dvp ? `vs ${_lkpBucketLabel}-K lineups${_pitcherHandLabel} (${dvp.wCount}/${wTotal}g)` : "")
                           : (dvp ? `vs ${mlbH2HOpp} (${dvp.wCount}/${wTotal}g)` : ""))
                       : (tonightPlay?.softPct != null
                           ? (tonightPlay.opponent ? `vs ${tonightPlay.opponent}${tonightPlay.softGames ? ` (${tonightPlay.softGames}g)` : ""}` : (tonightPlay.softGames ? `${tonightPlay.softGames}g` : ""))
