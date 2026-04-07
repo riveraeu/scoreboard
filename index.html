@@ -1312,20 +1312,18 @@ function App() {
                     const count = isUnder ? (totalGames - countOver) : countOver;
                     const pct   = isUnder ? 100 - pctOver : pctOver;
                     const dvp = dvpMap[t];
-                    // For MLB, softPct context (pitcher K%, lineup K%) is shared across all thresholds
-                    const anyStatTonightPlay = tonightPlayerMap[`${safeTab}|${t}`] ||
-                      Object.entries(tonightPlayerMap).find(([k]) => k.startsWith(`${safeTab}|`))?.[1] || null;
-                    const softPctRaw = (isMLB && safeTab === "strikeouts" && anyStatTonightPlay?.softPct != null)
-                      ? anyStatTonightPlay.softPct
+                    // Use exact threshold's tonight play — never cross-contaminate softPct from a different threshold
+                    const tonightPlay = tonightPlayerMap[`${safeTab}|${t}`];
+                    const softPctRaw = (isMLB && safeTab === "strikeouts" && tonightPlay?.softPct != null)
+                      ? tonightPlay.softPct
                       : (dvp?.wPct ?? null);
-                    const softGamesLabel = (isMLB && safeTab === "strikeouts" && anyStatTonightPlay?.softPct != null)
-                      ? (anyStatTonightPlay.softGames ? `${anyStatTonightPlay.softGames}g` : "")
+                    const softGamesLabel = (isMLB && safeTab === "strikeouts" && tonightPlay?.softPct != null)
+                      ? (tonightPlay.opponent ? `vs ${tonightPlay.opponent}${tonightPlay.softGames ? ` (${tonightPlay.softGames}g)` : ""}` : (tonightPlay.softGames ? `${tonightPlay.softGames}g` : ""))
                       : (dvp ? `${dvp.wCount}/${wTotal}g` : "");
                     const softPct = isUnder ? (softPctRaw !== null ? 100 - softPctRaw : null) : softPctRaw;
                     const pct25Raw = (isMLB && totalGames25 >= 5) ? (rates25Map[t] ?? null) : null;
                     const pct25 = isUnder ? (pct25Raw !== null ? 100 - pct25Raw : null) : pct25Raw;
                     // Prefer tonight endpoint's pre-computed truePct when available (same pipeline as play card)
-                    const tonightPlay = tonightPlayerMap[`${safeTab}|${t}`];
                     const truePct = (() => {
                       if (tonightPlay && !isUnder && tonightPlay.truePct != null) return tonightPlay.truePct;
                       if (isMLB) {
@@ -1392,7 +1390,7 @@ function App() {
                                 <div style={{width:`${pct}%`,background:color,height:"100%",borderRadius:5,transition:"width 0.5s ease",minWidth:pct>0?4:0}}/>
                               </div>
                               <div style={{color,fontSize:13,fontWeight:700,width:42,textAlign:"right",flexShrink:0}}>{pct.toFixed(1)}%</div>
-                              <div style={{color:"#484f58",fontSize:11,width:50,flexShrink:0}}>{count}/{totalGames}g</div>
+                              <div style={{color:"#484f58",fontSize:11,width:80,flexShrink:0}}>{count}/{totalGames}g</div>
                             </div>
                             {k && (
                               <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -1400,8 +1398,10 @@ function App() {
                                   <div style={{width:`${k.pct}%`,background:"#a855f7",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:k.pct>0?3:0}}/>
                                 </div>
                                 <div style={{color:"#a855f7",fontSize:11,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{k.pct}%</div>
-                                <div style={{color:"#6e40c9",fontSize:10,width:50,flexShrink:0}}>({oddsStr})</div>
-                                {trackBtn}
+                                <div style={{flexShrink:0,width:80,display:"flex",alignItems:"center",gap:4}}>
+                                  <div style={{color:"#6e40c9",fontSize:10,flex:1}}>({oddsStr})</div>
+                                  {trackBtn}
+                                </div>
                               </div>
                             )}
                           </div>
@@ -1425,7 +1425,7 @@ function App() {
                                     <div style={{width:`${displayPct}%`,background:displayColor,height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:displayPct>0?3:0}}/>
                                   </div>
                                   <div style={{color:displayColor,fontSize:13,fontWeight:700,width:42,textAlign:"right",flexShrink:0}}>{displayPct.toFixed(1)}%</div>
-                                  <div style={{flexShrink:0,display:"flex",alignItems:"center",justifyContent:"flex-start",paddingLeft:2,gap:4}}>
+                                  <div style={{width:90,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"flex-start",paddingLeft:2,gap:4}}>
                                     {edgeStr && (
                                       <span style={{background: edgeColor + "22", border:`1px solid ${edgeColor}`,
                                         borderRadius:4, padding:"1px 5px", fontSize:10, fontWeight:700, color:edgeColor,
@@ -1457,19 +1457,20 @@ function App() {
                                     <div style={{width:`${pct}%`,background:"#484f58",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:pct>0?2:0}}/>
                                   </div>
                                   <div style={{color:"#8b949e",fontSize:10,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{pct.toFixed(1)}%</div>
-                                  <div style={{color:"#484f58",fontSize:10,width:50,flexShrink:0}}>{isMLB ? `'25+'26 (${totalGames}g)` : `${count}/${totalGames}g`}</div>
+                                  <div style={{color:"#484f58",fontSize:10,width:80,flexShrink:0}}>{isMLB ? `'25+'26 (${totalGames}g)` : `${count}/${totalGames}g`}</div>
                                 </div>
                                 {/* Soft matchup bar */}
                                 {softPct !== null && (
                                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                                     {(() => {
-                                      const matchupColor = softPct >= pct + 5 ? "#3fb950" : softPct <= pct - 5 ? "#f78166" : "#8b949e";
+                                      const isStrong = tonightPlay?.isStrongMatchup ?? false;
+                                      const matchupColor = isStrong ? "#3fb950" : (softPct >= pct + 5 ? "#3fb950" : softPct <= pct - 5 ? "#f78166" : "#8b949e");
                                       return <>
                                         <div style={{flex:1,background:"#21262d",borderRadius:4,height:11,overflow:"hidden"}}>
                                           <div style={{width:`${softPct}%`,background:matchupColor,height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:softPct>0?2:0}}/>
                                         </div>
                                         <div style={{color:matchupColor,fontSize:10,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{softPct.toFixed(1)}%</div>
-                                        <div style={{color:"#484f58",fontSize:10,width:50,flexShrink:0}}>{softGamesLabel}</div>
+                                        <div style={{color:"#484f58",fontSize:10,width:80,flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{softGamesLabel}</div>
                                       </>;
                                     })()}
                                   </div>
