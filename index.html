@@ -1239,12 +1239,13 @@ function App() {
                           const isNBA = sport === "basketball/nba";
                           const isNHL = sport === "hockey/nhl";
                           if (isNBA) {
-                            const posLabel = {PG:"point guards",SG:"shooting guards",SF:"small forwards",PF:"power forwards",C:"centers"}[tonightTabPlay?.posGroup] ?? null;
+                            const posGroup = tonightTabPlay?.posGroup ?? null;
+                            const posLabel = {PG:"point guards",SG:"shooting guards",SF:"small forwards",PF:"power forwards",C:"centers"}[posGroup] ?? null;
                             const displayRank = tonightTabPlay?.posDvpRank ?? rank;
                             const displayValue = tonightTabPlay?.posDvpValue ?? metricVal;
-                            const statUnit = { points:"PPG", rebounds:"RPG", assists:"APG", threePointers:"3PM" }[safeTab] || metricUnit || "";
-                            const valueStr = displayValue != null ? ` (${displayValue} ${statUnit})` : "";
-                            const vsLabel = posLabel ? `vs ${posLabel}` : "in this stat";
+                            const statName = { points:"points", rebounds:"rebounds", assists:"assists", threePointers:"3-pointers" }[safeTab] || safeTab;
+                            const valueStr = displayValue != null ? ` (${displayValue})` : "";
+                            const vsLabel = posGroup ? `at giving up ${statName} to ${posGroup}` : "in this stat";
                             const weakLabel = posLabel ? `weak ${posLabel} defenses` : "weak matchups";
                             const seasonPctDisplay = tonightTabPlay?.seasonPct ?? null;
                             const isNBAStrong = tonightTabPlay?.softPct != null;
