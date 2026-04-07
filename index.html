@@ -1181,12 +1181,12 @@ function App() {
                           const sumH  = glH.reduce((a,b)=>a+b,0);
                           const estBF = sumIP > 0 ? (sumIP * 3 + sumH + sumBB) : 0;
                           const pkp = h2h?.pitcherKPct  ?? (estBF >= 50 ? parseFloat((sumK / estBF * 100).toFixed(1)) : null);
-                          const pkpColor  = pkp == null ? "#8b949e" : pkp >= 24 ? "#3fb950" : pkp >= 20 ? "#d29922" : "#f78166";
+                          const pkpColor  = pkp == null ? "#8b949e" : pkp >= 24 ? "#3fb950" : pkp >= 20 ? "#c9d1d9" : "#f78166";
                           const lkpProjected = h2h?.lineupKPctProjected === true;
-                          const lkpColor  = lkp == null ? "#8b949e" : lkp >= 25 ? "#3fb950" : lkp >= 22 ? "#d29922" : "#f78166";
+                          const lkpColor  = lkp == null ? "#8b949e" : lkp >= 25 ? "#3fb950" : lkp >= 22 ? "#c9d1d9" : "#f78166";
                           const oppColor  = lkp != null ? (lkp >= 25 ? "#3fb950" : lkp < 22 ? "#f78166" : "#c9d1d9") : "#c9d1d9";
                           const strikeoutsThreshold = Object.entries(tonightPlayerMap).find(([k]) => k.startsWith("strikeouts|"))?.[1]?.threshold ?? null;
-                          const expKColor = expK != null && strikeoutsThreshold != null ? (expK >= strikeoutsThreshold ? "#3fb950" : expK >= strikeoutsThreshold - 1 ? "#d29922" : "#f78166") : "#c9d1d9";
+                          const expKColor = expK != null && strikeoutsThreshold != null ? (expK >= strikeoutsThreshold ? "#3fb950" : expK >= strikeoutsThreshold - 1 ? "#c9d1d9" : "#f78166") : "#c9d1d9";
                           const isStrongMatchup = h2h?.isStrongMatchup ?? false;
                           const pkpMeets = h2h?.pkpMeets ?? false;
                           const lkpMeets = h2h?.lkpMeets ?? false;
@@ -1850,9 +1850,9 @@ function App() {
                               const isProjected = play.lineupKPctProjected === true;
 
                               const oppColor  = lkp != null ? (lkp >= 25 ? "#3fb950" : lkp < 22 ? "#f78166" : "#c9d1d9") : "#c9d1d9";
-                              const expKColor = expK != null ? (expK >= play.threshold ? "#3fb950" : expK >= play.threshold - 1 ? "#d29922" : "#f78166") : "#c9d1d9";
-                              const pkpColor  = pkp == null ? "#8b949e" : pkp >= 24 ? "#3fb950" : pkp >= 20 ? "#d29922" : "#f78166";
-                              const lkpColor  = lkp == null ? "#8b949e" : lkp >= 25 ? "#3fb950" : lkp >= 22 ? "#d29922" : "#f78166";
+                              const expKColor = expK != null ? (expK >= play.threshold ? "#3fb950" : expK >= play.threshold - 1 ? "#c9d1d9" : "#f78166") : "#c9d1d9";
+                              const pkpColor  = pkp == null ? "#8b949e" : pkp >= 24 ? "#3fb950" : pkp >= 20 ? "#c9d1d9" : "#f78166";
+                              const lkpColor  = lkp == null ? "#8b949e" : lkp >= 25 ? "#3fb950" : lkp >= 22 ? "#c9d1d9" : "#f78166";
 
                               const metColor = c => c ? "#3fb950" : "#f78166";
                               const isStrongMatchup = play.isStrongMatchup ?? false;
