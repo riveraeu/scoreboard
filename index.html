@@ -2032,10 +2032,10 @@ function App() {
         })()}
         {(() => {
         if (trackedPlays.length === 0) return null;
-        const settled = trackedPlays.filter(p => p.result);
+        const settled = trackedPlays.filter(p => p.result && p.result !== "dnp");
         const wons = settled.filter(p => p.result === "won").length;
 
-        // P&L calculations (only settled picks with units set)
+        // P&L calculations (only won/lost picks, DNP excluded)
         let totalStaked = 0, totalPL = 0;
         settled.forEach(p => {
           const stake = ((p.units || 0) / 100) * bankroll;
@@ -2250,12 +2250,13 @@ function App() {
               const dateStr = pick.gameDate
                 ? (() => { const [yr,mo,dy] = pick.gameDate.split("-").map(Number); return new Date(yr, mo-1, dy).toLocaleDateString("en-US", { month:"short", day:"numeric" }); })()
                 : new Date(pick.trackedAt).toLocaleDateString("en-US", { month:"short", day:"numeric" });
-              const resultColor = pick.result === "won" ? "#3fb950" : pick.result === "lost" ? "#f78166" : null;
+              const resultColor = pick.result === "won" ? "#3fb950" : pick.result === "lost" ? "#f78166" : pick.result === "dnp" ? "#8b949e" : null;
               const units = pick.units ?? 1;
               const stake = (units / 100) * bankroll;
               let pickPL = null;
               if (pick.result === "won") pickPL = stake * oddsToProfit(pick.americanOdds);
               else if (pick.result === "lost") pickPL = -stake;
+              // DNP = void, pickPL stays null
               const pickPLColor = pickPL > 0 ? "#3fb950" : pickPL < 0 ? "#f78166" : "#8b949e";
               return (
                 <div key={pick.id} style={{background:"#161b22",
@@ -2285,7 +2286,7 @@ function App() {
                         )}
                         {pick.result && (
                           <span style={{fontSize:11,fontWeight:700,color:resultColor,textTransform:"uppercase",letterSpacing:0.5}}>
-                            {pick.result === "won" ? "✓ Won" : "✗ Lost"}
+                            {pick.result === "won" ? "✓ Won" : pick.result === "lost" ? "✗ Lost" : "— DNP"}
                           </span>
                         )}
                         {pickPL !== null && (
@@ -2362,6 +2363,11 @@ function App() {
                             style={{background:"rgba(247,129,102,0.12)",border:"1px solid #f78166",borderRadius:6,
                               padding:"3px 10px",fontSize:11,fontWeight:600,color:"#f78166",cursor:"pointer"}}>
                             ✗ Lost
+                          </button>
+                          <button onClick={() => setPlayResult(pick.id, "dnp")}
+                            style={{background:"rgba(139,148,158,0.12)",border:"1px solid #484f58",borderRadius:6,
+                              padding:"3px 10px",fontSize:11,fontWeight:600,color:"#8b949e",cursor:"pointer"}}>
+                            DNP
                           </button>
                         </>
                       ) : (
