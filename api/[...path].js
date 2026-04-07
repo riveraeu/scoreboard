@@ -852,7 +852,7 @@ var worker_default = {
             const pct = Math.round(price * 100);
             if (pct < 70) continue;
             if (pct > 97) continue;
-            if (last === 0 && volume === 0) continue;
+            if (price === 0) continue;
             const raw = m.event_title || m.title || "";
             let playerName = raw.replace(/\s*:\s*\d.*$/, "").replace(/\s+(Points?|Rebounds?|Assists?|3-Pointers?|Three Pointers?|Made Threes?|Goals?|Shots on Goal|Hits?|Home Runs?|RBIs?|Strikeouts?|Total Bases?|Passing Yards?|Rushing Yards?|Receiving Yards?|Touchdowns?)\b.*/i, "").replace(/\s+Over\s+\d.*$/i, "").replace(/\s+Under\s+\d.*$/i, "").replace(/\s*\(.*\)\s*$/, "").replace(/\s*-\s*$/, "").trim();
             if (!playerName || playerName.length < 4) continue;
