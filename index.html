@@ -815,7 +815,8 @@ function App() {
       try {
         const r = await fetch(`${WORKER}/athletes?q=${encodeURIComponent(play.playerName)}`);
         const d = await r.json();
-        const m = (d.athletes || []).find(a => a.name.toLowerCase() === play.playerName.toLowerCase()) || d.athletes?.[0];
+        const items = d.items || [];
+        const m = items.find(a => a.name.toLowerCase() === play.playerName.toLowerCase()) || items[0];
         if (m) pid = m.id;
       } catch(e) {}
     }
@@ -826,6 +827,7 @@ function App() {
       recentAvg: play.recentAvg, dvpFactor: play.dvpFactor,
       playSoftPct: play.softPct, playSoftGames: play.softGames,
       playSport: play.sport, playThreshold: play.threshold, playStat: play.stat }, play.stat);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleKeyDown = e => {
