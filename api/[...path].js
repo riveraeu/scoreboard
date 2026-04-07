@@ -141,6 +141,18 @@ var worker_default = {
         await CACHE2.put(emailKey, JSON.stringify({ id: userId, email, passwordHash, salt }));
         const token = await makeJWT({ userId, email, exp: Date.now() + 30 * 24 * 60 * 60 * 1e3 }, JWT_SECRET);
         return jsonResponse({ token, userId, email });
+      } else if (path === "auth/reset" && method === "POST") {
+        const { email, newPassword, adminKey } = await request.json();
+        if (adminKey !== (env?.ADMIN_KEY || "sb-admin-2026")) return errorResponse("Forbidden", 403);
+        if (!email || !newPassword) return errorResponse("Email and newPassword required", 400);
+        const emailKey = `user:${email.toLowerCase()}`;
+        const userStr = await CACHE2.get(emailKey);
+        if (!userStr) return errorResponse("Account not found", 404);
+        const user = JSON.parse(userStr);
+        const newSalt = crypto.randomUUID();
+        const newHash = await pbkdf2Hash(newPassword, newSalt);
+        await CACHE2.put(emailKey, JSON.stringify({ ...user, passwordHash: newHash, salt: newSalt }));
+        return jsonResponse({ ok: true });
       } else if (path === "auth/login" && method === "POST") {
         const { email, password } = await request.json();
         const userStr = await CACHE2.get(`user:${email.toLowerCase()}`);
