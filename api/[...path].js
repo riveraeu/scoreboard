@@ -813,7 +813,7 @@ var worker_default = {
         async function fetchKalshiSeries(ticker) {
           const freshKey = `kalshi:fresh:${ticker}`;
           const staleKey = `kalshi:stale:${ticker}`;
-          if (CACHE2) {
+          if (CACHE2 && !isBustCache) {
             const cached = await CACHE2.get(freshKey, "json");
             if (cached) return { data: cached, fromCache: true };
           }
