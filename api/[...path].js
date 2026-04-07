@@ -124,7 +124,7 @@ var worker_default = {
     if (request.method === "OPTIONS") {
       return new Response(null, { headers: corsHeaders() });
     }
-    const path = url.pathname.replace(/^\//, "");
+    const path = url.pathname.replace(/^\/api\//, "").replace(/^\//, "");
     const params = url.searchParams;
     const method = request.method;
     const JWT_SECRET = env?.JWT_SECRET || JWT_SECRET_DEFAULT;
