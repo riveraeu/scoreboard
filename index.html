@@ -1240,7 +1240,7 @@ function App() {
                             const weakLabel = posLabel ? `weak ${posLabel} defenses` : "weak matchups";
                             const seasonPctDisplay = tonightTabPlay?.seasonPct ?? null;
                             const isNBAStrong = tonightTabPlay?.softPct != null;
-                            const rankColor = displayRank <= 5 ? "#3fb950" : "#f78166";
+                            const rankColor = isNBAStrong ? "#3fb950" : "#f78166";
                             return <>
                               {oppEl} <span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}-worst</span> {vsLabel}{valueStr}.{isNBAStrong && strongBadge} {seasonPctDisplay != null && <>{first} hits {thresholdDisplay}+ {STAT_FULL[safeTab] || safeTab} in <span style={{color:"#c9d1d9",fontWeight:600}}>{seasonPctDisplay}%</span> of games this season</>}{hitRate && thresholdDisplay && <>, and {hitRate} vs {weakLabel}{games}</>}.
                             </>;
@@ -1926,7 +1926,7 @@ function App() {
                                 const valueStr = displayValue != null ? ` (${displayValue} ${statUnit})` : "";
                                 const vsLabel = posLabel ? `vs ${posLabel}` : "in this stat";
                                 const weakLabel = posLabel ? `weak ${posLabel} defenses` : "weak matchups";
-                                const rankColor = displayRank <= 5 ? "#3fb950" : "#f78166";
+                                const rankColor = play.softPct !== null ? "#3fb950" : "#f78166";
                                 return <>
                                   {opp} <span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}-worst</span> {vsLabel}{valueStr}. {first} hits {play.threshold}+ {STAT_FULL[play.stat] || play.stat} in <span style={{color:"#c9d1d9",fontWeight:600}}>{play.seasonPct}%</span> of games this season{play.softPct !== null && <>, and {hitRate} vs {weakLabel}{games}</>}.
                                 </>;
