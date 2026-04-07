@@ -1487,7 +1487,7 @@ function App() {
                           {Object.keys(kalshiOdds).length > 0 && <span><span style={{color:"#a855f7",fontWeight:600}}>Purple</span> = Kalshi market</span>}
                           {Object.keys(kalshiOdds).length > 0 && <span><span style={{color:"#3fb950",fontWeight:600}}>+edge</span> / <span style={{color:"#f78166",fontWeight:600}}>−edge</span> vs market</span>}
                           {isMLB && <span><span style={{color:"#58a6ff",fontWeight:600}}>Blue</span> = '25+'26 blend</span>}
-                          {isMLB && mlbH2HLabel && safeTab !== "strikeouts" && <span><span style={{color:"#3fb950",fontWeight:600}}>Green</span> = {mlbH2HLabel}</span>}</>
+                          {isMLB && safeTab === "strikeouts" && <span><span style={{color:"#3fb950",fontWeight:600}}>Green</span> = strong matchup games</span>}</>
                       : Object.keys(kalshiOdds).length > 0
                         ? <span><span style={{color:"#a855f7",fontWeight:600}}>Kalshi</span> = live market odds</span>
                         : [["#3fb950","≥80%"],["#58a6ff","60–79%"],["#d29922","40–59%"],["#f78166","<40%"]].map(([c,l]) => (
