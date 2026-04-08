@@ -1316,8 +1316,9 @@ function App() {
                               ? parseFloat((pgStatVals.filter(g => g[safeTab] >= thresholdDisplay).length / pgStatVals.length * 100).toFixed(1))
                               : null;
                             const seasonPctDisplay = tonightTabPlay?.seasonPct ?? fallbackSeasonPct;
+                            const seasonColor = seasonPctDisplay == null ? "#c9d1d9" : seasonPctDisplay >= 75 ? "#3fb950" : seasonPctDisplay >= 60 ? "#c9d1d9" : "#f78166";
                             return <>
-                              {oppEl} <span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}-worst</span> {vsLabel}{valueStr}. {seasonPctDisplay != null && <>{first} hits {thresholdDisplay}+ {STAT_FULL[safeTab] || safeTab} in <span style={{color:"#c9d1d9",fontWeight:600}}>{seasonPctDisplay}%</span> of games this season</>}{isNBAStrong && hitRate && thresholdDisplay && <>, and {hitRate} vs {weakLabel}{games}</>}.
+                              {oppEl} <span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}-worst</span> {vsLabel}{valueStr}. {seasonPctDisplay != null && <>{first} hits {thresholdDisplay}+ {STAT_FULL[safeTab] || safeTab} in <span style={{color:seasonColor,fontWeight:600}}>{seasonPctDisplay}%</span> of games this season</>}{isNBAStrong && hitRate && thresholdDisplay && <>, and {hitRate} vs {weakLabel}{games}</>}.
                               {isOppFallback && <div style={{color:"#484f58",fontSize:10,marginTop:3}}>Showing last game vs {opp} — updates when next game is scheduled.</div>}
                             </>;
                           }
@@ -1985,8 +1986,9 @@ function App() {
                                 const vsLabel = play.posGroup ? `at giving up ${statName} to ${play.posGroup}` : "in this stat";
                                 const weakLabel = posLabel ? `weak ${posLabel} defenses` : "weak matchups";
                                 const rankColor = play.softPct !== null ? "#3fb950" : play.isHardMatchup ? "#f78166" : "#c9d1d9";
+                                const seasonColor2 = play.seasonPct == null ? "#c9d1d9" : play.seasonPct >= 75 ? "#3fb950" : play.seasonPct >= 60 ? "#c9d1d9" : "#f78166";
                                 return <>
-                                  {opp} <span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}-worst</span> {vsLabel}{valueStr}. {first} hits {play.threshold}+ {STAT_FULL[play.stat] || play.stat} in <span style={{color:"#c9d1d9",fontWeight:600}}>{play.seasonPct}%</span> of games this season{play.softPct !== null && <>, and {hitRate} vs {weakLabel}{games}</>}.
+                                  {opp} <span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}-worst</span> {vsLabel}{valueStr}. {first} hits this line in <span style={{color:seasonColor2,fontWeight:600}}>{play.seasonPct}%</span> of games this season{play.softPct !== null && <>, and {hitRate} vs {weakLabel}{games}</>}.
                                 </>;
                               }
 
