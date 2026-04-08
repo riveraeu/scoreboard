@@ -1582,6 +1582,31 @@ var worker_default = {
           yesterday.setDate(yesterday.getDate() - 1);
           const yesterdayStr = yesterday.toISOString().slice(0, 10);
           const isB2B = sport === "nba" && gl.events.length > 0 && (gl.events[0]?.date || "").startsWith(yesterdayStr);
+          if (sport === "mlb" && stat !== "strikeouts") {
+            // Gate: team must be favored
+            const hitterML = sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null;
+            if (hitterML === null || hitterML >= 0) {
+              if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "team_not_favored", moneyline: hitterML });
+              continue;
+            }
+            // Gate: blendedPct floor >= 55%
+            const blendedPctForGate = blendedPct ?? seasonPct;
+            if (blendedPctForGate < 55) {
+              if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "low_blended_pct", blendedPct: parseFloat(blendedPctForGate.toFixed(1)) });
+              continue;
+            }
+            // Gate: at least 10 AB vs tonight's team when h2h applies
+            if (softPct !== null) {
+              const abIdx = gl.ul.indexOf("AB");
+              if (abIdx !== -1) {
+                const abVsTeam = gl.events.filter((ev) => ev.oppAbbr === tonightOpp).reduce((s, ev) => s + (parseFloat(ev.stats[abIdx]) || 0), 0);
+                if (abVsTeam < 10) {
+                  if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "insufficient_ab_vs_pitcher", abVsTeam });
+                  continue;
+                }
+              }
+            }
+          }
           let matchupPct = null, matchupValsCount = 0, matchupEraTier = null;
           if (sport === "mlb" && stat !== "strikeouts" && softPct === null) {
             const teamEraRankMap = STAT_SOFT[`mlb|${stat}`]?.rankMap || {};
@@ -1697,6 +1722,8 @@ var worker_default = {
             ev: evPerUnit(truePct, americanOdds),
             historicalHitRate: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
             historicalGames: softVals.length,
+            blendedPctTier: sport === "mlb" && stat !== "strikeouts" ? (blendedPct ?? seasonPct) >= 65 ? "elite" : (blendedPct ?? seasonPct) >= 55 ? "good" : null : void 0,
+            hitterMoneyline: sport === "mlb" && stat !== "strikeouts" ? sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null : void 0,
             gameDate
           });
         }
