@@ -1302,8 +1302,10 @@ function App() {
                             const posGroup = tonightTabPlay?.posGroup ?? null;
                             const posLabel = {PG:"point guards",SG:"shooting guards",SF:"small forwards",PF:"power forwards",C:"centers"}[posGroup] ?? null;
                             const posFullLabel = {PG:"PG",SG:"SG",SF:"SF",PF:"PF",C:"C"}[posGroup] ?? null;
-                            const displayRank = tonightTabPlay?.posDvpRank ?? rank;
-                            const displayValue = tonightTabPlay?.posDvpValue ?? metricVal;
+                            // Only use position-specific rank/value when it comes from BettingPros (posDvpRank set)
+                            const hasPosDvp = tonightTabPlay?.posDvpRank != null;
+                            const displayRank = hasPosDvp ? tonightTabPlay.posDvpRank : rank;
+                            const displayValue = hasPosDvp ? tonightTabPlay.posDvpValue : null; // don't show team-level value as position-specific
                             const statName = { points:"points", rebounds:"rebounds", assists:"assists", threePointers:"3-pointers" }[safeTab] || safeTab;
                             const isNBAStrong = tonightTabPlay?.softPct != null;
                             const isNBAHard = !isNBAStrong && effectiveOpp && (dvpData.hardTeams?.[safeTab] || []).includes(effectiveOpp);
@@ -1311,9 +1313,9 @@ function App() {
                             const seasonAvg = avg !== "—" ? avg : null;
                             const careerHi = hi !== "—" ? hi : null;
                             return <>
-                              <span style={{color:"#c9d1d9",fontWeight:600}}>{opp}</span> has the {posFullLabel
+                              <span style={{color:"#c9d1d9",fontWeight:600}}>{opp}</span> has the {hasPosDvp && posFullLabel
                                 ? <><span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}</span> ranked defense at giving up {statName} to the {posFullLabel} position{displayValue != null && <>, allowing <span style={{color:rankColor,fontWeight:600}}>{displayValue} per game</span></>}</>
-                                : <><span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}-worst</span> defense in {statName} allowed{displayValue != null && <> (<span style={{color:rankColor,fontWeight:600}}>{displayValue}/g</span>)</>}</>
+                                : <><span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}-worst</span> defense in {statName} allowed</>
                               }. {first} is averaging <span style={{color:"#c9d1d9",fontWeight:600}}>{seasonAvg ?? "—"} {statName}</span> over <span style={{color:"#8b949e"}}>{totalGames} games</span> this season{careerHi != null && <> with a career high of <span style={{color:"#c9d1d9",fontWeight:600}}>{careerHi}</span></>}.
                               {isOppFallback && <div style={{color:"#484f58",fontSize:10,marginTop:3}}>Showing last game vs {opp} — updates when next game is scheduled.</div>}
                             </>;
