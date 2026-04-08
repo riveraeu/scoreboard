@@ -366,8 +366,8 @@ var worker_default = {
           ctx.waitUntil(Promise.all([buildNbaDvpStage1(CACHE2), buildNbaDepthChartPos(CACHE2)]));
           return jsonResponse({ ok: true, message: "Stage 1 (teams+rosters + depth charts) queued. Check /dvp/debug-players in ~30s." });
         } else if (stage === "dc") {
-          ctx.waitUntil(buildNbaDepthChartPos(CACHE2));
-          return jsonResponse({ ok: true, message: "Depth chart pos rebuild queued." });
+          const dcResult = await buildNbaDepthChartPos(CACHE2);
+          return jsonResponse({ ok: true, message: "Depth chart pos rebuild complete.", count: dcResult ? Object.keys(dcResult).length : 0 });
         } else if (stage === "2") {
           ctx.waitUntil(buildNbaDvpFromBettingPros(CACHE2));
           return jsonResponse({ ok: true, message: "Stage 2 (BettingPros DvP) queued. Check /dvp/debug in ~30s." });
