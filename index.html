@@ -1249,7 +1249,8 @@ function App() {
                           const gameML = h2h?.gameMoneyline ?? null;
                           const pitcherHand = h2h?.pitcherHand ?? null;
                           const handLabel = pitcherHand === "R" ? " against RHP" : pitcherHand === "L" ? " against LHP" : "";
-                          const metColor = c => c ? "#3fb950" : "#f78166";
+                          const totalColor = t => t == null ? "#8b949e" : t < 8.5 ? "#3fb950" : t <= 10.5 ? "#c9d1d9" : "#f78166";
+                          const mlColor = ml => ml == null ? "#8b949e" : ml <= -150 ? "#3fb950" : ml <= -100 ? "#c9d1d9" : "#f78166";
                           const criteriaMet = [pkpMeets, lkpMeets, gameLineMeets].filter(Boolean).length;
                           return (
                             <>
@@ -1257,7 +1258,7 @@ function App() {
                                 const oppName = MLB_TEAM[dvpData?.h2h?.opp || mlbH2HOpp] || dvpData?.h2h?.opp || mlbH2HOpp;
                                 const pitcherTeamName = MLB_TEAM[player.team] || player.team;
                                 return <>
-                                  {first} posts a{pkp != null ? <> <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span></> : " —"} K rate, facing the {oppName} who are striking out at <span style={{color:lkpColor,fontWeight:600}} title={lkpProjected ? "Based on projected lineup — updates when official lineup posts" : `% of at-bats this lineup strikes out${handLabel}`}>{lkp != null ? `${lkp}%` : "—"}</span>{handLabel && <span style={{color:"#8b949e"}}>{handLabel}</span>}{lkpProjected && <span style={{color:"#484f58",fontSize:10}}> (est.)</span>}. {(gameTotal != null || gameML != null) && <>The total for the match is <span style={{color:metColor(gameTotal != null && gameTotal < 8.5),fontWeight:600}}>{gameTotal ?? "—"}</span> and the {pitcherTeamName} are favored at <span style={{color:metColor(gameML != null && gameML <= -145),fontWeight:600}}>{gameML != null ? `${gameML > 0 ? "+" : ""}${gameML}` : "—"}</span> line.</>}
+                                  {first} posts a{pkp != null ? <> <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span></> : " —"} K rate, facing the {oppName} who are striking out at <span style={{color:lkpColor,fontWeight:600}} title={lkpProjected ? "Based on projected lineup — updates when official lineup posts" : `% of at-bats this lineup strikes out${handLabel}`}>{lkp != null ? `${lkp}%` : "—"}</span>{handLabel && <span style={{color:"#8b949e"}}>{handLabel}</span>}{lkpProjected && <span style={{color:"#484f58",fontSize:10}}> (est.)</span>}. {(gameTotal != null || gameML != null) && <>The total for the match is <span style={{color:totalColor(gameTotal),fontWeight:600}}>{gameTotal ?? "—"}</span> and the {pitcherTeamName} are favored at <span style={{color:mlColor(gameML),fontWeight:600}}>{gameML != null ? `${gameML > 0 ? "+" : ""}${gameML}` : "—"}</span> line.</>}
                                 </>;
                               })()}
                               {(pf != null && Math.abs(pf - 1.0) >= 0.01) && (
@@ -1924,7 +1925,8 @@ function App() {
                               const pkpColor  = pkp == null ? "#8b949e" : pkp >= 24 ? "#3fb950" : pkp >= 20 ? "#c9d1d9" : "#f78166";
                               const lkpColor  = lkp == null ? "#8b949e" : lkp >= 24 ? "#3fb950" : lkp >= 20 ? "#c9d1d9" : "#f78166";
 
-                              const metColor = c => c ? "#3fb950" : "#f78166";
+                              const totalColor = t => t == null ? "#8b949e" : t < 8.5 ? "#3fb950" : t <= 10.5 ? "#c9d1d9" : "#f78166";
+                              const mlColor = ml => ml == null ? "#8b949e" : ml <= -150 ? "#3fb950" : ml <= -100 ? "#c9d1d9" : "#f78166";
                               const isStrongMatchup = play.isStrongMatchup ?? false;
                               const gameTotal = play.gameTotal ?? null;
                               const gameML = play.gameMoneyline ?? null;
@@ -1937,7 +1939,7 @@ function App() {
                                     const oppName = MLB_TEAM[play.opponent] || play.opponent;
                                     const pitcherTeamName = MLB_TEAM[play.playerTeam] || play.playerTeam;
                                     return <>
-                                      {first} posts a{pkp != null ? <> <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span></> : " —"} K rate, facing the {oppName} who are striking out at <span style={{color:lkpColor,fontWeight:600}}>{lkp != null ? `${lkp}%` : "—"}</span>{handLabel && <span style={{color:"#8b949e"}}>{handLabel}</span>}{isProjected && <span style={{color:"#484f58",fontSize:10}}> (est.)</span>}. {(gameTotal != null || gameML != null) && <>The total for the match is <span style={{color:metColor(gameTotal != null && gameTotal < 8.5),fontWeight:600}}>{gameTotal ?? "—"}</span> and the {pitcherTeamName} are favored at <span style={{color:metColor(gameML != null && gameML <= -145),fontWeight:600}}>{gameML != null ? `${gameML > 0 ? "+" : ""}${gameML}` : "—"}</span> line.</>}
+                                      {first} posts a{pkp != null ? <> <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span></> : " —"} K rate, facing the {oppName} who are striking out at <span style={{color:lkpColor,fontWeight:600}}>{lkp != null ? `${lkp}%` : "—"}</span>{handLabel && <span style={{color:"#8b949e"}}>{handLabel}</span>}{isProjected && <span style={{color:"#484f58",fontSize:10}}> (est.)</span>}. {(gameTotal != null || gameML != null) && <>The total for the match is <span style={{color:totalColor(gameTotal),fontWeight:600}}>{gameTotal ?? "—"}</span> and the {pitcherTeamName} are favored at <span style={{color:mlColor(gameML),fontWeight:600}}>{gameML != null ? `${gameML > 0 ? "+" : ""}${gameML}` : "—"}</span> line.</>}
                                     </>;
                                   })()}
                                   {pf != null && Math.abs(pf - 1.0) >= 0.01 && (

@@ -480,6 +480,10 @@ var worker_default = {
         const athleteId = params.get("athleteId");
         const [sportSlug, leagueSlug] = sport.split("/");
         let position = params.get("position") || null;
+        if (!position && athleteId && sport === "basketball/nba") {
+          const dcPos = CACHE2 ? await CACHE2.get("dvp:nba:depth-chart-pos", "json").catch(() => null) : null;
+          if (dcPos) position = dcPos[String(athleteId)] || null;
+        }
         if (!position && athleteId) {
           try {
             const ar = await fetch(`${ESPN_CORE}/${sportSlug}/leagues/${leagueSlug}/athletes/${athleteId}`, {
