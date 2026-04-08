@@ -1791,7 +1791,7 @@ function App() {
                         borderRadius:6,padding:"2px 8px",fontSize:12,color:"#3fb950",fontWeight:700,whiteSpace:"nowrap"}}>
                         +{play.edge}%
                       </span>
-                      <button onClick={e => { e.stopPropagation(); isTracked ? untrackPlay(trackId) : trackPlay(play); }}
+                      <button onClick={e => { e.stopPropagation(); if (isTracked) { untrackPlay(trackId); return; } const calcV = calcOdds.trim(); const overrideOdds = (calcV && calcV !== "-" && calcV !== "+" && !isNaN(parseInt(calcV))) ? parseInt(calcV) : null; trackPlay({ ...play, americanOdds: overrideOdds ?? play.americanOdds }); }}
                         title={isTracked ? "Remove from My Picks" : "Add to My Picks"}
                         style={{background: isTracked ? "rgba(227,179,65,0.15)" : "transparent",
                           border: `1px solid ${isTracked ? "#e3b341" : "#30363d"}`,
