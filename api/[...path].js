@@ -1277,17 +1277,16 @@ var worker_default = {
           const vals = Object.values(sd.rankMap).map((r) => r.value).filter((v) => v > 0);
           if (vals.length >= 15) leagueAvgCache[key] = vals.reduce((a, b) => a + b, 0) / vals.length;
         }
-        let [allPositionsDvp, nbaPlayerPositions] = await Promise.all([
+        let [allPositionsDvp, nbaPlayerPosByName] = await Promise.all([
           CACHE2 ? CACHE2.get("dvp:nba:all-positions", "json").catch(() => null) : null,
-          CACHE2 ? CACHE2.get("dvp:nba:player-positions", "json").catch(() => null) : null
+          CACHE2 ? CACHE2.get("dvp:nba:player-pos-by-name", "json").catch(() => null) : null
         ]);
         // On cache miss, build on-demand
         if (!allPositionsDvp && CACHE2) {
           allPositionsDvp = await buildNbaDvpFromBettingPros(CACHE2).catch(() => null);
         }
-        if (!nbaPlayerPositions && CACHE2) {
-          const s1 = await buildNbaDvpStage1(CACHE2).catch(() => null);
-          if (s1) nbaPlayerPositions = await CACHE2.get("dvp:nba:player-positions", "json").catch(() => null);
+        if (!nbaPlayerPosByName && CACHE2) {
+          nbaPlayerPosByName = await buildNbaPlayerPosFromSleeper(CACHE2).catch(() => null);
         }
         const NBA_POS_MAP = {
           PG: "PG",
@@ -1416,7 +1415,11 @@ var worker_default = {
             "4397018":"C",  // Alperen Sengun
             "4431680":"C",  // Jalen Duren
           };
-          const nbaPos = sport === "nba" ? info.position ? NBA_POS_MAP[info.position] || null : (NBA_PLAYER_POS_STATIC[info.id] || nbaPlayerPositions?.[info.id] || null) : null;
+          const _nbaPosFromName = sport === "nba" && nbaPlayerPosByName ? (() => {
+            const n = (playerName || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+            return nbaPlayerPosByName[n] || null;
+          })() : null;
+          const nbaPos = sport === "nba" ? info.position ? NBA_POS_MAP[info.position] || null : (_nbaPosFromName || NBA_PLAYER_POS_STATIC[info.id] || null) : null;
           const nbaDvpSoftTeams = sport === "nba" && nbaPos && allPositionsDvp?.[nbaPos]?.softTeams?.[stat] ? new Set(allPositionsDvp[nbaPos].softTeams[stat]) : null;
           const nbaEffectiveSoftTeams = nbaDvpSoftTeams || (sport === "nba" ? softTeams : null);
           if (sport === "nba") {
@@ -2482,6 +2485,8 @@ async function buildNbaDvpFromBettingPros(cache) {
     };
     if (cache) await cache.put("dvp:nba:all-positions", JSON.stringify(finalResult), { expirationTtl: 86400 }).catch(() => {
     });
+    // Also build player name→position map from Sleeper (no ESPN ID available, match by name)
+    buildNbaPlayerPosFromSleeper(cache).catch(() => {});
     console.log(`[dvp-bp] done \u2014 ${BP_POSITIONS.map((p) => `${p}:${Object.keys(posData[p]).length}`).join(" ")} teams`);
     return finalResult;
   } catch (e) {
@@ -2490,6 +2495,29 @@ async function buildNbaDvpFromBettingPros(cache) {
   }
 }
 __name(buildNbaDvpFromBettingPros, "buildNbaDvpFromBettingPros");
+async function buildNbaPlayerPosFromSleeper(cache) {
+  try {
+    const r = await fetch("https://api.sleeper.app/v1/players/nba", { headers: { "User-Agent": "Mozilla/5.0" } });
+    if (!r.ok) return null;
+    const players = await r.json();
+    // Build name→position map for active players with a primary fantasy position
+    const POS_VALID = new Set(["PG","SG","SF","PF","C"]);
+    const nameToPos = {};
+    for (const p of Object.values(players)) {
+      if (!p.active) continue;
+      const pos = p.fantasy_positions?.[0];
+      if (!POS_VALID.has(pos)) continue;
+      const name = (p.full_name || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+      if (name) nameToPos[name] = pos;
+    }
+    if (cache) await cache.put("dvp:nba:player-pos-by-name", JSON.stringify(nameToPos), { expirationTtl: 86400 * 7 }).catch(() => {});
+    console.log(`[sleeper-pos] built name→pos map: ${Object.keys(nameToPos).length} players`);
+    return nameToPos;
+  } catch (e) {
+    console.log("[sleeper-pos] error:", String(e));
+    return null;
+  }
+}
 async function buildNbaDvpStage3FG(cache) {
   try {
     const [selected, cPartial] = await Promise.all([
