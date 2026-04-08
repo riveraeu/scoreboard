@@ -1582,8 +1582,8 @@ var worker_default = {
               if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "insufficient_ab_vs_pitcher", abVsTeam: hitterAbVsPitcher });
               continue;
             }
-            // Gate: batting average must be avg or better (.240+)
-            if (hitterBa !== null && hitterBa < 0.240) {
+            // Gate: batting average must be good or better (.270+)
+            if (hitterBa !== null && hitterBa < 0.270) {
               if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "low_batting_avg", ba: hitterBa });
               continue;
             }
