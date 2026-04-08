@@ -1022,25 +1022,53 @@ var worker_default = {
             })
           ].filter(Boolean));
         }
-        // Fetch game start times for tonight's games (all sports)
+        // Fetch game start times + NBA player availability for tonight's games
         const todayDateStr = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10).replace(/-/g, "");
-        let gameTimes = CACHE2 ? await CACHE2.get(`gameTimes:${todayDateStr}`, "json").catch(() => null) : null;
-        if (!gameTimes) {
-          gameTimes = {};
+        let [gameTimes, nbaPlayerStatus] = await Promise.all([
+          CACHE2 ? CACHE2.get(`gameTimes:${todayDateStr}`, "json").catch(() => null) : null,
+          CACHE2 ? CACHE2.get(`nbaStatus:${todayDateStr}`, "json").catch(() => null) : null,
+        ]);
+        const needGameTimes = !gameTimes;
+        const needNbaStatus = !nbaPlayerStatus && sportsNeeded.has("nba");
+        if (needGameTimes || needNbaStatus) {
+          gameTimes = gameTimes || {};
+          nbaPlayerStatus = nbaPlayerStatus || {};
           const SPORT_SB_PATH = { nba: "basketball/nba", nhl: "hockey/nhl", mlb: "baseball/mlb" };
-          await Promise.all([...sportsNeeded].filter(s => SPORT_SB_PATH[s]).map(async s => {
+          const sportsToFetch = needGameTimes ? [...sportsNeeded].filter(s => SPORT_SB_PATH[s]) : (needNbaStatus ? ["nba"] : []);
+          const sbResults = await Promise.all(sportsToFetch.map(async s => {
             try {
               const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${SPORT_SB_PATH[s]}/scoreboard?dates=${todayDateStr}`, { headers: { "User-Agent": "Mozilla/5.0" } });
-              if (!r.ok) return;
-              const d = await r.json();
-              for (const ev of d.events || []) {
-                const abbrs = (ev.competitions?.[0]?.competitors || []).map(c => c.team?.abbreviation).filter(Boolean);
-                if (ev.date && abbrs.length === 2) for (const abbr of abbrs) gameTimes[`${s}:${abbr}`] = ev.date;
-              }
-            } catch {}
+              return { sport: s, events: r.ok ? (await r.json()).events || [] : [] };
+            } catch { return { sport: s, events: [] }; }
           }));
-          if (CACHE2 && Object.keys(gameTimes).length > 0) await CACHE2.put(`gameTimes:${todayDateStr}`, JSON.stringify(gameTimes), { expirationTtl: 600 }).catch(() => {});
+          if (needGameTimes) {
+            for (const { sport, events } of sbResults) {
+              for (const ev of events) {
+                const abbrs = (ev.competitions?.[0]?.competitors || []).map(c => c.team?.abbreviation).filter(Boolean);
+                if (ev.date && abbrs.length === 2) for (const abbr of abbrs) gameTimes[`${sport}:${abbr}`] = ev.date;
+              }
+            }
+            if (CACHE2 && Object.keys(gameTimes).length > 0) await CACHE2.put(`gameTimes:${todayDateStr}`, JSON.stringify(gameTimes), { expirationTtl: 600 }).catch(() => {});
+          }
+          if (needNbaStatus) {
+            const nbaEvents = sbResults.find(r => r.sport === "nba")?.events || [];
+            await Promise.all(nbaEvents.map(async ev => {
+              try {
+                const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=${ev.id}`, { headers: { "User-Agent": "Mozilla/5.0" } });
+                if (!r.ok) return;
+                const d = await r.json();
+                for (const teamInj of d.injuries || []) {
+                  for (const inj of teamInj.injuries || []) {
+                    const aid = inj.athlete?.id;
+                    if (aid) nbaPlayerStatus[String(aid)] = (inj.status || "Out").toLowerCase();
+                  }
+                }
+              } catch {}
+            }));
+            if (CACHE2) await CACHE2.put(`nbaStatus:${todayDateStr}`, JSON.stringify(nbaPlayerStatus), { expirationTtl: 600 }).catch(() => {});
+          }
         }
+        nbaPlayerStatus = nbaPlayerStatus || {};
         const STAT_SOFT = {};
         if (sportByteam.nba) {
           for (const st of ["points", "rebounds", "assists", "threePointers"]) {
@@ -1708,7 +1736,8 @@ var worker_default = {
               stat === "strikeouts"
                 ? (sportByteam.mlb?.projectedLineupTeams || []).includes(tonightOpp)
                 : (sportByteam.mlb?.projectedLineupTeams || []).includes(playerTeam)
-            ) : null
+            ) : null,
+            playerStatus: sport === "nba" ? (nbaPlayerStatus[String(info.id)] || null) : null
           });
         }
         const bestMap = {};
@@ -1717,7 +1746,11 @@ var worker_default = {
           if (!bestMap[key] || play.kalshiPct > bestMap[key].kalshiPct) bestMap[key] = play;
         }
         plays.splice(0, plays.length, ...Object.values(bestMap));
-        plays.sort((a, b) => b.edge - a.edge);
+        plays.sort((a, b) => {
+          const ta = a.gameTime || "9999";
+          const tb = b.gameTime || "9999";
+          return ta < tb ? -1 : ta > tb ? 1 : b.edge - a.edge;
+        });
         if (isDebug) {
           return jsonResponse({ plays, dropped, gamelogErrors, pInfoErrors, preFilteredCount: preFilteredMarkets.length, qualifyingCount: qualifyingMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, infoCacheHits: uniquePlayerKeys.length - keysNeedingInfo.length, gamelogCacheHits: keysForGamelog.length - keysNeedingGamelog.length }, true);
         }

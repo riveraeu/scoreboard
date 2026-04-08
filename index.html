@@ -1782,7 +1782,7 @@ function App() {
                         )}
                         {play.gameTime && (
                           <span style={{color:"#8b949e"}}>
-                            {new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",hour:"numeric",minute:"2-digit",hour12:true}).format(new Date(play.gameTime))} ET
+                            {new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",hour:"numeric",minute:"2-digit",hour12:true}).format(new Date(play.gameTime))} PT
                           </span>
                         )}
                         {play.lineupConfirmed === true && (
@@ -1790,6 +1790,15 @@ function App() {
                         )}
                         {play.lineupConfirmed === false && (
                           <span title="Projected lineup — not yet official" style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(139,148,158,0.12)",border:"1px solid #484f58",color:"#8b949e"}}>Proj. Lineup</span>
+                        )}
+                        {play.playerStatus === "out" && (
+                          <span title="Listed as Out" style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(248,113,113,0.15)",border:"1px solid #f87171",color:"#f87171"}}>Out</span>
+                        )}
+                        {play.playerStatus === "doubtful" && (
+                          <span title="Listed as Doubtful" style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(251,146,60,0.15)",border:"1px solid #fb923c",color:"#fb923c"}}>Doubtful</span>
+                        )}
+                        {play.playerStatus === "questionable" && (
+                          <span title="Listed as Questionable" style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(234,179,8,0.15)",border:"1px solid #eab308",color:"#eab308"}}>Questionable</span>
                         )}
                         {play.isB2B && (
                           <span title="Back-to-back: played yesterday" style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(248,113,113,0.15)",border:"1px solid #f87171",color:"#f87171"}}>B2B</span>
