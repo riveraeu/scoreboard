@@ -363,8 +363,11 @@ var worker_default = {
       } else if (path === "dvp/rebuild-pos") {
         const stage = params.get("stage") || "2";
         if (stage === "1") {
-          ctx.waitUntil(buildNbaDvpStage1(CACHE2));
-          return jsonResponse({ ok: true, message: "Stage 1 (teams+rosters) queued. Check /dvp/debug-players in ~30s." });
+          ctx.waitUntil(Promise.all([buildNbaDvpStage1(CACHE2), buildNbaDepthChartPos(CACHE2)]));
+          return jsonResponse({ ok: true, message: "Stage 1 (teams+rosters + depth charts) queued. Check /dvp/debug-players in ~30s." });
+        } else if (stage === "dc") {
+          ctx.waitUntil(buildNbaDepthChartPos(CACHE2));
+          return jsonResponse({ ok: true, message: "Depth chart pos rebuild queued." });
         } else if (stage === "2") {
           ctx.waitUntil(buildNbaDvpFromBettingPros(CACHE2));
           return jsonResponse({ ok: true, message: "Stage 2 (BettingPros DvP) queued. Check /dvp/debug in ~30s." });
@@ -1278,9 +1281,10 @@ var worker_default = {
           const vals = Object.values(sd.rankMap).map((r) => r.value).filter((v) => v > 0);
           if (vals.length >= 15) leagueAvgCache[key] = vals.reduce((a, b) => a + b, 0) / vals.length;
         }
-        let [allPositionsDvp, nbaPlayerPosByName] = await Promise.all([
+        let [allPositionsDvp, nbaPlayerPosByName, nbaDepthChartPos] = await Promise.all([
           CACHE2 ? CACHE2.get("dvp:nba:all-positions", "json").catch(() => null) : null,
-          CACHE2 ? CACHE2.get("dvp:nba:player-pos-by-name", "json").catch(() => null) : null
+          CACHE2 ? CACHE2.get("dvp:nba:player-pos-by-name", "json").catch(() => null) : null,
+          CACHE2 ? CACHE2.get("dvp:nba:depth-chart-pos", "json").catch(() => null) : null
         ]);
         // On cache miss, build on-demand
         if (!allPositionsDvp && CACHE2) {
@@ -1288,6 +1292,9 @@ var worker_default = {
         }
         if (!nbaPlayerPosByName && CACHE2) {
           nbaPlayerPosByName = await buildNbaPlayerPosFromSleeper(CACHE2).catch(() => null);
+        }
+        if (!nbaDepthChartPos && CACHE2) {
+          nbaDepthChartPos = await buildNbaDepthChartPos(CACHE2).catch(() => null);
         }
         const NBA_POS_MAP = {
           PG: "PG",
@@ -1420,7 +1427,7 @@ var worker_default = {
             const n = (playerName || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
             return nbaPlayerPosByName[n] || null;
           })() : null;
-          const nbaPos = sport === "nba" ? info.position ? NBA_POS_MAP[info.position] || null : (_nbaPosFromName || NBA_PLAYER_POS_STATIC[info.id] || null) : null;
+          const nbaPos = sport === "nba" ? (nbaDepthChartPos?.[String(info.id)] || (info.position ? NBA_POS_MAP[info.position] || null : null) || _nbaPosFromName || NBA_PLAYER_POS_STATIC[info.id] || null) : null;
           const nbaDvpSoftTeams = sport === "nba" && nbaPos && allPositionsDvp?.[nbaPos]?.softTeams?.[stat] ? new Set(allPositionsDvp[nbaPos].softTeams[stat]) : null;
           const nbaEffectiveSoftTeams = nbaDvpSoftTeams || (sport === "nba" ? softTeams : null);
           if (sport === "nba") {
@@ -2478,6 +2485,43 @@ async function buildNbaDvpFromBettingPros(cache) {
   }
 }
 __name(buildNbaDvpFromBettingPros, "buildNbaDvpFromBettingPros");
+async function buildNbaDepthChartPos(cache) {
+  try {
+    const hdrs = { "User-Agent": "Mozilla/5.0" };
+    const teamsRes = await fetch("https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams?limit=32", { headers: hdrs });
+    if (!teamsRes.ok) return null;
+    const teamsData = await teamsRes.json();
+    const teams = (teamsData.sports?.[0]?.leagues?.[0]?.teams || []).map(t => t.team);
+    const POS_VALID = new Set(["PG","SG","SF","PF","C"]);
+    const idToPos = {};
+    await Promise.all(teams.map(async t => {
+      try {
+        const r = await fetch(`https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2026/teams/${t.id}/depthcharts`, { headers: hdrs });
+        if (!r.ok) return;
+        const d = await r.json();
+        const item = d.items?.[0];
+        if (!item) return;
+        for (const [posKey, posData] of Object.entries(item.positions || {})) {
+          const posAbbr = posData.position?.abbreviation?.toUpperCase();
+          if (!POS_VALID.has(posAbbr)) continue;
+          for (const a of posData.athletes || []) {
+            const id = a.athlete?.id || (a.athlete?.["$ref"] || "").split("/").pop().split("?")[0];
+            if (id) idToPos[String(id)] = posAbbr;
+          }
+        }
+      } catch {}
+    }));
+    if (cache && Object.keys(idToPos).length > 0) {
+      await cache.put("dvp:nba:depth-chart-pos", JSON.stringify(idToPos), { expirationTtl: 86400 }).catch(() => {});
+    }
+    console.log(`[depth-chart-pos] built id→pos map: ${Object.keys(idToPos).length} players`);
+    return idToPos;
+  } catch (e) {
+    console.log("[depth-chart-pos] error:", String(e));
+    return null;
+  }
+}
+__name(buildNbaDepthChartPos, "buildNbaDepthChartPos");
 async function buildNbaPlayerPosFromSleeper(cache) {
   try {
     const r = await fetch("https://api.sleeper.app/v1/players/nba", { headers: { "User-Agent": "Mozilla/5.0" } });
