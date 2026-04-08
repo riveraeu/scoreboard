@@ -419,7 +419,6 @@ function App() {
   const [testMode, setTestMode] = React.useState(false);
   const [sportFilter, setSportFilter] = React.useState([]); // empty = all sports
   const [statFilter, setStatFilter] = React.useState([]);  // empty = all stats
-  const [kInfoOpen, setKInfoOpen] = React.useState(false);
   const [showPlaysInfo, setShowPlaysInfo] = React.useState(false);
   const [calibration, setCalibration] = React.useState({}); // { "sport:stat": { n, winRate, avgPredicted, corrFactor } }
   // Tiered unit sizing: based on American odds (price reflects market conviction)
@@ -1900,18 +1899,7 @@ function App() {
                         )}
                         {/* Matchup explanation — MLB strikeout props (unified, no h2h) */}
                         {play.stat === "strikeouts" && play.sport === "mlb" && (
-                          <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",paddingRight:28,fontSize:11,color:"#8b949e",lineHeight:1.5,position:"relative"}}>
-                            <span onClick={() => setKInfoOpen(o => !o)}
-                              style={{position:"absolute",top:8,right:10,cursor:"pointer",color:kInfoOpen?"#58a6ff":"#484f58",fontSize:12,lineHeight:1,userSelect:"none"}}>ⓘ</span>
-                            {kInfoOpen && (
-                              <div style={{background:"#21262d",border:"1px solid #30363d",borderRadius:8,padding:"10px 12px",marginBottom:8,fontSize:11,color:"#c9d1d9",lineHeight:1.6}}>
-                                <div style={{fontWeight:700,marginBottom:6,color:"#fff"}}>How we identify strong K matchups</div>
-                                <div style={{marginBottom:4}}><span style={{color:"#58a6ff",fontWeight:600}}>1. Matchup score</span> — We combine the pitcher's K rate with each batter's individual strikeout tendency to project a K rate for this specific lineup. A score of 23%+ clears the bar.</div>
-                                <div style={{marginBottom:4}}><span style={{color:"#58a6ff",fontWeight:600}}>2. Lineup K rate (fallback)</span> — If batter-level data isn't available, we require the opposing lineup to strikeout at 24%+ as a team.</div>
-                                <div style={{marginBottom:6}}><span style={{color:"#58a6ff",fontWeight:600}}>3. Pitcher floor</span> — Pitchers below a 20% K rate are excluded unless they have strong head-to-head history.</div>
-                                <div style={{color:"#8b949e"}}>The <span style={{color:"#d2a8ff"}}>Matchup proj.</span> bar shows the estimated probability of recording the required strikeout total, given the pitcher's ability and this lineup's contact tendencies.</div>
-                              </div>
-                            )}
+                          <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.5}}>
                             {(() => {
                               const first = play.playerName.split(" ")[0];
                               const pkp   = play.pitcherKPct;
