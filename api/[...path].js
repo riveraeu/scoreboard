@@ -1281,9 +1281,13 @@ var worker_default = {
           CACHE2 ? CACHE2.get("dvp:nba:all-positions", "json").catch(() => null) : null,
           CACHE2 ? CACHE2.get("dvp:nba:player-positions", "json").catch(() => null) : null
         ]);
-        // On cache miss, build BettingPros DVP on-demand (background for next request)
+        // On cache miss, build on-demand
         if (!allPositionsDvp && CACHE2) {
           allPositionsDvp = await buildNbaDvpFromBettingPros(CACHE2).catch(() => null);
+        }
+        if (!nbaPlayerPositions && CACHE2) {
+          const s1 = await buildNbaDvpStage1(CACHE2).catch(() => null);
+          if (s1) nbaPlayerPositions = await CACHE2.get("dvp:nba:player-positions", "json").catch(() => null);
         }
         const NBA_POS_MAP = {
           PG: "PG",
