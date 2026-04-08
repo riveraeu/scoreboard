@@ -1072,7 +1072,8 @@ var worker_default = {
             const opp2 = m.gameTeam1 === playerTeam2 ? m.gameTeam2 : m.gameTeam2 === playerTeam2 ? m.gameTeam1 : null;
             if (!opp2) return false;
             const pitcherEra = sportByteam.mlb?.probables?.[opp2]?.era;
-            return pitcherEra != null && !isNaN(pitcherEra);
+            if (pitcherEra != null && !isNaN(pitcherEra)) return pitcherEra >= 4;
+            return STAT_SOFT[`mlb|${m.stat}`]?.softTeams.has(opp2) ?? false;
           }
           if (m.sport === "nhl") return true;
           const playerTeam = m.kalshiPlayerTeam;
