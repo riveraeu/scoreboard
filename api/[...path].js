@@ -2453,12 +2453,17 @@ async function buildNbaDepthChartPos(cache) {
         const d = await r.json();
         const item = d.items?.[0];
         if (!item) return;
-        for (const [posKey, posData] of Object.entries(item.positions || {})) {
+        // Sort PG→SG→SF→PF→C so first write wins (primary position for dual-listed players)
+        const POS_ORDER = ["PG","SG","SF","PF","C"];
+        const sortedPositions = Object.values(item.positions || {}).sort((a, b) =>
+          POS_ORDER.indexOf(a.position?.abbreviation?.toUpperCase()) - POS_ORDER.indexOf(b.position?.abbreviation?.toUpperCase())
+        );
+        for (const posData of sortedPositions) {
           const posAbbr = posData.position?.abbreviation?.toUpperCase();
           if (!POS_VALID.has(posAbbr)) continue;
           for (const a of posData.athletes || []) {
             const id = a.athlete?.id || (a.athlete?.["$ref"] || "").split("/").pop().split("?")[0];
-            if (id) idToPos[String(id)] = posAbbr;
+            if (id && !idToPos[String(id)]) idToPos[String(id)] = posAbbr;
           }
         }
       } catch {}
