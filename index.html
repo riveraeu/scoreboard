@@ -114,7 +114,7 @@ const MOCK_PLAYS = [
     kelly:0.227, ev:0.082, historicalHitRate:80.0, historicalGames:10,
     lineupKPct:27.3, pitcherKPct:26.5, pitcherKBBPct:18.2, log5Avg:31.6, log5Pct:96.1, expectedKs:8.5, parkFactor:1.00,
     isStrongMatchup:true, pkpMeets:true, lkpMeets:true, gameLineMeets:true,
-    gameTotal:7.5, gameMoneyline:-145, pitcherHand:"R", gameDate:TODAY,
+    gameTotal:7.5, gameMoneyline:-145, pitcherHand:"R", gameDate:TODAY, gameTime:new Date().toISOString().replace(/T.*/, "T23:10:00Z"), lineupConfirmed:true,
   },
   // 3/3 strong, no strong-matchup history — truePct = seasonPct only
   {
@@ -1777,6 +1777,20 @@ function App() {
                       </div>
                       <div style={{color:"#8b949e",fontSize:11,marginTop:2,display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
                         <span>{play.playerTeam} vs {play.opponent}{play.position ? ` · ${play.position}` : ""}</span>
+                        {play.gameTime && (
+                          <span style={{color:"#6e7681"}}>·</span>
+                        )}
+                        {play.gameTime && (
+                          <span style={{color:"#8b949e"}}>
+                            {new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",hour:"numeric",minute:"2-digit",hour12:true}).format(new Date(play.gameTime))} ET
+                          </span>
+                        )}
+                        {play.lineupConfirmed === true && (
+                          <span title="Official lineup posted" style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(63,185,80,0.12)",border:"1px solid #3fb950",color:"#3fb950"}}>✓ Lineup</span>
+                        )}
+                        {play.lineupConfirmed === false && (
+                          <span title="Projected lineup — not yet official" style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(139,148,158,0.12)",border:"1px solid #484f58",color:"#8b949e"}}>Proj. Lineup</span>
+                        )}
                         {play.isB2B && (
                           <span title="Back-to-back: played yesterday" style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(248,113,113,0.15)",border:"1px solid #f87171",color:"#f87171"}}>B2B</span>
                         )}

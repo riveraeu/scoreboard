@@ -1022,6 +1022,25 @@ var worker_default = {
             })
           ].filter(Boolean));
         }
+        // Fetch game start times for tonight's games (all sports)
+        const todayDateStr = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10).replace(/-/g, "");
+        let gameTimes = CACHE2 ? await CACHE2.get(`gameTimes:${todayDateStr}`, "json").catch(() => null) : null;
+        if (!gameTimes) {
+          gameTimes = {};
+          const SPORT_SB_PATH = { nba: "basketball/nba", nhl: "hockey/nhl", mlb: "baseball/mlb" };
+          await Promise.all([...sportsNeeded].filter(s => SPORT_SB_PATH[s]).map(async s => {
+            try {
+              const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${SPORT_SB_PATH[s]}/scoreboard?dates=${todayDateStr}`, { headers: { "User-Agent": "Mozilla/5.0" } });
+              if (!r.ok) return;
+              const d = await r.json();
+              for (const ev of d.events || []) {
+                const abbrs = (ev.competitions?.[0]?.competitors || []).map(c => c.team?.abbreviation).filter(Boolean);
+                if (ev.date && abbrs.length === 2) for (const abbr of abbrs) gameTimes[`${s}:${abbr}`] = ev.date;
+              }
+            } catch {}
+          }));
+          if (CACHE2 && Object.keys(gameTimes).length > 0) await CACHE2.put(`gameTimes:${todayDateStr}`, JSON.stringify(gameTimes), { expirationTtl: 600 }).catch(() => {});
+        }
         const STAT_SOFT = {};
         if (sportByteam.nba) {
           for (const st of ["points", "rebounds", "assists", "threePointers"]) {
@@ -1683,7 +1702,13 @@ var worker_default = {
             historicalHitRate: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
             historicalGames: softVals.length,
             hitterMoneyline: sport === "mlb" && stat !== "strikeouts" ? sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null : void 0,
-            gameDate
+            gameDate,
+            gameTime: gameTimes[`${sport}:${playerTeam}`] ?? null,
+            lineupConfirmed: sport === "mlb" ? !(
+              stat === "strikeouts"
+                ? (sportByteam.mlb?.projectedLineupTeams || []).includes(tonightOpp)
+                : (sportByteam.mlb?.projectedLineupTeams || []).includes(playerTeam)
+            ) : null
           });
         }
         const bestMap = {};
