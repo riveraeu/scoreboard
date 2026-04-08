@@ -1207,16 +1207,17 @@ function App() {
                   <div style={{background:"#0d1117",borderRadius:8,padding:"8px 12px",fontSize:11,color:"#8b949e",lineHeight:1.6,marginBottom:12}}>
                     {(() => {
                       const first = player.name.split(" ")[0];
-                      // Fall back to tonight play data when dvp h2h is unavailable (e.g. probables cache miss)
-                      const h2h = dvpData?.h2h || (() => {
-                        if (!isMLB || safeTab !== "strikeouts") return null;
-                        const tp = Object.values(tonightPlayerMap).find(p => p.stat === "strikeouts");
-                        if (!tp) return null;
-                        return { opp: tp.opponent, lineupKPct: tp.lineupKPct, lineupKPctProjected: tp.lineupKPctProjected,
-                          pitcherKPct: tp.pitcherKPct, pitcherKBBPct: tp.pitcherKBBPct, log5Avg: tp.log5Avg,
-                          expectedKs: tp.expectedKs, parkFactor: tp.parkFactor, pitcherHand: tp.pitcherHand,
-                          isStrongMatchup: tp.isStrongMatchup, pkpMeets: tp.pkpMeets, lkpMeets: tp.lkpMeets,
-                          gameLineMeets: tp.gameLineMeets, gameTotal: tp.gameTotal, gameMoneyline: tp.gameMoneyline };
+                      // For strikeout tab, prefer tonight play data (canonical source) over DVP endpoint to keep in sync with plays card
+                      const h2h = (() => {
+                        if (isMLB && safeTab === "strikeouts") {
+                          const tp = Object.values(tonightPlayerMap).find(p => p.stat === "strikeouts");
+                          if (tp) return { opp: tp.opponent, lineupKPct: tp.lineupKPct, lineupKPctProjected: tp.lineupKPctProjected,
+                            pitcherKPct: tp.pitcherKPct, pitcherKBBPct: tp.pitcherKBBPct, log5Avg: tp.log5Avg,
+                            expectedKs: tp.expectedKs, parkFactor: tp.parkFactor, pitcherHand: tp.pitcherHand,
+                            isStrongMatchup: tp.isStrongMatchup, pkpMeets: tp.pkpMeets, lkpMeets: tp.lkpMeets,
+                            gameLineMeets: tp.gameLineMeets, gameTotal: tp.gameTotal, gameMoneyline: tp.gameMoneyline };
+                        }
+                        return dvpData?.h2h || null;
                       })();
                       if (isMLB) {
                         if (safeTab === "strikeouts") {
