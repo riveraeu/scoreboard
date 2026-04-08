@@ -1066,7 +1066,13 @@ var worker_default = {
             if (m.stat === "strikeouts") {
               return true;
             }
-            return true;
+            // Require a known probable pitcher with ERA data for hitters
+            const playerTeam2 = m.kalshiPlayerTeam;
+            if (!playerTeam2) return false;
+            const opp2 = m.gameTeam1 === playerTeam2 ? m.gameTeam2 : m.gameTeam2 === playerTeam2 ? m.gameTeam1 : null;
+            if (!opp2) return false;
+            const pitcherEra = sportByteam.mlb?.probables?.[opp2]?.era;
+            return pitcherEra != null && !isNaN(pitcherEra);
           }
           if (m.sport === "nhl") return true;
           const playerTeam = m.kalshiPlayerTeam;
