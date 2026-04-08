@@ -1622,7 +1622,7 @@ function App() {
                     <div style={{marginBottom:3}}><span style={{color:"#3fb950"}}>Edge</span> ≥ 3% (true prob minus implied)</div>
                     <div style={{marginTop:6,marginBottom:3,color:"#8b949e",fontWeight:600}}>Matchup gates</div>
                     <div style={{marginBottom:3}}><span style={{color:"#f97316"}}>NBA</span> — opponent bottom-10 DvP for player's position</div>
-                    <div style={{marginBottom:3}}><span style={{color:"#4ade80"}}>MLB hitters</span> — opposing starter ERA ≥ 4.0</div>
+                    <div style={{marginBottom:3}}><span style={{color:"#4ade80"}}>MLB hitters</span> — team favored · 10+ career AB vs pitcher · BA ≥ .240 ('25+'26)</div>
                     <div style={{marginBottom:6}}><span style={{color:"#4ade80"}}>MLB pitchers</span> — 2 of 3: pitcher K% &gt;25%, lineup K% &gt;23% (vs handedness), game total &lt;8.5 with team favored (−125+)</div>
                     <div><span style={{color:"#60a5fa"}}>NHL</span> — no matchup gate</div>
                   </div>
@@ -1702,11 +1702,11 @@ function App() {
                       if (qc === 0) return "No Kalshi markets found — check back later when tomorrow's markets open.";
                       if (filtered > 0 && pf === 0) return <>
                         <div>{qc} markets found — all filtered: tonight's opponents don't meet the soft matchup threshold.</div>
-                        <div style={{fontSize:11,marginTop:6,color:"#30363d"}}>NBA: vs bottom-10 defense · MLB hitters: ERA ≥4.0 · MLB pitchers: lineup K-rate ≥22%</div>
+                        <div style={{fontSize:11,marginTop:6,color:"#30363d"}}>NBA: vs bottom-10 defense · MLB hitters: team favored + 10 AB vs pitcher + BA ≥.240 · MLB pitchers: lineup K-rate ≥22%</div>
                       </>;
                       if (filtered > 0) return <>
                         <div>{qc} markets found · {filtered} filtered by matchup · {pf - (tonightPlays?.length ?? 0)} filtered by edge.</div>
-                        <div style={{fontSize:11,marginTop:6,color:"#30363d"}}>NBA: vs bottom-10 defense · MLB hitters: ERA ≥4.0 · MLB pitchers: lineup K-rate ≥22%</div>
+                        <div style={{fontSize:11,marginTop:6,color:"#30363d"}}>NBA: vs bottom-10 defense · MLB hitters: team favored + 10 AB vs pitcher + BA ≥.240 · MLB pitchers: lineup K-rate ≥22%</div>
                       </>;
                       return "No qualifying plays found.";
                     })()
@@ -1884,16 +1884,21 @@ function App() {
                             {(() => {
                               const first = play.playerName.split(" ")[0];
                               const pitcherName = play.hitterPitcherName;
-                              const era = play.hitterPitcherEra;
                               const pitcherEl = pitcherName
-                                ? <><span style={{color:"#c9d1d9",fontWeight:600}}>{pitcherName}</span>{era != null ? <span style={{color:"#8b949e"}}> ({era} ERA)</span> : ""}</>
+                                ? <span style={{color:"#c9d1d9",fontWeight:600}}>{pitcherName}</span>
                                 : <span style={{color:"#c9d1d9",fontWeight:600}}>{play.opponent}</span>;
                               const hitRate = <span style={{color:"#3fb950",fontWeight:600}}>{play.softPct}%</span>;
-                              const ab = play.hitterAbVsPitcher ? ` (${play.hitterAbVsPitcher} AB)` : (play.softGames ? ` (${play.softGames} games)` : "");
+                              const ab = play.hitterAbVsPitcher ? ` (${play.hitterAbVsPitcher} AB)` : "";
                               const statFull = STAT_FULL[play.stat] || play.stat;
+                              const baTier = play.hitterBaTier;
+                              const baVal = play.hitterBa ? `.${Math.round(play.hitterBa * 1000).toString().padStart(3,"0")}` : null;
+                              const baTierLabel = baTier === "elite" ? "elite" : baTier === "good" ? "good" : baTier === "avg" ? "avg" : null;
+                              const baEl = baTierLabel && baVal ? <> {first} has {baTierLabel === "avg" ? "an" : "a"} <span style={{color: baTier==="elite"?"#58a6ff":baTier==="good"?"#3fb950":"#8b949e",fontWeight:600}}>{baTierLabel} BA of {baVal}</span> for '25+'26 seasons</> : null;
                               const ml = play.hitterMoneyline;
-                              const mlEl = ml != null ? <> · <span style={{color:"#3fb950",fontWeight:600}}>{ml > 0 ? `+${ml}` : ml}</span> ML</> : null;
-                              return <>{first} has hit {play.threshold}+ {statFull} in {hitRate} of career at-bats vs {pitcherEl}{ab}{mlEl}.</>;
+                              const teamEl = ml != null ? <><span style={{color:"#c9d1d9",fontWeight:600}}>{play.playerTeam}</span> is favored at <span style={{color:"#3fb950",fontWeight:600}}>{ml > 0 ? `+${ml}` : ml}</span></> : null;
+                              return <>
+                                {first} has hit {play.threshold}+ {statFull} in {hitRate} of career at-bats vs {pitcherEl}{ab}.{baEl && <>{baEl}{teamEl ? <> and {teamEl}</> : ""}</>}{!baEl && teamEl ? <> {teamEl}.</> : baEl ? "." : ""}
+                              </>;
                             })()}
                           </div>
                         )}
