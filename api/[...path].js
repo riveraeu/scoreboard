@@ -1374,7 +1374,49 @@ var worker_default = {
             if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "no_opp", playerTeam, gameTeam1, gameTeam2 });
             continue;
           }
-          const nbaPos = sport === "nba" ? info.position ? NBA_POS_MAP[info.position] || null : nbaPlayerPositions?.[info.id] || null : null;
+          // ESPN only returns G/F/C in public APIs — static map for common Kalshi NBA players
+          const NBA_PLAYER_POS_STATIC = {
+            "4396907":"PG", // Darius Garland
+            "3059318":"PG", // Trae Young
+            "4066328":"PG", // Tyrese Haliburton
+            "3136193":"PG", // Ja Morant
+            "3032977":"PG", // Stephen Curry
+            "3934672":"PG", // Luka Doncic
+            "3907387":"PG", // Damian Lillard
+            "4432174":"PG", // LaMelo Ball
+            "4395725":"PG", // Jalen Brunson
+            "4431672":"PG", // Cade Cunningham
+            "4432154":"PG", // Darius Garland duplicate guard
+            "4397010":"PG", // De'Aaron Fox
+            "4278073":"SG", // Shai Gilgeous-Alexander
+            "4065663":"SG", // Devin Booker
+            "4397012":"SG", // Anthony Edwards
+            "3134907":"SG", // Jaylen Brown
+            "4432160":"SG", // Donovan Mitchell — listed as G
+            "3059316":"SG", // James Harden
+            "4277905":"PG", // Trae Young (alt id check)
+            "3136195":"SG", // Bradley Beal
+            "3134908":"SF", // Jayson Tatum
+            "3059317":"SF", // LeBron James
+            "4397016":"SF", // Scottie Barnes
+            "3936299":"SF", // Kevin Durant
+            "4432176":"SF", // Franz Wagner
+            "4431673":"SF", // Paolo Banchero
+            "4278069":"SF", // Khris Middleton
+            "3059320":"PF", // Giannis Antetokounmpo
+            "4278070":"PF", // Bam Adebayo
+            "4066261":"PF", // Bam Adebayo (fantasy id)
+            "4397017":"PF", // Pascal Siakam
+            "4432178":"PF", // Evan Mobley
+            "3112335":"C",  // Nikola Jokic
+            "4431679":"C",  // Victor Wembanyama
+            "4432180":"C",  // Chet Holmgren
+            "4278071":"C",  // Karl-Anthony Towns
+            "4278072":"C",  // Joel Embiid
+            "4397018":"C",  // Alperen Sengun
+            "4431680":"C",  // Jalen Duren
+          };
+          const nbaPos = sport === "nba" ? info.position ? NBA_POS_MAP[info.position] || null : (NBA_PLAYER_POS_STATIC[info.id] || nbaPlayerPositions?.[info.id] || null) : null;
           const nbaDvpSoftTeams = sport === "nba" && nbaPos && allPositionsDvp?.[nbaPos]?.softTeams?.[stat] ? new Set(allPositionsDvp[nbaPos].softTeams[stat]) : null;
           const nbaEffectiveSoftTeams = nbaDvpSoftTeams || (sport === "nba" ? softTeams : null);
           if (sport === "nba") {
