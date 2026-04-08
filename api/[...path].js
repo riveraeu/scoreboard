@@ -393,6 +393,14 @@ var worker_default = {
           };
         }
         return jsonResponse({ builtAt: result.builtAt, source: result.source, summary });
+      } else if (path === "dvp/debug-dc") {
+        const dcPos = await CACHE2.get("dvp:nba:depth-chart-pos", "json").catch(() => null);
+        if (!dcPos) return jsonResponse({ error: "no depth chart cache" });
+        const counts = { PG: 0, SG: 0, SF: 0, PF: 0, C: 0 };
+        for (const v of Object.values(dcPos)) if (counts[v] != null) counts[v]++;
+        const query = params.get("id");
+        const entry = query ? { id: query, pos: dcPos[query] || "not found" } : null;
+        return jsonResponse({ total: Object.keys(dcPos).length, counts, ...(entry ? { lookup: entry } : {}) });
       } else if (path === "dvp/debug") {
         const pos = (params.get("pos") || "C").toUpperCase();
         const stat = params.get("stat") || "rebounds";
