@@ -1301,24 +1301,24 @@ function App() {
                           if (isNBA) {
                             const posGroup = tonightTabPlay?.posGroup ?? null;
                             const posLabel = {PG:"point guards",SG:"shooting guards",SF:"small forwards",PF:"power forwards",C:"centers"}[posGroup] ?? null;
+                            const posFullLabel = {PG:"PG",SG:"SG",SF:"SF",PF:"PF",C:"C"}[posGroup] ?? null;
                             const displayRank = tonightTabPlay?.posDvpRank ?? rank;
                             const displayValue = tonightTabPlay?.posDvpValue ?? metricVal;
                             const statName = { points:"points", rebounds:"rebounds", assists:"assists", threePointers:"3-pointers" }[safeTab] || safeTab;
                             const valueStr = displayValue != null ? ` (${displayValue})` : "";
-                            const vsLabel = posGroup ? `at giving up ${statName} to ${posGroup}` : "in this stat";
-                            const weakLabel = posLabel ? `weak ${posLabel} defenses` : "weak matchups";
                             const isNBAStrong = tonightTabPlay?.softPct != null;
                             const isNBAHard = !isNBAStrong && effectiveOpp && (dvpData.hardTeams?.[safeTab] || []).includes(effectiveOpp);
                             const rankColor = isNBAStrong ? "#3fb950" : isNBAHard ? "#f78166" : "#c9d1d9";
-                            // Season hit rate: from tonight play if available, else compute from perGame
-                            const pgStatVals = perGame.filter(g => g[safeTab] !== undefined);
-                            const fallbackSeasonPct = pgStatVals.length >= 3 && thresholdDisplay != null
-                              ? parseFloat((pgStatVals.filter(g => g[safeTab] >= thresholdDisplay).length / pgStatVals.length * 100).toFixed(1))
-                              : null;
-                            const seasonPctDisplay = tonightTabPlay?.seasonPct ?? fallbackSeasonPct;
-                            const seasonColor = seasonPctDisplay == null ? "#c9d1d9" : seasonPctDisplay >= 75 ? "#3fb950" : seasonPctDisplay >= 60 ? "#c9d1d9" : "#f78166";
+                            const defenseDesc = posFullLabel
+                              ? `ranked <span style="color:${rankColor};font-weight:700">${ordinal(displayRank)}</span> in giving up ${statName} to ${posLabel || posFullLabel}s`
+                              : `<span style="color:${rankColor};font-weight:700">${ordinal(displayRank)}-worst</span> in this stat`;
+                            const seasonAvg = avg !== "—" ? avg : null;
+                            const careerHi = hi !== "—" ? hi : null;
                             return <>
-                              {oppEl} <span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}-worst</span> {vsLabel}{valueStr}. {seasonPctDisplay != null && <>{first} hits {thresholdDisplay}+ {STAT_FULL[safeTab] || safeTab} in <span style={{color:seasonColor,fontWeight:600}}>{seasonPctDisplay}%</span> of games this season</>}{isNBAStrong && hitRate && thresholdDisplay && <>, and {hitRate} vs {weakLabel}{games}</>}.
+                              <span style={{color:"#c9d1d9",fontWeight:600}}>{opp}</span> has the {posFullLabel
+                                ? <><span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}</span> ranked defense at giving up {statName} to the {posFullLabel} position{valueStr}</>
+                                : <><span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}-worst</span> defense in {statName} allowed{valueStr}</>
+                              }. {first} is averaging <span style={{color:"#c9d1d9",fontWeight:600}}>{seasonAvg ?? "—"} {statName}</span> over <span style={{color:"#8b949e"}}>{totalGames} games</span> this season{careerHi != null && <> with a career high of <span style={{color:"#c9d1d9",fontWeight:600}}>{careerHi}</span></>}.
                               {isOppFallback && <div style={{color:"#484f58",fontSize:10,marginTop:3}}>Showing last game vs {opp} — updates when next game is scheduled.</div>}
                             </>;
                           }
