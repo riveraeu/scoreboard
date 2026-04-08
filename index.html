@@ -1649,8 +1649,8 @@ function App() {
           {/* ROI Summary panel */}
           {!tonightLoading && (tonightPlays || []).length > 0 && (() => {
             const isStrongMatchup = play => {
-              if (play.sport === "mlb" && play.stat === "strikeouts") return false; // matchup is a qualifying condition, not a signal
-              if (play.sport === "mlb") return play.softPct != null || play.matchupPct != null;
+              if (play.sport === "mlb" && play.stat === "strikeouts") return false;
+              if (play.sport === "mlb") return play.softPct != null;
               if (play.sport === "nba") return play.oppRank != null && play.oppRank <= 5 && (play.projectedStat == null || play.projectedStat >= play.threshold * 0.95);
               if (play.sport === "nhl") return play.oppRank != null && play.oppRank <= 5;
               return play.oppRank != null && play.oppRank <= 5;
@@ -1669,8 +1669,8 @@ function App() {
             </div>
           ) : (() => {
             const isStrongMatchup = play => {
-              if (play.sport === "mlb" && play.stat === "strikeouts") return false; // matchup is a qualifying condition, not a signal
-              if (play.sport === "mlb") return play.softPct != null || play.matchupPct != null;
+              if (play.sport === "mlb" && play.stat === "strikeouts") return false;
+              if (play.sport === "mlb") return play.softPct != null;
               if (play.sport === "nba") return play.oppRank != null && play.oppRank <= 5 && (play.projectedStat == null || play.projectedStat >= play.threshold * 0.95);
               // NHL: projectedStat is per-game rate (e.g. 0.6 goals/game), not comparable to threshold (1)
               if (play.sport === "nhl") return play.oppRank != null && play.oppRank <= 5;
@@ -1856,8 +1856,9 @@ function App() {
                                   `'25+'26${play.blendGames ? ` (${play.blendGames}g)` : ""}`
                                 ) : `Season rate${play.seasonGames ? ` (${play.seasonGames}g)` : ""}`}
                               </span>
-                              {play.blendedPctTier === "elite" && <span style={{fontSize:9,background:"#1f6feb",color:"#fff",borderRadius:3,padding:"1px 4px",fontWeight:700,flexShrink:0}}>ELITE</span>}
-                              {play.blendedPctTier === "good" && <span style={{fontSize:9,background:"#238636",color:"#fff",borderRadius:3,padding:"1px 4px",fontWeight:700,flexShrink:0}}>GOOD</span>}
+                              {play.hitterBaTier === "elite" && <span style={{fontSize:9,background:"#1f6feb",color:"#fff",borderRadius:3,padding:"1px 4px",fontWeight:700,flexShrink:0}} title={play.hitterBa ? `.${Math.round(play.hitterBa*1000)} BA` : "Elite BA"}>.{Math.round((play.hitterBa||0)*1000)} BA</span>}
+                              {play.hitterBaTier === "good" && <span style={{fontSize:9,background:"#238636",color:"#fff",borderRadius:3,padding:"1px 4px",fontWeight:700,flexShrink:0}} title={play.hitterBa ? `.${Math.round(play.hitterBa*1000)} BA` : "Good BA"}>.{Math.round((play.hitterBa||0)*1000)} BA</span>}
+                              {play.hitterBaTier === "avg" && <span style={{fontSize:9,background:"#6e7681",color:"#fff",borderRadius:3,padding:"1px 4px",fontWeight:700,flexShrink:0}} title={play.hitterBa ? `.${Math.round(play.hitterBa*1000)} BA` : "Avg BA"}>.{Math.round((play.hitterBa||0)*1000)} BA</span>}
                             </div>
                             <div style={{flex:1,background:"#21262d",borderRadius:3,height:8,overflow:"hidden"}}>
                               <div style={{width:`${play.seasonPct}%`,background:"#484f58",height:"100%",borderRadius:3}}/>
@@ -1876,20 +1877,8 @@ function App() {
                               <div style={{color:"#3fb950",fontSize:11,fontWeight:600,width:38,textAlign:"right",flexShrink:0}}>{play.softPct}%</div>
                             </div>
                           )}
-                          {play.softPct === null && play.matchupPct !== null && (
-                            <div style={{display:"flex",alignItems:"center",gap:8}}>
-                              <div style={{width:110,color:"#8b949e",fontSize:10,flexShrink:0,lineHeight:1.35}}>
-                                {(play.oppMetricLabel || "").replace(/\s*\(\d+g\)\s*$/, "")}
-                                {play.matchupGames ? ` (${play.matchupGames}g)` : ""}
-                              </div>
-                              <div style={{flex:1,background:"#21262d",borderRadius:3,height:8,overflow:"hidden"}}>
-                                <div style={{width:`${play.matchupPct}%`,background:"#3fb950",height:"100%",borderRadius:3}}/>
-                              </div>
-                              <div style={{color:"#3fb950",fontSize:11,fontWeight:600,width:38,textAlign:"right",flexShrink:0}}>{play.matchupPct}%</div>
-                            </div>
-                          )}
                         </div>
-                        {/* Matchup explanation — h2h (MLB non-strikeout player-vs-pitcher) */}
+                        {/* Matchup explanation — h2h MLB hitter */}
                         {play.oppRank === null && play.oppMetricLabel && play.softPct !== null && play.stat !== "strikeouts" && (
                           <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.5}}>
                             {(() => {
@@ -1900,31 +1889,11 @@ function App() {
                                 ? <><span style={{color:"#c9d1d9",fontWeight:600}}>{pitcherName}</span>{era != null ? <span style={{color:"#8b949e"}}> ({era} ERA)</span> : ""}</>
                                 : <span style={{color:"#c9d1d9",fontWeight:600}}>{play.opponent}</span>;
                               const hitRate = <span style={{color:"#3fb950",fontWeight:600}}>{play.softPct}%</span>;
-                              const games = play.softGames ? ` (${play.softGames} games)` : "";
+                              const ab = play.hitterAbVsPitcher ? ` (${play.hitterAbVsPitcher} AB)` : (play.softGames ? ` (${play.softGames} games)` : "");
                               const statFull = STAT_FULL[play.stat] || play.stat;
                               const ml = play.hitterMoneyline;
                               const mlEl = ml != null ? <> · <span style={{color:"#3fb950",fontWeight:600}}>{ml > 0 ? `+${ml}` : ml}</span> ML</> : null;
-                              return <>{first} has hit {play.threshold}+ {statFull} in {hitRate} of career games vs {pitcherEl}{games}{mlEl}.</>;
-                            })()}
-                          </div>
-                        )}
-                        {/* Matchup explanation — ERA-tier matchup rate (MLB non-strikeout, no h2h) */}
-                        {play.softPct === null && play.matchupPct !== null && play.stat !== "strikeouts" && (
-                          <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.5}}>
-                            {(() => {
-                              const first = play.playerName.split(" ")[0];
-                              const pitcherName = play.hitterPitcherName;
-                              const era = play.hitterPitcherEra;
-                              const tierLabel = <span style={{color:"#c9d1d9",fontWeight:600}}>{(play.oppMetricLabel || "").replace(/\s*\(\d+g\)\s*$/, "")}</span>;
-                              const hitRate = <span style={{color:"#3fb950",fontWeight:600}}>{play.matchupPct}%</span>;
-                              const games = play.matchupGames ? ` (${play.matchupGames} games)` : "";
-                              const statFull = STAT_FULL[play.stat] || play.stat;
-                              const pitcherEl = pitcherName
-                                ? <><span style={{color:"#c9d1d9",fontWeight:600}}>{pitcherName}</span>{era != null ? <span style={{color:"#8b949e"}}> ({era} ERA)</span> : ""}</>
-                                : <span style={{color:"#c9d1d9",fontWeight:600}}>{play.opponent}</span>;
-                              const ml = play.hitterMoneyline;
-                              const mlEl = ml != null ? <> · <span style={{color:"#3fb950",fontWeight:600}}>{ml > 0 ? `+${ml}` : ml}</span> ML</> : null;
-                              return <>{first} hits {play.threshold}+ {statFull} in {hitRate} of career games vs {tierLabel}{games}. Tonight facing {pitcherEl}{mlEl}.</>;
+                              return <>{first} has hit {play.threshold}+ {statFull} in {hitRate} of career at-bats vs {pitcherEl}{ab}{mlEl}.</>;
                             })()}
                           </div>
                         )}

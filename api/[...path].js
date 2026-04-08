@@ -1582,47 +1582,41 @@ var worker_default = {
           yesterday.setDate(yesterday.getDate() - 1);
           const yesterdayStr = yesterday.toISOString().slice(0, 10);
           const isB2B = sport === "nba" && gl.events.length > 0 && (gl.events[0]?.date || "").startsWith(yesterdayStr);
+          let hitterBa = null, hitterBaTier = null, hitterAbVsPitcher = 0;
           if (sport === "mlb" && stat !== "strikeouts") {
-            // Gate: team must be favored
             const hitterML = sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null;
+            const abIdx = gl.ul.indexOf("AB");
+            const hIdx2 = gl.ul.indexOf("H");
+            // Compute season BA from blended '25+'26 events
+            if (abIdx !== -1 && hIdx2 !== -1) {
+              const blendEvents = hasSeasonTags ? gl.events.filter((ev) => ev.season === 2025 || ev.season === 2026) : gl.events;
+              const totalAB = blendEvents.reduce((s, ev) => s + (parseFloat(ev.stats[abIdx]) || 0), 0);
+              const totalH = blendEvents.reduce((s, ev) => s + (parseFloat(ev.stats[hIdx2]) || 0), 0);
+              if (totalAB >= 20) {
+                hitterBa = parseFloat((totalH / totalAB).toFixed(3));
+                hitterBaTier = hitterBa >= 0.300 ? "elite" : hitterBa >= 0.270 ? "good" : hitterBa >= 0.240 ? "avg" : "below";
+              }
+              hitterAbVsPitcher = gl.events.filter((ev) => ev.oppAbbr === tonightOpp).reduce((s, ev) => s + (parseFloat(ev.stats[abIdx]) || 0), 0);
+            }
+            // Gate: team must be favored
             if (hitterML === null || hitterML >= 0) {
               if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "team_not_favored", moneyline: hitterML });
               continue;
             }
-            // Gate: blendedPct floor >= 55%
-            const blendedPctForGate = blendedPct ?? seasonPct;
-            if (blendedPctForGate < 55) {
-              if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "low_blended_pct", blendedPct: parseFloat(blendedPctForGate.toFixed(1)) });
+            // Gate: must have h2h data (softPct) — no matchup fallback
+            if (softPct === null) {
+              if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "no_h2h_data" });
               continue;
             }
-            // Gate: at least 10 AB vs tonight's team when h2h applies
-            if (softPct !== null) {
-              const abIdx = gl.ul.indexOf("AB");
-              if (abIdx !== -1) {
-                const abVsTeam = gl.events.filter((ev) => ev.oppAbbr === tonightOpp).reduce((s, ev) => s + (parseFloat(ev.stats[abIdx]) || 0), 0);
-                if (abVsTeam < 10) {
-                  if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "insufficient_ab_vs_pitcher", abVsTeam });
-                  continue;
-                }
-              }
+            // Gate: at least 10 AB vs tonight's team
+            if (hitterAbVsPitcher < 10) {
+              if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "insufficient_ab_vs_pitcher", abVsTeam: hitterAbVsPitcher });
+              continue;
             }
-          }
-          let matchupPct = null, matchupValsCount = 0, matchupEraTier = null;
-          if (sport === "mlb" && stat !== "strikeouts" && softPct === null) {
-            const teamEraRankMap = STAT_SOFT[`mlb|${stat}`]?.rankMap || {};
-            const tonightEra = sportByteam.mlb?.probables?.[tonightOpp]?.era ?? null;
-            if (tonightEra !== null && !isNaN(tonightEra)) {
-              matchupEraTier = tonightEra > 4.5 ? "soft" : tonightEra > 3.5 ? "avg" : "strong";
-              const similarTeams = new Set(
-                Object.entries(teamEraRankMap)
-                  .filter(([, d]) => matchupEraTier === "soft" ? d.value > 4.5 : matchupEraTier === "avg" ? (d.value > 3.5 && d.value <= 4.5) : d.value <= 3.5)
-                  .map(([abbr]) => abbr)
-              );
-              const matchupVals = gl.events.filter((ev) => similarTeams.has(ev.oppAbbr)).map(getStat).filter((v) => !isNaN(v));
-              if (matchupVals.length >= 3) {
-                matchupPct = parseFloat((matchupVals.filter((v) => v >= threshold).length / matchupVals.length * 100).toFixed(1));
-                matchupValsCount = matchupVals.length;
-              }
+            // Gate: batting average must be avg or better (.240+)
+            if (hitterBa !== null && hitterBa < 0.240) {
+              if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "low_batting_avg", ba: hitterBa });
+              continue;
             }
           }
           const rawTruePct = (() => {
@@ -1632,9 +1626,7 @@ var worker_default = {
             }
             if (sport === "mlb" && hasSeasonTags) {
               const basePct = blendedPct ?? seasonPct;
-              if (softPct !== null) return (basePct + softPct) / 2;
-              if (matchupPct !== null) return (basePct + matchupPct) / 2;
-              return basePct;
+              return softPct !== null ? (basePct + softPct) / 2 : basePct;
             }
             if (sport === "nhl" && dvpFactorOut !== null) {
               const dvpAdjustedPct = Math.min(99, seasonPct * dvpFactorOut);
@@ -1657,7 +1649,6 @@ var worker_default = {
             continue;
           }
           const mlbH2H = sport === "mlb" && softPct !== null;
-          const mlbMatchupDisplay = sport === "mlb" && stat !== "strikeouts" && matchupPct !== null && !mlbH2H;
           plays.push({
             playerName: playerNameDisplay || playerName,
             playerId: info.id,
@@ -1665,10 +1656,10 @@ var worker_default = {
             playerTeam,
             position: info.position || null,
             opponent: tonightOpp,
-            oppRank: (mlbH2H || mlbMatchupDisplay) ? null : posDvpRankOut ?? rankMap[tonightOpp]?.rank ?? null,
-            oppMetricValue: mlbH2H ? parseFloat(softPct.toFixed(1)) : mlbMatchupDisplay ? parseFloat(matchupPct.toFixed(1)) : posDvpValueOut ?? rankMap[tonightOpp]?.value ?? null,
-            oppMetricLabel: mlbH2H ? `${softLabel} (${softVals.length}g)` : mlbMatchupDisplay ? `${matchupEraTier === "soft" ? "soft" : matchupEraTier === "avg" ? "avg" : "strong"} ERA pitchers (${matchupValsCount}g)` : rankMap[tonightOpp]?.label || null,
-            oppMetricUnit: (mlbH2H || mlbMatchupDisplay) ? "%" : rankMap[tonightOpp]?.unit ?? null,
+            oppRank: mlbH2H ? null : posDvpRankOut ?? rankMap[tonightOpp]?.rank ?? null,
+            oppMetricValue: mlbH2H ? parseFloat(softPct.toFixed(1)) : posDvpValueOut ?? rankMap[tonightOpp]?.value ?? null,
+            oppMetricLabel: mlbH2H ? `${softLabel} (${softVals.length}g)` : rankMap[tonightOpp]?.label || null,
+            oppMetricUnit: mlbH2H ? "%" : rankMap[tonightOpp]?.unit ?? null,
             posGroup: posGroupOut,
             posDvpRank: posDvpRankOut,
             posDvpValue: posDvpValueOut,
@@ -1701,9 +1692,9 @@ var worker_default = {
             gameMoneyline: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null : void 0,
             pitcherHand: sport === "mlb" && stat === "strikeouts" ? _pitcherHand ?? null : void 0,
             recentAvg: recentAvgOut,
-            matchupPct: matchupPct !== null ? parseFloat(matchupPct.toFixed(1)) : null,
-            matchupGames: matchupValsCount || null,
-            matchupEraTier,
+            hitterBa: hitterBa !== null ? hitterBa : void 0,
+            hitterBaTier: hitterBaTier ?? void 0,
+            hitterAbVsPitcher: sport === "mlb" && stat !== "strikeouts" ? hitterAbVsPitcher : void 0,
             hitterPitcherName: sport === "mlb" && stat !== "strikeouts" ? (sportByteam.mlb?.probables?.[tonightOpp]?.name ?? null) : void 0,
             hitterPitcherEra: sport === "mlb" && stat !== "strikeouts" ? (sportByteam.mlb?.probables?.[tonightOpp]?.era ?? null) : void 0,
             isHomeGame,
@@ -1722,7 +1713,6 @@ var worker_default = {
             ev: evPerUnit(truePct, americanOdds),
             historicalHitRate: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
             historicalGames: softVals.length,
-            blendedPctTier: sport === "mlb" && stat !== "strikeouts" ? (blendedPct ?? seasonPct) >= 65 ? "elite" : (blendedPct ?? seasonPct) >= 55 ? "good" : null : void 0,
             hitterMoneyline: sport === "mlb" && stat !== "strikeouts" ? sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null : void 0,
             gameDate
           });
