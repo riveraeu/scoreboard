@@ -1305,19 +1305,15 @@ function App() {
                             const displayRank = tonightTabPlay?.posDvpRank ?? rank;
                             const displayValue = tonightTabPlay?.posDvpValue ?? metricVal;
                             const statName = { points:"points", rebounds:"rebounds", assists:"assists", threePointers:"3-pointers" }[safeTab] || safeTab;
-                            const valueStr = displayValue != null ? ` (${displayValue})` : "";
                             const isNBAStrong = tonightTabPlay?.softPct != null;
                             const isNBAHard = !isNBAStrong && effectiveOpp && (dvpData.hardTeams?.[safeTab] || []).includes(effectiveOpp);
                             const rankColor = isNBAStrong ? "#3fb950" : isNBAHard ? "#f78166" : "#c9d1d9";
-                            const defenseDesc = posFullLabel
-                              ? `ranked <span style="color:${rankColor};font-weight:700">${ordinal(displayRank)}</span> in giving up ${statName} to ${posLabel || posFullLabel}s`
-                              : `<span style="color:${rankColor};font-weight:700">${ordinal(displayRank)}-worst</span> in this stat`;
                             const seasonAvg = avg !== "—" ? avg : null;
                             const careerHi = hi !== "—" ? hi : null;
                             return <>
                               <span style={{color:"#c9d1d9",fontWeight:600}}>{opp}</span> has the {posFullLabel
-                                ? <><span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}</span> ranked defense at giving up {statName} to the {posFullLabel} position{valueStr}</>
-                                : <><span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}-worst</span> defense in {statName} allowed{valueStr}</>
+                                ? <><span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}</span> ranked defense at giving up {statName} to the {posFullLabel} position{displayValue != null && <>, allowing <span style={{color:rankColor,fontWeight:600}}>{displayValue} per game</span></>}</>
+                                : <><span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}-worst</span> defense in {statName} allowed{displayValue != null && <> (<span style={{color:rankColor,fontWeight:600}}>{displayValue}/g</span>)</>}</>
                               }. {first} is averaging <span style={{color:"#c9d1d9",fontWeight:600}}>{seasonAvg ?? "—"} {statName}</span> over <span style={{color:"#8b949e"}}>{totalGames} games</span> this season{careerHi != null && <> with a career high of <span style={{color:"#c9d1d9",fontWeight:600}}>{careerHi}</span></>}.
                               {isOppFallback && <div style={{color:"#484f58",fontSize:10,marginTop:3}}>Showing last game vs {opp} — updates when next game is scheduled.</div>}
                             </>;
