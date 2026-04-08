@@ -107,7 +107,7 @@ const MOCK_PLAYS = [
   // 3/3 strong: pitcher 26.5% (✓>25), opp 27.3% vs RHP (✓>23), total 7.5 / ML -145 (✓)
   {
     playerName:"Dylan Cease", playerId:"34943", sport:"mlb", playerTeam:"SD", position:"SP",
-    opponent:"CLE", oppRank:null, oppMetricValue:null, oppMetricLabel:"vs high-K lineups", oppMetricUnit:"%",
+    opponent:"CLE", oppRank:null, oppMetricValue:null, oppMetricLabel:"high-K lineups", oppMetricUnit:"%",
     stat:"strikeouts", threshold:6, kalshiPct:71, americanOdds:-245,
     seasonPct:74.0, blendGames:31, pct25:71.0, pct25Games:28, pct26:83.3, pct26Games:6,
     softPct:80.0, softGames:10, truePct:77.0, edge:6.0,
@@ -119,7 +119,7 @@ const MOCK_PLAYS = [
   // 3/3 strong, no strong-matchup history — truePct = seasonPct only
   {
     playerName:"Corbin Burnes", playerId:"39878", sport:"mlb", playerTeam:"BAL", position:"SP",
-    opponent:"OAK", oppRank:null, oppMetricValue:null, oppMetricLabel:"vs high-K lineups", oppMetricUnit:"%",
+    opponent:"OAK", oppRank:null, oppMetricValue:null, oppMetricLabel:"high-K lineups", oppMetricUnit:"%",
     stat:"strikeouts", threshold:7, kalshiPct:71, americanOdds:-245,
     seasonPct:76.0, blendGames:29, pct25:75.0, pct25Games:26, pct26:78.0, pct26Games:5,
     softPct:null, softGames:0, truePct:76.0, edge:5.0,
@@ -131,7 +131,7 @@ const MOCK_PLAYS = [
   // 2/3 strong: pitcher ✓, opp K 22.1% ✗ (below 23%), game line ✓ — still qualifies
   {
     playerName:"Zack Wheeler", playerId:"31267", sport:"mlb", playerTeam:"PHI", position:"SP",
-    opponent:"MIA", oppRank:null, oppMetricValue:null, oppMetricLabel:"vs high-K lineups", oppMetricUnit:"%",
+    opponent:"MIA", oppRank:null, oppMetricValue:null, oppMetricLabel:"high-K lineups", oppMetricUnit:"%",
     stat:"strikeouts", threshold:7, kalshiPct:72, americanOdds:-257,
     seasonPct:73.0, blendGames:33, pct25:72.0, pct25Games:30, pct26:75.0, pct26Games:4,
     softPct:78.0, softGames:9, truePct:75.5, edge:3.5,
@@ -143,7 +143,7 @@ const MOCK_PLAYS = [
   // 2/3 strong: pitcher ✓, no lineup data (lkp null → ✗), game line ✓ — LH pitcher, suppressing park
   {
     playerName:"Logan Webb", playerId:"41216", sport:"mlb", playerTeam:"SF", position:"SP",
-    opponent:"COL", oppRank:null, oppMetricValue:null, oppMetricLabel:"vs high-K lineups", oppMetricUnit:"%",
+    opponent:"COL", oppRank:null, oppMetricValue:null, oppMetricLabel:"high-K lineups", oppMetricUnit:"%",
     stat:"strikeouts", threshold:5, kalshiPct:72, americanOdds:-257,
     seasonPct:77.0, blendGames:25, pct25:76.0, pct25Games:22, pct26:80.0, pct26Games:5,
     softPct:79.0, softGames:8, truePct:78.0, edge:6.0,
@@ -1389,7 +1389,7 @@ function App() {
                     })();
                     const softGamesLabel = isMLB
                       ? (_lkpBucketLabel
-                          ? (dvp ? `vs ${_lkpBucketLabel}-K lineups${_pitcherHandLabel} (${dvp.wCount}/${wTotal}g)` : "")
+                          ? (dvp ? `${_lkpBucketLabel}-K lineups${_pitcherHandLabel} (${dvp.wCount}/${wTotal}g)` : "")
                           : (dvp ? `vs ${mlbH2HOpp} (${dvp.wCount}/${wTotal}g)` : ""))
                       : (tonightPlay?.softPct != null
                           ? (tonightPlay.opponent ? `vs ${tonightPlay.opponent}${tonightPlay.softGames ? ` (${tonightPlay.softGames}g)` : ""}` : (tonightPlay.softGames ? `${tonightPlay.softGames}g` : ""))
