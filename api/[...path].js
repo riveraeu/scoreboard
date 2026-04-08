@@ -467,15 +467,11 @@ var worker_default = {
           testWriteErr = String(e);
         }
         const testRead = await CACHE2.get("dvp:write-test").catch((e) => `READ_ERR:${e}`);
-        const tableResult = await buildAllNbaDvpTables(null);
-        if (!tableResult) return errorResponse("Failed to build DVP table", 500);
+        const tableResult = await buildNbaDvpFromBettingPros(CACHE2);
+        if (!tableResult) return errorResponse("BettingPros fetch failed — check logs", 500);
         const serialized = JSON.stringify(tableResult);
-        const upUrl = env.UPSTASH_REDIS_REST_URL;
-        const upAuth = `Bearer ${env.UPSTASH_REDIS_REST_TOKEN}`;
-        const writeResp = await fetch(upUrl, { method: "POST", headers: { Authorization: upAuth, "Content-Type": "application/json" }, body: JSON.stringify(["SET", "dvp:nba:all-positions", serialized, "EX", 86400]) }).then((r) => r.json()).catch((e) => ({ err: String(e) }));
-        const readResp = await fetch(upUrl, { method: "POST", headers: { Authorization: upAuth, "Content-Type": "application/json" }, body: JSON.stringify(["GET", "dvp:nba:all-positions"]) }).then((r) => r.json()).catch((e) => ({ err: String(e) }));
-        const positions = Object.keys(tableResult).filter((k) => k !== "builtAt");
-        return jsonResponse({ ok: true, positions, builtAt: tableResult.builtAt, payloadBytes: serialized.length, writeResp, readResultLen: readResp.result?.length ?? null, testRead });
+        const positions = Object.keys(tableResult).filter((k) => k !== "builtAt" && k !== "source");
+        return jsonResponse({ ok: true, positions, builtAt: tableResult.builtAt, source: tableResult.source, payloadBytes: serialized.length, testWriteErr, testRead });
       } else if (path === "dvp") {
         const sport = params.get("sport") || "basketball/nba";
         const athleteId = params.get("athleteId");
@@ -1281,10 +1277,14 @@ var worker_default = {
           const vals = Object.values(sd.rankMap).map((r) => r.value).filter((v) => v > 0);
           if (vals.length >= 15) leagueAvgCache[key] = vals.reduce((a, b) => a + b, 0) / vals.length;
         }
-        const [allPositionsDvp, nbaPlayerPositions] = await Promise.all([
+        let [allPositionsDvp, nbaPlayerPositions] = await Promise.all([
           CACHE2 ? CACHE2.get("dvp:nba:all-positions", "json").catch(() => null) : null,
           CACHE2 ? CACHE2.get("dvp:nba:player-positions", "json").catch(() => null) : null
         ]);
+        // On cache miss, build BettingPros DVP on-demand (background for next request)
+        if (!allPositionsDvp && CACHE2) {
+          allPositionsDvp = await buildNbaDvpFromBettingPros(CACHE2).catch(() => null);
+        }
         const NBA_POS_MAP = {
           PG: "PG",
           "PG/SG": "PG",
