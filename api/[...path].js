@@ -874,7 +874,7 @@ var worker_default = {
         const TEAM_NORM = {
           nba: { GS: "GSW", SA: "SAS", NY: "NYK", NJ: "BKN", NO: "NOP", PHO: "PHX" },
           nhl: { NJ: "NJD", TB: "TBL", LA: "LAK", SJ: "SJS", VGK: "VGK" },
-          mlb: { KCR: "KC", SFG: "SF", SDP: "SD", TBR: "TB", CHW: "CWS", AZ: "ARI", KC: "KC", SD: "SD", SF: "SF", TB: "TB" },
+          mlb: { KCR: "KC", SFG: "SF", SDP: "SD", TBR: "TB", CHW: "CWS", AZ: "ARI", KC: "KC", SD: "SD", SF: "SF", TB: "TB", OAK: "ATH", WSN: "WSH", WAS: "WSH" },
           nfl: { LA: "LAR" }
         };
         const normTeam = /* @__PURE__ */ __name((sport, a) => TEAM_NORM[sport]?.[a] || a, "normTeam");
@@ -1025,7 +1025,7 @@ var worker_default = {
         // Fetch game start times + NBA player availability for tonight's games
         const todayDateStr = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10).replace(/-/g, "");
         let [gameTimes, nbaPlayerStatus] = await Promise.all([
-          CACHE2 ? CACHE2.get(`gameTimes:${todayDateStr}`, "json").catch(() => null) : null,
+          CACHE2 ? CACHE2.get(`gameTimes:v2:${todayDateStr}`, "json").catch(() => null) : null,
           CACHE2 ? CACHE2.get(`nbaStatus:${todayDateStr}`, "json").catch(() => null) : null,
         ]);
         const needGameTimes = !gameTimes;
@@ -1045,10 +1045,10 @@ var worker_default = {
             for (const { sport, events } of sbResults) {
               for (const ev of events) {
                 const abbrs = (ev.competitions?.[0]?.competitors || []).map(c => c.team?.abbreviation).filter(Boolean);
-                if (ev.date && abbrs.length === 2) for (const abbr of abbrs) gameTimes[`${sport}:${abbr}`] = ev.date;
+                if (ev.date && abbrs.length === 2) for (const abbr of abbrs) gameTimes[`${sport}:${normTeam(sport, abbr)}`] = ev.date;
               }
             }
-            if (CACHE2 && Object.keys(gameTimes).length > 0) await CACHE2.put(`gameTimes:${todayDateStr}`, JSON.stringify(gameTimes), { expirationTtl: 600 }).catch(() => {});
+            if (CACHE2 && Object.keys(gameTimes).length > 0) await CACHE2.put(`gameTimes:v2:${todayDateStr}`, JSON.stringify(gameTimes), { expirationTtl: 600 }).catch(() => {});
           }
           if (needNbaStatus) {
             const nbaEvents = sbResults.find(r => r.sport === "nba")?.events || [];
