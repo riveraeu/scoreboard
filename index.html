@@ -1893,7 +1893,7 @@ function App() {
                               const baTier = play.hitterBaTier;
                               const baVal = play.hitterBa ? `.${Math.round(play.hitterBa * 1000).toString().padStart(3,"0")}` : null;
                               const baTierLabel = baTier === "elite" ? "elite" : baTier === "good" ? "good" : baTier === "avg" ? "avg" : null;
-                              const baEl = baTierLabel && baVal ? <> {first} has {baTierLabel === "avg" ? "an" : "a"} <span style={{color: baTier==="elite"?"#58a6ff":baTier==="good"?"#3fb950":"#8b949e",fontWeight:600}}>{baTierLabel} BA of {baVal}</span> for '25+'26 seasons</> : null;
+                              const baEl = baTierLabel && baVal ? <> {first} has {baTierLabel === "avg" ? "an" : "a"} {baTierLabel} BA of <span style={{color: baTier==="elite"?"#58a6ff":baTier==="good"?"#3fb950":"#8b949e",fontWeight:600}}>{baVal}</span> for '25+'26 seasons</> : null;
                               const ml = play.hitterMoneyline;
                               const teamEl = ml != null ? <><span style={{color:"#c9d1d9",fontWeight:600}}>{play.playerTeam}</span> is favored at <span style={{color:"#3fb950",fontWeight:600}}>{ml > 0 ? `+${ml}` : ml}</span></> : null;
                               return <>
