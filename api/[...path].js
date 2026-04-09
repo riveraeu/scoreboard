@@ -2155,11 +2155,12 @@ async function buildLineupKPct(mlbSched) {
         "https://statsapi.mlb.com/api/v1/teams/stats?season=2026&group=batting&gameType=R&sportId=1",
         { headers: { "User-Agent": "Mozilla/5.0" } }
       ).then((r) => r.ok ? r.json() : {}).catch(() => ({}));
-      for (const ts of teamStatsRes.teams || []) {
-        const abbr = MLB_ID_TO_ABBR[ts.team?.id];
+      // Response shape: { stats: [{ splits: [{ team: { id }, stat: { strikeOuts, plateAppearances } }] }] }
+      for (const split of teamStatsRes.stats?.[0]?.splits || []) {
+        const abbr = MLB_ID_TO_ABBR[split.team?.id];
         if (abbr && teamsWithNoData.includes(abbr)) {
-          const so = ts.stat?.strikeOuts || 0;
-          const pa = ts.stat?.plateAppearances || 0;
+          const so = split.stat?.strikeOuts || 0;
+          const pa = split.stat?.plateAppearances || 0;
           if (pa >= 50) lineupKPct[abbr] = parseFloat((so / pa * 100).toFixed(1));
         }
       }
