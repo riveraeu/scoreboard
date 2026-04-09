@@ -1086,14 +1086,14 @@ function App() {
                         };
                         return <React.Fragment>
                           <div style={{display:"flex",alignItems:"center",gap:6,padding:"3px 12px 4px",marginBottom:2}}>
-                            <div style={{width:140,color:"#484f58",fontSize:10}}>Player</div>
+                            <div style={{flex:1,minWidth:80,color:"#484f58",fontSize:10}}>Player</div>
                             <div style={{width:28,color:"#484f58",fontSize:10,textAlign:"right",flexShrink:0}}>Line</div>
                             <div style={{width:38,color:"#e3b341",fontSize:10,textAlign:"right",flexShrink:0,fontWeight:600}}>True%</div>
                             <div style={{width:38,color:"#484f58",fontSize:10,textAlign:"right",flexShrink:0}}>Kalshi</div>
                             <div style={{width:34,color:"#484f58",fontSize:10,textAlign:"right",flexShrink:0}}>Edge</div>
                             {xcols.map(c => <div key={c.k} style={{width:c.w,color:"#484f58",fontSize:10,textAlign:"right",flexShrink:0}}>{c.l}</div>)}
                             <div style={{width:48,color:"#484f58",fontSize:10,textAlign:"center",flexShrink:0}}>Result</div>
-                            <div style={{color:"#484f58",fontSize:10,flexShrink:0,minWidth:36,textAlign:"right"}}>Opp</div>
+                            <div style={{width:36,color:"#484f58",fontSize:10,textAlign:"right",flexShrink:0}}>Opp</div>
                           </div>
                           <div style={{background:"#0d1117",borderRadius:8,overflow:"hidden"}}>
                             {rows.map((m, i) => {
@@ -1121,14 +1121,14 @@ function App() {
                                 <div key={`${m.playerName}|${m.threshold}|${i}`} style={{
                                   display:"flex",alignItems:"center",gap:6,padding:"6px 12px",
                                   borderTop: i>0?"1px solid #161b22":"none"}}>
-                                  <div style={{width:140,color:m.qualified?"#c9d1d9":"#6e7681",fontSize:12,fontWeight:m.qualified?600:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={m.playerName}>{m.playerNameDisplay||m.playerName}</div>
+                                  <div style={{flex:1,minWidth:80,color:m.qualified?"#c9d1d9":"#6e7681",fontSize:12,fontWeight:m.qualified?600:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={m.playerName}>{m.playerNameDisplay||m.playerName}</div>
                                   <div style={{width:28,color:"#8b949e",fontSize:11,textAlign:"right",flexShrink:0}}>{m.threshold}+</div>
                                   <div style={{width:38,fontSize:11,textAlign:"right",flexShrink:0,color:truePct!=null?"#e3b341":"#21262d",fontWeight:truePct!=null?600:400}}>{truePct!=null?`${truePct}%`:"—"}</div>
                                   <div style={{width:38,color:"#c9d1d9",fontSize:11,textAlign:"right",flexShrink:0}}>{m.kalshiPct}%</div>
                                   <div style={{width:34,fontSize:11,textAlign:"right",flexShrink:0,color:edge!=null&&edge>=3?"#3fb950":edge!=null&&edge<0?"#f78166":"#8b949e"}}>{edge!=null?(edge>=0?`+${edge.toFixed(1)}`:`${edge.toFixed(1)}`)+"%" :"—"}</div>
                                   {xcols.map(c => <div key={c.k} style={{width:c.w,fontSize:11,textAlign:"right",flexShrink:0}}>{xcell(m,c.k)}</div>)}
                                   <div style={{width:48,fontSize:11,textAlign:"center",flexShrink:0}}>{resultCell}</div>
-                                  <div style={{color:"#484f58",fontSize:10,flexShrink:0,minWidth:36,textAlign:"right"}}>{m.opponent||""}</div>
+                                  <div style={{width:36,color:"#484f58",fontSize:10,flexShrink:0,textAlign:"right"}}>{m.opponent||""}</div>
                                 </div>
                               );
                             })}
