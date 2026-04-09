@@ -1121,7 +1121,7 @@ function App() {
                                   <div style={{flex:2,minWidth:0,color:m.qualified?"#c9d1d9":"#6e7681",fontSize:12,fontWeight:m.qualified?600:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={m.playerName}>{m.playerNameDisplay||m.playerName}</div>
                                   <div style={{flex:1,color:"#8b949e",fontSize:11,textAlign:"right"}}>{m.threshold}+</div>
                                   <div style={{flex:1,fontSize:11,textAlign:"right",color:truePct!=null?"#e3b341":"#21262d",fontWeight:truePct!=null?600:400}}>{truePct!=null?`${truePct}%`:"—"}</div>
-                                  <div style={{flex:1,color:"#c9d1d9",fontSize:11,textAlign:"right"}}>{m.kalshiPct}%</div>
+                                  <div style={{flex:1,fontSize:11,textAlign:"right"}}><span style={{color:"#c9d1d9"}}>{m.kalshiPct}%</span>{m.kalshiSpread!=null&&<span style={{color:"#484f58",fontSize:9,marginLeft:2}}>{m.kalshiSpread}¢</span>}</div>
                                   <div style={{flex:1,fontSize:11,textAlign:"right",color:edge!=null&&edge>=3?"#3fb950":edge!=null&&edge<0?"#f78166":"#8b949e"}}>{edge!=null?(edge>=0?`+${edge.toFixed(1)}`:`${edge.toFixed(1)}`)+"%" :"—"}</div>
                                   {xcols.map(c => <div key={c.k} style={{flex:1,fontSize:11,textAlign:"right"}}>{xcell(m,c.k)}</div>)}
                                   <div style={{flex:1,fontSize:11,textAlign:"center"}}>{resultCell}</div>
@@ -2061,7 +2061,8 @@ function App() {
                       <div style={{width:`${play.kalshiPct}%`,background:"#6e40c9",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:play.kalshiPct>0?3:0}}/>
                     </div>
                     <div style={{color:"#6e40c9",fontSize:11,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{play.kalshiPct}%</div>
-                    <div style={{color:"#6e40c9",fontSize:10,width:38,flexShrink:0}}>({oddsStr})</div>
+                    <div style={{color:"#6e40c9",fontSize:10,flexShrink:0}}>({oddsStr})</div>
+                    {play.kalshiSpread != null && <div style={{color:"#484f58",fontSize:10,flexShrink:0}}>{play.kalshiSpread}¢ spd</div>}
                   </div>
                   {/* Tier / unit sizing row */}
                   {(() => {

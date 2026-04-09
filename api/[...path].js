@@ -953,11 +953,54 @@ var worker_default = {
               const dy = dateSeg.slice(5, 7);
               if (mo) gameDate = `${yr}-${mo}-${dy}`;
             }
-            qualifyingMarkets.push({ playerName, playerNameDisplay, sport, stat, col, threshold, kalshiPct: pct, americanOdds, kalshiVolume: volume, gameTeam1, gameTeam2, kalshiPlayerTeam, gameDate });
+            const yesBid = parseFloat(m.yes_bid_dollars) || 0;
+            const yesAskSize = parseFloat(m.yes_ask_size_fp) || 0;
+            const kalshiSpread = yesAsk > 0 && yesBid > 0 ? Math.round((yesAsk - yesBid) * 100) : null;
+            qualifyingMarkets.push({ playerName, playerNameDisplay, sport, stat, col, threshold, kalshiPct: pct, americanOdds, kalshiVolume: volume, gameTeam1, gameTeam2, kalshiPlayerTeam, gameDate, kalshiSpread, _ticker: m.ticker, _yesAsk: yesAsk, _yesBid: yesBid, _yesAskSize: yesAskSize });
           }
         }
         if (qualifyingMarkets.length === 0) {
           return jsonResponse({ plays: [], note: "no qualifying kalshi markets (implied pct >= 70)" });
+        }
+        // Blended fill price: walk the orderbook for unit-sized positions so kalshiPct reflects
+        // true cost, not just top-of-book ask. 1 unit = $100 at risk; tiers: 70-83% = 1u, 83-93% = 3u, 93%+ = 5u.
+        const UNIT_DOLLARS = 100;
+        const getContracts = (pct, ask) => ask > 0 ? Math.ceil(UNIT_DOLLARS * (pct >= 93 ? 5 : pct >= 83 ? 3 : 1) / ask) : 0;
+        const thinMarkets = qualifyingMarkets.filter((m) => m._ticker && getContracts(m.kalshiPct, m._yesAsk) > m._yesAskSize);
+        const obMap = {};
+        if (thinMarkets.length > 0) {
+          const obFetches = await Promise.all(thinMarkets.map((m) => fetch(`https://api.elections.kalshi.com/trade-api/v2/markets/${m._ticker}/orderbook`, { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : null).catch(() => null)));
+          for (let i = 0; i < thinMarkets.length; i++) {
+            if (obFetches[i]?.orderbook_fp) obMap[thinMarkets[i]._ticker] = obFetches[i].orderbook_fp;
+          }
+        }
+        for (const m of qualifyingMarkets) {
+          const contracts = getContracts(m.kalshiPct, m._yesAsk);
+          if (contracts <= 0 || m._yesAskSize >= contracts) continue;
+          const book = obMap[m._ticker];
+          if (!book) continue;
+          // no_dollars are NO bids sorted ascending; YES ask at level = 1 - no_price
+          // Walk highest no_price first (= lowest YES ask first) to fill the position
+          const levels = (book.no_dollars || []).map(([p, q]) => [parseFloat(p), parseFloat(q)]).sort((a, b) => b[0] - a[0]);
+          let filled = 0, totalCost = 0;
+          for (const [noPrice, qty] of levels) {
+            if (filled >= contracts) break;
+            const yesAsk = 1 - noPrice;
+            if (yesAsk >= 1) continue;
+            const take = Math.min(qty, contracts - filled);
+            totalCost += take * yesAsk;
+            filled += take;
+          }
+          if (filled === 0) continue;
+          if (filled < contracts && levels.length > 0) {
+            // Book exhausted; extend at worst quoted price
+            totalCost += (contracts - filled) * Math.min(0.99, 1 - levels[levels.length - 1][0]);
+          }
+          const blendedPct = Math.round((totalCost / contracts) * 100);
+          if (blendedPct > m.kalshiPct && blendedPct <= 97) {
+            m.kalshiPct = blendedPct;
+            m.americanOdds = blendedPct >= 50 ? Math.round(-(blendedPct / (100 - blendedPct)) * 100) : Math.round((100 - blendedPct) / blendedPct * 100);
+          }
         }
         const sportsNeeded = new Set(qualifyingMarkets.map((m) => m.sport));
         const sportByteam = {};
@@ -1423,7 +1466,7 @@ var worker_default = {
         }
         const plays = [];
         const dropped = [];
-        for (const { playerName, playerNameDisplay, sport, stat, col, threshold, kalshiPct, americanOdds, kalshiVolume, gameTeam1, gameTeam2, kalshiPlayerTeam, gameDate } of loopMarkets) {
+        for (const { playerName, playerNameDisplay, sport, stat, col, threshold, kalshiPct, americanOdds, kalshiVolume, kalshiSpread, gameTeam1, gameTeam2, kalshiPlayerTeam, gameDate } of loopMarkets) {
           const key = `${sport}|${playerName}`;
           const info = playerInfoMap[key];
           const gl = playerGamelogs[key];
@@ -1799,6 +1842,7 @@ var worker_default = {
             calibFactor,
             calibN: calib?.n ?? null,
             kalshiVolume,
+            kalshiSpread,
             lowVolume,
             edge: parseFloat(edge.toFixed(1)),
             kelly: kellyFraction(truePct, americanOdds),
