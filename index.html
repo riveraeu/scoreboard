@@ -1023,11 +1023,15 @@ function App() {
                         <span style={{color:"#484f58",fontSize:11,marginLeft:"auto"}}>{rows.length} markets · <span style={{color:"#3fb950"}}>{qualCount}</span> play{qualCount!==1?"s":""}</span>
                       </div>
                       <div style={{display:"flex",alignItems:"center",gap:6,padding:"3px 12px 4px",marginBottom:2}}>
-                        <div style={{width:160,color:"#484f58",fontSize:10}}>Player</div>
-                        <div style={{width:30,color:"#484f58",fontSize:10,textAlign:"right",flexShrink:0}}>Line</div>
+                        <div style={{width:140,color:"#484f58",fontSize:10}}>Player</div>
+                        <div style={{width:28,color:"#484f58",fontSize:10,textAlign:"right",flexShrink:0}}>Line</div>
                         <div style={{width:38,color:"#484f58",fontSize:10,textAlign:"right",flexShrink:0}}>Kalshi</div>
+                        <div style={{width:38,color:"#484f58",fontSize:10,textAlign:"right",flexShrink:0}}>True</div>
+                        <div style={{width:44,color:"#484f58",fontSize:10,textAlign:"right",flexShrink:0}}>Matchup</div>
+                        <div style={{width:40,color:"#484f58",fontSize:10,textAlign:"right",flexShrink:0}}>Season</div>
+                        <div style={{width:34,color:"#484f58",fontSize:10,textAlign:"right",flexShrink:0}}>Edge</div>
                         <div style={{flex:1,paddingLeft:8,color:"#484f58",fontSize:10}}>Status</div>
-                        <div style={{color:"#484f58",fontSize:10,flexShrink:0,minWidth:40}}>Opp</div>
+                        <div style={{color:"#484f58",fontSize:10,flexShrink:0,minWidth:36,textAlign:"right"}}>Opp</div>
                       </div>
                       <div style={{background:"#0d1117",borderRadius:8,overflow:"hidden"}}>
                         {rows.map((m, i) => {
@@ -1041,19 +1045,30 @@ function App() {
                             : m.reason === "pitcher_era_too_low" && m.era != null
                             ? ` · ERA ${parseFloat(m.era).toFixed(2)}`
                             : "";
+                          const truePct = m.truePct ?? null;
+                          const matchupPct = m.softPct ?? m.historicalHitRate ?? null;
+                          const seasonPct = m.seasonPct ?? null;
+                          const edge = m.edge ?? null;
+                          const numCol = (val, suffix="") => val != null
+                            ? <span style={{color:"#8b949e"}}>{val}{suffix}</span>
+                            : <span style={{color:"#21262d"}}>—</span>;
                           return (
                             <div key={`${m.playerName}|${m.threshold}|${i}`} style={{
                               display:"flex",alignItems:"center",gap:6,padding:"6px 12px",
                               borderTop: i>0?"1px solid #161b22":"none"}}>
-                              <div style={{width:160,color:m.qualified?"#c9d1d9":"#6e7681",fontSize:12,fontWeight:m.qualified?600:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={m.playerName}>{m.playerNameDisplay||m.playerName}</div>
-                              <div style={{width:30,color:"#8b949e",fontSize:11,textAlign:"right",flexShrink:0}}>{m.threshold}+</div>
+                              <div style={{width:140,color:m.qualified?"#c9d1d9":"#6e7681",fontSize:12,fontWeight:m.qualified?600:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={m.playerName}>{m.playerNameDisplay||m.playerName}</div>
+                              <div style={{width:28,color:"#8b949e",fontSize:11,textAlign:"right",flexShrink:0}}>{m.threshold}+</div>
                               <div style={{width:38,color:"#c9d1d9",fontSize:11,textAlign:"right",flexShrink:0}}>{m.kalshiPct}%</div>
+                              <div style={{width:38,fontSize:11,textAlign:"right",flexShrink:0}}>{numCol(truePct,"%")}</div>
+                              <div style={{width:44,fontSize:11,textAlign:"right",flexShrink:0}}>{numCol(matchupPct != null ? Math.round(matchupPct) : null,"%")}</div>
+                              <div style={{width:40,fontSize:11,textAlign:"right",flexShrink:0}}>{numCol(seasonPct != null ? Math.round(seasonPct) : null,"%")}</div>
+                              <div style={{width:34,fontSize:11,textAlign:"right",flexShrink:0,color:edge!=null&&edge>=3?"#3fb950":edge!=null?"#f78166":"#21262d"}}>{edge!=null?`+${edge.toFixed(1)}%`:"—"}</div>
                               <div style={{flex:1,paddingLeft:8}}>
                                 {m.qualified
-                                  ? <span style={{background:"rgba(63,185,80,0.15)",color:"#3fb950",borderRadius:4,padding:"1px 7px",fontSize:10,fontWeight:700}}>PLAY +{m.edge?.toFixed(1)}%</span>
+                                  ? <span style={{background:"rgba(63,185,80,0.15)",color:"#3fb950",borderRadius:4,padding:"1px 7px",fontSize:10,fontWeight:700}}>PLAY</span>
                                   : <span style={{color:"#484f58",fontSize:10}}>{reasonText}{detail}</span>}
                               </div>
-                              {m.opponent && <div style={{color:"#484f58",fontSize:10,flexShrink:0}}>vs {m.opponent}</div>}
+                              <div style={{color:"#484f58",fontSize:10,flexShrink:0,minWidth:36,textAlign:"right"}}>{m.opponent||""}</div>
                             </div>
                           );
                         })}
