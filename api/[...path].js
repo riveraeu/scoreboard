@@ -1128,30 +1128,33 @@ var worker_default = {
             STAT_SOFT[`nfl|${st}`] = { softTeams, rankMap };
           }
         }
-        const preFilteredMarkets = qualifyingMarkets.filter((m) => {
+        const preFilteredMarkets = [];
+        const preDropped = [];
+        for (const m of qualifyingMarkets) {
           const softData = STAT_SOFT[`${m.sport}|${m.stat}`];
-          if (!softData) return false;
+          if (!softData) { preDropped.push({ ...m, reason: "no_soft_data" }); continue; }
           if (m.sport === "mlb") {
-            if (!m.gameTeam1 || !m.gameTeam2) return false;
-            if (m.stat === "strikeouts") {
-              return true;
-            }
+            if (!m.gameTeam1 || !m.gameTeam2) { preDropped.push({ ...m, reason: "no_opp" }); continue; }
+            if (m.stat === "strikeouts") { preFilteredMarkets.push(m); continue; }
             // Require a known probable pitcher with ERA data for hitters
             const playerTeam2 = m.kalshiPlayerTeam;
-            if (!playerTeam2) return false;
+            if (!playerTeam2) { preDropped.push({ ...m, reason: "no_opp" }); continue; }
             const opp2 = m.gameTeam1 === playerTeam2 ? m.gameTeam2 : m.gameTeam2 === playerTeam2 ? m.gameTeam1 : null;
-            if (!opp2) return false;
+            if (!opp2) { preDropped.push({ ...m, reason: "no_opp" }); continue; }
             const pitcherEra = sportByteam.mlb?.probables?.[opp2]?.era;
-            if (pitcherEra != null && !isNaN(pitcherEra)) return pitcherEra >= 4;
-            return false;
+            if (pitcherEra != null && !isNaN(pitcherEra) && pitcherEra >= 4) { preFilteredMarkets.push(m); }
+            else { preDropped.push({ ...m, reason: "pitcher_era_too_low", era: pitcherEra ?? null, opponent: opp2 }); }
+            continue;
           }
-          if (m.sport === "nhl") return true;
+          if (m.sport === "nhl") { preFilteredMarkets.push(m); continue; }
+          // NBA (and others)
           const playerTeam = m.kalshiPlayerTeam;
-          if (!playerTeam || !m.gameTeam1 || !m.gameTeam2) return true;
+          if (!playerTeam || !m.gameTeam1 || !m.gameTeam2) { preFilteredMarkets.push(m); continue; }
           const opp = m.gameTeam1 === playerTeam ? m.gameTeam2 : m.gameTeam2 === playerTeam ? m.gameTeam1 : null;
-          if (!opp) return false;
-          return softData.softTeams.has(opp);
-        });
+          if (!opp) { preDropped.push({ ...m, reason: "no_opp" }); continue; }
+          if (softData.softTeams.has(opp)) { preFilteredMarkets.push(m); }
+          else { preDropped.push({ ...m, reason: "opp_not_soft", opponent: opp }); }
+        }
         const uniquePlayerKeys = [...new Map(preFilteredMarkets.map((m) => [`${m.sport}|${m.playerName}`, m])).keys()];
         const playerInfoMap = {};
         const keysNeedingInfo = [];
@@ -1820,7 +1823,7 @@ var worker_default = {
           return ta < tb ? -1 : ta > tb ? 1 : b.edge - a.edge;
         });
         if (isDebug) {
-          return jsonResponse({ plays, dropped, gamelogErrors, pInfoErrors, preFilteredCount: preFilteredMarkets.length, qualifyingCount: qualifyingMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, infoCacheHits: uniquePlayerKeys.length - keysNeedingInfo.length, gamelogCacheHits: keysForGamelog.length - keysNeedingGamelog.length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null }, true);
+          return jsonResponse({ plays, dropped: [...dropped, ...preDropped], gamelogErrors, pInfoErrors, preFilteredCount: preFilteredMarkets.length, qualifyingCount: qualifyingMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, infoCacheHits: uniquePlayerKeys.length - keysNeedingInfo.length, gamelogCacheHits: keysForGamelog.length - keysNeedingGamelog.length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null }, true);
         }
         const playsResult = { plays, qualifyingCount: qualifyingMarkets.length, preFilteredCount: preFilteredMarkets.length };
         const sportsInPlays = new Set(plays.map((p) => p.sport));

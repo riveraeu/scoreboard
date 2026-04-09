@@ -1038,6 +1038,8 @@ function App() {
                             ? ` · .${String(Math.round(m.ba*1000)).padStart(3,"0")}`
                             : m.reason === "insufficient_ab_vs_pitcher" && m.abVsTeam != null
                             ? ` · ${m.abVsTeam} AB`
+                            : m.reason === "pitcher_era_too_low" && m.era != null
+                            ? ` · ERA ${parseFloat(m.era).toFixed(2)}`
                             : "";
                           return (
                             <div key={`${m.playerName}|${m.threshold}|${i}`} style={{
