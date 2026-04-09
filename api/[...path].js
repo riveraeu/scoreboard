@@ -1467,9 +1467,15 @@ var worker_default = {
           if (sport === "nba") {
             if (!nbaEffectiveSoftTeams?.has(tonightOpp)) {
               if (isDebug) {
+                const _osGl = playerGamelogs[`${sport}|${playerName}`];
                 const _osCol = playerColCache[`${sport}|${playerName}|${col}`];
                 const _osSeason = _osCol && _osCol.allVals.length > 0 ? parseFloat((_osCol.allVals.filter((v) => v >= threshold).length / _osCol.allVals.length * 100).toFixed(1)) : null;
-                dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "opp_not_soft", opponent: tonightOpp, dvpBased: !!nbaDvpSoftTeams, seasonPct: _osSeason });
+                const _osTruePct = _osSeason;
+                const _osEdge = _osSeason != null ? parseFloat((_osSeason - kalshiPct).toFixed(1)) : null;
+                const _osDvpEntry = nbaPos && allPositionsDvp?.[nbaPos]?.rankings?.[stat] ? allPositionsDvp[nbaPos].rankings[stat].find((t) => t.abbr === tonightOpp) : null;
+                const _osDvpRank = _osDvpEntry?.rank ?? null;
+                const _osDebug = !_osCol ? (!_osGl ? "no_gl" : `col_miss:${col}|got:${(_osGl.ul||[]).join(",")}`) : null;
+                dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "opp_not_soft", opponent: tonightOpp, dvpBased: !!nbaDvpSoftTeams, seasonPct: _osSeason, truePct: _osTruePct, edge: _osEdge, posDvpRank: _osDvpRank, posGroup: nbaPos, _debug: _osDebug });
               }
               continue;
             }
@@ -1491,10 +1497,10 @@ var worker_default = {
           const hasSeasonTags = sport === "mlb" && gl.events.length > 0 && gl.events[0].season !== void 0;
           const vals26 = hasSeasonTags ? gl.events.filter((ev) => ev.season === 2026).map(getStat).filter((v) => !isNaN(v)) : [];
           const vals25 = hasSeasonTags ? gl.events.filter((ev) => ev.season === 2025).map(getStat).filter((v) => !isNaN(v)) : [];
-          const pct26 = vals26.length >= 1 ? vals26.filter((v) => v >= threshold).length / vals26.length * 100 : null;
-          const pct25 = vals25.length >= 1 ? vals25.filter((v) => v >= threshold).length / vals25.length * 100 : null;
+          const pct26 = vals26.length >= 5 ? vals26.filter((v) => v >= threshold).length / vals26.length * 100 : null;
+          const pct25 = vals25.length >= 5 ? vals25.filter((v) => v >= threshold).length / vals25.length * 100 : null;
           const blendVals = [...vals25, ...vals26];
-          const blendedPct = blendVals.length >= 1 ? blendVals.filter((v) => v >= threshold).length / blendVals.length * 100 : null;
+          const blendedPct = blendVals.length >= 5 ? blendVals.filter((v) => v >= threshold).length / blendVals.length * 100 : null;
           let isStrongMatchup = false, pkpMeets = false, lkpMeets = false, gameLineMeets = false;
           let _pitcherHand = null;
           if (sport === "mlb" && stat === "strikeouts") {
@@ -1535,7 +1541,15 @@ var worker_default = {
             softUnit = "%";
           } else if (sport === "mlb") {
             const pitcherName = pitcherGamelogs[tonightOpp]?.name || null;
-            softVals = gl.events.filter((ev) => ev.oppAbbr === tonightOpp).map(getStat).filter((v) => !isNaN(v));
+            const _pitcherGl = pitcherGamelogs[tonightOpp]?.gl || null;
+            const _pitcherDates = _pitcherGl ? new Set(_pitcherGl.events.filter((ev) => ev.oppAbbr === playerTeam).map((ev) => ev.date)) : null;
+            if (_pitcherDates && _pitcherDates.size > 0) {
+              // Pitcher-specific: all career games where this exact pitcher faced the batter's team
+              softVals = gl.events.filter((ev) => _pitcherDates.has(ev.date)).map(getStat).filter((v) => !isNaN(v));
+            } else {
+              // Team-level fallback: recent seasons only (2025+2026) to avoid inflating % from a long career at low threshold
+              softVals = gl.events.filter((ev) => (ev.season === 2025 || ev.season === 2026) && ev.oppAbbr === tonightOpp).map(getStat).filter((v) => !isNaN(v));
+            }
             softLabel = pitcherName ? `vs ${pitcherName}` : `vs ${tonightOpp}`;
             softUnit = "%";
           } else {
@@ -1547,12 +1561,13 @@ var worker_default = {
           if (sport === "mlb" && stat === "strikeouts") {
             if (!isStrongMatchup) {
               if (isDebug) {
-                const _kSoftPct = softVals.length >= 3 ? parseFloat((softVals.filter((v) => v >= threshold).length / softVals.length * 100).toFixed(1)) : null;
+                const _kSoftPct = softVals.length >= MIN_H2H ? parseFloat((softVals.filter((v) => v >= threshold).length / softVals.length * 100).toFixed(1)) : null;
                 const _kSeasonPct = parseFloat((blendedPct ?? seasonPct).toFixed(1));
                 const _kTruePct = parseFloat((_kSoftPct !== null ? (_kSeasonPct + _kSoftPct) / 2 : _kSeasonPct).toFixed(1));
                 dropped.push({
                   playerName, sport, stat, threshold, kalshiPct,
                   reason: "not_strong_matchup",
+                  opponent: tonightOpp,
                   pkpMeets, lkpMeets, gameLineMeets,
                   seasonPct: _kSeasonPct, softPct: _kSoftPct, truePct: _kTruePct, edge: parseFloat((_kTruePct - kalshiPct).toFixed(1)),
                   pitcherKPct: sportByteam.mlb?.pitcherKPct?.[playerTeam] ?? null,
@@ -1564,40 +1579,14 @@ var worker_default = {
               continue;
             }
           }
-          const MIN_H2H = 3;
+          const MIN_H2H = 5;
           // Hoist for both binomial softPct and BA gate below
           const abIdxH = (sport === "mlb" && stat !== "strikeouts") ? gl.ul.indexOf("AB") : -1;
           const blendEventsH = (sport === "mlb" && hasSeasonTags)
             ? gl.events.filter((ev) => ev.season === 2025 || ev.season === 2026)
             : gl.events;
-          let softPct;
-          if (sport === "mlb" && stat !== "strikeouts" && abIdxH !== -1) {
-            // Binomial per-AB model: P(stat >= threshold in a game) given per-AB hit rate vs tonight's opponent
-            const MIN_H2H_AB = 5;
-            const h2hEvents = gl.events.filter((ev) => ev.oppAbbr === tonightOpp);
-            const h2hAB = h2hEvents.reduce((s, ev) => s + (parseFloat(ev.stats[abIdxH]) || 0), 0);
-            if (h2hAB >= MIN_H2H_AB) {
-              const h2hStatTotal = h2hEvents.reduce((s, ev) => { const v = getStat(ev); return s + (isNaN(v) ? 0 : v); }, 0);
-              const perAbRate = Math.min(1, h2hStatTotal / h2hAB);
-              const seasonAB = blendEventsH.reduce((s, ev) => s + (parseFloat(ev.stats[abIdxH]) || 0), 0);
-              const avgAbPerGame = blendEventsH.length > 0 ? seasonAB / blendEventsH.length : 3.5;
-              const binomP = (n, p, maxK) => {
-                let sum = 0;
-                const nR = Math.round(n);
-                for (let k = 0; k <= maxK; k++) {
-                  let coeff = 1;
-                  for (let j = 0; j < k; j++) coeff *= (nR - j) / (j + 1);
-                  sum += coeff * Math.pow(p, k) * Math.pow(1 - p, nR - k);
-                }
-                return Math.min(1, sum);
-              };
-              softPct = Math.max(0, Math.min(100, (1 - binomP(avgAbPerGame, perAbRate, threshold - 1)) * 100));
-            } else {
-              softPct = null;
-            }
-          } else {
-            softPct = softVals.length >= MIN_H2H ? softVals.filter((v) => v >= threshold).length / softVals.length * 100 : null;
-          }
+          // Per-game hit rate: % of career games vs tonight's pitcher (or team fallback) where threshold was hit
+          let softPct = softVals.length >= MIN_H2H ? softVals.filter((v) => v >= threshold).length / softVals.length * 100 : null;
           const lineupKPctOut = (() => {
             if (sport !== "mlb" || stat !== "strikeouts") return null;
             const vr = sportByteam.mlb?.lineupKPctVR?.[tonightOpp] ?? null;
@@ -1683,7 +1672,12 @@ var worker_default = {
                 hitterBa = parseFloat((totalH / totalAB).toFixed(3));
                 hitterBaTier = hitterBa >= 0.300 ? "elite" : hitterBa >= 0.270 ? "good" : hitterBa >= 0.240 ? "avg" : "below";
               }
-              hitterAbVsPitcher = gl.events.filter((ev) => ev.oppAbbr === tonightOpp).reduce((s, ev) => s + (parseFloat(ev.stats[abIdxH]) || 0), 0);
+              const _hAbPitcherGl = pitcherGamelogs[tonightOpp]?.gl || null;
+              const _hAbPitcherDates = _hAbPitcherGl ? new Set(_hAbPitcherGl.events.filter((ev) => ev.oppAbbr === playerTeam).map((ev) => ev.date)) : null;
+              hitterAbVsPitcher = ((_hAbPitcherDates && _hAbPitcherDates.size > 0)
+                ? gl.events.filter((ev) => _hAbPitcherDates.has(ev.date))
+                : gl.events.filter((ev) => ev.oppAbbr === tonightOpp)
+              ).reduce((s, ev) => s + (parseFloat(ev.stats[abIdxH]) || 0), 0);
             }
             const _hlEra = sportByteam.mlb?.probables?.[tonightOpp]?.era ?? null;
             const _hlML = hitterML;
@@ -1744,7 +1738,7 @@ var worker_default = {
           const lowVolume = kalshiVolume < 20;
           const edge = truePct - kalshiPct;
           if (kalshiPct < 70 || edge < 3) {
-            if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, truePct: parseFloat(truePct.toFixed(1)), rawTruePct: parseFloat(rawTruePct.toFixed(1)), calibFactor, edge: parseFloat(edge.toFixed(1)), reason: edge < 3 ? "edge_too_low" : "kalshi_pct_too_low", opponent: tonightOpp, seasonPct: parseFloat((blendedPct ?? seasonPct).toFixed(1)), softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null });
+            if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, truePct: parseFloat(truePct.toFixed(1)), rawTruePct: parseFloat(rawTruePct.toFixed(1)), calibFactor, edge: parseFloat(edge.toFixed(1)), reason: edge < 3 ? "edge_too_low" : "kalshi_pct_too_low", opponent: tonightOpp, seasonPct: parseFloat((blendedPct ?? seasonPct).toFixed(1)), softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null, posDvpRank: posDvpRankOut, posGroup: posGroupOut });
             continue;
           }
           const mlbH2H = sport === "mlb" && softPct !== null;
