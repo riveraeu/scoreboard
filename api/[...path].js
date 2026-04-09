@@ -939,7 +939,12 @@ var worker_default = {
               const seg3 = tickerSegs[2];
               if (gameTeam1 && seg3.startsWith(gameTeam1)) kalshiPlayerTeam = gameTeam1;
               else if (gameTeam2 && seg3.startsWith(gameTeam2)) kalshiPlayerTeam = gameTeam2;
-              else kalshiPlayerTeam = normTeam(sport, seg3.slice(0, 3));
+              else {
+                // Kalshi sometimes appends player initial to a 2-char team prefix (e.g. "SJM" for SJS + Macklin Celebrini)
+                const norm2 = normTeam(sport, seg3.slice(0, 2));
+                if (norm2 && (norm2 === gameTeam1 || norm2 === gameTeam2)) kalshiPlayerTeam = norm2;
+                else kalshiPlayerTeam = normTeam(sport, seg3.slice(0, 3));
+              }
             }
             const dateSeg = (m.event_ticker || "").split("-")[1] || "";
             let gameDate = null;
@@ -1429,7 +1434,20 @@ var worker_default = {
             continue;
           }
           const { softTeams, rankMap } = softData;
-          const playerTeam = kalshiPlayerTeam || info.teamAbbr;
+          let playerTeam = kalshiPlayerTeam || info.teamAbbr;
+          // For MLB strikeouts: validate team against ESPN probable pitcher name and correct if inverted
+          if (sport === "mlb" && stat === "strikeouts" && playerTeam) {
+            const probs = sportByteam.mlb?.probables || {};
+            const probEntry = probs[playerTeam];
+            if (probEntry && normName(probEntry.name || "") !== normName(playerName)) {
+              const otherTeam = playerTeam === gameTeam1 ? gameTeam2 : (playerTeam === gameTeam2 ? gameTeam1 : null);
+              if (otherTeam && probs[otherTeam] && normName(probs[otherTeam].name || "") === normName(playerName)) {
+                playerTeam = otherTeam;
+              } else if (info.teamAbbr && (info.teamAbbr === gameTeam1 || info.teamAbbr === gameTeam2)) {
+                playerTeam = info.teamAbbr;
+              }
+            }
+          }
           let tonightOpp = null;
           if (gameTeam1 && gameTeam2) {
             if (gameTeam1 === playerTeam) tonightOpp = gameTeam2;
@@ -1785,7 +1803,15 @@ var worker_default = {
         const bestMap = {};
         for (const play of plays) {
           const key = `${play.playerName}|${play.sport}|${play.stat}`;
-          if (!bestMap[key] || play.kalshiPct > bestMap[key].kalshiPct) bestMap[key] = play;
+          const prev = bestMap[key];
+          // For MLB strikeouts keep highest edge (most meaningful market).
+          // For all others keep highest kalshiPct (closest to the money line).
+          const isBetter = !prev || (
+            play.sport === "mlb" && play.stat === "strikeouts"
+              ? play.edge > prev.edge
+              : play.kalshiPct > prev.kalshiPct
+          );
+          if (isBetter) bestMap[key] = play;
         }
         plays.splice(0, plays.length, ...Object.values(bestMap));
         plays.sort((a, b) => {
