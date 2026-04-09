@@ -409,6 +409,10 @@ function App() {
   const [sportFilter, setSportFilter] = React.useState([]); // empty = all sports
   const [statFilter, setStatFilter] = React.useState([]);  // empty = all stats
   const [showPlaysInfo, setShowPlaysInfo] = React.useState(false);
+  const [showReport, setShowReport] = React.useState(false);
+  const [reportData, setReportData] = React.useState(null);
+  const [reportLoading, setReportLoading] = React.useState(false);
+  const [reportSport, setReportSport] = React.useState("all");
   const [calibration, setCalibration] = React.useState({}); // { "sport:stat": { n, winRate, avgPredicted, corrFactor } }
   // Tiered unit sizing: based on American odds (price reflects market conviction)
   // Heavier favorites = market is more certain = we size up for the edge
@@ -637,6 +641,20 @@ function App() {
       .catch(e => { console.error("search error:", e); setSuggestions([]); })
       .finally(() => setSearching(false));
   }, [debouncedQuery]);
+
+  async function fetchReport() {
+    setShowReport(true);
+    setReportLoading(true);
+    setReportData(null);
+    try {
+      const r = await fetch(`${WORKER}/tonight?debug=1`);
+      const d = await r.json();
+      setReportData(d);
+    } catch(e) {
+      setReportData({ error: e.message });
+    }
+    setReportLoading(false);
+  }
 
   async function loadPlayer(p, activeSport) {
     const sp = activeSport || sport;
@@ -912,6 +930,133 @@ function App() {
 
   return (
     <div style={{maxWidth:1280,margin:"0 auto",padding:"24px 16px"}}>
+
+      {/* Market Report overlay */}
+      {showReport && (
+        <div style={{position:"fixed",inset:0,zIndex:200,background:"rgba(0,0,0,0.88)",overflow:"auto",padding:"20px 16px"}}
+          onClick={e => { if (e.target === e.currentTarget) setShowReport(false); }}>
+          <div style={{maxWidth:860,margin:"0 auto",background:"#161b22",borderRadius:12,border:"1px solid #30363d",minHeight:200}}>
+            {/* Header */}
+            <div style={{display:"flex",alignItems:"center",padding:"14px 20px",borderBottom:"1px solid #30363d"}}>
+              <div style={{color:"#c9d1d9",fontWeight:700,fontSize:15}}>Market Report</div>
+              {reportData && !reportLoading && (
+                <div style={{marginLeft:12,fontSize:11,color:"#8b949e"}}>
+                  {(reportData.plays||[]).length} plays · {(reportData.dropped||[]).length} filtered
+                </div>
+              )}
+              <button onClick={() => setShowReport(false)}
+                style={{marginLeft:"auto",background:"none",border:"none",color:"#8b949e",fontSize:20,cursor:"pointer",lineHeight:1,padding:"0 2px"}}>✕</button>
+            </div>
+            {/* Sport tabs */}
+            <div style={{display:"flex",gap:2,padding:"10px 20px 0",borderBottom:"1px solid #21262d"}}>
+              {["all","mlb","nba","nhl"].map(s => (
+                <button key={s} onClick={() => setReportSport(s)} style={{
+                  padding:"5px 14px",borderRadius:"6px 6px 0 0",border:"none",cursor:"pointer",fontSize:12,
+                  background: reportSport===s ? "#0d1117" : "transparent",
+                  color: reportSport===s ? "#c9d1d9" : "#484f58",
+                  fontWeight: reportSport===s ? 700 : 400}}>
+                  {s.toUpperCase()}
+                </button>
+              ))}
+            </div>
+            {/* Body */}
+            <div style={{padding:"16px 20px"}}>
+              {reportLoading && <div style={{color:"#8b949e",textAlign:"center",padding:40,fontSize:13}}>Loading market data…</div>}
+              {reportData?.error && <div style={{color:"#f78166",textAlign:"center",padding:40,fontSize:13}}>Error: {reportData.error}</div>}
+              {reportData && !reportLoading && (() => {
+                const REASON = {
+                  edge_too_low: "Edge < 3%",
+                  kalshi_pct_too_low: "Implied < 70%",
+                  opp_not_soft: "Soft matchup not met",
+                  not_strong_matchup: "K-rate criteria not met",
+                  team_not_favored: "Team not favored",
+                  pitcher_era_too_low: "ERA < 4.0",
+                  no_h2h_data: "No career AB vs team",
+                  insufficient_ab_vs_pitcher: "< 10 AB vs pitcher",
+                  low_batting_avg: "BA < .270",
+                  no_opp: "Team not resolved",
+                  no_espn_info: "No player data",
+                  no_gamelog: "No game log",
+                  no_soft_data: "No stat data",
+                };
+                const STAT_NAME = { points:"Points",rebounds:"Rebounds",assists:"Assists",threePointers:"3-Pointers",goals:"Goals",hits:"Hits",homeRuns:"Home Runs",hrr:"H+R+RBI",totalBases:"Total Bases",strikeouts:"Strikeouts" };
+                const SPORT_COL = { mlb:"#4ade80", nba:"#f97316", nhl:"#60a5fa" };
+                const SPORT_ORD = { mlb:0, nba:1, nhl:2, nfl:3 };
+
+                const plays = (reportData.plays || []).map(p => ({ ...p, qualified: true }));
+                const dropped = (reportData.dropped || []).map(p => ({ ...p, qualified: false }));
+                const all = [...plays, ...dropped];
+                const filtered = reportSport === "all" ? all : all.filter(m => m.sport === reportSport);
+
+                // Group by sport+stat
+                const groups = {};
+                for (const m of filtered) {
+                  const key = `${m.sport}|${m.stat}`;
+                  if (!groups[key]) groups[key] = { sport: m.sport, stat: m.stat, items: [] };
+                  groups[key].items.push(m);
+                }
+                const sortedGroups = Object.values(groups).sort((a, b) => {
+                  const sd = (SPORT_ORD[a.sport]??9) - (SPORT_ORD[b.sport]??9);
+                  return sd !== 0 ? sd : a.stat.localeCompare(b.stat);
+                });
+
+                if (sortedGroups.length === 0) return <div style={{color:"#8b949e",textAlign:"center",padding:40,fontSize:13}}>No markets.</div>;
+
+                return sortedGroups.map(({ sport, stat, items }) => {
+                  // Dedupe by playerName|threshold, prefer qualified
+                  const dedupeMap = {};
+                  for (const m of items) {
+                    const k = `${m.playerName}|${m.threshold}`;
+                    if (!dedupeMap[k] || (!dedupeMap[k].qualified && m.qualified)) dedupeMap[k] = m;
+                  }
+                  const rows = Object.values(dedupeMap).sort((a, b) => {
+                    if (a.qualified !== b.qualified) return a.qualified ? -1 : 1;
+                    return (b.edge || b.kalshiPct || 0) - (a.edge || a.kalshiPct || 0);
+                  });
+                  const qualCount = rows.filter(r => r.qualified).length;
+
+                  return (
+                    <div key={`${sport}|${stat}`} style={{marginBottom:18}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,paddingBottom:5,borderBottom:"1px solid #21262d"}}>
+                        <span style={{color:SPORT_COL[sport]||"#8b949e",fontWeight:700,fontSize:11}}>{sport.toUpperCase()}</span>
+                        <span style={{color:"#8b949e",fontSize:12}}>{STAT_NAME[stat]||stat}</span>
+                        <span style={{color:"#484f58",fontSize:11,marginLeft:"auto"}}>{rows.length} markets · <span style={{color:"#3fb950"}}>{qualCount}</span> play{qualCount!==1?"s":""}</span>
+                      </div>
+                      <div style={{background:"#0d1117",borderRadius:8,overflow:"hidden"}}>
+                        {rows.map((m, i) => {
+                          const reasonText = REASON[m.reason] || m.reason || "";
+                          const detail = m.reason === "not_strong_matchup"
+                            ? ` · ${[m.pkpMeets&&"K%",m.lkpMeets&&"lkp%",m.gameLineMeets&&"line"].filter(Boolean).join("+")||"0"}/3`
+                            : m.reason === "low_batting_avg" && m.ba != null
+                            ? ` · .${String(Math.round(m.ba*1000)).padStart(3,"0")}`
+                            : m.reason === "insufficient_ab_vs_pitcher" && m.abVsTeam != null
+                            ? ` · ${m.abVsTeam} AB`
+                            : "";
+                          return (
+                            <div key={`${m.playerName}|${m.threshold}|${i}`} style={{
+                              display:"flex",alignItems:"center",gap:6,padding:"6px 12px",
+                              borderTop: i>0?"1px solid #161b22":"none"}}>
+                              <div style={{width:160,color:m.qualified?"#c9d1d9":"#6e7681",fontSize:12,fontWeight:m.qualified?600:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={m.playerName}>{m.playerNameDisplay||m.playerName}</div>
+                              <div style={{width:30,color:"#8b949e",fontSize:11,textAlign:"right",flexShrink:0}}>{m.threshold}+</div>
+                              <div style={{width:38,color:"#c9d1d9",fontSize:11,textAlign:"right",flexShrink:0}}>{m.kalshiPct}%</div>
+                              <div style={{flex:1,paddingLeft:8}}>
+                                {m.qualified
+                                  ? <span style={{background:"rgba(63,185,80,0.15)",color:"#3fb950",borderRadius:4,padding:"1px 7px",fontSize:10,fontWeight:700}}>PLAY +{m.edge?.toFixed(1)}%</span>
+                                  : <span style={{color:"#484f58",fontSize:10}}>{reasonText}{detail}</span>}
+                              </div>
+                              {m.opponent && <div style={{color:"#484f58",fontSize:10,flexShrink:0}}>vs {m.opponent}</div>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Auth modal */}
       {showAuthModal && (
@@ -1616,6 +1761,11 @@ function App() {
                     <div><span style={{color:"#60a5fa"}}>NHL</span> — no matchup gate</div>
                   </div>
                 )}
+              </span>
+              <span onClick={fetchReport}
+                style={{cursor:"pointer",color:"#484f58",fontSize:11,marginLeft:8,
+                  textDecoration:"underline",textDecorationStyle:"dotted",userSelect:"none"}}>
+                report
               </span>
             </div>
             <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6}}>
