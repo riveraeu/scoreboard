@@ -2043,7 +2043,7 @@ var MLB_ID_TO_ABBR = {
   142: "MIN",
   143: "PHI",
   144: "ATL",
-  145: "CHW",
+  145: "CWS",
   146: "MIA",
   147: "NYY",
   158: "MIL"

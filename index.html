@@ -410,7 +410,7 @@ function App() {
   const [error, setError] = React.useState(null);
   const [activeTab, setActiveTab] = React.useState("points");
   const [kalshiOdds, setKalshiOdds] = React.useState({});
-  const [showBreakdown, setShowBreakdown] = React.useState(true);
+  const [showBreakdown, setShowBreakdown] = React.useState(false);
   const [direction, setDirection] = React.useState("over"); // "over" | "under"
   const [editPickId, setEditPickId] = React.useState(null); // pick.id being edited
   const [searching, setSearching] = React.useState(false);
@@ -652,7 +652,7 @@ function App() {
 
   async function loadPlayer(p, activeSport) {
     const sp = activeSport || sport;
-    setPlayer(p); setLogs(null); setLogs25(null); setPerGame([]); setDvpData(null); setError(null); setLoading(true); setShowBreakdown(true);
+    setPlayer(p); setLogs(null); setLogs25(null); setPerGame([]); setDvpData(null); setError(null); setLoading(true); setShowBreakdown(false);
     const id = Date.now(); fetchRef.current = id;
     try {
       const teamParam = p.team ? `&team=${encodeURIComponent(p.team)}` : "";
@@ -1463,9 +1463,9 @@ function App() {
                             {k && (
                               <div style={{display:"flex",alignItems:"center",gap:8}}>
                                 <div style={{flex:1,background:"#21262d",borderRadius:4,height:13,overflow:"hidden"}}>
-                                  <div style={{width:`${k.pct}%`,background:"#a855f7",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:k.pct>0?3:0}}/>
+                                  <div style={{width:`${k.pct}%`,background:tierColor(k.pct),height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:k.pct>0?3:0}}/>
                                 </div>
-                                <div style={{color:"#a855f7",fontSize:11,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{k.pct}%</div>
+                                <div style={{color:tierColor(k.pct),fontSize:11,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{k.pct}%</div>
                                 <div style={{flexShrink:0,width:80,display:"flex",alignItems:"center",gap:4}}>
                                   <div style={{color:"#6e40c9",fontSize:10,flex:1}}>({oddsStr})</div>
                                   {trackBtn}
@@ -1524,9 +1524,9 @@ function App() {
                             {k && (
                               <div style={{display:"flex",alignItems:"center",gap:8}}>
                                 <div style={{flex:1,background:"#21262d",borderRadius:4,height:13,overflow:"hidden"}}>
-                                  <div style={{width:`${k.pct}%`,background:"#a855f7",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:k.pct>0?3:0}}/>
+                                  <div style={{width:`${k.pct}%`,background:tierColor(k.pct),height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:k.pct>0?3:0}}/>
                                 </div>
-                                <div style={{color:"#a855f7",fontSize:11,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{k.pct}%</div>
+                                <div style={{color:tierColor(k.pct),fontSize:11,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{k.pct}%</div>
                                 <div style={{color:"#6e40c9",fontSize:10,width:90,flexShrink:0}}>({oddsStr})</div>
                               </div>
                             )}
@@ -1574,13 +1574,10 @@ function App() {
                   )}
                   <div style={{display:"flex",gap:12,flexWrap:"wrap",fontSize:11,color:"#484f58",marginLeft:"auto"}}>
                     {showTriple
-                      ? <><span><span style={{color:"#e3b341",fontWeight:600}}>Gold</span> = true probability</span>
-                          {Object.keys(kalshiOdds).length > 0 && <span><span style={{color:"#a855f7",fontWeight:600}}>Purple</span> = Kalshi odds</span>}
-                          {Object.keys(kalshiOdds).length > 0 && <span><span style={{color:"#3fb950",fontWeight:600}}>+edge</span> / <span style={{color:"#f78166",fontWeight:600}}>−edge</span> vs market</span>}
-                          {showBreakdown && <span><span style={{color:"#8b949e",fontWeight:600}}>Grey</span> = season rate</span>}
-                          {showBreakdown && <span><span style={{color:"#3fb950",fontWeight:600}}>≥70%</span> / <span style={{color:"#c9d1d9",fontWeight:600}}>≥50%</span> / <span style={{color:"#f78166",fontWeight:600}}>&lt;50%</span> = matchup rate</span>}</>
+                      ? <><span><span style={{color:"#58a6ff",fontWeight:600}}>Color</span> = ≥90% green · ≥80% blue · ≥70% yellow · else red</span>
+                          {Object.keys(kalshiOdds).length > 0 && <span><span style={{color:"#3fb950",fontWeight:600}}>+edge</span> / <span style={{color:"#f78166",fontWeight:600}}>−edge</span> vs market</span>}</>
                       : Object.keys(kalshiOdds).length > 0
-                        ? <span><span style={{color:"#a855f7",fontWeight:600}}>Kalshi</span> = live market odds</span>
+                        ? <span>Color = ≥90% green · ≥80% blue · ≥70% yellow · else red</span>
                         : <span style={{color:"#8b949e"}}>Season hit rate</span>
                     }
                   </div>
@@ -1833,13 +1830,15 @@ function App() {
                   </div>
                   ); })()}
                   {/* Kalshi bar */}
+                  {(() => { const kc = tierColor(play.kalshiPct); return (
                   <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
                     <div style={{flex:1,background:"#21262d",borderRadius:4,height:10,overflow:"hidden"}}>
-                      <div style={{width:`${play.kalshiPct}%`,background:"#a855f7",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:play.kalshiPct>0?3:0}}/>
+                      <div style={{width:`${play.kalshiPct}%`,background:kc,height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:play.kalshiPct>0?3:0}}/>
                     </div>
-                    <div style={{color:"#a855f7",fontSize:11,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{play.kalshiPct}%</div>
+                    <div style={{color:kc,fontSize:11,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{play.kalshiPct}%</div>
                     <div style={{color:"#6e40c9",fontSize:10,width:38,flexShrink:0}}>({oddsStr})</div>
                   </div>
+                  ); })()}
                   {/* Tier / unit sizing row */}
                   {(() => {
                     const units = tierUnits(play.americanOdds);
