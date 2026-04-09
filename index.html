@@ -1034,19 +1034,35 @@ function App() {
                           "nba|threePointers":[{k:"dvp",l:"DVP",w:36}],
                         };
                         const xcols = XCOLS[`${sport}|${stat}`] || [];
+                        const DASH = <span style={{color:"#21262d"}}>—</span>;
                         const xcell = (m, k) => {
-                          const D = (v, s="") => v != null ? <span style={{color:"#8b949e"}}>{v}{s}</span> : <span style={{color:"#21262d"}}>—</span>;
-                          const fmtML = v => v != null ? (v > 0 ? `+${v}` : `${v}`) : null;
-                          const fmtBA = v => v != null ? "."+String(Math.round(v*1000)).padStart(3,"0") : null;
-                          if (k==="era") return D((m.hitterPitcherEra ?? m.pitcherEra ?? m.era) != null ? parseFloat(m.hitterPitcherEra ?? m.pitcherEra ?? m.era).toFixed(2) : null);
-                          if (k==="ba")  return D(fmtBA(m.hitterBa ?? m.ba));
-                          if (k==="ml")  { const v = m.hitterMoneyline ?? m.gameMoneyline ?? m.moneyline ?? m.gameOdds?.moneyline; return D(fmtML(v)); }
-                          if (k==="ab")  return D((m.hitterAbVsPitcher ?? m.abVsTeam) != null ? String(m.hitterAbVsPitcher ?? m.abVsTeam) : null);
-                          if (k==="pkp") return D(m.pitcherKPct != null ? m.pitcherKPct.toFixed(1) : null, "%");
-                          if (k==="lkp") return D(m.lineupKPct != null ? m.lineupKPct.toFixed(1) : null, "%");
-                          if (k==="ou")  return D((m.gameTotal ?? m.gameOdds?.total) != null ? (m.gameTotal ?? m.gameOdds?.total) : null);
-                          if (k==="dvp") return D(m.posDvpRank != null ? `#${m.posDvpRank}${m.posGroup?` ${m.posGroup}`:""}` : null);
-                          return D(null);
+                          const C = (v, col) => v != null ? <span style={{color:col}}>{v}</span> : DASH;
+                          const era = m.hitterPitcherEra ?? m.pitcherEra ?? m.era;
+                          const ba  = m.hitterBa ?? m.ba;
+                          const ml  = m.hitterMoneyline ?? m.gameMoneyline ?? m.moneyline ?? m.gameOdds?.moneyline;
+                          const ab  = m.hitterAbVsPitcher ?? m.abVsTeam;
+                          const pkp = m.pitcherKPct;
+                          const lkp = m.lineupKPct;
+                          const ou  = m.gameTotal ?? m.gameOdds?.total;
+                          const fML = v => v > 0 ? `+${v}` : `${v}`;
+                          if (k==="era") return C(era != null ? parseFloat(era).toFixed(2) : null, era >= 4.0 ? "#8b949e" : "#f78166");
+                          if (k==="ba")  return C(ba  != null ? "."+String(Math.round(ba*1000)).padStart(3,"0") : null, ba >= 0.270 ? "#8b949e" : "#f78166");
+                          if (k==="ml")  return C(ml  != null ? fML(ml) : null, ml < 0 ? "#8b949e" : "#f78166");
+                          if (k==="ab")  return C(ab  != null ? String(ab) : null, ab >= 10 ? "#8b949e" : "#f78166");
+                          if (k==="pkp") return C(pkp != null ? pkp.toFixed(1)+"%" : null, pkp > 25 ? "#3fb950" : "#f78166");
+                          if (k==="lkp") return C(lkp != null ? lkp.toFixed(1)+"%" : null, lkp > 23 ? "#3fb950" : "#f78166");
+                          if (k==="ou")  return C(ou  != null ? ou : null, ou < 8.5 ? "#3fb950" : "#484f58");
+                          if (k==="dvp") { const r = m.posDvpRank; return C(r != null ? `#${r}${m.posGroup?" "+m.posGroup:""}` : null, r<=10?"#3fb950":r<=20?"#e3b341":"#8b949e"); }
+                          return DASH;
+                        };
+                        const RESULT_LABELS = {
+                          edge_too_low:"edge low", kalshi_pct_too_low:"<70%",
+                          opp_not_soft:"not soft", not_strong_matchup:"X/3",
+                          team_not_favored:"ML ✗", pitcher_era_too_low:"ERA ✗",
+                          no_h2h_data:"no h2h", insufficient_ab_vs_pitcher:"AB ✗",
+                          low_batting_avg:"BA ✗", no_opp:"no team",
+                          no_espn_info:"no info", no_gamelog:"no log",
+                          no_soft_data:"no data", col_not_found:"no col", no_gamelog_vals:"no vals",
                         };
                         return <React.Fragment>
                           <div style={{display:"flex",alignItems:"center",gap:6,padding:"3px 12px 4px",marginBottom:2}}>
@@ -1056,57 +1072,20 @@ function App() {
                             <div style={{width:38,color:"#484f58",fontSize:10,textAlign:"right",flexShrink:0}}>Kalshi</div>
                             <div style={{width:34,color:"#484f58",fontSize:10,textAlign:"right",flexShrink:0}}>Edge</div>
                             {xcols.map(c => <div key={c.k} style={{width:c.w,color:"#484f58",fontSize:10,textAlign:"right",flexShrink:0}}>{c.l}</div>)}
-                            <div style={{flex:1,paddingLeft:8,color:"#484f58",fontSize:10}}>Status</div>
+                            <div style={{width:48,color:"#484f58",fontSize:10,textAlign:"center",flexShrink:0}}>Result</div>
                             <div style={{color:"#484f58",fontSize:10,flexShrink:0,minWidth:36,textAlign:"right"}}>Opp</div>
                           </div>
                           <div style={{background:"#0d1117",borderRadius:8,overflow:"hidden"}}>
                             {rows.map((m, i) => {
                               const truePct = m.truePct ?? null;
                               const edge = m.edge ?? null;
-                              // Status / qualification display
-                              const qualStatus = (() => {
-                                const REASON_TEXT = {
-                                  edge_too_low:"Edge < 3%", kalshi_pct_too_low:"Implied < 70%",
-                                  opp_not_soft:"Soft opp not met", not_strong_matchup:"",
-                                  team_not_favored:"Not favored", pitcher_era_too_low:"",
-                                  no_h2h_data:"No career AB vs team", insufficient_ab_vs_pitcher:"< 10 AB",
-                                  low_batting_avg:"", no_opp:"Team not resolved",
-                                  no_espn_info:"No player data", no_gamelog:"No game log",
-                                  no_soft_data:"No stat data",
-                                };
-                                // MLB strikeouts: show K%/lkp%/line checkmarks for both plays and drops
-                                if (m.sport === "mlb" && m.stat === "strikeouts" && m.pkpMeets != null) {
-                                  const crit = [["K%",m.pkpMeets],["lkp%",m.lkpMeets],["line",m.gameLineMeets]];
-                                  return <span style={{display:"inline-flex",gap:5,alignItems:"center"}}>
-                                    {m.qualified && <span style={{background:"rgba(63,185,80,0.15)",color:"#3fb950",borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:700,marginRight:2}}>PLAY</span>}
-                                    {crit.map(([lbl,met]) => <span key={lbl} style={{fontSize:10,color:met?"#3fb950":"#484f58"}}>{met?"✓":"✗"}{lbl}</span>)}
-                                  </span>;
+                              const resultCell = (() => {
+                                if (m.qualified) return <span style={{background:"rgba(63,185,80,0.15)",color:"#3fb950",borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:700}}>PLAY</span>;
+                                if (m.reason === "not_strong_matchup") {
+                                  const n = [m.pkpMeets,m.lkpMeets,m.gameLineMeets].filter(Boolean).length;
+                                  return <span style={{fontSize:10,color:"#484f58"}}>{n}/3</span>;
                                 }
-                                // Qualifying plays
-                                if (m.qualified) {
-                                  return <span style={{background:"rgba(63,185,80,0.15)",color:"#3fb950",borderRadius:4,padding:"1px 7px",fontSize:10,fontWeight:700}}>PLAY</span>;
-                                }
-                                // low_batting_avg
-                                if (m.reason === "low_batting_avg") {
-                                  const ba = m.hitterBa ?? m.ba;
-                                  return <span style={{fontSize:10,color:"#484f58"}}>BA <span style={{color:"#f78166"}}>{ba != null ? "."+String(Math.round(ba*1000)).padStart(3,"0") : "n/a"}</span> &lt; .270</span>;
-                                }
-                                // pitcher_era_too_low
-                                if (m.reason === "pitcher_era_too_low") {
-                                  const era = m.hitterPitcherEra ?? m.pitcherEra ?? m.era;
-                                  return <span style={{fontSize:10,color:"#484f58"}}>ERA <span style={{color:"#f78166"}}>{era != null ? parseFloat(era).toFixed(2) : "n/a"}</span> &lt; 4.0</span>;
-                                }
-                                // team_not_favored
-                                if (m.reason === "team_not_favored") {
-                                  const ml = m.hitterMoneyline ?? m.gameMoneyline ?? m.moneyline;
-                                  return <span style={{fontSize:10,color:"#484f58"}}>ML <span style={{color:"#f78166"}}>{ml != null ? (ml > 0 ? `+${ml}` : ml) : "n/a"}</span></span>;
-                                }
-                                // insufficient_ab_vs_pitcher
-                                if (m.reason === "insufficient_ab_vs_pitcher") {
-                                  return <span style={{fontSize:10,color:"#484f58"}}><span style={{color:"#f78166"}}>{m.hitterAbVsPitcher ?? m.abVsTeam}</span> AB (need 10)</span>;
-                                }
-                                // default: show reason text
-                                return <span style={{color:"#484f58",fontSize:10}}>{REASON_TEXT[m.reason] ?? m.reason ?? ""}</span>;
+                                return <span style={{fontSize:10,color:"#484f58"}}>{RESULT_LABELS[m.reason] ?? m.reason ?? ""}</span>;
                               })();
                               return (
                                 <div key={`${m.playerName}|${m.threshold}|${i}`} style={{
@@ -1118,7 +1097,7 @@ function App() {
                                   <div style={{width:38,color:"#c9d1d9",fontSize:11,textAlign:"right",flexShrink:0}}>{m.kalshiPct}%</div>
                                   <div style={{width:34,fontSize:11,textAlign:"right",flexShrink:0,color:edge!=null&&edge>=3?"#3fb950":edge!=null&&edge<0?"#f78166":"#8b949e"}}>{edge!=null?(edge>=0?`+${edge.toFixed(1)}`:`${edge.toFixed(1)}`)+"%" :"—"}</div>
                                   {xcols.map(c => <div key={c.k} style={{width:c.w,fontSize:11,textAlign:"right",flexShrink:0}}>{xcell(m,c.k)}</div>)}
-                                  <div style={{flex:1,paddingLeft:8}}>{qualStatus}</div>
+                                  <div style={{width:48,fontSize:11,textAlign:"center",flexShrink:0}}>{resultCell}</div>
                                   <div style={{color:"#484f58",fontSize:10,flexShrink:0,minWidth:36,textAlign:"right"}}>{m.opponent||""}</div>
                                 </div>
                               );

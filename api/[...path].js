@@ -1154,7 +1154,9 @@ var worker_default = {
           if (softData.softTeams.has(opp)) { preFilteredMarkets.push(m); }
           else { preDropped.push({ ...m, reason: "opp_not_soft", opponent: opp }); }
         }
-        const uniquePlayerKeys = [...new Map(preFilteredMarkets.map((m) => [`${m.sport}|${m.playerName}`, m])).keys()];
+        // In debug mode, process ALL qualifying markets so every player gets a gamelog fetch and full stats
+        const loopMarkets = isDebugMode ? qualifyingMarkets : preFilteredMarkets;
+        const uniquePlayerKeys = [...new Map(loopMarkets.map((m) => [`${m.sport}|${m.playerName}`, m])).keys()];
         const playerInfoMap = {};
         const keysNeedingInfo = [];
         if (CACHE2) {
@@ -1380,14 +1382,14 @@ var worker_default = {
         };
         const calibMap = {};
         if (CACHE2) {
-          const calibKeys = [...new Set(preFilteredMarkets.map((m) => `${m.sport}:${m.stat}`))];
+          const calibKeys = [...new Set(loopMarkets.map((m) => `${m.sport}:${m.stat}`))];
           await Promise.all(calibKeys.map(async (k) => {
             const d = await CACHE2.get(`calib:${k}`, "json").catch(() => null);
             if (d && d.n >= 15) calibMap[k] = d;
           }));
         }
         const playerColCache = {};
-        for (const { playerName, sport, col } of preFilteredMarkets) {
+        for (const { playerName, sport, col } of loopMarkets) {
           const cacheKey = `${sport}|${playerName}|${col}`;
           if (playerColCache[cacheKey] !== void 0) continue;
           const gl = playerGamelogs[`${sport}|${playerName}`];
@@ -1422,7 +1424,7 @@ var worker_default = {
         }
         const plays = [];
         const dropped = [];
-        for (const { playerName, playerNameDisplay, sport, stat, col, threshold, kalshiPct, americanOdds, kalshiVolume, gameTeam1, gameTeam2, kalshiPlayerTeam, gameDate } of preFilteredMarkets) {
+        for (const { playerName, playerNameDisplay, sport, stat, col, threshold, kalshiPct, americanOdds, kalshiVolume, gameTeam1, gameTeam2, kalshiPlayerTeam, gameDate } of loopMarkets) {
           const key = `${sport}|${playerName}`;
           const info = playerInfoMap[key];
           const gl = playerGamelogs[key];
@@ -1841,7 +1843,7 @@ var worker_default = {
           return ta < tb ? -1 : ta > tb ? 1 : b.edge - a.edge;
         });
         if (isDebug) {
-          return jsonResponse({ plays, dropped: [...dropped, ...preDropped], gamelogErrors, pInfoErrors, preFilteredCount: preFilteredMarkets.length, qualifyingCount: qualifyingMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, infoCacheHits: uniquePlayerKeys.length - keysNeedingInfo.length, gamelogCacheHits: keysForGamelog.length - keysNeedingGamelog.length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null }, true);
+          return jsonResponse({ plays, dropped, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null }, true);
         }
         const playsResult = { plays, qualifyingCount: qualifyingMarkets.length, preFilteredCount: preFilteredMarkets.length };
         const sportsInPlays = new Set(plays.map((p) => p.sport));
