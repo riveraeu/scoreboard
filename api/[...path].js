@@ -629,12 +629,14 @@ var worker_default = {
               fetch(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${d.replace(/-/g, "")}`, { headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
               fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${d}&hydrate=lineups,probablePitcher`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({}))
             ]);
+            const _mlbNorm2 = { CHW: "CWS", KCR: "KC", SFG: "SF", SDP: "SD", TBR: "TB", AZ: "ARI", OAK: "ATH", WSN: "WSH", WAS: "WSH" };
+            const normMlbAbbr2 = (a) => _mlbNorm2[a] || a;
             const probables2 = {};
             for (const event of sbRes.events || []) {
               for (const comp of event.competitions || []) {
-                const gameAbbrs = (comp.competitors || []).map((c) => c.team?.abbreviation).filter(Boolean);
+                const gameAbbrs = (comp.competitors || []).map((c) => normMlbAbbr2(c.team?.abbreviation)).filter(Boolean);
                 for (const competitor of comp.competitors || []) {
-                  const abbr = competitor.team?.abbreviation;
+                  const abbr = normMlbAbbr2(competitor.team?.abbreviation);
                   const probable = (competitor.probables || [])[0];
                   if (!abbr || !probable) continue;
                   const stats = probable.statistics || [];
@@ -647,7 +649,8 @@ var worker_default = {
                 }
               }
             }
-            const gameOdds = parseGameOdds(sbRes.events);
+            const gameOddsRaw2 = parseGameOdds(sbRes.events);
+            const gameOdds = Object.fromEntries(Object.entries(gameOddsRaw2).map(([k, v]) => [normMlbAbbr2(k), v]));
             const [lineupResult, pitcherResult] = await Promise.all([buildLineupKPct(mlbSched), buildPitcherKPct(mlbSched)]);
             const { lineupKPct: lineupKPct2, lineupBatterKPcts: lineupBatterKPcts2, lineupKPctVR, lineupKPctVL, gameHomeTeams: gameHomeTeams2, projectedLineupTeams: projectedLineupTeams2 } = lineupResult;
             const { pitcherKPct: pitcherKPct2, pitcherKBBPct: pitcherKBBPct2, pitcherHand } = pitcherResult;
