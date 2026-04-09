@@ -1040,12 +1040,15 @@ var worker_default = {
                 return fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${d}&hydrate=lineups,probablePitcher`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({}));
               })()
             ]).then(async ([pitchData, batData, sbData, mlbSched]) => {
+              // ESPN uses different abbreviations than Kalshi for some MLB teams
+              const MLB_ESPN_NORM = { CHW: "CWS", KCR: "KC", SFG: "SF", SDP: "SD", TBR: "TB", AZ: "ARI", OAK: "ATH", WSN: "WSH", WAS: "WSH" };
+              const normMlbAbbr = (a) => MLB_ESPN_NORM[a] || a;
               const probables = {};
               for (const event of sbData.events || []) {
                 for (const comp of event.competitions || []) {
-                  const gameAbbrs = (comp.competitors || []).map((c) => c.team?.abbreviation).filter(Boolean);
+                  const gameAbbrs = (comp.competitors || []).map((c) => normMlbAbbr(c.team?.abbreviation)).filter(Boolean);
                   for (const competitor of comp.competitors || []) {
-                    const abbr = competitor.team?.abbreviation;
+                    const abbr = normMlbAbbr(competitor.team?.abbreviation);
                     const probable = (competitor.probables || [])[0];
                     if (!abbr || !probable) continue;
                     const stats = probable.statistics || [];
@@ -1058,7 +1061,8 @@ var worker_default = {
                   }
                 }
               }
-              const gameOdds = parseGameOdds(sbData.events);
+              const gameOddsRaw = parseGameOdds(sbData.events);
+              const gameOdds = Object.fromEntries(Object.entries(gameOddsRaw).map(([k, v]) => [normMlbAbbr(k), v]));
               const [lineupResult, pitcherResult] = await Promise.all([buildLineupKPct(mlbSched), buildPitcherKPct(mlbSched)]);
               const { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, gameHomeTeams, projectedLineupTeams } = lineupResult;
               const { pitcherKPct, pitcherKBBPct, pitcherHand } = pitcherResult;
@@ -1272,10 +1276,12 @@ var worker_default = {
         const keysForGamelog = uniquePlayerKeys.filter((k) => playerInfoMap[k]?.id);
         const gamelogErrors = [];
         const keysNeedingGamelog = [];
+        const _mlbAbbrNorm = { CHW: "CWS", KCR: "KC", SFG: "SF", SDP: "SD", TBR: "TB", AZ: "ARI", OAK: "ATH", WSN: "WSH", WAS: "WSH" };
+        const _normGlOpp = (gl) => gl && gl.events ? { ...gl, events: gl.events.map((ev) => ev.oppAbbr && _mlbAbbrNorm[ev.oppAbbr] ? { ...ev, oppAbbr: _mlbAbbrNorm[ev.oppAbbr] } : ev) } : gl;
         if (CACHE2) {
           for (const key of keysForGamelog) {
             const cached = await CACHE2.get(glCacheKey(key), "json");
-            if (cached) playerGamelogs[key] = cached;
+            if (cached) playerGamelogs[key] = key.startsWith("mlb|") ? _normGlOpp(cached) : cached;
             else keysNeedingGamelog.push(key);
           }
         } else {
@@ -1346,10 +1352,12 @@ var worker_default = {
             const anyGl = gl26 || gl25 || gl24;
             if (anyGl) {
               const ul = anyGl.ul;
+              const _mlbNorm = { CHW: "CWS", KCR: "KC", SFG: "SF", SDP: "SD", TBR: "TB", AZ: "ARI", OAK: "ATH", WSN: "WSH", WAS: "WSH" };
+              const normOpp = (o) => _mlbNorm[o] || o;
               const events = [
-                ...(gl26?.events || []).map((ev) => ({ ...ev, season: 2026 })),
-                ...(gl25?.events || []).map((ev) => ({ ...ev, season: 2025 })),
-                ...(gl24?.events || []).map((ev) => ({ ...ev, season: 2024 }))
+                ...(gl26?.events || []).map((ev) => ({ ...ev, season: 2026, oppAbbr: normOpp(ev.oppAbbr) })),
+                ...(gl25?.events || []).map((ev) => ({ ...ev, season: 2025, oppAbbr: normOpp(ev.oppAbbr) })),
+                ...(gl24?.events || []).map((ev) => ({ ...ev, season: 2024, oppAbbr: normOpp(ev.oppAbbr) }))
               ];
               playerGamelogs[key] = { ul, events };
               if (CACHE2) await CACHE2.put(glCacheKey(key), JSON.stringify({ ul, events }), { expirationTtl: 21600 });
@@ -1375,7 +1383,7 @@ var worker_default = {
           await Promise.all(pitcherEntriesToLoad.map(async ([teamAbbr, { name }]) => {
             const pitcherKey = `mlb|${name}`;
             const cached = CACHE2 ? await CACHE2.get(glCacheKey(pitcherKey), "json").catch(() => null) : null;
-            if (cached) pitcherGamelogs[teamAbbr] = { name, gl: cached };
+            if (cached) pitcherGamelogs[teamAbbr] = { name, gl: _normGlOpp(cached) };
           }));
           const uncachedPitchers = pitcherEntriesToLoad.filter(([teamAbbr]) => !pitcherGamelogs[teamAbbr]);
           for (let i = 0; i < uncachedPitchers.length; i++) {
@@ -1737,12 +1745,12 @@ var worker_default = {
             }
             // Gate: must have h2h data (softPct) — requires 5+ career AB vs tonight's team
             if (softPct === null) {
-              if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "no_h2h_data", ..._hlCommon });
+              if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "no_h2h_data", opponent: tonightOpp, ..._hlCommon });
               continue;
             }
             // Gate: at least 10 career AB vs tonight's team (across all seasons)
             if (hitterAbVsPitcher < 10) {
-              if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "insufficient_ab_vs_pitcher", ..._hlCommon });
+              if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "insufficient_ab_vs_pitcher", opponent: tonightOpp, ..._hlCommon });
               continue;
             }
             // Gate: batting average must be good or better (.270+)
