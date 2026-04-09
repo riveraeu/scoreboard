@@ -964,7 +964,7 @@ var worker_default = {
         }
         // Blended fill price: walk the orderbook for unit-sized positions so kalshiPct reflects
         // true cost, not just top-of-book ask. 1 unit = $100 at risk; tiers: 70-83% = 1u, 83-93% = 3u, 93%+ = 5u.
-        const UNIT_DOLLARS = 100;
+        const UNIT_DOLLARS = 50; // 1 unit = 1% of $5k bankroll
         const getContracts = (pct, ask) => ask > 0 ? Math.ceil(UNIT_DOLLARS * (pct >= 93 ? 5 : pct >= 83 ? 3 : 1) / ask) : 0;
         const thinMarkets = qualifyingMarkets.filter((m) => m._ticker && getContracts(m.kalshiPct, m._yesAsk) > m._yesAskSize);
         const obMap = {};
