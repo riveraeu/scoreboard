@@ -1130,18 +1130,20 @@ function App() {
               );
               const bucketGames = perGame.filter(g => g.oppAbbr && similarKAbbrs.has(g.oppAbbr) && g[safeTab] !== undefined);
               wTotal = bucketGames.length;
-              if (wTotal > 0) {
+              if (wTotal >= 3) {
                 (cfg?.thresholds || []).forEach(t => {
                   const wCount = bucketGames.filter(g => (g[safeTab] ?? -1) >= t).length;
                   dvpMap[t] = { wCount, wPct: (wCount / wTotal) * 100 };
                 });
+              } else {
+                wTotal = 0; // too few games to be meaningful
               }
             }
-            // If bucket mode found no games (new pitcher), fall back to h2h vs resolved opponent
+            // If bucket mode found < 3 games, fall back to h2h vs resolved opponent (min 3)
             if (wTotal === 0 && mlbH2HOpp) {
               const h2hGames = perGame.filter(g => g.oppAbbr === mlbH2HOpp && g[safeTab] !== undefined);
-              wTotal = h2hGames.length;
-              if (wTotal > 0) {
+              if (h2hGames.length >= 3) {
+                wTotal = h2hGames.length;
                 (cfg?.thresholds || []).forEach(t => {
                   const wCount = h2hGames.filter(g => (g[safeTab] ?? -1) >= t).length;
                   dvpMap[t] = { wCount, wPct: (wCount / wTotal) * 100 };
