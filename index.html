@@ -1117,7 +1117,9 @@ function App() {
             }
           } else if (isMLB) {
             const allLkp = dvpData?.allLineupKPct || {};
-            const tonightLkp = dvpData?.h2h?.lineupKPct ?? null;
+            const tonightLkp = dvpData?.h2h?.lineupKPct
+              ?? (tonightPlays || []).find(p => (p.playerId === player?.id || p.playerName === player?.name) && p.stat === "strikeouts")?.lineupKPct
+              ?? null;
             if (safeTab === "strikeouts" && tonightLkp !== null && Object.keys(allLkp).length > 0) {
               // Pitcher strikeouts: bucket by tonight's opponent K rate (low/avg/high)
               const lkpBucket = tonightLkp >= 24 ? "high" : tonightLkp >= 20 ? "avg" : "low";
@@ -1365,7 +1367,7 @@ function App() {
                       : (tonightPlay?.softPct != null ? tonightPlay.softPct : (dvp?.wPct ?? null));
                     const _lkpBucketLabel = (() => {
                       if (!isMLB || safeTab !== "strikeouts") return null;
-                      const lkp = dvpData?.h2h?.lineupKPct ?? null;
+                      const lkp = dvpData?.h2h?.lineupKPct ?? Object.values(tonightPlayerMap).find(p => p.stat === "strikeouts")?.lineupKPct ?? null;
                       if (lkp == null) return null;
                       return lkp >= 24 ? "high" : lkp >= 20 ? "avg" : "low";
                     })();
@@ -1972,7 +1974,7 @@ function App() {
                           </div>
                         )}
                         {/* Matchup explanation — team ranking (DVP-based plays) */}
-                        {play.oppRank && (
+                        {play.oppRank && play.stat !== "strikeouts" && (
                           <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.5}}>
                             {(() => {
                               const first = play.playerName.split(" ")[0];
