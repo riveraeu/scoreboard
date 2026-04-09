@@ -1052,6 +1052,60 @@ function App() {
                           const numCol = (val, suffix="") => val != null
                             ? <span style={{color:"#8b949e"}}>{val}{suffix}</span>
                             : <span style={{color:"#21262d"}}>—</span>;
+                          // Qualification criteria display (for Status column)
+                          const qualStatus = (() => {
+                            // Strikeout criteria (both plays and not_strong_matchup drops)
+                            if (m.stat === "strikeouts" && m.sport === "mlb" && (m.pkpMeets != null || m.reason === "not_strong_matchup")) {
+                              const crit = [["K%", m.pkpMeets], ["lkp%", m.lkpMeets], ["line", m.gameLineMeets]];
+                              return <span style={{display:"inline-flex",gap:5,alignItems:"center"}}>
+                                {m.qualified && <span style={{background:"rgba(63,185,80,0.15)",color:"#3fb950",borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:700,marginRight:2}}>PLAY</span>}
+                                {crit.map(([lbl, met]) => <span key={lbl} style={{fontSize:10,color:met?"#3fb950":"#484f58"}}>{met?"✓":"✗"}{lbl}</span>)}
+                              </span>;
+                            }
+                            // MLB hitter criteria (plays)
+                            if (m.qualified && m.sport === "mlb") {
+                              return <span style={{display:"inline-flex",gap:6,alignItems:"center"}}>
+                                <span style={{background:"rgba(63,185,80,0.15)",color:"#3fb950",borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:700}}>PLAY</span>
+                                {m.hitterBa != null && <span style={{fontSize:10,color:"#8b949e"}}>BA .{String(Math.round(m.hitterBa*1000)).padStart(3,"0")}</span>}
+                                {m.hitterAbVsPitcher != null && <span style={{fontSize:10,color:"#484f58"}}>{m.hitterAbVsPitcher}AB</span>}
+                              </span>;
+                            }
+                            // NBA/NHL qualifying plays
+                            if (m.qualified) {
+                              const posInfo = m.posDvpRank ? `#${m.posDvpRank}${m.posGroup?` ${m.posGroup}`:""}` : null;
+                              return <span style={{display:"inline-flex",gap:6,alignItems:"center"}}>
+                                <span style={{background:"rgba(63,185,80,0.15)",color:"#3fb950",borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:700}}>PLAY</span>
+                                {posInfo && <span style={{fontSize:10,color:"#484f58"}}>DVP {posInfo}</span>}
+                                {m.isB2B && <span style={{fontSize:10,color:"#f0883e"}}>B2B</span>}
+                              </span>;
+                            }
+                            // Dropped: low_batting_avg — show BA
+                            if (m.reason === "low_batting_avg") {
+                              return <span style={{fontSize:10,color:"#484f58"}}>
+                                BA <span style={{color:"#f78166"}}>{"." + String(Math.round((m.ba||0)*1000)).padStart(3,"0")}</span> &lt; .270{m.hitterAbVsPitcher != null ? ` · ${m.hitterAbVsPitcher}AB` : ""}
+                              </span>;
+                            }
+                            // Dropped: insufficient_ab_vs_pitcher
+                            if (m.reason === "insufficient_ab_vs_pitcher") {
+                              return <span style={{fontSize:10,color:"#484f58"}}>
+                                <span style={{color:"#f78166"}}>{m.abVsTeam}</span> AB vs opp (need 10)
+                              </span>;
+                            }
+                            // Dropped: team_not_favored
+                            if (m.reason === "team_not_favored") {
+                              return <span style={{fontSize:10,color:"#484f58"}}>
+                                ML <span style={{color:"#f78166"}}>{m.moneyline != null ? (m.moneyline > 0 ? `+${m.moneyline}` : m.moneyline) : "n/a"}</span>
+                              </span>;
+                            }
+                            // Dropped: pitcher_era_too_low
+                            if (m.reason === "pitcher_era_too_low") {
+                              return <span style={{fontSize:10,color:"#484f58"}}>
+                                ERA <span style={{color:"#f78166"}}>{m.era != null ? parseFloat(m.era).toFixed(2) : "n/a"}</span>
+                              </span>;
+                            }
+                            // Dropped: opp_not_soft / no_h2h / edge_too_low / kalshi_pct_too_low
+                            return <span style={{color:"#484f58",fontSize:10}}>{reasonText}{detail}</span>;
+                          })();
                           return (
                             <div key={`${m.playerName}|${m.threshold}|${i}`} style={{
                               display:"flex",alignItems:"center",gap:6,padding:"6px 12px",
@@ -1062,12 +1116,8 @@ function App() {
                               <div style={{width:38,fontSize:11,textAlign:"right",flexShrink:0}}>{numCol(truePct,"%")}</div>
                               <div style={{width:44,fontSize:11,textAlign:"right",flexShrink:0}}>{numCol(matchupPct != null ? Math.round(matchupPct) : null,"%")}</div>
                               <div style={{width:40,fontSize:11,textAlign:"right",flexShrink:0}}>{numCol(seasonPct != null ? Math.round(seasonPct) : null,"%")}</div>
-                              <div style={{width:34,fontSize:11,textAlign:"right",flexShrink:0,color:edge!=null&&edge>=3?"#3fb950":edge!=null?"#f78166":"#21262d"}}>{edge!=null?`+${edge.toFixed(1)}%`:"—"}</div>
-                              <div style={{flex:1,paddingLeft:8}}>
-                                {m.qualified
-                                  ? <span style={{background:"rgba(63,185,80,0.15)",color:"#3fb950",borderRadius:4,padding:"1px 7px",fontSize:10,fontWeight:700}}>PLAY</span>
-                                  : <span style={{color:"#484f58",fontSize:10}}>{reasonText}{detail}</span>}
-                              </div>
+                              <div style={{width:34,fontSize:11,textAlign:"right",flexShrink:0,color:edge!=null&&edge>=3?"#3fb950":edge!=null&&edge<0?"#f78166":"#8b949e"}}>{edge!=null?(edge>=0?`+${edge.toFixed(1)}`:`${edge.toFixed(1)}`)+"%" :"—"}</div>
+                              <div style={{flex:1,paddingLeft:8}}>{qualStatus}</div>
                               <div style={{color:"#484f58",fontSize:10,flexShrink:0,minWidth:36,textAlign:"right"}}>{m.opponent||""}</div>
                             </div>
                           );
