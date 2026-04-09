@@ -959,6 +959,7 @@ var worker_default = {
         const sportsNeeded = new Set(qualifyingMarkets.map((m) => m.sport));
         const sportByteam = {};
         const NHL_ABBR_MAP = { 1: "NJD", 2: "NYI", 3: "NYR", 4: "PHI", 5: "PIT", 6: "BOS", 7: "BUF", 8: "MTL", 9: "OTT", 10: "TOR", 12: "CAR", 13: "FLA", 14: "TBL", 15: "WSH", 16: "CHI", 17: "DET", 18: "NSH", 19: "STL", 20: "CGY", 21: "COL", 22: "EDM", 23: "VAN", 24: "ANA", 25: "DAL", 26: "LAK", 28: "SJS", 29: "CBJ", 30: "MIN", 52: "WPG", 53: "UTA", 54: "VGK", 55: "SEA" };
+        if (isBustCache && CACHE2) await CACHE2.delete("byteam:mlb").catch(() => {});
         if (CACHE2) {
           await Promise.all([...sportsNeeded].map(async (sport) => {
             const cached = await CACHE2.get(`byteam:${sport}`, "json").catch(() => null);
@@ -2144,6 +2145,23 @@ async function buildLineupKPct(mlbSched) {
         const so = ids.reduce((s, id) => s + (playerSplits[id]?.[code]?.so || 0), 0);
         const pa = ids.reduce((s, id) => s + (playerSplits[id]?.[code]?.pa || 0), 0);
         if (pa >= 100) out[abbr] = parseFloat((so / pa * 100).toFixed(1));
+      }
+    }
+    // Fallback: for any team playing today that still has no lineupKPct (e.g. MLB API returned
+    // empty lineup hydration for recent games), fetch team-level batting stats as a proxy.
+    const teamsWithNoData = Object.keys(teamsInTodayGames).filter((abbr) => lineupKPct[abbr] == null);
+    if (teamsWithNoData.length > 0) {
+      const teamStatsRes = await fetch(
+        "https://statsapi.mlb.com/api/v1/teams/stats?season=2026&group=batting&gameType=R&sportId=1",
+        { headers: { "User-Agent": "Mozilla/5.0" } }
+      ).then((r) => r.ok ? r.json() : {}).catch(() => ({}));
+      for (const ts of teamStatsRes.teams || []) {
+        const abbr = MLB_ID_TO_ABBR[ts.team?.id];
+        if (abbr && teamsWithNoData.includes(abbr)) {
+          const so = ts.stat?.strikeOuts || 0;
+          const pa = ts.stat?.plateAppearances || 0;
+          if (pa >= 50) lineupKPct[abbr] = parseFloat((so / pa * 100).toFixed(1));
+        }
       }
     }
     return { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, gameHomeTeams, projectedLineupTeams: [...projectedLineupTeams] };
