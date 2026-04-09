@@ -1048,7 +1048,7 @@ function App() {
                           if (k==="dvp") return D(m.posDvpRank != null ? `#${m.posDvpRank}${m.posGroup?` ${m.posGroup}`:""}` : null);
                           return D(null);
                         };
-                        return <>
+                        return <React.Fragment>
                           <div style={{display:"flex",alignItems:"center",gap:6,padding:"3px 12px 4px",marginBottom:2}}>
                             <div style={{width:140,color:"#484f58",fontSize:10}}>Player</div>
                             <div style={{width:28,color:"#484f58",fontSize:10,textAlign:"right",flexShrink:0}}>Line</div>
@@ -1124,9 +1124,8 @@ function App() {
                               );
                             })}
                           </div>
-                        </>;
+                        </React.Fragment>;
                       })()}
-                      </div>
                     </div>
                   );
                 });
