@@ -1187,7 +1187,8 @@ var worker_default = {
             const opp2 = m.gameTeam1 === playerTeam2 ? m.gameTeam2 : m.gameTeam2 === playerTeam2 ? m.gameTeam1 : null;
             if (!opp2) { preDropped.push({ ...m, reason: "no_opp" }); continue; }
             const pitcherEra = sportByteam.mlb?.probables?.[opp2]?.era;
-            if (pitcherEra != null && !isNaN(pitcherEra) && pitcherEra >= 4) { preFilteredMarkets.push(m); }
+            // Pass through if ERA is null (no data yet) or >= 4.0; drop only if ERA is known to be < 4.0
+            if (pitcherEra == null || isNaN(pitcherEra) || pitcherEra >= 4) { preFilteredMarkets.push(m); }
             else { preDropped.push({ ...m, reason: "pitcher_era_too_low", era: pitcherEra ?? null, opponent: opp2, moneyline: sportByteam.mlb?.gameOdds?.[m.kalshiPlayerTeam]?.moneyline ?? null }); }
             continue;
           }
