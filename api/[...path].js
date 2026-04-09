@@ -723,7 +723,7 @@ var worker_default = {
         const SERIES = {
           nba: { points: "KXNBAPTS", rebounds: "KXNBAREB", assists: "KXNBAAST", threePointers: "KXNBA3PT" },
           nhl: { goals: "KXNHLGLS", assists: "KXNHLAST", points: "KXNHLPTS" },
-          mlb: { hits: "KXMLBHITS", homeRuns: "KXMLBHR", hrr: "KXMLBHRR", strikeouts: "KXMLBKS" }
+          mlb: { hits: "KXMLBHITS", hrr: "KXMLBHRR", strikeouts: "KXMLBKS" }
         };
         const series = SERIES[sportParam]?.[stat];
         if (!series || !playerName) return jsonResponse({ markets: [] });
@@ -864,7 +864,6 @@ var worker_default = {
           KXNHLAST: { sport: "nhl", league: "nhl", stat: "assists", col: "A" },
           KXNHLPTS: { sport: "nhl", league: "nhl", stat: "points", col: "PTS" },
           KXMLBHITS: { sport: "mlb", league: "mlb", stat: "hits", col: "H" },
-          KXMLBHR: { sport: "mlb", league: "mlb", stat: "homeRuns", col: "HR" },
           KXMLBHRR: { sport: "mlb", league: "mlb", stat: "hrr", col: "HRR" },
           KXMLBKS: { sport: "mlb", league: "mlb", stat: "strikeouts", col: "K" },
           KXNFLPAYDS: { sport: "nfl", league: "nfl", stat: "passingYards", col: "YDS" },
@@ -1102,7 +1101,7 @@ var worker_default = {
           for (const abbr of teamFallback.softTeams) {
             if (!probables[abbr]) hitterSoftTeams.add(abbr);
           }
-          for (const st of ["hits", "homeRuns", "hrr"]) {
+          for (const st of ["hits", "hrr"]) {
             STAT_SOFT[`mlb|${st}`] = { softTeams: hitterSoftTeams, rankMap: hitterRankMap };
           }
           STAT_SOFT["mlb|strikeouts"] = mlbSoftTeams(batting, true);
@@ -1656,7 +1655,7 @@ var worker_default = {
             _hlSoftPct = softPct !== null ? parseFloat(softPct.toFixed(1)) : null;
             const _hlRaw = _hlSoftPct !== null ? (_hlSeasonPct + _hlSoftPct) / 2 : _hlSeasonPct;
             const _hlHomeTeam = sportByteam.mlb?.gameHomeTeams?.[playerTeam] ?? tonightOpp;
-            const _hlPf = stat === "homeRuns" ? (PARK_HRFACTOR?.[_hlHomeTeam] ?? 1) : (PARK_HITFACTOR?.[_hlHomeTeam] ?? 1);
+            const _hlPf = PARK_HITFACTOR?.[_hlHomeTeam] ?? 1;
             _hlTruePct = parseFloat(Math.min(99, _hlRaw * _hlPf).toFixed(1));
             _hlEdge = parseFloat((_hlTruePct - kalshiPct).toFixed(1));
           }
@@ -1718,7 +1717,7 @@ var worker_default = {
               const basePct = blendedPct ?? seasonPct;
               const rawMlbPct = softPct !== null ? (basePct + softPct) / 2 : basePct;
               const homeTeam = sportByteam.mlb?.gameHomeTeams?.[playerTeam] ?? tonightOpp;
-              const parkFactor = stat === "homeRuns" ? (PARK_HRFACTOR[homeTeam] ?? 1) : (PARK_HITFACTOR[homeTeam] ?? 1);
+              const parkFactor = PARK_HITFACTOR[homeTeam] ?? 1;
               return Math.min(99, rawMlbPct * parkFactor);
             }
             if (sport === "nhl" && dvpFactorOut !== null) {
@@ -1896,7 +1895,6 @@ var worker_default = {
           "nhl:assists",
           "nhl:points",
           "mlb:hits",
-          "mlb:homeRuns",
           "mlb:hrr",
           "mlb:strikeouts",
           "mlb:totalBases",
@@ -2276,8 +2274,8 @@ async function buildPitcherKPct(mlbSched) {
 __name(buildPitcherKPct, "buildPitcherKPct");
 async function warmPlayerInfoCache(cache) {
   if (!cache) return;
-  const SERIES = ["KXNBAPTS", "KXNBAREB", "KXNBAAST", "KXNBA3PT", "KXNHLGLS", "KXNHLAST", "KXNHLPTS", "KXMLBHITS", "KXMLBHR", "KXMLBHRR", "KXMLBKS"];
-  const SERIES_SPORT = { KXNBAPTS: "nba", KXNBAREB: "nba", KXNBAAST: "nba", KXNBA3PT: "nba", KXNHLGLS: "nhl", KXNHLAST: "nhl", KXNHLPTS: "nhl", KXMLBHITS: "mlb", KXMLBHR: "mlb", KXMLBHRR: "mlb", KXMLBKS: "mlb" };
+  const SERIES = ["KXNBAPTS", "KXNBAREB", "KXNBAAST", "KXNBA3PT", "KXNHLGLS", "KXNHLAST", "KXNHLPTS", "KXMLBHITS", "KXMLBHRR", "KXMLBKS"];
+  const SERIES_SPORT = { KXNBAPTS: "nba", KXNBAREB: "nba", KXNBAAST: "nba", KXNBA3PT: "nba", KXNHLGLS: "nhl", KXNHLAST: "nhl", KXNHLPTS: "nhl", KXMLBHITS: "mlb", KXMLBHRR: "mlb", KXMLBKS: "mlb" };
   const hdrs = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36", "Referer": "https://www.espn.com/", "Accept": "application/json" };
   const playerKeys = /* @__PURE__ */ new Set();
   for (const ticker of SERIES) {
