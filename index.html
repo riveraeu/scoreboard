@@ -1533,12 +1533,12 @@ function App() {
                             {/* Drawer: season rate + matchup rate */}
                             {showBreakdown && (
                               <div style={{borderLeft:"2px solid #30363d",paddingLeft:10,marginTop:2,display:"flex",flexDirection:"column",gap:4}}>
-                                {/* Season hit rate (grey) */}
+                                {/* Season hit rate */}
                                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                                   <div style={{flex:1,background:"#21262d",borderRadius:4,height:11,overflow:"hidden"}}>
-                                    <div style={{width:`${pct}%`,background:"#484f58",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:pct>0?2:0}}/>
+                                    <div style={{width:`${pct}%`,background:tierColor(pct),height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:pct>0?2:0}}/>
                                   </div>
-                                  <div style={{color:"#8b949e",fontSize:10,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{pct.toFixed(1)}%</div>
+                                  <div style={{color:tierColor(pct),fontSize:10,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{pct.toFixed(1)}%</div>
                                   <div style={{color:"#484f58",fontSize:10,width:80,flexShrink:0}}>{isMLB ? `'25+'26 (${totalGames}g)` : `${count}/${totalGames}g`}</div>
                                 </div>
                                 {/* Matchup rate */}
@@ -1879,9 +1879,9 @@ function App() {
                               ) : `Season rate${play.seasonGames ? ` (${play.seasonGames}g)` : ""}`}
                             </div>
                             <div style={{flex:1,background:"#21262d",borderRadius:3,height:8,overflow:"hidden"}}>
-                              <div style={{width:`${play.seasonPct}%`,background:"#484f58",height:"100%",borderRadius:3}}/>
+                              <div style={{width:`${play.seasonPct}%`,background:tierColor(play.seasonPct),height:"100%",borderRadius:3}}/>
                             </div>
-                            <div style={{color:"#8b949e",fontSize:11,fontWeight:600,width:38,textAlign:"right",flexShrink:0}}>{play.seasonPct}%</div>
+                            <div style={{color:tierColor(play.seasonPct),fontSize:11,fontWeight:600,width:38,textAlign:"right",flexShrink:0}}>{play.seasonPct}%</div>
                           </div>
                           {play.softPct !== null && (play.stat !== "strikeouts" || (play.softGames ?? 0) >= 3) && (
                             <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -1890,9 +1890,9 @@ function App() {
                                 {play.softGames ? ` (${play.softGames}g)` : ""}
                               </div>
                               <div style={{flex:1,background:"#21262d",borderRadius:3,height:8,overflow:"hidden"}}>
-                                <div style={{width:`${play.softPct}%`,background:"#3fb950",height:"100%",borderRadius:3}}/>
+                                <div style={{width:`${play.softPct}%`,background:tierColor(play.softPct),height:"100%",borderRadius:3}}/>
                               </div>
-                              <div style={{color:"#3fb950",fontSize:11,fontWeight:600,width:38,textAlign:"right",flexShrink:0}}>{play.softPct}%</div>
+                              <div style={{color:tierColor(play.softPct),fontSize:11,fontWeight:600,width:38,textAlign:"right",flexShrink:0}}>{play.softPct}%</div>
                             </div>
                           )}
                         </div>
