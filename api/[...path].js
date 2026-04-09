@@ -723,7 +723,7 @@ var worker_default = {
         const SERIES = {
           nba: { points: "KXNBAPTS", rebounds: "KXNBAREB", assists: "KXNBAAST", threePointers: "KXNBA3PT" },
           nhl: { goals: "KXNHLGLS", assists: "KXNHLAST", points: "KXNHLPTS" },
-          mlb: { hits: "KXMLBHITS", homeRuns: "KXMLBHR", hrr: "KXMLBHRR", strikeouts: "KXMLBKS", totalBases: "KXMLBTB" }
+          mlb: { hits: "KXMLBHITS", homeRuns: "KXMLBHR", hrr: "KXMLBHRR", strikeouts: "KXMLBKS" }
         };
         const series = SERIES[sportParam]?.[stat];
         if (!series || !playerName) return jsonResponse({ markets: [] });
@@ -867,7 +867,6 @@ var worker_default = {
           KXMLBHR: { sport: "mlb", league: "mlb", stat: "homeRuns", col: "HR" },
           KXMLBHRR: { sport: "mlb", league: "mlb", stat: "hrr", col: "HRR" },
           KXMLBKS: { sport: "mlb", league: "mlb", stat: "strikeouts", col: "K" },
-          KXMLBTB: { sport: "mlb", league: "mlb", stat: "totalBases", col: "TB" },
           KXNFLPAYDS: { sport: "nfl", league: "nfl", stat: "passingYards", col: "YDS" },
           KXNFLRUYDS: { sport: "nfl", league: "nfl", stat: "rushingYards", col: "YDS" },
           KXNFLREYDS: { sport: "nfl", league: "nfl", stat: "receivingYards", col: "YDS" },
@@ -1103,7 +1102,7 @@ var worker_default = {
           for (const abbr of teamFallback.softTeams) {
             if (!probables[abbr]) hitterSoftTeams.add(abbr);
           }
-          for (const st of ["hits", "homeRuns", "hrr", "totalBases"]) {
+          for (const st of ["hits", "homeRuns", "hrr"]) {
             STAT_SOFT[`mlb|${st}`] = { softTeams: hitterSoftTeams, rankMap: hitterRankMap };
           }
           STAT_SOFT["mlb|strikeouts"] = mlbSoftTeams(batting, true);
@@ -1143,7 +1142,7 @@ var worker_default = {
             if (!opp2) { preDropped.push({ ...m, reason: "no_opp" }); continue; }
             const pitcherEra = sportByteam.mlb?.probables?.[opp2]?.era;
             if (pitcherEra != null && !isNaN(pitcherEra) && pitcherEra >= 4) { preFilteredMarkets.push(m); }
-            else { preDropped.push({ ...m, reason: "pitcher_era_too_low", era: pitcherEra ?? null, opponent: opp2 }); }
+            else { preDropped.push({ ...m, reason: "pitcher_era_too_low", era: pitcherEra ?? null, opponent: opp2, moneyline: sportByteam.mlb?.gameOdds?.[m.kalshiPlayerTeam]?.moneyline ?? null }); }
             continue;
           }
           if (m.sport === "nhl") { preFilteredMarkets.push(m); continue; }
@@ -1555,8 +1554,9 @@ var worker_default = {
                   pkpMeets, lkpMeets, gameLineMeets,
                   seasonPct: _kSeasonPct, softPct: _kSoftPct, truePct: _kTruePct, edge: parseFloat((_kTruePct - kalshiPct).toFixed(1)),
                   pitcherKPct: sportByteam.mlb?.pitcherKPct?.[playerTeam] ?? null,
-                  lineupKPct: sportByteam.mlb?.lineupKPct?.[tonightOpp] ?? null,
-                  gameOdds: sportByteam.mlb?.gameOdds?.[playerTeam] ?? null
+                  lineupKPct: _pitcherHand === "R" ? (sportByteam.mlb?.lineupKPctVR?.[tonightOpp] ?? sportByteam.mlb?.lineupKPct?.[tonightOpp] ?? null) : _pitcherHand === "L" ? (sportByteam.mlb?.lineupKPctVL?.[tonightOpp] ?? sportByteam.mlb?.lineupKPct?.[tonightOpp] ?? null) : (sportByteam.mlb?.lineupKPct?.[tonightOpp] ?? null),
+                  gameTotal: sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null,
+                  gameMoneyline: sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null
                 });
               }
               continue;
@@ -1683,30 +1683,33 @@ var worker_default = {
               }
               hitterAbVsPitcher = gl.events.filter((ev) => ev.oppAbbr === tonightOpp).reduce((s, ev) => s + (parseFloat(ev.stats[abIdxH]) || 0), 0);
             }
+            const _hlEra = sportByteam.mlb?.probables?.[tonightOpp]?.era ?? null;
+            const _hlML = hitterML;
+            const _hlCommon = { seasonPct: _hlSeasonPct, softPct: _hlSoftPct, truePct: _hlTruePct, edge: _hlEdge, pitcherEra: _hlEra, moneyline: _hlML, hitterBa, hitterBaTier, abVsTeam: hitterAbVsPitcher };
             // Gate: team must be favored
             if (hitterML === null || hitterML >= 0) {
-              if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "team_not_favored", moneyline: hitterML, seasonPct: _hlSeasonPct, softPct: _hlSoftPct, truePct: _hlTruePct, edge: _hlEdge });
+              if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "team_not_favored", ..._hlCommon });
               continue;
             }
             // Gate: opposing pitcher ERA must be >= 4.0
             const oppPitcherEra = sportByteam.mlb?.probables?.[tonightOpp]?.era ?? null;
             if (oppPitcherEra !== null && oppPitcherEra < 4.0) {
-              if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "pitcher_era_too_low", era: oppPitcherEra, seasonPct: _hlSeasonPct, softPct: _hlSoftPct, truePct: _hlTruePct, edge: _hlEdge });
+              if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "pitcher_era_too_low", ..._hlCommon });
               continue;
             }
             // Gate: must have h2h data (softPct) — requires 5+ career AB vs tonight's team
             if (softPct === null) {
-              if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "no_h2h_data", abVsTeam: hitterAbVsPitcher, seasonPct: _hlSeasonPct, softPct: _hlSoftPct, truePct: _hlTruePct, edge: _hlEdge });
+              if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "no_h2h_data", ..._hlCommon });
               continue;
             }
             // Gate: at least 10 career AB vs tonight's team (across all seasons)
             if (hitterAbVsPitcher < 10) {
-              if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "insufficient_ab_vs_pitcher", abVsTeam: hitterAbVsPitcher, seasonPct: _hlSeasonPct, softPct: _hlSoftPct, truePct: _hlTruePct, edge: _hlEdge });
+              if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "insufficient_ab_vs_pitcher", ..._hlCommon });
               continue;
             }
             // Gate: batting average must be good or better (.270+)
             if (hitterBa !== null && hitterBa < 0.270) {
-              if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "low_batting_avg", ba: hitterBa, seasonPct: _hlSeasonPct, softPct: _hlSoftPct, truePct: _hlTruePct, edge: _hlEdge });
+              if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "low_batting_avg", ..._hlCommon });
               continue;
             }
           }
@@ -2277,8 +2280,8 @@ async function buildPitcherKPct(mlbSched) {
 __name(buildPitcherKPct, "buildPitcherKPct");
 async function warmPlayerInfoCache(cache) {
   if (!cache) return;
-  const SERIES = ["KXNBAPTS", "KXNBAREB", "KXNBAAST", "KXNBA3PT", "KXNHLGLS", "KXNHLAST", "KXNHLPTS", "KXMLBHITS", "KXMLBHR", "KXMLBHRR", "KXMLBKS", "KXMLBTB"];
-  const SERIES_SPORT = { KXNBAPTS: "nba", KXNBAREB: "nba", KXNBAAST: "nba", KXNBA3PT: "nba", KXNHLGLS: "nhl", KXNHLAST: "nhl", KXNHLPTS: "nhl", KXMLBHITS: "mlb", KXMLBHR: "mlb", KXMLBHRR: "mlb", KXMLBKS: "mlb", KXMLBTB: "mlb" };
+  const SERIES = ["KXNBAPTS", "KXNBAREB", "KXNBAAST", "KXNBA3PT", "KXNHLGLS", "KXNHLAST", "KXNHLPTS", "KXMLBHITS", "KXMLBHR", "KXMLBHRR", "KXMLBKS"];
+  const SERIES_SPORT = { KXNBAPTS: "nba", KXNBAREB: "nba", KXNBAAST: "nba", KXNBA3PT: "nba", KXNHLGLS: "nhl", KXNHLAST: "nhl", KXNHLPTS: "nhl", KXMLBHITS: "mlb", KXMLBHR: "mlb", KXMLBHRR: "mlb", KXMLBKS: "mlb" };
   const hdrs = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36", "Referer": "https://www.espn.com/", "Accept": "application/json" };
   const playerKeys = /* @__PURE__ */ new Set();
   for (const ticker of SERIES) {
