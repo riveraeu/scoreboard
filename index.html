@@ -93,6 +93,7 @@ const STAT_CONFIGS = {
 
 const getColor = () => "#8b949e";
 const matchupColor = (softPct, pct) => softPct != null ? (softPct >= pct + 5 ? "#3fb950" : softPct <= pct - 5 ? "#f78166" : "#8b949e") : "#8b949e";
+const tierColor = pct => pct >= 90 ? "#3fb950" : pct >= 80 ? "#58a6ff" : pct >= 70 ? "#e3b341" : "#f78166";
 const STAT_LABEL = {
   points:"PTS", rebounds:"REB", assists:"AST", threePointers:"3PT",
   goals:"G", shotsOnGoal:"SOG",
@@ -1447,7 +1448,7 @@ function App() {
 
                     if (!showTriple) {
                       // Non-NBA / no DvP: season bar + optional Kalshi + matchup
-                      const color = "#8b949e";
+                      const color = tierColor(pct);
                       return (
                         <div key={t} style={{display:"flex",gap:10,marginBottom:14,alignItems:"flex-start"}}>
                           <div style={{color:"#8b949e",fontSize:13,width:40,textAlign:"right",flexShrink:0,paddingTop:2}}>{isUnder ? `<${t}` : `${t}+`}</div>
@@ -1474,7 +1475,7 @@ function App() {
                             {softPct !== null && (
                               <div style={{display:"flex",alignItems:"center",gap:8}}>
                                 {(() => {
-                                  const mc = softPct >= 70 ? "#3fb950" : softPct >= 50 ? "#c9d1d9" : "#f78166";
+                                  const mc = tierColor(softPct);
                                   return <>
                                     <div style={{flex:1,background:"#21262d",borderRadius:4,height:13,overflow:"hidden"}}>
                                       <div style={{width:`${softPct}%`,background:mc,height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:softPct>0?3:0}}/>
@@ -1499,7 +1500,7 @@ function App() {
                             {/* True probability — primary (fall back to season rate if truePct unavailable) */}
                             {(() => {
                               const displayPct = truePct ?? pct;
-                              const displayColor = truePct !== null ? "#e3b341" : matchupColor(softPct, pct);
+                              const displayColor = tierColor(displayPct);
                               return (
                                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                                   <div style={{flex:1,background:"#21262d",borderRadius:4,height:16,overflow:"hidden"}}>
@@ -1542,7 +1543,7 @@ function App() {
                                 </div>
                                 {/* Matchup rate */}
                                 {softPct !== null && (() => {
-                                  const mc = softPct >= 70 ? "#3fb950" : softPct >= 50 ? "#c9d1d9" : "#f78166";
+                                  const mc = tierColor(softPct);
                                   return (
                                     <div style={{display:"flex",alignItems:"center",gap:8}}>
                                       <div style={{flex:1,background:"#21262d",borderRadius:4,height:11,overflow:"hidden"}}>
@@ -1822,13 +1823,15 @@ function App() {
                     </div>
                   </div>
                   {/* True probability bar */}
+                  {(() => { const tc = tierColor(play.truePct); return (
                   <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}>
                     <div style={{flex:1,background:"#21262d",borderRadius:4,height:14,overflow:"hidden"}}>
-                      <div style={{width:`${play.truePct}%`,background:"#e3b341",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:play.truePct>0?3:0}}/>
+                      <div style={{width:`${play.truePct}%`,background:tc,height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:play.truePct>0?3:0}}/>
                     </div>
-                    <div style={{color:"#e3b341",fontSize:12,fontWeight:700,width:42,textAlign:"right",flexShrink:0}}>{play.truePct}%</div>
+                    <div style={{color:tc,fontSize:12,fontWeight:700,width:42,textAlign:"right",flexShrink:0}}>{play.truePct}%</div>
                     <div style={{color:"#484f58",fontSize:10,width:38,flexShrink:0}}>true</div>
                   </div>
+                  ); })()}
                   {/* Kalshi bar */}
                   <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
                     <div style={{flex:1,background:"#21262d",borderRadius:4,height:10,overflow:"hidden"}}>
