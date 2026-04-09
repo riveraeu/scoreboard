@@ -1515,7 +1515,9 @@ var worker_default = {
             if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "no_opp", playerTeam, gameTeam1, gameTeam2 });
             continue;
           }
-          const nbaPos = sport === "nba" ? (nbaDepthChartPos?.[String(info.id)] || (info.position ? NBA_POS_MAP[info.position] || null : null)) : null;
+          // Manual position overrides for known depth-chart misclassifications
+          const NBA_POS_OVERRIDES = { "4871144": "C" }; // Alperen Sengun listed as PF in depth chart
+          const nbaPos = sport === "nba" ? (NBA_POS_OVERRIDES[String(info.id)] || nbaDepthChartPos?.[String(info.id)] || (info.position ? NBA_POS_MAP[info.position] || null : null)) : null;
           const nbaDvpSoftTeams = sport === "nba" && nbaPos && allPositionsDvp?.[nbaPos]?.softTeams?.[stat] ? new Set(allPositionsDvp[nbaPos].softTeams[stat]) : null;
           const nbaEffectiveSoftTeams = nbaDvpSoftTeams || (sport === "nba" ? softTeams : null);
           if (sport === "nba") {
@@ -2676,8 +2678,8 @@ async function buildNbaDepthChartPos(cache) {
         const d = await r.json();
         const item = d.items?.[0];
         if (!item) return;
-        // Sort PG→SG→SF→PF→C so first write wins (primary position for dual-listed players)
-        const POS_ORDER = ["PG","SG","SF","PF","C"];
+        // Sort C→PF→SF→SG→PG so first write wins (prefer the "bigger" position for dual-listed players)
+        const POS_ORDER = ["C","PF","SF","SG","PG"];
         const sortedPositions = Object.values(item.positions || {}).sort((a, b) =>
           POS_ORDER.indexOf(a.position?.abbreviation?.toUpperCase()) - POS_ORDER.indexOf(b.position?.abbreviation?.toUpperCase())
         );
