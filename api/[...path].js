@@ -1558,6 +1558,7 @@ var worker_default = {
             softLabel = null;
             softUnit = null;
           }
+          const MIN_H2H = 5;
           if (sport === "mlb" && stat === "strikeouts") {
             if (!isStrongMatchup) {
               if (isDebug) {
@@ -1579,7 +1580,6 @@ var worker_default = {
               continue;
             }
           }
-          const MIN_H2H = 5;
           // Hoist for both binomial softPct and BA gate below
           const abIdxH = (sport === "mlb" && stat !== "strikeouts") ? gl.ul.indexOf("AB") : -1;
           const blendEventsH = (sport === "mlb" && hasSeasonTags)
