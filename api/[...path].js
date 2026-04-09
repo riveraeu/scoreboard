@@ -1794,7 +1794,7 @@ var worker_default = {
           return ta < tb ? -1 : ta > tb ? 1 : b.edge - a.edge;
         });
         if (isDebug) {
-          return jsonResponse({ plays, dropped, gamelogErrors, pInfoErrors, preFilteredCount: preFilteredMarkets.length, qualifyingCount: qualifyingMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, infoCacheHits: uniquePlayerKeys.length - keysNeedingInfo.length, gamelogCacheHits: keysForGamelog.length - keysNeedingGamelog.length }, true);
+          return jsonResponse({ plays, dropped, gamelogErrors, pInfoErrors, preFilteredCount: preFilteredMarkets.length, qualifyingCount: qualifyingMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, infoCacheHits: uniquePlayerKeys.length - keysNeedingInfo.length, gamelogCacheHits: keysForGamelog.length - keysNeedingGamelog.length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null }, true);
         }
         const playsResult = { plays, qualifyingCount: qualifyingMarkets.length, preFilteredCount: preFilteredMarkets.length };
         const sportsInPlays = new Set(plays.map((p) => p.sport));
