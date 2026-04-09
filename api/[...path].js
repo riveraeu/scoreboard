@@ -1535,7 +1535,39 @@ var worker_default = {
             }
           }
           const MIN_H2H = 3;
-          const softPct = softVals.length >= MIN_H2H ? softVals.filter((v) => v >= threshold).length / softVals.length * 100 : null;
+          // Hoist for both binomial softPct and BA gate below
+          const abIdxH = (sport === "mlb" && stat !== "strikeouts") ? gl.ul.indexOf("AB") : -1;
+          const blendEventsH = (sport === "mlb" && hasSeasonTags)
+            ? gl.events.filter((ev) => ev.season === 2025 || ev.season === 2026)
+            : gl.events;
+          let softPct;
+          if (sport === "mlb" && stat !== "strikeouts" && abIdxH !== -1) {
+            // Binomial per-AB model: P(stat >= threshold in a game) given per-AB hit rate vs tonight's opponent
+            const MIN_H2H_AB = 5;
+            const h2hEvents = gl.events.filter((ev) => ev.oppAbbr === tonightOpp);
+            const h2hAB = h2hEvents.reduce((s, ev) => s + (parseFloat(ev.stats[abIdxH]) || 0), 0);
+            if (h2hAB >= MIN_H2H_AB) {
+              const h2hStatTotal = h2hEvents.reduce((s, ev) => { const v = getStat(ev); return s + (isNaN(v) ? 0 : v); }, 0);
+              const perAbRate = Math.min(1, h2hStatTotal / h2hAB);
+              const seasonAB = blendEventsH.reduce((s, ev) => s + (parseFloat(ev.stats[abIdxH]) || 0), 0);
+              const avgAbPerGame = blendEventsH.length > 0 ? seasonAB / blendEventsH.length : 3.5;
+              const binomP = (n, p, maxK) => {
+                let sum = 0;
+                const nR = Math.round(n);
+                for (let k = 0; k <= maxK; k++) {
+                  let coeff = 1;
+                  for (let j = 0; j < k; j++) coeff *= (nR - j) / (j + 1);
+                  sum += coeff * Math.pow(p, k) * Math.pow(1 - p, nR - k);
+                }
+                return Math.min(1, sum);
+              };
+              softPct = Math.max(0, Math.min(100, (1 - binomP(avgAbPerGame, perAbRate, threshold - 1)) * 100));
+            } else {
+              softPct = null;
+            }
+          } else {
+            softPct = softVals.length >= MIN_H2H ? softVals.filter((v) => v >= threshold).length / softVals.length * 100 : null;
+          }
           const lineupKPctOut = (() => {
             if (sport !== "mlb" || stat !== "strikeouts") return null;
             const vr = sportByteam.mlb?.lineupKPctVR?.[tonightOpp] ?? null;
@@ -1601,30 +1633,34 @@ var worker_default = {
           let hitterBa = null, hitterBaTier = null, hitterAbVsPitcher = 0;
           if (sport === "mlb" && stat !== "strikeouts") {
             const hitterML = sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null;
-            const abIdx = gl.ul.indexOf("AB");
             const hIdx2 = gl.ul.indexOf("H");
-            // Compute season BA from blended '25+'26 events
-            if (abIdx !== -1 && hIdx2 !== -1) {
-              const blendEvents = hasSeasonTags ? gl.events.filter((ev) => ev.season === 2025 || ev.season === 2026) : gl.events;
-              const totalAB = blendEvents.reduce((s, ev) => s + (parseFloat(ev.stats[abIdx]) || 0), 0);
-              const totalH = blendEvents.reduce((s, ev) => s + (parseFloat(ev.stats[hIdx2]) || 0), 0);
+            // Compute season BA from blended '25+'26 events (reuse hoisted abIdxH / blendEventsH)
+            if (abIdxH !== -1 && hIdx2 !== -1) {
+              const totalAB = blendEventsH.reduce((s, ev) => s + (parseFloat(ev.stats[abIdxH]) || 0), 0);
+              const totalH = blendEventsH.reduce((s, ev) => s + (parseFloat(ev.stats[hIdx2]) || 0), 0);
               if (totalAB >= 20) {
                 hitterBa = parseFloat((totalH / totalAB).toFixed(3));
                 hitterBaTier = hitterBa >= 0.300 ? "elite" : hitterBa >= 0.270 ? "good" : hitterBa >= 0.240 ? "avg" : "below";
               }
-              hitterAbVsPitcher = gl.events.filter((ev) => ev.oppAbbr === tonightOpp).reduce((s, ev) => s + (parseFloat(ev.stats[abIdx]) || 0), 0);
+              hitterAbVsPitcher = gl.events.filter((ev) => ev.oppAbbr === tonightOpp).reduce((s, ev) => s + (parseFloat(ev.stats[abIdxH]) || 0), 0);
             }
             // Gate: team must be favored
             if (hitterML === null || hitterML >= 0) {
               if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "team_not_favored", moneyline: hitterML });
               continue;
             }
-            // Gate: must have h2h data (softPct) — no matchup fallback
-            if (softPct === null) {
-              if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "no_h2h_data" });
+            // Gate: opposing pitcher ERA must be >= 4.0
+            const oppPitcherEra = sportByteam.mlb?.probables?.[tonightOpp]?.era ?? null;
+            if (oppPitcherEra !== null && oppPitcherEra < 4.0) {
+              if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "pitcher_era_too_low", era: oppPitcherEra });
               continue;
             }
-            // Gate: at least 10 AB vs tonight's team
+            // Gate: must have h2h data (softPct) — requires 5+ career AB vs tonight's team
+            if (softPct === null) {
+              if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "no_h2h_data", abVsTeam: hitterAbVsPitcher });
+              continue;
+            }
+            // Gate: at least 10 career AB vs tonight's team (across all seasons)
             if (hitterAbVsPitcher < 10) {
               if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "insufficient_ab_vs_pitcher", abVsTeam: hitterAbVsPitcher });
               continue;
@@ -1642,7 +1678,10 @@ var worker_default = {
             }
             if (sport === "mlb" && hasSeasonTags) {
               const basePct = blendedPct ?? seasonPct;
-              return softPct !== null ? (basePct + softPct) / 2 : basePct;
+              const rawMlbPct = softPct !== null ? (basePct + softPct) / 2 : basePct;
+              const homeTeam = sportByteam.mlb?.gameHomeTeams?.[playerTeam] ?? tonightOpp;
+              const parkFactor = stat === "homeRuns" ? (PARK_HRFACTOR[homeTeam] ?? 1) : (PARK_HITFACTOR[homeTeam] ?? 1);
+              return Math.min(99, rawMlbPct * parkFactor);
             }
             if (sport === "nhl" && dvpFactorOut !== null) {
               const dvpAdjustedPct = Math.min(99, seasonPct * dvpFactorOut);

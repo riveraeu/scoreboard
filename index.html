@@ -1911,7 +1911,7 @@ function App() {
                               const ml = play.hitterMoneyline;
                               const teamEl = ml != null ? <><span style={{color:"#c9d1d9",fontWeight:600}}>{play.playerTeam}</span> is favored at <span style={{color:"#3fb950",fontWeight:600}}>{ml > 0 ? `+${ml}` : ml}</span></> : null;
                               return <>
-                                {first} has hit {play.threshold}+ {statFull} in {hitRate} of career at-bats vs {pitcherEl}{ab}.{baEl && <>{baEl}{teamEl ? <> and {teamEl}</> : ""}</>}{!baEl && teamEl ? <> {teamEl}.</> : baEl ? "." : ""}
+                                {first} has a {hitRate} chance of {play.threshold}+ {statFull} vs {pitcherEl}{ab} based on career AB.{baEl && <>{baEl}{teamEl ? <> and {teamEl}</> : ""}</>}{!baEl && teamEl ? <> {teamEl}.</> : baEl ? "." : ""}
                               </>;
                             })()}
                           </div>
