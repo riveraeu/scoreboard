@@ -1136,8 +1136,9 @@ function App() {
                   dvpMap[t] = { wCount, wPct: (wCount / wTotal) * 100 };
                 });
               }
-            } else if (mlbH2HOpp) {
-              // Non-strikeout tabs: h2h vs resolved matchup opponent
+            }
+            // If bucket mode found no games (new pitcher), fall back to h2h vs resolved opponent
+            if (wTotal === 0 && mlbH2HOpp) {
               const h2hGames = perGame.filter(g => g.oppAbbr === mlbH2HOpp && g[safeTab] !== undefined);
               wTotal = h2hGames.length;
               if (wTotal > 0) {
