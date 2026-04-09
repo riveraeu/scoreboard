@@ -1298,11 +1298,12 @@ function App() {
                           if (isNBA) {
                             const posGroup = tonightTabPlay?.posGroup ?? null;
                             const posLabel = {PG:"point guards",SG:"shooting guards",SF:"small forwards",PF:"power forwards",C:"centers"}[posGroup] ?? null;
-                            const posFullLabel = {PG:"PG",SG:"SG",SF:"SF",PF:"PF",C:"C"}[posGroup] ?? null;
+                            const posName = {PG:"point guard",SG:"shooting guard",SF:"small forward",PF:"power forward",C:"center"}[posGroup] ?? null;
                             // Only use position-specific rank/value when it comes from BettingPros (posDvpRank set)
                             const hasPosDvp = tonightTabPlay?.posDvpRank != null;
                             const displayRank = hasPosDvp ? tonightTabPlay.posDvpRank : rank;
                             const displayValue = hasPosDvp ? tonightTabPlay.posDvpValue : null; // don't show team-level value as position-specific
+                            const fallbackValue = displayValue ?? metricVal;
                             const statName = { points:"points", rebounds:"rebounds", assists:"assists", threePointers:"3-pointers" }[safeTab] || safeTab;
                             const isNBAStrong = tonightTabPlay?.softPct != null;
                             const isNBAHard = !isNBAStrong && effectiveOpp && (dvpData.hardTeams?.[safeTab] || []).includes(effectiveOpp);
@@ -1310,9 +1311,9 @@ function App() {
                             const seasonAvg = avg !== "—" ? avg : null;
                             const careerHi = hi !== "—" ? hi : null;
                             return <>
-                              <span style={{color:"#c9d1d9",fontWeight:600}}>{opp}</span> has the {hasPosDvp && posFullLabel
-                                ? <><span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}</span> ranked defense at giving up {statName} to the {posFullLabel} position{displayValue != null && <>, allowing <span style={{color:rankColor,fontWeight:600}}>{displayValue} per game</span></>}</>
-                                : <><span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}-worst</span> defense in {statName} allowed</>
+                              <span style={{color:"#c9d1d9",fontWeight:600}}>{opp}</span> has the {hasPosDvp && posName
+                                ? <><span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}</span> ranked defense at giving up {statName} to the {posName} position{displayValue != null && <>, allowing <span style={{color:rankColor,fontWeight:600}}>{displayValue} per game</span></>}</>
+                                : <><span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}-worst</span> defense in {statName} allowed{posName && <> to the {posName} position</>}{fallbackValue != null && <> (<span style={{color:rankColor,fontWeight:600}}>{fallbackValue} per game</span>)</>}</>
                               }. {first} is averaging <span style={{color:"#c9d1d9",fontWeight:600}}>{seasonAvg ?? "—"} {statName}</span> over <span style={{color:"#8b949e"}}>{totalGames} games</span> this season{careerHi != null && <> with a career high of <span style={{color:"#c9d1d9",fontWeight:600}}>{careerHi}</span></>}.
                               {isOppFallback && <div style={{color:"#484f58",fontSize:10,marginTop:3}}>Showing last game vs {opp} — updates when next game is scheduled.</div>}
                             </>;
@@ -1998,6 +1999,7 @@ function App() {
 
                               if (play.sport === "nba") {
                                 const posLabel = {PG:"point guards",SG:"shooting guards",SF:"small forwards",PF:"power forwards",C:"centers"}[play.posGroup] ?? null;
+                                const posName = {PG:"point guard",SG:"shooting guard",SF:"small forward",PF:"power forward",C:"center"}[play.posGroup] ?? null;
                                 const hasPosDvp = play.posDvpRank != null;
                                 const displayRank = hasPosDvp ? play.posDvpRank : play.oppRank;
                                 const displayValue = hasPosDvp ? play.posDvpValue : null;
@@ -2005,10 +2007,11 @@ function App() {
                                 const weakLabel = posLabel ? `weak ${posLabel} defenses` : "weak matchups";
                                 const rankColor = play.softPct !== null ? "#3fb950" : play.isHardMatchup ? "#f78166" : "#c9d1d9";
                                 const seasonColor2 = play.seasonPct == null ? "#c9d1d9" : play.seasonPct >= 75 ? "#3fb950" : play.seasonPct >= 60 ? "#c9d1d9" : "#f78166";
+                                const fallbackValue = displayValue ?? play.oppMetricValue;
                                 return <>
-                                  <span style={{color:"#c9d1d9",fontWeight:600}}>{opp}</span> has the {hasPosDvp && play.posGroup
-                                    ? <><span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}</span> ranked defense at giving up {statName} to the {play.posGroup} position{displayValue != null && <>, allowing <span style={{color:rankColor,fontWeight:600}}>{displayValue} per game</span></>}</>
-                                    : <><span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}-worst</span> defense in {statName} allowed</>
+                                  <span style={{color:"#c9d1d9",fontWeight:600}}>{opp}</span> has the {hasPosDvp && posName
+                                    ? <><span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}</span> ranked defense at giving up {statName} to the {posName} position{displayValue != null && <>, allowing <span style={{color:rankColor,fontWeight:600}}>{displayValue} per game</span></>}</>
+                                    : <><span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}-worst</span> defense in {statName} allowed{posName && <> to the {posName} position</>}{fallbackValue != null && <> (<span style={{color:rankColor,fontWeight:600}}>{fallbackValue} per game</span>)</>}</>
                                   }. {first} hits this line in <span style={{color:seasonColor2,fontWeight:600}}>{play.seasonPct}%</span> of games this season{play.softPct !== null && <>, and {hitRate} vs {weakLabel}{games}</>}.
                                 </>;
                               }
