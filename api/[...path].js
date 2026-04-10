@@ -726,10 +726,12 @@ var worker_default = {
               gameTotal: _dvpGameOdds?.total ?? null,
               gameMoneyline: _dvpGameOdds?.moneyline ?? null
             } : null,
+            // Iterate all 30 teams from overall K%, use VR/VL as primary with overall as fallback
+            // (matching the tonight endpoint logic — avoids excluding teams that lack hand-specific data)
             allLineupKPct: _dvpPitcherHand === "R"
-              ? Object.fromEntries(Object.entries(mlbByteam.lineupKPctVR || {}).map(([t, v]) => [t, v ?? lineupKPct[t]]).filter(([, v]) => v != null))
+              ? Object.fromEntries(Object.entries(lineupKPct).map(([t, v]) => [t, mlbByteam.lineupKPctVR?.[t] ?? v]).filter(([, v]) => v != null))
               : _dvpPitcherHand === "L"
-              ? Object.fromEntries(Object.entries(mlbByteam.lineupKPctVL || {}).map(([t, v]) => [t, v ?? lineupKPct[t]]).filter(([, v]) => v != null))
+              ? Object.fromEntries(Object.entries(lineupKPct).map(([t, v]) => [t, mlbByteam.lineupKPctVL?.[t] ?? v]).filter(([, v]) => v != null))
               : lineupKPct
           }, 600);
         } else {
