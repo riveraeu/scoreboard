@@ -1063,7 +1063,7 @@ function App() {
                           if (k==="h2h") { const v = m.softPct; return v != null ? <span style={{color:v>=60?"#3fb950":v>=50?"#e3b341":"#f78166"}}>{v.toFixed(1)+"%"}</span> : DASH; }
                           if (k==="era") return C(era != null ? parseFloat(era).toFixed(2) : null, era >= 4.0 ? "#8b949e" : "#f78166");
                           if (k==="ba")  return C(ba  != null ? "."+String(Math.round(ba*1000)).padStart(3,"0") : null, ba >= 0.270 ? "#8b949e" : "#f78166");
-                          if (k==="ml")  return C(ml  != null ? fML(ml) : null, (stat==="strikeouts" ? ml <= -140 : ml < 0) ? "#8b949e" : "#f78166");
+                          if (k==="ml")  return C(ml  != null ? fML(ml) : null, ml <= -140 ? "#3fb950" : ml < 0 ? "#8b949e" : "#f78166");
                           if (k==="ab")  return C(ab  != null ? String(ab) : null, ab >= 10 ? "#8b949e" : "#f78166");
                           if (k==="pkp") return C(pkp != null ? pkp.toFixed(1)+"%" : null, pkp > 25 ? "#3fb950" : "#f78166");
                           if (k==="lkp") return C(lkp != null ? lkp.toFixed(1)+"%" : null, lkp > 23 ? "#3fb950" : "#f78166");
