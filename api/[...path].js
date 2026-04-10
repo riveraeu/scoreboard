@@ -1624,8 +1624,9 @@ var worker_default = {
               ? gl.events.filter((ev) => ev.season === 2026 && _kFilter(ev)).reduce((s, ev) => { const ip = parseFloat(ev.stats[_ipIdx2]) || 0; return s + Math.floor(ip) * 3 + Math.round((ip % 1) * 10); }, 0)
               : _kVals26.length * 20;
             const _kValsAll = gl.events.filter(_kFilter).map(getStat).filter((v) => !isNaN(v));
+            const _kValsCareer = gl.events.map(getStat).filter((v) => !isNaN(v));
             const _kVals2526 = [..._kVals25, ..._kVals26];
-            softVals = _kBF26 >= 15 ? _kVals26 : _kVals2526.length >= 5 ? _kVals2526 : _kValsAll;
+            softVals = _kBF26 >= 15 ? _kVals26 : _kVals2526.length >= 3 ? _kVals2526 : _kValsAll.length >= 3 ? _kValsAll : _kValsCareer;
             const _handSuffix = _pitcherHand === "R" ? " vs RHP" : _pitcherHand === "L" ? " vs LHP" : "";
             softLabel = lkpBucket === "high" ? `high-K lineups${_handSuffix}` : lkpBucket === "avg" ? `avg-K lineups${_handSuffix}` : lkpBucket === "low" ? `low-K lineups${_handSuffix}` : "career";
             softUnit = "%";
