@@ -1377,9 +1377,12 @@ var worker_default = {
           }
         }
         __name(fetchGamelog, "fetchGamelog");
-        for (let i = 0; i < keysNeedingGamelog.length; i++) {
-          await fetchGamelog(keysNeedingGamelog[i]);
-          if (i < keysNeedingGamelog.length - 1) await new Promise((r) => setTimeout(r, 350));
+        // Fetch gamelogs in batches of 5 in parallel; 200ms between batches to avoid ESPN rate-limiting
+        const GL_BATCH = 5;
+        for (let i = 0; i < keysNeedingGamelog.length; i += GL_BATCH) {
+          const batch = keysNeedingGamelog.slice(i, i + GL_BATCH);
+          await Promise.all(batch.map((k) => fetchGamelog(k)));
+          if (i + GL_BATCH < keysNeedingGamelog.length) await new Promise((r) => setTimeout(r, 200));
         }
         const pitcherGamelogs = {};
         if (sportByteam.mlb?.probables) {
@@ -1390,13 +1393,15 @@ var worker_default = {
             if (cached) pitcherGamelogs[teamAbbr] = { name, gl: _normGlOpp(cached) };
           }));
           const uncachedPitchers = pitcherEntriesToLoad.filter(([teamAbbr]) => !pitcherGamelogs[teamAbbr]);
-          for (let i = 0; i < uncachedPitchers.length; i++) {
-            const [teamAbbr, { name, id }] = uncachedPitchers[i];
-            const pitcherKey = `mlb|${name}`;
-            await fetchGamelog(pitcherKey, id);
-            const gl = playerGamelogs[pitcherKey] || null;
-            if (gl) pitcherGamelogs[teamAbbr] = { name, gl };
-            if (i < uncachedPitchers.length - 1) await new Promise((r) => setTimeout(r, 350));
+          for (let i = 0; i < uncachedPitchers.length; i += GL_BATCH) {
+            const batch = uncachedPitchers.slice(i, i + GL_BATCH);
+            await Promise.all(batch.map(async ([teamAbbr, { name, id }]) => {
+              const pitcherKey = `mlb|${name}`;
+              await fetchGamelog(pitcherKey, id);
+              const gl = playerGamelogs[pitcherKey] || null;
+              if (gl) pitcherGamelogs[teamAbbr] = { name, gl };
+            }));
+            if (i + GL_BATCH < uncachedPitchers.length) await new Promise((r) => setTimeout(r, 200));
           }
         }
         const leagueAvgCache = {};
