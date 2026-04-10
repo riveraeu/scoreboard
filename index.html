@@ -671,7 +671,11 @@ function App() {
         if (fetchRef.current !== id) return;
         // Merged gamelog for perGame (h2h filtering needs all career data)
         const base = d26 || d25 || d24;
-        const mergedEvents = [...(d26?.events || []), ...(d25?.events || []), ...(d24?.events || [])];
+        const mergedEvents = [
+          ...(d26?.events || []).map(ev => ({ ...ev, season: 2026 })),
+          ...(d25?.events || []).map(ev => ({ ...ev, season: 2025 })),
+          ...(d24?.events || []).map(ev => ({ ...ev, season: 2024 })),
+        ];
         const mergedData = base ? { labels: base.labels, events: mergedEvents, totalGames: mergedEvents.length } : { labels: [], events: [], totalGames: 0 };
         const { perGame: pg, isPitcher: isP } = parseGameLog(mergedData, sp);
         // Season-specific aggregates for truePct (2026 = main bar, 2025 = secondary)
@@ -817,7 +821,7 @@ function App() {
         if (sv  !== undefined) { result.saves?.push(sv); gs.saves = sv; }
       }
 
-      perGame.push({ oppId: ev.oppId || null, oppAbbr: ev.oppAbbr || null, ...gs });
+      perGame.push({ oppId: ev.oppId || null, oppAbbr: ev.oppAbbr || null, season: ev.season ?? null, ...gs });
     });
 
     return { aggregated: result, perGame, isPitcher };

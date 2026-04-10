@@ -307,7 +307,7 @@ var worker_default = {
               allEvents.push({
                 eventId: ev.eventId,
                 stats: ev.stats || [],
-                date: meta.date || null,
+                date: meta.date || (meta.gameDate ? meta.gameDate.slice(0, 10) : null),
                 oppAbbr: meta.opponent?.abbreviation || null,
                 isHome: meta.home?.id === meta.atVs ? false : null
               });
