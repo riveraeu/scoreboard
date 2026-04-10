@@ -1626,7 +1626,7 @@ var worker_default = {
             const _kValsAll = gl.events.filter(_kFilter).map(getStat).filter((v) => !isNaN(v));
             const _kVals2526 = [..._kVals25, ..._kVals26];
             // allVals = all career starts (pre-computed in playerColCache); use as final fallback
-            softVals = _kBF26 >= 15 ? _kVals26 : _kVals2526.length >= 3 ? _kVals2526 : _kValsAll.length >= 3 ? _kValsAll : allVals;
+            softVals = (_kBF26 >= 15 && _kVals26.length >= 3) ? _kVals26 : _kVals2526.length >= 3 ? _kVals2526 : _kValsAll.length >= 3 ? _kValsAll : allVals;
             const _handSuffix = _pitcherHand === "R" ? " vs RHP" : _pitcherHand === "L" ? " vs LHP" : "";
             softLabel = lkpBucket === "high" ? `high-K lineups${_handSuffix}` : lkpBucket === "avg" ? `avg-K lineups${_handSuffix}` : lkpBucket === "low" ? `low-K lineups${_handSuffix}` : "career";
             softUnit = "%";
