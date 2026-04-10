@@ -1742,7 +1742,8 @@ var worker_default = {
             }
             const _hlEra = sportByteam.mlb?.probables?.[tonightOpp]?.era ?? null;
             const _hlML = hitterML;
-            const _hlCommon = { opponent: tonightOpp, seasonPct: _hlSeasonPct, softPct: _hlSoftPct, truePct: _hlTruePct, edge: _hlEdge, pitcherEra: _hlEra, moneyline: _hlML, hitterBa, hitterBaTier, abVsTeam: hitterAbVsPitcher };
+            const _hlPitcherName = sportByteam.mlb?.probables?.[tonightOpp]?.name ?? null;
+            const _hlCommon = { opponent: tonightOpp, pitcherName: _hlPitcherName, seasonPct: _hlSeasonPct, softPct: _hlSoftPct, truePct: _hlTruePct, edge: _hlEdge, pitcherEra: _hlEra, moneyline: _hlML, hitterBa, hitterBaTier, abVsTeam: hitterAbVsPitcher };
             // Gate: team must be favored
             if (hitterML === null || hitterML >= 0) {
               if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "team_not_favored", ..._hlCommon });

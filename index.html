@@ -1125,7 +1125,11 @@ function App() {
                                   <div style={{flex:1,fontSize:11,textAlign:"right",color:edge!=null&&edge>=3?"#3fb950":edge!=null&&edge<0?"#f78166":"#8b949e"}}>{edge!=null?(edge>=0?`+${edge.toFixed(1)}`:`${edge.toFixed(1)}`)+"%" :"—"}</div>
                                   {xcols.map(c => <div key={c.k} style={{flex:1,fontSize:11,textAlign:"right"}}>{xcell(m,c.k)}</div>)}
                                   <div style={{flex:1,fontSize:11,textAlign:"center"}}>{resultCell}</div>
-                                  <div style={{flex:1,color:"#484f58",fontSize:10,textAlign:"right"}}>{m.opponent||""}</div>
+                                  <div style={{flex:1,fontSize:10,textAlign:"right",lineHeight:1.3}}>
+                                    {(() => { const pn = m.pitcherName || m.hitterPitcherName; return m.sport==="mlb" && m.stat!=="strikeouts" && pn
+                                      ? <><span style={{color:"#c9d1d9"}}>{pn}</span><br/><span style={{color:"#484f58"}}>({m.opponent})</span></>
+                                      : <span style={{color:"#484f58"}}>{m.opponent||""}</span>; })()}
+                                  </div>
                                 </div>
                               );
                             })}
