@@ -1483,7 +1483,7 @@ function App() {
                           const pitcherHand = h2h?.pitcherHand ?? null;
                           const handLabel = pitcherHand === "R" ? " against RHP" : pitcherHand === "L" ? " against LHP" : "";
                           const totalColor = t => t == null ? "#8b949e" : t < 8.5 ? "#3fb950" : t <= 10.5 ? "#c9d1d9" : "#f78166";
-                          const mlColor = ml => ml == null ? "#8b949e" : ml <= -150 ? "#3fb950" : ml <= -100 ? "#c9d1d9" : "#f78166";
+                          const mlColor = ml => ml == null ? "#8b949e" : ml <= -140 ? "#3fb950" : ml < 0 ? "#8b949e" : "#f78166";
                           const criteriaMet = [pkpMeets, lkpMeets, gameLineMeets].filter(Boolean).length;
                           const oppName = MLB_TEAM[h2h?.opp || mlbH2HOpp] || h2h?.opp || mlbH2HOpp;
                           const pitcherTeamName = MLB_TEAM[player.team] || player.team;
@@ -2172,7 +2172,7 @@ function App() {
                               const lkpColor  = lkp == null ? "#8b949e" : lkp >= 24 ? "#3fb950" : lkp >= 20 ? "#c9d1d9" : "#f78166";
 
                               const totalColor = t => t == null ? "#8b949e" : t < 8.5 ? "#3fb950" : t <= 10.5 ? "#c9d1d9" : "#f78166";
-                              const mlColor = ml => ml == null ? "#8b949e" : ml <= -150 ? "#3fb950" : ml <= -100 ? "#c9d1d9" : "#f78166";
+                              const mlColor = ml => ml == null ? "#8b949e" : ml <= -140 ? "#3fb950" : ml < 0 ? "#8b949e" : "#f78166";
                               const isStrongMatchup = play.isStrongMatchup ?? false;
                               const gameTotal = play.gameTotal ?? null;
                               const gameML = play.gameMoneyline ?? null;
