@@ -1089,7 +1089,6 @@ function App() {
                             <div style={{flex:1,color:"#484f58",fontSize:10,textAlign:"right"}}>Kalshi</div>
                             <div style={{flex:1,color:"#484f58",fontSize:10,textAlign:"right"}}>Edge</div>
                             {xcols.map(c => <div key={c.k} style={{flex:1,color:"#484f58",fontSize:10,textAlign:"right"}}>{c.l}</div>)}
-                            <div style={{flex:1,color:"#484f58",fontSize:10,textAlign:"center"}}>Result</div>
                             <div style={{flex:2,color:"#484f58",fontSize:10,textAlign:"right"}}>Opp</div>
                           </div>
                           <div style={{background:"#0d1117",borderRadius:8,overflow:"hidden"}}>
@@ -1127,7 +1126,6 @@ function App() {
                                   <div style={{flex:1,fontSize:11,textAlign:"right"}}><span style={{color:"#c9d1d9"}}>{m.kalshiPct}%</span>{m.kalshiSpread!=null&&<span style={{color:"#484f58",fontSize:9,marginLeft:2}}>{m.kalshiSpread}¢</span>}</div>
                                   <div style={{flex:1,fontSize:11,textAlign:"right",color:edge!=null&&edge>=3?"#3fb950":edge!=null&&edge<0?"#f78166":"#8b949e"}}>{edge!=null?(edge>=0?`+${edge.toFixed(1)}`:`${edge.toFixed(1)}`)+"%" :"—"}</div>
                                   {xcols.map(c => <div key={c.k} style={{flex:1,fontSize:11,textAlign:"right"}}>{xcell(m,c.k)}</div>)}
-                                  <div style={{flex:1,fontSize:11,textAlign:"center"}}>{resultCell}</div>
                                   <div style={{flex:2,fontSize:10,textAlign:"right",whiteSpace:"nowrap"}}>
                                     {(() => { const pn = m.pitcherName || m.hitterPitcherName; return m.sport==="mlb" && m.stat!=="strikeouts" && pn
                                       ? <><span style={{color:"#8b949e"}}>{pn}</span> <span style={{color:"#484f58"}}>({m.opponent})</span></>
