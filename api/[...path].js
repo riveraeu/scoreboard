@@ -1562,7 +1562,19 @@ var worker_default = {
           const hasSeasonTags = sport === "mlb" && gl.events.length > 0 && gl.events[0].season !== void 0;
           const vals26 = hasSeasonTags ? gl.events.filter((ev) => ev.season === 2026).map(getStat).filter((v) => !isNaN(v)) : [];
           const vals25 = hasSeasonTags ? gl.events.filter((ev) => ev.season === 2025).map(getStat).filter((v) => !isNaN(v)) : [];
-          const pct26 = vals26.length >= 3 ? vals26.filter((v) => v >= threshold).length / vals26.length * 100 : null;
+          // For pitchers, compute total batters faced in 2026 using TBF column, fallback to IP*3.3, fallback to game count*20
+          const _tbfIdx = gl.ul.indexOf("TBF");
+          const _ipIdx2 = gl.ul.indexOf("IP");
+          const _events26 = hasSeasonTags ? gl.events.filter((ev) => ev.season === 2026) : [];
+          const _bf26 = sport === "mlb" && stat === "strikeouts"
+            ? _tbfIdx !== -1
+              ? _events26.reduce((s, ev) => s + (parseFloat(ev.stats[_tbfIdx]) || 0), 0)
+              : _ipIdx2 !== -1
+              ? _events26.reduce((s, ev) => { const ip = parseFloat(ev.stats[_ipIdx2]) || 0; return s + Math.floor(ip) * 3 + Math.round((ip % 1) * 10); }, 0)
+              : vals26.length * 20
+            : null;
+          const _thresh26 = _bf26 !== null ? _bf26 >= 15 : vals26.length >= 3;
+          const pct26 = _thresh26 ? vals26.filter((v) => v >= threshold).length / vals26.length * 100 : null;
           const pct25 = vals25.length >= 5 ? vals25.filter((v) => v >= threshold).length / vals25.length * 100 : null;
           const blendVals = [...vals25, ...vals26];
           const blendedPct = blendVals.length >= 5 ? blendVals.filter((v) => v >= threshold).length / blendVals.length * 100 : null;
@@ -1605,8 +1617,13 @@ var worker_default = {
             const _kFilter = (ev) => similarKAbbrs.size > 0 ? similarKAbbrs.has(ev.oppAbbr) : true;
             const _kVals26 = hasSeasonTags ? gl.events.filter((ev) => ev.season === 2026 && _kFilter(ev)).map(getStat).filter((v) => !isNaN(v)) : [];
             const _kVals25 = hasSeasonTags ? gl.events.filter((ev) => ev.season === 2025 && _kFilter(ev)).map(getStat).filter((v) => !isNaN(v)) : [];
-            // Prefer 2026 events (3+ starts); fall back to adding 2025
-            softVals = _kVals26.length >= 3 ? _kVals26 : _kVals26.length > 0 ? [..._kVals25, ..._kVals26] : (hasSeasonTags ? [..._kVals25] : gl.events.filter(_kFilter).map(getStat).filter((v) => !isNaN(v)));
+            // Compute BF for filtered 2026 events; prefer 2026 if 15+ BF, else add 2025
+            const _kBF26 = _tbfIdx !== -1
+              ? gl.events.filter((ev) => ev.season === 2026 && _kFilter(ev)).reduce((s, ev) => s + (parseFloat(ev.stats[_tbfIdx]) || 0), 0)
+              : _ipIdx2 !== -1
+              ? gl.events.filter((ev) => ev.season === 2026 && _kFilter(ev)).reduce((s, ev) => { const ip = parseFloat(ev.stats[_ipIdx2]) || 0; return s + Math.floor(ip) * 3 + Math.round((ip % 1) * 10); }, 0)
+              : _kVals26.length * 20;
+            softVals = _kBF26 >= 15 ? _kVals26 : _kVals26.length > 0 ? [..._kVals25, ..._kVals26] : (hasSeasonTags ? [..._kVals25] : gl.events.filter(_kFilter).map(getStat).filter((v) => !isNaN(v)));
             const _handSuffix = _pitcherHand === "R" ? " vs RHP" : _pitcherHand === "L" ? " vs LHP" : "";
             softLabel = lkpBucket === "high" ? `high-K lineups${_handSuffix}` : lkpBucket === "avg" ? `avg-K lineups${_handSuffix}` : lkpBucket === "low" ? `low-K lineups${_handSuffix}` : "career";
             softUnit = "%";
