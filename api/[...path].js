@@ -1224,12 +1224,14 @@ var worker_default = {
             continue;
           }
           if (m.sport === "nhl") { preFilteredMarkets.push(m); continue; }
-          // NBA (and others)
+          // NBA (and others) — pass through if opponent is in ESPN soft teams OR in position-DVP soft teams
+          // (position-DVP is checked per-player in the main loop; pre-filter uses ESPN as a fast gate)
           const playerTeam = m.kalshiPlayerTeam;
           if (!playerTeam || !m.gameTeam1 || !m.gameTeam2) { preFilteredMarkets.push(m); continue; }
           const opp = m.gameTeam1 === playerTeam ? m.gameTeam2 : m.gameTeam2 === playerTeam ? m.gameTeam1 : null;
           if (!opp) { preDropped.push({ ...m, reason: "no_opp" }); continue; }
-          if (softData.softTeams.has(opp)) { preFilteredMarkets.push(m); }
+          const oppInPosDvp = allPositionsDvp && Object.values(allPositionsDvp).some((posData) => posData?.softTeams?.[m.stat]?.includes(opp));
+          if (softData.softTeams.has(opp) || oppInPosDvp) { preFilteredMarkets.push(m); }
           else { preDropped.push({ ...m, reason: "opp_not_soft", opponent: opp }); }
         }
         // In debug mode, process ALL qualifying markets so every player gets a gamelog fetch and full stats
