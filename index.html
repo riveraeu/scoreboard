@@ -2104,9 +2104,9 @@ function App() {
                           <div style={{display:"flex",alignItems:"center",gap:8}}>
                             <div style={{width:110,color:"#8b949e",fontSize:10,flexShrink:0,lineHeight:1.35}}>
                               {play.sport === "mlb" && play.stat === "strikeouts" ? (
-                                `Hit rate ${play.pct26 != null ? "'26" : "'25+'26"}${play.blendGames ? ` (${play.blendGames}g)` : ""}`
+                                (() => { const using26 = play.pct26 != null; const g = using26 ? play.pct26Games : play.blendGames; return `Hit rate ${using26 ? "'26" : "'25+'26"}${g ? ` (${g}g)` : ""}`; })()
                               ) : play.sport === "mlb" ? (
-                                `${play.pct26 != null ? "'26" : "'25+'26"}${play.blendGames ? ` (${play.blendGames}g)` : ""}`
+                                (() => { const using26 = play.pct26 != null; const g = using26 ? play.pct26Games : play.blendGames; return `${using26 ? "'26" : "'25+'26"}${g ? ` (${g}g)` : ""}`; })()
                               ) : `Season rate${play.seasonGames ? ` (${play.seasonGames}g)` : ""}`}
                             </div>
                             <div style={{flex:1,background:"#21262d",borderRadius:3,height:8,overflow:"hidden"}}>

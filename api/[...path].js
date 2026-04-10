@@ -1676,7 +1676,8 @@ var worker_default = {
             ? gl.events.filter((ev) => ev.season === 2025 || ev.season === 2026)
             : gl.events;
           // Per-game hit rate: % of career games vs tonight's pitcher (or team fallback) where threshold was hit
-          let softPct = softVals.length >= MIN_H2H ? softVals.filter((v) => v >= threshold).length / softVals.length * 100 : null;
+          const minSoft = sport === "mlb" && stat === "strikeouts" ? 3 : MIN_H2H;
+          let softPct = softVals.length >= minSoft ? softVals.filter((v) => v >= threshold).length / softVals.length * 100 : null;
           const lineupKPctOut = (() => {
             if (sport !== "mlb" || stat !== "strikeouts") return null;
             const vr = sportByteam.mlb?.lineupKPctVR?.[tonightOpp] ?? null;
