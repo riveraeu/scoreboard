@@ -1118,9 +1118,9 @@ function App() {
                                 <div key={`${m.playerName}|${m.threshold}|${i}`} style={{
                                   display:"flex",alignItems:"center",gap:6,padding:"6px 12px",
                                   borderTop: i>0?"1px solid #161b22":"none"}}>
-                                  <div style={{flex:2,minWidth:0,fontSize:12,fontWeight:m.qualified?600:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={m.playerName}>
-                                    <span style={{color:m.qualified?"#c9d1d9":"#6e7681"}}>{m.playerNameDisplay||m.playerName}</span>
-                                    {(m.playerTeam||m.kalshiPlayerTeam)&&<span style={{color:"#484f58",fontWeight:400}}> ({m.playerTeam||m.kalshiPlayerTeam})</span>}
+                                  <div style={{flex:2,minWidth:0,fontSize:12,fontWeight:m.qualified?600:400,display:"flex",alignItems:"baseline",gap:3}} title={m.playerName}>
+                                    <span style={{color:m.qualified?"#c9d1d9":"#6e7681",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{m.playerNameDisplay||m.playerName}</span>
+                                    {(m.playerTeam||m.kalshiPlayerTeam)&&<span style={{color:"#484f58",fontWeight:400,flexShrink:0,fontSize:10}}>({m.playerTeam||m.kalshiPlayerTeam})</span>}
                                   </div>
                                   <div style={{flex:1,color:"#8b949e",fontSize:11,textAlign:"right"}}>{m.threshold}+</div>
                                   <div style={{flex:1,fontSize:11,textAlign:"right",color:truePct!=null?"#e3b341":"#21262d",fontWeight:truePct!=null?600:400}}>{truePct!=null?`${truePct}%`:"—"}</div>
@@ -1129,8 +1129,8 @@ function App() {
                                   {xcols.map(c => <div key={c.k} style={{flex:1,fontSize:11,textAlign:"right"}}>{xcell(m,c.k)}</div>)}
                                   <div style={{flex:1,fontSize:11,textAlign:"center"}}>{resultCell}</div>
                                   <div style={{flex:1,fontSize:10,textAlign:"right"}}>
-                                    {(() => { const pn = m.pitcherName || m.hitterPitcherName; return m.sport==="mlb" && m.stat!=="strikeouts" && pn
-                                      ? <><span style={{color:"#c9d1d9"}}>{pn}</span> <span style={{color:"#484f58"}}>({m.opponent})</span></>
+                                    {(() => { const pn = m.pitcherName || m.hitterPitcherName; const lastName = pn ? pn.split(" ").pop() : null; return m.sport==="mlb" && m.stat!=="strikeouts" && lastName
+                                      ? <><span style={{color:"#c9d1d9"}}>{lastName}</span> <span style={{color:"#484f58"}}>({m.opponent})</span></>
                                       : <span style={{color:"#484f58"}}>{m.opponent||""}</span>; })()}
                                   </div>
                                 </div>
