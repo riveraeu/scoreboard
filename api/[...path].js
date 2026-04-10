@@ -1204,6 +1204,16 @@ var worker_default = {
             STAT_SOFT[`nfl|${st}`] = { softTeams, rankMap };
           }
         }
+        let [allPositionsDvp, nbaDepthChartPos] = await Promise.all([
+          CACHE2 ? CACHE2.get("dvp:nba:all-positions", "json").catch(() => null) : null,
+          CACHE2 ? CACHE2.get("dvp:nba:depth-chart-pos", "json").catch(() => null) : null
+        ]);
+        if (!allPositionsDvp && CACHE2) {
+          allPositionsDvp = await buildNbaDvpFromBettingPros(CACHE2).catch(() => null);
+        }
+        if (!nbaDepthChartPos && CACHE2) {
+          nbaDepthChartPos = await buildNbaDepthChartPos(CACHE2).catch(() => null);
+        }
         const preFilteredMarkets = [];
         const preDropped = [];
         for (const m of qualifyingMarkets) {
@@ -1440,17 +1450,6 @@ var worker_default = {
           if (!sd) continue;
           const vals = Object.values(sd.rankMap).map((r) => r.value).filter((v) => v > 0);
           if (vals.length >= 15) leagueAvgCache[key] = vals.reduce((a, b) => a + b, 0) / vals.length;
-        }
-        let [allPositionsDvp, nbaDepthChartPos] = await Promise.all([
-          CACHE2 ? CACHE2.get("dvp:nba:all-positions", "json").catch(() => null) : null,
-          CACHE2 ? CACHE2.get("dvp:nba:depth-chart-pos", "json").catch(() => null) : null
-        ]);
-        // On cache miss, build on-demand
-        if (!allPositionsDvp && CACHE2) {
-          allPositionsDvp = await buildNbaDvpFromBettingPros(CACHE2).catch(() => null);
-        }
-        if (!nbaDepthChartPos && CACHE2) {
-          nbaDepthChartPos = await buildNbaDepthChartPos(CACHE2).catch(() => null);
         }
         const NBA_POS_MAP = {
           PG: "PG",
