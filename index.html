@@ -1060,7 +1060,7 @@ function App() {
                           const ou  = m.gameTotal ?? m.gameOdds?.total;
                           const fML = v => v > 0 ? `+${v}` : `${v}`;
                           if (k==="season") { const v = m.seasonPct; return C(v != null ? v.toFixed(1)+"%" : null, v >= 60 ? "#3fb950" : v >= 50 ? "#e3b341" : "#f78166"); }
-                          if (k==="h2h") { const v = m.softPct; const g = m.softGames; return v != null ? <span style={{color:v>=60?"#3fb950":v>=50?"#e3b341":"#f78166"}}>{v.toFixed(1)+"%"}<span style={{color:"#484f58",fontSize:9}}>{g?" ("+g+"g)":""}</span></span> : DASH; }
+                          if (k==="h2h") { const v = m.softPct; return v != null ? <span style={{color:v>=60?"#3fb950":v>=50?"#e3b341":"#f78166"}}>{v.toFixed(1)+"%"}</span> : DASH; }
                           if (k==="era") return C(era != null ? parseFloat(era).toFixed(2) : null, era >= 4.0 ? "#8b949e" : "#f78166");
                           if (k==="ba")  return C(ba  != null ? "."+String(Math.round(ba*1000)).padStart(3,"0") : null, ba >= 0.270 ? "#8b949e" : "#f78166");
                           if (k==="ml")  return C(ml  != null ? fML(ml) : null, (stat==="strikeouts" ? ml <= -140 : ml < 0) ? "#8b949e" : "#f78166");
@@ -1122,7 +1122,7 @@ function App() {
                                   </div>
                                   <div style={{flex:1,color:"#8b949e",fontSize:11,textAlign:"right"}}>{m.threshold}+</div>
                                   <div style={{flex:1,fontSize:11,textAlign:"right",color:truePct!=null?"#e3b341":"#21262d",fontWeight:truePct!=null?600:400}}>{truePct!=null?`${truePct}%`:"—"}</div>
-                                  <div style={{flex:1,fontSize:11,textAlign:"right"}}><span style={{color:"#c9d1d9"}}>{m.kalshiPct}%</span>{m.kalshiSpread!=null&&<span style={{color:"#484f58",fontSize:9,marginLeft:2}}>{m.kalshiSpread}¢</span>}</div>
+                                  <div style={{flex:1,fontSize:11,textAlign:"right"}}><span style={{color:"#c9d1d9"}}>{m.kalshiPct}%</span></div>
                                   <div style={{flex:1,fontSize:11,textAlign:"right",color:edge!=null&&edge>=3?"#3fb950":edge!=null&&edge<0?"#f78166":"#8b949e"}}>{edge!=null?(edge>=0?`+${edge.toFixed(1)}`:`${edge.toFixed(1)}`)+"%" :"—"}</div>
                                   {xcols.map(c => <div key={c.k} style={{flex:1,fontSize:11,textAlign:"right"}}>{xcell(m,c.k)}</div>)}
                                   <div style={{flex:2,fontSize:10,textAlign:"right",whiteSpace:"nowrap"}}>
