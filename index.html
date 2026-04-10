@@ -1080,7 +1080,7 @@ function App() {
                           <div style={{display:"flex",alignItems:"center",gap:6,padding:"3px 12px 4px",marginBottom:2}}>
                             <div style={{flex:2,minWidth:0,color:"#484f58",fontSize:10}}>Player</div>
                             <div style={{flex:1,color:"#484f58",fontSize:10,textAlign:"right"}}>Line</div>
-                            <div style={{flex:1,color:"#e3b341",fontSize:10,textAlign:"right",fontWeight:600,cursor:"help",borderBottom:"1px dotted #e3b341"}} title={cs?.note||""}>True%</div>
+                            <div style={{flex:1,fontSize:10,textAlign:"right",fontWeight:600}}><span style={{color:"#e3b341",textDecoration:"underline dotted #e3b341",textUnderlineOffset:2,cursor:"help"}} title={cs?.note||""}>True%</span></div>
                             <div style={{flex:1,color:"#484f58",fontSize:10,textAlign:"right"}}>Kalshi</div>
                             <div style={{flex:1,color:"#484f58",fontSize:10,textAlign:"right"}}>Edge</div>
                             {xcols.map(c => <div key={c.k} style={{flex:1,color:"#484f58",fontSize:10,textAlign:"right"}}>{c.l}</div>)}
