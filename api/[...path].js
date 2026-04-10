@@ -1520,6 +1520,8 @@ var worker_default = {
             if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "no_opp", playerTeam, gameTeam1, gameTeam2 });
             continue;
           }
+          // Base fields included on every drop in this loop
+          const _dropBase = { playerName, sport, stat, threshold, kalshiPct, playerTeam };
           // Manual position overrides for known depth-chart misclassifications
           const NBA_POS_OVERRIDES = { "4871144": "C" }; // Alperen Sengun listed as PF in depth chart
           const nbaPos = sport === "nba" ? (NBA_POS_OVERRIDES[String(info.id)] || nbaDepthChartPos?.[String(info.id)] || (info.position ? NBA_POS_MAP[info.position] || null : null)) : null;
@@ -1536,22 +1538,22 @@ var worker_default = {
                 const _osDvpEntry = nbaPos && allPositionsDvp?.[nbaPos]?.rankings?.[stat] ? allPositionsDvp[nbaPos].rankings[stat].find((t) => t.abbr === tonightOpp) : null;
                 const _osDvpRank = _osDvpEntry?.rank ?? null;
                 const _osDebug = !_osCol ? (!_osGl ? "no_gl" : `col_miss:${col}|got:${(_osGl.ul||[]).join(",")}`) : null;
-                dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "opp_not_soft", opponent: tonightOpp, dvpBased: !!nbaDvpSoftTeams, seasonPct: _osSeason, truePct: _osTruePct, edge: _osEdge, posDvpRank: _osDvpRank, posGroup: nbaPos, _debug: _osDebug });
+                dropped.push({ ..._dropBase, reason: "opp_not_soft", opponent: tonightOpp, dvpBased: !!nbaDvpSoftTeams, seasonPct: _osSeason, truePct: _osTruePct, edge: _osEdge, posDvpRank: _osDvpRank, posGroup: nbaPos, _debug: _osDebug });
               }
               continue;
             }
           } else if (sport !== "mlb" && sport !== "nhl" && !softTeams.has(tonightOpp)) {
-            if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "opp_not_soft", opponent: tonightOpp });
+            if (isDebug) dropped.push({ ..._dropBase, reason: "opp_not_soft", opponent: tonightOpp });
             continue;
           }
           const colCached = playerColCache[`${sport}|${playerName}|${col}`];
           if (!colCached) {
-            if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "col_not_found", col, headers: gl.ul });
+            if (isDebug) dropped.push({ ..._dropBase, reason: "col_not_found", col, headers: gl.ul });
             continue;
           }
           const { getStat, allVals } = colCached;
           if (allVals.length === 0) {
-            if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "no_gamelog_vals" });
+            if (isDebug) dropped.push({ ..._dropBase, reason: "no_gamelog_vals" });
             continue;
           }
           const seasonPct = allVals.filter((v) => v >= threshold).length / allVals.length * 100;
@@ -1627,7 +1629,7 @@ var worker_default = {
                 const _kSeasonPct = parseFloat((blendedPct ?? seasonPct).toFixed(1));
                 const _kTruePct = parseFloat((_kSoftPct !== null ? (_kSeasonPct + _kSoftPct) / 2 : _kSeasonPct).toFixed(1));
                 dropped.push({
-                  playerName, sport, stat, threshold, kalshiPct,
+                  ..._dropBase,
                   reason: "not_strong_matchup",
                   opponent: tonightOpp,
                   pkpMeets, lkpMeets, gameLineMeets,
@@ -1746,28 +1748,28 @@ var worker_default = {
             const _hlCommon = { opponent: tonightOpp, pitcherName: _hlPitcherName, seasonPct: _hlSeasonPct, softPct: _hlSoftPct, truePct: _hlTruePct, edge: _hlEdge, pitcherEra: _hlEra, moneyline: _hlML, hitterBa, hitterBaTier, abVsTeam: hitterAbVsPitcher };
             // Gate: team must be favored
             if (hitterML === null || hitterML >= 0) {
-              if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "team_not_favored", ..._hlCommon });
+              if (isDebug) dropped.push({ ..._dropBase, reason: "team_not_favored", ..._hlCommon });
               continue;
             }
             // Gate: opposing pitcher ERA must be >= 4.0
             const oppPitcherEra = sportByteam.mlb?.probables?.[tonightOpp]?.era ?? null;
             if (oppPitcherEra !== null && oppPitcherEra < 4.0) {
-              if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "pitcher_era_too_low", ..._hlCommon });
+              if (isDebug) dropped.push({ ..._dropBase, reason: "pitcher_era_too_low", ..._hlCommon });
               continue;
             }
             // Gate: must have h2h data (softPct) — requires 5+ career AB vs tonight's team
             if (softPct === null) {
-              if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "no_h2h_data", opponent: tonightOpp, ..._hlCommon });
+              if (isDebug) dropped.push({ ..._dropBase, reason: "no_h2h_data", opponent: tonightOpp, ..._hlCommon });
               continue;
             }
             // Gate: at least 10 career AB vs tonight's team (across all seasons)
             if (hitterAbVsPitcher < 10) {
-              if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "insufficient_ab_vs_pitcher", opponent: tonightOpp, ..._hlCommon });
+              if (isDebug) dropped.push({ ..._dropBase, reason: "insufficient_ab_vs_pitcher", opponent: tonightOpp, ..._hlCommon });
               continue;
             }
             // Gate: batting average must be good or better (.270+)
             if (hitterBa !== null && hitterBa < 0.270) {
-              if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "low_batting_avg", ..._hlCommon });
+              if (isDebug) dropped.push({ ..._dropBase, reason: "low_batting_avg", ..._hlCommon });
               continue;
             }
           }
@@ -1800,7 +1802,7 @@ var worker_default = {
           const lowVolume = kalshiVolume < 20;
           const edge = truePct - kalshiPct;
           if (kalshiPct < 70 || edge < 3) {
-            if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, truePct: parseFloat(truePct.toFixed(1)), rawTruePct: parseFloat(rawTruePct.toFixed(1)), calibFactor, edge: parseFloat(edge.toFixed(1)), reason: edge < 3 ? "edge_too_low" : "kalshi_pct_too_low", opponent: tonightOpp, seasonPct: parseFloat((blendedPct ?? seasonPct).toFixed(1)), softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null, posDvpRank: posDvpRankOut, posGroup: posGroupOut });
+            if (isDebug) dropped.push({ ..._dropBase, truePct: parseFloat(truePct.toFixed(1)), rawTruePct: parseFloat(rawTruePct.toFixed(1)), calibFactor, edge: parseFloat(edge.toFixed(1)), reason: edge < 3 ? "edge_too_low" : "kalshi_pct_too_low", opponent: tonightOpp, seasonPct: parseFloat((blendedPct ?? seasonPct).toFixed(1)), softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null, posDvpRank: posDvpRankOut, posGroup: posGroupOut });
             continue;
           }
           const mlbH2H = sport === "mlb" && softPct !== null;

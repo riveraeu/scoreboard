@@ -1120,7 +1120,7 @@ function App() {
                                   borderTop: i>0?"1px solid #161b22":"none"}}>
                                   <div style={{flex:2,minWidth:0,fontSize:12,fontWeight:m.qualified?600:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={m.playerName}>
                                     <span style={{color:m.qualified?"#c9d1d9":"#6e7681"}}>{m.playerNameDisplay||m.playerName}</span>
-                                    {m.playerTeam&&<span style={{color:"#484f58",fontWeight:400}}> ({m.playerTeam})</span>}
+                                    {(m.playerTeam||m.kalshiPlayerTeam)&&<span style={{color:"#484f58",fontWeight:400}}> ({m.playerTeam||m.kalshiPlayerTeam})</span>}
                                   </div>
                                   <div style={{flex:1,color:"#8b949e",fontSize:11,textAlign:"right"}}>{m.threshold}+</div>
                                   <div style={{flex:1,fontSize:11,textAlign:"right",color:truePct!=null?"#e3b341":"#21262d",fontWeight:truePct!=null?600:400}}>{truePct!=null?`${truePct}%`:"—"}</div>
