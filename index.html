@@ -91,7 +91,7 @@ const STAT_CONFIGS = {
 
 const getColor = () => "#8b949e";
 const matchupColor = (softPct, pct) => softPct != null ? (softPct >= pct + 5 ? "#3fb950" : softPct <= pct - 5 ? "#f78166" : "#8b949e") : "#8b949e";
-const tierColor = pct => pct >= 70 ? "#f59e0b" : "#f78166";
+const tierColor = pct => pct >= 70 ? "#3fb950" : pct >= 60 ? "#e3b341" : "#f78166";
 const STAT_LABEL = {
   points:"PTS", rebounds:"REB", assists:"AST", threePointers:"3PT",
   goals:"G", shotsOnGoal:"SOG",
