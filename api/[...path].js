@@ -2309,18 +2309,23 @@ async function buildPitcherKPct(mlbSched) {
       fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=pitching,type=season,season=2025,gameType=R)`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
       fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=pitching,type=season,season=2026,gameType=R)`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({}))
     ]);
-    const pitcherStats = {};
+    const pitcherStats25 = {}, pitcherStats26 = {};
     const pitcherHandById = {};
-    for (const person of [...res25.people || [], ...res26.people || []]) {
+    for (const person of (res25.people || [])) {
       const pid = person.id;
       if (!pid) continue;
       if (person.pitchHand?.code) pitcherHandById[pid] = person.pitchHand.code;
       const split = person.stats?.[0]?.splits?.[0]?.stat;
       if (!split) continue;
-      if (!pitcherStats[pid]) pitcherStats[pid] = { so: 0, bf: 0, bb: 0 };
-      pitcherStats[pid].so += split.strikeOuts || 0;
-      pitcherStats[pid].bf += split.battersFaced || 0;
-      pitcherStats[pid].bb += split.baseOnBalls || 0;
+      pitcherStats25[pid] = { so: split.strikeOuts || 0, bf: split.battersFaced || 0, bb: split.baseOnBalls || 0 };
+    }
+    for (const person of (res26.people || [])) {
+      const pid = person.id;
+      if (!pid) continue;
+      if (person.pitchHand?.code) pitcherHandById[pid] = person.pitchHand.code;
+      const split = person.stats?.[0]?.splits?.[0]?.stat;
+      if (!split) continue;
+      pitcherStats26[pid] = { so: split.strikeOuts || 0, bf: split.battersFaced || 0, bb: split.baseOnBalls || 0 };
     }
     // Fill in pitcherHand from People API for any missing entries
     for (const [abbr, id] of Object.entries(pitcherByTeam)) {
@@ -2328,8 +2333,11 @@ async function buildPitcherKPct(mlbSched) {
     }
     const pitcherKPct = {}, pitcherKBBPct = {};
     for (const [abbr, id] of Object.entries(pitcherByTeam)) {
-      const s = pitcherStats[id];
-      if (s && s.bf >= 50) {
+      const s26 = pitcherStats26[id];
+      const s25 = pitcherStats25[id];
+      // Prefer 2026 if pitcher has at least 15 BF (~3 starts); fall back to 2025 (50+ BF)
+      const s = (s26 && s26.bf >= 15) ? s26 : (s25 && s25.bf >= 50) ? s25 : null;
+      if (s) {
         pitcherKPct[abbr] = parseFloat((s.so / s.bf * 100).toFixed(1));
         pitcherKBBPct[abbr] = parseFloat(((s.so - s.bb) / s.bf * 100).toFixed(1));
       }
