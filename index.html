@@ -1364,24 +1364,24 @@ function App() {
               const bucketGames26 = perGame.filter(g => g.season === 2026 && _bucketFilter(g));
               const bucketGames25 = perGame.filter(g => g.season === 2025 && _bucketFilter(g));
               const bucketGamesAll = perGame.filter(g => _bucketFilter(g));
-              // Prefer 2026 (15+ BF proxy: 3+ starts), fall back to 25+26 (5+), then all career
+              // Prefer 2026 (15+ BF proxy: 3+ starts), fall back to 25+26 (3+), then all career
               const bucketGames = bucketGames26.length >= 3 ? bucketGames26
-                : (bucketGames26.length + bucketGames25.length) >= 5 ? [...bucketGames25, ...bucketGames26]
+                : (bucketGames26.length + bucketGames25.length) >= 3 ? [...bucketGames25, ...bucketGames26]
                 : bucketGamesAll;
               wTotal = bucketGames.length;
-              if (wTotal >= 3) {
+              if (wTotal >= 1) {
                 (cfg?.thresholds || []).forEach(t => {
                   const wCount = bucketGames.filter(g => (g[safeTab] ?? -1) >= t).length;
                   dvpMap[t] = { wCount, wPct: (wCount / wTotal) * 100 };
                 });
               } else {
-                wTotal = 0; // too few games to be meaningful
+                wTotal = 0; // no data
               }
             }
-            // If bucket mode found < 3 games, fall back to h2h vs resolved opponent (min 3)
+            // If bucket mode found no games, fall back to h2h vs resolved opponent (min 1)
             if (wTotal === 0 && mlbH2HOpp) {
               const h2hGames = perGame.filter(g => g.oppAbbr === mlbH2HOpp && g[safeTab] !== undefined);
-              if (h2hGames.length >= 3) {
+              if (h2hGames.length >= 1) {
                 wTotal = h2hGames.length;
                 (cfg?.thresholds || []).forEach(t => {
                   const wCount = h2hGames.filter(g => (g[safeTab] ?? -1) >= t).length;
@@ -1475,9 +1475,9 @@ function App() {
                           const strikeoutsThreshold = Object.entries(tonightPlayerMap).find(([k]) => k.startsWith("strikeouts|"))?.[1]?.threshold ?? null;
                           const expKColor = expK != null && strikeoutsThreshold != null ? (expK >= strikeoutsThreshold ? "#3fb950" : expK >= strikeoutsThreshold - 1 ? "#c9d1d9" : "#f78166") : "#c9d1d9";
                           const isStrongMatchup = h2h?.isStrongMatchup ?? false;
-                          const pkpMeets = h2h?.pkpMeets ?? false;
-                          const lkpMeets = h2h?.lkpMeets ?? false;
-                          const gameLineMeets = h2h?.gameLineMeets ?? false;
+                          const pkpMeets = h2h?.pkpMeets ?? null;
+                          const lkpMeets = h2h?.lkpMeets ?? null;
+                          const gameLineMeets = h2h?.gameLineMeets ?? null;
                           const gameTotal = h2h?.gameTotal ?? null;
                           const gameML = h2h?.gameMoneyline ?? null;
                           const pitcherHand = h2h?.pitcherHand ?? null;
