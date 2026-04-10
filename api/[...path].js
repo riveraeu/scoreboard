@@ -1538,7 +1538,9 @@ var worker_default = {
                 const _osDvpEntry = nbaPos && allPositionsDvp?.[nbaPos]?.rankings?.[stat] ? allPositionsDvp[nbaPos].rankings[stat].find((t) => t.abbr === tonightOpp) : null;
                 const _osDvpRank = _osDvpEntry?.rank ?? null;
                 const _osDebug = !_osCol ? (!_osGl ? "no_gl" : `col_miss:${col}|got:${(_osGl.ul||[]).join(",")}`) : null;
-                dropped.push({ ..._dropBase, reason: "opp_not_soft", opponent: tonightOpp, dvpBased: !!nbaDvpSoftTeams, seasonPct: _osSeason, truePct: _osTruePct, edge: _osEdge, posDvpRank: _osDvpRank, posGroup: nbaPos, _debug: _osDebug });
+                const _osSoftVals = _osGl?.events && _osCol ? _osGl.events.filter((ev) => nbaEffectiveSoftTeams?.has(ev.oppAbbr)).map(_osCol.getStat).filter((v) => !isNaN(v)) : [];
+                const _osSoftPct = _osSoftVals.length >= 5 ? parseFloat((_osSoftVals.filter((v) => v >= threshold).length / _osSoftVals.length * 100).toFixed(1)) : null;
+                dropped.push({ ..._dropBase, reason: "opp_not_soft", opponent: tonightOpp, dvpBased: !!nbaDvpSoftTeams, seasonPct: _osSeason, softPct: _osSoftPct, softGames: _osSoftVals.length, truePct: _osTruePct, edge: _osEdge, posDvpRank: _osDvpRank, posGroup: nbaPos, _debug: _osDebug });
               }
               continue;
             }
