@@ -1562,10 +1562,12 @@ var worker_default = {
           const hasSeasonTags = sport === "mlb" && gl.events.length > 0 && gl.events[0].season !== void 0;
           const vals26 = hasSeasonTags ? gl.events.filter((ev) => ev.season === 2026).map(getStat).filter((v) => !isNaN(v)) : [];
           const vals25 = hasSeasonTags ? gl.events.filter((ev) => ev.season === 2025).map(getStat).filter((v) => !isNaN(v)) : [];
-          const pct26 = vals26.length >= 5 ? vals26.filter((v) => v >= threshold).length / vals26.length * 100 : null;
+          const pct26 = vals26.length >= 3 ? vals26.filter((v) => v >= threshold).length / vals26.length * 100 : null;
           const pct25 = vals25.length >= 5 ? vals25.filter((v) => v >= threshold).length / vals25.length * 100 : null;
           const blendVals = [...vals25, ...vals26];
           const blendedPct = blendVals.length >= 5 ? blendVals.filter((v) => v >= threshold).length / blendVals.length * 100 : null;
+          // Prefer 2026 season rate; fall back to blended 25+26; fall back to all-career
+          const primaryPct = pct26 ?? primaryPct;
           let isStrongMatchup = false, pkpMeets = false, lkpMeets = false, gameLineMeets = false;
           let _pitcherHand = null;
           if (sport === "mlb" && stat === "strikeouts") {
@@ -1600,7 +1602,11 @@ var worker_default = {
                 .filter(([, k]) => lkpBucket === "high" ? k >= 24 : lkpBucket === "avg" ? (k >= 20 && k < 24) : lkpBucket === "low" ? k < 20 : true)
                 .map(([a]) => a)
             );
-            softVals = gl.events.filter((ev) => similarKAbbrs.size > 0 ? similarKAbbrs.has(ev.oppAbbr) : true).map(getStat).filter((v) => !isNaN(v));
+            const _kFilter = (ev) => similarKAbbrs.size > 0 ? similarKAbbrs.has(ev.oppAbbr) : true;
+            const _kVals26 = hasSeasonTags ? gl.events.filter((ev) => ev.season === 2026 && _kFilter(ev)).map(getStat).filter((v) => !isNaN(v)) : [];
+            const _kVals25 = hasSeasonTags ? gl.events.filter((ev) => ev.season === 2025 && _kFilter(ev)).map(getStat).filter((v) => !isNaN(v)) : [];
+            // Prefer 2026 events (3+ starts); fall back to adding 2025
+            softVals = _kVals26.length >= 3 ? _kVals26 : _kVals26.length > 0 ? [..._kVals25, ..._kVals26] : (hasSeasonTags ? [..._kVals25] : gl.events.filter(_kFilter).map(getStat).filter((v) => !isNaN(v)));
             const _handSuffix = _pitcherHand === "R" ? " vs RHP" : _pitcherHand === "L" ? " vs LHP" : "";
             softLabel = lkpBucket === "high" ? `high-K lineups${_handSuffix}` : lkpBucket === "avg" ? `avg-K lineups${_handSuffix}` : lkpBucket === "low" ? `low-K lineups${_handSuffix}` : "career";
             softUnit = "%";
@@ -1628,7 +1634,7 @@ var worker_default = {
             if (!isStrongMatchup) {
               if (isDebug) {
                 const _kSoftPct = softVals.length >= MIN_H2H ? parseFloat((softVals.filter((v) => v >= threshold).length / softVals.length * 100).toFixed(1)) : null;
-                const _kSeasonPct = parseFloat((blendedPct ?? seasonPct).toFixed(1));
+                const _kSeasonPct = parseFloat((primaryPct).toFixed(1));
                 const _kTruePct = parseFloat((_kSoftPct !== null ? (_kSeasonPct + _kSoftPct) / 2 : _kSeasonPct).toFixed(1));
                 dropped.push({
                   ..._dropBase,
@@ -1717,7 +1723,7 @@ var worker_default = {
           // Provisional truePct for MLB hitter debug drops (computed before gates so all drops can include it)
           let _hlSeasonPct = null, _hlSoftPct = null, _hlTruePct = null, _hlEdge = null;
           if (sport === "mlb" && stat !== "strikeouts" && hasSeasonTags) {
-            _hlSeasonPct = parseFloat((blendedPct ?? seasonPct).toFixed(1));
+            _hlSeasonPct = parseFloat((primaryPct).toFixed(1));
             _hlSoftPct = softPct !== null ? parseFloat(softPct.toFixed(1)) : null;
             const _hlRaw = _hlSoftPct !== null ? (_hlSeasonPct + _hlSoftPct) / 2 : _hlSeasonPct;
             const _hlHomeTeam = sportByteam.mlb?.gameHomeTeams?.[playerTeam] ?? tonightOpp;
@@ -1777,11 +1783,11 @@ var worker_default = {
           }
           const rawTruePct = (() => {
             if (sport === "mlb" && stat === "strikeouts") {
-              const parts = [blendedPct ?? seasonPct, ...softPct !== null ? [softPct] : []];
+              const parts = [primaryPct, ...softPct !== null ? [softPct] : []];
               return parts.reduce((a, b) => a + b, 0) / parts.length;
             }
             if (sport === "mlb" && hasSeasonTags) {
-              const basePct = blendedPct ?? seasonPct;
+              const basePct = primaryPct;
               const rawMlbPct = softPct !== null ? (basePct + softPct) / 2 : basePct;
               const homeTeam = sportByteam.mlb?.gameHomeTeams?.[playerTeam] ?? tonightOpp;
               const parkFactor = PARK_HITFACTOR[homeTeam] ?? 1;
@@ -1804,7 +1810,7 @@ var worker_default = {
           const lowVolume = kalshiVolume < 20;
           const edge = truePct - kalshiPct;
           if (kalshiPct < 70 || edge < 3) {
-            if (isDebug) dropped.push({ ..._dropBase, truePct: parseFloat(truePct.toFixed(1)), rawTruePct: parseFloat(rawTruePct.toFixed(1)), calibFactor, edge: parseFloat(edge.toFixed(1)), reason: edge < 3 ? "edge_too_low" : "kalshi_pct_too_low", opponent: tonightOpp, seasonPct: parseFloat((blendedPct ?? seasonPct).toFixed(1)), softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null, posDvpRank: posDvpRankOut, posGroup: posGroupOut });
+            if (isDebug) dropped.push({ ..._dropBase, truePct: parseFloat(truePct.toFixed(1)), rawTruePct: parseFloat(rawTruePct.toFixed(1)), calibFactor, edge: parseFloat(edge.toFixed(1)), reason: edge < 3 ? "edge_too_low" : "kalshi_pct_too_low", opponent: tonightOpp, seasonPct: parseFloat((primaryPct).toFixed(1)), softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null, posDvpRank: posDvpRankOut, posGroup: posGroupOut });
             continue;
           }
           const mlbH2H = sport === "mlb" && softPct !== null;
@@ -1833,7 +1839,7 @@ var worker_default = {
             threshold,
             kalshiPct,
             americanOdds,
-            seasonPct: parseFloat((blendedPct ?? seasonPct).toFixed(1)),
+            seasonPct: parseFloat((primaryPct).toFixed(1)),
             seasonGames: allVals.length,
             blendGames: blendVals.length,
             pct25: pct25 !== null ? parseFloat(pct25.toFixed(1)) : null,
@@ -2221,15 +2227,23 @@ async function buildLineupKPct(mlbSched) {
       fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=batting,type=statSplits,season=2026,sitCodes=vr,gameType=R)`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
       fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=batting,type=statSplits,season=2026,sitCodes=vl,gameType=R)`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({}))
     ]);
+    const playerStats25 = {}, playerStats26 = {};
+    for (const person of (res25.people || [])) {
+      const pid = person.id; if (!pid) continue;
+      const split = person.stats?.[0]?.splits?.[0]?.stat; if (!split) continue;
+      playerStats25[pid] = { so: split.strikeOuts || 0, pa: split.plateAppearances || 0 };
+    }
+    for (const person of (res26.people || [])) {
+      const pid = person.id; if (!pid) continue;
+      const split = person.stats?.[0]?.splits?.[0]?.stat; if (!split) continue;
+      playerStats26[pid] = { so: split.strikeOuts || 0, pa: split.plateAppearances || 0 };
+    }
+    // Per-batter: prefer 2026 (20+ PA in current season), fall back to 2025
     const playerStats = {};
-    for (const person of [...res25.people || [], ...res26.people || []]) {
-      const pid = person.id;
-      if (!pid) continue;
-      const split = person.stats?.[0]?.splits?.[0]?.stat;
-      if (!split) continue;
-      if (!playerStats[pid]) playerStats[pid] = { so: 0, pa: 0 };
-      playerStats[pid].so += split.strikeOuts || 0;
-      playerStats[pid].pa += split.plateAppearances || 0;
+    const allBatterIds = [...new Set([...Object.keys(playerStats25), ...Object.keys(playerStats26)].map(Number))];
+    for (const pid of allBatterIds) {
+      const s26 = playerStats26[pid], s25 = playerStats25[pid];
+      playerStats[pid] = (s26 && s26.pa >= 20) ? s26 : (s25 || s26 || { so: 0, pa: 0 });
     }
     const playerSplits = {};
     for (const [code, res] of [["vr", resSplitVR], ["vl", resSplitVL]]) {
