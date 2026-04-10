@@ -692,15 +692,17 @@ var worker_default = {
           }
           const projectedLineupTeams = mlbByteam.projectedLineupTeams || [];
           const _dvpGameOdds = mlbByteam.gameOdds?.[playerTeam] ?? null;
-          const _dvpPkpMeets = pKPct != null && pKPct > 25;
+          const _dvpPkpMeets = pKPct != null ? pKPct > 25 : null;
           const _dvpPitcherHand = mlbByteam.pitcherHand?.[playerTeam] ?? null;
           const _dvpLkpVR = mlbByteam.lineupKPctVR?.[tonightOpp] ?? null;
           const _dvpLkpVL = mlbByteam.lineupKPctVL?.[tonightOpp] ?? null;
           const _dvpLkpAll = lineupKPct[tonightOpp] ?? null;
           const _dvpLkp = _dvpPitcherHand === "R" ? _dvpLkpVR ?? _dvpLkpAll : _dvpPitcherHand === "L" ? _dvpLkpVL ?? _dvpLkpAll : _dvpLkpAll;
-          const _dvpLkpMeets = _dvpLkp != null && _dvpLkp > 23;
-          const _dvpGameLineMeets = _dvpGameOdds?.total != null && _dvpGameOdds?.moneyline != null && _dvpGameOdds.total < 8.5 && _dvpGameOdds.moneyline <= -140;
-          const _dvpIsStrong = [_dvpPkpMeets, _dvpLkpMeets, _dvpGameLineMeets].filter(Boolean).length >= 2;
+          const _dvpLkpMeets = _dvpLkp != null ? _dvpLkp > 23 : null;
+          const _dvpGameLineMeets = _dvpGameOdds?.total != null && _dvpGameOdds?.moneyline != null ? _dvpGameOdds.total < 8.5 && _dvpGameOdds.moneyline <= -140 : null;
+          const _dvpStrongTrue = [_dvpPkpMeets, _dvpLkpMeets, _dvpGameLineMeets].filter(v => v === true).length;
+          const _dvpStrongKnown = [_dvpPkpMeets, _dvpLkpMeets, _dvpGameLineMeets].filter(v => v !== null).length;
+          const _dvpIsStrong = _dvpStrongKnown >= 2 ? _dvpStrongTrue >= 2 : _dvpStrongTrue >= 1;
           return jsonResponse({
             position,
             metric: "h2h",
@@ -1609,7 +1611,7 @@ var worker_default = {
           const blendedPct = blendVals.length >= 5 ? blendVals.filter((v) => v >= threshold).length / blendVals.length * 100 : null;
           // Prefer 2026 season rate; fall back to blended 25+26; fall back to all-career
           const primaryPct = pct26 ?? blendedPct ?? seasonPct;
-          let isStrongMatchup = false, pkpMeets = false, lkpMeets = false, gameLineMeets = false;
+          let isStrongMatchup = false, pkpMeets = null, lkpMeets = null, gameLineMeets = null;
           let _pitcherHand = null;
           if (sport === "mlb" && stat === "strikeouts") {
             _pitcherHand = sportByteam.mlb?.pitcherHand?.[playerTeam] ?? null;
@@ -1619,10 +1621,14 @@ var worker_default = {
             const _lkpAll = sportByteam.mlb?.lineupKPct?.[tonightOpp] ?? null;
             const _lkp = _pitcherHand === "R" ? _lkpVR ?? _lkpAll : _pitcherHand === "L" ? _lkpVL ?? _lkpAll : _lkpAll;
             const _go = sportByteam.mlb?.gameOdds?.[playerTeam] ?? null;
-            pkpMeets = _pkp != null && _pkp > 25;
-            lkpMeets = _lkp != null && _lkp > 23;
-            gameLineMeets = _go?.total != null && _go?.moneyline != null && _go.total < 8.5 && _go.moneyline <= -140;
-            isStrongMatchup = [pkpMeets, lkpMeets, gameLineMeets].filter(Boolean).length >= 2;
+            // null = data unavailable (unknown), boolean = data exists and was evaluated
+            pkpMeets = _pkp != null ? _pkp > 25 : null;
+            lkpMeets = _lkp != null ? _lkp > 23 : null;
+            gameLineMeets = _go?.total != null && _go?.moneyline != null ? _go.total < 8.5 && _go.moneyline <= -140 : null;
+            // Require 2+ passing out of available metrics (unknown/null metrics abstain)
+            const _strongTrue = [pkpMeets, lkpMeets, gameLineMeets].filter(v => v === true).length;
+            const _strongKnown = [pkpMeets, lkpMeets, gameLineMeets].filter(v => v !== null).length;
+            isStrongMatchup = _strongKnown >= 2 ? _strongTrue >= 2 : _strongTrue >= 1;
           }
           let softVals, softLabel, softUnit;
           if (sport === "mlb" && stat === "strikeouts") {
@@ -1706,7 +1712,8 @@ var worker_default = {
             ? gl.events.filter((ev) => ev.season === 2025 || ev.season === 2026)
             : gl.events;
           // Per-game hit rate: % of career games vs tonight's pitcher (or team fallback) where threshold was hit
-          const minSoft = sport === "mlb" && stat === "strikeouts" ? 3 : MIN_H2H;
+          // For strikeouts, allow 1+ game (thin samples still shown with "(Xg)" indicator)
+          const minSoft = sport === "mlb" && stat === "strikeouts" ? 1 : MIN_H2H;
           let softPct = softVals.length >= minSoft ? softVals.filter((v) => v >= threshold).length / softVals.length * 100 : null;
           const lineupKPctOut = (() => {
             if (sport !== "mlb" || stat !== "strikeouts") return null;
