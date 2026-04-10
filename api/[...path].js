@@ -1567,7 +1567,7 @@ var worker_default = {
           const blendVals = [...vals25, ...vals26];
           const blendedPct = blendVals.length >= 5 ? blendVals.filter((v) => v >= threshold).length / blendVals.length * 100 : null;
           // Prefer 2026 season rate; fall back to blended 25+26; fall back to all-career
-          const primaryPct = pct26 ?? primaryPct;
+          const primaryPct = pct26 ?? blendedPct ?? seasonPct;
           let isStrongMatchup = false, pkpMeets = false, lkpMeets = false, gameLineMeets = false;
           let _pitcherHand = null;
           if (sport === "mlb" && stat === "strikeouts") {
