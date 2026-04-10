@@ -1356,7 +1356,14 @@ function App() {
                   .filter(([, k]) => lkpBucket === "high" ? k >= 24 : lkpBucket === "avg" ? (k >= 20 && k < 24) : k < 20)
                   .map(([a]) => a)
               );
-              const bucketGames = perGame.filter(g => g.oppAbbr && similarKAbbrs.has(g.oppAbbr) && g[safeTab] !== undefined);
+              const _bucketFilter = g => g.oppAbbr && similarKAbbrs.has(g.oppAbbr) && g[safeTab] !== undefined;
+              const bucketGames26 = perGame.filter(g => g.season === 2026 && _bucketFilter(g));
+              const bucketGames25 = perGame.filter(g => g.season === 2025 && _bucketFilter(g));
+              const bucketGamesAll = perGame.filter(g => _bucketFilter(g));
+              // Prefer 2026 (15+ BF proxy: 3+ starts), fall back to 25+26 (5+), then all career
+              const bucketGames = bucketGames26.length >= 3 ? bucketGames26
+                : (bucketGames26.length + bucketGames25.length) >= 5 ? [...bucketGames25, ...bucketGames26]
+                : bucketGamesAll;
               wTotal = bucketGames.length;
               if (wTotal >= 3) {
                 (cfg?.thresholds || []).forEach(t => {
@@ -1456,7 +1463,7 @@ function App() {
                           const sumIP = glIP.reduce((a,b)=>a+b,0);
                           const sumH  = glH.reduce((a,b)=>a+b,0);
                           const estBF = sumIP > 0 ? (sumIP * 3 + sumH + sumBB) : 0;
-                          const pkp = h2h?.pitcherKPct  ?? (estBF >= 50 ? parseFloat((sumK / estBF * 100).toFixed(1)) : null);
+                          const pkp = h2h?.pitcherKPct  ?? (estBF >= 15 ? parseFloat((sumK / estBF * 100).toFixed(1)) : null);
                           const pkpColor  = pkp == null ? "#8b949e" : pkp >= 24 ? "#3fb950" : pkp >= 20 ? "#c9d1d9" : "#f78166";
                           const lkpProjected = h2h?.lineupKPctProjected === true;
                           const lkpColor  = lkp == null ? "#8b949e" : lkp >= 24 ? "#3fb950" : lkp >= 20 ? "#c9d1d9" : "#f78166";
@@ -2097,9 +2104,9 @@ function App() {
                           <div style={{display:"flex",alignItems:"center",gap:8}}>
                             <div style={{width:110,color:"#8b949e",fontSize:10,flexShrink:0,lineHeight:1.35}}>
                               {play.sport === "mlb" && play.stat === "strikeouts" ? (
-                                `Hit rate '25+'26${play.blendGames ? ` (${play.blendGames}g)` : ""}`
+                                `Hit rate ${play.pct26 != null ? "'26" : "'25+'26"}${play.blendGames ? ` (${play.blendGames}g)` : ""}`
                               ) : play.sport === "mlb" ? (
-                                `'25+'26${play.blendGames ? ` (${play.blendGames}g)` : ""}`
+                                `${play.pct26 != null ? "'26" : "'25+'26"}${play.blendGames ? ` (${play.blendGames}g)` : ""}`
                               ) : `Season rate${play.seasonGames ? ` (${play.seasonGames}g)` : ""}`}
                             </div>
                             <div style={{flex:1,background:"#21262d",borderRadius:3,height:8,overflow:"hidden"}}>
