@@ -1127,8 +1127,8 @@ function App() {
                                   <div style={{flex:1,fontSize:11,textAlign:"right",color:edge!=null&&edge>=3?"#3fb950":edge!=null&&edge<0?"#f78166":"#8b949e"}}>{edge!=null?(edge>=0?`+${edge.toFixed(1)}`:`${edge.toFixed(1)}`)+"%" :"—"}</div>
                                   {xcols.map(c => <div key={c.k} style={{flex:1,fontSize:11,textAlign:"right"}}>{xcell(m,c.k)}</div>)}
                                   <div style={{flex:2,fontSize:10,textAlign:"right",whiteSpace:"nowrap"}}>
-                                    {(() => { const pn = m.pitcherName || m.hitterPitcherName; return m.sport==="mlb" && m.stat!=="strikeouts" && pn
-                                      ? <><span style={{color:"#8b949e"}}>{pn}</span> <span style={{color:"#484f58"}}>({m.opponent})</span></>
+                                    {(() => { const pn = m.pitcherName || m.hitterPitcherName; const parts = pn ? pn.trim().split(" ") : []; const shortPn = parts.length >= 2 ? `${parts[0][0]}. ${parts.slice(1).join(" ")}` : pn; return m.sport==="mlb" && m.stat!=="strikeouts" && pn
+                                      ? <><span style={{color:"#8b949e"}}>{shortPn}</span> <span style={{color:"#484f58"}}>({m.opponent})</span></>
                                       : <span style={{color:"#484f58"}}>{m.opponent||""}</span>; })()}
                                   </div>
                                 </div>
