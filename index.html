@@ -112,7 +112,7 @@ const MOCK_PLAYS = [
     kelly:0.310, ev:0.130, historicalHitRate:92.0, historicalGames:10,
     lineupKPct:27.3, pitcherKPct:26.5, pitcherKBBPct:18.2, log5Avg:31.6, log5Pct:96.1, expectedKs:8.5, parkFactor:1.00,
     isStrongMatchup:true, pkpMeets:true, lkpMeets:true, gameLineMeets:true,
-    gameTotal:7.5, gameMoneyline:-145, pitcherHand:"R", gameDate:TODAY, gameTime:new Date().toISOString().replace(/T.*/, "T23:10:00Z"), lineupConfirmed:true,
+    gameTotal:7.5, gameMoneyline:-140, pitcherHand:"R", gameDate:TODAY, gameTime:new Date().toISOString().replace(/T.*/, "T23:10:00Z"), lineupConfirmed:true,
   },
   // ── PURPLE (≥85%) ──────────────────────────────────────────────────────────
   {
@@ -1003,7 +1003,7 @@ function App() {
                 const CRITERIA_SUMMARIES = {
                   "mlb|hrr":       { note: "True% = avg(Season%, H2H%) \u00b7 H2H% = % of career games vs tonight\u2019s pitcher where threshold hit (per-game, falls back to team if pitcher gamelog unavailable)", gates: ["Team ML < 0", "Opp ERA \u2265 4.0", "Career AB vs pitcher \u2265 10", "Career BA \u2265 .270", "Edge \u2265 3%"] },
                   "mlb|hits":      { note: "True% = avg(Season%, H2H%) \u00b7 H2H% = % of career games vs tonight\u2019s pitcher where threshold hit (per-game, falls back to team if pitcher gamelog unavailable)", gates: ["Team ML < 0", "Opp ERA \u2265 4.0", "Career AB vs pitcher \u2265 10", "Career BA \u2265 .270", "Edge \u2265 3%"] },
-                  "mlb|strikeouts":{ note: "True% = avg(Season%, vs weak-K lineup%)", gates: ["Pitcher K% > 25%", "Opp lineup K% > 23%", "Total < 8.5 & ML \u2264 -145", "\u2265 2 of 3 gates required", "Edge \u2265 3%"] },
+                  "mlb|strikeouts":{ note: "True% = avg(Season%, vs weak-K lineup%)", gates: ["Pitcher K% > 25%", "Opp lineup K% > 23%", "Total < 8.5 & ML \u2264 -140", "\u2265 2 of 3 gates required", "Edge \u2265 3%"] },
                   "nba|points":    { note: "True% = avg(Season%, vs-soft-DVP-team%)", gates: ["Opp in soft DVP teams", "Edge \u2265 3%"] },
                   "nba|rebounds":  { note: "True% = avg(Season%, vs-soft-DVP-team%)", gates: ["Opp in soft DVP teams", "Edge \u2265 3%"] },
                   "nba|assists":   { note: "True% = avg(Season%, vs-soft-DVP-team%)", gates: ["Opp in soft DVP teams", "Edge \u2265 3%"] },
@@ -1059,7 +1059,7 @@ function App() {
                           if (k==="h2h") { const v = m.softPct; const g = m.softGames; return v != null ? <span style={{color:v>=60?"#3fb950":v>=50?"#e3b341":"#f78166"}}>{v.toFixed(1)+"%"}<span style={{color:"#484f58",fontSize:9}}>{g?" ("+g+"g)":""}</span></span> : DASH; }
                           if (k==="era") return C(era != null ? parseFloat(era).toFixed(2) : null, era >= 4.0 ? "#8b949e" : "#f78166");
                           if (k==="ba")  return C(ba  != null ? "."+String(Math.round(ba*1000)).padStart(3,"0") : null, ba >= 0.270 ? "#8b949e" : "#f78166");
-                          if (k==="ml")  return C(ml  != null ? fML(ml) : null, (stat==="strikeouts" ? ml <= -145 : ml < 0) ? "#8b949e" : "#f78166");
+                          if (k==="ml")  return C(ml  != null ? fML(ml) : null, (stat==="strikeouts" ? ml <= -140 : ml < 0) ? "#8b949e" : "#f78166");
                           if (k==="ab")  return C(ab  != null ? String(ab) : null, ab >= 10 ? "#8b949e" : "#f78166");
                           if (k==="pkp") return C(pkp != null ? pkp.toFixed(1)+"%" : null, pkp > 25 ? "#3fb950" : "#f78166");
                           if (k==="lkp") return C(lkp != null ? lkp.toFixed(1)+"%" : null, lkp > 23 ? "#3fb950" : "#f78166");
