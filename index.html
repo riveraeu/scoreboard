@@ -1026,17 +1026,12 @@ function App() {
                   const cs = CRITERIA_SUMMARIES[`${sport}|${stat}`];
                   return (
                     <div key={`${sport}|${stat}`} style={{marginBottom:18}}>
-                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,paddingBottom:5,borderBottom:"1px solid #21262d"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,paddingBottom:5,borderBottom:"1px solid #21262d",flexWrap:"wrap"}}>
                         <span style={{color:SPORT_COL[sport]||"#8b949e",fontWeight:700,fontSize:11}}>{sport.toUpperCase()}</span>
-                        <span style={{color:"#8b949e",fontSize:12}}>{STAT_NAME[stat]||stat}</span>
+                        <span style={{color:"#8b949e",fontSize:12,marginRight:2}}>{STAT_NAME[stat]||stat}</span>
+                        {cs && cs.gates.map((g,i) => <span key={i} style={{background:"#21262d",color:"#484f58",borderRadius:4,padding:"2px 6px",fontSize:9}}>{g}</span>)}
                         <span style={{color:"#484f58",fontSize:11,marginLeft:"auto"}}>{rows.length} markets · <span style={{color:"#3fb950"}}>{qualCount}</span> play{qualCount!==1?"s":""}</span>
                       </div>
-                      {cs && <div style={{background:"#161b22",borderRadius:6,padding:"8px 12px",marginBottom:8}}>
-                        <div style={{color:"#8b949e",fontSize:10,marginBottom:5,fontStyle:"italic"}}>{cs.note}</div>
-                        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                          {cs.gates.map((g,i) => <span key={i} style={{background:"#21262d",color:"#c9d1d9",borderRadius:4,padding:"2px 7px",fontSize:10}}>{g}</span>)}
-                        </div>
-                      </div>}
                       {(() => {
                         // Sport+stat specific extra columns
                         const XCOLS = {
