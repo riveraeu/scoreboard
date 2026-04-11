@@ -1715,7 +1715,9 @@ var worker_default = {
                   pitcherKPct: sportByteam.mlb?.pitcherKPct?.[playerTeam] ?? null,
                   lineupKPct: _pitcherHand === "R" ? (sportByteam.mlb?.lineupKPctVR?.[tonightOpp] ?? sportByteam.mlb?.lineupKPct?.[tonightOpp] ?? null) : _pitcherHand === "L" ? (sportByteam.mlb?.lineupKPctVL?.[tonightOpp] ?? sportByteam.mlb?.lineupKPct?.[tonightOpp] ?? null) : (sportByteam.mlb?.lineupKPct?.[tonightOpp] ?? null),
                   gameTotal: sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null,
-                  gameMoneyline: sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null
+                  gameMoneyline: sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null,
+                  pitcherEra: _pitcherEraFromGl ?? sportByteam.mlb?.pitcherEra?.[playerTeam] ?? null,
+                  pitcherHand: _pitcherHand ?? null
                 });
               }
               continue;
