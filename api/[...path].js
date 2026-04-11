@@ -667,8 +667,8 @@ var worker_default = {
             const gameOdds = Object.fromEntries(Object.entries(gameOddsRaw2).map(([k, v]) => [normMlbAbbr2(k), v]));
             const [lineupResult, pitcherResult] = await Promise.all([buildLineupKPct(mlbSched), buildPitcherKPct(mlbSched)]);
             const { lineupKPct: lineupKPct2, lineupBatterKPcts: lineupBatterKPcts2, lineupKPctVR, lineupKPctVL, gameHomeTeams: gameHomeTeams2, projectedLineupTeams: projectedLineupTeams2 } = lineupResult;
-            const { pitcherKPct: pitcherKPct2, pitcherKBBPct: pitcherKBBPct2, pitcherHand } = pitcherResult;
-            mlbByteam = { pitching: pitchRes, batting: batRes, probables: probables2, lineupKPct: lineupKPct2, lineupBatterKPcts: lineupBatterKPcts2, lineupKPctVR, lineupKPctVL, gameHomeTeams: gameHomeTeams2, pitcherKPct: pitcherKPct2, pitcherKBBPct: pitcherKBBPct2, pitcherHand, projectedLineupTeams: projectedLineupTeams2, gameOdds };
+            const { pitcherKPct: pitcherKPct2, pitcherKBBPct: pitcherKBBPct2, pitcherHand, pitcherEra: pitcherEraByTeam2 } = pitcherResult;
+            mlbByteam = { pitching: pitchRes, batting: batRes, probables: probables2, lineupKPct: lineupKPct2, lineupBatterKPcts: lineupBatterKPcts2, lineupKPctVR, lineupKPctVL, gameHomeTeams: gameHomeTeams2, pitcherKPct: pitcherKPct2, pitcherKBBPct: pitcherKBBPct2, pitcherHand, pitcherEra: pitcherEraByTeam2, projectedLineupTeams: projectedLineupTeams2, gameOdds };
             if (CACHE2) await CACHE2.put("byteam:mlb", JSON.stringify(mlbByteam), { expirationTtl: 600 });
           }
           const probables = mlbByteam.probables || {};
@@ -1100,8 +1100,8 @@ var worker_default = {
               const gameOdds = Object.fromEntries(Object.entries(gameOddsRaw).map(([k, v]) => [normMlbAbbr(k), v]));
               const [lineupResult, pitcherResult] = await Promise.all([buildLineupKPct(mlbSched), buildPitcherKPct(mlbSched)]);
               const { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, gameHomeTeams, projectedLineupTeams } = lineupResult;
-              const { pitcherKPct, pitcherKBBPct, pitcherHand } = pitcherResult;
-              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherHand, projectedLineupTeams, gameOdds };
+              const { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra: pitcherEraByTeam } = pitcherResult;
+              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra: pitcherEraByTeam, projectedLineupTeams, gameOdds };
               if (CACHE2) await CACHE2.put("byteam:mlb", JSON.stringify(sportByteam.mlb), { expirationTtl: 600 });
             }),
             sportsNeedingFetch.has("nfl") && fetch("https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/statistics/byteam?region=us&lang=en&isqualified=true&page=1&limit=32&category=passing", { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})).then(async (d) => {
@@ -1607,6 +1607,19 @@ var worker_default = {
               : vals26.length * 20
             : null;
           const _thresh26 = _bf26 !== null ? _bf26 >= 15 : vals26.length >= 3;
+          // Compute pitcher ERA from game log (strikeouts only: player IS the pitcher)
+          let _pitcherEraFromGl = null;
+          if (sport === "mlb" && stat === "strikeouts" && _ipIdx2 !== -1) {
+            const _erIdx = gl.ul.indexOf("ER");
+            if (_erIdx !== -1) {
+              const _calcEra = (evs) => {
+                const tER = evs.reduce((s, ev) => s + (parseFloat(ev.stats[_erIdx]) || 0), 0);
+                const tIP = evs.reduce((s, ev) => { const ip = parseFloat(ev.stats[_ipIdx2]) || 0; return s + Math.floor(ip) + (ip % 1) * 10 / 3; }, 0);
+                return tIP >= 3 ? parseFloat((tER * 9 / tIP).toFixed(2)) : null;
+              };
+              _pitcherEraFromGl = _calcEra(_events26) ?? _calcEra(gl.events);
+            }
+          }
           const pct26 = _thresh26 ? vals26.filter((v) => v >= threshold).length / vals26.length * 100 : null;
           const pct25 = vals25.length >= 5 ? vals25.filter((v) => v >= threshold).length / vals25.length * 100 : null;
           const blendVals = [...vals25, ...vals26];
@@ -1915,6 +1928,7 @@ var worker_default = {
             gameTotal: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null : void 0,
             gameMoneyline: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null : void 0,
             pitcherHand: sport === "mlb" && stat === "strikeouts" ? _pitcherHand ?? null : void 0,
+            pitcherEra: sport === "mlb" && stat === "strikeouts" ? (_pitcherEraFromGl ?? sportByteam.mlb?.pitcherEra?.[playerTeam] ?? null) : void 0,
             recentAvg: recentAvgOut,
             hitterBa: hitterBa !== null ? hitterBa : void 0,
             hitterBaTier: hitterBaTier ?? void 0,
@@ -1968,6 +1982,9 @@ var worker_default = {
           const tb = b.gameTime || "9999";
           return ta < tb ? -1 : ta > tb ? 1 : b.edge - a.edge;
         });
+        // Filter out plays from past dates (Kalshi sometimes keeps settled markets open)
+        const todayStr = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+        plays.splice(0, plays.length, ...plays.filter(p => !p.gameDate || p.gameDate >= todayStr));
         if (isDebug) {
           return jsonResponse({ plays, dropped, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null }, true);
         }
@@ -2384,13 +2401,14 @@ async function buildPitcherKPct(mlbSched) {
     ]);
     const pitcherStats25 = {}, pitcherStats26 = {};
     const pitcherHandById = {};
+    const safeEra = (v) => { const n = parseFloat(v); return isNaN(n) ? null : n; };
     for (const person of (res25.people || [])) {
       const pid = person.id;
       if (!pid) continue;
       if (person.pitchHand?.code) pitcherHandById[pid] = person.pitchHand.code;
       const split = person.stats?.[0]?.splits?.[0]?.stat;
       if (!split) continue;
-      pitcherStats25[pid] = { so: split.strikeOuts || 0, bf: split.battersFaced || 0, bb: split.baseOnBalls || 0 };
+      pitcherStats25[pid] = { so: split.strikeOuts || 0, bf: split.battersFaced || 0, bb: split.baseOnBalls || 0, era: safeEra(split.era) };
     }
     for (const person of (res26.people || [])) {
       const pid = person.id;
@@ -2398,13 +2416,13 @@ async function buildPitcherKPct(mlbSched) {
       if (person.pitchHand?.code) pitcherHandById[pid] = person.pitchHand.code;
       const split = person.stats?.[0]?.splits?.[0]?.stat;
       if (!split) continue;
-      pitcherStats26[pid] = { so: split.strikeOuts || 0, bf: split.battersFaced || 0, bb: split.baseOnBalls || 0 };
+      pitcherStats26[pid] = { so: split.strikeOuts || 0, bf: split.battersFaced || 0, bb: split.baseOnBalls || 0, era: safeEra(split.era) };
     }
     // Fill in pitcherHand from People API for any missing entries
     for (const [abbr, id] of Object.entries(pitcherByTeam)) {
       if (!pitcherHand[abbr] && pitcherHandById[id]) pitcherHand[abbr] = pitcherHandById[id];
     }
-    const pitcherKPct = {}, pitcherKBBPct = {};
+    const pitcherKPct = {}, pitcherKBBPct = {}, pitcherEra = {};
     for (const [abbr, id] of Object.entries(pitcherByTeam)) {
       const s26 = pitcherStats26[id];
       const s25 = pitcherStats25[id];
@@ -2414,8 +2432,13 @@ async function buildPitcherKPct(mlbSched) {
         pitcherKPct[abbr] = parseFloat((s.so / s.bf * 100).toFixed(1));
         pitcherKBBPct[abbr] = parseFloat(((s.so - s.bb) / s.bf * 100).toFixed(1));
       }
+      // ERA: prefer 2026 if available (any starts), fall back to 2025
+      const era26 = s26?.era ?? null;
+      const era25 = s25?.era ?? null;
+      if (era26 != null) pitcherEra[abbr] = era26;
+      else if (era25 != null) pitcherEra[abbr] = era25;
     }
-    return { pitcherKPct, pitcherKBBPct, pitcherHand };
+    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra };
   } catch {
     return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {} };
   }

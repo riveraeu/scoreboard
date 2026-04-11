@@ -407,6 +407,7 @@ function App() {
   const [sportFilter, setSportFilter] = React.useState([]); // empty = all sports
   const [statFilter, setStatFilter] = React.useState([]);  // empty = all stats
   const [showPlaysInfo, setShowPlaysInfo] = React.useState(false);
+  const [reportSort, setReportSort] = React.useState({}); // { "sport|stat": { col, dir } }
   const [showReport, setShowReport] = React.useState(false);
   const [reportData, setReportData] = React.useState(null);
   const [reportLoading, setReportLoading] = React.useState(false);
@@ -687,8 +688,9 @@ function App() {
         const { aggregated: aggBlend } = blendBase && blendEvents.length > 0
           ? parseGameLog({ labels: blendBase.labels, events: blendEvents }, sp)
           : { aggregated: null };
-        setLogs(aggBlend || agg25 || agg26);
-        setLogs25(agg26);
+        const has2026 = agg26 && Object.values(agg26).some(arr => Array.isArray(arr) && arr.length >= 5);
+        setLogs(has2026 ? agg26 : (aggBlend || agg25 || agg26));
+        setLogs25(has2026 ? aggBlend : agg26);
         setPerGame(pg);
         setMlbIsPitcher(isP);
         if (dv.ok) {
@@ -1021,7 +1023,32 @@ function App() {
                     const k = `${m.playerName}|${m.threshold}`;
                     if (!dedupeMap[k] || (!dedupeMap[k].qualified && m.qualified)) dedupeMap[k] = m;
                   }
+                  const _sortCfg = reportSort[`${sport}|${stat}`];
                   const rows = Object.values(dedupeMap).sort((a, b) => {
+                    if (_sortCfg) {
+                      const _sv = m => { switch(_sortCfg.col) {
+                        case "player": return m.playerName ?? "";
+                        case "line": return m.threshold ?? 0;
+                        case "true": return m.truePct ?? 0;
+                        case "kalshi": return m.kalshiPct ?? 0;
+                        case "edge": return m.edge ?? 0;
+                        case "opp": return m.opponent ?? "";
+                        case "season": return m.seasonPct ?? 0;
+                        case "h2h": return m.softPct ?? 0;
+                        case "era": return m.hitterPitcherEra ?? m.pitcherEra ?? 999;
+                        case "ba": return m.hitterBa ?? 0;
+                        case "ml": return m.hitterMoneyline ?? m.gameMoneyline ?? 0;
+                        case "ab": return m.hitterAbVsPitcher ?? 0;
+                        case "pkp": return m.pitcherKPct ?? 0;
+                        case "lkp": return m.lineupKPct ?? 0;
+                        case "ou": return m.gameTotal ?? 0;
+                        case "dvp": return m.posDvpRank ?? 99;
+                        default: return 0;
+                      }};
+                      const va = _sv(a), vb = _sv(b);
+                      const cmp = typeof va === "string" ? va.localeCompare(vb) : va - vb;
+                      return _sortCfg.dir === "desc" ? -cmp : cmp;
+                    }
                     if (a.qualified !== b.qualified) return a.qualified ? -1 : 1;
                     return (b.edge || b.kalshiPct || 0) - (a.edge || a.kalshiPct || 0);
                   });
@@ -1041,7 +1068,7 @@ function App() {
                         const XCOLS = {
                           "mlb|hrr":       [{k:"season",l:"Ssn%",w:36},{k:"h2h",l:"H2H%/g",w:46},{k:"era",l:"ERA",w:40},{k:"ba",l:"BA",w:36},{k:"ml",l:"ML",w:38},{k:"ab",l:"AB",w:24}],
                           "mlb|hits":      [{k:"season",l:"Ssn%",w:36},{k:"h2h",l:"H2H%/g",w:46},{k:"era",l:"ERA",w:40},{k:"ba",l:"BA",w:36},{k:"ml",l:"ML",w:38},{k:"ab",l:"AB",w:24}],
-                          "mlb|strikeouts":[{k:"season",l:"Ssn%",w:36},{k:"pkp",l:"K%",w:34},{k:"lkp",l:"LineK%",w:42},{k:"h2h",l:"vWeak%",w:46},{k:"ou",l:"O/U",w:28},{k:"ml",l:"ML",w:38}],
+                          "mlb|strikeouts":[{k:"season",l:"Ssn%",w:36},{k:"pkp",l:"K%",w:34},{k:"lkp",l:"LineK%",w:42},{k:"era",l:"ERA",w:40},{k:"h2h",l:"vWeak%",w:46},{k:"ou",l:"O/U",w:28},{k:"ml",l:"ML",w:38}],
                           "nba|points":    [{k:"season",l:"Ssn%",w:36},{k:"h2h",l:"vSoft%",w:46},{k:"dvp",l:"DVP",w:36}],
                           "nba|rebounds":  [{k:"season",l:"Ssn%",w:36},{k:"h2h",l:"vSoft%",w:46},{k:"dvp",l:"DVP",w:36}],
                           "nba|assists":   [{k:"season",l:"Ssn%",w:36},{k:"h2h",l:"vSoft%",w:46},{k:"dvp",l:"DVP",w:36}],
@@ -1061,7 +1088,7 @@ function App() {
                           const fML = v => v > 0 ? `+${v}` : `${v}`;
                           if (k==="season") { const v = m.seasonPct; return C(v != null ? v.toFixed(1)+"%" : null, v >= 60 ? "#3fb950" : v >= 50 ? "#e3b341" : "#f78166"); }
                           if (k==="h2h") { const v = m.softPct; return v != null ? <span style={{color:v>=60?"#3fb950":v>=50?"#e3b341":"#f78166"}}>{v.toFixed(1)+"%"}</span> : DASH; }
-                          if (k==="era") return C(era != null ? parseFloat(era).toFixed(2) : null, era >= 4.0 ? "#8b949e" : "#f78166");
+                          if (k==="era") { const eraColor = stat === "strikeouts" ? (era < 3.5 ? "#3fb950" : era < 4.5 ? "#8b949e" : "#f78166") : (era >= 4.0 ? "#8b949e" : "#f78166"); return C(era != null ? parseFloat(era).toFixed(2) : null, eraColor); }
                           if (k==="ba")  return C(ba  != null ? "."+String(Math.round(ba*1000)).padStart(3,"0") : null, ba >= 0.270 ? "#8b949e" : "#f78166");
                           if (k==="ml")  return C(ml  != null ? fML(ml) : null, ml <= -140 ? "#3fb950" : ml < 0 ? "#8b949e" : "#f78166");
                           if (k==="ab")  return C(ab  != null ? String(ab) : null, ab >= 10 ? "#8b949e" : "#f78166");
@@ -1080,15 +1107,28 @@ function App() {
                           no_espn_info:"no info", no_gamelog:"no log",
                           no_soft_data:"no data", col_not_found:"no col", no_gamelog_vals:"no vals",
                         };
+                        const _sk = `${sport}|${stat}`;
+                        const _sc = reportSort[_sk];
+                        const _hdr = (col, label, extraStyle={}, textAlign="right") => {
+                          const active = _sc?.col === col;
+                          const onClick = () => setReportSort(prev => {
+                            const cur = prev[_sk];
+                            const dir = cur?.col === col && cur.dir === "desc" ? "asc" : "desc";
+                            return {...prev, [_sk]: {col, dir}};
+                          });
+                          return <div style={{flex:1,color:active?"#c9d1d9":"#484f58",fontSize:10,textAlign,cursor:"pointer",userSelect:"none",...extraStyle}} onClick={onClick}>
+                            {label}{active ? (_sc.dir === "desc" ? "↓" : "↑") : ""}
+                          </div>;
+                        };
                         return <React.Fragment>
                           <div style={{display:"flex",alignItems:"center",gap:6,padding:"3px 12px 4px",marginBottom:2}}>
-                            <div style={{flex:2,minWidth:0,color:"#484f58",fontSize:10}}>Player</div>
-                            <div style={{flex:1,color:"#484f58",fontSize:10,textAlign:"right"}}>Line</div>
+                            {_hdr("player","Player",{flex:2,minWidth:0},"left")}
+                            {_hdr("line","Line")}
                             <div style={{flex:1,fontSize:10,textAlign:"right",fontWeight:600}}><span style={{color:"#e3b341",textDecoration:"underline dotted #e3b341",textUnderlineOffset:2,cursor:"help"}} title={cs?.note||""}>True%</span></div>
-                            <div style={{flex:1,color:"#484f58",fontSize:10,textAlign:"right"}}>Kalshi</div>
-                            <div style={{flex:1,color:"#484f58",fontSize:10,textAlign:"right"}}>Edge</div>
-                            {xcols.map(c => <div key={c.k} style={{flex:1,color:"#484f58",fontSize:10,textAlign:"right"}}>{c.l}</div>)}
-                            <div style={{flex:2,color:"#484f58",fontSize:10,textAlign:"right"}}>Opp</div>
+                            {_hdr("kalshi","Kalshi")}
+                            {_hdr("edge","Edge")}
+                            {xcols.map(c => <React.Fragment key={c.k}>{_hdr(c.k,c.l)}</React.Fragment>)}
+                            {_hdr("opp","Opp",{flex:2})}
                           </div>
                           <div style={{background:"#0d1117",borderRadius:8,overflow:"hidden"}}>
                             {rows.map((m, i) => {
@@ -1447,6 +1487,7 @@ function App() {
                           if (tp) return { opp: tp.opponent, lineupKPct: tp.lineupKPct ?? dvpData?.h2h?.lineupKPct ?? null, lineupKPctProjected: tp.lineupKPctProjected ?? dvpData?.h2h?.lineupKPctProjected ?? false,
                             pitcherKPct: tp.pitcherKPct, pitcherKBBPct: tp.pitcherKBBPct, log5Avg: tp.log5Avg,
                             expectedKs: tp.expectedKs, parkFactor: tp.parkFactor, pitcherHand: tp.pitcherHand,
+                            pitcherEra: tp.pitcherEra ?? null,
                             isStrongMatchup: tp.isStrongMatchup, pkpMeets: tp.pkpMeets, lkpMeets: tp.lkpMeets,
                             gameLineMeets: tp.gameLineMeets, gameTotal: tp.gameTotal, gameMoneyline: tp.gameMoneyline };
                         }
@@ -1474,6 +1515,8 @@ function App() {
                           const oppColor  = lkp != null ? (lkp >= 24 ? "#3fb950" : lkp < 20 ? "#f78166" : "#c9d1d9") : "#c9d1d9";
                           const strikeoutsThreshold = Object.entries(tonightPlayerMap).find(([k]) => k.startsWith("strikeouts|"))?.[1]?.threshold ?? null;
                           const expKColor = expK != null && strikeoutsThreshold != null ? (expK >= strikeoutsThreshold ? "#3fb950" : expK >= strikeoutsThreshold - 1 ? "#c9d1d9" : "#f78166") : "#c9d1d9";
+                          const pitcherEra = h2h?.pitcherEra ?? null;
+                          const eraColor = pitcherEra == null ? "#8b949e" : pitcherEra < 3.5 ? "#3fb950" : pitcherEra < 4.5 ? "#8b949e" : "#f78166";
                           const isStrongMatchup = h2h?.isStrongMatchup ?? false;
                           const pkpMeets = h2h?.pkpMeets ?? null;
                           const lkpMeets = h2h?.lkpMeets ?? null;
@@ -1489,7 +1532,7 @@ function App() {
                           const pitcherTeamName = MLB_TEAM[player.team] || player.team;
                           return (
                             <>
-                              {first} posts a{pkp != null ? <> <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span></> : " —"} K rate, facing the {oppName} who are striking out at <span style={{color:lkpColor,fontWeight:600}}>{lkp != null ? `${lkp}%` : "—"}</span>{handLabel && <span style={{color:"#8b949e"}}>{handLabel}</span>}{lkpProjected && <span style={{color:"#484f58",fontSize:10}}> (est.)</span>}. {(gameTotal != null || gameML != null) && <>The total for the match is <span style={{color:totalColor(gameTotal),fontWeight:600}}>{gameTotal ?? "—"}</span> and the {pitcherTeamName} are favored at <span style={{color:mlColor(gameML),fontWeight:600}}>{gameML != null ? `${gameML > 0 ? "+" : ""}${gameML}` : "—"}</span> line.</>}
+                              {first} posts a{pkp != null ? <> <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span></> : " —"} K rate{pitcherEra != null && <> (<span style={{color:eraColor,fontWeight:600}}>{parseFloat(pitcherEra).toFixed(2)} ERA</span>)</>}, facing the {oppName} who are striking out at <span style={{color:lkpColor,fontWeight:600}}>{lkp != null ? `${lkp}%` : "—"}</span>{handLabel && <span style={{color:"#8b949e"}}>{handLabel}</span>}{lkpProjected && <span style={{color:"#484f58",fontSize:10}}> (est.)</span>}. {(gameTotal != null || gameML != null) && <>The total for the match is <span style={{color:totalColor(gameTotal),fontWeight:600}}>{gameTotal ?? "—"}</span> and the {pitcherTeamName} are favored at <span style={{color:mlColor(gameML),fontWeight:600}}>{gameML != null ? `${gameML > 0 ? "+" : ""}${gameML}` : "—"}</span> line.</>}
                               {(pf != null && Math.abs(pf - 1.0) >= 0.01) && (
                                 <div style={{color:"#484f58",fontSize:10,marginTop:3}}>
                                   Venue: {pf > 1 ? "+" : ""}{((pf - 1)*100).toFixed(0)}% {pf > 1 ? "strikeout-friendly" : "strikeout-suppressing"} park.
@@ -2177,6 +2220,8 @@ function App() {
                               const gameTotal = play.gameTotal ?? null;
                               const gameML = play.gameMoneyline ?? null;
                               const handLabel = play.pitcherHand === "R" ? " against RHP" : play.pitcherHand === "L" ? " against LHP" : "";
+                              const pitcherEra = play.pitcherEra ?? null;
+                              const eraColor = pitcherEra == null ? "#8b949e" : pitcherEra < 3.5 ? "#3fb950" : pitcherEra < 4.5 ? "#8b949e" : "#f78166";
 
                               const criteriaMet = [play.pkpMeets, play.lkpMeets, play.gameLineMeets].filter(Boolean).length;
                               return (
@@ -2185,7 +2230,7 @@ function App() {
                                     const oppName = MLB_TEAM[play.opponent] || play.opponent;
                                     const pitcherTeamName = MLB_TEAM[play.playerTeam] || play.playerTeam;
                                     return <>
-                                      {first} posts a{pkp != null ? <> <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span></> : " —"} K rate, facing the {oppName} who are striking out at <span style={{color:lkpColor,fontWeight:600}}>{lkp != null ? `${lkp}%` : "—"}</span>{handLabel && <span style={{color:"#8b949e"}}>{handLabel}</span>}{isProjected && <span style={{color:"#484f58",fontSize:10}}> (est.)</span>}. {(gameTotal != null || gameML != null) && <>The total for the match is <span style={{color:totalColor(gameTotal),fontWeight:600}}>{gameTotal ?? "—"}</span> and the {pitcherTeamName} are favored at <span style={{color:mlColor(gameML),fontWeight:600}}>{gameML != null ? `${gameML > 0 ? "+" : ""}${gameML}` : "—"}</span> line.</>}
+                                      {first} posts a{pkp != null ? <> <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span></> : " —"} K rate{pitcherEra != null && <> (<span style={{color:eraColor,fontWeight:600}}>{parseFloat(pitcherEra).toFixed(2)} ERA</span>)</>}, facing the {oppName} who are striking out at <span style={{color:lkpColor,fontWeight:600}}>{lkp != null ? `${lkp}%` : "—"}</span>{handLabel && <span style={{color:"#8b949e"}}>{handLabel}</span>}{isProjected && <span style={{color:"#484f58",fontSize:10}}> (est.)</span>}. {(gameTotal != null || gameML != null) && <>The total for the match is <span style={{color:totalColor(gameTotal),fontWeight:600}}>{gameTotal ?? "—"}</span> and the {pitcherTeamName} are favored at <span style={{color:mlColor(gameML),fontWeight:600}}>{gameML != null ? `${gameML > 0 ? "+" : ""}${gameML}` : "—"}</span> line.</>}
                                     </>;
                                   })()}
                                   {pf != null && Math.abs(pf - 1.0) >= 0.01 && (
