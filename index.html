@@ -2148,7 +2148,7 @@ function App() {
                     <div style={{flex:1,background:"#21262d",borderRadius:4,height:14,overflow:"hidden"}}>
                       <div style={{width:`${play.truePct}%`,background:tc,height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:play.truePct>0?3:0}}/>
                     </div>
-                    <div style={{width:60,flexShrink:0,display:"flex",justifyContent:"flex-end",alignItems:"baseline",gap:4}}>
+                    <div style={{width:65,flexShrink:0,display:"flex",justifyContent:"flex-end",alignItems:"baseline",gap:4}}>
                       <span style={{color:tc,fontSize:12,fontWeight:700}}>{play.truePct}%</span>
                       <span style={{color:tc,fontSize:10}}>({play.americanOdds > 0 ? `+${play.americanOdds}` : play.americanOdds})</span>
                     </div>
@@ -2159,8 +2159,8 @@ function App() {
                     <div style={{flex:1,background:"#21262d",borderRadius:4,height:10,overflow:"hidden"}}>
                       <div style={{width:`${play.kalshiPct}%`,background:"#6e40c9",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:play.kalshiPct>0?3:0}}/>
                     </div>
-                    <div style={{width:60,flexShrink:0,display:"flex",justifyContent:"flex-end",alignItems:"baseline",gap:4}}>
-                      <span style={{color:"#6e40c9",fontSize:11,fontWeight:600}}>{play.kalshiPct}%</span>
+                    <div style={{width:65,flexShrink:0,display:"flex",justifyContent:"flex-end",alignItems:"baseline",gap:4}}>
+                      <span style={{color:"#6e40c9",fontSize:12,fontWeight:600}}>{play.kalshiPct}%</span>
                       <span style={{color:"#6e40c9",fontSize:10}}>({oddsStr})</span>
                     </div>
                   </div>
@@ -2178,7 +2178,7 @@ function App() {
                             <span style={{color:"#8b949e",fontWeight:600}}>${stake.toFixed(0)}</span>
                           </span>
                         </div>
-                        <div style={{width:60,flexShrink:0,textAlign:"right",color:"#3fb950",fontSize:10,fontWeight:600}}>
+                        <div style={{width:65,flexShrink:0,textAlign:"right",color:"#3fb950",fontSize:10,fontWeight:600}}>
                           win +${profit.toFixed(0)}
                         </div>
                       </div>
