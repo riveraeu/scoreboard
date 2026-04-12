@@ -666,9 +666,9 @@ var worker_default = {
             const gameOddsRaw2 = parseGameOdds(sbRes.events);
             const gameOdds = Object.fromEntries(Object.entries(gameOddsRaw2).map(([k, v]) => [normMlbAbbr2(k), v]));
             const [lineupResult, pitcherResult] = await Promise.all([buildLineupKPct(mlbSched), buildPitcherKPct(mlbSched)]);
-            const { lineupKPct: lineupKPct2, lineupBatterKPcts: lineupBatterKPcts2, lineupKPctVR, lineupKPctVL, gameHomeTeams: gameHomeTeams2, projectedLineupTeams: projectedLineupTeams2 } = lineupResult;
+            const { lineupKPct: lineupKPct2, lineupBatterKPcts: lineupBatterKPcts2, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered: lineupBatterKPctsOrdered2, lineupBatterKPctsVROrdered: lineupBatterKPctsVROrdered2, lineupBatterKPctsVLOrdered: lineupBatterKPctsVLOrdered2, gameHomeTeams: gameHomeTeams2, projectedLineupTeams: projectedLineupTeams2 } = lineupResult;
             const { pitcherKPct: pitcherKPct2, pitcherKBBPct: pitcherKBBPct2, pitcherHand, pitcherEra: pitcherEraByTeam2 } = pitcherResult;
-            mlbByteam = { pitching: pitchRes, batting: batRes, probables: probables2, lineupKPct: lineupKPct2, lineupBatterKPcts: lineupBatterKPcts2, lineupKPctVR, lineupKPctVL, gameHomeTeams: gameHomeTeams2, pitcherKPct: pitcherKPct2, pitcherKBBPct: pitcherKBBPct2, pitcherHand, pitcherEra: pitcherEraByTeam2, projectedLineupTeams: projectedLineupTeams2, gameOdds };
+            mlbByteam = { pitching: pitchRes, batting: batRes, probables: probables2, lineupKPct: lineupKPct2, lineupBatterKPcts: lineupBatterKPcts2, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered: lineupBatterKPctsOrdered2, lineupBatterKPctsVROrdered: lineupBatterKPctsVROrdered2, lineupBatterKPctsVLOrdered: lineupBatterKPctsVLOrdered2, gameHomeTeams: gameHomeTeams2, pitcherKPct: pitcherKPct2, pitcherKBBPct: pitcherKBBPct2, pitcherHand, pitcherEra: pitcherEraByTeam2, projectedLineupTeams: projectedLineupTeams2, gameOdds };
             if (CACHE2) await CACHE2.put("byteam:mlb", JSON.stringify(mlbByteam), { expirationTtl: 600 });
           }
           const probables = mlbByteam.probables || {};
@@ -681,7 +681,12 @@ var worker_default = {
           const pitcherKBBPct = mlbByteam.pitcherKBBPct || {};
           const gameHomeTeams = mlbByteam.gameHomeTeams || {};
           const pKPct = pitcherKPct[playerTeam] ?? null;
-          const batterKPcts = lineupBatterKPcts[tonightOpp] ?? [];
+          const _dvpPitcherHandEarly = mlbByteam.pitcherHand?.[playerTeam] ?? null;
+          const ordAllDvp = mlbByteam.lineupBatterKPctsOrdered?.[tonightOpp] ?? null;
+          const ordVRDvp = mlbByteam.lineupBatterKPctsVROrdered?.[tonightOpp] ?? null;
+          const ordVLDvp = mlbByteam.lineupBatterKPctsVLOrdered?.[tonightOpp] ?? null;
+          const orderedKPctsDvp = _dvpPitcherHandEarly === "R" ? (ordVRDvp ?? ordAllDvp) : _dvpPitcherHandEarly === "L" ? (ordVLDvp ?? ordAllDvp) : ordAllDvp;
+          const batterKPcts = orderedKPctsDvp ?? (lineupBatterKPcts[tonightOpp] ?? []);
           let log5Avg = null, expectedKs = null, parkFactor = null;
           if (pKPct !== null && batterKPcts.length >= 3) {
             const homeTeam = gameHomeTeams[playerTeam] || tonightOpp;
@@ -1099,9 +1104,9 @@ var worker_default = {
               const gameOddsRaw = parseGameOdds(sbData.events);
               const gameOdds = Object.fromEntries(Object.entries(gameOddsRaw).map(([k, v]) => [normMlbAbbr(k), v]));
               const [lineupResult, pitcherResult] = await Promise.all([buildLineupKPct(mlbSched), buildPitcherKPct(mlbSched)]);
-              const { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, gameHomeTeams, projectedLineupTeams } = lineupResult;
+              const { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, gameHomeTeams, projectedLineupTeams } = lineupResult;
               const { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra: pitcherEraByTeam } = pitcherResult;
-              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra: pitcherEraByTeam, projectedLineupTeams, gameOdds };
+              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra: pitcherEraByTeam, projectedLineupTeams, gameOdds };
               if (CACHE2) await CACHE2.put("byteam:mlb", JSON.stringify(sportByteam.mlb), { expirationTtl: 600 });
             }),
             sportsNeedingFetch.has("nfl") && fetch("https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/statistics/byteam?region=us&lang=en&isqualified=true&page=1&limit=32&category=passing", { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})).then(async (d) => {
@@ -1717,7 +1722,8 @@ var worker_default = {
                   gameTotal: sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null,
                   gameMoneyline: sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null,
                   pitcherEra: _pitcherEraFromGl ?? sportByteam.mlb?.pitcherEra?.[playerTeam] ?? null,
-                  pitcherHand: _pitcherHand ?? null
+                  pitcherHand: _pitcherHand ?? null,
+                  simPct: simPctOut
                 });
               }
               continue;
@@ -1742,17 +1748,26 @@ var worker_default = {
           const lineupKPctProjected = sport === "mlb" && stat === "strikeouts" && lineupKPctOut !== null ? (sportByteam.mlb?.projectedLineupTeams || []).includes(tonightOpp) : false;
           const pitcherKPctOut = sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.pitcherKPct?.[playerTeam] ?? null : null;
           const pitcherKBBPctOut = sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.pitcherKBBPct?.[playerTeam] ?? null : null;
-          let log5AvgOut = null, expectedKsOut = null, parkFactorOut = null, log5PctOut = null;
+          let log5AvgOut = null, expectedKsOut = null, parkFactorOut = null, log5PctOut = null, simPctOut = null;
           if (sport === "mlb" && stat === "strikeouts" && pitcherKPctOut !== null) {
-            const batterKPcts = sportByteam.mlb?.lineupBatterKPcts?.[tonightOpp] ?? [];
+            const homeTeam = sportByteam.mlb?.gameHomeTeams?.[playerTeam] || tonightOpp;
+            parkFactorOut = PARK_KFACTOR[homeTeam] ?? 1;
+            // Prefer ordered per-batter arrays (enables simulation); fall back to unordered
+            const ordAll = sportByteam.mlb?.lineupBatterKPctsOrdered?.[tonightOpp] ?? null;
+            const ordVR = sportByteam.mlb?.lineupBatterKPctsVROrdered?.[tonightOpp] ?? null;
+            const ordVL = sportByteam.mlb?.lineupBatterKPctsVLOrdered?.[tonightOpp] ?? null;
+            const orderedKPcts = _pitcherHand === "R" ? (ordVR ?? ordAll) : _pitcherHand === "L" ? (ordVL ?? ordAll) : ordAll;
+            const batterKPcts = orderedKPcts ?? (sportByteam.mlb?.lineupBatterKPcts?.[tonightOpp] ?? []);
             if (batterKPcts.length >= 3) {
-              const homeTeam = sportByteam.mlb?.gameHomeTeams?.[playerTeam] || tonightOpp;
-              parkFactorOut = PARK_KFACTOR[homeTeam] ?? 1;
               const scores = batterKPcts.map((b) => log5K(pitcherKPctOut, b * 100));
               log5AvgOut = parseFloat((scores.reduce((a, b) => a + b, 0) / scores.length * 100).toFixed(1));
               const adjustedLog5 = log5AvgOut * parkFactorOut;
               expectedKsOut = parseFloat((adjustedLog5 / 100 * 26).toFixed(1));
-              log5PctOut = parseFloat(log5HitRate(adjustedLog5, threshold).toFixed(1));
+              if (orderedKPcts && orderedKPcts.length >= 8) {
+                simPctOut = simulateKs(orderedKPcts, pitcherKPctOut, threshold, parkFactorOut);
+              } else {
+                log5PctOut = parseFloat(log5HitRate(adjustedLog5, threshold).toFixed(1));
+              }
             }
           }
           let recentAvgOut = null, dvpFactorOut = null, projectedStatOut = null;
@@ -1857,7 +1872,7 @@ var worker_default = {
           }
           const rawTruePct = (() => {
             if (sport === "mlb" && stat === "strikeouts") {
-              const parts = [primaryPct, ...softPct !== null ? [softPct] : []];
+              const parts = [primaryPct, ...softPct !== null ? [softPct] : [], ...simPctOut !== null ? [simPctOut] : []];
               return parts.reduce((a, b) => a + b, 0) / parts.length;
             }
             if (sport === "mlb" && hasSeasonTags) {
@@ -1907,8 +1922,9 @@ var worker_default = {
             pitcherKPct: pitcherKPctOut,
             pitcherKBBPct: pitcherKBBPctOut,
             log5Avg: log5AvgOut,
-            log5Pct: log5PctOut,
+            log5Pct: simPctOut ?? log5PctOut,
             expectedKs: expectedKsOut,
+            simPct: simPctOut,
             stat,
             threshold,
             kalshiPct,
@@ -2194,6 +2210,29 @@ function log5HitRate(log5Avg, threshold, avgBF = 26) {
   return (1 - poissonCDF(threshold - 1, lambda)) * 100;
 }
 __name(log5HitRate, "log5HitRate");
+// Monte Carlo PA-level simulation: cycle through ordered lineup batters for totalPA plate appearances,
+// each PA is a Bernoulli trial with log5-adjusted K probability. Returns P(Ks >= threshold).
+function simulateKs(orderedKPcts, pitcherKPct, threshold, parkFactor = 1, nSim = 10000, totalPA = 24) {
+  const n = orderedKPcts.length;
+  if (!n || pitcherKPct == null) return null;
+  // PA per batter: distribute totalPA across lineup order (top of order gets extras)
+  const base = Math.floor(totalPA / n);
+  const extras = totalPA % n;
+  const paArr = orderedKPcts.map((_, i) => base + (i < extras ? 1 : 0));
+  // Pre-compute log5-adjusted K probability per batter, park-adjusted
+  const adjProbs = orderedKPcts.map(b => Math.min(0.95, log5K(pitcherKPct, b * 100) * parkFactor));
+  let hits = 0;
+  for (let sim = 0; sim < nSim; sim++) {
+    let ks = 0;
+    for (let i = 0; i < n; i++) {
+      const p = adjProbs[i], pa = paArr[i];
+      for (let j = 0; j < pa; j++) { if (Math.random() < p) ks++; }
+    }
+    if (ks >= threshold) hits++;
+  }
+  return parseFloat((hits / nSim * 100).toFixed(1));
+}
+__name(simulateKs, "simulateKs");
 function decimalOdds(americanOdds) {
   return americanOdds >= 0 ? americanOdds / 100 + 1 : 100 / Math.abs(americanOdds) + 1;
 }
@@ -2335,7 +2374,9 @@ async function buildLineupKPct(mlbSched) {
         playerSplits[pid][code] = { so: s.stat.strikeOuts || 0, pa: s.stat.plateAppearances || 0 };
       }
     }
+    const LEAGUE_K = 0.222; // MLB average K rate fallback
     const lineupKPct = {}, lineupBatterKPcts = {}, lineupKPctVR = {}, lineupKPctVL = {};
+    const lineupBatterKPctsOrdered = {}, lineupBatterKPctsVROrdered = {}, lineupBatterKPctsVLOrdered = {};
     for (const [abbr, ids] of Object.entries(teamLineups)) {
       const soTotal = ids.reduce((s, id) => s + (playerStats[id]?.so || 0), 0);
       const paTotal = ids.reduce((s, id) => s + (playerStats[id]?.pa || 0), 0);
@@ -2346,6 +2387,12 @@ async function buildLineupKPct(mlbSched) {
         const so = ids.reduce((s, id) => s + (playerSplits[id]?.[code]?.so || 0), 0);
         const pa = ids.reduce((s, id) => s + (playerSplits[id]?.[code]?.pa || 0), 0);
         if (pa >= 100) out[abbr] = parseFloat((so / pa * 100).toFixed(1));
+      }
+      // Ordered per-batter K% arrays for Monte Carlo simulation (all 9 batters, with fallbacks)
+      if (ids.length >= 8) {
+        lineupBatterKPctsOrdered[abbr] = ids.map(id => { const s = playerStats[id]; return (s && s.pa >= 15) ? s.so / s.pa : LEAGUE_K; });
+        lineupBatterKPctsVROrdered[abbr] = ids.map(id => { const sp = playerSplits[id]?.vr; const s = playerStats[id]; return (sp && sp.pa >= 20) ? sp.so / sp.pa : (s && s.pa >= 15) ? s.so / s.pa : LEAGUE_K; });
+        lineupBatterKPctsVLOrdered[abbr] = ids.map(id => { const sp = playerSplits[id]?.vl; const s = playerStats[id]; return (sp && sp.pa >= 20) ? sp.so / sp.pa : (s && s.pa >= 15) ? s.so / s.pa : LEAGUE_K; });
       }
     }
     // Fallback: for any team playing today that still has no lineupKPct (e.g. MLB API returned
@@ -2366,7 +2413,7 @@ async function buildLineupKPct(mlbSched) {
         }
       }
     }
-    return { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, gameHomeTeams, projectedLineupTeams: [...projectedLineupTeams] };
+    return { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, gameHomeTeams, projectedLineupTeams: [...projectedLineupTeams] };
   } catch {
     return { lineupKPct: {}, lineupBatterKPcts: {}, lineupKPctVR: {}, lineupKPctVL: {}, gameHomeTeams: {}, projectedLineupTeams: [] };
   }
