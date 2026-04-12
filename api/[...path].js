@@ -2702,19 +2702,31 @@ async function buildPitcherKPct(mlbSched) {
     // Step 1: fetch game logs (fast — needed for both avg pitches and CSW%)
     let glFetch = [];
     try {
-      glFetch = await Promise.all(
-        allIds.map(id =>
+      // Fetch 2026 and 2025 game logs in parallel; blend for regression to mean
+      const [gl26, gl25] = await Promise.all([
+        Promise.all(allIds.map(id =>
           fetch(`https://statsapi.mlb.com/api/v1/people/${id}/stats?stats=gameLog&group=pitching&season=2026&gameType=R`, { headers: { "User-Agent": "Mozilla/5.0" } })
             .then(r => r.ok ? r.json() : {}).catch(() => ({}))
             .then(d => ({ id, splits: d.stats?.[0]?.splits || [] }))
-        )
-      );
-      // Avg pitches per start — computed from game logs, independent of PBP
-      for (const { id, splits } of glFetch) {
-        const starts = splits.filter(s => (s.stat?.gamesStarted || 0) >= 1);
-        if (starts.length >= 2) {
-          const total = starts.reduce((sum, s) => sum + (s.stat?.numberOfPitches || 0), 0);
-          const avg = parseFloat((total / starts.length).toFixed(1));
+        )),
+        Promise.all(allIds.map(id =>
+          fetch(`https://statsapi.mlb.com/api/v1/people/${id}/stats?stats=gameLog&group=pitching&season=2025&gameType=R`, { headers: { "User-Agent": "Mozilla/5.0" } })
+            .then(r => r.ok ? r.json() : {}).catch(() => ({}))
+            .then(d => ({ id, splits: d.stats?.[0]?.splits || [] }))
+        )),
+      ]);
+      // Use 2026 for CSW% (PBP); blend 2025+2026 for avg pitches
+      glFetch = gl26;
+      const gl25ById = Object.fromEntries(gl25.map(({ id, splits }) => [id, splits]));
+      // Avg pitches per start — blended 2025+2026, require >= 2 combined starts
+      for (const { id, splits: splits26 } of gl26) {
+        const splits25 = gl25ById[id] || [];
+        const starts26 = splits26.filter(s => (s.stat?.gamesStarted || 0) >= 1);
+        const starts25 = splits25.filter(s => (s.stat?.gamesStarted || 0) >= 1);
+        const allStarts = [...starts26, ...starts25];
+        if (allStarts.length >= 1) {
+          const total = allStarts.reduce((sum, s) => sum + (s.stat?.numberOfPitches || 0), 0);
+          const avg = parseFloat((total / allStarts.length).toFixed(1));
           for (const [abbr, aid] of Object.entries(pitcherByTeam)) {
             if (aid === id) pitcherAvgPitches[abbr] = avg;
           }
