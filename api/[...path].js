@@ -1872,7 +1872,10 @@ var worker_default = {
           }
           const rawTruePct = (() => {
             if (sport === "mlb" && stat === "strikeouts") {
-              const parts = [primaryPct, ...softPct !== null ? [softPct] : [], ...simPctOut !== null ? [simPctOut] : []];
+              // Simulation is the primary model when lineup data is available
+              if (simPctOut !== null) return simPctOut;
+              // Fallback: average of season rate + soft matchup rate
+              const parts = [primaryPct, ...softPct !== null ? [softPct] : []];
               return parts.reduce((a, b) => a + b, 0) / parts.length;
             }
             if (sport === "mlb" && hasSeasonTags) {
@@ -2375,24 +2378,40 @@ async function buildLineupKPct(mlbSched) {
       }
     }
     const LEAGUE_K = 0.222; // MLB average K rate fallback
+    // Regression-to-mean: blend 2026 with 2025 anchor weighted by PA
+    // At 100+ PA trust 2026 fully; below that blend proportionally toward 2025 (or league avg)
+    const regressBatterK = (id, code) => {
+      const sp26 = code ? playerSplits[id]?.[code] : null;
+      const s26 = playerStats26[id];
+      const s25 = playerStats25[id];
+      // Best 2026 estimate: use hand split if 10+ PA, else overall 2026
+      const k26 = (sp26 && sp26.pa >= 10) ? sp26.so / sp26.pa : (s26 && s26.pa > 0) ? s26.so / s26.pa : null;
+      const pa26 = (sp26 && sp26.pa >= 10) ? sp26.pa : (s26?.pa || 0);
+      // Anchor: 2025 overall if 50+ PA, else league avg
+      const anchor = (s25 && s25.pa >= 50) ? s25.so / s25.pa : LEAGUE_K;
+      const trust = Math.min(1.0, pa26 / 100);
+      return k26 !== null ? k26 * trust + anchor * (1 - trust) : anchor;
+    };
     const lineupKPct = {}, lineupBatterKPcts = {}, lineupKPctVR = {}, lineupKPctVL = {};
     const lineupBatterKPctsOrdered = {}, lineupBatterKPctsVROrdered = {}, lineupBatterKPctsVLOrdered = {};
     for (const [abbr, ids] of Object.entries(teamLineups)) {
       const soTotal = ids.reduce((s, id) => s + (playerStats[id]?.so || 0), 0);
       const paTotal = ids.reduce((s, id) => s + (playerStats[id]?.pa || 0), 0);
       if (paTotal > 0) lineupKPct[abbr] = parseFloat((soTotal / paTotal * 100).toFixed(1));
-      const batterKPcts = ids.filter((id) => (playerStats[id]?.pa || 0) >= 50).map((id) => playerStats[id].so / playerStats[id].pa);
+      // Unordered (used for log5Avg gate): regressed K% per qualified batter
+      const batterKPcts = ids.filter(id => (playerStats26[id]?.pa || playerStats25[id]?.pa || 0) >= 20)
+        .map(id => regressBatterK(id, null));
       if (batterKPcts.length >= 3) lineupBatterKPcts[abbr] = batterKPcts;
       for (const [code, out] of [["vr", lineupKPctVR], ["vl", lineupKPctVL]]) {
         const so = ids.reduce((s, id) => s + (playerSplits[id]?.[code]?.so || 0), 0);
         const pa = ids.reduce((s, id) => s + (playerSplits[id]?.[code]?.pa || 0), 0);
         if (pa >= 100) out[abbr] = parseFloat((so / pa * 100).toFixed(1));
       }
-      // Ordered per-batter K% arrays for Monte Carlo simulation (all 9 batters, with fallbacks)
+      // Ordered per-batter regressed K% arrays for Monte Carlo simulation
       if (ids.length >= 8) {
-        lineupBatterKPctsOrdered[abbr] = ids.map(id => { const s = playerStats[id]; return (s && s.pa >= 15) ? s.so / s.pa : LEAGUE_K; });
-        lineupBatterKPctsVROrdered[abbr] = ids.map(id => { const sp = playerSplits[id]?.vr; const s = playerStats[id]; return (sp && sp.pa >= 20) ? sp.so / sp.pa : (s && s.pa >= 15) ? s.so / s.pa : LEAGUE_K; });
-        lineupBatterKPctsVLOrdered[abbr] = ids.map(id => { const sp = playerSplits[id]?.vl; const s = playerStats[id]; return (sp && sp.pa >= 20) ? sp.so / sp.pa : (s && s.pa >= 15) ? s.so / s.pa : LEAGUE_K; });
+        lineupBatterKPctsOrdered[abbr]   = ids.map(id => regressBatterK(id, null));
+        lineupBatterKPctsVROrdered[abbr] = ids.map(id => regressBatterK(id, "vr"));
+        lineupBatterKPctsVLOrdered[abbr] = ids.map(id => regressBatterK(id, "vl"));
       }
     }
     // Fallback: for any team playing today that still has no lineupKPct (e.g. MLB API returned
@@ -2471,15 +2490,24 @@ async function buildPitcherKPct(mlbSched) {
     for (const [abbr, id] of Object.entries(pitcherByTeam)) {
       if (!pitcherHand[abbr] && pitcherHandById[id]) pitcherHand[abbr] = pitcherHandById[id];
     }
+    const LEAGUE_PITCHER_K = 0.222;
     const pitcherKPct = {}, pitcherKBBPct = {}, pitcherEra = {};
     for (const [abbr, id] of Object.entries(pitcherByTeam)) {
       const s26 = pitcherStats26[id];
       const s25 = pitcherStats25[id];
-      // Prefer 2026 if pitcher has at least 15 BF (~3 starts); fall back to 2025 (50+ BF)
-      const s = (s26 && s26.bf >= 15) ? s26 : (s25 && s25.bf >= 50) ? s25 : null;
-      if (s) {
-        pitcherKPct[abbr] = parseFloat((s.so / s.bf * 100).toFixed(1));
-        pitcherKBBPct[abbr] = parseFloat(((s.so - s.bb) / s.bf * 100).toFixed(1));
+      // Regression-to-mean: blend 2026 with 2025 anchor, trust proportional to BF (full at 100 BF)
+      const bf26 = s26?.bf || 0;
+      const k26 = (s26 && bf26 > 0) ? s26.so / bf26 : null;
+      const anchor = (s25 && s25.bf >= 50) ? s25.so / s25.bf : LEAGUE_PITCHER_K;
+      const trust = Math.min(1.0, bf26 / 100);
+      if (k26 !== null || s25?.bf >= 50) {
+        const kRegressed = k26 !== null ? k26 * trust + anchor * (1 - trust) : anchor;
+        pitcherKPct[abbr] = parseFloat((kRegressed * 100).toFixed(1));
+        // KBB%: regress same way
+        const kbb26 = (s26 && bf26 > 0) ? (s26.so - s26.bb) / bf26 : null;
+        const anchorKBB = (s25 && s25.bf >= 50) ? (s25.so - s25.bb) / s25.bf : LEAGUE_PITCHER_K * 0.6;
+        const kbbRegressed = kbb26 !== null ? kbb26 * trust + anchorKBB * (1 - trust) : anchorKBB;
+        pitcherKBBPct[abbr] = parseFloat((kbbRegressed * 100).toFixed(1));
       }
       // ERA: prefer 2026 if available (any starts), fall back to 2025
       const era26 = s26?.era ?? null;
