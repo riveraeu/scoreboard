@@ -1100,11 +1100,11 @@ function App() {
                           if (k==="era") { const eraColor = stat === "strikeouts" ? (era < 3.5 ? "#3fb950" : era < 4.5 ? "#8b949e" : "#f78166") : (era >= 4.0 ? "#8b949e" : "#f78166"); return C(era != null ? parseFloat(era).toFixed(2) : null, eraColor); }
                           if (k==="ml")  return C(ml  != null ? fML(ml) : null, ml <= -140 ? "#3fb950" : ml < 0 ? "#8b949e" : "#f78166");
                           if (k==="ab")  return C(ab  != null ? String(ab) : null, ab >= 10 ? "#8b949e" : "#f78166");
-                          if (k==="csw") { const csw = m.pitcherCSWPct ?? m.pitcherKPct; const isReal = m.pitcherCSWPct != null; return C(csw != null ? csw.toFixed(1)+"%" : null, isReal ? (csw > 31 ? "#3fb950" : csw > 27 ? "#e3b341" : "#f78166") : (csw > 27 ? "#e3b341" : csw > 22 ? "#8b949e" : "#f78166")); }
-                          if (k==="pkp") return C(pkp != null ? pkp.toFixed(1)+"%" : null, pkp > 27 ? "#3fb950" : pkp > 22 ? "#e3b341" : "#f78166");
+                          if (k==="csw") { const csw = m.pitcherCSWPct ?? m.pitcherKPct; const isReal = m.pitcherCSWPct != null; return C(csw != null ? csw.toFixed(1)+"%" : null, isReal ? (csw > 30 ? "#3fb950" : csw > 26 ? "#e3b341" : "#f78166") : (csw > 24 ? "#3fb950" : csw > 20 ? "#e3b341" : "#f78166")); }
+                          if (k==="pkp") return C(pkp != null ? pkp.toFixed(1)+"%" : null, pkp > 24 ? "#3fb950" : pkp > 20 ? "#e3b341" : "#f78166");
                           if (k==="kbb") { const kbb = m.pitcherKBBPct; return C(kbb != null ? kbb.toFixed(1)+"%" : null, kbb > 15 ? "#3fb950" : kbb > 10 ? "#e3b341" : "#f78166"); }
-                          if (k==="pps") { const pps = m.pitcherAvgPitches; return C(pps != null ? pps.toFixed(0) : null, pps > 90 ? "#3fb950" : pps > 80 ? "#e3b341" : "#f78166"); }
-                          if (k==="lkp") return C(lkp != null ? lkp.toFixed(1)+"%" : null, lkp > 27 ? "#3fb950" : lkp > 22 ? "#e3b341" : "#f78166");
+                          if (k==="pps") { const pps = m.pitcherAvgPitches; return C(pps != null ? pps.toFixed(0) : null, pps > 85 ? "#3fb950" : pps > 75 ? "#e3b341" : "#f78166"); }
+                          if (k==="lkp") return C(lkp != null ? lkp.toFixed(1)+"%" : null, lkp > 24 ? "#3fb950" : lkp > 20 ? "#e3b341" : "#f78166");
                           if (k==="spot") { const sp = m.hitterLineupSpot; return C(sp != null ? `#${sp}` : null, sp <= 2 ? "#3fb950" : sp <= 4 ? "#e3b341" : "#f78166"); }
                           if (k==="whip") { const w = m.pitcherWHIP; return C(w != null ? w.toFixed(2) : null, w > 1.35 ? "#3fb950" : w > 1.20 ? "#e3b341" : "#f78166"); }
                           if (k==="fip")  { const f = m.pitcherFIP; const _era = m.hitterPitcherEra ?? m.pitcherEra; return C(f != null ? f.toFixed(2) : null, (f != null && _era != null) ? (f > _era + 0.3 ? "#3fb950" : f > _era ? "#e3b341" : "#f78166") : "#8b949e"); }
@@ -2283,8 +2283,8 @@ function App() {
 
                               const oppColor  = lkp != null ? (lkp >= 24 ? "#3fb950" : lkp < 20 ? "#f78166" : "#c9d1d9") : "#c9d1d9";
                               const expKColor = expK != null ? (expK >= play.threshold ? "#3fb950" : expK >= play.threshold - 1 ? "#c9d1d9" : "#f78166") : "#c9d1d9";
-                              const pkpColor  = pkp == null ? "#8b949e" : (csw != null ? (pkp >= 30 ? "#3fb950" : "#f78166") : (pkp >= 24 ? "#3fb950" : pkp >= 20 ? "#c9d1d9" : "#f78166"));
-                              const lkpColor  = lkp == null ? "#8b949e" : lkp >= 24 ? "#3fb950" : lkp >= 20 ? "#c9d1d9" : "#f78166";
+                              const pkpColor  = pkp == null ? "#8b949e" : (csw != null ? (pkp > 30 ? "#3fb950" : pkp > 26 ? "#e3b341" : "#f78166") : (pkp > 24 ? "#3fb950" : pkp > 20 ? "#e3b341" : "#f78166"));
+                              const lkpColor  = lkp == null ? "#8b949e" : lkp > 24 ? "#3fb950" : lkp > 20 ? "#e3b341" : "#f78166";
 
                               const totalColor = t => t == null ? "#8b949e" : t < 8.5 ? "#3fb950" : t <= 10.5 ? "#c9d1d9" : "#f78166";
                               const mlColor = ml => ml == null ? "#8b949e" : ml <= -140 ? "#3fb950" : ml < 0 ? "#8b949e" : "#f78166";
@@ -2300,7 +2300,7 @@ function App() {
                                     const oppName = MLB_TEAM[play.opponent] || play.opponent;
                                     const pitcherTeamName = MLB_TEAM[play.playerTeam] || play.playerTeam;
                                     return <>
-                                      {first} posts a{pkp != null ? <> <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span> {pkpLabel}</> : " —"}{(() => { const kbb = play.pitcherKBBPct ?? null; const kbbColor = kbb == null ? "#8b949e" : kbb > 15 ? "#3fb950" : kbb > 10 ? "#e3b341" : "#f78166"; return kbb != null ? <> / <span style={{color:kbbColor,fontWeight:600}}>{kbb.toFixed(1)}%</span> K-BB%</> : null; })()}{(() => { const ap = play.pitcherAvgPitches ?? null; const apColor = ap == null ? "#8b949e" : ap > 90 ? "#3fb950" : ap > 80 ? "#e3b341" : "#f78166"; return ap != null ? <>, avg <span style={{color:apColor,fontWeight:600}}>{Math.round(ap)}</span> P/GS</> : null; })()}. Facing {oppName} who K at <span style={{color:lkpColor,fontWeight:600}}>{lkp != null ? `${lkp}%` : "—"}</span>{handLabel && <span style={{color:"#8b949e"}}>{handLabel}</span>}{isProjected && <span style={{color:"#484f58",fontSize:10}}> (est.)</span>}. {(gameTotal != null || gameML != null) && <>Total: <span style={{color:totalColor(gameTotal),fontWeight:600}}>{gameTotal ?? "—"}</span>, ML: <span style={{color:mlColor(gameML),fontWeight:600}}>{gameML != null ? `${gameML > 0 ? "+" : ""}${gameML}` : "—"}</span>.</>}
+                                      {first} posts a{pkp != null ? <> <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span> {pkpLabel}</> : " —"}{(() => { const kbb = play.pitcherKBBPct ?? null; const kbbColor = kbb == null ? "#8b949e" : kbb > 15 ? "#3fb950" : kbb > 10 ? "#e3b341" : "#f78166"; return kbb != null ? <> / <span style={{color:kbbColor,fontWeight:600}}>{kbb.toFixed(1)}%</span> K-BB%</> : null; })()}{(() => { const ap = play.pitcherAvgPitches ?? null; const apColor = ap == null ? "#8b949e" : ap > 85 ? "#3fb950" : ap > 75 ? "#e3b341" : "#f78166"; return ap != null ? <>, avg <span style={{color:apColor,fontWeight:600}}>{Math.round(ap)}</span> P/GS</> : null; })()}. Facing {oppName} who K at <span style={{color:lkpColor,fontWeight:600}}>{lkp != null ? `${lkp}%` : "—"}</span>{handLabel && <span style={{color:"#8b949e"}}>{handLabel}</span>}{isProjected && <span style={{color:"#484f58",fontSize:10}}> (est.)</span>}. {(gameTotal != null || gameML != null) && <>Total: <span style={{color:totalColor(gameTotal),fontWeight:600}}>{gameTotal ?? "—"}</span>, ML: <span style={{color:mlColor(gameML),fontWeight:600}}>{gameML != null ? `${gameML > 0 ? "+" : ""}${gameML}` : "—"}</span>.</>}
                                     </>;
                                   })()}
                                   {pf != null && Math.abs(pf - 1.0) >= 0.01 && (
