@@ -2180,19 +2180,16 @@ function App() {
                       </div>
                     );
                   })()}
-                  {/* Breakdown */}
-                  <div style={{borderTop:"1px solid #21262d",paddingTop:8}}>
-                    {play.sport !== "mlb" && (
-                      <button onClick={e => { e.stopPropagation(); setExpandedPlays(s => { const n = new Set(s); n.has(playKey) ? n.delete(playKey) : n.add(playKey); return n; }); }}
-                        style={{background:"none",border:"none",color:"#484f58",fontSize:11,cursor:"pointer",padding:0,display:"flex",alignItems:"center",gap:4}}>
-                        {isExpanded ? "▲ hide breakdown" : "▼ show breakdown"}
-                      </button>
-                    )}
-                    {(play.sport === "mlb" || isExpanded) && (
-                      <div style={{marginTop:play.sport === "mlb" ? 0 : 10,display:"flex",flexDirection:"column",gap:8}}>
-                        {/* Stat bars — non-MLB only */}
-                        {play.sport !== "mlb" && (
-                          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                  {/* Breakdown — non-MLB only */}
+                  {play.sport !== "mlb" && <div style={{borderTop:"1px solid #21262d",paddingTop:8}}>
+                    <button onClick={e => { e.stopPropagation(); setExpandedPlays(s => { const n = new Set(s); n.has(playKey) ? n.delete(playKey) : n.add(playKey); return n; }); }}
+                      style={{background:"none",border:"none",color:"#484f58",fontSize:11,cursor:"pointer",padding:0,display:"flex",alignItems:"center",gap:4}}>
+                      {isExpanded ? "▲ hide breakdown" : "▼ show breakdown"}
+                    </button>
+                    {isExpanded && (
+                      <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:8}}>
+                        {/* Stat bars */}
+                        <div style={{display:"flex",flexDirection:"column",gap:6}}>
                             <div style={{display:"flex",alignItems:"center",gap:8}}>
                               <div style={{width:110,color:"#8b949e",fontSize:10,flexShrink:0,lineHeight:1.35}}>
                                 {`Season rate${play.seasonGames ? ` (${play.seasonGames}g)` : ""}`}
@@ -2214,8 +2211,7 @@ function App() {
                                 <div style={{color:tierColor(play.softPct),fontSize:11,fontWeight:600,width:38,textAlign:"right",flexShrink:0}}>{play.softPct}%</div>
                               </div>
                             )}
-                          </div>
-                        )}
+                        </div>
                         {/* Matchup explanation — h2h MLB hitter */}
                         {play.oppRank === null && play.oppMetricLabel && play.softPct !== null && play.stat !== "strikeouts" && (
                           <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.5}}>
@@ -2443,7 +2439,7 @@ function App() {
                         )}
                       </div>
                     )}
-                  </div>
+                  </div>}
                 </div>
               );
             })}
