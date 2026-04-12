@@ -1008,9 +1008,9 @@ function App() {
                 if (sortedGroups.length === 0) return <div style={{color:"#8b949e",textAlign:"center",padding:40,fontSize:13}}>No markets.</div>;
 
                 const CRITERIA_SUMMARIES = {
-                  "mlb|hrr":       { note: "True% = avg(Season%, H2H%) \u00b7 park-adjusted \u00b7 Sim-Score \u2265 7 required (spot\u21923/2, WHIP\u21923, FIP>ERA\u21922, park\u21921, edge bonus\u21923)", gates: ["Lineup spot 1\u20134", "Sim-Score \u2265 7 (max 14)", "Edge \u2265 3%"] },
-                  "mlb|hits":      { note: "True% = Monte Carlo PA simulation (batterBA \u00d7 pitcherBAA log5) \u00b7 Sim-Score \u2265 7 required (spot\u21923/2, WHIP\u21923, FIP>ERA\u21922, park\u21921, edge bonus\u21923)", gates: ["Lineup spot 1\u20134", "Sim-Score \u2265 7 (max 14)", "Edge \u2265 3%"] },
-                  "mlb|strikeouts":{ note: "True% = Monte Carlo PA simulation (lineup K% × pitcher K% log5) · Sim-Score ≥ 7 required (CSW%→3, K-BB%→2, lineup K%→3, pitches→2, park→1, edge bonus→3)", gates: ["Sim-Score \u2265 7 (max 14)", "Edge \u2265 3%"] },
+                  "mlb|hrr":       { note: "True% = Monte Carlo simulation (batterBA \u00d7 pitcherBAA log5) \u00b7 park-adjusted \u00b7 Sim-Score \u2265 7 (spot\u21923/2, WHIP\u21923, FIP>ERA\u21922, park\u21921, edge bonus\u21923)", gates: ["Lineup spot 1\u20134", "Sim-Score \u2265 7 (max 14)", "Edge \u2265 3%"] },
+                  "mlb|hits":      { note: "True% = Monte Carlo simulation (batterBA \u00d7 pitcherBAA log5) \u00b7 park-adjusted \u00b7 Sim-Score \u2265 7 (spot\u21923/2, WHIP\u21923, FIP>ERA\u21922, park\u21921, edge bonus\u21923)", gates: ["Lineup spot 1\u20134", "Sim-Score \u2265 7 (max 14)", "Edge \u2265 3%"] },
+                  "mlb|strikeouts":{ note: "True% = Monte Carlo simulation (pitcher K% \u00d7 lineup K% log5) \u00b7 regressed to mean \u00b7 park-adjusted \u00b7 Sim-Score \u2265 7 (CSW%\u21923, K-BB%\u21922, oK%\u21923, P/GS\u21922, park\u21921, edge bonus\u21923)", gates: ["Sim-Score \u2265 7 (max 14)", "Edge \u2265 3%"] },
                   "nba|points":    { note: "True% = avg(Season%, vs-soft-DVP-team%)", gates: ["Opp in soft DVP teams", "Edge \u2265 3%"] },
                   "nba|rebounds":  { note: "True% = avg(Season%, vs-soft-DVP-team%)", gates: ["Opp in soft DVP teams", "Edge \u2265 3%"] },
                   "nba|assists":   { note: "True% = avg(Season%, vs-soft-DVP-team%)", gates: ["Opp in soft DVP teams", "Edge \u2265 3%"] },
@@ -1951,12 +1951,14 @@ function App() {
                   <div style={{position:"absolute",top:20,left:0,zIndex:99,width:300,background:"#161b22",border:"1px solid #30363d",borderRadius:8,padding:"10px 12px",fontSize:11,color:"#c9d1d9",lineHeight:1.6,boxShadow:"0 4px 16px rgba(0,0,0,0.5)"}}>
                     <div style={{fontWeight:700,marginBottom:6,color:"#fff"}}>Play qualification criteria</div>
                     <div style={{marginBottom:3}}><span style={{color:"#58a6ff"}}>Implied prob</span> ≥ 70% (Kalshi market price)</div>
-                    <div style={{marginBottom:3}}><span style={{color:"#3fb950"}}>Edge</span> ≥ 3% (true prob minus implied)</div>
-                    <div style={{marginTop:6,marginBottom:3,color:"#8b949e",fontWeight:600}}>Matchup gates</div>
-                    <div style={{marginBottom:3}}><span style={{color:"#f97316"}}>NBA</span> — opponent bottom-10 DvP for player's position</div>
-                    <div style={{marginBottom:3}}><span style={{color:"#4ade80"}}>MLB hitters</span> — team favored · 10+ career AB vs pitcher · BA ≥ .270 ('25+'26)</div>
-                    <div style={{marginBottom:6}}><span style={{color:"#4ade80"}}>MLB pitchers</span> — 2 of 3: pitcher K% &gt;25%, lineup K% &gt;23% (vs handedness), game total &lt;8.5 with team favored (−125+)</div>
-                    <div><span style={{color:"#60a5fa"}}>NHL</span> — no matchup gate</div>
+                    <div style={{marginBottom:3}}><span style={{color:"#3fb950"}}>Edge</span> ≥ 3% (True% minus implied)</div>
+                    <div style={{marginTop:6,marginBottom:3,color:"#8b949e",fontWeight:600}}>True% model</div>
+                    <div style={{marginBottom:3}}><span style={{color:"#4ade80"}}>MLB strikeouts</span> — Monte Carlo simulation: pitcher K% × lineup K% (log5) · regressed to mean · park-adjusted · Sim-Score ≥ 7 required</div>
+                    <div style={{marginBottom:3}}><span style={{color:"#4ade80"}}>MLB hitters</span> — Monte Carlo simulation: batterBA × pitcherBAA (log5) · park-adjusted · Sim-Score ≥ 7 required · lineup spot 1–4</div>
+                    <div style={{marginBottom:6}}><span style={{color:"#f97316"}}>NBA</span> — avg(Season%, vs-soft-DVP%) · opponent bottom-10 DvP for position</div>
+                    <div style={{marginBottom:3,color:"#8b949e",fontWeight:600}}>Sim-Score gates (MLB)</div>
+                    <div style={{marginBottom:3}}>Strikeouts: CSW%→3, K-BB%→2, oK%→3, P/GS→2, park→1, edge bonus→3 (max 14)</div>
+                    <div>Hitters: spot→3/2, WHIP→3, FIP&gt;ERA→2, park→1, edge bonus→3 (max 14)</div>
                   </div>
                 )}
               </span>
