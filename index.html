@@ -2150,7 +2150,7 @@ function App() {
                     </div>
                     <div style={{width:60,flexShrink:0,display:"flex",justifyContent:"flex-end",alignItems:"baseline",gap:4}}>
                       <span style={{color:tc,fontSize:12,fontWeight:700}}>{play.truePct}%</span>
-                      <span style={{color:tc,fontSize:10}}>{play.americanOdds > 0 ? `+${play.americanOdds}` : play.americanOdds}</span>
+                      <span style={{color:tc,fontSize:10}}>({play.americanOdds > 0 ? `+${play.americanOdds}` : play.americanOdds})</span>
                     </div>
                   </div>
                   ); })()}
