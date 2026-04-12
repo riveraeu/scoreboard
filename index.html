@@ -1050,6 +1050,9 @@ function App() {
                         case "fip": return m.pitcherFIP ?? 0;
                         case "ou": return m.gameTotal ?? 0;
                         case "dvp": return m.posDvpRank ?? 99;
+                        case "sim": return m.finalSimScore ?? m.hitterFinalSimScore ?? 0;
+                        case "env": return m.parkFactor ?? m.hitterParkKF ?? 1;
+                        case "brrl": return m.hitterBarrelPct ?? 0;
                         default: return 0;
                       }};
                       const va = _sv(a), vb = _sv(b);
@@ -1073,20 +1076,19 @@ function App() {
                       {(() => {
                         // Sport+stat specific extra columns
                         const XCOLS = {
-                          "mlb|hrr":       [{k:"spot",l:"Spot",w:32},{k:"whip",l:"WHIP",w:40},{k:"fip",l:"FIP",w:36},{k:"ba",l:"BA",w:36},{k:"ml",l:"ML",w:38}],
-                          "mlb|hits":      [{k:"spot",l:"Spot",w:32},{k:"whip",l:"WHIP",w:40},{k:"fip",l:"FIP",w:36},{k:"ba",l:"BA",w:36},{k:"ml",l:"ML",w:38}],
-                          "mlb|strikeouts":[{k:"csw",l:"CSW%",w:40},{k:"kbb",l:"K-BB%",w:46},{k:"lkp",l:"oK%",w:36},{k:"pps",l:"P/GS",w:40}],
-                          "nba|points":    [{k:"season",l:"Ssn%",w:36},{k:"h2h",l:"vSoft%",w:46},{k:"dvp",l:"DVP",w:36}],
-                          "nba|rebounds":  [{k:"season",l:"Ssn%",w:36},{k:"h2h",l:"vSoft%",w:46},{k:"dvp",l:"DVP",w:36}],
-                          "nba|assists":   [{k:"season",l:"Ssn%",w:36},{k:"h2h",l:"vSoft%",w:46},{k:"dvp",l:"DVP",w:36}],
-                          "nba|threePointers":[{k:"season",l:"Ssn%",w:36},{k:"h2h",l:"vSoft%",w:46},{k:"dvp",l:"DVP",w:36}],
+                          "mlb|hrr":        [{k:"spot",l:"Spot"},{k:"whip",l:"WHIP"},{k:"fip",l:"FIP"},{k:"brrl",l:"Brrl%"},{k:"env",l:"Park"},{k:"sim",l:"Score"},{k:"ml",l:"ML"}],
+                          "mlb|hits":       [{k:"spot",l:"Spot"},{k:"whip",l:"WHIP"},{k:"fip",l:"FIP"},{k:"brrl",l:"Brrl%"},{k:"env",l:"Park"},{k:"sim",l:"Score"},{k:"ml",l:"ML"}],
+                          "mlb|strikeouts": [{k:"sim",l:"Score"},{k:"env",l:"Park"},{k:"ml",l:"ML"},{k:"ou",l:"O/U"},{k:"csw",l:"CSW%"},{k:"kbb",l:"K-BB%"},{k:"lkp",l:"oK%"},{k:"pps",l:"P/GS"}],
+                          "nba|points":     [{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"}],
+                          "nba|rebounds":   [{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"}],
+                          "nba|assists":    [{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"}],
+                          "nba|threePointers":[{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"}],
                         };
                         const xcols = XCOLS[`${sport}|${stat}`] || [];
                         const DASH = <span style={{color:"#21262d"}}>—</span>;
                         const xcell = (m, k) => {
                           const C = (v, col) => v != null ? <span style={{color:col}}>{v}</span> : DASH;
                           const era = m.hitterPitcherEra ?? m.pitcherEra ?? m.era;
-                          const ba  = m.hitterBa ?? m.ba;
                           const ml  = m.hitterMoneyline ?? m.gameMoneyline ?? m.moneyline ?? m.gameOdds?.moneyline;
                           const ab  = m.hitterAbVsPitcher ?? m.abVsTeam;
                           const pkp = m.pitcherKPct;
@@ -1096,7 +1098,6 @@ function App() {
                           if (k==="season") { const v = m.seasonPct; return C(v != null ? v.toFixed(1)+"%" : null, v >= 60 ? "#3fb950" : v >= 50 ? "#e3b341" : "#f78166"); }
                           if (k==="h2h") { const v = m.softPct; return v != null ? <span style={{color:v>=60?"#3fb950":v>=50?"#e3b341":"#f78166"}}>{v.toFixed(1)+"%"}</span> : DASH; }
                           if (k==="era") { const eraColor = stat === "strikeouts" ? (era < 3.5 ? "#3fb950" : era < 4.5 ? "#8b949e" : "#f78166") : (era >= 4.0 ? "#8b949e" : "#f78166"); return C(era != null ? parseFloat(era).toFixed(2) : null, eraColor); }
-                          if (k==="ba")  return C(ba  != null ? "."+String(Math.round(ba*1000)).padStart(3,"0") : null, ba >= 0.270 ? "#8b949e" : "#f78166");
                           if (k==="ml")  return C(ml  != null ? fML(ml) : null, ml <= -140 ? "#3fb950" : ml < 0 ? "#8b949e" : "#f78166");
                           if (k==="ab")  return C(ab  != null ? String(ab) : null, ab >= 10 ? "#8b949e" : "#f78166");
                           if (k==="csw") { const csw = m.pitcherCSWPct ?? m.pitcherKPct; const isReal = m.pitcherCSWPct != null; return C(csw != null ? csw.toFixed(1)+"%" : null, isReal ? (csw > 30 ? "#3fb950" : "#f78166") : (csw > 24 ? "#8b949e" : "#f78166")); }
@@ -1106,9 +1107,12 @@ function App() {
                           if (k==="lkp") return C(lkp != null ? lkp.toFixed(1)+"%" : null, lkp > 24 ? "#3fb950" : "#f78166");
                           if (k==="spot") { const sp = m.hitterLineupSpot; return C(sp != null ? `#${sp}` : null, sp <= 2 ? "#3fb950" : sp <= 4 ? "#e3b341" : "#f78166"); }
                           if (k==="whip") { const w = m.pitcherWHIP; return C(w != null ? w.toFixed(2) : null, w > 1.35 ? "#3fb950" : "#f78166"); }
-                          if (k==="fip")  { const f = m.pitcherFIP; const era = m.hitterPitcherEra ?? m.pitcherEra; return C(f != null ? f.toFixed(2) : null, (f != null && era != null) ? (f > era ? "#3fb950" : "#f78166") : "#8b949e"); }
+                          if (k==="fip")  { const f = m.pitcherFIP; const _era = m.hitterPitcherEra ?? m.pitcherEra; return C(f != null ? f.toFixed(2) : null, (f != null && _era != null) ? (f > _era ? "#3fb950" : "#f78166") : "#8b949e"); }
                           if (k==="ou")  return C(ou  != null ? ou : null, ou < 8.5 ? "#3fb950" : "#484f58");
                           if (k==="dvp") { const r = m.posDvpRank; return C(r != null ? `#${r}${m.posGroup?" "+m.posGroup:""}` : null, r<=10?"#3fb950":r<=20?"#e3b341":"#f78166"); }
+                          if (k==="sim") { const sc = m.finalSimScore ?? m.hitterFinalSimScore; return sc != null ? <span style={{color:sc>=11?"#3fb950":sc>=7?"#e3b341":"#8b949e",fontWeight:600}}>{sc}/14</span> : DASH; }
+                          if (k==="env") { const pf = m.parkFactor ?? m.hitterParkKF; if (pf == null) return DASH; const pct = Math.round((pf-1)*100); const disp = (pct>=0?"+":"")+pct+"%"; return <span style={{color:pf>1.02?"#3fb950":pf<0.98?"#f78166":"#8b949e"}}>{disp}</span>; }
+                          if (k==="brrl") { const b = m.hitterBarrelPct; return b != null ? <span style={{color:b>10?"#3fb950":b>6?"#e3b341":"#f78166"}}>{b.toFixed(1)+"%"}</span> : DASH; }
                           return DASH;
                         };
                         const RESULT_LABELS = {
@@ -1123,6 +1127,25 @@ function App() {
                         };
                         const _sk = `${sport}|${stat}`;
                         const _sc = reportSort[_sk];
+                        const COL_TIPS = {
+                          player:"Player name", line:"Prop line threshold",
+                          true:"Model True% (Monte Carlo simulation)",
+                          kalshi:"Kalshi market price", edge:"Model edge over Kalshi market",
+                          opp:"Tonight's opponent / starting pitcher",
+                          sim:"Sim-Score after edge bonus (max 14 pts — 11+ = Alpha tier)",
+                          env:"Park factor: green = pitcher/hitter-friendly stadium",
+                          ml:"Team moneyline (your team's odds)", ou:"Game total (over/under line)",
+                          csw:"Called Strike + Whiff% — pitch quality indicator (>30% = green)",
+                          kbb:"K% − BB% — command indicator (>15% = green)",
+                          lkp:"Opposing lineup K-rate vs this pitcher hand (>24% = green)",
+                          pps:"Pitcher avg pitches per start (>85 means deeper into games)",
+                          spot:"Batting order position (1–2 = green, 3–4 = yellow, 5+ filtered)",
+                          whip:"Pitcher WHIP (H+BB)/IP — >1.35 favors hitter",
+                          fip:"Pitcher FIP vs ERA — green if FIP > ERA (pitcher may be unlucky)",
+                          brrl:"Barrel% hard-contact rate (Statcast)",
+                          season:"Season hit rate %", h2h:"Hit rate vs soft-DVP opponents",
+                          dvp:"Defense vs Position rank (lower = softer matchup)",
+                        };
                         const _hdr = (col, label, extraStyle={}, textAlign="right") => {
                           const active = _sc?.col === col;
                           const onClick = () => setReportSort(prev => {
@@ -1130,7 +1153,7 @@ function App() {
                             const dir = cur?.col === col && cur.dir === "desc" ? "asc" : "desc";
                             return {...prev, [_sk]: {col, dir}};
                           });
-                          return <div style={{flex:1,color:active?"#c9d1d9":"#484f58",fontSize:10,textAlign,cursor:"pointer",userSelect:"none",...extraStyle}} onClick={onClick}>
+                          return <div title={COL_TIPS[col]} style={{flex:1,color:active?"#c9d1d9":"#484f58",fontSize:10,textAlign,cursor:"pointer",userSelect:"none",...extraStyle}} onClick={onClick}>
                             {label}{active ? (_sc.dir === "desc" ? "↓" : "↑") : ""}
                           </div>;
                         };
@@ -1138,7 +1161,7 @@ function App() {
                           <div style={{display:"flex",alignItems:"center",gap:6,padding:"3px 12px 4px",marginBottom:2}}>
                             {_hdr("player","Player",{flex:2,minWidth:0},"left")}
                             {_hdr("line","Line")}
-                            <div style={{flex:1,fontSize:10,textAlign:"right",fontWeight:600,color:"#484f58"}}>True%</div>
+                            {_hdr("true","True%")}
                             {_hdr("kalshi","Kalshi")}
                             {_hdr("edge","Edge")}
                             {xcols.map(c => <React.Fragment key={c.k}>{_hdr(c.k,c.l)}</React.Fragment>)}

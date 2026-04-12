@@ -1835,6 +1835,7 @@ var worker_default = {
           let hitterSimScore = null, hitterFinalSimScore = null, hitterSimPctOut = null;
           let hitterLineupSpot = null, hitterWhipMeets = null, hitterFipMeets = null, hitterParkMeets = null;
           let pitcherWHIP = null, pitcherFIP = null, pitcherBAA = null;
+          let hitterParkKF = null, hitterMoneyline = null;
           if (sport === "mlb" && stat !== "strikeouts") {
             const hitterML = sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null;
             const hIdx2 = gl.ul.indexOf("H");
@@ -1892,6 +1893,8 @@ var worker_default = {
             hitterWhipMeets = pitcherWHIP != null ? pitcherWHIP > 1.35 : null;
             hitterFipMeets = (pitcherFIP != null && _hlEra != null) ? pitcherFIP > _hlEra : null;
             hitterParkMeets = _hlParkKF2 > 1.0;
+            hitterParkKF = _hlParkKF2;
+            hitterMoneyline = hitterML;
             const _spotPts = hitterLineupSpot != null ? (hitterLineupSpot <= 2 ? 3 : hitterLineupSpot <= 4 ? 2 : 0) : null;
             // Pre-edge sim-score (max 11): spot→3/2, WHIP→3, FIP>ERA→2, barrel%→null, park→1
             hitterSimScore = (_spotPts ?? 0)
@@ -2013,6 +2016,8 @@ var worker_default = {
             pitcherWHIP: sport === "mlb" && stat !== "strikeouts" ? pitcherWHIP : void 0,
             pitcherFIP: sport === "mlb" && stat !== "strikeouts" ? pitcherFIP : void 0,
             hitterSimPct: sport === "mlb" && stat !== "strikeouts" ? hitterSimPctOut : void 0,
+            hitterParkKF: sport === "mlb" && stat !== "strikeouts" ? hitterParkKF : void 0,
+            hitterMoneyline: sport === "mlb" && stat !== "strikeouts" ? hitterMoneyline : void 0,
             pitcherAvgPitches: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.pitcherAvgPitches?.[playerTeam] ?? null : void 0,
             gameTotal: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null : void 0,
             gameMoneyline: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null : void 0,
