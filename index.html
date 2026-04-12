@@ -1847,7 +1847,7 @@ function App() {
                               );
                             })()}
                             {/* Drawer: season rate + matchup rate + odds */}
-                            {showBreakdown && (
+                            {showBreakdown && !isMLB && (
                               <div style={{borderLeft:"2px solid #30363d",paddingLeft:10,marginTop:2,display:"flex",flexDirection:"column",gap:4}}>
                                 {/* Season hit rate */}
                                 <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -1881,7 +1881,7 @@ function App() {
 
                 {/* Footer */}
                 <div style={{marginTop:8,paddingTop:12,borderTop:"1px solid #21262d",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
-                  {showTriple && (
+                  {showTriple && !isMLB && (
                     <button onClick={() => setShowBreakdown(b => !b)}
                       style={{background:"transparent",border:"1px solid #30363d",borderRadius:6,
                         color:"#8b949e",fontSize:11,padding:"3px 10px",cursor:"pointer"}}>
