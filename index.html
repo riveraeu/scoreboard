@@ -2160,7 +2160,7 @@ function App() {
                       <div style={{width:`${play.truePct}%`,background:tc,height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:play.truePct>0?3:0}}/>
                     </div>
                     <div style={{color:tc,fontSize:12,fontWeight:700,width:42,textAlign:"right",flexShrink:0}}>{play.truePct}%</div>
-                    <div style={{color:"#484f58",fontSize:10,width:38,flexShrink:0}}>true</div>
+                    <div style={{color:"#484f58",fontSize:10,width:50,flexShrink:0}}>true</div>
                   </div>
                   ); })()}
                   {/* Odds bar */}
@@ -2169,7 +2169,7 @@ function App() {
                       <div style={{width:`${play.kalshiPct}%`,background:"#6e40c9",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:play.kalshiPct>0?3:0}}/>
                     </div>
                     <div style={{color:"#6e40c9",fontSize:11,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{play.kalshiPct}%</div>
-                    <div style={{color:"#6e40c9",fontSize:10,flexShrink:0}}>({oddsStr})</div>
+                    <div style={{color:"#6e40c9",fontSize:10,width:50,flexShrink:0}}>({oddsStr})</div>
                   </div>
                   {/* Tier / unit sizing row */}
                   {(() => {
