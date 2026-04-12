@@ -2169,7 +2169,7 @@ function App() {
                       <div style={{width:`${play.kalshiPct}%`,background:"#6e40c9",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:play.kalshiPct>0?3:0}}/>
                     </div>
                     <div style={{color:"#6e40c9",fontSize:11,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{play.kalshiPct}%</div>
-                    {play.kalshiSpread != null && <div style={{color:"#484f58",fontSize:10,flexShrink:0}}>{play.kalshiSpread}¢ spd</div>}
+                    <div style={{color:"#6e40c9",fontSize:10,flexShrink:0}}>({oddsStr})</div>
                   </div>
                   {/* Tier / unit sizing row */}
                   {(() => {
