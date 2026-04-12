@@ -667,8 +667,8 @@ var worker_default = {
             const gameOdds = Object.fromEntries(Object.entries(gameOddsRaw2).map(([k, v]) => [normMlbAbbr2(k), v]));
             const [lineupResult, pitcherResult] = await Promise.all([buildLineupKPct(mlbSched), buildPitcherKPct(mlbSched)]);
             const { lineupKPct: lineupKPct2, lineupBatterKPcts: lineupBatterKPcts2, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered: lineupBatterKPctsOrdered2, lineupBatterKPctsVROrdered: lineupBatterKPctsVROrdered2, lineupBatterKPctsVLOrdered: lineupBatterKPctsVLOrdered2, gameHomeTeams: gameHomeTeams2, projectedLineupTeams: projectedLineupTeams2 } = lineupResult;
-            const { pitcherKPct: pitcherKPct2, pitcherKBBPct: pitcherKBBPct2, pitcherHand, pitcherEra: pitcherEraByTeam2 } = pitcherResult;
-            mlbByteam = { pitching: pitchRes, batting: batRes, probables: probables2, lineupKPct: lineupKPct2, lineupBatterKPcts: lineupBatterKPcts2, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered: lineupBatterKPctsOrdered2, lineupBatterKPctsVROrdered: lineupBatterKPctsVROrdered2, lineupBatterKPctsVLOrdered: lineupBatterKPctsVLOrdered2, gameHomeTeams: gameHomeTeams2, pitcherKPct: pitcherKPct2, pitcherKBBPct: pitcherKBBPct2, pitcherHand, pitcherEra: pitcherEraByTeam2, projectedLineupTeams: projectedLineupTeams2, gameOdds };
+            const { pitcherKPct: pitcherKPct2, pitcherKBBPct: pitcherKBBPct2, pitcherHand, pitcherEra: pitcherEraByTeam2, pitcherCSWPct: pitcherCSWPct2 } = pitcherResult;
+            mlbByteam = { pitching: pitchRes, batting: batRes, probables: probables2, lineupKPct: lineupKPct2, lineupBatterKPcts: lineupBatterKPcts2, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered: lineupBatterKPctsOrdered2, lineupBatterKPctsVROrdered: lineupBatterKPctsVROrdered2, lineupBatterKPctsVLOrdered: lineupBatterKPctsVLOrdered2, gameHomeTeams: gameHomeTeams2, pitcherKPct: pitcherKPct2, pitcherKBBPct: pitcherKBBPct2, pitcherCSWPct: pitcherCSWPct2, pitcherHand, pitcherEra: pitcherEraByTeam2, projectedLineupTeams: projectedLineupTeams2, gameOdds };
             if (CACHE2) await CACHE2.put("byteam:mlb", JSON.stringify(mlbByteam), { expirationTtl: 600 });
           }
           const probables = mlbByteam.probables || {};
@@ -1105,8 +1105,8 @@ var worker_default = {
               const gameOdds = Object.fromEntries(Object.entries(gameOddsRaw).map(([k, v]) => [normMlbAbbr(k), v]));
               const [lineupResult, pitcherResult] = await Promise.all([buildLineupKPct(mlbSched), buildPitcherKPct(mlbSched)]);
               const { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, gameHomeTeams, projectedLineupTeams } = lineupResult;
-              const { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra: pitcherEraByTeam } = pitcherResult;
-              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra: pitcherEraByTeam, projectedLineupTeams, gameOdds };
+              const { pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherHand, pitcherEra: pitcherEraByTeam } = pitcherResult;
+              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherHand, pitcherEra: pitcherEraByTeam, projectedLineupTeams, gameOdds };
               if (CACHE2) await CACHE2.put("byteam:mlb", JSON.stringify(sportByteam.mlb), { expirationTtl: 600 });
             }),
             sportsNeedingFetch.has("nfl") && fetch("https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/statistics/byteam?region=us&lang=en&isqualified=true&page=1&limit=32&category=passing", { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})).then(async (d) => {
@@ -1635,11 +1635,12 @@ var worker_default = {
           let _pitcherHand = null;
           if (sport === "mlb" && stat === "strikeouts") {
             _pitcherHand = sportByteam.mlb?.pitcherHand?.[playerTeam] ?? null;
+            const _csw = sportByteam.mlb?.pitcherCSWPct?.[playerTeam] ?? null;
             const _pkp = sportByteam.mlb?.pitcherKPct?.[playerTeam] ?? null;
             const _kbb = sportByteam.mlb?.pitcherKBBPct?.[playerTeam] ?? null;
-            // K% > 24 as CSW% proxy (CSW% not available for 2026 via Statcast), K-BB% > 15
+            // CSW% > 30 (falls back to K% > 24 if CSW% unavailable), K-BB% > 15
             // null = data unavailable; if one is null, require the other to pass
-            kpctMeets = _pkp != null ? _pkp > 24 : null;
+            kpctMeets = _csw != null ? _csw > 30 : (_pkp != null ? _pkp > 24 : null);
             kbbMeets = _kbb != null ? _kbb > 15 : null;
             isStrongMatchup = (kpctMeets !== false) && (kbbMeets !== false) && (kpctMeets !== null || kbbMeets !== null);
           }
@@ -1710,6 +1711,7 @@ var worker_default = {
                   opponent: tonightOpp,
                   kpctMeets, kbbMeets,
                   seasonPct: _kSeasonPct, softPct: _kSoftPct, truePct: _kTruePct, edge: parseFloat((_kTruePct - kalshiPct).toFixed(1)),
+                  pitcherCSWPct: sportByteam.mlb?.pitcherCSWPct?.[playerTeam] ?? null,
                   pitcherKPct: sportByteam.mlb?.pitcherKPct?.[playerTeam] ?? null,
                   pitcherKBBPct: sportByteam.mlb?.pitcherKBBPct?.[playerTeam] ?? null,
                   pitcherEra: _pitcherEraFromGl ?? sportByteam.mlb?.pitcherEra?.[playerTeam] ?? null,
@@ -1938,6 +1940,7 @@ var worker_default = {
             kbbMeets: sport === "mlb" && stat === "strikeouts" ? kbbMeets : void 0,
             gameTotal: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null : void 0,
             gameMoneyline: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null : void 0,
+            pitcherCSWPct: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.pitcherCSWPct?.[playerTeam] ?? null : void 0,
             pitcherHand: sport === "mlb" && stat === "strikeouts" ? _pitcherHand ?? null : void 0,
             pitcherEra: sport === "mlb" && stat === "strikeouts" ? (_pitcherEraFromGl ?? sportByteam.mlb?.pitcherEra?.[playerTeam] ?? null) : void 0,
             recentAvg: recentAvgOut,
@@ -2505,7 +2508,56 @@ async function buildPitcherKPct(mlbSched) {
       if (era26 != null) pitcherEra[abbr] = era26;
       else if (era25 != null) pitcherEra[abbr] = era25;
     }
-    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra };
+    // CSW% (Called Strike + Whiff %) from MLB play-by-play data
+    // Fetch game logs for each pitcher to get gamePks, then aggregate pitch codes
+    const pitcherCSWPct = {};
+    try {
+      const glFetch = await Promise.all(
+        allIds.map(id =>
+          fetch(`https://statsapi.mlb.com/api/v1/people/${id}/stats?stats=gameLog&group=pitching&season=2026&gameType=R`, { headers: { "User-Agent": "Mozilla/5.0" } })
+            .then(r => r.ok ? r.json() : {}).catch(() => ({}))
+            .then(d => ({ id, splits: d.stats?.[0]?.splits || [] }))
+        )
+      );
+      const allGamePks = new Set();
+      const pitcherGamePks = {};
+      for (const { id, splits } of glFetch) {
+        const gks = splits.map(s => s.game?.gamePk).filter(Boolean);
+        pitcherGamePks[id] = gks;
+        gks.forEach(gk => allGamePks.add(gk));
+      }
+      const PBP_FIELDS = "allPlays,matchup,pitcher,id,playEvents,isPitch,details,code";
+      const pbpFetch = await Promise.all(
+        [...allGamePks].map(gk =>
+          fetch(`https://statsapi.mlb.com/api/v1/game/${gk}/playByPlay?fields=${PBP_FIELDS}`, { headers: { "User-Agent": "Mozilla/5.0" } })
+            .then(r => r.ok ? r.json() : {}).catch(() => ({}))
+            .then(d => ({ gk, plays: d.allPlays || [] }))
+        )
+      );
+      const playsByGk = Object.fromEntries(pbpFetch.map(({ gk, plays }) => [gk, plays]));
+      const CSW_CODES = new Set(["C", "S", "T", "W", "M", "Q"]);
+      const cswByMlbId = {};
+      for (const { id, splits } of glFetch) {
+        let totalCSW = 0, totalPitches = 0;
+        for (const s of splits) {
+          const gk = s.game?.gamePk;
+          const plays = gk ? (playsByGk[gk] || []) : [];
+          for (const play of plays) {
+            if (play.matchup?.pitcher?.id !== id) continue;
+            for (const ev of play.playEvents || []) {
+              if (!ev.isPitch) continue;
+              totalPitches++;
+              if (CSW_CODES.has(ev.details?.code)) totalCSW++;
+            }
+          }
+        }
+        if (totalPitches >= 30) cswByMlbId[id] = parseFloat((totalCSW / totalPitches * 100).toFixed(1));
+      }
+      for (const [abbr, id] of Object.entries(pitcherByTeam)) {
+        if (cswByMlbId[id] != null) pitcherCSWPct[abbr] = cswByMlbId[id];
+      }
+    } catch { /* CSW% unavailable — filter falls back to K% */ }
+    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherCSWPct };
   } catch {
     return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {} };
   }
