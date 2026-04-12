@@ -2422,14 +2422,17 @@ async function buildLineupKPct(mlbSched) {
         { headers: { "User-Agent": "Mozilla/5.0" } }
       ).then((r) => r.ok ? r.json() : {}).catch(() => ({}));
       const recentLineups = {};
+      const recentLineupPlayers = {};
       for (const date of [...recentSched.dates || []].reverse()) {
         for (const game of date.games || []) {
           const hAbbr = MLB_ID_TO_ABBR[game.teams?.home?.team?.id] || game.teams?.home?.team?.abbreviation;
           const aAbbr = MLB_ID_TO_ABBR[game.teams?.away?.team?.id] || game.teams?.away?.team?.abbreviation;
-          const hIds = (game.lineups?.homePlayers || []).map((p) => p.id).filter(Boolean);
-          const aIds = (game.lineups?.awayPlayers || []).map((p) => p.id).filter(Boolean);
-          if (hAbbr && !recentLineups[hAbbr] && hIds.length > 0) recentLineups[hAbbr] = hIds;
-          if (aAbbr && !recentLineups[aAbbr] && aIds.length > 0) recentLineups[aAbbr] = aIds;
+          const hPlayers = game.lineups?.homePlayers || [];
+          const aPlayers = game.lineups?.awayPlayers || [];
+          const hIds = hPlayers.map((p) => p.id).filter(Boolean);
+          const aIds = aPlayers.map((p) => p.id).filter(Boolean);
+          if (hAbbr && !recentLineups[hAbbr] && hIds.length > 0) { recentLineups[hAbbr] = hIds; recentLineupPlayers[hAbbr] = hPlayers; }
+          if (aAbbr && !recentLineups[aAbbr] && aIds.length > 0) { recentLineups[aAbbr] = aIds; recentLineupPlayers[aAbbr] = aPlayers; }
         }
         if (teamsNeedingProjection.every((abbr) => recentLineups[abbr])) break;
       }
@@ -2437,6 +2440,7 @@ async function buildLineupKPct(mlbSched) {
         if (recentLineups[abbr]) {
           teamLineups[abbr] = recentLineups[abbr];
           projectedLineupTeams.add(abbr);
+          if (recentLineupPlayers[abbr]) _addLineupNames(abbr, recentLineupPlayers[abbr]);
         }
       }
     }
