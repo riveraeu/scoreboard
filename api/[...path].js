@@ -1733,7 +1733,10 @@ var worker_default = {
                   lineupKPct: (() => { const vr = sportByteam.mlb?.lineupKPctVR?.[tonightOpp]; const vl = sportByteam.mlb?.lineupKPctVL?.[tonightOpp]; const all = sportByteam.mlb?.lineupKPct?.[tonightOpp]; return _pitcherHand === "R" ? vr ?? all ?? null : _pitcherHand === "L" ? vl ?? all ?? null : all ?? null; })(),
                   pitcherEra: _pitcherEraFromGl ?? sportByteam.mlb?.pitcherEra?.[playerTeam] ?? null,
                   pitcherHand: _pitcherHand ?? null,
-                  simPct: null
+                  simPct: null,
+                  parkFactor: PARK_KFACTOR[sportByteam.mlb?.gameHomeTeams?.[playerTeam] || tonightOpp] ?? 1,
+                  gameMoneyline: sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null,
+                  gameTotal: sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null
                 });
               }
               continue;
@@ -1903,7 +1906,7 @@ var worker_default = {
               + (hitterParkMeets ? 1 : 0);
             const _hlPitcherName = sportByteam.mlb?.probables?.[tonightOpp]?.name ?? null;
             const _hlML = hitterML;
-            const _hlCommon = { opponent: tonightOpp, pitcherName: _hlPitcherName, seasonPct: _hlSeasonPct, softPct: _hlSoftPct, truePct: _hlTruePct, edge: _hlEdge, pitcherEra: _hlEra, moneyline: _hlML, hitterBa, hitterBaTier, abVsTeam: hitterAbVsPitcher, hitterLineupSpot, pitcherWHIP, pitcherFIP, hitterSimScore };
+            const _hlCommon = { opponent: tonightOpp, pitcherName: _hlPitcherName, seasonPct: _hlSeasonPct, softPct: _hlSoftPct, truePct: _hlTruePct, edge: _hlEdge, pitcherEra: _hlEra, moneyline: _hlML, hitterBa, hitterBaTier, abVsTeam: hitterAbVsPitcher, hitterLineupSpot, pitcherWHIP, pitcherFIP, hitterSimScore, hitterParkKF, hitterMoneyline };
             // Stage 1: lineup spot 5-9 discard
             if (hitterLineupSpot !== null && hitterLineupSpot >= 5) {
               if (isDebug) dropped.push({ ..._dropBase, reason: "low_lineup_spot", hitterLineupSpot, ..._hlCommon });
@@ -1960,7 +1963,29 @@ var worker_default = {
             ? hitterSimScore + (edge > 5 ? 3 : 0)
             : null;
           if (kalshiPct < 70 || edge < 3) {
-            if (isDebug) dropped.push({ ..._dropBase, truePct: parseFloat(truePct.toFixed(1)), rawTruePct: parseFloat(rawTruePct.toFixed(1)), calibFactor, edge: parseFloat(edge.toFixed(1)), reason: edge < 3 ? "edge_too_low" : "kalshi_pct_too_low", opponent: tonightOpp, seasonPct: parseFloat((primaryPct).toFixed(1)), softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null, posDvpRank: posDvpRankOut, posGroup: posGroupOut });
+            if (isDebug) dropped.push({
+              ..._dropBase,
+              truePct: parseFloat(truePct.toFixed(1)), rawTruePct: parseFloat(rawTruePct.toFixed(1)),
+              calibFactor, edge: parseFloat(edge.toFixed(1)),
+              reason: edge < 3 ? "edge_too_low" : "kalshi_pct_too_low",
+              opponent: tonightOpp, seasonPct: parseFloat((primaryPct).toFixed(1)),
+              softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
+              posDvpRank: posDvpRankOut, posGroup: posGroupOut,
+              ...(sport === "mlb" && stat === "strikeouts" ? {
+                simScore, finalSimScore,
+                parkFactor: parkFactorOut,
+                gameMoneyline: sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null,
+                gameTotal: sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null,
+                pitcherCSWPct: sportByteam.mlb?.pitcherCSWPct?.[playerTeam] ?? null,
+                pitcherKBBPct: sportByteam.mlb?.pitcherKBBPct?.[playerTeam] ?? null,
+                lineupKPct: lineupKPctOut, pitcherAvgPitches: sportByteam.mlb?.pitcherAvgPitches?.[playerTeam] ?? null,
+                kpctMeets, kbbMeets, lkpMeets, pitchesMeets, parkMeets,
+              } : {}),
+              ...(sport === "mlb" && stat !== "strikeouts" ? {
+                hitterSimScore, hitterFinalSimScore,
+                hitterLineupSpot, pitcherWHIP, pitcherFIP, hitterParkKF, hitterMoneyline,
+              } : {}),
+            });
             continue;
           }
           const mlbH2H = sport === "mlb" && softPct !== null;

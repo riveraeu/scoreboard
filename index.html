@@ -1110,7 +1110,7 @@ function App() {
                           if (k==="fip")  { const f = m.pitcherFIP; const _era = m.hitterPitcherEra ?? m.pitcherEra; return C(f != null ? f.toFixed(2) : null, (f != null && _era != null) ? (f > _era ? "#3fb950" : "#f78166") : "#8b949e"); }
                           if (k==="ou")  return C(ou  != null ? ou : null, ou < 8.5 ? "#3fb950" : "#484f58");
                           if (k==="dvp") { const r = m.posDvpRank; return C(r != null ? `#${r}${m.posGroup?" "+m.posGroup:""}` : null, r<=10?"#3fb950":r<=20?"#e3b341":"#f78166"); }
-                          if (k==="sim") { const sc = m.finalSimScore ?? m.hitterFinalSimScore; return sc != null ? <span style={{color:sc>=11?"#3fb950":sc>=7?"#e3b341":"#8b949e",fontWeight:600}}>{sc}/14</span> : DASH; }
+                          if (k==="sim") { const sc = m.finalSimScore ?? m.hitterFinalSimScore ?? m.simScore ?? m.hitterSimScore; return sc != null ? <span style={{color:sc>=11?"#3fb950":sc>=7?"#e3b341":"#8b949e",fontWeight:600}}>{sc}/14</span> : DASH; }
                           if (k==="env") { const pf = m.parkFactor ?? m.hitterParkKF; if (pf == null) return DASH; const pct = Math.round((pf-1)*100); const disp = (pct>=0?"+":"")+pct+"%"; return <span style={{color:pf>1.02?"#3fb950":pf<0.98?"#f78166":"#8b949e"}}>{disp}</span>; }
                           if (k==="brrl") { const b = m.hitterBarrelPct; return b != null ? <span style={{color:b>10?"#3fb950":b>6?"#e3b341":"#f78166"}}>{b.toFixed(1)+"%"}</span> : DASH; }
                           return DASH;
