@@ -1060,6 +1060,11 @@ function App() {
                       return _sortCfg.dir === "desc" ? -cmp : cmp;
                     }
                     if (a.qualified !== b.qualified) return a.qualified ? -1 : 1;
+                    if (sport === "mlb") {
+                      const sa = a.finalSimScore ?? a.hitterFinalSimScore ?? a.simScore ?? a.hitterSimScore ?? 0;
+                      const sb = b.finalSimScore ?? b.hitterFinalSimScore ?? b.simScore ?? b.hitterSimScore ?? 0;
+                      if (sb !== sa) return sb - sa;
+                    }
                     return (b.edge || b.kalshiPct || 0) - (a.edge || a.kalshiPct || 0);
                   });
                   const qualCount = rows.filter(r => r.qualified).length;
@@ -1076,9 +1081,9 @@ function App() {
                       {(() => {
                         // Sport+stat specific extra columns
                         const XCOLS = {
-                          "mlb|hrr":        [{k:"spot",l:"Spot"},{k:"whip",l:"WHIP"},{k:"fip",l:"FIP"},{k:"brrl",l:"Brrl%"},{k:"env",l:"Park"},{k:"sim",l:"Score"},{k:"ml",l:"ML"}],
-                          "mlb|hits":       [{k:"spot",l:"Spot"},{k:"whip",l:"WHIP"},{k:"fip",l:"FIP"},{k:"brrl",l:"Brrl%"},{k:"env",l:"Park"},{k:"sim",l:"Score"},{k:"ml",l:"ML"}],
-                          "mlb|strikeouts": [{k:"sim",l:"Score"},{k:"env",l:"Park"},{k:"ml",l:"ML"},{k:"ou",l:"O/U"},{k:"csw",l:"CSW%"},{k:"kbb",l:"K-BB%"},{k:"lkp",l:"oK%"},{k:"pps",l:"P/GS"}],
+                          "mlb|hrr":        [{k:"spot",l:"Spot"},{k:"whip",l:"WHIP"},{k:"fip",l:"FIP"},{k:"brrl",l:"Brrl%"},{k:"env",l:"Park"},{k:"ml",l:"ML"}],
+                          "mlb|hits":       [{k:"spot",l:"Spot"},{k:"whip",l:"WHIP"},{k:"fip",l:"FIP"},{k:"brrl",l:"Brrl%"},{k:"env",l:"Park"},{k:"ml",l:"ML"}],
+                          "mlb|strikeouts": [{k:"env",l:"Park"},{k:"ml",l:"ML"},{k:"ou",l:"O/U"},{k:"csw",l:"CSW%"},{k:"kbb",l:"K-BB%"},{k:"lkp",l:"oK%"},{k:"pps",l:"P/GS"}],
                           "nba|points":     [{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"}],
                           "nba|rebounds":   [{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"}],
                           "nba|assists":    [{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"}],
@@ -1161,6 +1166,7 @@ function App() {
                           <div style={{display:"flex",alignItems:"center",gap:6,padding:"3px 12px 4px",marginBottom:2}}>
                             {_hdr("player","Player",{flex:2,minWidth:0},"left")}
                             {_hdr("line","Line")}
+                            {sport === "mlb" && _hdr("sim","Score")}
                             {_hdr("true","True%")}
                             {_hdr("kalshi","Kalshi")}
                             {_hdr("edge","Edge")}
@@ -1206,6 +1212,7 @@ function App() {
                                     {(m.playerTeam||m.kalshiPlayerTeam)&&<span style={{color:"#484f58",fontWeight:400,flexShrink:0,fontSize:10}}>({m.playerTeam||m.kalshiPlayerTeam})</span>}
                                   </div>
                                   <div style={{flex:1,color:"#8b949e",fontSize:11,textAlign:"right"}}>{m.threshold}+</div>
+                                  {sport === "mlb" && <div style={{flex:1,fontSize:11,textAlign:"right"}}>{xcell(m,"sim")}</div>}
                                   <div style={{flex:1,fontSize:11,textAlign:"right",color:truePct!=null?"#e3b341":"#21262d",fontWeight:truePct!=null?600:400}}>{truePct!=null?`${truePct}%`:"—"}</div>
                                   <div style={{flex:1,fontSize:11,textAlign:"right"}}><span style={{color:"#c9d1d9"}}>{m.kalshiPct}%</span></div>
                                   <div style={{flex:1,fontSize:11,textAlign:"right",color:edge!=null&&edge>=3?"#3fb950":edge!=null&&edge<0?"#f78166":"#8b949e"}}>{edge!=null?(edge>=0?`+${edge.toFixed(1)}`:`${edge.toFixed(1)}`)+"%" :"—"}</div>
