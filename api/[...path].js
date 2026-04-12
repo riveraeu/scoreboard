@@ -1478,13 +1478,6 @@ var worker_default = {
           // "G" and "F" are omitted — ambiguous, fall through to roster-based position map
         };
         const calibMap = {};
-        if (CACHE2) {
-          const calibKeys = [...new Set(loopMarkets.map((m) => `${m.sport}:${m.stat}`))];
-          await Promise.all(calibKeys.map(async (k) => {
-            const d = await CACHE2.get(`calib:${k}`, "json").catch(() => null);
-            if (d && d.n >= 15) calibMap[k] = d;
-          }));
-        }
         const playerColCache = {};
         for (const { playerName, sport, col } of loopMarkets) {
           const cacheKey = `${sport}|${playerName}|${col}`;
@@ -1956,9 +1949,8 @@ var worker_default = {
             if (isB2B) base = Math.max(0, base - 4);
             return base;
           })();
-          const calib = (sport === "mlb" && stat !== "strikeouts") ? null : (calibMap[`${sport}:${stat}`] ?? null);
-          const calibFactor = calib ? parseFloat(Math.max(0.8, Math.min(1.2, calib.wins / calib.n / (calib.sumTruePct / calib.n / 100))).toFixed(3)) : null;
-          let truePct = calibFactor !== null ? parseFloat(Math.min(99, rawTruePct * calibFactor).toFixed(1)) : rawTruePct;
+          const calibFactor = null;
+          let truePct = rawTruePct;
           const lowVolume = kalshiVolume < 20;
           const edge = truePct - kalshiPct;
           // Finalize sim-score: add edge bonus (3pts if edge > 5%) after simulation
