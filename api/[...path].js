@@ -1103,10 +1103,10 @@ var worker_default = {
               }
               const gameOddsRaw = parseGameOdds(sbData.events);
               const gameOdds = Object.fromEntries(Object.entries(gameOddsRaw).map(([k, v]) => [normMlbAbbr(k), v]));
-              const [lineupResult, pitcherResult] = await Promise.all([buildLineupKPct(mlbSched), buildPitcherKPct(mlbSched)]);
+              const [lineupResult, pitcherResult, barrelPctMap] = await Promise.all([buildLineupKPct(mlbSched), buildPitcherKPct(mlbSched), buildBarrelPct()]);
               const { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, projectedLineupTeams } = lineupResult;
               const { pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherHand, pitcherEra: pitcherEraByTeam } = pitcherResult;
-              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherHand, pitcherEra: pitcherEraByTeam, projectedLineupTeams, gameOdds };
+              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherHand, pitcherEra: pitcherEraByTeam, projectedLineupTeams, gameOdds, barrelPctMap };
               if (CACHE2) await CACHE2.put("byteam:mlb", JSON.stringify(sportByteam.mlb), { expirationTtl: 600 });
             }),
             sportsNeedingFetch.has("nfl") && fetch("https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/statistics/byteam?region=us&lang=en&isqualified=true&page=1&limit=32&category=passing", { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})).then(async (d) => {
@@ -1838,7 +1838,7 @@ var worker_default = {
           let hitterSimScore = null, hitterFinalSimScore = null, hitterSimPctOut = null;
           let hitterLineupSpot = null, hitterWhipMeets = null, hitterFipMeets = null, hitterParkMeets = null;
           let pitcherWHIP = null, pitcherFIP = null, pitcherBAA = null;
-          let hitterParkKF = null, hitterMoneyline = null;
+          let hitterParkKF = null, hitterMoneyline = null, hitterBarrelPct = null;
           if (sport === "mlb" && stat !== "strikeouts") {
             const hitterML = sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null;
             const hIdx2 = gl.ul.indexOf("H");
@@ -1859,9 +1859,15 @@ var worker_default = {
             }
             // Lineup spot via name-based lookup (MLB API lineup hydration includes fullName)
             const _spotMap = sportByteam.mlb?.lineupSpotByName?.[playerTeam] ?? null;
+            const _brlNorm = n => n ? n.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() : "";
             if (_spotMap) {
-              const _normName = n => n ? n.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() : "";
-              hitterLineupSpot = _spotMap[_normName(playerName)] ?? _spotMap[_normName(playerNameDisplay)] ?? null;
+              hitterLineupSpot = _spotMap[_brlNorm(playerName)] ?? _spotMap[_brlNorm(playerNameDisplay)] ?? null;
+            }
+            // Barrel% from Baseball Savant (keyed by normalized "first last")
+            const _brlMap = sportByteam.mlb?.barrelPctMap ?? null;
+            if (_brlMap) {
+              const _brl = _brlMap[_brlNorm(playerName)] ?? _brlMap[_brlNorm(playerNameDisplay)] ?? null;
+              if (_brl != null) hitterBarrelPct = _brl;
             }
             // Pitcher WHIP, FIP, BAA from game log
             const _pgGl = pitcherGamelogs[tonightOpp]?.gl ?? null;
@@ -1906,7 +1912,7 @@ var worker_default = {
               + (hitterParkMeets ? 1 : 0);
             const _hlPitcherName = sportByteam.mlb?.probables?.[tonightOpp]?.name ?? null;
             const _hlML = hitterML;
-            const _hlCommon = { opponent: tonightOpp, pitcherName: _hlPitcherName, seasonPct: _hlSeasonPct, softPct: _hlSoftPct, truePct: _hlTruePct, edge: _hlEdge, pitcherEra: _hlEra, moneyline: _hlML, hitterBa, hitterBaTier, abVsTeam: hitterAbVsPitcher, hitterLineupSpot, pitcherWHIP, pitcherFIP, hitterSimScore, hitterParkKF, hitterMoneyline };
+            const _hlCommon = { opponent: tonightOpp, pitcherName: _hlPitcherName, seasonPct: _hlSeasonPct, softPct: _hlSoftPct, truePct: _hlTruePct, edge: _hlEdge, pitcherEra: _hlEra, moneyline: _hlML, hitterBa, hitterBaTier, abVsTeam: hitterAbVsPitcher, hitterLineupSpot, pitcherWHIP, pitcherFIP, hitterSimScore, hitterParkKF, hitterMoneyline, hitterBarrelPct };
             // Stage 1: lineup spot 5-9 discard
             if (hitterLineupSpot !== null && hitterLineupSpot >= 5) {
               if (isDebug) dropped.push({ ..._dropBase, reason: "low_lineup_spot", hitterLineupSpot, ..._hlCommon });
@@ -1983,7 +1989,7 @@ var worker_default = {
               } : {}),
               ...(sport === "mlb" && stat !== "strikeouts" ? {
                 hitterSimScore, hitterFinalSimScore,
-                hitterLineupSpot, pitcherWHIP, pitcherFIP, hitterParkKF, hitterMoneyline,
+                hitterLineupSpot, pitcherWHIP, pitcherFIP, hitterParkKF, hitterMoneyline, hitterBarrelPct,
               } : {}),
             });
             continue;
@@ -2043,6 +2049,7 @@ var worker_default = {
             hitterSimPct: sport === "mlb" && stat !== "strikeouts" ? hitterSimPctOut : void 0,
             hitterParkKF: sport === "mlb" && stat !== "strikeouts" ? hitterParkKF : void 0,
             hitterMoneyline: sport === "mlb" && stat !== "strikeouts" ? hitterMoneyline : void 0,
+            hitterBarrelPct: sport === "mlb" && stat !== "strikeouts" ? hitterBarrelPct : void 0,
             pitcherAvgPitches: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.pitcherAvgPitches?.[playerTeam] ?? null : void 0,
             gameTotal: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null : void 0,
             gameMoneyline: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null : void 0,
@@ -2569,6 +2576,48 @@ async function buildLineupKPct(mlbSched) {
   }
 }
 __name(buildLineupKPct, "buildLineupKPct");
+async function buildBarrelPct() {
+  try {
+    const url = "https://baseballsavant.mlb.com/leaderboard/statcast?type=batter&year=2026&position=&team=&min=1&csv=true";
+    const text = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } }).then(r => r.ok ? r.text() : "").catch(() => "");
+    if (!text) return {};
+    const _norm = n => n ? n.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim() : "";
+    // Simple CSV tokenizer that respects double-quoted fields
+    const parseRow = row => {
+      const fields = []; let cur = "", inQ = false;
+      for (const ch of row) {
+        if (ch === '"') { inQ = !inQ; continue; }
+        if (ch === "," && !inQ) { fields.push(cur); cur = ""; continue; }
+        cur += ch;
+      }
+      fields.push(cur);
+      return fields;
+    };
+    const lines = text.replace(/^\ufeff/, "").split("\n");
+    const header = parseRow(lines[0]);
+    const nameIdx = header.indexOf("last_name, first_name");
+    const brlIdx = header.indexOf("brl_percent");
+    if (nameIdx === -1 || brlIdx === -1) return {};
+    const result = {};
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      const fields = parseRow(line);
+      const rawName = fields[nameIdx]; // "Last, First"
+      const brl = parseFloat(fields[brlIdx]);
+      if (!rawName || isNaN(brl)) continue;
+      const comma = rawName.indexOf(",");
+      if (comma === -1) continue;
+      const last = rawName.slice(0, comma).trim();
+      const first = rawName.slice(comma + 1).trim();
+      result[_norm(`${first} ${last}`)] = brl;
+    }
+    return result;
+  } catch (e) {
+    return {};
+  }
+}
+__name(buildBarrelPct, "buildBarrelPct");
 async function buildPitcherKPct(mlbSched) {
   try {
     const pitcherByTeam = {};
