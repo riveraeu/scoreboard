@@ -1631,24 +1631,17 @@ var worker_default = {
           const blendedPct = blendVals.length >= 5 ? blendVals.filter((v) => v >= threshold).length / blendVals.length * 100 : null;
           // Prefer 2026 season rate; fall back to blended 25+26; fall back to all-career
           const primaryPct = pct26 ?? blendedPct ?? seasonPct;
-          let isStrongMatchup = false, pkpMeets = null, lkpMeets = null, gameLineMeets = null;
+          let isStrongMatchup = false, kpctMeets = null, kbbMeets = null;
           let _pitcherHand = null;
           if (sport === "mlb" && stat === "strikeouts") {
             _pitcherHand = sportByteam.mlb?.pitcherHand?.[playerTeam] ?? null;
             const _pkp = sportByteam.mlb?.pitcherKPct?.[playerTeam] ?? null;
-            const _lkpVR = sportByteam.mlb?.lineupKPctVR?.[tonightOpp] ?? null;
-            const _lkpVL = sportByteam.mlb?.lineupKPctVL?.[tonightOpp] ?? null;
-            const _lkpAll = sportByteam.mlb?.lineupKPct?.[tonightOpp] ?? null;
-            const _lkp = _pitcherHand === "R" ? _lkpVR ?? _lkpAll : _pitcherHand === "L" ? _lkpVL ?? _lkpAll : _lkpAll;
-            const _go = sportByteam.mlb?.gameOdds?.[playerTeam] ?? null;
-            // null = data unavailable (unknown), boolean = data exists and was evaluated
-            pkpMeets = _pkp != null ? _pkp > 25 : null;
-            lkpMeets = _lkp != null ? _lkp > 23 : null;
-            gameLineMeets = _go?.total != null && _go?.moneyline != null ? _go.total < 8.5 && _go.moneyline <= -140 : null;
-            // Require 2+ passing out of available metrics (unknown/null metrics abstain)
-            const _strongTrue = [pkpMeets, lkpMeets, gameLineMeets].filter(v => v === true).length;
-            const _strongKnown = [pkpMeets, lkpMeets, gameLineMeets].filter(v => v !== null).length;
-            isStrongMatchup = _strongKnown >= 2 ? _strongTrue >= 2 : _strongTrue >= 1;
+            const _kbb = sportByteam.mlb?.pitcherKBBPct?.[playerTeam] ?? null;
+            // K% > 24 as CSW% proxy (CSW% not available for 2026 via Statcast), K-BB% > 15
+            // null = data unavailable; if one is null, require the other to pass
+            kpctMeets = _pkp != null ? _pkp > 24 : null;
+            kbbMeets = _kbb != null ? _kbb > 15 : null;
+            isStrongMatchup = (kpctMeets !== false) && (kbbMeets !== false) && (kpctMeets !== null || kbbMeets !== null);
           }
           let softVals, softLabel, softUnit;
           if (sport === "mlb" && stat === "strikeouts") {
@@ -1715,12 +1708,10 @@ var worker_default = {
                   ..._dropBase,
                   reason: "not_strong_matchup",
                   opponent: tonightOpp,
-                  pkpMeets, lkpMeets, gameLineMeets,
+                  kpctMeets, kbbMeets,
                   seasonPct: _kSeasonPct, softPct: _kSoftPct, truePct: _kTruePct, edge: parseFloat((_kTruePct - kalshiPct).toFixed(1)),
                   pitcherKPct: sportByteam.mlb?.pitcherKPct?.[playerTeam] ?? null,
-                  lineupKPct: _pitcherHand === "R" ? (sportByteam.mlb?.lineupKPctVR?.[tonightOpp] ?? sportByteam.mlb?.lineupKPct?.[tonightOpp] ?? null) : _pitcherHand === "L" ? (sportByteam.mlb?.lineupKPctVL?.[tonightOpp] ?? sportByteam.mlb?.lineupKPct?.[tonightOpp] ?? null) : (sportByteam.mlb?.lineupKPct?.[tonightOpp] ?? null),
-                  gameTotal: sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null,
-                  gameMoneyline: sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null,
+                  pitcherKBBPct: sportByteam.mlb?.pitcherKBBPct?.[playerTeam] ?? null,
                   pitcherEra: _pitcherEraFromGl ?? sportByteam.mlb?.pitcherEra?.[playerTeam] ?? null,
                   pitcherHand: _pitcherHand ?? null,
                   simPct: simPctOut
@@ -1943,9 +1934,8 @@ var worker_default = {
             softGames: softVals.length,
             isHardMatchup: sport === "nba" && oppDvpRatioOut !== null ? oppDvpRatioOut <= 0.95 : false,
             isStrongMatchup: sport === "mlb" && stat === "strikeouts" ? isStrongMatchup : void 0,
-            pkpMeets: sport === "mlb" && stat === "strikeouts" ? pkpMeets : void 0,
-            lkpMeets: sport === "mlb" && stat === "strikeouts" ? lkpMeets : void 0,
-            gameLineMeets: sport === "mlb" && stat === "strikeouts" ? gameLineMeets : void 0,
+            kpctMeets: sport === "mlb" && stat === "strikeouts" ? kpctMeets : void 0,
+            kbbMeets: sport === "mlb" && stat === "strikeouts" ? kbbMeets : void 0,
             gameTotal: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null : void 0,
             gameMoneyline: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null : void 0,
             pitcherHand: sport === "mlb" && stat === "strikeouts" ? _pitcherHand ?? null : void 0,
