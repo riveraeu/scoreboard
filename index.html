@@ -2148,8 +2148,10 @@ function App() {
                     <div style={{flex:1,background:"#21262d",borderRadius:4,height:14,overflow:"hidden"}}>
                       <div style={{width:`${play.truePct}%`,background:tc,height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:play.truePct>0?3:0}}/>
                     </div>
-                    <div style={{color:tc,fontSize:12,fontWeight:700,width:42,textAlign:"right",flexShrink:0}}>{play.truePct}%</div>
-                    <div style={{color:"#484f58",fontSize:10,width:50,flexShrink:0}}>true</div>
+                    <div style={{width:110,flexShrink:0,display:"flex",justifyContent:"flex-end",alignItems:"baseline",gap:5}}>
+                      <span style={{color:tc,fontSize:12,fontWeight:700}}>{play.truePct}%</span>
+                      <span style={{color:"#484f58",fontSize:10}}>true</span>
+                    </div>
                   </div>
                   ); })()}
                   {/* Odds bar */}
@@ -2157,8 +2159,10 @@ function App() {
                     <div style={{flex:1,background:"#21262d",borderRadius:4,height:10,overflow:"hidden"}}>
                       <div style={{width:`${play.kalshiPct}%`,background:"#6e40c9",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:play.kalshiPct>0?3:0}}/>
                     </div>
-                    <div style={{color:"#6e40c9",fontSize:11,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{play.kalshiPct}%</div>
-                    <div style={{color:"#6e40c9",fontSize:10,width:50,flexShrink:0}}>({oddsStr})</div>
+                    <div style={{width:110,flexShrink:0,display:"flex",justifyContent:"flex-end",alignItems:"baseline",gap:5}}>
+                      <span style={{color:"#6e40c9",fontSize:11,fontWeight:600}}>{play.kalshiPct}%</span>
+                      <span style={{color:"#6e40c9",fontSize:10}}>({oddsStr})</span>
+                    </div>
                   </div>
                   {/* Tier / unit sizing row */}
                   {(() => {
@@ -2174,7 +2178,7 @@ function App() {
                             <span style={{color:"#8b949e",fontWeight:600}}>${stake.toFixed(0)}</span>
                           </span>
                         </div>
-                        <div style={{color:"#3fb950",fontSize:10,fontWeight:600,flexShrink:0}}>
+                        <div style={{width:110,flexShrink:0,textAlign:"right",color:"#3fb950",fontSize:10,fontWeight:600}}>
                           win +${profit.toFixed(0)}
                         </div>
                       </div>
