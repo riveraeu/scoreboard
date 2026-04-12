@@ -110,8 +110,8 @@ const MOCK_PLAYS = [
     seasonPct:91.0, blendGames:31, pct25:89.0, pct25Games:28, pct26:94.0, pct26Games:6,
     softPct:95.0, softGames:10, truePct:94.0, edge:12.0,
     kelly:0.310, ev:0.130, historicalHitRate:92.0, historicalGames:10,
-    lineupKPct:27.3, pitcherCSWPct:32.1, pitcherKPct:26.5, pitcherKBBPct:18.2, log5Avg:31.6, log5Pct:96.1, expectedKs:8.5, parkFactor:1.00,
-    isStrongMatchup:true, kpctMeets:true, kbbMeets:true,
+    lineupKPct:27.3, pitcherCSWPct:32.1, pitcherKPct:26.5, pitcherKBBPct:18.2, pitcherAvgPitches:94.3, log5Avg:31.6, log5Pct:96.1, expectedKs:8.5, parkFactor:1.00,
+    isStrongMatchup:true, kpctMeets:true, kbbMeets:true, lkpMeets:true, pitchesMeets:true,
     gameTotal:7.5, gameMoneyline:-140, pitcherHand:"R", gameDate:TODAY, gameTime:new Date().toISOString().replace(/T.*/, "T23:10:00Z"), lineupConfirmed:true,
   },
   // ── PURPLE (≥85%) ──────────────────────────────────────────────────────────
@@ -122,8 +122,8 @@ const MOCK_PLAYS = [
     seasonPct:83.0, blendGames:25, pct25:82.0, pct25Games:22, pct26:86.0, pct26Games:5,
     softPct:89.0, softGames:8, truePct:87.0, edge:11.0,
     kelly:0.224, ev:0.095, historicalHitRate:88.0, historicalGames:8,
-    lineupKPct:null, pitcherCSWPct:31.4, pitcherKPct:26.2, pitcherKBBPct:11.4, log5Avg:null, log5Pct:null, expectedKs:null, parkFactor:0.88,
-    isStrongMatchup:true, kpctMeets:true, kbbMeets:false,
+    lineupKPct:null, pitcherCSWPct:31.4, pitcherKPct:26.2, pitcherKBBPct:11.4, pitcherAvgPitches:88.0, log5Avg:null, log5Pct:null, expectedKs:null, parkFactor:0.88,
+    isStrongMatchup:true, kpctMeets:true, kbbMeets:false, lkpMeets:null, pitchesMeets:true,
     gameTotal:8.0, gameMoneyline:-130, pitcherHand:"L", gameDate:TODAY, gameTime:new Date().toISOString().replace(/T.*/, "T01:40:00Z"), lineupConfirmed:false,
   },
   // ── BLUE (≥80%) ────────────────────────────────────────────────────────────
@@ -134,8 +134,8 @@ const MOCK_PLAYS = [
     seasonPct:78.0, blendGames:33, pct25:77.0, pct25Games:30, pct26:80.0, pct26Games:4,
     softPct:82.0, softGames:9, truePct:81.0, edge:7.0,
     kelly:0.090, ev:0.038, historicalHitRate:74.0, historicalGames:9,
-    lineupKPct:22.1, pitcherCSWPct:30.8, pitcherKPct:25.9, pitcherKBBPct:14.1, log5Avg:27.5, log5Pct:73.2, expectedKs:7.4, parkFactor:0.96,
-    isStrongMatchup:true, kpctMeets:true, kbbMeets:false,
+    lineupKPct:22.1, pitcherCSWPct:30.8, pitcherKPct:25.9, pitcherKBBPct:14.1, pitcherAvgPitches:86.7, log5Avg:27.5, log5Pct:73.2, expectedKs:7.4, parkFactor:0.96,
+    isStrongMatchup:true, kpctMeets:true, kbbMeets:false, lkpMeets:false, pitchesMeets:true,
     gameTotal:7.5, gameMoneyline:-160, pitcherHand:"R", gameDate:TODAY,
   },
   // ── GREEN (≥75%) ───────────────────────────────────────────────────────────
@@ -146,8 +146,8 @@ const MOCK_PLAYS = [
     seasonPct:73.0, blendGames:29, pct25:72.0, pct25Games:26, pct26:76.0, pct26Games:5,
     softPct:77.0, softGames:6, truePct:76.0, edge:6.0,
     kelly:0.085, ev:0.058, historicalHitRate:68.0, historicalGames:6,
-    lineupKPct:25.8, pitcherCSWPct:33.7, pitcherKPct:28.1, pitcherKBBPct:20.4, log5Avg:33.1, log5Pct:90.2, expectedKs:8.9, parkFactor:0.97,
-    isStrongMatchup:true, kpctMeets:true, kbbMeets:true,
+    lineupKPct:25.8, pitcherCSWPct:33.7, pitcherKPct:28.1, pitcherKBBPct:20.4, pitcherAvgPitches:96.0, log5Avg:33.1, log5Pct:90.2, expectedKs:8.9, parkFactor:0.97,
+    isStrongMatchup:true, kpctMeets:true, kbbMeets:true, lkpMeets:true, pitchesMeets:true,
     gameTotal:8.0, gameMoneyline:-150, pitcherHand:"R", gameDate:TODAY,
   },
   // ── WHITE (≥70%) ──────────────────────────────────────────────────────────
@@ -1009,7 +1009,7 @@ function App() {
                 const CRITERIA_SUMMARIES = {
                   "mlb|hrr":       { note: "True% = avg(Season%, H2H%) \u00b7 H2H% = % of career games vs tonight\u2019s pitcher where threshold hit (per-game, falls back to team if pitcher gamelog unavailable)", gates: ["Team ML < 0", "Opp ERA \u2265 4.0", "Career AB vs pitcher \u2265 10", "Career BA \u2265 .270", "Edge \u2265 3%"] },
                   "mlb|hits":      { note: "True% = avg(Season%, H2H%) \u00b7 H2H% = % of career games vs tonight\u2019s pitcher where threshold hit (per-game, falls back to team if pitcher gamelog unavailable)", gates: ["Team ML < 0", "Opp ERA \u2265 4.0", "Career AB vs pitcher \u2265 10", "Career BA \u2265 .270", "Edge \u2265 3%"] },
-                  "mlb|strikeouts":{ note: "True% = Monte Carlo PA simulation (lineup K% × pitcher K% log5)", gates: ["Pitcher CSW% > 30%", "Pitcher K-BB% > 15%", "Both gates required", "Edge \u2265 3%"] },
+                  "mlb|strikeouts":{ note: "True% = Monte Carlo PA simulation (lineup K% × pitcher K% log5)", gates: ["CSW% > 30%", "K-BB% > 15%", "Opp lineup K% vs hand > 24%", "Avg pitches/start > 85", "Edge \u2265 3%"] },
                   "nba|points":    { note: "True% = avg(Season%, vs-soft-DVP-team%)", gates: ["Opp in soft DVP teams", "Edge \u2265 3%"] },
                   "nba|rebounds":  { note: "True% = avg(Season%, vs-soft-DVP-team%)", gates: ["Opp in soft DVP teams", "Edge \u2265 3%"] },
                   "nba|assists":   { note: "True% = avg(Season%, vs-soft-DVP-team%)", gates: ["Opp in soft DVP teams", "Edge \u2265 3%"] },
@@ -1042,6 +1042,7 @@ function App() {
                         case "csw": return m.pitcherCSWPct ?? m.pitcherKPct ?? 0;
                         case "pkp": return m.pitcherKPct ?? 0;
                         case "kbb": return m.pitcherKBBPct ?? 0;
+                        case "pps": return m.pitcherAvgPitches ?? 0;
                         case "lkp": return m.lineupKPct ?? 0;
                         case "ou": return m.gameTotal ?? 0;
                         case "dvp": return m.posDvpRank ?? 99;
@@ -1070,7 +1071,7 @@ function App() {
                         const XCOLS = {
                           "mlb|hrr":       [{k:"season",l:"Ssn%",w:36},{k:"h2h",l:"H2H%/g",w:46},{k:"era",l:"ERA",w:40},{k:"ba",l:"BA",w:36},{k:"ml",l:"ML",w:38},{k:"ab",l:"AB",w:24}],
                           "mlb|hits":      [{k:"season",l:"Ssn%",w:36},{k:"h2h",l:"H2H%/g",w:46},{k:"era",l:"ERA",w:40},{k:"ba",l:"BA",w:36},{k:"ml",l:"ML",w:38},{k:"ab",l:"AB",w:24}],
-                          "mlb|strikeouts":[{k:"csw",l:"CSW%",w:40},{k:"kbb",l:"K-BB%",w:46}],
+                          "mlb|strikeouts":[{k:"csw",l:"CSW%",w:40},{k:"kbb",l:"K-BB%",w:46},{k:"lkp",l:"oK%",w:36},{k:"pps",l:"P/GS",w:40}],
                           "nba|points":    [{k:"season",l:"Ssn%",w:36},{k:"h2h",l:"vSoft%",w:46},{k:"dvp",l:"DVP",w:36}],
                           "nba|rebounds":  [{k:"season",l:"Ssn%",w:36},{k:"h2h",l:"vSoft%",w:46},{k:"dvp",l:"DVP",w:36}],
                           "nba|assists":   [{k:"season",l:"Ssn%",w:36},{k:"h2h",l:"vSoft%",w:46},{k:"dvp",l:"DVP",w:36}],
@@ -1097,7 +1098,8 @@ function App() {
                           if (k==="csw") { const csw = m.pitcherCSWPct ?? m.pitcherKPct; const isReal = m.pitcherCSWPct != null; return C(csw != null ? csw.toFixed(1)+"%" : null, isReal ? (csw > 30 ? "#3fb950" : "#f78166") : (csw > 24 ? "#8b949e" : "#f78166")); }
                           if (k==="pkp") return C(pkp != null ? pkp.toFixed(1)+"%" : null, pkp > 24 ? "#3fb950" : "#f78166");
                           if (k==="kbb") { const kbb = m.pitcherKBBPct; return C(kbb != null ? kbb.toFixed(1)+"%" : null, kbb > 15 ? "#3fb950" : "#f78166"); }
-                          if (k==="lkp") return C(lkp != null ? lkp.toFixed(1)+"%" : null, lkp > 23 ? "#3fb950" : "#f78166");
+                          if (k==="pps") { const pps = m.pitcherAvgPitches; return C(pps != null ? pps.toFixed(0) : null, pps > 85 ? "#3fb950" : "#f78166"); }
+                          if (k==="lkp") return C(lkp != null ? lkp.toFixed(1)+"%" : null, lkp > 24 ? "#3fb950" : "#f78166");
                           if (k==="ou")  return C(ou  != null ? ou : null, ou < 8.5 ? "#3fb950" : "#484f58");
                           if (k==="dvp") { const r = m.posDvpRank; return C(r != null ? `#${r}${m.posGroup?" "+m.posGroup:""}` : null, r<=10?"#3fb950":r<=20?"#e3b341":"#f78166"); }
                           return DASH;
@@ -1140,10 +1142,10 @@ function App() {
                               const edge = m.edge ?? null;
                               const resultCell = (() => {
                                 if (m.qualified) {
-                                  if (stat === "strikeouts" && (m.kpctMeets != null || m.kbbMeets != null)) {
+                                  if (stat === "strikeouts" && (m.kpctMeets != null || m.kbbMeets != null || m.lkpMeets != null || m.pitchesMeets != null)) {
                                     const mk = (meets, label) => meets != null ? <span key={label} style={{color:meets?"#3fb950":"#f78166",fontSize:9}}>{meets?"✓":"✗"}{label}</span> : null;
                                     return <span style={{background:"rgba(63,185,80,0.15)",borderRadius:4,padding:"1px 4px",display:"inline-flex",gap:3,alignItems:"center"}}>
-                                      {mk(m.kpctMeets,"K%")} {mk(m.kbbMeets,"K-BB%")}
+                                      {mk(m.kpctMeets,"CSW%")} {mk(m.kbbMeets,"K-BB%")} {mk(m.lkpMeets,"oK%")} {mk(m.pitchesMeets,"P/GS")}
                                     </span>;
                                   }
                                   return <span style={{background:"rgba(63,185,80,0.15)",color:"#3fb950",borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:700}}>PLAY</span>;
@@ -1151,7 +1153,7 @@ function App() {
                                 if (m.reason === "not_strong_matchup") {
                                   const mk = (meets, label) => meets != null ? <span key={label} style={{color:meets?"#6e7681":"#484f58",fontSize:9}}>{meets?"✓":"✗"}{label}</span> : null;
                                   return <span style={{display:"inline-flex",gap:3,alignItems:"center"}}>
-                                    {mk(m.kpctMeets,"K%")} {mk(m.kbbMeets,"K-BB%")}
+                                    {mk(m.kpctMeets,"CSW%")} {mk(m.kbbMeets,"K-BB%")} {mk(m.lkpMeets,"oK%")} {mk(m.pitchesMeets,"P/GS")}
                                   </span>;
                                 }
                                 return <span style={{fontSize:10,color:"#484f58"}}>{RESULT_LABELS[m.reason] ?? m.reason ?? ""}</span>;
@@ -1489,7 +1491,7 @@ function App() {
                         if (isMLB && safeTab === "strikeouts") {
                           const tp = Object.values(tonightPlayerMap).find(p => p.stat === "strikeouts");
                           if (tp) return { opp: tp.opponent, lineupKPct: tp.lineupKPct ?? dvpData?.h2h?.lineupKPct ?? null, lineupKPctProjected: tp.lineupKPctProjected ?? dvpData?.h2h?.lineupKPctProjected ?? false,
-                            pitcherCSWPct: tp.pitcherCSWPct, pitcherKPct: tp.pitcherKPct, pitcherKBBPct: tp.pitcherKBBPct, log5Avg: tp.log5Avg,
+                            pitcherCSWPct: tp.pitcherCSWPct, pitcherKPct: tp.pitcherKPct, pitcherKBBPct: tp.pitcherKBBPct, pitcherAvgPitches: tp.pitcherAvgPitches, log5Avg: tp.log5Avg,
                             expectedKs: tp.expectedKs, parkFactor: tp.parkFactor, pitcherHand: tp.pitcherHand,
                             pitcherEra: tp.pitcherEra ?? null,
                             isStrongMatchup: tp.isStrongMatchup, kpctMeets: tp.kpctMeets, kbbMeets: tp.kbbMeets,
@@ -1538,7 +1540,7 @@ function App() {
                           const pitcherTeamName = MLB_TEAM[player.team] || player.team;
                           return (
                             <>
-                              {first} posts a{pkp != null ? <> <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span> {pkpLabel}</> : " —"}{(() => { const kbb = h2h?.pitcherKBBPct ?? null; const kbbColor = kbb == null ? "#8b949e" : kbb > 15 ? "#3fb950" : "#f78166"; return kbb != null ? <> / <span style={{color:kbbColor,fontWeight:600}}>{kbb.toFixed(1)}%</span> K-BB%</> : null; })()}{pitcherEra != null && <> (<span style={{color:eraColor,fontWeight:600}}>{parseFloat(pitcherEra).toFixed(2)} ERA</span>)</>}, facing the {oppName} who are striking out at <span style={{color:lkpColor,fontWeight:600}}>{lkp != null ? `${lkp}%` : "—"}</span>{handLabel && <span style={{color:"#8b949e"}}>{handLabel}</span>}{lkpProjected && <span style={{color:"#484f58",fontSize:10}}> (est.)</span>}. {(gameTotal != null || gameML != null) && <>The total for the match is <span style={{color:totalColor(gameTotal),fontWeight:600}}>{gameTotal ?? "—"}</span> and the {pitcherTeamName} are favored at <span style={{color:mlColor(gameML),fontWeight:600}}>{gameML != null ? `${gameML > 0 ? "+" : ""}${gameML}` : "—"}</span> line.</>}
+                              {first} posts a{pkp != null ? <> <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span> {pkpLabel}</> : " —"}{(() => { const kbb = h2h?.pitcherKBBPct ?? null; const kbbColor = kbb == null ? "#8b949e" : kbb > 15 ? "#3fb950" : "#f78166"; return kbb != null ? <> / <span style={{color:kbbColor,fontWeight:600}}>{kbb.toFixed(1)}%</span> K-BB%</> : null; })()}{pitcherEra != null && <> (<span style={{color:eraColor,fontWeight:600}}>{parseFloat(pitcherEra).toFixed(2)} ERA</span>)</>}, averaging {(() => { const ap = h2h?.pitcherAvgPitches ?? null; const apColor = ap == null ? "#8b949e" : ap > 85 ? "#3fb950" : "#f78166"; return ap != null ? <><span style={{color:apColor,fontWeight:600}}>{Math.round(ap)}</span> pitches/start</> : <span style={{color:"#484f58"}}>— pitches/start</span>; })()} — facing the {oppName} who K at <span style={{color:lkpColor,fontWeight:600}}>{lkp != null ? `${lkp}%` : "—"}</span>{handLabel && <span style={{color:"#8b949e"}}>{handLabel}</span>}{lkpProjected && <span style={{color:"#484f58",fontSize:10}}> (est.)</span>}. {(gameTotal != null || gameML != null) && <>The total for the match is <span style={{color:totalColor(gameTotal),fontWeight:600}}>{gameTotal ?? "—"}</span> and the {pitcherTeamName} are favored at <span style={{color:mlColor(gameML),fontWeight:600}}>{gameML != null ? `${gameML > 0 ? "+" : ""}${gameML}` : "—"}</span> line.</>}
                               {(pf != null && Math.abs(pf - 1.0) >= 0.01) && (
                                 <div style={{color:"#484f58",fontSize:10,marginTop:3}}>
                                   Venue: {pf > 1 ? "+" : ""}{((pf - 1)*100).toFixed(0)}% {pf > 1 ? "strikeout-friendly" : "strikeout-suppressing"} park.
@@ -2239,7 +2241,7 @@ function App() {
                                     const oppName = MLB_TEAM[play.opponent] || play.opponent;
                                     const pitcherTeamName = MLB_TEAM[play.playerTeam] || play.playerTeam;
                                     return <>
-                                      {first} posts a{pkp != null ? <> <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span> {pkpLabel}</> : " —"}{(() => { const kbb = play.pitcherKBBPct ?? null; const kbbColor = kbb == null ? "#8b949e" : kbb > 15 ? "#3fb950" : "#f78166"; return kbb != null ? <> / <span style={{color:kbbColor,fontWeight:600}}>{kbb.toFixed(1)}%</span> K-BB%</> : null; })()}{pitcherEra != null && <> (<span style={{color:eraColor,fontWeight:600}}>{parseFloat(pitcherEra).toFixed(2)} ERA</span>)</>}, facing the {oppName} who are striking out at <span style={{color:lkpColor,fontWeight:600}}>{lkp != null ? `${lkp}%` : "—"}</span>{handLabel && <span style={{color:"#8b949e"}}>{handLabel}</span>}{isProjected && <span style={{color:"#484f58",fontSize:10}}> (est.)</span>}. {(gameTotal != null || gameML != null) && <>The total for the match is <span style={{color:totalColor(gameTotal),fontWeight:600}}>{gameTotal ?? "—"}</span> and the {pitcherTeamName} are favored at <span style={{color:mlColor(gameML),fontWeight:600}}>{gameML != null ? `${gameML > 0 ? "+" : ""}${gameML}` : "—"}</span> line.</>}
+                                      {first} posts a{pkp != null ? <> <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span> {pkpLabel}</> : " —"}{(() => { const kbb = play.pitcherKBBPct ?? null; const kbbColor = kbb == null ? "#8b949e" : kbb > 15 ? "#3fb950" : "#f78166"; return kbb != null ? <> / <span style={{color:kbbColor,fontWeight:600}}>{kbb.toFixed(1)}%</span> K-BB%</> : null; })()}{pitcherEra != null && <> (<span style={{color:eraColor,fontWeight:600}}>{parseFloat(pitcherEra).toFixed(2)} ERA</span>)</>}{(() => { const ap = play.pitcherAvgPitches ?? null; const apColor = ap == null ? "#8b949e" : ap > 85 ? "#3fb950" : "#f78166"; return ap != null ? <>, avg <span style={{color:apColor,fontWeight:600}}>{Math.round(ap)}</span> P/GS</> : null; })()}. Facing {oppName} who K at <span style={{color:lkpColor,fontWeight:600}}>{lkp != null ? `${lkp}%` : "—"}</span>{handLabel && <span style={{color:"#8b949e"}}>{handLabel}</span>}{isProjected && <span style={{color:"#484f58",fontSize:10}}> (est.)</span>}. {(gameTotal != null || gameML != null) && <>Total: <span style={{color:totalColor(gameTotal),fontWeight:600}}>{gameTotal ?? "—"}</span>, ML: <span style={{color:mlColor(gameML),fontWeight:600}}>{gameML != null ? `${gameML > 0 ? "+" : ""}${gameML}` : "—"}</span>.</>}
                                     </>;
                                   })()}
                                   {pf != null && Math.abs(pf - 1.0) >= 0.01 && (

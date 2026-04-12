@@ -667,8 +667,8 @@ var worker_default = {
             const gameOdds = Object.fromEntries(Object.entries(gameOddsRaw2).map(([k, v]) => [normMlbAbbr2(k), v]));
             const [lineupResult, pitcherResult] = await Promise.all([buildLineupKPct(mlbSched), buildPitcherKPct(mlbSched)]);
             const { lineupKPct: lineupKPct2, lineupBatterKPcts: lineupBatterKPcts2, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered: lineupBatterKPctsOrdered2, lineupBatterKPctsVROrdered: lineupBatterKPctsVROrdered2, lineupBatterKPctsVLOrdered: lineupBatterKPctsVLOrdered2, gameHomeTeams: gameHomeTeams2, projectedLineupTeams: projectedLineupTeams2 } = lineupResult;
-            const { pitcherKPct: pitcherKPct2, pitcherKBBPct: pitcherKBBPct2, pitcherHand, pitcherEra: pitcherEraByTeam2, pitcherCSWPct: pitcherCSWPct2 } = pitcherResult;
-            mlbByteam = { pitching: pitchRes, batting: batRes, probables: probables2, lineupKPct: lineupKPct2, lineupBatterKPcts: lineupBatterKPcts2, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered: lineupBatterKPctsOrdered2, lineupBatterKPctsVROrdered: lineupBatterKPctsVROrdered2, lineupBatterKPctsVLOrdered: lineupBatterKPctsVLOrdered2, gameHomeTeams: gameHomeTeams2, pitcherKPct: pitcherKPct2, pitcherKBBPct: pitcherKBBPct2, pitcherCSWPct: pitcherCSWPct2, pitcherHand, pitcherEra: pitcherEraByTeam2, projectedLineupTeams: projectedLineupTeams2, gameOdds };
+            const { pitcherKPct: pitcherKPct2, pitcherKBBPct: pitcherKBBPct2, pitcherHand, pitcherEra: pitcherEraByTeam2, pitcherCSWPct: pitcherCSWPct2, pitcherAvgPitches: pitcherAvgPitches2 } = pitcherResult;
+            mlbByteam = { pitching: pitchRes, batting: batRes, probables: probables2, lineupKPct: lineupKPct2, lineupBatterKPcts: lineupBatterKPcts2, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered: lineupBatterKPctsOrdered2, lineupBatterKPctsVROrdered: lineupBatterKPctsVROrdered2, lineupBatterKPctsVLOrdered: lineupBatterKPctsVLOrdered2, gameHomeTeams: gameHomeTeams2, pitcherKPct: pitcherKPct2, pitcherKBBPct: pitcherKBBPct2, pitcherCSWPct: pitcherCSWPct2, pitcherAvgPitches: pitcherAvgPitches2, pitcherHand, pitcherEra: pitcherEraByTeam2, projectedLineupTeams: projectedLineupTeams2, gameOdds };
             if (CACHE2) await CACHE2.put("byteam:mlb", JSON.stringify(mlbByteam), { expirationTtl: 600 });
           }
           const probables = mlbByteam.probables || {};
@@ -1105,8 +1105,8 @@ var worker_default = {
               const gameOdds = Object.fromEntries(Object.entries(gameOddsRaw).map(([k, v]) => [normMlbAbbr(k), v]));
               const [lineupResult, pitcherResult] = await Promise.all([buildLineupKPct(mlbSched), buildPitcherKPct(mlbSched)]);
               const { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, gameHomeTeams, projectedLineupTeams } = lineupResult;
-              const { pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherHand, pitcherEra: pitcherEraByTeam } = pitcherResult;
-              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherHand, pitcherEra: pitcherEraByTeam, projectedLineupTeams, gameOdds };
+              const { pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherHand, pitcherEra: pitcherEraByTeam } = pitcherResult;
+              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherHand, pitcherEra: pitcherEraByTeam, projectedLineupTeams, gameOdds };
               if (CACHE2) await CACHE2.put("byteam:mlb", JSON.stringify(sportByteam.mlb), { expirationTtl: 600 });
             }),
             sportsNeedingFetch.has("nfl") && fetch("https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/statistics/byteam?region=us&lang=en&isqualified=true&page=1&limit=32&category=passing", { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})).then(async (d) => {
@@ -1631,18 +1631,25 @@ var worker_default = {
           const blendedPct = blendVals.length >= 5 ? blendVals.filter((v) => v >= threshold).length / blendVals.length * 100 : null;
           // Prefer 2026 season rate; fall back to blended 25+26; fall back to all-career
           const primaryPct = pct26 ?? blendedPct ?? seasonPct;
-          let isStrongMatchup = false, kpctMeets = null, kbbMeets = null;
+          let isStrongMatchup = false, kpctMeets = null, kbbMeets = null, lkpMeets = null, pitchesMeets = null;
           let _pitcherHand = null;
           if (sport === "mlb" && stat === "strikeouts") {
             _pitcherHand = sportByteam.mlb?.pitcherHand?.[playerTeam] ?? null;
             const _csw = sportByteam.mlb?.pitcherCSWPct?.[playerTeam] ?? null;
             const _pkp = sportByteam.mlb?.pitcherKPct?.[playerTeam] ?? null;
             const _kbb = sportByteam.mlb?.pitcherKBBPct?.[playerTeam] ?? null;
-            // CSW% > 30 (falls back to K% > 24 if CSW% unavailable), K-BB% > 15
-            // null = data unavailable; if one is null, require the other to pass
+            const _avgP = sportByteam.mlb?.pitcherAvgPitches?.[playerTeam] ?? null;
+            const _lkpVR = sportByteam.mlb?.lineupKPctVR?.[tonightOpp] ?? null;
+            const _lkpVL = sportByteam.mlb?.lineupKPctVL?.[tonightOpp] ?? null;
+            const _lkpAll = sportByteam.mlb?.lineupKPct?.[tonightOpp] ?? null;
+            const _lkp = _pitcherHand === "R" ? _lkpVR ?? _lkpAll : _pitcherHand === "L" ? _lkpVL ?? _lkpAll : _lkpAll;
+            // null = data unavailable (abstains); all known metrics must pass
             kpctMeets = _csw != null ? _csw > 30 : (_pkp != null ? _pkp > 24 : null);
             kbbMeets = _kbb != null ? _kbb > 15 : null;
-            isStrongMatchup = (kpctMeets !== false) && (kbbMeets !== false) && (kpctMeets !== null || kbbMeets !== null);
+            lkpMeets = _lkp != null ? _lkp > 24 : null;
+            pitchesMeets = _avgP != null ? _avgP > 85 : null;
+            const _flags = [kpctMeets, kbbMeets, lkpMeets, pitchesMeets];
+            isStrongMatchup = _flags.every(v => v !== false) && _flags.some(v => v === true);
           }
           let softVals, softLabel, softUnit;
           if (sport === "mlb" && stat === "strikeouts") {
@@ -1709,11 +1716,13 @@ var worker_default = {
                   ..._dropBase,
                   reason: "not_strong_matchup",
                   opponent: tonightOpp,
-                  kpctMeets, kbbMeets,
+                  kpctMeets, kbbMeets, lkpMeets, pitchesMeets,
                   seasonPct: _kSeasonPct, softPct: _kSoftPct, truePct: _kTruePct, edge: parseFloat((_kTruePct - kalshiPct).toFixed(1)),
                   pitcherCSWPct: sportByteam.mlb?.pitcherCSWPct?.[playerTeam] ?? null,
                   pitcherKPct: sportByteam.mlb?.pitcherKPct?.[playerTeam] ?? null,
                   pitcherKBBPct: sportByteam.mlb?.pitcherKBBPct?.[playerTeam] ?? null,
+                  pitcherAvgPitches: sportByteam.mlb?.pitcherAvgPitches?.[playerTeam] ?? null,
+                  lineupKPct: (() => { const vr = sportByteam.mlb?.lineupKPctVR?.[tonightOpp]; const vl = sportByteam.mlb?.lineupKPctVL?.[tonightOpp]; const all = sportByteam.mlb?.lineupKPct?.[tonightOpp]; return _pitcherHand === "R" ? vr ?? all ?? null : _pitcherHand === "L" ? vl ?? all ?? null : all ?? null; })(),
                   pitcherEra: _pitcherEraFromGl ?? sportByteam.mlb?.pitcherEra?.[playerTeam] ?? null,
                   pitcherHand: _pitcherHand ?? null,
                   simPct: simPctOut
@@ -1938,6 +1947,9 @@ var worker_default = {
             isStrongMatchup: sport === "mlb" && stat === "strikeouts" ? isStrongMatchup : void 0,
             kpctMeets: sport === "mlb" && stat === "strikeouts" ? kpctMeets : void 0,
             kbbMeets: sport === "mlb" && stat === "strikeouts" ? kbbMeets : void 0,
+            lkpMeets: sport === "mlb" && stat === "strikeouts" ? lkpMeets : void 0,
+            pitchesMeets: sport === "mlb" && stat === "strikeouts" ? pitchesMeets : void 0,
+            pitcherAvgPitches: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.pitcherAvgPitches?.[playerTeam] ?? null : void 0,
             gameTotal: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null : void 0,
             gameMoneyline: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null : void 0,
             pitcherCSWPct: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.pitcherCSWPct?.[playerTeam] ?? null : void 0,
@@ -2511,6 +2523,7 @@ async function buildPitcherKPct(mlbSched) {
     // CSW% (Called Strike + Whiff %) from MLB play-by-play data
     // Fetch game logs for each pitcher to get gamePks, then aggregate pitch codes
     const pitcherCSWPct = {};
+    const pitcherAvgPitches = {};
     try {
       const glFetch = await Promise.all(
         allIds.map(id =>
@@ -2556,8 +2569,19 @@ async function buildPitcherKPct(mlbSched) {
       for (const [abbr, id] of Object.entries(pitcherByTeam)) {
         if (cswByMlbId[id] != null) pitcherCSWPct[abbr] = cswByMlbId[id];
       }
-    } catch { /* CSW% unavailable — filter falls back to K% */ }
-    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherCSWPct };
+      // Avg pitches per start from game logs (same glFetch data)
+      for (const { id, splits } of glFetch) {
+        const starts = splits.filter(s => (s.stat?.gamesStarted || 0) >= 1);
+        if (starts.length >= 2) {
+          const total = starts.reduce((sum, s) => sum + (s.stat?.numberOfPitches || 0), 0);
+          const avg = parseFloat((total / starts.length).toFixed(1));
+          for (const [abbr, aid] of Object.entries(pitcherByTeam)) {
+            if (aid === id) pitcherAvgPitches[abbr] = avg;
+          }
+        }
+      }
+    } catch { /* CSW%/pitches unavailable — filter falls back to K% */ }
+    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherCSWPct, pitcherAvgPitches };
   } catch {
     return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {} };
   }
