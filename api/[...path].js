@@ -1477,7 +1477,6 @@ var worker_default = {
           "PF/C": "C"
           // "G" and "F" are omitted — ambiguous, fall through to roster-based position map
         };
-        const calibMap = {};
         const playerColCache = {};
         for (const { playerName, sport, col } of loopMarkets) {
           const cacheKey = `${sport}|${playerName}|${col}`;
@@ -1949,7 +1948,6 @@ var worker_default = {
             if (isB2B) base = Math.max(0, base - 4);
             return base;
           })();
-          const calibFactor = null;
           let truePct = rawTruePct;
           const lowVolume = kalshiVolume < 20;
           const edge = truePct - kalshiPct;
@@ -1964,7 +1962,7 @@ var worker_default = {
             if (isDebug) dropped.push({
               ..._dropBase,
               truePct: parseFloat(truePct.toFixed(1)), rawTruePct: parseFloat(rawTruePct.toFixed(1)),
-              calibFactor, edge: parseFloat(edge.toFixed(1)),
+              edge: parseFloat(edge.toFixed(1)),
               reason: edge < 3 ? "edge_too_low" : "kalshi_pct_too_low",
               opponent: tonightOpp, seasonPct: parseFloat((primaryPct).toFixed(1)),
               softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
@@ -2061,8 +2059,7 @@ var worker_default = {
             parkFactor: parkFactorOut,
             truePct: parseFloat(truePct.toFixed(1)),
             rawTruePct: parseFloat(rawTruePct.toFixed(1)),
-            calibFactor,
-            calibN: calib?.n ?? null,
+
             kalshiVolume,
             kalshiSpread,
             lowVolume,
@@ -2138,53 +2135,6 @@ var worker_default = {
         ));
         const history = results.filter(Boolean).sort((a, b) => a.date.localeCompare(b.date));
         return jsonResponse({ history }, 300);
-      } else if (path === "feedback" && method === "POST") {
-        if (!CACHE2) return jsonResponse({ ok: false, error: "no cache" });
-        const body = await request.json().catch(() => ({}));
-        const { sport, stat, truePct: tp, result } = body;
-        if (!sport || !stat || result !== "won" && result !== "lost") return errorResponse("Bad request", 400);
-        const calibKey = `calib:${sport}:${stat}`;
-        const cur = await CACHE2.get(calibKey, "json").catch(() => null) || { n: 0, wins: 0, sumTruePct: 0 };
-        cur.n++;
-        if (result === "won") cur.wins++;
-        cur.sumTruePct += parseFloat(tp) || 0;
-        await CACHE2.put(calibKey, JSON.stringify(cur), { expirationTtl: 31536e3 });
-        const winRate = parseFloat((cur.wins / cur.n * 100).toFixed(1));
-        const avgPredicted = parseFloat((cur.sumTruePct / cur.n).toFixed(1));
-        const corrFactor = cur.n >= 15 ? parseFloat(Math.max(0.8, Math.min(1.2, cur.wins / cur.n / (cur.sumTruePct / cur.n / 100))).toFixed(3)) : null;
-        return jsonResponse({ ok: true, sport, stat, n: cur.n, winRate, avgPredicted, corrFactor });
-      } else if (path === "calibration") {
-        if (!CACHE2) return jsonResponse({ calib: {} });
-        const pairs = [
-          "nba:points",
-          "nba:rebounds",
-          "nba:assists",
-          "nba:threePointers",
-          "nhl:goals",
-          "nhl:assists",
-          "nhl:points",
-          "mlb:hits",
-          "mlb:hrr",
-          "mlb:strikeouts",
-          "mlb:totalBases",
-          "nfl:passingYards",
-          "nfl:rushingYards",
-          "nfl:receivingYards",
-          "nfl:touchdowns"
-        ];
-        const vals = await Promise.all(pairs.map((k) => CACHE2.get(`calib:${k}`, "json").catch(() => null)));
-        const calib = {};
-        pairs.forEach((k, i) => {
-          if (!vals[i]) return;
-          const d = vals[i];
-          calib[k] = {
-            n: d.n,
-            winRate: parseFloat((d.wins / d.n * 100).toFixed(1)),
-            avgPredicted: parseFloat((d.sumTruePct / d.n).toFixed(1)),
-            corrFactor: d.n >= 15 ? parseFloat(Math.max(0.8, Math.min(1.2, d.wins / d.n / (d.sumTruePct / d.n / 100))).toFixed(3)) : null
-          };
-        });
-        return jsonResponse({ calib }, 21600);
       } else if (path === "leagues") {
         return jsonResponse({ leagues: VALID_SPORTS });
       } else {

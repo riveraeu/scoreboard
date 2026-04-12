@@ -413,7 +413,6 @@ function App() {
   const [reportData, setReportData] = React.useState(null);
   const [reportLoading, setReportLoading] = React.useState(false);
   const [reportSport, setReportSport] = React.useState("all");
-  const [calibration, setCalibration] = React.useState({}); // { "sport:stat": { n, winRate, avgPredicted, corrFactor } }
   // Tiered unit sizing: based on American odds (price reflects market conviction)
   // Heavier favorites = market is more certain = we size up for the edge
   const tierUnits = (americanOdds) => {
@@ -475,16 +474,6 @@ function App() {
       .catch(() => { setTonightPlays([]); setTonightLoading(false); });
   }, [testMode]);
 
-  // Fetch calibration on mount — localStorage cache prevents redundant Worker requests
-  React.useEffect(() => {
-    const cachedCalib = lsGet("cache:calibration", 6 * 60 * 60 * 1000); // 6 hour TTL
-    if (cachedCalib) { setCalibration(cachedCalib); }
-    else fetch(`${WORKER}/calibration`).then(r => r.json()).then(d => {
-      const c = d.calib || {};
-      setCalibration(c);
-      lsSet("cache:calibration", c);
-    }).catch(() => {});
-  }, []);
 
   // Persist tracked plays to localStorage only when not logged in (server is source of truth when logged in)
   React.useEffect(() => {
@@ -516,15 +505,6 @@ function App() {
     setTrackedPlays(prev => prev.map(p => {
       if (p.id !== id) return p;
       // Send outcome to feedback loop — updates per-sport/stat calibration in worker
-      if (result === "won" || result === "lost") {
-        fetch(`${WORKER}/feedback`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sport: p.sport, stat: p.stat, truePct: p.truePct, kalshiPct: p.kalshiPct, result }),
-        }).then(r => r.json()).then(d => {
-          if (d.ok) setCalibration(prev => ({ ...prev, [`${p.sport}:${p.stat}`]: d }));
-        }).catch(() => {});
-      }
       return { ...p, result };
     }));
   }
@@ -2674,52 +2654,6 @@ function App() {
               </div>
             )}
 
-            {/* Model Calibration panel — shows after 5+ outcomes */}
-            {Object.keys(calibration).length > 0 && (() => {
-              const rows = Object.entries(calibration)
-                .filter(([, d]) => d.n >= 5)
-                .sort(([, a], [, b]) => b.n - a.n);
-              if (rows.length === 0) return null;
-              return (
-                <div style={{background:"#0d1117",border:"1px solid #21262d",borderRadius:8,padding:"10px 14px",marginBottom:12}}>
-                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-                    <span style={{color:"#484f58",fontSize:10,textTransform:"uppercase",letterSpacing:".5px"}}>Model Calibration</span>
-                    <div style={{flex:1,height:1,background:"#21262d"}}/>
-                    <span style={{color:"#484f58",fontSize:9}}>actual vs predicted · {rows[0][1].n >= 15 ? "correction active" : "collecting data"}</span>
-                  </div>
-                  <div style={{display:"flex",flexDirection:"column",gap:5}}>
-                    {rows.map(([key, d]) => {
-                      const [sp, st] = key.split(":");
-                      const drift = d.winRate - d.avgPredicted;
-                      const driftColor = Math.abs(drift) < 3 ? "#3fb950" : drift > 0 ? "#58a6ff" : "#f78166";
-                      const corrLabel = d.corrFactor !== null
-                        ? (d.corrFactor > 1 ? `↑${((d.corrFactor-1)*100).toFixed(0)}%` : `↓${((1-d.corrFactor)*100).toFixed(0)}%`)
-                        : `${d.n}/15`;
-                      return (
-                        <div key={key} style={{display:"flex",alignItems:"center",gap:8,fontSize:10}}>
-                          <span style={{color:"#8b949e",width:100,flexShrink:0,textTransform:"capitalize"}}>{sp} {st}</span>
-                          <div style={{flex:1,background:"#21262d",borderRadius:3,height:6,overflow:"hidden",position:"relative"}}>
-                            <div style={{position:"absolute",left:0,top:0,bottom:0,width:`${d.avgPredicted}%`,background:"#333d47",borderRadius:3}}/>
-                            <div style={{position:"absolute",left:0,top:0,bottom:0,width:`${d.winRate}%`,background:driftColor,borderRadius:3,opacity:0.8}}/>
-                          </div>
-                          <span style={{color:driftColor,width:36,textAlign:"right",fontWeight:600}}>
-                            {d.winRate}%
-                          </span>
-                          <span style={{color:"#484f58",width:28,textAlign:"right"}}>{d.avgPredicted}%</span>
-                          <span style={{color: d.corrFactor !== null ? driftColor : "#484f58", width:32, textAlign:"right", fontWeight:600}}>{corrLabel}</span>
-                          <span style={{color:"#333d47",width:20,textAlign:"right"}}>{d.n}n</span>
-                        </div>
-                      );
-                    })}
-                    <div style={{display:"flex",gap:16,marginTop:2,fontSize:9,color:"#333d47"}}>
-                      <span><span style={{color:"#3fb950"}}>■</span> actual win rate</span>
-                      <span><span style={{color:"#484f58"}}>■</span> model predicted avg</span>
-                      <span>correction = actual/predicted (active at 15+)</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
 
             {/* Pick cards — open first (newest→oldest), then settled (newest→oldest) */}
             {[...trackedPlays]
