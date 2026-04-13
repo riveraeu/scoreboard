@@ -1103,7 +1103,8 @@ var worker_default = {
               }
               const gameOddsRaw = parseGameOdds(sbData.events);
               const gameOdds = Object.fromEntries(Object.entries(gameOddsRaw).map(([k, v]) => [normMlbAbbr(k), v]));
-              const [lineupResult, pitcherResult, barrelPctMap] = await Promise.all([buildLineupKPct(mlbSched), buildPitcherKPct(mlbSched), buildBarrelPct()]);
+              const _cachedBrl = CACHE2 ? await CACHE2.get("mlb:barrelPct", "json").catch(() => null) : null;
+              const [lineupResult, pitcherResult, barrelPctMap] = await Promise.all([buildLineupKPct(mlbSched), buildPitcherKPct(mlbSched), _cachedBrl ? Promise.resolve(_cachedBrl) : buildBarrelPct().then(async m => { if (CACHE2 && Object.keys(m).length > 0) await CACHE2.put("mlb:barrelPct", JSON.stringify(m), { expirationTtl: 21600 }).catch(() => {}); return m; })]);
               const { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, projectedLineupTeams } = lineupResult;
               const { pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherHand, pitcherEra: pitcherEraByTeam } = pitcherResult;
               sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherHand, pitcherEra: pitcherEraByTeam, projectedLineupTeams, gameOdds, barrelPctMap };
@@ -2692,7 +2693,9 @@ __name(buildLineupKPct, "buildLineupKPct");
 async function buildBarrelPct() {
   try {
     const url = "https://baseballsavant.mlb.com/leaderboard/statcast?type=batter&year=2026&position=&team=&min=1&csv=true";
-    const text = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } }).then(r => r.ok ? r.text() : "").catch(() => "");
+    const ac = new AbortController();
+    const _t = setTimeout(() => ac.abort(), 5000);
+    const text = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" }, signal: ac.signal }).then(r => { clearTimeout(_t); return r.ok ? r.text() : ""; }).catch(() => "");
     if (!text) return {};
     const _norm = n => n ? n.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim() : "";
     // Simple CSV tokenizer that respects double-quoted fields
@@ -2769,7 +2772,7 @@ async function buildPitcherKPct(mlbSched) {
       if (person.pitchHand?.code) pitcherHandById[pid] = person.pitchHand.code;
       const split = person.stats?.[0]?.splits?.[0]?.stat;
       if (!split) continue;
-      pitcherStats25[pid] = { so: split.strikeOuts || 0, bf: split.battersFaced || 0, bb: split.baseOnBalls || 0, era: safeEra(split.era) };
+      pitcherStats25[pid] = { so: split.strikeOuts || 0, bf: split.battersFaced || 0, bb: split.baseOnBalls || 0, era: safeEra(split.era), gs: split.gamesStarted || 0, np: split.numberOfPitches || 0 };
     }
     for (const person of (res26.people || [])) {
       const pid = person.id;
@@ -2777,7 +2780,7 @@ async function buildPitcherKPct(mlbSched) {
       if (person.pitchHand?.code) pitcherHandById[pid] = person.pitchHand.code;
       const split = person.stats?.[0]?.splits?.[0]?.stat;
       if (!split) continue;
-      pitcherStats26[pid] = { so: split.strikeOuts || 0, bf: split.battersFaced || 0, bb: split.baseOnBalls || 0, era: safeEra(split.era) };
+      pitcherStats26[pid] = { so: split.strikeOuts || 0, bf: split.battersFaced || 0, bb: split.baseOnBalls || 0, era: safeEra(split.era), gs: split.gamesStarted || 0, np: split.numberOfPitches || 0 };
     }
     // Fill in pitcherHand from People API for any missing entries
     for (const [abbr, id] of Object.entries(pitcherByTeam)) {
@@ -2811,11 +2814,21 @@ async function buildPitcherKPct(mlbSched) {
       if (era26 != null) pitcherEra[abbr] = era26;
       else if (era25 != null) pitcherEra[abbr] = era25;
     }
-    // CSW% (Called Strike + Whiff %) from MLB play-by-play data
-    // Fetch game logs for each pitcher to get gamePks, then aggregate pitch codes
+    // Avg pitches per start from season aggregates (already fetched above)
     const pitcherCSWPct = {};
     const pitcherAvgPitches = {};
-    // Step 1: fetch game logs (fast — needed for both avg pitches and CSW%)
+    for (const [abbr, id] of Object.entries(pitcherByTeam)) {
+      const s26 = pitcherStats26[id];
+      if (s26 && s26.gs >= 1 && s26.np > 0) {
+        pitcherAvgPitches[abbr] = parseFloat((s26.np / s26.gs).toFixed(1));
+      } else {
+        const s25 = pitcherStats25[id];
+        if (s25 && s25.gs >= 1 && s25.np > 0) {
+          pitcherAvgPitches[abbr] = parseFloat((s25.np / s25.gs).toFixed(1));
+        }
+      }
+    }
+    // Step 1: fetch game logs (needed for CSW% play-by-play gamePk lookup)
     let glFetch = [];
     try {
       glFetch = await Promise.all(
@@ -2825,17 +2838,6 @@ async function buildPitcherKPct(mlbSched) {
             .then(d => ({ id, splits: d.stats?.[0]?.splits || [] }))
         )
       );
-      // Avg pitches per start — 2026 game logs, require >= 1 start
-      for (const { id, splits } of glFetch) {
-        const starts = splits.filter(s => (s.stat?.gamesStarted || 0) >= 1);
-        if (starts.length >= 1) {
-          const total = starts.reduce((sum, s) => sum + (s.stat?.numberOfPitches || 0), 0);
-          const avg = parseFloat((total / starts.length).toFixed(1));
-          for (const [abbr, aid] of Object.entries(pitcherByTeam)) {
-            if (aid === id) pitcherAvgPitches[abbr] = avg;
-          }
-        }
-      }
     } catch { /* game log fetch failed */ }
     // Step 2: fetch play-by-play for CSW% (many concurrent requests, may time out on edge)
     try {
