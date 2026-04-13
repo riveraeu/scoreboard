@@ -31,7 +31,7 @@ Used for caching expensive fetches. Key TTLs:
 - `byteam:nfl` — 1800s
 - `gameTimes:v2:{date}` — 600s
 - `nbaStatus:{date}` — 600s
-- `nba:pace:2526` — 43200s (12h, stats.nba.com data — never fetched server-side, would need to be set manually)
+- `nba:pace:2526` — 43200s (12h, fetched via ESPN `sports.core.api.espn.com` team stats, `buildNbaPaceData()`)
 - `mlb:barrelPct` — 21600s (6h, Baseball Savant barrel%)
 - `nba:depth:{date}` — daily
 
@@ -74,13 +74,18 @@ True% = Monte Carlo simulation (`simulateHits`) using batter BA × pitcher BAA (
 ### NBA
 - **Stats**: `points`, `rebounds`, `assists`, `threePointers`
 - **Kalshi series**: various per stat
-- True% = avg(seasonPct, vSoftPct), B2B -4%
-- **SimScore** (max 11, no separate edge tier since it's included):
+- True% = Monte Carlo simulation (`simulateNbaStat`) — normal distribution over full season per-game values
+  - Mean from last 10 games (recency), std from full season (stability)
+  - Adjusted mean: `× teamDefFactor × (1 + paceAdj×0.002) × 0.93 if B2B`
+  - `teamDefFactor` = general team defense (opp avg stat allowed / league avg) — NOT position-adjusted DVP
+  - Falls back to avg(seasonPct, softPct) − 4% if B2B when simulation returns null (<5 game values)
+- **SimScore** (max 11 pre-edge, 14 with edge bonus):
+  - Pace (avg game pace above league avg) → 3pts — fetched from ESPN via `buildNbaPaceData()`, cached 12h
   - Avg minutes ≥ 32 (last 10 games) → 4pts; ≥ 25 → 2pts
-  - DVP rank ≤ 10 (position-adjusted) → 2pts
+  - Position-adjusted DVP rank ≤ 10 → 2pts
   - Not B2B → 2pts
-  - Edge > 5% → 3pts
-  - ~~Pace (stats.nba.com)~~ — removed, server-side blocked
+  - Edge > 5% → 3pts (added after simulation)
+- nSim scales with pre-edge simScore: ≥8 → 10k, ≥5 → 5k, else 2k
 - **Gate**: opp in soft DVP teams; edge ≥ 3%
 - Avg minutes from ESPN gamelog `MIN` column (last 10 games), no external API needed
 - Depth chart position via `nbaDepthChartPos` (ESPN depth chart API, cached daily)
@@ -104,11 +109,13 @@ True% = Monte Carlo simulation (`simulateHits`) using batter BA × pitcher BAA (
 | `simulateKsDist(orderedKPcts, pitcherKPct, parkFactor, nSim)` | Runs shared Monte Carlo, returns `Int16Array` of K counts |
 | `kDistPct(dist, threshold)` | Queries shared distribution — guarantees monotonicity |
 | `simulateHits(batterBA, pitcherBAA, parkFactor, threshold, nSim)` | Monte Carlo for hitter hits/HRR |
+| `simulateNbaStat(gameValues, threshold, dvpFactor, paceAdj, isB2B, nSim)` | Monte Carlo for NBA stats — normal dist, adjusted mean |
 | `log5K(pitcherKPct, batterKPct)` | Log5 formula for K probability |
 | `buildPitcherKPct(mlbSched)` | Fetches pitcher season stats (K%, KBB%, ERA, P/GS, CSW%) |
 | `buildLineupKPct(mlbSched)` | Fetches lineup batter K-rates, lineup spots, ordered arrays |
 | `buildBarrelPct()` | Fetches Baseball Savant barrel% CSV, 5s timeout, cached 6h |
 | `buildNbaDepthChartPos()` | ESPN depth chart → `{espnPlayerId: "PG"|"SG"|...}` |
+| `buildNbaPaceData(cache)` | ESPN team stats → `{teamPace, leagueAvgPace}`, cached 12h in KV |
 
 ### Kalshi Market Parsing
 - Series tickers in `SERIES_CONFIG`
@@ -171,6 +178,7 @@ tierColor(pct): >= 80% → #3fb950 (green), >= 65% → #e3b341 (yellow), else #f
 | Baseball Savant | Barrel% CSV | ⚠️ Slow (5s timeout), cached 6h |
 | ESPN DVP endpoint | Defense vs Position data | ✅ Reliable |
 | ESPN depth chart | NBA position lookup | ✅ Reliable, cached daily |
+| ESPN `sports.core.api.espn.com` | NBA team pace (`paceFactor`) | ✅ Reliable, cached 12h |
 | stats.nba.com | Pace/usage | ❌ Blocks server-side requests — not used |
 
 ---
