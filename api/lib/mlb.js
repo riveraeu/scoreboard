@@ -105,7 +105,7 @@ export async function buildLineupKPct(mlbSched) {
       }
     }
     const allIds = [...new Set(Object.values(teamLineups).flat())];
-    if (allIds.length === 0) return { lineupKPct: {}, lineupBatterKPcts: {}, lineupKPctVR: {}, lineupKPctVL: {}, gameHomeTeams, projectedLineupTeams: [] };
+    if (allIds.length === 0) return { lineupKPct: {}, lineupBatterKPcts: {}, lineupKPctVR: {}, lineupKPctVL: {}, lineupBatterKPctsOrdered: {}, lineupBatterKPctsVROrdered: {}, lineupBatterKPctsVLOrdered: {}, lineupSpotByName: {}, gameHomeTeams, projectedLineupTeams: [] };
     const idStr = allIds.join(",");
     const [res25, res26, resSplitVR, resSplitVL] = await Promise.all([
       fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=batting,type=season,season=2025,gameType=R)`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
@@ -271,7 +271,7 @@ export async function buildPitcherKPct(mlbSched) {
       }
     }
     const allIds = [...new Set(Object.values(pitcherByTeam))];
-    if (allIds.length === 0) return { pitcherKPct: {}, pitcherKBBPct: {} };
+    if (allIds.length === 0) return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {} };
     const idStr = allIds.join(",");
     const [res25, res26] = await Promise.all([
       fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=pitching,type=season,season=2025,gameType=R)`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
@@ -395,6 +395,6 @@ export async function buildPitcherKPct(mlbSched) {
     } catch { /* CSW% unavailable — filter falls back to K% */ }
     return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherCSWPct, pitcherAvgPitches };
   } catch {
-    return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {} };
+    return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {} };
   }
 }

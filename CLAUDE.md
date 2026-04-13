@@ -279,9 +279,10 @@ Check `preDropped` in `?debug=1` response. Common reasons: `no_soft_data`, `opp_
 ### "Market report shows — for Spot/Brrl%"
 - Spot: lineup not confirmed yet (pre-game). Projected lineups from last 7 days are used as fallback.
 - Brrl%: Baseball Savant fetch timed out or returned empty. Cached in KV for 6h — bust cache with `?bust=1`.
+- After a cache bust: if `buildLineupKPct` or `buildPitcherKPct` hits an early-return (no games scheduled or all IDs empty), all destructured fields must be present in the return value — otherwise `lineupSpotByName` and `pitcherAvgPitches` come back `undefined`, causing `—` for every row. The early-return and catch blocks in `api/lib/mlb.js` include the full field set: `lineupSpotByName`, `lineupBatterKPctsOrdered`, etc. for lineup; `pitcherAvgPitches`, `pitcherEra`, `pitcherCSWPct` for pitchers.
 
 ### "P/GS all dashes"
-Comes from `split.numberOfPitches / split.gamesStarted` in season aggregate stats. If a pitcher has 0 starts recorded yet, will show `—`.
+Comes from `split.numberOfPitches / split.gamesStarted` in season aggregate stats. If a pitcher has 0 starts recorded yet, will show `—`. Also check that `buildPitcherKPct` didn't hit the early-return path (see above).
 
 ### Cache busting
 - `?bust=1` deletes `byteam:mlb` and forces a fresh MLB data rebuild

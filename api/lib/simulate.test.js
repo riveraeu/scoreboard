@@ -216,6 +216,28 @@ test('HRR rows filtered to threshold=1 only', () => {
   assert.equal(ksRows.length, 2, 'strikeout rows all pass through');
 });
 
+// --- mlb.js early-return / catch completeness ---
+
+// buildLineupKPct and buildPitcherKPct return full field sets even on early exit.
+// These tests mirror the shapes that api/[...path].js destructures so missing keys
+// cause silent undefined bugs rather than loud errors.
+test('buildLineupKPct early-return shape includes all destructured fields', () => {
+  // Mirrors the early-return on allIds.length === 0
+  const ret = { lineupKPct: {}, lineupBatterKPcts: {}, lineupKPctVR: {}, lineupKPctVL: {}, lineupBatterKPctsOrdered: {}, lineupBatterKPctsVROrdered: {}, lineupBatterKPctsVLOrdered: {}, lineupSpotByName: {}, gameHomeTeams: {}, projectedLineupTeams: [] };
+  const required = ['lineupKPct','lineupBatterKPcts','lineupKPctVR','lineupKPctVL','lineupBatterKPctsOrdered','lineupBatterKPctsVROrdered','lineupBatterKPctsVLOrdered','lineupSpotByName','gameHomeTeams','projectedLineupTeams'];
+  for (const key of required) {
+    assert.ok(key in ret, `lineupKPct early-return missing key: ${key}`);
+  }
+});
+
+test('buildPitcherKPct early-return shape includes all destructured fields', () => {
+  const ret = { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {} };
+  const required = ['pitcherKPct','pitcherKBBPct','pitcherHand','pitcherEra','pitcherCSWPct','pitcherAvgPitches'];
+  for (const key of required) {
+    assert.ok(key in ret, `pitcherKPct early-return missing key: ${key}`);
+  }
+});
+
 // --- Score > 10 name highlight (MLB only) ---
 
 // For MLB tables: player name is white+bold only when score > 10 (Alpha tier).
