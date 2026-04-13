@@ -1703,18 +1703,6 @@ function App() {
                     const _truePctRaw = (_tp && _tp.truePct != null) ? _tp.truePct : (_softPctRaw !== null ? (_pct + _softPctRaw) / 2 : null);
                     _rawTruePctMap[t] = _truePctRaw;
                   }
-                  // Safety clamp: for over direction, truePct[lower threshold] must be >= truePct[higher]
-                  // API now returns qualified:false plays for dropped MLB K markets so each threshold
-                  // has real simulated truePct — this clamp is a last-resort for edge cases only
-                  if (direction !== "under" && isMLB && safeTab === "strikeouts") {
-                    const _sorted = [...displayRates].sort((a, b) => a.t - b.t);
-                    for (let _i = _sorted.length - 2; _i >= 0; _i--) {
-                      const _lo = _sorted[_i].t, _hi = _sorted[_i + 1].t;
-                      if (_rawTruePctMap[_lo] != null && _rawTruePctMap[_hi] != null && _rawTruePctMap[_lo] < _rawTruePctMap[_hi]) {
-                        _rawTruePctMap[_lo] = _rawTruePctMap[_hi]; // last resort: same value beats inverted
-                      }
-                    }
-                  }
                   return displayRates.map(({t, count: countOver, pct: pctOver}) => {
                     const isUnder = direction === "under";
                     // Flip all hit-rate values for "under" direction

@@ -1579,6 +1579,9 @@ var worker_default = {
         }
         const plays = [];
         const dropped = [];
+        // Cache pitcher K-count distributions keyed by playerTeam so all thresholds for the same
+        // pitcher share one simulation run — guarantees P(K>=4) >= P(K>=5) by construction.
+        const pitcherKDistCache = {};
         for (const { playerName, playerNameDisplay, sport, stat, col, threshold, kalshiPct, americanOdds, kalshiVolume, kalshiSpread, gameTeam1, gameTeam2, kalshiPlayerTeam, gameDate } of loopMarkets) {
           const key = `${sport}|${playerName}`;
           const info = playerInfoMap[key];
@@ -1835,8 +1838,13 @@ var worker_default = {
               const adjustedLog5 = log5AvgOut * parkFactorOut;
               expectedKsOut = parseFloat((adjustedLog5 / 100 * 26).toFixed(1));
               if (orderedKPcts && orderedKPcts.length >= 8) {
-                const _nSim = simScore !== null && simScore >= 11 ? 10000 : 5000;
-                simPctOut = simulateKs(orderedKPcts, pitcherKPctOut, threshold, parkFactorOut, _nSim);
+                // Use cached distribution for this pitcher so all thresholds share the same sim run
+                const _distKey = `${playerTeam}|${_pitcherHand ?? ""}`;
+                if (!pitcherKDistCache[_distKey]) {
+                  const _nSim = simScore !== null && simScore >= 11 ? 10000 : 5000;
+                  pitcherKDistCache[_distKey] = simulateKsDist(orderedKPcts, pitcherKPctOut, parkFactorOut, _nSim);
+                }
+                simPctOut = kDistPct(pitcherKDistCache[_distKey], threshold);
               } else {
                 log5PctOut = parseFloat(log5HitRate(adjustedLog5, threshold).toFixed(1));
               }
@@ -2401,27 +2409,39 @@ function log5HitRate(log5Avg, threshold, avgBF = 26) {
   return (1 - poissonCDF(threshold - 1, lambda)) * 100;
 }
 __name(log5HitRate, "log5HitRate");
-// Monte Carlo PA-level simulation: cycle through ordered lineup batters for totalPA plate appearances,
-// each PA is a Bernoulli trial with log5-adjusted K probability. Returns P(Ks >= threshold).
-function simulateKs(orderedKPcts, pitcherKPct, threshold, parkFactor = 1, nSim = 10000, totalPA = 24) {
+// Monte Carlo PA-level simulation: runs nSim games and returns the full K-count distribution
+// (array of length nSim with Ks per game). Use kDistPct(dist, t) to get P(Ks >= t).
+// Running once per pitcher and sharing the distribution guarantees monotonicity across thresholds.
+function simulateKsDist(orderedKPcts, pitcherKPct, parkFactor = 1, nSim = 5000, totalPA = 24) {
   const n = orderedKPcts.length;
   if (!n || pitcherKPct == null) return null;
-  // PA per batter: distribute totalPA across lineup order (top of order gets extras)
   const base = Math.floor(totalPA / n);
   const extras = totalPA % n;
   const paArr = orderedKPcts.map((_, i) => base + (i < extras ? 1 : 0));
-  // Pre-compute log5-adjusted K probability per batter, park-adjusted
   const adjProbs = orderedKPcts.map(b => Math.min(0.95, log5K(pitcherKPct, b * 100) * parkFactor));
-  let hits = 0;
+  const dist = new Int16Array(nSim);
   for (let sim = 0; sim < nSim; sim++) {
     let ks = 0;
     for (let i = 0; i < n; i++) {
       const p = adjProbs[i], pa = paArr[i];
       for (let j = 0; j < pa; j++) { if (Math.random() < p) ks++; }
     }
-    if (ks >= threshold) hits++;
+    dist[sim] = ks;
   }
-  return parseFloat((hits / nSim * 100).toFixed(1));
+  return dist;
+}
+__name(simulateKsDist, "simulateKsDist");
+function kDistPct(dist, threshold) {
+  if (!dist) return null;
+  let hits = 0;
+  for (let i = 0; i < dist.length; i++) { if (dist[i] >= threshold) hits++; }
+  return parseFloat((hits / dist.length * 100).toFixed(1));
+}
+__name(kDistPct, "kDistPct");
+// Legacy single-threshold wrapper (kept for reference, unused in main loop)
+function simulateKs(orderedKPcts, pitcherKPct, threshold, parkFactor = 1, nSim = 5000, totalPA = 24) {
+  const dist = simulateKsDist(orderedKPcts, pitcherKPct, parkFactor, nSim, totalPA);
+  return kDistPct(dist, threshold);
 }
 __name(simulateKs, "simulateKs");
 function simulateHits(batterBA, pitcherBAA, parkFactor, threshold, nSim = 10000) {
