@@ -2048,7 +2048,7 @@ var worker_default = {
           let nbaSimScore = null, nbaPaceAdj = null, nbaOpportunity = null;
           if (sport === "nba") {
             let _sc = 0;
-            // 1. Pace Factor — avg game pace > league avg → 3pts
+            // 1. Pace Factor — avg game pace > league avg → 3pts (uses stats.nba.com data if cached)
             if (nbaPaceData) {
               const _tp = nbaPaceData.teamPace?.[playerTeam] ?? null;
               const _op = nbaPaceData.teamPace?.[tonightOpp] ?? null;
@@ -2057,13 +2057,15 @@ var worker_default = {
                 if (nbaPaceAdj > 0) _sc += 3;
               }
             }
-            // 2. Total Opportunity — usage% × avg minutes → 4pts (>=8.0) or 2pts (>=5.5)
-            if (nbaUsageData) {
-              const _u = nbaUsageData[String(info.id)];
-              if (_u) {
-                nbaOpportunity = parseFloat(((_u.usgPct ?? 0) * (_u.avgMin ?? 0)).toFixed(1));
-                if (nbaOpportunity >= 8.0) _sc += 4;
-                else if (nbaOpportunity >= 5.5) _sc += 2;
+            // 2. Avg minutes from ESPN gamelog (last 10 games) → 4pts (>=32min) or 2pts (>=25min)
+            const _minIdx = gl.ul.indexOf("MIN");
+            if (_minIdx !== -1) {
+              const _minVals = gl.events.slice(0, 10).map(ev => parseFloat(ev.stats[_minIdx])).filter(v => !isNaN(v) && v > 0);
+              if (_minVals.length >= 3) {
+                const _avgMin = _minVals.reduce((a, b) => a + b, 0) / _minVals.length;
+                nbaOpportunity = parseFloat(_avgMin.toFixed(1));
+                if (_avgMin >= 32) _sc += 4;
+                else if (_avgMin >= 25) _sc += 2;
               }
             }
             // 3. DVP weak — opponent rank 1-10 (most pts allowed to position) → 2pts
@@ -2097,7 +2099,7 @@ var worker_default = {
                 hitterSimScore, hitterFinalSimScore,
                 hitterLineupSpot, pitcherWHIP, pitcherFIP, hitterParkKF, hitterMoneyline, hitterBarrelPct,
               } : {}),
-              ...(sport === "nba" ? { nbaSimScore, nbaPaceAdj, nbaOpportunity } : {}),
+              ...(sport === "nba" ? { nbaSimScore, nbaPaceAdj, nbaOpportunity, isB2B } : {}),
             };
             if (isDebug) dropped.push(_dropObj);
             // For MLB strikeouts: always include in plays with qualified:false so player card can
@@ -2118,6 +2120,43 @@ var worker_default = {
                 playerStatus: null,
               });
             }
+            continue;
+          }
+          // Strikeout finalSimScore gate: simScore 7-9 (with edge bonus could be 10-12) must reach >= 10
+          // to qualify as a play. Show in report but mark qualified:false so player card still shows truePct.
+          if (sport === "mlb" && stat === "strikeouts" && finalSimScore !== null && finalSimScore < 10) {
+            const _dropLowScore = {
+              ..._dropBase,
+              reason: "low_confidence",
+              simScore, finalSimScore,
+              opponent: tonightOpp,
+              kpctMeets, kbbMeets, lkpMeets, pitchesMeets, parkMeets,
+              seasonPct: parseFloat(primaryPct.toFixed(1)), softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
+              truePct: parseFloat(truePct.toFixed(1)), edge: parseFloat(edge.toFixed(1)),
+              pitcherCSWPct: sportByteam.mlb?.pitcherCSWPct?.[playerTeam] ?? null,
+              pitcherKPct: pitcherKPctOut, pitcherKBBPct: pitcherKBBPctOut,
+              pitcherAvgPitches: sportByteam.mlb?.pitcherAvgPitches?.[playerTeam] ?? null,
+              lineupKPct: lineupKPctOut,
+              pitcherEra: _pitcherEraFromGl ?? sportByteam.mlb?.pitcherEra?.[playerTeam] ?? null,
+              pitcherHand: _pitcherHand ?? null, simPct: simPctOut,
+              parkFactor: parkFactorOut ?? 1,
+              gameMoneyline: sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null,
+              gameTotal: sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null,
+            };
+            if (isDebug) dropped.push(_dropLowScore);
+            plays.push({
+              ..._dropLowScore,
+              qualified: false,
+              playerName: playerNameDisplay || playerName,
+              playerId: info.id,
+              sport, playerTeam, stat, threshold, kalshiPct, americanOdds,
+              truePct: parseFloat(truePct.toFixed(1)),
+              log5Pct: simPctOut ?? log5PctOut, simPct: simPctOut,
+              gameDate,
+              gameTime: gameTimes[`${sport}:${playerTeam}`] ?? null,
+              lineupConfirmed: !(sportByteam.mlb?.projectedLineupTeams || []).includes(tonightOpp),
+              playerStatus: null,
+            });
             continue;
           }
           const mlbH2H = sport === "mlb" && softPct !== null;

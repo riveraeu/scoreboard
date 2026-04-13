@@ -1067,10 +1067,10 @@ function App() {
                           "mlb|hrr":        [{k:"spot",l:"Spot"},{k:"whip",l:"WHIP"},{k:"fip",l:"FIP"},{k:"brrl",l:"Brrl%"},{k:"env",l:"Park"},{k:"ml",l:"ML"}],
                           "mlb|hits":       [{k:"spot",l:"Spot"},{k:"whip",l:"WHIP"},{k:"fip",l:"FIP"},{k:"brrl",l:"Brrl%"},{k:"env",l:"Park"},{k:"ml",l:"ML"}],
                           "mlb|strikeouts": [{k:"env",l:"Park"},{k:"ml",l:"ML"},{k:"ou",l:"O/U"},{k:"csw",l:"CSW%"},{k:"kbb",l:"K-BB%"},{k:"lkp",l:"oK%"},{k:"pps",l:"P/GS"}],
-                          "nba|points":     [{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"},{k:"nbapace",l:"Pace"},{k:"nbaopp",l:"Usage×Min"},{k:"nba_b2b",l:"Rest"}],
-                          "nba|rebounds":   [{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"},{k:"nbapace",l:"Pace"},{k:"nbaopp",l:"Usage×Min"},{k:"nba_b2b",l:"Rest"}],
-                          "nba|assists":    [{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"},{k:"nbapace",l:"Pace"},{k:"nbaopp",l:"Usage×Min"},{k:"nba_b2b",l:"Rest"}],
-                          "nba|threePointers":[{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"},{k:"nbapace",l:"Pace"},{k:"nbaopp",l:"Usage×Min"},{k:"nba_b2b",l:"Rest"}],
+                          "nba|points":     [{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"},{k:"nbapace",l:"Pace"},{k:"nbaopp",l:"AvgMin"},{k:"nba_b2b",l:"Rest"}],
+                          "nba|rebounds":   [{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"},{k:"nbapace",l:"Pace"},{k:"nbaopp",l:"AvgMin"},{k:"nba_b2b",l:"Rest"}],
+                          "nba|assists":    [{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"},{k:"nbapace",l:"Pace"},{k:"nbaopp",l:"AvgMin"},{k:"nba_b2b",l:"Rest"}],
+                          "nba|threePointers":[{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"},{k:"nbapace",l:"Pace"},{k:"nbaopp",l:"AvgMin"},{k:"nba_b2b",l:"Rest"}],
                         };
                         const xcols = XCOLS[`${sport}|${stat}`] || [];
                         const DASH = <span style={{color:"#21262d"}}>—</span>;
@@ -1102,7 +1102,7 @@ function App() {
                           if (k==="env") { const pf = m.parkFactor ?? m.hitterParkKF; if (pf == null) return DASH; const pct = Math.round((pf-1)*100); const disp = (pct>=0?"+":"")+pct+"%"; return <span style={{color:pf>1.02?"#3fb950":pf<0.98?"#f78166":"#8b949e"}}>{disp}</span>; }
                           if (k==="brrl") { const b = m.hitterBarrelPct; return b != null ? <span style={{color:b>10?"#3fb950":b>6?"#e3b341":"#f78166"}}>{b.toFixed(1)+"%"}</span> : DASH; }
                           if (k==="nbapace") { const p = m.nbaPaceAdj; return p != null ? <span style={{color:p>0?"#3fb950":"#f78166"}}>{p>0?"+":""}{p.toFixed(1)}</span> : DASH; }
-                          if (k==="nbaopp")  { const o = m.nbaOpportunity; return o != null ? <span style={{color:o>=8?"#3fb950":o>=5.5?"#e3b341":"#f78166"}}>{o.toFixed(1)}</span> : DASH; }
+                          if (k==="nbaopp")  { const o = m.nbaOpportunity; return o != null ? <span style={{color:o>=32?"#3fb950":o>=25?"#e3b341":"#f78166"}}>{o.toFixed(0)}m</span> : DASH; }
                           if (k==="nba_b2b") { if (m.isB2B == null) return DASH; return <span style={{color:m.isB2B?"#f78166":"#3fb950"}}>{m.isB2B?"B2B":"Rested"}</span>; }
                           return DASH;
                         };
@@ -2425,7 +2425,7 @@ function App() {
                                     <span style={{background:"#161b22",borderRadius:4,padding:"1px 6px",color:scColor,fontWeight:700,fontSize:10}}>{sc}/14 {sc>=11?"Alpha":sc>=7?"Mid":"Low"}</span>
                                     <span style={{display:"inline-flex",gap:6,flexWrap:"wrap"}}>
                                       {mkGate(play.nbaPaceAdj != null && play.nbaPaceAdj > 0, 3, `Pace ${play.nbaPaceAdj != null ? (play.nbaPaceAdj>0?"+":"")+play.nbaPaceAdj : "—"}`)}
-                                      {mkGate(play.nbaOpportunity != null && play.nbaOpportunity >= 8, 4, `Opp ${play.nbaOpportunity != null ? play.nbaOpportunity.toFixed(1) : "—"}`)}
+                                      {mkGate(play.nbaOpportunity != null && play.nbaOpportunity >= 32, 4, `${play.nbaOpportunity != null ? play.nbaOpportunity.toFixed(0)+"m" : "—"}`)}
                                       {mkGate(play.posDvpRank != null && play.posDvpRank <= 10, 2, `DVP #${play.posDvpRank ?? "—"}`)}
                                       {mkGate(!play.isB2B, 2, play.isB2B ? "B2B" : "Rested")}
                                       {mkGate(play.edge > 5, 3, `Edge ${play.edge != null ? (play.edge>0?"+":"")+play.edge+"%" : "—"}`)}
