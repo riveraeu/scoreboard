@@ -1601,7 +1601,25 @@ var worker_default = {
                 const _osDebug = !_osCol ? (!_osGl ? "no_gl" : `col_miss:${col}|got:${(_osGl.ul||[]).join(",")}`) : null;
                 const _osSoftVals = _osGl?.events && _osCol ? _osGl.events.filter((ev) => nbaEffectiveSoftTeams?.has(ev.oppAbbr)).map(_osCol.getStat).filter((v) => !isNaN(v)) : [];
                 const _osSoftPct = _osSoftVals.length >= 5 ? parseFloat((_osSoftVals.filter((v) => v >= threshold).length / _osSoftVals.length * 100).toFixed(1)) : null;
-                dropped.push({ ..._dropBase, reason: "opp_not_soft", opponent: tonightOpp, dvpBased: !!nbaDvpSoftTeams, seasonPct: _osSeason, softPct: _osSoftPct, softGames: _osSoftVals.length, truePct: _osTruePct, edge: _osEdge, posDvpRank: _osDvpRank, posGroup: nbaPos, _debug: _osDebug });
+                // Compute NBA-specific fields inline so they appear in the report
+                const _osYday = new Date(); _osYday.setDate(_osYday.getDate() - 1);
+                const _osYdayStr = _osYday.toISOString().slice(0, 10);
+                const _osIsB2B = _osGl && _osGl.events.length > 0 && (_osGl.events[0]?.date || "").startsWith(_osYdayStr);
+                let _osPaceAdj = null;
+                if (nbaPaceData) {
+                  const _tp = nbaPaceData.teamPace?.[playerTeam] ?? null;
+                  const _op = nbaPaceData.teamPace?.[tonightOpp] ?? null;
+                  if (_tp !== null && _op !== null) _osPaceAdj = parseFloat(((_tp + _op) / 2 - (nbaPaceData.leagueAvgPace ?? 100)).toFixed(1));
+                }
+                let _osOpportunity = null;
+                if (_osGl) {
+                  const _osMinIdx = _osGl.ul.indexOf("MIN");
+                  if (_osMinIdx !== -1) {
+                    const _osMinVals = _osGl.events.slice(0, 10).map(ev => parseFloat(ev.stats[_osMinIdx])).filter(v => !isNaN(v) && v > 0);
+                    if (_osMinVals.length >= 3) _osOpportunity = parseFloat((_osMinVals.reduce((a, b) => a + b, 0) / _osMinVals.length).toFixed(1));
+                  }
+                }
+                dropped.push({ ..._dropBase, reason: "opp_not_soft", opponent: tonightOpp, dvpBased: !!nbaDvpSoftTeams, seasonPct: _osSeason, softPct: _osSoftPct, softGames: _osSoftVals.length, truePct: _osTruePct, edge: _osEdge, posDvpRank: _osDvpRank, posGroup: nbaPos, _debug: _osDebug, isB2B: _osIsB2B, nbaPaceAdj: _osPaceAdj, nbaOpportunity: _osOpportunity });
               }
               continue;
             }
