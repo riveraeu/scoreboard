@@ -1224,11 +1224,13 @@ var worker_default = {
         if (!nbaDepthChartPos && CACHE2) {
           nbaDepthChartPos = await buildNbaDepthChartPos(CACHE2).catch(() => null);
         }
-        // Fetch NBA pace + usage data (cached 12h) for SimScore
-        // NBA pace data from KV cache only (stats.nba.com blocks server-side fetches)
+        // Fetch NBA pace data (ESPN team stats, cached 12h) for SimScore
         let nbaPaceData = null;
-        if (sportsNeeded.has("nba") && CACHE2) {
-          nbaPaceData = await CACHE2.get("nba:pace:2526", "json").catch(() => null);
+        if (sportsNeeded.has("nba")) {
+          nbaPaceData = CACHE2 ? await CACHE2.get("nba:pace:2526", "json").catch(() => null) : null;
+          if (!nbaPaceData) {
+            nbaPaceData = await buildNbaPaceData(CACHE2).catch(() => null);
+          }
         }
         const preFilteredMarkets = [];
         const preDropped = [];
@@ -3238,6 +3240,40 @@ async function buildNbaDepthChartPos(cache) {
   }
 }
 __name(buildNbaDepthChartPos, "buildNbaDepthChartPos");
+async function buildNbaPaceData(cache) {
+  try {
+    const hdrs = { "User-Agent": "Mozilla/5.0" };
+    // Step 1: get all 30 teams (id + abbreviation)
+    const teamsRes = await fetch("https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams?limit=32", { headers: hdrs });
+    if (!teamsRes.ok) return null;
+    const teamsData = await teamsRes.json();
+    const teams = (teamsData.sports?.[0]?.leagues?.[0]?.teams || []).map(t => t.team);
+    // Step 2: fetch team stats in parallel, extract paceFactor
+    const teamPace = {};
+    await Promise.all(teams.map(async t => {
+      try {
+        const r = await fetch(`https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2026/types/2/teams/${t.id}/statistics`, { headers: hdrs });
+        if (!r.ok) return;
+        const d = await r.json();
+        for (const cat of d.splits?.categories || []) {
+          const stat = (cat.stats || []).find(s => s.name === "paceFactor");
+          if (stat?.value > 0) { teamPace[t.abbreviation] = stat.value; break; }
+        }
+      } catch {}
+    }));
+    if (Object.keys(teamPace).length === 0) return null;
+    const paces = Object.values(teamPace);
+    const leagueAvgPace = paces.reduce((a, b) => a + b, 0) / paces.length;
+    const result = { teamPace, leagueAvgPace: parseFloat(leagueAvgPace.toFixed(2)) };
+    if (cache) await cache.put("nba:pace:2526", JSON.stringify(result), { expirationTtl: 43200 }).catch(() => {});
+    console.log(`[nba-pace] built pace map: ${Object.keys(teamPace).length} teams, avg pace ${result.leagueAvgPace}`);
+    return result;
+  } catch (e) {
+    console.log("[nba-pace] error:", String(e));
+    return null;
+  }
+}
+__name(buildNbaPaceData, "buildNbaPaceData");
 async function buildNbaPlayerPosFromSleeper(cache) {
   try {
     const r = await fetch("https://api.sleeper.app/v1/players/nba", { headers: { "User-Agent": "Mozilla/5.0" } });
