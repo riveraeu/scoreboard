@@ -105,19 +105,52 @@ True% = Monte Carlo simulation (`simulateHits`) using batter BA × pitcher BAA (
 ## Key Functions & Code Locations
 
 ### `api/[...path].js`
-| Function | What it does |
-|---|---|
-| `simulateKsDist(orderedKPcts, pitcherKPct, parkFactor, nSim)` | Runs shared Monte Carlo, returns `Int16Array` of K counts |
-| `kDistPct(dist, threshold)` | Queries shared distribution — guarantees monotonicity |
-| `simulateHits(batterBA, pitcherBAA, parkFactor, threshold, nSim)` | Monte Carlo for hitter hits/HRR |
-| `buildNbaStatDist(gameValues, dvpFactor, paceAdj, isB2B, nSim)` | Builds shared `Float32Array` of simulated NBA per-game values |
-| `nbaDistPct(dist, threshold)` | Queries shared dist for any threshold — guarantees monotonicity |
-| `log5K(pitcherKPct, batterKPct)` | Log5 formula for K probability |
-| `buildPitcherKPct(mlbSched)` | Fetches pitcher season stats (K%, KBB%, ERA, P/GS, CSW%) |
-| `buildLineupKPct(mlbSched)` | Fetches lineup batter K-rates, lineup spots, ordered arrays |
-| `buildBarrelPct()` | Fetches Baseball Savant barrel% CSV, 5s timeout, cached 6h |
-| `buildNbaDepthChartPos()` | ESPN depth chart → `{espnPlayerId: "PG"|"SG"|...}` |
-| `buildNbaPaceData(cache)` | ESPN team stats → `{teamPace, leagueAvgPace}`, cached 12h in KV |
+
+**Simulation**
+| Function | Line | What it does |
+|---|---|---|
+| `log5K(pitcherKPct, batterKPct)` | ~2443 | Log5 formula for K probability |
+| `simulateKsDist(orderedKPcts, pitcherKPct, parkFactor, nSim)` | ~2466 | Shared Monte Carlo, returns `Int16Array` of K counts |
+| `kDistPct(dist, threshold)` | ~2485 | Queries K dist — guarantees monotonicity |
+| `buildNbaStatDist(gameValues, dvpFactor, paceAdj, isB2B, nSim)` | ~2501 | Shared `Float32Array` of simulated NBA per-game values |
+| `nbaDistPct(dist, threshold)` | ~2527 | Queries NBA dist for any threshold — guarantees monotonicity |
+| `simulateHits(batterBA, pitcherBAA, parkFactor, threshold, nSim)` | ~2534 | Monte Carlo for hitter hits/HRR |
+
+**MLB Data Fetchers**
+| Function | Line | What it does |
+|---|---|---|
+| `buildLineupKPct(mlbSched)` | ~2597 | Lineup batter K-rates, lineup spots, ordered arrays |
+| `buildBarrelPct()` | ~2768 | Baseball Savant barrel% CSV, 5s timeout, cached 6h |
+| `buildPitcherKPct(mlbSched)` | ~2812 | Pitcher season stats (K%, KBB%, ERA, P/GS, CSW%) |
+
+**NBA Data Fetchers**
+| Function | Line | What it does |
+|---|---|---|
+| `buildNbaDvpStage1(cache)` | ~3033 | ESPN DVP stage 1 |
+| `buildNbaDvpFromBettingPros(cache)` | ~3182 | DVP from BettingPros (preferred source) |
+| `buildNbaDepthChartPos(cache)` | ~3295 | ESPN depth chart → `{espnPlayerId: "PG"|"SG"|...}` |
+| `buildNbaPaceData(cache)` | ~3337 | ESPN team stats → `{teamPace, leagueAvgPace}`, cached 12h |
+| `buildNbaDvpStage3FG(cache)` | ~3394 | DVP stage 3 fallback |
+
+**Utilities**
+| Function | Line | What it does |
+|---|---|---|
+| `parseGameOdds(events)` | ~3434 | Extract ML/total from ESPN scoreboard events |
+| `buildSoftTeamAbbrs(teams, stat)` | ~3456 | Top-N teams allowing most of a stat |
+| `buildTeamRankMap(teams, stat)` | ~3485 | Full rank map `{abbr: {rank, value}}` |
+| `kellyFraction / evPerUnit` | ~2553 | Kelly and EV calculations |
+
+**Key constants & loop setup**
+| Symbol | Line | What it is |
+|---|---|---|
+| `SERIES_CONFIG` | ~884 | Kalshi series tickers per sport/stat |
+| `PARK_KFACTOR` | ~2347 | Park factors for strikeout simulation |
+| `PARK_HITFACTOR` | ~2379 | Park factors for hit simulation |
+| `SOFT_TEAM_METRIC` | ~3428 | ESPN stat hint/index per NBA stat |
+| `pitcherKDistCache` | ~1544 | Per-pitcher K distribution cache (keyed `team|hand`) |
+| `nbaPlayerDistCache` | ~1546 | Per-player NBA stat distribution cache (keyed `playerId|stat`) |
+| `leagueAvgCache` | ~1482 | League avg per `sport|stat` for DVP factor computation |
+| `STAT_SOFT` | ~1171 | Soft/rank data per `sport|stat`, built from byteam data |
 
 ### Kalshi Market Parsing
 - Series tickers in `SERIES_CONFIG`
