@@ -1223,6 +1223,65 @@ var worker_default = {
         if (!nbaDepthChartPos && CACHE2) {
           nbaDepthChartPos = await buildNbaDepthChartPos(CACHE2).catch(() => null);
         }
+        // Fetch NBA pace + usage data (cached 12h) for SimScore
+        let nbaPaceData = null, nbaUsageData = null;
+        if (sportsNeeded.has("nba")) {
+          [nbaPaceData, nbaUsageData] = await Promise.all([
+            CACHE2 ? CACHE2.get("nba:pace:2526", "json").catch(() => null) : null,
+            CACHE2 ? CACHE2.get("nba:usage:2526", "json").catch(() => null) : null,
+          ]);
+          if (!nbaPaceData || !nbaUsageData) {
+            const NBA_STATS_HDR = {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              "Accept": "application/json, text/plain, */*",
+              "Accept-Language": "en-US,en;q=0.9",
+              "x-nba-stats-origin": "stats",
+              "x-nba-stats-token": "true",
+              "Referer": "https://www.nba.com/",
+              "Origin": "https://www.nba.com",
+            };
+            const [teamR, playerR] = await Promise.all([
+              nbaPaceData ? null : fetch("https://stats.nba.com/stats/leaguedashteamstats?Conference=&DateFrom=&DateTo=&Division=&GameScope=&GameSegment=&Height=&ISTRound=&LastNGames=0&LeagueID=00&Location=&MeasureType=Advanced&Month=0&OpponentTeamID=0&Outcome=&PORound=0&PaceAdjust=N&PerMode=PerGame&PlusMinus=N&PtMeasureType=&Rank=N&Season=2025-26&SeasonSegment=&SeasonType=Regular+Season&ShotClockRange=&StarterBench=&TeamID=0&TwoWay=0&VsConference=&VsDivision=", { headers: NBA_STATS_HDR }).catch(() => null),
+              nbaUsageData ? null : fetch("https://stats.nba.com/stats/leaguedashplayerstats?College=&Conference=&Country=&DateFrom=&DateTo=&Division=&DraftPick=&DraftYear=&GameScope=&GameSegment=&Height=&ISTRound=&LastNGames=0&LeagueID=00&Location=&MeasureType=Advanced&Month=0&OpponentTeamID=0&Outcome=&PORound=0&PaceAdjust=N&PerMode=PerGame&PlusMinus=N&PtMeasureType=&Rank=N&Season=2025-26&SeasonSegment=&SeasonType=Regular+Season&ShotClockRange=&StarterBench=&TeamID=0&TwoWay=0&VsConference=&VsDivision=&Weight=", { headers: NBA_STATS_HDR }).catch(() => null),
+            ]);
+            if (teamR?.ok) {
+              try {
+                const d = await teamR.json();
+                const rs = d.resultSets?.[0];
+                if (rs) {
+                  const hdrs = rs.headers;
+                  const paceIdx = hdrs.indexOf("PACE");
+                  const abbrIdx = hdrs.indexOf("TEAM_ABBREVIATION");
+                  if (paceIdx !== -1 && abbrIdx !== -1) {
+                    const paces = rs.rowSet.map(r => r[paceIdx]).filter(v => v > 0);
+                    const leagueAvgPace = paces.length > 0 ? paces.reduce((a,b) => a+b,0) / paces.length : 100;
+                    const teamPace = {};
+                    for (const row of rs.rowSet) { if (row[abbrIdx]) teamPace[row[abbrIdx]] = row[paceIdx]; }
+                    nbaPaceData = { teamPace, leagueAvgPace };
+                    if (CACHE2) CACHE2.put("nba:pace:2526", JSON.stringify(nbaPaceData), { expirationTtl: 43200 }).catch(() => {});
+                  }
+                }
+              } catch {}
+            }
+            if (playerR?.ok) {
+              try {
+                const d = await playerR.json();
+                const rs = d.resultSets?.[0];
+                if (rs) {
+                  const hdrs = rs.headers;
+                  const idIdx = hdrs.indexOf("PLAYER_ID");
+                  const usgIdx = hdrs.indexOf("USG_PCT");
+                  const minIdx = hdrs.indexOf("MIN");
+                  if (idIdx !== -1 && usgIdx !== -1 && minIdx !== -1) {
+                    nbaUsageData = {};
+                    for (const row of rs.rowSet) { if (row[idIdx]) nbaUsageData[String(row[idIdx])] = { usgPct: row[usgIdx], avgMin: row[minIdx] }; }
+                    if (CACHE2) CACHE2.put("nba:usage:2526", JSON.stringify(nbaUsageData), { expirationTtl: 43200 }).catch(() => {});
+                  }
+                }
+              } catch {}
+            }
+          }
+        }
         const preFilteredMarkets = [];
         const preDropped = [];
         for (const m of qualifyingMarkets) {
@@ -1769,7 +1828,7 @@ var worker_default = {
               const adjustedLog5 = log5AvgOut * parkFactorOut;
               expectedKsOut = parseFloat((adjustedLog5 / 100 * 26).toFixed(1));
               if (orderedKPcts && orderedKPcts.length >= 8) {
-                const _nSim = simScore !== null && simScore >= 11 ? 10000 : 1000;
+                const _nSim = simScore !== null && simScore >= 11 ? 10000 : 5000;
                 simPctOut = simulateKs(orderedKPcts, pitcherKPctOut, threshold, parkFactorOut, _nSim);
               } else {
                 log5PctOut = parseFloat(log5HitRate(adjustedLog5, threshold).toFixed(1));
@@ -1958,8 +2017,38 @@ var worker_default = {
           hitterFinalSimScore = (sport === "mlb" && stat !== "strikeouts" && hitterSimScore !== null)
             ? hitterSimScore + (edge > 5 ? 3 : 0)
             : null;
+          // NBA SimScore
+          let nbaSimScore = null, nbaPaceAdj = null, nbaOpportunity = null;
+          if (sport === "nba") {
+            let _sc = 0;
+            // 1. Pace Factor — avg game pace > league avg → 3pts
+            if (nbaPaceData) {
+              const _tp = nbaPaceData.teamPace?.[playerTeam] ?? null;
+              const _op = nbaPaceData.teamPace?.[tonightOpp] ?? null;
+              if (_tp !== null && _op !== null) {
+                nbaPaceAdj = parseFloat(((_tp + _op) / 2 - (nbaPaceData.leagueAvgPace ?? 100)).toFixed(1));
+                if (nbaPaceAdj > 0) _sc += 3;
+              }
+            }
+            // 2. Total Opportunity — usage% × avg minutes → 4pts (>=8.0) or 2pts (>=5.5)
+            if (nbaUsageData) {
+              const _u = nbaUsageData[String(info.id)];
+              if (_u) {
+                nbaOpportunity = parseFloat(((_u.usgPct ?? 0) * (_u.avgMin ?? 0)).toFixed(1));
+                if (nbaOpportunity >= 8.0) _sc += 4;
+                else if (nbaOpportunity >= 5.5) _sc += 2;
+              }
+            }
+            // 3. DVP weak — opponent rank 1-10 (most pts allowed to position) → 2pts
+            if (posDvpRankOut !== null && posDvpRankOut <= 10) _sc += 2;
+            // 4. Schedule context — rested (not B2B) → 2pts
+            if (!isB2B) _sc += 2;
+            // 5. Market signal — edge > 5% → 3pts
+            if (edge > 5) _sc += 3;
+            nbaSimScore = _sc;
+          }
           if (kalshiPct < 70 || edge < 3) {
-            if (isDebug) dropped.push({
+            const _dropObj = {
               ..._dropBase,
               truePct: parseFloat(truePct.toFixed(1)), rawTruePct: parseFloat(rawTruePct.toFixed(1)),
               edge: parseFloat(edge.toFixed(1)),
@@ -1981,7 +2070,27 @@ var worker_default = {
                 hitterSimScore, hitterFinalSimScore,
                 hitterLineupSpot, pitcherWHIP, pitcherFIP, hitterParkKF, hitterMoneyline, hitterBarrelPct,
               } : {}),
-            });
+              ...(sport === "nba" ? { nbaSimScore, nbaPaceAdj, nbaOpportunity } : {}),
+            };
+            if (isDebug) dropped.push(_dropObj);
+            // For MLB strikeouts: always include in plays with qualified:false so player card can
+            // show real truePct for all thresholds (avoids fallback formula producing same/inverted values)
+            if (sport === "mlb" && stat === "strikeouts") {
+              plays.push({
+                ..._dropObj,
+                qualified: false,
+                playerName: playerNameDisplay || playerName,
+                playerId: info.id,
+                sport, playerTeam, stat, threshold, kalshiPct, americanOdds,
+                truePct: parseFloat(truePct.toFixed(1)),
+                log5Pct: simPctOut ?? log5PctOut,
+                simPct: simPctOut,
+                gameDate,
+                gameTime: gameTimes[`${sport}:${playerTeam}`] ?? null,
+                lineupConfirmed: !(sportByteam.mlb?.projectedLineupTeams || []).includes(tonightOpp),
+                playerStatus: null,
+              });
+            }
             continue;
           }
           const mlbH2H = sport === "mlb" && softPct !== null;
@@ -2052,6 +2161,9 @@ var worker_default = {
             hitterAbVsPitcher: sport === "mlb" && stat !== "strikeouts" ? hitterAbVsPitcher : void 0,
             hitterPitcherName: sport === "mlb" && stat !== "strikeouts" ? (sportByteam.mlb?.probables?.[tonightOpp]?.name ?? null) : void 0,
             hitterPitcherEra: sport === "mlb" && stat !== "strikeouts" ? (sportByteam.mlb?.probables?.[tonightOpp]?.era ?? null) : void 0,
+            nbaSimScore: sport === "nba" ? nbaSimScore : void 0,
+            nbaPaceAdj: sport === "nba" ? nbaPaceAdj : void 0,
+            nbaOpportunity: sport === "nba" ? nbaOpportunity : void 0,
             isHomeGame,
             isB2B,
             dvpFactor: dvpFactorOut,
@@ -2101,6 +2213,27 @@ var worker_default = {
         // Filter out plays from past dates (Kalshi sometimes keeps settled markets open)
         const todayStr = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
         plays.splice(0, plays.length, ...plays.filter(p => !p.gameDate || p.gameDate >= todayStr));
+        // Enforce monotonicity: for MLB strikeout props on the same pitcher, lower threshold must have >= truePct
+        {
+          const _skGroups = {};
+          for (const p of plays) {
+            if (p.sport === "mlb" && p.stat === "strikeouts") {
+              const key = `${p.playerTeam}|${p.gameDate}`;
+              (_skGroups[key] = _skGroups[key] || []).push(p);
+            }
+          }
+          for (const group of Object.values(_skGroups)) {
+            group.sort((a, b) => a.threshold - b.threshold);
+            // Sweep from lowest threshold up: each must have truePct >= next higher
+            for (let i = group.length - 2; i >= 0; i--) {
+              if (group[i].truePct < group[i + 1].truePct) {
+                group[i].truePct = group[i + 1].truePct;
+                group[i].rawTruePct = group[i + 1].rawTruePct;
+                group[i].edge = parseFloat((group[i].truePct - group[i].kalshiPct).toFixed(1));
+              }
+            }
+          }
+        }
         if (isDebug) {
           return jsonResponse({ plays, dropped, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null }, true);
         }

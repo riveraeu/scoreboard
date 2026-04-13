@@ -991,10 +991,10 @@ function App() {
                   "mlb|hrr":       { note: "True% = Monte Carlo simulation (batterBA \u00d7 pitcherBAA log5) \u00b7 park-adjusted \u00b7 Sim-Score \u2265 7 (spot\u21923/2, WHIP\u21923, FIP>ERA\u21922, park\u21921, edge bonus\u21923)", gates: ["Lineup spot 1\u20134", "Sim-Score \u2265 7 (max 14)", "Edge \u2265 3%"] },
                   "mlb|hits":      { note: "True% = Monte Carlo simulation (batterBA \u00d7 pitcherBAA log5) \u00b7 park-adjusted \u00b7 Sim-Score \u2265 7 (spot\u21923/2, WHIP\u21923, FIP>ERA\u21922, park\u21921, edge bonus\u21923)", gates: ["Lineup spot 1\u20134", "Sim-Score \u2265 7 (max 14)", "Edge \u2265 3%"] },
                   "mlb|strikeouts":{ note: "True% = Monte Carlo simulation (pitcher K% \u00d7 lineup K% log5) \u00b7 regressed to mean \u00b7 park-adjusted \u00b7 Sim-Score \u2265 7 (CSW%\u21923, K-BB%\u21922, oK%\u21923, P/GS\u21922, park\u21921, edge bonus\u21923)", gates: ["Sim-Score \u2265 7 (max 14)", "Edge \u2265 3%"] },
-                  "nba|points":    { note: "True% = avg(Season%, vs-soft-DVP-team%)", gates: ["Opp in soft DVP teams", "Edge \u2265 3%"] },
-                  "nba|rebounds":  { note: "True% = avg(Season%, vs-soft-DVP-team%)", gates: ["Opp in soft DVP teams", "Edge \u2265 3%"] },
-                  "nba|assists":   { note: "True% = avg(Season%, vs-soft-DVP-team%)", gates: ["Opp in soft DVP teams", "Edge \u2265 3%"] },
-                  "nba|threePointers": { note: "True% = avg(Season%, vs-soft-DVP-team%)", gates: ["Opp in soft DVP teams", "Edge \u2265 3%"] },
+                  "nba|points":    { note: "True% = avg(Season%, vs-soft-DVP-team%) · B2B -4% · Sim-Score: pace(3) + usage×min(4) + DVP(2) + rest(2) + edge(3) = max 14", gates: ["Opp in soft DVP teams", "Edge \u2265 3%"] },
+                  "nba|rebounds":  { note: "True% = avg(Season%, vs-soft-DVP-team%) · B2B -4% · Sim-Score: pace(3) + usage×min(4) + DVP(2) + rest(2) + edge(3) = max 14", gates: ["Opp in soft DVP teams", "Edge \u2265 3%"] },
+                  "nba|assists":   { note: "True% = avg(Season%, vs-soft-DVP-team%) · B2B -4% · Sim-Score: pace(3) + usage×min(4) + DVP(2) + rest(2) + edge(3) = max 14", gates: ["Opp in soft DVP teams", "Edge \u2265 3%"] },
+                  "nba|threePointers": { note: "True% = avg(Season%, vs-soft-DVP-team%) · B2B -4% · Sim-Score: pace(3) + usage×min(4) + DVP(2) + rest(2) + edge(3) = max 14", gates: ["Opp in soft DVP teams", "Edge \u2265 3%"] },
                 };
 
                 return sortedGroups.map(({ sport, stat, items }) => {
@@ -1030,9 +1030,12 @@ function App() {
                         case "fip": return m.pitcherFIP ?? 0;
                         case "ou": return m.gameTotal ?? 0;
                         case "dvp": return m.posDvpRank ?? 99;
-                        case "sim": return m.finalSimScore ?? m.hitterFinalSimScore ?? 0;
+                        case "sim": return m.finalSimScore ?? m.hitterFinalSimScore ?? m.nbaSimScore ?? 0;
                         case "env": return m.parkFactor ?? m.hitterParkKF ?? 1;
                         case "brrl": return m.hitterBarrelPct ?? 0;
+                        case "nbapace": return m.nbaPaceAdj ?? -99;
+                        case "nbaopp": return m.nbaOpportunity ?? 0;
+                        case "nba_b2b": return m.isB2B ? 0 : 1;
                         default: return 0;
                       }};
                       const va = _sv(a), vb = _sv(b);
@@ -1040,9 +1043,9 @@ function App() {
                       return _sortCfg.dir === "desc" ? -cmp : cmp;
                     }
                     if (a.qualified !== b.qualified) return a.qualified ? -1 : 1;
-                    if (sport === "mlb") {
-                      const sa = a.finalSimScore ?? a.hitterFinalSimScore ?? a.simScore ?? a.hitterSimScore ?? 0;
-                      const sb = b.finalSimScore ?? b.hitterFinalSimScore ?? b.simScore ?? b.hitterSimScore ?? 0;
+                    if (sport === "mlb" || sport === "nba") {
+                      const sa = a.finalSimScore ?? a.hitterFinalSimScore ?? a.nbaSimScore ?? a.simScore ?? a.hitterSimScore ?? 0;
+                      const sb = b.finalSimScore ?? b.hitterFinalSimScore ?? b.nbaSimScore ?? b.simScore ?? b.hitterSimScore ?? 0;
                       if (sb !== sa) return sb - sa;
                     }
                     return (b.edge || b.kalshiPct || 0) - (a.edge || a.kalshiPct || 0);
@@ -1064,10 +1067,10 @@ function App() {
                           "mlb|hrr":        [{k:"spot",l:"Spot"},{k:"whip",l:"WHIP"},{k:"fip",l:"FIP"},{k:"brrl",l:"Brrl%"},{k:"env",l:"Park"},{k:"ml",l:"ML"}],
                           "mlb|hits":       [{k:"spot",l:"Spot"},{k:"whip",l:"WHIP"},{k:"fip",l:"FIP"},{k:"brrl",l:"Brrl%"},{k:"env",l:"Park"},{k:"ml",l:"ML"}],
                           "mlb|strikeouts": [{k:"env",l:"Park"},{k:"ml",l:"ML"},{k:"ou",l:"O/U"},{k:"csw",l:"CSW%"},{k:"kbb",l:"K-BB%"},{k:"lkp",l:"oK%"},{k:"pps",l:"P/GS"}],
-                          "nba|points":     [{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"}],
-                          "nba|rebounds":   [{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"}],
-                          "nba|assists":    [{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"}],
-                          "nba|threePointers":[{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"}],
+                          "nba|points":     [{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"},{k:"nbapace",l:"Pace"},{k:"nbaopp",l:"Usage×Min"},{k:"nba_b2b",l:"Rest"}],
+                          "nba|rebounds":   [{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"},{k:"nbapace",l:"Pace"},{k:"nbaopp",l:"Usage×Min"},{k:"nba_b2b",l:"Rest"}],
+                          "nba|assists":    [{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"},{k:"nbapace",l:"Pace"},{k:"nbaopp",l:"Usage×Min"},{k:"nba_b2b",l:"Rest"}],
+                          "nba|threePointers":[{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"},{k:"nbapace",l:"Pace"},{k:"nbaopp",l:"Usage×Min"},{k:"nba_b2b",l:"Rest"}],
                         };
                         const xcols = XCOLS[`${sport}|${stat}`] || [];
                         const DASH = <span style={{color:"#21262d"}}>—</span>;
@@ -1095,9 +1098,12 @@ function App() {
                           if (k==="fip")  { const f = m.pitcherFIP; const _era = m.hitterPitcherEra ?? m.pitcherEra; return C(f != null ? f.toFixed(2) : null, (f != null && _era != null) ? (f > _era + 0.3 ? "#3fb950" : f > _era ? "#e3b341" : "#f78166") : "#8b949e"); }
                           if (k==="ou")  return C(ou  != null ? ou : null, ou < 8.5 ? "#3fb950" : ou <= 9.5 ? "#e3b341" : "#f78166");
                           if (k==="dvp") { const r = m.posDvpRank; return C(r != null ? `#${r}${m.posGroup?" "+m.posGroup:""}` : null, r<=10?"#3fb950":r<=20?"#e3b341":"#f78166"); }
-                          if (k==="sim") { const sc = m.finalSimScore ?? m.hitterFinalSimScore ?? m.simScore ?? m.hitterSimScore; return sc != null ? <span style={{color:sc>=11?"#3fb950":sc>=7?"#e3b341":"#8b949e",fontWeight:600}}>{sc}/14</span> : DASH; }
+                          if (k==="sim") { const sc = m.finalSimScore ?? m.hitterFinalSimScore ?? m.nbaSimScore ?? m.simScore ?? m.hitterSimScore; return sc != null ? <span style={{color:sc>=11?"#3fb950":sc>=7?"#e3b341":"#8b949e",fontWeight:600}}>{sc}/14</span> : DASH; }
                           if (k==="env") { const pf = m.parkFactor ?? m.hitterParkKF; if (pf == null) return DASH; const pct = Math.round((pf-1)*100); const disp = (pct>=0?"+":"")+pct+"%"; return <span style={{color:pf>1.02?"#3fb950":pf<0.98?"#f78166":"#8b949e"}}>{disp}</span>; }
                           if (k==="brrl") { const b = m.hitterBarrelPct; return b != null ? <span style={{color:b>10?"#3fb950":b>6?"#e3b341":"#f78166"}}>{b.toFixed(1)+"%"}</span> : DASH; }
+                          if (k==="nbapace") { const p = m.nbaPaceAdj; return p != null ? <span style={{color:p>0?"#3fb950":"#f78166"}}>{p>0?"+":""}{p.toFixed(1)}</span> : DASH; }
+                          if (k==="nbaopp")  { const o = m.nbaOpportunity; return o != null ? <span style={{color:o>=8?"#3fb950":o>=5.5?"#e3b341":"#f78166"}}>{o.toFixed(1)}</span> : DASH; }
+                          if (k==="nba_b2b") { if (m.isB2B == null) return DASH; return <span style={{color:m.isB2B?"#f78166":"#3fb950"}}>{m.isB2B?"B2B":"Rested"}</span>; }
                           return DASH;
                         };
                         const RESULT_LABELS = {
@@ -1146,7 +1152,7 @@ function App() {
                           <div style={{display:"flex",alignItems:"center",gap:6,padding:"3px 12px 4px",marginBottom:2}}>
                             {_hdr("player","Player",{flex:2,minWidth:0},"left")}
                             {_hdr("line","Line")}
-                            {sport === "mlb" && _hdr("sim","Score")}
+                            {(sport === "mlb" || sport === "nba") && _hdr("sim","Score")}
                             {_hdr("true","True%")}
                             {_hdr("kalshi","Kalshi")}
                             {_hdr("edge","Edge")}
@@ -1176,6 +1182,15 @@ function App() {
                                       <span style={{color:sc>=11?"#3fb950":"#e3b341",fontSize:9}}>{tier}</span>
                                     </span>;
                                   }
+                                  if (sport === "nba" && m.nbaSimScore != null) {
+                                    const sc = m.nbaSimScore;
+                                    const scColor = sc >= 11 ? "#3fb950" : sc >= 7 ? "#e3b341" : "#8b949e";
+                                    const tier = sc >= 11 ? "Alpha" : sc >= 7 ? "Mid" : "Low";
+                                    return <span style={{background:"rgba(63,185,80,0.15)",borderRadius:4,padding:"1px 6px",display:"inline-flex",gap:4,alignItems:"center"}}>
+                                      <span style={{color:scColor,fontWeight:700,fontSize:10}}>{sc}/14</span>
+                                      <span style={{color:scColor,fontSize:9}}>{tier}</span>
+                                    </span>;
+                                  }
                                   return <span style={{background:"rgba(63,185,80,0.15)",color:"#3fb950",borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:700}}>PLAY</span>;
                                 }
                                 if (m.reason === "low_confidence" && (m.simScore ?? m.hitterSimScore) != null) {
@@ -1192,7 +1207,7 @@ function App() {
                                     {(m.playerTeam||m.kalshiPlayerTeam)&&<span style={{color:"#484f58",fontWeight:400,flexShrink:0,fontSize:10}}>({m.playerTeam||m.kalshiPlayerTeam})</span>}
                                   </div>
                                   <div style={{flex:1,color:"#8b949e",fontSize:11,textAlign:"right"}}>{m.threshold}+</div>
-                                  {sport === "mlb" && <div style={{flex:1,fontSize:11,textAlign:"right"}}>{xcell(m,"sim")}</div>}
+                                  {(sport === "mlb" || sport === "nba") && <div style={{flex:1,fontSize:11,textAlign:"right"}}>{xcell(m,"sim")}</div>}
                                   <div style={{flex:1,fontSize:11,textAlign:"right",color:truePct!=null?"#e3b341":"#21262d",fontWeight:truePct!=null?600:400}}>{truePct!=null?`${truePct}%`:"—"}</div>
                                   <div style={{flex:1,fontSize:11,textAlign:"right"}}><span style={{color:"#c9d1d9"}}>{m.kalshiPct}%</span></div>
                                   <div style={{flex:1,fontSize:11,textAlign:"right",color:edge!=null&&edge>=3?"#3fb950":edge!=null&&edge<0?"#f78166":"#8b949e"}}>{edge!=null?(edge>=0?`+${edge.toFixed(1)}`:`${edge.toFixed(1)}`)+"%" :"—"}</div>
@@ -1678,6 +1693,28 @@ function App() {
                 {(() => {
                   const hasKalshi = Object.keys(kalshiOdds).length > 0;
                   const displayRates = hasKalshi ? rates.filter(({t}) => kalshiOdds[t]) : rates;
+                  // Pre-compute raw truePct per threshold, then enforce monotonicity (lower threshold >= higher)
+                  const _rawTruePctMap = {};
+                  for (const {t, pct: pctOver} of displayRates) {
+                    const _tp = tonightPlayerMap[`${safeTab}|${t}`];
+                    const _pct = pctOver;
+                    const _dvp = dvpMap[t];
+                    const _softPctRaw = isMLB ? (_dvp?.wPct ?? null) : (_tp?.softPct != null ? _tp.softPct : (_dvp?.wPct ?? null));
+                    const _truePctRaw = (_tp && _tp.truePct != null) ? _tp.truePct : (_softPctRaw !== null ? (_pct + _softPctRaw) / 2 : null);
+                    _rawTruePctMap[t] = _truePctRaw;
+                  }
+                  // Safety clamp: for over direction, truePct[lower threshold] must be >= truePct[higher]
+                  // API now returns qualified:false plays for dropped MLB K markets so each threshold
+                  // has real simulated truePct — this clamp is a last-resort for edge cases only
+                  if (direction !== "under" && isMLB && safeTab === "strikeouts") {
+                    const _sorted = [...displayRates].sort((a, b) => a.t - b.t);
+                    for (let _i = _sorted.length - 2; _i >= 0; _i--) {
+                      const _lo = _sorted[_i].t, _hi = _sorted[_i + 1].t;
+                      if (_rawTruePctMap[_lo] != null && _rawTruePctMap[_hi] != null && _rawTruePctMap[_lo] < _rawTruePctMap[_hi]) {
+                        _rawTruePctMap[_lo] = _rawTruePctMap[_hi]; // last resort: same value beats inverted
+                      }
+                    }
+                  }
                   return displayRates.map(({t, count: countOver, pct: pctOver}) => {
                     const isUnder = direction === "under";
                     // Flip all hit-rate values for "under" direction
@@ -1710,9 +1747,9 @@ function App() {
                           ? (tonightPlay.opponent ? `vs ${tonightPlay.opponent}${tonightPlay.softGames ? ` (${tonightPlay.softGames}g)` : ""}` : (tonightPlay.softGames ? `${tonightPlay.softGames}g` : ""))
                           : (dvp ? `${dvp.wCount}/${wTotal}g` : ""));
                     const softPct = isUnder ? (softPctRaw !== null ? 100 - softPctRaw : null) : softPctRaw;
-                    // truePct = avg(seasonPct, matchupPct) — use tonight's pre-computed value when available
+                    // truePct = avg(seasonPct, matchupPct) — use monotonicity-enforced pre-computed value
                     const truePct = (() => {
-                      if (tonightPlay && !isUnder && tonightPlay.truePct != null) return tonightPlay.truePct;
+                      if (!isUnder && _rawTruePctMap[t] != null) return _rawTruePctMap[t];
                       return softPct !== null ? (pct + softPct) / 2 : null;
                     })();
                     // Prefer tonight endpoint's Kalshi data when available; fall back to live fetch
@@ -2184,15 +2221,14 @@ function App() {
                       </div>
                     );
                   })()}
-                  {/* Breakdown — non-MLB only */}
-                  {play.sport !== "mlb" && <div style={{borderTop:"1px solid #21262d",paddingTop:8}}>
+                  {/* Breakdown — NHL/NFL only (not NBA, not MLB) */}
+                  {play.sport !== "mlb" && play.sport !== "nba" && <div style={{borderTop:"1px solid #21262d",paddingTop:8}}>
                     <button onClick={e => { e.stopPropagation(); setExpandedPlays(s => { const n = new Set(s); n.has(playKey) ? n.delete(playKey) : n.add(playKey); return n; }); }}
                       style={{background:"none",border:"none",color:"#484f58",fontSize:11,cursor:"pointer",padding:0,display:"flex",alignItems:"center",gap:4}}>
                       {isExpanded ? "▲ hide breakdown" : "▼ show breakdown"}
                     </button>
                     {isExpanded && (
                       <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:8}}>
-                        {/* Stat bars */}
                         <div style={{display:"flex",flexDirection:"column",gap:6}}>
                             <div style={{display:"flex",alignItems:"center",gap:8}}>
                               <div style={{width:110,color:"#8b949e",fontSize:10,flexShrink:0,lineHeight:1.35}}>
@@ -2389,11 +2425,24 @@ function App() {
                                 const rankColor = play.softPct !== null ? "#3fb950" : play.isHardMatchup ? "#f78166" : "#c9d1d9";
                                 const seasonColor2 = play.seasonPct == null ? "#c9d1d9" : play.seasonPct >= 75 ? "#3fb950" : play.seasonPct >= 60 ? "#c9d1d9" : "#f78166";
                                 const fallbackValue = displayValue ?? play.oppMetricValue;
+                                const sc = play.nbaSimScore;
+                                const scColor = sc != null ? (sc >= 11 ? "#3fb950" : sc >= 7 ? "#e3b341" : "#8b949e") : "#8b949e";
+                                const mkGate = (meets, pts, label) => <span style={{color:meets?"#3fb950":"#484f58",fontSize:9,opacity:meets?1:0.7}}>{meets?"✓":"✗"} {label} ({pts})</span>;
                                 return <>
                                   <span style={{color:"#c9d1d9",fontWeight:600}}>{opp}</span> has the {hasPosDvp && posName
                                     ? <><span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}</span> ranked defense at giving up {statName} to the {posName} position{displayValue != null && <>, allowing <span style={{color:rankColor,fontWeight:600}}>{displayValue} per game</span></>}</>
                                     : <><span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}-worst</span> defense in {statName} allowed{posName && <> to the {posName} position</>}{fallbackValue != null && <> (<span style={{color:rankColor,fontWeight:600}}>{fallbackValue} per game</span>)</>}</>
                                   }. {first} hits this line in <span style={{color:seasonColor2,fontWeight:600}}>{play.seasonPct}%</span> of games this season{play.softPct !== null && <>, and {hitRate} vs {weakLabel}{games}</>}.
+                                  {sc != null && <div style={{display:"flex",alignItems:"center",gap:6,marginTop:5,flexWrap:"wrap"}}>
+                                    <span style={{background:"#161b22",borderRadius:4,padding:"1px 6px",color:scColor,fontWeight:700,fontSize:10}}>{sc}/14 {sc>=11?"Alpha":sc>=7?"Mid":"Low"}</span>
+                                    <span style={{display:"inline-flex",gap:6,flexWrap:"wrap"}}>
+                                      {mkGate(play.nbaPaceAdj != null && play.nbaPaceAdj > 0, 3, `Pace ${play.nbaPaceAdj != null ? (play.nbaPaceAdj>0?"+":"")+play.nbaPaceAdj : "—"}`)}
+                                      {mkGate(play.nbaOpportunity != null && play.nbaOpportunity >= 8, 4, `Opp ${play.nbaOpportunity != null ? play.nbaOpportunity.toFixed(1) : "—"}`)}
+                                      {mkGate(play.posDvpRank != null && play.posDvpRank <= 10, 2, `DVP #${play.posDvpRank ?? "—"}`)}
+                                      {mkGate(!play.isB2B, 2, play.isB2B ? "B2B" : "Rested")}
+                                      {mkGate(play.edge > 5, 3, `Edge ${play.edge != null ? (play.edge>0?"+":"")+play.edge+"%" : "—"}`)}
+                                    </span>
+                                  </div>}
                                 </>;
                               }
 
