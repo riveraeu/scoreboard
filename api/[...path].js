@@ -1949,6 +1949,40 @@ var worker_default = {
               hitterSimPctOut = simulateHits(hitterBa, pitcherBAA, _hlParkKF2, threshold, _nSimH);
             }
           }
+          // NBA: pre-edge SimScore + Monte Carlo simulation (runs before rawTruePct)
+          let nbaSimPctOut = null, nbaPreSimScore = null, nbaPaceAdj = null, nbaOpportunity = null;
+          if (sport === "nba") {
+            let _sc = 0;
+            // 1. Pace — avg game pace above league avg → 3pts
+            if (nbaPaceData) {
+              const _tp = nbaPaceData.teamPace?.[playerTeam] ?? null;
+              const _op = nbaPaceData.teamPace?.[tonightOpp] ?? null;
+              if (_tp !== null && _op !== null) {
+                nbaPaceAdj = parseFloat(((_tp + _op) / 2 - (nbaPaceData.leagueAvgPace ?? 100)).toFixed(1));
+                if (nbaPaceAdj > 0) _sc += 3;
+              }
+            }
+            // 2. Avg minutes (last 10 games from ESPN gamelog) — ≥32 → 4pts, ≥25 → 2pts
+            const _minIdx = gl.ul.indexOf("MIN");
+            if (_minIdx !== -1) {
+              const _minVals = gl.events.slice(0, 10).map(ev => parseFloat(ev.stats[_minIdx])).filter(v => !isNaN(v) && v > 0);
+              if (_minVals.length >= 3) {
+                const _avgMin = _minVals.reduce((a, b) => a + b, 0) / _minVals.length;
+                nbaOpportunity = parseFloat(_avgMin.toFixed(1));
+                if (_avgMin >= 32) _sc += 4;
+                else if (_avgMin >= 25) _sc += 2;
+              }
+            }
+            // 3. DVP — position-adjusted opponent rank ≤10 → 2pts
+            if (posDvpRankOut !== null && posDvpRankOut <= 10) _sc += 2;
+            // 4. Rest — not B2B → 2pts
+            if (!isB2B) _sc += 2;
+            nbaPreSimScore = _sc;
+            // Monte Carlo — more sims for higher confidence
+            const _nbaGameVals = gl.events.map(getStat).filter(v => !isNaN(v) && v >= 0);
+            const _nSim = _sc >= 8 ? 10000 : _sc >= 5 ? 5000 : 2000;
+            nbaSimPctOut = simulateNbaStat(_nbaGameVals, threshold, dvpFactorOut, nbaPaceAdj, isB2B, _nSim);
+          }
           const rawTruePct = (() => {
             if (sport === "mlb" && stat === "strikeouts") {
               // Simulation is the primary model when lineup data is available
@@ -1964,6 +1998,13 @@ var worker_default = {
               const homeTeam = sportByteam.mlb?.gameHomeTeams?.[playerTeam] ?? tonightOpp;
               const parkFactor = PARK_HITFACTOR[homeTeam] ?? 1;
               return Math.min(99, rawMlbPct * parkFactor);
+            }
+            if (sport === "nba") {
+              // Monte Carlo simulation is primary model; fall back to season/soft blend
+              if (nbaSimPctOut !== null) return nbaSimPctOut;
+              let base = softPct !== null ? (seasonPct + softPct) / 2 : seasonPct;
+              if (isB2B) base = Math.max(0, base - 4);
+              return base;
             }
             if (sport === "nhl" && dvpFactorOut !== null) {
               const dvpAdjustedPct = Math.min(99, seasonPct * dvpFactorOut);
@@ -1986,37 +2027,10 @@ var worker_default = {
           hitterFinalSimScore = (sport === "mlb" && stat !== "strikeouts" && hitterSimScore !== null)
             ? hitterSimScore + (edge > 5 ? 3 : 0)
             : null;
-          // NBA SimScore
-          let nbaSimScore = null, nbaPaceAdj = null, nbaOpportunity = null;
-          if (sport === "nba") {
-            let _sc = 0;
-            // 1. Pace Factor — avg game pace > league avg → 3pts (uses stats.nba.com data if cached)
-            if (nbaPaceData) {
-              const _tp = nbaPaceData.teamPace?.[playerTeam] ?? null;
-              const _op = nbaPaceData.teamPace?.[tonightOpp] ?? null;
-              if (_tp !== null && _op !== null) {
-                nbaPaceAdj = parseFloat(((_tp + _op) / 2 - (nbaPaceData.leagueAvgPace ?? 100)).toFixed(1));
-                if (nbaPaceAdj > 0) _sc += 3;
-              }
-            }
-            // 2. Avg minutes from ESPN gamelog (last 10 games) → 4pts (>=32min) or 2pts (>=25min)
-            const _minIdx = gl.ul.indexOf("MIN");
-            if (_minIdx !== -1) {
-              const _minVals = gl.events.slice(0, 10).map(ev => parseFloat(ev.stats[_minIdx])).filter(v => !isNaN(v) && v > 0);
-              if (_minVals.length >= 3) {
-                const _avgMin = _minVals.reduce((a, b) => a + b, 0) / _minVals.length;
-                nbaOpportunity = parseFloat(_avgMin.toFixed(1));
-                if (_avgMin >= 32) _sc += 4;
-                else if (_avgMin >= 25) _sc += 2;
-              }
-            }
-            // 3. DVP weak — opponent rank 1-10 (most pts allowed to position) → 2pts
-            if (posDvpRankOut !== null && posDvpRankOut <= 10) _sc += 2;
-            // 4. Schedule context — rested (not B2B) → 2pts
-            if (!isB2B) _sc += 2;
-            // 5. Market signal — edge > 5% → 3pts
-            if (edge > 5) _sc += 3;
-            nbaSimScore = _sc;
+          // NBA SimScore — finalize with edge bonus (pre-edge computed above before rawTruePct)
+          let nbaSimScore = null;
+          if (sport === "nba" && nbaPreSimScore !== null) {
+            nbaSimScore = nbaPreSimScore + (edge > 5 ? 3 : 0);
           }
           if (kalshiPct < 70 || edge < 3) {
             const _dropObj = {
@@ -2041,7 +2055,7 @@ var worker_default = {
                 hitterSimScore, hitterFinalSimScore,
                 hitterLineupSpot, pitcherWHIP, pitcherFIP, hitterParkKF, hitterMoneyline, hitterBarrelPct,
               } : {}),
-              ...(sport === "nba" ? { nbaSimScore, nbaPaceAdj, nbaOpportunity, isB2B } : {}),
+              ...(sport === "nba" ? { nbaSimScore, nbaPreSimScore, nbaSimPct: nbaSimPctOut, nbaPaceAdj, nbaOpportunity, isB2B } : {}),
             };
             if (isDebug) dropped.push(_dropObj);
             // For MLB strikeouts: always include in plays with qualified:false so player card can
@@ -2170,6 +2184,8 @@ var worker_default = {
             hitterPitcherName: sport === "mlb" && stat !== "strikeouts" ? (sportByteam.mlb?.probables?.[tonightOpp]?.name ?? null) : void 0,
             hitterPitcherEra: sport === "mlb" && stat !== "strikeouts" ? (sportByteam.mlb?.probables?.[tonightOpp]?.era ?? null) : void 0,
             nbaSimScore: sport === "nba" ? nbaSimScore : void 0,
+            nbaPreSimScore: sport === "nba" ? nbaPreSimScore : void 0,
+            nbaSimPct: sport === "nba" ? nbaSimPctOut : void 0,
             nbaPaceAdj: sport === "nba" ? nbaPaceAdj : void 0,
             nbaOpportunity: sport === "nba" ? nbaOpportunity : void 0,
             isHomeGame,
@@ -2437,6 +2453,39 @@ function simulateKs(orderedKPcts, pitcherKPct, threshold, parkFactor = 1, nSim =
   return kDistPct(dist, threshold);
 }
 __name(simulateKs, "simulateKs");
+// NBA Monte Carlo: normal distribution model for per-game stats
+// gameValues: full season per-game values (used for mean + std)
+// recentValues: last N games for mean (more current); if null, uses gameValues for mean too
+// dvpFactor: opponent leniency (1.0 = avg, 1.1 = 10% more permissive)
+// paceAdj: avg game pace minus league avg pace (e.g. +2.5)
+// isB2B: apply fatigue multiplier
+function simulateNbaStat(gameValues, threshold, dvpFactor, paceAdj, isB2B, nSim = 5000) {
+  if (gameValues.length < 5) return null;
+  // Mean from recent 10 (more current), std from full season (more stable)
+  const recentSlice = gameValues.slice(0, Math.min(10, gameValues.length));
+  const meanRecent = recentSlice.reduce((a, b) => a + b, 0) / recentSlice.length;
+  const meanAll = gameValues.reduce((a, b) => a + b, 0) / gameValues.length;
+  const variance = gameValues.reduce((a, b) => a + (b - meanAll) ** 2, 0) / gameValues.length;
+  const std = Math.sqrt(variance);
+  if (meanRecent <= 0 || std < 0.5) return null;
+  // Apply matchup/context adjustments to mean
+  let adjMean = meanRecent;
+  if (dvpFactor != null) adjMean *= dvpFactor;
+  // Pace: each 1pt above league avg ≈ 0.2% more possessions → subtle stat boost
+  if (paceAdj != null) adjMean *= (1 + Math.min(Math.max(paceAdj, -15), 15) * 0.002);
+  if (isB2B) adjMean *= 0.93;
+  adjMean = Math.max(0, adjMean);
+  // Monte Carlo via Box-Muller normal
+  let hits = 0;
+  for (let i = 0; i < nSim; i++) {
+    const u1 = Math.random() + 1e-10;
+    const u2 = Math.random();
+    const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+    if (adjMean + std * z >= threshold) hits++;
+  }
+  return parseFloat((hits / nSim * 100).toFixed(1));
+}
+__name(simulateNbaStat, "simulateNbaStat");
 function simulateHits(batterBA, pitcherBAA, parkFactor, threshold, nSim = 10000) {
   const leagueBA = 0.248;
   const hitProb = Math.min(0.95, Math.max(0.01, (batterBA * pitcherBAA / leagueBA) * parkFactor));
