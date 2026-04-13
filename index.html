@@ -402,6 +402,7 @@ function App() {
   const [editPickId, setEditPickId] = React.useState(null); // pick.id being edited
   const [searching, setSearching] = React.useState(false);
   const [tonightPlays, setTonightPlays] = React.useState(null);
+  const [allTonightPlays, setAllTonightPlays] = React.useState(null); // unfiltered — includes qualified:false, used for player card truePct lookup
   const [tonightLoading, setTonightLoading] = React.useState(true);
   const [tonightMeta, setTonightMeta] = React.useState(null);
   const [testMode, setTestMode] = React.useState(false);
@@ -470,8 +471,8 @@ function App() {
     setTonightLoading(true);
     fetch(`${WORKER}/tonight`)
       .then(r => r.json())
-      .then(data => { setTonightPlays((data.plays || []).filter(p => p.qualified !== false)); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); setTonightLoading(false); })
-      .catch(() => { setTonightPlays([]); setTonightLoading(false); });
+      .then(data => { const all = data.plays || []; setAllTonightPlays(all); setTonightPlays(all.filter(p => p.qualified !== false)); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); setTonightLoading(false); })
+      .catch(() => { setAllTonightPlays([]); setTonightPlays([]); setTonightLoading(false); });
   }, [testMode]);
 
 
@@ -628,6 +629,7 @@ function App() {
     setReportData(null);
     try {
       const r = await fetch(`${WORKER}/tonight?debug=1`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const d = await r.json();
       setReportData(d);
     } catch(e) {
@@ -1049,7 +1051,7 @@ function App() {
                       if (sb !== sa) return sb - sa;
                     }
                     return (b.edge || b.kalshiPct || 0) - (a.edge || a.kalshiPct || 0);
-                  });
+                  }).filter(r => stat !== "hrr" || r.threshold === 1);
                   const qualCount = rows.filter(r => r.qualified).length;
 
                   const cs = CRITERIA_SUMMARIES[`${sport}|${stat}`];
@@ -1163,6 +1165,8 @@ function App() {
                             {rows.map((m, i) => {
                               const truePct = m.truePct ?? null;
                               const edge = m.edge ?? null;
+                              const _mlbRowScore = sport === "mlb" ? (m.finalSimScore ?? m.hitterFinalSimScore ?? null) : null;
+                              const _highScore = _mlbRowScore != null && _mlbRowScore > 10;
                               const resultCell = (() => {
                                 if (m.qualified) {
                                   if (stat === "strikeouts" && m.finalSimScore != null) {
@@ -1198,12 +1202,13 @@ function App() {
                                 }
                                 return <span style={{fontSize:10,color:"#484f58"}}>{RESULT_LABELS[m.reason] ?? m.reason ?? ""}</span>;
                               })();
+                              const _nameWhite = sport === "mlb" ? _highScore : m.qualified;
                               return (
                                 <div key={`${m.playerName}|${m.threshold}|${i}`} style={{
                                   display:"flex",alignItems:"center",gap:6,padding:"6px 12px",
                                   borderTop: i>0?"1px solid #161b22":"none"}}>
-                                  <div style={{flex:2,minWidth:0,fontSize:12,fontWeight:m.qualified?600:400,display:"flex",alignItems:"baseline",gap:3}}>
-                                    <span style={{color:m.qualified?"#c9d1d9":"#6e7681",whiteSpace:"nowrap",textTransform:"capitalize"}}>{m.playerNameDisplay||m.playerName}</span>
+                                  <div style={{flex:2,minWidth:0,fontSize:12,fontWeight:_nameWhite?600:400,display:"flex",alignItems:"baseline",gap:3}}>
+                                    <span style={{color:_nameWhite?"#c9d1d9":"#6e7681",whiteSpace:"nowrap",textTransform:"capitalize"}}>{m.playerNameDisplay||m.playerName}</span>
                                     {(m.playerTeam||m.kalshiPlayerTeam)&&<span style={{color:"#484f58",fontWeight:400,flexShrink:0,fontSize:10}}>({m.playerTeam||m.kalshiPlayerTeam})</span>}
                                   </div>
                                   <div style={{flex:1,color:"#8b949e",fontSize:11,textAlign:"right"}}>{m.threshold}+</div>
@@ -1479,10 +1484,12 @@ function App() {
           }
         }
 
-        // Tonight plays for this player — keyed by "stat|threshold" for consistent truePct/Kalshi
+        // Tonight plays for this player — keyed by "stat|threshold" for consistent truePct/Kalshi.
+        // Uses allTonightPlays (unfiltered) so qualified:false plays (e.g. 3+/4+ strikeouts with no edge)
+        // still provide their simulation-based truePct rather than falling back to the raw formula.
         const tonightPlayerMap = {};
-        if (tonightPlays && player) {
-          for (const p of tonightPlays) {
+        if (allTonightPlays && player) {
+          for (const p of allTonightPlays) {
             if (p.playerId === player.id || p.playerName === player.name) {
               tonightPlayerMap[`${p.stat}|${p.threshold}`] = p;
             }

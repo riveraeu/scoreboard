@@ -9,8 +9,14 @@ A sports prop betting dashboard that pulls Kalshi prediction market prices, comp
 
 ## Architecture
 
-### Single-file API: `api/[...path].js`
-Handles all server logic as a Vercel Edge Function. Routes via `pathname`:
+### API: `api/[...path].js` + `api/lib/`
+`api/[...path].js` handles all server logic as a Vercel Edge Function. It imports from four ES module lib files:
+- `api/lib/simulate.js` — park factor constants + all simulation functions (log5K, simulateKsDist, buildNbaStatDist, simulateHits, kelly/EV math)
+- `api/lib/mlb.js` — MLB data fetchers (buildLineupKPct, buildBarrelPct, buildPitcherKPct) + MLB_ID_TO_ABBR
+- `api/lib/nba.js` — NBA/DVP data fetchers (buildNbaDvpStage1/FromBettingPros/Stage3FG, buildNbaDepthChartPos, buildNbaPaceData, buildNbaPlayerPosFromSleeper, warmPlayerInfoCache)
+- `api/lib/utils.js` — response helpers (corsHeaders, jsonResponse, errorResponse), ALLOWED_ORIGIN, team ranking helpers (buildSoftTeamAbbrs, buildHardTeamAbbrs, buildTeamRankMap, parseGameOdds, SOFT_TEAM_METRIC)
+
+Routes via `pathname`:
 - `/api/tonight` — main play generation endpoint
 - `/api/tonight?debug=1` — returns all markets including dropped/preDropped + debug fields
 - `/api/tonight?bust=1` — bypasses KV cache
@@ -104,53 +110,66 @@ True% = Monte Carlo simulation (`simulateHits`) using batter BA × pitcher BAA (
 
 ## Key Functions & Code Locations
 
-### `api/[...path].js`
+### `api/lib/simulate.js` — Simulation & Math
 
-**Simulation**
-| Function | Line | What it does |
-|---|---|---|
-| `log5K(pitcherKPct, batterKPct)` | ~2443 | Log5 formula for K probability |
-| `simulateKsDist(orderedKPcts, pitcherKPct, parkFactor, nSim)` | ~2466 | Shared Monte Carlo, returns `Int16Array` of K counts |
-| `kDistPct(dist, threshold)` | ~2485 | Queries K dist — guarantees monotonicity |
-| `buildNbaStatDist(gameValues, dvpFactor, paceAdj, isB2B, nSim)` | ~2501 | Shared `Float32Array` of simulated NBA per-game values |
-| `nbaDistPct(dist, threshold)` | ~2527 | Queries NBA dist for any threshold — guarantees monotonicity |
-| `simulateHits(batterBA, pitcherBAA, parkFactor, threshold, nSim)` | ~2534 | Monte Carlo for hitter hits/HRR |
+| Function/Constant | What it does |
+|---|---|
+| `PARK_KFACTOR` | Park factors for strikeout simulation (30 parks) |
+| `PARK_HITFACTOR` | Park factors for hit simulation |
+| `PARK_HRFACTOR` | Park factors for home run simulation (defined, available if needed) |
+| `log5K(pitcherKPct, batterKPct)` | Log5 formula for K probability |
+| `simulateKsDist(orderedKPcts, pitcherKPct, parkFactor, nSim)` | Shared Monte Carlo, returns `Int16Array` of K counts |
+| `kDistPct(dist, threshold)` | Queries K dist — guarantees monotonicity |
+| `buildNbaStatDist(gameValues, dvpFactor, paceAdj, isB2B, nSim)` | Shared `Float32Array` of simulated NBA per-game values |
+| `nbaDistPct(dist, threshold)` | Queries NBA dist for any threshold — guarantees monotonicity |
+| `simulateHits(batterBA, pitcherBAA, parkFactor, threshold, nSim)` | Monte Carlo for hitter hits/HRR |
+| `kellyFraction / evPerUnit` | Kelly and EV calculations |
 
-**MLB Data Fetchers**
-| Function | Line | What it does |
-|---|---|---|
-| `buildLineupKPct(mlbSched)` | ~2597 | Lineup batter K-rates, lineup spots, ordered arrays |
-| `buildBarrelPct()` | ~2768 | Baseball Savant barrel% CSV, 5s timeout, cached 6h |
-| `buildPitcherKPct(mlbSched)` | ~2812 | Pitcher season stats (K%, KBB%, ERA, P/GS, CSW%) |
+### `api/lib/mlb.js` — MLB Data Fetchers
 
-**NBA Data Fetchers**
-| Function | Line | What it does |
-|---|---|---|
-| `buildNbaDvpStage1(cache)` | ~3033 | ESPN DVP stage 1 |
-| `buildNbaDvpFromBettingPros(cache)` | ~3182 | DVP from BettingPros (preferred source) |
-| `buildNbaDepthChartPos(cache)` | ~3295 | ESPN depth chart → `{espnPlayerId: "PG"|"SG"|...}` |
-| `buildNbaPaceData(cache)` | ~3337 | ESPN team stats → `{teamPace, leagueAvgPace}`, cached 12h |
-| `buildNbaDvpStage3FG(cache)` | ~3394 | DVP stage 3 fallback |
+| Function/Constant | What it does |
+|---|---|
+| `MLB_ID_TO_ABBR` | MLB team ID → abbreviation mapping |
+| `buildLineupKPct(mlbSched)` | Lineup batter K-rates, lineup spots, ordered arrays |
+| `buildBarrelPct()` | Baseball Savant barrel% CSV, 5s timeout, cached 6h |
+| `buildPitcherKPct(mlbSched)` | Pitcher season stats (K%, KBB%, ERA, P/GS, CSW%) |
 
-**Utilities**
-| Function | Line | What it does |
-|---|---|---|
-| `parseGameOdds(events)` | ~3434 | Extract ML/total from ESPN scoreboard events |
-| `buildSoftTeamAbbrs(teams, stat)` | ~3456 | Top-N teams allowing most of a stat |
-| `buildTeamRankMap(teams, stat)` | ~3485 | Full rank map `{abbr: {rank, value}}` |
-| `kellyFraction / evPerUnit` | ~2553 | Kelly and EV calculations |
+### `api/lib/nba.js` — NBA/DVP Data Fetchers
+
+| Function | What it does |
+|---|---|
+| `warmPlayerInfoCache(cache)` | Batch-fetches ESPN player info for all Kalshi market players |
+| `buildNbaDvpStage1(cache)` | ESPN rosters → posMap, selectedByPos cached to KV |
+| `buildNbaDvpFromBettingPros(cache)` | DVP from BettingPros (preferred source) |
+| `buildNbaDepthChartPos(cache)` | ESPN depth chart → `{espnPlayerId: "PG"\|"SG"\|...}` |
+| `buildNbaPaceData(cache)` | ESPN team stats → `{teamPace, leagueAvgPace}`, cached 12h |
+| `buildNbaPlayerPosFromSleeper(cache)` | Sleeper.app fallback for player → position |
+| `buildNbaDvpStage3FG(cache)` | DVP stage 3 gamelog fallback |
+
+### `api/lib/utils.js` — Response Helpers & Team Ranking
+
+| Function/Constant | What it does |
+|---|---|
+| `ALLOWED_ORIGIN` | CORS origin (`"*"`) |
+| `corsHeaders()` | CORS response headers |
+| `jsonResponse(data, opts)` | Returns JSON Response with CORS headers |
+| `errorResponse(msg, status)` | Returns error JSON Response |
+| `SOFT_TEAM_METRIC` | ESPN stat hint/index per NBA stat |
+| `parseGameOdds(events)` | Extract ML/total from ESPN scoreboard events |
+| `buildSoftTeamAbbrs(teams, stat)` | Top-N teams allowing most of a stat |
+| `buildHardTeamAbbrs(teams, stat)` | Teams ≤ 95% of league avg (tough defenses) |
+| `buildTeamRankMap(teams, stat)` | Full rank map `{abbr: {rank, value}}` |
+
+### `api/[...path].js` — Route Handlers & Play Loop
 
 **Key constants & loop setup**
 | Symbol | Line | What it is |
 |---|---|---|
-| `SERIES_CONFIG` | ~884 | Kalshi series tickers per sport/stat |
-| `PARK_KFACTOR` | ~2347 | Park factors for strikeout simulation |
-| `PARK_HITFACTOR` | ~2379 | Park factors for hit simulation |
-| `SOFT_TEAM_METRIC` | ~3428 | ESPN stat hint/index per NBA stat |
-| `pitcherKDistCache` | ~1544 | Per-pitcher K distribution cache (keyed `team|hand`) |
-| `nbaPlayerDistCache` | ~1546 | Per-player NBA stat distribution cache (keyed `playerId|stat`) |
-| `leagueAvgCache` | ~1482 | League avg per `sport|stat` for DVP factor computation |
-| `STAT_SOFT` | ~1171 | Soft/rank data per `sport|stat`, built from byteam data |
+| `SERIES_CONFIG` | ~889 | Kalshi series tickers per sport/stat |
+| `pitcherKDistCache` | ~1549 | Per-pitcher K distribution cache (keyed `team|hand`) |
+| `nbaPlayerDistCache` | ~1551 | Per-player NBA stat distribution cache (keyed `playerId|stat`) |
+| `leagueAvgCache` | ~1487 | League avg per `sport|stat` for DVP factor computation |
+| `STAT_SOFT` | ~1176 | Soft/rank data per `sport|stat`, built from byteam data |
 
 ### Kalshi Market Parsing
 - Series tickers in `SERIES_CONFIG`
@@ -164,18 +183,23 @@ True% = Monte Carlo simulation (`simulateHits`) using batter BA × pitcher BAA (
 ### qualified:false plays
 MLB strikeout markets that fail simScore gate (< 7 or finalSimScore < 10) are pushed to `plays[]` with `qualified: false` so the player card can show real simPct for all thresholds. The main plays list (`tonightPlays`) filters these out client-side: `.filter(p => p.qualified !== false)`.
 
+The raw (unfiltered) array is stored in `allTonightPlays` and used to build `tonightPlayerMap` in the player card — this ensures `qualified: false` thresholds (e.g. 3+/4+ strikeouts with no edge bonus) get their simulation-based truePct rather than falling back to the raw formula.
+
 ---
 
 ## Frontend Architecture (`index.html`)
 
 ### State
 - `tonightPlays` — qualified plays from `/api/tonight`, filtered `qualified !== false`
+- `allTonightPlays` — raw (unfiltered) plays array from `/api/tonight`, includes `qualified: false` entries; used exclusively for building `tonightPlayerMap` in the player card so all strikeout thresholds get their simulation-based truePct instead of falling back to the raw formula
 - `reportData` — full debug response from `/api/tonight?debug=1`, shown in Market Report overlay
 - `player` — currently selected player for detail card
 - `trackedPlays` — user's saved picks (localStorage or server)
 
 ### Market Report
 Opened via "report" button. Shows ALL markets (plays + dropped) grouped by sport/stat. Columns vary by sport/stat via `XCOLS` map.
+- **HRR table**: shows threshold=1 rows only (2+/3+/etc. filtered client-side — too noisy)
+- **Score > 10 highlight**: For MLB rows (strikeouts + HRR), the player name is white+bold only when `finalSimScore ?? hitterFinalSimScore > 10` (Alpha tier). Rows with score ≤ 10 get a dim gray name even if qualified. Non-MLB tables use the original `m.qualified` logic for name color.
 
 ### Play Cards
 Shows `untrackedPlays` (qualified plays not yet tracked). Each card has:
@@ -188,7 +212,7 @@ Shows `untrackedPlays` (qualified plays not yet tracked). Each card has:
 Clicking a play opens the player card with:
 - Historical rates per threshold
 - Kalshi market prices
-- truePct from `tonightPlayerMap` (keyed `stat|threshold`)
+- truePct from `tonightPlayerMap` (keyed `stat|threshold`) — built from `allTonightPlays` (unfiltered) so `qualified: false` thresholds (e.g. 3+/4+ strikeouts with no edge bonus) use their simulation-based truePct rather than the fallback formula
 - Monotonicity enforced client-side: lower threshold truePct ≥ higher threshold
 
 ### Color Tiers
@@ -227,10 +251,27 @@ tierColor(pct): >= 80% → #3fb950 (green), >= 65% → #e3b341 (yellow), else #f
 
 ---
 
+## Testing
+
+Unit tests cover simulation math and the player card truePct fix:
+```
+npm test   # runs api/lib/simulate.test.js via node --test
+```
+Test file: `api/lib/simulate.test.js`. Covers `kDistPct` monotonicity, `simulateKsDist` validity, `buildNbaStatDist`, API monotonicity enforcement logic, and the `allTonightPlays` player card fix.
+
+---
+
 ## Common Debugging
 
+### "Why is truePct wrong for 3+/4+ when 5+ looks correct?" (fixed)
+Previously, `tonightPlayerMap` was built from `tonightPlays` (filtered: `qualified !== false`). Thresholds like 3+/4+ with no edge bonus (finalSimScore < 10) were `qualified: false` and omitted, so the player card used the raw fallback formula `(seasonPct + softPct) / 2` — breaking monotonicity (e.g. 4+ showed 76.8% while 5+ showed 97.9%).
+
+**Fix**: `tonightPlayerMap` now uses `allTonightPlays` (unfiltered), which includes `qualified: false` entries with their API-computed, monotonicity-enforced simulation truePct.
+
+If truePct still looks wrong: check `?debug=1` and look in `dropped` for the missing threshold — if it's there (not in `plays[]` at all), the fallback still applies. Check `reason`.
+
 ### "Why is truePct the same for 4+ and 5+?"
-The `pitcherKDistCache` shares one `Int16Array` distribution across all thresholds for a pitcher. If a threshold isn't in `plays[]` (or `qualified:false` plays), the player card falls back to the raw formula. Check `?debug=1` response for the specific player — look in `dropped` for the missing threshold and check `reason`.
+The `pitcherKDistCache` shares one `Int16Array` distribution across all thresholds for a pitcher — querying it at different thresholds guarantees P(K≥4) ≥ P(K≥5) by construction. If values are identical, it likely means the distribution is flat at that range (e.g. a dominant pitcher where nearly all sims exceed both thresholds).
 
 ### "Player appears in Kalshi but not in plays or dropped"
 Check `preDropped` in `?debug=1` response. Common reasons: `no_soft_data`, `opp_not_soft`, `no_opp`.
@@ -249,7 +290,7 @@ Comes from `split.numberOfPitches / split.gamesStarted` in season aggregate stat
 - Depth chart: no bust — expires daily
 
 ### "NBA report shows — for Pace/AvgMin/Rest on most rows"
-Most NBA markets are dropped at `opp_not_soft` before the pre-sim block runs. Those drop records now include `isB2B`, `nbaPaceAdj`, and `nbaOpportunity` computed inline from the gamelog at that drop site.
+Most NBA markets are dropped at `opp_not_soft` before the pre-sim block runs. Those drop records include `isB2B`, `nbaPaceAdj`, and `nbaOpportunity` computed inline from the gamelog at that drop site. `nbaPreSimScore` and `nbaSimScore` are also computed inline at the drop site so the Score column is populated for all NBA rows (not just qualifying plays).
 
 ### "SimScore shows yellow for strikeout players with score 7–9"
 The qualifying gate for strikeouts is `finalSimScore >= 10`. The report SimScore column uses `>= 10` as the yellow threshold when `finalSimScore` is present, so scores 7–9 show gray (not qualifying).
