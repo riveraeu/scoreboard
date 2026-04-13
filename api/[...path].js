@@ -1103,12 +1103,17 @@ var worker_default = {
               }
               const gameOddsRaw = parseGameOdds(sbData.events);
               const gameOdds = Object.fromEntries(Object.entries(gameOddsRaw).map(([k, v]) => [normMlbAbbr(k), v]));
-              const _cachedBrl = CACHE2 ? await CACHE2.get("mlb:barrelPct", "json").catch(() => null) : null;
-              const [lineupResult, pitcherResult, barrelPctMap] = await Promise.all([buildLineupKPct(mlbSched), buildPitcherKPct(mlbSched), _cachedBrl ? Promise.resolve(_cachedBrl) : buildBarrelPct().then(async m => { if (CACHE2 && Object.keys(m).length > 0) await CACHE2.put("mlb:barrelPct", JSON.stringify(m), { expirationTtl: 21600 }).catch(() => {}); return m; })]);
+              const [lineupResult, pitcherResult] = await Promise.all([buildLineupKPct(mlbSched), buildPitcherKPct(mlbSched)]);
               const { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, projectedLineupTeams } = lineupResult;
               const { pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherHand, pitcherEra: pitcherEraByTeam } = pitcherResult;
-              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherHand, pitcherEra: pitcherEraByTeam, projectedLineupTeams, gameOdds, barrelPctMap };
-              if (CACHE2) await CACHE2.put("byteam:mlb", JSON.stringify(sportByteam.mlb), { expirationTtl: 600 });
+              // barrelPctMap is NOT stored in byteam:mlb — it lives in mlb:barrelPct with its own 6h TTL.
+              // This prevents a bust (which deletes byteam:mlb) from baking an empty barrelPctMap
+              // into the cache when Baseball Savant is slow.
+              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherHand, pitcherEra: pitcherEraByTeam, projectedLineupTeams, gameOdds };
+              // Use short TTL (60s) if key data is missing — lineup/probables not confirmed yet.
+              // Prevents partial data from baking into cache for the full 600s.
+              const _mlbDataReady = Object.keys(lineupSpotByName).length > 0 && Object.keys(pitcherAvgPitches).length > 0;
+              if (CACHE2) await CACHE2.put("byteam:mlb", JSON.stringify(sportByteam.mlb), { expirationTtl: _mlbDataReady ? 600 : 60 });
             }),
             sportsNeedingFetch.has("nfl") && fetch("https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/statistics/byteam?region=us&lang=en&isqualified=true&page=1&limit=32&category=passing", { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})).then(async (d) => {
               sportByteam.nfl = d.teams || [];
@@ -1223,6 +1228,18 @@ var worker_default = {
         }
         if (!nbaDepthChartPos && CACHE2) {
           nbaDepthChartPos = await buildNbaDepthChartPos(CACHE2).catch(() => null);
+        }
+        // Barrel% — read from its own KV key (independent of byteam:mlb bust).
+        // Falls back to buildBarrelPct() if missing or expired (6h TTL).
+        if (sportsNeeded.has("mlb")) {
+          let barrelPctMap = CACHE2 ? await CACHE2.get("mlb:barrelPct", "json").catch(() => null) : null;
+          if (!barrelPctMap) {
+            barrelPctMap = await buildBarrelPct().then(async m => {
+              if (CACHE2 && Object.keys(m).length > 0) await CACHE2.put("mlb:barrelPct", JSON.stringify(m), { expirationTtl: 21600 }).catch(() => {});
+              return m;
+            }).catch(() => null);
+          }
+          if (sportByteam.mlb && barrelPctMap) sportByteam.mlb.barrelPctMap = barrelPctMap;
         }
         // Fetch NBA pace data (ESPN team stats, cached 12h) for SimScore
         let nbaPaceData = null;
