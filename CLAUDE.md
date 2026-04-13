@@ -212,8 +212,13 @@ Shows `untrackedPlays` (qualified plays not yet tracked). Each card has:
 Clicking a play opens the player card with:
 - Historical rates per threshold
 - Kalshi market prices
-- truePct from `tonightPlayerMap` (keyed `stat|threshold`) — built from `allTonightPlays` (unfiltered) so `qualified: false` thresholds (e.g. 3+/4+ strikeouts with no edge bonus) use their simulation-based truePct rather than the fallback formula
-- Monotonicity enforced client-side: lower threshold truePct ≥ higher threshold
+- truePct from `tonightPlayerMap` (keyed `stat|threshold`) — built from `allTonightPlays` (unfiltered) so `qualified: false` thresholds (e.g. 3+/4+ strikeouts with no edge bonus) use their simulation-based truePct
+- Monotonicity enforced client-side: after building `_rawTruePctMap`, walks highest→lowest threshold tracking the running max and raises any value that dips below it. Safety net for any remaining non-monotonicity after backend sweep.
+
+**Root cause of non-monotonic truePcts for strikeouts (fixed at backend):**
+The deduplication step (`bestMap` keyed by `playerName|sport|stat`) collapsed all strikeout thresholds for a pitcher to the single highest-edge play (e.g. only 5+ survived). 3+ and 4+ were absent from `allTonightPlays`, so the player card used the fallback formula — giving values below the simulation's 5+ truePct, breaking monotonicity.
+
+Fix: `qualified:false` plays use a threshold-inclusive key (`playerName|sport|stat|threshold`) so all thresholds survive deduplication. The post-loop monotonicity sweep then re-derives truePct for every threshold from the `pitcherKDistCache` distribution (if available), giving distinct monotonically-decreasing values (e.g. 3+≈99.5%, 4+≈99.0%, 5+=98.1%). Falls back to copy-up sweep if cache is unavailable.
 
 ### Color Tiers
 ```
@@ -255,9 +260,17 @@ tierColor(pct): >= 80% → #3fb950 (green), >= 65% → #e3b341 (yellow), else #f
 
 Unit tests cover simulation math and the player card truePct fix:
 ```
-npm test   # runs api/lib/simulate.test.js via node --test
+# Preferred — no Node required, uses macOS built-in JavaScriptCore:
+osascript -l JavaScript api/lib/simulate.test.jxa.js
+
+# If Node is installed:
+node --test api/lib/simulate.test.js
 ```
-Test file: `api/lib/simulate.test.js`. Covers `kDistPct` monotonicity, `simulateKsDist` validity, `buildNbaStatDist`, API monotonicity enforcement logic, and the `allTonightPlays` player card fix.
+Two test files kept in sync:
+- `api/lib/simulate.test.jxa.js` — self-contained, runs via `osascript -l JavaScript` (no Node needed). Primary test runner.
+- `api/lib/simulate.test.js` — Node `node:test` version (requires Node).
+
+Both cover: `kDistPct` monotonicity, `simulateKsDist` validity, `buildNbaStatDist`, API monotonicity sweep, `allTonightPlays` player card fix, frontend `_rawTruePctMap` monotonicity enforcement, NBA simScore, and report filter logic.
 
 ---
 

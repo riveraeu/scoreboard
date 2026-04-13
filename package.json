@@ -1,6 +1,7 @@
 {
   "type": "module",
   "scripts": {
-    "test": "node --test api/lib/simulate.test.js"
+    "test": "node --test api/lib/simulate.test.js",
+    "test:jxa": "osascript -l JavaScript api/lib/simulate.test.jxa.js"
   }
 }

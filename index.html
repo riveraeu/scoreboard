@@ -1711,6 +1711,11 @@ function App() {
                     const _truePctRaw = (_tp && _tp.truePct != null) ? _tp.truePct : (_softPctRaw !== null ? (_pct + _softPctRaw) / 2 : null);
                     _rawTruePctMap[t] = _truePctRaw;
                   }
+                  // Enforce monotonicity: walk highest→lowest threshold, raise any value that dips
+                  // below the max seen so far (P(X>=3) must be >= P(X>=4) >= P(X>=5) etc.)
+                  { const _mts = Object.keys(_rawTruePctMap).map(Number).filter(t => _rawTruePctMap[t] != null).sort((a,b) => b-a);
+                    let _mx = 0;
+                    for (const _t of _mts) { if (_rawTruePctMap[_t] < _mx) _rawTruePctMap[_t] = _mx; else _mx = _rawTruePctMap[_t]; } }
                   return displayRates.map(({t, count: countOver, pct: pctOver}) => {
                     const isUnder = direction === "under";
                     // Flip all hit-rate values for "under" direction

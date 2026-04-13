@@ -2268,7 +2268,11 @@ var worker_default = {
         }
         const bestMap = {};
         for (const play of plays) {
-          const key = `${play.playerName}|${play.sport}|${play.stat}`;
+          // qualified:false plays exist for the player card (all thresholds needed) — keep per-threshold.
+          // qualified:true/null plays are deduped to one per player+stat for the plays card display.
+          const key = play.qualified === false
+            ? `${play.playerName}|${play.sport}|${play.stat}|${play.threshold}`
+            : `${play.playerName}|${play.sport}|${play.stat}`;
           const prev = bestMap[key];
           // For MLB strikeouts keep highest edge (most meaningful market).
           // For all others keep highest kalshiPct (closest to the money line).
@@ -2288,7 +2292,11 @@ var worker_default = {
         // Filter out plays from past dates (Kalshi sometimes keeps settled markets open)
         const todayStr = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
         plays.splice(0, plays.length, ...plays.filter(p => !p.gameDate || p.gameDate >= todayStr));
-        // Enforce monotonicity: for MLB strikeout props on the same pitcher, lower threshold must have >= truePct
+        // Enforce monotonicity: for MLB strikeout props on the same pitcher, lower threshold must have >= truePct.
+        // If the simulation distribution is still in the pitcherKDistCache, re-derive all thresholds from it
+        // so each threshold gets a distinct, correct value (e.g. 3+≈99.5%, 4+≈99.0%, 5+=98.1%).
+        // Without this, qualified:false plays at lower thresholds use the fallback formula, which can be
+        // lower than the simulation truePct of a qualifying higher threshold.
         {
           const _skGroups = {};
           for (const p of plays) {
@@ -2299,12 +2307,27 @@ var worker_default = {
           }
           for (const group of Object.values(_skGroups)) {
             group.sort((a, b) => a.threshold - b.threshold);
-            // Sweep from lowest threshold up: each must have truePct >= next higher
-            for (let i = group.length - 2; i >= 0; i--) {
-              if (group[i].truePct < group[i + 1].truePct) {
-                group[i].truePct = group[i + 1].truePct;
-                group[i].rawTruePct = group[i + 1].rawTruePct;
-                group[i].edge = parseFloat((group[i].truePct - group[i].kalshiPct).toFixed(1));
+            const _pTeam = group[0].playerTeam;
+            const _hand = sportByteam.mlb?.pitcherHand?.[_pTeam] ?? "";
+            const _dist = pitcherKDistCache[`${_pTeam}|${_hand}`];
+            if (_dist) {
+              // Re-derive all thresholds from the shared distribution — guarantees distinct monotonic values
+              for (const play of group) {
+                const _recomp = kDistPct(_dist, play.threshold);
+                if (_recomp != null) {
+                  play.truePct = _recomp;
+                  play.simPct = _recomp;
+                  play.edge = parseFloat((_recomp - play.kalshiPct).toFixed(1));
+                }
+              }
+            } else {
+              // Fallback: copy-up sweep (lower threshold gets at least the value of the next higher)
+              for (let i = group.length - 2; i >= 0; i--) {
+                if (group[i].truePct < group[i + 1].truePct) {
+                  group[i].truePct = group[i + 1].truePct;
+                  group[i].rawTruePct = group[i + 1].rawTruePct;
+                  group[i].edge = parseFloat((group[i].truePct - group[i].kalshiPct).toFixed(1));
+                }
               }
             }
           }
