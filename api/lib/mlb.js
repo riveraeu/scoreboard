@@ -305,14 +305,13 @@ export async function buildPitcherKPct(mlbSched) {
     for (const [abbr, id] of Object.entries(pitcherByTeam)) {
       const s26 = pitcherStats26[id];
       const s25 = pitcherStats25[id];
-      // Regression-to-mean: blend 2026 actual with 2025 anchor weighted by combined BF
-      // trust = combined BF / 200 (full trust at 200 combined BF; ~33 starts)
+      // Regression-to-mean: blend 2026 actual with 2025 anchor weighted by 2026 BF only
+      // trust = 2026 BF / 200 (full trust at 200 BF; ~33 starts in current season)
       const bf26 = s26?.bf || 0;
       const bf25 = s25?.bf || 0;
-      const bfCombined = bf26 + bf25;
       const k26 = (s26 && bf26 > 0) ? s26.so / bf26 : null;
       const anchor = (s25 && bf25 >= 50) ? s25.so / bf25 : LEAGUE_PITCHER_K;
-      const trust = Math.min(1.0, bfCombined / 200);
+      const trust = Math.min(1.0, bf26 / 200);
       if (k26 !== null || bf25 >= 50) {
         const kRegressed = k26 !== null ? k26 * trust + anchor * (1 - trust) : anchor;
         pitcherKPct[abbr] = parseFloat((kRegressed * 100).toFixed(1));
