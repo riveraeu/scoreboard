@@ -1225,70 +1225,10 @@ var worker_default = {
           nbaDepthChartPos = await buildNbaDepthChartPos(CACHE2).catch(() => null);
         }
         // Fetch NBA pace + usage data (cached 12h) for SimScore
-        let nbaPaceData = null, nbaUsageData = null;
-        if (sportsNeeded.has("nba")) {
-          [nbaPaceData, nbaUsageData] = await Promise.all([
-            CACHE2 ? CACHE2.get("nba:pace:2526", "json").catch(() => null) : null,
-            CACHE2 ? CACHE2.get("nba:usage:2526", "json").catch(() => null) : null,
-          ]);
-          if (!nbaPaceData || !nbaUsageData) {
-            const NBA_STATS_HDR = {
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-              "Accept": "application/json, text/plain, */*",
-              "Accept-Language": "en-US,en;q=0.9",
-              "x-nba-stats-origin": "stats",
-              "x-nba-stats-token": "true",
-              "Referer": "https://www.nba.com/",
-              "Origin": "https://www.nba.com",
-            };
-            const _nbaFetch = (url) => {
-              const ac = new AbortController();
-              const t = setTimeout(() => ac.abort(), 4000);
-              return fetch(url, { headers: NBA_STATS_HDR, signal: ac.signal })
-                .then(r => { clearTimeout(t); return r; })
-                .catch(() => null);
-            };
-            const [teamR, playerR] = await Promise.all([
-              nbaPaceData ? null : _nbaFetch("https://stats.nba.com/stats/leaguedashteamstats?Conference=&DateFrom=&DateTo=&Division=&GameScope=&GameSegment=&Height=&ISTRound=&LastNGames=0&LeagueID=00&Location=&MeasureType=Advanced&Month=0&OpponentTeamID=0&Outcome=&PORound=0&PaceAdjust=N&PerMode=PerGame&PlusMinus=N&PtMeasureType=&Rank=N&Season=2025-26&SeasonSegment=&SeasonType=Regular+Season&ShotClockRange=&StarterBench=&TeamID=0&TwoWay=0&VsConference=&VsDivision="),
-              nbaUsageData ? null : _nbaFetch("https://stats.nba.com/stats/leaguedashplayerstats?College=&Conference=&Country=&DateFrom=&DateTo=&Division=&DraftPick=&DraftYear=&GameScope=&GameSegment=&Height=&ISTRound=&LastNGames=0&LeagueID=00&Location=&MeasureType=Advanced&Month=0&OpponentTeamID=0&Outcome=&PORound=0&PaceAdjust=N&PerMode=PerGame&PlusMinus=N&PtMeasureType=&Rank=N&Season=2025-26&SeasonSegment=&SeasonType=Regular+Season&ShotClockRange=&StarterBench=&TeamID=0&TwoWay=0&VsConference=&VsDivision=&Weight="),
-            ]);
-            if (teamR?.ok) {
-              try {
-                const d = await teamR.json();
-                const rs = d.resultSets?.[0];
-                if (rs) {
-                  const hdrs = rs.headers;
-                  const paceIdx = hdrs.indexOf("PACE");
-                  const abbrIdx = hdrs.indexOf("TEAM_ABBREVIATION");
-                  if (paceIdx !== -1 && abbrIdx !== -1) {
-                    const paces = rs.rowSet.map(r => r[paceIdx]).filter(v => v > 0);
-                    const leagueAvgPace = paces.length > 0 ? paces.reduce((a,b) => a+b,0) / paces.length : 100;
-                    const teamPace = {};
-                    for (const row of rs.rowSet) { if (row[abbrIdx]) teamPace[row[abbrIdx]] = row[paceIdx]; }
-                    nbaPaceData = { teamPace, leagueAvgPace };
-                    if (CACHE2) CACHE2.put("nba:pace:2526", JSON.stringify(nbaPaceData), { expirationTtl: 43200 }).catch(() => {});
-                  }
-                }
-              } catch {}
-            }
-            if (playerR?.ok) {
-              try {
-                const d = await playerR.json();
-                const rs = d.resultSets?.[0];
-                if (rs) {
-                  const hdrs = rs.headers;
-                  const idIdx = hdrs.indexOf("PLAYER_ID");
-                  const usgIdx = hdrs.indexOf("USG_PCT");
-                  const minIdx = hdrs.indexOf("MIN");
-                  if (idIdx !== -1 && usgIdx !== -1 && minIdx !== -1) {
-                    nbaUsageData = {};
-                    for (const row of rs.rowSet) { if (row[idIdx]) nbaUsageData[String(row[idIdx])] = { usgPct: row[usgIdx], avgMin: row[minIdx] }; }
-                    if (CACHE2) CACHE2.put("nba:usage:2526", JSON.stringify(nbaUsageData), { expirationTtl: 43200 }).catch(() => {});
-                  }
-                }
-              } catch {}
-            }
-          }
+        // NBA pace data from KV cache only (stats.nba.com blocks server-side fetches)
+        let nbaPaceData = null;
+        if (sportsNeeded.has("nba") && CACHE2) {
+          nbaPaceData = await CACHE2.get("nba:pace:2526", "json").catch(() => null);
         }
         const preFilteredMarkets = [];
         const preDropped = [];
