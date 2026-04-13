@@ -1525,6 +1525,8 @@ var worker_default = {
         // Cache pitcher K-count distributions keyed by playerTeam so all thresholds for the same
         // pitcher share one simulation run — guarantees P(K>=4) >= P(K>=5) by construction.
         const pitcherKDistCache = {};
+        // Cache NBA stat distributions keyed by playerId|stat so all thresholds share one sim run.
+        const nbaPlayerDistCache = {};
         for (const { playerName, playerNameDisplay, sport, stat, col, threshold, kalshiPct, americanOdds, kalshiVolume, kalshiSpread, gameTeam1, gameTeam2, kalshiPlayerTeam, gameDate } of loopMarkets) {
           const key = `${sport}|${playerName}`;
           const info = playerInfoMap[key];
@@ -1979,11 +1981,14 @@ var worker_default = {
             // 4. Rest — not B2B → 2pts
             if (!isB2B) _sc += 2;
             nbaPreSimScore = _sc;
-            // Monte Carlo — more sims for higher confidence
-            const _nbaGameVals = gl.events.map(getStat).filter(v => !isNaN(v) && v >= 0);
-            const _nSim = _sc >= 8 ? 10000 : _sc >= 5 ? 5000 : 2000;
-            // Use general team defense factor (not position-adjusted DVP) for simulation
-            nbaSimPctOut = simulateNbaStat(_nbaGameVals, threshold, teamDefFactorOut, nbaPaceAdj, isB2B, _nSim);
+            // Shared distribution per player+stat — all thresholds query the same run
+            const _nbaDistKey = `${info.id}|${stat}`;
+            if (!nbaPlayerDistCache[_nbaDistKey]) {
+              const _nbaGameVals = gl.events.map(getStat).filter(v => !isNaN(v) && v >= 0);
+              const _nSim = _sc >= 8 ? 10000 : _sc >= 5 ? 5000 : 2000;
+              nbaPlayerDistCache[_nbaDistKey] = buildNbaStatDist(_nbaGameVals, teamDefFactorOut, nbaPaceAdj, isB2B, _nSim);
+            }
+            nbaSimPctOut = nbaDistPct(nbaPlayerDistCache[_nbaDistKey], threshold);
           }
           const rawTruePct = (() => {
             if (sport === "mlb" && stat === "strikeouts") {
@@ -2455,15 +2460,12 @@ function simulateKs(orderedKPcts, pitcherKPct, threshold, parkFactor = 1, nSim =
   return kDistPct(dist, threshold);
 }
 __name(simulateKs, "simulateKs");
-// NBA Monte Carlo: normal distribution model for per-game stats
-// gameValues: full season per-game values (used for mean + std)
-// recentValues: last N games for mean (more current); if null, uses gameValues for mean too
-// dvpFactor: opponent leniency (1.0 = avg, 1.1 = 10% more permissive)
-// paceAdj: avg game pace minus league avg pace (e.g. +2.5)
-// isB2B: apply fatigue multiplier
-function simulateNbaStat(gameValues, threshold, dvpFactor, paceAdj, isB2B, nSim = 5000) {
+// NBA Monte Carlo: build a shared Float32Array of simulated per-game values.
+// All thresholds for the same player+stat query the same distribution →
+// guarantees P(X≥3) ≥ P(X≥4) ≥ P(X≥5) by construction.
+function buildNbaStatDist(gameValues, dvpFactor, paceAdj, isB2B, nSim = 5000) {
   if (gameValues.length < 5) return null;
-  // Mean from recent 10 (more current), std from full season (more stable)
+  // Mean from recent 10 (recency), std from full season (stability)
   const recentSlice = gameValues.slice(0, Math.min(10, gameValues.length));
   const meanRecent = recentSlice.reduce((a, b) => a + b, 0) / recentSlice.length;
   const meanAll = gameValues.reduce((a, b) => a + b, 0) / gameValues.length;
@@ -2473,21 +2475,27 @@ function simulateNbaStat(gameValues, threshold, dvpFactor, paceAdj, isB2B, nSim 
   // Apply matchup/context adjustments to mean
   let adjMean = meanRecent;
   if (dvpFactor != null) adjMean *= dvpFactor;
-  // Pace: each 1pt above league avg ≈ 0.2% more possessions → subtle stat boost
   if (paceAdj != null) adjMean *= (1 + Math.min(Math.max(paceAdj, -15), 15) * 0.002);
   if (isB2B) adjMean *= 0.93;
   adjMean = Math.max(0, adjMean);
-  // Monte Carlo via Box-Muller normal
-  let hits = 0;
+  // Box-Muller normal — store raw values so any threshold can be queried
+  const dist = new Float32Array(nSim);
   for (let i = 0; i < nSim; i++) {
     const u1 = Math.random() + 1e-10;
     const u2 = Math.random();
     const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
-    if (adjMean + std * z >= threshold) hits++;
+    dist[i] = adjMean + std * z;
   }
-  return parseFloat((hits / nSim * 100).toFixed(1));
+  return dist;
 }
-__name(simulateNbaStat, "simulateNbaStat");
+__name(buildNbaStatDist, "buildNbaStatDist");
+function nbaDistPct(dist, threshold) {
+  if (!dist) return null;
+  let hits = 0;
+  for (let i = 0; i < dist.length; i++) { if (dist[i] >= threshold) hits++; }
+  return parseFloat((hits / dist.length * 100).toFixed(1));
+}
+__name(nbaDistPct, "nbaDistPct");
 function simulateHits(batterBA, pitcherBAA, parkFactor, threshold, nSim = 10000) {
   const leagueBA = 0.248;
   const hitProb = Math.min(0.95, Math.max(0.01, (batterBA * pitcherBAA / leagueBA) * parkFactor));
