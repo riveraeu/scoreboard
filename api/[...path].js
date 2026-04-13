@@ -1804,7 +1804,7 @@ var worker_default = {
             });
             continue;
           }
-          let recentAvgOut = null, dvpFactorOut = null, projectedStatOut = null;
+          let recentAvgOut = null, dvpFactorOut = null, teamDefFactorOut = null, projectedStatOut = null;
           let posDvpRankOut = null, posDvpValueOut = null, posGroupOut = null, oppDvpRatioOut = null;
           if (sport === "nba" || sport === "nhl") {
             const recentVals = gl.events.slice(0, 10).map(getStat).filter((v) => !isNaN(v));
@@ -1813,6 +1813,7 @@ var worker_default = {
               const leagueAvg = leagueAvgCache[`${sport}|${stat}`] ?? null;
               if (leagueAvg) {
                 dvpFactorOut = parseFloat((rankMap[tonightOpp].value / leagueAvg).toFixed(3));
+                teamDefFactorOut = dvpFactorOut; // general team defense (not position-adjusted)
                 const adjustedFactor = sport === "nhl" ? dvpFactorOut * 1.06 : dvpFactorOut;
                 projectedStatOut = parseFloat((recentAvgOut * adjustedFactor).toFixed(2));
               }
@@ -1981,7 +1982,8 @@ var worker_default = {
             // Monte Carlo — more sims for higher confidence
             const _nbaGameVals = gl.events.map(getStat).filter(v => !isNaN(v) && v >= 0);
             const _nSim = _sc >= 8 ? 10000 : _sc >= 5 ? 5000 : 2000;
-            nbaSimPctOut = simulateNbaStat(_nbaGameVals, threshold, dvpFactorOut, nbaPaceAdj, isB2B, _nSim);
+            // Use general team defense factor (not position-adjusted DVP) for simulation
+            nbaSimPctOut = simulateNbaStat(_nbaGameVals, threshold, teamDefFactorOut, nbaPaceAdj, isB2B, _nSim);
           }
           const rawTruePct = (() => {
             if (sport === "mlb" && stat === "strikeouts") {
