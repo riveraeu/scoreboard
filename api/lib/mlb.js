@@ -200,7 +200,7 @@ export async function buildLineupKPct(mlbSched) {
     }
     return { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, projectedLineupTeams: [...projectedLineupTeams] };
   } catch {
-    return { lineupKPct: {}, lineupBatterKPcts: {}, lineupKPctVR: {}, lineupKPctVL: {}, lineupSpotByName: {}, gameHomeTeams: {}, projectedLineupTeams: [] };
+    return { lineupKPct: {}, lineupBatterKPcts: {}, lineupKPctVR: {}, lineupKPctVL: {}, lineupBatterKPctsOrdered: {}, lineupBatterKPctsVROrdered: {}, lineupBatterKPctsVLOrdered: {}, lineupSpotByName: {}, gameHomeTeams: {}, projectedLineupTeams: [] };
   }
 }
 
@@ -353,6 +353,15 @@ export async function buildPitcherKPct(mlbSched) {
         )
       );
     } catch { /* game log fetch failed */ }
+    // Fallback: compute pitcherAvgPitches from game logs for any pitcher where season aggregate lacked numberOfPitches
+    for (const { id, splits } of glFetch) {
+      const abbr = Object.keys(pitcherByTeam).find(a => pitcherByTeam[a] === id);
+      if (!abbr || pitcherAvgPitches[abbr] != null) continue;
+      const startSplits = splits.filter(s => (s.stat?.gamesStarted || 0) > 0);
+      if (startSplits.length === 0) continue;
+      const totalNP = startSplits.reduce((sum, s) => sum + (s.stat?.numberOfPitches || 0), 0);
+      if (totalNP > 0) pitcherAvgPitches[abbr] = parseFloat((totalNP / startSplits.length).toFixed(1));
+    }
     // Step 2: fetch play-by-play for CSW% (many concurrent requests, may time out on edge)
     try {
       const allGamePks = new Set();
