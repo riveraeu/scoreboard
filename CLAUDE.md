@@ -26,7 +26,7 @@ Single HTML file with JSX compiled via Babel standalone (no build step). All Rea
 
 ### Storage: Cloudflare KV (`CACHE2`)
 Used for caching expensive fetches. Key TTLs:
-- `byteam:mlb` — 600s (MLB team stats, probables, lineup K-rates)
+- `byteam:mlb` — 600s (MLB team stats, probables, lineup K-rates). **Does NOT include `barrelPctMap`** — that lives in `mlb:barrelPct`. Uses 60s TTL if lineupSpotByName or pitcherAvgPitches come back empty (e.g. bust before lineups confirmed), so next request retries quickly.
 - `byteam:nba` — 1800s
 - `byteam:nfl` — 1800s
 - `gameTimes:v2:{date}` — 600s
@@ -74,10 +74,11 @@ True% = Monte Carlo simulation (`simulateHits`) using batter BA × pitcher BAA (
 ### NBA
 - **Stats**: `points`, `rebounds`, `assists`, `threePointers`
 - **Kalshi series**: various per stat
-- True% = Monte Carlo simulation (`simulateNbaStat`) — normal distribution over full season per-game values
+- True% = Monte Carlo simulation (`buildNbaStatDist` + `nbaDistPct`) — normal distribution over per-game values
+  - `nbaPlayerDistCache` keyed `playerId|stat` — all thresholds (3+, 4+, 5+) share one distribution, guaranteeing monotonicity
   - Mean from last 10 games (recency), std from full season (stability)
   - Adjusted mean: `× teamDefFactor × (1 + paceAdj×0.002) × 0.93 if B2B`
-  - `teamDefFactor` = general team defense (opp avg stat allowed / league avg) — NOT position-adjusted DVP
+  - `teamDefFactor` = general team defense (`rankMap[opp].value / leagueAvg`) — NOT position-adjusted DVP
   - Falls back to avg(seasonPct, softPct) − 4% if B2B when simulation returns null (<5 game values)
 - **SimScore** (max 11 pre-edge, 14 with edge bonus):
   - Pace (avg game pace above league avg) → 3pts — fetched from ESPN via `buildNbaPaceData()`, cached 12h
@@ -109,7 +110,8 @@ True% = Monte Carlo simulation (`simulateHits`) using batter BA × pitcher BAA (
 | `simulateKsDist(orderedKPcts, pitcherKPct, parkFactor, nSim)` | Runs shared Monte Carlo, returns `Int16Array` of K counts |
 | `kDistPct(dist, threshold)` | Queries shared distribution — guarantees monotonicity |
 | `simulateHits(batterBA, pitcherBAA, parkFactor, threshold, nSim)` | Monte Carlo for hitter hits/HRR |
-| `simulateNbaStat(gameValues, threshold, dvpFactor, paceAdj, isB2B, nSim)` | Monte Carlo for NBA stats — normal dist, adjusted mean |
+| `buildNbaStatDist(gameValues, dvpFactor, paceAdj, isB2B, nSim)` | Builds shared `Float32Array` of simulated NBA per-game values |
+| `nbaDistPct(dist, threshold)` | Queries shared dist for any threshold — guarantees monotonicity |
 | `log5K(pitcherKPct, batterKPct)` | Log5 formula for K probability |
 | `buildPitcherKPct(mlbSched)` | Fetches pitcher season stats (K%, KBB%, ERA, P/GS, CSW%) |
 | `buildLineupKPct(mlbSched)` | Fetches lineup batter K-rates, lineup spots, ordered arrays |
@@ -208,6 +210,13 @@ Check `preDropped` in `?debug=1` response. Common reasons: `no_soft_data`, `opp_
 Comes from `split.numberOfPitches / split.gamesStarted` in season aggregate stats. If a pitcher has 0 starts recorded yet, will show `—`.
 
 ### Cache busting
-- All KV caches: `?bust=1` on the tonight endpoint deletes `byteam:mlb`
-- Barrel%: no bust endpoint — expires naturally after 6h
+- `?bust=1` deletes `byteam:mlb` and forces a fresh MLB data rebuild
+- `mlb:barrelPct` is NOT deleted on bust — barrel% survives busts with its own 6h TTL
+- If bust fires before lineups/probables are available, `byteam:mlb` is written with 60s TTL so next request retries
 - Depth chart: no bust — expires daily
+
+### "NBA report shows — for Pace/AvgMin/Rest on most rows"
+Most NBA markets are dropped at `opp_not_soft` before the pre-sim block runs. Those drop records now include `isB2B`, `nbaPaceAdj`, and `nbaOpportunity` computed inline from the gamelog at that drop site.
+
+### "SimScore shows yellow for strikeout players with score 7–9"
+The qualifying gate for strikeouts is `finalSimScore >= 10`. The report SimScore column uses `>= 10` as the yellow threshold when `finalSimScore` is present, so scores 7–9 show gray (not qualifying).
