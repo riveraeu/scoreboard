@@ -1790,7 +1790,11 @@ var worker_default = {
             const ordAll = sportByteam.mlb?.lineupBatterKPctsOrdered?.[tonightOpp] ?? null;
             const ordVR = sportByteam.mlb?.lineupBatterKPctsVROrdered?.[tonightOpp] ?? null;
             const ordVL = sportByteam.mlb?.lineupBatterKPctsVLOrdered?.[tonightOpp] ?? null;
-            const orderedKPcts = _pitcherHand === "R" ? (ordVR ?? ordAll) : _pitcherHand === "L" ? (ordVL ?? ordAll) : ordAll;
+            // When per-batter data is unavailable (lineup not confirmed), synthesize a 9-batter uniform
+            // lineup from the hand-adjusted team K% — lets the simulation run and cache the distribution.
+            const _lkpForSynth = _pitcherHand === "R" ? (sportByteam.mlb?.lineupKPctVR?.[tonightOpp] ?? sportByteam.mlb?.lineupKPct?.[tonightOpp] ?? null) : _pitcherHand === "L" ? (sportByteam.mlb?.lineupKPctVL?.[tonightOpp] ?? sportByteam.mlb?.lineupKPct?.[tonightOpp] ?? null) : (sportByteam.mlb?.lineupKPct?.[tonightOpp] ?? null);
+            const _synthOrd = _lkpForSynth != null ? Array(9).fill(_lkpForSynth / 100) : null;
+            const orderedKPcts = (_pitcherHand === "R" ? (ordVR ?? ordAll) : _pitcherHand === "L" ? (ordVL ?? ordAll) : ordAll) ?? _synthOrd;
             const batterKPcts = orderedKPcts ?? (sportByteam.mlb?.lineupBatterKPcts?.[tonightOpp] ?? []);
             if (batterKPcts.length >= 3) {
               const scores = batterKPcts.map((b) => log5K(pitcherKPctOut, b * 100));
@@ -2266,6 +2270,15 @@ var worker_default = {
             playerStatus: sport === "nba" ? (nbaPlayerStatus[String(info.id)] || null) : null
           });
         }
+        // Save all MLB strikeout plays before dedup so we can re-add non-winning thresholds as
+        // qualified:false afterward — player card needs all thresholds in allTonightPlays.
+        const _preDedupSkPlays = {};
+        for (const play of plays) {
+          if (play.sport === "mlb" && play.stat === "strikeouts") {
+            const k = `${play.playerTeam}|${play.gameDate}`;
+            (_preDedupSkPlays[k] = _preDedupSkPlays[k] || []).push(play);
+          }
+        }
         const bestMap = {};
         for (const play of plays) {
           // qualified:false plays exist for the player card (all thresholds needed) — keep per-threshold.
@@ -2292,6 +2305,25 @@ var worker_default = {
         // Filter out plays from past dates (Kalshi sometimes keeps settled markets open)
         const todayStr = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
         plays.splice(0, plays.length, ...plays.filter(p => !p.gameDate || p.gameDate >= todayStr));
+        // Re-add non-winning MLB strikeout thresholds as qualified:false so allTonightPlays has all
+        // thresholds and the player card can show distinct simulation-based truePct per threshold.
+        {
+          const _existingSkKeys = new Set(plays.filter(p => p.sport === "mlb" && p.stat === "strikeouts").map(p => `${p.playerTeam}|${p.gameDate}|${p.threshold}`));
+          const _extraSkPlays = [];
+          for (const p of plays) {
+            if (p.sport !== "mlb" || p.stat !== "strikeouts" || p.qualified === false) continue;
+            const k = `${p.playerTeam}|${p.gameDate}`;
+            const _hand = sportByteam.mlb?.pitcherHand?.[p.playerTeam] ?? "";
+            const _dist = pitcherKDistCache[`${p.playerTeam}|${_hand}`];
+            for (const other of (_preDedupSkPlays[k] || [])) {
+              if (_existingSkKeys.has(`${other.playerTeam}|${other.gameDate}|${other.threshold}`)) continue;
+              const _truePct = _dist ? kDistPct(_dist, other.threshold) : other.truePct;
+              _extraSkPlays.push({ ...other, qualified: false, truePct: _truePct ?? other.truePct, simPct: _truePct ?? other.simPct, edge: _truePct != null ? parseFloat((_truePct - other.kalshiPct).toFixed(1)) : other.edge });
+              _existingSkKeys.add(`${other.playerTeam}|${other.gameDate}|${other.threshold}`);
+            }
+          }
+          plays.push(..._extraSkPlays);
+        }
         // Enforce monotonicity: for MLB strikeout props on the same pitcher, lower threshold must have >= truePct.
         // If the simulation distribution is still in the pitcherKDistCache, re-derive all thresholds from it
         // so each threshold gets a distinct, correct value (e.g. 3+≈99.5%, 4+≈99.0%, 5+=98.1%).
