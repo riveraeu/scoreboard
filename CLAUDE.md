@@ -61,15 +61,15 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
   - K-BB% > 15% → 2pts
   - Lineup oK% > 24% → 3pts (hand-adjusted vs RHP/LHP)
   - Avg pitches/start > 85 → 2pts (uses 2026 data only if gs26 ≥ 4; else falls back to 2025)
-  - Park factor > 1.0 → 1pt
+  - Team ML ≤ -120 (clearly favored) → +1pt (`mlFavMeets`; null ML = no bonus)
   - Team ML > +150 (heavy underdog) → -1pt penalty (`mlMeets = false`; null ML = no penalty)
   - Edge ≥ 3% → 3pts (bonus, added after simulation)
+- `parkMeets` (`PARK_KFACTOR[homeTeam] > 1.0`) is still computed and included in debug output but no longer contributes to SimScore — park factor is applied inside `simulateKsDist` and affects truePct directly. `PARK_KFACTOR` values updated from FanGraphs 2024 SO column (multi-year rolling avg).
 - `pitcherGS26`: 2026 games started per team abbr, exported from `buildPitcherKPct`, used for small-sample guards
 - **Gates**: simScore ≥ 7 to enter play loop; finalSimScore ≥ 11 to qualify as a play (7–10 = qualified:false, shows in report but not plays card); `gs26 < 4 AND hasAnchor === false` (no reliable 2025 data either) → `preDropped` with `reason: "insufficient_starts"`. Normal early-season pitchers with strong 2025 data (gs25 ≥ 5 AND bf25 ≥ 100) pass through even with few 2026 starts.
 - `pitcherHasAnchor`: `true` if gs25 ≥ 5 AND bf25 ≥ 100 (reliable 2025 *starter* anchor). A reliever-turned-starter has bf25 > 0 but gs25 = 0 — reliever K% is not a valid anchor. bf25 ≥ 100 also excludes injury-shortened seasons (e.g. TJ recovery with 5 starts but minimal workload).
 - Pitchers fetched via `buildPitcherKPct(mlbSched)` — avg pitches per start from 2026 gamelog (starts-only filtered via `gamesStarted > 0`); falls back to 2025 season aggregate `numberOfPitches / gamesStarted` when no 2026 start data in gamelog
 - **K% regression**: `trust = min(1.0, bf26 / 200)` — uses 2026 BF only (NOT combined 2026+2025). Full trust at ~33 starts. Blends 2026 actual K% with 2025 anchor (or league avg 22.2% if no 2025 data). KBB% regressed the same way.
-- Park factors in `PARK_KFACTOR` map
 
 #### MLB Hitters (hits/hrr) Model
 - **`hits` True%**: Monte Carlo simulation (`simulateHits`) using batter BA × pitcher BAA (log5), park-adjusted

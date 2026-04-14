@@ -1,37 +1,40 @@
 // Simulation functions and park factor constants.
 // Pure math — no external dependencies, no imports needed.
 
+// SO park factors from FanGraphs 2024 SO column (multi-year rolling avg, scale: 1.00 = neutral).
+// Source: fangraphs.com/tools/guts?type=pf — SO column (season=2024).
 export const PARK_KFACTOR = {
-  SEA: 1.02,
-  NYM: 1.01,
-  STL: 1.01,
-  ARI: 1.01,
-  TB: 1.01,
-  MIL: 1.01,
-  SF: 1.01,
-  HOU: 1,
-  BOS: 1,
-  NYY: 1,
-  ATL: 1,
-  MIN: 1,
-  DET: 1,
-  CWS: 1,
-  LAD: 1,
-  MIA: 1,
-  PIT: 1,
-  CLE: 1,
-  OAK: 1,
-  KC: 1,
-  BAL: 0.99,
-  CHC: 0.99,
-  SD: 0.99,
-  PHI: 0.99,
-  WSH: 0.99,
-  LAA: 0.99,
-  TEX: 0.99,
-  CIN: 0.99,
-  ATH: 0.99,
-  COL: 0.98
+  MIL: 1.04, // FG: 103.73
+  SEA: 1.04, // FG: 103.59
+  SD:  1.02, // FG: 102.33
+  TB:  1.02, // FG: 102.02
+  ATL: 1.02, // FG: 102.05
+  LAA: 1.02, // FG: 101.96
+  HOU: 1.02, // FG: 101.73
+  CIN: 1.01, // FG: 101.38
+  NYM: 1.01, // FG: 101.17
+  CHC: 1.01, // FG: 101.06
+  CLE: 1.01, // FG: 100.75
+  TEX: 1.01, // FG: 100.53
+  PHI: 1.01, // FG: 100.54
+  ATH: 1.00, // FG: 100.31
+  MIA: 1.00, // FG: 100.31
+  TOR: 1.00, // FG: 100.10
+  NYY: 1.00, // FG: 100.01
+  MIN: 1.00, // FG: 100.01
+  LAD: 1.00, // FG:  99.83
+  CWS: 0.99, // FG:  99.23
+  ARI: 0.99, // FG:  99.21 (humidor since 2022)
+  BAL: 0.99, // FG:  98.56
+  WSH: 0.98, // FG:  98.48
+  DET: 0.98, // FG:  98.07
+  SF:  0.98, // FG:  97.71
+  BOS: 0.98, // FG:  97.63
+  STL: 0.97, // FG:  97.27
+  PIT: 0.97, // FG:  96.98
+  KC:  0.97, // FG:  96.75
+  COL: 0.96, // FG:  96.49
+  OAK: 1.00, // legacy fallback (team now ATH)
 };
 
 export const PARK_HITFACTOR = {
