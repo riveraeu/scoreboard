@@ -1553,21 +1553,27 @@ var worker_default = {
         const pitcherKDistCache = {};
         // Cache NBA stat distributions keyed by playerId|stat so all thresholds share one sim run.
         const nbaPlayerDistCache = {};
+        const _eovaldiLoopTrace = [];
         for (const { playerName, playerNameDisplay, sport, stat, col, threshold, kalshiPct, americanOdds, kalshiVolume, kalshiSpread, gameTeam1, gameTeam2, kalshiPlayerTeam, gameDate } of loopMarkets) {
+          const _isEoLoop = isDebug && playerName.includes("eovaldi");
+          if (_isEoLoop) _eovaldiLoopTrace.push({ step: "iter", playerName, playerNameDisplay, sport, stat, threshold, kalshiPlayerTeam, gameTeam1, gameTeam2, gameDate });
           const key = `${sport}|${playerName}`;
           const info = playerInfoMap[key];
           const gl = playerGamelogs[key];
           if (!info || !gl) {
+            if (_isEoLoop) _eovaldiLoopTrace.push({ step: "drop_no_info_gl", hasInfo: !!info, hasGl: !!gl });
             if (isDebug) dropped.push({ playerName: playerNameDisplay || playerName, sport, stat, threshold, kalshiPct, reason: !info ? "no_espn_info" : "no_gamelog", gameTeam1, gameTeam2, kalshiPlayerTeam });
             continue;
           }
           const softData = STAT_SOFT[`${sport}|${stat}`];
           if (!softData) {
+            if (_isEoLoop) _eovaldiLoopTrace.push({ step: "drop_no_soft_data" });
             if (isDebug) dropped.push({ playerName: playerNameDisplay || playerName, sport, stat, threshold, kalshiPct, reason: "no_soft_data" });
             continue;
           }
           const { softTeams, rankMap } = softData;
           let playerTeam = kalshiPlayerTeam || info.teamAbbr;
+          if (_isEoLoop) _eovaldiLoopTrace.push({ step: "team_raw", kalshiPlayerTeam, infoTeamAbbr: info.teamAbbr, playerTeam });
           // For MLB strikeouts: validate team against ESPN probable pitcher name and correct if inverted
           if (sport === "mlb" && stat === "strikeouts" && playerTeam) {
             const probs = sportByteam.mlb?.probables || {};
@@ -1581,12 +1587,15 @@ var worker_default = {
               }
             }
           }
+          if (_isEoLoop) _eovaldiLoopTrace.push({ step: "team_after_correction", playerTeam });
           let tonightOpp = null;
           if (gameTeam1 && gameTeam2) {
             if (gameTeam1 === playerTeam) tonightOpp = gameTeam2;
             else if (gameTeam2 === playerTeam) tonightOpp = gameTeam1;
           }
+          if (_isEoLoop) _eovaldiLoopTrace.push({ step: "tonightOpp", tonightOpp, gameTeam1, gameTeam2, playerTeam });
           if (!tonightOpp) {
+            if (_isEoLoop) _eovaldiLoopTrace.push({ step: "drop_no_opp" });
             if (isDebug) dropped.push({ playerName: playerNameDisplay || playerName, sport, stat, threshold, kalshiPct, reason: "no_opp", playerTeam, gameTeam1, gameTeam2 });
             continue;
           }
@@ -2373,6 +2382,7 @@ var worker_default = {
           const _ek = "mlb|nathan eovaldi";
           const _eovaldiDiag = {
             trace: _eovaldiTrace,
+            loopTrace: _eovaldiLoopTrace,
             inInfo: !!playerInfoMap[_ek],
             infoId: playerInfoMap[_ek]?.id ?? null,
             inGamelog: !!playerGamelogs[_ek],
