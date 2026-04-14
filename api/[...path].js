@@ -1624,7 +1624,7 @@ var worker_default = {
                   }
                 }
                 const _osPreSimScore = (_osPaceAdj != null && _osPaceAdj > 0 ? 3 : 0)
-                  + (_osOpportunity != null ? (_osOpportunity >= 32 ? 4 : _osOpportunity >= 25 ? 2 : 0) : 0)
+                  + (_osOpportunity != null ? (_osOpportunity >= 30 ? 4 : _osOpportunity >= 25 ? 2 : 0) : 0)
                   + (_osDvpRank != null && _osDvpRank <= 10 ? 2 : 0)
                   + (!_osIsB2B ? 2 : 0);
                 const _osNbaSimScore = _osPreSimScore + (_osEdge != null && _osEdge > 5 ? 3 : 0);
@@ -2013,14 +2013,14 @@ var worker_default = {
                 if (nbaPaceAdj > 0) _sc += 3;
               }
             }
-            // 2. Avg minutes (last 10 games from ESPN gamelog) — ≥32 → 4pts, ≥25 → 2pts
+            // 2. Avg minutes (last 10 games from ESPN gamelog) — ≥30 → 4pts, ≥25 → 2pts
             const _minIdx = gl.ul.indexOf("MIN");
             if (_minIdx !== -1) {
               const _minVals = gl.events.slice(0, 10).map(ev => parseFloat(ev.stats[_minIdx])).filter(v => !isNaN(v) && v > 0);
               if (_minVals.length >= 3) {
                 const _avgMin = _minVals.reduce((a, b) => a + b, 0) / _minVals.length;
                 nbaOpportunity = parseFloat(_avgMin.toFixed(1));
-                if (_avgMin >= 32) _sc += 4;
+                if (_avgMin >= 30) _sc += 4;
                 else if (_avgMin >= 25) _sc += 2;
               }
             }
@@ -2287,13 +2287,8 @@ var worker_default = {
             ? `${play.playerName}|${play.sport}|${play.stat}|${play.threshold}`
             : `${play.playerName}|${play.sport}|${play.stat}`;
           const prev = bestMap[key];
-          // For MLB strikeouts keep highest edge (most meaningful market).
-          // For all others keep highest kalshiPct (closest to the money line).
-          const isBetter = !prev || (
-            play.sport === "mlb" && play.stat === "strikeouts"
-              ? play.edge > prev.edge
-              : play.kalshiPct > prev.kalshiPct
-          );
+          // Keep the play with highest truePct (strongest model conviction).
+          const isBetter = !prev || play.truePct > prev.truePct;
           if (isBetter) bestMap[key] = play;
         }
         plays.splice(0, plays.length, ...Object.values(bestMap));

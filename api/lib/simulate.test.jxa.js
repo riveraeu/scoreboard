@@ -213,7 +213,7 @@ test('buildNbaStatDist returns null for insufficient data', function() {
 
 function computeNbaDropSimScore(o) {
   var preScore = (o.paceAdj != null && o.paceAdj > 0 ? 3 : 0)
-    + (o.opportunity != null ? (o.opportunity >= 32 ? 4 : o.opportunity >= 25 ? 2 : 0) : 0)
+    + (o.opportunity != null ? (o.opportunity >= 30 ? 4 : o.opportunity >= 25 ? 2 : 0) : 0)
     + (o.dvpRank != null && o.dvpRank <= 10 ? 2 : 0)
     + (!o.isB2B ? 2 : 0);
   return { preScore: preScore, simScore: preScore + (o.edge != null && o.edge > 5 ? 3 : 0) };

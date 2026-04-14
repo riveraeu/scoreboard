@@ -89,7 +89,7 @@ True% = Monte Carlo simulation (`simulateHits`) using batter BA × pitcher BAA (
   - Falls back to avg(seasonPct, softPct) − 4% if B2B when simulation returns null (<5 game values)
 - **SimScore** (max 11 pre-edge, 14 with edge bonus):
   - Pace (avg game pace above league avg) → 3pts — fetched from ESPN via `buildNbaPaceData()`, cached 12h
-  - Avg minutes ≥ 32 (last 10 games) → 4pts; ≥ 25 → 2pts
+  - Avg minutes ≥ 30 (last 10 games) → 4pts; ≥ 25 → 2pts
   - Position-adjusted DVP rank ≤ 10 → 2pts
   - Not B2B → 2pts
   - Edge > 5% → 3pts (added after simulation)
@@ -227,7 +227,7 @@ tierColor(pct): >= 80% → #3fb950 (green), >= 65% → #e3b341 (yellow), else #f
 ```
 
 ### NBA AvgMin Tiers (report column)
-- ≥ 32 min → green (4 SimScore pts)  
+- ≥ 30 min → green (4 SimScore pts)
 - ≥ 25 min → yellow (2 SimScore pts)
 - < 25 min → red (0 pts)
 

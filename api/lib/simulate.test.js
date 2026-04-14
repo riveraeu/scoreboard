@@ -154,7 +154,7 @@ test('buildNbaStatDist returns null for insufficient data', () => {
 // All four components (pace, minutes, DVP rank, rest) plus edge bonus must be correct.
 function computeNbaDropSimScore({ paceAdj, opportunity, dvpRank, isB2B, edge }) {
   const preScore = (paceAdj != null && paceAdj > 0 ? 3 : 0)
-    + (opportunity != null ? (opportunity >= 32 ? 4 : opportunity >= 25 ? 2 : 0) : 0)
+    + (opportunity != null ? (opportunity >= 30 ? 4 : opportunity >= 25 ? 2 : 0) : 0)
     + (dvpRank != null && dvpRank <= 10 ? 2 : 0)
     + (!isB2B ? 2 : 0);
   return { preScore, simScore: preScore + (edge != null && edge > 5 ? 3 : 0) };
@@ -163,7 +163,7 @@ function computeNbaDropSimScore({ paceAdj, opportunity, dvpRank, isB2B, edge }) 
 test('NBA drop simScore: all components contribute correctly', () => {
   const { preScore, simScore } = computeNbaDropSimScore({
     paceAdj: 2.5,      // above avg → +3
-    opportunity: 34,   // ≥32 min → +4
+    opportunity: 34,   // ≥30 min → +4
     dvpRank: 8,        // ≤10 → +2
     isB2B: false,      // rested → +2
     edge: 8,           // >5% → +3 bonus
@@ -175,7 +175,7 @@ test('NBA drop simScore: all components contribute correctly', () => {
 test('NBA drop simScore: B2B and soft pace give lower score', () => {
   const { preScore, simScore } = computeNbaDropSimScore({
     paceAdj: -1.0,     // below avg → 0
-    opportunity: 28,   // ≥25 but <32 → +2
+    opportunity: 28,   // ≥25 but <30 → +2
     dvpRank: 15,       // >10 → 0
     isB2B: true,       // B2B → 0
     edge: 2,           // ≤5% → no bonus
