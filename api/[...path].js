@@ -1266,11 +1266,14 @@ var worker_default = {
             if (m.stat === "strikeouts") {
               const _gs26 = sportByteam.mlb?.pitcherGS26?.[m.kalshiPlayerTeam] ?? null;
               const _hasAnchor = sportByteam.mlb?.pitcherHasAnchor?.[m.kalshiPlayerTeam] ?? null;
-              // Without a reliable 2025 starter anchor (gs25<5 or bf25<100, e.g. TJ return or rookie),
-              // require 8+ GS in 2026 before trusting the model — 4 starts isn't enough signal.
-              // With a valid anchor, the existing 4-start threshold is fine.
-              const _gs26Min = _hasAnchor !== true ? 8 : 4; // null and false both → stricter threshold
-              if (_gs26 !== null && _gs26 < _gs26Min) { preDropped.push({ ...m, reason: "insufficient_starts", gs26: _gs26, hasAnchor: _hasAnchor }); continue; }
+              // No 2025 anchor (TJ return, pure reliever, etc.): require 8 GS in 2026.
+              // Treat null 2026 data as 0 — if the API can't confirm starts, don't trust the model.
+              // Has valid 2025 anchor: only drop if we have explicit 2026 data showing < 4 GS (null = pre-season pass).
+              if (_hasAnchor !== true) {
+                if ((_gs26 ?? 0) < 8) { preDropped.push({ ...m, reason: "insufficient_starts", gs26: _gs26 ?? 0, hasAnchor: _hasAnchor }); continue; }
+              } else if (_gs26 !== null && _gs26 < 4) {
+                preDropped.push({ ...m, reason: "insufficient_starts", gs26: _gs26, hasAnchor: _hasAnchor }); continue;
+              }
               preFilteredMarkets.push(m); continue;
             }
             const playerTeam2 = m.kalshiPlayerTeam;
