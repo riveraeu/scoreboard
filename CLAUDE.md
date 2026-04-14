@@ -72,7 +72,11 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
 - Park factors in `PARK_KFACTOR` map
 
 #### MLB Hitters (hits/hrr) Model
-True% = Monte Carlo simulation (`simulateHits`) using batter BA × pitcher BAA (log5)
+- **`hits` True%**: Monte Carlo simulation (`simulateHits`) using batter BA × pitcher BAA (log5), park-adjusted
+- **`hrr` True%**: `(primaryPct + softPct) / 2 × parkFactor` (no Monte Carlo)
+  - `primaryPct` = player's 2026 HRR 1+ rate (falls back to 2025+2026 blend, then career)
+  - `softPct` = HRR 1+ rate vs tonight's pitcher (H2H gamelog dates) or vs tonight's team (2025+2026 fallback)
+  - BA is NOT directly in the formula — it's implicit via the player's historical HRR rate
 - **SimScore** (max 11 pre-edge, 14 with edge bonus):
   - Lineup spot 1–3 → 3pts, spot 4 → 2pts
   - Pitcher WHIP > 1.35 → 3pts (from pitcher gamelog)
@@ -333,7 +337,7 @@ If truePct still looks wrong: check `?debug=1` and look in `dropped` for the mis
 The `pitcherKDistCache` shares one `Int16Array` distribution across all thresholds for a pitcher — querying it at different thresholds guarantees P(K≥4) ≥ P(K≥5) by construction. If values are identical, it likely means the distribution is flat at that range (e.g. a dominant pitcher where nearly all sims exceed both thresholds).
 
 ### "Player appears in Kalshi but not in plays or dropped"
-Check `preDropped` in `?debug=1` response. Common reasons: `no_soft_data`, `opp_not_soft`, `no_opp`.
+Check `preDropped` in `?debug=1` response. Common reasons: `no_soft_data`, `opp_not_soft`, `no_opp`, `insufficient_starts` (MLB strikeouts only).
 
 Also check the date filter: the edge function runs UTC, so after midnight UTC (e.g. 8pm ET = midnight UTC), `gameDate:"2026-04-13"` is filtered if the server sees the next day. The cutoff is `Date.now() - 86400000` (yesterday) to handle this — but if a play was on a date 2+ days ago, it will still be filtered.
 
@@ -343,7 +347,10 @@ Also check the date filter: the edge function runs UTC, so after midnight UTC (e
 - After a cache bust: if `buildLineupKPct` or `buildPitcherKPct` hits an early-return (no games scheduled or all IDs empty), all destructured fields must be present in the return value — otherwise `lineupSpotByName` and `pitcherAvgPitches` come back `undefined`, causing `—` for every row. The early-return and catch blocks in `api/lib/mlb.js` include the full field set: `lineupSpotByName`, `lineupBatterKPctsOrdered`, etc. for lineup; `pitcherAvgPitches`, `pitcherEra`, `pitcherCSWPct` for pitchers.
 
 ### "P/GS all dashes"
-Comes from `split.numberOfPitches / split.gamesStarted` in season aggregate stats. If a pitcher has 0 starts recorded yet, will show `—`. Also check that `buildPitcherKPct` didn't hit the early-return path (see above).
+Comes from gamelog starts-only (2026 primary) or season aggregate fallback `numberOfPitches / gamesStarted`. If a pitcher has 0 starts recorded yet in either source, will show `—`. Also check that `buildPitcherKPct` didn't hit the early-return path (see above).
+
+### "API returning 504 / function stopped after 25s"
+The CSW% play-by-play fetch in `buildPitcherKPct` fires one MLB Stats API request per game per pitcher. With 10–15 pitchers × multiple starts, this can exceed the 25s Vercel Edge limit. Mitigations in place: PBP limited to last 5 starts per pitcher; 8s AbortController aborts the whole PBP block and falls back to K% if slow. If 504s recur, check whether the PBP block is the bottleneck or if another fetch is slow.
 
 ### Cache busting
 - `?bust=1` deletes `byteam:mlb` and forces a fresh MLB data rebuild
