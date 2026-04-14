@@ -271,7 +271,7 @@ export async function buildPitcherKPct(mlbSched) {
       }
     }
     const allIds = [...new Set(Object.values(pitcherByTeam))];
-    if (allIds.length === 0) return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherGS26: {} };
+    if (allIds.length === 0) return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherGS26: {}, pitcherHasAnchor: {} };
     const idStr = allIds.join(",");
     const [res25, res26] = await Promise.all([
       fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=pitching,type=season,season=2025,gameType=R)`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
@@ -301,7 +301,7 @@ export async function buildPitcherKPct(mlbSched) {
       if (!pitcherHand[abbr] && pitcherHandById[id]) pitcherHand[abbr] = pitcherHandById[id];
     }
     const LEAGUE_PITCHER_K = 0.222;
-    const pitcherKPct = {}, pitcherKBBPct = {}, pitcherEra = {};
+    const pitcherKPct = {}, pitcherKBBPct = {}, pitcherEra = {}, pitcherHasAnchor = {};
     for (const [abbr, id] of Object.entries(pitcherByTeam)) {
       const s26 = pitcherStats26[id];
       const s25 = pitcherStats25[id];
@@ -309,6 +309,7 @@ export async function buildPitcherKPct(mlbSched) {
       // trust = 2026 BF / 200 (full trust at 200 BF; ~33 starts in current season)
       const bf26 = s26?.bf || 0;
       const bf25 = s25?.bf || 0;
+      pitcherHasAnchor[abbr] = bf25 >= 50; // true = reliable 2025 anchor; false = falls back to league avg
       const k26 = (s26 && bf26 > 0) ? s26.so / bf26 : null;
       const anchor = (s25 && bf25 >= 50) ? s25.so / bf25 : LEAGUE_PITCHER_K;
       const trust = Math.min(1.0, bf26 / 200);
@@ -404,8 +405,8 @@ export async function buildPitcherKPct(mlbSched) {
         if (cswByMlbId[id] != null) pitcherCSWPct[abbr] = cswByMlbId[id];
       }
     } catch { /* CSW% unavailable — filter falls back to K% */ }
-    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherCSWPct, pitcherAvgPitches, pitcherGS26 };
+    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherCSWPct, pitcherAvgPitches, pitcherGS26, pitcherHasAnchor };
   } catch {
-    return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherGS26: {} };
+    return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherGS26: {}, pitcherHasAnchor: {} };
   }
 }
