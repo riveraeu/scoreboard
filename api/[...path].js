@@ -1266,9 +1266,11 @@ var worker_default = {
             if (m.stat === "strikeouts") {
               const _gs26 = sportByteam.mlb?.pitcherGS26?.[m.kalshiPlayerTeam] ?? null;
               const _hasAnchor = sportByteam.mlb?.pitcherHasAnchor?.[m.kalshiPlayerTeam] ?? null;
-              // Drop only when BOTH years are thin: no reliable 2025 anchor (bf25<50) AND <4 GS in 2026
-              // Normal early-season pitchers with strong 2025 data pass through fine
-              if (_gs26 !== null && _gs26 < 4 && _hasAnchor === false) { preDropped.push({ ...m, reason: "insufficient_starts", gs26: _gs26 }); continue; }
+              // Without a reliable 2025 starter anchor (gs25<5 or bf25<100, e.g. TJ return or rookie),
+              // require 8+ GS in 2026 before trusting the model — 4 starts isn't enough signal.
+              // With a valid anchor, the existing 4-start threshold is fine.
+              const _gs26Min = _hasAnchor === false ? 8 : 4;
+              if (_gs26 !== null && _gs26 < _gs26Min) { preDropped.push({ ...m, reason: "insufficient_starts", gs26: _gs26, hasAnchor: _hasAnchor }); continue; }
               preFilteredMarkets.push(m); continue;
             }
             const playerTeam2 = m.kalshiPlayerTeam;
