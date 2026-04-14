@@ -1268,7 +1268,7 @@ var worker_default = {
               const _hasAnchor = sportByteam.mlb?.pitcherHasAnchor?.[m.kalshiPlayerTeam] ?? null;
               // No 2025 anchor (TJ return, pure reliever, etc.): require 8 GS in 2026.
               // Treat null 2026 data as 0 — if the API can't confirm starts, don't trust the model.
-              // Has valid 2025 anchor: pass through regardless of gs26 — the anchor IS the reliability signal.
+              // Has valid 2025 anchor (gs25≥5, bf25≥100): pass through regardless of gs26 — the anchor IS the reliability signal.
               if (_hasAnchor !== true) {
                 if ((_gs26 ?? 0) < 8) { preDropped.push({ ...m, reason: "insufficient_starts", gs26: _gs26 ?? 0, hasAnchor: _hasAnchor }); continue; }
               }
@@ -1693,7 +1693,7 @@ var worker_default = {
           const blendedPct = blendVals.length >= 5 ? blendVals.filter((v) => v >= threshold).length / blendVals.length * 100 : null;
           // Prefer 2026 season rate; fall back to blended 25+26; fall back to all-career
           const primaryPct = pct26 ?? blendedPct ?? seasonPct;
-          let simScore = null, kpctMeets = null, kbbMeets = null, lkpMeets = null, pitchesMeets = null, parkMeets = null, mlPts = null, totalPts = null;
+          let simScore = null, kpctMeets = null, kpctPts = null, kbbMeets = null, lkpMeets = null, pitchesMeets = null, parkMeets = null, mlPts = null, totalPts = null;
           let _pitcherHand = null;
           if (sport === "mlb" && stat === "strikeouts") {
             _pitcherHand = sportByteam.mlb?.pitcherHand?.[playerTeam] ?? null;
@@ -1711,7 +1711,15 @@ var worker_default = {
             // When gs26 < 4, skip raw CSW% (unreliable small sample) and use only regressed K%
             const _gs26 = sportByteam.mlb?.pitcherGS26?.[playerTeam] ?? null;
             const _useCsw = (_gs26 == null || _gs26 >= 4) && _csw != null;
-            kpctMeets = _useCsw ? _csw > 30 : (_pkp != null ? _pkp > 24 : null);
+            // CSW%/K% tiered scoring: >30% CSW or >27% K → 3pts (green); 26-30% CSW or 24-27% K → 2pts (yellow); below → 0pts
+            if (_useCsw) {
+              kpctPts = _csw > 30 ? 3 : _csw > 26 ? 2 : 0;
+            } else if (_pkp != null) {
+              kpctPts = _pkp > 27 ? 3 : _pkp > 24 ? 2 : 0;
+            } else {
+              kpctPts = 0;
+            }
+            kpctMeets = kpctPts > 0;
             kbbMeets = _kbb != null ? _kbb > 15 : null;
             lkpMeets = _lkp != null ? _lkp > 24 : null;
             pitchesMeets = _avgP != null ? _avgP > 85 : null;
@@ -1719,11 +1727,11 @@ var worker_default = {
             // ML 3-tier: ≤ -130 → 2pts, -129 to -101 → 1pt, ≥ -100 → 0pts; null → 1pt
             const _teamML = sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null;
             mlPts = _teamML == null ? 1 : _teamML <= -130 ? 2 : _teamML <= -101 ? 1 : 0;
-            // O/U total 3-tier: 9–10.5 → 2pts, 7.5–8.9 → 1pt, <7.5 or >10.5 → 0pts; null → 1pt
+            // O/U total 3-tier (low total = pitcher-friendly): ≤8.5 → 2pts, 8.6–10.5 → 1pt, >10.5 → 0pts; null → 1pt
             const _gameTotal = sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null;
             totalPts = _gameTotal == null ? 1 : _gameTotal <= 8.5 ? 2 : _gameTotal <= 10.5 ? 1 : 0;
-            // Weighted sim-score (max 14): CSW%→3, K-BB%→2, lineup K%→3, avg pitches→2, ML tier→0-2, O/U tier→0-2
-            simScore = (kpctMeets === true ? 3 : 0)
+            // Weighted sim-score (max 14): CSW%/K%→0-3, K-BB%→0-2, lineup K%→0-3, avg pitches→0-2, ML tier→0-2, O/U tier→0-2
+            simScore = kpctPts
                      + (kbbMeets === true ? 2 : 0)
                      + (lkpMeets === true ? 3 : 0)
                      + (pitchesMeets === true ? 2 : 0)
@@ -1844,7 +1852,7 @@ var worker_default = {
               reason: "low_confidence",
               simScore,
               opponent: tonightOpp,
-              kpctMeets, kbbMeets, lkpMeets, pitchesMeets, parkMeets, mlPts, totalPts,
+              kpctMeets, kpctPts, kbbMeets, lkpMeets, pitchesMeets, parkMeets, mlPts, totalPts,
               seasonPct: parseFloat(primaryPct.toFixed(1)), softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
               truePct: _kTruePct, edge: parseFloat((_kTruePct - kalshiPct - (kalshiSpread != null ? kalshiSpread / 2 : 0)).toFixed(1)),
               pitcherCSWPct: sportByteam.mlb?.pitcherCSWPct?.[playerTeam] ?? null,
@@ -2177,7 +2185,7 @@ var worker_default = {
                 pitcherCSWPct: sportByteam.mlb?.pitcherCSWPct?.[playerTeam] ?? null,
                 pitcherKBBPct: sportByteam.mlb?.pitcherKBBPct?.[playerTeam] ?? null,
                 lineupKPct: lineupKPctOut, pitcherAvgPitches: sportByteam.mlb?.pitcherAvgPitches?.[playerTeam] ?? null,
-                kpctMeets, kbbMeets, lkpMeets, pitchesMeets, parkMeets, mlPts, totalPts,
+                kpctMeets, kpctPts, kbbMeets, lkpMeets, pitchesMeets, parkMeets, mlPts, totalPts,
               } : {}),
               ...(sport === "mlb" && stat !== "strikeouts" ? {
                 hitterSimScore, hitterFinalSimScore,
@@ -2215,7 +2223,7 @@ var worker_default = {
               reason: "low_confidence",
               simScore, finalSimScore,
               opponent: tonightOpp,
-              kpctMeets, kbbMeets, lkpMeets, pitchesMeets, parkMeets, mlPts, totalPts,
+              kpctMeets, kpctPts, kbbMeets, lkpMeets, pitchesMeets, parkMeets, mlPts, totalPts,
               seasonPct: parseFloat(primaryPct.toFixed(1)), softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
               truePct: parseFloat(truePct.toFixed(1)), edge: parseFloat(edge.toFixed(1)),
               pitcherCSWPct: sportByteam.mlb?.pitcherCSWPct?.[playerTeam] ?? null,
@@ -2290,6 +2298,9 @@ var worker_default = {
             parkMeets: sport === "mlb" && stat === "strikeouts" ? parkMeets : void 0,
             mlPts: sport === "mlb" && stat === "strikeouts" ? mlPts : void 0,
             totalPts: sport === "mlb" && stat === "strikeouts" ? totalPts : void 0,
+            kpctPts: sport === "mlb" && stat === "strikeouts" ? kpctPts : void 0,
+            pitcherGS26: sport === "mlb" && stat === "strikeouts" ? (sportByteam.mlb?.pitcherGS26?.[playerTeam] ?? null) : void 0,
+            pitcherHasAnchor: sport === "mlb" && stat === "strikeouts" ? (sportByteam.mlb?.pitcherHasAnchor?.[playerTeam] ?? null) : void 0,
             hitterSimScore: sport === "mlb" && stat !== "strikeouts" ? hitterSimScore : void 0,
             hitterFinalSimScore: sport === "mlb" && stat !== "strikeouts" ? hitterFinalSimScore : void 0,
             hitterLineupSpot: sport === "mlb" && stat !== "strikeouts" ? hitterLineupSpot : void 0,
