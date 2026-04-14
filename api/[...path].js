@@ -894,8 +894,8 @@ var worker_default = {
           KXNHLAST: { sport: "nhl", league: "nhl", stat: "assists", col: "A" },
           KXNHLPTS: { sport: "nhl", league: "nhl", stat: "points", col: "PTS" },
           KXMLBHITS: { sport: "mlb", league: "mlb", stat: "hits", col: "H" },
-          KXMLBHRR: { sport: "mlb", league: "mlb", stat: "hrr", col: "HRR" },
           KXMLBKS: { sport: "mlb", league: "mlb", stat: "strikeouts", col: "K" },
+          KXMLBHRR: { sport: "mlb", league: "mlb", stat: "hrr", col: "HRR" },
           KXNFLPAYDS: { sport: "nfl", league: "nfl", stat: "passingYards", col: "YDS" },
           KXNFLRUYDS: { sport: "nfl", league: "nfl", stat: "rushingYards", col: "YDS" },
           KXNFLREYDS: { sport: "nfl", league: "nfl", stat: "receivingYards", col: "YDS" },
@@ -936,21 +936,10 @@ var worker_default = {
         }));
         const qualifyingMarkets = [];
         const globalSeen = /* @__PURE__ */ new Set();
-        const kalshiSeriesRawCounts = {};
-        const kalshiRawByName = {}; // debug: raw market data for specific players
         for (let i = 0; i < seriesTickers.length; i++) {
           const ticker = seriesTickers[i];
           const { sport, stat, col } = SERIES_CONFIG[ticker];
-          const rawMarkets = kalshiResults[i].markets || [];
-          kalshiSeriesRawCounts[ticker] = rawMarkets.length;
-          for (const m of rawMarkets) {
-            if (isDebugMode) {
-              const rawTitle = (m.event_title || m.title || "").toLowerCase();
-              if (rawTitle.includes("eovaldi")) {
-                const key = m.ticker || m.event_ticker || "unknown";
-                kalshiRawByName[key] = { event_title: m.event_title, title: m.title, event_ticker: m.event_ticker, ticker: m.ticker, floor_strike: m.floor_strike, yes_ask_dollars: m.yes_ask_dollars, last_price_dollars: m.last_price_dollars };
-              }
-            }
+          for (const m of kalshiResults[i].markets || []) {
             const strike = parseFloat(m.floor_strike);
             if (isNaN(strike)) continue;
             const threshold = Math.round(strike + 0.5);
@@ -1317,7 +1306,7 @@ var worker_default = {
           "Referer": "https://www.espn.com/",
           "Accept": "application/json"
         };
-        const MAX_PINFO_FETCHES = 100;
+        const MAX_PINFO_FETCHES = 150;
         const pInfoErrors = [];
         for (let i = 0; i < Math.min(keysNeedingInfo.length, MAX_PINFO_FETCHES); i++) {
           const key = keysNeedingInfo[i];
@@ -2376,7 +2365,7 @@ var worker_default = {
           }
         }
         if (isDebug) {
-          return jsonResponse({ plays, dropped, preDropped, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, kalshiSeriesRawCounts, kalshiRawByName }, true);
+          return jsonResponse({ plays, dropped, preDropped, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null }, true);
         }
         const playsResult = { plays, qualifyingCount: qualifyingMarkets.length, preFilteredCount: preFilteredMarkets.length };
         const sportsInPlays = new Set(plays.map((p) => p.sport));
