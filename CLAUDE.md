@@ -56,15 +56,15 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
 - Shared distribution per pitcher (keyed `playerTeam|pitcherHand`) — guarantees P(K≥4) ≥ P(K≥5)
 - `pitcherKDistCache` built before play loop
 - 10000 sims if `simScore ≥ 11`, else 5000
-- **SimScore** (max 11 pre-edge, 14 with edge bonus):
+- **SimScore** (max 12 pre-edge, 14 with edge bonus):
   - CSW% > 30% → 3pts (falls back to K% > 24% if CSW% unavailable OR gs26 < 4 — small sample guard)
   - K-BB% > 15% → 2pts
   - Lineup oK% > 24% → 3pts (hand-adjusted vs RHP/LHP)
   - Avg pitches/start > 85 → 2pts (uses 2026 data only if gs26 ≥ 4; else falls back to 2025)
-  - Team ML ≤ -120 (clearly favored) → +1pt (`mlFavMeets`; null ML = no bonus)
-  - Team ML > +150 (heavy underdog) → -1pt penalty (`mlMeets = false`; null ML = no penalty)
-  - Edge ≥ 3% → 3pts (bonus, added after simulation)
+  - ML tier (`mlPts`): ≤ -120 → 2pts, -119 to +99 → 1pt, ≥ +100 → 0pts; null ML → 1pt
+  - Edge ≥ 3% → 2pts (bonus, added after simulation)
 - `parkMeets` (`PARK_KFACTOR[homeTeam] > 1.0`) is still computed and included in debug output but no longer contributes to SimScore — park factor is applied inside `simulateKsDist` and affects truePct directly. `PARK_KFACTOR` values updated from FanGraphs 2024 SO column (multi-year rolling avg).
+- `mlPts`: 0/1/2 — ML tier score. Color in UI: 2=green, 1=yellow, 0=red. Also drives ML column color in market report (≤-120 green, -119 to +99 yellow, ≥+100 red).
 - `pitcherGS26`: 2026 games started per team abbr, exported from `buildPitcherKPct`, used for small-sample guards
 - **Gates**: simScore ≥ 7 to enter play loop; finalSimScore ≥ 11 to qualify as a play (7–10 = qualified:false, shows in report but not plays card); insufficient_starts gate: if `hasAnchor !== true` (no reliable 2025 anchor, or null if not in data) requires `gs26 ≥ 8` (null gs26 treated as 0); if `hasAnchor === true` passes through regardless of gs26 — the 2025 anchor IS the reliability signal. Catches TJ-return / pure-reliever pitchers who have a few 2026 starts but no valid 2025 baseline (e.g. Detmers with 0 2025 GS — needs 8 starts before model trusts).
 - `pitcherHasAnchor`: `true` if gs25 ≥ 5 AND bf25 ≥ 100 (reliable 2025 *starter* anchor). A reliever-turned-starter has bf25 > 0 but gs25 = 0 — reliever K% is not a valid anchor. bf25 ≥ 100 also excludes injury-shortened seasons (e.g. TJ recovery with 5 starts but minimal workload).
@@ -266,7 +266,7 @@ Both play cards and player cards show an explanation block (`background:"#0d1117
 - negative → `#f78166` red, ✗, opacity 0.7
 
 **Player card explanation** uses the same structure. Data sources by sport:
-- MLB strikeouts: `h2h` object built from `tonightPlayerMap` (includes `edge`, `kpctMeets`, `kbbMeets`, `lkpMeets`, `pitchesMeets`, `mlFavMeets`, `mlMeets`, `parkMeets`)
+- MLB strikeouts: `h2h` object built from `tonightPlayerMap` (includes `edge`, `kpctMeets`, `kbbMeets`, `lkpMeets`, `pitchesMeets`, `mlPts`, `parkMeets`)
 - MLB hitters: `tonightHitPlay = Object.values(tonightPlayerMap).find(p => p.stat === safeTab)` (includes `hitterBa`, `hitterLineupSpot`, `pitcherWHIP`, `pitcherFIP`, `hitterWhipMeets`, `hitterFipMeets`, `hitterParkMeets`, `edge`)
 - NBA: `tonightTabPlay` (includes `nbaOpportunity`, `nbaPaceAdj`, `isB2B`, `nbaSimScore`, `posDvpRank`, `posDvpValue`, `softPct`, `seasonPct`, `edge`)
 

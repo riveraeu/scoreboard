@@ -111,7 +111,7 @@ const MOCK_PLAYS = [
     softPct:95.0, softGames:10, truePct:94.0, edge:12.0,
     kelly:0.310, ev:0.130, historicalHitRate:92.0, historicalGames:10,
     lineupKPct:27.3, pitcherCSWPct:32.1, pitcherKPct:26.5, pitcherKBBPct:18.2, pitcherAvgPitches:94.3, log5Avg:31.6, log5Pct:96.1, expectedKs:8.5, parkFactor:1.00,
-    simScore:10, finalSimScore:13, kpctMeets:true, kbbMeets:true, lkpMeets:true, pitchesMeets:true, mlFavMeets:false, mlMeets:true,
+    simScore:10, finalSimScore:12, kpctMeets:true, kbbMeets:true, lkpMeets:true, pitchesMeets:true, mlPts:0,
     gameTotal:7.5, gameMoneyline:-140, pitcherHand:"R", gameDate:TODAY, gameTime:new Date().toISOString().replace(/T.*/, "T23:10:00Z"), lineupConfirmed:true,
   },
   // ── PURPLE (≥85%) ──────────────────────────────────────────────────────────
@@ -123,7 +123,7 @@ const MOCK_PLAYS = [
     softPct:89.0, softGames:8, truePct:87.0, edge:11.0,
     kelly:0.224, ev:0.095, historicalHitRate:88.0, historicalGames:8,
     lineupKPct:null, pitcherCSWPct:31.4, pitcherKPct:26.2, pitcherKBBPct:11.4, pitcherAvgPitches:88.0, log5Avg:null, log5Pct:null, expectedKs:null, parkFactor:0.88,
-    simScore:8, finalSimScore:11, kpctMeets:true, kbbMeets:false, lkpMeets:null, pitchesMeets:true, mlFavMeets:true, mlMeets:true,
+    simScore:9, finalSimScore:11, kpctMeets:true, kbbMeets:false, lkpMeets:null, pitchesMeets:true, mlPts:2,
     gameTotal:8.0, gameMoneyline:-130, pitcherHand:"L", gameDate:TODAY, gameTime:new Date().toISOString().replace(/T.*/, "T01:40:00Z"), lineupConfirmed:false,
     kalshiSpread:8, rawEdge:15.0, spreadAdj:4.0, edge:11.0,
   },
@@ -136,7 +136,7 @@ const MOCK_PLAYS = [
     softPct:82.0, softGames:9, truePct:81.0, edge:7.0,
     kelly:0.090, ev:0.038, historicalHitRate:74.0, historicalGames:9,
     lineupKPct:22.1, pitcherCSWPct:30.8, pitcherKPct:25.9, pitcherKBBPct:14.1, pitcherAvgPitches:86.7, log5Avg:27.5, log5Pct:73.2, expectedKs:7.4, parkFactor:0.96,
-    simScore:7, finalSimScore:7, kpctMeets:true, kbbMeets:false, lkpMeets:false, pitchesMeets:true, mlFavMeets:false, mlMeets:true,
+    simScore:7, finalSimScore:7, kpctMeets:true, kbbMeets:false, lkpMeets:false, pitchesMeets:true, mlPts:0,
     gameTotal:7.5, gameMoneyline:-160, pitcherHand:"R", gameDate:TODAY,
   },
   // ── GREEN (≥75%) ───────────────────────────────────────────────────────────
@@ -148,7 +148,7 @@ const MOCK_PLAYS = [
     softPct:77.0, softGames:6, truePct:76.0, edge:6.0,
     kelly:0.085, ev:0.058, historicalHitRate:68.0, historicalGames:6,
     lineupKPct:25.8, pitcherCSWPct:33.7, pitcherKPct:28.1, pitcherKBBPct:20.4, pitcherAvgPitches:96.0, log5Avg:33.1, log5Pct:90.2, expectedKs:8.9, parkFactor:0.97,
-    simScore:10, finalSimScore:13, kpctMeets:true, kbbMeets:true, lkpMeets:true, pitchesMeets:true, mlFavMeets:true, mlMeets:true,
+    simScore:12, finalSimScore:14, kpctMeets:true, kbbMeets:true, lkpMeets:true, pitchesMeets:true, mlPts:2,
     gameTotal:8.0, gameMoneyline:-150, pitcherHand:"R", gameDate:TODAY,
   },
   // ── WHITE (≥70%) ──────────────────────────────────────────────────────────
@@ -1106,7 +1106,7 @@ function App() {
                           if (k==="season") { const v = m.seasonPct; return C(v != null ? v.toFixed(1)+"%" : null, v >= 60 ? "#3fb950" : v >= 50 ? "#e3b341" : "#f78166"); }
                           if (k==="h2h") { const v = m.softPct; return v != null ? <span style={{color:v>=60?"#3fb950":v>=50?"#e3b341":"#f78166"}}>{v.toFixed(1)+"%"}</span> : DASH; }
                           if (k==="era") { const eraColor = stat === "strikeouts" ? (era < 3.5 ? "#3fb950" : era < 4.5 ? "#8b949e" : "#f78166") : (era >= 4.0 ? "#8b949e" : "#f78166"); return C(era != null ? parseFloat(era).toFixed(2) : null, eraColor); }
-                          if (k==="ml")  return C(ml  != null ? fML(ml) : null, ml <= -140 ? "#3fb950" : ml < 0 ? "#8b949e" : "#f78166");
+                          if (k==="ml")  return C(ml  != null ? fML(ml) : null, ml <= -120 ? "#3fb950" : ml < 100 ? "#e3b341" : "#f78166");
                           if (k==="ab")  return C(ab  != null ? String(ab) : null, ab >= 10 ? "#8b949e" : "#f78166");
                           if (k==="csw") { const csw = m.pitcherCSWPct ?? m.pitcherKPct; const isReal = m.pitcherCSWPct != null; return C(csw != null ? csw.toFixed(1)+"%" : null, isReal ? (csw > 30 ? "#3fb950" : csw > 26 ? "#e3b341" : "#f78166") : (csw > 24 ? "#3fb950" : csw > 20 ? "#e3b341" : "#f78166")); }
                           if (k==="pkp") return C(pkp != null ? pkp.toFixed(1)+"%" : null, pkp > 24 ? "#3fb950" : pkp > 20 ? "#e3b341" : "#f78166");
@@ -1570,7 +1570,7 @@ function App() {
                             expectedKs: tp.expectedKs, parkFactor: tp.parkFactor, pitcherHand: tp.pitcherHand,
                             pitcherEra: tp.pitcherEra ?? null,
                             simScore: tp.simScore ?? null, finalSimScore: tp.finalSimScore ?? null,
-                            kpctMeets: tp.kpctMeets, kbbMeets: tp.kbbMeets, lkpMeets: tp.lkpMeets, pitchesMeets: tp.pitchesMeets, parkMeets: tp.parkMeets, mlFavMeets: tp.mlFavMeets, mlMeets: tp.mlMeets,
+                            kpctMeets: tp.kpctMeets, kbbMeets: tp.kbbMeets, lkpMeets: tp.lkpMeets, pitchesMeets: tp.pitchesMeets, parkMeets: tp.parkMeets, mlPts: tp.mlPts,
                             edge: tp.edge, rawEdge: tp.rawEdge, spreadAdj: tp.spreadAdj,
                             gameTotal: tp.gameTotal, gameMoneyline: tp.gameMoneyline };
                         }
@@ -1610,7 +1610,7 @@ function App() {
                           const pitcherHand = h2h?.pitcherHand ?? null;
                           const handLabel = pitcherHand === "R" ? " against RHP" : pitcherHand === "L" ? " against LHP" : "";
                           const totalColor = t => t == null ? "#8b949e" : t < 8.5 ? "#3fb950" : t <= 10.5 ? "#c9d1d9" : "#f78166";
-                          const mlColor = ml => ml == null ? "#8b949e" : ml <= -140 ? "#3fb950" : ml < 0 ? "#8b949e" : "#f78166";
+                          const mlColor = ml => ml == null ? "#8b949e" : ml <= -120 ? "#3fb950" : ml < 100 ? "#e3b341" : "#f78166";
                           const oppName = MLB_TEAM[h2h?.opp || mlbH2HOpp] || h2h?.opp || mlbH2HOpp;
                           const pitcherTeamName = MLB_TEAM[player.team] || player.team;
                           const kbb = h2h?.pitcherKBBPct ?? null;
@@ -1648,9 +1648,8 @@ function App() {
                                     {mk(h2h?.kbbMeets,2,"K-BB%")}
                                     {mk(h2h?.lkpMeets,3,"oK%")}
                                     {mk(h2h?.pitchesMeets,2,"P/GS")}
-                                    {h2h?.mlFavMeets != null && mk(h2h?.mlFavMeets,1,"Fav")}
-                                    {h2h?.mlMeets === false && <span style={{color:"#f78166",fontSize:9,opacity:0.7,whiteSpace:"nowrap"}}>✗ Dog(-1)</span>}
-                                    {h2h?.edge != null && <span title={h2h.spreadAdj > 0 ? `Raw +${h2h.rawEdge}% − ${h2h.spreadAdj}¢ spread = +${h2h.edge}% net` : undefined} style={{color:h2h.edge >= 3 ? "#3fb950" : h2h.edge >= 0 ? "#e3b341" : "#f78166",fontSize:9,opacity:h2h.edge >= 3 ? 1 : 0.7}}>{h2h.edge >= 3 ? "✓" : "✗"}Edge {h2h.edge > 0 ? "+" : ""}{h2h.edge}%{h2h.spreadAdj > 0 ? " net" : ""}(3)</span>}
+                                    {h2h?.mlPts != null && <span style={{color:h2h.mlPts===2?"#3fb950":h2h.mlPts===1?"#e3b341":"#f78166",fontSize:9,opacity:h2h.mlPts>0?1:0.7,whiteSpace:"nowrap"}}>{h2h.mlPts>0?"✓":"✗"}ML({h2h.mlPts})</span>}
+                                    {h2h?.edge != null && <span title={h2h.spreadAdj > 0 ? `Raw +${h2h.rawEdge}% − ${h2h.spreadAdj}¢ spread = +${h2h.edge}% net` : undefined} style={{color:h2h.edge >= 3 ? "#3fb950" : h2h.edge >= 0 ? "#e3b341" : "#f78166",fontSize:9,opacity:h2h.edge >= 3 ? 1 : 0.7}}>{h2h.edge >= 3 ? "✓" : "✗"}Edge {h2h.edge > 0 ? "+" : ""}{h2h.edge}%{h2h.spreadAdj > 0 ? " net" : ""}(2)</span>}
                                   </span>
                                 </div>
                               )}
@@ -2445,7 +2444,7 @@ function App() {
                           const apColor = ap == null ? "#8b949e" : ap > 85 ? "#3fb950" : ap > 75 ? "#e3b341" : "#f78166";
                           const lkpColor = lkp == null ? "#8b949e" : lkp > 24 ? "#3fb950" : lkp > 20 ? "#e3b341" : "#f78166";
                           const totalColor = t => t == null ? "#8b949e" : t < 8.5 ? "#3fb950" : t <= 10.5 ? "#c9d1d9" : "#f78166";
-                          const mlColor = ml => ml == null ? "#8b949e" : ml <= -140 ? "#3fb950" : ml < 0 ? "#8b949e" : "#f78166";
+                          const mlColor = ml => ml == null ? "#8b949e" : ml <= -120 ? "#3fb950" : ml < 100 ? "#e3b341" : "#f78166";
                           const pkpQual = pkp == null ? "" : csw != null ? (pkp > 30 ? "elite" : pkp > 26 ? "above-average" : "average") : (pkp > 24 ? "above-average" : "average");
                           const apDesc = ap == null ? null : ap > 85 ? "expect him to work deep into the game" : ap > 75 ? "typically goes 5–6 innings" : null;
                           const lkpDesc = lkp == null ? null : lkp > 24 ? "a high-strikeout lineup — works in his favor" : lkp > 20 ? "near-average strikeout tendency" : "doesn't strikeout often — a tougher test";
@@ -2477,9 +2476,8 @@ function App() {
                                       {mk(play.kbbMeets,2,"K-BB%")}
                                       {mk(play.lkpMeets,3,"oK%")}
                                       {mk(play.pitchesMeets,2,"P/GS")}
-                                      {play.mlFavMeets != null && mk(play.mlFavMeets,1,"Fav")}
-                                      {play.mlMeets === false && <span style={{color:"#f78166",fontSize:9,opacity:0.7,whiteSpace:"nowrap"}}>✗ Dog(-1)</span>}
-                                      {play.edge != null && <span title={play.spreadAdj > 0 ? `Raw +${play.rawEdge}% − ${play.spreadAdj}¢ spread = +${play.edge}% net` : undefined} style={{color:play.edge >= 3 ? "#3fb950" : play.edge >= 0 ? "#e3b341" : "#f78166",fontSize:9,opacity:play.edge >= 3 ? 1 : 0.7}}>{play.edge >= 3 ? "✓" : "✗"}Edge {play.edge > 0 ? "+" : ""}{play.edge}%{play.spreadAdj > 0 ? " net" : ""}(3)</span>}
+                                      {play.mlPts != null && <span style={{color:play.mlPts===2?"#3fb950":play.mlPts===1?"#e3b341":"#f78166",fontSize:9,opacity:play.mlPts>0?1:0.7,whiteSpace:"nowrap"}}>{play.mlPts>0?"✓":"✗"}ML({play.mlPts})</span>}
+                                      {play.edge != null && <span title={play.spreadAdj > 0 ? `Raw +${play.rawEdge}% − ${play.spreadAdj}¢ spread = +${play.edge}% net` : undefined} style={{color:play.edge >= 3 ? "#3fb950" : play.edge >= 0 ? "#e3b341" : "#f78166",fontSize:9,opacity:play.edge >= 3 ? 1 : 0.7}}>{play.edge >= 3 ? "✓" : "✗"}Edge {play.edge > 0 ? "+" : ""}{play.edge}%{play.spreadAdj > 0 ? " net" : ""}(2)</span>}
                                     </span>
                                   </div>
                                 );
