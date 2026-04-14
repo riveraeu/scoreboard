@@ -1269,7 +1269,7 @@ var worker_default = {
               // Without a reliable 2025 starter anchor (gs25<5 or bf25<100, e.g. TJ return or rookie),
               // require 8+ GS in 2026 before trusting the model — 4 starts isn't enough signal.
               // With a valid anchor, the existing 4-start threshold is fine.
-              const _gs26Min = _hasAnchor === false ? 8 : 4;
+              const _gs26Min = _hasAnchor !== true ? 8 : 4; // null and false both → stricter threshold
               if (_gs26 !== null && _gs26 < _gs26Min) { preDropped.push({ ...m, reason: "insufficient_starts", gs26: _gs26, hasAnchor: _hasAnchor }); continue; }
               preFilteredMarkets.push(m); continue;
             }
