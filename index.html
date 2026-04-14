@@ -1627,31 +1627,22 @@ function App() {
                             <>
                               <div>
                                 {first} has {pkpQual ? <>{pkpQual} </> : ""}swing-and-miss stuff
-                                {pkp != null && <> — <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span> {pkpLabel}</>}
-                                {kbb != null && <>, <span style={{color:kbbColor,fontWeight:600}}>{kbb.toFixed(1)}%</span> K-BB% (strikeouts vs walks)</>}
-                                {ap != null && <>, averaging <span style={{color:apColor,fontWeight:600}}>{Math.round(ap)}</span> pitches/start{apDesc ? <span style={{color:"#484f58"}}> — {apDesc}</span> : ""}</>}.
-                                {lkp != null && <>{" "}The {oppName} lineup strikes out at <span style={{color:lkpColor,fontWeight:600}}>{lkp}%</span>{handLabel}{lkpProjected ? <span style={{color:"#484f58",fontSize:10}}> (est.)</span> : ""} — {lkpDesc}.</>}
+                                {pkp != null && <> — <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span> {pkpLabel}<span style={{color:h2h?.kpctMeets===true?"#3fb950":"#484f58",fontSize:9}}>(3)</span></>}
+                                {kbb != null && <>, <span style={{color:kbbColor,fontWeight:600}}>{kbb.toFixed(1)}%</span> K-BB%<span style={{color:h2h?.kbbMeets===true?"#3fb950":"#484f58",fontSize:9}}>(2)</span> (strikeouts vs walks)</>}
+                                {ap != null && <>, averaging <span style={{color:apColor,fontWeight:600}}>{Math.round(ap)}</span> pitches/start<span style={{color:h2h?.pitchesMeets===true?"#3fb950":"#484f58",fontSize:9}}>(2)</span>{apDesc ? <span style={{color:"#484f58"}}> — {apDesc}</span> : ""}</>}.
+                                {lkp != null && <>{" "}The {oppName} lineup strikes out at <span style={{color:lkpColor,fontWeight:600}}>{lkp}%</span><span style={{color:h2h?.lkpMeets===true?"#3fb950":"#484f58",fontSize:9}}>(3)</span>{handLabel}{lkpProjected ? <span style={{color:"#484f58",fontSize:10}}> (est.)</span> : ""} — {lkpDesc}.</>}
                                 {pf != null && Math.abs(pf - 1.0) >= 0.01 && <>{" "}Tonight's venue {pf > 1 ? "is strikeout-friendly" : "suppresses strikeouts"} (<span style={{color:"#484f58"}}>{pf > 1 ? "+" : ""}{((pf-1)*100).toFixed(0)}%</span>).</>}
                               </div>
                               {(gameTotal != null || gameML != null) && (
                                 <div style={{color:"#484f58",fontSize:10,marginTop:3}}>
-                                  Game total <span style={{color:totalColor(gameTotal),fontWeight:600}}>{gameTotal ?? "—"}</span>
-                                  {" · "}ML <span style={{color:mlColor(gameML),fontWeight:600}}>{gameML != null ? `${gameML > 0 ? "+" : ""}${gameML}` : "—"}</span>
+                                  Game total <span style={{color:totalColor(gameTotal),fontWeight:600}}>{gameTotal ?? "—"}</span>{h2h?.totalPts != null && <span style={{color:h2h.totalPts===2?"#3fb950":h2h.totalPts===1?"#e3b341":"#484f58",fontSize:9}}> ({h2h.totalPts})</span>}
+                                  {" · "}ML <span style={{color:mlColor(gameML),fontWeight:600}}>{gameML != null ? `${gameML > 0 ? "+" : ""}${gameML}` : "—"}</span>{h2h?.mlPts != null && <span style={{color:h2h.mlPts===2?"#3fb950":h2h.mlPts===1?"#e3b341":"#484f58",fontSize:9}}> ({h2h.mlPts})</span>}
                                 </div>
                               )}
                               {_sc != null && (
                                 <div style={{display:"flex",alignItems:"center",gap:6,marginTop:6,paddingTop:5,borderTop:"1px solid #161b22"}}>
                                   <span style={{color:"#484f58",fontSize:10}}>SimScore</span>
                                   <span style={{background:"#161b22",borderRadius:4,padding:"1px 6px",color:scColor,fontWeight:700,fontSize:10}}>{_sc}/14 {_sc>=11?"Alpha":"Mid"}</span>
-                                  <span style={{display:"inline-flex",gap:4,flexWrap:"wrap"}}>
-                                    {mk(h2h?.kpctMeets,3,"CSW%")}
-                                    {mk(h2h?.kbbMeets,2,"K-BB%")}
-                                    {mk(h2h?.lkpMeets,3,"oK%")}
-                                    {mk(h2h?.pitchesMeets,2,"P/GS")}
-                                    {h2h?.mlPts != null && <span style={{color:h2h.mlPts===2?"#3fb950":h2h.mlPts===1?"#e3b341":"#f78166",fontSize:9,opacity:h2h.mlPts>0?1:0.7,whiteSpace:"nowrap"}}>{h2h.mlPts>0?"✓":"✗"}ML({h2h.mlPts})</span>}
-                                    {h2h?.totalPts != null && <span style={{color:h2h.totalPts===2?"#3fb950":h2h.totalPts===1?"#e3b341":"#f78166",fontSize:9,opacity:h2h.totalPts>0?1:0.7,whiteSpace:"nowrap"}}>{h2h.totalPts>0?"✓":"✗"}O/U({h2h.totalPts})</span>}
-                                    {h2h?.edge != null && <span title={h2h.spreadAdj > 0 ? `Raw +${h2h.rawEdge}% − ${h2h.spreadAdj}¢ spread = +${h2h.edge}% net` : undefined} style={{color:h2h.edge >= 3 ? "#3fb950" : h2h.edge >= 0 ? "#e3b341" : "#f78166",fontSize:9,opacity:h2h.edge >= 3 ? 1 : 0.7}}>{h2h.edge >= 3 ? "✓" : "✗"}Edge {h2h.edge > 0 ? "+" : ""}{h2h.edge}%{h2h.spreadAdj > 0 ? " net" : ""}</span>}
-                                  </span>
                                 </div>
                               )}
                             </>
@@ -2454,16 +2445,16 @@ function App() {
                             <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.65}}>
                               <div>
                                 {first} has {pkpQual ? <>{pkpQual} </> : ""}swing-and-miss stuff
-                                {pkp != null && <> — <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span> {pkpLabel}</>}
-                                {kbb != null && <>, <span style={{color:kbbColor,fontWeight:600}}>{kbb.toFixed(1)}%</span> K-BB% (strikeouts vs walks)</>}
-                                {ap != null && <>, averaging <span style={{color:apColor,fontWeight:600}}>{Math.round(ap)}</span> pitches/start{apDesc ? <span style={{color:"#484f58"}}> — {apDesc}</span> : ""}</>}.
-                                {lkp != null && <>{" "}The {oppName} lineup strikes out at <span style={{color:lkpColor,fontWeight:600}}>{lkp}%</span>{handLabel}{isProjected ? <span style={{color:"#484f58",fontSize:10}}> (est.)</span> : ""} — {lkpDesc}.</>}
+                                {pkp != null && <> — <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span> {pkpLabel}<span style={{color:play.kpctMeets===true?"#3fb950":"#484f58",fontSize:9}}>(3)</span></>}
+                                {kbb != null && <>, <span style={{color:kbbColor,fontWeight:600}}>{kbb.toFixed(1)}%</span> K-BB%<span style={{color:play.kbbMeets===true?"#3fb950":"#484f58",fontSize:9}}>(2)</span> (strikeouts vs walks)</>}
+                                {ap != null && <>, averaging <span style={{color:apColor,fontWeight:600}}>{Math.round(ap)}</span> pitches/start<span style={{color:play.pitchesMeets===true?"#3fb950":"#484f58",fontSize:9}}>(2)</span>{apDesc ? <span style={{color:"#484f58"}}> — {apDesc}</span> : ""}</>}.
+                                {lkp != null && <>{" "}The {oppName} lineup strikes out at <span style={{color:lkpColor,fontWeight:600}}>{lkp}%</span><span style={{color:play.lkpMeets===true?"#3fb950":"#484f58",fontSize:9}}>(3)</span>{handLabel}{isProjected ? <span style={{color:"#484f58",fontSize:10}}> (est.)</span> : ""} — {lkpDesc}.</>}
                                 {pf != null && Math.abs(pf - 1.0) >= 0.01 && <>{" "}Tonight's venue {pf > 1 ? "is strikeout-friendly" : "suppresses strikeouts"} (<span style={{color:"#484f58"}}>{pf > 1 ? "+" : ""}{((pf-1)*100).toFixed(0)}%</span>).</>}
                               </div>
                               {(gameTotal != null || gameML != null) && (
                                 <div style={{color:"#484f58",fontSize:10,marginTop:3}}>
-                                  Game total <span style={{color:totalColor(gameTotal),fontWeight:600}}>{gameTotal ?? "—"}</span>
-                                  {" · "}ML <span style={{color:mlColor(gameML),fontWeight:600}}>{gameML != null ? `${gameML > 0 ? "+" : ""}${gameML}` : "—"}</span>
+                                  Game total <span style={{color:totalColor(gameTotal),fontWeight:600}}>{gameTotal ?? "—"}</span>{play.totalPts != null && <span style={{color:play.totalPts===2?"#3fb950":play.totalPts===1?"#e3b341":"#484f58",fontSize:9}}> ({play.totalPts})</span>}
+                                  {" · "}ML <span style={{color:mlColor(gameML),fontWeight:600}}>{gameML != null ? `${gameML > 0 ? "+" : ""}${gameML}` : "—"}</span>{play.mlPts != null && <span style={{color:play.mlPts===2?"#3fb950":play.mlPts===1?"#e3b341":"#484f58",fontSize:9}}> ({play.mlPts})</span>}
                                 </div>
                               )}
                               {_sc != null && (() => {
@@ -2472,15 +2463,6 @@ function App() {
                                   <div style={{display:"flex",alignItems:"center",gap:6,marginTop:6,paddingTop:5,borderTop:"1px solid #161b22"}}>
                                     <span style={{color:"#484f58",fontSize:10}}>SimScore</span>
                                     <span style={{background:"#161b22",borderRadius:4,padding:"1px 6px",color:scColor,fontWeight:700,fontSize:10}}>{_sc}/14 {_sc>=11?"Alpha":"Mid"}</span>
-                                    <span style={{display:"inline-flex",gap:4,flexWrap:"wrap"}}>
-                                      {mk(play.kpctMeets,3,"CSW%")}
-                                      {mk(play.kbbMeets,2,"K-BB%")}
-                                      {mk(play.lkpMeets,3,"oK%")}
-                                      {mk(play.pitchesMeets,2,"P/GS")}
-                                      {play.mlPts != null && <span style={{color:play.mlPts===2?"#3fb950":play.mlPts===1?"#e3b341":"#f78166",fontSize:9,opacity:play.mlPts>0?1:0.7,whiteSpace:"nowrap"}}>{play.mlPts>0?"✓":"✗"}ML({play.mlPts})</span>}
-                                      {play.totalPts != null && <span style={{color:play.totalPts===2?"#3fb950":play.totalPts===1?"#e3b341":"#f78166",fontSize:9,opacity:play.totalPts>0?1:0.7,whiteSpace:"nowrap"}}>{play.totalPts>0?"✓":"✗"}O/U({play.totalPts})</span>}
-                                      {play.edge != null && <span title={play.spreadAdj > 0 ? `Raw +${play.rawEdge}% − ${play.spreadAdj}¢ spread = +${play.edge}% net` : undefined} style={{color:play.edge >= 3 ? "#3fb950" : play.edge >= 0 ? "#e3b341" : "#f78166",fontSize:9,opacity:play.edge >= 3 ? 1 : 0.7}}>{play.edge >= 3 ? "✓" : "✗"}Edge {play.edge > 0 ? "+" : ""}{play.edge}%{play.spreadAdj > 0 ? " net" : ""}</span>}
-                                    </span>
                                   </div>
                                 );
                               })()}
