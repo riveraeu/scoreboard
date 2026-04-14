@@ -290,6 +290,8 @@ The `pitcherKDistCache` shares one `Int16Array` distribution across all threshol
 ### "Player appears in Kalshi but not in plays or dropped"
 Check `preDropped` in `?debug=1` response. Common reasons: `no_soft_data`, `opp_not_soft`, `no_opp`.
 
+Also check the date filter: the edge function runs UTC, so after midnight UTC (e.g. 8pm ET = midnight UTC), `gameDate:"2026-04-13"` is filtered if the server sees the next day. The cutoff is `Date.now() - 86400000` (yesterday) to handle this — but if a play was on a date 2+ days ago, it will still be filtered.
+
 ### "Market report shows — for Spot/Brrl%"
 - Spot: lineup not confirmed yet (pre-game). Projected lineups from last 7 days are used as fallback.
 - Brrl%: Baseball Savant fetch timed out or returned empty. Cached in KV for 6h — bust cache with `?bust=1`.
