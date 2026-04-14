@@ -471,7 +471,7 @@ function App() {
     setTonightLoading(true);
     fetch(`${WORKER}/tonight`)
       .then(r => r.json())
-      .then(data => { const all = data.plays || []; setAllTonightPlays(all); setTonightPlays(all.filter(p => p.qualified !== false)); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); setTonightLoading(false); })
+      .then(data => { const all = data.plays || []; setAllTonightPlays(all); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore > 10))); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); setTonightLoading(false); })
       .catch(() => { setAllTonightPlays([]); setTonightPlays([]); setTonightLoading(false); });
   }, [testMode]);
 
