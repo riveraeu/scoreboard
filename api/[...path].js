@@ -2370,7 +2370,23 @@ var worker_default = {
           }
         }
         if (isDebug) {
-          return jsonResponse({ plays, dropped, preDropped, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, _eovaldiTrace }, true);
+          const _ek = "mlb|nathan eovaldi";
+          const _eovaldiDiag = {
+            trace: _eovaldiTrace,
+            inInfo: !!playerInfoMap[_ek],
+            infoId: playerInfoMap[_ek]?.id ?? null,
+            inGamelog: !!playerGamelogs[_ek],
+            gamelogEvents: playerGamelogs[_ek]?.events?.length ?? null,
+            gamelogCols: playerGamelogs[_ek]?.ul ?? null,
+            inKeysNeedingInfo: keysNeedingInfo.indexOf(_ek),
+            inUniqueKeys: uniquePlayerKeys.indexOf(_ek),
+            pInfoError: pInfoErrors.find(e => e.key === _ek) ?? null,
+            gamelogError: gamelogErrors.find(e => e.key === _ek) ?? null,
+            droppedEntries: dropped.filter(d => (d.playerName || "").toLowerCase().includes("eovaldi")),
+            playEntries: plays.filter(p => (p.playerName || "").toLowerCase().includes("eovaldi")),
+            preDroppedEntries: preDropped.filter(p => (p.playerName || "").toLowerCase().includes("eovaldi")),
+          };
+          return jsonResponse({ plays, dropped, preDropped, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, _eovaldiDiag }, true);
         }
         const playsResult = { plays, qualifyingCount: qualifyingMarkets.length, preFilteredCount: preFilteredMarkets.length };
         const sportsInPlays = new Set(plays.map((p) => p.sport));
