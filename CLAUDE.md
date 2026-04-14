@@ -62,7 +62,7 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
   - Avg pitches/start > 85 → 2pts
   - Park factor > 1.0 → 1pt
   - Edge > 5% → 3pts (bonus, added after simulation)
-- **Gates**: simScore ≥ 7 to enter play loop; finalSimScore ≥ 10 to qualify as a play (7–9 = qualified:false, shows in report but not plays card)
+- **Gates**: simScore ≥ 7 to enter play loop; finalSimScore ≥ 11 to qualify as a play (7–10 = qualified:false, shows in report but not plays card)
 - Pitchers fetched via `buildPitcherKPct(mlbSched)` — avg pitches per start from season aggregate `numberOfPitches / gamesStarted`
 - **K% regression**: `trust = min(1.0, bf26 / 200)` — uses 2026 BF only (NOT combined 2026+2025). Full trust at ~33 starts. Blends 2026 actual K% with 2025 anchor (or league avg 22.2% if no 2025 data). KBB% regressed the same way.
 - Park factors in `PARK_KFACTOR` map
@@ -182,7 +182,7 @@ True% = Monte Carlo simulation (`simulateHits`) using batter BA × pitcher BAA (
 - `dropped`: filtered inside play loop — included in `?debug=1` response
 
 ### qualified:false plays
-MLB strikeout markets that fail simScore gate (< 7 or finalSimScore < 10) are pushed to `plays[]` with `qualified: false` so the player card can show real simPct for all thresholds. The main plays list (`tonightPlays`) filters these out client-side: `.filter(p => p.qualified !== false)`.
+MLB strikeout markets that fail simScore gate (< 7 or finalSimScore < 11) are pushed to `plays[]` with `qualified: false` so the player card can show real simPct for all thresholds. The main plays list (`tonightPlays`) filters these out client-side: `.filter(p => p.qualified !== false)`.
 
 The raw (unfiltered) array is stored in `allTonightPlays` and used to build `tonightPlayerMap` in the player card — this ensures `qualified: false` thresholds (e.g. 3+/4+ strikeouts with no edge bonus) get their simulation-based truePct rather than falling back to the raw formula.
 
@@ -278,7 +278,7 @@ Both cover: `kDistPct` monotonicity, `simulateKsDist` validity, `buildNbaStatDis
 ## Common Debugging
 
 ### "Why is truePct wrong for 3+/4+ when 5+ looks correct?" (fixed)
-Previously, `tonightPlayerMap` was built from `tonightPlays` (filtered: `qualified !== false`). Thresholds like 3+/4+ with no edge bonus (finalSimScore < 10) were `qualified: false` and omitted, so the player card used the raw fallback formula `(seasonPct + softPct) / 2` — breaking monotonicity (e.g. 4+ showed 76.8% while 5+ showed 97.9%).
+Previously, `tonightPlayerMap` was built from `tonightPlays` (filtered: `qualified !== false`). Thresholds like 3+/4+ with no edge bonus (finalSimScore < 11) were `qualified: false` and omitted, so the player card used the raw fallback formula `(seasonPct + softPct) / 2` — breaking monotonicity (e.g. 4+ showed 76.8% while 5+ showed 97.9%).
 
 **Fix**: `tonightPlayerMap` now uses `allTonightPlays` (unfiltered), which includes `qualified: false` entries with their API-computed, monotonicity-enforced simulation truePct.
 
@@ -310,4 +310,4 @@ Comes from `split.numberOfPitches / split.gamesStarted` in season aggregate stat
 Most NBA markets are dropped at `opp_not_soft` before the pre-sim block runs. Those drop records include `isB2B`, `nbaPaceAdj`, and `nbaOpportunity` computed inline from the gamelog at that drop site. `nbaPreSimScore` and `nbaSimScore` are also computed inline at the drop site so the Score column is populated for all NBA rows (not just qualifying plays).
 
 ### "SimScore shows yellow for strikeout players with score 7–9"
-The qualifying gate for strikeouts is `finalSimScore >= 10`. The report SimScore column uses `>= 10` as the yellow threshold when `finalSimScore` is present, so scores 7–9 show gray (not qualifying).
+The qualifying gate for strikeouts is `finalSimScore >= 11` (Alpha tier). The report SimScore column uses `>= 10` as the yellow threshold, so scores 10 show yellow (near miss) and scores 7–9 show gray.

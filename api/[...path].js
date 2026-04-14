@@ -2133,9 +2133,9 @@ var worker_default = {
             }
             continue;
           }
-          // Strikeout finalSimScore gate: simScore 7-9 (with edge bonus could be 10-12) must reach >= 10
-          // to qualify as a play. Show in report but mark qualified:false so player card still shows truePct.
-          if (sport === "mlb" && stat === "strikeouts" && finalSimScore !== null && finalSimScore < 10) {
+          // Strikeout finalSimScore gate: must reach >= 11 (Alpha tier) to qualify as a play.
+          // Scores 7-10 show in report but marked qualified:false so player card still shows truePct.
+          if (sport === "mlb" && stat === "strikeouts" && finalSimScore !== null && finalSimScore < 11) {
             const _dropLowScore = {
               ..._dropBase,
               reason: "low_confidence",
