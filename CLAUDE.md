@@ -266,7 +266,7 @@ Both play cards and player cards show an explanation block (`background:"#0d1117
 - negative → `#f78166` red, ✗, opacity 0.7
 
 **Player card explanation** uses the same structure. Data sources by sport:
-- MLB strikeouts: `h2h` object built from `tonightPlayerMap` (includes `edge`, `kpctMeets`, `kbbMeets`, `lkpMeets`, `pitchesMeets`, `parkMeets`)
+- MLB strikeouts: `h2h` object built from `tonightPlayerMap` (includes `edge`, `kpctMeets`, `kbbMeets`, `lkpMeets`, `pitchesMeets`, `mlFavMeets`, `mlMeets`, `parkMeets`)
 - MLB hitters: `tonightHitPlay = Object.values(tonightPlayerMap).find(p => p.stat === safeTab)` (includes `hitterBa`, `hitterLineupSpot`, `pitcherWHIP`, `pitcherFIP`, `hitterWhipMeets`, `hitterFipMeets`, `hitterParkMeets`, `edge`)
 - NBA: `tonightTabPlay` (includes `nbaOpportunity`, `nbaPaceAdj`, `isB2B`, `nbaSimScore`, `posDvpRank`, `posDvpValue`, `softPct`, `seasonPct`, `edge`)
 
