@@ -948,7 +948,7 @@ var worker_default = {
             const volume = parseInt(m.volume) || 0;
             const price = yesAsk > 0 ? yesAsk : last;
             const pct = Math.round(price * 100);
-            if (pct < 60) continue;
+            if (pct < 70) continue;
             if (pct > 97) continue;
             if (price === 0) continue;
             const raw = m.event_title || m.title || "";

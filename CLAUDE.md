@@ -174,7 +174,7 @@ True% = Monte Carlo simulation (`simulateHits`) using batter BA × pitcher BAA (
 
 ### Kalshi Market Parsing
 - Series tickers in `SERIES_CONFIG`
-- Filter: `pct >= 60` AND `pct <= 97` (60–70% markets appear in report dropped section only; 70%+ required to qualify as plays)
+- Filter: `pct >= 70` AND `pct <= 97`
 - Blended fill price via orderbook walk for thin markets
 
 ### preDropped vs dropped
