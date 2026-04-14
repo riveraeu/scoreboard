@@ -1721,7 +1721,7 @@ var worker_default = {
             mlPts = _teamML == null ? 1 : _teamML <= -130 ? 2 : _teamML <= -101 ? 1 : 0;
             // O/U total 3-tier: 9–10.5 → 2pts, 7.5–8.9 → 1pt, <7.5 or >10.5 → 0pts; null → 1pt
             const _gameTotal = sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null;
-            totalPts = _gameTotal == null ? 1 : (_gameTotal >= 9 && _gameTotal <= 10.5) ? 2 : (_gameTotal >= 7.5 && _gameTotal < 9) ? 1 : 0;
+            totalPts = _gameTotal == null ? 1 : _gameTotal <= 8.5 ? 2 : _gameTotal <= 10.5 ? 1 : 0;
             // Weighted sim-score (max 14): CSW%→3, K-BB%→2, lineup K%→3, avg pitches→2, ML tier→0-2, O/U tier→0-2
             simScore = (kpctMeets === true ? 3 : 0)
                      + (kbbMeets === true ? 2 : 0)

@@ -62,11 +62,11 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
   - Lineup oK% > 24% → 3pts (hand-adjusted vs RHP/LHP)
   - Avg pitches/start > 85 → 2pts (uses 2026 data only if gs26 ≥ 4; else falls back to 2025)
   - ML tier (`mlPts`): ≤ -130 → 2pts, -129 to -101 → 1pt, ≥ -100 → 0pts; null → 1pt
-  - O/U tier (`totalPts`): 9–10.5 → 2pts, 7.5–8.9 → 1pt, <7.5 or >10.5 → 0pts; null → 1pt
+  - O/U tier (`totalPts`): ≤ 8.5 → 2pts (low total = pitcher dominant), 8.5–10.5 → 1pt, >10.5 → 0pts; null → 1pt
   - Edge ≥ 3% required (gates play independently, not part of SimScore)
 - `parkMeets` (`PARK_KFACTOR[homeTeam] > 1.0`) is still computed and included in debug output but no longer contributes to SimScore — park factor is applied inside `simulateKsDist` and affects truePct directly. `PARK_KFACTOR` values updated from FanGraphs 2024 SO column (multi-year rolling avg).
 - `mlPts`: 0/1/2 — ML tier score. Color in UI: 2=green, 1=yellow, 0=red. Also drives ML column color in market report (≤-130 green, -129 to -101 yellow, ≥-100 red).
-- `totalPts`: 0/1/2 — O/U tier score. Color in UI: 2=green, 1=yellow, 0=red. Drives O/U column color in market report (9–10.5 green, 7.5–8.9 yellow, outside red).
+- `totalPts`: 0/1/2 — O/U tier score. Color in UI: 2=green, 1=yellow, 0=red. Drives O/U column color in market report (≤8.5 green, 8.5–10.5 yellow, >10.5 red). Low total = pitcher dominant = favorable for Ks.
 - `pitcherGS26`: 2026 games started per team abbr, exported from `buildPitcherKPct`, used for small-sample guards
 - **Gates**: simScore ≥ 7 to enter play loop; finalSimScore ≥ 11 to qualify as a play (7–10 = qualified:false, shows in report but not plays card); insufficient_starts gate: if `hasAnchor !== true` (no reliable 2025 anchor, or null if not in data) requires `gs26 ≥ 8` (null gs26 treated as 0); if `hasAnchor === true` passes through regardless of gs26 — the 2025 anchor IS the reliability signal. Catches TJ-return / pure-reliever pitchers who have a few 2026 starts but no valid 2025 baseline (e.g. Detmers with 0 2025 GS — needs 8 starts before model trusts).
 - `pitcherHasAnchor`: `true` if gs25 ≥ 5 AND bf25 ≥ 100 (reliable 2025 *starter* anchor). A reliever-turned-starter has bf25 > 0 but gs25 = 0 — reliever K% is not a valid anchor. bf25 ≥ 100 also excludes injury-shortened seasons (e.g. TJ recovery with 5 starts but minimal workload).
