@@ -1263,7 +1263,11 @@ var worker_default = {
           if (!softData) { preDropped.push({ ...m, reason: "no_soft_data" }); continue; }
           if (m.sport === "mlb") {
             if (!m.gameTeam1 || !m.gameTeam2) { preDropped.push({ ...m, reason: "no_opp" }); continue; }
-            if (m.stat === "strikeouts") { preFilteredMarkets.push(m); continue; }
+            if (m.stat === "strikeouts") {
+              const _gs26 = sportByteam.mlb?.pitcherGS26?.[m.kalshiPlayerTeam] ?? null;
+              if (_gs26 !== null && _gs26 < 4) { preDropped.push({ ...m, reason: "insufficient_starts", gs26: _gs26 }); continue; }
+              preFilteredMarkets.push(m); continue;
+            }
             // Require a known probable pitcher with ERA data for hitters
             const playerTeam2 = m.kalshiPlayerTeam;
             if (!playerTeam2) { preDropped.push({ ...m, reason: "no_opp" }); continue; }
