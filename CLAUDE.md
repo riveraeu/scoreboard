@@ -219,6 +219,9 @@ MLB strikeout markets that fail simScore gate (< 7 or finalSimScore < 11) are pu
 
 The raw (unfiltered) array is stored in `allTonightPlays` and used to build `tonightPlayerMap` in the player card — this ensures `qualified: false` thresholds (e.g. 3+/4+ strikeouts with no edge bonus) get their simulation-based truePct rather than falling back to the raw formula.
 
+### bestMap deduplication — which threshold shows in plays card
+`bestMap` dedupes to one play per `playerName|sport|stat` for qualified plays. The winner is the play with the **lowest threshold** (`play.threshold < prev.threshold`) — most achievable outcome, highest truePct. Non-qualifying (`qualified: false`) plays use a threshold-inclusive key and don't compete. After bestMap, non-winning qualified thresholds are re-added as `qualified: false` for the player card.
+
 ---
 
 ## Frontend Architecture (`index.html`)

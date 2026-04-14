@@ -2390,8 +2390,9 @@ var worker_default = {
             ? `${play.playerName}|${play.sport}|${play.stat}|${play.threshold}`
             : `${play.playerName}|${play.sport}|${play.stat}`;
           const prev = bestMap[key];
-          // Keep the play with highest truePct (strongest model conviction).
-          const isBetter = !prev || play.truePct > prev.truePct;
+          // For deduped (qualified:true) plays, keep the lowest threshold — most achievable (highest truePct).
+          // For per-threshold (qualified:false) plays, there is no competing prev.
+          const isBetter = !prev || play.threshold < prev.threshold;
           if (isBetter) bestMap[key] = play;
         }
         plays.splice(0, plays.length, ...Object.values(bestMap));
