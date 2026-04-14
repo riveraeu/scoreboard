@@ -1268,11 +1268,9 @@ var worker_default = {
               const _hasAnchor = sportByteam.mlb?.pitcherHasAnchor?.[m.kalshiPlayerTeam] ?? null;
               // No 2025 anchor (TJ return, pure reliever, etc.): require 8 GS in 2026.
               // Treat null 2026 data as 0 — if the API can't confirm starts, don't trust the model.
-              // Has valid 2025 anchor: only drop if we have explicit 2026 data showing < 4 GS (null = pre-season pass).
+              // Has valid 2025 anchor: pass through regardless of gs26 — the anchor IS the reliability signal.
               if (_hasAnchor !== true) {
                 if ((_gs26 ?? 0) < 8) { preDropped.push({ ...m, reason: "insufficient_starts", gs26: _gs26 ?? 0, hasAnchor: _hasAnchor }); continue; }
-              } else if (_gs26 !== null && _gs26 < 4) {
-                preDropped.push({ ...m, reason: "insufficient_starts", gs26: _gs26, hasAnchor: _hasAnchor }); continue;
               }
               preFilteredMarkets.push(m); continue;
             }
