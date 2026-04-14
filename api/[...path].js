@@ -2316,9 +2316,12 @@ var worker_default = {
           const tb = b.gameTime || "9999";
           return ta < tb ? -1 : ta > tb ? 1 : b.edge - a.edge;
         });
-        // Filter out plays from past dates (Kalshi sometimes keeps settled markets open)
-        const todayStr = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-        plays.splice(0, plays.length, ...plays.filter(p => !p.gameDate || p.gameDate >= todayStr));
+        // Filter out plays from old dates (Kalshi sometimes keeps settled markets open).
+        // Use yesterday as cutoff (not today) to handle UTC/local timezone differences
+        // for late games: a TEX game at 9:40pm ET = 1:40am UTC next day, so today() on the
+        // server would be April 14 while the game date is still April 13.
+        const cutoffStr = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+        plays.splice(0, plays.length, ...plays.filter(p => !p.gameDate || p.gameDate >= cutoffStr));
         // Re-add non-winning MLB strikeout thresholds as qualified:false so allTonightPlays has all
         // thresholds and the player card can show distinct simulation-based truePct per threshold.
         {
@@ -2381,6 +2384,7 @@ var worker_default = {
         if (isDebug) {
           const _ek = "mlb|nathan eovaldi";
           const _eovaldiDiag = {
+            serverDateStr: new Date().toISOString().slice(0, 10),
             trace: _eovaldiTrace,
             loopTrace: _eovaldiLoopTrace,
             inInfo: !!playerInfoMap[_ek],
