@@ -366,22 +366,27 @@ export async function buildPitcherKPct(mlbSched) {
       }
     }
     // Step 2: fetch play-by-play for CSW% (many concurrent requests, may time out on edge)
+    // Limit to last 5 starts per pitcher to cap the number of PBP requests.
+    // AbortController gives the entire block an 8s budget — if slow, CSW% falls back to K%.
     try {
       const allGamePks = new Set();
       const pitcherGamePks = {};
       for (const { id, splits } of glFetch) {
-        const gks = splits.map(s => s.game?.gamePk).filter(Boolean);
+        const gks = splits.slice(0, 5).map(s => s.game?.gamePk).filter(Boolean);
         pitcherGamePks[id] = gks;
         gks.forEach(gk => allGamePks.add(gk));
       }
       const PBP_FIELDS = "allPlays,matchup,pitcher,id,playEvents,isPitch,details,code";
+      const _pbpAc = new AbortController();
+      const _pbpTimer = setTimeout(() => _pbpAc.abort(), 8000);
       const pbpFetch = await Promise.all(
         [...allGamePks].map(gk =>
-          fetch(`https://statsapi.mlb.com/api/v1/game/${gk}/playByPlay?fields=${PBP_FIELDS}`, { headers: { "User-Agent": "Mozilla/5.0" } })
+          fetch(`https://statsapi.mlb.com/api/v1/game/${gk}/playByPlay?fields=${PBP_FIELDS}`, { headers: { "User-Agent": "Mozilla/5.0" }, signal: _pbpAc.signal })
             .then(r => r.ok ? r.json() : {}).catch(() => ({}))
             .then(d => ({ gk, plays: d.allPlays || [] }))
         )
       );
+      clearTimeout(_pbpTimer);
       const playsByGk = Object.fromEntries(pbpFetch.map(({ gk, plays }) => [gk, plays]));
       const CSW_CODES = new Set(["C", "S", "T", "W", "M", "Q"]);
       const cswByMlbId = {};
