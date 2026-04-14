@@ -62,7 +62,7 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
   - Lineup oK% > 24% → 3pts (hand-adjusted vs RHP/LHP)
   - Avg pitches/start > 85 → 2pts (uses 2026 data only if gs26 ≥ 4; else falls back to 2025)
   - Park factor > 1.0 → 1pt
-  - Team ML > +150 (heavy underdog) → -3pt penalty (`mlMeets = false`; null ML = no penalty). Requires otherwise high simScore (≥8 pre-edge) to qualify.
+  - Team ML > +150 (heavy underdog) → -1pt penalty (`mlMeets = false`; null ML = no penalty)
   - Edge ≥ 3% → 3pts (bonus, added after simulation)
 - `pitcherGS26`: 2026 games started per team abbr, exported from `buildPitcherKPct`, used for small-sample guards
 - **Gates**: simScore ≥ 7 to enter play loop; finalSimScore ≥ 11 to qualify as a play (7–10 = qualified:false, shows in report but not plays card); `gs26 < 4 AND hasAnchor === false` (no reliable 2025 data either) → `preDropped` with `reason: "insufficient_starts"`. Normal early-season pitchers with strong 2025 data (gs25 ≥ 5 AND bf25 ≥ 100) pass through even with few 2026 starts.

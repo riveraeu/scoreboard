@@ -1717,16 +1717,16 @@ var worker_default = {
             lkpMeets = _lkp != null ? _lkp > 24 : null;
             pitchesMeets = _avgP != null ? _avgP > 85 : null;
             parkMeets = _parkKF > 1.0;
-            // Heavy underdog penalty: team ML > +150 → pitcher pulled early, low run support, -3pt (null = no data, no penalty)
+            // Heavy underdog penalty: team ML > +150 → pitcher pulled early risk, -1pt (null = no data, no penalty)
             const _teamML = sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null;
             mlMeets = _teamML == null || _teamML <= 150;
-            // Weighted sim-score (pre-edge, max 11): CSW%→3, K-BB%→2, lineup K%→3, avg pitches→2, park→1, heavy underdog→-3
+            // Weighted sim-score (pre-edge, max 11): CSW%→3, K-BB%→2, lineup K%→3, avg pitches→2, park→1, heavy underdog→-1
             simScore = (kpctMeets === true ? 3 : 0)
                      + (kbbMeets === true ? 2 : 0)
                      + (lkpMeets === true ? 3 : 0)
                      + (pitchesMeets === true ? 2 : 0)
                      + (parkMeets ? 1 : 0)
-                     - (!mlMeets ? 3 : 0);
+                     - (!mlMeets ? 1 : 0);
           }
           let softVals, softLabel, softUnit;
           if (sport === "mlb" && stat === "strikeouts") {

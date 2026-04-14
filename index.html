@@ -1229,7 +1229,7 @@ function App() {
                                 }
                                 return <span style={{fontSize:10,color:"#484f58"}}>{RESULT_LABELS[m.reason] ?? m.reason ?? ""}</span>;
                               })();
-                              const _nameWhite = sport === "mlb" ? _highScore : m.qualified;
+                              const _nameWhite = sport === "mlb" ? (_highScore && m.qualified !== false) : m.qualified;
                               return (
                                 <div key={`${m.playerName}|${m.threshold}|${i}`} style={{
                                   display:"flex",alignItems:"center",gap:6,padding:"6px 12px",
@@ -1649,7 +1649,7 @@ function App() {
                                     {mk(h2h?.lkpMeets,3,"oK%")}
                                     {mk(h2h?.pitchesMeets,2,"P/GS")}
                                     {h2h?.parkMeets != null && mk(h2h?.parkMeets,1,"Park")}
-                                    {h2h?.mlMeets === false && <span style={{color:"#f78166",fontSize:9,opacity:0.7,whiteSpace:"nowrap"}}>✗ Dog(-3)</span>}
+                                    {h2h?.mlMeets === false && <span style={{color:"#f78166",fontSize:9,opacity:0.7,whiteSpace:"nowrap"}}>✗ Dog(-1)</span>}
                                     {h2h?.edge != null && <span title={h2h.spreadAdj > 0 ? `Raw +${h2h.rawEdge}% − ${h2h.spreadAdj}¢ spread = +${h2h.edge}% net` : undefined} style={{color:h2h.edge >= 3 ? "#3fb950" : h2h.edge >= 0 ? "#e3b341" : "#f78166",fontSize:9,opacity:h2h.edge >= 3 ? 1 : 0.7}}>{h2h.edge >= 3 ? "✓" : "✗"}Edge {h2h.edge > 0 ? "+" : ""}{h2h.edge}%{h2h.spreadAdj > 0 ? " net" : ""}(3)</span>}
                                   </span>
                                 </div>
@@ -2480,7 +2480,7 @@ function App() {
                                       {mk(play.lkpMeets,3,"oK%")}
                                       {mk(play.pitchesMeets,2,"P/GS")}
                                       {play.parkMeets != null && mk(play.parkMeets,1,"Park")}
-                                      {play.mlMeets === false && <span style={{color:"#f78166",fontSize:9,opacity:0.7,whiteSpace:"nowrap"}}>✗ Dog(-3)</span>}
+                                      {play.mlMeets === false && <span style={{color:"#f78166",fontSize:9,opacity:0.7,whiteSpace:"nowrap"}}>✗ Dog(-1)</span>}
                                       {play.edge != null && <span title={play.spreadAdj > 0 ? `Raw +${play.rawEdge}% − ${play.spreadAdj}¢ spread = +${play.edge}% net` : undefined} style={{color:play.edge >= 3 ? "#3fb950" : play.edge >= 0 ? "#e3b341" : "#f78166",fontSize:9,opacity:play.edge >= 3 ? 1 : 0.7}}>{play.edge >= 3 ? "✓" : "✗"}Edge {play.edge > 0 ? "+" : ""}{play.edge}%{play.spreadAdj > 0 ? " net" : ""}(3)</span>}
                                     </span>
                                   </div>
