@@ -2212,8 +2212,6 @@ function App() {
               if (trackedPlays.some(p => p.id === trackId)) return false;
               if (sportFilter.length > 0 && !sportFilter.includes(play.sport)) return false;
               if (statFilter.length > 0 && !statFilter.includes(play.stat)) return false;
-              const ip = impliedProb(play.americanOdds);
-              if (ip !== null && ip > 93) return false;
               return true;
             });
             if (untrackedPlays.length === 0) return (
