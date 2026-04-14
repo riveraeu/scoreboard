@@ -79,7 +79,7 @@ True% = Monte Carlo simulation (`simulateHits`) using batter BA × pitcher BAA (
   - Pitcher FIP > ERA → 2pts
   - Park hit factor > 1.02 → 1pt
   - Edge ≥ 3% → 3pts
-- **Gates**: lineup spot 1–4 required; hitterSimScore ≥ 7; BA ≥ .270 (good/elite tier only); edge ≥ 3%
+- **Gates**: lineup spot 1–4 required; hitterSimScore ≥ 7; edge ≥ 3%
 - Barrel% from Baseball Savant (`buildBarrelPct`) — cached 6h in KV
 
 ### NBA

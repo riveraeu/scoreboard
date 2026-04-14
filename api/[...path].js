@@ -1271,15 +1271,11 @@ var worker_default = {
               if (_gs26 !== null && _gs26 < 4 && _hasAnchor === false) { preDropped.push({ ...m, reason: "insufficient_starts", gs26: _gs26 }); continue; }
               preFilteredMarkets.push(m); continue;
             }
-            // Require a known probable pitcher with ERA data for hitters
             const playerTeam2 = m.kalshiPlayerTeam;
             if (!playerTeam2) { preDropped.push({ ...m, reason: "no_opp" }); continue; }
             const opp2 = m.gameTeam1 === playerTeam2 ? m.gameTeam2 : m.gameTeam2 === playerTeam2 ? m.gameTeam1 : null;
             if (!opp2) { preDropped.push({ ...m, reason: "no_opp" }); continue; }
-            const pitcherEra = sportByteam.mlb?.probables?.[opp2]?.era;
-            // Pass through if ERA is null (no data yet) or >= 4.0; drop only if ERA is known to be < 4.0
-            if (pitcherEra == null || isNaN(pitcherEra) || pitcherEra >= 4) { preFilteredMarkets.push(m); }
-            else { preDropped.push({ ...m, reason: "pitcher_era_too_low", era: pitcherEra ?? null, opponent: opp2, moneyline: sportByteam.mlb?.gameOdds?.[m.kalshiPlayerTeam]?.moneyline ?? null }); }
+            preFilteredMarkets.push(m);
             continue;
           }
           if (m.sport === "nhl") { preFilteredMarkets.push(m); continue; }
