@@ -310,8 +310,9 @@ export async function buildPitcherKPct(mlbSched) {
       const bf26 = s26?.bf || 0;
       const bf25 = s25?.bf || 0;
       const gs25 = s25?.gs || 0;
-      // A reliever-turned-starter has bf25 > 0 but gs25 = 0 — reliever K% is not a valid starter anchor
-      pitcherHasAnchor[abbr] = gs25 >= 5; // true = reliable 2025 starter anchor (5+ starts)
+      // A reliever-turned-starter has bf25 > 0 but gs25 = 0 — reliever K% is not a valid starter anchor.
+      // Also require bf25 >= 100 to exclude injury-shortened seasons (e.g. TJ recovery with 5 starts but minimal workload)
+      pitcherHasAnchor[abbr] = gs25 >= 5 && bf25 >= 100; // true = reliable 2025 starter anchor (5+ starts, 100+ BF)
       const k26 = (s26 && bf26 > 0) ? s26.so / bf26 : null;
       const anchor = (s25 && bf25 >= 50) ? s25.so / bf25 : LEAGUE_PITCHER_K;
       const trust = Math.min(1.0, bf26 / 200);
@@ -330,22 +331,12 @@ export async function buildPitcherKPct(mlbSched) {
       if (era26 != null) pitcherEra[abbr] = era26;
       else if (era25 != null) pitcherEra[abbr] = era25;
     }
-    // Avg pitches per start from season aggregates (already fetched above)
     const pitcherCSWPct = {};
     const pitcherAvgPitches = {};
     const pitcherGS26 = {};
     for (const [abbr, id] of Object.entries(pitcherByTeam)) {
       const s26 = pitcherStats26[id];
       if (s26 && s26.gs > 0) pitcherGS26[abbr] = s26.gs;
-      // Require >= 4 GS in 2026 for avg pitches to be reliable; fall back to 2025 if not
-      if (s26 && s26.gs >= 4 && s26.np > 0) {
-        pitcherAvgPitches[abbr] = parseFloat((s26.np / s26.gs).toFixed(1));
-      } else {
-        const s25 = pitcherStats25[id];
-        if (s25 && s25.gs >= 1 && s25.np > 0) {
-          pitcherAvgPitches[abbr] = parseFloat((s25.np / s25.gs).toFixed(1));
-        }
-      }
     }
     // Step 1: fetch game logs (needed for CSW% play-by-play gamePk lookup)
     let glFetch = [];
@@ -358,14 +349,21 @@ export async function buildPitcherKPct(mlbSched) {
         )
       );
     } catch { /* game log fetch failed */ }
-    // Fallback: compute pitcherAvgPitches from game logs for any pitcher where season aggregate lacked numberOfPitches
+    // Avg pitches per start from 2026 game logs (starts-only — accurate for pitchers with mixed starter/reliever roles)
+    // Falls back to 2025 season aggregate only when no 2026 start data exists in the gamelog
     for (const { id, splits } of glFetch) {
       const abbr = Object.keys(pitcherByTeam).find(a => pitcherByTeam[a] === id);
-      if (!abbr || pitcherAvgPitches[abbr] != null) continue;
+      if (!abbr) continue;
       const startSplits = splits.filter(s => (s.stat?.gamesStarted || 0) > 0);
-      if (startSplits.length === 0) continue;
-      const totalNP = startSplits.reduce((sum, s) => sum + (s.stat?.numberOfPitches || 0), 0);
-      if (totalNP > 0) pitcherAvgPitches[abbr] = parseFloat((totalNP / startSplits.length).toFixed(1));
+      if (startSplits.length > 0) {
+        const totalNP = startSplits.reduce((sum, s) => sum + (s.stat?.numberOfPitches || 0), 0);
+        if (totalNP > 0) { pitcherAvgPitches[abbr] = parseFloat((totalNP / startSplits.length).toFixed(1)); continue; }
+      }
+      // No 2026 start data in gamelog → fall back to 2025 season aggregate
+      const s25 = pitcherStats25[id];
+      if (s25 && s25.gs >= 1 && s25.np > 0) {
+        pitcherAvgPitches[abbr] = parseFloat((s25.np / s25.gs).toFixed(1));
+      }
     }
     // Step 2: fetch play-by-play for CSW% (many concurrent requests, may time out on edge)
     try {

@@ -1995,7 +1995,7 @@ var worker_default = {
             hitterParkMeets = _hlParkKF2 > 1.0;
             hitterParkKF = _hlParkKF2;
             hitterMoneyline = hitterML;
-            const _spotPts = hitterLineupSpot != null ? (hitterLineupSpot <= 2 ? 3 : hitterLineupSpot <= 4 ? 2 : 0) : null;
+            const _spotPts = hitterLineupSpot != null ? (hitterLineupSpot <= 3 ? 3 : hitterLineupSpot <= 4 ? 2 : 0) : null;
             // Pre-edge sim-score (max 11): spot→3/2, WHIP→3, FIP>ERA→2, barrel%→null, park→1
             hitterSimScore = (_spotPts ?? 0)
               + (hitterWhipMeets === true ? 3 : 0)

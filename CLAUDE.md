@@ -65,16 +65,16 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
   - Team ML > +150 (heavy underdog) → -1pt penalty (`mlMeets = false`; null ML = no penalty)
   - Edge ≥ 3% → 3pts (bonus, added after simulation)
 - `pitcherGS26`: 2026 games started per team abbr, exported from `buildPitcherKPct`, used for small-sample guards
-- **Gates**: simScore ≥ 7 to enter play loop; finalSimScore ≥ 11 to qualify as a play (7–10 = qualified:false, shows in report but not plays card); `gs26 < 4 AND hasAnchor === false` (no reliable 2025 data either) → `preDropped` with `reason: "insufficient_starts"`. Normal early-season pitchers with strong 2025 data (bf25 ≥ 50) pass through even with few 2026 starts.
-- `pitcherHasAnchor`: `true` if gs25 ≥ 5 (reliable 2025 *starter* anchor). A reliever-turned-starter has bf25 > 0 but gs25 = 0 — reliever K% is not a valid anchor for starter projections.
-- Pitchers fetched via `buildPitcherKPct(mlbSched)` — avg pitches per start from season aggregate `numberOfPitches / gamesStarted`
+- **Gates**: simScore ≥ 7 to enter play loop; finalSimScore ≥ 11 to qualify as a play (7–10 = qualified:false, shows in report but not plays card); `gs26 < 4 AND hasAnchor === false` (no reliable 2025 data either) → `preDropped` with `reason: "insufficient_starts"`. Normal early-season pitchers with strong 2025 data (gs25 ≥ 5 AND bf25 ≥ 100) pass through even with few 2026 starts.
+- `pitcherHasAnchor`: `true` if gs25 ≥ 5 AND bf25 ≥ 100 (reliable 2025 *starter* anchor). A reliever-turned-starter has bf25 > 0 but gs25 = 0 — reliever K% is not a valid anchor. bf25 ≥ 100 also excludes injury-shortened seasons (e.g. TJ recovery with 5 starts but minimal workload).
+- Pitchers fetched via `buildPitcherKPct(mlbSched)` — avg pitches per start from 2026 gamelog (starts-only filtered via `gamesStarted > 0`); falls back to 2025 season aggregate `numberOfPitches / gamesStarted` when no 2026 start data in gamelog
 - **K% regression**: `trust = min(1.0, bf26 / 200)` — uses 2026 BF only (NOT combined 2026+2025). Full trust at ~33 starts. Blends 2026 actual K% with 2025 anchor (or league avg 22.2% if no 2025 data). KBB% regressed the same way.
 - Park factors in `PARK_KFACTOR` map
 
 #### MLB Hitters (hits/hrr) Model
 True% = Monte Carlo simulation (`simulateHits`) using batter BA × pitcher BAA (log5)
 - **SimScore** (max 11 pre-edge, 14 with edge bonus):
-  - Lineup spot 1–2 → 3pts, spot 3–4 → 2pts
+  - Lineup spot 1–3 → 3pts, spot 4 → 2pts
   - Pitcher WHIP > 1.35 → 3pts (from pitcher gamelog)
   - Pitcher FIP > ERA → 2pts
   - Park hit factor > 1.02 → 1pt
