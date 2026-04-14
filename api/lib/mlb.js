@@ -309,7 +309,7 @@ export async function buildPitcherKPct(mlbSched) {
       // trust = 2026 BF / 200 (full trust at 200 BF; ~33 starts in current season)
       const bf26 = s26?.bf || 0;
       const bf25 = s25?.bf || 0;
-      pitcherHasAnchor[abbr] = bf25 >= 50; // true = reliable 2025 anchor; false = falls back to league avg
+      pitcherHasAnchor[abbr] = bf25 >= 150; // true = reliable 2025 anchor (~5+ starts); false = too thin
       const k26 = (s26 && bf26 > 0) ? s26.so / bf26 : null;
       const anchor = (s25 && bf25 >= 50) ? s25.so / bf25 : LEAGUE_PITCHER_K;
       const trust = Math.min(1.0, bf26 / 200);
