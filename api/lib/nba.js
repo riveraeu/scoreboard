@@ -31,8 +31,8 @@ const _GL_TEAM_NORM = {
 
 export async function warmPlayerInfoCache(cache) {
   if (!cache) return;
-  const SERIES = ["KXNBAPTS", "KXNBAREB", "KXNBAAST", "KXNBA3PT", "KXNHLGLS", "KXNHLAST", "KXNHLPTS", "KXMLBHITS", "KXMLBHRR", "KXMLBKS"];
-  const SERIES_SPORT = { KXNBAPTS: "nba", KXNBAREB: "nba", KXNBAAST: "nba", KXNBA3PT: "nba", KXNHLGLS: "nhl", KXNHLAST: "nhl", KXNHLPTS: "nhl", KXMLBHITS: "mlb", KXMLBHRR: "mlb", KXMLBKS: "mlb" };
+  const SERIES = ["KXNBAPTS", "KXNBAREB", "KXNBAAST", "KXNBA3PT", "KXNHLPTS", "KXMLBHITS", "KXMLBHRR", "KXMLBKS"];
+  const SERIES_SPORT = { KXNBAPTS: "nba", KXNBAREB: "nba", KXNBAAST: "nba", KXNBA3PT: "nba", KXNHLPTS: "nhl", KXMLBHITS: "mlb", KXMLBHRR: "mlb", KXMLBKS: "mlb" };
   const hdrs = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36", "Referer": "https://www.espn.com/", "Accept": "application/json" };
   const playerKeys = new Set();
   for (const ticker of SERIES) {

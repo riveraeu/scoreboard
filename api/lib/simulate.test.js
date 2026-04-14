@@ -5,11 +5,18 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { simulateKsDist, kDistPct, buildNbaStatDist, nbaDistPct } from './simulate.js';
+import {
+  LINEUP_SMALL, LINEUP_MED, LINEUP_9_21,
+  NBA_GAME_VALUES,
+  makeSweepPlays, makeAllTonightPlays,
+  HRR_ROWS,
+  LINEUP_EARLY_RETURN, PITCHER_EARLY_RETURN,
+} from './simulate.test.fixtures.js';
 
 // --- simulateKsDist ---
 
 test('simulateKsDist returns Int16Array of the requested length', () => {
-  const dist = simulateKsDist([0.22, 0.25, 0.20], 0.28, 1.0, 1000);
+  const dist = simulateKsDist(LINEUP_SMALL, 0.28, 1.0, 1000);
   assert.ok(dist instanceof Int16Array, 'should be Int16Array');
   assert.equal(dist.length, 1000);
 });
@@ -19,7 +26,7 @@ test('simulateKsDist returns null for empty lineup', () => {
 });
 
 test('simulateKsDist returns null for null pitcherKPct', () => {
-  assert.equal(simulateKsDist([0.22, 0.25], null, 1.0, 1000), null);
+  assert.equal(simulateKsDist(LINEUP_SMALL.slice(0, 2), null, 1.0, 1000), null);
 });
 
 // --- kDistPct ---
@@ -29,7 +36,7 @@ test('kDistPct returns null for null distribution', () => {
 });
 
 test('kDistPct returns values in [0, 100]', () => {
-  const dist = simulateKsDist([0.22, 0.25, 0.20, 0.18, 0.21], 0.28, 1.0, 2000);
+  const dist = simulateKsDist(LINEUP_MED, 0.28, 1.0, 2000);
   for (let t = 1; t <= 10; t++) {
     const pct = kDistPct(dist, t);
     assert.ok(pct >= 0 && pct <= 100, `P(K>=${t})=${pct} should be in [0, 100]`);
@@ -40,8 +47,7 @@ test('kDistPct returns values in [0, 100]', () => {
 // This is the root cause fix — before the fix, 3+/4+ used a fallback formula
 // independent of the 5+ simulation, breaking monotonicity (76.8% < 97.9%).
 test('kDistPct is monotonically non-increasing across thresholds (shared distribution)', () => {
-  const lineup = Array(9).fill(0.21); // 9-batter lineup, each K% 21%
-  const dist = simulateKsDist(lineup, 0.28, 1.01, 10000);
+  const dist = simulateKsDist(LINEUP_9_21, 0.28, 1.01, 10000);
   const thresholds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
   const pcts = thresholds.map(t => kDistPct(dist, t));
   for (let i = 0; i < pcts.length - 1; i++) {
@@ -55,8 +61,7 @@ test('kDistPct is monotonically non-increasing across thresholds (shared distrib
 // The specific scenario from the bug: good pitcher (CSW 30%, K-BB 16%) vs Cardinals-like lineup.
 // All thresholds querying the same dist must be monotonic — 4+ >= 5+ always holds.
 test('shared distribution: P(K>=4) >= P(K>=5) for a Gavin Williams-like scenario', () => {
-  const lineup = Array(9).fill(0.21); // Cardinals K% ~21% vs RHP
-  const dist = simulateKsDist(lineup, 0.295, 1.01, 10000); // pitcher K% ~29.5%, +1% park
+  const dist = simulateKsDist(LINEUP_9_21, 0.295, 1.01, 10000); // pitcher K% ~29.5%, +1% park
   const pct4 = kDistPct(dist, 4);
   const pct5 = kDistPct(dist, 5);
   assert.ok(pct4 >= pct5, `P(K>=4)=${pct4} must be >= P(K>=5)=${pct5}`);
@@ -68,11 +73,7 @@ test('shared distribution: P(K>=4) >= P(K>=5) for a Gavin Williams-like scenario
 // When qualified:false plays (3+, 4+) have lower truePct than a qualifying play (5+)
 // due to the fallback formula, the sweep must correct them.
 test('API monotonicity sweep corrects qualified:false plays that underestimate truePct', () => {
-  const plays = [
-    { sport: 'mlb', stat: 'strikeouts', playerTeam: 'CLE', gameDate: '2026-04-13', threshold: 3, truePct: 92.6, qualified: false },
-    { sport: 'mlb', stat: 'strikeouts', playerTeam: 'CLE', gameDate: '2026-04-13', threshold: 4, truePct: 76.8, qualified: false }, // was fallback formula
-    { sport: 'mlb', stat: 'strikeouts', playerTeam: 'CLE', gameDate: '2026-04-13', threshold: 5, truePct: 97.9, qualified: true },  // from simulation
-  ];
+  const plays = makeSweepPlays();
 
   // Reproduce the enforcement sweep from api/[...path].js
   const groups = {};
@@ -103,11 +104,7 @@ test('API monotonicity sweep corrects qualified:false plays that underestimate t
 // After the fix: tonightPlayerMap uses allTonightPlays (unfiltered), so all thresholds
 // get their simulation-based truePct from the API response.
 test('tonightPlayerMap built from allTonightPlays includes qualified:false thresholds', () => {
-  const allTonightPlays = [
-    { playerId: 42, playerName: 'Gavin Williams', stat: 'strikeouts', threshold: 3, truePct: 97.9, simPct: 97.9, qualified: false },
-    { playerId: 42, playerName: 'Gavin Williams', stat: 'strikeouts', threshold: 4, truePct: 97.9, simPct: 97.9, qualified: false },
-    { playerId: 42, playerName: 'Gavin Williams', stat: 'strikeouts', threshold: 5, truePct: 97.9, simPct: 97.9, qualified: true },
-  ];
+  const allTonightPlays = makeAllTonightPlays();
 
   // Old behavior: only qualified plays
   const oldMap = {};
@@ -130,8 +127,7 @@ test('tonightPlayerMap built from allTonightPlays includes qualified:false thres
 // --- NBA distribution ---
 
 test('nbaDistPct is monotonically non-increasing across thresholds', () => {
-  const values = [22, 18, 25, 30, 19, 27, 24, 21, 28, 20]; // 10 game sample
-  const dist = buildNbaStatDist(values, 1.0, 0, false, 5000);
+  const dist = buildNbaStatDist(NBA_GAME_VALUES, 1.0, 0, false, 5000);
   assert.ok(dist instanceof Float32Array, 'should be Float32Array');
   const thresholds = [10, 15, 20, 25, 30, 35, 40];
   const pcts = thresholds.map(t => nbaDistPct(dist, t));
@@ -200,13 +196,7 @@ test('NBA drop simScore: missing fields default to 0 pts', () => {
 // The report filters HRR rows to threshold=1 only (2+/3+/etc. are too noisy).
 // This tests the filter expression used in index.html.
 test('HRR rows filtered to threshold=1 only', () => {
-  const allRows = [
-    { stat: 'hrr', threshold: 1, playerName: 'A' },
-    { stat: 'hrr', threshold: 2, playerName: 'A' },
-    { stat: 'hrr', threshold: 3, playerName: 'B' },
-    { stat: 'strikeouts', threshold: 3, playerName: 'C' },
-    { stat: 'strikeouts', threshold: 5, playerName: 'C' },
-  ];
+  const allRows = HRR_ROWS;
   const filtered = allRows.filter(r => r.stat !== 'hrr' || r.threshold === 1);
   const hrrRows = filtered.filter(r => r.stat === 'hrr');
   assert.equal(hrrRows.length, 1, 'only one HRR row (threshold=1)');
@@ -222,19 +212,16 @@ test('HRR rows filtered to threshold=1 only', () => {
 // These tests mirror the shapes that api/[...path].js destructures so missing keys
 // cause silent undefined bugs rather than loud errors.
 test('buildLineupKPct early-return shape includes all destructured fields', () => {
-  // Mirrors the early-return on allIds.length === 0
-  const ret = { lineupKPct: {}, lineupBatterKPcts: {}, lineupKPctVR: {}, lineupKPctVL: {}, lineupBatterKPctsOrdered: {}, lineupBatterKPctsVROrdered: {}, lineupBatterKPctsVLOrdered: {}, lineupSpotByName: {}, gameHomeTeams: {}, projectedLineupTeams: [] };
   const required = ['lineupKPct','lineupBatterKPcts','lineupKPctVR','lineupKPctVL','lineupBatterKPctsOrdered','lineupBatterKPctsVROrdered','lineupBatterKPctsVLOrdered','lineupSpotByName','gameHomeTeams','projectedLineupTeams'];
   for (const key of required) {
-    assert.ok(key in ret, `lineupKPct early-return missing key: ${key}`);
+    assert.ok(key in LINEUP_EARLY_RETURN, `lineupKPct early-return missing key: ${key}`);
   }
 });
 
 test('buildPitcherKPct early-return shape includes all destructured fields', () => {
-  const ret = { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {} };
   const required = ['pitcherKPct','pitcherKBBPct','pitcherHand','pitcherEra','pitcherCSWPct','pitcherAvgPitches'];
   for (const key of required) {
-    assert.ok(key in ret, `pitcherKPct early-return missing key: ${key}`);
+    assert.ok(key in PITCHER_EARLY_RETURN, `pitcherKPct early-return missing key: ${key}`);
   }
 });
 

@@ -1,5 +1,6 @@
 // simulate.test.jxa.js — run with: osascript -l JavaScript api/lib/simulate.test.jxa.js
 // Self-contained: inlines simulate.js functions (no ES module imports needed).
+// Mock data is defined in simulate.test.fixtures.js — keep in sync when adding/changing fixtures.
 
 // ---- Inlined from simulate.js ----
 
