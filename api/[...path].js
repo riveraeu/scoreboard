@@ -671,8 +671,8 @@ var worker_default = {
             const gameOdds = Object.fromEntries(Object.entries(gameOddsRaw2).map(([k, v]) => [normMlbAbbr2(k), v]));
             const [lineupResult, pitcherResult] = await Promise.all([buildLineupKPct(mlbSched), buildPitcherKPct(mlbSched)]);
             const { lineupKPct: lineupKPct2, lineupBatterKPcts: lineupBatterKPcts2, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered: lineupBatterKPctsOrdered2, lineupBatterKPctsVROrdered: lineupBatterKPctsVROrdered2, lineupBatterKPctsVLOrdered: lineupBatterKPctsVLOrdered2, lineupSpotByName: lineupSpotByName2, gameHomeTeams: gameHomeTeams2, projectedLineupTeams: projectedLineupTeams2 } = lineupResult;
-            const { pitcherKPct: pitcherKPct2, pitcherKBBPct: pitcherKBBPct2, pitcherHand, pitcherEra: pitcherEraByTeam2, pitcherCSWPct: pitcherCSWPct2, pitcherAvgPitches: pitcherAvgPitches2 } = pitcherResult;
-            mlbByteam = { pitching: pitchRes, batting: batRes, probables: probables2, lineupKPct: lineupKPct2, lineupBatterKPcts: lineupBatterKPcts2, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered: lineupBatterKPctsOrdered2, lineupBatterKPctsVROrdered: lineupBatterKPctsVROrdered2, lineupBatterKPctsVLOrdered: lineupBatterKPctsVLOrdered2, lineupSpotByName: lineupSpotByName2, gameHomeTeams: gameHomeTeams2, pitcherKPct: pitcherKPct2, pitcherKBBPct: pitcherKBBPct2, pitcherCSWPct: pitcherCSWPct2, pitcherAvgPitches: pitcherAvgPitches2, pitcherHand, pitcherEra: pitcherEraByTeam2, projectedLineupTeams: projectedLineupTeams2, gameOdds };
+            const { pitcherKPct: pitcherKPct2, pitcherKBBPct: pitcherKBBPct2, pitcherHand, pitcherEra: pitcherEraByTeam2, pitcherCSWPct: pitcherCSWPct2, pitcherAvgPitches: pitcherAvgPitches2, pitcherGS26: pitcherGS262 } = pitcherResult;
+            mlbByteam = { pitching: pitchRes, batting: batRes, probables: probables2, lineupKPct: lineupKPct2, lineupBatterKPcts: lineupBatterKPcts2, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered: lineupBatterKPctsOrdered2, lineupBatterKPctsVROrdered: lineupBatterKPctsVROrdered2, lineupBatterKPctsVLOrdered: lineupBatterKPctsVLOrdered2, lineupSpotByName: lineupSpotByName2, gameHomeTeams: gameHomeTeams2, pitcherKPct: pitcherKPct2, pitcherKBBPct: pitcherKBBPct2, pitcherCSWPct: pitcherCSWPct2, pitcherAvgPitches: pitcherAvgPitches2, pitcherGS26: pitcherGS262, pitcherHand, pitcherEra: pitcherEraByTeam2, projectedLineupTeams: projectedLineupTeams2, gameOdds };
             if (CACHE2) await CACHE2.put("byteam:mlb", JSON.stringify(mlbByteam), { expirationTtl: 600 });
           }
           const probables = mlbByteam.probables || {};
@@ -752,7 +752,7 @@ var worker_default = {
         const sportParam = params.get("sport") || "nba";
         const SERIES = {
           nba: { points: "KXNBAPTS", rebounds: "KXNBAREB", assists: "KXNBAAST", threePointers: "KXNBA3PT" },
-          nhl: { goals: "KXNHLGLS", assists: "KXNHLAST", points: "KXNHLPTS" },
+          nhl: { points: "KXNHLPTS" },
           mlb: { hits: "KXMLBHITS", hrr: "KXMLBHRR", strikeouts: "KXMLBKS" }
         };
         const series = SERIES[sportParam]?.[stat];
@@ -890,8 +890,6 @@ var worker_default = {
           KXNBAREB: { sport: "nba", league: "nba", stat: "rebounds", col: "REB" },
           KXNBAAST: { sport: "nba", league: "nba", stat: "assists", col: "AST" },
           KXNBA3PT: { sport: "nba", league: "nba", stat: "threePointers", col: "3PT" },
-          KXNHLGLS: { sport: "nhl", league: "nhl", stat: "goals", col: "G" },
-          KXNHLAST: { sport: "nhl", league: "nhl", stat: "assists", col: "A" },
           KXNHLPTS: { sport: "nhl", league: "nhl", stat: "points", col: "PTS" },
           KXMLBHITS: { sport: "mlb", league: "mlb", stat: "hits", col: "H" },
           KXMLBKS: { sport: "mlb", league: "mlb", stat: "strikeouts", col: "K" },
@@ -1109,11 +1107,11 @@ var worker_default = {
               const gameOdds = Object.fromEntries(Object.entries(gameOddsRaw).map(([k, v]) => [normMlbAbbr(k), v]));
               const [lineupResult, pitcherResult] = await Promise.all([buildLineupKPct(mlbSched), buildPitcherKPct(mlbSched)]);
               const { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, projectedLineupTeams } = lineupResult;
-              const { pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherHand, pitcherEra: pitcherEraByTeam } = pitcherResult;
+              const { pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherGS26, pitcherHand, pitcherEra: pitcherEraByTeam } = pitcherResult;
               // barrelPctMap is NOT stored in byteam:mlb — it lives in mlb:barrelPct with its own 6h TTL.
               // This prevents a bust (which deletes byteam:mlb) from baking an empty barrelPctMap
               // into the cache when Baseball Savant is slow.
-              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherHand, pitcherEra: pitcherEraByTeam, projectedLineupTeams, gameOdds };
+              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherGS26, pitcherHand, pitcherEra: pitcherEraByTeam, projectedLineupTeams, gameOdds };
               // Use short TTL (60s) if key data is missing — lineup/probables not confirmed yet.
               // Prevents partial data from baking into cache for the full 600s.
               const _mlbDataReady = Object.keys(lineupSpotByName || {}).length > 0 && Object.keys(pitcherAvgPitches || {}).length > 0;
@@ -1178,10 +1176,15 @@ var worker_default = {
             STAT_SOFT[`nba|${st}`] = { softTeams: new Set(buildSoftTeamAbbrs(sportByteam.nba, st)), rankMap: buildTeamRankMap(sportByteam.nba, st) };
           }
         }
+        let nhlSaRankMap = {}, nhlLeagueAvgSa = null;
         if (sportByteam.nhl) {
-          const { ga } = sportByteam.nhl;
-          for (const st of ["goals", "assists", "points"]) {
-            STAT_SOFT[`nhl|${st}`] = nhlSoftTeams(ga, "goalsAgainstPerGame", "Goals against/game", "GAA");
+          const { ga, sa } = sportByteam.nhl;
+          STAT_SOFT["nhl|points"] = nhlSoftTeams(ga, "goalsAgainstPerGame", "Goals against/game", "GAA");
+          if (sa?.length) {
+            const _nhlSa = nhlSoftTeams(sa, "shotsAgainstPerGame", "Shots against/game", "SA");
+            nhlSaRankMap = _nhlSa.rankMap;
+            const _saVals = Object.values(nhlSaRankMap).map(r => r.value).filter(v => v > 0);
+            if (_saVals.length >= 15) nhlLeagueAvgSa = parseFloat((_saVals.reduce((a, b) => a + b, 0) / _saVals.length).toFixed(2));
           }
         }
         if (sportByteam.mlb) {
@@ -1484,7 +1487,7 @@ var worker_default = {
           }
         }
         const leagueAvgCache = {};
-        for (const key of ["nba|points", "nba|rebounds", "nba|assists", "nba|threePointers", "nhl|goals", "nhl|assists", "nhl|points"]) {
+        for (const key of ["nba|points", "nba|rebounds", "nba|assists", "nba|threePointers", "nhl|points"]) {
           const sd = STAT_SOFT[key];
           if (!sd) continue;
           const vals = Object.values(sd.rankMap).map((r) => r.value).filter((v) => v > 0);
@@ -1548,6 +1551,8 @@ var worker_default = {
         const pitcherKDistCache = {};
         // Cache NBA stat distributions keyed by playerId|stat so all thresholds share one sim run.
         const nbaPlayerDistCache = {};
+        // Cache NHL stat distributions keyed by playerId|stat — same monotonicity guarantee as NBA.
+        const nhlPlayerDistCache = {};
         for (const { playerName, playerNameDisplay, sport, stat, col, threshold, kalshiPct, americanOdds, kalshiVolume, kalshiSpread, gameTeam1, gameTeam2, kalshiPlayerTeam, gameDate } of loopMarkets) {
           const key = `${sport}|${playerName}`;
           const info = playerInfoMap[key];
@@ -1599,7 +1604,8 @@ var worker_default = {
                 const _osCol = playerColCache[`${sport}|${playerName}|${col}`];
                 const _osSeason = _osCol && _osCol.allVals.length > 0 ? parseFloat((_osCol.allVals.filter((v) => v >= threshold).length / _osCol.allVals.length * 100).toFixed(1)) : null;
                 const _osTruePct = _osSeason;
-                const _osEdge = _osSeason != null ? parseFloat((_osSeason - kalshiPct).toFixed(1)) : null;
+                const _osSpreadAdj = kalshiSpread != null ? kalshiSpread / 2 : 0;
+                const _osEdge = _osSeason != null ? parseFloat((_osSeason - kalshiPct - _osSpreadAdj).toFixed(1)) : null;
                 const _osDvpEntry = nbaPos && allPositionsDvp?.[nbaPos]?.rankings?.[stat] ? allPositionsDvp[nbaPos].rankings[stat].find((t) => t.abbr === tonightOpp) : null;
                 const _osDvpRank = _osDvpEntry?.rank ?? null;
                 const _osDebug = !_osCol ? (!_osGl ? "no_gl" : `col_miss:${col}|got:${(_osGl.ul||[]).join(",")}`) : null;
@@ -1681,7 +1687,7 @@ var worker_default = {
           const blendedPct = blendVals.length >= 5 ? blendVals.filter((v) => v >= threshold).length / blendVals.length * 100 : null;
           // Prefer 2026 season rate; fall back to blended 25+26; fall back to all-career
           const primaryPct = pct26 ?? blendedPct ?? seasonPct;
-          let simScore = null, kpctMeets = null, kbbMeets = null, lkpMeets = null, pitchesMeets = null, parkMeets = null;
+          let simScore = null, kpctMeets = null, kbbMeets = null, lkpMeets = null, pitchesMeets = null, parkMeets = null, mlMeets = null;
           let _pitcherHand = null;
           if (sport === "mlb" && stat === "strikeouts") {
             _pitcherHand = sportByteam.mlb?.pitcherHand?.[playerTeam] ?? null;
@@ -1696,17 +1702,24 @@ var worker_default = {
             const _homeTeamK = sportByteam.mlb?.gameHomeTeams?.[playerTeam] || tonightOpp;
             const _parkKF = PARK_KFACTOR[_homeTeamK] ?? 1;
             // null = data unavailable (abstains); only known-true metrics contribute points
-            kpctMeets = _csw != null ? _csw > 30 : (_pkp != null ? _pkp > 24 : null);
+            // When gs26 < 4, skip raw CSW% (unreliable small sample) and use only regressed K%
+            const _gs26 = sportByteam.mlb?.pitcherGS26?.[playerTeam] ?? null;
+            const _useCsw = (_gs26 == null || _gs26 >= 4) && _csw != null;
+            kpctMeets = _useCsw ? _csw > 30 : (_pkp != null ? _pkp > 24 : null);
             kbbMeets = _kbb != null ? _kbb > 15 : null;
             lkpMeets = _lkp != null ? _lkp > 24 : null;
             pitchesMeets = _avgP != null ? _avgP > 85 : null;
             parkMeets = _parkKF > 1.0;
-            // Weighted sim-score (pre-edge, max 11): CSW%→3, K-BB%→2, lineup K%→3, avg pitches→2, park→1
+            // Heavy underdog penalty: team ML > +150 → pitcher pulled early risk, -1pt (null = no data, no penalty)
+            const _teamML = sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null;
+            mlMeets = _teamML == null || _teamML <= 150;
+            // Weighted sim-score (pre-edge, max 11): CSW%→3, K-BB%→2, lineup K%→3, avg pitches→2, park→1, heavy underdog→-1
             simScore = (kpctMeets === true ? 3 : 0)
                      + (kbbMeets === true ? 2 : 0)
                      + (lkpMeets === true ? 3 : 0)
                      + (pitchesMeets === true ? 2 : 0)
-                     + (parkMeets ? 1 : 0);
+                     + (parkMeets ? 1 : 0)
+                     - (!mlMeets ? 1 : 0);
           }
           let softVals, softLabel, softUnit;
           if (sport === "mlb" && stat === "strikeouts") {
@@ -1822,9 +1835,9 @@ var worker_default = {
               reason: "low_confidence",
               simScore,
               opponent: tonightOpp,
-              kpctMeets, kbbMeets, lkpMeets, pitchesMeets, parkMeets,
+              kpctMeets, kbbMeets, lkpMeets, pitchesMeets, parkMeets, mlMeets,
               seasonPct: parseFloat(primaryPct.toFixed(1)), softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
-              truePct: _kTruePct, edge: parseFloat((_kTruePct - kalshiPct).toFixed(1)),
+              truePct: _kTruePct, edge: parseFloat((_kTruePct - kalshiPct - (kalshiSpread != null ? kalshiSpread / 2 : 0)).toFixed(1)),
               pitcherCSWPct: sportByteam.mlb?.pitcherCSWPct?.[playerTeam] ?? null,
               pitcherKPct: pitcherKPctOut,
               pitcherKBBPct: pitcherKBBPctOut,
@@ -1893,7 +1906,7 @@ var worker_default = {
           const yesterday = /* @__PURE__ */ new Date();
           yesterday.setDate(yesterday.getDate() - 1);
           const yesterdayStr = yesterday.toISOString().slice(0, 10);
-          const isB2B = sport === "nba" && gl.events.length > 0 && (gl.events[0]?.date || "").startsWith(yesterdayStr);
+          const isB2B = (sport === "nba" || sport === "nhl") && gl.events.length > 0 && (gl.events[0]?.date || "").startsWith(yesterdayStr);
           // Provisional truePct for MLB hitter debug drops (computed before gates so all drops can include it)
           let _hlSeasonPct = null, _hlSoftPct = null, _hlTruePct = null, _hlEdge = null;
           if (sport === "mlb" && stat !== "strikeouts" && hasSeasonTags) {
@@ -2038,6 +2051,46 @@ var worker_default = {
             }
             nbaSimPctOut = nbaDistPct(nbaPlayerDistCache[_nbaDistKey], threshold);
           }
+          // NHL: pre-edge SimScore + Monte Carlo simulation (same normal-distribution approach as NBA)
+          let nhlSimPctOut = null, nhlPreSimScore = null, nhlShotsAdj = null, nhlOpportunity = null;
+          if (sport === "nhl") {
+            let _sc = 0;
+            // 1. Shots against — opp allows more shots than league avg → 3pts
+            if (nhlLeagueAvgSa !== null && nhlSaRankMap[tonightOpp]?.value != null) {
+              nhlShotsAdj = parseFloat((nhlSaRankMap[tonightOpp].value - nhlLeagueAvgSa).toFixed(1));
+              if (nhlShotsAdj > 0) _sc += 3;
+            }
+            // 2. Ice time (TOI) — avg ≥18 min → 4pts, ≥15 min → 2pts
+            const _toiIdx = gl.ul.findIndex(h => h === "TOI" || h === "timeOnIce");
+            if (_toiIdx !== -1) {
+              const _toiVals = gl.events.slice(0, 10).map(ev => {
+                const s = ev.stats[_toiIdx];
+                if (s == null) return NaN;
+                const str = String(s);
+                if (str.includes(':')) { const [m2, sec] = str.split(':'); return parseInt(m2, 10) + parseInt(sec, 10) / 60; }
+                return parseFloat(str);
+              }).filter(v => !isNaN(v) && v > 0);
+              if (_toiVals.length >= 3) {
+                nhlOpportunity = parseFloat((_toiVals.reduce((a, b) => a + b, 0) / _toiVals.length).toFixed(1));
+                if (nhlOpportunity >= 18) _sc += 4;
+                else if (nhlOpportunity >= 15) _sc += 2;
+              }
+            }
+            // 3. Opponent GAA rank ≤ 10 → 2pts
+            const _gaaRank = rankMap[tonightOpp]?.rank ?? null;
+            if (_gaaRank !== null && _gaaRank <= 10) _sc += 2;
+            // 4. Not B2B → 2pts
+            if (!isB2B) _sc += 2;
+            nhlPreSimScore = _sc;
+            // Shared distribution per player+stat — all thresholds query the same sim run
+            const _nhlDistKey = `${info.id}|${stat}`;
+            if (!nhlPlayerDistCache[_nhlDistKey]) {
+              const _nhlGameVals = gl.events.map(getStat).filter(v => !isNaN(v) && v >= 0);
+              const _nSim = _sc >= 8 ? 10000 : _sc >= 5 ? 5000 : 2000;
+              nhlPlayerDistCache[_nhlDistKey] = buildNbaStatDist(_nhlGameVals, teamDefFactorOut, nhlShotsAdj, isB2B, _nSim);
+            }
+            nhlSimPctOut = nbaDistPct(nhlPlayerDistCache[_nhlDistKey], threshold);
+          }
           const rawTruePct = (() => {
             if (sport === "mlb" && stat === "strikeouts") {
               // Simulation is the primary model when lineup data is available
@@ -2061,12 +2114,16 @@ var worker_default = {
               if (isB2B) base = Math.max(0, base - 4);
               return base;
             }
-            if (sport === "nhl" && dvpFactorOut !== null) {
-              const dvpAdjustedPct = Math.min(99, seasonPct * dvpFactorOut);
-              const _nhlParts = [seasonPct, dvpAdjustedPct, ...softPct !== null ? [softPct] : []];
-              let result = _nhlParts.reduce((a, b) => a + b, 0) / _nhlParts.length;
-              if (isB2B) result = Math.max(0, result - 4);
-              return result;
+            if (sport === "nhl") {
+              // Monte Carlo simulation is primary model; fall back to dvp-adjusted average
+              if (nhlSimPctOut !== null) return nhlSimPctOut;
+              if (dvpFactorOut !== null) {
+                const dvpAdjustedPct = Math.min(99, seasonPct * dvpFactorOut);
+                const _nhlParts = [seasonPct, dvpAdjustedPct, ...softPct !== null ? [softPct] : []];
+                let result = _nhlParts.reduce((a, b) => a + b, 0) / _nhlParts.length;
+                if (isB2B) result = Math.max(0, result - 4);
+                return result;
+              }
             }
             let base = softPct !== null ? (seasonPct + softPct) / 2 : seasonPct;
             if (isB2B) base = Math.max(0, base - 4);
@@ -2074,18 +2131,25 @@ var worker_default = {
           })();
           let truePct = rawTruePct;
           const lowVolume = kalshiVolume < 20;
-          const edge = truePct - kalshiPct;
-          // Finalize sim-score: add edge bonus (3pts if edge > 5%) after simulation
+          const rawEdge = truePct - kalshiPct;
+          const spreadAdj = kalshiSpread != null ? kalshiSpread / 2 : 0;
+          const edge = rawEdge - spreadAdj;
+          // Finalize sim-score: add edge bonus (3pts if edge >= 3%) after simulation
           const finalSimScore = (sport === "mlb" && stat === "strikeouts" && simScore !== null)
-            ? simScore + (edge > 5 ? 3 : 0)
+            ? simScore + (edge >= 3 ? 3 : 0)
             : null;
           hitterFinalSimScore = (sport === "mlb" && stat !== "strikeouts" && hitterSimScore !== null)
-            ? hitterSimScore + (edge > 5 ? 3 : 0)
+            ? hitterSimScore + (edge >= 3 ? 3 : 0)
             : null;
           // NBA SimScore — finalize with edge bonus (pre-edge computed above before rawTruePct)
           let nbaSimScore = null;
           if (sport === "nba" && nbaPreSimScore !== null) {
-            nbaSimScore = nbaPreSimScore + (edge > 5 ? 3 : 0);
+            nbaSimScore = nbaPreSimScore + (edge >= 3 ? 3 : 0);
+          }
+          // NHL SimScore — finalize with edge bonus
+          let nhlSimScore = null;
+          if (sport === "nhl" && nhlPreSimScore !== null) {
+            nhlSimScore = nhlPreSimScore + (edge >= 3 ? 3 : 0);
           }
           if (kalshiPct < 70 || edge < 3) {
             const _dropObj = {
@@ -2104,13 +2168,14 @@ var worker_default = {
                 pitcherCSWPct: sportByteam.mlb?.pitcherCSWPct?.[playerTeam] ?? null,
                 pitcherKBBPct: sportByteam.mlb?.pitcherKBBPct?.[playerTeam] ?? null,
                 lineupKPct: lineupKPctOut, pitcherAvgPitches: sportByteam.mlb?.pitcherAvgPitches?.[playerTeam] ?? null,
-                kpctMeets, kbbMeets, lkpMeets, pitchesMeets, parkMeets,
+                kpctMeets, kbbMeets, lkpMeets, pitchesMeets, parkMeets, mlMeets,
               } : {}),
               ...(sport === "mlb" && stat !== "strikeouts" ? {
                 hitterSimScore, hitterFinalSimScore,
                 hitterLineupSpot, pitcherWHIP, pitcherFIP, hitterParkKF, hitterMoneyline, hitterBarrelPct,
               } : {}),
               ...(sport === "nba" ? { nbaSimScore, nbaPreSimScore, nbaSimPct: nbaSimPctOut, nbaPaceAdj, nbaOpportunity, isB2B } : {}),
+              ...(sport === "nhl" ? { nhlSimScore, nhlPreSimScore, nhlSimPct: nhlSimPctOut, nhlShotsAdj, nhlOpportunity, isB2B } : {}),
             };
             if (isDebug) dropped.push(_dropObj);
             // For MLB strikeouts: always include in plays with qualified:false so player card can
@@ -2141,7 +2206,7 @@ var worker_default = {
               reason: "low_confidence",
               simScore, finalSimScore,
               opponent: tonightOpp,
-              kpctMeets, kbbMeets, lkpMeets, pitchesMeets, parkMeets,
+              kpctMeets, kbbMeets, lkpMeets, pitchesMeets, parkMeets, mlMeets,
               seasonPct: parseFloat(primaryPct.toFixed(1)), softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
               truePct: parseFloat(truePct.toFixed(1)), edge: parseFloat(edge.toFixed(1)),
               pitcherCSWPct: sportByteam.mlb?.pitcherCSWPct?.[playerTeam] ?? null,
@@ -2214,6 +2279,7 @@ var worker_default = {
             lkpMeets: sport === "mlb" && stat === "strikeouts" ? lkpMeets : void 0,
             pitchesMeets: sport === "mlb" && stat === "strikeouts" ? pitchesMeets : void 0,
             parkMeets: sport === "mlb" && stat === "strikeouts" ? parkMeets : void 0,
+            mlMeets: sport === "mlb" && stat === "strikeouts" ? mlMeets : void 0,
             hitterSimScore: sport === "mlb" && stat !== "strikeouts" ? hitterSimScore : void 0,
             hitterFinalSimScore: sport === "mlb" && stat !== "strikeouts" ? hitterFinalSimScore : void 0,
             hitterLineupSpot: sport === "mlb" && stat !== "strikeouts" ? hitterLineupSpot : void 0,
@@ -2243,6 +2309,11 @@ var worker_default = {
             nbaSimPct: sport === "nba" ? nbaSimPctOut : void 0,
             nbaPaceAdj: sport === "nba" ? nbaPaceAdj : void 0,
             nbaOpportunity: sport === "nba" ? nbaOpportunity : void 0,
+            nhlSimScore: sport === "nhl" ? nhlSimScore : void 0,
+            nhlPreSimScore: sport === "nhl" ? nhlPreSimScore : void 0,
+            nhlSimPct: sport === "nhl" ? nhlSimPctOut : void 0,
+            nhlShotsAdj: sport === "nhl" ? nhlShotsAdj : void 0,
+            nhlOpportunity: sport === "nhl" ? nhlOpportunity : void 0,
             isHomeGame,
             isB2B,
             dvpFactor: dvpFactorOut,
@@ -2254,6 +2325,8 @@ var worker_default = {
             kalshiVolume,
             kalshiSpread,
             lowVolume,
+            rawEdge: parseFloat(rawEdge.toFixed(1)),
+            spreadAdj: spreadAdj > 0 ? parseFloat(spreadAdj.toFixed(1)) : 0,
             edge: parseFloat(edge.toFixed(1)),
             kelly: kellyFraction(truePct, americanOdds),
             ev: evPerUnit(truePct, americanOdds),

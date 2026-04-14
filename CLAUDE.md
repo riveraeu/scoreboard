@@ -35,6 +35,7 @@ Used for caching expensive fetches. Key TTLs:
 - `byteam:mlb` — 600s (MLB team stats, probables, lineup K-rates). **Does NOT include `barrelPctMap`** — that lives in `mlb:barrelPct`. Uses 60s TTL if lineupSpotByName or pitcherAvgPitches come back empty (e.g. bust before lineups confirmed), so next request retries quickly.
 - `byteam:nba` — 1800s
 - `byteam:nfl` — 1800s
+- `byteam:nhl` — 21600s (6h, NHL team stats: goalsAgainstPerGame + shotsAgainstPerGame)
 - `gameTimes:v2:{date}` — 600s
 - `nbaStatus:{date}` — 600s
 - `nba:pace:2526` — 43200s (12h, fetched via ESPN `sports.core.api.espn.com` team stats, `buildNbaPaceData()`)
@@ -56,12 +57,14 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
 - `pitcherKDistCache` built before play loop
 - 10000 sims if `simScore ≥ 11`, else 5000
 - **SimScore** (max 11 pre-edge, 14 with edge bonus):
-  - CSW% > 30% → 3pts (falls back to K% > 24%)
+  - CSW% > 30% → 3pts (falls back to K% > 24% if CSW% unavailable OR gs26 < 4 — small sample guard)
   - K-BB% > 15% → 2pts
   - Lineup oK% > 24% → 3pts (hand-adjusted vs RHP/LHP)
-  - Avg pitches/start > 85 → 2pts
+  - Avg pitches/start > 85 → 2pts (uses 2026 data only if gs26 ≥ 4; else falls back to 2025)
   - Park factor > 1.0 → 1pt
-  - Edge > 5% → 3pts (bonus, added after simulation)
+  - Team ML > +150 (heavy underdog) → -1pt penalty (`mlMeets = false`; null ML = no penalty)
+  - Edge ≥ 3% → 3pts (bonus, added after simulation)
+- `pitcherGS26`: 2026 games started per team abbr, exported from `buildPitcherKPct`, used for small-sample guards
 - **Gates**: simScore ≥ 7 to enter play loop; finalSimScore ≥ 11 to qualify as a play (7–10 = qualified:false, shows in report but not plays card)
 - Pitchers fetched via `buildPitcherKPct(mlbSched)` — avg pitches per start from season aggregate `numberOfPitches / gamesStarted`
 - **K% regression**: `trust = min(1.0, bf26 / 200)` — uses 2026 BF only (NOT combined 2026+2025). Full trust at ~33 starts. Blends 2026 actual K% with 2025 anchor (or league avg 22.2% if no 2025 data). KBB% regressed the same way.
@@ -74,7 +77,7 @@ True% = Monte Carlo simulation (`simulateHits`) using batter BA × pitcher BAA (
   - Pitcher WHIP > 1.35 → 3pts (from pitcher gamelog)
   - Pitcher FIP > ERA → 2pts
   - Park hit factor > 1.02 → 1pt
-  - Edge > 5% → 3pts
+  - Edge ≥ 3% → 3pts
 - **Gates**: lineup spot 1–4 required; hitterSimScore ≥ 7; BA ≥ .270 (good/elite tier only); edge ≥ 3%
 - Barrel% from Baseball Savant (`buildBarrelPct`) — cached 6h in KV
 
@@ -92,16 +95,34 @@ True% = Monte Carlo simulation (`simulateHits`) using batter BA × pitcher BAA (
   - Avg minutes ≥ 30 (last 10 games) → 4pts; ≥ 25 → 2pts
   - Position-adjusted DVP rank ≤ 10 → 2pts
   - Not B2B → 2pts
-  - Edge > 5% → 3pts (added after simulation)
+  - Edge ≥ 3% → 3pts (added after simulation)
 - nSim scales with pre-edge simScore: ≥8 → 10k, ≥5 → 5k, else 2k
 - **Gate**: opp in soft DVP teams; edge ≥ 3%
 - Avg minutes from ESPN gamelog `MIN` column (last 10 games), no external API needed
 - Depth chart position via `nbaDepthChartPos` (ESPN depth chart API, cached daily)
 
 ### NHL
-- **Stats**: `goals`, `assists`, `points`
-- True% = avg(seasonPct, dvpAdjustedPct, vSoftPct) with B2B -4%, DVP adjustment × 1.06
-- Gate: opp in soft GAA teams; edge ≥ 3%
+- **Stats**: `points` only (goals/assists removed)
+- **Kalshi series**: `KXNHLPTS`
+- **Data sources**: NHL Stats API (GAA, shots against per team), ESPN gamelogs (points, TOI)
+
+#### NHL Points Model
+True% = Monte Carlo simulation (reuses `buildNbaStatDist` + `nbaDistPct`) — normal distribution over per-game point values
+- `nhlPlayerDistCache` keyed `playerId|stat` — all thresholds share one distribution, guaranteeing monotonicity
+- Mean from recent game values, adjusted: `× teamDefFactor × (1 + shotsAdj×0.002) × 0.93 if B2B`
+- `teamDefFactor` = opp GAA / league avg GAA
+- Falls back to dvp-adjusted average formula if simulation returns null
+- **SimScore** (max 11 pre-edge, 14 with edge bonus):
+  - Shots against adj (opp SA vs league avg > 0) → 3pts
+  - Avg TOI ≥ 18 min (last 10 games) → 4pts; ≥ 15 min → 2pts
+  - Opponent GAA rank ≤ 10 → 2pts
+  - Not B2B → 2pts
+  - Edge ≥ 3% → 3pts (bonus, added after simulation)
+- nSim scales with pre-edge simScore: ≥8 → 10k, ≥5 → 5k, else 2k
+- **B2B** detection: same as NBA — checks if last gamelog event was yesterday (UTC)
+- TOI from ESPN gamelog `TOI` or `timeOnIce` column; parsed as `MM:SS` or decimal minutes
+- Shots against rank from NHL API `shotsAgainstPerGame`, stored in `nhlSaRankMap`, league avg in `nhlLeagueAvgSa`
+- **Gate**: edge ≥ 3% (no backend soft team gate — all NHL markets enter play loop)
 
 ### NFL
 - **Stats**: `passingYards`, `rushingYards`, `receivingYards`, `receptions`, `completions`, `attempts`
@@ -133,7 +154,7 @@ True% = Monte Carlo simulation (`simulateHits`) using batter BA × pitcher BAA (
 | `MLB_ID_TO_ABBR` | MLB team ID → abbreviation mapping |
 | `buildLineupKPct(mlbSched)` | Lineup batter K-rates, lineup spots, ordered arrays |
 | `buildBarrelPct()` | Baseball Savant barrel% CSV, 5s timeout, cached 6h |
-| `buildPitcherKPct(mlbSched)` | Pitcher season stats (K%, KBB%, ERA, P/GS, CSW%) |
+| `buildPitcherKPct(mlbSched)` | Pitcher season stats (K%, KBB%, ERA, P/GS, CSW%, GS26) |
 
 ### `api/lib/nba.js` — NBA/DVP Data Fetchers
 
@@ -176,6 +197,10 @@ True% = Monte Carlo simulation (`simulateHits`) using batter BA × pitcher BAA (
 - Series tickers in `SERIES_CONFIG`
 - Filter: `pct >= 70` AND `pct <= 97`
 - Blended fill price via orderbook walk for thin markets
+- `kalshiSpread` = bid-ask spread in cents (`round((yesAsk − yesBid) × 100)`)
+- `spreadAdj = kalshiSpread / 2` — half-spread deducted from raw edge to get `edge` (net)
+- `rawEdge = truePct − kalshiPct`; `edge = rawEdge − spreadAdj` — all gates and simScore bonuses use net edge
+- `lowVolume = kalshiVolume < 20` — shown as badge on play card; volume and spread improve as game approaches
 
 ### preDropped vs dropped
 - `preDropped`: filtered before main play loop (no ESPN info yet) — included in `?debug=1` response
@@ -220,6 +245,25 @@ Clicking a play opens the player card with:
 The deduplication step (`bestMap` keyed by `playerName|sport|stat`) collapsed all strikeout thresholds for a pitcher to the single highest-edge play (e.g. only 5+ survived). 3+ and 4+ were absent from `allTonightPlays`, so the player card used the fallback formula — giving values below the simulation's 5+ truePct, breaking monotonicity.
 
 Fix: `qualified:false` plays use a threshold-inclusive key (`playerName|sport|stat|threshold`) so all thresholds survive deduplication. The post-loop monotonicity sweep then re-derives truePct for every threshold from the `pitcherKDistCache` distribution (if available), giving distinct monotonically-decreasing values (e.g. 3+≈99.5%, 4+≈99.0%, 5+=98.1%). Falls back to copy-up sweep if cache is unavailable.
+
+### Explanation Cards (Play Card + Player Card)
+Both play cards and player cards show an explanation block (`background:"#0d1117"`, `fontSize:11`, `lineHeight:1.65`) with two sections:
+1. **Narrative prose** — why the play is recommended, key stats with qualitative context. Highlighted numbers use colored `<span>`; descriptive phrases (e.g. "a key starter") use `color:"#484f58"` (dim).
+2. **SimScore row** — `SimScore` label + `X/14 Tier` badge + stat checkboxes. All on one flex line (`display:"flex", alignItems:"center", gap:6`). Badge uses `whiteSpace:"nowrap"`. Checkboxes in an inner `display:"inline-flex", gap:4, flexWrap:"wrap"` span so whole items wrap as units.
+
+**SimScore checkbox helpers:**
+- MLB: `mk(meets, pts, label)` → `✓/✗ label(pts)` — no spaces around checkmark
+- NBA: `mkGate(meets, pts, label)` → `✓/✗ label (pts)` — spaces, `whiteSpace:"nowrap"` per item
+
+**Edge gate color (all sports):**
+- `≥ 3%` → `#3fb950` green, ✓, opacity 1
+- `0–2.9%` → `#e3b341` yellow, ✗, opacity 0.7
+- negative → `#f78166` red, ✗, opacity 0.7
+
+**Player card explanation** uses the same structure. Data sources by sport:
+- MLB strikeouts: `h2h` object built from `tonightPlayerMap` (includes `edge`, `kpctMeets`, `kbbMeets`, `lkpMeets`, `pitchesMeets`, `parkMeets`)
+- MLB hitters: `tonightHitPlay = Object.values(tonightPlayerMap).find(p => p.stat === safeTab)` (includes `hitterBa`, `hitterLineupSpot`, `pitcherWHIP`, `pitcherFIP`, `hitterWhipMeets`, `hitterFipMeets`, `hitterParkMeets`, `edge`)
+- NBA: `tonightTabPlay` (includes `nbaOpportunity`, `nbaPaceAdj`, `isB2B`, `nbaSimScore`, `posDvpRank`, `posDvpValue`, `softPct`, `seasonPct`, `edge`)
 
 ### Color Tiers
 ```

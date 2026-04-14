@@ -271,7 +271,7 @@ export async function buildPitcherKPct(mlbSched) {
       }
     }
     const allIds = [...new Set(Object.values(pitcherByTeam))];
-    if (allIds.length === 0) return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {} };
+    if (allIds.length === 0) return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherGS26: {} };
     const idStr = allIds.join(",");
     const [res25, res26] = await Promise.all([
       fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=pitching,type=season,season=2025,gameType=R)`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
@@ -330,9 +330,12 @@ export async function buildPitcherKPct(mlbSched) {
     // Avg pitches per start from season aggregates (already fetched above)
     const pitcherCSWPct = {};
     const pitcherAvgPitches = {};
+    const pitcherGS26 = {};
     for (const [abbr, id] of Object.entries(pitcherByTeam)) {
       const s26 = pitcherStats26[id];
-      if (s26 && s26.gs >= 1 && s26.np > 0) {
+      if (s26 && s26.gs > 0) pitcherGS26[abbr] = s26.gs;
+      // Require >= 4 GS in 2026 for avg pitches to be reliable; fall back to 2025 if not
+      if (s26 && s26.gs >= 4 && s26.np > 0) {
         pitcherAvgPitches[abbr] = parseFloat((s26.np / s26.gs).toFixed(1));
       } else {
         const s25 = pitcherStats25[id];
@@ -401,8 +404,8 @@ export async function buildPitcherKPct(mlbSched) {
         if (cswByMlbId[id] != null) pitcherCSWPct[abbr] = cswByMlbId[id];
       }
     } catch { /* CSW% unavailable — filter falls back to K% */ }
-    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherCSWPct, pitcherAvgPitches };
+    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherCSWPct, pitcherAvgPitches, pitcherGS26 };
   } catch {
-    return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {} };
+    return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherGS26: {} };
   }
 }
