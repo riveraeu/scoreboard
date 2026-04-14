@@ -1576,7 +1576,7 @@ function App() {
                             expectedKs: tp.expectedKs, parkFactor: tp.parkFactor, pitcherHand: tp.pitcherHand,
                             pitcherEra: tp.pitcherEra ?? null,
                             simScore: tp.simScore ?? null, finalSimScore: tp.finalSimScore ?? null,
-                            kpctMeets: tp.kpctMeets, kpctPts: tp.kpctPts, kbbMeets: tp.kbbMeets, lkpMeets: tp.lkpMeets, pitchesMeets: tp.pitchesMeets, parkMeets: tp.parkMeets, mlPts: tp.mlPts, totalPts: tp.totalPts,
+                            kpctMeets: tp.kpctMeets, kpctPts: tp.kpctPts, kbbMeets: tp.kbbMeets, lkpMeets: tp.lkpMeets, lkpPts: tp.lkpPts, pitchesMeets: tp.pitchesMeets, parkMeets: tp.parkMeets, mlPts: tp.mlPts, totalPts: tp.totalPts,
                             edge: tp.edge, rawEdge: tp.rawEdge, spreadAdj: tp.spreadAdj,
                             gameTotal: tp.gameTotal, gameMoneyline: tp.gameMoneyline };
                         }
@@ -1603,7 +1603,7 @@ function App() {
                           const pkpLabel = csw != null ? "CSW%" : "K%";
                           const pkpColor  = pkp == null ? "#8b949e" : (csw != null ? (pkp >= 30 ? "#3fb950" : pkp > 26 ? "#e3b341" : "#f78166") : (pkp >= 27 ? "#3fb950" : pkp >= 24 ? "#e3b341" : "#f78166"));
                           const lkpProjected = h2h?.lineupKPctProjected === true;
-                          const lkpColor  = lkp == null ? "#8b949e" : lkp >= 24 ? "#3fb950" : lkp >= 20 ? "#c9d1d9" : "#f78166";
+                          const lkpColor  = lkp == null ? "#8b949e" : lkp > 24 ? "#3fb950" : lkp > 16 ? "#e3b341" : "#f78166";
                           const oppColor  = lkp != null ? (lkp >= 24 ? "#3fb950" : lkp < 20 ? "#f78166" : "#c9d1d9") : "#c9d1d9";
                           const strikeoutsThreshold = Object.entries(tonightPlayerMap).find(([k]) => k.startsWith("strikeouts|"))?.[1]?.threshold ?? null;
                           const expKColor = expK != null && strikeoutsThreshold != null ? (expK >= strikeoutsThreshold ? "#3fb950" : expK >= strikeoutsThreshold - 1 ? "#c9d1d9" : "#f78166") : "#c9d1d9";
@@ -1625,7 +1625,7 @@ function App() {
                           const apColor = ap == null ? "#8b949e" : ap > 85 ? "#3fb950" : ap > 75 ? "#e3b341" : "#f78166";
                           const pkpQual = pkp == null ? "" : csw != null ? (pkp > 30 ? "elite" : pkp > 26 ? "above-average" : "average") : (pkp > 24 ? "above-average" : "average");
                           const apDesc = ap == null ? null : ap > 85 ? "expect him to work deep into the game" : ap > 75 ? "typically goes 5–6 innings" : null;
-                          const lkpDesc = lkp == null ? null : lkp > 24 ? "a high-strikeout lineup — works in his favor" : lkp > 20 ? "near-average strikeout tendency" : "doesn't strikeout often — a tougher test";
+                          const lkpDesc = lkp == null ? null : lkp > 24 ? "a high-strikeout lineup — works in his favor" : lkp > 16 ? "below-average strikeout tendency" : "elite contact lineup — a tougher test";
                           const mk = (meets, pts, label) => meets != null ? <span key={label} style={{color:meets?"#3fb950":"#484f58",fontSize:9,opacity:meets?1:0.7}}>{meets?"✓":"✗"}{label}({pts})</span> : null;
                           const _sc = finalSimScore ?? simScore;
                           const scColor = _sc == null ? "#8b949e" : _sc >= 11 ? "#3fb950" : _sc >= 7 ? "#e3b341" : "#8b949e";
@@ -1636,7 +1636,7 @@ function App() {
                                 {pkp != null && <> — <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span> {pkpLabel}<span style={{color:h2h?.kpctPts===3?"#3fb950":h2h?.kpctPts===2?"#e3b341":"#484f58",fontSize:9}}>({h2h?.kpctPts ?? 3})</span></>}
                                 {kbb != null && <>, <span style={{color:kbbColor,fontWeight:600}}>{kbb.toFixed(1)}%</span> K-BB%<span style={{color:h2h?.kbbMeets===true?"#3fb950":"#484f58",fontSize:9}}>(2)</span> (strikeouts vs walks)</>}
                                 {ap != null && <>, averaging <span style={{color:apColor,fontWeight:600}}>{Math.round(ap)}</span> pitches/start<span style={{color:h2h?.pitchesMeets===true?"#3fb950":"#484f58",fontSize:9}}>(2)</span>{apDesc ? <span style={{color:"#484f58"}}> — {apDesc}</span> : ""}</>}.
-                                {lkp != null && <>{" "}The {oppName} lineup strikes out at <span style={{color:lkpColor,fontWeight:600}}>{lkp}%</span><span style={{color:h2h?.lkpMeets===true?"#3fb950":"#484f58",fontSize:9}}>(3)</span>{handLabel}{lkpProjected ? <span style={{color:"#484f58",fontSize:10}}> (est.)</span> : ""} — {lkpDesc}.</>}
+                                {lkp != null && <>{" "}The {oppName} lineup strikes out at <span style={{color:lkpColor,fontWeight:600}}>{lkp}%</span><span style={{color:h2h?.lkpPts===3?"#3fb950":h2h?.lkpPts===1?"#e3b341":"#484f58",fontSize:9}}>({h2h?.lkpPts ?? (h2h?.lkpMeets===true?3:0)})</span>{handLabel}{lkpProjected ? <span style={{color:"#484f58",fontSize:10}}> (est.)</span> : ""} — {lkpDesc}.</>}
                                 {pf != null && Math.abs(pf - 1.0) >= 0.01 && <>{" "}Tonight's venue {pf > 1 ? "is strikeout-friendly" : "suppresses strikeouts"} (<span style={{color:"#484f58"}}>{pf > 1 ? "+" : ""}{((pf-1)*100).toFixed(0)}%</span>).</>}
                               </div>
                               {(gameTotal != null || gameML != null) && (
@@ -2440,12 +2440,12 @@ function App() {
                           const pkpColor = pkp == null ? "#8b949e" : (csw != null ? (pkp > 30 ? "#3fb950" : pkp > 26 ? "#e3b341" : "#f78166") : (pkp >= 27 ? "#3fb950" : pkp >= 24 ? "#e3b341" : "#f78166"));
                           const kbbColor = kbb == null ? "#8b949e" : kbb > 15 ? "#3fb950" : kbb > 10 ? "#e3b341" : "#f78166";
                           const apColor = ap == null ? "#8b949e" : ap > 85 ? "#3fb950" : ap > 75 ? "#e3b341" : "#f78166";
-                          const lkpColor = lkp == null ? "#8b949e" : lkp > 24 ? "#3fb950" : lkp > 20 ? "#e3b341" : "#f78166";
+                          const lkpColor = lkp == null ? "#8b949e" : lkp > 24 ? "#3fb950" : lkp > 16 ? "#e3b341" : "#f78166";
                           const totalColor = t => t == null ? "#8b949e" : t <= 8.5 ? "#3fb950" : t <= 10.5 ? "#e3b341" : "#f78166";
                           const mlColor = ml => ml == null ? "#8b949e" : ml <= -130 ? "#3fb950" : ml <= -101 ? "#e3b341" : "#f78166";
                           const pkpQual = pkp == null ? "" : csw != null ? (pkp > 30 ? "elite" : pkp > 26 ? "above-average" : "average") : (pkp > 24 ? "above-average" : "average");
                           const apDesc = ap == null ? null : ap > 85 ? "expect him to work deep into the game" : ap > 75 ? "typically goes 5–6 innings" : null;
-                          const lkpDesc = lkp == null ? null : lkp > 24 ? "a high-strikeout lineup — works in his favor" : lkp > 20 ? "near-average strikeout tendency" : "doesn't strikeout often — a tougher test";
+                          const lkpDesc = lkp == null ? null : lkp > 24 ? "a high-strikeout lineup — works in his favor" : lkp > 16 ? "below-average strikeout tendency" : "elite contact lineup — a tougher test";
                           const mk = (meets, pts, label) => meets != null ? <span key={label} style={{color:meets?"#3fb950":"#484f58",fontSize:9,opacity:meets?1:0.7}}>{meets?"✓":"✗"}{label}({pts})</span> : null;
                           return (
                             <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.65}}>
@@ -2454,7 +2454,7 @@ function App() {
                                 {pkp != null && <> — <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span> {pkpLabel}<span style={{color:play.kpctPts===3?"#3fb950":play.kpctPts===2?"#e3b341":"#484f58",fontSize:9}}>({play.kpctPts ?? 3})</span></>}
                                 {kbb != null && <>, <span style={{color:kbbColor,fontWeight:600}}>{kbb.toFixed(1)}%</span> K-BB%<span style={{color:play.kbbMeets===true?"#3fb950":"#484f58",fontSize:9}}>(2)</span> (strikeouts vs walks)</>}
                                 {ap != null && <>, averaging <span style={{color:apColor,fontWeight:600}}>{Math.round(ap)}</span> pitches/start<span style={{color:play.pitchesMeets===true?"#3fb950":"#484f58",fontSize:9}}>(2)</span>{apDesc ? <span style={{color:"#484f58"}}> — {apDesc}</span> : ""}</>}.
-                                {lkp != null && <>{" "}The {oppName} lineup strikes out at <span style={{color:lkpColor,fontWeight:600}}>{lkp}%</span><span style={{color:play.lkpMeets===true?"#3fb950":"#484f58",fontSize:9}}>(3)</span>{handLabel}{isProjected ? <span style={{color:"#484f58",fontSize:10}}> (est.)</span> : ""} — {lkpDesc}.</>}
+                                {lkp != null && <>{" "}The {oppName} lineup strikes out at <span style={{color:lkpColor,fontWeight:600}}>{lkp}%</span><span style={{color:play.lkpPts===3?"#3fb950":play.lkpPts===1?"#e3b341":"#484f58",fontSize:9}}>({play.lkpPts ?? (play.lkpMeets===true?3:0)})</span>{handLabel}{isProjected ? <span style={{color:"#484f58",fontSize:10}}> (est.)</span> : ""} — {lkpDesc}.</>}
                                 {pf != null && Math.abs(pf - 1.0) >= 0.01 && <>{" "}Tonight's venue {pf > 1 ? "is strikeout-friendly" : "suppresses strikeouts"} (<span style={{color:"#484f58"}}>{pf > 1 ? "+" : ""}{((pf-1)*100).toFixed(0)}%</span>).</>}
                               </div>
                               {(gameTotal != null || gameML != null) && (
