@@ -1553,12 +1553,12 @@ var worker_default = {
           const info = playerInfoMap[key];
           const gl = playerGamelogs[key];
           if (!info || !gl) {
-            if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: !info ? "no_espn_info" : "no_gamelog", gameTeam1, gameTeam2, kalshiPlayerTeam });
+            if (isDebug) dropped.push({ playerName: playerNameDisplay || playerName, sport, stat, threshold, kalshiPct, reason: !info ? "no_espn_info" : "no_gamelog", gameTeam1, gameTeam2, kalshiPlayerTeam });
             continue;
           }
           const softData = STAT_SOFT[`${sport}|${stat}`];
           if (!softData) {
-            if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "no_soft_data" });
+            if (isDebug) dropped.push({ playerName: playerNameDisplay || playerName, sport, stat, threshold, kalshiPct, reason: "no_soft_data" });
             continue;
           }
           const { softTeams, rankMap } = softData;
@@ -1582,11 +1582,11 @@ var worker_default = {
             else if (gameTeam2 === playerTeam) tonightOpp = gameTeam1;
           }
           if (!tonightOpp) {
-            if (isDebug) dropped.push({ playerName, sport, stat, threshold, kalshiPct, reason: "no_opp", playerTeam, gameTeam1, gameTeam2 });
+            if (isDebug) dropped.push({ playerName: playerNameDisplay || playerName, sport, stat, threshold, kalshiPct, reason: "no_opp", playerTeam, gameTeam1, gameTeam2 });
             continue;
           }
           // Base fields included on every drop in this loop
-          const _dropBase = { playerName, sport, stat, threshold, kalshiPct, playerTeam };
+          const _dropBase = { playerName: playerNameDisplay || playerName, sport, stat, threshold, kalshiPct, playerTeam };
           // Manual position overrides for known depth-chart misclassifications
           const NBA_POS_OVERRIDES = { "4871144": "C" }; // Alperen Sengun listed as PF in depth chart
           const nbaPos = sport === "nba" ? (NBA_POS_OVERRIDES[String(info.id)] || nbaDepthChartPos?.[String(info.id)] || (info.position ? NBA_POS_MAP[info.position] || null : null)) : null;
