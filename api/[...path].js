@@ -936,29 +936,34 @@ var worker_default = {
         }));
         const qualifyingMarkets = [];
         const globalSeen = /* @__PURE__ */ new Set();
+        const _eovaldiTrace = []; // debug: trace Eovaldi's markets through filtering
         for (let i = 0; i < seriesTickers.length; i++) {
           const ticker = seriesTickers[i];
           const { sport, stat, col } = SERIES_CONFIG[ticker];
           for (const m of kalshiResults[i].markets || []) {
+            const _rawTitle = (m.event_title || m.title || "");
+            const _isEovaldi = isDebugMode && _rawTitle.toLowerCase().includes("eovaldi");
             const strike = parseFloat(m.floor_strike);
-            if (isNaN(strike)) continue;
+            if (isNaN(strike)) { if (_isEovaldi) _eovaldiTrace.push({ step: "skip_no_strike", ticker: m.ticker, floor_strike: m.floor_strike }); continue; }
             const threshold = Math.round(strike + 0.5);
             const yesAsk = parseFloat(m.yes_ask_dollars) || 0;
             const last = parseFloat(m.last_price_dollars) || 0;
             const volume = parseInt(m.volume) || 0;
             const price = yesAsk > 0 ? yesAsk : last;
             const pct = Math.round(price * 100);
-            if (pct < 70) continue;
-            if (pct > 97) continue;
-            if (price === 0) continue;
+            if (_isEovaldi) _eovaldiTrace.push({ step: "pct_check", ticker: m.ticker, threshold, yesAsk, last, price, pct, yes_ask_dollars: m.yes_ask_dollars, last_price_dollars: m.last_price_dollars });
+            if (pct < 70) { if (_isEovaldi) _eovaldiTrace.push({ step: "skip_pct_low", pct }); continue; }
+            if (pct > 97) { if (_isEovaldi) _eovaldiTrace.push({ step: "skip_pct_high", pct }); continue; }
+            if (price === 0) { if (_isEovaldi) _eovaldiTrace.push({ step: "skip_zero_price" }); continue; }
             const raw = m.event_title || m.title || "";
             let playerName = raw.replace(/\s*:\s*\d.*$/, "").replace(/\s+(Points?|Rebounds?|Assists?|3-Pointers?|Three Pointers?|Made Threes?|Goals?|Shots on Goal|Hits?|Home Runs?|RBIs?|Strikeouts?|Total Bases?|Passing Yards?|Rushing Yards?|Receiving Yards?|Touchdowns?)\b.*/i, "").replace(/\s+Over\s+\d.*$/i, "").replace(/\s+Under\s+\d.*$/i, "").replace(/\s*\(.*\)\s*$/, "").replace(/\s*-\s*$/, "").trim();
-            if (!playerName || playerName.length < 4) continue;
+            if (!playerName || playerName.length < 4) { if (_isEovaldi) _eovaldiTrace.push({ step: "skip_name_too_short", raw, playerName }); continue; }
             const playerNameDisplay = playerName;
             playerName = normName(playerName);
             const dedupeKey = `${sport}|${playerName}|${stat}|${threshold}`;
-            if (globalSeen.has(dedupeKey)) continue;
+            if (globalSeen.has(dedupeKey)) { if (_isEovaldi) _eovaldiTrace.push({ step: "skip_dedupe", dedupeKey }); continue; }
             globalSeen.add(dedupeKey);
+            if (_isEovaldi) _eovaldiTrace.push({ step: "qualified", playerName, threshold, pct, dedupeKey });
             const americanOdds = pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
             const [gameTeam1, gameTeam2] = parseGameTeams(m.event_ticker, sport);
             const tickerSegs = (m.ticker || "").split("-");
@@ -2365,7 +2370,7 @@ var worker_default = {
           }
         }
         if (isDebug) {
-          return jsonResponse({ plays, dropped, preDropped, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null }, true);
+          return jsonResponse({ plays, dropped, preDropped, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, _eovaldiTrace }, true);
         }
         const playsResult = { plays, qualifyingCount: qualifyingMarkets.length, preFilteredCount: preFilteredMarkets.length };
         const sportsInPlays = new Set(plays.map((p) => p.sport));
