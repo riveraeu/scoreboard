@@ -1693,7 +1693,7 @@ var worker_default = {
           const blendedPct = blendVals.length >= 5 ? blendVals.filter((v) => v >= threshold).length / blendVals.length * 100 : null;
           // Prefer 2026 season rate; fall back to blended 25+26; fall back to all-career
           const primaryPct = pct26 ?? blendedPct ?? seasonPct;
-          let simScore = null, kpctMeets = null, kbbMeets = null, lkpMeets = null, pitchesMeets = null, parkMeets = null, mlPts = null;
+          let simScore = null, kpctMeets = null, kbbMeets = null, lkpMeets = null, pitchesMeets = null, parkMeets = null, mlPts = null, totalPts = null;
           let _pitcherHand = null;
           if (sport === "mlb" && stat === "strikeouts") {
             _pitcherHand = sportByteam.mlb?.pitcherHand?.[playerTeam] ?? null;
@@ -1716,15 +1716,19 @@ var worker_default = {
             lkpMeets = _lkp != null ? _lkp > 24 : null;
             pitchesMeets = _avgP != null ? _avgP > 85 : null;
             parkMeets = _parkKF > 1.0;
-            // ML 3-tier: strong fav (≤ -120) → 2pts, slight fav/even (-119 to +99) → 1pt, underdog (≥ +100) → 0pts; null → 1pt
+            // ML 3-tier: ≤ -130 → 2pts, -129 to -101 → 1pt, ≥ -100 → 0pts; null → 1pt
             const _teamML = sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null;
-            mlPts = _teamML == null ? 1 : _teamML <= -120 ? 2 : _teamML < 100 ? 1 : 0;
-            // Weighted sim-score (pre-edge, max 12): CSW%→3, K-BB%→2, lineup K%→3, avg pitches→2, ML tier→0-2
+            mlPts = _teamML == null ? 1 : _teamML <= -130 ? 2 : _teamML <= -101 ? 1 : 0;
+            // O/U total 3-tier: 9–10.5 → 2pts, 7.5–8.9 → 1pt, <7.5 or >10.5 → 0pts; null → 1pt
+            const _gameTotal = sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null;
+            totalPts = _gameTotal == null ? 1 : (_gameTotal >= 9 && _gameTotal <= 10.5) ? 2 : (_gameTotal >= 7.5 && _gameTotal < 9) ? 1 : 0;
+            // Weighted sim-score (max 14): CSW%→3, K-BB%→2, lineup K%→3, avg pitches→2, ML tier→0-2, O/U tier→0-2
             simScore = (kpctMeets === true ? 3 : 0)
                      + (kbbMeets === true ? 2 : 0)
                      + (lkpMeets === true ? 3 : 0)
                      + (pitchesMeets === true ? 2 : 0)
-                     + mlPts;
+                     + mlPts
+                     + totalPts;
           }
           let softVals, softLabel, softUnit;
           if (sport === "mlb" && stat === "strikeouts") {
@@ -1840,7 +1844,7 @@ var worker_default = {
               reason: "low_confidence",
               simScore,
               opponent: tonightOpp,
-              kpctMeets, kbbMeets, lkpMeets, pitchesMeets, parkMeets, mlPts,
+              kpctMeets, kbbMeets, lkpMeets, pitchesMeets, parkMeets, mlPts, totalPts,
               seasonPct: parseFloat(primaryPct.toFixed(1)), softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
               truePct: _kTruePct, edge: parseFloat((_kTruePct - kalshiPct - (kalshiSpread != null ? kalshiSpread / 2 : 0)).toFixed(1)),
               pitcherCSWPct: sportByteam.mlb?.pitcherCSWPct?.[playerTeam] ?? null,
@@ -2139,9 +2143,9 @@ var worker_default = {
           const rawEdge = truePct - kalshiPct;
           const spreadAdj = kalshiSpread != null ? kalshiSpread / 2 : 0;
           const edge = rawEdge - spreadAdj;
-          // Finalize sim-score: add edge bonus (2pts if edge >= 3%) after simulation
+          // finalSimScore = simScore (total/ML already baked in; edge gates separately)
           const finalSimScore = (sport === "mlb" && stat === "strikeouts" && simScore !== null)
-            ? simScore + (edge >= 3 ? 2 : 0)
+            ? simScore
             : null;
           hitterFinalSimScore = (sport === "mlb" && stat !== "strikeouts" && hitterSimScore !== null)
             ? hitterSimScore + (edge >= 3 ? 3 : 0)
@@ -2173,7 +2177,7 @@ var worker_default = {
                 pitcherCSWPct: sportByteam.mlb?.pitcherCSWPct?.[playerTeam] ?? null,
                 pitcherKBBPct: sportByteam.mlb?.pitcherKBBPct?.[playerTeam] ?? null,
                 lineupKPct: lineupKPctOut, pitcherAvgPitches: sportByteam.mlb?.pitcherAvgPitches?.[playerTeam] ?? null,
-                kpctMeets, kbbMeets, lkpMeets, pitchesMeets, parkMeets, mlPts,
+                kpctMeets, kbbMeets, lkpMeets, pitchesMeets, parkMeets, mlPts, totalPts,
               } : {}),
               ...(sport === "mlb" && stat !== "strikeouts" ? {
                 hitterSimScore, hitterFinalSimScore,
@@ -2211,7 +2215,7 @@ var worker_default = {
               reason: "low_confidence",
               simScore, finalSimScore,
               opponent: tonightOpp,
-              kpctMeets, kbbMeets, lkpMeets, pitchesMeets, parkMeets, mlPts,
+              kpctMeets, kbbMeets, lkpMeets, pitchesMeets, parkMeets, mlPts, totalPts,
               seasonPct: parseFloat(primaryPct.toFixed(1)), softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
               truePct: parseFloat(truePct.toFixed(1)), edge: parseFloat(edge.toFixed(1)),
               pitcherCSWPct: sportByteam.mlb?.pitcherCSWPct?.[playerTeam] ?? null,
@@ -2285,6 +2289,7 @@ var worker_default = {
             pitchesMeets: sport === "mlb" && stat === "strikeouts" ? pitchesMeets : void 0,
             parkMeets: sport === "mlb" && stat === "strikeouts" ? parkMeets : void 0,
             mlPts: sport === "mlb" && stat === "strikeouts" ? mlPts : void 0,
+            totalPts: sport === "mlb" && stat === "strikeouts" ? totalPts : void 0,
             hitterSimScore: sport === "mlb" && stat !== "strikeouts" ? hitterSimScore : void 0,
             hitterFinalSimScore: sport === "mlb" && stat !== "strikeouts" ? hitterFinalSimScore : void 0,
             hitterLineupSpot: sport === "mlb" && stat !== "strikeouts" ? hitterLineupSpot : void 0,
