@@ -64,6 +64,7 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
   - Edge > 5% → 3pts (bonus, added after simulation)
 - **Gates**: simScore ≥ 7 to enter play loop; finalSimScore ≥ 10 to qualify as a play (7–9 = qualified:false, shows in report but not plays card)
 - Pitchers fetched via `buildPitcherKPct(mlbSched)` — avg pitches per start from season aggregate `numberOfPitches / gamesStarted`
+- **K% regression**: `trust = min(1.0, bf26 / 200)` — uses 2026 BF only (NOT combined 2026+2025). Full trust at ~33 starts. Blends 2026 actual K% with 2025 anchor (or league avg 22.2% if no 2025 data). KBB% regressed the same way.
 - Park factors in `PARK_KFACTOR` map
 
 #### MLB Hitters (hits/hrr) Model
