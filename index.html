@@ -987,7 +987,7 @@ function App() {
                 const SPORT_COL = { mlb:"#4ade80", nba:"#f97316", nhl:"#60a5fa" };
                 const SPORT_ORD = { mlb:0, nba:1, nhl:2, nfl:3 };
 
-                const plays = (reportData.plays || []).map(p => ({ ...p, qualified: true }));
+                const plays = (reportData.plays || []).map(p => ({ ...p, qualified: p.qualified !== false }));
                 const dropped = (reportData.dropped || []).map(p => ({ ...p, qualified: false }));
                 const all = [...plays, ...dropped];
                 const filtered = reportSport === "all" ? all : all.filter(m => m.sport === reportSport);
