@@ -948,7 +948,7 @@ var worker_default = {
             const volume = parseInt(m.volume) || 0;
             const price = yesAsk > 0 ? yesAsk : last;
             const pct = Math.round(price * 100);
-            if (pct < 70) continue;
+            if (pct < 60) continue;
             if (pct > 97) continue;
             if (price === 0) continue;
             const raw = m.event_title || m.title || "";
@@ -990,7 +990,7 @@ var worker_default = {
           }
         }
         if (qualifyingMarkets.length === 0) {
-          return jsonResponse({ plays: [], note: "no qualifying kalshi markets (implied pct >= 70)" });
+          return jsonResponse({ plays: [], note: "no qualifying kalshi markets (implied pct >= 60)" });
         }
         // Blended fill price: walk the orderbook for unit-sized positions so kalshiPct reflects
         // true cost, not just top-of-book ask. 1 unit = $100 at risk; tiers: 70-83% = 1u, 83-93% = 3u, 93%+ = 5u.
