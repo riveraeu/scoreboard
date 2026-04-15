@@ -1241,7 +1241,7 @@ function App() {
                                   display:"flex",alignItems:"center",gap:6,padding:"6px 12px",
                                   borderTop: i>0?"1px solid #161b22":"none"}}>
                                   <div style={{flex:2,minWidth:0,fontSize:12,fontWeight:_nameWhite?600:400,display:"flex",alignItems:"baseline",gap:3}}>
-                                    <span style={{color:_nameWhite?"#c9d1d9":"#8b949e",whiteSpace:"nowrap",textTransform:"capitalize"}}>{m.playerNameDisplay||m.playerName}</span>
+                                    <span style={{color:_nameWhite?"#c9d1d9":"#8b949e",textTransform:"capitalize"}}>{m.playerNameDisplay||m.playerName}</span>
                                     {(m.playerTeam||m.kalshiPlayerTeam)&&<span style={{color:"#484f58",fontWeight:400,flexShrink:0,fontSize:10}}>({m.playerTeam||m.kalshiPlayerTeam})</span>}
                                   </div>
                                   <div style={{flex:1,color:"#8b949e",fontSize:11,textAlign:"right"}}>{m.threshold}+</div>
@@ -1250,7 +1250,7 @@ function App() {
                                   <div style={{flex:1,fontSize:11,textAlign:"right"}}><span style={{color:"#c9d1d9"}}>{m.kalshiPct}%</span></div>
                                   <div style={{flex:1,fontSize:11,textAlign:"right",color:edge!=null&&edge>=3?"#3fb950":edge!=null&&edge<0?"#f78166":"#8b949e"}}>{edge!=null?(edge>=0?`+${edge.toFixed(1)}`:`${edge.toFixed(1)}`)+"%" :"—"}</div>
                                   {xcols.map(c => <div key={c.k} style={{flex:1,fontSize:11,textAlign:"right"}}>{xcell(m,c.k)}</div>)}
-                                  <div style={{flex:_oppFlex,fontSize:10,textAlign:"right",whiteSpace:"nowrap"}}>
+                                  <div style={{flex:_oppFlex,fontSize:10,textAlign:"right"}}>
                                     {(() => { const pn = m.pitcherName || m.hitterPitcherName; const parts = pn ? pn.trim().split(" ") : []; const shortPn = parts.length >= 2 ? `${parts[0][0]}. ${parts.slice(1).join(" ")}` : pn; return m.sport==="mlb" && m.stat!=="strikeouts" && pn
                                       ? <><span style={{color:"#8b949e"}}>{shortPn}</span> <span style={{color:"#484f58"}}>({m.opponent})</span></>
                                       : <span style={{color:"#484f58"}}>{m.opponent||""}</span>; })()}
