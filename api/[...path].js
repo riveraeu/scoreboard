@@ -1043,10 +1043,14 @@ var worker_default = {
         const sportsNeedingFetch = new Set([...sportsNeeded].filter((s) => !sportByteam[s]));
         if (sportsNeedingFetch.size > 0) {
           await Promise.all([
-            sportsNeedingFetch.has("nba") && fetch("https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=50&category=defensive", {
-              headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" }
-            }).then((r) => r.ok ? r.json() : {}).catch(() => ({})).then(async (d) => {
+            sportsNeedingFetch.has("nba") && Promise.all([
+              fetch("https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=50&category=defensive", {
+                headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" }
+              }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
+              (() => { const _nd = new Date(); const _ns = _nd.toISOString().slice(0,10).replace(/-/g,''); return fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${_ns}`, { headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})); })()
+            ]).then(async ([d, sbData]) => {
               sportByteam.nba = d.teams || [];
+              sportByteam.nbaGameOdds = parseGameOdds(sbData.events || []);
               if (CACHE2) await CACHE2.put("byteam:nba", JSON.stringify(sportByteam.nba), { expirationTtl: 21600 });
             }),
             sportsNeedingFetch.has("nhl") && Promise.all([
@@ -1170,6 +1174,13 @@ var worker_default = {
           }
         }
         nbaPlayerStatus = nbaPlayerStatus || {};
+        // Fetch NBA game odds if nba byteam was loaded from cache (scoreboard not fetched above)
+        if (sportsNeeded.has("nba") && !sportByteam.nbaGameOdds) {
+          const _nd2 = new Date(); const _ns2 = _nd2.toISOString().slice(0,10).replace(/-/g,'');
+          sportByteam.nbaGameOdds = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${_ns2}`, {
+            headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" }
+          }).then(r => r.ok ? r.json() : {}).then(d => parseGameOdds(d.events || [])).catch(() => ({}));
+        }
         const STAT_SOFT = {};
         if (sportByteam.nba) {
           for (const st of ["points", "rebounds", "assists", "threePointers"]) {
@@ -1948,6 +1959,7 @@ var worker_default = {
           let hitterLineupSpot = null, hitterWhipMeets = null, hitterFipMeets = null, hitterParkMeets = null;
           let pitcherWHIP = null, pitcherFIP = null, pitcherBAA = null;
           let hitterParkKF = null, hitterMoneyline = null, hitterBarrelPct = null;
+          let hitterBarrelPts = null, hitterTotalPts = null, hitterGameTotal = null;
           if (sport === "mlb" && stat !== "strikeouts") {
             const hitterML = sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null;
             const hIdx2 = gl.ul.indexOf("H");
@@ -2014,14 +2026,21 @@ var worker_default = {
             hitterParkKF = _hlParkKF2;
             hitterMoneyline = hitterML;
             const _spotPts = hitterLineupSpot != null ? (hitterLineupSpot <= 3 ? 3 : hitterLineupSpot <= 4 ? 2 : 0) : null;
-            // Pre-edge sim-score (max 11): spot→3/2, WHIP→3, FIP>ERA→2, barrel%→null, park→1
+            // Barrel% tier: ≥14%→3pts, ≥10%→2pts, ≥7%→1pt, <7%→0pts, null→1pt (abstain)
+            hitterBarrelPts = hitterBarrelPct == null ? 1 : hitterBarrelPct >= 14 ? 3 : hitterBarrelPct >= 10 ? 2 : hitterBarrelPct >= 7 ? 1 : 0;
+            // O/U total tier (high total = more run-scoring): ≥9.5→2pts, ≥7.5→1pt, <7.5→0pts, null→1pt
+            hitterGameTotal = sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null;
+            hitterTotalPts = hitterGameTotal == null ? 1 : hitterGameTotal >= 9.5 ? 2 : hitterGameTotal >= 7.5 ? 1 : 0;
+            // Sim-score (max 14, edge gates separately): spot→3/2, WHIP→3, FIP>ERA→2, park→1, barrel%→0-3, O/U→0-2
             hitterSimScore = (_spotPts ?? 0)
               + (hitterWhipMeets === true ? 3 : 0)
               + (hitterFipMeets === true ? 2 : 0)
-              + (hitterParkMeets ? 1 : 0);
+              + (hitterParkMeets ? 1 : 0)
+              + hitterBarrelPts
+              + hitterTotalPts;
             const _hlPitcherName = sportByteam.mlb?.probables?.[tonightOpp]?.name ?? null;
             const _hlML = hitterML;
-            const _hlCommon = { opponent: tonightOpp, pitcherName: _hlPitcherName, seasonPct: _hlSeasonPct, softPct: _hlSoftPct, truePct: _hlTruePct, edge: _hlEdge, pitcherEra: _hlEra, moneyline: _hlML, hitterBa, hitterBaTier, abVsTeam: hitterAbVsPitcher, hitterLineupSpot, pitcherWHIP, pitcherFIP, hitterSimScore, hitterParkKF, hitterMoneyline, hitterBarrelPct };
+            const _hlCommon = { opponent: tonightOpp, pitcherName: _hlPitcherName, seasonPct: _hlSeasonPct, softPct: _hlSoftPct, truePct: _hlTruePct, edge: _hlEdge, pitcherEra: _hlEra, moneyline: _hlML, hitterBa, hitterBaTier, abVsTeam: hitterAbVsPitcher, hitterLineupSpot, pitcherWHIP, pitcherFIP, hitterSimScore, hitterParkKF, hitterMoneyline, hitterBarrelPct, hitterBarrelPts, hitterTotalPts, hitterGameTotal };
             // Stage 1: lineup spot 5-9 discard
             if (hitterLineupSpot !== null && hitterLineupSpot >= 5) {
               if (isDebug) dropped.push({ ..._dropBase, reason: "low_lineup_spot", hitterLineupSpot, ..._hlCommon });
@@ -2039,7 +2058,7 @@ var worker_default = {
             }
           }
           // NBA: pre-edge SimScore + Monte Carlo simulation (runs before rawTruePct)
-          let nbaSimPctOut = null, nbaPreSimScore = null, nbaPaceAdj = null, nbaOpportunity = null;
+          let nbaSimPctOut = null, nbaPreSimScore = null, nbaPaceAdj = null, nbaOpportunity = null, nbaTotalPts = null, nbaGameTotal = null;
           if (sport === "nba") {
             let _sc = 0;
             // 1. Pace — avg game pace above league avg → 3pts
@@ -2066,6 +2085,11 @@ var worker_default = {
             if (posDvpRankOut !== null && posDvpRankOut <= 10) _sc += 2;
             // 4. Rest — not B2B → 2pts
             if (!isB2B) _sc += 2;
+            // 5. Game total — high total = more possessions/scoring = favorable for counting stats
+            // ≥235→3pts, ≥225→2pts, ≥215→1pt, <215→0pts, null→1pt (abstain)
+            nbaGameTotal = (sportByteam.nbaGameOdds ?? {})[playerTeam]?.total ?? null;
+            nbaTotalPts = nbaGameTotal == null ? 1 : nbaGameTotal >= 235 ? 3 : nbaGameTotal >= 225 ? 2 : nbaGameTotal >= 215 ? 1 : 0;
+            _sc += nbaTotalPts;
             nbaPreSimScore = _sc;
             // Shared distribution per player+stat — all thresholds query the same run
             const _nbaDistKey = `${info.id}|${stat}`;
@@ -2163,13 +2187,14 @@ var worker_default = {
           const finalSimScore = (sport === "mlb" && stat === "strikeouts" && simScore !== null)
             ? simScore
             : null;
+          // HRR/hits: edge is a gate only (≥3% required), not part of simScore — max 14 like strikeouts
           hitterFinalSimScore = (sport === "mlb" && stat !== "strikeouts" && hitterSimScore !== null)
-            ? hitterSimScore + (edge >= 3 ? 3 : 0)
+            ? hitterSimScore
             : null;
-          // NBA SimScore — finalize with edge bonus (pre-edge computed above before rawTruePct)
+          // NBA SimScore — edge is a gate only (≥3% required), not part of simScore — max 14 like strikeouts
           let nbaSimScore = null;
           if (sport === "nba" && nbaPreSimScore !== null) {
-            nbaSimScore = nbaPreSimScore + (edge >= 3 ? 3 : 0);
+            nbaSimScore = nbaPreSimScore;
           }
           // NHL SimScore — finalize with edge bonus
           let nhlSimScore = null;
@@ -2322,6 +2347,9 @@ var worker_default = {
             hitterParkKF: sport === "mlb" && stat !== "strikeouts" ? hitterParkKF : void 0,
             hitterMoneyline: sport === "mlb" && stat !== "strikeouts" ? hitterMoneyline : void 0,
             hitterBarrelPct: sport === "mlb" && stat !== "strikeouts" ? hitterBarrelPct : void 0,
+            hitterBarrelPts: sport === "mlb" && stat !== "strikeouts" ? hitterBarrelPts : void 0,
+            hitterTotalPts: sport === "mlb" && stat !== "strikeouts" ? hitterTotalPts : void 0,
+            hitterGameTotal: sport === "mlb" && stat !== "strikeouts" ? hitterGameTotal : void 0,
             pitcherAvgPitches: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.pitcherAvgPitches?.[playerTeam] ?? null : void 0,
             gameTotal: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null : void 0,
             gameMoneyline: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null : void 0,
@@ -2339,6 +2367,8 @@ var worker_default = {
             nbaSimPct: sport === "nba" ? nbaSimPctOut : void 0,
             nbaPaceAdj: sport === "nba" ? nbaPaceAdj : void 0,
             nbaOpportunity: sport === "nba" ? nbaOpportunity : void 0,
+            nbaTotalPts: sport === "nba" ? nbaTotalPts : void 0,
+            nbaGameTotal: sport === "nba" ? nbaGameTotal : void 0,
             nhlSimScore: sport === "nhl" ? nhlSimScore : void 0,
             nhlPreSimScore: sport === "nhl" ? nhlPreSimScore : void 0,
             nhlSimPct: sport === "nhl" ? nhlSimPctOut : void 0,

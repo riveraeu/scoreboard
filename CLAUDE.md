@@ -80,14 +80,17 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
   - `primaryPct` = player's 2026 HRR 1+ rate (falls back to 2025+2026 blend, then career)
   - `softPct` = HRR 1+ rate vs tonight's pitcher (H2H gamelog dates) or vs tonight's team (2025+2026 fallback)
   - BA is NOT directly in the formula — it's implicit via the player's historical HRR rate
-- **SimScore** (max 11 pre-edge, 14 with edge bonus):
+- **SimScore** (max 14, edge gates separately — same pattern as strikeouts):
   - Lineup spot 1–3 → 3pts, spot 4 → 2pts
   - Pitcher WHIP > 1.35 → 3pts (from pitcher gamelog)
   - Pitcher FIP > ERA → 2pts
   - Park hit factor > 1.02 → 1pt
-  - Edge ≥ 3% → 3pts
-- **Gates**: lineup spot 1–4 required; hitterSimScore ≥ 7; edge ≥ 3%
-- Barrel% from Baseball Savant (`buildBarrelPct`) — cached 6h in KV
+  - Barrel% tier: ≥14% → 3pts, ≥10% → 2pts, ≥7% → 1pt, <7% → 0pts, null → 1pt (abstain)
+  - O/U total tier (high total = more run-scoring): ≥9.5 → 2pts, ≥7.5 → 1pt, <7.5 → 0pts, null → 1pt
+  - Max: 3+3+2+1+3+2 = 14
+- **Gates**: lineup spot 1–4 required; hitterSimScore ≥ 7; edge ≥ 3% (gate only, not scored)
+- Barrel% from Baseball Savant (`buildBarrelPct`) — cached 6h in KV; `hitterBarrelPts` stored in play output
+- NBA game totals fetched from ESPN scoreboard (`sportByteam.nbaGameOdds`) — always fresh (not long-term cached)
 
 ### NBA
 - **Stats**: `points`, `rebounds`, `assists`, `threePointers`
@@ -98,14 +101,16 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
   - Adjusted mean: `× teamDefFactor × (1 + paceAdj×0.002) × 0.93 if B2B`
   - `teamDefFactor` = general team defense (`rankMap[opp].value / leagueAvg`) — NOT position-adjusted DVP
   - Falls back to avg(seasonPct, softPct) − 4% if B2B when simulation returns null (<5 game values)
-- **SimScore** (max 11 pre-edge, 14 with edge bonus):
+- **SimScore** (max 14, edge gates separately — same pattern as MLB strikeouts):
   - Pace (avg game pace above league avg) → 3pts — fetched from ESPN via `buildNbaPaceData()`, cached 12h
   - Avg minutes ≥ 30 (last 10 games) → 4pts; ≥ 25 → 2pts
   - Position-adjusted DVP rank ≤ 10 → 2pts
   - Not B2B → 2pts
-  - Edge ≥ 3% → 3pts (added after simulation)
+  - Game total tier: ≥235 → 3pts, ≥225 → 2pts, ≥215 → 1pt, <215 → 0pts, null → 1pt (abstain)
+  - Max: 3+4+2+2+3 = 14
+  - Game totals from `sportByteam.nbaGameOdds` (ESPN NBA scoreboard, fetched fresh each request alongside byteam stats)
 - nSim scales with pre-edge simScore: ≥8 → 10k, ≥5 → 5k, else 2k
-- **Gate**: opp in soft DVP teams; edge ≥ 3%
+- **Gate**: opp in soft DVP teams; edge ≥ 3% (gate only, not scored)
 - Avg minutes from ESPN gamelog `MIN` column (last 10 games), no external API needed
 - Depth chart position via `nbaDepthChartPos` (ESPN depth chart API, cached daily)
 

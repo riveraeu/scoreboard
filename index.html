@@ -1013,13 +1013,13 @@ function App() {
                 if (sortedGroups.length === 0) return <div style={{color:"#8b949e",textAlign:"center",padding:40,fontSize:13}}>No markets.</div>;
 
                 const CRITERIA_SUMMARIES = {
-                  "mlb|hrr":       { note: "True% = Monte Carlo simulation (batterBA \u00d7 pitcherBAA log5) \u00b7 park-adjusted \u00b7 Sim-Score \u2265 7 (spot\u21923/2, WHIP\u21923, FIP>ERA\u21922, park\u21921, edge bonus\u21923)", gates: ["Lineup spot 1\u20134", "Sim-Score \u2265 7 (max 14)", "Edge \u2265 3%"] },
-                  "mlb|hits":      { note: "True% = Monte Carlo simulation (batterBA \u00d7 pitcherBAA log5) \u00b7 park-adjusted \u00b7 Sim-Score \u2265 7 (spot\u21923/2, WHIP\u21923, FIP>ERA\u21922, park\u21921, edge bonus\u21923)", gates: ["Lineup spot 1\u20134", "Sim-Score \u2265 7 (max 14)", "Edge \u2265 3%"] },
-                  "mlb|strikeouts":{ note: "True% = Monte Carlo simulation (pitcher K% \u00d7 lineup K% log5) \u00b7 regressed to mean \u00b7 park-adjusted \u00b7 Sim-Score \u2265 7 (CSW%\u21923, K-BB%\u21922, oK%\u21923, P/GS\u21922, park\u21921, edge bonus\u21923)", gates: ["Sim-Score \u2265 7 (max 14)", "Edge \u2265 3%"] },
-                  "nba|points":    { note: "True% = avg(Season%, vs-soft-DVP-team%) · B2B -4% · Sim-Score: pace(3) + usage×min(4) + DVP(2) + rest(2) + edge(3) = max 14", gates: ["Opp in soft DVP teams", "Edge \u2265 3%"] },
-                  "nba|rebounds":  { note: "True% = avg(Season%, vs-soft-DVP-team%) · B2B -4% · Sim-Score: pace(3) + usage×min(4) + DVP(2) + rest(2) + edge(3) = max 14", gates: ["Opp in soft DVP teams", "Edge \u2265 3%"] },
-                  "nba|assists":   { note: "True% = avg(Season%, vs-soft-DVP-team%) · B2B -4% · Sim-Score: pace(3) + usage×min(4) + DVP(2) + rest(2) + edge(3) = max 14", gates: ["Opp in soft DVP teams", "Edge \u2265 3%"] },
-                  "nba|threePointers": { note: "True% = avg(Season%, vs-soft-DVP-team%) · B2B -4% · Sim-Score: pace(3) + usage×min(4) + DVP(2) + rest(2) + edge(3) = max 14", gates: ["Opp in soft DVP teams", "Edge \u2265 3%"] },
+                  "mlb|hrr":       { note: "True% = Monte Carlo simulation (batterBA \u00d7 pitcherBAA log5) \u00b7 park-adjusted \u00b7 Sim-Score \u2265 7 (spot\u21923/2, WHIP\u21923, FIP>ERA\u21922, park\u21921, barrel%\u21920-3, O/U\u21920-2) = max 14; edge gates separately", gates: ["Lineup spot 1\u20134", "Sim-Score \u2265 7 (max 14)", "Edge \u2265 3%"] },
+                  "mlb|hits":      { note: "True% = Monte Carlo simulation (batterBA \u00d7 pitcherBAA log5) \u00b7 park-adjusted \u00b7 Sim-Score \u2265 7 (spot\u21923/2, WHIP\u21923, FIP>ERA\u21922, park\u21921, barrel%\u21920-3, O/U\u21920-2) = max 14; edge gates separately", gates: ["Lineup spot 1\u20134", "Sim-Score \u2265 7 (max 14)", "Edge \u2265 3%"] },
+                  "mlb|strikeouts":{ note: "True% = Monte Carlo simulation (pitcher K% \u00d7 lineup K% log5) \u00b7 regressed to mean \u00b7 park-adjusted \u00b7 Sim-Score \u2265 7 (CSW%\u21923, K-BB%\u21922, oK%\u21923, P/GS\u21922, ML\u21920-2, O/U\u21920-2) = max 14; edge gates separately", gates: ["Sim-Score \u2265 7 (max 14)", "Edge \u2265 3%"] },
+                  "nba|points":    { note: "True% = avg(Season%, vs-soft-DVP-team%) \u00b7 B2B -4% \u00b7 Sim-Score: pace(3) + min(4) + DVP(2) + rest(2) + O/U(0-3) = max 14; edge gates separately", gates: ["Opp in soft DVP teams", "Edge \u2265 3%"] },
+                  "nba|rebounds":  { note: "True% = avg(Season%, vs-soft-DVP-team%) \u00b7 B2B -4% \u00b7 Sim-Score: pace(3) + min(4) + DVP(2) + rest(2) + O/U(0-3) = max 14; edge gates separately", gates: ["Opp in soft DVP teams", "Edge \u2265 3%"] },
+                  "nba|assists":   { note: "True% = avg(Season%, vs-soft-DVP-team%) \u00b7 B2B -4% \u00b7 Sim-Score: pace(3) + min(4) + DVP(2) + rest(2) + O/U(0-3) = max 14; edge gates separately", gates: ["Opp in soft DVP teams", "Edge \u2265 3%"] },
+                  "nba|threePointers": { note: "True% = avg(Season%, vs-soft-DVP-team%) \u00b7 B2B -4% \u00b7 Sim-Score: pace(3) + min(4) + DVP(2) + rest(2) + O/U(0-3) = max 14; edge gates separately", gates: ["Opp in soft DVP teams", "Edge \u2265 3%"] },
                 };
 
                 return sortedGroups.map(({ sport, stat, items }) => {
@@ -1089,13 +1089,13 @@ function App() {
                       {(() => {
                         // Sport+stat specific extra columns
                         const XCOLS = {
-                          "mlb|hrr":        [{k:"spot",l:"Spot"},{k:"whip",l:"WHIP"},{k:"fip",l:"FIP"},{k:"brrl",l:"Brrl%"},{k:"env",l:"Park"},{k:"ml",l:"ML"}],
-                          "mlb|hits":       [{k:"spot",l:"Spot"},{k:"whip",l:"WHIP"},{k:"fip",l:"FIP"},{k:"brrl",l:"Brrl%"},{k:"env",l:"Park"},{k:"ml",l:"ML"}],
-                          "mlb|strikeouts": [{k:"env",l:"Park"},{k:"ml",l:"ML"},{k:"ou",l:"O/U"},{k:"csw",l:"CSW%"},{k:"kbb",l:"K-BB%"},{k:"lkp",l:"oK%"},{k:"pps",l:"P/GS"}],
-                          "nba|points":     [{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"},{k:"nbapace",l:"Pace"},{k:"nbaopp",l:"AvgMin"},{k:"nba_b2b",l:"Rest"}],
-                          "nba|rebounds":   [{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"},{k:"nbapace",l:"Pace"},{k:"nbaopp",l:"AvgMin"},{k:"nba_b2b",l:"Rest"}],
-                          "nba|assists":    [{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"},{k:"nbapace",l:"Pace"},{k:"nbaopp",l:"AvgMin"},{k:"nba_b2b",l:"Rest"}],
-                          "nba|threePointers":[{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"},{k:"nbapace",l:"Pace"},{k:"nbaopp",l:"AvgMin"},{k:"nba_b2b",l:"Rest"}],
+                          "mlb|hrr":        [{k:"spot",l:"Spot"},{k:"whip",l:"WHIP"},{k:"fip",l:"FIP"},{k:"brrl",l:"Brrl%"},{k:"env",l:"Park"},{k:"ml",l:"ML"},{k:"sim",l:"Score"}],
+                          "mlb|hits":       [{k:"spot",l:"Spot"},{k:"whip",l:"WHIP"},{k:"fip",l:"FIP"},{k:"brrl",l:"Brrl%"},{k:"env",l:"Park"},{k:"ml",l:"ML"},{k:"sim",l:"Score"}],
+                          "mlb|strikeouts": [{k:"env",l:"Park"},{k:"ml",l:"ML"},{k:"ou",l:"O/U"},{k:"csw",l:"CSW%"},{k:"kbb",l:"K-BB%"},{k:"lkp",l:"oK%"},{k:"pps",l:"P/GS"},{k:"sim",l:"Score"}],
+                          "nba|points":     [{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"},{k:"nbapace",l:"Pace"},{k:"nbaopp",l:"AvgMin"},{k:"nba_b2b",l:"Rest"},{k:"sim",l:"Score"}],
+                          "nba|rebounds":   [{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"},{k:"nbapace",l:"Pace"},{k:"nbaopp",l:"AvgMin"},{k:"nba_b2b",l:"Rest"},{k:"sim",l:"Score"}],
+                          "nba|assists":    [{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"},{k:"nbapace",l:"Pace"},{k:"nbaopp",l:"AvgMin"},{k:"nba_b2b",l:"Rest"},{k:"sim",l:"Score"}],
+                          "nba|threePointers":[{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"},{k:"nbapace",l:"Pace"},{k:"nbaopp",l:"AvgMin"},{k:"nba_b2b",l:"Rest"},{k:"sim",l:"Score"}],
                           "nhl|points": [{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"nhlgaa",l:"GAA Rank"},{k:"nhlsa",l:"SA Adj"},{k:"nhltoi",l:"AvgTOI"},{k:"nhl_b2b",l:"Rest"},{k:"sim",l:"Score"}],
                         };
                         const xcols = XCOLS[`${sport}|${stat}`] || [];
@@ -1626,23 +1626,23 @@ function App() {
                           const pkpQual = pkp == null ? "" : csw != null ? (pkp > 30 ? "elite" : pkp > 26 ? "above-average" : "average") : (pkp > 24 ? "above-average" : "average");
                           const apDesc = ap == null ? null : ap > 85 ? "expect him to work deep into the game" : ap > 75 ? "typically goes 5–6 innings" : null;
                           const lkpDesc = lkp == null ? null : lkp > 24 ? "a high-strikeout lineup — works in his favor" : lkp > 16 ? "below-average strikeout tendency" : "elite contact lineup — a tougher test";
-                          const mk = (meets, pts, label) => meets != null ? <span key={label} style={{color:meets?"#3fb950":"#484f58",fontSize:9,opacity:meets?1:0.7}}>{meets?"✓":"✗"}{label}({pts})</span> : null;
+                          const mk = (meets, pts, label) => meets != null ? <span key={label} style={{color:meets?"#3fb950":"#f78166",fontSize:9}}>{meets?"✓":"✗"}{label}({pts})</span> : null;
                           const _sc = finalSimScore ?? simScore;
                           const scColor = _sc == null ? "#8b949e" : _sc >= 11 ? "#3fb950" : _sc >= 7 ? "#e3b341" : "#8b949e";
                           return (
                             <>
                               <div>
                                 {first} has {pkpQual ? <>{pkpQual} </> : ""}swing-and-miss stuff
-                                {pkp != null && <> — <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span> {pkpLabel}<span style={{color:h2h?.kpctPts===3?"#3fb950":h2h?.kpctPts===2?"#e3b341":"#484f58",fontSize:9}}>({h2h?.kpctPts ?? 3})</span></>}
-                                {kbb != null && <>, <span style={{color:kbbColor,fontWeight:600}}>{kbb.toFixed(1)}%</span> K-BB%<span style={{color:h2h?.kbbMeets===true?"#3fb950":"#484f58",fontSize:9}}>(2)</span> (strikeouts vs walks)</>}
-                                {ap != null && <>, averaging <span style={{color:apColor,fontWeight:600}}>{Math.round(ap)}</span> pitches/start<span style={{color:h2h?.pitchesMeets===true?"#3fb950":"#484f58",fontSize:9}}>(2)</span>{apDesc ? <span style={{color:"#484f58"}}> — {apDesc}</span> : ""}</>}.
-                                {lkp != null && <>{" "}The {oppName} lineup strikes out at <span style={{color:lkpColor,fontWeight:600}}>{lkp}%</span><span style={{color:h2h?.lkpPts===3?"#3fb950":h2h?.lkpPts===1?"#e3b341":"#484f58",fontSize:9}}>({h2h?.lkpPts ?? (h2h?.lkpMeets===true?3:0)})</span>{handLabel}{lkpProjected ? <span style={{color:"#484f58",fontSize:10}}> (est.)</span> : ""} — {lkpDesc}.</>}
+                                {pkp != null && <> — <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span> {pkpLabel}<span style={{color:h2h?.kpctPts===3?"#3fb950":h2h?.kpctPts===2?"#e3b341":"#f78166",fontSize:9}}>({h2h?.kpctPts ?? 3})</span></>}
+                                {kbb != null && <>, <span style={{color:kbbColor,fontWeight:600}}>{kbb.toFixed(1)}%</span> K-BB%<span style={{color:h2h?.kbbMeets===true?"#3fb950":"#f78166",fontSize:9}}>(2)</span> (strikeouts vs walks)</>}
+                                {ap != null && <>, averaging <span style={{color:apColor,fontWeight:600}}>{Math.round(ap)}</span> pitches/start<span style={{color:h2h?.pitchesMeets===true?"#3fb950":"#f78166",fontSize:9}}>(2)</span>{apDesc ? <span style={{color:"#484f58"}}> — {apDesc}</span> : ""}</>}.
+                                {lkp != null && <>{" "}The {oppName} lineup strikes out at <span style={{color:lkpColor,fontWeight:600}}>{lkp}%</span><span style={{color:h2h?.lkpPts===3?"#3fb950":h2h?.lkpPts===1?"#e3b341":"#f78166",fontSize:9}}>({h2h?.lkpPts ?? (h2h?.lkpMeets===true?3:0)})</span>{handLabel}{lkpProjected ? <span style={{color:"#484f58",fontSize:10}}> (est.)</span> : ""} — {lkpDesc}.</>}
                                 {pf != null && Math.abs(pf - 1.0) >= 0.01 && <>{" "}Tonight's venue {pf > 1 ? "is strikeout-friendly" : "suppresses strikeouts"} (<span style={{color:"#484f58"}}>{pf > 1 ? "+" : ""}{((pf-1)*100).toFixed(0)}%</span>).</>}
                               </div>
                               {(gameTotal != null || gameML != null) && (
                                 <div style={{color:"#484f58",fontSize:10,marginTop:3}}>
-                                  Game total <span style={{color:totalColor(gameTotal),fontWeight:600}}>{gameTotal ?? "—"}</span>{h2h?.totalPts != null && <span style={{color:h2h.totalPts===2?"#3fb950":h2h.totalPts===1?"#e3b341":"#484f58",fontSize:9}}> ({h2h.totalPts})</span>}
-                                  {" · "}ML <span style={{color:mlColor(gameML),fontWeight:600}}>{gameML != null ? `${gameML > 0 ? "+" : ""}${gameML}` : "—"}</span>{h2h?.mlPts != null && <span style={{color:h2h.mlPts===2?"#3fb950":h2h.mlPts===1?"#e3b341":"#484f58",fontSize:9}}> ({h2h.mlPts})</span>}
+                                  Game total <span style={{color:totalColor(gameTotal),fontWeight:600}}>{gameTotal ?? "—"}</span>{h2h?.totalPts != null && <span style={{color:h2h.totalPts===2?"#3fb950":h2h.totalPts===1?"#e3b341":"#f78166",fontSize:9}}> ({h2h.totalPts})</span>}
+                                  {" · "}ML <span style={{color:mlColor(gameML),fontWeight:600}}>{gameML != null ? `${gameML > 0 ? "+" : ""}${gameML}` : "—"}</span>{h2h?.mlPts != null && <span style={{color:h2h.mlPts===2?"#3fb950":h2h.mlPts===1?"#e3b341":"#f78166",fontSize:9}}> ({h2h.mlPts})</span>}
                                 </div>
                               )}
                               {_sc != null && (
@@ -1680,7 +1680,7 @@ function App() {
                           const spotDesc = lineupSpot == null ? null : lineupSpot <= 3 ? "top of the order — guaranteed at-bats every game" : lineupSpot <= 4 ? "heart of the order — plenty of at-bats" : null;
                           const whipDesc = whip == null ? null : whip > 1.35 ? "a lot of baserunners" : whip > 1.20 ? "some traffic on base" : "keeps the bases clean";
                           const fipDesc = (fip != null && era != null) ? (fip > era + 0.3 ? "FIP well above ERA — overdue for regression" : fip > era ? "FIP above ERA" : null) : null;
-                          const mkH = (meets, pts, label) => meets != null ? <span key={label} style={{color:meets?"#3fb950":"#484f58",fontSize:9,opacity:meets?1:0.7}}>{meets?"✓":"✗"}{label}({pts})</span> : null;
+                          const mkH = (meets, pts, label) => meets != null ? <span key={label} style={{color:meets?"#3fb950":"#f78166",fontSize:9}}>{meets?"✓":"✗"}{label}({pts})</span> : null;
                           return (
                             <>
                               <div>
@@ -1705,7 +1705,9 @@ function App() {
                                     {mkH(tonightHitPlay?.hitterWhipMeets, 3, "WHIP")}
                                     {mkH(tonightHitPlay?.hitterFipMeets, 2, "FIP")}
                                     {tonightHitPlay?.hitterParkMeets != null && mkH(tonightHitPlay.hitterParkMeets, 1, "Park")}
-                                    {tonightHitPlay?.edge != null && <span style={{color:tonightHitPlay.edge >= 3 ? "#3fb950" : tonightHitPlay.edge >= 0 ? "#e3b341" : "#f78166",fontSize:9,opacity:tonightHitPlay.edge >= 3 ? 1 : 0.7}}>{tonightHitPlay.edge >= 3 ? "✓" : "✗"}Edge {tonightHitPlay.edge > 0 ? "+" : ""}{tonightHitPlay.edge}%(3)</span>}
+                                    {tonightHitPlay?.hitterBarrelPts != null && <span key="brrl" style={{color:tonightHitPlay.hitterBarrelPts>=3?"#3fb950":tonightHitPlay.hitterBarrelPts>=2?"#e3b341":tonightHitPlay.hitterBarrelPts>=1?"#8b949e":"#f78166",fontSize:9}}>{tonightHitPlay.hitterBarrelPts>0?"✓":"✗"}Brrl{tonightHitPlay.hitterBarrelPct!=null?" "+tonightHitPlay.hitterBarrelPct.toFixed(0)+"%":""}({tonightHitPlay.hitterBarrelPts})</span>}
+                                    {tonightHitPlay?.hitterTotalPts != null && <span key="ou" style={{color:tonightHitPlay.hitterTotalPts>=2?"#3fb950":tonightHitPlay.hitterTotalPts>=1?"#e3b341":"#f78166",fontSize:9}}>{tonightHitPlay.hitterTotalPts>0?"✓":"✗"}O/U{tonightHitPlay.hitterGameTotal!=null?" "+tonightHitPlay.hitterGameTotal:""}({tonightHitPlay.hitterTotalPts})</span>}
+                                    {tonightHitPlay?.edge != null && <span style={{color:tonightHitPlay.edge >= 3 ? "#3fb950" : tonightHitPlay.edge >= 0 ? "#e3b341" : "#f78166",fontSize:9,opacity:tonightHitPlay.edge >= 3 ? 1 : 0.7,whiteSpace:"nowrap"}}>{tonightHitPlay.edge >= 3 ? "✓" : "✗"} Edge {tonightHitPlay.edge > 0 ? "+" : ""}{tonightHitPlay.edge}%</span>}
                                   </span>
                                 </div>
                               )}
@@ -1761,7 +1763,7 @@ function App() {
                             const minDesc = nbaOpportunity == null ? null : nbaOpportunity >= 33 ? "a featured starter with a big role" : nbaOpportunity >= 30 ? "a key starter" : nbaOpportunity >= 25 ? "solid rotation player" : "limited role";
                             const paceDesc = nbaPaceAdj == null ? null : nbaPaceAdj > 2 ? "a fast game — more possessions, more opportunities to score" : nbaPaceAdj > 0 ? "slightly above-average pace" : nbaPaceAdj > -2 ? "slightly slower pace" : "a slow game — fewer scoring opportunities";
                             const rankDesc = displayRank == null ? null : displayRank <= 3 ? "one of the worst defenses in the league" : displayRank <= 8 ? "a weak defense" : displayRank <= 15 ? "a soft matchup" : null;
-                            const mkGate = (meets, pts, label) => <span style={{color:meets?"#3fb950":"#484f58",fontSize:9,opacity:meets?1:0.7,whiteSpace:"nowrap"}}>{meets?"✓":"✗"} {label} ({pts})</span>;
+                            const mkGate = (meets, pts, label) => <span style={{color:meets?"#3fb950":"#f78166",fontSize:9,whiteSpace:"nowrap"}}>{meets?"✓":"✗"} {label} ({pts})</span>;
                             return (
                               <>
                                 <div>
@@ -1785,7 +1787,8 @@ function App() {
                                       {mkGate(nbaOpportunity != null && nbaOpportunity >= 30, 4, `${nbaOpportunity != null ? nbaOpportunity.toFixed(0)+"m" : "—"}`)}
                                       {mkGate(tonightTabPlay?.posDvpRank != null && tonightTabPlay.posDvpRank <= 10, 2, `DVP #${tonightTabPlay?.posDvpRank ?? "—"}`)}
                                       {mkGate(isB2B != null && !isB2B, 2, isB2B ? "B2B" : "Rested")}
-                                      {edge != null && <span title={spreadAdj > 0 ? `Raw +${rawEdge}% − ${spreadAdj}¢ spread = +${edge}% net` : undefined} style={{color:edge >= 3 ? "#3fb950" : edge >= 0 ? "#e3b341" : "#f78166",fontSize:9,opacity:edge >= 3 ? 1 : 0.7,whiteSpace:"nowrap"}}>{edge >= 3 ? "✓" : "✗"} Edge {edge > 0 ? "+" : ""}{edge}%{spreadAdj > 0 ? " net" : ""} (3)</span>}
+                                      {tonightTabPlay?.nbaTotalPts != null && <span style={{color:tonightTabPlay.nbaTotalPts>=3?"#3fb950":tonightTabPlay.nbaTotalPts>=2?"#e3b341":tonightTabPlay.nbaTotalPts>=1?"#8b949e":"#f78166",fontSize:9,whiteSpace:"nowrap"}}>{tonightTabPlay.nbaTotalPts>=2?"✓":"✗"} O/U{tonightTabPlay.nbaGameTotal!=null?" "+tonightTabPlay.nbaGameTotal:""} ({tonightTabPlay.nbaTotalPts})</span>}
+                                      {edge != null && <span title={spreadAdj > 0 ? `Raw +${rawEdge}% − ${spreadAdj}% spread = +${edge}% net` : undefined} style={{color:edge >= 3 ? "#3fb950" : edge >= 0 ? "#e3b341" : "#f78166",fontSize:9,opacity:edge >= 3 ? 1 : 0.7,whiteSpace:"nowrap"}}>{edge >= 3 ? "✓" : "✗"} Edge {edge > 0 ? "+" : ""}{edge}%{spreadAdj > 0 ? " net" : ""}</span>}
                                     </span>
                                   </div>
                                 )}
@@ -1809,7 +1812,7 @@ function App() {
                             const toiDesc = nhlOpportunity == null ? null : nhlOpportunity >= 21 ? "a top-line role" : nhlOpportunity >= 18 ? "a key contributor" : nhlOpportunity >= 15 ? "solid ice time" : "limited role";
                             const rankDesc = rank == null ? null : rank <= 3 ? "one of the worst defenses in the league" : rank <= 8 ? "a weak defense" : rank <= 15 ? "a soft matchup" : null;
                             const saDesc = nhlShotsAdj == null ? null : nhlShotsAdj > 2 ? "generating high shot volume — more scoring chances" : nhlShotsAdj > 0 ? "above-average shot volume" : nhlShotsAdj > -2 ? "slightly below average" : "low shot volume allowed";
-                            const mkGate = (meets, pts, label) => <span style={{color:meets?"#3fb950":"#484f58",fontSize:9,opacity:meets?1:0.7,whiteSpace:"nowrap"}}>{meets?"✓":"✗"} {label} ({pts})</span>;
+                            const mkGate = (meets, pts, label) => <span style={{color:meets?"#3fb950":"#f78166",fontSize:9,whiteSpace:"nowrap"}}>{meets?"✓":"✗"} {label} ({pts})</span>;
                             return (
                               <>
                                 <div>
@@ -1833,7 +1836,7 @@ function App() {
                                       {mkGate(nhlOpportunity != null && nhlOpportunity >= 18, 4, `${nhlOpportunity != null ? nhlOpportunity.toFixed(0)+"m TOI" : "—"}`)}
                                       {mkGate(rank != null && rank <= 10, 2, `GAA #${rank ?? "—"}`)}
                                       {mkGate(nhlIsB2B != null && !nhlIsB2B, 2, nhlIsB2B ? "B2B" : "Rested")}
-                                      {edge != null && <span title={spreadAdj > 0 ? `Raw +${rawEdge}% − ${spreadAdj}¢ spread = +${edge}% net` : undefined} style={{color:edge >= 3 ? "#3fb950" : edge >= 0 ? "#e3b341" : "#f78166",fontSize:9,opacity:edge >= 3 ? 1 : 0.7,whiteSpace:"nowrap"}}>{edge >= 3 ? "✓" : "✗"} Edge {edge > 0 ? "+" : ""}{edge}%{spreadAdj > 0 ? " net" : ""} (3)</span>}
+                                      {edge != null && <span title={spreadAdj > 0 ? `Raw +${rawEdge}% − ${spreadAdj}% spread = +${edge}% net` : undefined} style={{color:edge >= 3 ? "#3fb950" : edge >= 0 ? "#e3b341" : "#f78166",fontSize:9,opacity:edge >= 3 ? 1 : 0.7,whiteSpace:"nowrap"}}>{edge >= 3 ? "✓" : "✗"} Edge {edge > 0 ? "+" : ""}{edge}%{spreadAdj > 0 ? " net" : ""} (3)</span>}
                                     </span>
                                   </div>
                                 )}
@@ -2140,8 +2143,8 @@ function App() {
                     <div style={{marginBottom:3}}><span style={{color:"#4ade80"}}>MLB hitters</span> — Monte Carlo simulation: batterBA × pitcherBAA (log5) · park-adjusted · Sim-Score ≥ 7 required · lineup spot 1–4</div>
                     <div style={{marginBottom:6}}><span style={{color:"#f97316"}}>NBA</span> — avg(Season%, vs-soft-DVP%) · opponent bottom-10 DvP for position</div>
                     <div style={{marginBottom:3,color:"#8b949e",fontWeight:600}}>Sim-Score gates (MLB)</div>
-                    <div style={{marginBottom:3}}>Strikeouts: CSW%→3, K-BB%→2, oK%→3, P/GS→2, park→1, edge bonus→3 (max 14)</div>
-                    <div>Hitters: spot→3/2, WHIP→3, FIP&gt;ERA→2, park→1, edge bonus→3 (max 14)</div>
+                    <div style={{marginBottom:3}}>Strikeouts: CSW%→3, K-BB%→2, oK%→3, P/GS→2, ML→2, O/U→2 (max 14); edge gates separately</div>
+                    <div>Hitters: spot→3/2, WHIP→3, FIP&gt;ERA→2, park→1, barrel%→3, O/U→2 (max 14); edge gates separately</div>
                   </div>
                 )}
               </span>
@@ -2329,7 +2332,7 @@ function App() {
                         borderRadius:6,padding:"2px 8px",fontSize:12,color:"#58a6ff",fontWeight:700,whiteSpace:"nowrap"}}>
                         {play.threshold}+ {STAT_LABEL[play.stat] || play.stat}
                       </span>
-                      <span title={play.spreadAdj > 0 ? `Raw edge +${play.rawEdge}% − ${play.spreadAdj}¢ spread = +${play.edge}% net` : undefined} style={{background:"rgba(63,185,80,0.13)",border:"1px solid #3fb950",
+                      <span title={play.spreadAdj > 0 ? `Raw edge +${play.rawEdge}% − ${play.spreadAdj}% spread = +${play.edge}% net` : undefined} style={{background:"rgba(63,185,80,0.13)",border:"1px solid #3fb950",
                         borderRadius:6,padding:"2px 8px",fontSize:12,color:"#3fb950",fontWeight:700,whiteSpace:"nowrap"}}>
                         +{play.edge}%{play.spreadAdj > 0 ? <span style={{fontSize:9,fontWeight:400,opacity:0.7}}> net</span> : null}
                       </span>
@@ -2446,21 +2449,21 @@ function App() {
                           const pkpQual = pkp == null ? "" : csw != null ? (pkp > 30 ? "elite" : pkp > 26 ? "above-average" : "average") : (pkp > 24 ? "above-average" : "average");
                           const apDesc = ap == null ? null : ap > 85 ? "expect him to work deep into the game" : ap > 75 ? "typically goes 5–6 innings" : null;
                           const lkpDesc = lkp == null ? null : lkp > 24 ? "a high-strikeout lineup — works in his favor" : lkp > 16 ? "below-average strikeout tendency" : "elite contact lineup — a tougher test";
-                          const mk = (meets, pts, label) => meets != null ? <span key={label} style={{color:meets?"#3fb950":"#484f58",fontSize:9,opacity:meets?1:0.7}}>{meets?"✓":"✗"}{label}({pts})</span> : null;
+                          const mk = (meets, pts, label) => meets != null ? <span key={label} style={{color:meets?"#3fb950":"#f78166",fontSize:9}}>{meets?"✓":"✗"}{label}({pts})</span> : null;
                           return (
                             <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.65}}>
                               <div>
                                 {first} has {pkpQual ? <>{pkpQual} </> : ""}swing-and-miss stuff
-                                {pkp != null && <> — <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span> {pkpLabel}<span style={{color:play.kpctPts===3?"#3fb950":play.kpctPts===2?"#e3b341":"#484f58",fontSize:9}}>({play.kpctPts ?? 3})</span></>}
-                                {kbb != null && <>, <span style={{color:kbbColor,fontWeight:600}}>{kbb.toFixed(1)}%</span> K-BB%<span style={{color:play.kbbMeets===true?"#3fb950":"#484f58",fontSize:9}}>(2)</span> (strikeouts vs walks)</>}
-                                {ap != null && <>, averaging <span style={{color:apColor,fontWeight:600}}>{Math.round(ap)}</span> pitches/start<span style={{color:play.pitchesMeets===true?"#3fb950":"#484f58",fontSize:9}}>(2)</span>{apDesc ? <span style={{color:"#484f58"}}> — {apDesc}</span> : ""}</>}.
-                                {lkp != null && <>{" "}The {oppName} lineup strikes out at <span style={{color:lkpColor,fontWeight:600}}>{lkp}%</span><span style={{color:play.lkpPts===3?"#3fb950":play.lkpPts===1?"#e3b341":"#484f58",fontSize:9}}>({play.lkpPts ?? (play.lkpMeets===true?3:0)})</span>{handLabel}{isProjected ? <span style={{color:"#484f58",fontSize:10}}> (est.)</span> : ""} — {lkpDesc}.</>}
+                                {pkp != null && <> — <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span> {pkpLabel}<span style={{color:play.kpctPts===3?"#3fb950":play.kpctPts===2?"#e3b341":"#f78166",fontSize:9}}>({play.kpctPts ?? 3})</span></>}
+                                {kbb != null && <>, <span style={{color:kbbColor,fontWeight:600}}>{kbb.toFixed(1)}%</span> K-BB%<span style={{color:play.kbbMeets===true?"#3fb950":"#f78166",fontSize:9}}>(2)</span> (strikeouts vs walks)</>}
+                                {ap != null && <>, averaging <span style={{color:apColor,fontWeight:600}}>{Math.round(ap)}</span> pitches/start<span style={{color:play.pitchesMeets===true?"#3fb950":"#f78166",fontSize:9}}>(2)</span>{apDesc ? <span style={{color:"#484f58"}}> — {apDesc}</span> : ""}</>}.
+                                {lkp != null && <>{" "}The {oppName} lineup strikes out at <span style={{color:lkpColor,fontWeight:600}}>{lkp}%</span><span style={{color:play.lkpPts===3?"#3fb950":play.lkpPts===1?"#e3b341":"#f78166",fontSize:9}}>({play.lkpPts ?? (play.lkpMeets===true?3:0)})</span>{handLabel}{isProjected ? <span style={{color:"#484f58",fontSize:10}}> (est.)</span> : ""} — {lkpDesc}.</>}
                                 {pf != null && Math.abs(pf - 1.0) >= 0.01 && <>{" "}Tonight's venue {pf > 1 ? "is strikeout-friendly" : "suppresses strikeouts"} (<span style={{color:"#484f58"}}>{pf > 1 ? "+" : ""}{((pf-1)*100).toFixed(0)}%</span>).</>}
                               </div>
                               {(gameTotal != null || gameML != null) && (
                                 <div style={{color:"#484f58",fontSize:10,marginTop:3}}>
-                                  Game total <span style={{color:totalColor(gameTotal),fontWeight:600}}>{gameTotal ?? "—"}</span>{play.totalPts != null && <span style={{color:play.totalPts===2?"#3fb950":play.totalPts===1?"#e3b341":"#484f58",fontSize:9}}> ({play.totalPts})</span>}
-                                  {" · "}ML <span style={{color:mlColor(gameML),fontWeight:600}}>{gameML != null ? `${gameML > 0 ? "+" : ""}${gameML}` : "—"}</span>{play.mlPts != null && <span style={{color:play.mlPts===2?"#3fb950":play.mlPts===1?"#e3b341":"#484f58",fontSize:9}}> ({play.mlPts})</span>}
+                                  Game total <span style={{color:totalColor(gameTotal),fontWeight:600}}>{gameTotal ?? "—"}</span>{play.totalPts != null && <span style={{color:play.totalPts===2?"#3fb950":play.totalPts===1?"#e3b341":"#f78166",fontSize:9}}> ({play.totalPts})</span>}
+                                  {" · "}ML <span style={{color:mlColor(gameML),fontWeight:600}}>{gameML != null ? `${gameML > 0 ? "+" : ""}${gameML}` : "—"}</span>{play.mlPts != null && <span style={{color:play.mlPts===2?"#3fb950":play.mlPts===1?"#e3b341":"#f78166",fontSize:9}}> ({play.mlPts})</span>}
                                 </div>
                               )}
                               {_sc != null && (() => {
@@ -2500,7 +2503,7 @@ function App() {
                           const spotDesc = lineupSpot == null ? null : lineupSpot <= 3 ? "top of the order — guaranteed at-bats every game" : lineupSpot <= 4 ? "heart of the order — plenty of at-bats" : null;
                           const whipDesc = whip == null ? null : whip > 1.35 ? "a lot of baserunners" : whip > 1.20 ? "some traffic on base" : "keeps the bases clean";
                           const fipDesc = (fip != null && era != null) ? (fip > era + 0.3 ? "FIP well above ERA — overdue for regression" : fip > era ? "FIP above ERA" : null) : null;
-                          const mk = (meets, pts, label) => meets != null ? <span key={label} style={{color:meets?"#3fb950":"#484f58",fontSize:9,opacity:meets?1:0.7}}>{meets?"✓":"✗"}{label}({pts})</span> : null;
+                          const mk = (meets, pts, label) => meets != null ? <span key={label} style={{color:meets?"#3fb950":"#f78166",fontSize:9}}>{meets?"✓":"✗"}{label}({pts})</span> : null;
                           return (
                             <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.65}}>
                               <div>
@@ -2525,7 +2528,9 @@ function App() {
                                     {mk(play.hitterWhipMeets, 3, "WHIP")}
                                     {mk(play.hitterFipMeets, 2, "FIP")}
                                     {play.hitterParkMeets != null && mk(play.hitterParkMeets, 1, "Park")}
-                                    {play.edge != null && <span style={{color:play.edge >= 3 ? "#3fb950" : play.edge >= 0 ? "#e3b341" : "#f78166",fontSize:9,opacity:play.edge >= 3 ? 1 : 0.7}}>{play.edge >= 3 ? "✓" : "✗"}Edge {play.edge > 0 ? "+" : ""}{play.edge}%(3)</span>}
+                                    {play.hitterBarrelPts != null && <span key="brrl" style={{color:play.hitterBarrelPts>=3?"#3fb950":play.hitterBarrelPts>=2?"#e3b341":play.hitterBarrelPts>=1?"#8b949e":"#f78166",fontSize:9}}>{play.hitterBarrelPts>0?"✓":"✗"}Brrl{play.hitterBarrelPct!=null?" "+play.hitterBarrelPct.toFixed(0)+"%":""}({play.hitterBarrelPts})</span>}
+                                    {play.hitterTotalPts != null && <span key="ou" style={{color:play.hitterTotalPts>=2?"#3fb950":play.hitterTotalPts>=1?"#e3b341":"#f78166",fontSize:9}}>{play.hitterTotalPts>0?"✓":"✗"}O/U{play.hitterGameTotal!=null?" "+play.hitterGameTotal:""}({play.hitterTotalPts})</span>}
+                                    {play.edge != null && <span style={{color:play.edge >= 3 ? "#3fb950" : play.edge >= 0 ? "#e3b341" : "#f78166",fontSize:9,opacity:play.edge >= 3 ? 1 : 0.7,whiteSpace:"nowrap"}}>{play.edge >= 3 ? "✓" : "✗"} Edge {play.edge > 0 ? "+" : ""}{play.edge}%</span>}
                                   </span>
                                 </div>
                               )}
@@ -2549,7 +2554,7 @@ function App() {
                           const minDesc = play.nbaOpportunity == null ? null : play.nbaOpportunity >= 33 ? "a featured starter with a big role" : play.nbaOpportunity >= 30 ? "a key starter" : play.nbaOpportunity >= 25 ? "solid rotation player" : "limited role";
                           const paceDesc = play.nbaPaceAdj == null ? null : play.nbaPaceAdj > 2 ? "a fast game — more possessions, more opportunities to score" : play.nbaPaceAdj > 0 ? "slightly above-average pace" : play.nbaPaceAdj > -2 ? "slightly slower pace" : "a slow game — fewer scoring opportunities";
                           const rankDesc = displayRank == null ? null : displayRank <= 3 ? "one of the worst defenses in the league" : displayRank <= 8 ? "a weak defense" : displayRank <= 15 ? "a soft matchup" : null;
-                          const mkGate = (meets, pts, label) => <span style={{color:meets?"#3fb950":"#484f58",fontSize:9,opacity:meets?1:0.7,whiteSpace:"nowrap"}}>{meets?"✓":"✗"} {label} ({pts})</span>;
+                          const mkGate = (meets, pts, label) => <span style={{color:meets?"#3fb950":"#f78166",fontSize:9,whiteSpace:"nowrap"}}>{meets?"✓":"✗"} {label} ({pts})</span>;
                           return (
                             <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.65}}>
                               <div>
@@ -2569,7 +2574,8 @@ function App() {
                                     {mkGate(play.nbaOpportunity != null && play.nbaOpportunity >= 30, 4, `${play.nbaOpportunity != null ? play.nbaOpportunity.toFixed(0)+"m" : "—"}`)}
                                     {mkGate(play.posDvpRank != null && play.posDvpRank <= 10, 2, `DVP #${play.posDvpRank ?? "—"}`)}
                                     {mkGate(!play.isB2B, 2, play.isB2B ? "B2B" : "Rested")}
-                                    {play.edge != null && <span style={{color:play.edge >= 3 ? "#3fb950" : play.edge >= 0 ? "#e3b341" : "#f78166",fontSize:9,opacity:play.edge >= 3 ? 1 : 0.7,whiteSpace:"nowrap"}}>{play.edge >= 3 ? "✓" : "✗"} Edge {play.edge > 0 ? "+" : ""}{play.edge}% (3)</span>}
+                                    {play.nbaTotalPts != null && <span style={{color:play.nbaTotalPts>=3?"#3fb950":play.nbaTotalPts>=2?"#e3b341":play.nbaTotalPts>=1?"#8b949e":"#f78166",fontSize:9,whiteSpace:"nowrap"}}>{play.nbaTotalPts>=2?"✓":"✗"} O/U{play.nbaGameTotal!=null?" "+play.nbaGameTotal:""} ({play.nbaTotalPts})</span>}
+                                    {play.edge != null && <span style={{color:play.edge >= 3 ? "#3fb950" : play.edge >= 0 ? "#e3b341" : "#f78166",fontSize:9,opacity:play.edge >= 3 ? 1 : 0.7,whiteSpace:"nowrap"}}>{play.edge >= 3 ? "✓" : "✗"} Edge {play.edge > 0 ? "+" : ""}{play.edge}%</span>}
                                   </span>
                                 </div>
                               )}
@@ -2589,7 +2595,7 @@ function App() {
                           const toiDesc = play.nhlOpportunity == null ? null : play.nhlOpportunity >= 21 ? "a top-line role" : play.nhlOpportunity >= 18 ? "a key contributor" : play.nhlOpportunity >= 15 ? "solid ice time" : "limited role";
                           const rankDesc = play.oppRank == null ? null : play.oppRank <= 3 ? "one of the worst defenses in the league" : play.oppRank <= 8 ? "a weak defense" : play.oppRank <= 15 ? "a soft matchup" : null;
                           const saDesc = play.nhlShotsAdj == null ? null : play.nhlShotsAdj > 2 ? "generating high shot volume — more scoring chances" : play.nhlShotsAdj > 0 ? "above-average shot volume" : play.nhlShotsAdj > -2 ? "slightly below average" : "low shot volume allowed";
-                          const mkGate = (meets, pts, label) => <span style={{color:meets?"#3fb950":"#484f58",fontSize:9,opacity:meets?1:0.7,whiteSpace:"nowrap"}}>{meets?"✓":"✗"} {label} ({pts})</span>;
+                          const mkGate = (meets, pts, label) => <span style={{color:meets?"#3fb950":"#f78166",fontSize:9,whiteSpace:"nowrap"}}>{meets?"✓":"✗"} {label} ({pts})</span>;
                           return (
                             <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.65}}>
                               <div>

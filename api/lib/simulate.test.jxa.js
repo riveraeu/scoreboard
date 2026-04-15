@@ -213,28 +213,38 @@ test('buildNbaStatDist returns null for insufficient data', function() {
 });
 
 function computeNbaDropSimScore(o) {
+  // gameTotal tier: ≥235→3pts, ≥225→2pts, ≥215→1pt, <215→0pts, null→1pt
+  var totalPts = o.gameTotal == null ? 1 : o.gameTotal >= 235 ? 3 : o.gameTotal >= 225 ? 2 : o.gameTotal >= 215 ? 1 : 0;
   var preScore = (o.paceAdj != null && o.paceAdj > 0 ? 3 : 0)
     + (o.opportunity != null ? (o.opportunity >= 30 ? 4 : o.opportunity >= 25 ? 2 : 0) : 0)
     + (o.dvpRank != null && o.dvpRank <= 10 ? 2 : 0)
-    + (!o.isB2B ? 2 : 0);
-  return { preScore: preScore, simScore: preScore + (o.edge != null && o.edge > 5 ? 3 : 0) };
+    + (!o.isB2B ? 2 : 0)
+    + totalPts;
+  // edge is a gate only — not part of simScore (max 14)
+  return { preScore: preScore, simScore: preScore };
 }
 
 test('NBA drop simScore: all components contribute correctly', function() {
-  var r = computeNbaDropSimScore({ paceAdj: 2.5, opportunity: 34, dvpRank: 8, isB2B: false, edge: 8 });
-  assert.equal(r.preScore, 11, 'pre-edge: 3+4+2+2=11');
-  assert.equal(r.simScore, 14, 'with edge bonus: 11+3=14');
+  // pace(3) + min≥30(4) + dvp≤10(2) + rested(2) + total null→1 = 12; with total≥235: 3+4+2+2+3=14
+  var r = computeNbaDropSimScore({ paceAdj: 2.5, opportunity: 34, dvpRank: 8, isB2B: false, gameTotal: 238 });
+  assert.equal(r.preScore, 14, '3+4+2+2+3=14 (high total)');
+  assert.equal(r.simScore, 14, 'edge is gate only, simScore=preScore');
+});
+
+test('NBA drop simScore: null game total abstains (1pt)', function() {
+  var r = computeNbaDropSimScore({ paceAdj: 2.5, opportunity: 34, dvpRank: 8, isB2B: false, gameTotal: null });
+  assert.equal(r.preScore, 12, '3+4+2+2+1(abstain)=12');
 });
 
 test('NBA drop simScore: B2B and soft pace give lower score', function() {
-  var r = computeNbaDropSimScore({ paceAdj: -1.0, opportunity: 28, dvpRank: 15, isB2B: true, edge: 2 });
-  assert.equal(r.preScore, 2, 'pre-edge: 0+2+0+0=2');
-  assert.equal(r.simScore, 2, 'no edge bonus');
+  var r = computeNbaDropSimScore({ paceAdj: -1.0, opportunity: 28, dvpRank: 15, isB2B: true, gameTotal: 210 });
+  assert.equal(r.preScore, 2, 'pre-score: 0+2+0+0+0=2 (slow game, no dvp, b2b)');
+  assert.equal(r.simScore, 2, 'edge is gate only');
 });
 
 test('NBA drop simScore: missing fields default to 0 pts', function() {
-  var r = computeNbaDropSimScore({ paceAdj: null, opportunity: null, dvpRank: null, isB2B: false, edge: null });
-  assert.equal(r.preScore, 2, 'only rest contributes when other fields null');
+  var r = computeNbaDropSimScore({ paceAdj: null, opportunity: null, dvpRank: null, isB2B: false, gameTotal: null });
+  assert.equal(r.preScore, 3, 'rest(2) + total null→1(1) = 3');
 });
 
 test('HRR rows filtered to threshold=1 only', function() {
