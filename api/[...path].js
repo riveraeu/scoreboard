@@ -1728,18 +1728,18 @@ var worker_default = {
               continue;
             }
             const _useCsw = _csw != null; // use CSW% whenever available; K% only when CSW% is null
-            // CSW%/K% tiered scoring: >30% CSW or >27% K → 3pts (green); 26-30% CSW or 24-27% K → 2pts (yellow); below → 0pts
+            // CSW%/K% tiered scoring: >30% CSW or >27% K → 3pts (green); 26-30% CSW or 24-27% K → 2pts (yellow); below → 1pt; null → 1pt (abstain)
             if (_useCsw) {
-              kpctPts = _csw > 30 ? 3 : _csw > 26 ? 2 : 0;
+              kpctPts = _csw > 30 ? 3 : _csw > 26 ? 2 : 1;
             } else if (_pkp != null) {
-              kpctPts = _pkp > 27 ? 3 : _pkp > 24 ? 2 : 0;
+              kpctPts = _pkp > 27 ? 3 : _pkp > 24 ? 2 : 1;
             } else {
-              kpctPts = 0;
+              kpctPts = 1;
             }
             kpctMeets = kpctPts > 0;
             kbbMeets = _kbb != null ? _kbb > 15 : null;
-            // lkpPts tiered: > 24% → 3pts (green, high K lineup), > 16% → 1pt (yellow, avg/below-avg lineup), ≤ 16% → 0pts; null → 1pt (abstain)
-            lkpPts = _lkp == null ? 1 : _lkp > 24 ? 3 : _lkp > 16 ? 1 : 0;
+            // lkpPts tiered: > 24% → 3pts (green, high K lineup), > 16% → 2pt (yellow, avg/below-avg lineup), ≤ 16% → 0pts; null → 1pt (abstain)
+            lkpPts = _lkp == null ? 1 : _lkp > 24 ? 3 : _lkp > 16 ? 2 : 0;
             lkpMeets = lkpPts > 0;
             pitchesMeets = _avgP != null ? _avgP > 85 : null;
             parkMeets = _parkKF > 1.0;
@@ -1871,7 +1871,7 @@ var worker_default = {
               reason: "low_confidence",
               simScore,
               opponent: tonightOpp,
-              kpctMeets, kpctPts, kbbMeets, lkpMeets, pitchesMeets, parkMeets, mlPts, totalPts,
+              kpctMeets, kpctPts, kbbMeets, lkpMeets, lkpPts, pitchesMeets, parkMeets, mlPts, totalPts,
               seasonPct: parseFloat(primaryPct.toFixed(1)), softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
               truePct: _kTruePct, edge: parseFloat((_kTruePct - kalshiPct - (kalshiSpread != null ? kalshiSpread / 2 : 0)).toFixed(1)),
               pitcherCSWPct: sportByteam.mlb?.pitcherCSWPct?.[playerTeam] ?? null,
@@ -2258,7 +2258,7 @@ var worker_default = {
               reason: "low_confidence",
               simScore, finalSimScore,
               opponent: tonightOpp,
-              kpctMeets, kpctPts, kbbMeets, lkpMeets, pitchesMeets, parkMeets, mlPts, totalPts,
+              kpctMeets, kpctPts, kbbMeets, lkpMeets, lkpPts, pitchesMeets, parkMeets, mlPts, totalPts,
               seasonPct: parseFloat(primaryPct.toFixed(1)), softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
               truePct: parseFloat(truePct.toFixed(1)), edge: parseFloat(edge.toFixed(1)),
               pitcherCSWPct: sportByteam.mlb?.pitcherCSWPct?.[playerTeam] ?? null,

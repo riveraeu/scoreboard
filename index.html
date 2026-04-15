@@ -111,7 +111,7 @@ const MOCK_PLAYS = [
     softPct:95.0, softGames:10, truePct:94.0, edge:12.0,
     kelly:0.310, ev:0.130, historicalHitRate:92.0, historicalGames:10,
     lineupKPct:21.5, pitcherCSWPct:32.1, pitcherKPct:26.5, pitcherKBBPct:18.2, pitcherAvgPitches:94.3, log5Avg:31.6, log5Pct:96.1, expectedKs:8.5, parkFactor:1.00,
-    simScore:12, finalSimScore:12, kpctMeets:true, kpctPts:3, kbbMeets:true, lkpMeets:true, lkpPts:1, pitchesMeets:true, mlPts:2, totalPts:2,
+    simScore:13, finalSimScore:13, kpctMeets:true, kpctPts:3, kbbMeets:true, lkpMeets:true, lkpPts:2, pitchesMeets:true, mlPts:2, totalPts:2,
     gameTotal:7.5, gameMoneyline:-140, pitcherHand:"R", gameDate:TODAY, gameTime:new Date().toISOString().replace(/T.*/, "T23:10:00Z"), lineupConfirmed:true,
   },
   // ── PURPLE (≥85%) ──────────────────────────────────────────────────────────
@@ -136,7 +136,7 @@ const MOCK_PLAYS = [
     softPct:82.0, softGames:9, truePct:81.0, edge:7.0,
     kelly:0.090, ev:0.038, historicalHitRate:74.0, historicalGames:9,
     lineupKPct:22.1, pitcherCSWPct:30.8, pitcherKPct:25.9, pitcherKBBPct:14.1, pitcherAvgPitches:86.7, log5Avg:27.5, log5Pct:73.2, expectedKs:7.4, parkFactor:0.96,
-    simScore:8, finalSimScore:8, kpctMeets:true, kpctPts:3, kbbMeets:false, lkpMeets:true, lkpPts:1, pitchesMeets:true, mlPts:2, totalPts:1,
+    simScore:9, finalSimScore:9, kpctMeets:true, kpctPts:3, kbbMeets:false, lkpMeets:true, lkpPts:2, pitchesMeets:true, mlPts:2, totalPts:1,
     gameTotal:7.5, gameMoneyline:-160, pitcherHand:"R", gameDate:TODAY,
   },
   // ── GREEN (≥75%) ───────────────────────────────────────────────────────────
@@ -1089,9 +1089,9 @@ function App() {
                       {(() => {
                         // Sport+stat specific extra columns
                         const XCOLS = {
-                          "mlb|hrr":        [{k:"spot",l:"Spot"},{k:"whip",l:"WHIP"},{k:"fip",l:"FIP"},{k:"brrl",l:"Brrl%"},{k:"env",l:"Park"},{k:"ml",l:"ML"},{k:"sim",l:"Score"}],
-                          "mlb|hits":       [{k:"spot",l:"Spot"},{k:"whip",l:"WHIP"},{k:"fip",l:"FIP"},{k:"brrl",l:"Brrl%"},{k:"env",l:"Park"},{k:"ml",l:"ML"},{k:"sim",l:"Score"}],
-                          "mlb|strikeouts": [{k:"env",l:"Park"},{k:"ml",l:"ML"},{k:"ou",l:"O/U"},{k:"csw",l:"CSW%"},{k:"kbb",l:"K-BB%"},{k:"lkp",l:"oK%"},{k:"pps",l:"P/GS"},{k:"sim",l:"Score"}],
+                          "mlb|hrr":        [{k:"spot",l:"Spot"},{k:"whip",l:"WHIP"},{k:"fip",l:"FIP"},{k:"brrl",l:"Brrl%"},{k:"env",l:"Park"},{k:"ml",l:"ML"}],
+                          "mlb|hits":       [{k:"spot",l:"Spot"},{k:"whip",l:"WHIP"},{k:"fip",l:"FIP"},{k:"brrl",l:"Brrl%"},{k:"env",l:"Park"},{k:"ml",l:"ML"}],
+                          "mlb|strikeouts": [{k:"env",l:"Park"},{k:"ml",l:"ML"},{k:"ou",l:"O/U"},{k:"csw",l:"CSW%"},{k:"kbb",l:"K-BB%"},{k:"lkp",l:"oK%"},{k:"pps",l:"P/GS"}],
                           "nba|points":     [{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"},{k:"nbapace",l:"Pace"},{k:"nbaopp",l:"AvgMin"},{k:"nba_b2b",l:"Rest"},{k:"sim",l:"Score"}],
                           "nba|rebounds":   [{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"},{k:"nbapace",l:"Pace"},{k:"nbaopp",l:"AvgMin"},{k:"nba_b2b",l:"Rest"},{k:"sim",l:"Score"}],
                           "nba|assists":    [{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"},{k:"nbapace",l:"Pace"},{k:"nbaopp",l:"AvgMin"},{k:"nba_b2b",l:"Rest"},{k:"sim",l:"Score"}],
@@ -2504,22 +2504,8 @@ function App() {
                                 {play.softPct != null ? <>, and <span style={{color:"#3fb950",fontWeight:600}}>{play.softPct}%</span> against weak pitching matchups{play.softGames ? <span style={{color:"#484f58",fontSize:10}}> ({play.softGames}g)</span> : ""}</> : ""}.
                                 {pf != null && Math.abs(pf - 1.0) >= 0.03 && <>{" "}Tonight's venue is {pf > 1 ? "hitter-friendly" : "pitcher-friendly"} (<span style={{color:"#484f58"}}>{pf > 1 ? "+" : ""}{((pf-1)*100).toFixed(0)}% park factor</span>).</>}
                                 {hitterGameTotal != null && <>{" "}<span style={{color:"#484f58"}}>Game total </span><span style={{color:hitterTotalColor(hitterGameTotal),fontWeight:600}}>{hitterGameTotal}</span><span style={{color:"#484f58"}}>{hitterGameTotal >= 9.5 ? " — a high-scoring game, favorable for hitting" : hitterGameTotal >= 7.5 ? " — an average total" : " — a low-scoring game, tougher for hitters"}.</span></>}
+                                {sc != null && <>{" "}<span title={scTitle} style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,cursor:"default",verticalAlign:"middle"}}>{sc}/14 {sc>=11?"Alpha":"Mid"}</span></>}
                               </div>
-                              {sc != null && (
-                                <div style={{display:"flex",alignItems:"center",gap:6,marginTop:6,paddingTop:5,borderTop:"1px solid #161b22"}}>
-                                  <span style={{color:"#484f58",fontSize:10}}>SimScore</span>
-                                  <span title={scTitle} style={{background:"#161b22",borderRadius:4,padding:"1px 6px",color:scColor,fontWeight:700,fontSize:10,cursor:"default"}}>{sc}/14 {sc>=11?"Alpha":"Mid"}</span>
-                                  <span style={{display:"inline-flex",gap:4,flexWrap:"wrap"}}>
-                                    {lineupSpot != null && mk(lineupSpot <= 4, `#${lineupSpot}`)}
-                                    {mk(play.hitterWhipMeets, "WHIP")}
-                                    {mk(play.hitterFipMeets, "FIP")}
-                                    {play.hitterParkMeets != null && mk(play.hitterParkMeets, "Park")}
-                                    {play.hitterBarrelPts != null && <span key="brrl" style={{color:play.hitterBarrelPts>=3?"#3fb950":play.hitterBarrelPts>=2?"#e3b341":play.hitterBarrelPts>=1?"#8b949e":"#f78166",fontSize:9,whiteSpace:"nowrap"}}>{play.hitterBarrelPts>0?"✓":"✗"}Brrl{play.hitterBarrelPct!=null?" "+play.hitterBarrelPct.toFixed(0)+"%":""}</span>}
-                                    {play.hitterTotalPts != null && <span key="ou" style={{color:play.hitterTotalPts>=2?"#3fb950":play.hitterTotalPts>=1?"#e3b341":"#f78166",fontSize:9,whiteSpace:"nowrap"}}>{play.hitterTotalPts>0?"✓":"✗"}O/U{play.hitterGameTotal!=null?" "+play.hitterGameTotal:""}</span>}
-                                    {play.edge != null && <span style={{color:play.edge >= 3 ? "#3fb950" : play.edge >= 0 ? "#e3b341" : "#f78166",fontSize:9,opacity:play.edge >= 3 ? 1 : 0.7,whiteSpace:"nowrap"}}>{play.edge >= 3 ? "✓" : "✗"} Edge {play.edge > 0 ? "+" : ""}{play.edge}%</span>}
-                                  </span>
-                                </div>
-                              )}
                             </div>
                           );
                         })()}

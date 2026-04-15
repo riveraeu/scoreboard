@@ -57,15 +57,15 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
 - `pitcherKDistCache` built before play loop
 - 10000 sims if `simScore ≥ 11`, else 5000
 - **SimScore** (max 14, no edge bonus — edge gates separately):
-  - CSW%/K% tiered (0/2/3pts): CSW% > 30% = 3pts (green), CSW% > 26% to ≤ 30% = 2pts (yellow), CSW% ≤ 26% = 0pts. Falls back to regressed K% only if CSW% is unavailable (null): K% > 27% = 3pts, K% > 24% to ≤ 27% = 2pts, K% ≤ 24% = 0pts. (The gs26 < 4 small-sample guard was removed — CSW% is always used when present, regardless of gs26.) Stored as `kpctPts` (0/2/3); `kpctMeets = kpctPts > 0` (boolean).
+  - CSW%/K% tiered (1/2/3pts): CSW% > 30% = 3pts (green), CSW% > 26% to ≤ 30% = 2pts (yellow), CSW% ≤ 26% = 1pt (red). Falls back to regressed K% only if CSW% is unavailable (null): K% > 27% = 3pts, K% > 24% to ≤ 27% = 2pts, K% ≤ 24% = 1pt. Null CSW% + null K% = 1pt (abstain). (The gs26 < 4 small-sample guard was removed — CSW% is always used when present, regardless of gs26.) Stored as `kpctPts` (1/2/3); `kpctMeets = kpctPts > 0` (boolean, always true now).
   - K-BB% > 15% → 2pts
-  - Lineup oK% tiered (`lkpPts`): > 24% → 3pts (green), > 16% → 1pt (yellow, avg/below-avg lineup), ≤ 16% → 0pts; null → 1pt (abstain, like ML/total). `lkpMeets = lkpPts > 0`. Hand-adjusted vs RHP/LHP.
+  - Lineup oK% tiered (`lkpPts`): > 24% → 3pts (green), > 16% → 2pt (yellow, avg/below-avg lineup), ≤ 16% → 0pts; null → 1pt (abstain, like ML/total). `lkpMeets = lkpPts > 0`. Hand-adjusted vs RHP/LHP.
   - Avg pitches/start > 85 → 2pts (uses 2026 data only if gs26 ≥ 4; else falls back to 2025)
   - ML tier (`mlPts`): ≤ -130 → 2pts, -129 to -101 → 1pt, ≥ -100 → 0pts; null → 1pt
   - O/U tier (`totalPts`): ≤ 8.5 → 2pts (low total = pitcher dominant), 8.5–10.5 → 1pt, >10.5 → 0pts; null → 1pt
   - Edge ≥ 3% required (gates play independently, not part of SimScore)
 - `parkMeets` (`PARK_KFACTOR[homeTeam] > 1.0`) is still computed and included in debug output but no longer contributes to SimScore — park factor is applied inside `simulateKsDist` and affects truePct directly. `PARK_KFACTOR` values updated from FanGraphs 2024 SO column (multi-year rolling avg).
-- `kpctPts`: 0/2/3 — CSW%/K% tier score. 3=green (CSW%>30% or K%>27%), 2=yellow (CSW% 26-30% or K% 24-27%), 0=red. Drives badge color and value in explanation cards.
+- `kpctPts`: 1/2/3 — CSW%/K% tier score. 3=green (CSW%>30% or K%>27%), 2=yellow (CSW% 26-30% or K% 24-27%), 1=red (≤26% CSW or ≤24% K, or null). Drives badge color and value in explanation cards.
 - `mlPts`: 0/1/2 — ML tier score. Color in UI: 2=green, 1=yellow, 0=red. Also drives ML column color in market report (≤-130 green, -129 to -101 yellow, ≥-100 red).
 - `totalPts`: 0/1/2 — O/U tier score. Color in UI: 2=green, 1=yellow, 0=red. Drives O/U column color in market report (≤8.5 green, 8.5–10.5 yellow, >10.5 red). Low total = pitcher dominant = favorable for Ks.
 - `pitcherGS26`: 2026 games started per team abbr, exported from `buildPitcherKPct`, used for small-sample guards. Included in `plays[]` output for debugging (alongside `pitcherHasAnchor`).
