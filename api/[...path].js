@@ -313,7 +313,7 @@ var worker_default = {
                 stats: ev.stats || [],
                 date: meta.date || (meta.gameDate ? meta.gameDate.slice(0, 10) : null),
                 oppAbbr: meta.opponent?.abbreviation || null,
-                isHome: meta.home?.id === meta.atVs ? false : null
+                isHome: meta.atVs != null ? meta.atVs !== "@" : null
               });
             }
           }
