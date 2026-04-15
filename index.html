@@ -2311,7 +2311,7 @@ function App() {
                                   const isStatCol = c.key === activeColKey;
                                   let display;
                                   if (c.key === 'date') {
-                                    display = row.date ? row.date.slice(5).replace('-', '/') : '—';
+                                    display = row.date ? row.date.slice(5, 10).replace('-', '/') : '—';
                                   } else if (c.key === 'isHome') {
                                     display = row.isHome === false
                                       ? <span style={{color:"#8b949e"}}>@</span>
