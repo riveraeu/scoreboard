@@ -19,6 +19,8 @@
     }
     .picks-fab { display: flex; }
     @media (min-width: 900px) { .picks-fab { display: none; } }
+    .gl-th-wrap { display: inline-block; position: relative; }
+    .gl-th-wrap:hover .gl-tooltip { display: block !important; }
   </style>
 </head>
 <body>
@@ -398,6 +400,67 @@ function AddPickModal({ onClose, onAdd, initialOdds = "-110" }) {
   );
 }
 
+// Column definitions for per-game gamelog table in player card.
+// Each col: { key, label, tooltip, align }
+// key maps to perGame row fields (or 'rest' for computed rest-days).
+const GAMELOG_COLS = {
+  "baseball/mlb_pitcher": [
+    { key:"date",        label:"Date", tooltip:"Game date",                                          align:"left"   },
+    { key:"isHome",      label:"H/A",  tooltip:"Home (blank) or away (@)",                          align:"center" },
+    { key:"oppAbbr",     label:"Opp",  tooltip:"Opponent",                                          align:"left"   },
+    { key:"ip",          label:"IP",   tooltip:"Innings pitched",                                   align:"right"  },
+    { key:"hitsAllowed", label:"H",    tooltip:"Hits allowed",                                      align:"right"  },
+    { key:"er",          label:"ER",   tooltip:"Earned runs allowed",                               align:"right"  },
+    { key:"bb",          label:"BB",   tooltip:"Walks — component of K-BB% SimScore gate",         align:"right"  },
+    { key:"strikeouts",  label:"K",    tooltip:"Strikeouts — drives CSW%/K% and K-BB% SimScore",   align:"right"  },
+    { key:"pc",          label:"PC",   tooltip:"Pitch count — feeds avg pitches/start SimScore gate", align:"right" },
+  ],
+  "baseball/mlb_hitter": [
+    { key:"date",      label:"Date", tooltip:"Game date",                                       align:"left"   },
+    { key:"isHome",    label:"H/A",  tooltip:"Home (blank) or away (@)",                       align:"center" },
+    { key:"oppAbbr",   label:"Opp",  tooltip:"Opponent",                                       align:"left"   },
+    { key:"ab",        label:"AB",   tooltip:"At-bats",                                        align:"right"  },
+    { key:"hits",      label:"H",    tooltip:"Hits",                                           align:"right"  },
+    { key:"homeRuns",  label:"HR",   tooltip:"Home runs",                                      align:"right"  },
+    { key:"r",         label:"R",    tooltip:"Runs scored — component of H+R+RBI",             align:"right"  },
+    { key:"rbi",       label:"RBI",  tooltip:"Runs batted in — component of H+R+RBI",          align:"right"  },
+    { key:"bb",        label:"BB",   tooltip:"Walks",                                          align:"right"  },
+    { key:"hrr",       label:"HRR",  tooltip:"Hits + Runs + RBIs combined (Kalshi stat)",      align:"right"  },
+  ],
+  "basketball/nba": [
+    { key:"date",          label:"Date", tooltip:"Game date",                                                      align:"left"   },
+    { key:"isHome",        label:"H/A",  tooltip:"Home (blank) or away (@)",                                      align:"center" },
+    { key:"oppAbbr",       label:"Opp",  tooltip:"Opponent",                                                      align:"left"   },
+    { key:"points",        label:"PTS",  tooltip:"Points scored",                                                 align:"right"  },
+    { key:"rebounds",      label:"REB",  tooltip:"Rebounds",                                                      align:"right"  },
+    { key:"assists",       label:"AST",  tooltip:"Assists",                                                       align:"right"  },
+    { key:"threePointers", label:"3P",   tooltip:"Three-pointers made",                                           align:"right"  },
+    { key:"min",           label:"MIN",  tooltip:"Minutes played — ≥30 min = 4 SimScore pts, ≥25 = 2 pts",       align:"right"  },
+    { key:"rest",          label:"Rest", tooltip:"Days since last game — 1 = back-to-back (B2B SimScore gate)",   align:"right"  },
+  ],
+  "hockey/nhl": [
+    { key:"date",    label:"Date", tooltip:"Game date",                                                         align:"left"   },
+    { key:"isHome",  label:"H/A",  tooltip:"Home (blank) or away (@)",                                         align:"center" },
+    { key:"oppAbbr", label:"Opp",  tooltip:"Opponent",                                                         align:"left"   },
+    { key:"g",       label:"G",    tooltip:"Goals",                                                            align:"right"  },
+    { key:"a",       label:"A",    tooltip:"Assists",                                                          align:"right"  },
+    { key:"points",  label:"PTS",  tooltip:"Points (goals + assists)",                                         align:"right"  },
+    { key:"toi",     label:"TOI",  tooltip:"Time on ice — ≥18 min = 4 SimScore pts, ≥15 min = 2 pts",         align:"right"  },
+    { key:"rest",    label:"Rest", tooltip:"Days since last game — 1 = back-to-back (B2B SimScore gate)",      align:"right"  },
+  ],
+  "football/nfl": [
+    { key:"date",           label:"Date",   tooltip:"Game date",           align:"left"   },
+    { key:"isHome",         label:"H/A",    tooltip:"Home (blank) or away (@)", align:"center" },
+    { key:"oppAbbr",        label:"Opp",    tooltip:"Opponent",            align:"left"   },
+    { key:"completions",    label:"CMP",    tooltip:"Completions",         align:"right"  },
+    { key:"attempts",       label:"ATT",    tooltip:"Pass attempts",       align:"right"  },
+    { key:"passingYards",   label:"PYds",   tooltip:"Passing yards",       align:"right"  },
+    { key:"rushingYards",   label:"RYds",   tooltip:"Rushing yards",       align:"right"  },
+    { key:"receptions",     label:"REC",    tooltip:"Receptions",          align:"right"  },
+    { key:"receivingYards", label:"RecYds", tooltip:"Receiving yards",     align:"right"  },
+  ],
+};
+
 function App() {
   const [sport, setSport] = React.useState("basketball/nba"); // derived from selected player
   const [perGame, setPerGame] = React.useState([]);
@@ -431,6 +494,7 @@ function App() {
   const [reportData, setReportData] = React.useState(null);
   const [reportLoading, setReportLoading] = React.useState(false);
   const [reportSport, setReportSport] = React.useState("all");
+  const [gamelogSort, setGamelogSort] = React.useState({ col: 'date', dir: 'desc' });
   // Tiered unit sizing: based on American odds (price reflects market conviction)
   // Heavier favorites = market is more certain = we size up for the edge
   const tierUnits = (americanOdds) => {
@@ -775,6 +839,8 @@ function App() {
         return isNaN(v) ? undefined : v;
       };
       const lv = lbl => byLabel(stats, lbl);
+      // Raw string lookup — used for TOI which is MM:SS and would be mangled by parseFloat
+      const lvRaw = lbl => { const i = ul.indexOf(lbl); return i === -1 || stats[i] == null ? undefined : stats[i]; };
       const gs = {}; // per-game stats for DvP
 
       if (sport === "basketball/nba") {
@@ -785,6 +851,8 @@ function App() {
 
         const tpm = lv("3PT");
         if (tpm !== undefined) { result.threePointers?.push(tpm); gs.threePointers = tpm; }
+        const min = lv("MIN");
+        if (min !== undefined) { gs.min = min; }
       }
 
       if (sport === "football/nfl") {
@@ -802,14 +870,23 @@ function App() {
           const bb = lv("BB");
           const ip = lv("IP");
           const ha = lv("H"); // hits allowed
+          const er = lv("ER");
+          const pc = lv("PC");
           if (k  !== undefined) { result.strikeouts?.push(k);  gs.strikeouts = k; }
           if (bb !== undefined) { result.bb?.push(bb); gs.bb = bb; }
           if (ip !== undefined) { result.ip?.push(ip); gs.ip = ip; }
           if (ha !== undefined) { result.hitsAllowed?.push(ha); gs.hitsAllowed = ha; }
+          if (er !== undefined) { gs.er = er; }
+          if (pc !== undefined) { gs.pc = pc; }
         } else {
           const h = lv("H"), hr = lv("HR"), rbi = lv("RBI"), r = lv("R"), b2 = lv("2B"), b3 = lv("3B");
+          const ab = lv("AB"), bb = lv("BB");
           if (h   !== undefined) { result.hits?.push(h); gs.hits = h; }
           if (hr  !== undefined) { gs.homeRuns = hr; }
+          if (ab  !== undefined) { gs.ab = ab; }
+          if (r   !== undefined) { gs.r = r; }
+          if (rbi !== undefined) { gs.rbi = rbi; }
+          if (bb  !== undefined) { gs.bb = bb; }
           // H+R+RBI combined stat
           if (h !== undefined && r !== undefined && rbi !== undefined) {
             const hrr = h + r + rbi; result.hrr?.push(hrr); gs.hrr = hrr;
@@ -824,12 +901,21 @@ function App() {
 
       if (sport === "hockey/nhl") {
         const sog = lv("SOG") ?? lv("S"), pts = lv("PTS"), sv = lv("SV");
+        const g = lv("G"), a = lv("A");
+        const toi = lvRaw("TOI"); // preserve MM:SS string; parseFloat would truncate seconds
         if (sog !== undefined) { result.shotsOnGoal?.push(sog); gs.shotsOnGoal = sog; }
         if (pts !== undefined) { result.points?.push(pts); gs.points = pts; }
         if (sv  !== undefined) { result.saves?.push(sv); gs.saves = sv; }
+        if (g   !== undefined) { gs.g = g; }
+        if (a   !== undefined) { gs.a = a; }
+        if (toi !== undefined) { gs.toi = toi; }
       }
 
-      perGame.push({ oppId: ev.oppId || null, oppAbbr: ev.oppAbbr || null, season: ev.season ?? null, ...gs });
+      // Derive season from date (ev.season is never set by the API)
+      const evDate = ev.date || null;
+      const evSeason = evDate ? parseInt(evDate.slice(0, 4)) : null;
+      perGame.push({ oppId: ev.oppId || null, oppAbbr: ev.oppAbbr || null,
+        date: evDate, isHome: ev.isHome ?? null, season: evSeason, ...gs });
     });
 
     return { aggregated: result, perGame, isPitcher };
@@ -2098,6 +2184,170 @@ function App() {
                     }
                   </div>
                 </div>
+
+                {/* Gamelog table */}
+                {(() => {
+                  const glKey = sport === "baseball/mlb"
+                    ? (mlbIsPitcher ? "baseball/mlb_pitcher" : "baseball/mlb_hitter")
+                    : sport;
+                  const cols = GAMELOG_COLS[glKey];
+                  if (!cols || perGame.length === 0) return null;
+
+                  // Filter to current season (derived from date year)
+                  const seasons = perGame.map(r => r.season).filter(s => s != null);
+                  const currentSeason = seasons.length > 0 ? Math.max(...seasons) : null;
+                  const seasonRows = currentSeason != null
+                    ? perGame.filter(r => r.season === currentSeason)
+                    : perGame;
+                  if (seasonRows.length === 0) return null;
+
+                  // Compute rest days (days since prior game) without mutating perGame
+                  const byDateAsc = [...seasonRows].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+                  const restMap = new Map();
+                  byDateAsc.forEach((row, i) => {
+                    const rest = (i > 0 && row.date && byDateAsc[i-1].date)
+                      ? Math.round((new Date(row.date) - new Date(byDateAsc[i-1].date)) / 86400000)
+                      : null;
+                    restMap.set(row, rest);
+                  });
+
+                  // TOI: parse "MM:SS" or decimal-minutes → total seconds for sorting
+                  const toiToSec = v => {
+                    if (v == null) return -1;
+                    const s = String(v);
+                    if (s.includes(':')) { const [m, sec] = s.split(':').map(Number); return m * 60 + (sec || 0); }
+                    const f = parseFloat(s); return isNaN(f) ? -1 : Math.round(f * 60);
+                  };
+                  // Format TOI for display
+                  const fmtToi = v => {
+                    if (v == null) return '—';
+                    const s = String(v);
+                    if (s.includes(':')) return s;
+                    const f = parseFloat(s);
+                    if (isNaN(f)) return s;
+                    return `${Math.floor(f)}:${String(Math.round((f % 1) * 60)).padStart(2, '0')}`;
+                  };
+
+                  // Sort
+                  const { col: sCol, dir: sDir } = gamelogSort;
+                  const sorted = [...seasonRows].sort((a, b) => {
+                    let av, bv;
+                    if (sCol === 'rest') { av = restMap.get(a); bv = restMap.get(b); }
+                    else if (sCol === 'toi') { av = toiToSec(a.toi); bv = toiToSec(b.toi); }
+                    else { av = a[sCol] ?? null; bv = b[sCol] ?? null; }
+                    if (av === null && bv === null) return 0;
+                    if (av === null) return 1;
+                    if (bv === null) return -1;
+                    const cmp = typeof av === 'string' ? av.localeCompare(bv) : av - bv;
+                    return sDir === 'asc' ? cmp : -cmp;
+                  });
+
+                  const handleSort = key => setGamelogSort(prev => ({
+                    col: key,
+                    dir: prev.col === key ? (prev.dir === 'desc' ? 'asc' : 'desc') : 'desc',
+                  }));
+
+                  // Active stat column highlight: maps safeTab → column key
+                  const activeColKey = {
+                    strikeouts: 'strikeouts', hits: 'hits', hrr: 'hrr',
+                    points: 'points', rebounds: 'rebounds', assists: 'assists', threePointers: 'threePointers',
+                  }[safeTab] ?? null;
+
+                  return (
+                    <div style={{marginTop:16,borderTop:"1px solid #21262d",paddingTop:14}}>
+                      <div style={{fontSize:11,color:"#484f58",marginBottom:8}}>
+                        {currentSeason ? `${currentSeason} season` : "Season"} · {seasonRows.length} games
+                      </div>
+                      <div style={{overflowX:"auto",overflowY:"auto",maxHeight:280,borderRadius:6,border:"1px solid #21262d"}}>
+                        <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                          <thead>
+                            <tr style={{position:"sticky",top:0,background:"#1c2128",zIndex:2}}>
+                              {cols.map(c => {
+                                const isSortActive = c.key === sCol;
+                                const isStatCol = c.key === activeColKey;
+                                return (
+                                  <th key={c.key} onClick={() => handleSort(c.key)} style={{
+                                    padding:"5px 8px",
+                                    textAlign: c.align || 'right',
+                                    color: isStatCol ? "#58a6ff" : isSortActive ? "#c9d1d9" : "#8b949e",
+                                    fontWeight: isSortActive ? 700 : 500,
+                                    cursor:"pointer",
+                                    whiteSpace:"nowrap",
+                                    userSelect:"none",
+                                    borderBottom:"1px solid #30363d",
+                                  }}>
+                                    <span className="gl-th-wrap">
+                                      {c.label}
+                                      <span style={{marginLeft:3,opacity:isSortActive?1:0.35,fontSize:9}}>
+                                        {isSortActive ? (sDir === 'asc' ? '▲' : '▼') : '⇅'}
+                                      </span>
+                                      <span className="gl-tooltip" style={{
+                                        display:"none",
+                                        position:"absolute",
+                                        bottom:"calc(100% + 5px)",
+                                        left:"50%",
+                                        transform:"translateX(-50%)",
+                                        background:"#1c2128",
+                                        border:"1px solid #30363d",
+                                        borderRadius:4,
+                                        padding:"3px 8px",
+                                        fontSize:10,
+                                        color:"#c9d1d9",
+                                        whiteSpace:"nowrap",
+                                        pointerEvents:"none",
+                                        zIndex:50,
+                                        boxShadow:"0 2px 8px rgba(0,0,0,0.5)",
+                                      }}>{c.tooltip}</span>
+                                    </span>
+                                  </th>
+                                );
+                              })}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {sorted.map((row, i) => (
+                              <tr key={i} style={{background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.015)"}}>
+                                {cols.map(c => {
+                                  const isStatCol = c.key === activeColKey;
+                                  let display;
+                                  if (c.key === 'date') {
+                                    display = row.date ? row.date.slice(5).replace('-', '/') : '—';
+                                  } else if (c.key === 'isHome') {
+                                    display = row.isHome === false
+                                      ? <span style={{color:"#8b949e"}}>@</span>
+                                      : row.isHome === true ? '' : '—';
+                                  } else if (c.key === 'rest') {
+                                    const r = restMap.get(row);
+                                    display = r === null ? '—'
+                                      : r === 1 ? <span style={{color:"#f78166",fontWeight:600}}>1</span>
+                                      : r;
+                                  } else if (c.key === 'toi') {
+                                    display = fmtToi(row.toi);
+                                  } else if (c.key === 'ip') {
+                                    display = row.ip != null ? row.ip.toFixed(1) : '—';
+                                  } else {
+                                    const v = row[c.key];
+                                    display = v != null ? v : '—';
+                                  }
+                                  return (
+                                    <td key={c.key} style={{
+                                      padding:"3px 8px",
+                                      textAlign: c.align || 'right',
+                                      color: isStatCol && row[c.key] != null ? "#c9d1d9" : "#8b949e",
+                                      background: isStatCol ? "rgba(88,166,255,0.04)" : "transparent",
+                                      borderBottom:"1px solid #161b22",
+                                      whiteSpace:"nowrap",
+                                    }}>{display}</td>
+                                  );
+                                })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })()}
               </>
             )}
           </div>
