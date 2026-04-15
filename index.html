@@ -401,63 +401,63 @@ function AddPickModal({ onClose, onAdd, initialOdds = "-110" }) {
 }
 
 // Column definitions for per-game gamelog table in player card.
-// Each col: { key, label, tooltip, align }
+// Each col: { key, label, tooltip, align? }  align defaults to "right"; only "left"/"center" need specifying.
 // key maps to perGame row fields (or 'rest' for computed rest-days).
 const GAMELOG_COLS = {
   "baseball/mlb_pitcher": [
-    { key:"date",        label:"Date", tooltip:"Game date",                                          align:"left"   },
-    { key:"isHome",      label:"H/A",  tooltip:"Home (blank) or away (@)",                          align:"center" },
-    { key:"oppAbbr",     label:"Opp",  tooltip:"Opponent",                                          align:"left"   },
-    { key:"ip",          label:"IP",   tooltip:"Innings pitched",                                   align:"right"  },
-    { key:"hitsAllowed", label:"H",    tooltip:"Hits allowed",                                      align:"right"  },
-    { key:"er",          label:"ER",   tooltip:"Earned runs allowed",                               align:"right"  },
-    { key:"bb",          label:"BB",   tooltip:"Walks — component of K-BB% SimScore gate",         align:"right"  },
-    { key:"strikeouts",  label:"K",    tooltip:"Strikeouts — drives CSW%/K% and K-BB% SimScore",   align:"right"  },
-    { key:"pc",          label:"PC",   tooltip:"Pitch count — feeds avg pitches/start SimScore gate", align:"right" },
+    { key:"date",        label:"Date", tooltip:"Game date",                                           align:"left"   },
+    { key:"isHome",      label:"H/A",  tooltip:"Home (blank) or away (@)",                           align:"center" },
+    { key:"oppAbbr",     label:"Opp",  tooltip:"Opponent",                                           align:"left"   },
+    { key:"ip",          label:"IP",   tooltip:"Innings pitched"                                                     },
+    { key:"hitsAllowed", label:"H",    tooltip:"Hits allowed"                                                        },
+    { key:"er",          label:"ER",   tooltip:"Earned runs allowed"                                                 },
+    { key:"bb",          label:"BB",   tooltip:"Walks — component of K-BB% SimScore gate"                           },
+    { key:"strikeouts",  label:"K",    tooltip:"Strikeouts — drives CSW%/K% and K-BB% SimScore"                     },
+    { key:"pc",          label:"PC",   tooltip:"Pitch count — feeds avg pitches/start SimScore gate"                 },
   ],
   "baseball/mlb_hitter": [
-    { key:"date",      label:"Date", tooltip:"Game date",                                       align:"left"   },
-    { key:"isHome",    label:"H/A",  tooltip:"Home (blank) or away (@)",                       align:"center" },
-    { key:"oppAbbr",   label:"Opp",  tooltip:"Opponent",                                       align:"left"   },
-    { key:"ab",        label:"AB",   tooltip:"At-bats",                                        align:"right"  },
-    { key:"hits",      label:"H",    tooltip:"Hits",                                           align:"right"  },
-    { key:"homeRuns",  label:"HR",   tooltip:"Home runs",                                      align:"right"  },
-    { key:"r",         label:"R",    tooltip:"Runs scored — component of H+R+RBI",             align:"right"  },
-    { key:"rbi",       label:"RBI",  tooltip:"Runs batted in — component of H+R+RBI",          align:"right"  },
-    { key:"bb",        label:"BB",   tooltip:"Walks",                                          align:"right"  },
-    { key:"hrr",       label:"HRR",  tooltip:"Hits + Runs + RBIs combined (Kalshi stat)",      align:"right"  },
+    { key:"date",      label:"Date", tooltip:"Game date",                                  align:"left"   },
+    { key:"isHome",    label:"H/A",  tooltip:"Home (blank) or away (@)",                  align:"center" },
+    { key:"oppAbbr",   label:"Opp",  tooltip:"Opponent",                                  align:"left"   },
+    { key:"ab",        label:"AB",   tooltip:"At-bats"                                                   },
+    { key:"hits",      label:"H",    tooltip:"Hits"                                                      },
+    { key:"homeRuns",  label:"HR",   tooltip:"Home runs"                                                 },
+    { key:"r",         label:"R",    tooltip:"Runs scored — component of H+R+RBI"                       },
+    { key:"rbi",       label:"RBI",  tooltip:"Runs batted in — component of H+R+RBI"                    },
+    { key:"bb",        label:"BB",   tooltip:"Walks"                                                     },
+    { key:"hrr",       label:"HRR",  tooltip:"Hits + Runs + RBIs combined (Kalshi stat)"                },
   ],
   "basketball/nba": [
-    { key:"date",          label:"Date", tooltip:"Game date",                                                      align:"left"   },
-    { key:"isHome",        label:"H/A",  tooltip:"Home (blank) or away (@)",                                      align:"center" },
-    { key:"oppAbbr",       label:"Opp",  tooltip:"Opponent",                                                      align:"left"   },
-    { key:"points",        label:"PTS",  tooltip:"Points scored",                                                 align:"right"  },
-    { key:"rebounds",      label:"REB",  tooltip:"Rebounds",                                                      align:"right"  },
-    { key:"assists",       label:"AST",  tooltip:"Assists",                                                       align:"right"  },
-    { key:"threePointers", label:"3P",   tooltip:"Three-pointers made",                                           align:"right"  },
-    { key:"min",           label:"MIN",  tooltip:"Minutes played — ≥30 min = 4 SimScore pts, ≥25 = 2 pts",       align:"right"  },
-    { key:"rest",          label:"Rest", tooltip:"Days since last game — 1 = back-to-back (B2B SimScore gate)",   align:"right"  },
+    { key:"date",          label:"Date", tooltip:"Game date",                                                    align:"left"   },
+    { key:"isHome",        label:"H/A",  tooltip:"Home (blank) or away (@)",                                    align:"center" },
+    { key:"oppAbbr",       label:"Opp",  tooltip:"Opponent",                                                    align:"left"   },
+    { key:"points",        label:"PTS",  tooltip:"Points scored"                                                               },
+    { key:"rebounds",      label:"REB",  tooltip:"Rebounds"                                                                    },
+    { key:"assists",       label:"AST",  tooltip:"Assists"                                                                     },
+    { key:"threePointers", label:"3P",   tooltip:"Three-pointers made"                                                         },
+    { key:"min",           label:"MIN",  tooltip:"Minutes played — ≥30 min = 4 SimScore pts, ≥25 = 2 pts"                     },
+    { key:"rest",          label:"Rest", tooltip:"Days since last game — 1 = back-to-back (B2B SimScore gate)"                 },
   ],
   "hockey/nhl": [
-    { key:"date",    label:"Date", tooltip:"Game date",                                                         align:"left"   },
-    { key:"isHome",  label:"H/A",  tooltip:"Home (blank) or away (@)",                                         align:"center" },
-    { key:"oppAbbr", label:"Opp",  tooltip:"Opponent",                                                         align:"left"   },
-    { key:"g",       label:"G",    tooltip:"Goals",                                                            align:"right"  },
-    { key:"a",       label:"A",    tooltip:"Assists",                                                          align:"right"  },
-    { key:"points",  label:"PTS",  tooltip:"Points (goals + assists)",                                         align:"right"  },
-    { key:"toi",     label:"TOI",  tooltip:"Time on ice — ≥18 min = 4 SimScore pts, ≥15 min = 2 pts",         align:"right"  },
-    { key:"rest",    label:"Rest", tooltip:"Days since last game — 1 = back-to-back (B2B SimScore gate)",      align:"right"  },
+    { key:"date",    label:"Date", tooltip:"Game date",                                                       align:"left"   },
+    { key:"isHome",  label:"H/A",  tooltip:"Home (blank) or away (@)",                                       align:"center" },
+    { key:"oppAbbr", label:"Opp",  tooltip:"Opponent",                                                       align:"left"   },
+    { key:"g",       label:"G",    tooltip:"Goals"                                                                           },
+    { key:"a",       label:"A",    tooltip:"Assists"                                                                         },
+    { key:"points",  label:"PTS",  tooltip:"Points (goals + assists)"                                                        },
+    { key:"toi",     label:"TOI",  tooltip:"Time on ice — ≥18 min = 4 SimScore pts, ≥15 min = 2 pts"                        },
+    { key:"rest",    label:"Rest", tooltip:"Days since last game — 1 = back-to-back (B2B SimScore gate)"                     },
   ],
   "football/nfl": [
-    { key:"date",           label:"Date",   tooltip:"Game date",           align:"left"   },
+    { key:"date",           label:"Date",   tooltip:"Game date",       align:"left"   },
     { key:"isHome",         label:"H/A",    tooltip:"Home (blank) or away (@)", align:"center" },
-    { key:"oppAbbr",        label:"Opp",    tooltip:"Opponent",            align:"left"   },
-    { key:"completions",    label:"CMP",    tooltip:"Completions",         align:"right"  },
-    { key:"attempts",       label:"ATT",    tooltip:"Pass attempts",       align:"right"  },
-    { key:"passingYards",   label:"PYds",   tooltip:"Passing yards",       align:"right"  },
-    { key:"rushingYards",   label:"RYds",   tooltip:"Rushing yards",       align:"right"  },
-    { key:"receptions",     label:"REC",    tooltip:"Receptions",          align:"right"  },
-    { key:"receivingYards", label:"RecYds", tooltip:"Receiving yards",     align:"right"  },
+    { key:"oppAbbr",        label:"Opp",    tooltip:"Opponent",        align:"left"   },
+    { key:"completions",    label:"CMP",    tooltip:"Completions"                     },
+    { key:"attempts",       label:"ATT",    tooltip:"Pass attempts"                   },
+    { key:"passingYards",   label:"PYds",   tooltip:"Passing yards"                   },
+    { key:"rushingYards",   label:"RYds",   tooltip:"Rushing yards"                   },
+    { key:"receptions",     label:"REC",    tooltip:"Receptions"                      },
+    { key:"receivingYards", label:"RecYds", tooltip:"Receiving yards"                 },
   ],
 };
 
@@ -839,8 +839,6 @@ function App() {
         return isNaN(v) ? undefined : v;
       };
       const lv = lbl => byLabel(stats, lbl);
-      // Raw string lookup — used for TOI which is MM:SS and would be mangled by parseFloat
-      const lvRaw = lbl => { const i = ul.indexOf(lbl); return i === -1 || stats[i] == null ? undefined : stats[i]; };
       const gs = {}; // per-game stats for DvP
 
       if (sport === "basketball/nba") {
@@ -902,7 +900,8 @@ function App() {
       if (sport === "hockey/nhl") {
         const sog = lv("SOG") ?? lv("S"), pts = lv("PTS"), sv = lv("SV");
         const g = lv("G"), a = lv("A");
-        const toi = lvRaw("TOI"); // preserve MM:SS string; parseFloat would truncate seconds
+        const toiIdx = ul.indexOf("TOI");
+        const toi = toiIdx !== -1 && stats[toiIdx] != null ? stats[toiIdx] : undefined; // raw string — parseFloat("18:32") would truncate to 18
         if (sog !== undefined) { result.shotsOnGoal?.push(sog); gs.shotsOnGoal = sog; }
         if (pts !== undefined) { result.points?.push(pts); gs.points = pts; }
         if (sv  !== undefined) { result.saves?.push(sv); gs.saves = sv; }
