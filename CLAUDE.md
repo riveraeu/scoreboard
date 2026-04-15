@@ -57,7 +57,7 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
 - `pitcherKDistCache` built before play loop
 - 10000 sims if `simScore ≥ 11`, else 5000
 - **SimScore** (max 14, no edge bonus — edge gates separately):
-  - CSW%/K% tiered (0/2/3pts): CSW% > 30% = 3pts (green), CSW% > 26% to ≤ 30% = 2pts (yellow), CSW% ≤ 26% = 0pts. Falls back to regressed K% if CSW% unavailable OR gs26 < 4 (small sample guard): K% > 27% = 3pts, K% > 24% to ≤ 27% = 2pts, K% ≤ 24% = 0pts. Stored as `kpctPts` (0/2/3); `kpctMeets = kpctPts > 0` (boolean).
+  - CSW%/K% tiered (0/2/3pts): CSW% > 30% = 3pts (green), CSW% > 26% to ≤ 30% = 2pts (yellow), CSW% ≤ 26% = 0pts. Falls back to regressed K% only if CSW% is unavailable (null): K% > 27% = 3pts, K% > 24% to ≤ 27% = 2pts, K% ≤ 24% = 0pts. (The gs26 < 4 small-sample guard was removed — CSW% is always used when present, regardless of gs26.) Stored as `kpctPts` (0/2/3); `kpctMeets = kpctPts > 0` (boolean).
   - K-BB% > 15% → 2pts
   - Lineup oK% tiered (`lkpPts`): > 24% → 3pts (green), > 16% → 1pt (yellow, avg/below-avg lineup), ≤ 16% → 0pts; null → 1pt (abstain, like ML/total). `lkpMeets = lkpPts > 0`. Hand-adjusted vs RHP/LHP.
   - Avg pitches/start > 85 → 2pts (uses 2026 data only if gs26 ≥ 4; else falls back to 2025)

@@ -1727,7 +1727,7 @@ var worker_default = {
               if (isDebug) dropped.push({ ..._dropBase, reason: "insufficient_starts", gs26: _gs26 ?? 0, hasAnchor: _hasAnchorMain });
               continue;
             }
-            const _useCsw = (_gs26 == null || _gs26 >= 4) && _csw != null;
+            const _useCsw = _csw != null; // use CSW% whenever available; K% only when CSW% is null
             // CSW%/K% tiered scoring: >30% CSW or >27% K → 3pts (green); 26-30% CSW or 24-27% K → 2pts (yellow); below → 0pts
             if (_useCsw) {
               kpctPts = _csw > 30 ? 3 : _csw > 26 ? 2 : 0;
