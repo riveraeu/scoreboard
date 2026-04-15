@@ -1896,6 +1896,7 @@ var worker_default = {
               truePct: _kTruePct,
               log5Pct: simPctOut ?? log5PctOut,
               simPct: simPctOut,
+              spreadAdj: kalshiSpread != null ? parseFloat((kalshiSpread / 2).toFixed(1)) : 0,
               gameDate,
               gameTime: gameTimes[`${sport}:${playerTeam}`] ?? null,
               lineupConfirmed: !(sportByteam.mlb?.projectedLineupTeams || []).includes(tonightOpp),
@@ -2240,6 +2241,7 @@ var worker_default = {
                 truePct: parseFloat(truePct.toFixed(1)),
                 log5Pct: simPctOut ?? log5PctOut,
                 simPct: simPctOut,
+                spreadAdj,
                 gameDate,
                 gameTime: gameTimes[`${sport}:${playerTeam}`] ?? null,
                 lineupConfirmed: !(sportByteam.mlb?.projectedLineupTeams || []).includes(tonightOpp),
@@ -2278,6 +2280,7 @@ var worker_default = {
               sport, playerTeam, stat, threshold, kalshiPct, americanOdds,
               truePct: parseFloat(truePct.toFixed(1)),
               log5Pct: simPctOut ?? log5PctOut, simPct: simPctOut,
+              spreadAdj,
               gameDate,
               gameTime: gameTimes[`${sport}:${playerTeam}`] ?? null,
               lineupConfirmed: !(sportByteam.mlb?.projectedLineupTeams || []).includes(tonightOpp),
@@ -2450,7 +2453,7 @@ var worker_default = {
             for (const other of (_preDedupSkPlays[k] || [])) {
               if (_existingSkKeys.has(`${other.playerTeam}|${other.gameDate}|${other.threshold}`)) continue;
               const _truePct = _dist ? kDistPct(_dist, other.threshold) : other.truePct;
-              _extraSkPlays.push({ ...other, qualified: false, truePct: _truePct ?? other.truePct, simPct: _truePct ?? other.simPct, edge: _truePct != null ? parseFloat((_truePct - other.kalshiPct).toFixed(1)) : other.edge });
+              _extraSkPlays.push({ ...other, qualified: false, truePct: _truePct ?? other.truePct, simPct: _truePct ?? other.simPct, edge: _truePct != null ? parseFloat((_truePct - other.kalshiPct - (other.spreadAdj ?? 0)).toFixed(1)) : other.edge });
               _existingSkKeys.add(`${other.playerTeam}|${other.gameDate}|${other.threshold}`);
             }
           }
@@ -2475,13 +2478,14 @@ var worker_default = {
             const _hand = sportByteam.mlb?.pitcherHand?.[_pTeam] ?? "";
             const _dist = pitcherKDistCache[`${_pTeam}|${_hand}`];
             if (_dist) {
-              // Re-derive all thresholds from the shared distribution — guarantees distinct monotonic values
+              // Re-derive all thresholds from the shared distribution — guarantees distinct monotonic values.
+              // Include spreadAdj so the displayed edge matches what the gate used (net of spread).
               for (const play of group) {
                 const _recomp = kDistPct(_dist, play.threshold);
                 if (_recomp != null) {
                   play.truePct = _recomp;
                   play.simPct = _recomp;
-                  play.edge = parseFloat((_recomp - play.kalshiPct).toFixed(1));
+                  play.edge = parseFloat((_recomp - play.kalshiPct - (play.spreadAdj ?? 0)).toFixed(1));
                 }
               }
             } else {
@@ -2490,7 +2494,7 @@ var worker_default = {
                 if (group[i].truePct < group[i + 1].truePct) {
                   group[i].truePct = group[i + 1].truePct;
                   group[i].rawTruePct = group[i + 1].rawTruePct;
-                  group[i].edge = parseFloat((group[i].truePct - group[i].kalshiPct).toFixed(1));
+                  group[i].edge = parseFloat((group[i].truePct - group[i].kalshiPct - (group[i].spreadAdj ?? 0)).toFixed(1));
                 }
               }
             }

@@ -76,13 +76,19 @@ export async function buildLineupKPct(mlbSched) {
     if (teamsNeedingProjection.length > 0) {
       const today = new Date();
       const end = new Date(today.getTime() - 864e5).toISOString().slice(0, 10);
-      const start = new Date(today.getTime() - 7 * 864e5).toISOString().slice(0, 10);
+      const start = new Date(today.getTime() - 14 * 864e5).toISOString().slice(0, 10);
       const recentSched = await fetch(
         `https://statsapi.mlb.com/api/v1/schedule?sportId=1&startDate=${start}&endDate=${end}&hydrate=lineups`,
         { headers: { "User-Agent": "Mozilla/5.0" } }
       ).then((r) => r.ok ? r.json() : {}).catch(() => ({}));
+      // recentLineups: most recent game with players, used for K% stat fetching
       const recentLineups = {};
-      const recentLineupPlayers = {};
+      // recentPlayerSpots: per-player most recent batting spot across all scanned games.
+      // Scanning in reverse (most recent first) means the first time we see a player we get
+      // their most recent batting position — handles DNP games where a player is absent from
+      // the latest lineup (e.g. Bellinger DNP one game still projects his usual spot from the
+      // prior game, while players who DID play yesterday get their yesterday position).
+      const recentPlayerSpots = {};
       for (const date of [...recentSched.dates || []].reverse()) {
         for (const game of date.games || []) {
           const hAbbr = MLB_ID_TO_ABBR[game.teams?.home?.team?.id] || game.teams?.home?.team?.abbreviation;
@@ -91,16 +97,28 @@ export async function buildLineupKPct(mlbSched) {
           const aPlayers = game.lineups?.awayPlayers || [];
           const hIds = hPlayers.map((p) => p.id).filter(Boolean);
           const aIds = aPlayers.map((p) => p.id).filter(Boolean);
-          if (hAbbr && !recentLineups[hAbbr] && hIds.length > 0) { recentLineups[hAbbr] = hIds; recentLineupPlayers[hAbbr] = hPlayers; }
-          if (aAbbr && !recentLineups[aAbbr] && aIds.length > 0) { recentLineups[aAbbr] = aIds; recentLineupPlayers[aAbbr] = aPlayers; }
+          // Primary lineup for K% calc: take the most recent game with actual players
+          if (hAbbr && !recentLineups[hAbbr] && hIds.length > 0) { recentLineups[hAbbr] = hIds; }
+          if (aAbbr && !recentLineups[aAbbr] && aIds.length > 0) { recentLineups[aAbbr] = aIds; }
+          // Spot map: accumulate per-player batting positions from all games.
+          // Since we iterate most-recent-first, the first encounter per player = most recent spot.
+          const _addToSpotMap = (abbr, players) => {
+            if (!abbr || !teamsNeedingProjection.includes(abbr) || players.length === 0) return;
+            if (!recentPlayerSpots[abbr]) recentPlayerSpots[abbr] = {};
+            players.forEach((p, i) => {
+              const name = _normPlayerName(p.fullName);
+              if (name && !(name in recentPlayerSpots[abbr])) recentPlayerSpots[abbr][name] = i + 1;
+            });
+          };
+          _addToSpotMap(hAbbr, hPlayers);
+          _addToSpotMap(aAbbr, aPlayers);
         }
-        if (teamsNeedingProjection.every((abbr) => recentLineups[abbr])) break;
       }
       for (const abbr of teamsNeedingProjection) {
         if (recentLineups[abbr]) {
           teamLineups[abbr] = recentLineups[abbr];
           projectedLineupTeams.add(abbr);
-          if (recentLineupPlayers[abbr]) _addLineupNames(abbr, recentLineupPlayers[abbr]);
+          if (recentPlayerSpots[abbr]) lineupSpotByName[abbr] = recentPlayerSpots[abbr];
         }
       }
     }
