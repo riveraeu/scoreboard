@@ -959,7 +959,7 @@ var worker_default = {
 
             // ── Game total branch (wider pct filter; team-based, not player-based) ──
             if (cfg.gameType === "total") {
-              if (pct < 30 || pct > 97) continue;
+              if (pct < 70 || pct > 97) continue;
               const [gameTeam1, gameTeam2] = parseGameTeams(m.event_ticker, sport);
               if (!gameTeam1 || !gameTeam2) continue;
               const dedupeKey = `total|${sport}|${gameTeam1}|${gameTeam2}|${threshold}`;
@@ -2699,7 +2699,7 @@ var worker_default = {
             const rawEdge = parseFloat((truePct - kalshiPct).toFixed(1));
             const edge = parseFloat((rawEdge - spreadAdj).toFixed(1));
             if (edge < 3) continue;
-            totalPlays.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, spreadAdj: spreadAdj > 0 ? parseFloat(spreadAdj.toFixed(1)) : 0, edge, totalSimScore, qualified: totalSimScore >= 7, kelly: kellyFraction(truePct, americanOdds), ev: evPerUnit(truePct, americanOdds), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null, ...(isDebug ? { ..._simData } : {}) });
+            totalPlays.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, spreadAdj: spreadAdj > 0 ? parseFloat(spreadAdj.toFixed(1)) : 0, edge, totalSimScore, qualified: totalSimScore >= 7, kelly: kellyFraction(truePct, americanOdds), ev: evPerUnit(truePct, americanOdds), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null, ..._simData });
           }
         }
         plays.push(...totalPlays);
