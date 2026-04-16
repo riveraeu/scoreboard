@@ -380,7 +380,10 @@ export async function buildPitcherKPct(mlbSched) {
         const totalNP = startSplits.reduce((sum, s) => sum + (s.stat?.numberOfPitches || 0), 0);
         if (totalNP > 0) { pitcherAvgPitches[abbr] = parseFloat((totalNP / startSplits.length).toFixed(1)); continue; }
       }
-      // No 2026 start data in gamelog → fall back to 2025 season aggregate
+      // Gamelog NP missing or zero → fall back to 2026 season aggregate (more reliable for NP than gamelog)
+      const s26 = pitcherStats26[id];
+      if (s26 && s26.gs >= 1 && s26.np > 0) { pitcherAvgPitches[abbr] = parseFloat((s26.np / s26.gs).toFixed(1)); continue; }
+      // No 2026 data → fall back to 2025 season aggregate
       const s25 = pitcherStats25[id];
       if (s25 && s25.gs >= 1 && s25.np > 0) {
         pitcherAvgPitches[abbr] = parseFloat((s25.np / s25.gs).toFixed(1));
@@ -431,7 +434,7 @@ export async function buildPitcherKPct(mlbSched) {
         if (cswByMlbId[id] != null) pitcherCSWPct[abbr] = cswByMlbId[id];
       }
     } catch { /* CSW% unavailable — filter falls back to K% */ }
-    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherCSWPct, pitcherAvgPitches, pitcherGS26, pitcherHasAnchor, _debug_pitcherByTeam: pitcherByTeam, _debug_glFetchSummary: glFetch.map(({ id, splits }) => ({ id, startCount: splits.filter(s => (s.stat?.gamesStarted || 0) > 0).length, npValues: splits.filter(s => (s.stat?.gamesStarted || 0) > 0).map(s => s.stat?.numberOfPitches) })) };
+    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherCSWPct, pitcherAvgPitches, pitcherGS26, pitcherHasAnchor };
   } catch {
     return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherGS26: {}, pitcherHasAnchor: {} };
   }
