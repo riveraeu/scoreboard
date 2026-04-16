@@ -148,6 +148,26 @@ var worker_default = {
       } else if (path === "keepalive") {
         if (CACHE2) await CACHE2.put("keepalive", new Date().toISOString(), { expirationTtl: 172800 });
         return jsonResponse({ ok: true, ts: new Date().toISOString() });
+      } else if (path === "auth/debug-redis" && method === "GET") {
+        if (params.get("adminKey") !== (env?.ADMIN_KEY || "sb-admin-2026")) return errorResponse("Forbidden", 403);
+        const upUrl = env?.UPSTASH_REDIS_REST_URL;
+        const upToken = env?.UPSTASH_REDIS_REST_TOKEN;
+        if (!upUrl) return jsonResponse({ error: "UPSTASH_REDIS_REST_URL not set", envKeys: Object.keys(env || {}) });
+        const upAuth = `Bearer ${upToken}`;
+        const testKey = "debug:redis:test";
+        const testVal = `ok-${Date.now()}`;
+        let setRaw = null, getRaw = null, setStatus = null, getStatus = null;
+        try {
+          const setRes = await fetch(upUrl, { method: "POST", headers: { Authorization: upAuth, "Content-Type": "application/json" }, body: JSON.stringify(["SET", testKey, testVal, "EX", 60]) });
+          setStatus = setRes.status;
+          setRaw = await setRes.json();
+        } catch (e) { setRaw = { fetchError: String(e) }; }
+        try {
+          const getRes = await fetch(upUrl, { method: "POST", headers: { Authorization: upAuth, "Content-Type": "application/json" }, body: JSON.stringify(["GET", testKey]) });
+          getStatus = getRes.status;
+          getRaw = await getRes.json();
+        } catch (e) { getRaw = { fetchError: String(e) }; }
+        return jsonResponse({ upUrl: upUrl?.slice(0, 40) + "...", setStatus, setRaw, getStatus, getRaw, expectedVal: testVal, match: getRaw?.result === testVal });
       } else if (path === "auth/list-users" && method === "GET") {
         if (params.get("adminKey") !== (env?.ADMIN_KEY || "sb-admin-2026")) return errorResponse("Forbidden", 403);
         const upUrl = env?.UPSTASH_REDIS_REST_URL;
