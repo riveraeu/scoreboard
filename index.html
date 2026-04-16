@@ -1225,7 +1225,7 @@ function App() {
                           if (k==="sim") { const sc = m.finalSimScore ?? m.hitterFinalSimScore ?? m.nbaSimScore ?? m.nhlSimScore ?? m.simScore ?? m.hitterSimScore; const qualGate = m.finalSimScore != null ? 10 : 7; return sc != null ? <span style={{color:sc>=11?"#3fb950":sc>=qualGate?"#e3b341":"#8b949e",fontWeight:600}}>{sc}/14</span> : DASH; }
                           if (k==="env") { const pf = m.parkFactor ?? m.hitterParkKF; if (pf == null) return DASH; const pct = Math.round((pf-1)*100); const disp = (pct>=0?"+":"")+pct+"%"; return <span style={{color:pf>1.02?"#3fb950":pf<0.98?"#f78166":"#8b949e"}}>{disp}</span>; }
                           if (k==="brrl") { const b = m.hitterBarrelPct; return b != null ? <span style={{color:b>10?"#3fb950":b>6?"#e3b341":"#f78166"}}>{b.toFixed(1)+"%"}</span> : DASH; }
-                          if (k==="nbapace") { const p = m.nbaPaceAdj; return p != null ? <span style={{color:p>0?"#3fb950":"#f78166"}}>{p>0?"+":""}{p.toFixed(1)}</span> : DASH; }
+                          if (k==="nbapace") { const p = m.nbaPaceAdj; return p != null ? <span style={{color:p>0?"#3fb950":p>-2?"#e3b341":"#f78166"}}>{p>0?"+":""}{p.toFixed(1)}</span> : DASH; }
                           if (k==="nbaopp")  { const o = m.nbaOpportunity; return o != null ? <span style={{color:o>=30?"#3fb950":o>=25?"#e3b341":"#f78166"}}>{o.toFixed(0)}m</span> : DASH; }
                           if (k==="nba_b2b") { if (m.isB2B == null) return DASH; return <span style={{color:m.isB2B?"#f78166":"#3fb950"}}>{m.isB2B?"B2B":"Rested"}</span>; }
                           if (k==="nhlgaa") { const r = m.oppRank; return C(r != null ? `#${r}` : null, r<=5?"#3fb950":r<=10?"#e3b341":"#f78166"); }
@@ -1847,15 +1847,17 @@ function App() {
                             const rawEdge = tonightTabPlay?.rawEdge ?? edge;
                             const isNBAStrong = tonightTabPlay?.softPct != null;
                             const isNBAHard = !isNBAStrong && effectiveOpp && (dvpData.hardTeams?.[safeTab] || []).includes(effectiveOpp);
-                            const rankColor = isNBAStrong ? "#3fb950" : isNBAHard ? "#f78166" : "#c9d1d9";
+                            const rankColor = isNBAHard ? "#f78166" : (displayRank != null && displayRank <= 5) ? "#3fb950" : (displayRank != null && displayRank <= 10) ? "#e3b341" : isNBAStrong ? "#3fb950" : "#c9d1d9";
                             const scColor = sc != null ? (sc >= 11 ? "#3fb950" : sc >= 7 ? "#e3b341" : "#8b949e") : "#8b949e";
                             const seasonColor = seasonPct == null ? "#c9d1d9" : seasonPct >= 75 ? "#3fb950" : seasonPct >= 60 ? "#c9d1d9" : "#f78166";
                             const minColor = nbaOpportunity == null ? "#8b949e" : nbaOpportunity >= 30 ? "#3fb950" : nbaOpportunity >= 25 ? "#e3b341" : "#f78166";
-                            const paceColor = nbaPaceAdj == null ? "#8b949e" : nbaPaceAdj > 0 ? "#3fb950" : "#f78166";
+                            const paceColor = nbaPaceAdj == null ? "#8b949e" : nbaPaceAdj > 0 ? "#3fb950" : nbaPaceAdj > -2 ? "#e3b341" : "#f78166";
                             const minDesc = nbaOpportunity == null ? null : nbaOpportunity >= 33 ? "a featured starter with a big role" : nbaOpportunity >= 30 ? "a key starter" : nbaOpportunity >= 25 ? "solid rotation player" : "limited role";
                             const paceDesc = nbaPaceAdj == null ? null : nbaPaceAdj > 2 ? "a fast game — more possessions, more opportunities to score" : nbaPaceAdj > 0 ? "slightly above-average pace" : nbaPaceAdj > -2 ? "slightly slower pace" : "a slow game — fewer scoring opportunities";
                             const rankDesc = displayRank == null ? null : displayRank <= 3 ? "one of the worst defenses in the league" : displayRank <= 8 ? "a weak defense" : displayRank <= 15 ? "a soft matchup" : null;
-                            const mkGate = (meets, pts, label) => <span style={{color:meets?"#3fb950":"#f78166",fontSize:9,whiteSpace:"nowrap"}}>{meets?"✓":"✗"} {label} ({pts})</span>;
+                            const nbaGameTotal = tonightTabPlay?.nbaGameTotal ?? null;
+                            const nbaTotalPts = tonightTabPlay?.nbaTotalPts ?? null;
+                            const scTitle = sc != null ? [`Pace: ${nbaPaceAdj != null && nbaPaceAdj > 0 ? 3 : nbaPaceAdj != null ? 0 : "—"}/3`,`Minutes: ${nbaOpportunity != null ? (nbaOpportunity >= 30 ? 4 : nbaOpportunity >= 25 ? 2 : 0) : "—"}/4`,`DVP: ${tonightTabPlay?.posDvpRank != null ? (tonightTabPlay.posDvpRank <= 10 ? 2 : 0) : "—"}/2`,`Rested: ${isB2B != null ? (!isB2B ? 2 : 0) : "—"}/2`,`O/U: ${nbaTotalPts != null ? nbaTotalPts : "—"}/3`,`Edge: ${edge != null ? (edge >= 3 ? "✓" : "✗")+" "+edge+"%" : "—"}`].join("\n") : null;
                             return (
                               <>
                                 <div>
@@ -1867,23 +1869,11 @@ function App() {
                                   {displayRank != null && <>{" "}{effectiveOpp} has {rankDesc || `the ${ordinal(displayRank)}-worst defense`} in {statName} allowed{posName ? ` to ${posName}s` : ""}{displayValue != null ? <> — giving up <span style={{color:rankColor,fontWeight:600}}>{displayValue} per game</span></> : <>, ranked <span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}</span></>}.</>}
                                   {softPctDisplay != null && <>{" "}{first} hits this in <span style={{color:"#3fb950",fontWeight:600}}>{softPctDisplay}%</span> of games against soft defenses{softGamesDisplay ? <span style={{color:"#484f58",fontSize:10}}> ({softGamesDisplay}g)</span> : ""}.</>}
                                   {nbaPaceAdj != null && <>{" "}Game pace is <span style={{color:paceColor,fontWeight:600}}>{nbaPaceAdj > 0 ? "+" : ""}{nbaPaceAdj}</span> possessions above average — {paceDesc}.</>}
+                                  {nbaGameTotal != null && <>{" "}Game total <span style={{color:nbaTotalPts>=3?"#3fb950":nbaTotalPts>=2?"#e3b341":nbaTotalPts>=1?"#8b949e":"#f78166",fontWeight:600}}>{nbaGameTotal}</span><span style={{color:"#8b949e"}}>{nbaGameTotal>=235?" — a high-scoring slate":nbaGameTotal>=225?" — above-average scoring":nbaGameTotal>=215?" — an average total":" — a low-scoring slate"}.</span></>}
                                   {isB2B != null && <>{" "}{isB2B ? <><span style={{color:"#f78166",fontWeight:600}}>Back-to-back</span> — model applies a scoring reduction.</> : <>Fully rested tonight.</>}</>}
+                                  {sc != null && <>{" "}<span title={scTitle} style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,cursor:"default",verticalAlign:"middle"}}>{sc}/14 {sc>=11?"Alpha":"Mid"}</span></>}
                                   {isOppFallback && <div style={{color:"#484f58",fontSize:10,marginTop:3}}>Showing last game vs {effectiveOpp} — updates when next game is scheduled.</div>}
                                 </div>
-                                {sc != null && (
-                                  <div style={{display:"flex",alignItems:"center",gap:6,marginTop:6,paddingTop:5,borderTop:"1px solid #161b22"}}>
-                                    <span style={{color:"#484f58",fontSize:10}}>SimScore</span>
-                                    <span style={{background:"#161b22",borderRadius:4,padding:"1px 6px",color:scColor,fontWeight:700,fontSize:10,whiteSpace:"nowrap"}}>{sc}/14 {sc>=11?"Alpha":sc>=7?"Mid":"Low"}</span>
-                                    <span style={{display:"inline-flex",gap:4,flexWrap:"wrap"}}>
-                                      {mkGate(nbaPaceAdj != null && nbaPaceAdj > 0, 3, `Pace ${nbaPaceAdj != null ? (nbaPaceAdj > 0 ? "+" : "") + nbaPaceAdj : "—"}`)}
-                                      {mkGate(nbaOpportunity != null && nbaOpportunity >= 30, 4, `${nbaOpportunity != null ? nbaOpportunity.toFixed(0)+"m" : "—"}`)}
-                                      {mkGate(tonightTabPlay?.posDvpRank != null && tonightTabPlay.posDvpRank <= 10, 2, `DVP #${tonightTabPlay?.posDvpRank ?? "—"}`)}
-                                      {mkGate(isB2B != null && !isB2B, 2, isB2B ? "B2B" : "Rested")}
-                                      {tonightTabPlay?.nbaTotalPts != null && <span style={{color:tonightTabPlay.nbaTotalPts>=3?"#3fb950":tonightTabPlay.nbaTotalPts>=2?"#e3b341":tonightTabPlay.nbaTotalPts>=1?"#8b949e":"#f78166",fontSize:9,whiteSpace:"nowrap"}}>{tonightTabPlay.nbaTotalPts>=2?"✓":"✗"} O/U{tonightTabPlay.nbaGameTotal!=null?" "+tonightTabPlay.nbaGameTotal:""} ({tonightTabPlay.nbaTotalPts})</span>}
-                                      {edge != null && <span title={spreadAdj > 0 ? `Raw +${rawEdge}% − ${spreadAdj}% spread = +${edge}% net` : undefined} style={{color:edge >= 3 ? "#3fb950" : edge >= 0 ? "#e3b341" : "#f78166",fontSize:9,opacity:edge >= 3 ? 1 : 0.7,whiteSpace:"nowrap"}}>{edge >= 3 ? "✓" : "✗"} Edge {edge > 0 ? "+" : ""}{edge}%{spreadAdj > 0 ? " net" : ""}</span>}
-                                    </span>
-                                  </div>
-                                )}
                               </>
                             );
                           }
@@ -2968,14 +2958,14 @@ function App() {
                           const sc = play.nbaSimScore;
                           const first = play.playerName.split(" ")[0];
                           const scColor = sc != null ? (sc >= 11 ? "#3fb950" : sc >= 7 ? "#e3b341" : "#8b949e") : "#8b949e";
-                          const rankColor = play.softPct !== null ? "#3fb950" : play.isHardMatchup ? "#f78166" : "#c9d1d9";
+                          const rankColor = play.isHardMatchup ? "#f78166" : (displayRank != null && displayRank <= 5) ? "#3fb950" : (displayRank != null && displayRank <= 10) ? "#e3b341" : play.softPct !== null ? "#3fb950" : "#c9d1d9";
                           const seasonColor = play.seasonPct == null ? "#c9d1d9" : play.seasonPct >= 75 ? "#3fb950" : play.seasonPct >= 60 ? "#c9d1d9" : "#f78166";
                           const minColor = play.nbaOpportunity == null ? "#8b949e" : play.nbaOpportunity >= 30 ? "#3fb950" : play.nbaOpportunity >= 25 ? "#e3b341" : "#f78166";
-                          const paceColor = play.nbaPaceAdj == null ? "#8b949e" : play.nbaPaceAdj > 0 ? "#3fb950" : "#f78166";
+                          const paceColor = play.nbaPaceAdj == null ? "#8b949e" : play.nbaPaceAdj > 0 ? "#3fb950" : play.nbaPaceAdj > -2 ? "#e3b341" : "#f78166";
                           const minDesc = play.nbaOpportunity == null ? null : play.nbaOpportunity >= 33 ? "a featured starter with a big role" : play.nbaOpportunity >= 30 ? "a key starter" : play.nbaOpportunity >= 25 ? "solid rotation player" : "limited role";
                           const paceDesc = play.nbaPaceAdj == null ? null : play.nbaPaceAdj > 2 ? "a fast game — more possessions, more opportunities to score" : play.nbaPaceAdj > 0 ? "slightly above-average pace" : play.nbaPaceAdj > -2 ? "slightly slower pace" : "a slow game — fewer scoring opportunities";
                           const rankDesc = displayRank == null ? null : displayRank <= 3 ? "one of the worst defenses in the league" : displayRank <= 8 ? "a weak defense" : displayRank <= 15 ? "a soft matchup" : null;
-                          const mkGate = (meets, pts, label) => <span style={{color:meets?"#3fb950":"#f78166",fontSize:9,whiteSpace:"nowrap"}}>{meets?"✓":"✗"} {label} ({pts})</span>;
+                          const scTitle = sc != null ? [`Pace: ${play.nbaPaceAdj != null && play.nbaPaceAdj > 0 ? 3 : play.nbaPaceAdj != null ? 0 : "—"}/3`,`Minutes: ${play.nbaOpportunity != null ? (play.nbaOpportunity >= 30 ? 4 : play.nbaOpportunity >= 25 ? 2 : 0) : "—"}/4`,`DVP: ${play.posDvpRank != null ? (play.posDvpRank <= 10 ? 2 : 0) : "—"}/2`,`Rested: ${play.isB2B != null ? (!play.isB2B ? 2 : 0) : "—"}/2`,`O/U: ${play.nbaTotalPts != null ? play.nbaTotalPts : "—"}/3`,`Edge: ${play.edge != null ? (play.edge >= 3 ? "✓" : "✗")+" "+play.edge+"%" : "—"}`].join("\n") : null;
                           return (
                             <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.65}}>
                               <div>
@@ -2984,22 +2974,10 @@ function App() {
                                 {displayRank != null && <>{" "}{play.opponent} has {rankDesc || `the ${ordinal(displayRank)}-worst defense`} in {statName} allowed{posName ? ` to ${posName}s` : ""}{displayValue != null ? <> — giving up <span style={{color:rankColor,fontWeight:600}}>{displayValue} per game</span></> : <>, ranked <span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}</span></>}.</>}
                                 {play.softPct != null && <>{" "}{first} hits this in <span style={{color:"#3fb950",fontWeight:600}}>{play.softPct}%</span> of games against soft defenses{play.softGames ? <span style={{color:"#484f58",fontSize:10}}> ({play.softGames}g)</span> : ""}.</>}
                                 {play.nbaPaceAdj != null && <>{" "}Game pace is <span style={{color:paceColor,fontWeight:600}}>{play.nbaPaceAdj > 0 ? "+" : ""}{play.nbaPaceAdj}</span> possessions above average — {paceDesc}.</>}
+                                {play.nbaGameTotal != null && <>{" "}Game total <span style={{color:play.nbaTotalPts>=3?"#3fb950":play.nbaTotalPts>=2?"#e3b341":play.nbaTotalPts>=1?"#8b949e":"#f78166",fontWeight:600}}>{play.nbaGameTotal}</span><span style={{color:"#8b949e"}}>{play.nbaGameTotal>=235?" — a high-scoring slate":play.nbaGameTotal>=225?" — above-average scoring":play.nbaGameTotal>=215?" — an average total":" — a low-scoring slate"}.</span></>}
                                 {play.isB2B != null && <>{" "}{play.isB2B ? <><span style={{color:"#f78166",fontWeight:600}}>Back-to-back</span> — model applies a scoring reduction.</> : <>Fully rested tonight.</>}</>}
+                                {sc != null && <>{" "}<span title={scTitle} style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,cursor:"default",verticalAlign:"middle"}}>{sc}/14 {sc>=11?"Alpha":"Mid"}</span></>}
                               </div>
-                              {sc != null && (
-                                <div style={{display:"flex",alignItems:"center",gap:6,marginTop:6,paddingTop:5,borderTop:"1px solid #161b22"}}>
-                                  <span style={{color:"#484f58",fontSize:10}}>SimScore</span>
-                                  <span style={{background:"#161b22",borderRadius:4,padding:"1px 6px",color:scColor,fontWeight:700,fontSize:10,whiteSpace:"nowrap"}}>{sc}/14 {sc>=11?"Alpha":sc>=7?"Mid":"Low"}</span>
-                                  <span style={{display:"inline-flex",gap:4,flexWrap:"wrap"}}>
-                                    {mkGate(play.nbaPaceAdj != null && play.nbaPaceAdj > 0, 3, `Pace ${play.nbaPaceAdj != null ? (play.nbaPaceAdj > 0 ? "+" : "") + play.nbaPaceAdj : "—"}`)}
-                                    {mkGate(play.nbaOpportunity != null && play.nbaOpportunity >= 30, 4, `${play.nbaOpportunity != null ? play.nbaOpportunity.toFixed(0)+"m" : "—"}`)}
-                                    {mkGate(play.posDvpRank != null && play.posDvpRank <= 10, 2, `DVP #${play.posDvpRank ?? "—"}`)}
-                                    {mkGate(!play.isB2B, 2, play.isB2B ? "B2B" : "Rested")}
-                                    {play.nbaTotalPts != null && <span style={{color:play.nbaTotalPts>=3?"#3fb950":play.nbaTotalPts>=2?"#e3b341":play.nbaTotalPts>=1?"#8b949e":"#f78166",fontSize:9,whiteSpace:"nowrap"}}>{play.nbaTotalPts>=2?"✓":"✗"} O/U{play.nbaGameTotal!=null?" "+play.nbaGameTotal:""} ({play.nbaTotalPts})</span>}
-                                    {play.edge != null && <span style={{color:play.edge >= 3 ? "#3fb950" : play.edge >= 0 ? "#e3b341" : "#f78166",fontSize:9,opacity:play.edge >= 3 ? 1 : 0.7,whiteSpace:"nowrap"}}>{play.edge >= 3 ? "✓" : "✗"} Edge {play.edge > 0 ? "+" : ""}{play.edge}%</span>}
-                                  </span>
-                                </div>
-                              )}
                             </div>
                           );
                         })()}

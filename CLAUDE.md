@@ -462,3 +462,39 @@ Most NBA markets are dropped at `opp_not_soft` before the pre-sim block runs. Th
 
 ### "SimScore shows yellow for strikeout players with score 7–9"
 The qualifying gate for strikeouts is `finalSimScore >= 11` (Alpha tier). The report SimScore column uses `>= 10` as the yellow threshold, so scores 10 show yellow (near miss) and scores 7–9 show gray.
+
+### "No MLB plays / all edge_too_low or empty response"
+**Most likely cause: Kalshi markets haven't opened yet for today's slate.**
+
+Kalshi only publishes MLB player prop markets a few hours before first pitch — they are NOT available overnight. If you check before ~late morning ET, the previous day's markets will be finalized and today's won't be live yet.
+
+**How finalized markets appear in the data:**
+- `status: "finalized"`, `yes_ask: None`, `price: 0`
+- The `if (price === 0) continue` guard skips them silently
+- `/api/tonight?debug=1` returns empty `plays[]`, empty `dropped[]` — not a bug
+
+**How to decode Kalshi event tickers to confirm the date:**
+- Format: `KXMLBKS-26APR152140SEASD` = series `KXMLBKS`, date `26APR15` (April 15 2026), game time `2140` ET, SEA @ SD
+- If all tickers show yesterday's date → today's markets aren't open yet
+- `close_time` ~04:55–05:00 UTC = game ended ~midnight–1am ET the night before
+
+**Stale KV cache pattern:**
+- `byteam:mlb` (600s TTL) may be built while yesterday's markets were still live, caching yesterday's pitcher data (e.g. Hancock for SEA when tonight's starter is Castillo)
+- After all games end and markets finalize, the cache still holds stale pitcher stats until TTL expires
+- Fix: `?bust=1` clears the KV cache; do this after markets open for today's slate
+
+**Diagnosis steps:**
+1. Call `/api/kalshi` directly — if it returns 0 markets or all `price=0`, markets aren't open yet
+2. Check ticker date segments — `26APR15` = yesterday, `26APR16` = today
+3. Check first pitch time — Kalshi typically publishes 2–4 hours before first pitch
+4. If markets are open but plays are missing, check `/api/tonight?debug=1` → `preDropped` for `no_opp` / `opp_not_soft`
+
+**MLB team ID reference** (MLB Stats API `teams.*.id` in schedule response):
+- 133 = OAK (Athletics), 134 = PIT (Pirates), 135 = SD (Padres), 136 = SEA (Mariners)
+- 120 = WSH (Nationals), 147 = NYY (Yankees), 121 = NYM (Mets), 111 = BOS (Red Sox)
+- Full map in `MLB_ID_TO_ABBR` constant in `api/lib/mlb.js`
+
+**ESPN as reliable fallback for today's probables:**
+When the MLB Stats API has delays returning probables (occasionally), ESPN's scoreboard reliably has them:
+`site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=YYYYMMDD`
+The `buildPitcherKPct` function currently only uses MLB Stats API — if probables come back empty from there, all pitcher stats will be missing. No ESPN fallback implemented yet.
