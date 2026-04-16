@@ -431,7 +431,7 @@ export async function buildPitcherKPct(mlbSched) {
         if (cswByMlbId[id] != null) pitcherCSWPct[abbr] = cswByMlbId[id];
       }
     } catch { /* CSW% unavailable — filter falls back to K% */ }
-    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherCSWPct, pitcherAvgPitches, pitcherGS26, pitcherHasAnchor };
+    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherCSWPct, pitcherAvgPitches, pitcherGS26, pitcherHasAnchor, _debug_pitcherByTeam: pitcherByTeam, _debug_glFetchSummary: glFetch.map(({ id, splits }) => ({ id, startCount: splits.filter(s => (s.stat?.gamesStarted || 0) > 0).length, npValues: splits.filter(s => (s.stat?.gamesStarted || 0) > 0).map(s => s.stat?.numberOfPitches) })) };
   } catch {
     return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherGS26: {}, pitcherHasAnchor: {} };
   }
