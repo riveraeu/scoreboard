@@ -387,6 +387,11 @@ Also check the date filter: the edge function runs UTC, so after midnight UTC (e
 ### "P/GS all dashes"
 Comes from gamelog starts-only (2026 primary) or season aggregate fallback `numberOfPitches / gamesStarted`. If a pitcher has 0 starts recorded yet in either source, will show `—`. Also check that `buildPitcherKPct` didn't hit the early-return path (see above).
 
+### "Wrong pitcher stats for a team on a doubleheader day"
+When a team plays two games (e.g. a makeup game + a regular game), the schedule loop processes both games and `pitcherByTeam["SD"]` ends up pointing to whichever pitcher was processed last — not necessarily tonight's Kalshi pitcher.
+
+Fix (in place): `pitcherByTeam` also stores matchup keys (`"SD|SEA"`, `"SD|OAK"`) for each game. All pitcher stat lookups in `[...path].js` use a `_pt(map)` helper that tries the matchup key `team|opp` first, then falls back to the plain team key. The `glFetch` loop in `mlb.js` uses `.filter()` (not `.find()`) to set `pitcherAvgPitches` for all matching keys so both the team key and matchup key are populated with the correct value for their respective game.
+
 ### "API returning 504 / function stopped after 25s"
 The CSW% play-by-play fetch in `buildPitcherKPct` fires one MLB Stats API request per game per pitcher. With 10–15 pitchers × multiple starts, this can exceed the 25s Vercel Edge limit. Mitigations in place: PBP limited to last 5 starts per pitcher; 8s AbortController aborts the whole PBP block and falls back to K% if slow. If 504s recur, check whether the PBP block is the bottleneck or if another fetch is slow.
 
