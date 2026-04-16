@@ -507,11 +507,7 @@ function App() {
   const kalshiCache = React.useRef({}); // memoize Kalshi fetches by "playerName|sport|stat"
   const [expandedPlays, setExpandedPlays] = React.useState(new Set());
   const [trackedPlays, setTrackedPlays] = React.useState(() => {
-    // If logged in, server is authoritative — clear any stale local picks and start empty
-    if (localStorage.getItem("sb_token")) {
-      localStorage.removeItem("scoreboard_tracked_plays");
-      return [];
-    }
+    // Always load from localStorage as initial state — server load will overwrite if it has more data
     try { return JSON.parse(localStorage.getItem("scoreboard_tracked_plays") || "[]"); } catch { return []; }
   });
   const [bankroll, setBankrollState] = React.useState(() => {
@@ -567,11 +563,9 @@ function App() {
       .catch(() => { setAllTonightPlays([]); setTonightPlays([]); setTonightLoading(false); setBustLoading(false); });
   };
 
-  // Persist tracked plays to localStorage only when not logged in (server is source of truth when logged in)
+  // Always persist tracked plays to localStorage as a backup (server is authoritative when logged in, but localStorage is the fallback)
   React.useEffect(() => {
-    if (!authToken) {
-      localStorage.setItem("scoreboard_tracked_plays", JSON.stringify(trackedPlays));
-    }
+    localStorage.setItem("scoreboard_tracked_plays", JSON.stringify(trackedPlays));
   }, [trackedPlays, authToken]);
 
   function setBankroll(val) {
@@ -680,6 +674,7 @@ function App() {
   // Load picks from server on mount if token exists
   React.useEffect(() => {
     if (!authToken) return;
+    const localBackup = (() => { try { return JSON.parse(localStorage.getItem("scoreboard_tracked_plays") || "[]"); } catch { return []; } })();
     fetch(`${WORKER}/user/picks`, { headers:{"Authorization":`Bearer ${authToken}`} })
       .then(r => {
         if (r.status === 401) {
@@ -694,12 +689,22 @@ function App() {
       })
       .then(pd => {
         if (pd) {
-          setTrackedPlays(pd.picks || []);
+          // Use server data if it has picks; otherwise fall back to localStorage backup
+          const serverPicks = pd.picks || [];
+          const picks = serverPicks.length > 0 ? serverPicks : localBackup;
+          setTrackedPlays(picks);
           if (pd.bankroll) setBankrollState(pd.bankroll);
+          // If we fell back to local backup, push it up to the server now
+          if (serverPicks.length === 0 && localBackup.length > 0) {
+            savePicks(authToken, localBackup, null).catch(() => {});
+          }
         }
         picksLoaded.current = true; // unblock auto-save now that server picks are loaded
       })
-      .catch(() => { picksLoaded.current = true; }); // unblock even on error so future changes save
+      .catch(() => {
+        // Server unreachable — keep localStorage data already loaded in initial state
+        picksLoaded.current = true;
+      });
   }, []);
 
   React.useEffect(() => {
