@@ -486,6 +486,7 @@ function App() {
   const [tonightLoading, setTonightLoading] = React.useState(true);
   const [tonightMeta, setTonightMeta] = React.useState(null);
   const [testMode, setTestMode] = React.useState(false);
+  const [bustLoading, setBustLoading] = React.useState(false);
   const [sportFilter, setSportFilter] = React.useState([]); // empty = all sports
   const [statFilter, setStatFilter] = React.useState([]);  // empty = all stats
   const [showPlaysInfo, setShowPlaysInfo] = React.useState(false);
@@ -555,6 +556,16 @@ function App() {
       .then(data => { const all = data.plays || []; setAllTonightPlays(all); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore > 10) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore > 10))); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); setTonightLoading(false); })
       .catch(() => { setAllTonightPlays([]); setTonightPlays([]); setTonightLoading(false); });
   }, [testMode]);
+
+  const bustCache = () => {
+    if (bustLoading) return;
+    setBustLoading(true);
+    setTonightLoading(true);
+    fetch(`${WORKER}/tonight?bust=1`)
+      .then(r => r.json())
+      .then(data => { const all = data.plays || []; setAllTonightPlays(all); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore > 10) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore > 10))); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); setTonightLoading(false); setBustLoading(false); })
+      .catch(() => { setAllTonightPlays([]); setTonightPlays([]); setTonightLoading(false); setBustLoading(false); });
+  };
 
 
   // Persist tracked plays to localStorage only when not logged in (server is source of truth when logged in)
@@ -2405,6 +2416,12 @@ function App() {
                   background: testMode?"rgba(227,179,65,0.12)":"transparent",
                   color: testMode?"#e3b341":"#484f58", fontWeight:600}}>
                 {testMode ? "⚗ mock" : "mock"}
+              </button>
+              <button onClick={bustCache} disabled={bustLoading}
+                style={{fontSize:10,padding:"2px 8px",borderRadius:6,cursor:bustLoading?"default":"pointer",
+                  border:"1px solid #30363d",background:"transparent",
+                  color: bustLoading?"#30363d":"#484f58", fontWeight:600}}>
+                {bustLoading ? "busting…" : "bust"}
               </button>
               <a href="#my-picks" className="picks-fab"
                 onClick={e => { e.preventDefault(); const el = document.getElementById("my-picks"); if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 16, behavior:"smooth" }); }}
