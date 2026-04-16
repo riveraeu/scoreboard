@@ -2570,7 +2570,7 @@ function App() {
                       </div>
                       {/* Matchup info */}
                       <div style={{flex:1,minWidth:0}}>
-                        <div style={{color:"#fff",fontSize:14,fontWeight:700}}>{play.awayTeam} @ {play.homeTeam}</div>
+                        <div style={{color:"#c9d1d9",fontSize:12,fontWeight:600,lineHeight:1.2}}>{play.awayTeam} @ {play.homeTeam}</div>
                         <div style={{color:"#8b949e",fontSize:11,marginTop:2,display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
                           {play.gameTime && <span>{new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",hour:"numeric",minute:"2-digit",hour12:true}).format(new Date(play.gameTime))} PT</span>}
                           {play.lowVolume && <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(231,179,49,0.12)",border:"1px solid #e3b341",color:"#e3b341"}}>Low Vol</span>}
@@ -2628,26 +2628,12 @@ function App() {
                         const pf = play.parkFactor ?? 1;
                         const eraColor = v => v == null ? "#8b949e" : v < 3.5 ? "#3fb950" : v < 4.5 ? "#e3b341" : "#f78166";
                         const rpgColor = v => v == null ? "#8b949e" : v >= 5.5 ? "#f78166" : v >= 4.5 ? "#e3b341" : "#8b949e";
-                        const mk = (meets, pts, label) => <span style={{color:meets?"#3fb950":"#f78166",fontSize:9,whiteSpace:"nowrap"}}>{meets?"✓":"✗"} {label} ({pts})</span>;
                         return (
                           <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.65}}>
-                            <div>
-                              <span style={{color:"#c9d1d9"}}>{play.awayTeam}</span>'s starter has{aERA != null ? <> a <span style={{color:eraColor(aERA),fontWeight:600}}>{aERA.toFixed(2)} ERA</span></> : " — ERA"}, facing a <span style={{color:"#c9d1d9"}}>{play.homeTeam}</span> offense averaging{hRPG != null ? <> <span style={{color:rpgColor(hRPG),fontWeight:600}}>{hRPG.toFixed(1)}</span> runs/game</> : " — RPG"}.
-                              {" "}<span style={{color:"#c9d1d9"}}>{play.homeTeam}</span>'s starter posts{hERA != null ? <> a <span style={{color:eraColor(hERA),fontWeight:600}}>{hERA.toFixed(2)} ERA</span></> : " — ERA"} against a <span style={{color:"#c9d1d9"}}>{play.awayTeam}</span> offense at{aRPG != null ? <> <span style={{color:rpgColor(aRPG),fontWeight:600}}>{aRPG.toFixed(1)}</span> RPG</> : " — RPG"}.
-                              {Math.abs(pf - 1) > 0.01 && <>{" "}Tonight's park {pf > 1 ? "inflates run scoring" : "suppresses run scoring"} (<span style={{color:"#8b949e"}}>{pf > 1 ? "+" : ""}{((pf-1)*100).toFixed(0)}%</span>).</>}
-                            </div>
-                            <div style={{display:"flex",alignItems:"center",gap:6,marginTop:6,paddingTop:5,borderTop:"1px solid #161b22"}}>
-                              <span style={{color:"#484f58",fontSize:10}}>SimScore</span>
-                              <span style={{background:"#161b22",borderRadius:4,padding:"1px 6px",color:scColor,fontWeight:700,fontSize:10,whiteSpace:"nowrap"}}>{sc}/14 {sc>=11?"Alpha":sc>=7?"Mid":"Low"}</span>
-                              <span style={{display:"inline-flex",gap:4,flexWrap:"wrap"}}>
-                                {mk(hERA!=null,3,`${play.homeTeam} ERA ${hERA?.toFixed(2)??"—"}`)}
-                                {mk(aERA!=null,3,`${play.awayTeam} ERA ${aERA?.toFixed(2)??"—"}`)}
-                                {mk(hRPG!=null,2,`${play.homeTeam} ${hRPG?.toFixed(1)??"—"} RPG`)}
-                                {mk(aRPG!=null,2,`${play.awayTeam} ${aRPG?.toFixed(1)??"—"} RPG`)}
-                                {mk(Math.abs(pf-1)>0.01,2,`Park ${pf>1?"+":""}${((pf-1)*100).toFixed(0)}%`)}
-                                {mk(Math.max(hERA??0,aERA??0)>4.5,2,"Max ERA >4.5")}
-                              </span>
-                            </div>
+                            <span style={{color:"#c9d1d9"}}>{play.awayTeam}</span>'s starter has{aERA != null ? <> a <span style={{color:eraColor(aERA),fontWeight:600}}>{aERA.toFixed(2)} ERA</span></> : " — ERA"}, facing a <span style={{color:"#c9d1d9"}}>{play.homeTeam}</span> offense averaging{hRPG != null ? <> <span style={{color:rpgColor(hRPG),fontWeight:600}}>{hRPG.toFixed(1)}</span> runs/game</> : " — RPG"}.
+                            {" "}<span style={{color:"#c9d1d9"}}>{play.homeTeam}</span>'s starter posts{hERA != null ? <> a <span style={{color:eraColor(hERA),fontWeight:600}}>{hERA.toFixed(2)} ERA</span></> : " — ERA"} against a <span style={{color:"#c9d1d9"}}>{play.awayTeam}</span> offense at{aRPG != null ? <> <span style={{color:rpgColor(aRPG),fontWeight:600}}>{aRPG.toFixed(1)}</span> RPG</> : " — RPG"}.
+                            {Math.abs(pf - 1) > 0.01 && <>{" "}Tonight's park {pf > 1 ? "inflates run scoring" : "suppresses run scoring"} (<span style={{color:"#8b949e"}}>{pf > 1 ? "+" : ""}{((pf-1)*100).toFixed(0)}%</span>).</>}
+                            {" "}<span style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,verticalAlign:"middle"}}>{sc}/14 {sc>=11?"Alpha":sc>=7?"Mid":"Low"}</span>
                           </div>
                         );
                       })()}
@@ -2659,23 +2645,11 @@ function App() {
                         const hDef = play.homeDef ?? null, aDef = play.awayDef ?? null;
                         const offColor = v => v == null ? "#8b949e" : v >= 118 ? "#f78166" : v >= 113 ? "#e3b341" : "#8b949e";
                         const defColor = v => v == null ? "#8b949e" : v >= 118 ? "#f78166" : v >= 113 ? "#e3b341" : "#3fb950";
-                        const mk = (meets, pts, label) => <span style={{color:meets?"#3fb950":"#f78166",fontSize:9,whiteSpace:"nowrap"}}>{meets?"✓":"✗"} {label} ({pts})</span>;
                         return (
                           <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.65}}>
-                            <div>
-                              <span style={{color:"#c9d1d9"}}>{play.awayTeam}</span> averages{aOff != null ? <> <span style={{color:offColor(aOff),fontWeight:600}}>{aOff.toFixed(0)} PPG</span></> : " —"} facing a <span style={{color:"#c9d1d9"}}>{play.homeTeam}</span> defense allowing{hDef != null ? <> <span style={{color:defColor(hDef),fontWeight:600}}>{hDef.toFixed(0)} PPG</span></> : " —"}.
-                              {" "}<span style={{color:"#c9d1d9"}}>{play.homeTeam}</span> averages{hOff != null ? <> <span style={{color:offColor(hOff),fontWeight:600}}>{hOff.toFixed(0)} PPG</span></> : " —"} facing a <span style={{color:"#c9d1d9"}}>{play.awayTeam}</span> defense allowing{aDef != null ? <> <span style={{color:defColor(aDef),fontWeight:600}}>{aDef.toFixed(0)} PPG</span></> : " —"}.
-                            </div>
-                            <div style={{display:"flex",alignItems:"center",gap:6,marginTop:6,paddingTop:5,borderTop:"1px solid #161b22"}}>
-                              <span style={{color:"#484f58",fontSize:10}}>SimScore</span>
-                              <span style={{background:"#161b22",borderRadius:4,padding:"1px 6px",color:scColor,fontWeight:700,fontSize:10,whiteSpace:"nowrap"}}>{sc}/14 {sc>=11?"Alpha":sc>=7?"Mid":"Low"}</span>
-                              <span style={{display:"inline-flex",gap:4,flexWrap:"wrap"}}>
-                                {mk(hOff!=null,3,`${play.homeTeam} ${hOff?.toFixed(0)??"—"} PPG off`)}
-                                {mk(aOff!=null,3,`${play.awayTeam} ${aOff?.toFixed(0)??"—"} PPG off`)}
-                                {mk(hDef!=null,2,`${play.homeTeam} ${hDef?.toFixed(0)??"—"} PPG def`)}
-                                {mk(aDef!=null,2,`${play.awayTeam} ${aDef?.toFixed(0)??"—"} PPG def`)}
-                              </span>
-                            </div>
+                            <span style={{color:"#c9d1d9"}}>{play.awayTeam}</span> averages{aOff != null ? <> <span style={{color:offColor(aOff),fontWeight:600}}>{aOff.toFixed(0)} PPG</span></> : " —"} facing a <span style={{color:"#c9d1d9"}}>{play.homeTeam}</span> defense allowing{hDef != null ? <> <span style={{color:defColor(hDef),fontWeight:600}}>{hDef.toFixed(0)} PPG</span></> : " —"}.
+                            {" "}<span style={{color:"#c9d1d9"}}>{play.homeTeam}</span> averages{hOff != null ? <> <span style={{color:offColor(hOff),fontWeight:600}}>{hOff.toFixed(0)} PPG</span></> : " —"} facing a <span style={{color:"#c9d1d9"}}>{play.awayTeam}</span> defense allowing{aDef != null ? <> <span style={{color:defColor(aDef),fontWeight:600}}>{aDef.toFixed(0)} PPG</span></> : " —"}.
+                            {" "}<span style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,verticalAlign:"middle"}}>{sc}/14 {sc>=11?"Alpha":sc>=7?"Mid":"Low"}</span>
                           </div>
                         );
                       })()}
@@ -2687,23 +2661,11 @@ function App() {
                         const hGAA = play.homeGAA ?? null, aGAA = play.awayGAA ?? null;
                         const gpgColor = v => v == null ? "#8b949e" : v >= 3.5 ? "#f78166" : v >= 3.0 ? "#e3b341" : "#8b949e";
                         const gaaColor = v => v == null ? "#8b949e" : v >= 3.5 ? "#f78166" : v >= 3.0 ? "#e3b341" : "#3fb950";
-                        const mk = (meets, pts, label) => <span style={{color:meets?"#3fb950":"#f78166",fontSize:9,whiteSpace:"nowrap"}}>{meets?"✓":"✗"} {label} ({pts})</span>;
                         return (
                           <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.65}}>
-                            <div>
-                              <span style={{color:"#c9d1d9"}}>{play.awayTeam}</span> averages{aGPG != null ? <> <span style={{color:gpgColor(aGPG),fontWeight:600}}>{aGPG.toFixed(1)} GPG</span></> : " —"} facing a <span style={{color:"#c9d1d9"}}>{play.homeTeam}</span> defense with{hGAA != null ? <> <span style={{color:gaaColor(hGAA),fontWeight:600}}>{hGAA.toFixed(2)} GAA</span></> : " — GAA"}.
-                              {" "}<span style={{color:"#c9d1d9"}}>{play.homeTeam}</span> averages{hGPG != null ? <> <span style={{color:gpgColor(hGPG),fontWeight:600}}>{hGPG.toFixed(1)} GPG</span></> : " —"} facing a <span style={{color:"#c9d1d9"}}>{play.awayTeam}</span> defense allowing{aGAA != null ? <> <span style={{color:gaaColor(aGAA),fontWeight:600}}>{aGAA.toFixed(2)} GAA</span></> : " — GAA"}.
-                            </div>
-                            <div style={{display:"flex",alignItems:"center",gap:6,marginTop:6,paddingTop:5,borderTop:"1px solid #161b22"}}>
-                              <span style={{color:"#484f58",fontSize:10}}>SimScore</span>
-                              <span style={{background:"#161b22",borderRadius:4,padding:"1px 6px",color:scColor,fontWeight:700,fontSize:10,whiteSpace:"nowrap"}}>{sc}/14 {sc>=11?"Alpha":sc>=7?"Mid":"Low"}</span>
-                              <span style={{display:"inline-flex",gap:4,flexWrap:"wrap"}}>
-                                {mk(hGPG!=null,3,`${play.homeTeam} ${hGPG?.toFixed(1)??"—"} GPG`)}
-                                {mk(aGPG!=null,3,`${play.awayTeam} ${aGPG?.toFixed(1)??"—"} GPG`)}
-                                {mk(hGAA!=null,2,`${play.homeTeam} ${hGAA?.toFixed(2)??"—"} GAA`)}
-                                {mk(aGAA!=null,2,`${play.awayTeam} ${aGAA?.toFixed(2)??"—"} GAA`)}
-                              </span>
-                            </div>
+                            <span style={{color:"#c9d1d9"}}>{play.awayTeam}</span> averages{aGPG != null ? <> <span style={{color:gpgColor(aGPG),fontWeight:600}}>{aGPG.toFixed(1)} GPG</span></> : " —"} facing a <span style={{color:"#c9d1d9"}}>{play.homeTeam}</span> defense with{hGAA != null ? <> <span style={{color:gaaColor(hGAA),fontWeight:600}}>{hGAA.toFixed(2)} GAA</span></> : " — GAA"}.
+                            {" "}<span style={{color:"#c9d1d9"}}>{play.homeTeam}</span> averages{hGPG != null ? <> <span style={{color:gpgColor(hGPG),fontWeight:600}}>{hGPG.toFixed(1)} GPG</span></> : " —"} facing a <span style={{color:"#c9d1d9"}}>{play.awayTeam}</span> defense allowing{aGAA != null ? <> <span style={{color:gaaColor(aGAA),fontWeight:600}}>{aGAA.toFixed(2)} GAA</span></> : " — GAA"}.
+                            {" "}<span style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,verticalAlign:"middle"}}>{sc}/14 {sc>=11?"Alpha":sc>=7?"Mid":"Low"}</span>
                           </div>
                         );
                       })()}
