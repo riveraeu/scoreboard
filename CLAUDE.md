@@ -76,7 +76,7 @@ Used for caching expensive fetches. Key TTLs:
 
 #### Total SimScore details
 - **MLB**: homeERA known→3pts, awayERA known→3pts, homeRPG→2pts, awayRPG→2pts, |parkRF-1|>0.01→2pts, maxERA>4.5→2pts (max 14)
-- **NBA**: homeOff PPG→3pts, awayOff PPG→3pts, homeDefPPG→2pts, awayDefPPG→2pts, both pace known→2pts, avg pace above league→2pts (max 14)
+- **NBA**: off PPG tiered (≥118→3, ≥113→2, else 1, null→0) per team (max 3+3=6); def PPG allowed tiered (≥118→2, ≥113→1, else 0, null→0) per team (max 2+2=4); both pace known→2pts; avg pace above league→2pts (max 14)
 - **NHL**: homeGPG→3pts, awayGPG→3pts, homeGAA→2pts, awayGAA→2pts, home SA rank→2pts, away SA rank→2pts (max 14)
 
 #### Lambda computation (MLB)

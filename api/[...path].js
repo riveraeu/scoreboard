@@ -2809,8 +2809,11 @@ var worker_default = {
                 if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateNBATotalDist(_homeExpRaw, _awayExpRaw, 11, 11, 10000);
                 truePct = totalDistPct(totalDistCache[_dk], threshold);
               }
-              if (homeOff != null) totalSimScore += 3; if (awayOff != null) totalSimScore += 3;
-              if (homeDef != null) totalSimScore += 2; if (awayDef != null) totalSimScore += 2;
+              // Off PPG tiered: >=118→3pts (elite), >=113→2pts (above avg), exists→1pt; Def PPG allowed tiered: >=118→2pts (bad def), >=113→1pt, exists→0pts (solid def = fewer pts)
+              if (homeOff != null) totalSimScore += homeOff >= 118 ? 3 : homeOff >= 113 ? 2 : 1;
+              if (awayOff != null) totalSimScore += awayOff >= 118 ? 3 : awayOff >= 113 ? 2 : 1;
+              if (homeDef != null) totalSimScore += homeDef >= 118 ? 2 : homeDef >= 113 ? 1 : 0;
+              if (awayDef != null) totalSimScore += awayDef >= 118 ? 2 : awayDef >= 113 ? 1 : 0;
               if (_hp != null && _ap != null) { totalSimScore += 2; if ((_hp + _ap) / 2 > (nbaPaceData?.leagueAvgPace ?? 100)) totalSimScore += 2; }
             } else if (sport === "nhl") {
               const homeGPG = nhlGPGMap[homeTeam] ?? null, awayGPG = nhlGPGMap[awayTeam] ?? null;
