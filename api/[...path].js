@@ -192,9 +192,10 @@ var worker_default = {
         await CACHE2.put(emailKey, JSON.stringify({ ...user, passwordHash: newHash, salt: newSalt }));
         return jsonResponse({ ok: true });
       } else if (path === "auth/import-kalshi-picks" && method === "POST") {
-        const { kalshiToken: providedToken, adminKey: importAdminKey, userId: importUserId } = await request.json();
+        const { kalshiToken: providedToken, kalshiSession, adminKey: importAdminKey, userId: importUserId } = await request.json();
         if (importAdminKey !== (env?.ADMIN_KEY || "sb-admin-2026")) return errorResponse("Forbidden", 403);
-        if (!providedToken || !importUserId) return errorResponse("kalshiToken and userId required", 400);
+        if (!providedToken && !kalshiSession) return errorResponse("kalshiToken or kalshiSession required", 400);
+        if (!importUserId) return errorResponse("userId required", 400);
         const KALSHI_BASE = "https://api.elections.kalshi.com/trade-api/v2";
         const KMON2 = { JAN:"01",FEB:"02",MAR:"03",APR:"04",MAY:"05",JUN:"06",JUL:"07",AUG:"08",SEP:"09",OCT:"10",NOV:"11",DEC:"12" };
         const IMP_SERIES = {
@@ -216,7 +217,9 @@ var worker_default = {
           return [null, null];
         };
         const kalshiToken = providedToken;
-        const kHdrs = { "Authorization":`Bearer ${kalshiToken}`, "Content-Type":"application/json" };
+        const kHdrs = kalshiSession
+          ? { "Cookie":`session=${kalshiSession}`, "Content-Type":"application/json" }
+          : { "Authorization":`Bearer ${kalshiToken}`, "Content-Type":"application/json" };
         // Step 2: Fetch fills (last 5 days)
         const minTs = Math.floor((Date.now() - 5 * 86400000) / 1000);
         let allFills = [], cursor2 = null;
