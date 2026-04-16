@@ -1717,6 +1717,7 @@ var worker_default = {
           const primaryPct = pct26 ?? blendedPct ?? seasonPct;
           let simScore = null, kpctMeets = null, kpctPts = null, kbbMeets = null, lkpMeets = null, lkpPts = null, pitchesMeets = null, parkMeets = null, mlPts = null, totalPts = null;
           let _pitcherHand = null;
+          let _avgP = null; // hoisted so all strikeout output sites can use it
           if (sport === "mlb" && stat === "strikeouts") {
             _pitcherHand = _pt(sportByteam.mlb?.pitcherHand, "hand");
             const _csw = _pt(sportByteam.mlb?.pitcherCSWPct, "cswPct");
@@ -1734,14 +1735,23 @@ var worker_default = {
               const _bb26 = _evs26.reduce((s, e) => s + (parseFloat(e.stats[_bbi]) || 0), 0);
               return parseFloat((vals26.reduce((s, v) => s + v, 0) / _bf26 * 100 - _bb26 / _bf26 * 100).toFixed(1));
             })();
-            const _avgP = (() => {
-              const v = _pt(sportByteam.mlb?.pitcherAvgPitches, "avgPitches");
-              if (v != null) return v;
+            _avgP = (() => {
+              // 1. Name-based (pitcherStatsByName — immune to schedule errors when pitcher is in probables)
+              if (_ps?.avgPitches !== undefined) return _ps.avgPitches;
+              // 2. ESPN gamelog starts-only (player-specific: uses this player's own gamelog data,
+              //    immune to stale/wrong probables that might have another pitcher under the team key).
+              //    IP >= 3 is a reliable proxy for starts (starters go 3+ IP; relievers rarely do).
               const _pci = gl.ul.indexOf("PC");
-              if (_pci === -1) return null;
-              const _evs26 = hasSeasonTags ? gl.events.filter(ev => ev.season === 2026) : gl.events;
-              const _pv = _evs26.map(e => parseFloat(e.stats[_pci])).filter(v => !isNaN(v) && v > 0);
-              return _pv.length >= 1 ? parseFloat((_pv.reduce((a, b) => a + b, 0) / _pv.length).toFixed(1)) : null;
+              if (_pci !== -1) {
+                const _ipIdx = gl.ul.indexOf("IP");
+                const _evs26 = hasSeasonTags ? gl.events.filter(ev => ev.season === 2026) : gl.events;
+                const _startEvs = _ipIdx !== -1 ? _evs26.filter(e => parseFloat(e.stats[_ipIdx]) >= 3) : _evs26;
+                const _pv = _startEvs.map(e => parseFloat(e.stats[_pci])).filter(v => !isNaN(v) && v > 0);
+                if (_pv.length >= 1) return parseFloat((_pv.reduce((a, b) => a + b, 0) / _pv.length).toFixed(1));
+              }
+              // 3. Team key fallback — last resort; may return a different pitcher's value if the
+              //    schedule has a stale/wrong probable for this team (e.g. cache built before starter confirmed).
+              return _pt(sportByteam.mlb?.pitcherAvgPitches, "avgPitches");
             })();
             const _lkpVR = sportByteam.mlb?.lineupKPctVR?.[tonightOpp] ?? null;
             const _lkpVL = sportByteam.mlb?.lineupKPctVL?.[tonightOpp] ?? null;
@@ -1910,7 +1920,7 @@ var worker_default = {
               pitcherCSWPct: _pt(sportByteam.mlb?.pitcherCSWPct, "cswPct"),
               pitcherKPct: pitcherKPctOut,
               pitcherKBBPct: pitcherKBBPctOut,
-              pitcherAvgPitches: _pt(sportByteam.mlb?.pitcherAvgPitches, "avgPitches"),
+              pitcherAvgPitches: _avgP,
               lineupKPct: lineupKPctOut,
               pitcherEra: _pitcherEraFromGl ?? _pt(sportByteam.mlb?.pitcherEra, "era") ?? null,
               pitcherHand: _pitcherHand ?? null,
@@ -2251,7 +2261,7 @@ var worker_default = {
                 gameTotal: sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null,
                 pitcherCSWPct: _pt(sportByteam.mlb?.pitcherCSWPct, "cswPct"),
                 pitcherKBBPct: _pt(sportByteam.mlb?.pitcherKBBPct, "kbbPct"),
-                lineupKPct: lineupKPctOut, pitcherAvgPitches: _pt(sportByteam.mlb?.pitcherAvgPitches, "avgPitches"),
+                lineupKPct: lineupKPctOut, pitcherAvgPitches: _avgP,
                 kpctMeets, kpctPts, kbbMeets, lkpMeets, pitchesMeets, parkMeets, mlPts, totalPts,
               } : {}),
               ...(sport === "mlb" && stat !== "strikeouts" ? {
@@ -2296,7 +2306,7 @@ var worker_default = {
               truePct: parseFloat(truePct.toFixed(1)), edge: parseFloat(edge.toFixed(1)),
               pitcherCSWPct: _pt(sportByteam.mlb?.pitcherCSWPct, "cswPct"),
               pitcherKPct: pitcherKPctOut, pitcherKBBPct: pitcherKBBPctOut,
-              pitcherAvgPitches: _pt(sportByteam.mlb?.pitcherAvgPitches, "avgPitches"),
+              pitcherAvgPitches: _avgP,
               lineupKPct: lineupKPctOut,
               pitcherEra: _pitcherEraFromGl ?? _pt(sportByteam.mlb?.pitcherEra, "era") ?? null,
               pitcherHand: _pitcherHand ?? null, simPct: simPctOut,
@@ -2386,7 +2396,7 @@ var worker_default = {
             hitterBarrelPts: sport === "mlb" && stat !== "strikeouts" ? hitterBarrelPts : void 0,
             hitterTotalPts: sport === "mlb" && stat !== "strikeouts" ? hitterTotalPts : void 0,
             hitterGameTotal: sport === "mlb" && stat !== "strikeouts" ? hitterGameTotal : void 0,
-            pitcherAvgPitches: sport === "mlb" && stat === "strikeouts" ? _pt(sportByteam.mlb?.pitcherAvgPitches, "avgPitches") : void 0,
+            pitcherAvgPitches: sport === "mlb" && stat === "strikeouts" ? _avgP : void 0,
             gameTotal: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null : void 0,
             gameMoneyline: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null : void 0,
             pitcherCSWPct: sport === "mlb" && stat === "strikeouts" ? _pt(sportByteam.mlb?.pitcherCSWPct, "cswPct") : void 0,

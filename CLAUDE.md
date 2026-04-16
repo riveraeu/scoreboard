@@ -387,10 +387,24 @@ Also check the date filter: the edge function runs UTC, so after midnight UTC (e
 ### "P/GS all dashes"
 Comes from gamelog starts-only (2026 primary) or season aggregate fallback `numberOfPitches / gamesStarted`. If a pitcher has 0 starts recorded yet in either source, will show `—`. Also check that `buildPitcherKPct` didn't hit the early-return path (see above).
 
+### "P/GS shows wrong value for a confirmed starter (non-doubleheader)"
+Root cause: stale `byteam:mlb` KV cache (600s TTL) built when a different pitcher was listed as the team's probable. The old `_pt()` team key lookup returned that wrong pitcher's avgPitches — non-null, so the ESPN fallback never triggered.
+
+Fix: `_avgP` IIFE in `[...path].js` (strikeouts block) uses a priority chain:
+1. **Name-based** (`_ps?.avgPitches` from `pitcherStatsByName`) — correct when the pitcher's ID is in probables
+2. **ESPN gamelog starts-only** — filters `IP >= 3` as a proxy for starts; uses this specific player's own ESPN gamelog, immune to stale/wrong probables
+3. **Team key fallback** (`_pt(sportByteam.mlb?.pitcherAvgPitches, …)`) — last resort; may return a different pitcher if cache is stale
+
+`_avgP` is hoisted (`let _avgP = null`) at the outer per-market declarations so all 4 output sites (qualified play, edge_too_low drop, low-simScore drop, generic drop) use it.
+
 ### "Wrong pitcher stats for a team on a doubleheader day"
 When a team plays two games (e.g. a makeup game + a regular game), the schedule loop processes both games and `pitcherByTeam["SD"]` ends up pointing to whichever pitcher was processed last — not necessarily tonight's Kalshi pitcher.
 
-Fix (in place): `pitcherByTeam` also stores matchup keys (`"SD|SEA"`, `"SD|OAK"`) for each game. All pitcher stat lookups in `[...path].js` use a `_pt(map)` helper that tries the matchup key `team|opp` first, then falls back to the plain team key. The `glFetch` loop in `mlb.js` uses `.filter()` (not `.find()`) to set `pitcherAvgPitches` for all matching keys so both the team key and matchup key are populated with the correct value for their respective game.
+**Different-opponent doubleheader** (e.g. SD vs OAK + SD vs SEA): matchup keys `"SD|OAK"` and `"SD|SEA"` are distinct — the `_pt()` helper tries `team|opp` first and gets the right pitcher.
+
+**Same-opponent doubleheader** (e.g. SD vs SEA twice): both games share the same matchup key `"SD|SEA"`. The second game overwrites `pitcherByTeam["SD"]` AND `pitcherByTeam["SD|SEA"]`, and drops the first pitcher's ID from `allIds` entirely — so their stats are never fetched.
+
+Fix (in place): `allScheduledPitcherIds` (a `Set`) collects ALL pitcher IDs encountered in the schedule loop, regardless of overwrite. `allIds` is built from this set so every pitcher's season stats and gamelog are always fetched. `pitcherAvgPitchesById` stores avg pitches per MLB ID (not just per abbr). `cswByMlbId` is declared outside the CSW% try block. `pitcherStatsByName` has a fallback path for IDs in `allScheduledPitcherIds` that have no abbr in `pitcherByTeam` — it computes K%, KBB%, ERA, CSW%, avgPitches, gs26, hasAnchor directly from the raw ID-keyed data.
 
 ### "API returning 504 / function stopped after 25s"
 The CSW% play-by-play fetch in `buildPitcherKPct` fires one MLB Stats API request per game per pitcher. With 10–15 pitchers × multiple starts, this can exceed the 25s Vercel Edge limit. Mitigations in place: PBP limited to last 5 starts per pitcher; 8s AbortController aborts the whole PBP block and falls back to K% if slow. If 504s recur, check whether the PBP block is the bottleneck or if another fetch is slow.

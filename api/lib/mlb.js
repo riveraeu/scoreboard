@@ -270,6 +270,10 @@ export async function buildPitcherKPct(mlbSched) {
   try {
     const pitcherByTeam = {};
     const pitcherHand = {};
+    // Track ALL scheduled pitcher IDs — pitcherByTeam can be overwritten in same-matchup
+    // doubleheaders (SD vs SEA twice), dropping the earlier pitcher's ID from allIds.
+    // This set collects every ID seen so their stats are always fetched.
+    const allScheduledPitcherIds = new Set();
     for (const date of mlbSched.dates || []) {
       for (const game of date.games || []) {
         const homeAbbr = MLB_ID_TO_ABBR[game.teams?.home?.team?.id] || game.teams?.home?.team?.abbreviation;
@@ -289,9 +293,11 @@ export async function buildPitcherKPct(mlbSched) {
           pitcherHand[awayAbbr] = awayHand;
           if (homeAbbr) { pitcherByTeam[`${awayAbbr}|${homeAbbr}`] = awayId; pitcherHand[`${awayAbbr}|${homeAbbr}`] = awayHand; }
         }
+        if (homeId) allScheduledPitcherIds.add(homeId);
+        if (awayId) allScheduledPitcherIds.add(awayId);
       }
     }
-    const allIds = [...new Set(Object.values(pitcherByTeam))];
+    const allIds = [...allScheduledPitcherIds];
     if (allIds.length === 0) return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherGS26: {}, pitcherHasAnchor: {} };
     const idStr = allIds.join(",");
     const [res25, res26] = await Promise.all([
@@ -354,6 +360,7 @@ export async function buildPitcherKPct(mlbSched) {
     }
     const pitcherCSWPct = {};
     const pitcherAvgPitches = {};
+    const pitcherAvgPitchesById = {}; // per-ID version — used for overwritten pitchers in pitcherStatsByName
     const pitcherGS26 = {};
     for (const [abbr, id] of Object.entries(pitcherByTeam)) {
       const s26 = pitcherStats26[id];
@@ -381,7 +388,7 @@ export async function buildPitcherKPct(mlbSched) {
       // the correct value (e.g. "SD|SEA" = Vasquez's avg even if "SD" was overwritten
       // by a makeup-game pitcher that processed later in the schedule loop).
       const abbrs = Object.keys(pitcherByTeam).filter(a => pitcherByTeam[a] === id);
-      if (abbrs.length === 0) continue;
+      // Note: do NOT skip if abbrs is empty — overwritten pitchers still need pitcherAvgPitchesById set.
       const startSplits = splits.filter(s => (s.stat?.gamesStarted || 0) > 0 && s.date !== _todayStr);
       const totalNP = startSplits.reduce((sum, s) => sum + (s.stat?.numberOfPitches || 0), 0);
       const s26 = pitcherStats26[id];
@@ -397,12 +404,15 @@ export async function buildPitcherKPct(mlbSched) {
         avgP = parseFloat((s25.np / s25.gs).toFixed(1));
       }
       if (avgP !== null) {
+        pitcherAvgPitchesById[id] = avgP; // per-ID: used in pitcherStatsByName for overwritten pitchers
         for (const a of abbrs) pitcherAvgPitches[a] = avgP;
       }
     }
     // Step 2: fetch play-by-play for CSW% (many concurrent requests, may time out on edge)
     // Limit to last 5 starts per pitcher to cap the number of PBP requests.
     // AbortController gives the entire block an 8s budget — if slow, CSW% falls back to K%.
+    // Declared outside the try so pitcherStatsByName can access it for overwritten pitchers.
+    const cswByMlbId = {};
     try {
       const allGamePks = new Set();
       const pitcherGamePks = {};
@@ -424,7 +434,6 @@ export async function buildPitcherKPct(mlbSched) {
       clearTimeout(_pbpTimer);
       const playsByGk = Object.fromEntries(pbpFetch.map(({ gk, plays }) => [gk, plays]));
       const CSW_CODES = new Set(["C", "S", "T", "W", "M", "Q"]);
-      const cswByMlbId = {};
       for (const { id, splits } of glFetch) {
         let totalCSW = 0, totalPitches = 0;
         for (const s of splits) {
@@ -446,8 +455,11 @@ export async function buildPitcherKPct(mlbSched) {
       }
     } catch { /* CSW% unavailable — filter falls back to K% */ }
     // Name-keyed map: for MLB strikeout plays the player IS the pitcher.
-    // Keying by name is immune to doubleheader overwrite — even if "SD|SEA" gets overwritten
-    // when both games today are SD vs SEA, "randy vasquez" always maps to Vasquez's own stats.
+    // Primary path: abbrs found in pitcherByTeam — uses per-abbr stats directly.
+    // Fallback path: overwritten pitcher (same-matchup doubleheader, e.g. SD vs SEA twice) —
+    //   pitcherByTeam["SD"] and ["SD|SEA"] both point to the second game's pitcher, so the
+    //   first game's pitcher has no abbr entry. We detect this via allScheduledPitcherIds and
+    //   compute stats directly from the raw ID-keyed data (pitcherStats26/25, cswByMlbId, etc.).
     const pitcherStatsByName = {};
     const _nn = n => (n || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
     for (const person of [...(res26.people || []), ...(res25.people || [])]) {
@@ -456,18 +468,49 @@ export async function buildPitcherKPct(mlbSched) {
       const name = _nn(person.fullName);
       if (pitcherStatsByName[name]) continue; // prefer res26 (iterated first)
       const abbrs = Object.keys(pitcherByTeam).filter(a => pitcherByTeam[a] === id);
-      if (abbrs.length === 0) continue;
-      const a = abbrs[0]; // stats are same regardless of which abbr we pick
-      pitcherStatsByName[name] = {
-        hand: pitcherHand[a] ?? null,
-        kPct: pitcherKPct[a] ?? null,
-        kbbPct: pitcherKBBPct[a] ?? null,
-        era: pitcherEra[a] ?? null,
-        cswPct: pitcherCSWPct[a] ?? null,
-        avgPitches: pitcherAvgPitches[a] ?? null,
-        gs26: pitcherGS26[a] ?? null,
-        hasAnchor: pitcherHasAnchor[a] ?? null,
-      };
+      if (abbrs.length > 0) {
+        const a = abbrs[0]; // stats are same regardless of which abbr we pick
+        pitcherStatsByName[name] = {
+          hand: pitcherHand[a] ?? null,
+          kPct: pitcherKPct[a] ?? null,
+          kbbPct: pitcherKBBPct[a] ?? null,
+          era: pitcherEra[a] ?? null,
+          cswPct: pitcherCSWPct[a] ?? null,
+          avgPitches: pitcherAvgPitches[a] ?? null,
+          gs26: pitcherGS26[a] ?? null,
+          hasAnchor: pitcherHasAnchor[a] ?? null,
+        };
+      } else if (allScheduledPitcherIds.has(id)) {
+        // Overwritten pitcher — compute stats directly from raw ID-keyed data
+        const s26 = pitcherStats26[id];
+        const s25 = pitcherStats25[id];
+        if (!s26 && !s25) continue;
+        const bf26 = s26?.bf || 0;
+        const bf25 = s25?.bf || 0;
+        const gs25 = s25?.gs || 0;
+        const k26 = (s26 && bf26 > 0) ? s26.so / bf26 : null;
+        const anchor = (s25 && bf25 >= 50) ? s25.so / bf25 : LEAGUE_PITCHER_K;
+        const trust = Math.min(1.0, bf26 / 200);
+        let kPct = null, kbbPct = null;
+        if (k26 !== null || bf25 >= 50) {
+          const kRegressed = k26 !== null ? k26 * trust + anchor * (1 - trust) : anchor;
+          kPct = parseFloat((kRegressed * 100).toFixed(1));
+          const kbb26 = (s26 && bf26 > 0) ? (s26.so - s26.bb) / bf26 : null;
+          const anchorKBB = (s25 && bf25 >= 50) ? (s25.so - s25.bb) / bf25 : LEAGUE_PITCHER_K * 0.6;
+          const kbbRegressed = kbb26 !== null ? kbb26 * trust + anchorKBB * (1 - trust) : anchorKBB;
+          kbbPct = parseFloat((kbbRegressed * 100).toFixed(1));
+        }
+        pitcherStatsByName[name] = {
+          hand: pitcherHandById[id] ?? null,
+          kPct,
+          kbbPct,
+          era: (s26?.era ?? null) ?? (s25?.era ?? null),
+          cswPct: cswByMlbId[id] ?? null,
+          avgPitches: pitcherAvgPitchesById[id] ?? null,
+          gs26: (s26?.gs > 0 ? s26.gs : null),
+          hasAnchor: gs25 >= 5 && bf25 >= 100,
+        };
+      }
     }
     return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherCSWPct, pitcherAvgPitches, pitcherGS26, pitcherHasAnchor, pitcherStatsByName };
   } catch {
