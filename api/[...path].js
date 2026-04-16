@@ -299,7 +299,7 @@ var worker_default = {
           if (!mlbRes.ok) return errorResponse(`ESPN MLB API returned ${mlbRes.status}`, mlbRes.status);
           const d = await mlbRes.json();
           const labels = d.labels || [];
-          const reg = (d.seasonTypes || []).find((st) => st.displayName?.toLowerCase().includes("regular")) || d.seasonTypes?.[0];
+          const reg = (d.seasonTypes || []).find((st) => { const dn = (st.displayName || "").toLowerCase(); return dn.includes("regular") && !dn.includes("play"); }) || (d.seasonTypes || []).find((st) => st.displayName?.toLowerCase().includes("regular")) || d.seasonTypes?.[0];
           const seenIds = /* @__PURE__ */ new Set();
           const allEvents = [];
           for (const cat of reg?.categories || []) {
@@ -1461,7 +1461,7 @@ var worker_default = {
             }
             const d = await r.json();
             const ul = (d.labels || []).map((l) => (l || "").toUpperCase());
-            const reg = (d.seasonTypes || []).find((st) => st.displayName?.toLowerCase().includes("regular")) || (d.seasonTypes?.length === 1 ? d.seasonTypes[0] : null);
+            const reg = (d.seasonTypes || []).find((st) => { const dn = (st.displayName || "").toLowerCase(); return dn.includes("regular") && !dn.includes("play"); }) || (d.seasonTypes || []).find((st) => st.displayName?.toLowerCase().includes("regular")) || (d.seasonTypes?.length === 1 ? d.seasonTypes[0] : null);
             const events = [];
             const seenIds = /* @__PURE__ */ new Set();
             for (const cat of reg?.categories || []) {
