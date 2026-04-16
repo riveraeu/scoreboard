@@ -460,6 +460,9 @@ The CSW% play-by-play fetch in `buildPitcherKPct` fires one MLB Stats API reques
 ### "NBA report shows — for Pace/AvgMin/Rest on most rows"
 Most NBA markets are dropped at `opp_not_soft` before the pre-sim block runs. Those drop records include `isB2B`, `nbaPaceAdj`, and `nbaOpportunity` computed inline from the gamelog at that drop site. `nbaPreSimScore` and `nbaSimScore` are also computed inline at the drop site so the Score column is populated for all NBA rows (not just qualifying plays).
 
+### "NBA avgMin (nbaOpportunity) is null for all players"
+ESPN returns two season types that both contain "regular" in their name: `"2025-26 Play In Regular Season"` (1 game) and `"2025-26 Regular Season"` (80 games). The old `.find("regular")` took the Play-In type first — `_minVals.length = 1 < 3` gate fails → `nbaOpportunity = null`. Fix: `parseEspnGamelog` now prefers season types with "regular" that do NOT contain "play". Gamelog cache key is `gl:v2|nba|player` — if you need to re-bust, bump the version prefix.
+
 ### "SimScore shows yellow for strikeout players with score 7–9"
 The qualifying gate for strikeouts is `finalSimScore >= 11` (Alpha tier). The report SimScore column uses `>= 10` as the yellow threshold, so scores 10 show yellow (near miss) and scores 7–9 show gray.
 
