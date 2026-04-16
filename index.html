@@ -2009,7 +2009,8 @@ function App() {
                     const kRaw = kTonightRaw || kRawLocal;
                     const k = (kRaw && isUnder) ? { ...kRaw, pct: 100 - kRaw.pct, americanOdds: kRaw.pct >= 50 ? Math.round(((kRaw.pct) / (100 - kRaw.pct)) * 100) : -Math.round(((100 - kRaw.pct) / kRaw.pct) * 100) } : kRaw;
                     const oddsStr = k ? (k.americanOdds >= 0 ? `+${k.americanOdds}` : `${k.americanOdds}`) : null;
-                    const edge = (truePct !== null && k) ? truePct - k.pct : null;
+                    // Use API net edge (includes spreadAdj) when available; fallback recomputes raw edge
+                    const edge = (tonightPlay?.edge != null && !isUnder) ? tonightPlay.edge : (truePct !== null && k) ? truePct - k.pct : null;
                     const edgeColor = edge === null ? null : edge > 3 ? "#3fb950" : edge < -3 ? "#f78166" : "#8b949e";
                     const edgeStr = edge === null ? null : (edge >= 0 ? `+${edge.toFixed(1)}%` : `${edge.toFixed(1)}%`);
 
@@ -2017,7 +2018,7 @@ function App() {
                     // Use raw season pct as fallback when no h2h softPct is available
                     const qualifyingPct = truePct !== null ? truePct : pct;
                     const strongMatchupOk = !(isMLB && safeTab === "strikeouts") || ((dvpData?.h2h?.simScore ?? tonightPlay?.simScore ?? -1) >= 7);
-                    const qualifies = k && k.pct >= 70 && (qualifyingPct - k.pct) >= 3 && strongMatchupOk;
+                    const qualifies = k && k.pct >= 70 && edge >= 3 && strongMatchupOk;
                     const sportSlug = sport.split("/")[1];
                     const trackId = `${sportSlug}|${player.name}|${safeTab}|${t}|${tonightPlay?.gameDate || ""}`;
                     const isTracked = trackedPlays.some(p => p.id === trackId);
