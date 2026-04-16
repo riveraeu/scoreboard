@@ -372,22 +372,21 @@ export async function buildPitcherKPct(mlbSched) {
     // Exclude today's date: the gamelog API includes in-progress game entries with gamesStarted=1
     // and partial pitch counts (e.g. gs=1, np=11 after 1 IP), which poisons the avg.
     const _todayStr = new Date().toISOString().slice(0, 10);
+    const _npDebug = {};
     for (const { id, splits } of glFetch) {
       const abbr = Object.keys(pitcherByTeam).find(a => pitcherByTeam[a] === id);
       if (!abbr) continue;
       const startSplits = splits.filter(s => (s.stat?.gamesStarted || 0) > 0 && s.date !== _todayStr);
-      if (startSplits.length > 0) {
-        const totalNP = startSplits.reduce((sum, s) => sum + (s.stat?.numberOfPitches || 0), 0);
-        if (totalNP > 0) { pitcherAvgPitches[abbr] = parseFloat((totalNP / startSplits.length).toFixed(1)); continue; }
-      }
-      // Gamelog NP missing or zero → fall back to 2026 season aggregate (more reliable for NP than gamelog)
+      const totalNP = startSplits.reduce((sum, s) => sum + (s.stat?.numberOfPitches || 0), 0);
       const s26 = pitcherStats26[id];
-      if (s26 && s26.gs >= 1 && s26.np > 0) { pitcherAvgPitches[abbr] = parseFloat((s26.np / s26.gs).toFixed(1)); continue; }
-      // No 2026 data → fall back to 2025 season aggregate
       const s25 = pitcherStats25[id];
-      if (s25 && s25.gs >= 1 && s25.np > 0) {
-        pitcherAvgPitches[abbr] = parseFloat((s25.np / s25.gs).toFixed(1));
-      }
+      _npDebug[abbr] = { id, glStarts: startSplits.length, glNP: totalNP, s26gs: s26?.gs ?? null, s26np: s26?.np ?? null, s25gs: s25?.gs ?? null, s25np: s25?.np ?? null };
+      if (startSplits.length > 0 && totalNP > 0) { pitcherAvgPitches[abbr] = parseFloat((totalNP / startSplits.length).toFixed(1)); _npDebug[abbr].src = "gl"; continue; }
+      // Gamelog NP missing or zero → fall back to 2026 season aggregate (more reliable for NP than gamelog)
+      if (s26 && s26.gs >= 1 && s26.np > 0) { pitcherAvgPitches[abbr] = parseFloat((s26.np / s26.gs).toFixed(1)); _npDebug[abbr].src = "s26"; continue; }
+      // No 2026 data → fall back to 2025 season aggregate
+      if (s25 && s25.gs >= 1 && s25.np > 0) { pitcherAvgPitches[abbr] = parseFloat((s25.np / s25.gs).toFixed(1)); _npDebug[abbr].src = "s25"; continue; }
+      _npDebug[abbr].src = "none";
     }
     // Step 2: fetch play-by-play for CSW% (many concurrent requests, may time out on edge)
     // Limit to last 5 starts per pitcher to cap the number of PBP requests.
@@ -434,7 +433,7 @@ export async function buildPitcherKPct(mlbSched) {
         if (cswByMlbId[id] != null) pitcherCSWPct[abbr] = cswByMlbId[id];
       }
     } catch { /* CSW% unavailable — filter falls back to K% */ }
-    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherCSWPct, pitcherAvgPitches, pitcherGS26, pitcherHasAnchor };
+    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherCSWPct, pitcherAvgPitches, pitcherGS26, pitcherHasAnchor, _npDebug };
   } catch {
     return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherGS26: {}, pitcherHasAnchor: {} };
   }
