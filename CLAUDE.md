@@ -246,9 +246,8 @@ True% = Monte Carlo simulation (reuses `buildNbaStatDist` + `nbaDistPct`) — no
 - Series tickers in `SERIES_CONFIG`
 - Filter: `pct >= 70` AND `pct <= 97`
 - Blended fill price via orderbook walk for thin markets
-- `kalshiSpread` = bid-ask spread in cents (`round((yesAsk − yesBid) × 100)`)
-- `spreadAdj = kalshiSpread / 2` — half-spread deducted from raw edge to get `edge` (net)
-- `rawEdge = truePct − kalshiPct`; `edge = rawEdge − spreadAdj` — all gates and simScore bonuses use net edge
+- `kalshiSpread` = bid-ask spread in cents (`round((yesAsk − yesBid) × 100)`); kept in output as a liquidity signal (shown as badge when wide)
+- `rawEdge = truePct − kalshiPct`; `edge = rawEdge` — `kalshiPct` is already the fill price (ask or blended orderbook walk), so no further spread deduction is applied. `spreadAdj` is computed and stored but not subtracted from edge.
 - `lowVolume = kalshiVolume < 20` — shown as badge on play card; volume and spread improve as game approaches
 
 ### preDropped vs dropped

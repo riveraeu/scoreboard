@@ -1728,8 +1728,7 @@ var worker_default = {
                 const _osCol = playerColCache[`${sport}|${playerName}|${col}`];
                 const _osSeason = _osCol && _osCol.allVals.length > 0 ? parseFloat((_osCol.allVals.filter((v) => v >= threshold).length / _osCol.allVals.length * 100).toFixed(1)) : null;
                 const _osTruePct = _osSeason;
-                const _osSpreadAdj = kalshiSpread != null ? kalshiSpread / 2 : 0;
-                const _osEdge = _osSeason != null ? parseFloat((_osSeason - kalshiPct - _osSpreadAdj).toFixed(1)) : null;
+                const _osEdge = _osSeason != null ? parseFloat((_osSeason - kalshiPct).toFixed(1)) : null;
                 const _osDvpEntry = nbaPos && allPositionsDvp?.[nbaPos]?.rankings?.[stat] ? allPositionsDvp[nbaPos].rankings[stat].find((t) => t.abbr === tonightOpp) : null;
                 const _osDvpRank = _osDvpEntry?.rank ?? null;
                 const _osDebug = !_osCol ? (!_osGl ? "no_gl" : `col_miss:${col}|got:${(_osGl.ul||[]).join(",")}`) : null;
@@ -2323,7 +2322,9 @@ var worker_default = {
           const lowVolume = kalshiVolume < 20;
           const rawEdge = truePct - kalshiPct;
           const spreadAdj = kalshiSpread != null ? kalshiSpread / 2 : 0;
-          const edge = rawEdge - spreadAdj;
+          // kalshiPct is already the fill price (yes_ask or blended orderbook); no additional
+          // spread deduction needed — spreading the edge by half-spread double-penalizes.
+          const edge = rawEdge;
           // finalSimScore = simScore (total/ML already baked in; edge gates separately)
           const finalSimScore = (sport === "mlb" && stat === "strikeouts" && simScore !== null)
             ? simScore
@@ -2593,7 +2594,7 @@ var worker_default = {
             for (const other of (_preDedupSkPlays[k] || [])) {
               if (_existingSkKeys.has(`${other.playerTeam}|${other.gameDate}|${other.threshold}`)) continue;
               const _truePct = _dist ? kDistPct(_dist, other.threshold) : other.truePct;
-              _extraSkPlays.push({ ...other, qualified: false, truePct: _truePct ?? other.truePct, simPct: _truePct ?? other.simPct, edge: _truePct != null ? parseFloat((_truePct - other.kalshiPct - (other.spreadAdj ?? 0)).toFixed(1)) : other.edge });
+              _extraSkPlays.push({ ...other, qualified: false, truePct: _truePct ?? other.truePct, simPct: _truePct ?? other.simPct, edge: _truePct != null ? parseFloat((_truePct - other.kalshiPct).toFixed(1)) : other.edge });
               _existingSkKeys.add(`${other.playerTeam}|${other.gameDate}|${other.threshold}`);
             }
           }
@@ -2619,13 +2620,12 @@ var worker_default = {
             const _dist = pitcherKDistCache[`${_pTeam}|${_hand}`];
             if (_dist) {
               // Re-derive all thresholds from the shared distribution — guarantees distinct monotonic values.
-              // Include spreadAdj so the displayed edge matches what the gate used (net of spread).
               for (const play of group) {
                 const _recomp = kDistPct(_dist, play.threshold);
                 if (_recomp != null) {
                   play.truePct = _recomp;
                   play.simPct = _recomp;
-                  play.edge = parseFloat((_recomp - play.kalshiPct - (play.spreadAdj ?? 0)).toFixed(1));
+                  play.edge = parseFloat((_recomp - play.kalshiPct).toFixed(1));
                 }
               }
             } else {
