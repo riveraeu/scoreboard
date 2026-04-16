@@ -336,6 +336,7 @@ tierColor(pct): >= 80% → #3fb950 (green), >= 65% → #e3b341 (yellow), else #f
 - Rewrites in `vercel.json`: `/api/:path*` → `/api/[...path]`
 - CORS headers set in `vercel.json` (required for OPTIONS preflight through rewrite layer)
 - Cron: `/api/keepalive` runs daily at noon UTC
+- **Deploy**: `git push origin main` — Vercel auto-deploys on push. No `vercel` CLI installed.
 
 ---
 
