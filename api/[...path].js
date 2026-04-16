@@ -16,7 +16,10 @@ function makeCache(env) {
       method: "POST",
       headers: { Authorization: auth, "Content-Type": "application/json" },
       body: JSON.stringify(args)
-    }).then((r) => r.json()).catch(() => ({ result: null })), "cmd");
+    }).then((r) => r.json()).then((body) => {
+      if (body?.error) console.error("[upstash]", args[0], body.error);
+      return body;
+    }).catch(() => ({ result: null })), "cmd");
     return {
       async get(key, type) {
         const { result } = await cmd("GET", key);
