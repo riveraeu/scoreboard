@@ -684,8 +684,10 @@ var worker_default = {
           const pitcherKPct = mlbByteam.pitcherKPct || {};
           const pitcherKBBPct = mlbByteam.pitcherKBBPct || {};
           const gameHomeTeams = mlbByteam.gameHomeTeams || {};
-          const pKPct = pitcherKPct[playerTeam] ?? null;
-          const _dvpPitcherHandEarly = mlbByteam.pitcherHand?.[playerTeam] ?? null;
+          // Prefer team|opp matchup key to handle doubleheaders; fall back to team key
+          const _ptDvp = (m) => (tonightOpp ? (m?.[`${playerTeam}|${tonightOpp}`] ?? null) : null) ?? m?.[playerTeam] ?? null;
+          const pKPct = _ptDvp(pitcherKPct);
+          const _dvpPitcherHandEarly = _ptDvp(mlbByteam.pitcherHand);
           const ordAllDvp = mlbByteam.lineupBatterKPctsOrdered?.[tonightOpp] ?? null;
           const ordVRDvp = mlbByteam.lineupBatterKPctsVROrdered?.[tonightOpp] ?? null;
           const ordVLDvp = mlbByteam.lineupBatterKPctsVLOrdered?.[tonightOpp] ?? null;
@@ -702,7 +704,7 @@ var worker_default = {
           const projectedLineupTeams = mlbByteam.projectedLineupTeams || [];
           const _dvpGameOdds = mlbByteam.gameOdds?.[playerTeam] ?? null;
           const _dvpPkpMeets = pKPct != null ? pKPct > 25 : null;
-          const _dvpPitcherHand = mlbByteam.pitcherHand?.[playerTeam] ?? null;
+          const _dvpPitcherHand = _ptDvp(mlbByteam.pitcherHand);
           const _dvpLkpVR = mlbByteam.lineupKPctVR?.[tonightOpp] ?? null;
           const _dvpLkpVL = mlbByteam.lineupKPctVL?.[tonightOpp] ?? null;
           const _dvpLkpAll = lineupKPct[tonightOpp] ?? null;
@@ -723,7 +725,7 @@ var worker_default = {
               lineupKPct: _dvpLkp,
               lineupKPctProjected: projectedLineupTeams.includes(tonightOpp),
               pitcherKPct: pKPct,
-              pitcherKBBPct: pitcherKBBPct[playerTeam] ?? null,
+              pitcherKBBPct: _ptDvp(pitcherKBBPct),
               log5Avg,
               expectedKs,
               parkFactor,
@@ -1113,11 +1115,11 @@ var worker_default = {
               const gameOdds = Object.fromEntries(Object.entries(gameOddsRaw).map(([k, v]) => [normMlbAbbr(k), v]));
               const [lineupResult, pitcherResult] = await Promise.all([buildLineupKPct(mlbSched), buildPitcherKPct(mlbSched)]);
               const { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, projectedLineupTeams } = lineupResult;
-              const { pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, _npDebug } = pitcherResult;
+              const { pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam } = pitcherResult;
               // barrelPctMap is NOT stored in byteam:mlb — it lives in mlb:barrelPct with its own 6h TTL.
               // This prevents a bust (which deletes byteam:mlb) from baking an empty barrelPctMap
               // into the cache when Baseball Savant is slow.
-              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, projectedLineupTeams, gameOdds, _npDebug };
+              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, projectedLineupTeams, gameOdds };
               // Use short TTL (60s) if key data is missing — lineup/probables not confirmed yet.
               // Prevents partial data from baking into cache for the full 600s.
               const _mlbDataReady = Object.keys(lineupSpotByName || {}).length > 0 && Object.keys(pitcherAvgPitches || {}).length > 0;
@@ -1609,6 +1611,10 @@ var worker_default = {
             if (isDebug) dropped.push({ playerName: playerNameDisplay || playerName, sport, stat, threshold, kalshiPct, reason: "no_opp", playerTeam, gameTeam1, gameTeam2 });
             continue;
           }
+          // Pitcher stat lookup: prefer team|opp matchup key (handles doubleheaders where a team has
+          // two games and the plain team key gets overwritten by whichever pitcher was processed last)
+          // then fall back to the plain team key.
+          const _pt = (m) => (m?.[`${playerTeam}|${tonightOpp}`] ?? null) ?? m?.[playerTeam] ?? null;
           // Base fields included on every drop in this loop
           const _dropBase = { playerName: playerNameDisplay || playerName, sport, stat, threshold, kalshiPct, playerTeam };
           // Manual position overrides for known depth-chart misclassifications
@@ -1709,11 +1715,11 @@ var worker_default = {
           let simScore = null, kpctMeets = null, kpctPts = null, kbbMeets = null, lkpMeets = null, lkpPts = null, pitchesMeets = null, parkMeets = null, mlPts = null, totalPts = null;
           let _pitcherHand = null;
           if (sport === "mlb" && stat === "strikeouts") {
-            _pitcherHand = sportByteam.mlb?.pitcherHand?.[playerTeam] ?? null;
-            const _csw = sportByteam.mlb?.pitcherCSWPct?.[playerTeam] ?? null;
-            const _pkp = sportByteam.mlb?.pitcherKPct?.[playerTeam] ?? null;
-            const _kbb = sportByteam.mlb?.pitcherKBBPct?.[playerTeam] ?? null;
-            const _avgP = sportByteam.mlb?.pitcherAvgPitches?.[playerTeam] ?? null;
+            _pitcherHand = _pt(sportByteam.mlb?.pitcherHand);
+            const _csw = _pt(sportByteam.mlb?.pitcherCSWPct);
+            const _pkp = _pt(sportByteam.mlb?.pitcherKPct);
+            const _kbb = _pt(sportByteam.mlb?.pitcherKBBPct);
+            const _avgP = _pt(sportByteam.mlb?.pitcherAvgPitches);
             const _lkpVR = sportByteam.mlb?.lineupKPctVR?.[tonightOpp] ?? null;
             const _lkpVL = sportByteam.mlb?.lineupKPctVL?.[tonightOpp] ?? null;
             const _lkpAll = sportByteam.mlb?.lineupKPct?.[tonightOpp] ?? null;
@@ -1722,9 +1728,9 @@ var worker_default = {
             const _parkKF = PARK_KFACTOR[_homeTeamK] ?? 1;
             // null = data unavailable (abstains); only known-true metrics contribute points
             // When gs26 < 4, skip raw CSW% (unreliable small sample) and use only regressed K%
-            const _gs26 = sportByteam.mlb?.pitcherGS26?.[playerTeam] ?? null;
+            const _gs26 = _pt(sportByteam.mlb?.pitcherGS26);
             // Re-check insufficient_starts gate here — pre-filter is bypassed in debug mode (?debug=1)
-            const _hasAnchorMain = sportByteam.mlb?.pitcherHasAnchor?.[playerTeam] ?? null;
+            const _hasAnchorMain = _pt(sportByteam.mlb?.pitcherHasAnchor);
             if (_hasAnchorMain !== true && (_gs26 ?? 0) < 8) {
               if (isDebug) dropped.push({ ..._dropBase, reason: "insufficient_starts", gs26: _gs26 ?? 0, hasAnchor: _hasAnchorMain });
               continue;
@@ -1831,8 +1837,8 @@ var worker_default = {
             return _pitcherHand === "R" ? vr ?? all : _pitcherHand === "L" ? vl ?? all : all;
           })();
           const lineupKPctProjected = sport === "mlb" && stat === "strikeouts" && lineupKPctOut !== null ? (sportByteam.mlb?.projectedLineupTeams || []).includes(tonightOpp) : false;
-          const pitcherKPctOut = sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.pitcherKPct?.[playerTeam] ?? null : null;
-          const pitcherKBBPctOut = sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.pitcherKBBPct?.[playerTeam] ?? null : null;
+          const pitcherKPctOut = sport === "mlb" && stat === "strikeouts" ? _pt(sportByteam.mlb?.pitcherKPct) : null;
+          const pitcherKBBPctOut = sport === "mlb" && stat === "strikeouts" ? _pt(sportByteam.mlb?.pitcherKBBPct) : null;
           let log5AvgOut = null, expectedKsOut = null, parkFactorOut = null, log5PctOut = null, simPctOut = null;
           if (sport === "mlb" && stat === "strikeouts" && pitcherKPctOut !== null) {
             const homeTeam = sportByteam.mlb?.gameHomeTeams?.[playerTeam] || tonightOpp;
@@ -1876,12 +1882,12 @@ var worker_default = {
               kpctMeets, kpctPts, kbbMeets, lkpMeets, lkpPts, pitchesMeets, parkMeets, mlPts, totalPts,
               seasonPct: parseFloat(primaryPct.toFixed(1)), softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
               truePct: _kTruePct, edge: parseFloat((_kTruePct - kalshiPct - (kalshiSpread != null ? kalshiSpread / 2 : 0)).toFixed(1)),
-              pitcherCSWPct: sportByteam.mlb?.pitcherCSWPct?.[playerTeam] ?? null,
+              pitcherCSWPct: _pt(sportByteam.mlb?.pitcherCSWPct),
               pitcherKPct: pitcherKPctOut,
               pitcherKBBPct: pitcherKBBPctOut,
-              pitcherAvgPitches: sportByteam.mlb?.pitcherAvgPitches?.[playerTeam] ?? null,
+              pitcherAvgPitches: _pt(sportByteam.mlb?.pitcherAvgPitches),
               lineupKPct: lineupKPctOut,
-              pitcherEra: _pitcherEraFromGl ?? sportByteam.mlb?.pitcherEra?.[playerTeam] ?? null,
+              pitcherEra: _pitcherEraFromGl ?? _pt(sportByteam.mlb?.pitcherEra) ?? null,
               pitcherHand: _pitcherHand ?? null,
               simPct: simPctOut,
               parkFactor: parkFactorOut ?? 1,
@@ -2218,9 +2224,9 @@ var worker_default = {
                 parkFactor: parkFactorOut,
                 gameMoneyline: sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null,
                 gameTotal: sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null,
-                pitcherCSWPct: sportByteam.mlb?.pitcherCSWPct?.[playerTeam] ?? null,
-                pitcherKBBPct: sportByteam.mlb?.pitcherKBBPct?.[playerTeam] ?? null,
-                lineupKPct: lineupKPctOut, pitcherAvgPitches: sportByteam.mlb?.pitcherAvgPitches?.[playerTeam] ?? null,
+                pitcherCSWPct: _pt(sportByteam.mlb?.pitcherCSWPct),
+                pitcherKBBPct: _pt(sportByteam.mlb?.pitcherKBBPct),
+                lineupKPct: lineupKPctOut, pitcherAvgPitches: _pt(sportByteam.mlb?.pitcherAvgPitches),
                 kpctMeets, kpctPts, kbbMeets, lkpMeets, pitchesMeets, parkMeets, mlPts, totalPts,
               } : {}),
               ...(sport === "mlb" && stat !== "strikeouts" ? {
@@ -2263,11 +2269,11 @@ var worker_default = {
               kpctMeets, kpctPts, kbbMeets, lkpMeets, lkpPts, pitchesMeets, parkMeets, mlPts, totalPts,
               seasonPct: parseFloat(primaryPct.toFixed(1)), softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
               truePct: parseFloat(truePct.toFixed(1)), edge: parseFloat(edge.toFixed(1)),
-              pitcherCSWPct: sportByteam.mlb?.pitcherCSWPct?.[playerTeam] ?? null,
+              pitcherCSWPct: _pt(sportByteam.mlb?.pitcherCSWPct),
               pitcherKPct: pitcherKPctOut, pitcherKBBPct: pitcherKBBPctOut,
-              pitcherAvgPitches: sportByteam.mlb?.pitcherAvgPitches?.[playerTeam] ?? null,
+              pitcherAvgPitches: _pt(sportByteam.mlb?.pitcherAvgPitches),
               lineupKPct: lineupKPctOut,
-              pitcherEra: _pitcherEraFromGl ?? sportByteam.mlb?.pitcherEra?.[playerTeam] ?? null,
+              pitcherEra: _pitcherEraFromGl ?? _pt(sportByteam.mlb?.pitcherEra) ?? null,
               pitcherHand: _pitcherHand ?? null, simPct: simPctOut,
               parkFactor: parkFactorOut ?? 1,
               gameMoneyline: sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null,
@@ -2338,8 +2344,8 @@ var worker_default = {
             totalPts: sport === "mlb" && stat === "strikeouts" ? totalPts : void 0,
             kpctPts: sport === "mlb" && stat === "strikeouts" ? kpctPts : void 0,
             lkpPts: sport === "mlb" && stat === "strikeouts" ? lkpPts : void 0,
-            pitcherGS26: sport === "mlb" && stat === "strikeouts" ? (sportByteam.mlb?.pitcherGS26?.[playerTeam] ?? null) : void 0,
-            pitcherHasAnchor: sport === "mlb" && stat === "strikeouts" ? (sportByteam.mlb?.pitcherHasAnchor?.[playerTeam] ?? null) : void 0,
+            pitcherGS26: sport === "mlb" && stat === "strikeouts" ? _pt(sportByteam.mlb?.pitcherGS26) : void 0,
+            pitcherHasAnchor: sport === "mlb" && stat === "strikeouts" ? _pt(sportByteam.mlb?.pitcherHasAnchor) : void 0,
             hitterSimScore: sport === "mlb" && stat !== "strikeouts" ? hitterSimScore : void 0,
             hitterFinalSimScore: sport === "mlb" && stat !== "strikeouts" ? hitterFinalSimScore : void 0,
             hitterLineupSpot: sport === "mlb" && stat !== "strikeouts" ? hitterLineupSpot : void 0,
@@ -2355,12 +2361,12 @@ var worker_default = {
             hitterBarrelPts: sport === "mlb" && stat !== "strikeouts" ? hitterBarrelPts : void 0,
             hitterTotalPts: sport === "mlb" && stat !== "strikeouts" ? hitterTotalPts : void 0,
             hitterGameTotal: sport === "mlb" && stat !== "strikeouts" ? hitterGameTotal : void 0,
-            pitcherAvgPitches: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.pitcherAvgPitches?.[playerTeam] ?? null : void 0,
+            pitcherAvgPitches: sport === "mlb" && stat === "strikeouts" ? _pt(sportByteam.mlb?.pitcherAvgPitches) : void 0,
             gameTotal: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null : void 0,
             gameMoneyline: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null : void 0,
-            pitcherCSWPct: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.pitcherCSWPct?.[playerTeam] ?? null : void 0,
+            pitcherCSWPct: sport === "mlb" && stat === "strikeouts" ? _pt(sportByteam.mlb?.pitcherCSWPct) : void 0,
             pitcherHand: sport === "mlb" && stat === "strikeouts" ? _pitcherHand ?? null : void 0,
-            pitcherEra: sport === "mlb" && stat === "strikeouts" ? (_pitcherEraFromGl ?? sportByteam.mlb?.pitcherEra?.[playerTeam] ?? null) : void 0,
+            pitcherEra: sport === "mlb" && stat === "strikeouts" ? (_pitcherEraFromGl ?? _pt(sportByteam.mlb?.pitcherEra) ?? null) : void 0,
             recentAvg: recentAvgOut,
             hitterBa: hitterBa !== null ? hitterBa : void 0,
             hitterBaTier: hitterBaTier ?? void 0,
@@ -2450,7 +2456,7 @@ var worker_default = {
           for (const p of plays) {
             if (p.sport !== "mlb" || p.stat !== "strikeouts" || p.qualified === false) continue;
             const k = `${p.playerTeam}|${p.gameDate}`;
-            const _hand = sportByteam.mlb?.pitcherHand?.[p.playerTeam] ?? "";
+            const _hand = sportByteam.mlb?.pitcherHand?.[`${p.playerTeam}|${p.opponent ?? ""}`] ?? sportByteam.mlb?.pitcherHand?.[p.playerTeam] ?? "";
             const _dist = pitcherKDistCache[`${p.playerTeam}|${_hand}`];
             for (const other of (_preDedupSkPlays[k] || [])) {
               if (_existingSkKeys.has(`${other.playerTeam}|${other.gameDate}|${other.threshold}`)) continue;
@@ -2477,7 +2483,7 @@ var worker_default = {
           for (const group of Object.values(_skGroups)) {
             group.sort((a, b) => a.threshold - b.threshold);
             const _pTeam = group[0].playerTeam;
-            const _hand = sportByteam.mlb?.pitcherHand?.[_pTeam] ?? "";
+            const _hand = sportByteam.mlb?.pitcherHand?.[`${_pTeam}|${group[0]?.opponent ?? ""}`] ?? sportByteam.mlb?.pitcherHand?.[_pTeam] ?? "";
             const _dist = pitcherKDistCache[`${_pTeam}|${_hand}`];
             if (_dist) {
               // Re-derive all thresholds from the shared distribution — guarantees distinct monotonic values.
@@ -2503,7 +2509,7 @@ var worker_default = {
           }
         }
         if (isDebug) {
-          return jsonResponse({ plays, dropped, preDropped, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, npDebug: sportByteam.mlb?._npDebug ?? null }, true);
+          return jsonResponse({ plays, dropped, preDropped, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null }, true);
         }
         const playsResult = { plays, qualifyingCount: qualifyingMarkets.length, preFilteredCount: preFilteredMarkets.length };
         const sportsInPlays = new Set(plays.map((p) => p.sport));
