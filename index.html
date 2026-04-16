@@ -580,7 +580,9 @@ function App() {
     localStorage.setItem("scoreboard_bankroll", String(n));
   }
   function trackPlay(play) {
-    const id = `${play.sport || "nba"}|${play.playerName}|${play.stat}|${play.threshold}|${play.gameDate || ""}`;
+    const id = play.gameType === "total"
+      ? `total|${play.sport}|${play.homeTeam}|${play.awayTeam}|${play.threshold}|${play.gameDate || ""}`
+      : `${play.sport || "nba"}|${play.playerName}|${play.stat}|${play.threshold}|${play.gameDate || ""}`;
     const finalOdds = play.americanOdds ?? -110;
     setTrackedPlays(prev => {
       if (prev.find(p => p.id === id)) return prev;
@@ -940,6 +942,7 @@ function App() {
 
   // Navigate to player card from a play/pick object — looks up ID by name if missing
   const navigateToPlay = async (play) => {
+    if (play.gameType === "total") return; // totals don't have a player card
     const sportFull = SPORT_KEY[play.sport] || play.sportKey || "basketball/nba";
     let pid = play.playerId;
     if (!pid) {
@@ -2467,7 +2470,9 @@ function App() {
               return null;
             };
             const untrackedPlays = (tonightPlays || []).filter(play => {
-              const trackId = `${play.sport || "nba"}|${play.playerName}|${play.stat}|${play.threshold}|${play.gameDate || ""}`;
+              const trackId = play.gameType === "total"
+                ? `total|${play.sport}|${play.homeTeam}|${play.awayTeam}|${play.threshold}|${play.gameDate || ""}`
+                : `${play.sport || "nba"}|${play.playerName}|${play.stat}|${play.threshold}|${play.gameDate || ""}`;
               if (trackedPlays.some(p => p.id === trackId)) return false;
               if (sportFilter.length > 0 && !sportFilter.includes(play.sport)) return false;
               if (statFilter.length > 0 && !statFilter.includes(play.stat)) return false;
@@ -2530,12 +2535,109 @@ function App() {
                   const tb = b.gameTime || "9999";
                   return ta < tb ? -1 : ta > tb ? 1 : b.edge - a.edge;
                 }).map((play) => {
-              const playKey = `${play.playerName}-${play.stat}-${play.threshold}`;
+              const playKey = play.gameType === "total"
+                ? `total-${play.sport}-${play.homeTeam}-${play.awayTeam}-${play.threshold}`
+                : `${play.playerName}-${play.stat}-${play.threshold}`;
               const oddsStr = play.americanOdds >= 0 ? `+${play.americanOdds}` : `${play.americanOdds}`;
               const isExpanded = expandedPlays.has(playKey);
-              const trackId = `${play.sport || "nba"}|${play.playerName}|${play.stat}|${play.threshold}|${play.gameDate || ""}`;
+              const trackId = play.gameType === "total"
+                ? `total|${play.sport}|${play.homeTeam}|${play.awayTeam}|${play.threshold}|${play.gameDate || ""}`
+                : `${play.sport || "nba"}|${play.playerName}|${play.stat}|${play.threshold}|${play.gameDate || ""}`;
               const isTracked = trackedPlays.some(p => p.id === trackId);
               const headshotUrl = play.playerId ? `https://a.espncdn.com/i/headshots/${play.sport || "nba"}/players/full/${play.playerId}.png` : null;
+
+              // ── Game total play card ────────────────────────────────────────────────────────────
+              if (play.gameType === "total") {
+                const tColor = tierColor(play.truePct);
+                const SPORT_LOGO = { mlb:"baseball/mlb", nba:"basketball/nba", nhl:"hockey/nhl", nfl:"football/nfl" };
+                const logoPath = SPORT_LOGO[play.sport] || "basketball/nba";
+                const logoUrl = abbr => `https://a.espncdn.com/i/teamlogos/${logoPath}/500/${abbr.toLowerCase()}.png`;
+                const tLabel = { totalRuns:"Total Runs", totalPoints:"Total Points", totalGoals:"Total Goals" }[play.stat] || play.stat;
+                const lineVal = (play.threshold - 0.5).toFixed(1);
+                const tTrueOdds = play.truePct >= 50 ? Math.round(-(play.truePct/(100-play.truePct))*100) : Math.round((100-play.truePct)/play.truePct*100);
+                const tTrueOddsStr = tTrueOdds > 0 ? `+${tTrueOdds}` : `${tTrueOdds}`;
+                const SPORT_BADGE = { mlb:"⚾ MLB", nba:"🏀 NBA", nhl:"🏒 NHL", nfl:"🏈 NFL" };
+                const units = tierUnits(play.americanOdds);
+                const stake = bankroll * units / 100;
+                const profit = stake * oddsToProfit(play.americanOdds);
+                return (
+                  <div key={playKey}
+                    style={{background:"#161b22",border:`1px solid ${isTracked?"#3fb950":"#30363d"}`,borderRadius:12,
+                      padding:"14px 16px",marginBottom:10,transition:"border-color 0.15s"}}
+                    onMouseEnter={e => { if (!isTracked) e.currentTarget.style.borderColor="#58a6ff"; }}
+                    onMouseLeave={e => { if (!isTracked) e.currentTarget.style.borderColor="#30363d"; }}>
+                    {/* Header */}
+                    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                      {/* Team logos */}
+                      <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
+                        <img src={logoUrl(play.awayTeam)} alt={play.awayTeam}
+                          style={{width:32,height:32,objectFit:"contain",background:"#21262d",borderRadius:6,padding:2}}
+                          onError={e=>e.target.style.display="none"}/>
+                        <span style={{color:"#484f58",fontSize:11}}>@</span>
+                        <img src={logoUrl(play.homeTeam)} alt={play.homeTeam}
+                          style={{width:32,height:32,objectFit:"contain",background:"#21262d",borderRadius:6,padding:2}}
+                          onError={e=>e.target.style.display="none"}/>
+                      </div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{color:"#fff",fontSize:14,fontWeight:700}}>{play.awayTeam} @ {play.homeTeam}</div>
+                        <div style={{color:"#8b949e",fontSize:11,marginTop:2,display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
+                          <span>Over {lineVal} {tLabel}</span>
+                          {play.gameTime && <><span style={{color:"#6e7681"}}>·</span><span>{new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",hour:"numeric",minute:"2-digit",hour12:true}).format(new Date(play.gameTime))} PT</span></>}
+                          {play.lowVolume && <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(231,179,49,0.12)",border:"1px solid #e3b341",color:"#e3b341"}}>Low Vol</span>}
+                        </div>
+                      </div>
+                      <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4,flexShrink:0}}>
+                        <span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:4,background:"rgba(88,166,255,0.12)",border:"1px solid #30363d",color:"#8b949e",whiteSpace:"nowrap"}}>{SPORT_BADGE[play.sport]||play.sport.toUpperCase()}</span>
+                        {!isTracked ? (
+                          <button onClick={() => trackPlay(play)}
+                            style={{background:"#238636",border:"1px solid #2ea043",color:"#fff",borderRadius:6,padding:"3px 10px",fontSize:11,cursor:"pointer",fontWeight:600}}>
+                            + Track
+                          </button>
+                        ) : (
+                          <button onClick={() => untrackPlay(trackId)}
+                            style={{background:"none",border:"1px solid #3fb950",color:"#3fb950",borderRadius:6,padding:"3px 10px",fontSize:11,cursor:"pointer",fontWeight:600}}>
+                            ✓ Added
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {/* True% bar */}
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}>
+                      <div style={{flex:1,background:"#21262d",borderRadius:4,height:14,overflow:"hidden"}}>
+                        <div style={{width:`${play.truePct}%`,background:tColor,height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:play.truePct>0?3:0}}/>
+                      </div>
+                      <div style={{width:70,flexShrink:0,display:"flex",justifyContent:"flex-end",alignItems:"baseline",gap:4}}>
+                        <span style={{color:tColor,fontSize:12,fontWeight:700}}>{play.truePct}%</span>
+                        <span style={{color:tColor,fontSize:10}}>({tTrueOddsStr})</span>
+                      </div>
+                    </div>
+                    {/* Kalshi% bar */}
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                      <div style={{flex:1,background:"#21262d",borderRadius:4,height:10,overflow:"hidden"}}>
+                        <div style={{width:`${play.kalshiPct}%`,background:"#6e40c9",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:play.kalshiPct>0?3:0}}/>
+                      </div>
+                      <div style={{width:70,flexShrink:0,display:"flex",justifyContent:"flex-end",alignItems:"baseline",gap:4}}>
+                        <span style={{color:"#6e40c9",fontSize:12,fontWeight:600}}>{play.kalshiPct}%</span>
+                        <span style={{color:"#6e40c9",fontSize:10}}>({oddsStr})</span>
+                      </div>
+                    </div>
+                    {/* Unit/stake row */}
+                    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
+                      <div style={{flex:1,display:"flex",gap:12,fontSize:10,color:"#484f58"}}>
+                        <span><span style={{color:"#8b949e",fontWeight:700}}>{units}u</span><span style={{color:"#484f58"}}> · </span><span style={{color:"#8b949e",fontWeight:600}}>${stake.toFixed(0)}</span></span>
+                      </div>
+                      <div style={{width:70,flexShrink:0,textAlign:"right",color:"#3fb950",fontSize:10,fontWeight:600}}>win +${profit.toFixed(0)}</div>
+                    </div>
+                    {/* Stats row */}
+                    <div style={{borderTop:"1px solid #21262d",paddingTop:8,display:"flex",gap:16,flexWrap:"wrap"}}>
+                      <span style={{fontSize:10,color:"#484f58"}}>Edge: <span style={{color:play.edge>=5?"#3fb950":play.edge>=3?"#e3b341":"#f78166",fontWeight:600}}>{play.edge>0?"+":""}{play.edge}%</span></span>
+                      <span style={{fontSize:10,color:"#484f58"}}>SimScore: <span style={{color:play.totalSimScore>=11?"#3fb950":play.totalSimScore>=7?"#e3b341":"#6e7681",fontWeight:600}}>{play.totalSimScore}/14</span></span>
+                      <span style={{fontSize:10,color:"#484f58"}}>Kelly: <span style={{color:"#8b949e",fontWeight:600}}>{(play.kelly*100).toFixed(1)}%</span></span>
+                    </div>
+                  </div>
+                );
+              }
+              // ── End total play card ─────────────────────────────────────────────────────────────
               return (
                 <div key={playKey}
                   style={{background:"#161b22",border:"1px solid #30363d",borderRadius:12,
@@ -3061,7 +3163,9 @@ function App() {
                       const dateKey = p.gameDate || new Date(p.trackedAt).toISOString().slice(0,10);
                       const [yr,mo,dy] = dateKey.split("-").map(Number);
                       const dateLabel = new Date(yr, mo-1, dy).toLocaleDateString("en-US", { month:"short", day:"numeric" });
-                      const barLabel = `${p.playerName} ${p.threshold}+ ${p.stat?.toUpperCase?.() || ""}`.trim();
+                      const barLabel = p.gameType === "total"
+                        ? `${p.awayTeam}@${p.homeTeam} O${(p.threshold-0.5).toFixed(1)}`
+                        : `${p.playerName} ${p.threshold}+ ${p.stat?.toUpperCase?.() || ""}`.trim();
                       return { pl, dateKey, dateLabel, barLabel };
                     });
                   if (!playsWithPL.length) return null;
@@ -3145,10 +3249,10 @@ function App() {
                     {/* Player info */}
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3,flexWrap:"wrap"}}>
-                        {/* Clickable name → opens player card */}
+                        {/* Clickable name → opens player card (totals: no-op) */}
                         <span onClick={() => navigateToPlay(pick)}
-                          style={{color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",textDecoration:"underline",textDecorationColor:"#30363d",textUnderlineOffset:2}}>
-                          {pick.playerName}
+                          style={{color:"#fff",fontSize:13,fontWeight:700,cursor:pick.gameType==="total"?"default":"pointer",textDecoration:"underline",textDecorationColor:"#30363d",textUnderlineOffset:2}}>
+                          {pick.gameType === "total" ? `${pick.awayTeam} @ ${pick.homeTeam}` : pick.playerName}
                         </span>
                         {pick.sport && (
                           <span style={{border:`1px solid ${SPORT_BADGE_COLOR[pick.sport]||"#8b949e"}`,
@@ -3174,8 +3278,8 @@ function App() {
                         )}
                       </div>
                       <div style={{color:"#8b949e",fontSize:11}}>
-                        {pick.playerTeam} vs {pick.opponent}
-                        {" · "}<span style={{color:"#58a6ff",fontWeight:600}}>{pick.threshold}+ {STAT_LABEL[pick.stat] || pick.stat}</span>
+                        {pick.gameType === "total" ? `${pick.awayTeam} @ ${pick.homeTeam}` : `${pick.playerTeam} vs ${pick.opponent}`}
+                        {" · "}<span style={{color:"#58a6ff",fontWeight:600}}>{pick.gameType === "total" ? `Over ${(pick.threshold-0.5).toFixed(1)} ${({totalRuns:"Runs",totalPoints:"Pts",totalGoals:"Goals"})[pick.stat]||pick.stat}` : `${pick.threshold}+ ${STAT_LABEL[pick.stat] || pick.stat}`}</span>
                         {" · "}<span style={{color:"#a855f7"}}>{oddsStr}</span>
                         {" · "}<span style={{color:"#e3b341"}}>{pick.truePct}% true</span>
                         {" · "}<span style={{color:"#484f58"}}>{dateStr}</span>

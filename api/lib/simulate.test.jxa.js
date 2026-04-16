@@ -76,6 +76,54 @@ function nbaDistPct(dist, threshold) {
   return parseFloat((hits / dist.length * 100).toFixed(1));
 }
 
+function poissonSample(lambda) {
+  if (lambda <= 0) return 0;
+  var L = Math.exp(-Math.min(lambda, 100));
+  var k = 0, p = 1;
+  do { k++; p *= Math.random(); } while (p > L);
+  return k - 1;
+}
+
+function simulateMLBTotalDist(homeLambda, awayLambda, nSim) {
+  nSim = nSim == null ? 10000 : nSim;
+  if (!homeLambda || !awayLambda || homeLambda <= 0 || awayLambda <= 0) return null;
+  var dist = new Int16Array(nSim);
+  for (var i = 0; i < nSim; i++) dist[i] = poissonSample(homeLambda) + poissonSample(awayLambda);
+  return dist;
+}
+
+function simulateNBATotalDist(homeMean, awayMean, homeStd, awayStd, nSim) {
+  homeStd = homeStd == null ? 11 : homeStd;
+  awayStd = awayStd == null ? 11 : awayStd;
+  nSim = nSim == null ? 10000 : nSim;
+  if (!homeMean || !awayMean || homeMean <= 0 || awayMean <= 0) return null;
+  var dist = new Int16Array(nSim);
+  for (var i = 0; i < nSim; i++) {
+    var u1h = Math.random() + 1e-10, u2h = Math.random();
+    var u1a = Math.random() + 1e-10, u2a = Math.random();
+    var zh = Math.sqrt(-2 * Math.log(u1h)) * Math.cos(2 * Math.PI * u2h);
+    var za = Math.sqrt(-2 * Math.log(u1a)) * Math.cos(2 * Math.PI * u2a);
+    var total = (homeMean + homeStd * zh) + (awayMean + awayStd * za);
+    dist[i] = Math.round(Math.max(0, total));
+  }
+  return dist;
+}
+
+function simulateNHLTotalDist(homeLambda, awayLambda, nSim) {
+  nSim = nSim == null ? 10000 : nSim;
+  if (!homeLambda || !awayLambda || homeLambda <= 0 || awayLambda <= 0) return null;
+  var dist = new Int16Array(nSim);
+  for (var i = 0; i < nSim; i++) dist[i] = poissonSample(homeLambda) + poissonSample(awayLambda);
+  return dist;
+}
+
+function totalDistPct(dist, threshold) {
+  if (!dist) return null;
+  var hits = 0;
+  for (var i = 0; i < dist.length; i++) { if (dist[i] >= threshold) hits++; }
+  return parseFloat((hits / dist.length * 100).toFixed(1));
+}
+
 // ---- Test runner ----
 
 var _results = [], _passed = 0, _failed = 0;
@@ -377,6 +425,87 @@ test('backend sweep: re-derives all thresholds from shared distribution giving d
   assert.ok(plays[1].truePct >= plays[2].truePct, '4+.truePct >= 5+.truePct');
   // Values should be distinct (3+ > 4+ > 5+ for a mid-range pitcher)
   assert.ok(plays[0].truePct > plays[2].truePct, '3+.truePct > 5+.truePct (distinct values)');
+});
+
+// ---- Game total simulations ----
+
+test('simulateMLBTotalDist returns Int16Array of requested length', function() {
+  var dist = simulateMLBTotalDist(4.5, 4.2, 2000);
+  assert.ok(dist instanceof Int16Array, 'should be Int16Array');
+  assert.equal(dist.length, 2000);
+});
+
+test('simulateMLBTotalDist returns null for invalid lambdas', function() {
+  assert.equal(simulateMLBTotalDist(0, 4.2, 1000), null);
+  assert.equal(simulateMLBTotalDist(4.5, null, 1000), null);
+  assert.equal(simulateMLBTotalDist(-1, 4.2, 1000), null);
+});
+
+test('simulateMLBTotalDist: P(total >= 1) near 100% for normal lambdas', function() {
+  var dist = simulateMLBTotalDist(4.5, 4.2, 5000);
+  var pct = totalDistPct(dist, 1);
+  assert.ok(pct > 95, 'P(total >= 1) should be > 95% for lambdas of 4.5+4.2, got ' + pct);
+});
+
+test('simulateMLBTotalDist: monotonicity across thresholds', function() {
+  var dist = simulateMLBTotalDist(4.5, 4.2, 5000);
+  var prev = 100;
+  for (var t = 1; t <= 15; t++) {
+    var pct = totalDistPct(dist, t);
+    assert.ok(pct <= prev, 'P(>='+t+')='+pct+' should be <= P(>='+(t-1)+')='+prev);
+    prev = pct;
+  }
+});
+
+test('simulateNBATotalDist returns Int16Array of requested length', function() {
+  var dist = simulateNBATotalDist(115, 112, 11, 11, 2000);
+  assert.ok(dist instanceof Int16Array, 'should be Int16Array');
+  assert.equal(dist.length, 2000);
+});
+
+test('simulateNBATotalDist returns null for invalid means', function() {
+  assert.equal(simulateNBATotalDist(0, 112, 11, 11, 1000), null);
+  assert.equal(simulateNBATotalDist(115, null, 11, 11, 1000), null);
+});
+
+test('simulateNBATotalDist: mean total near 227 for 115+112', function() {
+  var dist = simulateNBATotalDist(115, 112, 11, 11, 10000);
+  var vals = Array.from(dist);
+  var mean = vals.reduce(function(a, b) { return a + b; }, 0) / vals.length;
+  assert.ok(mean > 215 && mean < 240, 'mean total should be near 227, got ' + mean.toFixed(1));
+});
+
+test('simulateNBATotalDist: monotonicity across thresholds', function() {
+  var dist = simulateNBATotalDist(115, 112, 11, 11, 5000);
+  var prev = 100;
+  for (var t = 200; t <= 260; t += 5) {
+    var pct = totalDistPct(dist, t);
+    assert.ok(pct <= prev, 'P(>='+t+')='+pct+' should be <= P(>='+(t-5)+')='+prev);
+    prev = pct;
+  }
+});
+
+test('simulateNHLTotalDist returns Int16Array of requested length', function() {
+  var dist = simulateNHLTotalDist(3.1, 2.8, 2000);
+  assert.ok(dist instanceof Int16Array, 'should be Int16Array');
+  assert.equal(dist.length, 2000);
+});
+
+test('simulateNHLTotalDist: P(total >= 1) near 100% for normal lambdas', function() {
+  var dist = simulateNHLTotalDist(3.1, 2.8, 5000);
+  var pct = totalDistPct(dist, 1);
+  assert.ok(pct > 95, 'P(total >= 1) should be > 95%, got ' + pct);
+});
+
+test('totalDistPct returns null for null dist', function() {
+  assert.equal(totalDistPct(null, 7), null);
+});
+
+test('totalDistPct: P(>= low) > P(>= high) for same dist', function() {
+  var dist = simulateMLBTotalDist(4.5, 4.2, 5000);
+  var pLow = totalDistPct(dist, 5);
+  var pHigh = totalDistPct(dist, 10);
+  assert.ok(pLow > pHigh, 'P(>=5)='+pLow+' should be > P(>=10)='+pHigh);
 });
 
 // ---- Summary ----

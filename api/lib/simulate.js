@@ -224,3 +224,75 @@ export function evPerUnit(truePct, americanOdds) {
   const b = decimalOdds(americanOdds) - 1;
   return parseFloat((p * b - (1 - p)).toFixed(4));
 }
+
+// ─── Game Total Simulation ────────────────────────────────────────────────────
+
+// Park run factors (FanGraphs multi-year rolling avg, "R" column, scale: 1.00 = neutral).
+export const PARK_RUNFACTOR = {
+  COL: 1.15, CIN: 1.09, BOS: 1.08, MIL: 1.07, TEX: 1.06,
+  PHI: 1.05, NYY: 1.04, BAL: 1.03, ARI: 1.03, CHC: 1.02,
+  KC:  1.02, ATL: 1.01, WSH: 1.00, NYM: 0.99, STL: 0.99,
+  MIA: 0.99, MIN: 0.98, DET: 0.98, HOU: 0.98, LAD: 0.97,
+  CLE: 0.96, CWS: 0.96, TB:  0.96, ATH: 0.95, LAA: 0.95,
+  TOR: 0.95, PIT: 0.95, SD:  0.94, SF:  0.94, SEA: 0.93,
+  OAK: 1.00, // legacy fallback
+};
+
+// Knuth Poisson sampler — internal helper, not exported.
+function poissonSample(lambda) {
+  if (lambda <= 0) return 0;
+  const L = Math.exp(-Math.min(lambda, 100)); // cap to avoid underflow
+  let k = 0, p = 1;
+  do { k++; p *= Math.random(); } while (p > L);
+  return k - 1;
+}
+
+// MLB combined runs distribution: two independent Poisson teams summed.
+// homeLambda/awayLambda = expected runs per team (season RPG adjusted by pitcher ERA & park).
+// Returns Int16Array of nSim combined run totals; query with totalDistPct(dist, threshold).
+export function simulateMLBTotalDist(homeLambda, awayLambda, nSim = 10000) {
+  if (!homeLambda || !awayLambda || homeLambda <= 0 || awayLambda <= 0) return null;
+  const dist = new Int16Array(nSim);
+  for (let i = 0; i < nSim; i++) {
+    dist[i] = poissonSample(homeLambda) + poissonSample(awayLambda);
+  }
+  return dist;
+}
+
+// NBA combined points distribution: two independent normals summed.
+// homeMean/awayMean = expected points per team; std defaults to 11 pts/team (historical).
+// Returns Int16Array of nSim combined point totals; query with totalDistPct(dist, threshold).
+export function simulateNBATotalDist(homeMean, awayMean, homeStd = 11, awayStd = 11, nSim = 10000) {
+  if (!homeMean || !awayMean || homeMean <= 0 || awayMean <= 0) return null;
+  const dist = new Int16Array(nSim);
+  for (let i = 0; i < nSim; i++) {
+    const u1h = Math.random() + 1e-10, u2h = Math.random();
+    const u1a = Math.random() + 1e-10, u2a = Math.random();
+    const zh = Math.sqrt(-2 * Math.log(u1h)) * Math.cos(2 * Math.PI * u2h);
+    const za = Math.sqrt(-2 * Math.log(u1a)) * Math.cos(2 * Math.PI * u2a);
+    const total = (homeMean + homeStd * zh) + (awayMean + awayStd * za);
+    dist[i] = Math.round(Math.max(0, total));
+  }
+  return dist;
+}
+
+// NHL combined goals distribution: two independent Poisson teams summed.
+// homeLambda/awayLambda = expected goals per team (season GPG adjusted by opp GAA & home adv).
+// Returns Int16Array of nSim combined goal totals; query with totalDistPct(dist, threshold).
+export function simulateNHLTotalDist(homeLambda, awayLambda, nSim = 10000) {
+  if (!homeLambda || !awayLambda || homeLambda <= 0 || awayLambda <= 0) return null;
+  const dist = new Int16Array(nSim);
+  for (let i = 0; i < nSim; i++) {
+    dist[i] = poissonSample(homeLambda) + poissonSample(awayLambda);
+  }
+  return dist;
+}
+
+// Query a game total distribution at any threshold → P(total >= threshold).
+// Same interface as nbaDistPct. Monotonicity guaranteed when same dist is reused per game.
+export function totalDistPct(dist, threshold) {
+  if (!dist) return null;
+  let hits = 0;
+  for (let i = 0; i < dist.length; i++) { if (dist[i] >= threshold) hits++; }
+  return parseFloat((hits / dist.length * 100).toFixed(1));
+}

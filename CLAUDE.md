@@ -33,7 +33,8 @@ Single HTML file with JSX compiled via Babel standalone (no build step). All Rea
 ### Storage: Cloudflare KV (`CACHE2`)
 Used for caching expensive fetches. Key TTLs:
 - `byteam:mlb` — 600s (MLB team stats, probables, lineup K-rates). **Does NOT include `barrelPctMap`** — that lives in `mlb:barrelPct`. Uses 60s TTL if lineupSpotByName or pitcherAvgPitches come back empty (e.g. bust before lineups confirmed), so next request retries quickly.
-- `byteam:nba` — 1800s
+- `byteam:nba` — 1800s (defensive stats)
+- `byteam:nba:scoring` — 21600s (6h, NBA team offensive PPG; used for total simulation)
 - `byteam:nfl` — 1800s
 - `byteam:nhl` — 21600s (6h, NHL team stats: goalsAgainstPerGame + shotsAgainstPerGame)
 - `gameTimes:v2:{date}` — 600s
@@ -45,6 +46,36 @@ Used for caching expensive fetches. Key TTLs:
 ---
 
 ## Sports & Stats
+
+### Game Totals (all sports)
+- **Stat**: `totalRuns` (MLB), `totalPoints` (NBA), `totalGoals` (NHL), `totalPoints` (NFL)
+- **Kalshi series**: `KXMLBTOTAL`, `KXNBATOTAL`, `KXNHLTOTAL`, `KXNFLTOTAL` — each with `gameType: "total"` in SERIES_CONFIG
+- **Market format**: `floor_strike = N` means "over N-0.5" (i.e., YES = total >= N); `pct` filter: 30–97% (wider than player props)
+- **True%**: Monte Carlo simulation per sport — Poisson for MLB/NHL (`simulateMLBTotalDist`, `simulateNHLTotalDist`), Normal for NBA (`simulateNBATotalDist`)
+- **Team extraction**: `parseGameTeams()` handles all sport-specific team code formats
+- **`direction: "over"`** — currently only over plays surfaced (YES on Kalshi)
+- **Edge gate**: `edge >= 3%` (same as player props); no soft matchup gate for totals
+- **SimScore** (max 14): pitcher/team data availability (3+3+2+2pts) + park/context signals (2+2pts); `qualified: totalSimScore >= 7`
+- **Data maps** (`mlbRPGMap`, `nhlGPGMap/GAAMap`, `nbaOffPPGMap`) computed inline after `leagueAvgCache` block
+- **Play card**: `gameType: "total"` flag triggers `TotalPlayCard` branch in the play card render; shows dual team logos (ESPN CDN), matchup header, true%/Kalshi% bars, stats row
+- **Track ID format**: `total|sport|homeTeam|awayTeam|threshold|gameDate`
+
+#### Total SimScore details
+- **MLB**: homeERA known→3pts, awayERA known→3pts, homeRPG→2pts, awayRPG→2pts, |parkRF-1|>0.01→2pts, maxERA>4.5→2pts (max 14)
+- **NBA**: homeOff PPG→3pts, awayOff PPG→3pts, homeDefPPG→2pts, awayDefPPG→2pts, both pace known→2pts, avg pace above league→2pts (max 14)
+- **NHL**: homeGPG→3pts, awayGPG→3pts, homeGAA→2pts, awayGAA→2pts, home SA rank→2pts, away SA rank→2pts (max 14)
+
+#### Lambda computation (MLB)
+`homeLambda = homeRPG × (awayERA / 4.20) × parkRF`, clamped [1, 12]
+`awayLambda = awayRPG × (homeERA / 4.20) × parkRF`, clamped [1, 12]
+
+#### Lambda computation (NHL)
+`homeLambda = homeGPG × (awayGAA / leagueAvgGAA)`, clamped [0.5, 8]
+`awayLambda = awayGPG × (homeGAA / leagueAvgGAA)`, clamped [0.5, 8]
+
+#### Mean computation (NBA)
+`homeExpected = homeOffPPG × (awayDefPPG / leagueAvgDef)`
+`awayExpected = awayOffPPG × (homeDefPPG / leagueAvgDef)`
 
 ### MLB
 - **Stats**: `hits`, `hrr` (H+R+RBI), `strikeouts`
@@ -158,6 +189,11 @@ True% = Monte Carlo simulation (reuses `buildNbaStatDist` + `nbaDistPct`) — no
 | `buildNbaStatDist(gameValues, dvpFactor, paceAdj, isB2B, nSim)` | Shared `Float32Array` of simulated NBA per-game values |
 | `nbaDistPct(dist, threshold)` | Queries NBA dist for any threshold — guarantees monotonicity |
 | `simulateHits(batterBA, pitcherBAA, parkFactor, threshold, nSim)` | Monte Carlo for hitter hits/HRR |
+| `PARK_RUNFACTOR` | Park run factors for game total simulation (30 parks + OAK legacy) |
+| `simulateMLBTotalDist(homeLambda, awayLambda, nSim)` | Poisson MC for MLB game total, returns `Int16Array` |
+| `simulateNBATotalDist(homeMean, awayMean, homeStd, awayStd, nSim)` | Normal MC for NBA game total, returns `Int16Array` |
+| `simulateNHLTotalDist(homeLambda, awayLambda, nSim)` | Poisson MC for NHL game total, returns `Int16Array` |
+| `totalDistPct(dist, threshold)` | Queries game total dist — same interface as `nbaDistPct` |
 | `kellyFraction / evPerUnit` | Kelly and EV calculations |
 
 ### `api/lib/mlb.js` — MLB Data Fetchers

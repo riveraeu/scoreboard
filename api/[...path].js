@@ -1,5 +1,5 @@
 import { ALLOWED_ORIGIN, corsHeaders, jsonResponse, errorResponse, parseGameOdds, buildSoftTeamAbbrs, buildHardTeamAbbrs, buildTeamRankMap } from "./lib/utils.js";
-import { PARK_KFACTOR, PARK_HITFACTOR, log5K, poissonCDF, log5HitRate, simulateKsDist, kDistPct, simulateKs, buildNbaStatDist, nbaDistPct, simulateHits, decimalOdds, kellyFraction, evPerUnit } from "./lib/simulate.js";
+import { PARK_KFACTOR, PARK_HITFACTOR, PARK_RUNFACTOR, log5K, poissonCDF, log5HitRate, simulateKsDist, kDistPct, simulateKs, buildNbaStatDist, nbaDistPct, simulateHits, simulateMLBTotalDist, simulateNBATotalDist, simulateNHLTotalDist, totalDistPct, decimalOdds, kellyFraction, evPerUnit } from "./lib/simulate.js";
 import { buildLineupKPct, buildBarrelPct, buildPitcherKPct } from "./lib/mlb.js";
 import { warmPlayerInfoCache, buildNbaDvpStage1, buildNbaDvpFromBettingPros, buildNbaDepthChartPos, buildNbaPaceData, buildNbaPlayerPosFromSleeper, buildNbaDvpStage3FG } from "./lib/nba.js";
 
@@ -899,7 +899,12 @@ var worker_default = {
           KXNFLPAYDS: { sport: "nfl", league: "nfl", stat: "passingYards", col: "YDS" },
           KXNFLRUYDS: { sport: "nfl", league: "nfl", stat: "rushingYards", col: "YDS" },
           KXNFLREYDS: { sport: "nfl", league: "nfl", stat: "receivingYards", col: "YDS" },
-          KXNFLTDS: { sport: "nfl", league: "nfl", stat: "touchdowns", col: "TD" }
+          KXNFLTDS: { sport: "nfl", league: "nfl", stat: "touchdowns", col: "TD" },
+          // Game totals — direction always "over" for yes side; under plays invert kalshiPct
+          KXMLBTOTAL: { sport: "mlb", league: "mlb", stat: "totalRuns",   col: "R",   gameType: "total" },
+          KXNBATOTAL: { sport: "nba", league: "nba", stat: "totalPoints", col: "PTS", gameType: "total" },
+          KXNHLTOTAL: { sport: "nhl", league: "nhl", stat: "totalGoals",  col: "G",   gameType: "total" },
+          KXNFLTOTAL: { sport: "nfl", league: "nfl", stat: "totalPoints", col: "PTS", gameType: "total" },
         };
         const TEAM_NORM = {
           nba: { GS: "GSW", SA: "SAS", NY: "NYK", NJ: "BKN", NO: "NOP", PHO: "PHX" },
@@ -935,22 +940,49 @@ var worker_default = {
           return retry.data;
         }));
         const qualifyingMarkets = [];
+        const totalMarkets = []; // game total markets (pct 30–97, both over and under surfaced)
         const globalSeen = /* @__PURE__ */ new Set();
         for (let i = 0; i < seriesTickers.length; i++) {
           const ticker = seriesTickers[i];
-          const { sport, stat, col } = SERIES_CONFIG[ticker];
+          const cfg = SERIES_CONFIG[ticker];
+          const { sport, stat, col } = cfg;
           for (const m of kalshiResults[i].markets || []) {
             const strike = parseFloat(m.floor_strike);
             if (isNaN(strike)) continue;
             const threshold = Math.round(strike + 0.5);
             const yesAsk = parseFloat(m.yes_ask_dollars) || 0;
             const last = parseFloat(m.last_price_dollars) || 0;
-            const volume = parseInt(m.volume) || 0;
+            const volume = parseInt(m.volume_fp) || parseInt(m.volume) || 0;
             const price = yesAsk > 0 ? yesAsk : last;
             const pct = Math.round(price * 100);
+            if (price === 0) continue;
+
+            // ── Game total branch (wider pct filter; team-based, not player-based) ──
+            if (cfg.gameType === "total") {
+              if (pct < 30 || pct > 97) continue;
+              const [gameTeam1, gameTeam2] = parseGameTeams(m.event_ticker, sport);
+              if (!gameTeam1 || !gameTeam2) continue;
+              const dedupeKey = `total|${sport}|${gameTeam1}|${gameTeam2}|${threshold}`;
+              if (globalSeen.has(dedupeKey)) continue;
+              globalSeen.add(dedupeKey);
+              const _toAO = pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
+              const _tDateSeg = (m.event_ticker || "").split("-")[1] || "";
+              let _tGameDate = null;
+              if (_tDateSeg.length >= 7) {
+                const _KMON = { JAN: "01", FEB: "02", MAR: "03", APR: "04", MAY: "05", JUN: "06", JUL: "07", AUG: "08", SEP: "09", OCT: "10", NOV: "11", DEC: "12" };
+                const _tYr = "20" + _tDateSeg.slice(0, 2);
+                const _tMo = _KMON[_tDateSeg.slice(2, 5).toUpperCase()];
+                const _tDy = _tDateSeg.slice(5, 7);
+                if (_tMo) _tGameDate = `${_tYr}-${_tMo}-${_tDy}`;
+              }
+              const _tYesBid = parseFloat(m.yes_bid_dollars) || 0;
+              const _tSpread = yesAsk > 0 && _tYesBid > 0 ? Math.round((yesAsk - _tYesBid) * 100) : null;
+              totalMarkets.push({ gameType: "total", sport, stat, col, threshold, kalshiPct: pct, americanOdds: _toAO, kalshiVolume: volume, gameTeam1, gameTeam2, gameDate: _tGameDate, kalshiSpread: _tSpread, _ticker: m.ticker, _yesAsk: yesAsk, _yesBid: _tYesBid });
+              continue;
+            }
+
             if (pct < 70) continue;
             if (pct > 97) continue;
-            if (price === 0) continue;
             const raw = m.event_title || m.title || "";
             let playerName = raw.replace(/\s*:\s*\d.*$/, "").replace(/\s+(Points?|Rebounds?|Assists?|3-Pointers?|Three Pointers?|Made Threes?|Goals?|Shots on Goal|Hits?|Home Runs?|RBIs?|Strikeouts?|Total Bases?|Passing Yards?|Rushing Yards?|Receiving Yards?|Touchdowns?)\b.*/i, "").replace(/\s+Over\s+\d.*$/i, "").replace(/\s+Under\s+\d.*$/i, "").replace(/\s*\(.*\)\s*$/, "").replace(/\s*-\s*$/, "").trim();
             if (!playerName || playerName.length < 4) continue;
@@ -989,7 +1021,7 @@ var worker_default = {
             qualifyingMarkets.push({ playerName, playerNameDisplay, sport, stat, col, threshold, kalshiPct: pct, americanOdds, kalshiVolume: volume, gameTeam1, gameTeam2, kalshiPlayerTeam, gameDate, kalshiSpread, _ticker: m.ticker, _yesAsk: yesAsk, _yesBid: yesBid, _yesAskSize: yesAskSize });
           }
         }
-        if (qualifyingMarkets.length === 0) {
+        if (qualifyingMarkets.length === 0 && totalMarkets.length === 0) {
           return jsonResponse({ plays: [], note: "no qualifying kalshi markets (implied pct >= 60)" });
         }
         // Blended fill price: walk the orderbook for unit-sized positions so kalshiPct reflects
@@ -1032,7 +1064,7 @@ var worker_default = {
             m.americanOdds = blendedPct >= 50 ? Math.round(-(blendedPct / (100 - blendedPct)) * 100) : Math.round((100 - blendedPct) / blendedPct * 100);
           }
         }
-        const sportsNeeded = new Set(qualifyingMarkets.map((m) => m.sport));
+        const sportsNeeded = new Set([...qualifyingMarkets.map((m) => m.sport), ...totalMarkets.map((m) => m.sport)]);
         const sportByteam = {};
         const NHL_ABBR_MAP = { 1: "NJD", 2: "NYI", 3: "NYR", 4: "PHI", 5: "PIT", 6: "BOS", 7: "BUF", 8: "MTL", 9: "OTT", 10: "TOR", 12: "CAR", 13: "FLA", 14: "TBL", 15: "WSH", 16: "CHI", 17: "DET", 18: "NSH", 19: "STL", 20: "CGY", 21: "COL", 22: "EDM", 23: "VAN", 24: "ANA", 25: "DAL", 26: "LAK", 28: "SJS", 29: "CBJ", 30: "MIN", 52: "WPG", 53: "UTA", 54: "VGK", 55: "SEA" };
         if (CACHE2) {
@@ -1051,11 +1083,18 @@ var worker_default = {
               fetch("https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=50&category=defensive", {
                 headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" }
               }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
+              fetch("https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=50&category=scoring", {
+                headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" }
+              }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
               (() => { const _nd = new Date(); const _ns = _nd.toISOString().slice(0,10).replace(/-/g,''); return fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${_ns}`, { headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})); })()
-            ]).then(async ([d, sbData]) => {
+            ]).then(async ([d, scoringData, sbData]) => {
               sportByteam.nba = d.teams || [];
+              sportByteam.nbaScoring = scoringData.teams || [];
               sportByteam.nbaGameOdds = parseGameOdds(sbData.events || []);
-              if (CACHE2) await CACHE2.put("byteam:nba", JSON.stringify(sportByteam.nba), { expirationTtl: 21600 });
+              if (CACHE2) {
+                await CACHE2.put("byteam:nba", JSON.stringify(sportByteam.nba), { expirationTtl: 21600 });
+                await CACHE2.put("byteam:nba:scoring", JSON.stringify(sportByteam.nbaScoring), { expirationTtl: 21600 });
+              }
             }),
             sportsNeedingFetch.has("nhl") && Promise.all([
               fetch("https://api.nhle.com/stats/rest/en/team/summary?isAggregate=false&isGame=false&sort=goalsAgainstPerGame&start=0&limit=50&cayenneExp=seasonId%3D20252026%20and%20gameTypeId%3D2", { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
@@ -1130,6 +1169,18 @@ var worker_default = {
               if (CACHE2) await CACHE2.put("byteam:nfl", JSON.stringify(sportByteam.nfl), { expirationTtl: 1800 });
             })
           ].filter(Boolean));
+        }
+        // NBA scoring (offensive PPG) — load from KV cache or fetch fresh when nba byteam was served from cache
+        if (sportsNeeded.has("nba") && !sportByteam.nbaScoring) {
+          if (CACHE2) sportByteam.nbaScoring = await CACHE2.get("byteam:nba:scoring", "json").catch(() => null);
+          if (!sportByteam.nbaScoring) {
+            sportByteam.nbaScoring = await fetch("https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=50&category=scoring", {
+              headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" }
+            }).then(r => r.ok ? r.json() : {}).then(d => d.teams || []).catch(() => []);
+            if (CACHE2 && Array.isArray(sportByteam.nbaScoring) && sportByteam.nbaScoring.length > 0) {
+              await CACHE2.put("byteam:nba:scoring", JSON.stringify(sportByteam.nbaScoring), { expirationTtl: 21600 }).catch(() => {});
+            }
+          }
         }
         // Fetch game start times + NBA player availability for tonight's games
         const todayDateStr = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10).replace(/-/g, "");
@@ -1514,6 +1565,51 @@ var worker_default = {
           const vals = Object.values(sd.rankMap).map((r) => r.value).filter((v) => v > 0);
           if (vals.length >= 15) leagueAvgCache[key] = vals.reduce((a, b) => a + b, 0) / vals.length;
         }
+        // ── Game total: team stat maps (RPG, GPG, PPG) ──────────────────────────────────────────
+        const mlbRPGMap = {};
+        if (sportByteam.mlb?.batting) {
+          const _bt = sportByteam.mlb.batting;
+          const _btTop = (_bt.categories || []).find(c => c.name === "batting");
+          const _gIdx = (_btTop?.names || []).findIndex(n => n === "G" || n === "GP");
+          const _rIdx = (_btTop?.names || []).findIndex(n => n === "R");
+          const _MLB2 = { CHW: "CWS", KCR: "KC", SFG: "SF", SDP: "SD", TBR: "TB", AZ: "ARI", OAK: "ATH", WSN: "WSH", WAS: "WSH" };
+          if (_gIdx !== -1 && _rIdx !== -1) {
+            for (const team of (_bt.teams || [])) {
+              const abbr = _MLB2[team.team?.abbreviation] || team.team?.abbreviation;
+              if (!abbr) continue;
+              const tc = (team.categories || []).find(c => c.name === "batting");
+              const gp = parseFloat(tc?.values?.[_gIdx] ?? 0);
+              const runs = parseFloat(tc?.values?.[_rIdx] ?? 0);
+              if (gp > 0 && runs > 0) mlbRPGMap[abbr] = parseFloat((runs / gp).toFixed(2));
+            }
+          }
+        }
+        const mlbLeagueAvgRPG = (() => { const vals = Object.values(mlbRPGMap).filter(v => v > 0); return vals.length >= 15 ? parseFloat((vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2)) : 4.5; })();
+        const nhlGPGMap = {};
+        const nhlGAAMap = {};
+        if (sportByteam.nhl) {
+          for (const team of (sportByteam.nhl.ga || [])) {
+            const abbr = NHL_ABBR_MAP[team.teamId];
+            if (!abbr) continue;
+            if (team.goalsForPerGame != null) nhlGPGMap[abbr] = parseFloat(team.goalsForPerGame.toFixed(2));
+            if (team.goalsAgainstPerGame != null) nhlGAAMap[abbr] = parseFloat(team.goalsAgainstPerGame.toFixed(2));
+          }
+        }
+        const nhlLeagueAvgGAA = leagueAvgCache["nhl|points"] ?? 3.0;
+        const nhlLeagueAvgGPG = (() => { const vals = Object.values(nhlGPGMap).filter(v => v > 0); return vals.length >= 15 ? parseFloat((vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2)) : 2.9; })();
+        const nbaOffPPGMap = {};
+        if (Array.isArray(sportByteam.nbaScoring)) {
+          const _NBA2 = { GS: "GSW", SA: "SAS", NY: "NYK", NJ: "BKN", NO: "NOP", PHO: "PHX" };
+          for (const team of sportByteam.nbaScoring) {
+            const rawAbbr = team.team?.abbreviation || "";
+            const abbr = _NBA2[rawAbbr] || rawAbbr;
+            if (!abbr) continue;
+            const offCat = (team.categories || []).find(c => { const dn = (c.displayName || c.name || "").toLowerCase(); return dn.includes("offensive") || dn.includes("scoring"); });
+            const ppg = parseFloat(offCat?.values?.[0] ?? 0);
+            if (ppg > 0) nbaOffPPGMap[abbr] = parseFloat(ppg.toFixed(1));
+          }
+        }
+        const nbaLeagueAvgOffPPG = (() => { const vals = Object.values(nbaOffPPGMap).filter(v => v > 0); return vals.length >= 15 ? parseFloat((vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2)) : 113.0; })();
         const NBA_POS_MAP = {
           PG: "PG",
           "PG/SG": "PG",
@@ -2544,10 +2640,73 @@ var worker_default = {
             }
           }
         }
-        if (isDebug) {
-          return jsonResponse({ plays, dropped, preDropped, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null }, true);
+        // ── Game Total plays ─────────────────────────────────────────────────────────────────────
+        const totalDistCache = {};
+        const totalPlays = [];
+        {
+          const _MLB_ERA = 4.20;
+          for (const tm of totalMarkets) {
+            const { sport, stat, threshold, kalshiPct, americanOdds, gameTeam1, gameTeam2, gameDate, kalshiSpread, kalshiVolume } = tm;
+            if (gameDate && gameDate < cutoffStr) continue;
+            const spreadAdj = kalshiSpread != null ? parseFloat((kalshiSpread / 2).toFixed(1)) : 0;
+            const lowVolume = kalshiVolume < 20;
+            let truePct = null, homeTeam = gameTeam1, awayTeam = gameTeam2, totalSimScore = 0, _simData = {};
+            if (sport === "mlb") {
+              if (sportByteam.mlb?.gameHomeTeams?.[gameTeam2]) { homeTeam = gameTeam2; awayTeam = gameTeam1; }
+              const homeRPG = mlbRPGMap[homeTeam] ?? null, awayRPG = mlbRPGMap[awayTeam] ?? null;
+              const homeERA = sportByteam.mlb?.probables?.[homeTeam]?.era ?? null, awayERA = sportByteam.mlb?.probables?.[awayTeam]?.era ?? null;
+              const parkRF = PARK_RUNFACTOR[homeTeam] ?? 1;
+              _simData = { homeRPG, awayRPG, homeERA, awayERA, parkFactor: parkRF };
+              if (homeRPG != null && awayRPG != null) {
+                const _dk = `mlb|${homeTeam}|${awayTeam}`;
+                if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateMLBTotalDist(Math.max(1, Math.min(12, homeRPG * (awayERA != null ? awayERA / _MLB_ERA : 1) * parkRF)), Math.max(1, Math.min(12, awayRPG * (homeERA != null ? homeERA / _MLB_ERA : 1) * parkRF)), 10000);
+                truePct = totalDistPct(totalDistCache[_dk], threshold);
+              }
+              if (homeERA != null) totalSimScore += 3; if (awayERA != null) totalSimScore += 3;
+              if (homeRPG != null) totalSimScore += 2; if (awayRPG != null) totalSimScore += 2;
+              if (Math.abs(parkRF - 1) > 0.01) totalSimScore += 2;
+              if (Math.max(homeERA ?? 0, awayERA ?? 0) > 4.5) totalSimScore += 2;
+            } else if (sport === "nba") {
+              const homeOff = nbaOffPPGMap[homeTeam] ?? null, awayOff = nbaOffPPGMap[awayTeam] ?? null;
+              const nbaDefRank = STAT_SOFT["nba|points"]?.rankMap ?? {};
+              const nbaAvgDef = leagueAvgCache["nba|points"] ?? nbaLeagueAvgOffPPG;
+              const homeDef = nbaDefRank[homeTeam]?.value ?? null, awayDef = nbaDefRank[awayTeam]?.value ?? null;
+              _simData = { homeOff, awayOff, homeDef, awayDef };
+              if (homeOff != null && awayOff != null) {
+                const _dk = `nba|${homeTeam}|${awayTeam}`;
+                if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateNBATotalDist(homeOff * (awayDef != null && nbaAvgDef ? awayDef / nbaAvgDef : 1), awayOff * (homeDef != null && nbaAvgDef ? homeDef / nbaAvgDef : 1), 11, 11, 10000);
+                truePct = totalDistPct(totalDistCache[_dk], threshold);
+              }
+              if (homeOff != null) totalSimScore += 3; if (awayOff != null) totalSimScore += 3;
+              if (homeDef != null) totalSimScore += 2; if (awayDef != null) totalSimScore += 2;
+              const _hp = nbaPaceData?.teamPace?.[homeTeam] ?? null, _ap = nbaPaceData?.teamPace?.[awayTeam] ?? null;
+              if (_hp != null && _ap != null) { totalSimScore += 2; if ((_hp + _ap) / 2 > (nbaPaceData?.leagueAvgPace ?? 100)) totalSimScore += 2; }
+            } else if (sport === "nhl") {
+              const homeGPG = nhlGPGMap[homeTeam] ?? null, awayGPG = nhlGPGMap[awayTeam] ?? null;
+              const homeGAA = nhlGAAMap[homeTeam] ?? null, awayGAA = nhlGAAMap[awayTeam] ?? null;
+              _simData = { homeGPG, awayGPG, homeGAA, awayGAA };
+              if (homeGPG != null && awayGPG != null) {
+                const _dk = `nhl|${homeTeam}|${awayTeam}`;
+                if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateNHLTotalDist(Math.max(0.5, Math.min(8, homeGPG * (awayGAA != null ? awayGAA / nhlLeagueAvgGAA : 1))), Math.max(0.5, Math.min(8, awayGPG * (homeGAA != null ? homeGAA / nhlLeagueAvgGAA : 1))), 10000);
+                truePct = totalDistPct(totalDistCache[_dk], threshold);
+              }
+              if (homeGPG != null) totalSimScore += 3; if (awayGPG != null) totalSimScore += 3;
+              if (homeGAA != null) totalSimScore += 2; if (awayGAA != null) totalSimScore += 2;
+              const _hSA = nhlSaRankMap[homeTeam]?.value ?? null, _aSA = nhlSaRankMap[awayTeam]?.value ?? null;
+              if (_hSA != null) totalSimScore += 2; if (_aSA != null) totalSimScore += 2;
+            }
+            if (truePct == null) continue;
+            const rawEdge = parseFloat((truePct - kalshiPct).toFixed(1));
+            const edge = parseFloat((rawEdge - spreadAdj).toFixed(1));
+            if (edge < 3) continue;
+            totalPlays.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, spreadAdj: spreadAdj > 0 ? parseFloat(spreadAdj.toFixed(1)) : 0, edge, totalSimScore, qualified: totalSimScore >= 7, kelly: kellyFraction(truePct, americanOdds), ev: evPerUnit(truePct, americanOdds), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null, ...(isDebug ? { ..._simData } : {}) });
+          }
         }
-        const playsResult = { plays, qualifyingCount: qualifyingMarkets.length, preFilteredCount: preFilteredMarkets.length };
+        plays.push(...totalPlays);
+        if (isDebug) {
+          return jsonResponse({ plays, dropped, preDropped, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null }, true);
+        }
+        const playsResult = { plays, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length };
         const sportsInPlays = new Set(plays.map((p) => p.sport));
         if (CACHE2 && sportsInPlays.size >= 2) {
           const summary = {
