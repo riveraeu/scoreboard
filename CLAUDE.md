@@ -301,6 +301,11 @@ Shows `untrackedPlays` (qualified plays not yet tracked). Each card has:
 - SimScore gate breakdown
 - **Tier/unit row** — `tierUnits(americanOdds)`: ≤ -900 → 5u, ≤ -500 → 3u, else 1u. Stake = `bankroll × units / 100`.
 
+**Total play cards** (`gameType: "total"`) render differently from player prop cards:
+- Header: dual team logos (ESPN CDN `https://a.espncdn.com/i/teamlogos/{sport}/500/{abbr}.png`) + team names at `fontSize:12, fontWeight:600, color:#c9d1d9` (smaller than player name — matches player card style). No sport emoji.
+- Explanation: single prose block with colored stat values inline; SimScore badge appended at end of prose (no separate SimScore row or checkboxes). Same `background:"#0d1117"` block as player cards.
+- No player card on click (`gameType === "total"` returns early from `navigateToPlay`).
+
 ### Player Card
 Clicking a play opens the player card with:
 - Historical rates per threshold
@@ -335,11 +340,15 @@ The deduplication step (`bestMap` keyed by `playerName|sport|stat`) collapsed al
 Fix: `qualified:false` plays use a threshold-inclusive key (`playerName|sport|stat|threshold`) so all thresholds survive deduplication. The post-loop monotonicity sweep then re-derives truePct for every threshold from the `pitcherKDistCache` distribution (if available), giving distinct monotonically-decreasing values (e.g. 3+≈99.5%, 4+≈99.0%, 5+=98.1%). Falls back to copy-up sweep if cache is unavailable.
 
 ### Explanation Cards (Play Card + Player Card)
-Both play cards and player cards show an explanation block (`background:"#0d1117"`, `fontSize:11`, `lineHeight:1.65`) with two sections:
+Both play cards and player cards show an explanation block (`background:"#0d1117"`, `fontSize:11`, `lineHeight:1.65`).
+
+**Player prop cards** (MLB/NBA/NHL player props): two sections:
 1. **Narrative prose** — why the play is recommended, key stats with qualitative context. Highlighted numbers use colored `<span>`; descriptive phrases (e.g. "a key starter") use `color:"#484f58"` (dim).
 2. **SimScore row** — `SimScore` label + `X/14 Tier` badge + stat checkboxes. All on one flex line (`display:"flex", alignItems:"center", gap:6`). Badge uses `whiteSpace:"nowrap"`. Checkboxes in an inner `display:"inline-flex", gap:4, flexWrap:"wrap"` span so whole items wrap as units.
 
-**SimScore checkbox helpers:**
+**Total play cards** (MLB/NBA/NHL game totals): single prose block only — no separate SimScore row. SimScore badge appended inline at the end of the prose with `verticalAlign:"middle"`.
+
+**SimScore checkbox helpers (player prop cards only):**
 - MLB: `mk(meets, pts, label)` → `✓/✗ label(pts)` — no spaces around checkmark
 - NBA: `mkGate(meets, pts, label)` → `✓/✗ label (pts)` — spaces, `whiteSpace:"nowrap"` per item
 
