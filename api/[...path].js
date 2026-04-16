@@ -833,7 +833,7 @@ var worker_default = {
           return { softTeams, rankMap };
         }, glCacheKey = function(key) {
           const [sport] = key.split("|");
-          return sport === "mlb" ? `gl:mlb242526v2|${key}` : `gl:${key}`;
+          return sport === "mlb" ? `gl:mlb242526v2|${key}` : `gl:v2|${key}`;
         };
         __name(parseGameTeams, "parseGameTeams");
         __name(nhlSoftTeams, "nhlSoftTeams");
