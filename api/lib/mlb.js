@@ -445,7 +445,31 @@ export async function buildPitcherKPct(mlbSched) {
         if (cswByMlbId[id] != null) pitcherCSWPct[abbr] = cswByMlbId[id];
       }
     } catch { /* CSW% unavailable — filter falls back to K% */ }
-    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherCSWPct, pitcherAvgPitches, pitcherGS26, pitcherHasAnchor };
+    // Name-keyed map: for MLB strikeout plays the player IS the pitcher.
+    // Keying by name is immune to doubleheader overwrite — even if "SD|SEA" gets overwritten
+    // when both games today are SD vs SEA, "randy vasquez" always maps to Vasquez's own stats.
+    const pitcherStatsByName = {};
+    const _nn = n => (n || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    for (const person of [...(res26.people || []), ...(res25.people || [])]) {
+      const id = person.id;
+      if (!id || !person.fullName) continue;
+      const name = _nn(person.fullName);
+      if (pitcherStatsByName[name]) continue; // prefer res26 (iterated first)
+      const abbrs = Object.keys(pitcherByTeam).filter(a => pitcherByTeam[a] === id);
+      if (abbrs.length === 0) continue;
+      const a = abbrs[0]; // stats are same regardless of which abbr we pick
+      pitcherStatsByName[name] = {
+        hand: pitcherHand[a] ?? null,
+        kPct: pitcherKPct[a] ?? null,
+        kbbPct: pitcherKBBPct[a] ?? null,
+        era: pitcherEra[a] ?? null,
+        cswPct: pitcherCSWPct[a] ?? null,
+        avgPitches: pitcherAvgPitches[a] ?? null,
+        gs26: pitcherGS26[a] ?? null,
+        hasAnchor: pitcherHasAnchor[a] ?? null,
+      };
+    }
+    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherCSWPct, pitcherAvgPitches, pitcherGS26, pitcherHasAnchor, pitcherStatsByName };
   } catch {
     return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherGS26: {}, pitcherHasAnchor: {} };
   }
