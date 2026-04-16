@@ -879,7 +879,7 @@ function App() {
           const ip = lv("IP");
           const ha = lv("H"); // hits allowed
           const er = lv("ER");
-          const pc = lv("PC");
+          const pc = lv("P"); // ESPN uses "P" for pitch count (not "PC")
           if (k  !== undefined) { result.strikeouts?.push(k);  gs.strikeouts = k; }
           if (bb !== undefined) { result.bb?.push(bb); gs.bb = bb; }
           if (ip !== undefined) { result.ip?.push(ip); gs.ip = ip; }
