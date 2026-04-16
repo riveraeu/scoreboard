@@ -2545,14 +2545,11 @@ function App() {
               // ── Game total play card ────────────────────────────────────────────────────────────
               if (play.gameType === "total") {
                 const tColor = tierColor(play.truePct);
-                const SPORT_LOGO = { mlb:"baseball/mlb", nba:"basketball/nba", nhl:"hockey/nhl", nfl:"football/nfl" };
-                const logoPath = SPORT_LOGO[play.sport] || "basketball/nba";
-                const logoUrl = abbr => `https://a.espncdn.com/i/teamlogos/${logoPath}/500/${abbr.toLowerCase()}.png`;
+                const logoUrl = abbr => `https://a.espncdn.com/i/teamlogos/${play.sport}/500/${abbr.toLowerCase()}.png`;
                 const tLabel = { totalRuns:"Runs", totalPoints:"Pts", totalGoals:"Goals" }[play.stat] || play.stat;
                 const lineVal = (play.threshold - 0.5).toFixed(1);
                 const tTrueOdds = play.truePct >= 50 ? Math.round(-(play.truePct/(100-play.truePct))*100) : Math.round((100-play.truePct)/play.truePct*100);
                 const tTrueOddsStr = tTrueOdds > 0 ? `+${tTrueOdds}` : `${tTrueOdds}`;
-                const SPORT_EMOJI = { mlb:"⚾", nba:"🏀", nhl:"🏒", nfl:"🏈" };
                 return (
                   <div key={playKey}
                     style={{background:"#161b22",border:`1px solid ${isTracked?"#3fb950":"#30363d"}`,borderRadius:12,
@@ -2575,8 +2572,7 @@ function App() {
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{color:"#fff",fontSize:14,fontWeight:700}}>{play.awayTeam} @ {play.homeTeam}</div>
                         <div style={{color:"#8b949e",fontSize:11,marginTop:2,display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
-                          {SPORT_EMOJI[play.sport] && <span>{SPORT_EMOJI[play.sport]}</span>}
-                          {play.gameTime && <><span style={{color:"#6e7681"}}>·</span><span>{new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",hour:"numeric",minute:"2-digit",hour12:true}).format(new Date(play.gameTime))} PT</span></>}
+                          {play.gameTime && <span>{new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",hour:"numeric",minute:"2-digit",hour12:true}).format(new Date(play.gameTime))} PT</span>}
                           {play.lowVolume && <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(231,179,49,0.12)",border:"1px solid #e3b341",color:"#e3b341"}}>Low Vol</span>}
                         </div>
                       </div>
