@@ -388,14 +388,20 @@ Also check the date filter: the edge function runs UTC, so after midnight UTC (e
 Comes from gamelog starts-only (2026 primary) or season aggregate fallback `numberOfPitches / gamesStarted`. If a pitcher has 0 starts recorded yet in either source, will show `—`. Also check that `buildPitcherKPct` didn't hit the early-return path (see above).
 
 ### "P/GS shows wrong value for a confirmed starter (non-doubleheader)"
-Root cause: stale `byteam:mlb` KV cache (600s TTL) built when a different pitcher was listed as the team's probable. The old `_pt()` team key lookup returned that wrong pitcher's avgPitches — non-null, so the ESPN fallback never triggered.
+Two bugs can cause this:
 
-Fix: `_avgP` IIFE in `[...path].js` (strikeouts block) uses a priority chain:
-1. **Name-based** (`_ps?.avgPitches` from `pitcherStatsByName`) — correct when the pitcher's ID is in probables
-2. **ESPN gamelog starts-only** — filters `IP >= 3` as a proxy for starts; uses this specific player's own ESPN gamelog, immune to stale/wrong probables
-3. **Team key fallback** (`_pt(sportByteam.mlb?.pitcherAvgPitches, …)`) — last resort; may return a different pitcher if cache is stale
+**Bug A — stale KV cache with wrong probable:** The `byteam:mlb` KV cache (600s TTL) was built when a different pitcher was listed as the team's probable. The old `_pt()` team key lookup returned that wrong pitcher's avgPitches.
 
-`_avgP` is hoisted (`let _avgP = null`) at the outer per-market declarations so all 4 output sites (qualified play, edge_too_low drop, low-simScore drop, generic drop) use it.
+**Bug B — in-progress game poisons the average (UTC vs local date mismatch):** The pitcher has a game today (local date e.g. "2026-04-15") but the server's UTC clock already reads the next day ("2026-04-16"). The `_todayStr` filter (`new Date().toISOString().slice(0,10)`) = "2026-04-16", so "2026-04-15" != "2026-04-16" passes the filter. If the game is in progress at cache-build time (e.g. NP=2 after first pitch), the tiny partial NP poisons the average: `(91+83+92+2)/4 = 67` instead of 88.7.
+
+**Fixes:**
+- `mlb.js` `startSplits` filter now requires `(s.stat?.numberOfPitches || 0) >= 30` — catches in-progress games that slip through the date filter due to UTC/local mismatch. A legitimate start always has 30+ pitches.
+- `_avgP` IIFE in `[...path].js` (strikeouts block) uses a priority chain:
+  1. **Name-based** (`_ps?.avgPitches` from `pitcherStatsByName`) — correct when pitcher is in probables
+  2. **ESPN gamelog starts-only** — `IP >= 3` as start proxy; pitcher-specific; ESPN uses column `"P"` (not `"PC"`) for pitches, code tries both labels
+  3. **Team key fallback** — last resort; may return wrong pitcher if cache is stale
+
+`_avgP` is hoisted (`let _avgP = null`) at the outer per-market declarations so all 4 output sites use it.
 
 ### "Wrong pitcher stats for a team on a doubleheader day"
 When a team plays two games (e.g. a makeup game + a regular game), the schedule loop processes both games and `pitcherByTeam["SD"]` ends up pointing to whichever pitcher was processed last — not necessarily tonight's Kalshi pitcher.
