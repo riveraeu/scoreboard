@@ -66,12 +66,13 @@ Used for caching expensive fetches. Key TTLs:
 - **Team extraction**: `parseGameTeams()` handles all sport-specific team code formats
 - **`direction: "over"`** — currently only over plays surfaced (YES on Kalshi)
 - **Edge gate**: `edge >= 3%` (same as player props); no soft matchup gate for totals
-- **SimScore** (max 14): pitcher/team data availability (3+3+2+2pts) + park/context signals (2+2pts); `qualified: totalSimScore >= 7`
+- **SimScore** (max 14): tiered by stat quality, not just data existence; `qualified: totalSimScore >= 7`
 - **Data maps** (`mlbRPGMap`, `nhlGPGMap/GAAMap`, `nbaOffPPGMap`) computed inline after `leagueAvgCache` block
-- **Play card**: `gameType: "total"` flag triggers `TotalPlayCard` branch in the play card render; shows dual team logos (ESPN CDN), matchup header, true%/Kalshi% bars, stats row
+- **Play card**: `gameType: "total"` flag triggers `TotalPlayCard` branch in the play card render; shows dual team logos (ESPN CDN), matchup header, true%/Kalshi% bars, explanation prose, SimScore badge
 - **Deduplication**: one total play per game (homeTeam+awayTeam+sport), keeping highest truePct — multiple thresholds for the same game reduced to the best one
-- **Expected total**: `homeExpected + awayExpected` (lambda sum for MLB/NHL, PPG-adjusted for NBA) shown in explanation; `_simData` includes `homeExpected`, `awayExpected`, `expectedTotal`; NBA also includes `homePace`, `awayPace`, `leagueAvgPace`; NHL includes `homeSAKnown`, `awaySAKnown`
-- **SimScore tooltip**: hover over the `X/14` badge on game total cards to see per-component breakdown
+- **Expected total**: `homeExpected + awayExpected` (lambda sum for MLB/NHL, PPG-adjusted for NBA) shown in explanation prose; `_simData` includes `homeExpected`, `awayExpected`, `expectedTotal`; NBA also includes `homePace`, `awayPace`, `leagueAvgPace`; NHL includes `homeSAKnown`, `awaySAKnown`
+- **SimScore tooltip**: hover the `X/14` badge to see per-component breakdown with actual values (e.g. `CHA off PPG (116): 2/3`)
+- **Edge badge**: shows `+X%` only — tooltip removed (spreadAdj no longer subtracted from edge)
 - **Track ID format**: `total|sport|homeTeam|awayTeam|threshold|gameDate`
 
 #### Total SimScore details
@@ -262,6 +263,7 @@ True% = Monte Carlo simulation (reuses `buildNbaStatDist` + `nbaDistPct`) — no
 - Blended fill price via orderbook walk for thin markets
 - `kalshiSpread` = bid-ask spread in cents (`round((yesAsk − yesBid) × 100)`); kept in output as a liquidity signal (shown as badge when wide)
 - `rawEdge = truePct − kalshiPct`; `edge = rawEdge` — `kalshiPct` is already the fill price (ask or blended orderbook walk), so no further spread deduction is applied. `spreadAdj` is computed and stored but not subtracted from edge.
+- Edge badge on play cards shows `+X%` with no tooltip — the old "Raw − spread = net" tooltip was removed since spread is no longer subtracted.
 - `lowVolume = kalshiVolume < 20` — shown as badge on play card; volume and spread improve as game approaches
 
 ### preDropped vs dropped
@@ -305,8 +307,10 @@ Shows `untrackedPlays` (qualified plays not yet tracked). Each card has:
 - **Tier/unit row** — `tierUnits(americanOdds)`: ≤ -900 → 5u, ≤ -500 → 3u, else 1u. Stake = `bankroll × units / 100`.
 
 **Total play cards** (`gameType: "total"`) render differently from player prop cards:
-- Header: dual team logos (ESPN CDN `https://a.espncdn.com/i/teamlogos/{sport}/500/{abbr}.png`) + team names at `fontSize:12, fontWeight:600, color:#c9d1d9` (smaller than player name — matches player card style). No sport emoji.
-- Explanation: single prose block with colored stat values inline; SimScore badge appended at end of prose (no separate SimScore row or checkboxes). Same `background:"#0d1117"` block as player cards.
+- Header: dual team logos (ESPN CDN `https://a.espncdn.com/i/teamlogos/{sport}/500/{abbr}.png`) + team names at `fontSize:12, fontWeight:600, color:#c9d1d9` (smaller than player name). No sport emoji.
+- Explanation: single prose block with colored stat values inline; SimScore badge (with hover tooltip) appended at end of prose (no separate SimScore row or checkboxes). Same `background:"#0d1117"` block as player cards.
+- Prose includes model-projected expected total vs threshold (e.g. "Model projects 8.4 combined runs vs the 7.5 threshold"). NBA also shows pace adjustment.
+- **Stat colors for NBA totals**: offensive PPG — ≥118 red, ≥113 yellow, else gray (high scoring = more risky for over). Defensive PPG allowed — ≥118 green, ≥113 yellow, else red (bad defense = good for over; good defense = bad for over).
 - No player card on click (`gameType === "total"` returns early from `navigateToPlay`).
 
 ### Player Card
