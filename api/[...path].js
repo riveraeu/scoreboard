@@ -143,7 +143,7 @@ var worker_default = {
         const salt = crypto.randomUUID();
         const passwordHash = await pbkdf2Hash(password, salt);
         await CACHE2.put(emailKey, JSON.stringify({ id: userId, email, passwordHash, salt }));
-        const token = await makeJWT({ userId, email, exp: Date.now() + 30 * 24 * 60 * 60 * 1e3 }, JWT_SECRET);
+        const token = await makeJWT({ userId, email, exp: Date.now() + 365 * 24 * 60 * 60 * 1e3 }, JWT_SECRET);
         return jsonResponse({ token, userId, email });
       } else if (path === "keepalive") {
         if (CACHE2) await CACHE2.put("keepalive", new Date().toISOString(), { expirationTtl: 172800 });
@@ -175,7 +175,7 @@ var worker_default = {
         const user = JSON.parse(userStr);
         const hash = await pbkdf2Hash(password, user.salt);
         if (hash !== user.passwordHash) return errorResponse("Invalid credentials", 401);
-        const token = await makeJWT({ userId: user.id, email: user.email, exp: Date.now() + 30 * 24 * 60 * 60 * 1e3 }, JWT_SECRET);
+        const token = await makeJWT({ userId: user.id, email: user.email, exp: Date.now() + 365 * 24 * 60 * 60 * 1e3 }, JWT_SECRET);
         return jsonResponse({ token, userId: user.id, email: user.email });
       } else if (path === "user/picks" && method === "GET") {
         const token = (request.headers.get("Authorization") || "").replace("Bearer ", "");
