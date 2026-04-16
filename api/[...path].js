@@ -192,9 +192,9 @@ var worker_default = {
         await CACHE2.put(emailKey, JSON.stringify({ ...user, passwordHash: newHash, salt: newSalt }));
         return jsonResponse({ ok: true });
       } else if (path === "auth/import-kalshi-picks" && method === "POST") {
-        const { kalshiEmail, kalshiPassword, adminKey: importAdminKey, userId: importUserId } = await request.json();
+        const { kalshiToken: providedToken, adminKey: importAdminKey, userId: importUserId } = await request.json();
         if (importAdminKey !== (env?.ADMIN_KEY || "sb-admin-2026")) return errorResponse("Forbidden", 403);
-        if (!kalshiEmail || !kalshiPassword || !importUserId) return errorResponse("kalshiEmail, kalshiPassword, userId required", 400);
+        if (!providedToken || !importUserId) return errorResponse("kalshiToken and userId required", 400);
         const KALSHI_BASE = "https://api.elections.kalshi.com/trade-api/v2";
         const KMON2 = { JAN:"01",FEB:"02",MAR:"03",APR:"04",MAY:"05",JUN:"06",JUL:"07",AUG:"08",SEP:"09",OCT:"10",NOV:"11",DEC:"12" };
         const IMP_SERIES = {
@@ -215,12 +215,7 @@ var worker_default = {
           if (rest.length >= 5) return [impNT(sport,rest.slice(0,3)), impNT(sport,rest.slice(3,5))];
           return [null, null];
         };
-        // Step 1: Login
-        const loginRes = await fetch(`${KALSHI_BASE}/auth/login`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({email:kalshiEmail,password:kalshiPassword}) });
-        if (!loginRes.ok) { const lt = await loginRes.text(); return errorResponse(`Kalshi login failed ${loginRes.status}: ${lt.slice(0,200)}`, 400); }
-        const loginData = await loginRes.json();
-        const kalshiToken = loginData.token;
-        if (!kalshiToken) return errorResponse("No token in Kalshi login response", 500);
+        const kalshiToken = providedToken;
         const kHdrs = { "Authorization":`Bearer ${kalshiToken}`, "Content-Type":"application/json" };
         // Step 2: Fetch fills (last 5 days)
         const minTs = Math.floor((Date.now() - 5 * 86400000) / 1000);
