@@ -1741,7 +1741,8 @@ var worker_default = {
               // 2. ESPN gamelog starts-only (player-specific: uses this player's own gamelog data,
               //    immune to stale/wrong probables that might have another pitcher under the team key).
               //    IP >= 3 is a reliable proxy for starts (starters go 3+ IP; relievers rarely do).
-              const _pci = gl.ul.indexOf("PC");
+              // ESPN MLB pitcher gamelog uses "P" for pitches; other contexts may use "PC". Try both.
+              const _pci = gl.ul.indexOf("PC") !== -1 ? gl.ul.indexOf("PC") : gl.ul.indexOf("P");
               if (_pci !== -1) {
                 const _ipIdx = gl.ul.indexOf("IP");
                 const _evs26 = hasSeasonTags ? gl.events.filter(ev => ev.season === 2026) : gl.events;

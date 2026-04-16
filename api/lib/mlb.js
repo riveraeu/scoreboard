@@ -389,7 +389,10 @@ export async function buildPitcherKPct(mlbSched) {
       // by a makeup-game pitcher that processed later in the schedule loop).
       const abbrs = Object.keys(pitcherByTeam).filter(a => pitcherByTeam[a] === id);
       // Note: do NOT skip if abbrs is empty — overwritten pitchers still need pitcherAvgPitchesById set.
-      const startSplits = splits.filter(s => (s.stat?.gamesStarted || 0) > 0 && s.date !== _todayStr);
+      // NP >= 30 guards against in-progress games where the date filter fails due to UTC vs local
+      // date mismatch (e.g. game is "2026-04-15" local but server UTC reads "2026-04-16" as today,
+      // so date !== _todayStr passes and a 2-pitch partial start poisons the average).
+      const startSplits = splits.filter(s => (s.stat?.gamesStarted || 0) > 0 && s.date !== _todayStr && (s.stat?.numberOfPitches || 0) >= 30);
       const totalNP = startSplits.reduce((sum, s) => sum + (s.stat?.numberOfPitches || 0), 0);
       const s26 = pitcherStats26[id];
       const s25 = pitcherStats25[id];
