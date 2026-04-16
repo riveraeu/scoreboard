@@ -244,12 +244,16 @@ Opened via "report" button. Shows ALL markets (plays + dropped) grouped by sport
 - **HRR table**: shows threshold=1 rows only (2+/3+/etc. filtered client-side — too noisy)
 - **Score > 10 highlight**: For MLB rows (strikeouts + HRR), the player name is white+bold only when `finalSimScore ?? hitterFinalSimScore > 10` (Alpha tier). Rows with score ≤ 10 get a dim gray name even if qualified. Non-MLB tables use the original `m.qualified` logic for name color.
 
+### Toolbar
+Right side: **bust** button (calls `?bust=1`, shows "busting…" while loading) + **mock** toggle + My Picks anchor.
+
 ### Play Cards
 Shows `untrackedPlays` (qualified plays not yet tracked). Each card has:
 - True% bar (color = tierColor, odds = model-implied from truePct)
 - Kalshi% bar (purple, odds = Kalshi americanOdds)
 - Explanation card (varies by sport/stat)
 - SimScore gate breakdown
+- **Tier/unit row** — `tierUnits(americanOdds)`: ≤ -900 → 5u, ≤ -500 → 3u, else 1u. Stake = `bankroll × units / 100`.
 
 ### Player Card
 Clicking a play opens the player card with:

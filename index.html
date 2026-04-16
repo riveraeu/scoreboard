@@ -567,7 +567,6 @@ function App() {
       .catch(() => { setAllTonightPlays([]); setTonightPlays([]); setTonightLoading(false); setBustLoading(false); });
   };
 
-
   // Persist tracked plays to localStorage only when not logged in (server is source of truth when logged in)
   React.useEffect(() => {
     if (!authToken) {
