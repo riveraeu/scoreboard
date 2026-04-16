@@ -69,6 +69,9 @@ Used for caching expensive fetches. Key TTLs:
 - **SimScore** (max 14): pitcher/team data availability (3+3+2+2pts) + park/context signals (2+2pts); `qualified: totalSimScore >= 7`
 - **Data maps** (`mlbRPGMap`, `nhlGPGMap/GAAMap`, `nbaOffPPGMap`) computed inline after `leagueAvgCache` block
 - **Play card**: `gameType: "total"` flag triggers `TotalPlayCard` branch in the play card render; shows dual team logos (ESPN CDN), matchup header, true%/Kalshi% bars, stats row
+- **Deduplication**: one total play per game (homeTeam+awayTeam+sport), keeping highest truePct — multiple thresholds for the same game reduced to the best one
+- **Expected total**: `homeExpected + awayExpected` (lambda sum for MLB/NHL, PPG-adjusted for NBA) shown in explanation; `_simData` includes `homeExpected`, `awayExpected`, `expectedTotal`; NBA also includes `homePace`, `awayPace`, `leagueAvgPace`; NHL includes `homeSAKnown`, `awaySAKnown`
+- **SimScore tooltip**: hover over the `X/14` badge on game total cards to see per-component breakdown
 - **Track ID format**: `total|sport|homeTeam|awayTeam|threshold|gameDate`
 
 #### Total SimScore details
@@ -144,7 +147,7 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
   - `teamDefFactor` = general team defense (`rankMap[opp].value / leagueAvg`) — NOT position-adjusted DVP
   - Falls back to avg(seasonPct, softPct) − 4% if B2B when simulation returns null (<5 game values)
 - **SimScore** (max 14, edge gates separately — same pattern as MLB strikeouts):
-  - Pace (avg game pace above league avg) → 3pts — fetched from ESPN via `buildNbaPaceData()`, cached 12h
+  - Pace: avg pace >0 vs league avg → 3pts, >-2 → 2pts, else 0pts — fetched from ESPN via `buildNbaPaceData()`, cached 12h
   - Avg minutes ≥ 30 (last 10 games) → 4pts; ≥ 25 → 2pts
   - Position-adjusted DVP rank ≤ 10 → 2pts
   - Not B2B → 2pts

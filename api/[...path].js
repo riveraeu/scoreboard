@@ -2334,6 +2334,7 @@ var worker_default = {
               if (_tp !== null && _op !== null) {
                 nbaPaceAdj = parseFloat(((_tp + _op) / 2 - (nbaPaceData.leagueAvgPace ?? 100)).toFixed(1));
                 if (nbaPaceAdj > 0) _sc += 3;
+                else if (nbaPaceAdj > -2) _sc += 2;
               }
             }
             // 2. Avg minutes (last 10 games from ESPN gamelog) — ≥30 → 4pts, ≥25 → 2pts
@@ -2782,10 +2783,12 @@ var worker_default = {
               const homeRPG = mlbRPGMap[homeTeam] ?? null, awayRPG = mlbRPGMap[awayTeam] ?? null;
               const homeERA = sportByteam.mlb?.probables?.[homeTeam]?.era ?? null, awayERA = sportByteam.mlb?.probables?.[awayTeam]?.era ?? null;
               const parkRF = PARK_RUNFACTOR[homeTeam] ?? 1;
-              _simData = { homeRPG, awayRPG, homeERA, awayERA, parkFactor: parkRF };
-              if (homeRPG != null && awayRPG != null) {
+              const _hLam = homeRPG != null ? parseFloat((Math.max(1, Math.min(12, homeRPG * (awayERA != null ? awayERA / _MLB_ERA : 1) * parkRF))).toFixed(1)) : null;
+              const _aLam = awayRPG != null ? parseFloat((Math.max(1, Math.min(12, awayRPG * (homeERA != null ? homeERA / _MLB_ERA : 1) * parkRF))).toFixed(1)) : null;
+              _simData = { homeRPG, awayRPG, homeERA, awayERA, parkFactor: parkRF, homeExpected: _hLam, awayExpected: _aLam, expectedTotal: (_hLam != null && _aLam != null) ? parseFloat((_hLam + _aLam).toFixed(1)) : null };
+              if (_hLam != null && _aLam != null) {
                 const _dk = `mlb|${homeTeam}|${awayTeam}`;
-                if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateMLBTotalDist(Math.max(1, Math.min(12, homeRPG * (awayERA != null ? awayERA / _MLB_ERA : 1) * parkRF)), Math.max(1, Math.min(12, awayRPG * (homeERA != null ? homeERA / _MLB_ERA : 1) * parkRF)), 10000);
+                if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateMLBTotalDist(_hLam, _aLam, 10000);
                 truePct = totalDistPct(totalDistCache[_dk], threshold);
               }
               if (homeERA != null) totalSimScore += 3; if (awayERA != null) totalSimScore += 3;
@@ -2797,28 +2800,32 @@ var worker_default = {
               const nbaDefRank = STAT_SOFT["nba|points"]?.rankMap ?? {};
               const nbaAvgDef = leagueAvgCache["nba|points"] ?? nbaLeagueAvgOffPPG;
               const homeDef = nbaDefRank[homeTeam]?.value ?? null, awayDef = nbaDefRank[awayTeam]?.value ?? null;
-              _simData = { homeOff, awayOff, homeDef, awayDef };
-              if (homeOff != null && awayOff != null) {
+              const _hp = nbaPaceData?.teamPace?.[homeTeam] ?? null, _ap = nbaPaceData?.teamPace?.[awayTeam] ?? null;
+              const _homeExpRaw = homeOff != null ? homeOff * (awayDef != null && nbaAvgDef ? awayDef / nbaAvgDef : 1) : null;
+              const _awayExpRaw = awayOff != null ? awayOff * (homeDef != null && nbaAvgDef ? homeDef / nbaAvgDef : 1) : null;
+              _simData = { homeOff, awayOff, homeDef, awayDef, homePace: _hp, awayPace: _ap, leagueAvgPace: nbaPaceData?.leagueAvgPace ?? null, homeExpected: _homeExpRaw != null ? parseFloat(_homeExpRaw.toFixed(1)) : null, awayExpected: _awayExpRaw != null ? parseFloat(_awayExpRaw.toFixed(1)) : null, expectedTotal: (_homeExpRaw != null && _awayExpRaw != null) ? parseFloat((_homeExpRaw + _awayExpRaw).toFixed(1)) : null };
+              if (_homeExpRaw != null && _awayExpRaw != null) {
                 const _dk = `nba|${homeTeam}|${awayTeam}`;
-                if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateNBATotalDist(homeOff * (awayDef != null && nbaAvgDef ? awayDef / nbaAvgDef : 1), awayOff * (homeDef != null && nbaAvgDef ? homeDef / nbaAvgDef : 1), 11, 11, 10000);
+                if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateNBATotalDist(_homeExpRaw, _awayExpRaw, 11, 11, 10000);
                 truePct = totalDistPct(totalDistCache[_dk], threshold);
               }
               if (homeOff != null) totalSimScore += 3; if (awayOff != null) totalSimScore += 3;
               if (homeDef != null) totalSimScore += 2; if (awayDef != null) totalSimScore += 2;
-              const _hp = nbaPaceData?.teamPace?.[homeTeam] ?? null, _ap = nbaPaceData?.teamPace?.[awayTeam] ?? null;
               if (_hp != null && _ap != null) { totalSimScore += 2; if ((_hp + _ap) / 2 > (nbaPaceData?.leagueAvgPace ?? 100)) totalSimScore += 2; }
             } else if (sport === "nhl") {
               const homeGPG = nhlGPGMap[homeTeam] ?? null, awayGPG = nhlGPGMap[awayTeam] ?? null;
               const homeGAA = nhlGAAMap[homeTeam] ?? null, awayGAA = nhlGAAMap[awayTeam] ?? null;
-              _simData = { homeGPG, awayGPG, homeGAA, awayGAA };
-              if (homeGPG != null && awayGPG != null) {
+              const _hSA = nhlSaRankMap[homeTeam]?.value ?? null, _aSA = nhlSaRankMap[awayTeam]?.value ?? null;
+              const _hGLRaw = homeGPG != null ? Math.max(0.5, Math.min(8, homeGPG * (awayGAA != null ? awayGAA / nhlLeagueAvgGAA : 1))) : null;
+              const _aGLRaw = awayGPG != null ? Math.max(0.5, Math.min(8, awayGPG * (homeGAA != null ? homeGAA / nhlLeagueAvgGAA : 1))) : null;
+              _simData = { homeGPG, awayGPG, homeGAA, awayGAA, homeSAKnown: _hSA != null, awaySAKnown: _aSA != null, homeExpected: _hGLRaw != null ? parseFloat(_hGLRaw.toFixed(2)) : null, awayExpected: _aGLRaw != null ? parseFloat(_aGLRaw.toFixed(2)) : null, expectedTotal: (_hGLRaw != null && _aGLRaw != null) ? parseFloat((_hGLRaw + _aGLRaw).toFixed(1)) : null };
+              if (_hGLRaw != null && _aGLRaw != null) {
                 const _dk = `nhl|${homeTeam}|${awayTeam}`;
-                if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateNHLTotalDist(Math.max(0.5, Math.min(8, homeGPG * (awayGAA != null ? awayGAA / nhlLeagueAvgGAA : 1))), Math.max(0.5, Math.min(8, awayGPG * (homeGAA != null ? homeGAA / nhlLeagueAvgGAA : 1))), 10000);
+                if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateNHLTotalDist(_hGLRaw, _aGLRaw, 10000);
                 truePct = totalDistPct(totalDistCache[_dk], threshold);
               }
               if (homeGPG != null) totalSimScore += 3; if (awayGPG != null) totalSimScore += 3;
               if (homeGAA != null) totalSimScore += 2; if (awayGAA != null) totalSimScore += 2;
-              const _hSA = nhlSaRankMap[homeTeam]?.value ?? null, _aSA = nhlSaRankMap[awayTeam]?.value ?? null;
               if (_hSA != null) totalSimScore += 2; if (_aSA != null) totalSimScore += 2;
             }
             if (truePct == null) continue;
@@ -2828,7 +2835,14 @@ var worker_default = {
             totalPlays.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, spreadAdj: spreadAdj > 0 ? parseFloat(spreadAdj.toFixed(1)) : 0, edge, totalSimScore, qualified: totalSimScore >= 7, kelly: kellyFraction(truePct, americanOdds), ev: evPerUnit(truePct, americanOdds), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null, ..._simData });
           }
         }
-        plays.push(...totalPlays);
+        {
+          const _totalBestMap = {};
+          for (const tp of totalPlays) {
+            const key = `${tp.sport}|${tp.homeTeam}|${tp.awayTeam}`;
+            if (!_totalBestMap[key] || tp.truePct > _totalBestMap[key].truePct) _totalBestMap[key] = tp;
+          }
+          plays.push(...Object.values(_totalBestMap));
+        }
         if (isDebug) {
           const nbaGlLabels = Object.fromEntries(Object.entries(playerGamelogs).filter(([k]) => k.startsWith("nba|")).map(([k, gl]) => [k, gl?.ul ?? null]));
           const nbaGlSample = Object.fromEntries(Object.entries(playerGamelogs).filter(([k]) => k.startsWith("nba|")).map(([k, gl]) => [k, gl?.events?.slice(0, 3).map(ev => ({ stats: ev.stats?.slice(0, 3), statsLen: ev.stats?.length })) ?? null]));
