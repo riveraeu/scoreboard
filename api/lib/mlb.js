@@ -368,11 +368,14 @@ export async function buildPitcherKPct(mlbSched) {
       );
     } catch { /* game log fetch failed */ }
     // Avg pitches per start from 2026 game logs (starts-only — accurate for pitchers with mixed starter/reliever roles)
-    // Falls back to 2025 season aggregate only when no 2026 start data exists in the gamelog
+    // Falls back to 2025 season aggregate only when no 2026 start data exists in the gamelog.
+    // Exclude today's date: the gamelog API includes in-progress game entries with gamesStarted=1
+    // and partial pitch counts (e.g. gs=1, np=11 after 1 IP), which poisons the avg.
+    const _todayStr = new Date().toISOString().slice(0, 10);
     for (const { id, splits } of glFetch) {
       const abbr = Object.keys(pitcherByTeam).find(a => pitcherByTeam[a] === id);
       if (!abbr) continue;
-      const startSplits = splits.filter(s => (s.stat?.gamesStarted || 0) > 0);
+      const startSplits = splits.filter(s => (s.stat?.gamesStarted || 0) > 0 && s.date !== _todayStr);
       if (startSplits.length > 0) {
         const totalNP = startSplits.reduce((sum, s) => sum + (s.stat?.numberOfPitches || 0), 0);
         if (totalNP > 0) { pitcherAvgPitches[abbr] = parseFloat((totalNP / startSplits.length).toFixed(1)); continue; }
