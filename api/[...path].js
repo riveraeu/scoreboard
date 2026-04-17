@@ -2800,9 +2800,11 @@ var worker_default = {
               const homeRPG = mlbRPGMap[homeTeam] ?? null, awayRPG = mlbRPGMap[awayTeam] ?? null;
               const homeERA = sportByteam.mlb?.probables?.[homeTeam]?.era ?? null, awayERA = sportByteam.mlb?.probables?.[awayTeam]?.era ?? null;
               const parkRF = PARK_RUNFACTOR[homeTeam] ?? 1;
+              const gameOuLine = sportByteam.mlb?.gameOdds?.[homeTeam]?.total ?? sportByteam.mlb?.gameOdds?.[awayTeam]?.total ?? null;
+              const _mlbOuPts = gameOuLine == null ? 1 : gameOuLine >= 9.5 ? 2 : gameOuLine >= 7.5 ? 1 : 0;
               const _hLam = homeRPG != null ? parseFloat((Math.max(1, Math.min(12, homeRPG * (awayERA != null ? awayERA / _MLB_ERA : 1) * parkRF))).toFixed(1)) : null;
               const _aLam = awayRPG != null ? parseFloat((Math.max(1, Math.min(12, awayRPG * (homeERA != null ? homeERA / _MLB_ERA : 1) * parkRF))).toFixed(1)) : null;
-              _simData = { homeRPG, awayRPG, homeERA, awayERA, parkFactor: parkRF, homeExpected: _hLam, awayExpected: _aLam, expectedTotal: (_hLam != null && _aLam != null) ? parseFloat((_hLam + _aLam).toFixed(1)) : null };
+              _simData = { homeRPG, awayRPG, homeERA, awayERA, parkFactor: parkRF, homeExpected: _hLam, awayExpected: _aLam, expectedTotal: (_hLam != null && _aLam != null) ? parseFloat((_hLam + _aLam).toFixed(1)) : null, gameOuLine, mlbOuPts: _mlbOuPts };
               if (_hLam != null && _aLam != null) {
                 const _dk = `mlb|${homeTeam}|${awayTeam}`;
                 if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateMLBTotalDist(_hLam, _aLam, 10000);
@@ -2813,7 +2815,7 @@ var worker_default = {
               if (homeRPG != null) totalSimScore += homeRPG > 5.0 ? 2 : homeRPG > 4.0 ? 1 : 0;
               if (awayRPG != null) totalSimScore += awayRPG > 5.0 ? 2 : awayRPG > 4.0 ? 1 : 0;
               if (parkRF > 1.01) totalSimScore += 2;
-              if (Math.max(homeERA ?? 0, awayERA ?? 0) > 4.5) totalSimScore += 2;
+              totalSimScore += _mlbOuPts;
             } else if (sport === "nba") {
               const homeOff = nbaOffPPGMap[homeTeam] ?? null, awayOff = nbaOffPPGMap[awayTeam] ?? null;
               const nbaDefRank = STAT_SOFT["nba|points"]?.rankMap ?? {};

@@ -1202,7 +1202,7 @@ function App() {
                           "nba|assists":    [{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"},{k:"nbapace",l:"Pace"},{k:"nbaopp",l:"AvgMin"},{k:"nba_b2b",l:"Rest"},{k:"sim",l:"Score"}],
                           "nba|threePointers":[{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"},{k:"nbapace",l:"Pace"},{k:"nbaopp",l:"AvgMin"},{k:"nba_b2b",l:"Rest"},{k:"sim",l:"Score"}],
                           "nhl|points": [{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"nhlgaa",l:"GAA Rank"},{k:"nhlsa",l:"SA Adj"},{k:"nhltoi",l:"AvgTOI"},{k:"nhl_b2b",l:"Rest"},{k:"sim",l:"Score"}],
-                          "mlb|totalRuns":    [{k:"homeRPG",l:"H RPG"},{k:"awayRPG",l:"A RPG"},{k:"homeERA",l:"H ERA"},{k:"awayERA",l:"A ERA"}],
+                          "mlb|totalRuns":    [{k:"homeRPG",l:"H RPG"},{k:"awayRPG",l:"A RPG"},{k:"homeERA",l:"H ERA"},{k:"awayERA",l:"A ERA"},{k:"mlbOu",l:"O/U"}],
                           "nba|totalPoints":  [{k:"homeOff",l:"H PPG"},{k:"awayOff",l:"A PPG"},{k:"homeDef",l:"H Def"},{k:"awayDef",l:"A Def"}],
                           "nhl|totalGoals":   [{k:"homeGPG",l:"H GPG"},{k:"awayGPG",l:"A GPG"},{k:"homeGAA",l:"H GAA"},{k:"awayGAA",l:"A GAA"}],
                         };
@@ -1231,6 +1231,7 @@ function App() {
                           if (k==="whip") { const w = m.pitcherWHIP; return C(w != null ? w.toFixed(2) : null, w > 1.35 ? "#3fb950" : w > 1.20 ? "#e3b341" : "#f78166"); }
                           if (k==="fip")  { const f = m.pitcherFIP; const _era = m.hitterPitcherEra ?? m.pitcherEra; return C(f != null ? f.toFixed(2) : null, (f != null && _era != null) ? (f > _era + 0.3 ? "#3fb950" : f > _era ? "#e3b341" : "#f78166") : "#8b949e"); }
                           if (k==="ou")  return C(ou  != null ? ou : null, ou <= 8.5 ? "#3fb950" : ou <= 10.5 ? "#e3b341" : "#f78166");
+                          if (k==="mlbOu") { const v = m.gameOuLine; return v != null ? <span style={{color:v>=9.5?"#3fb950":v>=7.5?"#e3b341":"#f78166"}}>{v}</span> : DASH; }
                           if (k==="dvp") { const r = m.posDvpRank; return C(r != null ? `#${r}${m.posGroup?" "+m.posGroup:""}` : null, r<=10?"#3fb950":r<=20?"#e3b341":"#f78166"); }
                           if (k==="sim") { const sc = m.totalSimScore ?? m.finalSimScore ?? m.hitterFinalSimScore ?? m.nbaSimScore ?? m.nhlSimScore ?? m.simScore ?? m.hitterSimScore; const qualGate = m.totalSimScore != null ? 11 : m.finalSimScore != null ? 10 : 7; return sc != null ? <span style={{color:sc>=11?"#3fb950":sc>=qualGate?"#e3b341":"#8b949e",fontWeight:600}}>{sc}/14</span> : DASH; }
                           if (k==="env") { const pf = m.parkFactor ?? m.hitterParkKF; if (pf == null) return DASH; const pct = Math.round((pf-1)*100); const disp = (pct>=0?"+":"")+pct+"%"; return <span style={{color:pf>1.02?"#3fb950":pf<0.98?"#f78166":"#8b949e"}}>{disp}</span>; }
@@ -2645,12 +2646,17 @@ function App() {
                         const aERAPts = aERA != null ? (aERA > 4.5 ? 3 : aERA > 3.5 ? 2 : 1) : 0;
                         const hRPGPts = hRPG != null ? (hRPG > 5.0 ? 2 : hRPG > 4.0 ? 1 : 0) : 0;
                         const aRPGPts = aRPG != null ? (aRPG > 5.0 ? 2 : aRPG > 4.0 ? 1 : 0) : 0;
-                        const scTitle = [`${play.homeTeam} ERA (${hERA != null ? hERA.toFixed(2) : "—"}): ${hERAPts}/3`,`${play.awayTeam} ERA (${aERA != null ? aERA.toFixed(2) : "—"}): ${aERAPts}/3`,`${play.homeTeam} RPG (${hRPG != null ? hRPG.toFixed(1) : "—"}): ${hRPGPts}/2`,`${play.awayTeam} RPG (${aRPG != null ? aRPG.toFixed(1) : "—"}): ${aRPGPts}/2`,`Park RF (${pf.toFixed(2)}): ${pf > 1.01 ? 2 : 0}/2`,`Max ERA >4.5 (${Math.max(hERA??0,aERA??0).toFixed(2)}): ${Math.max(hERA??0,aERA??0) > 4.5 ? 2 : 0}/2`].join("\n");
+                        const gameOuLine = play.gameOuLine ?? null;
+                        const mlbOuPts = play.mlbOuPts ?? 1;
+                        const ouColor = gameOuLine == null ? "#8b949e" : gameOuLine >= 9.5 ? "#3fb950" : gameOuLine >= 7.5 ? "#e3b341" : "#f78166";
+                        const ouDesc = gameOuLine == null ? null : gameOuLine >= 9.5 ? "a high-scoring game, supports the over" : gameOuLine >= 7.5 ? "an average total" : "a low total — market doesn't expect high scoring";
+                        const scTitle = [`${play.homeTeam} ERA (${hERA != null ? hERA.toFixed(2) : "—"}): ${hERAPts}/3`,`${play.awayTeam} ERA (${aERA != null ? aERA.toFixed(2) : "—"}): ${aERAPts}/3`,`${play.homeTeam} RPG (${hRPG != null ? hRPG.toFixed(1) : "—"}): ${hRPGPts}/2`,`${play.awayTeam} RPG (${aRPG != null ? aRPG.toFixed(1) : "—"}): ${aRPGPts}/2`,`Park RF (${pf.toFixed(2)}): ${pf > 1.01 ? 2 : 0}/2`,`O/U (${gameOuLine != null ? gameOuLine : "—"}): ${mlbOuPts}/2`].join("\n");
                         return (
                           <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.65}}>
                             <span style={{color:"#c9d1d9"}}>{play.awayTeam}</span>'s starter has{aERA != null ? <> a <span style={{color:eraColor(aERA),fontWeight:600}}>{aERA.toFixed(2)} ERA</span></> : " — ERA"}, facing a <span style={{color:"#c9d1d9"}}>{play.homeTeam}</span> offense averaging{hRPG != null ? <> <span style={{color:rpgColor(hRPG),fontWeight:600}}>{hRPG.toFixed(1)}</span> runs/game</> : " — RPG"}.
                             {" "}<span style={{color:"#c9d1d9"}}>{play.homeTeam}</span>'s starter posts{hERA != null ? <> a <span style={{color:eraColor(hERA),fontWeight:600}}>{hERA.toFixed(2)} ERA</span></> : " — ERA"} against a <span style={{color:"#c9d1d9"}}>{play.awayTeam}</span> offense at{aRPG != null ? <> <span style={{color:rpgColor(aRPG),fontWeight:600}}>{aRPG.toFixed(1)}</span> RPG</> : " — RPG"}.
                             {Math.abs(pf - 1) > 0.01 && <>{" "}Tonight's park {pf > 1 ? "inflates run scoring" : "suppresses run scoring"} (<span style={{color:"#8b949e"}}>{pf > 1 ? "+" : ""}{((pf-1)*100).toFixed(0)}%</span>).</>}
+                            {gameOuLine != null && <>{" "}Game total <span style={{color:ouColor,fontWeight:600}}>{gameOuLine}</span><span style={{color:"#8b949e"}}> — {ouDesc}.</span></>}
                             {et != null && <>{" "}Model projects <span style={{color:etColor,fontWeight:600}}>{et}</span> combined runs vs the <span style={{color:"#c9d1d9"}}>{lineVal}</span> threshold.</>}
                             {" "}<span title={scTitle} style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,verticalAlign:"middle",cursor:"default"}}>{sc}/14 {sc>=11?"Alpha":sc>=7?"Mid":"Low"}</span>
                           </div>
