@@ -1696,8 +1696,8 @@ var worker_default = {
         if (sportByteam.mlb?.batting) {
           const _bt = sportByteam.mlb.batting;
           const _btTop = (_bt.categories || []).find(c => c.name === "batting");
-          const _gIdx = (_btTop?.names || []).findIndex(n => n === "G" || n === "GP");
-          const _rIdx = (_btTop?.names || []).findIndex(n => n === "R");
+          const _gIdx = (_btTop?.names || []).findIndex(n => n === "G" || n === "GP" || n === "gamesPlayed");
+          const _rIdx = (_btTop?.names || []).findIndex(n => n === "R" || n === "runs");
           const _MLB2 = { CHW: "CWS", KCR: "KC", SFG: "SF", SDP: "SD", TBR: "TB", AZ: "ARI", OAK: "ATH", WSN: "WSH", WAS: "WSH" };
           if (_gIdx !== -1 && _rIdx !== -1) {
             for (const team of (_bt.teams || [])) {
