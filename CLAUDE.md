@@ -620,3 +620,20 @@ ESPN's general NBA byteam endpoint returns "GS" for Golden State (same short cod
 Fix: after building `STAT_SOFT["nba|*"]`, a post-normalization loop adds long-form aliases: for each raw key in `rankMap`, if `TEAM_NORM.nba[raw]` exists and the long key isn't already present, copy the entry under the long key. Same for `softTeams`.
 
 **How to spot:** `homeOff` present but `homeDef` null → Bug 2. `awayOff` null → Bug 1 (new Kalshi short code not in TEAM_NORM). If a new team abbreviation from Kalshi causes nulls, add it to `TEAM_NORM.nba` in `api/[...path].js` ~line 1036.
+
+### "HRR card shows inflated softGames (300+), wrong AB count, wrong label" (fixed 2026-04-17)
+Three bugs in the MLB hitter (hits/hrr) explanation cards:
+
+**Bug 1 — H2H date collision inflating softGames and hitterAbVsPitcher:**
+`softVals` for H2H path (`_pitcherDates.size > 0`) matched by date only: `gl.events.filter(ev => _pitcherDates.has(ev.date))`. If Walker faced ATL on 2022-07-15, and Olson (then with OAK) also played a game that day, Olson's OAK game was counted as a Walker H2H at-bat. Over a multi-season career gamelog this inflates softGames to 300+ and hitterAbVsPitcher to 1000+.
+Fix: add `ev.oppAbbr === tonightOpp` guard to both paths. Also added `season === 2025 || 2026` filter to the `hitterAbVsPitcher` team-level fallback (was previously pulling all-career AB vs the team).
+
+**Bug 2 — Hardcoded "against weak pitching matchups" label for all HRR:**
+For strikeouts `softLabel` is the lineup K% bucket (correctly labelled). For hitters, `softLabel` is `"vs Taijuan Walker"` (H2H) or `"vs PHI"` (team fallback), but the play card and player card hardcoded "against weak pitching matchups" instead of using it.
+Fix: added `hitterSoftLabel: softLabel` to play output; both card render sites now use `play.hitterSoftLabel ?? "against weak pitching matchups"`.
+
+**Bug 3 — seasonG (game count) used blendGames (2025+2026) while seasonPct showed pct26 (2026-only):**
+`seasonG = play.blendGames || play.seasonGames` — for a veteran like Olson this gives 182 (2025+2026 combined) even when `seasonPct` is the 2026-only rate. Label read "89.5% of games this season (182g)" but only ~19 2026 games existed.
+Fix: `seasonG = play.pct26 != null ? play.pct26Games : (play.blendGames || play.seasonGames)`. Label changes to "2025-26" when pct26 is null (blended rate).
+
+**Post-fix values for Matt Olson (example):** `softGames: 26` (was 344), `hitterAbVsPitcher: 105` (was 1300), `hitterSoftLabel: "vs Taijuan Walker"`, `seasonG: 19` (was 182).
