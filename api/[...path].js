@@ -1033,7 +1033,7 @@ var worker_default = {
           KXNFLTOTAL: { sport: "nfl", league: "nfl", stat: "totalPoints", col: "PTS", gameType: "total" },
         };
         const TEAM_NORM = {
-          nba: { GS: "GSW", SA: "SAS", NY: "NYK", NJ: "BKN", NO: "NOP", PHO: "PHX" },
+          nba: { GS: "GSW", SA: "SAS", NY: "NYK", NJ: "BKN", NO: "NOP", PHO: "PHX", WPH: "PHX" },
           nhl: { NJ: "NJD", TB: "TBL", LA: "LAK", SJ: "SJS", VGK: "VGK" },
           mlb: { KCR: "KC", SFG: "SF", SDP: "SD", TBR: "TB", CHW: "CWS", AZ: "ARI", KC: "KC", SD: "SD", SF: "SF", TB: "TB", OAK: "ATH", WSN: "WSH", WAS: "WSH" },
           nfl: { LA: "LAR" }
@@ -1366,6 +1366,20 @@ var worker_default = {
         if (sportByteam.nba) {
           for (const st of ["points", "rebounds", "assists", "threePointers"]) {
             STAT_SOFT[`nba|${st}`] = { softTeams: new Set(buildSoftTeamAbbrs(sportByteam.nba, st)), rankMap: buildTeamRankMap(sportByteam.nba, st) };
+          }
+          // Normalize short ESPN codes (GS→GSW, SA→SAS, etc.) so game-total lookups find the right key
+          const _nbaAbbrs = TEAM_NORM.nba;
+          for (const st of ["points", "rebounds", "assists", "threePointers"]) {
+            const ss = STAT_SOFT[`nba|${st}`];
+            if (!ss) continue;
+            for (const [raw, val] of Object.entries(ss.rankMap)) {
+              const norm = _nbaAbbrs[raw];
+              if (norm && !ss.rankMap[norm]) ss.rankMap[norm] = val;
+            }
+            for (const raw of [...ss.softTeams]) {
+              const norm = _nbaAbbrs[raw];
+              if (norm) ss.softTeams.add(norm);
+            }
           }
         }
         let nhlSaRankMap = {}, nhlLeagueAvgSa = null;
