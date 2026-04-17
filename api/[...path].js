@@ -2291,7 +2291,7 @@ var worker_default = {
           let hitterLineupSpot = null, hitterWhipMeets = null, hitterFipMeets = null, hitterParkMeets = null;
           let pitcherWHIP = null, pitcherFIP = null, pitcherBAA = null;
           let hitterParkKF = null, hitterMoneyline = null, hitterBarrelPct = null;
-          let hitterBarrelPts = null, hitterTotalPts = null, hitterGameTotal = null;
+          let hitterBarrelPts = null, hitterTotalPts = null, hitterGameTotal = null, hitterPlatoonPts = null;
           if (sport === "mlb" && stat !== "strikeouts") {
             const hitterML = sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null;
             const hIdx2 = gl.ul.indexOf("H");
@@ -2370,7 +2370,7 @@ var worker_default = {
             // Platoon advantage: batter hits better vs this hand (or: batter is opposite hand to pitcher)
             // Simplified: if batter has a valid split BA vs this pitcher's hand, compare vs season BA
             // and award pts for platoon edge. No hand data → abstain (1pt).
-            let hitterPlatoonPts = 1; // abstain (null data)
+            hitterPlatoonPts = 1; // abstain (null data)
             if (_splitBA != null && hitterBa != null) {
               // Platoon advantage when batter's split BA ≥ 10% better than season (e.g. LHB vs RHP)
               const _platoonRatio = _splitBA / hitterBa;
