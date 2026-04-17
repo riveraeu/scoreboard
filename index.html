@@ -2956,6 +2956,13 @@ function App() {
                                 )}
                                 {" "}{first} has gone {play.threshold}+ {statFull} in <span style={{color:seasonColor,fontWeight:600}}>{play.seasonPct}%</span> of games {seasonWindow}{seasonG ? <span style={{color:"#484f58",fontSize:10}}> ({seasonG}g)</span> : ""}
                                 {play.softPct != null ? <>, and <span style={{color:"#3fb950",fontWeight:600}}>{play.softPct}%</span> {play.hitterSoftLabel ?? "against weak pitching matchups"}{play.softGames ? <span style={{color:"#484f58",fontSize:10}}> ({play.softGames}g)</span> : ""}</> : ""}.
+                                {play.oppRank && (() => {
+                                  const _opp2 = <span style={{color:"#c9d1d9",fontWeight:600}}>{play.opponent}</span>;
+                                  const _rank2 = <span style={{color:"#f78166",fontWeight:700}}>{ordinal(play.oppRank)}-worst</span>;
+                                  const _metricStr2 = play.oppMetricValue ? ` (${play.oppMetricValue} ${play.oppMetricUnit || ""})` : "";
+                                  const _ctx2 = {"mlb|hits":"one of the easiest pitching matchups in the league — their staff has a high ERA this season","mlb|hrr":"one of the easiest pitching matchups in the league — their staff allows hits, runs, and RBIs at a high rate"}[`${play.sport}|${play.stat}`] || "one of the weakest defenses for this stat";
+                                  return <>{" "}{_opp2} ranks {_rank2} in {play.oppMetricLabel || "this stat"}{_metricStr2} this season — {_ctx2}.{play.softPct === null && <>{" "}No head-to-head history vs {_opp2} yet{play.pct25 != null && play.pct25Games >= 5 ? <> — was at <span style={{color:"#c9d1d9"}}>{play.pct25}%</span> in {play.pct25Games} games in 2025</> : ""}.</>}</>;
+                                })()}
                                 {pf != null && Math.abs(pf - 1.0) >= 0.03 && <>{" "}Tonight's venue is {pf > 1 ? "hitter-friendly" : "pitcher-friendly"} (<span style={{color:"#8b949e"}}>{pf > 1 ? "+" : ""}{((pf-1)*100).toFixed(0)}% park factor</span>).</>}
                                 {hitterGameTotal != null && <>{" "}<span style={{color:"#8b949e"}}>Game total </span><span style={{color:hitterTotalColor(hitterGameTotal),fontWeight:600}}>{hitterGameTotal}</span><span style={{color:"#8b949e"}}>{hitterGameTotal >= 9.5 ? " — a high-scoring game, favorable for hitting" : hitterGameTotal >= 7.5 ? " — an average total" : " — a low-scoring game, tougher for hitters"}.</span></>}
                                 {sc != null && <>{" "}<span title={scTitle} style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,cursor:"default",verticalAlign:"middle"}}>{sc}/14 {sc>=11?"Alpha":"Mid"}</span></>}
@@ -3040,7 +3047,7 @@ function App() {
                           );
                         })()}
                         {/* ── NHL / NFL (team ranking) ── */}
-                        {play.oppRank && play.stat !== "strikeouts" && play.sport !== "nba" && play.sport !== "nhl" && (
+                        {play.oppRank && play.stat !== "strikeouts" && play.sport !== "nba" && play.sport !== "nhl" && play.sport !== "mlb" && (
                           <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.5}}>
                             {(() => {
                               const first = play.playerName.split(" ")[0];
