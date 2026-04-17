@@ -168,7 +168,7 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
   - Falls back to avg(seasonPct, softPct) − 4% if B2B when simulation returns null (<5 game values)
 - **SimScore** (max 14, edge gates separately — same pattern as MLB strikeouts):
   - Pace: avg pace >0 vs league avg → 3pts, >-2 → 2pts, else 0pts — fetched from ESPN via `buildNbaPaceData()`, cached 12h
-  - **C1 — USG%** (replaces avgMin): ≥28% → 4pts, ≥22% → 2pts, <22% → 0pts, null → 2pts (abstain). From `buildNbaUsageRate` (ESPN `athletes/{id}/statistics`; fallback estimate `(avgPTS + avgAST×1.5)/(avgMin×0.42)×100`).
+  - **C1 — USG%** (replaces avgMin): ≥28% → 4pts, ≥22% → 2pts, <22% → 0pts, null → 2pts (abstain). From `buildNbaUsageRate` (endpoint: `sports.core.api.espn.com/v2/.../seasons/2026/types/2/athletes/{id}/statistics`, path `d.splits.categories`; ESPN `usageRate` field is 0.0 this season so fallback always runs: `USG% = (avgFGA + 0.44×avgFTA + avgTO) / (avgMin × 2.255) × 100` — verified ~29% for Banchero vs actual ~30%).
   - Position-adjusted DVP rank ≤ 10 → 2pts
   - Not B2B → 2pts
   - Game total tier: ≥235 → 3pts, ≥225 → 2pts, ≥215 → 1pt, <215 → 0pts, null → 1pt (abstain)
@@ -251,7 +251,7 @@ True% = Monte Carlo simulation (reuses `buildNbaStatDist` + `nbaDistPct`) — no
 | `buildNbaPaceData(cache)` | ESPN team stats → `{teamPace, leagueAvgPace}`, cached 12h |
 | `buildNbaPlayerPosFromSleeper(cache)` | Sleeper.app fallback for player → position |
 | `buildNbaDvpStage3FG(cache)` | DVP stage 3 gamelog fallback |
-| `buildNbaUsageRate(playerIds)` | ESPN `athletes/{id}/statistics` → `{playerId: usagePct}` map; batches in groups of 10; falls back to estimate from avgPts/avgAst/avgMin |
+| `buildNbaUsageRate(playerIds)` | `sports.core.api.espn.com/v2/.../seasons/2026/types/2/athletes/{id}/statistics` → `{playerId: {usg, source}}` map; path `d.splits.categories`; batches in groups of 10; ESPN `usageRate` = 0.0 (not populated), so fallback computes `(avgFGA + 0.44×avgFTA + avgTO) / (avgMin × 2.255) × 100` |
 | `buildNbaInjuryReport(cache)` | ESPN NBA injuries → `Map<teamAbbr, [{name, status}]>` (Out only); cached 1800s in `nba:injuries:{date}` |
 
 ### `api/lib/utils.js` — Response Helpers & Team Ranking
@@ -397,7 +397,7 @@ Both play cards and player cards show an explanation block (`background:"#0d1117
 
 **Player card explanation** uses the same structure. Data sources by sport:
 - MLB strikeouts: `h2h` object built from `tonightPlayerMap` (includes `edge`, `kpctMeets`, `kpctPts`, `kbbMeets`, `lkpMeets`, `pitchesPts`, `mlPts`, `parkMeets`)
-- MLB hitters: `tonightHitPlay = Object.values(tonightPlayerMap).find(p => p.stat === safeTab)` (includes `hitterBa`, `hitterLineupSpot`, `pitcherWHIP`, `pitcherFIP`, `hitterWhipMeets`, `hitterFipMeets`, `hitterParkMeets`, `edge`)
+- MLB hitters: `tonightHitPlay = Object.values(tonightPlayerMap).find(p => p.stat === safeTab)` (includes `hitterBa`, `hitterLineupSpot`, `pitcherWHIP`, `pitcherFIP`, `hitterWhipMeets`, `hitterPlatoonPts`, `hitterParkMeets`, `edge`)
 - NBA: `tonightTabPlay` (includes `nbaOpportunity`, `nbaPaceAdj`, `isB2B`, `nbaSimScore`, `posDvpRank`, `posDvpValue`, `softPct`, `seasonPct`, `edge`)
 
 **NBA DVP / softPct color logic** (play card + player card explanation, both locations):
@@ -520,6 +520,14 @@ The CSW% play-by-play fetch in `buildPitcherKPct` fires one MLB Stats API reques
 
 ### "NBA report shows — for Pace/AvgMin/Rest on most rows"
 Most NBA markets are dropped at `opp_not_soft` before the pre-sim block runs. Those drop records include `isB2B`, `nbaPaceAdj`, and `nbaOpportunity` computed inline from the gamelog at that drop site. `nbaPreSimScore` and `nbaSimScore` are also computed inline at the drop site so the Score column is populated for all NBA rows (not just qualifying plays).
+
+### "NBA USG% is null / showing — in tooltip for all players"
+`buildNbaUsageRate` fetches `sports.core.api.espn.com/v2/.../seasons/2026/types/2/athletes/{id}/statistics`. Common failure modes:
+
+- **Wrong endpoint**: the `site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/{id}/statistics` URL returns only season/league metadata — no `statistics` array. Always use `sports.core.api.espn.com`.
+- **Wrong path**: ESPN `usageRate` is 0.0 (not populated by ESPN). The fallback uses `avgFGA`/`avgFTA`/`avgTO`/`avgMin` from `d.splits.categories`. If all four fields are 0 (e.g. player not found, wrong ID, 404), `avgFGA > 0` guard fails → no entry added → `null → 2pts` abstain.
+- **Wrong ESPN ID**: `playerInfoMap` maps Kalshi player names to ESPN IDs via `warmPlayerInfoCache`. If the ESPN ID is wrong, the core API returns 404. Check `?debug=1` → `plays[].nbaUsage` for the affected player.
+- **Season type**: `types/2` = Regular Season. If fetched during Playoffs (type=3) or Play-In (type=5), regular season stats still exist — type 2 is correct year-round for regular season averages.
 
 ### "NBA avgMin (nbaOpportunity) is null for all players"
 ESPN returns two season types that both contain "regular" in their name: `"2025-26 Play In Regular Season"` (1 game) and `"2025-26 Regular Season"` (80 games). The old `.find("regular")` took the Play-In type first — `_minVals.length = 1 < 3` gate fails → `nbaOpportunity = null`. Fix: `parseEspnGamelog` now prefers season types with "regular" that do NOT contain "play". Gamelog cache key is `gl:v2|nba|player` — if you need to re-bust, bump the version prefix.
