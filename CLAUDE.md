@@ -672,3 +672,6 @@ Applied in the top explanation block (line ~2930) AND the no-H2H branch (line ~3
 
 **Diagnosis tip — fix appears deployed but screenshot still shows old values:**
 If the API returns correct data (e.g. `pct26Games: 18`) and the source code at the render site is correct, but the UI still shows the old behavior (e.g. "126 games this season"), the browser is running a cached `index.html`. The old code for this bug had `games this season` hardcoded; the new code conditionally shows `"this season"` vs `"in 2025-26"` — making it easy to distinguish. Fix: **Cmd+Shift+R** (hard refresh) to bypass browser cache.
+
+**MLB hitter play card — one explanation box (commit ae29862):**
+Previously MLB hitters (hits/hrr) rendered two separate gray boxes: (1) player/pitcher stats + season rate, (2) opponent ERA rank + no-H2H. The second box was redundant — it repeated the season rate in the no-H2H path. Fix: ERA rank sentence and no-H2H line merged into the first box (after the season/soft rate line). Second box condition now excludes `play.sport !== "mlb"` so it only fires for NFL. Single box flow: lineup → pitcher WHIP/FIP → season rate [+ soft pct if H2H] → ERA rank + no-H2H → park factor → game total → SimScore.
