@@ -1779,7 +1779,8 @@ function App() {
                           const pf = tonightHitPlay?.parkFactor ?? null;
                           const seasonPct = tonightHitPlay?.seasonPct ?? null;
                           const softPct = tonightHitPlay?.softPct ?? null;
-                          const seasonG = tonightHitPlay?.blendGames || tonightHitPlay?.seasonGames;
+                          const seasonG = tonightHitPlay?.pct26 != null ? tonightHitPlay?.pct26Games : (tonightHitPlay?.blendGames || tonightHitPlay?.seasonGames);
+                          const seasonWindow = tonightHitPlay?.pct26 != null ? "this season" : "2025-26";
                           const threshold = tonightHitPlay?.threshold ?? null;
                           const statFull = STAT_FULL[safeTab] || safeTab;
                           const sc = tonightHitPlay?.hitterFinalSimScore ?? tonightHitPlay?.hitterSimScore ?? null;
@@ -1805,8 +1806,8 @@ function App() {
                                 {(pitcherName || whip != null) && (
                                   <>{" "}Facing{pitcherName ? <> <span style={{color:"#c9d1d9",fontWeight:600}}>{pitcherName}</span></> : " the opposing starter"}{whip != null ? <> — WHIP <span style={{color:whipColor,fontWeight:600}}>{whip}</span>{whipDesc ? <span style={{color:"#8b949e"}}> ({whipDesc})</span> : ""}</> : ""}{fip != null ? <>, FIP <span style={{color:fipColor,fontWeight:600}}>{fip}</span>{fipDesc ? <span style={{color:"#8b949e"}}> ({fipDesc})</span> : ""}</> : ""}.</>
                                 )}
-                                {seasonPct != null && <>{" "}{first} has gone {threshold}+ {statFull} in <span style={{color:seasonColor,fontWeight:600}}>{seasonPct}%</span> of games this season{seasonG ? <span style={{color:"#484f58",fontSize:10}}> ({seasonG}g)</span> : ""}</>}
-                                {softPct != null ? <>, and <span style={{color:"#3fb950",fontWeight:600}}>{softPct}%</span> against weak pitching matchups{tonightHitPlay?.softGames ? <span style={{color:"#484f58",fontSize:10}}> ({tonightHitPlay.softGames}g)</span> : ""}.</> : seasonPct != null ? "." : ""}
+                                {seasonPct != null && <>{" "}{first} has gone {threshold}+ {statFull} in <span style={{color:seasonColor,fontWeight:600}}>{seasonPct}%</span> of games {seasonWindow}{seasonG ? <span style={{color:"#484f58",fontSize:10}}> ({seasonG}g)</span> : ""}</>}
+                                {softPct != null ? <>, and <span style={{color:"#3fb950",fontWeight:600}}>{softPct}%</span> {tonightHitPlay?.hitterSoftLabel ?? "against weak pitching matchups"}{tonightHitPlay?.softGames ? <span style={{color:"#484f58",fontSize:10}}> ({tonightHitPlay.softGames}g)</span> : ""}.</> : seasonPct != null ? "." : ""}
                                 {pf != null && Math.abs(pf - 1.0) >= 0.03 && <>{" "}Tonight's venue is {pf > 1 ? "hitter-friendly" : "pitcher-friendly"} (<span style={{color:"#8b949e"}}>{pf > 1 ? "+" : ""}{((pf-1)*100).toFixed(0)}% park factor</span>).</>}
                                 {hitterGameTotal != null && <>{" "}<span style={{color:"#8b949e"}}>Game total </span><span style={{color:hitterTotalColor(hitterGameTotal),fontWeight:600}}>{hitterGameTotal}</span><span style={{color:"#8b949e"}}>{hitterGameTotal >= 9.5 ? " — a high-scoring game, favorable for hitting" : hitterGameTotal >= 7.5 ? " — an average total" : " — a low-scoring game, tougher for hitters"}.</span></>}
                               </div>
@@ -2911,7 +2912,8 @@ function App() {
                           const fip = play.pitcherFIP;
                           const era = play.hitterPitcherEra ?? play.pitcherEra ?? null;
                           const pf = play.parkFactor;
-                          const seasonG = play.blendGames || play.seasonGames;
+                          const seasonG = play.pct26 != null ? play.pct26Games : (play.blendGames || play.seasonGames);
+                          const seasonWindow = play.pct26 != null ? "this season" : "2025-26";
                           const statFull = STAT_FULL[play.stat] || play.stat;
                           const sc = play.hitterFinalSimScore ?? play.hitterSimScore ?? null;
                           const first = play.playerName.split(" ")[0];
@@ -2937,8 +2939,8 @@ function App() {
                                 {(pitcherName || whip != null) && (
                                   <> Facing{pitcherName ? <> <span style={{color:"#c9d1d9",fontWeight:600}}>{pitcherName}</span>{ab ? <span style={{color:"#484f58",fontSize:10}}> ({ab} career AB)</span> : ""}</> : " the opposing starter"}{whip != null ? <> — WHIP <span style={{color:whipColor,fontWeight:600}}>{whip.toFixed(2)}</span>{whipDesc ? <span style={{color:"#8b949e"}}> ({whipDesc})</span> : ""}</> : ""}{fip != null ? <>, FIP <span style={{color:fipColor,fontWeight:600}}>{fip.toFixed(2)}</span>{fipDesc ? <span style={{color:"#484f58",fontSize:10}}> ({fipDesc})</span> : ""}</> : ""}.</>
                                 )}
-                                {" "}{first} has gone {play.threshold}+ {statFull} in <span style={{color:seasonColor,fontWeight:600}}>{play.seasonPct}%</span> of games this season{seasonG ? <span style={{color:"#484f58",fontSize:10}}> ({seasonG}g)</span> : ""}
-                                {play.softPct != null ? <>, and <span style={{color:"#3fb950",fontWeight:600}}>{play.softPct}%</span> against weak pitching matchups{play.softGames ? <span style={{color:"#484f58",fontSize:10}}> ({play.softGames}g)</span> : ""}</> : ""}.
+                                {" "}{first} has gone {play.threshold}+ {statFull} in <span style={{color:seasonColor,fontWeight:600}}>{play.seasonPct}%</span> of games {seasonWindow}{seasonG ? <span style={{color:"#484f58",fontSize:10}}> ({seasonG}g)</span> : ""}
+                                {play.softPct != null ? <>, and <span style={{color:"#3fb950",fontWeight:600}}>{play.softPct}%</span> {play.hitterSoftLabel ?? "against weak pitching matchups"}{play.softGames ? <span style={{color:"#484f58",fontSize:10}}> ({play.softGames}g)</span> : ""}</> : ""}.
                                 {pf != null && Math.abs(pf - 1.0) >= 0.03 && <>{" "}Tonight's venue is {pf > 1 ? "hitter-friendly" : "pitcher-friendly"} (<span style={{color:"#8b949e"}}>{pf > 1 ? "+" : ""}{((pf-1)*100).toFixed(0)}% park factor</span>).</>}
                                 {hitterGameTotal != null && <>{" "}<span style={{color:"#8b949e"}}>Game total </span><span style={{color:hitterTotalColor(hitterGameTotal),fontWeight:600}}>{hitterGameTotal}</span><span style={{color:"#8b949e"}}>{hitterGameTotal >= 9.5 ? " — a high-scoring game, favorable for hitting" : hitterGameTotal >= 7.5 ? " — an average total" : " — a low-scoring game, tougher for hitters"}.</span></>}
                                 {sc != null && <>{" "}<span title={scTitle} style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,cursor:"default",verticalAlign:"middle"}}>{sc}/14 {sc>=11?"Alpha":"Mid"}</span></>}

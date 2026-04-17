@@ -2074,8 +2074,9 @@ var worker_default = {
             const _pitcherGl = pitcherGamelogs[tonightOpp]?.gl || null;
             const _pitcherDates = _pitcherGl ? new Set(_pitcherGl.events.filter((ev) => ev.oppAbbr === playerTeam).map((ev) => ev.date)) : null;
             if (_pitcherDates && _pitcherDates.size > 0) {
-              // Pitcher-specific: all career games where this exact pitcher faced the batter's team
-              softVals = gl.events.filter((ev) => _pitcherDates.has(ev.date)).map(getStat).filter((v) => !isNaN(v));
+              // Pitcher-specific: games where batter's team hosted this pitcher (date + oppAbbr guard prevents
+              // false matches when pitcher faced the same team on a day the batter played elsewhere)
+              softVals = gl.events.filter((ev) => _pitcherDates.has(ev.date) && ev.oppAbbr === tonightOpp).map(getStat).filter((v) => !isNaN(v));
             } else {
               // Team-level fallback: recent seasons only (2025+2026) to avoid inflating % from a long career at low threshold
               softVals = gl.events.filter((ev) => (ev.season === 2025 || ev.season === 2026) && ev.oppAbbr === tonightOpp).map(getStat).filter((v) => !isNaN(v));
@@ -2254,8 +2255,8 @@ var worker_default = {
               const _hAbPitcherGl = pitcherGamelogs[tonightOpp]?.gl || null;
               const _hAbPitcherDates = _hAbPitcherGl ? new Set(_hAbPitcherGl.events.filter((ev) => ev.oppAbbr === playerTeam).map((ev) => ev.date)) : null;
               hitterAbVsPitcher = ((_hAbPitcherDates && _hAbPitcherDates.size > 0)
-                ? gl.events.filter((ev) => _hAbPitcherDates.has(ev.date))
-                : gl.events.filter((ev) => ev.oppAbbr === tonightOpp)
+                ? gl.events.filter((ev) => _hAbPitcherDates.has(ev.date) && ev.oppAbbr === tonightOpp)
+                : gl.events.filter((ev) => (ev.season === 2025 || ev.season === 2026) && ev.oppAbbr === tonightOpp)
               ).reduce((s, ev) => s + (parseFloat(ev.stats[abIdxH]) || 0), 0);
             }
             // Lineup spot via name-based lookup (MLB API lineup hydration includes fullName)
@@ -2646,6 +2647,7 @@ var worker_default = {
             hitterBaTier: hitterBaTier ?? void 0,
             hitterAbVsPitcher: sport === "mlb" && stat !== "strikeouts" ? hitterAbVsPitcher : void 0,
             hitterPitcherName: sport === "mlb" && stat !== "strikeouts" ? (sportByteam.mlb?.probables?.[tonightOpp]?.name ?? null) : void 0,
+            hitterSoftLabel: sport === "mlb" && stat !== "strikeouts" ? softLabel : void 0,
             hitterPitcherEra: sport === "mlb" && stat !== "strikeouts" ? (sportByteam.mlb?.probables?.[tonightOpp]?.era ?? null) : void 0,
             nbaSimScore: sport === "nba" ? nbaSimScore : void 0,
             nbaPreSimScore: sport === "nba" ? nbaPreSimScore : void 0,
