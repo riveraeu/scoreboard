@@ -669,3 +669,6 @@ Fix: `seasonG = play.pct26 != null ? play.pct26Games : (play.blendGames || play.
 Applied in the top explanation block (line ~2930) AND the no-H2H branch (line ~3074) — both are render sites for this count. The no-H2H branch was missed in the original fix (commit f782fcf).
 
 **Post-fix values for Matt Olson (example):** `softGames: 26` (was 344), `hitterAbVsPitcher: 105` (was 1300), `hitterSoftLabel: "vs Taijuan Walker"`, `seasonG: 19` (was 182).
+
+**Diagnosis tip — fix appears deployed but screenshot still shows old values:**
+If the API returns correct data (e.g. `pct26Games: 18`) and the source code at the render site is correct, but the UI still shows the old behavior (e.g. "126 games this season"), the browser is running a cached `index.html`. The old code for this bug had `games this season` hardcoded; the new code conditionally shows `"this season"` vs `"in 2025-26"` — making it easy to distinguish. Fix: **Cmd+Shift+R** (hard refresh) to bypass browser cache.
