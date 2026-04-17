@@ -3071,7 +3071,7 @@ function App() {
                                 const noH2h = play.softPct === null
                                   ? <>
                                       {" "}No head-to-head history vs {opp} yet —{" "}
-                                      {first} has hit {play.threshold}+ {STAT_FULL[play.stat] || play.stat} in <span style={{color:"#3fb950",fontWeight:600}}>{play.seasonPct}%</span> of his {play.blendGames || play.seasonGames} games this season.
+                                      {first} has hit {play.threshold}+ {STAT_FULL[play.stat] || play.stat} in <span style={{color:"#3fb950",fontWeight:600}}>{play.seasonPct}%</span> of his {play.pct26 != null ? play.pct26Games : (play.blendGames || play.seasonGames)} games {play.pct26 != null ? "this season" : "in 2025-26"}.
                                       {play.pct25 != null && play.pct25Games >= 5 && <> He was at {play.pct25}% in {play.pct25Games} games in 2025.</>}
                                       {parkNote}
                                     </>
