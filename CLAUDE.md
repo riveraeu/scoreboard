@@ -66,7 +66,7 @@ Used for caching expensive fetches. Key TTLs:
 - **Team extraction**: `parseGameTeams()` handles all sport-specific team code formats
 - **`direction: "over"`** — currently only over plays surfaced (YES on Kalshi)
 - **Edge gate**: `edge >= 3%` (same as player props); no soft matchup gate for totals
-- **SimScore** (max 14): tiered by stat quality, not just data existence; `qualified: totalSimScore >= 7`
+- **SimScore** (max 14): tiered by stat quality, not just data existence; `qualified: totalSimScore >= 11`
 - **Data maps** (`mlbRPGMap`, `nhlGPGMap/GAAMap`, `nbaOffPPGMap`) computed inline after `leagueAvgCache` block
 - **Play card**: `gameType: "total"` flag triggers `TotalPlayCard` branch in the play card render; shows dual team logos (ESPN CDN), matchup header, true%/Kalshi% bars, explanation prose, SimScore badge
 - **Deduplication**: one total play per game (homeTeam+awayTeam+sport), keeping highest truePct — multiple thresholds for the same game reduced to the best one
@@ -294,9 +294,12 @@ Opened via "report" button. Shows ALL markets (plays + dropped) grouped by sport
 - **`fetchReport` syncs plays card**: After fetching `?debug=1`, `fetchReport` also updates `tonightPlays` and `allTonightPlays` from the fresh response. This keeps the plays card in sync with the report (avoids stale-cache discrepancy where plays card loaded at page open shows different results than the report fetched later).
 - **HRR table**: shows threshold=1 rows only (2+/3+/etc. filtered client-side — too noisy)
 - **Score > 10 highlight**: For MLB rows (strikeouts + HRR), the player name is white+bold only when `finalSimScore ?? hitterFinalSimScore > 10` (Alpha tier). Rows with score ≤ 10 get a dim gray name even if qualified. Non-MLB tables use the original `m.qualified` logic for name color.
+- **Game totals table** (`mlb|totalRuns`, `nba|totalPoints`, `nhl|totalGoals`): first column labelled "Matchup" (not "Player"), shows `AWY @ HME`. Opp column hidden. Line cell shows `O7.5` format. Score column uses `m.totalSimScore` (qual gate = 11); green ≥ 11, yellow = 7–10, gray < 7. XCOLS: MLB = H RPG / A RPG / H ERA / A ERA; NBA = H PPG / A PPG / H Def / A Def; NHL = H GPG / A GPG / H GAA / A GAA. Color for all PPG columns: higher = better for over (≥ threshold → green, near → yellow). Dedup key for totals is `homeTeam|awayTeam|threshold` (not `playerName|threshold`).
 
 ### Toolbar
 Right side: **bust** button (calls `?bust=1`, shows "busting…" while loading) + **mock** toggle + My Picks anchor.
+
+**ⓘ info icon** (next to date, left side): toggles a tooltip showing universal play qualification criteria — three lines only: Implied prob ≥ 70%, Edge ≥ 3%, SimScore ≥ 11/14. No sport-specific detail. State: `showPlaysInfo`.
 
 ### Play Cards
 Shows `untrackedPlays` (qualified plays not yet tracked). Each card has:
@@ -307,7 +310,7 @@ Shows `untrackedPlays` (qualified plays not yet tracked). Each card has:
 - **Tier/unit row** — `tierUnits(americanOdds)`: ≤ -900 → 5u, ≤ -500 → 3u, else 1u. Stake = `bankroll × units / 100`.
 
 **Total play cards** (`gameType: "total"`) render differently from player prop cards:
-- Header: dual team logos (ESPN CDN `https://a.espncdn.com/i/teamlogos/{sport}/500/{abbr}.png`) + team names at `fontSize:12, fontWeight:600, color:#c9d1d9` (smaller than player name). No sport emoji.
+- Header: inline format `[44px away logo] AWY @ HME [44px home logo]` — away logo leads, home logo trails. Team abbreviations at `fontSize:12, fontWeight:600, color:#c9d1d9`. No sport emoji.
 - Explanation: single prose block with colored stat values inline; SimScore badge (with hover tooltip) appended at end of prose (no separate SimScore row or checkboxes). Same `background:"#0d1117"` block as player cards.
 - Prose includes model-projected expected total vs threshold (e.g. "Model projects 8.4 combined runs vs the 7.5 threshold"). NBA also shows pace adjustment.
 - **Stat colors for NBA totals**: offensive PPG — ≥118 red, ≥113 yellow, else gray (high scoring = more risky for over). Defensive PPG allowed — ≥118 green, ≥113 yellow, else red (bad defense = good for over; good defense = bad for over).
@@ -368,6 +371,10 @@ Both play cards and player cards show an explanation block (`background:"#0d1117
 - MLB strikeouts: `h2h` object built from `tonightPlayerMap` (includes `edge`, `kpctMeets`, `kpctPts`, `kbbMeets`, `lkpMeets`, `pitchesMeets`, `mlPts`, `parkMeets`)
 - MLB hitters: `tonightHitPlay = Object.values(tonightPlayerMap).find(p => p.stat === safeTab)` (includes `hitterBa`, `hitterLineupSpot`, `pitcherWHIP`, `pitcherFIP`, `hitterWhipMeets`, `hitterFipMeets`, `hitterParkMeets`, `edge`)
 - NBA: `tonightTabPlay` (includes `nbaOpportunity`, `nbaPaceAdj`, `isB2B`, `nbaSimScore`, `posDvpRank`, `posDvpValue`, `softPct`, `seasonPct`, `edge`)
+
+**NBA DVP / softPct color logic** (play card + player card explanation, both locations):
+- `rankColor` (opponent's DVP value): hard matchup → red; rank ≤ 10 → green (favorable, earns SimScore pts); rank 11–15 → yellow (soft but marginal); else → green via softPct fallback or gray
+- `softPct` display (player's hit rate vs soft defenses): ≥ 70% → green; ≥ 60% → yellow; < 60% → red — tiered, NOT hardcoded green. High `posDvpValue` (e.g. 4.6 assists/game allowed) in green means soft matchup; low `softPct` in yellow/red means player under-performs vs soft teams.
 
 ### Color Tiers
 ```
@@ -478,8 +485,8 @@ Fix (in place): `allScheduledPitcherIds` (a `Set`) collects ALL pitcher IDs enco
 The CSW% play-by-play fetch in `buildPitcherKPct` fires one MLB Stats API request per game per pitcher. With 10–15 pitchers × multiple starts, this can exceed the 25s Vercel Edge limit. Mitigations in place: PBP limited to last 5 starts per pitcher; 8s AbortController aborts the whole PBP block and falls back to K% if slow. If 504s recur, check whether the PBP block is the bottleneck or if another fetch is slow.
 
 ### Cache busting
-- `?bust=1` deletes `byteam:mlb` and forces a fresh MLB data rebuild
-- `mlb:barrelPct` is NOT deleted on bust — barrel% survives busts with its own 6h TTL
+- `?bust=1` skips reads for `byteam:mlb` AND `gameTimes:v2:{date}` — forces fresh MLB data + fresh ESPN game times in one shot
+- `mlb:barrelPct` is NOT busted — barrel% survives with its own 6h TTL
 - If bust fires before lineups/probables are available, `byteam:mlb` is written with 60s TTL so next request retries
 - Depth chart: no bust — expires daily
 
@@ -504,6 +511,11 @@ Most likely cause: **Upstash free tier exhausted** (500k commands/month). Sympto
 **Getting `kalshiSession`:** Kalshi's public trading API no longer supports email/password login (removed). The web app uses a `session` cookie. In Chrome DevTools on kalshi.com → Application tab → Cookies → `api.elections.kalshi.com` → copy the `session` cookie value. Pass as `kalshiSession`.
 
 **Note:** Kalshi's `session` cookie only authenticates against the web app's backend, not directly against `api.elections.kalshi.com/trade-api/v2/portfolio/fills` — the import endpoint forwards the cookie in the `Cookie:` header, which does work for the fills endpoint when the session is active.
+
+### "Game time shows 1 hour off (e.g. 6:40 PT instead of 5:40 PT)"
+`gameTimes:v2:{date}` is populated from ESPN's scoreboard `ev.date` (UTC ISO string). The display uses `timeZone:"America/Los_Angeles"` which is always PDT/PST-aware. If the displayed time is 1 hour late, ESPN returned a UTC timestamp that was computed using PST (UTC-8) instead of PDT (UTC-7) — effectively not applying daylight saving for that game.
+
+**Fix**: `?bust=1` now skips the `gameTimes` cache read and forces a fresh fetch from ESPN. If ESPN has corrected the time in their data, the bust will pick it up. If ESPN consistently returns the wrong time for that game, the offset persists until ESPN fixes their data.
 
 ### "SimScore shows yellow for strikeout players with score 7–9"
 The qualifying gate for strikeouts is `finalSimScore >= 11` (Alpha tier). The report SimScore column uses `>= 10` as the yellow threshold, so scores 10 show yellow (near miss) and scores 7–9 show gray.
