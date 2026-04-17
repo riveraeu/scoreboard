@@ -444,41 +444,38 @@ export async function buildNbaUsageRate(playerIds) {
   for (const batch of batches) {
     await Promise.all(batch.map(async id => {
       try {
+        // sports.core.api.espn.com returns d.splits.categories (same shape as buildNbaPaceData)
         const r = await fetch(
-          `https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/${id}/statistics`,
+          `https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2026/types/2/athletes/${id}/statistics`,
           { headers: hdrs }
         );
         if (!r.ok) return;
         const d = await r.json();
-        // ESPN common/v3 statistics endpoint nests categories under
-        // d.statistics[i].splits.categories — collect all categories across
-        // all season entries, then fall back to top-level d.categories.
-        const allCats = [];
-        for (const season of d.statistics || []) {
-          for (const c of season.splits?.categories || season.categories || []) allCats.push(c);
-        }
-        const cats = allCats.length > 0 ? allCats : (d.categories || []);
-        // Look for usageRate in any category
+        const cats = d.splits?.categories || [];
+        // usageRate (ESPN abbreviation "USG") — skip if 0.0 (ESPN not populating it this season)
         let usg = null;
         for (const cat of cats) {
-          const stat = (cat.stats || []).find(s => s.name === "usageRate" || s.abbreviation === "USG%");
-          if (stat?.value != null) { usg = parseFloat(stat.value); break; }
+          const stat = (cat.stats || []).find(s => s.name === "usageRate");
+          if (stat?.value != null && stat.value > 0) { usg = parseFloat(stat.value); break; }
         }
-        if (usg != null && usg > 0) {
+        if (usg != null) {
           result[String(id)] = { usg, source: "espn" };
           return;
         }
-        // Fallback: estimate from avgPts, avgAst, avgMin
-        let avgPts = 0, avgAst = 0, avgMin = 0;
+        // Fallback: compute USG% from avgFGA/avgFTA/avgTO/avgMin using the standard formula:
+        // USG% = (avgFGA + 0.44×avgFTA + avgTO) / (avgMin × 2.255) × 100
+        // where 2.255 ≈ leagueAvgTeamPoss(~108) / teamMinutesPerGame(48)
+        let avgFGA = 0, avgFTA = 0, avgTO = 0, avgMin = 0;
         for (const cat of cats) {
           for (const s of cat.stats || []) {
-            if (s.name === "avgPoints") avgPts = parseFloat(s.value) || 0;
-            if (s.name === "avgAssists") avgAst = parseFloat(s.value) || 0;
+            if (s.name === "avgFieldGoalsAttempted") avgFGA = parseFloat(s.value) || 0;
+            if (s.name === "avgFreeThrowsAttempted") avgFTA = parseFloat(s.value) || 0;
+            if (s.name === "avgTurnovers") avgTO = parseFloat(s.value) || 0;
             if (s.name === "avgMinutes") avgMin = parseFloat(s.value) || 0;
           }
         }
-        if (avgMin > 10) {
-          const est = ((avgPts + avgAst * 1.5) / (avgMin * 0.42)) * 100;
+        if (avgMin > 10 && avgFGA > 0) {
+          const est = (avgFGA + 0.44 * avgFTA + avgTO) / (avgMin * 2.255) * 100;
           result[String(id)] = { usg: parseFloat(Math.min(50, Math.max(0, est)).toFixed(1)), source: "estimated" };
         }
       } catch {}
