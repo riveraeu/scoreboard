@@ -1222,7 +1222,7 @@ function App() {
                           if (k==="season") { const v = m.seasonPct; return C(v != null ? v.toFixed(1)+"%" : null, v >= 60 ? "#3fb950" : v >= 50 ? "#e3b341" : "#f78166"); }
                           if (k==="h2h") { const v = m.softPct; return v != null ? <span style={{color:v>=60?"#3fb950":v>=50?"#e3b341":"#f78166"}}>{v.toFixed(1)+"%"}</span> : DASH; }
                           if (k==="era") { const eraColor = stat === "strikeouts" ? (era < 3.5 ? "#3fb950" : era < 4.5 ? "#8b949e" : "#f78166") : (era >= 4.0 ? "#8b949e" : "#f78166"); return C(era != null ? parseFloat(era).toFixed(2) : null, eraColor); }
-                          if (k==="ml")  return C(ml  != null ? fML(ml) : null, ml <= -130 ? "#3fb950" : ml <= -101 ? "#e3b341" : "#f78166");
+                          if (k==="ml")  return C(ml  != null ? fML(ml) : null, ml <= -121 ? "#3fb950" : ml <= 120 ? "#e3b341" : "#f78166");
                           if (k==="ab")  return C(ab  != null ? String(ab) : null, ab >= 10 ? "#8b949e" : "#f78166");
                           if (k==="csw") { const csw = m.pitcherCSWPct ?? m.pitcherKPct; const isReal = m.pitcherCSWPct != null; return C(csw != null ? csw.toFixed(1)+"%" : null, isReal ? (csw > 30 ? "#3fb950" : csw > 26 ? "#e3b341" : "#f78166") : (csw >= 27 ? "#3fb950" : csw >= 24 ? "#e3b341" : "#f78166")); }
                           if (k==="pkp") return C(pkp != null ? pkp.toFixed(1)+"%" : null, pkp > 24 ? "#3fb950" : pkp > 20 ? "#e3b341" : "#f78166");
@@ -1739,7 +1739,7 @@ function App() {
                           const pitcherHand = h2h?.pitcherHand ?? null;
                           const handLabel = pitcherHand === "R" ? " against RHP" : pitcherHand === "L" ? " against LHP" : "";
                           const totalColor = t => t == null ? "#8b949e" : t <= 8.5 ? "#3fb950" : t <= 10.5 ? "#e3b341" : "#f78166";
-                          const mlColor = ml => ml == null ? "#8b949e" : ml <= -130 ? "#3fb950" : ml <= -101 ? "#e3b341" : "#f78166";
+                          const mlColor = ml => ml == null ? "#8b949e" : ml <= -121 ? "#3fb950" : ml <= 120 ? "#e3b341" : "#f78166";
                           const oppName = MLB_TEAM[h2h?.opp || mlbH2HOpp] || h2h?.opp || mlbH2HOpp;
                           const pitcherTeamName = MLB_TEAM[player.team] || player.team;
                           const kbb = h2h?.pitcherKBBPct ?? null;
@@ -2892,7 +2892,7 @@ function App() {
                           const apColor = ap == null ? "#8b949e" : ap > 85 ? "#3fb950" : ap > 75 ? "#e3b341" : "#f78166";
                           const lkpColor = lkp == null ? "#8b949e" : lkp > 24 ? "#3fb950" : lkp > 16 ? "#e3b341" : "#f78166";
                           const totalColor = t => t == null ? "#8b949e" : t <= 8.5 ? "#3fb950" : t <= 10.5 ? "#e3b341" : "#f78166";
-                          const mlColor = ml => ml == null ? "#8b949e" : ml <= -130 ? "#3fb950" : ml <= -101 ? "#e3b341" : "#f78166";
+                          const mlColor = ml => ml == null ? "#8b949e" : ml <= -121 ? "#3fb950" : ml <= 120 ? "#e3b341" : "#f78166";
                           const pkpQual = pkp == null ? "" : csw != null ? (pkp > 30 ? "elite" : pkp > 26 ? "above-average" : "below-average") : (pkp > 24 ? "above-average" : "below-average");
                           const apDesc = ap == null ? null : ap > 85 ? "expect him to work deep into the game" : ap > 75 ? "typically goes 5–6 innings" : null;
                           const lkpDesc = lkp == null ? null : lkp > 24 ? "a high-strikeout lineup — works in his favor" : lkp > 16 ? "below-average strikeout tendency" : "elite contact lineup — a tougher test";
