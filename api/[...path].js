@@ -1950,7 +1950,7 @@ var worker_default = {
           const blendedPct = blendVals.length >= 5 ? blendVals.filter((v) => v >= threshold).length / blendVals.length * 100 : null;
           // Prefer 2026 season rate; fall back to blended 25+26; fall back to all-career
           const primaryPct = pct26 ?? blendedPct ?? seasonPct;
-          let simScore = null, kpctMeets = null, kpctPts = null, kbbMeets = null, lkpMeets = null, lkpPts = null, pitchesMeets = null, parkMeets = null, mlPts = null, totalPts = null;
+          let simScore = null, kpctMeets = null, kpctPts = null, kbbMeets = null, lkpMeets = null, lkpPts = null, pitchesPts = null, parkMeets = null, mlPts = null, totalPts = null;
           let _pitcherHand = null;
           let _avgP = null; // hoisted so all strikeout output sites can use it
           if (sport === "mlb" && stat === "strikeouts") {
@@ -2018,7 +2018,8 @@ var worker_default = {
             // lkpPts tiered: > 24% → 3pts (green, high K lineup), > 16% → 2pt (yellow, avg/below-avg lineup), ≤ 16% → 0pts; null → 1pt (abstain)
             lkpPts = _lkp == null ? 1 : _lkp > 24 ? 3 : _lkp > 16 ? 2 : 0;
             lkpMeets = lkpPts > 0;
-            pitchesMeets = _avgP != null ? _avgP > 85 : null;
+            // pitchesPts tiered: >85 → 2pts (green), >75 → 1pt (yellow), ≤75 → 0pts; null → 1pt (abstain)
+            pitchesPts = _avgP == null ? 1 : _avgP > 85 ? 2 : _avgP > 75 ? 1 : 0;
             parkMeets = _parkKF > 1.0;
             // ML 3-tier: ≤ -130 → 2pts, -129 to -101 → 1pt, ≥ -100 → 0pts; null → 1pt
             const _teamML = sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null;
@@ -2030,7 +2031,7 @@ var worker_default = {
             simScore = kpctPts
                      + (kbbMeets === true ? 2 : 0)
                      + lkpPts
-                     + (pitchesMeets === true ? 2 : 0)
+                     + pitchesPts
                      + mlPts
                      + totalPts;
           }
@@ -2151,7 +2152,7 @@ var worker_default = {
               reason: "low_confidence",
               simScore,
               opponent: tonightOpp,
-              kpctMeets, kpctPts, kbbMeets, lkpMeets, lkpPts, pitchesMeets, parkMeets, mlPts, totalPts,
+              kpctMeets, kpctPts, kbbMeets, lkpMeets, lkpPts, pitchesPts, parkMeets, mlPts, totalPts,
               seasonPct: parseFloat(primaryPct.toFixed(1)), softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
               truePct: _kTruePct, edge: parseFloat((_kTruePct - kalshiPct - (kalshiSpread != null ? kalshiSpread / 2 : 0)).toFixed(1)),
               pitcherCSWPct: _pt(sportByteam.mlb?.pitcherCSWPct, "cswPct"),
@@ -2502,7 +2503,7 @@ var worker_default = {
                 pitcherCSWPct: _pt(sportByteam.mlb?.pitcherCSWPct, "cswPct"),
                 pitcherKBBPct: _pt(sportByteam.mlb?.pitcherKBBPct, "kbbPct"),
                 lineupKPct: lineupKPctOut, pitcherAvgPitches: _avgP,
-                kpctMeets, kpctPts, kbbMeets, lkpMeets, pitchesMeets, parkMeets, mlPts, totalPts,
+                kpctMeets, kpctPts, kbbMeets, lkpMeets, pitchesPts, parkMeets, mlPts, totalPts,
               } : {}),
               ...(sport === "mlb" && stat !== "strikeouts" ? {
                 hitterSimScore, hitterFinalSimScore,
@@ -2541,7 +2542,7 @@ var worker_default = {
               reason: "low_confidence",
               simScore, finalSimScore,
               opponent: tonightOpp,
-              kpctMeets, kpctPts, kbbMeets, lkpMeets, lkpPts, pitchesMeets, parkMeets, mlPts, totalPts,
+              kpctMeets, kpctPts, kbbMeets, lkpMeets, lkpPts, pitchesPts, parkMeets, mlPts, totalPts,
               seasonPct: parseFloat(primaryPct.toFixed(1)), softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
               truePct: parseFloat(truePct.toFixed(1)), edge: parseFloat(edge.toFixed(1)),
               pitcherCSWPct: _pt(sportByteam.mlb?.pitcherCSWPct, "cswPct"),
@@ -2613,7 +2614,7 @@ var worker_default = {
             kpctMeets: sport === "mlb" && stat === "strikeouts" ? kpctMeets : void 0,
             kbbMeets: sport === "mlb" && stat === "strikeouts" ? kbbMeets : void 0,
             lkpMeets: sport === "mlb" && stat === "strikeouts" ? lkpMeets : void 0,
-            pitchesMeets: sport === "mlb" && stat === "strikeouts" ? pitchesMeets : void 0,
+            pitchesPts: sport === "mlb" && stat === "strikeouts" ? pitchesPts : void 0,
             parkMeets: sport === "mlb" && stat === "strikeouts" ? parkMeets : void 0,
             mlPts: sport === "mlb" && stat === "strikeouts" ? mlPts : void 0,
             totalPts: sport === "mlb" && stat === "strikeouts" ? totalPts : void 0,

@@ -113,7 +113,7 @@ const MOCK_PLAYS = [
     softPct:95.0, softGames:10, truePct:94.0, edge:12.0,
     kelly:0.310, ev:0.130, historicalHitRate:92.0, historicalGames:10,
     lineupKPct:21.5, pitcherCSWPct:32.1, pitcherKPct:26.5, pitcherKBBPct:18.2, pitcherAvgPitches:94.3, log5Avg:31.6, log5Pct:96.1, expectedKs:8.5, parkFactor:1.00,
-    simScore:13, finalSimScore:13, kpctMeets:true, kpctPts:3, kbbMeets:true, lkpMeets:true, lkpPts:2, pitchesMeets:true, mlPts:2, totalPts:2,
+    simScore:13, finalSimScore:13, kpctMeets:true, kpctPts:3, kbbMeets:true, lkpMeets:true, lkpPts:2, pitchesPts:2, mlPts:2, totalPts:2,
     gameTotal:7.5, gameMoneyline:-140, pitcherHand:"R", gameDate:TODAY, gameTime:new Date().toISOString().replace(/T.*/, "T23:10:00Z"), lineupConfirmed:true,
   },
   // ── PURPLE (≥85%) ──────────────────────────────────────────────────────────
@@ -125,7 +125,7 @@ const MOCK_PLAYS = [
     softPct:89.0, softGames:8, truePct:87.0, edge:11.0,
     kelly:0.224, ev:0.095, historicalHitRate:88.0, historicalGames:8,
     lineupKPct:null, pitcherCSWPct:31.4, pitcherKPct:26.2, pitcherKBBPct:11.4, pitcherAvgPitches:88.0, log5Avg:null, log5Pct:null, expectedKs:null, parkFactor:0.88,
-    simScore:9, finalSimScore:9, kpctMeets:true, kpctPts:3, kbbMeets:false, lkpMeets:true, lkpPts:1, pitchesMeets:true, mlPts:2, totalPts:1,
+    simScore:9, finalSimScore:9, kpctMeets:true, kpctPts:3, kbbMeets:false, lkpMeets:true, lkpPts:1, pitchesPts:2, mlPts:2, totalPts:1,
     gameTotal:8.0, gameMoneyline:-130, pitcherHand:"L", gameDate:TODAY, gameTime:new Date().toISOString().replace(/T.*/, "T01:40:00Z"), lineupConfirmed:false,
     kalshiSpread:8, rawEdge:15.0, spreadAdj:4.0, edge:11.0,
   },
@@ -138,7 +138,7 @@ const MOCK_PLAYS = [
     softPct:82.0, softGames:9, truePct:81.0, edge:7.0,
     kelly:0.090, ev:0.038, historicalHitRate:74.0, historicalGames:9,
     lineupKPct:22.1, pitcherCSWPct:30.8, pitcherKPct:25.9, pitcherKBBPct:14.1, pitcherAvgPitches:86.7, log5Avg:27.5, log5Pct:73.2, expectedKs:7.4, parkFactor:0.96,
-    simScore:9, finalSimScore:9, kpctMeets:true, kpctPts:3, kbbMeets:false, lkpMeets:true, lkpPts:2, pitchesMeets:true, mlPts:2, totalPts:1,
+    simScore:9, finalSimScore:9, kpctMeets:true, kpctPts:3, kbbMeets:false, lkpMeets:true, lkpPts:2, pitchesPts:2, mlPts:2, totalPts:1,
     gameTotal:7.5, gameMoneyline:-160, pitcherHand:"R", gameDate:TODAY,
   },
   // ── GREEN (≥75%) ───────────────────────────────────────────────────────────
@@ -150,7 +150,7 @@ const MOCK_PLAYS = [
     softPct:77.0, softGames:6, truePct:76.0, edge:6.0,
     kelly:0.085, ev:0.058, historicalHitRate:68.0, historicalGames:6,
     lineupKPct:25.8, pitcherCSWPct:33.7, pitcherKPct:28.1, pitcherKBBPct:20.4, pitcherAvgPitches:96.0, log5Avg:33.1, log5Pct:90.2, expectedKs:8.9, parkFactor:0.97,
-    simScore:13, finalSimScore:13, kpctMeets:true, kpctPts:3, kbbMeets:true, lkpMeets:true, lkpPts:3, pitchesMeets:true, mlPts:2, totalPts:1,
+    simScore:13, finalSimScore:13, kpctMeets:true, kpctPts:3, kbbMeets:true, lkpMeets:true, lkpPts:3, pitchesPts:2, mlPts:2, totalPts:1,
     gameTotal:8.0, gameMoneyline:-150, pitcherHand:"R", gameDate:TODAY,
   },
   // ── WHITE (≥70%) ──────────────────────────────────────────────────────────
@@ -1696,7 +1696,7 @@ function App() {
                             expectedKs: tp.expectedKs, parkFactor: tp.parkFactor, pitcherHand: tp.pitcherHand,
                             pitcherEra: tp.pitcherEra ?? null,
                             simScore: tp.simScore ?? null, finalSimScore: tp.finalSimScore ?? null,
-                            kpctMeets: tp.kpctMeets, kpctPts: tp.kpctPts, kbbMeets: tp.kbbMeets, lkpMeets: tp.lkpMeets, lkpPts: tp.lkpPts, pitchesMeets: tp.pitchesMeets, parkMeets: tp.parkMeets, mlPts: tp.mlPts, totalPts: tp.totalPts,
+                            kpctMeets: tp.kpctMeets, kpctPts: tp.kpctPts, kbbMeets: tp.kbbMeets, lkpMeets: tp.lkpMeets, lkpPts: tp.lkpPts, pitchesPts: tp.pitchesPts, parkMeets: tp.parkMeets, mlPts: tp.mlPts, totalPts: tp.totalPts,
                             edge: tp.edge, rawEdge: tp.rawEdge, spreadAdj: tp.spreadAdj,
                             gameTotal: tp.gameTotal, gameMoneyline: tp.gameMoneyline };
                         }
@@ -1748,7 +1748,7 @@ function App() {
                           const lkpDesc = lkp == null ? null : lkp > 24 ? "a high-strikeout lineup — works in his favor" : lkp > 16 ? "below-average strikeout tendency" : "elite contact lineup — a tougher test";
                           const _sc = finalSimScore ?? simScore;
                           const scColor = _sc == null ? "#8b949e" : _sc >= 11 ? "#3fb950" : _sc >= 7 ? "#e3b341" : "#8b949e";
-                          const scTitle = _sc != null ? [`CSW%/K%: ${h2h?.kpctPts ?? "—"}/3`,`K-BB%: ${h2h?.kbbMeets===true?2:h2h?.kbbMeets===false?0:"—"}/2`,`Lineup K%: ${h2h?.lkpPts ?? "—"}/3`,`P/GS: ${h2h?.pitchesMeets===true?2:h2h?.pitchesMeets===false?0:"—"}/2`,`ML: ${h2h?.mlPts ?? "—"}/2`,`O/U: ${h2h?.totalPts ?? "—"}/2`].join("\n") : null;
+                          const scTitle = _sc != null ? [`CSW%/K%: ${h2h?.kpctPts ?? "—"}/3`,`K-BB%: ${h2h?.kbbMeets===true?2:h2h?.kbbMeets===false?0:"—"}/2`,`Lineup K%: ${h2h?.lkpPts ?? "—"}/3`,`P/GS: ${h2h?.pitchesPts ?? "—"}/2`,`ML: ${h2h?.mlPts ?? "—"}/2`,`O/U: ${h2h?.totalPts ?? "—"}/2`].join("\n") : null;
                           return (
                             <>
                               <div>
@@ -2882,7 +2882,7 @@ function App() {
                           const apDesc = ap == null ? null : ap > 85 ? "expect him to work deep into the game" : ap > 75 ? "typically goes 5–6 innings" : null;
                           const lkpDesc = lkp == null ? null : lkp > 24 ? "a high-strikeout lineup — works in his favor" : lkp > 16 ? "below-average strikeout tendency" : "elite contact lineup — a tougher test";
                           const scColor = _sc == null ? "#8b949e" : _sc >= 11 ? "#3fb950" : _sc >= 7 ? "#e3b341" : "#8b949e";
-                          const scTitle = _sc != null ? [`CSW%/K%: ${play.kpctPts ?? "—"}/3`,`K-BB%: ${play.kbbMeets===true?2:play.kbbMeets===false?0:"—"}/2`,`Lineup K%: ${play.lkpPts ?? "—"}/3`,`P/GS: ${play.pitchesMeets===true?2:play.pitchesMeets===false?0:"—"}/2`,`ML: ${play.mlPts ?? "—"}/2`,`O/U: ${play.totalPts ?? "—"}/2`].join("\n") : null;
+                          const scTitle = _sc != null ? [`CSW%/K%: ${play.kpctPts ?? "—"}/3`,`K-BB%: ${play.kbbMeets===true?2:play.kbbMeets===false?0:"—"}/2`,`Lineup K%: ${play.lkpPts ?? "—"}/3`,`P/GS: ${play.pitchesPts ?? "—"}/2`,`ML: ${play.mlPts ?? "—"}/2`,`O/U: ${play.totalPts ?? "—"}/2`].join("\n") : null;
                           return (
                             <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.65}}>
                               <div>

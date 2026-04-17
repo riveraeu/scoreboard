@@ -117,7 +117,7 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
   - CSW%/K% tiered (1/2/3pts): CSW% > 30% = 3pts (green), CSW% > 26% to ≤ 30% = 2pts (yellow), CSW% ≤ 26% = 1pt (red). Falls back to regressed K% only if CSW% is unavailable (null): K% > 27% = 3pts, K% > 24% to ≤ 27% = 2pts, K% ≤ 24% = 1pt. Null CSW% + null K% = 1pt (abstain). (The gs26 < 4 small-sample guard was removed — CSW% is always used when present, regardless of gs26.) Stored as `kpctPts` (1/2/3); `kpctMeets = kpctPts > 0` (boolean, always true now).
   - K-BB% > 15% → 2pts
   - Lineup oK% tiered (`lkpPts`): > 24% → 3pts (green), > 16% → 2pt (yellow, avg/below-avg lineup), ≤ 16% → 0pts; null → 1pt (abstain, like ML/total). `lkpMeets = lkpPts > 0`. Hand-adjusted vs RHP/LHP.
-  - Avg pitches/start > 85 → 2pts (uses 2026 data only if gs26 ≥ 4; else falls back to 2025)
+  - Avg pitches/start tiered (`pitchesPts`): > 85 → 2pts (green), > 75 → 1pt (yellow), ≤ 75 → 0pts; null → 1pt (abstain). (uses 2026 data only if gs26 ≥ 4; else falls back to 2025)
   - ML tier (`mlPts`): ≤ -130 → 2pts, -129 to -101 → 1pt, ≥ -100 → 0pts; null → 1pt
   - O/U tier (`totalPts`): ≤ 8.5 → 2pts (low total = pitcher dominant), 8.5–10.5 → 1pt, >10.5 → 0pts; null → 1pt
   - Edge ≥ 3% required (gates play independently, not part of SimScore)
@@ -384,7 +384,7 @@ Both play cards and player cards show an explanation block (`background:"#0d1117
 - negative → `#f78166` red, ✗, opacity 0.7
 
 **Player card explanation** uses the same structure. Data sources by sport:
-- MLB strikeouts: `h2h` object built from `tonightPlayerMap` (includes `edge`, `kpctMeets`, `kpctPts`, `kbbMeets`, `lkpMeets`, `pitchesMeets`, `mlPts`, `parkMeets`)
+- MLB strikeouts: `h2h` object built from `tonightPlayerMap` (includes `edge`, `kpctMeets`, `kpctPts`, `kbbMeets`, `lkpMeets`, `pitchesPts`, `mlPts`, `parkMeets`)
 - MLB hitters: `tonightHitPlay = Object.values(tonightPlayerMap).find(p => p.stat === safeTab)` (includes `hitterBa`, `hitterLineupSpot`, `pitcherWHIP`, `pitcherFIP`, `hitterWhipMeets`, `hitterFipMeets`, `hitterParkMeets`, `edge`)
 - NBA: `tonightTabPlay` (includes `nbaOpportunity`, `nbaPaceAdj`, `isB2B`, `nbaSimScore`, `posDvpRank`, `posDvpValue`, `softPct`, `seasonPct`, `edge`)
 
