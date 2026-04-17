@@ -2831,10 +2831,16 @@ var worker_default = {
               if (homeGAA != null) totalSimScore += 2; if (awayGAA != null) totalSimScore += 2;
               if (_hSA != null) totalSimScore += 2; if (_aSA != null) totalSimScore += 2;
             }
-            if (truePct == null) continue;
+            if (truePct == null) {
+              if (isDebug) dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, totalSimScore, reason: "no_simulation_data", ..._simData });
+              continue;
+            }
             const rawEdge = parseFloat((truePct - kalshiPct).toFixed(1));
-            const edge = parseFloat((rawEdge - spreadAdj).toFixed(1));
-            if (edge < 3) continue;
+            const edge = rawEdge;
+            if (edge < 3) {
+              if (isDebug) dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, spreadAdj: spreadAdj > 0 ? parseFloat(spreadAdj.toFixed(1)) : 0, edge, totalSimScore, reason: "edge_too_low", ..._simData });
+              continue;
+            }
             totalPlays.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, spreadAdj: spreadAdj > 0 ? parseFloat(spreadAdj.toFixed(1)) : 0, edge, totalSimScore, qualified: totalSimScore >= 11, kelly: kellyFraction(truePct, americanOdds), ev: evPerUnit(truePct, americanOdds), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null, ..._simData });
           }
         }
