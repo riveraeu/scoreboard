@@ -450,9 +450,17 @@ export async function buildNbaUsageRate(playerIds) {
         );
         if (!r.ok) return;
         const d = await r.json();
+        // ESPN common/v3 statistics endpoint nests categories under
+        // d.statistics[i].splits.categories — collect all categories across
+        // all season entries, then fall back to top-level d.categories.
+        const allCats = [];
+        for (const season of d.statistics || []) {
+          for (const c of season.splits?.categories || season.categories || []) allCats.push(c);
+        }
+        const cats = allCats.length > 0 ? allCats : (d.categories || []);
         // Look for usageRate in any category
         let usg = null;
-        for (const cat of d.categories || []) {
+        for (const cat of cats) {
           const stat = (cat.stats || []).find(s => s.name === "usageRate" || s.abbreviation === "USG%");
           if (stat?.value != null) { usg = parseFloat(stat.value); break; }
         }
@@ -462,7 +470,7 @@ export async function buildNbaUsageRate(playerIds) {
         }
         // Fallback: estimate from avgPts, avgAst, avgMin
         let avgPts = 0, avgAst = 0, avgMin = 0;
-        for (const cat of d.categories || []) {
+        for (const cat of cats) {
           for (const s of cat.stats || []) {
             if (s.name === "avgPoints") avgPts = parseFloat(s.value) || 0;
             if (s.name === "avgAssists") avgAst = parseFloat(s.value) || 0;
