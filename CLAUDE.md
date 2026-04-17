@@ -1,5 +1,16 @@
 # Scoreboard — Project Guide for Claude
 
+## Workflow for New Features and Debugging
+
+Follow these steps in order for every change:
+
+1. **Check memory and CLAUDE.md** — Read `MEMORY.md` and relevant memory files for prior context. Scan CLAUDE.md for existing documentation on the area being changed (architecture, debugging sections, key functions table).
+2. **Plan and get approval** — Present the full plan as text only (files to change, logic to add/modify, edge cases). Wait for explicit user approval before editing any files.
+3. **Implement** — Make the changes. If any backend logic changed, confirm the fix by calling the production API (`/api/tonight?debug=1` or the relevant endpoint) and printing the key fields that prove the change is correct.
+4. **Deploy and document** — `git push origin main` to deploy. Update CLAUDE.md in the same commit (not a separate step). Save a memory entry for anything non-obvious that future sessions should know.
+
+---
+
 ## What This Is
 A sports prop betting dashboard that pulls Kalshi prediction market prices, computes a model True%, and shows qualified plays with an edge over the market. Deployed on Vercel Edge (no Node.js APIs — Web Fetch/KV only).
 
