@@ -2829,8 +2829,12 @@ var worker_default = {
                 if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateNHLTotalDist(_hGLRaw, _aGLRaw, 10000);
                 truePct = totalDistPct(totalDistCache[_dk], threshold);
               }
-              if (homeGPG != null) totalSimScore += 3; if (awayGPG != null) totalSimScore += 3;
-              if (homeGAA != null) totalSimScore += 2; if (awayGAA != null) totalSimScore += 2;
+              // GPG tiered: ≥3.5→3pts, ≥3.0→2pts, <3.0→1pt, null→0pts (high scoring = good for over)
+              totalSimScore += homeGPG != null ? (homeGPG >= 3.5 ? 3 : homeGPG >= 3.0 ? 2 : 1) : 0;
+              totalSimScore += awayGPG != null ? (awayGPG >= 3.5 ? 3 : awayGPG >= 3.0 ? 2 : 1) : 0;
+              // GAA tiered: ≥3.5→2pts, ≥3.0→1pt, <3.0→0pts, null→0pts (high GAA = bad defense = good for over)
+              totalSimScore += homeGAA != null ? (homeGAA >= 3.5 ? 2 : homeGAA >= 3.0 ? 1 : 0) : 0;
+              totalSimScore += awayGAA != null ? (awayGAA >= 3.5 ? 2 : awayGAA >= 3.0 ? 1 : 0) : 0;
               if (_hSA != null) totalSimScore += 2; if (_aSA != null) totalSimScore += 2;
             }
             if (truePct == null) {

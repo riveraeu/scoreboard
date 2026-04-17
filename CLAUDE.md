@@ -78,7 +78,7 @@ Used for caching expensive fetches. Key TTLs:
 #### Total SimScore details
 - **MLB**: homeERA tiered (>4.5→3, >3.5→2, ≤3.5→1, null→0), awayERA tiered (same), homeRPG tiered (>5.0→2, >4.0→1, ≤4.0→0, null→0), awayRPG tiered (same), parkRF>1.01→2pts (run-friendly parks only; pitcher-friendly parks score 0), maxERA>4.5→2pts (max 14). High ERA and high RPG score higher — both are over-favorable signals.
 - **NBA**: off PPG tiered (≥118→3, ≥113→2, else 1, null→0) per team (max 3+3=6); def PPG allowed tiered (≥118→2, ≥113→1, else 0, null→0) per team (max 2+2=4); both pace known→2pts; avg pace above league→2pts (max 14)
-- **NHL**: homeGPG→3pts, awayGPG→3pts, homeGAA→2pts, awayGAA→2pts, home SA rank→2pts, away SA rank→2pts (max 14)
+- **NHL**: homeGPG tiered (≥3.5→3, ≥3.0→2, <3.0→1, null→0), awayGPG tiered (same), homeGAA tiered (≥3.5→2, ≥3.0→1, <3.0→0, null→0), awayGAA tiered (same), home SA rank→2pts, away SA rank→2pts (max 14). High GPG and high GAA score higher — both are over-favorable signals.
 
 #### Lambda computation (MLB)
 `homeLambda = homeRPG × (awayERA / 4.20) × parkRF`, clamped [1, 12]
@@ -316,7 +316,9 @@ Shows `untrackedPlays` (qualified plays not yet tracked). Each card has:
 - Prose includes model-projected expected total vs threshold (e.g. "Model projects 8.4 combined runs vs the 7.5 threshold"). NBA also shows pace adjustment.
 - **Stat colors for NBA totals**: offensive PPG — ≥118 red, ≥113 yellow, else gray (high scoring = more risky for over). Defensive PPG allowed — ≥118 green, ≥113 yellow, else red (bad defense = good for over; good defense = bad for over).
 - **Stat colors for MLB totals**: ERA — >4.5 green, >3.5 yellow, ≤3.5 red (high ERA = hittable pitcher = good for over). RPG — >5.0 green, >4.0 yellow, ≤4.0 gray (high run-scoring = good for over). Both directions: high value = good for over.
+- **Stat colors for NHL totals**: GPG — ≥3.5 green, ≥3.0 yellow, <3.0 gray (high scoring = good for over). GAA — ≥3.5 green, ≥3.0 yellow, <3.0 gray (high GAA = bad defense = good for over). Both directions: high value = green = good for over.
 - **SimScore tooltip for MLB totals**: shows actual values and earned points per component (e.g. `SD ERA (4.73): 3/3`, `SEA RPG (4.2): 1/2`). Points derived from same tiered formula as backend.
+- **SimScore tooltip for NHL totals**: shows actual values and earned points per component (e.g. `LAK GPG (2.7): 1/3`, `CGY GAA (3.15): 1/2`). Points derived from same tiered formula as backend.
 - No player card on click (`gameType === "total"` returns early from `navigateToPlay`).
 
 ### Player Card
@@ -519,6 +521,21 @@ Most likely cause: **Upstash free tier exhausted** (500k commands/month). Sympto
 `gameTimes:v2:{date}` is populated from ESPN's scoreboard `ev.date` (UTC ISO string). The display uses `timeZone:"America/Los_Angeles"` which is always PDT/PST-aware. If the displayed time is 1 hour late, ESPN returned a UTC timestamp that was computed using PST (UTC-8) instead of PDT (UTC-7) — effectively not applying daylight saving for that game.
 
 **Fix**: `?bust=1` now skips the `gameTimes` cache read and forces a fresh fetch from ESPN. If ESPN has corrected the time in their data, the bust will pick it up. If ESPN consistently returns the wrong time for that game, the offset persists until ESPN fixes their data.
+
+### "MLB game total SimScore badge shows 14/14 despite yellow ERA/RPG stats in explanation"
+The explanation card colors (eraColor/rpgColor) use the **tiered** formula — yellow ERA means 2 pts (not max 3), yellow RPG means 1 pt (not max 2). If the badge shows 14/14 but stats are yellow, production is running **old code** where the formula was flat (3 pts for any non-null ERA, 2 pts for any non-null RPG, 2 pts for any non-neutral park including pitcher-friendly).
+
+**Old formula (before `1966416`):**
+```javascript
+if (homeERA != null) totalSimScore += 3;   // flat — no tier
+if (awayERA != null) totalSimScore += 3;
+if (homeRPG != null) totalSimScore += 2;
+if (awayRPG != null) totalSimScore += 2;
+if (Math.abs(parkRF - 1) > 0.01) totalSimScore += 2;  // fires for pitcher-friendly parks too
+```
+This always gives 14/14 when all four data fields are present and park ≠ neutral (which includes SD, SEA, SF, etc. since their factors are 0.93–0.94, far from 1.0).
+
+**Diagnosis:** `git log --oneline origin/main..HEAD` — if this shows unpushed commits, Vercel is running the old code. **Fix:** `git push origin main`.
 
 ### "SimScore shows yellow for strikeout players with score 7–9"
 The qualifying gate for strikeouts is `finalSimScore >= 11` (Alpha tier). The report SimScore column uses `>= 10` as the yellow threshold, so scores 10 show yellow (near miss) and scores 7–9 show gray.

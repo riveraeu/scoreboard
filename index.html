@@ -2687,10 +2687,13 @@ function App() {
                         const hGPG = play.homeGPG ?? null, aGPG = play.awayGPG ?? null;
                         const hGAA = play.homeGAA ?? null, aGAA = play.awayGAA ?? null;
                         const et = play.expectedTotal ?? null;
-                        const gpgColor = v => v == null ? "#8b949e" : v >= 3.5 ? "#f78166" : v >= 3.0 ? "#e3b341" : "#8b949e";
-                        const gaaColor = v => v == null ? "#8b949e" : v >= 3.5 ? "#f78166" : v >= 3.0 ? "#e3b341" : "#3fb950";
+                        // high GPG/GAA = good for over → green; matches market report table direction
+                        const gpgColor = v => v == null ? "#8b949e" : v >= 3.5 ? "#3fb950" : v >= 3.0 ? "#e3b341" : "#8b949e";
+                        const gaaColor = v => v == null ? "#8b949e" : v >= 3.5 ? "#3fb950" : v >= 3.0 ? "#e3b341" : "#8b949e";
                         const etColor = et == null ? "#8b949e" : et >= play.threshold + 0.5 ? "#3fb950" : et >= play.threshold - 0.5 ? "#e3b341" : "#8b949e";
-                        const scTitle = [`${play.homeTeam} GPG: ${hGPG != null ? "3" : "0"}/3`,`${play.awayTeam} GPG: ${aGPG != null ? "3" : "0"}/3`,`${play.homeTeam} GAA: ${hGAA != null ? "2" : "0"}/2`,`${play.awayTeam} GAA: ${aGAA != null ? "2" : "0"}/2`,`${play.homeTeam} shots-against: ${play.homeSAKnown ? "2" : "0"}/2`,`${play.awayTeam} shots-against: ${play.awaySAKnown ? "2" : "0"}/2`].join("\n");
+                        const _gpgPts = v => v == null ? 0 : v >= 3.5 ? 3 : v >= 3.0 ? 2 : 1;
+                        const _gaaPts = v => v == null ? 0 : v >= 3.5 ? 2 : v >= 3.0 ? 1 : 0;
+                        const scTitle = [`${play.homeTeam} GPG (${hGPG ?? "—"}): ${_gpgPts(hGPG)}/3`,`${play.awayTeam} GPG (${aGPG ?? "—"}): ${_gpgPts(aGPG)}/3`,`${play.homeTeam} GAA (${hGAA ?? "—"}): ${_gaaPts(hGAA)}/2`,`${play.awayTeam} GAA (${aGAA ?? "—"}): ${_gaaPts(aGAA)}/2`,`${play.homeTeam} shots-against: ${play.homeSAKnown ? "2" : "0"}/2`,`${play.awayTeam} shots-against: ${play.awaySAKnown ? "2" : "0"}/2`].join("\n");
                         return (
                           <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.65}}>
                             <span style={{color:"#c9d1d9"}}>{play.awayTeam}</span> averages{aGPG != null ? <> <span style={{color:gpgColor(aGPG),fontWeight:600}}>{aGPG.toFixed(1)} GPG</span></> : " —"} facing a <span style={{color:"#c9d1d9"}}>{play.homeTeam}</span> defense with{hGAA != null ? <> <span style={{color:gaaColor(hGAA),fontWeight:600}}>{hGAA.toFixed(2)} GAA</span></> : " — GAA"}.
