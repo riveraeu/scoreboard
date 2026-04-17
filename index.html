@@ -162,7 +162,7 @@ const MOCK_PLAYS = [
     softPct:72.0, softGames:18, truePct:71.0, edge:4.0,
     kelly:0.085, ev:0.030, historicalHitRate:72.0, historicalGames:18,
     lineupKPct:null, pitcherKPct:null, gameDate:TODAY,
-    hitterSimScore:11, hitterFinalSimScore:11, hitterLineupSpot:3, hitterWhipMeets:true, hitterFipMeets:true, hitterParkMeets:false, pitcherWHIP:1.42, pitcherFIP:4.21,
+    hitterSimScore:11, hitterFinalSimScore:11, hitterLineupSpot:3, hitterWhipMeets:true, hitterPlatoonPts:2, hitterParkMeets:false, pitcherWHIP:1.42, pitcherFIP:4.21,
   },
   // ── NBA (gold ~94%) ───────────────────────────────────────────────────────
   {
@@ -1116,8 +1116,8 @@ function App() {
                 if (sortedGroups.length === 0) return <div style={{color:"#8b949e",textAlign:"center",padding:40,fontSize:13}}>No markets.</div>;
 
                 const CRITERIA_SUMMARIES = {
-                  "mlb|hrr":       { note: "True% = Monte Carlo simulation (batterBA \u00d7 pitcherBAA log5) \u00b7 park-adjusted \u00b7 Sim-Score \u2265 7 (spot\u21923/2, WHIP\u21923, FIP>ERA\u21922, park\u21921, barrel%\u21920-3, O/U\u21920-2) = max 14; edge gates separately", gates: ["Lineup spot 1\u20134", "Sim-Score \u2265 7 (max 14)", "Edge \u2265 3%"] },
-                  "mlb|hits":      { note: "True% = Monte Carlo simulation (batterBA \u00d7 pitcherBAA log5) \u00b7 park-adjusted \u00b7 Sim-Score \u2265 7 (spot\u21923/2, WHIP\u21923, FIP>ERA\u21922, park\u21921, barrel%\u21920-3, O/U\u21920-2) = max 14; edge gates separately", gates: ["Lineup spot 1\u20134", "Sim-Score \u2265 7 (max 14)", "Edge \u2265 3%"] },
+                  "mlb|hrr":       { note: "True% = Monte Carlo simulation (batterBA \u00d7 pitcherBAA log5) \u00b7 park-adjusted \u00b7 Sim-Score \u2265 7 (spot\u21923/2, WHIP\u21923, platoon\u21920-2, park\u21921, barrel%\u21920-3, O/U\u21920-2) = max 14; edge gates separately", gates: ["Lineup spot 1\u20134", "Sim-Score \u2265 7 (max 14)", "Edge \u2265 3%"] },
+                  "mlb|hits":      { note: "True% = Monte Carlo simulation (batterBA \u00d7 pitcherBAA log5) \u00b7 park-adjusted \u00b7 Sim-Score \u2265 7 (spot\u21923/2, WHIP\u21923, platoon\u21920-2, park\u21921, barrel%\u21920-3, O/U\u21920-2) = max 14; edge gates separately", gates: ["Lineup spot 1\u20134", "Sim-Score \u2265 7 (max 14)", "Edge \u2265 3%"] },
                   "mlb|strikeouts":{ note: "True% = Monte Carlo simulation (pitcher K% \u00d7 lineup K% log5) \u00b7 regressed to mean \u00b7 park-adjusted \u00b7 Sim-Score \u2265 7 (CSW%\u21923, K-BB%\u21922, oK%\u21923, P/GS\u21922, ML\u21920-2, O/U\u21920-2) = max 14; edge gates separately", gates: ["Sim-Score \u2265 7 (max 14)", "Edge \u2265 3%"] },
                   "nba|points":    { note: "True% = avg(Season%, vs-soft-DVP-team%) \u00b7 B2B -4% \u00b7 Sim-Score: pace(3) + min(4) + DVP(2) + rest(2) + O/U(0-3) = max 14; edge gates separately", gates: ["Opp in soft DVP teams", "Edge \u2265 3%"] },
                   "nba|rebounds":  { note: "True% = avg(Season%, vs-soft-DVP-team%) \u00b7 B2B -4% \u00b7 Sim-Score: pace(3) + min(4) + DVP(2) + rest(2) + O/U(0-3) = max 14; edge gates separately", gates: ["Opp in soft DVP teams", "Edge \u2265 3%"] },
@@ -1795,7 +1795,7 @@ function App() {
                           const mkH = (meets, label) => meets != null ? <span key={label} style={{color:meets?"#3fb950":"#f78166",fontSize:9,whiteSpace:"nowrap"}}>{meets?"✓":"✗"}{label}</span> : null;
                           const hitterGameTotal = tonightHitPlay?.hitterGameTotal ?? null;
                           const hitterTotalColor = t => t == null ? "#8b949e" : t >= 9.5 ? "#3fb950" : t >= 7.5 ? "#e3b341" : "#f78166";
-                          const scTitle = sc != null ? [`Spot: ${lineupSpot != null ? (lineupSpot <= 3 ? 3 : lineupSpot <= 4 ? 2 : 0) : "—"}/3`,`WHIP: ${tonightHitPlay?.hitterWhipMeets===true?3:tonightHitPlay?.hitterWhipMeets===false?0:"—"}/3`,`FIP>ERA: ${tonightHitPlay?.hitterFipMeets===true?2:tonightHitPlay?.hitterFipMeets===false?0:"—"}/2`,`Park: ${tonightHitPlay?.hitterParkMeets===true?1:tonightHitPlay?.hitterParkMeets===false?0:"—"}/1`,`Barrel%: ${tonightHitPlay?.hitterBarrelPts ?? "—"}/3`,`O/U: ${tonightHitPlay?.hitterTotalPts ?? "—"}/2`].join("\n") : null;
+                          const scTitle = sc != null ? [`Spot: ${lineupSpot != null ? (lineupSpot <= 3 ? 3 : lineupSpot <= 4 ? 2 : 0) : "—"}/3`,`WHIP: ${tonightHitPlay?.hitterWhipMeets===true?3:tonightHitPlay?.hitterWhipMeets===false?0:"—"}/3`,`Platoon: ${tonightHitPlay?.hitterPlatoonPts ?? "—"}/2`,`Park: ${tonightHitPlay?.hitterParkMeets===true?1:tonightHitPlay?.hitterParkMeets===false?0:"—"}/1`,`Barrel%: ${tonightHitPlay?.hitterBarrelPts ?? "—"}/3`,`O/U: ${tonightHitPlay?.hitterTotalPts ?? "—"}/2`].join("\n") : null;
                           return (
                             <>
                               <div>
@@ -1819,7 +1819,7 @@ function App() {
                                   <span style={{display:"inline-flex",gap:4,flexWrap:"wrap"}}>
                                     {lineupSpot != null && mkH(lineupSpot <= 4, `#${lineupSpot}`)}
                                     {mkH(tonightHitPlay?.hitterWhipMeets, "WHIP")}
-                                    {mkH(tonightHitPlay?.hitterFipMeets, "FIP")}
+                                    {tonightHitPlay?.hitterPlatoonPts != null && <span key="platoon" style={{color:tonightHitPlay.hitterPlatoonPts>=2?"#3fb950":tonightHitPlay.hitterPlatoonPts>=1?"#e3b341":"#f78166",fontSize:9,whiteSpace:"nowrap"}}>{tonightHitPlay.hitterPlatoonPts>0?"✓":"✗"}Platoon</span>}
                                     {tonightHitPlay?.hitterParkMeets != null && mkH(tonightHitPlay.hitterParkMeets, "Park")}
                                     {tonightHitPlay?.hitterBarrelPts != null && <span key="brrl" style={{color:tonightHitPlay.hitterBarrelPts>=3?"#3fb950":tonightHitPlay.hitterBarrelPts>=2?"#e3b341":tonightHitPlay.hitterBarrelPts>=1?"#8b949e":"#f78166",fontSize:9,whiteSpace:"nowrap"}}>{tonightHitPlay.hitterBarrelPts>0?"✓":"✗"}Brrl{tonightHitPlay.hitterBarrelPct!=null?" "+tonightHitPlay.hitterBarrelPct.toFixed(0)+"%":""}</span>}
                                     {tonightHitPlay?.hitterTotalPts != null && <span key="ou" style={{color:tonightHitPlay.hitterTotalPts>=2?"#3fb950":tonightHitPlay.hitterTotalPts>=1?"#e3b341":"#f78166",fontSize:9,whiteSpace:"nowrap"}}>{tonightHitPlay.hitterTotalPts>0?"✓":"✗"}O/U{tonightHitPlay.hitterGameTotal!=null?" "+tonightHitPlay.hitterGameTotal:""}</span>}
@@ -2940,7 +2940,7 @@ function App() {
                           const mk = (meets, label) => meets != null ? <span key={label} style={{color:meets?"#3fb950":"#f78166",fontSize:9,whiteSpace:"nowrap"}}>{meets?"✓":"✗"}{label}</span> : null;
                           const hitterGameTotal = play.hitterGameTotal ?? null;
                           const hitterTotalColor = t => t == null ? "#8b949e" : t >= 9.5 ? "#3fb950" : t >= 7.5 ? "#e3b341" : "#f78166";
-                          const scTitle = sc != null ? [`Spot: ${lineupSpot != null ? (lineupSpot <= 3 ? 3 : lineupSpot <= 4 ? 2 : 0) : "—"}/3`,`WHIP: ${play.hitterWhipMeets===true?3:play.hitterWhipMeets===false?0:"—"}/3`,`FIP>ERA: ${play.hitterFipMeets===true?2:play.hitterFipMeets===false?0:"—"}/2`,`Park: ${play.hitterParkMeets===true?1:play.hitterParkMeets===false?0:"—"}/1`,`Barrel%: ${play.hitterBarrelPts ?? "—"}/3`,`O/U: ${play.hitterTotalPts ?? "—"}/2`].join("\n") : null;
+                          const scTitle = sc != null ? [`Spot: ${lineupSpot != null ? (lineupSpot <= 3 ? 3 : lineupSpot <= 4 ? 2 : 0) : "—"}/3`,`WHIP: ${play.hitterWhipMeets===true?3:play.hitterWhipMeets===false?0:"—"}/3`,`Platoon: ${play.hitterPlatoonPts ?? "—"}/2`,`Park: ${play.hitterParkMeets===true?1:play.hitterParkMeets===false?0:"—"}/1`,`Barrel%: ${play.hitterBarrelPts ?? "—"}/3`,`O/U: ${play.hitterTotalPts ?? "—"}/2`].join("\n") : null;
                           return (
                             <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.65}}>
                               <div>
