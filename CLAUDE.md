@@ -71,7 +71,7 @@ Used for caching expensive fetches. Key TTLs:
 - **Play card**: `gameType: "total"` flag triggers `TotalPlayCard` branch in the play card render; shows dual team logos (ESPN CDN), matchup header, true%/Kalshi% bars, explanation prose, SimScore badge
 - **Deduplication**: one total play per game (homeTeam+awayTeam+sport), keeping highest truePct — multiple thresholds for the same game reduced to the best one
 - **Expected total**: `homeExpected + awayExpected` (lambda sum for MLB/NHL, PPG-adjusted for NBA) shown in explanation prose; `_simData` includes `homeExpected`, `awayExpected`, `expectedTotal`; NBA also includes `homePace`, `awayPace`, `leagueAvgPace`; NHL includes `homeSAKnown`, `awaySAKnown`
-- **SimScore tooltip**: hover the `X/14` badge to see per-component breakdown with actual values (e.g. `CHA off PPG (116): 2/3`)
+- **SimScore tooltip**: hover the `X/14` badge to see per-component breakdown with actual values. NBA example: `CHA off PPG (116): 2/3`. NHL example: `LAK GPG (2.7): 1/3`, `CGY GAA (3.15): 1/2`.
 - **Edge badge**: shows `+X%` only — tooltip removed (spreadAdj no longer subtracted from edge)
 - **Track ID format**: `total|sport|homeTeam|awayTeam|threshold|gameDate`
 
@@ -534,6 +534,22 @@ if (awayRPG != null) totalSimScore += 2;
 if (Math.abs(parkRF - 1) > 0.01) totalSimScore += 2;  // fires for pitcher-friendly parks too
 ```
 This always gives 14/14 when all four data fields are present and park ≠ neutral (which includes SD, SEA, SF, etc. since their factors are 0.93–0.94, far from 1.0).
+
+**Diagnosis:** `git log --oneline origin/main..HEAD` — if this shows unpushed commits, Vercel is running the old code. **Fix:** `git push origin main`.
+
+### "NHL game total SimScore badge shows 14/14 despite gray GPG stats in explanation"
+The explanation card `gpgColor`/`gaaColor` use the **tiered** formula — gray GPG means 1 pt (not max 3), gray GAA means 0 pts (not max 2). If the badge shows 14/14 but GPG stats are uncolored (gray), production is running **old code** where both GPG and GAA used flat scoring (3 pts for any non-null GPG, 2 pts for any non-null GAA regardless of value).
+
+**Old formula (before `d7beade`):**
+```javascript
+if (homeGPG != null) totalSimScore += 3;   // flat — no tier
+if (awayGPG != null) totalSimScore += 3;
+if (homeGAA != null) totalSimScore += 2;
+if (awayGAA != null) totalSimScore += 2;
+```
+This always gave 14/14 when all four fields were present (assuming SA ranks known), even for two teams averaging 2.5–2.7 GPG.
+
+**Old color semantics (also pre-`d7beade`):** `gaaColor` had `< 3.0 → green` (inverted — low GAA = good defense was green, wrong direction for an over). `gpgColor` had `>= 3.5 → red` (also inverted). Now both use `>= 3.5 → green, >= 3.0 → yellow, < 3.0 → gray`, matching the market report table.
 
 **Diagnosis:** `git log --oneline origin/main..HEAD` — if this shows unpushed commits, Vercel is running the old code. **Fix:** `git push origin main`.
 
