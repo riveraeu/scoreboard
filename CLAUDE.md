@@ -76,7 +76,7 @@ Used for caching expensive fetches. Key TTLs:
 - **Track ID format**: `total|sport|homeTeam|awayTeam|threshold|gameDate`
 
 #### Total SimScore details
-- **MLB**: homeERA tiered (>4.5→3, >3.5→2, ≤3.5→1, null→0), awayERA tiered (same), homeRPG tiered (>5.0→2, >4.0→1, ≤4.0→0, null→0), awayRPG tiered (same), |parkRF-1|>0.01→2pts, maxERA>4.5→2pts (max 14). High ERA and high RPG score higher — both are over-favorable signals.
+- **MLB**: homeERA tiered (>4.5→3, >3.5→2, ≤3.5→1, null→0), awayERA tiered (same), homeRPG tiered (>5.0→2, >4.0→1, ≤4.0→0, null→0), awayRPG tiered (same), parkRF>1.01→2pts (run-friendly parks only; pitcher-friendly parks score 0), maxERA>4.5→2pts (max 14). High ERA and high RPG score higher — both are over-favorable signals.
 - **NBA**: off PPG tiered (≥118→3, ≥113→2, else 1, null→0) per team (max 3+3=6); def PPG allowed tiered (≥118→2, ≥113→1, else 0, null→0) per team (max 2+2=4); both pace known→2pts; avg pace above league→2pts (max 14)
 - **NHL**: homeGPG→3pts, awayGPG→3pts, homeGAA→2pts, awayGAA→2pts, home SA rank→2pts, away SA rank→2pts (max 14)
 

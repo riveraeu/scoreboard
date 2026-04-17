@@ -2795,7 +2795,7 @@ var worker_default = {
               if (awayERA != null) totalSimScore += awayERA > 4.5 ? 3 : awayERA > 3.5 ? 2 : 1;
               if (homeRPG != null) totalSimScore += homeRPG > 5.0 ? 2 : homeRPG > 4.0 ? 1 : 0;
               if (awayRPG != null) totalSimScore += awayRPG > 5.0 ? 2 : awayRPG > 4.0 ? 1 : 0;
-              if (Math.abs(parkRF - 1) > 0.01) totalSimScore += 2;
+              if (parkRF > 1.01) totalSimScore += 2;
               if (Math.max(homeERA ?? 0, awayERA ?? 0) > 4.5) totalSimScore += 2;
             } else if (sport === "nba") {
               const homeOff = nbaOffPPGMap[homeTeam] ?? null, awayOff = nbaOffPPGMap[awayTeam] ?? null;
