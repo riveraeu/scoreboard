@@ -666,5 +666,6 @@ Fix: added `hitterSoftLabel: softLabel` to play output; both card render sites n
 **Bug 3 — seasonG (game count) used blendGames (2025+2026) while seasonPct showed pct26 (2026-only):**
 `seasonG = play.blendGames || play.seasonGames` — for a veteran like Olson this gives 182 (2025+2026 combined) even when `seasonPct` is the 2026-only rate. Label read "89.5% of games this season (182g)" but only ~19 2026 games existed.
 Fix: `seasonG = play.pct26 != null ? play.pct26Games : (play.blendGames || play.seasonGames)`. Label changes to "2025-26" when pct26 is null (blended rate).
+Applied in the top explanation block (line ~2930) AND the no-H2H branch (line ~3074) — both are render sites for this count. The no-H2H branch was missed in the original fix (commit f782fcf).
 
 **Post-fix values for Matt Olson (example):** `softGames: 26` (was 344), `hitterAbVsPitcher: 105` (was 1300), `hitterSoftLabel: "vs Taijuan Walker"`, `seasonG: 19` (was 182).
