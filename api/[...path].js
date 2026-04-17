@@ -2073,7 +2073,7 @@ var worker_default = {
             parkMeets = _parkKF > 1.0;
             // ML 3-tier: ≤ -121 → 2pts, -120 to +120 → 1pt, > +120 → 0pts; null → 1pt
             const _teamML = sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null;
-            mlPts = _teamML == null ? 1 : _teamML <= -121 ? 2 : _teamML < 0 ? 1 : 0;
+            mlPts = _teamML == null ? 1 : _teamML <= -121 ? 2 : _teamML <= 120 ? 1 : 0;
             // O/U total 3-tier (low total = pitcher-friendly): ≤8.5 → 2pts, 8.6–10.5 → 1pt, >10.5 → 0pts; null → 1pt
             const _gameTotal = sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null;
             totalPts = _gameTotal == null ? 1 : _gameTotal <= 8.5 ? 2 : _gameTotal <= 10.5 ? 1 : 0;
