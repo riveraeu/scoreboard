@@ -24,7 +24,7 @@ A sports prop betting dashboard that pulls Kalshi prediction market prices, comp
 `api/[...path].js` handles all server logic as a Vercel Edge Function. It imports from four ES module lib files:
 - `api/lib/simulate.js` — park factor constants + all simulation functions (log5K, simulateKsDist, buildNbaStatDist, simulateHits, kelly/EV math)
 - `api/lib/mlb.js` — MLB data fetchers (buildLineupKPct, buildBarrelPct, buildPitcherKPct) + MLB_ID_TO_ABBR
-- `api/lib/nba.js` — NBA/DVP data fetchers (buildNbaDvpStage1/FromBettingPros/Stage3FG, buildNbaDepthChartPos, buildNbaPaceData, buildNbaPlayerPosFromSleeper, warmPlayerInfoCache)
+- `api/lib/nba.js` — NBA/DVP data fetchers (buildNbaDvpStage1/FromBettingPros/Stage3FG, buildNbaDepthChartPos, buildNbaPaceData, buildNbaPlayerPosFromSleeper, warmPlayerInfoCache, buildNbaUsageRate, buildNbaInjuryReport)
 - `api/lib/utils.js` — response helpers (corsHeaders, jsonResponse, errorResponse), ALLOWED_ORIGIN, team ranking helpers (buildSoftTeamAbbrs, buildHardTeamAbbrs, buildTeamRankMap, parseGameOdds, SOFT_TEAM_METRIC)
 
 Routes via `pathname`:
@@ -57,6 +57,7 @@ Used for caching expensive fetches. Key TTLs:
 - `byteam:mlb` — 600s (MLB team stats, probables, lineup K-rates). **Does NOT include `barrelPctMap`** — that lives in `mlb:barrelPct`. Uses 60s TTL if lineupSpotByName or pitcherAvgPitches come back empty (e.g. bust before lineups confirmed), so next request retries quickly.
 - `byteam:nba` — 1800s (defensive stats)
 - `byteam:nba:scoring` — 21600s (6h, NBA team offensive PPG; used for total simulation)
+- `nba:injuries:{date}` — 1800s (ESPN NBA injury report: Out players per team, used for C2 injury boost)
 - `byteam:nfl` — 1800s
 - `byteam:nhl` — 21600s (6h, NHL team stats: goalsAgainstPerGame + shotsAgainstPerGame)
 - `gameTimes:v2:{date}` — 600s
@@ -130,6 +131,8 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
 - `pitcherHasAnchor`: `true` if gs25 ≥ 5 AND bf25 ≥ 100 (reliable 2025 *starter* anchor). Included in `plays[]` output for debugging. A reliever-turned-starter has bf25 > 0 but gs25 = 0 — reliever K% is not a valid anchor. bf25 ≥ 100 also excludes injury-shortened seasons (e.g. TJ recovery with 5 starts but minimal workload).
 - Pitchers fetched via `buildPitcherKPct(mlbSched)` — avg pitches per start from 2026 gamelog (starts-only filtered via `gamesStarted > 0`); falls back to 2025 season aggregate `numberOfPitches / gamesStarted` when no 2026 start data in gamelog
 - **K% regression**: `trust = min(1.0, bf26 / 200)` — uses 2026 BF only (NOT combined 2026+2025). Full trust at ~33 starts. Blends 2026 actual K% with 2025 anchor (or league avg 22.2% if no 2025 data). KBB% regressed the same way.
+- **A1 — Pitcher recent form**: `_recentKPct` from last 5 starts with ≥3 starts and 30+ BF. Effective K% = `recentKPct × 0.6 + seasonKPct × 0.4` when recent data meets the threshold; else uses season K% only. `pitcherRecentKPct` map exported from `buildPitcherKPct`, keyed by team abbr.
+- **A2 — Pitcher rest/fatigue**: After truePct is computed, a fatigue multiplier is applied to the simulated pitcherKPct before re-querying the distribution. Days since last start ≤ 3 → `× 0.96`; days ≤ 3 AND last start pitch count ≥ 95 → `× 0.92` (short rest + heavy workload). `pitcherLastStartDate` and `pitcherLastStartPC` maps exported from `buildPitcherKPct`, keyed by team abbr.
 
 #### MLB Hitters (hits/hrr) Model
 - **`hits` True%**: Monte Carlo simulation (`simulateHits`) using batter BA × pitcher BAA (log5), park-adjusted
@@ -140,11 +143,12 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
 - **SimScore** (max 14, edge gates separately — same pattern as strikeouts):
   - Lineup spot 1–3 → 3pts, spot 4 → 2pts
   - Pitcher WHIP > 1.35 → 3pts (from pitcher gamelog)
-  - Pitcher FIP > ERA → 2pts
+  - B1 platoon tier (`hitterPlatoonPts`): `splitBA / seasonBA ≥ 1.10 → 2pts` (strong platoon advantage), `≥ 0.95 → 1pt` (neutral/slight), `< 0.95 → 0pts` (platoon disadvantage); null → 1pt (abstain). `batterSplitBA` from MLB Stats API `statSplits/sitCodes=vr|vl`, requires 30+ AB; replaces former Pitcher FIP > ERA pts.
   - Park hit factor > 1.02 → 1pt
   - Barrel% tier: ≥14% → 3pts, ≥10% → 2pts, ≥7% → 1pt, <7% → 0pts, null → 1pt (abstain)
   - O/U total tier (high total = more run-scoring): ≥9.5 → 2pts, ≥7.5 → 1pt, <7.5 → 0pts, null → 1pt
   - Max: 3+3+2+1+3+2 = 14
+- **B2 — Batter recent form**: `hitterEffectiveBA = 0.6 × recentBA + 0.4 × seasonBA` when ≥20 AB in last 10 2026 games; else uses seasonBA. Fed directly into `simulateHits` as `batterBA`. `batterRecentBA` map built inline from ESPN gamelog in main play loop.
 - **Gates**: lineup spot 1–4 required; hitterSimScore ≥ 7; edge ≥ 3% (gate only, not scored)
 - Barrel% from Baseball Savant (`buildBarrelPct`) — cached 6h in KV; `hitterBarrelPts` stored in play output
 - NBA game totals fetched from ESPN scoreboard (`sportByteam.nbaGameOdds`) — always fresh (not long-term cached)
@@ -155,12 +159,16 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
 - True% = Monte Carlo simulation (`buildNbaStatDist` + `nbaDistPct`) — normal distribution over per-game values
   - `nbaPlayerDistCache` keyed `playerId|stat` — all thresholds (3+, 4+, 5+) share one distribution, guaranteeing monotonicity
   - Mean from last 10 games (recency), std from full season (stability)
-  - Adjusted mean: `× teamDefFactor × (1 + paceAdj×0.002) × 0.93 if B2B`
+  - Adjusted mean: `× teamDefFactor × (1 + paceAdj×0.002) × 0.93 if B2B × miscAdj`
   - `teamDefFactor` = general team defense (`rankMap[opp].value / leagueAvg`) — NOT position-adjusted DVP
+  - `miscAdj` (6th param of `buildNbaStatDist`, default 1.0) = combined C2 × C3 × C4 scalar:
+    - **C2 — Injury boost**: `1.08` per Out player on opponent (capped at `1.15x`). Out players from `buildNbaInjuryReport` (ESPN NBA injuries endpoint, cached 1800s).
+    - **C3 — Blowout risk**: `max(0.85, 1 - (|spread| - 10) × 0.007)` when `|spread| > 10`; else 1.0. Spread from `parseGameOdds` (now included in `sportByteam.nbaGameOdds`). Shows "Blowout risk — large spread reduces model mean by X%" badge in explanation.
+    - **C4 — Home/away split**: `nbaSplitAdj = splitMean / overallMean` where `splitMean` is the weighted avg (0.7 home or 0.3 away depending on venue) of home/away-filtered game values vs the opponent type; fallback to 1.0 if insufficient split data.
   - Falls back to avg(seasonPct, softPct) − 4% if B2B when simulation returns null (<5 game values)
 - **SimScore** (max 14, edge gates separately — same pattern as MLB strikeouts):
   - Pace: avg pace >0 vs league avg → 3pts, >-2 → 2pts, else 0pts — fetched from ESPN via `buildNbaPaceData()`, cached 12h
-  - Avg minutes ≥ 30 (last 10 games) → 4pts; ≥ 25 → 2pts
+  - **C1 — USG%** (replaces avgMin): ≥28% → 4pts, ≥22% → 2pts, <22% → 0pts, null → 2pts (abstain). From `buildNbaUsageRate` (ESPN `athletes/{id}/statistics`; fallback estimate `(avgPTS + avgAST×1.5)/(avgMin×0.42)×100`).
   - Position-adjusted DVP rank ≤ 10 → 2pts
   - Not B2B → 2pts
   - Game total tier: ≥235 → 3pts, ≥225 → 2pts, ≥215 → 1pt, <215 → 0pts, null → 1pt (abstain)
@@ -168,7 +176,7 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
   - Game totals from `sportByteam.nbaGameOdds` (ESPN NBA scoreboard, fetched fresh each request alongside byteam stats)
 - nSim scales with pre-edge simScore: ≥8 → 10k, ≥5 → 5k, else 2k
 - **Gate**: opp in soft DVP teams; edge ≥ 3% (gate only, not scored)
-- Avg minutes from ESPN gamelog `MIN` column (last 10 games), no external API needed
+- Avg minutes still extracted from ESPN gamelog `MIN` column (last 10 games) — used for display in explanation card but no longer the SimScore component
 - Depth chart position via `nbaDepthChartPos` (ESPN depth chart API, cached daily)
 
 ### NHL
@@ -179,8 +187,9 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
 #### NHL Points Model
 True% = Monte Carlo simulation (reuses `buildNbaStatDist` + `nbaDistPct`) — normal distribution over per-game point values
 - `nhlPlayerDistCache` keyed `playerId|stat` — all thresholds share one distribution, guaranteeing monotonicity
-- Mean from recent game values, adjusted: `× teamDefFactor × (1 + shotsAdj×0.002) × 0.93 if B2B`
+- Mean from recent game values, adjusted: `× teamDefFactor × (1 + shotsAdj×0.002) × 0.93 if B2B × nhlToiTrendAdj`
 - `teamDefFactor` = opp GAA / league avg GAA
+- **D3 — TOI trend**: `nhlToiTrendAdj = clamp(recent3TOI / last10TOI, 0.92, 1.08)` where recent3 is the last 3 games and last10 is the 10-game avg — applied as `miscAdj` 6th param to `buildNbaStatDist`. Only applied when ratio > 1.05 (increasing → boost up to 1.08×) or < 0.95 (decreasing → penalty down to 0.92×); else 1.0.
 - Falls back to dvp-adjusted average formula if simulation returns null
 - **SimScore** (max 11 pre-edge, 14 with edge bonus):
   - Shots against adj (opp SA vs league avg > 0) → 3pts
@@ -212,7 +221,7 @@ True% = Monte Carlo simulation (reuses `buildNbaStatDist` + `nbaDistPct`) — no
 | `log5K(pitcherKPct, batterKPct)` | Log5 formula for K probability |
 | `simulateKsDist(orderedKPcts, pitcherKPct, parkFactor, nSim)` | Shared Monte Carlo, returns `Int16Array` of K counts |
 | `kDistPct(dist, threshold)` | Queries K dist — guarantees monotonicity |
-| `buildNbaStatDist(gameValues, dvpFactor, paceAdj, isB2B, nSim)` | Shared `Float32Array` of simulated NBA per-game values |
+| `buildNbaStatDist(gameValues, dvpFactor, paceAdj, isB2B, nSim, miscAdj)` | Shared `Float32Array` of simulated NBA per-game values; `miscAdj` (6th param, default 1.0) is a scalar multiplier applied to adjusted mean — used for C2 injury boost, C3 blowout risk, C4 H/A split, and D3 NHL TOI trend |
 | `nbaDistPct(dist, threshold)` | Queries NBA dist for any threshold — guarantees monotonicity |
 | `simulateHits(batterBA, pitcherBAA, parkFactor, threshold, nSim)` | Monte Carlo for hitter hits/HRR |
 | `PARK_RUNFACTOR` | Park run factors for game total simulation (30 parks + OAK legacy) |
@@ -227,9 +236,9 @@ True% = Monte Carlo simulation (reuses `buildNbaStatDist` + `nbaDistPct`) — no
 | Function/Constant | What it does |
 |---|---|
 | `MLB_ID_TO_ABBR` | MLB team ID → abbreviation mapping |
-| `buildLineupKPct(mlbSched)` | Lineup batter K-rates, lineup spots, ordered arrays |
+| `buildLineupKPct(mlbSched)` | Lineup batter K-rates, lineup spots, ordered arrays; also exports `batterSplitBA` (vsR/vsL BA, 30+ AB) for B1 platoon |
 | `buildBarrelPct()` | Baseball Savant barrel% CSV, 5s timeout, cached 6h |
-| `buildPitcherKPct(mlbSched)` | Pitcher season stats (K%, KBB%, ERA, P/GS, CSW%, GS26) |
+| `buildPitcherKPct(mlbSched)` | Pitcher season stats (K%, KBB%, ERA, P/GS, CSW%, GS26); also exports `pitcherRecentKPct`, `pitcherLastStartDate`, `pitcherLastStartPC` for A1/A2 |
 
 ### `api/lib/nba.js` — NBA/DVP Data Fetchers
 
@@ -242,6 +251,8 @@ True% = Monte Carlo simulation (reuses `buildNbaStatDist` + `nbaDistPct`) — no
 | `buildNbaPaceData(cache)` | ESPN team stats → `{teamPace, leagueAvgPace}`, cached 12h |
 | `buildNbaPlayerPosFromSleeper(cache)` | Sleeper.app fallback for player → position |
 | `buildNbaDvpStage3FG(cache)` | DVP stage 3 gamelog fallback |
+| `buildNbaUsageRate(playerIds)` | ESPN `athletes/{id}/statistics` → `{playerId: usagePct}` map; batches in groups of 10; falls back to estimate from avgPts/avgAst/avgMin |
+| `buildNbaInjuryReport(cache)` | ESPN NBA injuries → `Map<teamAbbr, [{name, status}]>` (Out only); cached 1800s in `nba:injuries:{date}` |
 
 ### `api/lib/utils.js` — Response Helpers & Team Ranking
 
@@ -252,7 +263,7 @@ True% = Monte Carlo simulation (reuses `buildNbaStatDist` + `nbaDistPct`) — no
 | `jsonResponse(data, opts)` | Returns JSON Response with CORS headers |
 | `errorResponse(msg, status)` | Returns error JSON Response |
 | `SOFT_TEAM_METRIC` | ESPN stat hint/index per NBA stat |
-| `parseGameOdds(events)` | Extract ML/total from ESPN scoreboard events |
+| `parseGameOdds(events)` | Extract ML/total/spread from ESPN scoreboard events; returns `{total, moneyline, spread}` per team abbr |
 | `buildSoftTeamAbbrs(teams, stat)` | Top-N teams allowing most of a stat |
 | `buildHardTeamAbbrs(teams, stat)` | Teams ≤ 95% of league avg (tough defenses) |
 | `buildTeamRankMap(teams, stat)` | Full rank map `{abbr: {rank, value}}` |
@@ -275,7 +286,8 @@ True% = Monte Carlo simulation (reuses `buildNbaStatDist` + `nbaDistPct`) — no
 - `kalshiSpread` = bid-ask spread in cents (`round((yesAsk − yesBid) × 100)`); kept in output as a liquidity signal (shown as badge when wide)
 - `rawEdge = truePct − kalshiPct`; `edge = rawEdge` — `kalshiPct` is already the fill price (ask or blended orderbook walk), so no further spread deduction is applied. `spreadAdj` is computed and stored but not subtracted from edge. This rule applies to **both player props and game totals**.
 - Edge badge on play cards shows `+X%` with no tooltip — the old "Raw − spread = net" tooltip was removed since spread is no longer subtracted.
-- `lowVolume = kalshiVolume < 20` — shown as badge on play card; volume and spread improve as game approaches
+- **E1 — Line movement tracking**: Opening yesAsk stored in KV at `lineOpen:{ticker}:{gameDate}` (TTL 172800s / 2 days) on first encounter. `lineMove = current yesAsk − opening yesAsk` (positive = line moved up / market became more expensive). Shown as badge `▲ Xc` or `▼ Xc` when `|lineMove| ≥ 3`. Included in plays output.
+- **E2 — Market depth thresholds**: `lowVolume = kalshiVolume < 50` (raised from 20); `thinMarket = kalshiSpread > 8` (cents, shown as "Wide Spread" badge in red); `marketConfidence = "deep"` (vol≥50 AND spread≤4) / `"moderate"` / `"thin"` (vol<50 OR spread>8). All three fields included in plays output.
 
 ### preDropped vs dropped
 - `preDropped`: filtered before main play loop (no ESPN info yet) — included in `?debug=1` response

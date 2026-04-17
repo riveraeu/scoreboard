@@ -161,7 +161,7 @@ export function simulateKs(orderedKPcts, pitcherKPct, threshold, parkFactor = 1,
 // NBA Monte Carlo: build a shared Float32Array of simulated per-game values.
 // All thresholds for the same player+stat query the same distribution →
 // guarantees P(X≥3) ≥ P(X≥4) ≥ P(X≥5) by construction.
-export function buildNbaStatDist(gameValues, dvpFactor, paceAdj, isB2B, nSim = 5000) {
+export function buildNbaStatDist(gameValues, dvpFactor, paceAdj, isB2B, nSim = 5000, miscAdj = 1.0) {
   if (gameValues.length < 5) return null;
   // Mean from recent 10 (recency), std from full season (stability)
   const recentSlice = gameValues.slice(0, Math.min(10, gameValues.length));
@@ -175,6 +175,7 @@ export function buildNbaStatDist(gameValues, dvpFactor, paceAdj, isB2B, nSim = 5
   if (dvpFactor != null) adjMean *= dvpFactor;
   if (paceAdj != null) adjMean *= (1 + Math.min(Math.max(paceAdj, -15), 15) * 0.002);
   if (isB2B) adjMean *= 0.93;
+  if (miscAdj !== 1.0) adjMean *= miscAdj; // blowout/home-away/injury/PPTOI adj
   adjMean = Math.max(0, adjMean);
   // Box-Muller normal — store raw values so any threshold can be queried
   const dist = new Float32Array(nSim);

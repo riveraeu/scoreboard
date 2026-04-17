@@ -43,11 +43,16 @@ export function parseGameOdds(events) {
       const awayMLRaw = odds.moneyline?.away?.close?.odds ?? odds.awayTeamOdds?.moneyLine ?? null;
       const homeML = homeMLRaw != null ? parseInt(homeMLRaw) : null;
       const awayML = awayMLRaw != null ? parseInt(awayMLRaw) : null;
+      // C3: Extract spread (signed from each team's perspective: negative = favored)
+      const spreadRaw = odds.spread ?? odds.homeTeamOdds?.spreadLine ?? null;
+      const homeSpread = spreadRaw != null ? parseFloat(spreadRaw) : null;
+      const awaySpread = homeSpread != null ? -homeSpread : null;
       for (const competitor of comp.competitors || []) {
         const abbr = competitor.team?.abbreviation;
         if (!abbr) continue;
         const ml = competitor.homeAway === "home" ? homeML : awayML;
-        gameOdds[abbr] = { total, moneyline: ml };
+        const spread = competitor.homeAway === "home" ? homeSpread : awaySpread;
+        gameOdds[abbr] = { total, moneyline: ml, spread };
       }
     }
   }

@@ -150,6 +150,9 @@ export async function buildLineupKPct(mlbSched) {
       playerStats[pid] = (s26 && s26.pa >= 15) ? s26 : (s25 || s26 || { so: 0, pa: 0 });
     }
     const playerSplits = {};
+    // B1: Also track split BA per player (keyed by normalized name) for hitter platoon splits
+    const batterSplitBA = {};
+    const _bsNorm = n => n ? n.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() : "";
     for (const [code, res] of [["vr", resSplitVR], ["vl", resSplitVL]]) {
       for (const person of res.people || []) {
         const pid = person.id;
@@ -159,6 +162,17 @@ export async function buildLineupKPct(mlbSched) {
         if (!s?.stat) continue;
         if (!playerSplits[pid]) playerSplits[pid] = {};
         playerSplits[pid][code] = { so: s.stat.strikeOuts || 0, pa: s.stat.plateAppearances || 0 };
+        // B1: Extract split BA (hits/atBats) for hitter platoon simulation
+        if (person.fullName) {
+          const name = _bsNorm(person.fullName);
+          if (!batterSplitBA[name]) batterSplitBA[name] = {};
+          const ab = s.stat.atBats || 0;
+          const h = s.stat.hits || 0;
+          const baKey = code === "vr" ? "vsR" : "vsL";
+          const paKey = code === "vr" ? "vsRPA" : "vsLPA";
+          batterSplitBA[name][baKey] = ab >= 30 ? parseFloat((h / ab).toFixed(3)) : null;
+          batterSplitBA[name][paKey] = ab;
+        }
       }
     }
     const LEAGUE_K = 0.222; // MLB average K rate fallback
@@ -216,9 +230,9 @@ export async function buildLineupKPct(mlbSched) {
         }
       }
     }
-    return { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, projectedLineupTeams: [...projectedLineupTeams] };
+    return { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, projectedLineupTeams: [...projectedLineupTeams], batterSplitBA };
   } catch {
-    return { lineupKPct: {}, lineupBatterKPcts: {}, lineupKPctVR: {}, lineupKPctVL: {}, lineupBatterKPctsOrdered: {}, lineupBatterKPctsVROrdered: {}, lineupBatterKPctsVLOrdered: {}, lineupSpotByName: {}, gameHomeTeams: {}, projectedLineupTeams: [] };
+    return { lineupKPct: {}, lineupBatterKPcts: {}, lineupKPctVR: {}, lineupKPctVL: {}, lineupBatterKPctsOrdered: {}, lineupBatterKPctsVROrdered: {}, lineupBatterKPctsVLOrdered: {}, lineupSpotByName: {}, gameHomeTeams: {}, projectedLineupTeams: [], batterSplitBA: {} };
   }
 }
 
@@ -298,7 +312,7 @@ export async function buildPitcherKPct(mlbSched) {
       }
     }
     const allIds = [...allScheduledPitcherIds];
-    if (allIds.length === 0) return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherGS26: {}, pitcherHasAnchor: {} };
+    if (allIds.length === 0) return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherGS26: {}, pitcherHasAnchor: {}, pitcherRecentKPct: {}, pitcherLastStartDate: {}, pitcherLastStartPC: {} };
     const idStr = allIds.join(",");
     const [res25, res26] = await Promise.all([
       fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=pitching,type=season,season=2025,gameType=R)`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
@@ -362,6 +376,14 @@ export async function buildPitcherKPct(mlbSched) {
     const pitcherAvgPitches = {};
     const pitcherAvgPitchesById = {}; // per-ID version — used for overwritten pitchers in pitcherStatsByName
     const pitcherGS26 = {};
+    // A1: Recent form (last 5 starts K%)
+    const pitcherRecentKPct = {};
+    const pitcherRecentKPctById = {};
+    // A2: Rest (last start date + pitch count)
+    const pitcherLastStartDate = {};
+    const pitcherLastStartDateById = {};
+    const pitcherLastStartPC = {};
+    const pitcherLastStartPCById = {};
     for (const [abbr, id] of Object.entries(pitcherByTeam)) {
       const s26 = pitcherStats26[id];
       if (s26 && s26.gs > 0) pitcherGS26[abbr] = s26.gs;
@@ -409,6 +431,31 @@ export async function buildPitcherKPct(mlbSched) {
       if (avgP !== null) {
         pitcherAvgPitchesById[id] = avgP; // per-ID: used in pitcherStatsByName for overwritten pitchers
         for (const a of abbrs) pitcherAvgPitches[a] = avgP;
+      }
+      // A1: Recent form — last 5 starts K% (min 30 BF to trust the sample)
+      const recent5 = startSplits.slice(-5);
+      const r5K = recent5.reduce((s, sp) => s + (sp.stat?.strikeOuts || 0), 0);
+      const r5BF = recent5.reduce((s, sp) => {
+        if (sp.stat?.battersFaced) return s + sp.stat.battersFaced;
+        const ip = parseFloat(sp.stat?.inningsPitched || 0);
+        return s + (Math.floor(ip) * 3 + Math.round((ip % 1) * 10));
+      }, 0);
+      const _recentKPct = (recent5.length >= 3 && r5BF >= 30) ? parseFloat((r5K / r5BF * 100).toFixed(1)) : null;
+      if (_recentKPct !== null) {
+        pitcherRecentKPctById[id] = _recentKPct;
+        for (const a of abbrs) pitcherRecentKPct[a] = _recentKPct;
+      }
+      // A2: Rest — last start date + pitch count
+      const _lastSplit = startSplits.length > 0 ? startSplits[startSplits.length - 1] : null;
+      const _lastStartDate = _lastSplit?.date ?? null;
+      const _lastStartPC = _lastSplit?.stat?.numberOfPitches ?? null;
+      if (_lastStartDate) {
+        pitcherLastStartDateById[id] = _lastStartDate;
+        for (const a of abbrs) pitcherLastStartDate[a] = _lastStartDate;
+      }
+      if (_lastStartPC != null) {
+        pitcherLastStartPCById[id] = _lastStartPC;
+        for (const a of abbrs) pitcherLastStartPC[a] = _lastStartPC;
       }
     }
     // Step 2: fetch play-by-play for CSW% (many concurrent requests, may time out on edge)
@@ -482,6 +529,9 @@ export async function buildPitcherKPct(mlbSched) {
           avgPitches: pitcherAvgPitches[a] ?? null,
           gs26: pitcherGS26[a] ?? null,
           hasAnchor: pitcherHasAnchor[a] ?? null,
+          recentKPct: pitcherRecentKPct[a] ?? null,     // A1
+          lastStartDate: pitcherLastStartDate[a] ?? null, // A2
+          lastStartPC: pitcherLastStartPC[a] ?? null,    // A2
         };
       } else if (allScheduledPitcherIds.has(id)) {
         // Overwritten pitcher — compute stats directly from raw ID-keyed data
@@ -512,11 +562,14 @@ export async function buildPitcherKPct(mlbSched) {
           avgPitches: pitcherAvgPitchesById[id] ?? null,
           gs26: (s26?.gs > 0 ? s26.gs : null),
           hasAnchor: gs25 >= 5 && bf25 >= 100,
+          recentKPct: pitcherRecentKPctById[id] ?? null,     // A1
+          lastStartDate: pitcherLastStartDateById[id] ?? null, // A2
+          lastStartPC: pitcherLastStartPCById[id] ?? null,    // A2
         };
       }
     }
-    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherCSWPct, pitcherAvgPitches, pitcherGS26, pitcherHasAnchor, pitcherStatsByName };
+    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherCSWPct, pitcherAvgPitches, pitcherGS26, pitcherHasAnchor, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC };
   } catch {
-    return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherGS26: {}, pitcherHasAnchor: {} };
+    return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherGS26: {}, pitcherHasAnchor: {}, pitcherRecentKPct: {}, pitcherLastStartDate: {}, pitcherLastStartPC: {} };
   }
 }

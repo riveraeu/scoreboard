@@ -433,6 +433,99 @@ export async function buildNbaPlayerPosFromSleeper(cache) {
   }
 }
 
+// C1: Fetch per-player usage rate from ESPN stats API.
+// Returns { [espnId]: { usg, source } } — source "espn" if direct, "estimated" if computed.
+// Estimated from avgPTS + avgAST × 1.5 over avgMin × 0.42 (FTA-inclusive approximation).
+export async function buildNbaUsageRate(playerIds) {
+  const hdrs = { "User-Agent": "Mozilla/5.0" };
+  const result = {};
+  const batches = [];
+  for (let i = 0; i < playerIds.length; i += 10) batches.push(playerIds.slice(i, i + 10));
+  for (const batch of batches) {
+    await Promise.all(batch.map(async id => {
+      try {
+        const r = await fetch(
+          `https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/${id}/statistics`,
+          { headers: hdrs }
+        );
+        if (!r.ok) return;
+        const d = await r.json();
+        // Look for usageRate in any category
+        let usg = null;
+        for (const cat of d.categories || []) {
+          const stat = (cat.stats || []).find(s => s.name === "usageRate" || s.abbreviation === "USG%");
+          if (stat?.value != null) { usg = parseFloat(stat.value); break; }
+        }
+        if (usg != null && usg > 0) {
+          result[String(id)] = { usg, source: "espn" };
+          return;
+        }
+        // Fallback: estimate from avgPts, avgAst, avgMin
+        let avgPts = 0, avgAst = 0, avgMin = 0;
+        for (const cat of d.categories || []) {
+          for (const s of cat.stats || []) {
+            if (s.name === "avgPoints") avgPts = parseFloat(s.value) || 0;
+            if (s.name === "avgAssists") avgAst = parseFloat(s.value) || 0;
+            if (s.name === "avgMinutes") avgMin = parseFloat(s.value) || 0;
+          }
+        }
+        if (avgMin > 10) {
+          const est = ((avgPts + avgAst * 1.5) / (avgMin * 0.42)) * 100;
+          result[String(id)] = { usg: parseFloat(Math.min(50, Math.max(0, est)).toFixed(1)), source: "estimated" };
+        }
+      } catch {}
+    }));
+  }
+  return result;
+}
+
+// C2: Fetch ESPN NBA injury report. Returns Map<teamAbbr, [{name, status}]> for "Out" players.
+// Cached at nba:injuries:{date} for 1800s (30 min).
+export async function buildNbaInjuryReport(cache) {
+  try {
+    const date = new Date().toISOString().slice(0, 10);
+    const cacheKey = `nba:injuries:${date}`;
+    if (cache) {
+      const cached = await cache.get(cacheKey, "json").catch(() => null);
+      if (cached) {
+        // Return as Map
+        const m = new Map();
+        for (const [k, v] of Object.entries(cached)) m.set(k, v);
+        return m;
+      }
+    }
+    const r = await fetch(
+      "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/injuries",
+      { headers: { "User-Agent": "Mozilla/5.0" } }
+    );
+    if (!r.ok) return new Map();
+    const d = await r.json();
+    const injMap = {};
+    for (const teamEntry of d.injuries || []) {
+      const abbr = teamEntry.team?.abbreviation;
+      if (!abbr) continue;
+      const outPlayers = [];
+      for (const inj of teamEntry.injuries || []) {
+        const status = (inj.status || "").toLowerCase();
+        if (status !== "out") continue;
+        const name = (inj.athlete?.displayName || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+        if (name) outPlayers.push({ name, status: "out" });
+      }
+      if (outPlayers.length) injMap[abbr] = outPlayers;
+    }
+    if (cache && Object.keys(injMap).length > 0) {
+      await cache.put(cacheKey, JSON.stringify(injMap), { expirationTtl: 1800 }).catch(() => {});
+    }
+    console.log(`[nba-injuries] fetched: ${Object.values(injMap).reduce((s, v) => s + v.length, 0)} out players across ${Object.keys(injMap).length} teams`);
+    const m = new Map();
+    for (const [k, v] of Object.entries(injMap)) m.set(k, v);
+    return m;
+  } catch (e) {
+    console.log("[nba-injuries] error:", String(e));
+    return new Map();
+  }
+}
+
 export async function buildNbaDvpStage3FG(cache) {
   try {
     const [selected, cPartial] = await Promise.all([
