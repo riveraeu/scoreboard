@@ -2791,8 +2791,10 @@ var worker_default = {
                 if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateMLBTotalDist(_hLam, _aLam, 10000);
                 truePct = totalDistPct(totalDistCache[_dk], threshold);
               }
-              if (homeERA != null) totalSimScore += 3; if (awayERA != null) totalSimScore += 3;
-              if (homeRPG != null) totalSimScore += 2; if (awayRPG != null) totalSimScore += 2;
+              if (homeERA != null) totalSimScore += homeERA > 4.5 ? 3 : homeERA > 3.5 ? 2 : 1;
+              if (awayERA != null) totalSimScore += awayERA > 4.5 ? 3 : awayERA > 3.5 ? 2 : 1;
+              if (homeRPG != null) totalSimScore += homeRPG > 5.0 ? 2 : homeRPG > 4.0 ? 1 : 0;
+              if (awayRPG != null) totalSimScore += awayRPG > 5.0 ? 2 : awayRPG > 4.0 ? 1 : 0;
               if (Math.abs(parkRF - 1) > 0.01) totalSimScore += 2;
               if (Math.max(homeERA ?? 0, awayERA ?? 0) > 4.5) totalSimScore += 2;
             } else if (sport === "nba") {

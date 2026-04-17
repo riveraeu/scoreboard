@@ -2637,10 +2637,14 @@ function App() {
                         const hRPG = play.homeRPG ?? null, aRPG = play.awayRPG ?? null;
                         const pf = play.parkFactor ?? 1;
                         const et = play.expectedTotal ?? null;
-                        const eraColor = v => v == null ? "#8b949e" : v < 3.5 ? "#3fb950" : v < 4.5 ? "#e3b341" : "#f78166";
-                        const rpgColor = v => v == null ? "#8b949e" : v >= 5.5 ? "#f78166" : v >= 4.5 ? "#e3b341" : "#8b949e";
+                        const eraColor = v => v == null ? "#8b949e" : v > 4.5 ? "#3fb950" : v > 3.5 ? "#e3b341" : "#f78166";
+                        const rpgColor = v => v == null ? "#8b949e" : v > 5.0 ? "#3fb950" : v > 4.0 ? "#e3b341" : "#8b949e";
                         const etColor = et == null ? "#8b949e" : et >= play.threshold + 0.5 ? "#3fb950" : et >= play.threshold - 0.5 ? "#e3b341" : "#8b949e";
-                        const scTitle = [`${play.homeTeam} ERA: ${hERA != null ? "3" : "0"}/3`,`${play.awayTeam} ERA: ${aERA != null ? "3" : "0"}/3`,`${play.homeTeam} RPG: ${hRPG != null ? "2" : "0"}/2`,`${play.awayTeam} RPG: ${aRPG != null ? "2" : "0"}/2`,`Park factor: ${Math.abs(pf-1) > 0.01 ? "2" : "0"}/2`,`ERA > 4.5: ${Math.max(hERA??0, aERA??0) > 4.5 ? "2" : "0"}/2`].join("\n");
+                        const hERAPts = hERA != null ? (hERA > 4.5 ? 3 : hERA > 3.5 ? 2 : 1) : 0;
+                        const aERAPts = aERA != null ? (aERA > 4.5 ? 3 : aERA > 3.5 ? 2 : 1) : 0;
+                        const hRPGPts = hRPG != null ? (hRPG > 5.0 ? 2 : hRPG > 4.0 ? 1 : 0) : 0;
+                        const aRPGPts = aRPG != null ? (aRPG > 5.0 ? 2 : aRPG > 4.0 ? 1 : 0) : 0;
+                        const scTitle = [`${play.homeTeam} ERA (${hERA != null ? hERA.toFixed(2) : "—"}): ${hERAPts}/3`,`${play.awayTeam} ERA (${aERA != null ? aERA.toFixed(2) : "—"}): ${aERAPts}/3`,`${play.homeTeam} RPG (${hRPG != null ? hRPG.toFixed(1) : "—"}): ${hRPGPts}/2`,`${play.awayTeam} RPG (${aRPG != null ? aRPG.toFixed(1) : "—"}): ${aRPGPts}/2`,`Park RF (${pf.toFixed(2)}): ${Math.abs(pf-1) > 0.01 ? 2 : 0}/2`,`Max ERA >4.5 (${Math.max(hERA??0,aERA??0).toFixed(2)}): ${Math.max(hERA??0,aERA??0) > 4.5 ? 2 : 0}/2`].join("\n");
                         return (
                           <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.65}}>
                             <span style={{color:"#c9d1d9"}}>{play.awayTeam}</span>'s starter has{aERA != null ? <> a <span style={{color:eraColor(aERA),fontWeight:600}}>{aERA.toFixed(2)} ERA</span></> : " — ERA"}, facing a <span style={{color:"#c9d1d9"}}>{play.homeTeam}</span> offense averaging{hRPG != null ? <> <span style={{color:rpgColor(hRPG),fontWeight:600}}>{hRPG.toFixed(1)}</span> runs/game</> : " — RPG"}.
