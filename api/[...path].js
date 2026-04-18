@@ -2462,9 +2462,9 @@ var worker_default = {
             // 4. Rest — not B2B → 2pts
             if (!isB2B) _sc += 2;
             // 5. Game total — high total = more possessions/scoring = favorable for counting stats
-            // ≥235→3pts, ≥225→2pts, ≥215→1pt, <215→0pts, null→1pt (abstain)
+            // ≥235→3pts, ≥225→2pts, else→1pt (low total still scores 1 — not a disqualifier), null→1pt (abstain)
             nbaGameTotal = (sportByteam.nbaGameOdds ?? {})[playerTeam]?.total ?? null;
-            nbaTotalPts = nbaGameTotal == null ? 1 : nbaGameTotal >= 235 ? 3 : nbaGameTotal >= 225 ? 2 : nbaGameTotal >= 215 ? 1 : 0;
+            nbaTotalPts = nbaGameTotal == null ? 1 : nbaGameTotal >= 235 ? 3 : nbaGameTotal >= 225 ? 2 : 1;
             _sc += nbaTotalPts;
             nbaPreSimScore = _sc;
             // C3: Blowout risk — downward adj when spread implies likely blowout (|spread|>10)
