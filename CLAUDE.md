@@ -327,7 +327,7 @@ Single-page app uses `history.pushState` + `popstate` for client-side navigation
 `TeamPage({ abbr, sport, teamPageData, tonightPlays, onBack, navigateToTeam })` component:
 - **Independent page** — plays/picks grid is gated `!player && !teamPage`, so it hides completely when a team page is active (same behavior as the player card)
 - Header: team logo (ESPN CDN), name, sport/record, W/L/Avg stat boxes
-- Tonight's game banner (if matching total play exists in `tonightPlays`)
+- Tonight's game banner (if matching total play exists in `tonightPlays`) — shows matchup, Over line, Kalshi%, model%, edge badge, then a sport-specific explanation block below: same ERA/RPG prose (MLB), PPG/pace prose (NBA), or GPG/GAA prose (NHL) as `TotalPlayCard`, including SimScore badge with hover tooltip
 - **Totals tab** (always shown): `TotalsBarChart` + sortable game log (Date, H/A, Opp, Us, Opp, Total, W/L)
 - **Lineup tab** (shown when `lineup.length > 0`): NBA → position + player photo + name; MLB → batting order + probable SP
 - Opp names in game log are clickable → `navigateToTeam(g.opp, sport)`
