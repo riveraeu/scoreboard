@@ -77,7 +77,7 @@ Used for caching expensive fetches. Key TTLs:
 - **True%**: Monte Carlo simulation per sport — Poisson for MLB/NHL (`simulateMLBTotalDist`, `simulateNHLTotalDist`), Normal for NBA (`simulateNBATotalDist`)
 - **Team extraction**: `parseGameTeams()` handles all sport-specific team code formats. Kalshi uses non-standard abbreviations for some teams; `TEAM_NORM` (in `api/[...path].js`) maps them to ESPN standard codes: NBA: `{ GS→GSW, SA→SAS, NY→NYK, NJ→BKN, NO→NOP, PHO→PHX, WPH→PHX }`. After building `STAT_SOFT["nba|*"]` rankMaps from ESPN byteam (which also returns short codes like "GS"), a post-normalization loop adds the long-form key so `nbaDefRank["GSW"]` resolves correctly.
 - **`direction: "over"`** — currently only over plays surfaced (YES on Kalshi)
-- **Edge gate**: `edge >= 3%` (same as player props); no soft matchup gate for totals
+- **Edge gate**: `edge >= 5%` (same as player props); no soft matchup gate for totals
 - **SimScore** (max 14): tiered by stat quality, not just data existence; `qualified: totalSimScore >= 11`
 - **Data maps** (`mlbRPGMap`, `nhlGPGMap/GAAMap`, `nbaOffPPGMap`) computed inline after `leagueAvgCache` block
 - **Play card**: `gameType: "total"` flag triggers `TotalPlayCard` branch in the play card render; shows dual team logos (ESPN CDN), matchup header, true%/Kalshi% bars, explanation prose, SimScore badge
@@ -149,7 +149,7 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
   - O/U total tier (high total = more run-scoring): ≥9.5 → 2pts, ≥7.5 → 1pt, <7.5 → 0pts, null → 1pt
   - Max: 3+3+2+1+3+2 = 14
 - **B2 — Batter recent form**: `hitterEffectiveBA = 0.6 × recentBA + 0.4 × seasonBA` when ≥20 AB in last 10 2026 games; else uses seasonBA. Fed directly into `simulateHits` as `batterBA`. `batterRecentBA` map built inline from ESPN gamelog in main play loop.
-- **Gates**: lineup spot 1–4 required; hitterSimScore ≥ 7; edge ≥ 3% (gate only, not scored)
+- **Gates**: lineup spot 1–4 required; hitterSimScore ≥ 7; edge ≥ 5% (gate only, not scored)
 - Barrel% from Baseball Savant (`buildBarrelPct`) — cached 6h in KV; `hitterBarrelPts` stored in play output
 - NBA game totals fetched from ESPN scoreboard (`sportByteam.nbaGameOdds`) — always fresh (not long-term cached)
 
@@ -167,7 +167,7 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
     - **C4 — Home/away split**: `nbaSplitAdj = splitMean / overallMean` where `splitMean` is the weighted avg (0.7 home or 0.3 away depending on venue) of home/away-filtered game values vs the opponent type; fallback to 1.0 if insufficient split data.
   - Falls back to avg(seasonPct, softPct) − 4% if B2B when simulation returns null (<5 game values)
 - **SimScore** (max 14, edge gates separately — same pattern as MLB strikeouts):
-  - Pace: avg pace >0 vs league avg → 3pts, >-2 → 2pts, else 0pts — fetched from ESPN via `buildNbaPaceData()`, cached 12h
+  - Pace: avg pace >0 vs league avg → 3pts, >-2 → 2pts, else → 1pt (slow game still scores 1 — not a disqualifier) — fetched from ESPN via `buildNbaPaceData()`, cached 12h
   - **C1 — stat-appropriate opportunity signal** (max 4pts, null → 2pts abstain). From `buildNbaUsageRate` (same ESPN endpoint, now also extracts `avgAssists`/`avgRebounds`):
     - **points / threePointers**: USG% ≥28% → 4pts, ≥22% → 2pts, <22% → 0pts. (`USG% = (avgFGA + 0.44×avgFTA + avgTO) / (avgMin × 2.255) × 100` — ESPN `usageRate` is 0.0 so fallback always runs)
     - **assists**: APG ≥7 → 4pts, ≥5 → 2pts, <5 → 0pts. (USG% is inversely correlated with passing role)
@@ -178,7 +178,7 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
   - Max: 3+4+2+2+3 = 14
   - Game totals from `sportByteam.nbaGameOdds` (ESPN NBA scoreboard, fetched fresh each request alongside byteam stats)
 - nSim scales with pre-edge simScore: ≥8 → 10k, ≥5 → 5k, else 2k
-- **Gate**: opp in soft DVP teams; edge ≥ 3% (gate only, not scored)
+- **Gate**: opp in soft DVP teams; edge ≥ 5% (gate only, not scored)
 - Avg minutes still extracted from ESPN gamelog `MIN` column (last 10 games) — used for display in explanation card but no longer the SimScore component
 - Depth chart position via `nbaDepthChartPos` (ESPN depth chart API, cached daily)
 
@@ -204,11 +204,11 @@ True% = Monte Carlo simulation (reuses `buildNbaStatDist` + `nbaDistPct`) — no
 - **B2B** detection: same as NBA — checks if last gamelog event was yesterday (UTC)
 - TOI from ESPN gamelog `TOI` or `timeOnIce` column; parsed as `MM:SS` or decimal minutes
 - Shots against rank from NHL API `shotsAgainstPerGame`, stored in `nhlSaRankMap`, league avg in `nhlLeagueAvgSa`
-- **Gate**: edge ≥ 3% (no backend soft team gate — all NHL markets enter play loop)
+- **Gate**: edge ≥ 5% (no backend soft team gate — all NHL markets enter play loop)
 
 ### NFL
 - **Stats**: `passingYards`, `rushingYards`, `receivingYards`, `receptions`, `completions`, `attempts`
-- Gate: opp in soft teams; edge ≥ 3%
+- Gate: opp in soft teams; edge ≥ 5%
 
 ---
 

@@ -2432,6 +2432,7 @@ var worker_default = {
                 nbaPaceAdj = parseFloat(((_tp + _op) / 2 - (nbaPaceData.leagueAvgPace ?? 100)).toFixed(1));
                 if (nbaPaceAdj > 0) _sc += 3;
                 else if (nbaPaceAdj > -2) _sc += 2;
+                else _sc += 1;
               }
             }
             // 2. C1: USG% — replaces avgMin for SimScore. nbaOpportunity still uses avgMin for display.
@@ -2637,14 +2638,14 @@ var worker_default = {
           // NHL SimScore — finalize with edge bonus
           let nhlSimScore = null;
           if (sport === "nhl" && nhlPreSimScore !== null) {
-            nhlSimScore = nhlPreSimScore + (edge >= 3 ? 3 : 0);
+            nhlSimScore = nhlPreSimScore + (edge >= 5 ? 3 : 0);
           }
-          if (kalshiPct < 70 || edge < 3) {
+          if (kalshiPct < 70 || edge < 5) {
             const _dropObj = {
               ..._dropBase,
               truePct: parseFloat(truePct.toFixed(1)), rawTruePct: parseFloat(rawTruePct.toFixed(1)),
               edge: parseFloat(edge.toFixed(1)),
-              reason: edge < 3 ? "edge_too_low" : "kalshi_pct_too_low",
+              reason: edge < 5 ? "edge_too_low" : "kalshi_pct_too_low",
               opponent: tonightOpp, seasonPct: parseFloat((primaryPct).toFixed(1)),
               softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
               posDvpRank: posDvpRankOut, posGroup: posGroupOut,
@@ -3024,7 +3025,7 @@ var worker_default = {
             }
             const rawEdge = parseFloat((truePct - kalshiPct).toFixed(1));
             const edge = rawEdge;
-            if (edge < 3) {
+            if (edge < 5) {
               if (isDebug) dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, spreadAdj: spreadAdj > 0 ? parseFloat(spreadAdj.toFixed(1)) : 0, edge, totalSimScore, reason: "edge_too_low", ..._simData });
               continue;
             }

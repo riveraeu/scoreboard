@@ -1080,7 +1080,7 @@ function App() {
               {reportData?.error && <div style={{color:"#f78166",textAlign:"center",padding:40,fontSize:13}}>Error: {reportData.error}</div>}
               {reportData && !reportLoading && (() => {
                 const REASON = {
-                  edge_too_low: "Edge < 3%",
+                  edge_too_low: "Edge < 5%",
                   kalshi_pct_too_low: "Implied < 70%",
                   opp_not_soft: "Soft matchup not met",
                   low_confidence: "Sim-Score < 7",
@@ -1118,13 +1118,13 @@ function App() {
                 if (sortedGroups.length === 0) return <div style={{color:"#8b949e",textAlign:"center",padding:40,fontSize:13}}>No markets.</div>;
 
                 const CRITERIA_SUMMARIES = {
-                  "mlb|hrr":       { note: "True% = Monte Carlo simulation (batterBA \u00d7 pitcherBAA log5) \u00b7 park-adjusted \u00b7 Sim-Score \u2265 7 (spot\u21923/2, WHIP\u21923, platoon\u21920-2, park\u21921, barrel%\u21920-3, O/U\u21920-2) = max 14; edge gates separately", gates: ["Lineup spot 1\u20134", "Sim-Score \u2265 7 (max 14)", "Edge \u2265 3%"] },
-                  "mlb|hits":      { note: "True% = Monte Carlo simulation (batterBA \u00d7 pitcherBAA log5) \u00b7 park-adjusted \u00b7 Sim-Score \u2265 7 (spot\u21923/2, WHIP\u21923, platoon\u21920-2, park\u21921, barrel%\u21920-3, O/U\u21920-2) = max 14; edge gates separately", gates: ["Lineup spot 1\u20134", "Sim-Score \u2265 7 (max 14)", "Edge \u2265 3%"] },
-                  "mlb|strikeouts":{ note: "True% = Monte Carlo simulation (pitcher K% \u00d7 lineup K% log5) \u00b7 regressed to mean \u00b7 park-adjusted \u00b7 Sim-Score \u2265 7 (CSW%\u21923, K-BB%\u21922, oK%\u21923, P/GS\u21922, ML\u21920-2, O/U\u21920-2) = max 14; edge gates separately", gates: ["Sim-Score \u2265 7 (max 14)", "Edge \u2265 3%"] },
-                  "nba|points":    { note: "True% = avg(Season%, vs-soft-DVP-team%) \u00b7 B2B -4% \u00b7 Sim-Score: pace(3) + min(4) + DVP(2) + rest(2) + O/U(0-3) = max 14; edge gates separately", gates: ["Opp in soft DVP teams", "Edge \u2265 3%"] },
-                  "nba|rebounds":  { note: "True% = avg(Season%, vs-soft-DVP-team%) \u00b7 B2B -4% \u00b7 Sim-Score: pace(3) + min(4) + DVP(2) + rest(2) + O/U(0-3) = max 14; edge gates separately", gates: ["Opp in soft DVP teams", "Edge \u2265 3%"] },
-                  "nba|assists":   { note: "True% = avg(Season%, vs-soft-DVP-team%) \u00b7 B2B -4% \u00b7 Sim-Score: pace(3) + min(4) + DVP(2) + rest(2) + O/U(0-3) = max 14; edge gates separately", gates: ["Opp in soft DVP teams", "Edge \u2265 3%"] },
-                  "nba|threePointers": { note: "True% = avg(Season%, vs-soft-DVP-team%) \u00b7 B2B -4% \u00b7 Sim-Score: pace(3) + min(4) + DVP(2) + rest(2) + O/U(0-3) = max 14; edge gates separately", gates: ["Opp in soft DVP teams", "Edge \u2265 3%"] },
+                  "mlb|hrr":       { note: "True% = Monte Carlo simulation (batterBA \u00d7 pitcherBAA log5) \u00b7 park-adjusted \u00b7 Sim-Score \u2265 7 (spot\u21923/2, WHIP\u21923, platoon\u21920-2, park\u21921, barrel%\u21920-3, O/U\u21920-2) = max 14; edge gates separately", gates: ["Lineup spot 1\u20134", "Sim-Score \u2265 7 (max 14)", "Edge \u2265 5%"] },
+                  "mlb|hits":      { note: "True% = Monte Carlo simulation (batterBA \u00d7 pitcherBAA log5) \u00b7 park-adjusted \u00b7 Sim-Score \u2265 7 (spot\u21923/2, WHIP\u21923, platoon\u21920-2, park\u21921, barrel%\u21920-3, O/U\u21920-2) = max 14; edge gates separately", gates: ["Lineup spot 1\u20134", "Sim-Score \u2265 7 (max 14)", "Edge \u2265 5%"] },
+                  "mlb|strikeouts":{ note: "True% = Monte Carlo simulation (pitcher K% \u00d7 lineup K% log5) \u00b7 regressed to mean \u00b7 park-adjusted \u00b7 Sim-Score \u2265 7 (CSW%\u21923, K-BB%\u21922, oK%\u21923, P/GS\u21922, ML\u21920-2, O/U\u21920-2) = max 14; edge gates separately", gates: ["Sim-Score \u2265 7 (max 14)", "Edge \u2265 5%"] },
+                  "nba|points":    { note: "True% = avg(Season%, vs-soft-DVP-team%) \u00b7 B2B -4% \u00b7 Sim-Score: pace(3) + min(4) + DVP(2) + rest(2) + O/U(0-3) = max 14; edge gates separately", gates: ["Opp in soft DVP teams", "Edge \u2265 5%"] },
+                  "nba|rebounds":  { note: "True% = avg(Season%, vs-soft-DVP-team%) \u00b7 B2B -4% \u00b7 Sim-Score: pace(3) + min(4) + DVP(2) + rest(2) + O/U(0-3) = max 14; edge gates separately", gates: ["Opp in soft DVP teams", "Edge \u2265 5%"] },
+                  "nba|assists":   { note: "True% = avg(Season%, vs-soft-DVP-team%) \u00b7 B2B -4% \u00b7 Sim-Score: pace(3) + min(4) + DVP(2) + rest(2) + O/U(0-3) = max 14; edge gates separately", gates: ["Opp in soft DVP teams", "Edge \u2265 5%"] },
+                  "nba|threePointers": { note: "True% = avg(Season%, vs-soft-DVP-team%) \u00b7 B2B -4% \u00b7 Sim-Score: pace(3) + min(4) + DVP(2) + rest(2) + O/U(0-3) = max 14; edge gates separately", gates: ["Opp in soft DVP teams", "Edge \u2265 5%"] },
                 };
 
                 return sortedGroups.map(({ sport, stat, items }) => {
@@ -1371,7 +1371,7 @@ function App() {
                                   {(sport === "mlb" || sport === "nba" || stat.startsWith("total")) && <div style={{flex:1,fontSize:11,textAlign:"right"}}>{xcell(m,"sim")}</div>}
                                   <div style={{flex:1,fontSize:11,textAlign:"right",color:truePct!=null?"#e3b341":"#21262d",fontWeight:truePct!=null?600:400}}>{truePct!=null?`${truePct}%`:"—"}</div>
                                   <div style={{flex:1,fontSize:11,textAlign:"right"}}><span style={{color:"#c9d1d9"}}>{m.kalshiPct}%</span></div>
-                                  <div style={{flex:1,fontSize:11,textAlign:"right",color:edge!=null&&edge>=3?"#3fb950":edge!=null&&edge<0?"#f78166":"#8b949e"}}>{edge!=null?(edge>=0?`+${edge.toFixed(1)}`:`${edge.toFixed(1)}`)+"%" :"—"}</div>
+                                  <div style={{flex:1,fontSize:11,textAlign:"right",color:edge!=null&&edge>=5?"#3fb950":edge!=null&&edge<0?"#f78166":"#8b949e"}}>{edge!=null?(edge>=0?`+${edge.toFixed(1)}`:`${edge.toFixed(1)}`)+"%" :"—"}</div>
                                   {xcols.map(c => <div key={c.k} style={{flex:1,fontSize:11,textAlign:"right"}}>{xcell(m,c.k)}</div>)}
                                   {!isTotal && <div style={{flex:_oppFlex,fontSize:10,textAlign:"right",whiteSpace:"nowrap"}}>
                                     {(() => { const pn = m.pitcherName || m.hitterPitcherName; const parts = pn ? pn.trim().split(" ") : []; const shortPn = parts.length >= 2 ? `${parts[0][0]}. ${parts.slice(1).join(" ")}` : pn; return m.sport==="mlb" && m.stat!=="strikeouts" && pn
@@ -1825,7 +1825,7 @@ function App() {
                                     {tonightHitPlay?.hitterParkMeets != null && mkH(tonightHitPlay.hitterParkMeets, "Park")}
                                     {tonightHitPlay?.hitterBarrelPts != null && <span key="brrl" style={{color:tonightHitPlay.hitterBarrelPts>=3?"#3fb950":tonightHitPlay.hitterBarrelPts>=2?"#e3b341":tonightHitPlay.hitterBarrelPts>=1?"#8b949e":"#f78166",fontSize:9,whiteSpace:"nowrap"}}>{tonightHitPlay.hitterBarrelPts>0?"✓":"✗"}Brrl{tonightHitPlay.hitterBarrelPct!=null?" "+tonightHitPlay.hitterBarrelPct.toFixed(0)+"%":""}</span>}
                                     {tonightHitPlay?.hitterTotalPts != null && <span key="ou" style={{color:tonightHitPlay.hitterTotalPts>=2?"#3fb950":tonightHitPlay.hitterTotalPts>=1?"#e3b341":"#f78166",fontSize:9,whiteSpace:"nowrap"}}>{tonightHitPlay.hitterTotalPts>0?"✓":"✗"}O/U{tonightHitPlay.hitterGameTotal!=null?" "+tonightHitPlay.hitterGameTotal:""}</span>}
-                                    {tonightHitPlay?.edge != null && <span style={{color:tonightHitPlay.edge >= 3 ? "#3fb950" : tonightHitPlay.edge >= 0 ? "#e3b341" : "#f78166",fontSize:9,opacity:tonightHitPlay.edge >= 3 ? 1 : 0.7,whiteSpace:"nowrap"}}>{tonightHitPlay.edge >= 3 ? "✓" : "✗"} Edge {tonightHitPlay.edge > 0 ? "+" : ""}{tonightHitPlay.edge}%</span>}
+                                    {tonightHitPlay?.edge != null && <span style={{color:tonightHitPlay.edge >= 5 ? "#3fb950" : tonightHitPlay.edge >= 0 ? "#e3b341" : "#f78166",fontSize:9,opacity:tonightHitPlay.edge >= 5 ? 1 : 0.7,whiteSpace:"nowrap"}}>{tonightHitPlay.edge >= 5 ? "✓" : "✗"} Edge {tonightHitPlay.edge > 0 ? "+" : ""}{tonightHitPlay.edge}%</span>}
                                   </span>
                                 </div>
                               )}
@@ -1897,7 +1897,7 @@ function App() {
                               : safeTab === "rebounds"
                               ? `RPG: ${nbaAvgReb != null ? nbaAvgReb.toFixed(1)+" → "+_usgPts : "—"}/4`
                               : `USG%: ${nbaUsage != null ? nbaUsage.toFixed(1)+"% → "+_usgPts : "—"}/4`;
-                            const scTitle = sc != null ? [`Pace: ${nbaPaceAdj != null ? (nbaPaceAdj > 0 ? 3 : nbaPaceAdj > -2 ? 2 : 0) : "—"}/3`,_c1Label,`DVP: ${tonightTabPlay?.posDvpRank != null ? (tonightTabPlay.posDvpRank <= 10 ? 2 : 0) : "—"}/2`,`Rested: ${isB2B != null ? (!isB2B ? 2 : 0) : "—"}/2`,`O/U: ${nbaTotalPts != null ? nbaTotalPts : "—"}/3`].join("\n") : null;
+                            const scTitle = sc != null ? [`Pace: ${nbaPaceAdj != null ? (nbaPaceAdj > 0 ? 3 : nbaPaceAdj > -2 ? 2 : 1) : "—"}/3`,_c1Label,`DVP: ${tonightTabPlay?.posDvpRank != null ? (tonightTabPlay.posDvpRank <= 10 ? 2 : 0) : "—"}/2`,`Rested: ${isB2B != null ? (!isB2B ? 2 : 0) : "—"}/2`,`O/U: ${nbaTotalPts != null ? nbaTotalPts : "—"}/3`].join("\n") : null;
                             return (
                               <>
                                 <div>
@@ -1960,7 +1960,7 @@ function App() {
                                       {mkGate(nhlOpportunity != null && nhlOpportunity >= 18, 4, `${nhlOpportunity != null ? nhlOpportunity.toFixed(0)+"m TOI" : "—"}`)}
                                       {mkGate(rank != null && rank <= 10, 2, `GAA #${rank ?? "—"}`)}
                                       {mkGate(nhlIsB2B != null && !nhlIsB2B, 2, nhlIsB2B ? "B2B" : "Rested")}
-                                      {edge != null && <span style={{color:edge >= 3 ? "#3fb950" : edge >= 0 ? "#e3b341" : "#f78166",fontSize:9,opacity:edge >= 3 ? 1 : 0.7,whiteSpace:"nowrap"}}>{edge >= 3 ? "✓" : "✗"} Edge {edge > 0 ? "+" : ""}{edge}% (3)</span>}
+                                      {edge != null && <span style={{color:edge >= 5 ? "#3fb950" : edge >= 0 ? "#e3b341" : "#f78166",fontSize:9,opacity:edge >= 5 ? 1 : 0.7,whiteSpace:"nowrap"}}>{edge >= 5 ? "✓" : "✗"} Edge {edge > 0 ? "+" : ""}{edge}% (5)</span>}
                                     </span>
                                   </div>
                                 )}
@@ -2053,14 +2053,14 @@ function App() {
                     const oddsStr = k ? (k.americanOdds >= 0 ? `+${k.americanOdds}` : `${k.americanOdds}`) : null;
                     // Use API net edge (includes spreadAdj) when available; fallback recomputes raw edge
                     const edge = (tonightPlay?.edge != null && !isUnder) ? tonightPlay.edge : (truePct !== null && k) ? truePct - k.pct : null;
-                    const edgeColor = edge === null ? null : edge > 3 ? "#3fb950" : edge < -3 ? "#f78166" : "#8b949e";
+                    const edgeColor = edge === null ? null : edge > 5 ? "#3fb950" : edge < -5 ? "#f78166" : "#8b949e";
                     const edgeStr = edge === null ? null : (edge >= 0 ? `+${edge.toFixed(1)}%` : `${edge.toFixed(1)}%`);
 
                     // Show track button only when the play qualifies (same criteria as /tonight)
                     // Use raw season pct as fallback when no h2h softPct is available
                     const qualifyingPct = truePct !== null ? truePct : pct;
                     const strongMatchupOk = !(isMLB && safeTab === "strikeouts") || ((dvpData?.h2h?.simScore ?? tonightPlay?.simScore ?? -1) >= 7);
-                    const qualifies = k && k.pct >= 70 && edge >= 3 && strongMatchupOk;
+                    const qualifies = k && k.pct >= 70 && edge >= 5 && strongMatchupOk;
                     const sportSlug = sport.split("/")[1];
                     const trackId = `${sportSlug}|${player.name}|${safeTab}|${t}|${tonightPlay?.gameDate || ""}`;
                     const isTracked = trackedPlays.some(p => p.id === trackId);
@@ -3008,7 +3008,7 @@ function App() {
                             : play.stat === "rebounds"
                             ? `RPG: ${play.nbaAvgReb != null ? play.nbaAvgReb.toFixed(1)+" → "+_usgPts : "—"}/4`
                             : `USG%: ${play.nbaUsage != null ? play.nbaUsage.toFixed(1)+"% → "+_usgPts : "—"}/4`;
-                          const scTitle = sc != null ? [`Pace: ${play.nbaPaceAdj != null ? (play.nbaPaceAdj > 0 ? 3 : play.nbaPaceAdj > -2 ? 2 : 0) : "—"}/3`,_c1Label,`DVP: ${play.posDvpRank != null ? (play.posDvpRank <= 10 ? 2 : 0) : "—"}/2`,`Rested: ${play.isB2B != null ? (!play.isB2B ? 2 : 0) : "—"}/2`,`O/U: ${play.nbaTotalPts != null ? play.nbaTotalPts : "—"}/3`].join("\n") : null;
+                          const scTitle = sc != null ? [`Pace: ${play.nbaPaceAdj != null ? (play.nbaPaceAdj > 0 ? 3 : play.nbaPaceAdj > -2 ? 2 : 1) : "—"}/3`,_c1Label,`DVP: ${play.posDvpRank != null ? (play.posDvpRank <= 10 ? 2 : 0) : "—"}/2`,`Rested: ${play.isB2B != null ? (!play.isB2B ? 2 : 0) : "—"}/2`,`O/U: ${play.nbaTotalPts != null ? play.nbaTotalPts : "—"}/3`].join("\n") : null;
                           return (
                             <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.65}}>
                               <div>
@@ -3059,7 +3059,7 @@ function App() {
                                     {mkGate(play.nhlOpportunity != null && play.nhlOpportunity >= 18, 4, `${play.nhlOpportunity != null ? play.nhlOpportunity.toFixed(0)+"m TOI" : "—"}`)}
                                     {mkGate(play.oppRank != null && play.oppRank <= 10, 2, `GAA #${play.oppRank ?? "—"}`)}
                                     {mkGate(play.isB2B != null && !play.isB2B, 2, play.isB2B ? "B2B" : "Rested")}
-                                    {play.edge != null && <span style={{color:play.edge >= 3 ? "#3fb950" : play.edge >= 0 ? "#e3b341" : "#f78166",fontSize:9,opacity:play.edge >= 3 ? 1 : 0.7,whiteSpace:"nowrap"}}>{play.edge >= 3 ? "✓" : "✗"} Edge {play.edge > 0 ? "+" : ""}{play.edge}% (3)</span>}
+                                    {play.edge != null && <span style={{color:play.edge >= 5 ? "#3fb950" : play.edge >= 0 ? "#e3b341" : "#f78166",fontSize:9,opacity:play.edge >= 5 ? 1 : 0.7,whiteSpace:"nowrap"}}>{play.edge >= 5 ? "✓" : "✗"} Edge {play.edge > 0 ? "+" : ""}{play.edge}% (5)</span>}
                                   </span>
                                 </div>
                               )}
