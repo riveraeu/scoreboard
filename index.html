@@ -186,10 +186,8 @@ const TOTAL_THRESHOLDS = {
 };
 
 function TotalsBarChart({ gameLog, sport, tonightPlay }) {
-  const [hovered, setHovered] = React.useState(null);
   const thresholds = TOTAL_THRESHOLDS[sport] || [5,6,7,8,9,10];
   const completed = (gameLog || []).filter(g => g.result);
-  // tonightPlay.threshold = 8 means "Over 7.5" → bar at t=8 is highlighted
   const tonightT = tonightPlay?.threshold ?? null;
 
   const data = thresholds.map(t => {
@@ -197,49 +195,43 @@ function TotalsBarChart({ gameLog, sport, tonightPlay }) {
     const pct = completed.length > 0 ? (count / completed.length) * 100 : 0;
     return { t, count, pct };
   });
-  const maxPct = Math.max(...data.map(d => d.pct), 1);
-  const BAR_H = 72;
 
   return (
     <div>
-      <div style={{color:"#8b949e",fontSize:11,marginBottom:10}}>
-        Over/Under Hit Rate — {sport.toUpperCase()} 2025-26 ({completed.length}g)
+      <div style={{color:"#8b949e",fontSize:11,marginBottom:12}}>
+        % of {completed.length} games with combined total ≥ threshold
       </div>
-      <div style={{display:"flex",gap:3,alignItems:"flex-end",height:BAR_H+44}}>
-        {data.map(({ t, count, pct }) => {
-          const isTonight = tonightT != null && t === tonightT;
-          const color = isTonight ? "#58a6ff" : tierColor(pct);
-          const barH = Math.max(3, Math.round((pct / 100) * BAR_H));
-          const lineLabel = `O${(t - 0.5).toFixed(1)}`;
-          return (
-            <div key={t} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",position:"relative",cursor:"default"}}
-              onMouseEnter={() => setHovered(t)} onMouseLeave={() => setHovered(null)}>
-              <div style={{fontSize:9,color:color,fontWeight:isTonight?700:600,marginBottom:2,lineHeight:1}}>
-                {Math.round(pct)}%
-              </div>
-              <div style={{width:"75%",height:barH,background:color,borderRadius:"3px 3px 0 0",
-                boxShadow:isTonight?`0 0 6px ${color}`:undefined}}/>
-              <div style={{fontSize:9,color:isTonight?"#58a6ff":"#484f58",fontWeight:isTonight?700:400,marginTop:3,lineHeight:1}}>
-                {lineLabel}
-              </div>
-              {isTonight && (
-                <div style={{position:"absolute",top:-18,left:"50%",transform:"translateX(-50%)",
-                  fontSize:8,color:"#58a6ff",whiteSpace:"nowrap",fontWeight:700,
-                  background:"rgba(88,166,255,0.12)",borderRadius:3,padding:"1px 4px",border:"1px solid rgba(88,166,255,0.3)"}}>
-                  tonight
-                </div>
-              )}
-              {hovered === t && (
-                <div style={{position:"absolute",bottom:"calc(100% + 4px)",left:"50%",transform:"translateX(-50%)",
-                  background:"#1c2128",border:"1px solid #30363d",borderRadius:6,padding:"5px 8px",
-                  zIndex:100,whiteSpace:"nowrap",pointerEvents:"none",fontSize:10,color:"#c9d1d9"}}>
-                  {count}/{completed.length} games
-                </div>
-              )}
+      {data.map(({ t, count, pct }) => {
+        const isTonight = tonightT != null && t === tonightT;
+        const color = isTonight ? "#58a6ff" : tierColor(pct);
+        const lineLabel = `O${(t - 0.5).toFixed(1)}`;
+        return (
+          <div key={t} style={{display:"flex",gap:10,marginBottom:10,alignItems:"center"}}>
+            <div style={{color:isTonight?"#58a6ff":"#8b949e",fontSize:12,width:40,textAlign:"right",
+              flexShrink:0,fontWeight:isTonight?700:400}}>
+              {lineLabel}
             </div>
-          );
-        })}
-      </div>
+            <div style={{flex:1,background:"#21262d",borderRadius:5,height:16,overflow:"hidden",
+              boxShadow:isTonight?"0 0 0 1px rgba(88,166,255,0.4)":undefined}}>
+              <div style={{width:`${pct}%`,background:color,height:"100%",borderRadius:5,
+                transition:"width 0.5s ease",minWidth:pct>0?4:0}}/>
+            </div>
+            <div style={{color,fontSize:13,fontWeight:700,width:42,textAlign:"right",flexShrink:0}}>
+              {Math.round(pct)}%
+            </div>
+            <div style={{color:"#484f58",fontSize:11,width:52,flexShrink:0}}>
+              {count}/{completed.length}g
+            </div>
+            {isTonight
+              ? <span style={{fontSize:9,color:"#58a6ff",fontWeight:700,background:"rgba(88,166,255,0.12)",
+                  borderRadius:3,padding:"1px 5px",border:"1px solid rgba(88,166,255,0.3)",flexShrink:0}}>
+                  tonight
+                </span>
+              : <span style={{width:46,flexShrink:0}}/>
+            }
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -2931,7 +2923,7 @@ function App() {
 
       </div>{/* end constrained search/player section */}
 
-      {!player && (
+      {!player && !teamPage && (
         <div className="plays-picks-grid">
         <div>
           <div style={{display:"flex",alignItems:"center",marginBottom:14}}>
