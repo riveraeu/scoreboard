@@ -66,6 +66,403 @@ const MLB_TEAM = {
   SF:"Giants",STL:"Cardinals",TB:"Rays",TEX:"Rangers",TOR:"Blue Jays",WSH:"Nationals",
 };
 
+// Static team list — all active MLB/NBA/NHL franchises.
+// abbr must match the abbreviations used in play data (homeTeam/awayTeam fields).
+const TEAM_DB = [
+  // MLB
+  {abbr:"ARI",sport:"mlb",name:"Arizona Diamondbacks",short:"Diamondbacks"},
+  {abbr:"ATL",sport:"mlb",name:"Atlanta Braves",short:"Braves"},
+  {abbr:"BAL",sport:"mlb",name:"Baltimore Orioles",short:"Orioles"},
+  {abbr:"BOS",sport:"mlb",name:"Boston Red Sox",short:"Red Sox"},
+  {abbr:"CHC",sport:"mlb",name:"Chicago Cubs",short:"Cubs"},
+  {abbr:"CWS",sport:"mlb",name:"Chicago White Sox",short:"White Sox"},
+  {abbr:"CIN",sport:"mlb",name:"Cincinnati Reds",short:"Reds"},
+  {abbr:"CLE",sport:"mlb",name:"Cleveland Guardians",short:"Guardians"},
+  {abbr:"COL",sport:"mlb",name:"Colorado Rockies",short:"Rockies"},
+  {abbr:"DET",sport:"mlb",name:"Detroit Tigers",short:"Tigers"},
+  {abbr:"HOU",sport:"mlb",name:"Houston Astros",short:"Astros"},
+  {abbr:"KC",sport:"mlb",name:"Kansas City Royals",short:"Royals"},
+  {abbr:"LAA",sport:"mlb",name:"Los Angeles Angels",short:"Angels"},
+  {abbr:"LAD",sport:"mlb",name:"Los Angeles Dodgers",short:"Dodgers"},
+  {abbr:"MIA",sport:"mlb",name:"Miami Marlins",short:"Marlins"},
+  {abbr:"MIL",sport:"mlb",name:"Milwaukee Brewers",short:"Brewers"},
+  {abbr:"MIN",sport:"mlb",name:"Minnesota Twins",short:"Twins"},
+  {abbr:"NYM",sport:"mlb",name:"New York Mets",short:"Mets"},
+  {abbr:"NYY",sport:"mlb",name:"New York Yankees",short:"Yankees"},
+  {abbr:"OAK",sport:"mlb",name:"Oakland Athletics",short:"Athletics"},
+  {abbr:"PHI",sport:"mlb",name:"Philadelphia Phillies",short:"Phillies"},
+  {abbr:"PIT",sport:"mlb",name:"Pittsburgh Pirates",short:"Pirates"},
+  {abbr:"SD",sport:"mlb",name:"San Diego Padres",short:"Padres"},
+  {abbr:"SEA",sport:"mlb",name:"Seattle Mariners",short:"Mariners"},
+  {abbr:"SF",sport:"mlb",name:"San Francisco Giants",short:"Giants"},
+  {abbr:"STL",sport:"mlb",name:"St. Louis Cardinals",short:"Cardinals"},
+  {abbr:"TB",sport:"mlb",name:"Tampa Bay Rays",short:"Rays"},
+  {abbr:"TEX",sport:"mlb",name:"Texas Rangers",short:"Rangers"},
+  {abbr:"TOR",sport:"mlb",name:"Toronto Blue Jays",short:"Blue Jays"},
+  {abbr:"WSH",sport:"mlb",name:"Washington Nationals",short:"Nationals"},
+  // NBA
+  {abbr:"ATL",sport:"nba",name:"Atlanta Hawks",short:"Hawks"},
+  {abbr:"BOS",sport:"nba",name:"Boston Celtics",short:"Celtics"},
+  {abbr:"BKN",sport:"nba",name:"Brooklyn Nets",short:"Nets"},
+  {abbr:"CHA",sport:"nba",name:"Charlotte Hornets",short:"Hornets"},
+  {abbr:"CHI",sport:"nba",name:"Chicago Bulls",short:"Bulls"},
+  {abbr:"CLE",sport:"nba",name:"Cleveland Cavaliers",short:"Cavaliers"},
+  {abbr:"DAL",sport:"nba",name:"Dallas Mavericks",short:"Mavericks"},
+  {abbr:"DEN",sport:"nba",name:"Denver Nuggets",short:"Nuggets"},
+  {abbr:"DET",sport:"nba",name:"Detroit Pistons",short:"Pistons"},
+  {abbr:"GSW",sport:"nba",name:"Golden State Warriors",short:"Warriors"},
+  {abbr:"HOU",sport:"nba",name:"Houston Rockets",short:"Rockets"},
+  {abbr:"IND",sport:"nba",name:"Indiana Pacers",short:"Pacers"},
+  {abbr:"LAC",sport:"nba",name:"LA Clippers",short:"Clippers"},
+  {abbr:"LAL",sport:"nba",name:"Los Angeles Lakers",short:"Lakers"},
+  {abbr:"MEM",sport:"nba",name:"Memphis Grizzlies",short:"Grizzlies"},
+  {abbr:"MIA",sport:"nba",name:"Miami Heat",short:"Heat"},
+  {abbr:"MIL",sport:"nba",name:"Milwaukee Bucks",short:"Bucks"},
+  {abbr:"MIN",sport:"nba",name:"Minnesota Timberwolves",short:"Timberwolves"},
+  {abbr:"NOP",sport:"nba",name:"New Orleans Pelicans",short:"Pelicans"},
+  {abbr:"NYK",sport:"nba",name:"New York Knicks",short:"Knicks"},
+  {abbr:"OKC",sport:"nba",name:"Oklahoma City Thunder",short:"Thunder"},
+  {abbr:"ORL",sport:"nba",name:"Orlando Magic",short:"Magic"},
+  {abbr:"PHI",sport:"nba",name:"Philadelphia 76ers",short:"76ers"},
+  {abbr:"PHX",sport:"nba",name:"Phoenix Suns",short:"Suns"},
+  {abbr:"POR",sport:"nba",name:"Portland Trail Blazers",short:"Trail Blazers"},
+  {abbr:"SAC",sport:"nba",name:"Sacramento Kings",short:"Kings"},
+  {abbr:"SAS",sport:"nba",name:"San Antonio Spurs",short:"Spurs"},
+  {abbr:"TOR",sport:"nba",name:"Toronto Raptors",short:"Raptors"},
+  {abbr:"UTA",sport:"nba",name:"Utah Jazz",short:"Jazz"},
+  {abbr:"WAS",sport:"nba",name:"Washington Wizards",short:"Wizards"},
+  // NHL
+  {abbr:"ANA",sport:"nhl",name:"Anaheim Ducks",short:"Ducks"},
+  {abbr:"BOS",sport:"nhl",name:"Boston Bruins",short:"Bruins"},
+  {abbr:"BUF",sport:"nhl",name:"Buffalo Sabres",short:"Sabres"},
+  {abbr:"CGY",sport:"nhl",name:"Calgary Flames",short:"Flames"},
+  {abbr:"CAR",sport:"nhl",name:"Carolina Hurricanes",short:"Hurricanes"},
+  {abbr:"CHI",sport:"nhl",name:"Chicago Blackhawks",short:"Blackhawks"},
+  {abbr:"COL",sport:"nhl",name:"Colorado Avalanche",short:"Avalanche"},
+  {abbr:"CBJ",sport:"nhl",name:"Columbus Blue Jackets",short:"Blue Jackets"},
+  {abbr:"DAL",sport:"nhl",name:"Dallas Stars",short:"Stars"},
+  {abbr:"DET",sport:"nhl",name:"Detroit Red Wings",short:"Red Wings"},
+  {abbr:"EDM",sport:"nhl",name:"Edmonton Oilers",short:"Oilers"},
+  {abbr:"FLA",sport:"nhl",name:"Florida Panthers",short:"Panthers"},
+  {abbr:"LAK",sport:"nhl",name:"Los Angeles Kings",short:"Kings"},
+  {abbr:"MIN",sport:"nhl",name:"Minnesota Wild",short:"Wild"},
+  {abbr:"MTL",sport:"nhl",name:"Montreal Canadiens",short:"Canadiens"},
+  {abbr:"NSH",sport:"nhl",name:"Nashville Predators",short:"Predators"},
+  {abbr:"NJD",sport:"nhl",name:"New Jersey Devils",short:"Devils"},
+  {abbr:"NYI",sport:"nhl",name:"New York Islanders",short:"Islanders"},
+  {abbr:"NYR",sport:"nhl",name:"New York Rangers",short:"Rangers"},
+  {abbr:"OTT",sport:"nhl",name:"Ottawa Senators",short:"Senators"},
+  {abbr:"PHI",sport:"nhl",name:"Philadelphia Flyers",short:"Flyers"},
+  {abbr:"PIT",sport:"nhl",name:"Pittsburgh Penguins",short:"Penguins"},
+  {abbr:"SEA",sport:"nhl",name:"Seattle Kraken",short:"Kraken"},
+  {abbr:"SJS",sport:"nhl",name:"San Jose Sharks",short:"Sharks"},
+  {abbr:"STL",sport:"nhl",name:"St. Louis Blues",short:"Blues"},
+  {abbr:"TBL",sport:"nhl",name:"Tampa Bay Lightning",short:"Lightning"},
+  {abbr:"TOR",sport:"nhl",name:"Toronto Maple Leafs",short:"Maple Leafs"},
+  {abbr:"VAN",sport:"nhl",name:"Vancouver Canucks",short:"Canucks"},
+  {abbr:"VGK",sport:"nhl",name:"Vegas Golden Knights",short:"Golden Knights"},
+  {abbr:"WAS",sport:"nhl",name:"Washington Capitals",short:"Capitals"},
+  {abbr:"WPG",sport:"nhl",name:"Winnipeg Jets",short:"Jets"},
+];
+// abbrs that exist in >1 sport — these need ?sport= param when linking to a non-default sport
+const _multiSportAbbrs = (() => {
+  const seen = {}; TEAM_DB.forEach(t => { seen[t.abbr] = (seen[t.abbr] || 0) + 1; });
+  return new Set(Object.keys(seen).filter(a => seen[a] > 1));
+})();
+function teamUrl(abbr, sport) {
+  const upper = abbr.toUpperCase();
+  // default sport = first entry for this abbr (MLB > NBA > NHL by TEAM_DB order)
+  const defaultSport = TEAM_DB.find(t => t.abbr === upper)?.sport;
+  return `/${upper}${_multiSportAbbrs.has(upper) && sport !== defaultSport ? `?sport=${sport}` : ""}`;
+}
+function slugify(name) {
+  return name.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g,"");
+}
+
+const TOTAL_THRESHOLDS = {
+  mlb: [5,6,7,8,9,10,11],
+  nba: [200,210,215,220,225,230,235,240,250],
+  nhl: [3,4,5,6,7,8],
+};
+
+function TotalsBarChart({ gameLog, sport, tonightPlay }) {
+  const [hovered, setHovered] = React.useState(null);
+  const thresholds = TOTAL_THRESHOLDS[sport] || [5,6,7,8,9,10];
+  const completed = (gameLog || []).filter(g => g.result);
+  // tonightPlay.threshold = 8 means "Over 7.5" → bar at t=8 is highlighted
+  const tonightT = tonightPlay?.threshold ?? null;
+
+  const data = thresholds.map(t => {
+    const count = completed.filter(g => g.total >= t).length;
+    const pct = completed.length > 0 ? (count / completed.length) * 100 : 0;
+    return { t, count, pct };
+  });
+  const maxPct = Math.max(...data.map(d => d.pct), 1);
+  const BAR_H = 72;
+
+  return (
+    <div>
+      <div style={{color:"#8b949e",fontSize:11,marginBottom:10}}>
+        Over/Under Hit Rate — {sport.toUpperCase()} 2025-26 ({completed.length}g)
+      </div>
+      <div style={{display:"flex",gap:3,alignItems:"flex-end",height:BAR_H+44}}>
+        {data.map(({ t, count, pct }) => {
+          const isTonight = tonightT != null && t === tonightT;
+          const color = isTonight ? "#58a6ff" : tierColor(pct);
+          const barH = Math.max(3, Math.round((pct / 100) * BAR_H));
+          const lineLabel = `O${(t - 0.5).toFixed(1)}`;
+          return (
+            <div key={t} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",position:"relative",cursor:"default"}}
+              onMouseEnter={() => setHovered(t)} onMouseLeave={() => setHovered(null)}>
+              <div style={{fontSize:9,color:color,fontWeight:isTonight?700:600,marginBottom:2,lineHeight:1}}>
+                {Math.round(pct)}%
+              </div>
+              <div style={{width:"75%",height:barH,background:color,borderRadius:"3px 3px 0 0",
+                boxShadow:isTonight?`0 0 6px ${color}`:undefined}}/>
+              <div style={{fontSize:9,color:isTonight?"#58a6ff":"#484f58",fontWeight:isTonight?700:400,marginTop:3,lineHeight:1}}>
+                {lineLabel}
+              </div>
+              {isTonight && (
+                <div style={{position:"absolute",top:-18,left:"50%",transform:"translateX(-50%)",
+                  fontSize:8,color:"#58a6ff",whiteSpace:"nowrap",fontWeight:700,
+                  background:"rgba(88,166,255,0.12)",borderRadius:3,padding:"1px 4px",border:"1px solid rgba(88,166,255,0.3)"}}>
+                  tonight
+                </div>
+              )}
+              {hovered === t && (
+                <div style={{position:"absolute",bottom:"calc(100% + 4px)",left:"50%",transform:"translateX(-50%)",
+                  background:"#1c2128",border:"1px solid #30363d",borderRadius:6,padding:"5px 8px",
+                  zIndex:100,whiteSpace:"nowrap",pointerEvents:"none",fontSize:10,color:"#c9d1d9"}}>
+                  {count}/{completed.length} games
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function TeamPage({ abbr, sport, teamPageData, tonightPlays, onBack, navigateToTeam }) {
+  const [activeTab, setActiveTab] = React.useState("totals");
+  const [glSort, setGlSort] = React.useState({ col:"date", dir:"desc" });
+
+  const { loading, error, data } = teamPageData || {};
+  const sportLabel = { mlb:"MLB", nba:"NBA", nhl:"NHL" }[sport] || sport.toUpperCase();
+  const logoUrl = `https://a.espncdn.com/i/teamlogos/${sport}/500/${abbr.toLowerCase()}.png`;
+
+  // Tonight's total play for this team (either home or away)
+  const tonightPlay = (tonightPlays || []).find(p =>
+    p.gameType === "total" && p.sport === sport &&
+    (p.homeTeam?.toUpperCase() === abbr || p.awayTeam?.toUpperCase() === abbr)
+  ) ?? null;
+
+  if (loading) return (
+    <div style={{textAlign:"center",padding:52,color:"#8b949e",fontSize:13}}>Loading {abbr} data…</div>
+  );
+  if (error) return (
+    <div style={{textAlign:"center",padding:40,color:"#f78166",fontSize:13}}>Error: {error}</div>
+  );
+  if (!data) return null;
+
+  const { teamName, record, wins, losses, gameLog, seasonStats, lineup, lineupConfirmed } = data;
+  const tabs = ["totals", ...(lineup.length > 0 ? ["lineup"] : [])];
+
+  // Game log sort
+  const sortedGL = [...(gameLog || [])].sort((a, b) => {
+    const { col, dir } = glSort;
+    let va = a[col], vb = b[col];
+    if (col === "isHome") { va = a.isHome ? 0 : 1; vb = b.isHome ? 0 : 1; }
+    if (col === "result") { va = a.result || ""; vb = b.result || ""; }
+    const cmp = typeof va === "string" ? va.localeCompare(vb) : (va ?? 0) - (vb ?? 0);
+    return dir === "desc" ? -cmp : cmp;
+  });
+
+  const glCols = [
+    { key:"date",    label:"Date",  align:"left"   },
+    { key:"isHome",  label:"H/A",   align:"center" },
+    { key:"opp",     label:"Opp",   align:"left"   },
+    { key:"teamScore",label:"Us",                   },
+    { key:"oppScore", label:"Opp",                  },
+    { key:"total",   label:"Total",                 },
+    { key:"result",  label:"W/L",                   },
+  ];
+
+  const thStyle = (col) => {
+    const active = glSort.col === col;
+    return {
+      padding:"3px 8px", fontSize:10, textAlign: glCols.find(c=>c.key===col)?.align||"right",
+      color: active ? "#c9d1d9" : "#484f58", cursor:"pointer", userSelect:"none",
+      background:"#0d1117", position:"sticky", top:0,
+    };
+  };
+  const toggleSort = col => setGlSort(prev =>
+    prev.col === col ? { col, dir: prev.dir === "desc" ? "asc" : "desc" } : { col, dir: "desc" }
+  );
+
+  // Tonight's game context sentence
+  const isHome = tonightPlay?.homeTeam?.toUpperCase() === abbr;
+  const oppAbbr = isHome ? tonightPlay?.awayTeam : tonightPlay?.homeTeam;
+  const lineVal = tonightPlay ? (tonightPlay.threshold - 0.5).toFixed(1) : null;
+
+  return (
+    <div style={{marginBottom:20}}>
+      <button onClick={onBack}
+        style={{background:"none",border:"none",color:"#8b949e",fontSize:13,cursor:"pointer",
+          padding:"0 0 12px 0",display:"flex",alignItems:"center",gap:4}}>
+        ← Back
+      </button>
+
+      {/* Header */}
+      <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:16}}>
+        <img src={logoUrl} alt={abbr}
+          onError={e => e.target.style.visibility="hidden"}
+          style={{width:52,height:52,objectFit:"contain",background:"#161b22",borderRadius:8,padding:4,flexShrink:0}}/>
+        <div>
+          <h1 style={{color:"#fff",margin:0,fontSize:19,fontWeight:700}}>{teamName}</h1>
+          <div style={{color:"#8b949e",fontSize:12}}>{sportLabel} 2025-26{record ? ` · ${record}` : ""}</div>
+        </div>
+        <div style={{marginLeft:"auto",display:"flex",gap:8}}>
+          {[["W",wins],["L",losses],["Avg",seasonStats.avgTotal ?? "—"]].map(([l,v]) => (
+            <div key={l} style={{background:"#161b22",border:"1px solid #30363d",borderRadius:8,padding:"7px 11px",textAlign:"center"}}>
+              <div style={{color:"#58a6ff",fontSize:15,fontWeight:700}}>{v}</div>
+              <div style={{color:"#8b949e",fontSize:10}}>{l}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Tonight's game banner */}
+      {tonightPlay && (
+        <div style={{background:"rgba(88,166,255,0.06)",border:"1px solid rgba(88,166,255,0.2)",borderRadius:8,
+          padding:"8px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          <img src={`https://a.espncdn.com/i/teamlogos/${sport}/500/${(oppAbbr||"").toLowerCase()}.png`} alt={oppAbbr}
+            style={{width:24,height:24,objectFit:"contain"}} onError={e=>e.target.style.display="none"}/>
+          <span style={{color:"#c9d1d9",fontSize:12}}>
+            {isHome ? `${oppAbbr} @ ${abbr}` : `${abbr} @ ${oppAbbr}`}
+          </span>
+          <span style={{color:"#8b949e",fontSize:11}}>· Over {lineVal}</span>
+          <span style={{color:"#6e40c9",fontSize:11,fontWeight:600}}>{tonightPlay.kalshiPct}% Kalshi</span>
+          {tonightPlay.truePct != null && <span style={{color:tierColor(tonightPlay.truePct),fontSize:11,fontWeight:600}}>{tonightPlay.truePct}% model</span>}
+          {tonightPlay.edge != null && <span style={{background:"rgba(63,185,80,0.12)",border:"1px solid #3fb950",borderRadius:4,fontSize:10,fontWeight:700,color:"#3fb950",padding:"1px 6px"}}>+{tonightPlay.edge}%</span>}
+        </div>
+      )}
+
+      {/* Tabs */}
+      <div style={{display:"flex",gap:6,marginBottom:18}}>
+        {tabs.map(tab => (
+          <button key={tab} onClick={() => setActiveTab(tab)} style={{
+            flex:1,padding:"9px 0",borderRadius:8,border:"1px solid",cursor:"pointer",fontSize:13,
+            borderColor: activeTab===tab?"#58a6ff":"#30363d",
+            background: activeTab===tab?"rgba(88,166,255,0.12)":"#161b22",
+            color: activeTab===tab?"#58a6ff":"#8b949e", fontWeight:activeTab===tab?700:400}}>
+            {tab.charAt(0).toUpperCase()+tab.slice(1)}
+          </button>
+        ))}
+      </div>
+
+      {/* Totals tab */}
+      {activeTab === "totals" && (
+        <div>
+          <TotalsBarChart gameLog={gameLog} sport={sport} tonightPlay={tonightPlay}/>
+
+          {/* Game log table */}
+          <div style={{marginTop:18,overflowX:"auto"}}>
+            <div style={{color:"#484f58",fontSize:10,marginBottom:6}}>Game Log — 2025-26</div>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+              <thead>
+                <tr>
+                  {glCols.map(c => (
+                    <th key={c.key} onClick={() => toggleSort(c.key)} style={thStyle(c.key)}>
+                      {c.label}{glSort.col===c.key?(glSort.dir==="desc"?"↓":"↑"):""}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {sortedGL.map((g, i) => {
+                  const isW = g.result === "W";
+                  const isTonight = tonightPlay && (!g.result); // upcoming game
+                  return (
+                    <tr key={`${g.date}-${i}`} style={{
+                      borderTop:"1px solid #161b22",
+                      background: i%2===0?"#0d1117":"transparent"}}>
+                      <td style={{padding:"5px 8px",color:"#8b949e",textAlign:"left"}}>{g.date ? g.date.slice(5) : "—"}</td>
+                      <td style={{padding:"5px 8px",color:"#484f58",textAlign:"center"}}>{g.isHome ? "" : "@"}</td>
+                      <td style={{padding:"5px 8px",color:"#c9d1d9",textAlign:"left"}}>
+                        <button onClick={() => navigateToTeam(g.opp, sport)}
+                          style={{background:"none",border:"none",color:"#c9d1d9",cursor:"pointer",padding:0,fontSize:12,textDecoration:"underline",textDecorationColor:"#484f58"}}>
+                          {g.opp}
+                        </button>
+                      </td>
+                      <td style={{padding:"5px 8px",textAlign:"right",color:"#c9d1d9",fontWeight:600}}>{g.teamScore}</td>
+                      <td style={{padding:"5px 8px",textAlign:"right",color:"#8b949e"}}>{g.oppScore}</td>
+                      <td style={{padding:"5px 8px",textAlign:"right",color:
+                        tonightPlay && g.total >= tonightPlay.threshold ? "#3fb950" :
+                        tonightPlay && g.total < tonightPlay.threshold ? "#f78166" : "#c9d1d9",
+                        fontWeight:600}}>{g.total}</td>
+                      <td style={{padding:"5px 8px",textAlign:"right",color:isW?"#3fb950":"#f78166",fontWeight:700}}>
+                        {g.result || "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Lineup tab */}
+      {activeTab === "lineup" && (
+        <div>
+          {!lineupConfirmed && (
+            <div style={{color:"#e3b341",fontSize:11,marginBottom:10,padding:"5px 10px",
+              background:"rgba(227,179,65,0.08)",borderRadius:6,border:"1px solid rgba(227,179,65,0.2)"}}>
+              Depth chart order — today's lineup not yet confirmed
+            </div>
+          )}
+          {sport === "nba" && (
+            <div style={{display:"flex",flexDirection:"column",gap:3}}>
+              {lineup.map(p => (
+                <div key={p.position} style={{display:"flex",alignItems:"center",gap:10,
+                  background:"#161b22",border:"1px solid #21262d",borderRadius:8,padding:"8px 12px"}}>
+                  <span style={{color:"#58a6ff",fontSize:11,fontWeight:700,width:32,flexShrink:0}}>{p.position}</span>
+                  <img src={`https://a.espncdn.com/i/headshots/nba/players/full/${p.playerId}.png`} alt={p.name}
+                    style={{width:32,height:32,borderRadius:8,objectFit:"cover",background:"#21262d",flexShrink:0}}
+                    onError={e=>e.target.style.visibility="hidden"}/>
+                  <span style={{color:"#c9d1d9",fontSize:13}}>{p.name}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {sport === "mlb" && (
+            <div style={{display:"flex",flexDirection:"column",gap:3}}>
+              {lineup.filter(p => !p.isProbable).map(p => (
+                <div key={p.spot} style={{display:"flex",alignItems:"center",gap:10,
+                  background:"#161b22",border:"1px solid #21262d",borderRadius:8,padding:"8px 12px"}}>
+                  <span style={{color:"#58a6ff",fontSize:11,fontWeight:700,width:24,flexShrink:0,textAlign:"right"}}>{p.spot}</span>
+                  <span style={{color:"#c9d1d9",fontSize:13,flex:1}}>{p.name}</span>
+                  <span style={{color:"#484f58",fontSize:11}}>{p.position}</span>
+                </div>
+              ))}
+              {lineup.filter(p => p.isProbable).map(p => (
+                <div key="sp" style={{display:"flex",alignItems:"center",gap:10,marginTop:6,
+                  background:"rgba(88,166,255,0.06)",border:"1px solid rgba(88,166,255,0.2)",borderRadius:8,padding:"8px 12px"}}>
+                  <span style={{color:"#58a6ff",fontSize:11,fontWeight:700,width:24,flexShrink:0,textAlign:"right"}}>SP</span>
+                  <span style={{color:"#c9d1d9",fontSize:13,flex:1}}>{p.name}</span>
+                  <span style={{color:"#484f58",fontSize:10}}>probable</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const STAT_CONFIGS = {
   "basketball/nba": {
     points:   { label: "Points",   thresholds: [10,15,20,25,30,35,40],    unit: "PTS" },
@@ -494,6 +891,9 @@ function App() {
   const [showPlaysInfo, setShowPlaysInfo] = React.useState(false);
   const [reportSort, setReportSort] = React.useState({}); // { "sport|stat": { col, dir } }
   const [showReport, setShowReport] = React.useState(false);
+  const [teamPage, setTeamPage] = React.useState(null);       // { abbr, sport }
+  const [teamPageData, setTeamPageData] = React.useState(null); // { loading, error, data }
+  const [pendingSlug, setPendingSlug] = React.useState(null);  // player slug to resolve after load
   const [reportData, setReportData] = React.useState(null);
   const [reportLoading, setReportLoading] = React.useState(false);
   const [reportSport, setReportSport] = React.useState("all");
@@ -540,6 +940,85 @@ function App() {
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
+
+  // ── URL routing ──────────────────────────────────────────────────────────────
+  function resolveSlug(slug, sportOverride) {
+    if (!slug) { setPlayer(null); setTeamPage(null); return; }
+    const upper = slug.toUpperCase();
+    const spPriority = sportOverride ? [sportOverride] : ["mlb","nba","nhl"];
+    for (const sp of spPriority) {
+      const match = TEAM_DB.find(t => t.abbr === upper && t.sport === sp);
+      if (match) { loadTeamPage(match.abbr, match.sport); return; }
+    }
+    // Player slug — store and resolve after athletes search
+    setPendingSlug(slug);
+  }
+
+  // On mount: resolve URL slug; listen for back/forward
+  React.useEffect(() => {
+    const slug = window.location.pathname.slice(1);
+    const sp = new URLSearchParams(window.location.search).get("sport");
+    if (slug) resolveSlug(slug, sp);
+    const onPop = () => {
+      const s = window.location.pathname.slice(1);
+      const qp = new URLSearchParams(window.location.search).get("sport");
+      if (!s) { setPlayer(null); setTeamPage(null); }
+      else resolveSlug(s, qp);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  // Resolve pending player slug via ESPN search
+  React.useEffect(() => {
+    if (!pendingSlug) return;
+    // CamelCase → "Gavin Williams"
+    const name = pendingSlug.replace(/([A-Z][a-z]*)/g, "$1 ").trim();
+    fetch(`${WORKER}/athletes?q=${encodeURIComponent(name)}`)
+      .then(r => r.json())
+      .then(d => {
+        const items = d.items || [];
+        const match = items.find(a => slugify(a.name) === pendingSlug) || items[0];
+        if (match) selectPlayer(match);
+      })
+      .catch(() => {})
+      .finally(() => setPendingSlug(null));
+  }, [pendingSlug]);
+
+  async function loadTeamPage(abbr, sport) {
+    setPlayer(null);
+    setTeamPage({ abbr: abbr.toUpperCase(), sport });
+    setTeamPageData({ loading: true, error: null, data: null });
+    try {
+      const r = await fetch(`${WORKER}/team?abbr=${abbr}&sport=${sport}`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      setTeamPageData({ loading: false, error: null, data });
+    } catch(e) {
+      setTeamPageData({ loading: false, error: e.message, data: null });
+    }
+  }
+
+  function navigateToTeam(abbr, sport) {
+    const url = teamUrl(abbr, sport);
+    history.pushState({}, "", url);
+    loadTeamPage(abbr, sport);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function navigateToPlayer(p, tab) {
+    const slug = slugify(p.name);
+    history.pushState({}, "", `/${slug}`);
+    selectPlayer(p, tab);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function goBack() {
+    history.pushState({}, "", "/");
+    setPlayer(null);
+    setTeamPage(null);
+    setQuery("");
+  }
 
   // Fetch tonight's plays on mount and when testMode toggles
   React.useEffect(() => {
@@ -709,6 +1188,23 @@ function App() {
       });
   }, []);
 
+  // Client-side team search (instant, no API call)
+  const teamSuggestions = React.useMemo(() => {
+    const q = debouncedQuery.trim().toLowerCase();
+    if (q.length < 2) return [];
+    return TEAM_DB.filter(t =>
+      t.name.toLowerCase().includes(q) ||
+      t.short.toLowerCase().includes(q) ||
+      t.abbr.toLowerCase() === q ||
+      t.abbr.toLowerCase().startsWith(q)
+    ).slice(0, 5);
+  }, [debouncedQuery]);
+
+  // Show dropdown immediately when team suggestions exist
+  React.useEffect(() => {
+    if (teamSuggestions.length > 0) setShowDrop(true);
+  }, [teamSuggestions]);
+
   React.useEffect(() => {
     if (debouncedQuery.trim().length < 2) { setSuggestions([]); setShowDrop(false); return; }
     setSearching(true);
@@ -717,7 +1213,7 @@ function App() {
       .then(data => {
         const items = (data.items || []);
         setSuggestions(items);
-        setShowDrop(items.length > 0);
+        setShowDrop(items.length > 0 || teamSuggestions.length > 0);
       })
       .catch(e => { console.error("search error:", e); setSuggestions([]); })
       .finally(() => setSearching(false));
@@ -942,6 +1438,7 @@ function App() {
   const selectPlayer = (p, tab = null) => {
     const newSport = p.sportKey || sport;
     setSport(newSport);
+    setTeamPage(null);
     setActiveTab(tab || Object.keys(STAT_CONFIGS[newSport] || {})[0] || "points");
     setQuery(""); setSuggestions([]); setShowDrop(false); setActiveIdx(-1);
     loadPlayer(p, newSport);
@@ -1470,17 +1967,34 @@ function App() {
         <input ref={inputRef} value={query}
           onChange={e => { setQuery(e.target.value); setActiveIdx(-1); }}
           onKeyDown={handleKeyDown}
-          onFocus={() => suggestions.length > 0 && setShowDrop(true)}
-          placeholder={player ? `Search player… (${player.name})` : "Search NFL, NBA, MLB, NHL players…"}
+          onFocus={() => (suggestions.length > 0 || (query.trim().length >= 2 && teamSuggestions.length > 0)) && setShowDrop(true)}
+          placeholder={player ? `Search player… (${player.name})` : teamPage ? `Search team or player… (${teamPage.abbr})` : "Search teams, NFL, NBA, MLB, NHL players…"}
           style={{width:"100%",background:"#161b22",border:"1px solid #30363d",borderRadius:10,
             color:"#fff",fontSize:14,padding:"12px 14px 12px 40px",outline:"none"}}
         />
-        {showDrop && suggestions.length > 0 && (
+        {showDrop && (suggestions.length > 0 || teamSuggestions.length > 0) && (
           <div ref={dropRef} style={{position:"absolute",top:"calc(100% + 6px)",left:0,right:0,
             background:"#161b22",border:"1px solid #30363d",borderRadius:10,overflow:"hidden",
             zIndex:100,boxShadow:"0 8px 24px rgba(0,0,0,0.6)"}}>
+            {teamSuggestions.map((t, i) => (
+              <div key={`team-${t.abbr}-${t.sport}`}
+                onMouseDown={() => { setShowDrop(false); navigateToTeam(t.abbr, t.sport); }}
+                onMouseEnter={() => setActiveIdx(-(i+1))}
+                style={{padding:"10px 16px",cursor:"pointer",fontSize:14,color:"#c9d1d9",
+                  borderBottom:"1px solid #21262d",
+                  background: activeIdx===-(i+1)?"rgba(88,166,255,0.12)":"transparent",
+                  display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <img src={`https://a.espncdn.com/i/teamlogos/${t.sport}/500/${t.abbr.toLowerCase()}.png`}
+                    alt={t.abbr} onError={e=>e.target.style.visibility="hidden"}
+                    style={{width:28,height:28,borderRadius:6,objectFit:"contain",background:"#21262d",flexShrink:0,padding:2}}/>
+                  <span>{highlight(t.name, query)}</span>
+                </div>
+                <span style={{color:"#484f58",fontSize:11}}>{t.sport.toUpperCase()} · {t.abbr}</span>
+              </div>
+            ))}
             {suggestions.map((p,i) => (
-              <div key={p.id} onMouseDown={() => selectPlayer(p)}
+              <div key={p.id} onMouseDown={() => { setShowDrop(false); navigateToPlayer(p, null); }}
                 onMouseEnter={() => setActiveIdx(i)}
                 style={{padding:"10px 16px",cursor:"pointer",fontSize:14,color:"#c9d1d9",
                   borderBottom: i<suggestions.length-1?"1px solid #21262d":"none",
@@ -1508,10 +2022,21 @@ function App() {
         )}
       </div>
 
+      {/* Team page */}
+      {teamPage && (
+        <TeamPage
+          abbr={teamPage.abbr} sport={teamPage.sport}
+          teamPageData={teamPageData}
+          tonightPlays={tonightPlays}
+          onBack={goBack}
+          navigateToTeam={navigateToTeam}
+        />
+      )}
+
       {/* Player header */}
-              {player && (
+              {player && !teamPage && (
         <div style={{marginBottom:20}}>
-        <button onClick={() => { setPlayer(null); setQuery(""); }}
+        <button onClick={goBack}
           style={{background:"none",border:"none",color:"#8b949e",fontSize:13,cursor:"pointer",
             padding:"0 0 12px 0",display:"flex",alignItems:"center",gap:4}}>
           ← Back
@@ -1525,7 +2050,7 @@ function App() {
           />
 <div>
             <h1 style={{color:"#fff",margin:0,fontSize:19,fontWeight:700}}>{player.name}</h1>
-            <div style={{color:"#8b949e",fontSize:12}}>{player.team}{(() => { const opp = player.opponent || (tonightPlays || []).find(p => (p.playerId && p.playerId === player.id) || p.playerName?.toLowerCase() === player.name?.toLowerCase())?.opponent; return opp ? <> · <span style={{color:"#58a6ff"}}>vs {opp}</span></> : ""; })()} · {SPORTS.find(s=>s.value===(player.sportKey||sport))?.label} 2025-26</div>
+            <div style={{color:"#8b949e",fontSize:12}}>{player.team}{(() => { const opp = player.opponent || (tonightPlays || []).find(p => (p.playerId && p.playerId === player.id) || p.playerName?.toLowerCase() === player.name?.toLowerCase())?.opponent; const oppSport = (player.sportKey||sport).split("/")[1]; return opp ? <> · <span style={{color:"#58a6ff",cursor:"pointer",textDecoration:"underline",textDecorationColor:"rgba(88,166,255,0.4)"}} onClick={()=>navigateToTeam(opp,oppSport)}>vs {opp}</span></> : ""; })()} · {SPORTS.find(s=>s.value===(player.sportKey||sport))?.label} 2025-26</div>
           </div>
           <div style={{marginLeft:"auto",display:"flex",gap:8}}>
             {[["AVG",avg],["HIGH",hi],["GP",totalGames]].map(([l,v]) => (
@@ -1540,7 +2065,7 @@ function App() {
       )}
 
       {/* Stat tabs */}
-      {player && (
+      {player && !teamPage && (
         <div style={{display:"flex",gap:6,marginBottom:18}}>
           {tabs.map(k => (
             <button key={k} onClick={() => { setActiveTab(k); setDirection("over"); }} style={{flex:1,padding:"9px 0",borderRadius:8,
@@ -1556,7 +2081,7 @@ function App() {
       )}
 
       {/* Combined chart: Season + Soft Matchup + True Probability */}
-      {player && (() => {
+      {player && !teamPage && (() => {
         const hasDvp = dvpData && perGame.length > 0 && !loading && totalGames > 0;
         const isMLB = sport === "baseball/mlb";
         const WEAK_N = 10;
@@ -2597,14 +3122,16 @@ function App() {
                       {/* Matchup info */}
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
-                          <img src={logoUrl(play.awayTeam)} alt={play.awayTeam}
-                            style={{width:44,height:44,objectFit:"contain",background:"#21262d",borderRadius:6,padding:2,flexShrink:0}}
+                          <img src={logoUrl(play.awayTeam)} alt={play.awayTeam} onClick={e=>{e.stopPropagation();navigateToTeam(play.awayTeam,play.sport);}}
+                            style={{width:44,height:44,objectFit:"contain",background:"#21262d",borderRadius:6,padding:2,flexShrink:0,cursor:"pointer"}}
                             onError={e=>e.target.style.display="none"}/>
-                          <span style={{color:"#c9d1d9",fontSize:12,fontWeight:600}}>{play.awayTeam}</span>
+                          <span onClick={e=>{e.stopPropagation();navigateToTeam(play.awayTeam,play.sport);}}
+                            style={{color:"#c9d1d9",fontSize:12,fontWeight:600,cursor:"pointer",textDecoration:"underline",textDecorationColor:"#484f58"}}>{play.awayTeam}</span>
                           <span style={{color:"#484f58",fontSize:11}}>@</span>
-                          <span style={{color:"#c9d1d9",fontSize:12,fontWeight:600}}>{play.homeTeam}</span>
-                          <img src={logoUrl(play.homeTeam)} alt={play.homeTeam}
-                            style={{width:44,height:44,objectFit:"contain",background:"#21262d",borderRadius:6,padding:2,flexShrink:0}}
+                          <span onClick={e=>{e.stopPropagation();navigateToTeam(play.homeTeam,play.sport);}}
+                            style={{color:"#c9d1d9",fontSize:12,fontWeight:600,cursor:"pointer",textDecoration:"underline",textDecorationColor:"#484f58"}}>{play.homeTeam}</span>
+                          <img src={logoUrl(play.homeTeam)} alt={play.homeTeam} onClick={e=>{e.stopPropagation();navigateToTeam(play.homeTeam,play.sport);}}
+                            style={{width:44,height:44,objectFit:"contain",background:"#21262d",borderRadius:6,padding:2,flexShrink:0,cursor:"pointer"}}
                             onError={e=>e.target.style.display="none"}/>
                         </div>
                         <div style={{color:"#8b949e",fontSize:11,marginTop:3,display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
@@ -3363,11 +3890,19 @@ function App() {
                     {/* Player info */}
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3,flexWrap:"wrap"}}>
-                        {/* Clickable name → opens player card (totals: no-op) */}
-                        <span onClick={() => navigateToPlay(pick)}
-                          style={{color:"#fff",fontSize:13,fontWeight:700,cursor:pick.gameType==="total"?"default":"pointer",textDecoration:"underline",textDecorationColor:"#30363d",textUnderlineOffset:2}}>
-                          {pick.gameType === "total" ? `${pick.awayTeam} @ ${pick.homeTeam}` : pick.playerName}
-                        </span>
+                        {/* Clickable name → opens player/team card */}
+                        {pick.gameType === "total" ? (
+                          <span style={{color:"#fff",fontSize:13,fontWeight:700}}>
+                            <span onClick={()=>navigateToTeam(pick.awayTeam,pick.sport)} style={{cursor:"pointer",textDecoration:"underline",textDecorationColor:"#484f58"}}>{pick.awayTeam}</span>
+                            {" @ "}
+                            <span onClick={()=>navigateToTeam(pick.homeTeam,pick.sport)} style={{cursor:"pointer",textDecoration:"underline",textDecorationColor:"#484f58"}}>{pick.homeTeam}</span>
+                          </span>
+                        ) : (
+                          <span onClick={() => navigateToPlay(pick)}
+                            style={{color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",textDecoration:"underline",textDecorationColor:"#30363d",textUnderlineOffset:2}}>
+                            {pick.playerName}
+                          </span>
+                        )}
                         {pick.sport && (
                           <span style={{border:`1px solid ${SPORT_BADGE_COLOR[pick.sport]||"#8b949e"}`,
                             borderRadius:4,padding:"0px 4px",fontSize:9,color:SPORT_BADGE_COLOR[pick.sport]||"#8b949e",fontWeight:600,textTransform:"uppercase"}}>

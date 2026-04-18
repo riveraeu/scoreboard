@@ -3121,6 +3121,100 @@ var worker_default = {
         return jsonResponse({ history }, 300);
       } else if (path === "leagues") {
         return jsonResponse({ leagues: VALID_SPORTS });
+      } else if (path === "team") {
+        const abbr = (params.get("abbr") || "").toUpperCase();
+        const sport = params.get("sport"); // "mlb" | "nba" | "nhl"
+        if (!abbr || !["mlb","nba","nhl"].includes(sport)) return errorResponse("abbr and sport (mlb|nba|nhl) required", 400);
+        const bust = params.get("bust") === "1";
+        const today = new Date().toISOString().slice(0, 10);
+        const cacheKey = `team:v2:${sport}:${abbr}:${today}`;
+        if (CACHE2 && !bust) {
+          const cached = await CACHE2.get(cacheKey, "json").catch(() => null);
+          if (cached) return jsonResponse(cached);
+        }
+        const sportLeague = { mlb:"baseball/mlb", nba:"basketball/nba", nhl:"hockey/nhl" }[sport];
+        const abbrLower = abbr.toLowerCase();
+        const H = { "User-Agent":"Mozilla/5.0" };
+        // 1. ESPN team schedule → game log + record
+        let gameLog = [], teamName = abbr, wins = 0, losses = 0;
+        try {
+          const schedRes = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${sportLeague}/teams/${abbrLower}/schedule?season=2026&seasontype=2`, { headers: H });
+          if (schedRes.ok) {
+            const sched = await schedRes.json();
+            teamName = sched.team?.displayName || sched.team?.name || abbr;
+            // Record from summary string e.g. "10-5"
+            const recSummary = sched.team?.record?.items?.[0]?.summary;
+            if (recSummary) { const p = recSummary.split("-"); wins = parseInt(p[0]) || 0; losses = parseInt(p[1]) || 0; }
+            for (const event of sched.events || []) {
+              const comp = event.competitions?.[0];
+              if (!comp?.status?.type?.completed) continue;
+              const homeComp = comp.competitors?.find(c => c.homeAway === "home");
+              const awayComp = comp.competitors?.find(c => c.homeAway === "away");
+              if (!homeComp || !awayComp) continue;
+              const homeAbbr = (homeComp.team?.abbreviation || "").toUpperCase();
+              const teamIsHome = homeAbbr === abbr;
+              const teamComp = teamIsHome ? homeComp : awayComp;
+              const oppComp  = teamIsHome ? awayComp  : homeComp;
+              const teamScore = parseFloat(teamComp.score) || 0;
+              const oppScore  = parseFloat(oppComp.score)  || 0;
+              const winner = teamComp.winner === true;
+              const loser  = oppComp.winner  === true;
+              if (!winner && !loser) continue; // tie / no result
+              const result = winner ? "W" : "L";
+              const opp  = (teamIsHome ? (awayComp.team?.abbreviation || "").toUpperCase() : (homeComp.team?.abbreviation || "").toUpperCase()) || "?";
+              const date = (event.date || "").slice(0, 10);
+              if (!date) continue;
+              gameLog.push({ date, isHome: teamIsHome, opp, teamScore, oppScore, total: teamScore + oppScore, result });
+            }
+          }
+        } catch(e) {}
+        gameLog.sort((a, b) => b.date.localeCompare(a.date));
+        const avgTotal = gameLog.length > 0
+          ? parseFloat((gameLog.reduce((s, g) => s + g.total, 0) / gameLog.length).toFixed(1))
+          : null;
+        // 2. Lineup
+        let lineup = [], lineupConfirmed = false;
+        if (sport === "nba") {
+          try {
+            const dcRes = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/${abbrLower}/depthchart`, { headers: H });
+            if (dcRes.ok) {
+              const dc = await dcRes.json();
+              for (const posGroup of dc.positions || []) {
+                const pos = posGroup.position?.abbreviation;
+                if (!["PG","SG","SF","PF","C"].includes(pos)) continue;
+                const s = posGroup.athletes?.[0];
+                if (!s) continue;
+                lineup.push({ position: pos, name: s.athlete?.displayName || "Unknown", playerId: String(s.athlete?.id || "") });
+              }
+              lineupConfirmed = lineup.length > 0;
+            }
+          } catch(e) {}
+        } else if (sport === "mlb") {
+          const MLB_ABR_TO_ID = { ARI:109,ATL:144,BAL:110,BOS:111,CHC:112,CWS:145,CIN:113,CLE:114,COL:115,DET:116,HOU:117,KC:118,LAA:108,LAD:119,MIA:146,MIL:158,MIN:142,NYM:121,NYY:147,OAK:133,PHI:143,PIT:134,SD:135,SEA:136,SF:137,STL:138,TB:139,TEX:140,TOR:141,WSH:120 };
+          const mlbId = MLB_ABR_TO_ID[abbr];
+          if (mlbId) {
+            try {
+              const sRes = await fetch(`https://statsapi.mlb.com/api/v1/schedule?date=${today}&hydrate=lineups,probables&sportId=1&teamId=${mlbId}`, { headers: H });
+              if (sRes.ok) {
+                const sd = await sRes.json();
+                const game = sd.dates?.[0]?.games?.[0];
+                if (game) {
+                  const isHome = game.teams?.home?.team?.id === mlbId;
+                  const lp = isHome ? (game.lineups?.homePlayers || []) : (game.lineups?.awayPlayers || []);
+                  if (lp.length > 0) {
+                    lineupConfirmed = true;
+                    lineup = lp.map((p, i) => ({ spot: i + 1, name: p.fullName || "Unknown", position: p.primaryPosition?.abbreviation || "?", playerId: String(p.id || "") }));
+                  }
+                  const probable = (isHome ? game.teams?.home : game.teams?.away)?.probablePitcher;
+                  if (probable) lineup.push({ spot: null, name: probable.fullName || "Unknown", position: "SP", playerId: String(probable.id || ""), isProbable: true });
+                }
+              }
+            } catch(e) {}
+          }
+        }
+        const teamResult = { teamAbbr: abbr, teamName, sport, record: `${wins}-${losses}`, wins, losses, gameLog, seasonStats: { avgTotal, gamesPlayed: gameLog.length }, lineup, lineupConfirmed };
+        if (CACHE2) await CACHE2.put(cacheKey, JSON.stringify(teamResult), { expirationTtl: 3600 }).catch(() => {});
+        return jsonResponse(teamResult);
       } else {
         return errorResponse("Unknown route: " + path, 404);
       }
