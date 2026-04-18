@@ -1483,7 +1483,7 @@ var worker_default = {
         // Fetch NBA pace data (ESPN team stats, cached 12h) for SimScore
         let nbaPaceData = null;
         if (sportsNeeded.has("nba")) {
-          nbaPaceData = CACHE2 ? await CACHE2.get("nba:pace:2526", "json").catch(() => null) : null;
+          nbaPaceData = CACHE2 && !isBustCache ? await CACHE2.get("nba:pace:2526", "json").catch(() => null) : null;
           if (!nbaPaceData) {
             nbaPaceData = await buildNbaPaceData(CACHE2).catch(() => null);
           }

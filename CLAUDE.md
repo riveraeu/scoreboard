@@ -516,7 +516,7 @@ Fix (in place): `allScheduledPitcherIds` (a `Set`) collects ALL pitcher IDs enco
 The CSW% play-by-play fetch in `buildPitcherKPct` fires one MLB Stats API request per game per pitcher. With 10–15 pitchers × multiple starts, this can exceed the 25s Vercel Edge limit. Mitigations in place: PBP limited to last 5 starts per pitcher; 8s AbortController aborts the whole PBP block and falls back to K% if slow. If 504s recur, check whether the PBP block is the bottleneck or if another fetch is slow.
 
 ### Cache busting
-- `?bust=1` skips reads for `byteam:mlb` AND `gameTimes:v2:{date}` — forces fresh MLB data + fresh ESPN game times in one shot
+- `?bust=1` skips reads for `byteam:mlb`, `gameTimes:v2:{date}`, AND `nba:pace:2526` — forces fresh MLB data, ESPN game times, and NBA pace in one shot
 - `mlb:barrelPct` is NOT busted — barrel% survives with its own 6h TTL
 - If bust fires before lineups/probables are available, `byteam:mlb` is written with 60s TTL so next request retries
 - Depth chart: no bust — expires daily
