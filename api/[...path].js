@@ -1898,6 +1898,7 @@ var worker_default = {
         }
         const plays = [];
         const dropped = [];
+        const nbaDropped = [];
         // Cache pitcher K-count distributions keyed by playerTeam so all thresholds for the same
         // pitcher share one simulation run — guarantees P(K>=4) >= P(K>=5) by construction.
         const pitcherKDistCache = {};
@@ -1958,62 +1959,62 @@ var worker_default = {
           const nbaEffectiveSoftTeams = nbaDvpSoftTeams || (sport === "nba" ? softTeams : null);
           if (sport === "nba") {
             if (!nbaEffectiveSoftTeams?.has(tonightOpp)) {
-              if (isDebug) {
-                const _osGl = playerGamelogs[`${sport}|${playerName}`];
-                const _osCol = playerColCache[`${sport}|${playerName}|${col}`];
-                const _osSeason = _osCol && _osCol.allVals.length > 0 ? parseFloat((_osCol.allVals.filter((v) => v >= threshold).length / _osCol.allVals.length * 100).toFixed(1)) : null;
-                const _osTruePct = _osSeason;
-                const _osEdge = _osSeason != null ? parseFloat((_osSeason - kalshiPct).toFixed(1)) : null;
-                const _osDvpEntry = nbaPos && allPositionsDvp?.[nbaPos]?.rankings?.[stat] ? allPositionsDvp[nbaPos].rankings[stat].find((t) => t.abbr === tonightOpp) : null;
-                const _osDvpRank = _osDvpEntry?.rank ?? null;
-                const _osDebug = !_osCol ? (!_osGl ? "no_gl" : `col_miss:${col}|got:${(_osGl.ul||[]).join(",")}`) : null;
-                const _osSoftVals = _osGl?.events && _osCol ? _osGl.events.filter((ev) => nbaEffectiveSoftTeams?.has(ev.oppAbbr)).map(_osCol.getStat).filter((v) => !isNaN(v)) : [];
-                const _osSoftPct = _osSoftVals.length >= 5 ? parseFloat((_osSoftVals.filter((v) => v >= threshold).length / _osSoftVals.length * 100).toFixed(1)) : null;
-                // Compute NBA-specific fields inline so they appear in the report
-                const _osYday = new Date(); _osYday.setDate(_osYday.getDate() - 1);
-                const _osYdayStr = _osYday.toISOString().slice(0, 10);
-                const _osIsB2B = _osGl && _osGl.events.length > 0 && (_osGl.events[0]?.date || "").startsWith(_osYdayStr);
-                let _osPaceAdj = null;
-                if (nbaPaceData) {
-                  const _tp = nbaPaceData.teamPace?.[playerTeam] ?? null;
-                  const _op = nbaPaceData.teamPace?.[tonightOpp] ?? null;
-                  if (_tp !== null && _op !== null) _osPaceAdj = parseFloat(((_tp + _op) / 2 - (nbaPaceData.leagueAvgPace ?? 100)).toFixed(1));
-                }
-                let _osOpportunity = null;
-                if (_osGl) {
-                  const _osMinIdx = _osGl.ul.indexOf("MIN");
-                  if (_osMinIdx !== -1) {
-                    const _osMinVals = _osGl.events.slice(0, 10).map(ev => parseFloat(ev.stats[_osMinIdx])).filter(v => !isNaN(v) && v > 0);
-                    if (_osMinVals.length >= 3) _osOpportunity = parseFloat((_osMinVals.reduce((a, b) => a + b, 0) / _osMinVals.length).toFixed(1));
-                  }
-                }
-                const _osUsgEntry = nbaUsageMap[String(info.id)] ?? null;
-                const _osUsg = _osUsgEntry?.usg ?? null;
-                const _osAvgAst = _osUsgEntry?.avgAst ?? null;
-                const _osAvgReb = _osUsgEntry?.avgReb ?? null;
-                let _osC1Pts;
-                if (stat === "assists") {
-                  _osC1Pts = _osAvgAst == null ? 2 : _osAvgAst >= 7 ? 4 : _osAvgAst >= 5 ? 2 : 0;
-                } else if (stat === "rebounds") {
-                  _osC1Pts = _osAvgReb == null ? 2 : _osAvgReb >= 9 ? 4 : _osAvgReb >= 7 ? 2 : 0;
-                } else if (stat === "threePointers" && _osGl) {
-                  const _os3pIdx = _osGl.ul.indexOf("3P");
-                  const _os3pVals = _os3pIdx !== -1 ? _osGl.events.slice(0, 10).map(ev => parseFloat(ev.stats[_os3pIdx])).filter(v => !isNaN(v) && v >= 0) : [];
-                  const _os3pMPG = _os3pVals.length >= 3 ? _os3pVals.reduce((a, b) => a + b, 0) / _os3pVals.length : null;
-                  _osC1Pts = _os3pMPG == null ? 2 : _os3pMPG >= 3 ? 4 : _os3pMPG >= 2 ? 2 : 0;
-                } else {
-                  _osC1Pts = _osUsg == null ? 2 : _osUsg >= 28 ? 4 : _osUsg >= 22 ? 2 : 0;
-                }
-                const _osGameTotal = (sportByteam.nbaGameOdds ?? {})[playerTeam]?.total ?? null;
-                const _osTotalPts = _osGameTotal == null ? 1 : _osGameTotal >= 235 ? 3 : _osGameTotal >= 225 ? 2 : 1;
-                const _osPreSimScore = (_osPaceAdj != null ? (_osPaceAdj > 0 ? 3 : _osPaceAdj > -2 ? 2 : 1) : 0)
-                  + _osC1Pts
-                  + (_osDvpRank != null && _osDvpRank <= 10 ? 2 : 0)
-                  + (!_osIsB2B ? 2 : 0)
-                  + _osTotalPts;
-                const _osNbaSimScore = _osPreSimScore;
-                dropped.push({ ..._dropBase, reason: "opp_not_soft", opponent: tonightOpp, dvpBased: !!nbaDvpSoftTeams, seasonPct: _osSeason, softPct: _osSoftPct, softGames: _osSoftVals.length, truePct: _osTruePct, edge: _osEdge, posDvpRank: _osDvpRank, posGroup: nbaPos, _debug: _osDebug, isB2B: _osIsB2B, nbaPaceAdj: _osPaceAdj, nbaOpportunity: _osOpportunity, nbaPreSimScore: _osPreSimScore, nbaSimScore: _osNbaSimScore });
+              const _osGl = playerGamelogs[`${sport}|${playerName}`];
+              const _osCol = playerColCache[`${sport}|${playerName}|${col}`];
+              const _osSeason = _osCol && _osCol.allVals.length > 0 ? parseFloat((_osCol.allVals.filter((v) => v >= threshold).length / _osCol.allVals.length * 100).toFixed(1)) : null;
+              const _osTruePct = _osSeason;
+              const _osEdge = _osSeason != null ? parseFloat((_osSeason - kalshiPct).toFixed(1)) : null;
+              const _osDvpEntry = nbaPos && allPositionsDvp?.[nbaPos]?.rankings?.[stat] ? allPositionsDvp[nbaPos].rankings[stat].find((t) => t.abbr === tonightOpp) : null;
+              const _osDvpRank = _osDvpEntry?.rank ?? null;
+              const _osDebug = !_osCol ? (!_osGl ? "no_gl" : `col_miss:${col}|got:${(_osGl.ul||[]).join(",")}`) : null;
+              const _osSoftVals = _osGl?.events && _osCol ? _osGl.events.filter((ev) => nbaEffectiveSoftTeams?.has(ev.oppAbbr)).map(_osCol.getStat).filter((v) => !isNaN(v)) : [];
+              const _osSoftPct = _osSoftVals.length >= 5 ? parseFloat((_osSoftVals.filter((v) => v >= threshold).length / _osSoftVals.length * 100).toFixed(1)) : null;
+              const _osYday = new Date(); _osYday.setDate(_osYday.getDate() - 1);
+              const _osYdayStr = _osYday.toISOString().slice(0, 10);
+              const _osIsB2B = _osGl && _osGl.events.length > 0 && (_osGl.events[0]?.date || "").startsWith(_osYdayStr);
+              let _osPaceAdj = null;
+              if (nbaPaceData) {
+                const _tp = nbaPaceData.teamPace?.[playerTeam] ?? null;
+                const _op = nbaPaceData.teamPace?.[tonightOpp] ?? null;
+                if (_tp !== null && _op !== null) _osPaceAdj = parseFloat(((_tp + _op) / 2 - (nbaPaceData.leagueAvgPace ?? 100)).toFixed(1));
               }
+              let _osOpportunity = null;
+              if (_osGl) {
+                const _osMinIdx = _osGl.ul.indexOf("MIN");
+                if (_osMinIdx !== -1) {
+                  const _osMinVals = _osGl.events.slice(0, 10).map(ev => parseFloat(ev.stats[_osMinIdx])).filter(v => !isNaN(v) && v > 0);
+                  if (_osMinVals.length >= 3) _osOpportunity = parseFloat((_osMinVals.reduce((a, b) => a + b, 0) / _osMinVals.length).toFixed(1));
+                }
+              }
+              const _osUsgEntry = nbaUsageMap[String(info.id)] ?? null;
+              const _osUsg = _osUsgEntry?.usg ?? null;
+              const _osAvgAst = _osUsgEntry?.avgAst ?? null;
+              const _osAvgReb = _osUsgEntry?.avgReb ?? null;
+              let _os3pMPG = null;
+              let _osC1Pts;
+              if (stat === "assists") {
+                _osC1Pts = _osAvgAst == null ? 2 : _osAvgAst >= 7 ? 4 : _osAvgAst >= 5 ? 2 : 0;
+              } else if (stat === "rebounds") {
+                _osC1Pts = _osAvgReb == null ? 2 : _osAvgReb >= 9 ? 4 : _osAvgReb >= 7 ? 2 : 0;
+              } else if (stat === "threePointers" && _osGl) {
+                const _os3pIdx = _osGl.ul.indexOf("3P");
+                const _os3pVals = _os3pIdx !== -1 ? _osGl.events.slice(0, 10).map(ev => parseFloat(ev.stats[_os3pIdx])).filter(v => !isNaN(v) && v >= 0) : [];
+                _os3pMPG = _os3pVals.length >= 3 ? _os3pVals.reduce((a, b) => a + b, 0) / _os3pVals.length : null;
+                _osC1Pts = _os3pMPG == null ? 2 : _os3pMPG >= 3 ? 4 : _os3pMPG >= 2 ? 2 : 0;
+              } else {
+                _osC1Pts = _osUsg == null ? 2 : _osUsg >= 28 ? 4 : _osUsg >= 22 ? 2 : 0;
+              }
+              const _osGameTotal = (sportByteam.nbaGameOdds ?? {})[playerTeam]?.total ?? null;
+              const _osTotalPts = _osGameTotal == null ? 1 : _osGameTotal >= 235 ? 3 : _osGameTotal >= 225 ? 2 : 1;
+              const _osPreSimScore = (_osPaceAdj != null ? (_osPaceAdj > 0 ? 3 : _osPaceAdj > -2 ? 2 : 1) : 0)
+                + _osC1Pts
+                + (_osDvpRank != null && _osDvpRank <= 10 ? 2 : 0)
+                + (!_osIsB2B ? 2 : 0)
+                + _osTotalPts;
+              const _osNbaSimScore = _osPreSimScore;
+              const _osDropEntry = { ..._dropBase, reason: "opp_not_soft", opponent: tonightOpp, dvpBased: !!nbaDvpSoftTeams, seasonPct: _osSeason, seasonGames: _osCol?.allVals.length ?? 0, softPct: _osSoftPct, softGames: _osSoftVals.length, truePct: _osTruePct, edge: _osEdge, posDvpRank: _osDvpRank, posGroup: nbaPos, _debug: _osDebug, isB2B: _osIsB2B, nbaPaceAdj: _osPaceAdj, nbaOpportunity: _osOpportunity, nbaPreSimScore: _osPreSimScore, nbaSimScore: _osNbaSimScore, nbaGameTotal: _osGameTotal, nbaTotalPts: _osTotalPts, nbaUsage: _osUsg, nbaAvgAst: _osAvgAst, nbaAvgReb: _osAvgReb, nba3pMPG: _os3pMPG };
+              nbaDropped.push(_osDropEntry);
+              if (isDebug) dropped.push(_osDropEntry);
               continue;
             }
           } else if (sport !== "mlb" && sport !== "nhl" && !softTeams.has(tonightOpp)) {
@@ -3160,7 +3161,7 @@ var worker_default = {
           const nbaGlSample = Object.fromEntries(Object.entries(playerGamelogs).filter(([k]) => k.startsWith("nba|")).map(([k, gl]) => [k, gl?.events?.slice(0, 3).map(ev => ({ stats: ev.stats?.slice(0, 3), statsLen: ev.stats?.length })) ?? null]));
           return jsonResponse({ plays, dropped, preDropped, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
         }
-        const playsResult = { plays, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length };
+        const playsResult = { plays, nbaDropped, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length };
         const sportsInPlays = new Set(plays.map((p) => p.sport));
         if (CACHE2 && sportsInPlays.size >= 2) {
           const summary = {

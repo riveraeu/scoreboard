@@ -983,6 +983,7 @@ function App() {
   const [searching, setSearching] = React.useState(false);
   const [tonightPlays, setTonightPlays] = React.useState(null);
   const [allTonightPlays, setAllTonightPlays] = React.useState(null); // unfiltered — includes qualified:false, used for player card truePct lookup
+  const [nbaDropped, setNbaDropped] = React.useState(null); // NBA opp_not_soft drops — used for player card explanation when play didn't qualify
   const [tonightLoading, setTonightLoading] = React.useState(true);
   const [tonightMeta, setTonightMeta] = React.useState(null);
   const [testMode, setTestMode] = React.useState(false);
@@ -1131,8 +1132,8 @@ function App() {
     setTonightLoading(true);
     fetch(`${WORKER}/tonight`)
       .then(r => r.json())
-      .then(data => { const all = data.plays || []; setAllTonightPlays(all); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore > 10) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore > 10))); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); setTonightLoading(false); })
-      .catch(() => { setAllTonightPlays([]); setTonightPlays([]); setTonightLoading(false); });
+      .then(data => { const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore > 10) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore > 10))); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); setTonightLoading(false); })
+      .catch(() => { setAllTonightPlays([]); setNbaDropped([]); setTonightPlays([]); setTonightLoading(false); });
   }, [testMode]);
 
   const bustCache = () => {
@@ -1141,8 +1142,8 @@ function App() {
     setTonightLoading(true);
     fetch(`${WORKER}/tonight?bust=1`)
       .then(r => r.json())
-      .then(data => { const all = data.plays || []; setAllTonightPlays(all); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore > 10) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore > 10))); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); setTonightLoading(false); setBustLoading(false); })
-      .catch(() => { setAllTonightPlays([]); setTonightPlays([]); setTonightLoading(false); setBustLoading(false); });
+      .then(data => { const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore > 10) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore > 10))); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); setTonightLoading(false); setBustLoading(false); })
+      .catch(() => { setAllTonightPlays([]); setNbaDropped([]); setTonightPlays([]); setTonightLoading(false); setBustLoading(false); });
   };
 
   // Always persist tracked plays to localStorage as a backup (server is authoritative when logged in, but localStorage is the fallback)
@@ -1333,6 +1334,7 @@ function App() {
       if (d.plays) {
         const all = d.plays;
         setAllTonightPlays(all);
+        setNbaDropped(d.nbaDropped || []);
         setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore > 10) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore > 10)));
       }
     } catch(e) {
@@ -2278,6 +2280,15 @@ function App() {
           for (const p of allTonightPlays) {
             if (p.playerId === player.id || p.playerName === player.name) {
               tonightPlayerMap[`${p.stat}|${p.threshold}`] = p;
+            }
+          }
+        }
+        // Fill in NBA opp_not_soft drops (have pace/minutes/B2B/SimScore data) without overwriting real plays
+        if (nbaDropped && player) {
+          for (const p of nbaDropped) {
+            if (p.playerId === player.id || p.playerName === player.name) {
+              const key = `${p.stat}|${p.threshold}`;
+              if (!tonightPlayerMap[key]) tonightPlayerMap[key] = p;
             }
           }
         }
