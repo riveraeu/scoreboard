@@ -3081,7 +3081,11 @@ var worker_default = {
             const key = `${tp.sport}|${tp.homeTeam}|${tp.awayTeam}`;
             if (!_totalBestMap[key] || tp.truePct > _totalBestMap[key].truePct) _totalBestMap[key] = tp;
           }
-          plays.push(...Object.values(_totalBestMap));
+          const _bestTotalIds = new Set(Object.values(_totalBestMap).map(tp => `${tp.sport}|${tp.homeTeam}|${tp.awayTeam}|${tp.threshold}`));
+          for (const tp of totalPlays) {
+            const isBest = _bestTotalIds.has(`${tp.sport}|${tp.homeTeam}|${tp.awayTeam}|${tp.threshold}`);
+            plays.push(isBest ? tp : { ...tp, qualified: false });
+          }
         }
         if (isDebug) {
           const nbaGlLabels = Object.fromEntries(Object.entries(playerGamelogs).filter(([k]) => k.startsWith("nba|")).map(([k, gl]) => [k, gl?.ul ?? null]));
