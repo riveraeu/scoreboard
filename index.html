@@ -1886,16 +1886,21 @@ function App() {
                             const nbaUsage = tonightTabPlay?.nbaUsage ?? null;
                             const nbaAvgAst = tonightTabPlay?.nbaAvgAst ?? null;
                             const nbaAvgReb = tonightTabPlay?.nbaAvgReb ?? null;
+                            const nba3pMPG = tonightTabPlay?.nba3pMPG ?? null;
                             const nbaBlowoutAdj = tonightTabPlay?.nbaBlowoutAdj ?? null;
                             const _usgPts = safeTab === "assists"
                               ? (nbaAvgAst == null ? 2 : nbaAvgAst >= 7 ? 4 : nbaAvgAst >= 5 ? 2 : 0)
                               : safeTab === "rebounds"
                               ? (nbaAvgReb == null ? 2 : nbaAvgReb >= 9 ? 4 : nbaAvgReb >= 7 ? 2 : 0)
+                              : safeTab === "threePointers"
+                              ? (nba3pMPG == null ? 2 : nba3pMPG >= 3 ? 4 : nba3pMPG >= 2 ? 2 : 0)
                               : (nbaUsage == null ? 2 : nbaUsage >= 28 ? 4 : nbaUsage >= 22 ? 2 : 0);
                             const _c1Label = safeTab === "assists"
                               ? `APG: ${nbaAvgAst != null ? nbaAvgAst.toFixed(1)+" → "+_usgPts : "—"}/4`
                               : safeTab === "rebounds"
                               ? `RPG: ${nbaAvgReb != null ? nbaAvgReb.toFixed(1)+" → "+_usgPts : "—"}/4`
+                              : safeTab === "threePointers"
+                              ? `3PM/g: ${nba3pMPG != null ? nba3pMPG.toFixed(1)+" → "+_usgPts : "—"}/4`
                               : `USG%: ${nbaUsage != null ? nbaUsage.toFixed(1)+"% → "+_usgPts : "—"}/4`;
                             const scTitle = sc != null ? [`Pace: ${nbaPaceAdj != null ? (nbaPaceAdj > 0 ? 3 : nbaPaceAdj > -2 ? 2 : 1) : "—"}/3`,_c1Label,`DVP: ${tonightTabPlay?.posDvpRank != null ? (tonightTabPlay.posDvpRank <= 10 ? 2 : 0) : "—"}/2`,`Rested: ${isB2B != null ? (!isB2B ? 2 : 0) : "—"}/2`,`O/U: ${nbaTotalPts != null ? nbaTotalPts : "—"}/3`].join("\n") : null;
                             return (
@@ -3002,11 +3007,15 @@ function App() {
                             ? (play.nbaAvgAst == null ? 2 : play.nbaAvgAst >= 7 ? 4 : play.nbaAvgAst >= 5 ? 2 : 0)
                             : play.stat === "rebounds"
                             ? (play.nbaAvgReb == null ? 2 : play.nbaAvgReb >= 9 ? 4 : play.nbaAvgReb >= 7 ? 2 : 0)
+                            : play.stat === "threePointers"
+                            ? (play.nba3pMPG == null ? 2 : play.nba3pMPG >= 3 ? 4 : play.nba3pMPG >= 2 ? 2 : 0)
                             : (play.nbaUsage == null ? 2 : play.nbaUsage >= 28 ? 4 : play.nbaUsage >= 22 ? 2 : 0);
                           const _c1Label = play.stat === "assists"
                             ? `APG: ${play.nbaAvgAst != null ? play.nbaAvgAst.toFixed(1)+" → "+_usgPts : "—"}/4`
                             : play.stat === "rebounds"
                             ? `RPG: ${play.nbaAvgReb != null ? play.nbaAvgReb.toFixed(1)+" → "+_usgPts : "—"}/4`
+                            : play.stat === "threePointers"
+                            ? `3PM/g: ${play.nba3pMPG != null ? play.nba3pMPG.toFixed(1)+" → "+_usgPts : "—"}/4`
                             : `USG%: ${play.nbaUsage != null ? play.nbaUsage.toFixed(1)+"% → "+_usgPts : "—"}/4`;
                           const scTitle = sc != null ? [`Pace: ${play.nbaPaceAdj != null ? (play.nbaPaceAdj > 0 ? 3 : play.nbaPaceAdj > -2 ? 2 : 1) : "—"}/3`,_c1Label,`DVP: ${play.posDvpRank != null ? (play.posDvpRank <= 10 ? 2 : 0) : "—"}/2`,`Rested: ${play.isB2B != null ? (!play.isB2B ? 2 : 0) : "—"}/2`,`O/U: ${play.nbaTotalPts != null ? play.nbaTotalPts : "—"}/3`].join("\n") : null;
                           return (

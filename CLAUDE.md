@@ -168,8 +168,9 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
   - Falls back to avg(seasonPct, softPct) − 4% if B2B when simulation returns null (<5 game values)
 - **SimScore** (max 14, edge gates separately — same pattern as MLB strikeouts):
   - Pace: avg pace >0 vs league avg → 3pts, >-2 → 2pts, else → 1pt (slow game still scores 1 — not a disqualifier) — fetched from ESPN via `buildNbaPaceData()`, cached 12h
-  - **C1 — stat-appropriate opportunity signal** (max 4pts, null → 2pts abstain). From `buildNbaUsageRate` (same ESPN endpoint, now also extracts `avgAssists`/`avgRebounds`):
-    - **points / threePointers**: USG% ≥28% → 4pts, ≥22% → 2pts, <22% → 0pts. (`USG% = (avgFGA + 0.44×avgFTA + avgTO) / (avgMin × 2.255) × 100` — ESPN `usageRate` is 0.0 so fallback always runs)
+  - **C1 — stat-appropriate opportunity signal** (max 4pts, null → 2pts abstain). From `buildNbaUsageRate` (ESPN endpoint, extracts `avgAssists`/`avgRebounds`); 3PM/game from last-10-game gamelog (`3P` column) for threePointers:
+    - **points**: USG% ≥28% → 4pts, ≥22% → 2pts, <22% → 0pts. (`USG% = (avgFGA + 0.44×avgFTA + avgTO) / (avgMin × 2.255) × 100` — ESPN `usageRate` is 0.0 so fallback always runs)
+    - **threePointers**: 3PM/game (last 10 games) ≥3 → 4pts, ≥2 → 2pts, <2 → 0pts. USG% doesn't capture 3-point volume — a high-usage big man scores 4pts on USG% but may take 0 3s.
     - **assists**: APG ≥7 → 4pts, ≥5 → 2pts, <5 → 0pts. (USG% is inversely correlated with passing role)
     - **rebounds**: RPG ≥9 → 4pts, ≥7 → 2pts, <7 → 0pts. (USG% has no relation to rebounding)
   - Position-adjusted DVP rank ≤ 10 → 2pts
