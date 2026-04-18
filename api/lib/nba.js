@@ -452,31 +452,28 @@ export async function buildNbaUsageRate(playerIds) {
         if (!r.ok) return;
         const d = await r.json();
         const cats = d.splits?.categories || [];
-        // usageRate (ESPN abbreviation "USG") — skip if 0.0 (ESPN not populating it this season)
-        let usg = null;
-        for (const cat of cats) {
-          const stat = (cat.stats || []).find(s => s.name === "usageRate");
-          if (stat?.value != null && stat.value > 0) { usg = parseFloat(stat.value); break; }
-        }
-        if (usg != null) {
-          result[String(id)] = { usg, source: "espn" };
-          return;
-        }
-        // Fallback: compute USG% from avgFGA/avgFTA/avgTO/avgMin using the standard formula:
-        // USG% = (avgFGA + 0.44×avgFTA + avgTO) / (avgMin × 2.255) × 100
-        // where 2.255 ≈ leagueAvgTeamPoss(~108) / teamMinutesPerGame(48)
-        let avgFGA = 0, avgFTA = 0, avgTO = 0, avgMin = 0;
+        let usg = null, avgFGA = 0, avgFTA = 0, avgTO = 0, avgMin = 0, avgAst = 0, avgReb = 0;
         for (const cat of cats) {
           for (const s of cat.stats || []) {
-            if (s.name === "avgFieldGoalsAttempted") avgFGA = parseFloat(s.value) || 0;
-            if (s.name === "avgFreeThrowsAttempted") avgFTA = parseFloat(s.value) || 0;
-            if (s.name === "avgTurnovers") avgTO = parseFloat(s.value) || 0;
-            if (s.name === "avgMinutes") avgMin = parseFloat(s.value) || 0;
+            const v = parseFloat(s.value) || 0;
+            if (s.name === "usageRate" && v > 0) usg = v;
+            if (s.name === "avgFieldGoalsAttempted") avgFGA = v;
+            if (s.name === "avgFreeThrowsAttempted") avgFTA = v;
+            if (s.name === "avgTurnovers") avgTO = v;
+            if (s.name === "avgMinutes") avgMin = v;
+            if (s.name === "avgAssists") avgAst = v;
+            if (s.name === "avgRebounds" || s.name === "avgTotalRebounds") avgReb = v;
           }
+        }
+        const _avgAst = avgAst > 0 ? parseFloat(avgAst.toFixed(1)) : null;
+        const _avgReb = avgReb > 0 ? parseFloat(avgReb.toFixed(1)) : null;
+        if (usg != null) {
+          result[String(id)] = { usg, avgAst: _avgAst, avgReb: _avgReb, source: "espn" };
+          return;
         }
         if (avgMin > 10 && avgFGA > 0) {
           const est = (avgFGA + 0.44 * avgFTA + avgTO) / (avgMin * 2.255) * 100;
-          result[String(id)] = { usg: parseFloat(Math.min(50, Math.max(0, est)).toFixed(1)), source: "estimated" };
+          result[String(id)] = { usg: parseFloat(Math.min(50, Math.max(0, est)).toFixed(1)), avgAst: _avgAst, avgReb: _avgReb, source: "estimated" };
         }
       } catch {}
     }));

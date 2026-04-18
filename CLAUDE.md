@@ -168,7 +168,10 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
   - Falls back to avg(seasonPct, softPct) − 4% if B2B when simulation returns null (<5 game values)
 - **SimScore** (max 14, edge gates separately — same pattern as MLB strikeouts):
   - Pace: avg pace >0 vs league avg → 3pts, >-2 → 2pts, else 0pts — fetched from ESPN via `buildNbaPaceData()`, cached 12h
-  - **C1 — USG%** (replaces avgMin): ≥28% → 4pts, ≥22% → 2pts, <22% → 0pts, null → 2pts (abstain). From `buildNbaUsageRate` (endpoint: `sports.core.api.espn.com/v2/.../seasons/2026/types/2/athletes/{id}/statistics`, path `d.splits.categories`; ESPN `usageRate` field is 0.0 this season so fallback always runs: `USG% = (avgFGA + 0.44×avgFTA + avgTO) / (avgMin × 2.255) × 100` — verified ~29% for Banchero vs actual ~30%).
+  - **C1 — stat-appropriate opportunity signal** (max 4pts, null → 2pts abstain). From `buildNbaUsageRate` (same ESPN endpoint, now also extracts `avgAssists`/`avgRebounds`):
+    - **points / threePointers**: USG% ≥28% → 4pts, ≥22% → 2pts, <22% → 0pts. (`USG% = (avgFGA + 0.44×avgFTA + avgTO) / (avgMin × 2.255) × 100` — ESPN `usageRate` is 0.0 so fallback always runs)
+    - **assists**: APG ≥7 → 4pts, ≥5 → 2pts, <5 → 0pts. (USG% is inversely correlated with passing role)
+    - **rebounds**: RPG ≥9 → 4pts, ≥7 → 2pts, <7 → 0pts. (USG% has no relation to rebounding)
   - Position-adjusted DVP rank ≤ 10 → 2pts
   - Not B2B → 2pts
   - Game total tier: ≥235 → 3pts, ≥225 → 2pts, ≥215 → 1pt, <215 → 0pts, null → 1pt (abstain)
@@ -251,7 +254,7 @@ True% = Monte Carlo simulation (reuses `buildNbaStatDist` + `nbaDistPct`) — no
 | `buildNbaPaceData(cache)` | ESPN team stats → `{teamPace, leagueAvgPace}`, cached 12h |
 | `buildNbaPlayerPosFromSleeper(cache)` | Sleeper.app fallback for player → position |
 | `buildNbaDvpStage3FG(cache)` | DVP stage 3 gamelog fallback |
-| `buildNbaUsageRate(playerIds)` | `sports.core.api.espn.com/v2/.../seasons/2026/types/2/athletes/{id}/statistics` → `{playerId: {usg, source}}` map; path `d.splits.categories`; batches in groups of 10; ESPN `usageRate` = 0.0 (not populated), so fallback computes `(avgFGA + 0.44×avgFTA + avgTO) / (avgMin × 2.255) × 100` |
+| `buildNbaUsageRate(playerIds)` | Same ESPN endpoint → `{playerId: {usg, avgAst, avgReb, source}}` map; also extracts `avgAssists`/`avgRebounds` for stat-appropriate C1 scoring |
 | `buildNbaInjuryReport(cache)` | ESPN NBA injuries → `Map<teamAbbr, [{name, status}]>` (Out only); cached 1800s in `nba:injuries:{date}` |
 
 ### `api/lib/utils.js` — Response Helpers & Team Ranking

@@ -2444,8 +2444,19 @@ var worker_default = {
             }
             const _usgEntry = nbaUsageMap[String(info.id)] ?? null;
             const _usg = _usgEntry?.usg ?? null;
-            // ≥28%→4pts, ≥22%→2pts, <22%→0pts, null→2pts (abstain)
-            _sc += _usg == null ? 2 : _usg >= 28 ? 4 : _usg >= 22 ? 2 : 0;
+            const _avgAst = _usgEntry?.avgAst ?? null;
+            const _avgReb = _usgEntry?.avgReb ?? null;
+            // C1: stat-appropriate opportunity signal (max 4pts)
+            // points/3P: USG% ≥28→4, ≥22→2, else 0, null→2 abstain
+            // assists: APG ≥7→4, ≥5→2, else 0, null→2 abstain
+            // rebounds: RPG ≥9→4, ≥7→2, else 0, null→2 abstain
+            if (stat === "assists") {
+              _sc += _avgAst == null ? 2 : _avgAst >= 7 ? 4 : _avgAst >= 5 ? 2 : 0;
+            } else if (stat === "rebounds") {
+              _sc += _avgReb == null ? 2 : _avgReb >= 9 ? 4 : _avgReb >= 7 ? 2 : 0;
+            } else {
+              _sc += _usg == null ? 2 : _usg >= 28 ? 4 : _usg >= 22 ? 2 : 0;
+            }
             // 3. DVP — position-adjusted opponent rank ≤10 → 2pts
             if (posDvpRankOut !== null && posDvpRankOut <= 10) _sc += 2;
             // 4. Rest — not B2B → 2pts
@@ -2801,6 +2812,8 @@ var worker_default = {
             nbaTotalPts: sport === "nba" ? nbaTotalPts : void 0,
             nbaGameTotal: sport === "nba" ? nbaGameTotal : void 0,
             nbaUsage: sport === "nba" ? ((nbaUsageMap[String(info.id)]?.usg) ?? null) : void 0,
+            nbaAvgAst: sport === "nba" ? ((nbaUsageMap[String(info.id)]?.avgAst) ?? null) : void 0,
+            nbaAvgReb: sport === "nba" ? ((nbaUsageMap[String(info.id)]?.avgReb) ?? null) : void 0,
             nbaBlowoutAdj: sport === "nba" ? nbaBlowoutAdj : void 0,
             nbaSplitAdj: sport === "nba" ? nbaSplitAdj : void 0,
             nhlSimScore: sport === "nhl" ? nhlSimScore : void 0,
