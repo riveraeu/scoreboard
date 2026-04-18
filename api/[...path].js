@@ -3143,7 +3143,7 @@ var worker_default = {
             const sched = await schedRes.json();
             teamName = sched.team?.displayName || sched.team?.name || abbr;
             // Record from summary string e.g. "10-5"
-            const recSummary = sched.team?.record?.items?.[0]?.summary;
+            const recSummary = sched.team?.recordSummary || sched.team?.record?.items?.[0]?.summary;
             if (recSummary) { const p = recSummary.split("-"); wins = parseInt(p[0]) || 0; losses = parseInt(p[1]) || 0; }
             for (const event of sched.events || []) {
               const comp = event.competitions?.[0];
@@ -3155,8 +3155,8 @@ var worker_default = {
               const teamIsHome = homeAbbr === abbr;
               const teamComp = teamIsHome ? homeComp : awayComp;
               const oppComp  = teamIsHome ? awayComp  : homeComp;
-              const teamScore = parseFloat(teamComp.score) || 0;
-              const oppScore  = parseFloat(oppComp.score)  || 0;
+              const teamScore = parseFloat(teamComp.score?.value ?? teamComp.score?.displayValue ?? teamComp.score) || 0;
+              const oppScore  = parseFloat(oppComp.score?.value  ?? oppComp.score?.displayValue  ?? oppComp.score)  || 0;
               const winner = teamComp.winner === true;
               const loser  = oppComp.winner  === true;
               if (!winner && !loser) continue; // tie / no result
