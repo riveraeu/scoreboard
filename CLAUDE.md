@@ -301,6 +301,7 @@ True% = Monte Carlo simulation (reuses `buildNbaStatDist` + `nbaDistPct`) — no
 - `preDropped`: filtered before main play loop (no ESPN info yet) — included in `?debug=1` response
 - `dropped`: filtered inside play loop — included in `?debug=1` response
 - **Game totals** go to `dropped[]` (not `preDropped`) when they fail the edge gate or have no simulation data (`truePct == null`). Reasons: `"edge_too_low"` or `"no_simulation_data"`. The market report combines `plays[]` + `dropped[]` — `preDropped` is NOT shown in the report.
+- **`nbaDropped`**: NBA `opp_not_soft` drops always go here (not just in debug mode) and are included in the regular `/api/tonight` response. Each entry has the full player-card fields: `seasonPct`, `seasonGames`, `softPct`, `softGames`, `nbaOpportunity`, `nbaPaceAdj`, `isB2B`, `nbaSimScore`, `nbaGameTotal`, `nbaTotalPts`, `nbaUsage`, `nbaAvgAst`, `nbaAvgReb`, `nba3pMPG`. The frontend uses these to populate `tonightPlayerMap` as a fallback so the player card explanation renders fully even when the matchup didn't qualify.
 
 ### qualified:false plays
 MLB strikeout markets that fail simScore gate (< 7 or finalSimScore < 11) are pushed to `plays[]` with `qualified: false` so the player card can show real simPct for all thresholds. The main plays list (`tonightPlays`) filters these out client-side: `.filter(p => p.qualified !== false)`.
@@ -363,6 +364,7 @@ All threshold plays that pass the edge gate (≥ 3%) are pushed to `plays[]`. Be
 ### State
 - `tonightPlays` — qualified plays from `/api/tonight`, filtered `qualified !== false`
 - `allTonightPlays` — raw (unfiltered) plays array from `/api/tonight`, includes `qualified: false` entries; used exclusively for building `tonightPlayerMap` in the player card so all strikeout thresholds get their simulation-based truePct instead of falling back to the raw formula
+- `nbaDropped` — NBA `opp_not_soft` drop entries from `/api/tonight`; used as fallback in `tonightPlayerMap` so the player card explanation shows pace/minutes/B2B/SimScore even when the matchup didn't qualify
 - `reportData` — full debug response from `/api/tonight?debug=1`, shown in Market Report overlay
 - `player` — currently selected player for detail card
 - `teamPage` — currently selected team `{abbr, sport}` for team page
@@ -579,6 +581,15 @@ The CSW% play-by-play fetch in `buildPitcherKPct` fires one MLB Stats API reques
 Most NBA markets are dropped at `opp_not_soft` before the pre-sim block runs. Those drop records include `isB2B`, `nbaPaceAdj`, and `nbaOpportunity` computed inline from the gamelog at that drop site. `nbaPreSimScore` and `nbaSimScore` are also computed inline at the drop site so the Score column is populated for all NBA rows (not just qualifying plays).
 
 The `opp_not_soft` prescore block mirrors the main play loop exactly: stat-appropriate C1 (USG%/3PM/APG/RPG), game total, pace with 2pt bucket for >-2, no edge bonus. If these ever diverge again, the report will show understated SimScores for dropped plays.
+
+The same computation always runs (not just in debug mode) and the results are stored in `nbaDropped[]` — included in the regular response so the player card explanation can show full context for non-qualifying NBA matchups.
+
+### "NBA player card explanation missing pace/minutes/SimScore for non-soft matchup" (fixed 159993b)
+When a player's opponent wasn't in the soft-matchup set, the play was dropped at `opp_not_soft` before the main simulation block. It had no entry in `allTonightPlays`, so `tonightTabPlay` was null — the explanation card only showed the DVP rank sentence and soft teams list, but not season hit rate, avg minutes, pace, B2B status, or SimScore.
+
+**Fix**: the `opp_not_soft` rich-data block (previously `if (isDebug)` only) now always runs. Results go into `nbaDropped[]` (always in response) and `dropped[]` (debug only). Frontend builds `tonightPlayerMap` from `allTonightPlays` first, then fills in any missing keys from `nbaDropped`.
+
+**Fields added to drop entry vs before**: `nbaGameTotal`, `nbaTotalPts`, `nbaUsage`, `nbaAvgAst`, `nbaAvgReb`, `nba3pMPG`, `seasonGames`.
 
 ### "NBA 3P SimScore C1 shows — or seems wrong"
 For `threePointers`, C1 is scored on **3PM/game** from the last 10 gamelog games (`3P` column), not USG%. Check `?debug=1` → `plays[].nba3pMPG` for the raw value. If null, the gamelog has fewer than 3 valid game values — falls back to 2pt abstain. The SimScore tooltip in both play card and player card shows `3PM/g: X.X → Y/4`.
