@@ -44,6 +44,7 @@ Routes via `pathname`:
 - `/api/auth/debug-redis` — raw Upstash SET+GET diagnostic (GET `?adminKey=`) — returns `{setStatus, setRaw, getStatus, getRaw, match}` to confirm Redis is writable
 - `/api/auth/import-kalshi-picks` — import fills from Kalshi into user picks (POST `{kalshiSession, adminKey, userId}`) — fetches last 5 days of YES fills, maps tickers to play format, auto-populates won/lost for finalized markets
 - `/api/user/picks` — GET/POST user picks (requires `Authorization: Bearer <token>`)
+- `/api/team` — team page data (GET `?abbr=LAD&sport=mlb`) → `{teamAbbr, teamName, sport, record, wins, losses, gameLog, seasonStats:{avgTotal,gamesPlayed}, lineup, lineupConfirmed}`; cached `team:v2:{sport}:{abbr}:{today}` at 3600s TTL; `gameLog` entries: `{date, isHome, opp, teamScore, oppScore, total, result:"W"|"L"}`; lineup: NBA from ESPN depth chart `{position, name, playerId}`, MLB from MLB Stats API `{spot, name, position, playerId, isProbable?}`
 
 ### Frontend: `index.html`
 Single HTML file with JSX compiled via Babel standalone (no build step). All React components inline.
@@ -310,11 +311,50 @@ The raw (unfiltered) array is stored in `allTonightPlays` and used to build `ton
 
 ## Frontend Architecture (`index.html`)
 
+### URL Routing
+Single-page app uses `history.pushState` + `popstate` for client-side navigation with real URLs:
+- `/:ABBR` → team page (e.g. `/LAD`, `/GSW`) — uppercase abbreviation
+- `/:ABBR?sport=nhl` → disambiguate multi-sport abbreviations (e.g. `/BOS?sport=nhl` for Bruins vs `/BOS` for Red Sox); `_multiSportAbbrs` Set lists the conflicting ones
+- `/:SlugName` → player page (e.g. `/GavinWilliams`) — CamelCase slugification via `slugify(name)` = remove accents + collapse spaces
+- `vercel.json` `/:slug` rewrite serves `index.html` for all single-segment paths so deep links work on cold load
+- `resolveSlug(slug, sportOverride)` — on mount, reads `window.location.pathname`, checks `TEAM_DB` first, else stores as `pendingSlug` for async ESPN athlete search
+- `navigateToTeam(abbr, sport)` — pushState + `loadTeamPage` + scroll to top
+- `navigateToPlayer(p, tab)` — pushState with slugified name + `selectPlayer` + scroll
+- `goBack()` — pushState("/") + clear player/team state
+- Back button in both player card and team page header calls `goBack()`
+
+### Team Page
+`TeamPage({ abbr, sport, teamPageData, tonightPlays, onBack, navigateToTeam })` component:
+- Header: team logo (ESPN CDN), name, sport/record, W/L/Avg stat boxes
+- Tonight's game banner (if matching total play exists in `tonightPlays`)
+- **Totals tab** (always shown): `TotalsBarChart` + sortable game log (Date, H/A, Opp, Us, Opp, Total, W/L)
+- **Lineup tab** (shown when `lineup.length > 0`): NBA → position + player photo + name; MLB → batting order + probable SP
+- Opp names in game log are clickable → `navigateToTeam(g.opp, sport)`
+- Total cells color-coded green/red vs tonight's threshold
+- NHL lineup tab hidden (not implemented — depth chart structure differs)
+
+**`TotalsBarChart({ gameLog, sport, tonightPlay })`**:
+- `TOTAL_THRESHOLDS` = `{ mlb:[5..11], nba:[200..250], nhl:[3..8] }`
+- Computes `% games where total >= t` for each threshold
+- Tonight's threshold highlighted with blue glow + "tonight" badge
+- Hover tooltip: `{count}/{total} games`
+
+**`TEAM_DB`** — 90+ entries `{abbr, sport, name, short}` for MLB/NBA/NHL; first entry per abbr is the default (MLB > NBA > NHL priority); `teamUrl(abbr, sport)` generates `/{abbr}` or `/{abbr}?sport={sport}` only when disambiguation is needed.
+
+**Linked from**:
+- `TotalPlayCard`: team logo + abbr spans are `cursor:pointer` → `navigateToTeam`
+- Player card: opponent abbreviation → `navigateToTeam`
+- Picks row: total picks away/home team spans → `navigateToTeam`
+- Search dropdown: team rows above player rows, matched by `name/short/abbr` client-side via `React.useMemo` (no API call)
+
 ### State
 - `tonightPlays` — qualified plays from `/api/tonight`, filtered `qualified !== false`
 - `allTonightPlays` — raw (unfiltered) plays array from `/api/tonight`, includes `qualified: false` entries; used exclusively for building `tonightPlayerMap` in the player card so all strikeout thresholds get their simulation-based truePct instead of falling back to the raw formula
 - `reportData` — full debug response from `/api/tonight?debug=1`, shown in Market Report overlay
 - `player` — currently selected player for detail card
+- `teamPage` — currently selected team `{abbr, sport}` for team page
+- `teamPageData` — fetched data from `/api/team`
+- `pendingSlug` — CamelCase player slug awaiting ESPN athlete search resolution on cold load
 - `trackedPlays` — user's saved picks (localStorage or server)
 
 ### Market Report
