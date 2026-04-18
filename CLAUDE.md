@@ -525,12 +525,19 @@ The CSW% play-by-play fetch in `buildPitcherKPct` fires one MLB Stats API reques
 ### "NBA report shows — for Pace/AvgMin/Rest on most rows"
 Most NBA markets are dropped at `opp_not_soft` before the pre-sim block runs. Those drop records include `isB2B`, `nbaPaceAdj`, and `nbaOpportunity` computed inline from the gamelog at that drop site. `nbaPreSimScore` and `nbaSimScore` are also computed inline at the drop site so the Score column is populated for all NBA rows (not just qualifying plays).
 
+The `opp_not_soft` prescore block mirrors the main play loop exactly: stat-appropriate C1 (USG%/3PM/APG/RPG), game total, pace with 2pt bucket for >-2, no edge bonus. If these ever diverge again, the report will show understated SimScores for dropped plays.
+
+### "NBA 3P SimScore C1 shows — or seems wrong"
+For `threePointers`, C1 is scored on **3PM/game** from the last 10 gamelog games (`3P` column), not USG%. Check `?debug=1` → `plays[].nba3pMPG` for the raw value. If null, the gamelog has fewer than 3 valid game values — falls back to 2pt abstain. The SimScore tooltip in both play card and player card shows `3PM/g: X.X → Y/4`.
+
+USG% is still used for `points` only. Do not confuse `nbaUsage` (points C1) with `nba3pMPG` (threePointers C1).
+
 ### "NBA USG% is null / showing — in tooltip for all players"
 `buildNbaUsageRate` fetches `sports.core.api.espn.com/v2/.../seasons/2026/types/2/athletes/{id}/statistics`. Common failure modes:
 
 - **Wrong endpoint**: the `site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/{id}/statistics` URL returns only season/league metadata — no `statistics` array. Always use `sports.core.api.espn.com`.
 - **Wrong path**: ESPN `usageRate` is 0.0 (not populated by ESPN). The fallback uses `avgFGA`/`avgFTA`/`avgTO`/`avgMin` from `d.splits.categories`. If all four fields are 0 (e.g. player not found, wrong ID, 404), `avgFGA > 0` guard fails → no entry added → `null → 2pts` abstain.
-- **Wrong ESPN ID**: `playerInfoMap` maps Kalshi player names to ESPN IDs via `warmPlayerInfoCache`. If the ESPN ID is wrong, the core API returns 404. Check `?debug=1` → `plays[].nbaUsage` for the affected player.
+- **Wrong ESPN ID**: `playerInfoMap` maps Kalshi player names to ESPN IDs via `warmPlayerInfoCache`. If the ESPN ID is wrong, the core API returns 404. Check `?debug=1` → `plays[].nbaUsage` for the affected player — note this is only relevant for `points` plays; assists use `nbaAvgAst`, rebounds use `nbaAvgReb`, 3-pointers use `nba3pMPG`.
 - **Season type**: `types/2` = Regular Season. If fetched during Playoffs (type=3) or Play-In (type=5), regular season stats still exist — type 2 is correct year-round for regular season averages.
 
 ### "NBA pace shows — for New Orleans (NOP) players"
