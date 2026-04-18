@@ -1,5 +1,5 @@
 import { ALLOWED_ORIGIN, corsHeaders, jsonResponse, errorResponse, parseGameOdds, buildSoftTeamAbbrs, buildHardTeamAbbrs, buildTeamRankMap } from "./lib/utils.js";
-import { PARK_KFACTOR, PARK_HITFACTOR, PARK_RUNFACTOR, log5K, poissonCDF, log5HitRate, simulateKsDist, kDistPct, simulateKs, buildNbaStatDist, nbaDistPct, simulateHits, simulateMLBTotalDist, simulateNBATotalDist, simulateNHLTotalDist, totalDistPct, decimalOdds, kellyFraction, evPerUnit } from "./lib/simulate.js";
+import { PARK_KFACTOR, PARK_HITFACTOR, PARK_RUNFACTOR, UMPIRE_KFACTOR, log5K, poissonCDF, log5HitRate, simulateKsDist, kDistPct, simulateKs, buildNbaStatDist, nbaDistPct, simulateHits, simulateMLBTotalDist, simulateNBATotalDist, simulateNHLTotalDist, totalDistPct, decimalOdds, kellyFraction, evPerUnit } from "./lib/simulate.js";
 import { buildLineupKPct, buildBarrelPct, buildPitcherKPct } from "./lib/mlb.js";
 import { warmPlayerInfoCache, buildNbaDvpStage1, buildNbaDvpFromBettingPros, buildNbaDepthChartPos, buildNbaPaceData, buildNbaPlayerPosFromSleeper, buildNbaDvpStage3FG, buildNbaUsageRate, buildNbaInjuryReport } from "./lib/nba.js";
 
@@ -179,6 +179,57 @@ var worker_default = {
         const r = await fetch(upUrl, { method: "POST", headers: { Authorization: upAuth, "Content-Type": "application/json" }, body: JSON.stringify(["KEYS", "user:*"]) });
         const { result } = await r.json();
         return jsonResponse({ users: result || [] });
+      } else if (path === "auth/calibration" && method === "GET") {
+        if (params.get("adminKey") !== (env?.ADMIN_KEY || "sb-admin-2026")) return errorResponse("Forbidden", 403);
+        const upUrl = env?.UPSTASH_REDIS_REST_URL;
+        const upAuth = `Bearer ${env?.UPSTASH_REDIS_REST_TOKEN}`;
+        if (!upUrl) return errorResponse("No Redis URL", 500);
+        // Scan all picks keys
+        const keysRes = await fetch(upUrl, { method: "POST", headers: { Authorization: upAuth, "Content-Type": "application/json" }, body: JSON.stringify(["KEYS", "picks:*"]) });
+        const { result: picksKeys } = await keysRes.json();
+        if (!picksKeys || picksKeys.length === 0) return jsonResponse({ totalPicks: 0, finalizedPicks: 0, overall: [], byCategory: {} });
+        // Fetch all picks records in parallel
+        const allPicks = [];
+        await Promise.all((picksKeys || []).map(async key => {
+          const data = await CACHE2.get(key, "json").catch(() => null);
+          (data?.picks || []).forEach(p => allPicks.push(p));
+        }));
+        const finalized = allPicks.filter(p => p.result === "won" || p.result === "lost");
+        // Group by truePct bucket
+        const _buckets = [
+          { label: "70-75", min: 70, max: 75 },
+          { label: "75-80", min: 75, max: 80 },
+          { label: "80-85", min: 80, max: 85 },
+          { label: "85-90", min: 85, max: 90 },
+          { label: "90-95", min: 90, max: 95 },
+          { label: "95+",   min: 95, max: 101 },
+        ];
+        const overall = _buckets.map(b => {
+          const inBucket = finalized.filter(p => (p.truePct ?? 0) >= b.min && (p.truePct ?? 0) < b.max);
+          const wins = inBucket.filter(p => p.result === "won").length;
+          return {
+            bucket: b.label,
+            predicted: (b.min + Math.min(b.max, 100)) / 2,
+            actual: inBucket.length > 0 ? parseFloat((wins / inBucket.length * 100).toFixed(1)) : null,
+            n: inBucket.length,
+            delta: inBucket.length > 0 ? parseFloat((wins / inBucket.length * 100 - (b.min + Math.min(b.max, 100)) / 2).toFixed(1)) : null,
+          };
+        });
+        // By sport|stat category
+        const _cats = {};
+        for (const p of finalized) {
+          const cat = `${p.sport || "?"}|${p.stat || "?"}`;
+          if (!_cats[cat]) _cats[cat] = { wins: 0, n: 0 };
+          _cats[cat].n++;
+          if (p.result === "won") _cats[cat].wins++;
+        }
+        const byCategory = Object.fromEntries(
+          Object.entries(_cats).map(([cat, d]) => [cat, {
+            hitRate: parseFloat((d.wins / d.n * 100).toFixed(1)),
+            n: d.n,
+          }])
+        );
+        return jsonResponse({ totalPicks: allPicks.length, finalizedPicks: finalized.length, overall, byCategory });
       } else if (path === "auth/reset" && method === "POST") {
         const { email, newPassword, adminKey } = await request.json();
         if (adminKey !== (env?.ADMIN_KEY || "sb-admin-2026")) return errorResponse("Forbidden", 403);
@@ -1272,10 +1323,10 @@ var worker_default = {
               (() => {
                 const _td0 = new Date(); const _td1 = new Date(_td0); _td1.setDate(_td1.getDate() + 1);
                 const _tfmt2 = (d) => d.toISOString().slice(0, 10);
-                return fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${_tfmt2(_td0)}&hydrate=lineups,probablePitcher`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})).then((s0) => {
+                return fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${_tfmt2(_td0)}&hydrate=lineups,probablePitcher,officials`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})).then((s0) => {
                   const allFinal = (s0.dates || []).flatMap((d) => d.games || []).every((g) => g.status?.abstractGameState === "Final");
                   if ((s0.dates || []).length === 0 || allFinal) {
-                    return fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${_tfmt2(_td1)}&hydrate=lineups,probablePitcher`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({}));
+                    return fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${_tfmt2(_td1)}&hydrate=lineups,probablePitcher,officials`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({}));
                   }
                   return s0;
                 });
@@ -1306,11 +1357,11 @@ var worker_default = {
               const gameOdds = Object.fromEntries(Object.entries(gameOddsRaw).map(([k, v]) => [normMlbAbbr(k), v]));
               const [lineupResult, pitcherResult] = await Promise.all([buildLineupKPct(mlbSched), buildPitcherKPct(mlbSched)]);
               const { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, projectedLineupTeams, batterSplitBA } = lineupResult;
-              const { pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC } = pitcherResult;
+              const { pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame } = pitcherResult;
               // barrelPctMap is NOT stored in byteam:mlb — it lives in mlb:barrelPct with its own 6h TTL.
               // This prevents a bust (which deletes byteam:mlb) from baking an empty barrelPctMap
               // into the cache when Baseball Savant is slow.
-              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, projectedLineupTeams, gameOdds, pitcherStatsByName, batterSplitBA, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC };
+              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, projectedLineupTeams, gameOdds, pitcherStatsByName, batterSplitBA, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame };
               // Use short TTL (60s) if key data is missing — lineup/probables not confirmed yet.
               // Prevents partial data from baking into cache for the full 600s.
               const _mlbDataReady = Object.keys(lineupSpotByName || {}).length > 0 && Object.keys(pitcherAvgPitches || {}).length > 0;
@@ -2017,6 +2068,9 @@ var worker_default = {
           let simScore = null, kpctMeets = null, kpctPts = null, kbbMeets = null, lkpMeets = null, lkpPts = null, pitchesPts = null, parkMeets = null, mlPts = null, totalPts = null;
           let _pitcherHand = null;
           let _avgP = null; // hoisted so all strikeout output sites can use it
+          let _umpireName = null;   // E3a: home plate umpire
+          let _umpireKFactor = 1.0; // factor relative to league avg (>1 = high-K zone)
+          let _expectedBF = 24;     // E3b: expected batters faced from avg pitch count
           if (sport === "mlb" && stat === "strikeouts") {
             _pitcherHand = _pt(sportByteam.mlb?.pitcherHand, "hand");
             const _csw = _pt(sportByteam.mlb?.pitcherCSWPct, "cswPct");
@@ -2059,6 +2113,16 @@ var worker_default = {
               //    schedule has a stale/wrong probable for this team (e.g. cache built before starter confirmed).
               return _pt(sportByteam.mlb?.pitcherAvgPitches, "avgPitches");
             })();
+            // E3a: Umpire K% adjustment — look up home plate ump for this game
+            const _gameHome = sportByteam.mlb?.gameHomeTeams?.[playerTeam] ?? null;
+            const _umpKey = _gameHome
+              ? (_gameHome === playerTeam ? `${playerTeam}|${tonightOpp}` : `${tonightOpp}|${playerTeam}`)
+              : null;
+            _umpireName = _umpKey ? (sportByteam.mlb?.umpireByGame?.[_umpKey] ?? null) : null;
+            const _normUmpName = n => n ? n.normalize("NFD").replace(/[\u0300-\u036f]/g, "") : n;
+            _umpireKFactor = _umpireName ? (UMPIRE_KFACTOR[_normUmpName(_umpireName)] ?? 1.0) : 1.0;
+            // E3b: Expected BF from avg pitch count (3.85 pitches/PA league avg), clamped [15, 27]
+            _expectedBF = _avgP != null ? Math.min(27, Math.max(15, Math.round(_avgP / 3.85))) : 24;
             const _lkpVR = sportByteam.mlb?.lineupKPctVR?.[tonightOpp] ?? null;
             const _lkpVL = sportByteam.mlb?.lineupKPctVL?.[tonightOpp] ?? null;
             const _lkpAll = sportByteam.mlb?.lineupKPct?.[tonightOpp] ?? null;
@@ -2206,7 +2270,8 @@ var worker_default = {
                 const _distKey = `${playerTeam}|${_pitcherHand ?? ""}`;
                 if (!pitcherKDistCache[_distKey]) {
                   const _nSim = simScore !== null && simScore >= 11 ? 10000 : 5000;
-                  pitcherKDistCache[_distKey] = simulateKsDist(orderedKPcts, pitcherKPctOut, parkFactorOut, _nSim);
+                  const _pitcherKPctAdj = Math.min(40, pitcherKPctOut * _umpireKFactor);
+                  pitcherKDistCache[_distKey] = simulateKsDist(orderedKPcts, _pitcherKPctAdj, parkFactorOut, _nSim, _expectedBF);
                 }
                 simPctOut = kDistPct(pitcherKDistCache[_distKey], threshold);
               } else {
@@ -2835,6 +2900,9 @@ var worker_default = {
             hitterTotalPts: sport === "mlb" && stat !== "strikeouts" ? hitterTotalPts : void 0,
             hitterGameTotal: sport === "mlb" && stat !== "strikeouts" ? hitterGameTotal : void 0,
             pitcherAvgPitches: sport === "mlb" && stat === "strikeouts" ? _avgP : void 0,
+            umpireName: sport === "mlb" && stat === "strikeouts" ? _umpireName : void 0,
+            umpireKFactor: sport === "mlb" && stat === "strikeouts" && _umpireKFactor !== 1.0 ? _umpireKFactor : void 0,
+            expectedBF: sport === "mlb" && stat === "strikeouts" && _expectedBF !== 24 ? _expectedBF : void 0,
             gameTotal: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null : void 0,
             gameMoneyline: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null : void 0,
             pitcherCSWPct: sport === "mlb" && stat === "strikeouts" ? _pt(sportByteam.mlb?.pitcherCSWPct, "cswPct") : void 0,

@@ -288,6 +288,9 @@ export async function buildPitcherKPct(mlbSched) {
     // doubleheaders (SD vs SEA twice), dropping the earlier pitcher's ID from allIds.
     // This set collects every ID seen so their stats are always fetched.
     const allScheduledPitcherIds = new Set();
+    // umpireByGame: home plate umpire name keyed "homeAbbr|awayAbbr"
+    // Populated from game.officials when hydrate=officials is included in the schedule fetch.
+    const umpireByGame = {};
     for (const date of mlbSched.dates || []) {
       for (const game of date.games || []) {
         const homeAbbr = MLB_ID_TO_ABBR[game.teams?.home?.team?.id] || game.teams?.home?.team?.abbreviation;
@@ -296,6 +299,11 @@ export async function buildPitcherKPct(mlbSched) {
         const awayId = game.teams?.away?.probablePitcher?.id;
         const homeHand = game.teams?.home?.probablePitcher?.pitchHand?.code || null;
         const awayHand = game.teams?.away?.probablePitcher?.pitchHand?.code || null;
+        // Extract home plate umpire (populated when hydrate=officials is in schedule request)
+        const _hp = (game.officials || []).find(o => o.officialType === "Home Plate");
+        if (_hp?.official?.fullName && homeAbbr && awayAbbr) {
+          umpireByGame[`${homeAbbr}|${awayAbbr}`] = _hp.official.fullName;
+        }
         if (homeAbbr && homeId) {
           pitcherByTeam[homeAbbr] = homeId;
           pitcherHand[homeAbbr] = homeHand;
@@ -312,7 +320,7 @@ export async function buildPitcherKPct(mlbSched) {
       }
     }
     const allIds = [...allScheduledPitcherIds];
-    if (allIds.length === 0) return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherGS26: {}, pitcherHasAnchor: {}, pitcherRecentKPct: {}, pitcherLastStartDate: {}, pitcherLastStartPC: {} };
+    if (allIds.length === 0) return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherGS26: {}, pitcherHasAnchor: {}, pitcherRecentKPct: {}, pitcherLastStartDate: {}, pitcherLastStartPC: {}, umpireByGame };
     const idStr = allIds.join(",");
     const [res25, res26] = await Promise.all([
       fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=pitching,type=season,season=2025,gameType=R)`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
@@ -568,8 +576,8 @@ export async function buildPitcherKPct(mlbSched) {
         };
       }
     }
-    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherCSWPct, pitcherAvgPitches, pitcherGS26, pitcherHasAnchor, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC };
+    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherCSWPct, pitcherAvgPitches, pitcherGS26, pitcherHasAnchor, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame };
   } catch {
-    return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherGS26: {}, pitcherHasAnchor: {}, pitcherRecentKPct: {}, pitcherLastStartDate: {}, pitcherLastStartPC: {} };
+    return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherGS26: {}, pitcherHasAnchor: {}, pitcherRecentKPct: {}, pitcherLastStartDate: {}, pitcherLastStartPC: {}, umpireByGame: {} };
   }
 }

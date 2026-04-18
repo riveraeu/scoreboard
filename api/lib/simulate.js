@@ -37,6 +37,59 @@ export const PARK_KFACTOR = {
   OAK: 1.00, // legacy fallback (team now ATH)
 };
 
+// Umpire K-rate factors: normalized to league avg (22.2% K rate, scale: 1.00 = neutral).
+// Source: UmpScorecards / Baseball Savant 2022–2024 multi-year averages.
+// Unlisted umpires default to 1.0. Names stored in ASCII (accent-stripped for lookup).
+export const UMPIRE_KFACTOR = {
+  "Ron Kulpa":          1.12, // consistently widest zone in MLB
+  "CB Bucknor":         1.10,
+  "Alan Porter":        1.08,
+  "Phil Cuzzi":         1.07,
+  "Pat Hoberg":         1.06,
+  "Vic Carapazza":      1.06,
+  "Mike Estabrook":     1.05,
+  "Marvin Hudson":      1.05,
+  "Shane Livensparger": 1.04,
+  "Junior Valentine":   1.04,
+  "Jordan Baker":       1.03,
+  "Jim Reynolds":       1.03,
+  "Chris Segal":        1.02,
+  "Bill Miller":        1.01,
+  "Andy Fletcher":      1.01,
+  "Adam Hamari":        1.01,
+  "Mark Ripperger":     1.01,
+  "Todd Tichenor":      1.00,
+  "Brian Gorman":       1.00,
+  "Sam Holbrook":       1.00,
+  "Jeff Nelson":        1.00,
+  "Tom Hallion":        1.00,
+  "Paul Emmel":         1.00,
+  "Dan Iassogna":       1.00,
+  "Tripp Gibson":       1.00,
+  "Mark Carlson":       0.99,
+  "Doug Eddings":       0.99,
+  "Brian Knight":       0.99,
+  "Rob Drake":          0.99,
+  "David Rackley":      0.99,
+  "John Tumpane":       0.98,
+  "Angel Hernandez":    0.98, // accent-stripped from Ángel Hernández
+  "Lance Barksdale":    0.98,
+  "Cory Blaser":        0.98,
+  "Gabe Morales":       0.98,
+  "Chad Fairchild":     0.98,
+  "Mike Winters":       0.97,
+  "Laz Diaz":           0.97,
+  "Roberto Ortiz":      0.97,
+  "Mike Muchlinski":    0.97,
+  "Jeremie Rehak":      0.97,
+  "Nic Lentz":          0.96,
+  "Ryan Additon":       0.95,
+  "Chris Conroy":       0.94,
+  "Jerry Layne":        0.93,
+  "Ryan Blakney":       0.92,
+  "Lance Barrett":      0.89, // notoriously tight zone
+};
+
 export const PARK_HITFACTOR = {
   COL: 1.14,
   CIN: 1.08,

@@ -43,6 +43,7 @@ Routes via `pathname`:
 - `/api/auth/list-users` — list all user keys in Redis (GET `?adminKey=`)
 - `/api/auth/debug-redis` — raw Upstash SET+GET diagnostic (GET `?adminKey=`) — returns `{setStatus, setRaw, getStatus, getRaw, match}` to confirm Redis is writable
 - `/api/auth/import-kalshi-picks` — import fills from Kalshi into user picks (POST `{kalshiSession, adminKey, userId}`) — fetches last 5 days of YES fills, maps tickers to play format, auto-populates won/lost for finalized markets
+- `/api/auth/calibration` — outcome calibration stats (GET `?adminKey=`) — reads all users' finalized picks (result: won/lost), groups by truePct bucket (70–75, 75–80, …, 95+), returns `{totalPicks, finalizedPicks, overall:[{bucket, predicted, actual, n, delta}], byCategory:{sport|stat:{hitRate,n}}}`
 - `/api/user/picks` — GET/POST user picks (requires `Authorization: Bearer <token>`)
 - `/api/team` — team page data (GET `?abbr=LAD&sport=mlb`) → `{teamAbbr, teamName, sport, record, wins, losses, gameLog, seasonStats:{avgTotal,gamesPlayed}, lineup, lineupConfirmed}`; cached `team:v2:{sport}:{abbr}:{today}` at 3600s TTL; `gameLog` entries: `{date, isHome, opp, teamScore, oppScore, total, result:"W"|"L"}`; lineup: NBA from ESPN depth chart `{position, name, playerId}`, MLB from MLB Stats API `{spot, name, position, playerId, isProbable?}`
 
@@ -134,6 +135,8 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
 - **K% regression**: `trust = min(1.0, bf26 / 200)` — uses 2026 BF only (NOT combined 2026+2025). Full trust at ~33 starts. Blends 2026 actual K% with 2025 anchor (or league avg 22.2% if no 2025 data). KBB% regressed the same way.
 - **A1 — Pitcher recent form**: `_recentKPct` from last 5 starts with ≥3 starts and 30+ BF. Effective K% = `recentKPct × 0.6 + seasonKPct × 0.4` when recent data meets the threshold; else uses season K% only. `pitcherRecentKPct` map exported from `buildPitcherKPct`, keyed by team abbr.
 - **A2 — Pitcher rest/fatigue**: After truePct is computed, a fatigue multiplier is applied to the simulated pitcherKPct before re-querying the distribution. Days since last start ≤ 3 → `× 0.96`; days ≤ 3 AND last start pitch count ≥ 95 → `× 0.92` (short rest + heavy workload). `pitcherLastStartDate` and `pitcherLastStartPC` maps exported from `buildPitcherKPct`, keyed by team abbr.
+- **E3a — Umpire K% adjustment**: `UMPIRE_KFACTOR` constant in `api/lib/simulate.js` maps ~50 active umpires to normalized K-rate factors (league avg = 1.0; range ≈ 0.89–1.12). Home plate umpire fetched from MLB Stats API via `hydrate=officials` on the schedule request; extracted into `umpireByGame["homeAbbr|awayAbbr"]` in `buildPitcherKPct` (mlb.js). In the play loop, factor is applied to `pitcherKPctOut` before simulation: `_pitcherKPctAdj = min(40, pitcherKPctOut × _umpireKFactor)`. Name lookup is ASCII-normalized to handle diacritics. Unknown umpires default to 1.0. `umpireName` and `umpireKFactor` (when ≠ 1.0) included in play output.
+- **E3b — Expected batters faced**: `_expectedBF = clamp(round(_avgP / 3.85), 15, 27)` where `_avgP` is avg pitches/start and 3.85 is the MLB avg pitches/PA. Passed as 5th arg to `simulateKsDist` (which already accepts `totalPA`). Reduces truePct for pitch-limited starters (75pc → ~20 BF vs default 24); slightly increases for workhorses (105+pc → ~27 BF). `expectedBF` included in play output when ≠ 24.
 
 #### MLB Hitters (hits/hrr) Model
 - **`hits` True%**: Monte Carlo simulation (`simulateHits`) using batter BA × pitcher BAA (log5), park-adjusted
@@ -326,23 +329,25 @@ Single-page app uses `history.pushState` + `popstate` for client-side navigation
 ### Team Page
 `TeamPage({ abbr, sport, teamPageData, tonightPlays, allTonightPlays, onBack, navigateToTeam, trackedPlays, trackPlay, untrackPlay })` component:
 - **Independent page** — plays/picks grid is gated `!player && !teamPage`, so it hides completely when a team page is active (same behavior as the player card)
+- **Same template as player card**: Back button → header (logo + name + stat boxes) → content card (`background:#161b22, border:1px solid #30363d, borderRadius:12, padding:20px 22px`)
 - Header: team logo (ESPN CDN), name, sport/record, W/L/Avg stat boxes
-- Tonight's game explanation block (if matching total plays exist in `allTonightPlays`): matchup header (opp logo + `AWY @ HME`) integrated at top, then sport-specific ERA/RPG prose (MLB), PPG/pace prose (NBA), or GPG/GAA prose (NHL). No separate blue banner — matchup is part of the prose block. "Model projects X combined runs/pts/goals." (no threshold reference in prose).
+- **Content card** contains (in order): explanation block → `TotalsBarChart` → lineup (when available) → game log
+- Tonight's game explanation block (if matching total plays exist in `allTonightPlays`): matchup header (opp logo + `AWY @ HME`) integrated at top, then sport-specific ERA/RPG prose (MLB), PPG/pace prose (NBA), or GPG/GAA prose (NHL). Rendered inside the content card with `background:#0d1117, border:1px solid #21262d` (same style as player card explanation).
 - `tonightTotalMap` keyed by threshold: built from `allTonightPlays` filtered to this team/sport; contains all Kalshi-published thresholds (edge ≥ 3%). `tonightPlay` = best (qualified:true or highest truePct) entry.
-- **Totals tab** (always shown): `TotalsBarChart` + sortable game log (Date, H/A, Opp, Us, Opp, Total, W/L)
-- **Lineup tab** (shown when `lineup.length > 0`): NBA → position + player photo + name; MLB → batting order + probable SP
+- **No tabs** — all content shown inline: TotalsBarChart, then lineup (if `lineup.length > 0`), then sortable game log (Date, H/A, Opp, Us, Opp, Total, W/L)
+- **Lineup** (shown inline above game log when `lineup.length > 0`): NBA → position + player photo + name; MLB → batting order + probable SP. NHL lineup not shown (depth chart structure differs).
 - Opp names in game log are clickable → `navigateToTeam(g.opp, sport)`
 - Total cells color-coded green/red vs tonight's threshold
-- NHL lineup tab hidden (not implemented — depth chart structure differs)
 
 **`TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, trackedPlays, onTrack, onUntrack })`**:
 - `TOTAL_THRESHOLDS` = `{ mlb:[5..11], nba:[200..250], nhl:[3..8] }`
-- Horizontal bar layout: threshold label → bar → hist% → count/games → [Model | Kalshi | Edge | pick btn] columns
-- Best (highest truePct, qualified:true) threshold: blue bar + blue label; all other rows use `tierColor(pct)`
-- No "tonight" badge — replaced by Model%/Kalshi%/Edge columns for thresholds with Kalshi data (edge ≥ 3%)
+- **2 bars per row** (same as player card): primary bar (model truePct when Kalshi data exists, else hist%) + Kalshi purple bar (when `kalshiPct != null`)
+- Row layout: `label(width:40) → flex column of bars` — label has `paddingTop:2`, outer row `alignItems:"flex-start"`, matches player card exactly
+- Primary bar row right side (`width:110`): `count/Ng` count label + edge badge (when `hasTonightData`) + pick button (☆/★) — **pick button is next to edge, not next to odds**
+- Kalshi bar row right side: `(americanOdds)` label only
+- Best (highest truePct, qualified:true) threshold: blue bar + blue label; others use `tierColor(primaryPct)`
 - Pick button (☆/★) shown when `kalshiPct ≥ 70` AND `edge ≥ 3%`; edge colored green ≥3%, yellow 0-2.9%, red negative
-- Thresholds without Kalshi data show "—" in model/kalshi/edge columns
-- Column header row (Model / Kalshi / Edge) shown only when `tonightTotalMap` has at least one entry
+- `oddsStr` computed from `tp.americanOdds` (same formula as player card)
 
 **Backend total deduplication (commit aba2183)**:
 All threshold plays that pass the edge gate (≥ 3%) are pushed to `plays[]`. Best threshold per game is `qualified: totalSimScore >= 11`; others are `qualified: false`. Mirrors strikeout threshold behavior — `tonightPlays` (filtered) shows only the best, `allTonightPlays` (unfiltered) has all thresholds for the team page bar chart.
@@ -750,6 +755,6 @@ The ESPN team schedule response uses `sched.team.recordSummary` (e.g. `"15-4"`).
 Fix: `sched.team?.recordSummary || sched.team?.record?.items?.[0]?.summary`.
 
 **Expected empty lineup states (not bugs):**
-- MLB away team before lineup card submission → `awayPlayers: []` → empty lineup, Lineup tab hidden
-- NBA at end of regular season → ESPN depth chart returns `{}` → lineup empty, Lineup tab hidden
-Both are handled gracefully by the `lineup.length > 0` guard on the Lineup tab.
+- MLB away team before lineup card submission → `awayPlayers: []` → empty lineup, lineup section hidden
+- NBA at end of regular season → ESPN depth chart returns `{}` → lineup empty, lineup section hidden
+Both are handled gracefully by the `lineup.length > 0` guard on the inline lineup section.
