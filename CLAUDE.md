@@ -325,6 +325,7 @@ Single-page app uses `history.pushState` + `popstate` for client-side navigation
 
 ### Team Page
 `TeamPage({ abbr, sport, teamPageData, tonightPlays, onBack, navigateToTeam })` component:
+- **Independent page** — plays/picks grid is gated `!player && !teamPage`, so it hides completely when a team page is active (same behavior as the player card)
 - Header: team logo (ESPN CDN), name, sport/record, W/L/Avg stat boxes
 - Tonight's game banner (if matching total play exists in `tonightPlays`)
 - **Totals tab** (always shown): `TotalsBarChart` + sortable game log (Date, H/A, Opp, Us, Opp, Total, W/L)
@@ -335,9 +336,10 @@ Single-page app uses `history.pushState` + `popstate` for client-side navigation
 
 **`TotalsBarChart({ gameLog, sport, tonightPlay })`**:
 - `TOTAL_THRESHOLDS` = `{ mlb:[5..11], nba:[200..250], nhl:[3..8] }`
-- Computes `% games where total >= t` for each threshold
-- Tonight's threshold highlighted with blue glow + "tonight" badge
-- Hover tooltip: `{count}/{total} games`
+- Horizontal bar layout matching player card: threshold label (O4.5…) left → filled bar → % right → count/games → "tonight" badge
+- Subtitle: "% of N games with combined total ≥ threshold"
+- Tonight's threshold: blue bar + blue label + "tonight" badge; all other rows use `tierColor(pct)`
+- Count/games shown inline as `{count}/{N}g` — no hover tooltip
 
 **`TEAM_DB`** — 90+ entries `{abbr, sport, name, short}` for MLB/NBA/NHL; first entry per abbr is the default (MLB > NBA > NHL priority); `teamUrl(abbr, sport)` generates `/{abbr}` or `/{abbr}?sport={sport}` only when disambiguation is needed.
 
