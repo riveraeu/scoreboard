@@ -178,7 +178,7 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
   - Max: 3+4+2+2+3 = 14
   - Game totals from `sportByteam.nbaGameOdds` (ESPN NBA scoreboard, fetched fresh each request alongside byteam stats)
 - nSim scales with pre-edge simScore: ≥8 → 10k, ≥5 → 5k, else 2k
-- **Gate**: opp in soft DVP teams; edge ≥ 5% (gate only, not scored)
+- **Gate**: opp in soft DVP teams; edge ≥ 5% (gate only, not scored); **nbaSimScore ≥ 11** to qualify as a play (same Alpha tier as MLB strikeouts)
 - Avg minutes still extracted from ESPN gamelog `MIN` column (last 10 games) — used for display in explanation card but no longer the SimScore component
 - Depth chart position via `nbaDepthChartPos` (ESPN depth chart API, cached daily)
 
@@ -531,6 +531,9 @@ Most NBA markets are dropped at `opp_not_soft` before the pre-sim block runs. Th
 - **Wrong path**: ESPN `usageRate` is 0.0 (not populated by ESPN). The fallback uses `avgFGA`/`avgFTA`/`avgTO`/`avgMin` from `d.splits.categories`. If all four fields are 0 (e.g. player not found, wrong ID, 404), `avgFGA > 0` guard fails → no entry added → `null → 2pts` abstain.
 - **Wrong ESPN ID**: `playerInfoMap` maps Kalshi player names to ESPN IDs via `warmPlayerInfoCache`. If the ESPN ID is wrong, the core API returns 404. Check `?debug=1` → `plays[].nbaUsage` for the affected player.
 - **Season type**: `types/2` = Regular Season. If fetched during Playoffs (type=3) or Play-In (type=5), regular season stats still exist — type 2 is correct year-round for regular season averages.
+
+### "NBA pace shows — for New Orleans (NOP) players"
+`buildNbaPaceData` stores pace under ESPN's team abbreviation. ESPN returns "NO" for New Orleans, but `playerTeam` is normalized to "NOP" via `TEAM_NORM`. Fix already in place: `buildNbaPaceData` adds long-form aliases (`NO→NOP`, `GS→GSW`, etc.) after building `teamPace`. If pace is null for another team, check `TEAM_NORM` in `api/[...path].js` — the ESPN short code may need a new alias in `buildNbaPaceData`'s `_shortToLong` map.
 
 ### "NBA avgMin (nbaOpportunity) is null for all players"
 ESPN returns two season types that both contain "regular" in their name: `"2025-26 Play In Regular Season"` (1 game) and `"2025-26 Regular Season"` (80 games). The old `.find("regular")` took the Play-In type first — `_minVals.length = 1 < 3` gate fails → `nbaOpportunity = null`. Fix: `parseEspnGamelog` now prefers season types with "regular" that do NOT contain "play". Gamelog cache key is `gl:v2|nba|player` — if you need to re-bust, bump the version prefix.

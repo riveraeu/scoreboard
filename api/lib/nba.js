@@ -397,6 +397,12 @@ export async function buildNbaPaceData(cache) {
       } catch {}
     }));
     if (Object.keys(teamPace).length === 0) return null;
+    // Add long-form aliases for ESPN short codes so playerTeam lookups always resolve
+    // e.g. ESPN returns "NO" but playerTeam is normalized to "NOP" via TEAM_NORM
+    const _shortToLong = { GS: "GSW", SA: "SAS", NY: "NYK", NJ: "BKN", NO: "NOP", PHO: "PHX" };
+    for (const [s, l] of Object.entries(_shortToLong)) {
+      if (teamPace[s] != null && teamPace[l] == null) teamPace[l] = teamPace[s];
+    }
     const paces = Object.values(teamPace);
     const leagueAvgPace = paces.reduce((a, b) => a + b, 0) / paces.length;
     const result = { teamPace, leagueAvgPace: parseFloat(leagueAvgPace.toFixed(2)) };

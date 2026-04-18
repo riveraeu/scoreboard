@@ -2726,6 +2726,20 @@ var worker_default = {
             });
             continue;
           }
+          // NBA SimScore gate: must reach >= 11 (Alpha tier) to qualify as a play
+          if (sport === "nba" && nbaSimScore !== null && nbaSimScore < 11) {
+            if (isDebug) dropped.push({
+              ..._dropBase,
+              reason: "low_confidence",
+              nbaSimScore, nbaPreSimScore,
+              opponent: tonightOpp,
+              seasonPct: parseFloat(primaryPct.toFixed(1)),
+              softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
+              truePct: parseFloat(truePct.toFixed(1)), edge: parseFloat(edge.toFixed(1)),
+              nbaSimPct: nbaSimPctOut, nbaPaceAdj, nbaOpportunity, isB2B,
+            });
+            continue;
+          }
           const mlbH2H = sport === "mlb" && softPct !== null;
           plays.push({
             playerName: playerNameDisplay || playerName,
