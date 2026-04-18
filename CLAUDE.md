@@ -729,3 +729,19 @@ If the API returns correct data (e.g. `pct26Games: 18`) and the source code at t
 
 **MLB hitter play card — one explanation box (commit ae29862):**
 Previously MLB hitters (hits/hrr) rendered two separate gray boxes: (1) player/pitcher stats + season rate, (2) opponent ERA rank + no-H2H. The second box was redundant — it repeated the season rate in the no-H2H path. Fix: ERA rank sentence and no-H2H line merged into the first box (after the season/soft rate line). Second box condition now excludes `play.sport !== "mlb"` so it only fires for NFL. Single box flow: lineup → pitcher WHIP/FIP → season rate [+ soft pct if H2H] → ERA rank + no-H2H → park factor → game total → SimScore.
+
+### "/api/team returns 0 scores and 0-0 record"
+Two ESPN response shape mismatches discovered after initial deployment (fixed in commit `eff1a4f`):
+
+**Bug 1 — Score is an object, not a number:**
+`comp.competitors[n].score` returns `{value: 8.0, displayValue: "8"}` — not a raw number. `parseFloat({...})` = `NaN → 0`.
+Fix: `parseFloat(comp.score?.value ?? comp.score?.displayValue ?? comp.score) || 0`.
+
+**Bug 2 — Record field is `recordSummary`, not `record.items[0].summary`:**
+The ESPN team schedule response uses `sched.team.recordSummary` (e.g. `"15-4"`). The `record` key is null.
+Fix: `sched.team?.recordSummary || sched.team?.record?.items?.[0]?.summary`.
+
+**Expected empty lineup states (not bugs):**
+- MLB away team before lineup card submission → `awayPlayers: []` → empty lineup, Lineup tab hidden
+- NBA at end of regular season → ESPN depth chart returns `{}` → lineup empty, Lineup tab hidden
+Both are handled gracefully by the `lineup.length > 0` guard on the Lineup tab.
