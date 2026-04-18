@@ -324,22 +324,28 @@ Single-page app uses `history.pushState` + `popstate` for client-side navigation
 - Back button in both player card and team page header calls `goBack()`
 
 ### Team Page
-`TeamPage({ abbr, sport, teamPageData, tonightPlays, onBack, navigateToTeam })` component:
+`TeamPage({ abbr, sport, teamPageData, tonightPlays, allTonightPlays, onBack, navigateToTeam, trackedPlays, trackPlay, untrackPlay })` component:
 - **Independent page** — plays/picks grid is gated `!player && !teamPage`, so it hides completely when a team page is active (same behavior as the player card)
 - Header: team logo (ESPN CDN), name, sport/record, W/L/Avg stat boxes
-- Tonight's game banner (if matching total play exists in `tonightPlays`) — shows matchup, Over line, Kalshi%, model%, edge badge, then a sport-specific explanation block below: same ERA/RPG prose (MLB), PPG/pace prose (NBA), or GPG/GAA prose (NHL) as `TotalPlayCard`, including SimScore badge with hover tooltip
+- Tonight's game explanation block (if matching total plays exist in `allTonightPlays`): matchup header (opp logo + `AWY @ HME`) integrated at top, then sport-specific ERA/RPG prose (MLB), PPG/pace prose (NBA), or GPG/GAA prose (NHL). No separate blue banner — matchup is part of the prose block. "Model projects X combined runs/pts/goals." (no threshold reference in prose).
+- `tonightTotalMap` keyed by threshold: built from `allTonightPlays` filtered to this team/sport; contains all Kalshi-published thresholds (edge ≥ 3%). `tonightPlay` = best (qualified:true or highest truePct) entry.
 - **Totals tab** (always shown): `TotalsBarChart` + sortable game log (Date, H/A, Opp, Us, Opp, Total, W/L)
 - **Lineup tab** (shown when `lineup.length > 0`): NBA → position + player photo + name; MLB → batting order + probable SP
 - Opp names in game log are clickable → `navigateToTeam(g.opp, sport)`
 - Total cells color-coded green/red vs tonight's threshold
 - NHL lineup tab hidden (not implemented — depth chart structure differs)
 
-**`TotalsBarChart({ gameLog, sport, tonightPlay })`**:
+**`TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, trackedPlays, onTrack, onUntrack })`**:
 - `TOTAL_THRESHOLDS` = `{ mlb:[5..11], nba:[200..250], nhl:[3..8] }`
-- Horizontal bar layout matching player card: threshold label (O4.5…) left → filled bar → % right → count/games → "tonight" badge
-- Subtitle: "% of N games with combined total ≥ threshold"
-- Tonight's threshold: blue bar + blue label + "tonight" badge; all other rows use `tierColor(pct)`
-- Count/games shown inline as `{count}/{N}g` — no hover tooltip
+- Horizontal bar layout: threshold label → bar → hist% → count/games → [Model | Kalshi | Edge | pick btn] columns
+- Best (highest truePct, qualified:true) threshold: blue bar + blue label; all other rows use `tierColor(pct)`
+- No "tonight" badge — replaced by Model%/Kalshi%/Edge columns for thresholds with Kalshi data (edge ≥ 3%)
+- Pick button (☆/★) shown when `kalshiPct ≥ 70` AND `edge ≥ 3%`; edge colored green ≥3%, yellow 0-2.9%, red negative
+- Thresholds without Kalshi data show "—" in model/kalshi/edge columns
+- Column header row (Model / Kalshi / Edge) shown only when `tonightTotalMap` has at least one entry
+
+**Backend total deduplication (commit aba2183)**:
+All threshold plays that pass the edge gate (≥ 3%) are pushed to `plays[]`. Best threshold per game is `qualified: totalSimScore >= 11`; others are `qualified: false`. Mirrors strikeout threshold behavior — `tonightPlays` (filtered) shows only the best, `allTonightPlays` (unfiltered) has all thresholds for the team page bar chart.
 
 **`TEAM_DB`** — 90+ entries `{abbr, sport, name, short}` for MLB/NBA/NHL; first entry per abbr is the default (MLB > NBA > NHL priority); `teamUrl(abbr, sport)` generates `/{abbr}` or `/{abbr}?sport={sport}` only when disambiguation is needed.
 
