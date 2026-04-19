@@ -3285,11 +3285,18 @@ function App() {
               if (odds > 0) return 100 / (odds + 100) * 100;
               return null;
             };
+            const trackedGameKeys = new Set(
+              trackedPlays
+                .filter(p => p.id?.startsWith("total|"))
+                .map(p => { const pts = p.id.split("|"); return pts.length >= 6 ? `${pts[1]}|${pts[2]}|${pts[3]}|${pts[5]}` : null; })
+                .filter(Boolean)
+            );
             const untrackedPlays = (tonightPlays || []).filter(play => {
               const trackId = play.gameType === "total"
                 ? `total|${play.sport}|${play.homeTeam}|${play.awayTeam}|${play.threshold}|${play.gameDate || ""}`
                 : `${play.sport || "nba"}|${play.playerName}|${play.stat}|${play.threshold}|${play.gameDate || ""}`;
               if (trackedPlays.some(p => p.id === trackId)) return false;
+              if (play.gameType === "total" && trackedGameKeys.has(`${play.sport}|${play.homeTeam}|${play.awayTeam}|${play.gameDate || ""}`)) return false;
               if (sportFilter.length > 0 && !sportFilter.includes(play.sport)) return false;
               if (statFilter.length > 0 && !statFilter.includes(play.stat)) return false;
               return true;
