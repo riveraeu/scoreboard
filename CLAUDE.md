@@ -45,7 +45,7 @@ Routes via `pathname`:
 - `/api/auth/import-kalshi-picks` — import fills from Kalshi into user picks (POST `{kalshiSession, adminKey, userId}`) — fetches last 5 days of YES fills, maps tickers to play format, auto-populates won/lost for finalized markets
 - `/api/auth/calibration` — outcome calibration stats (GET `?adminKey=`) — reads all users' finalized picks (result: won/lost), groups by truePct bucket (70–75, 75–80, …, 95+), returns `{totalPicks, finalizedPicks, overall:[{bucket, predicted, actual, n, delta}], byCategory:{sport|stat:{hitRate,n}}}`
 - `/api/user/picks` — GET/POST user picks (requires `Authorization: Bearer <token>`)
-- `/api/team` — team page data (GET `?abbr=LAD&sport=mlb`) → `{teamAbbr, teamName, sport, record, wins, losses, gameLog, seasonStats:{avgTotal,gamesPlayed}, lineup, lineupConfirmed}`; cached `team:v2:{sport}:{abbr}:{today}` at 3600s TTL; `gameLog` entries: `{date, isHome, opp, teamScore, oppScore, total, result:"W"|"L"}`; lineup: NBA from ESPN depth chart `{position, name, playerId}`, MLB from MLB Stats API `{spot, name, position, playerId, isProbable?}`
+- `/api/team` — team page data (GET `?abbr=LAD&sport=mlb`) → `{teamAbbr, teamName, sport, record, wins, losses, gameLog, seasonStats:{avgTotal,gamesPlayed}, lineup, lineupConfirmed}`; cached `team:v2:{sport}:{abbr}:{today}` at 3600s TTL; `gameLog` entries: `{date, isHome, opp, teamScore, oppScore, total, result:"W"|"L"}`; lineup: NBA three-source fallback chain (see below), MLB from MLB Stats API `{spot, name, position, playerId, isProbable?}` (uses PT date `Date.now()-7h` to avoid UTC midnight mismatch)
 
 ### Frontend: `index.html`
 Single HTML file with JSX compiled via Babel standalone (no build step). All React components inline.
@@ -339,7 +339,8 @@ Single-page app uses `history.pushState` + `popstate` for client-side navigation
 - Tonight's game explanation block (if matching total plays exist in `allTonightPlays`): matchup header (opp logo + `AWY @ HME`) integrated at top, then sport-specific ERA/RPG prose (MLB), PPG/pace prose (NBA), or GPG/GAA prose (NHL). Rendered inside the content card with `background:#0d1117, border:1px solid #21262d` (same style as player card explanation).
 - `tonightTotalMap` keyed by threshold: built from `allTonightPlays` filtered to this team/sport; contains all Kalshi-published thresholds (edge ≥ 3%). `tonightPlay` = best (qualified:true, highest edge) entry from the earliest `gameDate` in the set (today before tomorrow when API returns both).
 - **No tabs** — all content shown inline: TotalsBarChart, then lineup (if `lineup.length > 0`), then sortable game log (Date, H/A, Opp, Us, Opp, Total, W/L)
-- **Lineup** (shown inline above game log when `lineup.length > 0`): NBA → position + player photo + name; MLB → batting order + probable SP. NHL lineup not shown (depth chart structure differs).
+- **Lineup** (shown inline above game log when `lineup.length > 0`): NBA → position + player photo + name; MLB → batting order + probable SP, each with 32×32 headshot from `img.mlbstatic.com` (uses MLB Stats API player ID, generic silhouette fallback). NHL lineup not shown (depth chart structure differs).
+- **NBA lineup source chain**: (1) ESPN depth chart (`/teams/{abbr}/depthchart`) — works during regular season, returns `{}` during playoffs; (2) ESPN scoreboard → game summary boxscore starters (`/summary?event={gameId}`) — actual starters for today's game, `lineupConfirmed:true`; (3) ESPN team roster (`/teams/{abbr}/roster`) — one player per position group up to 8, `lineupConfirmed:false`. ESPN uses non-standard codes in scoreboard/boxscore (NY=NYK, GS=GSW, SA=SAS, NO=NOP) — normalized via `_nbaEspnNorm` map in the team route.
 - Opp names in game log are clickable → `navigateToTeam(g.opp, sport)`
 - Total cells color-coded green/red vs tonight's threshold
 
@@ -784,7 +785,7 @@ Fix: `sched.team?.recordSummary || sched.team?.record?.items?.[0]?.summary`.
 
 **Expected empty lineup states (not bugs):**
 - MLB away team before lineup card submission → `awayPlayers: []` → empty lineup, lineup section hidden
-- NBA at end of regular season → ESPN depth chart returns `{}` → lineup empty, lineup section hidden
+- NBA: depth chart empty during playoffs → falls through to boxscore starters (game day) or roster fallback (no game today); lineup section only hidden if all three sources return nothing
 Both are handled gracefully by the `lineup.length > 0` guard on the inline lineup section.
 
 ### "Polymarket polyPct showing null for all total plays"
