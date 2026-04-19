@@ -3221,15 +3221,17 @@ var worker_default = {
             for (const event of sched.events || []) {
               const comp = event.competitions?.[0];
               if (!comp?.status?.type?.completed) {
-                // Capture next upcoming or in-progress game (first one wins)
-                if (!nextGame && event.date) {
+                // Capture next upcoming or in-progress game — must be today or future
+                const evDateStr = (event.date || "").slice(0, 10);
+                const todayUtc = new Date().toISOString().slice(0, 10);
+                if (!nextGame && evDateStr >= todayUtc) {
                   const homeComp = comp.competitors?.find(c => c.homeAway === "home");
                   const awayComp = comp.competitors?.find(c => c.homeAway === "away");
                   if (homeComp && awayComp) {
                     const hAbbr = (homeComp.team?.abbreviation || "").toUpperCase();
                     const isHome = hAbbr === abbr;
                     const oppComp = isHome ? awayComp : homeComp;
-                    nextGame = { date: event.date.slice(0, 10), isHome, opp: (oppComp.team?.abbreviation || "").toUpperCase(), gameTime: event.date };
+                    nextGame = { date: evDateStr, isHome, opp: (oppComp.team?.abbreviation || "").toUpperCase(), gameTime: event.date };
                   }
                 }
                 continue;
