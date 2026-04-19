@@ -3266,7 +3266,7 @@ function App() {
                             onError={e=>e.target.style.display="none"}/>
                         </div>
                         <div style={{color:"#8b949e",fontSize:11,marginTop:3,display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
-                          {play.gameTime && <span>{new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",hour:"numeric",minute:"2-digit",hour12:true}).format(new Date(play.gameTime))} PT</span>}
+                          {play.gameTime && <span>{new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",month:"short",day:"numeric"}).format(new Date(play.gameTime))} · {new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",hour:"numeric",minute:"2-digit",hour12:true}).format(new Date(play.gameTime))} PT</span>}
                           {play.lowVolume && <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(231,179,49,0.12)",border:"1px solid #e3b341",color:"#e3b341"}}>Low Vol</span>}
                           {play.thinMarket && <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(247,129,102,0.10)",border:"1px solid #f78166",color:"#f78166"}}>Wide Spread</span>}
                           {play.lineMove != null && Math.abs(play.lineMove) >= 3 && <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:play.lineMove > 0 ? "rgba(63,185,80,0.10)" : "rgba(247,129,102,0.10)",border:`1px solid ${play.lineMove > 0 ? "#3fb950" : "#f78166"}`,color:play.lineMove > 0 ? "#3fb950" : "#f78166"}}>{play.lineMove > 0 ? "▲" : "▼"} {Math.abs(play.lineMove)}c</span>}
@@ -3425,7 +3425,7 @@ function App() {
                         )}
                         {play.gameTime && (
                           <span style={{color:"#8b949e"}}>
-                            {new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",hour:"numeric",minute:"2-digit",hour12:true}).format(new Date(play.gameTime))} PT
+                            {new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",month:"short",day:"numeric"}).format(new Date(play.gameTime))} · {new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",hour:"numeric",minute:"2-digit",hour12:true}).format(new Date(play.gameTime))} PT
                           </span>
                         )}
                         {play.lineupConfirmed === true && (
