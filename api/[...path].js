@@ -1398,17 +1398,31 @@ var worker_default = {
           nbaPlayerStatus = nbaPlayerStatus || {};
           const SPORT_SB_PATH = { nba: "basketball/nba", nhl: "hockey/nhl", mlb: "baseball/mlb" };
           const sportsToFetch = needGameTimes ? [...sportsNeeded].filter(s => SPORT_SB_PATH[s]) : (needNbaStatus ? ["nba"] : []);
+          const yesterdayDateStr = new Date(Date.now() - 86400000).toISOString().slice(0, 10).replace(/-/g, "");
           const sbResults = await Promise.all(sportsToFetch.map(async s => {
             try {
-              const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${SPORT_SB_PATH[s]}/scoreboard?dates=${todayDateStr}`, { headers: { "User-Agent": "Mozilla/5.0" } });
-              return { sport: s, events: r.ok ? (await r.json()).events || [] : [] };
+              const H2 = { "User-Agent": "Mozilla/5.0" };
+              const base = `https://site.api.espn.com/apis/site/v2/sports/${SPORT_SB_PATH[s]}/scoreboard`;
+              const [r1, r2] = await Promise.all([
+                fetch(`${base}?dates=${yesterdayDateStr}`, { headers: H2 }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+                fetch(`${base}?dates=${todayDateStr}`, { headers: H2 }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+              ]);
+              return { sport: s, events: [...(r1.events || []), ...(r2.events || [])] };
             } catch { return { sport: s, events: [] }; }
           }));
           if (needGameTimes) {
+            const _ptDateFmt = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles" });
             for (const { sport, events } of sbResults) {
               for (const ev of events) {
                 const abbrs = (ev.competitions?.[0]?.competitors || []).map(c => c.team?.abbreviation).filter(Boolean);
-                if (ev.date && abbrs.length === 2) for (const abbr of abbrs) gameTimes[`${sport}:${normTeam(sport, abbr)}`] = ev.date;
+                if (ev.date && abbrs.length === 2) {
+                  const ptDate = _ptDateFmt.format(new Date(ev.date));
+                  for (const abbr of abbrs) {
+                    const key = `${sport}:${normTeam(sport, abbr)}`;
+                    gameTimes[`${key}:${ptDate}`] = ev.date;   // date-specific key
+                    if (!gameTimes[key]) gameTimes[key] = ev.date; // bare fallback (first seen wins)
+                  }
+                }
               }
             }
             if (CACHE2 && Object.keys(gameTimes).length > 0) await CACHE2.put(`gameTimes:v2:${todayDateStr}`, JSON.stringify(gameTimes), { expirationTtl: 600 }).catch(() => {});
@@ -2315,7 +2329,7 @@ var worker_default = {
               simPct: simPctOut,
               spreadAdj: kalshiSpread != null ? parseFloat((kalshiSpread / 2).toFixed(1)) : 0,
               gameDate,
-              gameTime: gameTimes[`${sport}:${playerTeam}`] ?? null,
+              gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
               lineupConfirmed: !(sportByteam.mlb?.projectedLineupTeams || []).includes(tonightOpp),
               playerStatus: null,
             });
@@ -2775,7 +2789,7 @@ var worker_default = {
                 simPct: simPctOut,
                 spreadAdj,
                 gameDate,
-                gameTime: gameTimes[`${sport}:${playerTeam}`] ?? null,
+                gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
                 lineupConfirmed: !(sportByteam.mlb?.projectedLineupTeams || []).includes(tonightOpp),
                 playerStatus: null,
               });
@@ -2814,7 +2828,7 @@ var worker_default = {
               log5Pct: simPctOut ?? log5PctOut, simPct: simPctOut,
               spreadAdj,
               gameDate,
-              gameTime: gameTimes[`${sport}:${playerTeam}`] ?? null,
+              gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
               lineupConfirmed: !(sportByteam.mlb?.projectedLineupTeams || []).includes(tonightOpp),
               playerStatus: null,
             });
@@ -2954,7 +2968,7 @@ var worker_default = {
             historicalGames: softVals.length,
             hitterMoneyline: sport === "mlb" && stat !== "strikeouts" ? sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null : void 0,
             gameDate,
-            gameTime: gameTimes[`${sport}:${playerTeam}`] ?? null,
+            gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
             lineupConfirmed: sport === "mlb" ? !(
               stat === "strikeouts"
                 ? (sportByteam.mlb?.projectedLineupTeams || []).includes(tonightOpp)
