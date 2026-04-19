@@ -331,10 +331,10 @@ Single-page app uses `history.pushState` + `popstate` for client-side navigation
 `TeamPage({ abbr, sport, teamPageData, tonightPlays, allTonightPlays, onBack, navigateToTeam, trackedPlays, trackPlay, untrackPlay })` component:
 - **Independent page** — plays/picks grid is gated `!player && !teamPage`, so it hides completely when a team page is active (same behavior as the player card)
 - **Same template as player card**: Back button → header (logo + name + stat boxes) → content card (`background:#161b22, border:1px solid #30363d, borderRadius:12, padding:20px 22px`)
-- Header: team logo (ESPN CDN), name, sport/record, W/L/Avg stat boxes
+- Header: team logo (ESPN CDN), name, sport/record, W/L/Avg stat boxes; game time shown as third line (`"Today · 7:40 PM PT"` or `"Tomorrow · 1:10 PM PT"`) when `tonightPlay?.gameTime` is available
 - **Content card** contains (in order): explanation block → `TotalsBarChart` → lineup (when available) → game log
 - Tonight's game explanation block (if matching total plays exist in `allTonightPlays`): matchup header (opp logo + `AWY @ HME`) integrated at top, then sport-specific ERA/RPG prose (MLB), PPG/pace prose (NBA), or GPG/GAA prose (NHL). Rendered inside the content card with `background:#0d1117, border:1px solid #21262d` (same style as player card explanation).
-- `tonightTotalMap` keyed by threshold: built from `allTonightPlays` filtered to this team/sport; contains all Kalshi-published thresholds (edge ≥ 3%). `tonightPlay` = best (qualified:true or highest truePct) entry.
+- `tonightTotalMap` keyed by threshold: built from `allTonightPlays` filtered to this team/sport; contains all Kalshi-published thresholds (edge ≥ 3%). `tonightPlay` = best (qualified:true, highest edge) entry from the earliest `gameDate` in the set (today before tomorrow when API returns both).
 - **No tabs** — all content shown inline: TotalsBarChart, then lineup (if `lineup.length > 0`), then sortable game log (Date, H/A, Opp, Us, Opp, Total, W/L)
 - **Lineup** (shown inline above game log when `lineup.length > 0`): NBA → position + player photo + name; MLB → batting order + probable SP. NHL lineup not shown (depth chart structure differs).
 - Opp names in game log are clickable → `navigateToTeam(g.opp, sport)`
@@ -346,7 +346,7 @@ Single-page app uses `history.pushState` + `popstate` for client-side navigation
 - Row layout: `label(width:40) → flex column of bars` — label has `paddingTop:2`, outer row `alignItems:"flex-start"`, matches player card exactly
 - Primary bar row right side (`width:110`): `count/Ng` count label + edge badge (when `hasTonightData`) + pick button (☆/★) — **pick button is next to edge, not next to odds**
 - Kalshi bar row right side: `(americanOdds)` label only
-- Best (highest truePct, qualified:true) threshold: blue bar + blue label; others use `tierColor(primaryPct)`
+- All threshold bars use `tierColor(primaryPct)` — no blue "best threshold" highlight. Tracked plays (☆→★) are the only special-state indicator.
 - Pick button (☆/★) shown when `kalshiPct ≥ 70` AND `edge ≥ 3%`; edge colored green ≥3%, yellow 0-2.9%, red negative
 - `oddsStr` computed from `tp.americanOdds` (same formula as player card)
 
@@ -391,6 +391,8 @@ Shows `untrackedPlays` (qualified plays not yet tracked). Each card has:
 - Explanation card (varies by sport/stat)
 - SimScore gate breakdown
 - **Tier/unit row** — `tierUnits(americanOdds)`: ≤ -900 → 5u, ≤ -500 → 3u, else 1u. Stake = `bankroll × units / 100`.
+- **Game time** shown in card subtitle as `"Today · 7:40 PM PT"` or `"Tomorrow · 1:10 PM PT"` using `play.gameTime` (UTC ISO string from `gameTimes` cache). Day label computed from browser local date vs `play.gameDate`.
+- **Date grouping**: plays are grouped by `gameDate` with "Today" / "Tomorrow" section headers. When the API returns plays for multiple dates (e.g. UTC has already flipped to tomorrow), today's plays appear first under "Today" and tomorrow's under "Tomorrow".
 
 **Total play cards** (`gameType: "total"`) render differently from player prop cards:
 - Header: inline format `[44px away logo] AWY @ HME [44px home logo]` — away logo leads, home logo trails. Team abbreviations at `fontSize:12, fontWeight:600, color:#c9d1d9`. No sport emoji.
@@ -409,6 +411,7 @@ Clicking a play opens the player card with:
 - Kalshi market prices
 - truePct from `tonightPlayerMap` (keyed `stat|threshold`) — built from `allTonightPlays` (unfiltered) so `qualified: false` thresholds (e.g. 3+/4+ strikeouts with no edge bonus) use their simulation-based truePct
 - Monotonicity enforced client-side: after building `_rawTruePctMap`, walks highest→lowest threshold tracking the running max and raises any value that dips below it. Safety net for any remaining non-monotonicity after backend sweep.
+- **Game time** shown as third line under player name/team in header (`"Today · 7:40 PM PT"` or `"Tomorrow · 1:10 PM PT"`). Looks up `gameTime` from `allTonightPlays` filtered to this player, sorted by `gameDate` ascending so today's game is preferred when multiple dates exist. Day label uses browser local date comparison against `gameDate`.
 - **Per-game gamelog table** (bottom of card) — current season only, sortable columns with hover tooltips
 
 #### Gamelog Table
