@@ -1009,14 +1009,8 @@ function App() {
   const [reportLoading, setReportLoading] = React.useState(false);
   const [reportSport, setReportSport] = React.useState("all");
   const [gamelogSort, setGamelogSort] = React.useState({ col: 'date', dir: 'desc' });
-  // Tiered unit sizing: based on American odds (price reflects market conviction)
-  // Heavier favorites = market is more certain = we size up for the edge
-  const tierUnits = (americanOdds) => {
-    const o = americanOdds || 0;
-    if (o <= -900) return 5;
-    if (o <= -500) return 3;
-    return 1; // -233 to -499
-  };
+  // Odds-based stake sizing: stake ($) = |americanOdds| / 10 (e.g. -257 → $25.7)
+  const tierUnits = (americanOdds) => Math.abs(americanOdds || 0) / 10;
   const kalshiCache = React.useRef({}); // memoize Kalshi fetches by "playerName|sport|stat"
   const [expandedPlays, setExpandedPlays] = React.useState(new Set());
   const [trackedPlays, setTrackedPlays] = React.useState(() => {
@@ -3490,22 +3484,20 @@ function App() {
                       <span style={{color:"#6e40c9",fontSize:10}}>({oddsStr})</span>
                     </div>
                   </div>
-                  {/* Tier / unit sizing row */}
+                  {/* Stake sizing row */}
                   {(() => {
-                    const units = tierUnits(play.americanOdds);
-                    const stake = bankroll * units / 100;
+                    const stake = tierUnits(play.americanOdds);
                     const profit = stake * oddsToProfit(play.americanOdds);
                     return (
                       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
                         <div style={{flex:1,display:"flex",gap:12,fontSize:10,color:"#484f58"}}>
                           <span>
-                            <span style={{color:"#8b949e",fontWeight:700}}>{units}u</span>
-                            <span style={{color:"#484f58"}}> · </span>
-                            <span style={{color:"#8b949e",fontWeight:600}}>${stake.toFixed(0)}</span>
+                            <span style={{color:"#484f58"}}>stake </span>
+                            <span style={{color:"#8b949e",fontWeight:600}}>${stake.toFixed(1)}</span>
                           </span>
                         </div>
                         <div style={{width:70,flexShrink:0,textAlign:"right",color:"#3fb950",fontSize:10,fontWeight:600}}>
-                          win +${profit.toFixed(0)}
+                          win +${profit.toFixed(1)}
                         </div>
                       </div>
                     );
@@ -3834,7 +3826,7 @@ function App() {
         // P&L calculations (only won/lost picks, DNP excluded)
         let totalStaked = 0, totalPL = 0;
         settled.forEach(p => {
-          const stake = ((p.units || 0) / 100) * bankroll;
+          const stake = p.units != null ? p.units : Math.abs(p.americanOdds || 0) / 10;
           totalStaked += stake;
           if (p.result === "won") totalPL += stake * oddsToProfit(p.americanOdds);
           else totalPL -= stake;
@@ -3931,7 +3923,7 @@ function App() {
                     .filter(p => p.result && p.result !== "dnp")
                     .sort((a, b) => (a.gameDate || "").localeCompare(b.gameDate || "") || a.trackedAt - b.trackedAt)
                     .map(p => {
-                      const s = ((p.units ?? 1) / 100) * bankroll;
+                      const s = p.units != null ? p.units : Math.abs(p.americanOdds || 0) / 10;
                       const pl = p.result === "won" ? s * oddsToProfit(p.americanOdds) : -s;
                       const dateKey = p.gameDate || new Date(p.trackedAt).toISOString().slice(0,10);
                       const [yr,mo,dy] = dateKey.split("-").map(Number);
@@ -4006,8 +3998,8 @@ function App() {
                 ? (() => { const [yr,mo,dy] = pick.gameDate.split("-").map(Number); return new Date(yr, mo-1, dy).toLocaleDateString("en-US", { month:"short", day:"numeric" }); })()
                 : new Date(pick.trackedAt).toLocaleDateString("en-US", { month:"short", day:"numeric" });
               const resultColor = pick.result === "won" ? "#3fb950" : pick.result === "lost" ? "#f78166" : pick.result === "dnp" ? "#8b949e" : null;
-              const units = pick.units ?? 1;
-              const stake = (units / 100) * bankroll;
+              const units = pick.units != null ? pick.units : Math.abs(pick.americanOdds || 0) / 10;
+              const stake = units;
               let pickPL = null;
               if (pick.result === "won") pickPL = stake * oddsToProfit(pick.americanOdds);
               else if (pick.result === "lost") pickPL = -stake;
@@ -4153,20 +4145,16 @@ function App() {
                       </button>
                     </div>
                   </div>
-                  {/* Unit size row */}
+                  {/* Stake size row */}
                   <div style={{display:"flex",alignItems:"center",gap:8,marginTop:10,paddingTop:8,borderTop:"1px solid #21262d"}}>
-                    <span style={{color:"#484f58",fontSize:11}}>Unit size</span>
+                    <span style={{color:"#484f58",fontSize:11}}>Stake</span>
                     <div style={{display:"flex",alignItems:"center",background:"#0d1117",border:"1px solid #30363d",borderRadius:6,overflow:"hidden"}}>
-                      <input type="number" min="0" max="100" step="0.5" value={units}
+                      <span style={{color:"#8b949e",fontSize:12,padding:"2px 2px 2px 8px"}}>$</span>
+                      <input type="number" min="0" step="0.1" value={units}
                         onChange={e => setPickUnits(pick.id, e.target.value)}
                         style={{background:"transparent",border:"none",outline:"none",color:"#c9d1d9",
-                          fontSize:12,width:46,padding:"3px 4px 3px 8px",textAlign:"right"}}/>
-                      <span style={{color:"#8b949e",fontSize:12,padding:"2px 8px 2px 2px"}}>%</span>
+                          fontSize:12,width:52,padding:"3px 8px 3px 4px",textAlign:"right"}}/>
                     </div>
-                    <span style={{color:"#484f58",fontSize:11}}>
-                      = <span style={{color:"#8b949e"}}>${stake.toFixed(2)}</span>
-                      {" stake"}
-                    </span>
                     {pick.result === "won" && (
                       <span style={{fontSize:11,color:"#484f58",marginLeft:4}}>
                         → win <span style={{color:"#3fb950",fontWeight:600}}>${(stake * oddsToProfit(pick.americanOdds)).toFixed(2)}</span>
