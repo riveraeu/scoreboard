@@ -115,21 +115,22 @@ Used for caching expensive fetches. Key TTLs:
 True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
 - Shared distribution per pitcher (keyed `playerTeam|pitcherHand`) — guarantees P(K≥4) ≥ P(K≥5)
 - `pitcherKDistCache` built before play loop
-- 10000 sims if `simScore ≥ 11`, else 5000
+- 10000 sims if `simScore ≥ 12`, else 5000
 - **SimScore** (max 14, no edge bonus — edge gates separately):
-  - CSW%/K% tiered (1/2/3pts): CSW% > 30% = 3pts (green), CSW% > 26% to ≤ 30% = 2pts (yellow), CSW% ≤ 26% = 1pt (red). Falls back to regressed K% only if CSW% is unavailable (null): K% > 27% = 3pts, K% > 24% to ≤ 27% = 2pts, K% ≤ 24% = 1pt. Null CSW% + null K% = 1pt (abstain). (The gs26 < 4 small-sample guard was removed — CSW% is always used when present, regardless of gs26.) Stored as `kpctPts` (1/2/3); `kpctMeets = kpctPts > 0` (boolean, always true now).
+  - CSW%/K% tiered (1/2/3pts): CSW% > 30% = 3pts (green), CSW% > 26% to ≤ 30% = 2pts (yellow), CSW% ≤ 26% = 1pt (red). Falls back to regressed K% only if CSW% is unavailable (null): K% > 27% = 3pts, K% > 24% to ≤ 27% = 2pts, K% ≤ 24% = 1pt. Null CSW% + null K% = 1pt (abstain). Stored as `kpctPts` (1/2/3); `kpctMeets = kpctPts > 0` (boolean, always true now).
   - K-BB% > 15% → 2pts
-  - Lineup oK% tiered (`lkpPts`): > 24% → 3pts (green), > 16% → 2pt (yellow, avg/below-avg lineup), ≤ 16% → 0pts; null → 1pt (abstain, like ML/total). `lkpMeets = lkpPts > 0`. Hand-adjusted vs RHP/LHP.
+  - Lineup oK% tiered (`lkpPts`): > 24% → 3pts (green), > 16% → 2pt (yellow, avg/below-avg lineup), ≤ 16% → 0pts; null → 1pt (abstain). `lkpMeets = lkpPts > 0`. Hand-adjusted vs RHP/LHP.
   - Avg pitches/start tiered (`pitchesPts`): > 85 → 2pts (green), > 75 → 1pt (yellow), ≤ 75 → 0pts; null → 1pt (abstain). (uses 2026 data only if gs26 ≥ 4; else falls back to 2025)
-  - ML tier (`mlPts`): ≤ -121 → 2pts, -120 to +120 → 1pt, > +120 → 0pts; null → 1pt
+  - **K-trend** (`kTrendPts`): `_recentKPct / _seasonKPct` ratio. ≥ 1.10 (trending up ≥10%) → 2pts; ≥ 0.90 (stable) → 1pt; < 0.90 (trending down) → 0pts; null (no recent data) → 1pt abstain. Replaces `mlPts` in simScore formula. `_recentKPct` from last 5 starts (A1 signal); ratio compares it directly to full-season K%.
   - O/U tier (`totalPts`): ≤ 8.5 → 2pts (low total = pitcher dominant), 8.5–10.5 → 1pt, >10.5 → 0pts; null → 1pt
   - Edge ≥ 3% required (gates play independently, not part of SimScore)
 - `parkMeets` (`PARK_KFACTOR[homeTeam] > 1.0`) is still computed and included in debug output but no longer contributes to SimScore — park factor is applied inside `simulateKsDist` and affects truePct directly. `PARK_KFACTOR` values updated from FanGraphs 2024 SO column (multi-year rolling avg).
-- `kpctPts`: 1/2/3 — CSW%/K% tier score. 3=green (CSW%>30% or K%>27%), 2=yellow (CSW% 26-30% or K% 24-27%), 1=red (≤26% CSW or ≤24% K, or null). Drives badge color and value in explanation cards.
-- `mlPts`: 0/1/2 — ML tier score. Color in UI: 2=green, 1=yellow, 0=red. Also drives ML column color in market report (≤-121 green, -120 to +120 yellow, >+120 red). Explanation text: heavy favorite (≤-121) / slight favorite (-120 to -1) / slight underdog (0 to +120) / heavy underdog (>+120). No "tonight" — games can be day or night.
+- `kpctPts`: 1/2/3 — CSW%/K% tier score. 3=green (CSW%>30% or K%>27%), 2=yellow (CSW% 26-30% or K% 24-27%), 1=red (≤26% CSW or ≤24% K, or null). Drives badge color and value in explanation cards. **Hard gate: `kpctPts < 2` drops play as `"low_pitcher_quality"` (qualified:false) before simulation**.
+- `mlPts`: 0/1/2 — ML tier score, **display only** (no longer part of simScore). Drives ML column color in market report (≤-121 green, -120 to +120 yellow, >+120 red). Still included in all play output for the report.
+- `kTrendPts`: 0/1/2 — K-trend score (replaces `mlPts` in simScore formula). Shown in SimScore tooltip as "K-Trend". 2=trending up, 1=stable/null, 0=trending down.
 - `totalPts`: 0/1/2 — O/U tier score. Color in UI: 2=green, 1=yellow, 0=red. Drives O/U column color in market report (≤8.5 green, 8.5–10.5 yellow, >10.5 red). Low total = pitcher dominant = favorable for Ks.
 - `pitcherGS26`: 2026 games started per team abbr, exported from `buildPitcherKPct`, used for small-sample guards. Included in `plays[]` output for debugging (alongside `pitcherHasAnchor`).
-- **Gates**: simScore ≥ 7 to enter play loop; finalSimScore ≥ 11 to qualify as a play (7–10 = qualified:false, shows in report but not plays card); insufficient_starts gate: if `hasAnchor !== true` (no reliable 2025 anchor, or null if not in data) requires `gs26 ≥ 8` (null gs26 treated as 0); if `hasAnchor === true` passes through regardless of gs26 — the 2025 anchor IS the reliability signal. Catches TJ-return / pure-reliever pitchers who have a few 2026 starts but no valid 2025 baseline (e.g. Detmers with 0 2025 GS — needs 8 starts before model trusts). **Important**: insufficient_starts is checked in BOTH the pre-filter loop AND the main play loop (because `?debug=1` bypasses the pre-filter and uses `qualifyingMarkets` directly). Main loop gate at `api/[...path].js` ~line 1713 uses corrected `playerTeam`; in debug mode pushes to `dropped[]` with reason `"insufficient_starts"` so they appear in the report but not in `plays[]`.
+- **Gates**: (1) simScore ≥ 7 to enter play loop; (2) `kpctPts ≥ 2` hard gate — drops as `"low_pitcher_quality"` (qualified:false) if pitcher CSW%/K% is red tier (≤26% CSW or ≤24% K%); (3) threshold sanity gate — drops as `"threshold_too_high"` (qualified:false) when `threshold > ceil(expectedKs) + 2` (only when lineup confirmed and expectedKs is available); (4) finalSimScore ≥ 12 to qualify as a play (7–11 = qualified:false, shows in report but not plays card); insufficient_starts gate: if `hasAnchor !== true` (no reliable 2025 anchor, or null if not in data) requires `gs26 ≥ 8` (null gs26 treated as 0); if `hasAnchor === true` passes through regardless of gs26 — the 2025 anchor IS the reliability signal. Catches TJ-return / pure-reliever pitchers who have a few 2026 starts but no valid 2025 baseline (e.g. Detmers with 0 2025 GS — needs 8 starts before model trusts). **Important**: insufficient_starts is checked in BOTH the pre-filter loop AND the main play loop (because `?debug=1` bypasses the pre-filter and uses `qualifyingMarkets` directly). Main loop gate at `api/[...path].js` ~line 1713 uses corrected `playerTeam`; in debug mode pushes to `dropped[]` with reason `"insufficient_starts"` so they appear in the report but not in `plays[]`.
 - `pitcherHasAnchor`: `true` if gs25 ≥ 5 AND bf25 ≥ 100 (reliable 2025 *starter* anchor). Included in `plays[]` output for debugging. A reliever-turned-starter has bf25 > 0 but gs25 = 0 — reliever K% is not a valid anchor. bf25 ≥ 100 also excludes injury-shortened seasons (e.g. TJ recovery with 5 starts but minimal workload).
 - Pitchers fetched via `buildPitcherKPct(mlbSched)` — avg pitches per start from 2026 gamelog (starts-only filtered via `gamesStarted > 0`); falls back to 2025 season aggregate `numberOfPitches / gamesStarted` when no 2026 start data in gamelog
 - **K% regression**: `trust = min(1.0, bf26 / 200)` — uses 2026 BF only (NOT combined 2026+2025). Full trust at ~33 starts. Blends 2026 actual K% with 2025 anchor (or league avg 22.2% if no 2025 data). KBB% regressed the same way.
@@ -305,7 +306,7 @@ True% = Monte Carlo simulation (reuses `buildNbaStatDist` + `nbaDistPct`) — no
 - **`nbaDropped`**: NBA `opp_not_soft` drops always go here (not just in debug mode) and are included in the regular `/api/tonight` response. Each entry has the full player-card fields: `seasonPct`, `seasonGames`, `softPct`, `softGames`, `nbaOpportunity`, `nbaPaceAdj`, `isB2B`, `nbaSimScore`, `nbaGameTotal`, `nbaTotalPts`, `nbaUsage`, `nbaAvgAst`, `nbaAvgReb`, `nba3pMPG`. The frontend uses these to populate `tonightPlayerMap` as a fallback so the player card explanation renders fully even when the matchup didn't qualify.
 
 ### qualified:false plays
-MLB strikeout markets that fail simScore gate (< 7 or finalSimScore < 11) are pushed to `plays[]` with `qualified: false` so the player card can show real simPct for all thresholds. The main plays list (`tonightPlays`) filters these out client-side: `.filter(p => p.qualified !== false)`.
+MLB strikeout markets that fail any gate (simScore < 7, kpctPts < 2, threshold_too_high, or finalSimScore < 12) are pushed to `plays[]` with `qualified: false` so the player card can show real simPct for all thresholds. The main plays list (`tonightPlays`) filters these out client-side: `.filter(p => p.qualified !== false)`.
 
 The raw (unfiltered) array is stored in `allTonightPlays` and used to build `tonightPlayerMap` in the player card — this ensures `qualified: false` thresholds (e.g. 3+/4+ strikeouts with no edge bonus) get their simulation-based truePct rather than falling back to the raw formula.
 
@@ -530,7 +531,7 @@ Previously, `tonightPlayerMap` was built from `tonightPlays` (filtered: `qualifi
 
 **Fix**: `tonightPlayerMap` now uses `allTonightPlays` (unfiltered), which includes `qualified: false` entries with their API-computed, monotonicity-enforced simulation truePct.
 
-If truePct still looks wrong: check `?debug=1` and look in `dropped` for the missing threshold — if it's there (not in `plays[]` at all), the fallback still applies. Check `reason`.
+If truePct still looks wrong: check `?debug=1` and look in `dropped` for the missing threshold — if it's there (not in `plays[]` at all), the fallback still applies. Check `reason`. New gate reasons: `"low_pitcher_quality"` (kpctPts < 2), `"threshold_too_high"` (threshold > ceil(expectedKs) + 2).
 
 ### "Why is truePct the same for 4+ and 5+?"
 The `pitcherKDistCache` shares one `Int16Array` distribution across all thresholds for a pitcher — querying it at different thresholds guarantees P(K≥4) ≥ P(K≥5) by construction. If values are identical, it likely means the distribution is flat at that range (e.g. a dominant pitcher where nearly all sims exceed both thresholds).
@@ -678,8 +679,8 @@ This always gave 14/14 when all four fields were present (assuming SA ranks know
 
 **Diagnosis:** `git log --oneline origin/main..HEAD` — if this shows unpushed commits, Vercel is running the old code. **Fix:** `git push origin main`.
 
-### "SimScore shows yellow for strikeout players with score 7–9"
-The qualifying gate for strikeouts is `finalSimScore >= 11` (Alpha tier). The report SimScore column uses `>= 10` as the yellow threshold, so scores 10 show yellow (near miss) and scores 7–9 show gray.
+### "SimScore shows yellow for strikeout players with score 9–11"
+The qualifying gate for strikeouts is `finalSimScore >= 12` (Alpha tier). The report SimScore column uses `>= 9` as the yellow threshold, so scores 9–11 show yellow (near miss) and scores < 9 show gray.
 
 ### "No MLB plays / all edge_too_low or empty response"
 **Most likely cause: Kalshi markets haven't opened yet for today's slate.**
@@ -785,3 +786,41 @@ Fix: `sched.team?.recordSummary || sched.team?.record?.items?.[0]?.summary`.
 - MLB away team before lineup card submission → `awayPlayers: []` → empty lineup, lineup section hidden
 - NBA at end of regular season → ESPN depth chart returns `{}` → lineup empty, lineup section hidden
 Both are handled gracefully by the `lineup.length > 0` guard on the inline lineup section.
+
+### "Polymarket polyPct showing null for all total plays"
+
+**Root cause: wrong Polymarket API endpoint.**
+The flat `gamma-api.polymarket.com/markets?closed=false&limit=200` endpoint returns general prediction markets (GTA VI release dates, celebrity gossip) — it ignores all filtering parameters (`tag_slug`, `tag_id`, `q=`, `search=`). Game total markets are NOT accessible via this endpoint.
+
+**Correct endpoint: `/events?series_id=X`**
+Game totals are organized into sport-specific series. Fetch events, then parse the nested `markets[]` array on each event:
+- MLB series_id = 3
+- NBA series_id = 10345
+- NHL series_id = 10346
+
+```
+GET gamma-api.polymarket.com/events?closed=false&series_id=3&limit=50
+```
+Response: array of event objects with `title` ("Tampa Bay Rays vs. Colorado Rockies") and `markets[]` (each market has `question`, `outcomes`, `outcomePrices`). O/U markets identified by `question.includes("O/U")`. Skip half-game markets (`"1H"` or `"2H"` in question).
+
+**Team name format differences by sport:**
+- MLB: full nickname only, no city — `"Rays"`, `"Rockies"`, `"Blue Jays"` (NOT "Tampa Bay Rays")
+- NBA: short nickname — `"Warriors"`, `"Suns"`, `"Trail Blazers"`
+- NHL: short nickname — `"Flyers"`, `"Golden Knights"`, `"Blue Jackets"`
+Event title format: `"[Away Team] vs. [Home Team]"` — away team is first.
+
+**Threshold alignment:**
+Polymarket lists `"O/U 8.5"` → Kalshi threshold = `Math.round(8.5 + 0.5) = 9` (YES if total ≥ 9).
+
+**Why matches are rare:**
+Kalshi qualifies markets at 70–97% probability — for MLB this means low thresholds (O3.5, O4.5, O5.5) where the probability of reaching them is high. Polymarket carries the game's main O/U line (typically 7.5–8.5 for MLB) and some alt lines. A Polymarket match only occurs when Kalshi's qualifying threshold aligns with a line Polymarket has listed. High-scoring venues (Coors Field COL, Globe Life TEX) produce matches more often. Example: LAD @ COL O8.5 — Kalshi 73% (this threshold passes the 70-97% gate), Polymarket 60% → `bestVenue=polymarket`, `bestEdge=+13%`.
+
+**Stale cache pattern after a broken deploy:**
+If the first deploy has a bug that produces `polyPctMap = {}` (empty), that empty object gets cached in Redis at `poly:totals:{date}` with 300s TTL. A subsequent correct deploy will still serve the empty cache until it expires. Fix: `?bust=1` skips the `poly:totals:{date}` cache read. Always test the Polymarket block with `?bust=1` after a deploy that changes the Polymarket fetch logic.
+
+**Diagnosis steps:**
+1. `GET /api/tonight?debug=1&bust=1` — check `plays[].polyPct` and `plays[].bestVenue` on total plays
+2. If `polyPct` is null for all total plays: check that today's sport (MLB/NBA/NHL) has a corresponding series in `POLY_SERIES` and that `totalMarkets.length > 0` (Kalshi must have published totals first)
+3. If `polyPct` is null for one team: the team name in Polymarket's event title doesn't match any key in `POLY_NAME_TO_ABBR[sport]`. Add the missing nickname.
+4. If `polyPct` exists but `bestEdge` seems wrong: check threshold alignment — Polymarket "O/U 7.5" maps to Kalshi threshold 8 (not 7). Log `_ouLine` and `_thresh` from the fetch block.
+5. Finalized Polymarket markets are filtered by `overPrice < 0.02 || overPrice > 0.98` — if a market just settled, this guard drops it.

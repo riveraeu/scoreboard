@@ -229,7 +229,47 @@ var worker_default = {
             n: d.n,
           }])
         );
-        return jsonResponse({ totalPicks: allPicks.length, finalizedPicks: finalized.length, overall, byCategory });
+        // MLB strikeout-specific breakdowns for model calibration
+        const ksFinalized = finalized.filter(p => p.sport === "mlb" && p.stat === "strikeouts");
+        const _bySimScore = {};
+        for (const p of ksFinalized) {
+          const sc = p.finalSimScore ?? p.simScore;
+          if (sc == null) continue;
+          const key = String(sc);
+          if (!_bySimScore[key]) _bySimScore[key] = { wins: 0, n: 0 };
+          _bySimScore[key].n++;
+          if (p.result === "won") _bySimScore[key].wins++;
+        }
+        const bySimScore = Object.fromEntries(
+          Object.entries(_bySimScore).sort((a, b) => Number(a[0]) - Number(b[0])).map(([sc, d]) => [sc, {
+            hitRate: parseFloat((d.wins / d.n * 100).toFixed(1)), n: d.n,
+          }])
+        );
+        const _byKpctPts = {};
+        for (const p of ksFinalized) {
+          const key = String(p.kpctPts ?? "null");
+          if (!_byKpctPts[key]) _byKpctPts[key] = { wins: 0, n: 0 };
+          _byKpctPts[key].n++;
+          if (p.result === "won") _byKpctPts[key].wins++;
+        }
+        const byKpctPts = Object.fromEntries(
+          Object.entries(_byKpctPts).map(([k, d]) => [k, {
+            hitRate: parseFloat((d.wins / d.n * 100).toFixed(1)), n: d.n,
+          }])
+        );
+        const _byKTrendPts = {};
+        for (const p of ksFinalized) {
+          const key = String(p.kTrendPts ?? "null");
+          if (!_byKTrendPts[key]) _byKTrendPts[key] = { wins: 0, n: 0 };
+          _byKTrendPts[key].n++;
+          if (p.result === "won") _byKTrendPts[key].wins++;
+        }
+        const byKTrendPts = Object.fromEntries(
+          Object.entries(_byKTrendPts).map(([k, d]) => [k, {
+            hitRate: parseFloat((d.wins / d.n * 100).toFixed(1)), n: d.n,
+          }])
+        );
+        return jsonResponse({ totalPicks: allPicks.length, finalizedPicks: finalized.length, overall, byCategory, kStrikeouts: { bySimScore, byKpctPts, byKTrendPts, n: ksFinalized.length } });
       } else if (path === "auth/reset" && method === "POST") {
         const { email, newPassword, adminKey } = await request.json();
         if (adminKey !== (env?.ADMIN_KEY || "sb-admin-2026")) return errorResponse("Forbidden", 403);
@@ -2087,7 +2127,7 @@ var worker_default = {
           const blendedPct = blendVals.length >= 5 ? blendVals.filter((v) => v >= threshold).length / blendVals.length * 100 : null;
           // Prefer 2026 season rate; fall back to blended 25+26; fall back to all-career
           const primaryPct = pct26 ?? blendedPct ?? seasonPct;
-          let simScore = null, kpctMeets = null, kpctPts = null, kbbMeets = null, lkpMeets = null, lkpPts = null, pitchesPts = null, parkMeets = null, mlPts = null, totalPts = null;
+          let simScore = null, kpctMeets = null, kpctPts = null, kbbMeets = null, lkpMeets = null, lkpPts = null, pitchesPts = null, parkMeets = null, mlPts = null, totalPts = null, kTrendPts = null;
           let _pitcherHand = null;
           let _avgP = null; // hoisted so all strikeout output sites can use it
           let _umpireName = null;   // E3a: home plate umpire
@@ -2178,17 +2218,24 @@ var worker_default = {
             pitchesPts = _avgP == null ? 1 : _avgP > 85 ? 2 : _avgP > 75 ? 1 : 0;
             parkMeets = _parkKF > 1.0;
             // ML 3-tier: ≤ -121 → 2pts, -120 to +120 → 1pt, > +120 → 0pts; null → 1pt
+            // mlPts kept for market report ML column coloring — no longer contributes to simScore
             const _teamML = sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null;
             mlPts = _teamML == null ? 1 : _teamML <= -121 ? 2 : _teamML <= 120 ? 1 : 0;
             // O/U total 3-tier (low total = pitcher-friendly): ≤8.5 → 2pts, 8.6–10.5 → 1pt, >10.5 → 0pts; null → 1pt
             const _gameTotal = sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null;
             totalPts = _gameTotal == null ? 1 : _gameTotal <= 8.5 ? 2 : _gameTotal <= 10.5 ? 1 : 0;
-            // Weighted sim-score (max 14): CSW%/K%→0-3, K-BB%→0-2, lineup K%→0-3, avg pitches→0-2, ML tier→0-2, O/U tier→0-2
+            // K-trend: recent K% vs season K% — pitchers trending up score higher.
+            // Requires A1 recentKPct (last 5 starts, 3+ starts, 30+ BF); null → 1pt abstain.
+            // ≥ 1.10 (trending up ≥10%) → 2pts; ≥ 0.90 (stable) → 1pt; < 0.90 (trending down) → 0pts
+            const _kTrendRatio = (_recentKPct != null && _seasonKPct != null && _seasonKPct > 0)
+              ? _recentKPct / _seasonKPct : null;
+            kTrendPts = _kTrendRatio == null ? 1 : _kTrendRatio >= 1.10 ? 2 : _kTrendRatio >= 0.90 ? 1 : 0;
+            // Weighted sim-score (max 14): CSW%/K%→0-3, K-BB%→0-2, lineup K%→0-3, avg pitches→0-2, K-trend→0-2, O/U tier→0-2
             simScore = kpctPts
                      + (kbbMeets === true ? 2 : 0)
                      + lkpPts
                      + pitchesPts
-                     + mlPts
+                     + kTrendPts
                      + totalPts;
           }
           let softVals, softLabel, softUnit;
@@ -2291,7 +2338,7 @@ var worker_default = {
                 // Use cached distribution for this pitcher so all thresholds share the same sim run
                 const _distKey = `${playerTeam}|${_pitcherHand ?? ""}`;
                 if (!pitcherKDistCache[_distKey]) {
-                  const _nSim = simScore !== null && simScore >= 11 ? 10000 : 5000;
+                  const _nSim = simScore !== null && simScore >= 12 ? 10000 : 5000;
                   const _pitcherKPctAdj = Math.min(40, pitcherKPctOut * _umpireKFactor);
                   pitcherKDistCache[_distKey] = simulateKsDist(orderedKPcts, _pitcherKPctAdj, parkFactorOut, _nSim, _expectedBF);
                 }
@@ -2309,7 +2356,7 @@ var worker_default = {
               reason: "low_confidence",
               simScore,
               opponent: tonightOpp,
-              kpctMeets, kpctPts, kbbMeets, lkpMeets, lkpPts, pitchesPts, parkMeets, mlPts, totalPts,
+              kpctMeets, kpctPts, kbbMeets, lkpMeets, lkpPts, pitchesPts, parkMeets, mlPts, totalPts, kTrendPts,
               seasonPct: parseFloat(primaryPct.toFixed(1)), softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
               truePct: _kTruePct, edge: parseFloat((_kTruePct - kalshiPct - (kalshiSpread != null ? kalshiSpread / 2 : 0)).toFixed(1)),
               pitcherCSWPct: _pt(sportByteam.mlb?.pitcherCSWPct, "cswPct"),
@@ -2334,6 +2381,42 @@ var worker_default = {
               truePct: _kTruePct,
               log5Pct: simPctOut ?? log5PctOut,
               simPct: simPctOut,
+              spreadAdj: kalshiSpread != null ? parseFloat((kalshiSpread / 2).toFixed(1)) : 0,
+              gameDate,
+              gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
+              lineupConfirmed: !(sportByteam.mlb?.projectedLineupTeams || []).includes(tonightOpp),
+              playerStatus: null,
+            });
+            continue;
+          }
+          // Hard quality gate: pitcher must have CSW%/K% >= 2pts (26%+ CSW or 24%+ K%).
+          // Eliminates red-tier pitchers regardless of other factors; must be a legitimate strikeout threat.
+          if (sport === "mlb" && stat === "strikeouts" && kpctPts < 2) {
+            const _kTruePct = parseFloat((simPctOut ?? (softPct !== null ? (primaryPct + softPct) / 2 : primaryPct)).toFixed(1));
+            const _dropKQ = {
+              ..._dropBase,
+              reason: "low_pitcher_quality",
+              simScore, opponent: tonightOpp,
+              kpctMeets, kpctPts, kbbMeets, lkpMeets, lkpPts, pitchesPts, parkMeets, mlPts, totalPts, kTrendPts,
+              seasonPct: parseFloat(primaryPct.toFixed(1)), softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
+              truePct: _kTruePct, edge: parseFloat((_kTruePct - kalshiPct).toFixed(1)),
+              pitcherCSWPct: _pt(sportByteam.mlb?.pitcherCSWPct, "cswPct"),
+              pitcherKPct: pitcherKPctOut, pitcherKBBPct: pitcherKBBPctOut,
+              pitcherAvgPitches: _avgP, lineupKPct: lineupKPctOut,
+              pitcherHand: _pitcherHand ?? null, simPct: simPctOut,
+              parkFactor: parkFactorOut ?? 1,
+              gameMoneyline: sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null,
+              gameTotal: sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null,
+            };
+            if (isDebug) dropped.push(_dropKQ);
+            plays.push({
+              ..._dropKQ,
+              qualified: false,
+              playerName: playerNameDisplay || playerName,
+              playerId: info.id,
+              sport, playerTeam, stat, threshold, kalshiPct, americanOdds,
+              truePct: _kTruePct,
+              log5Pct: simPctOut ?? log5PctOut, simPct: simPctOut,
               spreadAdj: kalshiSpread != null ? parseFloat((kalshiSpread / 2).toFixed(1)) : 0,
               gameDate,
               gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
@@ -2772,7 +2855,7 @@ var worker_default = {
                 pitcherCSWPct: _pt(sportByteam.mlb?.pitcherCSWPct, "cswPct"),
                 pitcherKBBPct: _pt(sportByteam.mlb?.pitcherKBBPct, "kbbPct"),
                 lineupKPct: lineupKPctOut, pitcherAvgPitches: _avgP,
-                kpctMeets, kpctPts, kbbMeets, lkpMeets, pitchesPts, parkMeets, mlPts, totalPts,
+                kpctMeets, kpctPts, kbbMeets, lkpMeets, pitchesPts, parkMeets, mlPts, totalPts, kTrendPts,
               } : {}),
               ...(sport === "mlb" && stat !== "strikeouts" ? {
                 hitterSimScore, hitterFinalSimScore,
@@ -2803,15 +2886,48 @@ var worker_default = {
             }
             continue;
           }
-          // Strikeout finalSimScore gate: must reach >= 11 (Alpha tier) to qualify as a play.
-          // Scores 7-10 show in report but marked qualified:false so player card still shows truePct.
-          if (sport === "mlb" && stat === "strikeouts" && finalSimScore !== null && finalSimScore < 11) {
+          // Threshold sanity gate: reject plays where the threshold far exceeds expected Ks.
+          // Even with good edge, a threshold 3+ above the model mean is a high-variance long shot.
+          // Only applies when expectedKsOut is available (lineup confirmed); skipped when null.
+          if (sport === "mlb" && stat === "strikeouts" && expectedKsOut != null && threshold > Math.ceil(expectedKsOut) + 2) {
+            const _kTruePct = parseFloat((simPctOut ?? (softPct !== null ? (primaryPct + softPct) / 2 : primaryPct)).toFixed(1));
+            const _dropThresh = {
+              ..._dropBase,
+              reason: "threshold_too_high",
+              simScore, finalSimScore, expectedKs: expectedKsOut, threshold,
+              opponent: tonightOpp,
+              kpctMeets, kpctPts, kbbMeets, lkpMeets, lkpPts, pitchesPts, parkMeets, mlPts, totalPts, kTrendPts,
+              seasonPct: parseFloat(primaryPct.toFixed(1)), softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
+              truePct: _kTruePct, edge: parseFloat((_kTruePct - kalshiPct).toFixed(1)),
+              pitcherKPct: pitcherKPctOut, pitcherAvgPitches: _avgP,
+              pitcherHand: _pitcherHand ?? null, simPct: simPctOut,
+            };
+            if (isDebug) dropped.push(_dropThresh);
+            plays.push({
+              ..._dropThresh,
+              qualified: false,
+              playerName: playerNameDisplay || playerName,
+              playerId: info.id,
+              sport, playerTeam, stat, threshold, kalshiPct, americanOdds,
+              truePct: _kTruePct,
+              log5Pct: simPctOut ?? log5PctOut, simPct: simPctOut,
+              spreadAdj: kalshiSpread != null ? parseFloat((kalshiSpread / 2).toFixed(1)) : 0,
+              gameDate,
+              gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
+              lineupConfirmed: !(sportByteam.mlb?.projectedLineupTeams || []).includes(tonightOpp),
+              playerStatus: null,
+            });
+            continue;
+          }
+          // Strikeout finalSimScore gate: must reach >= 12 (Alpha tier) to qualify as a play.
+          // Scores 7-11 show in report but marked qualified:false so player card still shows truePct.
+          if (sport === "mlb" && stat === "strikeouts" && finalSimScore !== null && finalSimScore < 12) {
             const _dropLowScore = {
               ..._dropBase,
               reason: "low_confidence",
               simScore, finalSimScore,
               opponent: tonightOpp,
-              kpctMeets, kpctPts, kbbMeets, lkpMeets, lkpPts, pitchesPts, parkMeets, mlPts, totalPts,
+              kpctMeets, kpctPts, kbbMeets, lkpMeets, lkpPts, pitchesPts, parkMeets, mlPts, totalPts, kTrendPts,
               seasonPct: parseFloat(primaryPct.toFixed(1)), softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
               truePct: parseFloat(truePct.toFixed(1)), edge: parseFloat(edge.toFixed(1)),
               pitcherCSWPct: _pt(sportByteam.mlb?.pitcherCSWPct, "cswPct"),
@@ -2903,6 +3019,7 @@ var worker_default = {
             totalPts: sport === "mlb" && stat === "strikeouts" ? totalPts : void 0,
             kpctPts: sport === "mlb" && stat === "strikeouts" ? kpctPts : void 0,
             lkpPts: sport === "mlb" && stat === "strikeouts" ? lkpPts : void 0,
+            kTrendPts: sport === "mlb" && stat === "strikeouts" ? kTrendPts : void 0,
             pitcherGS26: sport === "mlb" && stat === "strikeouts" ? _pt(sportByteam.mlb?.pitcherGS26, "gs26") : void 0,
             pitcherHasAnchor: sport === "mlb" && stat === "strikeouts" ? _pt(sportByteam.mlb?.pitcherHasAnchor, "hasAnchor") : void 0,
             hitterSimScore: sport === "mlb" && stat !== "strikeouts" ? hitterSimScore : void 0,
