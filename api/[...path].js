@@ -3464,6 +3464,10 @@ var worker_default = {
         // 2. Lineup
         let lineup = [], lineupConfirmed = false;
         if (sport === "nba") {
+          // ESPN uses non-standard abbreviations in scoreboard/boxscore (NY=NYK, GS=GSW, etc.)
+          const _nbaEspnNorm = { NY:"NYK", GS:"GSW", SA:"SAS", NO:"NOP", PHO:"PHX" };
+          const _normNba = a => _nbaEspnNorm[a?.toUpperCase()] || a?.toUpperCase() || "";
+          // 1. Depth chart (regular season only)
           try {
             const dcRes = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/${abbrLower}/depthchart`, { headers: H });
             if (dcRes.ok) {
@@ -3478,6 +3482,53 @@ var worker_default = {
               lineupConfirmed = lineup.length > 0;
             }
           } catch(e) {}
+          // 2. Boxscore starters (playoffs / game day)
+          if (lineup.length === 0) {
+            try {
+              const sbRes = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard`, { headers: H });
+              if (sbRes.ok) {
+                const sb = await sbRes.json();
+                let gameId = null;
+                for (const ev of sb.events || []) {
+                  const comps = ev.competitions?.[0]?.competitors || [];
+                  if (comps.some(c => _normNba(c.team?.abbreviation) === abbr)) { gameId = ev.id; break; }
+                }
+                if (gameId) {
+                  const sumRes = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=${gameId}`, { headers: H });
+                  if (sumRes.ok) {
+                    const sum = await sumRes.json();
+                    for (const tp of sum.boxscore?.players || []) {
+                      if (_normNba(tp.team?.abbreviation) !== abbr) continue;
+                      const athletes = tp.statistics?.[0]?.athletes || [];
+                      const starters = athletes.filter(a => a.starter);
+                      for (const a of starters) {
+                        lineup.push({ position: a.athlete?.position?.abbreviation || "?", name: a.athlete?.displayName || "Unknown", playerId: String(a.athlete?.id || "") });
+                      }
+                      lineupConfirmed = starters.length > 0;
+                      break;
+                    }
+                  }
+                }
+              }
+            } catch(e) {}
+          }
+          // 3. Roster fallback — one player per position group
+          if (lineup.length === 0) {
+            try {
+              const rosRes = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/${abbrLower}/roster`, { headers: H });
+              if (rosRes.ok) {
+                const ros = await rosRes.json();
+                const seen = new Set();
+                for (const a of ros.athletes || []) {
+                  const pos = a.position?.abbreviation;
+                  if (!pos || seen.has(pos)) continue;
+                  seen.add(pos);
+                  lineup.push({ position: pos, name: a.displayName || "Unknown", playerId: String(a.id || "") });
+                  if (lineup.length >= 8) break;
+                }
+              }
+            } catch(e) {}
+          }
         } else if (sport === "mlb") {
           const MLB_ABR_TO_ID = { ARI:109,ATL:144,BAL:110,BOS:111,CHC:112,CWS:145,CIN:113,CLE:114,COL:115,DET:116,HOU:117,KC:118,LAA:108,LAD:119,MIA:146,MIL:158,MIN:142,NYM:121,NYY:147,OAK:133,PHI:143,PIT:134,SD:135,SEA:136,SF:137,STL:138,TB:139,TEX:140,TOR:141,WSH:120 };
           const mlbId = MLB_ABR_TO_ID[abbr];
