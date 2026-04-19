@@ -188,7 +188,6 @@ const TOTAL_THRESHOLDS = {
 function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, trackedPlays, onTrack, onUntrack }) {
   const thresholds = TOTAL_THRESHOLDS[sport] || [5,6,7,8,9,10];
   const completed = (gameLog || []).filter(g => g.result);
-  const bestThreshold = tonightPlay?.threshold ?? null;
 
   const data = thresholds.map(t => {
     const count = completed.filter(g => g.total >= t).length;
@@ -199,7 +198,6 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, trackedP
   return (
     <div>
       {data.map(({ t, count, pct }) => {
-        const isBest = bestThreshold != null && t === bestThreshold;
         const tp = tonightTotalMap?.[t] ?? null;
         const lineLabel = `O${(t - 0.5).toFixed(1)}`;
 
@@ -227,20 +225,19 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, trackedP
         // Primary bar: model% when tonight data available, else hist%
         const hasTonightData = modelPct != null;
         const primaryPct = hasTonightData ? modelPct : pct;
-        const barColor = isBest ? "#58a6ff" : tierColor(primaryPct);
-        const labelColor = isBest ? "#58a6ff" : tp ? "#c9d1d9" : "#8b949e";
+        const barColor = tierColor(primaryPct);
+        const labelColor = tp ? "#c9d1d9" : "#8b949e";
 
         return (
           <div key={t} style={{display:"flex",gap:10,marginBottom:14,alignItems:"flex-start"}}>
             <div style={{color:labelColor,fontSize:13,width:40,textAlign:"right",
-              flexShrink:0,paddingTop:2,fontWeight:isBest?700:400}}>
+              flexShrink:0,paddingTop:2,fontWeight:400}}>
               {lineLabel}
             </div>
             <div style={{flex:1,display:"flex",flexDirection:"column",gap:5}}>
               {/* Primary bar (model when available, else hist) */}
               <div style={{display:"flex",alignItems:"center",gap:8}}>
-                <div style={{flex:1,background:"#21262d",borderRadius:5,height:18,overflow:"hidden",
-                  boxShadow:isBest?"0 0 0 1px rgba(88,166,255,0.4)":undefined}}>
+                <div style={{flex:1,background:"#21262d",borderRadius:5,height:18,overflow:"hidden"}}>
                   <div style={{width:`${primaryPct}%`,background:barColor,height:"100%",borderRadius:5,
                     transition:"width 0.5s ease",minWidth:primaryPct>0?4:0}}/>
                 </div>
@@ -294,8 +291,9 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, allTonightPlays, on
     (p.homeTeam?.toUpperCase() === abbr || p.awayTeam?.toUpperCase() === abbr)
   );
   const tonightTotalMap = Object.fromEntries(tonightTotals.map(p => [p.threshold, p]));
-  // Best (highest truePct) qualified play for matchup context
-  const tonightPlay = tonightTotals.find(p => p.qualified !== false) ?? tonightTotals[0] ?? null;
+  // Best (highest edge) qualified play for matchup context
+  const _tq = tonightTotals.filter(p => p.qualified !== false);
+  const tonightPlay = (_tq.length > 0 ? _tq : tonightTotals).sort((a,b) => (b.edge||0) - (a.edge||0))[0] ?? null;
 
   if (loading) return (
     <div style={{textAlign:"center",padding:52,color:"#8b949e",fontSize:13}}>Loading {abbr} data…</div>
@@ -355,6 +353,12 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, allTonightPlays, on
         <div>
           <h1 style={{color:"#fff",margin:0,fontSize:19,fontWeight:700}}>{teamName}</h1>
           <div style={{color:"#8b949e",fontSize:12}}>{sportLabel} 2025-26{record ? ` · ${record}` : ""}</div>
+          {tonightPlay?.gameTime && (() => {
+            const d = new Date(tonightPlay.gameTime);
+            const datePart = new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",month:"short",day:"numeric"}).format(d);
+            const timePart = new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",hour:"numeric",minute:"2-digit",hour12:true}).format(d);
+            return <div style={{color:"#6e7681",fontSize:11,marginTop:2}}>{datePart} · {timePart} PT</div>;
+          })()}
         </div>
         <div style={{marginLeft:"auto",display:"flex",gap:8}}>
           {[["W",wins],["L",losses],["Avg",seasonStats.avgTotal ?? "—"]].map(([l,v]) => (
@@ -2158,6 +2162,14 @@ function App() {
 <div>
             <h1 style={{color:"#fff",margin:0,fontSize:19,fontWeight:700}}>{player.name}</h1>
             <div style={{color:"#8b949e",fontSize:12}}>{player.team}{(() => { const opp = player.opponent || (tonightPlays || []).find(p => (p.playerId && p.playerId === player.id) || p.playerName?.toLowerCase() === player.name?.toLowerCase())?.opponent; const oppSport = (player.sportKey||sport).split("/")[1]; return opp ? <> · <span style={{color:"#58a6ff",cursor:"pointer",textDecoration:"underline",textDecorationColor:"rgba(88,166,255,0.4)"}} onClick={()=>navigateToTeam(opp,oppSport)}>vs {opp}</span></> : ""; })()} · {SPORTS.find(s=>s.value===(player.sportKey||sport))?.label} 2025-26</div>
+            {(() => {
+              const gt = (allTonightPlays || tonightPlays || []).find(p => (p.playerId && p.playerId === player.id) || p.playerName?.toLowerCase() === player.name?.toLowerCase())?.gameTime;
+              if (!gt) return null;
+              const d = new Date(gt);
+              const datePart = new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",month:"short",day:"numeric"}).format(d);
+              const timePart = new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",hour:"numeric",minute:"2-digit",hour12:true}).format(d);
+              return <div style={{color:"#6e7681",fontSize:11,marginTop:2}}>{datePart} · {timePart} PT</div>;
+            })()}
           </div>
           <div style={{marginLeft:"auto",display:"flex",gap:8}}>
             {[["AVG",avg],["HIGH",hi],["GP",totalGames]].map(([l,v]) => (
