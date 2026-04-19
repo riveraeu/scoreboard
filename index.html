@@ -711,7 +711,6 @@ const STAT_CONFIGS = {
     receptions:     { label: "Receptions",  thresholds: [2,3,4,5,6,7,8],          unit: "REC" },
   },
   "baseball/mlb": {
-    hits:       { label: "Hits",        thresholds: [1,2,3,4],           unit: "H"  },
     hrr:        { label: "H+R+RBI",     thresholds: [1,2,3,4,5,6],       unit: "HRR"},
     strikeouts: { label: "Strikeouts",  thresholds: [3,4,5,6,7,8,9,10], unit: "K"  },
   },
@@ -1721,7 +1720,7 @@ function App() {
   const statCfgs = (() => {
     if (sport !== "baseball/mlb" || mlbIsPitcher === null) return allStatCfgs;
     const pitcherTabs = ["strikeouts"];
-    const hitterTabs  = ["hits", "hrr"];
+    const hitterTabs  = ["hrr"];
     const allowed = mlbIsPitcher ? pitcherTabs : hitterTabs;
     return Object.fromEntries(Object.entries(allStatCfgs).filter(([k]) => allowed.includes(k)));
   })();
