@@ -291,9 +291,11 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, allTonightPlays, on
     (p.homeTeam?.toUpperCase() === abbr || p.awayTeam?.toUpperCase() === abbr)
   );
   const tonightTotalMap = Object.fromEntries(tonightTotals.map(p => [p.threshold, p]));
-  // Best (highest edge) qualified play for matchup context
+  // Best play: earliest gameDate first, then highest edge among qualified
   const _tq = tonightTotals.filter(p => p.qualified !== false);
-  const tonightPlay = (_tq.length > 0 ? _tq : tonightTotals).sort((a,b) => (b.edge||0) - (a.edge||0))[0] ?? null;
+  const _tPool = _tq.length > 0 ? _tq : tonightTotals;
+  const _tMinDate = _tPool.reduce((min, p) => (p.gameDate||"") < min ? (p.gameDate||"") : min, _tPool[0]?.gameDate||"");
+  const tonightPlay = _tPool.filter(p => p.gameDate === _tMinDate).sort((a,b) => (b.edge||0) - (a.edge||0))[0] ?? null;
 
   if (loading) return (
     <div style={{textAlign:"center",padding:52,color:"#8b949e",fontSize:13}}>Loading {abbr} data…</div>
@@ -2163,7 +2165,8 @@ function App() {
             <h1 style={{color:"#fff",margin:0,fontSize:19,fontWeight:700}}>{player.name}</h1>
             <div style={{color:"#8b949e",fontSize:12}}>{player.team}{(() => { const opp = player.opponent || (tonightPlays || []).find(p => (p.playerId && p.playerId === player.id) || p.playerName?.toLowerCase() === player.name?.toLowerCase())?.opponent; const oppSport = (player.sportKey||sport).split("/")[1]; return opp ? <> · <span style={{color:"#58a6ff",cursor:"pointer",textDecoration:"underline",textDecorationColor:"rgba(88,166,255,0.4)"}} onClick={()=>navigateToTeam(opp,oppSport)}>vs {opp}</span></> : ""; })()} · {SPORTS.find(s=>s.value===(player.sportKey||sport))?.label} 2025-26</div>
             {(() => {
-              const gt = (allTonightPlays || tonightPlays || []).find(p => (p.playerId && p.playerId === player.id) || p.playerName?.toLowerCase() === player.name?.toLowerCase())?.gameTime;
+              const _pp = (allTonightPlays || tonightPlays || []).filter(p => (p.playerId && p.playerId === player.id) || p.playerName?.toLowerCase() === player.name?.toLowerCase()).sort((a,b) => (a.gameDate||"").localeCompare(b.gameDate||""));
+              const gt = _pp[0]?.gameTime;
               if (!gt) return null;
               const d = new Date(gt);
               const datePart = new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",month:"short",day:"numeric"}).format(d);
