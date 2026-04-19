@@ -295,7 +295,7 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, trackedP
   );
 }
 
-function TeamPage({ abbr, sport, teamPageData, tonightPlays, allTonightPlays, onBack, navigateToTeam, trackedPlays, trackPlay, untrackPlay }) {
+function TeamPage({ abbr, sport, teamPageData, tonightPlays, allTonightPlays, onBack, navigateToTeam, navigateToPlayer, trackedPlays, trackPlay, untrackPlay }) {
   const [glSort, setGlSort] = React.useState({ col:"date", dir:"desc" });
 
   const { loading, error, data } = teamPageData || {};
@@ -496,54 +496,155 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, allTonightPlays, on
           trackedPlays={trackedPlays} onTrack={trackPlay} onUntrack={untrackPlay}/>
 
         {/* Lineup — shown above game log when available */}
-        {lineup.length > 0 && (
-          <div style={{marginTop:22}}>
-            {!lineupConfirmed && (
-              <div style={{color:"#e3b341",fontSize:11,marginBottom:10,padding:"5px 10px",
-                background:"rgba(227,179,65,0.08)",borderRadius:6,border:"1px solid rgba(227,179,65,0.2)"}}>
-                Depth chart order — today's lineup not yet confirmed
+        {lineup.length > 0 && (() => {
+          // Build a map of playerName → qualifying plays for inline play cards
+          const allPlays = allTonightPlays || tonightPlays || [];
+          const playerPlaysMap = {};
+          allPlays.forEach(pl => {
+            if (pl.gameType === "total") return;
+            const key = pl.playerName;
+            if (!playerPlaysMap[key]) playerPlaysMap[key] = [];
+            playerPlaysMap[key].push(pl);
+          });
+
+          // Render a compact inline play card row
+          const MiniPlayCard = ({ play }) => {
+            const tc = tierColor(play.truePct);
+            const tp = play.truePct;
+            const trueOdds = tp != null ? (tp >= 100 ? -99999 : tp >= 50 ? Math.round(-(tp/(100-tp))*100) : Math.round((100-tp)/tp*100)) : null;
+            const trueOddsStr = trueOdds != null ? (trueOdds > 0 ? `+${trueOdds}` : `${trueOdds}`) : null;
+            const kp = play.kalshiPct;
+            const kOdds = play.americanOdds;
+            const kOddsStr = kOdds != null ? (kOdds > 0 ? `+${kOdds}` : `${kOdds}`) : null;
+            const isQual = play.qualified !== false;
+            return (
+              <div style={{marginTop:6,background:"#161b22",border:`1px solid ${isQual?"#30363d":"#21262d"}`,borderRadius:8,padding:"8px 10px"}}>
+                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+                  <span style={{background:"rgba(88,166,255,0.12)",border:"1px solid #58a6ff",
+                    borderRadius:5,padding:"1px 7px",fontSize:11,color:"#58a6ff",fontWeight:700,whiteSpace:"nowrap"}}>
+                    {play.threshold}+ {STAT_LABEL[play.stat] || play.stat}
+                  </span>
+                  {isQual && play.edge != null && (
+                    <span style={{background:"rgba(63,185,80,0.13)",border:"1px solid #3fb950",
+                      borderRadius:5,padding:"1px 7px",fontSize:11,color:"#3fb950",fontWeight:700,whiteSpace:"nowrap"}}>
+                      +{play.edge}%
+                    </span>
+                  )}
+                  {!isQual && <span style={{fontSize:10,color:"#484f58"}}>unqualified</span>}
+                </div>
+                {/* True% bar */}
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                  <div style={{flex:1,background:"#21262d",borderRadius:3,height:10,overflow:"hidden"}}>
+                    <div style={{width:`${tp}%`,background:tc,height:"100%",borderRadius:3,minWidth:tp>0?2:0}}/>
+                  </div>
+                  <div style={{width:80,flexShrink:0,display:"flex",justifyContent:"flex-end",alignItems:"baseline",gap:3}}>
+                    <span style={{color:tc,fontSize:11,fontWeight:700}}>{tp}%</span>
+                    {trueOddsStr && <span style={{color:tc,fontSize:10}}>({trueOddsStr})</span>}
+                  </div>
+                </div>
+                {/* Kalshi bar */}
+                {kp != null && (
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <div style={{flex:1,background:"#21262d",borderRadius:3,height:8,overflow:"hidden"}}>
+                      <div style={{width:`${kp}%`,background:"#6e40c9",height:"100%",borderRadius:3,minWidth:kp>0?2:0}}/>
+                    </div>
+                    <div style={{width:80,flexShrink:0,display:"flex",justifyContent:"flex-end",alignItems:"baseline",gap:3}}>
+                      <span style={{color:"#6e40c9",fontSize:11,fontWeight:600}}>{kp}%</span>
+                      {kOddsStr && <span style={{color:"#6e40c9",fontSize:10}}>({kOddsStr})</span>}
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-            {sport === "nba" && (
-              <div style={{display:"flex",flexDirection:"column",gap:3}}>
-                {lineup.map(p => (
-                  <div key={p.position} style={{display:"flex",alignItems:"center",gap:10,
-                    background:"#0d1117",border:"1px solid #21262d",borderRadius:8,padding:"8px 12px"}}>
-                    <span style={{color:"#58a6ff",fontSize:11,fontWeight:700,width:32,flexShrink:0}}>{p.position}</span>
-                    <img src={`https://a.espncdn.com/i/headshots/nba/players/full/${p.playerId}.png`} alt={p.name}
-                      style={{width:32,height:32,borderRadius:8,objectFit:"cover",background:"#21262d",flexShrink:0}}
-                      onError={e=>e.target.style.visibility="hidden"}/>
-                    <span style={{color:"#c9d1d9",fontSize:13}}>{p.name}</span>
+            );
+          };
+
+          const renderLineupRow = ({ key, posLabel, posStyle, imgSrc, name, subLabel, subStyle, rowStyle, isProb }) => {
+            const plays = playerPlaysMap[name] || [];
+            // Sort: qualified first, then by threshold ascending
+            const sortedPlays = [...plays].sort((a,b) => {
+              if ((a.qualified !== false) !== (b.qualified !== false)) return (a.qualified !== false) ? -1 : 1;
+              return (a.threshold||0) - (b.threshold||0);
+            });
+            const hasPlays = sortedPlays.length > 0;
+            const refPlay = sortedPlays[0];
+            const sportKey = sport === "mlb" ? "baseball/mlb" : sport === "nba" ? "basketball/nba" : "hockey/nhl";
+            const SPORT_KEY_MAP = { mlb:"baseball/mlb", nba:"basketball/nba", nhl:"hockey/nhl" };
+            const playerObj = refPlay
+              ? { id: refPlay.playerId, name, team: refPlay.playerTeam, sportKey: SPORT_KEY_MAP[refPlay.sport] || sportKey,
+                  opponent: refPlay.opponent, oppRank: refPlay.oppRank, oppMetricValue: refPlay.oppMetricValue,
+                  oppMetricLabel: refPlay.oppMetricLabel, oppMetricUnit: refPlay.oppMetricUnit,
+                  playSport: refPlay.sport, playThreshold: refPlay.threshold, playStat: refPlay.stat }
+              : { name, sportKey };
+            return (
+              <div key={key} style={{...rowStyle, flexDirection:"column", alignItems:"stretch", cursor: navigateToPlayer ? "pointer" : "default"}}
+                onClick={() => navigateToPlayer && navigateToPlayer(playerObj, refPlay?.stat || null)}>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <span style={{...posStyle,flexShrink:0}}>{posLabel}</span>
+                  <img src={imgSrc} alt={name} style={{width:32,height:32,borderRadius:8,objectFit:"cover",objectPosition:"top",background:"#21262d",flexShrink:0}}
+                    onError={e=>e.target.style.visibility="hidden"}/>
+                  <span style={{color:"#c9d1d9",fontSize:13,flex:1,fontWeight: hasPlays ? 600 : 400}}>{name}</span>
+                  {subLabel && <span style={subStyle}>{subLabel}</span>}
+                  {navigateToPlayer && <span style={{color:"#484f58",fontSize:11,flexShrink:0}}>›</span>}
+                </div>
+                {sortedPlays.map((pl, i) => (
+                  <div key={i} onClick={e => e.stopPropagation()}>
+                    <MiniPlayCard play={pl}/>
                   </div>
                 ))}
               </div>
-            )}
-            {sport === "mlb" && (
-              <div style={{display:"flex",flexDirection:"column",gap:3}}>
-                {lineup.filter(p => !p.isProbable).map(p => (
-                  <div key={p.spot} style={{display:"flex",alignItems:"center",gap:10,
-                    background:"#0d1117",border:"1px solid #21262d",borderRadius:8,padding:"8px 12px"}}>
-                    <span style={{color:"#58a6ff",fontSize:11,fontWeight:700,width:24,flexShrink:0,textAlign:"right"}}>{p.spot}</span>
-                    <img src={`https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_213,q_auto:best/v1/people/${p.playerId}/headshot/67/current`}
-                      alt={p.name} style={{width:32,height:32,borderRadius:8,objectFit:"cover",background:"#21262d",flexShrink:0}}/>
-                    <span style={{color:"#c9d1d9",fontSize:13,flex:1}}>{p.name}</span>
-                    <span style={{color:"#484f58",fontSize:11}}>{p.position}</span>
-                  </div>
-                ))}
-                {lineup.filter(p => p.isProbable).map(p => (
-                  <div key="sp" style={{display:"flex",alignItems:"center",gap:10,marginTop:6,
-                    background:"rgba(88,166,255,0.06)",border:"1px solid rgba(88,166,255,0.2)",borderRadius:8,padding:"8px 12px"}}>
-                    <span style={{color:"#58a6ff",fontSize:11,fontWeight:700,width:24,flexShrink:0,textAlign:"right"}}>SP</span>
-                    <img src={`https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_213,q_auto:best/v1/people/${p.playerId}/headshot/67/current`}
-                      alt={p.name} style={{width:32,height:32,borderRadius:8,objectFit:"cover",background:"#21262d",flexShrink:0}}/>
-                    <span style={{color:"#c9d1d9",fontSize:13,flex:1}}>{p.name}</span>
-                    <span style={{color:"#484f58",fontSize:10}}>probable</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+            );
+          };
+
+          return (
+            <div style={{marginTop:22}}>
+              {!lineupConfirmed && (
+                <div style={{color:"#e3b341",fontSize:11,marginBottom:10,padding:"5px 10px",
+                  background:"rgba(227,179,65,0.08)",borderRadius:6,border:"1px solid rgba(227,179,65,0.2)"}}>
+                  Depth chart order — today's lineup not yet confirmed
+                </div>
+              )}
+              {sport === "nba" && (
+                <div style={{display:"flex",flexDirection:"column",gap:3}}>
+                  {lineup.map(p => renderLineupRow({
+                    key: p.position,
+                    posLabel: p.position,
+                    posStyle: {color:"#58a6ff",fontSize:11,fontWeight:700,width:32},
+                    imgSrc: `https://a.espncdn.com/i/headshots/nba/players/full/${p.playerId}.png`,
+                    name: p.name,
+                    subLabel: null,
+                    subStyle: {},
+                    rowStyle: {display:"flex",background:"#0d1117",border:"1px solid #21262d",borderRadius:8,padding:"8px 12px"},
+                  }))}
+                </div>
+              )}
+              {sport === "mlb" && (
+                <div style={{display:"flex",flexDirection:"column",gap:3}}>
+                  {lineup.filter(p => !p.isProbable).map(p => renderLineupRow({
+                    key: p.spot,
+                    posLabel: p.spot,
+                    posStyle: {color:"#58a6ff",fontSize:11,fontWeight:700,width:24,textAlign:"right"},
+                    imgSrc: `https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_213,q_auto:best/v1/people/${p.playerId}/headshot/67/current`,
+                    name: p.name,
+                    subLabel: p.position,
+                    subStyle: {color:"#484f58",fontSize:11},
+                    rowStyle: {display:"flex",background:"#0d1117",border:"1px solid #21262d",borderRadius:8,padding:"8px 12px"},
+                  }))}
+                  {lineup.filter(p => p.isProbable).map(p => renderLineupRow({
+                    key: "sp",
+                    posLabel: "SP",
+                    posStyle: {color:"#58a6ff",fontSize:11,fontWeight:700,width:24,textAlign:"right"},
+                    imgSrc: `https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_213,q_auto:best/v1/people/${p.playerId}/headshot/67/current`,
+                    name: p.name,
+                    subLabel: "probable",
+                    subStyle: {color:"#484f58",fontSize:10},
+                    rowStyle: {display:"flex",marginTop:6,background:"rgba(88,166,255,0.06)",border:"1px solid rgba(88,166,255,0.2)",borderRadius:8,padding:"8px 12px"},
+                    isProb: true,
+                  }))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Game log table */}
         <div style={{marginTop:22,overflowX:"auto"}}>
@@ -2165,6 +2266,7 @@ function App() {
           allTonightPlays={allTonightPlays}
           onBack={goBack}
           navigateToTeam={navigateToTeam}
+          navigateToPlayer={navigateToPlayer}
           trackedPlays={trackedPlays}
           trackPlay={trackPlay}
           untrackPlay={untrackPlay}
