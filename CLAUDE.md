@@ -618,6 +618,42 @@ USG% is still used for `points` only. Do not confuse `nbaUsage` (points C1) with
 ### "NBA avgMin (nbaOpportunity) is null for all players"
 ESPN returns two season types that both contain "regular" in their name: `"2025-26 Play In Regular Season"` (1 game) and `"2025-26 Regular Season"` (80 games). The old `.find("regular")` took the Play-In type first — `_minVals.length = 1 < 3` gate fails → `nbaOpportunity = null`. Fix: `parseEspnGamelog` now prefers season types with "regular" that do NOT contain "play". Gamelog cache key is `gl:v2|nba|player` — if you need to re-bust, bump the version prefix.
 
+### "NBA player markets missing during playoffs — all opp_not_soft in preDropped"
+
+**Symptom**: Player markets (e.g. Jokic assists, Towns rebounds) are visible on Kalshi but don't appear in the app. `?debug=1` shows 90+ NBA player props in `preDropped` with `reason: "opp_not_soft"`, zero in `nbaDropped`. All NBA "plays" are game totals only.
+
+**Why this happens in playoffs**: The pre-filter at `api/[...path].js` ~line 1635 gates NBA markets by checking two soft-team lists before fetching any player info:
+1. `softData.softTeams` — ESPN general defensive rankings (top-N teams allowing the most of a stat)
+2. `oppInPosDvp` — BettingPros position-specific DVP soft teams (ANY position)
+
+During the regular season most opponents are absent from both lists. In the playoffs, the system still works correctly because some playoff opponents ARE in position-specific DVP soft teams — e.g., MIN is rank 4 for C assists (4.6 APG allowed, ratio 1.125) and ATL is rank 5 for C rebounds (15.3 RPG, ratio 1.062). These pass the pre-filter via `oppInPosDvp`.
+
+**If all NBA markets are still in preDropped despite correct DVP data**: the most likely cause is `allPositionsDvp = null` — the BettingPros fetch failed and the `dvp:nba:all-positions` Redis cache expired. With no DVP data, `oppInPosDvp` is always falsy and only ESPN general soft teams are checked.
+
+**Diagnosis**:
+1. `GET /api/dvp/test-bp` — returns fresh BettingPros data (no cache read/write). Check `summary.C.ptsSoftTeams` etc. If it returns `{ error: "BettingPros fetch failed" }`, BettingPros is blocking.
+2. `GET /api/dvp/debug?pos=C&stat=assists&team=MIN` — reads from Redis cache. Returns `{ error: "no dvp data cached" }` if cache is cold.
+3. `GET /api/dvp/debug?pos=C&stat=rebounds&team=ATL` — verify ATL is in soft teams.
+4. If cache is cold: trigger a rebuild via `GET /api/dvp?stage=2` — queues a fresh BettingPros fetch and writes to cache.
+
+**DVP soft team reference** (confirmed 2026-04-19):
+- C assists: SAS, DAL, MEM, **MIN** (rank 4), GSW, POR, LAL, WSH, CHI, NOP
+- C rebounds: WSH, MEM, NOP, SAC, **ATL** (rank 5), GSW, DAL, UTA
+
+**`nbaDropped` not visible in `?debug=1` response**: The debug response (line ~3363) omits `nbaDropped` — it's only in the regular `/api/tonight` response (line ~3365). Use the regular endpoint to inspect `nbaDropped` counts.
+
+### "Kalshi market visible on app but missing from our pipeline"
+
+**Root cause**: A market can be visible on the Kalshi web app (showing odds like -382) but have `yes_ask_dollars = 0` or null in the trading API — it's in a pre-market or preview state. The pipeline skips `price = 0` markets with `if (pct <= 0) continue`. This is correct behavior — the market isn't yet open for trading.
+
+**How to confirm**: If a player has only one stat/threshold showing in `preDropped` (e.g. Jokic threePointers only, no assists), the missing stat's market is not yet in the Kalshi trading API. Once Kalshi opens the market for trading (assigns an ask price), it will appear in the pipeline on the next request — no cache bust needed (Kalshi data is always fetched fresh).
+
+**What happens when it goes live** (Jokic assists vs MIN example):
+1. Pre-filter: MIN is in `C.softTeams.assists` → passes ✓
+2. Main loop: DVP rank ≤ 10 → 2pts SimScore; C1 (APG ≥ 7) → 4pts; pace, B2B, game total → additional pts
+3. truePct computed via Monte Carlo simulation
+4. If edge ≥ 5% AND simScore ≥ 11 → qualifies as a play
+
 ### "User picks not persisting / login works but picks disappear"
 Most likely cause: **Upstash free tier exhausted** (500k commands/month). Symptoms: login succeeds, picks save without JS errors, but on reload picks are gone. The `makeCache()` Upstash wrapper silently returns null on all operations when Redis returns HTTP 400.
 
