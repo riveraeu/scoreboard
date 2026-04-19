@@ -305,7 +305,7 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, allTonightPlays, on
   );
   if (!data) return null;
 
-  const { teamName, record, wins, losses, gameLog, seasonStats, lineup, lineupConfirmed } = data;
+  const { teamName, record, wins, losses, gameLog, seasonStats, lineup, lineupConfirmed, nextGame } = data;
 
   // Game log sort
   const sortedGL = [...(gameLog || [])].sort((a, b) => {
@@ -355,10 +355,12 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, allTonightPlays, on
         <div>
           <h1 style={{color:"#fff",margin:0,fontSize:19,fontWeight:700}}>{teamName}</h1>
           <div style={{color:"#8b949e",fontSize:12}}>{sportLabel} 2025-26{record ? ` · ${record}` : ""}</div>
-          {tonightPlay?.gameTime && (() => {
-            const d = new Date(tonightPlay.gameTime);
+          {(nextGame?.gameTime || tonightPlay?.gameTime) && (() => {
+            const src = nextGame?.gameTime ? nextGame : tonightPlay;
+            const d = new Date(src.gameTime);
+            const gd = src.date || src.gameDate;
             const _ld = n => { const x = new Date(Date.now()+n*86400000); return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`; };
-            const dayLabel = tonightPlay.gameDate === _ld(0) ? "Today" : tonightPlay.gameDate === _ld(1) ? "Tomorrow" : new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",month:"short",day:"numeric"}).format(d);
+            const dayLabel = gd === _ld(0) ? "Today" : gd === _ld(1) ? "Tomorrow" : new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",month:"short",day:"numeric"}).format(d);
             const timePart = new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",hour:"numeric",minute:"2-digit",hour12:true}).format(d);
             return <div style={{color:"#6e7681",fontSize:11,marginTop:2}}>{dayLabel} · {timePart} PT</div>;
           })()}

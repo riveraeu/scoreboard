@@ -3209,7 +3209,7 @@ var worker_default = {
         const abbrLower = abbr.toLowerCase();
         const H = { "User-Agent":"Mozilla/5.0" };
         // 1. ESPN team schedule → game log + record
-        let gameLog = [], teamName = abbr, wins = 0, losses = 0;
+        let gameLog = [], teamName = abbr, wins = 0, losses = 0, nextGame = null;
         try {
           const schedRes = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${sportLeague}/teams/${abbrLower}/schedule?season=2026&seasontype=2`, { headers: H });
           if (schedRes.ok) {
@@ -3220,7 +3220,20 @@ var worker_default = {
             if (recSummary) { const p = recSummary.split("-"); wins = parseInt(p[0]) || 0; losses = parseInt(p[1]) || 0; }
             for (const event of sched.events || []) {
               const comp = event.competitions?.[0];
-              if (!comp?.status?.type?.completed) continue;
+              if (!comp?.status?.type?.completed) {
+                // Capture next upcoming or in-progress game (first one wins)
+                if (!nextGame && event.date) {
+                  const homeComp = comp.competitors?.find(c => c.homeAway === "home");
+                  const awayComp = comp.competitors?.find(c => c.homeAway === "away");
+                  if (homeComp && awayComp) {
+                    const hAbbr = (homeComp.team?.abbreviation || "").toUpperCase();
+                    const isHome = hAbbr === abbr;
+                    const oppComp = isHome ? awayComp : homeComp;
+                    nextGame = { date: event.date.slice(0, 10), isHome, opp: (oppComp.team?.abbreviation || "").toUpperCase(), gameTime: event.date };
+                  }
+                }
+                continue;
+              }
               const homeComp = comp.competitors?.find(c => c.homeAway === "home");
               const awayComp = comp.competitors?.find(c => c.homeAway === "away");
               if (!homeComp || !awayComp) continue;
@@ -3285,7 +3298,7 @@ var worker_default = {
             } catch(e) {}
           }
         }
-        const teamResult = { teamAbbr: abbr, teamName, sport, record: `${wins}-${losses}`, wins, losses, gameLog, seasonStats: { avgTotal, gamesPlayed: gameLog.length }, lineup, lineupConfirmed };
+        const teamResult = { teamAbbr: abbr, teamName, sport, record: `${wins}-${losses}`, wins, losses, gameLog, seasonStats: { avgTotal, gamesPlayed: gameLog.length }, lineup, lineupConfirmed, nextGame };
         if (CACHE2) await CACHE2.put(cacheKey, JSON.stringify(teamResult), { expirationTtl: 3600 }).catch(() => {});
         return jsonResponse(teamResult);
       } else {
