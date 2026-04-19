@@ -246,12 +246,29 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, trackedP
                 </div>
                 <div style={{flexShrink:0,width:110,display:"flex",alignItems:"center",gap:4}}>
                   <span style={{color:"#484f58",fontSize:10,flex:1}}>{count}/{completed.length}g</span>
-                  {hasTonightData && edge != null && (
-                    <span style={{background:edgeColor+"22",border:`1px solid ${edgeColor}`,borderRadius:4,
-                      padding:"1px 5px",fontSize:10,fontWeight:700,color:edgeColor,whiteSpace:"nowrap"}}>
-                      {edge >= 0 ? "+" : ""}{edge}%
-                    </span>
-                  )}
+                  {hasTonightData && edge != null && (() => {
+                    const _bEdge = tp?.bestEdge ?? edge;
+                    const _hasPoly = tp?.polyPct != null;
+                    const _polyWins = tp?.bestVenue === "polymarket";
+                    const _tip = _hasPoly
+                      ? `Kalshi: ${tp.kalshiPct}¢  |  Polymarket: ${tp.polyPct}¢\nBest: ${_polyWins ? "Polymarket" : "Kalshi"} (+${_bEdge}% edge)`
+                      : null;
+                    return (
+                      <span style={{display:"flex",alignItems:"center",gap:3}}>
+                        <span title={_tip}
+                          style={{background:edgeColor+"22",border:`1px solid ${edgeColor}`,borderRadius:4,
+                            padding:"1px 5px",fontSize:10,fontWeight:700,color:edgeColor,
+                            whiteSpace:"nowrap",cursor:_tip?"help":"default"}}>
+                          {_bEdge >= 0 ? "+" : ""}{_bEdge}%
+                        </span>
+                        {_polyWins && (
+                          <span style={{background:"rgba(46,168,229,0.13)",border:"1px solid #2ea8e5",
+                            borderRadius:3,padding:"0px 4px",fontSize:9,fontWeight:700,color:"#2ea8e5",
+                            whiteSpace:"nowrap"}}>P</span>
+                        )}
+                      </span>
+                    );
+                  })()}
                   {trackBtn}
                 </div>
               </div>
@@ -1889,6 +1906,7 @@ function App() {
                           nhlsa:"Shots against adj vs league avg (positive = more shots allowed = more opportunities)",
                           nhltoi:"Player avg ice time last 10 games (≥18m = green, ≥15m = yellow)",
                           nhl_b2b:"Rest status (B2B = back-to-back game, red; Rested = green)",
+                          poly:"Polymarket implied % for the Over — teal = better price than Kalshi",
                         };
                         const _hdr = (col, label, extraStyle={}, textAlign="right") => {
                           const active = _sc?.col === col;
@@ -1910,6 +1928,7 @@ function App() {
                             {_hdr("true","True%")}
                             {_hdr("kalshi","Kalshi")}
                             {_hdr("edge","Edge")}
+                            {stat.startsWith("total") && _hdr("poly","Poly")}
                             {xcols.map(c => <React.Fragment key={c.k}>{_hdr(c.k,c.l)}</React.Fragment>)}
                             {!stat.startsWith("total") && _hdr("opp","Opp",{flex:_oppFlex})}
                           </div>
@@ -1975,6 +1994,11 @@ function App() {
                                   <div style={{flex:1,fontSize:11,textAlign:"right",color:truePct!=null?"#e3b341":"#21262d",fontWeight:truePct!=null?600:400}}>{truePct!=null?`${truePct}%`:"—"}</div>
                                   <div style={{flex:1,fontSize:11,textAlign:"right"}}><span style={{color:"#c9d1d9"}}>{m.kalshiPct}%</span></div>
                                   <div style={{flex:1,fontSize:11,textAlign:"right",color:edge!=null&&edge>=5?"#3fb950":edge!=null&&edge<0?"#f78166":"#8b949e"}}>{edge!=null?(edge>=0?`+${edge.toFixed(1)}`:`${edge.toFixed(1)}`)+"%" :"—"}</div>
+                                  {isTotal && <div style={{flex:1,fontSize:11,textAlign:"right"}}>
+                                    {m.polyPct != null
+                                      ? <span title={`Polymarket: ${m.polyPct}¢${m.polyVol ? ` · Vol $${(m.polyVol/1000).toFixed(0)}k` : ""}`} style={{color:m.bestVenue==="polymarket"?"#2ea8e5":"#484f58",cursor:"help"}}>{m.polyPct}%</span>
+                                      : <span style={{color:"#21262d"}}>—</span>}
+                                  </div>}
                                   {xcols.map(c => <div key={c.k} style={{flex:1,fontSize:11,textAlign:"right"}}>{xcell(m,c.k)}</div>)}
                                   {!isTotal && <div style={{flex:_oppFlex,fontSize:10,textAlign:"right",whiteSpace:"nowrap"}}>
                                     {(() => { const pn = m.pitcherName || m.hitterPitcherName; const parts = pn ? pn.trim().split(" ") : []; const shortPn = parts.length >= 2 ? `${parts[0][0]}. ${parts.slice(1).join(" ")}` : pn; return m.sport==="mlb" && m.stat!=="strikeouts" && pn
@@ -3277,10 +3301,29 @@ function App() {
                           borderRadius:6,padding:"2px 8px",fontSize:12,color:"#58a6ff",fontWeight:700,whiteSpace:"nowrap"}}>
                           Over {lineVal} {tLabel}
                         </span>
-                        <span style={{background:"rgba(63,185,80,0.13)",border:"1px solid #3fb950",
-                            borderRadius:6,padding:"2px 8px",fontSize:12,color:"#3fb950",fontWeight:700,whiteSpace:"nowrap"}}>
-                          +{play.edge}%
-                        </span>
+                        {(() => {
+                          const _bEdge = play.bestEdge ?? play.edge;
+                          const _hasPoly = play.polyPct != null;
+                          const _polyWins = play.bestVenue === "polymarket";
+                          const _tip = _hasPoly
+                            ? `Kalshi: ${play.kalshiPct}¢  |  Polymarket: ${play.polyPct}¢\nBest: ${_polyWins ? "Polymarket" : "Kalshi"} (+${_bEdge}% edge)`
+                            : null;
+                          return (
+                            <span style={{display:"flex",alignItems:"center",gap:4}}>
+                              <span title={_tip}
+                                style={{background:"rgba(63,185,80,0.13)",border:"1px solid #3fb950",
+                                  borderRadius:6,padding:"2px 8px",fontSize:12,color:"#3fb950",fontWeight:700,
+                                  whiteSpace:"nowrap",cursor:_tip?"help":"default"}}>
+                                +{_bEdge}%
+                              </span>
+                              {_polyWins && (
+                                <span style={{background:"rgba(46,168,229,0.13)",border:"1px solid #2ea8e5",
+                                  borderRadius:4,padding:"1px 5px",fontSize:10,fontWeight:700,color:"#2ea8e5",
+                                  whiteSpace:"nowrap"}}>P</span>
+                              )}
+                            </span>
+                          );
+                        })()}
                         <button onClick={e => { e.stopPropagation(); isTracked ? untrackPlay(trackId) : trackPlay(play); }}
                           title={isTracked ? "Remove from My Picks" : "Add to My Picks"}
                           style={{background: isTracked ? "rgba(227,179,65,0.15)" : "transparent",
