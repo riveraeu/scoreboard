@@ -390,7 +390,7 @@ Right side: **bust** button (calls `?bust=1`, shows "busting…" while loading) 
 **ⓘ info icon** (next to date, left side): toggles a tooltip showing universal play qualification criteria — three lines only: Implied prob ≥ 70%, Edge ≥ 3%, SimScore ≥ 11/14. No sport-specific detail. State: `showPlaysInfo`.
 
 ### Play Cards
-Shows `untrackedPlays` (qualified plays not yet tracked). Each card has:
+Shows `untrackedPlays` (qualified plays not yet tracked). For game totals, once any threshold for a game is tracked (e.g. O5.5), all other thresholds for that same game are also suppressed — `trackedGameKeys` set built from `trackedPlays` with `total|` prefix, keyed `sport|homeTeam|awayTeam|gameDate`. Each card has:
 - True% bar (color = tierColor, odds = model-implied from truePct; `truePct >= 100` clamps to -99999 to avoid -Infinity)
 - Kalshi% bar (purple, odds = Kalshi americanOdds)
 - Explanation card (varies by sport/stat)
@@ -411,6 +411,8 @@ Shows `untrackedPlays` (qualified plays not yet tracked). Each card has:
 - No player card on click (`gameType === "total"` returns early from `navigateToPlay`).
 
 ### Player Card
+MLB tabs: pitchers see **Strikeouts** only; hitters see **H+R+RBI** only. The standalone "Hits" tab was removed (HRR encompasses hits). `allStatCfgs["baseball/mlb"]` no longer includes `hits`; `hitterTabs = ["hrr"]`. During loading (`mlbIsPitcher === null`), all `allStatCfgs` tabs show — now just HRR + Strikeouts.
+
 Clicking a play opens the player card with:
 - Historical rates per threshold
 - Kalshi market prices
