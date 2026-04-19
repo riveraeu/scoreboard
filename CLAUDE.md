@@ -62,7 +62,7 @@ Used for caching expensive fetches. Key TTLs:
 - `nba:injuries:{date}` — 1800s (ESPN NBA injury report: Out players per team, used for C2 injury boost)
 - `byteam:nfl` — 1800s
 - `byteam:nhl` — 21600s (6h, NHL team stats: goalsAgainstPerGame + shotsAgainstPerGame)
-- `gameTimes:v2:{date}` — 600s
+- `gameTimes:v2:{date}` — 600s. Stores both `"sport:team:ptDate"` (PT-date-specific) and `"sport:team"` (bare fallback, first seen wins) keys. Built from **both yesterday and today's** ESPN scoreboard (fetched in parallel) so late-night PT games whose UTC date is already tomorrow are captured. Play loop looks up `sport:team:gameDate` first, falls back to bare key.
 - `nbaStatus:{date}` — 600s
 - `nba:pace:2526` — 43200s (12h, fetched via ESPN `sports.core.api.espn.com` team stats, `buildNbaPaceData()`)
 - `mlb:barrelPct` — 21600s (6h, Baseball Savant barrel%)
@@ -331,7 +331,8 @@ Single-page app uses `history.pushState` + `popstate` for client-side navigation
 `TeamPage({ abbr, sport, teamPageData, tonightPlays, allTonightPlays, onBack, navigateToTeam, trackedPlays, trackPlay, untrackPlay })` component:
 - **Independent page** — plays/picks grid is gated `!player && !teamPage`, so it hides completely when a team page is active (same behavior as the player card)
 - **Same template as player card**: Back button → header (logo + name + stat boxes) → content card (`background:#161b22, border:1px solid #30363d, borderRadius:12, padding:20px 22px`)
-- Header: team logo (ESPN CDN), name, sport/record, W/L/Avg stat boxes; game time shown as third line (`"Today · 7:40 PM PT"` or `"Tomorrow · 1:10 PM PT"`) when `tonightPlay?.gameTime` is available
+- Header: team logo (ESPN CDN), name, sport/record, W/L/Avg stat boxes; game time shown as third line (`"Today · 7:40 PM PT"` or `"Tomorrow · 1:10 PM PT"`). Source: `data.nextGame.gameTime` (from `/api/team` ESPN schedule) preferred over `tonightPlay.gameTime` (from Kalshi plays) — `nextGame` is reliable even when today's Kalshi market is closed (game in progress).
+- `nextGame` — first non-completed event from ESPN team schedule where `eventDate >= UTC today`; returned by `/api/team` as `{date, isHome, opp, gameTime}`. The date guard (`evDateStr >= todayUtc`) prevents stale "non-completed" historical events from being captured.
 - **Content card** contains (in order): explanation block → `TotalsBarChart` → lineup (when available) → game log
 - Tonight's game explanation block (if matching total plays exist in `allTonightPlays`): matchup header (opp logo + `AWY @ HME`) integrated at top, then sport-specific ERA/RPG prose (MLB), PPG/pace prose (NBA), or GPG/GAA prose (NHL). Rendered inside the content card with `background:#0d1117, border:1px solid #21262d` (same style as player card explanation).
 - `tonightTotalMap` keyed by threshold: built from `allTonightPlays` filtered to this team/sport; contains all Kalshi-published thresholds (edge ≥ 3%). `tonightPlay` = best (qualified:true, highest edge) entry from the earliest `gameDate` in the set (today before tomorrow when API returns both).
@@ -633,6 +634,17 @@ Most likely cause: **Upstash free tier exhausted** (500k commands/month). Sympto
 `gameTimes:v2:{date}` is populated from ESPN's scoreboard `ev.date` (UTC ISO string). The display uses `timeZone:"America/Los_Angeles"` which is always PDT/PST-aware. If the displayed time is 1 hour late, ESPN returned a UTC timestamp that was computed using PST (UTC-8) instead of PDT (UTC-7) — effectively not applying daylight saving for that game.
 
 **Fix**: `?bust=1` now skips the `gameTimes` cache read and forces a fresh fetch from ESPN. If ESPN has corrected the time in their data, the bust will pick it up. If ESPN consistently returns the wrong time for that game, the offset persists until ESPN fixes their data.
+
+### "Play card or player card shows 'Tomorrow' for a game that's today"
+**Root cause**: `gameTimes["mlb:TOR"]` was keyed only by team, not by PT date. When the backend fetched only UTC-today's ESPN scoreboard, a game at 5:10 PM PT on Apr 18 returned as `2026-04-19T00:10Z` (UTC Apr 19). The bare key was set from that Apr 19 entry → `gameTime` pointed to tomorrow.
+
+**Fix (in place)**:
+1. Backend now fetches **both yesterday and today** ESPN scoreboards in parallel per sport (`Promise.all([yesterday, today])`), merging events from both.
+2. `gameTimes` now stores entries keyed by **PT date** (`"sport:team:ptDate"`) alongside the bare fallback. A game at 2026-04-18 PT is stored under `"mlb:TOR:2026-04-18"` even if its UTC time is Apr 19.
+3. Play loop lookup: `gameTimes["sport:team:gameDate"]` first (PT-date-specific), falls back to bare `"sport:team"`.
+4. Day label in play card and player card uses `play.gameDate` directly for the Today/Tomorrow comparison — not re-derived from `gameTime` — so even if `gameTime` is UTC-tomorrow, the label still says "Today" when Kalshi's `gameDate` is today.
+
+**Team page game time**: uses `data.nextGame.gameTime` (from `/api/team`) as the primary source, independent of Kalshi market state. Reliable even when today's market is closed (game in progress or finalized). Falls back to `tonightPlay.gameTime` if `nextGame` is null.
 
 ### "MLB game total SimScore badge shows 14/14 despite yellow ERA/RPG stats in explanation"
 The explanation card colors (eraColor/rpgColor) use the **tiered** formula — yellow ERA means 2 pts (not max 3), yellow RPG means 1 pt (not max 2). If the badge shows 14/14 but stats are yellow, production is running **old code** where the formula was flat (3 pts for any non-null ERA, 2 pts for any non-null RPG, 2 pts for any non-neutral park including pitcher-friendly).
