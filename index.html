@@ -358,9 +358,9 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, allTonightPlays, on
           {(nextGame?.gameTime || tonightPlay?.gameTime) && (() => {
             const src = nextGame?.gameTime ? nextGame : tonightPlay;
             const d = new Date(src.gameTime);
-            const gd = src.date || src.gameDate;
-            const _ld = n => { const x = new Date(Date.now()+n*86400000); return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`; };
-            const dayLabel = gd === _ld(0) ? "Today" : gd === _ld(1) ? "Tomorrow" : new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",month:"short",day:"numeric"}).format(d);
+            const ptFmt = new Intl.DateTimeFormat("en-CA",{timeZone:"America/Los_Angeles"});
+            const gamePT = ptFmt.format(d), todayPT = ptFmt.format(new Date()), tmrwPT = ptFmt.format(new Date(Date.now()+86400000));
+            const dayLabel = gamePT === todayPT ? "Today" : gamePT === tmrwPT ? "Tomorrow" : new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",month:"short",day:"numeric"}).format(d);
             const timePart = new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",hour:"numeric",minute:"2-digit",hour12:true}).format(d);
             return <div style={{color:"#6e7681",fontSize:11,marginTop:2}}>{dayLabel} · {timePart} PT</div>;
           })()}
@@ -2170,11 +2170,12 @@ function App() {
             {(() => {
               const _pp = (allTonightPlays || tonightPlays || []).filter(p => (p.playerId && p.playerId === player.id) || p.playerName?.toLowerCase() === player.name?.toLowerCase()).sort((a,b) => (a.gameDate||"").localeCompare(b.gameDate||""));
               const gt = _pp[0]?.gameTime;
-              const gd = _pp[0]?.gameDate;
               if (!gt) return null;
-              const _ld = n => { const x = new Date(Date.now()+n*86400000); return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`; };
-              const dayLabel = gd === _ld(0) ? "Today" : gd === _ld(1) ? "Tomorrow" : new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",month:"short",day:"numeric"}).format(new Date(gt));
-              const timePart = new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",hour:"numeric",minute:"2-digit",hour12:true}).format(new Date(gt));
+              const d = new Date(gt);
+              const ptFmt = new Intl.DateTimeFormat("en-CA",{timeZone:"America/Los_Angeles"});
+              const gamePT = ptFmt.format(d), todayPT = ptFmt.format(new Date()), tmrwPT = ptFmt.format(new Date(Date.now()+86400000));
+              const dayLabel = gamePT === todayPT ? "Today" : gamePT === tmrwPT ? "Tomorrow" : new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",month:"short",day:"numeric"}).format(d);
+              const timePart = new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",hour:"numeric",minute:"2-digit",hour12:true}).format(d);
               return <div style={{color:"#6e7681",fontSize:11,marginTop:2}}>{dayLabel} · {timePart} PT</div>;
             })()}
           </div>
@@ -3270,7 +3271,7 @@ function App() {
                             onError={e=>e.target.style.display="none"}/>
                         </div>
                         <div style={{color:"#8b949e",fontSize:11,marginTop:3,display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
-                          {play.gameTime && (() => { const _ld = n => { const x = new Date(Date.now()+n*86400000); return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`; }; const dl = play.gameDate === _ld(0) ? "Today" : play.gameDate === _ld(1) ? "Tomorrow" : new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",month:"short",day:"numeric"}).format(new Date(play.gameTime)); const tp = new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",hour:"numeric",minute:"2-digit",hour12:true}).format(new Date(play.gameTime)); return <span>{dl} · {tp} PT</span>; })()}
+                          {play.gameTime && (() => { const _d = new Date(play.gameTime); const ptFmt = new Intl.DateTimeFormat("en-CA",{timeZone:"America/Los_Angeles"}); const gPT = ptFmt.format(_d), tPT = ptFmt.format(new Date()), rPT = ptFmt.format(new Date(Date.now()+86400000)); const dl = gPT===tPT?"Today":gPT===rPT?"Tomorrow":new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",month:"short",day:"numeric"}).format(_d); const tp = new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",hour:"numeric",minute:"2-digit",hour12:true}).format(_d); return <span>{dl} · {tp} PT</span>; })()}
                           {play.lowVolume && <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(231,179,49,0.12)",border:"1px solid #e3b341",color:"#e3b341"}}>Low Vol</span>}
                           {play.thinMarket && <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(247,129,102,0.10)",border:"1px solid #f78166",color:"#f78166"}}>Wide Spread</span>}
                           {play.lineMove != null && Math.abs(play.lineMove) >= 3 && <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:play.lineMove > 0 ? "rgba(63,185,80,0.10)" : "rgba(247,129,102,0.10)",border:`1px solid ${play.lineMove > 0 ? "#3fb950" : "#f78166"}`,color:play.lineMove > 0 ? "#3fb950" : "#f78166"}}>{play.lineMove > 0 ? "▲" : "▼"} {Math.abs(play.lineMove)}c</span>}
@@ -3427,7 +3428,7 @@ function App() {
                         {play.gameTime && (
                           <span style={{color:"#6e7681"}}>·</span>
                         )}
-                        {play.gameTime && (() => { const _ld = n => { const x = new Date(Date.now()+n*86400000); return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`; }; const dl = play.gameDate === _ld(0) ? "Today" : play.gameDate === _ld(1) ? "Tomorrow" : new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",month:"short",day:"numeric"}).format(new Date(play.gameTime)); const tp = new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",hour:"numeric",minute:"2-digit",hour12:true}).format(new Date(play.gameTime)); return <span style={{color:"#8b949e"}}>{dl} · {tp} PT</span>; })()}
+                        {play.gameTime && (() => { const _d = new Date(play.gameTime); const ptFmt = new Intl.DateTimeFormat("en-CA",{timeZone:"America/Los_Angeles"}); const gPT = ptFmt.format(_d), tPT = ptFmt.format(new Date()), rPT = ptFmt.format(new Date(Date.now()+86400000)); const dl = gPT===tPT?"Today":gPT===rPT?"Tomorrow":new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",month:"short",day:"numeric"}).format(_d); const tp = new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",hour:"numeric",minute:"2-digit",hour12:true}).format(_d); return <span style={{color:"#8b949e"}}>{dl} · {tp} PT</span>; })()}
                         {play.lineupConfirmed === true && (
                           <span title="Official lineup posted" style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(63,185,80,0.12)",border:"1px solid #3fb950",color:"#3fb950"}}>✓ Lineup</span>
                         )}
