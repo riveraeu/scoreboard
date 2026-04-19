@@ -387,11 +387,11 @@ Right side: **bust** button (calls `?bust=1`, shows "busting…" while loading) 
 
 ### Play Cards
 Shows `untrackedPlays` (qualified plays not yet tracked). Each card has:
-- True% bar (color = tierColor, odds = model-implied from truePct)
+- True% bar (color = tierColor, odds = model-implied from truePct; `truePct >= 100` clamps to -99999 to avoid -Infinity)
 - Kalshi% bar (purple, odds = Kalshi americanOdds)
 - Explanation card (varies by sport/stat)
 - SimScore gate breakdown
-- **Tier/unit row** — `tierUnits(americanOdds)`: ≤ -900 → 5u, ≤ -500 → 3u, else 1u. Stake = `bankroll × units / 100`.
+- **Stake row** — `tierUnits(americanOdds)`: returns `|americanOdds| / 10` as a dollar stake (e.g. -257 → $25.7). Stored directly on tracked picks as `units` (dollar amount, not bankroll %). P&L uses `p.units` directly as stake. Picks editor shows a `$` input to override the default. Legacy picks stored with old integer unit values (1/3/5) will be treated as dollar amounts.
 - **Game time** shown in card subtitle as `"Today · 7:40 PM PT"` or `"Tomorrow · 1:10 PM PT"` using `play.gameTime` (UTC ISO string from `gameTimes` cache). Day label computed from browser local date vs `play.gameDate`.
 - **Date grouping**: plays are grouped by `gameDate` with "Today" / "Tomorrow" section headers. When the API returns plays for multiple dates (e.g. UTC has already flipped to tomorrow), today's plays appear first under "Today" and tomorrow's under "Tomorrow".
 
