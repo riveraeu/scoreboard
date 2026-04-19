@@ -3552,6 +3552,19 @@ var worker_default = {
               }
             } catch(e) {}
           }
+          // Roster fallback — show active position players when lineup not yet submitted
+          if (lineup.length === 0 && mlbId) {
+            try {
+              const rosRes = await fetch(`https://statsapi.mlb.com/api/v1/teams/${mlbId}/roster?season=2026&rosterType=active`, { headers: H });
+              if (rosRes.ok) {
+                const ros = await rosRes.json();
+                (ros.roster || [])
+                  .filter(r => r.position?.type !== "Pitcher" && r.position?.abbreviation !== "TWP")
+                  .slice(0, 12)
+                  .forEach(r => lineup.push({ spot: null, name: r.person?.fullName || "Unknown", position: r.position?.abbreviation || "?", playerId: String(r.person?.id || "") }));
+              }
+            } catch(e) {}
+          }
         }
         const teamResult = { teamAbbr: abbr, teamName, sport, record: `${wins}-${losses}`, wins, losses, gameLog, seasonStats: { avgTotal, gamesPlayed: gameLog.length }, lineup, lineupConfirmed, nextGame };
         if (CACHE2) await CACHE2.put(cacheKey, JSON.stringify(teamResult), { expirationTtl: 3600 }).catch(() => {});

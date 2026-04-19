@@ -619,8 +619,8 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, allTonightPlays, on
               )}
               {sport === "mlb" && (
                 <div style={{display:"flex",flexDirection:"column",gap:3}}>
-                  {lineup.filter(p => !p.isProbable).map(p => renderLineupRow({
-                    key: p.spot,
+                  {lineup.filter(p => !p.isProbable).map((p, i) => renderLineupRow({
+                    key: p.spot ?? p.playerId ?? i,
                     posLabel: p.spot,
                     posStyle: {color:"#58a6ff",fontSize:11,fontWeight:700,width:24,textAlign:"right"},
                     imgSrc: `https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_213,q_auto:best/v1/people/${p.playerId}/headshot/67/current`,

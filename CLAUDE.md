@@ -45,7 +45,7 @@ Routes via `pathname`:
 - `/api/auth/import-kalshi-picks` — import fills from Kalshi into user picks (POST `{kalshiSession, adminKey, userId}`) — fetches last 5 days of YES fills, maps tickers to play format, auto-populates won/lost for finalized markets
 - `/api/auth/calibration` — outcome calibration stats (GET `?adminKey=`) — reads all users' finalized picks (result: won/lost), groups by truePct bucket (70–75, 75–80, …, 95+), returns `{totalPicks, finalizedPicks, overall:[{bucket, predicted, actual, n, delta}], byCategory:{sport|stat:{hitRate,n}}}`
 - `/api/user/picks` — GET/POST user picks (requires `Authorization: Bearer <token>`)
-- `/api/team` — team page data (GET `?abbr=LAD&sport=mlb`) → `{teamAbbr, teamName, sport, record, wins, losses, gameLog, seasonStats:{avgTotal,gamesPlayed}, lineup, lineupConfirmed}`; cached `team:v2:{sport}:{abbr}:{today}` at 3600s TTL; `gameLog` entries: `{date, isHome, opp, teamScore, oppScore, total, result:"W"|"L"}`; lineup: NBA three-source fallback chain (see below), MLB from MLB Stats API `{spot, name, position, playerId, isProbable?}` (uses PT date `Date.now()-7h` to avoid UTC midnight mismatch)
+- `/api/team` — team page data (GET `?abbr=LAD&sport=mlb`) → `{teamAbbr, teamName, sport, record, wins, losses, gameLog, seasonStats:{avgTotal,gamesPlayed}, lineup, lineupConfirmed}`; cached `team:v2:{sport}:{abbr}:{today}` at 3600s TTL; `gameLog` entries: `{date, isHome, opp, teamScore, oppScore, total, result:"W"|"L"}`; lineup: NBA three-source fallback chain (see below), MLB two-source fallback chain: (1) MLB Stats API schedule `hydrate=lineups,probables` (PT date `Date.now()-7h`), confirmed lineup + probable SP → `{spot, name, position, playerId, isProbable?}`; (2) MLB Stats API active roster fallback when schedule returns no lineup/probable — non-pitcher position players up to 12, `spot:null`, `lineupConfirmed:false`
 
 ### Frontend: `index.html`
 Single HTML file with JSX compiled via Babel standalone (no build step). All React components inline.
@@ -821,7 +821,7 @@ The ESPN team schedule response uses `sched.team.recordSummary` (e.g. `"15-4"`).
 Fix: `sched.team?.recordSummary || sched.team?.record?.items?.[0]?.summary`.
 
 **Expected empty lineup states (not bugs):**
-- MLB away team before lineup card submission → `awayPlayers: []` → empty lineup, lineup section hidden
+- MLB: if schedule returns no lineup AND roster fetch also fails → `lineup = []` → lineup section hidden (rare)
 - NBA: depth chart empty during playoffs → falls through to boxscore starters (game day) or roster fallback (no game today); lineup section only hidden if all three sources return nothing
 Both are handled gracefully by the `lineup.length > 0` guard on the inline lineup section.
 
