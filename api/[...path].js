@@ -1089,12 +1089,13 @@ var worker_default = {
           mlb: { KCR: "KC", SFG: "SF", SDP: "SD", TBR: "TB", CHW: "CWS", AZ: "ARI", KC: "KC", SD: "SD", SF: "SF", TB: "TB", OAK: "ATH", WSN: "WSH", WAS: "WSH" },
           nfl: { LA: "LAR" }
         };
-        // Polymarket team keyword lookup — one distinctive word per team for question text matching
-        const POLY_TEAM_KW = {
-          mlb: { ARI:"Arizona", ATL:"Braves", BAL:"Orioles", BOS:"Red Sox", CHC:"Cubs", CWS:"White Sox", CIN:"Reds", CLE:"Guardians", COL:"Rockies", DET:"Tigers", HOU:"Astros", KC:"Royals", LAA:"Angels", LAD:"Dodgers", MIA:"Marlins", MIL:"Brewers", MIN:"Twins", NYM:"Mets", NYY:"Yankees", OAK:"Athletics", PHI:"Phillies", PIT:"Pirates", SD:"Padres", SF:"Giants", SEA:"Mariners", STL:"Cardinals", TB:"Rays", TEX:"Rangers", TOR:"Blue Jays", WSH:"Nationals" },
-          nba: { ATL:"Hawks", BOS:"Celtics", BKN:"Nets", CHA:"Hornets", CHI:"Bulls", CLE:"Cavaliers", DAL:"Mavericks", DEN:"Nuggets", DET:"Pistons", GSW:"Warriors", HOU:"Rockets", IND:"Pacers", LAC:"Clippers", LAL:"Lakers", MEM:"Grizzlies", MIA:"Heat", MIL:"Bucks", MIN:"Timberwolves", NOP:"Pelicans", NYK:"Knicks", OKC:"Thunder", ORL:"Magic", PHI:"76ers", PHX:"Suns", POR:"Trail Blazers", SAC:"Kings", SAS:"Spurs", TOR:"Raptors", UTA:"Jazz", WAS:"Wizards" },
-          nhl: { ANA:"Ducks", ARI:"Coyotes", BOS:"Bruins", BUF:"Sabres", CAR:"Hurricanes", CBJ:"Blue Jackets", CGY:"Flames", CHI:"Blackhawks", COL:"Avalanche", DAL:"Stars", DET:"Red Wings", EDM:"Oilers", FLA:"Panthers", LAK:"Kings", MIN:"Wild", MTL:"Canadiens", NJD:"Devils", NSH:"Predators", NYI:"Islanders", NYR:"Rangers", OTT:"Senators", PHI:"Flyers", PIT:"Penguins", SEA:"Kraken", SJS:"Sharks", STL:"Blues", TBL:"Lightning", TOR:"Maple Leafs", UTA:"Utah", VAN:"Canucks", VGK:"Golden Knights", WPG:"Jets", WSH:"Capitals" }
+        // Polymarket name→abbr: event titles use full names (MLB) or short nicknames (NBA/NHL)
+        const POLY_NAME_TO_ABBR = {
+          mlb: { "D-backs":"ARI","Diamondbacks":"ARI","Braves":"ATL","Orioles":"BAL","Red Sox":"BOS","Cubs":"CHC","White Sox":"CWS","Reds":"CIN","Guardians":"CLE","Rockies":"COL","Tigers":"DET","Astros":"HOU","Royals":"KC","Angels":"LAA","Dodgers":"LAD","Marlins":"MIA","Brewers":"MIL","Twins":"MIN","Mets":"NYM","Yankees":"NYY","Athletics":"OAK","Phillies":"PHI","Pirates":"PIT","Padres":"SD","Giants":"SF","Mariners":"SEA","Cardinals":"STL","Rays":"TB","Rangers":"TEX","Blue Jays":"TOR","Nationals":"WSH" },
+          nba: { "Hawks":"ATL","Celtics":"BOS","Nets":"BKN","Hornets":"CHA","Bulls":"CHI","Cavaliers":"CLE","Mavericks":"DAL","Nuggets":"DEN","Pistons":"DET","Warriors":"GSW","Rockets":"HOU","Pacers":"IND","Clippers":"LAC","Lakers":"LAL","Grizzlies":"MEM","Heat":"MIA","Bucks":"MIL","Timberwolves":"MIN","Pelicans":"NOP","Knicks":"NYK","Thunder":"OKC","Magic":"ORL","76ers":"PHI","Suns":"PHX","Trail Blazers":"POR","Blazers":"POR","Kings":"SAC","Spurs":"SAS","Raptors":"TOR","Jazz":"UTA","Wizards":"WAS" },
+          nhl: { "Ducks":"ANA","Coyotes":"ARI","Bruins":"BOS","Sabres":"BUF","Hurricanes":"CAR","Blue Jackets":"CBJ","Flames":"CGY","Blackhawks":"CHI","Avalanche":"COL","Stars":"DAL","Red Wings":"DET","Oilers":"EDM","Panthers":"FLA","Kings":"LAK","Wild":"MIN","Canadiens":"MTL","Devils":"NJD","Predators":"NSH","Islanders":"NYI","Rangers":"NYR","Senators":"OTT","Flyers":"PHI","Penguins":"PIT","Kraken":"SEA","Sharks":"SJS","Blues":"STL","Lightning":"TBL","Maple Leafs":"TOR","Utah":"UTA","Canucks":"VAN","Golden Knights":"VGK","Jets":"WPG","Capitals":"WSH" }
         };
+        const POLY_SERIES = { mlb: 3, nba: 10345, nhl: 10346 };
         const normTeam = /* @__PURE__ */ __name((sport, a) => TEAM_NORM[sport]?.[a] || a, "normTeam");
         const seriesTickers = Object.keys(SERIES_CONFIG);
         async function fetchKalshiSeries(ticker) {
@@ -3080,52 +3081,60 @@ var worker_default = {
           }
         }
         // ── Polymarket price comparison for game totals ──────────────────────────────────────────
+        // Markets live inside /events?series_id=X (MLB=3, NBA=10345, NHL=10346), not /markets
         let polyPctMap = {};
         if (totalMarkets.length > 0) {
           const _polyKey = `poly:totals:${todayDateStr}`;
-          let _polyRaw = CACHE2 && !isBustCache ? await CACHE2.get(_polyKey, "json").catch(() => null) : null;
-          if (!_polyRaw) {
-            try {
-              const _polyResp = await fetch("https://gamma-api.polymarket.com/markets?closed=false&limit=200&order_by=end_date_asc", {
-                headers: { "User-Agent": "Mozilla/5.0" },
-                signal: AbortSignal.timeout(5000)
-              });
-              if (_polyResp.ok) {
-                const _polyMarkets = await _polyResp.json();
-                // Filter to O/U markets only
-                const _ouMkts = _polyMarkets.filter(m => {
-                  const q = (m.question || "").toLowerCase();
-                  return q.includes("o/u") || q.includes("over/under") || (q.includes("total") && (q.includes("over") || q.includes("runs") || q.includes("points") || q.includes("goals")));
-                });
-                _polyRaw = _ouMkts;
-                if (CACHE2 && _ouMkts.length > 0) await CACHE2.put(_polyKey, JSON.stringify(_ouMkts), { expirationTtl: 300 }).catch(() => {});
+          const _cachedPoly = CACHE2 && !isBustCache ? await CACHE2.get(_polyKey, "json").catch(() => null) : null;
+          if (_cachedPoly) {
+            polyPctMap = _cachedPoly;
+          } else {
+            const _resolvePolyTeam = (name, sport) => {
+              const map = POLY_NAME_TO_ABBR[sport] || {};
+              for (const [key, abbr] of Object.entries(map)) {
+                if (name.includes(key)) return abbr;
               }
-            } catch (_) { _polyRaw = []; }
-          }
-          for (const tm of totalMarkets) {
-            const { sport, gameTeam1: t1, gameTeam2: t2, threshold } = tm;
-            const ouLine = threshold - 0.5;
-            const ouStr = ouLine % 1 === 0 ? `${ouLine}.0` : `${ouLine}`;
-            const kw1 = POLY_TEAM_KW[sport]?.[t1] || t1;
-            const kw2 = POLY_TEAM_KW[sport]?.[t2] || t2;
-            const match = (_polyRaw || []).find(m => {
-              const q = (m.question || "").toLowerCase();
-              return (q.includes(ouStr) || q.includes(`${ouLine}`)) &&
-                (q.includes(kw1.toLowerCase()) || q.includes(kw2.toLowerCase()));
-            });
-            if (!match) continue;
-            try {
-              const outcomes = Array.isArray(match.outcomes) ? match.outcomes : JSON.parse(match.outcomes || "[]");
-              const prices = Array.isArray(match.outcomePrices) ? match.outcomePrices : JSON.parse(match.outcomePrices || "[]");
-              const overIdx = outcomes.findIndex(o => /^over/i.test(o));
-              if (overIdx === -1 || !prices[overIdx]) continue;
-              const polyPct = Math.round(parseFloat(prices[overIdx]) * 100);
-              if (polyPct < 5 || polyPct > 99) continue;
-              const polyVol = Math.round(parseFloat(match.volume || match.liquidity || 0));
-              // Key by both team orderings since home/away may not be determined yet
-              polyPctMap[`${sport}|${t1}|${t2}|${threshold}`] = { polyPct, polyVol };
-              polyPctMap[`${sport}|${t2}|${t1}|${threshold}`] = { polyPct, polyVol };
-            } catch (_) {}
+              return null;
+            };
+            const _sportsNeeded = [...new Set(totalMarkets.map(t => t.sport).filter(s => POLY_SERIES[s]))];
+            await Promise.all(_sportsNeeded.map(async _ps => {
+              try {
+                const _evResp = await fetch(
+                  `https://gamma-api.polymarket.com/events?closed=false&series_id=${POLY_SERIES[_ps]}&limit=50`,
+                  { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(5000) }
+                );
+                if (!_evResp.ok) return;
+                const _events = await _evResp.json();
+                for (const _ev of _events) {
+                  const _vsParts = (_ev.title || "").split(" vs. ");
+                  if (_vsParts.length < 2) continue;
+                  const _awayAbbr = _resolvePolyTeam(_vsParts[0].trim(), _ps);
+                  const _homeAbbr = _resolvePolyTeam(_vsParts[1].trim(), _ps);
+                  if (!_awayAbbr || !_homeAbbr) continue;
+                  for (const _pm of (_ev.markets || [])) {
+                    const _pq = _pm.question || "";
+                    if (!_pq.includes("O/U") || _pq.includes("1H") || _pq.includes("2H")) continue;
+                    const _ouM = _pq.match(/O\/U\s+([\d.]+)/);
+                    if (!_ouM) continue;
+                    const _ouLine = parseFloat(_ouM[1]);
+                    const _thresh = Math.round(_ouLine + 0.5);
+                    const _outs = Array.isArray(_pm.outcomes) ? _pm.outcomes : JSON.parse(_pm.outcomes || "[]");
+                    const _pxs = Array.isArray(_pm.outcomePrices) ? _pm.outcomePrices : JSON.parse(_pm.outcomePrices || "[]");
+                    const _oIdx = _outs.findIndex(o => /^over$/i.test(String(o).trim()));
+                    if (_oIdx === -1 || !_pxs[_oIdx]) continue;
+                    const _op = parseFloat(_pxs[_oIdx]);
+                    if (_op < 0.02 || _op > 0.98) continue; // finalized
+                    const polyPct = Math.round(_op * 100);
+                    const polyVol = Math.round(parseFloat(_pm.volume || _pm.liquidity || 0));
+                    polyPctMap[`${_ps}|${_homeAbbr}|${_awayAbbr}|${_thresh}`] = { polyPct, polyVol };
+                    polyPctMap[`${_ps}|${_awayAbbr}|${_homeAbbr}|${_thresh}`] = { polyPct, polyVol };
+                  }
+                }
+              } catch (_) {}
+            }));
+            if (Object.keys(polyPctMap).length > 0 && CACHE2) {
+              await CACHE2.put(_polyKey, JSON.stringify(polyPctMap), { expirationTtl: 300 }).catch(() => {});
+            }
           }
         }
         // ── Game Total plays ─────────────────────────────────────────────────────────────────────
