@@ -524,6 +524,8 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, allTonightPlays, on
                   <div key={p.spot} style={{display:"flex",alignItems:"center",gap:10,
                     background:"#0d1117",border:"1px solid #21262d",borderRadius:8,padding:"8px 12px"}}>
                     <span style={{color:"#58a6ff",fontSize:11,fontWeight:700,width:24,flexShrink:0,textAlign:"right"}}>{p.spot}</span>
+                    <img src={`https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_213,q_auto:best/v1/people/${p.playerId}/headshot/67/current`}
+                      alt={p.name} style={{width:32,height:32,borderRadius:8,objectFit:"cover",background:"#21262d",flexShrink:0}}/>
                     <span style={{color:"#c9d1d9",fontSize:13,flex:1}}>{p.name}</span>
                     <span style={{color:"#484f58",fontSize:11}}>{p.position}</span>
                   </div>
@@ -532,6 +534,8 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, allTonightPlays, on
                   <div key="sp" style={{display:"flex",alignItems:"center",gap:10,marginTop:6,
                     background:"rgba(88,166,255,0.06)",border:"1px solid rgba(88,166,255,0.2)",borderRadius:8,padding:"8px 12px"}}>
                     <span style={{color:"#58a6ff",fontSize:11,fontWeight:700,width:24,flexShrink:0,textAlign:"right"}}>SP</span>
+                    <img src={`https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_213,q_auto:best/v1/people/${p.playerId}/headshot/67/current`}
+                      alt={p.name} style={{width:32,height:32,borderRadius:8,objectFit:"cover",background:"#21262d",flexShrink:0}}/>
                     <span style={{color:"#c9d1d9",fontSize:13,flex:1}}>{p.name}</span>
                     <span style={{color:"#484f58",fontSize:10}}>probable</span>
                   </div>
