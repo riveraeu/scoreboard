@@ -453,6 +453,19 @@ Both play cards and player cards show an explanation block (`background:"#0d1117
 1. **Narrative prose** — why the play is recommended, key stats with qualitative context. Highlighted numbers use colored `<span>`; descriptive phrases (e.g. "a key starter") use `color:"#484f58"` (dim).
 2. **SimScore row** — `SimScore` label + `X/14 Tier` badge + stat checkboxes. All on one flex line (`display:"flex", alignItems:"center", gap:6`). Badge uses `whiteSpace:"nowrap"`. Checkboxes in an inner `display:"inline-flex", gap:4, flexWrap:"wrap"` span so whole items wrap as units. **Exception: MLB hitter (HRR) play card and player card both use inline badge at end of prose (no separate row), matching game total card style.**
 
+**MLB hitter (HRR) explanation prose order** (play card + player card, both locations):
+1. BA tier + batting spot
+2. Pitcher name — WHIP (color: >1.35 green, >1.20 yellow, else gray) — FIP (color: >4.5 green/"hittable pitcher", >3.5 yellow/"average pitcher", else gray — absolute tiers, NOT vs ERA)
+3. Season rate + soft rate (vs pitcher H2H or vs team)
+4. ERA rank / no-H2H context (from `play.oppRank`)
+5. Park factor (when |pf − 1.0| ≥ 0.03)
+6. Game total (color: ≥9.5 green, ≥7.5 yellow, <7.5 gray)
+7. Barrel rate (color: ≥14% green/"elite hard contact", ≥10% yellow/"strong contact quality", ≥7% gray/"average contact", <7% dim — from `hitterBarrelPct`)
+8. Platoon edge/disadvantage: green "Platoon edge vs RHP/LHP" when `hitterPlatoonPts === 2`; red "Platoon disadvantage vs RHP/LHP" when `=== 0`; silent when 1pt (neutral/abstain)
+9. SimScore badge inline
+
+**FIP color rule (MLB hitters only):** Uses absolute pitcher quality tiers — FIP > 4.5 → green (bad pitcher, batter-favorable), FIP > 3.5 → yellow (average), else gray. The old ERA-comparison logic (`fip > era + 0.3 → green`) was wrong: it colored a 5.52 FIP red if ERA was higher, even though any FIP above 4.5 is hittable. Same tiers apply in the market report FIP column.
+
 **Total play cards** (MLB/NBA/NHL game totals): single prose block only — no separate SimScore row. SimScore badge appended inline at the end of the prose with `verticalAlign:"middle"`.
 
 **SimScore checkbox helpers (player prop cards only):**
@@ -466,7 +479,7 @@ Both play cards and player cards show an explanation block (`background:"#0d1117
 
 **Player card explanation** uses the same structure. Data sources by sport:
 - MLB strikeouts: `h2h` object built from `tonightPlayerMap` (includes `edge`, `kpctMeets`, `kpctPts`, `kbbMeets`, `lkpMeets`, `pitchesPts`, `mlPts`, `parkMeets`)
-- MLB hitters: `tonightHitPlay = Object.values(tonightPlayerMap).find(p => p.stat === safeTab)` (includes `hitterBa`, `hitterLineupSpot`, `pitcherWHIP`, `pitcherFIP`, `hitterWhipMeets`, `hitterPlatoonPts`, `hitterParkMeets`, `edge`)
+- MLB hitters: `tonightHitPlay = Object.values(tonightPlayerMap).find(p => p.stat === safeTab)` (includes `hitterBa`, `hitterLineupSpot`, `pitcherWHIP`, `pitcherFIP`, `hitterWhipMeets`, `hitterPlatoonPts`, `hitterParkMeets`, `hitterBarrelPct`, `hitterBarrelPts`, `hitterPlatoonPts`, `oppPitcherHand`, `edge`)
 - NBA: `tonightTabPlay` (includes `nbaOpportunity`, `nbaPaceAdj`, `isB2B`, `nbaSimScore`, `posDvpRank`, `posDvpValue`, `softPct`, `seasonPct`, `edge`)
 
 **NBA DVP / softPct color logic** (play card + player card explanation, both locations):
