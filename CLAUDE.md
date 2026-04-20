@@ -400,7 +400,11 @@ Shows: **"My Picks"** label → total count badge → `X active · Y finished` b
 
 **ⓘ info icon** (next to date, left side): toggles a tooltip showing universal play qualification criteria — three lines only: Implied prob ≥ 70%, Edge ≥ 3%, SimScore ≥ 11/14. No sport-specific detail. State: `showPlaysInfo`.
 
-**`DayBar` — P&L bar chart** (below P&L summary, above pick cards): grouped by day. Each day column renders **two independent bars**: green above the midline (total $ won that day) and red below (total $ lost). Both bars can appear simultaneously on a mixed day. `maxAbs = max(maxDailyWins, maxDailyLosses)` — shared scale for both directions. Tooltip shows each play's individual P&L plus a net row. Previously showed a single net bar per day (green up or red down).
+**`DayBar` — P&L bar chart** (below P&L summary, above pick cards): Each bar column renders **two independent bars**: green above the midline (total $ won) and red below (total $ lost). Both bars can appear simultaneously on a mixed day. `maxAbs = max(maxDailyWins, maxDailyLosses)` — shared scale for both directions. Tooltip shows each play's individual P&L plus a net row.
+
+**Group by dropdown**: `chartGroupBy` state on `App` (default `"day"`). Options: Day / Week / Month / Year. Week buckets start on Monday. Labels: day = "Apr 20", week = "Apr 14" (Monday), month = "Apr '26", year = "2026". Dropdown sits flush-right in the P&L stats row with a "Group by" label above it.
+
+**P&L stats row** shows: Record · Net P&L · ROI · Avg odds · Group by dropdown. "Total staked" and "Bankroll now" removed.
 
 ### Play Cards
 Shows `untrackedPlays` (qualified plays not yet tracked). For game totals, once any threshold for a game is tracked (e.g. O5.5), all other thresholds for that same game are also suppressed — `trackedGameKeys` set built from `trackedPlays` with `total|` prefix, keyed `sport|homeTeam|awayTeam|gameDate`. Each card has:
