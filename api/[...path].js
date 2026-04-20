@@ -3223,7 +3223,7 @@ var worker_default = {
                 if (!_evResp.ok) return;
                 const _events = await _evResp.json();
                 for (const _ev of _events) {
-                  const _vsParts = (_ev.title || "").split(" vs. ");
+                  const _vsParts = (_ev.title || "").split(/ vs\.? /);
                   if (_vsParts.length < 2) continue;
                   const _awayAbbr = _resolvePolyTeam(_vsParts[0].trim(), _ps);
                   const _homeAbbr = _resolvePolyTeam(_vsParts[1].trim(), _ps);
@@ -3237,7 +3237,7 @@ var worker_default = {
                     const _thresh = Math.round(_ouLine + 0.5);
                     const _outs = Array.isArray(_pm.outcomes) ? _pm.outcomes : JSON.parse(_pm.outcomes || "[]");
                     const _pxs = Array.isArray(_pm.outcomePrices) ? _pm.outcomePrices : JSON.parse(_pm.outcomePrices || "[]");
-                    const _oIdx = _outs.findIndex(o => /^over$/i.test(String(o).trim()));
+                    const _oIdx = _outs.findIndex(o => /^over\b/i.test(String(o).trim()));
                     if (_oIdx === -1 || !_pxs[_oIdx]) continue;
                     const _op = parseFloat(_pxs[_oIdx]);
                     if (_op < 0.02 || _op > 0.98) continue; // finalized
@@ -3326,22 +3326,22 @@ var worker_default = {
               totalSimScore += awayGAA != null ? (awayGAA >= 3.5 ? 2 : awayGAA >= 3.0 ? 1 : 0) : 0;
               if (_hSA != null) totalSimScore += 2; if (_aSA != null) totalSimScore += 2;
             }
+            const _polyEntry = polyPctMap[`${sport}|${homeTeam}|${awayTeam}|${threshold}`] ?? null;
+            const polyPct = _polyEntry?.polyPct ?? null;
+            const polyVol = _polyEntry?.polyVol ?? null;
             if (truePct == null) {
-              if (isDebug) dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, totalSimScore, reason: "no_simulation_data", ..._simData });
+              if (isDebug) dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, totalSimScore, polyPct, polyVol, reason: "no_simulation_data", ..._simData });
               continue;
             }
             const rawEdge = parseFloat((truePct - kalshiPct).toFixed(1));
             const edge = rawEdge;
-            if (edge < 5) {
-              if (isDebug) dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, spreadAdj: spreadAdj > 0 ? parseFloat(spreadAdj.toFixed(1)) : 0, edge, totalSimScore, reason: "edge_too_low", ..._simData });
-              continue;
-            }
-            const _polyEntry = polyPctMap[`${sport}|${homeTeam}|${awayTeam}|${threshold}`] ?? null;
-            const polyPct = _polyEntry?.polyPct ?? null;
-            const polyVol = _polyEntry?.polyVol ?? null;
             const bestPct = polyPct != null ? Math.min(kalshiPct, polyPct) : kalshiPct;
             const bestVenue = polyPct != null && polyPct < kalshiPct ? "polymarket" : "kalshi";
             const bestEdge = parseFloat((truePct - bestPct).toFixed(1));
+            if (edge < 5) {
+              if (isDebug) dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, spreadAdj: spreadAdj > 0 ? parseFloat(spreadAdj.toFixed(1)) : 0, edge, totalSimScore, polyPct, polyVol, bestVenue, bestEdge, reason: "edge_too_low", ..._simData });
+              continue;
+            }
             totalPlays.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, spreadAdj: spreadAdj > 0 ? parseFloat(spreadAdj.toFixed(1)) : 0, edge, totalSimScore, qualified: totalSimScore >= 11, kelly: kellyFraction(truePct, americanOdds), ev: evPerUnit(truePct, americanOdds), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null, polyPct, polyVol, bestVenue, bestEdge, ..._simData });
           }
         }
