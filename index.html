@@ -4259,7 +4259,7 @@ function App() {
             {/* P&L Summary */}
             {settled.length > 0 && (
               <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:10,padding:"12px 16px",marginBottom:12}}>
-                <div style={{display:"flex",gap:20,flexWrap:"wrap"}}>
+                <div style={{display:"flex",gap:20,flexWrap:"wrap",alignItems:"flex-start"}}>
                   <div>
                     <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Record</div>
                     <div style={{fontSize:13,fontWeight:700}}>
@@ -4270,10 +4270,6 @@ function App() {
                         ({((wons / settled.length) * 100).toFixed(0)}%)
                       </span>
                     </div>
-                  </div>
-                  <div>
-                    <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Total staked</div>
-                    <div style={{color:"#c9d1d9",fontSize:13,fontWeight:700}}>${totalStaked.toFixed(2)}</div>
                   </div>
                   <div>
                     <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Net P&L</div>
@@ -4296,6 +4292,16 @@ function App() {
                   <div>
                     <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Bankroll now</div>
                     <div style={{color:"#c9d1d9",fontSize:13,fontWeight:700}}>${(bankroll + totalPL).toFixed(2)}</div>
+                  </div>
+                  <div style={{marginLeft:"auto"}}>
+                    <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Group by</div>
+                    <select value={chartGroupBy} onChange={e => setChartGroupBy(e.target.value)}
+                      style={{background:"#0d1117",border:"1px solid #30363d",borderRadius:4,color:"#8b949e",fontSize:11,padding:"2px 6px",cursor:"pointer",outline:"none"}}>
+                      <option value="day">Day</option>
+                      <option value="week">Week</option>
+                      <option value="month">Month</option>
+                      <option value="year">Year</option>
+                    </select>
                   </div>
                 </div>
                 {/* P&L bar chart */}
@@ -4344,18 +4350,7 @@ function App() {
                   const yMax = maxAbs;
                   const yTicks = [yMax, yMax/2, 0, -yMax/2, -yMax];
                   return (
-                    <React.Fragment>
-                      {/* Dropdown above divider */}
-                      <div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",marginTop:10}}>
-                        <select value={chartGroupBy} onChange={e => setChartGroupBy(e.target.value)}
-                          style={{background:"#161b22",border:"1px solid #30363d",borderRadius:4,color:"#8b949e",fontSize:10,padding:"2px 6px",cursor:"pointer",outline:"none"}}>
-                          <option value="day">Day</option>
-                          <option value="week">Week</option>
-                          <option value="month">Month</option>
-                          <option value="year">Year</option>
-                        </select>
-                      </div>
-                      <div style={{marginTop:8,paddingTop:12,borderTop:"1px solid #21262d"}}>
+                    <div style={{marginTop:12,paddingTop:12,borderTop:"1px solid #21262d"}}>
                       <div style={{display:"flex",gap:4}}>
                         {/* Y-axis labels */}
                         <div style={{display:"flex",flexDirection:"column",justifyContent:"space-between",height:HALF*2+20,paddingBottom:20,flexShrink:0}}>
@@ -4383,8 +4378,7 @@ function App() {
                           </div>
                         </div>
                       </div>
-                      </div>
-                    </React.Fragment>
+                    </div>
                   );
                 })()}
               </div>
