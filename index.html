@@ -1156,6 +1156,7 @@ function App() {
   });
   const [chartGroupBy, setChartGroupBy] = React.useState("day");
   const [calcOdds, setCalcOdds] = React.useState("-");
+  const [openPickDays, setOpenPickDays] = React.useState(() => new Set([new Date().toLocaleDateString("en-CA")]));
   const [showAddPick, setShowAddPick] = React.useState(false);
   const [authToken, setAuthToken] = React.useState(() => localStorage.getItem("sb_token") || null);
   const [authEmail, setAuthEmail] = React.useState(() => localStorage.getItem("sb_email") || null);
@@ -4381,21 +4382,78 @@ function App() {
             )}
 
 
-            {/* Pick cards — open first (newest→oldest), then settled (newest→oldest) */}
-            {[...trackedPlays]
-              .sort((a, b) => {
-                const aOpen = !a.result, bOpen = !b.result;
-                if (aOpen !== bOpen) return aOpen ? -1 : 1;
+            {/* Pick cards — grouped by day, collapsible */}
+            {(() => {
+              const sorted = [...trackedPlays].sort((a, b) => {
                 const aDate = a.gameDate || new Date(a.trackedAt).toISOString().slice(0,10);
                 const bDate = b.gameDate || new Date(b.trackedAt).toISOString().slice(0,10);
                 if (bDate !== aDate) return bDate < aDate ? -1 : 1;
+                const aOpen = !a.result, bOpen = !b.result;
+                if (aOpen !== bOpen) return aOpen ? -1 : 1;
                 return b.trackedAt - a.trackedAt;
-              })
-              .map(pick => {
+              });
+              // Group by date key
+              const groups = [];
+              const groupMap = {};
+              sorted.forEach(pick => {
+                const dk = pick.gameDate || new Date(pick.trackedAt).toISOString().slice(0,10);
+                if (!groupMap[dk]) {
+                  groupMap[dk] = { dk, picks: [] };
+                  groups.push(groupMap[dk]);
+                }
+                groupMap[dk].picks.push(pick);
+              });
+              const todayKey = new Date().toLocaleDateString("en-CA");
+              const toggleDay = dk => setOpenPickDays(prev => {
+                const next = new Set(prev);
+                next.has(dk) ? next.delete(dk) : next.add(dk);
+                return next;
+              });
+              return groups.map(({ dk, picks: dayPicks }) => {
+                const isOpen = openPickDays.has(dk);
+                const [yr, mo, dy] = dk.split("-").map(Number);
+                const dayLabel = dk === todayKey ? "Today"
+                  : dk === (() => { const d = new Date(); d.setDate(d.getDate()-1); return d.toLocaleDateString("en-CA"); })() ? "Yesterday"
+                  : new Date(yr, mo-1, dy).toLocaleDateString("en-US", { month:"short", day:"numeric" });
+                const daySettled = dayPicks.filter(p => p.result && p.result !== "dnp");
+                let dayPL = null;
+                if (daySettled.length > 0) {
+                  dayPL = 0;
+                  daySettled.forEach(p => {
+                    const s = p.units != null ? p.units : Math.abs(p.americanOdds || 0) / 10;
+                    dayPL += p.result === "won" ? s * oddsToProfit(p.americanOdds) : -s;
+                  });
+                }
+                const dayPLColor = dayPL > 0 ? "#3fb950" : dayPL < 0 ? "#f78166" : "#8b949e";
+                const activeCount = dayPicks.filter(p => !p.result).length;
+                return (
+                  <div key={dk} style={{marginBottom:6}}>
+                    {/* Day header */}
+                    <div onClick={() => toggleDay(dk)}
+                      style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",
+                        background:"#0d1117",border:"1px solid #21262d",borderRadius:isOpen ? "8px 8px 0 0" : 8,
+                        cursor:"pointer",userSelect:"none"}}>
+                      <span style={{color:"#484f58",fontSize:11,transition:"transform 0.15s",
+                        display:"inline-block",transform:isOpen?"rotate(90deg)":"rotate(0deg)"}}>▸</span>
+                      <span style={{color:"#c9d1d9",fontSize:12,fontWeight:600}}>{dayLabel}</span>
+                      <span style={{background:"#21262d",borderRadius:8,padding:"0px 6px",fontSize:10,color:"#8b949e"}}>
+                        {dayPicks.length}
+                      </span>
+                      {activeCount > 0 && (
+                        <span style={{fontSize:10,color:"#3fb950"}}>{activeCount} active</span>
+                      )}
+                      {dayPL !== null && (
+                        <span style={{marginLeft:"auto",fontSize:11,fontWeight:700,color:dayPLColor}}>
+                          {dayPL >= 0 ? "+" : ""}${Math.abs(dayPL).toFixed(2)}
+                        </span>
+                      )}
+                    </div>
+                    {/* Picks for this day */}
+                    {isOpen && (
+                      <div style={{border:"1px solid #21262d",borderTop:"none",borderRadius:"0 0 8px 8px",
+                        padding:"6px 6px 2px 6px"}}>
+                        {dayPicks.map(pick => {
               const oddsStr = pick.americanOdds >= 0 ? `+${pick.americanOdds}` : `${pick.americanOdds}`;
-              const dateStr = pick.gameDate
-                ? (() => { const [yr,mo,dy] = pick.gameDate.split("-").map(Number); return new Date(yr, mo-1, dy).toLocaleDateString("en-US", { month:"short", day:"numeric" }); })()
-                : new Date(pick.trackedAt).toLocaleDateString("en-US", { month:"short", day:"numeric" });
               const resultColor = pick.result === "won" ? "#3fb950" : pick.result === "lost" ? "#f78166" : pick.result === "dnp" ? "#8b949e" : null;
               const units = pick.units != null ? pick.units : Math.abs(pick.americanOdds || 0) / 10;
               const stake = units;
@@ -4454,7 +4512,6 @@ function App() {
                         {" · "}<span style={{color:"#58a6ff",fontWeight:600}}>{pick.gameType === "total" ? `Over ${(pick.threshold-0.5).toFixed(1)} ${({totalRuns:"Runs",totalPoints:"Pts",totalGoals:"Goals"})[pick.stat]||pick.stat}` : `${pick.threshold}+ ${STAT_LABEL[pick.stat] || pick.stat}`}</span>
                         {" · "}<span style={{color:"#a855f7"}}>{oddsStr}</span>
                         {" · "}<span style={{color:"#e3b341"}}>{pick.truePct}% true</span>
-                        {" · "}<span style={{color:"#484f58"}}>{dateStr}</span>
                       </div>
                       {/* Edit mode: full inline form */}
                       {editPickId === pick.id && (() => {
@@ -4561,8 +4618,14 @@ function App() {
                     )}
                   </div>
                 </div>
-              );
-            })}
+                        );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              });
+            })()}
 
           </div>
         );
