@@ -884,3 +884,15 @@ If the first deploy has a bug that produces `polyPctMap = {}` (empty), that empt
 3. If `polyPct` is null for one team: the team name in Polymarket's event title doesn't match any key in `POLY_NAME_TO_ABBR[sport]`. Add the missing nickname.
 4. If `polyPct` exists but `bestEdge` seems wrong: check threshold alignment — Polymarket "O/U 7.5" maps to Kalshi threshold 8 (not 7). Log `_ouLine` and `_thresh` from the fetch block.
 5. Finalized Polymarket markets are filtered by `overPrice < 0.02 || overPrice > 0.98` — if a market just settled, this guard drops it.
+
+**"MLB/NBA polyPct null for all rows — expected, not a bug" (confirmed 2026-04-20):**
+Polymarket only offers consensus O/U lines for MLB (7.5–8.5, all near 50/50) and NBA (216–232 range, near 50/50). Kalshi qualifies at much lower alt lines — MLB at O4.5–O6.5 (70–90% probability) and NBA at O210–O218. There is no threshold overlap, so `polyPctMap` lookups always return null. This is structural to how Polymarket designs their product, not a code bug. **MLB matches can occur for extremely high-scoring games** (e.g., COL @ TEX) where Kalshi qualifies at O8.5 (thresh=9) and Polymarket happens to carry that exact line — but this is rare. NBA matches are even rarer.
+
+**"NHL polyPct seems too low compared to Kalshi (e.g., 60% vs 96%)" — stale 5-min cache:**
+The `poly:totals:{date}` cache (300s TTL) can be populated with pre-game Polymarket prices. As a game progresses, Kalshi updates every request and moves to 96%+ on a high-probability outcome; Poly stays at the cached pre-game value (~60%) for up to 5 minutes. Fix: `?bust=1` skips the poly cache and fetches current prices. Current live NHL Poly prices for O4.5 typically range 74–86%, which aligns closely with model truePct values (e.g., Ducks vs. Oilers O4.5: model=85%, Poly=86%, Kalshi=96%). The large Kalshi–Poly gap on NHL O4.5 lines reflects Kalshi being overpriced relative to both the model and Polymarket.
+
+**NHL Polymarket market format (confirmed live 2026-04-20):**
+- Series_id=10346 returns NHL game events, e.g. "Ducks vs. Oilers" with 4 O/U lines: 4.5, 5.5, 6.5, 7.5
+- Market question format: `"Ducks vs. Oilers: O/U 4.5"` (includes team names — handled by `/O\/U\s+([\d.]+)/` regex)
+- Outcomes: `["Over", "Under"]` — `_oIdx` detection by `/^over\b/i` works correctly
+- Player prop markets in the same NBA series (e.g. "Scottie Barnes: Points O/U 4.5") have `["Yes","No"]` outcomes — `_oIdx = -1` → skipped correctly
