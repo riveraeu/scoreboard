@@ -481,7 +481,7 @@ export async function buildPitcherKPct(mlbSched) {
       }
       const PBP_FIELDS = "allPlays,matchup,pitcher,id,playEvents,isPitch,details,code";
       const _pbpAc = new AbortController();
-      const _pbpTimer = setTimeout(() => _pbpAc.abort(), 8000);
+      const _pbpTimer = setTimeout(() => _pbpAc.abort(), 5000);
       const pbpFetch = await Promise.all(
         [...allGamePks].map(gk =>
           fetch(`https://statsapi.mlb.com/api/v1/game/${gk}/playByPlay?fields=${PBP_FIELDS}`, { headers: { "User-Agent": "Mozilla/5.0" }, signal: _pbpAc.signal })

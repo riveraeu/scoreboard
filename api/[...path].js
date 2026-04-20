@@ -1570,36 +1570,22 @@ var worker_default = {
             STAT_SOFT[`nfl|${st}`] = { softTeams, rankMap };
           }
         }
-        let [allPositionsDvp, nbaDepthChartPos] = await Promise.all([
+        // Read all secondary caches in parallel, then fire any cold fallbacks in parallel too.
+        let [allPositionsDvp, nbaDepthChartPos, _cachedBarrel, _cachedPace] = await Promise.all([
           CACHE2 ? CACHE2.get("dvp:nba:all-positions", "json").catch(() => null) : null,
-          CACHE2 ? CACHE2.get("dvp:nba:depth-chart-pos", "json").catch(() => null) : null
+          CACHE2 ? CACHE2.get("dvp:nba:depth-chart-pos", "json").catch(() => null) : null,
+          (sportsNeeded.has("mlb") && CACHE2) ? CACHE2.get("mlb:barrelPct", "json").catch(() => null) : null,
+          (sportsNeeded.has("nba") && CACHE2 && !isBustCache) ? CACHE2.get("nba:pace:2526", "json").catch(() => null) : null
         ]);
-        if (!allPositionsDvp && CACHE2) {
-          allPositionsDvp = await buildNbaDvpFromBettingPros(CACHE2).catch(() => null);
-        }
-        if (!nbaDepthChartPos && CACHE2) {
-          nbaDepthChartPos = await buildNbaDepthChartPos(CACHE2).catch(() => null);
-        }
-        // Barrel% — read from its own KV key (independent of byteam:mlb bust).
-        // Falls back to buildBarrelPct() if missing or expired (6h TTL).
-        if (sportsNeeded.has("mlb")) {
-          let barrelPctMap = CACHE2 ? await CACHE2.get("mlb:barrelPct", "json").catch(() => null) : null;
-          if (!barrelPctMap) {
-            barrelPctMap = await buildBarrelPct().then(async m => {
-              if (CACHE2 && Object.keys(m).length > 0) await CACHE2.put("mlb:barrelPct", JSON.stringify(m), { expirationTtl: 21600 }).catch(() => {});
-              return m;
-            }).catch(() => null);
-          }
-          if (sportByteam.mlb && barrelPctMap) sportByteam.mlb.barrelPctMap = barrelPctMap;
-        }
-        // Fetch NBA pace data (ESPN team stats, cached 12h) for SimScore
-        let nbaPaceData = null;
-        if (sportsNeeded.has("nba")) {
-          nbaPaceData = CACHE2 && !isBustCache ? await CACHE2.get("nba:pace:2526", "json").catch(() => null) : null;
-          if (!nbaPaceData) {
-            nbaPaceData = await buildNbaPaceData(CACHE2).catch(() => null);
-          }
-        }
+        // Fire cold fallbacks in parallel
+        [allPositionsDvp, nbaDepthChartPos, _cachedBarrel, _cachedPace] = await Promise.all([
+          (!allPositionsDvp && CACHE2) ? buildNbaDvpFromBettingPros(CACHE2).catch(() => null) : allPositionsDvp,
+          (!nbaDepthChartPos && CACHE2) ? buildNbaDepthChartPos(CACHE2).catch(() => null) : nbaDepthChartPos,
+          (!_cachedBarrel && sportsNeeded.has("mlb")) ? buildBarrelPct().then(async m => { if (CACHE2 && Object.keys(m).length > 0) await CACHE2.put("mlb:barrelPct", JSON.stringify(m), { expirationTtl: 21600 }).catch(() => {}); return m; }).catch(() => null) : _cachedBarrel,
+          (!_cachedPace && sportsNeeded.has("nba")) ? buildNbaPaceData(CACHE2).catch(() => null) : _cachedPace
+        ]);
+        if (sportByteam.mlb && _cachedBarrel) sportByteam.mlb.barrelPctMap = _cachedBarrel;
+        const nbaPaceData = _cachedPace;
         const preFilteredMarkets = [];
         const preDropped = [];
         for (const m of qualifyingMarkets) {
