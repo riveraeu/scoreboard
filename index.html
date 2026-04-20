@@ -2597,22 +2597,8 @@ function App() {
                                 {softPct != null ? <>, and <span style={{color:"#3fb950",fontWeight:600}}>{softPct}%</span> {tonightHitPlay?.hitterSoftLabel ?? "against weak pitching matchups"}{tonightHitPlay?.softGames ? <span style={{color:"#484f58",fontSize:10}}> ({tonightHitPlay.softGames}g)</span> : ""}.</> : seasonPct != null ? "." : ""}
                                 {pf != null && Math.abs(pf - 1.0) >= 0.03 && <>{" "}Tonight's venue is {pf > 1 ? "hitter-friendly" : "pitcher-friendly"} (<span style={{color:"#8b949e"}}>{pf > 1 ? "+" : ""}{((pf-1)*100).toFixed(0)}% park factor</span>).</>}
                                 {hitterGameTotal != null && <>{" "}<span style={{color:"#8b949e"}}>Game total </span><span style={{color:hitterTotalColor(hitterGameTotal),fontWeight:600}}>{hitterGameTotal}</span><span style={{color:"#8b949e"}}>{hitterGameTotal >= 9.5 ? " — a high-scoring game, favorable for hitting" : hitterGameTotal >= 7.5 ? " — an average total" : " — a low-scoring game, tougher for hitters"}.</span></>}
+                                {sc != null && <>{" "}<span title={scTitle} style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,cursor:"default",verticalAlign:"middle"}}>{sc}/14 {sc>=11?"Alpha":"Mid"}</span></>}
                               </div>
-                              {sc != null && (
-                                <div style={{display:"flex",alignItems:"center",gap:6,marginTop:6,paddingTop:5,borderTop:"1px solid #161b22"}}>
-                                  <span style={{color:"#484f58",fontSize:10}}>SimScore</span>
-                                  <span title={scTitle} style={{background:"#161b22",borderRadius:4,padding:"1px 6px",color:scColor,fontWeight:700,fontSize:10,cursor:"default"}}>{sc}/14 {sc>=11?"Alpha":"Mid"}</span>
-                                  <span style={{display:"inline-flex",gap:4,flexWrap:"wrap"}}>
-                                    {lineupSpot != null && mkH(lineupSpot <= 4, `#${lineupSpot}`)}
-                                    {mkH(tonightHitPlay?.hitterWhipMeets, "WHIP")}
-                                    {tonightHitPlay?.hitterPlatoonPts != null && <span key="platoon" style={{color:tonightHitPlay.hitterPlatoonPts>=2?"#3fb950":tonightHitPlay.hitterPlatoonPts>=1?"#e3b341":"#f78166",fontSize:9,whiteSpace:"nowrap"}}>{tonightHitPlay.hitterPlatoonPts>0?"✓":"✗"}Platoon</span>}
-                                    {tonightHitPlay?.hitterParkMeets != null && mkH(tonightHitPlay.hitterParkMeets, "Park")}
-                                    {tonightHitPlay?.hitterBarrelPts != null && <span key="brrl" style={{color:tonightHitPlay.hitterBarrelPts>=3?"#3fb950":tonightHitPlay.hitterBarrelPts>=2?"#e3b341":tonightHitPlay.hitterBarrelPts>=1?"#8b949e":"#f78166",fontSize:9,whiteSpace:"nowrap"}}>{tonightHitPlay.hitterBarrelPts>0?"✓":"✗"}Brrl{tonightHitPlay.hitterBarrelPct!=null?" "+tonightHitPlay.hitterBarrelPct.toFixed(0)+"%":""}</span>}
-                                    {tonightHitPlay?.hitterTotalPts != null && <span key="ou" style={{color:tonightHitPlay.hitterTotalPts>=2?"#3fb950":tonightHitPlay.hitterTotalPts>=1?"#e3b341":"#f78166",fontSize:9,whiteSpace:"nowrap"}}>{tonightHitPlay.hitterTotalPts>0?"✓":"✗"}O/U{tonightHitPlay.hitterGameTotal!=null?" "+tonightHitPlay.hitterGameTotal:""}</span>}
-                                    {tonightHitPlay?.edge != null && <span style={{color:tonightHitPlay.edge >= 3 ? "#3fb950" : tonightHitPlay.edge >= 0 ? "#e3b341" : "#f78166",fontSize:9,opacity:tonightHitPlay.edge >= 3 ? 1 : 0.7,whiteSpace:"nowrap"}}>{tonightHitPlay.edge >= 3 ? "✓" : "✗"} Edge {tonightHitPlay.edge > 0 ? "+" : ""}{tonightHitPlay.edge}%</span>}
-                                  </span>
-                                </div>
-                              )}
                             </>
                           );
                         }
