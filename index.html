@@ -1154,6 +1154,7 @@ function App() {
   const [bankroll, setBankrollState] = React.useState(() => {
     return parseFloat(localStorage.getItem("scoreboard_bankroll") || "1000");
   });
+  const [chartGroupBy, setChartGroupBy] = React.useState("day");
   const [calcOdds, setCalcOdds] = React.useState("-");
   const [showAddPick, setShowAddPick] = React.useState(false);
   const [authToken, setAuthToken] = React.useState(() => localStorage.getItem("sb_token") || null);
@@ -4297,7 +4298,7 @@ function App() {
                     <div style={{color:"#c9d1d9",fontSize:13,fontWeight:700}}>${(bankroll + totalPL).toFixed(2)}</div>
                   </div>
                 </div>
-                {/* P&L bar chart — grouped by day */}
+                {/* P&L bar chart */}
                 {(() => {
                   const playsWithPL = [...trackedPlays]
                     .filter(p => p.result && p.result !== "dnp")
@@ -4306,30 +4307,55 @@ function App() {
                       const s = p.units != null ? p.units : Math.abs(p.americanOdds || 0) / 10;
                       const pl = p.result === "won" ? s * oddsToProfit(p.americanOdds) : -s;
                       const dateKey = p.gameDate || new Date(p.trackedAt).toISOString().slice(0,10);
-                      const [yr,mo,dy] = dateKey.split("-").map(Number);
-                      const dateLabel = new Date(yr, mo-1, dy).toLocaleDateString("en-US", { month:"short", day:"numeric" });
                       const barLabel = p.gameType === "total"
                         ? `${p.awayTeam}@${p.homeTeam} O${(p.threshold-0.5).toFixed(1)}`
                         : `${p.playerName} ${p.threshold}+ ${p.stat?.toUpperCase?.() || ""}`.trim();
-                      return { pl, dateKey, dateLabel, barLabel };
+                      return { pl, dateKey, barLabel };
                     });
                   if (!playsWithPL.length) return null;
-                  // Group by day
-                  const dayMap = {};
+                  // Bucket key + label per groupBy
+                  const toBucket = (dateKey) => {
+                    const [yr, mo, dy] = dateKey.split("-").map(Number);
+                    if (chartGroupBy === "month") return { key: `${yr}-${String(mo).padStart(2,"0")}`, label: new Date(yr, mo-1, 1).toLocaleDateString("en-US", { month:"short", year:"2-digit" }) };
+                    if (chartGroupBy === "year")  return { key: `${yr}`, label: `${yr}` };
+                    if (chartGroupBy === "week") {
+                      const d = new Date(yr, mo-1, dy);
+                      const dow = d.getDay(); // 0=Sun
+                      const mon = new Date(d); mon.setDate(d.getDate() - ((dow + 6) % 7));
+                      const wKey = mon.toISOString().slice(0,10);
+                      const wLabel = mon.toLocaleDateString("en-US", { month:"short", day:"numeric" });
+                      return { key: wKey, label: wLabel };
+                    }
+                    // day (default)
+                    return { key: dateKey, label: new Date(yr, mo-1, dy).toLocaleDateString("en-US", { month:"short", day:"numeric" }) };
+                  };
+                  const bucketMap = {};
                   playsWithPL.forEach(p => {
-                    if (!dayMap[p.dateKey]) dayMap[p.dateKey] = { dateKey: p.dateKey, dateLabel: p.dateLabel, pl: 0, wins: 0, losses: 0, plays: [] };
-                    dayMap[p.dateKey].pl += p.pl;
-                    if (p.pl > 0) dayMap[p.dateKey].wins += p.pl;
-                    else if (p.pl < 0) dayMap[p.dateKey].losses += Math.abs(p.pl);
-                    dayMap[p.dateKey].plays.push(p);
+                    const { key, label } = toBucket(p.dateKey);
+                    if (!bucketMap[key]) bucketMap[key] = { key, label, pl: 0, wins: 0, losses: 0, plays: [] };
+                    bucketMap[key].pl += p.pl;
+                    if (p.pl > 0) bucketMap[key].wins += p.pl;
+                    else if (p.pl < 0) bucketMap[key].losses += Math.abs(p.pl);
+                    bucketMap[key].plays.push(p);
                   });
-                  const days = Object.values(dayMap).sort((a,b) => a.dateKey.localeCompare(b.dateKey));
+                  const days = Object.values(bucketMap).sort((a,b) => a.key.localeCompare(b.key));
                   const maxAbs = Math.max(...days.map(d => Math.max(d.wins, d.losses)), 0.01);
                   const HALF = 60;
                   const yMax = maxAbs;
                   const yTicks = [yMax, yMax/2, 0, -yMax/2, -yMax];
                   return (
                     <div style={{marginTop:12,paddingTop:12,borderTop:"1px solid #21262d"}}>
+                      {/* Header row: label + groupBy dropdown */}
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                        <span style={{color:"#484f58",fontSize:10}}>P&L</span>
+                        <select value={chartGroupBy} onChange={e => setChartGroupBy(e.target.value)}
+                          style={{background:"#161b22",border:"1px solid #30363d",borderRadius:4,color:"#8b949e",fontSize:10,padding:"2px 6px",cursor:"pointer",outline:"none"}}>
+                          <option value="day">Day</option>
+                          <option value="week">Week</option>
+                          <option value="month">Month</option>
+                          <option value="year">Year</option>
+                        </select>
+                      </div>
                       <div style={{display:"flex",gap:4}}>
                         {/* Y-axis labels */}
                         <div style={{display:"flex",flexDirection:"column",justifyContent:"space-between",height:HALF*2+20,paddingBottom:20,flexShrink:0}}>
@@ -4347,11 +4373,11 @@ function App() {
                               <DayBar key={i} day={day} HALF={HALF} maxAbs={maxAbs} />
                             ))}
                           </div>
-                          {/* X-axis date labels */}
+                          {/* X-axis labels */}
                           <div style={{display:"flex",gap:3,marginTop:3}}>
                             {days.map((day, i) => (
                               <div key={i} style={{flex:1,textAlign:"center",color:"#484f58",fontSize:8,lineHeight:1.2,overflow:"hidden"}}>
-                                {day.dateLabel}
+                                {day.label}
                               </div>
                             ))}
                           </div>
