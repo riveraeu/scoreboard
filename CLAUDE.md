@@ -592,7 +592,11 @@ When a team plays two games (e.g. a makeup game + a regular game), the schedule 
 Fix (in place): `allScheduledPitcherIds` (a `Set`) collects ALL pitcher IDs encountered in the schedule loop, regardless of overwrite. `allIds` is built from this set so every pitcher's season stats and gamelog are always fetched. `pitcherAvgPitchesById` stores avg pitches per MLB ID (not just per abbr). `cswByMlbId` is declared outside the CSW% try block. `pitcherStatsByName` has a fallback path for IDs in `allScheduledPitcherIds` that have no abbr in `pitcherByTeam` — it computes K%, KBB%, ERA, CSW%, avgPitches, gs26, hasAnchor directly from the raw ID-keyed data.
 
 ### "API returning 504 / function stopped after 25s"
-The CSW% play-by-play fetch in `buildPitcherKPct` fires one MLB Stats API request per game per pitcher. With 10–15 pitchers × multiple starts, this can exceed the 25s Vercel Edge limit. Mitigations in place: PBP limited to last 5 starts per pitcher; 8s AbortController aborts the whole PBP block and falls back to K% if slow. If 504s recur, check whether the PBP block is the bottleneck or if another fetch is slow.
+The CSW% play-by-play fetch in `buildPitcherKPct` fires one MLB Stats API request per game per pitcher. With 10–15 pitchers × multiple starts, this can exceed the 25s Vercel Edge limit. Mitigations in place: PBP limited to last 5 starts per pitcher; **5s** AbortController aborts the whole PBP block and falls back to K% if slow (reduced from 8s in commit `c5d5b14`).
+
+Secondary cache fetches (DVP, NBA depth chart, barrel%, NBA pace) are now fired in two parallel `Promise.all` rounds instead of four sequential awaits — saves up to ~10s on cold cache (commit `c5d5b14`). On a full Sunday slate (15 games) the function now returns in ~14s.
+
+If 504s recur: check whether PBP block is the bottleneck (add `console.time` around it in a debug branch) or if BettingPros DVP fetch is slow (it's the most expensive cold fallback at ~5-10s).
 
 ### Cache busting
 - `?bust=1` skips reads for `byteam:mlb`, `byteam:nhl`, `gameTimes:v2:{date}`, AND `nba:pace:2526` — forces fresh MLB + NHL data, ESPN game times, and NBA pace in one shot
