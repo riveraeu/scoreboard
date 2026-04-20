@@ -1828,14 +1828,79 @@ function App() {
                 const tdS = { padding:"5px 10px", fontSize:12, borderBottom:"1px solid #161b22" };
                 return (
                   <div style={{display:"flex",flexDirection:"column",gap:20}}>
-                    {/* Intro */}
-                    <div style={{background:"#0d1117",border:"1px solid #21262d",borderRadius:8,padding:"12px 16px",fontSize:12,color:"#8b949e",lineHeight:1.7}}>
-                      <span style={{color:"#c9d1d9",fontWeight:600}}>How to read this: </span>
-                      The model assigns a confidence (truePct) to every pick. A well-calibrated model means picks at 80% confidence actually win ~80% of the time.
-                      {" "}<span style={{color:"#3fb950"}}>Green delta</span> means the model is <em>conservative</em> — picks win more than predicted.
-                      {" "}<span style={{color:"#f78166"}}>Red delta</span> means the model is <em>overconfident</em> — picks win less than predicted.
-                      {" "}Buckets with <span style={{color:"#6e7681"}}>N &lt; 10</span> are too small to trust — treat them as directional only.
-                    </div>
+                    {/* Dynamic analysis */}
+                    {(() => {
+                      const bucketsWithData = overall.filter(b => b.actual != null);
+                      if (bucketsWithData.length === 0) return null;
+
+                      const totalWins = overall.reduce((s, b) => b.actual != null ? s + Math.round(b.actual / 100 * b.n) : s, 0);
+                      const overallHitRate = finalizedPicks > 0 ? (totalWins / finalizedPicks * 100).toFixed(1) : null;
+
+                      const dataLabel = n => n >= 20 ? "significant data" : n >= 10 ? "moderate data" : "limited data";
+                      const deltaDesc = d => {
+                        if (d >= 8) return { text: `large positive edge of +${d}%`, color: "#3fb950" };
+                        if (d >= 3) return { text: `positive edge of +${d}%`, color: "#3fb950" };
+                        if (d > -3) return { text: `well-calibrated (delta ${d >= 0 ? "+" : ""}${d}%)`, color: "#8b949e" };
+                        if (d > -8) return { text: `negative edge of ${d}%`, color: "#f78166" };
+                        return { text: `large negative edge of ${d}%`, color: "#f78166" };
+                      };
+                      const implication = d => {
+                        if (d >= 3) return "model is conservative — picks win more than predicted";
+                        if (d <= -3) return "model is overconfident — picks win less than predicted";
+                        return "model confidence matches real outcomes";
+                      };
+
+                      const catEntries = Object.entries(byCategory).filter(([,d]) => d.n >= 5).sort((a,b) => b[1].n - a[1].n);
+                      const bestCat = catEntries.length > 0 ? catEntries.slice().sort((a,b) => b[1].hitRate - a[1].hitRate)[0] : null;
+                      const worstCat = catEntries.length > 1 ? catEntries.slice().sort((a,b) => a[1].hitRate - b[1].hitRate)[0] : null;
+
+                      return (
+                        <div style={{background:"#0d1117",border:"1px solid #21262d",borderRadius:8,padding:"14px 16px",display:"flex",flexDirection:"column",gap:10}}>
+                          {/* Overall summary line */}
+                          <div style={{fontSize:12,color:"#c9d1d9"}}>
+                            <span style={{fontWeight:600}}>Overall: </span>
+                            <span style={{color:"#8b949e"}}>{finalizedPicks} finalized picks — </span>
+                            <span style={{color: parseFloat(overallHitRate) >= 70 ? "#3fb950" : parseFloat(overallHitRate) >= 60 ? "#e3b341" : "#f78166", fontWeight:600}}>{overallHitRate}% win rate</span>
+                            <span style={{color:"#484f58"}}> vs avg predicted {(bucketsWithData.reduce((s,b)=>s+b.predicted*b.n,0)/Math.max(1,bucketsWithData.reduce((s,b)=>s+b.n,0))).toFixed(1)}%</span>
+                          </div>
+                          {/* Per-bucket insights */}
+                          {bucketsWithData.map(b => {
+                            const dd = deltaDesc(b.delta);
+                            return (
+                              <div key={b.bucket} style={{fontSize:12,color:"#8b949e",lineHeight:1.5}}>
+                                <span style={{color:"#c9d1d9",fontWeight:600}}>{b.bucket}%</span>
+                                {" "}
+                                <span style={{color:dd.color}}>{dd.text}</span>
+                                {" "}with {dataLabel(b.n)} ({b.n} {b.n === 1 ? "pick" : "picks"})
+                                {b.n >= 5 && <span style={{color:"#484f58"}}> — {implication(b.delta)}</span>}
+                              </div>
+                            );
+                          })}
+                          {/* Category highlights */}
+                          {bestCat && (
+                            <div style={{fontSize:12,color:"#8b949e",borderTop:"1px solid #21262d",paddingTop:8,marginTop:2}}>
+                              {(() => {
+                                const [sp, st] = bestCat[0].split("|");
+                                return <>
+                                  <span style={{color:"#3fb950",fontWeight:600}}>Best category: </span>
+                                  <span style={{color:SPORT_COLOR[sp]||"#8b949e",fontWeight:600}}>{sp?.toUpperCase()}</span>
+                                  {" "}{STAT_LABEL[st]||st} — <span style={{color:"#3fb950",fontWeight:600}}>{bestCat[1].hitRate}% win rate</span> ({bestCat[1].n} picks)
+                                </>;
+                              })()}
+                              {worstCat && worstCat[0] !== bestCat[0] && (() => {
+                                const [sp, st] = worstCat[0].split("|");
+                                return <>
+                                  {"  ·  "}
+                                  <span style={{color:"#f78166",fontWeight:600}}>Worst: </span>
+                                  <span style={{color:SPORT_COLOR[sp]||"#8b949e",fontWeight:600}}>{sp?.toUpperCase()}</span>
+                                  {" "}{STAT_LABEL[st]||st} — <span style={{color:"#f78166",fontWeight:600}}>{worstCat[1].hitRate}% win rate</span> ({worstCat[1].n} picks)
+                                </>;
+                              })()}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                     {/* Summary cards */}
                     <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
                       {[["Total Picks", totalPicks], ["Finalized", finalizedPicks], ["Active", totalPicks - finalizedPicks]].map(([l,v]) => (
