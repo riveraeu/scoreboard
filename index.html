@@ -851,19 +851,30 @@ const SPORT_BADGE_COLOR = { nba:"#58a6ff", nhl:"#a5d8ff", mlb:"#3fb950", nfl:"#f
 
 function DayBar({ day, HALF, maxAbs }) {
   const [hovered, setHovered] = React.useState(false);
-  const isPos = day.pl >= 0;
-  const h = Math.max(Math.round((Math.abs(day.pl) / maxAbs) * HALF), 3);
+  const winH = day.wins > 0 ? Math.max(Math.round((day.wins / maxAbs) * HALF), 3) : 0;
+  const lossH = day.losses > 0 ? Math.max(Math.round((day.losses / maxAbs) * HALF), 3) : 0;
   return (
     <div style={{flex:1, position:"relative", cursor:"default"}}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}>
-      <div style={{
-        position:"absolute", left:0, right:0, height:h,
-        top: isPos ? HALF - h : HALF,
-        background: isPos ? "#3fb950" : "#f78166",
-        borderRadius: isPos ? "3px 3px 0 0" : "0 0 3px 3px",
-        opacity: hovered ? 1 : 0.85, transition:"opacity 0.15s",
-      }}/>
+      {winH > 0 && (
+        <div style={{
+          position:"absolute", left:0, right:0, height:winH,
+          top: HALF - winH,
+          background: "#3fb950",
+          borderRadius: "3px 3px 0 0",
+          opacity: hovered ? 1 : 0.85, transition:"opacity 0.15s",
+        }}/>
+      )}
+      {lossH > 0 && (
+        <div style={{
+          position:"absolute", left:0, right:0, height:lossH,
+          top: HALF,
+          background: "#f78166",
+          borderRadius: "0 0 3px 3px",
+          opacity: hovered ? 1 : 0.85, transition:"opacity 0.15s",
+        }}/>
+      )}
       {hovered && (
         <div style={{
           position:"absolute", bottom: HALF + 8, left:"50%", transform:"translateX(-50%)",
@@ -4306,12 +4317,14 @@ function App() {
                   // Group by day
                   const dayMap = {};
                   playsWithPL.forEach(p => {
-                    if (!dayMap[p.dateKey]) dayMap[p.dateKey] = { dateKey: p.dateKey, dateLabel: p.dateLabel, pl: 0, plays: [] };
+                    if (!dayMap[p.dateKey]) dayMap[p.dateKey] = { dateKey: p.dateKey, dateLabel: p.dateLabel, pl: 0, wins: 0, losses: 0, plays: [] };
                     dayMap[p.dateKey].pl += p.pl;
+                    if (p.pl > 0) dayMap[p.dateKey].wins += p.pl;
+                    else if (p.pl < 0) dayMap[p.dateKey].losses += Math.abs(p.pl);
                     dayMap[p.dateKey].plays.push(p);
                   });
                   const days = Object.values(dayMap).sort((a,b) => a.dateKey.localeCompare(b.dateKey));
-                  const maxAbs = Math.max(...days.map(d => Math.abs(d.pl)), 0.01);
+                  const maxAbs = Math.max(...days.map(d => Math.max(d.wins, d.losses)), 0.01);
                   const HALF = 60;
                   const yMax = maxAbs;
                   const yTicks = [yMax, yMax/2, 0, -yMax/2, -yMax];
