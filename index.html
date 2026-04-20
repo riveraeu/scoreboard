@@ -1129,6 +1129,8 @@ function App() {
   const [reportData, setReportData] = React.useState(null);
   const [reportLoading, setReportLoading] = React.useState(false);
   const [reportSport, setReportSport] = React.useState("all");
+  const [calibData, setCalibData] = React.useState(null);
+  const [calibLoading, setCalibLoading] = React.useState(false);
   const [gamelogSort, setGamelogSort] = React.useState({ col: 'date', dir: 'desc' });
   // Odds-based stake sizing: stake ($) = |americanOdds| / 10 (e.g. -257 → $25.7)
   const tierUnits = (americanOdds) => Math.abs(americanOdds || 0) / 10;
@@ -1467,6 +1469,19 @@ function App() {
     setReportLoading(false);
   }
 
+  async function fetchCalib() {
+    setCalibLoading(true);
+    setCalibData(null);
+    try {
+      const r = await fetch(`${WORKER}/auth/calibration?adminKey=sb-admin-2026`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      setCalibData(await r.json());
+    } catch(e) {
+      setCalibData({ error: e.message });
+    }
+    setCalibLoading(false);
+  }
+
   async function loadPlayer(p, activeSport) {
     const sp = activeSport || sport;
     setPlayer(p); setLogs(null); setLogs25(null); setPerGame([]); setDvpData(null); setError(null); setLoading(true); setShowBreakdown(false);
@@ -1788,21 +1803,139 @@ function App() {
             </div>
             {/* Sport tabs */}
             <div style={{display:"flex",gap:2,padding:"10px 20px 0",borderBottom:"1px solid #21262d"}}>
-              {["all","mlb","nba","nhl"].map(s => (
-                <button key={s} onClick={() => setReportSport(s)} style={{
+              {["all","mlb","nba","nhl","calibration"].map(s => (
+                <button key={s} onClick={() => { setReportSport(s); if (s === "calibration" && !calibData && !calibLoading) fetchCalib(); }} style={{
                   padding:"5px 14px",borderRadius:"6px 6px 0 0",border:"none",cursor:"pointer",fontSize:12,
                   background: reportSport===s ? "#0d1117" : "transparent",
                   color: reportSport===s ? "#c9d1d9" : "#484f58",
                   fontWeight: reportSport===s ? 700 : 400}}>
-                  {s.toUpperCase()}
+                  {s === "calibration" ? "CALIBRATION" : s.toUpperCase()}
                 </button>
               ))}
             </div>
             {/* Body */}
             <div style={{padding:"16px 20px"}}>
-              {reportLoading && <div style={{color:"#8b949e",textAlign:"center",padding:40,fontSize:13}}>Loading market data…</div>}
-              {reportData?.error && <div style={{color:"#f78166",textAlign:"center",padding:40,fontSize:13}}>Error: {reportData.error}</div>}
-              {reportData && !reportLoading && (() => {
+              {/* Calibration view */}
+              {reportSport === "calibration" && calibLoading && <div style={{color:"#8b949e",textAlign:"center",padding:40,fontSize:13}}>Loading calibration data…</div>}
+              {reportSport === "calibration" && calibData?.error && <div style={{color:"#f78166",textAlign:"center",padding:40,fontSize:13}}>Error: {calibData.error}</div>}
+              {reportSport === "calibration" && calibData && !calibLoading && (() => {
+                const { totalPicks, finalizedPicks, overall, byCategory, kStrikeouts } = calibData;
+                const STAT_LABEL = { points:"Points", rebounds:"Rebounds", assists:"Assists", threePointers:"3-Pointers", goals:"Goals", hrr:"H+R+RBI", strikeouts:"Strikeouts", totalRuns:"Totals", totalPoints:"Totals", totalGoals:"Totals" };
+                const SPORT_COLOR = { mlb:"#4ade80", nba:"#f97316", nhl:"#60a5fa" };
+                const deltaColor = d => d == null ? "#8b949e" : d >= 3 ? "#3fb950" : d <= -3 ? "#f78166" : "#e3b341";
+                const barW = pct => pct != null ? `${Math.min(100, pct)}%` : "0%";
+                const thS = { padding:"6px 10px", color:"#6e7681", fontSize:11, fontWeight:600, textAlign:"left", borderBottom:"1px solid #21262d", whiteSpace:"nowrap" };
+                const tdS = { padding:"5px 10px", fontSize:12, borderBottom:"1px solid #161b22" };
+                return (
+                  <div style={{display:"flex",flexDirection:"column",gap:20}}>
+                    {/* Summary cards */}
+                    <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+                      {[["Total Picks", totalPicks], ["Finalized", finalizedPicks], ["Active", totalPicks - finalizedPicks]].map(([l,v]) => (
+                        <div key={l} style={{background:"#0d1117",border:"1px solid #21262d",borderRadius:8,padding:"8px 14px",minWidth:80}}>
+                          <div style={{color:"#c9d1d9",fontSize:16,fontWeight:700}}>{v}</div>
+                          <div style={{color:"#6e7681",fontSize:10}}>{l}</div>
+                        </div>
+                      ))}
+                      <div style={{marginLeft:"auto"}}>
+                        <button onClick={fetchCalib} style={{fontSize:11,padding:"4px 12px",borderRadius:6,cursor:"pointer",border:"1px solid #30363d",background:"transparent",color:"#8b949e"}}>↻ Refresh</button>
+                      </div>
+                    </div>
+                    {/* Overall calibration */}
+                    <div>
+                      <div style={{color:"#c9d1d9",fontSize:13,fontWeight:600,marginBottom:8}}>Overall Calibration</div>
+                      <table style={{width:"100%",borderCollapse:"collapse",background:"#0d1117",borderRadius:8,overflow:"hidden",border:"1px solid #21262d"}}>
+                        <thead><tr>{["Bucket","N","Predicted","Actual","Delta",""].map(h=><th key={h} style={thS}>{h}</th>)}</tr></thead>
+                        <tbody>
+                          {overall.map(b => (
+                            <tr key={b.bucket}>
+                              <td style={tdS}><span style={{color:"#c9d1d9"}}>{b.bucket}%</span></td>
+                              <td style={{...tdS,color:b.n<10?"#6e7681":"#c9d1d9"}}>{b.n}</td>
+                              <td style={{...tdS,color:"#8b949e"}}>{b.predicted.toFixed(1)}%</td>
+                              <td style={{...tdS,color:b.actual==null?"#484f58":b.actual>=70?"#3fb950":b.actual>=60?"#e3b341":"#f78166"}}>{b.actual!=null?`${b.actual}%`:"—"}</td>
+                              <td style={{...tdS,color:deltaColor(b.delta)}}>{b.delta!=null?(b.delta>=0?`+${b.delta}`:b.delta):"—"}</td>
+                              <td style={{...tdS,width:140}}>
+                                {b.actual!=null&&(
+                                  <div style={{position:"relative",height:8,background:"#21262d",borderRadius:4,overflow:"hidden"}}>
+                                    <div style={{position:"absolute",left:0,top:0,height:"100%",width:barW(b.actual),background:b.actual>=70?"#3fb950":b.actual>=60?"#e3b341":"#f78166",borderRadius:4}}/>
+                                    <div style={{position:"absolute",left:`${b.predicted}%`,top:0,height:"100%",width:2,background:"#58a6ff",opacity:0.8}}/>
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <div style={{color:"#484f58",fontSize:10,marginTop:4}}>Blue line = model predicted. N &lt; 10 shown dim (low confidence).</div>
+                    </div>
+                    {/* By Category */}
+                    {Object.keys(byCategory).length > 0 && (
+                      <div>
+                        <div style={{color:"#c9d1d9",fontSize:13,fontWeight:600,marginBottom:8}}>By Category</div>
+                        <table style={{width:"100%",borderCollapse:"collapse",background:"#0d1117",borderRadius:8,overflow:"hidden",border:"1px solid #21262d"}}>
+                          <thead><tr>{["Category","N","Hit Rate",""].map(h=><th key={h} style={thS}>{h}</th>)}</tr></thead>
+                          <tbody>
+                            {Object.entries(byCategory).sort((a,b)=>b[1].n-a[1].n).map(([cat,d]) => {
+                              const [sp,st] = cat.split("|");
+                              return (
+                                <tr key={cat}>
+                                  <td style={tdS}><span style={{color:SPORT_COLOR[sp]||"#8b949e",fontWeight:600,fontSize:11}}>{sp?.toUpperCase()}</span> <span style={{color:"#8b949e",fontSize:11}}>{STAT_LABEL[st]||st}</span></td>
+                                  <td style={{...tdS,color:d.n<10?"#6e7681":"#c9d1d9"}}>{d.n}</td>
+                                  <td style={{...tdS,color:d.hitRate>=70?"#3fb950":d.hitRate>=60?"#e3b341":"#f78166",fontWeight:600}}>{d.hitRate}%</td>
+                                  <td style={{...tdS,width:140}}>
+                                    <div style={{height:8,background:"#21262d",borderRadius:4,overflow:"hidden"}}>
+                                      <div style={{height:"100%",width:barW(d.hitRate),background:d.hitRate>=70?"#3fb950":d.hitRate>=60?"#e3b341":"#f78166",borderRadius:4}}/>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                    {/* K-Strikeouts breakdown */}
+                    {kStrikeouts && kStrikeouts.n > 0 && (
+                      <div>
+                        <div style={{color:"#c9d1d9",fontSize:13,fontWeight:600,marginBottom:8}}>MLB Strikeouts Breakdown <span style={{color:"#484f58",fontWeight:400,fontSize:11}}>({kStrikeouts.n} picks)</span></div>
+                        <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+                          {[
+                            { title:"By SimScore", data:kStrikeouts.bySimScore, keyLabel:"Score" },
+                            { title:"By K% Tier (kpctPts)", data:kStrikeouts.byKpctPts, keyLabel:"Pts" },
+                            { title:"By K-Trend", data:kStrikeouts.byKTrendPts, keyLabel:"Pts" },
+                          ].map(({title,data,keyLabel}) => (
+                            <div key={title} style={{flex:"1 1 180px",background:"#0d1117",border:"1px solid #21262d",borderRadius:8,overflow:"hidden"}}>
+                              <div style={{color:"#8b949e",fontSize:11,fontWeight:600,padding:"7px 10px",borderBottom:"1px solid #21262d"}}>{title}</div>
+                              <table style={{width:"100%",borderCollapse:"collapse"}}>
+                                <thead><tr>
+                                  <th style={{...thS,padding:"5px 10px"}}>{keyLabel}</th>
+                                  <th style={{...thS,padding:"5px 10px"}}>N</th>
+                                  <th style={{...thS,padding:"5px 10px"}}>Hit%</th>
+                                </tr></thead>
+                                <tbody>
+                                  {Object.entries(data).map(([k,d])=>(
+                                    <tr key={k}>
+                                      <td style={{...tdS,color:"#c9d1d9"}}>{k}</td>
+                                      <td style={{...tdS,color:d.n<5?"#6e7681":"#c9d1d9"}}>{d.n}</td>
+                                      <td style={{...tdS,color:d.hitRate>=70?"#3fb950":d.hitRate>=60?"#e3b341":"#f78166",fontWeight:600}}>{d.hitRate}%</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {finalizedPicks === 0 && (
+                      <div style={{color:"#484f58",textAlign:"center",padding:32,fontSize:13}}>No finalized picks yet — mark picks as won/lost to see calibration data.</div>
+                    )}
+                  </div>
+                );
+              })()}
+              {/* Market report */}
+              {reportSport !== "calibration" && reportLoading && <div style={{color:"#8b949e",textAlign:"center",padding:40,fontSize:13}}>Loading market data…</div>}
+              {reportSport !== "calibration" && reportData?.error && <div style={{color:"#f78166",textAlign:"center",padding:40,fontSize:13}}>Error: {reportData.error}</div>}
+              {reportSport !== "calibration" && reportData && !reportLoading && (() => {
                 const REASON = {
                   edge_too_low: "Edge < 5%",
                   kalshi_pct_too_low: "Implied < 70%",
@@ -4007,6 +4140,17 @@ function App() {
               <span style={{background:"#21262d",borderRadius:10,padding:"1px 8px",fontSize:11,color:"#8b949e"}}>
                 {trackedPlays.length}
               </span>
+              {(() => {
+                const activeCount = trackedPlays.filter(p => !p.result).length;
+                const finishedCount = trackedPlays.filter(p => p.result && p.result !== "dnp").length;
+                return (
+                  <span style={{fontSize:11,color:"#484f58"}}>
+                    <span style={{color:"#3fb950"}}>{activeCount} active</span>
+                    {" · "}
+                    <span style={{color:"#8b949e"}}>{finishedCount} finished</span>
+                  </span>
+                );
+              })()}
               <button onClick={() => setShowAddPick(true)}
                 style={{fontSize:11,padding:"2px 10px",borderRadius:6,cursor:"pointer",
                   border:"1px solid #238636",background:"rgba(35,134,54,0.15)",color:"#3fb950",fontWeight:600}}>
@@ -4023,11 +4167,6 @@ function App() {
                       fontSize:12,width:70,padding:"3px 6px 3px 0"}}/>
                 </div>
               </div>
-              <button onClick={() => { if (window.confirm("Clear all settled picks?")) setTrackedPlays(prev => prev.filter(p => !p.result)); }}
-                style={{fontSize:10,padding:"2px 8px",borderRadius:6,cursor:"pointer",
-                  border:"1px solid #30363d",background:"transparent",color:"#484f58"}}>
-                clear settled
-              </button>
             </div>
 
             {/* P&L Summary */}
