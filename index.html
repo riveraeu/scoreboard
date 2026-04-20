@@ -4289,10 +4289,6 @@ function App() {
                       <div style={{color:"#c9d1d9",fontSize:13,fontWeight:700}}>{avgOddsStr}</div>
                     </div>
                   )}
-                  <div>
-                    <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Bankroll now</div>
-                    <div style={{color:"#c9d1d9",fontSize:13,fontWeight:700}}>${(bankroll + totalPL).toFixed(2)}</div>
-                  </div>
                   <div style={{marginLeft:"auto"}}>
                     <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Group by</div>
                     <select value={chartGroupBy} onChange={e => setChartGroupBy(e.target.value)}
