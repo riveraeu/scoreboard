@@ -61,7 +61,7 @@ Used for caching expensive fetches. Key TTLs:
 - `byteam:nba:scoring` — 21600s (6h, NBA team offensive PPG; used for total simulation)
 - `nba:injuries:{date}` — 1800s (ESPN NBA injury report: Out players per team, used for C2 injury boost)
 - `byteam:nfl` — 1800s
-- `byteam:nhl` — 21600s (6h, NHL team stats: goalsAgainstPerGame + shotsAgainstPerGame)
+- `byteam:nhl` — 21600s (6h, NHL team stats: goalsAgainstPerGame + shotsAgainstPerGame). `NHL_ABBR_MAP` in `api/[...path].js` maps NHL Stats API teamIds → abbreviations; **UTA (Utah Mammoth) = teamId 68** (rebranded from Utah Hockey Club for 2025-26; old teamId 53 absent from 2025-26 API). If a new team's GPG/GAA/SA shows as `—`, check their teamId in the API and add it to `NHL_ABBR_MAP`.
 - `gameTimes:v2:{date}` — 600s. Stores both `"sport:team:ptDate"` (PT-date-specific) and `"sport:team"` (bare fallback, first seen wins) keys. Built from **both yesterday and today's** ESPN scoreboard (fetched in parallel) so late-night PT games whose UTC date is already tomorrow are captured. Play loop looks up `sport:team:gameDate` first, falls back to bare key.
 - `nbaStatus:{date}` — 600s
 - `nba:pace:2526` — 43200s (12h, fetched via ESPN `sports.core.api.espn.com` team stats, `buildNbaPaceData()`)
@@ -451,7 +451,7 @@ Both play cards and player cards show an explanation block (`background:"#0d1117
 
 **Player prop cards** (MLB/NBA/NHL player props): two sections:
 1. **Narrative prose** — why the play is recommended, key stats with qualitative context. Highlighted numbers use colored `<span>`; descriptive phrases (e.g. "a key starter") use `color:"#484f58"` (dim).
-2. **SimScore row** — `SimScore` label + `X/14 Tier` badge + stat checkboxes. All on one flex line (`display:"flex", alignItems:"center", gap:6`). Badge uses `whiteSpace:"nowrap"`. Checkboxes in an inner `display:"inline-flex", gap:4, flexWrap:"wrap"` span so whole items wrap as units.
+2. **SimScore row** — `SimScore` label + `X/14 Tier` badge + stat checkboxes. All on one flex line (`display:"flex", alignItems:"center", gap:6`). Badge uses `whiteSpace:"nowrap"`. Checkboxes in an inner `display:"inline-flex", gap:4, flexWrap:"wrap"` span so whole items wrap as units. **Exception: MLB hitter (HRR) play card and player card both use inline badge at end of prose (no separate row), matching game total card style.**
 
 **Total play cards** (MLB/NBA/NHL game totals): single prose block only — no separate SimScore row. SimScore badge appended inline at the end of the prose with `verticalAlign:"middle"`.
 
@@ -582,7 +582,7 @@ Fix (in place): `allScheduledPitcherIds` (a `Set`) collects ALL pitcher IDs enco
 The CSW% play-by-play fetch in `buildPitcherKPct` fires one MLB Stats API request per game per pitcher. With 10–15 pitchers × multiple starts, this can exceed the 25s Vercel Edge limit. Mitigations in place: PBP limited to last 5 starts per pitcher; 8s AbortController aborts the whole PBP block and falls back to K% if slow. If 504s recur, check whether the PBP block is the bottleneck or if another fetch is slow.
 
 ### Cache busting
-- `?bust=1` skips reads for `byteam:mlb`, `gameTimes:v2:{date}`, AND `nba:pace:2526` — forces fresh MLB data, ESPN game times, and NBA pace in one shot
+- `?bust=1` skips reads for `byteam:mlb`, `byteam:nhl`, `gameTimes:v2:{date}`, AND `nba:pace:2526` — forces fresh MLB + NHL data, ESPN game times, and NBA pace in one shot
 - `mlb:barrelPct` is NOT busted — barrel% survives with its own 6h TTL
 - If bust fires before lineups/probables are available, `byteam:mlb` is written with 60s TTL so next request retries
 - Depth chart: no bust — expires daily
