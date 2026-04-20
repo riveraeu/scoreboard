@@ -860,7 +860,7 @@ Response: array of event objects with `title` ("Tampa Bay Rays vs. Colorado Rock
 - MLB: full nickname only, no city — `"Rays"`, `"Rockies"`, `"Blue Jays"` (NOT "Tampa Bay Rays")
 - NBA: short nickname — `"Warriors"`, `"Suns"`, `"Trail Blazers"`
 - NHL: short nickname — `"Flyers"`, `"Golden Knights"`, `"Blue Jackets"`
-Event title format: `"[Away Team] vs. [Home Team]"` — away team is first.
+Event title format: `"[Away Team] vs. [Home Team]"` — away team is first. Title split uses `/ vs\.? /` regex to handle both `"vs."` and `"vs"` separators. Outcome regex uses `/^over\b/i` to match both bare `"Over"` and `"Over 7.5"` labels.
 
 **Threshold alignment:**
 Polymarket lists `"O/U 8.5"` → Kalshi threshold = `Math.round(8.5 + 0.5) = 9` (YES if total ≥ 9).
@@ -871,8 +871,11 @@ Kalshi qualifies markets at 70–97% probability — for MLB this means low thre
 **Stale cache pattern after a broken deploy:**
 If the first deploy has a bug that produces `polyPctMap = {}` (empty), that empty object gets cached in Redis at `poly:totals:{date}` with 300s TTL. A subsequent correct deploy will still serve the empty cache until it expires. Fix: `?bust=1` skips the `poly:totals:{date}` cache read. Always test the Polymarket block with `?bust=1` after a deploy that changes the Polymarket fetch logic.
 
+**"Poly shows — for all rows in market report" (fixed 84a80e4):**
+`polyPctMap` lookup was after the edge gate — `dropped` plays (edge_too_low / no_simulation_data) never got `polyPct`. Fix: lookup moved before edge check so all total rows in the report carry `polyPct`/`polyVol`/`bestVenue`/`bestEdge`.
+
 **Diagnosis steps:**
-1. `GET /api/tonight?debug=1&bust=1` — check `plays[].polyPct` and `plays[].bestVenue` on total plays
+1. `GET /api/tonight?debug=1&bust=1` — check `plays[].polyPct` and `dropped[].polyPct` on total rows
 2. If `polyPct` is null for all total plays: check that today's sport (MLB/NBA/NHL) has a corresponding series in `POLY_SERIES` and that `totalMarkets.length > 0` (Kalshi must have published totals first)
 3. If `polyPct` is null for one team: the team name in Polymarket's event title doesn't match any key in `POLY_NAME_TO_ABBR[sport]`. Add the missing nickname.
 4. If `polyPct` exists but `bestEdge` seems wrong: check threshold alignment — Polymarket "O/U 7.5" maps to Kalshi threshold 8 (not 7). Log `_ouLine` and `_thresh` from the fetch block.
