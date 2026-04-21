@@ -1403,11 +1403,11 @@ var worker_default = {
               const gameOdds = Object.fromEntries(Object.entries(gameOddsRaw).map(([k, v]) => [normMlbAbbr(k), v]));
               const [lineupResult, pitcherResult] = await Promise.all([buildLineupKPct(mlbSched), buildPitcherKPct(mlbSched)]);
               const { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, projectedLineupTeams, batterSplitBA } = lineupResult;
-              const { pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame } = pitcherResult;
+              const { pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam } = pitcherResult;
               // barrelPctMap is NOT stored in byteam:mlb — it lives in mlb:barrelPct with its own 6h TTL.
               // This prevents a bust (which deletes byteam:mlb) from baking an empty barrelPctMap
               // into the cache when Baseball Savant is slow.
-              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, projectedLineupTeams, gameOdds, pitcherStatsByName, batterSplitBA, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame };
+              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, projectedLineupTeams, gameOdds, pitcherStatsByName, batterSplitBA, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam };
               // Use short TTL (60s) if key data is missing — lineup/probables not confirmed yet.
               // Prevents partial data from baking into cache for the full 600s.
               const _mlbDataReady = Object.keys(lineupSpotByName || {}).length > 0 && Object.keys(pitcherAvgPitches || {}).length > 0;
@@ -1799,8 +1799,18 @@ var worker_default = {
           if (i + GL_BATCH < keysNeedingGamelog.length) await new Promise((r) => setTimeout(r, 200));
         }
         const pitcherGamelogs = {};
-        if (sportByteam.mlb?.probables) {
-          const pitcherEntriesToLoad = Object.entries(sportByteam.mlb.probables).filter(([, { name, id }]) => name && id);
+        // Merge probables (ESPN source) with pitcherInfoByTeam (MLB Stats API source).
+        // pitcherInfoByTeam is more reliable for early-day requests before ESPN announces probables.
+        const _allPitcherEntries = new Map();
+        for (const [abbr, info] of Object.entries(sportByteam.mlb?.pitcherInfoByTeam || {})) {
+          if (info?.name && info?.id) _allPitcherEntries.set(abbr, { name: info.name, id: info.id });
+        }
+        // ESPN probables take precedence (override MLB API entry with ESPN name/id if available)
+        for (const [abbr, info] of Object.entries(sportByteam.mlb?.probables || {})) {
+          if (info?.name && info?.id) _allPitcherEntries.set(abbr, { name: info.name, id: info.id });
+        }
+        const pitcherEntriesToLoad = [..._allPitcherEntries.entries()];
+        if (pitcherEntriesToLoad.length > 0) {
           await Promise.all(pitcherEntriesToLoad.map(async ([teamAbbr, { name }]) => {
             const pitcherKey = `mlb|${name}`;
             const cached = CACHE2 ? await CACHE2.get(glCacheKey(pitcherKey), "json").catch(() => null) : null;
@@ -2463,7 +2473,7 @@ var worker_default = {
             // Sim-Score components
             const _hlHomeTeam2 = sportByteam.mlb?.gameHomeTeams?.[playerTeam] ?? tonightOpp;
             const _hlParkKF2 = PARK_HITFACTOR?.[_hlHomeTeam2] ?? 1;
-            const _hlEra = sportByteam.mlb?.probables?.[tonightOpp]?.era ?? null;
+            const _hlEra = sportByteam.mlb?.probables?.[tonightOpp]?.era ?? sportByteam.mlb?.pitcherEra?.[tonightOpp] ?? null;
             hitterWhipMeets = pitcherWHIP != null ? pitcherWHIP > 1.35 : null;
             hitterWhipPts = pitcherWHIP == null ? 0 : pitcherWHIP > 1.35 ? 3 : pitcherWHIP > 1.20 ? 1 : 0;
             hitterFipMeets = (pitcherFIP != null && _hlEra != null) ? pitcherFIP > _hlEra : null;
@@ -3015,9 +3025,9 @@ var worker_default = {
             hitterBa: hitterBa !== null ? hitterBa : void 0,
             hitterBaTier: hitterBaTier ?? void 0,
             hitterAbVsPitcher: sport === "mlb" && stat !== "strikeouts" ? hitterAbVsPitcher : void 0,
-            hitterPitcherName: sport === "mlb" && stat !== "strikeouts" ? (sportByteam.mlb?.probables?.[tonightOpp]?.name ?? null) : void 0,
+            hitterPitcherName: sport === "mlb" && stat !== "strikeouts" ? (sportByteam.mlb?.probables?.[tonightOpp]?.name ?? sportByteam.mlb?.pitcherInfoByTeam?.[tonightOpp]?.name ?? null) : void 0,
             hitterSoftLabel: sport === "mlb" && stat !== "strikeouts" ? softLabel : void 0,
-            hitterPitcherEra: sport === "mlb" && stat !== "strikeouts" ? (sportByteam.mlb?.probables?.[tonightOpp]?.era ?? null) : void 0,
+            hitterPitcherEra: sport === "mlb" && stat !== "strikeouts" ? (sportByteam.mlb?.probables?.[tonightOpp]?.era ?? sportByteam.mlb?.pitcherEra?.[tonightOpp] ?? null) : void 0,
             nbaSimScore: sport === "nba" ? nbaSimScore : void 0,
             nbaPreSimScore: sport === "nba" ? nbaPreSimScore : void 0,
             nbaSimPct: sport === "nba" ? nbaSimPctOut : void 0,

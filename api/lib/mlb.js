@@ -576,8 +576,19 @@ export async function buildPitcherKPct(mlbSched) {
         };
       }
     }
-    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherCSWPct, pitcherAvgPitches, pitcherGS26, pitcherHasAnchor, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame };
+    // pitcherInfoByTeam: team abbr → {name, id} from MLB Stats API probables
+    // Used as a fallback when ESPN scoreboard hasn't announced probables yet.
+    const pitcherInfoByTeam = {};
+    for (const person of [...(res26.people || []), ...(res25.people || [])]) {
+      const id = person.id;
+      if (!id || !person.fullName) continue;
+      const abbrs = Object.keys(pitcherByTeam).filter(a => pitcherByTeam[a] === id && !a.includes('|'));
+      for (const a of abbrs) {
+        if (!pitcherInfoByTeam[a]) pitcherInfoByTeam[a] = { name: person.fullName, id };
+      }
+    }
+    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherCSWPct, pitcherAvgPitches, pitcherGS26, pitcherHasAnchor, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam };
   } catch {
-    return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherGS26: {}, pitcherHasAnchor: {}, pitcherRecentKPct: {}, pitcherLastStartDate: {}, pitcherLastStartPC: {}, umpireByGame: {} };
+    return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherGS26: {}, pitcherHasAnchor: {}, pitcherRecentKPct: {}, pitcherLastStartDate: {}, pitcherLastStartPC: {}, umpireByGame: {}, pitcherInfoByTeam: {} };
   }
 }
