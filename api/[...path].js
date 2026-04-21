@@ -58,7 +58,6 @@ var VALID_SPORTS = [
   "basketball/mens-college-basketball",
   "football/college-football"
 ];
-var JWT_SECRET_DEFAULT = "scoreboard-jwt-2026-x7k9m2p4";
 async function pbkdf2Hash(password, salt) {
   const enc = new TextEncoder();
   const key = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveBits"]);
@@ -134,7 +133,7 @@ var worker_default = {
     const path = url.pathname.replace(/^\/api\//, "").replace(/^\//, "");
     const params = url.searchParams;
     const method = request.method;
-    const JWT_SECRET = env?.JWT_SECRET || JWT_SECRET_DEFAULT;
+    const JWT_SECRET = env?.JWT_SECRET;
     try {
       if (path === "auth/register" && method === "POST") {
         const { email, password } = await request.json();
@@ -152,10 +151,10 @@ var worker_default = {
         if (CACHE2) await CACHE2.put("keepalive", new Date().toISOString(), { expirationTtl: 172800 });
         return jsonResponse({ ok: true, ts: new Date().toISOString() });
       } else if (path === "auth/debug-redis" && method === "GET") {
-        if (params.get("adminKey") !== (env?.ADMIN_KEY || "sb-admin-2026")) return errorResponse("Forbidden", 403);
+        if (params.get("adminKey") !== env?.ADMIN_KEY) return errorResponse("Forbidden", 403);
         const upUrl = env?.UPSTASH_REDIS_REST_URL;
         const upToken = env?.UPSTASH_REDIS_REST_TOKEN;
-        if (!upUrl) return jsonResponse({ error: "UPSTASH_REDIS_REST_URL not set", envKeys: Object.keys(env || {}) });
+        if (!upUrl) return errorResponse("UPSTASH_REDIS_REST_URL not set", 500);
         const upAuth = `Bearer ${upToken}`;
         const testKey = "debug:redis:test";
         const testVal = `ok-${Date.now()}`;
@@ -170,9 +169,9 @@ var worker_default = {
           getStatus = getRes.status;
           getRaw = await getRes.json();
         } catch (e) { getRaw = { fetchError: String(e) }; }
-        return jsonResponse({ upUrl: upUrl?.slice(0, 40) + "...", setStatus, setRaw, getStatus, getRaw, expectedVal: testVal, match: getRaw?.result === testVal });
+        return jsonResponse({ setStatus, setRaw, getStatus, getRaw, expectedVal: testVal, match: getRaw?.result === testVal });
       } else if (path === "auth/list-users" && method === "GET") {
-        if (params.get("adminKey") !== (env?.ADMIN_KEY || "sb-admin-2026")) return errorResponse("Forbidden", 403);
+        if (params.get("adminKey") !== env?.ADMIN_KEY) return errorResponse("Forbidden", 403);
         const upUrl = env?.UPSTASH_REDIS_REST_URL;
         const upAuth = `Bearer ${env?.UPSTASH_REDIS_REST_TOKEN}`;
         if (!upUrl) return errorResponse("No Redis URL", 500);
@@ -180,7 +179,7 @@ var worker_default = {
         const { result } = await r.json();
         return jsonResponse({ users: result || [] });
       } else if (path === "auth/calibration" && method === "GET") {
-        if (params.get("adminKey") !== (env?.ADMIN_KEY || "sb-admin-2026")) return errorResponse("Forbidden", 403);
+        if (params.get("adminKey") !== env?.ADMIN_KEY) return errorResponse("Forbidden", 403);
         const upUrl = env?.UPSTASH_REDIS_REST_URL;
         const upAuth = `Bearer ${env?.UPSTASH_REDIS_REST_TOKEN}`;
         if (!upUrl) return errorResponse("No Redis URL", 500);
@@ -272,7 +271,7 @@ var worker_default = {
         return jsonResponse({ totalPicks: allPicks.length, finalizedPicks: finalized.length, overall, byCategory, kStrikeouts: { bySimScore, byKpctPts, byKTrendPts, n: ksFinalized.length } });
       } else if (path === "auth/reset" && method === "POST") {
         const { email, newPassword, adminKey } = await request.json();
-        if (adminKey !== (env?.ADMIN_KEY || "sb-admin-2026")) return errorResponse("Forbidden", 403);
+        if (adminKey !== env?.ADMIN_KEY) return errorResponse("Forbidden", 403);
         if (!email || !newPassword) return errorResponse("Email and newPassword required", 400);
         const emailKey = `user:${email.toLowerCase()}`;
         const userStr = await CACHE2.get(emailKey);
@@ -284,7 +283,7 @@ var worker_default = {
         return jsonResponse({ ok: true });
       } else if (path === "auth/import-kalshi-picks" && method === "POST") {
         const { kalshiToken: providedToken, kalshiSession, adminKey: importAdminKey, userId: importUserId } = await request.json();
-        if (importAdminKey !== (env?.ADMIN_KEY || "sb-admin-2026")) return errorResponse("Forbidden", 403);
+        if (importAdminKey !== env?.ADMIN_KEY) return errorResponse("Forbidden", 403);
         if (!providedToken && !kalshiSession) return errorResponse("kalshiToken or kalshiSession required", 400);
         if (!importUserId) return errorResponse("userId required", 400);
         const KALSHI_BASE = "https://api.elections.kalshi.com/trade-api/v2";
