@@ -2467,7 +2467,7 @@ var worker_default = {
           let hitterLineupSpot = null, hitterWhipMeets = null, hitterFipMeets = null, hitterParkMeets = null;
           let pitcherWHIP = null, pitcherFIP = null, pitcherBAA = null;
           let hitterParkKF = null, hitterMoneyline = null, hitterBarrelPct = null;
-          let hitterBarrelPts = null, hitterTotalPts = null, hitterGameTotal = null, hitterPlatoonPts = null;
+          let hitterBarrelPts = null, hitterTotalPts = null, hitterGameTotal = null, hitterPlatoonPts = null, hitterOppPitcherHand = null;
           if (sport === "mlb" && stat !== "strikeouts") {
             const hitterML = sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null;
             const hIdx2 = gl.ul.indexOf("H");
@@ -2537,6 +2537,7 @@ var worker_default = {
             // B1: Platoon advantage — pitcher hand vs batter hand
             // Opposing pitcher hand (keyed by pitching team)
             const _oppPitcherHand = (sportByteam.mlb?.pitcherHand?.[`${tonightOpp}|${playerTeam}`] ?? sportByteam.mlb?.pitcherHand?.[tonightOpp]) || null;
+            hitterOppPitcherHand = _oppPitcherHand;
             // Batter split BA from buildLineupKPct (vsR/vsL, needs 30+ AB)
             const _bsMap = sportByteam.mlb?.batterSplitBA || {};
             const _bsKey = _brlNorm(playerName);
@@ -3014,6 +3015,7 @@ var worker_default = {
             hitterWhipMeets: sport === "mlb" && stat !== "strikeouts" ? hitterWhipMeets : void 0,
             hitterFipMeets: sport === "mlb" && stat !== "strikeouts" ? hitterFipMeets : void 0,
             hitterPlatoonPts: sport === "mlb" && stat !== "strikeouts" ? hitterPlatoonPts : void 0,
+            oppPitcherHand: sport === "mlb" && stat !== "strikeouts" ? hitterOppPitcherHand : void 0,
             hitterParkMeets: sport === "mlb" && stat !== "strikeouts" ? hitterParkMeets : void 0,
             pitcherWHIP: sport === "mlb" && stat !== "strikeouts" ? pitcherWHIP : void 0,
             pitcherFIP: sport === "mlb" && stat !== "strikeouts" ? pitcherFIP : void 0,

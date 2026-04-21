@@ -2797,7 +2797,7 @@ function App() {
                           const threshold = tonightHitPlay?.threshold ?? null;
                           const statFull = STAT_FULL[safeTab] || safeTab;
                           const sc = tonightHitPlay?.hitterFinalSimScore ?? tonightHitPlay?.hitterSimScore ?? null;
-                          const whipColor = whip == null ? "#8b949e" : whip > 1.35 ? "#3fb950" : whip > 1.20 ? "#e3b341" : "#f78166";
+                          const whipColor = whip == null ? "#8b949e" : whip > 1.35 ? "#3fb950" : whip > 1.20 ? "#c9d1d9" : "#f78166";
                           const fipColor = fip == null ? "#8b949e" : fip > 4.5 ? "#3fb950" : fip > 3.5 ? "#e3b341" : "#8b949e";
                           const scColor = sc != null ? (sc >= 11 ? "#3fb950" : sc >= 7 ? "#e3b341" : "#8b949e") : "#8b949e";
                           const seasonColor = seasonPct == null ? "#c9d1d9" : seasonPct >= 75 ? "#3fb950" : seasonPct >= 60 ? "#c9d1d9" : "#f78166";
@@ -3973,7 +3973,7 @@ function App() {
                           const statFull = STAT_FULL[play.stat] || play.stat;
                           const sc = play.hitterFinalSimScore ?? play.hitterSimScore ?? null;
                           const first = play.playerName.split(" ")[0];
-                          const whipColor = whip == null ? "#8b949e" : whip > 1.35 ? "#3fb950" : whip > 1.20 ? "#e3b341" : "#f78166";
+                          const whipColor = whip == null ? "#8b949e" : whip > 1.35 ? "#3fb950" : whip > 1.20 ? "#c9d1d9" : "#f78166";
                           const fipColor = fip == null ? "#8b949e" : fip > 4.5 ? "#3fb950" : fip > 3.5 ? "#e3b341" : "#8b949e";
                           const scColor = sc != null ? (sc >= 11 ? "#3fb950" : sc >= 7 ? "#e3b341" : "#8b949e") : "#8b949e";
                           const seasonColor = play.seasonPct >= 75 ? "#3fb950" : play.seasonPct >= 60 ? "#c9d1d9" : "#f78166";
