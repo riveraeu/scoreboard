@@ -416,8 +416,8 @@ Shows: **"My Picks"** label → total count badge → `X active · Y finished` b
 
 **Pick card layout** (compact, `padding:"7px 10px"`, `borderRadius:8`, `marginBottom:5`):
 - **Photo slot** (36×36, left edge, `flexShrink:0`): player props → ESPN headshot circle (`a.espncdn.com/i/headshots/{sport}/players/full/{playerId}.png`), fallback = first initial in gray circle; game totals → two stacked team logos (19×19, away on top / home on bottom) from ESPN CDN.
-- **Row 1** (right of photo): player/matchup name + result badge (when settled) + `flex:1` spacer → undo button (settled only) + ✎ edit button + × remove button. All row 1 buttons use `padding:"2px 6px", fontSize:10, borderRadius:5`.
-- **Row 2**: subtitle (stat · threshold · odds · truePct · `$[stake input]` → profit) + (active only) ✓/✗/– outcome buttons flush-right. Outcome buttons use identical style to row 1: `padding:"2px 6px", fontSize:10, borderRadius:5` — en dash (–) used for DNP (narrower than em dash). `stake input width:46px` to avoid truncation of values like `$40.5`.
+- **Row 1** (right of photo): player/matchup name + result badge + P&L amount (when settled) + `flex:1` spacer → ↺ undo button (settled only) + ✎ edit button + × remove button. All row 1 buttons use `padding:"2px 6px", fontSize:10/11, borderRadius:5`.
+- **Row 2**: subtitle (stat · threshold · odds · truePct · `$[stake input]`) + (active only) ✓/✗/– outcome buttons flush-right. P&L is shown on row 1 only — not repeated on row 2. Outcome buttons use identical style to row 1: `padding:"2px 6px", fontSize:10, borderRadius:5` — en dash (–) used for DNP (narrower than em dash). `stake input width:46px` to avoid truncation of values like `$40.5`.
 - **Edit form** (inline, shown when ✎ active): 2×3 grid — Stat + Stake($) / Line + Odds / True Prob% + Date. Stake field uses `onBlur` to commit value via `setPickUnits`.
 
 ### Play Cards
