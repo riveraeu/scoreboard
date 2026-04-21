@@ -2774,7 +2774,7 @@ function App() {
                           const pitcherTeamName = MLB_TEAM[player.team] || player.team;
                           const kbb = h2h?.pitcherKBBPct ?? null;
                           const ap = h2h?.pitcherAvgPitches ?? null;
-                          const kbbColor = kbb == null ? "#8b949e" : kbb > 15 ? "#3fb950" : kbb > 10 ? "#e3b341" : "#f78166";
+                          const kbbColor = kbb == null ? "#8b949e" : kbb > 18 ? "#3fb950" : kbb > 12 ? "#e3b341" : "#f78166";
                           const apColor = ap == null ? "#8b949e" : ap > 85 ? "#3fb950" : ap > 75 ? "#e3b341" : "#f78166";
                           const pkpQual = pkp == null ? "" : csw != null ? (pkp > 30 ? "elite" : pkp > 26 ? "above-average" : "below-average") : (pkp > 24 ? "above-average" : "below-average");
                           const apDesc = ap == null ? null : ap > 85 ? "expect him to work deep into the game" : ap > 75 ? "typically goes 5–6 innings" : null;
@@ -3951,7 +3951,7 @@ function App() {
                           const first = play.playerName.split(" ")[0];
                           const oppName = MLB_TEAM[play.opponent] || play.opponent;
                           const pkpColor = pkp == null ? "#8b949e" : (csw != null ? (pkp > 30 ? "#3fb950" : pkp > 26 ? "#e3b341" : "#f78166") : (pkp >= 27 ? "#3fb950" : pkp >= 24 ? "#e3b341" : "#f78166"));
-                          const kbbColor = kbb == null ? "#8b949e" : kbb > 15 ? "#3fb950" : kbb > 10 ? "#e3b341" : "#f78166";
+                          const kbbColor = kbb == null ? "#8b949e" : kbb > 18 ? "#3fb950" : kbb > 12 ? "#e3b341" : "#f78166";
                           const apColor = ap == null ? "#8b949e" : ap > 85 ? "#3fb950" : ap > 75 ? "#e3b341" : "#f78166";
                           const lkpColor = lkp == null ? "#8b949e" : lkp > 24 ? "#3fb950" : lkp > 16 ? "#e3b341" : "#f78166";
                           const totalColor = t => t == null ? "#8b949e" : t <= 8.5 ? "#3fb950" : t <= 10.5 ? "#e3b341" : "#f78166";
