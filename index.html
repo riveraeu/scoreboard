@@ -838,7 +838,7 @@ const MOCK_PLAYS = [
     seasonPct:76.0, blendGames:72, pct25:null, pct25Games:0, pct26:null, pct26Games:0,
     softPct:81.0, softGames:10, truePct:78.0, edge:8.0, seasonGames:72,
     recentAvg:1.1, dvpFactor:1.14, projectedStat:1.3,
-    nhlSimScore:11, nhlPreSimScore:8, nhlOpportunity:21.3, nhlShotsAdj:2.4, isB2B:false,
+    nhlSimScore:11, nhlPreSimScore:8, nhlOpportunity:21.3, nhlShotsAdj:2.4, nhlSaRank:7, isB2B:false,
     kelly:0.145, ev:0.062, historicalHitRate:81.0, historicalGames:10,
     lineupKPct:null, pitcherKPct:null, gameDate:TODAY,
   },
@@ -851,7 +851,7 @@ const MOCK_PLAYS = [
     seasonPct:73.0, blendGames:74, pct25:null, pct25Games:0, pct26:null, pct26Games:0,
     softPct:76.0, softGames:8, truePct:72.0, edge:6.0, seasonGames:74,
     recentAvg:1.3, dvpFactor:1.04, projectedStat:1.4,
-    nhlSimScore:8, nhlPreSimScore:5, nhlOpportunity:22.1, nhlShotsAdj:-0.8, isB2B:false,
+    nhlSimScore:8, nhlPreSimScore:5, nhlOpportunity:22.1, nhlShotsAdj:-0.8, nhlSaRank:22, isB2B:false,
     kelly:0.095, ev:0.037, historicalHitRate:76.0, historicalGames:8,
     lineupKPct:null, pitcherKPct:null, gameDate:TODAY,
   },
@@ -2203,7 +2203,7 @@ function App() {
                           if (k==="nbaopp")  { const o = m.nbaOpportunity; return o != null ? <span style={{color:o>=30?"#3fb950":o>=25?"#e3b341":"#f78166"}}>{o.toFixed(0)}m</span> : DASH; }
                           if (k==="nba_b2b") { if (m.isB2B == null) return DASH; return <span style={{color:m.isB2B?"#f78166":"#3fb950"}}>{m.isB2B?"B2B":"Rested"}</span>; }
                           if (k==="nhlgaa") { const r = m.oppRank; return C(r != null ? `#${r}` : null, r<=5?"#3fb950":r<=10?"#e3b341":"#f78166"); }
-                          if (k==="nhlsa")  { const v = m.nhlShotsAdj; return v != null ? <span style={{color:v>0?"#3fb950":"#f78166"}}>{v>0?"+":""}{v.toFixed(1)}</span> : DASH; }
+                          if (k==="nhlsa")  { const v = m.nhlShotsAdj; const r = m.nhlSaRank; return v != null ? <span style={{color:(r!=null&&r<=10)?"#3fb950":v>0?"#e3b341":"#f78166"}}>{v>0?"+":""}{v.toFixed(1)}</span> : DASH; }
                           if (k==="nhltoi") { const t = m.nhlOpportunity; return t != null ? <span style={{color:t>=18?"#3fb950":t>=15?"#e3b341":"#f78166"}}>{t.toFixed(1)}m</span> : DASH; }
                           if (k==="nhl_b2b") { if (m.isB2B == null) return DASH; return <span style={{color:m.isB2B?"#f78166":"#3fb950"}}>{m.isB2B?"B2B":"Rested"}</span>; }
                           // Total PPG columns
@@ -2822,7 +2822,7 @@ function App() {
                           const barrelColor = barrelPct == null ? "#8b949e" : barrelPct >= 14 ? "#3fb950" : barrelPct >= 10 ? "#e3b341" : barrelPct >= 7 ? "#c9d1d9" : "#8b949e";
                           const platoonPts = tonightHitPlay?.hitterPlatoonPts ?? null;
                           const pitcherHand = tonightHitPlay?.oppPitcherHand ?? null;
-                          const scTitle = sc != null ? [`Spot: ${lineupSpot != null ? (lineupSpot <= 3 ? 3 : lineupSpot <= 4 ? 2 : 0) : "—"}/3`,`WHIP: ${tonightHitPlay?.hitterWhipMeets===true?3:tonightHitPlay?.hitterWhipMeets===false?0:"—"}/3`,`Platoon: ${tonightHitPlay?.hitterPlatoonPts ?? "—"}/2`,`Park: ${tonightHitPlay?.hitterParkMeets===true?1:tonightHitPlay?.hitterParkMeets===false?0:"—"}/1`,`Barrel%: ${tonightHitPlay?.hitterBarrelPts ?? "—"}/3`,`O/U: ${tonightHitPlay?.hitterTotalPts ?? "—"}/2`].join("\n") : null;
+                          const scTitle = sc != null ? [`Spot: ${lineupSpot != null ? (lineupSpot <= 3 ? 3 : lineupSpot <= 4 ? 2 : 0) : "—"}/3`,`WHIP: ${tonightHitPlay?.hitterWhipPts ?? "—"}/3`,`Platoon: ${tonightHitPlay?.hitterPlatoonPts ?? "—"}/2`,`Park: ${tonightHitPlay?.hitterParkMeets===true?1:tonightHitPlay?.hitterParkMeets===false?0:"—"}/1`,`Barrel%: ${tonightHitPlay?.hitterBarrelPts ?? "—"}/3`,`O/U: ${tonightHitPlay?.hitterTotalPts ?? "—"}/2`].join("\n") : null;
                           return (
                             <>
                               <div>
@@ -2957,7 +2957,8 @@ function App() {
                             const scColor = sc != null ? (sc >= 11 ? "#3fb950" : sc >= 7 ? "#e3b341" : "#8b949e") : "#8b949e";
                             const seasonColor = seasonPct == null ? "#c9d1d9" : seasonPct >= 75 ? "#3fb950" : seasonPct >= 60 ? "#c9d1d9" : "#f78166";
                             const toiColor = nhlOpportunity == null ? "#8b949e" : nhlOpportunity >= 18 ? "#3fb950" : nhlOpportunity >= 15 ? "#e3b341" : "#f78166";
-                            const saColor = nhlShotsAdj == null ? "#8b949e" : nhlShotsAdj > 0 ? "#3fb950" : "#f78166";
+                            const nhlSaRank = tonightTabPlay?.nhlSaRank ?? null;
+                            const saColor = nhlShotsAdj == null ? "#8b949e" : (nhlSaRank != null && nhlSaRank <= 10) ? "#3fb950" : nhlShotsAdj > 0 ? "#e3b341" : "#f78166";
                             const rankColor = rank != null && rank <= 5 ? "#3fb950" : "#e3b341";
                             const toiDesc = nhlOpportunity == null ? null : nhlOpportunity >= 21 ? "a top-line role" : nhlOpportunity >= 18 ? "a key contributor" : nhlOpportunity >= 15 ? "solid ice time" : "limited role";
                             const rankDesc = rank == null ? null : rank <= 3 ? "one of the worst defenses in the league" : rank <= 8 ? "a weak defense" : rank <= 15 ? "a soft matchup" : null;
@@ -2982,7 +2983,7 @@ function App() {
                                     <span style={{color:"#484f58",fontSize:10}}>SimScore</span>
                                     <span style={{background:"#161b22",borderRadius:4,padding:"1px 6px",color:scColor,fontWeight:700,fontSize:10,whiteSpace:"nowrap"}}>{sc}/14 {sc>=11?"Alpha":sc>=7?"Mid":"Low"}</span>
                                     <span style={{display:"inline-flex",gap:4,flexWrap:"wrap"}}>
-                                      {mkGate(nhlShotsAdj != null && nhlShotsAdj > 0, 3, `SA ${nhlShotsAdj != null ? (nhlShotsAdj > 0 ? "+" : "") + nhlShotsAdj : "—"}`)}
+                                      {(() => { const _saPts = nhlSaRank != null && nhlSaRank <= 10 ? 3 : nhlShotsAdj > 0 ? 1 : 0; return mkGate(_saPts > 0, _saPts, `SA ${nhlShotsAdj != null ? (nhlShotsAdj > 0 ? "+" : "") + nhlShotsAdj : "—"}`); })()}
                                       {mkGate(nhlOpportunity != null && nhlOpportunity >= 18, 4, `${nhlOpportunity != null ? nhlOpportunity.toFixed(0)+"m TOI" : "—"}`)}
                                       {mkGate(rank != null && rank <= 10, 2, `GAA #${rank ?? "—"}`)}
                                       {mkGate(nhlIsB2B != null && !nhlIsB2B, 2, nhlIsB2B ? "B2B" : "Rested")}
@@ -4005,7 +4006,7 @@ function App() {
                           const barrelColor = barrelPct == null ? "#8b949e" : barrelPct >= 14 ? "#3fb950" : barrelPct >= 10 ? "#e3b341" : barrelPct >= 7 ? "#c9d1d9" : "#8b949e";
                           const platoonPts = play.hitterPlatoonPts ?? null;
                           const pitcherHand = play.oppPitcherHand ?? null;
-                          const scTitle = sc != null ? [`Spot: ${lineupSpot != null ? (lineupSpot <= 3 ? 3 : lineupSpot <= 4 ? 2 : 0) : "—"}/3`,`WHIP: ${play.hitterWhipMeets===true?3:play.hitterWhipMeets===false?0:"—"}/3`,`Platoon: ${play.hitterPlatoonPts ?? "—"}/2`,`Park: ${play.hitterParkMeets===true?1:play.hitterParkMeets===false?0:"—"}/1`,`Barrel%: ${play.hitterBarrelPts ?? "—"}/3`,`O/U: ${play.hitterTotalPts ?? "—"}/2`].join("\n") : null;
+                          const scTitle = sc != null ? [`Spot: ${lineupSpot != null ? (lineupSpot <= 3 ? 3 : lineupSpot <= 4 ? 2 : 0) : "—"}/3`,`WHIP: ${play.hitterWhipPts ?? "—"}/3`,`Platoon: ${play.hitterPlatoonPts ?? "—"}/2`,`Park: ${play.hitterParkMeets===true?1:play.hitterParkMeets===false?0:"—"}/1`,`Barrel%: ${play.hitterBarrelPts ?? "—"}/3`,`O/U: ${play.hitterTotalPts ?? "—"}/2`].join("\n") : null;
                           return (
                             <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.65}}>
                               <div>
@@ -4093,7 +4094,7 @@ function App() {
                           const scColor = sc != null ? (sc >= 11 ? "#3fb950" : sc >= 7 ? "#e3b341" : "#8b949e") : "#8b949e";
                           const seasonColor = play.seasonPct >= 75 ? "#3fb950" : play.seasonPct >= 60 ? "#c9d1d9" : "#f78166";
                           const toiColor = play.nhlOpportunity == null ? "#8b949e" : play.nhlOpportunity >= 18 ? "#3fb950" : play.nhlOpportunity >= 15 ? "#e3b341" : "#f78166";
-                          const saColor = play.nhlShotsAdj == null ? "#8b949e" : play.nhlShotsAdj > 0 ? "#3fb950" : "#f78166";
+                          const saColor = play.nhlShotsAdj == null ? "#8b949e" : (play.nhlSaRank != null && play.nhlSaRank <= 10) ? "#3fb950" : play.nhlShotsAdj > 0 ? "#e3b341" : "#f78166";
                           const rankColor = play.oppRank != null && play.oppRank <= 5 ? "#3fb950" : "#e3b341";
                           const toiDesc = play.nhlOpportunity == null ? null : play.nhlOpportunity >= 21 ? "a top-line role" : play.nhlOpportunity >= 18 ? "a key contributor" : play.nhlOpportunity >= 15 ? "solid ice time" : "limited role";
                           const rankDesc = play.oppRank == null ? null : play.oppRank <= 3 ? "one of the worst defenses in the league" : play.oppRank <= 8 ? "a weak defense" : play.oppRank <= 15 ? "a soft matchup" : null;
@@ -4114,7 +4115,7 @@ function App() {
                                   <span style={{color:"#484f58",fontSize:10}}>SimScore</span>
                                   <span style={{background:"#161b22",borderRadius:4,padding:"1px 6px",color:scColor,fontWeight:700,fontSize:10,whiteSpace:"nowrap"}}>{sc}/14 {sc>=11?"Alpha":sc>=7?"Mid":"Low"}</span>
                                   <span style={{display:"inline-flex",gap:4,flexWrap:"wrap"}}>
-                                    {mkGate(play.nhlShotsAdj != null && play.nhlShotsAdj > 0, 3, `SA ${play.nhlShotsAdj != null ? (play.nhlShotsAdj > 0 ? "+" : "") + play.nhlShotsAdj : "—"}`)}
+                                    {(() => { const _saPts = play.nhlSaRank != null && play.nhlSaRank <= 10 ? 3 : play.nhlShotsAdj > 0 ? 1 : 0; return mkGate(_saPts > 0, _saPts, `SA ${play.nhlShotsAdj != null ? (play.nhlShotsAdj > 0 ? "+" : "") + play.nhlShotsAdj : "—"}`); })()}
                                     {mkGate(play.nhlOpportunity != null && play.nhlOpportunity >= 18, 4, `${play.nhlOpportunity != null ? play.nhlOpportunity.toFixed(0)+"m TOI" : "—"}`)}
                                     {mkGate(play.oppRank != null && play.oppRank <= 10, 2, `GAA #${play.oppRank ?? "—"}`)}
                                     {mkGate(play.isB2B != null && !play.isB2B, 2, play.isB2B ? "B2B" : "Rested")}

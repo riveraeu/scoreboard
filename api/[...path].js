@@ -2467,7 +2467,7 @@ var worker_default = {
           let hitterLineupSpot = null, hitterWhipMeets = null, hitterFipMeets = null, hitterParkMeets = null;
           let pitcherWHIP = null, pitcherFIP = null, pitcherBAA = null;
           let hitterParkKF = null, hitterMoneyline = null, hitterBarrelPct = null;
-          let hitterBarrelPts = null, hitterTotalPts = null, hitterGameTotal = null, hitterPlatoonPts = null, hitterOppPitcherHand = null, hitterSplitBA = null;
+          let hitterBarrelPts = null, hitterTotalPts = null, hitterGameTotal = null, hitterPlatoonPts = null, hitterOppPitcherHand = null, hitterSplitBA = null, hitterWhipPts = null;
           if (sport === "mlb" && stat !== "strikeouts") {
             const hitterML = sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null;
             const hIdx2 = gl.ul.indexOf("H");
@@ -2529,6 +2529,7 @@ var worker_default = {
             const _hlParkKF2 = PARK_HITFACTOR?.[_hlHomeTeam2] ?? 1;
             const _hlEra = sportByteam.mlb?.probables?.[tonightOpp]?.era ?? null;
             hitterWhipMeets = pitcherWHIP != null ? pitcherWHIP > 1.35 : null;
+            hitterWhipPts = pitcherWHIP == null ? 0 : pitcherWHIP > 1.35 ? 3 : pitcherWHIP > 1.20 ? 1 : 0;
             hitterFipMeets = (pitcherFIP != null && _hlEra != null) ? pitcherFIP > _hlEra : null;
             hitterParkMeets = _hlParkKF2 > 1.0;
             hitterParkKF = _hlParkKF2;
@@ -2571,16 +2572,16 @@ var worker_default = {
             // O/U total tier (high total = more run-scoring): ≥9.5→2pts, ≥7.5→1pt, <7.5→0pts, null→1pt
             hitterGameTotal = sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null;
             hitterTotalPts = hitterGameTotal == null ? 1 : hitterGameTotal >= 9.5 ? 2 : hitterGameTotal >= 7.5 ? 1 : 0;
-            // Sim-score (max 14, edge gates separately): spot→3/2, WHIP→3, platoon→0-2, park→1, barrel%→0-3, O/U→0-2
+            // Sim-score (max 14, edge gates separately): spot→3/2, WHIP→3/1/0, platoon→0-2, park→1, barrel%→0-3, O/U→0-2
             hitterSimScore = (_spotPts ?? 0)
-              + (hitterWhipMeets === true ? 3 : 0)
+              + (hitterWhipPts ?? 0)
               + hitterPlatoonPts
               + (hitterParkMeets ? 1 : 0)
               + hitterBarrelPts
               + hitterTotalPts;
             const _hlPitcherName = sportByteam.mlb?.probables?.[tonightOpp]?.name ?? null;
             const _hlML = hitterML;
-            const _hlCommon = { opponent: tonightOpp, pitcherName: _hlPitcherName, seasonPct: _hlSeasonPct, softPct: _hlSoftPct, truePct: _hlTruePct, edge: _hlEdge, pitcherEra: _hlEra, moneyline: _hlML, hitterBa, hitterBaTier, abVsTeam: hitterAbVsPitcher, hitterLineupSpot, pitcherWHIP, pitcherFIP, hitterSimScore, hitterParkKF, hitterMoneyline, hitterBarrelPct, hitterBarrelPts, hitterTotalPts, hitterGameTotal, hitterPlatoonPts, oppPitcherHand: _oppPitcherHand, hitterSplitBA: _splitBA };
+            const _hlCommon = { opponent: tonightOpp, pitcherName: _hlPitcherName, seasonPct: _hlSeasonPct, softPct: _hlSoftPct, truePct: _hlTruePct, edge: _hlEdge, pitcherEra: _hlEra, moneyline: _hlML, hitterBa, hitterBaTier, abVsTeam: hitterAbVsPitcher, hitterLineupSpot, pitcherWHIP, pitcherFIP, hitterSimScore, hitterParkKF, hitterMoneyline, hitterBarrelPct, hitterBarrelPts, hitterTotalPts, hitterGameTotal, hitterPlatoonPts, oppPitcherHand: _oppPitcherHand, hitterSplitBA: _splitBA, hitterWhipPts };
             // Stage 1: lineup spot 5-9 discard
             if (hitterLineupSpot !== null && hitterLineupSpot >= 5) {
               if (isDebug) dropped.push({ ..._dropBase, reason: "low_lineup_spot", hitterLineupSpot, ..._hlCommon });
@@ -2687,13 +2688,15 @@ var worker_default = {
             nbaSimPctOut = nbaDistPct(nbaPlayerDistCache[_nbaDistKey], threshold);
           }
           // NHL: pre-edge SimScore + Monte Carlo simulation (same normal-distribution approach as NBA)
-          let nhlSimPctOut = null, nhlPreSimScore = null, nhlShotsAdj = null, nhlOpportunity = null;
+          let nhlSimPctOut = null, nhlPreSimScore = null, nhlShotsAdj = null, nhlOpportunity = null, nhlSaRank = null;
           if (sport === "nhl") {
             let _sc = 0;
-            // 1. Shots against — opp allows more shots than league avg → 3pts
+            // 1. Shots against — tiered: rank ≤10 → 3pts, above avg but rank >10 → 1pt, else 0
             if (nhlLeagueAvgSa !== null && nhlSaRankMap[tonightOpp]?.value != null) {
               nhlShotsAdj = parseFloat((nhlSaRankMap[tonightOpp].value - nhlLeagueAvgSa).toFixed(1));
-              if (nhlShotsAdj > 0) _sc += 3;
+              nhlSaRank = nhlSaRankMap[tonightOpp]?.rank ?? null;
+              if (nhlSaRank != null && nhlSaRank <= 10) _sc += 3;
+              else if (nhlShotsAdj > 0) _sc += 1;
             }
             // 2. Ice time (TOI) — avg ≥18 min → 4pts, ≥15 min → 2pts
             const _toiIdx = gl.ul.findIndex(h => h === "TOI" || h === "timeOnIce");
@@ -3014,6 +3017,7 @@ var worker_default = {
             hitterFinalSimScore: sport === "mlb" && stat !== "strikeouts" ? hitterFinalSimScore : void 0,
             hitterLineupSpot: sport === "mlb" && stat !== "strikeouts" ? hitterLineupSpot : void 0,
             hitterWhipMeets: sport === "mlb" && stat !== "strikeouts" ? hitterWhipMeets : void 0,
+            hitterWhipPts: sport === "mlb" && stat !== "strikeouts" ? hitterWhipPts : void 0,
             hitterFipMeets: sport === "mlb" && stat !== "strikeouts" ? hitterFipMeets : void 0,
             hitterPlatoonPts: sport === "mlb" && stat !== "strikeouts" ? hitterPlatoonPts : void 0,
             hitterSplitBA: sport === "mlb" && stat !== "strikeouts" ? hitterSplitBA : void 0,
@@ -3061,6 +3065,7 @@ var worker_default = {
             nhlPreSimScore: sport === "nhl" ? nhlPreSimScore : void 0,
             nhlSimPct: sport === "nhl" ? nhlSimPctOut : void 0,
             nhlShotsAdj: sport === "nhl" ? nhlShotsAdj : void 0,
+            nhlSaRank: sport === "nhl" ? nhlSaRank : void 0,
             nhlOpportunity: sport === "nhl" ? nhlOpportunity : void 0,
             isHomeGame,
             isB2B,

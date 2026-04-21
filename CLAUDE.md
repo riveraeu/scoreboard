@@ -147,7 +147,7 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
   - BA is NOT directly in the formula — it's implicit via the player's historical HRR rate
 - **SimScore** (max 14, edge gates separately — same pattern as strikeouts):
   - Lineup spot 1–3 → 3pts, spot 4 → 2pts
-  - Pitcher WHIP > 1.35 → 3pts (from pitcher gamelog)
+  - Pitcher WHIP tiered (`hitterWhipPts`): > 1.35 → 3pts (green), > 1.20 → 1pt (yellow), ≤ 1.20 → 0pts (red). Null → 0pts. Color in prose is binary green/red (> 1.35 green, else red).
   - B1 platoon tier (`hitterPlatoonPts`): `splitBA / seasonBA ≥ 1.10 → 2pts` (strong platoon advantage), `≥ 0.95 → 1pt` (neutral/slight), `< 0.95 → 0pts` (platoon disadvantage); null → 1pt (abstain). `batterSplitBA` from MLB Stats API `statSplits/sitCodes=vr|vl`, requires 30+ AB; replaces former Pitcher FIP > ERA pts.
   - Park hit factor > 1.02 → 1pt
   - Barrel% tier: ≥14% → 3pts, ≥10% → 2pts, ≥7% → 1pt, <7% → 0pts, null → 1pt (abstain)
@@ -201,7 +201,7 @@ True% = Monte Carlo simulation (reuses `buildNbaStatDist` + `nbaDistPct`) — no
 - **D3 — TOI trend**: `nhlToiTrendAdj = clamp(recent3TOI / last10TOI, 0.92, 1.08)` where recent3 is the last 3 games and last10 is the 10-game avg — applied as `miscAdj` 6th param to `buildNbaStatDist`. Only applied when ratio > 1.05 (increasing → boost up to 1.08×) or < 0.95 (decreasing → penalty down to 0.92×); else 1.0.
 - Falls back to dvp-adjusted average formula if simulation returns null
 - **SimScore** (max 11 pre-edge, 14 with edge bonus):
-  - Shots against adj (opp SA vs league avg > 0) → 3pts
+  - Shots against tiered (`nhlSaRank`): SA rank ≤ 10 → 3pts (green), SA above league avg but rank > 10 → 1pt (yellow), SA ≤ league avg → 0pts (red). `nhlSaRank` stored in play output alongside `nhlShotsAdj`.
   - Avg TOI ≥ 18 min (last 10 games) → 4pts; ≥ 15 min → 2pts
   - Opponent GAA rank ≤ 10 → 2pts
   - Not B2B → 2pts
