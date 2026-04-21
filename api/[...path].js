@@ -2802,6 +2802,8 @@ var worker_default = {
               ...(sport === "mlb" && stat !== "strikeouts" ? {
                 hitterSimScore, hitterFinalSimScore,
                 hitterLineupSpot, pitcherWHIP, pitcherFIP, hitterParkKF, hitterMoneyline, hitterBarrelPct,
+                hitterPitcherName: sportByteam.mlb?.probables?.[tonightOpp]?.name ?? sportByteam.mlb?.pitcherInfoByTeam?.[tonightOpp]?.name ?? pitcherGamelogs[tonightOpp]?.name ?? null,
+                hitterPitcherEra: sportByteam.mlb?.probables?.[tonightOpp]?.era ?? sportByteam.mlb?.pitcherEra?.[tonightOpp] ?? null,
               } : {}),
               ...(sport === "nba" ? { nbaSimScore, nbaPreSimScore, nbaSimPct: nbaSimPctOut, nbaPaceAdj, nbaOpportunity, isB2B } : {}),
               ...(sport === "nhl" ? { nhlSimScore, nhlPreSimScore, nhlSimPct: nhlSimPctOut, nhlShotsAdj, nhlOpportunity, nhlTeamGPG, isB2B } : {}),
@@ -2938,6 +2940,8 @@ var worker_default = {
               softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
               truePct: parseFloat(truePct.toFixed(1)), edge: parseFloat(edge.toFixed(1)),
               hitterLineupSpot, pitcherWHIP, hitterBarrelPct,
+              hitterPitcherName: sportByteam.mlb?.probables?.[tonightOpp]?.name ?? sportByteam.mlb?.pitcherInfoByTeam?.[tonightOpp]?.name ?? pitcherGamelogs[tonightOpp]?.name ?? null,
+              hitterPitcherEra: sportByteam.mlb?.probables?.[tonightOpp]?.era ?? sportByteam.mlb?.pitcherEra?.[tonightOpp] ?? null,
             });
             continue;
           }
@@ -3025,7 +3029,7 @@ var worker_default = {
             hitterBa: hitterBa !== null ? hitterBa : void 0,
             hitterBaTier: hitterBaTier ?? void 0,
             hitterAbVsPitcher: sport === "mlb" && stat !== "strikeouts" ? hitterAbVsPitcher : void 0,
-            hitterPitcherName: sport === "mlb" && stat !== "strikeouts" ? (sportByteam.mlb?.probables?.[tonightOpp]?.name ?? sportByteam.mlb?.pitcherInfoByTeam?.[tonightOpp]?.name ?? null) : void 0,
+            hitterPitcherName: sport === "mlb" && stat !== "strikeouts" ? (sportByteam.mlb?.probables?.[tonightOpp]?.name ?? sportByteam.mlb?.pitcherInfoByTeam?.[tonightOpp]?.name ?? pitcherGamelogs[tonightOpp]?.name ?? null) : void 0,
             hitterSoftLabel: sport === "mlb" && stat !== "strikeouts" ? softLabel : void 0,
             hitterPitcherEra: sport === "mlb" && stat !== "strikeouts" ? (sportByteam.mlb?.probables?.[tonightOpp]?.era ?? sportByteam.mlb?.pitcherEra?.[tonightOpp] ?? null) : void 0,
             nbaSimScore: sport === "nba" ? nbaSimScore : void 0,
