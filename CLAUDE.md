@@ -43,7 +43,7 @@ Routes via `pathname`:
 - `/api/auth/list-users` — list all user keys in Redis (GET `?adminKey=`)
 - `/api/auth/debug-redis` — raw Upstash SET+GET diagnostic (GET `?adminKey=`) — returns `{setStatus, setRaw, getStatus, getRaw, match}` to confirm Redis is writable
 - `/api/auth/import-kalshi-picks` — import fills from Kalshi into user picks (POST `{kalshiSession, adminKey, userId}`) — fetches last 5 days of YES fills, maps tickers to play format, auto-populates won/lost for finalized markets
-- `/api/auth/calibration` — outcome calibration stats (GET `?adminKey=`) — reads all users' finalized picks (result: won/lost), groups by truePct bucket (70–75, 75–80, …, 95+), returns `{totalPicks, finalizedPicks, overall:[{bucket, predicted, actual, n, delta}], byCategory:{sport|stat:{hitRate,n}}}`
+- `/api/auth/calibration` — outcome calibration stats (GET) — reads all users' finalized picks (result: won/lost), groups by truePct bucket (70–75, 75–80, …, 95+), returns `{totalPicks, finalizedPicks, overall:[{bucket, predicted, actual, n, delta}], byCategory:{sport|stat:{hitRate,n}}}`. Auth: `Authorization: Bearer <jwt>` (any logged-in user) OR `?adminKey=<ADMIN_KEY>` (curl/debug fallback — do not hardcode in frontend)
 - `/api/user/picks` — GET/POST user picks (requires `Authorization: Bearer <token>`)
 - `/api/team` — team page data (GET `?abbr=LAD&sport=mlb`) → `{teamAbbr, teamName, sport, record, wins, losses, gameLog, seasonStats:{avgTotal,gamesPlayed}, lineup, lineupConfirmed}`; cached `team:v2:{sport}:{abbr}:{today}` at 3600s TTL; `gameLog` entries: `{date, isHome, opp, teamScore, oppScore, total, result:"W"|"L"}`; lineup: NBA three-source fallback chain (see below), MLB two-source fallback chain: (1) MLB Stats API schedule `hydrate=lineups,probables` (PT date `Date.now()-7h`), confirmed lineup + probable SP → `{spot, name, position, playerId, isProbable?}`; (2) MLB Stats API active roster fallback when schedule returns no lineup/probable — non-pitcher position players up to 12, `spot:null`, `lineupConfirmed:false`
 
@@ -386,7 +386,7 @@ Opened via "report" button. Shows ALL markets (plays + dropped) grouped by sport
 - **Game totals table** (`mlb|totalRuns`, `nba|totalPoints`, `nhl|totalGoals`): section header shows **"[Sport] Totals"** (e.g. "NBA Totals") via `STAT_NAME` entries `totalRuns/totalPoints/totalGoals → "Totals"`. First column labelled "Matchup" (not "Player"), shows `AWY @ HME`. Opp column hidden. Line cell shows `O7.5` format. Score column uses `m.totalSimScore` (qual gate = 11); green ≥ 11, yellow = 7–10, gray < 7. XCOLS: MLB = H RPG / A RPG / H ERA / A ERA; NBA = H PPG / A PPG / H Def / A Def; NHL = H GPG / A GPG / H GAA / A GAA. Color for all PPG columns: higher = better for over (≥ threshold → green, near → yellow). **MLB ERA/RPG column colors**: ERA ≥4.5 → green (bad pitcher = over-favorable), ≥3.5 → yellow, <3.5 → gray; RPG ≥5.0 → green, ≥4.0 → yellow, <4.0 → gray. Dedup key for totals is `homeTeam|awayTeam|threshold` (not `playerName|threshold`).
 
 #### Calibration Tab
-Fetches `/api/auth/calibration?adminKey=<ADMIN_KEY>` on first click (+ Refresh button to re-fetch). Shows:
+Fetches `GET /api/auth/calibration` with `Authorization: Bearer <authToken>` on first click (+ Refresh button to re-fetch). Requires the user to be logged in — sends the stored JWT token, no hardcoded admin key. Shows:
 - **Dynamic analysis block**: overall win rate vs avg predicted; per-bucket sentence describing delta magnitude ("large positive edge of +9%", "well-calibrated", etc.) with data quality label ("significant data" N≥20, "moderate" N≥10, "limited" N<10) and implication ("model is conservative / overconfident"); best/worst category line (filtered to N≥5).
 - **Overall Calibration table**: Bucket | N | Predicted | Actual | Delta | bar chart. Bar = actual win rate; blue marker = predicted rate. N < 10 shown dim.
 - **By Category table**: sport/stat | N | hit rate | bar. Sorted by N descending.
@@ -706,6 +706,15 @@ Most likely cause: **Upstash free tier exhausted** (500k commands/month). Sympto
 **Fix:** In Upstash console (`console.upstash.com`), either upgrade the database to Pay-As-You-Go or create a new free database and update `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` in Vercel → Environment Variables → Redeploy.
 
 **Recovery:** Picks are always mirrored to `localStorage` as a backup (even when logged in). On next login after Redis is restored, the frontend detects server has 0 picks and auto-restores from localStorage, then pushes to server. For picks from before the localStorage backup was added (pre-2026-04-16): use `/api/auth/import-kalshi-picks` to recover from Kalshi fill history.
+
+### "Calibration tab throws TypeError: Cannot read properties of undefined (reading 'filter')"
+**Root cause**: Two separate issues that compound:
+
+1. **API returns `{error:"Forbidden"}` instead of calibration data** — the frontend `fetchCalib()` had `adminKey=sb-admin-2026` hardcoded; if the Vercel `ADMIN_KEY` env var is different, the API returns a 403. `calibData` becomes `{error:"Forbidden"}` which passes the `calibData && !calibLoading` guard, so the IIFE fires and destructures `overall = undefined` → `.filter()` crash.
+
+2. **Missing `!calibData.error` guard** — the IIFE condition was `calibData && !calibLoading` without excluding error responses. Fix: added `&& !calibData.error` so the IIFE only runs when the response has the expected shape.
+
+**Auth fix**: calibration endpoint now accepts `Authorization: Bearer <jwt>` (any logged-in user). Frontend sends the stored auth token — no hardcoded key needed. `?adminKey=<ADMIN_KEY>` still works as a curl/debug fallback. **Never hardcode the admin key in the frontend.**
 
 ### "Need to recover picks from Kalshi fill history"
 `POST /api/auth/import-kalshi-picks` with `{kalshiSession, adminKey, userId}` fetches the last 5 days of YES fills from Kalshi, maps each ticker to playerName/sport/stat/threshold, auto-populates `result: "won"/"lost"` for finalized markets, and merges into the user's server picks without duplicates.
