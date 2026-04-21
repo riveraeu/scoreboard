@@ -3191,10 +3191,10 @@ var worker_default = {
             }
           }
         }
-        // ── Polymarket price comparison for game totals ──────────────────────────────────────────
-        // Markets live inside /events?series_id=X (MLB=3, NBA=10345, NHL=10346), not /markets
+        // ── Polymarket price comparison + Poly-only market injection ─────────────────────────────
+        // Fetched independently of Kalshi so Poly-only thresholds also enter the play loop.
         let polyPctMap = {};
-        if (totalMarkets.length > 0) {
+        {
           const _polyKey = `poly:totals:${todayDateStr}`;
           const _cachedPoly = CACHE2 && !isBustCache ? await CACHE2.get(_polyKey, "json").catch(() => null) : null;
           if (_cachedPoly) {
@@ -3207,8 +3207,8 @@ var worker_default = {
               }
               return null;
             };
-            const _sportsNeeded = [...new Set(totalMarkets.map(t => t.sport).filter(s => POLY_SERIES[s]))];
-            await Promise.all(_sportsNeeded.map(async _ps => {
+            // Fetch all supported sports regardless of whether Kalshi has markets for them
+            await Promise.all(Object.keys(POLY_SERIES).map(async _ps => {
               try {
                 const _evResp = await fetch(
                   `https://gamma-api.polymarket.com/events?closed=false&series_id=${POLY_SERIES[_ps]}&limit=50`,
@@ -3247,6 +3247,32 @@ var worker_default = {
               await CACHE2.put(_polyKey, JSON.stringify(polyPctMap), { expirationTtl: 300 }).catch(() => {});
             }
           }
+          // Inject Poly-only thresholds — those Poly carries that Kalshi doesn't
+          const _kalshiKeySet = new Set();
+          for (const tm of totalMarkets) {
+            _kalshiKeySet.add(`${tm.sport}|${tm.gameTeam1}|${tm.gameTeam2}|${tm.threshold}`);
+            _kalshiKeySet.add(`${tm.sport}|${tm.gameTeam2}|${tm.gameTeam1}|${tm.threshold}`);
+          }
+          const _polyStatMap = { mlb: "totalRuns", nba: "totalPoints", nhl: "totalGoals" };
+          const _polyColMap = { mlb: "R", nba: "PTS", nhl: "G" };
+          const _polySeenCanon = new Set();
+          for (const [key, { polyPct, polyVol }] of Object.entries(polyPctMap)) {
+            if (_kalshiKeySet.has(key)) continue;
+            const parts = key.split("|");
+            if (parts.length !== 4) continue;
+            const [sport, t1, t2, threshStr] = parts;
+            const threshold = parseInt(threshStr, 10);
+            if (!_polyStatMap[sport] || polyPct < 70 || polyPct > 97) continue;
+            const _canon = `${sport}|${[t1, t2].sort().join("|")}|${threshold}`;
+            if (_polySeenCanon.has(_canon)) continue;
+            _polySeenCanon.add(_canon);
+            totalMarkets.push({
+              gameType: "total", sport, stat: _polyStatMap[sport], col: _polyColMap[sport],
+              threshold, kalshiPct: null, americanOdds: null, kalshiVolume: null,
+              gameTeam1: t1, gameTeam2: t2, gameDate: todayDateStr,
+              kalshiSpread: null, _ticker: null, _yesAsk: null, _yesBid: null, polyOnly: true
+            });
+          }
         }
         // ── Game Total plays ─────────────────────────────────────────────────────────────────────
         const totalDistCache = {};
@@ -3257,7 +3283,7 @@ var worker_default = {
             const { sport, stat, threshold, kalshiPct, americanOdds, gameTeam1, gameTeam2, gameDate, kalshiSpread, kalshiVolume } = tm;
             if (gameDate && gameDate < cutoffStr) continue;
             const spreadAdj = kalshiSpread != null ? parseFloat((kalshiSpread / 2).toFixed(1)) : 0;
-            const lowVolume = kalshiVolume < 20;
+            const lowVolume = kalshiVolume != null && kalshiVolume < 20;
             let truePct = null, homeTeam = gameTeam1, awayTeam = gameTeam2, totalSimScore = 0, _simData = {};
             if (sport === "mlb") {
               if (sportByteam.mlb?.gameHomeTeams?.[gameTeam2]) { homeTeam = gameTeam2; awayTeam = gameTeam1; }
@@ -3327,16 +3353,17 @@ var worker_default = {
               if (isDebug) dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, totalSimScore, polyPct, polyVol, reason: "no_simulation_data", ..._simData });
               continue;
             }
-            const rawEdge = parseFloat((truePct - kalshiPct).toFixed(1));
-            const edge = rawEdge;
-            const bestPct = polyPct != null ? Math.min(kalshiPct, polyPct) : kalshiPct;
-            const bestVenue = polyPct != null && polyPct < kalshiPct ? "polymarket" : "kalshi";
+            const rawEdge = kalshiPct != null ? parseFloat((truePct - kalshiPct).toFixed(1)) : null;
+            const bestPct = kalshiPct != null && polyPct != null ? Math.min(kalshiPct, polyPct) : (polyPct ?? kalshiPct);
+            const bestVenue = kalshiPct == null ? "polymarket" : (polyPct != null && polyPct < kalshiPct ? "polymarket" : "kalshi");
             const bestEdge = parseFloat((truePct - bestPct).toFixed(1));
-            if (edge < 5) {
-              if (isDebug) dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, spreadAdj: spreadAdj > 0 ? parseFloat(spreadAdj.toFixed(1)) : 0, edge, totalSimScore, polyPct, polyVol, bestVenue, bestEdge, reason: "edge_too_low", ..._simData });
+            const edge = rawEdge ?? bestEdge;
+            const _displayAO = americanOdds ?? (polyPct != null ? (polyPct >= 50 ? Math.round(-(polyPct / (100 - polyPct)) * 100) : Math.round((100 - polyPct) / polyPct * 100)) : null);
+            if (bestEdge < 5) {
+              if (isDebug) dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, kalshiPct, americanOdds: _displayAO, truePct: parseFloat(truePct.toFixed(1)), rawEdge, spreadAdj: spreadAdj > 0 ? parseFloat(spreadAdj.toFixed(1)) : 0, edge, totalSimScore, polyPct, polyVol, bestVenue, bestEdge, polyOnly: tm.polyOnly ?? false, reason: "edge_too_low", ..._simData });
               continue;
             }
-            totalPlays.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, spreadAdj: spreadAdj > 0 ? parseFloat(spreadAdj.toFixed(1)) : 0, edge, totalSimScore, qualified: totalSimScore >= 11, kelly: kellyFraction(truePct, americanOdds), ev: evPerUnit(truePct, americanOdds), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null, polyPct, polyVol, bestVenue, bestEdge, ..._simData });
+            totalPlays.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds: _displayAO, truePct: parseFloat(truePct.toFixed(1)), rawEdge, spreadAdj: spreadAdj > 0 ? parseFloat(spreadAdj.toFixed(1)) : 0, edge, totalSimScore, qualified: totalSimScore >= 11, kelly: kellyFraction(truePct, _displayAO), ev: evPerUnit(truePct, _displayAO), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null, polyPct, polyVol, bestVenue, bestEdge, polyOnly: tm.polyOnly ?? false, ..._simData });
           }
         }
         {

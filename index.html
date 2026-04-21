@@ -209,7 +209,7 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, trackedP
 
         const trackId = tp ? `total|${tp.sport}|${tp.homeTeam}|${tp.awayTeam}|${t}|${tp.gameDate || ""}` : null;
         const isTracked = trackId ? (trackedPlays || []).some(p => p.id === trackId) : false;
-        const canTrack = tp != null && kalshiPct != null && kalshiPct >= 70 && edge != null && edge >= 3;
+        const canTrack = tp != null && ((tp.kalshiPct ?? tp.polyPct) ?? 0) >= 70 && edge != null && edge >= 3;
         const trackBtn = canTrack ? (
           <button
             onClick={() => isTracked ? onUntrack(trackId) : onTrack({ ...tp, threshold: t })}
@@ -250,9 +250,11 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, trackedP
                     const _bEdge = tp?.bestEdge ?? edge;
                     const _hasPoly = tp?.polyPct != null;
                     const _polyWins = tp?.bestVenue === "polymarket";
-                    const _tip = _hasPoly
-                      ? `Kalshi: ${tp.kalshiPct}¢  |  Polymarket: ${tp.polyPct}¢\nBest: ${_polyWins ? "Polymarket" : "Kalshi"} (+${_bEdge}% edge)`
-                      : null;
+                    const _tip = tp?.polyOnly
+                      ? `Polymarket: ${tp.polyPct}¢ (+${_bEdge}% edge)`
+                      : _hasPoly
+                        ? `Kalshi: ${tp.kalshiPct}¢  |  Polymarket: ${tp.polyPct}¢\nBest: ${_polyWins ? "Polymarket" : "Kalshi"} (+${_bEdge}% edge)`
+                        : null;
                     return (
                       <span style={{display:"flex",alignItems:"center",gap:3}}>
                         <span title={_tip}
@@ -272,21 +274,25 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, trackedP
                   {trackBtn}
                 </div>
               </div>
-              {/* Kalshi odds bar */}
-              {kalshiPct != null && (
-                <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  <div style={{flex:1,background:"#21262d",borderRadius:4,height:11,overflow:"hidden"}}>
-                    <div style={{width:`${kalshiPct}%`,background:"#6e40c9",height:"100%",borderRadius:4,
-                      transition:"width 0.5s ease",minWidth:kalshiPct>0?2:0}}/>
+              {/* Market price bar (Kalshi or Polymarket) */}
+              {(kalshiPct != null || tp?.polyOnly) && (() => {
+                const _barPct = tp?.polyOnly ? tp.polyPct : kalshiPct;
+                const _barColor = tp?.polyOnly ? "#2ea8e5" : "#6e40c9";
+                return (
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <div style={{flex:1,background:"#21262d",borderRadius:4,height:11,overflow:"hidden"}}>
+                      <div style={{width:`${_barPct}%`,background:_barColor,height:"100%",borderRadius:4,
+                        transition:"width 0.5s ease",minWidth:_barPct>0?2:0}}/>
+                    </div>
+                    <div style={{color:_barColor,fontSize:11,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>
+                      {_barPct}%
+                    </div>
+                    <div style={{color:_barColor,fontSize:10,width:110,flexShrink:0,paddingLeft:2}}>
+                      {oddsStr && `(${oddsStr})`}
+                    </div>
                   </div>
-                  <div style={{color:"#6e40c9",fontSize:11,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>
-                    {kalshiPct}%
-                  </div>
-                  <div style={{color:"#6e40c9",fontSize:10,width:110,flexShrink:0,paddingLeft:2}}>
-                    {oddsStr && `(${oddsStr})`}
-                  </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
           </div>
         );
@@ -2333,7 +2339,7 @@ function App() {
                                   </div>
                                   {(sport === "mlb" || sport === "nba" || stat.startsWith("total")) && <div style={{flex:1,fontSize:11,textAlign:"right"}}>{xcell(m,"sim")}</div>}
                                   <div style={{flex:1,fontSize:11,textAlign:"right",color:truePct!=null?"#e3b341":"#21262d",fontWeight:truePct!=null?600:400}}>{truePct!=null?`${truePct}%`:"—"}</div>
-                                  <div style={{flex:1,fontSize:11,textAlign:"right"}}><span style={{color:"#c9d1d9"}}>{m.kalshiPct}%</span></div>
+                                  <div style={{flex:1,fontSize:11,textAlign:"right"}}><span style={{color:m.kalshiPct != null ? "#c9d1d9" : "#484f58"}}>{m.kalshiPct != null ? `${m.kalshiPct}%` : "—"}</span></div>
                                   <div style={{flex:1,fontSize:11,textAlign:"right",color:edge!=null&&edge>=5?"#3fb950":edge!=null&&edge<0?"#f78166":"#8b949e"}}>{edge!=null?(edge>=0?`+${edge.toFixed(1)}`:`${edge.toFixed(1)}`)+"%" :"—"}</div>
                                   {isTotal && <div style={{flex:1,fontSize:11,textAlign:"right"}}>
                                     {m.polyPct != null
@@ -3643,9 +3649,11 @@ function App() {
                           const _bEdge = play.bestEdge ?? play.edge;
                           const _hasPoly = play.polyPct != null;
                           const _polyWins = play.bestVenue === "polymarket";
-                          const _tip = _hasPoly
-                            ? `Kalshi: ${play.kalshiPct}¢  |  Polymarket: ${play.polyPct}¢\nBest: ${_polyWins ? "Polymarket" : "Kalshi"} (+${_bEdge}% edge)`
-                            : null;
+                          const _tip = play.polyOnly
+                            ? `Polymarket: ${play.polyPct}¢ (+${_bEdge}% edge)`
+                            : _hasPoly
+                              ? `Kalshi: ${play.kalshiPct}¢  |  Polymarket: ${play.polyPct}¢\nBest: ${_polyWins ? "Polymarket" : "Kalshi"} (+${_bEdge}% edge)`
+                              : null;
                           return (
                             <span style={{display:"flex",alignItems:"center",gap:4}}>
                               <span title={_tip}
@@ -3682,16 +3690,22 @@ function App() {
                         <span style={{color:tColor,fontSize:10}}>({tTrueOddsStr})</span>
                       </div>
                     </div>
-                    {/* Kalshi% bar */}
-                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-                      <div style={{flex:1,background:"#21262d",borderRadius:4,height:10,overflow:"hidden"}}>
-                        <div style={{width:`${play.kalshiPct}%`,background:"#6e40c9",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:play.kalshiPct>0?3:0}}/>
-                      </div>
-                      <div style={{width:70,flexShrink:0,display:"flex",justifyContent:"flex-end",alignItems:"baseline",gap:4}}>
-                        <span style={{color:"#6e40c9",fontSize:12,fontWeight:600}}>{play.kalshiPct}%</span>
-                        <span style={{color:"#6e40c9",fontSize:10}}>({oddsStr})</span>
-                      </div>
-                    </div>
+                    {/* Market price bar (Kalshi or Polymarket) */}
+                    {(() => {
+                      const _barPct = play.polyOnly ? play.polyPct : play.kalshiPct;
+                      const _barColor = play.polyOnly ? "#2ea8e5" : "#6e40c9";
+                      return (
+                        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                          <div style={{flex:1,background:"#21262d",borderRadius:4,height:10,overflow:"hidden"}}>
+                            <div style={{width:`${_barPct}%`,background:_barColor,height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:_barPct>0?3:0}}/>
+                          </div>
+                          <div style={{width:70,flexShrink:0,display:"flex",justifyContent:"flex-end",alignItems:"baseline",gap:4}}>
+                            <span style={{color:_barColor,fontSize:12,fontWeight:600}}>{_barPct}%</span>
+                            <span style={{color:_barColor,fontSize:10}}>({oddsStr})</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
                     {/* Rich text explanation */}
                     <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:4}}>
                       {/* MLB Total */}
