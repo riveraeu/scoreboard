@@ -406,6 +406,12 @@ Shows: **"My Picks"** label → total count badge → `X active · Y finished` b
 
 **P&L stats row** shows: Record · Net P&L · ROI · Avg odds · Group by dropdown. "Total staked" and "Bankroll now" removed.
 
+**Pick list — two-tier collapsible grouping**: picks are organized week → day. State: `openPickWeeks` (Set of Monday ISO date keys) and `openPickDays` (Set of date keys). Both default to the current week/today open; older groups start collapsed.
+- **Week header** (`"Week of Apr 14"`): bold, `#161b22` background, `#30363d` border. Shows total pick count, active count (green), weekly net P&L. Clicking toggles `openPickWeeks`.
+- **Day header** (`"Today"` / `"Yesterday"` / `"Apr 19"`): lighter, `#0d1117` background, `#21262d` border, nested inside expanded week. Shows pick count, active count, daily net P&L. Clicking toggles `openPickDays`.
+- Week key = Monday of the week (`(d.getDay() + 6) % 7` offset, same as chart week bucketing). Sort order within each day: open picks first, then by `trackedAt` descending.
+- Date is removed from the pick card subtitle (shown in the day header instead).
+
 ### Play Cards
 Shows `untrackedPlays` (qualified plays not yet tracked). For game totals, once any threshold for a game is tracked (e.g. O5.5), all other thresholds for that same game are also suppressed — `trackedGameKeys` set built from `trackedPlays` with `total|` prefix, keyed `sport|homeTeam|awayTeam|gameDate`. Each card has:
 - True% bar (color = tierColor, odds = model-implied from truePct; `truePct >= 100` clamps to -99999 to avoid -Infinity)
