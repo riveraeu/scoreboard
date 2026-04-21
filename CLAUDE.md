@@ -414,6 +414,12 @@ Shows: **"My Picks"** label → total count badge → `X active · Y finished` b
 - Week key = Monday of the week (`(d.getDay() + 6) % 7` offset, same as chart week bucketing). Sort order within each day: open picks first, then by `trackedAt` descending.
 - Date is removed from the pick card subtitle (shown in the day header instead).
 
+**Pick card layout** (compact, `padding:"7px 10px"`, `borderRadius:8`, `marginBottom:5`):
+- **Photo slot** (36×36, left edge, `flexShrink:0`): player props → ESPN headshot circle (`a.espncdn.com/i/headshots/{sport}/players/full/{playerId}.png`), fallback = first initial in gray circle; game totals → two stacked team logos (19×19, away on top / home on bottom) from ESPN CDN.
+- **Row 1** (right of photo): player/matchup name + result badge (when settled) + `flex:1` spacer → undo button (settled only) + ✎ edit button + × remove button. All row 1 buttons use `padding:"2px 6px", fontSize:10, borderRadius:5`.
+- **Row 2**: subtitle (stat · threshold · odds · truePct · `$[stake input]` → profit) + (active only) ✓/✗/– outcome buttons flush-right. Outcome buttons use identical style to row 1: `padding:"2px 6px", fontSize:10, borderRadius:5` — en dash (–) used for DNP (narrower than em dash). `stake input width:46px` to avoid truncation of values like `$40.5`.
+- **Edit form** (inline, shown when ✎ active): 2×3 grid — Stat + Stake($) / Line + Odds / True Prob% + Date. Stake field uses `onBlur` to commit value via `setPickUnits`.
+
 ### Play Cards
 Shows `untrackedPlays` (qualified plays not yet tracked). For game totals, once any threshold for a game is tracked (e.g. O5.5), all other thresholds for that same game are also suppressed — `trackedGameKeys` set built from `trackedPlays` with `total|` prefix, keyed `sport|homeTeam|awayTeam|gameDate`. Each card has:
 - True% bar (color = tierColor, odds = model-implied from truePct; `truePct >= 100` clamps to -99999 to avoid -Infinity)
