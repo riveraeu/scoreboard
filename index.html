@@ -3435,17 +3435,13 @@ function App() {
           <div style={{display:"flex",alignItems:"center",marginBottom:14}}>
             <div style={{color:"#c9d1d9",fontSize:15,fontWeight:700}}>
               {(() => {
-                const _localDate = n => { const d = new Date(Date.now() + n*86400000); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
-                const _today = _localDate(0);
-                const _tmrw  = _localDate(1);
-                const dates  = [...new Set((tonightPlays || []).map(p => p.gameDate).filter(Boolean))].sort();
-                const fmtDate = d => { const [yr,mo,dy] = d.split("-").map(Number); return new Date(yr, mo-1, dy).toLocaleDateString("en-US", { weekday:"short", month:"short", day:"numeric" }); };
-                const label  = dates.length === 0 ? null
-                  : dates.every(d => d === _today) ? null
-                  : dates.filter(d => d !== _today).map(fmtDate).join(" · ");
-                return label
-                  ? <><span style={{color:"#484f58",fontWeight:400,fontSize:13}}>Plays — </span>{label}</>
-                  : "Plays";
+                const _nowD = new Date(); const _dow = _nowD.getDay(); const _daysToMon = (_dow + 6) % 7;
+                const _monday = new Date(_nowD - _daysToMon * 86400000);
+                const _weekLabel = _monday.toLocaleDateString("en-US", { month:"short", day:"numeric" });
+                const dates = [...new Set((tonightPlays || []).map(p => p.gameDate).filter(Boolean))].sort();
+                return dates.length === 0
+                  ? "Plays"
+                  : <><span style={{color:"#484f58",fontWeight:400,fontSize:13}}>Plays — </span>{"Week of " + _weekLabel}</>;
               })()}
               <span style={{position:"relative",marginLeft:6}}>
                 <span onClick={() => setShowPlaysInfo(o => !o)}
