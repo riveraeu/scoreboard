@@ -3274,6 +3274,67 @@ var worker_default = {
             });
           }
         }
+        // ── Poly derived prices (Poisson for MLB/NHL, Normal for NBA) ────────────────────────────
+        // Fit λ from P(X ≥ n) = p
+        const _fitPoisson = (n, p) => {
+          let lo = 0.1, hi = 60;
+          for (let i = 0; i < 80; i++) {
+            const mid = (lo + hi) / 2;
+            let cdf = 0, term = Math.exp(-mid);
+            for (let k = 0; k < n; k++) { cdf += term; term *= mid / (k + 1); }
+            if (1 - cdf < p) hi = mid; else lo = mid;
+          }
+          return (lo + hi) / 2;
+        };
+        const _poissonGe = (lam, n) => {
+          let cdf = 0, term = Math.exp(-lam);
+          for (let k = 0; k < n; k++) { cdf += term; term *= lam / (k + 1); }
+          return 1 - cdf;
+        };
+        // Abramowitz & Stegun normal CDF, error < 7.5e-8
+        const _normalCdf = z => {
+          const t = 1 / (1 + 0.2316419 * Math.abs(z));
+          const d = 0.3989423 * Math.exp(-0.5 * z * z);
+          const poly = t * (0.3193815 + t * (-0.3565638 + t * (1.7814779 + t * (-1.8212560 + t * 1.3302744))));
+          return z >= 0 ? 1 - d * poly : d * poly;
+        };
+        const _NBA_TOTAL_STD = Math.sqrt(2) * 11; // sqrt(σ_home² + σ_away²) where each team σ=11
+        const polyDerivedMap = {};
+        {
+          // Find the anchor (real Poly entry closest to 50%) for each canonical game pair
+          const _anchors = {};
+          for (const [key, { polyPct }] of Object.entries(polyPctMap)) {
+            const parts = key.split("|"); if (parts.length !== 4) continue;
+            const [sp, t1, t2] = parts;
+            const pairKey = `${sp}|${[t1, t2].sort().join("|")}`;
+            if (!_anchors[pairKey] || Math.abs(polyPct - 50) < Math.abs(_anchors[pairKey].polyPct - 50))
+              _anchors[pairKey] = { sp, t1, t2, threshold: parseInt(parts[3], 10), polyPct };
+          }
+          const _set = (sp, t1, t2, t, pDerived) => {
+            const v = Math.round(pDerived * 100);
+            if (v < 1 || v > 99) return;
+            for (const k of [`${sp}|${t1}|${t2}|${t}`, `${sp}|${t2}|${t1}|${t}`])
+              if (!polyPctMap[k]) polyDerivedMap[k] = { polyPct: v, polyDerived: true };
+          };
+          for (const { sp, t1, t2, threshold: at, polyPct: ap } of Object.values(_anchors)) {
+            const p = ap / 100;
+            if (sp === "mlb" || sp === "nhl") {
+              const lam = _fitPoisson(at, p);
+              const range = sp === "nhl" ? Array.from({length:11}, (_,i)=>i+2) : Array.from({length:12}, (_,i)=>i+3);
+              for (const t of range) if (t !== at) _set(sp, t1, t2, t, _poissonGe(lam, t));
+            } else if (sp === "nba") {
+              // P(X >= at) = p → fit Normal mean; P(X >= t) for qualifying range
+              const σ = _NBA_TOTAL_STD;
+              let lo = 150, hi = 310;
+              for (let i = 0; i < 80; i++) {
+                const mid = (lo + hi) / 2;
+                if (_normalCdf((mid - at) / σ) < p) lo = mid; else hi = mid;
+              }
+              const mu = (lo + hi) / 2;
+              for (let t = 190; t <= 245; t++) if (t !== at) _set(sp, t1, t2, t, _normalCdf((mu - t) / σ));
+            }
+          }
+        }
         // ── Game Total plays ─────────────────────────────────────────────────────────────────────
         const totalDistCache = {};
         const totalPlays = [];
@@ -3346,24 +3407,28 @@ var worker_default = {
               totalSimScore += awayGAA != null ? (awayGAA >= 3.5 ? 2 : awayGAA >= 3.0 ? 1 : 0) : 0;
               if (_hSA != null) totalSimScore += 2; if (_aSA != null) totalSimScore += 2;
             }
-            const _polyEntry = polyPctMap[`${sport}|${homeTeam}|${awayTeam}|${threshold}`] ?? null;
+            const _polyKey = `${sport}|${homeTeam}|${awayTeam}|${threshold}`;
+            const _polyEntry = polyPctMap[_polyKey] ?? polyDerivedMap[_polyKey] ?? null;
             const polyPct = _polyEntry?.polyPct ?? null;
             const polyVol = _polyEntry?.polyVol ?? null;
+            const polyDerived = _polyEntry?.polyDerived ?? false;
+            // Only real (non-derived) Poly prices affect bestVenue/bestEdge/edge gate
+            const _realPolyPct = polyDerived ? null : polyPct;
             if (truePct == null) {
-              if (isDebug) dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, totalSimScore, polyPct, polyVol, reason: "no_simulation_data", ..._simData });
+              if (isDebug) dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, totalSimScore, polyPct, polyVol, polyDerived, reason: "no_simulation_data", ..._simData });
               continue;
             }
             const rawEdge = kalshiPct != null ? parseFloat((truePct - kalshiPct).toFixed(1)) : null;
-            const bestPct = kalshiPct != null && polyPct != null ? Math.min(kalshiPct, polyPct) : (polyPct ?? kalshiPct);
-            const bestVenue = kalshiPct == null ? "polymarket" : (polyPct != null && polyPct < kalshiPct ? "polymarket" : "kalshi");
+            const bestPct = kalshiPct != null && _realPolyPct != null ? Math.min(kalshiPct, _realPolyPct) : (_realPolyPct ?? kalshiPct);
+            const bestVenue = kalshiPct == null ? "polymarket" : (_realPolyPct != null && _realPolyPct < kalshiPct ? "polymarket" : "kalshi");
             const bestEdge = parseFloat((truePct - bestPct).toFixed(1));
             const edge = rawEdge ?? bestEdge;
             const _displayAO = americanOdds ?? (polyPct != null ? (polyPct >= 50 ? Math.round(-(polyPct / (100 - polyPct)) * 100) : Math.round((100 - polyPct) / polyPct * 100)) : null);
             if (bestEdge < 5) {
-              if (isDebug) dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, kalshiPct, americanOdds: _displayAO, truePct: parseFloat(truePct.toFixed(1)), rawEdge, spreadAdj: spreadAdj > 0 ? parseFloat(spreadAdj.toFixed(1)) : 0, edge, totalSimScore, polyPct, polyVol, bestVenue, bestEdge, polyOnly: tm.polyOnly ?? false, reason: "edge_too_low", ..._simData });
+              if (isDebug) dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, kalshiPct, americanOdds: _displayAO, truePct: parseFloat(truePct.toFixed(1)), rawEdge, spreadAdj: spreadAdj > 0 ? parseFloat(spreadAdj.toFixed(1)) : 0, edge, totalSimScore, polyPct, polyVol, polyDerived, bestVenue, bestEdge, polyOnly: tm.polyOnly ?? false, reason: "edge_too_low", ..._simData });
               continue;
             }
-            totalPlays.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds: _displayAO, truePct: parseFloat(truePct.toFixed(1)), rawEdge, spreadAdj: spreadAdj > 0 ? parseFloat(spreadAdj.toFixed(1)) : 0, edge, totalSimScore, qualified: totalSimScore >= 11, kelly: kellyFraction(truePct, _displayAO), ev: evPerUnit(truePct, _displayAO), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null, polyPct, polyVol, bestVenue, bestEdge, polyOnly: tm.polyOnly ?? false, ..._simData });
+            totalPlays.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds: _displayAO, truePct: parseFloat(truePct.toFixed(1)), rawEdge, spreadAdj: spreadAdj > 0 ? parseFloat(spreadAdj.toFixed(1)) : 0, edge, totalSimScore, qualified: totalSimScore >= 11, kelly: kellyFraction(truePct, _displayAO), ev: evPerUnit(truePct, _displayAO), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null, polyPct, polyVol, polyDerived, bestVenue, bestEdge, polyOnly: tm.polyOnly ?? false, ..._simData });
           }
         }
         {

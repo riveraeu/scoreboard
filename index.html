@@ -252,9 +252,11 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, trackedP
                     const _polyWins = tp?.bestVenue === "polymarket";
                     const _tip = tp?.polyOnly
                       ? `Polymarket: ${tp.polyPct}¢ (+${_bEdge}% edge)`
-                      : _hasPoly
+                      : _hasPoly && !tp?.polyDerived
                         ? `Kalshi: ${tp.kalshiPct}¢  |  Polymarket: ${tp.polyPct}¢\nBest: ${_polyWins ? "Polymarket" : "Kalshi"} (+${_bEdge}% edge)`
-                        : null;
+                        : _hasPoly && tp?.polyDerived
+                          ? `Kalshi: ${tp.kalshiPct}¢  |  Poly~: ~${tp.polyPct}¢ (derived)`
+                          : null;
                     return (
                       <span style={{display:"flex",alignItems:"center",gap:3}}>
                         <span title={_tip}
@@ -2343,7 +2345,10 @@ function App() {
                                   <div style={{flex:1,fontSize:11,textAlign:"right",color:edge!=null&&edge>=5?"#3fb950":edge!=null&&edge<0?"#f78166":"#8b949e"}}>{edge!=null?(edge>=0?`+${edge.toFixed(1)}`:`${edge.toFixed(1)}`)+"%" :"—"}</div>
                                   {isTotal && <div style={{flex:1,fontSize:11,textAlign:"right"}}>
                                     {m.polyPct != null
-                                      ? <span title={`Polymarket: ${m.polyPct}¢${m.polyVol ? ` · Vol $${(m.polyVol/1000).toFixed(0)}k` : ""}`} style={{color:m.bestVenue==="polymarket"?"#2ea8e5":"#484f58",cursor:"help"}}>{m.polyPct}%</span>
+                                      ? <span title={m.polyDerived ? `Poly (derived from ${m.sport==="nba"?"Normal":"Poisson"} fit): ~${m.polyPct}%` : `Polymarket: ${m.polyPct}¢${m.polyVol ? ` · Vol $${(m.polyVol/1000).toFixed(0)}k` : ""}`}
+                                          style={{color: m.polyDerived ? "#484f58" : (m.bestVenue==="polymarket"?"#2ea8e5":"#8b949e"), cursor:"help", fontStyle: m.polyDerived ? "italic" : "normal"}}>
+                                          {m.polyDerived ? "~" : ""}{m.polyPct}%
+                                        </span>
                                       : <span style={{color:"#21262d"}}>—</span>}
                                   </div>}
                                   {xcols.map(c => <div key={c.k} style={{flex:1,fontSize:11,textAlign:"right"}}>{xcell(m,c.k)}</div>)}
@@ -3651,9 +3656,11 @@ function App() {
                           const _polyWins = play.bestVenue === "polymarket";
                           const _tip = play.polyOnly
                             ? `Polymarket: ${play.polyPct}¢ (+${_bEdge}% edge)`
-                            : _hasPoly
+                            : _hasPoly && !play.polyDerived
                               ? `Kalshi: ${play.kalshiPct}¢  |  Polymarket: ${play.polyPct}¢\nBest: ${_polyWins ? "Polymarket" : "Kalshi"} (+${_bEdge}% edge)`
-                              : null;
+                              : _hasPoly && play.polyDerived
+                                ? `Kalshi: ${play.kalshiPct}¢  |  Poly~: ~${play.polyPct}¢ (derived)`
+                                : null;
                           return (
                             <span style={{display:"flex",alignItems:"center",gap:4}}>
                               <span title={_tip}
