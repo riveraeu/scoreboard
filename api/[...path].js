@@ -3578,6 +3578,8 @@ export default async function handler(request) {
   const env = {
     UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
     UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
+    JWT_SECRET: process.env.JWT_SECRET,
+    ADMIN_KEY: process.env.ADMIN_KEY,
   };
   const ctx = { waitUntil: (p) => { try { p.catch?.(() => {}); } catch {} } };
   return worker_default.fetch(request, env, ctx);
