@@ -147,7 +147,7 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
   - BA is NOT directly in the formula — it's implicit via the player's historical HRR rate
 - **SimScore** (max 14, edge gates separately — same pattern as strikeouts):
   - Lineup spot 1–3 → 3pts, spot 4 → 2pts
-  - Pitcher WHIP tiered (`hitterWhipPts`): > 1.35 → 3pts (green), > 1.20 → 1pt (yellow), ≤ 1.20 → 0pts (red). Null → 0pts. Color in prose is binary green/red (> 1.35 green, else red).
+  - Pitcher WHIP tiered (`hitterWhipPts`): > 1.35 → 3pts (green), > 1.20 → 1pt (yellow), ≤ 1.20 → 0pts (red). Null → 0pts. Prose color binary: > 1.35 green, else red. Description only shown when > 1.35 ("a lot of baserunners"); suppressed for ≤ 1.35 — red color is sufficient signal.
   - B1 platoon tier (`hitterPlatoonPts`): `splitBA / seasonBA ≥ 1.10 → 2pts` (strong platoon advantage), `≥ 0.95 → 1pt` (neutral/slight), `< 0.95 → 0pts` (platoon disadvantage); null → 1pt (abstain). `batterSplitBA` from MLB Stats API `statSplits/sitCodes=vr|vl`, requires 30+ AB; replaces former Pitcher FIP > ERA pts.
   - Park hit factor > 1.02 → 1pt
   - Barrel% tier: ≥14% → 3pts, ≥10% → 2pts, ≥7% → 1pt, <7% → 0pts, null → 1pt (abstain)
@@ -480,7 +480,7 @@ Both play cards and player cards show an explanation block (`background:"#0d1117
 
 **MLB hitter (HRR) explanation prose order** (play card + player card, both locations):
 1. BA tier + batting spot
-2. Pitcher name — WHIP always shown when available; color is binary: `> 1.35 → green` (earns 3pts, "a lot of baserunners"), `≤ 1.35 → red` (earns 0pts — red indicates non-contributing). Description: >1.35 "a lot of baserunners", >1.20 "some traffic on base", ≤1.20 "keeps the bases clean". FIP (color: >4.5 green/"hittable pitcher", >3.5 yellow/"average pitcher", else gray — absolute tiers, NOT vs ERA).
+2. Pitcher name — WHIP always shown; color binary: `> 1.35 → green` (3pts, + "a lot of baserunners" description), `≤ 1.35 → red` (1pt or 0pt — no description, color is sufficient). FIP (color: >4.5 green/"hittable pitcher", >3.5 yellow/"average pitcher", else gray — absolute tiers, NOT vs ERA).
 3. Season rate + soft rate (vs pitcher H2H or vs team)
 4. ERA rank / no-H2H context — **only shown when `softPct === null` (no H2H data)**. When H2H exists, the soft rate already explains the matchup. ERA rank color is `#c9d1d9` (neutral, not bold red) since it's contextual, not a SimScore component.
 5. Park factor (when |pf − 1.0| ≥ 0.03)
