@@ -938,8 +938,13 @@ If the first deploy has a bug that produces `polyPctMap = {}` (empty), that empt
 4. If `polyPct` exists but `bestEdge` seems wrong: check threshold alignment — Polymarket "O/U 7.5" maps to Kalshi threshold 8 (not 7). Log `_ouLine` and `_thresh` from the fetch block.
 5. Finalized Polymarket markets are filtered by `overPrice < 0.02 || overPrice > 0.98` — if a market just settled, this guard drops it.
 
-**"MLB/NBA polyPct null for all rows — expected, not a bug" (confirmed 2026-04-20):**
-Polymarket only offers consensus O/U lines for MLB (7.5–8.5, all near 50/50) and NBA (216–232 range, near 50/50). Kalshi qualifies at much lower alt lines — MLB at O4.5–O6.5 (70–90% probability) and NBA at O210–O218. There is no threshold overlap, so `polyPctMap` lookups always return null. This is structural to how Polymarket designs their product, not a code bug. **MLB matches can occur for extremely high-scoring games** (e.g., COL @ TEX) where Kalshi qualifies at O8.5 (thresh=9) and Polymarket happens to carry that exact line — but this is rare. NBA matches are even rarer.
+**Poly derived prices for MLB/NBA/NHL (commit 84fe9a7):**
+Polymarket only carries consensus O/U lines (MLB: 7.5–8.5; NBA: 216–232; NHL: 4.5–7.5) — all near 50/50. Kalshi qualifies at lower alt-lines. To show a meaningful comparison, the pipeline derives Poly's implied probability at any threshold using the consensus price as an anchor:
+- **MLB/NHL**: Fit Poisson λ from `P(X ≥ anchor_threshold) = poly_pct`, then compute `P(X ≥ threshold)`. The Polymarket app shows identical Poisson-derived prices via its slider UI.
+- **NBA**: Fit Normal μ from the same anchor using fixed σ = √2 × 11 ≈ 15.6 (from simulation per-team std).
+Derived prices stored in `polyDerivedMap` (separate from `polyPctMap`). Key: `sport|t1|t2|threshold`. Shown as `~X%` (italic) in market report Poly column. **NOT used for `bestEdge`/`bestVenue`/edge gate** — only real Poly prices affect play qualification. Poly-only injection also skips derived entries. `polyDerived: true` flag included in all play/dropped output.
+
+**Bug: Poisson binary search condition was inverted (fixed 84fe9a7):** `if (1 - cdf < p) hi = mid` converged to λ=60 (max), giving ~100% probabilities skipped by `v > 99` guard. Fixed to `if (1 - cdf > p) hi = mid`.
 
 **"NHL polyPct seems too low compared to Kalshi (e.g., 60% vs 96%)" — stale 5-min cache:**
 The `poly:totals:{date}` cache (300s TTL) can be populated with pre-game Polymarket prices. As a game progresses, Kalshi updates every request and moves to 96%+ on a high-probability outcome; Poly stays at the cached pre-game value (~60%) for up to 5 minutes. Fix: `?bust=1` skips the poly cache and fetches current prices. Regular season live NHL Poly prices for O4.5 typically range 74–86%. **During NHL playoffs, Poly prices for O4.5 are structurally lower (~52–56%)** — tighter defense and lower expected scoring make this reasonable, but our model uses regular season GPG/GAA data and scores ~85% truePct, creating apparent 25–30% edges. These edges may not be real if the model overstates playoff scoring. The Kalshi–Poly gap on NHL O4.5 reflects Kalshi being overpriced during both regular season and playoffs.
@@ -947,8 +952,8 @@ The `poly:totals:{date}` cache (300s TTL) can be populated with pre-game Polymar
 **"Many NHL plays qualifying via Poly edge in playoffs" (post-6ef98f7 behavior):**
 Since the gate changed from `edge < 5` to `bestEdge < 5`, plays where Kalshi edge is negative but Poly edge is ≥5% now qualify. During playoffs (~April–June) expect 15–20 NHL plays per day where `rawEdge < 0` (Kalshi overpriced) but `bestEdge >= 5` (Poly underpriced vs model). To check: `?debug=1` → count `plays` where `sport=nhl && rawEdge < 0`. If this looks excessive, consider a secondary guard like requiring `rawEdge > -15` for Poly-best plays, or recalibrating NHL truePct for playoff scoring pace.
 
-**"MLB Polymarket price exists on website but poly=None in pipeline":**
-Polymarket's MLB events API (series_id=3) typically only carries the consensus O/U line (7.5–8.5, near 50/50) — not alt lines like O5.5. Even if a game's O5.5 is visible on the Polymarket website, it may not appear in the `/events` API response or may be under a different series. Additionally, if the model's truePct for that threshold is below both Kalshi and Poly prices (e.g., HOU@CLE O5.5: model≈76%, Kalshi=79%, Poly=78%), the play would still be dropped even if the Poly price populated — the 5% edge gate requires a genuine model advantage on at least one venue.
+**"Polymarket app shows O5.5/O6.5 slider prices for MLB — are these real markets?":**
+The Polymarket app shows a slider with prices at multiple thresholds (e.g., O5.5 at -355 ≈ 78% for HOU@CLE). These are NOT separate tradeable markets — they are Poisson-derived prices computed by the app from the single real O/U 8.5 market. The `/events?series_id=3` API only exposes the consensus market. Our `polyDerivedMap` computes the same Poisson-derived prices server-side and shows them as `~X%` in the report. Derived prices are NOT used for edge gates or bestVenue routing.
 
 **NHL Polymarket market format (confirmed live 2026-04-20):**
 - Series_id=10346 returns NHL game events, e.g. "Ducks vs. Oilers" with 4 O/U lines: 4.5, 5.5, 6.5, 7.5
