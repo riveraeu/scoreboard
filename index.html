@@ -1853,7 +1853,7 @@ function App() {
               {/* Calibration view */}
               {reportSport === "calibration" && calibLoading && <div style={{color:"#8b949e",textAlign:"center",padding:40,fontSize:13}}>Loading calibration data…</div>}
               {reportSport === "calibration" && calibData?.error && <div style={{color:"#f78166",textAlign:"center",padding:40,fontSize:13}}>Error: {calibData.error}</div>}
-              {reportSport === "calibration" && calibData && !calibLoading && (() => {
+              {reportSport === "calibration" && calibData && !calibData.error && !calibLoading && (() => {
                 const { totalPicks, finalizedPicks, overall, byCategory, kStrikeouts } = calibData;
                 const STAT_LABEL = { points:"Points", rebounds:"Rebounds", assists:"Assists", threePointers:"3-Pointers", goals:"Goals", hrr:"H+R+RBI", strikeouts:"Strikeouts", totalRuns:"Totals", totalPoints:"Totals", totalGoals:"Totals" };
                 const SPORT_COLOR = { mlb:"#4ade80", nba:"#f97316", nhl:"#60a5fa" };
