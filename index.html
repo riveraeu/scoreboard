@@ -4596,12 +4596,6 @@ function App() {
                           onChange={e => setPickUnits(pick.id, e.target.value)}
                           style={{background:"transparent",border:"none",outline:"none",color:"#c9d1d9",
                             fontSize:10,width:46,padding:"0 2px",textAlign:"left"}}/>
-                        {pick.result === "won" && pickPL !== null && (
-                          <>
-                            <span style={{color:"#484f58",fontSize:10,margin:"0 2px"}}>→</span>
-                            <span style={{color:"#3fb950",fontSize:10,fontWeight:600}}>+${(stake * oddsToProfit(pick.americanOdds)).toFixed(2)}</span>
-                          </>
-                        )}
                       </div>
                       {!pick.result && (
                         <div style={{display:"flex",gap:4,flexShrink:0,marginLeft:6}}>
