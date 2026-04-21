@@ -480,7 +480,7 @@ Both play cards and player cards show an explanation block (`background:"#0d1117
 
 **MLB hitter (HRR) explanation prose order** (play card + player card, both locations):
 1. BA tier + batting spot
-2. Pitcher name — WHIP only shown when `whip > 1.35` (earns 3pts, green, "a lot of baserunners"); suppressed when ≤ 1.35 (scores 0) to avoid cluttering with non-contributing stats — FIP (color: >4.5 green/"hittable pitcher", >3.5 yellow/"average pitcher", else gray — absolute tiers, NOT vs ERA). Entire pitcher sentence omitted if no pitcher name AND whip ≤ 1.35 AND no FIP.
+2. Pitcher name — WHIP always shown when available; color is binary: `> 1.35 → green` (earns 3pts, "a lot of baserunners"), `≤ 1.35 → red` (earns 0pts — red indicates non-contributing). Description: >1.35 "a lot of baserunners", >1.20 "some traffic on base", ≤1.20 "keeps the bases clean". FIP (color: >4.5 green/"hittable pitcher", >3.5 yellow/"average pitcher", else gray — absolute tiers, NOT vs ERA).
 3. Season rate + soft rate (vs pitcher H2H or vs team)
 4. ERA rank / no-H2H context — **only shown when `softPct === null` (no H2H data)**. When H2H exists, the soft rate already explains the matchup. ERA rank color is `#c9d1d9` (neutral, not bold red) since it's contextual, not a SimScore component.
 5. Park factor (when |pf − 1.0| ≥ 0.03)
@@ -934,7 +934,7 @@ The `poly:totals:{date}` cache (300s TTL) can be populated with pre-game Polymar
 
 **Fix**: changed middle tier from `#e3b341` (yellow) to `#c9d1d9` (neutral). Yellow is now reserved exclusively for tiers that actually earn SimScore points. The descriptive text ("some traffic on base") still provides informational context in gray.
 
-**Further fix**: WHIP is now only shown in the pitcher sentence when `whip > 1.35` (earns 3pts). When WHIP ≤ 1.35 (scores 0), it is suppressed from the prose entirely — users can see WHIP: 0/3 in the SimScore tooltip. This keeps the explanation focused on contributing factors.
+**Further fix**: `whipColor` is now binary — `> 1.35 → green` (earns 3pts), `≤ 1.35 → red` (earns 0pts). WHIP always shows in prose; red signals it's a non-contributing factor. Users see color as a quick signal rather than having to check the tooltip.
 
 ### "ERA rank sentence dominates HRR card even when H2H data exists"
 **Root cause**: The `oppRank` sentence ("LAA ranks 5th-worst in ERA allowed") fired whenever `play.oppRank` was present, regardless of whether H2H soft rate was already available. This was visually misleading — ERA is NOT a SimScore component, but got a prominent bold sentence while WHIP (an actual SimScore component) was suppressed to a sub-clause.
