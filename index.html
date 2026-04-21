@@ -4605,24 +4605,15 @@ function App() {
                       </div>
                       {!pick.result && (
                         <div style={{display:"flex",gap:4,flexShrink:0,marginLeft:6}}>
-                          <button onClick={() => setPlayResult(pick.id, "won")} title="Won"
-                            style={{background:"rgba(63,185,80,0.12)",border:"1px solid #3fb950",borderRadius:5,
-                              width:26,fontSize:10,fontWeight:700,color:"#3fb950",cursor:"pointer",flexShrink:0,
-                              display:"inline-flex",alignItems:"center",justifyContent:"center",padding:0}}>
-                            ✓
-                          </button>
-                          <button onClick={() => setPlayResult(pick.id, "lost")} title="Lost"
-                            style={{background:"rgba(247,129,102,0.12)",border:"1px solid #f78166",borderRadius:5,
-                              width:26,fontSize:10,fontWeight:700,color:"#f78166",cursor:"pointer",flexShrink:0,
-                              display:"inline-flex",alignItems:"center",justifyContent:"center",padding:0}}>
-                            ✗
-                          </button>
-                          <button onClick={() => setPlayResult(pick.id, "dnp")} title="DNP"
-                            style={{background:"rgba(139,148,158,0.12)",border:"1px solid #484f58",borderRadius:5,
-                              width:26,fontSize:10,fontWeight:700,color:"#8b949e",cursor:"pointer",flexShrink:0,
-                              display:"inline-flex",alignItems:"center",justifyContent:"center",padding:0}}>
-                            —
-                          </button>
+                          {[["won","rgba(63,185,80,0.12)","#3fb950","✓","Won"],["lost","rgba(247,129,102,0.12)","#f78166","✗","Lost"],["dnp","rgba(139,148,158,0.12)","#484f58","—","DNP"]].map(([res,bg,bdr,icon,lbl]) => (
+                            <button key={res} onClick={() => setPlayResult(pick.id, res)} title={lbl}
+                              style={{background:bg,border:`1px solid ${bdr}`,borderRadius:5,
+                                width:26,height:22,padding:0,boxSizing:"border-box",overflow:"hidden",
+                                fontSize:10,fontWeight:700,color:res==="dnp"?"#8b949e":bdr,cursor:"pointer",
+                                flexShrink:0,textAlign:"center",lineHeight:"20px"}}>
+                              {icon}
+                            </button>
+                          ))}
                         </div>
                       )}
                     </div>
