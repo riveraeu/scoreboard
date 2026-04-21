@@ -2805,6 +2805,13 @@ var worker_default = {
               ...(sport === "mlb" && stat !== "strikeouts" ? {
                 hitterSimScore, hitterFinalSimScore,
                 hitterLineupSpot, pitcherWHIP, pitcherFIP, hitterParkKF, hitterMoneyline, hitterBarrelPct,
+                hitterBarrelPts, hitterTotalPts, hitterGameTotal, hitterPlatoonPts,
+                hitterBa: hitterBa !== null ? hitterBa : undefined,
+                hitterBaTier: hitterBaTier ?? undefined,
+                hitterWhipPts, hitterSplitBA,
+                oppPitcherHand: hitterOppPitcherHand ?? undefined,
+                hitterSoftLabel: softLabel ?? undefined,
+                softGames: softVals.length,
                 hitterPitcherName: sportByteam.mlb?.probables?.[tonightOpp]?.name ?? sportByteam.mlb?.pitcherInfoByTeam?.[tonightOpp]?.name ?? pitcherGamelogs[tonightOpp]?.name ?? null,
                 hitterPitcherEra: sportByteam.mlb?.probables?.[tonightOpp]?.era ?? sportByteam.mlb?.pitcherEra?.[tonightOpp] ?? null,
               } : {}),
@@ -2815,6 +2822,24 @@ var worker_default = {
             // For MLB strikeouts: always include in plays with qualified:false so player card can
             // show real truePct for all thresholds (avoids fallback formula producing same/inverted values)
             if (sport === "mlb" && stat === "strikeouts") {
+              plays.push({
+                ..._dropObj,
+                qualified: false,
+                playerName: playerNameDisplay || playerName,
+                playerId: info.id,
+                sport, playerTeam, stat, threshold, kalshiPct, americanOdds,
+                truePct: parseFloat(truePct.toFixed(1)),
+                log5Pct: simPctOut ?? log5PctOut,
+                simPct: simPctOut,
+                spreadAdj,
+                gameDate,
+                gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
+                lineupConfirmed: !(sportByteam.mlb?.projectedLineupTeams || []).includes(tonightOpp),
+                playerStatus: null,
+              });
+            }
+            // For MLB hitters (HRR): include in plays with qualified:false so player card explanation renders
+            if (sport === "mlb" && stat !== "strikeouts") {
               plays.push({
                 ..._dropObj,
                 qualified: false,
@@ -2934,17 +2959,40 @@ var worker_default = {
           }
           // HRR SimScore gate: must reach >= 11 (Alpha tier) to qualify as a play
           if (sport === "mlb" && stat !== "strikeouts" && hitterFinalSimScore !== null && hitterFinalSimScore < 11) {
-            if (isDebug) dropped.push({
+            const _hitterLowScoreDrop = {
               ..._dropBase,
               reason: "low_confidence",
               hitterSimScore, hitterFinalSimScore,
               opponent: tonightOpp,
               seasonPct: parseFloat(primaryPct.toFixed(1)),
               softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
+              softGames: softVals.length,
               truePct: parseFloat(truePct.toFixed(1)), edge: parseFloat(edge.toFixed(1)),
-              hitterLineupSpot, pitcherWHIP, hitterBarrelPct,
+              hitterLineupSpot, pitcherWHIP, pitcherFIP, hitterBarrelPct,
+              hitterBarrelPts, hitterTotalPts, hitterGameTotal, hitterPlatoonPts,
+              hitterBa: hitterBa !== null ? hitterBa : undefined,
+              hitterBaTier: hitterBaTier ?? undefined,
+              hitterWhipPts, hitterSplitBA,
+              oppPitcherHand: hitterOppPitcherHand ?? undefined,
+              hitterSoftLabel: softLabel ?? undefined,
               hitterPitcherName: sportByteam.mlb?.probables?.[tonightOpp]?.name ?? sportByteam.mlb?.pitcherInfoByTeam?.[tonightOpp]?.name ?? pitcherGamelogs[tonightOpp]?.name ?? null,
               hitterPitcherEra: sportByteam.mlb?.probables?.[tonightOpp]?.era ?? sportByteam.mlb?.pitcherEra?.[tonightOpp] ?? null,
+            };
+            if (isDebug) dropped.push(_hitterLowScoreDrop);
+            plays.push({
+              ..._hitterLowScoreDrop,
+              qualified: false,
+              playerName: playerNameDisplay || playerName,
+              playerId: info.id,
+              sport, playerTeam, stat, threshold, kalshiPct, americanOdds,
+              truePct: parseFloat(truePct.toFixed(1)),
+              log5Pct: simPctOut ?? log5PctOut,
+              simPct: simPctOut,
+              spreadAdj,
+              gameDate,
+              gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
+              lineupConfirmed: !(sportByteam.mlb?.projectedLineupTeams || []).includes(tonightOpp),
+              playerStatus: null,
             });
             continue;
           }
