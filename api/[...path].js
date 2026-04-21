@@ -1617,7 +1617,10 @@ var worker_default = {
           if (!playerTeam || !m.gameTeam1 || !m.gameTeam2) { preFilteredMarkets.push(m); continue; }
           const opp = m.gameTeam1 === playerTeam ? m.gameTeam2 : m.gameTeam2 === playerTeam ? m.gameTeam1 : null;
           if (!opp) { preDropped.push({ ...m, reason: "no_opp" }); continue; }
-          const oppInPosDvp = allPositionsDvp && Object.values(allPositionsDvp).some((posData) => posData?.softTeams?.[m.stat]?.includes(opp));
+          const oppInPosDvp = allPositionsDvp && Object.values(allPositionsDvp).some((posData) => {
+            const entry = posData?.rankings?.[m.stat]?.find(t => t.abbr === opp);
+            return entry && entry.ratio >= 1.02;
+          });
           if (softData.softTeams.has(opp) || oppInPosDvp) { preFilteredMarkets.push(m); }
           else { preDropped.push({ ...m, reason: "opp_not_soft", opponent: opp }); }
         }
@@ -2012,6 +2015,7 @@ var worker_default = {
               const _osEdge = _osSeason != null ? parseFloat((_osSeason - kalshiPct).toFixed(1)) : null;
               const _osDvpEntry = nbaPos && allPositionsDvp?.[nbaPos]?.rankings?.[stat] ? allPositionsDvp[nbaPos].rankings[stat].find((t) => t.abbr === tonightOpp) : null;
               const _osDvpRank = _osDvpEntry?.rank ?? null;
+              const _osDvpRatio = _osDvpEntry?.ratio ?? null;
               const _osDebug = !_osCol ? (!_osGl ? "no_gl" : `col_miss:${col}|got:${(_osGl.ul||[]).join(",")}`) : null;
               const _osSoftVals = _osGl?.events && _osCol ? _osGl.events.filter((ev) => nbaEffectiveSoftTeams?.has(ev.oppAbbr)).map(_osCol.getStat).filter((v) => !isNaN(v)) : [];
               const _osSoftPct = _osSoftVals.length >= 5 ? parseFloat((_osSoftVals.filter((v) => v >= threshold).length / _osSoftVals.length * 100).toFixed(1)) : null;
@@ -2054,11 +2058,11 @@ var worker_default = {
               const _osTotalPts = _osGameTotal == null ? 1 : _osGameTotal >= 235 ? 3 : _osGameTotal >= 225 ? 2 : 1;
               const _osPreSimScore = (_osPaceAdj != null ? (_osPaceAdj > 0 ? 3 : _osPaceAdj > -2 ? 2 : 1) : 0)
                 + _osC1Pts
-                + (_osDvpRank != null && _osDvpRank <= 10 ? 2 : 0)
+                + (_osDvpRatio == null ? 0 : _osDvpRatio >= 1.05 ? 2 : _osDvpRatio >= 1.02 ? 1 : 0)
                 + (!_osIsB2B ? 2 : 0)
                 + _osTotalPts;
               const _osNbaSimScore = _osPreSimScore;
-              const _osDropEntry = { ..._dropBase, reason: "opp_not_soft", opponent: tonightOpp, dvpBased: !!nbaDvpSoftTeams, seasonPct: _osSeason, seasonGames: _osCol?.allVals.length ?? 0, softPct: _osSoftPct, softGames: _osSoftVals.length, truePct: _osTruePct, edge: _osEdge, posDvpRank: _osDvpRank, posGroup: nbaPos, _debug: _osDebug, isB2B: _osIsB2B, nbaPaceAdj: _osPaceAdj, nbaOpportunity: _osOpportunity, nbaPreSimScore: _osPreSimScore, nbaSimScore: _osNbaSimScore, nbaGameTotal: _osGameTotal, nbaTotalPts: _osTotalPts, nbaUsage: _osUsg, nbaAvgAst: _osAvgAst, nbaAvgReb: _osAvgReb, nba3pMPG: _os3pMPG };
+              const _osDropEntry = { ..._dropBase, reason: "opp_not_soft", opponent: tonightOpp, dvpBased: !!nbaDvpSoftTeams, seasonPct: _osSeason, seasonGames: _osCol?.allVals.length ?? 0, softPct: _osSoftPct, softGames: _osSoftVals.length, truePct: _osTruePct, edge: _osEdge, posDvpRank: _osDvpRank, dvpRatio: _osDvpRatio, posGroup: nbaPos, _debug: _osDebug, isB2B: _osIsB2B, nbaPaceAdj: _osPaceAdj, nbaOpportunity: _osOpportunity, nbaPreSimScore: _osPreSimScore, nbaSimScore: _osNbaSimScore, nbaGameTotal: _osGameTotal, nbaTotalPts: _osTotalPts, nbaUsage: _osUsg, nbaAvgAst: _osAvgAst, nbaAvgReb: _osAvgReb, nba3pMPG: _os3pMPG };
               nbaDropped.push(_osDropEntry);
               if (isDebug) dropped.push(_osDropEntry);
               continue;
@@ -2644,8 +2648,9 @@ var worker_default = {
             } else {
               _sc += _usg == null ? 2 : _usg >= 28 ? 4 : _usg >= 22 ? 2 : 0;
             }
-            // 3. DVP — position-adjusted opponent rank ≤10 → 2pts
-            if (posDvpRankOut !== null && posDvpRankOut <= 10) _sc += 2;
+            // 3. DVP — position-adjusted ratio tiers: ≥1.05→2pts (soft), ≥1.02→1pt (borderline), else→0pts
+            const _dvpPts = oppDvpRatioOut == null ? 0 : oppDvpRatioOut >= 1.05 ? 2 : oppDvpRatioOut >= 1.02 ? 1 : 0;
+            _sc += _dvpPts;
             // 4. Rest — not B2B → 2pts
             if (!isB2B) _sc += 2;
             // 5. Game total — high total = more possessions/scoring = favorable for counting stats
@@ -2836,7 +2841,7 @@ var worker_default = {
               reason: edge < 5 ? "edge_too_low" : "kalshi_pct_too_low",
               opponent: tonightOpp, seasonPct: parseFloat((primaryPct).toFixed(1)),
               softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
-              posDvpRank: posDvpRankOut, posGroup: posGroupOut,
+              posDvpRank: posDvpRankOut, dvpRatio: oppDvpRatioOut, posGroup: posGroupOut,
               ...(sport === "mlb" && stat === "strikeouts" ? {
                 simScore, finalSimScore,
                 parkFactor: parkFactorOut,
@@ -2976,6 +2981,7 @@ var worker_default = {
             posGroup: posGroupOut,
             posDvpRank: posDvpRankOut,
             posDvpValue: posDvpValueOut,
+            dvpRatio: oppDvpRatioOut,
             lineupKPct: lineupKPctOut,
             lineupKPctProjected,
             pitcherKPct: pitcherKPctOut,

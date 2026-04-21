@@ -178,7 +178,7 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
     - **threePointers**: 3PM/game (last 10 games) ≥3 → 4pts, ≥2 → 2pts, <2 → 0pts. USG% doesn't capture 3-point volume — a high-usage big man scores 4pts on USG% but may take 0 3s.
     - **assists**: APG ≥7 → 4pts, ≥5 → 2pts, <5 → 0pts. (USG% is inversely correlated with passing role)
     - **rebounds**: RPG ≥9 → 4pts, ≥7 → 2pts, <7 → 0pts. (USG% has no relation to rebounding)
-  - Position-adjusted DVP rank ≤ 10 → 2pts
+  - Position-adjusted DVP ratio tiers: ratio ≥ 1.05 → 2pts (soft), ratio ≥ 1.02 → 1pt (borderline), else → 0pts. Pre-filter gate also uses ratio ≥ 1.02 (any position) — replaces the prior `softTeams` ratio ≥ 1.05 check. `dvpRatio` field included in all play/drop output.
   - Not B2B → 2pts
   - Game total tier: ≥235 → 3pts, ≥225 → 2pts, ≥215 → 1pt, <215 → 0pts, null → 1pt (abstain)
   - Max: 3+4+2+2+3 = 14
