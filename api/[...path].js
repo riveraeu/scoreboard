@@ -3105,6 +3105,8 @@ var worker_default = {
             gameTotal: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null : void 0,
             gameMoneyline: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null : void 0,
             pitcherCSWPct: sport === "mlb" && stat === "strikeouts" ? _pt(sportByteam.mlb?.pitcherCSWPct, "cswPct") : void 0,
+            pitcherRecentKPct: sport === "mlb" && stat === "strikeouts" ? _recentKPct : void 0,
+            pitcherSeasonKPct: sport === "mlb" && stat === "strikeouts" ? _seasonKPct : void 0,
             pitcherHand: sport === "mlb" && stat === "strikeouts" ? _pitcherHand ?? null : void 0,
             pitcherEra: sport === "mlb" && stat === "strikeouts" ? (_pitcherEraFromGl ?? _pt(sportByteam.mlb?.pitcherEra, "era") ?? null) : void 0,
             recentAvg: recentAvgOut,
