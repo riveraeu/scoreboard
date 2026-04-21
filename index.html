@@ -4605,12 +4605,11 @@ function App() {
                       </div>
                       {!pick.result && (
                         <div style={{display:"flex",gap:4,flexShrink:0,marginLeft:6}}>
-                          {[["won","rgba(63,185,80,0.12)","#3fb950","✓","Won"],["lost","rgba(247,129,102,0.12)","#f78166","✗","Lost"],["dnp","rgba(139,148,158,0.12)","#484f58","—","DNP"]].map(([res,bg,bdr,icon,lbl]) => (
+                          {[["won","rgba(63,185,80,0.12)","#3fb950","✓","Won"],["lost","rgba(247,129,102,0.12)","#f78166","✗","Lost"],["dnp","rgba(139,148,158,0.12)","#484f58","–","DNP"]].map(([res,bg,bdr,icon,lbl]) => (
                             <button key={res} onClick={() => setPlayResult(pick.id, res)} title={lbl}
                               style={{background:bg,border:`1px solid ${bdr}`,borderRadius:5,
-                                width:26,height:22,padding:0,boxSizing:"border-box",overflow:"hidden",
-                                fontSize:10,fontWeight:700,color:res==="dnp"?"#8b949e":bdr,cursor:"pointer",
-                                flexShrink:0,textAlign:"center",lineHeight:"20px"}}>
+                                padding:"2px 6px",fontSize:10,fontWeight:700,
+                                color:res==="dnp"?"#8b949e":bdr,cursor:"pointer",flexShrink:0}}>
                               {icon}
                             </button>
                           ))}
