@@ -3282,7 +3282,7 @@ var worker_default = {
             const mid = (lo + hi) / 2;
             let cdf = 0, term = Math.exp(-mid);
             for (let k = 0; k < n; k++) { cdf += term; term *= mid / (k + 1); }
-            if (1 - cdf < p) hi = mid; else lo = mid;
+            if (1 - cdf > p) hi = mid; else lo = mid;
           }
           return (lo + hi) / 2;
         };
