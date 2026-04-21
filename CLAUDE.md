@@ -307,9 +307,19 @@ True% = Monte Carlo simulation (reuses `buildNbaStatDist` + `nbaDistPct`) — no
 - **`nbaDropped`**: NBA `opp_not_soft` drops always go here (not just in debug mode) and are included in the regular `/api/tonight` response. Each entry has the full player-card fields: `seasonPct`, `seasonGames`, `softPct`, `softGames`, `nbaOpportunity`, `nbaPaceAdj`, `isB2B`, `nbaSimScore`, `nbaGameTotal`, `nbaTotalPts`, `nbaUsage`, `nbaAvgAst`, `nbaAvgReb`, `nba3pMPG`. The frontend uses these to populate `tonightPlayerMap` as a fallback so the player card explanation renders fully even when the matchup didn't qualify.
 
 ### qualified:false plays
-MLB strikeout markets that fail any gate (simScore < 7, kpctPts < 2, threshold_too_high, or finalSimScore < 12) are pushed to `plays[]` with `qualified: false` so the player card can show real simPct for all thresholds. The main plays list (`tonightPlays`) filters these out client-side: `.filter(p => p.qualified !== false)`.
+All player prop sports push dropped plays to `plays[]` with `qualified: false` so the player card explanation renders even when a play fails a gate. The main plays list (`tonightPlays`) filters these out client-side: `.filter(p => p.qualified !== false)`.
 
-The raw (unfiltered) array is stored in `allTonightPlays` and used to build `tonightPlayerMap` in the player card — this ensures `qualified: false` thresholds (e.g. 3+/4+ strikeouts with no edge bonus) get their simulation-based truePct rather than falling back to the raw formula.
+The raw (unfiltered) array is stored in `allTonightPlays` and used to build `tonightPlayerMap` in the player card — this ensures all players visible in the market report also have explanation data on their player page.
+
+**Which gates push `qualified: false` to `plays[]`:**
+- **MLB strikeouts**: edge gate, threshold_too_high gate, finalSimScore < 12 gate, kpctPts < 2 gate — all thresholds included so the player card shows monotonically decreasing truePct across 3+/4+/5+
+- **MLB HRR**: edge gate (`edge < 5` or `kalshiPct < 70`), hitterFinalSimScore < 11 gate — includes all explanation fields (`hitterBa`, `hitterPlatoonPts`, `hitterSplitBA`, `hitterSoftLabel`, `hitterGameTotal`, etc.)
+- **NBA**: edge gate, nbaSimScore < 11 gate — includes `nbaGameTotal`, `nbaUsage/Ast/Reb`, `nba3pMPG`, `nbaPaceAdj`, `posDvpRank/Value`, `nbaBlowoutAdj`
+- **NHL**: edge gate, nhlSimScore < 11 gate — includes `nhlOpportunity`, `nhlShotsAdj`, `nhlTeamGPG`, `nhlSaRank`
+
+**Pre-gates that do NOT push to `plays[]`** (inside the sport block, before truePct is computed):
+- MLB HRR `low_lineup_spot` (spot ≥ 5) — player doesn't merit an explanation card
+- MLB HRR `hitterSimScore < 7` — very poor quality, no explanation shown
 
 ### bestMap deduplication — which threshold shows in plays card
 `bestMap` dedupes to one play per `playerName|sport|stat` for qualified plays. The winner is the play with the **highest edge** (`play.edge > prev.edge`) — best market value. Non-qualifying (`qualified: false`) plays use a threshold-inclusive key and don't compete. After bestMap, non-winning qualified thresholds are re-added as `qualified: false` for the player card.
@@ -369,7 +379,7 @@ All threshold plays that pass the edge gate (≥ 3%) are pushed to `plays[]`. Be
 
 ### State
 - `tonightPlays` — qualified plays from `/api/tonight`, filtered `qualified !== false`
-- `allTonightPlays` — raw (unfiltered) plays array from `/api/tonight`, includes `qualified: false` entries; used exclusively for building `tonightPlayerMap` in the player card so all strikeout thresholds get their simulation-based truePct instead of falling back to the raw formula
+- `allTonightPlays` — raw (unfiltered) plays array from `/api/tonight`, includes `qualified: false` entries; used to build `tonightPlayerMap` so all players visible in the market report have explanation data on their player page (MLB/NBA/NHL drops are all included)
 - `nbaDropped` — array always present in `/api/tonight` response (now always empty; previously held `opp_not_soft` drops); frontend still checks it as a fallback for `tonightPlayerMap`
 - `reportData` — full debug response from `/api/tonight?debug=1`, shown in Market Report overlay
 - `player` — currently selected player for detail card
@@ -598,6 +608,13 @@ Both cover: `kDistPct` monotonicity, `simulateKsDist` validity, `buildNbaStatDis
 ---
 
 ## Common Debugging
+
+### "Player card explanation is blank / missing prose (stats present in market report)"
+A player visible in the market report has their play in `dropped[]` (debug-only), which means `tonightPlayerMap` has no entry for them → `tonightHitPlay` / `tonightTabPlay` is null → explanation renders blank.
+
+**When this can still happen**: only for the MLB HRR pre-gates (`low_lineup_spot` spot ≥ 5, or `hitterSimScore < 7`). All other gates (edge, simScore < 11) now push to `plays[]` with `qualified: false`.
+
+**Diagnosis**: check `?debug=1` → `dropped[]` for the player. If `reason` is `"low_lineup_spot"` or `"low_confidence"` with `hitterSimScore < 7`, they hit a pre-gate before truePct was computed — no explanation data exists. Any other reason means a gap in the qualified:false push logic.
 
 ### "Why is truePct wrong for 3+/4+ when 5+ looks correct?" (fixed)
 Previously, `tonightPlayerMap` was built from `tonightPlays` (filtered: `qualified !== false`). Thresholds like 3+/4+ with no edge bonus (finalSimScore < 11) were `qualified: false` and omitted, so the player card used the raw fallback formula `(seasonPct + softPct) / 2` — breaking monotonicity (e.g. 4+ showed 76.8% while 5+ showed 97.9%).
