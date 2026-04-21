@@ -154,9 +154,10 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
   - O/U total tier (high total = more run-scoring): ≥9.5 → 2pts, ≥7.5 → 1pt, <7.5 → 0pts, null → 1pt
   - Max: 3+3+2+1+3+2 = 14
 - **B2 — Batter recent form**: `hitterEffectiveBA = 0.6 × recentBA + 0.4 × seasonBA` when ≥20 AB in last 10 2026 games; else uses seasonBA. Fed directly into `simulateHits` as `batterBA`. `batterRecentBA` map built inline from ESPN gamelog in main play loop.
-- **Gates**: lineup spot 1–4 required; hitterSimScore ≥ 7; edge ≥ 5% (gate only, not scored)
+- **Gates**: lineup spot 1–4 required; hitterSimScore ≥ 11 (Alpha tier — same as strikeouts/NBA/NHL); edge ≥ 5% (gate only, not scored)
 - Barrel% from Baseball Savant (`buildBarrelPct`) — cached 6h in KV; `hitterBarrelPts` stored in play output
 - NBA game totals fetched from ESPN scoreboard (`sportByteam.nbaGameOdds`) — always fresh (not long-term cached)
+- **Pitcher data fallback chain**: `hitterPitcherName` and `hitterPitcherEra` resolved from three sources in order: (1) `sportByteam.mlb.probables[tonightOpp]` (ESPN scoreboard — sometimes absent early in the day), (2) `sportByteam.mlb.pitcherInfoByTeam[tonightOpp]` (MLB Stats API — probables announced the day before, very reliable), (3) `pitcherGamelogs[tonightOpp].name` (if gamelog loaded = pitcher known). Pitcher gamelog loading (`pitcherGamelogs`) also merges both ESPN `probables` and MLB API `pitcherInfoByTeam`, so WHIP/FIP/BAA compute correctly even when ESPN hasn't announced probables. `hitterPitcherName` and `hitterPitcherEra` are included in all drop objects (edge_too_low, low_confidence) so the market report shows pitcher info for all HRR rows, not just qualified plays.
 
 ### NBA
 - **Stats**: `points`, `rebounds`, `assists`, `threePointers`
@@ -247,7 +248,7 @@ True% = Monte Carlo simulation (reuses `buildNbaStatDist` + `nbaDistPct`) — no
 | `MLB_ID_TO_ABBR` | MLB team ID → abbreviation mapping |
 | `buildLineupKPct(mlbSched)` | Lineup batter K-rates, lineup spots, ordered arrays; also exports `batterSplitBA` (vsR/vsL BA, 30+ AB) for B1 platoon |
 | `buildBarrelPct()` | Baseball Savant barrel% CSV, 5s timeout, cached 6h |
-| `buildPitcherKPct(mlbSched)` | Pitcher season stats (K%, KBB%, ERA, P/GS, CSW%, GS26); also exports `pitcherRecentKPct`, `pitcherLastStartDate`, `pitcherLastStartPC` for A1/A2 |
+| `buildPitcherKPct(mlbSched)` | Pitcher season stats (K%, KBB%, ERA, P/GS, CSW%, GS26); also exports `pitcherRecentKPct`, `pitcherLastStartDate`, `pitcherLastStartPC` for A1/A2; exports `pitcherInfoByTeam` (`{[abbr]: {name, id}}`) as MLB Stats API fallback when ESPN probables absent |
 
 ### `api/lib/nba.js` — NBA/DVP Data Fetchers
 
@@ -963,3 +964,20 @@ The Polymarket app shows a slider with prices at multiple thresholds (e.g., O5.5
 **Root cause**: `MOCK_PLAYS` entry used the MLB Stats API player ID (6-digit, e.g. `660271` for Shohei) instead of the ESPN player ID. `navigateToPlay` passes `play.playerId` as `player.id`, which is used to build the ESPN headshot URL (`a.espncdn.com/i/headshots/mlb/players/full/{id}.png`). MLB Stats API IDs are not ESPN IDs and produce a broken image.
 
 **Fix**: use the ESPN player ID in `playerId` for all `MOCK_PLAYS` entries (e.g. `39832` for Shohei Ohtani). ESPN IDs for MLB players are typically in the 28000–50000 range; NBA players in the 3000000–6000000 range.
+
+### "MLB HRR market report shows — for Opp pitcher early in the day"
+**Root cause**: ESPN's `probables` (from the scoreboard `hydrate=lineups,probables`) is absent in the morning hours before teams announce their starters. `hitterPitcherName` resolved from `probables[tonightOpp]` only → null for all HRR entries.
+
+**Fallback chain** (in order):
+1. `sportByteam.mlb.probables[tonightOpp].name` — ESPN scoreboard (available ~2–3h before first pitch)
+2. `sportByteam.mlb.pitcherInfoByTeam[tonightOpp].name` — MLB Stats API people response; probables announced previous day, very reliable. Built in `buildPitcherKPct` from the same people fetch used for season stats.
+3. `pitcherGamelogs[tonightOpp].name` — if pitcher gamelog was loaded (i.e. pitcher is known from either source), the name is stored on the gamelog entry. Guarantees: if WHIP/FIP/BAA computed → pitcher name known.
+
+**Why HRR rows in the report still show `—` for pitcher even after fix**: Most HRR entries are `dropped` (edge_too_low / low_confidence), not in `plays[]`. `hitterPitcherName` must be included in all drop objects (not just the plays push) for the report to show it. Check `_dropObj` and `low_confidence` drop in `api/[...path].js` hitter block.
+
+**`pitcherInfoByTeam` map** (in `api/lib/mlb.js`): Built from `res26.people` and `res25.people` — the same MLB Stats API season stats fetch. Keys are team abbreviations (bare abbrs only; `"SD|SEA"` matchup keys excluded). Available whenever `buildPitcherKPct` returns, regardless of ESPN state.
+
+### "NHL SimScore tooltip shows Edge ±X% instead of Team GPG"
+**Root cause**: Before commit removing the edge bonus from NHL SimScore, the 6th component was `Edge ±X%: N/3`. After converting to `nhlTeamGPG`, the tooltip still showed the old label if `index.html` was cached.
+
+**Fix**: Hard-refresh (`Cmd+Shift+R`) — the tooltip is computed client-side in `index.html`. If production still shows old label, check if `nhlTeamGPG` is present in play output (`?debug=1` → any NHL play → `nhlTeamGPG` field). If null, the backend variable wasn't added to the plays push.
