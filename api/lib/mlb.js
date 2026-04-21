@@ -440,8 +440,12 @@ export async function buildPitcherKPct(mlbSched) {
         pitcherAvgPitchesById[id] = avgP; // per-ID: used in pitcherStatsByName for overwritten pitchers
         for (const a of abbrs) pitcherAvgPitches[a] = avgP;
       }
-      // A1: Recent form — last 5 starts K% (min 30 BF to trust the sample)
-      const recent5 = startSplits.slice(-5);
+      // A1: Recent form — last 5 starts K% (min 30 total BF to trust the sample).
+      // Uses a looser filter than avgPitches: any completed start regardless of NP.
+      // Date guard already prevents in-progress games; r5BF >= 30 ensures enough total sample.
+      // This allows pitch-count-limited starts (e.g. NP 25) to count toward the recent window.
+      const a1Splits = splits.filter(s => (s.stat?.gamesStarted || 0) > 0 && s.date !== _todayStr);
+      const recent5 = a1Splits.slice(-5);
       const r5K = recent5.reduce((s, sp) => s + (sp.stat?.strikeOuts || 0), 0);
       const r5BF = recent5.reduce((s, sp) => {
         if (sp.stat?.battersFaced) return s + sp.stat.battersFaced;
