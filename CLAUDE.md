@@ -385,7 +385,7 @@ Opened via "report" button. Shows ALL markets (plays + dropped) grouped by sport
 - **Game totals table** (`mlb|totalRuns`, `nba|totalPoints`, `nhl|totalGoals`): section header shows **"[Sport] Totals"** (e.g. "NBA Totals") via `STAT_NAME` entries `totalRuns/totalPoints/totalGoals → "Totals"`. First column labelled "Matchup" (not "Player"), shows `AWY @ HME`. Opp column hidden. Line cell shows `O7.5` format. Score column uses `m.totalSimScore` (qual gate = 11); green ≥ 11, yellow = 7–10, gray < 7. XCOLS: MLB = H RPG / A RPG / H ERA / A ERA; NBA = H PPG / A PPG / H Def / A Def; NHL = H GPG / A GPG / H GAA / A GAA. Color for all PPG columns: higher = better for over (≥ threshold → green, near → yellow). **MLB ERA/RPG column colors**: ERA ≥4.5 → green (bad pitcher = over-favorable), ≥3.5 → yellow, <3.5 → gray; RPG ≥5.0 → green, ≥4.0 → yellow, <4.0 → gray. Dedup key for totals is `homeTeam|awayTeam|threshold` (not `playerName|threshold`).
 
 #### Calibration Tab
-Fetches `/api/auth/calibration?adminKey=sb-admin-2026` on first click (+ Refresh button to re-fetch). Shows:
+Fetches `/api/auth/calibration?adminKey=<ADMIN_KEY>` on first click (+ Refresh button to re-fetch). Shows:
 - **Dynamic analysis block**: overall win rate vs avg predicted; per-bucket sentence describing delta magnitude ("large positive edge of +9%", "well-calibrated", etc.) with data quality label ("significant data" N≥20, "moderate" N≥10, "limited" N<10) and implication ("model is conservative / overconfident"); best/worst category line (filtered to N≥5).
 - **Overall Calibration table**: Bucket | N | Predicted | Actual | Delta | bar chart. Bar = actual win rate; blue marker = predicted rate. N < 10 shown dim.
 - **By Category table**: sport/stat | N | hit rate | bar. Sorted by N descending.
@@ -553,6 +553,16 @@ tierColor(pct): >= 80% → #3fb950 (green), >= 65% → #e3b341 (yellow), else #f
 - Cron: `/api/keepalive` runs daily at noon UTC
 - **Deploy**: `git push origin main` — Vercel auto-deploys on push. No `vercel` CLI installed.
 
+### Required Environment Variables (Vercel → Settings → Environment Variables)
+| Variable | Purpose | How to generate |
+|---|---|---|
+| `JWT_SECRET` | Signs and verifies auth tokens (HMAC key) | `openssl rand -base64 32` |
+| `ADMIN_KEY` | Shared secret for admin endpoints (`?adminKey=`) | `openssl rand -base64 32` |
+| `UPSTASH_REDIS_REST_URL` | Upstash Redis REST endpoint | Upstash console |
+| `UPSTASH_REDIS_REST_TOKEN` | Upstash Redis auth token | Upstash console |
+
+**No hardcoded fallbacks** — if `JWT_SECRET` is missing, auth routes return 500. If `ADMIN_KEY` is missing, all admin endpoints return 403 (fail-closed). After adding or rotating either variable, redeploy.
+
 ---
 
 ## Testing
@@ -708,7 +718,7 @@ During the regular season most opponents are absent from both lists. In the play
 ### "User picks not persisting / login works but picks disappear"
 Most likely cause: **Upstash free tier exhausted** (500k commands/month). Symptoms: login succeeds, picks save without JS errors, but on reload picks are gone. The `makeCache()` Upstash wrapper silently returns null on all operations when Redis returns HTTP 400.
 
-**Diagnosis:** `GET /api/auth/debug-redis?adminKey=sb-admin-2026` — check `match: true/false` and `setRaw` for the Upstash error message.
+**Diagnosis:** `GET /api/auth/debug-redis?adminKey=<ADMIN_KEY>` — check `match: true/false` and `setRaw` for the Upstash error message.
 
 **Fix:** In Upstash console (`console.upstash.com`), either upgrade the database to Pay-As-You-Go or create a new free database and update `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` in Vercel → Environment Variables → Redeploy.
 
