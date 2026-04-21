@@ -2079,7 +2079,9 @@ var worker_default = {
               (_bf26 != null && _bf26 >= 15 ? parseFloat((vals26.reduce((s, v) => s + v, 0) / _bf26 * 100).toFixed(1)) : null);
             // A1: Recent form — blend last 5 starts K% (0.6 weight) with season K% (0.4 weight).
             // Requires 3+ recent starts and 30+ BF to apply; falls back to season K% alone.
-            _recentKPct = _pt(sportByteam.mlb?.pitcherRecentKPct, "recentKPct");
+            // pitcherRecentKPct is a flat map {team: number}, not nested — use direct access
+            const _recKey = `${playerTeam}|${tonightOpp}`;
+            _recentKPct = sportByteam.mlb?.pitcherRecentKPct?.[_recKey] ?? sportByteam.mlb?.pitcherRecentKPct?.[playerTeam] ?? null;
             const _pkp = (_recentKPct != null && _seasonKPct != null)
               ? parseFloat((_recentKPct * 0.6 + _seasonKPct * 0.4).toFixed(1))
               : _seasonKPct;
