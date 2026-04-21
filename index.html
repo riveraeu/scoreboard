@@ -4495,157 +4495,178 @@ function App() {
               return (
                 <div key={pick.id} style={{background:"#161b22",
                   border:`1px solid ${resultColor ? resultColor + "44" : "#30363d"}`,
-                  borderRadius:10, padding:"12px 14px", marginBottom:8}}>
-                  {/* Top row: name + result controls */}
-                  <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
-                    {/* Player info */}
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3,flexWrap:"wrap"}}>
-                        {/* Clickable name → opens player/team card */}
-                        {pick.gameType === "total" ? (
-                          <span style={{color:"#fff",fontSize:13,fontWeight:700}}>
-                            <span onClick={()=>navigateToTeam(pick.awayTeam,pick.sport)} style={{cursor:"pointer",textDecoration:"underline",textDecorationColor:"#484f58"}}>{pick.awayTeam}</span>
-                            {" @ "}
-                            <span onClick={()=>navigateToTeam(pick.homeTeam,pick.sport)} style={{cursor:"pointer",textDecoration:"underline",textDecorationColor:"#484f58"}}>{pick.homeTeam}</span>
-                          </span>
-                        ) : (
-                          <span onClick={() => navigateToPlay(pick)}
-                            style={{color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",textDecoration:"underline",textDecorationColor:"#30363d",textUnderlineOffset:2}}>
-                            {pick.playerName}
-                          </span>
-                        )}
-                        {pick.sport && (
-                          <span style={{border:`1px solid ${SPORT_BADGE_COLOR[pick.sport]||"#8b949e"}`,
-                            borderRadius:4,padding:"0px 4px",fontSize:9,color:SPORT_BADGE_COLOR[pick.sport]||"#8b949e",fontWeight:600,textTransform:"uppercase"}}>
-                            {pick.sport}
-                          </span>
-                        )}
-                        {pick.edge != null && (
-                          <span style={{background:"rgba(63,185,80,0.12)",border:"1px solid #3fb950",borderRadius:4,
-                            padding:"0px 5px",fontSize:10,color:"#3fb950",fontWeight:700}}>
-                            +{pick.edge}%
-                          </span>
-                        )}
-                        {pick.result && (
-                          <span style={{fontSize:11,fontWeight:700,color:resultColor,textTransform:"uppercase",letterSpacing:0.5}}>
-                            {pick.result === "won" ? "✓ Won" : pick.result === "lost" ? "✗ Lost" : "— DNP"}
-                          </span>
-                        )}
-                        {pickPL !== null && (
-                          <span style={{fontSize:11,fontWeight:700,color:pickPLColor,marginLeft:2}}>
-                            {fmt(pickPL)}
-                          </span>
-                        )}
-                      </div>
-                      <div style={{color:"#8b949e",fontSize:11}}>
-                        {pick.gameType === "total" ? `${pick.awayTeam} @ ${pick.homeTeam}` : `${pick.playerTeam} vs ${pick.opponent}`}
-                        {" · "}<span style={{color:"#58a6ff",fontWeight:600}}>{pick.gameType === "total" ? `Over ${(pick.threshold-0.5).toFixed(1)} ${({totalRuns:"Runs",totalPoints:"Pts",totalGoals:"Goals"})[pick.stat]||pick.stat}` : `${pick.threshold}+ ${STAT_LABEL[pick.stat] || pick.stat}`}</span>
-                        {" · "}<span style={{color:"#a855f7"}}>{oddsStr}</span>
-                        {" · "}<span style={{color:"#e3b341"}}>{pick.truePct}% true</span>
-                      </div>
-                      {/* Edit mode: full inline form */}
-                      {editPickId === pick.id && (() => {
-                        const SPORT_STATS_EDIT = {
-                          nba:["points","rebounds","assists","threePointers"],
-                          mlb:["hits","hrr","strikeouts"],
-                          nfl:["passingYards","rushingYards","receivingYards","receptions"],
-                          nhl:["points"],
-                        };
-                        const ei = { background:"#0d1117", border:"1px solid #30363d", borderRadius:5, color:"#c9d1d9", fontSize:12, padding:"4px 7px", outline:"none", width:"100%" };
-                        return (
-                          <div style={{marginTop:10,padding:10,background:"#0d1117",borderRadius:7,border:"1px solid #30363d"}}>
-                            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
-                              <div>
-                                <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Stat</div>
-                                <select style={ei} value={pick.stat}
-                                  onChange={e => setTrackedPlays(prev => prev.map(p => p.id === pick.id ? {...p, stat: e.target.value} : p))}>
-                                  {(SPORT_STATS_EDIT[pick.sport] || []).map(s => <option key={s} value={s}>{STAT_LABEL[s] || s}</option>)}
-                                </select>
-                              </div>
-                              <div>
-                                <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Line</div>
-                                <input style={ei} type="number" step="0.5" defaultValue={pick.threshold}
-                                  onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) setTrackedPlays(prev => prev.map(p => p.id === pick.id ? {...p, threshold: v} : p)); }} />
-                              </div>
-                              <div>
-                                <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Odds</div>
-                                <input style={ei} type="number" defaultValue={pick.americanOdds}
-                                  onBlur={e => { const v = parseInt(e.target.value); if (!isNaN(v)) setTrackedPlays(prev => prev.map(p => p.id === pick.id ? {...p, americanOdds: v, kalshiPct: parseFloat((v < 0 ? Math.abs(v)/(Math.abs(v)+100)*100 : 100/(v+100)*100).toFixed(1))} : p)); }} />
-                              </div>
-                              <div>
-                                <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>True Prob %</div>
-                                <input style={ei} type="number" min="0" max="100" step="0.1" defaultValue={pick.truePct ?? ""}
-                                  onBlur={e => { const v = parseFloat(e.target.value); setTrackedPlays(prev => prev.map(p => { if (p.id !== pick.id) return p; const kp = p.kalshiPct ?? p.americanOdds < 0 ? Math.abs(p.americanOdds)/(Math.abs(p.americanOdds)+100)*100 : 100/(p.americanOdds+100)*100; return {...p, truePct: isNaN(v) ? null : v, edge: isNaN(v) ? null : parseFloat((v - kp).toFixed(1))}; })); }} />
-                              </div>
-                              <div style={{gridColumn:"1 / -1"}}>
-                                <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Game Date</div>
-                                <input style={ei} type="date" defaultValue={pick.gameDate || ""}
-                                  onBlur={e => { const v = e.target.value; setTrackedPlays(prev => prev.map(p => p.id === pick.id ? {...p, gameDate: v || null} : p)); }} />
-                              </div>
-                            </div>
-                            <button onClick={() => setEditPickId(null)}
-                              style={{width:"100%",padding:"4px",borderRadius:5,background:"rgba(88,166,255,0.12)",border:"1px solid #58a6ff",color:"#58a6ff",fontSize:11,fontWeight:600,cursor:"pointer"}}>
-                              done
-                            </button>
-                          </div>
-                        );
-                      })()}
+                  borderRadius:8, padding:"7px 10px", marginBottom:5,
+                  display:"flex", gap:9, alignItems:"center"}}>
+                  {/* Photo / Logo */}
+                  {pick.gameType === "total" ? (
+                    <div style={{width:36,height:36,flexShrink:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:1}}>
+                      <img src={`https://a.espncdn.com/i/teamlogos/${pick.sport}/500/${(pick.awayTeam||"").toLowerCase()}.png`}
+                        style={{width:19,height:19,objectFit:"contain"}} onError={e=>e.target.style.opacity="0"} />
+                      <img src={`https://a.espncdn.com/i/teamlogos/${pick.sport}/500/${(pick.homeTeam||"").toLowerCase()}.png`}
+                        style={{width:19,height:19,objectFit:"contain"}} onError={e=>e.target.style.opacity="0"} />
                     </div>
-                    {/* Controls */}
-                    <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+                  ) : (
+                    <div style={{width:36,height:36,flexShrink:0,borderRadius:18,background:"#21262d",overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      {pick.playerId ? (
+                        <img src={`https://a.espncdn.com/i/headshots/${pick.sport}/players/full/${pick.playerId}.png`}
+                          style={{width:36,height:36,objectFit:"cover",objectPosition:"top center"}}
+                          onError={e=>{e.target.style.display="none";}} />
+                      ) : (
+                        <span style={{color:"#484f58",fontSize:14,fontWeight:700}}>{(pick.playerName||"?").charAt(0)}</span>
+                      )}
+                    </div>
+                  )}
+                  {/* Content */}
+                  <div style={{flex:1,minWidth:0}}>
+                    {/* Row 1: name + badges + controls */}
+                    <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:2}}>
+                      {pick.gameType === "total" ? (
+                        <span style={{color:"#fff",fontSize:12,fontWeight:700,flexShrink:1,minWidth:0}}>
+                          <span onClick={()=>navigateToTeam(pick.awayTeam,pick.sport)} style={{cursor:"pointer",textDecoration:"underline",textDecorationColor:"#484f58"}}>{pick.awayTeam}</span>
+                          {" @ "}
+                          <span onClick={()=>navigateToTeam(pick.homeTeam,pick.sport)} style={{cursor:"pointer",textDecoration:"underline",textDecorationColor:"#484f58"}}>{pick.homeTeam}</span>
+                        </span>
+                      ) : (
+                        <span onClick={() => navigateToPlay(pick)}
+                          style={{color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",textDecoration:"underline",textDecorationColor:"#30363d",textUnderlineOffset:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:140,flexShrink:1}}>
+                          {pick.playerName}
+                        </span>
+                      )}
+                      {pick.sport && (
+                        <span style={{border:`1px solid ${SPORT_BADGE_COLOR[pick.sport]||"#8b949e"}`,
+                          borderRadius:4,padding:"0px 4px",fontSize:9,color:SPORT_BADGE_COLOR[pick.sport]||"#8b949e",fontWeight:600,textTransform:"uppercase",flexShrink:0}}>
+                          {pick.sport}
+                        </span>
+                      )}
+                      {pick.edge != null && (
+                        <span style={{background:"rgba(63,185,80,0.12)",border:"1px solid #3fb950",borderRadius:4,
+                          padding:"0px 5px",fontSize:10,color:"#3fb950",fontWeight:700,flexShrink:0}}>
+                          +{pick.edge}%
+                        </span>
+                      )}
+                      {pick.result && (
+                        <span style={{fontSize:10,fontWeight:700,color:resultColor,textTransform:"uppercase",letterSpacing:0.3,flexShrink:0}}>
+                          {pick.result === "won" ? "✓ Won" : pick.result === "lost" ? "✗ Lost" : "— DNP"}
+                        </span>
+                      )}
+                      {pickPL !== null && (
+                        <span style={{fontSize:10,fontWeight:700,color:pickPLColor,flexShrink:0}}>
+                          {fmt(pickPL)}
+                        </span>
+                      )}
+                      <div style={{flex:1}} />
                       {!pick.result ? (
                         <>
                           <button onClick={() => setPlayResult(pick.id, "won")}
-                            style={{background:"rgba(63,185,80,0.12)",border:"1px solid #3fb950",borderRadius:6,
-                              padding:"3px 10px",fontSize:11,fontWeight:600,color:"#3fb950",cursor:"pointer"}}>
+                            style={{background:"rgba(63,185,80,0.12)",border:"1px solid #3fb950",borderRadius:5,
+                              padding:"2px 7px",fontSize:10,fontWeight:600,color:"#3fb950",cursor:"pointer",flexShrink:0}}>
                             ✓ Won
                           </button>
                           <button onClick={() => setPlayResult(pick.id, "lost")}
-                            style={{background:"rgba(247,129,102,0.12)",border:"1px solid #f78166",borderRadius:6,
-                              padding:"3px 10px",fontSize:11,fontWeight:600,color:"#f78166",cursor:"pointer"}}>
+                            style={{background:"rgba(247,129,102,0.12)",border:"1px solid #f78166",borderRadius:5,
+                              padding:"2px 7px",fontSize:10,fontWeight:600,color:"#f78166",cursor:"pointer",flexShrink:0}}>
                             ✗ Lost
                           </button>
                           <button onClick={() => setPlayResult(pick.id, "dnp")}
-                            style={{background:"rgba(139,148,158,0.12)",border:"1px solid #484f58",borderRadius:6,
-                              padding:"3px 10px",fontSize:11,fontWeight:600,color:"#8b949e",cursor:"pointer"}}>
+                            style={{background:"rgba(139,148,158,0.12)",border:"1px solid #484f58",borderRadius:5,
+                              padding:"2px 7px",fontSize:10,fontWeight:600,color:"#8b949e",cursor:"pointer",flexShrink:0}}>
                             DNP
                           </button>
                         </>
                       ) : (
                         <button onClick={() => setPlayResult(pick.id, null)}
-                          style={{background:"transparent",border:"1px solid #30363d",borderRadius:6,
-                            padding:"3px 8px",fontSize:11,color:"#484f58",cursor:"pointer"}}>
+                          style={{background:"transparent",border:"1px solid #30363d",borderRadius:5,
+                            padding:"2px 7px",fontSize:10,color:"#484f58",cursor:"pointer",flexShrink:0}}>
                           undo
                         </button>
                       )}
-                      <button onClick={() => setEditPickId(id => id === pick.id ? null : pick.id)} title="Edit line"
+                      <button onClick={() => setEditPickId(id => id === pick.id ? null : pick.id)} title="Edit"
                         style={{background: editPickId === pick.id ? "rgba(88,166,255,0.12)" : "transparent",
-                          border:`1px solid ${editPickId === pick.id ? "#58a6ff" : "#30363d"}`,borderRadius:6,
-                          padding:"3px 7px",fontSize:11,color: editPickId === pick.id ? "#58a6ff" : "#484f58",cursor:"pointer"}}>
+                          border:`1px solid ${editPickId === pick.id ? "#58a6ff" : "#30363d"}`,borderRadius:5,
+                          padding:"2px 6px",fontSize:10,color: editPickId === pick.id ? "#58a6ff" : "#484f58",cursor:"pointer",flexShrink:0}}>
                         ✎
                       </button>
                       <button onClick={() => untrackPlay(pick.id)} title="Remove"
-                        style={{background:"transparent",border:"1px solid #30363d",borderRadius:6,
-                          padding:"3px 7px",fontSize:12,color:"#484f58",cursor:"pointer"}}>
+                        style={{background:"transparent",border:"1px solid #30363d",borderRadius:5,
+                          padding:"2px 6px",fontSize:11,color:"#484f58",cursor:"pointer",flexShrink:0}}>
                         ×
                       </button>
                     </div>
-                  </div>
-                  {/* Stake size row */}
-                  <div style={{display:"flex",alignItems:"center",gap:8,marginTop:10,paddingTop:8,borderTop:"1px solid #21262d"}}>
-                    <span style={{color:"#484f58",fontSize:11}}>Stake</span>
-                    <div style={{display:"flex",alignItems:"center",background:"#0d1117",border:"1px solid #30363d",borderRadius:6,overflow:"hidden"}}>
-                      <span style={{color:"#8b949e",fontSize:12,padding:"2px 2px 2px 8px"}}>$</span>
+                    {/* Row 2: subtitle + inline stake */}
+                    <div style={{display:"flex",alignItems:"center",flexWrap:"wrap",lineHeight:1.4,gap:0}}>
+                      {pick.gameType !== "total" && (
+                        <span style={{color:"#8b949e",fontSize:10}}>
+                          {pick.playerTeam} vs {pick.opponent}
+                          <span style={{color:"#484f58",margin:"0 3px"}}>·</span>
+                        </span>
+                      )}
+                      <span style={{color:"#58a6ff",fontWeight:600,fontSize:10}}>
+                        {pick.gameType === "total" ? `Over ${(pick.threshold-0.5).toFixed(1)} ${({totalRuns:"Runs",totalPoints:"Pts",totalGoals:"Goals"})[pick.stat]||pick.stat}` : `${pick.threshold}+ ${STAT_LABEL[pick.stat] || pick.stat}`}
+                      </span>
+                      <span style={{color:"#484f58",fontSize:10,margin:"0 3px"}}>·</span>
+                      <span style={{color:"#a855f7",fontSize:10}}>{oddsStr}</span>
+                      <span style={{color:"#484f58",fontSize:10,margin:"0 3px"}}>·</span>
+                      <span style={{color:"#e3b341",fontSize:10}}>{pick.truePct}% true</span>
+                      <span style={{color:"#484f58",fontSize:10,margin:"0 3px"}}>·</span>
+                      <span style={{color:"#484f58",fontSize:10}}>$</span>
                       <input type="number" min="0" step="0.1" value={units}
                         onChange={e => setPickUnits(pick.id, e.target.value)}
                         style={{background:"transparent",border:"none",outline:"none",color:"#c9d1d9",
-                          fontSize:12,width:52,padding:"3px 8px 3px 4px",textAlign:"right"}}/>
+                          fontSize:10,width:36,padding:"0 2px",textAlign:"left"}}/>
+                      {pick.result === "won" && pickPL !== null && (
+                        <>
+                          <span style={{color:"#484f58",fontSize:10,margin:"0 2px"}}>→</span>
+                          <span style={{color:"#3fb950",fontSize:10,fontWeight:600}}>+${(stake * oddsToProfit(pick.americanOdds)).toFixed(2)}</span>
+                        </>
+                      )}
                     </div>
-                    {pick.result === "won" && (
-                      <span style={{fontSize:11,color:"#484f58",marginLeft:4}}>
-                        → win <span style={{color:"#3fb950",fontWeight:600}}>${(stake * oddsToProfit(pick.americanOdds)).toFixed(2)}</span>
-                      </span>
-                    )}
+                    {/* Edit mode: full inline form */}
+                    {editPickId === pick.id && (() => {
+                      const SPORT_STATS_EDIT = {
+                        nba:["points","rebounds","assists","threePointers"],
+                        mlb:["hits","hrr","strikeouts"],
+                        nfl:["passingYards","rushingYards","receivingYards","receptions"],
+                        nhl:["points"],
+                      };
+                      const ei = { background:"#0d1117", border:"1px solid #30363d", borderRadius:5, color:"#c9d1d9", fontSize:12, padding:"4px 7px", outline:"none", width:"100%" };
+                      return (
+                        <div style={{marginTop:8,padding:10,background:"#0d1117",borderRadius:7,border:"1px solid #30363d"}}>
+                          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+                            <div>
+                              <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Stat</div>
+                              <select style={ei} value={pick.stat}
+                                onChange={e => setTrackedPlays(prev => prev.map(p => p.id === pick.id ? {...p, stat: e.target.value} : p))}>
+                                {(SPORT_STATS_EDIT[pick.sport] || []).map(s => <option key={s} value={s}>{STAT_LABEL[s] || s}</option>)}
+                              </select>
+                            </div>
+                            <div>
+                              <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Line</div>
+                              <input style={ei} type="number" step="0.5" defaultValue={pick.threshold}
+                                onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) setTrackedPlays(prev => prev.map(p => p.id === pick.id ? {...p, threshold: v} : p)); }} />
+                            </div>
+                            <div>
+                              <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Odds</div>
+                              <input style={ei} type="number" defaultValue={pick.americanOdds}
+                                onBlur={e => { const v = parseInt(e.target.value); if (!isNaN(v)) setTrackedPlays(prev => prev.map(p => p.id === pick.id ? {...p, americanOdds: v, kalshiPct: parseFloat((v < 0 ? Math.abs(v)/(Math.abs(v)+100)*100 : 100/(v+100)*100).toFixed(1))} : p)); }} />
+                            </div>
+                            <div>
+                              <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>True Prob %</div>
+                              <input style={ei} type="number" min="0" max="100" step="0.1" defaultValue={pick.truePct ?? ""}
+                                onBlur={e => { const v = parseFloat(e.target.value); setTrackedPlays(prev => prev.map(p => { if (p.id !== pick.id) return p; const kp = p.kalshiPct ?? p.americanOdds < 0 ? Math.abs(p.americanOdds)/(Math.abs(p.americanOdds)+100)*100 : 100/(p.americanOdds+100)*100; return {...p, truePct: isNaN(v) ? null : v, edge: isNaN(v) ? null : parseFloat((v - kp).toFixed(1))}; })); }} />
+                            </div>
+                            <div style={{gridColumn:"1 / -1"}}>
+                              <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Game Date</div>
+                              <input style={ei} type="date" defaultValue={pick.gameDate || ""}
+                                onBlur={e => { const v = e.target.value; setTrackedPlays(prev => prev.map(p => p.id === pick.id ? {...p, gameDate: v || null} : p)); }} />
+                            </div>
+                          </div>
+                          <button onClick={() => setEditPickId(null)}
+                            style={{width:"100%",padding:"4px",borderRadius:5,background:"rgba(88,166,255,0.12)",border:"1px solid #58a6ff",color:"#58a6ff",fontSize:11,fontWeight:600,cursor:"pointer"}}>
+                            done
+                          </button>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
                                   );
