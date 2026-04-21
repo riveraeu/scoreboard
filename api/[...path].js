@@ -2063,6 +2063,7 @@ var worker_default = {
           // Prefer 2026 season rate; fall back to blended 25+26; fall back to all-career
           const primaryPct = pct26 ?? blendedPct ?? seasonPct;
           let simScore = null, kpctMeets = null, kpctPts = null, kbbMeets = null, kbbPts = null, lkpMeets = null, lkpPts = null, pitchesPts = null, parkMeets = null, mlPts = null, totalPts = null, kTrendPts = null;
+          let _recentKPct = null, _seasonKPct = null;
           let _pitcherHand = null;
           let _avgP = null; // hoisted so all strikeout output sites can use it
           let _umpireName = null;   // E3a: home plate umpire
@@ -2074,11 +2075,11 @@ var worker_default = {
             // Gamelog fallback: if schedule-based lookup returns null (e.g. MLB schedule switched to
             // tomorrow and today's pitcher isn't in pitcherByTeam), compute from the player's own
             // ESPN gamelog — immune to schedule confusion since the gamelog IS the player's own data.
-            const _seasonKPct = _pt(sportByteam.mlb?.pitcherKPct, "kPct") ??
+            _seasonKPct = _pt(sportByteam.mlb?.pitcherKPct, "kPct") ??
               (_bf26 != null && _bf26 >= 15 ? parseFloat((vals26.reduce((s, v) => s + v, 0) / _bf26 * 100).toFixed(1)) : null);
             // A1: Recent form — blend last 5 starts K% (0.6 weight) with season K% (0.4 weight).
             // Requires 3+ recent starts and 30+ BF to apply; falls back to season K% alone.
-            const _recentKPct = _pt(sportByteam.mlb?.pitcherRecentKPct, "recentKPct");
+            _recentKPct = _pt(sportByteam.mlb?.pitcherRecentKPct, "recentKPct");
             const _pkp = (_recentKPct != null && _seasonKPct != null)
               ? parseFloat((_recentKPct * 0.6 + _seasonKPct * 0.4).toFixed(1))
               : _seasonKPct;
