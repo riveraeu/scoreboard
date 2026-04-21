@@ -395,6 +395,8 @@ Fetches `/api/auth/calibration?adminKey=sb-admin-2026` on first click (+ Refresh
 ### Toolbar
 Right side: **bust** button (calls `?bust=1`, shows "busting…" while loading) + **mock** toggle + My Picks anchor.
 
+**`MOCK_PLAYS`** — static array in `index.html` used when the mock toggle is on. Each entry must use **ESPN player IDs** (not MLB Stats API IDs) for `playerId` — `navigateToPlay` passes `play.playerId` as `player.id`, which drives both the ESPN headshot URL (`a.espncdn.com/i/headshots/{sport}/players/full/{id}.png`) and the `tonightPlayerMap` lookup (`p.playerId === player.id`). MLB Stats API IDs (6-digit, e.g. 660271 for Shohei) will produce a broken headshot; use the ESPN ID instead (e.g. 39832 for Shohei). `gameDate` fields use the `TODAY` constant (dynamic) — no hardcoded dates needed. HRR entries must use `stat:"hrr"` (not `"hits"`, which is deprecated). All hitter-specific fields (`oppPitcherHand`, `hitterBarrelPts`, `hitterTotalPts`, `hitterGameTotal`, `hitterBa`, `hitterSoftLabel`, `pitcherName`) should be populated so the explanation prose renders fully.
+
 ### My Picks Header
 Shows: **"My Picks"** label → total count badge → `X active · Y finished` breakdown (active = no result yet, green; finished = won/lost excluding DNP, gray). No "clear settled" button — picks are managed per-row only.
 
@@ -931,3 +933,8 @@ The `poly:totals:{date}` cache (300s TTL) can be populated with pre-game Polymar
 **Root cause**: `whipColor` used a 3-tier scale (>1.35 green, >1.20 yellow, ≤1.20 red) but the SimScore formula is binary — only >1.35 earns 3pts, everything else earns 0pts. A WHIP of 1.32 rendered yellow, implying 2nd-tier points, while the SimScore tooltip correctly showed 0/3.
 
 **Fix**: changed middle tier from `#e3b341` (yellow) to `#c9d1d9` (neutral). Yellow is now reserved exclusively for tiers that actually earn SimScore points. The descriptive text ("some traffic on base") still provides informational context in gray.
+
+### "Mock player card shows broken headshot image"
+**Root cause**: `MOCK_PLAYS` entry used the MLB Stats API player ID (6-digit, e.g. `660271` for Shohei) instead of the ESPN player ID. `navigateToPlay` passes `play.playerId` as `player.id`, which is used to build the ESPN headshot URL (`a.espncdn.com/i/headshots/mlb/players/full/{id}.png`). MLB Stats API IDs are not ESPN IDs and produce a broken image.
+
+**Fix**: use the ESPN player ID in `playerId` for all `MOCK_PLAYS` entries (e.g. `39832` for Shohei Ohtani). ESPN IDs for MLB players are typically in the 28000–50000 range; NBA players in the 3000000–6000000 range.
