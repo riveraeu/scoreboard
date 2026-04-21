@@ -476,25 +476,26 @@ Both play cards and player cards show an explanation block (`background:"#0d1117
 
 **Player prop cards** (MLB/NBA/NHL player props): two sections:
 1. **Narrative prose** — why the play is recommended, key stats with qualitative context. Highlighted numbers use colored `<span>`; descriptive phrases (e.g. "a key starter") use `color:"#484f58"` (dim).
-2. **SimScore row** — `SimScore` label + `X/14 Tier` badge + stat checkboxes. All on one flex line (`display:"flex", alignItems:"center", gap:6`). Badge uses `whiteSpace:"nowrap"`. Checkboxes in an inner `display:"inline-flex", gap:4, flexWrap:"wrap"` span so whole items wrap as units. **Exception: MLB hitter (HRR) play card and player card both use inline badge at end of prose (no separate row), matching game total card style.**
+2. **SimScore row** — `SimScore` label + `X/14 Tier` badge + stat checkboxes. All on one flex line (`display:"flex", alignItems:"center", gap:6`). Badge uses `whiteSpace:"nowrap"`. Checkboxes in an inner `display:"inline-flex", gap:4, flexWrap:"wrap"` span so whole items wrap as units. **Exception: MLB hitter (HRR) and NHL player cards use inline badge at end of prose (no separate row), matching game total card style.**
 
 **MLB hitter (HRR) explanation prose order** (play card + player card, both locations):
-1. BA tier + batting spot
-2. Pitcher name — WHIP always shown; color binary: `> 1.35 → green` (3pts, + "a lot of baserunners" description), `≤ 1.35 → red` (1pt or 0pt — no description, color is sufficient). FIP (color: >4.5 green/"hittable pitcher", >3.5 yellow/"average pitcher", else gray — absolute tiers, NOT vs ERA).
+1. Batting spot (e.g. "Shohei, batting #1 — top of the order"). BA tier and BA value removed — not a SimScore component.
+2. Pitcher name — WHIP always shown; color binary: `> 1.35 → green` (3pts, + "a lot of baserunners" description), `≤ 1.35 → red` (0pt — no description, color is sufficient). FIP removed from prose — not a SimScore component. FIP column still shown in market report.
 3. Season rate + soft rate (vs pitcher H2H or vs team)
 4. ERA rank / no-H2H context — **only shown when `softPct === null` (no H2H data)**. When H2H exists, the soft rate already explains the matchup. ERA rank color is `#c9d1d9` (neutral, not bold red) since it's contextual, not a SimScore component.
 5. Park factor (when |pf − 1.0| ≥ 0.03)
 6. Game total (color: ≥9.5 green, ≥7.5 yellow, <7.5 gray)
 7. Barrel rate (color: ≥14% green/"elite hard contact", ≥10% yellow/"strong contact quality", ≥7% gray/"average contact", <7% dim — from `hitterBarrelPct`)
-8. Platoon edge/disadvantage: includes actual split BA — "Platoon edge vs RHP (.310 vs RHP)" or "Platoon disadvantage vs LHP (.229 vs LHP, .281 season)". Silent when 1pt (neutral/abstain). `hitterSplitBA` field added to play output.
+8. Platoon edge/disadvantage: stat highlighted, label dimmed — "Hits `.310` vs RHP — platoon edge." or "Hits `.229` vs LHP — platoon disadvantage (`.281` season).". Split BA in green (edge) or red (disadvantage); season BA in `#c9d1d9` neutral. Silent when 1pt (neutral/abstain).
 9. SimScore badge inline
 
-**FIP color rule (MLB hitters only):** Uses absolute pitcher quality tiers — FIP > 4.5 → green (bad pitcher, batter-favorable), FIP > 3.5 → yellow (average), else gray. The old ERA-comparison logic (`fip > era + 0.3 → green`) was wrong: it colored a 5.52 FIP red if ERA was higher, even though any FIP above 4.5 is hittable. Same tiers apply in the market report FIP column.
+**FIP color rule (market report only):** FIP column in market report still uses absolute tiers — FIP > 4.5 → green (bad pitcher, batter-favorable), FIP > 3.5 → yellow (average), else gray. FIP is NOT shown in the play card or player card explanation prose (removed — not a SimScore component).
+
+**NHL player prop explanation** (play card + player card, both locations): single prose block — SimScore badge inline at end (no separate row, no checkboxes). SimScore tooltip on hover shows component breakdown: `SA ±X: N/3`, `TOI Xm: N/4`, `GAA #X: N/2`, `Rested/B2B: N/2`, `Edge ±X%: N/3`.
 
 **Total play cards** (MLB/NBA/NHL game totals): single prose block only — no separate SimScore row. SimScore badge appended inline at the end of the prose with `verticalAlign:"middle"`.
 
-**SimScore checkbox helpers (player prop cards only):**
-- MLB: `mk(meets, pts, label)` → `✓/✗ label(pts)` — no spaces around checkmark
+**SimScore checkbox helpers (NBA player prop cards only):**
 - NBA: `mkGate(meets, pts, label)` → `✓/✗ label (pts)` — spaces, `whiteSpace:"nowrap"` per item
 
 **Edge gate color (all sports):**
@@ -944,7 +945,7 @@ The `poly:totals:{date}` cache (300s TTL) can be populated with pre-game Polymar
 ### "Platoon prose shows no stat to explain the advantage/disadvantage"
 **Root cause**: The platoon prose showed "Platoon disadvantage vs LHP" with no numbers — users couldn't see why the model flagged it or how severe the disadvantage was.
 
-**Fix**: Added `hitterSplitBA: _splitBA` to the play output (`_hlCommon` and plays push in `api/[...path].js`). The prose now shows the actual split BA: "Platoon disadvantage vs LHP (.229 vs LHP, .281 season)" — both the split and season BA are shown so the severity is clear.
+**Fix**: Added `hitterSplitBA: _splitBA` to the play output (`_hlCommon` and plays push in `api/[...path].js`). The prose now highlights the split BA stat instead of the label words — "Hits `.229` vs LHP — platoon disadvantage (`.281` season)". The split BA is colored red (disadvantage) or green (edge); season BA neutral. Label text is always gray (`#8b949e`). Sentence structure: `Hits [splitBA] vs [hand] — platoon [edge|disadvantage][( [seasonBA] season)].`
 
 ### "Mock plays disappear a few seconds after toggling mock on"
 **Root cause**: Race condition — toggling mock while an in-flight API fetch was pending. The `useEffect` set mock plays immediately, but when the stale fetch resolved, its `.then()` callback still fired and overwrote mock plays with API data.
