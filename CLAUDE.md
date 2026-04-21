@@ -563,6 +563,17 @@ tierColor(pct): >= 80% → #3fb950 (green), >= 65% → #e3b341 (yellow), else #f
 
 **No hardcoded fallbacks** — if `JWT_SECRET` is missing, auth routes return 500. If `ADMIN_KEY` is missing, all admin endpoints return 403 (fail-closed). After adding or rotating either variable, redeploy.
 
+**Critical: all env vars must be wired through `process.env` in the `handler` function** at the bottom of `api/[...path].js`. The Vercel Edge handler builds an explicit `env` object and passes it to `worker_default.fetch` — env vars set in Vercel are NOT automatically available on `env`. If you add a new env var, add it here too:
+```js
+const env = {
+  UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
+  UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
+  JWT_SECRET: process.env.JWT_SECRET,
+  ADMIN_KEY: process.env.ADMIN_KEY,
+};
+```
+Symptom of a missing wire-up: `env?.VAR` is `undefined` inside the handler even though the Vercel dashboard shows the var is set. For JWT_SECRET specifically: `TextEncoder.encode(undefined)` = 0 bytes → `"Imported HMAC key length (0)"` 500 error on login.
+
 ---
 
 ## Testing
