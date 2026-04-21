@@ -480,13 +480,13 @@ Both play cards and player cards show an explanation block (`background:"#0d1117
 
 **MLB hitter (HRR) explanation prose order** (play card + player card, both locations):
 1. BA tier + batting spot
-2. Pitcher name — WHIP (color: >1.35 green/"a lot of baserunners" earns 3pts, >1.20 neutral `#c9d1d9`/"some traffic on base" earns 0pts, ≤1.20 red/"keeps the bases clean" earns 0pts — SimScore gate is binary >1.35 only, so yellow is NOT used for the middle tier; neutral avoids implying points were earned) — FIP (color: >4.5 green/"hittable pitcher", >3.5 yellow/"average pitcher", else gray — absolute tiers, NOT vs ERA)
+2. Pitcher name — WHIP only shown when `whip > 1.35` (earns 3pts, green, "a lot of baserunners"); suppressed when ≤ 1.35 (scores 0) to avoid cluttering with non-contributing stats — FIP (color: >4.5 green/"hittable pitcher", >3.5 yellow/"average pitcher", else gray — absolute tiers, NOT vs ERA). Entire pitcher sentence omitted if no pitcher name AND whip ≤ 1.35 AND no FIP.
 3. Season rate + soft rate (vs pitcher H2H or vs team)
-4. ERA rank / no-H2H context (from `play.oppRank`)
+4. ERA rank / no-H2H context — **only shown when `softPct === null` (no H2H data)**. When H2H exists, the soft rate already explains the matchup. ERA rank color is `#c9d1d9` (neutral, not bold red) since it's contextual, not a SimScore component.
 5. Park factor (when |pf − 1.0| ≥ 0.03)
 6. Game total (color: ≥9.5 green, ≥7.5 yellow, <7.5 gray)
 7. Barrel rate (color: ≥14% green/"elite hard contact", ≥10% yellow/"strong contact quality", ≥7% gray/"average contact", <7% dim — from `hitterBarrelPct`)
-8. Platoon edge/disadvantage: green "Platoon edge vs RHP/LHP" when `hitterPlatoonPts === 2`; red "Platoon disadvantage vs RHP/LHP" when `=== 0`; silent when 1pt (neutral/abstain)
+8. Platoon edge/disadvantage: includes actual split BA — "Platoon edge vs RHP (.310 vs RHP)" or "Platoon disadvantage vs LHP (.229 vs LHP, .281 season)". Silent when 1pt (neutral/abstain). `hitterSplitBA` field added to play output.
 9. SimScore badge inline
 
 **FIP color rule (MLB hitters only):** Uses absolute pitcher quality tiers — FIP > 4.5 → green (bad pitcher, batter-favorable), FIP > 3.5 → yellow (average), else gray. The old ERA-comparison logic (`fip > era + 0.3 → green`) was wrong: it colored a 5.52 FIP red if ERA was higher, even though any FIP above 4.5 is hittable. Same tiers apply in the market report FIP column.
@@ -504,7 +504,7 @@ Both play cards and player cards show an explanation block (`background:"#0d1117
 
 **Player card explanation** uses the same structure. Data sources by sport:
 - MLB strikeouts: `h2h` object built from `tonightPlayerMap` (includes `edge`, `kpctMeets`, `kpctPts`, `kbbMeets`, `lkpMeets`, `pitchesPts`, `mlPts`, `parkMeets`)
-- MLB hitters: `tonightHitPlay = Object.values(tonightPlayerMap).find(p => p.stat === safeTab)` (includes `hitterBa`, `hitterLineupSpot`, `pitcherWHIP`, `pitcherFIP`, `hitterWhipMeets`, `hitterPlatoonPts`, `hitterParkMeets`, `hitterBarrelPct`, `hitterBarrelPts`, `hitterPlatoonPts`, `oppPitcherHand`, `edge`)
+- MLB hitters: `tonightHitPlay = Object.values(tonightPlayerMap).find(p => p.stat === safeTab)` (includes `hitterBa`, `hitterLineupSpot`, `pitcherWHIP`, `pitcherFIP`, `hitterWhipMeets`, `hitterPlatoonPts`, `hitterSplitBA`, `hitterParkMeets`, `hitterBarrelPct`, `hitterBarrelPts`, `oppPitcherHand`, `edge`)
 - NBA: `tonightTabPlay` (includes `nbaOpportunity`, `nbaPaceAdj`, `isB2B`, `nbaSimScore`, `posDvpRank`, `posDvpValue`, `softPct`, `seasonPct`, `edge`)
 
 **NBA DVP / softPct color logic** (play card + player card explanation, both locations):
@@ -933,6 +933,23 @@ The `poly:totals:{date}` cache (300s TTL) can be populated with pre-game Polymar
 **Root cause**: `whipColor` used a 3-tier scale (>1.35 green, >1.20 yellow, ≤1.20 red) but the SimScore formula is binary — only >1.35 earns 3pts, everything else earns 0pts. A WHIP of 1.32 rendered yellow, implying 2nd-tier points, while the SimScore tooltip correctly showed 0/3.
 
 **Fix**: changed middle tier from `#e3b341` (yellow) to `#c9d1d9` (neutral). Yellow is now reserved exclusively for tiers that actually earn SimScore points. The descriptive text ("some traffic on base") still provides informational context in gray.
+
+**Further fix**: WHIP is now only shown in the pitcher sentence when `whip > 1.35` (earns 3pts). When WHIP ≤ 1.35 (scores 0), it is suppressed from the prose entirely — users can see WHIP: 0/3 in the SimScore tooltip. This keeps the explanation focused on contributing factors.
+
+### "ERA rank sentence dominates HRR card even when H2H data exists"
+**Root cause**: The `oppRank` sentence ("LAA ranks 5th-worst in ERA allowed") fired whenever `play.oppRank` was present, regardless of whether H2H soft rate was already available. This was visually misleading — ERA is NOT a SimScore component, but got a prominent bold sentence while WHIP (an actual SimScore component) was suppressed to a sub-clause.
+
+**Fix**: ERA rank sentence now only renders when `play.softPct === null` (no H2H data). When H2H data exists, the soft rate sentence already explains the matchup — the ERA rank sentence is redundant and confusing. The rank color was also changed from `#f78166` (red) to `#c9d1d9` (neutral) since ERA rank is contextual, not scored.
+
+### "Platoon prose shows no stat to explain the advantage/disadvantage"
+**Root cause**: The platoon prose showed "Platoon disadvantage vs LHP" with no numbers — users couldn't see why the model flagged it or how severe the disadvantage was.
+
+**Fix**: Added `hitterSplitBA: _splitBA` to the play output (`_hlCommon` and plays push in `api/[...path].js`). The prose now shows the actual split BA: "Platoon disadvantage vs LHP (.229 vs LHP, .281 season)" — both the split and season BA are shown so the severity is clear.
+
+### "Mock plays disappear a few seconds after toggling mock on"
+**Root cause**: Race condition — toggling mock while an in-flight API fetch was pending. The `useEffect` set mock plays immediately, but when the stale fetch resolved, its `.then()` callback still fired and overwrote mock plays with API data.
+
+**Fix**: Added `let cancelled = false` flag + `return () => { cancelled = true; }` cleanup to the `useEffect`. The `.then()` and `.catch()` callbacks guard with `if (cancelled) return` before setting any state.
 
 ### "Mock player card shows broken headshot image"
 **Root cause**: `MOCK_PLAYS` entry used the MLB Stats API player ID (6-digit, e.g. `660271` for Shohei) instead of the ESPN player ID. `navigateToPlay` passes `play.playerId` as `player.id`, which is used to build the ESPN headshot URL (`a.espncdn.com/i/headshots/mlb/players/full/{id}.png`). MLB Stats API IDs are not ESPN IDs and produce a broken image.

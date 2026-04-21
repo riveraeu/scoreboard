@@ -1281,11 +1281,13 @@ function App() {
       setTonightLoading(false);
       return;
     }
+    let cancelled = false;
     setTonightLoading(true);
     fetch(`${WORKER}/tonight`)
       .then(r => r.json())
-      .then(data => { const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore > 10) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore > 10))); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); setTonightLoading(false); })
-      .catch(() => { setAllTonightPlays([]); setNbaDropped([]); setTonightPlays([]); setTonightLoading(false); });
+      .then(data => { if (cancelled) return; const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore > 10) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore > 10))); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); setTonightLoading(false); })
+      .catch(() => { if (cancelled) return; setAllTonightPlays([]); setNbaDropped([]); setTonightPlays([]); setTonightLoading(false); });
+    return () => { cancelled = true; };
   }, [testMode]);
 
   const bustCache = () => {
@@ -2828,16 +2830,23 @@ function App() {
                                   : <>{first}</>
                                 }
                                 {lineupSpot != null && <>, batting <span style={{color:spotColor,fontWeight:600}}>#{lineupSpot}</span>{spotDesc ? <span style={{color:"#8b949e"}}> — {spotDesc}</span> : ""}</>}.
-                                {(pitcherName || whip != null) && (
-                                  <>{" "}Facing{pitcherName ? <> <span style={{color:"#c9d1d9",fontWeight:600}}>{pitcherName}</span></> : " the opposing starter"}{whip != null ? <> — WHIP <span style={{color:whipColor,fontWeight:600}}>{whip}</span>{whipDesc ? <span style={{color:"#8b949e"}}> ({whipDesc})</span> : ""}</> : ""}{fip != null ? <>, FIP <span style={{color:fipColor,fontWeight:600}}>{fip}</span>{fipDesc ? <span style={{color:"#8b949e"}}> ({fipDesc})</span> : ""}</> : ""}.</>
+                                {(pitcherName || (whip != null && whip > 1.35) || fip != null) && (
+                                  <>{" "}Facing{pitcherName ? <> <span style={{color:"#c9d1d9",fontWeight:600}}>{pitcherName}</span></> : " the opposing starter"}{whip != null && whip > 1.35 ? <> — WHIP <span style={{color:whipColor,fontWeight:600}}>{whip}</span><span style={{color:"#8b949e"}}> (a lot of baserunners)</span></> : ""}{fip != null ? <>, FIP <span style={{color:fipColor,fontWeight:600}}>{fip}</span>{fipDesc ? <span style={{color:"#8b949e"}}> ({fipDesc})</span> : ""}</> : ""}.</>
                                 )}
                                 {seasonPct != null && <>{" "}{first} has gone {threshold}+ {statFull} in <span style={{color:seasonColor,fontWeight:600}}>{seasonPct}%</span> of games {seasonWindow}{seasonG ? <span style={{color:"#484f58",fontSize:10}}> ({seasonG}g)</span> : ""}</>}
                                 {softPct != null ? <>, and <span style={{color:"#3fb950",fontWeight:600}}>{softPct}%</span> {tonightHitPlay?.hitterSoftLabel ?? "against weak pitching matchups"}{tonightHitPlay?.softGames ? <span style={{color:"#484f58",fontSize:10}}> ({tonightHitPlay.softGames}g)</span> : ""}.</> : seasonPct != null ? "." : ""}
+                                {tonightHitPlay?.oppRank && softPct === null && (() => {
+                                  const _opp2 = <span style={{color:"#c9d1d9",fontWeight:600}}>{tonightHitPlay.opponent}</span>;
+                                  const _rank2 = <span style={{color:"#c9d1d9",fontWeight:600}}>{ordinal(tonightHitPlay.oppRank)}-worst</span>;
+                                  const _metricStr2 = tonightHitPlay.oppMetricValue ? ` (${tonightHitPlay.oppMetricValue} ${tonightHitPlay.oppMetricUnit || ""})` : "";
+                                  const _ctx2 = {"mlb|hits":"one of the easiest pitching matchups in the league — their staff has a high ERA this season","mlb|hrr":"one of the easiest pitching matchups in the league — their staff allows hits, runs, and RBIs at a high rate"}[`mlb|${safeTab}`] || "one of the weakest defenses for this stat";
+                                  return <>{" "}{_opp2} ranks {_rank2} in {tonightHitPlay.oppMetricLabel || "this stat"}{_metricStr2} this season — {_ctx2}.{<>{" "}No head-to-head history yet{tonightHitPlay.pct25 != null && tonightHitPlay.pct25Games >= 5 ? <> — was at <span style={{color:"#c9d1d9"}}>{tonightHitPlay.pct25}%</span> in {tonightHitPlay.pct25Games} games in 2025</> : ""}.</>}</>;
+                                })()}
                                 {pf != null && Math.abs(pf - 1.0) >= 0.03 && <>{" "}Tonight's venue is {pf > 1 ? "hitter-friendly" : "pitcher-friendly"} (<span style={{color:"#8b949e"}}>{pf > 1 ? "+" : ""}{((pf-1)*100).toFixed(0)}% park factor</span>).</>}
                                 {hitterGameTotal != null && <>{" "}<span style={{color:"#8b949e"}}>Game total </span><span style={{color:hitterTotalColor(hitterGameTotal),fontWeight:600}}>{hitterGameTotal}</span><span style={{color:"#8b949e"}}>{hitterGameTotal >= 9.5 ? " — a high-scoring game, favorable for hitting" : hitterGameTotal >= 7.5 ? " — an average total" : " — a low-scoring game, tougher for hitters"}.</span></>}
                                 {barrelPct != null && <>{" "}<span style={{color:"#8b949e"}}>Barrel rate </span><span style={{color:barrelColor,fontWeight:600}}>{barrelPct.toFixed(1)}%</span><span style={{color:"#484f58"}}>{barrelPct >= 14 ? " — elite hard contact" : barrelPct >= 10 ? " — strong contact quality" : barrelPct >= 7 ? " — average contact" : " — below-average contact"}.</span></>}
-                                {platoonPts === 2 && pitcherHand && <>{" "}<span style={{color:"#3fb950",fontWeight:600}}>Platoon edge</span><span style={{color:"#8b949e"}}> vs {pitcherHand === "R" ? "RHP" : "LHP"}.</span></>}
-                                {platoonPts === 0 && pitcherHand && <>{" "}<span style={{color:"#f78166",fontWeight:600}}>Platoon disadvantage</span><span style={{color:"#8b949e"}}> vs {pitcherHand === "R" ? "RHP" : "LHP"}.</span></>}
+                                {platoonPts === 2 && pitcherHand && (() => { const splitBA = tonightHitPlay?.hitterSplitBA; const splitStr = splitBA != null ? ` (.${Math.round(splitBA*1000).toString().padStart(3,"0")} vs ${pitcherHand === "R" ? "RHP" : "LHP"})` : ""; return <>{" "}<span style={{color:"#3fb950",fontWeight:600}}>Platoon edge</span><span style={{color:"#8b949e"}}> vs {pitcherHand === "R" ? "RHP" : "LHP"}{splitStr}.</span></>; })()}
+                                {platoonPts === 0 && pitcherHand && (() => { const splitBA = tonightHitPlay?.hitterSplitBA; const seasonBA = tonightHitPlay?.hitterBa; const splitStr = splitBA != null ? ` (.${Math.round(splitBA*1000).toString().padStart(3,"0")} vs ${pitcherHand === "R" ? "RHP" : "LHP"}${seasonBA != null ? `, .${Math.round(seasonBA*1000).toString().padStart(3,"0")} season` : ""})` : ""; return <>{" "}<span style={{color:"#f78166",fontWeight:600}}>Platoon disadvantage</span><span style={{color:"#8b949e"}}> vs {pitcherHand === "R" ? "RHP" : "LHP"}{splitStr}.</span></>; })()}
                                 {sc != null && <>{" "}<span title={scTitle} style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,cursor:"default",verticalAlign:"middle"}}>{sc}/14 {sc>=11?"Alpha":"Mid"}</span></>}
                               </div>
                             </>
@@ -4004,23 +4013,23 @@ function App() {
                                   : <>{first}</>
                                 }
                                 {lineupSpot != null && <>, batting <span style={{color:spotColor,fontWeight:600}}>#{lineupSpot}</span>{spotDesc ? <span style={{color:"#8b949e"}}> — {spotDesc}</span> : ""}</>}.
-                                {(pitcherName || whip != null) && (
-                                  <> Facing{pitcherName ? <> <span style={{color:"#c9d1d9",fontWeight:600}}>{pitcherName}</span>{ab ? <span style={{color:"#484f58",fontSize:10}}> ({ab} career AB)</span> : ""}</> : " the opposing starter"}{whip != null ? <> — WHIP <span style={{color:whipColor,fontWeight:600}}>{whip.toFixed(2)}</span>{whipDesc ? <span style={{color:"#8b949e"}}> ({whipDesc})</span> : ""}</> : ""}{fip != null ? <>, FIP <span style={{color:fipColor,fontWeight:600}}>{fip.toFixed(2)}</span>{fipDesc ? <span style={{color:"#484f58",fontSize:10}}> ({fipDesc})</span> : ""}</> : ""}.</>
+                                {(pitcherName || (whip != null && whip > 1.35) || fip != null) && (
+                                  <> Facing{pitcherName ? <> <span style={{color:"#c9d1d9",fontWeight:600}}>{pitcherName}</span>{ab ? <span style={{color:"#484f58",fontSize:10}}> ({ab} career AB)</span> : ""}</> : " the opposing starter"}{whip != null && whip > 1.35 ? <> — WHIP <span style={{color:whipColor,fontWeight:600}}>{whip.toFixed(2)}</span><span style={{color:"#8b949e"}}> (a lot of baserunners)</span></> : ""}{fip != null ? <>, FIP <span style={{color:fipColor,fontWeight:600}}>{fip.toFixed(2)}</span>{fipDesc ? <span style={{color:"#484f58",fontSize:10}}> ({fipDesc})</span> : ""}</> : ""}.</>
                                 )}
                                 {" "}{first} has gone {play.threshold}+ {statFull} in <span style={{color:seasonColor,fontWeight:600}}>{play.seasonPct}%</span> of games {seasonWindow}{seasonG ? <span style={{color:"#484f58",fontSize:10}}> ({seasonG}g)</span> : ""}
                                 {play.softPct != null ? <>, and <span style={{color:"#3fb950",fontWeight:600}}>{play.softPct}%</span> {play.hitterSoftLabel ?? "against weak pitching matchups"}{play.softGames ? <span style={{color:"#484f58",fontSize:10}}> ({play.softGames}g)</span> : ""}</> : ""}.
-                                {play.oppRank && (() => {
+                                {play.oppRank && play.softPct === null && (() => {
                                   const _opp2 = <span style={{color:"#c9d1d9",fontWeight:600}}>{play.opponent}</span>;
-                                  const _rank2 = <span style={{color:"#f78166",fontWeight:700}}>{ordinal(play.oppRank)}-worst</span>;
+                                  const _rank2 = <span style={{color:"#c9d1d9",fontWeight:600}}>{ordinal(play.oppRank)}-worst</span>;
                                   const _metricStr2 = play.oppMetricValue ? ` (${play.oppMetricValue} ${play.oppMetricUnit || ""})` : "";
                                   const _ctx2 = {"mlb|hits":"one of the easiest pitching matchups in the league — their staff has a high ERA this season","mlb|hrr":"one of the easiest pitching matchups in the league — their staff allows hits, runs, and RBIs at a high rate"}[`${play.sport}|${play.stat}`] || "one of the weakest defenses for this stat";
-                                  return <>{" "}{_opp2} ranks {_rank2} in {play.oppMetricLabel || "this stat"}{_metricStr2} this season — {_ctx2}.{play.softPct === null && <>{" "}No head-to-head history vs {_opp2} yet{play.pct25 != null && play.pct25Games >= 5 ? <> — was at <span style={{color:"#c9d1d9"}}>{play.pct25}%</span> in {play.pct25Games} games in 2025</> : ""}.</>}</>;
+                                  return <>{" "}{_opp2} ranks {_rank2} in {play.oppMetricLabel || "this stat"}{_metricStr2} this season — {_ctx2}.{<>{" "}No head-to-head history yet{play.pct25 != null && play.pct25Games >= 5 ? <> — was at <span style={{color:"#c9d1d9"}}>{play.pct25}%</span> in {play.pct25Games} games in 2025</> : ""}.</>}</>;
                                 })()}
                                 {pf != null && Math.abs(pf - 1.0) >= 0.03 && <>{" "}Tonight's venue is {pf > 1 ? "hitter-friendly" : "pitcher-friendly"} (<span style={{color:"#8b949e"}}>{pf > 1 ? "+" : ""}{((pf-1)*100).toFixed(0)}% park factor</span>).</>}
                                 {hitterGameTotal != null && <>{" "}<span style={{color:"#8b949e"}}>Game total </span><span style={{color:hitterTotalColor(hitterGameTotal),fontWeight:600}}>{hitterGameTotal}</span><span style={{color:"#8b949e"}}>{hitterGameTotal >= 9.5 ? " — a high-scoring game, favorable for hitting" : hitterGameTotal >= 7.5 ? " — an average total" : " — a low-scoring game, tougher for hitters"}.</span></>}
                                 {barrelPct != null && <>{" "}<span style={{color:"#8b949e"}}>Barrel rate </span><span style={{color:barrelColor,fontWeight:600}}>{barrelPct.toFixed(1)}%</span><span style={{color:"#484f58"}}>{barrelPct >= 14 ? " — elite hard contact" : barrelPct >= 10 ? " — strong contact quality" : barrelPct >= 7 ? " — average contact" : " — below-average contact"}.</span></>}
-                                {platoonPts === 2 && pitcherHand && <>{" "}<span style={{color:"#3fb950",fontWeight:600}}>Platoon edge</span><span style={{color:"#8b949e"}}> vs {pitcherHand === "R" ? "RHP" : "LHP"}.</span></>}
-                                {platoonPts === 0 && pitcherHand && <>{" "}<span style={{color:"#f78166",fontWeight:600}}>Platoon disadvantage</span><span style={{color:"#8b949e"}}> vs {pitcherHand === "R" ? "RHP" : "LHP"}.</span></>}
+                                {platoonPts === 2 && pitcherHand && (() => { const splitBA = play.hitterSplitBA; const splitStr = splitBA != null ? ` (.${Math.round(splitBA*1000).toString().padStart(3,"0")} vs ${pitcherHand === "R" ? "RHP" : "LHP"})` : ""; return <>{" "}<span style={{color:"#3fb950",fontWeight:600}}>Platoon edge</span><span style={{color:"#8b949e"}}> vs {pitcherHand === "R" ? "RHP" : "LHP"}{splitStr}.</span></>; })()}
+                                {platoonPts === 0 && pitcherHand && (() => { const splitBA = play.hitterSplitBA; const seasonBA = play.hitterBa; const splitStr = splitBA != null ? ` (.${Math.round(splitBA*1000).toString().padStart(3,"0")} vs ${pitcherHand === "R" ? "RHP" : "LHP"}${seasonBA != null ? `, .${Math.round(seasonBA*1000).toString().padStart(3,"0")} season` : ""})` : ""; return <>{" "}<span style={{color:"#f78166",fontWeight:600}}>Platoon disadvantage</span><span style={{color:"#8b949e"}}> vs {pitcherHand === "R" ? "RHP" : "LHP"}{splitStr}.</span></>; })()}
                                 {sc != null && <>{" "}<span title={scTitle} style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,cursor:"default",verticalAlign:"middle"}}>{sc}/14 {sc>=11?"Alpha":"Mid"}</span></>}
                               </div>
                             </div>

@@ -2467,7 +2467,7 @@ var worker_default = {
           let hitterLineupSpot = null, hitterWhipMeets = null, hitterFipMeets = null, hitterParkMeets = null;
           let pitcherWHIP = null, pitcherFIP = null, pitcherBAA = null;
           let hitterParkKF = null, hitterMoneyline = null, hitterBarrelPct = null;
-          let hitterBarrelPts = null, hitterTotalPts = null, hitterGameTotal = null, hitterPlatoonPts = null, hitterOppPitcherHand = null;
+          let hitterBarrelPts = null, hitterTotalPts = null, hitterGameTotal = null, hitterPlatoonPts = null, hitterOppPitcherHand = null, hitterSplitBA = null;
           if (sport === "mlb" && stat !== "strikeouts") {
             const hitterML = sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null;
             const hIdx2 = gl.ul.indexOf("H");
@@ -2544,6 +2544,7 @@ var worker_default = {
             const _bsEntry = _bsMap[_bsKey] ?? _bsMap[_brlNorm(playerNameDisplay)] ?? null;
             const _splitBA = _oppPitcherHand === "R" ? (_bsEntry?.vsR ?? null) : _oppPitcherHand === "L" ? (_bsEntry?.vsL ?? null) : null;
             const _splitBAPA = _oppPitcherHand === "R" ? (_bsEntry?.vsRPA ?? 0) : _oppPitcherHand === "L" ? (_bsEntry?.vsLPA ?? 0) : 0;
+            hitterSplitBA = _splitBA;
             // Platoon advantage: batter hits better vs this hand (or: batter is opposite hand to pitcher)
             // Simplified: if batter has a valid split BA vs this pitcher's hand, compare vs season BA
             // and award pts for platoon edge. No hand data → abstain (1pt).
@@ -2579,7 +2580,7 @@ var worker_default = {
               + hitterTotalPts;
             const _hlPitcherName = sportByteam.mlb?.probables?.[tonightOpp]?.name ?? null;
             const _hlML = hitterML;
-            const _hlCommon = { opponent: tonightOpp, pitcherName: _hlPitcherName, seasonPct: _hlSeasonPct, softPct: _hlSoftPct, truePct: _hlTruePct, edge: _hlEdge, pitcherEra: _hlEra, moneyline: _hlML, hitterBa, hitterBaTier, abVsTeam: hitterAbVsPitcher, hitterLineupSpot, pitcherWHIP, pitcherFIP, hitterSimScore, hitterParkKF, hitterMoneyline, hitterBarrelPct, hitterBarrelPts, hitterTotalPts, hitterGameTotal, hitterPlatoonPts, oppPitcherHand: _oppPitcherHand };
+            const _hlCommon = { opponent: tonightOpp, pitcherName: _hlPitcherName, seasonPct: _hlSeasonPct, softPct: _hlSoftPct, truePct: _hlTruePct, edge: _hlEdge, pitcherEra: _hlEra, moneyline: _hlML, hitterBa, hitterBaTier, abVsTeam: hitterAbVsPitcher, hitterLineupSpot, pitcherWHIP, pitcherFIP, hitterSimScore, hitterParkKF, hitterMoneyline, hitterBarrelPct, hitterBarrelPts, hitterTotalPts, hitterGameTotal, hitterPlatoonPts, oppPitcherHand: _oppPitcherHand, hitterSplitBA: _splitBA };
             // Stage 1: lineup spot 5-9 discard
             if (hitterLineupSpot !== null && hitterLineupSpot >= 5) {
               if (isDebug) dropped.push({ ..._dropBase, reason: "low_lineup_spot", hitterLineupSpot, ..._hlCommon });
@@ -3015,6 +3016,7 @@ var worker_default = {
             hitterWhipMeets: sport === "mlb" && stat !== "strikeouts" ? hitterWhipMeets : void 0,
             hitterFipMeets: sport === "mlb" && stat !== "strikeouts" ? hitterFipMeets : void 0,
             hitterPlatoonPts: sport === "mlb" && stat !== "strikeouts" ? hitterPlatoonPts : void 0,
+            hitterSplitBA: sport === "mlb" && stat !== "strikeouts" ? hitterSplitBA : void 0,
             oppPitcherHand: sport === "mlb" && stat !== "strikeouts" ? hitterOppPitcherHand : void 0,
             hitterParkMeets: sport === "mlb" && stat !== "strikeouts" ? hitterParkMeets : void 0,
             pitcherWHIP: sport === "mlb" && stat !== "strikeouts" ? pitcherWHIP : void 0,
