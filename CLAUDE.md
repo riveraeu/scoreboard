@@ -200,17 +200,17 @@ True% = Monte Carlo simulation (reuses `buildNbaStatDist` + `nbaDistPct`) — no
 - `teamDefFactor` = opp GAA / league avg GAA
 - **D3 — TOI trend**: `nhlToiTrendAdj = clamp(recent3TOI / last10TOI, 0.92, 1.08)` where recent3 is the last 3 games and last10 is the 10-game avg — applied as `miscAdj` 6th param to `buildNbaStatDist`. Only applied when ratio > 1.05 (increasing → boost up to 1.08×) or < 0.95 (decreasing → penalty down to 0.92×); else 1.0.
 - Falls back to dvp-adjusted average formula if simulation returns null
-- **SimScore** (max 11 pre-edge, 14 with edge bonus):
+- **SimScore** (max 14; edge is gate only, not scored — same pattern as NBA/MLB):
   - Shots against tiered (`nhlSaRank`): SA rank ≤ 10 → 3pts (green), SA above league avg but rank > 10 → 1pt (yellow), SA ≤ league avg → 0pts (red). `nhlSaRank` stored in play output alongside `nhlShotsAdj`.
   - Avg TOI ≥ 18 min (last 10 games) → 4pts; ≥ 15 min → 2pts
   - Opponent GAA rank ≤ 10 → 2pts
   - Not B2B → 2pts
-  - Edge ≥ 3% → 3pts (bonus, added after simulation)
+  - Player team GPG tiered (`nhlTeamGPG`): ≥ 3.5 → 3pts (green), ≥ 3.0 → 2pts, ≥ 2.5 → 1pt, < 2.5 → 0pts, null → 1pt (abstain). Stored as `nhlTeamGPG` in play output.
 - nSim scales with pre-edge simScore: ≥8 → 10k, ≥5 → 5k, else 2k
 - **B2B** detection: same as NBA — checks if last gamelog event was yesterday (UTC)
 - TOI from ESPN gamelog `TOI` or `timeOnIce` column; parsed as `MM:SS` or decimal minutes
 - Shots against rank from NHL API `shotsAgainstPerGame`, stored in `nhlSaRankMap`, league avg in `nhlLeagueAvgSa`
-- **Gate**: edge ≥ 5% (no backend soft team gate — all NHL markets enter play loop)
+- **Gate**: edge ≥ 5%; nhlSimScore ≥ 11 (Alpha tier) — no soft team pre-filter (all NHL markets enter play loop)
 
 ### NFL
 - **Stats**: `passingYards`, `rushingYards`, `receivingYards`, `receptions`, `completions`, `attempts`
@@ -497,7 +497,7 @@ Both play cards and player cards show an explanation block (`background:"#0d1117
 
 **FIP color rule (market report only):** FIP column in market report still uses absolute tiers — FIP > 4.5 → green (bad pitcher, batter-favorable), FIP > 3.5 → yellow (average), else gray. FIP is NOT shown in the play card or player card explanation prose (removed — not a SimScore component).
 
-**NHL player prop explanation** (play card + player card, both locations): single prose block — SimScore badge inline at end (no separate row, no checkboxes). SimScore tooltip on hover shows component breakdown: `SA ±X: N/3`, `TOI Xm: N/4`, `GAA #X: N/2`, `Rested/B2B: N/2`, `Edge ±X%: N/3`.
+**NHL player prop explanation** (play card + player card, both locations): single prose block — SimScore badge inline at end (no separate row, no checkboxes). SimScore tooltip on hover shows component breakdown: `SA ±X: N/3`, `TOI Xm: N/4`, `GAA #X: N/2`, `Rested/B2B: N/2`, `Team GPG X.X: N/3`.
 
 **Total play cards** (MLB/NBA/NHL game totals): single prose block only — no separate SimScore row. SimScore badge appended inline at the end of the prose with `verticalAlign:"middle"`.
 

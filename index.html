@@ -2974,7 +2974,9 @@ function App() {
                             const _nhlToiPts = nhlOpportunity != null && nhlOpportunity >= 18 ? 4 : nhlOpportunity != null && nhlOpportunity >= 15 ? 2 : 0;
                             const _nhlGaaPts = rank != null && rank <= 10 ? 2 : 0;
                             const _nhlRestPts = nhlIsB2B != null && !nhlIsB2B ? 2 : 0;
-                            const scTitle = sc != null ? [`SA ${nhlShotsAdj != null ? (nhlShotsAdj > 0 ? "+" : "") + nhlShotsAdj : "—"}: ${_nhlSaPts}/3`, `TOI ${nhlOpportunity != null ? nhlOpportunity.toFixed(0) + "m" : "—"}: ${_nhlToiPts}/4`, `GAA #${rank ?? "—"}: ${_nhlGaaPts}/2`, `${nhlIsB2B ? "B2B" : "Rested"}: ${_nhlRestPts}/2`, edge != null ? `Edge ${edge > 0 ? "+" : ""}${edge}%: ${edge >= 3 ? 3 : 0}/3` : null].filter(Boolean).join("\n") : null;
+                            const nhlTeamGPG = tonightTabPlay?.nhlTeamGPG ?? null;
+                            const _nhlGpgPts = nhlTeamGPG == null ? 1 : nhlTeamGPG >= 3.5 ? 3 : nhlTeamGPG >= 3.0 ? 2 : nhlTeamGPG >= 2.5 ? 1 : 0;
+                            const scTitle = sc != null ? [`SA ${nhlShotsAdj != null ? (nhlShotsAdj > 0 ? "+" : "") + nhlShotsAdj : "—"}: ${_nhlSaPts}/3`, `TOI ${nhlOpportunity != null ? nhlOpportunity.toFixed(0) + "m" : "—"}: ${_nhlToiPts}/4`, `GAA #${rank ?? "—"}: ${_nhlGaaPts}/2`, `${nhlIsB2B ? "B2B" : "Rested"}: ${_nhlRestPts}/2`, `Team GPG ${nhlTeamGPG != null ? nhlTeamGPG.toFixed(1) : "—"}: ${_nhlGpgPts}/3`].join("\n") : null;
                             return (
                               <>
                                 <div>
@@ -4108,7 +4110,8 @@ function App() {
                           const _nhlToiPts = play.nhlOpportunity != null && play.nhlOpportunity >= 18 ? 4 : play.nhlOpportunity != null && play.nhlOpportunity >= 15 ? 2 : 0;
                           const _nhlGaaPts = play.oppRank != null && play.oppRank <= 10 ? 2 : 0;
                           const _nhlRestPts = play.isB2B != null && !play.isB2B ? 2 : 0;
-                          const scTitle = sc != null ? [`SA ${play.nhlShotsAdj != null ? (play.nhlShotsAdj > 0 ? "+" : "") + play.nhlShotsAdj : "—"}: ${_nhlSaPts}/3`, `TOI ${play.nhlOpportunity != null ? play.nhlOpportunity.toFixed(0) + "m" : "—"}: ${_nhlToiPts}/4`, `GAA #${play.oppRank ?? "—"}: ${_nhlGaaPts}/2`, `${play.isB2B ? "B2B" : "Rested"}: ${_nhlRestPts}/2`, play.edge != null ? `Edge ${play.edge > 0 ? "+" : ""}${play.edge}%: ${play.edge >= 3 ? 3 : 0}/3` : null].filter(Boolean).join("\n") : null;
+                          const _nhlGpgPts2 = play.nhlTeamGPG == null ? 1 : play.nhlTeamGPG >= 3.5 ? 3 : play.nhlTeamGPG >= 3.0 ? 2 : play.nhlTeamGPG >= 2.5 ? 1 : 0;
+                          const scTitle = sc != null ? [`SA ${play.nhlShotsAdj != null ? (play.nhlShotsAdj > 0 ? "+" : "") + play.nhlShotsAdj : "—"}: ${_nhlSaPts}/3`, `TOI ${play.nhlOpportunity != null ? play.nhlOpportunity.toFixed(0) + "m" : "—"}: ${_nhlToiPts}/4`, `GAA #${play.oppRank ?? "—"}: ${_nhlGaaPts}/2`, `${play.isB2B ? "B2B" : "Rested"}: ${_nhlRestPts}/2`, `Team GPG ${play.nhlTeamGPG != null ? play.nhlTeamGPG.toFixed(1) : "—"}: ${_nhlGpgPts2}/3`].join("\n") : null;
                           return (
                             <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.65}}>
                               <div>

@@ -2625,7 +2625,7 @@ var worker_default = {
             nbaSimPctOut = nbaDistPct(nbaPlayerDistCache[_nbaDistKey], threshold);
           }
           // NHL: pre-edge SimScore + Monte Carlo simulation (same normal-distribution approach as NBA)
-          let nhlSimPctOut = null, nhlPreSimScore = null, nhlShotsAdj = null, nhlOpportunity = null, nhlSaRank = null;
+          let nhlSimPctOut = null, nhlPreSimScore = null, nhlShotsAdj = null, nhlOpportunity = null, nhlSaRank = null, nhlTeamGPG = null;
           if (sport === "nhl") {
             let _sc = 0;
             // 1. Shots against — tiered: rank ≤10 → 3pts, above avg but rank >10 → 1pt, else 0
@@ -2656,6 +2656,10 @@ var worker_default = {
             if (_gaaRank !== null && _gaaRank <= 10) _sc += 2;
             // 4. Not B2B → 2pts
             if (!isB2B) _sc += 2;
+            // 5. Player team GPG — ≥3.5→3pts, ≥3.0→2pts, ≥2.5→1pt, null→1pt (abstain)
+            const _teamGPG = nhlGPGMap[playerTeam] ?? null;
+            nhlTeamGPG = _teamGPG;
+            _sc += _teamGPG == null ? 1 : _teamGPG >= 3.5 ? 3 : _teamGPG >= 3.0 ? 2 : _teamGPG >= 2.5 ? 1 : 0;
             nhlPreSimScore = _sc;
             // D3: TOI trend — compare recent 3 games TOI vs season avg (last 10).
             // If trending up (>5% more), boost mean; if trending down (>5% less), reduce.
@@ -2761,10 +2765,10 @@ var worker_default = {
           if (sport === "nba" && nbaPreSimScore !== null) {
             nbaSimScore = nbaPreSimScore;
           }
-          // NHL SimScore — finalize with edge bonus
+          // NHL SimScore — edge is a gate only (not scored), same pattern as NBA/MLB
           let nhlSimScore = null;
           if (sport === "nhl" && nhlPreSimScore !== null) {
-            nhlSimScore = nhlPreSimScore + (edge >= 5 ? 3 : 0);
+            nhlSimScore = nhlPreSimScore;
           }
           if (kalshiPct < 70 || edge < 5) {
             const _dropObj = {
@@ -2790,7 +2794,7 @@ var worker_default = {
                 hitterLineupSpot, pitcherWHIP, pitcherFIP, hitterParkKF, hitterMoneyline, hitterBarrelPct,
               } : {}),
               ...(sport === "nba" ? { nbaSimScore, nbaPreSimScore, nbaSimPct: nbaSimPctOut, nbaPaceAdj, nbaOpportunity, isB2B } : {}),
-              ...(sport === "nhl" ? { nhlSimScore, nhlPreSimScore, nhlSimPct: nhlSimPctOut, nhlShotsAdj, nhlOpportunity, isB2B } : {}),
+              ...(sport === "nhl" ? { nhlSimScore, nhlPreSimScore, nhlSimPct: nhlSimPctOut, nhlShotsAdj, nhlOpportunity, nhlTeamGPG, isB2B } : {}),
             };
             if (isDebug) dropped.push(_dropObj);
             // For MLB strikeouts: always include in plays with qualified:false so player card can
@@ -2896,6 +2900,34 @@ var worker_default = {
               softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
               truePct: parseFloat(truePct.toFixed(1)), edge: parseFloat(edge.toFixed(1)),
               nbaSimPct: nbaSimPctOut, nbaPaceAdj, nbaOpportunity, isB2B,
+            });
+            continue;
+          }
+          // NHL SimScore gate: must reach >= 11 (Alpha tier) to qualify as a play
+          if (sport === "nhl" && nhlSimScore !== null && nhlSimScore < 11) {
+            if (isDebug) dropped.push({
+              ..._dropBase,
+              reason: "low_confidence",
+              nhlSimScore, nhlPreSimScore,
+              opponent: tonightOpp,
+              seasonPct: parseFloat(primaryPct.toFixed(1)),
+              softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
+              truePct: parseFloat(truePct.toFixed(1)), edge: parseFloat(edge.toFixed(1)),
+              nhlSimPct: nhlSimPctOut, nhlShotsAdj, nhlOpportunity, nhlTeamGPG, isB2B,
+            });
+            continue;
+          }
+          // HRR SimScore gate: must reach >= 11 (Alpha tier) to qualify as a play
+          if (sport === "mlb" && stat !== "strikeouts" && hitterFinalSimScore !== null && hitterFinalSimScore < 11) {
+            if (isDebug) dropped.push({
+              ..._dropBase,
+              reason: "low_confidence",
+              hitterSimScore, hitterFinalSimScore,
+              opponent: tonightOpp,
+              seasonPct: parseFloat(primaryPct.toFixed(1)),
+              softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
+              truePct: parseFloat(truePct.toFixed(1)), edge: parseFloat(edge.toFixed(1)),
+              hitterLineupSpot, pitcherWHIP, hitterBarrelPct,
             });
             continue;
           }
@@ -3005,6 +3037,7 @@ var worker_default = {
             nhlShotsAdj: sport === "nhl" ? nhlShotsAdj : void 0,
             nhlSaRank: sport === "nhl" ? nhlSaRank : void 0,
             nhlOpportunity: sport === "nhl" ? nhlOpportunity : void 0,
+            nhlTeamGPG: sport === "nhl" ? nhlTeamGPG : void 0,
             isHomeGame,
             isB2B,
             dvpFactor: dvpFactorOut,
