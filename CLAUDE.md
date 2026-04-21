@@ -478,7 +478,7 @@ Both play cards and player cards show an explanation block (`background:"#0d1117
 
 **MLB hitter (HRR) explanation prose order** (play card + player card, both locations):
 1. BA tier + batting spot
-2. Pitcher name — WHIP (color: >1.35 green, >1.20 yellow, else gray) — FIP (color: >4.5 green/"hittable pitcher", >3.5 yellow/"average pitcher", else gray — absolute tiers, NOT vs ERA)
+2. Pitcher name — WHIP (color: >1.35 green/"a lot of baserunners" earns 3pts, >1.20 neutral `#c9d1d9`/"some traffic on base" earns 0pts, ≤1.20 red/"keeps the bases clean" earns 0pts — SimScore gate is binary >1.35 only, so yellow is NOT used for the middle tier; neutral avoids implying points were earned) — FIP (color: >4.5 green/"hittable pitcher", >3.5 yellow/"average pitcher", else gray — absolute tiers, NOT vs ERA)
 3. Season rate + soft rate (vs pitcher H2H or vs team)
 4. ERA rank / no-H2H context (from `play.oppRank`)
 5. Park factor (when |pf − 1.0| ≥ 0.03)
@@ -919,3 +919,15 @@ The `poly:totals:{date}` cache (300s TTL) can be populated with pre-game Polymar
 - Market question format: `"Ducks vs. Oilers: O/U 4.5"` (includes team names — handled by `/O\/U\s+([\d.]+)/` regex)
 - Outcomes: `["Over", "Under"]` — `_oIdx` detection by `/^over\b/i` works correctly
 - Player prop markets in the same NBA series (e.g. "Scottie Barnes: Points O/U 4.5") have `["Yes","No"]` outcomes — `_oIdx = -1` → skipped correctly
+
+### "Platoon disadvantage not showing in prose even when tooltip shows Platoon: 0/2" (fixed 779c354)
+**Root cause**: `oppPitcherHand` was never added to the final play object in the `plays[]` push (only to `_hlCommon` which is spread into `dropped[]` entries). In the frontend, the prose condition `platoonPts === 0 && pitcherHand` always failed because `play.oppPitcherHand` was `undefined` → `pitcherHand = null` (falsy).
+
+`hitterPlatoonPts === 0` requires `_oppPitcherHand !== null` to be computed (else stays at 1 abstain), so the tooltip could show `0/2` while `oppPitcherHand` was absent from the play object — the two fields came from different code paths.
+
+**Fix**: promoted `_oppPitcherHand` to `hitterOppPitcherHand` at outer scope (alongside `hitterPlatoonPts` declaration), assigned after the const inside the MLB hitter block, and added `oppPitcherHand: hitterOppPitcherHand` to the plays push (~line 3018).
+
+### "WHIP shows yellow in prose but tooltip shows 0/3" (fixed 779c354)
+**Root cause**: `whipColor` used a 3-tier scale (>1.35 green, >1.20 yellow, ≤1.20 red) but the SimScore formula is binary — only >1.35 earns 3pts, everything else earns 0pts. A WHIP of 1.32 rendered yellow, implying 2nd-tier points, while the SimScore tooltip correctly showed 0/3.
+
+**Fix**: changed middle tier from `#e3b341` (yellow) to `#c9d1d9` (neutral). Yellow is now reserved exclusively for tiers that actually earn SimScore points. The descriptive text ("some traffic on base") still provides informational context in gray.
