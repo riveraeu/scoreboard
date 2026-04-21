@@ -184,7 +184,7 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
   - Max: 3+4+2+2+3 = 14
   - Game totals from `sportByteam.nbaGameOdds` (ESPN NBA scoreboard, fetched fresh each request alongside byteam stats)
 - nSim scales with pre-edge simScore: ≥8 → 10k, ≥5 → 5k, else 2k
-- **Gate**: opp in soft DVP teams; edge ≥ 5% (gate only, not scored); **nbaSimScore ≥ 11** to qualify as a play (same Alpha tier as MLB strikeouts)
+- **Gate**: edge ≥ 5% (gate only, not scored); **nbaSimScore ≥ 11** to qualify as a play (same Alpha tier as MLB strikeouts). No soft-matchup pre-filter — all NBA markets enter the play loop regardless of opponent DVP.
 - Avg minutes still extracted from ESPN gamelog `MIN` column (last 10 games) — used for display in explanation card but no longer the SimScore component
 - Depth chart position via `nbaDepthChartPos` (ESPN depth chart API, cached daily)
 
@@ -369,7 +369,7 @@ All threshold plays that pass the edge gate (≥ 3%) are pushed to `plays[]`. Be
 ### State
 - `tonightPlays` — qualified plays from `/api/tonight`, filtered `qualified !== false`
 - `allTonightPlays` — raw (unfiltered) plays array from `/api/tonight`, includes `qualified: false` entries; used exclusively for building `tonightPlayerMap` in the player card so all strikeout thresholds get their simulation-based truePct instead of falling back to the raw formula
-- `nbaDropped` — NBA `opp_not_soft` drop entries from `/api/tonight`; used as fallback in `tonightPlayerMap` so the player card explanation shows pace/minutes/B2B/SimScore even when the matchup didn't qualify
+- `nbaDropped` — array always present in `/api/tonight` response (now always empty; previously held `opp_not_soft` drops); frontend still checks it as a fallback for `tonightPlayerMap`
 - `reportData` — full debug response from `/api/tonight?debug=1`, shown in Market Report overlay
 - `player` — currently selected player for detail card
 - `teamPage` — currently selected team `{abbr, sport}` for team page
@@ -400,7 +400,7 @@ Right side: **bust** button (calls `?bust=1`, shows "busting…" while loading) 
 ### My Picks Header
 Shows: **"My Picks"** label → total count badge → `X active · Y finished` breakdown (active = no result yet, green; finished = won/lost excluding DNP, gray). No "clear settled" button — picks are managed per-row only.
 
-**ⓘ info icon** (next to date, left side): toggles a tooltip showing universal play qualification criteria — three lines only: Implied prob ≥ 70%, Edge ≥ 3%, SimScore ≥ 11/14. No sport-specific detail. State: `showPlaysInfo`.
+**ⓘ info icon** (next to date, left side): toggles a tooltip showing universal play qualification criteria — three lines only: Implied prob ≥ 70%, Edge ≥ 5%, SimScore ≥ 11/14 (strikeouts 12/14). No sport-specific detail. State: `showPlaysInfo`.
 
 **`DayBar` — P&L bar chart** (below P&L summary, above pick cards): Each bar column renders **two independent bars**: green above the midline (total $ won) and red below (total $ lost). Both bars can appear simultaneously on a mixed day. `maxAbs = max(maxDailyWins, maxDailyLosses)` — shared scale for both directions. Tooltip shows each play's individual P&L plus a net row.
 
@@ -607,7 +607,7 @@ If truePct still looks wrong: check `?debug=1` and look in `dropped` for the mis
 The `pitcherKDistCache` shares one `Int16Array` distribution across all thresholds for a pitcher — querying it at different thresholds guarantees P(K≥4) ≥ P(K≥5) by construction. If values are identical, it likely means the distribution is flat at that range (e.g. a dominant pitcher where nearly all sims exceed both thresholds).
 
 ### "Player appears in Kalshi but not in plays or dropped"
-Check `preDropped` in `?debug=1` response. Common reasons: `no_soft_data`, `opp_not_soft`, `no_opp`, `insufficient_starts` (MLB strikeouts only).
+Check `preDropped` in `?debug=1` response. Common reasons: `no_opp`, `insufficient_starts` (MLB strikeouts only). NBA no longer has an `opp_not_soft` pre-filter — all NBA markets enter the play loop.
 
 Also check the date filter: the edge function runs UTC, so after midnight UTC (e.g. 8pm ET = midnight UTC), `gameDate:"2026-04-13"` is filtered if the server sees the next day. The cutoff is `Date.now() - 86400000` (yesterday) to handle this — but if a play was on a date 2+ days ago, it will still be filtered.
 
@@ -658,18 +658,7 @@ If 504s recur: check whether PBP block is the bottleneck (add `console.time` aro
 - Depth chart: no bust — expires daily
 
 ### "NBA report shows — for Pace/AvgMin/Rest on most rows"
-Most NBA markets are dropped at `opp_not_soft` before the pre-sim block runs. Those drop records include `isB2B`, `nbaPaceAdj`, and `nbaOpportunity` computed inline from the gamelog at that drop site. `nbaPreSimScore` and `nbaSimScore` are also computed inline at the drop site so the Score column is populated for all NBA rows (not just qualifying plays).
-
-The `opp_not_soft` prescore block mirrors the main play loop exactly: stat-appropriate C1 (USG%/3PM/APG/RPG), game total, pace with 2pt bucket for >-2, no edge bonus. If these ever diverge again, the report will show understated SimScores for dropped plays.
-
-The same computation always runs (not just in debug mode) and the results are stored in `nbaDropped[]` — included in the regular response so the player card explanation can show full context for non-qualifying NBA matchups.
-
-### "NBA player card explanation missing pace/minutes/SimScore for non-soft matchup" (fixed 159993b)
-When a player's opponent wasn't in the soft-matchup set, the play was dropped at `opp_not_soft` before the main simulation block. It had no entry in `allTonightPlays`, so `tonightTabPlay` was null — the explanation card only showed the DVP rank sentence and soft teams list, but not season hit rate, avg minutes, pace, B2B status, or SimScore.
-
-**Fix**: the `opp_not_soft` rich-data block (previously `if (isDebug)` only) now always runs. Results go into `nbaDropped[]` (always in response) and `dropped[]` (debug only). Frontend builds `tonightPlayerMap` from `allTonightPlays` first, then fills in any missing keys from `nbaDropped`.
-
-**Fields added to drop entry vs before**: `nbaGameTotal`, `nbaTotalPts`, `nbaUsage`, `nbaAvgAst`, `nbaAvgReb`, `nba3pMPG`, `seasonGames`.
+All NBA markets now go through the full simulation loop (no opp_not_soft pre-filter). Every market computes pace, C1, DVP, B2B, and game total in the main block. If most rows show `—`, the ESPN gamelog or pace data fetch likely failed for that player — check `_debug` field in dropped entries.
 
 ### "NBA 3P SimScore C1 shows — or seems wrong"
 For `threePointers`, C1 is scored on **3PM/game** from the last 10 gamelog games (`3P` column), not USG%. Check `?debug=1` → `plays[].nba3pMPG` for the raw value. If null, the gamelog has fewer than 3 valid game values — falls back to 2pt abstain. The SimScore tooltip in both play card and player card shows `3PM/g: X.X → Y/4`.
@@ -690,29 +679,9 @@ USG% is still used for `points` only. Do not confuse `nbaUsage` (points C1) with
 ### "NBA avgMin (nbaOpportunity) is null for all players"
 ESPN returns two season types that both contain "regular" in their name: `"2025-26 Play In Regular Season"` (1 game) and `"2025-26 Regular Season"` (80 games). The old `.find("regular")` took the Play-In type first — `_minVals.length = 1 < 3` gate fails → `nbaOpportunity = null`. Fix: `parseEspnGamelog` now prefers season types with "regular" that do NOT contain "play". Gamelog cache key is `gl:v2|nba|player` — if you need to re-bust, bump the version prefix.
 
-### "NBA player markets missing during playoffs — all opp_not_soft in preDropped"
+### "NBA player markets missing during playoffs" (resolved — DVP gate removed)
 
-**Symptom**: Player markets (e.g. Jokic assists, Towns rebounds) are visible on Kalshi but don't appear in the app. `?debug=1` shows 90+ NBA player props in `preDropped` with `reason: "opp_not_soft"`, zero in `nbaDropped`. All NBA "plays" are game totals only.
-
-**Why this happens in playoffs**: The pre-filter at `api/[...path].js` ~line 1635 gates NBA markets by checking two soft-team lists before fetching any player info:
-1. `softData.softTeams` — ESPN general defensive rankings (top-N teams allowing the most of a stat)
-2. `oppInPosDvp` — BettingPros position-specific DVP soft teams (ANY position)
-
-During the regular season most opponents are absent from both lists. In the playoffs, the system still works correctly because some playoff opponents ARE in position-specific DVP soft teams — e.g., MIN is rank 4 for C assists (4.6 APG allowed, ratio 1.125) and ATL is rank 5 for C rebounds (15.3 RPG, ratio 1.062). These pass the pre-filter via `oppInPosDvp`.
-
-**If all NBA markets are still in preDropped despite correct DVP data**: the most likely cause is `allPositionsDvp = null` — the BettingPros fetch failed and the `dvp:nba:all-positions` Redis cache expired. With no DVP data, `oppInPosDvp` is always falsy and only ESPN general soft teams are checked.
-
-**Diagnosis**:
-1. `GET /api/dvp/test-bp` — returns fresh BettingPros data (no cache read/write). Check `summary.C.ptsSoftTeams` etc. If it returns `{ error: "BettingPros fetch failed" }`, BettingPros is blocking.
-2. `GET /api/dvp/debug?pos=C&stat=assists&team=MIN` — reads from Redis cache. Returns `{ error: "no dvp data cached" }` if cache is cold.
-3. `GET /api/dvp/debug?pos=C&stat=rebounds&team=ATL` — verify ATL is in soft teams.
-4. If cache is cold: trigger a rebuild via `GET /api/dvp?stage=2` — queues a fresh BettingPros fetch and writes to cache.
-
-**DVP soft team reference** (confirmed 2026-04-19):
-- C assists: SAS, DAL, MEM, **MIN** (rank 4), GSW, POR, LAL, WSH, CHI, NOP
-- C rebounds: WSH, MEM, NOP, SAC, **ATL** (rank 5), GSW, DAL, UTA
-
-**`nbaDropped` not visible in `?debug=1` response**: The debug response (line ~3363) omits `nbaDropped` — it's only in the regular `/api/tonight` response (line ~3365). Use the regular endpoint to inspect `nbaDropped` counts.
+The opp_not_soft pre-filter was removed (commit 1a3357e). All NBA markets now enter the play loop unconditionally. If NBA plays are missing, check `preDropped` for `no_opp` (team extraction failed) or inspect `dropped` for `edge_too_low` / `simScore_too_low`. DVP ratio still affects SimScore (0/1/2 pts) but is no longer a gate.
 
 ### "Kalshi market visible on app but missing from our pipeline"
 

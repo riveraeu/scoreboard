@@ -1611,18 +1611,12 @@ var worker_default = {
             continue;
           }
           if (m.sport === "nhl") { preFilteredMarkets.push(m); continue; }
-          // NBA (and others) — pass through if opponent is in ESPN soft teams OR in position-DVP soft teams
-          // (position-DVP is checked per-player in the main loop; pre-filter uses ESPN as a fast gate)
+          // NBA (and others) — no soft-matchup gate; all markets enter the main loop
           const playerTeam = m.kalshiPlayerTeam;
           if (!playerTeam || !m.gameTeam1 || !m.gameTeam2) { preFilteredMarkets.push(m); continue; }
           const opp = m.gameTeam1 === playerTeam ? m.gameTeam2 : m.gameTeam2 === playerTeam ? m.gameTeam1 : null;
           if (!opp) { preDropped.push({ ...m, reason: "no_opp" }); continue; }
-          const oppInPosDvp = allPositionsDvp && Object.values(allPositionsDvp).some((posData) => {
-            const entry = posData?.rankings?.[m.stat]?.find(t => t.abbr === opp);
-            return entry && entry.ratio >= 1.02;
-          });
-          if (softData.softTeams.has(opp) || oppInPosDvp) { preFilteredMarkets.push(m); }
-          else { preDropped.push({ ...m, reason: "opp_not_soft", opponent: opp }); }
+          preFilteredMarkets.push(m);
         }
         // In debug mode, process ALL qualifying markets so every player gets a gamelog fetch and full stats
         const loopMarkets = isDebugMode ? qualifyingMarkets : preFilteredMarkets;
@@ -2006,68 +2000,7 @@ var worker_default = {
           const nbaPos = sport === "nba" ? (NBA_POS_OVERRIDES[String(info.id)] || nbaDepthChartPos?.[String(info.id)] || (info.position ? NBA_POS_MAP[info.position] || null : null)) : null;
           const nbaDvpSoftTeams = sport === "nba" && nbaPos && allPositionsDvp?.[nbaPos]?.softTeams?.[stat] ? new Set(allPositionsDvp[nbaPos].softTeams[stat]) : null;
           const nbaEffectiveSoftTeams = nbaDvpSoftTeams || (sport === "nba" ? softTeams : null);
-          if (sport === "nba") {
-            if (!nbaEffectiveSoftTeams?.has(tonightOpp)) {
-              const _osGl = playerGamelogs[`${sport}|${playerName}`];
-              const _osCol = playerColCache[`${sport}|${playerName}|${col}`];
-              const _osSeason = _osCol && _osCol.allVals.length > 0 ? parseFloat((_osCol.allVals.filter((v) => v >= threshold).length / _osCol.allVals.length * 100).toFixed(1)) : null;
-              const _osTruePct = _osSeason;
-              const _osEdge = _osSeason != null ? parseFloat((_osSeason - kalshiPct).toFixed(1)) : null;
-              const _osDvpEntry = nbaPos && allPositionsDvp?.[nbaPos]?.rankings?.[stat] ? allPositionsDvp[nbaPos].rankings[stat].find((t) => t.abbr === tonightOpp) : null;
-              const _osDvpRank = _osDvpEntry?.rank ?? null;
-              const _osDvpRatio = _osDvpEntry?.ratio ?? null;
-              const _osDebug = !_osCol ? (!_osGl ? "no_gl" : `col_miss:${col}|got:${(_osGl.ul||[]).join(",")}`) : null;
-              const _osSoftVals = _osGl?.events && _osCol ? _osGl.events.filter((ev) => nbaEffectiveSoftTeams?.has(ev.oppAbbr)).map(_osCol.getStat).filter((v) => !isNaN(v)) : [];
-              const _osSoftPct = _osSoftVals.length >= 5 ? parseFloat((_osSoftVals.filter((v) => v >= threshold).length / _osSoftVals.length * 100).toFixed(1)) : null;
-              const _osYday = new Date(); _osYday.setDate(_osYday.getDate() - 1);
-              const _osYdayStr = _osYday.toISOString().slice(0, 10);
-              const _osIsB2B = _osGl && _osGl.events.length > 0 && (_osGl.events[0]?.date || "").startsWith(_osYdayStr);
-              let _osPaceAdj = null;
-              if (nbaPaceData) {
-                const _tp = nbaPaceData.teamPace?.[playerTeam] ?? null;
-                const _op = nbaPaceData.teamPace?.[tonightOpp] ?? null;
-                if (_tp !== null && _op !== null) _osPaceAdj = parseFloat(((_tp + _op) / 2 - (nbaPaceData.leagueAvgPace ?? 100)).toFixed(1));
-              }
-              let _osOpportunity = null;
-              if (_osGl) {
-                const _osMinIdx = _osGl.ul.indexOf("MIN");
-                if (_osMinIdx !== -1) {
-                  const _osMinVals = _osGl.events.slice(0, 10).map(ev => parseFloat(ev.stats[_osMinIdx])).filter(v => !isNaN(v) && v > 0);
-                  if (_osMinVals.length >= 3) _osOpportunity = parseFloat((_osMinVals.reduce((a, b) => a + b, 0) / _osMinVals.length).toFixed(1));
-                }
-              }
-              const _osUsgEntry = nbaUsageMap[String(info.id)] ?? null;
-              const _osUsg = _osUsgEntry?.usg ?? null;
-              const _osAvgAst = _osUsgEntry?.avgAst ?? null;
-              const _osAvgReb = _osUsgEntry?.avgReb ?? null;
-              let _os3pMPG = null;
-              let _osC1Pts;
-              if (stat === "assists") {
-                _osC1Pts = _osAvgAst == null ? 2 : _osAvgAst >= 7 ? 4 : _osAvgAst >= 5 ? 2 : 0;
-              } else if (stat === "rebounds") {
-                _osC1Pts = _osAvgReb == null ? 2 : _osAvgReb >= 9 ? 4 : _osAvgReb >= 7 ? 2 : 0;
-              } else if (stat === "threePointers" && _osGl) {
-                const _os3pIdx = _osGl.ul.indexOf("3P");
-                const _os3pVals = _os3pIdx !== -1 ? _osGl.events.slice(0, 10).map(ev => parseFloat(ev.stats[_os3pIdx])).filter(v => !isNaN(v) && v >= 0) : [];
-                _os3pMPG = _os3pVals.length >= 3 ? _os3pVals.reduce((a, b) => a + b, 0) / _os3pVals.length : null;
-                _osC1Pts = _os3pMPG == null ? 2 : _os3pMPG >= 3 ? 4 : _os3pMPG >= 2 ? 2 : 0;
-              } else {
-                _osC1Pts = _osUsg == null ? 2 : _osUsg >= 28 ? 4 : _osUsg >= 22 ? 2 : 0;
-              }
-              const _osGameTotal = (sportByteam.nbaGameOdds ?? {})[playerTeam]?.total ?? null;
-              const _osTotalPts = _osGameTotal == null ? 1 : _osGameTotal >= 235 ? 3 : _osGameTotal >= 225 ? 2 : 1;
-              const _osPreSimScore = (_osPaceAdj != null ? (_osPaceAdj > 0 ? 3 : _osPaceAdj > -2 ? 2 : 1) : 0)
-                + _osC1Pts
-                + (_osDvpRatio == null ? 0 : _osDvpRatio >= 1.05 ? 2 : _osDvpRatio >= 1.02 ? 1 : 0)
-                + (!_osIsB2B ? 2 : 0)
-                + _osTotalPts;
-              const _osNbaSimScore = _osPreSimScore;
-              const _osDropEntry = { ..._dropBase, reason: "opp_not_soft", opponent: tonightOpp, dvpBased: !!nbaDvpSoftTeams, seasonPct: _osSeason, seasonGames: _osCol?.allVals.length ?? 0, softPct: _osSoftPct, softGames: _osSoftVals.length, truePct: _osTruePct, edge: _osEdge, posDvpRank: _osDvpRank, dvpRatio: _osDvpRatio, posGroup: nbaPos, _debug: _osDebug, isB2B: _osIsB2B, nbaPaceAdj: _osPaceAdj, nbaOpportunity: _osOpportunity, nbaPreSimScore: _osPreSimScore, nbaSimScore: _osNbaSimScore, nbaGameTotal: _osGameTotal, nbaTotalPts: _osTotalPts, nbaUsage: _osUsg, nbaAvgAst: _osAvgAst, nbaAvgReb: _osAvgReb, nba3pMPG: _os3pMPG };
-              nbaDropped.push(_osDropEntry);
-              if (isDebug) dropped.push(_osDropEntry);
-              continue;
-            }
-          } else if (sport !== "mlb" && sport !== "nhl" && !softTeams.has(tonightOpp)) {
+          if (sport === "nfl" && !softTeams.has(tonightOpp)) {
             if (isDebug) dropped.push({ ..._dropBase, reason: "opp_not_soft", opponent: tonightOpp });
             continue;
           }
