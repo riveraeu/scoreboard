@@ -179,7 +179,10 @@ var worker_default = {
         const { result } = await r.json();
         return jsonResponse({ users: result || [] });
       } else if (path === "auth/calibration" && method === "GET") {
-        if (params.get("adminKey") !== env?.ADMIN_KEY) return errorResponse("Forbidden", 403);
+        const calibToken = (request.headers.get("Authorization") || "").replace("Bearer ", "");
+        const calibPayload = calibToken ? await verifyJWT(calibToken, JWT_SECRET) : null;
+        const calibAdminKey = params.get("adminKey");
+        if (!calibPayload && calibAdminKey !== env?.ADMIN_KEY) return errorResponse("Forbidden", 403);
         const upUrl = env?.UPSTASH_REDIS_REST_URL;
         const upAuth = `Bearer ${env?.UPSTASH_REDIS_REST_TOKEN}`;
         if (!upUrl) return errorResponse("No Redis URL", 500);
