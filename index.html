@@ -205,7 +205,7 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, trackedP
         const modelPct = tp?.truePct ?? null;
         const edge = tp?.edge ?? null;
         const edgeColor = edge == null ? "#484f58" : edge >= 3 ? "#3fb950" : edge >= 0 ? "#e3b341" : "#f78166";
-        const _mktPct = tp?.polyOnly ? tp.polyPct : (tp?.kalshiPct ?? null);
+        const _mktPct = (tp?.polyOnly || tp?.bestVenue === "polymarket") ? tp.polyPct : (tp?.kalshiPct ?? null);
         const _mktOdds = _mktPct == null ? null : (_mktPct >= 50 ? Math.round(-(_mktPct/(100-_mktPct))*100) : Math.round((100-_mktPct)/_mktPct*100));
         const oddsStr = _mktOdds != null ? (_mktOdds >= 0 ? `+${_mktOdds}` : `${_mktOdds}`) : null;
 
@@ -275,8 +275,9 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, trackedP
               </div>
               {/* Market price bar (Kalshi or Polymarket) */}
               {(kalshiPct != null || tp?.polyOnly) && (() => {
-                const _barPct = tp?.polyOnly ? tp.polyPct : kalshiPct;
-                const _barColor = tp?.polyOnly ? "#2ea8e5" : "#6e40c9";
+                const _showPoly = tp?.polyOnly || tp?.bestVenue === "polymarket";
+                const _barPct = _showPoly ? tp.polyPct : kalshiPct;
+                const _barColor = _showPoly ? "#2ea8e5" : "#6e40c9";
                 return (
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                     <div style={{flex:1,background:"#21262d",borderRadius:4,height:11,overflow:"hidden"}}>
@@ -3689,8 +3690,9 @@ function App() {
                     </div>
                     {/* Market price bar (Kalshi or Polymarket) */}
                     {(() => {
-                      const _barPct = play.polyOnly ? play.polyPct : play.kalshiPct;
-                      const _barColor = play.polyOnly ? "#2ea8e5" : "#6e40c9";
+                      const _showPoly = play.polyOnly || play.bestVenue === "polymarket";
+                      const _barPct = _showPoly ? play.polyPct : play.kalshiPct;
+                      const _barColor = _showPoly ? "#2ea8e5" : "#6e40c9";
                       const _barOdds = _barPct == null ? null : (_barPct >= 50 ? Math.round(-(_barPct/(100-_barPct))*100) : Math.round((100-_barPct)/_barPct*100));
                       const _barOddsStr = _barOdds == null ? "" : (_barOdds > 0 ? `+${_barOdds}` : `${_barOdds}`);
                       return (
