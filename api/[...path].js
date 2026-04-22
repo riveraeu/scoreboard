@@ -3264,6 +3264,7 @@ var worker_default = {
         // ── Polymarket price comparison + Poly-only market injection ─────────────────────────────
         // Fetched independently of Kalshi so Poly-only thresholds also enter the play loop.
         let polyPctMap = {};
+        let _polyDbg = { eventsMarkets: 0, clobTidsFromEvents: 0, mktIdsCollected: 0, fallbackAttempted: false, fallbackOk: false, fallbackTidsFound: 0, clobAttempted: false, clobOk: false, clobUpdates: 0, clobStatus: null, sampleTid: null };
         {
           const _polyKey = `poly:totals:${todayDateStr}`;
           const _cachedPoly = CACHE2 && !isBustCache ? await CACHE2.get(_polyKey, "json").catch(() => null) : null;
@@ -3282,7 +3283,6 @@ var worker_default = {
             const _clobTokenMap = new Map();
             // mktIdMap: marketId -> { keys, polyVol, oIdx } for fallback gamma /markets fetch
             const _mktIdMap = new Map();
-            const _polyDbg = { eventsMarkets: 0, clobTidsFromEvents: 0, mktIdsCollected: 0, fallbackAttempted: false, fallbackOk: false, fallbackTidsFound: 0, clobAttempted: false, clobOk: false, clobUpdates: 0, clobStatus: null, sampleTid: null };
             await Promise.all(Object.keys(POLY_SERIES).map(async _ps => {
               try {
                 const _evResp = await fetch(
