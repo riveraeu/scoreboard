@@ -390,6 +390,7 @@ All threshold plays that pass the edge gate (≥ 3%) are pushed to `plays[]`. Be
 
 ### Market Report
 Opened via "report" button. Shows ALL markets (plays + dropped) grouped by sport/stat. Columns vary by sport/stat via `XCOLS` map. Sport tabs: **ALL / MLB / NBA / NHL / CALIBRATION**.
+- **First column navigation**: Player name spans are clickable (`cursor:pointer`) — clicking closes the report (`setShowReport(false)`) and navigates to that player's card via `navigateToPlayer({ id: m.playerId, name: m.playerName, sportKey: SPORT_KEY[m.sport] }, m.stat)`. For game total rows, each team abbreviation (`awayTeam` and `homeTeam`) is separately clickable and navigates to that team's page via `navigateToTeam`. No underline styling.
 - **`fetchReport` syncs plays card**: After fetching `?debug=1`, `fetchReport` also updates `tonightPlays` and `allTonightPlays` from the fresh response. This keeps the plays card in sync with the report (avoids stale-cache discrepancy where plays card loaded at page open shows different results than the report fetched later).
 - **HRR table**: shows threshold=1 rows only (2+/3+/etc. filtered client-side — too noisy)
 - **Score > 10 highlight**: For MLB rows (strikeouts + HRR), the player name is white+bold only when `finalSimScore ?? hitterFinalSimScore > 10` (Alpha tier). Rows with score ≤ 10 get a dim gray name even if qualified. Non-MLB tables use the original `m.qualified` logic for name color.
@@ -1018,12 +1019,12 @@ SimScore thresholds have been tuned against settled pick outcomes. When win rate
 
 **Calibration results (43 settled strikeout picks, April 2026):**
 
-| Component | Old scoring | New scoring | Rationale |
-|---|---|---|---|
-| `lkpPts` (lineup oK%) | >24%→3, >16%→2, ≤16%→0 | >24%→3, >20%→1, ≤20%→0 | 16–24% tier hit 61% vs 82% for >24% — too generous |
-| `totalPts` (O/U tier) | ≤8.5→2, ≤10.5→1, >10.5→0 | ≤7.5→2, <10.5→1, ≥10.5→0 | Moved 2pt cliff from 8.5 → 7.5; 0pt floor at ≥10.5 (10.5 itself = 0pts) |
+| Component | Original | After recal. | Current | Rationale |
+|---|---|---|---|---|
+| `lkpPts` (lineup oK%) | >24%→3, >16%→2, ≤16%→0 | >24%→3, >20%→1, ≤20%→0 | >24%→3, >20%→2, ≤20%→0 | Threshold raised to 20% (recal); value restored to 2pts for consistency with other max-3 components (all give 2/3 of max for middle tier) |
+| `totalPts` (O/U tier) | ≤8.5→2, ≤10.5→1, >10.5→0 | ≤7.5→2, <10.5→1, ≥10.5→0 | ≤7.5→2, <10.5→1, ≥10.5→0 | Moved 2pt cliff from 8.5 → 7.5; 0pt floor at ≥10.5 (10.5 itself = 0pts) |
 
-Combined effect: lkpPts=3 + O/U≤7.5 → **90% actual win rate** (9-1). lkpPts=2 OR O/U>7.5 → **58%** (11-8).
+Combined effect: lkpPts=3 + O/U≤7.5 → **90% actual win rate** (9-1). lkpPts<3 OR O/U>7.5 → **58%** (11-8).
 
 **Other patterns noted (not yet acted on):**
 - `kpctPts=3` (CSW%>30%) actual win rate 62% vs `kpctPts=2` (CSW% 26–30%) at 88% — top-tier pitchers may be efficiently priced; the market already captures high CSW%
@@ -1038,6 +1039,16 @@ Combined effect: lkpPts=3 + O/U≤7.5 → **90% actual win rate** (9-1). lkpPts=
 **Symptom**: Market report shows only Kalshi-published totals (may be 0–2 games for MLB early in the day). `?debug=1&bust=1` → `totalMarketsCount` matches only Kalshi rows, no `polyOnly:true` entries anywhere in plays/dropped.
 
 **How to diagnose**: Check `polyDerivedMap` behavior — if `polyDerived:true` appears on a Kalshi total row but no `polyOnly:true` rows exist, `polyPctMap` has MLB entries but injection is being filtered. Confirm by checking the injection filter at line ~3335.
+
+### "Strikeout player card K-trend prose is silent even though kTrendPts shows in tooltip"
+**Root cause**: The player card builds its `h2h` object from `tonightPlayerMap` entries, but `pitcherRecentKPct` and `pitcherSeasonKPct` were not included in that object — only `kTrendPts` was. So `recK = h2h?.pitcherRecentKPct` was always null and the prose branch silently skipped.
+
+**Fix**: Added `pitcherRecentKPct: tp.pitcherRecentKPct, pitcherSeasonKPct: tp.pitcherSeasonKPct` to the `h2h` object construction in the player card strikeout block (`index.html` ~line 2747). The K-trend prose renders `26.9% recent K% ↑ (24.1% season)` colored by `kTrendPts` tier.
+
+### "SimScore tooltip shows — for Lineup K% even though prose shows a value"
+**Root cause**: `lkpPts` is null when lineup wasn't confirmed at API run time (model counts this as 1pt abstain). The prose uses `h2h.lineupKPct` which may be filled from the DVP fallback, so the value appears in prose. But the tooltip used `h2h?.lkpPts ?? "—"` — null became `—` instead of showing the abstain point value.
+
+**Fix**: Tooltip now uses `h2h?.lkpPts ?? 1` (and same for `kTrendPts`), showing `1/3` or `1/2` to reflect the abstain scoring rather than `—`. Applied to both player card and play card `scTitle` strings.
 
 ### "NHL SimScore tooltip shows Edge ±X% instead of Team GPG"
 **Root cause**: Before commit removing the edge bonus from NHL SimScore, the 6th component was `Edge ±X%: N/3`. After converting to `nhlTeamGPG`, the tooltip still showed the old label if `index.html` was cached.
