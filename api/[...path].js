@@ -3358,13 +3358,16 @@ var worker_default = {
               _polyDbg.clobAttempted = true;
               try {
                 const _tidList = [..._clobTokenMap.keys()];
-                const _clobUrl = `https://clob.polymarket.com/midpoints?${_tidList.map(t => `token_id=${encodeURIComponent(t)}`).join("&")}`;
-                const _clobResp = await fetch(_clobUrl, { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(4000) });
+                // Try comma-separated token_ids param (alternative to repeated token_id)
+                const _clobUrl = `https://clob.polymarket.com/midpoints?token_ids=${_tidList.map(t => encodeURIComponent(t)).join(",")}`;
+                const _clobResp = await fetch(_clobUrl, { headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" }, signal: AbortSignal.timeout(4000) });
                 _polyDbg.clobOk = _clobResp.ok; _polyDbg.clobStatus = _clobResp.status;
+                if (!_clobResp.ok) { _polyDbg.clobBody = (await _clobResp.text().catch(() => "")).slice(0, 120); }
                 if (_clobResp.ok) {
                   const _clobRaw = await _clobResp.json();
                   // Response is flat { TOKEN_ID: "0.87" } or wrapped { midpoints: { TOKEN_ID: "0.87" } }
                   const _clobData = _clobRaw.midpoints ?? _clobRaw;
+                  _polyDbg.clobKeys = Object.keys(_clobData).length;
                   for (const [_tid, _midStr] of Object.entries(_clobData)) {
                     const _mid = parseFloat(_midStr);
                     if (!_mid || _mid < 0.02 || _mid > 0.98) continue;
