@@ -3129,6 +3129,7 @@ function App() {
                           softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
                           truePct: truePct !== null ? parseFloat(truePct.toFixed(1)) : null,
                           edge: parseFloat(edge.toFixed(1)),
+                          gameDate: tonightPlay?.gameDate || "",
                         });
                       }}
                         title={isTracked ? "Remove from My Picks" : "Add to My Picks"}
