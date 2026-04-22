@@ -3278,8 +3278,10 @@ var worker_default = {
               return null;
             };
             // Fetch all supported sports regardless of whether Kalshi has markets for them
-            // tokenMap: overTokenId -> mapKey(s) so we can update polyPctMap after CLOB fetch
-            const _clobTokenMap = new Map(); // overTokenId -> { keys: [...], polyVol }
+            // tokenMap: overTokenId -> { keys, polyVol } for CLOB price refresh
+            const _clobTokenMap = new Map();
+            // mktIdMap: marketId -> { keys, polyVol, oIdx } for fallback gamma /markets fetch
+            const _mktIdMap = new Map();
             await Promise.all(Object.keys(POLY_SERIES).map(async _ps => {
               try {
                 const _evResp = await fetch(
@@ -3313,23 +3315,48 @@ var worker_default = {
                     const _k2 = `${_ps}|${_awayAbbr}|${_homeAbbr}|${_thresh}`;
                     polyPctMap[_k1] = { polyPct, polyVol };
                     polyPctMap[_k2] = { polyPct, polyVol };
-                    // Collect Over CLOB token ID for live-price refresh
+                    // Collect Over CLOB token ID — present on full market objects, may be absent on nested event markets
                     const _tids = Array.isArray(_pm.clobTokenIds) ? _pm.clobTokenIds : JSON.parse(_pm.clobTokenIds || "[]");
                     const _overTid = _tids[_oIdx];
-                    if (_overTid) _clobTokenMap.set(_overTid, { keys: [_k1, _k2], polyVol });
+                    if (_overTid) {
+                      _clobTokenMap.set(_overTid, { keys: [_k1, _k2], polyVol });
+                    } else {
+                      const _pmId = _pm.id || _pm.conditionId;
+                      if (_pmId) _mktIdMap.set(String(_pmId), { keys: [_k1, _k2], polyVol, oIdx: _oIdx });
+                    }
                   }
                 }
               } catch (_) {}
             }));
+            // Fallback: clobTokenIds absent from events endpoint — fetch full market objects from gamma /markets
+            if (_clobTokenMap.size === 0 && _mktIdMap.size > 0) {
+              try {
+                const _mids = [..._mktIdMap.keys()];
+                const _mUrl = `https://gamma-api.polymarket.com/markets?${_mids.map(id => `id=${encodeURIComponent(id)}`).join("&")}`;
+                const _mResp = await fetch(_mUrl, { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(5000) });
+                if (_mResp.ok) {
+                  const _mData = await _mResp.json();
+                  for (const _mkt of (Array.isArray(_mData) ? _mData : [])) {
+                    const _mktId = String(_mkt.id || _mkt.conditionId || "");
+                    const _entry = _mktIdMap.get(_mktId);
+                    if (!_entry) continue;
+                    const _tids2 = Array.isArray(_mkt.clobTokenIds) ? _mkt.clobTokenIds : JSON.parse(_mkt.clobTokenIds || "[]");
+                    const _tid2 = _tids2[_entry.oIdx];
+                    if (_tid2) _clobTokenMap.set(_tid2, { keys: _entry.keys, polyVol: _entry.polyVol });
+                  }
+                }
+              } catch (_) {}
+            }
             // Refresh prices from CLOB midpoints — more accurate than gamma outcomePrices for live games
             if (_clobTokenMap.size > 0) {
               try {
                 const _tidList = [..._clobTokenMap.keys()];
-                const _clobUrl = `https://clob.polymarket.com/midpoints?${_tidList.map(t => `token_id=${t}`).join("&")}`;
+                const _clobUrl = `https://clob.polymarket.com/midpoints?${_tidList.map(t => `token_id=${encodeURIComponent(t)}`).join("&")}`;
                 const _clobResp = await fetch(_clobUrl, { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(4000) });
                 if (_clobResp.ok) {
-                  const _clobData = await _clobResp.json();
-                  // Response: { "TOKEN_ID": "0.87", ... }
+                  const _clobRaw = await _clobResp.json();
+                  // Response is flat { TOKEN_ID: "0.87" } or wrapped { midpoints: { TOKEN_ID: "0.87" } }
+                  const _clobData = _clobRaw.midpoints ?? _clobRaw;
                   for (const [_tid, _midStr] of Object.entries(_clobData)) {
                     const _mid = parseFloat(_midStr);
                     if (!_mid || _mid < 0.02 || _mid > 0.98) continue;
