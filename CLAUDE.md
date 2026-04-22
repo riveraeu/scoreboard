@@ -126,7 +126,7 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
   - Edge ≥ 3% required (gates play independently, not part of SimScore)
 - `parkMeets` (`PARK_KFACTOR[homeTeam] > 1.0`) is still computed and included in debug output but no longer contributes to SimScore — park factor is applied inside `simulateKsDist` and affects truePct directly. `PARK_KFACTOR` values updated from FanGraphs 2024 SO column (multi-year rolling avg).
 - `kpctPts`: 1/2/3 — CSW%/K% tier score. 3=green (CSW%>30% or K%>27%), 2=yellow (CSW% 26-30% or K% 24-27%), 1=red (≤26% CSW or ≤24% K, or null). Drives badge color and value in explanation cards. **Hard gate: `kpctPts < 2` drops play as `"low_pitcher_quality"` (qualified:false) before simulation**.
-- `mlPts`: 0/1/2 — ML tier score, **display only** (no longer part of simScore). Drives ML column color in market report (≤-121 green, -120 to +120 yellow, >+120 red). Still included in all play output for the report.
+- `mlPts`: 0/1/2 — ML tier score, **display only** (no longer part of simScore, no longer shown in market report). Still included in all play output for debugging. The market report strikeouts table shows **K-Trend %** (`pitcherRecentKPct`) in place of ML, colored by `kTrendPts` tier (2=green, 1=yellow, 0=red).
 - `kTrendPts`: 0/1/2 — K-trend score (replaces `mlPts` in simScore formula). Shown in SimScore tooltip as "K-Trend". 2=trending up, 1=stable/null, 0=trending down. Explanation prose (play card + player card) shows the actual `pitcherRecentKPct` stat value with a directional arrow (e.g. `26.9% recent K% ↑ (24.1% season)`) colored green (2), yellow (1/stable), or red (0). Silent when `pitcherRecentKPct` is null. `pitcherRecentKPct` and `pitcherSeasonKPct` included in **all** play output (qualified and qualified:false) so the stat displays in both the play card and player card.
 - `totalPts`: 0/1/2 — O/U tier score. Color in UI: 2=green, 1=yellow, 0=red. Drives O/U column color in market report (≤7.5 green, <10.5 yellow, ≥10.5 red). Low total = pitcher dominant = favorable for Ks.
 - `pitcherGS26`: 2026 games started per team abbr, exported from `buildPitcherKPct`, used for small-sample guards. Included in `plays[]` output for debugging (alongside `pitcherHasAnchor`).
@@ -944,6 +944,8 @@ Derived prices stored in `polyDerivedMap` (separate from `polyPctMap`). Key: `sp
 
 **Bug: Poisson binary search condition was inverted (fixed 84fe9a7):** `if (1 - cdf < p) hi = mid` converged to λ=60 (max), giving ~100% probabilities skipped by `v > 99` guard. Fixed to `if (1 - cdf > p) hi = mid`.
 
+**Poly-only injection filter**: Uses `polyPct >= 30 && polyPct <= 97` (matching the Kalshi game total filter). Do NOT raise back to 70 — Poly consensus O/U lines are near 50/50, so all game total markets would be excluded.
+
 **"NHL polyPct seems too low compared to Kalshi (e.g., 60% vs 96%)" — stale 5-min cache:**
 The `poly:totals:{date}` cache (300s TTL) can be populated with pre-game Polymarket prices. As a game progresses, Kalshi updates every request and moves to 96%+ on a high-probability outcome; Poly stays at the cached pre-game value (~60%) for up to 5 minutes. Fix: `?bust=1` skips the poly cache and fetches current prices. Regular season live NHL Poly prices for O4.5 typically range 74–86%. **During NHL playoffs, Poly prices for O4.5 are structurally lower (~52–56%)** — tighter defense and lower expected scoring make this reasonable, but our model uses regular season GPG/GAA data and scores ~85% truePct, creating apparent 25–30% edges. These edges may not be real if the model overstates playoff scoring. The Kalshi–Poly gap on NHL O4.5 reflects Kalshi being overpriced during both regular season and playoffs.
 
@@ -1027,6 +1029,15 @@ Combined effect: lkpPts=3 + O/U≤7.5 → **90% actual win rate** (9-1). lkpPts=
 - `kpctPts=3` (CSW%>30%) actual win rate 62% vs `kpctPts=2` (CSW% 26–30%) at 88% — top-tier pitchers may be efficiently priced; the market already captures high CSW%
 - `historicalHitRate` < 65% with large model gap (e.g. Hancock: 14.3% hist vs 89.8% model) correlated with losses — potential future hard gate
 - When adding new SimScore components, run this analysis after 40+ settled picks; small samples produce misleading tier win rates
+
+### "MLB totals market report shows only 2 games (fixed eb21787)"
+**Root cause**: Poly-only injection had `polyPct < 70` filter (copied from player prop path). Poly O/U game total markets are priced near 50/50 by design — the line is set at consensus. Every MLB, NBA, and NHL Poly market was always below 70%, so the injection loop silently skipped every Poly-only game. Zero games were ever added from Poly when Kalshi had no market for them.
+
+**Fix**: Changed `polyPct < 70` to `polyPct < 30` in the injection filter (`api/[...path].js` line ~3335), matching the Kalshi game total filter range (30–97%). The edge gate (`bestEdge >= 5%`) still filters out plays with no real model edge.
+
+**Symptom**: Market report shows only Kalshi-published totals (may be 0–2 games for MLB early in the day). `?debug=1&bust=1` → `totalMarketsCount` matches only Kalshi rows, no `polyOnly:true` entries anywhere in plays/dropped.
+
+**How to diagnose**: Check `polyDerivedMap` behavior — if `polyDerived:true` appears on a Kalshi total row but no `polyOnly:true` rows exist, `polyPctMap` has MLB entries but injection is being filtered. Confirm by checking the injection filter at line ~3335.
 
 ### "NHL SimScore tooltip shows Edge ±X% instead of Team GPG"
 **Root cause**: Before commit removing the edge bonus from NHL SimScore, the 6th component was `Edge ±X%: N/3`. After converting to `nhlTeamGPG`, the tooltip still showed the old label if `index.html` was cached.
