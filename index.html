@@ -2165,7 +2165,7 @@ function App() {
                         const XCOLS = {
                           "mlb|hrr":        [{k:"spot",l:"Spot"},{k:"whip",l:"WHIP"},{k:"fip",l:"FIP"},{k:"brrl",l:"Brrl%"},{k:"env",l:"Park"},{k:"ml",l:"ML"}],
                           "mlb|hits":       [{k:"spot",l:"Spot"},{k:"whip",l:"WHIP"},{k:"fip",l:"FIP"},{k:"brrl",l:"Brrl%"},{k:"env",l:"Park"},{k:"ml",l:"ML"}],
-                          "mlb|strikeouts": [{k:"env",l:"Park"},{k:"ml",l:"ML"},{k:"ou",l:"O/U"},{k:"csw",l:"CSW%"},{k:"kbb",l:"K-BB%"},{k:"lkp",l:"oK%"},{k:"pps",l:"P/GS"}],
+                          "mlb|strikeouts": [{k:"env",l:"Park"},{k:"ktrend",l:"K-Trend"},{k:"ou",l:"O/U"},{k:"csw",l:"CSW%"},{k:"kbb",l:"K-BB%"},{k:"lkp",l:"oK%"},{k:"pps",l:"P/GS"}],
                           "nba|points":     [{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"},{k:"nbapace",l:"Pace"},{k:"nbaopp",l:"AvgMin"},{k:"nba_b2b",l:"Rest"},{k:"sim",l:"Score"}],
                           "nba|rebounds":   [{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"},{k:"nbapace",l:"Pace"},{k:"nbaopp",l:"AvgMin"},{k:"nba_b2b",l:"Rest"},{k:"sim",l:"Score"}],
                           "nba|assists":    [{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"},{k:"nbapace",l:"Pace"},{k:"nbaopp",l:"AvgMin"},{k:"nba_b2b",l:"Rest"},{k:"sim",l:"Score"}],
@@ -2190,6 +2190,7 @@ function App() {
                           if (k==="h2h") { const v = m.softPct; return v != null ? <span style={{color:v>=60?"#3fb950":v>=50?"#e3b341":"#f78166"}}>{v.toFixed(1)+"%"}</span> : DASH; }
                           if (k==="era") { const eraColor = stat === "strikeouts" ? (era < 3.5 ? "#3fb950" : era < 4.5 ? "#8b949e" : "#f78166") : (era >= 4.0 ? "#8b949e" : "#f78166"); return C(era != null ? parseFloat(era).toFixed(2) : null, eraColor); }
                           if (k==="ml")  return C(ml  != null ? fML(ml) : null, ml <= -121 ? "#3fb950" : ml <= 120 ? "#e3b341" : "#f78166");
+                          if (k==="ktrend") { const v = m.pitcherRecentKPct; const pts = m.kTrendPts; return C(v != null ? v.toFixed(1)+"%" : null, pts === 2 ? "#3fb950" : pts === 1 ? "#e3b341" : "#f78166"); }
                           if (k==="ab")  return C(ab  != null ? String(ab) : null, ab >= 10 ? "#8b949e" : "#f78166");
                           if (k==="csw") { const csw = m.pitcherCSWPct ?? m.pitcherKPct; const isReal = m.pitcherCSWPct != null; return C(csw != null ? csw.toFixed(1)+"%" : null, isReal ? (csw > 30 ? "#3fb950" : csw > 26 ? "#e3b341" : "#f78166") : (csw >= 27 ? "#3fb950" : csw >= 24 ? "#e3b341" : "#f78166")); }
                           if (k==="pkp") return C(pkp != null ? pkp.toFixed(1)+"%" : null, pkp > 24 ? "#3fb950" : pkp > 20 ? "#e3b341" : "#f78166");

@@ -3332,7 +3332,7 @@ var worker_default = {
             if (parts.length !== 4) continue;
             const [sport, t1, t2, threshStr] = parts;
             const threshold = parseInt(threshStr, 10);
-            if (!_polyStatMap[sport] || polyPct < 70 || polyPct > 97) continue;
+            if (!_polyStatMap[sport] || polyPct < 30 || polyPct > 97) continue;
             const _canon = `${sport}|${[t1, t2].sort().join("|")}|${threshold}`;
             if (_polySeenCanon.has(_canon)) continue;
             _polySeenCanon.add(_canon);
