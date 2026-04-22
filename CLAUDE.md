@@ -119,7 +119,7 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
 - **SimScore** (max 14, no edge bonus — edge gates separately):
   - CSW%/K% tiered (1/2/3pts): CSW% > 30% = 3pts (green), CSW% > 26% to ≤ 30% = 2pts (yellow), CSW% ≤ 26% = 1pt (red). Falls back to regressed K% only if CSW% is unavailable (null): K% > 27% = 3pts, K% > 24% to ≤ 27% = 2pts, K% ≤ 24% = 1pt. Null CSW% + null K% = 1pt (abstain). Stored as `kpctPts` (1/2/3); `kpctMeets = kpctPts > 0` (boolean, always true now).
   - K-BB% tiered (`kbbPts`): > 18% → 2pts (green), > 12% → 1pt (yellow), ≤ 12% → 0pts (red); null → 1pt (abstain). `kbbMeets = kbbPts > 0` (boolean). Prose color in play card + player card matches: > 18% green, > 12% yellow, ≤ 12% red (`kbbColor`).
-  - Lineup oK% tiered (`lkpPts`): > 24% → 3pts (green), > 20% → 1pt (yellow), ≤ 20% → 0pts; null → 1pt (abstain). `lkpMeets = lkpPts > 0`. Hand-adjusted vs RHP/LHP.
+  - Lineup oK% tiered (`lkpPts`): > 24% → 3pts (green), > 20% → 2pts (yellow), ≤ 20% → 0pts; null → 1pt (abstain). `lkpMeets = lkpPts > 0`. Hand-adjusted vs RHP/LHP.
   - Avg pitches/start tiered (`pitchesPts`): > 85 → 2pts (green), > 75 → 1pt (yellow), ≤ 75 → 0pts; null → 1pt (abstain). (uses 2026 data only if gs26 ≥ 4; else falls back to 2025)
   - **K-trend** (`kTrendPts`): `_recentKPct / _seasonKPct` ratio. ≥ 1.10 (trending up ≥10%) → 2pts; ≥ 0.90 (stable) → 1pt; < 0.90 (trending down) → 0pts; null (no recent data) → 1pt abstain. Replaces `mlPts` in simScore formula. `_recentKPct` from last 5 starts (A1 signal); ratio compares it directly to full-season K%.
   - O/U tier (`totalPts`): ≤ 7.5 → 2pts (low total = pitcher dominant), < 10.5 → 1pt, ≥ 10.5 → 0pts; null → 1pt

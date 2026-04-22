@@ -765,7 +765,7 @@ const MOCK_PLAYS = [
     softPct:95.0, softGames:10, truePct:94.0, edge:12.0,
     kelly:0.310, ev:0.130, historicalHitRate:92.0, historicalGames:10,
     lineupKPct:21.5, pitcherCSWPct:32.1, pitcherKPct:26.5, pitcherKBBPct:18.2, pitcherAvgPitches:94.3, pitcherRecentKPct:29.8, pitcherSeasonKPct:26.5, log5Avg:31.6, log5Pct:96.1, expectedKs:8.5, parkFactor:1.00,
-    simScore:12, finalSimScore:12, kpctMeets:true, kpctPts:3, kbbMeets:true, kbbPts:2, lkpMeets:true, lkpPts:1, pitchesPts:2, mlPts:2, totalPts:2, kTrendPts:2,
+    simScore:13, finalSimScore:13, kpctMeets:true, kpctPts:3, kbbMeets:true, kbbPts:2, lkpMeets:true, lkpPts:2, pitchesPts:2, mlPts:2, totalPts:2, kTrendPts:2,
     gameTotal:7.5, gameMoneyline:-140, pitcherHand:"R", gameDate:TODAY, gameTime:new Date().toISOString().replace(/T.*/, "T23:10:00Z"), lineupConfirmed:true,
   },
   // ── PURPLE (≥85%) ──────────────────────────────────────────────────────────
@@ -790,7 +790,7 @@ const MOCK_PLAYS = [
     softPct:82.0, softGames:9, truePct:81.0, edge:7.0,
     kelly:0.090, ev:0.038, historicalHitRate:74.0, historicalGames:9,
     lineupKPct:22.1, pitcherCSWPct:30.8, pitcherKPct:25.9, pitcherKBBPct:14.1, pitcherAvgPitches:86.7, pitcherRecentKPct:26.4, pitcherSeasonKPct:25.9, log5Avg:27.5, log5Pct:73.2, expectedKs:7.4, parkFactor:0.96,
-    simScore:10, finalSimScore:10, kpctMeets:true, kpctPts:3, kbbMeets:true, kbbPts:1, lkpMeets:true, lkpPts:1, pitchesPts:2, mlPts:2, totalPts:2, kTrendPts:1,
+    simScore:11, finalSimScore:11, kpctMeets:true, kpctPts:3, kbbMeets:true, kbbPts:1, lkpMeets:true, lkpPts:2, pitchesPts:2, mlPts:2, totalPts:2, kTrendPts:1,
     gameTotal:7.5, gameMoneyline:-160, pitcherHand:"R", gameDate:TODAY,
   },
   // ── GREEN (≥75%) ───────────────────────────────────────────────────────────
@@ -2346,8 +2346,10 @@ function App() {
                                   borderTop: i>0?"1px solid #161b22":"none"}}>
                                   <div style={{flex:2,minWidth:0,fontSize:12,fontWeight:_nameWhite?600:400,display:"flex",alignItems:"baseline",gap:3}}>
                                     {isTotal
-                                      ? <span style={{color:_nameWhite?"#c9d1d9":"#8b949e",whiteSpace:"nowrap"}}>{m.awayTeam} @ {m.homeTeam}</span>
-                                      : <><span style={{color:_nameWhite?"#c9d1d9":"#8b949e",whiteSpace:"nowrap",textTransform:"capitalize"}}>{m.playerNameDisplay||m.playerName}</span>
+                                      ? <><span onClick={() => { setShowReport(false); navigateToTeam(m.awayTeam, m.sport); }} style={{color:_nameWhite?"#c9d1d9":"#8b949e",whiteSpace:"nowrap",cursor:"pointer"}}>{m.awayTeam}</span>
+                                          <span style={{color:"#484f58"}}> @ </span>
+                                          <span onClick={() => { setShowReport(false); navigateToTeam(m.homeTeam, m.sport); }} style={{color:_nameWhite?"#c9d1d9":"#8b949e",whiteSpace:"nowrap",cursor:"pointer"}}>{m.homeTeam}</span></>
+                                      : <><span onClick={() => { setShowReport(false); navigateToPlayer({ id: m.playerId, name: m.playerName, sportKey: SPORT_KEY[m.sport] }, m.stat); }} style={{color:_nameWhite?"#c9d1d9":"#8b949e",whiteSpace:"nowrap",textTransform:"capitalize",cursor:"pointer"}}>{m.playerNameDisplay||m.playerName}</span>
                                          {(m.playerTeam||m.kalshiPlayerTeam)&&<span style={{color:"#484f58",fontWeight:400,flexShrink:0,fontSize:10}}>({m.playerTeam||m.kalshiPlayerTeam})</span>}</>
                                     }
                                   </div>
@@ -2743,6 +2745,7 @@ function App() {
                           const tp = Object.values(tonightPlayerMap).find(p => p.stat === "strikeouts");
                           if (tp) return { opp: tp.opponent, lineupKPct: tp.lineupKPct ?? dvpData?.h2h?.lineupKPct ?? null, lineupKPctProjected: tp.lineupKPctProjected ?? dvpData?.h2h?.lineupKPctProjected ?? false,
                             pitcherCSWPct: tp.pitcherCSWPct, pitcherKPct: tp.pitcherKPct, pitcherKBBPct: tp.pitcherKBBPct, pitcherAvgPitches: tp.pitcherAvgPitches, log5Avg: tp.log5Avg,
+                            pitcherRecentKPct: tp.pitcherRecentKPct ?? null, pitcherSeasonKPct: tp.pitcherSeasonKPct ?? null,
                             expectedKs: tp.expectedKs, parkFactor: tp.parkFactor, pitcherHand: tp.pitcherHand,
                             pitcherEra: tp.pitcherEra ?? null,
                             simScore: tp.simScore ?? null, finalSimScore: tp.finalSimScore ?? null,
@@ -2773,7 +2776,7 @@ function App() {
                           const pkpLabel = csw != null ? "CSW%" : "K%";
                           const pkpColor  = pkp == null ? "#8b949e" : (csw != null ? (pkp >= 30 ? "#3fb950" : pkp > 26 ? "#e3b341" : "#f78166") : (pkp >= 27 ? "#3fb950" : pkp >= 24 ? "#e3b341" : "#f78166"));
                           const lkpProjected = h2h?.lineupKPctProjected === true;
-                          const lkpColor  = lkp == null ? "#8b949e" : lkp > 24 ? "#3fb950" : lkp > 16 ? "#e3b341" : "#f78166";
+                          const lkpColor  = lkp == null ? "#8b949e" : lkp > 24 ? "#3fb950" : lkp > 20 ? "#e3b341" : "#f78166";
                           const oppColor  = lkp != null ? (lkp >= 24 ? "#3fb950" : lkp < 20 ? "#f78166" : "#c9d1d9") : "#c9d1d9";
                           const strikeoutsThreshold = Object.entries(tonightPlayerMap).find(([k]) => k.startsWith("strikeouts|"))?.[1]?.threshold ?? null;
                           const expKColor = expK != null && strikeoutsThreshold != null ? (expK >= strikeoutsThreshold ? "#3fb950" : expK >= strikeoutsThreshold - 1 ? "#c9d1d9" : "#f78166") : "#c9d1d9";
@@ -2800,7 +2803,7 @@ function App() {
                           const lkpDesc = lkp == null ? null : lkp > 24 ? "a high-strikeout lineup — works in his favor" : lkp > 20 ? "below-average strikeout tendency" : "elite contact lineup — a tougher test";
                           const _sc = finalSimScore ?? simScore;
                           const scColor = _sc == null ? "#8b949e" : _sc >= 12 ? "#3fb950" : _sc >= 9 ? "#e3b341" : "#8b949e";
-                          const scTitle = _sc != null ? [`CSW%/K%: ${h2h?.kpctPts ?? "—"}/3`,`K-BB%: ${h2h?.kbbPts ?? (h2h?.kbbMeets===true?2:h2h?.kbbMeets===false?0:"—")}/2`,`Lineup K%: ${h2h?.lkpPts ?? "—"}/3`,`P/GS: ${h2h?.pitchesPts ?? "—"}/2`,`K-Trend: ${h2h?.kTrendPts ?? "—"}/2`,`O/U: ${h2h?.totalPts ?? "—"}/2`].join("\n") : null;
+                          const scTitle = _sc != null ? [`CSW%/K%: ${h2h?.kpctPts ?? "—"}/3`,`K-BB%: ${h2h?.kbbPts ?? (h2h?.kbbMeets===true?2:h2h?.kbbMeets===false?0:"—")}/2`,`Lineup K%: ${h2h?.lkpPts ?? 1}/3`,`P/GS: ${h2h?.pitchesPts ?? "—"}/2`,`K-Trend: ${h2h?.kTrendPts ?? 1}/2`,`O/U: ${h2h?.totalPts ?? "—"}/2`].join("\n") : null;
                           return (
                             <>
                               <div>
@@ -3996,7 +3999,7 @@ function App() {
                           const apDesc = ap == null ? null : ap > 85 ? "expect him to work deep into the game" : ap > 75 ? "typically goes 5–6 innings" : null;
                           const lkpDesc = lkp == null ? null : lkp > 24 ? "a high-strikeout lineup — works in his favor" : lkp > 20 ? "below-average strikeout tendency" : "elite contact lineup — a tougher test";
                           const scColor = _sc == null ? "#8b949e" : _sc >= 12 ? "#3fb950" : _sc >= 9 ? "#e3b341" : "#8b949e";
-                          const scTitle = _sc != null ? [`CSW%/K%: ${play.kpctPts ?? "—"}/3`,`K-BB%: ${play.kbbPts ?? (play.kbbMeets===true?2:play.kbbMeets===false?0:"—")}/2`,`Lineup K%: ${play.lkpPts ?? "—"}/3`,`P/GS: ${play.pitchesPts ?? "—"}/2`,`K-Trend: ${play.kTrendPts ?? "—"}/2`,`O/U: ${play.totalPts ?? "—"}/2`].join("\n") : null;
+                          const scTitle = _sc != null ? [`CSW%/K%: ${play.kpctPts ?? "—"}/3`,`K-BB%: ${play.kbbPts ?? (play.kbbMeets===true?2:play.kbbMeets===false?0:"—")}/2`,`Lineup K%: ${play.lkpPts ?? 1}/3`,`P/GS: ${play.pitchesPts ?? "—"}/2`,`K-Trend: ${play.kTrendPts ?? 1}/2`,`O/U: ${play.totalPts ?? "—"}/2`].join("\n") : null;
                           return (
                             <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.65}}>
                               <div>

@@ -2151,8 +2151,8 @@ var worker_default = {
             // kbbPts tiered: >18% → 2pts (green), >12% → 1pt (yellow), ≤12% → 0pts (red); null → 1pt (abstain)
             kbbPts = _kbb == null ? 1 : _kbb > 18 ? 2 : _kbb > 12 ? 1 : 0;
             kbbMeets = kbbPts > 0;
-            // lkpPts tiered: > 24% → 3pts (green, high K lineup), > 20% → 1pt (yellow), ≤ 20% → 0pts; null → 1pt (abstain)
-            lkpPts = _lkp == null ? 1 : _lkp > 24 ? 3 : _lkp > 20 ? 1 : 0;
+            // lkpPts tiered: > 24% → 3pts (green, high K lineup), > 20% → 2pts (yellow), ≤ 20% → 0pts; null → 1pt (abstain)
+            lkpPts = _lkp == null ? 1 : _lkp > 24 ? 3 : _lkp > 20 ? 2 : 0;
             lkpMeets = lkpPts > 0;
             // pitchesPts tiered: >85 → 2pts (green), >75 → 1pt (yellow), ≤75 → 0pts; null → 1pt (abstain)
             pitchesPts = _avgP == null ? 1 : _avgP > 85 ? 2 : _avgP > 75 ? 1 : 0;
