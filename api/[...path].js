@@ -3282,6 +3282,7 @@ var worker_default = {
             const _clobTokenMap = new Map();
             // mktIdMap: marketId -> { keys, polyVol, oIdx } for fallback gamma /markets fetch
             const _mktIdMap = new Map();
+            const _polyDbg = { eventsMarkets: 0, clobTidsFromEvents: 0, mktIdsCollected: 0, fallbackAttempted: false, fallbackOk: false, fallbackTidsFound: 0, clobAttempted: false, clobOk: false, clobUpdates: 0, clobStatus: null, sampleTid: null };
             await Promise.all(Object.keys(POLY_SERIES).map(async _ps => {
               try {
                 const _evResp = await fetch(
@@ -3318,11 +3319,14 @@ var worker_default = {
                     // Collect Over CLOB token ID — present on full market objects, may be absent on nested event markets
                     const _tids = Array.isArray(_pm.clobTokenIds) ? _pm.clobTokenIds : JSON.parse(_pm.clobTokenIds || "[]");
                     const _overTid = _tids[_oIdx];
+                    _polyDbg.eventsMarkets++;
                     if (_overTid) {
                       _clobTokenMap.set(_overTid, { keys: [_k1, _k2], polyVol });
+                      _polyDbg.clobTidsFromEvents++;
+                      if (!_polyDbg.sampleTid) _polyDbg.sampleTid = String(_overTid).slice(0, 20);
                     } else {
                       const _pmId = _pm.id || _pm.conditionId;
-                      if (_pmId) _mktIdMap.set(String(_pmId), { keys: [_k1, _k2], polyVol, oIdx: _oIdx });
+                      if (_pmId) { _mktIdMap.set(String(_pmId), { keys: [_k1, _k2], polyVol, oIdx: _oIdx }); _polyDbg.mktIdsCollected++; }
                     }
                   }
                 }
@@ -3330,10 +3334,12 @@ var worker_default = {
             }));
             // Fallback: clobTokenIds absent from events endpoint — fetch full market objects from gamma /markets
             if (_clobTokenMap.size === 0 && _mktIdMap.size > 0) {
+              _polyDbg.fallbackAttempted = true;
               try {
                 const _mids = [..._mktIdMap.keys()];
                 const _mUrl = `https://gamma-api.polymarket.com/markets?${_mids.map(id => `id=${encodeURIComponent(id)}`).join("&")}`;
                 const _mResp = await fetch(_mUrl, { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(5000) });
+                _polyDbg.fallbackOk = _mResp.ok;
                 if (_mResp.ok) {
                   const _mData = await _mResp.json();
                   for (const _mkt of (Array.isArray(_mData) ? _mData : [])) {
@@ -3342,17 +3348,19 @@ var worker_default = {
                     if (!_entry) continue;
                     const _tids2 = Array.isArray(_mkt.clobTokenIds) ? _mkt.clobTokenIds : JSON.parse(_mkt.clobTokenIds || "[]");
                     const _tid2 = _tids2[_entry.oIdx];
-                    if (_tid2) _clobTokenMap.set(_tid2, { keys: _entry.keys, polyVol: _entry.polyVol });
+                    if (_tid2) { _clobTokenMap.set(_tid2, { keys: _entry.keys, polyVol: _entry.polyVol }); _polyDbg.fallbackTidsFound++; if (!_polyDbg.sampleTid) _polyDbg.sampleTid = String(_tid2).slice(0, 20); }
                   }
                 }
-              } catch (_) {}
+              } catch (_e) { _polyDbg.fallbackOk = String(_e).slice(0, 80); }
             }
             // Refresh prices from CLOB midpoints — more accurate than gamma outcomePrices for live games
             if (_clobTokenMap.size > 0) {
+              _polyDbg.clobAttempted = true;
               try {
                 const _tidList = [..._clobTokenMap.keys()];
                 const _clobUrl = `https://clob.polymarket.com/midpoints?${_tidList.map(t => `token_id=${encodeURIComponent(t)}`).join("&")}`;
                 const _clobResp = await fetch(_clobUrl, { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(4000) });
+                _polyDbg.clobOk = _clobResp.ok; _polyDbg.clobStatus = _clobResp.status;
                 if (_clobResp.ok) {
                   const _clobRaw = await _clobResp.json();
                   // Response is flat { TOKEN_ID: "0.87" } or wrapped { midpoints: { TOKEN_ID: "0.87" } }
@@ -3364,11 +3372,11 @@ var worker_default = {
                     if (!_entry) continue;
                     const _clobPct = Math.round(_mid * 100);
                     for (const _k of _entry.keys) {
-                      if (polyPctMap[_k]) polyPctMap[_k] = { polyPct: _clobPct, polyVol: _entry.polyVol };
+                      if (polyPctMap[_k]) { polyPctMap[_k] = { polyPct: _clobPct, polyVol: _entry.polyVol }; _polyDbg.clobUpdates++; }
                     }
                   }
                 }
-              } catch (_) {}
+              } catch (_e) { _polyDbg.clobOk = String(_e).slice(0, 80); }
             }
             if (Object.keys(polyPctMap).length > 0 && CACHE2) {
               await CACHE2.put(_polyKey, JSON.stringify(polyPctMap), { expirationTtl: 60 }).catch(() => {});
@@ -3573,7 +3581,7 @@ var worker_default = {
         if (isDebug) {
           const nbaGlLabels = Object.fromEntries(Object.entries(playerGamelogs).filter(([k]) => k.startsWith("nba|")).map(([k, gl]) => [k, gl?.ul ?? null]));
           const nbaGlSample = Object.fromEntries(Object.entries(playerGamelogs).filter(([k]) => k.startsWith("nba|")).map(([k, gl]) => [k, gl?.events?.slice(0, 3).map(ev => ({ stats: ev.stats?.slice(0, 3), statsLen: ev.stats?.length })) ?? null]));
-          return jsonResponse({ plays, dropped, preDropped, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
+          return jsonResponse({ plays, dropped, preDropped, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample, _polyDebug: _polyDbg }, true);
         }
         const playsResult = { plays, nbaDropped, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length };
         const sportsInPlays = new Set(plays.map((p) => p.sport));
