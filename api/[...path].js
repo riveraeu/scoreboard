@@ -3278,6 +3278,8 @@ var worker_default = {
               return null;
             };
             // Fetch all supported sports regardless of whether Kalshi has markets for them
+            // tokenMap: overTokenId -> mapKey(s) so we can update polyPctMap after CLOB fetch
+            const _clobTokenMap = new Map(); // overTokenId -> { keys: [...], polyVol }
             await Promise.all(Object.keys(POLY_SERIES).map(async _ps => {
               try {
                 const _evResp = await fetch(
@@ -3307,12 +3309,40 @@ var worker_default = {
                     if (_op < 0.02 || _op > 0.98) continue; // finalized
                     const polyPct = Math.round(_op * 100);
                     const polyVol = Math.round(parseFloat(_pm.volume || _pm.liquidity || 0));
-                    polyPctMap[`${_ps}|${_homeAbbr}|${_awayAbbr}|${_thresh}`] = { polyPct, polyVol };
-                    polyPctMap[`${_ps}|${_awayAbbr}|${_homeAbbr}|${_thresh}`] = { polyPct, polyVol };
+                    const _k1 = `${_ps}|${_homeAbbr}|${_awayAbbr}|${_thresh}`;
+                    const _k2 = `${_ps}|${_awayAbbr}|${_homeAbbr}|${_thresh}`;
+                    polyPctMap[_k1] = { polyPct, polyVol };
+                    polyPctMap[_k2] = { polyPct, polyVol };
+                    // Collect Over CLOB token ID for live-price refresh
+                    const _tids = Array.isArray(_pm.clobTokenIds) ? _pm.clobTokenIds : JSON.parse(_pm.clobTokenIds || "[]");
+                    const _overTid = _tids[_oIdx];
+                    if (_overTid) _clobTokenMap.set(_overTid, { keys: [_k1, _k2], polyVol });
                   }
                 }
               } catch (_) {}
             }));
+            // Refresh prices from CLOB midpoints — more accurate than gamma outcomePrices for live games
+            if (_clobTokenMap.size > 0) {
+              try {
+                const _tidList = [..._clobTokenMap.keys()];
+                const _clobUrl = `https://clob.polymarket.com/midpoints?${_tidList.map(t => `token_id=${t}`).join("&")}`;
+                const _clobResp = await fetch(_clobUrl, { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(4000) });
+                if (_clobResp.ok) {
+                  const _clobData = await _clobResp.json();
+                  // Response: { "TOKEN_ID": "0.87", ... }
+                  for (const [_tid, _midStr] of Object.entries(_clobData)) {
+                    const _mid = parseFloat(_midStr);
+                    if (!_mid || _mid < 0.02 || _mid > 0.98) continue;
+                    const _entry = _clobTokenMap.get(_tid);
+                    if (!_entry) continue;
+                    const _clobPct = Math.round(_mid * 100);
+                    for (const _k of _entry.keys) {
+                      if (polyPctMap[_k]) polyPctMap[_k] = { polyPct: _clobPct, polyVol: _entry.polyVol };
+                    }
+                  }
+                }
+              } catch (_) {}
+            }
             if (Object.keys(polyPctMap).length > 0 && CACHE2) {
               await CACHE2.put(_polyKey, JSON.stringify(polyPctMap), { expirationTtl: 60 }).catch(() => {});
             }
