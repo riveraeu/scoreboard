@@ -3320,6 +3320,8 @@ var worker_default = {
                     const _tids = Array.isArray(_pm.clobTokenIds) ? _pm.clobTokenIds : JSON.parse(_pm.clobTokenIds || "[]");
                     const _overTid = _tids[_oIdx];
                     _polyDbg.eventsMarkets++;
+                    if (!_polyDbg.sampleMarketKeys) _polyDbg.sampleMarketKeys = Object.keys(_pm).join(",");
+                    if (!_polyDbg.sampleBestAsk) _polyDbg.sampleBestAsk = { bestAsk: _pm.bestAsk, bestBid: _pm.bestBid, price: _pm.price, spreadBps: _pm.spreadBps };
                     if (_overTid) {
                       _clobTokenMap.set(_overTid, { keys: [_k1, _k2], polyVol });
                       _polyDbg.clobTidsFromEvents++;
