@@ -3363,8 +3363,12 @@ var worker_default = {
                 const _batches = [];
                 for (let _bi = 0; _bi < _tidList.length; _bi += _BATCH) _batches.push(_tidList.slice(_bi, _bi + _BATCH));
                 const _batchResults = await Promise.all(_batches.map(async _batch => {
-                  const _url = `https://clob.polymarket.com/midpoints?token_ids=${_batch.join(",")}`;
-                  const _r = await fetch(_url, { headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" }, signal: AbortSignal.timeout(4000) });
+                  const _r = await fetch("https://clob.polymarket.com/midpoints", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                    body: JSON.stringify({ token_ids: _batch }),
+                    signal: AbortSignal.timeout(4000)
+                  });
                   _polyDbg.clobStatus = _r.status;
                   if (!_r.ok) { _polyDbg.clobBody = (await _r.text().catch(() => "")).slice(0, 120); return null; }
                   _polyDbg.clobOk = true;
