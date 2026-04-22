@@ -2151,8 +2151,8 @@ var worker_default = {
             // kbbPts tiered: >18% → 2pts (green), >12% → 1pt (yellow), ≤12% → 0pts (red); null → 1pt (abstain)
             kbbPts = _kbb == null ? 1 : _kbb > 18 ? 2 : _kbb > 12 ? 1 : 0;
             kbbMeets = kbbPts > 0;
-            // lkpPts tiered: > 24% → 3pts (green, high K lineup), > 16% → 2pt (yellow, avg/below-avg lineup), ≤ 16% → 0pts; null → 1pt (abstain)
-            lkpPts = _lkp == null ? 1 : _lkp > 24 ? 3 : _lkp > 16 ? 2 : 0;
+            // lkpPts tiered: > 24% → 3pts (green, high K lineup), > 20% → 1pt (yellow), ≤ 20% → 0pts; null → 1pt (abstain)
+            lkpPts = _lkp == null ? 1 : _lkp > 24 ? 3 : _lkp > 20 ? 1 : 0;
             lkpMeets = lkpPts > 0;
             // pitchesPts tiered: >85 → 2pts (green), >75 → 1pt (yellow), ≤75 → 0pts; null → 1pt (abstain)
             pitchesPts = _avgP == null ? 1 : _avgP > 85 ? 2 : _avgP > 75 ? 1 : 0;
@@ -2161,9 +2161,9 @@ var worker_default = {
             // mlPts kept for market report ML column coloring — no longer contributes to simScore
             const _teamML = sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null;
             mlPts = _teamML == null ? 1 : _teamML <= -121 ? 2 : _teamML <= 120 ? 1 : 0;
-            // O/U total 3-tier (low total = pitcher-friendly): ≤8.5 → 2pts, 8.6–10.5 → 1pt, >10.5 → 0pts; null → 1pt
+            // O/U total 3-tier (low total = pitcher-friendly): ≤7.5 → 2pts, ≤8.5 → 1pt, >8.5 → 0pts; null → 1pt
             const _gameTotal = sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null;
-            totalPts = _gameTotal == null ? 1 : _gameTotal <= 8.5 ? 2 : _gameTotal <= 10.5 ? 1 : 0;
+            totalPts = _gameTotal == null ? 1 : _gameTotal <= 7.5 ? 2 : _gameTotal <= 8.5 ? 1 : 0;
             // K-trend: recent K% vs season K% — pitchers trending up score higher.
             // Requires A1 recentKPct (last 5 starts, 3+ starts, 30+ BF); null → 1pt abstain.
             // ≥ 1.10 (trending up ≥10%) → 2pts; ≥ 0.90 (stable) → 1pt; < 0.90 (trending down) → 0pts
