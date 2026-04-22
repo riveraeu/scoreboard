@@ -3264,7 +3264,6 @@ var worker_default = {
         // ── Polymarket price comparison + Poly-only market injection ─────────────────────────────
         // Fetched independently of Kalshi so Poly-only thresholds also enter the play loop.
         let polyPctMap = {};
-        let _polyDbg = { eventsMarkets: 0, clobTidsFromEvents: 0, mktIdsCollected: 0, fallbackAttempted: false, fallbackOk: false, fallbackTidsFound: 0, clobAttempted: false, clobOk: false, clobUpdates: 0, clobStatus: null, sampleTid: null };
         {
           const _polyKey = `poly:totals:${todayDateStr}`;
           const _cachedPoly = CACHE2 && !isBustCache ? await CACHE2.get(_polyKey, "json").catch(() => null) : null;
@@ -3279,10 +3278,6 @@ var worker_default = {
               return null;
             };
             // Fetch all supported sports regardless of whether Kalshi has markets for them
-            // tokenMap: overTokenId -> { keys, polyVol } for CLOB price refresh
-            const _clobTokenMap = new Map();
-            // mktIdMap: marketId -> { keys, polyVol, oIdx } for fallback gamma /markets fetch
-            const _mktIdMap = new Map();
             await Promise.all(Object.keys(POLY_SERIES).map(async _ps => {
               try {
                 const _evResp = await fetch(
@@ -3310,86 +3305,24 @@ var worker_default = {
                     if (_oIdx === -1 || !_pxs[_oIdx]) continue;
                     const _op = parseFloat(_pxs[_oIdx]);
                     if (_op < 0.02 || _op > 0.98) continue; // finalized
-                    const polyPct = Math.round(_op * 100);
+                    // Use live bid/ask midpoint when available — more accurate than outcomePrices (last traded)
+                    let _livePct = null;
+                    if (_pm.bestBid != null && _pm.bestAsk != null) {
+                      const _rawMid = (parseFloat(_pm.bestBid) + parseFloat(_pm.bestAsk)) / 2;
+                      // bestBid/bestAsk are for the primary (index-0) token; flip for Under-first markets
+                      const _overMid = _oIdx === 0 ? _rawMid : 1 - _rawMid;
+                      if (_overMid > 0.02 && _overMid < 0.98) _livePct = Math.round(_overMid * 100);
+                    }
+                    const polyPct = _livePct ?? Math.round(_op * 100);
                     const polyVol = Math.round(parseFloat(_pm.volume || _pm.liquidity || 0));
                     const _k1 = `${_ps}|${_homeAbbr}|${_awayAbbr}|${_thresh}`;
                     const _k2 = `${_ps}|${_awayAbbr}|${_homeAbbr}|${_thresh}`;
                     polyPctMap[_k1] = { polyPct, polyVol };
                     polyPctMap[_k2] = { polyPct, polyVol };
-                    // Collect Over CLOB token ID — present on full market objects, may be absent on nested event markets
-                    const _tids = Array.isArray(_pm.clobTokenIds) ? _pm.clobTokenIds : JSON.parse(_pm.clobTokenIds || "[]");
-                    const _overTid = _tids[_oIdx];
-                    _polyDbg.eventsMarkets++;
-                    if (!_polyDbg.sampleMarketKeys) _polyDbg.sampleMarketKeys = Object.keys(_pm).join(",");
-                    if (!_polyDbg.sampleBestAsk) _polyDbg.sampleBestAsk = { bestAsk: _pm.bestAsk, bestBid: _pm.bestBid, price: _pm.price, spreadBps: _pm.spreadBps };
-                    if (_overTid) {
-                      _clobTokenMap.set(_overTid, { keys: [_k1, _k2], polyVol });
-                      _polyDbg.clobTidsFromEvents++;
-                      if (!_polyDbg.sampleTid) _polyDbg.sampleTid = String(_overTid).slice(0, 20);
-                    } else {
-                      const _pmId = _pm.id || _pm.conditionId;
-                      if (_pmId) { _mktIdMap.set(String(_pmId), { keys: [_k1, _k2], polyVol, oIdx: _oIdx }); _polyDbg.mktIdsCollected++; }
-                    }
                   }
                 }
               } catch (_) {}
             }));
-            // Fallback: clobTokenIds absent from events endpoint — fetch full market objects from gamma /markets
-            if (_clobTokenMap.size === 0 && _mktIdMap.size > 0) {
-              _polyDbg.fallbackAttempted = true;
-              try {
-                const _mids = [..._mktIdMap.keys()];
-                const _mUrl = `https://gamma-api.polymarket.com/markets?${_mids.map(id => `id=${encodeURIComponent(id)}`).join("&")}`;
-                const _mResp = await fetch(_mUrl, { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(5000) });
-                _polyDbg.fallbackOk = _mResp.ok;
-                if (_mResp.ok) {
-                  const _mData = await _mResp.json();
-                  for (const _mkt of (Array.isArray(_mData) ? _mData : [])) {
-                    const _mktId = String(_mkt.id || _mkt.conditionId || "");
-                    const _entry = _mktIdMap.get(_mktId);
-                    if (!_entry) continue;
-                    const _tids2 = Array.isArray(_mkt.clobTokenIds) ? _mkt.clobTokenIds : JSON.parse(_mkt.clobTokenIds || "[]");
-                    const _tid2 = _tids2[_entry.oIdx];
-                    if (_tid2) { _clobTokenMap.set(_tid2, { keys: _entry.keys, polyVol: _entry.polyVol }); _polyDbg.fallbackTidsFound++; if (!_polyDbg.sampleTid) _polyDbg.sampleTid = String(_tid2).slice(0, 20); }
-                  }
-                }
-              } catch (_e) { _polyDbg.fallbackOk = String(_e).slice(0, 80); }
-            }
-            // Refresh prices from CLOB midpoints — more accurate than gamma outcomePrices for live games
-            if (_clobTokenMap.size > 0) {
-              _polyDbg.clobAttempted = true;
-              try {
-                const _tidList = [..._clobTokenMap.keys()];
-                // Batch into groups of 20 to stay under URI length limit, fetch in parallel
-                const _BATCH = 20;
-                const _batches = [];
-                for (let _bi = 0; _bi < _tidList.length; _bi += _BATCH) _batches.push(_tidList.slice(_bi, _bi + _BATCH));
-                const _batchResults = await Promise.all(_batches.map(async _batch => {
-                  const _url = `https://clob.polymarket.com/midpoints?${_batch.map(t => `token_id=${t}`).join("&")}`;
-                  const _r = await fetch(_url, { headers: { "Accept": "application/json" }, signal: AbortSignal.timeout(4000) });
-                  _polyDbg.clobStatus = _r.status;
-                  if (!_r.ok) { _polyDbg.clobBody = (await _r.text().catch(() => "")).slice(0, 120); return null; }
-                  _polyDbg.clobOk = true;
-                  const _raw = await _r.json();
-                  return _raw.midpoints ?? _raw;
-                }));
-                _polyDbg.clobKeys = 0;
-                for (const _batchData of _batchResults) {
-                  if (!_batchData) continue;
-                  _polyDbg.clobKeys += Object.keys(_batchData).length;
-                  for (const [_tid, _midStr] of Object.entries(_batchData)) {
-                    const _mid = parseFloat(_midStr);
-                    if (!_mid || _mid < 0.02 || _mid > 0.98) continue;
-                    const _entry = _clobTokenMap.get(_tid);
-                    if (!_entry) continue;
-                    const _clobPct = Math.round(_mid * 100);
-                    for (const _k of _entry.keys) {
-                      if (polyPctMap[_k]) { polyPctMap[_k] = { polyPct: _clobPct, polyVol: _entry.polyVol }; _polyDbg.clobUpdates++; }
-                    }
-                  }
-                }
-              } catch (_e) { _polyDbg.clobOk = String(_e).slice(0, 80); }
-            }
             if (Object.keys(polyPctMap).length > 0 && CACHE2) {
               await CACHE2.put(_polyKey, JSON.stringify(polyPctMap), { expirationTtl: 60 }).catch(() => {});
             }
@@ -3593,7 +3526,7 @@ var worker_default = {
         if (isDebug) {
           const nbaGlLabels = Object.fromEntries(Object.entries(playerGamelogs).filter(([k]) => k.startsWith("nba|")).map(([k, gl]) => [k, gl?.ul ?? null]));
           const nbaGlSample = Object.fromEntries(Object.entries(playerGamelogs).filter(([k]) => k.startsWith("nba|")).map(([k, gl]) => [k, gl?.events?.slice(0, 3).map(ev => ({ stats: ev.stats?.slice(0, 3), statsLen: ev.stats?.length })) ?? null]));
-          return jsonResponse({ plays, dropped, preDropped, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample, _polyDebug: _polyDbg }, true);
+          return jsonResponse({ plays, dropped, preDropped, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
         }
         const playsResult = { plays, nbaDropped, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length };
         const sportsInPlays = new Set(plays.map((p) => p.sport));
