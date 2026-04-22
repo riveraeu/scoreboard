@@ -2163,7 +2163,7 @@ var worker_default = {
             mlPts = _teamML == null ? 1 : _teamML <= -121 ? 2 : _teamML <= 120 ? 1 : 0;
             // O/U total 3-tier (low total = pitcher-friendly): ≤7.5 → 2pts, ≤8.5 → 1pt, >8.5 → 0pts; null → 1pt
             const _gameTotal = sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null;
-            totalPts = _gameTotal == null ? 1 : _gameTotal <= 7.5 ? 2 : _gameTotal <= 8.5 ? 1 : 0;
+            totalPts = _gameTotal == null ? 1 : _gameTotal <= 7.5 ? 2 : _gameTotal <= 10.5 ? 1 : 0;
             // K-trend: recent K% vs season K% — pitchers trending up score higher.
             // Requires A1 recentKPct (last 5 starts, 3+ starts, 30+ BF); null → 1pt abstain.
             // ≥ 1.10 (trending up ≥10%) → 2pts; ≥ 0.90 (stable) → 1pt; < 0.90 (trending down) → 0pts
