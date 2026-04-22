@@ -3314,7 +3314,7 @@ var worker_default = {
               } catch (_) {}
             }));
             if (Object.keys(polyPctMap).length > 0 && CACHE2) {
-              await CACHE2.put(_polyKey, JSON.stringify(polyPctMap), { expirationTtl: 300 }).catch(() => {});
+              await CACHE2.put(_polyKey, JSON.stringify(polyPctMap), { expirationTtl: 60 }).catch(() => {});
             }
           }
           // Inject Poly-only thresholds — those Poly carries that Kalshi doesn't
