@@ -1005,6 +1005,29 @@ The Polymarket app shows a slider with prices at multiple thresholds (e.g., O5.5
 
 **`pitcherInfoByTeam` map** (in `api/lib/mlb.js`): Built from `res26.people` and `res25.people` — the same MLB Stats API season stats fetch. Keys are team abbreviations (bare abbrs only; `"SD|SEA"` matchup keys excluded). Available whenever `buildPitcherKPct` returns, regardless of ESPN state.
 
+### Strikeout SimScore component calibration history
+
+SimScore thresholds have been tuned against settled pick outcomes. When win rates diverge from model predictions, the analysis steps are:
+
+1. Pull settled picks via `/api/user/picks` (requires auth token from login)
+2. Group by component value and compute actual win rate per tier
+3. If a middle tier shows win rate < 70%, tighten it or eliminate it — a 61% win-rate tier scoring 2pts is giving too much credit
+4. If win rate doesn't track the O/U line boundary assumed by scoring, move the cliff
+
+**Calibration results (43 settled strikeout picks, April 2026):**
+
+| Component | Old scoring | New scoring | Rationale |
+|---|---|---|---|
+| `lkpPts` (lineup oK%) | >24%→3, >16%→2, ≤16%→0 | >24%→3, >20%→1, ≤20%→0 | 16–24% tier hit 61% vs 82% for >24% — too generous |
+| `totalPts` (O/U tier) | ≤8.5→2, ≤10.5→1, >10.5→0 | ≤7.5→2, ≤8.5→1, >8.5→0 | O/U 7.5–8.5 hit 62% vs 86% for ≤7.5 — cliff was 1 run too high |
+
+Combined effect: lkpPts=3 + O/U≤7.5 → **90% actual win rate** (9-1). lkpPts=2 OR O/U>7.5 → **58%** (11-8).
+
+**Other patterns noted (not yet acted on):**
+- `kpctPts=3` (CSW%>30%) actual win rate 62% vs `kpctPts=2` (CSW% 26–30%) at 88% — top-tier pitchers may be efficiently priced; the market already captures high CSW%
+- `historicalHitRate` < 65% with large model gap (e.g. Hancock: 14.3% hist vs 89.8% model) correlated with losses — potential future hard gate
+- When adding new SimScore components, run this analysis after 40+ settled picks; small samples produce misleading tier win rates
+
 ### "NHL SimScore tooltip shows Edge ±X% instead of Team GPG"
 **Root cause**: Before commit removing the edge bonus from NHL SimScore, the 6th component was `Edge ±X%: N/3`. After converting to `nhlTeamGPG`, the tooltip still showed the old label if `index.html` was cached.
 
