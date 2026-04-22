@@ -3111,10 +3111,11 @@ function App() {
                     const qualifies = k && k.pct >= 70 && edge >= 3 && strongMatchupOk;
                     const sportSlug = sport.split("/")[1];
                     const trackId = `${sportSlug}|${player.name}|${safeTab}|${t}|${tonightPlay?.gameDate || ""}`;
-                    const isTracked = trackedPlays.some(p => p.id === trackId);
+                    const existingPick = trackedPlays.find(p => { const [ps,pn,pst,pt] = p.id.split("|"); return ps===sportSlug && pn===player.name && pst===safeTab && String(pt)===String(t); });
+                    const isTracked = !!existingPick;
                     const trackBtn = qualifies ? (
                       <button onClick={() => {
-                        if (isTracked) { untrackPlay(trackId); return; }
+                        if (isTracked) { untrackPlay(existingPick.id); return; }
                         trackPlay({
                           sport: sportSlug,
                           playerName: player.name,
