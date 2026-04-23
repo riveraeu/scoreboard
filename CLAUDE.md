@@ -394,6 +394,17 @@ Opened via "report" button. Shows ALL markets (plays + dropped) grouped by sport
 - **`fetchReport` syncs plays card**: After fetching `?debug=1`, `fetchReport` also updates `tonightPlays` and `allTonightPlays` from the fresh response. This keeps the plays card in sync with the report (avoids stale-cache discrepancy where plays card loaded at page open shows different results than the report fetched later).
 - **HRR table**: shows threshold=1 rows only (2+/3+/etc. filtered client-side — too noisy)
 - **Score > 10 highlight**: For MLB rows (strikeouts + HRR), the player name is white+bold only when `finalSimScore ?? hitterFinalSimScore > 10` (Alpha tier). Rows with score ≤ 10 get a dim gray name even if qualified. Non-MLB tables use the original `m.qualified` logic for name color.
+- **SimScore tooltip (market report)**: hover any `X/14` score badge to see per-component breakdown. Computed inline in `xcell k==="sim"` from available play fields:
+  - **Strikeouts**: CSW%/K%: X/3, K-BB%: X/2, Lineup K%: X/3, Pitches: X/2, K-Trend: X/2, O/U: X/2
+  - **HRR**: Spot: X/3, WHIP: X/3, Platoon: X/2, Park: X/1, Barrel%: X/3, O/U: X/2
+  - **NBA**: Pace (adj): X/3, DVP: X/2, Rested: X/2, Total: X/3 (C1/opportunity omitted — not exported)
+  - **NHL**: SA #X: X/3, TOI Xm: X/4, B2B: X/2, GPG X: X/3
+  - Cursor changes to `help` when tooltip is available. Game totals use existing `scTitle` (computed in play card).
+- **Market report column color tiers** — all columns use yellow only for values that earn the middle SimScore tier (no gray for 1pt):
+  - `lkp`: >24% green, >22% yellow, ≤22% red (updated from >20% after lkpPts calibration)
+  - `kbb`: >18% green, >12% yellow, ≤12% red (updated from >15%/>10% to match kbbPts scoring)
+  - `plat`: platoonPts=2 green, platoonPts=1 yellow, platoonPts=0 red
+  - All other columns already matched their scoring tiers
 - **Game totals table** (`mlb|totalRuns`, `nba|totalPoints`, `nhl|totalGoals`): section header shows **"[Sport] Totals"** (e.g. "NBA Totals") via `STAT_NAME` entries `totalRuns/totalPoints/totalGoals → "Totals"`. First column labelled "Matchup" (not "Player"), shows `AWY @ HME`. Opp column hidden. Line cell shows `O7.5` format. Score column uses `m.totalSimScore` (qual gate = 11); green ≥ 11, yellow = 7–10, gray < 7. XCOLS: MLB = H RPG / A RPG / H ERA / A ERA; NBA = H PPG / A PPG / H Def / A Def; NHL = H GPG / A GPG / H GAA / A GAA. Color for all PPG columns: higher = better for over (≥ threshold → green, near → yellow). **MLB ERA/RPG column colors**: ERA ≥4.5 → green (bad pitcher = over-favorable), ≥3.5 → yellow, <3.5 → gray; RPG ≥5.0 → green, ≥4.0 → yellow, <4.0 → gray. Dedup key for totals is `homeTeam|awayTeam|threshold` (not `playerName|threshold`).
 
 #### Calibration Tab
@@ -502,17 +513,17 @@ Both play cards and player cards show an explanation block (`background:"#0d1117
 
 **MLB hitter (HRR) explanation prose order** (play card + player card, both locations):
 1. Batting spot (e.g. "Shohei, batting #1 — top of the order"). BA tier and BA value removed — not a SimScore component.
-2. Pitcher name — WHIP always shown; color binary: `> 1.35 → green` (3pts, + "a lot of baserunners" description), `≤ 1.35 → red` (0pt — no description, color is sufficient). FIP removed from prose — not a SimScore component. FIP column still shown in market report.
+2. Pitcher name — WHIP always shown; color binary: `> 1.35 → green` (3pts, + "a lot of baserunners" description), `≤ 1.35 → red` (0pt — no description, color is sufficient). FIP removed from prose — not a SimScore component.
 3. Season rate + soft rate (vs pitcher H2H or vs team)
 4. ERA rank / no-H2H context — **only shown when `softPct === null` (no H2H data)**. When H2H exists, the soft rate already explains the matchup. ERA rank color is `#c9d1d9` (neutral, not bold red) since it's contextual, not a SimScore component.
-5. Park factor (when |pf − 1.0| ≥ 0.03)
+5. Park factor (when |pf − 1.0| ≥ 0.03) — sourced from `tonightHitPlay?.parkFactor ?? tonightHitPlay?.hitterParkKF` (fallback needed because HRR plays store park factor as `hitterParkKF`, not `parkFactor`)
 6. Game total (color: ≥9.5 green, ≥7.5 yellow, <7.5 gray)
 7. Barrel rate (color: ≥14% green/"elite hard contact", ≥10% yellow/"strong contact quality", ≥7% gray/"average contact", <7% dim — from `hitterBarrelPct`)
-8. Platoon edge/disadvantage: stat highlighted, label dimmed — "Hits `.310` vs RHP — platoon edge." or "Hits `.229` vs LHP — platoon disadvantage (`.281` season).". Split BA in green (edge) or red (disadvantage); season BA in `#c9d1d9` neutral. Silent when 1pt (neutral/abstain).
+8. Platoon edge/disadvantage: stat highlighted, label dimmed — "Hits `.310` vs RHP — platoon edge." or "Hits `.229` vs LHP — platoon disadvantage (`.281` season).". Split BA in green (edge ≥+15%) or red (disadvantage); season BA in `#c9d1d9` neutral. Silent when 1pt (neutral/abstain, ratio 0.95–1.15).
 9. SimScore badge inline
 10. **Lineup badge** — `✓ Lineup` (green) when `lineupConfirmed === true`; `Proj. Lineup` (gray) when `lineupConfirmed === false` and game is not imminent (same 30-minute rule as play card subtitle). `lineupConfirmed` and `gameTime` sourced from `tonightHitPlay` (HRR) or `h2h` (strikeouts, via `tp.lineupConfirmed/gameTime` added to h2h object). `verticalAlign:"middle"` so badge sits inline with SimScore badge.
 
-**FIP color rule (market report only):** FIP column in market report still uses absolute tiers — FIP > 4.5 → green (bad pitcher, batter-favorable), FIP > 3.5 → yellow (average), else gray. FIP is NOT shown in the play card or player card explanation prose (removed — not a SimScore component).
+**HRR market report columns:** `XCOLS["mlb|hrr"]` = Spot / WHIP / **Plat** / Brrl% / Park / ML. FIP was replaced by **Plat** (split BA vs pitcher hand): green = platoon edge (platoonPts=2), yellow = neutral (platoonPts=1), red = disadvantage (platoonPts=0). FIP is not shown anywhere in the UI (removed — not a SimScore component).
 
 **NHL player prop explanation** (play card + player card, both locations): single prose block — SimScore badge inline at end (no separate row, no checkboxes). SimScore tooltip on hover shows component breakdown: `SA ±X: N/3`, `TOI Xm: N/4`, `GAA #X: N/2`, `Rested/B2B: N/2`, `Team GPG X.X: N/3`.
 
@@ -1024,7 +1035,7 @@ SimScore thresholds have been tuned against settled pick outcomes. When win rate
 
 | Component | Original | After recal. | Current | Rationale |
 |---|---|---|---|---|
-| `lkpPts` (lineup oK%) | >24%→3, >16%→2, ≤16%→0 | >24%→3, >20%→1, ≤20%→0 | >24%→3, >22%→2, ≤22%→0 | Middle tier threshold raised to 22% — kpct=3+lkp=2 bucket was 60% on 15 picks |
+| `lkpPts` (lineup oK%) | >24%→3, >16%→2, ≤16%→0 | >24%→3, >20%→2, ≤20%→0 | >24%→3, >22%→2, ≤22%→0 | Middle tier threshold raised to 22% — kpct=3+lkp=2 bucket was 60% on 15 picks |
 | `totalPts` (O/U tier) | ≤8.5→2, ≤10.5→1, >10.5→0 | ≤7.5→2, <10.5→1, ≥10.5→0 | ≤7.5→2, <10.5→1, ≥10.5→0 | Moved 2pt cliff from 8.5 → 7.5; 0pt floor at ≥10.5 (10.5 itself = 0pts) |
 
 **Calibration results (15 settled HRR picks, April 2026):**
