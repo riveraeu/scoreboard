@@ -2210,9 +2210,9 @@ function App() {
                           if (k==="ab")  return C(ab  != null ? String(ab) : null, ab >= 10 ? "#8b949e" : "#f78166");
                           if (k==="csw") { const csw = m.pitcherCSWPct ?? m.pitcherKPct; const isReal = m.pitcherCSWPct != null; return C(csw != null ? csw.toFixed(1)+"%" : null, isReal ? (csw > 30 ? "#3fb950" : csw > 26 ? "#e3b341" : "#f78166") : (csw >= 27 ? "#3fb950" : csw >= 24 ? "#e3b341" : "#f78166")); }
                           if (k==="pkp") return C(pkp != null ? pkp.toFixed(1)+"%" : null, pkp > 24 ? "#3fb950" : pkp > 20 ? "#e3b341" : "#f78166");
-                          if (k==="kbb") { const kbb = m.pitcherKBBPct; return C(kbb != null ? kbb.toFixed(1)+"%" : null, kbb > 15 ? "#3fb950" : kbb > 10 ? "#e3b341" : "#f78166"); }
+                          if (k==="kbb") { const kbb = m.pitcherKBBPct; return C(kbb != null ? kbb.toFixed(1)+"%" : null, kbb > 18 ? "#3fb950" : kbb > 12 ? "#e3b341" : "#f78166"); }
                           if (k==="pps") { const pps = m.pitcherAvgPitches; return C(pps != null ? pps.toFixed(0) : null, pps > 85 ? "#3fb950" : pps > 75 ? "#e3b341" : "#f78166"); }
-                          if (k==="lkp") return C(lkp != null ? lkp.toFixed(1)+"%" : null, lkp > 24 ? "#3fb950" : lkp > 20 ? "#e3b341" : "#f78166");
+                          if (k==="lkp") return C(lkp != null ? lkp.toFixed(1)+"%" : null, lkp > 24 ? "#3fb950" : lkp > 22 ? "#e3b341" : "#f78166");
                           if (k==="spot") { const sp = m.hitterLineupSpot; return C(sp != null ? `#${sp}` : null, sp <= 3 ? "#3fb950" : sp <= 4 ? "#e3b341" : "#f78166"); }
                           if (k==="whip") { const w = m.pitcherWHIP; return C(w != null ? w.toFixed(2) : null, w > 1.35 ? "#3fb950" : w > 1.20 ? "#e3b341" : "#f78166"); }
                           if (k==="plat") { const s = m.hitterSplitBA; const pts = m.hitterPlatoonPts; if (s == null) return DASH; const ba = "."+Math.round(s*1000).toString().padStart(3,"0"); return <span style={{color:pts===2?"#3fb950":pts===0?"#f78166":"#8b949e"}}>{ba}</span>; }
@@ -2258,7 +2258,8 @@ function App() {
                           ml:"Team moneyline (your team's odds)", ou:"Game total (over/under line)",
                           csw:"Called Strike + Whiff% — pitch quality indicator (>30% = green)",
                           kbb:"K% − BB% — command indicator (>15% = green)",
-                          lkp:"Opposing lineup K-rate vs this pitcher hand (>24% = green, >22% = yellow)",
+                          lkp:"Opposing lineup K-rate vs this pitcher hand (>24% = green, >22% = yellow, ≤22% = red)",
+                          kbb:"K-BB% command indicator (>18% = green, >12% = yellow, ≤12% = red)",
                           pps:"Pitcher avg pitches per start (>85 means deeper into games)",
                           spot:"Batting order position (1–3 = green, 4 = yellow, 5+ filtered)",
                           whip:"Pitcher WHIP (H+BB)/IP — >1.35 favors hitter",
