@@ -3861,7 +3861,7 @@ function App() {
                         {play.lineupConfirmed === true && (
                           <span title="Official lineup posted" style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(63,185,80,0.12)",border:"1px solid #3fb950",color:"#3fb950"}}>✓ Lineup</span>
                         )}
-                        {play.lineupConfirmed === false && (
+                        {play.lineupConfirmed === false && !(play.gameTime && Date.now() >= new Date(play.gameTime).getTime() - 30*60*1000) && (
                           <span title="Projected lineup — not yet official" style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(139,148,158,0.12)",border:"1px solid #484f58",color:"#8b949e"}}>Proj. Lineup</span>
                         )}
                         {play.playerStatus === "out" && (
