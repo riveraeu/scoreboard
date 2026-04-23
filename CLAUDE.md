@@ -442,6 +442,7 @@ Shows `untrackedPlays` (qualified plays not yet tracked). For game totals, once 
 - SimScore gate breakdown
 - **Stake row** — `tierUnits(americanOdds)`: returns `|americanOdds| / 10` as a dollar stake (e.g. -257 → $25.7). Stored directly on tracked picks as `units` (dollar amount, not bankroll %). P&L uses `p.units` directly as stake. Picks editor shows a `$` input to override the default. Legacy picks stored with old integer unit values (1/3/5) will be treated as dollar amounts.
 - **Game time** shown in card subtitle as `"Today · 7:40 PM PT"` or `"Tomorrow · 1:10 PM PT"` using `play.gameTime` (UTC ISO string from `gameTimes` cache). Day label computed from browser local date vs `play.gameDate`.
+- **Lineup badges** in play card subtitle: `play.lineupConfirmed === true` → green `✓ Lineup`; `play.lineupConfirmed === false` → gray `Proj. Lineup`. The `Proj. Lineup` badge is suppressed when `gameTime` is within 30 minutes of now or has passed (`Date.now() >= new Date(gameTime).getTime() - 30*60*1000`) — at that point the game is imminent and the warning is no longer actionable.
 - **Date grouping**: plays are grouped by `gameDate` with "Today" / "Tomorrow" section headers. When the API returns plays for multiple dates (e.g. UTC has already flipped to tomorrow), today's plays appear first under "Today" and tomorrow's under "Tomorrow".
 
 **Total play cards** (`gameType: "total"`) render differently from player prop cards:
@@ -464,6 +465,7 @@ Clicking a play opens the player card with:
 - truePct from `tonightPlayerMap` (keyed `stat|threshold`) — built from `allTonightPlays` (unfiltered) so `qualified: false` thresholds (e.g. 3+/4+ strikeouts with no edge bonus) use their simulation-based truePct
 - Monotonicity enforced client-side: after building `_rawTruePctMap`, walks highest→lowest threshold tracking the running max and raises any value that dips below it. Safety net for any remaining non-monotonicity after backend sweep.
 - **Game time** shown as third line under player name/team in header (`"Today · 7:40 PM PT"` or `"Tomorrow · 1:10 PM PT"`). Looks up `gameTime` from `allTonightPlays` filtered to this player, sorted by `gameDate` ascending so today's game is preferred when multiple dates exist. Day label uses browser local date comparison against `gameDate`.
+- **Pick button (☆/★)** on the player card: shown when `qualifies === true` (`k.pct >= 70 && edge >= 3`). `existingPick` is found by matching `sport|name|stat|threshold` ignoring gameDate, but **only for today/future** picks (`pd >= today`; empty legacy `pd` always matches). `untrackPlay` uses `existingPick.id` (the actual stored ID) so old picks with empty gameDate are correctly removed. `trackPlay` call includes `gameDate: tonightPlay?.gameDate || ""` so the stored ID matches the `isTracked` check.
 - **Per-game gamelog table** (bottom of card) — current season only, sortable columns with hover tooltips
 
 #### Gamelog Table
@@ -508,6 +510,7 @@ Both play cards and player cards show an explanation block (`background:"#0d1117
 7. Barrel rate (color: ≥14% green/"elite hard contact", ≥10% yellow/"strong contact quality", ≥7% gray/"average contact", <7% dim — from `hitterBarrelPct`)
 8. Platoon edge/disadvantage: stat highlighted, label dimmed — "Hits `.310` vs RHP — platoon edge." or "Hits `.229` vs LHP — platoon disadvantage (`.281` season).". Split BA in green (edge) or red (disadvantage); season BA in `#c9d1d9` neutral. Silent when 1pt (neutral/abstain).
 9. SimScore badge inline
+10. **Lineup badge** — `✓ Lineup` (green) when `lineupConfirmed === true`; `Proj. Lineup` (gray) when `lineupConfirmed === false` and game is not imminent (same 30-minute rule as play card subtitle). `lineupConfirmed` and `gameTime` sourced from `tonightHitPlay` (HRR) or `h2h` (strikeouts, via `tp.lineupConfirmed/gameTime` added to h2h object). `verticalAlign:"middle"` so badge sits inline with SimScore badge.
 
 **FIP color rule (market report only):** FIP column in market report still uses absolute tiers — FIP > 4.5 → green (bad pitcher, batter-favorable), FIP > 3.5 → yellow (average), else gray. FIP is NOT shown in the play card or player card explanation prose (removed — not a SimScore component).
 
@@ -524,7 +527,7 @@ Both play cards and player cards show an explanation block (`background:"#0d1117
 - negative → `#f78166` red, ✗, opacity 0.7
 
 **Player card explanation** uses the same structure. Data sources by sport:
-- MLB strikeouts: `h2h` object built from `tonightPlayerMap` (includes `edge`, `kpctMeets`, `kpctPts`, `kbbMeets`, `lkpMeets`, `pitchesPts`, `mlPts`, `parkMeets`)
+- MLB strikeouts: `h2h` object built from `tonightPlayerMap` (includes `edge`, `kpctMeets`, `kpctPts`, `kbbMeets`, `lkpMeets`, `pitchesPts`, `mlPts`, `parkMeets`, `lineupConfirmed`, `gameTime`)
 - MLB hitters: `tonightHitPlay = Object.values(tonightPlayerMap).find(p => p.stat === safeTab)` (includes `hitterBa`, `hitterLineupSpot`, `pitcherWHIP`, `pitcherFIP`, `hitterWhipMeets`, `hitterPlatoonPts`, `hitterSplitBA`, `hitterParkMeets`, `hitterBarrelPct`, `hitterBarrelPts`, `oppPitcherHand`, `edge`)
 - NBA: `tonightTabPlay` (includes `nbaOpportunity`, `nbaPaceAdj`, `isB2B`, `nbaSimScore`, `posDvpRank`, `posDvpValue`, `softPct`, `seasonPct`, `edge`)
 
