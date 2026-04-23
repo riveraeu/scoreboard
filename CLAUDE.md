@@ -527,7 +527,7 @@ Both play cards and player cards show an explanation block (`background:"#0d1117
 9. SimScore badge inline
 10. **Lineup badge** — `✓ Lineup` (green) when `lineupConfirmed === true`; `Proj. Lineup` (gray) when `lineupConfirmed === false` and game is not imminent (same 30-minute rule as play card subtitle). `lineupConfirmed` and `gameTime` sourced from `tonightHitPlay` (HRR) or `h2h` (strikeouts, via `tp.lineupConfirmed/gameTime` added to h2h object). `verticalAlign:"middle"` so badge sits inline with SimScore badge.
 
-**HRR market report columns:** `XCOLS["mlb|hrr"]` = Spot / WHIP / **Plat** / Brrl% / Park / ML. FIP was replaced by **Plat** (split BA vs pitcher hand): green = platoon edge (platoonPts=2), yellow = neutral (platoonPts=1), red = disadvantage (platoonPts=0). FIP is not shown anywhere in the UI (removed — not a SimScore component).
+**HRR market report columns:** `XCOLS["mlb|hrr"]` = Score / Spot / WHIP / **Plat** / Brrl% / Park / **O/U**. ML replaced by O/U (≥9.5 green, ≥7.5 yellow, <7.5 red — high total = good for HRR); reads `m.hitterGameTotal`. Score column moved to first xcol (after Edge) on all tables — the hardcoded pre-True% Score column was removed. SimScore tooltip null-abstain for Platoon/WHIP/Barrel%/O/U now shows `1` not `—`.
 
 **NHL player prop explanation** (play card + player card, both locations): single prose block — SimScore badge inline at end (no separate row, no checkboxes). SimScore tooltip on hover shows component breakdown: `SA ±X: N/3`, `TOI Xm: N/4`, `GAA #X: N/2`, `Rested/B2B: N/2`, `Team GPG X.X: N/3`.
 
