@@ -1049,7 +1049,7 @@ SimScore thresholds have been tuned against settled pick outcomes. When win rate
 | `hitterPlatoonPts` (platoon advantage) | ≥1.10→2pts, ≥0.95→1pt, <0.95→0pts | ≥1.15→2pts, ≥0.95→1pt, <0.95→0pts | Threshold raised to ≥1.15 — weaker splits (1.10–1.15) scored 2pts but did not outperform neutral; max remains 14 |
 
 **Other patterns noted (not yet acted on):**
-- `kpctPts=3` (CSW%>30%) actual win rate 62% vs `kpctPts=2` (CSW% 26–30%) at 88% — top-tier pitchers may be efficiently priced; the market already captures high CSW%
+- `kpctPts=3` (CSW%≥30%) actual win rate 62% vs `kpctPts=2` (CSW% 26–<30%) at 88% — top-tier pitchers may be efficiently priced; the market already captures high CSW%
 - `historicalHitRate` < 65% with large model gap (e.g. Hancock: 14.3% hist vs 89.8% model) correlated with losses — potential future hard gate
 - When adding new SimScore components, run this analysis after 40+ settled picks; small samples produce misleading tier win rates
 
@@ -1071,6 +1071,13 @@ SimScore thresholds have been tuned against settled pick outcomes. When win rate
 **Root cause**: `lkpPts` is null when lineup wasn't confirmed at API run time (model counts this as 1pt abstain). The prose uses `h2h.lineupKPct` which may be filled from the DVP fallback, so the value appears in prose. But the tooltip used `h2h?.lkpPts ?? "—"` — null became `—` instead of showing the abstain point value.
 
 **Fix**: Tooltip now uses `h2h?.lkpPts ?? 1` (and same for `kTrendPts`), showing `1/3` or `1/2` to reflect the abstain scoring rather than `—`. Applied to both player card and play card `scTitle` strings.
+
+**Same issue in market report SimScore tooltip**: the `xcell k==="sim"` block in `index.html` has its own tooltip string — separate from the player/play card `scTitle`. All null-abstain components use `?? 1` there too: strikeouts (`kbbPts`, `lkpPts`, `pitchesPts`, `kTrendPts`, `totalPts`) and HRR (`hitterWhipPts`, `hitterPlatoonPts`, `hitterBarrelPts`, `hitterTotalPts`). Park is an exception: `hitterParkMeets` null → 0 (no park bonus, not abstain).
+
+### "Platoon column shows — in market report for players with low 2026 AB count"
+`hitterSplitBA` is null when the player has < 20 combined AB vs that pitcher hand across 2025+2026. `batterSplitBA` is built in `buildLineupKPct` (`api/lib/mlb.js`) by fetching `statSplits` for both 2026 and 2025 in parallel, then summing raw AB/H before computing BA. Minimum: 20 combined AB (same as `hitterBa` floor). Previously 2026-only with 30 AB minimum — most early-season players failed this gate.
+
+**Remaining null cases** (< 20 combined AB vs one hand): platoon-heavy bench players or genuinely hand-neutral players who face very few pitchers of one handedness across two seasons. `hitterPlatoonPts` stays null → SimScore counts 1pt abstain via `?? 1`.
 
 ### "NHL SimScore tooltip shows Edge ±X% instead of Team GPG"
 **Root cause**: Before commit removing the edge bonus from NHL SimScore, the 6th component was `Edge ±X%: N/3`. After converting to `nhlTeamGPG`, the tooltip still showed the old label if `index.html` was cached.
