@@ -3111,7 +3111,8 @@ function App() {
                     const qualifies = k && k.pct >= 70 && edge >= 3 && strongMatchupOk;
                     const sportSlug = sport.split("/")[1];
                     const trackId = `${sportSlug}|${player.name}|${safeTab}|${t}|${tonightPlay?.gameDate || ""}`;
-                    const existingPick = trackedPlays.find(p => { const [ps,pn,pst,pt] = p.id.split("|"); return ps===sportSlug && pn===player.name && pst===safeTab && String(pt)===String(t); });
+                    const _today = new Date().toISOString().slice(0,10);
+                    const existingPick = trackedPlays.find(p => { const [ps,pn,pst,pt,pd] = p.id.split("|"); return ps===sportSlug && pn===player.name && pst===safeTab && String(pt)===String(t) && (!pd || pd >= _today); });
                     const isTracked = !!existingPick;
                     const trackBtn = qualifies ? (
                       <button onClick={() => {
