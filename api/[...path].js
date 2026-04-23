@@ -2508,7 +2508,7 @@ var worker_default = {
             if (_splitBA != null && hitterBa != null) {
               // Platoon advantage when batter's split BA ≥ 10% better than season (e.g. LHB vs RHP)
               const _platoonRatio = _splitBA / hitterBa;
-              hitterPlatoonPts = _platoonRatio >= 1.10 ? 1 : _platoonRatio >= 0.95 ? 1 : 0;
+              hitterPlatoonPts = _platoonRatio >= 1.15 ? 2 : _platoonRatio >= 0.95 ? 1 : 0;
             }
             // B2: Batter recent form — last 10 2026 games rolling BA.
             // Blend 0.6 recent + 0.4 season if 20+ AB in recent window; else use season BA alone.

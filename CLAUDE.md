@@ -148,11 +148,11 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
 - **SimScore** (max 14, edge gates separately — same pattern as strikeouts):
   - Lineup spot 1–3 → 3pts, spot 4 → 2pts
   - Pitcher WHIP tiered (`hitterWhipPts`): > 1.35 → 3pts (green), > 1.20 → 1pt (yellow), ≤ 1.20 → 0pts (red). Null → 0pts. Prose color binary: > 1.35 green, else red. Description only shown when > 1.35 ("a lot of baserunners"); suppressed for ≤ 1.35 — red color is sufficient signal.
-  - B1 platoon tier (`hitterPlatoonPts`): `splitBA / seasonBA ≥ 1.10 → 1pt` (advantage, flattened — was 2pts), `≥ 0.95 → 1pt` (neutral/slight), `< 0.95 → 0pts` (platoon disadvantage); null → 1pt (abstain). Calibration showed platoon=2 (57% actual vs 85% model) underperformed neutral (100% actual). `batterSplitBA` from MLB Stats API `statSplits/sitCodes=vr|vl`, requires 30+ AB.
+  - B1 platoon tier (`hitterPlatoonPts`): `splitBA / seasonBA ≥ 1.15 → 2pts` (strong advantage — threshold raised from 1.10 after calibration showed weak advantage underperformed), `≥ 0.95 → 1pt` (neutral/slight), `< 0.95 → 0pts` (platoon disadvantage); null → 1pt (abstain). `batterSplitBA` from MLB Stats API `statSplits/sitCodes=vr|vl`, requires 30+ AB.
   - Park hit factor > 1.02 → 1pt
   - Barrel% tier: ≥14% → 3pts, ≥10% → 2pts, ≥7% → 1pt, <7% → 0pts, null → 1pt (abstain)
   - O/U total tier (high total = more run-scoring): ≥9.5 → 2pts, ≥7.5 → 1pt, <7.5 → 0pts, null → 1pt
-  - Max: 3+3+1+1+3+2 = 13
+  - Max: 3+3+2+1+3+2 = 14
 - **B2 — Batter recent form**: `hitterEffectiveBA = 0.6 × recentBA + 0.4 × seasonBA` when ≥20 AB in last 10 2026 games; else uses seasonBA. Fed directly into `simulateHits` as `batterBA`. `batterRecentBA` map built inline from ESPN gamelog in main play loop.
 - **Gates**: lineup spot 1–4 required; hitterSimScore ≥ 11 (Alpha tier — same as strikeouts/NBA/NHL); edge ≥ 5% (gate only, not scored)
 - Barrel% from Baseball Savant (`buildBarrelPct`) — cached 6h in KV; `hitterBarrelPts` stored in play output
@@ -1031,7 +1031,7 @@ SimScore thresholds have been tuned against settled pick outcomes. When win rate
 
 | Component | Previous | Current | Rationale |
 |---|---|---|---|
-| `hitterPlatoonPts` (platoon advantage) | ≥1.10→2pts, ≥0.95→1pt, <0.95→0pts | ≥1.10→1pt, ≥0.95→1pt, <0.95→0pts | Advantage flattened — 57% actual on platoon=2 vs 100% on platoon=1; max HRR SimScore now 13 |
+| `hitterPlatoonPts` (platoon advantage) | ≥1.10→2pts, ≥0.95→1pt, <0.95→0pts | ≥1.15→2pts, ≥0.95→1pt, <0.95→0pts | Threshold raised to ≥1.15 — weaker splits (1.10–1.15) scored 2pts but did not outperform neutral; max remains 14 |
 
 **Other patterns noted (not yet acted on):**
 - `kpctPts=3` (CSW%>30%) actual win rate 62% vs `kpctPts=2` (CSW% 26–30%) at 88% — top-tier pitchers may be efficiently priced; the market already captures high CSW%

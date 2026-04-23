@@ -2179,8 +2179,8 @@ function App() {
                       {(() => {
                         // Sport+stat specific extra columns
                         const XCOLS = {
-                          "mlb|hrr":        [{k:"spot",l:"Spot"},{k:"whip",l:"WHIP"},{k:"fip",l:"FIP"},{k:"brrl",l:"Brrl%"},{k:"env",l:"Park"},{k:"ml",l:"ML"}],
-                          "mlb|hits":       [{k:"spot",l:"Spot"},{k:"whip",l:"WHIP"},{k:"fip",l:"FIP"},{k:"brrl",l:"Brrl%"},{k:"env",l:"Park"},{k:"ml",l:"ML"}],
+                          "mlb|hrr":        [{k:"spot",l:"Spot"},{k:"whip",l:"WHIP"},{k:"plat",l:"Plat"},{k:"brrl",l:"Brrl%"},{k:"env",l:"Park"},{k:"ml",l:"ML"}],
+                          "mlb|hits":       [{k:"spot",l:"Spot"},{k:"whip",l:"WHIP"},{k:"plat",l:"Plat"},{k:"brrl",l:"Brrl%"},{k:"env",l:"Park"},{k:"ml",l:"ML"}],
                           "mlb|strikeouts": [{k:"env",l:"Park"},{k:"ktrend",l:"K-Trend"},{k:"ou",l:"O/U"},{k:"csw",l:"CSW%"},{k:"kbb",l:"K-BB%"},{k:"lkp",l:"oK%"},{k:"pps",l:"P/GS"}],
                           "nba|points":     [{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"},{k:"nbapace",l:"Pace"},{k:"nbaopp",l:"AvgMin"},{k:"nba_b2b",l:"Rest"},{k:"sim",l:"Score"}],
                           "nba|rebounds":   [{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"},{k:"nbapace",l:"Pace"},{k:"nbaopp",l:"AvgMin"},{k:"nba_b2b",l:"Rest"},{k:"sim",l:"Score"}],
@@ -2215,11 +2215,11 @@ function App() {
                           if (k==="lkp") return C(lkp != null ? lkp.toFixed(1)+"%" : null, lkp > 24 ? "#3fb950" : lkp > 20 ? "#e3b341" : "#f78166");
                           if (k==="spot") { const sp = m.hitterLineupSpot; return C(sp != null ? `#${sp}` : null, sp <= 3 ? "#3fb950" : sp <= 4 ? "#e3b341" : "#f78166"); }
                           if (k==="whip") { const w = m.pitcherWHIP; return C(w != null ? w.toFixed(2) : null, w > 1.35 ? "#3fb950" : w > 1.20 ? "#e3b341" : "#f78166"); }
-                          if (k==="fip")  { const f = m.pitcherFIP; return C(f != null ? f.toFixed(2) : null, f == null ? "#8b949e" : f > 4.5 ? "#3fb950" : f > 3.5 ? "#e3b341" : "#8b949e"); }
+                          if (k==="plat") { const s = m.hitterSplitBA; const pts = m.hitterPlatoonPts; if (s == null) return DASH; const ba = "."+Math.round(s*1000).toString().padStart(3,"0"); return <span style={{color:pts===2?"#3fb950":pts===0?"#f78166":"#8b949e"}}>{ba}</span>; }
                           if (k==="ou")  return C(ou  != null ? ou : null, ou <= 7.5 ? "#3fb950" : ou < 10.5 ? "#e3b341" : "#f78166");
                           if (k==="mlbOu") { const v = m.gameOuLine; return v != null ? <span style={{color:v>=9.5?"#3fb950":v>=7.5?"#e3b341":"#f78166"}}>{v}</span> : DASH; }
                           if (k==="dvp") { const r = m.posDvpRank; return C(r != null ? `#${r}${m.posGroup?" "+m.posGroup:""}` : null, r<=10?"#3fb950":r<=20?"#e3b341":"#f78166"); }
-                          if (k==="sim") { const sc = m.totalSimScore ?? m.finalSimScore ?? m.hitterFinalSimScore ?? m.nbaSimScore ?? m.nhlSimScore ?? m.simScore ?? m.hitterSimScore; const isKPlay = m.finalSimScore != null && m.totalSimScore == null; const qualGreen = isKPlay ? 12 : 11; const qualGate = m.totalSimScore != null ? 9 : isKPlay ? 9 : 7; return sc != null ? <span style={{color:sc>=qualGreen?"#3fb950":sc>=qualGate?"#e3b341":"#8b949e",fontWeight:600}}>{sc}/14</span> : DASH; }
+                          if (k==="sim") { const sc = m.totalSimScore ?? m.finalSimScore ?? m.hitterFinalSimScore ?? m.nbaSimScore ?? m.nhlSimScore ?? m.simScore ?? m.hitterSimScore; const isKPlay = m.finalSimScore != null && m.totalSimScore == null; const isHRR = m.hitterFinalSimScore != null && m.finalSimScore == null; const isNBA = m.nbaSimScore != null && m.totalSimScore == null; const isNHL = m.nhlSimScore != null && m.totalSimScore == null; const qualGreen = isKPlay ? 12 : 11; const qualGate = m.totalSimScore != null ? 9 : isKPlay ? 9 : 7; let tip = null; if (isKPlay) { tip = [`CSW%/K%: ${m.kpctPts??'—'}/3`,`K-BB%: ${m.kbbPts??'—'}/2`,`Lineup K%: ${m.lkpPts??'—'}/3`,`Pitches: ${m.pitchesPts??'—'}/2`,`K-Trend: ${m.kTrendPts??'—'}/2`,`O/U: ${m.totalPts??'—'}/2`].join('\n'); } else if (isHRR) { const ls=m.hitterLineupSpot; const sPts=ls!=null?(ls<=3?3:ls<=4?2:0):'—'; tip = [`Spot: ${sPts}/3`,`WHIP: ${m.hitterWhipPts??'—'}/3`,`Platoon: ${m.hitterPlatoonPts??'—'}/2`,`Park: ${m.hitterParkMeets===true?1:m.hitterParkMeets===false?0:'—'}/1`,`Barrel%: ${m.hitterBarrelPts??'—'}/3`,`O/U: ${m.hitterTotalPts??'—'}/2`].join('\n'); } else if (isNBA) { const pace=m.nbaPaceAdj; const pacePts=pace==null?1:pace>0?3:pace>-2?2:1; const dvpPts=m.dvpRatio>=1.05?2:m.dvpRatio>=1.02?1:0; const b2bPts=m.isB2B===false?2:m.isB2B===true?0:'—'; const gt=m.nbaGameTotal; const gtPts=gt==null?1:gt>=235?3:gt>=225?2:gt>=215?1:0; tip = [`Pace (${pace??'—'}): ${pacePts}/3`,`DVP: ${dvpPts}/2`,`Rested: ${b2bPts}/2`,`Total: ${gtPts}/3`].join('\n'); } else if (isNHL) { const toiPts=m.nhlOpportunity>=18?4:m.nhlOpportunity>=15?2:m.nhlOpportunity!=null?0:'—'; const gpg=m.nhlTeamGPG; const gpgPts=gpg==null?1:gpg>=3.5?3:gpg>=3.0?2:gpg>=2.5?1:0; const b2bPts=m.isB2B===false?2:m.isB2B===true?0:'—'; const saRank=m.nhlSaRank; const saPts=saRank==null?'—':saRank<=10?3:m.nhlShotsAdj>0?1:0; tip = [`SA #${saRank??'—'}: ${saPts}/3`,`TOI ${m.nhlOpportunity?.toFixed(1)??'—'}m: ${toiPts}/4`,`B2B: ${b2bPts}/2`,`GPG ${gpg??'—'}: ${gpgPts}/3`].join('\n'); } return sc != null ? <span title={tip??undefined} style={{color:sc>=qualGreen?"#3fb950":sc>=qualGate?"#e3b341":"#8b949e",fontWeight:600,cursor:tip?"help":"default"}}>{sc}/14</span> : DASH; }
                           if (k==="env") { const pf = m.parkFactor ?? m.hitterParkKF; if (pf == null) return DASH; const pct = Math.round((pf-1)*100); const disp = (pct>=0?"+":"")+pct+"%"; return <span style={{color:pf>1.02?"#3fb950":pf<0.98?"#f78166":"#8b949e"}}>{disp}</span>; }
                           if (k==="brrl") { const b = m.hitterBarrelPct; return b != null ? <span style={{color:b>10?"#3fb950":b>6?"#e3b341":"#f78166"}}>{b.toFixed(1)+"%"}</span> : DASH; }
                           if (k==="nbapace") { const p = m.nbaPaceAdj; return p != null ? <span style={{color:p>0?"#3fb950":p>-2?"#e3b341":"#f78166"}}>{p>0?"+":""}{p.toFixed(1)}</span> : DASH; }
@@ -2258,11 +2258,11 @@ function App() {
                           ml:"Team moneyline (your team's odds)", ou:"Game total (over/under line)",
                           csw:"Called Strike + Whiff% — pitch quality indicator (>30% = green)",
                           kbb:"K% − BB% — command indicator (>15% = green)",
-                          lkp:"Opposing lineup K-rate vs this pitcher hand (>24% = green, >20% = yellow)",
+                          lkp:"Opposing lineup K-rate vs this pitcher hand (>24% = green, >22% = yellow)",
                           pps:"Pitcher avg pitches per start (>85 means deeper into games)",
                           spot:"Batting order position (1–3 = green, 4 = yellow, 5+ filtered)",
                           whip:"Pitcher WHIP (H+BB)/IP — >1.35 favors hitter",
-                          fip:"Pitcher FIP vs ERA — green if FIP > ERA (pitcher may be unlucky)",
+                          plat:"Batter split BA vs pitcher hand — green=platoon edge (≥+15%), red=disadvantage",
                           brrl:"Barrel% hard-contact rate (Statcast)",
                           season:"Season hit rate %", h2h:"Hit rate vs soft-DVP opponents",
                           dvp:"Defense vs Position rank (lower = softer matchup)",
@@ -2841,7 +2841,7 @@ function App() {
                           const whip = tonightHitPlay?.pitcherWHIP ?? null;
                           const fip = tonightHitPlay?.pitcherFIP ?? null;
                           const era = tonightHitPlay?.hitterPitcherEra ?? tonightHitPlay?.pitcherEra ?? h2h?.pitcherEra ?? null;
-                          const pf = tonightHitPlay?.parkFactor ?? null;
+                          const pf = tonightHitPlay?.parkFactor ?? tonightHitPlay?.hitterParkKF ?? null;
                           const seasonPct = tonightHitPlay?.seasonPct ?? null;
                           const softPct = tonightHitPlay?.softPct ?? null;
                           const seasonG = tonightHitPlay?.pct26 != null ? tonightHitPlay?.pct26Games : (tonightHitPlay?.blendGames || tonightHitPlay?.seasonGames);
@@ -4042,7 +4042,7 @@ function App() {
                           const whip = play.pitcherWHIP;
                           const fip = play.pitcherFIP;
                           const era = play.hitterPitcherEra ?? play.pitcherEra ?? null;
-                          const pf = play.parkFactor;
+                          const pf = play.parkFactor ?? play.hitterParkKF;
                           const seasonG = play.pct26 != null ? play.pct26Games : (play.blendGames || play.seasonGames);
                           const seasonWindow = play.pct26 != null ? "this season" : "2025-26";
                           const statFull = STAT_FULL[play.stat] || play.stat;
