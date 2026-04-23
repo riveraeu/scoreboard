@@ -125,11 +125,13 @@ export async function buildLineupKPct(mlbSched) {
     const allIds = [...new Set(Object.values(teamLineups).flat())];
     if (allIds.length === 0) return { lineupKPct: {}, lineupBatterKPcts: {}, lineupKPctVR: {}, lineupKPctVL: {}, lineupBatterKPctsOrdered: {}, lineupBatterKPctsVROrdered: {}, lineupBatterKPctsVLOrdered: {}, lineupSpotByName: {}, gameHomeTeams, projectedLineupTeams: [] };
     const idStr = allIds.join(",");
-    const [res25, res26, resSplitVR, resSplitVL] = await Promise.all([
+    const [res25, res26, resSplitVR, resSplitVL, resSplitVR25, resSplitVL25] = await Promise.all([
       fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=batting,type=season,season=2025,gameType=R)`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
       fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=batting,type=season,season=2026,gameType=R)`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
       fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=batting,type=statSplits,season=2026,sitCodes=vr,gameType=R)`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
-      fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=batting,type=statSplits,season=2026,sitCodes=vl,gameType=R)`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({}))
+      fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=batting,type=statSplits,season=2026,sitCodes=vl,gameType=R)`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
+      fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=batting,type=statSplits,season=2025,sitCodes=vr,gameType=R)`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
+      fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=batting,type=statSplits,season=2025,sitCodes=vl,gameType=R)`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({}))
     ]);
     const playerStats25 = {}, playerStats26 = {};
     for (const person of (res25.people || [])) {
@@ -150,9 +152,21 @@ export async function buildLineupKPct(mlbSched) {
       playerStats[pid] = (s26 && s26.pa >= 15) ? s26 : (s25 || s26 || { so: 0, pa: 0 });
     }
     const playerSplits = {};
+    // B1: Build 2025 raw split AB/H keyed by player ID for platoon blend
+    const splitRaw25 = {};
+    const _bsNorm = n => n ? n.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() : "";
+    for (const [code, res] of [["vr", resSplitVR25], ["vl", resSplitVL25]]) {
+      for (const person of res.people || []) {
+        const pid = person.id; if (!pid) continue;
+        const splits = person.stats?.[0]?.splits || [];
+        const s = splits.find((x) => x.split?.code === code) || splits[0];
+        if (!s?.stat) continue;
+        if (!splitRaw25[pid]) splitRaw25[pid] = {};
+        splitRaw25[pid][code] = { ab: s.stat.atBats || 0, h: s.stat.hits || 0 };
+      }
+    }
     // B1: Also track split BA per player (keyed by normalized name) for hitter platoon splits
     const batterSplitBA = {};
-    const _bsNorm = n => n ? n.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() : "";
     for (const [code, res] of [["vr", resSplitVR], ["vl", resSplitVL]]) {
       for (const person of res.people || []) {
         const pid = person.id;
@@ -162,15 +176,18 @@ export async function buildLineupKPct(mlbSched) {
         if (!s?.stat) continue;
         if (!playerSplits[pid]) playerSplits[pid] = {};
         playerSplits[pid][code] = { so: s.stat.strikeOuts || 0, pa: s.stat.plateAppearances || 0 };
-        // B1: Extract split BA (hits/atBats) for hitter platoon simulation
+        // B1: Combine 2026 + 2025 AB/H for platoon BA (raw combined, consistent with hitterBa blend)
         if (person.fullName) {
           const name = _bsNorm(person.fullName);
           if (!batterSplitBA[name]) batterSplitBA[name] = {};
-          const ab = s.stat.atBats || 0;
-          const h = s.stat.hits || 0;
+          const ab26 = s.stat.atBats || 0;
+          const h26 = s.stat.hits || 0;
+          const s25 = splitRaw25[pid]?.[code];
+          const ab = ab26 + (s25?.ab || 0);
+          const h = h26 + (s25?.h || 0);
           const baKey = code === "vr" ? "vsR" : "vsL";
           const paKey = code === "vr" ? "vsRPA" : "vsLPA";
-          batterSplitBA[name][baKey] = ab >= 30 ? parseFloat((h / ab).toFixed(3)) : null;
+          batterSplitBA[name][baKey] = ab >= 20 ? parseFloat((h / ab).toFixed(3)) : null;
           batterSplitBA[name][paKey] = ab;
         }
       }

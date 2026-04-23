@@ -148,7 +148,7 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
 - **SimScore** (max 14, edge gates separately — same pattern as strikeouts):
   - Lineup spot 1–3 → 3pts, spot 4 → 2pts
   - Pitcher WHIP tiered (`hitterWhipPts`): > 1.35 → 3pts (green), > 1.20 → 2pts (yellow), ≤ 1.20 → 1pt (red). Null → 1pt (abstain). Prose color 3-tier: > 1.35 green ("a lot of baserunners"), > 1.20 yellow ("some traffic on base"), ≤ 1.20 red (no description).
-  - B1 platoon tier (`hitterPlatoonPts`): `splitBA / seasonBA ≥ 1.15 → 2pts` (strong advantage — threshold raised from 1.10 after calibration showed weak advantage underperformed), `≥ 0.95 → 1pt` (neutral/slight), `< 0.95 → 0pts` (platoon disadvantage); null → 1pt (abstain). `batterSplitBA` from MLB Stats API `statSplits/sitCodes=vr|vl`, requires 30+ AB.
+  - B1 platoon tier (`hitterPlatoonPts`): `splitBA / seasonBA ≥ 1.15 → 2pts` (strong advantage — threshold raised from 1.10 after calibration showed weak advantage underperformed), `≥ 0.95 → 1pt` (neutral/slight), `< 0.95 → 0pts` (platoon disadvantage); null → 1pt (abstain). `batterSplitBA` from MLB Stats API `statSplits/sitCodes=vr|vl`, blended 2025+2026 raw AB/H (consistent with `hitterBa` blend), requires 20+ combined AB.
   - Park hit factor > 1.02 → 1pt
   - Barrel% tier: ≥14% → 3pts, ≥10% → 2pts, ≥7% → 1pt, <7% → 0pts, null → 1pt (abstain)
   - O/U total tier (high total = more run-scoring): ≥9.5 → 2pts, ≥7.5 → 1pt, <7.5 → 0pts, null → 1pt
@@ -246,7 +246,7 @@ True% = Monte Carlo simulation (reuses `buildNbaStatDist` + `nbaDistPct`) — no
 | Function/Constant | What it does |
 |---|---|
 | `MLB_ID_TO_ABBR` | MLB team ID → abbreviation mapping |
-| `buildLineupKPct(mlbSched)` | Lineup batter K-rates, lineup spots, ordered arrays; also exports `batterSplitBA` (vsR/vsL BA, 30+ AB) for B1 platoon |
+| `buildLineupKPct(mlbSched)` | Lineup batter K-rates, lineup spots, ordered arrays; also exports `batterSplitBA` (vsR/vsL BA, 2025+2026 blended, 20+ combined AB) for B1 platoon |
 | `buildBarrelPct()` | Baseball Savant barrel% CSV, 5s timeout, cached 6h |
 | `buildPitcherKPct(mlbSched)` | Pitcher season stats (K%, KBB%, ERA, P/GS, CSW%, GS26); also exports `pitcherRecentKPct`, `pitcherLastStartDate`, `pitcherLastStartPC` for A1/A2; exports `pitcherInfoByTeam` (`{[abbr]: {name, id}}`) as MLB Stats API fallback when ESPN probables absent |
 
