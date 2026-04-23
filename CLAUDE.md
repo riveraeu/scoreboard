@@ -119,7 +119,7 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
 - **SimScore** (max 14, no edge bonus — edge gates separately):
   - CSW%/K% tiered (1/2/3pts): CSW% > 30% = 3pts (green), CSW% > 26% to ≤ 30% = 2pts (yellow), CSW% ≤ 26% = 1pt (red). Falls back to regressed K% only if CSW% is unavailable (null): K% > 27% = 3pts, K% > 24% to ≤ 27% = 2pts, K% ≤ 24% = 1pt. Null CSW% + null K% = 1pt (abstain). Stored as `kpctPts` (1/2/3); `kpctMeets = kpctPts > 0` (boolean, always true now).
   - K-BB% tiered (`kbbPts`): > 18% → 2pts (green), > 12% → 1pt (yellow), ≤ 12% → 0pts (red); null → 1pt (abstain). `kbbMeets = kbbPts > 0` (boolean). Prose color in play card + player card matches: > 18% green, > 12% yellow, ≤ 12% red (`kbbColor`).
-  - Lineup oK% tiered (`lkpPts`): > 24% → 3pts (green), > 20% → 2pts (yellow), ≤ 20% → 0pts; null → 1pt (abstain). `lkpMeets = lkpPts > 0`. Hand-adjusted vs RHP/LHP.
+  - Lineup oK% tiered (`lkpPts`): > 24% → 3pts (green), > 22% → 2pts (yellow), ≤ 22% → 0pts; null → 1pt (abstain). `lkpMeets = lkpPts > 0`. Hand-adjusted vs RHP/LHP.
   - Avg pitches/start tiered (`pitchesPts`): > 85 → 2pts (green), > 75 → 1pt (yellow), ≤ 75 → 0pts; null → 1pt (abstain). (uses 2026 data only if gs26 ≥ 4; else falls back to 2025)
   - **K-trend** (`kTrendPts`): `_recentKPct / _seasonKPct` ratio. ≥ 1.10 (trending up ≥10%) → 2pts; ≥ 0.90 (stable) → 1pt; < 0.90 (trending down) → 0pts; null (no recent data) → 1pt abstain. Replaces `mlPts` in simScore formula. `_recentKPct` from last 5 starts (A1 signal); ratio compares it directly to full-season K%.
   - O/U tier (`totalPts`): ≤ 7.5 → 2pts (low total = pitcher dominant), < 10.5 → 1pt, ≥ 10.5 → 0pts; null → 1pt
@@ -148,11 +148,11 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
 - **SimScore** (max 14, edge gates separately — same pattern as strikeouts):
   - Lineup spot 1–3 → 3pts, spot 4 → 2pts
   - Pitcher WHIP tiered (`hitterWhipPts`): > 1.35 → 3pts (green), > 1.20 → 1pt (yellow), ≤ 1.20 → 0pts (red). Null → 0pts. Prose color binary: > 1.35 green, else red. Description only shown when > 1.35 ("a lot of baserunners"); suppressed for ≤ 1.35 — red color is sufficient signal.
-  - B1 platoon tier (`hitterPlatoonPts`): `splitBA / seasonBA ≥ 1.10 → 2pts` (strong platoon advantage), `≥ 0.95 → 1pt` (neutral/slight), `< 0.95 → 0pts` (platoon disadvantage); null → 1pt (abstain). `batterSplitBA` from MLB Stats API `statSplits/sitCodes=vr|vl`, requires 30+ AB; replaces former Pitcher FIP > ERA pts.
+  - B1 platoon tier (`hitterPlatoonPts`): `splitBA / seasonBA ≥ 1.10 → 1pt` (advantage, flattened — was 2pts), `≥ 0.95 → 1pt` (neutral/slight), `< 0.95 → 0pts` (platoon disadvantage); null → 1pt (abstain). Calibration showed platoon=2 (57% actual vs 85% model) underperformed neutral (100% actual). `batterSplitBA` from MLB Stats API `statSplits/sitCodes=vr|vl`, requires 30+ AB.
   - Park hit factor > 1.02 → 1pt
   - Barrel% tier: ≥14% → 3pts, ≥10% → 2pts, ≥7% → 1pt, <7% → 0pts, null → 1pt (abstain)
   - O/U total tier (high total = more run-scoring): ≥9.5 → 2pts, ≥7.5 → 1pt, <7.5 → 0pts, null → 1pt
-  - Max: 3+3+2+1+3+2 = 14
+  - Max: 3+3+1+1+3+2 = 13
 - **B2 — Batter recent form**: `hitterEffectiveBA = 0.6 × recentBA + 0.4 × seasonBA` when ≥20 AB in last 10 2026 games; else uses seasonBA. Fed directly into `simulateHits` as `batterBA`. `batterRecentBA` map built inline from ESPN gamelog in main play loop.
 - **Gates**: lineup spot 1–4 required; hitterSimScore ≥ 11 (Alpha tier — same as strikeouts/NBA/NHL); edge ≥ 5% (gate only, not scored)
 - Barrel% from Baseball Savant (`buildBarrelPct`) — cached 6h in KV; `hitterBarrelPts` stored in play output
@@ -1020,14 +1020,18 @@ SimScore thresholds have been tuned against settled pick outcomes. When win rate
 3. If a middle tier shows win rate < 70%, tighten it or eliminate it — a 61% win-rate tier scoring 2pts is giving too much credit
 4. If win rate doesn't track the O/U line boundary assumed by scoring, move the cliff
 
-**Calibration results (43 settled strikeout picks, April 2026):**
+**Calibration results (46 settled strikeout picks, April 2026):**
 
 | Component | Original | After recal. | Current | Rationale |
 |---|---|---|---|---|
-| `lkpPts` (lineup oK%) | >24%→3, >16%→2, ≤16%→0 | >24%→3, >20%→1, ≤20%→0 | >24%→3, >20%→2, ≤20%→0 | Threshold raised to 20% (recal); value restored to 2pts for consistency with other max-3 components (all give 2/3 of max for middle tier) |
+| `lkpPts` (lineup oK%) | >24%→3, >16%→2, ≤16%→0 | >24%→3, >20%→1, ≤20%→0 | >24%→3, >22%→2, ≤22%→0 | Middle tier threshold raised to 22% — kpct=3+lkp=2 bucket was 60% on 15 picks |
 | `totalPts` (O/U tier) | ≤8.5→2, ≤10.5→1, >10.5→0 | ≤7.5→2, <10.5→1, ≥10.5→0 | ≤7.5→2, <10.5→1, ≥10.5→0 | Moved 2pt cliff from 8.5 → 7.5; 0pt floor at ≥10.5 (10.5 itself = 0pts) |
 
-Combined effect: lkpPts=3 + O/U≤7.5 → **90% actual win rate** (9-1). lkpPts<3 OR O/U>7.5 → **58%** (11-8).
+**Calibration results (15 settled HRR picks, April 2026):**
+
+| Component | Previous | Current | Rationale |
+|---|---|---|---|
+| `hitterPlatoonPts` (platoon advantage) | ≥1.10→2pts, ≥0.95→1pt, <0.95→0pts | ≥1.10→1pt, ≥0.95→1pt, <0.95→0pts | Advantage flattened — 57% actual on platoon=2 vs 100% on platoon=1; max HRR SimScore now 13 |
 
 **Other patterns noted (not yet acted on):**
 - `kpctPts=3` (CSW%>30%) actual win rate 62% vs `kpctPts=2` (CSW% 26–30%) at 88% — top-tier pitchers may be efficiently priced; the market already captures high CSW%

@@ -2151,8 +2151,8 @@ var worker_default = {
             // kbbPts tiered: >18% → 2pts (green), >12% → 1pt (yellow), ≤12% → 0pts (red); null → 1pt (abstain)
             kbbPts = _kbb == null ? 1 : _kbb > 18 ? 2 : _kbb > 12 ? 1 : 0;
             kbbMeets = kbbPts > 0;
-            // lkpPts tiered: > 24% → 3pts (green, high K lineup), > 20% → 2pts (yellow), ≤ 20% → 0pts; null → 1pt (abstain)
-            lkpPts = _lkp == null ? 1 : _lkp > 24 ? 3 : _lkp > 20 ? 2 : 0;
+            // lkpPts tiered: > 24% → 3pts (green, high K lineup), > 22% → 2pts (yellow), ≤ 22% → 0pts; null → 1pt (abstain)
+            lkpPts = _lkp == null ? 1 : _lkp > 24 ? 3 : _lkp > 22 ? 2 : 0;
             lkpMeets = lkpPts > 0;
             // pitchesPts tiered: >85 → 2pts (green), >75 → 1pt (yellow), ≤75 → 0pts; null → 1pt (abstain)
             pitchesPts = _avgP == null ? 1 : _avgP > 85 ? 2 : _avgP > 75 ? 1 : 0;
@@ -2508,7 +2508,7 @@ var worker_default = {
             if (_splitBA != null && hitterBa != null) {
               // Platoon advantage when batter's split BA ≥ 10% better than season (e.g. LHB vs RHP)
               const _platoonRatio = _splitBA / hitterBa;
-              hitterPlatoonPts = _platoonRatio >= 1.10 ? 2 : _platoonRatio >= 0.95 ? 1 : 0;
+              hitterPlatoonPts = _platoonRatio >= 1.10 ? 1 : _platoonRatio >= 0.95 ? 1 : 0;
             }
             // B2: Batter recent form — last 10 2026 games rolling BA.
             // Blend 0.6 recent + 0.4 season if 20+ AB in recent window; else use season BA alone.
