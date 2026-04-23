@@ -2484,7 +2484,7 @@ var worker_default = {
             const _hlParkKF2 = PARK_HITFACTOR?.[_hlHomeTeam2] ?? 1;
             const _hlEra = sportByteam.mlb?.probables?.[tonightOpp]?.era ?? sportByteam.mlb?.pitcherEra?.[tonightOpp] ?? null;
             hitterWhipMeets = pitcherWHIP != null ? pitcherWHIP > 1.35 : null;
-            hitterWhipPts = pitcherWHIP == null ? 0 : pitcherWHIP > 1.35 ? 3 : pitcherWHIP > 1.20 ? 1 : 0;
+            hitterWhipPts = pitcherWHIP == null ? 1 : pitcherWHIP > 1.35 ? 3 : pitcherWHIP > 1.20 ? 2 : 1;
             hitterFipMeets = (pitcherFIP != null && _hlEra != null) ? pitcherFIP > _hlEra : null;
             hitterParkMeets = _hlParkKF2 > 1.0;
             hitterParkKF = _hlParkKF2;
@@ -2527,7 +2527,7 @@ var worker_default = {
             // O/U total tier (high total = more run-scoring): ≥9.5→2pts, ≥7.5→1pt, <7.5→0pts, null→1pt
             hitterGameTotal = sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null;
             hitterTotalPts = hitterGameTotal == null ? 1 : hitterGameTotal >= 9.5 ? 2 : hitterGameTotal >= 7.5 ? 1 : 0;
-            // Sim-score (max 14, edge gates separately): spot→3/2, WHIP→3/1/0, platoon→0-2, park→1, barrel%→0-3, O/U→0-2
+            // Sim-score (max 14, edge gates separately): spot→3/2, WHIP→3/2/1, platoon→0-2, park→1, barrel%→0-3, O/U→0-2
             hitterSimScore = (_spotPts ?? 0)
               + (hitterWhipPts ?? 0)
               + hitterPlatoonPts

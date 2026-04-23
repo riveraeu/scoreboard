@@ -147,7 +147,7 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
   - BA is NOT directly in the formula — it's implicit via the player's historical HRR rate
 - **SimScore** (max 14, edge gates separately — same pattern as strikeouts):
   - Lineup spot 1–3 → 3pts, spot 4 → 2pts
-  - Pitcher WHIP tiered (`hitterWhipPts`): > 1.35 → 3pts (green), > 1.20 → 1pt (yellow), ≤ 1.20 → 0pts (red). Null → 0pts. Prose color binary: > 1.35 green, else red. Description only shown when > 1.35 ("a lot of baserunners"); suppressed for ≤ 1.35 — red color is sufficient signal.
+  - Pitcher WHIP tiered (`hitterWhipPts`): > 1.35 → 3pts (green), > 1.20 → 2pts (yellow), ≤ 1.20 → 1pt (red). Null → 1pt (abstain). Prose color 3-tier: > 1.35 green ("a lot of baserunners"), > 1.20 yellow ("some traffic on base"), ≤ 1.20 red (no description).
   - B1 platoon tier (`hitterPlatoonPts`): `splitBA / seasonBA ≥ 1.15 → 2pts` (strong advantage — threshold raised from 1.10 after calibration showed weak advantage underperformed), `≥ 0.95 → 1pt` (neutral/slight), `< 0.95 → 0pts` (platoon disadvantage); null → 1pt (abstain). `batterSplitBA` from MLB Stats API `statSplits/sitCodes=vr|vl`, requires 30+ AB.
   - Park hit factor > 1.02 → 1pt
   - Barrel% tier: ≥14% → 3pts, ≥10% → 2pts, ≥7% → 1pt, <7% → 0pts, null → 1pt (abstain)
@@ -400,11 +400,15 @@ Opened via "report" button. Shows ALL markets (plays + dropped) grouped by sport
   - **NBA**: Pace (adj): X/3, DVP: X/2, Rested: X/2, Total: X/3 (C1/opportunity omitted — not exported)
   - **NHL**: SA #X: X/3, TOI Xm: X/4, B2B: X/2, GPG X: X/3
   - Cursor changes to `help` when tooltip is available. Game totals use existing `scTitle` (computed in play card).
-- **Market report column color tiers** — all columns use yellow only for values that earn the middle SimScore tier (no gray for 1pt):
-  - `lkp`: >24% green, >22% yellow, ≤22% red (updated from >20% after lkpPts calibration)
-  - `kbb`: >18% green, >12% yellow, ≤12% red (updated from >15%/>10% to match kbbPts scoring)
+- **Market report column color tiers** — colors match SimScore tiers exactly (yellow = middle tier earns points, gray = earns 1pt but lowest tier, red = 0pts):
+  - `lkp`: >24% green, >22% yellow, ≤22% red
+  - `kbb`: >18% green, >12% yellow, ≤12% red
   - `plat`: platoonPts=2 green, platoonPts=1 yellow, platoonPts=0 red
-  - All other columns already matched their scoring tiers
+  - `whip`: >1.35 green, >1.20 yellow, ≤1.20 red (3/2/1pts — no 0pt floor; null=1pt abstain)
+  - `brrl`: ≥14% green, ≥10% yellow, ≥7% gray, <7% red (matches SimScore 3/2/1/0pt tiers)
+  - `nhlgaa`: ≤10 green, >10 red (binary — all ranks ≤10 earn same 2pts)
+  - `nbapace`: >0 green, >-2 yellow, ≤-2 gray (slow pace earns 1pt, not 0; gray not red)
+  - `plat` sort: keyed on `hitterSplitBA` ascending
 - **Game totals table** (`mlb|totalRuns`, `nba|totalPoints`, `nhl|totalGoals`): section header shows **"[Sport] Totals"** (e.g. "NBA Totals") via `STAT_NAME` entries `totalRuns/totalPoints/totalGoals → "Totals"`. First column labelled "Matchup" (not "Player"), shows `AWY @ HME`. Opp column hidden. Line cell shows `O7.5` format. Score column uses `m.totalSimScore` (qual gate = 11); green ≥ 11, yellow = 7–10, gray < 7. XCOLS: MLB = H RPG / A RPG / H ERA / A ERA; NBA = H PPG / A PPG / H Def / A Def; NHL = H GPG / A GPG / H GAA / A GAA. Color for all PPG columns: higher = better for over (≥ threshold → green, near → yellow). **MLB ERA/RPG column colors**: ERA ≥4.5 → green (bad pitcher = over-favorable), ≥3.5 → yellow, <3.5 → gray; RPG ≥5.0 → green, ≥4.0 → yellow, <4.0 → gray. Dedup key for totals is `homeTeam|awayTeam|threshold` (not `playerName|threshold`).
 
 #### Calibration Tab
