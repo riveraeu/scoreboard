@@ -148,7 +148,7 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
 - **SimScore** (max 14, edge gates separately — same pattern as strikeouts):
   - Lineup spot 1–3 → 3pts, spot 4 → 2pts
   - Pitcher WHIP tiered (`hitterWhipPts`): > 1.35 → 3pts (green), > 1.20 → 2pts (yellow), ≤ 1.20 → 1pt (red). Null → 1pt (abstain). Prose color 3-tier: > 1.35 green ("a lot of baserunners"), > 1.20 yellow ("some traffic on base"), ≤ 1.20 red (no description).
-  - B1 platoon tier (`hitterPlatoonPts`): `splitBA / seasonBA ≥ 1.15 → 2pts` (strong advantage — threshold raised from 1.10 after calibration showed weak advantage underperformed), `≥ 0.95 → 1pt` (neutral/slight), `< 0.95 → 0pts` (platoon disadvantage); null → 1pt (abstain). `batterSplitBA` from MLB Stats API `statSplits/sitCodes=vr|vl`, blended 2025+2026 raw AB/H (consistent with `hitterBa` blend), requires 20+ combined AB.
+  - B1 platoon tier (`hitterPlatoonPts`): `splitBA / seasonBA ≥ 1.08 → 2pts` (platoon advantage), `≥ 0.95 → 1pt` (neutral/slight), `< 0.95 → 0pts` (platoon disadvantage); null → 1pt (abstain). `batterSplitBA` from MLB Stats API `statSplits/sitCodes=vr|vl`, blended 2025+2026 raw AB/H (consistent with `hitterBa` blend), requires 20+ combined AB.
   - Park hit factor > 1.02 → 1pt
   - Barrel% tier: ≥14% → 3pts, ≥10% → 2pts, ≥7% → 1pt, <7% → 0pts, null → 1pt (abstain)
   - O/U total tier (high total = more run-scoring): ≥9.5 → 2pts, ≥7.5 → 1pt, <7.5 → 0pts, null → 1pt
@@ -1046,7 +1046,7 @@ SimScore thresholds have been tuned against settled pick outcomes. When win rate
 
 | Component | Previous | Current | Rationale |
 |---|---|---|---|
-| `hitterPlatoonPts` (platoon advantage) | ≥1.10→2pts, ≥0.95→1pt, <0.95→0pts | ≥1.15→2pts, ≥0.95→1pt, <0.95→0pts | Threshold raised to ≥1.15 — weaker splits (1.10–1.15) scored 2pts but did not outperform neutral; max remains 14 |
+| `hitterPlatoonPts` (platoon advantage) | ≥1.10→2pts, ≥0.95→1pt, <0.95→0pts | ≥1.15→2pts, ≥0.95→1pt, <0.95→0pts | Raised to ≥1.15 (Apr 22 cal, 15 picks); lowered to ≥1.08 (Apr 23 — sample too small, column showed no green, threshold disproportionately strict) |
 
 **Other patterns noted (not yet acted on):**
 - `kpctPts=3` (CSW%≥30%) actual win rate 62% vs `kpctPts=2` (CSW% 26–<30%) at 88% — top-tier pitchers may be efficiently priced; the market already captures high CSW%
