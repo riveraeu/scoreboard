@@ -92,7 +92,7 @@ Used for caching expensive fetches. Key TTLs:
 #### Total SimScore details
 - **MLB**: homeERA tiered (>4.5→3, >3.5→2, ≤3.5→1, null→0), awayERA tiered (same), homeRPG tiered (>5.0→2, >4.0→1, ≤4.0→0, null→0), awayRPG tiered (same), parkRF>1.01→2pts (run-friendly parks only; pitcher-friendly parks score 0), O/U line tiered (≥9.5→2pts, ≥7.5→1pt, <7.5→0pts, null→1pt) (max 14). High ERA and high RPG score higher — both are over-favorable signals. O/U is the market consensus and is independent of ERA/RPG.
 - **NBA**: off PPG tiered (≥118→3, ≥113→2, else 1, null→0) per team (max 3+3=6); def PPG allowed tiered (≥118→2, ≥113→1, else 0, null→0) per team (max 2+2=4); O/U line tiered (≥235→4, ≥225→3, ≥215→2, ≥205→1, <205→0, null→0) (max 4); (max 14). Replaces pace components (pace known + above avg pace) — pace still in `_simData` for prose display.
-- **NHL**: homeGPG tiered (≥3.5→3, ≥3.0→2, <3.0→1, null→0), awayGPG tiered (same), homeGAA tiered (≥3.5→2, ≥3.0→1, <3.0→0, null→0), awayGAA tiered (same), home SA rank→2pts, away SA rank→2pts (max 14). High GPG and high GAA score higher — both are over-favorable signals.
+- **NHL**: homeGPG tiered (≥3.5→3, ≥3.0→2, <3.0→1, null→0), awayGPG tiered (same), homeGAA tiered (≥3.5→2, ≥3.0→1, <3.0→0, null→0), awayGAA tiered (same), O/U line tiered (≥7→4, ≥6→3, ≥5.5→2, ≥5→1, <5→0, null→0) (max 14). Replaces SA rank (4pts). ESPN NHL scoreboard fetched for odds via `sportByteam.nhlGameOdds` (normalized via TEAM_NORM.nhl).
 
 #### Lambda computation (MLB)
 `homeLambda = homeRPG × (awayERA / 4.20) × parkRF`, clamped [1, 12]
@@ -399,7 +399,7 @@ Opened via "report" button. Shows ALL markets (plays + dropped) grouped by sport
   - **NHL**: SA #X: X/3, TOI Xm: X/4, B2B: X/2, GPG X: X/3
   - **MLB totals**: Home/Away ERA (pts from ≥4.5/≥3.5 tiers), Home/Away RPG (≥5.0/≥4.0), Park RF (>1.01→2pts), O/U (≥9.5/≥7.5 tiers)
   - **NBA totals**: Home/Away off PPG (≥118→3, ≥113→2, else 1), Home/Away def allowed (≥118→2, ≥113→1, else 0), O/U line (≥235→4, ≥225→3, ≥215→2, ≥205→1)
-  - **NHL totals**: Home/Away GPG (≥3.5/≥3.0 tiers), Home/Away GAA (≥3.5/≥3.0 tiers), Home/Away shots-against known
+  - **NHL totals**: Home/Away GPG (≥3.5/≥3.0 tiers), Home/Away GAA (≥3.5/≥3.0 tiers), O/U line (≥7→4, ≥6→3, ≥5.5→2, ≥5→1)
   - Cursor changes to `help` when tooltip is available. Detection: `m.totalSimScore != null` → total play; otherwise sport-specific score fields.
 - **Market report column color tiers** — colors match SimScore tiers exactly (yellow = middle tier earns points, gray = earns 1pt but lowest tier, red = 0pts):
   - `lkp`: >24% green, >22% yellow, ≤22% red

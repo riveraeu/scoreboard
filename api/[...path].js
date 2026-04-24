@@ -1475,6 +1475,12 @@ var worker_default = {
               }
             }
             if (CACHE2 && Object.keys(gameTimes).length > 0) await CACHE2.put(`gameTimes:v2:${todayDateStr}`, JSON.stringify(gameTimes), { expirationTtl: 600 }).catch(() => {});
+            // Extract NHL game odds from already-fetched ESPN events (no extra request)
+            const _nhlSbResult = sbResults.find(r => r.sport === "nhl");
+            if (_nhlSbResult?.events.length > 0) {
+              const _raw = parseGameOdds(_nhlSbResult.events);
+              sportByteam.nhlGameOdds = Object.fromEntries(Object.entries(_raw).map(([k, v]) => [normTeam("nhl", k), v]));
+            }
           }
           if (needNbaStatus) {
             const nbaEvents = sbResults.find(r => r.sport === "nba")?.events || [];
@@ -1495,6 +1501,14 @@ var worker_default = {
           }
         }
         nbaPlayerStatus = nbaPlayerStatus || {};
+        // Fetch NHL game odds if nhl byteam was loaded from cache (scoreboard not fetched above)
+        if (sportsNeeded.has("nhl") && !sportByteam.nhlGameOdds) {
+          const _nd3 = new Date(); const _ns3 = _nd3.toISOString().slice(0,10).replace(/-/g,'');
+          const _nhlRaw = await fetch(`https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard?dates=${_ns3}`, {
+            headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" }
+          }).then(r => r.ok ? r.json() : {}).then(d => parseGameOdds(d.events || [])).catch(() => ({}));
+          sportByteam.nhlGameOdds = Object.fromEntries(Object.entries(_nhlRaw).map(([k, v]) => [normTeam("nhl", k), v]));
+        }
         // Fetch NBA game odds if nba byteam was loaded from cache (scoreboard not fetched above)
         if (sportsNeeded.has("nba") && !sportByteam.nbaGameOdds) {
           const _nd2 = new Date(); const _ns2 = _nd2.toISOString().slice(0,10).replace(/-/g,'');
@@ -3470,10 +3484,10 @@ var worker_default = {
             } else if (sport === "nhl") {
               const homeGPG = nhlGPGMap[homeTeam] ?? null, awayGPG = nhlGPGMap[awayTeam] ?? null;
               const homeGAA = nhlGAAMap[homeTeam] ?? null, awayGAA = nhlGAAMap[awayTeam] ?? null;
-              const _hSA = nhlSaRankMap[homeTeam]?.value ?? null, _aSA = nhlSaRankMap[awayTeam]?.value ?? null;
+              const _nhlOuLine = sportByteam.nhlGameOdds?.[homeTeam]?.total ?? sportByteam.nhlGameOdds?.[awayTeam]?.total ?? null;
               const _hGLRaw = homeGPG != null ? Math.max(0.5, Math.min(8, homeGPG * (awayGAA != null ? awayGAA / nhlLeagueAvgGAA : 1))) : null;
               const _aGLRaw = awayGPG != null ? Math.max(0.5, Math.min(8, awayGPG * (homeGAA != null ? homeGAA / nhlLeagueAvgGAA : 1))) : null;
-              _simData = { homeGPG, awayGPG, homeGAA, awayGAA, homeSAKnown: _hSA != null, awaySAKnown: _aSA != null, homeExpected: _hGLRaw != null ? parseFloat(_hGLRaw.toFixed(2)) : null, awayExpected: _aGLRaw != null ? parseFloat(_aGLRaw.toFixed(2)) : null, expectedTotal: (_hGLRaw != null && _aGLRaw != null) ? parseFloat((_hGLRaw + _aGLRaw).toFixed(1)) : null };
+              _simData = { homeGPG, awayGPG, homeGAA, awayGAA, gameOuLine: _nhlOuLine, homeExpected: _hGLRaw != null ? parseFloat(_hGLRaw.toFixed(2)) : null, awayExpected: _aGLRaw != null ? parseFloat(_aGLRaw.toFixed(2)) : null, expectedTotal: (_hGLRaw != null && _aGLRaw != null) ? parseFloat((_hGLRaw + _aGLRaw).toFixed(1)) : null };
               if (_hGLRaw != null && _aGLRaw != null) {
                 const _dk = `nhl|${homeTeam}|${awayTeam}`;
                 if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateNHLTotalDist(_hGLRaw, _aGLRaw, 10000);
@@ -3485,7 +3499,8 @@ var worker_default = {
               // GAA tiered: ≥3.5→2pts, ≥3.0→1pt, <3.0→0pts, null→0pts (high GAA = bad defense = good for over)
               totalSimScore += homeGAA != null ? (homeGAA >= 3.5 ? 2 : homeGAA >= 3.0 ? 1 : 0) : 0;
               totalSimScore += awayGAA != null ? (awayGAA >= 3.5 ? 2 : awayGAA >= 3.0 ? 1 : 0) : 0;
-              if (_hSA != null) totalSimScore += 2; if (_aSA != null) totalSimScore += 2;
+              // O/U tiered: ≥7→4pts, ≥6→3pts, ≥5.5→2pts, ≥5→1pt, <5→0pts (replaces SA 4pts; max still 14)
+              if (_nhlOuLine != null) totalSimScore += _nhlOuLine >= 7 ? 4 : _nhlOuLine >= 6 ? 3 : _nhlOuLine >= 5.5 ? 2 : _nhlOuLine >= 5 ? 1 : 0;
             }
             // Polymarket disabled — all fields null
             const polyPct = null, polyVol = null, polyDerived = false, bestVenue = "kalshi", bestEdge = null, polyOnly = false;
