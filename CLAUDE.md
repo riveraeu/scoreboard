@@ -115,7 +115,7 @@ Used for caching expensive fetches. Key TTLs:
 True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
 - Shared distribution per pitcher (keyed `playerTeam|pitcherHand`) — guarantees P(K≥4) ≥ P(K≥5)
 - `pitcherKDistCache` built before play loop
-- 10000 sims if `simScore ≥ 12`, else 5000
+- 10000 sims if `simScore ≥ 11`, else 5000
 - **SimScore** (max 14, no edge bonus — edge gates separately):
   - CSW%/K% tiered (1/2/3pts): CSW% ≥ 30% = 3pts (green), CSW% > 26% to < 30% = 2pts (yellow), CSW% ≤ 26% = 1pt (red). Falls back to regressed K% only if CSW% is unavailable (null): K% > 27% = 3pts, K% > 24% to ≤ 27% = 2pts, K% ≤ 24% = 1pt. Null CSW% + null K% = 1pt (abstain). Stored as `kpctPts` (1/2/3); `kpctMeets = kpctPts > 0` (boolean, always true now).
   - K-BB% tiered (`kbbPts`): > 18% → 2pts (green), > 12% → 1pt (yellow), ≤ 12% → 0pts (red); null → 1pt (abstain). `kbbMeets = kbbPts > 0` (boolean). Prose color in play card + player card matches: > 18% green, > 12% yellow, ≤ 12% red (`kbbColor`).
@@ -310,7 +310,7 @@ All player prop sports push dropped plays to `plays[]` with `qualified: false` s
 The raw (unfiltered) array is stored in `allTonightPlays` and used to build `tonightPlayerMap` in the player card — this ensures all players visible in the market report also have explanation data on their player page.
 
 **Which gates push `qualified: false` to `plays[]`:**
-- **MLB strikeouts**: edge gate, threshold_too_high gate, finalSimScore < 12 gate, kpctPts < 2 gate — all thresholds included so the player card shows monotonically decreasing truePct across 3+/4+/5+
+- **MLB strikeouts**: edge gate, threshold_too_high gate, finalSimScore < 11 gate, kpctPts < 2 gate — all thresholds included so the player card shows monotonically decreasing truePct across 3+/4+/5+
 - **MLB HRR**: edge gate (`edge < 5` or `kalshiPct < 70`), hitterFinalSimScore < 11 gate — includes all explanation fields (`hitterBa`, `hitterPlatoonPts`, `hitterSplitBA`, `hitterSoftLabel`, `hitterGameTotal`, etc.)
 - **NBA**: edge gate, nbaSimScore < 11 gate — includes `nbaGameTotal`, `nbaUsage/Ast/Reb`, `nba3pMPG`, `nbaPaceAdj`, `posDvpRank/Value`, `nbaBlowoutAdj`
 - **NHL**: edge gate, nhlSimScore < 11 gate — includes `nhlOpportunity`, `nhlShotsAdj`, `nhlTeamGPG`, `nhlSaRank`
@@ -433,7 +433,7 @@ Right side: **bust** button (calls `?bust=1`, shows "busting…" while loading) 
 ### My Picks Header
 Shows: **"My Picks"** label → total count badge → `X active · Y finished` breakdown (active = no result yet, green; finished = won/lost excluding DNP, gray). No "clear settled" button — picks are managed per-row only.
 
-**ⓘ info icon** (next to date, left side): toggles a tooltip showing universal play qualification criteria — three lines only: Implied prob ≥ 70%, Edge ≥ 5%, SimScore ≥ 11/14 (strikeouts 12/14). No sport-specific detail. State: `showPlaysInfo`.
+**ⓘ info icon** (next to date, left side): toggles a tooltip showing universal play qualification criteria — three lines only: Implied prob ≥ 70%, Edge ≥ 5%, SimScore ≥ 11/14. No sport-specific detail. State: `showPlaysInfo`.
 
 **`DayBar` — P&L bar chart** (below P&L summary, above pick cards): Each bar column renders **two independent bars**: green above the midline (total $ won) and red below (total $ lost). Both bars can appear simultaneously on a mixed day. `maxAbs = max(maxDailyWins, maxDailyLosses)` — shared scale for both directions. Tooltip shows each play's individual P&L plus a net row.
 
@@ -810,7 +810,7 @@ This always gave 14/14 when all four fields were present (assuming SA ranks know
 **Diagnosis:** `git log --oneline origin/main..HEAD` — if this shows unpushed commits, Vercel is running the old code. **Fix:** `git push origin main`.
 
 ### "SimScore shows yellow for strikeout players with score 9–11"
-The qualifying gate for strikeouts is `finalSimScore >= 12` (Alpha tier). The report SimScore column uses `>= 9` as the yellow threshold, so scores 9–11 show yellow (near miss) and scores < 9 show gray.
+The qualifying gate for strikeouts is `finalSimScore >= 11` (Alpha tier, same as all other sports). The report SimScore column uses `>= 9` as the yellow threshold, so scores 9–10 show yellow (near miss) and scores < 9 show gray.
 
 ### "No MLB plays / all edge_too_low or empty response"
 **Most likely cause: Kalshi markets haven't opened yet for today's slate.**

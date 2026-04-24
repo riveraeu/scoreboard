@@ -2278,7 +2278,7 @@ var worker_default = {
                 // Use cached distribution for this pitcher so all thresholds share the same sim run
                 const _distKey = `${playerTeam}|${_pitcherHand ?? ""}`;
                 if (!pitcherKDistCache[_distKey]) {
-                  const _nSim = simScore !== null && simScore >= 12 ? 10000 : 5000;
+                  const _nSim = simScore !== null && simScore >= 11 ? 10000 : 5000;
                   const _pitcherKPctAdj = Math.min(40, pitcherKPctOut * _umpireKFactor);
                   pitcherKDistCache[_distKey] = simulateKsDist(orderedKPcts, _pitcherKPctAdj, parkFactorOut, _nSim, _expectedBF);
                 }
@@ -2889,9 +2889,9 @@ var worker_default = {
             });
             continue;
           }
-          // Strikeout finalSimScore gate: must reach >= 12 (Alpha tier) to qualify as a play.
-          // Scores 7-11 show in report but marked qualified:false so player card still shows truePct.
-          if (sport === "mlb" && stat === "strikeouts" && finalSimScore !== null && finalSimScore < 12) {
+          // Strikeout finalSimScore gate: must reach >= 11 (Alpha tier) to qualify as a play.
+          // Scores 7-10 show in report but marked qualified:false so player card still shows truePct.
+          if (sport === "mlb" && stat === "strikeouts" && finalSimScore !== null && finalSimScore < 11) {
             const _dropLowScore = {
               ..._dropBase,
               reason: "low_confidence",
