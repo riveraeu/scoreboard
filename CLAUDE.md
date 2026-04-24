@@ -80,19 +80,19 @@ Used for caching expensive fetches. Key TTLs:
 - **Team extraction**: `parseGameTeams()` handles all sport-specific team code formats. Kalshi uses non-standard abbreviations for some teams; `TEAM_NORM` (in `api/[...path].js`) maps them to ESPN standard codes: NBA: `{ GS→GSW, SA→SAS, NY→NYK, NJ→BKN, NO→NOP, PHO→PHX, WPH→PHX }`. After building `STAT_SOFT["nba|*"]` rankMaps from ESPN byteam (which also returns short codes like "GS"), a post-normalization loop adds the long-form key so `nbaDefRank["GSW"]` resolves correctly.
 - **`direction: "over"`** — currently only over plays surfaced (YES on Kalshi)
 - **Edge gate**: `edge >= 5%` (same as player props); no soft matchup gate for totals
-- **SimScore** (max 14): tiered by stat quality, not just data existence; `qualified: totalSimScore >= 11`
+- **SimScore** (max 10): 5 stats × 2pts each; `qualified: totalSimScore >= 8`
 - **Data maps** (`mlbRPGMap`, `nhlGPGMap/GAAMap`, `nbaOffPPGMap`) computed inline after `leagueAvgCache` block
 - **Play card**: `gameType: "total"` flag triggers `TotalPlayCard` branch in the play card render; shows dual team logos (ESPN CDN), matchup header, true%/Kalshi% bars, explanation prose, SimScore badge
 - **Deduplication**: one total play per game (homeTeam+awayTeam+sport), keeping highest edge — multiple thresholds for the same game reduced to the best one
 - **Expected total**: `homeExpected + awayExpected` (lambda sum for MLB/NHL, PPG-adjusted for NBA) shown in explanation prose; `_simData` includes `homeExpected`, `awayExpected`, `expectedTotal`, `gameOuLine`; NBA also includes `homePace`, `awayPace`, `leagueAvgPace` (pace still in `_simData` for prose, not SimScore)
-- **SimScore tooltip**: hover the `X/14` badge to see per-component breakdown with actual values. NBA example: `CHA off PPG (116): 2/3`. NHL example: `LAK GPG (2.7): 1/3`, `CGY GAA (3.15): 1/2`.
+- **SimScore tooltip**: hover the `X/10` badge to see per-component breakdown with actual values. NBA totals example: `CHA off PPG (116): 1/2`. NHL totals example: `LAK GPG (2.7): 1/2`, `CGY GAA (3.15): 1/2`.
 - **Edge badge**: shows `+X%` only — tooltip removed (spreadAdj no longer subtracted from edge)
 - **Track ID format**: `total|sport|homeTeam|awayTeam|threshold|gameDate`
 
-#### Total SimScore details
-- **MLB**: homeERA tiered (>4.5→3, >3.5→2, ≤3.5→1, null→0), awayERA tiered (same), homeRPG tiered (>5.0→2, >4.0→1, ≤4.0→0, null→0), awayRPG tiered (same), parkRF>1.01→2pts (run-friendly parks only; pitcher-friendly parks score 0), O/U line tiered (≥9.5→2pts, ≥7.5→1pt, <7.5→0pts, null→1pt) (max 14). High ERA and high RPG score higher — both are over-favorable signals. O/U is the market consensus and is independent of ERA/RPG.
-- **NBA**: off PPG tiered (≥118→3, ≥113→2, else 1, null→0) per team (max 3+3=6); def PPG allowed tiered (≥118→2, ≥113→1, else 0, null→0) per team (max 2+2=4); O/U line tiered (≥235→4, ≥225→3, ≥215→2, ≥205→1, <205→0, null→0) (max 4); (max 14). Replaces pace components (pace known + above avg pace) — pace still in `_simData` for prose display.
-- **NHL**: homeGPG tiered (≥3.5→3, ≥3.0→2, <3.0→1, null→0), awayGPG tiered (same), homeGAA tiered (≥3.5→2, ≥3.0→1, <3.0→0, null→0), awayGAA tiered (same), O/U line tiered (≥7→4, ≥6→3, ≥5.5→2, ≥5→1, <5→0, null→0) (max 14). Replaces SA rank (4pts). ESPN NHL scoreboard fetched for odds via `sportByteam.nhlGameOdds` (normalized via TEAM_NORM.nhl).
+#### Total SimScore details (max 10 — 5 stats × 2pts each; `qualified: totalSimScore >= 8`)
+- **MLB**: homeERA tiered (>4.5→2, >3.5→1, ≤3.5→0, null→1), awayERA (same), homeRPG tiered (>5.0→2, >4.0→1, ≤4.0→0, null→1), awayRPG (same), O/U line tiered (≥9.5→2, ≥7.5→1, <7.5→0, null→1). Park RF removed from scoring (still shown in env column in report). High ERA and high RPG score higher — both are over-favorable signals.
+- **NBA**: off PPG tiered (≥118→2, ≥113→1, else 0, null→1) per team; def PPG allowed tiered (≥118→2, ≥113→1, else 0, null→1) per team; O/U line tiered (≥235→2, ≥225→1, <225→0, null→1). Pace still in `_simData` for prose display but not scored.
+- **NHL**: homeGPG tiered (≥3.5→2, ≥3.0→1, <3.0→0, null→1), awayGPG (same), homeGAA tiered (≥3.5→2, ≥3.0→1, <3.0→0, null→1), awayGAA (same), O/U line tiered (≥7→2, ≥5.5→1, <5.5→0, null→1). ESPN NHL scoreboard fetched for odds via `sportByteam.nhlGameOdds` (normalized via TEAM_NORM.nhl).
 
 #### Lambda computation (MLB)
 `homeLambda = homeRPG × (awayERA / 4.20) × parkRF`, clamped [1, 12]
@@ -115,22 +115,22 @@ Used for caching expensive fetches. Key TTLs:
 True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
 - Shared distribution per pitcher (keyed `playerTeam|pitcherHand`) — guarantees P(K≥4) ≥ P(K≥5)
 - `pitcherKDistCache` built before play loop
-- 10000 sims if `simScore ≥ 11`, else 5000
-- **SimScore** (max 14, no edge bonus — edge gates separately):
-  - CSW%/K% tiered (1/2/3pts): CSW% ≥ 30% = 3pts (green), CSW% > 26% to < 30% = 2pts (yellow), CSW% ≤ 26% = 1pt (red). Falls back to regressed K% only if CSW% is unavailable (null): K% > 27% = 3pts, K% > 24% to ≤ 27% = 2pts, K% ≤ 24% = 1pt. Null CSW% + null K% = 1pt (abstain). Stored as `kpctPts` (1/2/3); `kpctMeets = kpctPts > 0` (boolean, always true now).
-  - K-BB% tiered (`kbbPts`): > 18% → 2pts (green), > 12% → 1pt (yellow), ≤ 12% → 0pts (red); null → 1pt (abstain). `kbbMeets = kbbPts > 0` (boolean). Prose color in play card + player card matches: > 18% green, > 12% yellow, ≤ 12% red (`kbbColor`).
-  - Lineup oK% tiered (`lkpPts`): > 24% → 3pts (green), > 22% → 2pts (yellow), ≤ 22% → 0pts; null → 1pt (abstain). `lkpMeets = lkpPts > 0`. Hand-adjusted vs RHP/LHP.
-  - Avg pitches/start tiered (`pitchesPts`): > 85 → 2pts (green), > 75 → 1pt (yellow), ≤ 75 → 0pts; null → 1pt (abstain). (uses 2026 data only if gs26 ≥ 4; else falls back to 2025)
-  - **K-trend** (`kTrendPts`): `_recentKPct / _seasonKPct` ratio. ≥ 1.10 (trending up ≥10%) → 2pts; ≥ 0.90 (stable) → 1pt; < 0.90 (trending down) → 0pts; null (no recent data) → 1pt abstain. Replaces `mlPts` in simScore formula. `_recentKPct` from last 5 starts (A1 signal); ratio compares it directly to full-season K%.
+- 10000 sims if `simScore ≥ 8`, else 5000
+- **SimScore** (max 10, edge gate only — 5 stats × 2pts each):
+  - CSW%/K% tiered (`kpctPts`): CSW% ≥ 30% = 2pts (green), CSW% > 26% to < 30% = 1pt (yellow), CSW% ≤ 26% = 0pts (red). Falls back to regressed K% only if CSW% unavailable: K% > 27% = 2pts, K% > 24% = 1pt, ≤ 24% = 0pts. Null CSW% + null K% = 1pt (abstain). `kpctMeets = kpctPts > 0` (boolean, always true now).
+  - K-BB% tiered (`kbbPts`): > 18% → 2pts (green), > 12% → 1pt (yellow), ≤ 12% → 0pts (red); null → 1pt (abstain). `kbbMeets = kbbPts > 0`. Prose color matches: > 18% green, > 12% yellow, ≤ 12% red (`kbbColor`).
+  - Lineup oK% tiered (`lkpPts`): > 24% → 2pts (green), > 22% → 1pt (yellow), ≤ 22% → 0pts; null → 1pt (abstain). `lkpMeets = lkpPts > 0`. Hand-adjusted vs RHP/LHP.
+  - **Blended hit rate** (`blendedHitRatePts`): trust-weighted blend of 2026 observed hit rate and 2025 computed hit rate at threshold. `trust26 = min(1, vals26.length / 15)`. ≥ 90% → 2pts (green), ≥ 80% → 1pt (yellow), < 80% → 0pts; null → 1pt (abstain). Replaces `pitchesPts` + `kTrendPts` in simScore formula.
   - O/U tier (`totalPts`): ≤ 7.5 → 2pts (low total = pitcher dominant), < 10.5 → 1pt, ≥ 10.5 → 0pts; null → 1pt
-  - Edge ≥ 3% required (gates play independently, not part of SimScore)
+  - Edge ≥ 5% required (gates play independently, not part of SimScore)
 - `parkMeets` (`PARK_KFACTOR[homeTeam] > 1.0`) is still computed and included in debug output but no longer contributes to SimScore — park factor is applied inside `simulateKsDist` and affects truePct directly. `PARK_KFACTOR` values updated from FanGraphs 2024 SO column (multi-year rolling avg).
-- `kpctPts`: 1/2/3 — CSW%/K% tier score. 3=green (CSW%≥30% or K%>27%), 2=yellow (CSW% 26-<30% or K% 24-27%), 1=red (≤26% CSW or ≤24% K, or null). Drives badge color and value in explanation cards. **Hard gate: `kpctPts < 2` drops play as `"low_pitcher_quality"` (qualified:false) before simulation**.
-- `mlPts`: 0/1/2 — ML tier score, **display only** (no longer part of simScore, no longer shown in market report). Still included in all play output for debugging. The market report strikeouts table shows **K-Trend %** (`pitcherRecentKPct`) in place of ML, colored by `kTrendPts` tier (2=green, 1=yellow, 0=red).
-- `kTrendPts`: 0/1/2 — K-trend score (replaces `mlPts` in simScore formula). Shown in SimScore tooltip as "K-Trend". 2=trending up, 1=stable/null, 0=trending down. Explanation prose (play card + player card) shows the actual `pitcherRecentKPct` stat value with a directional arrow (e.g. `26.9% recent K% ↑ (24.1% season)`) colored green (2), yellow (1/stable), or red (0). Silent when `pitcherRecentKPct` is null. `pitcherRecentKPct` and `pitcherSeasonKPct` included in **all** play output (qualified and qualified:false) so the stat displays in both the play card and player card.
-- `totalPts`: 0/1/2 — O/U tier score. Color in UI: 2=green, 1=yellow, 0=red. Drives O/U column color in market report (≤7.5 green, <10.5 yellow, ≥10.5 red). Low total = pitcher dominant = favorable for Ks.
+- `kpctPts`: 0/1/2 — CSW%/K% tier score. 2=green, 1=yellow, 0=red (or null). Drives badge color and value in explanation cards. Hard gate removed — kpctPts < 2 no longer drops play before simulation.
+- `mlPts`: 0/1/2 — ML tier score, **display only** (not part of simScore). Still included in all play output for debugging.
+- `kTrendPts`: 0/1/2 — K-trend score, **display only** (not part of simScore since blendedHitRatePts replaced it). Explanation prose (play card + player card) shows the actual `pitcherRecentKPct` stat value with a directional arrow colored by tier. Silent when null. `pitcherRecentKPct` and `pitcherSeasonKPct` included in **all** play output.
+- `pitchesPts`: computed for debug output only (not part of simScore since blendedHitRatePts replaced it).
+- `totalPts`: 0/1/2 — O/U tier score. Color in UI: 2=green, 1=yellow, 0=red. Low total = pitcher dominant = favorable for Ks.
 - `pitcherGS26`: 2026 games started per team abbr, exported from `buildPitcherKPct`, used for small-sample guards. Included in `plays[]` output for debugging (alongside `pitcherHasAnchor`).
-- **Gates**: (1) simScore ≥ 7 to enter play loop; (2) `kpctPts ≥ 2` hard gate — drops as `"low_pitcher_quality"` (qualified:false) if pitcher CSW%/K% is red tier (≤26% CSW or ≤24% K%); (3) threshold sanity gate — drops as `"threshold_too_high"` (qualified:false) when `threshold > ceil(expectedKs) + 2` (only when lineup confirmed and expectedKs is available); (4) finalSimScore ≥ 12 to qualify as a play (7–11 = qualified:false, shows in report but not plays card); insufficient_starts gate: if `hasAnchor !== true` (no reliable 2025 anchor, or null if not in data) requires `gs26 ≥ 8` (null gs26 treated as 0); if `hasAnchor === true` passes through regardless of gs26 — the 2025 anchor IS the reliability signal. Catches TJ-return / pure-reliever pitchers who have a few 2026 starts but no valid 2025 baseline (e.g. Detmers with 0 2025 GS — needs 8 starts before model trusts). **Important**: insufficient_starts is checked in BOTH the pre-filter loop AND the main play loop (because `?debug=1` bypasses the pre-filter and uses `qualifyingMarkets` directly). Main loop gate at `api/[...path].js` ~line 1713 uses corrected `playerTeam`; in debug mode pushes to `dropped[]` with reason `"insufficient_starts"` so they appear in the report but not in `plays[]`.
+- **Gates**: (1) threshold sanity gate — drops as `"threshold_too_high"` (qualified:false) when `threshold > ceil(expectedKs) + 2` (only when lineup confirmed and expectedKs is available); (2) finalSimScore ≥ 8 to qualify as a play (< 8 = qualified:false, shows in report but not plays card); (3) insufficient_starts gate: if `hasAnchor !== true` requires `gs26 ≥ 8`; if `hasAnchor === true` passes through regardless. Catches TJ-return / pure-reliever pitchers (e.g. Detmers with 0 2025 GS). **Important**: insufficient_starts checked in BOTH pre-filter loop AND main play loop. Main loop gate at `api/[...path].js` ~line 1713 uses corrected `playerTeam`; in debug mode pushes to `dropped[]` with reason `"insufficient_starts"`.
 - `pitcherHasAnchor`: `true` if gs25 ≥ 5 AND bf25 ≥ 100 (reliable 2025 *starter* anchor). Included in `plays[]` output for debugging. A reliever-turned-starter has bf25 > 0 but gs25 = 0 — reliever K% is not a valid anchor. bf25 ≥ 100 also excludes injury-shortened seasons (e.g. TJ recovery with 5 starts but minimal workload).
 - Pitchers fetched via `buildPitcherKPct(mlbSched)` — avg pitches per start from 2026 gamelog (starts-only filtered via `gamesStarted > 0`); falls back to 2025 season aggregate `numberOfPitches / gamesStarted` when no 2026 start data in gamelog
 - **K% regression**: `trust = min(1.0, bf26 / 200)` — uses 2026 BF only (NOT combined 2026+2025). Full trust at ~33 starts. Blends 2026 actual K% with 2025 anchor (or league avg 22.2% if no 2025 data). KBB% regressed the same way.
@@ -145,15 +145,15 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
   - `primaryPct` = player's 2026 HRR 1+ rate (falls back to 2025+2026 blend, then career)
   - `softPct` = HRR 1+ rate vs tonight's pitcher (H2H gamelog dates) or vs tonight's team (2025+2026 fallback)
   - BA is NOT directly in the formula — it's implicit via the player's historical HRR rate
-- **SimScore** (max 14, edge gates separately — same pattern as strikeouts):
-  - Lineup spot 1–3 → 3pts, spot 4 → 2pts
-  - Pitcher WHIP tiered (`hitterWhipPts`): > 1.35 → 3pts (green), > 1.20 → 2pts (yellow), ≤ 1.20 → 1pt (red). Null → 1pt (abstain). Prose color 3-tier: > 1.35 green ("a lot of baserunners"), > 1.20 yellow ("some traffic on base"), ≤ 1.20 red (no description).
-  - B1 platoon tier (`hitterPlatoonPts`): `splitBA / seasonBA ≥ 1.08 → 2pts` (platoon advantage), `≥ 0.95 → 1pt` (neutral/slight), `< 0.95 → 0pts` (platoon disadvantage); null → 1pt (abstain). `batterSplitBA` from MLB Stats API `statSplits/sitCodes=vr|vl`, blended 2025+2026 raw AB/H (consistent with `hitterBa` blend), requires 20+ combined AB.
-  - Barrel% tier: ≥14% → 3pts, ≥10% → 2pts, ≥7% → 1pt, <7% → 0pts, null → 1pt (abstain)
-  - O/U total tier (high total = more run-scoring): ≥9.5 → 2pts, ≥7.5 → 1pt, <7.5 → 0pts, null → 1pt
-  - Max: 3+3+2+3+2 = 14 (park factor removed from SimScore — still shown in env column in report)
+- **SimScore** (max 10, edge gate only — 5 stats × 2pts each):
+  - Batter quality composite (`hitterBatterQualityPts`): spot ≤ 3 = "good spot"; barrel% ≥ 10% = "good barrel". Both → 2pts, either → 1pt, neither → 0pts, both null → 1pt (abstain). Replaces separate spot/barrel components.
+  - Pitcher WHIP tiered (`hitterWhipPts`): > 1.35 → 2pts (green), > 1.20 → 1pt (yellow), ≤ 1.20 → 0pts (red); null → 1pt (abstain). Rescaled from 3/2/1.
+  - Season hit rate (`hitterSeasonHitRatePts`): blended 2026/2025 HRR 1+ rate. ≥ 90% → 2pts, ≥ 80% → 1pt, < 80% → 0pts; null → 1pt (abstain). `trust26 = min(1, vals26.length / 30)`.
+  - H2H hit rate (`hitterH2HHitRatePts`): rate vs tonight's pitcher from gamelog (H2H dates only, requires ≥ 3 games). ≥ 90% → 2pts, ≥ 80% → 1pt, < 80% → 0pts; null → 1pt (abstain). **No team fallback** — H2H only.
+  - O/U total tier: ≥9.5 → 2pts, ≥7.5 → 1pt, <7.5 → 0pts, null → 1pt
+  - Max: 2+2+2+2+2 = 10. Platoon (`hitterPlatoonPts`) still computed and displayed in prose but removed from SimScore. Park factor still shown in report env column.
 - **B2 — Batter recent form**: `hitterEffectiveBA = 0.6 × recentBA + 0.4 × seasonBA` when ≥20 AB in last 10 2026 games; else uses seasonBA. Fed directly into `simulateHits` as `batterBA`. `batterRecentBA` map built inline from ESPN gamelog in main play loop.
-- **Gates**: lineup spot 1–4 required; hitterSimScore ≥ 11 (Alpha tier — same as strikeouts/NBA/NHL); edge ≥ 5% (gate only, not scored)
+- **Gates**: lineup spot 1–4 required; hitterFinalSimScore ≥ 8 (Alpha tier); edge ≥ 5% (gate only, not scored)
 - Barrel% from Baseball Savant (`buildBarrelPct`) — cached 6h in KV; `hitterBarrelPts` stored in play output
 - NBA game totals fetched from ESPN scoreboard (`sportByteam.nbaGameOdds`) — always fresh (not long-term cached)
 - NHL game odds fetched from ESPN NHL scoreboard (`sportByteam.nhlGameOdds`) — extracted from existing `gameTimes` scoreboard events when fresh; fallback fetch when gameTimes loaded from cache. Keyed by normalized abbreviation via `normTeam("nhl", abbr)`. Only populated for today's games (ESPN doesn't include odds for future dates).
@@ -172,18 +172,17 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
     - **C3 — Blowout risk**: `max(0.85, 1 - (|spread| - 10) × 0.007)` when `|spread| > 10`; else 1.0. Spread from `parseGameOdds` (now included in `sportByteam.nbaGameOdds`). Shows "Blowout risk — large spread reduces model mean by X%" badge in explanation.
     - **C4 — Home/away split**: `nbaSplitAdj = splitMean / overallMean` where `splitMean` is the weighted avg (0.7 home or 0.3 away depending on venue) of home/away-filtered game values vs the opponent type; fallback to 1.0 if insufficient split data.
   - Falls back to avg(seasonPct, softPct) − 4% if B2B when simulation returns null (<5 game values)
-- **SimScore** (max 14, edge gates separately — same pattern as MLB strikeouts):
-  - Pace: avg pace >0 vs league avg → 3pts, >-2 → 2pts, else → 1pt (slow game still scores 1 — not a disqualifier) — fetched from ESPN via `buildNbaPaceData()`, cached 12h
-  - **C1 — stat-appropriate opportunity signal** (max 4pts, null → 2pts abstain). From `buildNbaUsageRate` (ESPN endpoint); 3PM/game from last-10-game gamelog (`3P` column) still computed for display but no longer used for scoring:
-    - **points/assists/threePointers**: USG% ≥28% → 4pts, ≥22% → 2pts, <22% → 0pts. (`USG% = (avgFGA + 0.44×avgFTA + avgTO) / (avgMin × 2.255) × 100` — ESPN `usageRate` is 0.0 so fallback always runs)
-    - **rebounds**: avgMin ≥30 → 4pts, ≥25 → 2pts, <25 → 0pts. (USG% has no relation to rebounding; floor time is the better signal)
-  - Position-adjusted DVP ratio tiers: ratio ≥ 1.05 → 2pts (soft), ratio ≥ 1.02 → 1pt (borderline), else → 0pts. Pre-filter gate also uses ratio ≥ 1.02 (any position) — replaces the prior `softTeams` ratio ≥ 1.05 check. `dvpRatio` field included in all play/drop output.
-  - Spread tightness: spread ≤10 → 2pts, ≤15 → 1pt, >15 → 0pts, null → 1pt abstain. Replaces isB2B (removed — NBA playoffs have no back-to-backs). Uses `nbaBlowoutAdj` (already computed for C3 mean adj).
-  - Game total tier: ≥235 → 3pts, ≥225 → 2pts, ≥215 → 1pt, <215 → 0pts, null → 1pt (abstain)
-  - Max: 3+4+2+2+3 = 14
-  - Game totals from `sportByteam.nbaGameOdds` (ESPN NBA scoreboard, fetched fresh each request alongside byteam stats)
+- **SimScore** (max 10, edge gate only — 5 stats × 2pts each):
+  - **C1 — stat-appropriate opportunity signal** (max 2pts, null → 1pt abstain). From `buildNbaUsageRate`:
+    - **points/assists/threePointers**: USG% ≥28% → 2pts, ≥22% → 1pt, <22% → 0pts. (`USG% = (avgFGA + 0.44×avgFTA + avgTO) / (avgMin × 2.255) × 100` — ESPN `usageRate` is 0.0 so fallback always runs)
+    - **rebounds**: avgMin ≥30 → 2pts, ≥25 → 1pt, <25 → 0pts.
+  - Position-adjusted DVP ratio tiers: ratio ≥ 1.05 → 2pts (soft), ratio ≥ 1.02 → 1pt (borderline), else → 0pts. `dvpRatio` field included in all play/drop output.
+  - Season hit rate (`nbaSeasonHitRatePts`): `primaryPct` (blended 2026/2025/career) at threshold. ≥ 90% → 2pts, ≥ 80% → 1pt, < 80% → 0pts.
+  - Soft matchup hit rate (`nbaSoftHitRatePts`): `softPct` (hit rate vs soft defensive teams) at threshold. ≥ 90% → 2pts, ≥ 80% → 1pt, < 80% → 0pts; null → 1pt (abstain).
+  - Combined pace + total (`nbaTotalPts`): both favorable (pace > 0 AND total ≥ 225) → 2pts; one favorable → 1pt; neither → 0pts; both null → 1pt abstain. Pace from `buildNbaPaceData()`, cached 12h. Game totals from `sportByteam.nbaGameOdds`.
+  - Max: 2+2+2+2+2 = 10. Spread and standalone pace no longer scored separately.
 - nSim scales with pre-edge simScore: ≥8 → 10k, ≥5 → 5k, else 2k
-- **Gate**: edge ≥ 5% (gate only, not scored); **nbaSimScore ≥ 11** to qualify as a play (same Alpha tier as MLB strikeouts). No soft-matchup pre-filter — all NBA markets enter the play loop regardless of opponent DVP.
+- **Gate**: edge ≥ 5% (gate only, not scored); **nbaSimScore ≥ 8** to qualify as a play. No soft-matchup pre-filter — all NBA markets enter the play loop regardless of opponent DVP.
 - Avg minutes still extracted from ESPN gamelog `MIN` column (last 10 games) — used for display in explanation card but no longer the SimScore component
 - Depth chart position via `nbaDepthChartPos` (ESPN depth chart API, cached daily)
 
@@ -199,17 +198,18 @@ True% = Monte Carlo simulation (reuses `buildNbaStatDist` + `nbaDistPct`) — no
 - `teamDefFactor` = opp GAA / league avg GAA
 - **D3 — TOI trend**: `nhlToiTrendAdj = clamp(recent3TOI / last10TOI, 0.92, 1.08)` where recent3 is the last 3 games and last10 is the 10-game avg — applied as `miscAdj` 6th param to `buildNbaStatDist`. Only applied when ratio > 1.05 (increasing → boost up to 1.08×) or < 0.95 (decreasing → penalty down to 0.92×); else 1.0.
 - Falls back to dvp-adjusted average formula if simulation returns null
-- **SimScore** (max 14; edge is gate only, not scored — same pattern as NBA/MLB):
-  - Shots against tiered (`nhlSaRank`): SA rank ≤ 10 → 3pts (green), SA above league avg but rank > 10 → 1pt (yellow), SA ≤ league avg → 0pts (red). `nhlSaRank` stored in play output alongside `nhlShotsAdj`.
-  - Avg TOI ≥ 18 min (last 10 games) → 4pts; ≥ 15 min → 2pts
-  - Opponent GAA rank ≤ 10 → 2pts
-  - Not B2B → 2pts
-  - Player team GPG tiered (`nhlTeamGPG`): ≥ 3.5 → 3pts (green), ≥ 3.0 → 2pts, ≥ 2.5 → 1pt, < 2.5 → 0pts, null → 1pt (abstain). Stored as `nhlTeamGPG` in play output.
+- **SimScore** (max 10, edge gate only — 5 stats × 2pts each):
+  - Avg TOI tiered (`nhlOpportunity`, last 10 games): ≥ 18 min → 2pts; ≥ 15 min → 1pt; < 15 min → 0pts; null → 0pts. Rescaled from 4/2/0.
+  - Opponent GAA rank (`_gaaRank`): ≤ 10 → 2pts; ≤ 15 → 1pt; else → 0pts. Middle tier added (was binary ≤10=2). null → 0pts.
+  - Season hit rate (`nhlSeasonHitRatePts`): rate at threshold across all career games. ≥ 90% → 2pts, ≥ 80% → 1pt, < 80% → 0pts.
+  - DVP hit rate (`nhlDvpHitRatePts`): games vs teams with GAA > league avg, hit rate at threshold (≥ 3 qualifying games required). ≥ 90% → 2pts, ≥ 80% → 1pt, < 80% → 0pts; null → 1pt (abstain).
+  - Game total (`nhlGameTotal`): ≥ 7 → 2pts, ≥ 5.5 → 1pt, < 5.5 → 0pts; null → 1pt (abstain). Replaces B2B (2pts) and SA rank (3pts).
+  - Max: 2+2+2+2+2 = 10. SA rank (`nhlSaRank`) and team GPG (`nhlTeamGPG`) still computed and stored for display but no longer scored.
 - nSim scales with pre-edge simScore: ≥8 → 10k, ≥5 → 5k, else 2k
 - **B2B** detection: same as NBA — checks if last gamelog event was yesterday (UTC)
 - TOI from ESPN gamelog `TOI` or `timeOnIce` column; parsed as `MM:SS` or decimal minutes
 - Shots against rank from NHL API `shotsAgainstPerGame`, stored in `nhlSaRankMap`, league avg in `nhlLeagueAvgSa`
-- **Gate**: edge ≥ 5%; nhlSimScore ≥ 11 (Alpha tier) — no soft team pre-filter (all NHL markets enter play loop)
+- **Gate**: edge ≥ 5%; nhlSimScore ≥ 8 (Alpha tier) — no soft team pre-filter (all NHL markets enter play loop)
 
 ### NFL
 - **Stats**: `passingYards`, `rushingYards`, `receivingYards`, `receptions`, `completions`, `attempts`
@@ -310,14 +310,14 @@ All player prop sports push dropped plays to `plays[]` with `qualified: false` s
 The raw (unfiltered) array is stored in `allTonightPlays` and used to build `tonightPlayerMap` in the player card — this ensures all players visible in the market report also have explanation data on their player page.
 
 **Which gates push `qualified: false` to `plays[]`:**
-- **MLB strikeouts**: edge gate, threshold_too_high gate, finalSimScore < 11 gate, kpctPts < 2 gate — all thresholds included so the player card shows monotonically decreasing truePct across 3+/4+/5+
-- **MLB HRR**: edge gate (`edge < 5` or `kalshiPct < 70`), hitterFinalSimScore < 11 gate — includes all explanation fields (`hitterBa`, `hitterPlatoonPts`, `hitterSplitBA`, `hitterSoftLabel`, `hitterGameTotal`, etc.)
-- **NBA**: edge gate, nbaSimScore < 11 gate — includes `nbaGameTotal`, `nbaUsage/Ast/Reb`, `nba3pMPG`, `nbaPaceAdj`, `posDvpRank/Value`, `nbaBlowoutAdj`
-- **NHL**: edge gate, nhlSimScore < 11 gate — includes `nhlOpportunity`, `nhlShotsAdj`, `nhlTeamGPG`, `nhlSaRank`
+- **MLB strikeouts**: edge gate, threshold_too_high gate, finalSimScore < 8 gate — all thresholds included so the player card shows monotonically decreasing truePct across 3+/4+/5+
+- **MLB HRR**: edge gate (`edge < 5` or `kalshiPct < 70`), hitterFinalSimScore < 8 gate — includes all explanation fields (`hitterBa`, `hitterBatterQualityPts`, `hitterSeasonHitRatePts`, `hitterH2HHitRatePts`, `hitterSoftLabel`, `hitterGameTotal`, etc.)
+- **NBA**: edge gate, nbaSimScore < 8 gate — includes `nbaGameTotal`, `nbaUsage/Ast/Reb`, `nba3pMPG`, `nbaPaceAdj`, `posDvpRank/Value`, `nbaBlowoutAdj`, `nbaSeasonHitRatePts`, `nbaSoftHitRatePts`
+- **NHL**: edge gate, nhlSimScore < 8 gate — includes `nhlOpportunity`, `nhlShotsAdj`, `nhlTeamGPG`, `nhlSaRank`, `nhlSeasonHitRatePts`, `nhlDvpHitRatePts`
 
 **Pre-gates that do NOT push to `plays[]`** (inside the sport block, before truePct is computed):
 - MLB HRR `low_lineup_spot` (spot ≥ 5) — player doesn't merit an explanation card
-- MLB HRR `hitterSimScore < 7` — very poor quality, no explanation shown
+- MLB HRR `hitterSimScore < 5` — very poor quality, no explanation shown
 
 ### bestMap deduplication — which threshold shows in plays card
 `bestMap` dedupes to one play per `playerName|sport|stat` for qualified plays. The winner is the play with the **highest edge** (`play.edge > prev.edge`) — best market value. Non-qualifying (`qualified: false`) plays use a threshold-inclusive key and don't compete. After bestMap, non-winning qualified thresholds are re-added as `qualified: false` for the player card.
@@ -365,7 +365,7 @@ Single-page app uses `history.pushState` + `popstate` for client-side navigation
 - `oddsStr` computed from `tp.americanOdds` (same formula as player card)
 
 **Backend total deduplication (commit aba2183)**:
-All threshold plays that pass the edge gate (≥ 3%) are pushed to `plays[]`. Best threshold per game is `qualified: totalSimScore >= 11`; others are `qualified: false`. Mirrors strikeout threshold behavior — `tonightPlays` (filtered) shows only the best, `allTonightPlays` (unfiltered) has all thresholds for the team page bar chart.
+All threshold plays that pass the edge gate (≥ 3%) are pushed to `plays[]`. Best threshold per game is `qualified: totalSimScore >= 8`; others are `qualified: false`. Mirrors strikeout threshold behavior — `tonightPlays` (filtered) shows only the best, `allTonightPlays` (unfiltered) has all thresholds for the team page bar chart.
 
 **`TEAM_DB`** — 90+ entries `{abbr, sport, name, short}` for MLB/NBA/NHL; first entry per abbr is the default (MLB > NBA > NHL priority); `teamUrl(abbr, sport)` generates `/{abbr}` or `/{abbr}?sport={sport}` only when disambiguation is needed.
 
@@ -391,29 +391,29 @@ Opened via "report" button. Shows ALL markets (plays + dropped) grouped by sport
 - **First column navigation**: Player name spans are clickable (`cursor:pointer`) — clicking closes the report (`setShowReport(false)`) and navigates to that player's card via `navigateToPlayer({ id: m.playerId, name: m.playerName, sportKey: SPORT_KEY[m.sport] }, m.stat)`. For game total rows, each team abbreviation (`awayTeam` and `homeTeam`) is separately clickable and navigates to that team's page via `navigateToTeam`. No underline styling.
 - **`fetchReport` syncs plays card**: After fetching `?debug=1`, `fetchReport` also updates `tonightPlays` and `allTonightPlays` from the fresh response. This keeps the plays card in sync with the report (avoids stale-cache discrepancy where plays card loaded at page open shows different results than the report fetched later).
 - **HRR table**: shows threshold=1 rows only (2+/3+/etc. filtered client-side — too noisy)
-- **Score > 10 highlight**: For MLB rows (strikeouts + HRR), the player name is white+bold only when `finalSimScore ?? hitterFinalSimScore > 10` (Alpha tier). Rows with score ≤ 10 get a dim gray name even if qualified. Non-MLB tables use the original `m.qualified` logic for name color.
-- **SimScore tooltip (market report)**: hover any `X/14` score badge to see per-component breakdown. Computed inline in `xcell k==="sim"` from available play fields:
-  - **Strikeouts**: CSW%/K%: X/3, K-BB%: X/2, Lineup K%: X/3, Pitches: X/2, K-Trend: X/2, O/U: X/2
-  - **HRR**: Spot: X/3, WHIP: X/3, Platoon: X/2, Barrel%: X/3, O/U: X/2 (max 14 — park removed from scoring)
-  - **NBA**: Pace (adj): X/3, USG%/AvgMin (C1): X/4, DVP: X/2, Spread: X/2, Total: X/3
-  - **NHL**: SA #X: X/3, TOI Xm: X/4, B2B: X/2, GPG X: X/3
-  - **MLB totals**: Home/Away ERA (pts from ≥4.5/≥3.5 tiers), Home/Away RPG (≥5.0/≥4.0), Park RF (>1.01→2pts), O/U (≥9.5/≥7.5 tiers)
-  - **NBA totals**: Home/Away off PPG (≥118→3, ≥113→2, else 1), Home/Away def allowed (≥118→2, ≥113→1, else 0), O/U line (≥235→4, ≥225→3, ≥215→2, ≥205→1)
-  - **NHL totals**: Home/Away GPG (≥3.5/≥3.0 tiers), Home/Away GAA (≥3.5/≥3.0 tiers), O/U line (≥7→4, ≥6→3, ≥5.5→2, ≥5→1)
+- **Score > 7 highlight**: For MLB rows (strikeouts + HRR), the player name is white+bold only when `finalSimScore ?? hitterFinalSimScore > 7` (Alpha tier). Rows with score ≤ 7 get a dim gray name even if qualified. Non-MLB tables use the original `m.qualified` logic for name color.
+- **SimScore tooltip (market report)**: hover any `X/10` score badge to see per-component breakdown. Computed inline in `xcell k==="sim"` from available play fields:
+  - **Strikeouts**: CSW%/K%: X/2, K-BB%: X/2, Lineup K%: X/2, Hit Rate: X/2, O/U: X/2
+  - **HRR**: Quality: X/2, WHIP: X/2, Season HR: X/2, H2H HR: X/2, O/U: X/2
+  - **NBA**: C1 (USG%/AvgMin): X/2, DVP: X/2, Season HR: X/2, Soft HR: X/2, Pace+Total: X/2
+  - **NHL**: TOI Xm: X/2, GAA rank: X/2, Season HR: X/2, DVP HR: X/2, O/U X: X/2
+  - **MLB totals**: Home/Away ERA (>4.5→2, >3.5→1, ≤3.5→0), Home/Away RPG (>5.0→2, >4.0→1, ≤4.0→0), O/U (≥9.5→2, ≥7.5→1)
+  - **NBA totals**: Home/Away off PPG (≥118→2, ≥113→1, else 0), Home/Away def allowed (≥118→2, ≥113→1, else 0), O/U line (≥235→2, ≥225→1)
+  - **NHL totals**: Home/Away GPG (≥3.5→2, ≥3.0→1, <3.0→0), Home/Away GAA (same), O/U line (≥7→2, ≥5.5→1)
   - Cursor changes to `help` when tooltip is available. Detection: `m.totalSimScore != null` → total play; otherwise sport-specific score fields.
 - **Market report column color tiers** — colors match SimScore tiers exactly (yellow = middle tier earns points, gray = earns 1pt but lowest tier, red = 0pts):
   - `lkp`: >24% green, >22% yellow, ≤22% red
   - `kbb`: >18% green, >12% yellow, ≤12% red
   - `plat`: platoonPts=2 green, platoonPts=1 yellow, platoonPts=0 red
-  - `whip`: >1.35 green, >1.20 yellow, ≤1.20 red (3/2/1pts — no 0pt floor; null=1pt abstain)
-  - `brrl`: ≥14% green, ≥10% yellow, ≥7% gray, <7% red (matches SimScore 3/2/1/0pt tiers)
-  - `nhlgaa`: ≤10 green, >10 red (binary — all ranks ≤10 earn same 2pts)
+  - `whip`: >1.35 green, >1.20 yellow, ≤1.20 red (2/1/0pts; null=1pt abstain)
+  - `brrl`: ≥14% green, ≥10% yellow, <10% gray — shown in report env column but no longer in SimScore directly (now part of `hitterBatterQualityPts`)
+  - `nhlgaa`: ≤10 green, ≤15 yellow, >15 red (3-tier — ≤10=2pts, ≤15=1pt, >15=0pts)
   - `nbapace`: >0 green, >-2 yellow, ≤-2 gray (slow pace earns 1pt, not 0; gray not red)
   - `homeOff`/`awayOff` (NBA totals Off PPG): ≥115 green, ≥108 yellow, else gray — high offense = good for over = green (playoff-appropriate; regular season SimScore tiers 118/113 differ)
   - `homeDef`/`awayDef` (NBA totals Def PPG allowed): ≥112 green, ≥105 yellow, else gray — high allowed = bad defense = good for over = green; no red floor (good defense is just gray)
   - `totalOu` (NBA/NHL totals O/U column): NBA: ≥215 green, ≥205 yellow, else gray; NHL: ≥6 green, ≥5 yellow, else gray — shows threshold as `O{line}` (e.g. `O214.5`)
   - `plat` sort: keyed on `hitterSplitBA` ascending
-- **Game totals table** (`mlb|totalRuns`, `nba|totalPoints`, `nhl|totalGoals`): section header shows **"[Sport] Totals"** (e.g. "NBA Totals") via `STAT_NAME` entries `totalRuns/totalPoints/totalGoals → "Totals"`. First column labelled "Matchup" (not "Player"), shows `AWY @ HME`. Opp column hidden. Line cell shows `O7.5` format. Score column uses `m.totalSimScore` (qual gate = 11); green ≥ 11, yellow = 7–10, gray < 7. XCOLS: MLB = H RPG / A RPG / H ERA / A ERA / O/U; NBA = H PPG / A PPG / H Def / A Def / O/U; NHL = H GPG / A GPG / H GAA / A GAA / O/U. **MLB ERA/RPG column colors**: ERA ≥4.5 → green (bad pitcher = over-favorable), ≥3.5 → yellow, <3.5 → gray; RPG ≥5.0 → green, ≥4.0 → yellow, <4.0 → gray. **NBA column colors**: Off PPG ≥115 green (high offense = favorable for over), Def PPG allowed ≥112 green (bad defense = favorable), O/U ≥215 green — all use playoff-appropriate tiers. **NHL column colors**: GPG/GAA ≥3.5 green, ≥3.0 yellow, else gray; O/U ≥6 green, ≥5 yellow. Dedup key for totals is `homeTeam|awayTeam|threshold` (not `playerName|threshold`).
+- **Game totals table** (`mlb|totalRuns`, `nba|totalPoints`, `nhl|totalGoals`): section header shows **"[Sport] Totals"** (e.g. "NBA Totals") via `STAT_NAME` entries `totalRuns/totalPoints/totalGoals → "Totals"`. First column labelled "Matchup" (not "Player"), shows `AWY @ HME`. Opp column hidden. Line cell shows `O7.5` format. Score column uses `m.totalSimScore` (qual gate = 8); green ≥ 8, yellow = 5–7, gray < 5. XCOLS: MLB = H RPG / A RPG / H ERA / A ERA / O/U; NBA = H PPG / A PPG / H Def / A Def / O/U; NHL = H GPG / A GPG / H GAA / A GAA / O/U. **MLB ERA/RPG column colors**: ERA ≥4.5 → green (bad pitcher = over-favorable), ≥3.5 → yellow, <3.5 → gray; RPG ≥5.0 → green, ≥4.0 → yellow, <4.0 → gray. **NBA column colors**: Off PPG ≥115 green (high offense = favorable for over), Def PPG allowed ≥112 green (bad defense = favorable), O/U ≥215 green — all use playoff-appropriate tiers. **NHL column colors**: GPG/GAA ≥3.5 green, ≥3.0 yellow, else gray; O/U ≥6 green, ≥5 yellow. Dedup key for totals is `homeTeam|awayTeam|threshold` (not `playerName|threshold`).
 
 #### Calibration Tab
 Fetches `GET /api/auth/calibration` with `Authorization: Bearer <authToken>` on first click (+ Refresh button to re-fetch). Requires the user to be logged in — sends the stored JWT token, no hardcoded admin key. Shows:
@@ -433,7 +433,7 @@ Right side: **bust** button (calls `?bust=1`, shows "busting…" while loading) 
 ### My Picks Header
 Shows: **"My Picks"** label → total count badge → `X active · Y finished` breakdown (active = no result yet, green; finished = won/lost excluding DNP, gray). No "clear settled" button — picks are managed per-row only.
 
-**ⓘ info icon** (next to date, left side): toggles a tooltip showing universal play qualification criteria — three lines only: Implied prob ≥ 70%, Edge ≥ 5%, SimScore ≥ 11/14. No sport-specific detail. State: `showPlaysInfo`.
+**ⓘ info icon** (next to date, left side): toggles a tooltip showing universal play qualification criteria — three lines only: Implied prob ≥ 70%, Edge ≥ 5%, SimScore ≥ 8/10. No sport-specific detail. State: `showPlaysInfo`.
 
 **`DayBar` — P&L bar chart** (below P&L summary, above pick cards): Each bar column renders **two independent bars**: green above the midline (total $ won) and red below (total $ lost). Both bars can appear simultaneously on a mixed day. `maxAbs = max(maxDailyWins, maxDailyLosses)` — shared scale for both directions. Tooltip shows each play's individual P&L plus a net row.
 
@@ -473,7 +473,7 @@ Shows `untrackedPlays` (qualified plays not yet tracked). For game totals, once 
 - **Stat colors for NHL totals**: GPG — ≥3.5 green, ≥3.0 yellow, <3.0 gray (high scoring = good for over). GAA — ≥3.5 green, ≥3.0 yellow, <3.0 gray (high GAA = bad defense = good for over). Both directions: high value = green = good for over.
 - **SimScore tooltip for MLB totals**: shows actual values and earned points per component (e.g. `SD ERA (4.73): 3/3`, `SEA RPG (4.2): 1/2`). Points derived from same tiered formula as backend.
 - **SimScore tooltip for NHL totals**: shows actual values and earned points per component (e.g. `LAK GPG (2.7): 1/3`, `CGY GAA (3.15): 1/2`, `O/U (5.5): 2/4`). Points derived from same tiered formula as backend.
-- **SimScore tooltip for NBA totals**: shows actual values and earned points (e.g. `GSW off PPG (118): 3/3`, `LAL def allowed (108): 1/2`, `O/U (225): 3/4`). Both play card badge (hover `scTitle`) and market report `xcell k==="sim"` show the same breakdown.
+- **SimScore tooltip for NBA totals**: shows actual values and earned points (e.g. `GSW off PPG (118): 2/2`, `LAL def allowed (108): 1/2`, `O/U (225): 1/2`). Both play card badge (hover `scTitle`) and market report `xcell k==="sim"` show the same breakdown.
 - No player card on click (`gameType === "total"` returns early from `navigateToPlay`).
 
 ### Player Card
@@ -518,7 +518,7 @@ Both play cards and player cards show an explanation block (`background:"#0d1117
 
 **Player prop cards** (MLB/NBA/NHL player props): two sections:
 1. **Narrative prose** — why the play is recommended, key stats with qualitative context. Highlighted numbers use colored `<span>`; descriptive phrases (e.g. "a key starter") use `color:"#484f58"` (dim).
-2. **SimScore row** — `SimScore` label + `X/14 Tier` badge + stat checkboxes. All on one flex line (`display:"flex", alignItems:"center", gap:6`). Badge uses `whiteSpace:"nowrap"`. Checkboxes in an inner `display:"inline-flex", gap:4, flexWrap:"wrap"` span so whole items wrap as units. **Exception: MLB hitter (HRR) and NHL player cards use inline badge at end of prose (no separate row), matching game total card style.**
+2. **SimScore row** — `SimScore` label + `X/10 Tier` badge + stat checkboxes. All on one flex line (`display:"flex", alignItems:"center", gap:6`). Badge uses `whiteSpace:"nowrap"`. Checkboxes in an inner `display:"inline-flex", gap:4, flexWrap:"wrap"` span so whole items wrap as units. **Exception: MLB hitter (HRR) and NHL player cards use inline badge at end of prose (no separate row), matching game total card style.**
 
 **MLB hitter (HRR) explanation prose order** (play card + player card, both locations):
 1. Batting spot (e.g. "Shohei, batting #1 — top of the order"). BA tier and BA value removed — not a SimScore component.
@@ -534,7 +534,7 @@ Both play cards and player cards show an explanation block (`background:"#0d1117
 
 **HRR market report columns:** `XCOLS["mlb|hrr"]` = Score / Spot / WHIP / **Plat** / Brrl% / Park / **O/U**. Park column still shown in report (env column) but no longer contributes to SimScore. ML replaced by O/U (≥9.5 green, ≥7.5 yellow, <7.5 red — high total = good for HRR); reads `m.hitterGameTotal`. Score column moved to first xcol (after Edge) on all tables — the hardcoded pre-True% Score column was removed. SimScore tooltip null-abstain for Platoon/WHIP/Barrel%/O/U now shows `1` not `—`.
 
-**NHL player prop explanation** (play card + player card, both locations): single prose block — SimScore badge inline at end (no separate row, no checkboxes). SimScore tooltip on hover shows component breakdown: `SA ±X: N/3`, `TOI Xm: N/4`, `GAA #X: N/2`, `Rested/B2B: N/2`, `Team GPG X.X: N/3`.
+**NHL player prop explanation** (play card + player card, both locations): single prose block — SimScore badge inline at end (no separate row, no checkboxes). SimScore tooltip on hover shows component breakdown: `TOI Xm: N/2`, `GAA rank: N/2`, `Season HR: N/2`, `DVP HR: N/2`, `O/U X: N/2`.
 
 **Total play cards** (MLB/NBA/NHL game totals): single prose block only — no separate SimScore row. SimScore badge appended inline at the end of the prose with `verticalAlign:"middle"`.
 
@@ -636,16 +636,16 @@ Both cover: `kDistPct` monotonicity, `simulateKsDist` validity, `buildNbaStatDis
 ### "Player card explanation is blank / missing prose (stats present in market report)"
 A player visible in the market report has their play in `dropped[]` (debug-only), which means `tonightPlayerMap` has no entry for them → `tonightHitPlay` / `tonightTabPlay` is null → explanation renders blank.
 
-**When this can still happen**: only for the MLB HRR pre-gates (`low_lineup_spot` spot ≥ 5, or `hitterSimScore < 7`). All other gates (edge, simScore < 11) now push to `plays[]` with `qualified: false`.
+**When this can still happen**: only for the MLB HRR pre-gates (`low_lineup_spot` spot ≥ 5, or `hitterSimScore < 5`). All other gates (edge, simScore < 8) now push to `plays[]` with `qualified: false`.
 
 **Diagnosis**: check `?debug=1` → `dropped[]` for the player. If `reason` is `"low_lineup_spot"` or `"low_confidence"` with `hitterSimScore < 7`, they hit a pre-gate before truePct was computed — no explanation data exists. Any other reason means a gap in the qualified:false push logic.
 
 ### "Why is truePct wrong for 3+/4+ when 5+ looks correct?" (fixed)
-Previously, `tonightPlayerMap` was built from `tonightPlays` (filtered: `qualified !== false`). Thresholds like 3+/4+ with no edge bonus (finalSimScore < 11) were `qualified: false` and omitted, so the player card used the raw fallback formula `(seasonPct + softPct) / 2` — breaking monotonicity (e.g. 4+ showed 76.8% while 5+ showed 97.9%).
+Previously, `tonightPlayerMap` was built from `tonightPlays` (filtered: `qualified !== false`). Thresholds like 3+/4+ with no edge bonus (finalSimScore < 8) were `qualified: false` and omitted, so the player card used the raw fallback formula `(seasonPct + softPct) / 2` — breaking monotonicity (e.g. 4+ showed 76.8% while 5+ showed 97.9%).
 
 **Fix**: `tonightPlayerMap` now uses `allTonightPlays` (unfiltered), which includes `qualified: false` entries with their API-computed, monotonicity-enforced simulation truePct.
 
-If truePct still looks wrong: check `?debug=1` and look in `dropped` for the missing threshold — if it's there (not in `plays[]` at all), the fallback still applies. Check `reason`. New gate reasons: `"low_pitcher_quality"` (kpctPts < 2), `"threshold_too_high"` (threshold > ceil(expectedKs) + 2).
+If truePct still looks wrong: check `?debug=1` and look in `dropped` for the missing threshold — if it's there (not in `plays[]` at all), the fallback still applies. Check `reason`. Current gate reasons: `"threshold_too_high"` (threshold > ceil(expectedKs) + 2), `"insufficient_starts"`, `"simScore_too_low"` (finalSimScore < 8).
 
 ### "Why is truePct the same for 4+ and 5+?"
 The `pitcherKDistCache` shares one `Int16Array` distribution across all thresholds for a pitcher — querying it at different thresholds guarantees P(K≥4) ≥ P(K≥5) by construction. If values are identical, it likely means the distribution is flat at that range (e.g. a dominant pitcher where nearly all sims exceed both thresholds).
@@ -733,9 +733,9 @@ The opp_not_soft pre-filter was removed (commit 1a3357e). All NBA markets now en
 
 **What happens when it goes live** (Jokic assists vs MIN example):
 1. Pre-filter: MIN is in `C.softTeams.assists` → passes ✓
-2. Main loop: DVP rank ≤ 10 → 2pts SimScore; C1 (APG ≥ 7) → 4pts; pace, B2B, game total → additional pts
+2. Main loop: DVP ratio ≥ 1.05 → 2pts SimScore; C1 (USG%/AvgMin) → up to 2pts; season HR, soft HR, pace+total → additional pts
 3. truePct computed via Monte Carlo simulation
-4. If edge ≥ 5% AND simScore ≥ 11 → qualifies as a play
+4. If edge ≥ 5% AND simScore ≥ 8 → qualifies as a play
 
 ### "User picks not persisting / login works but picks disappear"
 Most likely cause: **Upstash free tier exhausted** (500k commands/month). Symptoms: login succeeds, picks save without JS errors, but on reload picks are gone. The `makeCache()` Upstash wrapper silently returns null on all operations when Redis returns HTTP 400.
@@ -778,39 +778,18 @@ Most likely cause: **Upstash free tier exhausted** (500k commands/month). Sympto
 
 **Team page game time**: uses `data.nextGame.gameTime` (from `/api/team`) as the primary source, independent of Kalshi market state. Reliable even when today's market is closed (game in progress or finalized). Falls back to `tonightPlay.gameTime` if `nextGame` is null.
 
-### "MLB game total SimScore badge shows 14/14 despite yellow ERA/RPG stats in explanation"
-The explanation card colors (eraColor/rpgColor) use the **tiered** formula — yellow ERA means 2 pts (not max 3), yellow RPG means 1 pt (not max 2). If the badge shows 14/14 but stats are yellow, production is running **old code** where the formula was flat (3 pts for any non-null ERA, 2 pts for any non-null RPG, 2 pts for any non-neutral park including pitcher-friendly).
-
-**Old formula (before `1966416`):**
-```javascript
-if (homeERA != null) totalSimScore += 3;   // flat — no tier
-if (awayERA != null) totalSimScore += 3;
-if (homeRPG != null) totalSimScore += 2;
-if (awayRPG != null) totalSimScore += 2;
-if (Math.abs(parkRF - 1) > 0.01) totalSimScore += 2;  // fires for pitcher-friendly parks too
-```
-This always gives 14/14 when all four data fields are present and park ≠ neutral (which includes SD, SEA, SF, etc. since their factors are 0.93–0.94, far from 1.0).
+### "MLB game total SimScore badge shows 10/10 despite yellow ERA/RPG stats in explanation"
+The explanation card colors (eraColor/rpgColor) use the **tiered** formula — yellow ERA means 1 pt (not max 2), yellow RPG means 1 pt (not max 2). If the badge shows 10/10 when stats are yellow, production is running **old code**. Current formula: `> 4.5 → 2pts, > 3.5 → 1pt, ≤ 3.5 → 0pts` for ERA; `> 5.0 → 2pts, > 4.0 → 1pt, ≤ 4.0 → 0pts` for RPG. Park RF removed from scoring entirely (was previously 2pts for |RF-1|>0.01).
 
 **Diagnosis:** `git log --oneline origin/main..HEAD` — if this shows unpushed commits, Vercel is running the old code. **Fix:** `git push origin main`.
 
-### "NHL game total SimScore badge shows 14/14 despite gray GPG stats in explanation"
-The explanation card `gpgColor`/`gaaColor` use the **tiered** formula — gray GPG means 1 pt (not max 3), gray GAA means 0 pts (not max 2). If the badge shows 14/14 but GPG stats are uncolored (gray), production is running **old code** where both GPG and GAA used flat scoring (3 pts for any non-null GPG, 2 pts for any non-null GAA regardless of value).
-
-**Old formula (before `d7beade`):**
-```javascript
-if (homeGPG != null) totalSimScore += 3;   // flat — no tier
-if (awayGPG != null) totalSimScore += 3;
-if (homeGAA != null) totalSimScore += 2;
-if (awayGAA != null) totalSimScore += 2;
-```
-This always gave 14/14 when all four fields were present (assuming SA ranks known), even for two teams averaging 2.5–2.7 GPG. SA rank has since been replaced by O/U line tier (commit `3437e53`).
-
-**Old color semantics (also pre-`d7beade`):** `gaaColor` had `< 3.0 → green` (inverted — low GAA = good defense was green, wrong direction for an over). `gpgColor` had `>= 3.5 → red` (also inverted). Now both use `>= 3.5 → green, >= 3.0 → yellow, < 3.0 → gray`, matching the market report table.
+### "NHL game total SimScore badge shows 10/10 despite gray GPG stats in explanation"
+The explanation card `gpgColor`/`gaaColor` use the tiered formula — gray GPG means 0 pts (< 3.0), green means 2pts (≥ 3.5), yellow means 1pt (≥ 3.0). Current formula: `≥ 3.5 → 2pts, ≥ 3.0 → 1pt, < 3.0 → 0pts` for both GPG and GAA. O/U tier (max 2pts) replaced SA rank. If badge shows 10/10 for gray stats, check for unpushed commits.
 
 **Diagnosis:** `git log --oneline origin/main..HEAD` — if this shows unpushed commits, Vercel is running the old code. **Fix:** `git push origin main`.
 
-### "SimScore shows yellow for strikeout players with score 9–11"
-The qualifying gate for strikeouts is `finalSimScore >= 11` (Alpha tier, same as all other sports). The report SimScore column uses `>= 9` as the yellow threshold, so scores 9–10 show yellow (near miss) and scores < 9 show gray.
+### "SimScore shows yellow for strikeout players with score 5–7"
+The qualifying gate for all sports is `finalSimScore >= 8` (Alpha tier). The report SimScore column uses `>= 5` as the yellow threshold, so scores 5–7 show yellow (near miss) and scores < 5 show gray.
 
 ### "No MLB plays / all edge_too_low or empty response"
 **Most likely cause: Kalshi markets haven't opened yet for today's slate.**
@@ -868,7 +847,7 @@ When `truePct == null` or `edge < 3`, the total was `continue`-d without being p
 Two bugs caused NBA total sim data to be missing for certain teams:
 
 **Bug 1 — Kalshi non-standard team code not in TEAM_NORM:**
-Kalshi uses "WPH" for the Phoenix Suns (PHX) in their NBA tickers. `TEAM_NORM.nba` only had `PHO→PHX`; "WPH" fell through unchanged. `nbaOffPPGMap["WPH"]` and `nbaDefRank["WPH"]` returned null → `awayOff`/`awayDef` null → `truePct` null → score 2/14.
+Kalshi uses "WPH" for the Phoenix Suns (PHX) in their NBA tickers. `TEAM_NORM.nba` only had `PHO→PHX`; "WPH" fell through unchanged. `nbaOffPPGMap["WPH"]` and `nbaDefRank["WPH"]` returned null → `awayOff`/`awayDef` null → `truePct` null → low score.
 Fix: add `WPH: "PHX"` to `TEAM_NORM.nba`.
 
 **Bug 2 — STAT_SOFT rankMap uses raw ESPN short codes:**
@@ -1038,22 +1017,23 @@ SimScore thresholds have been tuned against settled pick outcomes. When win rate
 3. If a middle tier shows win rate < 70%, tighten it or eliminate it — a 61% win-rate tier scoring 2pts is giving too much credit
 4. If win rate doesn't track the O/U line boundary assumed by scoring, move the cliff
 
-**Calibration results (46 settled strikeout picks, April 2026):**
+**Calibration results (46 settled strikeout picks, April 2026) — informed Apr 2026 SimScore refactor:**
 
-| Component | Original | After recal. | Current | Rationale |
+| Component | Original | After recal. | Current (post-refactor) | Rationale |
 |---|---|---|---|---|
-| `lkpPts` (lineup oK%) | >24%→3, >16%→2, ≤16%→0 | >24%→3, >20%→2, ≤20%→0 | >24%→3, >22%→2, ≤22%→0 | Middle tier threshold raised to 22% — kpct=3+lkp=2 bucket was 60% on 15 picks |
-| `totalPts` (O/U tier) | ≤8.5→2, ≤10.5→1, >10.5→0 | ≤7.5→2, <10.5→1, ≥10.5→0 | ≤7.5→2, <10.5→1, ≥10.5→0 | Moved 2pt cliff from 8.5 → 7.5; 0pt floor at ≥10.5 (10.5 itself = 0pts) |
+| `kpctPts` (CSW%/K%) | 3/2/1pts | 3/2/1pts | 2/1/0pts (rescaled) | Apr 2026 refactor: max-10 system; top tier was over-valued (62% win rate vs 88% for mid tier) |
+| `lkpPts` (lineup oK%) | >24%→3, >16%→2, ≤16%→0 | >24%→3, >22%→2, ≤22%→0 | >24%→2, >22%→1, ≤22%→0 (rescaled) | Middle tier threshold raised to 22%; rescaled to max 2pts in refactor |
+| `totalPts` (O/U tier) | ≤8.5→2, ≤10.5→1, >10.5→0 | ≤7.5→2, <10.5→1, ≥10.5→0 | ≤7.5→2, <10.5→1, ≥10.5→0 (unchanged) | Moved 2pt cliff from 8.5 → 7.5; max 2pts unchanged |
+| `blendedHitRatePts` | (new) | (new) | ≥90%→2, ≥80%→1, <80%→0 | Replaces pitchesPts + kTrendPts; trust-weighted 2026/2025 observed hit rate |
 
-**Calibration results (15 settled HRR picks, April 2026):**
+**Calibration results (15 settled HRR picks, April 2026) — historical (pre-refactor):**
 
-| Component | Previous | Current | Rationale |
-|---|---|---|---|
-| `hitterPlatoonPts` (platoon advantage) | ≥1.10→2pts, ≥0.95→1pt, <0.95→0pts | ≥1.15→2pts, ≥0.95→1pt, <0.95→0pts | Raised to ≥1.15 (Apr 22 cal, 15 picks); lowered to ≥1.08 (Apr 23 — sample too small, column showed no green, threshold disproportionately strict) |
+| Component | Previous | Status |
+|---|---|---|
+| `hitterPlatoonPts` (platoon advantage) | ≥1.08→2pts, ≥0.95→1pt, <0.95→0pts | Removed from SimScore in Apr 2026 refactor (still computed + displayed in prose) |
 
-**Other patterns noted (not yet acted on):**
-- `kpctPts=3` (CSW%≥30%) actual win rate 62% vs `kpctPts=2` (CSW% 26–<30%) at 88% — top-tier pitchers may be efficiently priced; the market already captures high CSW%
-- `historicalHitRate` < 65% with large model gap (e.g. Hancock: 14.3% hist vs 89.8% model) correlated with losses — potential future hard gate
+**Other patterns noted:**
+- `historicalHitRate` < 65% with large model gap (e.g. Hancock: 14.3% hist vs 89.8% model) correlated with losses — now partly addressed by `blendedHitRatePts` and `hitterSeasonHitRatePts`
 - When adding new SimScore components, run this analysis after 40+ settled picks; small samples produce misleading tier win rates
 
 ### "MLB totals market report shows only 2 games (fixed eb21787)"
@@ -1073,9 +1053,9 @@ SimScore thresholds have been tuned against settled pick outcomes. When win rate
 ### "SimScore tooltip shows — for Lineup K% even though prose shows a value"
 **Root cause**: `lkpPts` is null when lineup wasn't confirmed at API run time (model counts this as 1pt abstain). The prose uses `h2h.lineupKPct` which may be filled from the DVP fallback, so the value appears in prose. But the tooltip used `h2h?.lkpPts ?? "—"` — null became `—` instead of showing the abstain point value.
 
-**Fix**: Tooltip now uses `h2h?.lkpPts ?? 1` (and same for `kTrendPts`), showing `1/3` or `1/2` to reflect the abstain scoring rather than `—`. Applied to both player card and play card `scTitle` strings.
+**Fix**: Tooltip now uses `h2h?.lkpPts ?? 1` (and same for `blendedHitRatePts`), showing `1/2` to reflect the abstain scoring rather than `—`. Applied to both player card and play card `scTitle` strings.
 
-**Same issue in market report SimScore tooltip**: the `xcell k==="sim"` block in `index.html` has its own tooltip string — separate from the player/play card `scTitle`. All null-abstain components use `?? 1` there too: strikeouts (`kbbPts`, `lkpPts`, `pitchesPts`, `kTrendPts`, `totalPts`) and HRR (`hitterWhipPts`, `hitterPlatoonPts`, `hitterBarrelPts`, `hitterTotalPts`). Park is an exception: `hitterParkMeets` null → 0 (no park bonus, not abstain).
+**Same issue in market report SimScore tooltip**: the `xcell k==="sim"` block in `index.html` has its own tooltip string — separate from the player/play card `scTitle`. All null-abstain components use `?? 1` there too: strikeouts (`kbbPts`, `lkpPts`, `blendedHitRatePts`, `totalPts`) and HRR (`hitterBatterQualityPts`, `hitterWhipPts`, `hitterSeasonHitRatePts`, `hitterH2HHitRatePts`, `hitterTotalPts`).
 
 ### "Platoon column shows — in market report for players with low 2026 AB count"
 `hitterSplitBA` is null when the player has < 20 combined AB vs that pitcher hand across 2025+2026. `batterSplitBA` is built in `buildLineupKPct` (`api/lib/mlb.js`) by fetching `statSplits` for both 2026 and 2025 in parallel, then summing raw AB/H before computing BA. Minimum: 20 combined AB (same as `hitterBa` floor). Previously 2026-only with 30 AB minimum — most early-season players failed this gate.
