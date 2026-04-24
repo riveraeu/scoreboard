@@ -2582,22 +2582,19 @@ var worker_default = {
             const _avgAst = _usgEntry?.avgAst ?? null;
             const _avgReb = _usgEntry?.avgReb ?? null;
             // C1: stat-appropriate opportunity signal (max 4pts)
-            // points: USG% ≥28→4, ≥22→2, else 0, null→2 abstain
-            // threePointers: 3PM/game ≥3→4, ≥2→2, else 0, null→2 abstain
-            // assists: APG ≥7→4, ≥5→2, else 0, null→2 abstain
-            // rebounds: RPG ≥9→4, ≥7→2, else 0, null→2 abstain
-            if (stat === "assists") {
-              _sc += _avgAst == null ? 2 : _avgAst >= 7 ? 4 : _avgAst >= 5 ? 2 : 0;
-            } else if (stat === "rebounds") {
-              _sc += _avgReb == null ? 2 : _avgReb >= 9 ? 4 : _avgReb >= 7 ? 2 : 0;
-            } else if (stat === "threePointers") {
+            // points/assists/threePointers: USG% ≥28→4, ≥22→2, else 0, null→2 abstain
+            // rebounds: avgMin ≥30→4, ≥25→2, else 0, null→2 abstain
+            if (stat === "threePointers") {
               const _3pIdx = gl.ul.indexOf("3P");
               if (_3pIdx !== -1) {
                 const _3pVals = gl.events.slice(0, 10).map(ev => parseFloat(ev.stats[_3pIdx])).filter(v => !isNaN(v) && v >= 0);
                 if (_3pVals.length >= 3) nba3pMPG = parseFloat((_3pVals.reduce((a, b) => a + b, 0) / _3pVals.length).toFixed(2));
               }
-              _sc += nba3pMPG == null ? 2 : nba3pMPG >= 3 ? 4 : nba3pMPG >= 2 ? 2 : 0;
+              _sc += _usg == null ? 2 : _usg >= 28 ? 4 : _usg >= 22 ? 2 : 0;
+            } else if (stat === "rebounds") {
+              _sc += nbaOpportunity == null ? 2 : nbaOpportunity >= 30 ? 4 : nbaOpportunity >= 25 ? 2 : 0;
             } else {
+              // points + assists
               _sc += _usg == null ? 2 : _usg >= 28 ? 4 : _usg >= 22 ? 2 : 0;
             }
             // 3. DVP — position-adjusted ratio tiers: ≥1.05→2pts (soft), ≥1.02→1pt (borderline), else→0pts
@@ -3502,7 +3499,7 @@ var worker_default = {
           const _totalBestMap = {};
           for (const tp of totalPlays) {
             const key = `${tp.sport}|${tp.homeTeam}|${tp.awayTeam}`;
-            if (!_totalBestMap[key] || tp.truePct > _totalBestMap[key].truePct) _totalBestMap[key] = tp;
+            if (!_totalBestMap[key] || tp.edge > _totalBestMap[key].edge) _totalBestMap[key] = tp;
           }
           const _bestTotalIds = new Set(Object.values(_totalBestMap).map(tp => `${tp.sport}|${tp.homeTeam}|${tp.awayTeam}|${tp.threshold}`));
           for (const tp of totalPlays) {

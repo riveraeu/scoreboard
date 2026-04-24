@@ -2123,7 +2123,7 @@ function App() {
                   const rows = Object.values(dedupeMap).sort((a, b) => {
                     if (_sortCfg) {
                       const _sv = m => { switch(_sortCfg.col) {
-                        case "player": return m.playerName ?? "";
+                        case "player": return m.playerName ?? `${m.awayTeam}${m.homeTeam}` ?? "";
                         case "line": return m.threshold ?? 0;
                         case "true": return m.truePct ?? 0;
                         case "kalshi": return m.kalshiPct ?? 0;
@@ -2146,12 +2146,17 @@ function App() {
                         case "fip": return m.pitcherFIP ?? 0;
                         case "ou": return m.gameTotal ?? 0;
                         case "dvp": return m.posDvpRank ?? 99;
-                        case "sim": return m.finalSimScore ?? m.hitterFinalSimScore ?? m.nbaSimScore ?? 0;
+                        case "sim": return m.totalSimScore ?? m.finalSimScore ?? m.hitterFinalSimScore ?? m.nbaSimScore ?? 0;
                         case "env": return m.parkFactor ?? m.hitterParkKF ?? 1;
                         case "brrl": return m.hitterBarrelPct ?? 0;
                         case "nbapace": return m.nbaPaceAdj ?? -99;
                         case "nbaopp": return m.nbaOpportunity ?? 0;
                         case "nba_b2b": return m.isB2B ? 0 : 1;
+                        case "mlbOu": return m.gameOuLine ?? m.hitterGameTotal ?? 0;
+                        case "ktrend": return m.kTrendPts ?? 0;
+                        case "homeRPG": case "awayRPG": case "homeERA": case "awayERA":
+                        case "homeOff": case "awayOff": case "homeDef": case "awayDef":
+                        case "homeGPG": case "awayGPG": case "homeGAA": case "awayGAA": return m[_sortCfg.col] ?? 0;
                         default: return 0;
                       }};
                       const va = _sv(a), vb = _sv(b);
@@ -2174,7 +2179,6 @@ function App() {
                       <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,paddingBottom:5,borderBottom:"1px solid #21262d",flexWrap:"wrap"}}>
                         <span style={{color:SPORT_COL[sport]||"#8b949e",fontWeight:700,fontSize:11}}>{sport.toUpperCase()}</span>
                         <span style={{color:"#8b949e",fontSize:12,marginRight:2}}>{STAT_NAME[stat]||stat}</span>
-                        {cs && cs.gates.map((g,i) => <span key={i} style={{background:"#21262d",color:"#484f58",borderRadius:4,padding:"2px 6px",fontSize:9}}>{g}</span>)}
                         <span style={{color:"#484f58",fontSize:11,marginLeft:"auto"}}>{rows.length} markets · <span style={{color:"#3fb950"}}>{qualCount}</span> play{qualCount!==1?"s":""}</span>
                       </div>
                       {(() => {
@@ -2182,7 +2186,7 @@ function App() {
                         const XCOLS = {
                           "mlb|hrr":        [{k:"sim",l:"Score"},{k:"spot",l:"Spot"},{k:"whip",l:"WHIP"},{k:"plat",l:"Plat"},{k:"brrl",l:"Brrl%"},{k:"env",l:"Park"},{k:"mlbOu",l:"O/U"}],
                           "mlb|hits":       [{k:"sim",l:"Score"},{k:"spot",l:"Spot"},{k:"whip",l:"WHIP"},{k:"plat",l:"Plat"},{k:"brrl",l:"Brrl%"},{k:"env",l:"Park"},{k:"mlbOu",l:"O/U"}],
-                          "mlb|strikeouts": [{k:"sim",l:"Score"},{k:"env",l:"Park"},{k:"ktrend",l:"K-Trend"},{k:"ou",l:"O/U"},{k:"csw",l:"CSW%"},{k:"kbb",l:"K-BB%"},{k:"lkp",l:"oK%"},{k:"pps",l:"P/GS"}],
+                          "mlb|strikeouts": [{k:"sim",l:"Score"},{k:"csw",l:"CSW%"},{k:"kbb",l:"K-BB%"},{k:"lkp",l:"Lineup K%"},{k:"pps",l:"P/GS"},{k:"ktrend",l:"K-Trend"},{k:"ou",l:"O/U"}],
                           "nba|points":     [{k:"sim",l:"Score"},{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"},{k:"nbapace",l:"Pace"},{k:"nbaopp",l:"AvgMin"},{k:"nba_b2b",l:"Rest"}],
                           "nba|rebounds":   [{k:"sim",l:"Score"},{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"},{k:"nbapace",l:"Pace"},{k:"nbaopp",l:"AvgMin"},{k:"nba_b2b",l:"Rest"}],
                           "nba|assists":    [{k:"sim",l:"Score"},{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"dvp",l:"DVP"},{k:"nbapace",l:"Pace"},{k:"nbaopp",l:"AvgMin"},{k:"nba_b2b",l:"Rest"}],
@@ -2220,7 +2224,7 @@ function App() {
                           if (k==="ou")  return C(ou  != null ? ou : null, ou <= 7.5 ? "#3fb950" : ou < 10.5 ? "#e3b341" : "#f78166");
                           if (k==="mlbOu") { const v = m.gameOuLine ?? m.hitterGameTotal; return v != null ? <span style={{color:v>=9.5?"#3fb950":v>=7.5?"#e3b341":"#f78166"}}>{v}</span> : DASH; }
                           if (k==="dvp") { const r = m.posDvpRank; return C(r != null ? `#${r}${m.posGroup?" "+m.posGroup:""}` : null, r<=10?"#3fb950":r<=20?"#e3b341":"#f78166"); }
-                          if (k==="sim") { const sc = m.totalSimScore ?? m.finalSimScore ?? m.hitterFinalSimScore ?? m.nbaSimScore ?? m.nhlSimScore ?? m.simScore ?? m.hitterSimScore; const isKPlay = m.finalSimScore != null && m.totalSimScore == null; const isHRR = m.hitterFinalSimScore != null && m.finalSimScore == null; const isNBA = m.nbaSimScore != null && m.totalSimScore == null; const isNHL = m.nhlSimScore != null && m.totalSimScore == null; const qualGreen = isKPlay ? 12 : 11; const qualGate = m.totalSimScore != null ? 9 : isKPlay ? 9 : 7; let tip = null; if (isKPlay) { tip = [`CSW%/K%: ${m.kpctPts??'—'}/3`,`K-BB%: ${m.kbbPts??1}/2`,`Lineup K%: ${m.lkpPts??1}/3`,`Pitches: ${m.pitchesPts??1}/2`,`K-Trend: ${m.kTrendPts??1}/2`,`O/U: ${m.totalPts??1}/2`].join('\n'); } else if (isHRR) { const ls=m.hitterLineupSpot; const sPts=ls!=null?(ls<=3?3:ls<=4?2:0):'—'; tip = [`Spot: ${sPts}/3`,`WHIP: ${m.hitterWhipPts??1}/3`,`Platoon: ${m.hitterPlatoonPts??1}/2`,`Park: ${m.hitterParkMeets===true?1:m.hitterParkMeets===false?0:0}/1`,`Barrel%: ${m.hitterBarrelPts??1}/3`,`O/U: ${m.hitterTotalPts??1}/2`].join('\n'); } else if (isNBA) { const pace=m.nbaPaceAdj; const pacePts=pace==null?1:pace>0?3:pace>-2?2:1; const dvpPts=m.dvpRatio>=1.05?2:m.dvpRatio>=1.02?1:0; const b2bPts=m.isB2B===false?2:m.isB2B===true?0:'—'; const gt=m.nbaGameTotal; const gtPts=gt==null?1:gt>=235?3:gt>=225?2:gt>=215?1:0; tip = [`Pace (${pace??'—'}): ${pacePts}/3`,`DVP: ${dvpPts}/2`,`Rested: ${b2bPts}/2`,`Total: ${gtPts}/3`].join('\n'); } else if (isNHL) { const toiPts=m.nhlOpportunity>=18?4:m.nhlOpportunity>=15?2:m.nhlOpportunity!=null?0:'—'; const gpg=m.nhlTeamGPG; const gpgPts=gpg==null?1:gpg>=3.5?3:gpg>=3.0?2:gpg>=2.5?1:0; const b2bPts=m.isB2B===false?2:m.isB2B===true?0:'—'; const saRank=m.nhlSaRank; const saPts=saRank==null?'—':saRank<=10?3:m.nhlShotsAdj>0?1:0; tip = [`SA #${saRank??'—'}: ${saPts}/3`,`TOI ${m.nhlOpportunity?.toFixed(1)??'—'}m: ${toiPts}/4`,`B2B: ${b2bPts}/2`,`GPG ${gpg??'—'}: ${gpgPts}/3`].join('\n'); } return sc != null ? <span title={tip??undefined} style={{color:sc>=qualGreen?"#3fb950":sc>=qualGate?"#e3b341":"#8b949e",fontWeight:600,cursor:tip?"help":"default"}}>{sc}/14</span> : DASH; }
+                          if (k==="sim") { const sc = m.totalSimScore ?? m.finalSimScore ?? m.hitterFinalSimScore ?? m.nbaSimScore ?? m.nhlSimScore ?? m.simScore ?? m.hitterSimScore; const isKPlay = m.finalSimScore != null && m.totalSimScore == null; const isHRR = m.hitterFinalSimScore != null && m.finalSimScore == null; const isNBA = m.nbaSimScore != null && m.totalSimScore == null; const isNHL = m.nhlSimScore != null && m.totalSimScore == null; const qualGreen = isKPlay ? 12 : 11; const qualGate = m.totalSimScore != null ? 9 : isKPlay ? 9 : 7; let tip = null; if (isKPlay) { tip = [`CSW%/K%: ${m.kpctPts??'—'}/3`,`K-BB%: ${m.kbbPts??1}/2`,`Lineup K%: ${m.lkpPts??1}/3`,`Pitches: ${m.pitchesPts??1}/2`,`K-Trend: ${m.kTrendPts??1}/2`,`O/U: ${m.totalPts??1}/2`].join('\n'); } else if (isHRR) { const ls=m.hitterLineupSpot; const sPts=ls!=null?(ls<=3?3:ls<=4?2:0):'—'; tip = [`Spot: ${sPts}/3`,`WHIP: ${m.hitterWhipPts??1}/3`,`Platoon: ${m.hitterPlatoonPts??1}/2`,`Park: ${m.hitterParkMeets===true?1:m.hitterParkMeets===false?0:0}/1`,`Barrel%: ${m.hitterBarrelPts??1}/3`,`O/U: ${m.hitterTotalPts??1}/2`].join('\n'); } else if (isNBA) { const pace=m.nbaPaceAdj; const pacePts=pace==null?1:pace>0?3:pace>-2?2:1; const dvpPts=m.dvpRatio>=1.05?2:m.dvpRatio>=1.02?1:0; const b2bPts=m.isB2B===false?2:m.isB2B===true?0:'—'; const gt=m.nbaGameTotal; const gtPts=gt==null?1:gt>=235?3:gt>=225?2:gt>=215?1:0; let c1Label='Opp', c1Pts=2; if(stat==='rebounds'){const v=m.nbaOpportunity;c1Pts=v==null?2:v>=30?4:v>=25?2:0;c1Label=`AvgMin ${v!=null?v.toFixed(0)+'m':'—'}`;} else {const u=m.nbaUsage;c1Pts=u==null?2:u>=28?4:u>=22?2:0;c1Label=`USG% ${u!=null?u.toFixed(1)+'%':'—'}`;} tip = [`Pace (${pace??'—'}): ${pacePts}/3`,`${c1Label}: ${c1Pts}/4`,`DVP: ${dvpPts}/2`,`Rested: ${b2bPts}/2`,`Total: ${gtPts}/3`].join('\n'); } else if (isNHL) { const toiPts=m.nhlOpportunity>=18?4:m.nhlOpportunity>=15?2:m.nhlOpportunity!=null?0:'—'; const gpg=m.nhlTeamGPG; const gpgPts=gpg==null?1:gpg>=3.5?3:gpg>=3.0?2:gpg>=2.5?1:0; const b2bPts=m.isB2B===false?2:m.isB2B===true?0:'—'; const saRank=m.nhlSaRank; const saPts=saRank==null?'—':saRank<=10?3:m.nhlShotsAdj>0?1:0; tip = [`SA #${saRank??'—'}: ${saPts}/3`,`TOI ${m.nhlOpportunity?.toFixed(1)??'—'}m: ${toiPts}/4`,`B2B: ${b2bPts}/2`,`GPG ${gpg??'—'}: ${gpgPts}/3`].join('\n'); } return sc != null ? <span title={tip??undefined} style={{color:sc>=qualGreen?"#3fb950":sc>=qualGate?"#e3b341":"#8b949e",fontWeight:600,cursor:tip?"help":"default"}}>{sc}/14</span> : DASH; }
                           if (k==="env") { const pf = m.parkFactor ?? m.hitterParkKF; if (pf == null) return DASH; const pct = Math.round((pf-1)*100); const disp = (pct>=0?"+":"")+pct+"%"; return <span style={{color:pf>1.02?"#3fb950":pf<0.98?"#f78166":"#8b949e"}}>{disp}</span>; }
                           if (k==="brrl") { const b = m.hitterBarrelPct; return b != null ? <span style={{color:b>=14?"#3fb950":b>=10?"#e3b341":b>=7?"#8b949e":"#f78166"}}>{b.toFixed(1)+"%"}</span> : DASH; }
                           if (k==="nbapace") { const p = m.nbaPaceAdj; return p != null ? <span style={{color:p>0?"#3fb950":p>-2?"#e3b341":"#8b949e"}}>{p>0?"+":""}{p.toFixed(1)}</span> : DASH; }
@@ -2293,7 +2297,7 @@ function App() {
                             {_hdr("true","True%")}
                             {_hdr("kalshi","Kalshi")}
                             {_hdr("edge","Edge")}
-                            {stat.startsWith("total") && _hdr("poly","Poly")}
+                            {/* {stat.startsWith("total") && _hdr("poly","Poly")} */}
                             {xcols.map(c => <React.Fragment key={c.k}>{_hdr(c.k,c.l)}</React.Fragment>)}
                             {!stat.startsWith("total") && _hdr("opp","Opp",{flex:_oppFlex})}
                           </div>
@@ -2360,14 +2364,14 @@ function App() {
                                   <div style={{flex:1,fontSize:11,textAlign:"right",color:truePct!=null?"#e3b341":"#21262d",fontWeight:truePct!=null?600:400}}>{truePct!=null?`${truePct}%`:"—"}</div>
                                   <div style={{flex:1,fontSize:11,textAlign:"right"}}><span style={{color:m.kalshiPct != null ? "#c9d1d9" : "#484f58"}}>{m.kalshiPct != null ? `${m.kalshiPct}%` : "—"}</span></div>
                                   <div style={{flex:1,fontSize:11,textAlign:"right",color:edge!=null&&edge>=5?"#3fb950":edge!=null&&edge<0?"#f78166":"#8b949e"}}>{edge!=null?(edge>=0?`+${edge.toFixed(1)}`:`${edge.toFixed(1)}`)+"%" :"—"}</div>
-                                  {isTotal && <div style={{flex:1,fontSize:11,textAlign:"right"}}>
+                                  {/* isTotal && <div style={{flex:1,fontSize:11,textAlign:"right"}}>
                                     {m.polyPct != null
                                       ? <span title={m.polyDerived ? `Poly (derived from ${m.sport==="nba"?"Normal":"Poisson"} fit): ~${m.polyPct}%` : `Polymarket: ${m.polyPct}¢${m.polyVol ? ` · Vol $${(m.polyVol/1000).toFixed(0)}k` : ""}`}
                                           style={{color: m.polyDerived ? "#484f58" : (m.bestVenue==="polymarket"?"#2ea8e5":"#8b949e"), cursor:"help", fontStyle: m.polyDerived ? "italic" : "normal"}}>
                                           {m.polyDerived ? "~" : ""}{m.polyPct}%
                                         </span>
                                       : <span style={{color:"#21262d"}}>—</span>}
-                                  </div>}
+                                  </div> */}
                                   {xcols.map(c => <div key={c.k} style={{flex:1,fontSize:11,textAlign:"right"}}>{xcell(m,c.k)}</div>)}
                                   {!isTotal && <div style={{flex:_oppFlex,fontSize:10,textAlign:"right",whiteSpace:"nowrap"}}>
                                     {(() => { const pn = m.pitcherName || m.hitterPitcherName; const parts = pn ? pn.trim().split(" ") : []; const shortPn = parts.length >= 2 ? `${parts[0][0]}. ${parts.slice(1).join(" ")}` : pn; return m.sport==="mlb" && m.stat!=="strikeouts" && pn
@@ -2948,18 +2952,10 @@ function App() {
                             const nba3pMPG = tonightTabPlay?.nba3pMPG ?? null;
                             const nbaBlowoutAdj = tonightTabPlay?.nbaBlowoutAdj ?? null;
                             const _usgPts = safeTab === "assists"
-                              ? (nbaAvgAst == null ? 2 : nbaAvgAst >= 7 ? 4 : nbaAvgAst >= 5 ? 2 : 0)
-                              : safeTab === "rebounds"
-                              ? (nbaAvgReb == null ? 2 : nbaAvgReb >= 9 ? 4 : nbaAvgReb >= 7 ? 2 : 0)
-                              : safeTab === "threePointers"
-                              ? (nba3pMPG == null ? 2 : nba3pMPG >= 3 ? 4 : nba3pMPG >= 2 ? 2 : 0)
+                              ? (nbaOpportunity == null ? 2 : nbaOpportunity >= 30 ? 4 : nbaOpportunity >= 25 ? 2 : 0)
                               : (nbaUsage == null ? 2 : nbaUsage >= 28 ? 4 : nbaUsage >= 22 ? 2 : 0);
-                            const _c1Label = safeTab === "assists"
-                              ? `APG: ${nbaAvgAst != null ? nbaAvgAst.toFixed(1)+" → "+_usgPts : "—"}/4`
-                              : safeTab === "rebounds"
-                              ? `RPG: ${nbaAvgReb != null ? nbaAvgReb.toFixed(1)+" → "+_usgPts : "—"}/4`
-                              : safeTab === "threePointers"
-                              ? `3PM/g: ${nba3pMPG != null ? nba3pMPG.toFixed(1)+" → "+_usgPts : "—"}/4`
+                            const _c1Label = safeTab === "rebounds"
+                              ? `AvgMin: ${nbaOpportunity != null ? nbaOpportunity.toFixed(0)+"m → "+_usgPts : "—"}/4`
                               : `USG%: ${nbaUsage != null ? nbaUsage.toFixed(1)+"% → "+_usgPts : "—"}/4`;
                             const scTitle = sc != null ? [`Pace: ${nbaPaceAdj != null ? (nbaPaceAdj > 0 ? 3 : nbaPaceAdj > -2 ? 2 : 1) : "—"}/3`,_c1Label,`DVP: ${tonightTabPlay?.posDvpRank != null ? (tonightTabPlay.posDvpRank <= 10 ? 2 : 0) : "—"}/2`,`Rested: ${isB2B != null ? (!isB2B ? 2 : 0) : "—"}/2`,`O/U: ${nbaTotalPts != null ? nbaTotalPts : "—"}/3`].join("\n") : null;
                             return (
@@ -4109,16 +4105,10 @@ function App() {
                           const _usgPts = play.stat === "assists"
                             ? (play.nbaAvgAst == null ? 2 : play.nbaAvgAst >= 7 ? 4 : play.nbaAvgAst >= 5 ? 2 : 0)
                             : play.stat === "rebounds"
-                            ? (play.nbaAvgReb == null ? 2 : play.nbaAvgReb >= 9 ? 4 : play.nbaAvgReb >= 7 ? 2 : 0)
-                            : play.stat === "threePointers"
-                            ? (play.nba3pMPG == null ? 2 : play.nba3pMPG >= 3 ? 4 : play.nba3pMPG >= 2 ? 2 : 0)
+                            ? (play.nbaOpportunity == null ? 2 : play.nbaOpportunity >= 30 ? 4 : play.nbaOpportunity >= 25 ? 2 : 0)
                             : (play.nbaUsage == null ? 2 : play.nbaUsage >= 28 ? 4 : play.nbaUsage >= 22 ? 2 : 0);
-                          const _c1Label = play.stat === "assists"
-                            ? `APG: ${play.nbaAvgAst != null ? play.nbaAvgAst.toFixed(1)+" → "+_usgPts : "—"}/4`
-                            : play.stat === "rebounds"
-                            ? `RPG: ${play.nbaAvgReb != null ? play.nbaAvgReb.toFixed(1)+" → "+_usgPts : "—"}/4`
-                            : play.stat === "threePointers"
-                            ? `3PM/g: ${play.nba3pMPG != null ? play.nba3pMPG.toFixed(1)+" → "+_usgPts : "—"}/4`
+                          const _c1Label = play.stat === "rebounds"
+                            ? `AvgMin: ${play.nbaOpportunity != null ? play.nbaOpportunity.toFixed(0)+"m → "+_usgPts : "—"}/4`
                             : `USG%: ${play.nbaUsage != null ? play.nbaUsage.toFixed(1)+"% → "+_usgPts : "—"}/4`;
                           const scTitle = sc != null ? [`Pace: ${play.nbaPaceAdj != null ? (play.nbaPaceAdj > 0 ? 3 : play.nbaPaceAdj > -2 ? 2 : 1) : "—"}/3`,_c1Label,`DVP: ${play.posDvpRank != null ? (play.posDvpRank <= 10 ? 2 : 0) : "—"}/2`,`Rested: ${play.isB2B != null ? (!play.isB2B ? 2 : 0) : "—"}/2`,`O/U: ${play.nbaTotalPts != null ? play.nbaTotalPts : "—"}/3`].join("\n") : null;
                           return (

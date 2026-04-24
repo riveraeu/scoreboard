@@ -83,7 +83,7 @@ Used for caching expensive fetches. Key TTLs:
 - **SimScore** (max 14): tiered by stat quality, not just data existence; `qualified: totalSimScore >= 11`
 - **Data maps** (`mlbRPGMap`, `nhlGPGMap/GAAMap`, `nbaOffPPGMap`) computed inline after `leagueAvgCache` block
 - **Play card**: `gameType: "total"` flag triggers `TotalPlayCard` branch in the play card render; shows dual team logos (ESPN CDN), matchup header, true%/Kalshi% bars, explanation prose, SimScore badge
-- **Deduplication**: one total play per game (homeTeam+awayTeam+sport), keeping highest truePct — multiple thresholds for the same game reduced to the best one
+- **Deduplication**: one total play per game (homeTeam+awayTeam+sport), keeping highest edge — multiple thresholds for the same game reduced to the best one
 - **Expected total**: `homeExpected + awayExpected` (lambda sum for MLB/NHL, PPG-adjusted for NBA) shown in explanation prose; `_simData` includes `homeExpected`, `awayExpected`, `expectedTotal`; NBA also includes `homePace`, `awayPace`, `leagueAvgPace`; NHL includes `homeSAKnown`, `awaySAKnown`
 - **SimScore tooltip**: hover the `X/14` badge to see per-component breakdown with actual values. NBA example: `CHA off PPG (116): 2/3`. NHL example: `LAK GPG (2.7): 1/3`, `CGY GAA (3.15): 1/2`.
 - **Edge badge**: shows `+X%` only — tooltip removed (spreadAdj no longer subtracted from edge)
@@ -174,11 +174,9 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
   - Falls back to avg(seasonPct, softPct) − 4% if B2B when simulation returns null (<5 game values)
 - **SimScore** (max 14, edge gates separately — same pattern as MLB strikeouts):
   - Pace: avg pace >0 vs league avg → 3pts, >-2 → 2pts, else → 1pt (slow game still scores 1 — not a disqualifier) — fetched from ESPN via `buildNbaPaceData()`, cached 12h
-  - **C1 — stat-appropriate opportunity signal** (max 4pts, null → 2pts abstain). From `buildNbaUsageRate` (ESPN endpoint, extracts `avgAssists`/`avgRebounds`); 3PM/game from last-10-game gamelog (`3P` column) for threePointers:
-    - **points**: USG% ≥28% → 4pts, ≥22% → 2pts, <22% → 0pts. (`USG% = (avgFGA + 0.44×avgFTA + avgTO) / (avgMin × 2.255) × 100` — ESPN `usageRate` is 0.0 so fallback always runs)
-    - **threePointers**: 3PM/game (last 10 games) ≥3 → 4pts, ≥2 → 2pts, <2 → 0pts. USG% doesn't capture 3-point volume — a high-usage big man scores 4pts on USG% but may take 0 3s.
-    - **assists**: APG ≥7 → 4pts, ≥5 → 2pts, <5 → 0pts. (USG% is inversely correlated with passing role)
-    - **rebounds**: RPG ≥9 → 4pts, ≥7 → 2pts, <7 → 0pts. (USG% has no relation to rebounding)
+  - **C1 — stat-appropriate opportunity signal** (max 4pts, null → 2pts abstain). From `buildNbaUsageRate` (ESPN endpoint); 3PM/game from last-10-game gamelog (`3P` column) still computed for display but no longer used for scoring:
+    - **points/assists/threePointers**: USG% ≥28% → 4pts, ≥22% → 2pts, <22% → 0pts. (`USG% = (avgFGA + 0.44×avgFTA + avgTO) / (avgMin × 2.255) × 100` — ESPN `usageRate` is 0.0 so fallback always runs)
+    - **rebounds**: avgMin ≥30 → 4pts, ≥25 → 2pts, <25 → 0pts. (USG% has no relation to rebounding; floor time is the better signal)
   - Position-adjusted DVP ratio tiers: ratio ≥ 1.05 → 2pts (soft), ratio ≥ 1.02 → 1pt (borderline), else → 0pts. Pre-filter gate also uses ratio ≥ 1.02 (any position) — replaces the prior `softTeams` ratio ≥ 1.05 check. `dvpRatio` field included in all play/drop output.
   - Not B2B → 2pts
   - Game total tier: ≥235 → 3pts, ≥225 → 2pts, ≥215 → 1pt, <215 → 0pts, null → 1pt (abstain)
@@ -700,9 +698,7 @@ If 504s recur: check whether PBP block is the bottleneck (add `console.time` aro
 All NBA markets now go through the full simulation loop (no opp_not_soft pre-filter). Every market computes pace, C1, DVP, B2B, and game total in the main block. If most rows show `—`, the ESPN gamelog or pace data fetch likely failed for that player — check `_debug` field in dropped entries.
 
 ### "NBA 3P SimScore C1 shows — or seems wrong"
-For `threePointers`, C1 is scored on **3PM/game** from the last 10 gamelog games (`3P` column), not USG%. Check `?debug=1` → `plays[].nba3pMPG` for the raw value. If null, the gamelog has fewer than 3 valid game values — falls back to 2pt abstain. The SimScore tooltip in both play card and player card shows `3PM/g: X.X → Y/4`.
-
-USG% is still used for `points` only. Do not confuse `nbaUsage` (points C1) with `nba3pMPG` (threePointers C1).
+For `threePointers`, C1 is now scored on **USG%** (same as points and assists). `nba3pMPG` is still computed and stored in play output for display but no longer drives the score. Check `?debug=1` → `plays[].nbaUsage` for the raw value. If null, falls back to 2pt abstain.
 
 ### "NBA USG% is null / showing — in tooltip for all players"
 `buildNbaUsageRate` fetches `sports.core.api.espn.com/v2/.../seasons/2026/types/2/athletes/{id}/statistics`. Common failure modes:
