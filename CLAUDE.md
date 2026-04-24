@@ -84,7 +84,7 @@ Used for caching expensive fetches. Key TTLs:
 - **Data maps** (`mlbRPGMap`, `nhlGPGMap/GAAMap`, `nbaOffPPGMap`) computed inline after `leagueAvgCache` block
 - **Play card**: `gameType: "total"` flag triggers `TotalPlayCard` branch in the play card render; shows dual team logos (ESPN CDN), matchup header, true%/Kalshi% bars, explanation prose, SimScore badge
 - **Deduplication**: one total play per game (homeTeam+awayTeam+sport), keeping highest edge — multiple thresholds for the same game reduced to the best one
-- **Expected total**: `homeExpected + awayExpected` (lambda sum for MLB/NHL, PPG-adjusted for NBA) shown in explanation prose; `_simData` includes `homeExpected`, `awayExpected`, `expectedTotal`; NBA also includes `homePace`, `awayPace`, `leagueAvgPace`; NHL includes `homeSAKnown`, `awaySAKnown`
+- **Expected total**: `homeExpected + awayExpected` (lambda sum for MLB/NHL, PPG-adjusted for NBA) shown in explanation prose; `_simData` includes `homeExpected`, `awayExpected`, `expectedTotal`, `gameOuLine`; NBA also includes `homePace`, `awayPace`, `leagueAvgPace` (pace still in `_simData` for prose, not SimScore)
 - **SimScore tooltip**: hover the `X/14` badge to see per-component breakdown with actual values. NBA example: `CHA off PPG (116): 2/3`. NHL example: `LAK GPG (2.7): 1/3`, `CGY GAA (3.15): 1/2`.
 - **Edge badge**: shows `+X%` only — tooltip removed (spreadAdj no longer subtracted from edge)
 - **Track ID format**: `total|sport|homeTeam|awayTeam|threshold|gameDate`
@@ -149,14 +149,14 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
   - Lineup spot 1–3 → 3pts, spot 4 → 2pts
   - Pitcher WHIP tiered (`hitterWhipPts`): > 1.35 → 3pts (green), > 1.20 → 2pts (yellow), ≤ 1.20 → 1pt (red). Null → 1pt (abstain). Prose color 3-tier: > 1.35 green ("a lot of baserunners"), > 1.20 yellow ("some traffic on base"), ≤ 1.20 red (no description).
   - B1 platoon tier (`hitterPlatoonPts`): `splitBA / seasonBA ≥ 1.08 → 2pts` (platoon advantage), `≥ 0.95 → 1pt` (neutral/slight), `< 0.95 → 0pts` (platoon disadvantage); null → 1pt (abstain). `batterSplitBA` from MLB Stats API `statSplits/sitCodes=vr|vl`, blended 2025+2026 raw AB/H (consistent with `hitterBa` blend), requires 20+ combined AB.
-  - Park hit factor > 1.02 → 1pt
   - Barrel% tier: ≥14% → 3pts, ≥10% → 2pts, ≥7% → 1pt, <7% → 0pts, null → 1pt (abstain)
   - O/U total tier (high total = more run-scoring): ≥9.5 → 2pts, ≥7.5 → 1pt, <7.5 → 0pts, null → 1pt
-  - Max: 3+3+2+1+3+2 = 14
+  - Max: 3+3+2+3+2 = 13 (park factor removed from SimScore — still shown in env column in report)
 - **B2 — Batter recent form**: `hitterEffectiveBA = 0.6 × recentBA + 0.4 × seasonBA` when ≥20 AB in last 10 2026 games; else uses seasonBA. Fed directly into `simulateHits` as `batterBA`. `batterRecentBA` map built inline from ESPN gamelog in main play loop.
 - **Gates**: lineup spot 1–4 required; hitterSimScore ≥ 11 (Alpha tier — same as strikeouts/NBA/NHL); edge ≥ 5% (gate only, not scored)
 - Barrel% from Baseball Savant (`buildBarrelPct`) — cached 6h in KV; `hitterBarrelPts` stored in play output
 - NBA game totals fetched from ESPN scoreboard (`sportByteam.nbaGameOdds`) — always fresh (not long-term cached)
+- NHL game odds fetched from ESPN NHL scoreboard (`sportByteam.nhlGameOdds`) — extracted from existing `gameTimes` scoreboard events when fresh; fallback fetch when gameTimes loaded from cache. Keyed by normalized abbreviation via `normTeam("nhl", abbr)`. Only populated for today's games (ESPN doesn't include odds for future dates).
 - **Pitcher data fallback chain**: `hitterPitcherName` and `hitterPitcherEra` resolved from three sources in order: (1) `sportByteam.mlb.probables[tonightOpp]` (ESPN scoreboard — sometimes absent early in the day), (2) `sportByteam.mlb.pitcherInfoByTeam[tonightOpp]` (MLB Stats API — probables announced the day before, very reliable), (3) `pitcherGamelogs[tonightOpp].name` (if gamelog loaded = pitcher known). Pitcher gamelog loading (`pitcherGamelogs`) also merges both ESPN `probables` and MLB API `pitcherInfoByTeam`, so WHIP/FIP/BAA compute correctly even when ESPN hasn't announced probables. `hitterPitcherName` and `hitterPitcherEra` are included in all drop objects (edge_too_low, low_confidence) so the market report shows pitcher info for all HRR rows, not just qualified plays.
 
 ### NBA
@@ -387,14 +387,14 @@ All threshold plays that pass the edge gate (≥ 3%) are pushed to `plays[]`. Be
 - `trackedPlays` — user's saved picks (localStorage or server)
 
 ### Market Report
-Opened via "report" button. Shows ALL markets (plays + dropped) grouped by sport/stat. Columns vary by sport/stat via `XCOLS` map. Sport tabs: **ALL / MLB / NBA / NHL / CALIBRATION**.
+Opened via "report" button. Shows ALL markets (plays + dropped) grouped by sport/stat. Columns vary by sport/stat via `XCOLS` map. Sport tabs: **ALL / MLB / NBA / NHL / CALIBRATION**. Column header tooltips defined in `COL_TIPS` dictionary (keyed by XCOLS `k` value) — hover any column header to see description + color tier thresholds. Totals-specific keys (`homeRPG`, `awayERA`, `homeOff`, `awayDef`, `totalOu`, `homeGPG`, `awayGAA`, etc.) all have entries.
 - **First column navigation**: Player name spans are clickable (`cursor:pointer`) — clicking closes the report (`setShowReport(false)`) and navigates to that player's card via `navigateToPlayer({ id: m.playerId, name: m.playerName, sportKey: SPORT_KEY[m.sport] }, m.stat)`. For game total rows, each team abbreviation (`awayTeam` and `homeTeam`) is separately clickable and navigates to that team's page via `navigateToTeam`. No underline styling.
 - **`fetchReport` syncs plays card**: After fetching `?debug=1`, `fetchReport` also updates `tonightPlays` and `allTonightPlays` from the fresh response. This keeps the plays card in sync with the report (avoids stale-cache discrepancy where plays card loaded at page open shows different results than the report fetched later).
 - **HRR table**: shows threshold=1 rows only (2+/3+/etc. filtered client-side — too noisy)
 - **Score > 10 highlight**: For MLB rows (strikeouts + HRR), the player name is white+bold only when `finalSimScore ?? hitterFinalSimScore > 10` (Alpha tier). Rows with score ≤ 10 get a dim gray name even if qualified. Non-MLB tables use the original `m.qualified` logic for name color.
 - **SimScore tooltip (market report)**: hover any `X/14` score badge to see per-component breakdown. Computed inline in `xcell k==="sim"` from available play fields:
   - **Strikeouts**: CSW%/K%: X/3, K-BB%: X/2, Lineup K%: X/3, Pitches: X/2, K-Trend: X/2, O/U: X/2
-  - **HRR**: Spot: X/3, WHIP: X/3, Platoon: X/2, Park: X/1, Barrel%: X/3, O/U: X/2
+  - **HRR**: Spot: X/3, WHIP: X/3, Platoon: X/2, Barrel%: X/3, O/U: X/2 (max 13 — park removed)
   - **NBA**: Pace (adj): X/3, USG%/AvgMin (C1): X/4, DVP: X/2, Spread: X/2, Total: X/3
   - **NHL**: SA #X: X/3, TOI Xm: X/4, B2B: X/2, GPG X: X/3
   - **MLB totals**: Home/Away ERA (pts from ≥4.5/≥3.5 tiers), Home/Away RPG (≥5.0/≥4.0), Park RF (>1.01→2pts), O/U (≥9.5/≥7.5 tiers)
@@ -472,8 +472,8 @@ Shows `untrackedPlays` (qualified plays not yet tracked). For game totals, once 
 - **Stat colors for MLB totals**: ERA — >4.5 green, >3.5 yellow, ≤3.5 red (high ERA = hittable pitcher = good for over). RPG — >5.0 green, >4.0 yellow, ≤4.0 gray (high run-scoring = good for over). Both directions: high value = good for over.
 - **Stat colors for NHL totals**: GPG — ≥3.5 green, ≥3.0 yellow, <3.0 gray (high scoring = good for over). GAA — ≥3.5 green, ≥3.0 yellow, <3.0 gray (high GAA = bad defense = good for over). Both directions: high value = green = good for over.
 - **SimScore tooltip for MLB totals**: shows actual values and earned points per component (e.g. `SD ERA (4.73): 3/3`, `SEA RPG (4.2): 1/2`). Points derived from same tiered formula as backend.
-- **SimScore tooltip for NHL totals**: shows actual values and earned points per component (e.g. `LAK GPG (2.7): 1/3`, `CGY GAA (3.15): 1/2`). Points derived from same tiered formula as backend.
-- **SimScore tooltip for NBA totals**: shows actual values and earned points (e.g. `GSW off PPG (118): 3/3`, `LAL def allowed (108): 1/2`, `Pace known: 2/2`). Both play card badge (hover `scTitle`) and market report `xcell k==="sim"` show the same breakdown.
+- **SimScore tooltip for NHL totals**: shows actual values and earned points per component (e.g. `LAK GPG (2.7): 1/3`, `CGY GAA (3.15): 1/2`, `O/U (5.5): 2/4`). Points derived from same tiered formula as backend.
+- **SimScore tooltip for NBA totals**: shows actual values and earned points (e.g. `GSW off PPG (118): 3/3`, `LAL def allowed (108): 1/2`, `O/U (225): 3/4`). Both play card badge (hover `scTitle`) and market report `xcell k==="sim"` show the same breakdown.
 - No player card on click (`gameType === "total"` returns early from `navigateToPlay`).
 
 ### Player Card
@@ -532,7 +532,7 @@ Both play cards and player cards show an explanation block (`background:"#0d1117
 9. SimScore badge inline
 10. **Lineup badge** — `✓ Lineup` (green) when `lineupConfirmed === true`; `Proj. Lineup` (gray) when `lineupConfirmed === false` and game is not imminent (same 30-minute rule as play card subtitle). `lineupConfirmed` and `gameTime` sourced from `tonightHitPlay` (HRR) or `h2h` (strikeouts, via `tp.lineupConfirmed/gameTime` added to h2h object). `verticalAlign:"middle"` so badge sits inline with SimScore badge.
 
-**HRR market report columns:** `XCOLS["mlb|hrr"]` = Score / Spot / WHIP / **Plat** / Brrl% / Park / **O/U**. ML replaced by O/U (≥9.5 green, ≥7.5 yellow, <7.5 red — high total = good for HRR); reads `m.hitterGameTotal`. Score column moved to first xcol (after Edge) on all tables — the hardcoded pre-True% Score column was removed. SimScore tooltip null-abstain for Platoon/WHIP/Barrel%/O/U now shows `1` not `—`.
+**HRR market report columns:** `XCOLS["mlb|hrr"]` = Score / Spot / WHIP / **Plat** / Brrl% / Park / **O/U**. Park column still shown in report (env column) but no longer contributes to SimScore. ML replaced by O/U (≥9.5 green, ≥7.5 yellow, <7.5 red — high total = good for HRR); reads `m.hitterGameTotal`. Score column moved to first xcol (after Edge) on all tables — the hardcoded pre-True% Score column was removed. SimScore tooltip null-abstain for Platoon/WHIP/Barrel%/O/U now shows `1` not `—`.
 
 **NHL player prop explanation** (play card + player card, both locations): single prose block — SimScore badge inline at end (no separate row, no checkboxes). SimScore tooltip on hover shows component breakdown: `SA ±X: N/3`, `TOI Xm: N/4`, `GAA #X: N/2`, `Rested/B2B: N/2`, `Team GPG X.X: N/3`.
 
@@ -803,7 +803,7 @@ if (awayGPG != null) totalSimScore += 3;
 if (homeGAA != null) totalSimScore += 2;
 if (awayGAA != null) totalSimScore += 2;
 ```
-This always gave 14/14 when all four fields were present (assuming SA ranks known), even for two teams averaging 2.5–2.7 GPG.
+This always gave 14/14 when all four fields were present (assuming SA ranks known), even for two teams averaging 2.5–2.7 GPG. SA rank has since been replaced by O/U line tier (commit `3437e53`).
 
 **Old color semantics (also pre-`d7beade`):** `gaaColor` had `< 3.0 → green` (inverted — low GAA = good defense was green, wrong direction for an over). `gpgColor` had `>= 3.5 → red` (also inverted). Now both use `>= 3.5 → green, >= 3.0 → yellow, < 3.0 → gray`, matching the market report table.
 
