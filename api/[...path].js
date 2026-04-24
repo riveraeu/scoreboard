@@ -2600,8 +2600,14 @@ var worker_default = {
             // 3. DVP — position-adjusted ratio tiers: ≥1.05→2pts (soft), ≥1.02→1pt (borderline), else→0pts
             const _dvpPts = oppDvpRatioOut == null ? 0 : oppDvpRatioOut >= 1.05 ? 2 : oppDvpRatioOut >= 1.02 ? 1 : 0;
             _sc += _dvpPts;
-            // 4. Rest — not B2B → 2pts
-            if (!isB2B) _sc += 2;
+            // 4. Spread tightness — tight game = full minutes, no garbage time
+            // nbaBlowoutAdj computed after this block; use spread directly here
+            const _nbaSpreadEarly = (sportByteam.nbaGameOdds ?? {})[playerTeam]?.spread ?? null;
+            const _absSpreadEarly = _nbaSpreadEarly != null ? Math.abs(_nbaSpreadEarly) : null;
+            if (_absSpreadEarly == null) _sc += 1; // abstain
+            else if (_absSpreadEarly <= 10) _sc += 2;
+            else if (_absSpreadEarly <= 15) _sc += 1;
+            else _sc += 0;
             // 5. Game total — high total = more possessions/scoring = favorable for counting stats
             // ≥235→3pts, ≥225→2pts, else→1pt (low total still scores 1 — not a disqualifier), null→1pt (abstain)
             nbaGameTotal = (sportByteam.nbaGameOdds ?? {})[playerTeam]?.total ?? null;
