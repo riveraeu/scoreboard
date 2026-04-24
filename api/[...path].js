@@ -3451,20 +3451,22 @@ var worker_default = {
               const nbaAvgDef = leagueAvgCache["nba|points"] ?? nbaLeagueAvgOffPPG;
               const homeDef = nbaDefRank[homeTeam]?.value ?? null, awayDef = nbaDefRank[awayTeam]?.value ?? null;
               const _hp = nbaPaceData?.teamPace?.[homeTeam] ?? null, _ap = nbaPaceData?.teamPace?.[awayTeam] ?? null;
+              const _nbaOuLine = sportByteam.nbaGameOdds?.[homeTeam]?.total ?? sportByteam.nbaGameOdds?.[awayTeam]?.total ?? null;
               const _homeExpRaw = homeOff != null ? homeOff * (awayDef != null && nbaAvgDef ? awayDef / nbaAvgDef : 1) : null;
               const _awayExpRaw = awayOff != null ? awayOff * (homeDef != null && nbaAvgDef ? homeDef / nbaAvgDef : 1) : null;
-              _simData = { homeOff, awayOff, homeDef, awayDef, homePace: _hp, awayPace: _ap, leagueAvgPace: nbaPaceData?.leagueAvgPace ?? null, homeExpected: _homeExpRaw != null ? parseFloat(_homeExpRaw.toFixed(1)) : null, awayExpected: _awayExpRaw != null ? parseFloat(_awayExpRaw.toFixed(1)) : null, expectedTotal: (_homeExpRaw != null && _awayExpRaw != null) ? parseFloat((_homeExpRaw + _awayExpRaw).toFixed(1)) : null };
+              _simData = { homeOff, awayOff, homeDef, awayDef, homePace: _hp, awayPace: _ap, leagueAvgPace: nbaPaceData?.leagueAvgPace ?? null, gameOuLine: _nbaOuLine, homeExpected: _homeExpRaw != null ? parseFloat(_homeExpRaw.toFixed(1)) : null, awayExpected: _awayExpRaw != null ? parseFloat(_awayExpRaw.toFixed(1)) : null, expectedTotal: (_homeExpRaw != null && _awayExpRaw != null) ? parseFloat((_homeExpRaw + _awayExpRaw).toFixed(1)) : null };
               if (_homeExpRaw != null && _awayExpRaw != null) {
                 const _dk = `nba|${homeTeam}|${awayTeam}`;
                 if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateNBATotalDist(_homeExpRaw, _awayExpRaw, 11, 11, 10000);
                 truePct = totalDistPct(totalDistCache[_dk], threshold);
               }
               // Off PPG tiered: >=118→3pts (elite), >=113→2pts (above avg), exists→1pt; Def PPG allowed tiered: >=118→2pts (bad def), >=113→1pt, exists→0pts (solid def = fewer pts)
+              // O/U tiered: >=235→4pts, >=225→3pts, >=215→2pts, >=205→1pt, <205→0pts (replaces pace 4pts; max still 14)
               if (homeOff != null) totalSimScore += homeOff >= 118 ? 3 : homeOff >= 113 ? 2 : 1;
               if (awayOff != null) totalSimScore += awayOff >= 118 ? 3 : awayOff >= 113 ? 2 : 1;
               if (homeDef != null) totalSimScore += homeDef >= 118 ? 2 : homeDef >= 113 ? 1 : 0;
               if (awayDef != null) totalSimScore += awayDef >= 118 ? 2 : awayDef >= 113 ? 1 : 0;
-              if (_hp != null && _ap != null) { totalSimScore += 2; if ((_hp + _ap) / 2 > (nbaPaceData?.leagueAvgPace ?? 100)) totalSimScore += 2; }
+              if (_nbaOuLine != null) totalSimScore += _nbaOuLine >= 235 ? 4 : _nbaOuLine >= 225 ? 3 : _nbaOuLine >= 215 ? 2 : _nbaOuLine >= 205 ? 1 : 0;
             } else if (sport === "nhl") {
               const homeGPG = nhlGPGMap[homeTeam] ?? null, awayGPG = nhlGPGMap[awayTeam] ?? null;
               const homeGAA = nhlGAAMap[homeTeam] ?? null, awayGAA = nhlGAAMap[awayTeam] ?? null;
