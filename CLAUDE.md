@@ -151,7 +151,7 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
   - B1 platoon tier (`hitterPlatoonPts`): `splitBA / seasonBA ≥ 1.08 → 2pts` (platoon advantage), `≥ 0.95 → 1pt` (neutral/slight), `< 0.95 → 0pts` (platoon disadvantage); null → 1pt (abstain). `batterSplitBA` from MLB Stats API `statSplits/sitCodes=vr|vl`, blended 2025+2026 raw AB/H (consistent with `hitterBa` blend), requires 20+ combined AB.
   - Barrel% tier: ≥14% → 3pts, ≥10% → 2pts, ≥7% → 1pt, <7% → 0pts, null → 1pt (abstain)
   - O/U total tier (high total = more run-scoring): ≥9.5 → 2pts, ≥7.5 → 1pt, <7.5 → 0pts, null → 1pt
-  - Max: 3+3+2+3+2 = 13 (park factor removed from SimScore — still shown in env column in report)
+  - Max: 3+3+2+3+2 = 14 (park factor removed from SimScore — still shown in env column in report)
 - **B2 — Batter recent form**: `hitterEffectiveBA = 0.6 × recentBA + 0.4 × seasonBA` when ≥20 AB in last 10 2026 games; else uses seasonBA. Fed directly into `simulateHits` as `batterBA`. `batterRecentBA` map built inline from ESPN gamelog in main play loop.
 - **Gates**: lineup spot 1–4 required; hitterSimScore ≥ 11 (Alpha tier — same as strikeouts/NBA/NHL); edge ≥ 5% (gate only, not scored)
 - Barrel% from Baseball Savant (`buildBarrelPct`) — cached 6h in KV; `hitterBarrelPts` stored in play output
@@ -394,7 +394,7 @@ Opened via "report" button. Shows ALL markets (plays + dropped) grouped by sport
 - **Score > 10 highlight**: For MLB rows (strikeouts + HRR), the player name is white+bold only when `finalSimScore ?? hitterFinalSimScore > 10` (Alpha tier). Rows with score ≤ 10 get a dim gray name even if qualified. Non-MLB tables use the original `m.qualified` logic for name color.
 - **SimScore tooltip (market report)**: hover any `X/14` score badge to see per-component breakdown. Computed inline in `xcell k==="sim"` from available play fields:
   - **Strikeouts**: CSW%/K%: X/3, K-BB%: X/2, Lineup K%: X/3, Pitches: X/2, K-Trend: X/2, O/U: X/2
-  - **HRR**: Spot: X/3, WHIP: X/3, Platoon: X/2, Barrel%: X/3, O/U: X/2 (max 13 — park removed)
+  - **HRR**: Spot: X/3, WHIP: X/3, Platoon: X/2, Barrel%: X/3, O/U: X/2 (max 14 — park removed from scoring)
   - **NBA**: Pace (adj): X/3, USG%/AvgMin (C1): X/4, DVP: X/2, Spread: X/2, Total: X/3
   - **NHL**: SA #X: X/3, TOI Xm: X/4, B2B: X/2, GPG X: X/3
   - **MLB totals**: Home/Away ERA (pts from ≥4.5/≥3.5 tiers), Home/Away RPG (≥5.0/≥4.0), Park RF (>1.01→2pts), O/U (≥9.5/≥7.5 tiers)

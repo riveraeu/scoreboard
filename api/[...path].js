@@ -2541,7 +2541,7 @@ var worker_default = {
             // O/U total tier (high total = more run-scoring): ≥9.5→2pts, ≥7.5→1pt, <7.5→0pts, null→1pt
             hitterGameTotal = sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null;
             hitterTotalPts = hitterGameTotal == null ? 1 : hitterGameTotal >= 9.5 ? 2 : hitterGameTotal >= 7.5 ? 1 : 0;
-            // Sim-score (max 13, edge gates separately): spot→3/2, WHIP→3/2/1, platoon→0-2, barrel%→0-3, O/U→0-2
+            // Sim-score (max 14, edge gates separately): spot→3/2, WHIP→3/2/1, platoon→0-2, barrel%→0-3, O/U→0-2
             hitterSimScore = (_spotPts ?? 0)
               + (hitterWhipPts ?? 0)
               + hitterPlatoonPts
