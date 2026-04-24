@@ -2243,9 +2243,9 @@ function App() {
                           // Total PPG columns
                           if (k==="homeRPG"||k==="awayRPG") { const v = m[k]; return v != null ? <span style={{color:v>=5.0?"#3fb950":v>=4.0?"#e3b341":"#8b949e",fontWeight:600}}>{v.toFixed(1)}</span> : DASH; }
                           if (k==="homeERA"||k==="awayERA") { const v = m[k]; return v != null ? <span style={{color:v>=4.5?"#3fb950":v>=3.5?"#e3b341":"#8b949e",fontWeight:600}}>{v.toFixed(2)}</span> : DASH; }
-                          if (k==="homeOff"||k==="awayOff") { const v = m[k]; return v != null ? <span style={{color:v>=118?"#f78166":v>=113?"#e3b341":"#8b949e",fontWeight:600}}>{v.toFixed(0)}</span> : DASH; }
-                          if (k==="homeDef"||k==="awayDef") { const v = m[k]; return v != null ? <span style={{color:v>=118?"#3fb950":v>=113?"#e3b341":"#f78166",fontWeight:600}}>{v.toFixed(0)}</span> : DASH; }
-                          if (k==="totalOu") { const v = m.threshold; if (v == null) return DASH; const line = (v-0.5).toFixed(1); const color = m.sport==="nba" ? (v>=235?"#3fb950":v>=225?"#e3b341":v>=215?"#8b949e":"#f78166") : m.sport==="nhl" ? (v>=6?"#3fb950":v>=5?"#e3b341":"#8b949e") : "#8b949e"; return <span style={{color,fontWeight:600}}>O{line}</span>; }
+                          if (k==="homeOff"||k==="awayOff") { const v = m[k]; return v != null ? <span style={{color:v>=115?"#3fb950":v>=108?"#e3b341":"#8b949e",fontWeight:600}}>{v.toFixed(0)}</span> : DASH; }
+                          if (k==="homeDef"||k==="awayDef") { const v = m[k]; return v != null ? <span style={{color:v>=112?"#3fb950":v>=105?"#e3b341":"#8b949e",fontWeight:600}}>{v.toFixed(0)}</span> : DASH; }
+                          if (k==="totalOu") { const v = m.threshold; if (v == null) return DASH; const line = (v-0.5).toFixed(1); const color = m.sport==="nba" ? (v>=215?"#3fb950":v>=205?"#e3b341":"#8b949e") : m.sport==="nhl" ? (v>=6?"#3fb950":v>=5?"#e3b341":"#8b949e") : "#8b949e"; return <span style={{color,fontWeight:600}}>O{line}</span>; }
                           if (k==="homeGPG"||k==="awayGPG"||k==="homeGAA"||k==="awayGAA") { const v = m[k]; return v != null ? <span style={{color:v>=3.5?"#3fb950":v>=3.0?"#e3b341":"#8b949e",fontWeight:600}}>{v.toFixed(1)}</span> : DASH; }
                           return DASH;
                         };
