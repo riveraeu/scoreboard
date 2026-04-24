@@ -178,7 +178,7 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
     - **points/assists/threePointers**: USG% ≥28% → 4pts, ≥22% → 2pts, <22% → 0pts. (`USG% = (avgFGA + 0.44×avgFTA + avgTO) / (avgMin × 2.255) × 100` — ESPN `usageRate` is 0.0 so fallback always runs)
     - **rebounds**: avgMin ≥30 → 4pts, ≥25 → 2pts, <25 → 0pts. (USG% has no relation to rebounding; floor time is the better signal)
   - Position-adjusted DVP ratio tiers: ratio ≥ 1.05 → 2pts (soft), ratio ≥ 1.02 → 1pt (borderline), else → 0pts. Pre-filter gate also uses ratio ≥ 1.02 (any position) — replaces the prior `softTeams` ratio ≥ 1.05 check. `dvpRatio` field included in all play/drop output.
-  - Not B2B → 2pts
+  - Spread tightness: spread ≤10 → 2pts, ≤15 → 1pt, >15 → 0pts, null → 1pt abstain. Replaces isB2B (removed — NBA playoffs have no back-to-backs). Uses `nbaBlowoutAdj` (already computed for C3 mean adj).
   - Game total tier: ≥235 → 3pts, ≥225 → 2pts, ≥215 → 1pt, <215 → 0pts, null → 1pt (abstain)
   - Max: 3+4+2+2+3 = 14
   - Game totals from `sportByteam.nbaGameOdds` (ESPN NBA scoreboard, fetched fresh each request alongside byteam stats)
@@ -395,9 +395,12 @@ Opened via "report" button. Shows ALL markets (plays + dropped) grouped by sport
 - **SimScore tooltip (market report)**: hover any `X/14` score badge to see per-component breakdown. Computed inline in `xcell k==="sim"` from available play fields:
   - **Strikeouts**: CSW%/K%: X/3, K-BB%: X/2, Lineup K%: X/3, Pitches: X/2, K-Trend: X/2, O/U: X/2
   - **HRR**: Spot: X/3, WHIP: X/3, Platoon: X/2, Park: X/1, Barrel%: X/3, O/U: X/2
-  - **NBA**: Pace (adj): X/3, DVP: X/2, Rested: X/2, Total: X/3 (C1/opportunity omitted — not exported)
+  - **NBA**: Pace (adj): X/3, USG%/AvgMin (C1): X/4, DVP: X/2, Spread: X/2, Total: X/3
   - **NHL**: SA #X: X/3, TOI Xm: X/4, B2B: X/2, GPG X: X/3
-  - Cursor changes to `help` when tooltip is available. Game totals use existing `scTitle` (computed in play card).
+  - **MLB totals**: Home/Away ERA (pts from ≥4.5/≥3.5 tiers), Home/Away RPG (≥5.0/≥4.0), Park RF (>1.01→2pts), O/U (≥9.5/≥7.5 tiers)
+  - **NBA totals**: Home/Away off PPG (≥118→3, ≥113→2, else 1), Home/Away def allowed (≥118→2, ≥113→1, else 0), Pace known/above avg
+  - **NHL totals**: Home/Away GPG (≥3.5/≥3.0 tiers), Home/Away GAA (≥3.5/≥3.0 tiers), Home/Away shots-against known
+  - Cursor changes to `help` when tooltip is available. Detection: `m.totalSimScore != null` → total play; otherwise sport-specific score fields.
 - **Market report column color tiers** — colors match SimScore tiers exactly (yellow = middle tier earns points, gray = earns 1pt but lowest tier, red = 0pts):
   - `lkp`: >24% green, >22% yellow, ≤22% red
   - `kbb`: >18% green, >12% yellow, ≤12% red
@@ -406,8 +409,11 @@ Opened via "report" button. Shows ALL markets (plays + dropped) grouped by sport
   - `brrl`: ≥14% green, ≥10% yellow, ≥7% gray, <7% red (matches SimScore 3/2/1/0pt tiers)
   - `nhlgaa`: ≤10 green, >10 red (binary — all ranks ≤10 earn same 2pts)
   - `nbapace`: >0 green, >-2 yellow, ≤-2 gray (slow pace earns 1pt, not 0; gray not red)
+  - `homeOff`/`awayOff` (NBA totals Off PPG): ≥115 green, ≥108 yellow, else gray — high offense = good for over = green (playoff-appropriate; regular season SimScore tiers 118/113 differ)
+  - `homeDef`/`awayDef` (NBA totals Def PPG allowed): ≥112 green, ≥105 yellow, else gray — high allowed = bad defense = good for over = green; no red floor (good defense is just gray)
+  - `totalOu` (NBA/NHL totals O/U column): NBA: ≥215 green, ≥205 yellow, else gray; NHL: ≥6 green, ≥5 yellow, else gray — shows threshold as `O{line}` (e.g. `O214.5`)
   - `plat` sort: keyed on `hitterSplitBA` ascending
-- **Game totals table** (`mlb|totalRuns`, `nba|totalPoints`, `nhl|totalGoals`): section header shows **"[Sport] Totals"** (e.g. "NBA Totals") via `STAT_NAME` entries `totalRuns/totalPoints/totalGoals → "Totals"`. First column labelled "Matchup" (not "Player"), shows `AWY @ HME`. Opp column hidden. Line cell shows `O7.5` format. Score column uses `m.totalSimScore` (qual gate = 11); green ≥ 11, yellow = 7–10, gray < 7. XCOLS: MLB = H RPG / A RPG / H ERA / A ERA; NBA = H PPG / A PPG / H Def / A Def; NHL = H GPG / A GPG / H GAA / A GAA. Color for all PPG columns: higher = better for over (≥ threshold → green, near → yellow). **MLB ERA/RPG column colors**: ERA ≥4.5 → green (bad pitcher = over-favorable), ≥3.5 → yellow, <3.5 → gray; RPG ≥5.0 → green, ≥4.0 → yellow, <4.0 → gray. Dedup key for totals is `homeTeam|awayTeam|threshold` (not `playerName|threshold`).
+- **Game totals table** (`mlb|totalRuns`, `nba|totalPoints`, `nhl|totalGoals`): section header shows **"[Sport] Totals"** (e.g. "NBA Totals") via `STAT_NAME` entries `totalRuns/totalPoints/totalGoals → "Totals"`. First column labelled "Matchup" (not "Player"), shows `AWY @ HME`. Opp column hidden. Line cell shows `O7.5` format. Score column uses `m.totalSimScore` (qual gate = 11); green ≥ 11, yellow = 7–10, gray < 7. XCOLS: MLB = H RPG / A RPG / H ERA / A ERA / O/U; NBA = H PPG / A PPG / H Def / A Def / O/U; NHL = H GPG / A GPG / H GAA / A GAA / O/U. **MLB ERA/RPG column colors**: ERA ≥4.5 → green (bad pitcher = over-favorable), ≥3.5 → yellow, <3.5 → gray; RPG ≥5.0 → green, ≥4.0 → yellow, <4.0 → gray. **NBA column colors**: Off PPG ≥115 green (high offense = favorable for over), Def PPG allowed ≥112 green (bad defense = favorable), O/U ≥215 green — all use playoff-appropriate tiers. **NHL column colors**: GPG/GAA ≥3.5 green, ≥3.0 yellow, else gray; O/U ≥6 green, ≥5 yellow. Dedup key for totals is `homeTeam|awayTeam|threshold` (not `playerName|threshold`).
 
 #### Calibration Tab
 Fetches `GET /api/auth/calibration` with `Authorization: Bearer <authToken>` on first click (+ Refresh button to re-fetch). Requires the user to be logged in — sends the stored JWT token, no hardcoded admin key. Shows:
@@ -462,11 +468,12 @@ Shows `untrackedPlays` (qualified plays not yet tracked). For game totals, once 
 - Header: inline format `[44px away logo] AWY @ HME [44px home logo]` — away logo leads, home logo trails. Team abbreviations at `fontSize:12, fontWeight:600, color:#c9d1d9`. No sport emoji.
 - Explanation: single prose block with colored stat values inline; SimScore badge (with hover tooltip) appended at end of prose (no separate SimScore row or checkboxes). Same `background:"#0d1117"` block as player cards.
 - Prose includes model-projected expected total vs threshold (e.g. "Model projects 8.4 combined runs vs the 7.5 threshold"). NBA also shows pace adjustment.
-- **Stat colors for NBA totals**: offensive PPG — ≥118 red, ≥113 yellow, else gray (high scoring = more risky for over). Defensive PPG allowed — ≥118 green, ≥113 yellow, else red (bad defense = good for over; good defense = bad for over).
+- **Stat colors for NBA totals** (play card prose only — market report uses different tiers, see below): offensive PPG — ≥118 red, ≥113 yellow, else gray (high scoring = already efficiently priced). Defensive PPG allowed — ≥118 green, ≥113 yellow, else red (bad defense = good for over). **Market report columns use playoff-appropriate tiers**: Off PPG ≥115 green / ≥108 yellow / else gray; Def PPG allowed ≥112 green / ≥105 yellow / else gray — green always means "favorable for over" in the report.
 - **Stat colors for MLB totals**: ERA — >4.5 green, >3.5 yellow, ≤3.5 red (high ERA = hittable pitcher = good for over). RPG — >5.0 green, >4.0 yellow, ≤4.0 gray (high run-scoring = good for over). Both directions: high value = good for over.
 - **Stat colors for NHL totals**: GPG — ≥3.5 green, ≥3.0 yellow, <3.0 gray (high scoring = good for over). GAA — ≥3.5 green, ≥3.0 yellow, <3.0 gray (high GAA = bad defense = good for over). Both directions: high value = green = good for over.
 - **SimScore tooltip for MLB totals**: shows actual values and earned points per component (e.g. `SD ERA (4.73): 3/3`, `SEA RPG (4.2): 1/2`). Points derived from same tiered formula as backend.
 - **SimScore tooltip for NHL totals**: shows actual values and earned points per component (e.g. `LAK GPG (2.7): 1/3`, `CGY GAA (3.15): 1/2`). Points derived from same tiered formula as backend.
+- **SimScore tooltip for NBA totals**: shows actual values and earned points (e.g. `GSW off PPG (118): 3/3`, `LAL def allowed (108): 1/2`, `Pace known: 2/2`). Both play card badge (hover `scTitle`) and market report `xcell k==="sim"` show the same breakdown.
 - No player card on click (`gameType === "total"` returns early from `navigateToPlay`).
 
 ### Player Card
