@@ -312,7 +312,7 @@ True% = Monte Carlo simulation (reuses `buildNbaStatDist` + `nbaDistPct`) — no
 - Edge badge on play cards shows `+X%` with no tooltip — the old "Raw − spread = net" tooltip was removed since spread is no longer subtracted.
 - **E1 — Line movement tracking**: Opening yesAsk stored in KV at `lineOpen:{ticker}:{gameDate}` (TTL 172800s / 2 days) on first encounter. `lineMove = current yesAsk − opening yesAsk` (positive = line moved up / market became more expensive). Shown as badge `▲ Xc` or `▼ Xc` when `|lineMove| ≥ 3`. Included in plays output.
 - **E2 — Market depth thresholds**: `lowVolume = kalshiVolume < 50` (raised from 20); `thinMarket = kalshiSpread > 8` (cents, shown as "Wide Spread" badge in red); `marketConfidence = "deep"` (vol≥50 AND spread≤4) / `"moderate"` / `"thin"` (vol<50 OR spread>8). All three fields included in plays output.
-- **Polymarket disabled (commit be7b2ad)**: Polymarket fetch, Poly-only injection, and derived prices are all commented out — prices were not accurate enough. Edge gate reverts to Kalshi-only `edge < 5`. `polyPct/polyVol/bestVenue` are always null in play output. Frontend handles null gracefully (teal Poly bar hidden, tooltips simplified). To re-enable, uncomment the two `/* ... */` blocks in `api/[...path].js` around `polyPctMap` and `polyDerivedMap`, restore the poly lookup in the play loop, and change the gate back to `bestEdge < 5`.
+- **Polymarket removed (commit afa2c30)**: All Polymarket code deleted from `api/[...path].js` (`POLY_NAME_TO_ABBR`, `POLY_SERIES`, both commented-out blocks, poly fields in play/dropped objects) and `index.html` (price bars, tooltip logic, COL_TIPS entry). Edge gate is Kalshi-only `edge >= 5`. Play objects no longer include `polyPct`, `polyVol`, `polyDerived`, `bestVenue`, `bestEdge`, or `polyOnly`.
 
 ### preDropped vs dropped
 - `preDropped`: filtered before main play loop (no ESPN info yet) — included in `?debug=1` response
@@ -347,12 +347,14 @@ Single-page app uses `history.pushState` + `popstate` for client-side navigation
 - `/:ABBR` → team page (e.g. `/LAD`, `/GSW`) — uppercase abbreviation
 - `/:ABBR?sport=nhl` → disambiguate multi-sport abbreviations (e.g. `/BOS?sport=nhl` for Bruins vs `/BOS` for Red Sox); `_multiSportAbbrs` Set lists the conflicting ones
 - `/:SlugName` → player page (e.g. `/GavinWilliams`) — CamelCase slugification via `slugify(name)` = remove accents + collapse spaces
+- `/model` → Model Reference page — static, no API calls
 - `vercel.json` `/:slug` rewrite serves `index.html` for all single-segment paths so deep links work on cold load
-- `resolveSlug(slug, sportOverride)` — on mount, reads `window.location.pathname`, checks `TEAM_DB` first, else stores as `pendingSlug` for async ESPN athlete search
+- `resolveSlug(slug, sportOverride)` — on mount, reads `window.location.pathname`; checks literal `"model"` first, then `TEAM_DB`, else stores as `pendingSlug` for async ESPN athlete search
 - `navigateToTeam(abbr, sport)` — pushState + `loadTeamPage` + scroll to top
 - `navigateToPlayer(p, tab)` — pushState with slugified name + `selectPlayer` + scroll
-- `goBack()` — pushState("/") + clear player/team state
-- Back button in both player card and team page header calls `goBack()`
+- `navigateToModel()` — pushState("/model") + `setModelPage(true)` + clear player/teamPage + scroll to top
+- `goBack()` — pushState("/") + clear player/team/modelPage state
+- Back button in player card, team page, and model page header calls `goBack()`
 
 ### Team Page
 `TeamPage({ abbr, sport, teamPageData, tonightPlays, allTonightPlays, onBack, navigateToTeam, trackedPlays, trackPlay, untrackPlay })` component:
@@ -447,8 +449,21 @@ Fetches `GET /api/auth/calibration` with `Authorization: Bearer <authToken>` on 
 - **MLB Strikeouts Breakdown** (when K picks exist): three sub-tables — by SimScore, by kpctPts (K% tier), by kTrendPts. Use these to tune feature gates/weights.
 - Delta color: green ≥+3%, yellow −2 to +2%, red ≤−3%. Delta = actual − predicted (positive = model conservative, negative = model overconfident).
 
+### Model Reference Page
+`ModelPage({ onBack })` component at `/model` — static, no API calls.
+
+- **Entry point**: "model" link in the plays section header (next to "report" link)
+- **9 tabs**: MLB Strikeouts · MLB H+R+RBI · NBA Props · NHL Points · MLB Game Total · NBA Game Total · NHL Game Total · MLB Team Total · NBA Team Total
+- **Each tab contains**:
+  - **True% formula** — exact computation (Monte Carlo variant, lambda/mean formula, or blended rate formula)
+  - **Model inputs** — every input with a plain-language explanation of why that statistic was chosen over alternatives
+  - **SimScore breakdown** — each component's tier thresholds (0/1/2 pts) and the reasoning behind each boundary
+- **Qualification summary bar** at top: Kalshi ≥ 70% · Edge ≥ 5% · SimScore ≥ 8/10
+- **State**: `modelPage` boolean on `App`. Gated same as TeamPage — plays/picks grid hides when active (`!player && !teamPage && !modelPage`)
+- `resolveSlug` handles `"model"` before TEAM_DB lookup; `goBack()` also clears `setModelPage(false)`
+
 ### Toolbar
-Right side: **bust** button (calls `?bust=1`, shows "busting…" while loading) + **mock** toggle + My Picks anchor.
+Right side: **bust** button (calls `?bust=1`, shows "busting…" while loading) + **mock** toggle + My Picks anchor. Left side of header (next to plays title): **report** link + **model** link (opens Model Reference page).
 
 **Plays section header**: Shows `Plays — Week of Apr 20` (Monday of current week) when plays exist, or just `Plays` when empty. Previously listed individual non-today dates (`Wed, Apr 22 · Thu, Apr 23`); replaced with week label for cleaner display.
 
@@ -966,72 +981,6 @@ Fix: `sched.team?.recordSummary || sched.team?.record?.items?.[0]?.summary`.
 - NBA: depth chart empty during playoffs → falls through to boxscore starters (game day) or roster fallback (no game today); lineup section only hidden if all three sources return nothing
 Both are handled gracefully by the `lineup.length > 0` guard on the inline lineup section.
 
-### "Polymarket polyPct showing null for all total plays"
-
-**Root cause: wrong Polymarket API endpoint.**
-The flat `gamma-api.polymarket.com/markets?closed=false&limit=200` endpoint returns general prediction markets (GTA VI release dates, celebrity gossip) — it ignores all filtering parameters (`tag_slug`, `tag_id`, `q=`, `search=`). Game total markets are NOT accessible via this endpoint.
-
-**Correct endpoint: `/events?series_id=X`**
-Game totals are organized into sport-specific series. Fetch events, then parse the nested `markets[]` array on each event:
-- MLB series_id = 3
-- NBA series_id = 10345
-- NHL series_id = 10346
-
-```
-GET gamma-api.polymarket.com/events?closed=false&series_id=3&limit=50
-```
-Response: array of event objects with `title` ("Tampa Bay Rays vs. Colorado Rockies") and `markets[]` (each market has `question`, `outcomes`, `outcomePrices`). O/U markets identified by `question.includes("O/U")`. Skip half-game markets (`"1H"` or `"2H"` in question).
-
-**Team name format differences by sport:**
-- MLB: full nickname only, no city — `"Rays"`, `"Rockies"`, `"Blue Jays"` (NOT "Tampa Bay Rays")
-- NBA: short nickname — `"Warriors"`, `"Suns"`, `"Trail Blazers"`
-- NHL: short nickname — `"Flyers"`, `"Golden Knights"`, `"Blue Jackets"`
-Event title format: `"[Away Team] vs. [Home Team]"` — away team is first. Title split uses `/ vs\.? /` regex to handle both `"vs."` and `"vs"` separators. Outcome regex uses `/^over\b/i` to match both bare `"Over"` and `"Over 7.5"` labels.
-
-**Threshold alignment:**
-Polymarket lists `"O/U 8.5"` → Kalshi threshold = `Math.round(8.5 + 0.5) = 9` (YES if total ≥ 9).
-
-**Why matches are rare:**
-Kalshi qualifies markets at 70–97% probability — for MLB this means low thresholds (O3.5, O4.5, O5.5) where the probability of reaching them is high. Polymarket carries the game's main O/U line (typically 7.5–8.5 for MLB) and some alt lines. A Polymarket match only occurs when Kalshi's qualifying threshold aligns with a line Polymarket has listed. High-scoring venues (Coors Field COL, Globe Life TEX) produce matches more often. Example: LAD @ COL O8.5 — Kalshi 73% (this threshold passes the 70-97% gate), Polymarket 60% → `bestVenue=polymarket`, `bestEdge=+13%`.
-
-**Stale cache pattern after a broken deploy:**
-If the first deploy has a bug that produces `polyPctMap = {}` (empty), that empty object gets cached in Redis at `poly:totals:{date}` with 60s TTL. A subsequent correct deploy will still serve the empty cache until it expires. Fix: `?bust=1` skips the `poly:totals:{date}` cache read. Always test the Polymarket block with `?bust=1` after a deploy that changes the Polymarket fetch logic.
-
-**"Poly shows — for all rows in market report" (fixed 84a80e4):**
-`polyPctMap` lookup was after the edge gate — `dropped` plays (edge_too_low / no_simulation_data) never got `polyPct`. Fix: lookup moved before edge check so all total rows in the report carry `polyPct`/`polyVol`/`bestVenue`/`bestEdge`.
-
-**Diagnosis steps:**
-1. `GET /api/tonight?debug=1&bust=1` — check `plays[].polyPct` and `dropped[].polyPct` on total rows
-2. If `polyPct` is null for all total plays: check that today's sport (MLB/NBA/NHL) has a corresponding series in `POLY_SERIES` and that `totalMarkets.length > 0` (Kalshi must have published totals first)
-3. If `polyPct` is null for one team: the team name in Polymarket's event title doesn't match any key in `POLY_NAME_TO_ABBR[sport]`. Add the missing nickname.
-4. If `polyPct` exists but `bestEdge` seems wrong: check threshold alignment — Polymarket "O/U 7.5" maps to Kalshi threshold 8 (not 7). Log `_ouLine` and `_thresh` from the fetch block.
-5. Finalized Polymarket markets are filtered by `overPrice < 0.02 || overPrice > 0.98` — if a market just settled, this guard drops it.
-
-**Poly derived prices for MLB/NBA/NHL (commit 84fe9a7):**
-Polymarket only carries consensus O/U lines (MLB: 7.5–8.5; NBA: 216–232; NHL: 4.5–7.5) — all near 50/50. Kalshi qualifies at lower alt-lines. To show a meaningful comparison, the pipeline derives Poly's implied probability at any threshold using the consensus price as an anchor:
-- **MLB/NHL**: Fit Poisson λ from `P(X ≥ anchor_threshold) = poly_pct`, then compute `P(X ≥ threshold)`. The Polymarket app shows identical Poisson-derived prices via its slider UI.
-- **NBA**: Fit Normal μ from the same anchor using fixed σ = √2 × 11 ≈ 15.6 (from simulation per-team std).
-Derived prices stored in `polyDerivedMap` (separate from `polyPctMap`). Key: `sport|t1|t2|threshold`. Shown as `~X%` (italic) in market report Poly column. **NOT used for `bestEdge`/`bestVenue`/edge gate** — only real Poly prices affect play qualification. Poly-only injection also skips derived entries. `polyDerived: true` flag included in all play/dropped output.
-
-**Bug: Poisson binary search condition was inverted (fixed 84fe9a7):** `if (1 - cdf < p) hi = mid` converged to λ=60 (max), giving ~100% probabilities skipped by `v > 99` guard. Fixed to `if (1 - cdf > p) hi = mid`.
-
-**Poly-only injection filter**: Uses `polyPct >= 30 && polyPct <= 97` (matching the Kalshi game total filter). Do NOT raise back to 70 — Poly consensus O/U lines are near 50/50, so all game total markets would be excluded.
-
-**"NHL polyPct seems too low compared to Kalshi (e.g., 60% vs 96%)" — stale 1-min cache or outcomePrices lag:**
-The `poly:totals:{date}` cache (60s TTL) can hold pre-game prices. `?bust=1` skips it and fetches fresh. Additionally, `outcomePrices` reflects the **last traded price**, which lags live order book during active games (e.g. last trade at 71% when current book is 87%). Fix (commit `aa43334`): the gamma events API market objects include `bestBid` and `bestAsk` fields for the live order book. `polyPct` is now computed as `round(((bestBid + bestAsk) / 2) × 100)` for index-0 (Over) markets; `1 - mid` for index-1 markets. Falls back to `outcomePrices` when bestBid/bestAsk are null. No extra API calls needed — the data is already in the events response. **Do NOT attempt CLOB API (`clob.polymarket.com/midpoints`) from Vercel Edge** — the token IDs from gamma events are numeric (~20-digit) rather than ERC-1155 256-bit hex, and the CLOB API returns 400 "Invalid payload" regardless of request format (GET repeated params, GET comma-separated, POST JSON body). Regular season live NHL Poly prices for O4.5 typically range 74–87%. **During NHL playoffs, Poly prices for O4.5 are structurally lower (~52–56%)** — tighter defense and lower expected scoring make this reasonable, but our model uses regular season GPG/GAA data and scores ~85% truePct, creating apparent 25–30% edges. These edges may not be real if the model overstates playoff scoring.
-
-**"Many NHL plays qualifying via Poly edge in playoffs" (post-6ef98f7 behavior):**
-Since the gate changed from `edge < 5` to `bestEdge < 5`, plays where Kalshi edge is negative but Poly edge is ≥5% now qualify. During playoffs (~April–June) expect 15–20 NHL plays per day where `rawEdge < 0` (Kalshi overpriced) but `bestEdge >= 5` (Poly underpriced vs model). To check: `?debug=1` → count `plays` where `sport=nhl && rawEdge < 0`. If this looks excessive, consider a secondary guard like requiring `rawEdge > -15` for Poly-best plays, or recalibrating NHL truePct for playoff scoring pace.
-
-**"Polymarket app shows O5.5/O6.5 slider prices for MLB — are these real markets?":**
-The Polymarket app shows a slider with prices at multiple thresholds (e.g., O5.5 at -355 ≈ 78% for HOU@CLE). These are NOT separate tradeable markets — they are Poisson-derived prices computed by the app from the single real O/U 8.5 market. The `/events?series_id=3` API only exposes the consensus market. Our `polyDerivedMap` computes the same Poisson-derived prices server-side and shows them as `~X%` in the report. Derived prices are NOT used for edge gates or bestVenue routing.
-
-**NHL Polymarket market format (confirmed live 2026-04-20):**
-- Series_id=10346 returns NHL game events, e.g. "Ducks vs. Oilers" with 4 O/U lines: 4.5, 5.5, 6.5, 7.5
-- Market question format: `"Ducks vs. Oilers: O/U 4.5"` (includes team names — handled by `/O\/U\s+([\d.]+)/` regex)
-- Outcomes: `["Over", "Under"]` — `_oIdx` detection by `/^over\b/i` works correctly
-- Player prop markets in the same NBA series (e.g. "Scottie Barnes: Points O/U 4.5") have `["Yes","No"]` outcomes — `_oIdx = -1` → skipped correctly
-
 ### "Platoon disadvantage not showing in prose even when tooltip shows Platoon: 0/2" (fixed 779c354)
 **Root cause**: `oppPitcherHand` was never added to the final play object in the `plays[]` push (only to `_hlCommon` which is spread into `dropped[]` entries). In the frontend, the prose condition `platoonPts === 0 && pitcherHand` always failed because `play.oppPitcherHand` was `undefined` → `pitcherHand = null` (falsy).
 
@@ -1105,15 +1054,6 @@ SimScore thresholds have been tuned against settled pick outcomes. When win rate
 **Other patterns noted:**
 - `historicalHitRate` < 65% with large model gap (e.g. Hancock: 14.3% hist vs 89.8% model) correlated with losses — now partly addressed by `blendedHitRatePts` and `hitterSeasonHitRatePts`
 - When adding new SimScore components, run this analysis after 40+ settled picks; small samples produce misleading tier win rates
-
-### "MLB totals market report shows only 2 games (fixed eb21787)"
-**Root cause**: Poly-only injection had `polyPct < 70` filter (copied from player prop path). Poly O/U game total markets are priced near 50/50 by design — the line is set at consensus. Every MLB, NBA, and NHL Poly market was always below 70%, so the injection loop silently skipped every Poly-only game. Zero games were ever added from Poly when Kalshi had no market for them.
-
-**Fix**: Changed `polyPct < 70` to `polyPct < 30` in the injection filter (`api/[...path].js` line ~3335), matching the Kalshi game total filter range (30–97%). The edge gate (`bestEdge >= 5%`) still filters out plays with no real model edge.
-
-**Symptom**: Market report shows only Kalshi-published totals (may be 0–2 games for MLB early in the day). `?debug=1&bust=1` → `totalMarketsCount` matches only Kalshi rows, no `polyOnly:true` entries anywhere in plays/dropped.
-
-**How to diagnose**: Check `polyDerivedMap` behavior — if `polyDerived:true` appears on a Kalshi total row but no `polyOnly:true` rows exist, `polyPctMap` has MLB entries but injection is being filtered. Confirm by checking the injection filter at line ~3335.
 
 ### "Strikeout player card K-trend prose is silent even though kTrendPts shows in tooltip"
 **Root cause**: The player card builds its `h2h` object from `tonightPlayerMap` entries, but `pitcherRecentKPct` and `pitcherSeasonKPct` were not included in that object — only `kTrendPts` was. So `recK = h2h?.pitcherRecentKPct` was always null and the prose branch silently skipped.
