@@ -350,3 +350,28 @@ export function totalDistPct(dist, threshold) {
   for (let i = 0; i < dist.length; i++) { if (dist[i] >= threshold) hits++; }
   return parseFloat((hits / dist.length * 100).toFixed(1));
 }
+
+// Single-team runs/goals distribution (Poisson): for MLB and NHL team totals.
+// lambda = expected runs/goals for this team. Returns Int16Array; query with totalDistPct.
+export function simulateTeamTotalDist(lambda, nSim = 10000) {
+  if (!lambda || lambda <= 0) return null;
+  const dist = new Int16Array(nSim);
+  for (let i = 0; i < nSim; i++) {
+    dist[i] = poissonSample(lambda);
+  }
+  return dist;
+}
+
+// Single-team points distribution (Normal): for NBA team totals.
+// mean = expected points for this team; std defaults to 11.
+export function simulateTeamPtsDist(mean, std = 11, nSim = 10000) {
+  if (!mean || mean <= 0) return null;
+  const dist = new Int16Array(nSim);
+  for (let i = 0; i < nSim; i++) {
+    const u1 = Math.random() + 1e-10;
+    const u2 = Math.random();
+    const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+    dist[i] = Math.round(Math.max(0, mean + std * z));
+  }
+  return dist;
+}

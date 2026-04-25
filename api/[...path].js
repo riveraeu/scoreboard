@@ -1,5 +1,5 @@
 import { ALLOWED_ORIGIN, corsHeaders, jsonResponse, errorResponse, parseGameOdds, buildSoftTeamAbbrs, buildHardTeamAbbrs, buildTeamRankMap } from "./lib/utils.js";
-import { PARK_KFACTOR, PARK_HITFACTOR, PARK_RUNFACTOR, UMPIRE_KFACTOR, log5K, poissonCDF, log5HitRate, simulateKsDist, kDistPct, simulateKs, buildNbaStatDist, nbaDistPct, simulateHits, simulateMLBTotalDist, simulateNBATotalDist, simulateNHLTotalDist, totalDistPct, decimalOdds, kellyFraction, evPerUnit } from "./lib/simulate.js";
+import { PARK_KFACTOR, PARK_HITFACTOR, PARK_RUNFACTOR, UMPIRE_KFACTOR, log5K, poissonCDF, log5HitRate, simulateKsDist, kDistPct, simulateKs, buildNbaStatDist, nbaDistPct, simulateHits, simulateMLBTotalDist, simulateNBATotalDist, simulateNHLTotalDist, totalDistPct, simulateTeamTotalDist, simulateTeamPtsDist, decimalOdds, kellyFraction, evPerUnit } from "./lib/simulate.js";
 import { buildLineupKPct, buildBarrelPct, buildPitcherKPct } from "./lib/mlb.js";
 import { warmPlayerInfoCache, buildNbaDvpStage1, buildNbaDvpFromBettingPros, buildNbaDepthChartPos, buildNbaPaceData, buildNbaPlayerPosFromSleeper, buildNbaDvpStage3FG, buildNbaUsageRate, buildNbaInjuryReport } from "./lib/nba.js";
 
@@ -1119,11 +1119,14 @@ var worker_default = {
           KXNFLRUYDS: { sport: "nfl", league: "nfl", stat: "rushingYards", col: "YDS" },
           KXNFLREYDS: { sport: "nfl", league: "nfl", stat: "receivingYards", col: "YDS" },
           KXNFLTDS: { sport: "nfl", league: "nfl", stat: "touchdowns", col: "TD" },
-          // Game totals — direction always "over" for yes side; under plays invert kalshiPct
+          // Game totals — both over and under plays surfaced per market
           KXMLBTOTAL: { sport: "mlb", league: "mlb", stat: "totalRuns",   col: "R",   gameType: "total" },
           KXNBATOTAL: { sport: "nba", league: "nba", stat: "totalPoints", col: "PTS", gameType: "total" },
           KXNHLTOTAL: { sport: "nhl", league: "nhl", stat: "totalGoals",  col: "G",   gameType: "total" },
           KXNFLTOTAL: { sport: "nfl", league: "nfl", stat: "totalPoints", col: "PTS", gameType: "total" },
+          // Team totals — single team's score vs opposing defense
+          KXMLBTEAMTOTAL: { sport: "mlb", league: "mlb", stat: "teamRuns",   col: "R",   gameType: "teamTotal" },
+          KXNBATEAMTOTAL: { sport: "nba", league: "nba", stat: "teamPoints", col: "PTS", gameType: "teamTotal" },
         };
         const TEAM_NORM = {
           nba: { GS: "GSW", SA: "SAS", NY: "NYK", NJ: "BKN", NO: "NOP", PHO: "PHX", WPH: "PHX" },
@@ -1166,7 +1169,8 @@ var worker_default = {
           return retry.data;
         }));
         const qualifyingMarkets = [];
-        const totalMarkets = []; // game total markets (pct 30–97, both over and under surfaced)
+        const totalMarkets = []; // game total markets (pct 70–97); under plays computed from same markets
+        const teamTotalMarkets = []; // single-team score markets (KXMLBTEAMTOTAL, KXNBATEAMTOTAL)
         const globalSeen = /* @__PURE__ */ new Set();
         for (let i = 0; i < seriesTickers.length; i++) {
           const ticker = seriesTickers[i];
@@ -1204,6 +1208,35 @@ var worker_default = {
               const _tYesBid = parseFloat(m.yes_bid_dollars) || 0;
               const _tSpread = yesAsk > 0 && _tYesBid > 0 ? Math.round((yesAsk - _tYesBid) * 100) : null;
               totalMarkets.push({ gameType: "total", sport, stat, col, threshold, kalshiPct: pct, americanOdds: _toAO, kalshiVolume: volume, gameTeam1, gameTeam2, gameDate: _tGameDate, kalshiSpread: _tSpread, _ticker: m.ticker, _yesAsk: yesAsk, _yesBid: _tYesBid });
+              continue;
+            }
+
+            // ── Team total branch (single team's score vs opposing defense) ──
+            if (cfg.gameType === "teamTotal") {
+              if (pct < 70 || pct > 97) continue;
+              const [gameTeam1, gameTeam2] = parseGameTeams(m.event_ticker, sport);
+              if (!gameTeam1 || !gameTeam2) continue;
+              // Extract scoring team from ticker suffix (e.g. "LAD8" → "LAD", "PHI97" → "PHI")
+              const _ttSuffix = (m.ticker || "").split("-").pop() || "";
+              const _ttMatch = _ttSuffix.match(/^([A-Z]+)/);
+              if (!_ttMatch) continue;
+              const scoringTeam = normTeam(sport, _ttMatch[1]);
+              const dedupeKey = `teamtotal|${sport}|${scoringTeam}|${gameTeam1}|${gameTeam2}|${threshold}`;
+              if (globalSeen.has(dedupeKey)) continue;
+              globalSeen.add(dedupeKey);
+              const _ttAO = pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
+              const _ttDateSeg = (m.event_ticker || "").split("-")[1] || "";
+              let _ttGameDate = null;
+              if (_ttDateSeg.length >= 7) {
+                const _KMON2 = { JAN: "01", FEB: "02", MAR: "03", APR: "04", MAY: "05", JUN: "06", JUL: "07", AUG: "08", SEP: "09", OCT: "10", NOV: "11", DEC: "12" };
+                const _ttYr = "20" + _ttDateSeg.slice(0, 2);
+                const _ttMo = _KMON2[_ttDateSeg.slice(2, 5).toUpperCase()];
+                const _ttDy = _ttDateSeg.slice(5, 7);
+                if (_ttMo) _ttGameDate = `${_ttYr}-${_ttMo}-${_ttDy}`;
+              }
+              const _ttYesBid = parseFloat(m.yes_bid_dollars) || 0;
+              const _ttSpread = yesAsk > 0 && _ttYesBid > 0 ? Math.round((yesAsk - _ttYesBid) * 100) : null;
+              teamTotalMarkets.push({ gameType: "teamTotal", sport, stat, col, threshold, kalshiPct: pct, americanOdds: _ttAO, kalshiVolume: volume, gameTeam1, gameTeam2, scoringTeam, gameDate: _ttGameDate, kalshiSpread: _ttSpread, _ticker: m.ticker, _yesAsk: yesAsk });
               continue;
             }
 
@@ -3478,18 +3511,53 @@ var worker_default = {
             }
             // Polymarket disabled — all fields null
             const polyPct = null, polyVol = null, polyDerived = false, bestVenue = "kalshi", bestEdge = null, polyOnly = false;
+            // ── UNDER SimScore (inverted tiers — low values favor under) ──
+            let underSimScore = 0;
+            if (sport === "mlb") {
+              const { homeERA, awayERA, homeRPG, awayRPG, gameOuLine } = _simData;
+              underSimScore += homeERA == null ? 1 : homeERA <= 3.5 ? 2 : homeERA <= 4.5 ? 1 : 0;
+              underSimScore += awayERA == null ? 1 : awayERA <= 3.5 ? 2 : awayERA <= 4.5 ? 1 : 0;
+              underSimScore += homeRPG == null ? 1 : homeRPG <= 4.0 ? 2 : homeRPG <= 5.0 ? 1 : 0;
+              underSimScore += awayRPG == null ? 1 : awayRPG <= 4.0 ? 2 : awayRPG <= 5.0 ? 1 : 0;
+              underSimScore += gameOuLine == null ? 1 : gameOuLine < 7.5 ? 2 : gameOuLine < 9.5 ? 1 : 0;
+            } else if (sport === "nba") {
+              const { homeOff, awayOff, homeDef, awayDef, gameOuLine } = _simData;
+              underSimScore += homeOff == null ? 1 : homeOff < 113 ? 2 : homeOff < 118 ? 1 : 0;
+              underSimScore += awayOff == null ? 1 : awayOff < 113 ? 2 : awayOff < 118 ? 1 : 0;
+              underSimScore += homeDef == null ? 1 : homeDef < 113 ? 2 : homeDef < 118 ? 1 : 0;
+              underSimScore += awayDef == null ? 1 : awayDef < 113 ? 2 : awayDef < 118 ? 1 : 0;
+              underSimScore += gameOuLine == null ? 1 : gameOuLine < 225 ? 2 : gameOuLine < 235 ? 1 : 0;
+            } else if (sport === "nhl") {
+              const { homeGPG, awayGPG, homeGAA, awayGAA, gameOuLine } = _simData;
+              underSimScore += homeGPG == null ? 1 : homeGPG < 3.0 ? 2 : homeGPG < 3.5 ? 1 : 0;
+              underSimScore += awayGPG == null ? 1 : awayGPG < 3.0 ? 2 : awayGPG < 3.5 ? 1 : 0;
+              underSimScore += homeGAA == null ? 1 : homeGAA < 3.0 ? 2 : homeGAA < 3.5 ? 1 : 0;
+              underSimScore += awayGAA == null ? 1 : awayGAA < 3.0 ? 2 : awayGAA < 3.5 ? 1 : 0;
+              underSimScore += gameOuLine == null ? 1 : gameOuLine < 5.5 ? 2 : gameOuLine < 7 ? 1 : 0;
+            }
             if (truePct == null) {
-              if (isDebug) dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, totalSimScore, polyPct, polyVol, polyDerived, reason: "no_simulation_data", ..._simData });
+              if (isDebug) dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, totalSimScore, underSimScore, polyPct, polyVol, polyDerived, reason: "no_simulation_data", ..._simData });
               continue;
             }
             const rawEdge = kalshiPct != null ? parseFloat((truePct - kalshiPct).toFixed(1)) : null;
-            const edge = rawEdge ?? 0;
-            const _displayAO = americanOdds;
-            if (edge < 5) {
-              if (isDebug) dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, kalshiPct, americanOdds: _displayAO, truePct: parseFloat(truePct.toFixed(1)), rawEdge, spreadAdj: spreadAdj > 0 ? parseFloat(spreadAdj.toFixed(1)) : 0, edge, totalSimScore, polyPct, polyVol, polyDerived, bestVenue, bestEdge, polyOnly, reason: "edge_too_low", ..._simData });
-              continue;
+            const overEdge = rawEdge ?? 0;
+            const noTruePct = parseFloat((100 - truePct).toFixed(1));
+            const noKalshiPct = 100 - kalshiPct;
+            const underEdge = parseFloat((noTruePct - noKalshiPct).toFixed(1));
+            const noKalshiAO = noKalshiPct >= 50 ? Math.round(-(noKalshiPct/(100-noKalshiPct))*100) : Math.round((100-noKalshiPct)/noKalshiPct*100);
+            const _gameTime = gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null;
+            // OVER play
+            if (overEdge >= 5) {
+              totalPlays.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge: overEdge, totalSimScore, qualified: totalSimScore >= 8, kelly: kellyFraction(truePct, americanOdds), ev: evPerUnit(truePct, americanOdds), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _gameTime, polyPct, polyVol, polyDerived, bestVenue, bestEdge, polyOnly, ..._simData });
+            } else if (isDebug) {
+              dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge: overEdge, totalSimScore, polyPct, polyVol, polyDerived, bestVenue, bestEdge, polyOnly, reason: "edge_too_low", ..._simData });
             }
-            totalPlays.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds: _displayAO, truePct: parseFloat(truePct.toFixed(1)), rawEdge, spreadAdj: spreadAdj > 0 ? parseFloat(spreadAdj.toFixed(1)) : 0, edge, totalSimScore, qualified: totalSimScore >= 8, kelly: kellyFraction(truePct, _displayAO), ev: evPerUnit(truePct, _displayAO), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null, polyPct, polyVol, polyDerived, bestVenue, bestEdge, polyOnly, ..._simData });
+            // UNDER play (rawEdge <= -5 means Kalshi over-prices the YES side → NO has edge)
+            if (underEdge >= 5) {
+              totalPlays.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "under", kalshiPct, noKalshiPct, americanOdds: noKalshiAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, rawEdge, edge: underEdge, totalSimScore: underSimScore, qualified: underSimScore >= 8, kelly: kellyFraction(noTruePct, noKalshiAO), ev: evPerUnit(noTruePct, noKalshiAO), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _gameTime, polyPct, polyVol, polyDerived, bestVenue, bestEdge, polyOnly, ..._simData });
+            } else if (isDebug && underEdge >= 3) {
+              dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "under", kalshiPct, noKalshiPct, americanOdds: noKalshiAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, rawEdge, edge: underEdge, totalSimScore: underSimScore, reason: "edge_too_low", ..._simData });
+            }
           }
         }
         {
@@ -3498,9 +3566,85 @@ var worker_default = {
             const key = `${tp.sport}|${tp.homeTeam}|${tp.awayTeam}`;
             if (!_totalBestMap[key] || tp.edge > _totalBestMap[key].edge) _totalBestMap[key] = tp;
           }
-          const _bestTotalIds = new Set(Object.values(_totalBestMap).map(tp => `${tp.sport}|${tp.homeTeam}|${tp.awayTeam}|${tp.threshold}`));
+          const _bestTotalIds = new Set(Object.values(_totalBestMap).map(tp => `${tp.sport}|${tp.homeTeam}|${tp.awayTeam}|${tp.threshold}|${tp.direction}`));
           for (const tp of totalPlays) {
-            const isBest = _bestTotalIds.has(`${tp.sport}|${tp.homeTeam}|${tp.awayTeam}|${tp.threshold}`);
+            const isBest = _bestTotalIds.has(`${tp.sport}|${tp.homeTeam}|${tp.awayTeam}|${tp.threshold}|${tp.direction}`);
+            plays.push(isBest ? tp : { ...tp, qualified: false });
+          }
+        }
+        // ── Team Total plays (KXMLBTEAMTOTAL, KXNBATEAMTOTAL) ─────────────────────────────────────
+        {
+          const _MLB_ERA = 4.20;
+          const teamTotalDistCache = {};
+          const teamTotalPlays = [];
+          for (const tm of teamTotalMarkets) {
+            const { sport, stat, threshold, kalshiPct, americanOdds, gameTeam1, gameTeam2, scoringTeam, gameDate, kalshiSpread, kalshiVolume } = tm;
+            if (gameDate && gameDate < cutoffStr) continue;
+            const lowVolume = kalshiVolume != null && kalshiVolume < 20;
+            // Determine home/away (same correction logic as game total loop)
+            let homeTeam = gameTeam1, awayTeam = gameTeam2;
+            if (sport === "mlb" && sportByteam.mlb?.gameHomeTeams?.[gameTeam2]) { homeTeam = gameTeam2; awayTeam = gameTeam1; }
+            const isHome = scoringTeam === homeTeam;
+            const oppTeam = isHome ? awayTeam : homeTeam;
+            let truePct = null, teamTotalSimScore = 0;
+            if (sport === "mlb") {
+              const teamRPG = mlbRPGMap[scoringTeam] ?? null;
+              const oppRPG = mlbRPGMap[oppTeam] ?? null;
+              const oppERA = sportByteam.mlb?.probables?.[oppTeam]?.era ?? null;
+              const parkRF = PARK_RUNFACTOR[homeTeam] ?? 1;
+              const gameOuLine = sportByteam.mlb?.gameOdds?.[homeTeam]?.total ?? sportByteam.mlb?.gameOdds?.[awayTeam]?.total ?? null;
+              const _lam = teamRPG != null ? parseFloat((Math.max(0.5, Math.min(12, teamRPG * (oppERA != null ? oppERA / _MLB_ERA : 1) * parkRF))).toFixed(2)) : null;
+              if (_lam != null) {
+                const _dk = `mlb|team|${scoringTeam}|${oppTeam}`;
+                if (!teamTotalDistCache[_dk]) teamTotalDistCache[_dk] = simulateTeamTotalDist(_lam, 10000);
+                truePct = totalDistPct(teamTotalDistCache[_dk], threshold);
+              }
+              teamTotalSimScore += teamRPG == null ? 1 : teamRPG > 5.0 ? 2 : teamRPG > 4.0 ? 1 : 0;
+              teamTotalSimScore += oppERA == null ? 1 : oppERA > 4.5 ? 2 : oppERA > 3.5 ? 1 : 0;
+              teamTotalSimScore += oppRPG == null ? 1 : oppRPG > 5.0 ? 2 : oppRPG > 4.0 ? 1 : 0;
+              teamTotalSimScore += parkRF > 1.05 ? 2 : parkRF > 1.00 ? 1 : 0;
+              teamTotalSimScore += gameOuLine == null ? 1 : gameOuLine >= 9.5 ? 2 : gameOuLine >= 7.5 ? 1 : 0;
+              if (truePct == null) { if (isDebug) dropped.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, teamTotalSimScore, teamRPG, oppERA, oppRPG, parkFactor: parkRF, gameOuLine, reason: "no_simulation_data" }); continue; }
+              const rawEdge = parseFloat((truePct - kalshiPct).toFixed(1));
+              const edge = rawEdge;
+              if (edge < 5) { if (isDebug) dropped.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge, teamTotalSimScore, teamRPG, oppERA, oppRPG, parkFactor: parkRF, gameOuLine, reason: "edge_too_low" }); continue; }
+              teamTotalPlays.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge, teamTotalSimScore, qualified: teamTotalSimScore >= 8, kelly: kellyFraction(truePct, americanOdds), ev: evPerUnit(truePct, americanOdds), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null, teamRPG, oppERA, oppRPG, parkFactor: parkRF, gameOuLine });
+            } else if (sport === "nba") {
+              const teamOff = nbaOffPPGMap[scoringTeam] ?? null;
+              const nbaDefRank = STAT_SOFT["nba|points"]?.rankMap ?? {};
+              const nbaAvgDef = leagueAvgCache["nba|points"] ?? nbaLeagueAvgOffPPG;
+              const oppDef = nbaDefRank[oppTeam]?.value ?? null;
+              const _nbaOuLine = sportByteam.nbaGameOdds?.[homeTeam]?.total ?? sportByteam.nbaGameOdds?.[awayTeam]?.total ?? null;
+              const _gameSpread = sportByteam.nbaGameOdds?.[homeTeam]?.spread ?? sportByteam.nbaGameOdds?.[awayTeam]?.spread ?? null;
+              const _teamPace = nbaPaceData?.teamPace?.[scoringTeam] ?? null;
+              const _lgPace = nbaPaceData?.leagueAvgPace ?? null;
+              const _teamExpected = teamOff != null ? teamOff * (oppDef != null && nbaAvgDef ? oppDef / nbaAvgDef : 1) : null;
+              if (_teamExpected != null) {
+                const _dk = `nba|team|${scoringTeam}|${oppTeam}`;
+                if (!teamTotalDistCache[_dk]) teamTotalDistCache[_dk] = simulateTeamPtsDist(_teamExpected, 11, 10000);
+                truePct = totalDistPct(teamTotalDistCache[_dk], threshold);
+              }
+              teamTotalSimScore += teamOff == null ? 1 : teamOff >= 118 ? 2 : teamOff >= 113 ? 1 : 0;
+              teamTotalSimScore += oppDef == null ? 1 : oppDef >= 118 ? 2 : oppDef >= 113 ? 1 : 0;
+              teamTotalSimScore += _nbaOuLine == null ? 1 : _nbaOuLine >= 235 ? 2 : _nbaOuLine >= 225 ? 1 : 0;
+              teamTotalSimScore += _teamPace == null || _lgPace == null ? 1 : _teamPace > _lgPace + 2 ? 2 : _teamPace > _lgPace - 2 ? 1 : 0;
+              teamTotalSimScore += _gameSpread == null ? 1 : Math.abs(_gameSpread) <= 5 ? 2 : Math.abs(_gameSpread) <= 10 ? 1 : 0;
+              if (truePct == null) { if (isDebug) dropped.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, teamTotalSimScore, teamOff, oppDef, gameOuLine: _nbaOuLine, reason: "no_simulation_data" }); continue; }
+              const rawEdge = parseFloat((truePct - kalshiPct).toFixed(1));
+              const edge = rawEdge;
+              if (edge < 5) { if (isDebug) dropped.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge, teamTotalSimScore, teamOff, oppDef, gameOuLine: _nbaOuLine, reason: "edge_too_low" }); continue; }
+              teamTotalPlays.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge, teamTotalSimScore, qualified: teamTotalSimScore >= 8, kelly: kellyFraction(truePct, americanOdds), ev: evPerUnit(truePct, americanOdds), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null, teamOff, oppDef, teamExpected: _teamExpected != null ? parseFloat(_teamExpected.toFixed(1)) : null, teamPace: _teamPace, leagueAvgPace: _lgPace, gameOuLine: _nbaOuLine, gameSpread: _gameSpread });
+            }
+          }
+          // Dedup: one play per scoringTeam+oppTeam (best edge threshold)
+          const _ttBestMap = {};
+          for (const tp of teamTotalPlays) {
+            const key = `${tp.sport}|${tp.scoringTeam}|${tp.oppTeam}`;
+            if (!_ttBestMap[key] || tp.edge > _ttBestMap[key].edge) _ttBestMap[key] = tp;
+          }
+          const _ttBestIds = new Set(Object.values(_ttBestMap).map(tp => `${tp.sport}|${tp.scoringTeam}|${tp.oppTeam}|${tp.threshold}`));
+          for (const tp of teamTotalPlays) {
+            const isBest = _ttBestIds.has(`${tp.sport}|${tp.scoringTeam}|${tp.oppTeam}|${tp.threshold}`);
             plays.push(isBest ? tp : { ...tp, qualified: false });
           }
         }

@@ -1343,8 +1343,10 @@ function App() {
     localStorage.setItem("scoreboard_bankroll", String(n));
   }
   function trackPlay(play) {
-    const id = play.gameType === "total"
-      ? `total|${play.sport}|${play.homeTeam}|${play.awayTeam}|${play.threshold}|${play.gameDate || ""}`
+    const id = play.gameType === "teamTotal"
+      ? `teamtotal|${play.sport}|${play.scoringTeam}|${play.oppTeam}|${play.threshold}|${play.gameDate || ""}`
+      : play.gameType === "total"
+      ? `total|${play.sport}|${play.homeTeam}|${play.awayTeam}|${play.threshold}|${play.gameDate || ""}${play.direction === "under" ? "|under" : ""}`
       : `${play.sport || "nba"}|${play.playerName}|${play.stat}|${play.threshold}|${play.gameDate || ""}`;
     const finalOdds = play.americanOdds ?? -110;
     setTrackedPlays(prev => {
@@ -1749,7 +1751,7 @@ function App() {
 
   // Navigate to player card from a play/pick object — looks up ID by name if missing
   const navigateToPlay = async (play) => {
-    if (play.gameType === "total") return; // totals don't have a player card
+    if (play.gameType === "total" || play.gameType === "teamTotal") return; // totals don't have a player card
     const sportFull = SPORT_KEY[play.sport] || play.sportKey || "basketball/nba";
     let pid = play.playerId;
     if (!pid) {
@@ -2087,7 +2089,7 @@ function App() {
                   no_gamelog: "No game log",
                   no_soft_data: "No stat data",
                 };
-                const STAT_NAME = { points:"Points",rebounds:"Rebounds",assists:"Assists",threePointers:"3-Pointers",goals:"Goals",hits:"Hits",hrr:"H+R+RBI",strikeouts:"Strikeouts",totalRuns:"Totals",totalPoints:"Totals",totalGoals:"Totals" };
+                const STAT_NAME = { points:"Points",rebounds:"Rebounds",assists:"Assists",threePointers:"3-Pointers",goals:"Goals",hits:"Hits",hrr:"H+R+RBI",strikeouts:"Strikeouts",totalRuns:"Totals",totalPoints:"Totals",totalGoals:"Totals",teamRuns:"Team Runs",teamPoints:"Team Points" };
                 const SPORT_COL = { mlb:"#4ade80", nba:"#f97316", nhl:"#60a5fa" };
                 const SPORT_ORD = { mlb:0, nba:1, nhl:2, nfl:3 };
 
@@ -2124,8 +2126,10 @@ function App() {
                   // Dedupe by playerName|threshold (or homeTeam|awayTeam|threshold for totals), prefer qualified
                   const dedupeMap = {};
                   for (const m of items) {
-                    const k = m.gameType === "total"
-                      ? `${m.homeTeam}|${m.awayTeam}|${m.threshold}`
+                    const k = m.gameType === "teamTotal"
+                      ? `${m.scoringTeam}|${m.oppTeam}|${m.threshold}`
+                      : m.gameType === "total"
+                      ? `${m.homeTeam}|${m.awayTeam}|${m.threshold}${m.direction === "under" ? "|under" : ""}`
                       : `${m.playerName}|${m.threshold}`;
                     if (!dedupeMap[k] || (!dedupeMap[k].qualified && m.qualified)) dedupeMap[k] = m;
                   }
@@ -2325,14 +2329,14 @@ function App() {
                         const _oppFlex = (sport === "mlb" && stat === "strikeouts") ? 1 : 2;
                         return <React.Fragment>
                           <div style={{display:"flex",alignItems:"center",gap:6,padding:"3px 12px 4px",marginBottom:2}}>
-                            {_hdr("player", stat.startsWith("total") ? "Matchup" : "Player", {flex:2,minWidth:0}, "left")}
+                            {_hdr("player", (stat.startsWith("total") || stat.startsWith("team")) ? "Matchup" : "Player", {flex:2,minWidth:0}, "left")}
                             {_hdr("line","Line")}
                             {_hdr("true","True%")}
                             {_hdr("kalshi","Kalshi")}
                             {_hdr("edge","Edge")}
                             {/* {stat.startsWith("total") && _hdr("poly","Poly")} */}
                             {xcols.map(c => <React.Fragment key={c.k}>{_hdr(c.k,c.l)}</React.Fragment>)}
-                            {!stat.startsWith("total") && _hdr("opp","Opp",{flex:_oppFlex})}
+                            {!stat.startsWith("total") && !stat.startsWith("team") && _hdr("opp","Opp",{flex:_oppFlex})}
                           </div>
                           <div style={{background:"#0d1117",borderRadius:8,overflow:"hidden"}}>
                             {rows.map((m, i) => {
@@ -2376,14 +2380,19 @@ function App() {
                                 return <span style={{fontSize:10,color:"#484f58"}}>{RESULT_LABELS[m.reason] ?? m.reason ?? ""}</span>;
                               })();
                               const isTotal = m.gameType === "total";
-                              const _nameWhite = isTotal ? m.qualified : sport === "mlb" ? (_highScore && m.qualified !== false) : m.qualified;
-                              const _rowKey = isTotal ? `${m.homeTeam}|${m.awayTeam}|${m.threshold}|${i}` : `${m.playerName}|${m.threshold}|${i}`;
+                              const isTeamTotal = m.gameType === "teamTotal";
+                              const _nameWhite = (isTotal || isTeamTotal) ? m.qualified : sport === "mlb" ? (_highScore && m.qualified !== false) : m.qualified;
+                              const _rowKey = isTeamTotal ? `${m.scoringTeam}|${m.oppTeam}|${m.threshold}|${i}` : isTotal ? `${m.homeTeam}|${m.awayTeam}|${m.threshold}|${i}` : `${m.playerName}|${m.threshold}|${i}`;
                               return (
                                 <div key={_rowKey} style={{
                                   display:"flex",alignItems:"center",gap:6,padding:"6px 12px",
                                   borderTop: i>0?"1px solid #161b22":"none"}}>
                                   <div style={{flex:2,minWidth:0,fontSize:12,fontWeight:_nameWhite?600:400,display:"flex",alignItems:"baseline",gap:3}}>
-                                    {isTotal
+                                    {isTeamTotal
+                                      ? <><span onClick={() => { setShowReport(false); navigateToTeam(m.scoringTeam, m.sport); }} style={{color:_nameWhite?"#c9d1d9":"#8b949e",whiteSpace:"nowrap",cursor:"pointer"}}>{m.scoringTeam}</span>
+                                          <span style={{color:"#484f58"}}> vs </span>
+                                          <span onClick={() => { setShowReport(false); navigateToTeam(m.oppTeam, m.sport); }} style={{color:_nameWhite?"#c9d1d9":"#8b949e",whiteSpace:"nowrap",cursor:"pointer"}}>{m.oppTeam}</span></>
+                                      : isTotal
                                       ? <><span onClick={() => { setShowReport(false); navigateToTeam(m.awayTeam, m.sport); }} style={{color:_nameWhite?"#c9d1d9":"#8b949e",whiteSpace:"nowrap",cursor:"pointer"}}>{m.awayTeam}</span>
                                           <span style={{color:"#484f58"}}> @ </span>
                                           <span onClick={() => { setShowReport(false); navigateToTeam(m.homeTeam, m.sport); }} style={{color:_nameWhite?"#c9d1d9":"#8b949e",whiteSpace:"nowrap",cursor:"pointer"}}>{m.homeTeam}</span></>
@@ -2392,10 +2401,10 @@ function App() {
                                     }
                                   </div>
                                   <div style={{flex:1,color:"#8b949e",fontSize:11,textAlign:"right"}}>
-                                    {isTotal ? `O${(m.threshold - 0.5).toFixed(1)}` : `${m.threshold}+`}
+                                    {(isTotal || isTeamTotal) ? `${m.direction === "under" ? "U" : "O"}${(m.threshold - 0.5).toFixed(1)}` : `${m.threshold}+`}
                                   </div>
-                                  <div style={{flex:1,fontSize:11,textAlign:"right",color:truePct!=null?"#e3b341":"#21262d",fontWeight:truePct!=null?600:400}}>{truePct!=null?`${truePct}%`:"—"}</div>
-                                  <div style={{flex:1,fontSize:11,textAlign:"right"}}><span style={{color:m.kalshiPct != null ? "#c9d1d9" : "#484f58"}}>{m.kalshiPct != null ? `${m.kalshiPct}%` : "—"}</span></div>
+                                  {(() => { const _tp = m.direction === "under" ? (m.noTruePct ?? null) : (m.truePct ?? null); return <div style={{flex:1,fontSize:11,textAlign:"right",color:_tp!=null?"#e3b341":"#21262d",fontWeight:_tp!=null?600:400}}>{_tp!=null?`${_tp}%`:"—"}</div>; })()}
+                                  {(() => { const _kp = m.direction === "under" ? (m.noKalshiPct ?? null) : (m.kalshiPct ?? null); return <div style={{flex:1,fontSize:11,textAlign:"right"}}><span style={{color:_kp != null ? "#c9d1d9" : "#484f58"}}>{_kp != null ? `${_kp}%` : "—"}</span></div>; })()}
                                   <div style={{flex:1,fontSize:11,textAlign:"right",color:edge!=null&&edge>=5?"#3fb950":edge!=null&&edge<0?"#f78166":"#8b949e"}}>{edge!=null?(edge>=0?`+${edge.toFixed(1)}`:`${edge.toFixed(1)}`)+"%" :"—"}</div>
                                   {/* isTotal && <div style={{flex:1,fontSize:11,textAlign:"right"}}>
                                     {m.polyPct != null
@@ -2406,7 +2415,7 @@ function App() {
                                       : <span style={{color:"#21262d"}}>—</span>}
                                   </div> */}
                                   {xcols.map(c => <div key={c.k} style={{flex:1,fontSize:11,textAlign:"right"}}>{xcell(m,c.k)}</div>)}
-                                  {!isTotal && <div style={{flex:_oppFlex,fontSize:10,textAlign:"right",whiteSpace:"nowrap"}}>
+                                  {!isTotal && !isTeamTotal && <div style={{flex:_oppFlex,fontSize:10,textAlign:"right",whiteSpace:"nowrap"}}>
                                     {(() => { const pn = m.pitcherName || m.hitterPitcherName; const parts = pn ? pn.trim().split(" ") : []; const shortPn = parts.length >= 2 ? `${parts[0][0]}. ${parts.slice(1).join(" ")}` : pn; return m.sport==="mlb" && m.stat!=="strikeouts" && pn
                                       ? <><span style={{color:"#8b949e"}}>{shortPn}</span> <span style={{color:"#484f58"}}>({m.opponent})</span></>
                                       : <span style={{color:"#484f58"}}>{m.opponent||""}</span>; })()}
@@ -3596,8 +3605,10 @@ function App() {
                 .filter(Boolean)
             );
             const untrackedPlays = (tonightPlays || []).filter(play => {
-              const trackId = play.gameType === "total"
-                ? `total|${play.sport}|${play.homeTeam}|${play.awayTeam}|${play.threshold}|${play.gameDate || ""}`
+              const trackId = play.gameType === "teamTotal"
+                ? `teamtotal|${play.sport}|${play.scoringTeam}|${play.oppTeam}|${play.threshold}|${play.gameDate || ""}`
+                : play.gameType === "total"
+                ? `total|${play.sport}|${play.homeTeam}|${play.awayTeam}|${play.threshold}|${play.gameDate || ""}${play.direction === "under" ? "|under" : ""}`
                 : `${play.sport || "nba"}|${play.playerName}|${play.stat}|${play.threshold}|${play.gameDate || ""}`;
               if (trackedPlays.some(p => p.id === trackId)) return false;
               if (play.gameType === "total" && trackedGameKeys.has(`${play.sport}|${play.homeTeam}|${play.awayTeam}|${play.gameDate || ""}`)) return false;
@@ -3662,24 +3673,145 @@ function App() {
                   const tb = b.gameTime || "9999";
                   return ta < tb ? -1 : ta > tb ? 1 : b.edge - a.edge;
                 }).map((play) => {
-              const playKey = play.gameType === "total"
-                ? `total-${play.sport}-${play.homeTeam}-${play.awayTeam}-${play.threshold}`
+              const playKey = play.gameType === "teamTotal"
+                ? `teamtotal-${play.sport}-${play.scoringTeam}-${play.oppTeam}-${play.threshold}`
+                : play.gameType === "total"
+                ? `total-${play.sport}-${play.homeTeam}-${play.awayTeam}-${play.threshold}${play.direction === "under" ? "-under" : ""}`
                 : `${play.playerName}-${play.stat}-${play.threshold}`;
               const oddsStr = play.americanOdds >= 0 ? `+${play.americanOdds}` : `${play.americanOdds}`;
               const isExpanded = expandedPlays.has(playKey);
-              const trackId = play.gameType === "total"
-                ? `total|${play.sport}|${play.homeTeam}|${play.awayTeam}|${play.threshold}|${play.gameDate || ""}`
+              const trackId = play.gameType === "teamTotal"
+                ? `teamtotal|${play.sport}|${play.scoringTeam}|${play.oppTeam}|${play.threshold}|${play.gameDate || ""}`
+                : play.gameType === "total"
+                ? `total|${play.sport}|${play.homeTeam}|${play.awayTeam}|${play.threshold}|${play.gameDate || ""}${play.direction === "under" ? "|under" : ""}`
                 : `${play.sport || "nba"}|${play.playerName}|${play.stat}|${play.threshold}|${play.gameDate || ""}`;
               const isTracked = trackedPlays.some(p => p.id === trackId);
               const headshotUrl = play.playerId ? `https://a.espncdn.com/i/headshots/${play.sport || "nba"}/players/full/${play.playerId}.png` : null;
 
+              // ── Team total play card ────────────────────────────────────────────────────────────
+              if (play.gameType === "teamTotal") {
+                const tLabel = { teamRuns:"Runs", teamPoints:"Pts" }[play.stat] || play.stat;
+                const lineVal = (play.threshold - 0.5).toFixed(1);
+                const tColor = tierColor(play.truePct);
+                const tTrueOdds = play.truePct >= 100 ? -99999 : (play.truePct >= 50 ? Math.round(-(play.truePct/(100-play.truePct))*100) : Math.round((100-play.truePct)/play.truePct*100));
+                const tTrueOddsStr = tTrueOdds > 0 ? `+${tTrueOdds}` : `${tTrueOdds}`;
+                const logoUrl = abbr => `https://a.espncdn.com/i/teamlogos/${play.sport}/500/${abbr.toLowerCase()}.png`;
+                const sc = play.teamTotalSimScore;
+                const scColor = sc >= 8 ? "#3fb950" : sc >= 5 ? "#e3b341" : "#8b949e";
+                return (
+                  <div key={playKey}
+                    style={{background:"#161b22",border:`1px solid ${isTracked?"#3fb950":"#30363d"}`,borderRadius:12,
+                      padding:"14px 16px",marginBottom:10,transition:"border-color 0.15s"}}
+                    onMouseEnter={e => { if (!isTracked) e.currentTarget.style.borderColor="#58a6ff"; }}
+                    onMouseLeave={e => { if (!isTracked) e.currentTarget.style.borderColor="#30363d"; }}>
+                    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                          <img src={logoUrl(play.scoringTeam)} alt={play.scoringTeam}
+                            onClick={e=>{e.stopPropagation();navigateToTeam(play.scoringTeam,play.sport);}}
+                            style={{width:44,height:44,objectFit:"contain",background:"#21262d",borderRadius:6,padding:2,flexShrink:0,cursor:"pointer"}}
+                            onError={e=>e.target.style.display="none"}/>
+                          <span onClick={e=>{e.stopPropagation();navigateToTeam(play.scoringTeam,play.sport);}}
+                            style={{color:"#c9d1d9",fontSize:12,fontWeight:600,cursor:"pointer",textDecoration:"underline",textDecorationColor:"#484f58"}}>{play.scoringTeam}</span>
+                          <span style={{color:"#484f58",fontSize:11}}>vs</span>
+                          <span onClick={e=>{e.stopPropagation();navigateToTeam(play.oppTeam,play.sport);}}
+                            style={{color:"#8b949e",fontSize:12,cursor:"pointer",textDecoration:"underline",textDecorationColor:"#484f58"}}>{play.oppTeam}</span>
+                        </div>
+                        <div style={{color:"#8b949e",fontSize:11,marginTop:3,display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
+                          {play.gameTime && (() => { const _d = new Date(play.gameTime); const ptFmt = new Intl.DateTimeFormat("en-CA",{timeZone:"America/Los_Angeles"}); const tPT = ptFmt.format(new Date()), rPT = ptFmt.format(new Date(Date.now()+86400000)); const gd = play.gameDate || ptFmt.format(_d); const dl = gd===tPT?"Today":gd===rPT?"Tomorrow":new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",month:"short",day:"numeric"}).format(_d); const tp = new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",hour:"numeric",minute:"2-digit",hour12:true}).format(_d); return <span>{dl} · {tp} PT</span>; })()}
+                          {play.lowVolume && <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(231,179,49,0.12)",border:"1px solid #e3b341",color:"#e3b341"}}>Low Vol</span>}
+                        </div>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:7,flexShrink:0}}>
+                        <span style={{background:"rgba(88,166,255,0.12)",border:"1px solid #58a6ff",
+                          borderRadius:6,padding:"2px 8px",fontSize:12,color:"#58a6ff",fontWeight:700,whiteSpace:"nowrap"}}>
+                          Over {lineVal} {tLabel}
+                        </span>
+                        <span style={{background:"rgba(63,185,80,0.13)",border:"1px solid #3fb950",
+                          borderRadius:6,padding:"2px 8px",fontSize:12,color:"#3fb950",fontWeight:700,whiteSpace:"nowrap"}}>
+                          +{play.edge}%
+                        </span>
+                        <button onClick={e => { e.stopPropagation(); isTracked ? untrackPlay(trackId) : trackPlay(play); }}
+                          title={isTracked ? "Remove from My Picks" : "Add to My Picks"}
+                          style={{background: isTracked ? "rgba(227,179,65,0.15)" : "transparent",
+                            border: `1px solid ${isTracked ? "#e3b341" : "#30363d"}`,
+                            borderRadius:6, padding:"2px 7px", cursor:"pointer",
+                            color: isTracked ? "#e3b341" : "#484f58", fontSize:14, lineHeight:1}}>
+                          {isTracked ? "★" : "☆"}
+                        </button>
+                      </div>
+                    </div>
+                    {/* True% bar */}
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}>
+                      <div style={{flex:1,background:"#21262d",borderRadius:4,height:14,overflow:"hidden"}}>
+                        <div style={{width:`${play.truePct}%`,background:tColor,height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:play.truePct>0?3:0}}/>
+                      </div>
+                      <div style={{width:70,flexShrink:0,display:"flex",justifyContent:"flex-end",alignItems:"baseline",gap:4}}>
+                        <span style={{color:tColor,fontSize:12,fontWeight:700}}>{play.truePct}%</span>
+                        <span style={{color:tColor,fontSize:10}}>({tTrueOddsStr})</span>
+                      </div>
+                    </div>
+                    {/* Kalshi price bar */}
+                    {play.kalshiPct != null && (() => {
+                      const kPct = play.kalshiPct;
+                      const kOdds = kPct >= 50 ? Math.round(-(kPct/(100-kPct))*100) : Math.round((100-kPct)/kPct*100);
+                      const kOddsStr = kOdds > 0 ? `+${kOdds}` : `${kOdds}`;
+                      return (
+                        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}>
+                          <div style={{flex:1,background:"#21262d",borderRadius:4,height:10,overflow:"hidden"}}>
+                            <div style={{width:`${kPct}%`,background:"#6e40c9",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:kPct>0?3:0}}/>
+                          </div>
+                          <div style={{width:70,flexShrink:0,display:"flex",justifyContent:"flex-end",alignItems:"baseline",gap:4}}>
+                            <span style={{color:"#6e40c9",fontSize:12,fontWeight:600}}>{kPct}%</span>
+                            <span style={{color:"#6e40c9",fontSize:10}}>({kOddsStr})</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                    {/* Explanation prose */}
+                    <div style={{marginTop:4}}>
+                      {play.sport === "mlb" && (() => {
+                        const eraColor = v => v == null ? "#8b949e" : v > 4.5 ? "#3fb950" : v > 3.5 ? "#e3b341" : "#f78166";
+                        const rpgColor = v => v == null ? "#8b949e" : v > 5.0 ? "#3fb950" : v > 4.0 ? "#e3b341" : "#8b949e";
+                        const ouColor = play.gameOuLine == null ? "#8b949e" : play.gameOuLine >= 9.5 ? "#3fb950" : play.gameOuLine >= 7.5 ? "#e3b341" : "#f78166";
+                        const etColor = play.teamExpected == null ? "#8b949e" : play.teamExpected >= play.threshold + 0.5 ? "#3fb950" : play.teamExpected >= play.threshold - 0.5 ? "#e3b341" : "#8b949e";
+                        return (
+                          <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.65}}>
+                            <span style={{color:"#c9d1d9"}}>{play.scoringTeam}</span> averages{play.teamRPG != null ? <> <span style={{color:rpgColor(play.teamRPG),fontWeight:600}}>{play.teamRPG.toFixed(1)}</span> runs/game</> : " — RPG"} facing a <span style={{color:"#c9d1d9"}}>{play.oppTeam}</span> starter with{play.oppERA != null ? <> <span style={{color:eraColor(play.oppERA),fontWeight:600}}>{play.oppERA.toFixed(2)} ERA</span></> : " — ERA"}.
+                            {play.oppRPG != null && <>{" "}Opp averages <span style={{color:rpgColor(play.oppRPG),fontWeight:600}}>{play.oppRPG.toFixed(1)}</span> RPG vs <span style={{color:"#8b949e"}}>{Math.abs(play.parkFactor - 1) > 0.01 ? `park factor ${play.parkFactor > 1 ? "+" : ""}${((play.parkFactor - 1)*100).toFixed(0)}%` : "neutral park"}</span>.</>}
+                            {play.gameOuLine != null && <>{" "}Game total <span style={{color:ouColor,fontWeight:600}}>{play.gameOuLine}</span>.</>}
+                            {" "}<span style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,verticalAlign:"middle",cursor:"default"}}>{sc}/10 {sc>=8?"Alpha":sc>=5?"Mid":"Low"}</span>
+                          </div>
+                        );
+                      })()}
+                      {play.sport === "nba" && (() => {
+                        const offColor = v => v == null ? "#8b949e" : v >= 118 ? "#f78166" : v >= 113 ? "#e3b341" : "#8b949e";
+                        const defColor = v => v == null ? "#8b949e" : v >= 118 ? "#3fb950" : v >= 113 ? "#e3b341" : "#f78166";
+                        const etColor = play.teamExpected == null ? "#8b949e" : play.teamExpected >= play.threshold + 2 ? "#3fb950" : play.teamExpected >= play.threshold - 2 ? "#e3b341" : "#8b949e";
+                        return (
+                          <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.65}}>
+                            <span style={{color:"#c9d1d9"}}>{play.scoringTeam}</span> averages{play.teamOff != null ? <> <span style={{color:offColor(play.teamOff),fontWeight:600}}>{play.teamOff.toFixed(0)} PPG</span></> : " —"} against a <span style={{color:"#c9d1d9"}}>{play.oppTeam}</span> defense allowing{play.oppDef != null ? <> <span style={{color:defColor(play.oppDef),fontWeight:600}}>{play.oppDef.toFixed(0)} PPG</span></> : " —"}.
+                            {play.teamExpected != null && <>{" "}Model projects <span style={{color:etColor,fontWeight:600}}>{play.teamExpected}</span> pts vs the <span style={{color:"#c9d1d9"}}>{lineVal}</span> threshold.</>}
+                            {" "}<span style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,verticalAlign:"middle",cursor:"default"}}>{sc}/10 {sc>=8?"Alpha":sc>=5?"Mid":"Low"}</span>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                );
+              }
+              // ── End team total play card ────────────────────────────────────────────────────────
+
               // ── Game total play card ────────────────────────────────────────────────────────────
               if (play.gameType === "total") {
-                const tColor = tierColor(play.truePct);
+                const isUnder = play.direction === "under";
+                const displayTruePct = isUnder ? play.noTruePct : play.truePct;
+                const displayKalshiPct = isUnder ? play.noKalshiPct : play.kalshiPct;
+                const tColor = tierColor(displayTruePct);
                 const logoUrl = abbr => `https://a.espncdn.com/i/teamlogos/${play.sport}/500/${abbr.toLowerCase()}.png`;
                 const tLabel = { totalRuns:"Runs", totalPoints:"Pts", totalGoals:"Goals" }[play.stat] || play.stat;
                 const lineVal = (play.threshold - 0.5).toFixed(1);
-                const tTrueOdds = play.truePct >= 100 ? -99999 : (play.truePct >= 50 ? Math.round(-(play.truePct/(100-play.truePct))*100) : Math.round((100-play.truePct)/play.truePct*100));
+                const tTrueOdds = displayTruePct >= 100 ? -99999 : (displayTruePct >= 50 ? Math.round(-(displayTruePct/(100-displayTruePct))*100) : Math.round((100-displayTruePct)/displayTruePct*100));
                 const tTrueOddsStr = tTrueOdds > 0 ? `+${tTrueOdds}` : `${tTrueOdds}`;
                 return (
                   <div key={playKey}
@@ -3713,15 +3845,15 @@ function App() {
                       </div>
                       {/* Threshold badge + edge badge + star button */}
                       <div style={{display:"flex",alignItems:"center",gap:7,flexShrink:0}}>
-                        <span style={{background:"rgba(88,166,255,0.12)",border:"1px solid #58a6ff",
-                          borderRadius:6,padding:"2px 8px",fontSize:12,color:"#58a6ff",fontWeight:700,whiteSpace:"nowrap"}}>
-                          Over {lineVal} {tLabel}
+                        <span style={{background:isUnder?"rgba(247,129,102,0.12)":"rgba(88,166,255,0.12)",border:`1px solid ${isUnder?"#f78166":"#58a6ff"}`,
+                          borderRadius:6,padding:"2px 8px",fontSize:12,color:isUnder?"#f78166":"#58a6ff",fontWeight:700,whiteSpace:"nowrap"}}>
+                          {isUnder ? "Under" : "Over"} {lineVal} {tLabel}
                         </span>
                         {(() => {
                           const _bEdge = play.bestEdge ?? play.edge;
-                          const _hasPoly = play.polyPct != null;
+                          const _hasPoly = !isUnder && play.polyPct != null;
                           const _polyWins = play.bestVenue === "polymarket";
-                          const _tip = play.polyOnly
+                          const _tip = !isUnder && play.polyOnly
                             ? `Polymarket: ${play.polyPct}¢ (+${_bEdge}% edge)`
                             : _hasPoly && !play.polyDerived
                               ? `Kalshi: ${play.kalshiPct}¢  |  Polymarket: ${play.polyPct}¢\nBest: ${_polyWins ? "Polymarket" : "Kalshi"} (+${_bEdge}% edge)`
@@ -3752,16 +3884,16 @@ function App() {
                     {/* True% bar */}
                     <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}>
                       <div style={{flex:1,background:"#21262d",borderRadius:4,height:14,overflow:"hidden"}}>
-                        <div style={{width:`${play.truePct}%`,background:tColor,height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:play.truePct>0?3:0}}/>
+                        <div style={{width:`${displayTruePct}%`,background:tColor,height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:displayTruePct>0?3:0}}/>
                       </div>
                       <div style={{width:70,flexShrink:0,display:"flex",justifyContent:"flex-end",alignItems:"baseline",gap:4}}>
-                        <span style={{color:tColor,fontSize:12,fontWeight:700}}>{play.truePct}%</span>
+                        <span style={{color:tColor,fontSize:12,fontWeight:700}}>{displayTruePct}%</span>
                         <span style={{color:tColor,fontSize:10}}>({tTrueOddsStr})</span>
                       </div>
                     </div>
                     {/* Kalshi price bar */}
-                    {play.kalshiPct != null && (() => {
-                      const kPct = play.kalshiPct;
+                    {displayKalshiPct != null && (() => {
+                      const kPct = displayKalshiPct;
                       const kOdds = kPct >= 50 ? Math.round(-(kPct/(100-kPct))*100) : Math.round((100-kPct)/kPct*100);
                       const kOddsStr = kOdds > 0 ? `+${kOdds}` : `${kOdds}`;
                       return (
@@ -3803,25 +3935,31 @@ function App() {
                         const hRPG = play.homeRPG ?? null, aRPG = play.awayRPG ?? null;
                         const pf = play.parkFactor ?? 1;
                         const et = play.expectedTotal ?? null;
-                        const eraColor = v => v == null ? "#8b949e" : v > 4.5 ? "#3fb950" : v > 3.5 ? "#e3b341" : "#f78166";
-                        const rpgColor = v => v == null ? "#8b949e" : v > 5.0 ? "#3fb950" : v > 4.0 ? "#e3b341" : "#8b949e";
-                        const etColor = et == null ? "#8b949e" : et >= play.threshold + 0.5 ? "#3fb950" : et >= play.threshold - 0.5 ? "#e3b341" : "#8b949e";
-                        const hERAPts = hERA != null ? (hERA > 4.5 ? 3 : hERA > 3.5 ? 2 : 1) : 0;
-                        const aERAPts = aERA != null ? (aERA > 4.5 ? 3 : aERA > 3.5 ? 2 : 1) : 0;
-                        const hRPGPts = hRPG != null ? (hRPG > 5.0 ? 2 : hRPG > 4.0 ? 1 : 0) : 0;
-                        const aRPGPts = aRPG != null ? (aRPG > 5.0 ? 2 : aRPG > 4.0 ? 1 : 0) : 0;
+                        const eraColor = isUnder
+                          ? (v => v == null ? "#8b949e" : v <= 3.5 ? "#3fb950" : v <= 4.5 ? "#e3b341" : "#f78166")
+                          : (v => v == null ? "#8b949e" : v > 4.5 ? "#3fb950" : v > 3.5 ? "#e3b341" : "#f78166");
+                        const rpgColor = isUnder
+                          ? (v => v == null ? "#8b949e" : v <= 4.0 ? "#3fb950" : v <= 5.0 ? "#e3b341" : "#8b949e")
+                          : (v => v == null ? "#8b949e" : v > 5.0 ? "#3fb950" : v > 4.0 ? "#e3b341" : "#8b949e");
+                        const etColor = isUnder
+                          ? (et == null ? "#8b949e" : et < play.threshold - 0.5 ? "#3fb950" : et < play.threshold + 0.5 ? "#e3b341" : "#8b949e")
+                          : (et == null ? "#8b949e" : et >= play.threshold + 0.5 ? "#3fb950" : et >= play.threshold - 0.5 ? "#e3b341" : "#8b949e");
                         const gameOuLine = play.gameOuLine ?? null;
                         const mlbOuPts = play.mlbOuPts ?? 1;
-                        const ouColor = gameOuLine == null ? "#8b949e" : gameOuLine >= 9.5 ? "#3fb950" : gameOuLine >= 7.5 ? "#e3b341" : "#f78166";
-                        const ouDesc = gameOuLine == null ? null : gameOuLine >= 9.5 ? "a high-scoring game, supports the over" : gameOuLine >= 7.5 ? "an average total" : "a low total — market doesn't expect high scoring";
-                        const scTitle = [`${play.homeTeam} ERA (${hERA != null ? hERA.toFixed(2) : "—"}): ${hERA != null ? (hERA > 4.5 ? 2 : hERA > 3.5 ? 1 : 0) : 1}/2`,`${play.awayTeam} ERA (${aERA != null ? aERA.toFixed(2) : "—"}): ${aERA != null ? (aERA > 4.5 ? 2 : aERA > 3.5 ? 1 : 0) : 1}/2`,`${play.homeTeam} RPG (${hRPG != null ? hRPG.toFixed(1) : "—"}): ${hRPG != null ? (hRPG > 5.0 ? 2 : hRPG > 4.0 ? 1 : 0) : 1}/2`,`${play.awayTeam} RPG (${aRPG != null ? aRPG.toFixed(1) : "—"}): ${aRPG != null ? (aRPG > 5.0 ? 2 : aRPG > 4.0 ? 1 : 0) : 1}/2`,`O/U (${gameOuLine != null ? gameOuLine : "—"}): ${mlbOuPts}/2`].join("\n");
+                        const ouColor = isUnder
+                          ? (gameOuLine == null ? "#8b949e" : gameOuLine < 7.5 ? "#3fb950" : gameOuLine < 9.5 ? "#e3b341" : "#f78166")
+                          : (gameOuLine == null ? "#8b949e" : gameOuLine >= 9.5 ? "#3fb950" : gameOuLine >= 7.5 ? "#e3b341" : "#f78166");
+                        const ouDesc = isUnder
+                          ? (gameOuLine == null ? null : gameOuLine < 7.5 ? "a low total, supports the under" : gameOuLine < 9.5 ? "an average total" : "a high total — market expects heavy scoring")
+                          : (gameOuLine == null ? null : gameOuLine >= 9.5 ? "a high-scoring game, supports the over" : gameOuLine >= 7.5 ? "an average total" : "a low total — market doesn't expect high scoring");
+                        const scTitle = [isUnder?"[Under SimScore]":"",`${play.homeTeam} ERA (${hERA != null ? hERA.toFixed(2) : "—"}): ${hERA != null ? (hERA > 4.5 ? 2 : hERA > 3.5 ? 1 : 0) : 1}/2`,`${play.awayTeam} ERA (${aERA != null ? aERA.toFixed(2) : "—"}): ${aERA != null ? (aERA > 4.5 ? 2 : aERA > 3.5 ? 1 : 0) : 1}/2`,`${play.homeTeam} RPG (${hRPG != null ? hRPG.toFixed(1) : "—"}): ${hRPG != null ? (hRPG > 5.0 ? 2 : hRPG > 4.0 ? 1 : 0) : 1}/2`,`${play.awayTeam} RPG (${aRPG != null ? aRPG.toFixed(1) : "—"}): ${aRPG != null ? (aRPG > 5.0 ? 2 : aRPG > 4.0 ? 1 : 0) : 1}/2`,`O/U (${gameOuLine != null ? gameOuLine : "—"}): ${mlbOuPts}/2`].filter(Boolean).join("\n");
                         return (
                           <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.65}}>
                             <span style={{color:"#c9d1d9"}}>{play.awayTeam}</span>'s starter has{aERA != null ? <> a <span style={{color:eraColor(aERA),fontWeight:600}}>{aERA.toFixed(2)} ERA</span></> : " — ERA"}, facing a <span style={{color:"#c9d1d9"}}>{play.homeTeam}</span> offense averaging{hRPG != null ? <> <span style={{color:rpgColor(hRPG),fontWeight:600}}>{hRPG.toFixed(1)}</span> runs/game</> : " — RPG"}.
                             {" "}<span style={{color:"#c9d1d9"}}>{play.homeTeam}</span>'s starter posts{hERA != null ? <> a <span style={{color:eraColor(hERA),fontWeight:600}}>{hERA.toFixed(2)} ERA</span></> : " — ERA"} against a <span style={{color:"#c9d1d9"}}>{play.awayTeam}</span> offense at{aRPG != null ? <> <span style={{color:rpgColor(aRPG),fontWeight:600}}>{aRPG.toFixed(1)}</span> RPG</> : " — RPG"}.
                             {Math.abs(pf - 1) > 0.01 && <>{" "}Tonight's park {pf > 1 ? "inflates run scoring" : "suppresses run scoring"} (<span style={{color:"#8b949e"}}>{pf > 1 ? "+" : ""}{((pf-1)*100).toFixed(0)}%</span>).</>}
                             {gameOuLine != null && <>{" "}Game total <span style={{color:ouColor,fontWeight:600}}>{gameOuLine}</span><span style={{color:"#8b949e"}}> — {ouDesc}.</span></>}
-                            {et != null && <>{" "}Model projects <span style={{color:etColor,fontWeight:600}}>{et}</span> combined runs vs the <span style={{color:"#c9d1d9"}}>{lineVal}</span> threshold.</>}
+                            {et != null && <>{" "}Model projects <span style={{color:etColor,fontWeight:600}}>{et}</span> combined runs {isUnder ? "— under the" : "vs the"} <span style={{color:"#c9d1d9"}}>{lineVal}</span> threshold.</>}
                             {" "}<span title={scTitle} style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,verticalAlign:"middle",cursor:"default"}}>{sc}/10 {sc>=8?"Alpha":sc>=5?"Mid":"Low"}</span>
                           </div>
                         );
@@ -3836,18 +3974,26 @@ function App() {
                         const lgPace = play.leagueAvgPace ?? null;
                         const et = play.expectedTotal ?? null;
                         const paceAdj = (hPace != null && aPace != null && lgPace != null) ? parseFloat(((hPace + aPace) / 2 - lgPace).toFixed(1)) : null;
-                        const offColor = v => v == null ? "#8b949e" : v >= 118 ? "#f78166" : v >= 113 ? "#e3b341" : "#8b949e";
-                        const defColor = v => v == null ? "#8b949e" : v >= 118 ? "#3fb950" : v >= 113 ? "#e3b341" : "#f78166";
-                        const paceColor = paceAdj == null ? "#8b949e" : paceAdj > 0 ? "#3fb950" : paceAdj > -2 ? "#e3b341" : "#8b949e";
-                        const etColor = et == null ? "#8b949e" : et >= play.threshold + 2 ? "#3fb950" : et >= play.threshold - 2 ? "#e3b341" : "#8b949e";
+                        const offColor = isUnder
+                          ? (v => v == null ? "#8b949e" : v < 113 ? "#3fb950" : v < 118 ? "#e3b341" : "#f78166")
+                          : (v => v == null ? "#8b949e" : v >= 118 ? "#f78166" : v >= 113 ? "#e3b341" : "#8b949e");
+                        const defColor = isUnder
+                          ? (v => v == null ? "#8b949e" : v < 113 ? "#3fb950" : v < 118 ? "#e3b341" : "#f78166")
+                          : (v => v == null ? "#8b949e" : v >= 118 ? "#3fb950" : v >= 113 ? "#e3b341" : "#f78166");
+                        const paceColor = isUnder
+                          ? (paceAdj == null ? "#8b949e" : paceAdj < -2 ? "#3fb950" : paceAdj < 0 ? "#e3b341" : "#8b949e")
+                          : (paceAdj == null ? "#8b949e" : paceAdj > 0 ? "#3fb950" : paceAdj > -2 ? "#e3b341" : "#8b949e");
+                        const etColor = isUnder
+                          ? (et == null ? "#8b949e" : et < play.threshold - 2 ? "#3fb950" : et < play.threshold + 2 ? "#e3b341" : "#8b949e")
+                          : (et == null ? "#8b949e" : et >= play.threshold + 2 ? "#3fb950" : et >= play.threshold - 2 ? "#e3b341" : "#8b949e");
                         const nbaOuLinePC = play.gameOuLine ?? null; const nbaOuPtsPC = nbaOuLinePC == null ? 1 : nbaOuLinePC >= 235 ? 2 : nbaOuLinePC >= 225 ? 1 : 0;
-                        const scTitle = [`${play.homeTeam} off PPG (${hOff != null ? hOff.toFixed(0) : "—"}): ${hOff != null ? (hOff >= 118 ? 2 : hOff >= 113 ? 1 : 0) : 1}/2`,`${play.awayTeam} off PPG (${aOff != null ? aOff.toFixed(0) : "—"}): ${aOff != null ? (aOff >= 118 ? 2 : aOff >= 113 ? 1 : 0) : 1}/2`,`${play.homeTeam} def allowed (${hDef != null ? hDef.toFixed(0) : "—"}): ${hDef != null ? (hDef >= 118 ? 2 : hDef >= 113 ? 1 : 0) : 1}/2`,`${play.awayTeam} def allowed (${aDef != null ? aDef.toFixed(0) : "—"}): ${aDef != null ? (aDef >= 118 ? 2 : aDef >= 113 ? 1 : 0) : 1}/2`,`O/U (${nbaOuLinePC ?? "—"}): ${nbaOuPtsPC}/2`].join("\n");
+                        const scTitle = [isUnder?"[Under SimScore]":"",`${play.homeTeam} off PPG (${hOff != null ? hOff.toFixed(0) : "—"}): ${hOff != null ? (hOff >= 118 ? 2 : hOff >= 113 ? 1 : 0) : 1}/2`,`${play.awayTeam} off PPG (${aOff != null ? aOff.toFixed(0) : "—"}): ${aOff != null ? (aOff >= 118 ? 2 : aOff >= 113 ? 1 : 0) : 1}/2`,`${play.homeTeam} def allowed (${hDef != null ? hDef.toFixed(0) : "—"}): ${hDef != null ? (hDef >= 118 ? 2 : hDef >= 113 ? 1 : 0) : 1}/2`,`${play.awayTeam} def allowed (${aDef != null ? aDef.toFixed(0) : "—"}): ${aDef != null ? (aDef >= 118 ? 2 : aDef >= 113 ? 1 : 0) : 1}/2`,`O/U (${nbaOuLinePC ?? "—"}): ${nbaOuPtsPC}/2`].filter(Boolean).join("\n");
                         return (
                           <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.65}}>
                             <span style={{color:"#c9d1d9"}}>{play.awayTeam}</span> averages{aOff != null ? <> <span style={{color:offColor(aOff),fontWeight:600}}>{aOff.toFixed(0)} PPG</span></> : " —"} facing a <span style={{color:"#c9d1d9"}}>{play.homeTeam}</span> defense allowing{hDef != null ? <> <span style={{color:defColor(hDef),fontWeight:600}}>{hDef.toFixed(0)} PPG</span></> : " —"}.
                             {" "}<span style={{color:"#c9d1d9"}}>{play.homeTeam}</span> averages{hOff != null ? <> <span style={{color:offColor(hOff),fontWeight:600}}>{hOff.toFixed(0)} PPG</span></> : " —"} facing a <span style={{color:"#c9d1d9"}}>{play.awayTeam}</span> defense allowing{aDef != null ? <> <span style={{color:defColor(aDef),fontWeight:600}}>{aDef.toFixed(0)} PPG</span></> : " —"}.
-                            {paceAdj != null && <>{" "}Game pace is <span style={{color:paceColor,fontWeight:600}}>{paceAdj > 0 ? "+" : ""}{paceAdj}</span> vs league avg{paceAdj > 0 ? " — more possessions, more scoring" : paceAdj > -2 ? " — near league average" : " — slower game, fewer possessions"}.</>}
-                            {et != null && <>{" "}Model projects <span style={{color:etColor,fontWeight:600}}>{et}</span> combined pts vs the <span style={{color:"#c9d1d9"}}>{lineVal}</span> threshold.</>}
+                            {paceAdj != null && <>{" "}Game pace is <span style={{color:paceColor,fontWeight:600}}>{paceAdj > 0 ? "+" : ""}{paceAdj}</span> vs league avg{isUnder ? (paceAdj < -2 ? " — slower game, supports under" : " — near average") : (paceAdj > 0 ? " — more possessions, more scoring" : paceAdj > -2 ? " — near league average" : " — slower game, fewer possessions")}.</>}
+                            {et != null && <>{" "}Model projects <span style={{color:etColor,fontWeight:600}}>{et}</span> combined pts {isUnder ? "— under the" : "vs the"} <span style={{color:"#c9d1d9"}}>{lineVal}</span> threshold.</>}
                             {" "}<span title={scTitle} style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,verticalAlign:"middle",cursor:"default"}}>{sc}/10 {sc>=8?"Alpha":sc>=5?"Mid":"Low"}</span>
                           </div>
                         );
@@ -3859,19 +4005,24 @@ function App() {
                         const hGPG = play.homeGPG ?? null, aGPG = play.awayGPG ?? null;
                         const hGAA = play.homeGAA ?? null, aGAA = play.awayGAA ?? null;
                         const et = play.expectedTotal ?? null;
-                        // high GPG/GAA = good for over → green; matches market report table direction
-                        const gpgColor = v => v == null ? "#8b949e" : v >= 3.5 ? "#3fb950" : v >= 3.0 ? "#e3b341" : "#8b949e";
-                        const gaaColor = v => v == null ? "#8b949e" : v >= 3.5 ? "#3fb950" : v >= 3.0 ? "#e3b341" : "#8b949e";
-                        const etColor = et == null ? "#8b949e" : et >= play.threshold + 0.5 ? "#3fb950" : et >= play.threshold - 0.5 ? "#e3b341" : "#8b949e";
+                        const gpgColor = isUnder
+                          ? (v => v == null ? "#8b949e" : v < 3.0 ? "#3fb950" : v < 3.5 ? "#e3b341" : "#8b949e")
+                          : (v => v == null ? "#8b949e" : v >= 3.5 ? "#3fb950" : v >= 3.0 ? "#e3b341" : "#8b949e");
+                        const gaaColor = isUnder
+                          ? (v => v == null ? "#8b949e" : v < 3.0 ? "#3fb950" : v < 3.5 ? "#e3b341" : "#8b949e")
+                          : (v => v == null ? "#8b949e" : v >= 3.5 ? "#3fb950" : v >= 3.0 ? "#e3b341" : "#8b949e");
+                        const etColor = isUnder
+                          ? (et == null ? "#8b949e" : et < play.threshold - 0.5 ? "#3fb950" : et < play.threshold + 0.5 ? "#e3b341" : "#8b949e")
+                          : (et == null ? "#8b949e" : et >= play.threshold + 0.5 ? "#3fb950" : et >= play.threshold - 0.5 ? "#e3b341" : "#8b949e");
                         const _gpgPts = v => v == null ? 1 : v >= 3.5 ? 2 : v >= 3.0 ? 1 : 0;
                         const _gaaPts = v => v == null ? 1 : v >= 3.5 ? 2 : v >= 3.0 ? 1 : 0;
                         const nhlOuLinePC = play.gameOuLine ?? null; const nhlOuPtsPC = nhlOuLinePC == null ? 1 : nhlOuLinePC >= 7 ? 2 : nhlOuLinePC >= 5.5 ? 1 : 0;
-                        const scTitle = [`${play.homeTeam} GPG (${hGPG ?? "—"}): ${_gpgPts(hGPG)}/2`,`${play.awayTeam} GPG (${aGPG ?? "—"}): ${_gpgPts(aGPG)}/2`,`${play.homeTeam} GAA (${hGAA ?? "—"}): ${_gaaPts(hGAA)}/2`,`${play.awayTeam} GAA (${aGAA ?? "—"}): ${_gaaPts(aGAA)}/2`,`O/U (${nhlOuLinePC ?? "—"}): ${nhlOuPtsPC}/2`].join("\n");
+                        const scTitle = [isUnder?"[Under SimScore]":"",`${play.homeTeam} GPG (${hGPG ?? "—"}): ${_gpgPts(hGPG)}/2`,`${play.awayTeam} GPG (${aGPG ?? "—"}): ${_gpgPts(aGPG)}/2`,`${play.homeTeam} GAA (${hGAA ?? "—"}): ${_gaaPts(hGAA)}/2`,`${play.awayTeam} GAA (${aGAA ?? "—"}): ${_gaaPts(aGAA)}/2`,`O/U (${nhlOuLinePC ?? "—"}): ${nhlOuPtsPC}/2`].filter(Boolean).join("\n");
                         return (
                           <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.65}}>
                             <span style={{color:"#c9d1d9"}}>{play.awayTeam}</span> averages{aGPG != null ? <> <span style={{color:gpgColor(aGPG),fontWeight:600}}>{aGPG.toFixed(1)} GPG</span></> : " —"} facing a <span style={{color:"#c9d1d9"}}>{play.homeTeam}</span> defense with{hGAA != null ? <> <span style={{color:gaaColor(hGAA),fontWeight:600}}>{hGAA.toFixed(2)} GAA</span></> : " — GAA"}.
                             {" "}<span style={{color:"#c9d1d9"}}>{play.homeTeam}</span> averages{hGPG != null ? <> <span style={{color:gpgColor(hGPG),fontWeight:600}}>{hGPG.toFixed(1)} GPG</span></> : " —"} facing a <span style={{color:"#c9d1d9"}}>{play.awayTeam}</span> defense allowing{aGAA != null ? <> <span style={{color:gaaColor(aGAA),fontWeight:600}}>{aGAA.toFixed(2)} GAA</span></> : " — GAA"}.
-                            {et != null && <>{" "}Model projects <span style={{color:etColor,fontWeight:600}}>{et}</span> combined goals vs the <span style={{color:"#c9d1d9"}}>{lineVal}</span> threshold.</>}
+                            {et != null && <>{" "}Model projects <span style={{color:etColor,fontWeight:600}}>{et}</span> combined goals {isUnder ? "— under the" : "vs the"} <span style={{color:"#c9d1d9"}}>{lineVal}</span> threshold.</>}
                             {" "}<span title={scTitle} style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,verticalAlign:"middle",cursor:"default"}}>{sc}/10 {sc>=8?"Alpha":sc>=5?"Mid":"Low"}</span>
                           </div>
                         );
@@ -4602,7 +4753,12 @@ function App() {
                   borderRadius:8, padding:"7px 10px", marginBottom:5,
                   display:"flex", gap:9, alignItems:"center"}}>
                   {/* Photo / Logo */}
-                  {pick.gameType === "total" ? (
+                  {pick.gameType === "teamTotal" ? (
+                    <div style={{width:36,height:36,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:"#21262d",borderRadius:18}}>
+                      <img src={`https://a.espncdn.com/i/teamlogos/${pick.sport}/500/${(pick.scoringTeam||"").toLowerCase()}.png`}
+                        style={{width:28,height:28,objectFit:"contain"}} onError={e=>e.target.style.opacity="0"} />
+                    </div>
+                  ) : pick.gameType === "total" ? (
                     <div style={{width:36,height:36,flexShrink:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:1}}>
                       <img src={`https://a.espncdn.com/i/teamlogos/${pick.sport}/500/${(pick.awayTeam||"").toLowerCase()}.png`}
                         style={{width:19,height:19,objectFit:"contain"}} onError={e=>e.target.style.opacity="0"} />
@@ -4624,7 +4780,12 @@ function App() {
                   <div style={{flex:1,minWidth:0}}>
                     {/* Row 1: name + badges + (settled: result+P&L+undo) + edit/remove */}
                     <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:2}}>
-                      {pick.gameType === "total" ? (
+                      {pick.gameType === "teamTotal" ? (
+                        <span style={{color:"#fff",fontSize:12,fontWeight:700,flexShrink:1,minWidth:0}}>
+                          <span onClick={()=>navigateToTeam(pick.scoringTeam,pick.sport)} style={{cursor:"pointer",textDecoration:"underline",textDecorationColor:"#484f58"}}>{pick.scoringTeam}</span>
+                          <span style={{color:"#484f58",fontWeight:400}}> vs {pick.oppTeam}</span>
+                        </span>
+                      ) : pick.gameType === "total" ? (
                         <span style={{color:"#fff",fontSize:12,fontWeight:700,flexShrink:1,minWidth:0}}>
                           <span onClick={()=>navigateToTeam(pick.awayTeam,pick.sport)} style={{cursor:"pointer",textDecoration:"underline",textDecorationColor:"#484f58"}}>{pick.awayTeam}</span>
                           {" @ "}
@@ -4681,19 +4842,23 @@ function App() {
                     {/* Row 2: subtitle + stake + (active: icon buttons / settled: win profit) */}
                     <div style={{display:"flex",alignItems:"center",gap:0}}>
                       <div style={{flex:1,minWidth:0,display:"flex",alignItems:"center",flexWrap:"wrap",lineHeight:1.4}}>
-                        {pick.gameType !== "total" && (
+                        {pick.gameType !== "total" && pick.gameType !== "teamTotal" && (
                           <span style={{color:"#8b949e",fontSize:10}}>
                             {pick.playerTeam} vs {pick.opponent}
                             <span style={{color:"#484f58",margin:"0 3px"}}>·</span>
                           </span>
                         )}
                         <span style={{color:"#58a6ff",fontWeight:600,fontSize:10}}>
-                          {pick.gameType === "total" ? `Over ${(pick.threshold-0.5).toFixed(1)} ${({totalRuns:"Runs",totalPoints:"Pts",totalGoals:"Goals"})[pick.stat]||pick.stat}` : `${pick.threshold}+ ${STAT_LABEL[pick.stat] || pick.stat}`}
+                          {pick.gameType === "teamTotal"
+                            ? `Over ${(pick.threshold-0.5).toFixed(1)} ${({teamRuns:"Runs",teamPoints:"Pts"})[pick.stat]||pick.stat}`
+                            : pick.gameType === "total"
+                            ? `${pick.direction === "under" ? "Under" : "Over"} ${(pick.threshold-0.5).toFixed(1)} ${({totalRuns:"Runs",totalPoints:"Pts",totalGoals:"Goals"})[pick.stat]||pick.stat}`
+                            : `${pick.threshold}+ ${STAT_LABEL[pick.stat] || pick.stat}`}
                         </span>
                         <span style={{color:"#484f58",fontSize:10,margin:"0 3px"}}>·</span>
                         <span style={{color:"#a855f7",fontSize:10}}>{oddsStr}</span>
                         <span style={{color:"#484f58",fontSize:10,margin:"0 3px"}}>·</span>
-                        <span style={{color:"#e3b341",fontSize:10}}>{pick.truePct}% true</span>
+                        <span style={{color:"#e3b341",fontSize:10}}>{pick.direction === "under" ? (pick.noTruePct ?? pick.truePct) : pick.truePct}% true</span>
                         <span style={{color:"#484f58",fontSize:10,margin:"0 3px"}}>·</span>
                         <span style={{color:"#484f58",fontSize:10}}>$</span>
                         <input type="number" min="0" step="0.1" value={units}
