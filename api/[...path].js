@@ -1432,11 +1432,11 @@ var worker_default = {
               const gameOdds = Object.fromEntries(Object.entries(gameOddsRaw).map(([k, v]) => [normMlbAbbr(k), v]));
               const [lineupResult, pitcherResult] = await Promise.all([buildLineupKPct(mlbSched), buildPitcherKPct(mlbSched)]);
               const { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, projectedLineupTeams, batterSplitBA } = lineupResult;
-              const { pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam } = pitcherResult;
+              const { pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam } = pitcherResult;
               // barrelPctMap is NOT stored in byteam:mlb — it lives in mlb:barrelPct with its own 6h TTL.
               // This prevents a bust (which deletes byteam:mlb) from baking an empty barrelPctMap
               // into the cache when Baseball Savant is slow.
-              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, projectedLineupTeams, gameOdds, pitcherStatsByName, batterSplitBA, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam };
+              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, projectedLineupTeams, gameOdds, pitcherStatsByName, batterSplitBA, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam };
               // Use short TTL (60s) if key data is missing — lineup/probables not confirmed yet.
               // Prevents partial data from baking into cache for the full 600s.
               const _mlbDataReady = Object.keys(lineupSpotByName || {}).length > 0 && Object.keys(pitcherAvgPitches || {}).length > 0;
@@ -2107,6 +2107,7 @@ var worker_default = {
           let _recentKPct = null, _seasonKPct = null;
           let _pitcherHand = null;
           let _avgP = null; // hoisted so all strikeout output sites can use it
+          let _avgBF = null; // empirical avg batters faced per start — replaces _avgP / 3.85 when available
           let _umpireName = null;   // E3a: home plate umpire
           let _umpireKFactor = 1.0; // factor relative to league avg (>1 = high-K zone)
           let _expectedBF = 24;     // E3b: expected batters faced from avg pitch count
@@ -2162,8 +2163,14 @@ var worker_default = {
             _umpireName = _umpKey ? (sportByteam.mlb?.umpireByGame?.[_umpKey] ?? null) : null;
             const _normUmpName = n => n ? n.normalize("NFD").replace(/[\u0300-\u036f]/g, "") : n;
             _umpireKFactor = _umpireName ? (UMPIRE_KFACTOR[_normUmpName(_umpireName)] ?? 1.0) : 1.0;
-            // E3b: Expected BF from avg pitch count (3.85 pitches/PA league avg), clamped [15, 27]
-            _expectedBF = _avgP != null ? Math.min(27, Math.max(15, Math.round(_avgP / 3.85))) : 24;
+            // E3b: Expected BF — use empirical avgBF when available; fall back to avgP / 3.85 league constant
+            _avgBF = (() => {
+              if (_ps?.avgBF !== undefined) return _ps.avgBF;
+              return _pt(sportByteam.mlb?.pitcherAvgBF, "avgBF");
+            })();
+            _expectedBF = _avgBF != null
+              ? Math.min(27, Math.max(15, Math.round(_avgBF)))
+              : (_avgP != null ? Math.min(27, Math.max(15, Math.round(_avgP / 3.85))) : 24);
             const _lkpVR = sportByteam.mlb?.lineupKPctVR?.[tonightOpp] ?? null;
             const _lkpVL = sportByteam.mlb?.lineupKPctVL?.[tonightOpp] ?? null;
             const _lkpAll = sportByteam.mlb?.lineupKPct?.[tonightOpp] ?? null;

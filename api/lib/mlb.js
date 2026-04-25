@@ -337,7 +337,7 @@ export async function buildPitcherKPct(mlbSched) {
       }
     }
     const allIds = [...allScheduledPitcherIds];
-    if (allIds.length === 0) return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherGS26: {}, pitcherHasAnchor: {}, pitcherRecentKPct: {}, pitcherLastStartDate: {}, pitcherLastStartPC: {}, umpireByGame };
+    if (allIds.length === 0) return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherAvgBF: {}, pitcherGS26: {}, pitcherHasAnchor: {}, pitcherRecentKPct: {}, pitcherLastStartDate: {}, pitcherLastStartPC: {}, umpireByGame };
     const idStr = allIds.join(",");
     const [res25, res26] = await Promise.all([
       fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=pitching,type=season,season=2025,gameType=R)`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
@@ -400,6 +400,8 @@ export async function buildPitcherKPct(mlbSched) {
     const pitcherCSWPct = {};
     const pitcherAvgPitches = {};
     const pitcherAvgPitchesById = {}; // per-ID version — used for overwritten pitchers in pitcherStatsByName
+    const pitcherAvgBF = {};
+    const pitcherAvgBFById = {};
     const pitcherGS26 = {};
     // A1: Recent form (last 5 starts K%)
     const pitcherRecentKPct = {};
@@ -441,6 +443,7 @@ export async function buildPitcherKPct(mlbSched) {
       // so date !== _todayStr passes and a 2-pitch partial start poisons the average).
       const startSplits = splits.filter(s => (s.stat?.gamesStarted || 0) > 0 && s.date !== _todayStr && (s.stat?.numberOfPitches || 0) >= 30);
       const totalNP = startSplits.reduce((sum, s) => sum + (s.stat?.numberOfPitches || 0), 0);
+      const totalBF = startSplits.reduce((sum, s) => sum + (s.stat?.battersFaced || 0), 0);
       const s26 = pitcherStats26[id];
       const s25 = pitcherStats25[id];
       let avgP = null;
@@ -456,6 +459,20 @@ export async function buildPitcherKPct(mlbSched) {
       if (avgP !== null) {
         pitcherAvgPitchesById[id] = avgP; // per-ID: used in pitcherStatsByName for overwritten pitchers
         for (const a of abbrs) pitcherAvgPitches[a] = avgP;
+      }
+      // avgBF: empirical batters faced per start — direct measure of pitcher volume,
+      // avoids the 3.85 pitches/PA league-average constant used in expectedBF.
+      let avgBF = null;
+      if (startSplits.length > 0 && totalBF > 0) {
+        avgBF = parseFloat((totalBF / startSplits.length).toFixed(1));
+      } else if (s26 && s26.gs >= 1 && s26.bf > 0) {
+        avgBF = parseFloat((s26.bf / s26.gs).toFixed(1));
+      } else if (s25 && s25.gs >= 1 && s25.bf > 0) {
+        avgBF = parseFloat((s25.bf / s25.gs).toFixed(1));
+      }
+      if (avgBF !== null) {
+        pitcherAvgBFById[id] = avgBF;
+        for (const a of abbrs) pitcherAvgBF[a] = avgBF;
       }
       // A1: Recent form — last 5 starts K% (min 30 total BF to trust the sample).
       // Uses a looser filter than avgPitches: any completed start regardless of NP.
@@ -556,6 +573,7 @@ export async function buildPitcherKPct(mlbSched) {
           era: pitcherEra[a] ?? null,
           cswPct: pitcherCSWPct[a] ?? null,
           avgPitches: pitcherAvgPitches[a] ?? null,
+          avgBF: pitcherAvgBF[a] ?? null,
           gs26: pitcherGS26[a] ?? null,
           hasAnchor: pitcherHasAnchor[a] ?? null,
           recentKPct: pitcherRecentKPct[a] ?? null,     // A1
@@ -589,6 +607,7 @@ export async function buildPitcherKPct(mlbSched) {
           era: (s26?.era ?? null) ?? (s25?.era ?? null),
           cswPct: cswByMlbId[id] ?? null,
           avgPitches: pitcherAvgPitchesById[id] ?? null,
+          avgBF: pitcherAvgBFById[id] ?? null,
           gs26: (s26?.gs > 0 ? s26.gs : null),
           hasAnchor: gs25 >= 5 && bf25 >= 100,
           recentKPct: pitcherRecentKPctById[id] ?? null,     // A1
@@ -608,8 +627,8 @@ export async function buildPitcherKPct(mlbSched) {
         if (!pitcherInfoByTeam[a]) pitcherInfoByTeam[a] = { name: person.fullName, id };
       }
     }
-    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherCSWPct, pitcherAvgPitches, pitcherGS26, pitcherHasAnchor, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam };
+    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherGS26, pitcherHasAnchor, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam };
   } catch {
-    return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherGS26: {}, pitcherHasAnchor: {}, pitcherRecentKPct: {}, pitcherLastStartDate: {}, pitcherLastStartPC: {}, umpireByGame: {}, pitcherInfoByTeam: {} };
+    return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherAvgBF: {}, pitcherGS26: {}, pitcherHasAnchor: {}, pitcherRecentKPct: {}, pitcherLastStartDate: {}, pitcherLastStartPC: {}, umpireByGame: {}, pitcherInfoByTeam: {} };
   }
 }
