@@ -735,7 +735,7 @@ var worker_default = {
           let nbaByteam = CACHE2 ? await CACHE2.get("byteam:nba", "json").catch(() => null) : null;
           if (!nbaByteam || nbaByteam.length === 0) {
             const r = await fetch(
-              "https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=50&category=defensive",
+              "https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=50&category=defensive&seasontype=2",
               { headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" } }
             ).catch(() => null);
             if (r?.ok) {
@@ -1365,7 +1365,7 @@ var worker_default = {
         if (sportsNeedingFetch.size > 0) {
           await Promise.all([
             sportsNeedingFetch.has("nba") && Promise.all([
-              fetch("https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=50&category=defensive", {
+              fetch("https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=50&category=defensive&seasontype=2", {
                 headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" }
               }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
               fetch("https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=50&category=scoring&seasontype=2", {

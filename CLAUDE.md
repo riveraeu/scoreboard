@@ -733,6 +733,13 @@ If 504s recur: check whether PBP block is the bottleneck (add `console.time` aro
 - If bust fires before lineups/probables are available, `byteam:mlb` is written with 60s TTL so next request retries
 - Depth chart: no bust — expires daily
 
+### "NBA totals show massive UNDER edges during playoffs (false positives)"
+During the NBA playoffs, ESPN's `byteam?category=scoring` and `?category=defensive` endpoints return playoff stats — often only 1-3 games of sample. Teams scoring 96-104 PPG vs actual regular season 115-120 PPG causes model to compute `expectedTotal=183` while market O/U is 213+, creating false UNDER edges of 60-70%.
+
+**Fix (in place)**: Both endpoints add `&seasontype=2` to force regular season averages year-round. This is the same approach used for `buildNbaUsageRate` (player stats with `types/2`).
+
+**Symptom to watch for**: If NBA UNDER plays appear with `noTruePct > 70%` (high UNDER model confidence) but `gameOuLine` is 210+, suspect playoff stat distortion. Check `homeOff`/`awayOff` fields — values < 110 indicate the endpoint may be returning playoff data again. Fix: verify `&seasontype=2` is present in both URLs.
+
 ### "NBA report shows — for Pace/AvgMin/Rest on most rows"
 All NBA markets now go through the full simulation loop (no opp_not_soft pre-filter). Every market computes pace, C1, DVP, B2B, and game total in the main block. If most rows show `—`, the ESPN gamelog or pace data fetch likely failed for that player — check `_debug` field in dropped entries.
 
