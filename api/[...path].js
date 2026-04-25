@@ -3587,7 +3587,7 @@ var worker_default = {
           await Promise.all([..._ttTeams].map(async key => {
             const [sp, abbr] = key.split(':');
             const cacheKey = `teamschedule:v2:${sp}:${abbr}`;
-            let events = isBustCache ? null : await cache.get(cacheKey);
+            let events = isBustCache ? null : await CACHE2?.get(cacheKey, "json").catch(() => null);
             if (!events) {
               try {
                 const league = sp === 'mlb' ? 'baseball/mlb' : 'basketball/nba';
@@ -3597,7 +3597,7 @@ var worker_default = {
                   events = (d.events ?? [])
                     .filter(ev => ev.competitions?.[0]?.status?.type?.completed)
                     .map(ev => ({ comps: (ev.competitions[0].competitors ?? []).map(c => ({ abbr: (c.team?.abbreviation ?? '').toUpperCase(), score: parseFloat(c.score?.value ?? c.score ?? 0) })) }));
-                  await cache.set(cacheKey, events, 3600);
+                  if (CACHE2) await CACHE2.put(cacheKey, JSON.stringify(events), { expirationTtl: 3600 }).catch(() => {});
                 }
               } catch(e) {}
             }
