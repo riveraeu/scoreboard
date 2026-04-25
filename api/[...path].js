@@ -3554,10 +3554,11 @@ var worker_default = {
               dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge: overEdge, totalSimScore, polyPct, polyVol, polyDerived, bestVenue, bestEdge, polyOnly, reason: "edge_too_low", ..._simData });
             }
             // UNDER play (rawEdge <= -5 means Kalshi over-prices the YES side → NO has edge)
-            if (underEdge >= 5) {
+            // Require noKalshiPct >= 30 (YES <= 70) so we don't bet a 27% longshot under
+            if (underEdge >= 5 && noKalshiPct >= 30) {
               totalPlays.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "under", kalshiPct, noKalshiPct, americanOdds: noKalshiAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, rawEdge, edge: underEdge, totalSimScore: underSimScore, qualified: underSimScore >= 8, kelly: kellyFraction(noTruePct, noKalshiAO), ev: evPerUnit(noTruePct, noKalshiAO), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _gameTime, polyPct, polyVol, polyDerived, bestVenue, bestEdge, polyOnly, ..._simData });
             } else if (isDebug && underEdge >= 3) {
-              dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "under", kalshiPct, noKalshiPct, americanOdds: noKalshiAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, rawEdge, edge: underEdge, totalSimScore: underSimScore, reason: "edge_too_low", ..._simData });
+              dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "under", kalshiPct, noKalshiPct, americanOdds: noKalshiAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, rawEdge, edge: underEdge, totalSimScore: underSimScore, reason: noKalshiPct < 30 ? "under_no_price_too_low" : "edge_too_low", ..._simData });
             }
           }
         }
