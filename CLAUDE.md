@@ -422,7 +422,10 @@ Opened via "report" button. Shows ALL markets (plays + dropped) grouped by sport
   - `plat`: platoonPts=2 green, platoonPts=1 yellow, platoonPts=0 red
   - `whip`: >1.35 green, >1.20 yellow, ≤1.20 red (2/1/0pts; null=1pt abstain)
   - `brrl`: ≥14% green, ≥10% yellow, <10% gray — shown in report env column but no longer in SimScore directly (now part of `hitterBatterQualityPts`)
-  - `nhlgaa`: ≤10 green, ≤15 yellow, >15 red (3-tier — ≤10=2pts, ≤15=1pt, >15=0pts)
+  - `nhlgaa`: ≤10 green, ≤15 yellow, >15 red (3-tier — ≤10=2pts, ≤15=1pt, >15=0pts) — **now 3-tier in xcell** (was binary green/red)
+  - `nhlSeasonHR`: ≥90% green, ≥80% yellow, <80% red — career season hit rate; `nhlSeasonHitRatePts` drives color
+  - `nhlDvpHR`: ≥90% green, ≥80% yellow, <80% red — hit rate vs teams with GAA above avg; null = DASH (1pt abstain); `nhlDvpHitRatePts` drives color
+  - `nhlGameTotalOu`: ≥7 green, ≥5.5 yellow, <5.5 red — game O/U line
   - `nbapace`: >0 green, >-2 yellow, ≤-2 gray (slow pace earns 1pt, not 0; gray not red) — **not a column in NBA player prop tables** (replaced by `nbaPaceTotal`)
   - `nbaSeasonHR`: ≥90% green, ≥80% yellow, <80% red — Season hit rate at threshold (blended 2026/2025); `nbaSeasonHitRatePts` drives color
   - `nbaSoftHR`: ≥90% green, ≥80% yellow, <80% red — hit rate vs soft teams; null = DASH (1pt abstain in SimScore); `nbaSoftHitRatePts` drives color
@@ -562,7 +565,9 @@ Both play cards and player cards show an explanation block (`background:"#0d1117
 
 **HRR market report columns:** `XCOLS["mlb|hrr"]` = Score / **Quality** / WHIP / **Ssn HR%** / **H2H HR%** / **O/U**. Park column removed. `Quality` shows `#spot barrel%` (e.g. `#3 12%`) colored by `hitterBatterQualityPts` (2=green, 1=yellow, 0=red). `Ssn HR%` shows `m.seasonPct` colored by value tiers matching SimScore (≥90% green, ≥80% yellow, <80% red). `H2H HR%` shows `m.softPct` colored by same tiers (≥90% green, ≥80% yellow, <80% red). SimScore tooltip: `Quality: N/2`, `WHIP: N/2`, `Season HR: N/2`, `H2H HR: N/2`, `O/U: N/2`. Null-abstain shows `1` not `—`.
 
-**NBA player prop market report columns:** `XCOLS["nba|*"]` = Score / **C1** / DVP / **Ssn HR%** / **Soft HR%** / **Pace+O/U**. Replaced old O/U + Pace columns with the three missing SimScore components. `Ssn HR%` shows `m.seasonPct` colored by `nbaSeasonHitRatePts` (≥90% green, ≥80% yellow, <80% red). `Soft HR%` shows `m.softPct` colored by `nbaSoftHitRatePts`; null = DASH. `Pace+O/U` shows `"+pace · O/U"` (e.g. `+1.2 · 231`) colored by `nbaTotalPts` (2=green, 1=yellow, 0=gray). C1 label is "Usage" for pts/ast/3pt, "AvgMin" for rebounds.
+**NBA player prop market report columns:** `XCOLS["nba|*"]` = Score / **C1** / DVP / **Ssn HR%** / **Soft HR%** / **Pace+O/U**. Replaced old O/U + Pace columns with the three missing SimScore components. `Ssn HR%` shows `m.seasonPct` colored by `nbaSeasonHitRatePts` (≥90% green, ≥80% yellow, <80% red). `Soft HR%` shows `m.softPct` colored by `nbaSoftHitRatePts`; null = DASH. `Pace+O/U` shows `"+pace · O/U"` (e.g. `+1.2 · 231`) colored by `nbaTotalPts` (2=green, 1=yellow, 0=gray). C1 label is "Usage" for pts/ast/3pt, "AvgMin" for rebounds. **Opp column flex=1** (was 2) to reduce whitespace.
+
+**NHL player prop market report columns:** `XCOLS["nhl|points"]` = Score / **AvgTOI** / **GAA Rank** / **Ssn HR%** / **DVP HR%** / **O/U**. Replaced old Ssn% / vSoft% / SA Adj / Rest columns with the five SimScore components. `Ssn HR%` uses `nhlSeasonHR` key (m.seasonPct + nhlSeasonHitRatePts coloring). `DVP HR%` uses `nhlDvpHR` key (m.softPct + nhlDvpHitRatePts; null=DASH). `O/U` uses `nhlGameTotalOu` key (m.nhlGameTotal; ≥7 green, ≥5.5 yellow). `nhlgaa` fixed to 3-tier (was binary ≤10 green / else red).
 
 **Strikeout market report columns:** `XCOLS["mlb|strikeouts"]` = Score / CSW% / K-BB% / Lineup K% / **Hit Rate** / O/U. P/GS column removed. K-Trend column was replaced with **Hit Rate** (`blendedHitRate` field, colored by `blendedHitRatePts` tiers: ≥90% green, ≥80% yellow, <80% red). `blendedHitRate` is a new field added to all strikeout play/drop output — the actual trust-weighted blended rate value (not just the pts). `_blendedHR` hoisted to outer `let` scope so it's accessible in the main plays push for all stats.
 

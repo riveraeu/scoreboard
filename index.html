@@ -2187,6 +2187,9 @@ function App() {
                         case "ttOppDef": return m.oppDef ?? 0;
                         case "ttPace": return (m.teamPace??0) - (m.leagueAvgPace??0);
                         case "ttSpread": return Math.abs(m.gameSpread ?? 99);
+                        case "nhlSeasonHR": return m.seasonPct ?? 0;
+                        case "nhlDvpHR": return m.softPct ?? 0;
+                        case "nhlGameTotalOu": return m.nhlGameTotal ?? 0;
                         case "homeRPG": case "awayRPG": case "homeERA": case "awayERA":
                         case "homeOff": case "awayOff": case "homeDef": case "awayDef":
                         case "homeGPG": case "awayGPG": case "homeGAA": case "awayGAA": return m[_sortCfg.col] ?? 0;
@@ -2222,7 +2225,7 @@ function App() {
                           "nba|rebounds":   [{k:"sim",l:"Score"},{k:"nbaC1",l:"AvgMin"},{k:"dvp",l:"DVP"},{k:"nbaSeasonHR",l:"Ssn HR%"},{k:"nbaSoftHR",l:"Soft HR%"},{k:"nbaPaceTotal",l:"Pace+O/U"}],
                           "nba|assists":    [{k:"sim",l:"Score"},{k:"nbaC1",l:"Usage"},{k:"dvp",l:"DVP"},{k:"nbaSeasonHR",l:"Ssn HR%"},{k:"nbaSoftHR",l:"Soft HR%"},{k:"nbaPaceTotal",l:"Pace+O/U"}],
                           "nba|threePointers":[{k:"sim",l:"Score"},{k:"nbaC1",l:"Usage"},{k:"dvp",l:"DVP"},{k:"nbaSeasonHR",l:"Ssn HR%"},{k:"nbaSoftHR",l:"Soft HR%"},{k:"nbaPaceTotal",l:"Pace+O/U"}],
-                          "nhl|points": [{k:"sim",l:"Score"},{k:"season",l:"Ssn%"},{k:"h2h",l:"vSoft%"},{k:"nhlgaa",l:"GAA Rank"},{k:"nhlsa",l:"SA Adj"},{k:"nhltoi",l:"AvgTOI"},{k:"nhl_b2b",l:"Rest"}],
+                          "nhl|points": [{k:"sim",l:"Score"},{k:"nhltoi",l:"AvgTOI"},{k:"nhlgaa",l:"GAA Rank"},{k:"nhlSeasonHR",l:"Ssn HR%"},{k:"nhlDvpHR",l:"DVP HR%"},{k:"nhlGameTotalOu",l:"O/U"}],
                           "mlb|totalRuns":    [{k:"sim",l:"Score"},{k:"homeRPG",l:"H RPG"},{k:"awayRPG",l:"A RPG"},{k:"homeERA",l:"H ERA"},{k:"awayERA",l:"A ERA"},{k:"mlbOu",l:"O/U"}],
                           "nba|totalPoints":  [{k:"sim",l:"Score"},{k:"homeOff",l:"H PPG"},{k:"awayOff",l:"A PPG"},{k:"homeDef",l:"H Def"},{k:"awayDef",l:"A Def"},{k:"totalOu",l:"O/U"}],
                           "nhl|totalGoals":   [{k:"sim",l:"Score"},{k:"homeGPG",l:"H GPG"},{k:"awayGPG",l:"A GPG"},{k:"homeGAA",l:"H GAA"},{k:"awayGAA",l:"A GAA"},{k:"totalOu",l:"O/U"}],
@@ -2270,10 +2273,13 @@ function App() {
                           if (k==="nbaSoftHR") { const v = m.softPct; if (v==null) return DASH; const pts = m.nbaSoftHitRatePts ?? (v>=90?2:v>=80?1:0); const color = pts>=2?"#3fb950":pts>=1?"#e3b341":"#f78166"; return <span style={{color}}>{v.toFixed(0)}%</span>; }
                           if (k==="nbaPaceTotal") { const pts = m.nbaTotalPts ?? 1; const pa = m.nbaPaceAdj; const ou = m.nbaGameTotal; const color = pts>=2?"#3fb950":pts>=1?"#e3b341":"#8b949e"; const paStr = pa!=null?(pa>0?"+":"")+pa.toFixed(1):null; const ouStr = ou!=null?String(ou):null; const label = [paStr,ouStr].filter(Boolean).join(" · "); return label ? <span style={{color}}>{label}</span> : DASH; }
                           if (k==="nba_spread") { const adj = m.nbaBlowoutAdj; if (adj == null) return DASH; const color = adj===1.0?"#3fb950":adj>0.92?"#e3b341":"#f78166"; const sp = m.nbaBlowoutAdj!=null && adj<1.0 ? Math.round((1-adj)/0.007+10) : null; return <span style={{color}}>{adj===1.0?"Tight":sp!=null?`-${sp}`:"—"}</span>; }
-                          if (k==="nhlgaa") { const r = m.oppRank; return C(r != null ? `#${r}` : null, r<=10?"#3fb950":"#f78166"); }
+                          if (k==="nhlgaa") { const r = m.oppRank; return C(r != null ? `#${r}` : null, r<=10?"#3fb950":r<=15?"#e3b341":"#f78166"); }
                           if (k==="nhlsa")  { const v = m.nhlShotsAdj; const r = m.nhlSaRank; return v != null ? <span style={{color:(r!=null&&r<=10)?"#3fb950":v>0?"#e3b341":"#f78166"}}>{v>0?"+":""}{v.toFixed(1)}</span> : DASH; }
                           if (k==="nhltoi") { const t = m.nhlOpportunity; return t != null ? <span style={{color:t>=18?"#3fb950":t>=15?"#e3b341":"#f78166"}}>{t.toFixed(1)}m</span> : DASH; }
                           if (k==="nhl_b2b") { if (m.isB2B == null) return DASH; return <span style={{color:m.isB2B?"#f78166":"#3fb950"}}>{m.isB2B?"B2B":"Rested"}</span>; }
+                          if (k==="nhlSeasonHR") { const v=m.seasonPct; if (v==null) return DASH; const pts=m.nhlSeasonHitRatePts??(v>=90?2:v>=80?1:0); const color=pts>=2?"#3fb950":pts>=1?"#e3b341":"#f78166"; return <span style={{color}}>{v.toFixed(0)}%</span>; }
+                          if (k==="nhlDvpHR") { const v=m.softPct; if (v==null) return DASH; const pts=m.nhlDvpHitRatePts??(v>=90?2:v>=80?1:0); const color=pts>=2?"#3fb950":pts>=1?"#e3b341":"#f78166"; return <span style={{color}}>{v.toFixed(0)}%</span>; }
+                          if (k==="nhlGameTotalOu") { const v=m.nhlGameTotal; if (v==null) return DASH; const color=v>=7?"#3fb950":v>=5.5?"#e3b341":"#f78166"; return <span style={{color,fontWeight:600}}>O{v}</span>; }
                           // Total PPG columns
                           if (k==="homeRPG"||k==="awayRPG") { const v = m[k]; return v != null ? <span style={{color:v>=5.0?"#3fb950":v>=4.0?"#e3b341":"#8b949e",fontWeight:600}}>{v.toFixed(1)}</span> : DASH; }
                           if (k==="homeERA"||k==="awayERA") { const v = m[k]; return v != null ? <span style={{color:v>=4.5?"#3fb950":v>=3.5?"#e3b341":"#8b949e",fontWeight:600}}>{v.toFixed(2)}</span> : DASH; }
@@ -2336,10 +2342,13 @@ function App() {
                           nbaPaceTotal:"Pace delta + O/U line (both shown). Color: both favorable (pace>0 AND O/U≥225) = green/2pts; one = yellow/1pt; neither = gray/0pts",
                           nba_spread:"Game spread tightness — tight game (≤10) = full minutes, no garbage time",
                           dvp:"Defense vs Position rank (lower = softer matchup)",
-                          nhlgaa:"Opponent GAA rank (goals against/game — lower rank = softer matchup)",
+                          nhlgaa:"Opponent GAA rank — ≤10 green (2pts), ≤15 yellow (1pt), >15 red (0pts)",
                           nhlsa:"Shots against adj vs league avg (positive = more shots allowed = more opportunities)",
-                          nhltoi:"Player avg ice time last 10 games (≥18m = green, ≥15m = yellow)",
+                          nhltoi:"Player avg ice time last 10 games — ≥18m green (2pts), ≥15m yellow (1pt), <15m red (0pts)",
                           nhl_b2b:"Rest status (B2B = back-to-back game, red; Rested = green)",
+                          nhlSeasonHR:"Career season hit rate at threshold — ≥90% green (2pts), ≥80% yellow (1pt), <80% red (0pts)",
+                          nhlDvpHR:"Hit rate vs teams with GAA above league avg (≥3 games req) — ≥90% green, ≥80% yellow; null = 1pt abstain",
+                          nhlGameTotalOu:"Game O/U line — ≥7 green (2pts), ≥5.5 yellow (1pt), <5.5 red (0pts)",
                           poly:"Polymarket implied % for the Over — teal = better price than Kalshi",
                           homeRPG:"Home team runs per game — higher = more scoring (green ≥5.0, yellow ≥4.0)",
                           awayRPG:"Away team runs per game — higher = more scoring (green ≥5.0, yellow ≥4.0)",
@@ -2380,7 +2389,7 @@ function App() {
                             {label}{active ? (_sc.dir === "desc" ? "↓" : "↑") : ""}
                           </div>;
                         };
-                        const _oppFlex = (sport === "mlb" && stat === "strikeouts") ? 1 : 2;
+                        const _oppFlex = (sport === "nba" || (sport === "mlb" && stat === "strikeouts")) ? 1 : 2;
                         return <React.Fragment>
                           <div style={{display:"flex",alignItems:"center",gap:6,padding:"3px 12px 4px",marginBottom:2}}>
                             {_hdr("player", stat.startsWith("team") ? "Team" : stat.startsWith("total") ? "Matchup" : "Player", {flex:2,minWidth:0}, "left")}
