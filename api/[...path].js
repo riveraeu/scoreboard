@@ -2517,15 +2517,7 @@ var worker_default = {
               ? gl.events.filter(ev => _h2hPitcherDates.has(ev.date) && ev.oppAbbr === tonightOpp).map(getStat).filter(v => !isNaN(v))
               : [];
             const _h2hHitRate = _h2hVals.length >= 5 ? _h2hVals.filter(v => v >= threshold).length / _h2hVals.length * 100 : null;
-            hitterH2HHitRatePts = 1; // default: abstain
-            if (_h2hHitRate != null) {
-              hitterH2HHitRatePts = _h2hHitRate >= 80 ? 2 : _h2hHitRate >= 70 ? 1 : 0;
-            } else if (_h2hVals.length > 0 && _hrrBlendedSeasonHR != null) {
-              // Sparse H2H (1-4 games): adjust season rate by handedness split ratio
-              const _platRatio = (hitterBa != null && hitterBa > 0 && _splitBA != null) ? _splitBA / hitterBa : 1.0;
-              const _adjHR = Math.min(100, Math.max(0, _hrrBlendedSeasonHR * _platRatio));
-              hitterH2HHitRatePts = _adjHR >= 80 ? 2 : _adjHR >= 70 ? 1 : 0;
-            }
+            hitterH2HHitRatePts = _h2hHitRate != null ? (_h2hHitRate >= 80 ? 2 : _h2hHitRate >= 70 ? 1 : 0) : 1; // null → 1pt abstain
             // SimScore (max 10): batter quality→0-2, WHIP→0-2, season hit rate→0-2, H2H hit rate→0-2, O/U→0-2
             hitterSimScore = hitterBatterQualityPts
               + (hitterWhipPts ?? 0)
