@@ -1368,7 +1368,7 @@ var worker_default = {
               fetch("https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=50&category=defensive", {
                 headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" }
               }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
-              fetch("https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=50&category=scoring", {
+              fetch("https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=50&category=scoring&seasontype=2", {
                 headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" }
               }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
               (() => { const _nd = new Date(); const _ns = _nd.toISOString().slice(0,10).replace(/-/g,''); return fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${_ns}`, { headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})); })()
@@ -1459,7 +1459,7 @@ var worker_default = {
         if (sportsNeeded.has("nba") && !sportByteam.nbaScoring) {
           if (CACHE2 && !isBustCache) sportByteam.nbaScoring = await CACHE2.get("byteam:nba:scoring", "json").catch(() => null);
           if (!sportByteam.nbaScoring) {
-            sportByteam.nbaScoring = await fetch("https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=50&category=scoring", {
+            sportByteam.nbaScoring = await fetch("https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=50&category=scoring&seasontype=2", {
               headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" }
             }).then(r => r.ok ? r.json() : {}).then(d => d.teams || []).catch(() => []);
             if (CACHE2 && Array.isArray(sportByteam.nbaScoring) && sportByteam.nbaScoring.length > 0) {
