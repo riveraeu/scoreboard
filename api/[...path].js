@@ -3545,7 +3545,7 @@ var worker_default = {
             const noKalshiPct = 100 - kalshiPct;
             const underEdge = parseFloat((noTruePct - noKalshiPct).toFixed(1));
             const noKalshiAO = noKalshiPct >= 50 ? Math.round(-(noKalshiPct/(100-noKalshiPct))*100) : Math.round((100-noKalshiPct)/noKalshiPct*100);
-            const _gameTime = gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null;
+            const _gameTime = gameTimes[`${sport}:${homeTeam}:${gameDate}`] ?? gameTimes[`${sport}:${awayTeam}:${gameDate}`] ?? gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null;
             // OVER play
             if (overEdge >= 5) {
               totalPlays.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge: overEdge, totalSimScore, qualified: totalSimScore >= 8, kelly: kellyFraction(truePct, americanOdds), ev: evPerUnit(truePct, americanOdds), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _gameTime, polyPct, polyVol, polyDerived, bestVenue, bestEdge, polyOnly, ..._simData });
@@ -3561,12 +3561,14 @@ var worker_default = {
           }
         }
         {
+          // Step 1: per-game dedup for game totals (best threshold/direction per game)
           const _totalBestMap = {};
           for (const tp of totalPlays) {
             const key = `${tp.sport}|${tp.homeTeam}|${tp.awayTeam}`;
             if (!_totalBestMap[key] || tp.edge > _totalBestMap[key].edge) _totalBestMap[key] = tp;
           }
           const _bestTotalIds = new Set(Object.values(_totalBestMap).map(tp => `${tp.sport}|${tp.homeTeam}|${tp.awayTeam}|${tp.threshold}|${tp.direction}`));
+          // NOTE: team total cross-dedup applied after teamTotalPlays loop below
           for (const tp of totalPlays) {
             const isBest = _bestTotalIds.has(`${tp.sport}|${tp.homeTeam}|${tp.awayTeam}|${tp.threshold}|${tp.direction}`);
             plays.push(isBest ? tp : { ...tp, qualified: false });
@@ -3608,7 +3610,7 @@ var worker_default = {
               const rawEdge = parseFloat((truePct - kalshiPct).toFixed(1));
               const edge = rawEdge;
               if (edge < 5) { if (isDebug) dropped.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge, teamTotalSimScore, teamRPG, oppERA, oppRPG, parkFactor: parkRF, gameOuLine, reason: "edge_too_low" }); continue; }
-              teamTotalPlays.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge, teamTotalSimScore, qualified: teamTotalSimScore >= 8, kelly: kellyFraction(truePct, americanOdds), ev: evPerUnit(truePct, americanOdds), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null, teamRPG, oppERA, oppRPG, parkFactor: parkRF, gameOuLine });
+              teamTotalPlays.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge, teamTotalSimScore, qualified: teamTotalSimScore >= 8, kelly: kellyFraction(truePct, americanOdds), ev: evPerUnit(truePct, americanOdds), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: gameTimes[`${sport}:${homeTeam}:${gameDate}`] ?? gameTimes[`${sport}:${awayTeam}:${gameDate}`] ?? gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null, teamRPG, oppERA, oppRPG, parkFactor: parkRF, gameOuLine });
             } else if (sport === "nba") {
               const teamOff = nbaOffPPGMap[scoringTeam] ?? null;
               const nbaDefRank = STAT_SOFT["nba|points"]?.rankMap ?? {};
@@ -3633,7 +3635,7 @@ var worker_default = {
               const rawEdge = parseFloat((truePct - kalshiPct).toFixed(1));
               const edge = rawEdge;
               if (edge < 5) { if (isDebug) dropped.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge, teamTotalSimScore, teamOff, oppDef, gameOuLine: _nbaOuLine, reason: "edge_too_low" }); continue; }
-              teamTotalPlays.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge, teamTotalSimScore, qualified: teamTotalSimScore >= 8, kelly: kellyFraction(truePct, americanOdds), ev: evPerUnit(truePct, americanOdds), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null, teamOff, oppDef, teamExpected: _teamExpected != null ? parseFloat(_teamExpected.toFixed(1)) : null, teamPace: _teamPace, leagueAvgPace: _lgPace, gameOuLine: _nbaOuLine, gameSpread: _gameSpread });
+              teamTotalPlays.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge, teamTotalSimScore, qualified: teamTotalSimScore >= 8, kelly: kellyFraction(truePct, americanOdds), ev: evPerUnit(truePct, americanOdds), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: gameTimes[`${sport}:${homeTeam}:${gameDate}`] ?? gameTimes[`${sport}:${awayTeam}:${gameDate}`] ?? gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null, teamOff, oppDef, teamExpected: _teamExpected != null ? parseFloat(_teamExpected.toFixed(1)) : null, teamPace: _teamPace, leagueAvgPace: _lgPace, gameOuLine: _nbaOuLine, gameSpread: _gameSpread });
             }
           }
           // Dedup: one play per scoringTeam+oppTeam (best edge threshold)
@@ -3643,9 +3645,26 @@ var worker_default = {
             if (!_ttBestMap[key] || tp.edge > _ttBestMap[key].edge) _ttBestMap[key] = tp;
           }
           const _ttBestIds = new Set(Object.values(_ttBestMap).map(tp => `${tp.sport}|${tp.scoringTeam}|${tp.oppTeam}|${tp.threshold}`));
+          // Cross-type dedup: one qualified play per game across game totals AND team totals
+          // Build a map of game-key → best edge winner (from both types)
+          const _crossBestMap = {};
+          for (const tp of [...Object.values(_ttBestMap)]) {
+            const key = `${tp.sport}|${tp.homeTeam}|${tp.awayTeam}`;
+            if (!_crossBestMap[key] || tp.edge > _crossBestMap[key].edge) _crossBestMap[key] = tp;
+          }
+          // Game total winners already in _totalBestMap — compare against team total winners
+          for (const [key, gameTp] of Object.entries(_crossBestMap)) {
+            const existingGameTotal = plays.find(p => p.gameType === "total" && p.sport === gameTp.sport && p.homeTeam === gameTp.homeTeam && p.awayTeam === gameTp.awayTeam && p.qualified !== false);
+            if (existingGameTotal && existingGameTotal.edge >= gameTp.edge) {
+              // Game total wins — all team totals for this game are qualified:false
+              _crossBestMap[key] = existingGameTotal;
+            }
+          }
           for (const tp of teamTotalPlays) {
-            const isBest = _ttBestIds.has(`${tp.sport}|${tp.scoringTeam}|${tp.oppTeam}|${tp.threshold}`);
-            plays.push(isBest ? tp : { ...tp, qualified: false });
+            const isTypeBest = _ttBestIds.has(`${tp.sport}|${tp.scoringTeam}|${tp.oppTeam}|${tp.threshold}`);
+            const crossWinner = _crossBestMap[`${tp.sport}|${tp.homeTeam}|${tp.awayTeam}`];
+            const isCrossWinner = crossWinner?.gameType === "teamTotal" && crossWinner?.scoringTeam === tp.scoringTeam && crossWinner?.threshold === tp.threshold;
+            plays.push(isTypeBest && isCrossWinner ? tp : { ...tp, qualified: false });
           }
         }
         if (isDebug) {
