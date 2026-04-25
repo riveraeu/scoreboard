@@ -2508,7 +2508,7 @@ var worker_default = {
             const _hrrBlendedSeasonHR = (_hrrHR26 != null && _hrrHR25 != null)
               ? _hrrTrust26 * _hrrHR26 + (1 - _hrrTrust26) * _hrrHR25
               : (_hrrHR26 ?? _hrrHR25);
-            hitterSeasonHitRatePts = _hrrBlendedSeasonHR == null ? 1 : _hrrBlendedSeasonHR >= 90 ? 2 : _hrrBlendedSeasonHR >= 80 ? 1 : 0;
+            hitterSeasonHitRatePts = _hrrBlendedSeasonHR == null ? 1 : _hrrBlendedSeasonHR >= 80 ? 2 : _hrrBlendedSeasonHR >= 70 ? 1 : 0;
             // H2H hit rate: only vs this pitcher (not team fallback). Sparse H2H → handedness-adjusted season rate.
             const _h2hPitcherDates = pitcherGamelogs[tonightOpp]?.gl
               ? new Set(pitcherGamelogs[tonightOpp].gl.events.filter(ev => ev.oppAbbr === playerTeam).map(ev => ev.date))
@@ -2519,12 +2519,12 @@ var worker_default = {
             const _h2hHitRate = _h2hVals.length >= 5 ? _h2hVals.filter(v => v >= threshold).length / _h2hVals.length * 100 : null;
             hitterH2HHitRatePts = 1; // default: abstain
             if (_h2hHitRate != null) {
-              hitterH2HHitRatePts = _h2hHitRate >= 90 ? 2 : _h2hHitRate >= 80 ? 1 : 0;
+              hitterH2HHitRatePts = _h2hHitRate >= 80 ? 2 : _h2hHitRate >= 70 ? 1 : 0;
             } else if (_h2hVals.length > 0 && _hrrBlendedSeasonHR != null) {
               // Sparse H2H (1-4 games): adjust season rate by handedness split ratio
               const _platRatio = (hitterBa != null && hitterBa > 0 && _splitBA != null) ? _splitBA / hitterBa : 1.0;
               const _adjHR = Math.min(100, Math.max(0, _hrrBlendedSeasonHR * _platRatio));
-              hitterH2HHitRatePts = _adjHR >= 90 ? 2 : _adjHR >= 80 ? 1 : 0;
+              hitterH2HHitRatePts = _adjHR >= 80 ? 2 : _adjHR >= 70 ? 1 : 0;
             }
             // SimScore (max 10): batter quality→0-2, WHIP→0-2, season hit rate→0-2, H2H hit rate→0-2, O/U→0-2
             hitterSimScore = hitterBatterQualityPts
