@@ -80,7 +80,7 @@ Used for caching expensive fetches. Key TTLs:
 - **Team extraction**: `parseGameTeams()` handles all sport-specific team code formats. Kalshi uses non-standard abbreviations for some teams; `TEAM_NORM` (in `api/[...path].js`) maps them to ESPN standard codes: NBA: `{ GS→GSW, SA→SAS, NY→NYK, NJ→BKN, NO→NOP, PHO→PHX, WPH→PHX }`. After building `STAT_SOFT["nba|*"]` rankMaps from ESPN byteam (which also returns short codes like "GS"), a post-normalization loop adds the long-form key so `nbaDefRank["GSW"]` resolves correctly.
 - **OVER plays**: `overEdge = truePct - kalshiPct >= 5%` → `direction: "over"`, uses `truePct`/`kalshiPct` directly
 - **UNDER plays**: `underEdge = (100-truePct) - (100-kalshiPct) >= 5%` → `direction: "under"`, play object has `noTruePct` (UNDER model prob) and `noKalshiPct` (Kalshi NO price); `americanOdds` already set to NO-side odds. Play card badge shows red "Under X.X"; bars use `noTruePct`/`noKalshiPct`; prose colors inverted (low ERA/RPG = green for MLB under, etc.). Track ID: `total|sport|homeTeam|awayTeam|threshold|gameDate|under`
-- **Deduplication**: one qualified play per game (homeTeam+awayTeam+sport) — best edge wins across OVER AND UNDER directions. Non-winning direction pushed as `qualified: false` for report visibility.
+- **Deduplication**: one qualified play per game (homeTeam+awayTeam+sport) — best edge wins across OVER AND UNDER directions AND across game totals vs team totals. If a game total and a team total both qualify for the same game, only the highest-edge play shows as `qualified: true`. Non-winners pushed as `qualified: false` for report visibility.
 - **Edge gate**: `edge >= 5%` (both directions); no soft matchup gate for totals
 - **SimScore** (max 10): 5 stats × 2pts each; `qualified: totalSimScore >= 8`. OVER and UNDER use separate `totalSimScore`/`underSimScore` (inverted tiers for under).
 - **Data maps** (`mlbRPGMap`, `nhlGPGMap/GAAMap`, `nbaOffPPGMap`) computed inline after `leagueAvgCache` block
@@ -817,8 +817,10 @@ Most likely cause: **Upstash free tier exhausted** (500k commands/month). Sympto
 **Fix (in place)**:
 1. Backend now fetches **both yesterday and today** ESPN scoreboards in parallel per sport (`Promise.all([yesterday, today])`), merging events from both.
 2. `gameTimes` now stores entries keyed by **PT date** (`"sport:team:ptDate"`) alongside the bare fallback. A game at 2026-04-18 PT is stored under `"mlb:TOR:2026-04-18"` even if its UTC time is Apr 19.
-3. Play loop lookup: `gameTimes["sport:team:gameDate"]` first (PT-date-specific), falls back to bare `"sport:team"`.
+3. Play loop lookup: `gameTimes["sport:team:gameDate"]` first (PT-date-specific), falls back to bare `"sport:team"`. **This applies to player props, game totals, AND team totals** — all three use the date-specific key first.
 4. Day label in play card and player card uses `play.gameDate` directly for the Today/Tomorrow comparison — not re-derived from `gameTime` — so even if `gameTime` is UTC-tomorrow, the label still says "Today" when Kalshi's `gameDate` is today.
+
+**Multi-game series bug (commit ba25af4)**: When a team plays consecutive days (series), yesterday's game at 7:15 PM PT has UTC time `T02:15Z` of tomorrow's UTC date. The bare fallback key `gameTimes["mlb:LAD"]` was set to the yesterday game's time (first-seen-wins) and never updated. Game totals and team totals didn't use the date-specific key — they only used the bare key. Fix: game totals and team totals now use `gameTimes["sport:team:gameDate"]` first, matching player props. The date-specific key correctly has the today game's time.
 
 **Team page game time**: uses `data.nextGame.gameTime` (from `/api/team`) as the primary source, independent of Kalshi market state. Reliable even when today's market is closed (game in progress or finalized). Falls back to `tonightPlay.gameTime` if `nextGame` is null.
 
