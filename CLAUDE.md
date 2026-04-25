@@ -1166,3 +1166,23 @@ async fetch(request, env, ctx) {
 ```
 
 **Diagnosis**: If `/api/keepalive` returns 500 and no code changes touch the keepalive handler, it's a function initialization failure. Check for bare-block `await` at function scope in recently changed sections. Revert the backend file and push to confirm — if keepalive recovers, the issue is in the reverted changes.
+
+### "/api/tonight returns {error: 'X is not defined'}" after adding team schedule cache block
+New code blocks that reference `CACHE2` and `isBustCache` must use those exact variable names. Two typos introduced in the H2H team schedule feature:
+- `isBust` instead of `isBustCache` → `ReferenceError: isBust is not defined`
+- `cache.get` / `cache.set` instead of `CACHE2?.get` / `CACHE2.put` → `ReferenceError: cache is not defined`
+
+`CACHE2` is the Upstash-backed cache object built by `makeCache(env)` at line ~128. Cache reads use `.get(key, "json")` and writes use `.put(key, value, { expirationTtl: N })` — NOT `.set()`.
+
+**Symptom**: `/api/keepalive` returns `{ok:true}` (function initializes fine) but `/api/tonight` returns `{error:"isBust is not defined"}` — the error is thrown at runtime inside the route handler, not at parse/init time.
+
+### "MLB strikeout and HRR plays missing from plays card (NBA/NHL/totals still show)"
+**Root cause**: Frontend `tonightPlays` filter had a stale gate condition from the old max-15 SimScore system:
+```js
+p.finalSimScore == null || p.finalSimScore > 10
+```
+After the April 2026 refactor to max-10 with gate ≥ 8, `finalSimScore > 10` is always false (max is 10). All MLB plays with `finalSimScore` set are silently excluded. NBA/NHL/total plays are unaffected because they use different score fields (`nbaSimScore`, `nhlSimScore`, `totalSimScore`) — `finalSimScore` and `hitterFinalSimScore` are null for them, so `null == null` passes.
+
+**Fix**: Change to `p.finalSimScore >= 8` (and same for `hitterFinalSimScore`). Applied in 3 places in `index.html`: initial fetch `.then()`, bust fetch `.then()`, and `fetchReport` sync block (~lines 1320, 1331, 1526).
+
+**Diagnosis**: Open market report — if MLB strikeout/HRR rows appear there but NOT in the plays card, it's this filter. The report fetches `?debug=1` and constructs its own `plays` array from the response, bypassing `tonightPlays`.
