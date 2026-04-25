@@ -1172,7 +1172,7 @@ function App() {
   const [sportFilter, setSportFilter] = React.useState([]); // empty = all sports
   const [statFilter, setStatFilter] = React.useState([]);  // empty = all stats
   const [showPlaysInfo, setShowPlaysInfo] = React.useState(false);
-  const [reportSort, setReportSort] = React.useState({}); // { "sport|stat": { col, dir } }
+  const [reportSort, setReportSort] = React.useState({"mlb|teamRuns":{col:"sim",dir:"desc"},"nba|teamPoints":{col:"sim",dir:"desc"}}); // { "sport|stat": { col, dir } }
   const [showReport, setShowReport] = React.useState(false);
   const [teamPage, setTeamPage] = React.useState(null);       // { abbr, sport }
   const [teamPageData, setTeamPageData] = React.useState(null); // { loading, error, data }
@@ -2115,7 +2115,7 @@ function App() {
                 const CRITERIA_SUMMARIES = {
                   "mlb|hrr":       { note: "True% = Monte Carlo simulation (batterBA \u00d7 pitcherBAA log5) \u00b7 park-adjusted \u00b7 Sim-Score \u2265 8 (Quality\u21920-2, WHIP\u21920-2, Ssn HR%\u21920-2, H2H HR%\u21920-2, O/U\u21920-2) = max 10; edge gates separately", gates: ["Lineup spot 1\u20134", "Sim-Score \u2265 8 (max 10)", "Edge \u2265 5%"] },
                   "mlb|hits":      { note: "True% = Monte Carlo simulation (batterBA \u00d7 pitcherBAA log5) \u00b7 park-adjusted \u00b7 Sim-Score \u2265 8 (Quality\u21920-2, WHIP\u21920-2, Ssn HR%\u21920-2, H2H HR%\u21920-2, O/U\u21920-2) = max 10; edge gates separately", gates: ["Lineup spot 1\u20134", "Sim-Score \u2265 8 (max 10)", "Edge \u2265 5%"] },
-                  "mlb|strikeouts":{ note: "True% = Monte Carlo simulation (pitcher K% \u00d7 lineup K% log5) \u00b7 regressed to mean \u00b7 park-adjusted \u00b7 Sim-Score \u2265 7 (CSW%\u21923, K-BB%\u21922, oK%\u21923, P/GS\u21922, ML\u21920-2, O/U\u21920-2) = max 14; edge gates separately", gates: ["Sim-Score \u2265 7 (max 14)", "Edge \u2265 5%"] },
+                  "mlb|strikeouts":{ note: "True% = Monte Carlo simulation (pitcher K% \u00d7 lineup K% log5) \u00b7 regressed to mean \u00b7 park-adjusted \u00b7 Sim-Score \u2265 8 (CSW%\u21920-2, K-BB%\u21920-2, Lineup K%\u21920-2, Hit Rate\u21920-2, O/U\u21920-2) = max 10; edge gates separately", gates: ["Sim-Score \u2265 8 (max 10)", "Edge \u2265 5%"] },
                   "nba|points":    { note: "True% = Monte Carlo simulation \u00b7 B2B \u00d70.93 \u00b7 Sim-Score: C1 USG%(0-2) + DVP(0-2) + Ssn HR%(0-2) + Soft HR%(0-2) + Pace+O/U(0-2) = max 10; edge gates separately", gates: ["Sim-Score \u2265 8 (max 10)", "Edge \u2265 5%"] },
                   "nba|rebounds":  { note: "True% = Monte Carlo simulation \u00b7 B2B \u00d70.93 \u00b7 Sim-Score: C1 AvgMin(0-2) + DVP(0-2) + Ssn HR%(0-2) + Soft HR%(0-2) + Pace+O/U(0-2) = max 10; edge gates separately", gates: ["Sim-Score \u2265 8 (max 10)", "Edge \u2265 5%"] },
                   "nba|assists":   { note: "True% = Monte Carlo simulation \u00b7 B2B \u00d70.93 \u00b7 Sim-Score: C1 USG%(0-2) + DVP(0-2) + Ssn HR%(0-2) + Soft HR%(0-2) + Pace+O/U(0-2) = max 10; edge gates separately", gates: ["Sim-Score \u2265 8 (max 10)", "Edge \u2265 5%"] },
@@ -2215,9 +2215,9 @@ function App() {
                       {(() => {
                         // Sport+stat specific extra columns
                         const XCOLS = {
-                          "mlb|hrr":        [{k:"sim",l:"Score"},{k:"hQuality",l:"Quality"},{k:"whip",l:"WHIP"},{k:"hSsnHR",l:"Ssn HR%"},{k:"hH2HHR",l:"H2H HR%"},{k:"env",l:"Park"},{k:"mlbOu",l:"O/U"}],
-                          "mlb|hits":       [{k:"sim",l:"Score"},{k:"hQuality",l:"Quality"},{k:"whip",l:"WHIP"},{k:"hSsnHR",l:"Ssn HR%"},{k:"hH2HHR",l:"H2H HR%"},{k:"env",l:"Park"},{k:"mlbOu",l:"O/U"}],
-                          "mlb|strikeouts": [{k:"sim",l:"Score"},{k:"csw",l:"CSW%"},{k:"kbb",l:"K-BB%"},{k:"lkp",l:"Lineup K%"},{k:"pps",l:"P/GS"},{k:"kHitRate",l:"Hit Rate"},{k:"ou",l:"O/U"}],
+                          "mlb|hrr":        [{k:"sim",l:"Score"},{k:"hQuality",l:"Quality"},{k:"whip",l:"WHIP"},{k:"hSsnHR",l:"Ssn HR%"},{k:"hH2HHR",l:"H2H HR%"},{k:"mlbOu",l:"O/U"}],
+                          "mlb|hits":       [{k:"sim",l:"Score"},{k:"hQuality",l:"Quality"},{k:"whip",l:"WHIP"},{k:"hSsnHR",l:"Ssn HR%"},{k:"hH2HHR",l:"H2H HR%"},{k:"mlbOu",l:"O/U"}],
+                          "mlb|strikeouts": [{k:"sim",l:"Score"},{k:"csw",l:"CSW%"},{k:"kbb",l:"K-BB%"},{k:"lkp",l:"Lineup K%"},{k:"kHitRate",l:"Hit Rate"},{k:"ou",l:"O/U"}],
                           "nba|points":     [{k:"sim",l:"Score"},{k:"nbaC1",l:"Usage"},{k:"dvp",l:"DVP"},{k:"nbaSeasonHR",l:"Ssn HR%"},{k:"nbaSoftHR",l:"Soft HR%"},{k:"nbaPaceTotal",l:"Pace+O/U"}],
                           "nba|rebounds":   [{k:"sim",l:"Score"},{k:"nbaC1",l:"AvgMin"},{k:"dvp",l:"DVP"},{k:"nbaSeasonHR",l:"Ssn HR%"},{k:"nbaSoftHR",l:"Soft HR%"},{k:"nbaPaceTotal",l:"Pace+O/U"}],
                           "nba|assists":    [{k:"sim",l:"Score"},{k:"nbaC1",l:"Usage"},{k:"dvp",l:"DVP"},{k:"nbaSeasonHR",l:"Ssn HR%"},{k:"nbaSoftHR",l:"Soft HR%"},{k:"nbaPaceTotal",l:"Pace+O/U"}],
@@ -2226,8 +2226,8 @@ function App() {
                           "mlb|totalRuns":    [{k:"sim",l:"Score"},{k:"homeRPG",l:"H RPG"},{k:"awayRPG",l:"A RPG"},{k:"homeERA",l:"H ERA"},{k:"awayERA",l:"A ERA"},{k:"mlbOu",l:"O/U"}],
                           "nba|totalPoints":  [{k:"sim",l:"Score"},{k:"homeOff",l:"H PPG"},{k:"awayOff",l:"A PPG"},{k:"homeDef",l:"H Def"},{k:"awayDef",l:"A Def"},{k:"totalOu",l:"O/U"}],
                           "nhl|totalGoals":   [{k:"sim",l:"Score"},{k:"homeGPG",l:"H GPG"},{k:"awayGPG",l:"A GPG"},{k:"homeGAA",l:"H GAA"},{k:"awayGAA",l:"A GAA"},{k:"totalOu",l:"O/U"}],
-                          "mlb|teamRuns":     [{k:"sim",l:"Score"},{k:"ttTeamRPG",l:"Team RPG"},{k:"ttOppERA",l:"Opp ERA"},{k:"ttOppRPG",l:"Opp RPG"},{k:"ttPark",l:"Park"},{k:"ttOu",l:"O/U"}],
-                          "nba|teamPoints":   [{k:"sim",l:"Score"},{k:"ttTeamOff",l:"Team PPG"},{k:"ttOppDef",l:"Opp Def"},{k:"ttOu",l:"O/U"},{k:"ttPace",l:"Pace"},{k:"ttSpread",l:"Spread"}],
+                          "mlb|teamRuns":     [{k:"sim",l:"Score"},{k:"ttTeamRPG",l:"Team RPG"},{k:"ttOppERA",l:"Opp ERA"},{k:"ttOppRPG",l:"Opp RPG"},{k:"ttPark",l:"Park"},{k:"ttOu",l:"O/U"},{k:"ttOpp",l:"Opp"}],
+                          "nba|teamPoints":   [{k:"sim",l:"Score"},{k:"ttTeamOff",l:"Team PPG"},{k:"ttOppDef",l:"Opp Def"},{k:"ttOu",l:"O/U"},{k:"ttPace",l:"Pace"},{k:"ttSpread",l:"Spread"},{k:"ttOpp",l:"Opp"}],
                         };
                         const xcols = XCOLS[`${sport}|${stat}`] || [];
                         const DASH = <span style={{color:"#21262d"}}>—</span>;
@@ -2283,9 +2283,10 @@ function App() {
                           if (k==="homeGPG"||k==="awayGPG"||k==="homeGAA"||k==="awayGAA") { const v = m[k]; return v != null ? <span style={{color:v>=3.5?"#3fb950":v>=3.0?"#e3b341":"#8b949e",fontWeight:600}}>{v.toFixed(1)}</span> : DASH; }
                           // HRR new SimScore columns
                           if (k==="hQuality") { const pts=m.hitterBatterQualityPts; const sp=m.hitterLineupSpot; const brrl=m.hitterBarrelPct; if (pts==null) return DASH; const color=pts===2?"#3fb950":pts===1?"#e3b341":"#f78166"; const disp=sp!=null?`#${sp}${brrl!=null?' '+brrl.toFixed(0)+'%':''}`:brrl!=null?brrl.toFixed(1)+'%':`${pts}/2`; return <span style={{color}}>{disp}</span>; }
-                          if (k==="hSsnHR") { const v=m.seasonPct; if (v==null) return DASH; const color=v>=80?"#3fb950":v>=70?"#e3b341":"#f78166"; return <span style={{color}}>{v.toFixed(1)+"%"}</span>; }
-                          if (k==="hH2HHR") { const v=m.softPct; const pts=m.hitterH2HHitRatePts; if (v==null) return DASH; const color=pts===2?"#3fb950":pts===1?"#e3b341":"#f78166"; return <span style={{color}}>{v.toFixed(1)+"%"}</span>; }
+                          if (k==="hSsnHR") { const v=m.seasonPct; if (v==null) return DASH; const color=v>=90?"#3fb950":v>=80?"#e3b341":"#f78166"; return <span style={{color}}>{v.toFixed(1)+"%"}</span>; }
+                          if (k==="hH2HHR") { const v=m.softPct; if (v==null) return DASH; const color=v>=90?"#3fb950":v>=80?"#e3b341":"#f78166"; return <span style={{color}}>{v.toFixed(1)+"%"}</span>; }
                           // Team total columns
+                          if (k==="ttOpp") { return m.oppTeam ? <span onClick={() => { setShowReport(false); navigateToTeam(m.oppTeam, m.sport); }} style={{color:"#8b949e",cursor:"pointer"}}>{m.oppTeam}</span> : DASH; }
                           if (k==="ttTeamRPG") { const v=m.teamRPG; return v!=null?<span style={{color:v>5.0?"#3fb950":v>4.0?"#e3b341":"#8b949e",fontWeight:600}}>{v.toFixed(1)}</span>:DASH; }
                           if (k==="ttOppERA") { const v=m.oppERA; return v!=null?<span style={{color:v>4.5?"#3fb950":v>3.5?"#e3b341":"#8b949e",fontWeight:600}}>{parseFloat(v).toFixed(2)}</span>:DASH; }
                           if (k==="ttOppRPG") { const v=m.oppRPG; return v!=null?<span style={{color:v>5.0?"#3fb950":v>4.0?"#e3b341":"#8b949e",fontWeight:600}}>{v.toFixed(1)}</span>:DASH; }
@@ -2357,6 +2358,7 @@ function App() {
                           hQuality:"Batter quality composite — lineup spot 1–3 + barrel% ≥10%; both = green, one = yellow, neither = red. Shows #spot + barrel%.",
                           hSsnHR:"Season HRR hit rate (2026/2025 blended) — ≥90% = 2pts green, ≥80% = 1pt yellow, <80% = 0pts red",
                           hH2HHR:"H2H hit rate vs tonight's pitcher (≥5 games) or platoon-adjusted team rate — ≥90% = 2pts green, ≥80% = 1pt yellow; null = 1pt abstain",
+                          ttOpp:"Opponent team — click to navigate to team page",
                           ttTeamRPG:"Scoring team runs per game (regular season) — higher = better for team runs over (green >5.0, yellow >4.0)",
                           ttOppERA:"Opponent starter ERA — higher = more hittable pitcher = better for over (green >4.5, yellow >3.5)",
                           ttOppRPG:"Opponent runs per game — higher = game environment favors scoring (green >5.0, yellow >4.0)",
@@ -2381,7 +2383,7 @@ function App() {
                         const _oppFlex = (sport === "mlb" && stat === "strikeouts") ? 1 : 2;
                         return <React.Fragment>
                           <div style={{display:"flex",alignItems:"center",gap:6,padding:"3px 12px 4px",marginBottom:2}}>
-                            {_hdr("player", (stat.startsWith("total") || stat.startsWith("team")) ? "Matchup" : "Player", {flex:2,minWidth:0}, "left")}
+                            {_hdr("player", stat.startsWith("team") ? "Team" : stat.startsWith("total") ? "Matchup" : "Player", {flex:2,minWidth:0}, "left")}
                             {_hdr("line","Line")}
                             {_hdr("true","True%")}
                             {_hdr("kalshi","Kalshi")}
@@ -2441,9 +2443,7 @@ function App() {
                                   borderTop: i>0?"1px solid #161b22":"none"}}>
                                   <div style={{flex:2,minWidth:0,fontSize:12,fontWeight:_nameWhite?600:400,display:"flex",alignItems:"baseline",gap:3}}>
                                     {isTeamTotal
-                                      ? <><span onClick={() => { setShowReport(false); navigateToTeam(m.scoringTeam, m.sport); }} style={{color:_nameWhite?"#c9d1d9":"#8b949e",whiteSpace:"nowrap",cursor:"pointer"}}>{m.scoringTeam}</span>
-                                          <span style={{color:"#484f58"}}> vs </span>
-                                          <span onClick={() => { setShowReport(false); navigateToTeam(m.oppTeam, m.sport); }} style={{color:_nameWhite?"#c9d1d9":"#8b949e",whiteSpace:"nowrap",cursor:"pointer"}}>{m.oppTeam}</span></>
+                                      ? <span onClick={() => { setShowReport(false); navigateToTeam(m.scoringTeam, m.sport); }} style={{color:_nameWhite?"#c9d1d9":"#8b949e",whiteSpace:"nowrap",cursor:"pointer"}}>{m.scoringTeam}</span>
                                       : isTotal
                                       ? <><span onClick={() => { setShowReport(false); navigateToTeam(m.awayTeam, m.sport); }} style={{color:_nameWhite?"#c9d1d9":"#8b949e",whiteSpace:"nowrap",cursor:"pointer"}}>{m.awayTeam}</span>
                                           <span style={{color:"#484f58"}}> @ </span>
