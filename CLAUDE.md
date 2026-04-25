@@ -1136,3 +1136,33 @@ SimScore thresholds have been tuned against settled pick outcomes. When win rate
 **Root cause**: Before commit removing the edge bonus from NHL SimScore, the 6th component was `Edge ±X%: N/3`. After converting to `nhlTeamGPG`, the tooltip still showed the old label if `index.html` was cached.
 
 **Fix**: Hard-refresh (`Cmd+Shift+R`) — the tooltip is computed client-side in `index.html`. If production still shows old label, check if `nhlTeamGPG` is present in play output (`?debug=1` → any NHL play → `nhlTeamGPG` field). If null, the backend variable wasn't added to the plays push.
+
+### "ALL routes return FUNCTION_INVOCATION_FAILED (500) after a backend deploy"
+**Root cause**: `await` in a bare block at `async fetch()` function scope causes the Vercel Edge Runtime to fail to initialize the function — making every route, including simple ones like `/api/keepalive`, return 500.
+
+**Pattern that breaks it:**
+```js
+async fetch(request, env, ctx) {
+  ...
+  const _map = {};
+  {
+    await Promise.all([..._set].map(async key => { ... }));  // bare block with await
+  }
+  const _helper = (...) => { ... };
+  {
+    for (const tm of items) { ... }  // team total processing
+  }
+}
+```
+
+**Fix**: Move the `await` and any helpers that depend on it INSIDE the existing `{...}` block that processes team totals — no new bare blocks at function scope:
+```js
+{
+  const _map = {};
+  await Promise.all([...]);   // inside the existing block
+  const _helper = (...) => { ... };
+  for (const tm of items) { ... }
+}
+```
+
+**Diagnosis**: If `/api/keepalive` returns 500 and no code changes touch the keepalive handler, it's a function initialization failure. Check for bare-block `await` at function scope in recently changed sections. Revert the backend file and push to confirm — if keepalive recovers, the issue is in the reverted changes.
