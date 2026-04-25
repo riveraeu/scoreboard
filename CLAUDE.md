@@ -640,6 +640,15 @@ A player visible in the market report has their play in `dropped[]` (debug-only)
 
 **Diagnosis**: check `?debug=1` → `dropped[]` for the player. If `reason` is `"low_lineup_spot"` or `"low_confidence"` with `hitterSimScore < 7`, they hit a pre-gate before truePct was computed — no explanation data exists. Any other reason means a gap in the qualified:false push logic.
 
+### "Non-MLB player card shows 'No game data found' or 'Could not load game log'"
+The `/api/gamelog` endpoint for non-MLB sports (NBA, NHL, NFL) scrapes ESPN HTML pages (`www.espn.com/{sport}/player/gamelog/...`) and parses the `window['__espnfitt__']` JavaScript variable. **Vercel Edge Functions are frequently served a bot-detection page by ESPN** that does not contain `__espnfitt__` → the endpoint returns `{error: "Could not find __espnfitt__ data in page"}` with HTTP 500.
+
+**Before fix (commit 9452812)**: `loadPlayer` had no `.ok` check — it called `.json()` on a 500 response, got `{error: "..."}`, passed it to `parseGameLog` which returned empty data → silently showed "No game data found" with no explanation.
+
+**After fix**: `if (!gameRes.ok) throw new Error('Could not load game log')` → catch block shows "Could not load game log: Could not load game log" in the player card error state — honest failure, not misleading empty state.
+
+**Root cause is unfixable on our side**: ESPN blocks server-side requests to their HTML gamelog pages from Vercel's IP ranges. The JSON API (`site.web.api.espn.com/apis/common/v3/sports/...`) used by the main play loop works fine (different domain). A full fix would require switching `/api/gamelog` to use the same JSON API endpoint, but parsing is different and player card gamelog tables would need updating. The HTML scraper works fine from a browser/local machine.
+
 ### "Why is truePct wrong for 3+/4+ when 5+ looks correct?" (fixed)
 Previously, `tonightPlayerMap` was built from `tonightPlays` (filtered: `qualified !== false`). Thresholds like 3+/4+ with no edge bonus (finalSimScore < 8) were `qualified: false` and omitted, so the player card used the raw fallback formula `(seasonPct + softPct) / 2` — breaking monotonicity (e.g. 4+ showed 76.8% while 5+ showed 97.9%).
 
@@ -767,6 +776,11 @@ Most likely cause: **Upstash free tier exhausted** (500k commands/month). Sympto
 
 **Fix**: `?bust=1` now skips the `gameTimes` cache read and forces a fresh fetch from ESPN. If ESPN has corrected the time in their data, the bust will pick it up. If ESPN consistently returns the wrong time for that game, the offset persists until ESPN fixes their data.
 
+### "Game time shows completely wrong time (e.g. 12:45 PM instead of 7:15 PM)"
+**Root cause**: The `gameTimes` date-specific key (`sport:team:ptDate`) was unconditionally overwritten on every event encountered. ESPN scoreboards return yesterday's and today's events combined — if an earlier game's event (different game, wrong time) was processed after the correct game for the same team+date, it silently overwrote the correct time.
+
+**Fix (commit 9452812)**: Changed the date-specific key from always-overwrite to latest-UTC-time-wins: `if (!_existDt || ev.date > _existDt) gameTimes[key:ptDate] = ev.date`. The most chronologically recent event for a team+date wins, which is the correct current game.
+
 ### "Play card or player card shows 'Tomorrow' for a game that's today"
 **Root cause**: `gameTimes["mlb:TOR"]` was keyed only by team, not by PT date. When the backend fetched only UTC-today's ESPN scoreboard, a game at 5:10 PM PT on Apr 18 returned as `2026-04-19T00:10Z` (UTC Apr 19). The bare key was set from that Apr 19 entry → `gameTime` pointed to tomorrow.
 
@@ -777,6 +791,15 @@ Most likely cause: **Upstash free tier exhausted** (500k commands/month). Sympto
 4. Day label in play card and player card uses `play.gameDate` directly for the Today/Tomorrow comparison — not re-derived from `gameTime` — so even if `gameTime` is UTC-tomorrow, the label still says "Today" when Kalshi's `gameDate` is today.
 
 **Team page game time**: uses `data.nextGame.gameTime` (from `/api/team`) as the primary source, independent of Kalshi market state. Reliable even when today's market is closed (game in progress or finalized). Falls back to `tonightPlay.gameTime` if `nextGame` is null.
+
+### "Star (☆/★) not highlighted on player card or team page after navigating from My Picks"
+Two separate bugs caused this:
+
+**Player card bug (commit 9452812)**: `_today` was computed as `new Date().toISOString().slice(0,10)` — UTC date. After 5 PM PDT (midnight UTC), `_today` becomes tomorrow's UTC date while picks have today's PT `gameDate` → `pd >= _today` = false → `isTracked = false` → star shows ☆ instead of ★.
+**Fix**: compute `_today` using local date: `` `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` ``
+
+**TotalsBarChart bug (commit 9452812)**: Used direct string equality `p.id === trackId` where `trackId` was built from `tp.gameDate`. If `tp` was null (threshold not in `allTonightPlays`) or `tp.gameDate` mismatched the stored pick's `gameDate`, `isTracked` was always false.
+**Fix**: Replaced with `existingPick` find pattern — matches by `sport|homeTeam|awayTeam|threshold` with local date guard (`pd >= _localToday`), using `tp ?? tonightPlay` as the anchor. Stores the actual matched pick's `id` in `_untrackId` so untracking works correctly too.
 
 ### "MLB game total SimScore badge shows 10/10 despite yellow ERA/RPG stats in explanation"
 The explanation card colors (eraColor/rpgColor) use the **tiered** formula — yellow ERA means 1 pt (not max 2), yellow RPG means 1 pt (not max 2). If the badge shows 10/10 when stats are yellow, production is running **old code**. Current formula: `> 4.5 → 2pts, > 3.5 → 1pt, ≤ 3.5 → 0pts` for ERA; `> 5.0 → 2pts, > 4.0 → 1pt, ≤ 4.0 → 0pts` for RPG. Park RF removed from scoring entirely (was previously 2pts for |RF-1|>0.01).
