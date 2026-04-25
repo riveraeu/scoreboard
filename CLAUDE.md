@@ -159,13 +159,13 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
 - **`hits` True%**: Monte Carlo simulation (`simulateHits`) using batter BA × pitcher BAA (log5), park-adjusted
 - **`hrr` True%**: `(primaryPct + softPct) / 2 × parkFactor` (no Monte Carlo)
   - `primaryPct` = player's 2026 HRR 1+ rate (falls back to 2025+2026 blend, then career)
-  - `softPct` = HRR 1+ rate vs tonight's pitcher (H2H gamelog dates) or vs tonight's team (2025+2026 fallback)
+  - `softPct` = HRR 1+ rate vs tonight's pitcher (H2H gamelog dates, ≥ 5 games) — falls back to 2025+2026 team-level rate when pitcher H2H yields < 5 games; `softLabel` updates to `"vs {OPP}"` in that case. `hitterH2HHitRatePts` uses **only** pitcher H2H (no team fallback).
   - BA is NOT directly in the formula — it's implicit via the player's historical HRR rate
 - **SimScore** (max 10, edge gate only — 5 stats × 2pts each):
   - Batter quality composite (`hitterBatterQualityPts`): spot ≤ 3 = "good spot"; barrel% ≥ 10% = "good barrel". Both → 2pts, either → 1pt, neither → 0pts, both null → 1pt (abstain). Replaces separate spot/barrel components.
   - Pitcher WHIP tiered (`hitterWhipPts`): > 1.35 → 2pts (green), > 1.20 → 1pt (yellow), ≤ 1.20 → 0pts (red); null → 1pt (abstain). Rescaled from 3/2/1.
   - Season hit rate (`hitterSeasonHitRatePts`): blended 2026/2025 HRR 1+ rate. ≥ 80% → 2pts, ≥ 70% → 1pt, < 70% → 0pts; null → 1pt (abstain). `trust26 = min(1, vals26.length / 30)`.
-  - H2H hit rate (`hitterH2HHitRatePts`): rate vs tonight's pitcher from gamelog (H2H dates only, requires ≥ 5 games). ≥ 80% → 2pts, ≥ 70% → 1pt, < 70% → 0pts; null → 1pt (abstain). **No team fallback** — H2H only.
+  - H2H hit rate (`hitterH2HHitRatePts`): rate vs tonight's pitcher from gamelog (H2H dates only, requires ≥ 5 games). ≥ 80% → 2pts, ≥ 70% → 1pt, < 70% → 0pts; null → 1pt (abstain). **No team fallback for SimScore** — pitcher H2H only; sparse H2H (1–4 games) scores 1pt abstain (the old platoon-adjusted scoring path was removed).
   - O/U total tier: ≥9.5 → 2pts, ≥7.5 → 1pt, <7.5 → 0pts, null → 1pt
   - Max: 2+2+2+2+2 = 10. Platoon (`hitterPlatoonPts`) still computed and displayed in prose but removed from SimScore. Park factor still shown in report env column.
 - **B2 — Batter recent form**: `hitterEffectiveBA = 0.6 × recentBA + 0.4 × seasonBA` when ≥20 AB in last 10 2026 games; else uses seasonBA. Fed directly into `simulateHits` as `batterBA`. `batterRecentBA` map built inline from ESPN gamelog in main play loop.
@@ -483,7 +483,7 @@ Shows `untrackedPlays` (qualified plays not yet tracked). For game totals, once 
 - Kalshi% bar (purple, odds = Kalshi americanOdds)
 - Explanation card (varies by sport/stat)
 - SimScore gate breakdown
-- **Stake row** — `tierUnits(americanOdds)`: returns `|americanOdds| / 10` as a dollar stake (e.g. -257 → $25.7). Stored directly on tracked picks as `units` (dollar amount, not bankroll %). P&L uses `p.units` directly as stake. Picks editor shows a `$` input to override the default. Legacy picks stored with old integer unit values (1/3/5) will be treated as dollar amounts.
+- **Stake** — `tierUnits(americanOdds)`: returns `|americanOdds| / 10` as a dollar stake (e.g. -257 → $25.7). Not displayed on play cards. Stored on tracked picks as `units` when the star is clicked. **Implied probability calculator override**: if a valid odds value is entered in the implied probability calculator widget at the time of tracking, `tierUnits(calcOdds)` is used as stake instead of the play's own odds — applies to all play types (player props, game totals, team totals). P&L uses `p.units` directly as stake. Picks editor shows a `$` input to override the default. Legacy picks stored with old integer unit values (1/3/5) will be treated as dollar amounts.
 - **Game time** shown in card subtitle as `"Today · 7:40 PM PT"` or `"Tomorrow · 1:10 PM PT"` using `play.gameTime` (UTC ISO string from `gameTimes` cache). Day label computed from browser local date vs `play.gameDate`.
 - **Lineup badges** in play card subtitle: `play.lineupConfirmed === true` → green `✓ Lineup`; `play.lineupConfirmed === false` → gray `Proj. Lineup`. The `Proj. Lineup` badge is suppressed when `gameTime` is within 30 minutes of now or has passed (`Date.now() >= new Date(gameTime).getTime() - 30*60*1000`) — at that point the game is imminent and the warning is no longer actionable.
 - **Date grouping**: plays are grouped by `gameDate` with "Today" / "Tomorrow" section headers. When the API returns plays for multiple dates (e.g. UTC has already flipped to tomorrow), today's plays appear first under "Today" and tomorrow's under "Tomorrow".
