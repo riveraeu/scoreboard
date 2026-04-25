@@ -1345,7 +1345,7 @@ var worker_default = {
           }));
         }
         // E2: Market depth flags — thinMarket and marketConfidence
-        for (const m of [...qualifyingMarkets, ...totalMarkets]) {
+        for (const m of [...qualifyingMarkets, ...totalMarkets, ...teamTotalMarkets]) {
           m.thinMarket = m.kalshiSpread != null && m.kalshiSpread > 8;
           m.marketConfidence = m.kalshiVolume >= 100 ? "deep" : m.kalshiVolume >= 50 ? "moderate" : "thin";
         }
@@ -1356,7 +1356,7 @@ var worker_default = {
           await Promise.all([...sportsNeeded].map(async (sport) => {
             // When busting, skip the cache read for MLB so fresh computation is forced.
             // Deleting + reading in the same request is unreliable due to KV eventual consistency.
-            if (isBustCache && (sport === "mlb" || sport === "nhl")) return;
+            if (isBustCache && (sport === "mlb" || sport === "nhl" || sport === "nba")) return;
             const cached = await CACHE2.get(`byteam:${sport}`, "json").catch(() => null);
             if (cached) sportByteam[sport] = cached;
           }));
@@ -1457,7 +1457,7 @@ var worker_default = {
         }
         // NBA scoring (offensive PPG) — load from KV cache or fetch fresh when nba byteam was served from cache
         if (sportsNeeded.has("nba") && !sportByteam.nbaScoring) {
-          if (CACHE2) sportByteam.nbaScoring = await CACHE2.get("byteam:nba:scoring", "json").catch(() => null);
+          if (CACHE2 && !isBustCache) sportByteam.nbaScoring = await CACHE2.get("byteam:nba:scoring", "json").catch(() => null);
           if (!sportByteam.nbaScoring) {
             sportByteam.nbaScoring = await fetch("https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=50&category=scoring", {
               headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" }

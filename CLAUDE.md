@@ -728,7 +728,7 @@ Secondary cache fetches (DVP, NBA depth chart, barrel%, NBA pace) are now fired 
 If 504s recur: check whether PBP block is the bottleneck (add `console.time` around it in a debug branch) or if BettingPros DVP fetch is slow (it's the most expensive cold fallback at ~5-10s).
 
 ### Cache busting
-- `?bust=1` skips reads for `byteam:mlb`, `byteam:nhl`, `gameTimes:v2:{date}`, AND `nba:pace:2526` — forces fresh MLB + NHL data, ESPN game times, and NBA pace in one shot
+- `?bust=1` skips reads for `byteam:mlb`, `byteam:nhl`, `byteam:nba`, `byteam:nba:scoring`, `gameTimes:v2:{date}`, AND `nba:pace:2526` — forces fresh MLB + NHL + NBA data, ESPN game times, and NBA pace in one shot
 - `mlb:barrelPct` is NOT busted — barrel% survives with its own 6h TTL
 - If bust fires before lineups/probables are available, `byteam:mlb` is written with 60s TTL so next request retries
 - Depth chart: no bust — expires daily
