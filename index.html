@@ -207,11 +207,18 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, trackedP
         const edgeColor = edge == null ? "#484f58" : edge >= 3 ? "#3fb950" : edge >= 0 ? "#e3b341" : "#f78166";
 
         const trackId = tp ? `total|${tp.sport}|${tp.homeTeam}|${tp.awayTeam}|${t}|${tp.gameDate || ""}` : null;
-        const isTracked = trackId ? (trackedPlays || []).some(p => p.id === trackId) : false;
+        const _tAnchor = tp ?? tonightPlay;
+        const _localToday = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
+        const _existingTotalPick = _tAnchor ? (trackedPlays || []).find(p => {
+          const [pt,ps,ph,pa,pth,pd] = p.id.split("|");
+          return pt==="total" && ps===_tAnchor.sport && ph===_tAnchor.homeTeam && pa===_tAnchor.awayTeam && String(pth)===String(t) && (!pd || pd >= _localToday);
+        }) : null;
+        const isTracked = !!_existingTotalPick || !!(trackId && (trackedPlays || []).some(p => p.id === trackId));
+        const _untrackId = _existingTotalPick?.id ?? trackId;
         const canTrack = tp != null && ((tp.kalshiPct ?? tp.polyPct) ?? 0) >= 70 && edge != null && edge >= 3;
         const trackBtn = canTrack ? (
           <button
-            onClick={() => isTracked ? onUntrack(trackId) : onTrack({ ...tp, threshold: t })}
+            onClick={() => isTracked ? onUntrack(_untrackId) : onTrack({ ...tp, threshold: t })}
             title={isTracked ? "Remove pick" : "Add to My Picks"}
             style={{background:isTracked?"rgba(63,185,80,0.15)":"transparent",
               border:`1px solid ${isTracked?"#3fb950":"#30363d"}`,
@@ -1585,6 +1592,7 @@ function App() {
           fetch(`${WORKER}/dvp?sport=${sp}&athleteId=${p.id}${teamParam}`),
         ]);
         if (fetchRef.current !== id) return;
+        if (!gameRes.ok) throw new Error('Could not load game log');
         const data = await gameRes.json();
         const { aggregated, perGame: pg } = parseGameLog(data, sp);
         setLogs(aggregated);
@@ -3149,7 +3157,7 @@ function App() {
                     const qualifies = k && k.pct >= 70 && edge >= 3 && strongMatchupOk;
                     const sportSlug = sport.split("/")[1];
                     const trackId = `${sportSlug}|${player.name}|${safeTab}|${t}|${tonightPlay?.gameDate || ""}`;
-                    const _today = new Date().toISOString().slice(0,10);
+                    const _today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
                     const existingPick = trackedPlays.find(p => { const [ps,pn,pst,pt,pd] = p.id.split("|"); return ps===sportSlug && pn===player.name && pst===safeTab && String(pt)===String(t) && (!pd || pd >= _today); });
                     const isTracked = !!existingPick;
                     const trackBtn = qualifies ? (

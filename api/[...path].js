@@ -1468,7 +1468,8 @@ var worker_default = {
                   const ptDate = _ptDateFmt.format(new Date(ev.date));
                   for (const abbr of abbrs) {
                     const key = `${sport}:${normTeam(sport, abbr)}`;
-                    gameTimes[`${key}:${ptDate}`] = ev.date;   // date-specific key
+                    const _existDt = gameTimes[`${key}:${ptDate}`];
+                    if (!_existDt || ev.date > _existDt) gameTimes[`${key}:${ptDate}`] = ev.date; // latest UTC time wins
                     if (!gameTimes[key]) gameTimes[key] = ev.date; // bare fallback (first seen wins)
                   }
                 }
