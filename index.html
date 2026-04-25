@@ -1349,10 +1349,12 @@ function App() {
       ? `total|${play.sport}|${play.homeTeam}|${play.awayTeam}|${play.threshold}|${play.gameDate || ""}${play.direction === "under" ? "|under" : ""}`
       : `${play.sport || "nba"}|${play.playerName}|${play.stat}|${play.threshold}|${play.gameDate || ""}`;
     const finalOdds = play.americanOdds ?? -110;
+    const _calcN = parseInt(calcOdds.trim());
+    const calcOverride = !isNaN(_calcN) && calcOdds.trim() !== "-" && calcOdds.trim() !== "+" ? _calcN : null;
     setTrackedPlays(prev => {
       if (prev.find(p => p.id === id)) return prev;
       return [{ ...play, id, trackedAt: Date.now(), result: null,
-        units: tierUnits(finalOdds),
+        units: tierUnits(calcOverride ?? finalOdds),
         americanOdds: finalOdds,
       }, ...prev];
     });
@@ -4183,24 +4185,6 @@ function App() {
                       <span style={{color:"#6e40c9",fontSize:10}}>({oddsStr})</span>
                     </div>
                   </div>
-                  {/* Stake sizing row */}
-                  {(() => {
-                    const stake = tierUnits(play.americanOdds);
-                    const profit = stake * oddsToProfit(play.americanOdds);
-                    return (
-                      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
-                        <div style={{flex:1,display:"flex",gap:12,fontSize:10,color:"#484f58"}}>
-                          <span>
-                            <span style={{color:"#484f58"}}>stake </span>
-                            <span style={{color:"#8b949e",fontWeight:600}}>${stake.toFixed(1)}</span>
-                          </span>
-                        </div>
-                        <div style={{width:70,flexShrink:0,textAlign:"right",color:"#3fb950",fontSize:10,fontWeight:600}}>
-                          win +${profit.toFixed(1)}
-                        </div>
-                      </div>
-                    );
-                  })()}
                   {/* Breakdown — NFL only (not NBA, not MLB, not NHL which has its own card) */}
                   {play.sport !== "mlb" && play.sport !== "nba" && play.sport !== "nhl" && <div style={{borderTop:"1px solid #21262d",paddingTop:8}}>
                     <button onClick={e => { e.stopPropagation(); setExpandedPlays(s => { const n = new Set(s); n.has(playKey) ? n.delete(playKey) : n.add(playKey); return n; }); }}
