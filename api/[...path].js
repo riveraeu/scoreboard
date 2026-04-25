@@ -2264,15 +2264,18 @@ var worker_default = {
             const pitcherName = pitcherGamelogs[tonightOpp]?.name || null;
             const _pitcherGl = pitcherGamelogs[tonightOpp]?.gl || null;
             const _pitcherDates = _pitcherGl ? new Set(_pitcherGl.events.filter((ev) => ev.oppAbbr === playerTeam).map((ev) => ev.date)) : null;
-            if (_pitcherDates && _pitcherDates.size > 0) {
-              // Pitcher-specific: games where batter's team hosted this pitcher (date + oppAbbr guard prevents
-              // false matches when pitcher faced the same team on a day the batter played elsewhere)
-              softVals = gl.events.filter((ev) => _pitcherDates.has(ev.date) && ev.oppAbbr === tonightOpp).map(getStat).filter((v) => !isNaN(v));
+            const _pitcherVals = (_pitcherDates && _pitcherDates.size > 0)
+              ? gl.events.filter((ev) => _pitcherDates.has(ev.date) && ev.oppAbbr === tonightOpp).map(getStat).filter((v) => !isNaN(v))
+              : [];
+            if (_pitcherVals.length >= 5) {
+              // Enough pitcher-specific H2H games
+              softVals = _pitcherVals;
+              softLabel = pitcherName ? `vs ${pitcherName}` : `vs ${tonightOpp}`;
             } else {
-              // Team-level fallback: recent seasons only (2025+2026) to avoid inflating % from a long career at low threshold
+              // Sparse pitcher H2H (<5 games) → team-level fallback (2025+2026)
               softVals = gl.events.filter((ev) => (ev.season === 2025 || ev.season === 2026) && ev.oppAbbr === tonightOpp).map(getStat).filter((v) => !isNaN(v));
+              softLabel = `vs ${tonightOpp}`;
             }
-            softLabel = pitcherName ? `vs ${pitcherName}` : `vs ${tonightOpp}`;
             softUnit = "%";
           } else {
             const effectiveSoftSet = sport === "nba" ? nbaEffectiveSoftTeams || softTeams : softTeams;
