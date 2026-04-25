@@ -78,16 +78,31 @@ Used for caching expensive fetches. Key TTLs:
 - **Market format**: `floor_strike = N` means "over N-0.5" (i.e., YES = total >= N); `pct` filter: 30–97% (wider than player props)
 - **True%**: Monte Carlo simulation per sport — Poisson for MLB/NHL (`simulateMLBTotalDist`, `simulateNHLTotalDist`), Normal for NBA (`simulateNBATotalDist`)
 - **Team extraction**: `parseGameTeams()` handles all sport-specific team code formats. Kalshi uses non-standard abbreviations for some teams; `TEAM_NORM` (in `api/[...path].js`) maps them to ESPN standard codes: NBA: `{ GS→GSW, SA→SAS, NY→NYK, NJ→BKN, NO→NOP, PHO→PHX, WPH→PHX }`. After building `STAT_SOFT["nba|*"]` rankMaps from ESPN byteam (which also returns short codes like "GS"), a post-normalization loop adds the long-form key so `nbaDefRank["GSW"]` resolves correctly.
-- **`direction: "over"`** — currently only over plays surfaced (YES on Kalshi)
-- **Edge gate**: `edge >= 5%` (same as player props); no soft matchup gate for totals
-- **SimScore** (max 10): 5 stats × 2pts each; `qualified: totalSimScore >= 8`
+- **OVER plays**: `overEdge = truePct - kalshiPct >= 5%` → `direction: "over"`, uses `truePct`/`kalshiPct` directly
+- **UNDER plays**: `underEdge = (100-truePct) - (100-kalshiPct) >= 5%` → `direction: "under"`, play object has `noTruePct` (UNDER model prob) and `noKalshiPct` (Kalshi NO price); `americanOdds` already set to NO-side odds. Play card badge shows red "Under X.X"; bars use `noTruePct`/`noKalshiPct`; prose colors inverted (low ERA/RPG = green for MLB under, etc.). Track ID: `total|sport|homeTeam|awayTeam|threshold|gameDate|under`
+- **Deduplication**: one qualified play per game (homeTeam+awayTeam+sport) — best edge wins across OVER AND UNDER directions. Non-winning direction pushed as `qualified: false` for report visibility.
+- **Edge gate**: `edge >= 5%` (both directions); no soft matchup gate for totals
+- **SimScore** (max 10): 5 stats × 2pts each; `qualified: totalSimScore >= 8`. OVER and UNDER use separate `totalSimScore`/`underSimScore` (inverted tiers for under).
 - **Data maps** (`mlbRPGMap`, `nhlGPGMap/GAAMap`, `nbaOffPPGMap`) computed inline after `leagueAvgCache` block
-- **Play card**: `gameType: "total"` flag triggers `TotalPlayCard` branch in the play card render; shows dual team logos (ESPN CDN), matchup header, true%/Kalshi% bars, explanation prose, SimScore badge
-- **Deduplication**: one total play per game (homeTeam+awayTeam+sport), keeping highest edge — multiple thresholds for the same game reduced to the best one
+- **Play card**: `gameType: "total"` triggers `TotalPlayCard` branch; dual team logos, matchup header, truePct/Kalshi bars, explanation prose, SimScore badge. UNDER plays shown in red badge, bars use no-side probabilities.
 - **Expected total**: `homeExpected + awayExpected` (lambda sum for MLB/NHL, PPG-adjusted for NBA) shown in explanation prose; `_simData` includes `homeExpected`, `awayExpected`, `expectedTotal`, `gameOuLine`; NBA also includes `homePace`, `awayPace`, `leagueAvgPace` (pace still in `_simData` for prose, not SimScore)
 - **SimScore tooltip**: hover the `X/10` badge to see per-component breakdown with actual values. NBA totals example: `CHA off PPG (116): 1/2`. NHL totals example: `LAK GPG (2.7): 1/2`, `CGY GAA (3.15): 1/2`.
-- **Edge badge**: shows `+X%` only — tooltip removed (spreadAdj no longer subtracted from edge)
-- **Track ID format**: `total|sport|homeTeam|awayTeam|threshold|gameDate`
+- **Edge badge**: shows `+X%` only
+- **Track ID format**: OVER: `total|sport|homeTeam|awayTeam|threshold|gameDate` · UNDER: same + `|under`
+
+### Team Totals (MLB, NBA)
+- **Stat**: `teamRuns` (MLB), `teamPoints` (NBA)
+- **Kalshi series**: `KXMLBTEAMTOTAL`, `KXNBATEAMTOTAL` — `gameType: "teamTotal"` in SERIES_CONFIG. NHL/NFL team total series do not exist on Kalshi.
+- **Scoring team extraction**: Ticker suffix after last `-` starts with the team abbreviation (e.g. `LAD8` → scoring team `LAD`). Game teams extracted via existing `parseGameTeams()`.
+- **True%**: Monte Carlo simulation — `simulateTeamTotalDist(lambda)` (Poisson, MLB) or `simulateTeamPtsDist(mean, std=11)` (Normal, NBA) in `api/lib/simulate.js`.
+  - MLB lambda: `teamRPG × (oppERA / 4.20) × parkRF`, clamped [0.5, 12]
+  - NBA mean: `teamOffPPG × (oppDefPPG / leagueAvgDef)`
+- **SimScore** (max 10 — 5 stats × 2pts each; `qualified: teamTotalSimScore >= 8`):
+  - MLB: teamRPG (>5.0→2, >4.0→1, ≤4.0→0), oppERA (>4.5→2, >3.5→1, ≤3.5→0), oppRPG (same as teamRPG), parkRF (>1.05→2, >1.00→1, else 0), O/U line (≥9.5→2, ≥7.5→1, <7.5→0)
+  - NBA: teamOffPPG (≥118→2, ≥113→1, else 0), oppDefPPG (≥118→2, ≥113→1, else 0), O/U line (≥235→2, ≥225→1), teamPace (>lgPace+2→2, >lgPace-2→1), spread (|spread|≤5→2, ≤10→1)
+- **Play card**: `gameType: "teamTotal"` branch — single scoring team logo (44px), "{TEAM} vs {OPP}" header, prose shows teamRPG/oppERA for MLB or teamOff/oppDef for NBA, SimScore badge inline
+- **Deduplication**: one play per `sport|scoringTeam|oppTeam`, best edge threshold wins
+- **Track ID format**: `teamtotal|sport|scoringTeam|oppTeam|threshold|gameDate`
 
 #### Total SimScore details (max 10 — 5 stats × 2pts each; `qualified: totalSimScore >= 8`)
 - **MLB**: homeERA tiered (>4.5→2, >3.5→1, ≤3.5→0, null→1), awayERA (same), homeRPG tiered (>5.0→2, >4.0→1, ≤4.0→0, null→1), awayRPG (same), O/U line tiered (≥9.5→2, ≥7.5→1, <7.5→0, null→1). Park RF removed from scoring (still shown in env column in report). High ERA and high RPG score higher — both are over-favorable signals.
@@ -464,8 +479,16 @@ Shows `untrackedPlays` (qualified plays not yet tracked). For game totals, once 
 - **Lineup badges** in play card subtitle: `play.lineupConfirmed === true` → green `✓ Lineup`; `play.lineupConfirmed === false` → gray `Proj. Lineup`. The `Proj. Lineup` badge is suppressed when `gameTime` is within 30 minutes of now or has passed (`Date.now() >= new Date(gameTime).getTime() - 30*60*1000`) — at that point the game is imminent and the warning is no longer actionable.
 - **Date grouping**: plays are grouped by `gameDate` with "Today" / "Tomorrow" section headers. When the API returns plays for multiple dates (e.g. UTC has already flipped to tomorrow), today's plays appear first under "Today" and tomorrow's under "Tomorrow".
 
+**Team total play cards** (`gameType: "teamTotal"`) — rendered before game total cards in play card map:
+- Header: `[44px scoring team logo] {TEAM} vs {OPP}` — single team logo, scoring team name links to team page
+- Bars: `truePct` (model OVER probability) and `kalshiPct`
+- Explanation: sport-specific prose (MLB: teamRPG + oppERA; NBA: teamOff + oppDef + teamExpected); SimScore badge inline
+- Track ID: `teamtotal|sport|scoringTeam|oppTeam|threshold|gameDate`
+
 **Total play cards** (`gameType: "total"`) render differently from player prop cards:
 - Header: inline format `[44px away logo] AWY @ HME [44px home logo]` — away logo leads, home logo trails. Team abbreviations at `fontSize:12, fontWeight:600, color:#c9d1d9`. No sport emoji.
+- **OVER plays** (`direction: "over"`): blue "Over X.X" badge; bars use `truePct`/`kalshiPct`; prose colors: high ERA/RPG = green (good for over)
+- **UNDER plays** (`direction: "under"`): red "Under X.X" badge; bars use `noTruePct`/`noKalshiPct`; `displayTruePct`/`displayKalshiPct` locals set to no-side values; prose colors inverted (low ERA = green, high RPG = bad for under); `isUnder` flag drives all conditional logic; scTitle tooltip prefixed with `[Under SimScore]`
 - Explanation: single prose block with colored stat values inline; SimScore badge (with hover tooltip) appended at end of prose (no separate SimScore row or checkboxes). Same `background:"#0d1117"` block as player cards.
 - Prose includes model-projected expected total vs threshold (e.g. "Model projects 8.4 combined runs vs the 7.5 threshold"). NBA also shows pace adjustment.
 - **Stat colors for NBA totals** (play card prose only — market report uses different tiers, see below): offensive PPG — ≥118 red, ≥113 yellow, else gray (high scoring = already efficiently priced). Defensive PPG allowed — ≥118 green, ≥113 yellow, else red (bad defense = good for over). **Market report columns use playoff-appropriate tiers**: Off PPG ≥115 green / ≥108 yellow / else gray; Def PPG allowed ≥112 green / ≥105 yellow / else gray — green always means "favorable for over" in the report.
