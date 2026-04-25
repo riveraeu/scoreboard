@@ -3587,7 +3587,7 @@ var worker_default = {
           await Promise.all([..._ttTeams].map(async key => {
             const [sp, abbr] = key.split(':');
             const cacheKey = `teamschedule:v2:${sp}:${abbr}`;
-            let events = isBust ? null : await cache.get(cacheKey);
+            let events = isBustCache ? null : await cache.get(cacheKey);
             if (!events) {
               try {
                 const league = sp === 'mlb' ? 'baseball/mlb' : 'basketball/nba';
