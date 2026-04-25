@@ -3577,6 +3577,37 @@ var worker_default = {
           }
         }
         // ── Team Total plays (KXMLBTEAMTOTAL, KXNBATEAMTOTAL) ─────────────────────────────────────
+        // Pre-fetch ESPN schedules for H2H hit rate computation
+        const _ttScheduleMap = {};
+        {
+          const _ttTeams = new Set(teamTotalMarkets.map(tm => `${tm.sport}:${tm.scoringTeam}`));
+          await Promise.all([..._ttTeams].map(async key => {
+            const [sp, abbr] = key.split(':');
+            const cacheKey = `teamschedule:v2:${sp}:${abbr}`;
+            let events = isBust ? null : await cache.get(cacheKey);
+            if (!events) {
+              try {
+                const league = sp === 'mlb' ? 'baseball/mlb' : 'basketball/nba';
+                const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${league}/teams/${abbr.toLowerCase()}/schedule`, { signal: AbortSignal.timeout(3000) });
+                if (r.ok) {
+                  const d = await r.json();
+                  events = (d.events ?? [])
+                    .filter(ev => ev.competitions?.[0]?.status?.type?.completed)
+                    .map(ev => ({ comps: (ev.competitions[0].competitors ?? []).map(c => ({ abbr: (c.team?.abbreviation ?? '').toUpperCase(), score: parseFloat(c.score?.value ?? c.score ?? 0) })) }));
+                  await cache.set(cacheKey, events, 3600);
+                }
+              } catch(e) {}
+            }
+            if (events) _ttScheduleMap[key] = events;
+          }));
+        }
+        const _ttH2HRate = (sport, scoringTeam, oppTeam, threshold) => {
+          const events = _ttScheduleMap[`${sport}:${scoringTeam}`] ?? [];
+          const h2h = events.filter(ev => ev.comps.some(c => normTeam(sport, c.abbr) === oppTeam)).slice(-10);
+          if (h2h.length < 3) return null;
+          const hits = h2h.filter(ev => { const mine = ev.comps.find(c => normTeam(sport, c.abbr) === scoringTeam); return mine && mine.score >= threshold; });
+          return { rate: Math.round(hits.length / h2h.length * 100), games: h2h.length };
+        };
         {
           const _MLB_ERA = 4.20;
           const teamTotalDistCache = {};
@@ -3603,16 +3634,20 @@ var worker_default = {
                 if (!teamTotalDistCache[_dk]) teamTotalDistCache[_dk] = simulateTeamTotalDist(_lam, 10000);
                 truePct = totalDistPct(teamTotalDistCache[_dk], threshold);
               }
+              const _h2h = _ttH2HRate("mlb", scoringTeam, oppTeam, threshold);
+              const h2hHitRate = _h2h?.rate ?? null;
+              const h2hGames = _h2h?.games ?? null;
+              const h2hHitRatePts = h2hHitRate == null ? 1 : h2hHitRate >= 80 ? 2 : h2hHitRate >= 60 ? 1 : 0;
               teamTotalSimScore += teamRPG == null ? 1 : teamRPG > 5.0 ? 2 : teamRPG > 4.0 ? 1 : 0;
               teamTotalSimScore += oppERA == null ? 1 : oppERA > 4.5 ? 2 : oppERA > 3.5 ? 1 : 0;
-              teamTotalSimScore += oppRPG == null ? 1 : oppRPG > 5.0 ? 2 : oppRPG > 4.0 ? 1 : 0;
+              teamTotalSimScore += h2hHitRatePts;
               teamTotalSimScore += parkRF > 1.05 ? 2 : parkRF > 1.00 ? 1 : 0;
               teamTotalSimScore += gameOuLine == null ? 1 : gameOuLine >= 9.5 ? 2 : gameOuLine >= 7.5 ? 1 : 0;
-              if (truePct == null) { if (isDebug) dropped.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, teamTotalSimScore, teamRPG, oppERA, oppRPG, parkFactor: parkRF, gameOuLine, reason: "no_simulation_data" }); continue; }
+              if (truePct == null) { if (isDebug) dropped.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, teamTotalSimScore, teamRPG, oppERA, oppRPG, parkFactor: parkRF, gameOuLine, h2hHitRate, h2hGames, h2hHitRatePts, reason: "no_simulation_data" }); continue; }
               const rawEdge = parseFloat((truePct - kalshiPct).toFixed(1));
               const edge = rawEdge;
-              if (edge < 5) { if (isDebug) dropped.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge, teamTotalSimScore, teamRPG, oppERA, oppRPG, parkFactor: parkRF, gameOuLine, reason: "edge_too_low" }); continue; }
-              teamTotalPlays.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge, teamTotalSimScore, qualified: teamTotalSimScore >= 8, kelly: kellyFraction(truePct, americanOdds), ev: evPerUnit(truePct, americanOdds), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: gameTimes[`${sport}:${homeTeam}:${gameDate}`] ?? gameTimes[`${sport}:${awayTeam}:${gameDate}`] ?? gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null, teamRPG, oppERA, oppRPG, parkFactor: parkRF, gameOuLine });
+              if (edge < 5) { if (isDebug) dropped.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge, teamTotalSimScore, teamRPG, oppERA, oppRPG, parkFactor: parkRF, gameOuLine, h2hHitRate, h2hGames, h2hHitRatePts, reason: "edge_too_low" }); continue; }
+              teamTotalPlays.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge, teamTotalSimScore, qualified: teamTotalSimScore >= 8, kelly: kellyFraction(truePct, americanOdds), ev: evPerUnit(truePct, americanOdds), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: gameTimes[`${sport}:${homeTeam}:${gameDate}`] ?? gameTimes[`${sport}:${awayTeam}:${gameDate}`] ?? gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null, teamRPG, oppERA, oppRPG, parkFactor: parkRF, gameOuLine, h2hHitRate, h2hGames, h2hHitRatePts });
             } else if (sport === "nba") {
               const teamOff = nbaOffPPGMap[scoringTeam] ?? null;
               const nbaDefRank = STAT_SOFT["nba|points"]?.rankMap ?? {};
@@ -3628,16 +3663,20 @@ var worker_default = {
                 if (!teamTotalDistCache[_dk]) teamTotalDistCache[_dk] = simulateTeamPtsDist(_teamExpected, 11, 10000);
                 truePct = totalDistPct(teamTotalDistCache[_dk], threshold);
               }
+              const _h2h = _ttH2HRate("nba", scoringTeam, oppTeam, threshold);
+              const h2hHitRate = _h2h?.rate ?? null;
+              const h2hGames = _h2h?.games ?? null;
+              const h2hHitRatePts = h2hHitRate == null ? 1 : h2hHitRate >= 80 ? 2 : h2hHitRate >= 60 ? 1 : 0;
               teamTotalSimScore += teamOff == null ? 1 : teamOff >= 118 ? 2 : teamOff >= 113 ? 1 : 0;
               teamTotalSimScore += oppDef == null ? 1 : oppDef >= 118 ? 2 : oppDef >= 113 ? 1 : 0;
               teamTotalSimScore += _nbaOuLine == null ? 1 : _nbaOuLine >= 235 ? 2 : _nbaOuLine >= 225 ? 1 : 0;
               teamTotalSimScore += _teamPace == null || _lgPace == null ? 1 : _teamPace > _lgPace + 2 ? 2 : _teamPace > _lgPace - 2 ? 1 : 0;
-              teamTotalSimScore += _gameSpread == null ? 1 : Math.abs(_gameSpread) <= 5 ? 2 : Math.abs(_gameSpread) <= 10 ? 1 : 0;
-              if (truePct == null) { if (isDebug) dropped.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, teamTotalSimScore, teamOff, oppDef, gameOuLine: _nbaOuLine, reason: "no_simulation_data" }); continue; }
+              teamTotalSimScore += h2hHitRatePts;
+              if (truePct == null) { if (isDebug) dropped.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, teamTotalSimScore, teamOff, oppDef, gameOuLine: _nbaOuLine, h2hHitRate, h2hGames, h2hHitRatePts, reason: "no_simulation_data" }); continue; }
               const rawEdge = parseFloat((truePct - kalshiPct).toFixed(1));
               const edge = rawEdge;
-              if (edge < 5) { if (isDebug) dropped.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge, teamTotalSimScore, teamOff, oppDef, gameOuLine: _nbaOuLine, reason: "edge_too_low" }); continue; }
-              teamTotalPlays.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge, teamTotalSimScore, qualified: teamTotalSimScore >= 8, kelly: kellyFraction(truePct, americanOdds), ev: evPerUnit(truePct, americanOdds), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: gameTimes[`${sport}:${homeTeam}:${gameDate}`] ?? gameTimes[`${sport}:${awayTeam}:${gameDate}`] ?? gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null, teamOff, oppDef, teamExpected: _teamExpected != null ? parseFloat(_teamExpected.toFixed(1)) : null, teamPace: _teamPace, leagueAvgPace: _lgPace, gameOuLine: _nbaOuLine, gameSpread: _gameSpread });
+              if (edge < 5) { if (isDebug) dropped.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge, teamTotalSimScore, teamOff, oppDef, gameOuLine: _nbaOuLine, h2hHitRate, h2hGames, h2hHitRatePts, reason: "edge_too_low" }); continue; }
+              teamTotalPlays.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge, teamTotalSimScore, qualified: teamTotalSimScore >= 8, kelly: kellyFraction(truePct, americanOdds), ev: evPerUnit(truePct, americanOdds), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: gameTimes[`${sport}:${homeTeam}:${gameDate}`] ?? gameTimes[`${sport}:${awayTeam}:${gameDate}`] ?? gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null, teamOff, oppDef, teamExpected: _teamExpected != null ? parseFloat(_teamExpected.toFixed(1)) : null, teamPace: _teamPace, leagueAvgPace: _lgPace, gameOuLine: _nbaOuLine, gameSpread: _gameSpread, h2hHitRate, h2hGames, h2hHitRatePts });
             }
           }
           // Dedup: one play per scoringTeam+oppTeam (best edge threshold)
