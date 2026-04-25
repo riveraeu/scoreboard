@@ -2110,7 +2110,7 @@ var worker_default = {
           const blendedPct = blendVals.length >= 5 ? blendVals.filter((v) => v >= threshold).length / blendVals.length * 100 : null;
           // Prefer 2026 season rate; fall back to blended 25+26; fall back to all-career
           const primaryPct = pct26 ?? blendedPct ?? seasonPct;
-          let simScore = null, kpctMeets = null, kpctPts = null, kbbMeets = null, kbbPts = null, lkpMeets = null, lkpPts = null, pitchesPts = null, parkMeets = null, mlPts = null, totalPts = null, kTrendPts = null, blendedHitRatePts = null;
+          let simScore = null, kpctMeets = null, kpctPts = null, kbbMeets = null, kbbPts = null, lkpMeets = null, lkpPts = null, pitchesPts = null, parkMeets = null, mlPts = null, totalPts = null, kTrendPts = null, blendedHitRatePts = null, _blendedHR = null;
           let _recentKPct = null, _seasonKPct = null;
           let _pitcherHand = null;
           let _avgP = null; // hoisted so all strikeout output sites can use it
@@ -2218,7 +2218,7 @@ var worker_default = {
             const _hitRate26 = vals26.length >= 3 ? vals26.filter(v => v >= threshold).length / vals26.length * 100 : null;
             const _hitRate25 = vals25.length >= 5 ? vals25.filter(v => v >= threshold).length / vals25.length * 100 : null;
             const _trust26 = Math.min(1.0, vals26.length / 15);
-            const _blendedHR = (_hitRate26 != null && _hitRate25 != null)
+            _blendedHR = (_hitRate26 != null && _hitRate25 != null)
               ? _trust26 * _hitRate26 + (1 - _trust26) * _hitRate25
               : (_hitRate26 ?? _hitRate25);
             blendedHitRatePts = _blendedHR == null ? 1 : _blendedHR >= 90 ? 2 : _blendedHR >= 80 ? 1 : 0;
