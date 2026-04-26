@@ -2312,13 +2312,13 @@ var worker_default = {
             const _pitcherVals = (_pitcherDates && _pitcherDates.size > 0)
               ? gl.events.filter((ev) => _pitcherDates.has(ev.date) && ev.oppAbbr === tonightOpp).map(getStat).filter((v) => !isNaN(v))
               : [];
-            if (_pitcherVals.length >= 5) {
-              // Enough pitcher-specific H2H games
+            if (_pitcherVals.length >= 12) {
+              // Enough pitcher-specific H2H games (12+ ≈ 35+ PAs; signal is mature)
               softVals = _pitcherVals;
               softLabel = pitcherName ? `vs ${pitcherName}` : `vs ${tonightOpp}`;
             } else {
-              // Sparse pitcher H2H (<5 games) → team-level fallback (2025+2026)
-              // Flag set so HRR block can override softPct with platoon-adjusted rate
+              // Sparse pitcher H2H (<12 games) → platoon-adjusted fallback (primary path for ~90% of matchups)
+              // Flag set so HRR block overrides softPct with platoon-adjusted rate
               softVals = gl.events.filter((ev) => (ev.season === 2025 || ev.season === 2026) && ev.oppAbbr === tonightOpp).map(getStat).filter((v) => !isNaN(v));
               softLabel = `vs ${tonightOpp}`;
               _hrrUsingTeamFallback = true;
@@ -2330,7 +2330,7 @@ var worker_default = {
             softLabel = null;
             softUnit = null;
           }
-          const MIN_H2H = 5;
+          const MIN_H2H = 12;
           // Hoist for both binomial softPct and BA gate below
           const abIdxH = (sport === "mlb" && stat !== "strikeouts") ? gl.ul.indexOf("AB") : -1;
           const blendEventsH = (sport === "mlb" && hasSeasonTags)
@@ -2577,8 +2577,8 @@ var worker_default = {
               : _h2hVals.length >= 8 && _h2hHitRate >= 80 ? 2
               : _h2hHitRate >= 70 ? 1
               : 0;
-            // platoon fallback = no real H2H data; use platoon tier: red (disadvantage) → 0pts, else abstain (1pt)
-            if (_hrrUsingTeamFallback) hitterH2HHitRatePts = hitterPlatoonPts === 0 ? 0 : 1;
+            // platoon fallback = primary Matchup Rate for ~90% of games; use full 0/1/2 scale from hitterPlatoonPts
+            if (_hrrUsingTeamFallback) hitterH2HHitRatePts = hitterPlatoonPts;
             // SimScore (max 10): batter quality→0-2, WHIP→0-2, season hit rate→0-2, H2H hit rate→0-2, O/U→0-2
             hitterSimScore = hitterBatterQualityPts
               + (hitterWhipPts ?? 0)
