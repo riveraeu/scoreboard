@@ -35,9 +35,11 @@ function ModelPage({ onBack, calibData, calibLoading, fetchCalib, authToken }) {
     </div>
   );
 
-  const InputRow = ({ name, color="#c9d1d9", why }) => (
+  const InputRow = ({ name, color="#c9d1d9", why, tooltip }) => (
     <div style={{display:"flex",gap:10,marginBottom:5,alignItems:"flex-start"}}>
-      <div style={{minWidth:190,flexShrink:0,color:color,fontSize:11,fontWeight:600,paddingTop:1}}>{name}</div>
+      <div style={{minWidth:190,flexShrink:0,color:color,fontSize:11,fontWeight:600,paddingTop:1}}>
+        {name}{tooltip && <span title={tooltip} style={{marginLeft:4,color:"#484f58",fontWeight:400,cursor:"help"}}>ⓘ</span>}
+      </div>
       <div style={{color:"#8b949e",fontSize:11,lineHeight:1.55}}>{why}</div>
     </div>
   );
@@ -236,21 +238,21 @@ function ModelPage({ onBack, calibData, calibLoading, fetchCalib, authToken }) {
 truePct = fraction of trials where total ≥ threshold`}</Formula>
 
           <div style={s.h3}>Model Inputs</div>
-          <InputRow name="Pitcher K% (regressed)" color="#3fb950"
+          <InputRow name="Pitcher K%" tooltip="regressed toward 2025 anchor" color="#3fb950"
             why="Core signal. Regressed toward 2025 season anchor (or 22.2% league avg) weighted by 2026 batters faced ÷ 200. Prevents small-sample overfit — a pitcher with 2 starts isn't trusted at face value." />
-          <InputRow name="A1 — Recent form (last 5 starts)" color="#3fb950"
+          <InputRow name="A1 — Recent form" tooltip="last 5 starts" color="#3fb950"
             why="Effective K% = 60% recent + 40% season when ≥3 starts and 30+ total BF. Captures momentum: a pitcher in a 3-start hot streak is more predictive for tonight than their full-season average." />
           <InputRow name="A2 — Rest / fatigue" color="#e3b341"
             why="≤3 days rest → K% ×0.96. ≤3 days AND last start ≥95 pitches → ×0.92. Short rest after heavy workload produces measurable decline in swing-and-miss rate." />
-          <InputRow name="Batter K% (lineup, hand-adjusted)" color="#3fb950"
+          <InputRow name="Batter K%" tooltip="lineup composite, hand-adjusted vs starter" color="#3fb950"
             why="Strikeouts require both pitcher and batter. A lineup full of high-K batters amplifies the pitcher. Adjusted for LHP/RHP split since platoon splits are large (batters K more vs same-hand pitchers)." />
-          <InputRow name="E3b — Expected BF (empirical avgBF)" color="#e3b341"
+          <InputRow name="E3b — Expected BF" tooltip="empirical avgBF from pitcher gamelog" color="#e3b341"
             why="Pitcher-specific average batters faced per start, computed from their MLB gamelog (NP≥30 starts only). High-walk or deep-count pitchers face fewer batters than average — this directly lowers the K ceiling. Falls back to avgPitches ÷ 3.85 when gamelog data is absent." />
           <InputRow name="stdBF variance" color="#8b949e"
             why="Each trial samples trialPA from Normal(avgBF, stdBF) rather than using a fixed number. stdBF is the empirical standard deviation of BF across the pitcher's qualified starts (≥3 required). Reflects real pitch-count variability: some nights a pitcher goes 7 deep, others they're pulled after 4. Uses scoped Box-Muller to avoid cross-request state." />
-          <InputRow name="TTO decay (inside simulation)" color="#8b949e"
+          <InputRow name="TTO decay" tooltip="applied inside simulation at BF ≥ 19" color="#8b949e"
             why="The 3rd time through the order, batters K at ~12% lower rates league-wide as they adjust to the pitcher's tendencies. Applied inside each trial at BF ≥ 19 as ×0.88. Effect: −0.15 to −0.25 projected Ks for workhorses (avgBF ≥ 22); negligible for pitch-limited starters." />
-          <InputRow name="Blowout hook (earlyExitProb)" color="#8b949e"
+          <InputRow name="Blowout hook" tooltip="earlyExitProb derived from ML odds" color="#8b949e"
             why="When a pitcher's team is a large underdog (+150 or worse), there's a meaningful chance they get pulled early if the game gets out of hand. ML odds map to early-exit probability: +150→8%, +200→12%, +250+→18%. Each trial independently rolls whether the pitcher is clipped at 10–15 BF." />
           <InputRow name="E3a — Umpire K-factor" color="#e3b341"
             why="Known in advance. Plate umpires vary ~10–15% in strikeout rate (range 0.89–1.12×). Applied directly to pitcherK% before simulation. Unknown umpires → 1.0 (no adjustment)." />
@@ -302,15 +304,15 @@ softPct = HRR 1+ rate vs tonight's pitcher (H2H gamelog, requires ≥5 games)
 parkFactor = PARK_HITFACTOR[homeTeam]`}</Formula>
 
           <div style={s.h3}>Model Inputs</div>
-          <InputRow name="2026 HRR rate (primaryPct)" color="#3fb950"
+          <InputRow name="2026 HRR rate" tooltip="primaryPct — blended 2026/2025 hit rate" color="#3fb950"
             why="Base rate: how often does this player record at least 1 H+R+RBI in a game this season. Trust-weighted against 2025 so early-season small samples don't wildly over- or under-predict." />
-          <InputRow name="H2H vs pitcher (softPct)" color="#3fb950"
+          <InputRow name="H2H vs pitcher" tooltip="softPct — hit rate in direct matchup history (≥12 games)" color="#3fb950"
             why="Head-to-head matchup history vs tonight's exact pitcher. Requires ≥5 gamelog dates. When ≥12 H2H games exist, this also drives 2pts in the Matchup Rate SimScore component." />
-          <InputRow name="Platoon-adjusted fallback (softPct)" color="#e3b341"
+          <InputRow name="Platoon-adjusted fallback" tooltip="softPct when H2H < 12 games — uses batter vsL/vsR BA split" color="#e3b341"
             why="When pitcher H2H < 5 games (~90% of matchups), falls back to primaryPct × (batter's BA vs pitcher's hand ÷ season BA). Captures the directional platoon split without needing a large H2H sample." />
-          <InputRow name="B2 — Recent form (last 10 games)" color="#e3b341"
+          <InputRow name="B2 — Recent form" tooltip="last 10 games — 0.3/0.7 blend with season rate when ≥20 AB" color="#e3b341"
             why="hitterEffectiveBA = 0.3 × recentBA + 0.7 × seasonBA when ≥20 AB in last 10 games, fed into simulateHits. Weight is 0.3/0.7 (reduced from 0.6/0.4) — 40 PAs is deep in BABIP noise; this still catches real slumps without letting a bad week hijack a season baseline." />
-          <InputRow name="Park factor (PARK_HITFACTOR)" color="#8b949e"
+          <InputRow name="Park factor" tooltip="PARK_HITFACTOR — applied via log-odds to prevent >100% distortion" color="#8b949e"
             why="Applied via log-odds transform (not direct multiply) so the combined rate can't exceed 100% even for elite batters at Coors Field." />
         </Section>
 
@@ -353,11 +355,11 @@ where:
   miscAdj = C2 × C3 × C4 combined scalar`}</Formula>
 
           <div style={s.h3}>Model Inputs</div>
-          <InputRow name="Last 10 game values (mean)" color="#3fb950"
+          <InputRow name="Last 10 game values" tooltip="mean used for recency; full-season std used for stability" color="#3fb950"
             why="Recency-weighted mean: a player's last 10 games reflect current role, health, and form better than a season average that includes early-season lineup changes or pre-injury games." />
           <InputRow name="Full season std deviation" color="#3fb950"
             why="Variance is a player trait more stable than mean. Using full season prevents one outlier game from inflating the distribution width." />
-          <InputRow name="DVP (Defense vs Position)" color="#3fb950"
+          <InputRow name="DVP" tooltip="Defense vs Position — opponent's rate of allowing this stat to this position" color="#3fb950"
             why="Position-adjusted opponent defense. A PG scoring 25 PPG vs a team that allows 28 PPG to PGs (vs 24 league avg) gets a ~17% boost. The most important external factor." />
           <InputRow name="Pace adjustment" color="#e3b341"
             why="More possessions = more opportunities. A 5-possession pace advantage translates to ~1% mean boost. Applied continuously, not binary." />
@@ -367,7 +369,7 @@ where:
             why="max(0.85, 1 − (|spread|−10)×0.007) when |spread|>10. Garbage time = reduced minutes for starters. A 15-point spread reduces expected output ~3.5%." />
           <InputRow name="C4 — Home/Away split" color="#e3b341"
             why="0.7 × homeMean + 0.3 × awayMean (or inverse for road games), vs overall mean. Many players have systematic home/away splits that persist over seasons." />
-          <InputRow name="B2B (back-to-back)" color="#8b949e"
+          <InputRow name="B2B" tooltip="back-to-back — mean ×0.93 when player played yesterday" color="#8b949e"
             why="×0.93 across the board. Statistically proven ~7% per-game decline on the second night of back-to-backs. Applied to mean before simulation." />
         </Section>
 
@@ -409,11 +411,11 @@ where:
           <div style={s.h3}>Model Inputs</div>
           <InputRow name="Per-game point values (mean)" color="#3fb950"
             why="Points (G+A) per game from recent gamelog. NHL scoring is sparse — 0 or 1 is typical — so the distribution is a normal approximation over historical rates." />
-          <InputRow name="Opponent GAA (goals-against avg)" color="#3fb950"
+          <InputRow name="Opponent GAA" tooltip="goals-against average — higher = weaker defense = more expected scoring" color="#3fb950"
             why="GAA is the primary defensive quality signal in hockey. A goalie/team with GAA 3.5 allows 40% more goals than one at 2.5 — directly translating to more scoring opportunities and higher assist generation." />
           <InputRow name="D3 — TOI trend" color="#e3b341"
             why="Ice time is the primary opportunity driver in hockey. A player whose last 3 games averaged 21 min vs their 10-game avg of 18 min is getting more deployment — that trend is predictive. Declining TOI is a strong negative signal the stats alone won't capture." />
-          <InputRow name="B2B (back-to-back)" color="#8b949e"
+          <InputRow name="B2B" tooltip="back-to-back — mean ×0.93 when player played yesterday" color="#8b949e"
             why="Same logic as NBA. ×0.93 for second-night games. NHL schedule has frequent back-to-backs that produce real fatigue effects." />
         </Section>
 
@@ -457,13 +459,13 @@ Each trial: homeRuns ~ Poisson(homeLambda), awayRuns ~ Poisson(awayLambda)
 truePct = fraction of trials where homeRuns + awayRuns ≥ threshold`}</Formula>
 
           <div style={s.h3}>Model Inputs</div>
-          <InputRow name="Road RPG (away-only runs per game)" color="#3fb950"
+          <InputRow name="Road RPG" tooltip="away-only runs per game — strips home-park inflation" color="#3fb950"
             why="Offensive baseline using only road games — eliminates home park inflation before parkRF is applied. A team at Coors averages 5.8 RPG overall but 4.9 on the road; using road RPG lets parkRF do its job cleanly without double-counting." />
-          <InputRow name="Starter ERA + Team ERA (60/40 blend)" color="#3fb950"
+          <InputRow name="Starter ERA + Team ERA" tooltip="60/40 blend — starter governs ~5.5 IP, team ERA proxies bullpen" color="#3fb950"
             why="Tonight's starter governs 60% of innings (~5.5 IP). The team's season ERA governs 40% (bullpen). Using a blend prevents an ace from dragging a shaky pen's expected runs to zero — and regresses a spot-starter's tiny 3-start ERA toward team reality." />
-          <InputRow name="Platoon factor (lineup vs starter handedness)" color="#3fb950"
+          <InputRow name="Platoon factor" tooltip="lineup composite BA vs starter's hand ÷ overall BA" color="#3fb950"
             why="A dimensionless ratio: (lineup composite BA vs LHP or RHP) / (lineup overall BA), aggregated across tonight's confirmed lineup. A left-heavy lineup facing a tough LHP gets a factor below 1.0; a right-dominant lineup facing a RHP gets a slight boost. Park effects cancel in the ratio. Falls back to 1.0 when starter hand is unknown or lineup sample is too small." />
-          <InputRow name="Park run factor (PARK_RUNFACTOR)" color="#e3b341"
+          <InputRow name="Park run factor" tooltip="PARK_RUNFACTOR — applied to road RPG; symmetric since both teams play same park" color="#e3b341"
             why="Applied cleanly to road RPG numerator. Coors Field +15%; Petco Park −10%. Both teams play the same park, so the factor is symmetric." />
           <InputRow name="Market O/U line" color="#8b949e"
             why="Used in SimScore as a corroborating signal. The market incorporates weather, wind, and lineup factors not in our model." />
@@ -505,7 +507,7 @@ truePct = P(total ≥ threshold)
 leagueAvgDef ≈ 114 PPG allowed (regular season, seasontype=2)`}</Formula>
 
           <div style={s.h3}>Model Inputs</div>
-          <InputRow name="Team offensive PPG (homeOffPPG)" color="#3fb950"
+          <InputRow name="Team offensive PPG" tooltip="homeOffPPG / awayOffPPG — season scoring average per team" color="#3fb950"
             why="Baseline scoring rate for each team. Uses regular season stats (seasontype=2) year-round so playoff sample distortion doesn't create false UNDER edges on high O/U lines." />
           <InputRow name="Opponent defensive PPG allowed" color="#3fb950"
             why="How many points does each team's defense allow per game? A team allowing 120 PPG has worse defense than league average (114), boosting the opponent's expected score." />
@@ -546,9 +548,9 @@ Each trial: homeGoals ~ Poisson(homeLambda), awayGoals ~ Poisson(awayLambda)
 truePct = fraction of trials where homeGoals + awayGoals ≥ threshold`}</Formula>
 
           <div style={s.h3}>Model Inputs</div>
-          <InputRow name="Team GPG (goals per game)" color="#3fb950"
+          <InputRow name="Team GPG" tooltip="goals per game — season scoring rate per team" color="#3fb950"
             why="Offensive baseline. How many goals does this team score against an average goalie?" />
-          <InputRow name="Opponent GAA (goals-against avg)" color="#3fb950"
+          <InputRow name="Opponent GAA" tooltip="goals-against average — higher = weaker defense = more expected scoring" color="#3fb950"
             why="Defensive quality. A GAA of 3.5 means the goalie/defense allows 40% more goals than a 2.5 GAA team — a large effect on expected scoring." />
           <InputRow name="League avg GAA" color="#8b949e"
             why="Normalization. Dividing opponent GAA by league avg converts it to a relative defensive quality factor (1.0 = average, >1.0 = above average = more goals expected)." />
@@ -591,7 +593,7 @@ truePct = fraction of trials where teamRuns ≥ threshold`}</Formula>
             why="Baseline offensive production. How many runs does this team score per game against average pitching?" />
           <InputRow name="Opponent starter ERA" color="#3fb950"
             why="Tonight's pitcher quality for the opponent. A 5.5 ERA pitcher allows 31% more runs than the 4.20 league average." />
-          <InputRow name="Platoon factor (lineup vs starter handedness)" color="#3fb950"
+          <InputRow name="Platoon factor" tooltip="lineup composite BA vs starter's hand ÷ overall BA" color="#3fb950"
             why="Same as game total — (lineup composite BA vs starter's hand) / (lineup overall BA). Captures the scoring team's platoon advantage or disadvantage against tonight's starter. Falls back to 1.0 when hand or lineup data is unavailable." />
           <InputRow name="Park run factor" color="#e3b341"
             why="Same as game total. Both teams play in the same park, so a hitter-friendly environment boosts the scoring team's expected runs. Applied directly to lambda — not a SimScore component." />
