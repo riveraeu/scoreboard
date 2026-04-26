@@ -1825,17 +1825,21 @@ function App() {
       setTonightLoading(false);
       return;
     }
+    const _sk = `tonight_v1_${new Date().toLocaleDateString('en-CA')}`;
+    const _sc = (() => { try { const s = sessionStorage.getItem(_sk); if (!s) return null; const p = JSON.parse(s); return Date.now() - p.ts < 120000 ? p.data : null; } catch { return null; } })();
+    if (_sc) { const all = _sc.plays || []; setAllTonightPlays(all); setNbaDropped(_sc.nbaDropped || []); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore >= 8) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore >= 8))); setTonightMeta({ qualifyingCount: _sc.qualifyingCount, preFilteredCount: _sc.preFilteredCount }); setTonightLoading(false); return; }
     let cancelled = false;
     setTonightLoading(true);
     fetch(`${WORKER}/tonight`)
       .then(r => r.json())
-      .then(data => { if (cancelled) return; const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore >= 8) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore >= 8))); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); setTonightLoading(false); })
+      .then(data => { if (cancelled) return; try { sessionStorage.setItem(_sk, JSON.stringify({ts: Date.now(), data})); } catch {} const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore >= 8) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore >= 8))); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); setTonightLoading(false); })
       .catch(() => { if (cancelled) return; setAllTonightPlays([]); setNbaDropped([]); setTonightPlays([]); setTonightLoading(false); });
     return () => { cancelled = true; };
   }, [testMode]);
 
   const bustCache = () => {
     if (bustLoading) return;
+    try { sessionStorage.removeItem(`tonight_v1_${new Date().toLocaleDateString('en-CA')}`); } catch {}
     setBustLoading(true);
     setTonightLoading(true);
     fetch(`${WORKER}/tonight?bust=1`)

@@ -120,8 +120,6 @@ export async function buildNbaDvpStage1(cache) {
       await cache.put("dvp:nba:player-positions", JSON.stringify(posMap), { expirationTtl: 86400 }).catch(() => {
       });
     }
-    const posCounts = Object.entries(selectedByPos).map(([p, ids]) => `${p}:${ids.length}`).join(" ");
-    console.log(`[dvp-s1] done — ${posCounts} posMap:${Object.keys(posMap).length}`);
     return payload;
   } catch (e) {
     console.log("[dvp-s1] error:", String(e));
@@ -325,7 +323,6 @@ export async function buildNbaDvpFromBettingPros(cache) {
     };
     if (cache) await cache.put("dvp:nba:all-positions", JSON.stringify(finalResult), { expirationTtl: 86400 }).catch(() => {
     });
-    console.log(`[dvp-bp] done — ${BP_POSITIONS.map((p) => `${p}:${Object.keys(posData[p]).length}`).join(" ")} teams`);
     return finalResult;
   } catch (e) {
     console.log("[dvp-bp] error:", String(e));
@@ -367,7 +364,6 @@ export async function buildNbaDepthChartPos(cache) {
     if (cache && Object.keys(idToPos).length > 0) {
       await cache.put("dvp:nba:depth-chart-pos", JSON.stringify(idToPos), { expirationTtl: 86400 }).catch(() => {});
     }
-    console.log(`[depth-chart-pos] built id→pos map: ${Object.keys(idToPos).length} players`);
     return idToPos;
   } catch (e) {
     console.log("[depth-chart-pos] error:", String(e));
@@ -407,7 +403,6 @@ export async function buildNbaPaceData(cache) {
     const leagueAvgPace = paces.reduce((a, b) => a + b, 0) / paces.length;
     const result = { teamPace, leagueAvgPace: parseFloat(leagueAvgPace.toFixed(2)) };
     if (cache) await cache.put("nba:pace:2526", JSON.stringify(result), { expirationTtl: 43200 }).catch(() => {});
-    console.log(`[nba-pace] built pace map: ${Object.keys(teamPace).length} teams, avg pace ${result.leagueAvgPace}`);
     return result;
   } catch (e) {
     console.log("[nba-pace] error:", String(e));
@@ -431,7 +426,6 @@ export async function buildNbaPlayerPosFromSleeper(cache) {
       if (name) nameToPos[name] = pos;
     }
     if (cache) await cache.put("dvp:nba:player-pos-by-name", JSON.stringify(nameToPos), { expirationTtl: 86400 * 7 }).catch(() => {});
-    console.log(`[sleeper-pos] built name→pos map: ${Object.keys(nameToPos).length} players`);
     return nameToPos;
   } catch (e) {
     console.log("[sleeper-pos] error:", String(e));
@@ -524,7 +518,6 @@ export async function buildNbaInjuryReport(cache) {
     if (cache && Object.keys(injMap).length > 0) {
       await cache.put(cacheKey, JSON.stringify(injMap), { expirationTtl: 1800 }).catch(() => {});
     }
-    console.log(`[nba-injuries] fetched: ${Object.values(injMap).reduce((s, v) => s + v.length, 0)} out players across ${Object.keys(injMap).length} teams`);
     const m = new Map();
     for (const [k, v] of Object.entries(injMap)) m.set(k, v);
     return m;
@@ -560,7 +553,6 @@ export async function buildNbaDvpStage3FG(cache) {
     finalResult.G._debug = { players: gIds.length, teams: Object.keys(gAgg.teamDvp).length, leagueAvg: gAgg.leagueAvg };
     if (cache) await cache.put("dvp:nba:all-positions", JSON.stringify(finalResult), { expirationTtl: 86400 }).catch(() => {
     });
-    console.log(`[dvp-s3] done — F teams: ${Object.keys(fAgg.teamDvp).length}, G teams: ${Object.keys(gAgg.teamDvp).length}`);
     return finalResult;
   } catch (e) {
     console.log("[dvp-s3] error:", String(e));
