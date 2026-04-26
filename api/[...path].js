@@ -1422,6 +1422,8 @@ var worker_default = {
               fetch("https://site.web.api.espn.com/apis/common/v3/sports/baseball/mlb/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=50&category=pitching", { headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
               fetch("https://site.web.api.espn.com/apis/common/v3/sports/baseball/mlb/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=50&category=batting", { headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
               fetch("https://statsapi.mlb.com/api/v1/teams/stats?season=2026&group=batting&gameType=R&sportId=1&sitCodes=A", { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
+              fetch("https://statsapi.mlb.com/api/v1/teams/stats?season=2026&group=batting&gameType=R&sportId=1&sitCodes=vl", { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
+              fetch("https://statsapi.mlb.com/api/v1/teams/stats?season=2026&group=batting&gameType=R&sportId=1&sitCodes=vr", { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
               (() => {
                 const _td0 = new Date(); const _td1 = new Date(_td0); _td1.setDate(_td1.getDate() + 1);
                 const _tfmt = (d) => d.toISOString().slice(0, 10).replace(/-/g, "");
@@ -1444,7 +1446,7 @@ var worker_default = {
                   return s0;
                 });
               })()
-            ]).then(async ([pitchData, batData, roadBatData, sbData, mlbSched]) => {
+            ]).then(async ([pitchData, batData, roadBatData, vlBatData, vrBatData, sbData, mlbSched]) => {
               // ESPN uses different abbreviations than Kalshi for some MLB teams
               const MLB_ESPN_NORM = { CHW: "CWS", KCR: "KC", SFG: "SF", SDP: "SD", TBR: "TB", AZ: "ARI", OAK: "ATH", WSN: "WSH", WAS: "WSH" };
               const normMlbAbbr = (a) => MLB_ESPN_NORM[a] || a;
@@ -1483,6 +1485,18 @@ var worker_default = {
                 const runs = split.stat?.runs ?? 0;
                 if (gp > 0 && runs > 0) roadRPGMap[_ra] = parseFloat((runs / gp).toFixed(2));
               }
+              // Team platoon RPG (vs LHP / vs RHP) — used for platoon adjustment in total lambda
+              const teamPlatoonRPGMap = {};
+              for (const [sitCode, data] of [['vl', vlBatData], ['vr', vrBatData]]) {
+                for (const split of (data?.stats?.[0]?.splits || [])) {
+                  const _pa = MLB_ESPN_NORM[split.team?.abbreviation] || split.team?.abbreviation;
+                  if (!_pa) continue;
+                  const gp = split.stat?.gamesPlayed ?? 0;
+                  const runs = split.stat?.runs ?? 0;
+                  if (!teamPlatoonRPGMap[_pa]) teamPlatoonRPGMap[_pa] = {};
+                  if (gp > 0 && runs > 0) teamPlatoonRPGMap[_pa][sitCode] = parseFloat((runs / gp).toFixed(2));
+                }
+              }
               // Team ERA (starter + bullpen combined) — used for 60/40 bullpen proxy in total lambda
               const teamERAMap = {};
               const _ptCat = (pitchData?.categories || []).find(c => c.name === "pitching");
@@ -1496,7 +1510,7 @@ var worker_default = {
                   if (!isNaN(era) && era > 0) teamERAMap[_ta] = era;
                 }
               }
-              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, projectedLineupTeams, gameOdds, pitcherStatsByName, batterSplitBA, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam, roadRPGMap, teamERAMap };
+              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, projectedLineupTeams, gameOdds, pitcherStatsByName, batterSplitBA, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam, roadRPGMap, teamERAMap, teamPlatoonRPGMap };
               // Use short TTL (60s) if key data is missing — lineup/probables not confirmed yet.
               // Prevents partial data from baking into cache for the full 600s.
               const _mlbDataReady = Object.keys(lineupSpotByName || {}).length > 0 && Object.keys(pitcherAvgPitches || {}).length > 0;
@@ -3439,8 +3453,21 @@ var worker_default = {
               // 60/40 starter/team-ERA blend — away staff vs home offense, home staff vs away offense
               const _awayMult = awayERA != null && awayTeamERA != null ? 0.6*(awayERA/_MLB_ERA)+0.4*(awayTeamERA/_MLB_ERA) : awayERA != null ? awayERA/_MLB_ERA : awayTeamERA != null ? awayTeamERA/_MLB_ERA : 1;
               const _homeMult = homeERA != null && homeTeamERA != null ? 0.6*(homeERA/_MLB_ERA)+0.4*(homeTeamERA/_MLB_ERA) : homeERA != null ? homeERA/_MLB_ERA : homeTeamERA != null ? homeTeamERA/_MLB_ERA : 1;
-              const _hLam = homeRPG != null ? parseFloat((Math.max(1, Math.min(12, homeRPG * _awayMult * parkRF))).toFixed(1)) : null;
-              const _aLam = awayRPG != null ? parseFloat((Math.max(1, Math.min(12, awayRPG * _homeMult * parkRF))).toFixed(1)) : null;
+              // Platoon adjustment: ratio of team's RPG vs opposing starter's hand to overall RPG
+              // Park effects cancel in the ratio (same mix of home/away games in numerator & denominator)
+              const _platoonMap = sportByteam.mlb?.teamPlatoonRPGMap ?? {};
+              const _homeStarterHand = sportByteam.mlb?.pitcherHand?.[homeTeam] ?? null;
+              const _awayStarterHand = sportByteam.mlb?.pitcherHand?.[awayTeam] ?? null;
+              const _overallHomeRPG = mlbRPGMap[homeTeam] ?? null;
+              const _overallAwayRPG = mlbRPGMap[awayTeam] ?? null;
+              const _homePlatCode = _awayStarterHand === 'L' ? 'vl' : _awayStarterHand === 'R' ? 'vr' : null;
+              const _awayPlatCode = _homeStarterHand === 'L' ? 'vl' : _homeStarterHand === 'R' ? 'vr' : null;
+              const _homePlatFactor = (_homePlatCode && _platoonMap[homeTeam]?.[_homePlatCode] && _overallHomeRPG)
+                ? parseFloat((_platoonMap[homeTeam][_homePlatCode] / _overallHomeRPG).toFixed(3)) : 1.0;
+              const _awayPlatFactor = (_awayPlatCode && _platoonMap[awayTeam]?.[_awayPlatCode] && _overallAwayRPG)
+                ? parseFloat((_platoonMap[awayTeam][_awayPlatCode] / _overallAwayRPG).toFixed(3)) : 1.0;
+              const _hLam = homeRPG != null ? parseFloat((Math.max(1, Math.min(12, homeRPG * _awayMult * parkRF * _homePlatFactor))).toFixed(1)) : null;
+              const _aLam = awayRPG != null ? parseFloat((Math.max(1, Math.min(12, awayRPG * _homeMult * parkRF * _awayPlatFactor))).toFixed(1)) : null;
               // Umpire run factor (1/kFactor): loose-zone ump → more scoring → favors over
               const _umpKeyT = `${homeTeam}|${awayTeam}`;
               const _umpNameT = sportByteam.mlb?.umpireByGame?.[_umpKeyT] ?? null;
@@ -3450,7 +3477,7 @@ var worker_default = {
               const _umpRunPts = _umpNameT == null ? 1 : _umpRunFactor >= 1.05 ? 2 : _umpRunFactor >= 0.97 ? 1 : 0;
               const _combinedRPG = homeRPG != null && awayRPG != null ? parseFloat((homeRPG + awayRPG).toFixed(2)) : null;
               const _combinedRPGPts = _combinedRPG == null ? 1 : _combinedRPG >= 10.5 ? 2 : _combinedRPG >= 9.0 ? 1 : 0;
-              _simData = { homeRPG, awayRPG, homeERA, awayERA, parkFactor: parkRF, homeExpected: _hLam, awayExpected: _aLam, expectedTotal: (_hLam != null && _aLam != null) ? parseFloat((_hLam + _aLam).toFixed(1)) : null, gameOuLine, mlbOuPts: _mlbOuPts, combinedRPG: _combinedRPG, umpireRunFactor: _umpNameT != null ? _umpRunFactor : null, umpireName: _umpNameT };
+              _simData = { homeRPG, awayRPG, homeERA, awayERA, parkFactor: parkRF, homeExpected: _hLam, awayExpected: _aLam, expectedTotal: (_hLam != null && _aLam != null) ? parseFloat((_hLam + _aLam).toFixed(1)) : null, gameOuLine, mlbOuPts: _mlbOuPts, combinedRPG: _combinedRPG, umpireRunFactor: _umpNameT != null ? _umpRunFactor : null, umpireName: _umpNameT, homeStarterHand: _homeStarterHand, awayStarterHand: _awayStarterHand, ...(_homePlatFactor !== 1.0 && { homePlatoonFactor: _homePlatFactor }), ...(_awayPlatFactor !== 1.0 && { awayPlatoonFactor: _awayPlatFactor }) };
               if (_hLam != null && _aLam != null) {
                 const _dk = `mlb|${homeTeam}|${awayTeam}`;
                 if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateMLBTotalDist(_hLam, _aLam, 10000);
@@ -3620,7 +3647,13 @@ var worker_default = {
               const parkRF = PARK_RUNFACTOR[homeTeam] ?? 1;
               const gameOuLine = sportByteam.mlb?.gameOdds?.[homeTeam]?.total ?? sportByteam.mlb?.gameOdds?.[awayTeam]?.total ?? null;
               const _oppMult = oppERA != null && oppTeamERA != null ? 0.6*(oppERA/_MLB_ERA)+0.4*(oppTeamERA/_MLB_ERA) : oppERA != null ? oppERA/_MLB_ERA : oppTeamERA != null ? oppTeamERA/_MLB_ERA : 1;
-              const _lam = teamRPG != null ? parseFloat((Math.max(0.5, Math.min(12, teamRPG * _oppMult * parkRF))).toFixed(2)) : null;
+              const _ttPlatoonMap = sportByteam.mlb?.teamPlatoonRPGMap ?? {};
+              const _ttOppStarterHand = sportByteam.mlb?.pitcherHand?.[oppTeam] ?? null;
+              const _ttOverallRPG = mlbRPGMap[scoringTeam] ?? null;
+              const _ttPlatCode = _ttOppStarterHand === 'L' ? 'vl' : _ttOppStarterHand === 'R' ? 'vr' : null;
+              const _ttPlatFactor = (_ttPlatCode && _ttPlatoonMap[scoringTeam]?.[_ttPlatCode] && _ttOverallRPG)
+                ? parseFloat((_ttPlatoonMap[scoringTeam][_ttPlatCode] / _ttOverallRPG).toFixed(3)) : 1.0;
+              const _lam = teamRPG != null ? parseFloat((Math.max(0.5, Math.min(12, teamRPG * _oppMult * parkRF * _ttPlatFactor))).toFixed(2)) : null;
               if (_lam != null) {
                 const _dk = `mlb|team|${scoringTeam}|${oppTeam}`;
                 if (!teamTotalDistCache[_dk]) teamTotalDistCache[_dk] = simulateTeamTotalDist(_lam, 10000);
@@ -3639,7 +3672,7 @@ var worker_default = {
               const rawEdge = parseFloat((truePct - kalshiPct).toFixed(1));
               const edge = rawEdge;
               if (edge < 5) { if (isDebug) dropped.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge, teamTotalSimScore, teamRPG, oppERA, oppRPG, parkFactor: parkRF, gameOuLine, h2hHitRate, h2hGames, h2hHitRatePts, reason: "edge_too_low" }); continue; }
-              teamTotalPlays.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge, teamTotalSimScore, qualified: teamTotalSimScore >= 8, kelly: kellyFraction(truePct, americanOdds), ev: evPerUnit(truePct, americanOdds), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: gameTimes[`${sport}:${homeTeam}:${gameDate}`] ?? gameTimes[`${sport}:${awayTeam}:${gameDate}`] ?? gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null, teamRPG, oppERA, oppRPG, parkFactor: parkRF, gameOuLine, teamExpected: _lam != null ? parseFloat(_lam.toFixed(1)) : null, h2hHitRate, h2hGames, h2hHitRatePts });
+              teamTotalPlays.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge, teamTotalSimScore, qualified: teamTotalSimScore >= 8, kelly: kellyFraction(truePct, americanOdds), ev: evPerUnit(truePct, americanOdds), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: gameTimes[`${sport}:${homeTeam}:${gameDate}`] ?? gameTimes[`${sport}:${awayTeam}:${gameDate}`] ?? gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null, teamRPG, oppERA, oppRPG, parkFactor: parkRF, gameOuLine, teamExpected: _lam != null ? parseFloat(_lam.toFixed(1)) : null, h2hHitRate, h2hGames, h2hHitRatePts, oppStarterHand: _ttOppStarterHand, ...(_ttPlatFactor !== 1.0 && { platoonFactor: _ttPlatFactor }) });
             } else if (sport === "nba") {
               const teamOff = nbaOffPPGMap[scoringTeam] ?? null;
               const nbaDefRank = STAT_SOFT["nba|points"]?.rankMap ?? {};
