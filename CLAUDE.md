@@ -218,7 +218,7 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
   - Adjusted mean: `× teamDefFactor × (1 + paceAdj×0.002) × 0.93 if B2B × miscAdj`
   - `teamDefFactor` = general team defense (`rankMap[opp].value / leagueAvg`) — NOT position-adjusted DVP
   - `miscAdj` (6th param of `buildNbaStatDist`, default 1.0) = combined C2 × C3 × C4 scalar:
-    - **C2 — Injury boost**: `1.08` per Out player on opponent (capped at `1.15x`). Out players from `buildNbaInjuryReport` (ESPN NBA injuries endpoint, cached 1800s).
+    - **C2 — Injury boost**: `1.08` per Out player on the player's own team (teammate absences create usage vacuums; capped at `1.15x`). Out players from `buildNbaInjuryReport` (ESPN NBA injuries endpoint, cached 1800s).
     - **C3 — Blowout risk**: `max(0.85, 1 - (|spread| - 10) × 0.007)` when `|spread| > 10`; else 1.0. Spread from `parseGameOdds` (now included in `sportByteam.nbaGameOdds`). Shows "Blowout risk — large spread reduces model mean by X%" badge in explanation.
     - **C4 — Home/away split**: `nbaSplitAdj = splitMean / overallMean` where `splitMean` is the weighted avg (0.7 home or 0.3 away depending on venue) of home/away-filtered game values vs the opponent type; fallback to 1.0 if insufficient split data.
   - Falls back to avg(seasonPct, softPct) − 4% if B2B when simulation returns null (<5 game values)

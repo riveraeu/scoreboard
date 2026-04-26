@@ -269,7 +269,7 @@ export function buildNbaStatDist(gameValues, dvpFactor, paceAdj, isB2B, nSim = 5
     const u1 = Math.random() + 1e-10;
     const u2 = Math.random();
     const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
-    dist[i] = adjMean + std * z;
+    dist[i] = Math.max(0, adjMean + std * z);
   }
   return dist;
 }
