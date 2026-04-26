@@ -1841,9 +1841,9 @@ function App() {
   const [teamPageData, setTeamPageData] = React.useState(null); // { loading, error, data }
   const [pendingSlug, setPendingSlug] = React.useState(null);  // player slug to resolve after load
   const [modelPage, setModelPage] = React.useState(false);
-  const [reportData, setReportData] = React.useState(null);
-  const [reportLoading, setReportLoading] = React.useState(false);
-  const [reportSport, setReportSport] = React.useState("all");
+  const [reportDataBySport, setReportDataBySport] = React.useState({});
+  const [reportLoadingSport, setReportLoadingSport] = React.useState(null); // "mlb"|"nba"|"nhl"|null
+  const [reportSport, setReportSport] = React.useState("mlb");
   const [calibData, setCalibData] = React.useState(null);
   const [calibLoading, setCalibLoading] = React.useState(false);
   const [gamelogSort, setGamelogSort] = React.useState({ col: 'date', dir: 'desc' });
@@ -2190,26 +2190,21 @@ function App() {
       .finally(() => setSearching(false));
   }, [debouncedQuery]);
 
-  async function fetchReport() {
+  async function fetchReport(sport) {
+    if (!sport) return;
+    setReportSport(sport);
     setShowReport(true);
-    setReportLoading(true);
-    setReportData(null);
+    if (reportDataBySport[sport]) return; // already cached
+    setReportLoadingSport(sport);
     try {
-      const r = await fetch(`${WORKER}/tonight?debug=1`);
+      const r = await fetch(`${WORKER}/tonight?debug=1&sport=${sport}`);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const d = await r.json();
-      setReportData(d);
-      // Sync plays card with fresh report data (report always fetches fresh; plays card may be stale)
-      if (d.plays) {
-        const all = d.plays;
-        setAllTonightPlays(all);
-        setNbaDropped(d.nbaDropped || []);
-        setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore >= 8) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore >= 8)));
-      }
+      setReportDataBySport(prev => ({ ...prev, [sport]: d }));
     } catch(e) {
-      setReportData({ error: e.message });
+      setReportDataBySport(prev => ({ ...prev, [sport]: { error: e.message } }));
     }
-    setReportLoading(false);
+    setReportLoadingSport(null);
   }
 
   async function fetchCalib() {
@@ -2530,7 +2525,10 @@ function App() {
     <div style={{maxWidth:1280,margin:"0 auto",padding:"24px 16px"}}>
 
       {/* Market Report overlay */}
-      {showReport && (
+      {showReport && (() => {
+        const reportData = reportDataBySport[reportSport] || null;
+        const reportLoading = reportLoadingSport === reportSport;
+        return (
         <div style={{position:"fixed",inset:0,zIndex:200,background:"rgba(0,0,0,0.88)",overflow:"auto",padding:"20px 16px"}}
           onClick={e => { if (e.target === e.currentTarget) setShowReport(false); }}>
           <div style={{maxWidth:1280,margin:"0 auto",background:"#161b22",borderRadius:12,border:"1px solid #30363d",minHeight:200}}>
@@ -2547,8 +2545,8 @@ function App() {
             </div>
             {/* Sport tabs */}
             <div style={{display:"flex",gap:2,padding:"10px 20px 0",borderBottom:"1px solid #21262d"}}>
-              {["all","mlb","nba","nhl"].map(s => (
-                <button key={s} onClick={() => setReportSport(s)} style={{
+              {["mlb","nba","nhl"].map(s => (
+                <button key={s} onClick={() => { setReportSport(s); if (!reportDataBySport[s]) fetchReport(s); }} style={{
                   padding:"5px 14px",borderRadius:"6px 6px 0 0",border:"none",cursor:"pointer",fontSize:12,
                   background: reportSport===s ? "#0d1117" : "transparent",
                   color: reportSport===s ? "#c9d1d9" : "#484f58",
@@ -2562,6 +2560,7 @@ function App() {
               {/* Market report */}
               {reportLoading && <div style={{color:"#8b949e",textAlign:"center",padding:40,fontSize:13}}>Loading market data…</div>}
               {reportData?.error && <div style={{color:"#f78166",textAlign:"center",padding:40,fontSize:13}}>Error: {reportData.error}</div>}
+              {!reportData && !reportLoading && <div style={{color:"#8b949e",textAlign:"center",padding:40,fontSize:13}}>No data loaded.</div>}
               {reportData && !reportLoading && (() => {
                 const REASON = {
                   edge_too_low: "Edge < 5%",
@@ -2584,8 +2583,7 @@ function App() {
 
                 const plays = (reportData.plays || []).map(p => ({ ...p, qualified: p.qualified !== false }));
                 const dropped = (reportData.dropped || []).map(p => ({ ...p, qualified: false }));
-                const all = [...plays, ...dropped];
-                const filtered = reportSport === "all" ? all : all.filter(m => m.sport === reportSport);
+                const filtered = [...plays, ...dropped];
 
                 // Group by sport+stat
                 const groups = {};
@@ -2976,7 +2974,8 @@ function App() {
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Auth modal */}
       {showAuthModal && (
@@ -4081,19 +4080,23 @@ function App() {
                   </div>
                 )}
               </span>
-              <span onClick={fetchReport}
-                style={{cursor:"pointer",color:"#484f58",fontSize:11,marginLeft:8,
-                  textDecoration:"underline",textDecorationStyle:"dotted",userSelect:"none"}}>
-                report
-              </span>
-              <span onClick={navigateToModel}
-                style={{cursor:"pointer",color:"#484f58",fontSize:11,marginLeft:8,
-                  textDecoration:"underline",textDecorationStyle:"dotted",userSelect:"none"}}>
-                model
-              </span>
+              <span style={{color:"#484f58",fontSize:11,marginLeft:8,userSelect:"none"}}>Reports:</span>
+              {["mlb","nba","nhl"].map(s => (
+                <span key={s} onClick={() => fetchReport(s)}
+                  style={{cursor:"pointer",color:"#484f58",fontSize:11,marginLeft:5,
+                    textDecoration:"underline",textDecorationStyle:"dotted",userSelect:"none"}}>
+                  {s.toUpperCase()}
+                </span>
+              ))}
             </div>
             <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6}}>
               <div style={{width:1,height:14,background:"#30363d",margin:"0 2px"}} />
+              <button onClick={navigateToModel}
+                style={{fontSize:10,padding:"2px 8px",borderRadius:6,cursor:"pointer",
+                  border:"1px solid #30363d",background:"transparent",
+                  color:"#484f58", fontWeight:600}}>
+                model
+              </button>
               <button onClick={() => setTestMode(m => !m)}
                 style={{fontSize:10,padding:"2px 8px",borderRadius:6,cursor:"pointer",
                   border:`1px solid ${testMode?"#e3b341":"#30363d"}`,
