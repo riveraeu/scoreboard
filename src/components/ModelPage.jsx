@@ -594,23 +594,23 @@ truePct = fraction of trials where teamRuns ≥ threshold`}</Formula>
           <InputRow name="Platoon factor (lineup vs starter handedness)" color="#3fb950"
             why="Same as game total — (lineup composite BA vs starter's hand) / (lineup overall BA). Captures the scoring team's platoon advantage or disadvantage against tonight's starter. Falls back to 1.0 when hand or lineup data is unavailable." />
           <InputRow name="Park run factor" color="#e3b341"
-            why="Same as game total. Both teams play in the same park, so a hitter-friendly environment boosts the scoring team's expected runs." />
+            why="Same as game total. Both teams play in the same park, so a hitter-friendly environment boosts the scoring team's expected runs. Applied directly to lambda — not a SimScore component." />
         </Section>
 
         <Section title="MLB Team Total — SimScore (max 10)">
           <div style={s.sub}>5 components × 2 pts each. Gate: teamTotalSimScore ≥ 8.</div>
-          <ScoreRow pts="0–2" name="Team RPG"
-            tiers=">5.0 → 2pts · >4.0 → 1pt · ≤4.0 → 0pts"
-            why="The offense's own scoring baseline. High-RPG teams provide a larger base rate — a 5.5 RPG team is inherently more likely to clear any given run threshold than a 3.8 RPG team." />
-          <ScoreRow pts="0–2" name="Opponent ERA"
-            tiers=">4.5 → 2pts · >3.5 → 1pt · ≤3.5 → 0pts"
-            why="Opponent pitcher quality. A hittable pitcher (ERA >4.5) is the single strongest external predictor — it multiplies directly into expected run production." />
+          <ScoreRow pts="0–2" name="Umpire run factor"
+            tiers="≥1.05 → 2pts · ≥0.97 → 1pt · &lt;0.97 → 0pts · unknown → 1pt abstain"
+            why="Home plate umpires have measurable, persistent tendencies for run-scoring environments. A factor ≥1.05 means the umpire's strike zone historically produces 5%+ more runs than average — a meaningful environmental edge independent of team or pitcher quality." />
+          <ScoreRow pts="0–2" name="Opponent WHIP"
+            tiers="&gt;1.35 → 2pts · &gt;1.20 → 1pt · ≤1.20 → 0pts · null → 1pt abstain"
+            why="WHIP captures both hits and walks — total baserunner traffic — which is more directly tied to run-scoring than ERA alone. A pitcher with WHIP >1.35 is putting runners on base at a rate that consistently translates to runs." />
+          <ScoreRow pts="0–2" name="Team L10 RPG"
+            tiers="&gt;5.0 → 2pts · &gt;4.0 → 1pt · ≤4.0 → 0pts · null → 1pt abstain"
+            why="The team's run-scoring rate over the last 10 games. Recent form is a better predictor than season RPG because it captures current lineup health, hot/cold streaks, and recent scheduling effects." />
           <ScoreRow pts="0–2" name="H2H Hit Rate"
             tiers="≥80% → 2pts · ≥60% → 1pt · &lt;60% → 0pts · &lt;3 H2H games → 1pt abstain"
-            why="How often has this team scored ≥ threshold in their last 10 head-to-head games vs this opponent? Captures matchup-specific tendencies (ballpark familiarity, historical lineup matchups) not fully reflected in ERA/RPG averages." />
-          <ScoreRow pts="0–2" name="Park run factor"
-            tiers=">1.05 → 2pts · >1.00 → 1pt · else 0pts"
-            why="Hitter-friendly parks (Coors +30%, Globe Life +10%) directly increase expected run production. Pitcher-friendly parks reduce it — an important environmental modifier." />
+            why="How often has this team scored ≥ threshold in their last 10 head-to-head games vs this opponent? Captures matchup-specific tendencies (ballpark familiarity, historical lineup matchups) not fully reflected in ERA/WHIP averages." />
           <ScoreRow pts="0–2" name="Game O/U line"
             tiers="≥9.5 → 2pts · ≥7.5 → 1pt · &lt;7.5 → 0pts"
             why="Market consensus on total game scoring. A high game O/U means both teams' run environments are favorable — independent confirmation that run conditions are elevated." />
