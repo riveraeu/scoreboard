@@ -52,8 +52,26 @@ Routes via `pathname`:
 - `/api/user/picks` — GET/POST user picks (requires `Authorization: Bearer <token>`)
 - `/api/team` — team page data (GET `?abbr=LAD&sport=mlb`) → `{teamAbbr, teamName, sport, record, wins, losses, gameLog, seasonStats:{avgTotal,gamesPlayed}, lineup, lineupConfirmed}`; cached `team:v2:{sport}:{abbr}:{today}` at 3600s TTL; `gameLog` entries: `{date, isHome, opp, teamScore, oppScore, total, result:"W"|"L"}`; lineup: NBA three-source fallback chain (see below), MLB two-source fallback chain: (1) MLB Stats API schedule `hydrate=lineups,probables` (PT date `Date.now()-7h`), confirmed lineup + probable SP → `{spot, name, position, playerId, isProbable?}`; (2) MLB Stats API active roster fallback when schedule returns no lineup/probable — non-pitcher position players up to 12, `spot:null`, `lineupConfirmed:false`
 
-### Frontend: `index.html`
-Single HTML file with JSX compiled via Babel standalone (no build step). All React components inline.
+### Frontend: Vite + React (`src/`)
+Built with Vite + `@vitejs/plugin-react`. Entry point is `index.html` → `src/main.jsx` → `src/App.jsx`. Output goes to `dist/` (built by Vercel on deploy via `npm run build`).
+
+**Source layout:**
+- `src/main.jsx` — ReactDOM root mount
+- `src/App.jsx` — top-level state, routing, data fetching, player card
+- `src/index.css` — global styles (body background, grid, gamelog tooltip CSS)
+- `src/lib/constants.js` — `WORKER`, `SPORTS`, `STAT_FULL`, `MLB_TEAM`, `TEAM_DB`, `TOTAL_THRESHOLDS`, `STAT_LABEL`, `SPORT_KEY`, `TODAY`, `MOCK_PLAYS`, `SPORT_BADGE_COLOR`, `GAMELOG_COLS`
+- `src/lib/utils.js` — `lsGet`, `lsSet`, `ordinal`, `slugify`, `teamUrl`
+- `src/lib/colors.js` — `getColor`, `matchupColor`, `tierColor`
+- `src/components/TotalsBarChart.jsx` — bar chart shown on team page
+- `src/components/TeamPage.jsx` — team page; also exports `STAT_CONFIGS`
+- `src/components/DayBar.jsx` — P&L bar chart in My Picks
+- `src/components/AddPickModal.jsx` — manual pick entry modal; also exports `useDebounce`
+- `src/components/ModelPage.jsx` — Model Reference page with calibration
+- `src/components/MarketReport.jsx` — full market report overlay
+- `src/components/PlaysColumn.jsx` — left column (plays list, filters, bust button)
+- `src/components/MyPicksColumn.jsx` — right column (P&L, pick cards)
+
+**Dev proxy:** `vite.config.js` proxies `/api` to production (`https://scoreboard-ivory-xi.vercel.app`) so `npm run dev` works without a local backend.
 
 ### Storage: Upstash Redis (`CACHE2`)
 On Vercel, `env.CACHE` (Cloudflare KV binding) is unavailable — `makeCache()` falls through to the Upstash Redis REST client using `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` env vars. The Upstash free tier caps at **500k commands/month** — when exceeded, all reads/writes silently return null (Upstash returns HTTP 400 `{"error":"ERR max requests limit exceeded..."}` but the `cmd()` wrapper only extracts `result`, so errors are invisible). Use `/api/auth/debug-redis?adminKey=` to confirm Redis is writable. If the limit is hit: create a new free Upstash database or upgrade to Pay-As-You-Go in the Upstash console, then update `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` in Vercel Environment Variables.
@@ -349,7 +367,7 @@ The raw (unfiltered) array is stored in `allTonightPlays` and used to build `ton
 
 ---
 
-## Frontend Architecture (`index.html`)
+## Frontend Architecture (`src/`)
 
 ### URL Routing
 Single-page app uses `history.pushState` + `popstate` for client-side navigation with real URLs:
@@ -357,7 +375,7 @@ Single-page app uses `history.pushState` + `popstate` for client-side navigation
 - `/:ABBR?sport=nhl` → disambiguate multi-sport abbreviations (e.g. `/BOS?sport=nhl` for Bruins vs `/BOS` for Red Sox); `_multiSportAbbrs` Set lists the conflicting ones
 - `/:SlugName` → player page (e.g. `/GavinWilliams`) — CamelCase slugification via `slugify(name)` = remove accents + collapse spaces
 - `/model` → Model Reference page — static, no API calls
-- `vercel.json` `/:slug` rewrite serves `index.html` for all single-segment paths so deep links work on cold load
+- `vercel.json` `/:slug` rewrite serves `index.html` (Vite build entry) for all single-segment paths so deep links work on cold load
 - `resolveSlug(slug, sportOverride)` — on mount, reads `window.location.pathname`; checks literal `"model"` first, then `TEAM_DB`, else stores as `pendingSlug` for async ESPN athlete search
 - `navigateToTeam(abbr, sport)` — pushState + `loadTeamPage` + scroll to top
 - `navigateToPlayer(p, tab)` — pushState with slugified name + `selectPlayer` + scroll
@@ -471,7 +489,7 @@ Right side: **bust** button (calls `?bust=1`, shows "busting…" while loading) 
 
 **Plays section header**: Shows `Plays — Week of Apr 20` (Monday of current week) when plays exist, or just `Plays` when empty. Previously listed individual non-today dates (`Wed, Apr 22 · Thu, Apr 23`); replaced with week label for cleaner display.
 
-**`MOCK_PLAYS`** — static array in `index.html` used when the mock toggle is on. Each entry must use **ESPN player IDs** (not MLB Stats API IDs) for `playerId` — `navigateToPlay` passes `play.playerId` as `player.id`, which drives both the ESPN headshot URL (`a.espncdn.com/i/headshots/{sport}/players/full/{id}.png`) and the `tonightPlayerMap` lookup (`p.playerId === player.id`). MLB Stats API IDs (6-digit, e.g. 660271 for Shohei) will produce a broken headshot; use the ESPN ID instead (e.g. 39832 for Shohei). `gameDate` fields use the `TODAY` constant (dynamic) — no hardcoded dates needed. HRR entries must use `stat:"hrr"` (not `"hits"`, which is deprecated). All hitter-specific fields (`oppPitcherHand`, `hitterBarrelPts`, `hitterTotalPts`, `hitterGameTotal`, `hitterBa`, `hitterSoftLabel`, `pitcherName`) should be populated so the explanation prose renders fully.
+**`MOCK_PLAYS`** — static array in `src/lib/constants.js` used when the mock toggle is on. Each entry must use **ESPN player IDs** (not MLB Stats API IDs) for `playerId` — `navigateToPlay` passes `play.playerId` as `player.id`, which drives both the ESPN headshot URL (`a.espncdn.com/i/headshots/{sport}/players/full/{id}.png`) and the `tonightPlayerMap` lookup (`p.playerId === player.id`). MLB Stats API IDs (6-digit, e.g. 660271 for Shohei) will produce a broken headshot; use the ESPN ID instead (e.g. 39832 for Shohei). `gameDate` fields use the `TODAY` constant (dynamic) — no hardcoded dates needed. HRR entries must use `stat:"hrr"` (not `"hits"`, which is deprecated). All hitter-specific fields (`oppPitcherHand`, `hitterBarrelPts`, `hitterTotalPts`, `hitterGameTotal`, `hitterBa`, `hitterSoftLabel`, `pitcherName`) should be populated so the explanation prose renders fully.
 
 ### My Picks Header
 Shows: **"My Picks"** label → total count badge → `X active · Y finished` breakdown (active = no result yet, green; finished = won/lost excluding DNP, gray). No "clear settled" button — picks are managed per-row only.
@@ -641,7 +659,8 @@ tierColor(pct): >= 80% → #3fb950 (green), >= 65% → #e3b341 (yellow), else #f
 
 ## Deployment
 - Platform: Vercel Edge Functions
-- No build step — `index.html` served statically, `api/[...path].js` is the edge function
+- Frontend: Vite build (`npm run build` → `dist/`), triggered automatically by Vercel on push
+- Backend: `api/[...path].js` is the Vercel Edge Function (unchanged — no build step for API)
 - Rewrites in `vercel.json`: `/api/:path*` → `/api/[...path]`
 - CORS headers set in `vercel.json` (required for OPTIONS preflight through rewrite layer)
 - Cron: `/api/keepalive` runs daily at noon UTC
