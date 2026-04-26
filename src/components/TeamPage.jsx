@@ -433,4 +433,5 @@ const STAT_CONFIGS = {
 
 
 
+export { STAT_CONFIGS };
 export default TeamPage;

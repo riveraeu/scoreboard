@@ -3,7 +3,7 @@ import { WORKER, SPORTS, STAT_FULL, MLB_TEAM, TEAM_DB, TOTAL_THRESHOLDS, STAT_LA
 import { lsGet, lsSet, ordinal, slugify, teamUrl } from './lib/utils.js';
 import { getColor, matchupColor, tierColor } from './lib/colors.js';
 import TotalsBarChart from './components/TotalsBarChart.jsx';
-import TeamPage from './components/TeamPage.jsx';
+import TeamPage, { STAT_CONFIGS } from './components/TeamPage.jsx';
 import DayBar from './components/DayBar.jsx';
 import { useDebounce } from './components/AddPickModal.jsx';
 import AddPickModal from './components/AddPickModal.jsx';
