@@ -2268,7 +2268,7 @@ var worker_default = {
             // SimScore (max 10): CSW%/K%→0-2, K-BB%→0-2, lineup K%→0-2, hit rate→0-2, O/U→0-2
             simScore = kpctPts + kbbPts + lkpPts + blendedHitRatePts + totalPts;
           }
-          let softVals, softLabel, softUnit;
+          let softVals, softLabel, softUnit, _hrrUsingTeamFallback = false;
           if (sport === "mlb" && stat === "strikeouts") {
             const allLineupKPctAll = sportByteam.mlb?.lineupKPct || {};
             const allLineupKPctVR = sportByteam.mlb?.lineupKPctVR || {};
@@ -2316,8 +2316,10 @@ var worker_default = {
               softLabel = pitcherName ? `vs ${pitcherName}` : `vs ${tonightOpp}`;
             } else {
               // Sparse pitcher H2H (<5 games) → team-level fallback (2025+2026)
+              // Flag set so HRR block can override softPct with platoon-adjusted rate
               softVals = gl.events.filter((ev) => (ev.season === 2025 || ev.season === 2026) && ev.oppAbbr === tonightOpp).map(getStat).filter((v) => !isNaN(v));
               softLabel = `vs ${tonightOpp}`;
+              _hrrUsingTeamFallback = true;
             }
             softUnit = "%";
           } else {
@@ -2518,6 +2520,11 @@ var worker_default = {
             const _splitBA = _oppPitcherHand === "R" ? (_bsEntry?.vsR ?? null) : _oppPitcherHand === "L" ? (_bsEntry?.vsL ?? null) : null;
             const _splitBAPA = _oppPitcherHand === "R" ? (_bsEntry?.vsRPA ?? 0) : _oppPitcherHand === "L" ? (_bsEntry?.vsLPA ?? 0) : 0;
             hitterSplitBA = _splitBA;
+            // Change #1: override team-level softPct with platoon-adjusted rate when H2H is sparse
+            if (_hrrUsingTeamFallback && _splitBA != null && hitterBa != null && hitterBa > 0) {
+              softPct = Math.max(0, Math.min(99, parseFloat((primaryPct * (_splitBA / hitterBa)).toFixed(1))));
+              softLabel = _oppPitcherHand === "R" ? "vs RHP" : _oppPitcherHand === "L" ? "vs LHP" : softLabel;
+            }
             // Platoon still computed for output/display — no longer in simScore
             hitterPlatoonPts = 1; // abstain default
             if (_splitBA != null && hitterBa != null) {
@@ -2541,7 +2548,7 @@ var worker_default = {
             hitterGameTotal = sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null;
             hitterTotalPts = hitterGameTotal == null ? 1 : hitterGameTotal >= 9.5 ? 2 : hitterGameTotal >= 7.5 ? 1 : 0;
             // Batter quality composite (max 2pts): spot 1-3 AND barrel≥10% → 2; spot 1-3 OR barrel≥10% → 1; neither → 0; both null → 1 abstain
-            const _hSpotGood = hitterLineupSpot != null && hitterLineupSpot <= 3;
+            const _hSpotGood = hitterLineupSpot != null && hitterLineupSpot <= 5;
             const _hBarrelGood = hitterBarrelPct != null && hitterBarrelPct >= 10;
             hitterBatterQualityPts = (hitterLineupSpot == null && hitterBarrelPct == null) ? 1
               : (_hSpotGood && _hBarrelGood) ? 2
@@ -2574,7 +2581,7 @@ var worker_default = {
             const _hlML = hitterML;
             const _hlCommon = { opponent: tonightOpp, pitcherName: _hlPitcherName, seasonPct: _hlSeasonPct, softPct: _hlSoftPct, truePct: _hlTruePct, edge: _hlEdge, pitcherEra: _hlEra, moneyline: _hlML, hitterBa, hitterBaTier, abVsTeam: hitterAbVsPitcher, hitterLineupSpot, pitcherWHIP, pitcherFIP, hitterSimScore, hitterParkKF, hitterMoneyline, hitterBarrelPct, hitterBarrelPts, hitterTotalPts, hitterGameTotal, hitterPlatoonPts, hitterBatterQualityPts, hitterSeasonHitRatePts, hitterH2HHitRatePts, oppPitcherHand: _oppPitcherHand, hitterSplitBA: _splitBA, hitterWhipPts };
             // Stage 1: lineup spot 5-9 discard
-            if (hitterLineupSpot !== null && hitterLineupSpot >= 5) {
+            if (hitterLineupSpot !== null && hitterLineupSpot >= 6) {
               if (isDebug) dropped.push({ ..._dropBase, reason: "low_lineup_spot", hitterLineupSpot, ..._hlCommon });
               continue;
             }
