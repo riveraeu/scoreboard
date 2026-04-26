@@ -284,7 +284,28 @@ var worker_default = {
             hitRate: parseFloat((d.wins / d.n * 100).toFixed(1)), n: d.n,
           }])
         );
-        return jsonResponse({ totalPicks: allPicks.length, finalizedPicks: finalized.length, overall, byCategory, kStrikeouts: { bySimScore, byKpctPts, byKTrendPts, byStdBF, n: ksFinalized.length } });
+        // Per-category truePct bucket breakdown (same 6 buckets as overall, filtered per sport|stat)
+        const _byCatDetail = {};
+        for (const p of finalized) {
+          const cat = `${p.sport || "?"}|${p.stat || "?"}`;
+          const b = _buckets.find(bk => (p.truePct ?? 0) >= bk.min && (p.truePct ?? 0) < bk.max);
+          if (!b) continue;
+          if (!_byCatDetail[cat]) _byCatDetail[cat] = {};
+          if (!_byCatDetail[cat][b.label]) _byCatDetail[cat][b.label] = { wins: 0, n: 0 };
+          _byCatDetail[cat][b.label].n++;
+          if (p.result === "won") _byCatDetail[cat][b.label].wins++;
+        }
+        const byCategoryDetail = Object.fromEntries(
+          Object.entries(_byCatDetail).map(([cat, buckets]) => [cat,
+            _buckets.map(b => {
+              const d = buckets[b.label] || { wins: 0, n: 0 };
+              const predicted = (b.min + Math.min(b.max, 100)) / 2;
+              const actual = d.n > 0 ? parseFloat((d.wins / d.n * 100).toFixed(1)) : null;
+              return { bucket: b.label, predicted, actual, n: d.n, delta: actual != null ? parseFloat((actual - predicted).toFixed(1)) : null };
+            })
+          ])
+        );
+        return jsonResponse({ totalPicks: allPicks.length, finalizedPicks: finalized.length, overall, byCategory, byCategoryDetail, kStrikeouts: { bySimScore, byKpctPts, byKTrendPts, byStdBF, n: ksFinalized.length } });
       } else if (path === "auth/reset" && method === "POST") {
         const { email, newPassword, adminKey } = await request.json();
         if (adminKey !== env?.ADMIN_KEY) return errorResponse("Forbidden", 403);

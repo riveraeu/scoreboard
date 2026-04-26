@@ -409,7 +409,7 @@ All threshold plays that pass the edge gate (≥ 3%) are pushed to `plays[]`. Be
 - `trackedPlays` — user's saved picks (localStorage or server)
 
 ### Market Report
-Opened via "report" button. Shows ALL markets (plays + dropped) grouped by sport/stat. Columns vary by sport/stat via `XCOLS` map. Sport tabs: **ALL / MLB / NBA / NHL / CALIBRATION**. Column header tooltips defined in `COL_TIPS` dictionary (keyed by XCOLS `k` value) — hover any column header to see description + color tier thresholds. Totals-specific keys (`homeRPG`, `awayERA`, `homeOff`, `awayDef`, `totalOu`, `homeGPG`, `awayGAA`, etc.) all have entries.
+Opened via "report" button. Shows ALL markets (plays + dropped) grouped by sport/stat. Columns vary by sport/stat via `XCOLS` map. Sport tabs: **ALL / MLB / NBA / NHL** (calibration tab removed — calibration now lives on Model Reference page, one module per play tab). Column header tooltips defined in `COL_TIPS` dictionary (keyed by XCOLS `k` value) — hover any column header to see description + color tier thresholds. Totals-specific keys (`homeRPG`, `awayERA`, `homeOff`, `awayDef`, `totalOu`, `homeGPG`, `awayGAA`, etc.) all have entries.
 - **First column navigation**: Player name spans are clickable (`cursor:pointer`) — clicking closes the report (`setShowReport(false)`) and navigates to that player's card via `navigateToPlayer({ id: m.playerId, name: m.playerName, sportKey: SPORT_KEY[m.sport] }, m.stat)`. For game total rows, each team abbreviation (`awayTeam` and `homeTeam`) is separately clickable and navigates to that team's page via `navigateToTeam`. No underline styling.
 - **`fetchReport` syncs plays card**: After fetching `?debug=1`, `fetchReport` also updates `tonightPlays` and `allTonightPlays` from the fresh response. This keeps the plays card in sync with the report (avoids stale-cache discrepancy where plays card loaded at page open shows different results than the report fetched later).
 - **HRR table**: shows threshold=1 rows only (2+/3+/etc. filtered client-side — too noisy)
@@ -445,16 +445,8 @@ Opened via "report" button. Shows ALL markets (plays + dropped) grouped by sport
 
 - **Game totals table** (`mlb|totalRuns`, `nba|totalPoints`, `nhl|totalGoals`): section header shows **"[Sport] Totals"** (e.g. "NBA Totals") via `STAT_NAME` entries `totalRuns/totalPoints/totalGoals → "Totals"`. First column labelled "Matchup" (not "Player"), shows `AWY @ HME`. Opp column hidden. Line cell shows `O7.5` format. Score column uses `m.totalSimScore` (qual gate = 8); green ≥ 8, yellow = 5–7, gray < 5. XCOLS: MLB = H RPG / A RPG / H ERA / A ERA / O/U; NBA = H PPG / A PPG / H Def / A Def / O/U; NHL = H GPG / A GPG / H GAA / A GAA / O/U. **MLB ERA/RPG column colors**: ERA ≥4.5 → green (bad pitcher = over-favorable), ≥3.5 → yellow, <3.5 → gray; RPG ≥5.0 → green, ≥4.0 → yellow, <4.0 → gray. **NBA column colors**: Off PPG ≥115 green (high offense = favorable for over), Def PPG allowed ≥112 green (bad defense = favorable), O/U ≥215 green — all use playoff-appropriate tiers. **NHL column colors**: GPG/GAA ≥3.5 green, ≥3.0 yellow, else gray; O/U ≥6 green, ≥5 yellow. Dedup key for totals is `homeTeam|awayTeam|threshold` (not `playerName|threshold`).
 
-#### Calibration Tab
-Fetches `GET /api/auth/calibration` with `Authorization: Bearer <authToken>` on first click (+ Refresh button to re-fetch). Requires the user to be logged in — sends the stored JWT token, no hardcoded admin key. Shows:
-- **Dynamic analysis block**: overall win rate vs avg predicted; per-bucket sentence describing delta magnitude ("large positive edge of +9%", "well-calibrated", etc.) with data quality label ("significant data" N≥20, "moderate" N≥10, "limited" N<10) and implication ("model is conservative / overconfident"); best/worst category line (filtered to N≥5).
-- **Overall Calibration table**: Bucket | N | Predicted | Actual | Delta | bar chart. Bar = actual win rate; blue marker = predicted rate. N < 10 shown dim.
-- **By Category table**: sport/stat | N | hit rate | bar. Sorted by N descending.
-- **MLB Strikeouts Breakdown** (when K picks exist): four sub-tables — by SimScore, by kpctPts (K% tier), by kTrendPts, by stdBF (`none`=0/no data, `low`=≤2.5, `high`=>2.5; key colored green/red/gray). `high` bucket will be empty going forward (gate blocks them); historical picks before the gate was added may populate it. Use these to tune feature gates/weights.
-- Delta color: green ≥+3%, yellow −2 to +2%, red ≤−3%. Delta = actual − predicted (positive = model conservative, negative = model overconfident).
-
 ### Model Reference Page
-`ModelPage({ onBack })` component at `/model` — static, no API calls.
+`ModelPage({ onBack, calibData, calibLoading, fetchCalib, authToken })` component at `/model`. Fetches calibration on mount when logged in.
 
 - **Entry point**: "model" link in the plays section header (next to "report" link)
 - **9 tabs**: MLB Strikeouts · MLB H+R+RBI · NBA Props · NHL Points · MLB Game Total · NBA Game Total · NHL Game Total · MLB Team Total · NBA Team Total
@@ -462,7 +454,10 @@ Fetches `GET /api/auth/calibration` with `Authorization: Bearer <authToken>` on 
   - **True% formula** — exact computation (Monte Carlo variant, lambda/mean formula, or blended rate formula)
   - **Model inputs** — every input with a plain-language explanation of why that statistic was chosen over alternatives
   - **SimScore breakdown** — each component's tier thresholds (0/1/2 pts) and the reasoning behind each boundary
+  - **CalibModule** — at the bottom of every tab. Fetches `GET /api/auth/calibration` on mount when logged in (lazy otherwise — shows Load button). Displays: pick count badge + hit rate summary, truePct bucket table (`byCategoryDetail[catKey]`) with bar chart, plus the 4 K-feature sub-tables (bySimScore/byKpctPts/byKTrendPts/byStdBF) on the MLB Strikeouts tab only. NBA Props tab aggregates all `nba|*` categories. Not logged in → "Log in to see calibration data". Delta color: green ≥+3%, yellow −2 to +2%, red ≤−3%.
 - **Qualification summary bar** at top: Kalshi ≥ 70% · Edge ≥ 5% · SimScore ≥ 8/10
+- **`TAB_CAT` map** in `ModelPage` maps each tab id to its `sport|stat` calibration key(s)
+- **`byCategoryDetail`** returned by `/api/auth/calibration` — per-category truePct bucket breakdown (same 6 buckets as `overall`, filtered per `sport|stat`)
 - **State**: `modelPage` boolean on `App`. Gated same as TeamPage — plays/picks grid hides when active (`!player && !teamPage && !modelPage`)
 - `resolveSlug` handles `"model"` before TEAM_DB lookup; `goBack()` also clears `setModelPage(false)`
 
