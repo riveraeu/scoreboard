@@ -1211,7 +1211,9 @@ var worker_default = {
             const yesAsk = parseFloat(m.yes_ask_dollars) || 0;
             const last = parseFloat(m.last_price_dollars) || 0;
             const volume = parseInt(m.volume_fp) || parseInt(m.volume) || 0;
-            const price = yesAsk > 0 ? yesAsk : last;
+            const yesBidEarly = parseFloat(m.yes_bid_dollars) || 0;
+            // Stale ask: market maker maxed ask at 99¢ with no bid — use last traded price instead
+            const price = (yesAsk >= 0.98 && yesBidEarly === 0 && last > 0) ? last : (yesAsk > 0 ? yesAsk : last);
             const pct = Math.round(price * 100);
             if (price === 0) continue;
 

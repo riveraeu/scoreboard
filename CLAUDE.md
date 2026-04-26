@@ -334,6 +334,7 @@ True% = Monte Carlo simulation (reuses `buildNbaStatDist` + `nbaDistPct`) — no
 - Series tickers in `SERIES_CONFIG`
 - Filter: `pct >= 70` AND `pct <= 97`
 - Blended fill price via orderbook walk for thin markets
+- **Stale-ask fallback**: when `yes_ask >= $0.98` AND `yes_bid == 0` AND `last_price > 0`, use `last_price_dollars` as fill price instead of the stale ask. Handles illiquid markets where market maker has maxed the ask with no real bid — last traded price reflects actual market activity.
 - `kalshiSpread` = bid-ask spread in cents (`round((yesAsk − yesBid) × 100)`); kept in output as a liquidity signal (shown as badge when wide)
 - `rawEdge = truePct − kalshiPct`; `edge = rawEdge` — `kalshiPct` is already the fill price (ask or blended orderbook walk), so no further spread deduction is applied. `spreadAdj` is computed and stored but not subtracted from edge. This rule applies to **both player props and game totals**.
 - Edge badge on play cards shows `+X%` with no tooltip — the old "Raw − spread = net" tooltip was removed since spread is no longer subtracted.
