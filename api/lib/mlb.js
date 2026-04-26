@@ -352,7 +352,7 @@ export async function buildPitcherKPct(mlbSched) {
       if (person.pitchHand?.code) pitcherHandById[pid] = person.pitchHand.code;
       const split = person.stats?.[0]?.splits?.[0]?.stat;
       if (!split) continue;
-      pitcherStats25[pid] = { so: split.strikeOuts || 0, bf: split.battersFaced || 0, bb: split.baseOnBalls || 0, era: safeEra(split.era), gs: split.gamesStarted || 0, np: split.numberOfPitches || 0 };
+      pitcherStats25[pid] = { so: split.strikeOuts || 0, bf: split.battersFaced || 0, bb: split.baseOnBalls || 0, era: safeEra(split.era), whip: safeEra(split.whip), gs: split.gamesStarted || 0, np: split.numberOfPitches || 0 };
     }
     for (const person of (res26.people || [])) {
       const pid = person.id;
@@ -360,14 +360,14 @@ export async function buildPitcherKPct(mlbSched) {
       if (person.pitchHand?.code) pitcherHandById[pid] = person.pitchHand.code;
       const split = person.stats?.[0]?.splits?.[0]?.stat;
       if (!split) continue;
-      pitcherStats26[pid] = { so: split.strikeOuts || 0, bf: split.battersFaced || 0, bb: split.baseOnBalls || 0, era: safeEra(split.era), gs: split.gamesStarted || 0, np: split.numberOfPitches || 0 };
+      pitcherStats26[pid] = { so: split.strikeOuts || 0, bf: split.battersFaced || 0, bb: split.baseOnBalls || 0, era: safeEra(split.era), whip: safeEra(split.whip), gs: split.gamesStarted || 0, np: split.numberOfPitches || 0 };
     }
     // Fill in pitcherHand from People API for any missing entries
     for (const [abbr, id] of Object.entries(pitcherByTeam)) {
       if (!pitcherHand[abbr] && pitcherHandById[id]) pitcherHand[abbr] = pitcherHandById[id];
     }
     const LEAGUE_PITCHER_K = 0.222;
-    const pitcherKPct = {}, pitcherKBBPct = {}, pitcherEra = {}, pitcherHasAnchor = {};
+    const pitcherKPct = {}, pitcherKBBPct = {}, pitcherEra = {}, pitcherWHIP = {}, pitcherHasAnchor = {};
     for (const [abbr, id] of Object.entries(pitcherByTeam)) {
       const s26 = pitcherStats26[id];
       const s25 = pitcherStats25[id];
@@ -391,11 +391,15 @@ export async function buildPitcherKPct(mlbSched) {
         const kbbRegressed = kbb26 !== null ? kbb26 * trust + anchorKBB * (1 - trust) : anchorKBB;
         pitcherKBBPct[abbr] = parseFloat((kbbRegressed * 100).toFixed(1));
       }
-      // ERA: prefer 2026 if available (any starts), fall back to 2025
+      // ERA + WHIP: prefer 2026 if available (any starts), fall back to 2025
       const era26 = s26?.era ?? null;
       const era25 = s25?.era ?? null;
       if (era26 != null) pitcherEra[abbr] = era26;
       else if (era25 != null) pitcherEra[abbr] = era25;
+      const whip26 = s26?.whip ?? null;
+      const whip25 = s25?.whip ?? null;
+      if (whip26 != null) pitcherWHIP[abbr] = whip26;
+      else if (whip25 != null) pitcherWHIP[abbr] = whip25;
     }
     const pitcherCSWPct = {};
     const pitcherAvgPitches = {};
@@ -644,7 +648,7 @@ export async function buildPitcherKPct(mlbSched) {
         if (!pitcherInfoByTeam[a]) pitcherInfoByTeam[a] = { name: person.fullName, id };
       }
     }
-    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam };
+    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherWHIP, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam };
   } catch {
     return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherAvgBF: {}, pitcherStdBF: {}, pitcherGS26: {}, pitcherHasAnchor: {}, pitcherRecentKPct: {}, pitcherLastStartDate: {}, pitcherLastStartPC: {}, umpireByGame: {}, pitcherInfoByTeam: {} };
   }
