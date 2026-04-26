@@ -129,13 +129,15 @@ Used for caching expensive fetches. Key TTLs:
 - **Track ID format**: `teamtotal|sport|scoringTeam|oppTeam|threshold|gameDate`
 
 #### Total SimScore details (max 10 — 5 stats × 2pts each; `qualified: totalSimScore >= 8`)
-- **MLB**: homeERA tiered (>4.5→2, >3.5→1, ≤3.5→0, null→1), awayERA (same), homeRPG tiered (>5.0→2, >4.0→1, ≤4.0→0, null→1), awayRPG (same), O/U line tiered (≥9.5→2, ≥7.5→1, <7.5→0, null→1). Park RF removed from scoring (still shown in env column in report). High ERA and high RPG score higher — both are over-favorable signals.
+- **MLB**: homeERA tiered (>4.5→2, >3.5→1, ≤3.5→0, null→1), awayERA (same), combinedRPG (road homeRPG+awayRPG; ≥10.5→2, ≥9.0→1, <9.0→0, null→1), umpireRunFactor (1/UMPIRE_KFACTOR; ≥1.05→2, ≥0.97→1, <0.97→0, null→1), O/U line tiered (≥9.5→2, ≥7.5→1, <7.5→0, null→1). **Road RPG** from MLB Stats API `sitCodes=A` (stored as `mlbRoadRPGMap`). **60/40 ERA blend**: `0.6×(starterERA/4.20)+0.4×(teamERA/4.20)` where teamERA from ESPN pitching byteam (stored as `mlbTeamERAMap`) acts as bullpen proxy and regresses small-sample starters toward team reality. UNDER inverted: ERA ≤3.5→2, ≤4.5→1; combinedRPG ≤8.5→2, ≤10.0→1; umpireRunFactor ≤0.95→2, ≤1.03→1.
 - **NBA**: off PPG tiered (≥118→2, ≥113→1, else 0, null→1) per team; def PPG allowed tiered (≥118→2, ≥113→1, else 0, null→1) per team; O/U line tiered (≥235→2, ≥225→1, <225→0, null→1). Pace still in `_simData` for prose display but not scored.
 - **NHL**: homeGPG tiered (≥3.5→2, ≥3.0→1, <3.0→0, null→1), awayGPG (same), homeGAA tiered (≥3.5→2, ≥3.0→1, <3.0→0, null→1), awayGAA (same), O/U line tiered (≥7→2, ≥5.5→1, <5.5→0, null→1). ESPN NHL scoreboard fetched for odds via `sportByteam.nhlGameOdds` (normalized via TEAM_NORM.nhl).
 
 #### Lambda computation (MLB)
-`homeLambda = homeRPG × (awayERA / 4.20) × parkRF`, clamped [1, 12]
-`awayLambda = awayRPG × (homeERA / 4.20) × parkRF`, clamped [1, 12]
+`awayMult = 0.6×(awayERA/4.20) + 0.4×(awayTeamERA/4.20)` (away staff vs home offense)
+`homeMult = 0.6×(homeERA/4.20) + 0.4×(homeTeamERA/4.20)` (home staff vs away offense)
+`homeLambda = homeRoadRPG × awayMult × parkRF`, clamped [1, 12]
+`awayLambda = awayRoadRPG × homeMult × parkRF`, clamped [1, 12]
 
 #### Lambda computation (NHL)
 `homeLambda = homeGPG × (awayGAA / leagueAvgGAA)`, clamped [0.5, 8]

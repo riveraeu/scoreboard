@@ -429,42 +429,45 @@ where:
           <div style={s.sub}>Poisson Monte Carlo (10,000 trials). Models each team's run-scoring independently.</div>
 
           <div style={s.h3}>Core Formula</div>
-          <Formula>{`homeLambda = clamp(homeRPG × (awayERA ÷ 4.20) × parkRF, 1, 12)
-awayLambda = clamp(awayRPG × (homeERA ÷ 4.20) × parkRF, 1, 12)
+          <Formula>{`// Road RPG strips home-park bias — parkRF applies cleanly
+// 60/40 blend: 60% tonight's starter ERA, 40% season team ERA (bullpen proxy)
+awayMult = 0.6×(awayERA÷4.20) + 0.4×(awayTeamERA÷4.20)
+homeMult = 0.6×(homeERA÷4.20) + 0.4×(homeTeamERA÷4.20)
+
+homeLambda = clamp(homeRoadRPG × awayMult × parkRF, 1, 12)
+awayLambda = clamp(awayRoadRPG × homeMult × parkRF, 1, 12)
 
 Each trial: homeRuns ~ Poisson(homeLambda), awayRuns ~ Poisson(awayLambda)
-truePct = fraction of trials where homeRuns + awayRuns ≥ threshold
-
-League avg ERA denominator = 4.20 (normalizes opponent quality to neutral)`}</Formula>
+truePct = fraction of trials where homeRuns + awayRuns ≥ threshold`}</Formula>
 
           <div style={s.h3}>Model Inputs</div>
-          <InputRow name="Team RPG (runs per game)" color="#3fb950"
-            why="Offensive baseline. How many runs does this team score per game against an average pitcher? The numerator of the lambda calculation." />
-          <InputRow name="Starter ERA" color="#3fb950"
-            why="Tonight's pitcher quality. A 5.5 ERA pitcher allows 31% more runs than the league average 4.20 — directly multiplied into the expected run total." />
+          <InputRow name="Road RPG (away-only runs per game)" color="#3fb950"
+            why="Offensive baseline using only road games — eliminates home park inflation before parkRF is applied. A team at Coors averages 5.8 RPG overall but 4.9 on the road; using road RPG lets parkRF do its job cleanly without double-counting." />
+          <InputRow name="Starter ERA + Team ERA (60/40 blend)" color="#3fb950"
+            why="Tonight's starter governs 60% of innings (~5.5 IP). The team's season ERA governs 40% (bullpen). Using a blend prevents an ace from dragging a shaky pen's expected runs to zero — and regresses a spot-starter's tiny 3-start ERA toward team reality." />
           <InputRow name="Park run factor (PARK_RUNFACTOR)" color="#e3b341"
-            why="Some parks dramatically change run expectations. Coors Field adds ~30%; Petco Park suppresses ~10%. Applied to both lambdas (both teams play in the same park)." />
+            why="Applied cleanly to road RPG numerator. Coors Field +15%; Petco Park −10%. Both teams play the same park, so the factor is symmetric." />
           <InputRow name="Market O/U line" color="#8b949e"
-            why="Used in SimScore as a corroborating signal. The market incorporates weather, lineup scratches, and other factors not in our data." />
+            why="Used in SimScore as a corroborating signal. The market incorporates weather, wind, and lineup factors not in our model." />
         </Section>
 
         <Section title="MLB Game Total — SimScore (max 10)">
           <div style={s.sub}>5 components × 2 pts each. Gate: totalSimScore ≥ 8 (OVER). Inverted for UNDER.</div>
           <ScoreRow pts="0–2" name="Home ERA"
             tiers=">4.5 → 2pts · >3.5 → 1pt · ≤3.5 → 0pts"
-            why="High ERA = hittable pitcher = more expected runs for the away team. Two separate ERA inputs (home/away) because each starter independently affects half the scoring." />
+            why="High ERA = hittable pitcher = more expected runs. Kept as an independent component because it directly sets the ERA-multiplier inside the lambda formula." />
           <ScoreRow pts="0–2" name="Away ERA"
             tiers=">4.5 → 2pts · >3.5 → 1pt · ≤3.5 → 0pts"
-            why="Same as home ERA — each starter contributes independently to the total scoring environment." />
-          <ScoreRow pts="0–2" name="Home RPG"
-            tiers=">5.0 → 2pts · >4.0 → 1pt · ≤4.0 → 0pts"
-            why="High-scoring offense increases expected total. Two separate RPG inputs because both offenses contribute independently." />
-          <ScoreRow pts="0–2" name="Away RPG"
-            tiers=">5.0 → 2pts · >4.0 → 1pt · ≤4.0 → 0pts"
-            why="Same as home RPG." />
+            why="Same as home ERA — each starter contributes independently to the scoring environment." />
+          <ScoreRow pts="0–2" name="Combined road RPG"
+            tiers="≥10.5 → 2pts · ≥9.0 → 1pt · &lt;9.0 → 0pts"
+            why="Sum of both teams' road RPG. Consolidates two separate RPG signals into one — confirms both offenses are genuinely high-scoring on neutral turf before parkRF is applied." />
+          <ScoreRow pts="0–2" name="Umpire run factor"
+            tiers="≥1.05 → 2pts · ≥0.97 → 1pt · &lt;0.97 → 0pts"
+            why="Derived from UMPIRE_KFACTOR (1 / kFactor). A loose-zone umpire (low K-factor) generates more walks and hitter-friendly counts, correlating with higher run-scoring. Fully independent of team stats — the first true external validator in the SimScore." />
           <ScoreRow pts="0–2" name="Market O/U line"
             tiers="≥9.5 → 2pts · ≥7.5 → 1pt · &lt;7.5 → 0pts"
-            why="Independent corroboration from the betting market. High O/U means weather, wind, and lineup factors (not in our model) also favor scoring. Two independent signals agreeing is more reliable than one." />
+            why="Independent corroboration from the betting market. When both the model and the market are bullish on scoring, confidence is higher." />
         </Section>
       </>
     ),
