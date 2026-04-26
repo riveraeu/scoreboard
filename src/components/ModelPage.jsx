@@ -274,46 +274,53 @@ truePct = fraction of trials where total ≥ threshold`}</Formula>
     "mlb-hrr": (
       <>
         <Section title="MLB H+R+RBI — True% Model">
-          <div style={s.sub}>Blended formula — no Monte Carlo. Averages two rate components, then applies park adjustment.</div>
+          <div style={s.sub}>Blended formula — no Monte Carlo. Averages two rate components, then applies park adjustment via log-odds transform.</div>
 
           <div style={s.h3}>Core Formula</div>
-          <Formula>{`truePct = (primaryPct + softPct) / 2 × parkFactor
+          <Formula>{`rawMlbPct = (primaryPct + softPct) / 2
+
+// Park factor via log-odds (prevents exceeding 100% at elite rates in hitter parks)
+logOddsAdj = logit(rawMlbPct ÷ 100) + ln(parkFactor)
+truePct = sigmoid(logOddsAdj) × 100
 
 primaryPct = player's 2026 HRR 1+ rate
   (blended with 2025 season if trust26 < 1.0, where trust26 = min(1, games26 ÷ 30))
 
-softPct = HRR 1+ rate vs tonight's pitcher (H2H, requires ≥5 games)
-  OR team-level rate vs opponent if H2H < 5 games (softLabel updates to "vs {OPP}")
+softPct = HRR 1+ rate vs tonight's pitcher (H2H gamelog, requires ≥5 games)
+  OR platoon-adjusted rate if H2H < 5 games:
+       softPct = primaryPct × (splitBA_vsHand ÷ seasonBA)
+       (softLabel updates to "vs RHP" or "vs LHP")
+  OR team-level rate vs opponent if splitBA/seasonBA unavailable
 
-parkFactor = PARK_HITFACTOR[homeTeam] (park-specific hit multiplier)`}</Formula>
+parkFactor = PARK_HITFACTOR[homeTeam]`}</Formula>
 
           <div style={s.h3}>Model Inputs</div>
           <InputRow name="2026 HRR rate (primaryPct)" color="#3fb950"
             why="Base rate: how often does this player record at least 1 H+R+RBI in a game this season. Trust-weighted against 2025 so early-season small samples don't wildly over- or under-predict." />
           <InputRow name="H2H vs pitcher (softPct)" color="#3fb950"
-            why="Head-to-head matchup history vs tonight's exact pitcher. When a batter has seen a pitcher 5+ times, that matchup history is the most directly comparable situation to tonight." />
-          <InputRow name="Team rate fallback (softPct)" color="#e3b341"
-            why="When pitcher H2H < 5 games, falls back to batter's rate vs this opponent team. Less precise but preserves the directional signal — does the batter tend to perform against this pitching staff?" />
+            why="Head-to-head matchup history vs tonight's exact pitcher. Requires ≥5 gamelog dates. When ≥12 H2H games exist, this also drives 2pts in the Matchup Rate SimScore component." />
+          <InputRow name="Platoon-adjusted fallback (softPct)" color="#e3b341"
+            why="When pitcher H2H < 5 games (~90% of matchups), falls back to primaryPct × (batter's BA vs pitcher's hand ÷ season BA). Captures the directional platoon split without needing a large H2H sample." />
           <InputRow name="B2 — Recent form (last 10 games)" color="#e3b341"
-            why="hitterEffectiveBA = 0.6 × recentBA + 0.4 × seasonBA, fed into simulateHits for the hits component. A batter who's 2-for-30 in their last 10 is genuinely less likely to get a hit tonight regardless of their season average." />
+            why="hitterEffectiveBA = 0.3 × recentBA + 0.7 × seasonBA when ≥20 AB in last 10 games, fed into simulateHits. Weight is 0.3/0.7 (reduced from 0.6/0.4) — 40 PAs is deep in BABIP noise; this still catches real slumps without letting a bad week hijack a season baseline." />
           <InputRow name="Park factor (PARK_HITFACTOR)" color="#8b949e"
-            why="Some parks dramatically inflate hits (Coors Field +~15%) or suppress them (Petco Park). Applied as a multiplier on the blended rate." />
+            why="Applied via log-odds transform (not direct multiply) so the combined rate can't exceed 100% even for elite batters at Coors Field." />
         </Section>
 
         <Section title="MLB H+R+RBI — SimScore (max 10)">
           <div style={s.sub}>5 components × 2 pts each. Gate: hitterFinalSimScore ≥ 8 to qualify.</div>
           <ScoreRow pts="0–2" name="Batter Quality (spot + barrel%)"
-            tiers="Spot ≤3 + barrel% ≥10% → 2pts · either → 1pt · neither → 0pts"
-            why="Lineup spot ≤3 means guaranteed ABs, protection from lineup games, and RBI opportunities with runners ahead. Barrel% ≥10% means hard contact quality — these batters turn well-hit balls into results. Combined, they capture both opportunity and execution." />
+            tiers="Spot ≤5 + barrel% ≥10% → 2pts · either → 1pt · neither → 0pts"
+            why="Lineup spots 1–5 capture both PA equity (top of order) and RBI equity (cleanup/5-hole sluggers). Barrel% ≥10% means hard contact quality. Combined, they measure both opportunity and execution." />
           <ScoreRow pts="0–2" name="Pitcher WHIP"
             tiers=">1.35 → 2pts · >1.20 → 1pt · ≤1.20 → 0pts"
             why="WHIP directly measures baserunner creation rate. A pitcher with WHIP >1.35 allows 35%+ more baserunners than a perfect game. More baserunners = more scoring chances = more HRR opportunities." />
           <ScoreRow pts="0–2" name="Season Hit Rate"
             tiers="≥80% → 2pts · ≥70% → 1pt · &lt;70% → 0pts"
             why="The player's own historical HRR 1+ rate at this threshold, blended 2026/2025. The most direct calibration signal — if a player records HRR in 80%+ of games, the model's output should be in that range." />
-          <ScoreRow pts="0–2" name="H2H Hit Rate"
-            tiers="≥80% → 2pts · ≥70% → 1pt · &lt;70% → 0pts · &lt;5 games → 1pt abstain"
-            why="Rate specifically vs tonight's pitcher from gamelog history (H2H dates only). Highly predictive when sample exists. Sparse H2H (1–4 games) scores 1pt abstain — directional but not reliable enough to reward or penalize." />
+          <ScoreRow pts="0–2" name="Matchup Rate"
+            tiers="BvP path (≥12 H2H games): ≥80% → 2pts · ≥70% → 1pt · else → 0pts · 8–11 games caps at 1pt · Platoon path (&lt;12 games): advantage ≥1.08 → 2pts · neutral ≥0.95 → 1pt · disadvantage → 0pts"
+            why="Platoon-adjusted rate is the primary signal for ~90% of matchups. BvP (≥12 H2H games, ~35+ PAs) is a mature enough sample to override the platoon path. Below 12 games, the platoon advantage/disadvantage (batter's split BA vs pitcher's hand relative to season BA) is used instead." />
           <ScoreRow pts="0–2" name="Game O/U line"
             tiers="≥9.5 → 2pts · ≥7.5 → 1pt · &lt;7.5 → 0pts"
             why="High-scoring game environments increase HRR probability — more runs scored means more R/RBI available. A game with O/U ≥9.5 has consensus expectations of a high-scoring affair." />
