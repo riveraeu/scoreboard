@@ -434,8 +434,10 @@ where:
 awayMult = 0.6×(awayERA÷4.20) + 0.4×(awayTeamERA÷4.20)
 homeMult = 0.6×(homeERA÷4.20) + 0.4×(homeTeamERA÷4.20)
 
-homeLambda = clamp(homeRoadRPG × awayMult × parkRF, 1, 12)
-awayLambda = clamp(awayRoadRPG × homeMult × parkRF, 1, 12)
+// platoonFactor = (lineup BA vs opposing starter's hand) / (lineup overall BA)
+// Derived from individual batter vsL/vsR splits — falls back to 1.0 when unknown
+homeLambda = clamp(homeRoadRPG × awayMult × parkRF × homePlatoonFactor, 1, 12)
+awayLambda = clamp(awayRoadRPG × homeMult × parkRF × awayPlatoonFactor, 1, 12)
 
 Each trial: homeRuns ~ Poisson(homeLambda), awayRuns ~ Poisson(awayLambda)
 truePct = fraction of trials where homeRuns + awayRuns ≥ threshold`}</Formula>
@@ -445,6 +447,8 @@ truePct = fraction of trials where homeRuns + awayRuns ≥ threshold`}</Formula>
             why="Offensive baseline using only road games — eliminates home park inflation before parkRF is applied. A team at Coors averages 5.8 RPG overall but 4.9 on the road; using road RPG lets parkRF do its job cleanly without double-counting." />
           <InputRow name="Starter ERA + Team ERA (60/40 blend)" color="#3fb950"
             why="Tonight's starter governs 60% of innings (~5.5 IP). The team's season ERA governs 40% (bullpen). Using a blend prevents an ace from dragging a shaky pen's expected runs to zero — and regresses a spot-starter's tiny 3-start ERA toward team reality." />
+          <InputRow name="Platoon factor (lineup vs starter handedness)" color="#3fb950"
+            why="A dimensionless ratio: (lineup composite BA vs LHP or RHP) / (lineup overall BA), aggregated across tonight's confirmed lineup. A left-heavy lineup facing a tough LHP gets a factor below 1.0; a right-dominant lineup facing a RHP gets a slight boost. Park effects cancel in the ratio. Falls back to 1.0 when starter hand is unknown or lineup sample is too small." />
           <InputRow name="Park run factor (PARK_RUNFACTOR)" color="#e3b341"
             why="Applied cleanly to road RPG numerator. Coors Field +15%; Petco Park −10%. Both teams play the same park, so the factor is symmetric." />
           <InputRow name="Market O/U line" color="#8b949e"
@@ -562,7 +566,8 @@ truePct = fraction of trials where homeGoals + awayGoals ≥ threshold`}</Formul
           <div style={s.sub}>Poisson Monte Carlo for a single team's run-scoring. Same engine as game totals, one team only.</div>
 
           <div style={s.h3}>Core Formula</div>
-          <Formula>{`lambda = clamp(teamRPG × (oppERA ÷ 4.20) × parkRF, 0.5, 12)
+          <Formula>{`// platoonFactor = (lineup BA vs opp starter's hand) / (lineup overall BA)
+lambda = clamp(teamRPG × (oppERA ÷ 4.20) × parkRF × platoonFactor, 0.5, 12)
 
 Each trial: teamRuns ~ Poisson(lambda)
 truePct = fraction of trials where teamRuns ≥ threshold`}</Formula>
@@ -572,6 +577,8 @@ truePct = fraction of trials where teamRuns ≥ threshold`}</Formula>
             why="Baseline offensive production. How many runs does this team score per game against average pitching?" />
           <InputRow name="Opponent starter ERA" color="#3fb950"
             why="Tonight's pitcher quality for the opponent. A 5.5 ERA pitcher allows 31% more runs than the 4.20 league average." />
+          <InputRow name="Platoon factor (lineup vs starter handedness)" color="#3fb950"
+            why="Same as game total — (lineup composite BA vs starter's hand) / (lineup overall BA). Captures the scoring team's platoon advantage or disadvantage against tonight's starter. Falls back to 1.0 when hand or lineup data is unavailable." />
           <InputRow name="Park run factor" color="#e3b341"
             why="Same as game total. Both teams play in the same park, so a hitter-friendly environment boosts the scoring team's expected runs." />
         </Section>
