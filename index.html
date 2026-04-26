@@ -1173,12 +1173,16 @@ function ModelPage({ onBack }) {
     "mlb-k": (
       <>
         <Section title="MLB Strikeouts — True% Model">
-          <div style={s.sub}>Computes P(strikeouts ≥ threshold) via Monte Carlo simulation (10,000 trials)</div>
+          <div style={s.sub}>Computes P(strikeouts ≥ threshold) via Monte Carlo simulation (5k–10k trials based on SimScore)</div>
 
           <div style={s.h3}>Core Formula</div>
-          <Formula>{`For each simulated batter:
-  P(K) = log5(pitcherK%, batterK%)     ← matchup-specific probability
-Each trial: sum K outcomes across expected BF → distribution of K totals
+          <Formula>{`For each simulated trial:
+  trialPA ~ Normal(avgBF, stdBF)          ← per-trial BF variance, clamped [10,27]
+  [blowout hook: ~8–18% chance → trialPA = rand[10,15] based on team ML odds]
+  For each batter in trialPA:
+    if batter# ≥ 19: pitcherK% × 0.88    ← TTO decay (3rd time through order)
+    P(K) = log5(pitcherK%, batterK%)      ← matchup-specific probability
+  total Ks = sum of K outcomes across trialPA batters
 truePct = fraction of trials where total ≥ threshold`}</Formula>
 
           <div style={s.h3}>Model Inputs</div>
@@ -1190,8 +1194,14 @@ truePct = fraction of trials where total ≥ threshold`}</Formula>
             why="≤3 days rest → K% ×0.96. ≤3 days AND last start ≥95 pitches → ×0.92. Short rest after heavy workload produces measurable decline in swing-and-miss rate." />
           <InputRow name="Batter K% (lineup, hand-adjusted)" color="#3fb950"
             why="Strikeouts require both pitcher and batter. A lineup full of high-K batters amplifies the pitcher. Adjusted for LHP/RHP split since platoon splits are large (batters K more vs same-hand pitchers)." />
-          <InputRow name="Expected BF (avgPitches ÷ 3.85)" color="#e3b341"
-            why="Pitch-limited starters face fewer batters and therefore have fewer K opportunities. A starter on a 75-pitch limit averages ~20 BF vs the default 24, directly lowering the ceiling on strikeouts." />
+          <InputRow name="E3b — Expected BF (empirical avgBF)" color="#e3b341"
+            why="Pitcher-specific average batters faced per start, computed from their MLB gamelog (NP≥30 starts only). High-walk or deep-count pitchers face fewer batters than average — this directly lowers the K ceiling. Falls back to avgPitches ÷ 3.85 when gamelog data is absent." />
+          <InputRow name="stdBF variance" color="#8b949e"
+            why="Each trial samples trialPA from Normal(avgBF, stdBF) rather than using a fixed number. stdBF is the empirical standard deviation of BF across the pitcher's qualified starts (≥3 required). Reflects real pitch-count variability: some nights a pitcher goes 7 deep, others they're pulled after 4. Uses scoped Box-Muller to avoid cross-request state." />
+          <InputRow name="TTO decay (inside simulation)" color="#8b949e"
+            why="The 3rd time through the order, batters K at ~12% lower rates league-wide as they adjust to the pitcher's tendencies. Applied inside each trial at BF ≥ 19 as ×0.88. Effect: −0.15 to −0.25 projected Ks for workhorses (avgBF ≥ 22); negligible for pitch-limited starters." />
+          <InputRow name="Blowout hook (earlyExitProb)" color="#8b949e"
+            why="When a pitcher's team is a large underdog (+150 or worse), there's a meaningful chance they get pulled early if the game gets out of hand. ML odds map to early-exit probability: +150→8%, +200→12%, +250+→18%. Each trial independently rolls whether the pitcher is clipped at 10–15 BF." />
           <InputRow name="E3a — Umpire K-factor" color="#e3b341"
             why="Known in advance. Plate umpires vary ~10–15% in strikeout rate (range 0.89–1.12×). Applied directly to pitcherK% before simulation. Unknown umpires → 1.0 (no adjustment)." />
           <InputRow name="Park K-factor" color="#8b949e"
@@ -2558,7 +2568,8 @@ function App() {
                             { title:"By SimScore", data:kStrikeouts.bySimScore, keyLabel:"Score" },
                             { title:"By K% Tier (kpctPts)", data:kStrikeouts.byKpctPts, keyLabel:"Pts" },
                             { title:"By K-Trend", data:kStrikeouts.byKTrendPts, keyLabel:"Pts" },
-                          ].map(({title,data,keyLabel}) => (
+                            ...(kStrikeouts.byStdBF ? [{ title:"By stdBF", data:kStrikeouts.byStdBF, keyLabel:"BF Var", keyColor: k => k==="low"?"#3fb950":k==="high"?"#f78166":"#8b949e" }] : []),
+                          ].map(({title,data,keyLabel,keyColor}) => (
                             <div key={title} style={{flex:"1 1 180px",background:"#0d1117",border:"1px solid #21262d",borderRadius:8,overflow:"hidden"}}>
                               <div style={{color:"#8b949e",fontSize:11,fontWeight:600,padding:"7px 10px",borderBottom:"1px solid #21262d"}}>{title}</div>
                               <table style={{width:"100%",borderCollapse:"collapse"}}>
@@ -2570,7 +2581,7 @@ function App() {
                                 <tbody>
                                   {Object.entries(data).map(([k,d])=>(
                                     <tr key={k}>
-                                      <td style={{...tdS,color:"#c9d1d9"}}>{k}</td>
+                                      <td style={{...tdS,color:keyColor?keyColor(k):"#c9d1d9"}}>{k}</td>
                                       <td style={{...tdS,color:d.n<5?"#6e7681":"#c9d1d9"}}>{d.n}</td>
                                       <td style={{...tdS,color:d.hitRate>=70?"#3fb950":d.hitRate>=60?"#e3b341":"#f78166",fontWeight:600}}>{d.hitRate}%</td>
                                     </tr>

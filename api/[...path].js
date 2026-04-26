@@ -271,7 +271,20 @@ var worker_default = {
             hitRate: parseFloat((d.wins / d.n * 100).toFixed(1)), n: d.n,
           }])
         );
-        return jsonResponse({ totalPicks: allPicks.length, finalizedPicks: finalized.length, overall, byCategory, kStrikeouts: { bySimScore, byKpctPts, byKTrendPts, n: ksFinalized.length } });
+        const _byStdBF = {};
+        for (const p of ksFinalized) {
+          const bf = p.stdBF ?? 0;
+          const key = bf === 0 ? "none" : bf <= 2.5 ? "low" : "high";
+          if (!_byStdBF[key]) _byStdBF[key] = { wins: 0, n: 0 };
+          _byStdBF[key].n++;
+          if (p.result === "won") _byStdBF[key].wins++;
+        }
+        const byStdBF = Object.fromEntries(
+          Object.entries(_byStdBF).map(([k, d]) => [k, {
+            hitRate: parseFloat((d.wins / d.n * 100).toFixed(1)), n: d.n,
+          }])
+        );
+        return jsonResponse({ totalPicks: allPicks.length, finalizedPicks: finalized.length, overall, byCategory, kStrikeouts: { bySimScore, byKpctPts, byKTrendPts, byStdBF, n: ksFinalized.length } });
       } else if (path === "auth/reset" && method === "POST") {
         const { email, newPassword, adminKey } = await request.json();
         if (adminKey !== env?.ADMIN_KEY) return errorResponse("Forbidden", 403);
@@ -2928,6 +2941,46 @@ var worker_default = {
             if (isDebug) dropped.push(_dropLowScore);
             plays.push({
               ..._dropLowScore,
+              qualified: false,
+              playerName: playerNameDisplay || playerName,
+              playerId: info.id,
+              sport, playerTeam, stat, threshold, kalshiPct, americanOdds,
+              truePct: parseFloat(truePct.toFixed(1)),
+              log5Pct: simPctOut ?? log5PctOut, simPct: simPctOut,
+              spreadAdj,
+              gameDate,
+              gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
+              lineupConfirmed: !(sportByteam.mlb?.projectedLineupTeams || []).includes(tonightOpp),
+              playerStatus: null,
+            });
+            continue;
+          }
+          // stdBF variance gate: high-variance arms (stdBF > 2.5) disqualify.
+          // stdBF=0 means <3 qualified starts — no std dev computable, pass through.
+          if (sport === "mlb" && stat === "strikeouts" && _stdBF > 2.5) {
+            const _highVarDrop = {
+              ..._dropBase,
+              reason: "high_bf_variance",
+              stdBF: parseFloat(_stdBF.toFixed(2)),
+              simScore, finalSimScore,
+              opponent: tonightOpp,
+              kpctMeets, kpctPts, kbbMeets, kbbPts, lkpMeets, lkpPts, pitchesPts, parkMeets, mlPts, totalPts, kTrendPts, blendedHitRatePts, blendedHitRate: _blendedHR != null ? parseFloat(_blendedHR.toFixed(1)) : null,
+              seasonPct: parseFloat(primaryPct.toFixed(1)), softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
+              truePct: parseFloat(truePct.toFixed(1)), edge: parseFloat(edge.toFixed(1)),
+              pitcherCSWPct: _pt(sportByteam.mlb?.pitcherCSWPct, "cswPct"),
+              pitcherKPct: pitcherKPctOut, pitcherKBBPct: pitcherKBBPctOut, pitcherRecentKPct: _recentKPct, pitcherSeasonKPct: _seasonKPct,
+              pitcherAvgPitches: _avgP,
+              expectedBF: _expectedBF !== 24 ? _expectedBF : null,
+              lineupKPct: lineupKPctOut,
+              pitcherEra: _pitcherEraFromGl ?? _pt(sportByteam.mlb?.pitcherEra, "era") ?? null,
+              pitcherHand: _pitcherHand ?? null, simPct: simPctOut,
+              parkFactor: parkFactorOut ?? 1,
+              gameMoneyline: sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null,
+              gameTotal: sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null,
+            };
+            if (isDebug) dropped.push(_highVarDrop);
+            plays.push({
+              ..._highVarDrop,
               qualified: false,
               playerName: playerNameDisplay || playerName,
               playerId: info.id,
