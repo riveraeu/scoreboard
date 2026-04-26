@@ -1827,6 +1827,11 @@ function App() {
           tonightPlays={tonightPlays}
           allTonightPlays={allTonightPlays}
           tonightLoading={tonightLoading}
+          tonightMeta={tonightMeta}
+          sportFilter={sportFilter}
+          setSportFilter={setSportFilter}
+          statFilter={statFilter}
+          setStatFilter={setStatFilter}
           trackedPlays={trackedPlays}
           trackPlay={trackPlay}
           untrackPlay={untrackPlay}

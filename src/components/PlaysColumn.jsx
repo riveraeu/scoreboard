@@ -3,7 +3,7 @@ import { STAT_LABEL } from '../lib/constants.js';
 import { ordinal } from '../lib/utils.js';
 import { tierColor } from '../lib/colors.js';
 
-function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, trackedPlays, trackPlay, untrackPlay, navigateToPlay, navigateToTeam, navigateToModel, calcOdds, expandedPlays, setExpandedPlays, fetchReport, bustLoading, bustCache, showPlaysInfo, setShowPlaysInfo, testMode, setTestMode }) {
+function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMeta, sportFilter, setSportFilter, statFilter, setStatFilter, trackedPlays, trackPlay, untrackPlay, navigateToPlay, navigateToTeam, navigateToModel, calcOdds, expandedPlays, setExpandedPlays, fetchReport, bustLoading, bustCache, showPlaysInfo, setShowPlaysInfo, testMode, setTestMode }) {
   return (
         <div>
           <div style={{display:"flex",alignItems:"center",marginBottom:14}}>
