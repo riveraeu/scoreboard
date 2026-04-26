@@ -43,7 +43,12 @@ Routes via `pathname`:
 - `/api/auth/list-users` — list all user keys in Redis (GET `?adminKey=`)
 - `/api/auth/debug-redis` — raw Upstash SET+GET diagnostic (GET `?adminKey=`) — returns `{setStatus, setRaw, getStatus, getRaw, match}` to confirm Redis is writable
 - `/api/auth/import-kalshi-picks` — import fills from Kalshi into user picks (POST `{kalshiSession, adminKey, userId}`) — fetches last 5 days of YES fills, maps tickers to play format, auto-populates won/lost for finalized markets
-- `/api/auth/calibration` — outcome calibration stats (GET) — reads all users' finalized picks (result: won/lost), groups by truePct bucket (70–75, 75–80, …, 95+), returns `{totalPicks, finalizedPicks, overall:[{bucket, predicted, actual, n, delta}], byCategory:{sport|stat:{hitRate,n}}}`. Auth: `Authorization: Bearer <jwt>` (any logged-in user) OR `?adminKey=<ADMIN_KEY>` (curl/debug fallback — do not hardcode in frontend)
+- `/api/auth/calibration` — outcome calibration stats (GET) — reads all users' finalized picks (result: won/lost), returns:
+  - `overall` — all-sport truePct bucket breakdown: `[{bucket, predicted, actual, n, delta}]` (6 buckets: 70-75, 75-80, 80-85, 85-90, 90-95, 95+)
+  - `byCategory` — per `sport|stat` aggregate: `{sport|stat: {hitRate, n}}`
+  - `byCategoryDetail` — per `sport|stat` truePct bucket breakdown: `{sport|stat: [{bucket, predicted, actual, n, delta}]}` — same 6 buckets as `overall`, filtered to that category. Used by `CalibModule` in `ModelPage` to show per-tab calibration curves.
+  - `kStrikeouts` — MLB K-specific feature breakdowns: `{bySimScore, byKpctPts, byKTrendPts, byStdBF, n}`. `byStdBF` buckets: `none` (stdBF=0, <3 starts), `low` (≤2.5), `high` (>2.5 — will be empty going forward after gate added in commit 567b6b8).
+  - Auth: `Authorization: Bearer <jwt>` (any logged-in user) OR `?adminKey=<ADMIN_KEY>` (curl/debug — do not hardcode in frontend)
 - `/api/user/picks` — GET/POST user picks (requires `Authorization: Bearer <token>`)
 - `/api/team` — team page data (GET `?abbr=LAD&sport=mlb`) → `{teamAbbr, teamName, sport, record, wins, losses, gameLog, seasonStats:{avgTotal,gamesPlayed}, lineup, lineupConfirmed}`; cached `team:v2:{sport}:{abbr}:{today}` at 3600s TTL; `gameLog` entries: `{date, isHome, opp, teamScore, oppScore, total, result:"W"|"L"}`; lineup: NBA three-source fallback chain (see below), MLB two-source fallback chain: (1) MLB Stats API schedule `hydrate=lineups,probables` (PT date `Date.now()-7h`), confirmed lineup + probable SP → `{spot, name, position, playerId, isProbable?}`; (2) MLB Stats API active roster fallback when schedule returns no lineup/probable — non-pitcher position players up to 12, `spot:null`, `lineupConfirmed:false`
 
