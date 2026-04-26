@@ -1,5 +1,5 @@
 import React from 'react';
-import { STAT_LABEL } from '../lib/constants.js';
+import { STAT_LABEL, STAT_FULL, MLB_TEAM } from '../lib/constants.js';
 import { ordinal } from '../lib/utils.js';
 import { tierColor } from '../lib/colors.js';
 
