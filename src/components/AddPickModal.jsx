@@ -22,7 +22,7 @@ function AddPickModal({ onClose, onAdd, initialOdds = "-110" }) {
     hits:"Hits", hrr:"H+R+RBI", strikeouts:"Strikeouts",
     passingYards:"Pass Yards", rushingYards:"Rush Yards", receivingYards:"Rec Yards",
     receptions:"Receptions", completions:"Completions", attempts:"Attempts",
-    shotsOnGoal:"Shots on Goal", points:"Points", saves:"Saves",
+    shotsOnGoal:"Shots on Goal", saves:"Saves",
   };
   const suggestUnits = (odds) => { const o = parseInt(odds) || 0; return o <= -900 ? 5 : o <= -400 ? 4 : o <= -200 ? 3 : o <= -110 ? 2 : 1; };
   const [form, setForm] = React.useState({ playerName:"", sport:"nba", stat:"points", threshold:"", americanOdds:initialOdds, truePct:"", units: String(suggestUnits(initialOdds)), gameDate: new Date().toISOString().slice(0,10) });

@@ -5,7 +5,6 @@ function MarketReport({ onClose, reportDataBySport, reportSport, setReportSport,
         const reportData = reportDataBySport[reportSport] || null;
         const reportLoading = reportLoadingSport === reportSport;
   return (
-        return (
         <div style={{position:"fixed",inset:0,zIndex:200,background:"rgba(0,0,0,0.88)",overflow:"auto",padding:"20px 16px"}}
           onClick={e => { if (e.target === e.currentTarget) setShowReport(false); }}>
           <div style={{maxWidth:1280,margin:"0 auto",background:"#161b22",borderRadius:12,border:"1px solid #30363d",minHeight:200}}>
