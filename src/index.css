@@ -1,0 +1,12 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0d1117; font-family: 'Segoe UI', sans-serif; }
+html { scroll-behavior: smooth; }
+.plays-picks-grid { display: flex; flex-direction: column; gap: 24px; }
+@media (min-width: 900px) {
+  .plays-picks-grid { flex-direction: row; align-items: flex-start; }
+  .plays-picks-grid > * { flex: 1; min-width: 0; }
+}
+.picks-fab { display: flex; }
+@media (min-width: 900px) { .picks-fab { display: none; } }
+.gl-th-wrap { display: inline-block; position: relative; }
+.gl-th-wrap:hover .gl-tooltip { display: block !important; }
