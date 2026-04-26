@@ -734,6 +734,7 @@ function App() {
       {/* Market Report overlay */}
       {showReport && <MarketReport
         onClose={() => setShowReport(false)}
+        fetchReport={fetchReport}
         reportDataBySport={reportDataBySport}
         reportSport={reportSport}
         setReportSport={setReportSport}
@@ -1872,6 +1873,7 @@ function App() {
           setEditPickId={setEditPickId}
           setPlayResult={setPlayResult}
           setShowAddPick={setShowAddPick}
+          oddsToProfit={oddsToProfit}
         />
         </div>
       )}
