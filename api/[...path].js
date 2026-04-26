@@ -2575,8 +2575,8 @@ var worker_default = {
               : _h2hVals.length >= 8 && _h2hHitRate >= 80 ? 2
               : _h2hHitRate >= 70 ? 1
               : 0;
-            // platoon fallback = no real H2H data → force abstain regardless of _h2hVals
-            if (_hrrUsingTeamFallback) hitterH2HHitRatePts = 1;
+            // platoon fallback = no real H2H data; use platoon tier: red (disadvantage) → 0pts, else abstain (1pt)
+            if (_hrrUsingTeamFallback) hitterH2HHitRatePts = hitterPlatoonPts === 0 ? 0 : 1;
             // SimScore (max 10): batter quality→0-2, WHIP→0-2, season hit rate→0-2, H2H hit rate→0-2, O/U→0-2
             hitterSimScore = hitterBatterQualityPts
               + (hitterWhipPts ?? 0)
