@@ -136,8 +136,10 @@ Used for caching expensive fetches. Key TTLs:
 #### Lambda computation (MLB)
 `awayMult = 0.6×(awayERA/4.20) + 0.4×(awayTeamERA/4.20)` (away staff vs home offense)
 `homeMult = 0.6×(homeERA/4.20) + 0.4×(homeTeamERA/4.20)` (home staff vs away offense)
-`homeLambda = homeRoadRPG × awayMult × parkRF`, clamped [1, 12]
-`awayLambda = awayRoadRPG × homeMult × parkRF`, clamped [1, 12]
+`homeLambda = homeRoadRPG × awayMult × parkRF × homePlatoonFactor`, clamped [1, 12]
+`awayLambda = awayRoadRPG × homeMult × parkRF × awayPlatoonFactor`, clamped [1, 12]
+
+**Platoon factor** (`homePlatoonFactor`/`awayPlatoonFactor`): adjusts each team's offensive baseline for the opposing starter's handedness. `platoonFactor = (lineup composite BA vs starter's hand) / (lineup composite overall BA)` — a dimensionless ratio derived from `batterSplitBA` (individual batter vsL/vsR splits from `buildLineupKPct`). Falls back to 1.0 when starter hand is unknown or lineup sample < 80 AB. MLB Stats API `/teams/stats` does **not** support pitcher handedness sitCodes (`sitCodes=vl/vr` returns empty) — only situation splits (A/H) work at the team level; handedness splits are individual-player-only. Same platoon factor applied to team totals lambda. Debug output includes `homeStarterHand`, `awayStarterHand`, `homePlatoonFactor` (omitted when 1.0), `awayPlatoonFactor` (omitted when 1.0).
 
 #### Lambda computation (NHL)
 `homeLambda = homeGPG × (awayGAA / leagueAvgGAA)`, clamped [0.5, 8]
