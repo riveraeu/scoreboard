@@ -120,13 +120,17 @@ Used for caching expensive fetches. Key TTLs:
 - **True%**: Monte Carlo simulation — `simulateTeamTotalDist(lambda)` (Poisson, MLB) or `simulateTeamPtsDist(mean, std=11)` (Normal, NBA) in `api/lib/simulate.js`.
   - MLB lambda: `teamRPG × (oppERA / 4.20) × parkRF`, clamped [0.5, 12]
   - NBA mean: `teamOffPPG × (oppDefPPG / leagueAvgDef)`
+- **OVER plays**: `edge = truePct - kalshiPct >= 5%` → `direction: "over"`, uses `truePct`/`kalshiPct`. **UNDER plays**: `underEdge = (100-truePct) - (100-kalshiPct) >= 5%` AND `noKalshiPct >= 70` → `direction: "under"`, play has `noTruePct`/`noKalshiPct`/`americanOdds` (NO-side). Badge: red "Under X.X"; bars use no-side probs; prose colors inverted. Track ID appends `|under`. `reason: "under_no_price_too_low"` when Kalshi YES > 30%.
 - **SimScore** (max 10 — 5 stats × 2pts each; `qualified: teamTotalSimScore >= 8`):
-  - MLB: umpireRunFactor (1/kFactor ≥1.05→2, ≥0.97→1, else 0, null→1 abstain), oppWHIP (>1.35→2, >1.20→1, ≤1.20→0, null→1 abstain), teamL10RPG (>5.0→2, >4.0→1, ≤4.0→0, null→1 abstain), H2H HR% (≥80%→2, ≥60%→1, <60%→0, null(<3 games)→1 abstain), O/U line (≥9.5→2, ≥7.5→1, <7.5→0)
-  - NBA: teamOffPPG (≥118→2, ≥113→1, else 0), oppDefPPG (≥118→2, ≥113→1, else 0), O/U line (≥235→2, ≥225→1), teamPace (>lgPace+2→2, >lgPace-2→1), H2H HR% (≥80%→2, ≥60%→1, <60%→0, null(<3 games)→1 abstain)
+  - MLB OVER: umpireRunFactor (≥1.05→2, ≥0.97→1, else 0, null→1), oppWHIP (>1.35→2, >1.20→1, ≤1.20→0, null→1), teamL10RPG (>5.0→2, >4.0→1, ≤4.0→0, null→1), H2H HR% (≥80%→2, ≥60%→1, <60%→0, null→1), O/U (≥9.5→2, ≥7.5→1, <7.5→0)
+  - MLB UNDER (inverted): umpireRunFactor (≤0.95→2, ≤1.03→1), oppWHIP (≤1.10→2, ≤1.25→1, >1.25→0), teamL10RPG (≤3.5→2, ≤4.5→1, >4.5→0), H2H HR% (≤30%→2, ≤50%→1, >50%→0), O/U (<7.5→2, <9.5→1, ≥9.5→0)
+  - NBA OVER: teamOffPPG (≥118→2, ≥113→1, else 0), oppDefPPG (≥118→2, ≥113→1, else 0), O/U (≥235→2, ≥225→1), teamPace (>lgPace+2→2, >lgPace-2→1), H2H HR% (≥80%→2, ≥60%→1, <60%→0, null→1)
+  - NBA UNDER (inverted): teamOffPPG (<113→2, <118→1), oppDefPPG (<113→2, <118→1), O/U (<225→2, <235→1), teamPace (≤lgPace−2→2, ≤lgPace+2→1), H2H HR% (≤30%→2, ≤50%→1, >50%→0)
 - **H2H HR%**: scoring team's hit rate (scored ≥ threshold) in last 10 H2H games vs opponent. Fetched from ESPN team schedule (`site.api.espn.com/.../teams/{abbr}/schedule`), cached `teamschedule:v2:{sport}:{abbr}` at 3600s TTL. Requires ≥3 H2H games; null = 1pt abstain. `isBust` clears this cache. MLB replaces oppRPG; NBA replaces spread.
-- **Play card**: `gameType: "teamTotal"` branch — single scoring team logo (44px), "{TEAM} vs {OPP}" header, prose shows teamRPG/oppERA for MLB or teamOff/oppDef for NBA, SimScore badge inline
-- **Deduplication**: one play per `sport|scoringTeam|oppTeam`, best edge threshold wins
-- **Track ID format**: `teamtotal|sport|scoringTeam|oppTeam|threshold|gameDate`
+- **Play card**: `gameType: "teamTotal"` branch — single scoring team logo (44px), "{TEAM} vs {OPP}" header, prose shows teamRPG/oppERA for MLB or teamOff/oppDef for NBA, SimScore badge inline. UNDER plays: red badge, inverted prose colors (low ERA/RPG = green), H2H prose flipped ("stayed under X% of meetings")
+- **Deduplication**: one play per `sport|scoringTeam|oppTeam`, best edge wins across OVER and UNDER directions
+- **Track ID format**: OVER: `teamtotal|sport|scoringTeam|oppTeam|threshold|gameDate` · UNDER: same + `|under`
+- **`umpireRunFactor`** stored in all team total play/drop objects (alongside `ttUmpirePts`) so market report tooltip can correctly invert pts for UNDER plays
 
 #### Total SimScore details (max 10 — 5 stats × 2pts each; `qualified: totalSimScore >= 8`)
 - **MLB**: homeERA tiered (>4.5→2, >3.5→1, ≤3.5→0, null→1), awayERA (same), combinedRPG (road homeRPG+awayRPG; ≥10.5→2, ≥9.0→1, <9.0→0, null→1), umpireRunFactor (1/UMPIRE_KFACTOR; ≥1.05→2, ≥0.97→1, <0.97→0, null→1), O/U line tiered (≥9.5→2, ≥7.5→1, <7.5→0, null→1). **Road RPG** from MLB Stats API `sitCodes=A` (stored as `mlbRoadRPGMap`). **60/40 ERA blend**: `0.6×(starterERA/4.20)+0.4×(teamERA/4.20)` where teamERA from ESPN pitching byteam (stored as `mlbTeamERAMap`) acts as bullpen proxy and regresses small-sample starters toward team reality. UNDER inverted: ERA ≤3.5→2, ≤4.5→1; combinedRPG ≤8.5→2, ≤10.0→1; umpireRunFactor ≤0.95→2, ≤1.03→1.
