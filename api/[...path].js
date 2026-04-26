@@ -2811,6 +2811,7 @@ var worker_default = {
                 pitcherKBBPct: _pt(sportByteam.mlb?.pitcherKBBPct, "kbbPct"),
                 pitcherRecentKPct: _recentKPct, pitcherSeasonKPct: _seasonKPct,
                 lineupKPct: lineupKPctOut, pitcherAvgPitches: _avgP,
+                expectedBF: _expectedBF !== 24 ? _expectedBF : null,
                 kpctMeets, kpctPts, kbbMeets, kbbPts, lkpMeets, pitchesPts, parkMeets, mlPts, totalPts, kTrendPts, blendedHitRatePts, blendedHitRate: _blendedHR != null ? parseFloat(_blendedHR.toFixed(1)) : null,
               } : {}),
               ...(sport === "mlb" && stat !== "strikeouts" ? {
@@ -2874,6 +2875,7 @@ var worker_default = {
               seasonPct: parseFloat(primaryPct.toFixed(1)), softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
               truePct: _kTruePct, edge: parseFloat((_kTruePct - kalshiPct).toFixed(1)),
               pitcherKPct: pitcherKPctOut, pitcherAvgPitches: _avgP,
+              expectedBF: _expectedBF !== 24 ? _expectedBF : null,
               pitcherHand: _pitcherHand ?? null, simPct: simPctOut,
             };
             if (isDebug) dropped.push(_dropThresh);
@@ -2907,6 +2909,7 @@ var worker_default = {
               pitcherCSWPct: _pt(sportByteam.mlb?.pitcherCSWPct, "cswPct"),
               pitcherKPct: pitcherKPctOut, pitcherKBBPct: pitcherKBBPctOut, pitcherRecentKPct: _recentKPct, pitcherSeasonKPct: _seasonKPct,
               pitcherAvgPitches: _avgP,
+              expectedBF: _expectedBF !== 24 ? _expectedBF : null,
               lineupKPct: lineupKPctOut,
               pitcherEra: _pitcherEraFromGl ?? _pt(sportByteam.mlb?.pitcherEra, "era") ?? null,
               pitcherHand: _pitcherHand ?? null, simPct: simPctOut,
