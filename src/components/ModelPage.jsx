@@ -8,10 +8,10 @@ function ModelPage({ onBack, calibData, calibLoading, fetchCalib, authToken }) {
     if (authToken && !calibData && !calibLoading) fetchCalib();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const s = { // shared style helpers
-    card: { background:"#161b22", border:"1px solid #30363d", borderRadius:12, padding:"20px 22px", marginBottom:16 },
-    h2:   { color:"#c9d1d9", fontSize:15, fontWeight:700, marginBottom:4 },
-    sub:  { color:"#8b949e", fontSize:12, marginBottom:14 },
-    h3:   { color:"#58a6ff", fontSize:12, fontWeight:700, marginTop:14, marginBottom:6 },
+    card: { background:"#161b22", border:"1px solid #30363d", borderRadius:10, padding:"14px 18px", marginBottom:12 },
+    h2:   { color:"#c9d1d9", fontSize:14, fontWeight:700, marginBottom:3 },
+    sub:  { color:"#8b949e", fontSize:11, marginBottom:10 },
+    h3:   { color:"#58a6ff", fontSize:12, fontWeight:700, marginTop:10, marginBottom:5 },
     p:    { color:"#c9d1d9", fontSize:12, lineHeight:1.65, marginBottom:8 },
     dim:  { color:"#484f58" },
     mono: { fontFamily:"monospace", background:"rgba(88,166,255,0.08)", borderRadius:4, padding:"1px 5px", fontSize:11 },
@@ -36,14 +36,14 @@ function ModelPage({ onBack, calibData, calibLoading, fetchCalib, authToken }) {
   );
 
   const InputRow = ({ name, color="#c9d1d9", why }) => (
-    <div style={{display:"flex",gap:10,marginBottom:6,alignItems:"flex-start"}}>
+    <div style={{display:"flex",gap:10,marginBottom:5,alignItems:"flex-start"}}>
       <div style={{minWidth:190,flexShrink:0,color:color,fontSize:11,fontWeight:600,paddingTop:1}}>{name}</div>
       <div style={{color:"#8b949e",fontSize:11,lineHeight:1.55}}>{why}</div>
     </div>
   );
 
   const ScoreRow = ({ pts, name, tiers, why }) => (
-    <div style={{display:"flex",gap:10,marginBottom:8,alignItems:"flex-start"}}>
+    <div style={{display:"flex",gap:10,marginBottom:6,alignItems:"flex-start"}}>
       <div style={{minWidth:30,flexShrink:0,color:"#e3b341",fontSize:11,fontWeight:700,paddingTop:1}}>{pts}</div>
       <div style={{flex:1}}>
         <div style={{color:"#c9d1d9",fontSize:11,fontWeight:600,marginBottom:2}}>{name}</div>
@@ -200,17 +200,24 @@ function ModelPage({ onBack, calibData, calibLoading, fetchCalib, authToken }) {
     );
   };
 
-  const TABS = [
-    { id:"mlb-k",    label:"MLB Strikeouts" },
-    { id:"mlb-hrr",  label:"MLB H+R+RBI" },
-    { id:"nba",      label:"NBA Props" },
-    { id:"nhl",      label:"NHL Points" },
-    { id:"mlb-gt",   label:"MLB Game Total" },
-    { id:"nba-gt",   label:"NBA Game Total" },
-    { id:"nhl-gt",   label:"NHL Game Total" },
-    { id:"mlb-tt",   label:"MLB Team Total" },
-    { id:"nba-tt",   label:"NBA Team Total" },
+  const TAB_ROWS = [
+    { sport:"MLB", tabs:[
+      { id:"mlb-k",   label:"MLB Strikeouts" },
+      { id:"mlb-hrr", label:"MLB H+R+RBI" },
+      { id:"mlb-gt",  label:"MLB Game Total" },
+      { id:"mlb-tt",  label:"MLB Team Total" },
+    ]},
+    { sport:"NBA", tabs:[
+      { id:"nba",    label:"NBA Props" },
+      { id:"nba-gt", label:"NBA Game Total" },
+      { id:"nba-tt", label:"NBA Team Total" },
+    ]},
+    { sport:"NHL", tabs:[
+      { id:"nhl",    label:"NHL Points" },
+      { id:"nhl-gt", label:"NHL Game Total" },
+    ]},
   ];
+  const TABS = TAB_ROWS.flatMap(r => r.tabs);
 
   const content = {
     "mlb-k": (
@@ -654,9 +661,9 @@ truePct = P(teamPoints ≥ threshold)`}</Formula>
   };
 
   return (
-    <div style={{maxWidth:900,margin:"0 auto",padding:"24px 16px"}}>
+    <div style={{maxWidth:900,margin:"0 auto",padding:"16px 16px"}}>
       {/* Header */}
-      <div style={{display:"flex",alignItems:"center",marginBottom:20,gap:12}}>
+      <div style={{display:"flex",alignItems:"center",marginBottom:14,gap:12}}>
         <button onClick={onBack}
           style={{background:"transparent",border:"1px solid #30363d",borderRadius:6,
             color:"#8b949e",fontSize:12,padding:"4px 10px",cursor:"pointer"}}>
@@ -669,7 +676,7 @@ truePct = P(teamPoints ≥ threshold)`}</Formula>
       </div>
 
       {/* Qualification summary */}
-      <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:10,padding:"12px 16px",marginBottom:20,
+      <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:10,padding:"10px 14px",marginBottom:12,
         display:"flex",gap:24,flexWrap:"wrap"}}>
         <div>
           <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>MARKET GATE</div>
@@ -693,16 +700,20 @@ truePct = P(teamPoints ≥ threshold)`}</Formula>
         </div>
       </div>
 
-      {/* Tab bar */}
-      <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:16}}>
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            style={{padding:"5px 12px",borderRadius:6,border:`1px solid ${tab===t.id?"#58a6ff":"#30363d"}`,
-              background: tab===t.id ? "rgba(88,166,255,0.1)" : "transparent",
-              color: tab===t.id ? "#58a6ff" : "#8b949e",
-              fontSize:11,fontWeight:tab===t.id?700:400,cursor:"pointer"}}>
-            {t.label}
-          </button>
+      {/* Tab bar — grouped by sport */}
+      <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:14}}>
+        {TAB_ROWS.map(row => (
+          <div key={row.sport} style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+            {row.tabs.map(t => (
+              <button key={t.id} onClick={() => setTab(t.id)}
+                style={{padding:"4px 11px",borderRadius:6,border:`1px solid ${tab===t.id?"#58a6ff":"#30363d"}`,
+                  background: tab===t.id ? "rgba(88,166,255,0.1)" : "transparent",
+                  color: tab===t.id ? "#58a6ff" : "#8b949e",
+                  fontSize:11,fontWeight:tab===t.id?700:400,cursor:"pointer"}}>
+                {t.label}
+              </button>
+            ))}
+          </div>
         ))}
       </div>
 
