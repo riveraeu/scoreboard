@@ -2532,7 +2532,7 @@ var worker_default = {
               const _recentH  = _evs26_recent.reduce((s, ev) => s + (parseFloat(ev.stats[hIdx2]) || 0), 0);
               if (_recentAB >= 20 && hitterBa != null) {
                 const _recentBA = _recentH / _recentAB;
-                hitterEffectiveBA = parseFloat((_recentBA * 0.6 + hitterBa * 0.4).toFixed(3));
+                hitterEffectiveBA = parseFloat((_recentBA * 0.3 + hitterBa * 0.7).toFixed(3));
               }
             }
             // Barrel% still computed for output/display
@@ -2768,7 +2768,9 @@ var worker_default = {
               const rawMlbPct = softPct !== null ? (basePct + softPct) / 2 : basePct;
               const homeTeam = sportByteam.mlb?.gameHomeTeams?.[playerTeam] ?? tonightOpp;
               const parkFactor = PARK_HITFACTOR[homeTeam] ?? 1;
-              return Math.min(99, rawMlbPct * parkFactor);
+              const _p = Math.max(0.01, Math.min(0.99, rawMlbPct / 100));
+              const _logOddsAdj = Math.log(_p / (1 - _p)) + Math.log(parkFactor);
+              return Math.min(99.9, parseFloat((100 / (1 + Math.exp(-_logOddsAdj))).toFixed(1)));
             }
             if (sport === "nba") {
               // Monte Carlo simulation is primary model; fall back to season/soft blend

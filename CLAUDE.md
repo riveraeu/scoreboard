@@ -183,7 +183,7 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
 
 #### MLB Hitters (hits/hrr) Model
 - **`hits` True%**: Monte Carlo simulation (`simulateHits`) using batter BA × pitcher BAA (log5), park-adjusted
-- **`hrr` True%**: `(primaryPct + softPct) / 2 × parkFactor` (no Monte Carlo)
+- **`hrr` True%**: logit-sigmoid park adjustment applied to blended base rate (no Monte Carlo). `rawMlbPct = (primaryPct + softPct) / 2`; park factor applied via log-odds: `logOddsAdj = logit(rawMlbPct/100) + ln(parkFactor)`; `truePct = sigmoid(logOddsAdj) × 100`. Replaces old direct multiplication (`rawMlbPct × parkFactor`) which could exceed 100% for elite rates at hitter-friendly parks.
   - `primaryPct` = player's 2026 HRR 1+ rate (falls back to 2025+2026 blend, then career)
   - `softPct` = HRR 1+ rate vs tonight's pitcher (H2H gamelog dates, ≥ 5 games) — falls back to 2025+2026 team-level rate when pitcher H2H yields < 5 games; `softLabel` updates to `"vs {OPP}"` in that case. `hitterH2HHitRatePts` uses **only** pitcher H2H (no team fallback).
   - BA is NOT directly in the formula — it's implicit via the player's historical HRR rate
@@ -194,7 +194,7 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
   - H2H hit rate (`hitterH2HHitRatePts`): rate vs tonight's pitcher from gamelog (H2H dates only, requires ≥ 5 games). ≥ 80% → 2pts, ≥ 70% → 1pt, < 70% → 0pts; null → 1pt (abstain). **No team fallback for SimScore** — pitcher H2H only; sparse H2H (1–4 games) scores 1pt abstain (the old platoon-adjusted scoring path was removed).
   - O/U total tier: ≥9.5 → 2pts, ≥7.5 → 1pt, <7.5 → 0pts, null → 1pt
   - Max: 2+2+2+2+2 = 10. Platoon (`hitterPlatoonPts`) still computed and displayed in prose but removed from SimScore. Park factor still shown in report env column.
-- **B2 — Batter recent form**: `hitterEffectiveBA = 0.6 × recentBA + 0.4 × seasonBA` when ≥20 AB in last 10 2026 games; else uses seasonBA. Fed directly into `simulateHits` as `batterBA`. `batterRecentBA` map built inline from ESPN gamelog in main play loop.
+- **B2 — Batter recent form**: `hitterEffectiveBA = 0.3 × recentBA + 0.7 × seasonBA` when ≥20 AB in last 10 2026 games; else uses seasonBA. Weight reduced from 0.6/0.4 — 40 PAs is deep in BABIP noise territory; 0.3/0.7 still captures true slumps/streaks without letting a bad week hijack a season baseline. Fed directly into `simulateHits` as `batterBA`. `batterRecentBA` map built inline from ESPN gamelog in main play loop.
 - **Gates**: lineup spot 1–4 required; hitterFinalSimScore ≥ 8 (Alpha tier); edge ≥ 5% (gate only, not scored)
 - Barrel% from Baseball Savant (`buildBarrelPct`) — cached 6h in KV; `hitterBarrelPts` stored in play output
 - NBA game totals fetched from ESPN scoreboard (`sportByteam.nbaGameOdds`) — always fresh (not long-term cached)
