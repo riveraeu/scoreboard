@@ -2108,9 +2108,10 @@ var worker_default = {
           let _pitcherHand = null;
           let _avgP = null; // hoisted so all strikeout output sites can use it
           let _avgBF = null; // empirical avg batters faced per start — replaces _avgP / 3.85 when available
-          let _umpireName = null;   // E3a: home plate umpire
-          let _umpireKFactor = 1.0; // factor relative to league avg (>1 = high-K zone)
-          let _expectedBF = 24;     // E3b: expected batters faced from avg pitch count
+          let _umpireName = null;    // E3a: home plate umpire
+          let _umpireKFactor = 1.0;  // factor relative to league avg (>1 = high-K zone)
+          let _expectedBF = 24;      // E3b: expected batters faced from avg pitch count
+          let _earlyExitProb = 0;    // blowout hook: P(pitcher pulled before BF 16) per trial
           if (sport === "mlb" && stat === "strikeouts") {
             _pitcherHand = _pt(sportByteam.mlb?.pitcherHand, "hand");
             const _csw = _pt(sportByteam.mlb?.pitcherCSWPct, "cswPct");
@@ -2207,6 +2208,9 @@ var worker_default = {
             parkMeets = _parkKF > 1.0;
             const _teamML = sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null;
             mlPts = _teamML == null ? 1 : _teamML <= -121 ? 2 : _teamML <= 120 ? 1 : 0;
+            // Blowout hook: heavy underdogs have elevated P(early hook) in MC trials.
+            // +150→8%, +200→12%, +250+→18%. Null ML (no line yet) = no adjustment.
+            _earlyExitProb = _teamML == null ? 0 : _teamML >= 250 ? 0.18 : _teamML >= 200 ? 0.12 : _teamML >= 150 ? 0.08 : 0;
             // O/U total (low total = pitcher-friendly): ≤7.5 → 2pts, <10.5 → 1pt, ≥10.5 → 0pts; null → 1pt
             const _gameTotal = sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null;
             totalPts = _gameTotal == null ? 1 : _gameTotal <= 7.5 ? 2 : _gameTotal < 10.5 ? 1 : 0;
@@ -2330,7 +2334,7 @@ var worker_default = {
                 if (!pitcherKDistCache[_distKey]) {
                   const _nSim = simScore !== null && simScore >= 8 ? 10000 : 5000;
                   const _pitcherKPctAdj = Math.min(40, pitcherKPctOut * _umpireKFactor);
-                  pitcherKDistCache[_distKey] = simulateKsDist(orderedKPcts, _pitcherKPctAdj, parkFactorOut, _nSim, _expectedBF);
+                  pitcherKDistCache[_distKey] = simulateKsDist(orderedKPcts, _pitcherKPctAdj, parkFactorOut, _nSim, _expectedBF, _earlyExitProb);
                 }
                 simPctOut = kDistPct(pitcherKDistCache[_distKey], threshold);
               } else {
@@ -3121,6 +3125,7 @@ var worker_default = {
             umpireName: sport === "mlb" && stat === "strikeouts" ? _umpireName : void 0,
             umpireKFactor: sport === "mlb" && stat === "strikeouts" && _umpireKFactor !== 1.0 ? _umpireKFactor : void 0,
             expectedBF: sport === "mlb" && stat === "strikeouts" && _expectedBF !== 24 ? _expectedBF : void 0,
+            earlyExitProb: sport === "mlb" && stat === "strikeouts" && _earlyExitProb > 0 ? _earlyExitProb : void 0,
             gameTotal: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null : void 0,
             gameMoneyline: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null : void 0,
             pitcherCSWPct: sport === "mlb" && stat === "strikeouts" ? _pt(sportByteam.mlb?.pitcherCSWPct, "cswPct") : void 0,

@@ -256,3 +256,27 @@ test('_nameWhite: MLB uses score>10, non-MLB uses m.qualified', () => {
   assert.equal(nameWhite('nba', { nbaSimScore: 14, qualified: true }),  true,  'nba qualified → white');
   assert.equal(nameWhite('nba', { nbaSimScore: 14, qualified: false }), false, 'nba not qualified → not white');
 });
+
+// --- TTO decay and blowout hook ---
+
+test('TTO decay: 24-BF dist mean Ks below naive expectation (no decay)', () => {
+  // pitcherKPct is a percentage (30 = 30%); orderedKPcts are fractions (0.22 = 22%).
+  // log5K(30, 22) ≈ 0.297 per PA. Naive expected (no decay): 0.297×24 ≈ 7.1.
+  // With TTO (BF 19-24 at 0.88×): 0.297×18 + 0.297×0.88×6 ≈ 6.9.
+  const lineup = Array(9).fill(0.22);
+  const dist = simulateKsDist(lineup, 30, 1.0, 10000, 24);
+  const mean = Array.from(dist).reduce((a, b) => a + b, 0) / dist.length;
+  assert.ok(mean < 7.1, `mean Ks with TTO (${mean.toFixed(2)}) should be below naive 7.1`);
+  assert.ok(mean > 5.5, `mean Ks (${mean.toFixed(2)}) should be above 5.5 (sanity)`);
+});
+
+test('earlyExitProb=1.0: all trials cap at BF <= 15, reducing P(K>=5) vs baseline', () => {
+  const lineup = Array(9).fill(0.22);
+  const distHook = simulateKsDist(lineup, 30, 1.0, 5000, 24, 1.0);
+  const distBase = simulateKsDist(lineup, 30, 1.0, 5000, 24, 0);
+  const maxKs = Math.max(...distHook);
+  assert.ok(maxKs <= 15, `hook dist max Ks should be <= 15, got ${maxKs}`);
+  const pHook = kDistPct(distHook, 5);
+  const pBase = kDistPct(distBase, 5);
+  assert.ok(pHook < pBase, `earlyExitProb=1.0: P(K>=5) hook=${pHook} should be < base=${pBase}`);
+});

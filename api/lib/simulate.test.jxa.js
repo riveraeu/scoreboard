@@ -17,10 +17,13 @@ function poissonCDF(k, lambda) {
   return Math.min(1, sum);
 }
 
-function simulateKsDist(orderedKPcts, pitcherKPct, parkFactor, nSim, totalPA) {
+var TTO_DECAY_FACTOR = 0.88;
+
+function simulateKsDist(orderedKPcts, pitcherKPct, parkFactor, nSim, totalPA, earlyExitProb) {
   parkFactor = parkFactor == null ? 1 : parkFactor;
   nSim = nSim == null ? 5000 : nSim;
   totalPA = totalPA == null ? 24 : totalPA;
+  earlyExitProb = earlyExitProb == null ? 0 : earlyExitProb;
   var n = orderedKPcts.length;
   if (!n || pitcherKPct == null) return null;
   var base = Math.floor(totalPA / n);
@@ -29,10 +32,19 @@ function simulateKsDist(orderedKPcts, pitcherKPct, parkFactor, nSim, totalPA) {
   var adjProbs = orderedKPcts.map(function(b) { return Math.min(0.95, log5K(pitcherKPct, b * 100) * parkFactor); });
   var dist = new Int16Array(nSim);
   for (var sim = 0; sim < nSim; sim++) {
-    var ks = 0;
+    var ks = 0, bf = 0;
+    var trialPA = (earlyExitProb > 0 && Math.random() < earlyExitProb)
+      ? (10 + Math.floor(Math.random() * 6))
+      : totalPA;
     for (var i = 0; i < n; i++) {
-      var p = adjProbs[i], pa = paArr[i];
-      for (var j = 0; j < pa; j++) { if (Math.random() < p) ks++; }
+      var pa = paArr[i];
+      var p = bf >= 18 ? Math.min(0.95, adjProbs[i] * TTO_DECAY_FACTOR) : adjProbs[i];
+      for (var j = 0; j < pa; j++) {
+        if (bf >= trialPA) break;
+        if (Math.random() < p) ks++;
+        bf++;
+      }
+      if (bf >= trialPA) break;
     }
     dist[sim] = ks;
   }
@@ -506,6 +518,35 @@ test('totalDistPct: P(>= low) > P(>= high) for same dist', function() {
   var pLow = totalDistPct(dist, 5);
   var pHigh = totalDistPct(dist, 10);
   assert.ok(pLow > pHigh, 'P(>=5)='+pLow+' should be > P(>=10)='+pHigh);
+});
+
+// ---- TTO decay and blowout hook ----
+
+test('TTO decay: 24-BF dist mean Ks below naive expectation (no decay)', function() {
+  // pitcherKPct is a percentage (30 = 30%); orderedKPcts are fractions (0.22 = 22%).
+  // log5K(30, 0.22×100=22) ≈ 0.297 per PA. Naive expected Ks (no decay): 0.297×24 ≈ 7.1.
+  // With TTO (BF 19-24 at 0.88×): 0.297×18 + 0.297×0.88×6 ≈ 5.35 + 1.57 ≈ 6.9.
+  var lineup = [];
+  for (var i = 0; i < 9; i++) lineup.push(0.22);
+  var dist = simulateKsDist(lineup, 30, 1.0, 10000, 24);
+  var mean = 0;
+  for (var i = 0; i < dist.length; i++) mean += dist[i];
+  mean /= dist.length;
+  assert.ok(mean < 7.1, 'mean Ks with TTO (' + mean.toFixed(2) + ') should be below naive 7.1');
+  assert.ok(mean > 5.5, 'mean Ks (' + mean.toFixed(2) + ') should be above 5.5 (sanity)');
+});
+
+test('earlyExitProb=1.0: all trials cap at BF <= 15, reducing P(K>=5) vs baseline', function() {
+  var lineup = [];
+  for (var i = 0; i < 9; i++) lineup.push(0.22);
+  var distHook = simulateKsDist(lineup, 30, 1.0, 5000, 24, 1.0);
+  var distBase = simulateKsDist(lineup, 30, 1.0, 5000, 24, 0);
+  var maxKs = 0;
+  for (var i = 0; i < distHook.length; i++) { if (distHook[i] > maxKs) maxKs = distHook[i]; }
+  assert.ok(maxKs <= 15, 'hook dist max Ks should be <= 15, got ' + maxKs);
+  var pHook = kDistPct(distHook, 5);
+  var pBase = kDistPct(distBase, 5);
+  assert.ok(pHook < pBase, 'earlyExitProb=1.0: P(K>=5) hook=' + pHook + ' should be < base=' + pBase);
 });
 
 // ---- Summary ----

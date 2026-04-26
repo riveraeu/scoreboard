@@ -176,10 +176,16 @@ export function log5HitRate(log5Avg, threshold, avgBF = 26) {
   return (1 - poissonCDF(threshold - 1, lambda)) * 100;
 }
 
+// K% multiplier applied to BF 19+ (third time through the order).
+// League-average decline: ~10–15% drop in K% on 3rd pass due to batter familiarity.
+export const TTO_DECAY_FACTOR = 0.88;
+
 // Monte Carlo PA-level simulation: runs nSim games and returns the full K-count distribution
 // (array of length nSim with Ks per game). Use kDistPct(dist, t) to get P(Ks >= t).
 // Running once per pitcher and sharing the distribution guarantees monotonicity across thresholds.
-export function simulateKsDist(orderedKPcts, pitcherKPct, parkFactor = 1, nSim = 5000, totalPA = 24) {
+// earlyExitProb: fraction of trials where the pitcher is pulled early (BF = rand[10,15]).
+//   Used for blowout hook — heavy underdogs have a non-trivial chance of being chased in 3rd inning.
+export function simulateKsDist(orderedKPcts, pitcherKPct, parkFactor = 1, nSim = 5000, totalPA = 24, earlyExitProb = 0) {
   const n = orderedKPcts.length;
   if (!n || pitcherKPct == null) return null;
   const base = Math.floor(totalPA / n);
@@ -188,10 +194,19 @@ export function simulateKsDist(orderedKPcts, pitcherKPct, parkFactor = 1, nSim =
   const adjProbs = orderedKPcts.map(b => Math.min(0.95, log5K(pitcherKPct, b * 100) * parkFactor));
   const dist = new Int16Array(nSim);
   for (let sim = 0; sim < nSim; sim++) {
-    let ks = 0;
+    let ks = 0, bf = 0;
+    const trialPA = (earlyExitProb > 0 && Math.random() < earlyExitProb)
+      ? (10 + Math.floor(Math.random() * 6))
+      : totalPA;
     for (let i = 0; i < n; i++) {
-      const p = adjProbs[i], pa = paArr[i];
-      for (let j = 0; j < pa; j++) { if (Math.random() < p) ks++; }
+      const pa = paArr[i];
+      const p = bf >= 18 ? Math.min(0.95, adjProbs[i] * TTO_DECAY_FACTOR) : adjProbs[i];
+      for (let j = 0; j < pa; j++) {
+        if (bf >= trialPA) break;
+        if (Math.random() < p) ks++;
+        bf++;
+      }
+      if (bf >= trialPA) break;
     }
     dist[sim] = ks;
   }
