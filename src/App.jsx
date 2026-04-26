@@ -1826,6 +1826,7 @@ function App() {
         <PlaysColumn
           tonightPlays={tonightPlays}
           allTonightPlays={allTonightPlays}
+          tonightLoading={tonightLoading}
           trackedPlays={trackedPlays}
           trackPlay={trackPlay}
           untrackPlay={untrackPlay}
