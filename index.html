@@ -4287,7 +4287,7 @@ function App() {
                           borderRadius:6,padding:"2px 8px",fontSize:12,color:"#3fb950",fontWeight:700,whiteSpace:"nowrap"}}>
                           +{play.edge}%
                         </span>
-                        <button onClick={e => { e.stopPropagation(); isTracked ? untrackPlay(trackId) : trackPlay(play); }}
+                        <button onClick={e => { e.stopPropagation(); if (isTracked) { untrackPlay(trackId); return; } const calcV = calcOdds.trim(); const overrideOdds = (calcV && calcV !== "-" && calcV !== "+" && !isNaN(parseInt(calcV))) ? parseInt(calcV) : null; trackPlay(overrideOdds ? { ...play, americanOdds: overrideOdds } : play); }}
                           title={isTracked ? "Remove from My Picks" : "Add to My Picks"}
                           style={{background: isTracked ? "rgba(227,179,65,0.15)" : "transparent",
                             border: `1px solid ${isTracked ? "#e3b341" : "#30363d"}`,
@@ -4330,13 +4330,19 @@ function App() {
                         const eraColor = v => v == null ? "#8b949e" : v > 4.5 ? "#3fb950" : v > 3.5 ? "#e3b341" : "#f78166";
                         const rpgColor = v => v == null ? "#8b949e" : v > 5.0 ? "#3fb950" : v > 4.0 ? "#e3b341" : "#8b949e";
                         const ouColor = play.gameOuLine == null ? "#8b949e" : play.gameOuLine >= 9.5 ? "#3fb950" : play.gameOuLine >= 7.5 ? "#e3b341" : "#f78166";
-                        const etColor = play.teamExpected == null ? "#8b949e" : play.teamExpected >= play.threshold + 0.5 ? "#3fb950" : play.teamExpected >= play.threshold - 0.5 ? "#e3b341" : "#8b949e";
+                        const _rpgPts = play.teamRPG == null ? 1 : play.teamRPG > 5.0 ? 2 : play.teamRPG > 4.0 ? 1 : 0;
+                        const _eraPts = play.oppERA == null ? 1 : play.oppERA > 4.5 ? 2 : play.oppERA > 3.5 ? 1 : 0;
+                        const _parkPts = play.parkFactor == null ? 1 : play.parkFactor > 1.05 ? 2 : play.parkFactor > 1.00 ? 1 : 0;
+                        const _h2hPts = play.h2hHitRatePts ?? 1;
+                        const _ouPts = play.gameOuLine == null ? 1 : play.gameOuLine >= 9.5 ? 2 : play.gameOuLine >= 7.5 ? 1 : 0;
+                        const scTitle = [`RPG (${play.teamRPG?.toFixed(1) ?? "—"}): ${_rpgPts}/2`,`Opp ERA (${play.oppERA?.toFixed(2) ?? "—"}): ${_eraPts}/2`,`H2H HR% (${play.h2hHitRate?.toFixed(0) ?? "—"}%): ${_h2hPts}/2`,`Park (${play.parkFactor != null ? (play.parkFactor > 1 ? "+" : "") + ((play.parkFactor-1)*100).toFixed(0) + "%" : "—"}): ${_parkPts}/2`,`O/U (${play.gameOuLine ?? "—"}): ${_ouPts}/2`].join("\n");
                         return (
                           <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.65}}>
                             <span style={{color:"#c9d1d9"}}>{play.scoringTeam}</span> averages{play.teamRPG != null ? <> <span style={{color:rpgColor(play.teamRPG),fontWeight:600}}>{play.teamRPG.toFixed(1)}</span> runs/game</> : " — RPG"} facing a <span style={{color:"#c9d1d9"}}>{play.oppTeam}</span> starter with{play.oppERA != null ? <> <span style={{color:eraColor(play.oppERA),fontWeight:600}}>{play.oppERA.toFixed(2)} ERA</span></> : " — ERA"}.
-                            {play.oppRPG != null && <>{" "}Opp averages <span style={{color:rpgColor(play.oppRPG),fontWeight:600}}>{play.oppRPG.toFixed(1)}</span> RPG vs <span style={{color:"#8b949e"}}>{Math.abs(play.parkFactor - 1) > 0.01 ? `park factor ${play.parkFactor > 1 ? "+" : ""}${((play.parkFactor - 1)*100).toFixed(0)}%` : "neutral park"}</span>.</>}
+                            {play.h2hHitRate != null ? <>{" "}<span style={{color:"#c9d1d9"}}>H2H:</span> <span style={{color: play.h2hHitRate >= 80 ? "#3fb950" : play.h2hHitRate >= 60 ? "#e3b341" : "#f78166",fontWeight:600}}>{play.h2hHitRate.toFixed(0)}%</span>{play.h2hGames ? <span style={{color:"#484f58"}}> ({play.h2hGames}g)</span> : null}.</> : null}
+                            {Math.abs((play.parkFactor ?? 1) - 1) > 0.01 ? <>{" "}Park factor <span style={{color:"#8b949e"}}>{play.parkFactor > 1 ? "+" : ""}{((play.parkFactor - 1)*100).toFixed(0)}%</span>.</> : null}
                             {play.gameOuLine != null && <>{" "}Game total <span style={{color:ouColor,fontWeight:600}}>{play.gameOuLine}</span>.</>}
-                            {" "}<span style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,verticalAlign:"middle",cursor:"default"}}>{sc}/10 {sc>=8?"Alpha":sc>=5?"Mid":"Low"}</span>
+                            {" "}<span title={scTitle} style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,verticalAlign:"middle",cursor:"help"}}>{sc}/10 {sc>=8?"Alpha":sc>=5?"Mid":"Low"}</span>
                           </div>
                         );
                       })()}
@@ -4344,11 +4350,17 @@ function App() {
                         const offColor = v => v == null ? "#8b949e" : v >= 118 ? "#f78166" : v >= 113 ? "#e3b341" : "#8b949e";
                         const defColor = v => v == null ? "#8b949e" : v >= 118 ? "#3fb950" : v >= 113 ? "#e3b341" : "#f78166";
                         const etColor = play.teamExpected == null ? "#8b949e" : play.teamExpected >= play.threshold + 2 ? "#3fb950" : play.teamExpected >= play.threshold - 2 ? "#e3b341" : "#8b949e";
+                        const _offPts = play.teamOff == null ? 1 : play.teamOff >= 118 ? 2 : play.teamOff >= 113 ? 1 : 0;
+                        const _defPts = play.oppDef == null ? 1 : play.oppDef >= 118 ? 2 : play.oppDef >= 113 ? 1 : 0;
+                        const _ouPts2 = play.gameOuLine == null ? 1 : play.gameOuLine >= 235 ? 2 : play.gameOuLine >= 225 ? 1 : 0;
+                        const _pacePts = (play.teamPace == null || play.leagueAvgPace == null) ? 1 : play.teamPace > play.leagueAvgPace + 2 ? 2 : play.teamPace > play.leagueAvgPace - 2 ? 1 : 0;
+                        const _h2hPts2 = play.h2hHitRatePts ?? 1;
+                        const scTitle = [`Off PPG (${play.teamOff?.toFixed(0) ?? "—"}): ${_offPts}/2`,`Opp Def PPG (${play.oppDef?.toFixed(0) ?? "—"}): ${_defPts}/2`,`O/U (${play.gameOuLine ?? "—"}): ${_ouPts2}/2`,`Pace (${play.teamPace?.toFixed(1) ?? "—"}): ${_pacePts}/2`,`H2H HR% (${play.h2hHitRate?.toFixed(0) ?? "—"}%): ${_h2hPts2}/2`].join("\n");
                         return (
                           <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.65}}>
                             <span style={{color:"#c9d1d9"}}>{play.scoringTeam}</span> averages{play.teamOff != null ? <> <span style={{color:offColor(play.teamOff),fontWeight:600}}>{play.teamOff.toFixed(0)} PPG</span></> : " —"} against a <span style={{color:"#c9d1d9"}}>{play.oppTeam}</span> defense allowing{play.oppDef != null ? <> <span style={{color:defColor(play.oppDef),fontWeight:600}}>{play.oppDef.toFixed(0)} PPG</span></> : " —"}.
                             {play.teamExpected != null && <>{" "}Model projects <span style={{color:etColor,fontWeight:600}}>{play.teamExpected}</span> pts vs the <span style={{color:"#c9d1d9"}}>{lineVal}</span> threshold.</>}
-                            {" "}<span style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,verticalAlign:"middle",cursor:"default"}}>{sc}/10 {sc>=8?"Alpha":sc>=5?"Mid":"Low"}</span>
+                            {" "}<span title={scTitle} style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,verticalAlign:"middle",cursor:"help"}}>{sc}/10 {sc>=8?"Alpha":sc>=5?"Mid":"Low"}</span>
                           </div>
                         );
                       })()}

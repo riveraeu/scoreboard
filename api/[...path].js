@@ -3379,7 +3379,7 @@ var worker_default = {
             const { sport, stat, threshold, kalshiPct, americanOdds, gameTeam1, gameTeam2, gameDate, kalshiSpread, kalshiVolume } = tm;
             if (gameDate && gameDate < cutoffStr) continue;
             const spreadAdj = kalshiSpread != null ? parseFloat((kalshiSpread / 2).toFixed(1)) : 0;
-            const lowVolume = kalshiVolume != null && kalshiVolume < 20;
+            const lowVolume = kalshiVolume != null && kalshiVolume < 50;
             let truePct = null, homeTeam = gameTeam1, awayTeam = gameTeam2, totalSimScore = 0, _simData = {};
             if (sport === "mlb") {
               if (sportByteam.mlb?.gameHomeTeams?.[gameTeam2]) { homeTeam = gameTeam2; awayTeam = gameTeam1; }
@@ -3545,7 +3545,7 @@ var worker_default = {
           for (const tm of teamTotalMarkets) {
             const { sport, stat, threshold, kalshiPct, americanOdds, gameTeam1, gameTeam2, scoringTeam, gameDate, kalshiSpread, kalshiVolume } = tm;
             if (gameDate && gameDate < cutoffStr) continue;
-            const lowVolume = kalshiVolume != null && kalshiVolume < 20;
+            const lowVolume = kalshiVolume != null && kalshiVolume < 50;
             // Determine home/away (same correction logic as game total loop)
             let homeTeam = gameTeam1, awayTeam = gameTeam2;
             if (sport === "mlb" && sportByteam.mlb?.gameHomeTeams?.[gameTeam2]) { homeTeam = gameTeam2; awayTeam = gameTeam1; }
