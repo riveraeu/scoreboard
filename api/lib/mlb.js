@@ -337,7 +337,7 @@ export async function buildPitcherKPct(mlbSched) {
       }
     }
     const allIds = [...allScheduledPitcherIds];
-    if (allIds.length === 0) return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherAvgBF: {}, pitcherGS26: {}, pitcherHasAnchor: {}, pitcherRecentKPct: {}, pitcherLastStartDate: {}, pitcherLastStartPC: {}, umpireByGame };
+    if (allIds.length === 0) return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherAvgBF: {}, pitcherStdBF: {}, pitcherGS26: {}, pitcherHasAnchor: {}, pitcherRecentKPct: {}, pitcherLastStartDate: {}, pitcherLastStartPC: {}, umpireByGame };
     const idStr = allIds.join(",");
     const [res25, res26] = await Promise.all([
       fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=pitching,type=season,season=2025,gameType=R)`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
@@ -402,6 +402,8 @@ export async function buildPitcherKPct(mlbSched) {
     const pitcherAvgPitchesById = {}; // per-ID version — used for overwritten pitchers in pitcherStatsByName
     const pitcherAvgBF = {};
     const pitcherAvgBFById = {};
+    const pitcherStdBF = {};
+    const pitcherStdBFById = {};
     const pitcherGS26 = {};
     // A1: Recent form (last 5 starts K%)
     const pitcherRecentKPct = {};
@@ -473,6 +475,20 @@ export async function buildPitcherKPct(mlbSched) {
       if (avgBF !== null) {
         pitcherAvgBFById[id] = avgBF;
         for (const a of abbrs) pitcherAvgBF[a] = avgBF;
+      }
+      // stdBF: standard deviation of BF per start — captures "all-or-nothing" vs "steady" arms.
+      // Single-pass sum-of-squares is safe: BF values in [15,35], n ≤ 35 starts, no precision risk.
+      // Requires countBF >= 3 to avoid hallucinating variance from 1–2 starts.
+      if (startSplits.length >= 3 && totalBF > 0) {
+        const n = startSplits.length;
+        const sqSum = startSplits.reduce((s, sp) => s + (sp.stat?.battersFaced || 0) ** 2, 0);
+        const mean = totalBF / n;
+        const variance = sqSum / n - mean * mean;
+        if (variance > 0) {
+          const stdBFVal = parseFloat(Math.sqrt(variance).toFixed(2));
+          pitcherStdBFById[id] = stdBFVal;
+          for (const a of abbrs) pitcherStdBF[a] = stdBFVal;
+        }
       }
       // A1: Recent form — last 5 starts K% (min 30 total BF to trust the sample).
       // Uses a looser filter than avgPitches: any completed start regardless of NP.
@@ -608,6 +624,7 @@ export async function buildPitcherKPct(mlbSched) {
           cswPct: cswByMlbId[id] ?? null,
           avgPitches: pitcherAvgPitchesById[id] ?? null,
           avgBF: pitcherAvgBFById[id] ?? null,
+          stdBF: pitcherStdBFById[id] ?? 0,
           gs26: (s26?.gs > 0 ? s26.gs : null),
           hasAnchor: gs25 >= 5 && bf25 >= 100,
           recentKPct: pitcherRecentKPctById[id] ?? null,     // A1
@@ -627,8 +644,8 @@ export async function buildPitcherKPct(mlbSched) {
         if (!pitcherInfoByTeam[a]) pitcherInfoByTeam[a] = { name: person.fullName, id };
       }
     }
-    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherGS26, pitcherHasAnchor, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam };
+    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam };
   } catch {
-    return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherAvgBF: {}, pitcherGS26: {}, pitcherHasAnchor: {}, pitcherRecentKPct: {}, pitcherLastStartDate: {}, pitcherLastStartPC: {}, umpireByGame: {}, pitcherInfoByTeam: {} };
+    return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherAvgBF: {}, pitcherStdBF: {}, pitcherGS26: {}, pitcherHasAnchor: {}, pitcherRecentKPct: {}, pitcherLastStartDate: {}, pitcherLastStartPC: {}, umpireByGame: {}, pitcherInfoByTeam: {} };
   }
 }

@@ -259,6 +259,33 @@ test('_nameWhite: MLB uses score>10, non-MLB uses m.qualified', () => {
 
 // --- TTO decay and blowout hook ---
 
+test('stdBF=0: trialPA is deterministic (no variance injected)', () => {
+  const lineup = Array(9).fill(0.22);
+  const dist = simulateKsDist(lineup, 30, 1.0, 10000, 18, 0, 0);
+  const mean = Array.from(dist).reduce((a, b) => a + b, 0) / dist.length;
+  // totalPA=18, TTO never kicks in. Expected ≈ log5(30,22) × 18 ≈ 0.297 × 18 ≈ 5.35
+  assert.ok(mean > 4.5 && mean < 6.2, `stdBF=0 mean (${mean.toFixed(2)}) should be near 5.35`);
+});
+
+test('stdBF=5: widens K-count distribution vs stdBF=0', () => {
+  const lineup = Array(9).fill(0.22);
+  const distNarrow = simulateKsDist(lineup, 30, 1.0, 10000, 24, 0, 0);
+  const distWide   = simulateKsDist(lineup, 30, 1.0, 10000, 24, 0, 5);
+  const variance = d => {
+    const m = Array.from(d).reduce((a, b) => a + b, 0) / d.length;
+    return Array.from(d).reduce((a, b) => a + (b - m) ** 2, 0) / d.length;
+  };
+  const varN = variance(distNarrow), varW = variance(distWide);
+  assert.ok(varW > varN, `stdBF=5 variance (${varW.toFixed(2)}) should exceed stdBF=0 (${varN.toFixed(2)})`);
+});
+
+test('blowout hook overrides stdBF: earlyExitProb=1.0 caps BF even when stdBF=5', () => {
+  const lineup = Array(9).fill(0.22);
+  const dist = simulateKsDist(lineup, 30, 1.0, 5000, 24, 1.0, 5);
+  const maxKs = Math.max(...dist);
+  assert.ok(maxKs <= 15, `hook overrides stdBF: max Ks should be <= 15, got ${maxKs}`);
+});
+
 test('TTO decay: 24-BF dist mean Ks below naive expectation (no decay)', () => {
   // pitcherKPct is a percentage (30 = 30%); orderedKPcts are fractions (0.22 = 22%).
   // log5K(30, 22) ≈ 0.297 per PA. Naive expected (no decay): 0.297×24 ≈ 7.1.

@@ -1432,11 +1432,11 @@ var worker_default = {
               const gameOdds = Object.fromEntries(Object.entries(gameOddsRaw).map(([k, v]) => [normMlbAbbr(k), v]));
               const [lineupResult, pitcherResult] = await Promise.all([buildLineupKPct(mlbSched), buildPitcherKPct(mlbSched)]);
               const { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, projectedLineupTeams, batterSplitBA } = lineupResult;
-              const { pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam } = pitcherResult;
+              const { pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam } = pitcherResult;
               // barrelPctMap is NOT stored in byteam:mlb — it lives in mlb:barrelPct with its own 6h TTL.
               // This prevents a bust (which deletes byteam:mlb) from baking an empty barrelPctMap
               // into the cache when Baseball Savant is slow.
-              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, projectedLineupTeams, gameOdds, pitcherStatsByName, batterSplitBA, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam };
+              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, projectedLineupTeams, gameOdds, pitcherStatsByName, batterSplitBA, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam };
               // Use short TTL (60s) if key data is missing — lineup/probables not confirmed yet.
               // Prevents partial data from baking into cache for the full 600s.
               const _mlbDataReady = Object.keys(lineupSpotByName || {}).length > 0 && Object.keys(pitcherAvgPitches || {}).length > 0;
@@ -2112,6 +2112,7 @@ var worker_default = {
           let _umpireKFactor = 1.0;  // factor relative to league avg (>1 = high-K zone)
           let _expectedBF = 24;      // E3b: expected batters faced from avg pitch count
           let _earlyExitProb = 0;    // blowout hook: P(pitcher pulled before BF 16) per trial
+          let _stdBF = 0;            // std dev of BF per start — widens trialPA distribution in MC
           if (sport === "mlb" && stat === "strikeouts") {
             _pitcherHand = _pt(sportByteam.mlb?.pitcherHand, "hand");
             const _csw = _pt(sportByteam.mlb?.pitcherCSWPct, "cswPct");
@@ -2211,6 +2212,9 @@ var worker_default = {
             // Blowout hook: heavy underdogs have elevated P(early hook) in MC trials.
             // +150→8%, +200→12%, +250+→18%. Null ML (no line yet) = no adjustment.
             _earlyExitProb = _teamML == null ? 0 : _teamML >= 250 ? 0.18 : _teamML >= 200 ? 0.12 : _teamML >= 150 ? 0.08 : 0;
+            // stdBF: std dev of BF per start from gamelog — same priority chain as _avgBF.
+            // Requires ≥3 NP≥30 starts in mlb.js; 0 when insufficient data → deterministic totalPA.
+            _stdBF = _ps?.stdBF || _pt(sportByteam.mlb?.pitcherStdBF, "stdBF") || 0;
             // O/U total (low total = pitcher-friendly): ≤7.5 → 2pts, <10.5 → 1pt, ≥10.5 → 0pts; null → 1pt
             const _gameTotal = sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null;
             totalPts = _gameTotal == null ? 1 : _gameTotal <= 7.5 ? 2 : _gameTotal < 10.5 ? 1 : 0;
@@ -2334,7 +2338,7 @@ var worker_default = {
                 if (!pitcherKDistCache[_distKey]) {
                   const _nSim = simScore !== null && simScore >= 8 ? 10000 : 5000;
                   const _pitcherKPctAdj = Math.min(40, pitcherKPctOut * _umpireKFactor);
-                  pitcherKDistCache[_distKey] = simulateKsDist(orderedKPcts, _pitcherKPctAdj, parkFactorOut, _nSim, _expectedBF, _earlyExitProb);
+                  pitcherKDistCache[_distKey] = simulateKsDist(orderedKPcts, _pitcherKPctAdj, parkFactorOut, _nSim, _expectedBF, _earlyExitProb, _stdBF);
                 }
                 simPctOut = kDistPct(pitcherKDistCache[_distKey], threshold);
               } else {
@@ -3126,6 +3130,7 @@ var worker_default = {
             umpireKFactor: sport === "mlb" && stat === "strikeouts" && _umpireKFactor !== 1.0 ? _umpireKFactor : void 0,
             expectedBF: sport === "mlb" && stat === "strikeouts" && _expectedBF !== 24 ? _expectedBF : void 0,
             earlyExitProb: sport === "mlb" && stat === "strikeouts" && _earlyExitProb > 0 ? _earlyExitProb : void 0,
+            stdBF: sport === "mlb" && stat === "strikeouts" && _stdBF > 0 ? _stdBF : void 0,
             gameTotal: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null : void 0,
             gameMoneyline: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null : void 0,
             pitcherCSWPct: sport === "mlb" && stat === "strikeouts" ? _pt(sportByteam.mlb?.pitcherCSWPct, "cswPct") : void 0,

@@ -19,23 +19,36 @@ function poissonCDF(k, lambda) {
 
 var TTO_DECAY_FACTOR = 0.88;
 
-function simulateKsDist(orderedKPcts, pitcherKPct, parkFactor, nSim, totalPA, earlyExitProb) {
+function simulateKsDist(orderedKPcts, pitcherKPct, parkFactor, nSim, totalPA, earlyExitProb, stdBF) {
   parkFactor = parkFactor == null ? 1 : parkFactor;
   nSim = nSim == null ? 5000 : nSim;
   totalPA = totalPA == null ? 24 : totalPA;
   earlyExitProb = earlyExitProb == null ? 0 : earlyExitProb;
+  stdBF = stdBF == null ? 0 : stdBF;
   var n = orderedKPcts.length;
   if (!n || pitcherKPct == null) return null;
   var base = Math.floor(totalPA / n);
   var extras = totalPA % n;
   var paArr = orderedKPcts.map(function(_, i) { return base + (i < extras ? 1 : 0); });
   var adjProbs = orderedKPcts.map(function(b) { return Math.min(0.95, log5K(pitcherKPct, b * 100) * parkFactor); });
+  var _bmSpare = false, _bmZ1 = 0;
+  function randNorm(mean, std) {
+    if (_bmSpare) { _bmSpare = false; return mean + std * _bmZ1; }
+    var u1 = 1.0 - Math.random(), u2 = Math.random();
+    var r = Math.sqrt(-2.0 * Math.log(u1));
+    _bmZ1 = r * Math.sin(2.0 * Math.PI * u2);
+    _bmSpare = true;
+    return mean + std * r * Math.cos(2.0 * Math.PI * u2);
+  }
   var dist = new Int16Array(nSim);
   for (var sim = 0; sim < nSim; sim++) {
     var ks = 0, bf = 0;
-    var trialPA = (earlyExitProb > 0 && Math.random() < earlyExitProb)
-      ? (10 + Math.floor(Math.random() * 6))
-      : totalPA;
+    var trialPA = totalPA;
+    if (earlyExitProb > 0 && Math.random() < earlyExitProb) {
+      trialPA = 10 + Math.floor(Math.random() * 6);
+    } else if (stdBF > 0) {
+      trialPA = Math.min(27, Math.max(10, Math.round(randNorm(totalPA, stdBF))));
+    }
     for (var i = 0; i < n; i++) {
       var pa = paArr[i];
       var p = bf >= 18 ? Math.min(0.95, adjProbs[i] * TTO_DECAY_FACTOR) : adjProbs[i];
@@ -521,6 +534,44 @@ test('totalDistPct: P(>= low) > P(>= high) for same dist', function() {
 });
 
 // ---- TTO decay and blowout hook ----
+
+test('stdBF=0: trialPA is deterministic (no variance injected)', function() {
+  // With stdBF=0 every trial uses exactly totalPA=18. Mean Ks should tightly match adjProb × 18.
+  var lineup = [];
+  for (var i = 0; i < 9; i++) lineup.push(0.22);
+  var dist = simulateKsDist(lineup, 30, 1.0, 10000, 18, 0, 0);
+  var mean = 0;
+  for (var i = 0; i < dist.length; i++) mean += dist[i];
+  mean /= dist.length;
+  // With totalPA=18, TTO never kicks in (all BF < 19). Expected ≈ log5(30,22) × 18 ≈ 0.297 × 18 ≈ 5.35
+  assert.ok(mean > 4.5 && mean < 6.2, 'stdBF=0 mean (' + mean.toFixed(2) + ') should be near 5.35');
+});
+
+test('stdBF=5: widens K-count distribution vs stdBF=0', function() {
+  var lineup = [];
+  for (var i = 0; i < 9; i++) lineup.push(0.22);
+  var distNarrow = simulateKsDist(lineup, 30, 1.0, 10000, 24, 0, 0);
+  var distWide   = simulateKsDist(lineup, 30, 1.0, 10000, 24, 0, 5);
+  function variance(d) {
+    var m = 0;
+    for (var i = 0; i < d.length; i++) m += d[i];
+    m /= d.length;
+    var v = 0;
+    for (var i = 0; i < d.length; i++) v += (d[i] - m) * (d[i] - m);
+    return v / d.length;
+  }
+  var varN = variance(distNarrow), varW = variance(distWide);
+  assert.ok(varW > varN, 'stdBF=5 variance (' + varW.toFixed(2) + ') should exceed stdBF=0 (' + varN.toFixed(2) + ')');
+});
+
+test('blowout hook overrides stdBF: earlyExitProb=1.0 caps BF even when stdBF=5', function() {
+  var lineup = [];
+  for (var i = 0; i < 9; i++) lineup.push(0.22);
+  var dist = simulateKsDist(lineup, 30, 1.0, 5000, 24, 1.0, 5);
+  var maxKs = 0;
+  for (var i = 0; i < dist.length; i++) { if (dist[i] > maxKs) maxKs = dist[i]; }
+  assert.ok(maxKs <= 15, 'hook overrides stdBF: max Ks should be <= 15, got ' + maxKs);
+});
 
 test('TTO decay: 24-BF dist mean Ks below naive expectation (no decay)', function() {
   // pitcherKPct is a percentage (30 = 30%); orderedKPcts are fractions (0.22 = 22%).

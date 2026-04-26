@@ -185,19 +185,37 @@ export const TTO_DECAY_FACTOR = 0.88;
 // Running once per pitcher and sharing the distribution guarantees monotonicity across thresholds.
 // earlyExitProb: fraction of trials where the pitcher is pulled early (BF = rand[10,15]).
 //   Used for blowout hook — heavy underdogs have a non-trivial chance of being chased in 3rd inning.
-export function simulateKsDist(orderedKPcts, pitcherKPct, parkFactor = 1, nSim = 5000, totalPA = 24, earlyExitProb = 0) {
+// stdBF: standard deviation of batters faced per start. When > 0, each trial samples trialPA from
+//   Normal(totalPA, stdBF), clamped [10,27]. Blowout hook takes precedence when both are set.
+//   stdBF = 0 (default) keeps deterministic totalPA — no variance injected.
+export function simulateKsDist(orderedKPcts, pitcherKPct, parkFactor = 1, nSim = 5000, totalPA = 24, earlyExitProb = 0, stdBF = 0) {
   const n = orderedKPcts.length;
   if (!n || pitcherKPct == null) return null;
   const base = Math.floor(totalPA / n);
   const extras = totalPA % n;
   const paArr = orderedKPcts.map((_, i) => base + (i < extras ? 1 : 0));
   const adjProbs = orderedKPcts.map(b => Math.min(0.95, log5K(pitcherKPct, b * 100) * parkFactor));
+  // Scoped Box-Muller cache — inside function to avoid module-level state (race conditions on
+  // concurrent requests). Generates two normals per call, saves the spare for the next invocation,
+  // halving Math.log + Math.cos calls vs the single-variable form.
+  let _bmSpare = false, _bmZ1 = 0;
+  const randNorm = (mean, std) => {
+    if (_bmSpare) { _bmSpare = false; return mean + std * _bmZ1; }
+    const u1 = 1.0 - Math.random(), u2 = Math.random();
+    const r = Math.sqrt(-2.0 * Math.log(u1));
+    _bmZ1 = r * Math.sin(2.0 * Math.PI * u2);
+    _bmSpare = true;
+    return mean + std * r * Math.cos(2.0 * Math.PI * u2);
+  };
   const dist = new Int16Array(nSim);
   for (let sim = 0; sim < nSim; sim++) {
     let ks = 0, bf = 0;
-    const trialPA = (earlyExitProb > 0 && Math.random() < earlyExitProb)
-      ? (10 + Math.floor(Math.random() * 6))
-      : totalPA;
+    let trialPA = totalPA;
+    if (earlyExitProb > 0 && Math.random() < earlyExitProb) {
+      trialPA = 10 + Math.floor(Math.random() * 6);
+    } else if (stdBF > 0) {
+      trialPA = Math.min(27, Math.max(10, Math.round(randNorm(totalPA, stdBF))));
+    }
     for (let i = 0; i < n; i++) {
       const pa = paArr[i];
       const p = bf >= 18 ? Math.min(0.95, adjProbs[i] * TTO_DECAY_FACTOR) : adjProbs[i];
