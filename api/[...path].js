@@ -572,50 +572,33 @@ var worker_default = {
           }
           return jsonResponse({ labels, events: allEvents, totalGames: allEvents.length }, isPastSeason ? 86400 : 14400);
         }
-        const pageUrl = year ? `https://www.espn.com/${leagueSlug}/player/gamelog/_/id/${athleteId}/year/${year}` : `https://www.espn.com/${leagueSlug}/player/gamelog/_/id/${athleteId}`;
-        const pageRes = await fetch(pageUrl, {
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Referer": "https://www.espn.com/"
-          }
+        // Use ESPN JSON API (same as MLB) — HTML scraping blocked by WAF
+        const sportPath = { "basketball/nba": "basketball/nba", "hockey/nhl": "hockey/nhl", "football/nfl": "football/nfl" }[sport] || `${sport.split("/")[0]}/${leagueSlug}`;
+        const jsonApiUrl = `https://site.web.api.espn.com/apis/common/v3/sports/${sportPath}/athletes/${athleteId}/gamelog${year ? `?season=${year}` : ""}`;
+        const jsonRes = await fetch(jsonApiUrl, {
+          headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json", "Referer": "https://www.espn.com/" }
         });
-        if (!pageRes.ok) return errorResponse(`ESPN page returned ${pageRes.status}`, pageRes.status);
-        const html = await pageRes.text();
-        const match = html.match(/window\['__espnfitt__'\]\s*=\s*(\{[\s\S]*?\});\s*<\/script>/);
-        if (!match) return errorResponse("Could not find __espnfitt__ data in page", 500);
-        let fitt;
-        try {
-          fitt = JSON.parse(match[1]);
-        } catch (e) {
-          return errorResponse("Failed to parse __espnfitt__: " + e.message, 500);
-        }
-        const gmlog = fitt?.page?.content?.player?.gmlog;
-        if (!gmlog) return errorResponse("No gmlog found in page data", 500);
-        const labels = (gmlog.labels || []).map((l) => l.data || l);
-        const seenIds = /* @__PURE__ */ new Set();
+        if (!jsonRes.ok) return errorResponse(`ESPN API returned ${jsonRes.status}`, jsonRes.status);
+        const d = await jsonRes.json();
+        const labels = d.labels || [];
+        const reg = (d.seasonTypes || []).find(st => { const dn = (st.displayName || "").toLowerCase(); return dn.includes("regular") && !dn.includes("play"); }) || (d.seasonTypes || []).find(st => st.displayName?.toLowerCase().includes("regular")) || d.seasonTypes?.[0];
+        const seenIds = new Set();
         const allEvents = [];
-        const groups = gmlog.groups || [];
-        const regularGroup = groups.find((g) => g.name && g.name.toLowerCase().includes("regular")) || groups[0];
-        (regularGroup?.tbls || []).forEach((tbl) => {
-          if (tbl.type !== "event") return;
-          (tbl.events || []).forEach((ev) => {
-            if (seenIds.has(ev.id)) return;
-            if (!ev.dt && !ev.opp) return;
-            if (ev.opp?.allStar || ev.nt && ev.nt.toLowerCase().includes("all-star")) return;
-            seenIds.add(ev.id);
+        for (const cat of reg?.categories || []) {
+          for (const ev of cat.events || []) {
+            if (seenIds.has(ev.eventId)) continue;
+            const meta = d.events?.[ev.eventId];
+            if (!meta || meta.opponent?.isAllStar) continue;
+            seenIds.add(ev.eventId);
             allEvents.push({
-              eventId: ev.id,
+              eventId: ev.eventId,
               stats: ev.stats || [],
-              date: ev.dt,
-              oppId: ev.opp?.id || null,
-              oppAbbr: ev.opp?.abbr || null,
-              isHome: ev.opp?.at != null ? !ev.opp.at : null
-              // ESPN: opp.at=true means player is away
+              date: meta.gameDate ? meta.gameDate.slice(0, 10) : (meta.date || null),
+              oppAbbr: meta.opponent?.abbreviation || null,
+              isHome: meta.atVs != null ? meta.atVs !== "@" : null,
             });
-          });
-        });
+          }
+        }
         return jsonResponse({ labels, events: allEvents, totalGames: allEvents.length }, isPastSeason ? 86400 : 14400);
       } else if (path === "dvp/rebuild-pos") {
         const stage = params.get("stage") || "2";
