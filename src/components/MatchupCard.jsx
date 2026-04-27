@@ -122,7 +122,7 @@ export default function MatchupCard({ game, mlbMeta, navigateToPlayer, navigateT
   const gameTimeStr = fmtGameTime(gameTime);
   const badgePlays = buildBadgePlays(plays);
 
-  // MLB metadata from backend (pitchers, ML, umpire, weather)
+  // MLB metadata from backend (pitchers, ML, umpire, weather, lineup status)
   const pitchers = sport === 'mlb' ? (mlbMeta?.pitchers ?? {}) : {};
   const awayPitcher = pitchers[awayTeam] ?? null;
   const homePitcher = pitchers[homeTeam] ?? null;
@@ -133,8 +133,18 @@ export default function MatchupCard({ game, mlbMeta, navigateToPlayer, navigateT
   const umpire = mlbMeta?.umpires?.[umpireKey] ?? null;
   const weatherData = mlbMeta?.weather?.[umpireKey] ?? null;
 
-  const showMlbExtra = sport === 'mlb' && (awayPitcher || homePitcher || umpire || weatherData);
-  const showMlbDetails = sport === 'mlb' && (umpire || weatherData || awayML != null || homeML != null || ouLine != null);
+  // Lineup confirmed status (from backend projectedLineupTeams / teamsWithLineup)
+  const _projTeams = new Set(mlbMeta?.projectedLineupTeams ?? []);
+  const _teamsWithLineup = new Set(mlbMeta?.teamsWithLineup ?? []);
+  const getLineupConfirmed = (abbr) => {
+    if (!_teamsWithLineup.has(abbr)) return null; // no lineup data yet
+    return !_projTeams.has(abbr); // true=confirmed, false=projected/expected
+  };
+  const awayLineupConfirmed = sport === 'mlb' ? getLineupConfirmed(awayTeam) : null;
+  const homeLineupConfirmed = sport === 'mlb' ? getLineupConfirmed(homeTeam) : null;
+
+  const showMlbExtra = sport === 'mlb' && (awayPitcher || homePitcher);
+  const showMlbDetails = sport === 'mlb' && (umpire || weatherData);
 
   async function onToggleLineup() {
     if (!lineupOpen && !lineup) {
@@ -216,18 +226,24 @@ export default function MatchupCard({ game, mlbMeta, navigateToPlayer, navigateT
         </div>
       </div>
 
-      {/* MLB: pitchers row */}
+      {/* MLB: pitchers row + lineup confirmed badge */}
       {showMlbExtra && (
         <div style={{ padding: '6px 16px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderTop: '1px solid #0d1117' }}>
-          <div style={{ fontSize: 11, color: '#8b949e' }}>
+          <div style={{ fontSize: 11 }}>
             {awayPitcher
               ? <><span style={{ color: '#c9d1d9', fontWeight: 600 }}>{awayPitcher.name}</span>{awayPitcher.era != null ? <span style={{ color: '#484f58' }}> ({awayPitcher.era} ERA)</span> : null}</>
               : <span style={{ color: '#484f58', fontStyle: 'italic' }}>TBD</span>}
+            {awayLineupConfirmed !== null && (
+              <div style={{ marginTop: 3 }}><LineupBadge confirmed={awayLineupConfirmed} /></div>
+            )}
           </div>
-          <div style={{ fontSize: 11, color: '#8b949e', textAlign: 'right' }}>
+          <div style={{ fontSize: 11, textAlign: 'right' }}>
             {homePitcher
               ? <><span style={{ color: '#c9d1d9', fontWeight: 600 }}>{homePitcher.name}</span>{homePitcher.era != null ? <span style={{ color: '#484f58' }}> ({homePitcher.era} ERA)</span> : null}</>
               : <span style={{ color: '#484f58', fontStyle: 'italic' }}>TBD</span>}
+            {homeLineupConfirmed !== null && (
+              <div style={{ marginTop: 3, display: 'flex', justifyContent: 'flex-end' }}><LineupBadge confirmed={homeLineupConfirmed} /></div>
+            )}
           </div>
         </div>
       )}
@@ -281,11 +297,10 @@ export default function MatchupCard({ game, mlbMeta, navigateToPlayer, navigateT
                 { abbr: homeTeam, data: lineup.home, confirmed: lineup.homeConfirmed, label: 'Home' },
               ].map(({ abbr, data, confirmed, label }) => (
                 <div key={abbr} style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
+                  <div style={{ marginBottom: 5 }}>
                     <span style={{ fontSize: 10, fontWeight: 700, color: '#484f58', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                       {abbr} {label}
                     </span>
-                    <LineupBadge confirmed={confirmed} />
                   </div>
                   {data.length === 0 ? (
                     <div style={{ fontSize: 11, color: '#484f58', fontStyle: 'italic' }}>No lineup posted</div>

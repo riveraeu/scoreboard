@@ -1547,11 +1547,12 @@ var worker_default = {
         }
         // Fetch game start times + NBA player availability for tonight's games
         const todayDateStr = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10).replace(/-/g, "");
-        let [gameTimes, nbaPlayerStatus] = await Promise.all([
+        let [gameTimes, nbaPlayerStatus, _cachedWeather] = await Promise.all([
           CACHE2 && !isBustCache ? CACHE2.get(`gameTimes:v2:${todayDateStr}`, "json").catch(() => null) : null,
           CACHE2 ? CACHE2.get(`nbaStatus:${todayDateStr}`, "json").catch(() => null) : null,
+          CACHE2 && !isBustCache ? CACHE2.get(`weather:mlb:${todayDateStr}`, "json").catch(() => null) : null,
         ]);
-        const weatherByGame = {}; // keyed "homeAbbr|awayAbbr" → {temp, condition}
+        const weatherByGame = _cachedWeather ? { ..._cachedWeather } : {}; // keyed "homeAbbr|awayAbbr" → {temp, condition}
         const needGameTimes = !gameTimes;
         const needNbaStatus = !nbaPlayerStatus && sportsNeeded.has("nba");
         if (needGameTimes || needNbaStatus) {
@@ -1602,6 +1603,7 @@ var worker_default = {
                 if (homeA && awayA) weatherByGame[`${homeA}|${awayA}`] = { temp: weather.temperature ?? null, condition: weather.displayValue ?? null };
               }
             }
+            if (CACHE2 && Object.keys(weatherByGame).length > 0) await CACHE2.put(`weather:mlb:${todayDateStr}`, JSON.stringify(weatherByGame), { expirationTtl: 600 }).catch(() => {});
             // Extract NHL game odds from already-fetched ESPN events (no extra request)
             const _nhlSbResult = sbResults.find(r => r.sport === "nhl");
             if (_nhlSbResult?.events.length > 0) {
@@ -3866,7 +3868,7 @@ var worker_default = {
         for (const [abbr, odds] of Object.entries(sportByteam.mlb?.gameOdds ?? {})) {
           _mlbGameOdds[abbr] = { ml: odds.moneyline ?? null };
         }
-        const mlbMeta = { pitchers: _mlbPitchers, gameOdds: _mlbGameOdds, umpires: sportByteam.mlb?.umpireByGame ?? {}, weather: weatherByGame };
+        const mlbMeta = { pitchers: _mlbPitchers, gameOdds: _mlbGameOdds, umpires: sportByteam.mlb?.umpireByGame ?? {}, weather: weatherByGame, projectedLineupTeams: sportByteam.mlb?.projectedLineupTeams ?? [], teamsWithLineup: Object.keys(sportByteam.mlb?.lineupSpotByName ?? {}) };
         const playsResult = { plays, nbaDropped, mlbMeta, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length };
         const sportsInPlays = new Set(plays.map((p) => p.sport));
         if (CACHE2 && sportsInPlays.size >= 2) {
