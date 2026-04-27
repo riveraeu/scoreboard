@@ -806,32 +806,9 @@ function App() {
         />
       )}
 
-      {/* Account bar */}
-      <div style={{maxWidth:640,margin:"0 auto 12px",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8}}>
-        {authEmail ? (
-          <>
-            <span style={{color:"#484f58",fontSize:11,display:"flex",alignItems:"center",gap:5}}>
-              <span style={{width:6,height:6,borderRadius:"50%",background: syncStatus==="saving"?"#e3b341":syncStatus==="error"?"#f78166":"#3fb950",display:"inline-block"}}/>
-              {authEmail}
-            </span>
-            <button onClick={logout}
-              style={{fontSize:11,padding:"2px 8px",borderRadius:6,cursor:"pointer",
-                border:"1px solid #30363d",background:"transparent",color:"#484f58"}}>
-              log out
-            </button>
-          </>
-        ) : (
-          <button onClick={() => { setShowAuthModal(true); setAuthMode("login"); setAuthError(""); }}
-            style={{fontSize:12,padding:"4px 12px",borderRadius:6,cursor:"pointer",
-              border:"1px solid #58a6ff",background:"transparent",color:"#58a6ff",fontWeight:600}}>
-            Log in / Sign up
-          </button>
-        )}
-      </div>
-
       {/* Search + player card — constrained width */}
       <div style={{maxWidth:800,margin:"0 auto"}}>
-      {/* Search row + implied probability calculator */}
+      {/* Full-width top row: search | implied prob | account */}
       <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:22}}>
       <div style={{position:"relative",flex:1}}>
         <span style={{position:"absolute",left:13,top:"50%",transform:"translateY(-50%)",fontSize:15,pointerEvents:"none",zIndex:1}}>
@@ -923,7 +900,29 @@ function App() {
           </div>
         );
       })()}
-      </div>{/* end search row */}
+      {/* Account info */}
+      <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+        {authEmail ? (
+          <>
+            <span style={{color:"#484f58",fontSize:11,display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap"}}>
+              <span style={{width:6,height:6,borderRadius:"50%",background: syncStatus==="saving"?"#e3b341":syncStatus==="error"?"#f78166":"#3fb950",display:"inline-block"}}/>
+              {authEmail}
+            </span>
+            <button onClick={logout}
+              style={{fontSize:11,padding:"2px 8px",borderRadius:6,cursor:"pointer",
+                border:"1px solid #30363d",background:"transparent",color:"#484f58",flexShrink:0}}>
+              log out
+            </button>
+          </>
+        ) : (
+          <button onClick={() => { setShowAuthModal(true); setAuthMode("login"); setAuthError(""); }}
+            style={{fontSize:12,padding:"4px 12px",borderRadius:6,cursor:"pointer",
+              border:"1px solid #58a6ff",background:"transparent",color:"#58a6ff",fontWeight:600,flexShrink:0}}>
+            Log in
+          </button>
+        )}
+      </div>
+      </div>{/* end top row */}
 
       {/* Model reference page */}
       {modelPage && !player && !teamPage && (
