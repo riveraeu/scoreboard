@@ -58,7 +58,11 @@ function buildGames(allPlays, sport) {
     if (g.ouLine == null && ouLine != null) g.ouLine = ouLine;
   }
 
-  return [...gameMap.values()].sort((a, b) => (a.gameTime || '').localeCompare(b.gameTime || ''));
+  return [...gameMap.values()].sort((a, b) => {
+    const dateDiff = (a.gameDate || '').localeCompare(b.gameDate || '');
+    if (dateDiff !== 0) return dateDiff;
+    return (a.gameTime || '').localeCompare(b.gameTime || '');
+  });
 }
 
 export default function LineupsPage({
