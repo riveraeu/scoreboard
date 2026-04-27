@@ -4019,9 +4019,9 @@ var worker_default = {
           } catch(e) {}
 
           // 2. Most recent completed game boxscore — reliable expected starters (playoffs)
-          // Main schedule uses seasontype=2 (regular season); try playoff schedule if lastGameId is null
-          let _lastGameId = lastGameId;
-          if (lineup.length === 0 && !_lastGameId) {
+          // Always prefer playoff schedule (seasontype=3) over regular season lastGameId
+          if (lineup.length === 0) {
+            let _lastGameId = null;
             try {
               const pSched = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/${abbrLower}/schedule?season=2026&seasontype=3`, { headers: H });
               if (pSched.ok) {
@@ -4031,12 +4031,14 @@ var worker_default = {
                 }
               }
             } catch(e) {}
-          }
-          if (lineup.length === 0 && _lastGameId) {
-            try {
-              const starters = await _getStartersFromGame(_lastGameId);
-              if (starters.length > 0) { lineup = starters; lineupConfirmed = false; }
-            } catch(e) {}
+            // Fall back to regular season lastGameId if no playoff games found
+            if (!_lastGameId) _lastGameId = lastGameId;
+            if (_lastGameId) {
+              try {
+                const starters = await _getStartersFromGame(_lastGameId);
+                if (starters.length > 0) { lineup = starters; lineupConfirmed = false; }
+              } catch(e) {}
+            }
           }
 
           // 3. Roster fallback — one player per position group
