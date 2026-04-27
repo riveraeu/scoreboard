@@ -111,17 +111,59 @@ export default function LineupsPage({
 
   return (
     <div>
-      {/* Toolbar */}
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 14 }}>
-        <div style={{ color: '#c9d1d9', fontSize: 15, fontWeight: 700 }}>
+      {/* Single row: date left | tabs center | buttons right */}
+      <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #21262d', marginBottom: 16 }}>
+        {/* Left: date */}
+        <div style={{ flex: 1 }}>
           {(() => {
             const d = new Date(), dow = d.getDay(), daysToMon = (dow + 6) % 7;
             const mon = new Date(d - daysToMon * 86400000);
             const label = mon.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-            return <span style={{ color: '#484f58', fontWeight: 400, fontSize: 13 }}>Week of {label}</span>;
+            return <span style={{ color: '#484f58', fontWeight: 400, fontSize: 12 }}>Week of {label}</span>;
           })()}
         </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+        {/* Center: tabs */}
+        <div style={{ display: 'flex', gap: 0 }}>
+          {tabs.map(tab => {
+            const active = activeSportTab === tab.key;
+            const count = tab.key !== 'picks' ? qualifiedBySport[tab.key] : null;
+            return (
+              <div key={tab.key} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <button
+                  onClick={() => setActiveSportTab(tab.key)}
+                  style={{
+                    padding: '8px 14px', background: 'none', border: 'none',
+                    borderBottom: active ? '2px solid #58a6ff' : '2px solid transparent',
+                    color: active ? '#58a6ff' : '#8b949e', fontWeight: active ? 700 : 400,
+                    fontSize: 13, cursor: 'pointer', transition: 'color 0.15s',
+                    marginBottom: -1,
+                  }}>
+                  {tab.label}
+                  {count > 0 && (
+                    <span style={{ marginLeft: 5, fontSize: 10, fontWeight: 700, color: '#3fb950',
+                      background: 'rgba(63,185,80,0.12)', border: '1px solid rgba(63,185,80,0.3)',
+                      borderRadius: 10, padding: '1px 5px' }}>
+                      {count}
+                    </span>
+                  )}
+                </button>
+                {tab.key !== 'picks' && (
+                  <span
+                    onClick={e => { e.stopPropagation(); fetchReport(tab.key); }}
+                    title={`Open ${tab.label} market report`}
+                    style={{ fontSize: 11, cursor: 'pointer', color: '#484f58', marginLeft: -8, marginRight: 4,
+                      userSelect: 'none', lineHeight: 1 }}
+                    onMouseEnter={e => e.currentTarget.style.color = '#8b949e'}
+                    onMouseLeave={e => e.currentTarget.style.color = '#484f58'}>
+                    ⊞
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {/* Right: buttons */}
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
           <button onClick={navigateToModel}
             style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, cursor: 'pointer',
               border: '1px solid #30363d', background: 'transparent', color: '#484f58', fontWeight: 600 }}>
@@ -141,48 +183,6 @@ export default function LineupsPage({
             {bustLoading ? 'busting…' : 'bust'}
           </button>
         </div>
-      </div>
-
-      {/* Sport tabs */}
-      <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid #21262d', marginBottom: 16 }}>
-        {tabs.map(tab => {
-          const active = activeSportTab === tab.key;
-          const count = tab.key !== 'picks' ? qualifiedBySport[tab.key] : null;
-          return (
-            <div key={tab.key} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-              <button
-                onClick={() => setActiveSportTab(tab.key)}
-                style={{
-                  padding: '8px 16px', background: 'none', border: 'none',
-                  borderBottom: active ? '2px solid #58a6ff' : '2px solid transparent',
-                  color: active ? '#58a6ff' : '#8b949e', fontWeight: active ? 700 : 400,
-                  fontSize: 13, cursor: 'pointer', transition: 'color 0.15s',
-                  marginBottom: -1,
-                }}>
-                {tab.label}
-                {count > 0 && (
-                  <span style={{ marginLeft: 5, fontSize: 10, fontWeight: 700, color: '#3fb950',
-                    background: 'rgba(63,185,80,0.12)', border: '1px solid rgba(63,185,80,0.3)',
-                    borderRadius: 10, padding: '1px 5px' }}>
-                    {count}
-                  </span>
-                )}
-              </button>
-              {/* Report icon — only for sport tabs */}
-              {tab.key !== 'picks' && (
-                <span
-                  onClick={e => { e.stopPropagation(); fetchReport(tab.key); }}
-                  title={`Open ${tab.label} market report`}
-                  style={{ fontSize: 11, cursor: 'pointer', color: '#484f58', marginLeft: -8, marginRight: 4,
-                    userSelect: 'none', lineHeight: 1 }}
-                  onMouseEnter={e => e.currentTarget.style.color = '#8b949e'}
-                  onMouseLeave={e => e.currentTarget.style.color = '#484f58'}>
-                  ⊞
-                </span>
-              )}
-            </div>
-          );
-        })}
       </div>
 
       {/* My Picks tab */}

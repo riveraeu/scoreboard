@@ -6,45 +6,6 @@ import AddPickModal from './AddPickModal.jsx';
 function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToTeam, navigateToPlay, calcOdds, setCalcOdds, bankroll, setBankroll, setPickUnits, chartGroupBy, setChartGroupBy, openPickWeeks, setOpenPickWeeks, openPickDays, setOpenPickDays, editPickId, setEditPickId, setPlayResult, setShowAddPick, oddsToProfit }) {
   return (
         <div id="my-picks">
-        {/* Implied Probability Calculator */}
-        {(() => {
-          const raw = calcOdds.trim();
-          const n = parseInt(raw, 10);
-          let implied = null;
-          if (!isNaN(n) && raw !== "" && raw !== "-" && raw !== "+") {
-            if (n < 0) implied = Math.abs(n) / (Math.abs(n) + 100) * 100;
-            else if (n > 0) implied = 100 / (n + 100) * 100;
-          }
-          const color = implied === null ? "#8b949e" : implied >= 70 ? "#3fb950" : implied >= 50 ? "#e3b341" : "#f78166";
-          return (
-            <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:10,
-              padding:"12px 16px",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",marginBottom:16}}>
-              <span style={{color:"#8b949e",fontSize:12,whiteSpace:"nowrap"}}>Implied probability</span>
-              <div style={{display:"flex",alignItems:"center",background:"#0d1117",border:"1px solid #30363d",
-                borderRadius:7,overflow:"hidden",flex:"0 0 auto"}}>
-                <input type="text" inputMode="numeric" placeholder="-110" value={calcOdds}
-                  onChange={e => {
-                    let v = e.target.value;
-                    // Auto-prepend "-" if user types a bare number (no sign)
-                    if (v.length > 0 && v[0] !== "-" && v[0] !== "+") v = "-" + v;
-                    setCalcOdds(v);
-                  }}
-                  style={{background:"transparent",border:"none",outline:"none",color:"#c9d1d9",
-                    fontSize:14,width:80,padding:"7px 10px",textAlign:"center"}}/>
-              </div>
-              <div style={{display:"flex",alignItems:"center",gap:8,flex:1}}>
-                {implied !== null && (
-                  <div style={{flex:1,background:"#21262d",borderRadius:5,height:14,overflow:"hidden",minWidth:60}}>
-                    <div style={{width:`${implied}%`,background:color,height:"100%",borderRadius:5,transition:"width 0.3s ease"}}/>
-                  </div>
-                )}
-                <span style={{color,fontSize:18,fontWeight:700,minWidth:60,textAlign:"right"}}>
-                  {implied !== null ? `${implied.toFixed(1)}%` : "—"}
-                </span>
-              </div>
-            </div>
-          );
-        })()}
         {(() => {
         if (trackedPlays.length === 0) return null;
         const settled = trackedPlays.filter(p => p.result && p.result !== "dnp");
