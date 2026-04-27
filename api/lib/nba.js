@@ -513,18 +513,19 @@ export async function buildNbaInjuryReport(cache) {
     const d = await r.json();
     const injMap = {};
     for (const teamEntry of d.injuries || []) {
-      const abbr = teamEntry.team?.abbreviation;
-      if (!abbr) continue;
       const outPlayers = [];
+      let abbr = null;
       for (const inj of teamEntry.injuries || []) {
         const statusRaw = (inj.status || "").toLowerCase();
         const isOut = statusRaw === "out";
         const isGtd = statusRaw.includes("day") || statusRaw.includes("game-time") || statusRaw === "questionable" || statusRaw === "doubtful";
         if (!isOut && !isGtd) continue;
+        // Team abbreviation lives inside athlete.team, not teamEntry.team
+        if (!abbr) abbr = inj.athlete?.team?.abbreviation || null;
         const name = inj.athlete?.displayName || "";
         if (name) outPlayers.push({ name, status: isOut ? "out" : "gtd" });
       }
-      if (outPlayers.length) injMap[abbr] = outPlayers;
+      if (abbr && outPlayers.length) injMap[abbr] = outPlayers;
     }
     if (cache && Object.keys(injMap).length > 0) {
       await cache.put(cacheKey, JSON.stringify(injMap), { expirationTtl: 1800 }).catch(() => {});

@@ -34,8 +34,10 @@ function buildGames(allPlays, sport) {
       gameTime = play.gameTime ?? null;
     }
 
-    // Skip games from yesterday or earlier
+    // Skip games from yesterday or earlier (by gameDate)
     if (gameDate && gameDate < today) continue;
+    // Also skip if gameTime is more than 3 hours in the past (Kalshi settlement date ≠ game date)
+    if (gameTime && new Date(gameTime).getTime() < Date.now() - 3 * 60 * 60 * 1000) continue;
 
     if (!homeTeam || !awayTeam) continue;
     const sortedPair = [homeTeam, awayTeam].sort().join('|');
