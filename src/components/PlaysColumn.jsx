@@ -150,14 +150,16 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMet
 
             const _dateGroups = sortedDates.map(date => (
               <div key={date} style={cols > 1 ? {display:'contents'} : {}}>
-                {/* Date header */}
-                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,marginTop: date === sortedDates[0] ? 0 : 20, ...(cols > 1 && {gridColumn:'1 / -1'})}}>
-                  <div style={{color: date === today ? "#e3b341" : "#c9d1d9", fontSize:13, fontWeight:700}}>
-                    {dateLabel(date)}
+                {/* Date header — hidden when embedded in LineupsPage and there's only one date group */}
+                {(!hideHeader || sortedDates.length > 1) && (
+                  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,marginTop: date === sortedDates[0] ? 0 : 20, ...(cols > 1 && {gridColumn:'1 / -1'})}}>
+                    <div style={{color: date === today ? "#e3b341" : "#c9d1d9", fontSize:13, fontWeight:700}}>
+                      {dateLabel(date)}
+                    </div>
+                    <div style={{flex:1,height:1,background:"#21262d"}}/>
+                    <div style={{color:"#484f58",fontSize:11}}>{grouped[date].length} play{grouped[date].length !== 1 ? "s" : ""}</div>
                   </div>
-                  <div style={{flex:1,height:1,background:"#21262d"}}/>
-                  <div style={{color:"#484f58",fontSize:11}}>{grouped[date].length} play{grouped[date].length !== 1 ? "s" : ""}</div>
-                </div>
+                )}
 
                 {[...grouped[date]].sort((a, b) => {
                   const ta = a.gameTime || "9999";
@@ -194,10 +196,10 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMet
                 const scColor = sc >= 8 ? "#3fb950" : sc >= 5 ? "#e3b341" : "#8b949e";
                 return (
                   <div key={playKey}
-                    style={{background:"#161b22",border:`1px solid ${isTracked?"#3fb950":"#30363d"}`,borderRadius:12,
+                    style={{background:"#161b22",border:"1px solid #30363d",borderRadius:12,
                       padding:"14px 16px",marginBottom:10,transition:"border-color 0.15s"}}
-                    onMouseEnter={e => { if (!isTracked) e.currentTarget.style.borderColor="#58a6ff"; }}
-                    onMouseLeave={e => { if (!isTracked) e.currentTarget.style.borderColor="#30363d"; }}>
+                    onMouseEnter={e => e.currentTarget.style.borderColor="#58a6ff"}
+                    onMouseLeave={e => e.currentTarget.style.borderColor="#30363d"}>
                     <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
@@ -337,10 +339,10 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMet
                 const tTrueOddsStr = tTrueOdds > 0 ? `+${tTrueOdds}` : `${tTrueOdds}`;
                 return (
                   <div key={playKey}
-                    style={{background:"#161b22",border:`1px solid ${isTracked?"#3fb950":"#30363d"}`,borderRadius:12,
+                    style={{background:"#161b22",border:"1px solid #30363d",borderRadius:12,
                       padding:"14px 16px",marginBottom:10,transition:"border-color 0.15s"}}
-                    onMouseEnter={e => { if (!isTracked) e.currentTarget.style.borderColor="#58a6ff"; }}
-                    onMouseLeave={e => { if (!isTracked) e.currentTarget.style.borderColor="#30363d"; }}>
+                    onMouseEnter={e => e.currentTarget.style.borderColor="#58a6ff"}
+                    onMouseLeave={e => e.currentTarget.style.borderColor="#30363d"}>
                     {/* Header */}
                     <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
                       {/* Matchup info */}
