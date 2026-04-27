@@ -436,11 +436,11 @@ export default function MatchupCard({ game, mlbMeta, nbaMeta, navigateToPlayer, 
           </div>
           <div style={{ display: 'flex', gap: 16 }}>
             {[
-              { abbr: awayTeam, data: lineup?.away ?? [], confirmed: lineup?.awayConfirmed ?? null, injured: awayInjured, label: 'Away' },
-              { abbr: homeTeam, data: lineup?.home ?? [], confirmed: lineup?.homeConfirmed ?? null, injured: homeInjured, label: 'Home' },
-            ].map(({ abbr, data, confirmed, injured, label }) => (
+              { abbr: awayTeam, data: lineup?.away ?? [], confirmed: lineup?.awayConfirmed ?? null, injured: awayInjured, label: 'Away', isHome: false },
+              { abbr: homeTeam, data: lineup?.home ?? [], confirmed: lineup?.homeConfirmed ?? null, injured: homeInjured, label: 'Home', isHome: true },
+            ].map(({ abbr, data, confirmed, injured, label, isHome }) => (
               <div key={abbr} style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5, flexDirection: isHome ? 'row-reverse' : 'row' }}>
                   <span style={{ fontSize: 10, fontWeight: 700, color: '#484f58', textTransform: 'uppercase', letterSpacing: 0.5 }}>{abbr}</span>
                   <span style={{ fontSize: 10, color: '#484f58' }}>{label}</span>
                   <LineupBadge confirmed={confirmed} />
@@ -449,17 +449,18 @@ export default function MatchupCard({ game, mlbMeta, nbaMeta, navigateToPlayer, 
                 {data.map((player, idx) => (
                   <div key={idx} style={{
                     display: 'flex', alignItems: 'center', gap: 6, padding: '2px 0',
+                    flexDirection: isHome ? 'row-reverse' : 'row',
                     borderBottom: idx < data.length - 1 ? '1px solid #0d1117' : 'none',
                   }}>
                     {player.position && (
-                      <span style={{ fontSize: 9, color: '#484f58', width: 22, flexShrink: 0 }}>{player.position}</span>
+                      <span style={{ fontSize: 9, color: '#484f58', width: 22, flexShrink: 0, textAlign: isHome ? 'right' : 'left' }}>{player.position}</span>
                     )}
                     <span
                       onClick={() => navigateToPlayer(
                         { id: player.playerId || null, name: player.name, team: abbr, sportKey: 'basketball/nba' },
                         'points'
                       )}
-                      style={{ fontSize: 11, color: '#c9d1d9', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }}
+                      style={{ fontSize: 11, color: '#c9d1d9', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer', textAlign: isHome ? 'right' : 'left' }}
                       onMouseEnter={e => e.currentTarget.style.color = '#58a6ff'}
                       onMouseLeave={e => e.currentTarget.style.color = '#c9d1d9'}
                     >
@@ -468,13 +469,13 @@ export default function MatchupCard({ game, mlbMeta, nbaMeta, navigateToPlayer, 
                   </div>
                 ))}
                 {data.length === 0 && !lineupLoading && (
-                  <div style={{ fontSize: 11, color: '#484f58', fontStyle: 'italic' }}>No lineup posted</div>
+                  <div style={{ fontSize: 11, color: '#484f58', fontStyle: 'italic', textAlign: isHome ? 'right' : 'left' }}>No lineup posted</div>
                 )}
                 {/* Injured players (always from nbaMeta, no fetch needed) */}
                 {injured.length > 0 && (
                   <div style={{ marginTop: 6, paddingTop: 4, borderTop: data.length > 0 ? '1px solid #0d1117' : 'none' }}>
                     {injured.map((p, i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '1px 0' }}>
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '1px 0', flexDirection: isHome ? 'row-reverse' : 'row' }}>
                         <span style={{ fontSize: 10, color: '#8b949e' }}>{p.name}</span>
                         <span style={{
                           fontSize: 9, fontWeight: 700, padding: '0 4px', borderRadius: 3,
