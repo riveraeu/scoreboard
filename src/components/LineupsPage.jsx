@@ -231,21 +231,41 @@ export default function LineupsPage({
               No {activeSportTab.toUpperCase()} games found for today.
             </div>
           )}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(480px, 1fr))', gap: 12 }}>
-            {games.map((game, i) => (
-              <MatchupCard
-                key={`${game.homeTeam}|${game.awayTeam}|${game.gameDate}|${i}`}
-                game={game}
-                mlbMeta={mlbMeta}
-                nbaMeta={nbaMeta}
-                navigateToPlayer={navigateToPlayer}
-                navigateToTeam={navigateToTeam}
-                trackPlay={trackPlay}
-                trackedPlays={trackedPlays}
-                untrackPlay={untrackPlay}
-              />
-            ))}
-          </div>
+          {(() => {
+            const todayPT = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+            const tomorrowPT = new Date(Date.now() + 86400000).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+            let lastDate = null;
+            return (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(480px, 1fr))', gap: 12 }}>
+                {games.map((game, i) => {
+                  const gd = game.gameDate || '';
+                  const showHeader = gd !== lastDate;
+                  lastDate = gd;
+                  const dateLabel = gd === todayPT ? 'Today' : gd === tomorrowPT ? 'Tomorrow'
+                    : gd ? new Date(gd + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
+                  return (
+                    <React.Fragment key={`${game.homeTeam}|${game.awayTeam}|${game.gameDate}|${i}`}>
+                      {showHeader && dateLabel && (
+                        <div style={{ gridColumn: '1 / -1', paddingBottom: 4, paddingTop: i > 0 ? 8 : 0 }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: '#8b949e', textTransform: 'uppercase', letterSpacing: 0.8 }}>{dateLabel}</span>
+                        </div>
+                      )}
+                      <MatchupCard
+                        game={game}
+                        mlbMeta={mlbMeta}
+                        nbaMeta={nbaMeta}
+                        navigateToPlayer={navigateToPlayer}
+                        navigateToTeam={navigateToTeam}
+                        trackPlay={trackPlay}
+                        trackedPlays={trackedPlays}
+                        untrackPlay={untrackPlay}
+                      />
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </>
       )}
     </div>
