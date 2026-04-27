@@ -69,7 +69,7 @@ Built with Vite + `@vitejs/plugin-react`. Entry point is `index.html` → `src/m
 - `src/components/ModelPage.jsx` — Model Reference page with calibration
 - `src/components/MarketReport.jsx` — full market report overlay
 - `src/components/LineupsPage.jsx` — homepage tab layout (MLB/NBA/NHL/My Picks tabs); `buildGames()` groups `allTonightPlays` by sorted team pair + gameDate, anchors home/away from total plays
-- `src/components/MatchupCard.jsx` — per-game card: team logos, game time, O/U + ML odds, pitcher row (from `mlbMeta`), umpire + weather row, qualified play badges, collapsible MLB lineup drawer (lazy `/api/team` fetch)
+- `src/components/MatchupCard.jsx` — per-game card: team logos, game time, center stats (O/U + ML + spread), MLB pitcher row (from `mlbMeta`), MLB umpire + weather row, qualified play badges with SimScore/edge/odds, collapsible lineup drawer (MLB + NBA, lazy `/api/team` fetch); NBA drawer also shows Out-injured players from `nbaMeta.injuries`
 - `src/components/PlaysColumn.jsx` — left column (plays list, filters, bust button) — no longer used on homepage; kept for reference
 - `src/components/MyPicksColumn.jsx` — right column (P&L, pick cards)
 
@@ -392,7 +392,7 @@ Single-page app uses `history.pushState` + `popstate` for client-side navigation
 - `vercel.json` `/:slug` rewrite serves `index.html` (Vite build entry) for all single-segment paths so deep links work on cold load
 - `resolveSlug(slug, sportOverride)` — on mount, reads `window.location.pathname`; checks literal `"model"` first, then `TEAM_DB`, else stores as `pendingSlug` for async ESPN athlete search
 - `navigateToTeam(abbr, sport)` — pushState + `loadTeamPage` + scroll to top
-- `navigateToPlayer(p, tab)` — pushState with slugified name + `selectPlayer` + scroll
+- `navigateToPlayer(p, tab)` — pushState with slugified name + `selectPlayer` + scroll. Accepts player objects without `id` (e.g. pitcher links from MatchupCard); `loadPlayer` resolves the ESPN athlete ID via `/athletes?q={name}` search when `p.id` is missing, then updates the player state with the resolved ID.
 - `navigateToModel()` — pushState("/model") + `setModelPage(true)` + clear player/teamPage + scroll to top
 - `goBack()` — pushState("/") + clear player/team/modelPage state
 - Back button in player card, team page, and model page header calls `goBack()`
@@ -438,7 +438,8 @@ All threshold plays that pass the edge gate (≥ 3%) are pushed to `plays[]`. Be
 - `tonightPlays` — qualified plays from `/api/tonight`, filtered `qualified !== false`
 - `allTonightPlays` — raw (unfiltered) plays array from `/api/tonight`, includes `qualified: false` entries; used to build `tonightPlayerMap` so all players visible in the market report have explanation data on their player page (MLB/NBA/NHL drops are all included)
 - `nbaDropped` — array always present in `/api/tonight` response (now always empty; previously held `opp_not_soft` drops); frontend still checks it as a fallback for `tonightPlayerMap`
-- `mlbMeta` — object in `/api/tonight` response: `{ pitchers: {abbr: {name, era}}, gameOdds: {abbr: {ml}}, umpires: {"home|away": {name, factor}}, weather: {"home|away": {temp, condition}} }`. `pitchers` merged from ESPN probables + MLB Stats API pitcherInfoByTeam. `weather` extracted from already-fetched ESPN scoreboard events (no extra requests). Used by `MatchupCard` to display pitcher row, umpire, and weather without deriving from plays data.
+- `mlbMeta` — object in `/api/tonight` response: `{ pitchers: {abbr: {name, era}}, gameOdds: {abbr: {ml}}, umpires: {"home|away": name}, weather: {"home|away": {temp, condition}}, projectedLineupTeams: string[], teamsWithLineup: string[] }`. `pitchers` merged from ESPN probables + MLB Stats API pitcherInfoByTeam. `weather` extracted from ESPN scoreboard events and cached separately at `weather:mlb:{date}` (600s TTL) so it survives gameTimes cache hits. `projectedLineupTeams` / `teamsWithLineup` drive the ✓ Confirmed / Expected badge in pitcher row without a drawer fetch. Pitcher names and lineup drawer batters link to player page via `navigateToPlayer`; ID resolved by ESPN athlete name search in `loadPlayer` when missing. `DOMED_STADIUMS` constant lists teams with retractable roofs — shows 🏟 Dome instead of weather conditions.
+- `nbaMeta` — object in `/api/tonight` response: `{ gameOdds: {abbr: {ml, total, spread}}, injuries: {abbr: [{name, status}]} }`. `gameOdds` built from `sportByteam.nbaGameOdds` with short-code normalization (GS→GSW etc.). `injuries` from `nbaInjuryMap` (already built for C2 injury boost). Used by `MatchupCard` to populate NBA center header (O/U / ML / spread) and show Out players in the lineup drawer.
 - `reportData` — full debug response from `/api/tonight?debug=1`, shown in Market Report overlay
 - `player` — currently selected player for detail card
 - `teamPage` — currently selected team `{abbr, sport}` for team page
