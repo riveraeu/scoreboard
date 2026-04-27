@@ -68,7 +68,9 @@ Built with Vite + `@vitejs/plugin-react`. Entry point is `index.html` → `src/m
 - `src/components/AddPickModal.jsx` — manual pick entry modal; also exports `useDebounce`
 - `src/components/ModelPage.jsx` — Model Reference page with calibration
 - `src/components/MarketReport.jsx` — full market report overlay
-- `src/components/PlaysColumn.jsx` — left column (plays list, filters, bust button)
+- `src/components/LineupsPage.jsx` — homepage tab layout (MLB/NBA/NHL/My Picks tabs); `buildGames()` groups `allTonightPlays` by sorted team pair + gameDate, anchors home/away from total plays
+- `src/components/MatchupCard.jsx` — per-game card: team logos, game time, O/U + ML odds, pitcher row (from `mlbMeta`), umpire + weather row, qualified play badges, collapsible MLB lineup drawer (lazy `/api/team` fetch)
+- `src/components/PlaysColumn.jsx` — left column (plays list, filters, bust button) — no longer used on homepage; kept for reference
 - `src/components/MyPicksColumn.jsx` — right column (P&L, pick cards)
 
 **Dev proxy:** `vite.config.js` proxies `/api` to production (`https://scoreboard-ivory-xi.vercel.app`) so `npm run dev` works without a local backend.
@@ -436,6 +438,7 @@ All threshold plays that pass the edge gate (≥ 3%) are pushed to `plays[]`. Be
 - `tonightPlays` — qualified plays from `/api/tonight`, filtered `qualified !== false`
 - `allTonightPlays` — raw (unfiltered) plays array from `/api/tonight`, includes `qualified: false` entries; used to build `tonightPlayerMap` so all players visible in the market report have explanation data on their player page (MLB/NBA/NHL drops are all included)
 - `nbaDropped` — array always present in `/api/tonight` response (now always empty; previously held `opp_not_soft` drops); frontend still checks it as a fallback for `tonightPlayerMap`
+- `mlbMeta` — object in `/api/tonight` response: `{ pitchers: {abbr: {name, era}}, gameOdds: {abbr: {ml}}, umpires: {"home|away": {name, factor}}, weather: {"home|away": {temp, condition}} }`. `pitchers` merged from ESPN probables + MLB Stats API pitcherInfoByTeam. `weather` extracted from already-fetched ESPN scoreboard events (no extra requests). Used by `MatchupCard` to display pitcher row, umpire, and weather without deriving from plays data.
 - `reportData` — full debug response from `/api/tonight?debug=1`, shown in Market Report overlay
 - `player` — currently selected player for detail card
 - `teamPage` — currently selected team `{abbr, sport}` for team page
