@@ -9,8 +9,8 @@ import { useDebounce } from './components/AddPickModal.jsx';
 import AddPickModal from './components/AddPickModal.jsx';
 import ModelPage from './components/ModelPage.jsx';
 import MarketReport from './components/MarketReport.jsx';
-import PlaysColumn from './components/PlaysColumn.jsx';
 import MyPicksColumn from './components/MyPicksColumn.jsx';
+import LineupsPage from './components/LineupsPage.jsx';
 
 function App() {
   const [sport, setSport] = React.useState("basketball/nba"); // derived from selected player
@@ -74,6 +74,7 @@ function App() {
     return new Set([mon.toLocaleDateString("en-CA")]);
   });
   const [showAddPick, setShowAddPick] = React.useState(false);
+  const [activeSportTab, setActiveSportTab] = React.useState('mlb');
   const [authToken, setAuthToken] = React.useState(() => localStorage.getItem("sb_token") || null);
   const [authEmail, setAuthEmail] = React.useState(() => localStorage.getItem("sb_email") || null);
   const [showAuthModal, setShowAuthModal] = React.useState(false);
@@ -1824,41 +1825,22 @@ function App() {
       </div>{/* end constrained search/player section */}
 
       {!player && !teamPage && !modelPage && (
-        <div className="plays-picks-grid">
-        <PlaysColumn
-          tonightPlays={tonightPlays}
-          allTonightPlays={allTonightPlays}
+        <LineupsPage
+          allTonightPlays={testMode ? MOCK_PLAYS : (allTonightPlays || [])}
           tonightLoading={tonightLoading}
-          tonightMeta={tonightMeta}
-          sportFilter={sportFilter}
-          setSportFilter={setSportFilter}
-          statFilter={statFilter}
-          setStatFilter={setStatFilter}
-          trackedPlays={trackedPlays}
-          trackPlay={trackPlay}
-          untrackPlay={untrackPlay}
-          navigateToPlay={navigateToPlay}
+          activeSportTab={activeSportTab}
+          setActiveSportTab={setActiveSportTab}
+          navigateToPlayer={navigateToPlay}
           navigateToTeam={navigateToTeam}
           navigateToModel={navigateToModel}
-          calcOdds={calcOdds}
-          expandedPlays={expandedPlays}
-          setExpandedPlays={setExpandedPlays}
           fetchReport={fetchReport}
           bustLoading={bustLoading}
           bustCache={bustCache}
-          showPlaysInfo={showPlaysInfo}
-          setShowPlaysInfo={setShowPlaysInfo}
           testMode={testMode}
           setTestMode={setTestMode}
-        />
-
-        {/* Column 2: Calculator + My Picks */}
-        <MyPicksColumn
           trackedPlays={trackedPlays}
           setTrackedPlays={setTrackedPlays}
           untrackPlay={untrackPlay}
-          navigateToTeam={navigateToTeam}
-          navigateToPlay={navigateToPlay}
           calcOdds={calcOdds}
           setCalcOdds={setCalcOdds}
           bankroll={bankroll}
@@ -1875,8 +1857,9 @@ function App() {
           setPlayResult={setPlayResult}
           setShowAddPick={setShowAddPick}
           oddsToProfit={oddsToProfit}
+          navigateToPlay={navigateToPlay}
+          trackPlay={trackPlay}
         />
-        </div>
       )}
 
       <div style={{color:"#484f58",fontSize:11,marginTop:12,textAlign:"center"}}>
