@@ -497,22 +497,24 @@ truePct = fraction of trials where homeRuns + awayRuns ≥ threshold`}</Formula>
           <div style={s.sub}>Normal distribution Monte Carlo. Possession-based projection separates scoring efficiency from game tempo.</div>
 
           <div style={s.h3}>Core Formula</div>
-          <Formula>{`projPace = (homePace × awayPace) / leagueAvgPace   ← geometric mean
+          <Formula>{`// Derived ratings (ESPN has no offensiveRating/defensiveRating stat)
+OffRtg  = avgPoints / paceFactor × 100       ← from ESPN team stats
+DefRtg  = defPPGAllowed / paceFactor × 100   ← from ESPN team stats + nbaDefRank
+
+projPace = (homePace × awayPace) / leagueAvgPace   ← geometric mean
 
 homeExpected = (homeOffRtg × awayDefRtg / leagueAvgOffRtg²) × projPace
 awayExpected = (awayOffRtg × homeDefRtg / leagueAvgOffRtg²) × projPace
 expectedTotal = homeExpected + awayExpected
 
 Distribution: Normal(expectedTotal, std=11 per team)
-truePct = P(total ≥ threshold)
-
-All ratings: pts per 100 possessions (regular season, seasontype=2)`}</Formula>
+truePct = P(total ≥ threshold)`}</Formula>
 
           <div style={s.h3}>Model Inputs</div>
-          <InputRow name="Offensive Rating (OffRtg)" tooltip="Points scored per 100 possessions — efficiency-only, pace-neutral" color="#3fb950"
-            why="Raw PPG conflates pace and efficiency, double-counting tempo when two fast teams meet. OffRtg isolates how well a team scores per possession, independent of how many possessions they get." />
-          <InputRow name="Defensive Rating (DefRtg)" tooltip="Points allowed per 100 possessions — lower = better defense" color="#3fb950"
-            why="Symmetric to OffRtg. A high DefRtg (e.g. 118) means the defense leaks points per possession, which the model uses to boost the opponent's expected output for this specific matchup." />
+          <InputRow name="Offensive Rating (OffRtg)" tooltip="Derived: avgPoints / pace × 100 — efficiency-only, pace-neutral" color="#3fb950"
+            why="Raw PPG conflates pace and efficiency, double-counting tempo when two fast teams meet. OffRtg isolates how well a team scores per possession, independent of how many possessions they get. Derived from ESPN avgPoints ÷ paceFactor since ESPN has no direct offensiveRating stat." />
+          <InputRow name="Defensive Rating (DefRtg)" tooltip="Derived: defPPGAllowed / pace × 100 — higher = worse defense" color="#3fb950"
+            why="Symmetric to OffRtg. A high DefRtg (e.g. 118) means the defense leaks points per possession, boosting the opponent's expected output for this matchup. Derived from ESPN defensive PPG allowed ÷ pace." />
           <InputRow name="Projected pace (geometric mean)" tooltip="(homePace × awayPace) / leagueAvgPace — possessions per game" color="#3fb950"
             why="Pace controls volume: two fast teams playing each other produce more possessions than their individual pace numbers suggest. The geometric mean correctly captures this compounding effect (vs simple average which underestimates extremes)." />
           <InputRow name="League avg offensive rating" color="#8b949e"
