@@ -1830,7 +1830,7 @@ function App() {
           tonightLoading={tonightLoading}
           activeSportTab={activeSportTab}
           setActiveSportTab={setActiveSportTab}
-          navigateToPlayer={navigateToPlay}
+          navigateToPlayer={navigateToPlayer}
           navigateToTeam={navigateToTeam}
           navigateToModel={navigateToModel}
           fetchReport={fetchReport}

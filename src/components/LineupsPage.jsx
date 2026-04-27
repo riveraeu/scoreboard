@@ -222,14 +222,16 @@ export default function LineupsPage({
               No {activeSportTab.toUpperCase()} games found for today.
             </div>
           )}
-          {games.map((game, i) => (
-            <MatchupCard
-              key={`${game.homeTeam}|${game.awayTeam}|${game.gameDate}|${i}`}
-              game={game}
-              navigateToPlayer={navigateToPlayer}
-              navigateToTeam={navigateToTeam}
-            />
-          ))}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(480px, 1fr))', gap: 12 }}>
+            {games.map((game, i) => (
+              <MatchupCard
+                key={`${game.homeTeam}|${game.awayTeam}|${game.gameDate}|${i}`}
+                game={game}
+                navigateToPlayer={navigateToPlayer}
+                navigateToTeam={navigateToTeam}
+              />
+            ))}
+          </div>
         </>
       )}
     </div>

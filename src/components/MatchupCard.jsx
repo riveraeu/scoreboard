@@ -23,11 +23,11 @@ function fmtGameTime(gameTime) {
   } catch { return null; }
 }
 
-// Build deduped best-play-per-player list for badges
+// Build deduped best-play-per-player list for badges — qualified only
 function buildBadgePlays(plays) {
+  const qualified = plays.filter(p => p.qualified !== false);
   const map = new Map();
-  const all = [...plays].sort((a, b) => (b.qualified === false ? -1 : 1) - (a.qualified === false ? -1 : 1) || (b.edge || 0) - (a.edge || 0));
-  for (const p of all) {
+  for (const p of [...qualified].sort((a, b) => (b.edge || 0) - (a.edge || 0))) {
     const key = p.gameType === 'total'
       ? `total|${p.homeTeam}|${p.awayTeam}|${p.threshold}|${p.direction || 'over'}`
       : p.gameType === 'teamTotal'
@@ -35,11 +35,7 @@ function buildBadgePlays(plays) {
         : `${p.playerName}|${p.stat}`;
     if (!map.has(key)) map.set(key, p);
   }
-  return [...map.values()].sort((a, b) => {
-    const qa = a.qualified !== false, qb = b.qualified !== false;
-    if (qa !== qb) return qa ? -1 : 1;
-    return (b.edge || 0) - (a.edge || 0);
-  });
+  return [...map.values()].sort((a, b) => (b.edge || 0) - (a.edge || 0));
 }
 
 // Extract pitcher info per team from plays
