@@ -1,6 +1,5 @@
 import React from 'react';
-import { WORKER, SPORT_KEY } from '../lib/constants.js';
-import { tierColor } from '../lib/colors.js';
+import { WORKER } from '../lib/constants.js';
 
 const SPORT_LOGO_KEY = { mlb: 'mlb', nba: 'nba', nhl: 'nhl' };
 
@@ -50,31 +49,6 @@ function weatherIcon(condition) {
   return '🌤';
 }
 
-function getSimScore(play) {
-  if (play.gameType === 'total') return play.totalSimScore ?? null;
-  if (play.gameType === 'teamTotal') return play.teamTotalSimScore ?? null;
-  if (play.stat === 'strikeouts') return play.finalSimScore ?? null;
-  if (play.stat === 'hrr' || play.stat === 'hits') return play.hitterFinalSimScore ?? null;
-  if (play.sport === 'nba') return play.nbaSimScore ?? null;
-  if (play.sport === 'nhl') return play.nhlSimScore ?? null;
-  return null;
-}
-
-// Qualified-only, deduped best play per player/stat
-function buildBadgePlays(plays) {
-  const qualified = plays.filter(p => p.qualified !== false);
-  const map = new Map();
-  for (const p of [...qualified].sort((a, b) => (b.edge || 0) - (a.edge || 0))) {
-    const key = p.gameType === 'total'
-      ? `total|${p.homeTeam}|${p.awayTeam}|${p.threshold}|${p.direction || 'over'}`
-      : p.gameType === 'teamTotal'
-        ? `tt|${p.scoringTeam}|${p.threshold}`
-        : `${p.playerName}|${p.stat}`;
-    if (!map.has(key)) map.set(key, p);
-  }
-  return [...map.values()].sort((a, b) => (b.edge || 0) - (a.edge || 0));
-}
-
 function LineupBadge({ confirmed }) {
   if (confirmed === true) return (
     <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 4,
@@ -92,135 +66,8 @@ function LineupBadge({ confirmed }) {
 }
 
 
-function PlayBadge({ play, navigateToPlayer, navigateToTeam, trackPlay, trackedPlays, untrackPlay }) {
-  const edge = play.edge ?? 0;
-  const edgeColor = edge >= 5 ? '#3fb950' : edge >= 3 ? '#e3b341' : '#8b949e';
-  const truePct = play.direction === 'under' ? play.noTruePct : play.truePct;
-  const simScore = getSimScore(play);
-  const odds = fmtML(play.americanOdds);
-
-  const simScoreColor = simScore == null ? '#8b949e' : simScore >= 8 ? '#3fb950' : simScore >= 5 ? '#e3b341' : '#8b949e';
-
-  const trackId = play.gameType === 'teamTotal'
-    ? `teamtotal|${play.sport}|${play.scoringTeam}|${play.oppTeam}|${play.threshold}|${play.gameDate || ''}`
-    : play.gameType === 'total'
-    ? `total|${play.sport}|${play.homeTeam}|${play.awayTeam}|${play.threshold}|${play.gameDate || ''}${play.direction === 'under' ? '|under' : ''}`
-    : `${play.sport || 'nba'}|${play.playerName}|${play.stat}|${play.threshold}|${play.gameDate || ''}`;
-  const isTracked = trackedPlays?.some(p => p.id === trackId) ?? false;
-
-  const handleClick = () => {
-    if (play.gameType === 'total') {
-      navigateToTeam(play.homeTeam, play.sport);
-    } else if (play.gameType === 'teamTotal') {
-      navigateToTeam(play.scoringTeam, play.sport);
-    } else {
-      navigateToPlayer(
-        { id: play.playerId, name: play.playerName, team: play.playerTeam,
-          sportKey: SPORT_KEY[play.sport], opponent: play.opponent },
-        play.stat
-      );
-    }
-  };
-
-  let label, sublabel, imgEl;
-  if (play.gameType === 'total') {
-    label = `${play.direction === 'under' ? 'Under' : 'Over'} ${play.threshold}`;
-    sublabel = `${play.awayTeam} @ ${play.homeTeam} · Total`;
-    imgEl = (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0, justifyContent: 'center' }}>
-        <img src={logoUrl(play.sport, play.awayTeam)} alt="" style={{ width: 18, height: 18, objectFit: 'contain' }} onError={e => { e.target.style.display = 'none'; }} />
-        <img src={logoUrl(play.sport, play.homeTeam)} alt="" style={{ width: 18, height: 18, objectFit: 'contain' }} onError={e => { e.target.style.display = 'none'; }} />
-      </div>
-    );
-  } else if (play.gameType === 'teamTotal') {
-    label = `${play.scoringTeam} O${play.threshold}`;
-    sublabel = 'Team Runs';
-    imgEl = (
-      <img src={logoUrl(play.sport, play.scoringTeam)} alt="" style={{ width: 30, height: 30, objectFit: 'contain', flexShrink: 0 }} onError={e => { e.target.style.display = 'none'; }} />
-    );
-  } else {
-    const statMap = { strikeouts: 'K', hrr: 'HRR', points: 'PTS', rebounds: 'REB', assists: 'AST', threePointers: '3PM', goals: 'G' };
-    label = play.playerName;
-    sublabel = `${statMap[play.stat] || play.stat} ${play.threshold}+`;
-    const hUrl = play.playerId ? `https://a.espncdn.com/i/headshots/${play.sport}/players/full/${play.playerId}.png` : null;
-    const teamUrl = play.playerTeam ? logoUrl(play.sport, play.playerTeam) : null;
-    imgEl = (
-      <div style={{ width: 32, height: 32, borderRadius: '50%', flexShrink: 0, border: '1px solid #30363d', background: '#0d1117', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        {hUrl ? (
-          <img src={hUrl} alt="" style={{ width: 32, height: 32, objectFit: 'cover' }}
-            onError={e => {
-              e.target.style.display = 'none';
-              if (teamUrl) {
-                const fb = e.target.nextSibling;
-                if (fb) fb.style.display = 'block';
-              }
-            }} />
-        ) : null}
-        <img src={teamUrl || ''} alt="" style={{ width: 22, height: 22, objectFit: 'contain', display: hUrl ? 'none' : (teamUrl ? 'block' : 'none') }} onError={e => { e.target.style.display = 'none'; }} />
-      </div>
-    );
-  }
-
-  return (
-    <div onClick={handleClick} style={{
-      display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
-      padding: '7px 10px', borderRadius: 8,
-      background: 'rgba(63,185,80,0.06)', border: '1px solid rgba(63,185,80,0.25)',
-      transition: 'background 0.15s', minWidth: 0,
-    }}
-    onMouseEnter={e => e.currentTarget.style.background = 'rgba(63,185,80,0.12)'}
-    onMouseLeave={e => e.currentTarget.style.background = 'rgba(63,185,80,0.06)'}
-    >
-      {imgEl}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#c9d1d9', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</div>
-          <div style={{ fontSize: 10, color: '#8b949e', whiteSpace: 'nowrap', flexShrink: 0 }}>{sublabel}</div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-          {truePct != null && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <span style={{ fontSize: 9, color: '#484f58' }}>True%</span>
-              <span style={{ fontSize: 11, fontWeight: 700, color: tierColor(truePct) }}>{truePct}%</span>
-            </div>
-          )}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <span style={{ fontSize: 9, color: '#484f58' }}>Edge</span>
-            <span style={{ fontSize: 11, fontWeight: 700, color: edgeColor }}>{edge > 0 ? '+' : ''}{edge.toFixed(1)}%</span>
-          </div>
-          {simScore != null && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <span style={{ fontSize: 9, color: '#484f58' }}>Sim</span>
-              <span style={{ fontSize: 11, fontWeight: 700, color: simScoreColor }}>{simScore}/10</span>
-            </div>
-          )}
-          {odds && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <span style={{ fontSize: 9, color: '#484f58' }}>Odds</span>
-              <span style={{ fontSize: 11, fontWeight: 600, color: '#a371f7' }}>{odds}</span>
-            </div>
-          )}
-          {trackPlay && (
-            <button
-              onClick={e => { e.stopPropagation(); isTracked ? untrackPlay(trackId) : trackPlay(play); }}
-              style={{
-                marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer',
-                fontSize: 14, lineHeight: 1, padding: '0 2px',
-                color: isTracked ? '#e3b341' : '#484f58',
-              }}
-              title={isTracked ? 'Remove pick' : 'Add to picks'}
-            >
-              {isTracked ? '★' : '☆'}
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export default function MatchupCard({ game, mlbMeta, nbaMeta, navigateToPlayer, navigateToTeam, trackPlay, trackedPlays, untrackPlay }) {
-  const { sport, homeTeam, awayTeam, gameDate, gameTime, ouLine, plays } = game;
+export default function MatchupCard({ game, mlbMeta, nbaMeta, navigateToPlayer, navigateToTeam }) {
+  const { sport, homeTeam, awayTeam, gameDate, gameTime, ouLine } = game;
   const [lineupOpen, setLineupOpen] = React.useState(false);
   const [lineup, setLineup] = React.useState(null);
   const [lineupLoading, setLineupLoading] = React.useState(false);
@@ -247,7 +94,6 @@ export default function MatchupCard({ game, mlbMeta, nbaMeta, navigateToPlayer, 
   }, [sport, homeTeam, awayTeam]);
 
   const gameTimeStr = fmtGameTime(gameTime);
-  const badgePlays = buildBadgePlays(plays);
   const isDomed = DOMED_STADIUMS.has(homeTeam);
 
   // ── MLB metadata ──────────────────────────────────────────────────────────
@@ -557,15 +403,6 @@ export default function MatchupCard({ game, mlbMeta, nbaMeta, navigateToPlayer, 
         </div>
       )}
 
-      {/* Play badges */}
-      {badgePlays.length > 0 && (
-        <div style={{ padding: '8px 16px', borderTop: '1px solid #0d1117', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
-          {badgePlays.map((p, i) => (
-            <PlayBadge key={i} play={p} navigateToPlayer={navigateToPlayer} navigateToTeam={navigateToTeam}
-              trackPlay={trackPlay} trackedPlays={trackedPlays} untrackPlay={untrackPlay} />
-          ))}
-        </div>
-      )}
     </div>
   );
 }

@@ -3,10 +3,11 @@ import { STAT_LABEL, STAT_FULL, MLB_TEAM } from '../lib/constants.js';
 import { ordinal } from '../lib/utils.js';
 import { tierColor } from '../lib/colors.js';
 
-function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMeta, sportFilter, setSportFilter, statFilter, setStatFilter, trackedPlays, trackPlay, untrackPlay, navigateToPlay, navigateToTeam, navigateToModel, calcOdds, expandedPlays, setExpandedPlays, fetchReport, bustLoading, bustCache, showPlaysInfo, setShowPlaysInfo, testMode, setTestMode }) {
+function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMeta, sportFilter, setSportFilter, statFilter, setStatFilter, trackedPlays, trackPlay, untrackPlay, navigateToPlay, navigateToTeam, navigateToModel, calcOdds, expandedPlays, setExpandedPlays, fetchReport, bustLoading, bustCache, showPlaysInfo, setShowPlaysInfo, testMode, setTestMode, hideHeader, gridColumns }) {
+  const cols = gridColumns || 1;
   return (
         <div>
-          <div style={{display:"flex",alignItems:"center",marginBottom:14}}>
+          {!hideHeader && <div style={{display:"flex",alignItems:"center",marginBottom:14}}>
             <div style={{color:"#c9d1d9",fontSize:15,fontWeight:700}}>
               {(() => {
                 const _nowD = new Date(); const _dow = _nowD.getDay(); const _daysToMon = (_dow + 6) % 7;
@@ -66,7 +67,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMet
                 My Picks ↓
               </a>
             </div>
-          </div>
+          </div>}
           {/* ROI Summary panel */}
           {!tonightLoading && (tonightPlays || []).length > 0 && (() => {
             const isStrongMatchup = play => {
@@ -162,10 +163,10 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMet
               return new Date(yr, mo-1, dy).toLocaleDateString("en-US", { weekday:"short", month:"short", day:"numeric" });
             }
 
-            return sortedDates.map(date => (
-              <div key={date}>
+            const _dateGroups = sortedDates.map(date => (
+              <div key={date} style={cols > 1 ? {display:'contents'} : {}}>
                 {/* Date header */}
-                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,marginTop: date === sortedDates[0] ? 0 : 20}}>
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,marginTop: date === sortedDates[0] ? 0 : 20, ...(cols > 1 && {gridColumn:'1 / -1'})}}>
                   <div style={{color: date === today ? "#e3b341" : "#c9d1d9", fontSize:13, fontWeight:700}}>
                     {dateLabel(date)}
                   </div>
@@ -901,6 +902,11 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMet
             })}
             </div>
           ));
+            return cols > 1 ? (
+              <div style={{display:'grid', gridTemplateColumns:'repeat(2, 1fr)', gap:12, alignItems:'start'}}>
+                {_dateGroups}
+              </div>
+            ) : _dateGroups;
         })()}
         </div>
   );

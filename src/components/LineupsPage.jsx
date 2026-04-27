@@ -1,6 +1,7 @@
 import React from 'react';
 import MatchupCard from './MatchupCard.jsx';
 import MyPicksColumn from './MyPicksColumn.jsx';
+import PlaysColumn from './PlaysColumn.jsx';
 
 const SPORT_TABS = [
   { key: 'mlb', label: 'MLB' },
@@ -104,6 +105,8 @@ export default function LineupsPage({
   trackPlay,
 }) {
   const tabs = [...SPORT_TABS];
+  const [expandedPlays, setExpandedPlays] = React.useState(new Set());
+  const [showPlaysInfo, setShowPlaysInfo] = React.useState(false);
 
   // Qualified play count per sport for badge
   const qualifiedBySport = React.useMemo(() => {
@@ -116,6 +119,13 @@ export default function LineupsPage({
 
   const games = React.useMemo(
     () => activeSportTab !== 'picks' ? buildGames(allTonightPlays, activeSportTab) : [],
+    [allTonightPlays, activeSportTab]
+  );
+
+  const qualifiedPlays = React.useMemo(
+    () => activeSportTab !== 'picks'
+      ? (allTonightPlays || []).filter(p => p.qualified !== false && p.sport === activeSportTab)
+      : [],
     [allTonightPlays, activeSportTab]
   );
 
@@ -260,9 +270,6 @@ export default function LineupsPage({
                         nbaMeta={nbaMeta}
                         navigateToPlayer={navigateToPlayer}
                         navigateToTeam={navigateToTeam}
-                        trackPlay={trackPlay}
-                        trackedPlays={trackedPlays}
-                        untrackPlay={untrackPlay}
                       />
                     </React.Fragment>
                   );
@@ -270,6 +277,33 @@ export default function LineupsPage({
               </div>
             );
           })()}
+          {qualifiedPlays.length > 0 && (
+            <div style={{ marginTop: 24 }}>
+              <PlaysColumn
+                tonightPlays={qualifiedPlays}
+                allTonightPlays={allTonightPlays}
+                tonightLoading={false}
+                trackedPlays={trackedPlays}
+                trackPlay={trackPlay}
+                untrackPlay={untrackPlay}
+                navigateToPlay={navigateToPlay}
+                navigateToTeam={navigateToTeam}
+                navigateToModel={navigateToModel}
+                calcOdds={calcOdds}
+                expandedPlays={expandedPlays}
+                setExpandedPlays={setExpandedPlays}
+                fetchReport={fetchReport}
+                bustLoading={bustLoading}
+                bustCache={bustCache}
+                showPlaysInfo={showPlaysInfo}
+                setShowPlaysInfo={setShowPlaysInfo}
+                testMode={testMode}
+                setTestMode={setTestMode}
+                hideHeader={true}
+                gridColumns={2}
+              />
+            </div>
+          )}
         </>
       )}
     </div>
