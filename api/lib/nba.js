@@ -527,6 +527,14 @@ export async function buildNbaInjuryReport(cache) {
       }
       if (abbr && outPlayers.length) injMap[abbr] = outPlayers;
     }
+    // Normalize ESPN short-form abbrs to canonical form (deduplicate GS/GSW, NO/NOP, SA/SAS etc.)
+    const NORM = { GS: "GSW", SA: "SAS", NO: "NOP", NY: "NYK", NJ: "BKN", PHO: "PHX" };
+    for (const [short, canon] of Object.entries(NORM)) {
+      if (injMap[short]) {
+        if (!injMap[canon]) injMap[canon] = injMap[short];
+        delete injMap[short];
+      }
+    }
     if (cache && Object.keys(injMap).length > 0) {
       await cache.put(cacheKey, JSON.stringify(injMap), { expirationTtl: 1800 }).catch(() => {});
     }
