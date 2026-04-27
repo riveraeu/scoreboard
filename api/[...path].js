@@ -1849,10 +1849,11 @@ var worker_default = {
         const _mlbAbbrNorm = { CHW: "CWS", KCR: "KC", SFG: "SF", SDP: "SD", TBR: "TB", AZ: "ARI", OAK: "ATH", WSN: "WSH", WAS: "WSH" };
         const _normGlOpp = (gl) => gl && gl.events ? { ...gl, events: gl.events.map((ev) => ev.oppAbbr && _mlbAbbrNorm[ev.oppAbbr] ? { ...ev, oppAbbr: _mlbAbbrNorm[ev.oppAbbr] } : ev) } : gl;
         if (CACHE2) {
-          for (const key of keysForGamelog) {
-            const cached = await CACHE2.get(glCacheKey(key), "json");
-            if (cached) playerGamelogs[key] = key.startsWith("mlb|") ? _normGlOpp(cached) : cached;
-            else keysNeedingGamelog.push(key);
+          // Parallel cache lookups — serial await per-key was ~100ms × N players = seconds of dead time
+          const cachedVals = await Promise.all(keysForGamelog.map(k => CACHE2.get(glCacheKey(k), "json").catch(() => null)));
+          for (let i = 0; i < keysForGamelog.length; i++) {
+            if (cachedVals[i]) playerGamelogs[keysForGamelog[i]] = keysForGamelog[i].startsWith("mlb|") ? _normGlOpp(cachedVals[i]) : cachedVals[i];
+            else keysNeedingGamelog.push(keysForGamelog[i]);
           }
         } else {
           keysNeedingGamelog.push(...keysForGamelog);
@@ -1902,8 +1903,10 @@ var worker_default = {
             const key24 = `gl:mlb2024|${key}`;
             const key25 = `gl:mlb2025|${key}`;
             const key26 = `gl:mlb2026|${key}`;
-            let gl24 = CACHE2 ? await CACHE2.get(key24, "json").catch(() => null) : null;
-            let gl25 = CACHE2 ? await CACHE2.get(key25, "json").catch(() => null) : null;
+            let [gl24, gl25] = CACHE2 ? await Promise.all([
+              CACHE2.get(key24, "json").catch(() => null),
+              CACHE2.get(key25, "json").catch(() => null)
+            ]) : [null, null];
             const fetchSeasons = [2026];
             if (!gl25) fetchSeasons.push(2025);
             if (!gl24) fetchSeasons.push(2024);
