@@ -807,7 +807,7 @@ function App() {
       )}
 
       {/* Search + player card — constrained width */}
-      <div style={{maxWidth:800,margin:"0 auto"}}>
+      <div style={{maxWidth:1280,margin:"0 auto"}}>
       {/* Full-width top row: search | implied prob | account */}
       <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:22}}>
       <div style={{position:"relative",flex:1}}>
@@ -901,18 +901,26 @@ function App() {
         );
       })()}
       {/* Account info */}
-      <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+      <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4,flexShrink:0}}>
         {authEmail ? (
           <>
             <span style={{color:"#484f58",fontSize:11,display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap"}}>
               <span style={{width:6,height:6,borderRadius:"50%",background: syncStatus==="saving"?"#e3b341":syncStatus==="error"?"#f78166":"#3fb950",display:"inline-block"}}/>
               {authEmail}
             </span>
-            <button onClick={logout}
-              style={{fontSize:11,padding:"2px 8px",borderRadius:6,cursor:"pointer",
-                border:"1px solid #30363d",background:"transparent",color:"#484f58",flexShrink:0}}>
-              log out
-            </button>
+            <div style={{display:"flex",gap:5,alignItems:"center"}}>
+              <button onClick={() => setActiveSportTab('picks')}
+                style={{fontSize:11,padding:"2px 8px",borderRadius:6,cursor:"pointer",
+                  border:"1px solid #58a6ff",background:activeSportTab==="picks"?"rgba(88,166,255,0.12)":"transparent",
+                  color:"#58a6ff",fontWeight:600,flexShrink:0}}>
+                My Picks
+              </button>
+              <button onClick={logout}
+                style={{fontSize:11,padding:"2px 8px",borderRadius:6,cursor:"pointer",
+                  border:"1px solid #30363d",background:"transparent",color:"#484f58",flexShrink:0}}>
+                log out
+              </button>
+            </div>
           </>
         ) : (
           <button onClick={() => { setShowAuthModal(true); setAuthMode("login"); setAuthError(""); }}

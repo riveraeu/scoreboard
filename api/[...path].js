@@ -3931,7 +3931,7 @@ var worker_default = {
         const abbrLower = abbr.toLowerCase();
         const H = { "User-Agent":"Mozilla/5.0" };
         // 1. ESPN team schedule → game log + record
-        let gameLog = [], teamName = abbr, wins = 0, losses = 0, nextGame = null;
+        let gameLog = [], teamName = abbr, wins = 0, losses = 0, nextGame = null, lastGameId = null;
         try {
           const schedRes = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${sportLeague}/teams/${abbrLower}/schedule?season=2026&seasontype=2`, { headers: H });
           if (schedRes.ok) {
@@ -3974,6 +3974,7 @@ var worker_default = {
               const opp  = (teamIsHome ? (awayComp.team?.abbreviation || "").toUpperCase() : (homeComp.team?.abbreviation || "").toUpperCase()) || "?";
               const date = (event.date || "").slice(0, 10);
               if (!date) continue;
+              lastGameId = event.id; // track most recent completed game for lineup
               gameLog.push({ date, isHome: teamIsHome, opp, teamScore, oppScore, total: teamScore + oppScore, result });
             }
           }
@@ -3985,54 +3986,46 @@ var worker_default = {
         // 2. Lineup
         let lineup = [], lineupConfirmed = false;
         if (sport === "nba") {
-          // ESPN uses non-standard abbreviations in scoreboard/boxscore (NY=NYK, GS=GSW, etc.)
           const _nbaEspnNorm = { NY:"NYK", GS:"GSW", SA:"SAS", NO:"NOP", PHO:"PHX" };
           const _normNba = a => _nbaEspnNorm[a?.toUpperCase()] || a?.toUpperCase() || "";
-          // 1. Depth chart (regular season only)
+
+          // Helper: extract starters from a game summary event ID
+          async function _getStartersFromGame(gameId) {
+            const sumRes = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=${gameId}`, { headers: H });
+            if (!sumRes.ok) return [];
+            const sum = await sumRes.json();
+            for (const tp of sum.boxscore?.players || []) {
+              if (_normNba(tp.team?.abbreviation) !== abbr) continue;
+              return (tp.statistics?.[0]?.athletes || [])
+                .filter(a => a.starter)
+                .map(a => ({ position: a.athlete?.position?.abbreviation || "?", name: a.athlete?.displayName || "Unknown", playerId: String(a.athlete?.id || "") }));
+            }
+            return [];
+          }
+
+          // 1. Today's scoreboard — game in progress or about to start
           try {
-            const dcRes = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/${abbrLower}/depthchart`, { headers: H });
-            if (dcRes.ok) {
-              const dc = await dcRes.json();
-              for (const posGroup of dc.positions || []) {
-                const pos = posGroup.position?.abbreviation;
-                if (!["PG","SG","SF","PF","C"].includes(pos)) continue;
-                const s = posGroup.athletes?.[0];
-                if (!s) continue;
-                lineup.push({ position: pos, name: s.athlete?.displayName || "Unknown", playerId: String(s.athlete?.id || "") });
+            const sbRes = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard`, { headers: H });
+            if (sbRes.ok) {
+              const sb = await sbRes.json();
+              for (const ev of sb.events || []) {
+                if (ev.competitions?.[0]?.competitors?.some(c => _normNba(c.team?.abbreviation) === abbr)) {
+                  const starters = await _getStartersFromGame(ev.id);
+                  if (starters.length > 0) { lineup = starters; lineupConfirmed = true; }
+                  break;
+                }
               }
-              lineupConfirmed = lineup.length > 0;
             }
           } catch(e) {}
-          // 2. Boxscore starters (playoffs / game day)
-          if (lineup.length === 0) {
+
+          // 2. Most recent completed game boxscore — reliable expected starters (playoffs)
+          if (lineup.length === 0 && lastGameId) {
             try {
-              const sbRes = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard`, { headers: H });
-              if (sbRes.ok) {
-                const sb = await sbRes.json();
-                let gameId = null;
-                for (const ev of sb.events || []) {
-                  const comps = ev.competitions?.[0]?.competitors || [];
-                  if (comps.some(c => _normNba(c.team?.abbreviation) === abbr)) { gameId = ev.id; break; }
-                }
-                if (gameId) {
-                  const sumRes = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=${gameId}`, { headers: H });
-                  if (sumRes.ok) {
-                    const sum = await sumRes.json();
-                    for (const tp of sum.boxscore?.players || []) {
-                      if (_normNba(tp.team?.abbreviation) !== abbr) continue;
-                      const athletes = tp.statistics?.[0]?.athletes || [];
-                      const starters = athletes.filter(a => a.starter);
-                      for (const a of starters) {
-                        lineup.push({ position: a.athlete?.position?.abbreviation || "?", name: a.athlete?.displayName || "Unknown", playerId: String(a.athlete?.id || "") });
-                      }
-                      lineupConfirmed = starters.length > 0;
-                      break;
-                    }
-                  }
-                }
-              }
+              const starters = await _getStartersFromGame(lastGameId);
+              if (starters.length > 0) { lineup = starters; lineupConfirmed = false; }
             } catch(e) {}
           }
+
           // 3. Roster fallback — one player per position group
           if (lineup.length === 0) {
             try {

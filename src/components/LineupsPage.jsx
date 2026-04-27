@@ -97,7 +97,7 @@ export default function LineupsPage({
   navigateToPlay,
   trackPlay,
 }) {
-  const tabs = [...SPORT_TABS, { key: 'picks', label: 'My Picks' }];
+  const tabs = [...SPORT_TABS];
 
   // Qualified play count per sport for badge
   const qualifiedBySport = React.useMemo(() => {

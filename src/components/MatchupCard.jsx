@@ -470,12 +470,21 @@ export default function MatchupCard({ game, mlbMeta, nbaMeta, navigateToPlayer, 
                 {data.length === 0 && !lineupLoading && (
                   <div style={{ fontSize: 11, color: '#484f58', fontStyle: 'italic' }}>No lineup posted</div>
                 )}
-                {/* Out — injured players (always from nbaMeta, no fetch needed) */}
+                {/* Injured players (always from nbaMeta, no fetch needed) */}
                 {injured.length > 0 && (
                   <div style={{ marginTop: 6, paddingTop: 4, borderTop: data.length > 0 ? '1px solid #0d1117' : 'none' }}>
-                    <div style={{ fontSize: 9, color: '#484f58', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 3 }}>Out</div>
                     {injured.map((p, i) => (
-                      <div key={i} style={{ fontSize: 10, color: '#f78166', padding: '1px 0' }}>{p.name}</div>
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '1px 0' }}>
+                        <span style={{ fontSize: 10, color: '#8b949e' }}>{p.name}</span>
+                        <span style={{
+                          fontSize: 9, fontWeight: 700, padding: '0 4px', borderRadius: 3,
+                          background: p.status === 'out' ? 'rgba(247,129,102,0.15)' : 'rgba(227,179,65,0.15)',
+                          color: p.status === 'out' ? '#f78166' : '#e3b341',
+                          border: `1px solid ${p.status === 'out' ? 'rgba(247,129,102,0.3)' : 'rgba(227,179,65,0.3)'}`,
+                        }}>
+                          {p.status === 'out' ? 'OUT' : 'GTD'}
+                        </span>
+                      </div>
                     ))}
                   </div>
                 )}

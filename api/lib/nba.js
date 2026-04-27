@@ -517,10 +517,12 @@ export async function buildNbaInjuryReport(cache) {
       if (!abbr) continue;
       const outPlayers = [];
       for (const inj of teamEntry.injuries || []) {
-        const status = (inj.status || "").toLowerCase();
-        if (status !== "out") continue;
-        const name = (inj.athlete?.displayName || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-        if (name) outPlayers.push({ name, status: "out" });
+        const statusRaw = (inj.status || "").toLowerCase();
+        const isOut = statusRaw === "out";
+        const isGtd = statusRaw.includes("day") || statusRaw.includes("game-time") || statusRaw === "questionable" || statusRaw === "doubtful";
+        if (!isOut && !isGtd) continue;
+        const name = inj.athlete?.displayName || "";
+        if (name) outPlayers.push({ name, status: isOut ? "out" : "gtd" });
       }
       if (outPlayers.length) injMap[abbr] = outPlayers;
     }
