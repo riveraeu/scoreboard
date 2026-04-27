@@ -1155,7 +1155,7 @@ var worker_default = {
         const normTeam = /* @__PURE__ */ __name((sport, a) => TEAM_NORM[sport]?.[a] || a, "normTeam");
         const seriesTickers = Object.keys(SERIES_CONFIG);
         // Bundle cache: stores all series in one Redis key (90s TTL) to avoid hammering Kalshi
-        const KALSHI_BUNDLE_KEY = `kalshi:bundle:${todayDateStr}`;
+        const KALSHI_BUNDLE_KEY = `kalshi:bundle:${new Date().toISOString().slice(0, 10).replace(/-/g, "")}`;
         async function fetchKalshiSeries(ticker) {
           const staleKey = `kalshi:stale:${ticker}`;
           const r = await fetch(`https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=${ticker}&limit=1000&status=open`, {
