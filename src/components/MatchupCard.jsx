@@ -429,16 +429,6 @@ export default function MatchupCard({ game, mlbMeta, nbaMeta, navigateToPlayer, 
         </div>
       )}
 
-      {/* Play badges */}
-      {badgePlays.length > 0 && (
-        <div style={{ padding: '8px 16px', borderTop: '1px solid #0d1117', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {badgePlays.map((p, i) => (
-            <PlayBadge key={i} play={p} navigateToPlayer={navigateToPlayer} navigateToTeam={navigateToTeam}
-              trackPlay={trackPlay} trackedPlays={trackedPlays} untrackPlay={untrackPlay} />
-          ))}
-        </div>
-      )}
-
       {/* NBA lineup — shown inline, auto-fetched on mount */}
       {sport === 'nba' && (
         <div style={{ borderTop: '1px solid #0d1117', padding: '10px 16px 12px' }}>
@@ -564,6 +554,16 @@ export default function MatchupCard({ game, mlbMeta, nbaMeta, navigateToPlayer, 
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Play badges */}
+      {badgePlays.length > 0 && (
+        <div style={{ padding: '8px 16px', borderTop: '1px solid #0d1117', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {badgePlays.map((p, i) => (
+            <PlayBadge key={i} play={p} navigateToPlayer={navigateToPlayer} navigateToTeam={navigateToTeam}
+              trackPlay={trackPlay} trackedPlays={trackedPlays} untrackPlay={untrackPlay} />
+          ))}
         </div>
       )}
     </div>
