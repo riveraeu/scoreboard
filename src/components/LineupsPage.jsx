@@ -11,6 +11,7 @@ const SPORT_TABS = [
 // Build ordered games list from allTonightPlays for a given sport.
 // Uses game total plays as anchors for home/away; falls back to sorted abbrs.
 function buildGames(allPlays, sport) {
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
   const gameMap = new Map(); // sorted-teams|gameDate → game object
 
   for (const play of allPlays || []) {
@@ -32,6 +33,9 @@ function buildGames(allPlays, sport) {
       gameDate = play.gameDate ?? '';
       gameTime = play.gameTime ?? null;
     }
+
+    // Skip games from yesterday or earlier
+    if (gameDate && gameDate < today) continue;
 
     if (!homeTeam || !awayTeam) continue;
     const sortedPair = [homeTeam, awayTeam].sort().join('|');
