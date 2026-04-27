@@ -3,7 +3,7 @@ import { STAT_LABEL, STAT_FULL, MLB_TEAM } from '../lib/constants.js';
 import { ordinal } from '../lib/utils.js';
 import { tierColor } from '../lib/colors.js';
 
-function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMeta, sportFilter, setSportFilter, statFilter, setStatFilter, trackedPlays, trackPlay, untrackPlay, navigateToPlay, navigateToTeam, navigateToModel, calcOdds, expandedPlays, setExpandedPlays, fetchReport, bustLoading, bustCache, showPlaysInfo, setShowPlaysInfo, testMode, setTestMode, hideHeader, gridColumns }) {
+function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMeta, sportFilter = [], setSportFilter, statFilter = [], setStatFilter, trackedPlays, trackPlay, untrackPlay, navigateToPlay, navigateToTeam, navigateToModel, calcOdds, expandedPlays, setExpandedPlays, fetchReport, bustLoading, bustCache, showPlaysInfo, setShowPlaysInfo, testMode, setTestMode, hideHeader, gridColumns }) {
   const cols = gridColumns || 1;
   return (
         <div>
