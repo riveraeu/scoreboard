@@ -104,43 +104,28 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMet
               if (odds > 0) return 100 / (odds + 100) * 100;
               return null;
             };
-            const trackedGameKeys = new Set(
-              trackedPlays
-                .filter(p => p.id?.startsWith("total|"))
-                .map(p => { const pts = p.id.split("|"); return pts.length >= 6 ? `${pts[1]}|${pts[2]}|${pts[3]}|${pts[5]}` : null; })
-                .filter(Boolean)
-            );
             const untrackedPlays = (tonightPlays || []).filter(play => {
-              const trackId = play.gameType === "teamTotal"
-                ? `teamtotal|${play.sport}|${play.scoringTeam}|${play.oppTeam}|${play.threshold}|${play.gameDate || ""}${play.direction === "under" ? "|under" : ""}`
-                : play.gameType === "total"
-                ? `total|${play.sport}|${play.homeTeam}|${play.awayTeam}|${play.threshold}|${play.gameDate || ""}${play.direction === "under" ? "|under" : ""}`
-                : `${play.sport || "nba"}|${play.playerName}|${play.stat}|${play.threshold}|${play.gameDate || ""}`;
-              if (trackedPlays.some(p => p.id === trackId)) return false;
-              if (play.gameType === "total" && trackedGameKeys.has(`${play.sport}|${play.homeTeam}|${play.awayTeam}|${play.gameDate || ""}`)) return false;
               if (sportFilter.length > 0 && !sportFilter.includes(play.sport)) return false;
               if (statFilter.length > 0 && !statFilter.includes(play.stat)) return false;
               return true;
             });
             if (untrackedPlays.length === 0) return (
               <div style={{color:"#484f58",textAlign:"center",padding:52,fontSize:13,lineHeight:1.6}}>
-                {tonightPlays?.length > 0
-                  ? "All plays added to My Picks."
-                  : (() => {
-                      const qc = tonightMeta?.qualifyingCount ?? 0;
-                      const pf = tonightMeta?.preFilteredCount ?? 0;
-                      const filtered = qc - pf;
-                      if (qc === 0) return "No Kalshi markets found — check back later when tomorrow's markets open.";
-                      if (filtered > 0 && pf === 0) return <>
-                        <div>{qc} markets found — all filtered: tonight's opponents don't meet the soft matchup threshold.</div>
-                        <div style={{fontSize:11,marginTop:6,color:"#30363d"}}>NBA: vs bottom-10 defense · MLB hitters: team favored + 10 AB vs pitcher + BA ≥.270 · MLB pitchers: lineup K-rate ≥22%</div>
-                      </>;
-                      if (filtered > 0) return <>
-                        <div>{qc} markets found · {filtered} filtered by matchup · {pf - (tonightPlays?.length ?? 0)} filtered by edge.</div>
-                        <div style={{fontSize:11,marginTop:6,color:"#30363d"}}>NBA: vs bottom-10 defense · MLB hitters: team favored + 10 AB vs pitcher + BA ≥.270 · MLB pitchers: lineup K-rate ≥22%</div>
-                      </>;
-                      return "No qualifying plays found.";
-                    })()
+                {(() => {
+                  const qc = tonightMeta?.qualifyingCount ?? 0;
+                  const pf = tonightMeta?.preFilteredCount ?? 0;
+                  const filtered = qc - pf;
+                  if (qc === 0) return "No Kalshi markets found — check back later when tomorrow's markets open.";
+                  if (filtered > 0 && pf === 0) return <>
+                    <div>{qc} markets found — all filtered: tonight's opponents don't meet the soft matchup threshold.</div>
+                    <div style={{fontSize:11,marginTop:6,color:"#30363d"}}>NBA: vs bottom-10 defense · MLB hitters: team favored + 10 AB vs pitcher + BA ≥.270 · MLB pitchers: lineup K-rate ≥22%</div>
+                  </>;
+                  if (filtered > 0) return <>
+                    <div>{qc} markets found · {filtered} filtered by matchup · {pf - (tonightPlays?.length ?? 0)} filtered by edge.</div>
+                    <div style={{fontSize:11,marginTop:6,color:"#30363d"}}>NBA: vs bottom-10 defense · MLB hitters: team favored + 10 AB vs pitcher + BA ≥.270 · MLB pitchers: lineup K-rate ≥22%</div>
+                  </>;
+                  return "No qualifying plays found.";
+                })()
                 }
               </div>
             );
