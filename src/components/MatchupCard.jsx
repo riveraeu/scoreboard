@@ -91,7 +91,6 @@ function LineupBadge({ confirmed }) {
   return null;
 }
 
-const SPORT_HEAD_KEY = { mlb: 'baseball/mlb', nba: 'basketball/nba', nhl: 'hockey/nhl' };
 
 function PlayBadge({ play, navigateToPlayer, navigateToTeam, trackPlay, trackedPlays, untrackPlay }) {
   const edge = play.edge ?? 0;
@@ -143,10 +142,23 @@ function PlayBadge({ play, navigateToPlayer, navigateToTeam, trackPlay, trackedP
     const statMap = { strikeouts: 'K', hrr: 'HRR', points: 'PTS', rebounds: 'REB', assists: 'AST', threePointers: '3PM', goals: 'G' };
     label = play.playerName;
     sublabel = `${statMap[play.stat] || play.stat} ${play.threshold}+`;
-    const hUrl = play.playerId ? `https://a.espncdn.com/i/headshots/${SPORT_HEAD_KEY[play.sport] || play.sport}/players/full/${play.playerId}.png` : null;
-    imgEl = hUrl ? (
-      <img src={hUrl} alt="" style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '1px solid #30363d', background: '#0d1117' }} onError={e => { e.target.style.display = 'none'; }} />
-    ) : null;
+    const hUrl = play.playerId ? `https://a.espncdn.com/i/headshots/${play.sport}/players/full/${play.playerId}.png` : null;
+    const teamUrl = play.playerTeam ? logoUrl(play.sport, play.playerTeam) : null;
+    imgEl = (
+      <div style={{ width: 32, height: 32, borderRadius: '50%', flexShrink: 0, border: '1px solid #30363d', background: '#0d1117', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {hUrl ? (
+          <img src={hUrl} alt="" style={{ width: 32, height: 32, objectFit: 'cover' }}
+            onError={e => {
+              e.target.style.display = 'none';
+              if (teamUrl) {
+                const fb = e.target.nextSibling;
+                if (fb) fb.style.display = 'block';
+              }
+            }} />
+        ) : null}
+        <img src={teamUrl || ''} alt="" style={{ width: 22, height: 22, objectFit: 'contain', display: hUrl ? 'none' : (teamUrl ? 'block' : 'none') }} onError={e => { e.target.style.display = 'none'; }} />
+      </div>
+    );
   }
 
   return (
