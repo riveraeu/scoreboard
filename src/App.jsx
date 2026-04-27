@@ -38,6 +38,7 @@ function App() {
   const [tonightLoading, setTonightLoading] = React.useState(true);
   const [tonightMeta, setTonightMeta] = React.useState(null);
   const [mlbMeta, setMlbMeta] = React.useState(null); // pitchers, ML odds, umpires, weather
+  const [nbaMeta, setNbaMeta] = React.useState(null); // NBA game odds + injuries
   const [testMode, setTestMode] = React.useState(false);
   const [bustLoading, setBustLoading] = React.useState(false);
   const [sportFilter, setSportFilter] = React.useState([]); // empty = all sports
@@ -199,7 +200,7 @@ function App() {
     }
     const _sk = `tonight_v1_${new Date().toLocaleDateString('en-CA')}`;
     const _sc = (() => { try { const s = sessionStorage.getItem(_sk); if (!s) return null; const p = JSON.parse(s); return Date.now() - p.ts < 120000 ? p.data : null; } catch { return null; } })();
-    const _applyData = (data) => { const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore >= 8) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore >= 8))); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); if (data.mlbMeta) setMlbMeta(data.mlbMeta); };
+    const _applyData = (data) => { const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore >= 8) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore >= 8))); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); if (data.mlbMeta) setMlbMeta(data.mlbMeta); if (data.nbaMeta) setNbaMeta(data.nbaMeta); };
     if (_sc) { _applyData(_sc); setTonightLoading(false); return; }
     let cancelled = false;
     setTonightLoading(true);
@@ -217,7 +218,7 @@ function App() {
     setTonightLoading(true);
     fetch(`${WORKER}/tonight?bust=1`)
       .then(r => r.json())
-      .then(data => { const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore >= 8) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore >= 8))); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); if (data.mlbMeta) setMlbMeta(data.mlbMeta); setTonightLoading(false); setBustLoading(false); })
+      .then(data => { const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore >= 8) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore >= 8))); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); if (data.mlbMeta) setMlbMeta(data.mlbMeta); if (data.nbaMeta) setNbaMeta(data.nbaMeta); setTonightLoading(false); setBustLoading(false); })
       .catch(() => { setAllTonightPlays([]); setNbaDropped([]); setTonightPlays([]); setTonightLoading(false); setBustLoading(false); });
   };
 
@@ -1854,6 +1855,7 @@ function App() {
           testMode={testMode}
           setTestMode={setTestMode}
           mlbMeta={mlbMeta}
+          nbaMeta={nbaMeta}
           trackedPlays={trackedPlays}
           setTrackedPlays={setTrackedPlays}
           untrackPlay={untrackPlay}

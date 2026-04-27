@@ -3869,7 +3869,21 @@ var worker_default = {
           _mlbGameOdds[abbr] = { ml: odds.moneyline ?? null };
         }
         const mlbMeta = { pitchers: _mlbPitchers, gameOdds: _mlbGameOdds, umpires: sportByteam.mlb?.umpireByGame ?? {}, weather: weatherByGame, projectedLineupTeams: sportByteam.mlb?.projectedLineupTeams ?? [], teamsWithLineup: Object.keys(sportByteam.mlb?.lineupSpotByName ?? {}) };
-        const playsResult = { plays, nbaDropped, mlbMeta, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length };
+        // NBA meta: normalized game odds + injury report for matchup cards
+        const _nbaOddsNorm = { GS: "GSW", SA: "SAS", NY: "NYK", NJ: "BKN", NO: "NOP", PHO: "PHX", WPH: "PHX" };
+        const _nbaGameOdds = {};
+        for (const [abbr, odds] of Object.entries(sportByteam.nbaGameOdds ?? {})) {
+          const key = _nbaOddsNorm[abbr] || abbr;
+          _nbaGameOdds[key] = { ml: odds.moneyline ?? null, total: odds.total ?? null, spread: odds.spread ?? null };
+        }
+        const _nbaInjuries = {};
+        for (const [abbr, players] of (nbaInjuryMap || new Map()).entries()) {
+          const key = _nbaOddsNorm[abbr] || abbr;
+          _nbaInjuries[key] = players;
+          _nbaInjuries[abbr] = players; // keep original key too for fallback
+        }
+        const nbaMeta = { gameOdds: _nbaGameOdds, injuries: _nbaInjuries };
+        const playsResult = { plays, nbaDropped, mlbMeta, nbaMeta, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length };
         const sportsInPlays = new Set(plays.map((p) => p.sport));
         if (CACHE2 && sportsInPlays.size >= 2) {
           const summary = {
