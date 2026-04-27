@@ -3638,12 +3638,9 @@ var worker_default = {
           const _MLB_ERA = 4.20;
           const teamTotalDistCache = {};
           const teamTotalPlays = [];
-          // Pre-fetch ESPN team schedules for H2H hit rate computation (current + prior season)
+          // Pre-fetch ESPN team schedules for H2H hit rate computation
           const _ttScheduleMap = {};
           const _ttTeams = new Set(teamTotalMarkets.map(tm => `${tm.sport}:${tm.scoringTeam}`));
-          const _parseSchedEvents = d => (d.events ?? [])
-            .filter(ev => ev.competitions?.[0]?.status?.type?.completed)
-            .map(ev => ({ comps: (ev.competitions[0].competitors ?? []).map(c => ({ abbr: (c.team?.abbreviation ?? '').toUpperCase(), score: parseFloat(c.score?.value ?? c.score ?? 0) })) }));
           await Promise.all([..._ttTeams].map(async key => {
             const [sp, abbr] = key.split(':');
             const cacheKey = `teamschedule:v2:${sp}:${abbr}`;
@@ -3651,15 +3648,14 @@ var worker_default = {
             if (!events) {
               try {
                 const league = sp === 'mlb' ? 'baseball/mlb' : 'basketball/nba';
-                const base = `https://site.api.espn.com/apis/site/v2/sports/${league}/teams/${abbr.toLowerCase()}/schedule`;
-                const [r26, r25] = await Promise.all([
-                  fetch(base, { signal: AbortSignal.timeout(3000) }),
-                  fetch(`${base}?season=2025`, { signal: AbortSignal.timeout(3000) }),
-                ]);
-                const ev26 = r26.ok ? _parseSchedEvents(await r26.json()) : [];
-                const ev25 = r25.ok ? _parseSchedEvents(await r25.json()) : [];
-                events = [...ev25, ...ev26];
-                if (events.length && CACHE2) await CACHE2.put(cacheKey, JSON.stringify(events), { expirationTtl: 3600 }).catch(() => {});
+                const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${league}/teams/${abbr.toLowerCase()}/schedule`, { signal: AbortSignal.timeout(3000) });
+                if (r.ok) {
+                  const d = await r.json();
+                  events = (d.events ?? [])
+                    .filter(ev => ev.competitions?.[0]?.status?.type?.completed)
+                    .map(ev => ({ comps: (ev.competitions[0].competitors ?? []).map(c => ({ abbr: (c.team?.abbreviation ?? '').toUpperCase(), score: parseFloat(c.score?.value ?? c.score ?? 0) })) }));
+                  if (CACHE2) await CACHE2.put(cacheKey, JSON.stringify(events), { expirationTtl: 3600 }).catch(() => {});
+                }
               } catch(e) {}
             }
             if (events) _ttScheduleMap[key] = events;
