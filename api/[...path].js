@@ -1154,31 +1154,55 @@ var worker_default = {
         };
         const normTeam = /* @__PURE__ */ __name((sport, a) => TEAM_NORM[sport]?.[a] || a, "normTeam");
         const seriesTickers = Object.keys(SERIES_CONFIG);
+        // Bundle cache: stores all series in one Redis key (90s TTL) to avoid hammering Kalshi
+        const KALSHI_BUNDLE_KEY = `kalshi:bundle:${todayDateStr}`;
         async function fetchKalshiSeries(ticker) {
           const staleKey = `kalshi:stale:${ticker}`;
-          const fetchOne = /* @__PURE__ */ __name(() => fetch(`https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=${ticker}&limit=1000&status=open`, {
+          const r = await fetch(`https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=${ticker}&limit=1000&status=open`, {
             headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" },
             cf: { cacheEverything: false }
-          }).then((r) => r.ok ? r.json() : null).catch(() => null), "fetchOne");
-          const fresh = await fetchOne();
+          }).catch(() => null);
+          if (r?.status === 429) {
+            // Rate limited — fall through to stale immediately, no retry
+            if (CACHE2) {
+              const stale = await CACHE2.get(staleKey, "json").catch(() => null);
+              if (stale) return { data: stale, stale: true, rateLimited: true };
+            }
+            return { data: { markets: [] }, rateLimited: true };
+          }
+          const fresh = r?.ok ? await r.json().catch(() => null) : null;
           if (fresh && (fresh.markets || []).length > 0) {
-            if (CACHE2) await CACHE2.put(staleKey, JSON.stringify(fresh));
-            return { data: fresh, fromCache: false };
+            if (CACHE2) await CACHE2.put(staleKey, JSON.stringify(fresh)).catch(() => {});
+            return { data: fresh };
           }
           if (CACHE2) {
-            const stale = await CACHE2.get(staleKey, "json");
-            if (stale) return { data: stale, fromCache: true, stale: true };
+            const stale = await CACHE2.get(staleKey, "json").catch(() => null);
+            if (stale) return { data: stale, stale: true };
           }
-          return { data: { markets: [] }, fromCache: false, failed: true };
+          return { data: { markets: [] }, failed: true };
         }
         __name(fetchKalshiSeries, "fetchKalshiSeries");
-        const firstPass = await Promise.all(seriesTickers.map(fetchKalshiSeries));
-        const kalshiResults = await Promise.all(firstPass.map(async (res, i) => {
-          if (!res.failed) return res.data;
-          await new Promise((r) => setTimeout(r, 200));
-          const retry = await fetchKalshiSeries(seriesTickers[i]);
-          return retry.data;
-        }));
+        // Check bundle cache before making any Kalshi calls
+        let kalshiResults;
+        const bundleCached = !isBustCache && CACHE2 ? await CACHE2.get(KALSHI_BUNDLE_KEY, "json").catch(() => null) : null;
+        if (bundleCached) {
+          kalshiResults = seriesTickers.map(t => bundleCached[t] || { markets: [] });
+        } else {
+          // Fetch in batches of 6 to stay under Kalshi rate limits
+          const BATCH = 6;
+          const resultMap = {};
+          for (let i = 0; i < seriesTickers.length; i += BATCH) {
+            const batch = seriesTickers.slice(i, i + BATCH);
+            const batchRes = await Promise.all(batch.map(fetchKalshiSeries));
+            for (let j = 0; j < batch.length; j++) resultMap[batch[j]] = batchRes[j].data;
+            if (i + BATCH < seriesTickers.length) await new Promise(r => setTimeout(r, 300));
+          }
+          kalshiResults = seriesTickers.map(t => resultMap[t] || { markets: [] });
+          // Cache bundle if we got real data
+          if (CACHE2 && kalshiResults.some(d => (d.markets || []).length > 0)) {
+            await CACHE2.put(KALSHI_BUNDLE_KEY, JSON.stringify(resultMap), { expirationTtl: 90 }).catch(() => {});
+          }
+        }
         const qualifyingMarkets = [];
         const totalMarkets = []; // game total markets (pct 70–97); under plays computed from same markets
         const teamTotalMarkets = []; // single-team score markets (KXMLBTEAMTOTAL, KXNBATEAMTOTAL)
@@ -1303,9 +1327,19 @@ var worker_default = {
         const thinMarkets = qualifyingMarkets.filter((m) => m._ticker && getContracts(m.kalshiPct, m._yesAsk) > m._yesAskSize);
         const obMap = {};
         if (thinMarkets.length > 0) {
-          const obFetches = await Promise.all(thinMarkets.map((m) => fetch(`https://api.elections.kalshi.com/trade-api/v2/markets/${m._ticker}/orderbook`, { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : null).catch(() => null)));
-          for (let i = 0; i < thinMarkets.length; i++) {
-            if (obFetches[i]?.orderbook_fp) obMap[thinMarkets[i]._ticker] = obFetches[i].orderbook_fp;
+          // Batch orderbook fetches (8 at a time) to avoid Kalshi rate limits
+          const OB_BATCH = 8;
+          for (let i = 0; i < thinMarkets.length; i += OB_BATCH) {
+            const batch = thinMarkets.slice(i, i + OB_BATCH);
+            const batchRes = await Promise.all(batch.map(m =>
+              fetch(`https://api.elections.kalshi.com/trade-api/v2/markets/${m._ticker}/orderbook`, {
+                headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0" }
+              }).then(r => (r.ok && r.status !== 429) ? r.json() : null).catch(() => null)
+            ));
+            for (let j = 0; j < batch.length; j++) {
+              if (batchRes[j]?.orderbook_fp) obMap[batch[j]._ticker] = batchRes[j].orderbook_fp;
+            }
+            if (i + OB_BATCH < thinMarkets.length) await new Promise(r => setTimeout(r, 200));
           }
         }
         for (const m of qualifyingMarkets) {
