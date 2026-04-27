@@ -243,9 +243,10 @@ function App() {
     const calcOverride = !isNaN(_calcN) && calcOdds.trim() !== "-" && calcOdds.trim() !== "+" ? _calcN : null;
     setTrackedPlays(prev => {
       if (prev.find(p => p.id === id)) return prev;
+      const savedOdds = calcOverride ?? finalOdds;
       return [{ ...play, id, trackedAt: Date.now(), result: null,
-        units: tierUnits(calcOverride ?? finalOdds),
-        americanOdds: finalOdds,
+        units: tierUnits(savedOdds),
+        americanOdds: savedOdds,
       }, ...prev];
     });
   }
