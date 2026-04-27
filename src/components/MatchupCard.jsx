@@ -91,12 +91,23 @@ function LineupBadge({ confirmed }) {
   return null;
 }
 
-function PlayBadge({ play, navigateToPlayer, navigateToTeam }) {
+const SPORT_HEAD_KEY = { mlb: 'baseball/mlb', nba: 'basketball/nba', nhl: 'hockey/nhl' };
+
+function PlayBadge({ play, navigateToPlayer, navigateToTeam, trackPlay, trackedPlays, untrackPlay }) {
   const edge = play.edge ?? 0;
   const edgeColor = edge >= 5 ? '#3fb950' : edge >= 3 ? '#e3b341' : '#8b949e';
   const truePct = play.direction === 'under' ? play.noTruePct : play.truePct;
   const simScore = getSimScore(play);
   const odds = fmtML(play.americanOdds);
+
+  const simScoreColor = simScore == null ? '#8b949e' : simScore >= 8 ? '#3fb950' : simScore >= 5 ? '#e3b341' : '#8b949e';
+
+  const trackId = play.gameType === 'teamTotal'
+    ? `teamtotal|${play.sport}|${play.scoringTeam}|${play.oppTeam}|${play.threshold}|${play.gameDate || ''}`
+    : play.gameType === 'total'
+    ? `total|${play.sport}|${play.homeTeam}|${play.awayTeam}|${play.threshold}|${play.gameDate || ''}${play.direction === 'under' ? '|under' : ''}`
+    : `${play.sport || 'nba'}|${play.playerName}|${play.stat}|${play.threshold}|${play.gameDate || ''}`;
+  const isTracked = trackedPlays?.some(p => p.id === trackId) ?? false;
 
   const handleClick = () => {
     if (play.gameType === 'total') {
@@ -112,57 +123,91 @@ function PlayBadge({ play, navigateToPlayer, navigateToTeam }) {
     }
   };
 
-  let label, sublabel;
+  let label, sublabel, imgEl;
   if (play.gameType === 'total') {
     label = `${play.direction === 'under' ? 'Under' : 'Over'} ${play.threshold}`;
     sublabel = `${play.awayTeam} @ ${play.homeTeam} · Total`;
+    imgEl = (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0, justifyContent: 'center' }}>
+        <img src={logoUrl(play.sport, play.awayTeam)} alt="" style={{ width: 18, height: 18, objectFit: 'contain' }} onError={e => { e.target.style.display = 'none'; }} />
+        <img src={logoUrl(play.sport, play.homeTeam)} alt="" style={{ width: 18, height: 18, objectFit: 'contain' }} onError={e => { e.target.style.display = 'none'; }} />
+      </div>
+    );
   } else if (play.gameType === 'teamTotal') {
     label = `${play.scoringTeam} O${play.threshold}`;
     sublabel = 'Team Runs';
+    imgEl = (
+      <img src={logoUrl(play.sport, play.scoringTeam)} alt="" style={{ width: 30, height: 30, objectFit: 'contain', flexShrink: 0 }} onError={e => { e.target.style.display = 'none'; }} />
+    );
   } else {
     const statMap = { strikeouts: 'K', hrr: 'HRR', points: 'PTS', rebounds: 'REB', assists: 'AST', threePointers: '3PM', goals: 'G' };
     label = play.playerName;
     sublabel = `${statMap[play.stat] || play.stat} ${play.threshold}+`;
+    const hUrl = play.playerId ? `https://a.espncdn.com/i/headshots/${SPORT_HEAD_KEY[play.sport] || play.sport}/players/full/${play.playerId}.png` : null;
+    imgEl = hUrl ? (
+      <img src={hUrl} alt="" style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '1px solid #30363d', background: '#0d1117' }} onError={e => { e.target.style.display = 'none'; }} />
+    ) : null;
   }
 
   return (
     <div onClick={handleClick} style={{
-      display: 'inline-flex', flexDirection: 'column', gap: 4, cursor: 'pointer',
+      display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer',
       padding: '7px 10px', borderRadius: 8,
       background: 'rgba(63,185,80,0.06)', border: '1px solid rgba(63,185,80,0.25)',
-      transition: 'background 0.15s', minWidth: 140,
+      transition: 'background 0.15s', minWidth: 150,
     }}
     onMouseEnter={e => e.currentTarget.style.background = 'rgba(63,185,80,0.12)'}
     onMouseLeave={e => e.currentTarget.style.background = 'rgba(63,185,80,0.06)'}
     >
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: '#c9d1d9', lineHeight: 1.3 }}>{label}</div>
-        <div style={{ fontSize: 10, color: '#8b949e', whiteSpace: 'nowrap' }}>{sublabel}</div>
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        {truePct != null && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <span style={{ fontSize: 9, color: '#484f58' }}>True%</span>
-            <span style={{ fontSize: 11, fontWeight: 700, color: tierColor(truePct) }}>{truePct}%</span>
-          </div>
-        )}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <span style={{ fontSize: 9, color: '#484f58' }}>Edge</span>
-          <span style={{ fontSize: 11, fontWeight: 700, color: edgeColor }}>{edge > 0 ? '+' : ''}{edge.toFixed(1)}%</span>
+      {imgEl}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#c9d1d9', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</div>
+          <div style={{ fontSize: 10, color: '#8b949e', whiteSpace: 'nowrap', flexShrink: 0 }}>{sublabel}</div>
         </div>
-        {simScore != null && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          {truePct != null && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <span style={{ fontSize: 9, color: '#484f58' }}>True%</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: tierColor(truePct) }}>{truePct}%</span>
+            </div>
+          )}
           <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <span style={{ fontSize: 9, color: '#484f58' }}>Score</span>
-            <span style={{ fontSize: 11, fontWeight: 700, color: '#8b949e' }}>{simScore}/10</span>
+            <span style={{ fontSize: 9, color: '#484f58' }}>Edge</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: edgeColor }}>{edge > 0 ? '+' : ''}{edge.toFixed(1)}%</span>
           </div>
-        )}
-        {odds && <span style={{ fontSize: 10, color: '#484f58' }}>{odds}</span>}
+          {simScore != null && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <span style={{ fontSize: 9, color: '#484f58' }}>Sim</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: simScoreColor }}>{simScore}/10</span>
+            </div>
+          )}
+          {odds && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <span style={{ fontSize: 9, color: '#484f58' }}>Odds</span>
+              <span style={{ fontSize: 11, fontWeight: 600, color: '#a371f7' }}>{odds}</span>
+            </div>
+          )}
+          {trackPlay && (
+            <button
+              onClick={e => { e.stopPropagation(); isTracked ? untrackPlay(trackId) : trackPlay(play); }}
+              style={{
+                marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer',
+                fontSize: 14, lineHeight: 1, padding: '0 2px',
+                color: isTracked ? '#e3b341' : '#484f58',
+              }}
+              title={isTracked ? 'Remove pick' : 'Add to picks'}
+            >
+              {isTracked ? '★' : '☆'}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-export default function MatchupCard({ game, mlbMeta, nbaMeta, navigateToPlayer, navigateToTeam }) {
+export default function MatchupCard({ game, mlbMeta, nbaMeta, navigateToPlayer, navigateToTeam, trackPlay, trackedPlays, untrackPlay }) {
   const { sport, homeTeam, awayTeam, gameDate, gameTime, ouLine, plays } = game;
   const [lineupOpen, setLineupOpen] = React.useState(false);
   const [lineup, setLineup] = React.useState(null);
@@ -357,7 +402,8 @@ export default function MatchupCard({ game, mlbMeta, nbaMeta, navigateToPlayer, 
       {badgePlays.length > 0 && (
         <div style={{ padding: '8px 16px', borderTop: '1px solid #0d1117', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {badgePlays.map((p, i) => (
-            <PlayBadge key={i} play={p} navigateToPlayer={navigateToPlayer} navigateToTeam={navigateToTeam} />
+            <PlayBadge key={i} play={p} navigateToPlayer={navigateToPlayer} navigateToTeam={navigateToTeam}
+              trackPlay={trackPlay} trackedPlays={trackedPlays} untrackPlay={untrackPlay} />
           ))}
         </div>
       )}

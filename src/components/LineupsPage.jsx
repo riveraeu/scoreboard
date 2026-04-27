@@ -91,6 +91,7 @@ export default function LineupsPage({
   setShowAddPick,
   oddsToProfit,
   navigateToPlay,
+  trackPlay,
 }) {
   const tabs = [...SPORT_TABS, { key: 'picks', label: 'My Picks' }];
 
@@ -233,6 +234,9 @@ export default function LineupsPage({
                 nbaMeta={nbaMeta}
                 navigateToPlayer={navigateToPlayer}
                 navigateToTeam={navigateToTeam}
+                trackPlay={trackPlay}
+                trackedPlays={trackedPlays}
+                untrackPlay={untrackPlay}
               />
             ))}
           </div>
