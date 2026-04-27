@@ -1776,8 +1776,10 @@ var worker_default = {
         const playerInfoMap = {};
         const keysNeedingInfo = [];
         if (CACHE2) {
-          for (const key of uniquePlayerKeys) {
-            const cached = await CACHE2.get(`pinfo:${key}`, "json");
+          // Parallel cache reads — serial await per-key was seconds of dead time for large slates
+          const pinfoVals = await Promise.all(uniquePlayerKeys.map(k => CACHE2.get(`pinfo:${k}`, "json").catch(() => null)));
+          for (let i = 0; i < uniquePlayerKeys.length; i++) {
+            const key = uniquePlayerKeys[i], cached = pinfoVals[i];
             if (cached) {
               playerInfoMap[key] = cached;
               if ((cached.position === null || cached.position === "G" || cached.position === "F") && key.startsWith("nba|")) keysNeedingInfo.push(key);
@@ -1795,46 +1797,33 @@ var worker_default = {
         };
         const MAX_PINFO_FETCHES = 150;
         const pInfoErrors = [];
-        for (let i = 0; i < Math.min(keysNeedingInfo.length, MAX_PINFO_FETCHES); i++) {
-          const key = keysNeedingInfo[i];
+        // Parallel ESPN player-info fetches (pinfo cached 7 days so this is rare on warm caches)
+        await Promise.all(keysNeedingInfo.slice(0, MAX_PINFO_FETCHES).map(async key => {
           const [sport, ...nameParts] = key.split("|");
           const playerName = nameParts.join("|");
           try {
             const r = await fetch(
               `${ESPN_BASE}/search/v2?query=${encodeURIComponent(playerName)}&lang=en&region=us&limit=5&type=player`,
-              { headers: ESPN_SEARCH_HEADERS }
+              { headers: ESPN_SEARCH_HEADERS, signal: AbortSignal.timeout(5000) }
             );
-            if (!r.ok) {
-              pInfoErrors.push({ key, reason: `http_${r.status}` });
-              if (i < keysNeedingInfo.length - 1) await new Promise((res) => setTimeout(res, 200));
-              continue;
-            }
+            if (!r.ok) { pInfoErrors.push({ key, reason: `http_${r.status}` }); return; }
             const d = await r.json();
             const allContents = d.results?.find((x) => x.type === "player")?.contents || [];
             const players = allContents.filter((p2) => p2.defaultLeagueSlug === sport);
-            if (!players.length) {
-              pInfoErrors.push({ key, reason: "no_league_match", sport, found: allContents.map((c) => c.defaultLeagueSlug) });
-              if (i < keysNeedingInfo.length - 1) await new Promise((res) => setTimeout(res, 150));
-              continue;
-            }
+            if (!players.length) { pInfoErrors.push({ key, reason: "no_league_match", sport, found: allContents.map((c) => c.defaultLeagueSlug) }); return; }
             const p = players[0];
             const id = p.uid?.split("~a:")?.[1];
-            if (!id) {
-              pInfoErrors.push({ key, reason: "no_id", uid: p.uid });
-              continue;
-            }
+            if (!id) { pInfoErrors.push({ key, reason: "no_id", uid: p.uid }); return; }
             const posMatch = (p.description || p.subtitle || "").match(/\b(QB|RB|WR|TE|K|P|PG|SG|SF|PF|Center|Forward|Guard|C|G|F|SP|RP|OF|1B|2B|3B|SS|LW|RW|D)\b/i);
             const rawPos = posMatch ? posMatch[1].toUpperCase() : null;
             const POS_NORMALIZE = { CENTER: "C", GUARD: null, FORWARD: null };
             const info = { id, teamAbbr: "", position: rawPos ? rawPos in POS_NORMALIZE ? POS_NORMALIZE[rawPos] : rawPos === "G" || rawPos === "F" ? null : rawPos : null };
             playerInfoMap[key] = info;
-            if (CACHE2) await CACHE2.put(`pinfo:${key}`, JSON.stringify(info), { expirationTtl: 604800 });
-            if (i < keysNeedingInfo.length - 1) await new Promise((res) => setTimeout(res, 150));
+            if (CACHE2) CACHE2.put(`pinfo:${key}`, JSON.stringify(info), { expirationTtl: 604800 }).catch(() => {});
           } catch (e) {
             pInfoErrors.push({ key, reason: "exception", error: String(e) });
-            if (i < keysNeedingInfo.length - 1) await new Promise((res) => setTimeout(res, 200));
           }
-        }
+        }));
         const isDebug = isDebugMode || params.get("debug") === "true";
         const GAMELOG_API = {
           nba: /* @__PURE__ */ __name((id) => `https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/${id}/gamelog?season=2026`, "nba"),
@@ -1867,7 +1856,7 @@ var worker_default = {
         };
         async function parseEspnGamelog(url2, debugKey) {
           try {
-            const r = await fetch(url2, { headers: ESPN_HEADERS });
+            const r = await fetch(url2, { headers: ESPN_HEADERS, signal: AbortSignal.timeout(6000) });
             if (!r.ok) {
               if (isDebug) gamelogErrors.push({ key: debugKey, status: r.status, url: url2 });
               return null;

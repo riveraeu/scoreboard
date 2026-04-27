@@ -460,7 +460,7 @@ export async function buildNbaUsageRate(playerIds, cache) {
     try {
       const r = await fetch(
         `https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2026/types/2/athletes/${id}/statistics`,
-        { headers: hdrs }
+        { headers: hdrs, signal: AbortSignal.timeout(6000) }
       );
       if (!r.ok) return;
       const d = await r.json();
