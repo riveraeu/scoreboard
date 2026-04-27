@@ -1551,6 +1551,7 @@ var worker_default = {
           CACHE2 && !isBustCache ? CACHE2.get(`gameTimes:v2:${todayDateStr}`, "json").catch(() => null) : null,
           CACHE2 ? CACHE2.get(`nbaStatus:${todayDateStr}`, "json").catch(() => null) : null,
         ]);
+        const weatherByGame = {}; // keyed "homeAbbr|awayAbbr" → {temp, condition}
         const needGameTimes = !gameTimes;
         const needNbaStatus = !nbaPlayerStatus && sportsNeeded.has("nba");
         if (needGameTimes || needNbaStatus) {
@@ -1587,6 +1588,20 @@ var worker_default = {
               }
             }
             if (CACHE2 && Object.keys(gameTimes).length > 0) await CACHE2.put(`gameTimes:v2:${todayDateStr}`, JSON.stringify(gameTimes), { expirationTtl: 600 }).catch(() => {});
+            // Extract MLB weather from already-fetched scoreboard events (no extra request)
+            const _mlbSbResult = sbResults.find(r => r.sport === "mlb");
+            for (const ev of _mlbSbResult?.events ?? []) {
+              const comps = ev.competitions?.[0];
+              const weather = comps?.weather;
+              if (!weather) continue;
+              const homeC = (comps?.competitors ?? []).find(c => c.homeAway === "home");
+              const awayC = (comps?.competitors ?? []).find(c => c.homeAway === "away");
+              if (homeC && awayC) {
+                const homeA = normTeam("mlb", homeC.team?.abbreviation ?? "");
+                const awayA = normTeam("mlb", awayC.team?.abbreviation ?? "");
+                if (homeA && awayA) weatherByGame[`${homeA}|${awayA}`] = { temp: weather.temperature ?? null, condition: weather.displayValue ?? null };
+              }
+            }
             // Extract NHL game odds from already-fetched ESPN events (no extra request)
             const _nhlSbResult = sbResults.find(r => r.sport === "nhl");
             if (_nhlSbResult?.events.length > 0) {
@@ -3839,7 +3854,20 @@ var worker_default = {
           const debugPreDropped = sf ? preDropped.filter(m => m.sport === sf) : preDropped;
           return jsonResponse({ plays: debugPlays, dropped: debugDropped, preDropped: debugPreDropped, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
         }
-        const playsResult = { plays, nbaDropped, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length };
+        // Build mlbMeta: pitchers, ML odds, umpires, weather — keyed by team abbr or "home|away"
+        const _mlbPitchers = {};
+        for (const [abbr, p] of Object.entries(sportByteam.mlb?.probables ?? {})) {
+          if (p?.name) _mlbPitchers[abbr] = { name: p.name, era: p.era ?? null };
+        }
+        for (const [abbr, p] of Object.entries(sportByteam.mlb?.pitcherInfoByTeam ?? {})) {
+          if (!_mlbPitchers[abbr] && p?.name) _mlbPitchers[abbr] = { name: p.name, era: null };
+        }
+        const _mlbGameOdds = {};
+        for (const [abbr, odds] of Object.entries(sportByteam.mlb?.gameOdds ?? {})) {
+          _mlbGameOdds[abbr] = { ml: odds.moneyline ?? null };
+        }
+        const mlbMeta = { pitchers: _mlbPitchers, gameOdds: _mlbGameOdds, umpires: sportByteam.mlb?.umpireByGame ?? {}, weather: weatherByGame };
+        const playsResult = { plays, nbaDropped, mlbMeta, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length };
         const sportsInPlays = new Set(plays.map((p) => p.sport));
         if (CACHE2 && sportsInPlays.size >= 2) {
           const summary = {

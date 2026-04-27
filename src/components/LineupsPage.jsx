@@ -68,6 +68,7 @@ export default function LineupsPage({
   bustCache,
   testMode,
   setTestMode,
+  mlbMeta,
   // MyPicksColumn props
   trackedPlays,
   setTrackedPlays,
@@ -227,6 +228,7 @@ export default function LineupsPage({
               <MatchupCard
                 key={`${game.homeTeam}|${game.awayTeam}|${game.gameDate}|${i}`}
                 game={game}
+                mlbMeta={mlbMeta}
                 navigateToPlayer={navigateToPlayer}
                 navigateToTeam={navigateToTeam}
               />

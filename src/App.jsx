@@ -37,6 +37,7 @@ function App() {
   const [nbaDropped, setNbaDropped] = React.useState(null); // NBA opp_not_soft drops — used for player card explanation when play didn't qualify
   const [tonightLoading, setTonightLoading] = React.useState(true);
   const [tonightMeta, setTonightMeta] = React.useState(null);
+  const [mlbMeta, setMlbMeta] = React.useState(null); // pitchers, ML odds, umpires, weather
   const [testMode, setTestMode] = React.useState(false);
   const [bustLoading, setBustLoading] = React.useState(false);
   const [sportFilter, setSportFilter] = React.useState([]); // empty = all sports
@@ -198,12 +199,13 @@ function App() {
     }
     const _sk = `tonight_v1_${new Date().toLocaleDateString('en-CA')}`;
     const _sc = (() => { try { const s = sessionStorage.getItem(_sk); if (!s) return null; const p = JSON.parse(s); return Date.now() - p.ts < 120000 ? p.data : null; } catch { return null; } })();
-    if (_sc) { const all = _sc.plays || []; setAllTonightPlays(all); setNbaDropped(_sc.nbaDropped || []); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore >= 8) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore >= 8))); setTonightMeta({ qualifyingCount: _sc.qualifyingCount, preFilteredCount: _sc.preFilteredCount }); setTonightLoading(false); return; }
+    const _applyData = (data) => { const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore >= 8) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore >= 8))); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); if (data.mlbMeta) setMlbMeta(data.mlbMeta); };
+    if (_sc) { _applyData(_sc); setTonightLoading(false); return; }
     let cancelled = false;
     setTonightLoading(true);
     fetch(`${WORKER}/tonight`)
       .then(r => r.json())
-      .then(data => { if (cancelled) return; try { sessionStorage.setItem(_sk, JSON.stringify({ts: Date.now(), data})); } catch {} const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore >= 8) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore >= 8))); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); setTonightLoading(false); })
+      .then(data => { if (cancelled) return; try { sessionStorage.setItem(_sk, JSON.stringify({ts: Date.now(), data})); } catch {} _applyData(data); setTonightLoading(false); })
       .catch(() => { if (cancelled) return; setAllTonightPlays([]); setNbaDropped([]); setTonightPlays([]); setTonightLoading(false); });
     return () => { cancelled = true; };
   }, [testMode]);
@@ -215,7 +217,7 @@ function App() {
     setTonightLoading(true);
     fetch(`${WORKER}/tonight?bust=1`)
       .then(r => r.json())
-      .then(data => { const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore >= 8) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore >= 8))); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); setTonightLoading(false); setBustLoading(false); })
+      .then(data => { const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore >= 8) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore >= 8))); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); if (data.mlbMeta) setMlbMeta(data.mlbMeta); setTonightLoading(false); setBustLoading(false); })
       .catch(() => { setAllTonightPlays([]); setNbaDropped([]); setTonightPlays([]); setTonightLoading(false); setBustLoading(false); });
   };
 
@@ -1838,6 +1840,7 @@ function App() {
           bustCache={bustCache}
           testMode={testMode}
           setTestMode={setTestMode}
+          mlbMeta={mlbMeta}
           trackedPlays={trackedPlays}
           setTrackedPlays={setTrackedPlays}
           untrackPlay={untrackPlay}
