@@ -364,7 +364,7 @@ where:
           <InputRow name="Pace adjustment" color="#e3b341"
             why="More possessions = more opportunities. A 5-possession pace advantage translates to ~1% mean boost. Applied continuously, not binary." />
           <InputRow name="C2 — Injury boost" color="#e3b341"
-            why="×1.08 per key opponent player Out (capped 1.15×). Missing defenders increase usage for everyone else — not just the replaced player." />
+            why="×1.08 per key teammate Out (capped 1.15×). Missing teammates create a usage vacuum — the remaining players absorb extra shot attempts, assists, and minutes." />
           <InputRow name="C3 — Blowout risk" color="#e3b341"
             why="max(0.85, 1 − (|spread|−10)×0.007) when |spread|>10. Garbage time = reduced minutes for starters. A 15-point spread reduces expected output ~3.5%." />
           <InputRow name="C4 — Home/Away split" color="#e3b341"
