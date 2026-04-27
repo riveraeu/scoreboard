@@ -1188,15 +1188,10 @@ var worker_default = {
         if (bundleCached) {
           kalshiResults = seriesTickers.map(t => bundleCached[t] || { markets: [] });
         } else {
-          // Fetch in batches of 6 to stay under Kalshi rate limits
-          const BATCH = 6;
+          // Fetch all series in parallel — bundle cache (90s) absorbs rate limiting between requests
+          const fetchResults = await Promise.all(seriesTickers.map(fetchKalshiSeries));
           const resultMap = {};
-          for (let i = 0; i < seriesTickers.length; i += BATCH) {
-            const batch = seriesTickers.slice(i, i + BATCH);
-            const batchRes = await Promise.all(batch.map(fetchKalshiSeries));
-            for (let j = 0; j < batch.length; j++) resultMap[batch[j]] = batchRes[j].data;
-            if (i + BATCH < seriesTickers.length) await new Promise(r => setTimeout(r, 300));
-          }
+          for (let i = 0; i < seriesTickers.length; i++) resultMap[seriesTickers[i]] = fetchResults[i].data;
           kalshiResults = seriesTickers.map(t => resultMap[t] || { markets: [] });
           // Cache bundle if we got real data
           if (CACHE2 && kalshiResults.some(d => (d.markets || []).length > 0)) {
@@ -1327,19 +1322,13 @@ var worker_default = {
         const thinMarkets = qualifyingMarkets.filter((m) => m._ticker && getContracts(m.kalshiPct, m._yesAsk) > m._yesAskSize);
         const obMap = {};
         if (thinMarkets.length > 0) {
-          // Batch orderbook fetches (8 at a time) to avoid Kalshi rate limits
-          const OB_BATCH = 8;
-          for (let i = 0; i < thinMarkets.length; i += OB_BATCH) {
-            const batch = thinMarkets.slice(i, i + OB_BATCH);
-            const batchRes = await Promise.all(batch.map(m =>
-              fetch(`https://api.elections.kalshi.com/trade-api/v2/markets/${m._ticker}/orderbook`, {
-                headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0" }
-              }).then(r => (r.ok && r.status !== 429) ? r.json() : null).catch(() => null)
-            ));
-            for (let j = 0; j < batch.length; j++) {
-              if (batchRes[j]?.orderbook_fp) obMap[batch[j]._ticker] = batchRes[j].orderbook_fp;
-            }
-            if (i + OB_BATCH < thinMarkets.length) await new Promise(r => setTimeout(r, 200));
+          const obFetches = await Promise.all(thinMarkets.map((m) =>
+            fetch(`https://api.elections.kalshi.com/trade-api/v2/markets/${m._ticker}/orderbook`, {
+              headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0" }
+            }).then((r) => (r.ok && r.status !== 429) ? r.json() : null).catch(() => null)
+          ));
+          for (let i = 0; i < thinMarkets.length; i++) {
+            if (obFetches[i]?.orderbook_fp) obMap[thinMarkets[i]._ticker] = obFetches[i].orderbook_fp;
           }
         }
         for (const m of qualifyingMarkets) {
