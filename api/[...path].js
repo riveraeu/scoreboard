@@ -3503,11 +3503,16 @@ var worker_default = {
               const _lgPace = nbaPaceData?.leagueAvgPace ?? null;
               const _nbaOuLine = sportByteam.nbaGameOdds?.[homeTeam]?.total ?? sportByteam.nbaGameOdds?.[awayTeam]?.total ?? null;
               // Possession-based projection — eliminates pace double-count from raw PPG
+              // OffRtg = avgPoints / pace * 100 (derived in buildNbaPaceData from ESPN stats)
+              // DefRtg = defPPGAllowed / pace * 100 (derived inline from existing nbaDefRank data)
               const _hOffRtg = nbaPaceData?.teamOffRtg?.[homeTeam] ?? null;
               const _aOffRtg = nbaPaceData?.teamOffRtg?.[awayTeam] ?? null;
-              const _hDefRtg = nbaPaceData?.teamDefRtg?.[homeTeam] ?? null;
-              const _aDefRtg = nbaPaceData?.teamDefRtg?.[awayTeam] ?? null;
               const _lgOffRtg = nbaPaceData?.leagueAvgOffRtg ?? 113.0;
+              const nbaDefRank = STAT_SOFT["nba|points"]?.rankMap ?? {};
+              const nbaAvgDef = leagueAvgCache["nba|points"] ?? nbaLeagueAvgOffPPG;
+              // DefRtg: PPG allowed / pace * 100 — eliminates pace from defense metric too
+              const _hDefRtg = (nbaDefRank[homeTeam]?.value != null && _hp != null && _hp > 0) ? parseFloat((nbaDefRank[homeTeam].value / _hp * 100).toFixed(1)) : null;
+              const _aDefRtg = (nbaDefRank[awayTeam]?.value != null && _ap != null && _ap > 0) ? parseFloat((nbaDefRank[awayTeam].value / _ap * 100).toFixed(1)) : null;
               let _homeExpRaw = null, _awayExpRaw = null, _projPace = null;
               if (_hOffRtg != null && _aDefRtg != null && _aOffRtg != null && _hDefRtg != null && _hp != null && _ap != null && _lgPace != null && _lgPace > 0) {
                 // Geometric-mean pace: correctly handles extreme pace matchups without simple averaging
@@ -3515,10 +3520,8 @@ var worker_default = {
                 _homeExpRaw = (_hOffRtg * _aDefRtg / (_lgOffRtg * _lgOffRtg)) * _projPace;
                 _awayExpRaw = (_aOffRtg * _hDefRtg / (_lgOffRtg * _lgOffRtg)) * _projPace;
               } else {
-                // Fallback: old PPG-based formula when OffRtg/DefRtg not yet cached
+                // Fallback: old PPG-based formula when pace data unavailable
                 const homeOff = nbaOffPPGMap[homeTeam] ?? null, awayOff = nbaOffPPGMap[awayTeam] ?? null;
-                const nbaDefRank = STAT_SOFT["nba|points"]?.rankMap ?? {};
-                const nbaAvgDef = leagueAvgCache["nba|points"] ?? nbaLeagueAvgOffPPG;
                 const homeDef = nbaDefRank[homeTeam]?.value ?? null, awayDef = nbaDefRank[awayTeam]?.value ?? null;
                 _homeExpRaw = homeOff != null ? homeOff * (awayDef != null && nbaAvgDef ? awayDef / nbaAvgDef : 1) : null;
                 _awayExpRaw = awayOff != null ? awayOff * (homeDef != null && nbaAvgDef ? homeDef / nbaAvgDef : 1) : null;

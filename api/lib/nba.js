@@ -379,20 +379,23 @@ export async function buildNbaPaceData(cache) {
     if (!teamsRes.ok) return null;
     const teamsData = await teamsRes.json();
     const teams = (teamsData.sports?.[0]?.leagues?.[0]?.teams || []).map(t => t.team);
-    // Step 2: fetch team stats in parallel — extract paceFactor, offensiveRating, defensiveRating
-    const teamPace = {}, teamOffRtg = {}, teamDefRtg = {};
+    // Step 2: fetch team stats in parallel — extract paceFactor + avgPoints to derive OffRtg
+    // ESPN doesn't expose offensiveRating/defensiveRating directly; derive OffRtg = avgPoints / paceFactor * 100
+    const teamPace = {}, teamOffRtg = {};
     await Promise.all(teams.map(async t => {
       try {
         const r = await fetch(`https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2026/types/2/teams/${t.id}/statistics`, { headers: hdrs });
         if (!r.ok) return;
         const d = await r.json();
+        let pace = null, avgPts = null;
         for (const cat of d.splits?.categories || []) {
           for (const s of cat.stats || []) {
-            if (s.name === "paceFactor" && s.value > 0 && teamPace[t.abbreviation] == null) teamPace[t.abbreviation] = s.value;
-            if (s.name === "offensiveRating" && s.value > 0 && teamOffRtg[t.abbreviation] == null) teamOffRtg[t.abbreviation] = s.value;
-            if (s.name === "defensiveRating" && s.value > 0 && teamDefRtg[t.abbreviation] == null) teamDefRtg[t.abbreviation] = s.value;
+            if (s.name === "paceFactor" && s.value > 0) pace = s.value;
+            if (s.name === "avgPoints" && s.value > 0) avgPts = s.value;
           }
         }
+        if (pace != null) teamPace[t.abbreviation] = pace;
+        if (pace != null && avgPts != null) teamOffRtg[t.abbreviation] = parseFloat((avgPts / pace * 100).toFixed(1));
       } catch {}
     }));
     if (Object.keys(teamPace).length === 0) return null;
@@ -402,15 +405,12 @@ export async function buildNbaPaceData(cache) {
     for (const [s, l] of Object.entries(_shortToLong)) {
       if (teamPace[s] != null && teamPace[l] == null) teamPace[l] = teamPace[s];
       if (teamOffRtg[s] != null && teamOffRtg[l] == null) teamOffRtg[l] = teamOffRtg[s];
-      if (teamDefRtg[s] != null && teamDefRtg[l] == null) teamDefRtg[l] = teamDefRtg[s];
     }
     const paces = Object.values(teamPace);
     const leagueAvgPace = paces.reduce((a, b) => a + b, 0) / paces.length;
     const offRtgs = Object.values(teamOffRtg).filter(v => v > 0);
-    const leagueAvgOffRtg = offRtgs.length >= 15 ? offRtgs.reduce((a, b) => a + b, 0) / offRtgs.length : 113.0;
-    const defRtgs = Object.values(teamDefRtg).filter(v => v > 0);
-    const leagueAvgDefRtg = defRtgs.length >= 15 ? defRtgs.reduce((a, b) => a + b, 0) / defRtgs.length : 113.0;
-    const result = { teamPace, leagueAvgPace: parseFloat(leagueAvgPace.toFixed(2)), teamOffRtg, teamDefRtg, leagueAvgOffRtg: parseFloat(leagueAvgOffRtg.toFixed(2)), leagueAvgDefRtg: parseFloat(leagueAvgDefRtg.toFixed(2)) };
+    const leagueAvgOffRtg = offRtgs.length >= 15 ? parseFloat((offRtgs.reduce((a, b) => a + b, 0) / offRtgs.length).toFixed(2)) : 113.0;
+    const result = { teamPace, leagueAvgPace: parseFloat(leagueAvgPace.toFixed(2)), teamOffRtg, leagueAvgOffRtg };
     if (cache) await cache.put("nba:pace:2526", JSON.stringify(result), { expirationTtl: 43200 }).catch(() => {});
     return result;
   } catch (e) {
