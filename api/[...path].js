@@ -1946,13 +1946,9 @@ var worker_default = {
           }
         }
         __name(fetchGamelog, "fetchGamelog");
-        // Fetch gamelogs in batches of 5 in parallel; 200ms between batches to avoid ESPN rate-limiting
-        const GL_BATCH = 5;
-        for (let i = 0; i < keysNeedingGamelog.length; i += GL_BATCH) {
-          const batch = keysNeedingGamelog.slice(i, i + GL_BATCH);
-          await Promise.all(batch.map((k) => fetchGamelog(k)));
-          if (i + GL_BATCH < keysNeedingGamelog.length) await new Promise((r) => setTimeout(r, 200));
-        }
+        // Fetch all uncached gamelogs in parallel — batching with delays was adding ~26s for 60 players
+        const GL_BATCH = 5; // kept for pitcher loop below
+        await Promise.all(keysNeedingGamelog.map((k) => fetchGamelog(k)));
         const pitcherGamelogs = {};
         // Merge probables (ESPN source) with pitcherInfoByTeam (MLB Stats API source).
         // pitcherInfoByTeam is more reliable for early-day requests before ESPN announces probables.
@@ -1972,16 +1968,12 @@ var worker_default = {
             if (cached) pitcherGamelogs[teamAbbr] = { name, gl: _normGlOpp(cached) };
           }));
           const uncachedPitchers = pitcherEntriesToLoad.filter(([teamAbbr]) => !pitcherGamelogs[teamAbbr]);
-          for (let i = 0; i < uncachedPitchers.length; i += GL_BATCH) {
-            const batch = uncachedPitchers.slice(i, i + GL_BATCH);
-            await Promise.all(batch.map(async ([teamAbbr, { name, id }]) => {
-              const pitcherKey = `mlb|${name}`;
-              await fetchGamelog(pitcherKey, id);
-              const gl = playerGamelogs[pitcherKey] || null;
-              if (gl) pitcherGamelogs[teamAbbr] = { name, gl };
-            }));
-            if (i + GL_BATCH < uncachedPitchers.length) await new Promise((r) => setTimeout(r, 200));
-          }
+          await Promise.all(uncachedPitchers.map(async ([teamAbbr, { name, id }]) => {
+            const pitcherKey = `mlb|${name}`;
+            await fetchGamelog(pitcherKey, id);
+            const gl = playerGamelogs[pitcherKey] || null;
+            if (gl) pitcherGamelogs[teamAbbr] = { name, gl };
+          }));
         }
         const leagueAvgCache = {};
         for (const key of ["nba|points", "nba|rebounds", "nba|assists", "nba|threePointers", "nhl|points"]) {
@@ -2050,7 +2042,7 @@ var worker_default = {
               .filter(Boolean)
           )];
           const [_usgResult, _injResult] = await Promise.all([
-            _nbaPlayerIds.length > 0 ? buildNbaUsageRate(_nbaPlayerIds) : Promise.resolve({}),
+            _nbaPlayerIds.length > 0 ? buildNbaUsageRate(_nbaPlayerIds, CACHE2) : Promise.resolve({}),
             buildNbaInjuryReport(CACHE2)
           ]);
           Object.assign(nbaUsageMap, _usgResult);

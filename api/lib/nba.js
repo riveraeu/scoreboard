@@ -445,44 +445,53 @@ export async function buildNbaPlayerPosFromSleeper(cache) {
 // C1: Fetch per-player usage rate from ESPN stats API.
 // Returns { [espnId]: { usg, source } } — source "espn" if direct, "estimated" if computed.
 // Estimated from avgPTS + avgAST × 1.5 over avgMin × 0.42 (FTA-inclusive approximation).
-export async function buildNbaUsageRate(playerIds) {
+export async function buildNbaUsageRate(playerIds, cache) {
   const hdrs = { "User-Agent": "Mozilla/5.0" };
   const result = {};
-  // All players in parallel — serial batching was adding 3-9s on every request
-  await Promise.all(playerIds.map(async id => {
-      try {
-        // sports.core.api.espn.com returns d.splits.categories (same shape as buildNbaPaceData)
-        const r = await fetch(
-          `https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2026/types/2/athletes/${id}/statistics`,
-          { headers: hdrs }
-        );
-        if (!r.ok) return;
-        const d = await r.json();
-        const cats = d.splits?.categories || [];
-        let usg = null, avgFGA = 0, avgFTA = 0, avgTO = 0, avgMin = 0, avgAst = 0, avgReb = 0;
-        for (const cat of cats) {
-          for (const s of cat.stats || []) {
-            const v = parseFloat(s.value) || 0;
-            if (s.name === "usageRate" && v > 0) usg = v;
-            if (s.name === "avgFieldGoalsAttempted") avgFGA = v;
-            if (s.name === "avgFreeThrowsAttempted") avgFTA = v;
-            if (s.name === "avgTurnovers") avgTO = v;
-            if (s.name === "avgMinutes") avgMin = v;
-            if (s.name === "avgAssists") avgAst = v;
-            if (s.name === "avgRebounds" || s.name === "avgTotalRebounds") avgReb = v;
-          }
+  // Check cache first (parallel), then fetch only uncached players
+  const cacheKeys = playerIds.map(id => `nba:usg:${id}`);
+  const cached = cache ? await Promise.all(cacheKeys.map(k => cache.get(k, "json").catch(() => null))) : playerIds.map(() => null);
+  const toFetch = [];
+  for (let i = 0; i < playerIds.length; i++) {
+    if (cached[i]) result[String(playerIds[i])] = cached[i];
+    else toFetch.push(playerIds[i]);
+  }
+  await Promise.all(toFetch.map(async id => {
+    try {
+      const r = await fetch(
+        `https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2026/types/2/athletes/${id}/statistics`,
+        { headers: hdrs }
+      );
+      if (!r.ok) return;
+      const d = await r.json();
+      const cats = d.splits?.categories || [];
+      let usg = null, avgFGA = 0, avgFTA = 0, avgTO = 0, avgMin = 0, avgAst = 0, avgReb = 0;
+      for (const cat of cats) {
+        for (const s of cat.stats || []) {
+          const v = parseFloat(s.value) || 0;
+          if (s.name === "usageRate" && v > 0) usg = v;
+          if (s.name === "avgFieldGoalsAttempted") avgFGA = v;
+          if (s.name === "avgFreeThrowsAttempted") avgFTA = v;
+          if (s.name === "avgTurnovers") avgTO = v;
+          if (s.name === "avgMinutes") avgMin = v;
+          if (s.name === "avgAssists") avgAst = v;
+          if (s.name === "avgRebounds" || s.name === "avgTotalRebounds") avgReb = v;
         }
-        const _avgAst = avgAst > 0 ? parseFloat(avgAst.toFixed(1)) : null;
-        const _avgReb = avgReb > 0 ? parseFloat(avgReb.toFixed(1)) : null;
-        if (usg != null) {
-          result[String(id)] = { usg, avgAst: _avgAst, avgReb: _avgReb, source: "espn" };
-          return;
-        }
-        if (avgMin > 10 && avgFGA > 0) {
-          const est = (avgFGA + 0.44 * avgFTA + avgTO) / (avgMin * 2.255) * 100;
-          result[String(id)] = { usg: parseFloat(Math.min(50, Math.max(0, est)).toFixed(1)), avgAst: _avgAst, avgReb: _avgReb, source: "estimated" };
-        }
-      } catch {}
+      }
+      const _avgAst = avgAst > 0 ? parseFloat(avgAst.toFixed(1)) : null;
+      const _avgReb = avgReb > 0 ? parseFloat(avgReb.toFixed(1)) : null;
+      let entry = null;
+      if (usg != null) {
+        entry = { usg, avgAst: _avgAst, avgReb: _avgReb, source: "espn" };
+      } else if (avgMin > 10 && avgFGA > 0) {
+        const est = (avgFGA + 0.44 * avgFTA + avgTO) / (avgMin * 2.255) * 100;
+        entry = { usg: parseFloat(Math.min(50, Math.max(0, est)).toFixed(1)), avgAst: _avgAst, avgReb: _avgReb, source: "estimated" };
+      }
+      if (entry) {
+        result[String(id)] = entry;
+        if (cache) cache.put(`nba:usg:${id}`, JSON.stringify(entry), { expirationTtl: 21600 }).catch(() => {});
+      }
+    } catch {}
   }));
   return result;
 }
