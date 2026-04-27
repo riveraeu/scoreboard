@@ -494,44 +494,48 @@ truePct = fraction of trials where homeRuns + awayRuns ≥ threshold`}</Formula>
     "nba-gt": (
       <>
         <Section title="NBA Game Total — True% Model">
-          <div style={s.sub}>Normal distribution Monte Carlo. Models each team's expected points independently.</div>
+          <div style={s.sub}>Normal distribution Monte Carlo. Possession-based projection separates scoring efficiency from game tempo.</div>
 
           <div style={s.h3}>Core Formula</div>
-          <Formula>{`homeExpected = homeOffPPG × (awayDefPPG / leagueAvgDef)
-awayExpected = awayOffPPG × (homeDefPPG / leagueAvgDef)
+          <Formula>{`projPace = (homePace × awayPace) / leagueAvgPace   ← geometric mean
+
+homeExpected = (homeOffRtg × awayDefRtg / leagueAvgOffRtg²) × projPace
+awayExpected = (awayOffRtg × homeDefRtg / leagueAvgOffRtg²) × projPace
 expectedTotal = homeExpected + awayExpected
 
-Distribution: Normal(expectedTotal, combinedStd)
+Distribution: Normal(expectedTotal, std=11 per team)
 truePct = P(total ≥ threshold)
 
-leagueAvgDef ≈ 114 PPG allowed (regular season, seasontype=2)`}</Formula>
+All ratings: pts per 100 possessions (regular season, seasontype=2)`}</Formula>
 
           <div style={s.h3}>Model Inputs</div>
-          <InputRow name="Team offensive PPG" tooltip="homeOffPPG / awayOffPPG — season scoring average per team" color="#3fb950"
-            why="Baseline scoring rate for each team. Uses regular season stats (seasontype=2) year-round so playoff sample distortion doesn't create false UNDER edges on high O/U lines." />
-          <InputRow name="Opponent defensive PPG allowed" color="#3fb950"
-            why="How many points does each team's defense allow per game? A team allowing 120 PPG has worse defense than league average (114), boosting the opponent's expected score." />
-          <InputRow name="League avg defensive PPG" color="#8b949e"
-            why="Normalization constant. Without this, a 110 PPG offense vs a 120 PPG-allowed defense would be counted differently than the same matchup in a different league-scoring environment." />
+          <InputRow name="Offensive Rating (OffRtg)" tooltip="Points scored per 100 possessions — efficiency-only, pace-neutral" color="#3fb950"
+            why="Raw PPG conflates pace and efficiency, double-counting tempo when two fast teams meet. OffRtg isolates how well a team scores per possession, independent of how many possessions they get." />
+          <InputRow name="Defensive Rating (DefRtg)" tooltip="Points allowed per 100 possessions — lower = better defense" color="#3fb950"
+            why="Symmetric to OffRtg. A high DefRtg (e.g. 118) means the defense leaks points per possession, which the model uses to boost the opponent's expected output for this specific matchup." />
+          <InputRow name="Projected pace (geometric mean)" tooltip="(homePace × awayPace) / leagueAvgPace — possessions per game" color="#3fb950"
+            why="Pace controls volume: two fast teams playing each other produce more possessions than their individual pace numbers suggest. The geometric mean correctly captures this compounding effect (vs simple average which underestimates extremes)." />
+          <InputRow name="League avg offensive rating" color="#8b949e"
+            why="Normalization denominator. Squaring it (leagueAvgOffRtg²) balances the fact that both OffRtg and DefRtg are in the numerator, keeping the expected value centered at league-average total when both teams are average." />
         </Section>
 
         <Section title="NBA Game Total — SimScore (max 10)">
-          <div style={s.sub}>5 components × 2 pts each. Gate: totalSimScore ≥ 8. Inverted for UNDER.</div>
-          <ScoreRow pts="0–2" name="Home off PPG"
-            tiers="≥118 → 2pts · ≥113 → 1pt · else 0pts"
-            why="High-scoring offense increases expected total. Both teams contribute independently." />
-          <ScoreRow pts="0–2" name="Away off PPG"
-            tiers="≥118 → 2pts · ≥113 → 1pt · else 0pts"
-            why="Same as home — away team scoring rate contributes equally." />
-          <ScoreRow pts="0–2" name="Home def PPG allowed"
-            tiers="≥118 → 2pts · ≥113 → 1pt · else 0pts"
-            why="Bad defense (allows lots of points) is good for overs. A team allowing 120+ PPG is essentially a free-scoring environment for the opponent." />
-          <ScoreRow pts="0–2" name="Away def PPG allowed"
-            tiers="≥118 → 2pts · ≥113 → 1pt · else 0pts"
-            why="Same logic — away team's defense quality affects home team's expected scoring." />
+          <div style={s.sub}>5 independent validators × 2 pts each. Gate: totalSimScore ≥ 8. Inverted for UNDER. Pace and injuries are not in the projection formula — they provide structurally independent confirmation.</div>
+          <ScoreRow pts="0–2" name="Combined pace"
+            tiers="Both > lgAvg+2 → 2pts · One > lgAvg → 1pt · else 0pts · null → 1pt abstain"
+            why="Validates the volume assumption: fast-paced teams have more possessions and thus more scoring opportunities. If neither team plays fast, the projection needs pace-neutral offense to justify the threshold — a harder bar." />
+          <ScoreRow pts="0–2" name="Home team OffRtg"
+            tiers="≥118 → 2pts · ≥113 → 1pt · <113 → 0pts · null → 1pt abstain"
+            why="Elite offenses (top-5) reliably push totals over mid-range thresholds. The 118/113 tiers match league percentile breaks for the top ~25% and top ~50% of offenses." />
+          <ScoreRow pts="0–2" name="Away team OffRtg"
+            tiers="≥118 → 2pts · ≥113 → 1pt · <113 → 0pts · null → 1pt abstain"
+            why="Same logic applied to the road team. Both offenses must be productive to sustain high totals — one elite offense against a stingy defense can still produce a low game." />
+          <ScoreRow pts="0–2" name="Combined injuries (both teams)"
+            tiers="0 out → 2pts · 1–2 out → 1pt · 3+ out → 0pts · null → 1pt abstain"
+            why="Season OffRtg/DefRtg assumes the full roster is playing. Stars sitting out (load management, rest, injury) directly depress scoring without appearing in the ratings. This component catches that blind spot. UNDER inverted: 3+ out → 2pts." />
           <ScoreRow pts="0–2" name="Market O/U line"
-            tiers="≥235 → 2pts · ≥225 → 1pt · else 0pts"
-            why="Independent market signal. NBA O/U lines near 235+ reflect a consensus expectation of two high-powered offenses or a fast pace. Corroborates the model's expected total calculation." />
+            tiers="≥235 → 2pts · ≥225 → 1pt · <225 → 0pts · null → 1pt abstain"
+            why="The sharpest independent validator available. Vegas sets lines after seeing the same OffRtg, DefRtg, pace, and injury data — agreement between the model and the market is meaningful confirmation that the environment supports the threshold." />
         </Section>
       </>
     ),

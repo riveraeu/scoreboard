@@ -473,17 +473,21 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMet
                       {play.sport === "nba" && (() => {
                         const sc = play.totalSimScore;
                         const scColor = sc >= 8 ? "#3fb950" : sc >= 5 ? "#e3b341" : "#8b949e";
-                        const hOff = play.homeOff ?? null, aOff = play.awayOff ?? null;
-                        const hDef = play.homeDef ?? null, aDef = play.awayDef ?? null;
+                        const hOffRtg = play.homeOffRtg ?? null, aOffRtg = play.awayOffRtg ?? null;
+                        const hDefRtg = play.homeDefRtg ?? null, aDefRtg = play.awayDefRtg ?? null;
                         const hPace = play.homePace ?? null, aPace = play.awayPace ?? null;
                         const lgPace = play.leagueAvgPace ?? null;
+                        const projPace = play.projPace ?? null;
+                        const homeOut = play.homeOut ?? 0, awayOut = play.awayOut ?? 0;
+                        const totalOut = homeOut + awayOut;
                         const et = play.expectedTotal ?? null;
-                        const paceAdj = (hPace != null && aPace != null && lgPace != null) ? parseFloat(((hPace + aPace) / 2 - lgPace).toFixed(1)) : null;
-                        const offColor = isUnder
-                          ? (v => v == null ? "#8b949e" : v < 113 ? "#3fb950" : v < 118 ? "#e3b341" : "#f78166")
-                          : (v => v == null ? "#8b949e" : v >= 118 ? "#f78166" : v >= 113 ? "#e3b341" : "#8b949e");
-                        const defColor = isUnder
-                          ? (v => v == null ? "#8b949e" : v < 113 ? "#3fb950" : v < 118 ? "#e3b341" : "#f78166")
+                        // Pace: use projected game pace vs league avg
+                        const paceAdj = projPace != null && lgPace != null ? parseFloat((projPace - lgPace).toFixed(1)) : (hPace != null && aPace != null && lgPace != null ? parseFloat(((hPace + aPace) / 2 - lgPace).toFixed(1)) : null);
+                        const offRtgColor = isUnder
+                          ? (v => v == null ? "#8b949e" : v < 113 ? "#3fb950" : v < 118 ? "#e3b341" : "#8b949e")
+                          : (v => v == null ? "#8b949e" : v >= 118 ? "#3fb950" : v >= 113 ? "#e3b341" : "#8b949e");
+                        const defRtgColor = isUnder
+                          ? (v => v == null ? "#8b949e" : v < 113 ? "#3fb950" : v < 118 ? "#e3b341" : "#8b949e")
                           : (v => v == null ? "#8b949e" : v >= 118 ? "#3fb950" : v >= 113 ? "#e3b341" : "#f78166");
                         const paceColor = isUnder
                           ? (paceAdj == null ? "#8b949e" : paceAdj < -2 ? "#3fb950" : paceAdj < 0 ? "#e3b341" : "#8b949e")
@@ -491,13 +495,17 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMet
                         const etColor = isUnder
                           ? (et == null ? "#8b949e" : et < play.threshold - 2 ? "#3fb950" : et < play.threshold + 2 ? "#e3b341" : "#8b949e")
                           : (et == null ? "#8b949e" : et >= play.threshold + 2 ? "#3fb950" : et >= play.threshold - 2 ? "#e3b341" : "#8b949e");
-                        const nbaOuLinePC = play.gameOuLine ?? null; const nbaOuPtsPC = nbaOuLinePC == null ? 1 : nbaOuLinePC >= 235 ? 2 : nbaOuLinePC >= 225 ? 1 : 0;
-                        const scTitle = [isUnder?"[Under SimScore]":"",`${play.homeTeam} off PPG (${hOff != null ? hOff.toFixed(0) : "—"}): ${hOff != null ? (hOff >= 118 ? 2 : hOff >= 113 ? 1 : 0) : 1}/2`,`${play.awayTeam} off PPG (${aOff != null ? aOff.toFixed(0) : "—"}): ${aOff != null ? (aOff >= 118 ? 2 : aOff >= 113 ? 1 : 0) : 1}/2`,`${play.homeTeam} def allowed (${hDef != null ? hDef.toFixed(0) : "—"}): ${hDef != null ? (hDef >= 118 ? 2 : hDef >= 113 ? 1 : 0) : 1}/2`,`${play.awayTeam} def allowed (${aDef != null ? aDef.toFixed(0) : "—"}): ${aDef != null ? (aDef >= 118 ? 2 : aDef >= 113 ? 1 : 0) : 1}/2`,`O/U (${nbaOuLinePC ?? "—"}): ${nbaOuPtsPC}/2`].filter(Boolean).join("\n");
+                        const nbaOuLinePC = play.gameOuLine ?? null;
+                        const nbaOuPtsPC = nbaOuLinePC == null ? 1 : nbaOuLinePC >= 235 ? 2 : nbaOuLinePC >= 225 ? 1 : 0;
+                        const _pacePts = (hPace == null || aPace == null || lgPace == null) ? 1 : (hPace > lgPace + 2 && aPace > lgPace + 2) ? 2 : (hPace > lgPace || aPace > lgPace) ? 1 : 0;
+                        const _injPts = totalOut === 0 ? 2 : totalOut <= 2 ? 1 : 0;
+                        const scTitle = [isUnder?"[Under SimScore]":"",`Pace (${projPace ?? "—"}): ${_pacePts}/2`,`${play.homeTeam} OffRtg (${hOffRtg != null ? hOffRtg.toFixed(1) : "—"}): ${hOffRtg != null ? (hOffRtg >= 118 ? 2 : hOffRtg >= 113 ? 1 : 0) : 1}/2`,`${play.awayTeam} OffRtg (${aOffRtg != null ? aOffRtg.toFixed(1) : "—"}): ${aOffRtg != null ? (aOffRtg >= 118 ? 2 : aOffRtg >= 113 ? 1 : 0) : 1}/2`,`Injuries (${totalOut} out): ${_injPts}/2`,`O/U (${nbaOuLinePC ?? "—"}): ${nbaOuPtsPC}/2`].filter(Boolean).join("\n");
                         return (
                           <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.65}}>
-                            <span style={{color:"#c9d1d9"}}>{play.awayTeam}</span> averages{aOff != null ? <> <span style={{color:offColor(aOff),fontWeight:600}}>{aOff.toFixed(0)} PPG</span></> : " —"} facing a <span style={{color:"#c9d1d9"}}>{play.homeTeam}</span> defense allowing{hDef != null ? <> <span style={{color:defColor(hDef),fontWeight:600}}>{hDef.toFixed(0)} PPG</span></> : " —"}.
-                            {" "}<span style={{color:"#c9d1d9"}}>{play.homeTeam}</span> averages{hOff != null ? <> <span style={{color:offColor(hOff),fontWeight:600}}>{hOff.toFixed(0)} PPG</span></> : " —"} facing a <span style={{color:"#c9d1d9"}}>{play.awayTeam}</span> defense allowing{aDef != null ? <> <span style={{color:defColor(aDef),fontWeight:600}}>{aDef.toFixed(0)} PPG</span></> : " —"}.
-                            {paceAdj != null && <>{" "}Game pace is <span style={{color:paceColor,fontWeight:600}}>{paceAdj > 0 ? "+" : ""}{paceAdj}</span> vs league avg{isUnder ? (paceAdj < -2 ? " — slower game, supports under" : " — near average") : (paceAdj > 0 ? " — more possessions, more scoring" : paceAdj > -2 ? " — near league average" : " — slower game, fewer possessions")}.</>}
+                            <span style={{color:"#c9d1d9"}}>{play.awayTeam}</span> offensive rating <span style={{color:offRtgColor(aOffRtg),fontWeight:600}}>{aOffRtg != null ? aOffRtg.toFixed(1) : "—"}</span> vs a <span style={{color:"#c9d1d9"}}>{play.homeTeam}</span> defense allowing <span style={{color:defRtgColor(aDefRtg),fontWeight:600}}>{aDefRtg != null ? aDefRtg.toFixed(1) : "—"}</span> pts/100.
+                            {" "}<span style={{color:"#c9d1d9"}}>{play.homeTeam}</span> offensive rating <span style={{color:offRtgColor(hOffRtg),fontWeight:600}}>{hOffRtg != null ? hOffRtg.toFixed(1) : "—"}</span> vs a <span style={{color:"#c9d1d9"}}>{play.awayTeam}</span> defense at <span style={{color:defRtgColor(hDefRtg),fontWeight:600}}>{hDefRtg != null ? hDefRtg.toFixed(1) : "—"}</span> pts/100.
+                            {paceAdj != null && <>{" "}Projected game pace <span style={{color:paceColor,fontWeight:600}}>{paceAdj > 0 ? "+" : ""}{paceAdj}</span> vs league avg{isUnder ? (paceAdj < -2 ? " — slow game, fewer possessions" : " — near average") : (paceAdj > 0 ? " — fast game, more possessions" : paceAdj > -2 ? " — near league average" : " — slow game, fewer possessions")}.</>}
+                            {totalOut > 0 && <>{" "}<span style={{color:isUnder ? (totalOut >= 3 ? "#3fb950" : "#e3b341") : (totalOut >= 3 ? "#f78166" : "#e3b341")}}>{totalOut} player{totalOut !== 1 ? "s" : ""} out</span> ({homeOut > 0 ? `${homeOut} ${play.homeTeam}` : ""}{homeOut > 0 && awayOut > 0 ? ", " : ""}{awayOut > 0 ? `${awayOut} ${play.awayTeam}` : ""}).</>}
                             {et != null && <>{" "}Model projects <span style={{color:etColor,fontWeight:600}}>{et}</span> combined pts {isUnder ? "— under the" : "vs the"} <span style={{color:"#c9d1d9"}}>{lineVal}</span> threshold.</>}
                             {" "}<span title={scTitle} style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,verticalAlign:"middle",cursor:"default"}}>{sc}/10 {sc>=8?"Alpha":sc>=5?"Mid":"Low"}</span>
                           </div>

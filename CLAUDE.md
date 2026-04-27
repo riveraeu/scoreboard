@@ -108,8 +108,8 @@ Used for caching expensive fetches. Key TTLs:
 - **SimScore** (max 10): 5 stats × 2pts each; `qualified: totalSimScore >= 8`. OVER and UNDER use separate `totalSimScore`/`underSimScore` (inverted tiers for under).
 - **Data maps** (`mlbRPGMap`, `nhlGPGMap/GAAMap`, `nbaOffPPGMap`) computed inline after `leagueAvgCache` block
 - **Play card**: `gameType: "total"` triggers `TotalPlayCard` branch; dual team logos, matchup header, truePct/Kalshi bars, explanation prose, SimScore badge. UNDER plays shown in red badge, bars use no-side probabilities.
-- **Expected total**: `homeExpected + awayExpected` (lambda sum for MLB/NHL, PPG-adjusted for NBA) shown in explanation prose; `_simData` includes `homeExpected`, `awayExpected`, `expectedTotal`, `gameOuLine`; NBA also includes `homePace`, `awayPace`, `leagueAvgPace` (pace still in `_simData` for prose, not SimScore)
-- **SimScore tooltip**: hover the `X/10` badge to see per-component breakdown with actual values. NBA totals example: `CHA off PPG (116): 1/2`. NHL totals example: `LAK GPG (2.7): 1/2`, `CGY GAA (3.15): 1/2`.
+- **Expected total**: `homeExpected + awayExpected` (lambda sum for MLB/NHL, possession-based for NBA) shown in explanation prose; `_simData` includes `homeExpected`, `awayExpected`, `expectedTotal`, `gameOuLine`; NBA also includes `homeOffRtg`, `awayOffRtg`, `homeDefRtg`, `awayDefRtg`, `homePace`, `awayPace`, `leagueAvgPace`, `projPace`, `homeOut`, `awayOut`
+- **SimScore tooltip**: hover the `X/10` badge to see per-component breakdown with actual values. NBA totals example: `Pace (proj 100.2): 2/2`, `GSW OffRtg (118.5): 2/2`, `Injuries (0 out): 2/2`. NHL totals example: `LAK GPG (2.7): 1/2`, `CGY GAA (3.15): 1/2`.
 - **Edge badge**: shows `+X%` only
 - **Track ID format**: OVER: `total|sport|homeTeam|awayTeam|threshold|gameDate` · UNDER: same + `|under`
 
@@ -134,7 +134,7 @@ Used for caching expensive fetches. Key TTLs:
 
 #### Total SimScore details (max 10 — 5 stats × 2pts each; `qualified: totalSimScore >= 8`)
 - **MLB**: homeERA tiered (>4.5→2, >3.5→1, ≤3.5→0, null→1), awayERA (same), combinedRPG (road homeRPG+awayRPG; ≥10.5→2, ≥9.0→1, <9.0→0, null→1), umpireRunFactor (1/UMPIRE_KFACTOR; ≥1.05→2, ≥0.97→1, <0.97→0, null→1), O/U line tiered (≥9.5→2, ≥7.5→1, <7.5→0, null→1). **Road RPG** from MLB Stats API `sitCodes=A` (stored as `mlbRoadRPGMap`). **60/40 ERA blend**: `0.6×(starterERA/4.20)+0.4×(teamERA/4.20)` where teamERA from ESPN pitching byteam (stored as `mlbTeamERAMap`) acts as bullpen proxy and regresses small-sample starters toward team reality. UNDER inverted: ERA ≤3.5→2, ≤4.5→1; combinedRPG ≤8.5→2, ≤10.0→1; umpireRunFactor ≤0.95→2, ≤1.03→1.
-- **NBA**: off PPG tiered (≥118→2, ≥113→1, else 0, null→1) per team; def PPG allowed tiered (≥118→2, ≥113→1, else 0, null→1) per team; O/U line tiered (≥235→2, ≥225→1, <225→0, null→1). Pace still in `_simData` for prose display but not scored.
+- **NBA**: 5 independent validators — combined pace (both>lgAvg+2→2, one>lgAvg→1, else→0, null→1), homeOffRtg tiered (≥118→2, ≥113→1, <113→0, null→1), awayOffRtg (same), combined injuries `homeOut+awayOut` (0→2, 1-2→1, 3+→0, null→1), O/U line (≥235→2, ≥225→1, <225→0, null→1). UNDER inverted: pace (both<lgAvg-2→2, one<lgAvg→1), OffRtg (<113→2, <118→1), injuries (3+→2, 1-2→1, 0→0), O/U (<225→2, <235→1). `homeOut`/`awayOut` from `nbaInjuryMap` in `_simData`, available in play card and market report.
 - **NHL**: homeGPG tiered (≥3.5→2, ≥3.0→1, <3.0→0, null→1), awayGPG (same), homeGAA tiered (≥3.5→2, ≥3.0→1, <3.0→0, null→1), awayGAA (same), O/U line tiered (≥7→2, ≥5.5→1, <5.5→0, null→1). ESPN NHL scoreboard fetched for odds via `sportByteam.nhlGameOdds` (normalized via TEAM_NORM.nhl).
 
 #### Lambda computation (MLB)
@@ -149,9 +149,12 @@ Used for caching expensive fetches. Key TTLs:
 `homeLambda = homeGPG × (awayGAA / leagueAvgGAA)`, clamped [0.5, 8]
 `awayLambda = awayGPG × (homeGAA / leagueAvgGAA)`, clamped [0.5, 8]
 
-#### Mean computation (NBA)
-`homeExpected = homeOffPPG × (awayDefPPG / leagueAvgDef)`
-`awayExpected = awayOffPPG × (homeDefPPG / leagueAvgDef)`
+#### Possession-based projection (NBA)
+`projPace = (homePace × awayPace) / leagueAvgPace` (geometric mean — captures compounding of two extreme-pace teams)
+`homeExpected = (homeOffRtg × awayDefRtg / leagueAvgOffRtg²) × projPace`
+`awayExpected = (awayOffRtg × homeDefRtg / leagueAvgOffRtg²) × projPace`
+
+OffRtg/DefRtg = pts per 100 possessions; extracted from same ESPN team stats API call as pace (`offensiveRating` + `defensiveRating` stat names). Fallback to old PPG formula when OffRtg not yet cached. `teamOffRtg`, `teamDefRtg`, `leagueAvgOffRtg`, `leagueAvgDefRtg` stored in `nba:pace:2526` (12h TTL).
 
 ### MLB
 - **Stats**: `hits`, `hrr` (H+R+RBI), `strikeouts`
@@ -452,7 +455,7 @@ Opened via "report" button. Shows ALL markets (plays + dropped) grouped by sport
   - **NBA**: C1 (USG%/AvgMin): X/2, DVP: X/2, Season HR: X/2, Soft HR: X/2, Pace+Total: X/2
   - **NHL**: TOI Xm: X/2, GAA rank: X/2, Season HR: X/2, DVP HR: X/2, O/U X: X/2
   - **MLB totals**: Home/Away ERA (>4.5→2, >3.5→1, ≤3.5→0), Home/Away RPG (>5.0→2, >4.0→1, ≤4.0→0), O/U (≥9.5→2, ≥7.5→1)
-  - **NBA totals**: Home/Away off PPG (≥118→2, ≥113→1, else 0), Home/Away def allowed (≥118→2, ≥113→1, else 0), O/U line (≥235→2, ≥225→1)
+  - **NBA totals**: Pace (both>+2→2, one>0→1), Home/Away OffRtg (≥118→2, ≥113→1), Injuries (0→2, 1-2→1, 3+→0), O/U (≥235→2, ≥225→1)
   - **NHL totals**: Home/Away GPG (≥3.5→2, ≥3.0→1, <3.0→0), Home/Away GAA (same), O/U line (≥7→2, ≥5.5→1)
   - Cursor changes to `help` when tooltip is available. Detection: `m.totalSimScore != null` → total play; otherwise sport-specific score fields.
 - **Market report column color tiers** — colors match SimScore tiers exactly (yellow = middle tier earns points, gray = earns 1pt but lowest tier, red = 0pts):
@@ -475,7 +478,7 @@ Opened via "report" button. Shows ALL markets (plays + dropped) grouped by sport
   - `plat` sort: keyed on `hitterSplitBA` ascending
 - **Team totals table** (`mlb|teamRuns`, `nba|teamPoints`): section header shows **"MLB Team Runs"** / **"NBA Team Points"** via `STAT_NAME` entries. First column labelled **"Team"** (shows `scoringTeam` only, clickable → team page); last XCOLS column **"Opp"** (`ttOpp` key) shows `oppTeam` as clickable span. Default sort: Score descending (seeded in `reportSort` initial state). Score column uses `m.teamTotalSimScore` (qual gate = 8); hover tooltip shows per-component breakdown. XCOLS: MLB = Score / **Umpire** / **Opp WHIP** / **L10 RPG** / **H2H HR%** / O/U / Opp; NBA = Score / Team PPG / Opp Def / O/U / Pace / **H2H HR%** / Opp. **H2H HR%** (`ttH2HHR` key): scoring team's hit rate ≥ threshold in last 10 H2H games vs opp (≥80% green, ≥60% yellow, <60% red; null=DASH; game count shown as hover title). **MLB SimScore component colors**: Umpire (`ttUmpire`): ≥1.05 green / ≥0.97 yellow / else gray; Opp WHIP (`ttWhip`): >1.35 green / >1.20 yellow / ≤1.20 gray; L10 RPG (`ttL10RPG`): >5.0 green / >4.0 yellow / ≤4.0 gray; null=DASH (1pt abstain). NBA PPG ≥118 green / ≥113 yellow; O/U sport-specific thresholds. `ttPace` shows team pace delta from league avg. `k` keys: `ttUmpire`, `ttWhip`, `ttL10RPG`, `ttH2HHR`, `ttOu`, `ttTeamOff`, `ttOppDef`, `ttPace`, `ttOpp` — all in `xcell` handler and `COL_TIPS`.
 
-- **Game totals table** (`mlb|totalRuns`, `nba|totalPoints`, `nhl|totalGoals`): section header shows **"[Sport] Totals"** (e.g. "NBA Totals") via `STAT_NAME` entries `totalRuns/totalPoints/totalGoals → "Totals"`. First column labelled "Matchup" (not "Player"), shows `AWY @ HME`. Opp column hidden. Line cell shows `O7.5` format. Score column uses `m.totalSimScore` (qual gate = 8); green ≥ 8, yellow = 5–7, gray < 5. XCOLS: MLB = H RPG / A RPG / H ERA / A ERA / O/U; NBA = H PPG / A PPG / H Def / A Def / O/U; NHL = H GPG / A GPG / H GAA / A GAA / O/U. **MLB ERA/RPG column colors**: ERA ≥4.5 → green (bad pitcher = over-favorable), ≥3.5 → yellow, <3.5 → gray; RPG ≥5.0 → green, ≥4.0 → yellow, <4.0 → gray. **NBA column colors**: Off PPG ≥115 green (high offense = favorable for over), Def PPG allowed ≥112 green (bad defense = favorable), O/U ≥215 green — all use playoff-appropriate tiers. **NHL column colors**: GPG/GAA ≥3.5 green, ≥3.0 yellow, else gray; O/U ≥6 green, ≥5 yellow. Dedup key for totals is `homeTeam|awayTeam|threshold` (not `playerName|threshold`).
+- **Game totals table** (`mlb|totalRuns`, `nba|totalPoints`, `nhl|totalGoals`): section header shows **"[Sport] Totals"** (e.g. "NBA Totals") via `STAT_NAME` entries `totalRuns/totalPoints/totalGoals → "Totals"`. First column labelled "Matchup" (not "Player"), shows `AWY @ HME`. Opp column hidden. Line cell shows `O7.5` format. Score column uses `m.totalSimScore` (qual gate = 8); green ≥ 8, yellow = 5–7, gray < 5. XCOLS: MLB = Comb RPG / Umpire / H ERA / A ERA / O/U; **NBA = Pace / H OffRtg / A OffRtg / Injuries / O/U**; NHL = H GPG / A GPG / H GAA / A GAA / O/U. **NBA column colors**: Pace delta green (both teams fast), OffRtg ≥118 green / ≥113 yellow; Injuries 0-out green / 3+-out red; O/U ≥215 green. **MLB ERA/RPG column colors**: ERA ≥4.5 → green (bad pitcher = over-favorable), ≥3.5 → yellow, <3.5 → gray; RPG ≥5.0 → green, ≥4.0 → yellow, <4.0 → gray. **NHL column colors**: GPG/GAA ≥3.5 green, ≥3.0 yellow, else gray; O/U ≥6 green, ≥5 yellow. Dedup key for totals is `homeTeam|awayTeam|threshold` (not `playerName|threshold`).
 
 ### Model Reference Page
 `ModelPage({ onBack, calibData, calibLoading, fetchCalib, authToken })` component at `/model`. Fetches calibration on mount when logged in.
@@ -551,7 +554,7 @@ Shows `untrackedPlays` (qualified plays not yet tracked). For game totals, once 
 - **Stat colors for NHL totals**: GPG — ≥3.5 green, ≥3.0 yellow, <3.0 gray (high scoring = good for over). GAA — ≥3.5 green, ≥3.0 yellow, <3.0 gray (high GAA = bad defense = good for over). Both directions: high value = green = good for over.
 - **SimScore tooltip for MLB totals**: shows actual values and earned points per component (e.g. `SD ERA (4.73): 3/3`, `SEA RPG (4.2): 1/2`). Points derived from same tiered formula as backend.
 - **SimScore tooltip for NHL totals**: shows actual values and earned points per component (e.g. `LAK GPG (2.7): 1/3`, `CGY GAA (3.15): 1/2`, `O/U (5.5): 2/4`). Points derived from same tiered formula as backend.
-- **SimScore tooltip for NBA totals**: shows actual values and earned points (e.g. `GSW off PPG (118): 2/2`, `LAL def allowed (108): 1/2`, `O/U (225): 1/2`). Both play card badge (hover `scTitle`) and market report `xcell k==="sim"` show the same breakdown.
+- **SimScore tooltip for NBA totals**: shows actual values and earned points (e.g. `Pace (proj 100.2): 2/2`, `GSW OffRtg (118.5): 2/2`, `Injuries (0 out): 2/2`, `O/U (228): 1/2`). Both play card badge (hover `scTitle`) and market report `xcell k==="sim"` show the same breakdown.
 - No player card on click (`gameType === "total"` returns early from `navigateToPlay`).
 
 ### Player Card

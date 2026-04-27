@@ -3499,25 +3499,48 @@ var worker_default = {
               totalSimScore += _umpRunPts;
               totalSimScore += _mlbOuPts;
             } else if (sport === "nba") {
-              const homeOff = nbaOffPPGMap[homeTeam] ?? null, awayOff = nbaOffPPGMap[awayTeam] ?? null;
-              const nbaDefRank = STAT_SOFT["nba|points"]?.rankMap ?? {};
-              const nbaAvgDef = leagueAvgCache["nba|points"] ?? nbaLeagueAvgOffPPG;
-              const homeDef = nbaDefRank[homeTeam]?.value ?? null, awayDef = nbaDefRank[awayTeam]?.value ?? null;
               const _hp = nbaPaceData?.teamPace?.[homeTeam] ?? null, _ap = nbaPaceData?.teamPace?.[awayTeam] ?? null;
+              const _lgPace = nbaPaceData?.leagueAvgPace ?? null;
               const _nbaOuLine = sportByteam.nbaGameOdds?.[homeTeam]?.total ?? sportByteam.nbaGameOdds?.[awayTeam]?.total ?? null;
-              const _homeExpRaw = homeOff != null ? homeOff * (awayDef != null && nbaAvgDef ? awayDef / nbaAvgDef : 1) : null;
-              const _awayExpRaw = awayOff != null ? awayOff * (homeDef != null && nbaAvgDef ? homeDef / nbaAvgDef : 1) : null;
-              _simData = { homeOff, awayOff, homeDef, awayDef, homePace: _hp, awayPace: _ap, leagueAvgPace: nbaPaceData?.leagueAvgPace ?? null, gameOuLine: _nbaOuLine, homeExpected: _homeExpRaw != null ? parseFloat(_homeExpRaw.toFixed(1)) : null, awayExpected: _awayExpRaw != null ? parseFloat(_awayExpRaw.toFixed(1)) : null, expectedTotal: (_homeExpRaw != null && _awayExpRaw != null) ? parseFloat((_homeExpRaw + _awayExpRaw).toFixed(1)) : null };
+              // Possession-based projection — eliminates pace double-count from raw PPG
+              const _hOffRtg = nbaPaceData?.teamOffRtg?.[homeTeam] ?? null;
+              const _aOffRtg = nbaPaceData?.teamOffRtg?.[awayTeam] ?? null;
+              const _hDefRtg = nbaPaceData?.teamDefRtg?.[homeTeam] ?? null;
+              const _aDefRtg = nbaPaceData?.teamDefRtg?.[awayTeam] ?? null;
+              const _lgOffRtg = nbaPaceData?.leagueAvgOffRtg ?? 113.0;
+              let _homeExpRaw = null, _awayExpRaw = null, _projPace = null;
+              if (_hOffRtg != null && _aDefRtg != null && _aOffRtg != null && _hDefRtg != null && _hp != null && _ap != null && _lgPace != null && _lgPace > 0) {
+                // Geometric-mean pace: correctly handles extreme pace matchups without simple averaging
+                _projPace = parseFloat(((_hp * _ap) / _lgPace).toFixed(1));
+                _homeExpRaw = (_hOffRtg * _aDefRtg / (_lgOffRtg * _lgOffRtg)) * _projPace;
+                _awayExpRaw = (_aOffRtg * _hDefRtg / (_lgOffRtg * _lgOffRtg)) * _projPace;
+              } else {
+                // Fallback: old PPG-based formula when OffRtg/DefRtg not yet cached
+                const homeOff = nbaOffPPGMap[homeTeam] ?? null, awayOff = nbaOffPPGMap[awayTeam] ?? null;
+                const nbaDefRank = STAT_SOFT["nba|points"]?.rankMap ?? {};
+                const nbaAvgDef = leagueAvgCache["nba|points"] ?? nbaLeagueAvgOffPPG;
+                const homeDef = nbaDefRank[homeTeam]?.value ?? null, awayDef = nbaDefRank[awayTeam]?.value ?? null;
+                _homeExpRaw = homeOff != null ? homeOff * (awayDef != null && nbaAvgDef ? awayDef / nbaAvgDef : 1) : null;
+                _awayExpRaw = awayOff != null ? awayOff * (homeDef != null && nbaAvgDef ? homeDef / nbaAvgDef : 1) : null;
+              }
+              // Injury state: out players per team (affects scoring potential)
+              const _NBAshort = { GSW:"GS", SAS:"SA", NYK:"NY", NOP:"NO", PHX:"PHO" };
+              const _homeOut = (nbaInjuryMap.get(homeTeam) || nbaInjuryMap.get(_NBAshort[homeTeam]) || []).length;
+              const _awayOut = (nbaInjuryMap.get(awayTeam) || nbaInjuryMap.get(_NBAshort[awayTeam]) || []).length;
+              const _totalOut = _homeOut + _awayOut;
+              _simData = { homeOffRtg: _hOffRtg, awayOffRtg: _aOffRtg, homeDefRtg: _hDefRtg, awayDefRtg: _aDefRtg, homePace: _hp, awayPace: _ap, leagueAvgPace: _lgPace, projPace: _projPace, gameOuLine: _nbaOuLine, homeOut: _homeOut, awayOut: _awayOut, homeExpected: _homeExpRaw != null ? parseFloat(_homeExpRaw.toFixed(1)) : null, awayExpected: _awayExpRaw != null ? parseFloat(_awayExpRaw.toFixed(1)) : null, expectedTotal: (_homeExpRaw != null && _awayExpRaw != null) ? parseFloat((_homeExpRaw + _awayExpRaw).toFixed(1)) : null };
               if (_homeExpRaw != null && _awayExpRaw != null) {
                 const _dk = `nba|${homeTeam}|${awayTeam}`;
                 if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateNBATotalDist(_homeExpRaw, _awayExpRaw, 11, 11, 10000);
                 truePct = totalDistPct(totalDistCache[_dk], threshold);
               }
-              // NBA SimScore (max 10): homeOff→0-2, awayOff→0-2, homeDef→0-2, awayDef→0-2, O/U→0-2
-              totalSimScore += homeOff == null ? 1 : homeOff >= 118 ? 2 : homeOff >= 113 ? 1 : 0;
-              totalSimScore += awayOff == null ? 1 : awayOff >= 118 ? 2 : awayOff >= 113 ? 1 : 0;
-              totalSimScore += homeDef == null ? 1 : homeDef >= 118 ? 2 : homeDef >= 113 ? 1 : 0;
-              totalSimScore += awayDef == null ? 1 : awayDef >= 118 ? 2 : awayDef >= 113 ? 1 : 0;
+              // NBA SimScore (max 10): pace→0-2, homeOffRtg→0-2, awayOffRtg→0-2, injuries→0-2, O/U→0-2
+              // Independent validators — pace and injuries don't appear in the projection formula
+              const _pacePts = (_hp == null || _ap == null || _lgPace == null) ? 1 : (_hp > _lgPace + 2 && _ap > _lgPace + 2) ? 2 : (_hp > _lgPace || _ap > _lgPace) ? 1 : 0;
+              totalSimScore += _pacePts;
+              totalSimScore += _hOffRtg == null ? 1 : _hOffRtg >= 118 ? 2 : _hOffRtg >= 113 ? 1 : 0;
+              totalSimScore += _aOffRtg == null ? 1 : _aOffRtg >= 118 ? 2 : _aOffRtg >= 113 ? 1 : 0;
+              totalSimScore += _totalOut === 0 ? 2 : _totalOut <= 2 ? 1 : 0; // 0 out = full rosters, 3+ = depleted
               if (_nbaOuLine != null) totalSimScore += _nbaOuLine >= 235 ? 2 : _nbaOuLine >= 225 ? 1 : 0;
               else totalSimScore += 1; // null → abstain
             } else if (sport === "nhl") {
@@ -3550,11 +3573,14 @@ var worker_default = {
               underSimScore += _uRF == null ? 1 : _uRF <= 0.95 ? 2 : _uRF <= 1.03 ? 1 : 0;
               underSimScore += gameOuLine == null ? 1 : gameOuLine < 7.5 ? 2 : gameOuLine < 9.5 ? 1 : 0;
             } else if (sport === "nba") {
-              const { homeOff, awayOff, homeDef, awayDef, gameOuLine } = _simData;
-              underSimScore += homeOff == null ? 1 : homeOff < 113 ? 2 : homeOff < 118 ? 1 : 0;
-              underSimScore += awayOff == null ? 1 : awayOff < 113 ? 2 : awayOff < 118 ? 1 : 0;
-              underSimScore += homeDef == null ? 1 : homeDef < 113 ? 2 : homeDef < 118 ? 1 : 0;
-              underSimScore += awayDef == null ? 1 : awayDef < 113 ? 2 : awayDef < 118 ? 1 : 0;
+              // UNDER SimScore: inverted — slow pace, weak offenses, depleted rosters, low O/U line all favor under
+              const { homeOffRtg, awayOffRtg, homePace, awayPace, leagueAvgPace, gameOuLine, homeOut, awayOut } = _simData;
+              const _uPacePts = (homePace == null || awayPace == null || leagueAvgPace == null) ? 1 : (homePace < leagueAvgPace - 2 && awayPace < leagueAvgPace - 2) ? 2 : (homePace < leagueAvgPace || awayPace < leagueAvgPace) ? 1 : 0;
+              underSimScore += _uPacePts;
+              underSimScore += homeOffRtg == null ? 1 : homeOffRtg < 113 ? 2 : homeOffRtg < 118 ? 1 : 0;
+              underSimScore += awayOffRtg == null ? 1 : awayOffRtg < 113 ? 2 : awayOffRtg < 118 ? 1 : 0;
+              const _uTotalOut = (homeOut ?? 0) + (awayOut ?? 0);
+              underSimScore += _uTotalOut >= 3 ? 2 : _uTotalOut >= 1 ? 1 : 0; // depleted rosters → lower scoring → good for under
               underSimScore += gameOuLine == null ? 1 : gameOuLine < 225 ? 2 : gameOuLine < 235 ? 1 : 0;
             } else if (sport === "nhl") {
               const { homeGPG, awayGPG, homeGAA, awayGAA, gameOuLine } = _simData;
