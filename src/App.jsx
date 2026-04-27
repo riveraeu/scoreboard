@@ -435,14 +435,27 @@ function App() {
     setPlayer(p); setLogs(null); setLogs25(null); setPerGame([]); setDvpData(null); setError(null); setLoading(true); setShowBreakdown(false);
     const id = Date.now(); fetchRef.current = id;
     try {
+      // Resolve ESPN athlete ID by name search when ID is missing
+      let resolvedId = p.id;
+      if (!resolvedId && p.name) {
+        try {
+          const r = await fetch(`${WORKER}/athletes?q=${encodeURIComponent(p.name)}`);
+          const d = await r.json();
+          const items = d.items || [];
+          const m = items.find(a => a.name.toLowerCase() === p.name.toLowerCase()) || items[0];
+          if (m) { resolvedId = m.id; setPlayer(prev => ({ ...prev, id: m.id })); }
+        } catch {}
+        if (fetchRef.current !== id) return;
+        if (!resolvedId) { setError('Player not found'); setLoading(false); return; }
+      }
       const teamParam = p.team ? `&team=${encodeURIComponent(p.team)}` : "";
       if (sp === "baseball/mlb") {
         // Fetch 3 seasons in parallel for full h2h history, plus dvp for tonight's matchup
         const [d26, d25, d24, dv] = await Promise.all([
-          fetch(`${WORKER}/gamelog?sport=${sp}&athleteId=${p.id}&season=2026`).then(r => r.ok ? r.json() : null).catch(() => null),
-          fetch(`${WORKER}/gamelog?sport=${sp}&athleteId=${p.id}&season=2025`).then(r => r.ok ? r.json() : null).catch(() => null),
-          fetch(`${WORKER}/gamelog?sport=${sp}&athleteId=${p.id}&season=2024`).then(r => r.ok ? r.json() : null).catch(() => null),
-          fetch(`${WORKER}/dvp?sport=${sp}&athleteId=${p.id}${teamParam}`),
+          fetch(`${WORKER}/gamelog?sport=${sp}&athleteId=${resolvedId}&season=2026`).then(r => r.ok ? r.json() : null).catch(() => null),
+          fetch(`${WORKER}/gamelog?sport=${sp}&athleteId=${resolvedId}&season=2025`).then(r => r.ok ? r.json() : null).catch(() => null),
+          fetch(`${WORKER}/gamelog?sport=${sp}&athleteId=${resolvedId}&season=2024`).then(r => r.ok ? r.json() : null).catch(() => null),
+          fetch(`${WORKER}/dvp?sport=${sp}&athleteId=${resolvedId}${teamParam}`),
         ]);
         if (fetchRef.current !== id) return;
         // Merged gamelog for perGame (h2h filtering needs all career data)
@@ -476,8 +489,8 @@ function App() {
       } else {
         const season = sp === "football/nfl" ? "2025" : "2026";
         const [gameRes, dv] = await Promise.all([
-          fetch(`${WORKER}/gamelog?sport=${sp}&athleteId=${p.id}&season=${season}`),
-          fetch(`${WORKER}/dvp?sport=${sp}&athleteId=${p.id}${teamParam}`),
+          fetch(`${WORKER}/gamelog?sport=${sp}&athleteId=${resolvedId}&season=${season}`),
+          fetch(`${WORKER}/dvp?sport=${sp}&athleteId=${resolvedId}${teamParam}`),
         ]);
         if (fetchRef.current !== id) return;
         if (!gameRes.ok) throw new Error('Could not load game log');
