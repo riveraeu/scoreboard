@@ -240,7 +240,7 @@ export default function LineupsPage({
             const tomorrowPT = new Date(Date.now() + 86400000).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
             let lastDate = null;
             return (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(480px, 1fr))', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(480px, 1fr))', gap: 12, alignItems: 'start' }}>
                 {games.map((game, i) => {
                   const gd = game.gameDate || '';
                   const showHeader = gd !== lastDate;

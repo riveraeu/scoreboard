@@ -163,10 +163,10 @@ function PlayBadge({ play, navigateToPlayer, navigateToTeam, trackPlay, trackedP
 
   return (
     <div onClick={handleClick} style={{
-      display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer',
+      display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
       padding: '7px 10px', borderRadius: 8,
       background: 'rgba(63,185,80,0.06)', border: '1px solid rgba(63,185,80,0.25)',
-      transition: 'background 0.15s', minWidth: 150,
+      transition: 'background 0.15s', minWidth: 0,
     }}
     onMouseEnter={e => e.currentTarget.style.background = 'rgba(63,185,80,0.12)'}
     onMouseLeave={e => e.currentTarget.style.background = 'rgba(63,185,80,0.06)'}
@@ -559,7 +559,7 @@ export default function MatchupCard({ game, mlbMeta, nbaMeta, navigateToPlayer, 
 
       {/* Play badges */}
       {badgePlays.length > 0 && (
-        <div style={{ padding: '8px 16px', borderTop: '1px solid #0d1117', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        <div style={{ padding: '8px 16px', borderTop: '1px solid #0d1117', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
           {badgePlays.map((p, i) => (
             <PlayBadge key={i} play={p} navigateToPlayer={navigateToPlayer} navigateToTeam={navigateToTeam}
               trackPlay={trackPlay} trackedPlays={trackedPlays} untrackPlay={untrackPlay} />
