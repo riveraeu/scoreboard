@@ -448,10 +448,8 @@ export async function buildNbaPlayerPosFromSleeper(cache) {
 export async function buildNbaUsageRate(playerIds) {
   const hdrs = { "User-Agent": "Mozilla/5.0" };
   const result = {};
-  const batches = [];
-  for (let i = 0; i < playerIds.length; i += 10) batches.push(playerIds.slice(i, i + 10));
-  for (const batch of batches) {
-    await Promise.all(batch.map(async id => {
+  // All players in parallel — serial batching was adding 3-9s on every request
+  await Promise.all(playerIds.map(async id => {
       try {
         // sports.core.api.espn.com returns d.splits.categories (same shape as buildNbaPaceData)
         const r = await fetch(
@@ -485,8 +483,7 @@ export async function buildNbaUsageRate(playerIds) {
           result[String(id)] = { usg: parseFloat(Math.min(50, Math.max(0, est)).toFixed(1)), avgAst: _avgAst, avgReb: _avgReb, source: "estimated" };
         }
       } catch {}
-    }));
-  }
+  }));
   return result;
 }
 
