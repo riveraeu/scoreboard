@@ -33,6 +33,7 @@ Routes via `pathname`:
 - `/api/tonight?bust=1` — bypasses KV cache
 - `/api/kalshi` — raw Kalshi market data
 - `/api/player` — ESPN player info + gamelog
+- `/api/gamelog` — ESPN player gamelog (GET `?sport=basketball/nba&athleteId=X&season=2026`); uses ESPN JSON API (`site.web.api.espn.com/apis/common/v3/sports/{sport}/{league}/athletes/{id}/gamelog`) for all sports including NBA/NHL — **not** the HTML page scraper (ESPN now blocks server-side page fetches with AWS WAF). MLB uses same JSON API endpoint. Response: `{labels, events:[{eventId, stats, date, oppAbbr, isHome}], totalGames}`
 - `/api/dvp` — Defense vs Position data
 - `/api/nba-depth` — NBA depth chart from ESPN
 - `/api/keepalive` — cron ping (daily)
@@ -50,7 +51,7 @@ Routes via `pathname`:
   - `kStrikeouts` — MLB K-specific feature breakdowns: `{bySimScore, byKpctPts, byKTrendPts, byStdBF, n}`. `byStdBF` buckets: `none` (stdBF=0, <3 starts), `low` (≤2.5), `high` (>2.5 — will be empty going forward after gate added in commit 567b6b8).
   - Auth: `Authorization: Bearer <jwt>` (any logged-in user) OR `?adminKey=<ADMIN_KEY>` (curl/debug — do not hardcode in frontend)
 - `/api/user/picks` — GET/POST user picks (requires `Authorization: Bearer <token>`)
-- `/api/team` — team page data (GET `?abbr=LAD&sport=mlb`) → `{teamAbbr, teamName, sport, record, wins, losses, gameLog, seasonStats:{avgTotal,gamesPlayed}, lineup, lineupConfirmed}`; cached `team:v2:{sport}:{abbr}:{today}` at 3600s TTL; `gameLog` entries: `{date, isHome, opp, teamScore, oppScore, total, result:"W"|"L"}`; lineup: NBA three-source fallback chain (see below), MLB two-source fallback chain: (1) MLB Stats API schedule `hydrate=lineups,probables` (PT date `Date.now()-7h`), confirmed lineup + probable SP → `{spot, name, position, playerId, isProbable?}`; (2) MLB Stats API active roster fallback when schedule returns no lineup/probable — non-pitcher position players up to 12, `spot:null`, `lineupConfirmed:false`
+- `/api/team` — team page data (GET `?abbr=LAD&sport=mlb`) → `{teamAbbr, teamName, sport, record, wins, losses, gameLog, seasonStats:{avgTotal,gamesPlayed}, lineup, lineupConfirmed}`; cached `team:v3:{sport}:{abbr}:{today}` at 3600s TTL; `gameLog` entries: `{date, isHome, opp, teamScore, oppScore, total, result:"W"|"L"}`; lineup: NBA three-source fallback chain (see below), MLB two-source fallback chain: (1) MLB Stats API schedule `hydrate=lineups,probables` (PT date `Date.now()-7h`), confirmed lineup + probable SP → `{spot, name, position, playerId, isProbable?}`; (2) MLB Stats API active roster fallback when schedule returns no lineup/probable — non-pitcher position players up to 12, `spot:null`, `lineupConfirmed:false`
 
 ### Frontend: Vite + React (`src/`)
 Built with Vite + `@vitejs/plugin-react`. Entry point is `index.html` → `src/main.jsx` → `src/App.jsx`. Output goes to `dist/` (built by Vercel on deploy via `npm run build`).
@@ -68,8 +69,8 @@ Built with Vite + `@vitejs/plugin-react`. Entry point is `index.html` → `src/m
 - `src/components/AddPickModal.jsx` — manual pick entry modal; also exports `useDebounce`
 - `src/components/ModelPage.jsx` — Model Reference page with calibration
 - `src/components/MarketReport.jsx` — full market report overlay
-- `src/components/LineupsPage.jsx` — homepage tab layout (MLB/NBA/NHL/My Picks tabs); `buildGames()` groups `allTonightPlays` by sorted team pair + gameDate, anchors home/away from total plays
-- `src/components/MatchupCard.jsx` — per-game card: team logos, game time, center stats (O/U + ML + spread), MLB pitcher row (from `mlbMeta`), MLB umpire + weather row, qualified play badges with SimScore/edge/odds, collapsible lineup drawer (MLB + NBA, lazy `/api/team` fetch); NBA drawer also shows Out-injured players from `nbaMeta.injuries`
+- `src/components/LineupsPage.jsx` — homepage tab layout (MLB/NBA/NHL/My Picks tabs); `buildGames()` groups `allTonightPlays` by sorted team pair + gameDate, anchors home/away from total plays; filters out games where `gameTime` is >3h past (Kalshi settlement date ≠ actual game date — e.g. markets for yesterday's games still open); sorts by `gameDate` first then `gameTime` so today always precedes tomorrow (late PT games have next-day UTC timestamps); renders date section headers ("TODAY" / "TOMORROW" / "Mon, Apr 28") spanning full grid width above each date group
+- `src/components/MatchupCard.jsx` — per-game card: team logos, game time, center stats (O/U + ML + spread), MLB pitcher row (from `mlbMeta`), MLB umpire + weather row, qualified play badges (SimScore/edge/odds/star pick button + player headshot or team logos), NBA lineup auto-fetched on mount (inline always visible, no drawer); home team lineup right-aligned to mirror header layout; injury badges (OUT red / GTD yellow) from `nbaMeta.injuries`; MLB retains collapsible drawer
 - `src/components/PlaysColumn.jsx` — left column (plays list, filters, bust button) — no longer used on homepage; kept for reference
 - `src/components/MyPicksColumn.jsx` — right column (P&L, pick cards)
 
@@ -84,7 +85,8 @@ Used for caching expensive fetches. Key TTLs:
 - `byteam:mlb` — 600s (MLB team stats, probables, lineup K-rates). **Does NOT include `barrelPctMap`** — that lives in `mlb:barrelPct`. Uses 60s TTL if lineupSpotByName or pitcherAvgPitches come back empty (e.g. bust before lineups confirmed), so next request retries quickly.
 - `byteam:nba` — 1800s (defensive stats)
 - `byteam:nba:scoring` — 21600s (6h, NBA team offensive PPG; used for total simulation)
-- `nba:injuries:{date}` — 1800s (ESPN NBA injury report: Out players per team, used for C2 injury boost)
+- `kalshi:bundle:{date}` — 90s (all 18 Kalshi series responses cached as one JSON blob; avoids making any Kalshi calls on cache-hit requests; bypassed by `?bust=1`). `kalshi:stale:{ticker}` — no TTL (stale-while-revalidate fallback per-ticker; used when Kalshi returns 429 or empty).
+- `nba:injuries:{date}` — 1800s (ESPN NBA injury report: Out + GTD players per team; abbr from `inj.athlete.team.abbreviation`; short-codes normalized GS→GSW, NO→NOP, SA→SAS before caching)
 - `byteam:nfl` — 1800s
 - `byteam:nhl` — 21600s (6h, NHL team stats: goalsAgainstPerGame + shotsAgainstPerGame). `NHL_ABBR_MAP` in `api/[...path].js` maps NHL Stats API teamIds → abbreviations; **UTA (Utah Mammoth) = teamId 68** (rebranded from Utah Hockey Club for 2025-26; old teamId 53 absent from 2025-26 API). If a new team's GPG/GAA/SA shows as `—`, check their teamId in the API and add it to `NHL_ABBR_MAP`.
 - `gameTimes:v2:{date}` — 600s. Stores both `"sport:team:ptDate"` (PT-date-specific) and `"sport:team"` (bare fallback, first seen wins) keys. Built from **both yesterday and today's** ESPN scoreboard (fetched in parallel) so late-night PT games whose UTC date is already tomorrow are captured. Play loop looks up `sport:team:gameDate` first, falls back to bare key.
@@ -316,7 +318,7 @@ True% = Monte Carlo simulation (reuses `buildNbaStatDist` + `nbaDistPct`) — no
 | `buildNbaPlayerPosFromSleeper(cache)` | Sleeper.app fallback for player → position |
 | `buildNbaDvpStage3FG(cache)` | DVP stage 3 gamelog fallback |
 | `buildNbaUsageRate(playerIds)` | Same ESPN endpoint → `{playerId: {usg, avgAst, avgReb, source}}` map; also extracts `avgAssists`/`avgRebounds` for stat-appropriate C1 scoring |
-| `buildNbaInjuryReport(cache)` | ESPN NBA injuries → `Map<teamAbbr, [{name, status}]>` (Out only); cached 1800s in `nba:injuries:{date}` |
+| `buildNbaInjuryReport(cache)` | ESPN NBA injuries → `Map<teamAbbr, [{name, status}]>` (Out + GTD); team abbr from `inj.athlete.team.abbreviation` (NOT outer `teamEntry.team` which doesn't exist); short-codes normalized post-loop; cached 1800s in `nba:injuries:{date}` |
 
 ### `api/lib/utils.js` — Response Helpers & Team Ranking
 
@@ -344,8 +346,12 @@ True% = Monte Carlo simulation (reuses `buildNbaStatDist` + `nbaDistPct`) — no
 | `STAT_SOFT` | ~1176 | Soft/rank data per `sport|stat`, built from byteam data |
 
 ### Kalshi Market Parsing
-- Series tickers in `SERIES_CONFIG`
+- Series tickers in `SERIES_CONFIG` (18 tickers across all sports/stats)
 - Filter: `pct >= 70` AND `pct <= 97`
+- **Rate limiting mitigation**: all Kalshi fetches are batched, not all-parallel:
+  - **Bundle cache**: `kalshi:bundle:{date}` (90s TTL in Redis) stores all 18 series responses as one JSON blob — a cache hit requires zero Kalshi calls. Bypassed by `?bust=1`.
+  - **Series batches**: when cache cold, fetches 6 series at a time with 300ms delay between batches. On HTTP 429, falls through to `kalshi:stale:{ticker}` immediately (no retry that would block the function).
+  - **Orderbook batches**: thin-market orderbook fetches done 8 at a time with 200ms delay between batches. 429 responses silently skipped.
 - Blended fill price via orderbook walk for thin markets
 - **Stale-ask fallback**: when `yes_ask >= $0.98` AND `yes_bid == 0` AND `last_price > 0`, use `last_price_dollars` as fill price instead of the stale ask. Handles illiquid markets where market maker has maxed the ask with no real bid — last traded price reflects actual market activity.
 - `kalshiSpread` = bid-ask spread in cents (`round((yesAsk − yesBid) × 100)`); kept in output as a liquidity signal (shown as badge when wide)
@@ -409,7 +415,7 @@ Single-page app uses `history.pushState` + `popstate` for client-side navigation
 - **No tabs** — all content shown inline: TotalsBarChart, then lineup (if `lineup.length > 0`), then sortable game log (Date, H/A, Opp, Us, Opp, Total, W/L)
 - **Lineup** (shown inline above game log when `lineup.length > 0`): NBA → position + player photo + name; MLB → batting order + probable SP, each with 32×32 headshot from `img.mlbstatic.com` (uses MLB Stats API player ID, generic silhouette fallback). NHL lineup not shown (depth chart structure differs).
 - **Lineup player links + inline play cards** (commit `3582700`): every lineup row is clickable → `navigateToPlayer`. Player object passed uses play data from `allTonightPlays` when available (`playerId`, `playerTeam`, `opponent`, stat context) so the player card loads fully without an extra ESPN search. If the player has entries in `allTonightPlays` (any stat, any threshold), compact mini play cards render below their row — showing stat+threshold badge, edge badge, true%/Kalshi% bars. Qualified plays sort first, then by threshold ascending. Mini cards have `stopPropagation` so tapping them doesn't trigger player navigation. Players with plays get `fontWeight:600` on their name. `renderLineupRow` is a shared helper used for both NBA and MLB (hitters + SP).
-- **NBA lineup source chain**: (1) ESPN depth chart (`/teams/{abbr}/depthchart`) — works during regular season, returns `{}` during playoffs; (2) ESPN scoreboard → game summary boxscore starters (`/summary?event={gameId}`) — actual starters for today's game, `lineupConfirmed:true`; (3) ESPN team roster (`/teams/{abbr}/roster`) — one player per position group up to 8, `lineupConfirmed:false`. ESPN uses non-standard codes in scoreboard/boxscore (NY=NYK, GS=GSW, SA=SAS, NO=NOP) — normalized via `_nbaEspnNorm` map in the team route.
+- **NBA lineup source chain**: (1) ESPN scoreboard → game summary boxscore starters (`/summary?event={gameId}`) — actual starters for today's game, `lineupConfirmed:true`; (2) most recent completed game from **playoff schedule first** (`seasontype=3`), falling back to regular season `lastGameId` only if no playoff games found — boxscore starters, `lineupConfirmed:false`; (3) ESPN team roster (`/teams/{abbr}/roster`) — one player per position group up to 8, `lineupConfirmed:false`. ESPN depth chart (`/teams/{abbr}/depthchart`) removed — returns `{}` during playoffs. ESPN uses non-standard codes in scoreboard/boxscore (NY=NYK, GS=GSW, SA=SAS, NO=NOP) — normalized via `_nbaEspnNorm` map in the team route. **Important**: always prefer playoff schedule over regular season — regular season final games often feature rested/bench starters that don't reflect playoff rotations.
 - Opp names in game log are clickable → `navigateToTeam(g.opp, sport)`
 - Total cells color-coded green/red vs tonight's threshold
 
