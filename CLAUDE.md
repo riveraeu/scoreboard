@@ -726,7 +726,7 @@ Two test files kept in sync:
 - `api/lib/simulate.test.jxa.js` — self-contained, runs via `osascript -l JavaScript` (no Node needed). Primary test runner.
 - `api/lib/simulate.test.js` — Node `node:test` version (requires Node).
 
-Both cover: `kDistPct` monotonicity, `simulateKsDist` validity, `buildNbaStatDist`, API monotonicity sweep, `allTonightPlays` player card fix, frontend `_rawTruePctMap` monotonicity enforcement, NBA simScore, and report filter logic.
+Both cover: `kDistPct` monotonicity, `simulateKsDist` validity, `buildNbaStatDist`, API monotonicity sweep, `allTonightPlays` player card fix, frontend `_rawTruePctMap` monotonicity enforcement, NBA simScore, report filter logic, `_parseWind` ESPN display string parsing (all direction variants + edge cases), and `weatherFactor` formula (clamp bounds, wind/temp contributions, null handling). 55 tests total.
 
 ---
 

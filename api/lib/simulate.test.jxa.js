@@ -600,6 +600,116 @@ test('earlyExitProb=1.0: all trials cap at BF <= 15, reducing P(K>=5) vs baselin
   assert.ok(pHook < pBase, 'earlyExitProb=1.0: P(K>=5) hook=' + pHook + ' should be < base=' + pBase);
 });
 
+// ---- Inlined from api/[...path].js: _parseWind + weatherFactor ----
+
+function parseWind(dv) {
+  if (!dv) return { windSpeed: null, windOutMph: null };
+  var v = dv.toLowerCase();
+  var m = v.match(/(\d+(?:\.\d+)?)\s*mph/);
+  var spd = m ? parseFloat(m[1]) : null;
+  if (spd == null) return { windSpeed: null, windOutMph: null };
+  if (spd === 0) return { windSpeed: 0, windOutMph: 0 };
+  var isOut = v.indexOf(' out to ') !== -1 || v.indexOf(' out ') !== -1 || (v.slice(-4) === ' out');
+  var isIn  = v.indexOf(' in from ') !== -1 || v.indexOf(' in to ') !== -1 || (v.indexOf(' in ') !== -1 && !isOut);
+  return { windSpeed: spd, windOutMph: isOut ? spd : isIn ? -spd : 0 };
+}
+
+function calcWeatherFactor(windOutMph, tempF) {
+  if (windOutMph == null) return 1.0;
+  var raw = 1 + windOutMph * 0.013 + ((tempF == null ? 72 : tempF) - 72) * 0.001;
+  return Math.max(0.85, Math.min(1.15, raw));
+}
+
+// ---- parseWind tests ----
+
+test('parseWind: "Out to LF" → positive windOutMph', function() {
+  var r = parseWind('Partly Cloudy, 72 °F, Wind 14 mph Out to LF');
+  assert.equal(r.windSpeed, 14, 'windSpeed=14');
+  assert.equal(r.windOutMph, 14, 'windOutMph=14 (out)');
+});
+
+test('parseWind: "In from CF" → negative windOutMph', function() {
+  var r = parseWind('Overcast, 65 °F, Wind 8 mph In from CF');
+  assert.equal(r.windSpeed, 8, 'windSpeed=8');
+  assert.equal(r.windOutMph, -8, 'windOutMph=-8 (in)');
+});
+
+test('parseWind: "Out to CF" short form → positive', function() {
+  var r = parseWind('Clear, 78 °F, Wind 11 mph Out to CF');
+  assert.equal(r.windOutMph, 11, 'windOutMph=11');
+});
+
+test('parseWind: "0 mph" → windOutMph=0', function() {
+  var r = parseWind('Sunny, 80 °F, Wind 0 mph');
+  assert.equal(r.windSpeed, 0, 'windSpeed=0');
+  assert.equal(r.windOutMph, 0, 'windOutMph=0');
+});
+
+test('parseWind: crosswind (no out/in keyword) → windOutMph=0', function() {
+  var r = parseWind('Partly Cloudy, 70 °F, Wind 6 mph, L to R');
+  assert.equal(r.windSpeed, 6, 'windSpeed=6');
+  assert.equal(r.windOutMph, 0, 'windOutMph=0 (crosswind)');
+});
+
+test('parseWind: empty string → both null', function() {
+  var r = parseWind('');
+  assert.equal(r.windSpeed, null);
+  assert.equal(r.windOutMph, null);
+});
+
+test('parseWind: null → both null', function() {
+  var r = parseWind(null);
+  assert.equal(r.windSpeed, null);
+  assert.equal(r.windOutMph, null);
+});
+
+test('parseWind: temperature-only string (no mph) → both null', function() {
+  var r = parseWind('72 °F');
+  assert.equal(r.windSpeed, null);
+  assert.equal(r.windOutMph, null);
+});
+
+// ---- weatherFactor tests ----
+
+test('weatherFactor: 10 mph out, 72F → 1 + 0.13 = 1.13', function() {
+  var f = calcWeatherFactor(10, 72);
+  assert.ok(Math.abs(f - 1.13) < 0.001, 'expected ~1.130, got ' + f);
+});
+
+test('weatherFactor: 8 mph in, 72F → 1 - 0.104 = 0.896', function() {
+  var f = calcWeatherFactor(-8, 72);
+  assert.ok(Math.abs(f - 0.896) < 0.001, 'expected ~0.896, got ' + f);
+});
+
+test('weatherFactor: warm day adds small boost (90F, calm → +0.018)', function() {
+  var f = calcWeatherFactor(0, 90);
+  assert.ok(Math.abs(f - 1.018) < 0.001, 'expected ~1.018, got ' + f);
+});
+
+test('weatherFactor: clamps to 1.15 for extreme wind-out + heat', function() {
+  var f = calcWeatherFactor(20, 100);
+  assert.equal(f, 1.15, 'clamp upper bound 1.15');
+});
+
+test('weatherFactor: clamps to 0.85 for extreme wind-in + cold', function() {
+  var f = calcWeatherFactor(-20, 40);
+  assert.equal(f, 0.85, 'clamp lower bound 0.85');
+});
+
+test('weatherFactor: null windOutMph → 1.0 (no adjustment)', function() {
+  assert.equal(calcWeatherFactor(null, 72), 1.0);
+});
+
+test('weatherFactor: 0 mph wind, 72F → exactly 1.0', function() {
+  assert.equal(calcWeatherFactor(0, 72), 1.0);
+});
+
+test('weatherFactor: null temp defaults to 72F (no temp contribution)', function() {
+  var f = calcWeatherFactor(5, null);
+  var expected = 1 + 5 * 0.013;
+  assert.ok(Math.abs(f - expected) < 0.001, 'null temp = 72F baseline');
+});
+
 // ---- Summary ----
 
 var summary = '\n' + _results.join('\n') + '\n\n' + _passed + ' passed, ' + _failed + ' failed';
