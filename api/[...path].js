@@ -2705,14 +2705,9 @@ var worker_default = {
             // 4. Soft hit rate (vs soft defensive teams): ≥90%→2, ≥80%→1, <80%→0, null→1 abstain
             const _nbaSoftHRPts = softPct == null ? 1 : softPct >= 90 ? 2 : softPct >= 80 ? 1 : 0;
             _sc += _nbaSoftHRPts;
-            // 5. Combined pace + total: both favorable → 2pts; one → 1pt; neither → 0pts; null → 1pt abstain
+            // 5. O/U line: ≥215 → 2pts; null → 1pt abstain; <215 → 0pts
             nbaGameTotal = (sportByteam.nbaGameOdds ?? {})[playerTeam]?.total ?? null;
-            const _paceGood = nbaPaceAdj !== null && nbaPaceAdj > 0;
-            const _totalGood = nbaGameTotal !== null && nbaGameTotal >= 215;
-            nbaTotalPts = (nbaPaceAdj === null && nbaGameTotal === null) ? 1
-              : (_paceGood && _totalGood) ? 2
-              : (_paceGood || _totalGood) ? 1
-              : 0;
+            nbaTotalPts = nbaGameTotal === null ? 1 : nbaGameTotal >= 215 ? 2 : 0;
             _sc += nbaTotalPts;
             nbaPreSimScore = _sc;
             // C3: Blowout risk — downward adj when spread implies likely blowout (|spread|>10)
