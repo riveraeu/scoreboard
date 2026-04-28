@@ -862,7 +862,7 @@ var worker_default = {
           const playerTeam = params.get("team") || null;
           let mlbByteam = CACHE2 ? await CACHE2.get("byteam:mlb", "json").catch(() => null) : null;
           if (!mlbByteam) {
-            const _hd0 = new Date(); const _hd1 = new Date(_hd0); _hd1.setDate(_hd1.getDate() + 1);
+            const _hd0 = new Date(Date.now() - 7 * 3600 * 1000); const _hd1 = new Date(_hd0); _hd1.setDate(_hd1.getDate() + 1);
             const _hfmt = (d) => d.toISOString().slice(0, 10);
             const _hfmtE = (d) => _hfmt(d).replace(/-/g, "");
             const [pitchRes, batRes, sbRes, mlbSched] = await Promise.all([
@@ -1466,7 +1466,7 @@ var worker_default = {
               fetch("https://site.web.api.espn.com/apis/common/v3/sports/baseball/mlb/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=50&category=batting", { headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
               fetch("https://statsapi.mlb.com/api/v1/teams/stats?season=2026&group=batting&gameType=R&sportId=1&sitCodes=A", { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
               (() => {
-                const _td0 = new Date(); const _td1 = new Date(_td0); _td1.setDate(_td1.getDate() + 1);
+                const _td0 = new Date(Date.now() - 7 * 3600 * 1000); const _td1 = new Date(_td0); _td1.setDate(_td1.getDate() + 1);
                 const _tfmt = (d) => d.toISOString().slice(0, 10).replace(/-/g, "");
                 return fetch(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${_tfmt(_td0)}`, { headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})).then((sb0) => {
                   const evts = sb0.events || [];
@@ -1477,7 +1477,7 @@ var worker_default = {
                 });
               })(),
               (() => {
-                const _td0 = new Date(); const _td1 = new Date(_td0); _td1.setDate(_td1.getDate() + 1);
+                const _td0 = new Date(Date.now() - 7 * 3600 * 1000); const _td1 = new Date(_td0); _td1.setDate(_td1.getDate() + 1);
                 const _tfmt2 = (d) => d.toISOString().slice(0, 10);
                 return fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${_tfmt2(_td0)}&hydrate=lineups,probablePitcher,officials`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})).then((s0) => {
                   const allFinal = (s0.dates || []).flatMap((d) => d.games || []).every((g) => g.status?.abstractGameState === "Final");
@@ -1513,6 +1513,27 @@ var worker_default = {
               }
               const gameOddsRaw = parseGameOdds(sbData.events);
               const gameOdds = Object.fromEntries(Object.entries(gameOddsRaw).map(([k, v]) => [normMlbAbbr(k), v]));
+              // Game scores for matchup cards (includes finished games with no active Kalshi markets)
+              const gameScores = {};
+              const _ptFmtGs = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles" });
+              for (const event of sbData.events || []) {
+                const comp = event.competitions?.[0];
+                if (!comp) continue;
+                const homeComp = (comp.competitors || []).find(c => c.homeAway === "home");
+                const awayComp = (comp.competitors || []).find(c => c.homeAway === "away");
+                if (!homeComp || !awayComp) continue;
+                const hA = normMlbAbbr(homeComp.team?.abbreviation), awA = normMlbAbbr(awayComp.team?.abbreviation);
+                if (!hA || !awA) continue;
+                gameScores[hA] = {
+                  homeTeam: hA, awayTeam: awA,
+                  state: comp.status?.type?.state ?? "pre",
+                  detail: comp.status?.type?.shortDetail || comp.status?.type?.detail || "",
+                  homeScore: parseInt(homeComp.score ?? 0) || 0,
+                  awayScore: parseInt(awayComp.score ?? 0) || 0,
+                  gameDate: event.date ? _ptFmtGs.format(new Date(event.date)) : null,
+                  gameTime: event.date || null,
+                };
+              }
               const [lineupResult, pitcherResult] = await Promise.all([buildLineupKPct(mlbSched), buildPitcherKPct(mlbSched)]);
               const { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, projectedLineupTeams, batterSplitBA } = lineupResult;
               const { pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, pitcherWHIP: pitcherWHIPByTeam, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam } = pitcherResult;
@@ -1564,7 +1585,7 @@ var worker_default = {
                   if (!isNaN(era) && era > 0) teamERAMap[_ta] = era;
                 }
               }
-              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, pitcherWHIPByTeam, projectedLineupTeams, gameOdds, pitcherStatsByName, batterSplitBA, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam, roadRPGMap, teamERAMap, teamPlatoonRPGMap };
+              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, pitcherWHIPByTeam, projectedLineupTeams, gameOdds, pitcherStatsByName, batterSplitBA, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam, roadRPGMap, teamERAMap, teamPlatoonRPGMap, gameScores };
               // Use short TTL (60s) if key data is missing — lineup/probables not confirmed yet.
               // Prevents partial data from baking into cache for the full 600s.
               const _mlbDataReady = Object.keys(lineupSpotByName || {}).length > 0 && Object.keys(pitcherAvgPitches || {}).length > 0;
@@ -3908,7 +3929,7 @@ var worker_default = {
         for (const [abbr, odds] of Object.entries(sportByteam.mlb?.gameOdds ?? {})) {
           _mlbGameOdds[abbr] = { ml: odds.moneyline ?? null };
         }
-        const mlbMeta = { pitchers: _mlbPitchers, gameOdds: _mlbGameOdds, umpires: sportByteam.mlb?.umpireByGame ?? {}, weather: weatherByGame, projectedLineupTeams: sportByteam.mlb?.projectedLineupTeams ?? [], teamsWithLineup: Object.keys(sportByteam.mlb?.lineupSpotByName ?? {}), homeTeams: sportByteam.mlb?.gameHomeTeams ?? {} };
+        const mlbMeta = { pitchers: _mlbPitchers, gameOdds: _mlbGameOdds, umpires: sportByteam.mlb?.umpireByGame ?? {}, weather: weatherByGame, projectedLineupTeams: sportByteam.mlb?.projectedLineupTeams ?? [], teamsWithLineup: Object.keys(sportByteam.mlb?.lineupSpotByName ?? {}), homeTeams: sportByteam.mlb?.gameHomeTeams ?? {}, gameScores: sportByteam.mlb?.gameScores ?? {} };
         // NBA meta: normalized game odds + injury report for matchup cards
         const _nbaOddsNorm = { GS: "GSW", SA: "SAS", NY: "NYK", NJ: "BKN", NO: "NOP", PHO: "PHX", WPH: "PHX" };
         const _nbaGameOdds = {};

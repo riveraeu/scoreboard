@@ -63,6 +63,27 @@ function buildGames(allPlays, sport, meta) {
     if (g.ouLine == null && ouLine != null) g.ouLine = ouLine;
   }
 
+  // Add finished/in-progress games from mlbMeta.gameScores (no active Kalshi markets = invisible otherwise)
+  if (sport === 'mlb' && meta?.gameScores) {
+    for (const gs of Object.values(meta.gameScores)) {
+      const { homeTeam: gsHome, awayTeam: gsAway, gameDate: gsDate, gameTime: gsTime } = gs;
+      if (!gsHome || !gsAway) continue;
+      if (gsDate && gsDate < today) continue;
+      const sortedPair = [gsHome, gsAway].sort().join('|');
+      const key = `${sortedPair}|${gsDate ?? ''}`;
+      if (!gameMap.has(key)) {
+        gameMap.set(key, { sport, homeTeam: gsHome, awayTeam: gsAway, gameDate: gsDate, gameTime: gsTime, ouLine: null, plays: [] });
+      }
+      // Attach live score/state to all MLB games (active and finished)
+      const g = gameMap.get(key);
+      g.gameState = gs.state;
+      g.gameDetail = gs.detail;
+      g.homeScore = gs.homeScore;
+      g.awayScore = gs.awayScore;
+      if (!g.gameTime && gsTime) g.gameTime = gsTime;
+    }
+  }
+
   return [...gameMap.values()].sort((a, b) => {
     const dateDiff = (a.gameDate || '').localeCompare(b.gameDate || '');
     if (dateDiff !== 0) return dateDiff;

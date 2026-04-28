@@ -67,7 +67,7 @@ function LineupBadge({ confirmed }) {
 
 
 export default function MatchupCard({ game, mlbMeta, nbaMeta, navigateToPlayer, navigateToTeam }) {
-  const { sport, homeTeam, awayTeam, gameDate, gameTime, ouLine } = game;
+  const { sport, homeTeam, awayTeam, gameDate, gameTime, ouLine, gameState, gameDetail, homeScore, awayScore } = game;
   const [lineupOpen, setLineupOpen] = React.useState(false);
   const [lineup, setLineup] = React.useState(null);
   const [lineupLoading, setLineupLoading] = React.useState(false);
@@ -178,21 +178,34 @@ export default function MatchupCard({ game, mlbMeta, nbaMeta, navigateToPlayer, 
           </div>
         </div>
 
-        {/* Center: time + O/U + ML + spread */}
+        {/* Center: score (in/post) or time + odds (pre) */}
         <div style={{ textAlign: 'center', minWidth: 120, padding: '0 8px' }}>
-          {gameTimeStr && <div style={{ fontSize: 10, color: '#8b949e' }}>{gameTimeStr}</div>}
-          {displayTotal != null && (
-            <div style={{ fontSize: 11, color: '#8b949e', marginTop: 2 }}>O/U {displayTotal}</div>
-          )}
-          {(displayAwayML != null || displayHomeML != null) && (
-            <div style={{ fontSize: 10, color: '#484f58', marginTop: 2 }}>
-              {fmtML(displayAwayML)} / {fmtML(displayHomeML)}
-            </div>
-          )}
-          {displaySpread != null && (
-            <div style={{ fontSize: 10, color: '#484f58', marginTop: 1 }}>
-              {homeTeam} {fmtSpread(displaySpread)}
-            </div>
+          {(gameState === 'in' || gameState === 'post') ? (
+            <>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#c9d1d9', letterSpacing: 1 }}>
+                {awayScore ?? 0} – {homeScore ?? 0}
+              </div>
+              <div style={{ fontSize: 9, fontWeight: 600, color: gameState === 'post' ? '#484f58' : '#e3b341', marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                {gameDetail || (gameState === 'post' ? 'Final' : 'Live')}
+              </div>
+            </>
+          ) : (
+            <>
+              {gameTimeStr && <div style={{ fontSize: 10, color: '#8b949e' }}>{gameTimeStr}</div>}
+              {displayTotal != null && (
+                <div style={{ fontSize: 11, color: '#8b949e', marginTop: 2 }}>O/U {displayTotal}</div>
+              )}
+              {(displayAwayML != null || displayHomeML != null) && (
+                <div style={{ fontSize: 10, color: '#484f58', marginTop: 2 }}>
+                  {fmtML(displayAwayML)} / {fmtML(displayHomeML)}
+                </div>
+              )}
+              {displaySpread != null && (
+                <div style={{ fontSize: 10, color: '#484f58', marginTop: 1 }}>
+                  {homeTeam} {fmtSpread(displaySpread)}
+                </div>
+              )}
+            </>
           )}
         </div>
 
