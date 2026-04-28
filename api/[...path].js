@@ -3435,10 +3435,18 @@ var worker_default = {
           }
         }
         // ── Game Total plays ─────────────────────────────────────────────────────────────────────
+        // Schedule event parser (shared by game total H2H and team total H2H pre-fetches)
+        const _parseSchedEvts = d => (d.events ?? [])
+          .filter(ev => ev.competitions?.[0]?.status?.type?.completed)
+          .map(ev => ({ comps: (ev.competitions[0].competitors ?? []).map(c => ({ abbr: (c.team?.abbreviation ?? '').toUpperCase(), score: parseFloat(c.score?.value ?? c.score ?? 0) })) }));
         const totalDistCache = {};
         const totalPlays = [];
         {
           const _MLB_ERA = 4.20;
+          // Pre-fetch home team schedules for MLB game total H2H hit rate
+          const _gtScheduleMap = {};
+          { const _gtHTs = new Set(); for (const tm of totalMarkets) { if (tm.sport !== "mlb") continue; let ht = tm.gameTeam1; if (sportByteam.mlb?.gameHomeTeams?.[tm.gameTeam2]) ht = tm.gameTeam2; _gtHTs.add(ht); } await Promise.all([..._gtHTs].map(async ht => { const ck = `teamschedule:v2:mlb:${ht.toLowerCase()}`; let ev = isBustCache ? null : await CACHE2?.get(ck, "json").catch(() => null); if (!ev) { try { const base = `https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/teams/${ht.toLowerCase()}/schedule`; const r25 = await fetch(`${base}?season=2025`, { signal: AbortSignal.timeout(3000) }); const e25 = r25.ok ? _parseSchedEvts(await r25.json()) : []; const r26 = await fetch(base, { signal: AbortSignal.timeout(3000) }); const e26 = r26.ok ? _parseSchedEvts(await r26.json()) : []; ev = [...e25, ...e26]; if (ev.length && CACHE2) await CACHE2.put(ck, JSON.stringify(ev), { expirationTtl: 3600 }).catch(() => {}); } catch(e) {} } if (ev) _gtScheduleMap[ht] = ev; })); }
+          const _gtH2HRate = (ht, at, thr) => { const evts = _gtScheduleMap[ht] ?? []; const h2h = evts.filter(ev => ev.comps.some(c => c.abbr === at)).slice(-10); if (h2h.length < 3) return null; const hits = h2h.filter(ev => ev.comps.reduce((s, c) => s + (c.score || 0), 0) >= thr).length; return { rate: Math.round(hits / h2h.length * 100), games: h2h.length }; };
           for (const tm of totalMarkets) {
             const { sport, stat, threshold, kalshiPct, americanOdds, gameTeam1, gameTeam2, gameDate, kalshiSpread, kalshiVolume } = tm;
             if (gameDate && gameDate < cutoffStr) continue;
@@ -3452,6 +3460,8 @@ var worker_default = {
               const awayRPG = mlbRoadRPGMap[awayTeam] ?? mlbRPGMap[awayTeam] ?? null;
               const homeERA = sportByteam.mlb?.probables?.[homeTeam]?.era ?? null;
               const awayERA = sportByteam.mlb?.probables?.[awayTeam]?.era ?? null;
+              const homeWHIP = sportByteam.mlb?.pitcherWHIPByTeam?.[homeTeam] ?? null;
+              const awayWHIP = sportByteam.mlb?.pitcherWHIPByTeam?.[awayTeam] ?? null;
               const homeTeamERA = mlbTeamERAMap[homeTeam] ?? null;
               const awayTeamERA = mlbTeamERAMap[awayTeam] ?? null;
               const parkRF = PARK_RUNFACTOR[homeTeam] ?? 1;
@@ -3477,28 +3487,32 @@ var worker_default = {
               const _weatherFactor = (_wData?.windOutMph != null && !_MLB_DOMED.has(homeTeam))
                 ? parseFloat((Math.max(0.85, Math.min(1.15, 1 + _wData.windOutMph * 0.013 + ((_wData.temp ?? 72) - 72) * 0.001))).toFixed(3))
                 : 1.0;
-              const _hLam = homeRPG != null ? parseFloat((Math.max(1, Math.min(12, homeRPG * _awayMult * parkRF * _homePlatFactor * _weatherFactor))).toFixed(1)) : null;
-              const _aLam = awayRPG != null ? parseFloat((Math.max(1, Math.min(12, awayRPG * _homeMult * parkRF * _awayPlatFactor * _weatherFactor))).toFixed(1)) : null;
-              // Umpire run factor (1/kFactor): loose-zone ump → more scoring → favors over
+              // Umpire run factor (1/kFactor): loose-zone ump → more scoring; applied directly to lambdas
               const _umpKeyT = `${homeTeam}|${awayTeam}`;
               const _umpNameT = sportByteam.mlb?.umpireByGame?.[_umpKeyT] ?? null;
               const _normUT = n => n?.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
               const _umpKFT = _umpNameT ? (UMPIRE_KFACTOR[_normUT(_umpNameT)] ?? 1.0) : 1.0;
               const _umpRunFactor = parseFloat((1 / _umpKFT).toFixed(3));
-              const _umpRunPts = _umpNameT == null ? 1 : _umpRunFactor >= 1.05 ? 2 : _umpRunFactor >= 0.97 ? 1 : 0;
+              const _hLam = homeRPG != null ? parseFloat((Math.max(1, Math.min(12, homeRPG * _awayMult * parkRF * _homePlatFactor * _weatherFactor * _umpRunFactor))).toFixed(1)) : null;
+              const _aLam = awayRPG != null ? parseFloat((Math.max(1, Math.min(12, awayRPG * _homeMult * parkRF * _awayPlatFactor * _weatherFactor * _umpRunFactor))).toFixed(1)) : null;
+              // H2H combined hit rate: how often (homeScore+awayScore) >= threshold in last 10 H2H meetings
+              const _gtH2H = _gtH2HRate(homeTeam, awayTeam, threshold);
+              const h2hTotalHitRate = _gtH2H?.rate ?? null;
+              const h2hTotalGames = _gtH2H?.games ?? null;
+              const _h2hTotalPts = h2hTotalHitRate == null ? 1 : h2hTotalHitRate >= 80 ? 2 : h2hTotalHitRate >= 60 ? 1 : 0;
               const _combinedRPG = homeRPG != null && awayRPG != null ? parseFloat((homeRPG + awayRPG).toFixed(2)) : null;
               const _combinedRPGPts = _combinedRPG == null ? 1 : _combinedRPG >= 10.5 ? 2 : _combinedRPG >= 9.0 ? 1 : 0;
-              _simData = { homeRPG, awayRPG, homeERA, awayERA, parkFactor: parkRF, homeExpected: _hLam, awayExpected: _aLam, expectedTotal: (_hLam != null && _aLam != null) ? parseFloat((_hLam + _aLam).toFixed(1)) : null, gameOuLine, mlbOuPts: _mlbOuPts, combinedRPG: _combinedRPG, umpireRunFactor: _umpNameT != null ? _umpRunFactor : null, umpireName: _umpNameT, homeStarterHand: _homeStarterHand, awayStarterHand: _awayStarterHand, ...(_homePlatFactor !== 1.0 && { homePlatoonFactor: _homePlatFactor }), ...(_awayPlatFactor !== 1.0 && { awayPlatoonFactor: _awayPlatFactor }), ...(_weatherFactor !== 1.0 && { weatherFactor: _weatherFactor, windOutMph: _wData?.windOutMph }) };
+              _simData = { homeRPG, awayRPG, homeERA, awayERA, homeWHIP, awayWHIP, parkFactor: parkRF, homeExpected: _hLam, awayExpected: _aLam, expectedTotal: (_hLam != null && _aLam != null) ? parseFloat((_hLam + _aLam).toFixed(1)) : null, gameOuLine, mlbOuPts: _mlbOuPts, combinedRPG: _combinedRPG, umpireRunFactor: _umpNameT != null ? _umpRunFactor : null, umpireName: _umpNameT, h2hTotalHitRate, h2hTotalGames, homeStarterHand: _homeStarterHand, awayStarterHand: _awayStarterHand, ...(_homePlatFactor !== 1.0 && { homePlatoonFactor: _homePlatFactor }), ...(_awayPlatFactor !== 1.0 && { awayPlatoonFactor: _awayPlatFactor }), ...(_weatherFactor !== 1.0 && { weatherFactor: _weatherFactor, windOutMph: _wData?.windOutMph }) };
               if (_hLam != null && _aLam != null) {
                 const _dk = `mlb|${homeTeam}|${awayTeam}`;
                 if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateMLBTotalDist(_hLam, _aLam, 10000);
                 truePct = totalDistPct(totalDistCache[_dk], threshold);
               }
-              // MLB SimScore (max 10): homeERA→0-2, awayERA→0-2, combinedRPG→0-2, umpire→0-2, O/U→0-2
-              totalSimScore += homeERA == null ? 1 : homeERA > 4.5 ? 2 : homeERA > 3.5 ? 1 : 0;
-              totalSimScore += awayERA == null ? 1 : awayERA > 4.5 ? 2 : awayERA > 3.5 ? 1 : 0;
+              // MLB SimScore (max 10): homeWHIP→0-2, awayWHIP→0-2, combinedRPG→0-2, H2H→0-2, O/U→0-2
+              totalSimScore += homeWHIP == null ? 1 : homeWHIP > 1.35 ? 2 : homeWHIP > 1.20 ? 1 : 0;
+              totalSimScore += awayWHIP == null ? 1 : awayWHIP > 1.35 ? 2 : awayWHIP > 1.20 ? 1 : 0;
               totalSimScore += _combinedRPGPts;
-              totalSimScore += _umpRunPts;
+              totalSimScore += _h2hTotalPts;
               totalSimScore += _mlbOuPts;
             } else if (sport === "nba") {
               const _hp = nbaPaceData?.teamPace?.[homeTeam] ?? null, _ap = nbaPaceData?.teamPace?.[awayTeam] ?? null;
@@ -3571,11 +3585,11 @@ var worker_default = {
             // ── UNDER SimScore (inverted tiers — low values favor under) ──
             let underSimScore = 0;
             if (sport === "mlb") {
-              const { homeERA, awayERA, combinedRPG: _cRPG, gameOuLine, umpireRunFactor: _uRF } = _simData;
-              underSimScore += homeERA == null ? 1 : homeERA <= 3.5 ? 2 : homeERA <= 4.5 ? 1 : 0;
-              underSimScore += awayERA == null ? 1 : awayERA <= 3.5 ? 2 : awayERA <= 4.5 ? 1 : 0;
+              const { homeWHIP: _hW, awayWHIP: _aW, combinedRPG: _cRPG, gameOuLine, h2hTotalHitRate: _h2hTR } = _simData;
+              underSimScore += _hW == null ? 1 : _hW <= 1.10 ? 2 : _hW <= 1.25 ? 1 : 0;
+              underSimScore += _aW == null ? 1 : _aW <= 1.10 ? 2 : _aW <= 1.25 ? 1 : 0;
               underSimScore += _cRPG == null ? 1 : _cRPG <= 8.5 ? 2 : _cRPG <= 10.0 ? 1 : 0;
-              underSimScore += _uRF == null ? 1 : _uRF <= 0.95 ? 2 : _uRF <= 1.03 ? 1 : 0;
+              underSimScore += _h2hTR == null ? 1 : _h2hTR <= 20 ? 2 : _h2hTR <= 40 ? 1 : 0;
               underSimScore += gameOuLine == null ? 1 : gameOuLine < 7.5 ? 2 : gameOuLine < 9.5 ? 1 : 0;
             } else if (sport === "nba") {
               // UNDER SimScore: inverted — slow pace, weak offenses, depleted rosters, low O/U line all favor under
@@ -3643,9 +3657,6 @@ var worker_default = {
           // Pre-fetch ESPN team schedules for H2H hit rate computation (current + prior season, sequential fetches)
           const _ttScheduleMap = {};
           const _ttTeams = new Set(teamTotalMarkets.map(tm => `${tm.sport}:${tm.scoringTeam}`));
-          const _parseSchedEvts = d => (d.events ?? [])
-            .filter(ev => ev.competitions?.[0]?.status?.type?.completed)
-            .map(ev => ({ comps: (ev.competitions[0].competitors ?? []).map(c => ({ abbr: (c.team?.abbreviation ?? '').toUpperCase(), score: parseFloat(c.score?.value ?? c.score ?? 0) })) }));
           await Promise.all([..._ttTeams].map(async key => {
             const [sp, abbr] = key.split(':');
             const cacheKey = `teamschedule:v2:${sp}:${abbr}`;
@@ -3698,19 +3709,19 @@ var worker_default = {
               const _ttWeatherFactor = (_ttWData?.windOutMph != null && !_MLB_DOMED.has(homeTeam))
                 ? parseFloat((Math.max(0.85, Math.min(1.15, 1 + _ttWData.windOutMph * 0.013 + ((_ttWData.temp ?? 72) - 72) * 0.001))).toFixed(3))
                 : 1.0;
-              const _lam = teamRPG != null ? parseFloat((Math.max(0.5, Math.min(12, teamRPG * _oppMult * parkRF * _ttPlatFactor * _ttWeatherFactor))).toFixed(2)) : null;
-              if (_lam != null) {
-                const _dk = `mlb|team|${scoringTeam}|${oppTeam}`;
-                if (!teamTotalDistCache[_dk]) teamTotalDistCache[_dk] = simulateTeamTotalDist(_lam, 10000);
-                truePct = totalDistPct(teamTotalDistCache[_dk], threshold);
-              }
-              // Umpire run factor (independent env signal — loose zone → more scoring)
+              // Umpire run factor (independent env signal — loose zone → more scoring); applied to lambda
               const _ttUmpKey = `${homeTeam}|${awayTeam}`;
               const _ttUmpName = sportByteam.mlb?.umpireByGame?.[_ttUmpKey] ?? null;
               const _normTTUmp = n => n?.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
               const _ttUmpKF = _ttUmpName ? (UMPIRE_KFACTOR[_normTTUmp(_ttUmpName)] ?? 1.0) : 1.0;
               const _ttUmpRunFactor = parseFloat((1 / _ttUmpKF).toFixed(3));
               const ttUmpirePts = _ttUmpName == null ? 1 : _ttUmpRunFactor >= 1.05 ? 2 : _ttUmpRunFactor >= 0.97 ? 1 : 0;
+              const _lam = teamRPG != null ? parseFloat((Math.max(0.5, Math.min(12, teamRPG * _oppMult * parkRF * _ttPlatFactor * _ttWeatherFactor * _ttUmpRunFactor))).toFixed(2)) : null;
+              if (_lam != null) {
+                const _dk = `mlb|team|${scoringTeam}|${oppTeam}`;
+                if (!teamTotalDistCache[_dk]) teamTotalDistCache[_dk] = simulateTeamTotalDist(_lam, 10000);
+                truePct = totalDistPct(teamTotalDistCache[_dk], threshold);
+              }
               // Starter WHIP (independent quality signal — traffic indicator beyond ERA)
               const oppWHIP = sportByteam.mlb?.pitcherWHIPByTeam?.[oppTeam] ?? null;
               const ttWhipPts = oppWHIP == null ? 1 : oppWHIP > 1.35 ? 2 : oppWHIP > 1.20 ? 1 : 0;
@@ -3720,18 +3731,22 @@ var worker_default = {
               const _ttRunVals = _ttLast10.map(ev => ev.comps?.find(c => c.abbr === scoringTeam)?.score ?? null).filter(v => v !== null && !isNaN(v));
               const teamL10RPG = _ttRunVals.length >= 5 ? parseFloat((_ttRunVals.reduce((a, b) => a + b, 0) / _ttRunVals.length).toFixed(2)) : null;
               const ttL10Pts = teamL10RPG == null ? 1 : teamL10RPG > 5.0 ? 2 : teamL10RPG > 4.0 ? 1 : 0;
+              // Season hit rate: scoring team's rate of scoring >= threshold across all completed season games
+              const _ttSeasonHits = _ttSched.filter(ev => { const mine = ev.comps.find(c => c.abbr === scoringTeam); return mine && mine.score >= threshold; });
+              const ttSeasonHitRate = _ttSched.length >= 5 ? Math.round(_ttSeasonHits.length / _ttSched.length * 100) : null;
+              const ttSeasonHitRatePts = ttSeasonHitRate == null ? 1 : ttSeasonHitRate >= 80 ? 2 : ttSeasonHitRate >= 60 ? 1 : 0;
               const _h2h = _ttH2HRate("mlb", scoringTeam, oppTeam, threshold);
               const h2hHitRate = _h2h?.rate ?? null;
               const h2hGames = _h2h?.games ?? null;
               const h2hHitRatePts = h2hHitRate == null ? 1 : h2hHitRate >= 80 ? 2 : h2hHitRate >= 60 ? 1 : 0;
-              teamTotalSimScore += ttUmpirePts;
+              teamTotalSimScore += ttSeasonHitRatePts;
               teamTotalSimScore += ttWhipPts;
               teamTotalSimScore += ttL10Pts;
               teamTotalSimScore += h2hHitRatePts;
               teamTotalSimScore += gameOuLine == null ? 1 : gameOuLine >= 9.5 ? 2 : gameOuLine >= 7.5 ? 1 : 0;
-              if (truePct == null) { if (isDebug) dropped.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, teamTotalSimScore, teamRPG, oppERA, oppWHIP, oppRPG, parkFactor: parkRF, gameOuLine, h2hHitRate, h2hGames, h2hHitRatePts, teamL10RPG, ttL10Pts, ttWhipPts, ttUmpirePts, umpireName: _ttUmpName, reason: "no_simulation_data" }); continue; }
+              if (truePct == null) { if (isDebug) dropped.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, teamTotalSimScore, teamRPG, oppERA, oppWHIP, oppRPG, parkFactor: parkRF, gameOuLine, h2hHitRate, h2hGames, h2hHitRatePts, teamL10RPG, ttL10Pts, ttWhipPts, ttUmpirePts, ttSeasonHitRate, ttSeasonHitRatePts, umpireName: _ttUmpName, reason: "no_simulation_data" }); continue; }
               const _ttGameTime = gameTimes[`${sport}:${homeTeam}:${gameDate}`] ?? gameTimes[`${sport}:${awayTeam}:${gameDate}`] ?? gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null;
-              const _ttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _ttGameTime, teamRPG, oppERA, oppWHIP, oppRPG, parkFactor: parkRF, gameOuLine, teamExpected: _lam != null ? parseFloat(_lam.toFixed(1)) : null, h2hHitRate, h2hGames, h2hHitRatePts, teamL10RPG, ttL10Pts, ttWhipPts, ttUmpirePts, umpireRunFactor: _ttUmpRunFactor, ...(_ttUmpName && { umpireName: _ttUmpName }), oppStarterHand: _ttOppStarterHand, ...(_ttPlatFactor !== 1.0 && { platoonFactor: _ttPlatFactor }) };
+              const _ttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _ttGameTime, teamRPG, oppERA, oppWHIP, oppRPG, parkFactor: parkRF, gameOuLine, teamExpected: _lam != null ? parseFloat(_lam.toFixed(1)) : null, h2hHitRate, h2hGames, h2hHitRatePts, teamL10RPG, ttL10Pts, ttWhipPts, ttUmpirePts, umpireRunFactor: _ttUmpRunFactor, ...(_ttUmpName && { umpireName: _ttUmpName }), ttSeasonHitRate, ttSeasonHitRatePts, oppStarterHand: _ttOppStarterHand, ...(_ttPlatFactor !== 1.0 && { platoonFactor: _ttPlatFactor }) };
               const rawEdge = parseFloat((truePct - kalshiPct).toFixed(1));
               const edge = rawEdge;
               if (edge >= 5) {
@@ -3745,7 +3760,7 @@ var worker_default = {
               const _ttUnderEdge = parseFloat((_ttNoTruePct - _ttNoKalshiPct).toFixed(1));
               const _ttNoKalshiAO = _ttNoKalshiPct >= 50 ? Math.round(-(_ttNoKalshiPct/(100-_ttNoKalshiPct))*100) : Math.round((100-_ttNoKalshiPct)/_ttNoKalshiPct*100);
               let _ttUnderSimScore = 0;
-              _ttUnderSimScore += _ttUmpName == null ? 1 : _ttUmpRunFactor <= 0.95 ? 2 : _ttUmpRunFactor <= 1.03 ? 1 : 0;
+              _ttUnderSimScore += ttSeasonHitRate == null ? 1 : ttSeasonHitRate <= 20 ? 2 : ttSeasonHitRate <= 40 ? 1 : 0;
               _ttUnderSimScore += oppWHIP == null ? 1 : oppWHIP <= 1.10 ? 2 : oppWHIP <= 1.25 ? 1 : 0;
               _ttUnderSimScore += teamL10RPG == null ? 1 : teamL10RPG <= 3.5 ? 2 : teamL10RPG <= 4.5 ? 1 : 0;
               _ttUnderSimScore += h2hHitRate == null ? 1 : h2hHitRate <= 30 ? 2 : h2hHitRate <= 50 ? 1 : 0;
