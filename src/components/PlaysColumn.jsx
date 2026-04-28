@@ -3,7 +3,7 @@ import { STAT_LABEL, STAT_FULL, MLB_TEAM } from '../lib/constants.js';
 import { ordinal } from '../lib/utils.js';
 import { tierColor } from '../lib/colors.js';
 
-function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMeta, sportFilter = [], setSportFilter, statFilter = [], setStatFilter, trackedPlays, trackPlay, untrackPlay, navigateToPlay, navigateToTeam, navigateToModel, calcOdds, expandedPlays, setExpandedPlays, fetchReport, bustLoading, bustCache, showPlaysInfo, setShowPlaysInfo, testMode, setTestMode, hideHeader, gridColumns }) {
+function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMeta, sportFilter = [], setSportFilter, statFilter = [], setStatFilter, trackedPlays, trackPlay, untrackPlay, navigateToPlay, navigateToTeam, navigateToModel, expandedPlays, setExpandedPlays, fetchReport, bustLoading, bustCache, showPlaysInfo, setShowPlaysInfo, testMode, setTestMode, hideHeader, gridColumns }) {
   const cols = gridColumns || 1;
   return (
         <div>
@@ -227,7 +227,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMet
                           borderRadius:6,padding:"2px 8px",fontSize:12,color:"#3fb950",fontWeight:700,whiteSpace:"nowrap"}}>
                           +{play.edge}%
                         </span>
-                        <button onClick={e => { e.stopPropagation(); if (isTracked) { untrackPlay(trackId); return; } const calcV = calcOdds.trim(); const overrideOdds = (calcV && calcV !== "-" && calcV !== "+" && !isNaN(parseInt(calcV))) ? parseInt(calcV) : null; trackPlay(overrideOdds ? { ...play, americanOdds: overrideOdds } : play); }}
+                        <button onClick={e => { e.stopPropagation(); if (isTracked) { untrackPlay(trackId); return; } trackPlay(play); }}
                           title={isTracked ? "Remove from My Picks" : "Add to My Picks"}
                           style={{background: isTracked ? "rgba(227,179,65,0.15)" : "transparent",
                             border: `1px solid ${isTracked ? "#e3b341" : "#30363d"}`,
@@ -603,7 +603,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMet
                         borderRadius:6,padding:"2px 8px",fontSize:12,color:"#3fb950",fontWeight:700,whiteSpace:"nowrap"}}>
                         +{play.edge}%
                       </span>
-                      <button onClick={e => { e.stopPropagation(); if (isTracked) { untrackPlay(trackId); return; } const calcV = calcOdds.trim(); const overrideOdds = (calcV && calcV !== "-" && calcV !== "+" && !isNaN(parseInt(calcV))) ? parseInt(calcV) : null; const finalOdds = overrideOdds ?? play.americanOdds; const newKalshiPct = overrideOdds != null ? (overrideOdds < 0 ? Math.abs(overrideOdds)/(Math.abs(overrideOdds)+100)*100 : 100/(overrideOdds+100)*100) : play.kalshiPct; const newEdge = play.truePct != null ? parseFloat((play.truePct - newKalshiPct).toFixed(1)) : play.edge; trackPlay({ ...play, americanOdds: finalOdds, kalshiPct: parseFloat(newKalshiPct.toFixed(1)), edge: newEdge }); }}
+                      <button onClick={e => { e.stopPropagation(); if (isTracked) { untrackPlay(trackId); return; } trackPlay(play); }}
                         title={isTracked ? "Remove from My Picks" : "Add to My Picks"}
                         style={{background: isTracked ? "rgba(227,179,65,0.15)" : "transparent",
                           border: `1px solid ${isTracked ? "#e3b341" : "#30363d"}`,

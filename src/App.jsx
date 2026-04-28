@@ -69,7 +69,8 @@ function App() {
     return parseFloat(localStorage.getItem("scoreboard_bankroll") || "1000");
   });
   const [chartGroupBy, setChartGroupBy] = React.useState("day");
-  const [calcOdds, setCalcOdds] = React.useState("-");
+  const [pendingTrackPlay, setPendingTrackPlay] = React.useState(null);
+  const [pendingOdds, setPendingOdds] = React.useState("-110");
   const [openPickDays, setOpenPickDays] = React.useState(() => new Set([new Date().toLocaleDateString("en-CA")]));
   const [openPickWeeks, setOpenPickWeeks] = React.useState(() => {
     const d = new Date(); const dow = d.getDay();
@@ -239,17 +240,20 @@ function App() {
       : play.gameType === "total"
       ? `total|${play.sport}|${play.homeTeam}|${play.awayTeam}|${play.threshold}|${play.gameDate || ""}${play.direction === "under" ? "|under" : ""}`
       : `${play.sport || "nba"}|${play.playerName}|${play.stat}|${play.threshold}|${play.gameDate || ""}`;
-    const finalOdds = play.americanOdds ?? -110;
-    const _calcN = parseInt(calcOdds.trim());
-    const calcOverride = !isNaN(_calcN) && calcOdds.trim() !== "-" && calcOdds.trim() !== "+" ? _calcN : null;
+    const savedOdds = play.americanOdds ?? -110;
     setTrackedPlays(prev => {
       if (prev.find(p => p.id === id)) return prev;
-      const savedOdds = calcOverride ?? finalOdds;
       return [{ ...play, id, trackedAt: Date.now(), result: null,
         units: tierUnits(savedOdds),
         americanOdds: savedOdds,
       }, ...prev];
     });
+  }
+  function initiateTrack(play) {
+    const odds = play.americanOdds;
+    const defaultOdds = odds != null ? (odds > 0 ? `+${odds}` : `${odds}`) : "-110";
+    setPendingOdds(defaultOdds);
+    setPendingTrackPlay(play);
   }
   function untrackPlay(id) {
     setTrackedPlays(prev => prev.filter(p => p.id !== id));
@@ -804,9 +808,78 @@ function App() {
         <AddPickModal
           onClose={() => setShowAddPick(false)}
           onAdd={play => trackPlay(play)}
-          initialOdds={(() => { const v = calcOdds.trim(); return (v && v !== "-" && v !== "+" && !isNaN(parseInt(v))) ? v : "-110"; })()}
+          initialOdds="-110"
         />
       )}
+
+      {/* Confirm pick modal */}
+      {pendingTrackPlay && (() => {
+        const play = pendingTrackPlay;
+        const raw = pendingOdds.trim();
+        const n = parseInt(raw, 10);
+        let implied = null;
+        if (!isNaN(n) && raw !== "" && raw !== "-" && raw !== "+") {
+          if (n < 0) implied = Math.abs(n) / (Math.abs(n) + 100) * 100;
+          else if (n > 0) implied = 100 / (n + 100) * 100;
+        }
+        const color = implied === null ? "#8b949e" : implied >= 70 ? "#3fb950" : implied >= 50 ? "#e3b341" : "#f78166";
+        const name = play.playerName ?? (play.gameType === "total" ? `${play.awayTeam} @ ${play.homeTeam}` : play.scoringTeam ?? "");
+        const statLabel = play.stat ? play.stat.toUpperCase() : play.sport ? play.sport.toUpperCase() : "";
+        const dirLabel = play.direction === "under" ? `Under ${play.threshold}` : `Over ${play.threshold}`;
+        const subtitle = play.playerName ? `${play.stat?.toUpperCase()} ${play.threshold}+` : dirLabel;
+        return (
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}
+            onClick={() => setPendingTrackPlay(null)}>
+            <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:12,padding:"20px 22px",width:290}}
+              onClick={e => e.stopPropagation()}>
+              <div style={{fontSize:13,color:"#c9d1d9",fontWeight:600,marginBottom:2}}>{name}</div>
+              <div style={{fontSize:11,color:"#8b949e",marginBottom:16}}>{subtitle} {statLabel && !play.playerName ? `· ${statLabel}` : ""}</div>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:18}}>
+                <span style={{fontSize:11,color:"#484f58",whiteSpace:"nowrap"}}>Odds</span>
+                <input autoFocus type="text" inputMode="numeric" value={pendingOdds}
+                  onChange={e => {
+                    let v = e.target.value;
+                    if (v.length > 0 && v[0] !== "-" && v[0] !== "+") v = "-" + v;
+                    setPendingOdds(v);
+                  }}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") {
+                      const _n = parseInt(pendingOdds.trim(), 10);
+                      const oddsVal = !isNaN(_n) && pendingOdds.trim() !== "-" && pendingOdds.trim() !== "+" ? _n : null;
+                      trackPlay(oddsVal ? { ...play, americanOdds: oddsVal } : play);
+                      setPendingTrackPlay(null);
+                    } else if (e.key === "Escape") {
+                      setPendingTrackPlay(null);
+                    }
+                  }}
+                  style={{flex:1,background:"#0d1117",border:"1px solid #30363d",borderRadius:7,
+                    color:"#c9d1d9",fontSize:15,padding:"7px 10px",outline:"none",textAlign:"center"}}
+                />
+                <span style={{fontSize:16,fontWeight:700,color,minWidth:52,textAlign:"right",whiteSpace:"nowrap"}}>
+                  {implied !== null ? `${implied.toFixed(1)}%` : "—"}
+                </span>
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={() => setPendingTrackPlay(null)}
+                  style={{flex:1,padding:"8px 0",fontSize:12,borderRadius:7,border:"1px solid #30363d",
+                    background:"transparent",color:"#8b949e",cursor:"pointer"}}>
+                  Cancel
+                </button>
+                <button onClick={() => {
+                  const _n = parseInt(pendingOdds.trim(), 10);
+                  const oddsVal = !isNaN(_n) && pendingOdds.trim() !== "-" && pendingOdds.trim() !== "+" ? _n : null;
+                  trackPlay(oddsVal ? { ...play, americanOdds: oddsVal } : play);
+                  setPendingTrackPlay(null);
+                }}
+                  style={{flex:1,padding:"8px 0",fontSize:12,borderRadius:7,border:"1px solid #3fb950",
+                    background:"rgba(63,185,80,0.12)",color:"#3fb950",cursor:"pointer",fontWeight:600}}>
+                  Add Pick
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Search + player card — constrained width */}
       <div style={{maxWidth:1280,margin:"0 auto"}}>
@@ -1521,7 +1594,7 @@ function App() {
                     const trackBtn = qualifies ? (
                       <button onClick={() => {
                         if (isTracked) { untrackPlay(existingPick.id); return; }
-                        trackPlay({
+                        initiateTrack({
                           sport: sportSlug,
                           playerName: player.name,
                           playerTeam: player.team || "",
@@ -1876,8 +1949,6 @@ function App() {
           trackedPlays={trackedPlays}
           setTrackedPlays={setTrackedPlays}
           untrackPlay={untrackPlay}
-          calcOdds={calcOdds}
-          setCalcOdds={setCalcOdds}
           bankroll={bankroll}
           setBankroll={setBankroll}
           setPickUnits={setPickUnits}
@@ -1893,7 +1964,7 @@ function App() {
           setShowAddPick={setShowAddPick}
           oddsToProfit={oddsToProfit}
           navigateToPlay={navigateToPlay}
-          trackPlay={trackPlay}
+          trackPlay={initiateTrack}
         />
       )}
 

@@ -111,8 +111,6 @@ export default function LineupsPage({
   trackedPlays,
   setTrackedPlays,
   untrackPlay,
-  calcOdds,
-  setCalcOdds,
   bankroll,
   setBankroll,
   setPickUnits,
@@ -239,8 +237,6 @@ export default function LineupsPage({
           untrackPlay={untrackPlay}
           navigateToTeam={navigateToTeam}
           navigateToPlay={navigateToPlay}
-          calcOdds={calcOdds}
-          setCalcOdds={setCalcOdds}
           bankroll={bankroll}
           setBankroll={setBankroll}
           setPickUnits={setPickUnits}
@@ -319,38 +315,8 @@ export default function LineupsPage({
                       />
                     ))}
                   </div>
-                  {playsForDate.length > 0 && (() => {
-                    const raw = calcOdds.trim();
-                    const n = parseInt(raw, 10);
-                    let implied = null;
-                    if (!isNaN(n) && raw !== '' && raw !== '-' && raw !== '+') {
-                      if (n < 0) implied = Math.abs(n) / (Math.abs(n) + 100) * 100;
-                      else if (n > 0) implied = 100 / (n + 100) * 100;
-                    }
-                    const color = implied === null ? '#8b949e' : implied >= 70 ? '#3fb950' : implied >= 50 ? '#e3b341' : '#f78166';
-                    return (
-                      <div style={{ marginTop: 16, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#161b22', border: '1px solid #30363d',
-                          borderRadius: 10, padding: '0 12px', height: 38, flexShrink: 0 }}>
-                          <span style={{ fontSize: 11, color: '#484f58', whiteSpace: 'nowrap' }}>Odds</span>
-                          <input type="text" inputMode="numeric" placeholder="-110" value={calcOdds}
-                            onChange={e => {
-                              let v = e.target.value;
-                              if (v.length > 0 && v[0] !== '-' && v[0] !== '+') v = '-' + v;
-                              setCalcOdds(v);
-                            }}
-                            style={{ background: 'transparent', border: 'none', outline: 'none', color: '#c9d1d9',
-                              fontSize: 13, width: 62, textAlign: 'center' }}
-                          />
-                          <span style={{ color, fontSize: 14, fontWeight: 700, minWidth: 48, textAlign: 'right', whiteSpace: 'nowrap' }}>
-                            {implied !== null ? `${implied.toFixed(1)}%` : '—'}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })()}
                   {playsForDate.length > 0 && (
-                    <div style={{ marginTop: 4 }}>
+                    <div style={{ marginTop: 16 }}>
                       <PlaysColumn
                         tonightPlays={playsForDate}
                         allTonightPlays={allTonightPlays}
@@ -361,7 +327,7 @@ export default function LineupsPage({
                         navigateToPlay={navigateToPlay}
                         navigateToTeam={navigateToTeam}
                         navigateToModel={navigateToModel}
-                        calcOdds={calcOdds}
+
                         expandedPlays={expandedPlays}
                         setExpandedPlays={setExpandedPlays}
                         fetchReport={fetchReport}
