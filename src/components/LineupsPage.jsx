@@ -248,62 +248,80 @@ export default function LineupsPage({
           {(() => {
             const todayPT = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
             const tomorrowPT = new Date(Date.now() + 86400000).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
-            let lastDate = null;
-            return (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(480px, 1fr))', gap: 12, alignItems: 'start' }}>
-                {games.map((game, i) => {
-                  const gd = game.gameDate || '';
-                  const showHeader = gd !== lastDate;
-                  lastDate = gd;
-                  const dateLabel = gd === todayPT ? 'Today' : gd === tomorrowPT ? 'Tomorrow'
-                    : gd ? new Date(gd + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
-                  return (
-                    <React.Fragment key={`${game.homeTeam}|${game.awayTeam}|${game.gameDate}|${i}`}>
-                      {showHeader && dateLabel && (
-                        <div style={{ gridColumn: '1 / -1', paddingBottom: 4, paddingTop: i > 0 ? 8 : 0 }}>
-                          <span style={{ fontSize: 11, fontWeight: 700, color: '#8b949e', textTransform: 'uppercase', letterSpacing: 0.8 }}>{dateLabel}</span>
-                        </div>
-                      )}
+            // Group games by date
+            const gamesByDate = {};
+            games.forEach(g => {
+              const gd = g.gameDate || todayPT;
+              if (!gamesByDate[gd]) gamesByDate[gd] = [];
+              gamesByDate[gd].push(g);
+            });
+            // Group qualified plays by date
+            const playsByDate = {};
+            qualifiedPlays.forEach(p => {
+              const gd = p.gameDate || todayPT;
+              if (!playsByDate[gd]) playsByDate[gd] = [];
+              playsByDate[gd].push(p);
+            });
+            const sortedDates = Object.keys(gamesByDate).sort();
+            function dateLabel(gd) {
+              if (gd === todayPT) return 'Today';
+              if (gd === tomorrowPT) return 'Tomorrow';
+              return gd ? new Date(gd + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
+            }
+            return sortedDates.map((gd, di) => {
+              const label = dateLabel(gd);
+              const gamesForDate = gamesByDate[gd];
+              const playsForDate = playsByDate[gd] || [];
+              return (
+                <div key={gd} style={{ marginTop: di > 0 ? 20 : 0 }}>
+                  {label && (
+                    <div style={{ paddingBottom: 8 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#8b949e', textTransform: 'uppercase', letterSpacing: 0.8 }}>{label}</span>
+                    </div>
+                  )}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(480px, 1fr))', gap: 12, alignItems: 'start' }}>
+                    {gamesForDate.map((game, i) => (
                       <MatchupCard
+                        key={`${game.homeTeam}|${game.awayTeam}|${game.gameDate}|${i}`}
                         game={game}
                         mlbMeta={mlbMeta}
                         nbaMeta={nbaMeta}
                         navigateToPlayer={navigateToPlayer}
                         navigateToTeam={navigateToTeam}
                       />
-                    </React.Fragment>
-                  );
-                })}
-              </div>
-            );
+                    ))}
+                  </div>
+                  {playsForDate.length > 0 && (
+                    <div style={{ marginTop: 16 }}>
+                      <PlaysColumn
+                        tonightPlays={playsForDate}
+                        allTonightPlays={allTonightPlays}
+                        tonightLoading={false}
+                        trackedPlays={trackedPlays}
+                        trackPlay={trackPlay}
+                        untrackPlay={untrackPlay}
+                        navigateToPlay={navigateToPlay}
+                        navigateToTeam={navigateToTeam}
+                        navigateToModel={navigateToModel}
+                        calcOdds={calcOdds}
+                        expandedPlays={expandedPlays}
+                        setExpandedPlays={setExpandedPlays}
+                        fetchReport={fetchReport}
+                        bustLoading={bustLoading}
+                        bustCache={bustCache}
+                        showPlaysInfo={showPlaysInfo}
+                        setShowPlaysInfo={setShowPlaysInfo}
+                        testMode={testMode}
+                        setTestMode={setTestMode}
+                        hideHeader={true}
+                        gridColumns={2}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            });
           })()}
-          {qualifiedPlays.length > 0 && (
-            <div style={{ marginTop: 24 }}>
-              <PlaysColumn
-                tonightPlays={qualifiedPlays}
-                allTonightPlays={allTonightPlays}
-                tonightLoading={false}
-                trackedPlays={trackedPlays}
-                trackPlay={trackPlay}
-                untrackPlay={untrackPlay}
-                navigateToPlay={navigateToPlay}
-                navigateToTeam={navigateToTeam}
-                navigateToModel={navigateToModel}
-                calcOdds={calcOdds}
-                expandedPlays={expandedPlays}
-                setExpandedPlays={setExpandedPlays}
-                fetchReport={fetchReport}
-                bustLoading={bustLoading}
-                bustCache={bustCache}
-                showPlaysInfo={showPlaysInfo}
-                setShowPlaysInfo={setShowPlaysInfo}
-                testMode={testMode}
-                setTestMode={setTestMode}
-                hideHeader={true}
-                gridColumns={2}
-              />
-            </div>
-          )}
         </>
       )}
     </div>
