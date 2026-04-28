@@ -859,6 +859,17 @@ function App() {
                   {implied !== null ? `${implied.toFixed(1)}%` : "—"}
                 </span>
               </div>
+              {play.truePct != null && implied !== null && (
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",
+                  marginBottom:14,fontSize:11,color:"#484f58"}}>
+                  <span>Edge (True% − implied)</span>
+                  {(() => {
+                    const edge = parseFloat((play.truePct - implied).toFixed(1));
+                    const edgeColor = edge >= 3 ? "#3fb950" : edge >= 0 ? "#e3b341" : "#f78166";
+                    return <span style={{color:edgeColor,fontWeight:700}}>{edge >= 0 ? "+" : ""}{edge}%</span>;
+                  })()}
+                </div>
+              )}
               <div style={{display:"flex",gap:8}}>
                 <button onClick={() => setPendingTrackPlay(null)}
                   style={{flex:1,padding:"8px 0",fontSize:12,borderRadius:7,border:"1px solid #30363d",
