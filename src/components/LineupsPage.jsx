@@ -11,7 +11,7 @@ const SPORT_TABS = [
 
 // Build ordered games list from allTonightPlays for a given sport.
 // Uses game total plays as anchors for home/away; falls back to sorted abbrs.
-function buildGames(allPlays, sport) {
+function buildGames(allPlays, sport, meta) {
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
   const gameMap = new Map(); // sorted-teams|gameDate → game object
 
@@ -30,7 +30,13 @@ function buildGames(allPlays, sport) {
       // player prop — playerTeam + opponent; home/away unknown until anchor found
       const t1 = play.playerTeam, t2 = play.opponent;
       if (!t1 || !t2) continue;
-      [homeTeam, awayTeam] = [t1, t2].sort(); // temporary alphabetical order
+      // For MLB use schedule-derived home team; other sports fall back to alphabetical
+      const _metaHome = meta?.homeTeams?.[t1] || meta?.homeTeams?.[t2];
+      if (_metaHome) {
+        homeTeam = _metaHome; awayTeam = _metaHome === t1 ? t2 : t1;
+      } else {
+        [homeTeam, awayTeam] = [t1, t2].sort();
+      }
       gameDate = play.gameDate ?? '';
       gameTime = play.gameTime ?? null;
     }
@@ -118,8 +124,8 @@ export default function LineupsPage({
   }, [allTonightPlays]);
 
   const games = React.useMemo(
-    () => activeSportTab !== 'picks' ? buildGames(allTonightPlays, activeSportTab) : [],
-    [allTonightPlays, activeSportTab]
+    () => activeSportTab !== 'picks' ? buildGames(allTonightPlays, activeSportTab, activeSportTab === 'mlb' ? mlbMeta : null) : [],
+    [allTonightPlays, activeSportTab, mlbMeta]
   );
 
   const qualifiedPlays = React.useMemo(
