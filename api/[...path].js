@@ -3046,46 +3046,6 @@ var worker_default = {
             });
             continue;
           }
-          // stdBF variance gate: high-variance arms (stdBF > 2.5) disqualify.
-          // stdBF=0 means <3 qualified starts — no std dev computable, pass through.
-          if (sport === "mlb" && stat === "strikeouts" && _stdBF > 2.5) {
-            const _highVarDrop = {
-              ..._dropBase,
-              reason: "high_bf_variance",
-              stdBF: parseFloat(_stdBF.toFixed(2)),
-              simScore, finalSimScore,
-              opponent: tonightOpp,
-              kpctMeets, kpctPts, kbbMeets, kbbPts, lkpMeets, lkpPts, pitchesPts, parkMeets, mlPts, totalPts, kTrendPts, blendedHitRatePts, blendedHitRate: _blendedHR != null ? parseFloat(_blendedHR.toFixed(1)) : null,
-              seasonPct: parseFloat(primaryPct.toFixed(1)), softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
-              truePct: parseFloat(truePct.toFixed(1)), edge: parseFloat(edge.toFixed(1)),
-              pitcherCSWPct: _pt(sportByteam.mlb?.pitcherCSWPct, "cswPct"),
-              pitcherKPct: pitcherKPctOut, pitcherKBBPct: pitcherKBBPctOut, pitcherRecentKPct: _recentKPct, pitcherSeasonKPct: _seasonKPct,
-              pitcherAvgPitches: _avgP,
-              expectedBF: _expectedBF !== 24 ? _expectedBF : null,
-              lineupKPct: lineupKPctOut,
-              pitcherEra: _pitcherEraFromGl ?? _pt(sportByteam.mlb?.pitcherEra, "era") ?? null,
-              pitcherHand: _pitcherHand ?? null, simPct: simPctOut,
-              parkFactor: parkFactorOut ?? 1,
-              gameMoneyline: sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null,
-              gameTotal: sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null,
-            };
-            if (isDebug) dropped.push(_highVarDrop);
-            plays.push({
-              ..._highVarDrop,
-              qualified: false,
-              playerName: playerNameDisplay || playerName,
-              playerId: info.id,
-              sport, playerTeam, stat, threshold, kalshiPct, americanOdds,
-              truePct: parseFloat(truePct.toFixed(1)),
-              log5Pct: simPctOut ?? log5PctOut, simPct: simPctOut,
-              spreadAdj,
-              gameDate,
-              gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}:${_tomorrowISOStr}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
-              lineupConfirmed: !(sportByteam.mlb?.projectedLineupTeams || []).includes(tonightOpp),
-              playerStatus: null,
-            });
-            continue;
-          }
           // NBA SimScore gate: must reach >= 11 (Alpha tier) to qualify as a play
           if (sport === "nba" && nbaSimScore !== null && nbaSimScore < 8) {
             const _nbaLowScoreDrop = {
