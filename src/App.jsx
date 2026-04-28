@@ -830,7 +830,7 @@ function App() {
         return (
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}
             onClick={() => setPendingTrackPlay(null)}>
-            <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:12,padding:"20px 22px",width:290}}
+            <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:12,padding:"20px 22px",width:360}}
               onClick={e => e.stopPropagation()}>
               <div style={{fontSize:13,color:"#c9d1d9",fontWeight:600,marginBottom:2}}>{name}</div>
               <div style={{fontSize:11,color:"#8b949e",marginBottom:16}}>{subtitle} {statLabel && !play.playerName ? `· ${statLabel}` : ""}</div>
