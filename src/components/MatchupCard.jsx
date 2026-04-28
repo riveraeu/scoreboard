@@ -72,26 +72,6 @@ export default function MatchupCard({ game, mlbMeta, nbaMeta, navigateToPlayer, 
   const [lineup, setLineup] = React.useState(null);
   const [lineupLoading, setLineupLoading] = React.useState(false);
 
-  // Auto-fetch NBA lineup on mount (shown inline, no drawer click needed)
-  React.useEffect(() => {
-    if (sport !== 'nba') return;
-    setLineupLoading(true);
-    Promise.all([
-      fetch(`${WORKER}/team?abbr=${homeTeam}&sport=nba`).then(r => r.ok ? r.json() : null),
-      fetch(`${WORKER}/team?abbr=${awayTeam}&sport=nba`).then(r => r.ok ? r.json() : null),
-    ]).then(([homeRes, awayRes]) => {
-      setLineup({
-        home: homeRes?.lineup ?? [],
-        away: awayRes?.lineup ?? [],
-        homeConfirmed: homeRes?.lineupConfirmed ?? null,
-        awayConfirmed: awayRes?.lineupConfirmed ?? null,
-      });
-      setLineupLoading(false);
-    }).catch(() => {
-      setLineup({ home: [], away: [], homeConfirmed: null, awayConfirmed: null });
-      setLineupLoading(false);
-    });
-  }, [sport, homeTeam, awayTeam]);
 
   const gameTimeStr = fmtGameTime(gameTime);
   const isDomed = DOMED_STADIUMS.has(homeTeam);
@@ -288,71 +268,94 @@ export default function MatchupCard({ game, mlbMeta, nbaMeta, navigateToPlayer, 
         </div>
       )}
 
-      {/* NBA lineup — shown inline, auto-fetched on mount */}
-      {sport === 'nba' && (
-        <div style={{ borderTop: '1px solid #0d1117', padding: '10px 16px 12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-            <span style={{ fontSize: 10, fontWeight: 700, color: '#484f58', textTransform: 'uppercase', letterSpacing: 0.5 }}>Lineups</span>
-            {lineupLoading && <span style={{ fontSize: 10, color: '#30363d' }}>Loading…</span>}
-          </div>
+      {/* NBA: injured players — always visible outside drawer */}
+      {sport === 'nba' && (awayInjured.length > 0 || homeInjured.length > 0) && (
+        <div style={{ borderTop: '1px solid #0d1117', padding: '8px 16px' }}>
           <div style={{ display: 'flex', gap: 16 }}>
-            {[
-              { abbr: awayTeam, data: lineup?.away ?? [], confirmed: lineup?.awayConfirmed ?? null, injured: awayInjured, label: 'Away', isHome: false },
-              { abbr: homeTeam, data: lineup?.home ?? [], confirmed: lineup?.homeConfirmed ?? null, injured: homeInjured, label: 'Home', isHome: true },
-            ].map(({ abbr, data, confirmed, injured, label, isHome }) => (
-              <div key={abbr} style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5, flexDirection: isHome ? 'row-reverse' : 'row' }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: '#484f58', textTransform: 'uppercase', letterSpacing: 0.5 }}>{abbr}</span>
-                  <span style={{ fontSize: 10, color: '#484f58' }}>{label}</span>
-                  <LineupBadge confirmed={confirmed} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              {awayInjured.map((p, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '1px 0' }}>
+                  <span style={{
+                    fontSize: 9, fontWeight: 700, padding: '0 4px', borderRadius: 3,
+                    background: p.status === 'out' ? 'rgba(247,129,102,0.15)' : 'rgba(227,179,65,0.15)',
+                    color: p.status === 'out' ? '#f78166' : '#e3b341',
+                    border: `1px solid ${p.status === 'out' ? 'rgba(247,129,102,0.3)' : 'rgba(227,179,65,0.3)'}`,
+                  }}>{p.status === 'out' ? 'OUT' : 'GTD'}</span>
+                  <span style={{ fontSize: 10, color: '#8b949e' }}>{p.name}</span>
                 </div>
-                {/* Active players */}
-                {data.map((player, idx) => (
-                  <div key={idx} style={{
-                    display: 'flex', alignItems: 'center', gap: 6, padding: '2px 0',
-                    flexDirection: isHome ? 'row-reverse' : 'row',
-                    borderBottom: idx < data.length - 1 ? '1px solid #0d1117' : 'none',
-                  }}>
-                    {player.position && (
-                      <span style={{ fontSize: 9, color: '#484f58', width: 22, flexShrink: 0, textAlign: isHome ? 'right' : 'left' }}>{player.position}</span>
-                    )}
-                    <span
-                      onClick={() => navigateToPlayer(
-                        { id: player.playerId || null, name: player.name, team: abbr, sportKey: 'basketball/nba' },
-                        'points'
-                      )}
-                      style={{ fontSize: 11, color: '#c9d1d9', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer', textAlign: isHome ? 'right' : 'left' }}
-                      onMouseEnter={e => e.currentTarget.style.color = '#58a6ff'}
-                      onMouseLeave={e => e.currentTarget.style.color = '#c9d1d9'}
-                    >
-                      {player.name}
-                    </span>
+              ))}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              {homeInjured.map((p, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '1px 0', flexDirection: 'row-reverse' }}>
+                  <span style={{
+                    fontSize: 9, fontWeight: 700, padding: '0 4px', borderRadius: 3,
+                    background: p.status === 'out' ? 'rgba(247,129,102,0.15)' : 'rgba(227,179,65,0.15)',
+                    color: p.status === 'out' ? '#f78166' : '#e3b341',
+                    border: `1px solid ${p.status === 'out' ? 'rgba(247,129,102,0.3)' : 'rgba(227,179,65,0.3)'}`,
+                  }}>{p.status === 'out' ? 'OUT' : 'GTD'}</span>
+                  <span style={{ fontSize: 10, color: '#8b949e' }}>{p.name}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* NBA lineup drawer */}
+      {sport === 'nba' && (
+        <div style={{ borderTop: '1px solid #0d1117' }}>
+          <button onClick={onToggleLineup} style={{
+            width: '100%', background: 'none', border: 'none', cursor: 'pointer',
+            padding: '7px 16px', display: 'flex', alignItems: 'center', gap: 6,
+            color: '#484f58', fontSize: 11, fontWeight: 600, textAlign: 'left',
+          }}>
+            <span style={{ fontSize: 9, display: 'inline-block', transition: 'transform 0.15s',
+              transform: lineupOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
+            Starting Lineups
+            {lineupLoading && <span style={{ color: '#30363d', marginLeft: 4 }}>Loading…</span>}
+          </button>
+          {lineupOpen && lineup && (
+            <div style={{ padding: '0 16px 12px', display: 'flex', gap: 16 }}>
+              {[
+                { abbr: awayTeam, data: lineup.away, confirmed: lineup.awayConfirmed, isHome: false },
+                { abbr: homeTeam, data: lineup.home, confirmed: lineup.homeConfirmed, isHome: true },
+              ].map(({ abbr, data, confirmed, isHome }) => (
+                <div key={abbr} style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5, flexDirection: isHome ? 'row-reverse' : 'row' }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: '#484f58', textTransform: 'uppercase', letterSpacing: 0.5 }}>{abbr}</span>
+                    <LineupBadge confirmed={confirmed} />
                   </div>
-                ))}
-                {data.length === 0 && !lineupLoading && (
-                  <div style={{ fontSize: 11, color: '#484f58', fontStyle: 'italic', textAlign: isHome ? 'right' : 'left' }}>No lineup posted</div>
-                )}
-                {/* Injured players (always from nbaMeta, no fetch needed) */}
-                {injured.length > 0 && (
-                  <div style={{ marginTop: 6, paddingTop: 4, borderTop: data.length > 0 ? '1px solid #0d1117' : 'none' }}>
-                    {injured.map((p, i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '1px 0', flexDirection: isHome ? 'row-reverse' : 'row' }}>
-                        <span style={{ fontSize: 10, color: '#8b949e' }}>{p.name}</span>
-                        <span style={{
-                          fontSize: 9, fontWeight: 700, padding: '0 4px', borderRadius: 3,
-                          background: p.status === 'out' ? 'rgba(247,129,102,0.15)' : 'rgba(227,179,65,0.15)',
-                          color: p.status === 'out' ? '#f78166' : '#e3b341',
-                          border: `1px solid ${p.status === 'out' ? 'rgba(247,129,102,0.3)' : 'rgba(227,179,65,0.3)'}`,
-                        }}>
-                          {p.status === 'out' ? 'OUT' : 'GTD'}
+                  {data.length === 0 ? (
+                    <div style={{ fontSize: 11, color: '#484f58', fontStyle: 'italic', textAlign: isHome ? 'right' : 'left' }}>No lineup posted</div>
+                  ) : (
+                    data.map((player, idx) => (
+                      <div key={idx} style={{
+                        display: 'flex', alignItems: 'center', gap: 6, padding: '2px 0',
+                        flexDirection: isHome ? 'row-reverse' : 'row',
+                        borderBottom: idx < data.length - 1 ? '1px solid #0d1117' : 'none',
+                      }}>
+                        {player.position && (
+                          <span style={{ fontSize: 9, color: '#484f58', width: 22, flexShrink: 0, textAlign: isHome ? 'right' : 'left' }}>{player.position}</span>
+                        )}
+                        <span
+                          onClick={() => navigateToPlayer(
+                            { id: player.playerId || null, name: player.name, team: abbr, sportKey: 'basketball/nba' },
+                            'points'
+                          )}
+                          style={{ fontSize: 11, color: '#c9d1d9', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer', textAlign: isHome ? 'right' : 'left' }}
+                          onMouseEnter={e => e.currentTarget.style.color = '#58a6ff'}
+                          onMouseLeave={e => e.currentTarget.style.color = '#c9d1d9'}
+                        >
+                          {player.name}
                         </span>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+                    ))
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
