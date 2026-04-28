@@ -219,7 +219,7 @@ export default function MatchupCard({ game, mlbMeta, nbaMeta, navigateToPlayer, 
                 </span>
               )
               : <span style={{ color: '#484f58', fontStyle: 'italic' }}>TBD</span>}
-            {awayMlbConfirmed !== null && (
+            {awayMlbConfirmed !== null && gameState !== 'in' && gameState !== 'post' && (
               <div style={{ marginTop: 3 }}><LineupBadge confirmed={awayMlbConfirmed} /></div>
             )}
           </div>
@@ -237,7 +237,7 @@ export default function MatchupCard({ game, mlbMeta, nbaMeta, navigateToPlayer, 
                 </span>
               )
               : <span style={{ color: '#484f58', fontStyle: 'italic' }}>TBD</span>}
-            {homeMlbConfirmed !== null && (
+            {homeMlbConfirmed !== null && gameState !== 'in' && gameState !== 'post' && (
               <div style={{ marginTop: 3, display: 'flex', justifyContent: 'flex-end' }}><LineupBadge confirmed={homeMlbConfirmed} /></div>
             )}
           </div>
