@@ -15,12 +15,12 @@ function fmtGameTime(gameTime) {
   if (!gameTime) return null;
   try {
     const d = new Date(gameTime);
-    const now = new Date();
-    const todayStr = now.toLocaleDateString('en-CA');
-    const tomorrowStr = new Date(now.getTime() + 86400000).toLocaleDateString('en-CA');
-    const gameDateStr = d.toLocaleDateString('en-CA');
-    const timeStr = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
-    const label = gameDateStr === todayStr ? 'Today' : gameDateStr === tomorrowStr ? 'Tomorrow' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const tz = 'America/Los_Angeles';
+    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: tz });
+    const tomorrowStr = new Date(Date.now() + 86400000).toLocaleDateString('en-CA', { timeZone: tz });
+    const gameDateStr = d.toLocaleDateString('en-CA', { timeZone: tz });
+    const timeStr = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: tz, timeZoneName: 'short' });
+    const label = gameDateStr === todayStr ? 'Today' : gameDateStr === tomorrowStr ? 'Tomorrow' : d.toLocaleDateString('en-US', { timeZone: tz, month: 'short', day: 'numeric' });
     return `${label} · ${timeStr}`;
   } catch { return null; }
 }

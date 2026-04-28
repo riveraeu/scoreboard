@@ -130,9 +130,9 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMet
               </div>
             );
             // Group plays by gameDate, sort dates ascending
-            const localDate = n => { const d = new Date(Date.now() + n*86400000); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
-            const today = localDate(0);
-            const tomorrow = localDate(1);
+            const ptDate = n => new Date(Date.now() + n*86400000).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+            const today = ptDate(0);
+            const tomorrow = ptDate(1);
             const grouped = {};
             untrackedPlays.forEach(play => {
               const d = play.gameDate || today;
