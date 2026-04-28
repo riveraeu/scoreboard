@@ -105,6 +105,7 @@ export default function LineupsPage({
   testMode,
   setTestMode,
   mlbMeta,
+  mlbMetaTomorrow,
   nbaMeta,
   // MyPicksColumn props
   trackedPlays,
@@ -311,6 +312,7 @@ export default function LineupsPage({
                         key={`${game.homeTeam}|${game.awayTeam}|${game.gameDate}|${i}`}
                         game={game}
                         mlbMeta={mlbMeta}
+                        mlbMetaTomorrow={mlbMetaTomorrow}
                         nbaMeta={nbaMeta}
                         navigateToPlayer={navigateToPlayer}
                         navigateToTeam={navigateToTeam}

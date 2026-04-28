@@ -1,6 +1,6 @@
 import { ALLOWED_ORIGIN, corsHeaders, jsonResponse, errorResponse, parseGameOdds, buildSoftTeamAbbrs, buildHardTeamAbbrs, buildTeamRankMap } from "./lib/utils.js";
 import { PARK_KFACTOR, PARK_HITFACTOR, PARK_RUNFACTOR, UMPIRE_KFACTOR, log5K, poissonCDF, log5HitRate, simulateKsDist, kDistPct, simulateKs, buildNbaStatDist, nbaDistPct, simulateHits, simulateMLBTotalDist, simulateNBATotalDist, simulateNHLTotalDist, totalDistPct, simulateTeamTotalDist, simulateTeamPtsDist, decimalOdds, kellyFraction, evPerUnit } from "./lib/simulate.js";
-import { buildLineupKPct, buildBarrelPct, buildPitcherKPct } from "./lib/mlb.js";
+import { buildLineupKPct, buildBarrelPct, buildPitcherKPct, MLB_ID_TO_ABBR } from "./lib/mlb.js";
 import { warmPlayerInfoCache, buildNbaDvpStage1, buildNbaDvpFromBettingPros, buildNbaDepthChartPos, buildNbaPaceData, buildNbaPlayerPosFromSleeper, buildNbaDvpStage3FG, buildNbaUsageRate, buildNbaInjuryReport } from "./lib/nba.js";
 
 var __defProp = Object.defineProperty;
@@ -3930,6 +3930,34 @@ var worker_default = {
           _mlbGameOdds[abbr] = { ml: odds.moneyline ?? null };
         }
         const mlbMeta = { pitchers: _mlbPitchers, gameOdds: _mlbGameOdds, umpires: sportByteam.mlb?.umpireByGame ?? {}, weather: weatherByGame, projectedLineupTeams: sportByteam.mlb?.projectedLineupTeams ?? [], teamsWithLineup: Object.keys(sportByteam.mlb?.lineupSpotByName ?? {}), homeTeams: sportByteam.mlb?.gameHomeTeams ?? {}, gameScores: sportByteam.mlb?.gameScores ?? {} };
+        // Build mlbMetaTomorrow: tomorrow's probables + umpires (no lineup/weather data available yet)
+        let mlbMetaTomorrow = { pitchers: {}, gameOdds: {}, umpires: {}, weather: {}, projectedLineupTeams: [], teamsWithLineup: [], homeTeams: {}, gameScores: {} };
+        try {
+          const _tmrPT = new Date(Date.now() - 7 * 3600 * 1000 + 86400 * 1000);
+          const _tmrDateStr = _tmrPT.toISOString().slice(0, 10);
+          const _tmrCacheKey = `mlbSchedTomorrow:${_tmrDateStr}`;
+          const _tmrCached = CACHE2 && !isBustCache ? await CACHE2.get(_tmrCacheKey, 'json').catch(() => null) : null;
+          const _tmrSched = _tmrCached ?? await fetch(
+            `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${_tmrDateStr}&hydrate=probablePitcher,officials`,
+            { headers: { 'User-Agent': 'Mozilla/5.0' } }
+          ).then(r => r.ok ? r.json() : {}).catch(() => ({}));
+          if (!_tmrCached && CACHE2) CACHE2.put(_tmrCacheKey, JSON.stringify(_tmrSched), { expirationTtl: 600 }).catch(() => {});
+          const _tmrPitchers = {}, _tmrUmpires = {}, _tmrHomeTeams = {};
+          for (const _td of _tmrSched.dates || []) {
+            for (const _tg of _td.games || []) {
+              const _tHome = MLB_ID_TO_ABBR[_tg.teams?.home?.team?.id] || _tg.teams?.home?.team?.abbreviation;
+              const _tAway = MLB_ID_TO_ABBR[_tg.teams?.away?.team?.id] || _tg.teams?.away?.team?.abbreviation;
+              const _tHomeName = _tg.teams?.home?.probablePitcher?.fullName;
+              const _tAwayName = _tg.teams?.away?.probablePitcher?.fullName;
+              if (_tHome && _tHomeName) _tmrPitchers[_tHome] = { name: _tHomeName, era: null };
+              if (_tAway && _tAwayName) _tmrPitchers[_tAway] = { name: _tAwayName, era: null };
+              const _tHp = (_tg.officials || []).find(o => o.officialType === 'Home Plate');
+              if (_tHp?.official?.fullName && _tHome && _tAway) _tmrUmpires[`${_tHome}|${_tAway}`] = _tHp.official.fullName;
+              if (_tHome) _tmrHomeTeams[_tHome] = _tHome;
+            }
+          }
+          mlbMetaTomorrow = { pitchers: _tmrPitchers, gameOdds: {}, umpires: _tmrUmpires, weather: {}, projectedLineupTeams: [], teamsWithLineup: [], homeTeams: _tmrHomeTeams, gameScores: {} };
+        } catch { /* leave empty */ }
         // NBA meta: normalized game odds + injury report for matchup cards
         const _nbaOddsNorm = { GS: "GSW", SA: "SAS", NY: "NYK", NJ: "BKN", NO: "NOP", PHO: "PHX", WPH: "PHX" };
         const _nbaGameOdds = {};
@@ -3944,7 +3972,7 @@ var worker_default = {
           _nbaInjuries[abbr] = players; // keep original key too for fallback
         }
         const nbaMeta = { gameOdds: _nbaGameOdds, injuries: _nbaInjuries };
-        const playsResult = { plays, nbaDropped, mlbMeta, nbaMeta, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length };
+        const playsResult = { plays, nbaDropped, mlbMeta, mlbMetaTomorrow, nbaMeta, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length };
         const sportsInPlays = new Set(plays.map((p) => p.sport));
         if (CACHE2 && sportsInPlays.size >= 2) {
           const summary = {
