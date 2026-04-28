@@ -1461,8 +1461,8 @@ var worker_default = {
                 };
               }
               const [lineupResult, pitcherResult] = await Promise.all([buildLineupKPct(mlbSched), buildPitcherKPct(mlbSched)]);
-              const { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, projectedLineupTeams, batterSplitBA } = lineupResult;
-              const { pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, pitcherWHIP: pitcherWHIPByTeam, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam } = pitcherResult;
+              const { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, projectedLineupTeams, batterSplitBA, hitterOpsMap, batterHandByName } = lineupResult;
+              const { pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, pitcherWHIP: pitcherWHIPByTeam, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam, pitcherH2HStarts } = pitcherResult;
               // barrelPctMap is NOT stored in byteam:mlb — it lives in mlb:barrelPct with its own 6h TTL.
               // This prevents a bust (which deletes byteam:mlb) from baking an empty barrelPctMap
               // into the cache when Baseball Savant is slow.
@@ -1511,7 +1511,22 @@ var worker_default = {
                   if (!isNaN(era) && era > 0) teamERAMap[_ta] = era;
                 }
               }
-              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, pitcherWHIPByTeam, projectedLineupTeams, gameOdds, pitcherStatsByName, batterSplitBA, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam, roadRPGMap, teamERAMap, teamPlatoonRPGMap, gameScores };
+              // staticTeamHandMajority: majority batting hand per team using natural side (S=0.5R+0.5L).
+              // Used to filter pitcher's historical starts by opposing lineup handedness composition.
+              // Switch hitters counted as neutral (0.5/0.5) here since we don't know each historical pitcher hand;
+              // tonight's matchup uses the full per-pitcher adjustment in the K play loop.
+              const staticTeamHandMajority = {};
+              for (const [abbr, spotMap] of Object.entries(lineupSpotByName || {})) {
+                let rCount = 0, lCount = 0;
+                for (const name of Object.keys(spotMap)) {
+                  const hand = batterHandByName[_bsNormKey(name)];
+                  if (hand === 'R') rCount++;
+                  else if (hand === 'L') lCount++;
+                  else if (hand === 'S') { rCount += 0.5; lCount += 0.5; } // switch = neutral
+                }
+                if (rCount + lCount > 0) staticTeamHandMajority[abbr] = rCount >= lCount ? 'R' : 'L';
+              }
+              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, pitcherWHIPByTeam, projectedLineupTeams, gameOdds, pitcherStatsByName, batterSplitBA, hitterOpsMap, batterHandByName, pitcherH2HStarts, staticTeamHandMajority, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam, roadRPGMap, teamERAMap, teamPlatoonRPGMap, gameScores };
               // Use short TTL (60s) if key data is missing — lineup/probables not confirmed yet.
               // Prevents partial data from baking into cache for the full 600s.
               const _mlbDataReady = Object.keys(lineupSpotByName || {}).length > 0 && Object.keys(pitcherAvgPitches || {}).length > 0;
@@ -2192,7 +2207,8 @@ var worker_default = {
           const blendedPct = blendVals.length >= 5 ? blendVals.filter((v) => v >= threshold).length / blendVals.length * 100 : null;
           // Prefer 2026 season rate; fall back to blended 25+26; fall back to all-career
           const primaryPct = pct26 ?? blendedPct ?? seasonPct;
-          let simScore = null, kpctMeets = null, kpctPts = null, kbbMeets = null, kbbPts = null, lkpMeets = null, lkpPts = null, pitchesPts = null, parkMeets = null, mlPts = null, totalPts = null, kTrendPts = null, blendedHitRatePts = null, _blendedHR = null;
+          let simScore = null, kpctMeets = null, kpctPts = null, kbbMeets = null, kbbPts = null, lkpMeets = null, lkpPts = null, pitchesPts = null, parkMeets = null, mlPts = null, totalPts = null, kTrendPts = null, kHitRatePts = null, kH2HHandPts = null, _blendedHR = null;
+          let _kH2HHandRate = null, _kH2HHandStarts = 0, _kH2HHandMaj = null;
           let _recentKPct = null, _seasonKPct = null;
           let _pitcherHand = null;
           let _avgP = null; // hoisted so all strikeout output sites can use it
@@ -2311,16 +2327,45 @@ var worker_default = {
             const _kTrendRatio = (_recentKPct != null && _seasonKPct != null && _seasonKPct > 0)
               ? _recentKPct / _seasonKPct : null;
             kTrendPts = _kTrendRatio == null ? 1 : _kTrendRatio >= 1.10 ? 2 : _kTrendRatio >= 0.90 ? 1 : 0;
-            // Blended hit rate: 2026 observed starts + 2025 implied (trust-weighted). ≥90%→2, ≥80%→1, <80%→0, null→1
+            // Hit Rate %: 2026 observed starts + 2025 implied (trust-weighted). ≥90%→2, ≥80%→1, <80%→0, null→1
             const _hitRate26 = vals26.length >= 3 ? vals26.filter(v => v >= threshold).length / vals26.length * 100 : null;
             const _hitRate25 = vals25.length >= 5 ? vals25.filter(v => v >= threshold).length / vals25.length * 100 : null;
             const _trust26 = Math.min(1.0, vals26.length / 15);
             _blendedHR = (_hitRate26 != null && _hitRate25 != null)
               ? _trust26 * _hitRate26 + (1 - _trust26) * _hitRate25
               : (_hitRate26 ?? _hitRate25);
-            blendedHitRatePts = _blendedHR == null ? 1 : _blendedHR >= 90 ? 2 : _blendedHR >= 80 ? 1 : 0;
-            // SimScore (max 10): CSW%/K%→0-2, K-BB%→0-2, lineup K%→0-2, hit rate→0-2, O/U→0-2
-            simScore = kpctPts + kbbPts + lkpPts + blendedHitRatePts + totalPts;
+            kHitRatePts = _blendedHR == null ? 1 : _blendedHR >= 90 ? 2 : _blendedHR >= 80 ? 1 : 0;
+            // kH2HHandPts: pitcher K hit rate vs opponents whose lineup hand majority matches tonight's
+            // Tonight's majority = full switch-hitter adjustment (S vs RHP → L, S vs LHP → R)
+            const _bnByName = sportByteam.mlb?.batterHandByName || {};
+            const _bnNorm = n => n ? n.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase() : "";
+            const _staticHand = sportByteam.mlb?.staticTeamHandMajority || {};
+            const _oppSpotMap = sportByteam.mlb?.lineupSpotByName?.[tonightOpp] ?? null;
+            let _tonightOppHandMaj = null;
+            if (_oppSpotMap) {
+              let _rCnt = 0, _lCnt = 0;
+              for (const bName of Object.keys(_oppSpotMap)) {
+                const bHand = _bnByName[_bnNorm(bName)] ?? null;
+                if (bHand === 'R' || (bHand === 'S' && _pitcherHand === 'L')) _rCnt++;
+                else if (bHand === 'L' || (bHand === 'S' && _pitcherHand === 'R')) _lCnt++;
+              }
+              if (_rCnt + _lCnt > 0) _tonightOppHandMaj = _rCnt >= _lCnt ? 'R' : 'L';
+            }
+            if (!_tonightOppHandMaj) _tonightOppHandMaj = _staticHand[tonightOpp] ?? null;
+            const _h2hPitcherStarts = (sportByteam.mlb?.pitcherH2HStarts || {})[playerTeam] ?? [];
+            const _h2hHandStarts = _tonightOppHandMaj
+              ? _h2hPitcherStarts.filter(s => s.oppAbbr && (_staticHand[s.oppAbbr] ?? null) === _tonightOppHandMaj)
+              : _h2hPitcherStarts;
+            const _h2hHandHitRate = _h2hHandStarts.length >= 5
+              ? _h2hHandStarts.filter(s => s.strikeouts >= threshold).length / _h2hHandStarts.length * 100
+              : null;
+            kH2HHandPts = _h2hHandHitRate == null ? 1 : _h2hHandHitRate >= 80 ? 2 : _h2hHandHitRate >= 65 ? 1 : 0;
+            // Store actual rate + start count for prose display (hoisted to outer scope)
+            _kH2HHandRate = _h2hHandHitRate != null ? parseFloat(_h2hHandHitRate.toFixed(1)) : null;
+            _kH2HHandStarts = _h2hHandStarts.length;
+            _kH2HHandMaj = _tonightOppHandMaj;
+            // SimScore (max 10): CSW%/K%→0-2, lineup K%→0-2, hit rate→0-2, H2H hand→0-2, O/U→0-2
+            simScore = kpctPts + lkpPts + kHitRatePts + kH2HHandPts + totalPts;
           }
           let softVals, softLabel, softUnit, _hrrUsingTeamFallback = false;
           if (sport === "mlb" && stat === "strikeouts") {
@@ -2364,8 +2409,8 @@ var worker_default = {
             const _pitcherVals = (_pitcherDates && _pitcherDates.size > 0)
               ? gl.events.filter((ev) => _pitcherDates.has(ev.date) && ev.oppAbbr === tonightOpp).map(getStat).filter((v) => !isNaN(v))
               : [];
-            if (_pitcherVals.length >= 12) {
-              // Enough pitcher-specific H2H games (12+ ≈ 35+ PAs; signal is mature)
+            if (_pitcherVals.length >= 10) {
+              // Enough pitcher-specific H2H games (10+ ≈ 30+ PAs; signal is mature)
               softVals = _pitcherVals;
               softLabel = pitcherName ? `vs ${pitcherName}` : `vs ${tonightOpp}`;
             } else {
@@ -2382,7 +2427,7 @@ var worker_default = {
             softLabel = null;
             softUnit = null;
           }
-          const MIN_H2H = 12;
+          const MIN_H2H = 10;
           // Hoist for both binomial softPct and BA gate below
           const abIdxH = (sport === "mlb" && stat !== "strikeouts") ? gl.ul.indexOf("AB") : -1;
           const blendEventsH = (sport === "mlb" && hasSeasonTags)
@@ -2495,8 +2540,9 @@ var worker_default = {
           let pitcherWHIP = null, pitcherFIP = null, pitcherBAA = null;
           let hitterParkKF = null, hitterMoneyline = null, hitterBarrelPct = null;
           let hitterBarrelPts = null, hitterTotalPts = null, hitterGameTotal = null, hitterPlatoonPts = null, hitterOppPitcherHand = null, hitterSplitBA = null, hitterWhipPts = null;
-          let hitterBatterQualityPts = null, hitterSeasonHitRatePts = null, hitterH2HHitRatePts = null;
+          let hitterOpsPts = null, hitterSeasonHitRatePts = null, hitterH2HHitRatePts = null;
           let hitterPlatoonRatio = null, hitterH2HSource = null;
+          let _hitterOps = null; // hoisted — declared in HRR block, referenced in drops/plays outside
           if (sport === "mlb" && stat !== "strikeouts") {
             const hitterML = sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null;
             const hIdx2 = gl.ul.indexOf("H");
@@ -2598,18 +2644,16 @@ var worker_default = {
                 hitterEffectiveBA = parseFloat((_recentBA * 0.3 + hitterBa * 0.7).toFixed(3));
               }
             }
-            // Barrel% still computed for output/display
+            // Barrel% still computed for output/display (not SimScore)
             hitterBarrelPts = hitterBarrelPct == null ? 1 : hitterBarrelPct >= 14 ? 3 : hitterBarrelPct >= 10 ? 2 : hitterBarrelPct >= 7 ? 1 : 0;
             // O/U total tier: ≥9.5→2pts, ≥7.5→1pt, <7.5→0pts, null→1pt
             hitterGameTotal = sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null;
             hitterTotalPts = hitterGameTotal == null ? 1 : hitterGameTotal >= 9.5 ? 2 : hitterGameTotal >= 7.5 ? 1 : 0;
-            // Batter quality composite (max 2pts): spot 1-3 AND barrel≥10% → 2; spot 1-3 OR barrel≥10% → 1; neither → 0; both null → 1 abstain
-            const _hSpotGood = hitterLineupSpot != null && hitterLineupSpot <= 5;
-            const _hBarrelGood = hitterBarrelPct != null && hitterBarrelPct >= 10;
-            hitterBatterQualityPts = (hitterLineupSpot == null && hitterBarrelPct == null) ? 1
-              : (_hSpotGood && _hBarrelGood) ? 2
-              : (_hSpotGood || _hBarrelGood) ? 1
-              : 0;
+            // OPS (2026 season): ≥.850→2pts, ≥.720→1pt, <.720→0pts, null→1pt abstain
+            const _opsMap = sportByteam.mlb?.hitterOpsMap || {};
+            const _opsNorm = n => n ? n.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase() : "";
+            _hitterOps = _opsMap[_opsNorm(playerName)] ?? _opsMap[_opsNorm(playerNameDisplay)] ?? null;
+            hitterOpsPts = _hitterOps == null ? 1 : _hitterOps >= 0.850 ? 2 : _hitterOps >= 0.720 ? 1 : 0;
             // Blended season hit rate (2026 trust-weighted + 2025): ≥90%→2, ≥80%→1, <80%→0, null→1
             const _hrrHR26 = vals26.length >= 3 ? vals26.filter(v => v >= threshold).length / vals26.length * 100 : null;
             const _hrrHR25 = vals25.length >= 5 ? vals25.filter(v => v >= threshold).length / vals25.length * 100 : null;
@@ -2625,24 +2669,24 @@ var worker_default = {
             const _h2hVals = (_h2hPitcherDates && _h2hPitcherDates.size > 0)
               ? gl.events.filter(ev => _h2hPitcherDates.has(ev.date) && ev.oppAbbr === tonightOpp).map(getStat).filter(v => !isNaN(v))
               : [];
-            const _h2hHitRate = _h2hVals.length >= 5 ? _h2hVals.filter(v => v >= threshold).length / _h2hVals.length * 100 : null;
-            // 8+ games to unlock 2pts; 5-7 games caps at 1pt (too thin for full confidence); <5 = null = abstain
+            // BvP H2H requires ≥10 games (matches MIN_H2H); platoon fallback otherwise
+            const _h2hHitRate = _h2hVals.length >= 10 ? _h2hVals.filter(v => v >= threshold).length / _h2hVals.length * 100 : null;
             hitterH2HHitRatePts = _h2hHitRate == null ? 1
-              : _h2hVals.length >= 8 && _h2hHitRate >= 80 ? 2
+              : _h2hHitRate >= 80 ? 2
               : _h2hHitRate >= 70 ? 1
               : 0;
             // platoon fallback = primary Matchup Rate for ~90% of games; use full 0/1/2 scale from hitterPlatoonPts
             hitterH2HSource = _h2hHitRate != null ? 'bvp' : (_hrrUsingTeamFallback && hitterPlatoonRatio != null) ? 'platoon' : 'abstain';
             if (_hrrUsingTeamFallback) hitterH2HHitRatePts = hitterPlatoonPts;
-            // SimScore (max 10): batter quality→0-2, WHIP→0-2, season hit rate→0-2, H2H hit rate→0-2, O/U→0-2
-            hitterSimScore = hitterBatterQualityPts
+            // SimScore (max 10): OPS→0-2, WHIP→0-2, season hit rate→0-2, H2H hit rate→0-2, O/U→0-2
+            hitterSimScore = (hitterOpsPts ?? 1)
               + (hitterWhipPts ?? 0)
               + hitterSeasonHitRatePts
               + hitterH2HHitRatePts
               + hitterTotalPts;
             const _hlPitcherName = sportByteam.mlb?.probables?.[tonightOpp]?.name ?? null;
             const _hlML = hitterML;
-            const _hlCommon = { opponent: tonightOpp, pitcherName: _hlPitcherName, seasonPct: _hlSeasonPct, softPct: _hlSoftPct, truePct: _hlTruePct, edge: _hlEdge, pitcherEra: _hlEra, moneyline: _hlML, hitterBa, hitterBaTier, abVsTeam: hitterAbVsPitcher, hitterLineupSpot, pitcherWHIP, pitcherFIP, hitterSimScore, hitterParkKF, hitterMoneyline, hitterBarrelPct, hitterBarrelPts, hitterTotalPts, hitterGameTotal, hitterPlatoonPts, hitterPlatoonRatio, hitterH2HSource, hitterBatterQualityPts, hitterSeasonHitRatePts, hitterH2HHitRatePts, oppPitcherHand: _oppPitcherHand, hitterSplitBA: _splitBA, hitterWhipPts };
+            const _hlCommon = { opponent: tonightOpp, pitcherName: _hlPitcherName, seasonPct: _hlSeasonPct, softPct: _hlSoftPct, truePct: _hlTruePct, edge: _hlEdge, pitcherEra: _hlEra, moneyline: _hlML, hitterBa, hitterBaTier, abVsTeam: hitterAbVsPitcher, hitterLineupSpot, pitcherWHIP, pitcherFIP, hitterSimScore, hitterParkKF, hitterMoneyline, hitterBarrelPct, hitterBarrelPts, hitterTotalPts, hitterGameTotal, hitterPlatoonPts, hitterPlatoonRatio, hitterH2HSource, hitterOps: _hitterOps, hitterOpsPts, hitterSeasonHitRatePts, hitterH2HHitRatePts, oppPitcherHand: _oppPitcherHand, hitterSplitBA: _splitBA, hitterWhipPts };
             // Stage 1: lineup spot 5-9 discard
             if (hitterLineupSpot !== null && hitterLineupSpot >= 6) {
               if (isDebug) dropped.push({ ..._dropBase, reason: "low_lineup_spot", hitterLineupSpot, ..._hlCommon });
@@ -2922,7 +2966,7 @@ var worker_default = {
                 pitcherRecentKPct: _recentKPct, pitcherSeasonKPct: _seasonKPct,
                 lineupKPct: lineupKPctOut, pitcherAvgPitches: _avgP,
                 expectedBF: _expectedBF !== 24 ? _expectedBF : null,
-                kpctMeets, kpctPts, kbbMeets, kbbPts, lkpMeets, pitchesPts, parkMeets, mlPts, totalPts, kTrendPts, blendedHitRatePts, blendedHitRate: _blendedHR != null ? parseFloat(_blendedHR.toFixed(1)) : null,
+                kpctMeets, kpctPts, kbbMeets, kbbPts, lkpMeets, pitchesPts, parkMeets, mlPts, totalPts, kTrendPts, kHitRatePts, kH2HHandPts, kH2HHandRate: _kH2HHandRate, kH2HHandStarts: _kH2HHandStarts, kH2HHandMaj: _kH2HHandMaj, blendedHitRate: _blendedHR != null ? parseFloat(_blendedHR.toFixed(1)) : null,
               } : {}),
               ...(sport === "mlb" && stat !== "strikeouts" ? {
                 hitterSimScore, hitterFinalSimScore,
@@ -2930,7 +2974,7 @@ var worker_default = {
                 hitterBarrelPts, hitterTotalPts, hitterGameTotal, hitterPlatoonPts,
                 hitterPlatoonRatio: hitterPlatoonRatio ?? undefined,
                 hitterH2HSource: hitterH2HSource ?? undefined,
-                hitterBatterQualityPts, hitterSeasonHitRatePts, hitterH2HHitRatePts,
+                hitterOps: _hitterOps ?? undefined, hitterOpsPts, hitterSeasonHitRatePts, hitterH2HHitRatePts,
                 hitterBa: hitterBa !== null ? hitterBa : undefined,
                 hitterBaTier: hitterBaTier ?? undefined,
                 hitterWhipPts, hitterSplitBA,
@@ -2983,7 +3027,7 @@ var worker_default = {
               reason: "threshold_too_high",
               simScore, finalSimScore, expectedKs: expectedKsOut, threshold,
               opponent: tonightOpp,
-              kpctMeets, kpctPts, kbbMeets, kbbPts, lkpMeets, lkpPts, pitchesPts, parkMeets, mlPts, totalPts, kTrendPts, blendedHitRatePts, blendedHitRate: _blendedHR != null ? parseFloat(_blendedHR.toFixed(1)) : null,
+              kpctMeets, kpctPts, kbbMeets, kbbPts, lkpMeets, lkpPts, pitchesPts, parkMeets, mlPts, totalPts, kTrendPts, kHitRatePts, kH2HHandPts, kH2HHandRate: _kH2HHandRate, kH2HHandStarts: _kH2HHandStarts, kH2HHandMaj: _kH2HHandMaj, blendedHitRate: _blendedHR != null ? parseFloat(_blendedHR.toFixed(1)) : null,
               seasonPct: parseFloat(primaryPct.toFixed(1)), softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
               truePct: _kTruePct, edge: parseFloat((_kTruePct - kalshiPct).toFixed(1)),
               pitcherKPct: pitcherKPctOut, pitcherAvgPitches: _avgP,
@@ -3015,7 +3059,7 @@ var worker_default = {
               reason: "low_confidence",
               simScore, finalSimScore,
               opponent: tonightOpp,
-              kpctMeets, kpctPts, kbbMeets, kbbPts, lkpMeets, lkpPts, pitchesPts, parkMeets, mlPts, totalPts, kTrendPts, blendedHitRatePts, blendedHitRate: _blendedHR != null ? parseFloat(_blendedHR.toFixed(1)) : null,
+              kpctMeets, kpctPts, kbbMeets, kbbPts, lkpMeets, lkpPts, pitchesPts, parkMeets, mlPts, totalPts, kTrendPts, kHitRatePts, kH2HHandPts, kH2HHandRate: _kH2HHandRate, kH2HHandStarts: _kH2HHandStarts, kH2HHandMaj: _kH2HHandMaj, blendedHitRate: _blendedHR != null ? parseFloat(_blendedHR.toFixed(1)) : null,
               seasonPct: parseFloat(primaryPct.toFixed(1)), softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
               truePct: parseFloat(truePct.toFixed(1)), edge: parseFloat(edge.toFixed(1)),
               pitcherCSWPct: _pt(sportByteam.mlb?.pitcherCSWPct, "cswPct"),
@@ -3128,7 +3172,7 @@ var worker_default = {
               hitterBarrelPts, hitterTotalPts, hitterGameTotal, hitterPlatoonPts,
               hitterPlatoonRatio: hitterPlatoonRatio ?? undefined,
               hitterH2HSource: hitterH2HSource ?? undefined,
-              hitterBatterQualityPts, hitterSeasonHitRatePts, hitterH2HHitRatePts,
+              hitterOps: _hitterOps ?? undefined, hitterOpsPts, hitterSeasonHitRatePts, hitterH2HHitRatePts,
               hitterBa: hitterBa !== null ? hitterBa : undefined,
               hitterBaTier: hitterBaTier ?? undefined,
               hitterWhipPts, hitterSplitBA,
@@ -3205,7 +3249,11 @@ var worker_default = {
             kpctPts: sport === "mlb" && stat === "strikeouts" ? kpctPts : void 0,
             lkpPts: sport === "mlb" && stat === "strikeouts" ? lkpPts : void 0,
             kTrendPts: sport === "mlb" && stat === "strikeouts" ? kTrendPts : void 0,
-            blendedHitRatePts: sport === "mlb" && stat === "strikeouts" ? blendedHitRatePts : void 0,
+            kHitRatePts: sport === "mlb" && stat === "strikeouts" ? kHitRatePts : void 0,
+            kH2HHandPts: sport === "mlb" && stat === "strikeouts" ? kH2HHandPts : void 0,
+            kH2HHandRate: sport === "mlb" && stat === "strikeouts" ? _kH2HHandRate : void 0,
+            kH2HHandStarts: sport === "mlb" && stat === "strikeouts" ? _kH2HHandStarts : void 0,
+            kH2HHandMaj: sport === "mlb" && stat === "strikeouts" ? _kH2HHandMaj : void 0,
             blendedHitRate: sport === "mlb" && stat === "strikeouts" ? (_blendedHR != null ? parseFloat(_blendedHR.toFixed(1)) : null) : void 0,
             pitcherGS26: sport === "mlb" && stat === "strikeouts" ? _pt(sportByteam.mlb?.pitcherGS26, "gs26") : void 0,
             pitcherHasAnchor: sport === "mlb" && stat === "strikeouts" ? _pt(sportByteam.mlb?.pitcherHasAnchor, "hasAnchor") : void 0,
@@ -3218,7 +3266,8 @@ var worker_default = {
             hitterPlatoonPts: sport === "mlb" && stat !== "strikeouts" ? hitterPlatoonPts : void 0,
             hitterPlatoonRatio: sport === "mlb" && stat !== "strikeouts" ? (hitterPlatoonRatio ?? void 0) : void 0,
             hitterH2HSource: sport === "mlb" && stat !== "strikeouts" ? (hitterH2HSource ?? void 0) : void 0,
-            hitterBatterQualityPts: sport === "mlb" && stat !== "strikeouts" ? hitterBatterQualityPts : void 0,
+            hitterOps: sport === "mlb" && stat !== "strikeouts" ? (_hitterOps ?? void 0) : void 0,
+            hitterOpsPts: sport === "mlb" && stat !== "strikeouts" ? hitterOpsPts : void 0,
             hitterSeasonHitRatePts: sport === "mlb" && stat !== "strikeouts" ? hitterSeasonHitRatePts : void 0,
             hitterH2HHitRatePts: sport === "mlb" && stat !== "strikeouts" ? hitterH2HHitRatePts : void 0,
             hitterSplitBA: sport === "mlb" && stat !== "strikeouts" ? hitterSplitBA : void 0,

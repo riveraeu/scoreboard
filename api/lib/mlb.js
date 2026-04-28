@@ -123,15 +123,16 @@ export async function buildLineupKPct(mlbSched) {
       }
     }
     const allIds = [...new Set(Object.values(teamLineups).flat())];
-    if (allIds.length === 0) return { lineupKPct: {}, lineupBatterKPcts: {}, lineupKPctVR: {}, lineupKPctVL: {}, lineupBatterKPctsOrdered: {}, lineupBatterKPctsVROrdered: {}, lineupBatterKPctsVLOrdered: {}, lineupSpotByName: {}, gameHomeTeams, projectedLineupTeams: [] };
+    if (allIds.length === 0) return { lineupKPct: {}, lineupBatterKPcts: {}, lineupKPctVR: {}, lineupKPctVL: {}, lineupBatterKPctsOrdered: {}, lineupBatterKPctsVROrdered: {}, lineupBatterKPctsVLOrdered: {}, lineupSpotByName: {}, gameHomeTeams, projectedLineupTeams: [], batterSplitBA: {}, hitterOpsMap: {}, batterHandByName: {} };
     const idStr = allIds.join(",");
-    const [res25, res26, resSplitVR, resSplitVL, resSplitVR25, resSplitVL25] = await Promise.all([
+    const [res25, res26, resSplitVR, resSplitVL, resSplitVR25, resSplitVL25, resBatSideOps] = await Promise.all([
       fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=batting,type=season,season=2025,gameType=R)`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
       fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=batting,type=season,season=2026,gameType=R)`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
       fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=batting,type=statSplits,season=2026,sitCodes=vr,gameType=R)`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
       fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=batting,type=statSplits,season=2026,sitCodes=vl,gameType=R)`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
       fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=batting,type=statSplits,season=2025,sitCodes=vr,gameType=R)`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
-      fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=batting,type=statSplits,season=2025,sitCodes=vl,gameType=R)`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({}))
+      fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=batting,type=statSplits,season=2025,sitCodes=vl,gameType=R)`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
+      fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=batting,type=season,season=2026,gameType=R)&fields=people,id,fullName,batSide,stats,splits,stat,ops`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({}))
     ]);
     const playerStats25 = {}, playerStats26 = {};
     for (const person of (res25.people || [])) {
@@ -192,6 +193,16 @@ export async function buildLineupKPct(mlbSched) {
         }
       }
     }
+    // OPS (2026 season) + batting side per batter
+    const hitterOpsMap = {};
+    const batterHandByName = {};
+    for (const person of (resBatSideOps.people || [])) {
+      if (!person.fullName) continue;
+      const name = _bsNorm(person.fullName);
+      if (person.batSide?.code) batterHandByName[name] = person.batSide.code;
+      const ops = person.stats?.[0]?.splits?.[0]?.stat?.ops;
+      if (ops != null) hitterOpsMap[name] = parseFloat(parseFloat(ops).toFixed(3));
+    }
     const LEAGUE_K = 0.222; // MLB average K rate fallback
     // Regression-to-mean: blend 2026 with 2025 anchor weighted by PA
     // At 100+ PA trust 2026 fully; below that blend proportionally toward 2025 (or league avg)
@@ -247,9 +258,9 @@ export async function buildLineupKPct(mlbSched) {
         }
       }
     }
-    return { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, projectedLineupTeams: [...projectedLineupTeams], batterSplitBA };
+    return { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, projectedLineupTeams: [...projectedLineupTeams], batterSplitBA, hitterOpsMap, batterHandByName };
   } catch {
-    return { lineupKPct: {}, lineupBatterKPcts: {}, lineupKPctVR: {}, lineupKPctVL: {}, lineupBatterKPctsOrdered: {}, lineupBatterKPctsVROrdered: {}, lineupBatterKPctsVLOrdered: {}, lineupSpotByName: {}, gameHomeTeams: {}, projectedLineupTeams: [], batterSplitBA: {} };
+    return { lineupKPct: {}, lineupBatterKPcts: {}, lineupKPctVR: {}, lineupKPctVL: {}, lineupBatterKPctsOrdered: {}, lineupBatterKPctsVROrdered: {}, lineupBatterKPctsVLOrdered: {}, lineupSpotByName: {}, gameHomeTeams: {}, projectedLineupTeams: [], batterSplitBA: {}, hitterOpsMap: {}, batterHandByName: {} };
   }
 }
 
@@ -421,16 +432,21 @@ export async function buildPitcherKPct(mlbSched) {
       const s26 = pitcherStats26[id];
       if (s26 && s26.gs > 0) pitcherGS26[abbr] = s26.gs;
     }
-    // Step 1: fetch game logs (needed for CSW% play-by-play gamePk lookup)
-    let glFetch = [];
+    // Step 1: fetch game logs (2026 for avgP/avgBF/stdBF/recentK; also 2025 for H2H hand component)
+    let glFetch = [], glFetch25 = [];
     try {
-      glFetch = await Promise.all(
-        allIds.map(id =>
+      [glFetch, glFetch25] = await Promise.all([
+        Promise.all(allIds.map(id =>
           fetch(`https://statsapi.mlb.com/api/v1/people/${id}/stats?stats=gameLog&group=pitching&season=2026&gameType=R`, { headers: { "User-Agent": "Mozilla/5.0" } })
             .then(r => r.ok ? r.json() : {}).catch(() => ({}))
             .then(d => ({ id, splits: d.stats?.[0]?.splits || [] }))
-        )
-      );
+        )),
+        Promise.all(allIds.map(id =>
+          fetch(`https://statsapi.mlb.com/api/v1/people/${id}/stats?stats=gameLog&group=pitching&season=2025&gameType=R`, { headers: { "User-Agent": "Mozilla/5.0" } })
+            .then(r => r.ok ? r.json() : {}).catch(() => ({}))
+            .then(d => ({ id, splits: d.stats?.[0]?.splits || [] }))
+        ))
+      ]);
     } catch { /* game log fetch failed */ }
     // Avg pitches per start from 2026 game logs (starts-only — accurate for pitchers with mixed starter/reliever roles)
     // Falls back to 2025 season aggregate only when no 2026 start data exists in the gamelog.
@@ -570,6 +586,24 @@ export async function buildPitcherKPct(mlbSched) {
         if (cswByMlbId[id] != null) pitcherCSWPct[abbr] = cswByMlbId[id];
       }
     } catch { /* CSW% unavailable — filter falls back to K% */ }
+    // pitcherH2HStarts: combined 2025+2026 completed starts with oppAbbr + strikeouts per game.
+    // Used for K H2H hand component — needs game-level opponent to filter by hand majority.
+    // No NP filter (unlike startSplits); any completed start qualifies.
+    const pitcherH2HStartsById = {};
+    for (const { id, splits } of [...glFetch25, ...glFetch]) {
+      if (!pitcherH2HStartsById[id]) pitcherH2HStartsById[id] = [];
+      const starts = splits
+        .filter(s => (s.stat?.gamesStarted || 0) > 0 && s.date !== _todayStr)
+        .map(s => ({
+          oppAbbr: s.opponent?.abbreviation ?? null,
+          strikeouts: s.stat?.strikeOuts ?? 0,
+        }));
+      pitcherH2HStartsById[id].push(...starts);
+    }
+    const pitcherH2HStarts = {};
+    for (const [abbr, id] of Object.entries(pitcherByTeam)) {
+      if (pitcherH2HStartsById[id]?.length) pitcherH2HStarts[abbr] = pitcherH2HStartsById[id];
+    }
     // Name-keyed map: for MLB strikeout plays the player IS the pitcher.
     // Primary path: abbrs found in pitcherByTeam — uses per-abbr stats directly.
     // Fallback path: overwritten pitcher (same-matchup doubleheader, e.g. SD vs SEA twice) —
@@ -648,8 +682,8 @@ export async function buildPitcherKPct(mlbSched) {
         if (!pitcherInfoByTeam[a]) pitcherInfoByTeam[a] = { name: person.fullName, id };
       }
     }
-    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherWHIP, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam };
+    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherWHIP, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam, pitcherH2HStarts };
   } catch {
-    return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherAvgBF: {}, pitcherStdBF: {}, pitcherGS26: {}, pitcherHasAnchor: {}, pitcherRecentKPct: {}, pitcherLastStartDate: {}, pitcherLastStartPC: {}, umpireByGame: {}, pitcherInfoByTeam: {} };
+    return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherAvgBF: {}, pitcherStdBF: {}, pitcherGS26: {}, pitcherHasAnchor: {}, pitcherRecentKPct: {}, pitcherLastStartDate: {}, pitcherLastStartPC: {}, umpireByGame: {}, pitcherInfoByTeam: {}, pitcherH2HStarts: {} };
   }
 }
