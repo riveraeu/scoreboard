@@ -1604,15 +1604,17 @@ var worker_default = {
           const SPORT_SB_PATH = { nba: "basketball/nba", nhl: "hockey/nhl", mlb: "baseball/mlb" };
           const sportsToFetch = needGameTimes ? [...sportsNeeded].filter(s => SPORT_SB_PATH[s]) : (needNbaStatus ? ["nba"] : []);
           const yesterdayDateStr = new Date(Date.now() - 86400000).toISOString().slice(0, 10).replace(/-/g, "");
+          const tomorrowDateStr = new Date(Date.now() + 86400000).toISOString().slice(0, 10).replace(/-/g, "");
           const sbResults = await Promise.all(sportsToFetch.map(async s => {
             try {
               const H2 = { "User-Agent": "Mozilla/5.0" };
               const base = `https://site.api.espn.com/apis/site/v2/sports/${SPORT_SB_PATH[s]}/scoreboard`;
-              const [r1, r2] = await Promise.all([
+              const [r1, r2, r3] = await Promise.all([
                 fetch(`${base}?dates=${yesterdayDateStr}`, { headers: H2 }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
                 fetch(`${base}?dates=${todayDateStr}`, { headers: H2 }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+                fetch(`${base}?dates=${tomorrowDateStr}`, { headers: H2 }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
               ]);
-              return { sport: s, events: [...(r1.events || []), ...(r2.events || [])] };
+              return { sport: s, events: [...(r1.events || []), ...(r2.events || []), ...(r3.events || [])] };
             } catch { return { sport: s, events: [] }; }
           }));
           if (needGameTimes) {
@@ -2136,6 +2138,9 @@ var worker_default = {
         const plays = [];
         const dropped = [];
         const nbaDropped = [];
+        // Tomorrow's ISO date string for gameTime fallback lookup (Kalshi sometimes uses today's date
+        // in event tickers for tomorrow's games, so we need to try tomorrow's key when today's misses).
+        const _tomorrowISOStr = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
         // Cache pitcher K-count distributions keyed by playerTeam so all thresholds for the same
         // pitcher share one simulation run — guarantees P(K>=4) >= P(K>=5) by construction.
         const pitcherKDistCache = {};
@@ -3017,7 +3022,7 @@ var worker_default = {
               simPct: simPctOut,
               spreadAdj,
               gameDate,
-              gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
+              gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}:${_tomorrowISOStr}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
               lineupConfirmed: !(sportByteam.mlb?.projectedLineupTeams || []).includes(tonightOpp),
               playerStatus: null,
             };
@@ -3052,7 +3057,7 @@ var worker_default = {
               log5Pct: simPctOut ?? log5PctOut, simPct: simPctOut,
               spreadAdj: kalshiSpread != null ? parseFloat((kalshiSpread / 2).toFixed(1)) : 0,
               gameDate,
-              gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
+              gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}:${_tomorrowISOStr}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
               lineupConfirmed: !(sportByteam.mlb?.projectedLineupTeams || []).includes(tonightOpp),
               playerStatus: null,
             });
@@ -3091,7 +3096,7 @@ var worker_default = {
               log5Pct: simPctOut ?? log5PctOut, simPct: simPctOut,
               spreadAdj,
               gameDate,
-              gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
+              gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}:${_tomorrowISOStr}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
               lineupConfirmed: !(sportByteam.mlb?.projectedLineupTeams || []).includes(tonightOpp),
               playerStatus: null,
             });
@@ -3131,7 +3136,7 @@ var worker_default = {
               log5Pct: simPctOut ?? log5PctOut, simPct: simPctOut,
               spreadAdj,
               gameDate,
-              gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
+              gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}:${_tomorrowISOStr}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
               lineupConfirmed: !(sportByteam.mlb?.projectedLineupTeams || []).includes(tonightOpp),
               playerStatus: null,
             });
@@ -3168,7 +3173,7 @@ var worker_default = {
               simPct: simPctOut,
               spreadAdj,
               gameDate,
-              gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
+              gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}:${_tomorrowISOStr}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
               playerStatus: null,
             });
             continue;
@@ -3199,7 +3204,7 @@ var worker_default = {
               simPct: simPctOut,
               spreadAdj,
               gameDate,
-              gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
+              gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}:${_tomorrowISOStr}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
               playerStatus: null,
             });
             continue;
@@ -3238,7 +3243,7 @@ var worker_default = {
               simPct: simPctOut,
               spreadAdj,
               gameDate,
-              gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
+              gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}:${_tomorrowISOStr}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
               lineupConfirmed: !(sportByteam.mlb?.projectedLineupTeams || []).includes(tonightOpp),
               playerStatus: null,
             });
@@ -3385,7 +3390,7 @@ var worker_default = {
             historicalGames: softVals.length,
             hitterMoneyline: sport === "mlb" && stat !== "strikeouts" ? sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null : void 0,
             gameDate,
-            gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
+            gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}:${_tomorrowISOStr}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
             lineupConfirmed: sport === "mlb" ? !(
               stat === "strikeouts"
                 ? (sportByteam.mlb?.projectedLineupTeams || []).includes(tonightOpp)

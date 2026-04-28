@@ -252,17 +252,18 @@ export default function LineupsPage({
           {(() => {
             const todayPT = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
             const tomorrowPT = new Date(Date.now() + 86400000).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
-            // Group games by date
+            const _ptFmtLp = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' });
+            // Group games by actual game date (use gameTime PT date; gameDate from Kalshi can lag by a day)
             const gamesByDate = {};
             games.forEach(g => {
-              const gd = g.gameDate || todayPT;
+              const gd = g.gameTime ? _ptFmtLp.format(new Date(g.gameTime)) : (g.gameDate || todayPT);
               if (!gamesByDate[gd]) gamesByDate[gd] = [];
               gamesByDate[gd].push(g);
             });
             // Group qualified plays by date
             const playsByDate = {};
             qualifiedPlays.forEach(p => {
-              const gd = p.gameDate || todayPT;
+              const gd = p.gameTime ? _ptFmtLp.format(new Date(p.gameTime)) : (p.gameDate || todayPT);
               if (!playsByDate[gd]) playsByDate[gd] = [];
               playsByDate[gd].push(p);
             });

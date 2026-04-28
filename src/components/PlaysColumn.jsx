@@ -133,9 +133,10 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMet
             const ptDate = n => new Date(Date.now() + n*86400000).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
             const today = ptDate(0);
             const tomorrow = ptDate(1);
+            const _ptFmtPl = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' });
             const grouped = {};
             untrackedPlays.forEach(play => {
-              const d = play.gameDate || today;
+              const d = play.gameTime ? _ptFmtPl.format(new Date(play.gameTime)) : (play.gameDate || today);
               if (!grouped[d]) grouped[d] = [];
               grouped[d].push(play);
             });
