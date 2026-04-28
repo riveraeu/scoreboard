@@ -2496,6 +2496,7 @@ var worker_default = {
           let hitterParkKF = null, hitterMoneyline = null, hitterBarrelPct = null;
           let hitterBarrelPts = null, hitterTotalPts = null, hitterGameTotal = null, hitterPlatoonPts = null, hitterOppPitcherHand = null, hitterSplitBA = null, hitterWhipPts = null;
           let hitterBatterQualityPts = null, hitterSeasonHitRatePts = null, hitterH2HHitRatePts = null;
+          let hitterPlatoonRatio = null, hitterH2HSource = null;
           if (sport === "mlb" && stat !== "strikeouts") {
             const hitterML = sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null;
             const hIdx2 = gl.ul.indexOf("H");
@@ -2581,7 +2582,7 @@ var worker_default = {
             }
             // Platoon still computed for output/display — no longer in simScore
             hitterPlatoonPts = 1; // abstain default
-            let hitterPlatoonRatio = null;
+            hitterPlatoonRatio = null;
             if (_splitBA != null && hitterBa != null) {
               hitterPlatoonRatio = parseFloat((_splitBA / hitterBa).toFixed(3));
               hitterPlatoonPts = hitterPlatoonRatio >= 1.10 ? 2 : hitterPlatoonRatio >= 1.00 ? 1 : 0;
@@ -2631,7 +2632,7 @@ var worker_default = {
               : _h2hHitRate >= 70 ? 1
               : 0;
             // platoon fallback = primary Matchup Rate for ~90% of games; use full 0/1/2 scale from hitterPlatoonPts
-            const hitterH2HSource = _h2hHitRate != null ? 'bvp' : (_hrrUsingTeamFallback && hitterPlatoonRatio != null) ? 'platoon' : 'abstain';
+            hitterH2HSource = _h2hHitRate != null ? 'bvp' : (_hrrUsingTeamFallback && hitterPlatoonRatio != null) ? 'platoon' : 'abstain';
             if (_hrrUsingTeamFallback) hitterH2HHitRatePts = hitterPlatoonPts;
             // SimScore (max 10): batter quality→0-2, WHIP→0-2, season hit rate→0-2, H2H hit rate→0-2, O/U→0-2
             hitterSimScore = hitterBatterQualityPts
