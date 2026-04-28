@@ -76,20 +76,24 @@ export default function MatchupCard({ game, mlbMeta, nbaMeta, navigateToPlayer, 
   const gameTimeStr = fmtGameTime(gameTime);
   const isDomed = DOMED_STADIUMS.has(homeTeam);
 
+  // mlbMeta is built from tonight's schedule only — don't bleed onto tomorrow's cards
+  const todayPT = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+  const isToday = !gameDate || gameDate === todayPT;
+
   // ── MLB metadata ──────────────────────────────────────────────────────────
-  const pitchers = sport === 'mlb' ? (mlbMeta?.pitchers ?? {}) : {};
+  const pitchers = sport === 'mlb' && isToday ? (mlbMeta?.pitchers ?? {}) : {};
   const awayPitcher = pitchers[awayTeam] ?? null;
   const homePitcher = pitchers[homeTeam] ?? null;
   const mlbGameOdds = mlbMeta?.gameOdds ?? {};
   const mlbAwayML = mlbGameOdds[awayTeam]?.ml ?? null;
   const mlbHomeML = mlbGameOdds[homeTeam]?.ml ?? null;
   const umpireKey = `${homeTeam}|${awayTeam}`;
-  const umpire = mlbMeta?.umpires?.[umpireKey] ?? null;
-  const weatherData = mlbMeta?.weather?.[umpireKey] ?? null;
+  const umpire = isToday ? (mlbMeta?.umpires?.[umpireKey] ?? null) : null;
+  const weatherData = isToday ? (mlbMeta?.weather?.[umpireKey] ?? null) : null;
 
-  // Lineup confirmed (MLB)
-  const _projTeams = new Set(mlbMeta?.projectedLineupTeams ?? []);
-  const _teamsWithLineup = new Set(mlbMeta?.teamsWithLineup ?? []);
+  // Lineup confirmed (MLB) — today only
+  const _projTeams = new Set(isToday ? (mlbMeta?.projectedLineupTeams ?? []) : []);
+  const _teamsWithLineup = new Set(isToday ? (mlbMeta?.teamsWithLineup ?? []) : []);
   const getMlbLineupConfirmed = (abbr) => {
     if (!_teamsWithLineup.has(abbr)) return null;
     return !_projTeams.has(abbr);
