@@ -3840,13 +3840,16 @@ var worker_default = {
               }
             }
           }
-          // Dedup: one play per scoringTeam+oppTeam (best edge threshold)
+          // Dedup: one play per scoringTeam+oppTeam+direction (qualified plays win over non-qualified; edge breaks ties within same tier)
           const _ttBestMap = {};
           for (const tp of teamTotalPlays) {
-            const key = `${tp.sport}|${tp.scoringTeam}|${tp.oppTeam}`;
-            if (!_ttBestMap[key] || tp.edge > _ttBestMap[key].edge) _ttBestMap[key] = tp;
+            const key = `${tp.sport}|${tp.scoringTeam}|${tp.oppTeam}|${tp.direction}`;
+            const prev = _ttBestMap[key];
+            const tpQ = tp.qualified !== false;
+            const prevQ = prev && prev.qualified !== false;
+            if (!prev || (!prevQ && tpQ) || (prevQ === tpQ && tp.edge > prev.edge)) _ttBestMap[key] = tp;
           }
-          const _ttBestIds = new Set(Object.values(_ttBestMap).map(tp => `${tp.sport}|${tp.scoringTeam}|${tp.oppTeam}|${tp.threshold}`));
+          const _ttBestIds = new Set(Object.values(_ttBestMap).map(tp => `${tp.sport}|${tp.scoringTeam}|${tp.oppTeam}|${tp.threshold}|${tp.direction}`));
           // Cross-type dedup: one qualified play per game across game totals AND team totals
           // Build a map of game-key → best edge winner (from both types)
           const _crossBestMap = {};
@@ -3863,9 +3866,9 @@ var worker_default = {
             }
           }
           for (const tp of teamTotalPlays) {
-            const isTypeBest = _ttBestIds.has(`${tp.sport}|${tp.scoringTeam}|${tp.oppTeam}|${tp.threshold}`);
+            const isTypeBest = _ttBestIds.has(`${tp.sport}|${tp.scoringTeam}|${tp.oppTeam}|${tp.threshold}|${tp.direction}`);
             const crossWinner = _crossBestMap[`${tp.sport}|${tp.homeTeam}|${tp.awayTeam}`];
-            const isCrossWinner = crossWinner?.gameType === "teamTotal" && crossWinner?.scoringTeam === tp.scoringTeam && crossWinner?.threshold === tp.threshold;
+            const isCrossWinner = crossWinner?.gameType === "teamTotal" && crossWinner?.scoringTeam === tp.scoringTeam && crossWinner?.threshold === tp.threshold && crossWinner?.direction === tp.direction;
             plays.push(isTypeBest && isCrossWinner ? tp : { ...tp, qualified: false });
           }
         }
