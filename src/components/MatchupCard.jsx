@@ -3,9 +3,6 @@ import { WORKER } from '../lib/constants.js';
 
 const SPORT_LOGO_KEY = { mlb: 'mlb', nba: 'nba', nhl: 'nhl' };
 
-// Home teams that play in domed/retractable-roof stadiums (weather irrelevant)
-const DOMED_STADIUMS = new Set(['TB', 'TOR', 'HOU', 'MIA', 'SEA', 'ARI', 'TEX', 'MIL']);
-
 function logoUrl(sport, abbr) {
   if (!abbr) return null;
   return `https://a.espncdn.com/i/teamlogos/${SPORT_LOGO_KEY[sport] || sport}/500/${abbr.toLowerCase()}.png`;
@@ -35,19 +32,6 @@ function fmtSpread(spread) {
   return spread > 0 ? `+${spread}` : `${spread}`;
 }
 
-function weatherIcon(condition) {
-  if (!condition) return '🌤';
-  const c = condition.toLowerCase();
-  if (c.includes('thunder') || c.includes('storm')) return '⛈';
-  if (c.includes('rain') || c.includes('shower') || c.includes('drizzle')) return '🌧';
-  if (c.includes('snow') || c.includes('sleet') || c.includes('flurr')) return '🌨';
-  if (c.includes('fog') || c.includes('mist') || c.includes('haze')) return '🌫';
-  if (c.includes('wind') && !c.includes('sunny') && !c.includes('clear')) return '💨';
-  if (c.includes('overcast') || c.includes('cloudy')) return '☁️';
-  if (c.includes('partly') || c.includes('mostly cloudy')) return '⛅';
-  if (c.includes('sunny') || c.includes('clear')) return '☀️';
-  return '🌤';
-}
 
 function LineupBadge({ confirmed }) {
   if (confirmed === true) return (
@@ -74,7 +58,6 @@ export default function MatchupCard({ game, mlbMeta, mlbMetaTomorrow, nbaMeta, n
 
 
   const gameTimeStr = fmtGameTime(gameTime);
-  const isDomed = DOMED_STADIUMS.has(homeTeam);
 
   // Select the right mlbMeta source — today's vs tomorrow's (keyed by team abbr, no date context)
   const todayPT = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
@@ -88,10 +71,6 @@ export default function MatchupCard({ game, mlbMeta, mlbMetaTomorrow, nbaMeta, n
   const mlbGameOdds = (isToday ? mlbMeta : null)?.gameOdds ?? {};
   const mlbAwayML = mlbGameOdds[awayTeam]?.ml ?? null;
   const mlbHomeML = mlbGameOdds[homeTeam]?.ml ?? null;
-  const umpireKey = `${homeTeam}|${awayTeam}`;
-  const umpire = activeMlbMeta?.umpires?.[umpireKey] ?? null;
-  const weatherData = (isToday ? mlbMeta : null)?.weather?.[umpireKey] ?? null;
-
   // Lineup confirmed (MLB) — today only; tomorrow has no posted lineups yet
   const _projTeams = new Set(activeMlbMeta?.projectedLineupTeams ?? []);
   const _teamsWithLineup = new Set(activeMlbMeta?.teamsWithLineup ?? []);
@@ -124,7 +103,6 @@ export default function MatchupCard({ game, mlbMeta, mlbMetaTomorrow, nbaMeta, n
   const displaySpread = sport === 'nba' ? nbaHomeSpread : null;
 
   const showMlbExtra = sport === 'mlb' && (awayPitcher || homePitcher);
-  const showMlbDetails = sport === 'mlb';
 
   async function onToggleLineup() {
     if (!lineupOpen && !lineup) {
@@ -246,39 +224,6 @@ export default function MatchupCard({ game, mlbMeta, mlbMetaTomorrow, nbaMeta, n
               <div style={{ marginTop: 3, display: 'flex', justifyContent: 'flex-end' }}><LineupBadge confirmed={homeMlbConfirmed} /></div>
             )}
           </div>
-        </div>
-      )}
-
-      {/* MLB: umpire + weather row */}
-      {showMlbDetails && (
-        <div style={{ padding: '5px 16px 7px', display: 'flex', alignItems: 'center', gap: 12, borderTop: '1px solid #0d1117', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <span style={{ fontSize: 10, color: '#484f58', fontWeight: 600 }}>HP Ump:</span>
-            <span style={{ fontSize: 10, color: umpire ? '#8b949e' : '#30363d', fontStyle: umpire ? 'normal' : 'italic' }}>
-              {umpire || 'Not announced yet'}
-            </span>
-          </div>
-          {isDomed ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ fontSize: 13, lineHeight: 1 }}>🏟</span>
-              <span style={{ fontSize: 10, color: '#484f58' }}>Dome</span>
-            </div>
-          ) : weatherData ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ fontSize: 13, lineHeight: 1 }}>{weatherIcon(weatherData.condition)}</span>
-              {weatherData.temp != null && <span style={{ fontSize: 10, color: '#8b949e' }}>{weatherData.temp}°</span>}
-              {weatherData.windSpeed != null && weatherData.windSpeed > 0 ? (
-                <span style={{ fontSize: 10, fontWeight: 600,
-                  color: weatherData.windOutMph >= 5 ? '#3fb950' : weatherData.windOutMph <= -5 ? '#f78166' : '#8b949e' }}>
-                  {Math.round(weatherData.windSpeed)} mph {weatherData.windOutMph >= 5 ? 'Out' : weatherData.windOutMph <= -5 ? 'In' : '↔'}
-                </span>
-              ) : weatherData.windSpeed === 0 ? (
-                <span style={{ fontSize: 10, color: '#484f58' }}>0 mph</span>
-              ) : weatherData.condition ? (
-                <span style={{ fontSize: 10, color: '#484f58' }}>{weatherData.condition}</span>
-              ) : null}
-            </div>
-          ) : null}
         </div>
       )}
 
