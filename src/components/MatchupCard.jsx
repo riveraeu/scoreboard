@@ -267,7 +267,16 @@ export default function MatchupCard({ game, mlbMeta, mlbMetaTomorrow, nbaMeta, n
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <span style={{ fontSize: 13, lineHeight: 1 }}>{weatherIcon(weatherData.condition)}</span>
               {weatherData.temp != null && <span style={{ fontSize: 10, color: '#8b949e' }}>{weatherData.temp}°</span>}
-              {weatherData.condition && <span style={{ fontSize: 10, color: '#484f58' }}>{weatherData.condition}</span>}
+              {weatherData.windSpeed != null && weatherData.windSpeed > 0 ? (
+                <span style={{ fontSize: 10, fontWeight: 600,
+                  color: weatherData.windOutMph >= 5 ? '#3fb950' : weatherData.windOutMph <= -5 ? '#f78166' : '#8b949e' }}>
+                  {Math.round(weatherData.windSpeed)} mph {weatherData.windOutMph >= 5 ? 'Out' : weatherData.windOutMph <= -5 ? 'In' : '↔'}
+                </span>
+              ) : weatherData.windSpeed === 0 ? (
+                <span style={{ fontSize: 10, color: '#484f58' }}>0 mph</span>
+              ) : weatherData.condition ? (
+                <span style={{ fontSize: 10, color: '#484f58' }}>{weatherData.condition}</span>
+              ) : null}
             </div>
           ) : null}
         </div>

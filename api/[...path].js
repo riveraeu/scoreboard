@@ -318,109 +318,6 @@ var worker_default = {
         const newHash = await pbkdf2Hash(newPassword, newSalt);
         await CACHE2.put(emailKey, JSON.stringify({ ...user, passwordHash: newHash, salt: newSalt }));
         return jsonResponse({ ok: true });
-      } else if (path === "auth/import-kalshi-picks" && method === "POST") {
-        const { kalshiToken: providedToken, kalshiSession, adminKey: importAdminKey, userId: importUserId } = await request.json();
-        if (importAdminKey !== env?.ADMIN_KEY) return errorResponse("Forbidden", 403);
-        if (!providedToken && !kalshiSession) return errorResponse("kalshiToken or kalshiSession required", 400);
-        if (!importUserId) return errorResponse("userId required", 400);
-        const KALSHI_BASE = "https://api.elections.kalshi.com/trade-api/v2";
-        const KMON2 = { JAN:"01",FEB:"02",MAR:"03",APR:"04",MAY:"05",JUN:"06",JUL:"07",AUG:"08",SEP:"09",OCT:"10",NOV:"11",DEC:"12" };
-        const IMP_SERIES = {
-          KXNBAPTS:{sport:"nba",stat:"points"},KXNBAREB:{sport:"nba",stat:"rebounds"},KXNBAAST:{sport:"nba",stat:"assists"},KXNBA3PT:{sport:"nba",stat:"threePointers"},
-          KXNHLPTS:{sport:"nhl",stat:"points"},KXMLBHITS:{sport:"mlb",stat:"hits"},KXMLBKS:{sport:"mlb",stat:"strikeouts"},KXMLBHRR:{sport:"mlb",stat:"hrr"},
-          KXMLBTOTAL:{sport:"mlb",stat:"totalRuns",gameType:"total"},KXNBATOTAL:{sport:"nba",stat:"totalPoints",gameType:"total"},KXNHLTOTAL:{sport:"nhl",stat:"totalGoals",gameType:"total"},
-        };
-        const IMP_TNORM = { nba:{GS:"GSW",SA:"SAS",NY:"NYK",NJ:"BKN",NO:"NOP",PHO:"PHX"}, nhl:{NJ:"NJD",TB:"TBL",LA:"LAK",SJ:"SJS"}, mlb:{KCR:"KC",SFG:"SF",SDP:"SD",TBR:"TB",CHW:"CWS",AZ:"ARI",OAK:"ATH",WSN:"WSH",WAS:"WSH"}, nfl:{LA:"LAR"} };
-        const impNT = (sport, a) => IMP_TNORM[sport]?.[a] || a;
-        const impTeams = (eventTicker, sport) => {
-          const seg = (eventTicker || "").split("-")[1] || "";
-          let rest = seg.slice(7);
-          if (/^\d{4}[A-Z]/.test(rest)) rest = rest.slice(4);
-          if (rest.length < 4) return [null, null];
-          const has2 = IMP_TNORM[sport]?.[rest.slice(0,2)] !== undefined;
-          if (rest.length >= 6 && !has2) return [impNT(sport,rest.slice(0,3)), impNT(sport,rest.slice(3,6))];
-          if (rest.length >= 5 && has2) return [impNT(sport,rest.slice(0,2)), impNT(sport,rest.slice(2,5))];
-          if (rest.length >= 5) return [impNT(sport,rest.slice(0,3)), impNT(sport,rest.slice(3,5))];
-          return [null, null];
-        };
-        const kalshiToken = providedToken;
-        const kHdrs = kalshiSession
-          ? { "Cookie":`session=${kalshiSession}`, "Content-Type":"application/json" }
-          : { "Authorization":`Bearer ${kalshiToken}`, "Content-Type":"application/json" };
-        // Step 2: Fetch fills (last 5 days)
-        const minTs = Math.floor((Date.now() - 5 * 86400000) / 1000);
-        let allFills = [], cursor2 = null;
-        for (let pg = 0; pg < 10; pg++) {
-          const qp2 = new URLSearchParams({ limit:"200", min_ts:String(minTs), ...(cursor2 ? {cursor:cursor2} : {}) });
-          const fr = await fetch(`${KALSHI_BASE}/portfolio/fills?${qp2}`, { headers:kHdrs });
-          if (!fr.ok) break;
-          const fd = await fr.json();
-          allFills = allFills.concat(fd.fills || []);
-          cursor2 = fd.cursor;
-          if (!cursor2 || (fd.fills||[]).length === 0) break;
-        }
-        // Step 3: Deduplicate by ticker (keep earliest YES fill per ticker = entry price)
-        allFills.sort((a,b) => new Date(a.created_time||0) - new Date(b.created_time||0));
-        const seenT = new Set(), relevantFills = [];
-        for (const fill of allFills) {
-          if (fill.side !== "yes") continue;
-          const tkr = fill.ticker || "";
-          if (seenT.has(tkr)) continue;
-          const series = Object.keys(IMP_SERIES).find(s => tkr.startsWith(s + "-"));
-          if (!series) continue;
-          seenT.add(tkr);
-          relevantFills.push({ ...fill, series });
-        }
-        // Step 4: Fetch market details for player names + settlement
-        const mDetails = await Promise.all(relevantFills.map(f =>
-          fetch(`${KALSHI_BASE}/markets/${f.ticker}`, { headers:kHdrs }).then(r => r.ok ? r.json() : null).catch(() => null)
-        ));
-        // Step 5: Build pick objects
-        const importedPicks = [];
-        for (let i = 0; i < relevantFills.length; i++) {
-          const fill = relevantFills[i];
-          const mRaw = mDetails[i];
-          const market = mRaw?.market || mRaw;
-          if (!market) continue;
-          const cfg = IMP_SERIES[fill.series];
-          const { sport, stat, gameType } = cfg;
-          const strike = parseFloat(market.floor_strike);
-          if (isNaN(strike)) continue;
-          const threshold = Math.round(strike + 0.5);
-          const fillPrice = parseFloat(fill.yes_price_dollars) || 0;
-          const kalshiPct2 = fillPrice <= 1 ? Math.round(fillPrice * 100) : Math.round(fillPrice); // handle cents or decimal
-          if (kalshiPct2 <= 0) continue;
-          const americanOdds2 = kalshiPct2 >= 50 ? Math.round(-(kalshiPct2/(100-kalshiPct2))*100) : Math.round((100-kalshiPct2)/kalshiPct2*100);
-          const dateSeg2 = (market.event_ticker||"").split("-")[1]||"";
-          let gameDate2 = null;
-          if (dateSeg2.length >= 7) { const yr2="20"+dateSeg2.slice(0,2), mo2=KMON2[dateSeg2.slice(2,5).toUpperCase()], dy2=dateSeg2.slice(5,7); if (mo2) gameDate2=`${yr2}-${mo2}-${dy2}`; }
-          const trackedAt2 = fill.created_time ? new Date(fill.created_time).getTime() : Date.now();
-          const mStatus = market.status || "";
-          const mResult = market.result;
-          const result2 = mStatus === "finalized" ? (mResult === "yes" ? "won" : mResult === "no" ? "lost" : null) : null;
-          let pickId, pickBase;
-          if (gameType === "total") {
-            const [t1, t2] = impTeams(market.event_ticker||"", sport);
-            pickId = `total|${sport}|${t1}|${t2}|${threshold}|${gameDate2||""}`;
-            pickBase = { gameType:"total", sport, stat, threshold, homeTeam:t1, awayTeam:t2, gameDate:gameDate2 };
-          } else {
-            const rawTitle = market.event_title || market.title || "";
-            const pnDisplay = rawTitle.replace(/\s*:\s*\d.*$/,"").replace(/\s+(Points?|Rebounds?|Assists?|3-Pointers?|Three Pointers?|Made Threes?|Goals?|Shots on Goal|Hits?|Home Runs?|RBIs?|Strikeouts?|Total Bases?|Passing Yards?|Rushing Yards?|Receiving Yards?|Touchdowns?)\b.*/i,"").replace(/\s+Over\s+\d.*$/i,"").replace(/\s+Under\s+\d.*$/i,"").replace(/\s*\(.*\)\s*$/,"").replace(/\s*-\s*$/,"").trim();
-            if (!pnDisplay || pnDisplay.length < 4) continue;
-            pickId = `${sport}|${pnDisplay}|${stat}|${threshold}|${gameDate2||""}`;
-            pickBase = { sport, stat, threshold, playerName:pnDisplay, playerNameDisplay:pnDisplay, gameDate:gameDate2 };
-          }
-          importedPicks.push({ ...pickBase, id:pickId, kalshiPct:kalshiPct2, americanOdds:americanOdds2, trackedAt:trackedAt2, result:result2, units:1, _importedFrom:"kalshi", _fillTicker:fill.ticker });
-        }
-        // Step 6: Merge with existing picks (new imports prepend; skip duplicates)
-        const existingPicksData = await CACHE2.get(`picks:${importUserId}`, "json").catch(() => null);
-        const existingPicks = existingPicksData?.picks || [];
-        const existingIds2 = new Set(existingPicks.map(p => p.id));
-        const newOnly = importedPicks.filter(p => !existingIds2.has(p.id));
-        const merged2 = [...importedPicks, ...existingPicks.filter(p => !importedPicks.find(ip => ip.id === p.id))];
-        merged2.sort((a,b) => (b.trackedAt||0) - (a.trackedAt||0));
-        await CACHE2.put(`picks:${importUserId}`, JSON.stringify({ picks:merged2, bankroll:existingPicksData?.bankroll||1000 }));
-        return jsonResponse({ ok:true, imported:newOnly.length, skippedDuplicates:importedPicks.length-newOnly.length, total:merged2.length, picks:newOnly });
       } else if (path === "auth/login" && method === "POST") {
         const { email, password } = await request.json();
         const userStr = await CACHE2.get(`user:${email.toLowerCase()}`);
@@ -1153,6 +1050,35 @@ var worker_default = {
           nfl: { LA: "LAR" }
         };
         const normTeam = /* @__PURE__ */ __name((sport, a) => TEAM_NORM[sport]?.[a] || a, "normTeam");
+        // Domed MLB stadiums — weather factor does not apply
+        const _MLB_DOMED = new Set(["TB", "TOR", "HOU", "MIA", "SEA", "ARI", "TEX", "MIL"]);
+        // Parse wind direction from ESPN displayValue: "Out to LF" → positive, "In from CF" → negative, crosswind → 0
+        const _parseWind = (dv) => {
+          if (!dv) return { windSpeed: null, windOutMph: null };
+          const v = dv.toLowerCase();
+          const m = v.match(/(\d+(?:\.\d+)?)\s*mph/);
+          const spd = m ? parseFloat(m[1]) : null;
+          if (spd == null) return { windSpeed: null, windOutMph: null };
+          if (spd === 0) return { windSpeed: 0, windOutMph: 0 };
+          const isOut = v.includes(" out to ") || v.includes(" out ") || v.endsWith(" out");
+          const isIn = v.includes(" in from ") || v.includes(" in to ") || (v.includes(" in ") && !isOut);
+          return { windSpeed: spd, windOutMph: isOut ? spd : isIn ? -spd : 0 };
+        };
+        const _extractMlbWeather = (events, byGame, nt) => {
+          for (const ev of events) {
+            const comps = ev.competitions?.[0];
+            const weather = comps?.weather;
+            if (!weather) continue;
+            const homeC = (comps?.competitors ?? []).find(c => c.homeAway === "home");
+            const awayC = (comps?.competitors ?? []).find(c => c.homeAway === "away");
+            if (!homeC || !awayC) continue;
+            const homeA = nt("mlb", homeC.team?.abbreviation ?? "");
+            const awayA = nt("mlb", awayC.team?.abbreviation ?? "");
+            if (!homeA || !awayA) continue;
+            const { windSpeed, windOutMph } = _parseWind(weather.displayValue ?? "");
+            byGame[`${homeA}|${awayA}`] = { temp: weather.temperature ?? null, condition: weather.displayValue ?? null, windSpeed, windOutMph };
+          }
+        };
         const seriesTickers = Object.keys(SERIES_CONFIG);
         // Bundle cache: stores all series in one Redis key (90s TTL) to avoid hammering Kalshi
         const KALSHI_BUNDLE_KEY = `kalshi:bundle:${new Date().toISOString().slice(0, 10).replace(/-/g, "")}`;
@@ -1657,18 +1583,7 @@ var worker_default = {
             if (CACHE2 && Object.keys(gameTimes).length > 0) await CACHE2.put(`gameTimes:v2:${todayDateStr}`, JSON.stringify(gameTimes), { expirationTtl: 600 }).catch(() => {});
             // Extract MLB weather from already-fetched scoreboard events (no extra request)
             const _mlbSbResult = sbResults.find(r => r.sport === "mlb");
-            for (const ev of _mlbSbResult?.events ?? []) {
-              const comps = ev.competitions?.[0];
-              const weather = comps?.weather;
-              if (!weather) continue;
-              const homeC = (comps?.competitors ?? []).find(c => c.homeAway === "home");
-              const awayC = (comps?.competitors ?? []).find(c => c.homeAway === "away");
-              if (homeC && awayC) {
-                const homeA = normTeam("mlb", homeC.team?.abbreviation ?? "");
-                const awayA = normTeam("mlb", awayC.team?.abbreviation ?? "");
-                if (homeA && awayA) weatherByGame[`${homeA}|${awayA}`] = { temp: weather.temperature ?? null, condition: weather.displayValue ?? null };
-              }
-            }
+            _extractMlbWeather(_mlbSbResult?.events ?? [], weatherByGame, normTeam);
             if (CACHE2 && Object.keys(weatherByGame).length > 0) await CACHE2.put(`weather:mlb:${todayDateStr}`, JSON.stringify(weatherByGame), { expirationTtl: 600 }).catch(() => {});
             // Extract NHL game odds from already-fetched ESPN events (no extra request)
             const _nhlSbResult = sbResults.find(r => r.sport === "nhl");
@@ -1696,6 +1611,14 @@ var worker_default = {
           }
         }
         nbaPlayerStatus = nbaPlayerStatus || {};
+        // Refresh MLB weather independently if cache was empty (gameTimes may have been cached)
+        if (sportsNeeded.has("mlb") && Object.keys(weatherByGame).length === 0 && !isBustCache) {
+          try {
+            const _wRes = await fetch(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${todayDateStr}`, { headers: { "User-Agent": "Mozilla/5.0" } }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
+            _extractMlbWeather(_wRes.events || [], weatherByGame, normTeam);
+            if (CACHE2 && Object.keys(weatherByGame).length > 0) await CACHE2.put(`weather:mlb:${todayDateStr}`, JSON.stringify(weatherByGame), { expirationTtl: 600 }).catch(() => {});
+          } catch {}
+        }
         // Fetch NHL game odds if nhl byteam was loaded from cache (scoreboard not fetched above)
         if (sportsNeeded.has("nhl") && !sportByteam.nhlGameOdds) {
           const _nd3 = new Date(); const _ns3 = _nd3.toISOString().slice(0,10).replace(/-/g,'');
@@ -3553,8 +3476,14 @@ var worker_default = {
                 ? _platoonMap[homeTeam][_homePlatCode] : 1.0;
               const _awayPlatFactor = (_awayPlatCode && _platoonMap[awayTeam]?.[_awayPlatCode])
                 ? _platoonMap[awayTeam][_awayPlatCode] : 1.0;
-              const _hLam = homeRPG != null ? parseFloat((Math.max(1, Math.min(12, homeRPG * _awayMult * parkRF * _homePlatFactor))).toFixed(1)) : null;
-              const _aLam = awayRPG != null ? parseFloat((Math.max(1, Math.min(12, awayRPG * _homeMult * parkRF * _awayPlatFactor))).toFixed(1)) : null;
+              // Weather factor: wind out → more scoring, wind in → fewer runs; skip domed parks
+              const _wKey = `${homeTeam}|${awayTeam}`;
+              const _wData = weatherByGame[_wKey] ?? null;
+              const _weatherFactor = (_wData?.windOutMph != null && !_MLB_DOMED.has(homeTeam))
+                ? parseFloat((Math.max(0.85, Math.min(1.15, 1 + _wData.windOutMph * 0.013 + ((_wData.temp ?? 72) - 72) * 0.001))).toFixed(3))
+                : 1.0;
+              const _hLam = homeRPG != null ? parseFloat((Math.max(1, Math.min(12, homeRPG * _awayMult * parkRF * _homePlatFactor * _weatherFactor))).toFixed(1)) : null;
+              const _aLam = awayRPG != null ? parseFloat((Math.max(1, Math.min(12, awayRPG * _homeMult * parkRF * _awayPlatFactor * _weatherFactor))).toFixed(1)) : null;
               // Umpire run factor (1/kFactor): loose-zone ump → more scoring → favors over
               const _umpKeyT = `${homeTeam}|${awayTeam}`;
               const _umpNameT = sportByteam.mlb?.umpireByGame?.[_umpKeyT] ?? null;
@@ -3564,7 +3493,7 @@ var worker_default = {
               const _umpRunPts = _umpNameT == null ? 1 : _umpRunFactor >= 1.05 ? 2 : _umpRunFactor >= 0.97 ? 1 : 0;
               const _combinedRPG = homeRPG != null && awayRPG != null ? parseFloat((homeRPG + awayRPG).toFixed(2)) : null;
               const _combinedRPGPts = _combinedRPG == null ? 1 : _combinedRPG >= 10.5 ? 2 : _combinedRPG >= 9.0 ? 1 : 0;
-              _simData = { homeRPG, awayRPG, homeERA, awayERA, parkFactor: parkRF, homeExpected: _hLam, awayExpected: _aLam, expectedTotal: (_hLam != null && _aLam != null) ? parseFloat((_hLam + _aLam).toFixed(1)) : null, gameOuLine, mlbOuPts: _mlbOuPts, combinedRPG: _combinedRPG, umpireRunFactor: _umpNameT != null ? _umpRunFactor : null, umpireName: _umpNameT, homeStarterHand: _homeStarterHand, awayStarterHand: _awayStarterHand, ...(_homePlatFactor !== 1.0 && { homePlatoonFactor: _homePlatFactor }), ...(_awayPlatFactor !== 1.0 && { awayPlatoonFactor: _awayPlatFactor }) };
+              _simData = { homeRPG, awayRPG, homeERA, awayERA, parkFactor: parkRF, homeExpected: _hLam, awayExpected: _aLam, expectedTotal: (_hLam != null && _aLam != null) ? parseFloat((_hLam + _aLam).toFixed(1)) : null, gameOuLine, mlbOuPts: _mlbOuPts, combinedRPG: _combinedRPG, umpireRunFactor: _umpNameT != null ? _umpRunFactor : null, umpireName: _umpNameT, homeStarterHand: _homeStarterHand, awayStarterHand: _awayStarterHand, ...(_homePlatFactor !== 1.0 && { homePlatoonFactor: _homePlatFactor }), ...(_awayPlatFactor !== 1.0 && { awayPlatoonFactor: _awayPlatFactor }), ...(_weatherFactor !== 1.0 && { weatherFactor: _weatherFactor, windOutMph: _wData?.windOutMph }) };
               if (_hLam != null && _aLam != null) {
                 const _dk = `mlb|${homeTeam}|${awayTeam}`;
                 if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateMLBTotalDist(_hLam, _aLam, 10000);
@@ -3770,7 +3699,11 @@ var worker_default = {
               const _ttPlatCode = _ttOppStarterHand === 'L' ? 'vl' : _ttOppStarterHand === 'R' ? 'vr' : null;
               const _ttPlatFactor = (_ttPlatCode && _ttPlatoonMap[scoringTeam]?.[_ttPlatCode])
                 ? _ttPlatoonMap[scoringTeam][_ttPlatCode] : 1.0;
-              const _lam = teamRPG != null ? parseFloat((Math.max(0.5, Math.min(12, teamRPG * _oppMult * parkRF * _ttPlatFactor))).toFixed(2)) : null;
+              const _ttWData = weatherByGame[`${homeTeam}|${awayTeam}`] ?? null;
+              const _ttWeatherFactor = (_ttWData?.windOutMph != null && !_MLB_DOMED.has(homeTeam))
+                ? parseFloat((Math.max(0.85, Math.min(1.15, 1 + _ttWData.windOutMph * 0.013 + ((_ttWData.temp ?? 72) - 72) * 0.001))).toFixed(3))
+                : 1.0;
+              const _lam = teamRPG != null ? parseFloat((Math.max(0.5, Math.min(12, teamRPG * _oppMult * parkRF * _ttPlatFactor * _ttWeatherFactor))).toFixed(2)) : null;
               if (_lam != null) {
                 const _dk = `mlb|team|${scoringTeam}|${oppTeam}`;
                 if (!teamTotalDistCache[_dk]) teamTotalDistCache[_dk] = simulateTeamTotalDist(_lam, 10000);
