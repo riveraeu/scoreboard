@@ -275,12 +275,12 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMet
                         const ouDesc = play.gameOuLine == null ? null : isUnder ? (play.gameOuLine < 7.5 ? "a low-total game" : play.gameOuLine < 9.5 ? "a moderate total" : "a high-total game — under risk") : (play.gameOuLine >= 9.5 ? "a high-scoring game" : play.gameOuLine >= 7.5 ? "an average total" : "a pitcher's duel");
                         const etColor = play.teamExpected == null ? "#8b949e" : isUnder ? (play.teamExpected <= play.threshold - 1.5 ? "#3fb950" : play.teamExpected <= play.threshold + 0.5 ? "#e3b341" : "#8b949e") : (play.teamExpected >= play.threshold + 1.5 ? "#3fb950" : play.teamExpected >= play.threshold - 0.5 ? "#e3b341" : "#8b949e");
                         const h2hColor = play.h2hHitRate == null ? "#8b949e" : isUnder ? (play.h2hHitRate <= 30 ? "#3fb950" : play.h2hHitRate <= 50 ? "#e3b341" : "#f78166") : (play.h2hHitRate >= 80 ? "#3fb950" : play.h2hHitRate >= 60 ? "#e3b341" : "#f78166");
-                        const _umpPts = isUnder ? (play.ttUmpirePts == null ? 1 : play.ttUmpirePts) : (play.ttUmpirePts ?? 1);
+                        const _ssnPts = isUnder ? (play.ttSeasonHitRate == null ? 1 : play.ttSeasonHitRate <= 20 ? 2 : play.ttSeasonHitRate <= 40 ? 1 : 0) : (play.ttSeasonHitRatePts ?? 1);
                         const _whipPts = play.ttWhipPts ?? 1;
                         const _l10Pts = play.ttL10Pts ?? 1;
                         const _h2hPts = play.h2hHitRatePts ?? 1;
                         const _ouPts = play.gameOuLine == null ? 1 : isUnder ? (play.gameOuLine < 7.5 ? 2 : play.gameOuLine < 9.5 ? 1 : 0) : (play.gameOuLine >= 9.5 ? 2 : play.gameOuLine >= 7.5 ? 1 : 0);
-                        const scTitle = [`${isUnder?"[Under SimScore]":""}\nUmpire (${play.umpireName ?? "—"}): ${_umpPts}/2`,`Opp WHIP (${play.oppWHIP?.toFixed(2) ?? "—"}): ${_whipPts}/2`,`L10 RPG (${play.teamL10RPG?.toFixed(1) ?? "—"}): ${_l10Pts}/2`,`H2H HR% (${play.h2hHitRate?.toFixed(0) ?? "—"}%): ${_h2hPts}/2`,`O/U (${play.gameOuLine ?? "—"}): ${_ouPts}/2`].filter(Boolean).join("\n");
+                        const scTitle = [isUnder?"[Under SimScore]":null,`Ssn HR% (${play.ttSeasonHitRate != null ? play.ttSeasonHitRate.toFixed(0)+"%" : "—"}): ${_ssnPts}/2`,`Opp WHIP (${play.oppWHIP?.toFixed(2) ?? "—"}): ${_whipPts}/2`,`L10 RPG (${play.teamL10RPG?.toFixed(1) ?? "—"}): ${_l10Pts}/2`,`H2H HR% (${play.h2hHitRate?.toFixed(0) ?? "—"}%): ${_h2hPts}/2`,`O/U (${play.gameOuLine ?? "—"}): ${_ouPts}/2`].filter(Boolean).join("\n");
                         return (
                           <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.65}}>
                             <span style={{color:"#c9d1d9"}}>{play.scoringTeam}</span> averages{play.teamRPG != null ? <> <span style={{color:rpgColor(play.teamRPG),fontWeight:600}}>{play.teamRPG.toFixed(1)}</span> runs/game</> : " — RPG"}{rpgDesc ? <> — <span style={{color:"#484f58"}}>{rpgDesc}</span></> : null}.{" "}
@@ -443,10 +443,14 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMet
                           ? (gameOuLine == null ? null : gameOuLine < 7.5 ? "a low total, supports the under" : gameOuLine < 9.5 ? "an average total" : "a high total — market expects heavy scoring")
                           : (gameOuLine == null ? null : gameOuLine >= 9.5 ? "a high-scoring game, supports the over" : gameOuLine >= 7.5 ? "an average total" : "a low total — market doesn't expect high scoring");
                         const combinedRPG = play.combinedRPG ?? null;
-                        const umpRF = play.umpireRunFactor ?? null;
+                        const hWHIP = play.homeWHIP ?? null, aWHIP = play.awayWHIP ?? null;
+                        const h2hTR = play.h2hTotalHitRate ?? null, h2hTRGames = play.h2hTotalGames ?? null;
+                        const whipColor = v => v == null ? "#8b949e" : v > 1.35 ? "#3fb950" : v > 1.20 ? "#e3b341" : "#f78166";
                         const _cRPGPts = combinedRPG == null ? 1 : combinedRPG >= 10.5 ? 2 : combinedRPG >= 9.0 ? 1 : 0;
-                        const _umpPts = umpRF == null ? 1 : umpRF >= 1.05 ? 2 : umpRF >= 0.97 ? 1 : 0;
-                        const scTitle = [isUnder?"[Under SimScore]":"",`${play.homeTeam} ERA (${hERA != null ? hERA.toFixed(2) : "—"}): ${hERA != null ? (hERA > 4.5 ? 2 : hERA > 3.5 ? 1 : 0) : 1}/2`,`${play.awayTeam} ERA (${aERA != null ? aERA.toFixed(2) : "—"}): ${aERA != null ? (aERA > 4.5 ? 2 : aERA > 3.5 ? 1 : 0) : 1}/2`,`Comb road RPG (${combinedRPG != null ? combinedRPG.toFixed(1) : "—"}): ${_cRPGPts}/2`,`Umpire run factor (${umpRF != null ? umpRF.toFixed(3) : "—"}): ${_umpPts}/2`,`O/U (${gameOuLine != null ? gameOuLine : "—"}): ${mlbOuPts}/2`].filter(Boolean).join("\n");
+                        const _hWHIPPts = hWHIP == null ? 1 : hWHIP > 1.35 ? 2 : hWHIP > 1.20 ? 1 : 0;
+                        const _aWHIPPts = aWHIP == null ? 1 : aWHIP > 1.35 ? 2 : aWHIP > 1.20 ? 1 : 0;
+                        const _h2hTRPts = h2hTR == null ? 1 : h2hTR >= 80 ? 2 : h2hTR >= 60 ? 1 : 0;
+                        const scTitle = [isUnder?"[Under SimScore]":null,`${play.homeTeam} WHIP (${hWHIP != null ? hWHIP.toFixed(2) : "—"}): ${_hWHIPPts}/2`,`${play.awayTeam} WHIP (${aWHIP != null ? aWHIP.toFixed(2) : "—"}): ${_aWHIPPts}/2`,`Comb road RPG (${combinedRPG != null ? combinedRPG.toFixed(1) : "—"}): ${_cRPGPts}/2`,`H2H HR% (${h2hTR != null ? h2hTR+"%" : "—"}): ${_h2hTRPts}/2`,`O/U (${gameOuLine != null ? gameOuLine : "—"}): ${mlbOuPts}/2`].filter(Boolean).join("\n");
                         return (
                           <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.65}}>
                             <span style={{color:"#c9d1d9"}}>{play.awayTeam}</span>'s starter has{aWHIP != null ? <> a <span style={{color:whipColor(aWHIP),fontWeight:600}}>{aWHIP.toFixed(2)} WHIP</span></> : " — WHIP"}, facing a <span style={{color:"#c9d1d9"}}>{play.homeTeam}</span> offense averaging{hRPG != null ? <> <span style={{color:rpgColor(hRPG),fontWeight:600}}>{hRPG.toFixed(1)}</span> runs/game</> : " — RPG"}.
@@ -686,7 +690,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMet
                           const apDesc = ap == null ? null : ap > 85 ? "expect him to work deep into the game" : ap > 75 ? "typically goes 5–6 innings" : null;
                           const lkpDesc = lkp == null ? null : lkp > 24 ? "a high-strikeout lineup — works in his favor" : lkp > 20 ? "below-average strikeout tendency" : "elite contact lineup — a tougher test";
                           const scColor = _sc == null ? "#8b949e" : _sc >= 8 ? "#3fb950" : _sc >= 5 ? "#e3b341" : "#8b949e";
-                          const scTitle = _sc != null ? [`CSW%/K%: ${play.kpctPts ?? 1}/2`,`K-BB%: ${play.kbbPts ?? 1}/2`,`Lineup K%: ${play.lkpPts ?? 1}/2`,`Hit Rate: ${play.blendedHitRatePts ?? 1}/2`,`O/U: ${play.totalPts ?? 1}/2`].join("\n") : null;
+                          const scTitle = _sc != null ? [`CSW%/K%: ${play.kpctPts ?? 1}/2`,`Lineup K%: ${play.lkpPts ?? 1}/2`,`Hit Rate %: ${play.kHitRatePts ?? 1}/2`,`H2H Hand: ${play.kH2HHandPts ?? 1}/2`,`O/U: ${play.totalPts ?? 1}/2`].join("\n") : null;
                           return (
                             <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.65}}>
                               <div>
@@ -731,17 +735,19 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMet
                           const mk = (meets, label) => meets != null ? <span key={label} style={{color:meets?"#3fb950":"#f78166",fontSize:9,whiteSpace:"nowrap"}}>{meets?"✓":"✗"}{label}</span> : null;
                           const hitterGameTotal = play.hitterGameTotal ?? null;
                           const hitterTotalColor = t => t == null ? "#8b949e" : t >= 9.5 ? "#3fb950" : t >= 7.5 ? "#e3b341" : "#f78166";
-                          const barrelPct = play.hitterBarrelPct ?? null;
-                          const barrelColor = barrelPct == null ? "#8b949e" : barrelPct >= 14 ? "#3fb950" : barrelPct >= 10 ? "#e3b341" : barrelPct >= 7 ? "#8b949e" : "#f78166";
+                          const hitterOps = play.hitterOps ?? null;
+                          const hitterOpsPts = play.hitterOpsPts ?? null;
+                          const opsColor = hitterOpsPts === 2 ? "#3fb950" : hitterOpsPts === 1 ? "#e3b341" : hitterOpsPts === 0 ? "#f78166" : "#8b949e";
+                          const opsDesc = hitterOpsPts === 2 ? "elite hitter" : hitterOpsPts === 1 ? "above-average producer" : hitterOpsPts === 0 ? "below-average OPS" : null;
                           const platoonPts = play.hitterPlatoonPts ?? null;
                           const pitcherHand = play.oppPitcherHand ?? null;
                           const isPlatoonFallback = play.hitterSoftLabel === "vs RHP" || play.hitterSoftLabel === "vs LHP";
                           const softRateColor = isPlatoonFallback && platoonPts === 0 ? "#f78166" : "#3fb950";
-                          const scTitle = sc != null ? [`Quality: ${play.hitterBatterQualityPts ?? 1}/2`,`WHIP: ${play.hitterWhipPts ?? 1}/2`,`Season HR: ${play.hitterSeasonHitRatePts ?? 1}/2`,`H2H HR: ${play.hitterH2HHitRatePts ?? 1}/2`,`O/U: ${play.hitterTotalPts ?? 1}/2`].join("\n") : null;
+                          const scTitle = sc != null ? [`OPS: ${play.hitterOpsPts ?? 1}/2`,`WHIP: ${play.hitterWhipPts ?? 1}/2`,`Season HR: ${play.hitterSeasonHitRatePts ?? 1}/2`,`H2H HR: ${play.hitterH2HHitRatePts ?? 1}/2`,`O/U: ${play.hitterTotalPts ?? 1}/2`].join("\n") : null;
                           return (
                             <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.65}}>
                               <div>
-                                {first}{lineupSpot != null && <>, batting <span style={{color:spotColor,fontWeight:600}}>#{lineupSpot}</span>{spotDesc ? <span style={{color:"#8b949e"}}> — {spotDesc}</span> : ""}</>}.{barrelPct != null && <>{" "}<span style={{color:"#8b949e"}}>Barrel rate </span><span style={{color:barrelColor,fontWeight:600}}>{barrelPct.toFixed(1)}%</span><span style={{color:"#484f58"}}>{barrelPct >= 14 ? " — elite hard contact" : barrelPct >= 10 ? " — strong contact quality" : barrelPct >= 7 ? " — average contact" : " — below-average contact"}.</span></>}
+                                {first}{lineupSpot != null && <>, batting <span style={{color:spotColor,fontWeight:600}}>#{lineupSpot}</span>{spotDesc ? <span style={{color:"#8b949e"}}> — {spotDesc}</span> : ""}</>}.{hitterOps != null && <>{" "}<span style={{color:"#8b949e"}}>OPS </span><span style={{color:opsColor,fontWeight:600}}>{hitterOps.toFixed(3)}</span>{opsDesc ? <span style={{color:"#484f58"}}> — {opsDesc}</span> : ""}</>}
                                 {(pitcherName || whip != null) && (
                                   <> Facing{pitcherName ? <> <span style={{color:"#c9d1d9",fontWeight:600}}>{pitcherName}</span>{ab ? <span style={{color:"#484f58",fontSize:10}}> ({ab} career AB)</span> : ""}</> : " the opposing starter"}{whip != null ? <> — WHIP <span style={{color:whipColor,fontWeight:600}}>{whip.toFixed(2)}</span>{whipDesc ? <span style={{color:"#8b949e"}}> ({whipDesc})</span> : ""}</> : ""}.</>
                                 )}

@@ -51,11 +51,11 @@ function buildSimTip(play) {
   const stat  = play.stat;
   // MLB strikeouts
   if (play.finalSimScore != null && play.totalSimScore == null && play.teamTotalSimScore == null) {
-    return [`CSW%/K%: ${play.kpctPts??1}/2`, `K-BB%: ${play.kbbPts??1}/2`, `Lineup K%: ${play.lkpPts??1}/2`, `Hit Rate: ${play.blendedHitRatePts??1}/2`, `O/U: ${play.totalPts??1}/2`].join('\n');
+    return [`CSW%/K%: ${play.kpctPts??1}/2`, `Lineup K%: ${play.lkpPts??1}/2`, `Hit Rate %: ${play.kHitRatePts??1}/2`, `H2H Hand: ${play.kH2HHandPts??1}/2`, `O/U: ${play.totalPts??1}/2`].join('\n');
   }
   // MLB HRR
   if (play.hitterFinalSimScore != null) {
-    return [`Quality: ${play.hitterBatterQualityPts??1}/2`, `WHIP: ${play.hitterWhipPts??1}/2`, `Season HR: ${play.hitterSeasonHitRatePts??1}/2`, `H2H HR: ${play.hitterH2HHitRatePts??1}/2`, `O/U: ${play.hitterTotalPts??1}/2`].join('\n');
+    return [`OPS: ${play.hitterOpsPts??1}/2`, `WHIP: ${play.hitterWhipPts??1}/2`, `Season HR: ${play.hitterSeasonHitRatePts??1}/2`, `H2H HR: ${play.hitterH2HHitRatePts??1}/2`, `O/U: ${play.hitterTotalPts??1}/2`].join('\n');
   }
   // NBA player props
   if (play.nbaSimScore != null && play.totalSimScore == null && play.teamTotalSimScore == null) {
