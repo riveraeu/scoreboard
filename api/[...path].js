@@ -4148,7 +4148,7 @@ var worker_default = {
   }
 };
 
-export const config = { runtime: 'edge' }; // redeploy
+export const config = { runtime: 'edge' }; // redeploy 2
 
 export default async function handler(request) {
   const env = {
