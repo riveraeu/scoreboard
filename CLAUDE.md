@@ -237,7 +237,7 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
   - Position-adjusted DVP ratio tiers: ratio ≥ 1.05 → 2pts (soft), ratio ≥ 1.02 → 1pt (borderline), else → 0pts. `dvpRatio` field included in all play/drop output.
   - Season hit rate (`nbaSeasonHitRatePts`): `primaryPct` (blended 2026/2025/career) at threshold. ≥ 90% → 2pts, ≥ 80% → 1pt, < 80% → 0pts.
   - Soft matchup hit rate (`nbaSoftHitRatePts`): `softPct` (hit rate vs soft defensive teams) at threshold. ≥ 90% → 2pts, ≥ 80% → 1pt, < 80% → 0pts; null → 1pt (abstain).
-  - Combined pace + total (`nbaTotalPts`): both favorable (pace > 0 AND total ≥ 215) → 2pts; one favorable → 1pt; neither → 0pts; both null → 1pt abstain. Pace from `buildNbaPaceData()`, cached 12h. Game totals from `sportByteam.nbaGameOdds`.
+  - O/U line (`nbaTotalPts`): ≥ 215 → 2pts; null → 1pt (abstain); < 215 → 0pts. Game totals from `sportByteam.nbaGameOdds`. Pace is still applied to the simulation mean via `buildNbaStatDist` but is no longer scored separately (was redundant with truePct).
   - Max: 2+2+2+2+2 = 10. Spread and standalone pace no longer scored separately.
 - nSim scales with pre-edge simScore: ≥8 → 10k, ≥5 → 5k, else 2k
 - **Gate**: edge ≥ 5% (gate only, not scored); **nbaSimScore ≥ 8** to qualify as a play. No soft-matchup pre-filter — all NBA markets enter the play loop regardless of opponent DVP.
@@ -480,10 +480,10 @@ Opened via "report" button. Shows ALL markets (plays + dropped) grouped by sport
   - `nhlSeasonHR`: ≥90% green, ≥80% yellow, <80% red — career season hit rate; `nhlSeasonHitRatePts` drives color
   - `nhlDvpHR`: ≥90% green, ≥80% yellow, <80% red — hit rate vs teams with GAA above avg; null = DASH (1pt abstain); `nhlDvpHitRatePts` drives color
   - `nhlGameTotalOu`: ≥7 green, ≥5.5 yellow, <5.5 red — game O/U line
-  - `nbapace`: >0 green, >-2 yellow, ≤-2 gray (slow pace earns 1pt, not 0; gray not red) — **not a column in NBA player prop tables** (replaced by `nbaPaceTotal`)
+  - `nbapace`: not a column in NBA player prop tables (replaced by `nbaPaceTotal`)
   - `nbaSeasonHR`: ≥90% green, ≥80% yellow, <80% red — Season hit rate at threshold (blended 2026/2025); `nbaSeasonHitRatePts` drives color
   - `nbaSoftHR`: ≥90% green, ≥80% yellow, <80% red — hit rate vs soft teams; null = DASH (1pt abstain in SimScore); `nbaSoftHitRatePts` drives color
-  - `nbaPaceTotal`: shows "+pace · O/U" (e.g. `+1.2 · 231`); colored by `nbaTotalPts` (2=green/both good, 1=yellow/one good, 0=gray/neither)
+  - `nbaPaceTotal`: shows O/U line only (e.g. `231`); colored by `nbaTotalPts` (2=green/≥215, 1=yellow/null abstain, 0=gray/<215)
   - `homeOff`/`awayOff` (NBA totals Off PPG): ≥115 green, ≥108 yellow, else gray — high offense = good for over = green (playoff-appropriate; regular season SimScore tiers 118/113 differ)
   - `homeDef`/`awayDef` (NBA totals Def PPG allowed): ≥112 green, ≥105 yellow, else gray — high allowed = bad defense = good for over = green; no red floor (good defense is just gray)
   - `totalOu` (NBA/NHL totals O/U column): NBA: ≥225 green, ≥215 yellow, else gray; NHL: ≥6 green, ≥5 yellow, else gray — shows **ESPN game O/U line** (`m.gameOuLine`, consistent across all Kalshi thresholds for the same game) for NBA; shows Kalshi threshold as `O{line}` for NHL
@@ -626,7 +626,7 @@ Both play cards and player cards show an explanation block (`background:"#0d1117
 
 **HRR market report columns:** `XCOLS["mlb|hrr"]` = Score / **Quality** / WHIP / **Ssn HR%** / **H2H HR%** / **O/U**. Park column removed. `Quality` shows `#spot barrel%` (e.g. `#3 12%`) colored by `hitterBatterQualityPts` (2=green, 1=yellow, 0=red). `Ssn HR%` shows `m.seasonPct` colored by `hitterSeasonHitRatePts` (≥80% green, ≥70% yellow, <70% red). `H2H HR%` shows `m.softPct` colored by `hitterH2HHitRatePts` (≥80% green, ≥70% yellow, <70% red). SimScore tooltip: `Quality: N/2`, `WHIP: N/2`, `Season HR: N/2`, `H2H HR: N/2`, `O/U: N/2`. Null-abstain shows `1` not `—`.
 
-**NBA player prop market report columns:** `XCOLS["nba|*"]` = Score / **C1** / DVP / **Ssn HR%** / **Soft HR%** / **Pace+O/U**. Replaced old O/U + Pace columns with the three missing SimScore components. `Ssn HR%` shows `m.seasonPct` colored by `nbaSeasonHitRatePts` (≥90% green, ≥80% yellow, <80% red). `Soft HR%` shows `m.softPct` colored by `nbaSoftHitRatePts`; null = DASH. `Pace+O/U` shows `"+pace · O/U"` (e.g. `+1.2 · 231`) colored by `nbaTotalPts` (2=green, 1=yellow, 0=gray). C1 label is "Usage" for pts/ast/3pt, "AvgMin" for rebounds. **Opp column flex=1** (was 2) to reduce whitespace.
+**NBA player prop market report columns:** `XCOLS["nba|*"]` = Score / **C1** / DVP / **Ssn HR%** / **Soft HR%** / **O/U**. `Ssn HR%` shows `m.seasonPct` colored by `nbaSeasonHitRatePts` (≥90% green, ≥80% yellow, <80% red). `Soft HR%` shows `m.softPct` colored by `nbaSoftHitRatePts`; null = DASH. `O/U` (`nbaPaceTotal` key) shows game O/U line colored by `nbaTotalPts` (2=green/≥215, 1=yellow/null, 0=gray/<215). C1 label is "Usage" for pts/ast/3pt, "AvgMin" for rebounds. **Opp column flex=1** (was 2) to reduce whitespace.
 
 **NHL player prop market report columns:** `XCOLS["nhl|points"]` = Score / **AvgTOI** / **GAA Rank** / **Ssn HR%** / **DVP HR%** / **O/U**. Replaced old Ssn% / vSoft% / SA Adj / Rest columns with the five SimScore components. `Ssn HR%` uses `nhlSeasonHR` key (m.seasonPct + nhlSeasonHitRatePts coloring). `DVP HR%` uses `nhlDvpHR` key (m.softPct + nhlDvpHitRatePts; null=DASH). `O/U` uses `nhlGameTotalOu` key (m.nhlGameTotal; ≥7 green, ≥5.5 yellow). `nhlgaa` fixed to 3-tier (was binary ≤10 green / else red).
 
