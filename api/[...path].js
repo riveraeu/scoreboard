@@ -2714,7 +2714,7 @@ var worker_default = {
             // 5. Combined pace + total: both favorable → 2pts; one → 1pt; neither → 0pts; null → 1pt abstain
             nbaGameTotal = (sportByteam.nbaGameOdds ?? {})[playerTeam]?.total ?? null;
             const _paceGood = nbaPaceAdj !== null && nbaPaceAdj > 0;
-            const _totalGood = nbaGameTotal !== null && nbaGameTotal >= 225;
+            const _totalGood = nbaGameTotal !== null && nbaGameTotal >= 215;
             nbaTotalPts = (nbaPaceAdj === null && nbaGameTotal === null) ? 1
               : (_paceGood && _totalGood) ? 2
               : (_paceGood || _totalGood) ? 1
@@ -3551,7 +3551,7 @@ var worker_default = {
               totalSimScore += _hOffRtg == null ? 1 : _hOffRtg >= 118 ? 2 : _hOffRtg >= 113 ? 1 : 0;
               totalSimScore += _aOffRtg == null ? 1 : _aOffRtg >= 118 ? 2 : _aOffRtg >= 113 ? 1 : 0;
               totalSimScore += _totalOut === 0 ? 2 : _totalOut <= 2 ? 1 : 0; // 0 out = full rosters, 3+ = depleted
-              if (_nbaOuLine != null) totalSimScore += _nbaOuLine >= 235 ? 2 : _nbaOuLine >= 225 ? 1 : 0;
+              if (_nbaOuLine != null) totalSimScore += _nbaOuLine >= 225 ? 2 : _nbaOuLine >= 215 ? 1 : 0;
               else totalSimScore += 1; // null → abstain
             } else if (sport === "nhl") {
               const homeGPG = nhlGPGMap[homeTeam] ?? null, awayGPG = nhlGPGMap[awayTeam] ?? null;
@@ -3591,7 +3591,7 @@ var worker_default = {
               underSimScore += awayOffRtg == null ? 1 : awayOffRtg < 113 ? 2 : awayOffRtg < 118 ? 1 : 0;
               const _uTotalOut = (homeOut ?? 0) + (awayOut ?? 0);
               underSimScore += _uTotalOut >= 3 ? 2 : _uTotalOut >= 1 ? 1 : 0; // depleted rosters → lower scoring → good for under
-              underSimScore += gameOuLine == null ? 1 : gameOuLine < 225 ? 2 : gameOuLine < 235 ? 1 : 0;
+              underSimScore += gameOuLine == null ? 1 : gameOuLine < 215 ? 2 : gameOuLine < 225 ? 1 : 0;
             } else if (sport === "nhl") {
               const { homeGPG, awayGPG, homeGAA, awayGAA, gameOuLine } = _simData;
               underSimScore += homeGPG == null ? 1 : homeGPG < 3.0 ? 2 : homeGPG < 3.5 ? 1 : 0;
@@ -3777,7 +3777,7 @@ var worker_default = {
               const h2hHitRatePts = h2hHitRate == null ? 1 : h2hHitRate >= 80 ? 2 : h2hHitRate >= 60 ? 1 : 0;
               teamTotalSimScore += teamOff == null ? 1 : teamOff >= 118 ? 2 : teamOff >= 113 ? 1 : 0;
               teamTotalSimScore += oppDef == null ? 1 : oppDef >= 118 ? 2 : oppDef >= 113 ? 1 : 0;
-              teamTotalSimScore += _nbaOuLine == null ? 1 : _nbaOuLine >= 235 ? 2 : _nbaOuLine >= 225 ? 1 : 0;
+              teamTotalSimScore += _nbaOuLine == null ? 1 : _nbaOuLine >= 225 ? 2 : _nbaOuLine >= 215 ? 1 : 0;
               teamTotalSimScore += _teamPace == null || _lgPace == null ? 1 : _teamPace > _lgPace + 2 ? 2 : _teamPace > _lgPace - 2 ? 1 : 0;
               teamTotalSimScore += h2hHitRatePts;
               if (truePct == null) { if (isDebug) dropped.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, teamTotalSimScore, teamOff, oppDef, gameOuLine: _nbaOuLine, h2hHitRate, h2hGames, h2hHitRatePts, reason: "no_simulation_data" }); continue; }
@@ -3798,7 +3798,7 @@ var worker_default = {
               let _nttUnderSimScore = 0;
               _nttUnderSimScore += teamOff == null ? 1 : teamOff < 113 ? 2 : teamOff < 118 ? 1 : 0;
               _nttUnderSimScore += oppDef == null ? 1 : oppDef < 113 ? 2 : oppDef < 118 ? 1 : 0;
-              _nttUnderSimScore += _nbaOuLine == null ? 1 : _nbaOuLine < 225 ? 2 : _nbaOuLine < 235 ? 1 : 0;
+              _nttUnderSimScore += _nbaOuLine == null ? 1 : _nbaOuLine < 215 ? 2 : _nbaOuLine < 225 ? 1 : 0;
               _nttUnderSimScore += _teamPace == null || _lgPace == null ? 1 : _teamPace <= _lgPace - 2 ? 2 : _teamPace <= _lgPace + 2 ? 1 : 0;
               _nttUnderSimScore += h2hHitRate == null ? 1 : h2hHitRate <= 30 ? 2 : h2hHitRate <= 50 ? 1 : 0;
               if (_nttUnderEdge >= 5 && _nttNoKalshiPct >= 70) {
