@@ -1292,7 +1292,7 @@ function App() {
                           return (
                             <>
                               <div>
-                                {first}{lineupSpot != null && <>, batting <span style={{color:spotColor,fontWeight:600}}>#{lineupSpot}</span>{spotDesc ? <span style={{color:"#8b949e"}}> — {spotDesc}</span> : ""}</>}.{hitterOps != null && <>{" "}<span style={{color:"#8b949e"}}>OPS </span><span style={{color:opsColor,fontWeight:600}}>{hitterOps.toFixed(3)}</span><span style={{color:"#484f58"}}>{hitterOps >= 0.850 ? " — elite hitter" : hitterOps >= 0.720 ? " — above-average producer" : " — below-average OPS"}.</span></>}
+                                {first}{lineupSpot != null && <>, batting <span style={{color:spotColor,fontWeight:600}}>#{lineupSpot}</span>{spotDesc ? <span style={{color:"#8b949e"}}> — {spotDesc}</span> : ""}</>}.{hitterOps != null && <>{" "}<span style={{color:"#8b949e"}}>OPS </span><span style={{color:opsColor,fontWeight:600}}>{hitterOps.toFixed(3)}</span><span style={{color:"#8b949e"}}>{hitterOps >= 0.850 ? " — elite hitter" : hitterOps >= 0.720 ? " — above-average producer" : " — below-average OPS"}.</span></>}
                                 {(pitcherName || whip != null) && (
                                   <>{" "}Facing{pitcherName ? <> <span style={{color:"#c9d1d9",fontWeight:600}}>{pitcherName}</span></> : " the opposing starter"}{whip != null ? <> — WHIP <span style={{color:whipColor,fontWeight:600}}>{whip}</span>{whipDesc ? <span style={{color:"#8b949e"}}> ({whipDesc})</span> : ""}</> : ""}.</>
                                 )}
@@ -1400,7 +1400,7 @@ function App() {
                                   {nbaBlowoutAdj != null && nbaBlowoutAdj < 0.99 && <>{" "}<span style={{color:"#f78166",fontWeight:600}}>Blowout risk</span> — large spread reduces model mean by {Math.round((1-nbaBlowoutAdj)*100)}%.</>}
                                   {isB2B != null && <>{" "}{isB2B ? <><span style={{color:"#f78166",fontWeight:600}}>Back-to-back</span> — model applies a scoring reduction.</> : <>Fully rested tonight.</>}</>}
                                   {sc != null && <>{" "}<span title={scTitle} style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,cursor:"default",verticalAlign:"middle"}}>{sc}/10 {sc>=8?"Alpha":"Mid"}</span></>}
-                                  {isOppFallback && <div style={{color:"#484f58",fontSize:10,marginTop:3}}>Showing last game vs {effectiveOpp} — updates when next game is scheduled.</div>}
+                                  {isOppFallback && <div style={{color:"#8b949e",fontSize:10,marginTop:3}}>Showing last game vs {effectiveOpp} — updates when next game is scheduled.</div>}
                                 </div>
                               </>
                             );
@@ -1442,7 +1442,7 @@ function App() {
                                   {nhlShotsAdj != null && <>{" "}They allow <span style={{color:saColor,fontWeight:600}}>{nhlShotsAdj > 0 ? "+" : ""}{nhlShotsAdj}</span> shots/game above average — {saDesc}.</>}
                                   {softPctDisplay != null && <>{" "}{first} hits this in <span style={{color:"#3fb950",fontWeight:600}}>{softPctDisplay}%</span> vs weak defenses{softGamesDisplay ? <span style={{color:"#484f58",fontSize:10}}> ({softGamesDisplay}g)</span> : ""}.</>}
                                   {nhlIsB2B != null && <>{" "}{nhlIsB2B ? <><span style={{color:"#f78166",fontWeight:600}}>Back-to-back</span> — model applies a fatigue reduction.</> : <>Fully rested tonight.</>}</>}
-                                  {isOppFallback && <div style={{color:"#484f58",fontSize:10,marginTop:3}}>Showing last game vs {effectiveOpp} — updates when next game is scheduled.</div>}
+                                  {isOppFallback && <div style={{color:"#8b949e",fontSize:10,marginTop:3}}>Showing last game vs {effectiveOpp} — updates when next game is scheduled.</div>}
                                   {sc != null && <>{" "}<span title={scTitle} style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,cursor:"default",verticalAlign:"middle"}}>{sc}/10 {sc>=8?"Alpha":"Mid"}</span></>}
                                 </div>
                               </>
@@ -1450,7 +1450,7 @@ function App() {
                           }
                           return <>
                             {first} {isOppFallback ? "last faced" : "faces"} {oppEl} {isOppFallback ? "" : "tonight "}— they rank <span style={{color:"#f78166",fontWeight:600}}>#{rank}</span> in {statLabel} allowed{metricStr}, giving up {rank === 1 ? "the most" : rank <= 5 ? "among the most" : "a lot of"} in the league.
-                            {isOppFallback && <div style={{color:"#484f58",fontSize:10,marginTop:3}}>Showing last game vs {opp} — updates when next game is scheduled.</div>}
+                            {isOppFallback && <div style={{color:"#8b949e",fontSize:10,marginTop:3}}>Showing last game vs {opp} — updates when next game is scheduled.</div>}
                           </>;
                         }
                         if (wTotal > 0) {
