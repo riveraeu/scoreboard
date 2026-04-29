@@ -25,6 +25,16 @@ function fmtGameTime(gameTime) {
   } catch { return null; }
 }
 
+// "BOS leads series 3-2" → "BOS 3-2", "Series tied 2-2" → "2-2"
+function fmtSeries(summary) {
+  if (!summary) return null;
+  const leads = summary.match(/^(\S+)\s+leads\s+series\s+(\d+-\d+)$/i);
+  if (leads) return `${leads[1]} ${leads[2]}`;
+  const tied = summary.match(/tied\s+(\d+-\d+)$/i);
+  if (tied) return tied[1];
+  return summary;
+}
+
 export default function MatchupCard({
   game, mlbMeta, mlbMetaTomorrow, nbaMeta, nhlMeta, navigateToPlayer, navigateToTeam,
   gamePlays, allTonightPlays, trackedPlays, trackPlay, untrackPlay,
@@ -90,15 +100,15 @@ export default function MatchupCard({
                 {gameDetail || (gameState === 'post' ? 'Final' : 'Live')}
               </div>
               {seriesSummary && (sport === 'nba' || sport === 'nhl') && (
-                <div style={{ fontSize: 9, color: '#8b949e', marginTop: 3 }}>{seriesSummary}</div>
+                <div style={{ fontSize: 10, color: '#8b949e', marginTop: 3 }}>{fmtSeries(seriesSummary)}</div>
               )}
             </>
           ) : (
             <>
-              {gameTimeStr && <div style={{ fontSize: 10, color: '#8b949e' }}>{gameTimeStr}</div>}
               {seriesSummary && (sport === 'nba' || sport === 'nhl') && (
-                <div style={{ fontSize: 9, color: '#8b949e', marginTop: 2 }}>{seriesSummary}</div>
+                <div style={{ fontSize: 10, color: '#8b949e' }}>{fmtSeries(seriesSummary)}</div>
               )}
+              {gameTimeStr && <div style={{ fontSize: 10, color: '#8b949e', marginTop: seriesSummary && (sport === 'nba' || sport === 'nhl') ? 2 : 0 }}>{gameTimeStr}</div>}
             </>
           )}
         </div>
