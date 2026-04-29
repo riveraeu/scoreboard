@@ -122,6 +122,7 @@ Used for caching expensive fetches. Key TTLs:
 - **Scoring team extraction**: Ticker suffix after last `-` starts with the team abbreviation (e.g. `LAD8` → scoring team `LAD`). Game teams extracted via existing `parseGameTeams()`.
 - **True%**: Monte Carlo simulation — `simulateTeamTotalDist(lambda)` (Poisson, MLB) or `simulateTeamPtsDist(mean, std=11)` (Normal, NBA) in `api/lib/simulate.js`.
   - MLB lambda: `teamRPG × (oppERA / 4.20) × parkRF`, clamped [0.5, 12]
+  - **MLB truePct blend**: after Poisson simulation, blended 50/50 with `ttSeasonHitRate` (season hit rate at threshold) when season data is available: `truePct = 0.5 × model + 0.5 × ttSeasonHitRate`. Corrects systematic Poisson overestimation (~12pts at threshold 2) by anchoring to ground-truth historical rates. `modelTruePct` stored in output when blend is applied (shows raw Poisson value before blend).
   - NBA mean: `teamOffPPG × (oppDefPPG / leagueAvgDef)`
 - **OVER plays**: `edge = truePct - kalshiPct >= 5%` → `direction: "over"`, uses `truePct`/`kalshiPct`. **UNDER plays**: `underEdge = (100-truePct) - (100-kalshiPct) >= 5%` AND `noKalshiPct >= 70` → `direction: "under"`, play has `noTruePct`/`noKalshiPct`/`americanOdds` (NO-side). Badge: red "Under X.X"; bars use no-side probs; prose colors inverted. Track ID appends `|under`. `reason: "under_no_price_too_low"` when Kalshi YES > 30%.
 - **SimScore** (max 10 — 5 stats × 2pts each; `qualified: teamTotalSimScore >= 8`):
