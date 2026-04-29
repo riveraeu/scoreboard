@@ -2639,12 +2639,7 @@ var worker_default = {
             const _splitBA = _oppPitcherHand === "R" ? (_bsEntry?.vsR ?? null) : _oppPitcherHand === "L" ? (_bsEntry?.vsL ?? null) : null;
             const _splitBAPA = _oppPitcherHand === "R" ? (_bsEntry?.vsRPA ?? 0) : _oppPitcherHand === "L" ? (_bsEntry?.vsLPA ?? 0) : 0;
             hitterSplitBA = _splitBA;
-            // Change #1: override team-level softPct with platoon-adjusted rate when H2H is sparse
-            if (_hrrUsingTeamFallback && _splitBA != null && hitterBa != null && hitterBa > 0) {
-              softPct = Math.max(0, Math.min(99, parseFloat((primaryPct * (_splitBA / hitterBa)).toFixed(1))));
-              softLabel = _oppPitcherHand === "R" ? "vs RHP" : _oppPitcherHand === "L" ? "vs LHP" : softLabel;
-            }
-            // Platoon still computed for output/display — no longer in simScore
+            // Platoon ratio kept for output/display only — not used in SimScore
             hitterPlatoonPts = 1; // abstain default
             hitterPlatoonRatio = null;
             if (_splitBA != null && hitterBa != null) {
@@ -2680,22 +2675,40 @@ var worker_default = {
               ? _hrrTrust26 * _hrrHR26 + (1 - _hrrTrust26) * _hrrHR25
               : (_hrrHR26 ?? _hrrHR25);
             hitterSeasonHitRatePts = _hrrBlendedSeasonHR == null ? 1 : _hrrBlendedSeasonHR >= 80 ? 2 : _hrrBlendedSeasonHR >= 70 ? 1 : 0;
-            // H2H hit rate: only vs this pitcher (not team fallback). Sparse H2H → handedness-adjusted season rate.
+            // H2H hit rate: ≥10 games vs specific pitcher → BvP; else cross-reference all loaded pitcher gamelogs by handedness
             const _h2hPitcherDates = pitcherGamelogs[tonightOpp]?.gl
               ? new Set(pitcherGamelogs[tonightOpp].gl.events.filter(ev => ev.oppAbbr === playerTeam).map(ev => ev.date))
               : null;
             const _h2hVals = (_h2hPitcherDates && _h2hPitcherDates.size > 0)
               ? gl.events.filter(ev => _h2hPitcherDates.has(ev.date) && ev.oppAbbr === tonightOpp).map(getStat).filter(v => !isNaN(v))
               : [];
-            // BvP H2H requires ≥10 games (matches MIN_H2H); platoon fallback otherwise
             const _h2hHitRate = _h2hVals.length >= 10 ? _h2hVals.filter(v => v >= threshold).length / _h2hVals.length * 100 : null;
-            hitterH2HHitRatePts = _h2hHitRate == null ? 1
-              : _h2hHitRate >= 80 ? 2
-              : _h2hHitRate >= 70 ? 1
+            // Handedness fallback: collect start dates from all loaded pitcher gamelogs where the pitcher's hand matches
+            let _h2hHandRate = null;
+            if (_h2hHitRate == null && _oppPitcherHand) {
+              const _handDateMap = new Map(); // date → oppTeam
+              for (const [pg_team, pgData] of Object.entries(pitcherGamelogs)) {
+                const pgHand = sportByteam.mlb?.pitcherHand?.[`${pg_team}|${playerTeam}`] ?? sportByteam.mlb?.pitcherHand?.[pg_team] ?? null;
+                if (pgHand !== _oppPitcherHand || !pgData?.gl?.events) continue;
+                pgData.gl.events.filter(ev => ev.oppAbbr === playerTeam).forEach(ev => _handDateMap.set(ev.date, pg_team));
+              }
+              if (_handDateMap.size > 0) {
+                const _handVals = gl.events
+                  .filter(ev => _handDateMap.has(ev.date) && ev.oppAbbr === _handDateMap.get(ev.date))
+                  .map(getStat).filter(v => !isNaN(v));
+                if (_handVals.length >= 10) {
+                  _h2hHandRate = parseFloat((_handVals.filter(v => v >= threshold).length / _handVals.length * 100).toFixed(1));
+                  softPct = _h2hHandRate;
+                  softLabel = _oppPitcherHand === "R" ? "vs RHP" : "vs LHP";
+                }
+              }
+            }
+            const _effectiveHitRate = _h2hHitRate ?? _h2hHandRate;
+            hitterH2HHitRatePts = _effectiveHitRate == null ? 1
+              : _effectiveHitRate >= 80 ? 2
+              : _effectiveHitRate >= 70 ? 1
               : 0;
-            // platoon fallback = primary Matchup Rate for ~90% of games; use full 0/1/2 scale from hitterPlatoonPts
-            hitterH2HSource = _h2hHitRate != null ? 'bvp' : (_hrrUsingTeamFallback && hitterPlatoonRatio != null) ? 'platoon' : 'abstain';
-            if (_hrrUsingTeamFallback) hitterH2HHitRatePts = hitterPlatoonPts;
+            hitterH2HSource = _h2hHitRate != null ? 'bvp' : _h2hHandRate != null ? 'hand' : 'abstain';
             // SimScore (max 10): OPS→0-2, WHIP→0-2, season hit rate→0-2, H2H hit rate→0-2, O/U→0-2
             hitterSimScore = (hitterOpsPts ?? 1)
               + (hitterWhipPts ?? 0)

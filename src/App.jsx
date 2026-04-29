@@ -1348,7 +1348,10 @@ function App() {
                           const platoonPts = tonightHitPlay?.hitterPlatoonPts ?? null;
                           const pitcherHand = tonightHitPlay?.oppPitcherHand ?? null;
                           const isPlatoonFallback = tonightHitPlay?.hitterSoftLabel === "vs RHP" || tonightHitPlay?.hitterSoftLabel === "vs LHP";
-                          const softRateColor = isPlatoonFallback && platoonPts === 0 ? "#f78166" : "#3fb950";
+                          const h2hSource = tonightHitPlay?.hitterH2HSource;
+                          const softRateColor = (h2hSource === 'bvp' || h2hSource === 'hand') && softPct != null
+                            ? softPct >= 80 ? "#3fb950" : softPct >= 70 ? "#e3b341" : "#f78166"
+                            : "#3fb950";
                           const hitterOps = tonightHitPlay?.hitterOps ?? null;
                           const hitterOpsPts = tonightHitPlay?.hitterOpsPts ?? null;
                           const opsColor = hitterOpsPts == null ? "#8b949e" : hitterOpsPts >= 2 ? "#3fb950" : hitterOpsPts >= 1 ? "#e3b341" : "#f78166";
