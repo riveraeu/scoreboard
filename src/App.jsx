@@ -1977,7 +1977,9 @@ function App() {
           untrackPlay={untrackPlay}
           navigateToPlay={navigateToPlay}
           trackPlay={initiateTrack}
-          openPicksDrawer={() => setShowPicksDrawer(true)}
+          openPicksDrawer={() => setShowPicksDrawer(d => !d)}
+          showPicksDrawer={showPicksDrawer}
+          picksButtonRef={fabRef}
         />
       )}
 
@@ -1985,39 +1987,6 @@ function App() {
         Powered by ESPN API · via Cloudflare Worker proxy
       </div>
 
-      {/* FAB picks button */}
-      {(() => {
-        const activePicks = trackedPlays.filter(p => !p.result || p.result === "dnp");
-        return (
-          <button ref={fabRef}
-            onClick={() => setShowPicksDrawer(d => !d)}
-            title="My Picks"
-            style={{
-              position:"fixed", bottom:24, right:24,
-              width:52, height:52, borderRadius:"50%",
-              background: showPicksDrawer ? "#1c2128" : "#161b22",
-              border:`2px solid ${showPicksDrawer ? "#58a6ff" : "#30363d"}`,
-              cursor:"pointer",
-              display:"flex", alignItems:"center", justifyContent:"center",
-              fontSize:22, color:"#e3b341",
-              boxShadow:"0 4px 20px rgba(0,0,0,0.6)",
-              zIndex:600,
-              transition:"border-color 0.15s, background 0.15s",
-            }}>
-            ★
-            {activePicks.length > 0 && (
-              <span style={{
-                position:"absolute", top:-5, right:-5,
-                background:"#3fb950", color:"#0d1117",
-                fontSize:10, fontWeight:700,
-                borderRadius:10, padding:"1px 5px",
-                minWidth:18, textAlign:"center", lineHeight:"16px",
-                border:"2px solid #0d1117",
-              }}>{activePicks.length}</span>
-            )}
-          </button>
-        );
-      })()}
 
       {/* Flying pick star animation */}
       {flyingPick && (

@@ -133,6 +133,8 @@ export default function LineupsPage({
   navigateToPlay,
   trackPlay,
   openPicksDrawer,
+  showPicksDrawer,
+  picksButtonRef,
 }) {
   const [activeDayTab, setActiveDayTab] = React.useState(() =>
     new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
@@ -244,26 +246,45 @@ export default function LineupsPage({
           <button onClick={navigateToModel}
             style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, cursor: 'pointer',
               border: '1px solid #30363d', background: 'transparent', color: '#484f58', fontWeight: 600 }}>
-            model
+            Model
           </button>
           <button onClick={() => fetchReport('mlb')}
             style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, cursor: 'pointer',
               border: '1px solid #30363d', background: 'transparent', color: '#484f58', fontWeight: 600 }}>
-            report
+            Report
           </button>
           <button onClick={() => setTestMode(m => !m)}
             style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, cursor: 'pointer',
               border: `1px solid ${testMode ? '#e3b341' : '#30363d'}`,
               background: testMode ? 'rgba(227,179,65,0.12)' : 'transparent',
               color: testMode ? '#e3b341' : '#484f58', fontWeight: 600 }}>
-            {testMode ? '⚗ mock' : 'mock'}
+            {testMode ? '⚗ Mock' : 'Mock'}
           </button>
           <button onClick={bustCache} disabled={bustLoading}
             style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, cursor: bustLoading ? 'default' : 'pointer',
               border: '1px solid #30363d', background: 'transparent',
               color: bustLoading ? '#30363d' : '#484f58', fontWeight: 600 }}>
-            {bustLoading ? 'busting…' : 'bust'}
+            {bustLoading ? 'Busting…' : 'Bust'}
           </button>
+          {(() => {
+            const activePicks = (trackedPlays || []).filter(p => !p.result || p.result === 'dnp');
+            return (
+              <button ref={picksButtonRef} onClick={openPicksDrawer}
+                style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, cursor: 'pointer',
+                  border: `1px solid ${showPicksDrawer ? '#58a6ff' : '#e3b341'}`,
+                  background: showPicksDrawer ? 'rgba(88,166,255,0.08)' : 'rgba(227,179,65,0.08)',
+                  color: '#e3b341', fontWeight: 600,
+                  display: 'flex', alignItems: 'center', gap: 4, position: 'relative' }}>
+                ★ Picks
+                {activePicks.length > 0 && (
+                  <span style={{ background: '#3fb950', color: '#0d1117', fontSize: 9, fontWeight: 700,
+                    borderRadius: 8, padding: '0 4px', lineHeight: '14px' }}>
+                    {activePicks.length}
+                  </span>
+                )}
+              </button>
+            );
+          })()}
           {authEmail ? (
             <button onClick={logout}
               style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, cursor: 'pointer',
@@ -272,13 +293,13 @@ export default function LineupsPage({
               <span style={{ width: 5, height: 5, borderRadius: '50%', flexShrink: 0,
                 background: syncStatus === 'saving' ? '#e3b341' : syncStatus === 'error' ? '#f78166' : '#3fb950',
                 display: 'inline-block' }} />
-              log out
+              Log Out
             </button>
           ) : (
             <button onClick={onLoginClick}
               style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, cursor: 'pointer',
                 border: '1px solid #58a6ff', background: 'transparent', color: '#58a6ff', fontWeight: 600 }}>
-              log in
+              Log In
             </button>
           )}
         </div>

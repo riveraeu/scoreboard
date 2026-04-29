@@ -28,7 +28,7 @@ function fmtGameTime(gameTime) {
 // "BOS leads series 3-2" → "BOS 3-2", "Series tied 2-2" → "2-2"
 function fmtSeries(summary) {
   if (!summary) return null;
-  const leads = summary.match(/^(\S+)\s+leads\s+series\s+(\d+-\d+)$/i);
+  const leads = summary.match(/^(\S+)\s+leads?\s+series\s+(\d+-\d+)$/i);
   if (leads) return `${leads[1]} ${leads[2]}`;
   const tied = summary.match(/tied\s+(\d+-\d+)$/i);
   if (tied) return tied[1];
