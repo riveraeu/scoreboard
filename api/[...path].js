@@ -2561,6 +2561,7 @@ var worker_default = {
           let hitterOpsPts = null, hitterSeasonHitRatePts = null, hitterH2HHitRatePts = null;
           let hitterPlatoonRatio = null, hitterH2HSource = null;
           let _hitterOps = null; // hoisted — declared in HRR block, referenced in drops/plays outside
+          let _h2hDebug = null; // temporary debug field — remove after investigation
           if (sport === "mlb" && stat !== "strikeouts") {
             const hitterML = sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null;
             const hIdx2 = gl.ul.indexOf("H");
@@ -2691,6 +2692,7 @@ var worker_default = {
               const _hrrEntry = _hrrSplitMap[_bsKey] ?? _hrrSplitMap[_brlNorm(playerNameDisplay)] ?? null;
               const _hrrHandKey = _oppPitcherHand === "R" ? "vsR" : "vsL";
               const _hrrSplit = _hrrEntry?.[_hrrHandKey] ?? null;
+              _h2hDebug = { bsKey: _bsKey, hasEntry: _hrrEntry != null, handKey: _hrrHandKey, hasSplit: _hrrSplit != null, g: _hrrSplit?.g, hrr: _hrrSplit?.hrr };
               if (_hrrSplit && _hrrSplit.g >= 10) {
                 const _lambda = _hrrSplit.hrr / _hrrSplit.g;
                 _h2hHandRate = parseFloat(((1 - Math.exp(-_lambda)) * 100).toFixed(1));
@@ -2704,6 +2706,15 @@ var worker_default = {
               : _effectiveHitRate >= 70 ? 1
               : 0;
             hitterH2HSource = _h2hHitRate != null ? 'bvp' : _h2hHandRate != null ? 'hand' : 'abstain';
+            // Refresh _hlSoftPct/_hlTruePct/_hlEdge with post-Poisson live softPct (was captured stale before this block)
+            _hlSoftPct = softPct !== null ? parseFloat(softPct.toFixed(1)) : null;
+            if (_hlSeasonPct !== null) {
+              const _hlRawPost = _hlSoftPct !== null ? (_hlSeasonPct + _hlSoftPct) / 2 : _hlSeasonPct;
+              const _hlHomePost = sportByteam.mlb?.gameHomeTeams?.[playerTeam] ?? tonightOpp;
+              const _hlPfPost = PARK_HITFACTOR?.[_hlHomePost] ?? 1;
+              _hlTruePct = parseFloat(Math.min(99, _hlRawPost * _hlPfPost).toFixed(1));
+              _hlEdge = parseFloat((_hlTruePct - kalshiPct).toFixed(1));
+            }
             // SimScore (max 10): OPS→0-2, WHIP→0-2, season hit rate→0-2, H2H hit rate→0-2, O/U→0-2
             hitterSimScore = (hitterOpsPts ?? 1)
               + (hitterWhipPts ?? 0)
@@ -2712,7 +2723,7 @@ var worker_default = {
               + hitterTotalPts;
             const _hlPitcherName = sportByteam.mlb?.probables?.[tonightOpp]?.name ?? null;
             const _hlML = hitterML;
-            const _hlCommon = { opponent: tonightOpp, pitcherName: _hlPitcherName, seasonPct: _hlSeasonPct, softPct: _hlSoftPct, truePct: _hlTruePct, edge: _hlEdge, pitcherEra: _hlEra, moneyline: _hlML, hitterBa, hitterBaTier, abVsTeam: hitterAbVsPitcher, hitterLineupSpot, pitcherWHIP, pitcherFIP, hitterSimScore, hitterParkKF, hitterMoneyline, hitterBarrelPct, hitterBarrelPts, hitterTotalPts, hitterGameTotal, hitterPlatoonPts, hitterPlatoonRatio, hitterH2HSource, hitterOps: _hitterOps, hitterOpsPts, hitterSeasonHitRatePts, hitterH2HHitRatePts, oppPitcherHand: _oppPitcherHand, hitterSplitBA: _splitBA, hitterWhipPts };
+            const _hlCommon = { opponent: tonightOpp, pitcherName: _hlPitcherName, seasonPct: _hlSeasonPct, softPct: _hlSoftPct, truePct: _hlTruePct, edge: _hlEdge, pitcherEra: _hlEra, moneyline: _hlML, hitterBa, hitterBaTier, abVsTeam: hitterAbVsPitcher, hitterLineupSpot, pitcherWHIP, pitcherFIP, hitterSimScore, hitterParkKF, hitterMoneyline, hitterBarrelPct, hitterBarrelPts, hitterTotalPts, hitterGameTotal, hitterPlatoonPts, hitterPlatoonRatio, hitterH2HSource, hitterSoftLabel: softLabel ?? void 0, hitterOps: _hitterOps, hitterOpsPts, hitterSeasonHitRatePts, hitterH2HHitRatePts, oppPitcherHand: _oppPitcherHand, hitterSplitBA: _splitBA, hitterWhipPts, _h2hDebug: _h2hDebug ?? void 0 };
             // Stage 1: lineup spot 5-9 discard
             if (hitterLineupSpot !== null && hitterLineupSpot >= 6) {
               if (isDebug) dropped.push({ ..._dropBase, reason: "low_lineup_spot", hitterLineupSpot, ..._hlCommon });
@@ -3006,6 +3017,7 @@ var worker_default = {
                 hitterWhipPts, hitterSplitBA,
                 oppPitcherHand: hitterOppPitcherHand ?? undefined,
                 hitterSoftLabel: softLabel ?? undefined,
+                _h2hDebug: _h2hDebug ?? undefined,
                 softGames: softVals.length,
                 hitterPitcherName: sportByteam.mlb?.probables?.[tonightOpp]?.name ?? sportByteam.mlb?.pitcherInfoByTeam?.[tonightOpp]?.name ?? pitcherGamelogs[tonightOpp]?.name ?? null,
                 hitterPitcherEra: sportByteam.mlb?.probables?.[tonightOpp]?.era ?? sportByteam.mlb?.pitcherEra?.[tonightOpp] ?? null,
@@ -3204,6 +3216,7 @@ var worker_default = {
               hitterWhipPts, hitterSplitBA,
               oppPitcherHand: hitterOppPitcherHand ?? undefined,
               hitterSoftLabel: softLabel ?? undefined,
+              _h2hDebug: _h2hDebug ?? undefined,
               hitterPitcherName: sportByteam.mlb?.probables?.[tonightOpp]?.name ?? sportByteam.mlb?.pitcherInfoByTeam?.[tonightOpp]?.name ?? pitcherGamelogs[tonightOpp]?.name ?? null,
               hitterPitcherEra: sportByteam.mlb?.probables?.[tonightOpp]?.era ?? sportByteam.mlb?.pitcherEra?.[tonightOpp] ?? null,
             };
@@ -3327,6 +3340,7 @@ var worker_default = {
             hitterAbVsPitcher: sport === "mlb" && stat !== "strikeouts" ? hitterAbVsPitcher : void 0,
             hitterPitcherName: sport === "mlb" && stat !== "strikeouts" ? (sportByteam.mlb?.probables?.[tonightOpp]?.name ?? sportByteam.mlb?.pitcherInfoByTeam?.[tonightOpp]?.name ?? pitcherGamelogs[tonightOpp]?.name ?? null) : void 0,
             hitterSoftLabel: sport === "mlb" && stat !== "strikeouts" ? softLabel : void 0,
+            _h2hDebug: sport === "mlb" && stat !== "strikeouts" && isDebug ? (_h2hDebug ?? void 0) : void 0,
             hitterPitcherEra: sport === "mlb" && stat !== "strikeouts" ? (sportByteam.mlb?.probables?.[tonightOpp]?.era ?? sportByteam.mlb?.pitcherEra?.[tonightOpp] ?? null) : void 0,
             nbaSimScore: sport === "nba" ? nbaSimScore : void 0,
             nbaPreSimScore: sport === "nba" ? nbaPreSimScore : void 0,
