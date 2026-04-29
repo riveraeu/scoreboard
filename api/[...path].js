@@ -4124,33 +4124,38 @@ var worker_default = {
                       }
                     }
                   }
-                } else {
-                  // NBA / NHL share the boxscore.players[] format
+                } else if (sport === "nba") {
+                  // NBA: all players in boxscore.players[team].statistics[0]
                   for (const teamData of sum.boxscore?.players || []) {
                     const stats = teamData.statistics?.[0];
                     if (!stats) continue;
                     const labels = (stats.labels || []).map(l => l.toUpperCase());
-
-                    if (sport === "nba") {
-                      const ptsIdx = labels.indexOf("PTS");
-                      const rebIdx = labels.indexOf("REB");
-                      const astIdx = labels.indexOf("AST");
-                      const fg3Idx = ["3PM","3FG","3PT"].reduce((found, k) => found !== -1 ? found : labels.indexOf(k), -1);
-                      for (const ath of stats.athletes || []) {
-                        const name = ath.athlete?.fullName || ath.athlete?.displayName;
-                        if (!name) continue;
-                        const s = ath.stats || [];
-                        if (!s.length) continue;
-                        players[name] = {
-                          points:       parseInt(s[ptsIdx]) || 0,
-                          rebounds:     parseInt(s[rebIdx]) || 0,
-                          assists:      parseInt(s[astIdx]) || 0,
-                          threePointers: fg3Idx !== -1 ? (parseInt(s[fg3Idx]) || 0) : 0,
-                        };
-                      }
-                    } else if (sport === "nhl") {
-                      const gIdx  = labels.indexOf("G");
-                      const aIdx  = labels.indexOf("A");
+                    const ptsIdx = labels.indexOf("PTS");
+                    const rebIdx = labels.indexOf("REB");
+                    const astIdx = labels.indexOf("AST");
+                    const fg3Idx = ["3PM","3FG","3PT"].reduce((found, k) => found !== -1 ? found : labels.indexOf(k), -1);
+                    for (const ath of stats.athletes || []) {
+                      const name = ath.athlete?.fullName || ath.athlete?.displayName;
+                      if (!name) continue;
+                      const s = ath.stats || [];
+                      if (!s.length) continue;
+                      players[name] = {
+                        points:        parseInt(s[ptsIdx]) || 0,
+                        rebounds:      parseInt(s[rebIdx]) || 0,
+                        assists:       parseInt(s[astIdx]) || 0,
+                        threePointers: fg3Idx !== -1 ? (parseInt(s[fg3Idx]) || 0) : 0,
+                      };
+                    }
+                  }
+                } else if (sport === "nhl") {
+                  // NHL: players split across multiple statistics[] sections (forwards, defensemen)
+                  // Each section has the same label set; G=goals, A=assists, TOI=time on ice
+                  for (const teamData of sum.boxscore?.players || []) {
+                    for (const stats of teamData.statistics || []) {
+                      const labels = (stats.labels || []).map(l => l.toUpperCase());
+                      const gIdx   = labels.indexOf("G");
+                      if (gIdx === -1) continue; // skip sections without skater stats
+                      const aIdx   = labels.indexOf("A");
                       const ptsIdx = labels.indexOf("PTS");
                       const toiIdx = labels.indexOf("TOI");
                       for (const ath of stats.athletes || []) {
@@ -4158,12 +4163,12 @@ var worker_default = {
                         if (!name) continue;
                         const s = ath.stats || [];
                         if (!s.length) continue;
-                        const goals = parseInt(s[gIdx]) || 0;
-                        const assistsNhl = parseInt(s[aIdx]) || 0;
+                        const goals      = parseInt(s[gIdx]) || 0;
+                        const assistsNhl = aIdx !== -1 ? (parseInt(s[aIdx]) || 0) : 0;
                         players[name] = {
                           goals, assistsNhl,
                           points: ptsIdx !== -1 ? (parseInt(s[ptsIdx]) || 0) : goals + assistsNhl,
-                          toi: s[toiIdx] ?? "0:00",
+                          toi: toiIdx !== -1 ? (s[toiIdx] ?? "0:00") : "0:00",
                         };
                       }
                     }
