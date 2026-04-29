@@ -2,6 +2,7 @@ import React from 'react';
 import { STAT_LABEL, STAT_FULL, MLB_TEAM } from '../lib/constants.js';
 import { ordinal } from '../lib/utils.js';
 import { tierColor } from '../lib/colors.js';
+import SimBadge from './SimBadge.jsx';
 
 function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMeta, sportFilter = [], setSportFilter, statFilter = [], setStatFilter, trackedPlays, trackPlay, untrackPlay, navigateToPlay, navigateToTeam, navigateToModel, expandedPlays, setExpandedPlays, fetchReport, bustLoading, bustCache, showPlaysInfo, setShowPlaysInfo, testMode, setTestMode, hideHeader, gridColumns }) {
   const cols = gridColumns || 1;
@@ -286,7 +287,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMet
                             {play.h2hHitRate != null && <><span style={{color:"#c9d1d9"}}>{play.scoringTeam}</span>{" "}<span style={{color:"#8b949e"}}>{isUnder ? `has stayed under ${lineVal} in` : `has scored ${lineVal}+ in`}</span>{" "}<span style={{color:h2hColor,fontWeight:600}}>{isUnder ? (100 - play.h2hHitRate).toFixed(0) : play.h2hHitRate.toFixed(0)}%</span>{" "}<span style={{color:"#8b949e"}}>of last {play.h2hGames}g H2H meetings.</span>{" "}</>}
                             {play.gameOuLine != null && <><span style={{color:"#8b949e"}}>Game total</span>{" "}<span style={{color:ouColor,fontWeight:600}}>{play.gameOuLine}</span>{ouDesc ? <span style={{color:"#8b949e"}}>{" — "}{ouDesc}</span> : ""}.</>}
                             {play.teamExpected != null && <>{" "}<span style={{color:"#8b949e"}}>Model projects</span>{" "}<span style={{color:etColor,fontWeight:600}}>{play.teamExpected}</span>{" "}<span style={{color:"#8b949e"}}>{isUnder ? `expected runs — under the ${lineVal} line.` : `expected runs vs the ${lineVal} line.`}</span></>}
-                            {" "}<span title={scTitle} style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,verticalAlign:"middle",cursor:"help"}}>{sc}/10 {sc>=8?"Alpha":sc>=5?"Mid":"Low"}</span>
+                            {" "}<SimBadge sc={sc} scTitle={scTitle} scColor={scColor} />
                           </div>
                         );
                       })()}
@@ -314,7 +315,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMet
                             {paceAdj != null && <>{" "}<span style={{color:"#8b949e"}}>Team pace</span> <span style={{color:paceColor}}>{paceAdj > 0 ? "+" : ""}{paceAdj}</span> <span style={{color:"#8b949e"}}>vs league avg{isUnder ? (paceAdj <= -2 ? " — slow pace, supports under" : "") : (paceAdj > 0 ? " — faster game" : "")}.</span></>}
                             {play.gameOuLine != null && <>{" "}<span style={{color:"#8b949e"}}>Game total</span> <span style={{color:isUnder ? (play.gameOuLine < 225 ? "#3fb950" : play.gameOuLine < 235 ? "#e3b341" : "#f78166") : (play.gameOuLine >= 235 ? "#3fb950" : play.gameOuLine >= 225 ? "#e3b341" : "#8b949e"),fontWeight:600}}>{play.gameOuLine}</span>{ouDesc2 ? <> — <span style={{color:"#8b949e"}}>{ouDesc2}</span></> : null}.</>}
                             {play.teamExpected != null && <>{" "}<span style={{color:"#8b949e"}}>Model projects</span> <span style={{color:etColor,fontWeight:600}}>{play.teamExpected}</span> <span style={{color:"#8b949e"}}>{isUnder ? `pts — under the ${lineVal} line.` : `pts vs the ${lineVal} line.`}</span></>}
-                            {" "}<span title={scTitle} style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,verticalAlign:"middle",cursor:"help"}}>{sc}/10 {sc>=8?"Alpha":sc>=5?"Mid":"Low"}</span>
+                            {" "}<SimBadge sc={sc} scTitle={scTitle} scColor={scColor} />
                           </div>
                         );
                       })()}
@@ -458,7 +459,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMet
                             {gameOuLine != null && <>{" "}<span style={{color:"#8b949e"}}>Game total</span>{" "}<span style={{color:ouColor,fontWeight:600}}>{gameOuLine}</span>{ouDesc ? <span style={{color:"#8b949e"}}>{" — "}{ouDesc}.</span> : "."}</>}
                             {Math.abs(pf - 1) > 0.01 && <>{" "}<span style={{color:"#8b949e"}}>Tonight's park {pf > 1 ? "inflates run scoring" : "suppresses run scoring"} (</span><span style={{color:"#8b949e"}}>{pf > 1 ? "+" : ""}{((pf-1)*100).toFixed(0)}%</span><span style={{color:"#8b949e"}}>).</span></>}
                             {et != null && <>{" "}<span style={{color:"#8b949e"}}>Model projects</span>{" "}<span style={{color:etColor,fontWeight:600}}>{et}</span>{" "}<span style={{color:"#8b949e"}}>{isUnder?`combined runs — under the ${lineVal} threshold.`:`combined runs vs the ${lineVal} threshold.`}</span></>}
-                            {" "}<span title={scTitle} style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,verticalAlign:"middle",cursor:"default"}}>{sc}/10 {sc>=8?"Alpha":sc>=5?"Mid":"Low"}</span>
+                            {" "}<SimBadge sc={sc} scTitle={scTitle} scColor={scColor} />
                           </div>
                         );
                       })()}
@@ -501,7 +502,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMet
                             {" "}<span style={{color:isUnder?(totalOut>=3?"#3fb950":totalOut>0?"#e3b341":"#8b949e"):(totalOut>=3?"#f78166":totalOut>0?"#e3b341":"#8b949e"),fontWeight:600}}>{totalOut === 0 ? "No key injuries" : `${totalOut} player${totalOut!==1?"s":""} out`}</span>{totalOut > 0 ? <span style={{color:"#484f58"}}>{" "}({homeOut>0?`${homeOut} ${play.homeTeam}`:""}{homeOut>0&&awayOut>0?", ":""}{awayOut>0?`${awayOut} ${play.awayTeam}`:""}).</span> : <span style={{color:"#8b949e"}}>.</span>}
                             {nbaOuLinePC != null && <>{" "}<span style={{color:"#8b949e"}}>Game total</span>{" "}<span style={{color:isUnder?(nbaOuLinePC<225?"#3fb950":nbaOuLinePC<235?"#e3b341":"#f78166"):(nbaOuLinePC>=235?"#3fb950":nbaOuLinePC>=225?"#e3b341":"#8b949e"),fontWeight:600}}>{nbaOuLinePC}</span>{" "}<span style={{color:"#8b949e"}}>{isUnder?(nbaOuLinePC<225?"— a low-total game.":nbaOuLinePC<235?"— an average total.":"— a high-total game."):(nbaOuLinePC>=235?"— a fast-paced game.":nbaOuLinePC>=225?"— above-average scoring.":"— a low-total game.")}</span></>}
                             {et != null && <>{" "}<span style={{color:"#8b949e"}}>Model projects</span>{" "}<span style={{color:etColor,fontWeight:600}}>{et}</span>{" "}<span style={{color:"#8b949e"}}>{isUnder?`combined pts — under the ${lineVal} threshold.`:`combined pts vs the ${lineVal} threshold.`}</span></>}
-                            {" "}<span title={scTitle} style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,verticalAlign:"middle",cursor:"default"}}>{sc}/10 {sc>=8?"Alpha":sc>=5?"Mid":"Low"}</span>
+                            {" "}<SimBadge sc={sc} scTitle={scTitle} scColor={scColor} />
                           </div>
                         );
                       })()}
@@ -533,7 +534,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMet
                             {" "}<span style={{color:"#c9d1d9"}}>{play.awayTeam}</span>{" "}<span style={{color:"#8b949e"}}>defense allows</span>{aGAA != null ? <>{" "}<span style={{color:gaaColor(aGAA),fontWeight:600}}>{aGAA.toFixed(2)} GAA</span>{!isUnder&&aGAA>=3.5?<span style={{color:"#8b949e"}}> — weak defense</span>:!isUnder&&aGAA>=3.0?<span style={{color:"#8b949e"}}> — below-average defense</span>:isUnder&&aGAA<3.0?<span style={{color:"#8b949e"}}> — stingy defense</span>:""}</> : <>{" —"}</>}.
                             {nhlOuLinePC != null && <>{" "}<span style={{color:"#8b949e"}}>Game total</span>{" "}<span style={{color:isUnder?(nhlOuLinePC<5.5?"#3fb950":nhlOuLinePC<7?"#e3b341":"#f78166"):(nhlOuLinePC>=7?"#3fb950":nhlOuLinePC>=5.5?"#e3b341":"#8b949e"),fontWeight:600}}>{nhlOuLinePC}</span>{" "}<span style={{color:"#8b949e"}}>{isUnder?(nhlOuLinePC<5.5?"— a low-total game.":nhlOuLinePC<7?"— an average total.":"— a high-scoring game."):(nhlOuLinePC>=7?"— a high-scoring game.":nhlOuLinePC>=5.5?"— an average total.":"— a low-total game.")}</span></>}
                             {et != null && <>{" "}<span style={{color:"#8b949e"}}>Model projects</span>{" "}<span style={{color:etColor,fontWeight:600}}>{et}</span>{" "}<span style={{color:"#8b949e"}}>{isUnder?`combined goals — under the ${lineVal} threshold.`:`combined goals vs the ${lineVal} threshold.`}</span></>}
-                            {" "}<span title={scTitle} style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,verticalAlign:"middle",cursor:"default"}}>{sc}/10 {sc>=8?"Alpha":sc>=5?"Mid":"Low"}</span>
+                            {" "}<SimBadge sc={sc} scTitle={scTitle} scColor={scColor} />
                           </div>
                         );
                       })()}
@@ -711,7 +712,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMet
                                 {h2hHandRate != null && <>{" "}<span style={{color:"#8b949e"}}>{h2hHandMaj?`vs ${h2hHandMaj}-heavy lineups:`:"Hand H2H:"}</span>{" "}<span style={{color:h2hHandColor,fontWeight:600}}>{h2hHandRate.toFixed(0)}% hit rate</span>{h2hHandStarts!=null&&<span style={{color:"#484f58",fontSize:10}}> ({h2hHandStarts} starts)</span>}{" "}<span style={{color:"#8b949e"}}>{h2hHandPts===2?"— strong vs this lineup type.":h2hHandPts===1?"— solid vs this lineup type.":"— struggles vs this lineup type."}</span></>}
                                 {gameTotal != null && <>{" "}<span style={{color:"#8b949e"}}>Game total</span>{" "}<span style={{color:totalColor(gameTotal),fontWeight:600}}>{gameTotal}</span>{" "}<span style={{color:"#8b949e"}}>{gameTotal<=7.5?"— a low-scoring slate, favorable for strikeouts.":gameTotal<10.5?"— an average total.":"— a high-scoring total, tougher for Ks."}</span></>}
                                 {pf != null && Math.abs(pf - 1.0) >= 0.01 && <>{" "}<span style={{color:"#8b949e"}}>Park factor: {pf > 1 ? "strikeout-friendly" : "suppresses Ks"} (</span><span style={{color:"#8b949e"}}>{pf > 1 ? "+" : ""}{((pf-1)*100).toFixed(0)}%</span><span style={{color:"#8b949e"}}>).</span></>}
-                                {_sc != null && <>{" "}<span title={scTitle} style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,cursor:"default",verticalAlign:"middle"}}>{_sc}/10 {_sc>=8?"Alpha":"Mid"}</span></>}
+                                {_sc != null && <>{" "}<SimBadge sc={_sc} scTitle={scTitle} scColor={scColor} /></>}
                               </div>
                             </div>
                           );
@@ -774,7 +775,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMet
                                 {hitterGameTotal != null && <>{" "}<span style={{color:"#8b949e"}}>Game total </span><span style={{color:hitterTotalColor(hitterGameTotal),fontWeight:600}}>{hitterGameTotal}</span><span style={{color:"#8b949e"}}>{hitterGameTotal >= 9.5 ? " — a high-scoring game, favorable for hitting" : hitterGameTotal >= 7.5 ? " — an average total" : " — a low-scoring game, tougher for hitters"}.</span></>}
                                 {!isPlatoonFallback && platoonPts === 2 && pitcherHand && (() => { const splitBA = play.hitterSplitBA; const handStr = pitcherHand === "R" ? "RHP" : "LHP"; return splitBA != null ? <>{" "}<span style={{color:"#8b949e"}}>Hits </span><span style={{color:"#3fb950",fontWeight:600}}>.{Math.round(splitBA*1000).toString().padStart(3,"0")}</span><span style={{color:"#8b949e"}}> vs {handStr} — platoon edge.</span></> : <>{" "}<span style={{color:"#8b949e"}}>Platoon edge vs {handStr}.</span></>; })()}
                                 {!isPlatoonFallback && platoonPts === 0 && pitcherHand && (() => { const splitBA = play.hitterSplitBA; const seasonBA = play.hitterBa; const handStr = pitcherHand === "R" ? "RHP" : "LHP"; return splitBA != null ? <>{" "}<span style={{color:"#8b949e"}}>Hits </span><span style={{color:"#f78166",fontWeight:600}}>.{Math.round(splitBA*1000).toString().padStart(3,"0")}</span><span style={{color:"#8b949e"}}> vs {handStr} — platoon disadvantage{seasonBA != null ? <> (<span style={{color:"#c9d1d9"}}>.{Math.round(seasonBA*1000).toString().padStart(3,"0")}</span> season)</> : ""}.</span></> : <>{" "}<span style={{color:"#8b949e"}}>Platoon disadvantage vs {handStr}.</span></>; })()}
-                                {sc != null && <>{" "}<span title={scTitle} style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,cursor:"default",verticalAlign:"middle"}}>{sc}/10 {sc>=8?"Alpha":"Mid"}</span></>}
+                                {sc != null && <>{" "}<SimBadge sc={sc} scTitle={scTitle} scColor={scColor} /></>}
                               </div>
                             </div>
                           );
@@ -820,7 +821,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMet
                                 {play.nbaGameTotal != null && <>{" "}Game total <span style={{color:play.nbaTotalPts>=3?"#3fb950":play.nbaTotalPts>=2?"#e3b341":play.nbaTotalPts>=1?"#8b949e":"#f78166",fontWeight:600}}>{play.nbaGameTotal}</span><span style={{color:"#8b949e"}}>{play.nbaGameTotal>=235?" — a high-scoring slate":play.nbaGameTotal>=225?" — above-average scoring":play.nbaGameTotal>=215?" — an average total":" — a low-scoring slate"}.</span></>}
                                 {play.nbaBlowoutAdj != null && play.nbaBlowoutAdj < 0.99 && <>{" "}<span style={{color:"#f78166",fontWeight:600}}>Blowout risk</span> — large spread reduces model mean by {Math.round((1-play.nbaBlowoutAdj)*100)}%.</>}
                                 {play.isB2B != null && <>{" "}{play.isB2B ? <><span style={{color:"#f78166",fontWeight:600}}>Back-to-back</span> — model applies a scoring reduction.</> : <>Fully rested tonight.</>}</>}
-                                {sc != null && <>{" "}<span title={scTitle} style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,cursor:"default",verticalAlign:"middle"}}>{sc}/10 {sc>=8?"Alpha":"Mid"}</span></>}
+                                {sc != null && <>{" "}<SimBadge sc={sc} scTitle={scTitle} scColor={scColor} /></>}
                               </div>
                             </div>
                           );
@@ -853,7 +854,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMet
                                 {play.softPct != null && <>{" "}{first} hits this in <span style={{color:play.softPct>=90?"#3fb950":play.softPct>=80?"#e3b341":"#f78166",fontWeight:600}}>{play.softPct}%</span>{" "}<span style={{color:"#8b949e"}}>vs weak defenses</span>{play.softGames ? <span style={{color:"#484f58",fontSize:10}}> ({play.softGames}g)</span> : ""}<span style={{color:"#8b949e"}}>.</span></>}
                                 {play.nhlGameTotal != null && <>{" "}<span style={{color:"#8b949e"}}>Game total</span>{" "}<span style={{color:_nhlTotalPtsPC===2?"#3fb950":_nhlTotalPtsPC===1?"#e3b341":"#8b949e",fontWeight:600}}>{play.nhlGameTotal}</span>{" "}<span style={{color:"#8b949e"}}>{play.nhlGameTotal>=7?"— a high-scoring game.":play.nhlGameTotal>=5.5?"— an average total.":"— a low-total game."}</span></>}
                                 {play.isB2B != null && <>{" "}{play.isB2B ? <><span style={{color:"#f78166",fontWeight:600}}>Back-to-back</span><span style={{color:"#8b949e"}}> — model applies a fatigue reduction.</span></> : <><span style={{color:"#8b949e"}}>Fully rested tonight.</span></>}</>}
-                                {sc != null && <>{" "}<span title={scTitle} style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,cursor:"default",verticalAlign:"middle"}}>{sc}/10 {sc>=8?"Alpha":"Mid"}</span></>}
+                                {sc != null && <>{" "}<SimBadge sc={sc} scTitle={scTitle} scColor={scColor} /></>}
                               </div>
                             </div>
                           );

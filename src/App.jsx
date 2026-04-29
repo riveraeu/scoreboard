@@ -11,6 +11,7 @@ import ModelPage from './components/ModelPage.jsx';
 import MarketReport from './components/MarketReport.jsx';
 import MyPicksColumn from './components/MyPicksColumn.jsx';
 import LineupsPage from './components/LineupsPage.jsx';
+import SimBadge from './components/SimBadge.jsx';
 
 function App() {
   const [sport, setSport] = React.useState("basketball/nba"); // derived from selected player
@@ -1306,7 +1307,7 @@ function App() {
                                 {pf != null && Math.abs(pf - 1.0) >= 0.01 && <>{" "}Tonight's venue {pf > 1 ? "is strikeout-friendly" : "suppresses strikeouts"} (<span style={{color:"#8b949e"}}>{pf > 1 ? "+" : ""}{((pf-1)*100).toFixed(0)}%</span>).</>}
                                 {(recK != null || gameTotal != null) && <>{" "}{recK != null && <><span style={{color:h2h?.kTrendPts===2?"#3fb950":h2h?.kTrendPts===0?"#f78166":"#e3b341",fontWeight:600}}>{recK.toFixed(1)}%</span><span style={{color:"#8b949e"}}> recent K%{h2h?.kTrendPts===2?" ↑":h2h?.kTrendPts===0?" ↓":""}{seaK!=null?` (${seaK.toFixed(1)}% season)`:""}</span>{gameTotal != null ? <span style={{color:"#8b949e"}}>, </span> : <span style={{color:"#8b949e"}}>.</span>}</>}{gameTotal != null && <><span style={{color:"#8b949e"}}>game total </span><span style={{color:totalColor(gameTotal),fontWeight:600}}>{gameTotal}</span><span style={{color:"#8b949e"}}>{gameTotal <= 8.5 ? " — a low-scoring slate, favorable for strikeouts" : gameTotal <= 10.5 ? " — an average total" : " — a high-scoring total, tougher for Ks"}.</span></>}</>}
                                 {kH2HHandRate != null && kH2HHandStarts >= 5 && <>{" "}In <span style={{color:"#8b949e"}}>{kH2HHandStarts} starts vs {kH2HHandMaj === "R" ? "right" : kH2HHandMaj === "L" ? "left" : ""}-heavy lineups</span>, hit {strikeoutsThreshold != null ? `${strikeoutsThreshold}+` : "this threshold"} in <span style={{color:kH2HHandColor,fontWeight:600}}>{kH2HHandRate.toFixed(1)}%</span>.</>}
-                                {_sc != null && <>{" "}<span title={scTitle} style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,cursor:"default",verticalAlign:"middle"}}>{_sc}/10 {_sc>=8?"Alpha":"Mid"}</span></>}
+                                {_sc != null && <>{" "}<SimBadge sc={_sc} scTitle={scTitle} scColor={scColor} /></>}
                                 {lineupBadgeSK && <>{" "}{lineupBadgeSK}</>}
                               </div>
                             </>
@@ -1372,7 +1373,7 @@ function App() {
                                 {hitterGameTotal != null && <>{" "}<span style={{color:"#8b949e"}}>Game total </span><span style={{color:hitterTotalColor(hitterGameTotal),fontWeight:600}}>{hitterGameTotal}</span><span style={{color:"#8b949e"}}>{hitterGameTotal >= 9.5 ? " — a high-scoring game, favorable for hitting" : hitterGameTotal >= 7.5 ? " — an average total" : " — a low-scoring game, tougher for hitters"}.</span></>}
                                 {!isPlatoonFallback && platoonPts === 2 && pitcherHand && (() => { const splitBA = tonightHitPlay?.hitterSplitBA; const handStr = pitcherHand === "R" ? "RHP" : "LHP"; return splitBA != null ? <>{" "}<span style={{color:"#8b949e"}}>Hits </span><span style={{color:"#3fb950",fontWeight:600}}>.{Math.round(splitBA*1000).toString().padStart(3,"0")}</span><span style={{color:"#8b949e"}}> vs {handStr} — platoon edge.</span></> : <>{" "}<span style={{color:"#8b949e"}}>Platoon edge vs {handStr}.</span></>; })()}
                                 {!isPlatoonFallback && platoonPts === 0 && pitcherHand && (() => { const splitBA = tonightHitPlay?.hitterSplitBA; const seasonBA = tonightHitPlay?.hitterBa; const handStr = pitcherHand === "R" ? "RHP" : "LHP"; return splitBA != null ? <>{" "}<span style={{color:"#8b949e"}}>Hits </span><span style={{color:"#f78166",fontWeight:600}}>.{Math.round(splitBA*1000).toString().padStart(3,"0")}</span><span style={{color:"#8b949e"}}> vs {handStr} — platoon disadvantage{seasonBA != null ? <> (<span style={{color:"#c9d1d9"}}>.{Math.round(seasonBA*1000).toString().padStart(3,"0")}</span> season)</> : ""}.</span></> : <>{" "}<span style={{color:"#8b949e"}}>Platoon disadvantage vs {handStr}.</span></>; })()}
-                                {sc != null && <>{" "}<span title={scTitle} style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,cursor:"default",verticalAlign:"middle"}}>{sc}/10 {sc>=8?"Alpha":"Mid"}</span></>}
+                                {sc != null && <>{" "}<SimBadge sc={sc} scTitle={scTitle} scColor={scColor} /></>}
                                 {(() => { const _lc = tonightHitPlay?.lineupConfirmed ?? null; const _gt = tonightHitPlay?.gameTime ?? null; const _imm = _gt && Date.now() >= new Date(_gt).getTime() - 30*60*1000; return _lc === true ? <>{" "}<span title="Official lineup posted" style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(63,185,80,0.12)",border:"1px solid #3fb950",color:"#3fb950",verticalAlign:"middle"}}>✓ Lineup</span></> : _lc === false && !_imm ? <>{" "}<span title="Projected lineup — not yet official" style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(139,148,158,0.12)",border:"1px solid #484f58",color:"#8b949e",verticalAlign:"middle"}}>Proj. Lineup</span></> : null; })()}
                               </div>
                             </>
@@ -1462,7 +1463,7 @@ function App() {
                                   {nbaGameTotal != null && <>{" "}Game total <span style={{color:nbaTotalPts>=3?"#3fb950":nbaTotalPts>=2?"#e3b341":nbaTotalPts>=1?"#8b949e":"#f78166",fontWeight:600}}>{nbaGameTotal}</span><span style={{color:"#8b949e"}}>{nbaGameTotal>=235?" — a high-scoring slate":nbaGameTotal>=225?" — above-average scoring":nbaGameTotal>=215?" — an average total":" — a low-scoring slate"}.</span></>}
                                   {nbaBlowoutAdj != null && nbaBlowoutAdj < 0.99 && <>{" "}<span style={{color:"#f78166",fontWeight:600}}>Blowout risk</span> — large spread reduces model mean by {Math.round((1-nbaBlowoutAdj)*100)}%.</>}
                                   {isB2B != null && <>{" "}{isB2B ? <><span style={{color:"#f78166",fontWeight:600}}>Back-to-back</span> — model applies a scoring reduction.</> : <>Fully rested tonight.</>}</>}
-                                  {sc != null && <>{" "}<span title={scTitle} style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,cursor:"default",verticalAlign:"middle"}}>{sc}/10 {sc>=8?"Alpha":"Mid"}</span></>}
+                                  {sc != null && <>{" "}<SimBadge sc={sc} scTitle={scTitle} scColor={scColor} /></>}
                                   {isOppFallback && <div style={{color:"#8b949e",fontSize:10,marginTop:3}}>Showing last game vs {effectiveOpp} — updates when next game is scheduled.</div>}
                                 </div>
                               </>
@@ -1506,7 +1507,7 @@ function App() {
                                   {softPctDisplay != null && <>{" "}{first} hits this in <span style={{color:"#3fb950",fontWeight:600}}>{softPctDisplay}%</span> vs weak defenses{softGamesDisplay ? <span style={{color:"#484f58",fontSize:10}}> ({softGamesDisplay}g)</span> : ""}.</>}
                                   {nhlIsB2B != null && <>{" "}{nhlIsB2B ? <><span style={{color:"#f78166",fontWeight:600}}>Back-to-back</span> — model applies a fatigue reduction.</> : <>Fully rested tonight.</>}</>}
                                   {isOppFallback && <div style={{color:"#8b949e",fontSize:10,marginTop:3}}>Showing last game vs {effectiveOpp} — updates when next game is scheduled.</div>}
-                                  {sc != null && <>{" "}<span title={scTitle} style={{background:"#161b22",borderRadius:4,padding:"1px 5px",color:scColor,fontWeight:700,fontSize:10,cursor:"default",verticalAlign:"middle"}}>{sc}/10 {sc>=8?"Alpha":"Mid"}</span></>}
+                                  {sc != null && <>{" "}<SimBadge sc={sc} scTitle={scTitle} scColor={scColor} /></>}
                                 </div>
                               </>
                             );

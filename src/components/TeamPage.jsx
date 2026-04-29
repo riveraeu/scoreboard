@@ -2,6 +2,7 @@ import React from 'react';
 import { SPORT_KEY, STAT_LABEL } from '../lib/constants.js';
 import { tierColor } from '../lib/colors.js';
 import TotalsBarChart from './TotalsBarChart.jsx';
+import SimBadge from './SimBadge.jsx';
 
 // ── Play-type tab definitions ─────────────────────────────────────────────────
 const PLAY_TYPES = [
@@ -319,7 +320,7 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, allTonightPlays, on
                 {Math.abs(pf - 1) > 0.01 && <>{' '}Tonight's park {pf > 1 ? 'inflates run scoring' : 'suppresses run scoring'} (<span style={{color:'#8b949e'}}>{pf > 1 ? '+' : ''}{((pf-1)*100).toFixed(0)}%</span>).</>}
                 {gameOuLine != null && <>{' '}Game total <span style={{color:ouColor,fontWeight:600}}>{gameOuLine}</span>.</>}
                 {et != null && <>{' '}Model projects <span style={{color:etColor,fontWeight:600}}>{et}</span> combined runs.</>}
-                {' '}<span title={scTitle??undefined} style={{background:'#161b22',borderRadius:4,padding:'1px 5px',color:scColor,fontWeight:700,fontSize:10,verticalAlign:'middle',cursor:scTitle?'help':'default'}}>{sc}/10 {sc>=8?'Alpha':sc>=5?'Mid':'Low'}</span>
+                {' '}<SimBadge sc={sc} scTitle={scTitle} scColor={scColor} />
               </div>
             );
           }
@@ -352,7 +353,7 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, allTonightPlays, on
                 {paceAdj != null && <>{' '}Game pace is <span style={{color:paceColor,fontWeight:600}}>{paceAdj > 0 ? '+' : ''}{paceAdj}</span> vs league avg.</>}
                 {et != null && <>{' '}Model projects <span style={{color:etColor,fontWeight:600}}>{et}</span> combined pts.</>}
                 {nbaOuLine != null && <>{' '}O/U line: <span style={{color:'#8b949e',fontWeight:600}}>{nbaOuLine}</span>.</>}
-                {' '}<span title={scTitle??undefined} style={{background:'#161b22',borderRadius:4,padding:'1px 5px',color:scColor,fontWeight:700,fontSize:10,verticalAlign:'middle',cursor:scTitle?'help':'default'}}>{sc}/10 {sc>=8?'Alpha':sc>=5?'Mid':'Low'}</span>
+                {' '}<SimBadge sc={sc} scTitle={scTitle} scColor={scColor} />
               </div>
             );
           }
@@ -376,7 +377,7 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, allTonightPlays, on
                 {' '}<span style={{color:'#c9d1d9'}}>{tp.homeTeam}</span> averages{hGPG != null ? <> <span style={{color:gpgColor(hGPG),fontWeight:600}}>{hGPG.toFixed(1)} GPG</span></> : ' —'} facing a <span style={{color:'#c9d1d9'}}>{tp.awayTeam}</span> defense allowing{aGAA != null ? <> <span style={{color:gaaColor(aGAA),fontWeight:600}}>{aGAA.toFixed(2)} GAA</span></> : ' — GAA'}.
                 {et != null && <>{' '}Model projects <span style={{color:etColor,fontWeight:600}}>{et}</span> combined goals.</>}
                 {nhlOuLine != null && <>{' '}O/U line: <span style={{color:'#8b949e',fontWeight:600}}>{nhlOuLine}</span>.</>}
-                {' '}<span title={scTitle??undefined} style={{background:'#161b22',borderRadius:4,padding:'1px 5px',color:scColor,fontWeight:700,fontSize:10,verticalAlign:'middle',cursor:scTitle?'help':'default'}}>{sc}/10 {sc>=8?'Alpha':sc>=5?'Mid':'Low'}</span>
+                {' '}<SimBadge sc={sc} scTitle={scTitle} scColor={scColor} />
               </div>
             );
           }
@@ -406,7 +407,7 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, allTonightPlays, on
                 {whip != null && <>{' '}<span style={{color:'#c9d1d9'}}>{_opp}</span> starter WHIP: <span style={{color:whipColor(whip),fontWeight:600}}>{whip.toFixed(2)}</span>.</>}
                 {h2h != null && <>{' '}H2H hit rate: <span style={{color:h2hColor(h2h),fontWeight:600}}>{h2h}%</span>.</>}
                 {ou != null && <>{' '}O/U line: <span style={{color:'#8b949e',fontWeight:600}}>{ou}</span>.</>}
-                {' '}<span title={scTitle??undefined} style={{background:'#161b22',borderRadius:4,padding:'1px 5px',color:scColor,fontWeight:700,fontSize:10,verticalAlign:'middle',cursor:scTitle?'help':'default'}}>{sc}/10 {sc>=8?'Alpha':sc>=5?'Mid':'Low'}</span>
+                {' '}<SimBadge sc={sc} scTitle={scTitle} scColor={scColor} />
               </div>
             );
           }
@@ -430,7 +431,7 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, allTonightPlays, on
                 <span style={{color:'#c9d1d9'}}>{abbr}</span> averages{teamOff != null ? <> <span style={{color:offColor(teamOff),fontWeight:600}}>{teamOff.toFixed(0)} PPG</span></> : ' — PPG'} offense.
                 {oppDef != null && <>{' '}<span style={{color:'#c9d1d9'}}>{_opp}</span> allows <span style={{color:defColor(oppDef),fontWeight:600}}>{oppDef.toFixed(0)} PPG</span>.</>}
                 {ou != null && <>{' '}O/U line: <span style={{color:'#8b949e',fontWeight:600}}>{ou}</span>.</>}
-                {' '}<span title={scTitle??undefined} style={{background:'#161b22',borderRadius:4,padding:'1px 5px',color:scColor,fontWeight:700,fontSize:10,verticalAlign:'middle',cursor:scTitle?'help':'default'}}>{sc}/10 {sc>=8?'Alpha':sc>=5?'Mid':'Low'}</span>
+                {' '}<SimBadge sc={sc} scTitle={scTitle} scColor={scColor} />
               </div>
             );
           }
@@ -482,12 +483,10 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, allTonightPlays, on
                   )}
                   {!isQual && <span style={{fontSize:10,color:'#484f58'}}>unqualified</span>}
                   {score != null && (
-                    <span onClick={e => e.stopPropagation()} title={simTip??undefined}
-                      style={{background:`${scoreColor}18`,border:`1px solid ${scoreColor}`,
-                        borderRadius:5,padding:'1px 5px',fontSize:10,fontWeight:700,
-                        color:scoreColor,whiteSpace:'nowrap',cursor:simTip?'help':'default',marginLeft:'auto'}}>
-                      {score}/10
-                    </span>
+                    <SimBadge sc={score} scTitle={simTip} scColor={scoreColor}
+                      style={{marginLeft:'auto'}}
+                      customStyle={{background:`${scoreColor}18`,border:`1px solid ${scoreColor}`,whiteSpace:'nowrap'}}
+                      onClick={e => e.stopPropagation()} />
                   )}
                 </div>
                 {/* True% bar */}
