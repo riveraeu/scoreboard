@@ -1215,7 +1215,8 @@ function App() {
                       // For strikeout tab, prefer tonight play data (canonical source) over DVP endpoint to keep in sync with plays card
                       const h2h = (() => {
                         if (isMLB && safeTab === "strikeouts") {
-                          const tp = Object.values(tonightPlayerMap).find(p => p.stat === "strikeouts");
+                          const allKPlays = Object.values(tonightPlayerMap).filter(p => p.stat === "strikeouts");
+                          const tp = allKPlays.find(p => p.qualified !== false) ?? allKPlays[0] ?? null;
                           if (tp) return { opp: tp.opponent, lineupKPct: tp.lineupKPct ?? dvpData?.h2h?.lineupKPct ?? null, lineupKPctProjected: tp.lineupKPctProjected ?? dvpData?.h2h?.lineupKPctProjected ?? false,
                             pitcherCSWPct: tp.pitcherCSWPct, pitcherKPct: tp.pitcherKPct, pitcherKBBPct: tp.pitcherKBBPct, pitcherAvgPitches: tp.pitcherAvgPitches, log5Avg: tp.log5Avg,
                             pitcherRecentKPct: tp.pitcherRecentKPct ?? null, pitcherSeasonKPct: tp.pitcherSeasonKPct ?? null,
