@@ -4094,11 +4094,11 @@ var worker_default = {
                 const sum = await sumRes.json();
 
                 if (sport === "mlb") {
-                  // MLB: boxscore.teams[] has hitting/pitching statistics sections
-                  for (const teamData of sum.boxscore?.teams || []) {
+                  // MLB: boxscore.players[] (same key as NBA) has hitting/pitching statistics sections
+                  for (const teamData of sum.boxscore?.players || []) {
                     for (const statsSection of teamData.statistics || []) {
                       const labels = (statsSection.labels || []).map(l => l.toUpperCase());
-                      const hasPitching = labels.includes("IP") || labels.includes("K");
+                      const hasPitching = labels.includes("IP"); // IP is pitching-only; K appears in batting too
                       const hasBatting = labels.includes("RBI") || labels.includes("AB");
                       const kIdx = labels.indexOf("K");
                       const ipIdx = labels.indexOf("IP");
