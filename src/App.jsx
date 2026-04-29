@@ -81,7 +81,6 @@ function App() {
   const [showPicksDrawer, setShowPicksDrawer] = React.useState(false);
   const [flyingPick, setFlyingPick] = React.useState(null);
   const [starClickOrigin, setStarClickOrigin] = React.useState(null);
-  const [activeSportTab, setActiveSportTab] = React.useState('mlb');
   const [authToken, setAuthToken] = React.useState(() => localStorage.getItem("sb_token") || null);
   const [authEmail, setAuthEmail] = React.useState(() => localStorage.getItem("sb_email") || null);
   const [showAuthModal, setShowAuthModal] = React.useState(false);
@@ -860,7 +859,7 @@ function App() {
         const dirLabel = play.direction === "under" ? `Under ${play.threshold}` : `Over ${play.threshold}`;
         const subtitle = play.playerName ? `${play.stat?.toUpperCase()} ${play.threshold}+` : dirLabel;
         return (
-          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:700,display:"flex",alignItems:"center",justifyContent:"center"}}
             onClick={() => setPendingTrackPlay(null)}>
             <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:12,padding:"20px 22px",width:360}}
               onClick={e => e.stopPropagation()}>
@@ -1957,8 +1956,6 @@ function App() {
         <LineupsPage
           allTonightPlays={testMode ? MOCK_PLAYS : (allTonightPlays || [])}
           tonightLoading={tonightLoading}
-          activeSportTab={activeSportTab}
-          setActiveSportTab={setActiveSportTab}
           navigateToPlayer={navigateToPlayer}
           navigateToTeam={navigateToTeam}
           navigateToModel={navigateToModel}
@@ -1978,6 +1975,7 @@ function App() {
           untrackPlay={untrackPlay}
           navigateToPlay={navigateToPlay}
           trackPlay={initiateTrack}
+          openPicksDrawer={() => setShowPicksDrawer(true)}
         />
       )}
 

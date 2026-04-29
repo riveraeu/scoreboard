@@ -50,7 +50,7 @@ function LineupBadge({ confirmed }) {
 }
 
 
-export default function MatchupCard({ game, mlbMeta, mlbMetaTomorrow, nbaMeta, navigateToPlayer, navigateToTeam }) {
+export default function MatchupCard({ game, mlbMeta, mlbMetaTomorrow, nbaMeta, navigateToPlayer, navigateToTeam, gamePlays, trackedPlays, onNotificationClick }) {
   const { sport, homeTeam, awayTeam, gameDate, gameTime, ouLine, gameState, gameDetail, homeScore, awayScore } = game;
   const [lineupOpen, setLineupOpen] = React.useState(false);
   const [lineup, setLineup] = React.useState(null);
@@ -201,6 +201,30 @@ export default function MatchupCard({ game, mlbMeta, mlbMetaTomorrow, nbaMeta, n
           </div>
         </div>
       )}
+
+      {/* Play notification badge */}
+      {onNotificationClick && gamePlays && gamePlays.length > 0 && (() => {
+        const totalPlays = gamePlays.length;
+        const trackedCount = gamePlays.filter(gp => (trackedPlays || []).some(tp => tp.id === gp.id)).length;
+        const allTracked = trackedCount === totalPlays;
+        return (
+          <div style={{ borderTop: '1px solid #0d1117', padding: '8px 14px', display: 'flex', justifyContent: 'flex-end' }}>
+            <button
+              onClick={e => { e.stopPropagation(); onNotificationClick(game); }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5,
+                fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                padding: '4px 10px', borderRadius: 20,
+                border: `1px solid ${allTracked ? 'rgba(227,179,65,0.4)' : 'rgba(88,166,255,0.4)'}`,
+                background: allTracked ? 'rgba(227,179,65,0.1)' : 'rgba(88,166,255,0.1)',
+                color: allTracked ? '#e3b341' : '#58a6ff',
+              }}>
+              {allTracked ? '★' : '▶'}
+              <span>{totalPlays} play{totalPlays !== 1 ? 's' : ''}</span>
+            </button>
+          </div>
+        );
+      })()}
 
       {/* NBA lineup drawer */}
       {sport === 'nba' && (

@@ -1,18 +1,13 @@
 import React from 'react';
 import MatchupCard from './MatchupCard.jsx';
-import PlaysColumn from './PlaysColumn.jsx';
+import GamePlayDrawer from './GamePlayDrawer.jsx';
 
-const SPORT_TABS = [
-  { key: 'mlb', label: 'MLB' },
-  { key: 'nba', label: 'NBA' },
-  { key: 'nhl', label: 'NHL' },
-];
+const SPORT_ORDER = { mlb: 0, nba: 1, nhl: 2 };
 
-// Build ordered games list from allTonightPlays for a given sport.
-// Uses game total plays as anchors for home/away; falls back to sorted abbrs.
+// Build ordered games list for a single sport.
 function buildGames(allPlays, sport, meta) {
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
-  const gameMap = new Map(); // sorted-teams|gameDate → game object
+  const gameMap = new Map();
 
   for (const play of allPlays || []) {
     if (play.sport !== sport) continue;
@@ -26,10 +21,8 @@ function buildGames(allPlays, sport, meta) {
       ({ homeTeam, awayTeam, gameDate, gameTime } = play);
       ouLine = play.gameOuLine ?? null;
     } else {
-      // player prop — playerTeam + opponent; home/away unknown until anchor found
       const t1 = play.playerTeam, t2 = play.opponent;
       if (!t1 || !t2) continue;
-      // For MLB use schedule-derived home team; other sports fall back to alphabetical
       const _metaHome = meta?.homeTeams?.[t1] || meta?.homeTeams?.[t2];
       if (_metaHome) {
         homeTeam = _metaHome; awayTeam = _metaHome === t1 ? t2 : t1;
@@ -40,20 +33,16 @@ function buildGames(allPlays, sport, meta) {
       gameTime = play.gameTime ?? null;
     }
 
-    // Skip games from yesterday or earlier (by gameDate)
     if (gameDate && gameDate < today) continue;
-
     if (!homeTeam || !awayTeam) continue;
+
     const sortedPair = [homeTeam, awayTeam].sort().join('|');
     const key = `${sortedPair}|${gameDate ?? ''}`;
 
     if (!gameMap.has(key)) {
-      gameMap.set(key, { sport, homeTeam, awayTeam, gameDate, gameTime, ouLine, plays: [] });
+      gameMap.set(key, { sport, homeTeam, awayTeam, gameDate, gameTime, ouLine });
     }
     const g = gameMap.get(key);
-    g.plays.push(play);
-
-    // Anchor: total plays carry reliable home/away
     if (play.gameType === 'total') {
       g.homeTeam = play.homeTeam;
       g.awayTeam = play.awayTeam;
@@ -62,7 +51,7 @@ function buildGames(allPlays, sport, meta) {
     if (g.ouLine == null && ouLine != null) g.ouLine = ouLine;
   }
 
-  // Add finished/in-progress games from mlbMeta.gameScores (no active Kalshi markets = invisible otherwise)
+  // Seed finished/in-progress MLB games from gameScores
   if (sport === 'mlb' && meta?.gameScores) {
     for (const gs of Object.values(meta.gameScores)) {
       const { homeTeam: gsHome, awayTeam: gsAway, gameDate: gsDate, gameTime: gsTime } = gs;
@@ -71,9 +60,8 @@ function buildGames(allPlays, sport, meta) {
       const sortedPair = [gsHome, gsAway].sort().join('|');
       const key = `${sortedPair}|${gsDate ?? ''}`;
       if (!gameMap.has(key)) {
-        gameMap.set(key, { sport, homeTeam: gsHome, awayTeam: gsAway, gameDate: gsDate, gameTime: gsTime, ouLine: null, plays: [] });
+        gameMap.set(key, { sport, homeTeam: gsHome, awayTeam: gsAway, gameDate: gsDate, gameTime: gsTime, ouLine: null });
       }
-      // Attach live score/state to all MLB games (active and finished)
       const g = gameMap.get(key);
       g.gameState = gs.state;
       g.gameDetail = gs.detail;
@@ -83,18 +71,46 @@ function buildGames(allPlays, sport, meta) {
     }
   }
 
-  return [...gameMap.values()].sort((a, b) => {
-    const dateDiff = (a.gameDate || '').localeCompare(b.gameDate || '');
-    if (dateDiff !== 0) return dateDiff;
-    return (a.gameTime || '').localeCompare(b.gameTime || '');
+  return [...gameMap.values()];
+}
+
+// All sports combined.
+function buildAllGames(allPlays, mlbMeta) {
+  return [
+    ...buildGames(allPlays, 'mlb', mlbMeta),
+    ...buildGames(allPlays, 'nba', null),
+    ...buildGames(allPlays, 'nhl', null),
+  ];
+}
+
+// Returns qualified plays belonging to a given game.
+function playsForGame(allPlays, game) {
+  return (allPlays || []).filter(p => {
+    if (p.qualified === false) return false;
+    if (p.sport !== game.sport) return false;
+    const teams = new Set([game.homeTeam, game.awayTeam]);
+    if (p.gameType === 'total') return p.homeTeam === game.homeTeam && p.awayTeam === game.awayTeam;
+    if (p.gameType === 'teamTotal') return teams.has(p.scoringTeam);
+    return teams.has(p.playerTeam);
   });
+}
+
+function ptDate(ts) {
+  return new Date(ts).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+}
+
+function dayTabLabel(dateStr) {
+  const today = ptDate(Date.now());
+  const tomorrow = ptDate(Date.now() + 86400000);
+  if (dateStr === today) return 'Today';
+  if (dateStr === tomorrow) return 'Tomorrow';
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
 export default function LineupsPage({
   allTonightPlays,
   tonightLoading,
-  activeSportTab,
-  setActiveSportTab,
   navigateToPlayer,
   navigateToTeam,
   navigateToModel,
@@ -114,35 +130,79 @@ export default function LineupsPage({
   untrackPlay,
   navigateToPlay,
   trackPlay,
+  openPicksDrawer,
 }) {
-  const tabs = [...SPORT_TABS];
+  const [activeDayTab, setActiveDayTab] = React.useState(() =>
+    new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
+  );
+  const [drawerGame, setDrawerGame] = React.useState(null);
   const [expandedPlays, setExpandedPlays] = React.useState(new Set());
-  const [showPlaysInfo, setShowPlaysInfo] = React.useState(false);
 
-  // Qualified play count per sport for badge
-  const qualifiedBySport = React.useMemo(() => {
+  // Collect unique PT dates from all plays + mlbMeta.gameScores
+  const dayTabs = React.useMemo(() => {
+    const today = ptDate(Date.now());
+    const dates = new Set([today]);
+    for (const p of allTonightPlays || []) {
+      const d = p.gameTime ? ptDate(p.gameTime) : p.gameDate;
+      if (d && d >= today) dates.add(d);
+    }
+    for (const gs of Object.values(mlbMeta?.gameScores || {})) {
+      const d = gs.gameTime ? ptDate(gs.gameTime) : gs.gameDate;
+      if (d && d >= today) dates.add(d);
+    }
+    return [...dates].sort();
+  }, [allTonightPlays, mlbMeta]);
+
+  // If the stored tab is no longer in dayTabs (e.g. day rolled over), reset to today
+  React.useEffect(() => {
+    if (dayTabs.length > 0 && !dayTabs.includes(activeDayTab)) {
+      setActiveDayTab(dayTabs[0]);
+    }
+  }, [dayTabs, activeDayTab]);
+
+  // Qualified play count per day for tab badges
+  const qualifiedByDay = React.useMemo(() => {
     const counts = {};
     for (const p of allTonightPlays || []) {
-      if (p.qualified !== false) counts[p.sport] = (counts[p.sport] || 0) + 1;
+      if (p.qualified === false) continue;
+      const d = p.gameTime ? ptDate(p.gameTime) : p.gameDate;
+      if (d) counts[d] = (counts[d] || 0) + 1;
     }
     return counts;
   }, [allTonightPlays]);
 
-  const games = React.useMemo(
-    () => buildGames(allTonightPlays, activeSportTab, activeSportTab === 'mlb' ? mlbMeta : null),
-    [allTonightPlays, activeSportTab, mlbMeta]
-  );
+  // All games across sports, filtered to active day, sorted by sport then time
+  const gamesForDay = React.useMemo(() => {
+    const all = buildAllGames(allTonightPlays, mlbMeta);
+    return all
+      .filter(g => {
+        const d = g.gameTime ? ptDate(g.gameTime) : (g.gameDate || '');
+        return d === activeDayTab;
+      })
+      .sort((a, b) => {
+        const sd = (SPORT_ORDER[a.sport] ?? 9) - (SPORT_ORDER[b.sport] ?? 9);
+        if (sd !== 0) return sd;
+        return (a.gameTime || '').localeCompare(b.gameTime || '');
+      });
+  }, [allTonightPlays, mlbMeta, activeDayTab]);
 
-  const qualifiedPlays = React.useMemo(
-    () => (allTonightPlays || []).filter(p => p.qualified !== false && p.sport === activeSportTab),
-    [allTonightPlays, activeSportTab]
-  );
+  function onNotificationClick(game) {
+    const gPlays = playsForGame(allTonightPlays, game);
+    const allTracked = gPlays.length > 0 && gPlays.every(gp => (trackedPlays || []).some(tp => tp.id === gp.id));
+    if (allTracked) {
+      openPicksDrawer();
+    } else {
+      setDrawerGame(game);
+    }
+  }
+
+  const drawerPlays = drawerGame ? playsForGame(allTonightPlays, drawerGame) : [];
 
   return (
     <div>
-      {/* Single row: date left | tabs center | buttons right */}
+      {/* Tab row: date left | day tabs center | buttons right */}
       <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #21262d', marginBottom: 16 }}>
-        {/* Left: date */}
+        {/* Left: week label */}
         <div style={{ flex: 1 }}>
           {(() => {
             const d = new Date(), dow = d.getDay(), daysToMon = (dow + 6) % 7;
@@ -151,52 +211,47 @@ export default function LineupsPage({
             return <span style={{ color: '#484f58', fontWeight: 400, fontSize: 12 }}>Week of {label}</span>;
           })()}
         </div>
-        {/* Center: tabs */}
+
+        {/* Center: day tabs */}
         <div style={{ display: 'flex', gap: 0 }}>
-          {tabs.map(tab => {
-            const active = activeSportTab === tab.key;
-            const count = tab.key !== 'picks' ? qualifiedBySport[tab.key] : null;
+          {dayTabs.map(dateStr => {
+            const active = activeDayTab === dateStr;
+            const count = qualifiedByDay[dateStr] ?? 0;
             return (
-              <div key={tab.key} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                <button
-                  onClick={() => setActiveSportTab(tab.key)}
-                  style={{
-                    padding: '8px 14px', background: 'none', border: 'none',
-                    borderBottom: active ? '2px solid #58a6ff' : '2px solid transparent',
-                    color: active ? '#58a6ff' : '#8b949e', fontWeight: active ? 700 : 400,
-                    fontSize: 13, cursor: 'pointer', transition: 'color 0.15s',
-                    marginBottom: -1,
-                  }}>
-                  {tab.label}
-                  {count > 0 && (
-                    <span style={{ marginLeft: 5, fontSize: 10, fontWeight: 700, color: '#3fb950',
-                      background: 'rgba(63,185,80,0.12)', border: '1px solid rgba(63,185,80,0.3)',
-                      borderRadius: 10, padding: '1px 5px' }}>
-                      {count}
-                    </span>
-                  )}
-                </button>
-                {tab.key !== 'picks' && (
-                  <span
-                    onClick={e => { e.stopPropagation(); fetchReport(tab.key); }}
-                    title={`Open ${tab.label} market report`}
-                    style={{ fontSize: 11, cursor: 'pointer', color: '#484f58', marginLeft: -8, marginRight: 4,
-                      userSelect: 'none', lineHeight: 1 }}
-                    onMouseEnter={e => e.currentTarget.style.color = '#8b949e'}
-                    onMouseLeave={e => e.currentTarget.style.color = '#484f58'}>
-                    ⊞
-                  </span>
+              <button
+                key={dateStr}
+                onClick={() => setActiveDayTab(dateStr)}
+                style={{
+                  padding: '8px 14px', background: 'none', border: 'none',
+                  borderBottom: active ? '2px solid #58a6ff' : '2px solid transparent',
+                  color: active ? '#58a6ff' : '#8b949e', fontWeight: active ? 700 : 400,
+                  fontSize: 13, cursor: 'pointer', transition: 'color 0.15s',
+                  marginBottom: -1,
+                }}>
+                {dayTabLabel(dateStr)}
+                {count > 0 && (
+                  <span style={{
+                    marginLeft: 5, fontSize: 10, fontWeight: 700, color: '#3fb950',
+                    background: 'rgba(63,185,80,0.12)', border: '1px solid rgba(63,185,80,0.3)',
+                    borderRadius: 10, padding: '1px 5px',
+                  }}>{count}</span>
                 )}
-              </div>
+              </button>
             );
           })}
         </div>
-        {/* Right: buttons */}
+
+        {/* Right: action buttons */}
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
           <button onClick={navigateToModel}
             style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, cursor: 'pointer',
               border: '1px solid #30363d', background: 'transparent', color: '#484f58', fontWeight: 600 }}>
             model
+          </button>
+          <button onClick={() => fetchReport('mlb')}
+            style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, cursor: 'pointer',
+              border: '1px solid #30363d', background: 'transparent', color: '#484f58', fontWeight: 600 }}>
+            report
           </button>
           <button onClick={() => setTestMode(m => !m)}
             style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, cursor: 'pointer',
@@ -218,7 +273,7 @@ export default function LineupsPage({
                 display: 'flex', alignItems: 'center', gap: 4 }}>
               <span style={{ width: 5, height: 5, borderRadius: '50%', flexShrink: 0,
                 background: syncStatus === 'saving' ? '#e3b341' : syncStatus === 'error' ? '#f78166' : '#3fb950',
-                display: 'inline-block' }}/>
+                display: 'inline-block' }} />
               log out
             </button>
           ) : (
@@ -231,103 +286,56 @@ export default function LineupsPage({
         </div>
       </div>
 
-      {/* Game cards */}
-      {(() => {
-        if (activeSportTab === 'picks') return null; // safety guard, picks tab removed
-        return (
-        <>
-          {tonightLoading && (
-            <div style={{ color: '#484f58', fontSize: 13, padding: '24px 0', textAlign: 'center' }}>
-              Loading games…
-            </div>
-          )}
-          {!tonightLoading && games.length === 0 && (
-            <div style={{ color: '#484f58', fontSize: 13, padding: '24px 0', textAlign: 'center' }}>
-              No {activeSportTab.toUpperCase()} games found for today.
-            </div>
-          )}
-          {(() => {
-            const todayPT = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
-            const tomorrowPT = new Date(Date.now() + 86400000).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
-            const _ptFmtLp = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' });
-            // Group games by actual game date (use gameTime PT date; gameDate from Kalshi can lag by a day)
-            const gamesByDate = {};
-            games.forEach(g => {
-              const gd = g.gameTime ? _ptFmtLp.format(new Date(g.gameTime)) : (g.gameDate || todayPT);
-              if (!gamesByDate[gd]) gamesByDate[gd] = [];
-              gamesByDate[gd].push(g);
-            });
-            // Group qualified plays by date
-            const playsByDate = {};
-            qualifiedPlays.forEach(p => {
-              const gd = p.gameTime ? _ptFmtLp.format(new Date(p.gameTime)) : (p.gameDate || todayPT);
-              if (!playsByDate[gd]) playsByDate[gd] = [];
-              playsByDate[gd].push(p);
-            });
-            const sortedDates = Object.keys(gamesByDate).sort();
-            function dateLabel(gd) {
-              if (gd === todayPT) return 'Today';
-              if (gd === tomorrowPT) return 'Tomorrow';
-              return gd ? new Date(gd + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
-            }
-            return sortedDates.map((gd, di) => {
-              const label = dateLabel(gd);
-              const gamesForDate = gamesByDate[gd];
-              const playsForDate = playsByDate[gd] || [];
-              return (
-                <div key={gd} style={{ marginTop: di > 0 ? 20 : 0 }}>
-                  {label && (
-                    <div style={{ paddingBottom: 8 }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: '#8b949e', textTransform: 'uppercase', letterSpacing: 0.8 }}>{label}</span>
-                    </div>
-                  )}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(480px, 1fr))', gap: 12, alignItems: 'start' }}>
-                    {gamesForDate.map((game, i) => (
-                      <MatchupCard
-                        key={`${game.homeTeam}|${game.awayTeam}|${game.gameDate}|${i}`}
-                        game={game}
-                        mlbMeta={mlbMeta}
-                        mlbMetaTomorrow={mlbMetaTomorrow}
-                        nbaMeta={nbaMeta}
-                        navigateToPlayer={navigateToPlayer}
-                        navigateToTeam={navigateToTeam}
-                      />
-                    ))}
-                  </div>
-                  {playsForDate.length > 0 && (
-                    <div style={{ marginTop: 16 }}>
-                      <PlaysColumn
-                        tonightPlays={playsForDate}
-                        allTonightPlays={allTonightPlays}
-                        tonightLoading={false}
-                        trackedPlays={trackedPlays}
-                        trackPlay={trackPlay}
-                        untrackPlay={untrackPlay}
-                        navigateToPlay={navigateToPlay}
-                        navigateToTeam={navigateToTeam}
-                        navigateToModel={navigateToModel}
+      {/* Games grid */}
+      {tonightLoading && (
+        <div style={{ color: '#484f58', fontSize: 13, padding: '24px 0', textAlign: 'center' }}>
+          Loading games…
+        </div>
+      )}
+      {!tonightLoading && gamesForDay.length === 0 && (
+        <div style={{ color: '#484f58', fontSize: 13, padding: '24px 0', textAlign: 'center' }}>
+          No games scheduled for {dayTabLabel(activeDayTab)}.
+        </div>
+      )}
+      {gamesForDay.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(480px, 1fr))', gap: 12, alignItems: 'start' }}>
+          {gamesForDay.map((game, i) => {
+            const gPlays = playsForGame(allTonightPlays, game);
+            return (
+              <MatchupCard
+                key={`${game.sport}|${game.homeTeam}|${game.awayTeam}|${game.gameDate}|${i}`}
+                game={game}
+                mlbMeta={mlbMeta}
+                mlbMetaTomorrow={mlbMetaTomorrow}
+                nbaMeta={nbaMeta}
+                navigateToPlayer={navigateToPlayer}
+                navigateToTeam={navigateToTeam}
+                gamePlays={gPlays}
+                trackedPlays={trackedPlays}
+                onNotificationClick={onNotificationClick}
+              />
+            );
+          })}
+        </div>
+      )}
 
-                        expandedPlays={expandedPlays}
-                        setExpandedPlays={setExpandedPlays}
-                        fetchReport={fetchReport}
-                        bustLoading={bustLoading}
-                        bustCache={bustCache}
-                        showPlaysInfo={showPlaysInfo}
-                        setShowPlaysInfo={setShowPlaysInfo}
-                        testMode={testMode}
-                        setTestMode={setTestMode}
-                        hideHeader={true}
-                        gridColumns={2}
-                      />
-                    </div>
-                  )}
-                </div>
-              );
-            });
-          })()}
-        </>
-        );
-      })()}
+      {/* Per-game play drawer */}
+      {drawerGame && (
+        <GamePlayDrawer
+          game={drawerGame}
+          plays={drawerPlays}
+          allTonightPlays={allTonightPlays}
+          trackedPlays={trackedPlays}
+          trackPlay={trackPlay}
+          untrackPlay={untrackPlay}
+          navigateToPlay={navigateToPlay}
+          navigateToTeam={navigateToTeam}
+          navigateToModel={navigateToModel}
+          onClose={() => setDrawerGame(null)}
+          expandedPlays={expandedPlays}
+          setExpandedPlays={setExpandedPlays}
+        />
+      )}
     </div>
   );
 }
