@@ -123,7 +123,7 @@ export async function buildLineupKPct(mlbSched) {
       }
     }
     const allIds = [...new Set(Object.values(teamLineups).flat())];
-    if (allIds.length === 0) return { lineupKPct: {}, lineupBatterKPcts: {}, lineupKPctVR: {}, lineupKPctVL: {}, lineupBatterKPctsOrdered: {}, lineupBatterKPctsVROrdered: {}, lineupBatterKPctsVLOrdered: {}, lineupSpotByName: {}, gameHomeTeams, projectedLineupTeams: [], batterSplitBA: {}, hitterOpsMap: {}, batterHandByName: {} };
+    if (allIds.length === 0) return { lineupKPct: {}, lineupBatterKPcts: {}, lineupKPctVR: {}, lineupKPctVL: {}, lineupBatterKPctsOrdered: {}, lineupBatterKPctsVROrdered: {}, lineupBatterKPctsVLOrdered: {}, lineupSpotByName: {}, gameHomeTeams, projectedLineupTeams: [], batterSplitBA: {}, hitterOpsMap: {}, batterHandByName: {}, batterHRRSplits: {} };
     const idStr = allIds.join(",");
     const [res25, res26, resSplitVR, resSplitVL, resSplitVR25, resSplitVL25, resBatSideOps] = await Promise.all([
       fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=batting,type=season,season=2025,gameType=R)`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
@@ -153,8 +153,9 @@ export async function buildLineupKPct(mlbSched) {
       playerStats[pid] = (s26 && s26.pa >= 15) ? s26 : (s25 || s26 || { so: 0, pa: 0 });
     }
     const playerSplits = {};
-    // B1: Build 2025 raw split AB/H keyed by player ID for platoon blend
+    // B1: Build 2025 raw split AB/H and HRR/G keyed by player ID for platoon blend and handedness hit rate
     const splitRaw25 = {};
+    const splitRawHRR25 = {};
     const _bsNorm = n => n ? n.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() : "";
     for (const [code, res] of [["vr", resSplitVR25], ["vl", resSplitVL25]]) {
       for (const person of res.people || []) {
@@ -164,10 +165,16 @@ export async function buildLineupKPct(mlbSched) {
         if (!s?.stat) continue;
         if (!splitRaw25[pid]) splitRaw25[pid] = {};
         splitRaw25[pid][code] = { ab: s.stat.atBats || 0, h: s.stat.hits || 0 };
+        if (!splitRawHRR25[pid]) splitRawHRR25[pid] = {};
+        splitRawHRR25[pid][code] = {
+          hrr: (s.stat.hits || 0) + (s.stat.runs || 0) + (s.stat.rbi || 0),
+          g: s.stat.gamesPlayed || 0
+        };
       }
     }
-    // B1: Also track split BA per player (keyed by normalized name) for hitter platoon splits
+    // B1: Also track split BA and HRR splits per player (keyed by normalized name)
     const batterSplitBA = {};
+    const batterHRRSplits = {};
     for (const [code, res] of [["vr", resSplitVR], ["vl", resSplitVL]]) {
       for (const person of res.people || []) {
         const pid = person.id;
@@ -190,6 +197,14 @@ export async function buildLineupKPct(mlbSched) {
           const paKey = code === "vr" ? "vsRPA" : "vsLPA";
           batterSplitBA[name][baKey] = ab >= 20 ? parseFloat((h / ab).toFixed(3)) : null;
           batterSplitBA[name][paKey] = ab;
+          // HRR splits: combine 2026 + 2025 H+R+RBI and gamesPlayed for Poisson hit rate estimate
+          if (!batterHRRSplits[name]) batterHRRSplits[name] = {};
+          const hrr26 = (s.stat.hits || 0) + (s.stat.runs || 0) + (s.stat.rbi || 0);
+          const g26 = s.stat.gamesPlayed || 0;
+          const s25hrr = splitRawHRR25[pid]?.[code];
+          const totalHRR = hrr26 + (s25hrr?.hrr || 0);
+          const totalG = g26 + (s25hrr?.g || 0);
+          if (totalG >= 1) batterHRRSplits[name][baKey] = { hrr: totalHRR, g: totalG };
         }
       }
     }
@@ -258,9 +273,9 @@ export async function buildLineupKPct(mlbSched) {
         }
       }
     }
-    return { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, projectedLineupTeams: [...projectedLineupTeams], batterSplitBA, hitterOpsMap, batterHandByName };
+    return { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, projectedLineupTeams: [...projectedLineupTeams], batterSplitBA, hitterOpsMap, batterHandByName, batterHRRSplits };
   } catch {
-    return { lineupKPct: {}, lineupBatterKPcts: {}, lineupKPctVR: {}, lineupKPctVL: {}, lineupBatterKPctsOrdered: {}, lineupBatterKPctsVROrdered: {}, lineupBatterKPctsVLOrdered: {}, lineupSpotByName: {}, gameHomeTeams: {}, projectedLineupTeams: [], batterSplitBA: {}, hitterOpsMap: {}, batterHandByName: {} };
+    return { lineupKPct: {}, lineupBatterKPcts: {}, lineupKPctVR: {}, lineupKPctVL: {}, lineupBatterKPctsOrdered: {}, lineupBatterKPctsVROrdered: {}, lineupBatterKPctsVLOrdered: {}, lineupSpotByName: {}, gameHomeTeams: {}, projectedLineupTeams: [], batterSplitBA: {}, hitterOpsMap: {}, batterHandByName: {}, batterHRRSplits: {} };
   }
 }
 

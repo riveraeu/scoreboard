@@ -1462,7 +1462,7 @@ var worker_default = {
                 };
               }
               const [lineupResult, pitcherResult] = await Promise.all([buildLineupKPct(mlbSched), buildPitcherKPct(mlbSched)]);
-              const { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, projectedLineupTeams, batterSplitBA, hitterOpsMap, batterHandByName } = lineupResult;
+              const { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, projectedLineupTeams, batterSplitBA, hitterOpsMap, batterHandByName, batterHRRSplits } = lineupResult;
               const { pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, pitcherWHIP: pitcherWHIPByTeam, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam, pitcherH2HStarts } = pitcherResult;
               // barrelPctMap is NOT stored in byteam:mlb — it lives in mlb:barrelPct with its own 6h TTL.
               // This prevents a bust (which deletes byteam:mlb) from baking an empty barrelPctMap
@@ -1527,7 +1527,7 @@ var worker_default = {
                 }
                 if (rCount + lCount > 0) staticTeamHandMajority[abbr] = rCount >= lCount ? 'R' : 'L';
               }
-              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, pitcherWHIPByTeam, projectedLineupTeams, gameOdds, pitcherStatsByName, batterSplitBA, hitterOpsMap, batterHandByName, pitcherH2HStarts, staticTeamHandMajority, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam, roadRPGMap, teamERAMap, teamPlatoonRPGMap, gameScores };
+              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, pitcherWHIPByTeam, projectedLineupTeams, gameOdds, pitcherStatsByName, batterSplitBA, hitterOpsMap, batterHandByName, batterHRRSplits, pitcherH2HStarts, staticTeamHandMajority, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam, roadRPGMap, teamERAMap, teamPlatoonRPGMap, gameScores };
               // Use short TTL (60s) if key data is missing — lineup/probables not confirmed yet.
               // Prevents partial data from baking into cache for the full 600s.
               const _mlbDataReady = Object.keys(lineupSpotByName || {}).length > 0 && Object.keys(pitcherAvgPitches || {}).length > 0;
@@ -2683,24 +2683,19 @@ var worker_default = {
               ? gl.events.filter(ev => _h2hPitcherDates.has(ev.date) && ev.oppAbbr === tonightOpp).map(getStat).filter(v => !isNaN(v))
               : [];
             const _h2hHitRate = _h2hVals.length >= 10 ? _h2hVals.filter(v => v >= threshold).length / _h2hVals.length * 100 : null;
-            // Handedness fallback: collect start dates from all loaded pitcher gamelogs where the pitcher's hand matches
+            // Handedness fallback: vsR/vsL HRR splits from MLB Stats API (Poisson approx: 1 - e^(-lambda))
+            // Covers all 2025+2026 games vs same-hand pitchers — far broader than pitcherGamelogs cross-reference
             let _h2hHandRate = null;
             if (_h2hHitRate == null && _oppPitcherHand) {
-              const _handDateMap = new Map(); // date → oppTeam
-              for (const [pg_team, pgData] of Object.entries(pitcherGamelogs)) {
-                const pgHand = sportByteam.mlb?.pitcherHand?.[`${pg_team}|${playerTeam}`] ?? sportByteam.mlb?.pitcherHand?.[pg_team] ?? null;
-                if (pgHand !== _oppPitcherHand || !pgData?.gl?.events) continue;
-                pgData.gl.events.filter(ev => ev.oppAbbr === playerTeam).forEach(ev => _handDateMap.set(ev.date, pg_team));
-              }
-              if (_handDateMap.size > 0) {
-                const _handVals = gl.events
-                  .filter(ev => _handDateMap.has(ev.date) && ev.oppAbbr === _handDateMap.get(ev.date))
-                  .map(getStat).filter(v => !isNaN(v));
-                if (_handVals.length >= 10) {
-                  _h2hHandRate = parseFloat((_handVals.filter(v => v >= threshold).length / _handVals.length * 100).toFixed(1));
-                  softPct = _h2hHandRate;
-                  softLabel = _oppPitcherHand === "R" ? "vs RHP" : "vs LHP";
-                }
+              const _hrrSplitMap = sportByteam.mlb?.batterHRRSplits || {};
+              const _hrrEntry = _hrrSplitMap[_bsKey] ?? _hrrSplitMap[_brlNorm(playerNameDisplay)] ?? null;
+              const _hrrHandKey = _oppPitcherHand === "R" ? "vsR" : "vsL";
+              const _hrrSplit = _hrrEntry?.[_hrrHandKey] ?? null;
+              if (_hrrSplit && _hrrSplit.g >= 10) {
+                const _lambda = _hrrSplit.hrr / _hrrSplit.g;
+                _h2hHandRate = parseFloat(((1 - Math.exp(-_lambda)) * 100).toFixed(1));
+                softPct = _h2hHandRate;
+                softLabel = _oppPitcherHand === "R" ? "vs RHP" : "vs LHP";
               }
             }
             const _effectiveHitRate = _h2hHitRate ?? _h2hHandRate;
