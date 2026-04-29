@@ -4,31 +4,25 @@ import PlaysColumn from './PlaysColumn.jsx';
 
 const SPORT_LOGO_KEY = { mlb: 'mlb', nba: 'nba', nhl: 'nhl' };
 
+// ESPN CDN uses shorter abbreviations for some teams than the API/Kalshi codes
+const LOGO_CDN_ABBR = {
+  nhl: { tbl: 'tb', njd: 'nj', lak: 'la', sjs: 'sj' },
+  nba: { kat: 'atl' },
+};
+
 function logoUrl(sport, abbr) {
   if (!abbr) return null;
-  return `https://a.espncdn.com/i/teamlogos/${SPORT_LOGO_KEY[sport] || sport}/500/${abbr.toLowerCase()}.png`;
+  const lower = abbr.toLowerCase();
+  const mapped = LOGO_CDN_ABBR[sport]?.[lower] ?? lower;
+  return `https://a.espncdn.com/i/teamlogos/${SPORT_LOGO_KEY[sport] || sport}/500/${mapped}.png`;
 }
 
 function fmtGameTime(gameTime) {
   if (!gameTime) return null;
   try {
     const d = new Date(gameTime);
-    const tz = 'America/Los_Angeles';
-    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: tz });
-    const gameDateStr = d.toLocaleDateString('en-CA', { timeZone: tz });
-    const timeStr = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: tz, timeZoneName: 'short' });
-    return gameDateStr === todayStr ? `Today · ${timeStr}` : timeStr;
+    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Los_Angeles', timeZoneName: 'short' });
   } catch { return null; }
-}
-
-function fmtML(ml) {
-  if (ml == null) return null;
-  return ml > 0 ? `+${ml}` : `${ml}`;
-}
-
-function fmtSpread(spread) {
-  if (spread == null) return null;
-  return spread > 0 ? `+${spread}` : `${spread}`;
 }
 
 export default function MatchupCard({
@@ -36,44 +30,10 @@ export default function MatchupCard({
   gamePlays, allTonightPlays, trackedPlays, trackPlay, untrackPlay,
   navigateToPlay, navigateToModel, expandedPlays, setExpandedPlays, openPicksDrawer,
 }) {
-  const { sport, homeTeam, awayTeam, gameDate, gameTime, ouLine, gameState, gameDetail, homeScore, awayScore, seriesSummary } = game;
+  const { sport, homeTeam, awayTeam, gameDate, gameTime, gameState, gameDetail, homeScore, awayScore, seriesSummary } = game;
   const [playsOpen, setPlaysOpen] = React.useState(false);
 
   const gameTimeStr = fmtGameTime(gameTime);
-
-  // ── MLB metadata ──────────────────────────────────────────────────────────
-  // Use mlbMeta.gameOdds directly — keyed by whatever date ESPN currently serves
-  // (today's or tomorrow's depending on whether today's slate is complete)
-  const mlbGameOdds = mlbMeta?.gameOdds ?? {};
-  const mlbAwayML = mlbGameOdds[awayTeam]?.ml ?? null;
-  const mlbHomeML = mlbGameOdds[homeTeam]?.ml ?? null;
-  const mlbTotal = mlbGameOdds[homeTeam]?.total ?? mlbGameOdds[awayTeam]?.total ?? null;
-  const mlbHomeSpread = mlbGameOdds[homeTeam]?.spread ?? null;
-
-  // ── NBA metadata ──────────────────────────────────────────────────────────
-  const nbaGameOdds = sport === 'nba' ? (nbaMeta?.gameOdds ?? {}) : {};
-  const nbaAwayOdds = nbaGameOdds[awayTeam] ?? {};
-  const nbaHomeOdds = nbaGameOdds[homeTeam] ?? {};
-  const nbaAwayML = nbaAwayOdds.ml ?? null;
-  const nbaHomeML = nbaHomeOdds.ml ?? null;
-  const nbaTotal = nbaHomeOdds.total ?? nbaAwayOdds.total ?? ouLine ?? null;
-  const nbaHomeSpread = nbaHomeOdds.spread ?? null;
-  const nbaAwaySpread = nbaAwayOdds.spread ?? null;
-
-  // ── NHL metadata ──────────────────────────────────────────────────────────
-  const nhlGameOdds = sport === 'nhl' ? (nhlMeta?.gameOdds ?? {}) : {};
-  const nhlAwayOdds = nhlGameOdds[awayTeam] ?? {};
-  const nhlHomeOdds = nhlGameOdds[homeTeam] ?? {};
-  const nhlAwayML = nhlAwayOdds.ml ?? null;
-  const nhlHomeML = nhlHomeOdds.ml ?? null;
-  const nhlTotal = nhlHomeOdds.total ?? nhlAwayOdds.total ?? null;
-  const nhlHomeSpread = nhlHomeOdds.spread ?? null;
-
-  // Center header stats (sport-aware)
-  const displayTotal = sport === 'nba' ? nbaTotal : sport === 'nhl' ? (nhlTotal ?? ouLine) : (mlbTotal ?? ouLine);
-  const displayAwayML = sport === 'nba' ? nbaAwayML : sport === 'nhl' ? nhlAwayML : mlbAwayML;
-  const displayHomeML = sport === 'nba' ? nbaHomeML : sport === 'nhl' ? nhlHomeML : mlbHomeML;
-  const displaySpread = sport === 'nba' ? nbaHomeSpread : sport === 'nhl' ? nhlHomeSpread : mlbHomeSpread;
 
   // Play notification badge state
   const totalPlays = (gamePlays || []).length;
@@ -138,19 +98,6 @@ export default function MatchupCard({
               {gameTimeStr && <div style={{ fontSize: 10, color: '#8b949e' }}>{gameTimeStr}</div>}
               {seriesSummary && (sport === 'nba' || sport === 'nhl') && (
                 <div style={{ fontSize: 9, color: '#8b949e', marginTop: 2 }}>{seriesSummary}</div>
-              )}
-              {displayTotal != null && (
-                <div style={{ fontSize: 11, color: '#8b949e', marginTop: 2 }}>total {displayTotal}</div>
-              )}
-              {(displayAwayML != null || displayHomeML != null) && (
-                <div style={{ fontSize: 10, color: '#8b949e', marginTop: 2 }}>
-                  {fmtML(displayAwayML)} / {fmtML(displayHomeML)}
-                </div>
-              )}
-              {displaySpread != null && (
-                <div style={{ fontSize: 10, color: '#8b949e', marginTop: 1 }}>
-                  {homeTeam} {fmtSpread(displaySpread)}
-                </div>
               )}
             </>
           )}
