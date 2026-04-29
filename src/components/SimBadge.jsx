@@ -31,7 +31,7 @@ export default function SimBadge({ sc, scTitle, scColor, customStyle, style, onC
           pointerEvents: 'none',
           lineHeight: 1.6,
           boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
-        }}, scTitle),
+        }}>{scTitle}</div>,
         document.body
       )}
     </span>
