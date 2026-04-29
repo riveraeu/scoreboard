@@ -277,6 +277,16 @@ function App() {
     });
     setStarClickOrigin(null);
   }
+  function openPickDate(gameDate) {
+    const dk = gameDate || new Date().toLocaleDateString("en-CA");
+    const [yr, mo, dy] = dk.split("-").map(Number);
+    const d = new Date(yr, mo - 1, dy);
+    const mon = new Date(d);
+    mon.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    const wk = mon.toLocaleDateString("en-CA");
+    setOpenPickDays(prev => new Set([...prev, dk]));
+    setOpenPickWeeks(prev => new Set([...prev, wk]));
+  }
   function untrackPlay(id) {
     setTrackedPlays(prev => prev.filter(p => p.id !== id));
   }
@@ -871,6 +881,7 @@ function App() {
                       trackPlay(oddsVal ? { ...play, americanOdds: oddsVal } : play);
                       setPendingTrackPlay(null);
                       setShowPicksDrawer(true);
+                      openPickDate(play.gameDate);
                       triggerFlyAnimation();
                     } else if (e.key === "Escape") {
                       setPendingTrackPlay(null);
@@ -906,6 +917,7 @@ function App() {
                   trackPlay(oddsVal ? { ...play, americanOdds: oddsVal } : play);
                   setPendingTrackPlay(null);
                   setShowPicksDrawer(true);
+                  openPickDate(play.gameDate);
                   triggerFlyAnimation();
                 }}
                   style={{flex:1,padding:"8px 0",fontSize:12,borderRadius:7,border:"1px solid #3fb950",
