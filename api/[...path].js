@@ -3909,7 +3909,7 @@ var worker_default = {
         }
         const _mlbGameOdds = {};
         for (const [abbr, odds] of Object.entries(sportByteam.mlb?.gameOdds ?? {})) {
-          _mlbGameOdds[abbr] = { ml: odds.moneyline ?? null };
+          _mlbGameOdds[abbr] = { ml: odds.moneyline ?? null, total: odds.total ?? null, spread: odds.spread ?? null };
         }
         const mlbMeta = { pitchers: _mlbPitchers, gameOdds: _mlbGameOdds, umpires: sportByteam.mlb?.umpireByGame ?? {}, weather: weatherByGame, projectedLineupTeams: sportByteam.mlb?.projectedLineupTeams ?? [], teamsWithLineup: Object.keys(sportByteam.mlb?.lineupSpotByName ?? {}), homeTeams: sportByteam.mlb?.gameHomeTeams ?? {}, gameScores: sportByteam.mlb?.gameScores ?? {} };
         // Build mlbMetaTomorrow: tomorrow's probables + umpires (no lineup/weather data available yet)
@@ -3954,7 +3954,11 @@ var worker_default = {
           _nbaInjuries[abbr] = players; // keep original key too for fallback
         }
         const nbaMeta = { gameOdds: _nbaGameOdds, injuries: _nbaInjuries, gameScores: sportByteam.nbaGameScores ?? {} };
-        const nhlMeta = { gameScores: sportByteam.nhlGameScores ?? {} };
+        const _nhlGameOdds = {};
+        for (const [abbr, odds] of Object.entries(sportByteam.nhlGameOdds ?? {})) {
+          _nhlGameOdds[abbr] = { ml: odds.moneyline ?? null, total: odds.total ?? null, spread: odds.spread ?? null };
+        }
+        const nhlMeta = { gameScores: sportByteam.nhlGameScores ?? {}, gameOdds: _nhlGameOdds };
         const playsResult = { plays, nbaDropped, mlbMeta, mlbMetaTomorrow, nbaMeta, nhlMeta, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length };
         const sportsInPlays = new Set(plays.map((p) => p.sport));
         if (CACHE2 && sportsInPlays.size >= 2) {
