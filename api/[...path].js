@@ -3872,18 +3872,23 @@ var worker_default = {
           }
           const _ttBestIds = new Set(Object.values(_ttBestMap).map(tp => `${tp.sport}|${tp.scoringTeam}|${tp.oppTeam}|${tp.threshold}|${tp.direction}`));
           // Cross-type dedup: one qualified play per game across game totals AND team totals
-          // Build a map of game-key → best edge winner (from both types)
+          // Qualified (simScore≥8) always beats non-qualified; ties broken by edge
           const _crossBestMap = {};
           for (const tp of [...Object.values(_ttBestMap)]) {
             const key = `${tp.sport}|${tp.homeTeam}|${tp.awayTeam}`;
-            if (!_crossBestMap[key] || tp.edge > _crossBestMap[key].edge) _crossBestMap[key] = tp;
+            const tpQ = tp.teamTotalSimScore >= 8;
+            const prev = _crossBestMap[key];
+            const prevQ = prev && (prev.teamTotalSimScore != null ? prev.teamTotalSimScore >= 8 : prev.totalSimScore >= 8);
+            if (!prev || (!prevQ && tpQ) || (prevQ === tpQ && tp.edge > prev.edge)) _crossBestMap[key] = tp;
           }
-          // Game total winners already in _totalBestMap — compare against team total winners
+          // Compare team total winners against any qualified game total for the same game
           for (const [key, gameTp] of Object.entries(_crossBestMap)) {
             const existingGameTotal = plays.find(p => p.gameType === "total" && p.sport === gameTp.sport && p.homeTeam === gameTp.homeTeam && p.awayTeam === gameTp.awayTeam && p.qualified !== false);
-            if (existingGameTotal && existingGameTotal.edge >= gameTp.edge) {
-              // Game total wins — all team totals for this game are qualified:false
-              _crossBestMap[key] = existingGameTotal;
+            if (existingGameTotal) {
+              const gtQ = existingGameTotal.totalSimScore >= 8;
+              const ttQ = gameTp.teamTotalSimScore >= 8;
+              // Game total wins if: team total isn't qualified, OR both qualified and game total has higher/equal edge
+              if (!ttQ || (gtQ && existingGameTotal.edge >= gameTp.edge)) _crossBestMap[key] = existingGameTotal;
             }
           }
           for (const tp of teamTotalPlays) {

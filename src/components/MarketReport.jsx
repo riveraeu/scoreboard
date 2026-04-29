@@ -68,9 +68,10 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                   if (!groups[key]) groups[key] = { sport: m.sport, stat: m.stat, items: [] };
                   groups[key].items.push(m);
                 }
+                const STAT_ORD = { strikeouts:0, hrr:1, hits:2, totalRuns:3, teamRuns:4, points:0, rebounds:1, assists:2, threePointers:3, teamPoints:4, totalPoints:5, totalGoals:1 };
                 const sortedGroups = Object.values(groups).sort((a, b) => {
                   const sd = (SPORT_ORD[a.sport]??9) - (SPORT_ORD[b.sport]??9);
-                  return sd !== 0 ? sd : a.stat.localeCompare(b.stat);
+                  return sd !== 0 ? sd : (STAT_ORD[a.stat]??99) - (STAT_ORD[b.stat]??99);
                 });
 
                 if (sortedGroups.length === 0) return <div style={{color:"#8b949e",textAlign:"center",padding:40,fontSize:13}}>No markets.</div>;
