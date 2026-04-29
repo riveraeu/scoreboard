@@ -3672,11 +3672,14 @@ var worker_default = {
           }
         }
         {
-          // Step 1: per-game dedup for game totals (best threshold/direction per game)
+          // Step 1: per-game dedup for game totals — qualified (simScore≥8) beats non-qualified; ties broken by edge
           const _totalBestMap = {};
           for (const tp of totalPlays) {
             const key = `${tp.sport}|${tp.homeTeam}|${tp.awayTeam}`;
-            if (!_totalBestMap[key] || tp.edge > _totalBestMap[key].edge) _totalBestMap[key] = tp;
+            const tpQ = tp.totalSimScore >= 8;
+            const prev = _totalBestMap[key];
+            const prevQ = prev && (prev.totalSimScore >= 8);
+            if (!prev || (!prevQ && tpQ) || (prevQ === tpQ && tp.edge > prev.edge)) _totalBestMap[key] = tp;
           }
           const _bestTotalIds = new Set(Object.values(_totalBestMap).map(tp => `${tp.sport}|${tp.homeTeam}|${tp.awayTeam}|${tp.threshold}|${tp.direction}`));
           // NOTE: team total cross-dedup applied after teamTotalPlays loop below
