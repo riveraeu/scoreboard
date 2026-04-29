@@ -240,12 +240,12 @@ export default function LineupsPage({
         {/* Right: action buttons */}
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
           <button onClick={navigateToModel}
-            style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, cursor: 'pointer',
+            style={{ fontSize: 10, padding: '0 8px', height: 22, borderRadius: 6, cursor: 'pointer',
               border: '1px solid #30363d', background: 'transparent', color: '#484f58', fontWeight: 600 }}>
             Model
           </button>
           <button onClick={() => fetchReport('mlb')}
-            style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, cursor: 'pointer',
+            style={{ fontSize: 10, padding: '0 8px', height: 22, borderRadius: 6, cursor: 'pointer',
               border: '1px solid #30363d', background: 'transparent', color: '#484f58', fontWeight: 600 }}>
             Report
           </button>
@@ -253,11 +253,11 @@ export default function LineupsPage({
             const activePicks = (trackedPlays || []).filter(p => !p.result || p.result === 'dnp');
             return (
               <button ref={picksButtonRef} onClick={openPicksDrawer}
-                style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, cursor: 'pointer',
-                  border: `1px solid ${showPicksDrawer ? '#58a6ff' : '#e3b341'}`,
-                  background: showPicksDrawer ? 'rgba(88,166,255,0.08)' : 'rgba(227,179,65,0.08)',
-                  color: '#e3b341', fontWeight: 600,
-                  display: 'flex', alignItems: 'center', gap: 4, position: 'relative' }}>
+                style={{ fontSize: 10, padding: '0 8px', height: 22, borderRadius: 6, cursor: 'pointer',
+                  border: `1px solid ${showPicksDrawer ? '#58a6ff' : '#30363d'}`,
+                  background: showPicksDrawer ? 'rgba(88,166,255,0.12)' : 'transparent',
+                  color: showPicksDrawer ? '#58a6ff' : '#484f58', fontWeight: 600,
+                  display: 'flex', alignItems: 'center', gap: 4 }}>
                 ★ Picks
                 {activePicks.length > 0 && (
                   <span style={{ background: '#3fb950', color: '#0d1117', fontSize: 9, fontWeight: 700,
@@ -270,7 +270,7 @@ export default function LineupsPage({
           })()}
           {authEmail ? (
             <button onClick={logout}
-              style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, cursor: 'pointer',
+              style={{ fontSize: 10, padding: '0 8px', height: 22, borderRadius: 6, cursor: 'pointer',
                 border: '1px solid #30363d', background: 'transparent', color: '#484f58', fontWeight: 600,
                 display: 'flex', alignItems: 'center', gap: 4 }}>
               <span style={{ width: 5, height: 5, borderRadius: '50%', flexShrink: 0,
@@ -280,7 +280,7 @@ export default function LineupsPage({
             </button>
           ) : (
             <button onClick={onLoginClick}
-              style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, cursor: 'pointer',
+              style={{ fontSize: 10, padding: '0 8px', height: 22, borderRadius: 6, cursor: 'pointer',
                 border: '1px solid #58a6ff', background: 'transparent', color: '#58a6ff', fontWeight: 600 }}>
               Log In
             </button>
