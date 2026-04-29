@@ -317,7 +317,7 @@ export default function LineupsPage({
               <div style={{ flex: 1, height: 1, background: '#21262d', marginLeft: 10 }} />
             </div>
             {/* Game grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(480px, 1fr))', gap: 12, alignItems: 'start' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(480px, 100%), 1fr))', gap: 12, alignItems: 'start' }}>
               {games.map((game, i) => {
                 const gPlays = playsForGame(allTonightPlays, game);
                 return (

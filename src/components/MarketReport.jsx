@@ -547,6 +547,8 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                         };
                         const _oppFlex = (sport === "nba" || (sport === "mlb" && stat === "strikeouts")) ? 1 : 2;
                         return <React.Fragment>
+                          <div style={{overflowX:"auto"}}>
+                          <div style={{minWidth:680}}>
                           <div style={{display:"flex",alignItems:"center",gap:6,padding:"3px 12px 4px",marginBottom:2}}>
                             {_hdr("player", stat.startsWith("team") ? "Team" : stat.startsWith("total") ? "Matchup" : "Player", {flex:2,minWidth:0}, "left")}
                             {_hdr("line","Line")}
@@ -631,6 +633,8 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                                 </div>
                               );
                             })}
+                          </div>
+                          </div>
                           </div>
                         </React.Fragment>;
                       })()}

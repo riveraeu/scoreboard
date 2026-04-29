@@ -1960,7 +1960,7 @@ function App() {
                         {currentSeason ? `${currentSeason} season` : "Season"} · {seasonRows.length} games
                       </div>
                       <div style={{overflowX:"auto",overflowY:"auto",maxHeight:280,borderRadius:6,border:"1px solid #21262d"}}>
-                        <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                        <table style={{width:"100%",minWidth:520,borderCollapse:"collapse",fontSize:11}}>
                           <thead>
                             <tr style={{position:"sticky",top:0,background:"#1c2128",zIndex:2}}>
                               {cols.map(c => {
@@ -2126,7 +2126,7 @@ function App() {
       {/* Picks drawer panel */}
       <div style={{
         position:"fixed", top:0, right:0, bottom:0,
-        width:"min(50vw, 680px)",
+        width:"min(max(340px, 50vw), 680px)",
         background:"#0d1117",
         borderLeft:"1px solid #30363d",
         zIndex:598,
