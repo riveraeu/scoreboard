@@ -59,27 +59,12 @@ export default function MatchupCard({ game, mlbMeta, mlbMetaTomorrow, nbaMeta, n
 
   const gameTimeStr = fmtGameTime(gameTime);
 
-  // Select the right mlbMeta source — today's vs tomorrow's (keyed by team abbr, no date context)
+  // ── MLB metadata ──────────────────────────────────────────────────────────
   const todayPT = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
   const isToday = !gameDate || gameDate === todayPT;
-  const activeMlbMeta = sport === 'mlb' ? (isToday ? mlbMeta : mlbMetaTomorrow) : null;
-
-  // ── MLB metadata ──────────────────────────────────────────────────────────
-  const pitchers = activeMlbMeta?.pitchers ?? {};
-  const awayPitcher = pitchers[awayTeam] ?? null;
-  const homePitcher = pitchers[homeTeam] ?? null;
   const mlbGameOdds = (isToday ? mlbMeta : null)?.gameOdds ?? {};
   const mlbAwayML = mlbGameOdds[awayTeam]?.ml ?? null;
   const mlbHomeML = mlbGameOdds[homeTeam]?.ml ?? null;
-  // Lineup confirmed (MLB) — today only; tomorrow has no posted lineups yet
-  const _projTeams = new Set(activeMlbMeta?.projectedLineupTeams ?? []);
-  const _teamsWithLineup = new Set(activeMlbMeta?.teamsWithLineup ?? []);
-  const getMlbLineupConfirmed = (abbr) => {
-    if (!_teamsWithLineup.has(abbr)) return null;
-    return !_projTeams.has(abbr);
-  };
-  const awayMlbConfirmed = sport === 'mlb' ? getMlbLineupConfirmed(awayTeam) : null;
-  const homeMlbConfirmed = sport === 'mlb' ? getMlbLineupConfirmed(homeTeam) : null;
 
   // ── NBA metadata ──────────────────────────────────────────────────────────
   const nbaGameOdds = sport === 'nba' ? (nbaMeta?.gameOdds ?? {}) : {};
@@ -101,8 +86,6 @@ export default function MatchupCard({ game, mlbMeta, mlbMetaTomorrow, nbaMeta, n
   const displayHomeML = sport === 'nba' ? nbaHomeML : mlbHomeML;
   // Spread: show home spread for NBA (negative = favored)
   const displaySpread = sport === 'nba' ? nbaHomeSpread : null;
-
-  const showMlbExtra = sport === 'mlb' && (awayPitcher || homePitcher);
 
   async function onToggleLineup() {
     if (!lineupOpen && !lineup) {
@@ -185,48 +168,6 @@ export default function MatchupCard({ game, mlbMeta, mlbMetaTomorrow, nbaMeta, n
         </div>
       </div>
 
-      {/* MLB: pitchers row + lineup confirmed badge */}
-      {showMlbExtra && (
-        <div style={{ padding: '6px 16px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderTop: '1px solid #0d1117' }}>
-          <div style={{ fontSize: 11 }}>
-            {awayPitcher
-              ? (
-                <span
-                  onClick={() => navigateToPlayer({ name: awayPitcher.name, team: awayTeam, sportKey: 'baseball/mlb' }, 'strikeouts')}
-                  style={{ cursor: 'pointer' }}
-                  onMouseEnter={e => e.currentTarget.style.opacity = '0.75'}
-                  onMouseLeave={e => e.currentTarget.style.opacity = '1'}
-                >
-                  <span style={{ color: '#c9d1d9', fontWeight: 600 }}>{awayPitcher.name}</span>
-                  {awayPitcher.era != null && <span style={{ color: '#484f58' }}> ({awayPitcher.era} ERA)</span>}
-                </span>
-              )
-              : <span style={{ color: '#484f58', fontStyle: 'italic' }}>TBD</span>}
-            {awayMlbConfirmed !== null && gameState !== 'in' && gameState !== 'post' && (
-              <div style={{ marginTop: 3 }}><LineupBadge confirmed={awayMlbConfirmed} /></div>
-            )}
-          </div>
-          <div style={{ fontSize: 11, textAlign: 'right' }}>
-            {homePitcher
-              ? (
-                <span
-                  onClick={() => navigateToPlayer({ name: homePitcher.name, team: homeTeam, sportKey: 'baseball/mlb' }, 'strikeouts')}
-                  style={{ cursor: 'pointer' }}
-                  onMouseEnter={e => e.currentTarget.style.opacity = '0.75'}
-                  onMouseLeave={e => e.currentTarget.style.opacity = '1'}
-                >
-                  <span style={{ color: '#c9d1d9', fontWeight: 600 }}>{homePitcher.name}</span>
-                  {homePitcher.era != null && <span style={{ color: '#484f58' }}> ({homePitcher.era} ERA)</span>}
-                </span>
-              )
-              : <span style={{ color: '#484f58', fontStyle: 'italic' }}>TBD</span>}
-            {homeMlbConfirmed !== null && gameState !== 'in' && gameState !== 'post' && (
-              <div style={{ marginTop: 3, display: 'flex', justifyContent: 'flex-end' }}><LineupBadge confirmed={homeMlbConfirmed} /></div>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* NBA: injured players — always visible outside drawer */}
       {sport === 'nba' && (awayInjured.length > 0 || homeInjured.length > 0) && (
         <div style={{ borderTop: '1px solid #0d1117', padding: '8px 16px' }}>
@@ -308,66 +249,6 @@ export default function MatchupCard({ game, mlbMeta, mlbMetaTomorrow, nbaMeta, n
                         >
                           {player.name}
                         </span>
-                      </div>
-                    ))
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* MLB lineup drawer */}
-      {sport === 'mlb' && (
-        <div style={{ borderTop: '1px solid #0d1117' }}>
-          <button onClick={onToggleLineup} style={{
-            width: '100%', background: 'none', border: 'none', cursor: 'pointer',
-            padding: '7px 16px', display: 'flex', alignItems: 'center', gap: 6,
-            color: '#484f58', fontSize: 11, fontWeight: 600, textAlign: 'left',
-          }}>
-            <span style={{ fontSize: 9, display: 'inline-block', transition: 'transform 0.15s',
-              transform: lineupOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
-            Batting Lineups
-            {lineupLoading && <span style={{ color: '#30363d', marginLeft: 4 }}>Loading…</span>}
-          </button>
-          {lineupOpen && lineup && (
-            <div style={{ padding: '0 16px 12px', display: 'flex', gap: 16 }}>
-              {[
-                { abbr: awayTeam, data: lineup.away, confirmed: lineup.awayConfirmed, label: 'Away' },
-                { abbr: homeTeam, data: lineup.home, confirmed: lineup.homeConfirmed, label: 'Home' },
-              ].map(({ abbr, data, confirmed, label }) => (
-                <div key={abbr} style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: '#484f58', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                      {abbr} {label}
-                    </span>
-                  </div>
-                  {data.length === 0 ? (
-                    <div style={{ fontSize: 11, color: '#484f58', fontStyle: 'italic' }}>No lineup posted</div>
-                  ) : (
-                    data.map((player, idx) => (
-                      <div key={idx} style={{
-                        display: 'flex', alignItems: 'center', gap: 6, padding: '2px 0',
-                        borderBottom: idx < data.length - 1 ? '1px solid #0d1117' : 'none',
-                      }}>
-                        <span style={{ fontSize: 10, color: '#484f58', width: 14, textAlign: 'center', flexShrink: 0 }}>
-                          {player.isProbable ? 'P' : (player.spot ?? idx + 1)}
-                        </span>
-                        <span
-                          onClick={() => navigateToPlayer(
-                            { id: player.playerId || null, name: player.name, team: abbr, sportKey: 'baseball/mlb' },
-                            player.isProbable ? 'strikeouts' : 'hrr'
-                          )}
-                          style={{ fontSize: 11, color: '#c9d1d9', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }}
-                          onMouseEnter={e => e.currentTarget.style.color = '#58a6ff'}
-                          onMouseLeave={e => e.currentTarget.style.color = '#c9d1d9'}
-                        >
-                          {player.name}
-                        </span>
-                        {player.position && (
-                          <span style={{ fontSize: 10, color: '#484f58', flexShrink: 0 }}>{player.position}</span>
-                        )}
                       </div>
                     ))
                   )}
