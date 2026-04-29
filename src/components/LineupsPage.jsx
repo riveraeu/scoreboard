@@ -1,8 +1,8 @@
 import React from 'react';
 import MatchupCard from './MatchupCard.jsx';
-import GamePlayDrawer from './GamePlayDrawer.jsx';
 
 const SPORT_ORDER = { mlb: 0, nba: 1, nhl: 2 };
+const SPORT_LABEL = { mlb: 'MLB', nba: 'NBA', nhl: 'NHL' };
 
 // Build ordered games list for a single sport.
 function buildGames(allPlays, sport, meta) {
@@ -51,8 +51,8 @@ function buildGames(allPlays, sport, meta) {
     if (g.ouLine == null && ouLine != null) g.ouLine = ouLine;
   }
 
-  // Seed finished/in-progress MLB games from gameScores
-  if (sport === 'mlb' && meta?.gameScores) {
+  // Seed finished/in-progress games from meta.gameScores (any sport)
+  if (meta?.gameScores) {
     for (const gs of Object.values(meta.gameScores)) {
       const { homeTeam: gsHome, awayTeam: gsAway, gameDate: gsDate, gameTime: gsTime } = gs;
       if (!gsHome || !gsAway) continue;
@@ -75,11 +75,11 @@ function buildGames(allPlays, sport, meta) {
 }
 
 // All sports combined.
-function buildAllGames(allPlays, mlbMeta) {
+function buildAllGames(allPlays, mlbMeta, nbaMeta, nhlMeta) {
   return [
     ...buildGames(allPlays, 'mlb', mlbMeta),
-    ...buildGames(allPlays, 'nba', null),
-    ...buildGames(allPlays, 'nhl', null),
+    ...buildGames(allPlays, 'nba', nbaMeta),
+    ...buildGames(allPlays, 'nhl', nhlMeta),
   ];
 }
 
@@ -126,6 +126,7 @@ export default function LineupsPage({
   mlbMeta,
   mlbMetaTomorrow,
   nbaMeta,
+  nhlMeta,
   trackedPlays,
   untrackPlay,
   navigateToPlay,
@@ -135,7 +136,6 @@ export default function LineupsPage({
   const [activeDayTab, setActiveDayTab] = React.useState(() =>
     new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
   );
-  const [drawerGame, setDrawerGame] = React.useState(null);
   const [expandedPlays, setExpandedPlays] = React.useState(new Set());
 
   // Collect unique PT dates from all plays + mlbMeta.gameScores
@@ -153,7 +153,7 @@ export default function LineupsPage({
     return [...dates].sort();
   }, [allTonightPlays, mlbMeta]);
 
-  // If the stored tab is no longer in dayTabs (e.g. day rolled over), reset to today
+  // Reset tab if it rolls off the list
   React.useEffect(() => {
     if (dayTabs.length > 0 && !dayTabs.includes(activeDayTab)) {
       setActiveDayTab(dayTabs[0]);
@@ -171,9 +171,9 @@ export default function LineupsPage({
     return counts;
   }, [allTonightPlays]);
 
-  // All games across sports, filtered to active day, sorted by sport then time
+  // All games for the active day, sorted by sport then game time
   const gamesForDay = React.useMemo(() => {
-    const all = buildAllGames(allTonightPlays, mlbMeta);
+    const all = buildAllGames(allTonightPlays, mlbMeta, nbaMeta, nhlMeta);
     return all
       .filter(g => {
         const d = g.gameTime ? ptDate(g.gameTime) : (g.gameDate || '');
@@ -184,19 +184,16 @@ export default function LineupsPage({
         if (sd !== 0) return sd;
         return (a.gameTime || '').localeCompare(b.gameTime || '');
       });
-  }, [allTonightPlays, mlbMeta, activeDayTab]);
+  }, [allTonightPlays, mlbMeta, nbaMeta, nhlMeta, activeDayTab]);
 
-  function onNotificationClick(game) {
-    const gPlays = playsForGame(allTonightPlays, game);
-    const allTracked = gPlays.length > 0 && gPlays.every(gp => (trackedPlays || []).some(tp => tp.id === gp.id));
-    if (allTracked) {
-      openPicksDrawer();
-    } else {
-      setDrawerGame(game);
+  const sportGroups = React.useMemo(() => {
+    const groups = {};
+    for (const game of gamesForDay) {
+      if (!groups[game.sport]) groups[game.sport] = [];
+      groups[game.sport].push(game);
     }
-  }
-
-  const drawerPlays = drawerGame ? playsForGame(allTonightPlays, drawerGame) : [];
+    return groups;
+  }, [gamesForDay]);
 
   return (
     <div>
@@ -286,56 +283,63 @@ export default function LineupsPage({
         </div>
       </div>
 
-      {/* Games grid */}
+      {/* Loading */}
       {tonightLoading && (
         <div style={{ color: '#484f58', fontSize: 13, padding: '24px 0', textAlign: 'center' }}>
           Loading games…
         </div>
       )}
+
+      {/* Empty state */}
       {!tonightLoading && gamesForDay.length === 0 && (
         <div style={{ color: '#484f58', fontSize: 13, padding: '24px 0', textAlign: 'center' }}>
           No games scheduled for {dayTabLabel(activeDayTab)}.
         </div>
       )}
-      {gamesForDay.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(480px, 1fr))', gap: 12, alignItems: 'start' }}>
-          {gamesForDay.map((game, i) => {
-            const gPlays = playsForGame(allTonightPlays, game);
-            return (
-              <MatchupCard
-                key={`${game.sport}|${game.homeTeam}|${game.awayTeam}|${game.gameDate}|${i}`}
-                game={game}
-                mlbMeta={mlbMeta}
-                mlbMetaTomorrow={mlbMetaTomorrow}
-                nbaMeta={nbaMeta}
-                navigateToPlayer={navigateToPlayer}
-                navigateToTeam={navigateToTeam}
-                gamePlays={gPlays}
-                trackedPlays={trackedPlays}
-                onNotificationClick={onNotificationClick}
-              />
-            );
-          })}
-        </div>
-      )}
 
-      {/* Per-game play drawer */}
-      {drawerGame && (
-        <GamePlayDrawer
-          game={drawerGame}
-          plays={drawerPlays}
-          allTonightPlays={allTonightPlays}
-          trackedPlays={trackedPlays}
-          trackPlay={trackPlay}
-          untrackPlay={untrackPlay}
-          navigateToPlay={navigateToPlay}
-          navigateToTeam={navigateToTeam}
-          navigateToModel={navigateToModel}
-          onClose={() => setDrawerGame(null)}
-          expandedPlays={expandedPlays}
-          setExpandedPlays={setExpandedPlays}
-        />
-      )}
+      {/* Sport-grouped game cards */}
+      {['mlb', 'nba', 'nhl'].map(sport => {
+        const games = sportGroups[sport];
+        if (!games || games.length === 0) return null;
+        return (
+          <div key={sport} style={{ marginBottom: 24 }}>
+            {/* Sport header */}
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#484f58', textTransform: 'uppercase', letterSpacing: 1 }}>
+                {SPORT_LABEL[sport]}
+              </span>
+              <div style={{ flex: 1, height: 1, background: '#21262d', marginLeft: 10 }} />
+            </div>
+            {/* Game grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(480px, 1fr))', gap: 12, alignItems: 'start' }}>
+              {games.map((game, i) => {
+                const gPlays = playsForGame(allTonightPlays, game);
+                return (
+                  <MatchupCard
+                    key={`${sport}|${game.homeTeam}|${game.awayTeam}|${game.gameDate}|${i}`}
+                    game={game}
+                    mlbMeta={mlbMeta}
+                    mlbMetaTomorrow={mlbMetaTomorrow}
+                    nbaMeta={nbaMeta}
+                    navigateToPlayer={navigateToPlayer}
+                    navigateToTeam={navigateToTeam}
+                    gamePlays={gPlays}
+                    allTonightPlays={allTonightPlays}
+                    trackedPlays={trackedPlays}
+                    trackPlay={trackPlay}
+                    untrackPlay={untrackPlay}
+                    navigateToPlay={navigateToPlay}
+                    navigateToModel={navigateToModel}
+                    expandedPlays={expandedPlays}
+                    setExpandedPlays={setExpandedPlays}
+                    openPicksDrawer={openPicksDrawer}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

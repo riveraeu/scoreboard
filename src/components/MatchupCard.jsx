@@ -1,5 +1,6 @@
 import React from 'react';
 import { WORKER } from '../lib/constants.js';
+import PlaysColumn from './PlaysColumn.jsx';
 
 const SPORT_LOGO_KEY = { mlb: 'mlb', nba: 'nba', nhl: 'nhl' };
 
@@ -32,7 +33,6 @@ function fmtSpread(spread) {
   return spread > 0 ? `+${spread}` : `${spread}`;
 }
 
-
 function LineupBadge({ confirmed }) {
   if (confirmed === true) return (
     <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 4,
@@ -49,13 +49,16 @@ function LineupBadge({ confirmed }) {
   return null;
 }
 
-
-export default function MatchupCard({ game, mlbMeta, mlbMetaTomorrow, nbaMeta, navigateToPlayer, navigateToTeam, gamePlays, trackedPlays, onNotificationClick }) {
+export default function MatchupCard({
+  game, mlbMeta, mlbMetaTomorrow, nbaMeta, navigateToPlayer, navigateToTeam,
+  gamePlays, allTonightPlays, trackedPlays, trackPlay, untrackPlay,
+  navigateToPlay, navigateToModel, expandedPlays, setExpandedPlays, openPicksDrawer,
+}) {
   const { sport, homeTeam, awayTeam, gameDate, gameTime, ouLine, gameState, gameDetail, homeScore, awayScore } = game;
   const [lineupOpen, setLineupOpen] = React.useState(false);
   const [lineup, setLineup] = React.useState(null);
   const [lineupLoading, setLineupLoading] = React.useState(false);
-
+  const [playsOpen, setPlaysOpen] = React.useState(false);
 
   const gameTimeStr = fmtGameTime(gameTime);
 
@@ -72,20 +75,20 @@ export default function MatchupCard({ game, mlbMeta, mlbMetaTomorrow, nbaMeta, n
   const nbaHomeOdds = nbaGameOdds[homeTeam] ?? {};
   const nbaAwayML = nbaAwayOdds.ml ?? null;
   const nbaHomeML = nbaHomeOdds.ml ?? null;
-  // O/U: prefer nbaMeta (always available from ESPN), fall back to game.ouLine
   const nbaTotal = nbaHomeOdds.total ?? nbaAwayOdds.total ?? ouLine ?? null;
   const nbaHomeSpread = nbaHomeOdds.spread ?? null;
   const nbaAwaySpread = nbaAwayOdds.spread ?? null;
-  const nbaInjuries = sport === 'nba' ? (nbaMeta?.injuries ?? {}) : {};
-  const awayInjured = nbaInjuries[awayTeam] ?? [];
-  const homeInjured = nbaInjuries[homeTeam] ?? [];
 
   // Center header stats (sport-aware)
   const displayTotal = sport === 'nba' ? nbaTotal : ouLine;
   const displayAwayML = sport === 'nba' ? nbaAwayML : mlbAwayML;
   const displayHomeML = sport === 'nba' ? nbaHomeML : mlbHomeML;
-  // Spread: show home spread for NBA (negative = favored)
   const displaySpread = sport === 'nba' ? nbaHomeSpread : null;
+
+  // Play notification badge state
+  const totalPlays = (gamePlays || []).length;
+  const trackedCount = (gamePlays || []).filter(gp => (trackedPlays || []).some(tp => tp.id === gp.id)).length;
+  const allTracked = totalPlays > 0 && trackedCount === totalPlays;
 
   async function onToggleLineup() {
     if (!lineupOpen && !lineup) {
@@ -107,8 +110,17 @@ export default function MatchupCard({ game, mlbMeta, mlbMetaTomorrow, nbaMeta, n
     setLineupOpen(o => !o);
   }
 
+  function onPlayBadgeClick(e) {
+    e.stopPropagation();
+    if (allTracked) {
+      openPicksDrawer?.();
+    } else {
+      setPlaysOpen(o => !o);
+    }
+  }
+
   return (
-    <div style={{ background: '#161b22', border: '1px solid #21262d', borderRadius: 12, overflow: 'hidden' }}>
+    <div style={{ background: '#161b22', border: '1px solid #21262d', borderRadius: 12 }}>
 
       {/* Header: away vs home with logos */}
       <div style={{ padding: '14px 16px 10px', display: 'flex', alignItems: 'center' }}>
@@ -168,63 +180,43 @@ export default function MatchupCard({ game, mlbMeta, mlbMetaTomorrow, nbaMeta, n
         </div>
       </div>
 
-      {/* NBA: injured players — always visible outside drawer */}
-      {sport === 'nba' && (awayInjured.length > 0 || homeInjured.length > 0) && (
-        <div style={{ borderTop: '1px solid #0d1117', padding: '8px 16px' }}>
-          <div style={{ display: 'flex', gap: 16 }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              {awayInjured.map((p, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '1px 0' }}>
-                  <span style={{
-                    fontSize: 9, fontWeight: 700, padding: '0 4px', borderRadius: 3,
-                    background: p.status === 'out' ? 'rgba(247,129,102,0.15)' : 'rgba(227,179,65,0.15)',
-                    color: p.status === 'out' ? '#f78166' : '#e3b341',
-                    border: `1px solid ${p.status === 'out' ? 'rgba(247,129,102,0.3)' : 'rgba(227,179,65,0.3)'}`,
-                  }}>{p.status === 'out' ? 'OUT' : 'GTD'}</span>
-                  <span style={{ fontSize: 10, color: '#8b949e' }}>{p.name}</span>
-                </div>
-              ))}
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              {homeInjured.map((p, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '1px 0', flexDirection: 'row-reverse' }}>
-                  <span style={{
-                    fontSize: 9, fontWeight: 700, padding: '0 4px', borderRadius: 3,
-                    background: p.status === 'out' ? 'rgba(247,129,102,0.15)' : 'rgba(227,179,65,0.15)',
-                    color: p.status === 'out' ? '#f78166' : '#e3b341',
-                    border: `1px solid ${p.status === 'out' ? 'rgba(247,129,102,0.3)' : 'rgba(227,179,65,0.3)'}`,
-                  }}>{p.status === 'out' ? 'OUT' : 'GTD'}</span>
-                  <span style={{ fontSize: 10, color: '#8b949e' }}>{p.name}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+      {/* Play notification badge */}
+      {totalPlays > 0 && (
+        <div style={{ borderTop: '1px solid #0d1117', padding: '8px 14px', display: 'flex', justifyContent: 'flex-end' }}>
+          <button onClick={onPlayBadgeClick} style={{
+            display: 'flex', alignItems: 'center', gap: 5,
+            fontSize: 11, fontWeight: 700, cursor: 'pointer',
+            padding: '4px 10px', borderRadius: 20,
+            border: `1px solid ${allTracked ? 'rgba(227,179,65,0.4)' : 'rgba(88,166,255,0.4)'}`,
+            background: allTracked ? 'rgba(227,179,65,0.1)' : 'rgba(88,166,255,0.1)',
+            color: allTracked ? '#e3b341' : '#58a6ff',
+          }}>
+            <span>{allTracked ? '★' : playsOpen ? '▾' : '▶'}</span>
+            <span>{totalPlays} play{totalPlays !== 1 ? 's' : ''}</span>
+          </button>
         </div>
       )}
 
-      {/* Play notification badge */}
-      {onNotificationClick && gamePlays && gamePlays.length > 0 && (() => {
-        const totalPlays = gamePlays.length;
-        const trackedCount = gamePlays.filter(gp => (trackedPlays || []).some(tp => tp.id === gp.id)).length;
-        const allTracked = trackedCount === totalPlays;
-        return (
-          <div style={{ borderTop: '1px solid #0d1117', padding: '8px 14px', display: 'flex', justifyContent: 'flex-end' }}>
-            <button
-              onClick={e => { e.stopPropagation(); onNotificationClick(game); }}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 5,
-                fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                padding: '4px 10px', borderRadius: 20,
-                border: `1px solid ${allTracked ? 'rgba(227,179,65,0.4)' : 'rgba(88,166,255,0.4)'}`,
-                background: allTracked ? 'rgba(227,179,65,0.1)' : 'rgba(88,166,255,0.1)',
-                color: allTracked ? '#e3b341' : '#58a6ff',
-              }}>
-              {allTracked ? '★' : '▶'}
-              <span>{totalPlays} play{totalPlays !== 1 ? 's' : ''}</span>
-            </button>
-          </div>
-        );
-      })()}
+      {/* Inline play drawer */}
+      {playsOpen && totalPlays > 0 && (
+        <div style={{ borderTop: '1px solid #0d1117', padding: '12px 16px 16px' }}>
+          <PlaysColumn
+            tonightPlays={gamePlays}
+            allTonightPlays={allTonightPlays}
+            tonightLoading={false}
+            trackedPlays={trackedPlays}
+            trackPlay={trackPlay}
+            untrackPlay={untrackPlay}
+            navigateToPlay={navigateToPlay}
+            navigateToTeam={navigateToTeam}
+            navigateToModel={navigateToModel}
+            expandedPlays={expandedPlays}
+            setExpandedPlays={setExpandedPlays}
+            hideHeader={true}
+            gridColumns={1}
+          />
+        </div>
+      )}
 
       {/* NBA lineup drawer */}
       {sport === 'nba' && (

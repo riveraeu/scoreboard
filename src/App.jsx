@@ -39,7 +39,8 @@ function App() {
   const [tonightMeta, setTonightMeta] = React.useState(null);
   const [mlbMeta, setMlbMeta] = React.useState(null); // pitchers, ML odds, umpires, weather
   const [mlbMetaTomorrow, setMlbMetaTomorrow] = React.useState(null); // tomorrow's probables + umpires
-  const [nbaMeta, setNbaMeta] = React.useState(null); // NBA game odds + injuries
+  const [nbaMeta, setNbaMeta] = React.useState(null); // NBA game odds + injuries + gameScores
+  const [nhlMeta, setNhlMeta] = React.useState(null); // NHL gameScores
   const [testMode, setTestMode] = React.useState(false);
   const [bustLoading, setBustLoading] = React.useState(false);
   const [sportFilter, setSportFilter] = React.useState([]); // empty = all sports
@@ -205,7 +206,7 @@ function App() {
     }
     const _sk = `tonight_v1_${new Date().toLocaleDateString('en-CA')}`;
     const _sc = (() => { try { const s = sessionStorage.getItem(_sk); if (!s) return null; const p = JSON.parse(s); return Date.now() - p.ts < 120000 ? p.data : null; } catch { return null; } })();
-    const _applyData = (data) => { const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore >= 8) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore >= 8))); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); if (data.mlbMeta) setMlbMeta(data.mlbMeta); if (data.mlbMetaTomorrow) setMlbMetaTomorrow(data.mlbMetaTomorrow); if (data.nbaMeta) setNbaMeta(data.nbaMeta); };
+    const _applyData = (data) => { const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore >= 8) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore >= 8))); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); if (data.mlbMeta) setMlbMeta(data.mlbMeta); if (data.mlbMetaTomorrow) setMlbMetaTomorrow(data.mlbMetaTomorrow); if (data.nbaMeta) setNbaMeta(data.nbaMeta); if (data.nhlMeta) setNhlMeta(data.nhlMeta); };
     if (_sc) { _applyData(_sc); setTonightLoading(false); return; }
     let cancelled = false;
     setTonightLoading(true);
@@ -223,7 +224,7 @@ function App() {
     setTonightLoading(true);
     fetch(`${WORKER}/tonight?bust=1`)
       .then(r => r.json())
-      .then(data => { const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore >= 8) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore >= 8))); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); if (data.mlbMeta) setMlbMeta(data.mlbMeta); if (data.mlbMetaTomorrow) setMlbMetaTomorrow(data.mlbMetaTomorrow); if (data.nbaMeta) setNbaMeta(data.nbaMeta); setTonightLoading(false); setBustLoading(false); })
+      .then(data => { const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore >= 8) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore >= 8))); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); if (data.mlbMeta) setMlbMeta(data.mlbMeta); if (data.mlbMetaTomorrow) setMlbMetaTomorrow(data.mlbMetaTomorrow); if (data.nbaMeta) setNbaMeta(data.nbaMeta); if (data.nhlMeta) setNhlMeta(data.nhlMeta); setTonightLoading(false); setBustLoading(false); })
       .catch(() => { setAllTonightPlays([]); setNbaDropped([]); setTonightPlays([]); setTonightLoading(false); setBustLoading(false); });
   };
 
@@ -1971,6 +1972,7 @@ function App() {
           mlbMeta={mlbMeta}
           mlbMetaTomorrow={mlbMetaTomorrow}
           nbaMeta={nbaMeta}
+          nhlMeta={nhlMeta}
           trackedPlays={trackedPlays}
           untrackPlay={untrackPlay}
           navigateToPlay={navigateToPlay}

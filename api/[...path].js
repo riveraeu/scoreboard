@@ -1,4 +1,4 @@
-import { ALLOWED_ORIGIN, corsHeaders, jsonResponse, errorResponse, parseGameOdds, buildSoftTeamAbbrs, buildHardTeamAbbrs, buildTeamRankMap } from "./lib/utils.js";
+import { ALLOWED_ORIGIN, corsHeaders, jsonResponse, errorResponse, parseGameOdds, parseGameScores, buildSoftTeamAbbrs, buildHardTeamAbbrs, buildTeamRankMap } from "./lib/utils.js";
 import { PARK_KFACTOR, PARK_HITFACTOR, PARK_RUNFACTOR, UMPIRE_KFACTOR, log5K, poissonCDF, log5HitRate, simulateKsDist, kDistPct, simulateKs, buildNbaStatDist, nbaDistPct, simulateHits, simulateMLBTotalDist, simulateNBATotalDist, simulateNHLTotalDist, totalDistPct, simulateTeamTotalDist, simulateTeamPtsDist, decimalOdds, kellyFraction, evPerUnit } from "./lib/simulate.js";
 import { buildLineupKPct, buildBarrelPct, buildPitcherKPct, MLB_ID_TO_ABBR } from "./lib/mlb.js";
 import { warmPlayerInfoCache, buildNbaDvpStage1, buildNbaDvpFromBettingPros, buildNbaDepthChartPos, buildNbaPaceData, buildNbaPlayerPosFromSleeper, buildNbaDvpStage3FG, buildNbaUsageRate, buildNbaInjuryReport } from "./lib/nba.js";
@@ -1375,6 +1375,7 @@ var worker_default = {
               sportByteam.nba = d.teams || [];
               sportByteam.nbaScoring = scoringData.teams || [];
               sportByteam.nbaGameOdds = parseGameOdds(sbData.events || []);
+              sportByteam.nbaGameScores = parseGameScores(sbData.events || [], a => normTeam("nba", a));
               if (CACHE2) {
                 await CACHE2.put("byteam:nba", JSON.stringify(sportByteam.nba), { expirationTtl: 21600 });
                 await CACHE2.put("byteam:nba:scoring", JSON.stringify(sportByteam.nbaScoring), { expirationTtl: 21600 });
@@ -1600,11 +1601,17 @@ var worker_default = {
             const _mlbSbResult = sbResults.find(r => r.sport === "mlb");
             _extractMlbWeather(_mlbSbResult?.events ?? [], weatherByGame, normTeam);
             if (CACHE2 && Object.keys(weatherByGame).length > 0) await CACHE2.put(`weather:mlb:${todayDateStr}`, JSON.stringify(weatherByGame), { expirationTtl: 600 }).catch(() => {});
-            // Extract NHL game odds from already-fetched ESPN events (no extra request)
+            // Extract NHL game odds + scores from already-fetched ESPN events (no extra request)
             const _nhlSbResult = sbResults.find(r => r.sport === "nhl");
             if (_nhlSbResult?.events.length > 0) {
               const _raw = parseGameOdds(_nhlSbResult.events);
               sportByteam.nhlGameOdds = Object.fromEntries(Object.entries(_raw).map(([k, v]) => [normTeam("nhl", k), v]));
+              sportByteam.nhlGameScores = parseGameScores(_nhlSbResult.events, a => normTeam("nhl", a));
+            }
+            // Extract NBA game scores from already-fetched ESPN events
+            const _nbaSbResult = sbResults.find(r => r.sport === "nba");
+            if (_nbaSbResult?.events.length > 0 && !sportByteam.nbaGameScores) {
+              sportByteam.nbaGameScores = parseGameScores(_nbaSbResult.events, a => normTeam("nba", a));
             }
           }
           if (needNbaStatus) {
@@ -1634,20 +1641,25 @@ var worker_default = {
             if (CACHE2 && Object.keys(weatherByGame).length > 0) await CACHE2.put(`weather:mlb:${todayDateStr}`, JSON.stringify(weatherByGame), { expirationTtl: 600 }).catch(() => {});
           } catch {}
         }
-        // Fetch NHL game odds if nhl byteam was loaded from cache (scoreboard not fetched above)
+        // Fetch NHL game odds + scores if nhl byteam was loaded from cache (scoreboard not fetched above)
         if (sportsNeeded.has("nhl") && !sportByteam.nhlGameOdds) {
           const _nd3 = new Date(); const _ns3 = _nd3.toISOString().slice(0,10).replace(/-/g,'');
-          const _nhlRaw = await fetch(`https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard?dates=${_ns3}`, {
+          const _nhlFbSb = await fetch(`https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard?dates=${_ns3}`, {
             headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" }
-          }).then(r => r.ok ? r.json() : {}).then(d => parseGameOdds(d.events || [])).catch(() => ({}));
-          sportByteam.nhlGameOdds = Object.fromEntries(Object.entries(_nhlRaw).map(([k, v]) => [normTeam("nhl", k), v]));
+          }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
+          const _nhlFbEvents = _nhlFbSb.events || [];
+          sportByteam.nhlGameOdds = Object.fromEntries(Object.entries(parseGameOdds(_nhlFbEvents)).map(([k, v]) => [normTeam("nhl", k), v]));
+          if (!sportByteam.nhlGameScores) sportByteam.nhlGameScores = parseGameScores(_nhlFbEvents, a => normTeam("nhl", a));
         }
-        // Fetch NBA game odds if nba byteam was loaded from cache (scoreboard not fetched above)
+        // Fetch NBA game odds + scores if nba byteam was loaded from cache (scoreboard not fetched above)
         if (sportsNeeded.has("nba") && !sportByteam.nbaGameOdds) {
           const _nd2 = new Date(); const _ns2 = _nd2.toISOString().slice(0,10).replace(/-/g,'');
-          sportByteam.nbaGameOdds = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${_ns2}`, {
+          const _nbaFbSb = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${_ns2}`, {
             headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" }
-          }).then(r => r.ok ? r.json() : {}).then(d => parseGameOdds(d.events || [])).catch(() => ({}));
+          }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
+          const _nbaFbEvents = _nbaFbSb.events || [];
+          sportByteam.nbaGameOdds = parseGameOdds(_nbaFbEvents);
+          if (!sportByteam.nbaGameScores) sportByteam.nbaGameScores = parseGameScores(_nbaFbEvents, a => normTeam("nba", a));
         }
         // Fill in missing NBA game O/U totals from Kalshi (ESPN omits odds for live/imminent games)
         if (Object.keys(kalshiNbaOuMap).length > 0) {
@@ -3941,8 +3953,9 @@ var worker_default = {
           _nbaInjuries[key] = players;
           _nbaInjuries[abbr] = players; // keep original key too for fallback
         }
-        const nbaMeta = { gameOdds: _nbaGameOdds, injuries: _nbaInjuries };
-        const playsResult = { plays, nbaDropped, mlbMeta, mlbMetaTomorrow, nbaMeta, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length };
+        const nbaMeta = { gameOdds: _nbaGameOdds, injuries: _nbaInjuries, gameScores: sportByteam.nbaGameScores ?? {} };
+        const nhlMeta = { gameScores: sportByteam.nhlGameScores ?? {} };
+        const playsResult = { plays, nbaDropped, mlbMeta, mlbMetaTomorrow, nbaMeta, nhlMeta, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length };
         const sportsInPlays = new Set(plays.map((p) => p.sport));
         if (CACHE2 && sportsInPlays.size >= 2) {
           const summary = {

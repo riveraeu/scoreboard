@@ -59,6 +59,33 @@ export function parseGameOdds(events) {
   return gameOdds;
 }
 
+// Extract live/final scores from ESPN scoreboard events.
+// normFn maps raw ESPN abbreviations to the canonical form (e.g. GS→GSW).
+export function parseGameScores(events, normFn) {
+  const scores = {};
+  const ptFmt = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles" });
+  for (const event of events || []) {
+    const comp = event.competitions?.[0];
+    if (!comp) continue;
+    const homeComp = (comp.competitors || []).find(c => c.homeAway === "home");
+    const awayComp = (comp.competitors || []).find(c => c.homeAway === "away");
+    if (!homeComp || !awayComp) continue;
+    const hA = normFn ? normFn(homeComp.team?.abbreviation) : homeComp.team?.abbreviation;
+    const awA = normFn ? normFn(awayComp.team?.abbreviation) : awayComp.team?.abbreviation;
+    if (!hA || !awA) continue;
+    scores[hA] = {
+      homeTeam: hA, awayTeam: awA,
+      state: comp.status?.type?.state ?? "pre",
+      detail: comp.status?.type?.shortDetail || comp.status?.type?.detail || "",
+      homeScore: parseInt(homeComp.score ?? 0) || 0,
+      awayScore: parseInt(awayComp.score ?? 0) || 0,
+      gameDate: event.date ? ptFmt.format(new Date(event.date)) : null,
+      gameTime: event.date || null,
+    };
+  }
+  return scores;
+}
+
 export function buildSoftTeamAbbrs(teams, stat = "points", n = 10) {
   try {
     const { hint, idx } = SOFT_TEAM_METRIC[stat] || SOFT_TEAM_METRIC.points;
