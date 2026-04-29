@@ -116,10 +116,6 @@ export default function LineupsPage({
   navigateToTeam,
   navigateToModel,
   fetchReport,
-  bustLoading,
-  bustCache,
-  testMode,
-  setTestMode,
   authEmail,
   logout,
   syncStatus,
@@ -252,19 +248,6 @@ export default function LineupsPage({
             style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, cursor: 'pointer',
               border: '1px solid #30363d', background: 'transparent', color: '#484f58', fontWeight: 600 }}>
             Report
-          </button>
-          <button onClick={() => setTestMode(m => !m)}
-            style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, cursor: 'pointer',
-              border: `1px solid ${testMode ? '#e3b341' : '#30363d'}`,
-              background: testMode ? 'rgba(227,179,65,0.12)' : 'transparent',
-              color: testMode ? '#e3b341' : '#484f58', fontWeight: 600 }}>
-            {testMode ? '⚗ Mock' : 'Mock'}
-          </button>
-          <button onClick={bustCache} disabled={bustLoading}
-            style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, cursor: bustLoading ? 'default' : 'pointer',
-              border: '1px solid #30363d', background: 'transparent',
-              color: bustLoading ? '#30363d' : '#484f58', fontWeight: 600 }}>
-            {bustLoading ? 'Busting…' : 'Bust'}
           </button>
           {(() => {
             const activePicks = (trackedPlays || []).filter(p => !p.result || p.result === 'dnp');

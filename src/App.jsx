@@ -1,5 +1,5 @@
 import React from 'react';
-import { WORKER, SPORTS, STAT_FULL, MLB_TEAM, TEAM_DB, TOTAL_THRESHOLDS, STAT_LABEL, SPORT_KEY, TODAY, MOCK_PLAYS, SPORT_BADGE_COLOR, GAMELOG_COLS } from './lib/constants.js';
+import { WORKER, SPORTS, STAT_FULL, MLB_TEAM, TEAM_DB, TOTAL_THRESHOLDS, STAT_LABEL, SPORT_KEY, TODAY, SPORT_BADGE_COLOR, GAMELOG_COLS } from './lib/constants.js';
 import { lsGet, lsSet, ordinal, slugify, teamUrl } from './lib/utils.js';
 import { getColor, matchupColor, tierColor } from './lib/colors.js';
 import TotalsBarChart from './components/TotalsBarChart.jsx';
@@ -41,8 +41,8 @@ function App() {
   const [mlbMetaTomorrow, setMlbMetaTomorrow] = React.useState(null); // tomorrow's probables + umpires
   const [nbaMeta, setNbaMeta] = React.useState(null); // NBA game odds + injuries + gameScores
   const [nhlMeta, setNhlMeta] = React.useState(null); // NHL gameScores
-  const [testMode, setTestMode] = React.useState(false);
   const [bustLoading, setBustLoading] = React.useState(false);
+
   const [sportFilter, setSportFilter] = React.useState([]); // empty = all sports
   const [statFilter, setStatFilter] = React.useState([]);  // empty = all stats
   const [showPlaysInfo, setShowPlaysInfo] = React.useState(false);
@@ -197,13 +197,8 @@ function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  // Fetch tonight's plays on mount and when testMode toggles
+  // Fetch tonight's plays on mount
   React.useEffect(() => {
-    if (testMode) {
-      setTonightPlays(MOCK_PLAYS);
-      setTonightLoading(false);
-      return;
-    }
     const _sk = `tonight_v1_${new Date().toLocaleDateString('en-CA')}`;
     const _sc = (() => { try { const s = sessionStorage.getItem(_sk); if (!s) return null; const p = JSON.parse(s); return Date.now() - p.ts < 120000 ? p.data : null; } catch { return null; } })();
     const _applyData = (data) => { const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore >= 8) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore >= 8))); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); if (data.mlbMeta) setMlbMeta(data.mlbMeta); if (data.mlbMetaTomorrow) setMlbMetaTomorrow(data.mlbMetaTomorrow); if (data.nbaMeta) setNbaMeta(data.nbaMeta); if (data.nhlMeta) setNhlMeta(data.nhlMeta); };
@@ -215,7 +210,7 @@ function App() {
       .then(data => { if (cancelled) return; try { sessionStorage.setItem(_sk, JSON.stringify({ts: Date.now(), data})); } catch {} _applyData(data); setTonightLoading(false); })
       .catch(() => { if (cancelled) return; setAllTonightPlays([]); setNbaDropped([]); setTonightPlays([]); setTonightLoading(false); });
     return () => { cancelled = true; };
-  }, [testMode]);
+  }, []);
 
   const bustCache = () => {
     if (bustLoading) return;
@@ -1955,16 +1950,12 @@ function App() {
 
       {!player && !teamPage && !modelPage && (
         <LineupsPage
-          allTonightPlays={testMode ? MOCK_PLAYS : (allTonightPlays || [])}
+          allTonightPlays={allTonightPlays || []}
           tonightLoading={tonightLoading}
           navigateToPlayer={navigateToPlayer}
           navigateToTeam={navigateToTeam}
           navigateToModel={navigateToModel}
           fetchReport={fetchReport}
-          bustLoading={bustLoading}
-          bustCache={bustCache}
-          testMode={testMode}
-          setTestMode={setTestMode}
           authEmail={authEmail}
           logout={logout}
           syncStatus={syncStatus}
