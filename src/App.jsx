@@ -1,6 +1,7 @@
 import React from 'react';
 import { WORKER, SPORTS, STAT_FULL, MLB_TEAM, TEAM_DB, TOTAL_THRESHOLDS, STAT_LABEL, SPORT_KEY, TODAY, SPORT_BADGE_COLOR, GAMELOG_COLS } from './lib/constants.js';
 import { ordinal, slugify, teamUrl } from './lib/utils.js';
+import { buildLiveGameKey, getPickCurrentStat } from './lib/liveStats.js';
 import { tierColor } from './lib/colors.js';
 import TotalsBarChart from './components/TotalsBarChart.jsx';
 import TeamPage, { STAT_CONFIGS } from './components/TeamPage.jsx';
@@ -91,6 +92,8 @@ function App() {
   const [authError, setAuthError] = React.useState("");
   const [authLoading, setAuthLoading] = React.useState(false);
   const [syncStatus, setSyncStatus] = React.useState(null); // "saving"|"saved"|"error"
+  const [liveStats, setLiveStats] = React.useState({}); // { "sport:team1:team2": { state, detail, players } }
+  const liveIntervalRef = React.useRef(null);
   const syncTimer = React.useRef(null);
   const fabRef = React.useRef(null);
   const picksLoaded = React.useRef(!localStorage.getItem("sb_token")); // true if no token (no server load needed)
@@ -301,6 +304,112 @@ function App() {
   function oddsToProfit(americanOdds) {
     return americanOdds >= 0 ? americanOdds / 100 : 100 / Math.abs(americanOdds);
   }
+
+  // ── Live stat polling ────────────────────────────────────────────────────────
+  const fetchLiveStats = React.useCallback(async (currentPicks, currentMeta) => {
+    const today = new Date().toLocaleDateString("en-CA");
+    const tomorrow = (() => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toLocaleDateString("en-CA"); })();
+    const activePicks = currentPicks.filter(p => !p.result && (p.gameDate === today || p.gameDate === tomorrow));
+    if (!activePicks.length) return;
+
+    // Collect unique game keys from player prop picks (totals use existing gameScores)
+    const playerPropPicks = activePicks.filter(p => p.gameType !== "total" && p.gameType !== "teamTotal");
+    const gameKeys = [...new Set(playerPropPicks.map(buildLiveGameKey))];
+    if (!gameKeys.length) return;
+
+    try {
+      const res = await fetch(`${WORKER}/live?games=${gameKeys.join(",")}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setLiveStats(prev => ({ ...prev, ...data }));
+
+      // Auto-resolve: check each active player-prop pick against live data
+      setTrackedPlays(prev => prev.map(pick => {
+        if (pick.result) return pick; // already settled
+        if (pick.gameType === "total" || pick.gameType === "teamTotal") return pick; // handled separately
+        const gameKey = buildLiveGameKey(pick);
+        const liveGame = data[gameKey];
+        if (!liveGame || liveGame.state === "pre" || liveGame.state === "unknown") return pick;
+
+        const playerStats = liveGame.players?.[pick.playerName];
+        const current = getPickCurrentStat(pick, playerStats);
+
+        if (current !== null && current >= pick.threshold) {
+          return { ...pick, result: "won" };
+        }
+        if (liveGame.state === "post") {
+          if (playerStats === undefined && pick.stat !== "strikeouts") {
+            return { ...pick, result: "dnp" }; // player not in boxscore after game ended
+          }
+          return { ...pick, result: "lost" };
+        }
+        return pick;
+      }));
+    } catch { /* network error — silently skip */ }
+  }, []);
+
+  // Auto-resolve totals picks against existing gameScores (no extra fetch needed)
+  React.useEffect(() => {
+    if (!trackedPlays.length) return;
+    const today = new Date().toLocaleDateString("en-CA");
+    const allScores = {
+      ...(mlbMeta?.gameScores || {}),
+      ...(nbaMeta?.gameScores || {}),
+      ...(nhlMeta?.gameScores || {}),
+    };
+    if (!Object.keys(allScores).length) return;
+
+    setTrackedPlays(prev => prev.map(pick => {
+      if (pick.result) return pick;
+      if (pick.gameType !== "total" && pick.gameType !== "teamTotal") return pick;
+      if (pick.gameDate !== today) return pick;
+
+      let gameScore = null;
+      if (pick.gameType === "total") {
+        gameScore = allScores[pick.homeTeam];
+      } else {
+        gameScore = allScores[pick.scoringTeam] ||
+          Object.values(allScores).find(g => g.awayTeam === pick.scoringTeam && g.homeTeam === pick.oppTeam) ||
+          Object.values(allScores).find(g => g.homeTeam === pick.scoringTeam && g.awayTeam === pick.oppTeam);
+      }
+      if (!gameScore || gameScore.state !== "post") return pick;
+
+      const isHome = gameScore.homeTeam === (pick.gameType === "total" ? pick.homeTeam : pick.scoringTeam);
+      const current = pick.gameType === "total"
+        ? (gameScore.homeScore ?? 0) + (gameScore.awayScore ?? 0)
+        : (isHome ? (gameScore.homeScore ?? 0) : (gameScore.awayScore ?? 0));
+
+      const isUnder = pick.direction === "under";
+      const met = isUnder ? current < pick.threshold : current >= pick.threshold;
+      return { ...pick, result: met ? "won" : "lost" };
+    }));
+  }, [mlbMeta, nbaMeta, nhlMeta]);
+
+  // Start/stop background polling every 60s
+  React.useEffect(() => {
+    const today = new Date().toLocaleDateString("en-CA");
+    const tomorrow = (() => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toLocaleDateString("en-CA"); })();
+    const hasTodayActivePicks = trackedPlays.some(p =>
+      !p.result && (p.gameDate === today || p.gameDate === tomorrow) &&
+      p.gameType !== "total" && p.gameType !== "teamTotal"
+    );
+
+    if (liveIntervalRef.current) {
+      clearInterval(liveIntervalRef.current);
+      liveIntervalRef.current = null;
+    }
+    if (!hasTodayActivePicks) return;
+
+    // Fire immediately, then every 60s
+    fetchLiveStats(trackedPlays, { mlbMeta, nbaMeta, nhlMeta });
+    liveIntervalRef.current = setInterval(() => {
+      setTrackedPlays(current => {
+        fetchLiveStats(current, { mlbMeta, nbaMeta, nhlMeta });
+        return current;
+      });
+    }, 60000);
+    return () => { clearInterval(liveIntervalRef.current); liveIntervalRef.current = null; };
+  }, [trackedPlays.filter(p => !p.result).length, fetchLiveStats]);
 
   // --- Auth ---
   async function authSubmit(e) {
@@ -2064,6 +2173,10 @@ function App() {
             setPlayResult={setPlayResult}
             setShowAddPick={setShowAddPick}
             oddsToProfit={oddsToProfit}
+            liveStats={liveStats}
+            mlbGameScores={mlbMeta?.gameScores || {}}
+            nbaGameScores={nbaMeta?.gameScores || {}}
+            nhlGameScores={nhlMeta?.gameScores || {}}
           />
         </div>
       </div>

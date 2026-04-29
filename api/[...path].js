@@ -4016,6 +4016,173 @@ var worker_default = {
           });
         }
         return jsonResponse(playsResult, true);
+      } else if (path === "live") {
+        // Live in-game player stats for pick card tracking
+        // ?games=mlb:LAD:SD,nba:GSW:LAL (sport:team1:team2, either home/away order)
+        const gamesParam = (params.get("games") || "").trim();
+        if (!gamesParam) return jsonResponse({});
+        const ptDate = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles" }).format(new Date());
+        const ptDateStr = ptDate.replace(/-/g, "");
+        const SPORT_PATHS = { mlb: "baseball/mlb", nba: "basketball/nba", nhl: "hockey/nhl" };
+
+        const gameTuples = gamesParam.split(",").map(g => {
+          const [sport, ...teams] = g.split(":");
+          return { sport, key: g, teams: teams.map(t => t.toUpperCase()) };
+        }).filter(g => SPORT_PATHS[g.sport] && g.teams.length >= 2);
+
+        // Group by sport so we fetch each scoreboard once
+        const bySport = {};
+        for (const t of gameTuples) {
+          if (!bySport[t.sport]) bySport[t.sport] = [];
+          bySport[t.sport].push(t);
+        }
+
+        const liveResult = {};
+
+        await Promise.all(Object.entries(bySport).map(async ([sport, tuples]) => {
+          const sportPath = SPORT_PATHS[sport];
+
+          // Check caches first, collect which games still need a scoreboard fetch
+          const uncached = [];
+          for (const tuple of tuples) {
+            const cacheKey = `live:${sport}:${tuple.teams.slice().sort().join(":")}:${ptDate}`;
+            const cached = CACHE2 ? await CACHE2.get(cacheKey, "json").catch(() => null) : null;
+            if (cached) { liveResult[tuple.key] = cached; }
+            else uncached.push({ ...tuple, cacheKey });
+          }
+          if (!uncached.length) return;
+
+          // Fetch scoreboard to find ESPN event IDs
+          let sbEvents = [];
+          try {
+            const sbRes = await fetch(
+              `https://site.api.espn.com/apis/site/v2/sports/${sportPath}/scoreboard?dates=${ptDateStr}`,
+              { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(5000) }
+            );
+            if (sbRes.ok) sbEvents = (await sbRes.json()).events || [];
+          } catch { /* scoreboard unavailable — return pre for all */ }
+
+          await Promise.all(uncached.map(async ({ key, teams, cacheKey }) => {
+            const [t1, t2] = teams;
+
+            // Find matching event
+            const event = sbEvents.find(ev => {
+              const abbrs = (ev.competitions?.[0]?.competitors || [])
+                .map(c => c.team?.abbreviation?.toUpperCase());
+              return abbrs.includes(t1) && abbrs.includes(t2);
+            });
+
+            if (!event) { liveResult[key] = { state: "unknown" }; return; }
+
+            const comp = event.competitions?.[0];
+            const state = comp?.status?.type?.state ?? "pre";
+            const detail = comp?.status?.type?.shortDetail || comp?.status?.type?.detail || "";
+
+            if (state === "pre") {
+              liveResult[key] = { state: "pre", detail };
+              return;
+            }
+
+            // Fetch boxscore summary
+            let players = {};
+            try {
+              const sumRes = await fetch(
+                `https://site.api.espn.com/apis/site/v2/sports/${sportPath}/summary?event=${event.id}`,
+                { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(5000) }
+              );
+              if (sumRes.ok) {
+                const sum = await sumRes.json();
+
+                if (sport === "mlb") {
+                  // MLB: boxscore.teams[] has hitting/pitching statistics sections
+                  for (const teamData of sum.boxscore?.teams || []) {
+                    for (const statsSection of teamData.statistics || []) {
+                      const labels = (statsSection.labels || []).map(l => l.toUpperCase());
+                      const hasPitching = labels.includes("IP") || labels.includes("K");
+                      const hasBatting = labels.includes("RBI") || labels.includes("AB");
+                      const kIdx = labels.indexOf("K");
+                      const ipIdx = labels.indexOf("IP");
+                      const hIdx = labels.indexOf("H");
+                      const rIdx = labels.indexOf("R");
+                      const rbiIdx = labels.indexOf("RBI");
+
+                      for (const ath of statsSection.athletes || []) {
+                        const name = ath.athlete?.fullName || ath.athlete?.displayName;
+                        if (!name) continue;
+                        const s = ath.stats || [];
+                        if (hasPitching && kIdx !== -1) {
+                          players[name] = {
+                            strikeouts: parseInt(s[kIdx]) || 0,
+                            ip: s[ipIdx] ?? "0.0",
+                          };
+                        } else if (hasBatting && hIdx !== -1) {
+                          const h = parseInt(s[hIdx]) || 0;
+                          const r = parseInt(s[rIdx]) || 0;
+                          const rbi = parseInt(s[rbiIdx]) || 0;
+                          players[name] = { hits: h, runs: r, rbi, hrr: h + r + rbi };
+                        }
+                      }
+                    }
+                  }
+                } else {
+                  // NBA / NHL share the boxscore.players[] format
+                  for (const teamData of sum.boxscore?.players || []) {
+                    const stats = teamData.statistics?.[0];
+                    if (!stats) continue;
+                    const labels = (stats.labels || []).map(l => l.toUpperCase());
+
+                    if (sport === "nba") {
+                      const ptsIdx = labels.indexOf("PTS");
+                      const rebIdx = labels.indexOf("REB");
+                      const astIdx = labels.indexOf("AST");
+                      const fg3Idx = ["3PM","3FG","3PT"].reduce((found, k) => found !== -1 ? found : labels.indexOf(k), -1);
+                      for (const ath of stats.athletes || []) {
+                        const name = ath.athlete?.fullName || ath.athlete?.displayName;
+                        if (!name) continue;
+                        const s = ath.stats || [];
+                        if (!s.length) continue;
+                        players[name] = {
+                          points:       parseInt(s[ptsIdx]) || 0,
+                          rebounds:     parseInt(s[rebIdx]) || 0,
+                          assists:      parseInt(s[astIdx]) || 0,
+                          threePointers: fg3Idx !== -1 ? (parseInt(s[fg3Idx]) || 0) : 0,
+                        };
+                      }
+                    } else if (sport === "nhl") {
+                      const gIdx  = labels.indexOf("G");
+                      const aIdx  = labels.indexOf("A");
+                      const ptsIdx = labels.indexOf("PTS");
+                      const toiIdx = labels.indexOf("TOI");
+                      for (const ath of stats.athletes || []) {
+                        const name = ath.athlete?.fullName || ath.athlete?.displayName;
+                        if (!name) continue;
+                        const s = ath.stats || [];
+                        if (!s.length) continue;
+                        const goals = parseInt(s[gIdx]) || 0;
+                        const assistsNhl = parseInt(s[aIdx]) || 0;
+                        players[name] = {
+                          goals, assistsNhl,
+                          points: ptsIdx !== -1 ? (parseInt(s[ptsIdx]) || 0) : goals + assistsNhl,
+                          toi: s[toiIdx] ?? "0:00",
+                        };
+                      }
+                    }
+                  }
+                }
+              }
+            } catch { /* boxscore unavailable */ }
+
+            const gameData = { state, detail, players };
+            liveResult[key] = gameData;
+            if (CACHE2) {
+              const ttl = state === "post" ? 300 : 60;
+              await CACHE2.put(cacheKey, JSON.stringify(gameData), { expirationTtl: ttl }).catch(() => {});
+            }
+          }));
+        }));
+
+        return jsonResponse(liveResult);
+
       } else if (path === "plays/history") {
         if (!CACHE2) return jsonResponse({ history: [] });
         const today = /* @__PURE__ */ new Date();

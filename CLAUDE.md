@@ -36,6 +36,7 @@ Routes via `pathname`:
 - `/api/gamelog` — ESPN player gamelog (GET `?sport=basketball/nba&athleteId=X&season=2026`); uses ESPN JSON API (`site.web.api.espn.com/apis/common/v3/sports/{sport}/{league}/athletes/{id}/gamelog`) for all sports including NBA/NHL — **not** the HTML page scraper (ESPN now blocks server-side page fetches with AWS WAF). MLB uses same JSON API endpoint. Response: `{labels, events:[{eventId, stats, date, oppAbbr, isHome}], totalGames}`. **Two-way players (e.g. Ohtani)**: ESPN defaults to batting stats; the play loop appends `&category=pitching` for all MLB strikeout market players and all pitcher gamelog fetches. Separate Redis cache keys (`gl:mlb242526pv1`, `gl:mlb2025p|`, `gl:mlb2026p|`) prevent batting/pitching collision. Without this, two-way players drop `col_not_found` because the `K` column is absent from the batting gamelog.
 - `/api/dvp` — Defense vs Position data
 - `/api/nba-depth` — NBA depth chart from ESPN
+- `/api/live` — live in-game player stats for pick tracking (GET `?games=mlb:LAD:SD,nba:GSW:LAL`); sport:team1:team2 tuples (either order); fetches ESPN scoreboard to find event ID, then `/summary?event={id}` boxscore; returns `{ "sport:t1:t2": { state, detail, players: { "Full Name": { strikeouts, ip, hits, runs, rbi, hrr, points, rebounds, assists, threePointers, goals, assistsNhl } } } }`; cache `live:{sport}:{teams sorted}:{ptDate}` at 60s (in-progress) or 300s (final); for-game totals/team totals use existing `mlbMeta/nbaMeta/nhlMeta.gameScores` — no new fetch
 - `/api/keepalive` — cron ping (daily)
 - `/api/dvp/debug-dc` — inspect depth chart cache
 - `/api/auth/register` — create account (POST `{email, password}`); password minimum **8 characters**
@@ -61,6 +62,7 @@ Built with Vite + `@vitejs/plugin-react`. Entry point is `index.html` → `src/m
 - `src/index.css` — global styles (body background, grid, gamelog tooltip CSS)
 - `src/lib/constants.js` — `WORKER`, `SPORTS`, `STAT_FULL`, `MLB_TEAM`, `TEAM_DB`, `TOTAL_THRESHOLDS`, `STAT_LABEL`, `SPORT_KEY`, `TODAY`, `MOCK_PLAYS`, `SPORT_BADGE_COLOR`, `GAMELOG_COLS`
 - `src/lib/utils.js` — `ordinal`, `oddsToImpliedProb`, `logoUrl(sport, abbr)`, `fmtGameTime`, `getWeekMonday`, `slugify`, `teamUrl`; `logoUrl` incorporates `LOGO_CDN_ABBR` normalization (NHL: `tbl→tb, njd→nj, lak→la, sjs→sj`; NBA: `kat→atl`) so MatchupCard/PlaysColumn import it instead of defining their own
+- `src/lib/liveStats.js` — pure helpers for live pick tracking: `buildLiveGameKey(pick)` (builds `"sport:team1:team2"` key), `getPickCurrentStat(pick, playerStats)` (extracts numeric stat; returns 0 for pitchers not yet recorded), `buildLiveDisplay(pick, liveGame)` (player prop card display `{text, color, met}`), `buildTotalLiveDisplay(pick, gameScores)` (game/team total display using existing gameScores from meta)
 - `src/lib/colors.js` — `tierColor` only (getColor and matchupColor removed — were imported but never called)
 - `src/components/TotalsBarChart.jsx` — bar chart shown on team page
 - `src/components/TeamPage.jsx` — team page; also exports `STAT_CONFIGS`
@@ -556,6 +558,14 @@ Shows: **"My Picks"** label → total count badge → `X active · Y finished` b
 - **Day header** (`"Today"` / `"Yesterday"` / `"Apr 19"`): lighter, `#0d1117` background, `#21262d` border, nested inside expanded week. Shows pick count, active count, daily net P&L. Clicking toggles `openPickDays`.
 - Week key = Monday of the week (`(d.getDay() + 6) % 7` offset, same as chart week bucketing). Sort order within each day: open picks first, then by `trackedAt` descending.
 - Date is removed from the pick card subtitle (shown in the day header instead).
+
+### Live Pick Tracking
+- **Polling**: `App.jsx` polls `/api/live` every **60s** in a background `setInterval` whenever any active player-prop pick has `gameDate === today`. Fires immediately on mount of the effect (not just on interval). Stops when all today's active player-prop picks are resolved.
+- **Player prop auto-resolve**: after each poll, `setTrackedPlays` checks each active pick against returned `liveGame.players[pick.playerName]`; if `currentStat >= threshold` → won; if `state === "post"` and stat < threshold → lost; if player not in boxscore after game ends (and stat isn't strikeouts) → DNP. Pitchers not yet in boxscore during live games show `K: 0 / N+`.
+- **Total/team-total auto-resolve**: separate `useEffect` runs whenever `mlbMeta/nbaMeta/nhlMeta` change; checks active total picks against `gameScores` (already fetched, no extra API call); resolves won/lost when `state === "post"`.
+- **LIVE badge**: small green dot + "LIVE" shown in row 1 of pick card when `liveGame?.state === "in"` (or total game is in-progress). Hidden once pick is settled.
+- **Live stat line**: appended below row 2 subtitle when game is live. Format: `K: 3 / 4+ · Bot 5th` (gray), `K: 4 ✓ · Top 7th` (green, bold), `Runs: 3 / O7.5 · Bot 4th`. Colors: green = threshold met, yellow = 1 short, gray = further away. Hidden once pick is settled (result set).
+- **Outcome buttons moved to edit form**: ✓ Won / ✗ Lost / — DNP buttons removed from row 2; now inside the edit form (✎ button) with active-state highlight on the current result. Remove button also moved there (was `×` in row 1). The ↺ undo button stays on row 1 for settled picks.
 
 **Pick card layout** (compact, `padding:"7px 10px"`, `borderRadius:8`, `marginBottom:5`):
 - **Photo slot** (36×36, left edge, `flexShrink:0`): player props → ESPN headshot circle (`a.espncdn.com/i/headshots/{sport}/players/full/{playerId}.png`), fallback = first initial in gray circle; game totals → two stacked team logos (19×19, away on top / home on bottom) from ESPN CDN.

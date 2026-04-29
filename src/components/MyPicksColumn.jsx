@@ -2,8 +2,9 @@ import React from 'react';
 import { SPORT_BADGE_COLOR, STAT_LABEL } from '../lib/constants.js';
 import DayBar from './DayBar.jsx';
 import AddPickModal from './AddPickModal.jsx';
+import { buildLiveGameKey, buildLiveDisplay, buildTotalLiveDisplay } from '../lib/liveStats.js';
 
-function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToTeam, navigateToPlay, bankroll, setBankroll, setPickUnits, chartGroupBy, setChartGroupBy, openPickWeeks, setOpenPickWeeks, openPickDays, setOpenPickDays, editPickId, setEditPickId, setPlayResult, setShowAddPick, oddsToProfit }) {
+function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToTeam, navigateToPlay, bankroll, setBankroll, setPickUnits, chartGroupBy, setChartGroupBy, openPickWeeks, setOpenPickWeeks, openPickDays, setOpenPickDays, editPickId, setEditPickId, setPlayResult, setShowAddPick, oddsToProfit, liveStats = {}, mlbGameScores = {}, nbaGameScores = {}, nhlGameScores = {} }) {
   return (
         <div id="my-picks">
         {(() => {
@@ -300,6 +301,20 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
               else if (pick.result === "lost") pickPL = -stake;
               // DNP = void, pickPL stays null
               const pickPLColor = pickPL > 0 ? "#3fb950" : pickPL < 0 ? "#f78166" : "#8b949e";
+              // Live stat data
+              const allGameScores = { ...mlbGameScores, ...nbaGameScores, ...nhlGameScores };
+              const liveGame = (pick.gameType === "total" || pick.gameType === "teamTotal")
+                ? null
+                : liveStats[buildLiveGameKey(pick)];
+              const liveDisplay = buildLiveDisplay(pick, liveGame);
+              const totalLiveDisplay = (pick.gameType === "total" || pick.gameType === "teamTotal")
+                ? buildTotalLiveDisplay(pick, allGameScores)
+                : null;
+              const isLive = liveGame?.state === "in" || totalLiveDisplay?.current != null && (() => {
+                const gScore = allGameScores[(pick.homeTeam || pick.scoringTeam)];
+                return gScore?.state === "in";
+              })();
+
               return (
                 <div key={pick.id} style={{background:"#161b22",
                   border:`1px solid ${resultColor ? resultColor + "44" : "#30363d"}`,
@@ -356,6 +371,12 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                           {pick.sport}
                         </span>
                       )}
+                      {isLive && !pick.result && (
+                        <span style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:9,fontWeight:700,color:"#3fb950",flexShrink:0}}>
+                          <span style={{width:5,height:5,borderRadius:"50%",background:"#3fb950",display:"inline-block"}}/>
+                          LIVE
+                        </span>
+                      )}
                       {pick.edge != null && (
                         <span style={{background:"rgba(63,185,80,0.12)",border:"1px solid #3fb950",borderRadius:4,
                           padding:"0px 5px",fontSize:10,color:"#3fb950",fontWeight:700,flexShrink:0}}>
@@ -386,52 +407,42 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                           padding:"2px 6px",fontSize:10,color: editPickId === pick.id ? "#58a6ff" : "#484f58",cursor:"pointer",flexShrink:0}}>
                         ✎
                       </button>
-                      <button onClick={() => untrackPlay(pick.id)} title="Remove"
-                        style={{background:"transparent",border:"1px solid #30363d",borderRadius:5,
-                          padding:"2px 6px",fontSize:11,color:"#484f58",cursor:"pointer",flexShrink:0}}>
-                        ×
-                      </button>
                     </div>
-                    {/* Row 2: subtitle + stake + (active: icon buttons / settled: win profit) */}
-                    <div style={{display:"flex",alignItems:"center",gap:0}}>
-                      <div style={{flex:1,minWidth:0,display:"flex",alignItems:"center",flexWrap:"wrap",lineHeight:1.4}}>
-                        {pick.gameType !== "total" && pick.gameType !== "teamTotal" && (
-                          <span style={{color:"#8b949e",fontSize:10}}>
-                            {pick.playerTeam} vs {pick.opponent}
-                            <span style={{color:"#484f58",margin:"0 3px"}}>·</span>
-                          </span>
-                        )}
-                        <span style={{color:"#58a6ff",fontWeight:600,fontSize:10}}>
-                          {pick.gameType === "teamTotal"
-                            ? `Over ${(pick.threshold-0.5).toFixed(1)} ${({teamRuns:"Runs",teamPoints:"Pts"})[pick.stat]||pick.stat}`
-                            : pick.gameType === "total"
-                            ? `${pick.direction === "under" ? "Under" : "Over"} ${(pick.threshold-0.5).toFixed(1)} ${({totalRuns:"Runs",totalPoints:"Pts",totalGoals:"Goals"})[pick.stat]||pick.stat}`
-                            : `${pick.threshold}+ ${STAT_LABEL[pick.stat] || pick.stat}`}
+                    {/* Row 2: subtitle + stake */}
+                    <div style={{flex:1,minWidth:0,display:"flex",alignItems:"center",flexWrap:"wrap",lineHeight:1.4}}>
+                      {pick.gameType !== "total" && pick.gameType !== "teamTotal" && (
+                        <span style={{color:"#8b949e",fontSize:10}}>
+                          {pick.playerTeam} vs {pick.opponent}
+                          <span style={{color:"#484f58",margin:"0 3px"}}>·</span>
                         </span>
-                        <span style={{color:"#484f58",fontSize:10,margin:"0 3px"}}>·</span>
-                        <span style={{color:"#a855f7",fontSize:10}}>{oddsStr}</span>
-                        <span style={{color:"#484f58",fontSize:10,margin:"0 3px"}}>·</span>
-                        <span style={{color:"#e3b341",fontSize:10}}>{pick.direction === "under" ? (pick.noTruePct ?? pick.truePct) : pick.truePct}% true</span>
-                        <span style={{color:"#484f58",fontSize:10,margin:"0 3px"}}>·</span>
-                        <span style={{color:"#484f58",fontSize:10}}>$</span>
-                        <input type="number" min="0" step="0.1" value={units}
-                          onChange={e => setPickUnits(pick.id, e.target.value)}
-                          style={{background:"transparent",border:"none",outline:"none",color:"#c9d1d9",
-                            fontSize:10,width:46,padding:"0 2px",textAlign:"left"}}/>
-                      </div>
-                      {!pick.result && (
-                        <div style={{display:"flex",gap:4,flexShrink:0,marginLeft:6}}>
-                          {[["won","rgba(63,185,80,0.12)","#3fb950","✓","Won"],["lost","rgba(247,129,102,0.12)","#f78166","✗","Lost"],["dnp","rgba(139,148,158,0.12)","#484f58","–","DNP"]].map(([res,bg,bdr,icon,lbl]) => (
-                            <button key={res} onClick={() => setPlayResult(pick.id, res)} title={lbl}
-                              style={{background:bg,border:`1px solid ${bdr}`,borderRadius:5,
-                                padding:"2px 6px",fontSize:10,fontWeight:700,
-                                color:res==="dnp"?"#8b949e":bdr,cursor:"pointer",flexShrink:0}}>
-                              {icon}
-                            </button>
-                          ))}
-                        </div>
                       )}
+                      <span style={{color:"#58a6ff",fontWeight:600,fontSize:10}}>
+                        {pick.gameType === "teamTotal"
+                          ? `Over ${(pick.threshold-0.5).toFixed(1)} ${({teamRuns:"Runs",teamPoints:"Pts"})[pick.stat]||pick.stat}`
+                          : pick.gameType === "total"
+                          ? `${pick.direction === "under" ? "Under" : "Over"} ${(pick.threshold-0.5).toFixed(1)} ${({totalRuns:"Runs",totalPoints:"Pts",totalGoals:"Goals"})[pick.stat]||pick.stat}`
+                          : `${pick.threshold}+ ${STAT_LABEL[pick.stat] || pick.stat}`}
+                      </span>
+                      <span style={{color:"#484f58",fontSize:10,margin:"0 3px"}}>·</span>
+                      <span style={{color:"#a855f7",fontSize:10}}>{oddsStr}</span>
+                      <span style={{color:"#484f58",fontSize:10,margin:"0 3px"}}>·</span>
+                      <span style={{color:"#e3b341",fontSize:10}}>{pick.direction === "under" ? (pick.noTruePct ?? pick.truePct) : pick.truePct}% true</span>
+                      <span style={{color:"#484f58",fontSize:10,margin:"0 3px"}}>·</span>
+                      <span style={{color:"#484f58",fontSize:10}}>$</span>
+                      <input type="number" min="0" step="0.1" value={units}
+                        onChange={e => setPickUnits(pick.id, e.target.value)}
+                        style={{background:"transparent",border:"none",outline:"none",color:"#c9d1d9",
+                          fontSize:10,width:46,padding:"0 2px",textAlign:"left"}}/>
                     </div>
+                    {/* Live stat line — shown when game is in progress or final */}
+                    {(liveDisplay || totalLiveDisplay) && !pick.result && (() => {
+                      const d = liveDisplay || totalLiveDisplay;
+                      return (
+                        <div style={{marginTop:3,fontSize:10,color:d.color,fontWeight:d.met ? 700 : 400}}>
+                          {d.text}
+                        </div>
+                      );
+                    })()}
                     {/* Edit mode: full inline form */}
                     {editPickId === pick.id && (() => {
                       const SPORT_STATS_EDIT = {
@@ -477,10 +488,32 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                                 onBlur={e => { const v = e.target.value; setTrackedPlays(prev => prev.map(p => p.id === pick.id ? {...p, gameDate: v || null} : p)); }} />
                             </div>
                           </div>
-                          <button onClick={() => setEditPickId(null)}
-                            style={{width:"100%",padding:"4px",borderRadius:5,background:"rgba(88,166,255,0.12)",border:"1px solid #58a6ff",color:"#58a6ff",fontSize:11,fontWeight:600,cursor:"pointer"}}>
-                            done
-                          </button>
+                          {/* Outcome buttons */}
+                          <div style={{display:"flex",gap:6,marginBottom:8}}>
+                            {[
+                              ["won","rgba(63,185,80,0.12)","#3fb950","✓ Won"],
+                              ["lost","rgba(247,129,102,0.12)","#f78166","✗ Lost"],
+                              ["dnp","rgba(139,148,158,0.12)","#484f58","— DNP"],
+                            ].map(([res,bg,bdr,lbl]) => (
+                              <button key={res} onClick={() => { setPlayResult(pick.id, res); setEditPickId(null); }}
+                                style={{flex:1,background: pick.result === res ? bdr + "33" : bg,
+                                  border:`1px solid ${bdr}`,borderRadius:5,padding:"4px 0",fontSize:10,fontWeight:700,
+                                  color:res==="dnp"?"#8b949e":bdr,cursor:"pointer",
+                                  outline: pick.result === res ? `1px solid ${bdr}` : "none"}}>
+                                {lbl}
+                              </button>
+                            ))}
+                          </div>
+                          <div style={{display:"flex",gap:6}}>
+                            <button onClick={() => setEditPickId(null)}
+                              style={{flex:1,padding:"4px",borderRadius:5,background:"rgba(88,166,255,0.12)",border:"1px solid #58a6ff",color:"#58a6ff",fontSize:11,fontWeight:600,cursor:"pointer"}}>
+                              done
+                            </button>
+                            <button onClick={() => { untrackPlay(pick.id); setEditPickId(null); }}
+                              style={{padding:"4px 12px",borderRadius:5,background:"rgba(247,129,102,0.08)",border:"1px solid #f7816688",color:"#f78166",fontSize:11,cursor:"pointer"}}>
+                              Remove
+                            </button>
+                          </div>
                         </div>
                       );
                     })()}
