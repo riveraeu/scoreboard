@@ -78,6 +78,9 @@ function App() {
     return new Set([mon.toLocaleDateString("en-CA")]);
   });
   const [showAddPick, setShowAddPick] = React.useState(false);
+  const [showPicksDrawer, setShowPicksDrawer] = React.useState(false);
+  const [flyingPick, setFlyingPick] = React.useState(null);
+  const [starClickOrigin, setStarClickOrigin] = React.useState(null);
   const [activeSportTab, setActiveSportTab] = React.useState('mlb');
   const [authToken, setAuthToken] = React.useState(() => localStorage.getItem("sb_token") || null);
   const [authEmail, setAuthEmail] = React.useState(() => localStorage.getItem("sb_email") || null);
@@ -88,6 +91,7 @@ function App() {
   const [authLoading, setAuthLoading] = React.useState(false);
   const [syncStatus, setSyncStatus] = React.useState(null); // "saving"|"saved"|"error"
   const syncTimer = React.useRef(null);
+  const fabRef = React.useRef(null);
   const picksLoaded = React.useRef(!localStorage.getItem("sb_token")); // true if no token (no server load needed)
   const debouncedQuery = useDebounce(query, 300);
   const dropRef = React.useRef(null);
@@ -249,11 +253,29 @@ function App() {
       }, ...prev];
     });
   }
-  function initiateTrack(play) {
+  function initiateTrack(play, event) {
+    if (event) {
+      const rect = event.currentTarget.getBoundingClientRect();
+      setStarClickOrigin({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+    } else {
+      setStarClickOrigin(null);
+    }
     const odds = play.americanOdds;
     const defaultOdds = odds != null ? (odds > 0 ? `+${odds}` : `${odds}`) : "-110";
     setPendingOdds(defaultOdds);
     setPendingTrackPlay(play);
+  }
+  function triggerFlyAnimation() {
+    if (!starClickOrigin || !fabRef.current) return;
+    const fabRect = fabRef.current.getBoundingClientRect();
+    setFlyingPick({
+      x: starClickOrigin.x,
+      y: starClickOrigin.y,
+      destX: fabRect.left + fabRect.width / 2,
+      destY: fabRect.top + fabRect.height / 2,
+      key: Date.now(),
+    });
+    setStarClickOrigin(null);
   }
   function untrackPlay(id) {
     setTrackedPlays(prev => prev.filter(p => p.id !== id));
@@ -848,6 +870,7 @@ function App() {
                       const oddsVal = !isNaN(_n) && pendingOdds.trim() !== "-" && pendingOdds.trim() !== "+" ? _n : null;
                       trackPlay(oddsVal ? { ...play, americanOdds: oddsVal } : play);
                       setPendingTrackPlay(null);
+                      triggerFlyAnimation();
                     } else if (e.key === "Escape") {
                       setPendingTrackPlay(null);
                     }
@@ -881,6 +904,7 @@ function App() {
                   const oddsVal = !isNaN(_n) && pendingOdds.trim() !== "-" && pendingOdds.trim() !== "+" ? _n : null;
                   trackPlay(oddsVal ? { ...play, americanOdds: oddsVal } : play);
                   setPendingTrackPlay(null);
+                  triggerFlyAnimation();
                 }}
                   style={{flex:1,padding:"8px 0",fontSize:12,borderRadius:7,border:"1px solid #3fb950",
                     background:"rgba(63,185,80,0.12)",color:"#3fb950",cursor:"pointer",fontWeight:600}}>
@@ -965,19 +989,11 @@ function App() {
               <span style={{width:6,height:6,borderRadius:"50%",background: syncStatus==="saving"?"#e3b341":syncStatus==="error"?"#f78166":"#3fb950",display:"inline-block"}}/>
               {authEmail}
             </span>
-            <div style={{display:"flex",gap:5,alignItems:"center"}}>
-              <button onClick={() => setActiveSportTab('picks')}
-                style={{fontSize:11,padding:"2px 8px",borderRadius:6,cursor:"pointer",
-                  border:"1px solid #58a6ff",background:activeSportTab==="picks"?"rgba(88,166,255,0.12)":"transparent",
-                  color:"#58a6ff",fontWeight:600,flexShrink:0}}>
-                My Picks
-              </button>
-              <button onClick={logout}
-                style={{fontSize:11,padding:"2px 8px",borderRadius:6,cursor:"pointer",
-                  border:"1px solid #30363d",background:"transparent",color:"#484f58",flexShrink:0}}>
-                log out
-              </button>
-            </div>
+            <button onClick={logout}
+              style={{fontSize:11,padding:"2px 8px",borderRadius:6,cursor:"pointer",
+                border:"1px solid #30363d",background:"transparent",color:"#484f58",flexShrink:0}}>
+              log out
+            </button>
           </>
         ) : (
           <button onClick={() => { setShowAuthModal(true); setAuthMode("login"); setAuthError(""); }}
@@ -1963,22 +1979,7 @@ function App() {
           mlbMetaTomorrow={mlbMetaTomorrow}
           nbaMeta={nbaMeta}
           trackedPlays={trackedPlays}
-          setTrackedPlays={setTrackedPlays}
           untrackPlay={untrackPlay}
-          bankroll={bankroll}
-          setBankroll={setBankroll}
-          setPickUnits={setPickUnits}
-          chartGroupBy={chartGroupBy}
-          setChartGroupBy={setChartGroupBy}
-          openPickWeeks={openPickWeeks}
-          setOpenPickWeeks={setOpenPickWeeks}
-          openPickDays={openPickDays}
-          setOpenPickDays={setOpenPickDays}
-          editPickId={editPickId}
-          setEditPickId={setEditPickId}
-          setPlayResult={setPlayResult}
-          setShowAddPick={setShowAddPick}
-          oddsToProfit={oddsToProfit}
           navigateToPlay={navigateToPlay}
           trackPlay={initiateTrack}
         />
@@ -1987,6 +1988,127 @@ function App() {
       <div style={{color:"#484f58",fontSize:11,marginTop:12,textAlign:"center"}}>
         Powered by ESPN API · via Cloudflare Worker proxy
       </div>
+
+      {/* FAB picks button */}
+      {(() => {
+        const activePicks = trackedPlays.filter(p => !p.result || p.result === "dnp");
+        return (
+          <button ref={fabRef}
+            onClick={() => setShowPicksDrawer(d => !d)}
+            title="My Picks"
+            style={{
+              position:"fixed", bottom:24, right:24,
+              width:52, height:52, borderRadius:"50%",
+              background: showPicksDrawer ? "#1c2128" : "#161b22",
+              border:`2px solid ${showPicksDrawer ? "#58a6ff" : "#30363d"}`,
+              cursor:"pointer",
+              display:"flex", alignItems:"center", justifyContent:"center",
+              fontSize:22, color:"#e3b341",
+              boxShadow:"0 4px 20px rgba(0,0,0,0.6)",
+              zIndex:600,
+              transition:"border-color 0.15s, background 0.15s",
+            }}>
+            ★
+            {activePicks.length > 0 && (
+              <span style={{
+                position:"absolute", top:-5, right:-5,
+                background:"#3fb950", color:"#0d1117",
+                fontSize:10, fontWeight:700,
+                borderRadius:10, padding:"1px 5px",
+                minWidth:18, textAlign:"center", lineHeight:"16px",
+                border:"2px solid #0d1117",
+              }}>{activePicks.length}</span>
+            )}
+          </button>
+        );
+      })()}
+
+      {/* Flying pick star animation */}
+      {flyingPick && (
+        <div
+          key={flyingPick.key}
+          style={{
+            position:"fixed",
+            left: flyingPick.x,
+            top: flyingPick.y,
+            "--fly-dx": `${flyingPick.destX - flyingPick.x}px`,
+            "--fly-dy": `${flyingPick.destY - flyingPick.y}px`,
+            width:24, height:24,
+            fontSize:18,
+            display:"flex", alignItems:"center", justifyContent:"center",
+            color:"#e3b341",
+            zIndex:9999,
+            pointerEvents:"none",
+            animation:"fly-to-fab 0.45s cubic-bezier(0.25,0.46,0.45,0.94) forwards",
+          }}
+          onAnimationEnd={() => setFlyingPick(null)}
+        >★</div>
+      )}
+
+      {/* Picks drawer backdrop */}
+      <div
+        onClick={() => setShowPicksDrawer(false)}
+        style={{
+          position:"fixed", inset:0,
+          background:"rgba(0,0,0,0.5)",
+          zIndex:597,
+          opacity: showPicksDrawer ? 1 : 0,
+          pointerEvents: showPicksDrawer ? "auto" : "none",
+          transition:"opacity 0.3s ease",
+        }}
+      />
+
+      {/* Picks drawer panel */}
+      <div style={{
+        position:"fixed", top:0, right:0, bottom:0,
+        width:"min(50vw, 680px)",
+        background:"#0d1117",
+        borderLeft:"1px solid #30363d",
+        zIndex:598,
+        display:"flex", flexDirection:"column",
+        transform: showPicksDrawer ? "translateX(0)" : "translateX(100%)",
+        transition:"transform 0.3s ease",
+        boxShadow:"-4px 0 32px rgba(0,0,0,0.6)",
+      }}>
+        {/* Drawer header */}
+        <div style={{
+          display:"flex", alignItems:"center", justifyContent:"space-between",
+          padding:"16px 20px 14px",
+          borderBottom:"1px solid #21262d",
+          flexShrink:0,
+        }}>
+          <span style={{color:"#c9d1d9", fontWeight:700, fontSize:15}}>My Picks</span>
+          <button onClick={() => setShowPicksDrawer(false)}
+            style={{background:"transparent", border:"none", color:"#8b949e", fontSize:20, cursor:"pointer", lineHeight:1, padding:"2px 4px"}}>
+            ×
+          </button>
+        </div>
+        {/* Drawer content */}
+        <div style={{flex:1, overflowY:"auto", padding:"0 20px 24px"}}>
+          <MyPicksColumn
+            trackedPlays={trackedPlays}
+            setTrackedPlays={setTrackedPlays}
+            untrackPlay={untrackPlay}
+            navigateToTeam={navigateToTeam}
+            navigateToPlay={navigateToPlay}
+            bankroll={bankroll}
+            setBankroll={setBankroll}
+            setPickUnits={setPickUnits}
+            chartGroupBy={chartGroupBy}
+            setChartGroupBy={setChartGroupBy}
+            openPickWeeks={openPickWeeks}
+            setOpenPickWeeks={setOpenPickWeeks}
+            openPickDays={openPickDays}
+            setOpenPickDays={setOpenPickDays}
+            editPickId={editPickId}
+            setEditPickId={setEditPickId}
+            setPlayResult={setPlayResult}
+            setShowAddPick={setShowAddPick}
+            oddsToProfit={oddsToProfit}
+          />
+        </div>
+      </div>
+
     </div>
   );
 }

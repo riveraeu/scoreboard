@@ -60,12 +60,6 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMet
                   color: bustLoading?"#30363d":"#484f58", fontWeight:600}}>
                 {bustLoading ? "busting…" : "bust"}
               </button>
-              <a href="#my-picks" className="picks-fab"
-                onClick={e => { e.preventDefault(); const el = document.getElementById("my-picks"); if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 16, behavior:"smooth" }); }}
-                style={{fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:6,
-                  border:"1px solid #30363d",color:"#8b949e",textDecoration:"none",lineHeight:"20px",cursor:"pointer"}}>
-                My Picks ↓
-              </a>
             </div>
           </div>}
           {/* ROI Summary panel */}
@@ -227,7 +221,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMet
                           borderRadius:6,padding:"2px 8px",fontSize:12,color:"#3fb950",fontWeight:700,whiteSpace:"nowrap"}}>
                           +{play.edge}%
                         </span>
-                        <button onClick={e => { e.stopPropagation(); if (isTracked) { untrackPlay(trackId); return; } trackPlay(play); }}
+                        <button onClick={e => { e.stopPropagation(); if (isTracked) { untrackPlay(trackId); return; } trackPlay(play, e); }}
                           title={isTracked ? "Remove from My Picks" : "Add to My Picks"}
                           style={{background: isTracked ? "rgba(227,179,65,0.15)" : "transparent",
                             border: `1px solid ${isTracked ? "#e3b341" : "#30363d"}`,
@@ -381,7 +375,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMet
                           borderRadius:6,padding:"2px 8px",fontSize:12,color:"#3fb950",fontWeight:700,whiteSpace:"nowrap"}}>
                           +{play.edge}%
                         </span>
-                        <button onClick={e => { e.stopPropagation(); isTracked ? untrackPlay(trackId) : trackPlay(play); }}
+                        <button onClick={e => { e.stopPropagation(); isTracked ? untrackPlay(trackId) : trackPlay(play, e); }}
                           title={isTracked ? "Remove from My Picks" : "Add to My Picks"}
                           style={{background: isTracked ? "rgba(227,179,65,0.15)" : "transparent",
                             border: `1px solid ${isTracked ? "#e3b341" : "#30363d"}`,
@@ -603,7 +597,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMet
                         borderRadius:6,padding:"2px 8px",fontSize:12,color:"#3fb950",fontWeight:700,whiteSpace:"nowrap"}}>
                         +{play.edge}%
                       </span>
-                      <button onClick={e => { e.stopPropagation(); if (isTracked) { untrackPlay(trackId); return; } trackPlay(play); }}
+                      <button onClick={e => { e.stopPropagation(); if (isTracked) { untrackPlay(trackId); return; } trackPlay(play, e); }}
                         title={isTracked ? "Remove from My Picks" : "Add to My Picks"}
                         style={{background: isTracked ? "rgba(227,179,65,0.15)" : "transparent",
                           border: `1px solid ${isTracked ? "#e3b341" : "#30363d"}`,

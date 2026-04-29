@@ -1,6 +1,5 @@
 import React from 'react';
 import MatchupCard from './MatchupCard.jsx';
-import MyPicksColumn from './MyPicksColumn.jsx';
 import PlaysColumn from './PlaysColumn.jsx';
 
 const SPORT_TABS = [
@@ -107,24 +106,8 @@ export default function LineupsPage({
   mlbMeta,
   mlbMetaTomorrow,
   nbaMeta,
-  // MyPicksColumn props
   trackedPlays,
-  setTrackedPlays,
   untrackPlay,
-  bankroll,
-  setBankroll,
-  setPickUnits,
-  chartGroupBy,
-  setChartGroupBy,
-  openPickWeeks,
-  setOpenPickWeeks,
-  openPickDays,
-  setOpenPickDays,
-  editPickId,
-  setEditPickId,
-  setPlayResult,
-  setShowAddPick,
-  oddsToProfit,
   navigateToPlay,
   trackPlay,
 }) {
@@ -142,14 +125,12 @@ export default function LineupsPage({
   }, [allTonightPlays]);
 
   const games = React.useMemo(
-    () => activeSportTab !== 'picks' ? buildGames(allTonightPlays, activeSportTab, activeSportTab === 'mlb' ? mlbMeta : null) : [],
+    () => buildGames(allTonightPlays, activeSportTab, activeSportTab === 'mlb' ? mlbMeta : null),
     [allTonightPlays, activeSportTab, mlbMeta]
   );
 
   const qualifiedPlays = React.useMemo(
-    () => activeSportTab !== 'picks'
-      ? (allTonightPlays || []).filter(p => p.qualified !== false && p.sport === activeSportTab)
-      : [],
+    () => (allTonightPlays || []).filter(p => p.qualified !== false && p.sport === activeSportTab),
     [allTonightPlays, activeSportTab]
   );
 
@@ -229,33 +210,10 @@ export default function LineupsPage({
         </div>
       </div>
 
-      {/* My Picks tab */}
-      {activeSportTab === 'picks' && (
-        <MyPicksColumn
-          trackedPlays={trackedPlays}
-          setTrackedPlays={setTrackedPlays}
-          untrackPlay={untrackPlay}
-          navigateToTeam={navigateToTeam}
-          navigateToPlay={navigateToPlay}
-          bankroll={bankroll}
-          setBankroll={setBankroll}
-          setPickUnits={setPickUnits}
-          chartGroupBy={chartGroupBy}
-          setChartGroupBy={setChartGroupBy}
-          openPickWeeks={openPickWeeks}
-          setOpenPickWeeks={setOpenPickWeeks}
-          openPickDays={openPickDays}
-          setOpenPickDays={setOpenPickDays}
-          editPickId={editPickId}
-          setEditPickId={setEditPickId}
-          setPlayResult={setPlayResult}
-          setShowAddPick={setShowAddPick}
-          oddsToProfit={oddsToProfit}
-        />
-      )}
-
       {/* Game cards */}
-      {activeSportTab !== 'picks' && (
+      {(() => {
+        if (activeSportTab === 'picks') return null; // safety guard, picks tab removed
+        return (
         <>
           {tonightLoading && (
             <div style={{ color: '#484f58', fontSize: 13, padding: '24px 0', textAlign: 'center' }}>
@@ -347,7 +305,8 @@ export default function LineupsPage({
             });
           })()}
         </>
-      )}
+        );
+      })()}
     </div>
   );
 }
