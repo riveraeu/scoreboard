@@ -68,6 +68,7 @@ function buildGames(allPlays, sport, meta) {
       g.homeScore = gs.homeScore;
       g.awayScore = gs.awayScore;
       if (!g.gameTime && gsTime) g.gameTime = gsTime;
+      if (gs.seriesSummary) g.seriesSummary = gs.seriesSummary;
     }
   }
 

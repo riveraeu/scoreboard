@@ -81,6 +81,7 @@ export function parseGameScores(events, normFn) {
       awayScore: parseInt(awayComp.score ?? 0) || 0,
       gameDate: event.date ? ptFmt.format(new Date(event.date)) : null,
       gameTime: event.date || null,
+      seriesSummary: comp.series?.summary || null,
     };
   }
   return scores;

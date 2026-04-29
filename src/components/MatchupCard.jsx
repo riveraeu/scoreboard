@@ -38,7 +38,7 @@ export default function MatchupCard({
   gamePlays, allTonightPlays, trackedPlays, trackPlay, untrackPlay,
   navigateToPlay, navigateToModel, expandedPlays, setExpandedPlays, openPicksDrawer,
 }) {
-  const { sport, homeTeam, awayTeam, gameDate, gameTime, ouLine, gameState, gameDetail, homeScore, awayScore } = game;
+  const { sport, homeTeam, awayTeam, gameDate, gameTime, ouLine, gameState, gameDetail, homeScore, awayScore, seriesSummary } = game;
   const [playsOpen, setPlaysOpen] = React.useState(false);
 
   const gameTimeStr = fmtGameTime(gameTime);
@@ -131,10 +131,16 @@ export default function MatchupCard({
               <div style={{ fontSize: 9, fontWeight: 600, color: gameState === 'post' ? '#484f58' : '#e3b341', marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                 {gameDetail || (gameState === 'post' ? 'Final' : 'Live')}
               </div>
+              {seriesSummary && (sport === 'nba' || sport === 'nhl') && (
+                <div style={{ fontSize: 9, color: '#8b949e', marginTop: 3 }}>{seriesSummary}</div>
+              )}
             </>
           ) : (
             <>
               {gameTimeStr && <div style={{ fontSize: 10, color: '#8b949e' }}>{gameTimeStr}</div>}
+              {seriesSummary && (sport === 'nba' || sport === 'nhl') && (
+                <div style={{ fontSize: 9, color: '#8b949e', marginTop: 2 }}>{seriesSummary}</div>
+              )}
               {displayTotal != null && (
                 <div style={{ fontSize: 11, color: '#8b949e', marginTop: 2 }}>total {displayTotal}</div>
               )}
