@@ -103,6 +103,10 @@ export default function LineupsPage({
   bustCache,
   testMode,
   setTestMode,
+  authEmail,
+  logout,
+  syncStatus,
+  onLoginClick,
   mlbMeta,
   mlbMetaTomorrow,
   nbaMeta,
@@ -207,6 +211,23 @@ export default function LineupsPage({
               color: bustLoading ? '#30363d' : '#484f58', fontWeight: 600 }}>
             {bustLoading ? 'busting…' : 'bust'}
           </button>
+          {authEmail ? (
+            <button onClick={logout}
+              style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, cursor: 'pointer',
+                border: '1px solid #30363d', background: 'transparent', color: '#484f58', fontWeight: 600,
+                display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ width: 5, height: 5, borderRadius: '50%', flexShrink: 0,
+                background: syncStatus === 'saving' ? '#e3b341' : syncStatus === 'error' ? '#f78166' : '#3fb950',
+                display: 'inline-block' }}/>
+              log out
+            </button>
+          ) : (
+            <button onClick={onLoginClick}
+              style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, cursor: 'pointer',
+                border: '1px solid #58a6ff', background: 'transparent', color: '#58a6ff', fontWeight: 600 }}>
+              log in
+            </button>
+          )}
         </div>
       </div>
 

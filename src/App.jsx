@@ -932,9 +932,9 @@ function App() {
 
       {/* Search + player card — constrained width */}
       <div style={{maxWidth:1280,margin:"0 auto"}}>
-      {/* Full-width top row: search | implied prob | account */}
-      <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:22}}>
-      <div style={{position:"relative",flex:1}}>
+      {/* Full-width top row: search */}
+      <div style={{marginBottom:22}}>
+      <div style={{position:"relative"}}>
         <span style={{position:"absolute",left:13,top:"50%",transform:"translateY(-50%)",fontSize:15,pointerEvents:"none",zIndex:1}}>
           {searching ? "⏳" : "🔍"}
         </span>
@@ -993,28 +993,6 @@ function App() {
               </div>
             ))}
           </div>
-        )}
-      </div>
-      {/* Account info */}
-      <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4,flexShrink:0}}>
-        {authEmail ? (
-          <>
-            <span style={{color:"#484f58",fontSize:11,display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap"}}>
-              <span style={{width:6,height:6,borderRadius:"50%",background: syncStatus==="saving"?"#e3b341":syncStatus==="error"?"#f78166":"#3fb950",display:"inline-block"}}/>
-              {authEmail}
-            </span>
-            <button onClick={logout}
-              style={{fontSize:11,padding:"2px 8px",borderRadius:6,cursor:"pointer",
-                border:"1px solid #30363d",background:"transparent",color:"#484f58",flexShrink:0}}>
-              log out
-            </button>
-          </>
-        ) : (
-          <button onClick={() => { setShowAuthModal(true); setAuthMode("login"); setAuthError(""); }}
-            style={{fontSize:12,padding:"4px 12px",borderRadius:6,cursor:"pointer",
-              border:"1px solid #58a6ff",background:"transparent",color:"#58a6ff",fontWeight:600,flexShrink:0}}>
-            Log in
-          </button>
         )}
       </div>
       </div>{/* end top row */}
@@ -1989,6 +1967,10 @@ function App() {
           bustCache={bustCache}
           testMode={testMode}
           setTestMode={setTestMode}
+          authEmail={authEmail}
+          logout={logout}
+          syncStatus={syncStatus}
+          onLoginClick={() => { setShowAuthModal(true); setAuthMode("login"); setAuthError(""); }}
           mlbMeta={mlbMeta}
           mlbMetaTomorrow={mlbMetaTomorrow}
           nbaMeta={nbaMeta}
