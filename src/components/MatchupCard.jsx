@@ -126,24 +126,33 @@ export default function MatchupCard({
         </div>
       </div>
 
-      {/* Inline play drawer */}
-      {playsOpen && totalPlays > 0 && (
-        <div style={{ borderTop: '1px solid #0d1117', padding: '12px 16px 16px' }}>
-          <PlaysColumn
-            tonightPlays={gamePlays}
-            allTonightPlays={allTonightPlays}
-            tonightLoading={false}
-            trackedPlays={trackedPlays}
-            trackPlay={trackPlay}
-            untrackPlay={untrackPlay}
-            navigateToPlay={navigateToPlay}
-            navigateToTeam={navigateToTeam}
-            navigateToModel={navigateToModel}
-            expandedPlays={expandedPlays}
-            setExpandedPlays={setExpandedPlays}
-            hideHeader={true}
-            gridColumns={1}
-          />
+      {/* Inline play drawer — always mounted when plays exist so transition works */}
+      {totalPlays > 0 && (
+        <div style={{
+          overflow: 'hidden',
+          maxHeight: playsOpen ? 1000 : 0,
+          opacity: playsOpen ? 1 : 0,
+          transition: playsOpen
+            ? 'max-height 0.35s ease, opacity 0.2s ease 0.05s'
+            : 'max-height 0.28s ease, opacity 0.15s ease',
+        }}>
+          <div style={{ borderTop: '1px solid #0d1117', padding: '12px 16px 16px' }}>
+            <PlaysColumn
+              tonightPlays={gamePlays}
+              allTonightPlays={allTonightPlays}
+              tonightLoading={false}
+              trackedPlays={trackedPlays}
+              trackPlay={trackPlay}
+              untrackPlay={untrackPlay}
+              navigateToPlay={navigateToPlay}
+              navigateToTeam={navigateToTeam}
+              navigateToModel={navigateToModel}
+              expandedPlays={expandedPlays}
+              setExpandedPlays={setExpandedPlays}
+              hideHeader={true}
+              gridColumns={1}
+            />
+          </div>
         </div>
       )}
 
