@@ -1,29 +1,7 @@
 import React from 'react';
 import { WORKER } from '../lib/constants.js';
+import { logoUrl, fmtGameTime } from '../lib/utils.js';
 import PlaysColumn from './PlaysColumn.jsx';
-
-const SPORT_LOGO_KEY = { mlb: 'mlb', nba: 'nba', nhl: 'nhl' };
-
-// ESPN CDN uses shorter abbreviations for some teams than the API/Kalshi codes
-const LOGO_CDN_ABBR = {
-  nhl: { tbl: 'tb', njd: 'nj', lak: 'la', sjs: 'sj' },
-  nba: { kat: 'atl' },
-};
-
-function logoUrl(sport, abbr) {
-  if (!abbr) return null;
-  const lower = abbr.toLowerCase();
-  const mapped = LOGO_CDN_ABBR[sport]?.[lower] ?? lower;
-  return `https://a.espncdn.com/i/teamlogos/${SPORT_LOGO_KEY[sport] || sport}/500/${mapped}.png`;
-}
-
-function fmtGameTime(gameTime) {
-  if (!gameTime) return null;
-  try {
-    const d = new Date(gameTime);
-    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Los_Angeles', timeZoneName: 'short' });
-  } catch { return null; }
-}
 
 // "BOS leads series 3-2" → "BOS 3-2", "Series tied 2-2" → "2-2"
 function fmtSeries(summary) {
@@ -35,7 +13,7 @@ function fmtSeries(summary) {
   return summary;
 }
 
-export default function MatchupCard({
+function MatchupCard({
   game, mlbMeta, mlbMetaTomorrow, nbaMeta, nhlMeta, navigateToPlayer, navigateToTeam,
   gamePlays, allTonightPlays, trackedPlays, trackPlay, untrackPlay,
   navigateToPlay, navigateToModel, expandedPlays, setExpandedPlays, openPicksDrawer,
@@ -159,3 +137,5 @@ export default function MatchupCard({
     </div>
   );
 }
+
+export default React.memo(MatchupCard);

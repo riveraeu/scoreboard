@@ -274,7 +274,8 @@ export async function buildLineupKPct(mlbSched) {
       }
     }
     return { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, projectedLineupTeams: [...projectedLineupTeams], batterSplitBA, hitterOpsMap, batterHandByName, batterHRRSplits };
-  } catch {
+  } catch (err) {
+    console.error("[buildLineupKPct] failed:", err?.message || err);
     return { lineupKPct: {}, lineupBatterKPcts: {}, lineupKPctVR: {}, lineupKPctVL: {}, lineupBatterKPctsOrdered: {}, lineupBatterKPctsVROrdered: {}, lineupBatterKPctsVLOrdered: {}, lineupSpotByName: {}, gameHomeTeams: {}, projectedLineupTeams: [], batterSplitBA: {}, hitterOpsMap: {}, batterHandByName: {}, batterHRRSplits: {} };
   }
 }
@@ -450,19 +451,20 @@ export async function buildPitcherKPct(mlbSched) {
     // Step 1: fetch game logs (2026 for avgP/avgBF/stdBF/recentK; also 2025 for H2H hand component)
     let glFetch = [], glFetch25 = [];
     try {
+      const settle = arr => Promise.allSettled(arr).then(rs => rs.map((r, i) => r.status === 'fulfilled' ? r.value : { id: allIds[i], splits: [] }));
       [glFetch, glFetch25] = await Promise.all([
-        Promise.all(allIds.map(id =>
+        settle(allIds.map(id =>
           fetch(`https://statsapi.mlb.com/api/v1/people/${id}/stats?stats=gameLog&group=pitching&season=2026&gameType=R`, { headers: { "User-Agent": "Mozilla/5.0" } })
             .then(r => r.ok ? r.json() : {}).catch(() => ({}))
             .then(d => ({ id, splits: d.stats?.[0]?.splits || [] }))
         )),
-        Promise.all(allIds.map(id =>
+        settle(allIds.map(id =>
           fetch(`https://statsapi.mlb.com/api/v1/people/${id}/stats?stats=gameLog&group=pitching&season=2025&gameType=R`, { headers: { "User-Agent": "Mozilla/5.0" } })
             .then(r => r.ok ? r.json() : {}).catch(() => ({}))
             .then(d => ({ id, splits: d.stats?.[0]?.splits || [] }))
         ))
       ]);
-    } catch { /* game log fetch failed */ }
+    } catch (err) { console.error("[buildPitcherKPct] gamelog fetch failed:", err?.message || err); }
     // Avg pitches per start from 2026 game logs (starts-only — accurate for pitchers with mixed starter/reliever roles)
     // Falls back to 2025 season aggregate only when no 2026 start data exists in the gamelog.
     // Exclude today's date: the gamelog API includes in-progress game entries with gamesStarted=1
@@ -698,7 +700,8 @@ export async function buildPitcherKPct(mlbSched) {
       }
     }
     return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherWHIP, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam, pitcherH2HStarts };
-  } catch {
+  } catch (err) {
+    console.error("[buildPitcherKPct] failed:", err?.message || err);
     return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherAvgBF: {}, pitcherStdBF: {}, pitcherGS26: {}, pitcherHasAnchor: {}, pitcherRecentKPct: {}, pitcherLastStartDate: {}, pitcherLastStartPC: {}, umpireByGame: {}, pitcherInfoByTeam: {}, pitcherH2HStarts: {} };
   }
 }

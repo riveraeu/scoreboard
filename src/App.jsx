@@ -1,7 +1,7 @@
 import React from 'react';
 import { WORKER, SPORTS, STAT_FULL, MLB_TEAM, TEAM_DB, TOTAL_THRESHOLDS, STAT_LABEL, SPORT_KEY, TODAY, SPORT_BADGE_COLOR, GAMELOG_COLS } from './lib/constants.js';
-import { lsGet, lsSet, ordinal, slugify, teamUrl } from './lib/utils.js';
-import { getColor, matchupColor, tierColor } from './lib/colors.js';
+import { ordinal, slugify, teamUrl } from './lib/utils.js';
+import { tierColor } from './lib/colors.js';
 import TotalsBarChart from './components/TotalsBarChart.jsx';
 import TeamPage, { STAT_CONFIGS } from './components/TeamPage.jsx';
 import DayBar from './components/DayBar.jsx';
@@ -168,35 +168,35 @@ function App() {
     }
   }
 
-  function navigateToTeam(abbr, sport) {
+  const navigateToTeam = React.useCallback((abbr, sport) => {
     const url = teamUrl(abbr, sport);
     history.pushState({}, "", url);
     loadTeamPage(abbr, sport);
     window.scrollTo({ top: 0, behavior: "smooth" });
-  }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function navigateToPlayer(p, tab) {
+  const navigateToPlayer = React.useCallback((p, tab) => {
     const slug = slugify(p.name);
     history.pushState({}, "", `/${slug}`);
     selectPlayer(p, tab);
     window.scrollTo({ top: 0, behavior: "smooth" });
-  }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function goBack() {
+  const goBack = React.useCallback(() => {
     history.pushState({}, "", "/");
     setPlayer(null);
     setTeamPage(null);
     setModelPage(false);
     setQuery("");
-  }
+  }, []);
 
-  function navigateToModel() {
+  const navigateToModel = React.useCallback(() => {
     history.pushState({}, "", "/model");
     setPlayer(null);
     setTeamPage(null);
     setModelPage(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
-  }
+  }, []);
 
   // Fetch tonight's plays on mount
   React.useEffect(() => {
@@ -1419,8 +1419,6 @@ function App() {
                             const isB2B = tonightTabPlay?.isB2B ?? null;
                             const sc = tonightTabPlay?.nbaSimScore ?? null;
                             const edge = tonightTabPlay?.edge ?? null;
-                            const spreadAdj = tonightTabPlay?.spreadAdj ?? 0;
-                            const rawEdge = tonightTabPlay?.rawEdge ?? edge;
                             const isNBAStrong = tonightTabPlay?.softPct != null;
                             const isNBAHard = !isNBAStrong && effectiveOpp && (dvpData.hardTeams?.[safeTab] || []).includes(effectiveOpp);
                             const rankColor = isNBAHard ? "#f78166" : (displayRank != null && displayRank <= 10) ? "#3fb950" : (displayRank != null && displayRank <= 15) ? "#e3b341" : isNBAStrong ? "#3fb950" : "#c9d1d9";
@@ -1478,8 +1476,6 @@ function App() {
                             const nhlIsB2B = tonightTabPlay?.isB2B ?? null;
                             const sc = tonightTabPlay?.nhlSimScore ?? null;
                             const edge = tonightTabPlay?.edge ?? null;
-                            const spreadAdj = tonightTabPlay?.spreadAdj ?? 0;
-                            const rawEdge = tonightTabPlay?.rawEdge ?? edge;
                             const seasonPct = tonightTabPlay?.seasonPct ?? null;
                             const scColor = sc != null ? (sc >= 8 ? "#3fb950" : sc >= 5 ? "#e3b341" : "#8b949e") : "#8b949e";
                             const seasonColor = seasonPct == null ? "#c9d1d9" : seasonPct >= 75 ? "#3fb950" : seasonPct >= 60 ? "#c9d1d9" : "#f78166";
@@ -1979,7 +1975,7 @@ function App() {
       )}
 
       <div style={{color:"#484f58",fontSize:11,marginTop:12,textAlign:"center"}}>
-        Powered by ESPN API · via Cloudflare Worker proxy
+        Powered by ESPN API · Vercel Edge
       </div>
 
 

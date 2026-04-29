@@ -138,7 +138,7 @@ var worker_default = {
       if (path === "auth/register" && method === "POST") {
         const { email, password } = await request.json();
         if (!email || !password) return errorResponse("Email and password required", 400);
-        if (password.length < 6) return errorResponse("Password must be at least 6 characters", 400);
+        if (password.length < 8) return errorResponse("Password must be at least 8 characters", 400);
         const emailKey = `user:${email.toLowerCase()}`;
         if (await CACHE2.get(emailKey)) return errorResponse("Account already exists", 409);
         const userId = crypto.randomUUID();
@@ -151,7 +151,8 @@ var worker_default = {
         if (CACHE2) await CACHE2.put("keepalive", new Date().toISOString(), { expirationTtl: 172800 });
         return jsonResponse({ ok: true, ts: new Date().toISOString() });
       } else if (path === "auth/debug-redis" && method === "GET") {
-        if (params.get("adminKey") !== env?.ADMIN_KEY) return errorResponse("Forbidden", 403);
+        const debugAdminKey = (request.headers.get("Authorization") || "").replace("Bearer ", "");
+        if (debugAdminKey !== env?.ADMIN_KEY) return errorResponse("Forbidden", 403);
         const upUrl = env?.UPSTASH_REDIS_REST_URL;
         const upToken = env?.UPSTASH_REDIS_REST_TOKEN;
         if (!upUrl) return errorResponse("UPSTASH_REDIS_REST_URL not set", 500);
@@ -171,7 +172,8 @@ var worker_default = {
         } catch (e) { getRaw = { fetchError: String(e) }; }
         return jsonResponse({ setStatus, setRaw, getStatus, getRaw, expectedVal: testVal, match: getRaw?.result === testVal });
       } else if (path === "auth/list-users" && method === "GET") {
-        if (params.get("adminKey") !== env?.ADMIN_KEY) return errorResponse("Forbidden", 403);
+        const listAdminKey = (request.headers.get("Authorization") || "").replace("Bearer ", "");
+        if (listAdminKey !== env?.ADMIN_KEY) return errorResponse("Forbidden", 403);
         const upUrl = env?.UPSTASH_REDIS_REST_URL;
         const upAuth = `Bearer ${env?.UPSTASH_REDIS_REST_TOKEN}`;
         if (!upUrl) return errorResponse("No Redis URL", 500);
@@ -1121,7 +1123,7 @@ var worker_default = {
           kalshiResults = seriesTickers.map(t => resultMap[t] || { markets: [] });
           // Cache bundle if we got real data
           if (CACHE2 && kalshiResults.some(d => (d.markets || []).length > 0)) {
-            await CACHE2.put(KALSHI_BUNDLE_KEY, JSON.stringify(resultMap), { expirationTtl: 90 }).catch(() => {});
+            await CACHE2.put(KALSHI_BUNDLE_KEY, JSON.stringify(resultMap), { expirationTtl: 600 }).catch(() => {});
           }
         }
         const qualifyingMarkets = [];

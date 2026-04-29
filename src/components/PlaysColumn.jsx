@@ -1,127 +1,26 @@
 import React from 'react';
 import { STAT_LABEL, STAT_FULL, MLB_TEAM } from '../lib/constants.js';
-import { ordinal } from '../lib/utils.js';
+import { ordinal, logoUrl } from '../lib/utils.js';
 import { tierColor } from '../lib/colors.js';
 import SimBadge from './SimBadge.jsx';
 
-function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMeta, sportFilter = [], setSportFilter, statFilter = [], setStatFilter, trackedPlays, trackPlay, untrackPlay, navigateToPlay, navigateToTeam, navigateToModel, expandedPlays, setExpandedPlays, fetchReport, bustLoading, bustCache, showPlaysInfo, setShowPlaysInfo, testMode, setTestMode, hideHeader, gridColumns }) {
+function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilter = [], statFilter = [], trackedPlays, trackPlay, untrackPlay, navigateToPlay, navigateToTeam, expandedPlays, setExpandedPlays, hideHeader, gridColumns }) {
   const cols = gridColumns || 1;
   return (
         <div>
-          {!hideHeader && <div style={{display:"flex",alignItems:"center",marginBottom:14}}>
-            <div style={{color:"#c9d1d9",fontSize:15,fontWeight:700}}>
-              {(() => {
-                const _nowD = new Date(); const _dow = _nowD.getDay(); const _daysToMon = (_dow + 6) % 7;
-                const _monday = new Date(_nowD - _daysToMon * 86400000);
-                const _weekLabel = _monday.toLocaleDateString("en-US", { month:"short", day:"numeric" });
-                const dates = [...new Set((tonightPlays || []).map(p => p.gameDate).filter(Boolean))].sort();
-                return dates.length === 0
-                  ? "Plays"
-                  : <><span style={{color:"#484f58",fontWeight:400,fontSize:13}}>Plays — </span>{"Week of " + _weekLabel}</>;
-              })()}
-              <span style={{position:"relative",marginLeft:6}}>
-                <span onClick={() => setShowPlaysInfo(o => !o)}
-                  style={{cursor:"pointer",color:showPlaysInfo?"#58a6ff":"#484f58",fontSize:13,lineHeight:1,userSelect:"none"}}>ⓘ</span>
-                {showPlaysInfo && (
-                  <div style={{position:"absolute",top:20,left:0,zIndex:99,width:300,background:"#161b22",border:"1px solid #30363d",borderRadius:8,padding:"10px 12px",fontSize:11,color:"#c9d1d9",lineHeight:1.6,boxShadow:"0 4px 16px rgba(0,0,0,0.5)"}}>
-                    <div style={{fontWeight:700,marginBottom:6,color:"#fff"}}>Play qualification criteria</div>
-                    <div style={{marginBottom:3}}><span style={{color:"#58a6ff"}}>Implied prob</span> ≥ 70% (Kalshi market price)</div>
-                    <div style={{marginBottom:3}}><span style={{color:"#3fb950"}}>Edge</span> ≥ 5% (True% minus implied)</div>
-                    <div style={{marginBottom:3}}><span style={{color:"#e3b341"}}>SimScore</span> ≥ 8 / 10 (model confidence gate)</div>
-                  </div>
-                )}
-              </span>
-              <span style={{color:"#484f58",fontSize:11,marginLeft:8,userSelect:"none"}}>Reports:</span>
-              {["mlb","nba","nhl"].map(s => (
-                <span key={s} onClick={() => fetchReport(s)}
-                  style={{cursor:"pointer",color:"#484f58",fontSize:11,marginLeft:5,
-                    textDecoration:"underline",textDecorationStyle:"dotted",userSelect:"none"}}>
-                  {s.toUpperCase()}
-                </span>
-              ))}
-            </div>
-            <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6}}>
-              <div style={{width:1,height:14,background:"#30363d",margin:"0 2px"}} />
-              <button onClick={navigateToModel}
-                style={{fontSize:10,padding:"2px 8px",borderRadius:6,cursor:"pointer",
-                  border:"1px solid #30363d",background:"transparent",
-                  color:"#484f58", fontWeight:600}}>
-                model
-              </button>
-              <button onClick={() => setTestMode(m => !m)}
-                style={{fontSize:10,padding:"2px 8px",borderRadius:6,cursor:"pointer",
-                  border:`1px solid ${testMode?"#e3b341":"#30363d"}`,
-                  background: testMode?"rgba(227,179,65,0.12)":"transparent",
-                  color: testMode?"#e3b341":"#484f58", fontWeight:600}}>
-                {testMode ? "⚗ mock" : "mock"}
-              </button>
-              <button onClick={bustCache} disabled={bustLoading}
-                style={{fontSize:10,padding:"2px 8px",borderRadius:6,cursor:bustLoading?"default":"pointer",
-                  border:"1px solid #30363d",background:"transparent",
-                  color: bustLoading?"#30363d":"#484f58", fontWeight:600}}>
-                {bustLoading ? "busting…" : "bust"}
-              </button>
-            </div>
-          </div>}
-          {/* ROI Summary panel */}
-          {!tonightLoading && (tonightPlays || []).length > 0 && (() => {
-            const isStrongMatchup = play => {
-              if (play.sport === "mlb" && play.stat === "strikeouts") return false;
-              if (play.sport === "mlb") return play.softPct != null;
-              if (play.sport === "nba") return play.oppRank != null && play.oppRank <= 5 && (play.projectedStat == null || play.projectedStat >= play.threshold * 0.95);
-              if (play.sport === "nhl") return play.oppRank != null && play.oppRank <= 5;
-              return play.oppRank != null && play.oppRank <= 5;
-            };
-            const visiblePlays = (tonightPlays || []).filter(p => {
-              if (sportFilter.length > 0 && !sportFilter.includes(p.sport)) return false;
-              if (statFilter.length > 0 && !statFilter.includes(p.stat)) return false;
-              return true;
-            });
-            if (visiblePlays.length === 0) return null;
-            return null; // ROI panel removed
-          })()}
           {tonightLoading ? (
             <div style={{color:"#8b949e",textAlign:"center",padding:52,fontSize:13}}>
               Loading plays…
             </div>
           ) : (() => {
-            const isStrongMatchup = play => {
-              if (play.sport === "mlb" && play.stat === "strikeouts") return false;
-              if (play.sport === "mlb") return play.softPct != null;
-              if (play.sport === "nba") return play.oppRank != null && play.oppRank <= 5 && (play.projectedStat == null || play.projectedStat >= play.threshold * 0.95);
-              // NHL: projectedStat is per-game rate (e.g. 0.6 goals/game), not comparable to threshold (1)
-              if (play.sport === "nhl") return play.oppRank != null && play.oppRank <= 5;
-              return play.oppRank != null && play.oppRank <= 5;
-            };
-            const impliedProb = odds => {
-              if (odds == null) return null;
-              if (odds < 0) return Math.abs(odds) / (Math.abs(odds) + 100) * 100;
-              if (odds > 0) return 100 / (odds + 100) * 100;
-              return null;
-            };
             const untrackedPlays = (tonightPlays || []).filter(play => {
               if (sportFilter.length > 0 && !sportFilter.includes(play.sport)) return false;
               if (statFilter.length > 0 && !statFilter.includes(play.stat)) return false;
               return true;
             });
             if (untrackedPlays.length === 0) return (
-              <div style={{color:"#484f58",textAlign:"center",padding:52,fontSize:13,lineHeight:1.6}}>
-                {(() => {
-                  const qc = tonightMeta?.qualifyingCount ?? 0;
-                  const pf = tonightMeta?.preFilteredCount ?? 0;
-                  const filtered = qc - pf;
-                  if (qc === 0) return "No Kalshi markets found — check back later when tomorrow's markets open.";
-                  if (filtered > 0 && pf === 0) return <>
-                    <div>{qc} markets found — all filtered: tonight's opponents don't meet the soft matchup threshold.</div>
-                    <div style={{fontSize:11,marginTop:6,color:"#30363d"}}>NBA: vs bottom-10 defense · MLB hitters: team favored + 10 AB vs pitcher + BA ≥.270 · MLB pitchers: lineup K-rate ≥22%</div>
-                  </>;
-                  if (filtered > 0) return <>
-                    <div>{qc} markets found · {filtered} filtered by matchup · {pf - (tonightPlays?.length ?? 0)} filtered by edge.</div>
-                    <div style={{fontSize:11,marginTop:6,color:"#30363d"}}>NBA: vs bottom-10 defense · MLB hitters: team favored + 10 AB vs pitcher + BA ≥.270 · MLB pitchers: lineup K-rate ≥22%</div>
-                  </>;
-                  return "No qualifying plays found.";
-                })()
-                }
+              <div style={{color:"#484f58",textAlign:"center",padding:52,fontSize:13}}>
+                No qualifying plays found.
               </div>
             );
             // Group plays by gameDate, sort dates ascending
@@ -187,7 +86,6 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMet
                 const tColor = tierColor(displayTruePct);
                 const tTrueOdds = displayTruePct >= 100 ? -99999 : (displayTruePct >= 50 ? Math.round(-(displayTruePct/(100-displayTruePct))*100) : Math.round((100-displayTruePct)/displayTruePct*100));
                 const tTrueOddsStr = tTrueOdds > 0 ? `+${tTrueOdds}` : `${tTrueOdds}`;
-                const logoUrl = abbr => `https://a.espncdn.com/i/teamlogos/${play.sport}/500/${abbr.toLowerCase()}.png`;
                 const sc = play.teamTotalSimScore;
                 const scColor = sc >= 8 ? "#3fb950" : sc >= 5 ? "#e3b341" : "#8b949e";
                 return (
@@ -199,7 +97,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMet
                     <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                          <img src={logoUrl(play.scoringTeam)} alt={play.scoringTeam}
+                          <img src={logoUrl(play.sport, play.scoringTeam)} alt={play.scoringTeam}
                             onClick={e=>{e.stopPropagation();navigateToTeam(play.scoringTeam,play.sport);}}
                             style={{width:44,height:44,objectFit:"contain",background:"#21262d",borderRadius:6,padding:2,flexShrink:0,cursor:"pointer"}}
                             onError={e=>e.target.style.display="none"}/>
@@ -331,7 +229,6 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMet
                 const displayTruePct = isUnder ? play.noTruePct : play.truePct;
                 const displayKalshiPct = isUnder ? play.noKalshiPct : play.kalshiPct;
                 const tColor = tierColor(displayTruePct);
-                const logoUrl = abbr => `https://a.espncdn.com/i/teamlogos/${play.sport}/500/${abbr.toLowerCase()}.png`;
                 const tLabel = { totalRuns:"Runs", totalPoints:"Pts", totalGoals:"Goals" }[play.stat] || play.stat;
                 const lineVal = (play.threshold - 0.5).toFixed(1);
                 const tTrueOdds = displayTruePct >= 100 ? -99999 : (displayTruePct >= 50 ? Math.round(-(displayTruePct/(100-displayTruePct))*100) : Math.round((100-displayTruePct)/displayTruePct*100));
@@ -347,7 +244,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMet
                       {/* Matchup info */}
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
-                          <img src={logoUrl(play.awayTeam)} alt={play.awayTeam} onClick={e=>{e.stopPropagation();navigateToTeam(play.awayTeam,play.sport);}}
+                          <img src={logoUrl(play.sport, play.awayTeam)} alt={play.awayTeam} onClick={e=>{e.stopPropagation();navigateToTeam(play.awayTeam,play.sport);}}
                             style={{width:44,height:44,objectFit:"contain",background:"#21262d",borderRadius:6,padding:2,flexShrink:0,cursor:"pointer"}}
                             onError={e=>e.target.style.display="none"}/>
                           <span onClick={e=>{e.stopPropagation();navigateToTeam(play.awayTeam,play.sport);}}
@@ -355,7 +252,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, tonightMet
                           <span style={{color:"#484f58",fontSize:11}}>@</span>
                           <span onClick={e=>{e.stopPropagation();navigateToTeam(play.homeTeam,play.sport);}}
                             style={{color:"#c9d1d9",fontSize:12,fontWeight:600,cursor:"pointer",textDecoration:"underline",textDecorationColor:"#484f58"}}>{play.homeTeam}</span>
-                          <img src={logoUrl(play.homeTeam)} alt={play.homeTeam} onClick={e=>{e.stopPropagation();navigateToTeam(play.homeTeam,play.sport);}}
+                          <img src={logoUrl(play.sport, play.homeTeam)} alt={play.homeTeam} onClick={e=>{e.stopPropagation();navigateToTeam(play.homeTeam,play.sport);}}
                             style={{width:44,height:44,objectFit:"contain",background:"#21262d",borderRadius:6,padding:2,flexShrink:0,cursor:"pointer"}}
                             onError={e=>e.target.style.display="none"}/>
                         </div>

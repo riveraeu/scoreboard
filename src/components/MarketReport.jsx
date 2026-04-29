@@ -1,6 +1,163 @@
 import React from 'react';
 import { SPORT_KEY } from '../lib/constants.js';
 
+function buildSimTooltip(m) {
+  const isTeamTotal = m.gameType === "teamTotal";
+  const isKPlay  = m.finalSimScore != null && m.totalSimScore == null && !isTeamTotal;
+  const isHRR    = m.hitterFinalSimScore != null && m.finalSimScore == null && !isTeamTotal;
+  const isNBA    = m.nbaSimScore != null && m.totalSimScore == null && !isTeamTotal;
+  const isNHL    = m.nhlSimScore != null && m.totalSimScore == null && !isTeamTotal;
+
+  if (isKPlay) {
+    return [
+      `CSW%/K%: ${m.kpctPts??1}/2`,
+      `Lineup K%: ${m.lkpPts??1}/2`,
+      `Hit Rate %: ${m.kHitRatePts??1}/2`,
+      `H2H Hand: ${m.kH2HHandPts??1}/2`,
+      `O/U: ${m.totalPts??1}/2`,
+    ].join('\n');
+  }
+  if (isHRR) {
+    return [
+      `OPS: ${m.hitterOpsPts??1}/2`,
+      `WHIP: ${m.hitterWhipPts??1}/2`,
+      `Season HR: ${m.hitterSeasonHitRatePts??1}/2`,
+      `H2H HR: ${m.hitterH2HHitRatePts??1}/2`,
+      `O/U: ${m.hitterTotalPts??1}/2`,
+    ].join('\n');
+  }
+  if (isNBA) {
+    const dvpPts = m.dvpRatio >= 1.05 ? 2 : m.dvpRatio >= 1.02 ? 1 : 0;
+    const paceGood = m.nbaPaceAdj != null && m.nbaPaceAdj > 0;
+    const totalGood = m.nbaGameTotal != null && m.nbaGameTotal >= 215;
+    const comboPts = (paceGood && totalGood) ? 2 : (paceGood || totalGood) ? 1 : 0;
+    let c1Label, c1Pts;
+    if (m.stat === 'rebounds') {
+      const v = m.nbaOpportunity;
+      c1Pts = v == null ? 1 : v >= 30 ? 2 : v >= 25 ? 1 : 0;
+      c1Label = `AvgMin ${v != null ? v.toFixed(0) + 'm' : '—'}`;
+    } else {
+      const u = m.nbaUsage;
+      c1Pts = u == null ? 1 : u >= 28 ? 2 : u >= 22 ? 1 : 0;
+      c1Label = `USG% ${u != null ? u.toFixed(1) + '%' : '—'}`;
+    }
+    return [
+      `${c1Label}: ${c1Pts}/2`,
+      `DVP: ${dvpPts}/2`,
+      `Season HR: ${m.nbaSeasonHitRatePts??1}/2`,
+      `Soft HR: ${m.nbaSoftHitRatePts??1}/2`,
+      `Pace+Total: ${comboPts}/2`,
+    ].join('\n');
+  }
+  if (isNHL) {
+    const toi = m.nhlOpportunity;
+    const toiPts = toi >= 18 ? 2 : toi >= 15 ? 1 : toi != null ? 0 : 1;
+    const gaaRank = m.posDvpRank;
+    const gaaPts = gaaRank == null ? 1 : gaaRank <= 10 ? 2 : gaaRank <= 15 ? 1 : 0;
+    const nhlTotal = m.nhlGameTotal;
+    const nhlTotalPts = nhlTotal == null ? 1 : nhlTotal >= 7 ? 2 : nhlTotal >= 5.5 ? 1 : 0;
+    return [
+      `TOI ${toi?.toFixed(1) ?? '—'}m: ${toiPts}/2`,
+      `GAA rank: ${gaaPts}/2`,
+      `Season HR: ${m.nhlSeasonHitRatePts??1}/2`,
+      `DVP HR: ${m.nhlDvpHitRatePts??1}/2`,
+      `O/U ${nhlTotal ?? '—'}: ${nhlTotalPts}/2`,
+    ].join('\n');
+  }
+  if (isTeamTotal) {
+    const isU = m.direction === "under";
+    const h2hPts = isU
+      ? (m.h2hHitRate == null ? 1 : m.h2hHitRate <= 30 ? 2 : m.h2hHitRate <= 50 ? 1 : 0)
+      : (m.h2hHitRatePts ?? 1);
+    if (m.sport === "mlb") {
+      const ssnPts = isU
+        ? (m.ttSeasonHitRate == null ? 1 : m.ttSeasonHitRate <= 20 ? 2 : m.ttSeasonHitRate <= 40 ? 1 : 0)
+        : (m.ttSeasonHitRatePts ?? 1);
+      const whipPts = isU
+        ? (m.oppWHIP == null ? 1 : m.oppWHIP <= 1.10 ? 2 : m.oppWHIP <= 1.25 ? 1 : 0)
+        : (m.ttWhipPts ?? 1);
+      const l10Pts = isU
+        ? (m.teamL10RPG == null ? 1 : m.teamL10RPG <= 3.5 ? 2 : m.teamL10RPG <= 4.5 ? 1 : 0)
+        : (m.ttL10Pts ?? 1);
+      const ou = m.gameOuLine;
+      const ouPts = ou == null ? 1 : isU ? (ou < 7.5 ? 2 : ou < 9.5 ? 1 : 0) : (ou >= 9.5 ? 2 : ou >= 7.5 ? 1 : 0);
+      return [
+        `${isU ? "[Under SimScore]\n" : ""}Ssn HR% (${m.ttSeasonHitRate != null ? m.ttSeasonHitRate + '%' : '—'}): ${ssnPts}/2`,
+        `${m.oppTeam} WHIP (${m.oppWHIP != null ? m.oppWHIP.toFixed(2) : '—'}): ${whipPts}/2`,
+        `${m.scoringTeam} L10 RPG (${m.teamL10RPG != null ? m.teamL10RPG.toFixed(1) : '—'}): ${l10Pts}/2`,
+        `H2H HR% (${m.h2hHitRate != null ? m.h2hHitRate + '%' : '—'}${m.h2hGames ? ' · ' + m.h2hGames + 'g' : ''}): ${h2hPts}/2`,
+        `O/U (${ou ?? '—'}): ${ouPts}/2`,
+      ].join('\n');
+    }
+    if (m.sport === "nba") {
+      const offPts = v => v == null ? 1 : isU ? (v < 113 ? 2 : v < 118 ? 1 : 0) : (v >= 118 ? 2 : v >= 113 ? 1 : 0);
+      const defPts = v => v == null ? 1 : isU ? (v < 113 ? 2 : v < 118 ? 1 : 0) : (v >= 118 ? 2 : v >= 113 ? 1 : 0);
+      const ou = m.gameOuLine;
+      const ouPts = ou == null ? 1 : isU ? (ou < 215 ? 2 : ou < 225 ? 1 : 0) : (ou >= 225 ? 2 : ou >= 215 ? 1 : 0);
+      const pace = m.teamPace, lgPace = m.leagueAvgPace;
+      const pacePts = pace == null || lgPace == null ? 1
+        : isU ? (pace <= lgPace - 2 ? 2 : pace <= lgPace + 2 ? 1 : 0)
+        : (pace > lgPace + 2 ? 2 : pace > lgPace - 2 ? 1 : 0);
+      return [
+        `${isU ? "[Under SimScore]\n" : ""}${m.scoringTeam} off PPG (${m.teamOff ?? '—'}): ${offPts(m.teamOff)}/2`,
+        `${m.oppTeam} def allowed (${m.oppDef ?? '—'}): ${defPts(m.oppDef)}/2`,
+        `O/U (${ou ?? '—'}): ${ouPts}/2`,
+        `${m.scoringTeam} pace (${pace != null ? pace.toFixed(1) : '—'}): ${pacePts}/2`,
+        `H2H HR% (${m.h2hHitRate != null ? m.h2hHitRate + '%' : '—'}${m.h2hGames ? ' · ' + m.h2hGames + 'g' : ''}): ${h2hPts}/2`,
+      ].join('\n');
+    }
+    return null;
+  }
+  if (m.totalSimScore != null) {
+    if (m.sport === "mlb") {
+      const hW = m.homeWHIP, aW = m.awayWHIP, ou = m.gameOuLine;
+      const cRPG = m.combinedRPG, h2hTR = m.h2hTotalHitRate;
+      const whipPts = v => v == null ? 1 : v > 1.35 ? 2 : v > 1.20 ? 1 : 0;
+      const cRPGPts = cRPG == null ? 1 : cRPG >= 10.5 ? 2 : cRPG >= 9.0 ? 1 : 0;
+      const h2hPts = h2hTR == null ? 1 : h2hTR >= 80 ? 2 : h2hTR >= 60 ? 1 : 0;
+      return [
+        `Comb road RPG (${cRPG != null ? cRPG.toFixed(1) : '—'}): ${cRPGPts}/2`,
+        `${m.homeTeam} WHIP (${hW != null ? hW.toFixed(2) : '—'}): ${whipPts(hW)}/2`,
+        `${m.awayTeam} WHIP (${aW != null ? aW.toFixed(2) : '—'}): ${whipPts(aW)}/2`,
+        `H2H HR% (${h2hTR != null ? h2hTR + '%' : '—'}${m.h2hTotalGames ? ' · ' + m.h2hTotalGames + 'g' : ''}): ${h2hPts}/2`,
+        `O/U (${ou ?? '—'}): ${ou != null ? (ou >= 9.5 ? 2 : ou >= 7.5 ? 1 : 0) : 1}/2`,
+      ].join('\n');
+    }
+    if (m.sport === "nba") {
+      const hOR = m.homeOffRtg, aOR = m.awayOffRtg, ou = m.gameOuLine;
+      const hp = m.homePace, ap = m.awayPace, lgP = m.leagueAvgPace, pp = m.projPace;
+      const tot = (m.homeOut ?? 0) + (m.awayOut ?? 0);
+      const offPts = v => v == null ? 1 : v >= 118 ? 2 : v >= 113 ? 1 : 0;
+      const ouPts = v => v == null ? 1 : v >= 225 ? 2 : v >= 215 ? 1 : 0;
+      const pacePts = (hp == null || ap == null || lgP == null) ? 1
+        : (hp > lgP + 2 && ap > lgP + 2) ? 2
+        : (hp > lgP || ap > lgP) ? 1 : 0;
+      const injPts = tot === 0 ? 2 : tot <= 2 ? 1 : 0;
+      return [
+        `Pace (proj ${pp ?? '—'}): ${pacePts}/2`,
+        `${m.homeTeam} OffRtg (${hOR != null ? hOR.toFixed(1) : '—'}): ${offPts(hOR)}/2`,
+        `${m.awayTeam} OffRtg (${aOR != null ? aOR.toFixed(1) : '—'}): ${offPts(aOR)}/2`,
+        `Injuries (${tot} out): ${injPts}/2`,
+        `O/U (${ou ?? '—'}): ${ouPts(ou)}/2`,
+      ].join('\n');
+    }
+    if (m.sport === "nhl") {
+      const hGPG = m.homeGPG, aGPG = m.awayGPG, hGAA = m.homeGAA, aGAA = m.awayGAA, ou = m.gameOuLine;
+      const gpgPts = v => v == null ? 1 : v >= 3.5 ? 2 : v >= 3.0 ? 1 : 0;
+      const gaaPts = v => v == null ? 1 : v >= 3.5 ? 2 : v >= 3.0 ? 1 : 0;
+      const ouPts = v => v == null ? 1 : v >= 7 ? 2 : v >= 5.5 ? 1 : 0;
+      return [
+        `${m.homeTeam} GPG (${hGPG ?? '—'}): ${gpgPts(hGPG)}/2`,
+        `${m.awayTeam} GPG (${aGPG ?? '—'}): ${gpgPts(aGPG)}/2`,
+        `${m.homeTeam} GAA (${hGAA ?? '—'}): ${gaaPts(hGAA)}/2`,
+        `${m.awayTeam} GAA (${aGAA ?? '—'}): ${gaaPts(aGAA)}/2`,
+        `O/U (${ou ?? '—'}): ${ouPts(ou)}/2`,
+      ].join('\n');
+    }
+  }
+  return null;
+}
+
 function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, setReportSport, reportLoadingSport, reportSort, setReportSort, navigateToPlayer, navigateToTeam }) {
         const reportData = reportDataBySport[reportSport] || null;
         const reportLoading = reportLoadingSport === reportSport;
@@ -54,7 +211,8 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                   no_soft_data: "No stat data",
                 };
                 const STAT_NAME = { points:"Points",rebounds:"Rebounds",assists:"Assists",threePointers:"3-Pointers",goals:"Goals",hits:"Hits",hrr:"H+R+RBI",strikeouts:"Strikeouts",totalRuns:"Totals",totalPoints:"Totals",totalGoals:"Totals",teamRuns:"Team Runs",teamPoints:"Team Points" };
-                const SPORT_COL = { mlb:"#4ade80", nba:"#f97316", nhl:"#60a5fa" };
+                // Intentionally distinct from SPORT_BADGE_COLOR — report uses higher-contrast hues for section headers
+                const REPORT_SPORT_COL = { mlb:"#4ade80", nba:"#f97316", nhl:"#60a5fa" };
                 const SPORT_ORD = { mlb:0, nba:1, nhl:2, nfl:3 };
 
                 const plays = (reportData.plays || []).map(p => ({ ...p, qualified: p.qualified !== false }));
@@ -184,7 +342,7 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                   return (
                     <div key={`${sport}|${stat}`} style={{marginBottom:18}}>
                       <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,paddingBottom:5,borderBottom:"1px solid #21262d",flexWrap:"wrap"}}>
-                        <span style={{color:SPORT_COL[sport]||"#8b949e",fontWeight:700,fontSize:11}}>{sport.toUpperCase()}</span>
+                        <span style={{color:REPORT_SPORT_COL[sport]||"#8b949e",fontWeight:700,fontSize:11}}>{sport.toUpperCase()}</span>
                         <span style={{color:"#8b949e",fontSize:12,marginRight:2}}>{STAT_NAME[stat]||stat}</span>
                         <span style={{color:"#484f58",fontSize:11,marginLeft:"auto"}}>{rows.length} markets · <span style={{color:"#3fb950"}}>{qualCount}</span> play{qualCount!==1?"s":""}</span>
                       </div>
@@ -235,7 +393,7 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                           if (k==="ou")  return C(ou  != null ? ou : null, ou <= 7.5 ? "#3fb950" : ou < 10.5 ? "#e3b341" : "#f78166");
                           if (k==="mlbOu") { const v = m.gameOuLine ?? m.hitterGameTotal; return v != null ? <span style={{color:v>=9.5?"#3fb950":v>=7.5?"#e3b341":"#f78166"}}>{v}</span> : DASH; }
                           if (k==="dvp") { const r = m.posDvpRank; return C(r != null ? `#${r}${m.posGroup?" "+m.posGroup:""}` : null, r<=10?"#3fb950":r<=20?"#e3b341":"#f78166"); }
-                          if (k==="sim") { const sc = m.teamTotalSimScore ?? m.totalSimScore ?? m.finalSimScore ?? m.hitterFinalSimScore ?? m.nbaSimScore ?? m.nhlSimScore ?? m.simScore ?? m.hitterSimScore; const isTeamTotal = m.gameType === "teamTotal"; const isKPlay = m.finalSimScore != null && m.totalSimScore == null && !isTeamTotal; const isHRR = m.hitterFinalSimScore != null && m.finalSimScore == null && !isTeamTotal; const isNBA = m.nbaSimScore != null && m.totalSimScore == null && !isTeamTotal; const isNHL = m.nhlSimScore != null && m.totalSimScore == null && !isTeamTotal; const qualGreen = 8; const qualGate = 6; let tip = null; if (isKPlay) { tip = [`CSW%/K%: ${m.kpctPts??1}/2`,`Lineup K%: ${m.lkpPts??1}/2`,`Hit Rate %: ${m.kHitRatePts??1}/2`,`H2H Hand: ${m.kH2HHandPts??1}/2`,`O/U: ${m.totalPts??1}/2`].join('\n'); } else if (isHRR) { tip = [`OPS: ${m.hitterOpsPts??1}/2`,`WHIP: ${m.hitterWhipPts??1}/2`,`Season HR: ${m.hitterSeasonHitRatePts??1}/2`,`H2H HR: ${m.hitterH2HHitRatePts??1}/2`,`O/U: ${m.hitterTotalPts??1}/2`].join('\n'); } else if (isNBA) { const dvpPts=m.dvpRatio>=1.05?2:m.dvpRatio>=1.02?1:0; const gt=m.nbaGameTotal; const pace=m.nbaPaceAdj; const _paceGood=pace!=null&&pace>0; const _totalGood=gt!=null&&gt>=215; const comboPts=(_paceGood&&_totalGood)?2:(_paceGood||_totalGood)?1:0; let c1Label='C1', c1Pts=m.nbaSimScore != null ? 1 : 1; if(m.stat==='rebounds'){const v=m.nbaOpportunity;c1Pts=v==null?1:v>=30?2:v>=25?1:0;c1Label=`AvgMin ${v!=null?v.toFixed(0)+'m':'—'}`;} else {const u=m.nbaUsage;c1Pts=u==null?1:u>=28?2:u>=22?1:0;c1Label=`USG% ${u!=null?u.toFixed(1)+'%':'—'}`;} tip = [`${c1Label}: ${c1Pts}/2`,`DVP: ${dvpPts}/2`,`Season HR: ${m.nbaSeasonHitRatePts??1}/2`,`Soft HR: ${m.nbaSoftHitRatePts??1}/2`,`Pace+Total: ${comboPts}/2`].join('\n'); } else if (isNHL) { const toiPts=m.nhlOpportunity>=18?2:m.nhlOpportunity>=15?1:m.nhlOpportunity!=null?0:1; const gaaRank=m.posDvpRank; const gaaPts=gaaRank==null?1:gaaRank<=10?2:gaaRank<=15?1:0; const nhlTotal=m.nhlGameTotal; const nhlTotalPts=nhlTotal==null?1:nhlTotal>=7?2:nhlTotal>=5.5?1:0; tip = [`TOI ${m.nhlOpportunity?.toFixed(1)??'—'}m: ${toiPts}/2`,`GAA rank: ${gaaPts}/2`,`Season HR: ${m.nhlSeasonHitRatePts??1}/2`,`DVP HR: ${m.nhlDvpHitRatePts??1}/2`,`O/U ${nhlTotal??'—'}: ${nhlTotalPts}/2`].join('\n'); } else if (isTeamTotal) { const isU=m.direction==="under"; const h2hPts=isU?(m.h2hHitRate==null?1:m.h2hHitRate<=30?2:m.h2hHitRate<=50?1:0):(m.h2hHitRatePts??1); if (m.sport==="mlb") { const uRF=m.umpireRunFactor; const ssnPts=isU?(m.ttSeasonHitRate==null?1:m.ttSeasonHitRate<=20?2:m.ttSeasonHitRate<=40?1:0):(m.ttSeasonHitRatePts??1); const whipPts=isU?(m.oppWHIP==null?1:m.oppWHIP<=1.10?2:m.oppWHIP<=1.25?1:0):(m.ttWhipPts??1); const l10Pts=isU?(m.teamL10RPG==null?1:m.teamL10RPG<=3.5?2:m.teamL10RPG<=4.5?1:0):(m.ttL10Pts??1); const ou=m.gameOuLine; const ouPts=ou==null?1:isU?(ou<7.5?2:ou<9.5?1:0):(ou>=9.5?2:ou>=7.5?1:0); tip=[`${isU?"[Under SimScore]\n":""}Ssn HR% (${m.ttSeasonHitRate!=null?m.ttSeasonHitRate+'%':'—'}): ${ssnPts}/2`,`${m.oppTeam} WHIP (${m.oppWHIP!=null?m.oppWHIP.toFixed(2):'—'}): ${whipPts}/2`,`${m.scoringTeam} L10 RPG (${m.teamL10RPG!=null?m.teamL10RPG.toFixed(1):'—'}): ${l10Pts}/2`,`H2H HR% (${m.h2hHitRate!=null?m.h2hHitRate+'%':'—'}${m.h2hGames?' · '+m.h2hGames+'g':''}): ${h2hPts}/2`,`O/U (${ou??'—'}): ${ouPts}/2`].join('\n'); } else if (m.sport==="nba") { const offPts=v=>v==null?1:isU?(v<113?2:v<118?1:0):(v>=118?2:v>=113?1:0); const defPts=v=>v==null?1:isU?(v<113?2:v<118?1:0):(v>=118?2:v>=113?1:0); const ou=m.gameOuLine; const ouPts=ou==null?1:isU?(ou<215?2:ou<225?1:0):(ou>=225?2:ou>=215?1:0); const pace=m.teamPace,lgPace=m.leagueAvgPace; const pacePts=pace==null||lgPace==null?1:isU?(pace<=lgPace-2?2:pace<=lgPace+2?1:0):(pace>lgPace+2?2:pace>lgPace-2?1:0); tip=[`${isU?"[Under SimScore]\n":""}${m.scoringTeam} off PPG (${m.teamOff??'—'}): ${offPts(m.teamOff)}/2`,`${m.oppTeam} def allowed (${m.oppDef??'—'}): ${defPts(m.oppDef)}/2`,`O/U (${ou??'—'}): ${ouPts}/2`,`${m.scoringTeam} pace (${pace!=null?pace.toFixed(1):'—'}): ${pacePts}/2`,`H2H HR% (${m.h2hHitRate!=null?m.h2hHitRate+'%':'—'}${m.h2hGames?' · '+m.h2hGames+'g':''}): ${h2hPts}/2`].join('\n'); } } else if (m.totalSimScore != null) { if (m.sport==="mlb") { const hW=m.homeWHIP,aW=m.awayWHIP,ou=m.gameOuLine,cRPG=m.combinedRPG,h2hTR=m.h2hTotalHitRate; const whipPts=v=>v==null?1:v>1.35?2:v>1.20?1:0; const cRPGPts=cRPG==null?1:cRPG>=10.5?2:cRPG>=9.0?1:0; const h2hPts=h2hTR==null?1:h2hTR>=80?2:h2hTR>=60?1:0; tip=[`Comb road RPG (${cRPG!=null?cRPG.toFixed(1):'—'}): ${cRPGPts}/2`,`${m.homeTeam} WHIP (${hW!=null?hW.toFixed(2):'—'}): ${whipPts(hW)}/2`,`${m.awayTeam} WHIP (${aW!=null?aW.toFixed(2):'—'}): ${whipPts(aW)}/2`,`H2H HR% (${h2hTR!=null?h2hTR+'%':'—'}${m.h2hTotalGames?' · '+m.h2hTotalGames+'g':''}): ${h2hPts}/2`,`O/U (${ou??'—'}): ${ou!=null?(ou>=9.5?2:ou>=7.5?1:0):1}/2`].join('\n'); } else if (m.sport==="nba") { const hOR=m.homeOffRtg,aOR=m.awayOffRtg,ou=m.gameOuLine,hp=m.homePace,ap=m.awayPace,lgP=m.leagueAvgPace,pp=m.projPace,tot=(m.homeOut??0)+(m.awayOut??0); const offPts=v=>v==null?1:v>=118?2:v>=113?1:0; const ouPts=v=>v==null?1:v>=225?2:v>=215?1:0; const pacePts=(hp==null||ap==null||lgP==null)?1:(hp>lgP+2&&ap>lgP+2)?2:(hp>lgP||ap>lgP)?1:0; const injPts=tot===0?2:tot<=2?1:0; tip=[`Pace (proj ${pp??'—'}): ${pacePts}/2`,`${m.homeTeam} OffRtg (${hOR!=null?hOR.toFixed(1):'—'}): ${offPts(hOR)}/2`,`${m.awayTeam} OffRtg (${aOR!=null?aOR.toFixed(1):'—'}): ${offPts(aOR)}/2`,`Injuries (${tot} out): ${injPts}/2`,`O/U (${ou??'—'}): ${ouPts(ou)}/2`].join('\n'); } else if (m.sport==="nhl") { const hGPG=m.homeGPG,aGPG=m.awayGPG,hGAA=m.homeGAA,aGAA=m.awayGAA,ou=m.gameOuLine; const gpgPts=v=>v==null?1:v>=3.5?2:v>=3.0?1:0; const gaaPts=v=>v==null?1:v>=3.5?2:v>=3.0?1:0; const ouPts=v=>v==null?1:v>=7?2:v>=5.5?1:0; tip=[`${m.homeTeam} GPG (${hGPG??'—'}): ${gpgPts(hGPG)}/2`,`${m.awayTeam} GPG (${aGPG??'—'}): ${gpgPts(aGPG)}/2`,`${m.homeTeam} GAA (${hGAA??'—'}): ${gaaPts(hGAA)}/2`,`${m.awayTeam} GAA (${aGAA??'—'}): ${gaaPts(aGAA)}/2`,`O/U (${ou??'—'}): ${ouPts(ou)}/2`].join('\n'); } } return sc != null ? <span title={tip??undefined} style={{color:sc>=qualGreen?"#3fb950":sc>=qualGate?"#e3b341":"#8b949e",fontWeight:600,cursor:tip?"help":"default"}}>{sc}/10</span> : DASH; }
+                          if (k==="sim") { const sc = m.teamTotalSimScore ?? m.totalSimScore ?? m.finalSimScore ?? m.hitterFinalSimScore ?? m.nbaSimScore ?? m.nhlSimScore ?? m.simScore ?? m.hitterSimScore; const tip = buildSimTooltip(m); return sc != null ? <span title={tip??undefined} style={{color:sc>=8?"#3fb950":sc>=6?"#e3b341":"#8b949e",fontWeight:600,cursor:tip?"help":"default"}}>{sc}/10</span> : DASH; }
                           if (k==="env") { const pf = m.parkFactor ?? m.hitterParkKF; if (pf == null) return DASH; const pct = Math.round((pf-1)*100); const disp = (pct>=0?"+":"")+pct+"%"; return <span style={{color:pf>1.02?"#3fb950":pf<0.98?"#f78166":"#8b949e"}}>{disp}</span>; }
                           if (k==="brrl") { const b = m.hitterBarrelPct; return b != null ? <span style={{color:b>=14?"#3fb950":b>=10?"#e3b341":b>=7?"#8b949e":"#f78166"}}>{b.toFixed(1)+"%"}</span> : DASH; }
                           if (k==="nbapace") { const p = m.nbaPaceAdj; return p != null ? <span style={{color:p>0?"#3fb950":p>-2?"#e3b341":"#8b949e"}}>{p>0?"+":""}{p.toFixed(1)}</span> : DASH; }

@@ -14,8 +14,6 @@ export const STAT_FULL = {
   passingYards:"passing yards", rushingYards:"rushing yards", receivingYards:"receiving yards", touchdowns:"touchdowns",
 };
 
-export const ordinal = n => n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3rd" : `${n}th`;
-
 export const MLB_TEAM = {
   ARI:"Diamondbacks",ATL:"Braves",BAL:"Orioles",BOS:"Red Sox",CHC:"Cubs",CWS:"White Sox",
   CIN:"Reds",CLE:"Guardians",COL:"Rockies",DET:"Tigers",HOU:"Astros",KC:"Royals",
@@ -298,8 +296,8 @@ export const GAMELOG_COLS = {
     { key:"rebounds",      label:"REB",  tooltip:"Rebounds"                                                                    },
     { key:"assists",       label:"AST",  tooltip:"Assists"                                                                     },
     { key:"threePointers", label:"3P",   tooltip:"Three-pointers made"                                                         },
-    { key:"min",           label:"MIN",  tooltip:"Minutes played — ≥30 min = 4 SimScore pts, ≥25 = 2 pts"                     },
-    { key:"rest",          label:"Rest", tooltip:"Days since last game — 1 = back-to-back (B2B SimScore gate)"                 },
+    { key:"min",           label:"MIN",  tooltip:"Minutes played (display only — not a SimScore component)"                   },
+    { key:"rest",          label:"Rest", tooltip:"Days since last game — 1 = back-to-back (reduces simulation mean by 7%)"    },
   ],
   "hockey/nhl": [
     { key:"date",    label:"Date", tooltip:"Game date",                                                       align:"left"   },
@@ -308,8 +306,8 @@ export const GAMELOG_COLS = {
     { key:"g",       label:"G",    tooltip:"Goals"                                                                           },
     { key:"a",       label:"A",    tooltip:"Assists"                                                                         },
     { key:"points",  label:"PTS",  tooltip:"Points (goals + assists)"                                                        },
-    { key:"toi",     label:"TOI",  tooltip:"Time on ice — ≥18 min = 4 SimScore pts, ≥15 min = 2 pts"                        },
-    { key:"rest",    label:"Rest", tooltip:"Days since last game — 1 = back-to-back (B2B SimScore gate)"                     },
+    { key:"toi",     label:"TOI",  tooltip:"Time on ice — ≥18 min = 2 SimScore pts, ≥15 min = 1 pt, <15 min = 0 pts"       },
+    { key:"rest",    label:"Rest", tooltip:"Days since last game — 1 = back-to-back (reduces simulation mean by 7%)"         },
   ],
   "football/nfl": [
     { key:"date",           label:"Date",   tooltip:"Game date",       align:"left"   },
