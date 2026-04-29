@@ -359,7 +359,7 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                           ops:"2026 season OPS — ≥.850 = 2pts green, ≥.720 = 1pt yellow, <.720 = 0pts red; null = 1pt abstain",
                           hQuality:"Batter quality composite — lineup spot 1–3 + barrel% ≥10%; both = green, one = yellow, neither = red. Shows #spot + barrel%.",
                           hSsnHR:"Season HRR hit rate (2026/2025 blended) — ≥80% = 2pts green, ≥70% = 1pt yellow, <70% = 0pts red",
-                          hH2HHR:"H2H hit rate vs tonight's pitcher (≥5 games) or platoon-adjusted team rate — ≥80% = 2pts green, ≥70% = 1pt yellow; null = 1pt abstain",
+                          hH2HHR:"BvP: batter's HRR hit rate vs tonight's pitcher (≥10 games). Fallback: Poisson approx from MLB Stats API vsRHP/vsLHP splits (2025+2026 combined, ≥10 games vs that hand). ≥80% = 2pts green, ≥70% = 1pt yellow, <70% = 0pts red; null = 1pt abstain",
                           ttOpp:"Opponent team — click to navigate to team page",
                           ttH2HHR:"H2H hit rate — scoring team scored ≥ threshold in last 10 games vs this opponent — ≥80% green (2pts), ≥60% yellow (1pt), <60% red (0pts); null (<3 H2H games) = 1pt abstain",
                           ttTeamRPG:"Scoring team runs per game (regular season) — higher = better for team runs over (green >5.0, yellow >4.0)",
