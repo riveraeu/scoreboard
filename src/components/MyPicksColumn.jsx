@@ -34,12 +34,8 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
 
         return (
           <div>
-            {/* Header row */}
+            {/* Sub-header row: active/finished counts + Add button + Bankroll */}
             <div style={{display:"flex",alignItems:"center",marginBottom:12,gap:8,flexWrap:"wrap"}}>
-              <div style={{color:"#c9d1d9",fontSize:15,fontWeight:700}}>My Picks</div>
-              <span style={{background:"#21262d",borderRadius:10,padding:"1px 8px",fontSize:11,color:"#8b949e"}}>
-                {trackedPlays.length}
-              </span>
               {(() => {
                 const activeCount = trackedPlays.filter(p => !p.result).length;
                 const finishedCount = trackedPlays.filter(p => p.result && p.result !== "dnp").length;

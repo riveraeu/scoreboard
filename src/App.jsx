@@ -870,6 +870,7 @@ function App() {
                       const oddsVal = !isNaN(_n) && pendingOdds.trim() !== "-" && pendingOdds.trim() !== "+" ? _n : null;
                       trackPlay(oddsVal ? { ...play, americanOdds: oddsVal } : play);
                       setPendingTrackPlay(null);
+                      setShowPicksDrawer(true);
                       triggerFlyAnimation();
                     } else if (e.key === "Escape") {
                       setPendingTrackPlay(null);
@@ -904,6 +905,7 @@ function App() {
                   const oddsVal = !isNaN(_n) && pendingOdds.trim() !== "-" && pendingOdds.trim() !== "+" ? _n : null;
                   trackPlay(oddsVal ? { ...play, americanOdds: oddsVal } : play);
                   setPendingTrackPlay(null);
+                  setShowPicksDrawer(true);
                   triggerFlyAnimation();
                 }}
                   style={{flex:1,padding:"8px 0",fontSize:12,borderRadius:7,border:"1px solid #3fb950",
@@ -2072,19 +2074,22 @@ function App() {
       }}>
         {/* Drawer header */}
         <div style={{
-          display:"flex", alignItems:"center", justifyContent:"space-between",
+          display:"flex", alignItems:"center", gap:8,
           padding:"16px 20px 14px",
           borderBottom:"1px solid #21262d",
           flexShrink:0,
         }}>
           <span style={{color:"#c9d1d9", fontWeight:700, fontSize:15}}>My Picks</span>
+          <span style={{background:"#21262d", borderRadius:10, padding:"1px 8px", fontSize:11, color:"#8b949e"}}>
+            {trackedPlays.length}
+          </span>
           <button onClick={() => setShowPicksDrawer(false)}
-            style={{background:"transparent", border:"none", color:"#8b949e", fontSize:20, cursor:"pointer", lineHeight:1, padding:"2px 4px"}}>
+            style={{marginLeft:"auto", background:"transparent", border:"none", color:"#8b949e", fontSize:20, cursor:"pointer", lineHeight:1, padding:"2px 4px"}}>
             ×
           </button>
         </div>
         {/* Drawer content */}
-        <div style={{flex:1, overflowY:"auto", padding:"0 20px 24px"}}>
+        <div style={{flex:1, overflowY:"auto", padding:"12px 20px 24px"}}>
           <MyPicksColumn
             trackedPlays={trackedPlays}
             setTrackedPlays={setTrackedPlays}
