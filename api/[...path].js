@@ -3897,6 +3897,13 @@ var worker_default = {
             const isCrossWinner = crossWinner?.gameType === "teamTotal" && crossWinner?.scoringTeam === tp.scoringTeam && crossWinner?.threshold === tp.threshold && crossWinner?.direction === tp.direction;
             plays.push(isTypeBest && isCrossWinner ? tp : { ...tp, qualified: false });
           }
+          // Retroactively mark game totals as non-qualified when a team total won cross-dedup for the same game
+          for (let i = 0; i < plays.length; i++) {
+            const p = plays[i];
+            if (p.gameType !== "total" || p.qualified === false) continue;
+            const crossWinner = _crossBestMap[`${p.sport}|${p.homeTeam}|${p.awayTeam}`];
+            if (crossWinner?.gameType === "teamTotal") plays[i] = { ...p, qualified: false };
+          }
         }
         if (isDebug) {
           const nbaGlLabels = Object.fromEntries(Object.entries(playerGamelogs).filter(([k]) => k.startsWith("nba|")).map(([k, gl]) => [k, gl?.ul ?? null]));
