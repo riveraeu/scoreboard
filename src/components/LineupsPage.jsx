@@ -258,9 +258,10 @@ export default function LineupsPage({
                   background: showPicksDrawer ? 'rgba(88,166,255,0.12)' : 'transparent',
                   color: showPicksDrawer ? '#58a6ff' : '#484f58', fontWeight: 600,
                   display: 'flex', alignItems: 'center', gap: 4 }}>
-                ★ Picks
+                <span style={{ color: '#e3b341' }}>★</span> Picks
                 {activePicks.length > 0 && (
-                  <span style={{ background: '#3fb950', color: '#0d1117', fontSize: 9, fontWeight: 700,
+                  <span style={{ background: 'rgba(63,185,80,0.12)', border: '1px solid rgba(63,185,80,0.3)',
+                    color: '#3fb950', fontSize: 9, fontWeight: 700,
                     borderRadius: 8, padding: '0 4px', lineHeight: '14px' }}>
                     {activePicks.length}
                   </span>
