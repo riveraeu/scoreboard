@@ -1843,9 +1843,12 @@ var worker_default = {
         const keysNeedingGamelog = [];
         const _mlbAbbrNorm = { CHW: "CWS", KCR: "KC", SFG: "SF", SDP: "SD", TBR: "TB", AZ: "ARI", OAK: "ATH", WSN: "WSH", WAS: "WSH" };
         const _normGlOpp = (gl) => gl && gl.events ? { ...gl, events: gl.events.map((ev) => ev.oppAbbr && _mlbAbbrNorm[ev.oppAbbr] ? { ...ev, oppAbbr: _mlbAbbrNorm[ev.oppAbbr] } : ev) } : gl;
+        // Two-way players (e.g. Ohtani) need &category=pitching for strikeout markets
+        const _pitchPlayerKeys = new Set(loopMarkets.filter(m => m.stat === "strikeouts" && m.sport === "mlb").map(m => `mlb|${m.playerName}`));
+        const _pitchGlCacheKey = (k) => glCacheKey(k).replace("242526v2", "242526pv1");
         if (CACHE2) {
           // Parallel cache lookups — serial await per-key was ~100ms × N players = seconds of dead time
-          const cachedVals = await Promise.all(keysForGamelog.map(k => CACHE2.get(glCacheKey(k), "json").catch(() => null)));
+          const cachedVals = await Promise.all(keysForGamelog.map(k => CACHE2.get(_pitchPlayerKeys.has(k) ? _pitchGlCacheKey(k) : glCacheKey(k), "json").catch(() => null)));
           for (let i = 0; i < keysForGamelog.length; i++) {
             if (cachedVals[i]) playerGamelogs[keysForGamelog[i]] = keysForGamelog[i].startsWith("mlb|") ? _normGlOpp(cachedVals[i]) : cachedVals[i];
             else keysNeedingGamelog.push(keysForGamelog[i]);
@@ -1888,16 +1891,18 @@ var worker_default = {
           }
         }
         __name(parseEspnGamelog, "parseEspnGamelog");
-        async function fetchGamelog(key, overrideId = null) {
+        async function fetchGamelog(key, overrideId = null, forcePitching = false) {
           const [sport] = key.split("|");
           const info = playerInfoMap[key];
           const athleteId = overrideId || info?.id;
           if (!athleteId) return;
           if (sport === "mlb") {
+            const catSuffix = forcePitching ? "&category=pitching" : "";
+            const pSfx = forcePitching ? "p" : "";
             const baseUrl = `https://site.web.api.espn.com/apis/common/v3/sports/baseball/mlb/athletes/${athleteId}/gamelog`;
-            const key24 = `gl:mlb2024|${key}`;
-            const key25 = `gl:mlb2025|${key}`;
-            const key26 = `gl:mlb2026|${key}`;
+            const key24 = `gl:mlb2024${pSfx}|${key}`;
+            const key25 = `gl:mlb2025${pSfx}|${key}`;
+            const key26 = `gl:mlb2026${pSfx}|${key}`;
             let [gl24, gl25] = CACHE2 ? await Promise.all([
               CACHE2.get(key24, "json").catch(() => null),
               CACHE2.get(key25, "json").catch(() => null)
@@ -1905,7 +1910,7 @@ var worker_default = {
             const fetchSeasons = [2026];
             if (!gl25) fetchSeasons.push(2025);
             if (!gl24) fetchSeasons.push(2024);
-            const results = await Promise.all(fetchSeasons.map((yr) => parseEspnGamelog(`${baseUrl}?season=${yr}`, key)));
+            const results = await Promise.all(fetchSeasons.map((yr) => parseEspnGamelog(`${baseUrl}?season=${yr}${catSuffix}`, key)));
             const seasonResults = Object.fromEntries(fetchSeasons.map((yr, i) => [yr, results[i]]));
             const gl26 = seasonResults[2026] || null;
             if (!gl25) {
@@ -1928,7 +1933,8 @@ var worker_default = {
                 ...(gl24?.events || []).map((ev) => ({ ...ev, season: 2024, oppAbbr: normOpp(ev.oppAbbr) }))
               ];
               playerGamelogs[key] = { ul, events };
-              if (CACHE2) await CACHE2.put(glCacheKey(key), JSON.stringify({ ul, events }), { expirationTtl: 21600 });
+              const combinedKey = forcePitching ? _pitchGlCacheKey(key) : glCacheKey(key);
+              if (CACHE2) await CACHE2.put(combinedKey, JSON.stringify({ ul, events }), { expirationTtl: 21600 });
             }
           } else {
             const glUrl = GAMELOG_API[sport]?.(athleteId);
@@ -1943,7 +1949,7 @@ var worker_default = {
         __name(fetchGamelog, "fetchGamelog");
         // Fetch all uncached gamelogs in parallel — batching with delays was adding ~26s for 60 players
         const GL_BATCH = 5; // kept for pitcher loop below
-        await Promise.all(keysNeedingGamelog.map((k) => fetchGamelog(k)));
+        await Promise.all(keysNeedingGamelog.map((k) => fetchGamelog(k, null, _pitchPlayerKeys.has(k))));
         const pitcherGamelogs = {};
         // Merge probables (ESPN source) with pitcherInfoByTeam (MLB Stats API source).
         // pitcherInfoByTeam is more reliable for early-day requests before ESPN announces probables.
@@ -1959,13 +1965,13 @@ var worker_default = {
         if (pitcherEntriesToLoad.length > 0) {
           await Promise.all(pitcherEntriesToLoad.map(async ([teamAbbr, { name }]) => {
             const pitcherKey = `mlb|${name}`;
-            const cached = CACHE2 ? await CACHE2.get(glCacheKey(pitcherKey), "json").catch(() => null) : null;
+            const cached = CACHE2 ? await CACHE2.get(_pitchGlCacheKey(pitcherKey), "json").catch(() => null) : null;
             if (cached) pitcherGamelogs[teamAbbr] = { name, gl: _normGlOpp(cached) };
           }));
           const uncachedPitchers = pitcherEntriesToLoad.filter(([teamAbbr]) => !pitcherGamelogs[teamAbbr]);
           await Promise.all(uncachedPitchers.map(async ([teamAbbr, { name, id }]) => {
             const pitcherKey = `mlb|${name}`;
-            await fetchGamelog(pitcherKey, id);
+            await fetchGamelog(pitcherKey, id, true);
             const gl = playerGamelogs[pitcherKey] || null;
             if (gl) pitcherGamelogs[teamAbbr] = { name, gl };
           }));
