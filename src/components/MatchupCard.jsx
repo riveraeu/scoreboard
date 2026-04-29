@@ -15,11 +15,9 @@ function fmtGameTime(gameTime) {
     const d = new Date(gameTime);
     const tz = 'America/Los_Angeles';
     const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: tz });
-    const tomorrowStr = new Date(Date.now() + 86400000).toLocaleDateString('en-CA', { timeZone: tz });
     const gameDateStr = d.toLocaleDateString('en-CA', { timeZone: tz });
     const timeStr = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: tz, timeZoneName: 'short' });
-    const label = gameDateStr === todayStr ? 'Today' : gameDateStr === tomorrowStr ? 'Tomorrow' : d.toLocaleDateString('en-US', { timeZone: tz, month: 'short', day: 'numeric' });
-    return `${label} · ${timeStr}`;
+    return gameDateStr === todayStr ? `Today · ${timeStr}` : timeStr;
   } catch { return null; }
 }
 
@@ -97,7 +95,7 @@ export default function MatchupCard({
       {/* Play count badge — top right */}
       {totalPlays > 0 && (
         <button onClick={onPlayBadgeClick} style={{
-          position: 'absolute', top: 8, right: 10, zIndex: 1,
+          position: 'absolute', top: 5, right: 5, zIndex: 1,
           fontSize: 10, fontWeight: 700, cursor: 'pointer',
           color: '#3fb950', background: 'rgba(63,185,80,0.12)',
           border: '1px solid rgba(63,185,80,0.3)', borderRadius: 10,
