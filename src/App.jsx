@@ -1557,7 +1557,7 @@ function App() {
                             const _c1Label = safeTab === "rebounds"
                               ? `AvgMin: ${nbaOpportunity != null ? nbaOpportunity.toFixed(0)+"m → "+_usgPts : "—"}/2`
                               : `USG%: ${nbaUsage != null ? nbaUsage.toFixed(1)+"% → "+_usgPts : "—"}/2`;
-                            const _dvpPts = tonightTabPlay?.posDvpRank != null ? (tonightTabPlay.posDvpRank <= 10 ? 2 : tonightTabPlay.posDvpRank <= 15 ? 1 : 0) : 1;
+                            const _dvpPts = tonightTabPlay?.dvpRatio != null ? (tonightTabPlay.dvpRatio >= 1.05 ? 2 : tonightTabPlay.dvpRatio >= 1.02 ? 1 : 0) : 0;
                             const _nbaSeasonHRPts = tonightTabPlay?.nbaSeasonHitRatePts ?? (seasonPct >= 90 ? 2 : seasonPct >= 80 ? 1 : 0);
                             const _nbaSoftHRPts = tonightTabPlay?.nbaSoftHitRatePts ?? (tonightTabPlay?.softPct == null ? 1 : tonightTabPlay.softPct >= 90 ? 2 : tonightTabPlay.softPct >= 80 ? 1 : 0);
                             const _paceGood = nbaPaceAdj != null && nbaPaceAdj > 0;
