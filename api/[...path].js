@@ -2861,7 +2861,7 @@ var worker_default = {
               nhlSaRank = nhlSaRankMap[tonightOpp]?.rank ?? null;
             }
             // 1. Ice time (TOI, max 2pts): ≥18 min → 2pts, ≥15 min → 1pt, else 0pts, null → 0pts
-            const _toiIdx = gl.ul.findIndex(h => h === "TOI" || h === "timeOnIce");
+            const _toiIdx = gl.ul.findIndex(h => h === "TOI" || h === "TOI/G" || h === "timeOnIce");
             if (_toiIdx !== -1) {
               const _toiVals = gl.events.slice(0, 10).map(ev => {
                 const s = ev.stats[_toiIdx];
@@ -3055,7 +3055,7 @@ var worker_default = {
                 nbaAvgAst: nbaUsageMap[String(info.id)]?.avgAst ?? null,
                 nbaAvgReb: nbaUsageMap[String(info.id)]?.avgReb ?? null,
               } : {}),
-              ...(sport === "nhl" ? { nhlSimScore, nhlPreSimScore, nhlSimPct: nhlSimPctOut, nhlShotsAdj, nhlOpportunity, nhlTeamGPG, nhlSaRank, nhlGameTotal, nhlSeasonHitRatePts, nhlDvpHitRatePts, isB2B } : {}),
+              ...(sport === "nhl" ? { nhlSimScore, nhlPreSimScore, nhlSimPct: nhlSimPctOut, nhlShotsAdj, nhlOpportunity, nhlTeamGPG, nhlSaRank, gaaRank: _gaaRank, nhlGameTotal, nhlSeasonHitRatePts, nhlDvpHitRatePts, isB2B } : {}),
             };
             if (isDebug) dropped.push(_dropObj);
             // For all player prop sports: include in plays with qualified:false so player card
@@ -3197,7 +3197,7 @@ var worker_default = {
               seasonPct: parseFloat(primaryPct.toFixed(1)),
               softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
               truePct: parseFloat(truePct.toFixed(1)), edge: parseFloat(edge.toFixed(1)),
-              nhlSimPct: nhlSimPctOut, nhlShotsAdj, nhlOpportunity, nhlTeamGPG, nhlSaRank, isB2B,
+              nhlSimPct: nhlSimPctOut, nhlShotsAdj, nhlOpportunity, nhlTeamGPG, nhlSaRank, gaaRank: _gaaRank, isB2B,
               nhlGameTotal, nhlSeasonHitRatePts, nhlDvpHitRatePts,
               posDvpRank: posDvpRankOut, dvpRatio: oppDvpRatioOut, posGroup: posGroupOut,
             };
@@ -3383,6 +3383,7 @@ var worker_default = {
             nhlSimPct: sport === "nhl" ? nhlSimPctOut : void 0,
             nhlShotsAdj: sport === "nhl" ? nhlShotsAdj : void 0,
             nhlSaRank: sport === "nhl" ? nhlSaRank : void 0,
+            gaaRank: sport === "nhl" ? _gaaRank : void 0,
             nhlOpportunity: sport === "nhl" ? nhlOpportunity : void 0,
             nhlTeamGPG: sport === "nhl" ? nhlTeamGPG : void 0,
             nhlGameTotal: sport === "nhl" ? nhlGameTotal : void 0,
