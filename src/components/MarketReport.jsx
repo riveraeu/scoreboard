@@ -113,30 +113,32 @@ function buildSimTooltip(m) {
     if (m.sport === "mlb") {
       const hW = m.homeWHIP, aW = m.awayWHIP, ou = m.gameOuLine;
       const cRPG = m.combinedRPG, h2hTR = m.h2hTotalHitRate;
-      const whipPts = v => v == null ? 1 : v > 1.35 ? 2 : v > 1.20 ? 1 : 0;
       const isU = m.direction === "under";
+      const whipPts = v => v == null ? 1 : isU ? (v <= 1.10 ? 2 : v <= 1.25 ? 1 : 0) : (v > 1.35 ? 2 : v > 1.20 ? 1 : 0);
       const cRPGPts = cRPG == null ? 1 : isU ? (cRPG < 8.5 ? 2 : cRPG <= 10.5 ? 1 : 0) : (cRPG >= 10.5 ? 2 : cRPG >= 8.5 ? 1 : 0);
-      const h2hPts = h2hTR == null ? 1 : h2hTR >= 80 ? 2 : h2hTR >= 60 ? 1 : 0;
+      const h2hPts = h2hTR == null ? 1 : isU ? (h2hTR <= 20 ? 2 : h2hTR <= 40 ? 1 : 0) : (h2hTR >= 80 ? 2 : h2hTR >= 60 ? 1 : 0);
+      const ouPts = ou == null ? 1 : isU ? (ou < 7.5 ? 2 : ou < 9.5 ? 1 : 0) : (ou >= 9.5 ? 2 : ou >= 7.5 ? 1 : 0);
       return [
-        `Comb road RPG (${cRPG != null ? cRPG.toFixed(1) : '—'}): ${cRPGPts}/2`,
+        `${isU ? "[Under SimScore]\n" : ""}Comb road RPG (${cRPG != null ? cRPG.toFixed(1) : '—'}): ${cRPGPts}/2`,
         `${m.homeTeam} WHIP (${hW != null ? hW.toFixed(2) : '—'}): ${whipPts(hW)}/2`,
         `${m.awayTeam} WHIP (${aW != null ? aW.toFixed(2) : '—'}): ${whipPts(aW)}/2`,
         `H2H HR% (${h2hTR != null ? h2hTR + '%' : '—'}${m.h2hTotalGames ? ' · ' + m.h2hTotalGames + 'g' : ''}): ${h2hPts}/2`,
-        `O/U (${ou ?? '—'}): ${ou != null ? (ou >= 9.5 ? 2 : ou >= 7.5 ? 1 : 0) : 1}/2`,
+        `O/U (${ou ?? '—'}): ${ouPts}/2`,
       ].join('\n');
     }
     if (m.sport === "nba") {
       const cOR = m.combOffRtg, cDR = m.combDefRtg, ou = m.gameOuLine;
       const hp = m.homePace, ap = m.awayPace, lgP = m.leagueAvgPace, pp = m.projPace;
-      const rtgPts = v => v == null ? 1 : v >= 118 ? 2 : v >= 113 ? 1 : 0;
-      const ouPts = v => v == null ? 1 : v >= 225 ? 2 : v >= 215 ? 1 : 0;
+      const isU = m.direction === "under";
+      const rtgPts = v => v == null ? 1 : isU ? (v < 113 ? 2 : v < 118 ? 1 : 0) : (v >= 118 ? 2 : v >= 113 ? 1 : 0);
+      const ouPts = v => v == null ? 1 : isU ? (v < 215 ? 2 : v < 225 ? 1 : 0) : (v >= 225 ? 2 : v >= 215 ? 1 : 0);
       const pacePts = (hp == null || ap == null || lgP == null) ? 1
-        : (hp > lgP + 2 && ap > lgP + 2) ? 2
-        : (hp > lgP || ap > lgP) ? 1 : 0;
+        : isU ? ((hp < lgP - 2 && ap < lgP - 2) ? 2 : (hp < lgP || ap < lgP) ? 1 : 0)
+        : ((hp > lgP + 2 && ap > lgP + 2) ? 2 : (hp > lgP || ap > lgP) ? 1 : 0);
       const gtH2H = m.nbaGtH2HRate;
-      const gtH2HPts = gtH2H == null ? 1 : gtH2H >= 80 ? 2 : gtH2H >= 60 ? 1 : 0;
+      const gtH2HPts = gtH2H == null ? 1 : isU ? (gtH2H <= 30 ? 2 : gtH2H <= 50 ? 1 : 0) : (gtH2H >= 80 ? 2 : gtH2H >= 60 ? 1 : 0);
       return [
-        `Pace (proj ${pp ?? '—'}): ${pacePts}/2`,
+        `${isU ? "[Under SimScore]\n" : ""}Pace (proj ${pp ?? '—'}): ${pacePts}/2`,
         `Comb OffRtg (${cOR != null ? cOR.toFixed(1) : '—'}): ${rtgPts(cOR)}/2`,
         `Comb DefRtg (${cDR != null ? cDR.toFixed(1) : '—'}): ${rtgPts(cDR)}/2`,
         `H2H HR% (${gtH2H != null ? gtH2H + '%' : '—'}): ${gtH2HPts}/2`,
@@ -145,11 +147,12 @@ function buildSimTooltip(m) {
     }
     if (m.sport === "nhl") {
       const hGPG = m.homeGPG, aGPG = m.awayGPG, hGAA = m.homeGAA, aGAA = m.awayGAA, ou = m.gameOuLine;
-      const gpgPts = v => v == null ? 1 : v >= 3.5 ? 2 : v >= 3.0 ? 1 : 0;
-      const gaaPts = v => v == null ? 1 : v >= 3.5 ? 2 : v >= 3.0 ? 1 : 0;
-      const ouPts = v => v == null ? 1 : v >= 7 ? 2 : v >= 5.5 ? 1 : 0;
+      const isU = m.direction === "under";
+      const gpgPts = v => v == null ? 1 : isU ? (v < 3.0 ? 2 : v < 3.5 ? 1 : 0) : (v >= 3.5 ? 2 : v >= 3.0 ? 1 : 0);
+      const gaaPts = v => v == null ? 1 : isU ? (v < 3.0 ? 2 : v < 3.5 ? 1 : 0) : (v >= 3.5 ? 2 : v >= 3.0 ? 1 : 0);
+      const ouPts = v => v == null ? 1 : isU ? (v < 5.5 ? 2 : v < 7 ? 1 : 0) : (v >= 7 ? 2 : v >= 5.5 ? 1 : 0);
       return [
-        `${m.homeTeam} GPG (${hGPG ?? '—'}): ${gpgPts(hGPG)}/2`,
+        `${isU ? "[Under SimScore]\n" : ""}${m.homeTeam} GPG (${hGPG ?? '—'}): ${gpgPts(hGPG)}/2`,
         `${m.awayTeam} GPG (${aGPG ?? '—'}): ${gpgPts(aGPG)}/2`,
         `${m.homeTeam} GAA (${hGAA ?? '—'}): ${gaaPts(hGAA)}/2`,
         `${m.awayTeam} GAA (${aGAA ?? '—'}): ${gaaPts(aGAA)}/2`,
@@ -345,7 +348,7 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                       return _sortCfg.dir === "desc" ? -cmp : cmp;
                     }
                     if ((a.qualified !== false) !== (b.qualified !== false)) return (a.qualified !== false) ? -1 : 1;
-                    const _simF = m => direction === "under" ? (m.underSimScore ?? m.totalSimScore) : (m.totalSimScore ?? m.teamTotalSimScore);
+                    const _simF = m => direction === "under" ? (m.underSimScore ?? m.totalSimScore ?? m.teamTotalSimScore) : (m.totalSimScore ?? m.teamTotalSimScore);
                     const sa = _simF(a) ?? a.finalSimScore ?? a.hitterFinalSimScore ?? a.nbaSimScore ?? a.nhlSimScore ?? a.simScore ?? a.hitterSimScore ?? 0;
                     const sb = _simF(b) ?? b.finalSimScore ?? b.hitterFinalSimScore ?? b.nbaSimScore ?? b.nhlSimScore ?? b.simScore ?? b.hitterSimScore ?? 0;
                     if (sb !== sa) return sb - sa;
@@ -408,7 +411,7 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                           if (k==="whip") { const w = m.pitcherWHIP; return C(w != null ? w.toFixed(2) : null, w > 1.35 ? "#3fb950" : w > 1.20 ? "#e3b341" : "#f78166"); }
                           if (k==="plat") { const s = m.hitterSplitBA; const pts = m.hitterPlatoonPts; if (s == null) return DASH; const ba = "."+Math.round(s*1000).toString().padStart(3,"0"); return <span style={{color:pts===2?"#3fb950":pts===0?"#f78166":"#e3b341"}}>{ba}</span>; }
                           if (k==="ou")  return C(ou  != null ? ou : null, ou <= 7.5 ? "#3fb950" : ou < 10.5 ? "#e3b341" : "#f78166");
-                          if (k==="mlbOu") { const v = m.gameOuLine ?? m.hitterGameTotal; return v != null ? <span style={{color:v>=9.5?"#3fb950":v>=7.5?"#e3b341":"#f78166"}}>{v}</span> : DASH; }
+                          if (k==="mlbOu") { const v = m.gameOuLine ?? m.hitterGameTotal; if (v == null) return DASH; const isU=m.direction==="under"; const color=isU?(v<7.5?"#3fb950":v<9.5?"#e3b341":"#f78166"):(v>=9.5?"#3fb950":v>=7.5?"#e3b341":"#f78166"); return <span style={{color}}>{v}</span>; }
                           if (k==="dvp") { const r = m.posDvpRank; const ratio = m.dvpRatio; const dvpColor = ratio == null ? "#f78166" : ratio >= 1.05 ? "#3fb950" : ratio >= 1.02 ? "#e3b341" : "#f78166"; return C(r != null ? `#${r}${m.posGroup?" "+m.posGroup:""}` : null, dvpColor); }
                           if (k==="sim") { const sc = m.teamTotalSimScore ?? m.totalSimScore ?? m.finalSimScore ?? m.hitterFinalSimScore ?? m.nbaSimScore ?? m.nhlSimScore ?? m.simScore ?? m.hitterSimScore; const tip = buildSimTooltip(m); return sc != null ? <span title={tip??undefined} style={{color:sc>=8?"#3fb950":sc>=5?"#e3b341":"#f78166",fontWeight:600,cursor:tip?"help":"default"}}>{sc}/10</span> : DASH; }
                           if (k==="env") { const pf = m.parkFactor ?? m.hitterParkKF; if (pf == null) return DASH; const pct = Math.round((pf-1)*100); const disp = (pct>=0?"+":"")+pct+"%"; return <span style={{color:pf>1.02?"#3fb950":pf<0.98?"#f78166":"#8b949e"}}>{disp}</span>; }
@@ -431,23 +434,23 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                           if (k==="nhlGameTotalOu") { const v=m.nhlGameTotal; if (v==null) return DASH; const color=v>=7?"#3fb950":v>=5.5?"#e3b341":"#f78166"; return <span style={{color,fontWeight:600}}>O{v}</span>; }
                           // Total PPG columns
                           if (k==="combinedRPG") { const v = m.combinedRPG; if (v == null) return DASH; const isU=m.direction==="under"; const color=isU?(v<8.5?"#3fb950":v<=10.5?"#e3b341":"#f78166"):(v>=10.5?"#3fb950":v>=8.5?"#e3b341":"#f78166"); return <span style={{color,fontWeight:600}}>{v.toFixed(1)}</span>; }
-                          if (k==="homeWhip"||k==="awayWhip") { const v = m[k==="homeWhip"?"homeWHIP":"awayWHIP"]; return v!=null ? <span style={{color:v>1.35?"#3fb950":v>1.20?"#e3b341":"#f78166",fontWeight:600}}>{v.toFixed(2)}</span> : DASH; }
-                          if (k==="gtH2HHR") { const v=m.h2hTotalHitRate; const g=m.h2hTotalGames; if (v==null) return DASH; const color=v>=80?"#3fb950":v>=60?"#e3b341":"#f78166"; return <span style={{color}} title={g!=null?`${g} H2H games`:undefined}>{v}%</span>; }
+                          if (k==="homeWhip"||k==="awayWhip") { const v = m[k==="homeWhip"?"homeWHIP":"awayWHIP"]; if(v==null) return DASH; const isU=m.direction==="under"; const color=isU?(v<=1.10?"#3fb950":v<=1.25?"#e3b341":"#f78166"):(v>1.35?"#3fb950":v>1.20?"#e3b341":"#f78166"); return <span style={{color,fontWeight:600}}>{v.toFixed(2)}</span>; }
+                          if (k==="gtH2HHR") { const v=m.h2hTotalHitRate; const g=m.h2hTotalGames; if (v==null) return DASH; const isU=m.direction==="under"; const color=isU?(v<=20?"#3fb950":v<=40?"#e3b341":"#f78166"):(v>=80?"#3fb950":v>=60?"#e3b341":"#f78166"); return <span style={{color}} title={g!=null?`${g} H2H games`:undefined}>{v}%</span>; }
                           if (k==="umpire") { const v = m.umpireRunFactor; if (v==null) return DASH; return <span style={{color:v>=1.05?"#3fb950":v>=0.97?"#e3b341":"#f78166",fontWeight:600}}>{v.toFixed(3)}</span>; }
                           if (k==="homeRPG"||k==="awayRPG") { const v = m[k]; return v != null ? <span style={{color:v>=5.0?"#3fb950":v>=4.0?"#e3b341":"#8b949e",fontWeight:600}}>{v.toFixed(1)}</span> : DASH; }
                           if (k==="homeERA"||k==="awayERA") { const v = m[k]; return v != null ? <span style={{color:v>=4.5?"#3fb950":v>=3.5?"#e3b341":"#8b949e",fontWeight:600}}>{v.toFixed(2)}</span> : DASH; }
                           if (k==="homeOffRtg"||k==="awayOffRtg") { const v = m[k]; return v != null ? <span style={{color:v>=118?"#3fb950":v>=113?"#e3b341":"#f78166",fontWeight:600}}>{v.toFixed(1)}</span> : DASH; }
                           if (k==="homeDefRtg"||k==="awayDefRtg") { const v = m[k]; return v != null ? <span style={{color:v>=118?"#f78166":v>=113?"#e3b341":"#3fb950",fontWeight:600}}>{v.toFixed(1)}</span> : DASH; }
-                          if (k==="nbaTotPace") { const pa = m.projPace != null && m.leagueAvgPace != null ? parseFloat((m.projPace - m.leagueAvgPace).toFixed(1)) : null; if (pa == null) return DASH; const _pp = (m.homePace == null||m.awayPace==null||m.leagueAvgPace==null)?1:(m.homePace>m.leagueAvgPace+2&&m.awayPace>m.leagueAvgPace+2)?2:(m.homePace>m.leagueAvgPace||m.awayPace>m.leagueAvgPace)?1:0; return <span style={{color:_pp===2?"#3fb950":_pp===1?"#e3b341":"#f78166",fontWeight:600}}>{(pa>0?"+":"")+pa}</span>; }
+                          if (k==="nbaTotPace") { const pa = m.projPace != null && m.leagueAvgPace != null ? parseFloat((m.projPace - m.leagueAvgPace).toFixed(1)) : null; if (pa == null) return DASH; const isU=m.direction==="under"; const _pp = (m.homePace==null||m.awayPace==null||m.leagueAvgPace==null)?1:isU?((m.homePace<m.leagueAvgPace-2&&m.awayPace<m.leagueAvgPace-2)?2:(m.homePace<m.leagueAvgPace||m.awayPace<m.leagueAvgPace)?1:0):((m.homePace>m.leagueAvgPace+2&&m.awayPace>m.leagueAvgPace+2)?2:(m.homePace>m.leagueAvgPace||m.awayPace>m.leagueAvgPace)?1:0); return <span style={{color:_pp===2?"#3fb950":_pp===1?"#e3b341":"#f78166",fontWeight:600}}>{(pa>0?"+":"")+pa}</span>; }
                           if (k==="nbaTotInj") { const tot=(m.homeOut??0)+(m.awayOut??0); const _ip=tot===0?2:tot<=2?1:0; const disp=tot===0?"0 out":`${tot} out`; return <span style={{color:_ip===2?"#3fb950":_ip===1?"#e3b341":"#f78166"}}>{disp}</span>; }
-                          if (k==="nbaCombOff") { const v=m.combOffRtg; return v!=null?<span style={{color:v>=118?"#3fb950":v>=113?"#e3b341":"#f78166",fontWeight:600}}>{v.toFixed(1)}</span>:DASH; }
-                          if (k==="nbaCombDef") { const v=m.combDefRtg; return v!=null?<span style={{color:v>=118?"#3fb950":v>=113?"#e3b341":"#f78166",fontWeight:600}}>{v.toFixed(1)}</span>:DASH; }
-                          if (k==="nbaGtH2H") { const v=m.nbaGtH2HRate; if(v==null) return DASH; const color=v>=80?"#3fb950":v>=60?"#e3b341":"#f78166"; return <span style={{color}}>{v}%</span>; }
+                          if (k==="nbaCombOff") { const v=m.combOffRtg; if(v==null) return DASH; const isU=m.direction==="under"; const color=isU?(v<113?"#3fb950":v<118?"#e3b341":"#f78166"):(v>=118?"#3fb950":v>=113?"#e3b341":"#f78166"); return <span style={{color,fontWeight:600}}>{v.toFixed(1)}</span>; }
+                          if (k==="nbaCombDef") { const v=m.combDefRtg; if(v==null) return DASH; const isU=m.direction==="under"; const color=isU?(v<113?"#3fb950":v<118?"#e3b341":"#f78166"):(v>=118?"#3fb950":v>=113?"#e3b341":"#f78166"); return <span style={{color,fontWeight:600}}>{v.toFixed(1)}</span>; }
+                          if (k==="nbaGtH2H") { const v=m.nbaGtH2HRate; if(v==null) return DASH; const isU=m.direction==="under"; const color=isU?(v<=30?"#3fb950":v<=50?"#e3b341":"#f78166"):(v>=80?"#3fb950":v>=60?"#e3b341":"#f78166"); return <span style={{color}}>{v}%</span>; }
                           if (k==="ttNbaOff") { const v=m.teamOffRtg; if(v==null) return DASH; const isU=m.direction==="under"; const color=isU?(v<113?"#3fb950":v<118?"#e3b341":"#f78166"):(v>=118?"#3fb950":v>=113?"#e3b341":"#f78166"); return <span style={{color,fontWeight:600}}>{v.toFixed(1)}</span>; }
                           if (k==="ttNbaDef") { const v=m.oppDefRtg; if(v==null) return DASH; const isU=m.direction==="under"; const color=isU?(v<113?"#3fb950":v<118?"#e3b341":"#f78166"):(v>=118?"#3fb950":v>=113?"#e3b341":"#f78166"); return <span style={{color,fontWeight:600}}>{v.toFixed(1)}</span>; }
                           if (k==="ttNbaSsnHR") { const v=m.ttNbaSeasonHitRate; if(v==null) return DASH; const isU=m.direction==="under"; const pts=m.ttNbaSeasonHitRatePts??(isU?(v<=20?2:v<=40?1:0):(v>=80?2:v>=60?1:0)); const color=pts>=2?"#3fb950":pts>=1?"#e3b341":"#f78166"; return <span style={{color,fontWeight:600}}>{v}%</span>; }
-                          if (k==="totalOu") { const v = m.sport==="nba" ? (m.gameOuLine ?? m.threshold) : m.threshold; if (v == null) return DASH; const line = m.sport==="nba" ? v.toFixed(1) : (v-0.5).toFixed(1); const color = m.sport==="nba" ? (v>=225?"#3fb950":v>=215?"#e3b341":"#f78166") : m.sport==="nhl" ? (v>=6?"#3fb950":v>=5?"#e3b341":"#f78166") : "#8b949e"; return <span style={{color,fontWeight:600}}>O{line}</span>; }
-                          if (k==="homeGPG"||k==="awayGPG"||k==="homeGAA"||k==="awayGAA") { const v = m[k]; return v != null ? <span style={{color:v>=3.5?"#3fb950":v>=3.0?"#e3b341":"#f78166",fontWeight:600}}>{v.toFixed(1)}</span> : DASH; }
+                          if (k==="totalOu") { const v = m.sport==="nba" ? (m.gameOuLine ?? m.threshold) : m.threshold; if (v == null) return DASH; const line = m.sport==="nba" ? v.toFixed(1) : (v-0.5).toFixed(1); const isU=m.direction==="under"; const color = m.sport==="nba" ? (isU?(v<215?"#3fb950":v<225?"#e3b341":"#f78166"):(v>=225?"#3fb950":v>=215?"#e3b341":"#f78166")) : m.sport==="nhl" ? (isU?(v<5.5?"#3fb950":v<7?"#e3b341":"#f78166"):(v>=6?"#3fb950":v>=5?"#e3b341":"#f78166")) : "#8b949e"; return <span style={{color,fontWeight:600}}>O{line}</span>; }
+                          if (k==="homeGPG"||k==="awayGPG"||k==="homeGAA"||k==="awayGAA") { const v = m[k]; if (v==null) return DASH; const isU=m.direction==="under"; const color=isU?(v<3.0?"#3fb950":v<3.5?"#e3b341":"#f78166"):(v>=3.5?"#3fb950":v>=3.0?"#e3b341":"#f78166"); return <span style={{color,fontWeight:600}}>{v.toFixed(1)}</span>; }
                           // HRR new SimScore columns
                           if (k==="ops") { const v=m.hitterOps; const pts=m.hitterOpsPts; if (v==null) return DASH; const color=pts===2?"#3fb950":pts===1?"#e3b341":"#f78166"; return <span style={{color}}>{v.toFixed(3)}</span>; }
                           if (k==="hQuality") { const pts=m.hitterBatterQualityPts; const sp=m.hitterLineupSpot; const brrl=m.hitterBarrelPct; if (pts==null) return DASH; const color=pts===2?"#3fb950":pts===1?"#e3b341":"#f78166"; const disp=sp!=null?`#${sp}${brrl!=null?' '+brrl.toFixed(0)+'%':''}`:brrl!=null?brrl.toFixed(1)+'%':`${pts}/2`; return <span style={{color}}>{disp}</span>; }

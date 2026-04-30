@@ -78,7 +78,7 @@ function buildSimTip(play) {
     if (sport === 'mlb') {
       const w = v => v==null?1:v>1.35?2:v>1.20?1:0;
       const cR = play.combinedRPG, h2h = play.h2hTotalHitRate, ou = play.gameOuLine;
-      return [`H WHIP: ${w(play.homeWHIP)}/2`, `A WHIP: ${w(play.awayWHIP)}/2`, `Comb RPG: ${cR==null?1:cR>=10.5?2:cR>=9.0?1:0}/2`, `H2H HR%: ${h2h==null?1:h2h>=80?2:h2h>=60?1:0}/2`, `O/U: ${ou==null?1:ou>=9.5?2:ou>=7.5?1:0}/2`].join('\n');
+      return [`H WHIP: ${w(play.homeWHIP)}/2`, `A WHIP: ${w(play.awayWHIP)}/2`, `Comb RPG: ${cR==null?1:cR>=10.5?2:cR>=8.5?1:0}/2`, `H2H HR%: ${h2h==null?1:h2h>=80?2:h2h>=60?1:0}/2`, `O/U: ${ou==null?1:ou>=9.5?2:ou>=7.5?1:0}/2`].join('\n');
     }
     if (sport === 'nba') {
       const rtgPts = v => v==null?1:v>=118?2:v>=113?1:0;
