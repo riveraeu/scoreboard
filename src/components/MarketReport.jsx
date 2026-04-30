@@ -380,8 +380,8 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                           "mlb|totalRuns":    [{k:"sim",l:"Score"},{k:"combinedRPG",l:"Comb RPG"},{k:"homeWhip",l:"H WHIP"},{k:"awayWhip",l:"A WHIP"},{k:"gtH2HHR",l:"H2H HR%"},{k:"mlbOu",l:"O/U"}],
                           "nba|totalPoints":  [{k:"sim",l:"Score"},{k:"nbaTotPace",l:"Pace"},{k:"nbaCombOff",l:"Comb OffRtg"},{k:"nbaCombDef",l:"Comb DefRtg"},{k:"nbaGtH2H",l:"H2H HR%"},{k:"totalOu",l:"O/U"}],
                           "nhl|totalGoals":   [{k:"sim",l:"Score"},{k:"homeGPG",l:"H GPG"},{k:"awayGPG",l:"A GPG"},{k:"homeGAA",l:"H GAA"},{k:"awayGAA",l:"A GAA"},{k:"totalOu",l:"O/U"}],
-                          "mlb|teamRuns":     [{k:"sim",l:"Score"},{k:"ttSeasonHR",l:"Ssn HR%"},{k:"ttWhip",l:"WHIP"},{k:"ttL10RPG",l:"L10 RPG"},{k:"ttH2HHR",l:"H2H HR%"},{k:"ttOu",l:"O/U"},{k:"ttOpp",l:"Opp"}],
-                          "nba|teamPoints":   [{k:"sim",l:"Score"},{k:"ttNbaOff",l:"OffRtg"},{k:"ttNbaDef",l:"DefRtg"},{k:"ttNbaSsnHR",l:"Ssn HR%"},{k:"ttH2HHR",l:"H2H HR%"},{k:"ttOu",l:"O/U"},{k:"ttOpp",l:"Opp"}],
+                          "mlb|teamRuns":     [{k:"sim",l:"Score"},{k:"ttSeasonHR",l:"Ssn HR%"},{k:"ttWhip",l:"WHIP"},{k:"ttL10RPG",l:"L10 RPG"},{k:"ttH2HHR",l:"H2H HR%"},{k:"ttOu",l:"O/U"},{k:"ttOpp",l:"Opp",flex:2}],
+                          "nba|teamPoints":   [{k:"sim",l:"Score"},{k:"ttNbaOff",l:"OffRtg"},{k:"ttNbaDef",l:"DefRtg"},{k:"ttNbaSsnHR",l:"Ssn HR%"},{k:"ttH2HHR",l:"H2H HR%"},{k:"ttOu",l:"O/U"},{k:"ttOpp",l:"Opp",flex:2}],
                         };
                         const xcols = XCOLS[`${sport}|${stat}`] || [];
                         const DASH = <span style={{color:"#21262d"}}>—</span>;
@@ -587,7 +587,7 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                             {_hdr("true","True%")}
                             {_hdr("kalshi","Kalshi")}
                             {_hdr("edge","Edge")}
-                            {xcols.map(c => <React.Fragment key={c.k}>{_hdr(c.k,c.l)}</React.Fragment>)}
+                            {xcols.map(c => <React.Fragment key={c.k}>{_hdr(c.k,c.l,c.flex?{flex:c.flex}:{})}</React.Fragment>)}
                             {!stat.startsWith("total") && !stat.startsWith("team") && _hdr("opp","Opp",{flex:_oppFlex})}
                           </div>
                           <div style={{background:"#0d1117",borderRadius:8,overflow:"hidden"}}>
@@ -656,7 +656,7 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                                   {(() => { const _tp = m.direction === "under" ? (m.noTruePct ?? null) : (m.truePct ?? null); return <div style={{flex:1,fontSize:11,textAlign:"right",color:_tp!=null?"#e3b341":"#21262d",fontWeight:_tp!=null?600:400}}>{_tp!=null?`${_tp}%`:"—"}</div>; })()}
                                   {(() => { const _kp = m.direction === "under" ? (m.noKalshiPct ?? null) : (m.kalshiPct ?? null); return <div style={{flex:1,fontSize:11,textAlign:"right"}}><span style={{color:_kp != null ? "#c9d1d9" : "#484f58"}}>{_kp != null ? `${_kp}%` : "—"}</span></div>; })()}
                                   <div style={{flex:1,fontSize:11,textAlign:"right",color:edge!=null&&edge>=5?"#3fb950":edge!=null&&edge<0?"#f78166":"#8b949e"}}>{edge!=null?(edge>=0?`+${edge.toFixed(1)}`:`${edge.toFixed(1)}`)+"%" :"—"}</div>
-                                  {xcols.map(c => <div key={c.k} style={{flex:1,fontSize:11,textAlign:"right"}}>{xcell(m,c.k)}</div>)}
+                                  {xcols.map(c => <div key={c.k} style={{flex:c.flex??1,fontSize:11,textAlign:"right"}}>{xcell(m,c.k)}</div>)}
                                   {!isTotal && !isTeamTotal && <div style={{flex:_oppFlex,fontSize:10,textAlign:"right",whiteSpace:"nowrap"}}>
                                     {(() => { const pn = m.pitcherName || m.hitterPitcherName; const parts = pn ? pn.trim().split(" ") : []; const shortPn = parts.length >= 2 ? `${parts[0][0]}. ${parts.slice(1).join(" ")}` : pn; return m.sport==="mlb" && m.stat!=="strikeouts" && pn
                                       ? <><span style={{color:"#8b949e"}}>{shortPn}</span> <span style={{color:"#484f58"}}>({m.opponent})</span></>
