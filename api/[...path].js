@@ -3518,11 +3518,13 @@ var worker_default = {
           { const _gtHTs = new Set(); for (const tm of totalMarkets) { if (tm.sport === "mlb") { let ht = tm.gameTeam1; if (sportByteam.mlb?.gameHomeTeams?.[tm.gameTeam2]) ht = tm.gameTeam2; _gtHTs.add(`mlb:${ht}`); } else if (tm.sport === "nba") { _gtHTs.add(`nba:${tm.gameTeam1}`); } } await Promise.all([..._gtHTs].map(async spHt => { const [sp, ht] = spHt.split(':'); const league = sp === 'mlb' ? 'baseball/mlb' : 'basketball/nba'; const ck = `teamschedule:v2:${sp}:${ht.toLowerCase()}`; let ev = isBustCache ? null : await CACHE2?.get(ck, "json").catch(() => null); if (!ev) { try { const base = `https://site.api.espn.com/apis/site/v2/sports/${league}/teams/${ht.toLowerCase()}/schedule`; const r25 = await fetch(`${base}?season=2025`, { signal: AbortSignal.timeout(3000) }); const e25 = r25.ok ? _parseSchedEvts(await r25.json()) : []; const r26 = await fetch(base, { signal: AbortSignal.timeout(3000) }); const e26 = r26.ok ? _parseSchedEvts(await r26.json()) : []; ev = [...e25, ...e26]; if (ev.length && CACHE2) await CACHE2.put(ck, JSON.stringify(ev), { expirationTtl: 3600 }).catch(() => {}); } catch(e) {} } if (ev) _gtScheduleMap[spHt] = ev; })); }
           const _gtH2HRate = (ht, at, thr) => { const evts = _gtScheduleMap[`mlb:${ht}`] ?? _gtScheduleMap[ht] ?? []; const h2h = evts.filter(ev => ev.comps.some(c => c.abbr === at)).slice(-10); if (h2h.length < 3) return null; const hits = h2h.filter(ev => ev.comps.reduce((s, c) => s + (c.score || 0), 0) >= thr).length; return { rate: Math.round(hits / h2h.length * 100), games: h2h.length }; };
           const _nbaGtH2HRate = (ht, at, thr) => { const evts = _gtScheduleMap[`nba:${ht}`] ?? []; const h2h = evts.filter(ev => ev.comps.some(c => normTeam("nba", c.abbr) === at)).slice(-10); if (h2h.length < 3) return null; const hits = h2h.filter(ev => ev.comps.reduce((s, c) => s + (c.score || 0), 0) >= thr).length; return { rate: Math.round(hits / h2h.length * 100), games: h2h.length }; };
+          const _gtVolumeMap = {};
+          for (const tm of totalMarkets) { const _gk = `${tm.sport}|${tm.gameTeam1}|${tm.gameTeam2}`; _gtVolumeMap[_gk] = (_gtVolumeMap[_gk] ?? 0) + (tm.kalshiVolume ?? 0); }
           for (const tm of totalMarkets) {
             const { sport, stat, threshold, kalshiPct, americanOdds, gameTeam1, gameTeam2, gameDate, kalshiSpread, kalshiVolume } = tm;
             if (gameDate && gameDate < cutoffStr) continue;
             const spreadAdj = kalshiSpread != null ? parseFloat((kalshiSpread / 2).toFixed(1)) : 0;
-            const lowVolume = kalshiVolume != null && kalshiVolume < 50;
+            const lowVolume = (_gtVolumeMap[`${sport}|${gameTeam1}|${gameTeam2}`] ?? 0) < 50;
             let truePct = null, homeTeam = gameTeam1, awayTeam = gameTeam2, totalSimScore = 0, _simData = {};
             if (sport === "mlb") {
               if (sportByteam.mlb?.gameHomeTeams?.[gameTeam2]) { homeTeam = gameTeam2; awayTeam = gameTeam1; }
@@ -3760,10 +3762,12 @@ var worker_default = {
             const hits = h2h.filter(ev => { const mine = ev.comps.find(c => normTeam(sport, c.abbr) === scoringTeam); return mine && mine.score >= threshold; });
             return { rate: Math.round(hits.length / h2h.length * 100), games: h2h.length };
           };
+          const _ttVolumeMap = {};
+          for (const tm of teamTotalMarkets) { const _ttgk = `${tm.sport}|${tm.gameTeam1}|${tm.gameTeam2}`; _ttVolumeMap[_ttgk] = (_ttVolumeMap[_ttgk] ?? 0) + (tm.kalshiVolume ?? 0); }
           for (const tm of teamTotalMarkets) {
             const { sport, stat, threshold, kalshiPct, americanOdds, gameTeam1, gameTeam2, scoringTeam, gameDate, kalshiSpread, kalshiVolume } = tm;
             if (gameDate && gameDate < cutoffStr) continue;
-            const lowVolume = kalshiVolume != null && kalshiVolume < 50;
+            const lowVolume = (_ttVolumeMap[`${sport}|${gameTeam1}|${gameTeam2}`] ?? 0) < 50;
             // Determine home/away (same correction logic as game total loop)
             let homeTeam = gameTeam1, awayTeam = gameTeam2;
             if (sport === "mlb" && sportByteam.mlb?.gameHomeTeams?.[gameTeam2]) { homeTeam = gameTeam2; awayTeam = gameTeam1; }
