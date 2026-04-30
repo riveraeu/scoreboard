@@ -651,7 +651,7 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, allTonightPlays, on
 const STAT_CONFIGS = {
   'basketball/nba': {
     points:   { label: 'Points',   thresholds: [10,15,20,25,30,35,40],    unit: 'PTS' },
-    rebounds: { label: 'Rebounds', thresholds: [4,6,8,10,12,14,16],       unit: 'REB' },
+    rebounds: { label: 'Rebounds', thresholds: [2,4,6,8,10,12,14,16],     unit: 'REB' },
     assists:  { label: 'Assists',  thresholds: [2,3,4,5,6,7,8,9,10],      unit: 'AST' },
     threePointers: { label: '3-Pointers', thresholds: [1,2,3,4,5,6,7], unit: '3PM' },
   },
