@@ -1,5 +1,5 @@
 import React from 'react';
-import { TOTAL_THRESHOLDS } from '../lib/constants.js';
+import { TOTAL_THRESHOLDS, TEAM_TOTAL_THRESHOLDS } from '../lib/constants.js';
 import { tierColor } from '../lib/colors.js';
 
 const TAB_LABELS = {
@@ -10,16 +10,26 @@ const TAB_LABELS = {
 };
 
 function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, trackedPlays, onTrack, onUntrack, playType, onPlayTypeChange }) {
-  const thresholds = TOTAL_THRESHOLDS[sport] || [5,6,7,8,9,10];
-  const completed = (gameLog || []).filter(g => g.result);
+  const isTeamTotal = playType?.startsWith('team_') ?? false;
   const isUnder = playType?.includes('under') ?? false;
+  const completed = (gameLog || []).filter(g => g.result);
 
   const visibleTabs = sport === 'nhl'
     ? ['game_over', 'game_under']
     : ['game_over', 'game_under', 'team_over', 'team_under'];
 
+  // Select thresholds: team total tabs use team-scoring range, game total uses combined range.
+  // Merge with any Kalshi thresholds present in tonightTotalMap.
+  const defaultThresholds = isTeamTotal
+    ? (TEAM_TOTAL_THRESHOLDS[sport] || [3,4,5,6,7,8])
+    : (TOTAL_THRESHOLDS[sport] || [5,6,7,8,9,10]);
+  const tonightKeys = Object.keys(tonightTotalMap || {}).map(Number).filter(n => !isNaN(n) && n > 0);
+  const thresholds = [...new Set([...defaultThresholds, ...tonightKeys])].sort((a, b) => a - b);
+
+  const statField = isTeamTotal ? 'teamScore' : 'total';
   const data = thresholds.map(t => {
-    const count = completed.filter(g => g.total >= t).length;
+    const overCount = completed.filter(g => (g[statField] ?? 0) >= t).length;
+    const count = isUnder ? completed.length - overCount : overCount;
     const pct = completed.length > 0 ? (count / completed.length) * 100 : 0;
     return { t, count, pct };
   });

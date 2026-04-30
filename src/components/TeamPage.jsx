@@ -322,7 +322,7 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, allTonightPlays, on
           if (tp.sport === 'nba' && !_isTeamTotal) {
             const sc = tp.totalSimScore;
             const scColor = sc >= 8 ? '#3fb950' : sc >= 5 ? '#e3b341' : '#8b949e';
-            const hOff = tp.homeOff ?? null, aOff = tp.awayOff ?? null;
+            const hOff = tp.homeOffRtg ?? null, aOff = tp.awayOffRtg ?? null;
             const hPace = tp.homePace ?? null, aPace = tp.awayPace ?? null;
             const lgPace = tp.leagueAvgPace ?? null;
             const et = tp.expectedTotal ?? null;
@@ -341,8 +341,8 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, allTonightPlays, on
             return (
               <div style={{background:'#0d1117',border:'1px solid #21262d',borderRadius:8,padding:'8px 10px',fontSize:11,color:'#8b949e',lineHeight:1.65,marginBottom:14}}>
                 {matchupHeader}
-                <span style={{color:'#c9d1d9'}}>{tp.awayTeam}</span> averages{aOff != null ? <> <span style={{color:offColor(aOff),fontWeight:600}}>{aOff.toFixed(0)} PPG</span></> : ' —'} offense.
-                {' '}<span style={{color:'#c9d1d9'}}>{tp.homeTeam}</span> averages{hOff != null ? <> <span style={{color:offColor(hOff),fontWeight:600}}>{hOff.toFixed(0)} PPG</span></> : ' —'} offense.
+                <span style={{color:'#c9d1d9'}}>{tp.awayTeam}</span> offense rating{aOff != null ? <> <span style={{color:offColor(aOff),fontWeight:600}}>{aOff.toFixed(0)}</span></> : ' —'}.
+                {' '}<span style={{color:'#c9d1d9'}}>{tp.homeTeam}</span> offense rating{hOff != null ? <> <span style={{color:offColor(hOff),fontWeight:600}}>{hOff.toFixed(0)}</span></> : ' —'}.
                 {paceAdj != null && <>{' '}Game pace is <span style={{color:paceColor,fontWeight:600}}>{paceAdj > 0 ? '+' : ''}{paceAdj}</span> vs league avg.</>}
                 {et != null && <>{' '}Model projects <span style={{color:etColor,fontWeight:600}}>{et}</span> combined pts.</>}
                 {nbaOuLine != null && <>{' '}O/U line: <span style={{color:'#8b949e',fontWeight:600}}>{nbaOuLine}</span>.</>}
@@ -409,7 +409,7 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, allTonightPlays, on
           if (tp.sport === 'nba' && _isTeamTotal) {
             const sc = tp.teamTotalSimScore;
             const scColor = sc >= 8 ? '#3fb950' : sc >= 5 ? '#e3b341' : '#8b949e';
-            const teamOff = tp.teamOff ?? null, oppDef = tp.oppDef ?? null;
+            const teamOff = tp.teamOffRtg ?? null, oppDef = tp.oppDefRtg ?? null;
             const ou = tp.gameOuLine ?? null;
             const offColor = v => v == null ? '#8b949e' : isUnder
               ? (v < 113 ? '#3fb950' : v < 118 ? '#e3b341' : '#8b949e')
@@ -421,8 +421,8 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, allTonightPlays, on
             return (
               <div style={{background:'#0d1117',border:'1px solid #21262d',borderRadius:8,padding:'8px 10px',fontSize:11,color:'#8b949e',lineHeight:1.65,marginBottom:14}}>
                 {matchupHeader}
-                <span style={{color:'#c9d1d9'}}>{abbr}</span> averages{teamOff != null ? <> <span style={{color:offColor(teamOff),fontWeight:600}}>{teamOff.toFixed(0)} PPG</span></> : ' — PPG'} offense.
-                {oppDef != null && <>{' '}<span style={{color:'#c9d1d9'}}>{_opp}</span> allows <span style={{color:defColor(oppDef),fontWeight:600}}>{oppDef.toFixed(0)} PPG</span>.</>}
+                <span style={{color:'#c9d1d9'}}>{abbr}</span> offense rating{teamOff != null ? <> <span style={{color:offColor(teamOff),fontWeight:600}}>{teamOff.toFixed(0)}</span></> : ' —'}.
+                {oppDef != null && <>{' '}<span style={{color:'#c9d1d9'}}>{_opp}</span> defense rating <span style={{color:defColor(oppDef),fontWeight:600}}>{oppDef.toFixed(0)}</span>.</>}
                 {ou != null && <>{' '}O/U line: <span style={{color:'#8b949e',fontWeight:600}}>{ou}</span>.</>}
                 {' '}<SimBadge sc={sc} scTitle={scTitle} scColor={scColor} />
               </div>

@@ -127,6 +127,11 @@ export const TOTAL_THRESHOLDS = {
   nhl: [3,4,5,6,7,8],
 };
 
+export const TEAM_TOTAL_THRESHOLDS = {
+  mlb: [2,3,4,5,6,7,8],
+  nba: [100,105,110,115,120,125,130],
+};
+
 export const STAT_LABEL = {
   points:"PTS", rebounds:"REB", assists:"AST", threePointers:"3PT",
   goals:"G", shotsOnGoal:"SOG",
