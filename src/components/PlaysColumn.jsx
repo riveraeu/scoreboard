@@ -650,7 +650,9 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                           const platoonPts = play.hitterPlatoonPts ?? null;
                           const pitcherHand = play.oppPitcherHand ?? null;
                           const isPlatoonFallback = play.hitterSoftLabel === "vs RHP" || play.hitterSoftLabel === "vs LHP";
-                          const softRateColor = isPlatoonFallback && platoonPts === 0 ? "#f78166" : "#3fb950";
+                          const softRateColor = (play.hitterH2HSource === 'bvp' || play.hitterH2HSource === 'hand') && play.softPct != null
+                            ? play.softPct >= 80 ? "#3fb950" : play.softPct >= 70 ? "#e3b341" : "#f78166"
+                            : "#3fb950";
                           const scTitle = sc != null ? [`OPS: ${play.hitterOpsPts ?? 1}/2`,`WHIP: ${play.hitterWhipPts ?? 1}/2`,`Season HR: ${play.hitterSeasonHitRatePts ?? 1}/2`,`H2H HR: ${play.hitterH2HHitRatePts ?? 1}/2`,`O/U: ${play.hitterTotalPts ?? 1}/2`].join("\n") : null;
                           return (
                             <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.65}}>

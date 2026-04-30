@@ -320,7 +320,8 @@ export default function LineupsPage({
             {/* Game grid */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(480px, 100%), 1fr))', gap: 12, alignItems: 'start' }}>
               {games.map((game, i) => {
-                const gPlays = playsForGame(allTonightPlays, game);
+                const isPostponed = (game.gameDetail || '').toLowerCase().includes('postpone');
+                const gPlays = isPostponed ? [] : playsForGame(allTonightPlays, game);
                 return (
                   <MatchupCard
                     key={`${sport}|${game.homeTeam}|${game.awayTeam}|${game.gameDate}|${i}`}
