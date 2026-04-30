@@ -577,7 +577,7 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                             {label}{active ? (_sc.dir === "desc" ? "↓" : "↑") : ""}
                           </div>;
                         };
-                        const _oppFlex = (sport === "nba" || (sport === "mlb" && stat === "strikeouts")) ? 1 : 2;
+                        const _oppFlex = (sport === "mlb" && stat === "strikeouts") ? 1 : 2;
                         return <React.Fragment>
                           <div style={{overflowX:"auto"}}>
                           <div style={{minWidth:680}}>
