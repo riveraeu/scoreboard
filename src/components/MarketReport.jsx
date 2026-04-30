@@ -1,5 +1,11 @@
 import React from 'react';
-import { SPORT_KEY } from '../lib/constants.js';
+import { SPORT_KEY, TEAM_DB } from '../lib/constants.js';
+
+const _teamShort = (abbr, sport) => {
+  if (!abbr) return abbr;
+  const entry = TEAM_DB.find(t => t.abbr === abbr && t.sport === sport) || TEAM_DB.find(t => t.abbr === abbr);
+  return entry?.short ?? abbr;
+};
 
 function buildSimTooltip(m) {
   const isTeamTotal = m.gameType === "teamTotal";
@@ -438,7 +444,7 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                           if (k==="hSsnHR") { const v=m.seasonPct; if (v==null) return DASH; const pts=m.hitterSeasonHitRatePts ?? (v>=80?2:v>=70?1:0); const color=pts>=2?"#3fb950":pts>=1?"#e3b341":"#f78166"; return <span style={{color}}>{v.toFixed(1)+"%"}</span>; }
                           if (k==="hH2HHR") { const v=m.softPct; if (v==null) return DASH; const pts=m.hitterH2HHitRatePts ?? (v>=80?2:v>=70?1:0); const color=pts>=2?"#3fb950":pts>=1?"#e3b341":"#f78166"; return <span style={{color}}>{v.toFixed(1)+"%"}</span>; }
                           // Team total columns
-                          if (k==="ttOpp") { return m.oppTeam ? <span onClick={() => { onClose(); navigateToTeam(m.oppTeam, m.sport); }} style={{color:"#8b949e",cursor:"pointer"}}>{m.oppTeam}</span> : DASH; }
+                          if (k==="ttOpp") { return m.oppTeam ? <span onClick={() => { onClose(); navigateToTeam(m.oppTeam, m.sport); }} style={{color:"#8b949e",cursor:"pointer"}}>{_teamShort(m.oppTeam, m.sport)}</span> : DASH; }
                           if (k==="ttH2HHR") { const v=m.h2hHitRate; const g=m.h2hGames; if (v==null) return DASH; const color=v>=80?"#3fb950":v>=60?"#e3b341":"#f78166"; return <span style={{color}} title={g!=null?`${g} H2H games`:undefined}>{v}%</span>; }
                           if (k==="ttTeamRPG") { const v=m.teamRPG; return v!=null?<span style={{color:v>5.0?"#3fb950":v>4.0?"#e3b341":"#8b949e",fontWeight:600}}>{v.toFixed(1)}</span>:DASH; }
                           if (k==="ttOppERA") { const v=m.oppERA; return v!=null?<span style={{color:v>4.5?"#3fb950":v>3.5?"#e3b341":"#8b949e",fontWeight:600}}>{parseFloat(v).toFixed(2)}</span>:DASH; }
@@ -622,11 +628,11 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                                   borderTop: i>0?"1px solid #161b22":"none"}}>
                                   <div style={{flex:2,minWidth:0,fontSize:12,fontWeight:_nameWhite?600:400,display:"flex",alignItems:"baseline",gap:3}}>
                                     {isTeamTotal
-                                      ? <span onClick={() => { onClose(); navigateToTeam(m.scoringTeam, m.sport); }} style={{color:_nameWhite?"#c9d1d9":"#8b949e",whiteSpace:"nowrap",cursor:"pointer"}}>{m.scoringTeam}</span>
+                                      ? <span onClick={() => { onClose(); navigateToTeam(m.scoringTeam, m.sport); }} style={{color:_nameWhite?"#c9d1d9":"#8b949e",whiteSpace:"nowrap",cursor:"pointer"}}>{_teamShort(m.scoringTeam, m.sport)}</span>
                                       : isTotal
-                                      ? <><span onClick={() => { onClose(); navigateToTeam(m.awayTeam, m.sport); }} style={{color:_nameWhite?"#c9d1d9":"#8b949e",whiteSpace:"nowrap",cursor:"pointer"}}>{m.awayTeam}</span>
+                                      ? <><span onClick={() => { onClose(); navigateToTeam(m.awayTeam, m.sport); }} style={{color:_nameWhite?"#c9d1d9":"#8b949e",whiteSpace:"nowrap",cursor:"pointer"}}>{_teamShort(m.awayTeam, m.sport)}</span>
                                           <span style={{color:"#484f58"}}> @ </span>
-                                          <span onClick={() => { onClose(); navigateToTeam(m.homeTeam, m.sport); }} style={{color:_nameWhite?"#c9d1d9":"#8b949e",whiteSpace:"nowrap",cursor:"pointer"}}>{m.homeTeam}</span></>
+                                          <span onClick={() => { onClose(); navigateToTeam(m.homeTeam, m.sport); }} style={{color:_nameWhite?"#c9d1d9":"#8b949e",whiteSpace:"nowrap",cursor:"pointer"}}>{_teamShort(m.homeTeam, m.sport)}</span></>
                                       : <><span onClick={() => { onClose(); navigateToPlayer({ id: m.playerId, name: m.playerName, sportKey: SPORT_KEY[m.sport] }, m.stat); }} style={{color:_nameWhite?"#c9d1d9":"#8b949e",whiteSpace:"nowrap",textTransform:"capitalize",cursor:"pointer"}}>{m.playerNameDisplay||m.playerName}</span>
                                          {(m.playerTeam||m.kalshiPlayerTeam)&&<span style={{color:"#484f58",fontWeight:400,flexShrink:0,fontSize:10}}>({m.playerTeam||m.kalshiPlayerTeam})</span>}</>
                                     }
