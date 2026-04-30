@@ -66,7 +66,7 @@ function buildSimTip(play) {
       : (play.nbaUsage==null?1:play.nbaUsage>=28?2:play.nbaUsage>=22?1:0);
     const pace = play.nbaPaceAdj, gt = play.nbaGameTotal;
     const comboPts = (pace!=null&&pace>0&&gt!=null&&gt>=215)?2:(pace!=null&&pace>0||gt!=null&&gt>=215)?1:0;
-    return [`C1: ${c1Pts}/2`, `DVP: ${dvpPts}/2`, `Season HR: ${play.nbaSeasonHitRatePts??1}/2`, `Soft HR: ${play.nbaSoftHitRatePts??1}/2`, `Pace+Total: ${comboPts}/2`].join('\n');
+    return [`C1: ${c1Pts}/2`, `DVP: ${dvpPts}/2`, `Season HR: ${play.nbaSeasonHitRatePts??1}/2`, `Tier HR: ${play.nbaSoftHitRatePts??1}/2`, `Pace+Total: ${comboPts}/2`].join('\n');
   }
   // NHL player props
   if (play.nhlSimScore != null && play.totalSimScore == null) {
@@ -83,12 +83,13 @@ function buildSimTip(play) {
       return [`H WHIP: ${w(play.homeWHIP)}/2`, `A WHIP: ${w(play.awayWHIP)}/2`, `Comb RPG: ${cR==null?1:cR>=10.5?2:cR>=9.0?1:0}/2`, `H2H HR%: ${h2h==null?1:h2h>=80?2:h2h>=60?1:0}/2`, `O/U: ${ou==null?1:ou>=9.5?2:ou>=7.5?1:0}/2`].join('\n');
     }
     if (sport === 'nba') {
-      const offPts = v => v==null?1:v>=118?2:v>=113?1:0;
+      const rtgPts = v => v==null?1:v>=118?2:v>=113?1:0;
       const hp=play.homePace, ap=play.awayPace, lgP=play.leagueAvgPace;
       const pacePts = (hp==null||ap==null||lgP==null)?1:(hp>lgP+2&&ap>lgP+2)?2:(hp>lgP||ap>lgP)?1:0;
-      const tot = (play.homeOut??0)+(play.awayOut??0);
+      const gtH2H = play.nbaGtH2HRate;
+      const gtH2HPts = gtH2H==null?1:gtH2H>=80?2:gtH2H>=60?1:0;
       const ou = play.gameOuLine;
-      return [`Pace: ${pacePts}/2`, `H OffRtg: ${offPts(play.homeOffRtg)}/2`, `A OffRtg: ${offPts(play.awayOffRtg)}/2`, `Injuries (${tot}): ${tot===0?2:tot<=2?1:0}/2`, `O/U: ${ou==null?1:ou>=225?2:ou>=215?1:0}/2`].join('\n');
+      return [`Pace: ${pacePts}/2`, `Comb OffRtg: ${rtgPts(play.combOffRtg)}/2`, `Comb DefRtg: ${rtgPts(play.combDefRtg)}/2`, `H2H HR% (${gtH2H??'—'}): ${gtH2HPts}/2`, `O/U: ${ou==null?1:ou>=225?2:ou>=215?1:0}/2`].join('\n');
     }
     if (sport === 'nhl') {
       const g = v => v==null?1:v>=3.5?2:v>=3.0?1:0;
@@ -108,13 +109,13 @@ function buildSimTip(play) {
       return [`Ssn HR%: ${ssnPts}/2`, `WHIP: ${whipPts}/2`, `L10 RPG: ${l10Pts}/2`, `H2H HR%: ${h2hPts}/2`, `O/U: ${ou==null?1:isU?(ou<7.5?2:ou<9.5?1:0):(ou>=9.5?2:ou>=7.5?1:0)}/2`].join('\n');
     }
     if (sport === 'nba') {
-      const offPts = v => v==null?1:isU?(v<113?2:v<118?1:0):(v>=118?2:v>=113?1:0);
+      const rtgPts = v => v==null?1:isU?(v<113?2:v<118?1:0):(v>=118?2:v>=113?1:0);
       const ou = play.gameOuLine;
       const ouPts = ou==null?1:isU?(ou<215?2:ou<225?1:0):(ou>=225?2:ou>=215?1:0);
-      const pace=play.teamPace, lgPace=play.leagueAvgPace;
-      const pacePts = pace==null||lgPace==null?1:isU?(pace<=lgPace-2?2:pace<=lgPace+2?1:0):(pace>lgPace+2?2:pace>lgPace-2?1:0);
+      const ssnHR = play.ttNbaSeasonHitRate;
+      const ssnPts = play.ttNbaSeasonHitRatePts ?? (ssnHR==null?1:isU?(ssnHR<=20?2:ssnHR<=40?1:0):(ssnHR>=80?2:ssnHR>=60?1:0));
       const h2hPts = isU?(play.h2hHitRate==null?1:play.h2hHitRate<=30?2:play.h2hHitRate<=50?1:0):(play.h2hHitRatePts??1);
-      return [`Off PPG: ${offPts(play.teamOff)}/2`, `Opp Def: ${offPts(play.oppDef)}/2`, `O/U: ${ouPts}/2`, `Pace: ${pacePts}/2`, `H2H HR%: ${h2hPts}/2`].join('\n');
+      return [`OffRtg: ${rtgPts(play.teamOffRtg)}/2`, `DefRtg: ${rtgPts(play.oppDefRtg)}/2`, `Ssn HR%: ${ssnPts}/2`, `H2H HR%: ${h2hPts}/2`, `O/U: ${ouPts}/2`].join('\n');
     }
   }
   return null;

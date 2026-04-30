@@ -2442,7 +2442,22 @@ var worker_default = {
             }
             softUnit = "%";
           } else {
-            const effectiveSoftSet = sport === "nba" ? nbaEffectiveSoftTeams || softTeams : softTeams;
+            let effectiveSoftSet;
+            if (sport === "nba") {
+              // DVP-tier matching: bucket opp's rank (1-10 soft / 11-20 neutral / 21-30 hard)
+              // and collect all teams in the same tier, giving tier-appropriate context
+              const _oppTierRank = rankMap[tonightOpp]?.rank ?? null;
+              if (_oppTierRank != null) {
+                const _oppTier = _oppTierRank <= 10 ? "soft" : _oppTierRank <= 20 ? "neutral" : "hard";
+                effectiveSoftSet = new Set(Object.entries(rankMap)
+                  .filter(([, v]) => _oppTier === "soft" ? v.rank <= 10 : _oppTier === "neutral" ? v.rank > 10 && v.rank <= 20 : v.rank > 20)
+                  .map(([k]) => k));
+              } else {
+                effectiveSoftSet = nbaEffectiveSoftTeams || softTeams;
+              }
+            } else {
+              effectiveSoftSet = softTeams;
+            }
             softVals = gl.events.filter((ev) => effectiveSoftSet.has(ev.oppAbbr)).map(getStat).filter((v) => !isNaN(v));
             softLabel = null;
             softUnit = null;
@@ -2786,7 +2801,7 @@ var worker_default = {
             // 3. Season hit rate (primaryPct = blended 2026/2025/career): ≥90%→2, ≥80%→1, <80%→0
             const _nbaSeasonHRPts = primaryPct >= 90 ? 2 : primaryPct >= 80 ? 1 : 0;
             _sc += _nbaSeasonHRPts;
-            // 4. Soft hit rate (vs soft defensive teams): ≥90%→2, ≥80%→1, <80%→0, null→1 abstain
+            // 4. DVP-tier hit rate (vs teams in same DVP tier as tonight's opp): ≥90%→2, ≥80%→1, <80%→0, null→1 abstain
             const _nbaSoftHRPts = softPct == null ? 1 : softPct >= 90 ? 2 : softPct >= 80 ? 1 : 0;
             _sc += _nbaSoftHRPts;
             // 5. O/U line: ≥215 → 2pts; null → 1pt abstain; <215 → 0pts
@@ -3498,10 +3513,11 @@ var worker_default = {
         const totalPlays = [];
         {
           const _MLB_ERA = 4.20;
-          // Pre-fetch home team schedules for MLB game total H2H hit rate
+          // Pre-fetch home team schedules for MLB + NBA game total H2H hit rate
           const _gtScheduleMap = {};
-          { const _gtHTs = new Set(); for (const tm of totalMarkets) { if (tm.sport !== "mlb") continue; let ht = tm.gameTeam1; if (sportByteam.mlb?.gameHomeTeams?.[tm.gameTeam2]) ht = tm.gameTeam2; _gtHTs.add(ht); } await Promise.all([..._gtHTs].map(async ht => { const ck = `teamschedule:v2:mlb:${ht.toLowerCase()}`; let ev = isBustCache ? null : await CACHE2?.get(ck, "json").catch(() => null); if (!ev) { try { const base = `https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/teams/${ht.toLowerCase()}/schedule`; const r25 = await fetch(`${base}?season=2025`, { signal: AbortSignal.timeout(3000) }); const e25 = r25.ok ? _parseSchedEvts(await r25.json()) : []; const r26 = await fetch(base, { signal: AbortSignal.timeout(3000) }); const e26 = r26.ok ? _parseSchedEvts(await r26.json()) : []; ev = [...e25, ...e26]; if (ev.length && CACHE2) await CACHE2.put(ck, JSON.stringify(ev), { expirationTtl: 3600 }).catch(() => {}); } catch(e) {} } if (ev) _gtScheduleMap[ht] = ev; })); }
-          const _gtH2HRate = (ht, at, thr) => { const evts = _gtScheduleMap[ht] ?? []; const h2h = evts.filter(ev => ev.comps.some(c => c.abbr === at)).slice(-10); if (h2h.length < 3) return null; const hits = h2h.filter(ev => ev.comps.reduce((s, c) => s + (c.score || 0), 0) >= thr).length; return { rate: Math.round(hits / h2h.length * 100), games: h2h.length }; };
+          { const _gtHTs = new Set(); for (const tm of totalMarkets) { if (tm.sport === "mlb") { let ht = tm.gameTeam1; if (sportByteam.mlb?.gameHomeTeams?.[tm.gameTeam2]) ht = tm.gameTeam2; _gtHTs.add(`mlb:${ht}`); } else if (tm.sport === "nba") { _gtHTs.add(`nba:${tm.gameTeam1}`); } } await Promise.all([..._gtHTs].map(async spHt => { const [sp, ht] = spHt.split(':'); const league = sp === 'mlb' ? 'baseball/mlb' : 'basketball/nba'; const ck = `teamschedule:v2:${sp}:${ht.toLowerCase()}`; let ev = isBustCache ? null : await CACHE2?.get(ck, "json").catch(() => null); if (!ev) { try { const base = `https://site.api.espn.com/apis/site/v2/sports/${league}/teams/${ht.toLowerCase()}/schedule`; const r25 = await fetch(`${base}?season=2025`, { signal: AbortSignal.timeout(3000) }); const e25 = r25.ok ? _parseSchedEvts(await r25.json()) : []; const r26 = await fetch(base, { signal: AbortSignal.timeout(3000) }); const e26 = r26.ok ? _parseSchedEvts(await r26.json()) : []; ev = [...e25, ...e26]; if (ev.length && CACHE2) await CACHE2.put(ck, JSON.stringify(ev), { expirationTtl: 3600 }).catch(() => {}); } catch(e) {} } if (ev) _gtScheduleMap[spHt] = ev; })); }
+          const _gtH2HRate = (ht, at, thr) => { const evts = _gtScheduleMap[`mlb:${ht}`] ?? _gtScheduleMap[ht] ?? []; const h2h = evts.filter(ev => ev.comps.some(c => c.abbr === at)).slice(-10); if (h2h.length < 3) return null; const hits = h2h.filter(ev => ev.comps.reduce((s, c) => s + (c.score || 0), 0) >= thr).length; return { rate: Math.round(hits / h2h.length * 100), games: h2h.length }; };
+          const _nbaGtH2HRate = (ht, at, thr) => { const evts = _gtScheduleMap[`nba:${ht}`] ?? []; const h2h = evts.filter(ev => ev.comps.some(c => normTeam("nba", c.abbr) === at)).slice(-10); if (h2h.length < 3) return null; const hits = h2h.filter(ev => ev.comps.reduce((s, c) => s + (c.score || 0), 0) >= thr).length; return { rate: Math.round(hits / h2h.length * 100), games: h2h.length }; };
           for (const tm of totalMarkets) {
             const { sport, stat, threshold, kalshiPct, americanOdds, gameTeam1, gameTeam2, gameDate, kalshiSpread, kalshiVolume } = tm;
             if (gameDate && gameDate < cutoffStr) continue;
@@ -3597,24 +3613,29 @@ var worker_default = {
                 _homeExpRaw = homeOff != null ? homeOff * (awayDef != null && nbaAvgDef ? awayDef / nbaAvgDef : 1) : null;
                 _awayExpRaw = awayOff != null ? awayOff * (homeDef != null && nbaAvgDef ? homeDef / nbaAvgDef : 1) : null;
               }
-              // Injury state: out players per team (affects scoring potential)
+              // Keep injuries in simData for reference (not scored)
               const _NBAshort = { GSW:"GS", SAS:"SA", NYK:"NY", NOP:"NO", PHX:"PHO" };
               const _homeOut = (nbaInjuryMap.get(homeTeam) || nbaInjuryMap.get(_NBAshort[homeTeam]) || []).length;
               const _awayOut = (nbaInjuryMap.get(awayTeam) || nbaInjuryMap.get(_NBAshort[awayTeam]) || []).length;
-              const _totalOut = _homeOut + _awayOut;
-              _simData = { homeOffRtg: _hOffRtg, awayOffRtg: _aOffRtg, homeDefRtg: _hDefRtg, awayDefRtg: _aDefRtg, homePace: _hp, awayPace: _ap, leagueAvgPace: _lgPace, projPace: _projPace, gameOuLine: _nbaOuLine, homeOut: _homeOut, awayOut: _awayOut, homeExpected: _homeExpRaw != null ? parseFloat(_homeExpRaw.toFixed(1)) : null, awayExpected: _awayExpRaw != null ? parseFloat(_awayExpRaw.toFixed(1)) : null, expectedTotal: (_homeExpRaw != null && _awayExpRaw != null) ? parseFloat((_homeExpRaw + _awayExpRaw).toFixed(1)) : null };
+              // H2H combined hit rate: combined score >= threshold in last 10 H2H meetings
+              const _nbaGtH2H = _nbaGtH2HRate(homeTeam, awayTeam, threshold);
+              const nbaGtH2HRate = _nbaGtH2H?.rate ?? null;
+              const nbaGtH2HGames = _nbaGtH2H?.games ?? null;
+              // Combined OffRtg and DefRtg averages
+              const _combOffRtg = (_hOffRtg != null && _aOffRtg != null) ? parseFloat(((_hOffRtg + _aOffRtg) / 2).toFixed(1)) : (_hOffRtg ?? _aOffRtg);
+              const _combDefRtg = (_hDefRtg != null && _aDefRtg != null) ? parseFloat(((_hDefRtg + _aDefRtg) / 2).toFixed(1)) : (_hDefRtg ?? _aDefRtg);
+              _simData = { homeOffRtg: _hOffRtg, awayOffRtg: _aOffRtg, homeDefRtg: _hDefRtg, awayDefRtg: _aDefRtg, combOffRtg: _combOffRtg, combDefRtg: _combDefRtg, homePace: _hp, awayPace: _ap, leagueAvgPace: _lgPace, projPace: _projPace, gameOuLine: _nbaOuLine, homeOut: _homeOut, awayOut: _awayOut, nbaGtH2HRate, nbaGtH2HGames, homeExpected: _homeExpRaw != null ? parseFloat(_homeExpRaw.toFixed(1)) : null, awayExpected: _awayExpRaw != null ? parseFloat(_awayExpRaw.toFixed(1)) : null, expectedTotal: (_homeExpRaw != null && _awayExpRaw != null) ? parseFloat((_homeExpRaw + _awayExpRaw).toFixed(1)) : null };
               if (_homeExpRaw != null && _awayExpRaw != null) {
                 const _dk = `nba|${homeTeam}|${awayTeam}`;
                 if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateNBATotalDist(_homeExpRaw, _awayExpRaw, 11, 11, 10000);
                 truePct = totalDistPct(totalDistCache[_dk], threshold);
               }
-              // NBA SimScore (max 10): pace→0-2, homeOffRtg→0-2, awayOffRtg→0-2, injuries→0-2, O/U→0-2
-              // Independent validators — pace and injuries don't appear in the projection formula
+              // NBA SimScore (max 10): combOffRtg→0-2, combDefRtg→0-2, pace→0-2, H2H HR%→0-2, O/U→0-2
               const _pacePts = (_hp == null || _ap == null || _lgPace == null) ? 1 : (_hp > _lgPace + 2 && _ap > _lgPace + 2) ? 2 : (_hp > _lgPace || _ap > _lgPace) ? 1 : 0;
+              totalSimScore += _combOffRtg == null ? 1 : _combOffRtg >= 118 ? 2 : _combOffRtg >= 113 ? 1 : 0;
+              totalSimScore += _combDefRtg == null ? 1 : _combDefRtg >= 118 ? 2 : _combDefRtg >= 113 ? 1 : 0;
               totalSimScore += _pacePts;
-              totalSimScore += _hOffRtg == null ? 1 : _hOffRtg >= 118 ? 2 : _hOffRtg >= 113 ? 1 : 0;
-              totalSimScore += _aOffRtg == null ? 1 : _aOffRtg >= 118 ? 2 : _aOffRtg >= 113 ? 1 : 0;
-              totalSimScore += _totalOut === 0 ? 2 : _totalOut <= 2 ? 1 : 0; // 0 out = full rosters, 3+ = depleted
+              totalSimScore += nbaGtH2HRate == null ? 1 : nbaGtH2HRate >= 80 ? 2 : nbaGtH2HRate >= 60 ? 1 : 0;
               if (_nbaOuLine != null) totalSimScore += _nbaOuLine >= 225 ? 2 : _nbaOuLine >= 215 ? 1 : 0;
               else totalSimScore += 1; // null → abstain
             } else if (sport === "nhl") {
@@ -3647,14 +3668,13 @@ var worker_default = {
               underSimScore += _h2hTR == null ? 1 : _h2hTR <= 20 ? 2 : _h2hTR <= 40 ? 1 : 0;
               underSimScore += gameOuLine == null ? 1 : gameOuLine < 7.5 ? 2 : gameOuLine < 9.5 ? 1 : 0;
             } else if (sport === "nba") {
-              // UNDER SimScore: inverted — slow pace, weak offenses, depleted rosters, low O/U line all favor under
-              const { homeOffRtg, awayOffRtg, homePace, awayPace, leagueAvgPace, gameOuLine, homeOut, awayOut } = _simData;
+              // UNDER SimScore: inverted — weak offenses, strong defenses, slow pace, no H2H history of scoring, low O/U
+              const { combOffRtg, combDefRtg, homePace, awayPace, leagueAvgPace, gameOuLine, nbaGtH2HRate: _nbaH2H } = _simData;
+              underSimScore += combOffRtg == null ? 1 : combOffRtg < 113 ? 2 : combOffRtg < 118 ? 1 : 0;
+              underSimScore += combDefRtg == null ? 1 : combDefRtg < 113 ? 2 : combDefRtg < 118 ? 1 : 0;
               const _uPacePts = (homePace == null || awayPace == null || leagueAvgPace == null) ? 1 : (homePace < leagueAvgPace - 2 && awayPace < leagueAvgPace - 2) ? 2 : (homePace < leagueAvgPace || awayPace < leagueAvgPace) ? 1 : 0;
               underSimScore += _uPacePts;
-              underSimScore += homeOffRtg == null ? 1 : homeOffRtg < 113 ? 2 : homeOffRtg < 118 ? 1 : 0;
-              underSimScore += awayOffRtg == null ? 1 : awayOffRtg < 113 ? 2 : awayOffRtg < 118 ? 1 : 0;
-              const _uTotalOut = (homeOut ?? 0) + (awayOut ?? 0);
-              underSimScore += _uTotalOut >= 3 ? 2 : _uTotalOut >= 1 ? 1 : 0; // depleted rosters → lower scoring → good for under
+              underSimScore += _nbaH2H == null ? 1 : _nbaH2H <= 30 ? 2 : _nbaH2H <= 50 ? 1 : 0;
               underSimScore += gameOuLine == null ? 1 : gameOuLine < 215 ? 2 : gameOuLine < 225 ? 1 : 0;
             } else if (sport === "nhl") {
               const { homeGPG, awayGPG, homeGAA, awayGAA, gameOuLine } = _simData;
@@ -3835,32 +3855,51 @@ var worker_default = {
                 dropped.push({ ..._ttBaseFields, direction: "under", noTruePct: _ttNoTruePct, noKalshiPct: _ttNoKalshiPct, edge: _ttUnderEdge, teamTotalSimScore: _ttUnderSimScore, reason: _ttNoKalshiPct < 70 ? "under_no_price_too_low" : "edge_too_low" });
               }
             } else if (sport === "nba") {
-              const teamOff = nbaOffPPGMap[scoringTeam] ?? null;
               const nbaDefRank = STAT_SOFT["nba|points"]?.rankMap ?? {};
               const nbaAvgDef = leagueAvgCache["nba|points"] ?? nbaLeagueAvgOffPPG;
-              const oppDef = nbaDefRank[oppTeam]?.value ?? null;
               const _nbaOuLine = sportByteam.nbaGameOdds?.[homeTeam]?.total ?? sportByteam.nbaGameOdds?.[awayTeam]?.total ?? null;
               const _gameSpread = sportByteam.nbaGameOdds?.[homeTeam]?.spread ?? sportByteam.nbaGameOdds?.[awayTeam]?.spread ?? null;
-              const _teamPace = nbaPaceData?.teamPace?.[scoringTeam] ?? null;
-              const _lgPace = nbaPaceData?.leagueAvgPace ?? null;
-              const _teamExpected = teamOff != null ? teamOff * (oppDef != null && nbaAvgDef ? oppDef / nbaAvgDef : 1) : null;
+              // OffRtg (pace-adjusted) from nbaPaceData; DefRtg computed from PPG-allowed / pace
+              const teamOffRtg = nbaPaceData?.teamOffRtg?.[scoringTeam] ?? null;
+              const _oppPaceNba = nbaPaceData?.teamPace?.[oppTeam] ?? null;
+              const oppDefPPGNba = nbaDefRank[oppTeam]?.value ?? null;
+              const oppDefRtg = (oppDefPPGNba != null && _oppPaceNba != null && _oppPaceNba > 0) ? parseFloat((oppDefPPGNba / _oppPaceNba * 100).toFixed(1)) : null;
+              // Simulation: OffRtg-based projection when available, fall back to PPG
+              const _teamPaceNba = nbaPaceData?.teamPace?.[scoringTeam] ?? null;
+              const _lgPaceNba = nbaPaceData?.leagueAvgPace ?? null;
+              const _lgOffRtgNba = nbaPaceData?.leagueAvgOffRtg ?? 113.0;
+              let _teamExpected = null;
+              if (teamOffRtg != null && oppDefRtg != null && _teamPaceNba != null && _oppPaceNba != null && _lgPaceNba != null && _lgPaceNba > 0) {
+                const _projPaceNba = (_teamPaceNba * _oppPaceNba) / _lgPaceNba;
+                _teamExpected = (teamOffRtg * oppDefRtg / (_lgOffRtgNba * _lgOffRtgNba)) * _projPaceNba;
+              } else {
+                const teamOff = nbaOffPPGMap[scoringTeam] ?? null;
+                const oppDef = nbaDefRank[oppTeam]?.value ?? null;
+                if (teamOff != null) _teamExpected = teamOff * (oppDef != null && nbaAvgDef ? oppDef / nbaAvgDef : 1);
+              }
               if (_teamExpected != null) {
                 const _dk = `nba|team|${scoringTeam}|${oppTeam}`;
                 if (!teamTotalDistCache[_dk]) teamTotalDistCache[_dk] = simulateTeamPtsDist(_teamExpected, 11, 10000);
                 truePct = totalDistPct(teamTotalDistCache[_dk], threshold);
               }
+              // Season HR%: scoring team's rate of scoring >= threshold this season
+              const _ttNbaSched = _ttScheduleMap[`nba:${scoringTeam}`] || [];
+              const _ttNbaSeasonHits = _ttNbaSched.filter(ev => { const mine = ev.comps.find(c => normTeam("nba", c.abbr) === scoringTeam); return mine && mine.score >= threshold; });
+              const ttNbaSeasonHitRate = _ttNbaSched.length >= 5 ? Math.round(_ttNbaSeasonHits.length / _ttNbaSched.length * 100) : null;
+              const ttNbaSeasonHitRatePts = ttNbaSeasonHitRate == null ? 1 : ttNbaSeasonHitRate >= 80 ? 2 : ttNbaSeasonHitRate >= 60 ? 1 : 0;
               const _h2h = _ttH2HRate("nba", scoringTeam, oppTeam, threshold);
               const h2hHitRate = _h2h?.rate ?? null;
               const h2hGames = _h2h?.games ?? null;
               const h2hHitRatePts = h2hHitRate == null ? 1 : h2hHitRate >= 80 ? 2 : h2hHitRate >= 60 ? 1 : 0;
-              teamTotalSimScore += teamOff == null ? 1 : teamOff >= 118 ? 2 : teamOff >= 113 ? 1 : 0;
-              teamTotalSimScore += oppDef == null ? 1 : oppDef >= 118 ? 2 : oppDef >= 113 ? 1 : 0;
-              teamTotalSimScore += _nbaOuLine == null ? 1 : _nbaOuLine >= 225 ? 2 : _nbaOuLine >= 215 ? 1 : 0;
-              teamTotalSimScore += _teamPace == null || _lgPace == null ? 1 : _teamPace > _lgPace + 2 ? 2 : _teamPace > _lgPace - 2 ? 1 : 0;
+              // SimScore (max 10): OffRtg→0-2, oppDefRtg→0-2, Season HR%→0-2, H2H HR%→0-2, O/U→0-2
+              teamTotalSimScore += teamOffRtg == null ? 1 : teamOffRtg >= 118 ? 2 : teamOffRtg >= 113 ? 1 : 0;
+              teamTotalSimScore += oppDefRtg == null ? 1 : oppDefRtg >= 118 ? 2 : oppDefRtg >= 113 ? 1 : 0;
+              teamTotalSimScore += ttNbaSeasonHitRatePts;
               teamTotalSimScore += h2hHitRatePts;
-              if (truePct == null) { if (isDebug) dropped.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, teamTotalSimScore, teamOff, oppDef, gameOuLine: _nbaOuLine, h2hHitRate, h2hGames, h2hHitRatePts, reason: "no_simulation_data" }); continue; }
+              teamTotalSimScore += _nbaOuLine == null ? 1 : _nbaOuLine >= 225 ? 2 : _nbaOuLine >= 215 ? 1 : 0;
+              if (truePct == null) { if (isDebug) dropped.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, teamTotalSimScore, teamOffRtg, oppDefRtg, gameOuLine: _nbaOuLine, h2hHitRate, h2hGames, h2hHitRatePts, ttNbaSeasonHitRate, ttNbaSeasonHitRatePts, reason: "no_simulation_data" }); continue; }
               const _nttGameTime = gameTimes[`${sport}:${homeTeam}:${gameDate}`] ?? gameTimes[`${sport}:${awayTeam}:${gameDate}`] ?? gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null;
-              const _nttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _nttGameTime, teamOff, oppDef, teamExpected: _teamExpected != null ? parseFloat(_teamExpected.toFixed(1)) : null, teamPace: _teamPace, leagueAvgPace: _lgPace, gameOuLine: _nbaOuLine, gameSpread: _gameSpread, h2hHitRate, h2hGames, h2hHitRatePts };
+              const _nttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _nttGameTime, teamOffRtg, oppDefRtg, teamExpected: _teamExpected != null ? parseFloat(_teamExpected.toFixed(1)) : null, gameOuLine: _nbaOuLine, gameSpread: _gameSpread, h2hHitRate, h2hGames, h2hHitRatePts, ttNbaSeasonHitRate, ttNbaSeasonHitRatePts };
               const rawEdge = parseFloat((truePct - kalshiPct).toFixed(1));
               const edge = rawEdge;
               if (edge >= 5) {
@@ -3874,11 +3913,11 @@ var worker_default = {
               const _nttUnderEdge = parseFloat((_nttNoTruePct - _nttNoKalshiPct).toFixed(1));
               const _nttNoKalshiAO = _nttNoKalshiPct >= 50 ? Math.round(-(_nttNoKalshiPct/(100-_nttNoKalshiPct))*100) : Math.round((100-_nttNoKalshiPct)/_nttNoKalshiPct*100);
               let _nttUnderSimScore = 0;
-              _nttUnderSimScore += teamOff == null ? 1 : teamOff < 113 ? 2 : teamOff < 118 ? 1 : 0;
-              _nttUnderSimScore += oppDef == null ? 1 : oppDef < 113 ? 2 : oppDef < 118 ? 1 : 0;
-              _nttUnderSimScore += _nbaOuLine == null ? 1 : _nbaOuLine < 215 ? 2 : _nbaOuLine < 225 ? 1 : 0;
-              _nttUnderSimScore += _teamPace == null || _lgPace == null ? 1 : _teamPace <= _lgPace - 2 ? 2 : _teamPace <= _lgPace + 2 ? 1 : 0;
+              _nttUnderSimScore += teamOffRtg == null ? 1 : teamOffRtg < 113 ? 2 : teamOffRtg < 118 ? 1 : 0;
+              _nttUnderSimScore += oppDefRtg == null ? 1 : oppDefRtg < 113 ? 2 : oppDefRtg < 118 ? 1 : 0;
+              _nttUnderSimScore += ttNbaSeasonHitRate == null ? 1 : ttNbaSeasonHitRate <= 20 ? 2 : ttNbaSeasonHitRate <= 40 ? 1 : 0;
               _nttUnderSimScore += h2hHitRate == null ? 1 : h2hHitRate <= 30 ? 2 : h2hHitRate <= 50 ? 1 : 0;
+              _nttUnderSimScore += _nbaOuLine == null ? 1 : _nbaOuLine < 215 ? 2 : _nbaOuLine < 225 ? 1 : 0;
               if (_nttUnderEdge >= 5 && _nttNoKalshiPct >= 70) {
                 teamTotalPlays.push({ ..._nttBaseFields, direction: "under", noTruePct: _nttNoTruePct, noKalshiPct: _nttNoKalshiPct, americanOdds: _nttNoKalshiAO, edge: _nttUnderEdge, rawEdge: _nttUnderEdge, teamTotalSimScore: _nttUnderSimScore, qualified: _nttUnderSimScore >= 8, kelly: kellyFraction(_nttNoTruePct, _nttNoKalshiAO), ev: evPerUnit(_nttNoTruePct, _nttNoKalshiAO) });
               } else if (isDebug) {
