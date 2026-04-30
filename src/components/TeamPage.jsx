@@ -135,12 +135,6 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, allTonightPlays, on
     _allMaps[pt.key] = buildTotalMapFn(_allPlays, abbr, sport, pt.gameType, pt.isUnder);
   }
 
-  // Available tabs (have at least one play)
-  const availableTabs = PLAY_TYPES
-    .filter(pt => !(pt.gameType === 'teamTotal' && sport === 'nhl'))
-    .filter(pt => Object.keys(_allMaps[pt.key]).length > 0)
-    .map(pt => pt.key);
-
   // Play type state — initialized from URL param or best available tab
   const [playType, setPlayType] = React.useState(() => {
     const urlParam = (() => { try { return new URLSearchParams(window.location.search).get('playType'); } catch { return null; } })();
@@ -441,7 +435,7 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, allTonightPlays, on
         <TotalsBarChart gameLog={gameLog} sport={sport}
           tonightTotalMap={activeTotalMap} tonightPlay={activePlay}
           trackedPlays={trackedPlays} onTrack={trackPlay} onUntrack={untrackPlay}
-          playType={_activeType} onPlayTypeChange={handleTabChange} availableTabs={availableTabs}/>
+          playType={_activeType} onPlayTypeChange={handleTabChange}/>
 
         {/* Lineup — shown above game log when available */}
         {lineup.length > 0 && (() => {

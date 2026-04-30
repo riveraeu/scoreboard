@@ -9,7 +9,7 @@ const TAB_LABELS = {
   team_under: 'Team Under',
 };
 
-function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, trackedPlays, onTrack, onUntrack, playType, onPlayTypeChange, availableTabs }) {
+function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, trackedPlays, onTrack, onUntrack, playType, onPlayTypeChange }) {
   const thresholds = TOTAL_THRESHOLDS[sport] || [5,6,7,8,9,10];
   const completed = (gameLog || []).filter(g => g.result);
   const isUnder = playType?.includes('under') ?? false;
@@ -17,7 +17,6 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, trackedP
   const visibleTabs = sport === 'nhl'
     ? ['game_over', 'game_under']
     : ['game_over', 'game_under', 'team_over', 'team_under'];
-  const availSet = new Set(availableTabs || []);
 
   const data = thresholds.map(t => {
     const count = completed.filter(g => g.total >= t).length;
@@ -29,22 +28,19 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, trackedP
     <div>
       {/* Tab strip */}
       {onPlayTypeChange && (
-        <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
           {visibleTabs.map(key => {
             const active = playType === key;
-            const enabled = availSet.has(key);
             return (
               <button key={key}
-                onClick={() => enabled && onPlayTypeChange(key)}
-                disabled={!enabled}
+                onClick={() => onPlayTypeChange(key)}
                 style={{
-                  background: active ? 'rgba(88,166,255,0.12)' : 'transparent',
-                  border: `1px solid ${active ? '#58a6ff' : '#30363d'}`,
-                  borderRadius: 20, padding: '3px 10px', fontSize: 11,
+                  flex: 1, padding: '9px 0', borderRadius: 8,
+                  border: '1px solid', cursor: 'pointer', fontSize: 13,
+                  borderColor: active ? '#58a6ff' : '#30363d',
+                  background: active ? 'rgba(88,166,255,0.12)' : '#161b22',
+                  color: active ? '#58a6ff' : '#8b949e',
                   fontWeight: active ? 700 : 400,
-                  color: active ? '#58a6ff' : enabled ? '#8b949e' : '#484f58',
-                  cursor: enabled ? 'pointer' : 'not-allowed',
-                  opacity: enabled ? 1 : 0.4,
                 }}>
                 {TAB_LABELS[key]}
               </button>
