@@ -812,6 +812,7 @@ function App() {
         if (m) pid = m.id;
       } catch(e) {}
     }
+    history.pushState({}, "", `/${slugify(play.playerName)}`);
     selectPlayer({ id: pid, name: play.playerName, team: play.playerTeam, sportKey: sportFull,
       opponent: play.opponent, oppRank: play.oppRank, oppMetricValue: play.oppMetricValue,
       oppMetricLabel: play.oppMetricLabel, oppMetricUnit: play.oppMetricUnit,
