@@ -702,10 +702,8 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                           const _dvpPtsPC = play.posDvpRank != null ? (play.posDvpRank <= 10 ? 2 : play.posDvpRank <= 15 ? 1 : 0) : 1;
                           const _nbaSeasonHRPtsPC = play.nbaSeasonHitRatePts ?? (play.seasonPct >= 90 ? 2 : play.seasonPct >= 80 ? 1 : 0);
                           const _nbaSoftHRPtsPC = play.nbaSoftHitRatePts ?? (play.softPct == null ? 1 : play.softPct >= 90 ? 2 : play.softPct >= 80 ? 1 : 0);
-                          const _paceGoodPC = play.nbaPaceAdj != null && play.nbaPaceAdj > 0;
-                          const _totalGoodPC = play.nbaGameTotal != null && play.nbaGameTotal >= 225;
-                          const _comboPtsPC = (_paceGoodPC && _totalGoodPC) ? 2 : (_paceGoodPC || _totalGoodPC) ? 1 : 0;
-                          const scTitle = sc != null ? [_c1Label,`DVP: ${_dvpPtsPC}/2`,`Season HR: ${_nbaSeasonHRPtsPC}/2`,`Tier HR: ${_nbaSoftHRPtsPC}/2`,`Pace+Total: ${_comboPtsPC}/2`].join("\n") : null;
+                          const _ouPtsPC = play.nbaTotalPts ?? 1;
+                          const scTitle = sc != null ? [_c1Label,`DVP: ${_dvpPtsPC}/2`,`Season HR: ${_nbaSeasonHRPtsPC}/2`,`Tier HR: ${_nbaSoftHRPtsPC}/2`,`O/U: ${_ouPtsPC}/2`].join("\n") : null;
                           return (
                             <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.65}}>
                               <div>
@@ -714,7 +712,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                                 {displayRank != null && <>{" "}{play.opponent} has {rankDesc || `the ${ordinal(displayRank)}-worst defense`} in {statName} allowed{posName ? ` to ${posName}s` : ""}{displayValue != null ? <> — giving up <span style={{color:rankColor,fontWeight:600}}>{displayValue} per game</span></> : <>, ranked <span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}</span></>}.</>}
                                 {play.softPct != null && <>{" "}{first} hits this in <span style={{color:play.softPct>=70?"#3fb950":play.softPct>=60?"#e3b341":"#f78166",fontWeight:600}}>{play.softPct}%</span> of games vs same-tier defenses{play.softGames ? <span style={{color:"#484f58",fontSize:10}}> ({play.softGames}g)</span> : ""}.</>}
                                 {play.nbaPaceAdj != null && <>{" "}Game pace is <span style={{color:paceColor,fontWeight:600}}>{play.nbaPaceAdj > 0 ? "+" : ""}{play.nbaPaceAdj}</span> possessions above average — {paceDesc}.</>}
-                                {play.nbaGameTotal != null && <>{" "}Game total <span style={{color:play.nbaTotalPts>=3?"#3fb950":play.nbaTotalPts>=2?"#e3b341":play.nbaTotalPts>=1?"#8b949e":"#f78166",fontWeight:600}}>{play.nbaGameTotal}</span><span style={{color:"#8b949e"}}>{play.nbaGameTotal>=235?" — a high-scoring slate":play.nbaGameTotal>=225?" — above-average scoring":play.nbaGameTotal>=215?" — an average total":" — a low-scoring slate"}.</span></>}
+                                {play.nbaGameTotal != null && <>{" "}Game total <span style={{color:play.nbaTotalPts>=2?"#3fb950":play.nbaTotalPts>=1?"#e3b341":"#8b949e",fontWeight:600}}>{play.nbaGameTotal}</span><span style={{color:"#8b949e"}}>{play.nbaGameTotal>=225?" — above-average scoring":play.nbaGameTotal>=215?" — an average total":" — a low-scoring slate"}.</span></>}
                                 {play.nbaBlowoutAdj != null && play.nbaBlowoutAdj < 0.99 && <>{" "}<span style={{color:"#f78166",fontWeight:600}}>Blowout risk</span> — large spread reduces model mean by {Math.round((1-play.nbaBlowoutAdj)*100)}%.</>}
                                 {play.isB2B != null && <>{" "}{play.isB2B ? <><span style={{color:"#f78166",fontWeight:600}}>Back-to-back</span> — model applies a scoring reduction.</> : <>Fully rested tonight.</>}</>}
                                 {sc != null && <>{" "}<SimBadge sc={sc} scTitle={scTitle} scColor={scColor} /></>}

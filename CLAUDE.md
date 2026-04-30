@@ -241,7 +241,7 @@ True% = Monte Carlo simulation (`simulateKsDist` + `kDistPct`)
   - Position-adjusted DVP ratio tiers: ratio ≥ 1.05 → 2pts (soft), ratio ≥ 1.02 → 1pt (borderline), else → 0pts. `dvpRatio` field included in all play/drop output.
   - Season hit rate (`nbaSeasonHitRatePts`): `primaryPct` (blended 2026/2025/career) at threshold. ≥ 90% → 2pts, ≥ 80% → 1pt, < 80% → 0pts.
   - DVP-tier matchup hit rate (`nbaSoftHitRatePts`): `softPct` (hit rate vs teams in the **same DVP tier** as tonight's opponent — tier determined by opp rank: 1–10=soft, 11–20=neutral, 21–30=hard; gamelog filtered to games vs tier-matching teams) at threshold. ≥ 90% → 2pts, ≥ 80% → 1pt, < 80% → 0pts; null → 1pt (abstain).
-  - O/U line (`nbaTotalPts`): ≥ 215 → 2pts; null → 1pt (abstain); < 215 → 0pts. Game totals from `sportByteam.nbaGameOdds`. Pace is still applied to the simulation mean via `buildNbaStatDist` but is no longer scored separately (was redundant with truePct).
+  - O/U line (`nbaTotalPts`): ≥ 215 → 2pts; null → 1pt (abstain); < 215 → 0pts. Game totals from `sportByteam.nbaGameOdds`. Pace is applied to the simulation mean via `buildNbaStatDist` but is **not scored** — only O/U is the 5th SimScore component.
   - Max: 2+2+2+2+2 = 10. Spread and standalone pace no longer scored separately.
 - nSim scales with pre-edge simScore: ≥8 → 10k, ≥5 → 5k, else 2k
 - **Gate**: edge ≥ 5% (gate only, not scored); **nbaSimScore ≥ 8** to qualify as a play. No soft-matchup pre-filter — all NBA markets enter the play loop regardless of opponent DVP.
@@ -495,7 +495,7 @@ Opened via "report" button. Shows ALL markets (plays + dropped) grouped by sport
   - `nbapace`: not a column in NBA player prop tables (replaced by `nbaPaceTotal`)
   - `nbaSeasonHR`: ≥90% green, ≥80% yellow, <80% red — Season hit rate at threshold (blended 2026/2025); `nbaSeasonHitRatePts` drives color
   - `nbaSoftHR`: ≥90% green, ≥80% yellow, <80% red — hit rate vs teams in same DVP tier as tonight's opponent (soft/neutral/hard bucketed by rank 1-10/11-20/21-30); null = DASH (1pt abstain in SimScore); `nbaSoftHitRatePts` drives color
-  - `nbaPaceTotal`: shows O/U line only (e.g. `231`); colored by `nbaTotalPts` (2=green/≥215, 1=yellow/null abstain, 0=gray/<215)
+  - `nbaPaceTotal`: shows O/U game total (e.g. `231`); column label is "O/U"; colored by `nbaTotalPts` (2=green/≥215, 1=yellow/null abstain, 0=gray/<215). Pace no longer scored — applied to simulation mean only.
   - `nbaCombOff` (NBA game totals Comb OffRtg): ≥118 green, ≥113 yellow, else gray — arithmetic mean of home+away OffRtg; high = good for over
   - `nbaCombDef` (NBA game totals Comb DefRtg): ≥118 green, ≥113 yellow, else gray — arithmetic mean of home+away DefRtg (pts allowed per 100 poss); high = bad defense = good for over
   - `ttNbaOff` (NBA team totals OffRtg): ≥118 green, ≥113 yellow, else gray — scoring team's pace-adjusted OffRtg

@@ -28,9 +28,7 @@ function buildSimTooltip(m) {
   }
   if (isNBA) {
     const dvpPts = m.dvpRatio >= 1.05 ? 2 : m.dvpRatio >= 1.02 ? 1 : 0;
-    const paceGood = m.nbaPaceAdj != null && m.nbaPaceAdj > 0;
-    const totalGood = m.nbaGameTotal != null && m.nbaGameTotal >= 215;
-    const comboPts = (paceGood && totalGood) ? 2 : (paceGood || totalGood) ? 1 : 0;
+    const ouPts5 = m.nbaTotalPts ?? 1;
     let c1Label, c1Pts;
     if (m.stat === 'rebounds') {
       const v = m.nbaOpportunity;
@@ -46,7 +44,7 @@ function buildSimTooltip(m) {
       `DVP: ${dvpPts}/2`,
       `Season HR: ${m.nbaSeasonHitRatePts??1}/2`,
       `Tier HR: ${m.nbaSoftHitRatePts??1}/2`,
-      `Pace+Total: ${comboPts}/2`,
+      `O/U: ${ouPts5}/2`,
     ].join('\n');
   }
   if (isNHL) {
@@ -235,10 +233,10 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                   "mlb|hrr":       { note: "True% = logit-park adjusted blended rate \u00b7 Sim-Score \u2265 8 (OPS\u21920-2, WHIP\u21920-2, Ssn HR%\u21920-2, H2H HR%\u21920-2, O/U\u21920-2) = max 10; edge gates separately", gates: ["Lineup spot 1\u20135", "Sim-Score \u2265 8 (max 10)", "Edge \u2265 5%"] },
                   "mlb|hits":      { note: "True% = Monte Carlo simulation (batterBA \u00d7 pitcherBAA log5) \u00b7 park-adjusted \u00b7 Sim-Score \u2265 8 (OPS\u21920-2, WHIP\u21920-2, Ssn HR%\u21920-2, H2H HR%\u21920-2, O/U\u21920-2) = max 10; edge gates separately", gates: ["Lineup spot 1\u20135", "Sim-Score \u2265 8 (max 10)", "Edge \u2265 5%"] },
                   "mlb|strikeouts":{ note: "True% = Monte Carlo simulation (pitcher K% \u00d7 lineup K% log5) \u00b7 regressed to mean \u00b7 park-adjusted \u00b7 Sim-Score \u2265 8 (CSW%/K%\u21920-2, Lineup K%\u21920-2, Hit Rate %\u21920-2, H2H Hand\u21920-2, O/U\u21920-2) = max 10; edge gates separately", gates: ["Sim-Score \u2265 8 (max 10)", "Edge \u2265 5%"] },
-                  "nba|points":    { note: "True% = Monte Carlo simulation \u00b7 B2B \u00d70.93 \u00b7 Sim-Score: C1 USG%(0-2) + DVP(0-2) + Ssn HR%(0-2) + Tier HR%(0-2) + Pace+O/U(0-2) = max 10; edge gates separately", gates: ["Sim-Score \u2265 8 (max 10)", "Edge \u2265 5%"] },
-                  "nba|rebounds":  { note: "True% = Monte Carlo simulation \u00b7 B2B \u00d70.93 \u00b7 Sim-Score: C1 AvgMin(0-2) + DVP(0-2) + Ssn HR%(0-2) + Tier HR%(0-2) + Pace+O/U(0-2) = max 10; edge gates separately", gates: ["Sim-Score \u2265 8 (max 10)", "Edge \u2265 5%"] },
-                  "nba|assists":   { note: "True% = Monte Carlo simulation \u00b7 B2B \u00d70.93 \u00b7 Sim-Score: C1 USG%(0-2) + DVP(0-2) + Ssn HR%(0-2) + Tier HR%(0-2) + Pace+O/U(0-2) = max 10; edge gates separately", gates: ["Sim-Score \u2265 8 (max 10)", "Edge \u2265 5%"] },
-                  "nba|threePointers": { note: "True% = Monte Carlo simulation \u00b7 B2B \u00d70.93 \u00b7 Sim-Score: C1 USG%(0-2) + DVP(0-2) + Ssn HR%(0-2) + Tier HR%(0-2) + Pace+O/U(0-2) = max 10; edge gates separately", gates: ["Sim-Score \u2265 8 (max 10)", "Edge \u2265 5%"] },
+                  "nba|points":    { note: "True% = Monte Carlo simulation \u00b7 B2B \u00d70.93 \u00b7 Sim-Score: C1 USG%(0-2) + DVP(0-2) + Ssn HR%(0-2) + Tier HR%(0-2) + O/U(0-2) = max 10; edge gates separately", gates: ["Sim-Score \u2265 8 (max 10)", "Edge \u2265 5%"] },
+                  "nba|rebounds":  { note: "True% = Monte Carlo simulation \u00b7 B2B \u00d70.93 \u00b7 Sim-Score: C1 AvgMin(0-2) + DVP(0-2) + Ssn HR%(0-2) + Tier HR%(0-2) + O/U(0-2) = max 10; edge gates separately", gates: ["Sim-Score \u2265 8 (max 10)", "Edge \u2265 5%"] },
+                  "nba|assists":   { note: "True% = Monte Carlo simulation \u00b7 B2B \u00d70.93 \u00b7 Sim-Score: C1 USG%(0-2) + DVP(0-2) + Ssn HR%(0-2) + Tier HR%(0-2) + O/U(0-2) = max 10; edge gates separately", gates: ["Sim-Score \u2265 8 (max 10)", "Edge \u2265 5%"] },
+                  "nba|threePointers": { note: "True% = Monte Carlo simulation \u00b7 B2B \u00d70.93 \u00b7 Sim-Score: C1 USG%(0-2) + DVP(0-2) + Ssn HR%(0-2) + Tier HR%(0-2) + O/U(0-2) = max 10; edge gates separately", gates: ["Sim-Score \u2265 8 (max 10)", "Edge \u2265 5%"] },
                 };
 
                 return sortedGroups.map(({ sport, stat, items }) => {
@@ -355,10 +353,10 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                           "mlb|hrr":        [{k:"sim",l:"Score"},{k:"ops",l:"OPS"},{k:"whip",l:"WHIP"},{k:"hSsnHR",l:"Ssn HR%"},{k:"hH2HHR",l:"H2H HR%"},{k:"mlbOu",l:"O/U"}],
                           "mlb|hits":       [{k:"sim",l:"Score"},{k:"ops",l:"OPS"},{k:"whip",l:"WHIP"},{k:"hSsnHR",l:"Ssn HR%"},{k:"hH2HHR",l:"H2H HR%"},{k:"mlbOu",l:"O/U"}],
                           "mlb|strikeouts": [{k:"sim",l:"Score"},{k:"csw",l:"CSW%"},{k:"lkp",l:"Lineup K%"},{k:"kHitRate",l:"Hit Rate %"},{k:"kH2HHand",l:"H2H Hand"},{k:"ou",l:"O/U"}],
-                          "nba|points":     [{k:"sim",l:"Score"},{k:"nbaC1",l:"Usage"},{k:"dvp",l:"DVP"},{k:"nbaSeasonHR",l:"Ssn HR%"},{k:"nbaSoftHR",l:"Tier HR%"},{k:"nbaPaceTotal",l:"Pace+O/U"}],
-                          "nba|rebounds":   [{k:"sim",l:"Score"},{k:"nbaC1",l:"AvgMin"},{k:"dvp",l:"DVP"},{k:"nbaSeasonHR",l:"Ssn HR%"},{k:"nbaSoftHR",l:"Tier HR%"},{k:"nbaPaceTotal",l:"Pace+O/U"}],
-                          "nba|assists":    [{k:"sim",l:"Score"},{k:"nbaC1",l:"Usage"},{k:"dvp",l:"DVP"},{k:"nbaSeasonHR",l:"Ssn HR%"},{k:"nbaSoftHR",l:"Tier HR%"},{k:"nbaPaceTotal",l:"Pace+O/U"}],
-                          "nba|threePointers":[{k:"sim",l:"Score"},{k:"nbaC1",l:"Usage"},{k:"dvp",l:"DVP"},{k:"nbaSeasonHR",l:"Ssn HR%"},{k:"nbaSoftHR",l:"Tier HR%"},{k:"nbaPaceTotal",l:"Pace+O/U"}],
+                          "nba|points":     [{k:"sim",l:"Score"},{k:"nbaC1",l:"Usage"},{k:"dvp",l:"DVP"},{k:"nbaSeasonHR",l:"Ssn HR%"},{k:"nbaSoftHR",l:"Tier HR%"},{k:"nbaPaceTotal",l:"O/U"}],
+                          "nba|rebounds":   [{k:"sim",l:"Score"},{k:"nbaC1",l:"AvgMin"},{k:"dvp",l:"DVP"},{k:"nbaSeasonHR",l:"Ssn HR%"},{k:"nbaSoftHR",l:"Tier HR%"},{k:"nbaPaceTotal",l:"O/U"}],
+                          "nba|assists":    [{k:"sim",l:"Score"},{k:"nbaC1",l:"Usage"},{k:"dvp",l:"DVP"},{k:"nbaSeasonHR",l:"Ssn HR%"},{k:"nbaSoftHR",l:"Tier HR%"},{k:"nbaPaceTotal",l:"O/U"}],
+                          "nba|threePointers":[{k:"sim",l:"Score"},{k:"nbaC1",l:"Usage"},{k:"dvp",l:"DVP"},{k:"nbaSeasonHR",l:"Ssn HR%"},{k:"nbaSoftHR",l:"Tier HR%"},{k:"nbaPaceTotal",l:"O/U"}],
                           "nhl|points": [{k:"sim",l:"Score"},{k:"nhltoi",l:"AvgTOI"},{k:"nhlgaa",l:"GAA Rank"},{k:"nhlSeasonHR",l:"Ssn HR%"},{k:"nhlDvpHR",l:"DVP HR%"},{k:"nhlGameTotalOu",l:"O/U"}],
                           "mlb|totalRuns":    [{k:"sim",l:"Score"},{k:"combinedRPG",l:"Comb RPG"},{k:"homeWhip",l:"H WHIP"},{k:"awayWhip",l:"A WHIP"},{k:"gtH2HHR",l:"H2H HR%"},{k:"mlbOu",l:"O/U"}],
                           "nba|totalPoints":  [{k:"sim",l:"Score"},{k:"nbaTotPace",l:"Pace"},{k:"nbaCombOff",l:"Comb OffRtg"},{k:"nbaCombDef",l:"Comb DefRtg"},{k:"nbaGtH2H",l:"H2H HR%"},{k:"totalOu",l:"O/U"}],
@@ -406,7 +404,7 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                           if (k==="nbaOu")   { const v = m.nbaGameTotal; return v != null ? <span style={{color:v>=235?"#3fb950":v>=225?"#e3b341":"#8b949e"}}>{v}</span> : DASH; }
                           if (k==="nbaSeasonHR") { const v = m.seasonPct; const pts = m.nbaSeasonHitRatePts ?? (v==null?1:v>=90?2:v>=80?1:0); const color = pts>=2?"#3fb950":pts>=1?"#e3b341":"#f78166"; return v!=null ? <span style={{color}}>{v.toFixed(0)}%</span> : DASH; }
                           if (k==="nbaSoftHR") { const v = m.softPct; if (v==null) return DASH; const pts = m.nbaSoftHitRatePts ?? (v>=90?2:v>=80?1:0); const color = pts>=2?"#3fb950":pts>=1?"#e3b341":"#f78166"; return <span style={{color}}>{v.toFixed(0)}%</span>; }
-                          if (k==="nbaPaceTotal") { const pts = m.nbaTotalPts ?? 1; const pa = m.nbaPaceAdj; const ou = m.nbaGameTotal; const color = pts>=2?"#3fb950":pts>=1?"#e3b341":"#8b949e"; const paStr = pa!=null?(pa>0?"+":"")+pa.toFixed(1):null; const ouStr = ou!=null?String(ou):null; const label = [paStr,ouStr].filter(Boolean).join(" · "); return label ? <span style={{color}}>{label}</span> : DASH; }
+                          if (k==="nbaPaceTotal") { const pts = m.nbaTotalPts ?? 1; const ou = m.nbaGameTotal; const color = pts>=2?"#3fb950":pts>=1?"#e3b341":"#8b949e"; return ou != null ? <span style={{color,fontWeight:600}}>{ou}</span> : DASH; }
                           if (k==="nba_spread") { const adj = m.nbaBlowoutAdj; if (adj == null) return DASH; const color = adj===1.0?"#3fb950":adj>0.92?"#e3b341":"#f78166"; const sp = m.nbaBlowoutAdj!=null && adj<1.0 ? Math.round((1-adj)/0.007+10) : null; return <span style={{color}}>{adj===1.0?"Tight":sp!=null?`-${sp}`:"—"}</span>; }
                           if (k==="nhlgaa") { const r = m.oppRank; return C(r != null ? `#${r}` : null, r<=10?"#3fb950":r<=15?"#e3b341":"#f78166"); }
                           if (k==="nhlsa")  { const v = m.nhlShotsAdj; const r = m.nhlSaRank; return v != null ? <span style={{color:(r!=null&&r<=10)?"#3fb950":v>0?"#e3b341":"#f78166"}}>{v>0?"+":""}{v.toFixed(1)}</span> : DASH; }
@@ -492,7 +490,7 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                           nbaOu:"Game total (O/U line — ≥235 green, ≥225 yellow)",
                           nbaSeasonHR:"Season hit rate at this threshold (blended 2026/2025) — ≥90% green, ≥80% yellow, <80% red",
                           nbaSoftHR:"Tier HR% — hit rate vs teams in the same DVP tier as tonight's opponent (soft 1-10, neutral 11-20, hard 21-30) — ≥90% green, ≥80% yellow, <80% red; null = dash (1pt abstain in SimScore)",
-                          nbaPaceTotal:"Pace delta + O/U line (both shown). Color: both favorable (pace>0 AND O/U≥215) = green/2pts; one = yellow/1pt; neither = gray/0pts",
+                          nbaPaceTotal:"O/U game total line — ≥215 = green (2pts), null = yellow (1pt abstain), <215 = gray (0pts). Pace applied to simulation mean but not scored separately.",
                           nba_spread:"Game spread tightness — tight game (≤10) = full minutes, no garbage time",
                           dvp:"Defense vs Position rank (lower = softer matchup)",
                           nhlgaa:"Opponent GAA rank — ≤10 green (2pts), ≤15 yellow (1pt), >15 red (0pts)",
