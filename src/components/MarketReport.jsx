@@ -114,7 +114,8 @@ function buildSimTooltip(m) {
       const hW = m.homeWHIP, aW = m.awayWHIP, ou = m.gameOuLine;
       const cRPG = m.combinedRPG, h2hTR = m.h2hTotalHitRate;
       const whipPts = v => v == null ? 1 : v > 1.35 ? 2 : v > 1.20 ? 1 : 0;
-      const cRPGPts = cRPG == null ? 1 : cRPG >= 10.5 ? 2 : cRPG >= 9.0 ? 1 : 0;
+      const isU = m.direction === "under";
+      const cRPGPts = cRPG == null ? 1 : isU ? (cRPG < 8.5 ? 2 : cRPG <= 10.5 ? 1 : 0) : (cRPG >= 10.5 ? 2 : cRPG >= 8.5 ? 1 : 0);
       const h2hPts = h2hTR == null ? 1 : h2hTR >= 80 ? 2 : h2hTR >= 60 ? 1 : 0;
       return [
         `Comb road RPG (${cRPG != null ? cRPG.toFixed(1) : '—'}): ${cRPGPts}/2`,
@@ -420,7 +421,7 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                           if (k==="nhlDvpHR") { const v=m.softPct; if (v==null) return DASH; const pts=m.nhlDvpHitRatePts??(v>=90?2:v>=80?1:0); const color=pts>=2?"#3fb950":pts>=1?"#e3b341":"#f78166"; return <span style={{color}}>{v.toFixed(0)}%</span>; }
                           if (k==="nhlGameTotalOu") { const v=m.nhlGameTotal; if (v==null) return DASH; const color=v>=7?"#3fb950":v>=5.5?"#e3b341":"#f78166"; return <span style={{color,fontWeight:600}}>O{v}</span>; }
                           // Total PPG columns
-                          if (k==="combinedRPG") { const v = m.combinedRPG; return v != null ? <span style={{color:v>=10.5?"#3fb950":v>=9.0?"#e3b341":"#f78166",fontWeight:600}}>{v.toFixed(1)}</span> : DASH; }
+                          if (k==="combinedRPG") { const v = m.combinedRPG; if (v == null) return DASH; const isU=m.direction==="under"; const color=isU?(v<8.5?"#3fb950":v<=10.5?"#e3b341":"#f78166"):(v>=10.5?"#3fb950":v>=8.5?"#e3b341":"#f78166"); return <span style={{color,fontWeight:600}}>{v.toFixed(1)}</span>; }
                           if (k==="homeWhip"||k==="awayWhip") { const v = m[k==="homeWhip"?"homeWHIP":"awayWHIP"]; return v!=null ? <span style={{color:v>1.35?"#3fb950":v>1.20?"#e3b341":"#f78166",fontWeight:600}}>{v.toFixed(2)}</span> : DASH; }
                           if (k==="gtH2HHR") { const v=m.h2hTotalHitRate; const g=m.h2hTotalGames; if (v==null) return DASH; const color=v>=80?"#3fb950":v>=60?"#e3b341":"#f78166"; return <span style={{color}} title={g!=null?`${g} H2H games`:undefined}>{v}%</span>; }
                           if (k==="umpire") { const v = m.umpireRunFactor; if (v==null) return DASH; return <span style={{color:v>=1.05?"#3fb950":v>=0.97?"#e3b341":"#f78166",fontWeight:600}}>{v.toFixed(3)}</span>; }
@@ -506,7 +507,7 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                           nhlSeasonHR:"Career season hit rate at threshold — ≥90% green (2pts), ≥80% yellow (1pt), <80% red (0pts)",
                           nhlDvpHR:"Hit rate vs teams with GAA above league avg (≥3 games req) — ≥90% green, ≥80% yellow; null = 1pt abstain",
                           nhlGameTotalOu:"Game O/U line — ≥7 green (2pts), ≥5.5 yellow (1pt), <5.5 red (0pts)",
-                          combinedRPG:"Combined road RPG (both teams, away-only stats) — strips home park bias; green ≥10.5 (2pts), yellow ≥9.0 (1pt)",
+                          combinedRPG:"Combined road RPG (both teams, away-only stats) — strips home park bias; green ≥10.5 (2pts), yellow ≥8.5 (1pt)",
                           umpire:"Umpire run factor (1/K-factor): loose zone = more walks/scoring; green ≥1.05, yellow ≥0.97, red <0.97. Now applied directly to simulation lambdas.",
                           homeWhip:"Home starter WHIP — baserunner traffic indicator. >1.35 green (2pts, favors over), >1.20 yellow (1pt), ≤1.20 gray (0pts); null = 1pt abstain",
                           awayWhip:"Away starter WHIP — baserunner traffic indicator. >1.35 green (2pts), >1.20 yellow (1pt), ≤1.20 gray (0pts); null = 1pt abstain",

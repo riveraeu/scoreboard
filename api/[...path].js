@@ -3572,7 +3572,7 @@ var worker_default = {
               const h2hTotalGames = _gtH2H?.games ?? null;
               const _h2hTotalPts = h2hTotalHitRate == null ? 1 : h2hTotalHitRate >= 80 ? 2 : h2hTotalHitRate >= 60 ? 1 : 0;
               const _combinedRPG = homeRPG != null && awayRPG != null ? parseFloat((homeRPG + awayRPG).toFixed(2)) : null;
-              const _combinedRPGPts = _combinedRPG == null ? 1 : _combinedRPG >= 10.5 ? 2 : _combinedRPG >= 9.0 ? 1 : 0;
+              const _combinedRPGPts = _combinedRPG == null ? 1 : _combinedRPG >= 10.5 ? 2 : _combinedRPG >= 8.5 ? 1 : 0;
               _simData = { homeRPG, awayRPG, homeERA, awayERA, homeWHIP, awayWHIP, parkFactor: parkRF, homeExpected: _hLam, awayExpected: _aLam, expectedTotal: (_hLam != null && _aLam != null) ? parseFloat((_hLam + _aLam).toFixed(1)) : null, gameOuLine, mlbOuPts: _mlbOuPts, combinedRPG: _combinedRPG, umpireRunFactor: _umpNameT != null ? _umpRunFactor : null, umpireName: _umpNameT, h2hTotalHitRate, h2hTotalGames, homeStarterHand: _homeStarterHand, awayStarterHand: _awayStarterHand, ...(_homePlatFactor !== 1.0 && { homePlatoonFactor: _homePlatFactor }), ...(_awayPlatFactor !== 1.0 && { awayPlatoonFactor: _awayPlatFactor }), ...(_weatherFactor !== 1.0 && { weatherFactor: _weatherFactor, windOutMph: _wData?.windOutMph }) };
               if (_hLam != null && _aLam != null) {
                 const _dk = `mlb|${homeTeam}|${awayTeam}`;
@@ -3664,7 +3664,7 @@ var worker_default = {
               const { homeWHIP: _hW, awayWHIP: _aW, combinedRPG: _cRPG, gameOuLine, h2hTotalHitRate: _h2hTR } = _simData;
               underSimScore += _hW == null ? 1 : _hW <= 1.10 ? 2 : _hW <= 1.25 ? 1 : 0;
               underSimScore += _aW == null ? 1 : _aW <= 1.10 ? 2 : _aW <= 1.25 ? 1 : 0;
-              underSimScore += _cRPG == null ? 1 : _cRPG <= 8.5 ? 2 : _cRPG <= 10.0 ? 1 : 0;
+              underSimScore += _cRPG == null ? 1 : _cRPG < 8.5 ? 2 : _cRPG <= 10.5 ? 1 : 0;
               underSimScore += _h2hTR == null ? 1 : _h2hTR <= 20 ? 2 : _h2hTR <= 40 ? 1 : 0;
               underSimScore += gameOuLine == null ? 1 : gameOuLine < 7.5 ? 2 : gameOuLine < 9.5 ? 1 : 0;
             } else if (sport === "nba") {
