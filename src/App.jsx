@@ -372,7 +372,7 @@ function App() {
           Object.values(allScores).find(g => g.awayTeam === pick.scoringTeam && g.homeTeam === pick.oppTeam) ||
           Object.values(allScores).find(g => g.homeTeam === pick.scoringTeam && g.awayTeam === pick.oppTeam);
       }
-      if (!gameScore || gameScore.state !== "post") return pick;
+      if (!gameScore || (gameScore.state !== "post" && gameScore.state !== "in")) return pick;
 
       const isHome = gameScore.homeTeam === (pick.gameType === "total" ? pick.homeTeam : pick.scoringTeam);
       const current = pick.gameType === "total"
@@ -380,6 +380,12 @@ function App() {
         : (isHome ? (gameScore.homeScore ?? 0) : (gameScore.awayScore ?? 0));
 
       const isUnder = pick.direction === "under";
+      // OVER: resolve won mid-game the moment threshold is crossed; resolve lost only at game end
+      // UNDER: must wait for game to end
+      if (gameScore.state === "in") {
+        if (!isUnder && current >= pick.threshold) return { ...pick, result: "won" };
+        return pick;
+      }
       const met = isUnder ? current < pick.threshold : current >= pick.threshold;
       return { ...pick, result: met ? "won" : "lost" };
     }));
