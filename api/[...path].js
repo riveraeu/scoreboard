@@ -451,22 +451,25 @@ var worker_default = {
           if (!mlbRes.ok) return errorResponse(`ESPN MLB API returned ${mlbRes.status}`, mlbRes.status);
           const d = await mlbRes.json();
           const labels = d.labels || [];
-          const reg = (d.seasonTypes || []).find((st) => { const dn = (st.displayName || "").toLowerCase(); return dn.includes("regular") && !dn.includes("play"); }) || (d.seasonTypes || []).find((st) => st.displayName?.toLowerCase().includes("regular")) || d.seasonTypes?.[0];
           const seenIds = /* @__PURE__ */ new Set();
           const allEvents = [];
-          for (const cat of reg?.categories || []) {
-            for (const ev of cat.events || []) {
-              if (seenIds.has(ev.eventId)) continue;
-              const meta = d.events?.[ev.eventId];
-              if (!meta || meta.opponent?.isAllStar) continue;
-              seenIds.add(ev.eventId);
-              allEvents.push({
-                eventId: ev.eventId,
-                stats: ev.stats || [],
-                date: meta.date || (meta.gameDate ? meta.gameDate.slice(0, 10) : null),
-                oppAbbr: meta.opponent?.abbreviation || null,
-                isHome: meta.atVs != null ? meta.atVs !== "@" : null
-              });
+          for (const st of d.seasonTypes || []) {
+            const _stDn = (st.displayName || "").toLowerCase();
+            if (_stDn.includes("pre") || _stDn.includes("spring") || _stDn.includes("exhibition")) continue;
+            for (const cat of st.categories || []) {
+              for (const ev of cat.events || []) {
+                if (seenIds.has(ev.eventId)) continue;
+                const meta = d.events?.[ev.eventId];
+                if (!meta || meta.opponent?.isAllStar) continue;
+                seenIds.add(ev.eventId);
+                allEvents.push({
+                  eventId: ev.eventId,
+                  stats: ev.stats || [],
+                  date: meta.date || (meta.gameDate ? meta.gameDate.slice(0, 10) : null),
+                  oppAbbr: meta.opponent?.abbreviation || null,
+                  isHome: meta.atVs != null ? meta.atVs !== "@" : null
+                });
+              }
             }
           }
           return jsonResponse({ labels, events: allEvents, totalGames: allEvents.length }, isPastSeason ? 86400 : 14400);
@@ -480,22 +483,25 @@ var worker_default = {
         if (!jsonRes.ok) return errorResponse(`ESPN API returned ${jsonRes.status}`, jsonRes.status);
         const d = await jsonRes.json();
         const labels = d.labels || [];
-        const reg = (d.seasonTypes || []).find(st => { const dn = (st.displayName || "").toLowerCase(); return dn.includes("regular") && !dn.includes("play"); }) || (d.seasonTypes || []).find(st => st.displayName?.toLowerCase().includes("regular")) || d.seasonTypes?.[0];
         const seenIds = new Set();
         const allEvents = [];
-        for (const cat of reg?.categories || []) {
-          for (const ev of cat.events || []) {
-            if (seenIds.has(ev.eventId)) continue;
-            const meta = d.events?.[ev.eventId];
-            if (!meta || meta.opponent?.isAllStar) continue;
-            seenIds.add(ev.eventId);
-            allEvents.push({
-              eventId: ev.eventId,
-              stats: ev.stats || [],
-              date: meta.gameDate ? meta.gameDate.slice(0, 10) : (meta.date || null),
-              oppAbbr: meta.opponent?.abbreviation || null,
-              isHome: meta.atVs != null ? meta.atVs !== "@" : null,
-            });
+        for (const st of d.seasonTypes || []) {
+          const _stDn = (st.displayName || "").toLowerCase();
+          if (_stDn.includes("pre") || _stDn.includes("spring") || _stDn.includes("exhibition")) continue;
+          for (const cat of st.categories || []) {
+            for (const ev of cat.events || []) {
+              if (seenIds.has(ev.eventId)) continue;
+              const meta = d.events?.[ev.eventId];
+              if (!meta || meta.opponent?.isAllStar) continue;
+              seenIds.add(ev.eventId);
+              allEvents.push({
+                eventId: ev.eventId,
+                stats: ev.stats || [],
+                date: meta.gameDate ? meta.gameDate.slice(0, 10) : (meta.date || null),
+                oppAbbr: meta.opponent?.abbreviation || null,
+                isHome: meta.atVs != null ? meta.atVs !== "@" : null,
+              });
+            }
           }
         }
         return jsonResponse({ labels, events: allEvents, totalGames: allEvents.length }, isPastSeason ? 86400 : 14400);
@@ -1886,16 +1892,19 @@ var worker_default = {
             }
             const d = await r.json();
             const ul = (d.labels || []).map((l) => (l || "").toUpperCase());
-            const reg = (d.seasonTypes || []).find((st) => { const dn = (st.displayName || "").toLowerCase(); return dn.includes("regular") && !dn.includes("play"); }) || (d.seasonTypes || []).find((st) => st.displayName?.toLowerCase().includes("regular")) || (d.seasonTypes?.length === 1 ? d.seasonTypes[0] : null);
             const events = [];
             const seenIds = /* @__PURE__ */ new Set();
-            for (const cat of reg?.categories || []) {
-              for (const ev of cat.events || []) {
-                if (seenIds.has(ev.eventId)) continue;
-                const meta = d.events?.[ev.eventId];
-                if (!meta || meta.opponent?.isAllStar) continue;
-                seenIds.add(ev.eventId);
-                events.push({ stats: ev.stats || [], oppAbbr: meta.opponent?.abbreviation || "" });
+            for (const st of d.seasonTypes || []) {
+              const _stDn = (st.displayName || "").toLowerCase();
+              if (_stDn.includes("pre") || _stDn.includes("spring") || _stDn.includes("exhibition")) continue;
+              for (const cat of st.categories || []) {
+                for (const ev of cat.events || []) {
+                  if (seenIds.has(ev.eventId)) continue;
+                  const meta = d.events?.[ev.eventId];
+                  if (!meta || meta.opponent?.isAllStar) continue;
+                  seenIds.add(ev.eventId);
+                  events.push({ stats: ev.stats || [], oppAbbr: meta.opponent?.abbreviation || "" });
+                }
               }
             }
             return events.length ? { ul, events } : null;
