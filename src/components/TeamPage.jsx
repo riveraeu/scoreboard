@@ -64,7 +64,7 @@ function buildSimTip(play) {
     const c1Pts  = stat==='rebounds'
       ? (play.nbaOpportunity==null?1:play.nbaOpportunity>=30?2:play.nbaOpportunity>=25?1:0)
       : (play.nbaUsage==null?1:play.nbaUsage>=28?2:play.nbaUsage>=22?1:0);
-    return [`C1: ${c1Pts}/2`, `DVP: ${dvpPts}/2`, `Season HR: ${play.nbaSeasonHitRatePts??1}/2`, `Tier HR: ${play.nbaSoftHitRatePts??1}/2`, `O/U: ${play.nbaTotalPts??1}/2`].join('\n');
+    return [`C1: ${c1Pts}/2`, `DVP: ${dvpPts}/2`, `Season HR: ${play.nbaSeasonHitRatePts??1}/2`, `Tier HR: ${play.nbaSoftHitRatePts??1}/2`, `Game Total: ${play.nbaTotalPts??1}/2`].join('\n');
   }
   // NHL player props
   if (play.nhlSimScore != null && play.totalSimScore == null) {
