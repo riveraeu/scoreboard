@@ -221,17 +221,23 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                 const dropped = (reportData.dropped || []).map(p => ({ ...p, qualified: false }));
                 const filtered = [...plays, ...dropped];
 
-                // Group by sport+stat
+                // Group by sport+stat (totals also split by direction)
                 const groups = {};
                 for (const m of filtered) {
-                  const key = `${m.sport}|${m.stat}`;
-                  if (!groups[key]) groups[key] = { sport: m.sport, stat: m.stat, items: [] };
+                  const isTotType = m.gameType === "total" || m.gameType === "teamTotal";
+                  const dir = isTotType ? (m.direction ?? "over") : null;
+                  const key = dir ? `${m.sport}|${m.stat}|${dir}` : `${m.sport}|${m.stat}`;
+                  if (!groups[key]) groups[key] = { sport: m.sport, stat: m.stat, direction: dir, items: [] };
                   groups[key].items.push(m);
                 }
                 const STAT_ORD = { strikeouts:0, hrr:1, hits:2, totalRuns:3, teamRuns:4, points:0, rebounds:1, assists:2, threePointers:3, teamPoints:4, totalPoints:5, totalGoals:1 };
                 const sortedGroups = Object.values(groups).sort((a, b) => {
                   const sd = (SPORT_ORD[a.sport]??9) - (SPORT_ORD[b.sport]??9);
-                  return sd !== 0 ? sd : (STAT_ORD[a.stat]??99) - (STAT_ORD[b.stat]??99);
+                  if (sd !== 0) return sd;
+                  const stOrd = (STAT_ORD[a.stat]??99) - (STAT_ORD[b.stat]??99);
+                  if (stOrd !== 0) return stOrd;
+                  const dirOrd = v => v === "over" ? 0 : v === "under" ? 1 : -1;
+                  return dirOrd(a.direction) - dirOrd(b.direction);
                 });
 
                 if (sortedGroups.length === 0) return <div style={{color:"#8b949e",textAlign:"center",padding:40,fontSize:13}}>No markets.</div>;
@@ -246,7 +252,7 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                   "nba|threePointers": { note: "True% = Monte Carlo simulation \u00b7 B2B \u00d70.93 \u00b7 Sim-Score: C1 USG%(0-2) + DVP(0-2) + Ssn HR%(0-2) + Tier HR%(0-2) + Game Total(0-2) = max 10; edge gates separately", gates: ["Sim-Score \u2265 8 (max 10)", "Edge \u2265 5%"] },
                 };
 
-                return sortedGroups.map(({ sport, stat, items }) => {
+                return sortedGroups.map(({ sport, stat, direction, items }) => {
                   // Dedupe by playerName|threshold (or homeTeam|awayTeam|threshold for totals), prefer qualified
                   const dedupeMap = {};
                   for (const m of items) {
@@ -285,7 +291,7 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                         case "fip": return m.pitcherFIP ?? 0;
                         case "ou": return m.gameTotal ?? 0;
                         case "dvp": return m.posDvpRank ?? 99;
-                        case "sim": return m.teamTotalSimScore ?? m.totalSimScore ?? m.finalSimScore ?? m.hitterFinalSimScore ?? m.nbaSimScore ?? 0;
+                        case "sim": return (direction === "under" ? (m.underSimScore ?? m.teamTotalSimScore ?? m.totalSimScore) : (m.teamTotalSimScore ?? m.totalSimScore)) ?? m.finalSimScore ?? m.hitterFinalSimScore ?? m.nbaSimScore ?? 0;
                         case "env": return m.parkFactor ?? m.hitterParkKF ?? 1;
                         case "brrl": return m.hitterBarrelPct ?? 0;
                         case "nbapace": return m.nbaPaceAdj ?? -99;
@@ -339,19 +345,22 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                       return _sortCfg.dir === "desc" ? -cmp : cmp;
                     }
                     if ((a.qualified !== false) !== (b.qualified !== false)) return (a.qualified !== false) ? -1 : 1;
-                    const sa = a.totalSimScore ?? a.finalSimScore ?? a.hitterFinalSimScore ?? a.nbaSimScore ?? a.nhlSimScore ?? a.simScore ?? a.hitterSimScore ?? 0;
-                    const sb = b.totalSimScore ?? b.finalSimScore ?? b.hitterFinalSimScore ?? b.nbaSimScore ?? b.nhlSimScore ?? b.simScore ?? b.hitterSimScore ?? 0;
+                    const _simF = m => direction === "under" ? (m.underSimScore ?? m.totalSimScore) : (m.totalSimScore ?? m.teamTotalSimScore);
+                    const sa = _simF(a) ?? a.finalSimScore ?? a.hitterFinalSimScore ?? a.nbaSimScore ?? a.nhlSimScore ?? a.simScore ?? a.hitterSimScore ?? 0;
+                    const sb = _simF(b) ?? b.finalSimScore ?? b.hitterFinalSimScore ?? b.nbaSimScore ?? b.nhlSimScore ?? b.simScore ?? b.hitterSimScore ?? 0;
                     if (sb !== sa) return sb - sa;
                     return (b.edge || b.kalshiPct || 0) - (a.edge || a.kalshiPct || 0);
                   }).filter(r => stat !== "hrr" || r.threshold === 1);
                   const qualCount = rows.filter(r => r.qualified).length;
 
                   const cs = CRITERIA_SUMMARIES[`${sport}|${stat}`];
+                  const _groupKey = direction ? `${sport}|${stat}|${direction}` : `${sport}|${stat}`;
+                  const _dirLabel = direction === "over" ? " — Over" : direction === "under" ? " — Under" : "";
                   return (
-                    <div key={`${sport}|${stat}`} style={{marginBottom:18}}>
+                    <div key={_groupKey} style={{marginBottom:18}}>
                       <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,paddingBottom:5,borderBottom:"1px solid #21262d",flexWrap:"wrap"}}>
                         <span style={{color:REPORT_SPORT_COL[sport]||"#8b949e",fontWeight:700,fontSize:11}}>{sport.toUpperCase()}</span>
-                        <span style={{color:"#8b949e",fontSize:12,marginRight:2}}>{STAT_NAME[stat]||stat}</span>
+                        <span style={{color:"#8b949e",fontSize:12,marginRight:2}}>{STAT_NAME[stat]||stat}{_dirLabel}</span>
                         <span style={{color:"#484f58",fontSize:11,marginLeft:"auto"}}>{rows.length} markets · <span style={{color:"#3fb950"}}>{qualCount}</span> play{qualCount!==1?"s":""}</span>
                       </div>
                       {(() => {
@@ -472,7 +481,7 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                           no_soft_data:"no data", col_not_found:"no col", no_gamelog_vals:"no vals",
                           low_lineup_spot:"spot 5-9", no_simulation_data:"no data",
                         };
-                        const _sk = `${sport}|${stat}`;
+                        const _sk = _groupKey;
                         const _sc = reportSort[_sk];
                         const COL_TIPS = {
                           player:"Player name", line:"Prop line threshold",
