@@ -89,6 +89,7 @@ function playsForGame(allPlays, game) {
   return (allPlays || []).filter(p => {
     if (p.qualified === false) return false;
     if (p.sport !== game.sport) return false;
+    if (game.gameDate && p.gameDate && p.gameDate !== game.gameDate) return false;
     const teams = new Set([game.homeTeam, game.awayTeam]);
     if (p.gameType === 'total') return p.homeTeam === game.homeTeam && p.awayTeam === game.awayTeam;
     if (p.gameType === 'teamTotal') return teams.has(p.scoringTeam);
