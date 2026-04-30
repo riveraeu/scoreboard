@@ -211,7 +211,7 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                   no_gamelog: "No game log",
                   no_soft_data: "No stat data",
                 };
-                const STAT_NAME = { points:"Points",rebounds:"Rebounds",assists:"Assists",threePointers:"3-Pointers",goals:"Goals",hits:"Hits",hrr:"H+R+RBI",strikeouts:"Strikeouts",totalRuns:"Totals",totalPoints:"Totals",totalGoals:"Totals",teamRuns:"Team Runs",teamPoints:"Team Points" };
+                const STAT_NAME = { points:"Points",rebounds:"Rebounds",assists:"Assists",threePointers:"3-Pointers",goals:"Goals",hits:"Hits",hrr:"H+R+RBI",strikeouts:"Strikeouts",totalRuns:"Game Totals",totalPoints:"Totals",totalGoals:"Totals",teamRuns:"Team Runs",teamPoints:"Team Points" };
                 // Intentionally distinct from SPORT_BADGE_COLOR — report uses higher-contrast hues for section headers
                 const REPORT_SPORT_COL = { mlb:"#4ade80", nba:"#f97316", nhl:"#60a5fa" };
                 const SPORT_ORD = { mlb:0, nba:1, nhl:2, nfl:3 };
