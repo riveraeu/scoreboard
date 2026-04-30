@@ -2852,7 +2852,7 @@ var worker_default = {
           }
           // NHL: pre-edge SimScore + Monte Carlo simulation (same normal-distribution approach as NBA)
           let nhlSimPctOut = null, nhlPreSimScore = null, nhlShotsAdj = null, nhlOpportunity = null, nhlSaRank = null, nhlTeamGPG = null;
-          let nhlGameTotal = null, nhlSeasonHitRatePts = null, nhlDvpHitRatePts = null;
+          let nhlGameTotal = null, nhlSeasonHitRatePts = null, nhlDvpHitRatePts = null, _gaaRank = null;
           if (sport === "nhl") {
             let _sc = 0;
             // SA rank still computed for display/output
@@ -2877,7 +2877,7 @@ var worker_default = {
               }
             }
             // 2. Opponent GAA rank (max 2pts): ≤10→2, ≤15→1, else 0
-            const _gaaRank = rankMap[tonightOpp]?.rank ?? null;
+            _gaaRank = rankMap[tonightOpp]?.rank ?? null;
             if (_gaaRank !== null) _sc += _gaaRank <= 10 ? 2 : _gaaRank <= 15 ? 1 : 0;
             // 3. Season hit rate (all career games): ≥90%→2, ≥80%→1, <80%→0
             nhlSeasonHitRatePts = seasonPct >= 90 ? 2 : seasonPct >= 80 ? 1 : 0;
