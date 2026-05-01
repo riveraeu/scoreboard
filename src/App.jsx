@@ -96,6 +96,7 @@ function App() {
   const [syncStatus, setSyncStatus] = React.useState(null); // "saving"|"saved"|"error"
   const [liveStats, setLiveStats] = React.useState({}); // { "sport:team1:team2": { state, detail, players } }
   const liveIntervalRef = React.useRef(null);
+  const liveMetaRef = React.useRef({ mlbMeta: null, nbaMeta: null, nhlMeta: null });
   const syncTimer = React.useRef(null);
   const fabRef = React.useRef(null);
   const picksLoaded = React.useRef(!localStorage.getItem("sb_token")); // true if no token (no server load needed)
@@ -423,6 +424,20 @@ function App() {
     }));
   }, [mlbMeta, nbaMeta, nhlMeta]);
 
+  // Keep latest meta in a ref so the polling interval reads fresh values
+  // (effect dep array can't include meta without re-creating the interval).
+  React.useEffect(() => {
+    const prev = liveMetaRef.current;
+    liveMetaRef.current = { mlbMeta, nbaMeta, nhlMeta };
+    // When meta first becomes available, fire an immediate poll so picks
+    // tracked without `opponent` can resolve via the gameScores backfill
+    // without waiting up to 60s.
+    const becameAvailable = (k) => !prev?.[k]?.gameScores && liveMetaRef.current[k]?.gameScores;
+    if ((becameAvailable("mlbMeta") || becameAvailable("nbaMeta") || becameAvailable("nhlMeta")) && liveIntervalRef.current) {
+      setTrackedPlays(current => { fetchLiveStats(current, liveMetaRef.current); return current; });
+    }
+  }, [mlbMeta, nbaMeta, nhlMeta]);
+
   // Start/stop background polling every 60s
   React.useEffect(() => {
     const today = new Date().toLocaleDateString("en-CA");
@@ -438,11 +453,11 @@ function App() {
     }
     if (!hasTodayActivePicks) return;
 
-    // Fire immediately, then every 60s
-    fetchLiveStats(trackedPlays, { mlbMeta, nbaMeta, nhlMeta });
+    // Fire immediately, then every 60s. Meta read from ref so polls always see latest.
+    fetchLiveStats(trackedPlays, liveMetaRef.current);
     liveIntervalRef.current = setInterval(() => {
       setTrackedPlays(current => {
-        fetchLiveStats(current, { mlbMeta, nbaMeta, nhlMeta });
+        fetchLiveStats(current, liveMetaRef.current);
         return current;
       });
     }, 60000);
