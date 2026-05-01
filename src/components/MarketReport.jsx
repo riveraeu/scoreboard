@@ -203,7 +203,8 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
               {reportData && !reportLoading && (() => {
                 const REASON = {
                   edge_too_low: "Edge < 3%",
-                  kalshi_pct_too_low: "Implied < 70%",
+                  kalshi_pct_too_low: "Implied < 67%",
+                  kalshi_pct_too_high: "Implied > 91%",
                   opp_not_soft: "Soft matchup not met",
                   low_confidence: "Sim-Score < 7",
                   team_not_favored: "Team not favored",
@@ -476,7 +477,7 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                           return DASH;
                         };
                         const RESULT_LABELS = {
-                          edge_too_low:"edge low", kalshi_pct_too_low:"<70%",
+                          edge_too_low:"edge low", kalshi_pct_too_low:"<67%", kalshi_pct_too_high:">91%",
                           opp_not_soft:"not soft", low_confidence:"low score",
                           team_not_favored:"ML ✗", pitcher_era_too_low:"ERA ✗",
                           no_h2h_data:"no h2h", insufficient_ab_vs_pitcher:"AB ✗",

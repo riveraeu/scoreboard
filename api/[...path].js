@@ -7,7 +7,8 @@ var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
 // Universal qualification tunables — see CLAUDE.md "Universal qualification".
-const KALSHI_GATE = 70;
+const KALSHI_GATE = 67;   // ~-200 American odds floor (66.67% rounded up)
+const KALSHI_CAP = 91;    // ~-1000 American odds cap (90.91% rounded up)
 const EDGE_GATE = 3;
 const SIMSCORE_GATE = 8;
 
@@ -1161,7 +1162,7 @@ var worker_default = {
 
             // ── Game total branch (wider pct filter; team-based, not player-based) ──
             if (cfg.gameType === "total") {
-              if (pct < 70 || pct > 97) continue;
+              if (pct < KALSHI_GATE || pct > KALSHI_CAP) continue;
               const [gameTeam1, gameTeam2] = parseGameTeams(m.event_ticker, sport);
               if (!gameTeam1 || !gameTeam2) continue;
               const dedupeKey = `total|${sport}|${gameTeam1}|${gameTeam2}|${threshold}`;
@@ -1185,7 +1186,7 @@ var worker_default = {
 
             // ── Team total branch (single team's score vs opposing defense) ──
             if (cfg.gameType === "teamTotal") {
-              if (pct < 70 || pct > 97) continue;
+              if (pct < KALSHI_GATE || pct > KALSHI_CAP) continue;
               const [gameTeam1, gameTeam2] = parseGameTeams(m.event_ticker, sport);
               if (!gameTeam1 || !gameTeam2) continue;
               // Extract scoring team from ticker suffix (e.g. "LAD8" → "LAD", "PHI97" → "PHI")
@@ -1212,8 +1213,8 @@ var worker_default = {
               continue;
             }
 
-            if (pct < 70) continue;
-            if (pct > 97) continue;
+            if (pct < KALSHI_GATE) continue;
+            if (pct > KALSHI_CAP) continue;
             const raw = m.event_title || m.title || "";
             let playerName = raw.replace(/\s*:\s*\d.*$/, "").replace(/\s+(Points?|Rebounds?|Assists?|3-Pointers?|Three Pointers?|Made Threes?|Goals?|Shots on Goal|Hits?|Home Runs?|RBIs?|Strikeouts?|Total Bases?|Passing Yards?|Rushing Yards?|Receiving Yards?|Touchdowns?)\b.*/i, "").replace(/\s+Over\s+\d.*$/i, "").replace(/\s+Under\s+\d.*$/i, "").replace(/\s*\(.*\)\s*$/, "").replace(/\s*-\s*$/, "").trim();
             if (!playerName || playerName.length < 4) continue;
@@ -3044,12 +3045,12 @@ var worker_default = {
           if (sport === "nhl" && nhlPreSimScore !== null) {
             nhlSimScore = nhlPreSimScore;
           }
-          if (kalshiPct < KALSHI_GATE || edge < EDGE_GATE) {
+          if (kalshiPct < KALSHI_GATE || kalshiPct > KALSHI_CAP || edge < EDGE_GATE) {
             const _dropObj = {
               ..._dropBase,
               truePct: parseFloat(truePct.toFixed(1)), rawTruePct: parseFloat(rawTruePct.toFixed(1)),
               edge: parseFloat(edge.toFixed(1)),
-              reason: edge < EDGE_GATE ? "edge_too_low" : "kalshi_pct_too_low",
+              reason: edge < EDGE_GATE ? "edge_too_low" : kalshiPct > KALSHI_CAP ? "kalshi_pct_too_high" : "kalshi_pct_too_low",
               opponent: tonightOpp, seasonPct: parseFloat((primaryPct).toFixed(1)),
               softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
               posDvpRank: posDvpRankOut, dvpRatio: oppDvpRatioOut, posGroup: posGroupOut,
@@ -3756,7 +3757,7 @@ var worker_default = {
             }
             // UNDER play — mirror the OVER filter: require noKalshiPct >= 70 (YES <= 30)
             // so we only bet UNDERs the market also considers likely (same gate as OVERs)
-            if (underEdge >= EDGE_GATE && noKalshiPct >= KALSHI_GATE) {
+            if (underEdge >= EDGE_GATE && noKalshiPct >= KALSHI_GATE && noKalshiPct <= KALSHI_CAP) {
               totalPlays.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "under", kalshiPct, noKalshiPct, americanOdds: noKalshiAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, rawEdge, edge: underEdge, totalSimScore: underSimScore, qualified: underSimScore >= SIMSCORE_GATE, kelly: kellyFraction(noTruePct, noKalshiAO), ev: evPerUnit(noTruePct, noKalshiAO), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _gameTime, ..._simData });
             } else if (isDebug && underEdge >= EDGE_GATE) {
               dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "under", kalshiPct, noKalshiPct, americanOdds: noKalshiAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, rawEdge, edge: underEdge, totalSimScore: underSimScore, reason: noKalshiPct < KALSHI_GATE ? "under_no_price_too_low" : "edge_too_low", ..._simData });
@@ -3907,7 +3908,7 @@ var worker_default = {
               _ttUnderSimScore += teamL10RPG == null ? 1 : teamL10RPG <= 3.5 ? 2 : teamL10RPG <= 4.5 ? 1 : 0;
               _ttUnderSimScore += h2hHitRate == null ? 1 : h2hHitRate <= 30 ? 2 : h2hHitRate <= 50 ? 1 : 0;
               _ttUnderSimScore += gameOuLine == null ? 1 : gameOuLine < 7.5 ? 2 : gameOuLine < 9.5 ? 1 : 0;
-              if (_ttUnderEdge >= EDGE_GATE && _ttNoKalshiPct >= KALSHI_GATE) {
+              if (_ttUnderEdge >= EDGE_GATE && _ttNoKalshiPct >= KALSHI_GATE && _ttNoKalshiPct <= KALSHI_CAP) {
                 teamTotalPlays.push({ ..._ttBaseFields, direction: "under", noTruePct: _ttNoTruePct, noKalshiPct: _ttNoKalshiPct, americanOdds: _ttNoKalshiAO, edge: _ttUnderEdge, rawEdge: _ttUnderEdge, teamTotalSimScore: _ttUnderSimScore, qualified: _ttUnderSimScore >= SIMSCORE_GATE, kelly: kellyFraction(_ttNoTruePct, _ttNoKalshiAO), ev: evPerUnit(_ttNoTruePct, _ttNoKalshiAO) });
               } else if (isDebug) {
                 dropped.push({ ..._ttBaseFields, direction: "under", noTruePct: _ttNoTruePct, noKalshiPct: _ttNoKalshiPct, edge: _ttUnderEdge, teamTotalSimScore: _ttUnderSimScore, reason: _ttNoKalshiPct < KALSHI_GATE ? "under_no_price_too_low" : "edge_too_low" });
@@ -3976,7 +3977,7 @@ var worker_default = {
               _nttUnderSimScore += ttNbaSeasonHitRate == null ? 1 : ttNbaSeasonHitRate <= 20 ? 2 : ttNbaSeasonHitRate <= 40 ? 1 : 0;
               _nttUnderSimScore += h2hHitRate == null ? 1 : h2hHitRate <= 30 ? 2 : h2hHitRate <= 50 ? 1 : 0;
               _nttUnderSimScore += _nbaOuLine == null ? 1 : _nbaOuLine < 215 ? 2 : _nbaOuLine < 225 ? 1 : 0;
-              if (_nttUnderEdge >= EDGE_GATE && _nttNoKalshiPct >= KALSHI_GATE) {
+              if (_nttUnderEdge >= EDGE_GATE && _nttNoKalshiPct >= KALSHI_GATE && _nttNoKalshiPct <= KALSHI_CAP) {
                 teamTotalPlays.push({ ..._nttBaseFields, direction: "under", noTruePct: _nttNoTruePct, noKalshiPct: _nttNoKalshiPct, americanOdds: _nttNoKalshiAO, edge: _nttUnderEdge, rawEdge: _nttUnderEdge, teamTotalSimScore: _nttUnderSimScore, qualified: _nttUnderSimScore >= SIMSCORE_GATE, kelly: kellyFraction(_nttNoTruePct, _nttNoKalshiAO), ev: evPerUnit(_nttNoTruePct, _nttNoKalshiAO) });
               } else if (isDebug) {
                 dropped.push({ ..._nttBaseFields, direction: "under", noTruePct: _nttNoTruePct, noKalshiPct: _nttNoKalshiPct, edge: _nttUnderEdge, teamTotalSimScore: _nttUnderSimScore, reason: _nttNoKalshiPct < KALSHI_GATE ? "under_no_price_too_low" : "edge_too_low" });

@@ -16,7 +16,8 @@ import LineupsPage from './components/LineupsPage.jsx';
 import SimBadge from './components/SimBadge.jsx';
 
 // Universal qualification tunables — keep in sync with backend constants in api/[...path].js
-const KALSHI_GATE = 70;
+const KALSHI_GATE = 67;   // ~-200 American odds floor
+const KALSHI_CAP = 91;    // ~-1000 American odds cap
 const EDGE_GATE = 3;
 const SIMSCORE_GATE = 8;
 
@@ -1784,11 +1785,11 @@ function App() {
                     const edgeColor = edge === null ? null : edge >= EDGE_GATE ? "#3fb950" : edge >= 0 ? "#e3b341" : "#f78166";
                     const edgeStr = edge === null ? null : (edge >= 0 ? `+${edge.toFixed(1)}%` : `${edge.toFixed(1)}%`);
 
-                    // Show track button only when the play qualifies (same criteria as /tonight)
-                    // Use raw season pct as fallback when no h2h softPct is available
+                    // Show track button only when the API marked this play+threshold as qualified
+                    // (kalshi within [KALSHI_GATE, KALSHI_CAP], edge >= EDGE_GATE, and per-threshold simScore >= SIMSCORE_GATE).
+                    // Player props don't always set qualified:true on the success path — undefined === passing.
                     const qualifyingPct = truePct !== null ? truePct : pct;
-                    const strongMatchupOk = !(isMLB && safeTab === "strikeouts") || ((dvpData?.h2h?.simScore ?? tonightPlay?.simScore ?? -1) >= 7);
-                    const qualifies = k && k.pct >= KALSHI_GATE && edge >= EDGE_GATE && strongMatchupOk;
+                    const qualifies = k && k.pct >= KALSHI_GATE && k.pct <= KALSHI_CAP && edge >= EDGE_GATE && tonightPlay && tonightPlay.qualified !== false;
                     const sportSlug = sport.split("/")[1];
                     const trackId = `${sportSlug}|${player.name}|${safeTab}|${t}|${tonightPlay?.gameDate || ""}`;
                     const _today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();

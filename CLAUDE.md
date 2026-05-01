@@ -13,7 +13,7 @@
 Sports prop betting dashboard that pulls Kalshi prediction market prices, computes a model True%, and shows qualified plays with edge over the market. Vercel Edge runtime (Web Fetch + KV/Redis only — no Node APIs).
 
 **Production**: `https://scoreboard-ivory-xi.vercel.app`
-**Universal qualification**: Kalshi ≥ 70% · Edge ≥ 3% · SimScore ≥ 8/10. Game/team totals also gate UNDERs at `noKalshiPct ≥ 70%`. Tunables live as module-level constants `KALSHI_GATE` / `EDGE_GATE` / `SIMSCORE_GATE` in both `api/[...path].js` and `src/App.jsx` — change in both places.
+**Universal qualification**: Kalshi 67–91% · Edge ≥ 3% · SimScore ≥ 8/10. Game/team totals gate UNDERs by the same `noKalshiPct ∈ [67, 91]` window. Tunables live as module-level constants `KALSHI_GATE` (67, ~-200 floor) / `KALSHI_CAP` (91, ~-1000 cap) / `EDGE_GATE` / `SIMSCORE_GATE` in both `api/[...path].js` and `src/App.jsx` — change in both places.
 
 ---
 
@@ -85,8 +85,8 @@ User auth (`user:{email}`) and picks (`picks:{userId}`) live in the same Redis. 
 ### Universal definitions
 - **SimScore**: 5 components × 2pts each → max 10. Qualifies at ≥ 8. Null component → 1pt abstain (unless noted otherwise).
 - **Edge gate**: `edge = truePct − kalshiPct ≥ 3%`. `kalshiPct` is already the fill price (ask or blended orderbook walk); `spreadAdj` is computed but **not** subtracted.
-- **`pct ≥ 70%` filter**: applied to player props (lower bound). Game/team totals use 30–97% range to allow UNDER discovery.
-- **UNDER plays** (totals only): `underEdge = (100−truePct) − (100−kalshiPct) ≥ 3%` AND `noKalshiPct ≥ 70`. `direction:"under"`, badge red, bars use `noTruePct`/`noKalshiPct`, prose colors inverted, track ID appends `|under`.
+- **`pct ∈ [67, 91]` filter**: universal qualification window for player props, game totals, and team totals. UNDER discovery uses `noKalshiPct ∈ [67, 91]`.
+- **UNDER plays** (totals only): `underEdge = (100−truePct) − (100−kalshiPct) ≥ 3%` AND `noKalshiPct ∈ [67, 91]`. `direction:"under"`, badge red, bars use `noTruePct`/`noKalshiPct`, prose colors inverted, track ID appends `|under`.
 
 ### MLB Strikeouts
 **True%**: `simulateKsDist(orderedKPcts, pitcherKPct, parkFactor, nSim, totalPA, earlyExitProb, stdBF)` → `kDistPct(dist, threshold)`. Shared distribution per pitcher (key `team|hand`) guarantees monotonicity. nSim 10k if simScore ≥ 8 else 5k.
@@ -243,7 +243,7 @@ Kalshi series `KXMLBTEAMTOTAL`, `KXNBATEAMTOTAL`. `gameType: "teamTotal"`. NHL/N
 
 ## Kalshi Market Parsing
 - Series in `SERIES_CONFIG` (18 tickers across all sports/stats)
-- Player props: `pct ≥ 70 && pct ≤ 97`. Totals: 30–97.
+- Player props, game totals, team totals: `pct ∈ [KALSHI_GATE, KALSHI_CAP] = [67, 91]` (constants in `api/[...path].js`). Markets outside this band aren't fetched/parsed at all.
 - **Rate limiting**:
   - Bundle cache `kalshi:bundle:{date}` (90s TTL) — all 18 series as one blob, cache hit = zero calls. Bypassed by `?bust=1`.
   - Cold: 6 series at a time with 300ms delay. 429 → fall through to `kalshi:stale:{ticker}` (no retry).

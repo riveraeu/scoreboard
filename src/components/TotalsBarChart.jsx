@@ -3,7 +3,8 @@ import { TOTAL_THRESHOLDS, TEAM_TOTAL_THRESHOLDS } from '../lib/constants.js';
 import { tierColor } from '../lib/colors.js';
 
 // Universal qualification tunables — keep in sync with backend constants in api/[...path].js
-const KALSHI_GATE = 70;
+const KALSHI_GATE = 67;
+const KALSHI_CAP = 91;
 const EDGE_GATE = 3;
 
 const TAB_LABELS = {
@@ -96,7 +97,7 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, trackedP
         }) : null;
         const isTracked = !!_existingPick || !!(trackId && (trackedPlays || []).some(p => p.id === trackId));
         const _untrackId = _existingPick?.id ?? trackId;
-        const canTrack = tp != null && (rawKalshiPct ?? 0) >= KALSHI_GATE && edge != null && edge >= EDGE_GATE;
+        const canTrack = tp?.qualified === true && (rawKalshiPct ?? 0) >= KALSHI_GATE && (rawKalshiPct ?? 0) <= KALSHI_CAP && edge != null && edge >= EDGE_GATE;
         const trackBtn = canTrack ? (
           <button
             onClick={() => isTracked ? onUntrack(_untrackId) : onTrack({ ...tp, threshold: t })}
