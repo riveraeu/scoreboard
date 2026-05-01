@@ -13,7 +13,7 @@
 Sports prop betting dashboard that pulls Kalshi prediction market prices, computes a model True%, and shows qualified plays with edge over the market. Vercel Edge runtime (Web Fetch + KV/Redis only — no Node APIs).
 
 **Production**: `https://scoreboard-ivory-xi.vercel.app`
-**Universal qualification**: Kalshi ≥ 70% · Edge ≥ 5% · SimScore ≥ 8/10. Game/team totals also gate UNDERs at `noKalshiPct ≥ 70%`.
+**Universal qualification**: Kalshi ≥ 70% · Edge ≥ 3% · SimScore ≥ 8/10. Game/team totals also gate UNDERs at `noKalshiPct ≥ 70%`. Tunables live as module-level constants `KALSHI_GATE` / `EDGE_GATE` / `SIMSCORE_GATE` in both `api/[...path].js` and `src/App.jsx` — change in both places.
 
 ---
 
@@ -84,9 +84,9 @@ User auth (`user:{email}`) and picks (`picks:{userId}`) live in the same Redis. 
 
 ### Universal definitions
 - **SimScore**: 5 components × 2pts each → max 10. Qualifies at ≥ 8. Null component → 1pt abstain (unless noted otherwise).
-- **Edge gate**: `edge = truePct − kalshiPct ≥ 5%`. `kalshiPct` is already the fill price (ask or blended orderbook walk); `spreadAdj` is computed but **not** subtracted.
+- **Edge gate**: `edge = truePct − kalshiPct ≥ 3%`. `kalshiPct` is already the fill price (ask or blended orderbook walk); `spreadAdj` is computed but **not** subtracted.
 - **`pct ≥ 70%` filter**: applied to player props (lower bound). Game/team totals use 30–97% range to allow UNDER discovery.
-- **UNDER plays** (totals only): `underEdge = (100−truePct) − (100−kalshiPct) ≥ 5%` AND `noKalshiPct ≥ 70`. `direction:"under"`, badge red, bars use `noTruePct`/`noKalshiPct`, prose colors inverted, track ID appends `|under`.
+- **UNDER plays** (totals only): `underEdge = (100−truePct) − (100−kalshiPct) ≥ 3%` AND `noKalshiPct ≥ 70`. `direction:"under"`, badge red, bars use `noTruePct`/`noKalshiPct`, prose colors inverted, track ID appends `|under`.
 
 ### MLB Strikeouts
 **True%**: `simulateKsDist(orderedKPcts, pitcherKPct, parkFactor, nSim, totalPA, earlyExitProb, stdBF)` → `kDistPct(dist, threshold)`. Shared distribution per pitcher (key `team|hand`) guarantees monotonicity. nSim 10k if simScore ≥ 8 else 5k.
@@ -161,7 +161,7 @@ Included in **all** drop objects so the market report renders pitcher info for n
 - `nbaSoftHitRatePts` — `softPct` = hit rate vs teams in **same DVP tier** as tonight's opp (rank 1–10 soft, 11–20 neutral, 21–30 hard). ≥90→2, ≥80→1, <80→0.
 - `nbaTotalPts` — Game O/U (≥215→2, <215→0). Game totals from `sportByteam.nbaGameOdds`. Pace applied to sim mean but NOT scored.
 
-**Gates**: edge ≥ 5%, nbaSimScore ≥ 8. No soft-matchup pre-filter — all NBA markets enter the play loop.
+**Gates**: edge ≥ 3%, nbaSimScore ≥ 8. No soft-matchup pre-filter — all NBA markets enter the play loop.
 
 ### NHL Points
 **True%**: reuses `buildNbaStatDist` + `nbaDistPct`. Cache key `nhlPlayerDistCache[playerId|stat]`. Adjusted: `× teamDefFactor × (1 + shotsAdj×0.002) × 0.93 if B2B × nhlToiTrendAdj`. `teamDefFactor` = opp GAA / league avg.
@@ -178,7 +178,7 @@ Included in **all** drop objects so the market report renders pitcher info for n
 Display-only: `nhlSaRank`, `nhlTeamGPG`. **B2B detection**: last gamelog event was yesterday UTC.
 
 ### NFL
-Stats: `passingYards`, `rushingYards`, `receivingYards`, `receptions`, `completions`, `attempts`. Gate: opp in soft teams; edge ≥ 5%.
+Stats: `passingYards`, `rushingYards`, `receivingYards`, `receptions`, `completions`, `attempts`. Gate: opp in soft teams; edge ≥ 3%.
 
 ### Game Totals (MLB/NBA/NHL/NFL)
 Kalshi series: `KXMLBTOTAL`, `KXNBATOTAL`, `KXNHLTOTAL`, `KXNFLTOTAL`. `gameType: "total"`. Market format: `floor_strike = N` means YES = total ≥ N (i.e. "over N−0.5").

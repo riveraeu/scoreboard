@@ -15,6 +15,11 @@ import MyPicksColumn from './components/MyPicksColumn.jsx';
 import LineupsPage from './components/LineupsPage.jsx';
 import SimBadge from './components/SimBadge.jsx';
 
+// Universal qualification tunables — keep in sync with backend constants in api/[...path].js
+const KALSHI_GATE = 70;
+const EDGE_GATE = 3;
+const SIMSCORE_GATE = 8;
+
 function App() {
   const isMobile = useIsMobile();
   const [sport, setSport] = React.useState("basketball/nba"); // derived from selected player
@@ -208,7 +213,7 @@ function App() {
   React.useEffect(() => {
     const _sk = `tonight_v1_${new Date().toLocaleDateString('en-CA')}`;
     const _sc = (() => { try { const s = sessionStorage.getItem(_sk); if (!s) return null; const p = JSON.parse(s); return Date.now() - p.ts < 120000 ? p.data : null; } catch { return null; } })();
-    const _applyData = (data) => { const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore >= 8) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore >= 8))); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); if (data.mlbMeta) setMlbMeta(data.mlbMeta); if (data.mlbMetaTomorrow) setMlbMetaTomorrow(data.mlbMetaTomorrow); if (data.nbaMeta) setNbaMeta(data.nbaMeta); if (data.nhlMeta) setNhlMeta(data.nhlMeta); };
+    const _applyData = (data) => { const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore >= SIMSCORE_GATE) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore >= SIMSCORE_GATE))); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); if (data.mlbMeta) setMlbMeta(data.mlbMeta); if (data.mlbMetaTomorrow) setMlbMetaTomorrow(data.mlbMetaTomorrow); if (data.nbaMeta) setNbaMeta(data.nbaMeta); if (data.nhlMeta) setNhlMeta(data.nhlMeta); };
     if (_sc) { _applyData(_sc); setTonightLoading(false); return; }
     let cancelled = false;
     setTonightLoading(true);
@@ -226,7 +231,7 @@ function App() {
     setTonightLoading(true);
     fetch(`${WORKER}/tonight?bust=1`)
       .then(r => r.json())
-      .then(data => { const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore >= 8) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore >= 8))); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); if (data.mlbMeta) setMlbMeta(data.mlbMeta); if (data.mlbMetaTomorrow) setMlbMetaTomorrow(data.mlbMetaTomorrow); if (data.nbaMeta) setNbaMeta(data.nbaMeta); if (data.nhlMeta) setNhlMeta(data.nhlMeta); setTonightLoading(false); setBustLoading(false); })
+      .then(data => { const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore >= SIMSCORE_GATE) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore >= SIMSCORE_GATE))); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); if (data.mlbMeta) setMlbMeta(data.mlbMeta); if (data.mlbMetaTomorrow) setMlbMetaTomorrow(data.mlbMetaTomorrow); if (data.nbaMeta) setNbaMeta(data.nbaMeta); if (data.nhlMeta) setNhlMeta(data.nhlMeta); setTonightLoading(false); setBustLoading(false); })
       .catch(() => { setAllTonightPlays([]); setNbaDropped([]); setTonightPlays([]); setTonightLoading(false); setBustLoading(false); });
   };
 
@@ -1059,7 +1064,7 @@ function App() {
                   <span>Edge (True% − implied)</span>
                   {(() => {
                     const edge = parseFloat((play.truePct - implied).toFixed(1));
-                    const edgeColor = edge >= 3 ? "#3fb950" : edge >= 0 ? "#e3b341" : "#f78166";
+                    const edgeColor = edge >= EDGE_GATE ? "#3fb950" : edge >= 0 ? "#e3b341" : "#f78166";
                     return <span style={{color:edgeColor,fontWeight:700}}>{edge >= 0 ? "+" : ""}{edge}%</span>;
                   })()}
                 </div>
@@ -1776,14 +1781,14 @@ function App() {
                     const oddsStr = k ? (k.americanOdds >= 0 ? `+${k.americanOdds}` : `${k.americanOdds}`) : null;
                     // Use API net edge (includes spreadAdj) when available; fallback recomputes raw edge
                     const edge = (tonightPlay?.edge != null && !isUnder) ? tonightPlay.edge : (truePct !== null && k) ? truePct - k.pct : null;
-                    const edgeColor = edge === null ? null : edge >= 3 ? "#3fb950" : edge >= 0 ? "#e3b341" : "#f78166";
+                    const edgeColor = edge === null ? null : edge >= EDGE_GATE ? "#3fb950" : edge >= 0 ? "#e3b341" : "#f78166";
                     const edgeStr = edge === null ? null : (edge >= 0 ? `+${edge.toFixed(1)}%` : `${edge.toFixed(1)}%`);
 
                     // Show track button only when the play qualifies (same criteria as /tonight)
                     // Use raw season pct as fallback when no h2h softPct is available
                     const qualifyingPct = truePct !== null ? truePct : pct;
                     const strongMatchupOk = !(isMLB && safeTab === "strikeouts") || ((dvpData?.h2h?.simScore ?? tonightPlay?.simScore ?? -1) >= 7);
-                    const qualifies = k && k.pct >= 70 && edge >= 3 && strongMatchupOk;
+                    const qualifies = k && k.pct >= KALSHI_GATE && edge >= EDGE_GATE && strongMatchupOk;
                     const sportSlug = sport.split("/")[1];
                     const trackId = `${sportSlug}|${player.name}|${safeTab}|${t}|${tonightPlay?.gameDate || ""}`;
                     const _today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();

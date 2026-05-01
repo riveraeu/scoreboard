@@ -693,7 +693,7 @@ truePct = P(teamPoints ≥ threshold)`}</Formula>
         </div>
         <div>
           <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>EDGE GATE</div>
-          <div style={{color:"#3fb950",fontSize:12,fontWeight:600}}>True% − Kalshi% ≥ 5%</div>
+          <div style={{color:"#3fb950",fontSize:12,fontWeight:600}}>True% − Kalshi% ≥ 3%</div>
           <div style={{color:"#484f58",fontSize:10}}>Model must disagree meaningfully</div>
         </div>
         <div>

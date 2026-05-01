@@ -202,7 +202,7 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
               {!reportData && !reportLoading && <div style={{color:"#8b949e",textAlign:"center",padding:40,fontSize:13}}>No data loaded.</div>}
               {reportData && !reportLoading && (() => {
                 const REASON = {
-                  edge_too_low: "Edge < 5%",
+                  edge_too_low: "Edge < 3%",
                   kalshi_pct_too_low: "Implied < 70%",
                   opp_not_soft: "Soft matchup not met",
                   low_confidence: "Sim-Score < 7",
@@ -247,13 +247,13 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                 if (sortedGroups.length === 0) return <div style={{color:"#8b949e",textAlign:"center",padding:40,fontSize:13}}>No markets.</div>;
 
                 const CRITERIA_SUMMARIES = {
-                  "mlb|hrr":       { note: "True% = logit-park adjusted blended rate \u00b7 Sim-Score \u2265 8 (OPS\u21920-2, WHIP\u21920-2, Ssn HR%\u21920-2, H2H HR%\u21920-2, O/U\u21920-2) = max 10; edge gates separately", gates: ["Lineup spot 1\u20135", "Sim-Score \u2265 8 (max 10)", "Edge \u2265 5%"] },
-                  "mlb|hits":      { note: "True% = Monte Carlo simulation (batterBA \u00d7 pitcherBAA log5) \u00b7 park-adjusted \u00b7 Sim-Score \u2265 8 (OPS\u21920-2, WHIP\u21920-2, Ssn HR%\u21920-2, H2H HR%\u21920-2, O/U\u21920-2) = max 10; edge gates separately", gates: ["Lineup spot 1\u20135", "Sim-Score \u2265 8 (max 10)", "Edge \u2265 5%"] },
-                  "mlb|strikeouts":{ note: "True% = Monte Carlo simulation (pitcher K% \u00d7 lineup K% log5) \u00b7 regressed to mean \u00b7 park-adjusted \u00b7 Sim-Score \u2265 8 (CSW%/K%\u21920-2, Lineup K%\u21920-2, Hit Rate %\u21920-2, H2H Hand\u21920-2, O/U\u21920-2) = max 10; edge gates separately", gates: ["Sim-Score \u2265 8 (max 10)", "Edge \u2265 5%"] },
-                  "nba|points":    { note: "True% = Monte Carlo simulation \u00b7 B2B \u00d70.93 \u00b7 Sim-Score: C1 USG%(0-2) + DVP(0-2) + Ssn HR%(0-2) + Tier HR%(0-2) + Game Total(0-2) = max 10; edge gates separately", gates: ["Sim-Score \u2265 8 (max 10)", "Edge \u2265 5%"] },
-                  "nba|rebounds":  { note: "True% = Monte Carlo simulation \u00b7 B2B \u00d70.93 \u00b7 Sim-Score: C1 AvgMin(0-2) + DVP(0-2) + Ssn HR%(0-2) + Tier HR%(0-2) + Game Total(0-2) = max 10; edge gates separately", gates: ["Sim-Score \u2265 8 (max 10)", "Edge \u2265 5%"] },
-                  "nba|assists":   { note: "True% = Monte Carlo simulation \u00b7 B2B \u00d70.93 \u00b7 Sim-Score: C1 USG%(0-2) + DVP(0-2) + Ssn HR%(0-2) + Tier HR%(0-2) + Game Total(0-2) = max 10; edge gates separately", gates: ["Sim-Score \u2265 8 (max 10)", "Edge \u2265 5%"] },
-                  "nba|threePointers": { note: "True% = Monte Carlo simulation \u00b7 B2B \u00d70.93 \u00b7 Sim-Score: C1 USG%(0-2) + DVP(0-2) + Ssn HR%(0-2) + Tier HR%(0-2) + Game Total(0-2) = max 10; edge gates separately", gates: ["Sim-Score \u2265 8 (max 10)", "Edge \u2265 5%"] },
+                  "mlb|hrr":       { note: "True% = logit-park adjusted blended rate \u00b7 Sim-Score \u2265 8 (OPS\u21920-2, WHIP\u21920-2, Ssn HR%\u21920-2, H2H HR%\u21920-2, O/U\u21920-2) = max 10; edge gates separately", gates: ["Lineup spot 1\u20135", "Sim-Score \u2265 8 (max 10)", "Edge \u2265 3%"] },
+                  "mlb|hits":      { note: "True% = Monte Carlo simulation (batterBA \u00d7 pitcherBAA log5) \u00b7 park-adjusted \u00b7 Sim-Score \u2265 8 (OPS\u21920-2, WHIP\u21920-2, Ssn HR%\u21920-2, H2H HR%\u21920-2, O/U\u21920-2) = max 10; edge gates separately", gates: ["Lineup spot 1\u20135", "Sim-Score \u2265 8 (max 10)", "Edge \u2265 3%"] },
+                  "mlb|strikeouts":{ note: "True% = Monte Carlo simulation (pitcher K% \u00d7 lineup K% log5) \u00b7 regressed to mean \u00b7 park-adjusted \u00b7 Sim-Score \u2265 8 (CSW%/K%\u21920-2, Lineup K%\u21920-2, Hit Rate %\u21920-2, H2H Hand\u21920-2, O/U\u21920-2) = max 10; edge gates separately", gates: ["Sim-Score \u2265 8 (max 10)", "Edge \u2265 3%"] },
+                  "nba|points":    { note: "True% = Monte Carlo simulation \u00b7 B2B \u00d70.93 \u00b7 Sim-Score: C1 USG%(0-2) + DVP(0-2) + Ssn HR%(0-2) + Tier HR%(0-2) + Game Total(0-2) = max 10; edge gates separately", gates: ["Sim-Score \u2265 8 (max 10)", "Edge \u2265 3%"] },
+                  "nba|rebounds":  { note: "True% = Monte Carlo simulation \u00b7 B2B \u00d70.93 \u00b7 Sim-Score: C1 AvgMin(0-2) + DVP(0-2) + Ssn HR%(0-2) + Tier HR%(0-2) + Game Total(0-2) = max 10; edge gates separately", gates: ["Sim-Score \u2265 8 (max 10)", "Edge \u2265 3%"] },
+                  "nba|assists":   { note: "True% = Monte Carlo simulation \u00b7 B2B \u00d70.93 \u00b7 Sim-Score: C1 USG%(0-2) + DVP(0-2) + Ssn HR%(0-2) + Tier HR%(0-2) + Game Total(0-2) = max 10; edge gates separately", gates: ["Sim-Score \u2265 8 (max 10)", "Edge \u2265 3%"] },
+                  "nba|threePointers": { note: "True% = Monte Carlo simulation \u00b7 B2B \u00d70.93 \u00b7 Sim-Score: C1 USG%(0-2) + DVP(0-2) + Ssn HR%(0-2) + Tier HR%(0-2) + Game Total(0-2) = max 10; edge gates separately", gates: ["Sim-Score \u2265 8 (max 10)", "Edge \u2265 3%"] },
                 };
 
                 return sortedGroups.map(({ sport, stat, direction, items }) => {
@@ -658,7 +658,7 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                                   </div>
                                   {(() => { const _tp = m.direction === "under" ? (m.noTruePct ?? null) : (m.truePct ?? null); return <div style={{flex:1,fontSize:11,textAlign:"right",color:_tp!=null?"#e3b341":"#21262d",fontWeight:_tp!=null?600:400}}>{_tp!=null?`${_tp}%`:"—"}</div>; })()}
                                   {(() => { const _kp = m.direction === "under" ? (m.noKalshiPct ?? null) : (m.kalshiPct ?? null); return <div style={{flex:1,fontSize:11,textAlign:"right"}}><span style={{color:_kp != null ? "#c9d1d9" : "#484f58"}}>{_kp != null ? `${_kp}%` : "—"}</span></div>; })()}
-                                  <div style={{flex:1,fontSize:11,textAlign:"right",color:edge!=null&&edge>=5?"#3fb950":edge!=null&&edge<0?"#f78166":"#8b949e"}}>{edge!=null?(edge>=0?`+${edge.toFixed(1)}`:`${edge.toFixed(1)}`)+"%" :"—"}</div>
+                                  <div style={{flex:1,fontSize:11,textAlign:"right",color:edge!=null&&edge>=3?"#3fb950":edge!=null&&edge<0?"#f78166":"#8b949e"}}>{edge!=null?(edge>=0?`+${edge.toFixed(1)}`:`${edge.toFixed(1)}`)+"%" :"—"}</div>
                                   {xcols.map(c => <div key={c.k} style={{flex:c.flex??1,fontSize:11,textAlign:"right"}}>{xcell(m,c.k)}</div>)}
                                   {!isTotal && !isTeamTotal && <div style={{flex:_oppFlex,fontSize:10,textAlign:"right",whiteSpace:"nowrap"}}>
                                     {(() => { const pn = m.pitcherName || m.hitterPitcherName; const parts = pn ? pn.trim().split(" ") : []; const shortPn = parts.length >= 2 ? `${parts[0][0]}. ${parts.slice(1).join(" ")}` : pn; return m.sport==="mlb" && m.stat!=="strikeouts" && pn

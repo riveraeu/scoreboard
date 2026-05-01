@@ -2,6 +2,10 @@ import React from 'react';
 import { TOTAL_THRESHOLDS, TEAM_TOTAL_THRESHOLDS } from '../lib/constants.js';
 import { tierColor } from '../lib/colors.js';
 
+// Universal qualification tunables — keep in sync with backend constants in api/[...path].js
+const KALSHI_GATE = 70;
+const EDGE_GATE = 3;
+
 const TAB_LABELS = {
   game_over:  'Game Over',
   game_under: 'Game Under',
@@ -68,7 +72,7 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, trackedP
         const kalshiPct = rawKalshiPct ?? null;
         const modelPct  = rawModelPct  ?? null;
         const edge = tp?.edge ?? null;
-        const edgeColor = edge == null ? '#484f58' : edge >= 3 ? '#3fb950' : edge >= 0 ? '#e3b341' : '#f78166';
+        const edgeColor = edge == null ? '#484f58' : edge >= EDGE_GATE ? '#3fb950' : edge >= 0 ? '#e3b341' : '#f78166';
 
         // Track ID — handles game total vs team total, over vs under
         const _gameType = tp?.gameType ?? 'total';
@@ -92,7 +96,7 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, trackedP
         }) : null;
         const isTracked = !!_existingPick || !!(trackId && (trackedPlays || []).some(p => p.id === trackId));
         const _untrackId = _existingPick?.id ?? trackId;
-        const canTrack = tp != null && (rawKalshiPct ?? 0) >= 70 && edge != null && edge >= 3;
+        const canTrack = tp != null && (rawKalshiPct ?? 0) >= KALSHI_GATE && edge != null && edge >= EDGE_GATE;
         const trackBtn = canTrack ? (
           <button
             onClick={() => isTracked ? onUntrack(_untrackId) : onTrack({ ...tp, threshold: t })}

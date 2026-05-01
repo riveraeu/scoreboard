@@ -6,6 +6,11 @@ import { warmPlayerInfoCache, buildNbaDvpStage1, buildNbaDvpFromBettingPros, bui
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
+// Universal qualification tunables — see CLAUDE.md "Universal qualification".
+const KALSHI_GATE = 70;
+const EDGE_GATE = 3;
+const SIMSCORE_GATE = 8;
+
 // worker.js
 function makeCache(env) {
   if (env?.CACHE) return env.CACHE;
@@ -3039,12 +3044,12 @@ var worker_default = {
           if (sport === "nhl" && nhlPreSimScore !== null) {
             nhlSimScore = nhlPreSimScore;
           }
-          if (kalshiPct < 70 || edge < 5) {
+          if (kalshiPct < KALSHI_GATE || edge < EDGE_GATE) {
             const _dropObj = {
               ..._dropBase,
               truePct: parseFloat(truePct.toFixed(1)), rawTruePct: parseFloat(rawTruePct.toFixed(1)),
               edge: parseFloat(edge.toFixed(1)),
-              reason: edge < 5 ? "edge_too_low" : "kalshi_pct_too_low",
+              reason: edge < EDGE_GATE ? "edge_too_low" : "kalshi_pct_too_low",
               opponent: tonightOpp, seasonPct: parseFloat((primaryPct).toFixed(1)),
               softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
               posDvpRank: posDvpRankOut, dvpRatio: oppDvpRatioOut, posGroup: posGroupOut,
@@ -3145,7 +3150,7 @@ var worker_default = {
           }
           // Strikeout finalSimScore gate: must reach >= 11 (Alpha tier) to qualify as a play.
           // Scores 7-10 show in report but marked qualified:false so player card still shows truePct.
-          if (sport === "mlb" && stat === "strikeouts" && finalSimScore !== null && finalSimScore < 8) {
+          if (sport === "mlb" && stat === "strikeouts" && finalSimScore !== null && finalSimScore < SIMSCORE_GATE) {
             const _dropLowScore = {
               ..._dropBase,
               reason: "low_confidence",
@@ -3183,7 +3188,7 @@ var worker_default = {
             continue;
           }
           // NBA SimScore gate: must reach >= 11 (Alpha tier) to qualify as a play
-          if (sport === "nba" && nbaSimScore !== null && nbaSimScore < 8) {
+          if (sport === "nba" && nbaSimScore !== null && nbaSimScore < SIMSCORE_GATE) {
             const _nbaLowScoreDrop = {
               ..._dropBase,
               reason: "low_confidence",
@@ -3219,7 +3224,7 @@ var worker_default = {
             continue;
           }
           // NHL SimScore gate: must reach >= 11 (Alpha tier) to qualify as a play
-          if (sport === "nhl" && nhlSimScore !== null && nhlSimScore < 8) {
+          if (sport === "nhl" && nhlSimScore !== null && nhlSimScore < SIMSCORE_GATE) {
             const _nhlLowScoreDrop = {
               ..._dropBase,
               reason: "low_confidence",
@@ -3250,7 +3255,7 @@ var worker_default = {
             continue;
           }
           // HRR SimScore gate: must reach >= 11 (Alpha tier) to qualify as a play
-          if (sport === "mlb" && stat !== "strikeouts" && hitterFinalSimScore !== null && hitterFinalSimScore < 8) {
+          if (sport === "mlb" && stat !== "strikeouts" && hitterFinalSimScore !== null && hitterFinalSimScore < SIMSCORE_GATE) {
             const _hitterLowScoreDrop = {
               ..._dropBase,
               reason: "low_confidence",
@@ -3744,17 +3749,17 @@ var worker_default = {
             const noKalshiAO = noKalshiPct >= 50 ? Math.round(-(noKalshiPct/(100-noKalshiPct))*100) : Math.round((100-noKalshiPct)/noKalshiPct*100);
             const _gameTime = gameTimes[`${sport}:${homeTeam}:${gameDate}`] ?? gameTimes[`${sport}:${awayTeam}:${gameDate}`] ?? gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null;
             // OVER play
-            if (overEdge >= 5) {
-              totalPlays.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge: overEdge, totalSimScore, qualified: totalSimScore >= 8, kelly: kellyFraction(truePct, americanOdds), ev: evPerUnit(truePct, americanOdds), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _gameTime, ..._simData });
+            if (overEdge >= EDGE_GATE) {
+              totalPlays.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge: overEdge, totalSimScore, qualified: totalSimScore >= SIMSCORE_GATE, kelly: kellyFraction(truePct, americanOdds), ev: evPerUnit(truePct, americanOdds), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _gameTime, ..._simData });
             } else if (isDebug) {
               dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge: overEdge, totalSimScore, reason: "edge_too_low", ..._simData });
             }
             // UNDER play — mirror the OVER filter: require noKalshiPct >= 70 (YES <= 30)
             // so we only bet UNDERs the market also considers likely (same gate as OVERs)
-            if (underEdge >= 5 && noKalshiPct >= 70) {
-              totalPlays.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "under", kalshiPct, noKalshiPct, americanOdds: noKalshiAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, rawEdge, edge: underEdge, totalSimScore: underSimScore, qualified: underSimScore >= 8, kelly: kellyFraction(noTruePct, noKalshiAO), ev: evPerUnit(noTruePct, noKalshiAO), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _gameTime, ..._simData });
-            } else if (isDebug && underEdge >= 3) {
-              dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "under", kalshiPct, noKalshiPct, americanOdds: noKalshiAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, rawEdge, edge: underEdge, totalSimScore: underSimScore, reason: noKalshiPct < 70 ? "under_no_price_too_low" : "edge_too_low", ..._simData });
+            if (underEdge >= EDGE_GATE && noKalshiPct >= KALSHI_GATE) {
+              totalPlays.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "under", kalshiPct, noKalshiPct, americanOdds: noKalshiAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, rawEdge, edge: underEdge, totalSimScore: underSimScore, qualified: underSimScore >= SIMSCORE_GATE, kelly: kellyFraction(noTruePct, noKalshiAO), ev: evPerUnit(noTruePct, noKalshiAO), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _gameTime, ..._simData });
+            } else if (isDebug && underEdge >= EDGE_GATE) {
+              dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "under", kalshiPct, noKalshiPct, americanOdds: noKalshiAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, rawEdge, edge: underEdge, totalSimScore: underSimScore, reason: noKalshiPct < KALSHI_GATE ? "under_no_price_too_low" : "edge_too_low", ..._simData });
             }
           }
         }
@@ -3763,9 +3768,9 @@ var worker_default = {
           const _totalBestMap = {};
           for (const tp of totalPlays) {
             const key = `${tp.sport}|${tp.homeTeam}|${tp.awayTeam}`;
-            const tpQ = tp.totalSimScore >= 8;
+            const tpQ = tp.totalSimScore >= SIMSCORE_GATE;
             const prev = _totalBestMap[key];
-            const prevQ = prev && (prev.totalSimScore >= 8);
+            const prevQ = prev && (prev.totalSimScore >= SIMSCORE_GATE);
             if (!prev || (!prevQ && tpQ) || (prevQ === tpQ && tp.edge > prev.edge)) _totalBestMap[key] = tp;
           }
           const _bestTotalIds = new Set(Object.values(_totalBestMap).map(tp => `${tp.sport}|${tp.homeTeam}|${tp.awayTeam}|${tp.threshold}|${tp.direction}`));
@@ -3886,8 +3891,8 @@ var worker_default = {
               const _ttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), ...(_ttModelTruePct != null && _ttModelTruePct !== truePct && { modelTruePct: parseFloat(_ttModelTruePct.toFixed(1)) }), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _ttGameTime, teamRPG, oppERA, oppWHIP, ...(oppWHIPSource && { oppWHIPSource }), oppRPG, parkFactor: parkRF, gameOuLine, teamExpected: _lam != null ? parseFloat(_lam.toFixed(1)) : null, h2hHitRate, h2hGames, h2hHitRatePts, teamL10RPG, ttL10Pts, ttWhipPts, ttUmpirePts, umpireRunFactor: _ttUmpRunFactor, ...(_ttUmpName && { umpireName: _ttUmpName }), ttSeasonHitRate, ttSeasonHitRatePts, oppStarterHand: _ttOppStarterHand, ...(_ttPlatFactor !== 1.0 && { platoonFactor: _ttPlatFactor }) };
               const rawEdge = parseFloat((truePct - kalshiPct).toFixed(1));
               const edge = rawEdge;
-              if (edge >= 5) {
-                teamTotalPlays.push({ ..._ttBaseFields, direction: "over", edge, rawEdge, teamTotalSimScore, qualified: teamTotalSimScore >= 8, kelly: kellyFraction(truePct, americanOdds), ev: evPerUnit(truePct, americanOdds) });
+              if (edge >= EDGE_GATE) {
+                teamTotalPlays.push({ ..._ttBaseFields, direction: "over", edge, rawEdge, teamTotalSimScore, qualified: teamTotalSimScore >= SIMSCORE_GATE, kelly: kellyFraction(truePct, americanOdds), ev: evPerUnit(truePct, americanOdds) });
               } else if (isDebug) {
                 dropped.push({ ..._ttBaseFields, direction: "over", edge, rawEdge, teamTotalSimScore, reason: "edge_too_low" });
               }
@@ -3902,10 +3907,10 @@ var worker_default = {
               _ttUnderSimScore += teamL10RPG == null ? 1 : teamL10RPG <= 3.5 ? 2 : teamL10RPG <= 4.5 ? 1 : 0;
               _ttUnderSimScore += h2hHitRate == null ? 1 : h2hHitRate <= 30 ? 2 : h2hHitRate <= 50 ? 1 : 0;
               _ttUnderSimScore += gameOuLine == null ? 1 : gameOuLine < 7.5 ? 2 : gameOuLine < 9.5 ? 1 : 0;
-              if (_ttUnderEdge >= 5 && _ttNoKalshiPct >= 70) {
-                teamTotalPlays.push({ ..._ttBaseFields, direction: "under", noTruePct: _ttNoTruePct, noKalshiPct: _ttNoKalshiPct, americanOdds: _ttNoKalshiAO, edge: _ttUnderEdge, rawEdge: _ttUnderEdge, teamTotalSimScore: _ttUnderSimScore, qualified: _ttUnderSimScore >= 8, kelly: kellyFraction(_ttNoTruePct, _ttNoKalshiAO), ev: evPerUnit(_ttNoTruePct, _ttNoKalshiAO) });
+              if (_ttUnderEdge >= EDGE_GATE && _ttNoKalshiPct >= KALSHI_GATE) {
+                teamTotalPlays.push({ ..._ttBaseFields, direction: "under", noTruePct: _ttNoTruePct, noKalshiPct: _ttNoKalshiPct, americanOdds: _ttNoKalshiAO, edge: _ttUnderEdge, rawEdge: _ttUnderEdge, teamTotalSimScore: _ttUnderSimScore, qualified: _ttUnderSimScore >= SIMSCORE_GATE, kelly: kellyFraction(_ttNoTruePct, _ttNoKalshiAO), ev: evPerUnit(_ttNoTruePct, _ttNoKalshiAO) });
               } else if (isDebug) {
-                dropped.push({ ..._ttBaseFields, direction: "under", noTruePct: _ttNoTruePct, noKalshiPct: _ttNoKalshiPct, edge: _ttUnderEdge, teamTotalSimScore: _ttUnderSimScore, reason: _ttNoKalshiPct < 70 ? "under_no_price_too_low" : "edge_too_low" });
+                dropped.push({ ..._ttBaseFields, direction: "under", noTruePct: _ttNoTruePct, noKalshiPct: _ttNoKalshiPct, edge: _ttUnderEdge, teamTotalSimScore: _ttUnderSimScore, reason: _ttNoKalshiPct < KALSHI_GATE ? "under_no_price_too_low" : "edge_too_low" });
               }
             } else if (sport === "nba") {
               const nbaDefRank = STAT_SOFT["nba|points"]?.rankMap ?? {};
@@ -3955,8 +3960,8 @@ var worker_default = {
               const _nttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _nttGameTime, teamOffRtg, oppDefRtg, teamExpected: _teamExpected != null ? parseFloat(_teamExpected.toFixed(1)) : null, gameOuLine: _nbaOuLine, gameSpread: _gameSpread, h2hHitRate, h2hGames, h2hHitRatePts, ttNbaSeasonHitRate, ttNbaSeasonHitRatePts };
               const rawEdge = parseFloat((truePct - kalshiPct).toFixed(1));
               const edge = rawEdge;
-              if (edge >= 5) {
-                teamTotalPlays.push({ ..._nttBaseFields, direction: "over", edge, rawEdge, teamTotalSimScore, qualified: teamTotalSimScore >= 8, kelly: kellyFraction(truePct, americanOdds), ev: evPerUnit(truePct, americanOdds) });
+              if (edge >= EDGE_GATE) {
+                teamTotalPlays.push({ ..._nttBaseFields, direction: "over", edge, rawEdge, teamTotalSimScore, qualified: teamTotalSimScore >= SIMSCORE_GATE, kelly: kellyFraction(truePct, americanOdds), ev: evPerUnit(truePct, americanOdds) });
               } else if (isDebug) {
                 dropped.push({ ..._nttBaseFields, direction: "over", edge, rawEdge, teamTotalSimScore, reason: "edge_too_low" });
               }
@@ -3971,10 +3976,10 @@ var worker_default = {
               _nttUnderSimScore += ttNbaSeasonHitRate == null ? 1 : ttNbaSeasonHitRate <= 20 ? 2 : ttNbaSeasonHitRate <= 40 ? 1 : 0;
               _nttUnderSimScore += h2hHitRate == null ? 1 : h2hHitRate <= 30 ? 2 : h2hHitRate <= 50 ? 1 : 0;
               _nttUnderSimScore += _nbaOuLine == null ? 1 : _nbaOuLine < 215 ? 2 : _nbaOuLine < 225 ? 1 : 0;
-              if (_nttUnderEdge >= 5 && _nttNoKalshiPct >= 70) {
-                teamTotalPlays.push({ ..._nttBaseFields, direction: "under", noTruePct: _nttNoTruePct, noKalshiPct: _nttNoKalshiPct, americanOdds: _nttNoKalshiAO, edge: _nttUnderEdge, rawEdge: _nttUnderEdge, teamTotalSimScore: _nttUnderSimScore, qualified: _nttUnderSimScore >= 8, kelly: kellyFraction(_nttNoTruePct, _nttNoKalshiAO), ev: evPerUnit(_nttNoTruePct, _nttNoKalshiAO) });
+              if (_nttUnderEdge >= EDGE_GATE && _nttNoKalshiPct >= KALSHI_GATE) {
+                teamTotalPlays.push({ ..._nttBaseFields, direction: "under", noTruePct: _nttNoTruePct, noKalshiPct: _nttNoKalshiPct, americanOdds: _nttNoKalshiAO, edge: _nttUnderEdge, rawEdge: _nttUnderEdge, teamTotalSimScore: _nttUnderSimScore, qualified: _nttUnderSimScore >= SIMSCORE_GATE, kelly: kellyFraction(_nttNoTruePct, _nttNoKalshiAO), ev: evPerUnit(_nttNoTruePct, _nttNoKalshiAO) });
               } else if (isDebug) {
-                dropped.push({ ..._nttBaseFields, direction: "under", noTruePct: _nttNoTruePct, noKalshiPct: _nttNoKalshiPct, edge: _nttUnderEdge, teamTotalSimScore: _nttUnderSimScore, reason: _nttNoKalshiPct < 70 ? "under_no_price_too_low" : "edge_too_low" });
+                dropped.push({ ..._nttBaseFields, direction: "under", noTruePct: _nttNoTruePct, noKalshiPct: _nttNoKalshiPct, edge: _nttUnderEdge, teamTotalSimScore: _nttUnderSimScore, reason: _nttNoKalshiPct < KALSHI_GATE ? "under_no_price_too_low" : "edge_too_low" });
               }
             }
           }
@@ -3993,17 +3998,17 @@ var worker_default = {
           const _crossBestMap = {};
           for (const tp of [...Object.values(_ttBestMap)]) {
             const key = `${tp.sport}|${tp.homeTeam}|${tp.awayTeam}`;
-            const tpQ = tp.teamTotalSimScore >= 8;
+            const tpQ = tp.teamTotalSimScore >= SIMSCORE_GATE;
             const prev = _crossBestMap[key];
-            const prevQ = prev && (prev.teamTotalSimScore != null ? prev.teamTotalSimScore >= 8 : prev.totalSimScore >= 8);
+            const prevQ = prev && (prev.teamTotalSimScore != null ? prev.teamTotalSimScore >= SIMSCORE_GATE : prev.totalSimScore >= SIMSCORE_GATE);
             if (!prev || (!prevQ && tpQ) || (prevQ === tpQ && tp.edge > prev.edge)) _crossBestMap[key] = tp;
           }
           // Compare team total winners against any qualified game total for the same game
           for (const [key, gameTp] of Object.entries(_crossBestMap)) {
             const existingGameTotal = plays.find(p => p.gameType === "total" && p.sport === gameTp.sport && p.homeTeam === gameTp.homeTeam && p.awayTeam === gameTp.awayTeam && p.qualified !== false);
             if (existingGameTotal) {
-              const gtQ = existingGameTotal.totalSimScore >= 8;
-              const ttQ = gameTp.teamTotalSimScore >= 8;
+              const gtQ = existingGameTotal.totalSimScore >= SIMSCORE_GATE;
+              const ttQ = gameTp.teamTotalSimScore >= SIMSCORE_GATE;
               // Game total wins if: team total isn't qualified, OR both qualified and game total has higher/equal edge
               if (!ttQ || (gtQ && existingGameTotal.edge >= gameTp.edge)) _crossBestMap[key] = existingGameTotal;
             }
