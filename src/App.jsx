@@ -314,9 +314,34 @@ function App() {
     const activePicks = currentPicks.filter(p => !p.result && (p.gameDate === today || p.gameDate === tomorrow));
     if (!activePicks.length) return;
 
+    // Resolve opponent from gameScores when missing on the pick (older picks lack it)
+    const resolveOpponent = (pick) => {
+      if (pick.opponent) return pick.opponent;
+      if (!pick.playerTeam) return null;
+      const scores = pick.sport === "mlb" ? currentMeta?.mlbMeta?.gameScores
+                   : pick.sport === "nba" ? currentMeta?.nbaMeta?.gameScores
+                   : pick.sport === "nhl" ? currentMeta?.nhlMeta?.gameScores
+                   : null;
+      if (!scores) return null;
+      for (const g of Object.values(scores)) {
+        if (g.homeTeam === pick.playerTeam) return g.awayTeam;
+        if (g.awayTeam === pick.playerTeam) return g.homeTeam;
+      }
+      return null;
+    };
+
     // Collect unique game keys from player prop picks (totals use existing gameScores)
     const playerPropPicks = activePicks.filter(p => p.gameType !== "total" && p.gameType !== "teamTotal");
-    const gameKeys = [...new Set(playerPropPicks.map(buildLiveGameKey))];
+    const pickKeyMap = new Map(); // pick.id → gameKey
+    const gameKeysSet = new Set();
+    for (const p of playerPropPicks) {
+      const opp = resolveOpponent(p);
+      if (!p.playerTeam || !opp) continue;
+      const key = `${p.sport}:${p.playerTeam}:${opp}`;
+      pickKeyMap.set(p.id, key);
+      gameKeysSet.add(key);
+    }
+    const gameKeys = [...gameKeysSet];
     if (!gameKeys.length) return;
 
     try {
@@ -329,23 +354,28 @@ function App() {
       setTrackedPlays(prev => prev.map(pick => {
         if (pick.result) return pick; // already settled
         if (pick.gameType === "total" || pick.gameType === "teamTotal") return pick; // handled separately
-        const gameKey = buildLiveGameKey(pick);
+        const gameKey = pickKeyMap.get(pick.id);
+        if (!gameKey) return pick;
+        const resolvedOpp = gameKey.split(":")[2];
+        const backfill = (!pick.opponent && resolvedOpp) ? { opponent: resolvedOpp } : null;
         const liveGame = data[gameKey];
-        if (!liveGame || liveGame.state === "pre" || liveGame.state === "unknown") return pick;
+        if (!liveGame || liveGame.state === "pre" || liveGame.state === "unknown") {
+          return backfill ? { ...pick, ...backfill } : pick;
+        }
 
         const playerStats = liveGame.players?.[pick.playerName];
         const current = getPickCurrentStat(pick, playerStats);
 
         if (current !== null && current >= pick.threshold) {
-          return { ...pick, result: "won" };
+          return { ...pick, ...(backfill || {}), result: "won" };
         }
         if (liveGame.state === "post") {
           if (playerStats === undefined && pick.stat !== "strikeouts") {
-            return { ...pick, result: "dnp" }; // player not in boxscore after game ended
+            return { ...pick, ...(backfill || {}), result: "dnp" }; // player not in boxscore after game ended
           }
-          return { ...pick, result: "lost" };
+          return { ...pick, ...(backfill || {}), result: "lost" };
         }
-        return pick;
+        return backfill ? { ...pick, ...backfill } : pick;
       }));
     } catch { /* network error — silently skip */ }
   }, []);
@@ -1747,6 +1777,7 @@ function App() {
                           sport: sportSlug,
                           playerName: player.name,
                           playerTeam: player.team || "",
+                          opponent: tonightPlay?.opponent || "",
                           playerId: player.id,
                           position: dvpData?.position || null,
                           stat: safeTab,

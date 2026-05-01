@@ -338,6 +338,7 @@ Sport tabs: ALL / MLB / NBA / NHL (calibration moved to Model Reference page). C
 ### Live Pick Tracking
 - Player props: `App.jsx` polls `/api/live` every 60s when any active player-prop pick has `gameDate === today`. Auto-resolves on threshold met (`won`), state==="post" + stat<threshold (`lost`), or player absent from boxscore after game end (`DNP`).
 - Totals/team totals: separate effect resolves from existing `mlbMeta/nbaMeta/nhlMeta.gameScores` when state==="post" (no extra API call).
+- `fetchLiveStats` requires `pick.opponent` to build the `sport:team1:team2` game key. Picks tracked from the **player card** include `opponent: tonightPlay?.opponent` (App.jsx track button); the play card's `trackPlay` already spreads it from the API. For older picks lacking `opponent`, `fetchLiveStats` resolves it from `currentMeta.{sport}Meta.gameScores` by `playerTeam` and backfills it on the pick (one-time mutation persisted via `setTrackedPlays`). `AddPickModal` does NOT collect opponent — manual picks stay unresolved unless the user enters the result by hand.
 
 ### Game time + lineup badges
 - Play card subtitle: `"Today · 7:40 PM PT"` / `"Tomorrow · 1:10 PM PT"` from `play.gameTime`.
