@@ -1712,8 +1712,10 @@ function App() {
                 {(() => {
                   const hasKalshi = Object.keys(kalshiOdds).length > 0;
                   const displayRates = hasKalshi ? rates.filter(({t}) => kalshiOdds[t]) : rates;
-                  // Pre-compute raw truePct per threshold, then enforce monotonicity (lower threshold >= higher)
+                  // Pre-compute raw truePct per threshold. Track which thresholds have API truePct
+                  // so the monotonicity walk doesn't let a noisy fallback value lift an API value.
                   const _rawTruePctMap = {};
+                  const _apiThresholds = new Set();
                   for (const {t, pct: pctOver} of displayRates) {
                     const _tp = tonightPlayerMap[`${safeTab}|${t}`];
                     const _pct = pctOver;
@@ -1721,10 +1723,12 @@ function App() {
                     const _softPctRaw = isMLB ? (_dvp?.wPct ?? null) : (_tp?.softPct != null ? _tp.softPct : (_dvp?.wPct ?? null));
                     const _truePctRaw = (_tp && _tp.truePct != null) ? _tp.truePct : (_softPctRaw !== null ? (_pct + _softPctRaw) / 2 : null);
                     _rawTruePctMap[t] = _truePctRaw;
+                    if (_tp && _tp.truePct != null) _apiThresholds.add(t);
                   }
-                  // Enforce monotonicity: walk highest→lowest threshold, raise any value that dips
-                  // below the max seen so far (P(X>=3) must be >= P(X>=4) >= P(X>=5) etc.)
-                  { const _mts = Object.keys(_rawTruePctMap).map(Number).filter(t => _rawTruePctMap[t] != null).sort((a,b) => b-a);
+                  // Enforce monotonicity only across API-sourced thresholds (P(X>=3) >= P(X>=4) >= ...).
+                  // Fallback-derived values (e.g. naive (season+soft)/2 for thresholds outside the
+                  // 70–97% Kalshi band) are left untouched so they can't lift the model's API values.
+                  { const _mts = [..._apiThresholds].filter(t => _rawTruePctMap[t] != null).sort((a,b) => b-a);
                     let _mx = 0;
                     for (const _t of _mts) { if (_rawTruePctMap[_t] < _mx) _rawTruePctMap[_t] = _mx; else _mx = _rawTruePctMap[_t]; } }
                   return displayRates.map(({t, count: countOver, pct: pctOver}) => {
