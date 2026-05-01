@@ -773,13 +773,14 @@ var worker_default = {
             const [pitchRes, batRes, sbRes, mlbSched] = await Promise.all([
               fetch("https://site.web.api.espn.com/apis/common/v3/sports/baseball/mlb/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=50&category=pitching", { headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
               fetch("https://site.web.api.espn.com/apis/common/v3/sports/baseball/mlb/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=50&category=batting", { headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
-              fetch(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${_hfmtE(_hd0)}`, { headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})).then((sb0) => {
-                const evts = sb0.events || [];
-                if (evts.length === 0 || evts.every((ev) => ev.status?.type?.state === "post")) {
-                  return fetch(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${_hfmtE(_hd1)}`, { headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({}));
-                }
-                return sb0;
-              }),
+              (() => {
+                // Always fetch today + tomorrow; sbRes.events = today (probables/odds), sbRes.eventsAll = both.
+                const _h = { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" };
+                return Promise.all([
+                  fetch(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${_hfmtE(_hd0)}`, { headers: _h }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
+                  fetch(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${_hfmtE(_hd1)}`, { headers: _h }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
+                ]).then(([sb0, sb1]) => ({ events: sb0.events || [], eventsAll: [...(sb0.events || []), ...(sb1.events || [])] }));
+              })(),
               fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${_hfmt(_hd0)}&hydrate=lineups,probablePitcher`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})).then((s0) => {
                 const allFinal = (s0.dates || []).flatMap((d) => d.games || []).every((g) => g.status?.abstractGameState === "Final");
                 if ((s0.dates || []).length === 0 || allFinal) {
@@ -1378,12 +1379,21 @@ var worker_default = {
               fetch("https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=50&category=scoring&seasontype=2", {
                 headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" }
               }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
-              (() => { const _nd = new Date(); const _ns = _nd.toISOString().slice(0,10).replace(/-/g,''); return fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${_ns}`, { headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})); })()
+              (() => {
+                // PT-aware today + tomorrow scoreboard fetch. gameOdds = today only; gameScores = both days.
+                const _nd0 = new Date(Date.now() - 7 * 3600 * 1000); const _nd1 = new Date(_nd0); _nd1.setDate(_nd1.getDate() + 1);
+                const _nfmt = (d) => d.toISOString().slice(0,10).replace(/-/g,'');
+                const _h = { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" };
+                return Promise.all([
+                  fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${_nfmt(_nd0)}`, { headers: _h }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+                  fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${_nfmt(_nd1)}`, { headers: _h }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+                ]).then(([sb0, sb1]) => ({ events: sb0.events || [], eventsAll: [...(sb0.events || []), ...(sb1.events || [])] }));
+              })()
             ]).then(async ([d, scoringData, sbData]) => {
               sportByteam.nba = d.teams || [];
               sportByteam.nbaScoring = scoringData.teams || [];
               sportByteam.nbaGameOdds = parseGameOdds(sbData.events || []);
-              sportByteam.nbaGameScores = parseGameScores(sbData.events || [], a => normTeam("nba", a));
+              sportByteam.nbaGameScores = parseGameScores(sbData.eventsAll || sbData.events || [], a => normTeam("nba", a));
               if (CACHE2) {
                 await CACHE2.put("byteam:nba", JSON.stringify(sportByteam.nba), { expirationTtl: 21600 });
                 await CACHE2.put("byteam:nba:scoring", JSON.stringify(sportByteam.nbaScoring), { expirationTtl: 21600 });
@@ -1401,15 +1411,15 @@ var worker_default = {
               fetch("https://site.web.api.espn.com/apis/common/v3/sports/baseball/mlb/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=50&category=batting", { headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
               fetch("https://statsapi.mlb.com/api/v1/teams/stats?season=2026&group=batting&gameType=R&sportId=1&sitCodes=A", { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
               (() => {
+                // Always fetch today + tomorrow in parallel. sbData.events = today (probables/gameOdds);
+                // sbData.eventsAll = today+tomorrow (gameScores, so both day tabs see finished/scheduled games).
                 const _td0 = new Date(Date.now() - 7 * 3600 * 1000); const _td1 = new Date(_td0); _td1.setDate(_td1.getDate() + 1);
                 const _tfmt = (d) => d.toISOString().slice(0, 10).replace(/-/g, "");
-                return fetch(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${_tfmt(_td0)}`, { headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})).then((sb0) => {
-                  const evts = sb0.events || [];
-                  if (evts.length === 0 || evts.every((ev) => ev.status?.type?.state === "post")) {
-                    return fetch(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${_tfmt(_td1)}`, { headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({}));
-                  }
-                  return sb0;
-                });
+                const _h = { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" };
+                return Promise.all([
+                  fetch(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${_tfmt(_td0)}`, { headers: _h }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
+                  fetch(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${_tfmt(_td1)}`, { headers: _h }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
+                ]).then(([sb0, sb1]) => ({ events: sb0.events || [], eventsAll: [...(sb0.events || []), ...(sb1.events || [])] }));
               })(),
               (() => {
                 const _td0 = new Date(Date.now() - 7 * 3600 * 1000); const _td1 = new Date(_td0); _td1.setDate(_td1.getDate() + 1);
@@ -1448,10 +1458,12 @@ var worker_default = {
               }
               const gameOddsRaw = parseGameOdds(sbData.events);
               const gameOdds = Object.fromEntries(Object.entries(gameOddsRaw).map(([k, v]) => [normMlbAbbr(k), v]));
-              // Game scores for matchup cards (includes finished games with no active Kalshi markets)
+              // Game scores for matchup cards (includes finished games with no active Kalshi markets).
+              // Iterate today+tomorrow merged events so both day tabs see scheduled/finished games.
+              // Key includes gameDate so today and tomorrow's same-home-team don't collide.
               const gameScores = {};
               const _ptFmtGs = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles" });
-              for (const event of sbData.events || []) {
+              for (const event of sbData.eventsAll || sbData.events || []) {
                 const comp = event.competitions?.[0];
                 if (!comp) continue;
                 const homeComp = (comp.competitors || []).find(c => c.homeAway === "home");
@@ -1459,13 +1471,14 @@ var worker_default = {
                 if (!homeComp || !awayComp) continue;
                 const hA = normMlbAbbr(homeComp.team?.abbreviation), awA = normMlbAbbr(awayComp.team?.abbreviation);
                 if (!hA || !awA) continue;
-                gameScores[hA] = {
+                const gsDate = event.date ? _ptFmtGs.format(new Date(event.date)) : null;
+                gameScores[`${hA}|${gsDate ?? ""}`] = {
                   homeTeam: hA, awayTeam: awA,
                   state: comp.status?.type?.state ?? "pre",
                   detail: comp.status?.type?.shortDetail || comp.status?.type?.detail || "",
                   homeScore: parseInt(homeComp.score ?? 0) || 0,
                   awayScore: parseInt(awayComp.score ?? 0) || 0,
-                  gameDate: event.date ? _ptFmtGs.format(new Date(event.date)) : null,
+                  gameDate: gsDate,
                   gameTime: event.date || null,
                 };
               }
@@ -1651,23 +1664,31 @@ var worker_default = {
         }
         // Fetch NHL game odds + scores if nhl byteam was loaded from cache (scoreboard not fetched above)
         if (sportsNeeded.has("nhl") && !sportByteam.nhlGameOdds) {
-          const _nd3 = new Date(); const _ns3 = _nd3.toISOString().slice(0,10).replace(/-/g,'');
-          const _nhlFbSb = await fetch(`https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard?dates=${_ns3}`, {
-            headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" }
-          }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
-          const _nhlFbEvents = _nhlFbSb.events || [];
-          sportByteam.nhlGameOdds = Object.fromEntries(Object.entries(parseGameOdds(_nhlFbEvents)).map(([k, v]) => [normTeam("nhl", k), v]));
-          if (!sportByteam.nhlGameScores) sportByteam.nhlGameScores = parseGameScores(_nhlFbEvents, a => normTeam("nhl", a));
+          const _nd3a = new Date(Date.now() - 7 * 3600 * 1000); const _nd3b = new Date(_nd3a); _nd3b.setDate(_nd3b.getDate() + 1);
+          const _ns3fmt = (d) => d.toISOString().slice(0,10).replace(/-/g,'');
+          const _nh3 = { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" };
+          const [_nhlFbSb0, _nhlFbSb1] = await Promise.all([
+            fetch(`https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard?dates=${_ns3fmt(_nd3a)}`, { headers: _nh3 }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+            fetch(`https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard?dates=${_ns3fmt(_nd3b)}`, { headers: _nh3 }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+          ]);
+          const _nhlFbToday = _nhlFbSb0.events || [];
+          const _nhlFbAll = [..._nhlFbToday, ...(_nhlFbSb1.events || [])];
+          sportByteam.nhlGameOdds = Object.fromEntries(Object.entries(parseGameOdds(_nhlFbToday)).map(([k, v]) => [normTeam("nhl", k), v]));
+          if (!sportByteam.nhlGameScores) sportByteam.nhlGameScores = parseGameScores(_nhlFbAll, a => normTeam("nhl", a));
         }
         // Fetch NBA game odds + scores if nba byteam was loaded from cache (scoreboard not fetched above)
         if (sportsNeeded.has("nba") && !sportByteam.nbaGameOdds) {
-          const _nd2 = new Date(); const _ns2 = _nd2.toISOString().slice(0,10).replace(/-/g,'');
-          const _nbaFbSb = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${_ns2}`, {
-            headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" }
-          }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
-          const _nbaFbEvents = _nbaFbSb.events || [];
-          sportByteam.nbaGameOdds = parseGameOdds(_nbaFbEvents);
-          if (!sportByteam.nbaGameScores) sportByteam.nbaGameScores = parseGameScores(_nbaFbEvents, a => normTeam("nba", a));
+          const _nd2a = new Date(Date.now() - 7 * 3600 * 1000); const _nd2b = new Date(_nd2a); _nd2b.setDate(_nd2b.getDate() + 1);
+          const _ns2fmt = (d) => d.toISOString().slice(0,10).replace(/-/g,'');
+          const _nh2 = { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" };
+          const [_nbaFbSb0, _nbaFbSb1] = await Promise.all([
+            fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${_ns2fmt(_nd2a)}`, { headers: _nh2 }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+            fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${_ns2fmt(_nd2b)}`, { headers: _nh2 }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+          ]);
+          const _nbaFbToday = _nbaFbSb0.events || [];
+          const _nbaFbAll = [..._nbaFbToday, ...(_nbaFbSb1.events || [])];
+          sportByteam.nbaGameOdds = parseGameOdds(_nbaFbToday);
+          if (!sportByteam.nbaGameScores) sportByteam.nbaGameScores = parseGameScores(_nbaFbAll, a => normTeam("nba", a));
         }
         // Fill in missing NBA game O/U totals from Kalshi (ESPN omits odds for live/imminent games)
         if (Object.keys(kalshiNbaOuMap).length > 0) {

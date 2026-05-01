@@ -73,13 +73,15 @@ export function parseGameScores(events, normFn) {
     const hA = normFn ? normFn(homeComp.team?.abbreviation) : homeComp.team?.abbreviation;
     const awA = normFn ? normFn(awayComp.team?.abbreviation) : awayComp.team?.abbreviation;
     if (!hA || !awA) continue;
-    scores[hA] = {
+    const gameDate = event.date ? ptFmt.format(new Date(event.date)) : null;
+    // Key includes gameDate so today and tomorrow's same-home-team games don't collide.
+    scores[`${hA}|${gameDate ?? ""}`] = {
       homeTeam: hA, awayTeam: awA,
       state: comp.status?.type?.state ?? "pre",
       detail: comp.status?.type?.shortDetail || comp.status?.type?.detail || "",
       homeScore: parseInt(homeComp.score ?? 0) || 0,
       awayScore: parseInt(awayComp.score ?? 0) || 0,
-      gameDate: event.date ? ptFmt.format(new Date(event.date)) : null,
+      gameDate,
       gameTime: event.date || null,
       seriesSummary: comp.series?.summary || null,
     };
