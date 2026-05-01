@@ -1,6 +1,7 @@
 import React from 'react';
 import { WORKER, SPORTS, STAT_FULL, MLB_TEAM, TEAM_DB, TOTAL_THRESHOLDS, STAT_LABEL, SPORT_KEY, TODAY, SPORT_BADGE_COLOR, GAMELOG_COLS } from './lib/constants.js';
 import { ordinal, slugify, teamUrl } from './lib/utils.js';
+import { useIsMobile } from './lib/hooks.js';
 import { buildLiveGameKey, getPickCurrentStat } from './lib/liveStats.js';
 import { tierColor } from './lib/colors.js';
 import TotalsBarChart from './components/TotalsBarChart.jsx';
@@ -15,6 +16,7 @@ import LineupsPage from './components/LineupsPage.jsx';
 import SimBadge from './components/SimBadge.jsx';
 
 function App() {
+  const isMobile = useIsMobile();
   const [sport, setSport] = React.useState("basketball/nba"); // derived from selected player
   const [perGame, setPerGame] = React.useState([]);
   const [dvpData, setDvpData] = React.useState(null);
@@ -1145,7 +1147,7 @@ function App() {
             alt={player.name}
             style={{width:50,height:50,borderRadius:12,objectFit:"cover",background:"#161b22",flexShrink:0}}
           />
-<div>
+          <div style={{minWidth:0,flex:1}}>
             <h1 style={{color:"#fff",margin:0,fontSize:19,fontWeight:700}}>{player.name}</h1>
             <div style={{color:"#8b949e",fontSize:12}}>{player.team}{(() => { const opp = player.opponent || (tonightPlays || []).find(p => (p.playerId && p.playerId === player.id) || p.playerName?.toLowerCase() === player.name?.toLowerCase())?.opponent; const oppSport = (player.sportKey||sport).split("/")[1]; return opp ? <> · <span style={{color:"#58a6ff",cursor:"pointer",textDecoration:"underline",textDecorationColor:"rgba(88,166,255,0.4)"}} onClick={()=>navigateToTeam(opp,oppSport)}>vs {opp}</span></> : ""; })()} · {SPORTS.find(s=>s.value===(player.sportKey||sport))?.label} 2025-26</div>
             {(() => {
@@ -1160,15 +1162,27 @@ function App() {
               return <div style={{color:"#6e7681",fontSize:11,marginTop:2}}>{dayLabel} · {timePart} PT</div>;
             })()}
           </div>
-          <div style={{marginLeft:"auto",display:"flex",gap:8}}>
+          {!isMobile && (
+            <div style={{marginLeft:"auto",display:"flex",gap:8}}>
+              {[["AVG",avg],["HIGH",hi],["GP",totalGames]].map(([l,v]) => (
+                <div key={l} style={{background:"#161b22",border:"1px solid #30363d",borderRadius:8,padding:"7px 11px",textAlign:"center"}}>
+                  <div style={{color:"#58a6ff",fontSize:16,fontWeight:700}}>{loading?"…":v}</div>
+                  <div style={{color:"#8b949e",fontSize:10}}>{l}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        {isMobile && (
+          <div style={{display:"flex",gap:8,marginTop:12}}>
             {[["AVG",avg],["HIGH",hi],["GP",totalGames]].map(([l,v]) => (
-              <div key={l} style={{background:"#161b22",border:"1px solid #30363d",borderRadius:8,padding:"7px 11px",textAlign:"center"}}>
+              <div key={l} style={{flex:1,background:"#161b22",border:"1px solid #30363d",borderRadius:8,padding:"7px 11px",textAlign:"center"}}>
                 <div style={{color:"#58a6ff",fontSize:16,fontWeight:700}}>{loading?"…":v}</div>
                 <div style={{color:"#8b949e",fontSize:10}}>{l}</div>
               </div>
             ))}
           </div>
-        </div>
+        )}
         </div>
       )}
 
@@ -1768,7 +1782,7 @@ function App() {
                                 <div style={{width:`${pct}%`,background:color,height:"100%",borderRadius:5,transition:"width 0.5s ease",minWidth:pct>0?4:0}}/>
                               </div>
                               <div style={{color,fontSize:13,fontWeight:700,width:42,textAlign:"right",flexShrink:0}}>{pct.toFixed(1)}%</div>
-                              <div style={{color:"#8b949e",fontSize:11,width:80,flexShrink:0}}>{count}/{totalGames}g</div>
+                              {!isMobile && <div style={{color:"#8b949e",fontSize:11,width:80,flexShrink:0}}>{count}/{totalGames}g</div>}
                             </div>
                             {k && (
                               <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -1791,7 +1805,7 @@ function App() {
                                       <div style={{width:`${softPct}%`,background:mc,height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:softPct>0?3:0}}/>
                                     </div>
                                     <div style={{color:mc,fontSize:11,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{softPct.toFixed(1)}%</div>
-                                    <div title={softGamesLabel} style={{color:"#8b949e",fontSize:10,width:80,flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{softGamesLabel}</div>
+                                    {!isMobile && <div title={softGamesLabel} style={{color:"#8b949e",fontSize:10,width:80,flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{softGamesLabel}</div>}
                                   </>;
                                 })()}
                               </div>
@@ -1849,7 +1863,7 @@ function App() {
                                     <div style={{width:`${pct}%`,background:tierColor(pct),height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:pct>0?2:0}}/>
                                   </div>
                                   <div style={{color:tierColor(pct),fontSize:10,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{pct.toFixed(1)}%</div>
-                                  <div style={{color:"#8b949e",fontSize:10,width:80,flexShrink:0}}>{isMLB ? `'25+'26 (${totalGames}g)` : `${count}/${totalGames}g`}</div>
+                                  {!isMobile && <div style={{color:"#8b949e",fontSize:10,width:80,flexShrink:0}}>{isMLB ? `'25+'26 (${totalGames}g)` : `${count}/${totalGames}g`}</div>}
                                 </div>
                                 {/* Matchup rate */}
                                 {softPct !== null && (() => {
@@ -1860,7 +1874,7 @@ function App() {
                                         <div style={{width:`${softPct}%`,background:mc,height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:softPct>0?2:0}}/>
                                       </div>
                                       <div style={{color:mc,fontSize:10,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{softPct.toFixed(1)}%</div>
-                                      <div title={softGamesLabel} style={{color:"#8b949e",fontSize:10,width:80,flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{softGamesLabel}</div>
+                                      {!isMobile && <div title={softGamesLabel} style={{color:"#8b949e",fontSize:10,width:80,flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{softGamesLabel}</div>}
                                     </div>
                                   );
                                 })()}
@@ -2133,9 +2147,9 @@ function App() {
       {/* Picks drawer panel */}
       <div style={{
         position:"fixed", top:0, right:0, bottom:0,
-        width:"min(max(340px, 50vw), 680px)",
+        width: isMobile ? "100vw" : "min(max(340px, 50vw), 680px)",
         background:"#0d1117",
-        borderLeft:"1px solid #30363d",
+        borderLeft: isMobile ? "none" : "1px solid #30363d",
         zIndex:598,
         display:"flex", flexDirection:"column",
         transform: showPicksDrawer ? "translateX(0)" : "translateX(100%)",

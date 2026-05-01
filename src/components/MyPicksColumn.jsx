@@ -3,8 +3,13 @@ import { SPORT_BADGE_COLOR, STAT_LABEL } from '../lib/constants.js';
 import DayBar from './DayBar.jsx';
 import AddPickModal from './AddPickModal.jsx';
 import { buildLiveGameKey, buildLiveDisplay, buildTotalLiveDisplay } from '../lib/liveStats.js';
+import { useIsMobile } from '../lib/hooks.js';
 
 function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToTeam, navigateToPlay, bankroll, setBankroll, setPickUnits, chartGroupBy, setChartGroupBy, openPickWeeks, setOpenPickWeeks, openPickDays, setOpenPickDays, editPickId, setEditPickId, setPlayResult, setShowAddPick, oddsToProfit, liveStats = {}, mlbGameScores = {}, nbaGameScores = {}, nhlGameScores = {} }) {
+  const isMobile = useIsMobile();
+  // Bump tap targets on mobile so the small ↺ ✎ buttons + stake input meet ~32px touch guidelines.
+  const rowBtnPad = isMobile ? "6px 10px" : "2px 6px";
+  const rowBtnFs = isMobile ? 13 : 11;
   return (
         <div id="my-picks">
         {(() => {
@@ -397,14 +402,14 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                       {pick.result && (
                         <button onClick={() => setPlayResult(pick.id, null)}
                           style={{background:"transparent",border:"1px solid #30363d",borderRadius:5,
-                            padding:"2px 6px",fontSize:11,color:"#484f58",cursor:"pointer",flexShrink:0}}>
+                            padding:rowBtnPad,fontSize:rowBtnFs,color:"#484f58",cursor:"pointer",flexShrink:0,lineHeight:1}}>
                           ↺
                         </button>
                       )}
                       <button onClick={() => setEditPickId(id => id === pick.id ? null : pick.id)} title="Edit"
                         style={{background: editPickId === pick.id ? "rgba(88,166,255,0.12)" : "transparent",
                           border:`1px solid ${editPickId === pick.id ? "#58a6ff" : "#30363d"}`,borderRadius:5,
-                          padding:"2px 6px",fontSize:10,color: editPickId === pick.id ? "#58a6ff" : "#484f58",cursor:"pointer",flexShrink:0}}>
+                          padding:rowBtnPad,fontSize:rowBtnFs,color: editPickId === pick.id ? "#58a6ff" : "#484f58",cursor:"pointer",flexShrink:0,lineHeight:1}}>
                         ✎
                       </button>
                     </div>
@@ -497,7 +502,7 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                             ].map(([res,bg,bdr,lbl]) => (
                               <button key={res} onClick={() => { setPlayResult(pick.id, res); setEditPickId(null); }}
                                 style={{flex:1,background: pick.result === res ? bdr + "33" : bg,
-                                  border:`1px solid ${bdr}`,borderRadius:5,padding:"4px 0",fontSize:10,fontWeight:700,
+                                  border:`1px solid ${bdr}`,borderRadius:5,padding:isMobile?"8px 0":"4px 0",fontSize:isMobile?12:10,fontWeight:700,
                                   color:res==="dnp"?"#8b949e":bdr,cursor:"pointer",
                                   outline: pick.result === res ? `1px solid ${bdr}` : "none"}}>
                                 {lbl}
@@ -506,11 +511,11 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                           </div>
                           <div style={{display:"flex",gap:6}}>
                             <button onClick={() => setEditPickId(null)}
-                              style={{flex:1,padding:"4px",borderRadius:5,background:"rgba(88,166,255,0.12)",border:"1px solid #58a6ff",color:"#58a6ff",fontSize:11,fontWeight:600,cursor:"pointer"}}>
+                              style={{flex:1,padding:isMobile?"8px 4px":"4px",borderRadius:5,background:"rgba(88,166,255,0.12)",border:"1px solid #58a6ff",color:"#58a6ff",fontSize:isMobile?13:11,fontWeight:600,cursor:"pointer"}}>
                               done
                             </button>
                             <button onClick={() => { untrackPlay(pick.id); setEditPickId(null); }}
-                              style={{padding:"4px 12px",borderRadius:5,background:"rgba(247,129,102,0.08)",border:"1px solid #f7816688",color:"#f78166",fontSize:11,cursor:"pointer"}}>
+                              style={{padding:isMobile?"8px 14px":"4px 12px",borderRadius:5,background:"rgba(247,129,102,0.08)",border:"1px solid #f7816688",color:"#f78166",fontSize:isMobile?13:11,cursor:"pointer"}}>
                               Remove
                             </button>
                           </div>
