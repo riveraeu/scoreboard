@@ -4027,6 +4027,17 @@ var worker_default = {
             if (crossWinner?.gameType === "teamTotal") plays[i] = { ...p, qualified: false };
           }
         }
+        // Drop plays whose scheduled gameTime has already passed — pre-game market is closed,
+        // and our model truePct is built on pre-game inputs so it's no longer valid in-game.
+        // Plays without gameTime are kept (we already gate by gameDate earlier).
+        {
+          const _nowMs = Date.now();
+          plays.splice(0, plays.length, ...plays.filter(p => {
+            if (!p.gameTime) return true;
+            const t = new Date(p.gameTime).getTime();
+            return isNaN(t) || t > _nowMs;
+          }));
+        }
         if (isDebug) {
           const nbaGlLabels = Object.fromEntries(Object.entries(playerGamelogs).filter(([k]) => k.startsWith("nba|")).map(([k, gl]) => [k, gl?.ul ?? null]));
           const nbaGlSample = Object.fromEntries(Object.entries(playerGamelogs).filter(([k]) => k.startsWith("nba|")).map(([k, gl]) => [k, gl?.events?.slice(0, 3).map(ev => ({ stats: ev.stats?.slice(0, 3), statsLen: ev.stats?.length })) ?? null]));
