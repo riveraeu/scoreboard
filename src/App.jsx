@@ -2,7 +2,7 @@ import React from 'react';
 import { WORKER, SPORTS, STAT_FULL, MLB_TEAM, TEAM_DB, TOTAL_THRESHOLDS, STAT_LABEL, SPORT_KEY, TODAY, SPORT_BADGE_COLOR, GAMELOG_COLS } from './lib/constants.js';
 import { ordinal, slugify, teamUrl } from './lib/utils.js';
 import { useIsMobile } from './lib/hooks.js';
-import { buildLiveGameKey, getPickCurrentStat } from './lib/liveStats.js';
+import { buildLiveGameKey, getPickCurrentStat, findLivePlayer } from './lib/liveStats.js';
 import { tierColor } from './lib/colors.js';
 import TotalsBarChart from './components/TotalsBarChart.jsx';
 import TeamPage, { STAT_CONFIGS } from './components/TeamPage.jsx';
@@ -364,7 +364,7 @@ function App() {
           return backfill ? { ...pick, ...backfill } : pick;
         }
 
-        const playerStats = liveGame.players?.[pick.playerName];
+        const playerStats = findLivePlayer(liveGame.players, pick.playerName);
         const current = getPickCurrentStat(pick, playerStats);
 
         if (current !== null && current >= pick.threshold) {

@@ -1,5 +1,19 @@
 // Live stat helpers for pick card tracking
 
+// Look up a player in the live boxscore tolerantly (strip diacritics + lowercase).
+// ESPN's scoreboard returns "Nikola Jokic" (ASCII) but search/profile returns
+// "Nikola Jokić" — exact-key lookup misses, so we fall back to a normalized scan.
+const _normLiveName = (s) => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+export function findLivePlayer(players, name) {
+  if (!players || !name) return undefined;
+  if (players[name] !== undefined) return players[name];
+  const target = _normLiveName(name);
+  for (const k in players) {
+    if (_normLiveName(k) === target) return players[k];
+  }
+  return undefined;
+}
+
 const STAT_LABEL_LIVE = {
   strikeouts: "K",
   hrr: "HRR",
@@ -42,7 +56,7 @@ export function buildLiveDisplay(pick, liveGame) {
   if (!liveGame || liveGame.state === "pre") return null;
   if (pick.gameType === "total" || pick.gameType === "teamTotal") return null;
 
-  const playerStats = liveGame.players?.[pick.playerName];
+  const playerStats = findLivePlayer(liveGame.players, pick.playerName);
   const current = getPickCurrentStat(pick, playerStats);
   if (current === null) return null;
 
