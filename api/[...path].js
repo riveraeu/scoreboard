@@ -4444,7 +4444,7 @@ var worker_default = {
           if (mlbId) {
             try {
               const ptDate = new Date(Date.now() - 7 * 3600 * 1000).toISOString().slice(0, 10);
-              const sRes = await fetch(`https://statsapi.mlb.com/api/v1/schedule?date=${ptDate}&hydrate=lineups,probables&sportId=1&teamId=${mlbId}`, { headers: H });
+              const sRes = await fetch(`https://statsapi.mlb.com/api/v1/schedule?date=${ptDate}&hydrate=lineups,probablePitcher&sportId=1&teamId=${mlbId}`, { headers: H });
               if (sRes.ok) {
                 const sd = await sRes.json();
                 const game = sd.dates?.[0]?.games?.[0];
