@@ -1,5 +1,6 @@
 import React from 'react';
 import { SPORT_KEY, TEAM_DB } from '../lib/constants.js';
+import Tip from './Tip.jsx';
 
 const _teamShort = (abbr, sport) => {
   if (!abbr) return abbr;
@@ -413,7 +414,7 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                           if (k==="ou")  return C(ou  != null ? ou : null, ou <= 7.5 ? "#3fb950" : ou < 10.5 ? "#e3b341" : "#f78166");
                           if (k==="mlbOu") { const v = m.gameOuLine ?? m.hitterGameTotal; if (v == null) return DASH; const isU=m.direction==="under"; const color=isU?(v<7.5?"#3fb950":v<9.5?"#e3b341":"#f78166"):(v>=9.5?"#3fb950":v>=7.5?"#e3b341":"#f78166"); return <span style={{color}}>{v}</span>; }
                           if (k==="dvp") { const r = m.posDvpRank; const ratio = m.dvpRatio; const dvpColor = ratio == null ? "#f78166" : ratio >= 1.05 ? "#3fb950" : ratio >= 1.02 ? "#e3b341" : "#f78166"; return C(r != null ? `#${r}${m.posGroup?" "+m.posGroup:""}` : null, dvpColor); }
-                          if (k==="sim") { const sc = m.teamTotalSimScore ?? m.totalSimScore ?? m.finalSimScore ?? m.hitterFinalSimScore ?? m.nbaSimScore ?? m.nhlSimScore ?? m.simScore ?? m.hitterSimScore; const tip = buildSimTooltip(m); return sc != null ? <span title={tip??undefined} style={{color:sc>=8?"#3fb950":sc>=5?"#e3b341":"#f78166",fontWeight:600,cursor:tip?"help":"default"}}>{sc}/10</span> : DASH; }
+                          if (k==="sim") { const sc = m.teamTotalSimScore ?? m.totalSimScore ?? m.finalSimScore ?? m.hitterFinalSimScore ?? m.nbaSimScore ?? m.nhlSimScore ?? m.simScore ?? m.hitterSimScore; const tip = buildSimTooltip(m); return sc != null ? <Tip tip={tip} style={{color:sc>=8?"#3fb950":sc>=5?"#e3b341":"#f78166",fontWeight:600,cursor:tip?"pointer":"default"}}>{sc}/10</Tip> : DASH; }
                           if (k==="env") { const pf = m.parkFactor ?? m.hitterParkKF; if (pf == null) return DASH; const pct = Math.round((pf-1)*100); const disp = (pct>=0?"+":"")+pct+"%"; return <span style={{color:pf>1.02?"#3fb950":pf<0.98?"#f78166":"#8b949e"}}>{disp}</span>; }
                           if (k==="brrl") { const b = m.hitterBarrelPct; return b != null ? <span style={{color:b>=14?"#3fb950":b>=10?"#e3b341":b>=7?"#8b949e":"#f78166"}}>{b.toFixed(1)+"%"}</span> : DASH; }
                           if (k==="nbapace") { const p = m.nbaPaceAdj; return p != null ? <span style={{color:p>0?"#3fb950":p>-2?"#e3b341":"#8b949e"}}>{p>0?"+":""}{p.toFixed(1)}</span> : DASH; }
@@ -573,8 +574,10 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                             const dir = cur?.col === col && cur.dir === "desc" ? "asc" : "desc";
                             return {...prev, [_sk]: {col, dir}};
                           });
-                          return <div title={COL_TIPS[col]} style={{flex:1,color:active?"#c9d1d9":"#484f58",fontSize:10,textAlign,cursor:"pointer",userSelect:"none",...extraStyle}} onClick={onClick}>
+                          const _colTip = COL_TIPS[col];
+                          return <div title={_colTip} style={{flex:1,color:active?"#c9d1d9":"#484f58",fontSize:10,textAlign,cursor:"pointer",userSelect:"none",...extraStyle}} onClick={onClick}>
                             {label}{active ? (_sc.dir === "desc" ? "↓" : "↑") : ""}
+                            {_colTip && <Tip tip={_colTip} stopPropagation style={{marginLeft:3,fontSize:9,color:"#484f58",cursor:"pointer"}}>ⓘ</Tip>}
                           </div>;
                         };
                         const _oppFlex = 2;
