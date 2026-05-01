@@ -33,6 +33,7 @@ Entry: `index.html` → `src/main.jsx` → `src/App.jsx`. Vercel runs `npm run b
 - `src/lib/constants.js` — `TEAM_DB`, `TOTAL_THRESHOLDS`, `MOCK_PLAYS`, `GAMELOG_COLS`, sport/stat metadata
 - `src/lib/utils.js` — `slugify`, `teamUrl`, `logoUrl(sport, abbr)` (handles ESPN CDN abbr mismatches NHL `tbl→tb, njd→nj, lak→la, sjs→sj`; NBA `kat→atl`)
 - `src/lib/liveStats.js` — live pick tracking helpers
+- `src/lib/hooks.js` — `useIsMobile(threshold=600)`: resize+orientation-aware boolean. Use this for responsive layouts (e.g. `LineupsPage` toolbar wraps to 2 rows on mobile). `SimBadge`/`DayBar` tooltips also support tap-to-pin so SimScore breakdowns are accessible on touch devices.
 - `src/components/` — `LineupsPage` (homepage tab layout), `MatchupCard` (per-game card), `PlaysColumn`, `MyPicksColumn`, `MarketReport`, `ModelPage`, `TeamPage`, `TotalsBarChart`, `DayBar`, `AddPickModal`
 
 **Dev proxy**: `vite.config.js` proxies `/api` to production so `npm run dev` works without local backend.

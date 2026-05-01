@@ -3,19 +3,38 @@ import { STAT_LABEL } from '../lib/constants.js';
 
 function DayBar({ day, HALF, maxAbs }) {
   const [hovered, setHovered] = React.useState(false);
+  const [pinned, setPinned] = React.useState(false);
+  const ref = React.useRef(null);
+
+  // Pinned (tap-to-show) closes on outside tap.
+  React.useEffect(() => {
+    if (!pinned) return;
+    const close = (e) => {
+      if (!ref.current || !ref.current.contains(e.target)) setPinned(false);
+    };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('touchstart', close);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('touchstart', close);
+    };
+  }, [pinned]);
+
+  const visible = hovered || pinned;
   const winH = day.wins > 0 ? Math.max(Math.round((day.wins / maxAbs) * HALF), 3) : 0;
   const lossH = day.losses > 0 ? Math.max(Math.round((day.losses / maxAbs) * HALF), 3) : 0;
   return (
-    <div style={{flex:1, position:"relative", cursor:"default"}}
+    <div ref={ref} style={{flex:1, position:"relative", cursor: day.plays.length > 0 ? "pointer" : "default"}}
       onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}>
+      onMouseLeave={() => setHovered(false)}
+      onClick={(e) => { if (day.plays.length === 0) return; e.stopPropagation(); setPinned(p => !p); }}>
       {winH > 0 && (
         <div style={{
           position:"absolute", left:0, right:0, height:winH,
           top: HALF - winH,
           background: "#3fb950",
           borderRadius: "3px 3px 0 0",
-          opacity: hovered ? 1 : 0.85, transition:"opacity 0.15s",
+          opacity: visible ? 1 : 0.85, transition:"opacity 0.15s",
         }}/>
       )}
       {lossH > 0 && (
@@ -24,10 +43,10 @@ function DayBar({ day, HALF, maxAbs }) {
           top: HALF,
           background: "#f78166",
           borderRadius: "0 0 3px 3px",
-          opacity: hovered ? 1 : 0.85, transition:"opacity 0.15s",
+          opacity: visible ? 1 : 0.85, transition:"opacity 0.15s",
         }}/>
       )}
-      {hovered && (
+      {visible && (
         <div style={{
           position:"absolute", bottom: HALF + 8, left:"50%", transform:"translateX(-50%)",
           background:"#1c2128", border:"1px solid #30363d", borderRadius:6,

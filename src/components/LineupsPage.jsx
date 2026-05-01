@@ -1,5 +1,6 @@
 import React from 'react';
 import MatchupCard from './MatchupCard.jsx';
+import { useIsMobile } from '../lib/hooks.js';
 
 const SPORT_ORDER = { mlb: 0, nba: 1, nhl: 2 };
 const SPORT_LABEL = { mlb: 'MLB', nba: 'NBA', nhl: 'NHL' };
@@ -195,100 +196,120 @@ export default function LineupsPage({
     return groups;
   }, [gamesForDay]);
 
+  const isMobile = useIsMobile();
+  const btnSize = isMobile
+    ? { fontSize: 12, padding: '0 12px', height: 32 }
+    : { fontSize: 10, padding: '0 8px', height: 22 };
+  const activePicks = (trackedPlays || []).filter(p => !p.result || p.result === 'dnp');
+
+  const dayTabsEl = (
+    <div style={{ display: 'flex', gap: 0, overflowX: 'auto', flex: isMobile ? '1 1 auto' : '0 0 auto', scrollbarWidth: 'none' }}>
+      {dayTabs.map(dateStr => {
+        const active = activeDayTab === dateStr;
+        const count = qualifiedByDay[dateStr] ?? 0;
+        return (
+          <button
+            key={dateStr}
+            onClick={() => setActiveDayTab(dateStr)}
+            style={{
+              padding: isMobile ? '10px 14px' : '8px 14px',
+              background: 'none', border: 'none',
+              borderBottom: active ? '2px solid #58a6ff' : '2px solid transparent',
+              color: active ? '#58a6ff' : '#8b949e', fontWeight: active ? 700 : 400,
+              fontSize: 13, cursor: 'pointer', transition: 'color 0.15s',
+              marginBottom: -1, whiteSpace: 'nowrap', flexShrink: 0,
+            }}>
+            {dayTabLabel(dateStr)}
+            {count > 0 && (
+              <span style={{
+                marginLeft: 5, fontSize: 10, fontWeight: 700, color: '#3fb950',
+                background: 'rgba(63,185,80,0.12)', border: '1px solid rgba(63,185,80,0.3)',
+                borderRadius: 10, padding: '1px 5px',
+              }}>{count}</span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  const actionButtonsEl = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, ...(isMobile ? { justifyContent: 'flex-end', flexWrap: 'wrap' } : { flex: 1, justifyContent: 'flex-end' }) }}>
+      <button onClick={navigateToModel}
+        style={{ ...btnSize, borderRadius: 6, cursor: 'pointer',
+          border: '1px solid #30363d', background: 'transparent', color: '#484f58', fontWeight: 600 }}>
+        Model
+      </button>
+      <button onClick={() => fetchReport('mlb')}
+        style={{ ...btnSize, borderRadius: 6, cursor: 'pointer',
+          border: '1px solid #30363d', background: 'transparent', color: '#484f58', fontWeight: 600 }}>
+        Report
+      </button>
+      <button ref={picksButtonRef} onClick={openPicksDrawer}
+        style={{ ...btnSize, borderRadius: 6, cursor: 'pointer',
+          border: `1px solid ${showPicksDrawer ? '#58a6ff' : '#30363d'}`,
+          background: showPicksDrawer ? 'rgba(88,166,255,0.12)' : 'transparent',
+          color: showPicksDrawer ? '#58a6ff' : '#484f58', fontWeight: 600,
+          display: 'flex', alignItems: 'center', gap: 4 }}>
+        <span style={{ color: '#e3b341' }}>★</span> Picks
+        {activePicks.length > 0 && (
+          <span style={{ background: 'rgba(63,185,80,0.12)', border: '1px solid rgba(63,185,80,0.3)',
+            color: '#3fb950', fontSize: 9, fontWeight: 700,
+            borderRadius: 8, padding: '0 4px', lineHeight: '14px' }}>
+            {activePicks.length}
+          </span>
+        )}
+      </button>
+      {authEmail ? (
+        <button onClick={logout}
+          style={{ ...btnSize, borderRadius: 6, cursor: 'pointer',
+            border: '1px solid #30363d', background: 'transparent', color: '#484f58', fontWeight: 600,
+            display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ width: 5, height: 5, borderRadius: '50%', flexShrink: 0,
+            background: syncStatus === 'saving' ? '#e3b341' : syncStatus === 'error' ? '#f78166' : '#3fb950',
+            display: 'inline-block' }} />
+          Log Out
+        </button>
+      ) : (
+        <button onClick={onLoginClick}
+          style={{ ...btnSize, borderRadius: 6, cursor: 'pointer',
+            border: '1px solid #58a6ff', background: 'transparent', color: '#58a6ff', fontWeight: 600 }}>
+          Log In
+        </button>
+      )}
+    </div>
+  );
+
   return (
     <div>
-      {/* Tab row: date left | day tabs center | buttons right */}
-      <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #21262d', marginBottom: 16 }}>
-        {/* Left: week label */}
-        <div style={{ flex: 1 }}>
-          {(() => {
-            const d = new Date(), dow = d.getDay(), daysToMon = (dow + 6) % 7;
-            const mon = new Date(d - daysToMon * 86400000);
-            const label = mon.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-            return <span style={{ color: '#484f58', fontWeight: 400, fontSize: 12 }}>Week of {label}</span>;
-          })()}
+      {isMobile ? (
+        <>
+          {/* Row 1: day tabs (full width, horizontal scroll if many) */}
+          <div style={{ borderBottom: '1px solid #21262d', marginBottom: 10 }}>
+            {dayTabsEl}
+          </div>
+          {/* Row 2: action buttons */}
+          <div style={{ marginBottom: 14 }}>
+            {actionButtonsEl}
+          </div>
+        </>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #21262d', marginBottom: 16 }}>
+          {/* Left: week label */}
+          <div style={{ flex: 1 }}>
+            {(() => {
+              const d = new Date(), dow = d.getDay(), daysToMon = (dow + 6) % 7;
+              const mon = new Date(d - daysToMon * 86400000);
+              const label = mon.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+              return <span style={{ color: '#484f58', fontWeight: 400, fontSize: 12 }}>Week of {label}</span>;
+            })()}
+          </div>
+          {/* Center: day tabs */}
+          {dayTabsEl}
+          {/* Right: action buttons */}
+          {actionButtonsEl}
         </div>
-
-        {/* Center: day tabs */}
-        <div style={{ display: 'flex', gap: 0 }}>
-          {dayTabs.map(dateStr => {
-            const active = activeDayTab === dateStr;
-            const count = qualifiedByDay[dateStr] ?? 0;
-            return (
-              <button
-                key={dateStr}
-                onClick={() => setActiveDayTab(dateStr)}
-                style={{
-                  padding: '8px 14px', background: 'none', border: 'none',
-                  borderBottom: active ? '2px solid #58a6ff' : '2px solid transparent',
-                  color: active ? '#58a6ff' : '#8b949e', fontWeight: active ? 700 : 400,
-                  fontSize: 13, cursor: 'pointer', transition: 'color 0.15s',
-                  marginBottom: -1,
-                }}>
-                {dayTabLabel(dateStr)}
-                {count > 0 && (
-                  <span style={{
-                    marginLeft: 5, fontSize: 10, fontWeight: 700, color: '#3fb950',
-                    background: 'rgba(63,185,80,0.12)', border: '1px solid rgba(63,185,80,0.3)',
-                    borderRadius: 10, padding: '1px 5px',
-                  }}>{count}</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Right: action buttons */}
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-          <button onClick={navigateToModel}
-            style={{ fontSize: 10, padding: '0 8px', height: 22, borderRadius: 6, cursor: 'pointer',
-              border: '1px solid #30363d', background: 'transparent', color: '#484f58', fontWeight: 600 }}>
-            Model
-          </button>
-          <button onClick={() => fetchReport('mlb')}
-            style={{ fontSize: 10, padding: '0 8px', height: 22, borderRadius: 6, cursor: 'pointer',
-              border: '1px solid #30363d', background: 'transparent', color: '#484f58', fontWeight: 600 }}>
-            Report
-          </button>
-          {(() => {
-            const activePicks = (trackedPlays || []).filter(p => !p.result || p.result === 'dnp');
-            return (
-              <button ref={picksButtonRef} onClick={openPicksDrawer}
-                style={{ fontSize: 10, padding: '0 8px', height: 22, borderRadius: 6, cursor: 'pointer',
-                  border: `1px solid ${showPicksDrawer ? '#58a6ff' : '#30363d'}`,
-                  background: showPicksDrawer ? 'rgba(88,166,255,0.12)' : 'transparent',
-                  color: showPicksDrawer ? '#58a6ff' : '#484f58', fontWeight: 600,
-                  display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span style={{ color: '#e3b341' }}>★</span> Picks
-                {activePicks.length > 0 && (
-                  <span style={{ background: 'rgba(63,185,80,0.12)', border: '1px solid rgba(63,185,80,0.3)',
-                    color: '#3fb950', fontSize: 9, fontWeight: 700,
-                    borderRadius: 8, padding: '0 4px', lineHeight: '14px' }}>
-                    {activePicks.length}
-                  </span>
-                )}
-              </button>
-            );
-          })()}
-          {authEmail ? (
-            <button onClick={logout}
-              style={{ fontSize: 10, padding: '0 8px', height: 22, borderRadius: 6, cursor: 'pointer',
-                border: '1px solid #30363d', background: 'transparent', color: '#484f58', fontWeight: 600,
-                display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ width: 5, height: 5, borderRadius: '50%', flexShrink: 0,
-                background: syncStatus === 'saving' ? '#e3b341' : syncStatus === 'error' ? '#f78166' : '#3fb950',
-                display: 'inline-block' }} />
-              Log Out
-            </button>
-          ) : (
-            <button onClick={onLoginClick}
-              style={{ fontSize: 10, padding: '0 8px', height: 22, borderRadius: 6, cursor: 'pointer',
-                border: '1px solid #58a6ff', background: 'transparent', color: '#58a6ff', fontWeight: 600 }}>
-              Log In
-            </button>
-          )}
-        </div>
-      </div>
+      )}
 
       {/* Loading */}
       {tonightLoading && (
