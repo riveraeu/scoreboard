@@ -300,12 +300,6 @@ export function decimalOdds(americanOdds) {
   return americanOdds >= 0 ? americanOdds / 100 + 1 : 100 / Math.abs(americanOdds) + 1;
 }
 
-export function kellyFraction(truePct, americanOdds) {
-  const p = truePct / 100;
-  const b = decimalOdds(americanOdds) - 1;
-  return Math.max(0, parseFloat(((p * b - (1 - p)) / b).toFixed(4)));
-}
-
 export function evPerUnit(truePct, americanOdds) {
   const p = truePct / 100;
   const b = decimalOdds(americanOdds) - 1;
