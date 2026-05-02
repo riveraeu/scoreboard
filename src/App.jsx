@@ -321,20 +321,28 @@ function App() {
     const activePicks = currentPicks.filter(p => !p.result && (p.gameDate === today || p.gameDate === tomorrow));
     if (!activePicks.length) return;
 
-    // Resolve opponent from gameScores when missing on the pick (older picks lack it)
-    const resolveOpponent = (pick) => {
-      if (pick.opponent) return pick.opponent;
-      if (!pick.playerTeam) return null;
+    // Resolve playerTeam + opponent from gameScores when one or both are missing on the pick.
+    // Older picks may have empty playerTeam ("") or null opponent; backfill from whichever is present.
+    const resolveTeams = (pick) => {
+      const has = (v) => typeof v === "string" && v.length > 0;
+      let playerTeam = has(pick.playerTeam) ? pick.playerTeam : null;
+      let opponent = has(pick.opponent) ? pick.opponent : null;
+      if (playerTeam && opponent) return { playerTeam, opponent };
       const scores = pick.sport === "mlb" ? currentMeta?.mlbMeta?.gameScores
                    : pick.sport === "nba" ? currentMeta?.nbaMeta?.gameScores
                    : pick.sport === "nhl" ? currentMeta?.nhlMeta?.gameScores
                    : null;
-      if (!scores) return null;
+      if (!scores) return { playerTeam, opponent };
       for (const g of Object.values(scores)) {
-        if (g.homeTeam === pick.playerTeam) return g.awayTeam;
-        if (g.awayTeam === pick.playerTeam) return g.homeTeam;
+        if (playerTeam && !opponent) {
+          if (g.homeTeam === playerTeam) { opponent = g.awayTeam; break; }
+          if (g.awayTeam === playerTeam) { opponent = g.homeTeam; break; }
+        } else if (opponent && !playerTeam) {
+          if (g.homeTeam === opponent) { playerTeam = g.awayTeam; break; }
+          if (g.awayTeam === opponent) { playerTeam = g.homeTeam; break; }
+        }
       }
-      return null;
+      return { playerTeam, opponent };
     };
 
     // Collect unique game keys for ALL active picks (player props + totals + team totals).
@@ -349,8 +357,8 @@ function App() {
       } else if (p.gameType === "teamTotal") {
         if (p.scoringTeam && p.oppTeam) key = `${p.sport}:${p.scoringTeam}:${p.oppTeam}`;
       } else {
-        const opp = resolveOpponent(p);
-        if (p.playerTeam && opp) key = `${p.sport}:${p.playerTeam}:${opp}`;
+        const { playerTeam, opponent } = resolveTeams(p);
+        if (playerTeam && opponent) key = `${p.sport}:${playerTeam}:${opponent}`;
       }
       if (!key) continue;
       pickKeyMap.set(p.id, key);
@@ -371,26 +379,30 @@ function App() {
         if (pick.gameType === "total" || pick.gameType === "teamTotal") return pick; // handled separately
         const gameKey = pickKeyMap.get(pick.id);
         if (!gameKey) return pick;
-        const resolvedOpp = gameKey.split(":")[2];
-        const backfill = (!pick.opponent && resolvedOpp) ? { opponent: resolvedOpp } : null;
+        const [, resolvedTeam, resolvedOpp] = gameKey.split(":");
+        const has = (v) => typeof v === "string" && v.length > 0;
+        const backfill = {};
+        if (!has(pick.playerTeam) && resolvedTeam) backfill.playerTeam = resolvedTeam;
+        if (!has(pick.opponent) && resolvedOpp) backfill.opponent = resolvedOpp;
+        const hasBackfill = Object.keys(backfill).length > 0;
         const liveGame = data[gameKey];
         if (!liveGame || liveGame.state === "pre" || liveGame.state === "unknown") {
-          return backfill ? { ...pick, ...backfill } : pick;
+          return hasBackfill ? { ...pick, ...backfill } : pick;
         }
 
         const playerStats = findLivePlayer(liveGame.players, pick.playerName);
         const current = getPickCurrentStat(pick, playerStats);
 
         if (current !== null && current >= pick.threshold) {
-          return { ...pick, ...(backfill || {}), result: "won" };
+          return { ...pick, ...backfill, result: "won" };
         }
         if (liveGame.state === "post") {
           if (playerStats === undefined && pick.stat !== "strikeouts") {
-            return { ...pick, ...(backfill || {}), result: "dnp" }; // player not in boxscore after game ended
+            return { ...pick, ...backfill, result: "dnp" }; // player not in boxscore after game ended
           }
-          return { ...pick, ...(backfill || {}), result: "lost" };
+          return { ...pick, ...backfill, result: "lost" };
         }
-        return backfill ? { ...pick, ...backfill } : pick;
+        return hasBackfill ? { ...pick, ...backfill } : pick;
       }));
     } catch { /* network error — silently skip */ }
   }, []);
