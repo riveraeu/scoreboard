@@ -68,8 +68,18 @@ function App() {
   const [calibData, setCalibData] = React.useState(null);
   const [calibLoading, setCalibLoading] = React.useState(false);
   const [gamelogSort, setGamelogSort] = React.useState({ col: 'date', dir: 'desc' });
-  // Odds-based stake sizing: stake ($) = |americanOdds| / 10 (e.g. -257 → $25.7)
-  const tierUnits = (americanOdds) => Math.abs(americanOdds || 0) / 10;
+  // Edge-based stake sizing (Scheme B):
+  //   edge 3–7%   → 1u
+  //   edge 7–12%  → 3u
+  //   edge ≥ 12%  → 5u
+  //   missing edge → 1u baseline
+  // Tunable: $30 per unit. Change UNIT_DOLLARS or the band cuts to retune.
+  const UNIT_DOLLARS = 30;
+  const unitsForPlay = (play) => {
+    const e = play?.edge ?? null;
+    const u = e == null ? 1 : e < 7 ? 1 : e < 12 ? 3 : 5;
+    return u * UNIT_DOLLARS;
+  };
   const kalshiCache = React.useRef({}); // memoize Kalshi fetches by "playerName|sport|stat"
   const [expandedPlays, setExpandedPlays] = React.useState(new Set());
   const [trackedPlays, setTrackedPlays] = React.useState(() => {
@@ -256,7 +266,7 @@ function App() {
     setTrackedPlays(prev => {
       if (prev.find(p => p.id === id)) return prev;
       return [{ ...play, id, trackedAt: Date.now(), result: null,
-        units: tierUnits(savedOdds),
+        units: unitsForPlay(play),
         americanOdds: savedOdds,
       }, ...prev];
     });

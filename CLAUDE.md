@@ -354,7 +354,17 @@ Sport tabs: ALL / MLB / NBA / NHL (calibration moved to Model Reference page). C
 - Lineup badge: `play.lineupConfirmed === true` → green `✓ Lineup`; `=== false` → gray `Proj. Lineup`. **`Proj. Lineup` suppressed when game is within 30min of start** (`Date.now() ≥ new Date(gameTime).getTime() - 30*60*1000`).
 
 ### Stake / pick units
-`tierUnits(americanOdds) = |americanOdds|/10`. Stored on tracked picks as `units`. Implied-probability-calculator override: if a value is entered at track time, `savedOdds = calcOverride ?? finalOdds` overrides BOTH `americanOdds` and `units`. Picks editor has `$` input for override.
+**Edge-tiered sizing** (`unitsForPlay(play)` in App.jsx, "Scheme B"):
+- edge < 7%   → 1u
+- edge 7–12%  → 3u
+- edge ≥ 12%  → 5u
+- missing edge → 1u baseline
+
+`UNIT_DOLLARS = 30` (one-line tunable in App.jsx); stake in dollars = `unitsForPlay(play)`. Stored on tracked picks as `units` (in dollars). User can override odds at track time via the pending-track confirm dialog (`pendingOdds`); the sportsbook odds change but the stake stays edge-tiered. Picks editor has `$` input for manual override.
+
+**Existing picks pre-2026-05-02 use the older `|americanOdds|/10` ladder** — not retroactively migrated. The `units` field is whatever was stored at track time.
+
+`AddPickModal` (manual ad-hoc entry) keeps its own odds-based ladder (`<= -900 ? 5 : <= -400 ? 4 : <= -200 ? 3 : <= -110 ? 2 : 1`) — manual entries don't typically have an `edge` field to band against.
 
 ### Color tiers (utility)
 ```
