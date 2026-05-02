@@ -316,7 +316,6 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                 ? resolveTotalGameScore(pick, liveStats, allGameScores)
                 : null;
               const totalLiveDisplay = totalGameScore ? buildTotalLiveDisplay(pick, totalGameScore) : null;
-              const isLive = liveGame?.state === "in" || totalGameScore?.state === "in";
               // Right-side live panel data — live time/state + current count.
               const _boxState = liveGame?.state || totalGameScore?.state || null;
               const _boxDetail = liveGame?.detail || totalGameScore?.detail || "";
@@ -383,12 +382,6 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                           {pick.sport}
                         </span>
                       )}
-                      {isLive && !pick.result && (
-                        <span style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:9,fontWeight:700,color:"#3fb950",flexShrink:0}}>
-                          <span style={{width:5,height:5,borderRadius:"50%",background:"#3fb950",display:"inline-block"}}/>
-                          LIVE
-                        </span>
-                      )}
                       {pick.edge != null && (
                         <span style={{background:"rgba(63,185,80,0.12)",border:"1px solid #3fb950",borderRadius:4,
                           padding:"0px 5px",fontSize:10,color:"#3fb950",fontWeight:700,flexShrink:0}}>
@@ -405,20 +398,6 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                           {fmt(pickPL)}
                         </span>
                       )}
-                      <div style={{flex:1}} />
-                      {pick.result && (
-                        <button onClick={() => setPlayResult(pick.id, null)}
-                          style={{background:"transparent",border:"1px solid #30363d",borderRadius:5,
-                            padding:rowBtnPad,fontSize:rowBtnFs,color:"#484f58",cursor:"pointer",flexShrink:0,lineHeight:1}}>
-                          ↺
-                        </button>
-                      )}
-                      <button onClick={() => setEditPickId(id => id === pick.id ? null : pick.id)} title="Edit"
-                        style={{background: editPickId === pick.id ? "rgba(88,166,255,0.12)" : "transparent",
-                          border:`1px solid ${editPickId === pick.id ? "#58a6ff" : "#30363d"}`,borderRadius:5,
-                          padding:rowBtnPad,fontSize:rowBtnFs,color: editPickId === pick.id ? "#58a6ff" : "#484f58",cursor:"pointer",flexShrink:0,lineHeight:1}}>
-                        ✎
-                      </button>
                     </div>
                     {/* Row 2: subtitle + stake */}
                     <div style={{flex:1,minWidth:0,display:"flex",alignItems:"center",flexWrap:"wrap",lineHeight:1.4}}>
@@ -528,6 +507,22 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                       <span style={{color:_liveColor, fontSize:12, fontWeight:700, whiteSpace:"nowrap"}}>{_currentValTxt}</span>
                     </div>
                   )}
+                  {/* Edit / undo buttons — right-aligned at card level */}
+                  <div style={{flexShrink:0, alignSelf:"center", display:"flex", alignItems:"center", gap:4, marginLeft:"auto"}}>
+                    {pick.result && (
+                      <button onClick={() => setPlayResult(pick.id, null)}
+                        style={{background:"transparent",border:"1px solid #30363d",borderRadius:5,
+                          padding:rowBtnPad,fontSize:rowBtnFs,color:"#484f58",cursor:"pointer",lineHeight:1}}>
+                        ↺
+                      </button>
+                    )}
+                    <button onClick={() => setEditPickId(id => id === pick.id ? null : pick.id)} title="Edit"
+                      style={{background: editPickId === pick.id ? "rgba(88,166,255,0.12)" : "transparent",
+                        border:`1px solid ${editPickId === pick.id ? "#58a6ff" : "#30363d"}`,borderRadius:5,
+                        padding:rowBtnPad,fontSize:rowBtnFs,color: editPickId === pick.id ? "#58a6ff" : "#484f58",cursor:"pointer",lineHeight:1}}>
+                      ✎
+                    </button>
+                  </div>
                 </div>
                                   );
                                   })}
