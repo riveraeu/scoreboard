@@ -337,14 +337,22 @@ function App() {
       return null;
     };
 
-    // Collect unique game keys from player prop picks (totals use existing gameScores)
-    const playerPropPicks = activePicks.filter(p => p.gameType !== "total" && p.gameType !== "teamTotal");
+    // Collect unique game keys for ALL active picks (player props + totals + team totals).
+    // Totals fetch live data for the badge/score display; auto-resolve still happens in the
+    // separate gameScores effect for now (player-prop auto-resolve is below).
     const pickKeyMap = new Map(); // pick.id → gameKey
     const gameKeysSet = new Set();
-    for (const p of playerPropPicks) {
-      const opp = resolveOpponent(p);
-      if (!p.playerTeam || !opp) continue;
-      const key = `${p.sport}:${p.playerTeam}:${opp}`;
+    for (const p of activePicks) {
+      let key = null;
+      if (p.gameType === "total") {
+        if (p.homeTeam && p.awayTeam) key = `${p.sport}:${p.awayTeam}:${p.homeTeam}`;
+      } else if (p.gameType === "teamTotal") {
+        if (p.scoringTeam && p.oppTeam) key = `${p.sport}:${p.scoringTeam}:${p.oppTeam}`;
+      } else {
+        const opp = resolveOpponent(p);
+        if (p.playerTeam && opp) key = `${p.sport}:${p.playerTeam}:${opp}`;
+      }
+      if (!key) continue;
       pickKeyMap.set(p.id, key);
       gameKeysSet.add(key);
     }
@@ -448,9 +456,9 @@ function App() {
   React.useEffect(() => {
     const today = new Date().toLocaleDateString("en-CA");
     const tomorrow = (() => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toLocaleDateString("en-CA"); })();
+    // Include totals/team-totals so they also poll /api/live (for badge + running score display).
     const hasTodayActivePicks = trackedPlays.some(p =>
-      !p.result && (p.gameDate === today || p.gameDate === tomorrow) &&
-      p.gameType !== "total" && p.gameType !== "teamTotal"
+      !p.result && (p.gameDate === today || p.gameDate === tomorrow)
     );
 
     if (liveIntervalRef.current) {

@@ -4186,9 +4186,15 @@ var worker_default = {
             const comp = event.competitions?.[0];
             const state = comp?.status?.type?.state ?? "pre";
             const detail = comp?.status?.type?.shortDetail || comp?.status?.type?.detail || "";
+            const homeComp = (comp?.competitors || []).find(c => c.homeAway === "home");
+            const awayComp = (comp?.competitors || []).find(c => c.homeAway === "away");
+            const homeTeam = homeComp?.team?.abbreviation?.toUpperCase() || null;
+            const awayTeam = awayComp?.team?.abbreviation?.toUpperCase() || null;
+            const homeScore = parseInt(homeComp?.score) || 0;
+            const awayScore = parseInt(awayComp?.score) || 0;
 
             if (state === "pre") {
-              liveResult[key] = { state: "pre", detail };
+              liveResult[key] = { state: "pre", detail, homeTeam, awayTeam, homeScore: 0, awayScore: 0 };
               return;
             }
 
@@ -4286,7 +4292,7 @@ var worker_default = {
               }
             } catch { /* boxscore unavailable */ }
 
-            const gameData = { state, detail, players };
+            const gameData = { state, detail, players, homeTeam, awayTeam, homeScore, awayScore };
             liveResult[key] = gameData;
             if (CACHE2) {
               const ttl = state === "post" ? 300 : 60;

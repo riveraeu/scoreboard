@@ -73,22 +73,28 @@ export function buildLiveDisplay(pick, liveGame) {
   return { text, color, met, current, threshold };
 }
 
-// Build live display for a game total or team total pick using existing gameScores data.
-// gameScores is from mlbMeta/nbaMeta/nhlMeta — keyed by homeTeam abbr.
-export function buildTotalLiveDisplay(pick, gameScores) {
+// Resolve a game-score entry for a totals/team-total pick. `liveStats` is keyed by
+// `sport:team:team` (from /api/live polling); `gameScores` is keyed by homeTeam abbr
+// (from mlbMeta/nbaMeta/nhlMeta — frozen at /api/tonight load). Prefer live, fall back.
+export function resolveTotalGameScore(pick, liveStats, gameScores) {
+  const liveKey = buildLiveGameKey(pick);
+  const live = liveStats?.[liveKey];
+  if (live && live.state !== "unknown") return live;
+
   if (!gameScores) return null;
-
-  // Find the game entry — could be keyed by either team (always keyed by homeTeam)
-  let gameScore = null;
-  if (pick.gameType === "total") {
-    gameScore = gameScores[pick.homeTeam];
-  } else if (pick.gameType === "teamTotal") {
-    // scoringTeam may be home or away — search both
-    gameScore = gameScores[pick.scoringTeam] ||
+  if (pick.gameType === "total") return gameScores[pick.homeTeam] || null;
+  if (pick.gameType === "teamTotal") {
+    return gameScores[pick.scoringTeam] ||
       Object.values(gameScores).find(g => g.awayTeam === pick.scoringTeam && g.homeTeam === pick.oppTeam) ||
-      Object.values(gameScores).find(g => g.homeTeam === pick.scoringTeam && g.awayTeam === pick.oppTeam);
+      Object.values(gameScores).find(g => g.homeTeam === pick.scoringTeam && g.awayTeam === pick.oppTeam) ||
+      null;
   }
+  return null;
+}
 
+// Build live display for a game total or team total pick from a resolved game-score entry.
+// Entry shape: { state, detail, homeTeam, awayTeam, homeScore, awayScore }.
+export function buildTotalLiveDisplay(pick, gameScore) {
   if (!gameScore || gameScore.state === "pre") return null;
 
   const detail = gameScore.detail || "";

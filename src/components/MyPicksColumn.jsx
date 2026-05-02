@@ -2,7 +2,7 @@ import React from 'react';
 import { SPORT_BADGE_COLOR, STAT_LABEL } from '../lib/constants.js';
 import DayBar from './DayBar.jsx';
 import AddPickModal from './AddPickModal.jsx';
-import { buildLiveGameKey, buildLiveDisplay, buildTotalLiveDisplay } from '../lib/liveStats.js';
+import { buildLiveGameKey, buildLiveDisplay, buildTotalLiveDisplay, resolveTotalGameScore } from '../lib/liveStats.js';
 import { useIsMobile } from '../lib/hooks.js';
 
 function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToTeam, navigateToPlay, bankroll, setBankroll, setPickUnits, chartGroupBy, setChartGroupBy, openPickWeeks, setOpenPickWeeks, openPickDays, setOpenPickDays, editPickId, setEditPickId, setPlayResult, setShowAddPick, oddsToProfit, liveStats = {}, mlbGameScores = {}, nbaGameScores = {}, nhlGameScores = {} }) {
@@ -312,13 +312,11 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                 ? null
                 : liveStats[buildLiveGameKey(pick)];
               const liveDisplay = buildLiveDisplay(pick, liveGame);
-              const totalLiveDisplay = (pick.gameType === "total" || pick.gameType === "teamTotal")
-                ? buildTotalLiveDisplay(pick, allGameScores)
+              const totalGameScore = (pick.gameType === "total" || pick.gameType === "teamTotal")
+                ? resolveTotalGameScore(pick, liveStats, allGameScores)
                 : null;
-              const isLive = liveGame?.state === "in" || totalLiveDisplay?.current != null && (() => {
-                const gScore = allGameScores[(pick.homeTeam || pick.scoringTeam)];
-                return gScore?.state === "in";
-              })();
+              const totalLiveDisplay = totalGameScore ? buildTotalLiveDisplay(pick, totalGameScore) : null;
+              const isLive = liveGame?.state === "in" || totalGameScore?.state === "in";
 
               return (
                 <div key={pick.id} style={{background:"#161b22",
