@@ -123,39 +123,6 @@ export const PARK_HITFACTOR = {
   SEA: 0.93
 };
 
-export const PARK_HRFACTOR = {
-  COL: 1.35,
-  CIN: 1.2,
-  PHI: 1.15,
-  BOS: 1.12,
-  MIL: 1.1,
-  TEX: 1.08,
-  NYY: 1.07,
-  BAL: 1.05,
-  KC: 1.04,
-  ATL: 1.03,
-  CHC: 1.02,
-  WSH: 1.01,
-  ARI: 1,
-  STL: 0.99,
-  MIN: 0.98,
-  HOU: 0.97,
-  MIA: 0.97,
-  LAD: 0.96,
-  CLE: 0.95,
-  DET: 0.95,
-  NYM: 0.94,
-  PIT: 0.93,
-  CWS: 0.93,
-  TB: 0.92,
-  LAA: 0.91,
-  ATH: 0.91,
-  TOR: 0.91,
-  SD: 0.89,
-  SF: 0.89,
-  SEA: 0.87
-};
-
 export function log5K(pitcherKPct, batterKPct, leagueKPct = 22.2) {
   const p = pitcherKPct / 100, b = batterKPct / 100, l = leagueKPct / 100;
   const num = p * b / l;
@@ -178,7 +145,7 @@ export function log5HitRate(log5Avg, threshold, avgBF = 26) {
 
 // K% multiplier applied to BF 19+ (third time through the order).
 // League-average decline: ~10–15% drop in K% on 3rd pass due to batter familiarity.
-export const TTO_DECAY_FACTOR = 0.88;
+const TTO_DECAY_FACTOR = 0.88;
 
 // Monte Carlo PA-level simulation: runs nSim games and returns the full K-count distribution
 // (array of length nSim with Ks per game). Use kDistPct(dist, t) to get P(Ks >= t).
@@ -238,12 +205,6 @@ export function kDistPct(dist, threshold) {
   return parseFloat((hits / dist.length * 100).toFixed(1));
 }
 
-// Legacy single-threshold wrapper (kept for reference, unused in main loop)
-export function simulateKs(orderedKPcts, pitcherKPct, threshold, parkFactor = 1, nSim = 5000, totalPA = 24) {
-  const dist = simulateKsDist(orderedKPcts, pitcherKPct, parkFactor, nSim, totalPA);
-  return kDistPct(dist, threshold);
-}
-
 // NBA Monte Carlo: build a shared Float32Array of simulated per-game values.
 // All thresholds for the same player+stat query the same distribution →
 // guarantees P(X≥3) ≥ P(X≥4) ≥ P(X≥5) by construction.
@@ -294,16 +255,6 @@ export function simulateHits(batterBA, pitcherBAA, parkFactor, threshold, nSim =
     if (count >= threshold) hits++;
   }
   return parseFloat((hits / nSim * 100).toFixed(1));
-}
-
-export function decimalOdds(americanOdds) {
-  return americanOdds >= 0 ? americanOdds / 100 + 1 : 100 / Math.abs(americanOdds) + 1;
-}
-
-export function evPerUnit(truePct, americanOdds) {
-  const p = truePct / 100;
-  const b = decimalOdds(americanOdds) - 1;
-  return parseFloat((p * b - (1 - p)).toFixed(4));
 }
 
 // ─── Game Total Simulation ────────────────────────────────────────────────────

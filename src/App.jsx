@@ -1,5 +1,5 @@
 import React from 'react';
-import { WORKER, SPORTS, STAT_FULL, MLB_TEAM, TEAM_DB, TOTAL_THRESHOLDS, STAT_LABEL, SPORT_KEY, TODAY, SPORT_BADGE_COLOR, GAMELOG_COLS } from './lib/constants.js';
+import { WORKER, SPORTS, STAT_FULL, MLB_TEAM, TEAM_DB, TOTAL_THRESHOLDS, STAT_LABEL, SPORT_KEY, SPORT_BADGE_COLOR, GAMELOG_COLS } from './lib/constants.js';
 import { ordinal, slugify, teamUrl } from './lib/utils.js';
 import { useIsMobile } from './lib/hooks.js';
 import { buildLiveGameKey, getPickCurrentStat, findLivePlayer } from './lib/liveStats.js';
