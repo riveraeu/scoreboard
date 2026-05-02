@@ -2,7 +2,7 @@ import React from 'react';
 import { WORKER, SPORTS, STAT_FULL, MLB_TEAM, TEAM_DB, TOTAL_THRESHOLDS, STAT_LABEL, SPORT_KEY, SPORT_BADGE_COLOR, GAMELOG_COLS } from './lib/constants.js';
 import { ordinal, slugify, teamUrl } from './lib/utils.js';
 import { useIsMobile } from './lib/hooks.js';
-import { buildLiveGameKey, getPickCurrentStat, findLivePlayer } from './lib/liveStats.js';
+import { buildLiveGameKey, getPickCurrentStat, findLivePlayer, resolveTotalGameScore } from './lib/liveStats.js';
 import { tierColor } from './lib/colors.js';
 import TotalsBarChart from './components/TotalsBarChart.jsx';
 import TeamPage, { STAT_CONFIGS } from './components/TeamPage.jsx';
@@ -318,7 +318,10 @@ function App() {
   const fetchLiveStats = React.useCallback(async (currentPicks, currentMeta) => {
     const today = new Date().toLocaleDateString("en-CA");
     const tomorrow = (() => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toLocaleDateString("en-CA"); })();
-    const activePicks = currentPicks.filter(p => !p.result && (p.gameDate === today || p.gameDate === tomorrow));
+    const yesterday = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toLocaleDateString("en-CA"); })();
+    // Include yesterday's unresolved picks so games that ended after midnight UTC still get auto-settled.
+    // Aging cap: ignore picks older than yesterday — at that point manual resolution.
+    const activePicks = currentPicks.filter(p => !p.result && (p.gameDate === today || p.gameDate === tomorrow || p.gameDate === yesterday));
     if (!activePicks.length) return;
 
     // Resolve playerTeam + opponent from gameScores when one or both are missing on the pick.
@@ -345,11 +348,11 @@ function App() {
       return { playerTeam, opponent };
     };
 
-    // Collect unique game keys for ALL active picks (player props + totals + team totals).
-    // Totals fetch live data for the badge/score display; auto-resolve still happens in the
-    // separate gameScores effect for now (player-prop auto-resolve is below).
+    // Collect unique game keys for ALL active picks (player props + totals + team totals),
+    // grouped by gameDate so we can hit /api/live with the right date for each batch.
+    // Yesterday's picks need yesterday's ESPN scoreboard, today's need today's.
     const pickKeyMap = new Map(); // pick.id → gameKey
-    const gameKeysSet = new Set();
+    const keysByDate = new Map(); // gameDate → Set<gameKey>
     for (const p of activePicks) {
       let key = null;
       if (p.gameType === "total") {
@@ -360,17 +363,23 @@ function App() {
         const { playerTeam, opponent } = resolveTeams(p);
         if (playerTeam && opponent) key = `${p.sport}:${playerTeam}:${opponent}`;
       }
-      if (!key) continue;
+      if (!key || !p.gameDate) continue;
       pickKeyMap.set(p.id, key);
-      gameKeysSet.add(key);
+      if (!keysByDate.has(p.gameDate)) keysByDate.set(p.gameDate, new Set());
+      keysByDate.get(p.gameDate).add(key);
     }
-    const gameKeys = [...gameKeysSet];
-    if (!gameKeys.length) return;
+    if (!keysByDate.size) return;
 
     try {
-      const res = await fetch(`${WORKER}/live?games=${gameKeys.join(",")}`);
-      if (!res.ok) return;
-      const data = await res.json();
+      // Fan out one /api/live call per distinct gameDate. Today omits the date param
+      // (default behavior); other dates pass `&date=YYYY-MM-DD`.
+      const fetches = [...keysByDate.entries()].map(([gd, keys]) => {
+        const games = [...keys].join(",");
+        const dateQs = gd === today ? "" : `&date=${gd}`;
+        return fetch(`${WORKER}/live?games=${games}${dateQs}`).then(r => r.ok ? r.json() : {}).catch(() => ({}));
+      });
+      const responses = await Promise.all(fetches);
+      const data = Object.assign({}, ...responses);
       setLiveStats(prev => ({ ...prev, ...data }));
 
       // Auto-resolve: check each active player-prop pick against live data
@@ -407,30 +416,28 @@ function App() {
     } catch { /* network error — silently skip */ }
   }, []);
 
-  // Auto-resolve totals picks against existing gameScores (no extra fetch needed)
+  // Auto-resolve totals/team-totals picks. Reads from liveStats first (fresh, includes
+  // yesterday's settled games when polled with date param), falls back to mlbMeta/nbaMeta/
+  // nhlMeta gameScores for today's games loaded via /api/tonight.
   React.useEffect(() => {
     if (!trackedPlays.length) return;
     const today = new Date().toLocaleDateString("en-CA");
+    const yesterday = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toLocaleDateString("en-CA"); })();
+    const tomorrow = (() => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toLocaleDateString("en-CA"); })();
     const allScores = {
       ...(mlbMeta?.gameScores || {}),
       ...(nbaMeta?.gameScores || {}),
       ...(nhlMeta?.gameScores || {}),
     };
-    if (!Object.keys(allScores).length) return;
+    const hasAnyData = Object.keys(allScores).length > 0 || Object.keys(liveStats).length > 0;
+    if (!hasAnyData) return;
 
     setTrackedPlays(prev => prev.map(pick => {
       if (pick.result) return pick;
       if (pick.gameType !== "total" && pick.gameType !== "teamTotal") return pick;
-      if (pick.gameDate !== today) return pick;
+      if (pick.gameDate !== today && pick.gameDate !== yesterday && pick.gameDate !== tomorrow) return pick;
 
-      let gameScore = null;
-      if (pick.gameType === "total") {
-        gameScore = allScores[pick.homeTeam];
-      } else {
-        gameScore = allScores[pick.scoringTeam] ||
-          Object.values(allScores).find(g => g.awayTeam === pick.scoringTeam && g.homeTeam === pick.oppTeam) ||
-          Object.values(allScores).find(g => g.homeTeam === pick.scoringTeam && g.awayTeam === pick.oppTeam);
-      }
+      const gameScore = resolveTotalGameScore(pick, liveStats, allScores);
       if (!gameScore || (gameScore.state !== "post" && gameScore.state !== "in")) return pick;
 
       const isHome = gameScore.homeTeam === (pick.gameType === "total" ? pick.homeTeam : pick.scoringTeam);
@@ -448,7 +455,7 @@ function App() {
       const met = isUnder ? current < pick.threshold : current >= pick.threshold;
       return { ...pick, result: met ? "won" : "lost" };
     }));
-  }, [mlbMeta, nbaMeta, nhlMeta]);
+  }, [mlbMeta, nbaMeta, nhlMeta, liveStats]);
 
   // Keep latest meta in a ref so the polling interval reads fresh values
   // (effect dep array can't include meta without re-creating the interval).
@@ -468,9 +475,11 @@ function App() {
   React.useEffect(() => {
     const today = new Date().toLocaleDateString("en-CA");
     const tomorrow = (() => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toLocaleDateString("en-CA"); })();
-    // Include totals/team-totals so they also poll /api/live (for badge + running score display).
+    const yesterday = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toLocaleDateString("en-CA"); })();
+    // Include totals/team-totals so they also poll /api/live, and include yesterday's
+    // unresolved picks so games that ended after midnight UTC still get auto-settled.
     const hasTodayActivePicks = trackedPlays.some(p =>
-      !p.result && (p.gameDate === today || p.gameDate === tomorrow)
+      !p.result && (p.gameDate === today || p.gameDate === tomorrow || p.gameDate === yesterday)
     );
 
     if (liveIntervalRef.current) {

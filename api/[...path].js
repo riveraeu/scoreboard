@@ -4128,7 +4128,12 @@ var worker_default = {
         // ?games=mlb:LAD:SD,nba:GSW:LAL (sport:team1:team2, either home/away order)
         const gamesParam = (params.get("games") || "").trim();
         if (!gamesParam) return jsonResponse({});
-        const ptDate = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles" }).format(new Date());
+        // Optional ?date=YYYY-MM-DD or YYYYMMDD — defaults to today's PT date.
+        // Used for resolving picks from prior days whose ESPN scoreboard isn't on today's slate.
+        const dateParamRaw = (params.get("date") || "").trim();
+        const ptDate = dateParamRaw
+          ? (dateParamRaw.length === 8 ? `${dateParamRaw.slice(0,4)}-${dateParamRaw.slice(4,6)}-${dateParamRaw.slice(6,8)}` : dateParamRaw)
+          : new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles" }).format(new Date());
         const ptDateStr = ptDate.replace(/-/g, "");
         const SPORT_PATHS = { mlb: "baseball/mlb", nba: "basketball/nba", nhl: "hockey/nhl" };
 
