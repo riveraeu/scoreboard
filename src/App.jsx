@@ -263,11 +263,21 @@ function App() {
       ? `total|${play.sport}|${play.homeTeam}|${play.awayTeam}|${play.threshold}|${play.gameDate || ""}${play.direction === "under" ? "|under" : ""}`
       : `${play.sport || "nba"}|${play.playerName}|${play.stat}|${play.threshold}|${play.gameDate || ""}`;
     const savedOdds = play.americanOdds ?? -110;
+    // Recompute implied%, edge, and units from savedOdds. When the user overrides odds
+    // via the pendingOdds dialog (e.g. takes -250 at sportsbook vs -350 at Kalshi),
+    // the saved pick's edge/kalshiPct must reflect the price actually taken — otherwise
+    // unitsForPlay reads the stale Kalshi edge and the bet is sized for the wrong band.
+    const impliedFromOdds = savedOdds < 0
+      ? Math.abs(savedOdds) / (Math.abs(savedOdds) + 100) * 100
+      : 100 / (savedOdds + 100) * 100;
+    const newKalshiPct = parseFloat(impliedFromOdds.toFixed(1));
+    const truePct = play.direction === "under" ? (play.noTruePct ?? play.truePct) : play.truePct;
+    const newEdge = truePct != null ? parseFloat((truePct - newKalshiPct).toFixed(1)) : (play.edge ?? null);
+    const enriched = { ...play, americanOdds: savedOdds, kalshiPct: newKalshiPct, edge: newEdge };
     setTrackedPlays(prev => {
       if (prev.find(p => p.id === id)) return prev;
-      return [{ ...play, id, trackedAt: Date.now(), result: null,
-        units: unitsForPlay(play),
-        americanOdds: savedOdds,
+      return [{ ...enriched, id, trackedAt: Date.now(), result: null,
+        units: unitsForPlay(enriched),
       }, ...prev];
     });
   }

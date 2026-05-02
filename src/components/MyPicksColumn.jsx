@@ -457,7 +457,17 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                             <div>
                               <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Odds</div>
                               <input style={ei} type="number" defaultValue={pick.americanOdds}
-                                onBlur={e => { const v = parseInt(e.target.value); if (!isNaN(v)) setTrackedPlays(prev => prev.map(p => p.id === pick.id ? {...p, americanOdds: v, kalshiPct: parseFloat((v < 0 ? Math.abs(v)/(Math.abs(v)+100)*100 : 100/(v+100)*100).toFixed(1))} : p)); }} />
+                                onBlur={e => {
+                                  const v = parseInt(e.target.value);
+                                  if (isNaN(v)) return;
+                                  const implied = parseFloat((v < 0 ? Math.abs(v)/(Math.abs(v)+100)*100 : 100/(v+100)*100).toFixed(1));
+                                  setTrackedPlays(prev => prev.map(p => {
+                                    if (p.id !== pick.id) return p;
+                                    const tp = p.direction === "under" ? (p.noTruePct ?? p.truePct) : p.truePct;
+                                    const edge = tp != null ? parseFloat((tp - implied).toFixed(1)) : p.edge;
+                                    return { ...p, americanOdds: v, kalshiPct: implied, edge };
+                                  }));
+                                }} />
                             </div>
                             <div>
                               <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>True Prob %</div>
