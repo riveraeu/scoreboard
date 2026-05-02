@@ -317,24 +317,9 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                 : null;
               const totalLiveDisplay = totalGameScore ? buildTotalLiveDisplay(pick, totalGameScore) : null;
               const isLive = liveGame?.state === "in" || totalGameScore?.state === "in";
-              // Right-side box-score panel data — uses live data when available, falls back to scheduled time + stat label.
+              // Right-side live panel data — live time/state + current count.
               const _boxState = liveGame?.state || totalGameScore?.state || null;
               const _boxDetail = liveGame?.detail || totalGameScore?.detail || "";
-              const _fmtGameStart = pick.gameTime
-                ? new Date(pick.gameTime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
-                : "—";
-              const _STAT_BOX = { strikeouts: "K", hrr: "HRR", hits: "H", points: "PTS", rebounds: "REB", assists: "AST", threePointers: "3PM" };
-              const _statLabelTxt = (() => {
-                if (pick.gameType === "total") {
-                  const s = { mlb: "Runs", nba: "Pts", nhl: "Goals" }[pick.sport] || "Pts";
-                  return `${pick.direction === "under" ? "U" : "O"}${(pick.threshold-0.5).toFixed(1)} ${s}`;
-                }
-                if (pick.gameType === "teamTotal") {
-                  const s = { mlb: "Runs", nba: "Pts" }[pick.sport] || "Pts";
-                  return `O${(pick.threshold-0.5).toFixed(1)} ${s}`;
-                }
-                return `${pick.threshold}+ ${_STAT_BOX[pick.stat] || pick.stat.toUpperCase()}`;
-              })();
               const _liveCurrentVal = liveDisplay?.current ?? totalLiveDisplay?.current ?? null;
               const _liveColor = liveDisplay?.color ?? totalLiveDisplay?.color ?? "#8b949e";
               const _liveMet = liveDisplay?.met ?? totalLiveDisplay?.met ?? false;
@@ -536,13 +521,11 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                       );
                     })()}
                   </div>
-                  {/* Right-side box-score panel: 2x2 grid with start time + stat tracked on top, live time + current value below */}
+                  {/* Right-side live panel: live time/state + current value (stat tracked + start time are implied by the subtitle row) */}
                   {_showBox && (
-                    <div style={{flexShrink:0, alignSelf:"center", display:"grid", gridTemplateColumns:"auto auto", columnGap:7, rowGap:1, paddingLeft:6, borderLeft:"1px solid #21262d", marginLeft:2}}>
-                      <span style={{color:"#8b949e", fontSize:9, textAlign:"right", whiteSpace:"nowrap"}}>{_fmtGameStart}</span>
-                      <span style={{color:"#8b949e", fontSize:9, textAlign:"left", whiteSpace:"nowrap"}}>{_statLabelTxt}</span>
-                      <span style={{color:"#c9d1d9", fontSize:10, fontWeight:600, textAlign:"right", whiteSpace:"nowrap", maxWidth:80, overflow:"hidden", textOverflow:"ellipsis"}}>{_currentTimeTxt}</span>
-                      <span style={{color:_liveColor, fontSize:11, fontWeight:700, textAlign:"left", whiteSpace:"nowrap"}}>{_currentValTxt}</span>
+                    <div style={{flexShrink:0, alignSelf:"center", display:"flex", alignItems:"center", gap:7, paddingLeft:6, borderLeft:"1px solid #21262d", marginLeft:2}}>
+                      <span style={{color:"#c9d1d9", fontSize:10, fontWeight:600, whiteSpace:"nowrap", maxWidth:90, overflow:"hidden", textOverflow:"ellipsis"}}>{_currentTimeTxt}</span>
+                      <span style={{color:_liveColor, fontSize:12, fontWeight:700, whiteSpace:"nowrap"}}>{_currentValTxt}</span>
                     </div>
                   )}
                 </div>
