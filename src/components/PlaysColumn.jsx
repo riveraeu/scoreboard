@@ -567,8 +567,6 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                           const pkpLabel = csw != null ? "CSW%" : "K%";
                           const kbb = play.pitcherKBBPct ?? null;
                           const ap = play.pitcherAvgPitches ?? null;
-                          const recK = play.pitcherRecentKPct ?? null;
-                          const seaK = play.pitcherSeasonKPct ?? null;
                           const lkp = play.lineupKPct;
                           const pf = play.parkFactor;
                           const isProjected = play.lineupKPctProjected === true;
@@ -600,7 +598,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                           return (
                             <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.65}}>
                               <div>
-                                {first} has {pkpQual ? <>{pkpQual} </> : ""}swing-and-miss stuff{pkp != null && <> — <span style={{color:pkpColor,fontWeight:600}}>{pkp}% {pkpLabel}</span></>}{recK != null && <>{", "}<span style={{color:play.kTrendPts===2?"#3fb950":play.kTrendPts===0?"#f78166":"#e3b341",fontWeight:600}}>{recK.toFixed(1)}%</span>{" "}<span style={{color:"#8b949e"}}>recent{play.kTrendPts===2?" ↑":play.kTrendPts===0?" ↓":""}</span>{seaK!=null&&<span style={{color:"#484f58",fontSize:10}}> ({seaK.toFixed(1)}% season)</span>}</>}{ap != null && <>{", "}<span style={{color:"#8b949e"}}>avg {Math.round(ap)} pitches/start</span></>}.
+                                {first} has {pkpQual ? <>{pkpQual} </> : ""}swing-and-miss stuff{pkp != null && <> — <span style={{color:pkpColor,fontWeight:600}}>{pkp}% {pkpLabel}</span></>}{ap != null && <>{", "}<span style={{color:"#8b949e"}}>avg {Math.round(ap)} pitches/start</span></>}.
                                 {lkp != null && <>{" "}The <span style={{color:"#c9d1d9"}}>{oppName}</span> lineup strikes out at <span style={{color:lkpColor,fontWeight:600}}>{lkp}%</span>{handLabel}{isProjected ? <span style={{color:"#484f58",fontSize:10}}> (est.)</span> : ""}<span style={{color:"#8b949e"}}>{lkpDesc ? ` — ${lkpDesc}` : ""}.</span></>}
                                 {blendedHitRate != null && <>{" "}<span style={{color:"#8b949e"}}>Hit rate at this line:</span>{" "}<span style={{color:hitRateColor,fontWeight:600}}>{blendedHitRate.toFixed(0)}%</span>{" "}<span style={{color:"#8b949e"}}>{kHitRatePts===2?"— consistently reaches this mark.":kHitRatePts===1?"— reaches this mark often.":"— struggles to reach this mark."}</span></>}
                                 {h2hHandRate != null && <>{" "}<span style={{color:"#8b949e"}}>{h2hHandMaj?`vs ${h2hHandMaj}-heavy lineups:`:"Hand H2H:"}</span>{" "}<span style={{color:h2hHandColor,fontWeight:600}}>{h2hHandRate.toFixed(0)}% hit rate</span>{h2hHandStarts!=null&&<span style={{color:"#484f58",fontSize:10}}> ({h2hHandStarts} starts)</span>}{" "}<span style={{color:"#8b949e"}}>{h2hHandPts===2?"— strong vs this lineup type.":h2hHandPts===1?"— solid vs this lineup type.":"— struggles vs this lineup type."}</span></>}

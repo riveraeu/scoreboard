@@ -309,7 +309,6 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                         case "nbaPaceTotal": return m.nbaTotalPts ?? 1;
                         case "nba_spread": return m.nbaBlowoutAdj ?? 0;
                         case "mlbOu": return m.gameOuLine ?? m.hitterGameTotal ?? 0;
-                        case "ktrend": return m.kTrendPts ?? 0;
                         case "kHitRate": return m.blendedHitRate ?? 0;
                         case "ops": return m.hitterOps ?? 0;
                         case "hQuality": return m.hitterBatterQualityPts ?? 0;
@@ -400,7 +399,6 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                           if (k==="h2h") { const v = m.softPct; return v != null ? <span style={{color:v>=60?"#3fb950":v>=50?"#e3b341":"#f78166"}}>{v.toFixed(1)+"%"}</span> : DASH; }
                           if (k==="era") { const eraColor = stat === "strikeouts" ? (era < 3.5 ? "#3fb950" : era < 4.5 ? "#8b949e" : "#f78166") : (era >= 4.0 ? "#8b949e" : "#f78166"); return C(era != null ? parseFloat(era).toFixed(2) : null, eraColor); }
                           if (k==="ml")  return C(ml  != null ? fML(ml) : null, ml <= -121 ? "#3fb950" : ml <= 120 ? "#e3b341" : "#f78166");
-                          if (k==="ktrend") { const v = m.pitcherRecentKPct; const pts = m.kTrendPts; return C(v != null ? v.toFixed(1)+"%" : null, pts === 2 ? "#3fb950" : pts === 1 ? "#e3b341" : "#f78166"); }
                           if (k==="kHitRate") { const v=m.blendedHitRate; const pts=m.kHitRatePts; return v!=null ? <span style={{color:pts===2?"#3fb950":pts===1?"#e3b341":"#f78166"}}>{v.toFixed(1)+"%"}</span> : DASH; }
                           if (k==="kH2HHand") { const v=m.kH2HHandRate; const pts=m.kH2HHandPts; const n=m.kH2HHandStarts; const maj=m.kH2HHandMaj; if (v==null||n<5) return <span style={{color:"#484f58"}}>{n>0?`(${n})`:"—"}</span>; return <span title={maj?`vs ${maj==="R"?"right":"left"}-heavy lineups (${n} starts)`:undefined} style={{color:pts===2?"#3fb950":pts===1?"#e3b341":"#f78166"}}>{v.toFixed(1)+"%"}</span>; }
                           if (k==="ab")  return C(ab  != null ? String(ab) : null, ab >= 10 ? "#8b949e" : "#f78166");

@@ -110,7 +110,7 @@ User auth (`user:{email}`) and picks (`picks:{userId}`) live in the same Redis. 
 - `kH2HHandPts` — Pitcher's K hit rate vs opponents whose lineup hand majority matches tonight's. Tonight uses full switch-hitter adjustment (S vs RHP→L); historical uses `staticTeamHandMajority` (S = 0.5R + 0.5L). ≥5 starts required (≥80→2, ≥65→1, <65→0).
 - `totalPts` — O/U tier (≤7.5→2, <10.5→1, ≥10.5→0)
 
-**Display-only fields** (not in SimScore, kept for debug/calibration): `kbbPts`, `parkMeets`, `mlPts`, `kTrendPts` (`pitcherRecentKPct` shown in prose), `pitchesPts`.
+**Display-only fields** (not in SimScore, kept for debug/calibration): `kbbPts`, `parkMeets`, `mlPts`, `kTrendPts` (calibration breakdown only — no longer shown in prose), `pitchesPts`. Recent K% still drives the A1 effective-K blend in the model; just removed from explanations to declutter.
 
 **Gates** (in addition to SimScore ≥ 8):
 1. Threshold sanity: `threshold > ceil(expectedKs) + 2` → `qualified:false` (only when lineup confirmed and expectedKs available)

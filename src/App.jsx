@@ -1428,11 +1428,10 @@ function App() {
                           }, null) ?? allKPlays[0] ?? null;
                           if (tp) return { opp: tp.opponent, lineupKPct: tp.lineupKPct ?? dvpData?.h2h?.lineupKPct ?? null, lineupKPctProjected: tp.lineupKPctProjected ?? dvpData?.h2h?.lineupKPctProjected ?? false,
                             pitcherCSWPct: tp.pitcherCSWPct, pitcherKPct: tp.pitcherKPct, pitcherKBBPct: tp.pitcherKBBPct, pitcherAvgPitches: tp.pitcherAvgPitches, log5Avg: tp.log5Avg,
-                            pitcherRecentKPct: tp.pitcherRecentKPct ?? null, pitcherSeasonKPct: tp.pitcherSeasonKPct ?? null,
                             expectedKs: tp.expectedKs, parkFactor: tp.parkFactor, pitcherHand: tp.pitcherHand,
                             pitcherEra: tp.pitcherEra ?? null,
                             simScore: tp.simScore ?? null, finalSimScore: tp.finalSimScore ?? null,
-                            kpctMeets: tp.kpctMeets, kpctPts: tp.kpctPts, kbbMeets: tp.kbbMeets, kbbPts: tp.kbbPts, lkpMeets: tp.lkpMeets, lkpPts: tp.lkpPts, pitchesPts: tp.pitchesPts, parkMeets: tp.parkMeets, mlPts: tp.mlPts, totalPts: tp.totalPts, kTrendPts: tp.kTrendPts, kHitRatePts: tp.kHitRatePts, kH2HHandPts: tp.kH2HHandPts, kH2HHandRate: tp.kH2HHandRate, kH2HHandStarts: tp.kH2HHandStarts, kH2HHandMaj: tp.kH2HHandMaj,
+                            kpctMeets: tp.kpctMeets, kpctPts: tp.kpctPts, kbbMeets: tp.kbbMeets, kbbPts: tp.kbbPts, lkpMeets: tp.lkpMeets, lkpPts: tp.lkpPts, pitchesPts: tp.pitchesPts, parkMeets: tp.parkMeets, mlPts: tp.mlPts, totalPts: tp.totalPts, kHitRatePts: tp.kHitRatePts, kH2HHandPts: tp.kH2HHandPts, kH2HHandRate: tp.kH2HHandRate, kH2HHandStarts: tp.kH2HHandStarts, kH2HHandMaj: tp.kH2HHandMaj,
                             edge: tp.edge, rawEdge: tp.rawEdge, spreadAdj: tp.spreadAdj,
                             gameTotal: tp.gameTotal, gameMoneyline: tp.gameMoneyline,
                             lineupConfirmed: tp.lineupConfirmed ?? null, gameTime: tp.gameTime ?? null };
@@ -1477,8 +1476,6 @@ function App() {
                           const oppName = MLB_TEAM[h2h?.opp || mlbH2HOpp] || h2h?.opp || mlbH2HOpp;
                           const pitcherTeamName = MLB_TEAM[player.team] || player.team;
                           const ap = h2h?.pitcherAvgPitches ?? null;
-                          const recK = h2h?.pitcherRecentKPct ?? null;
-                          const seaK = h2h?.pitcherSeasonKPct ?? null;
                           const kH2HHandRate = h2h?.kH2HHandRate ?? null;
                           const kH2HHandStarts = h2h?.kH2HHandStarts ?? 0;
                           const kH2HHandMaj = h2h?.kH2HHandMaj ?? null;
@@ -1506,7 +1503,7 @@ function App() {
                                 {ap != null && <>, averaging <span style={{color:apColor,fontWeight:600}}>{Math.round(ap)}</span> pitches/start{apDesc ? <span style={{color:"#8b949e"}}> — {apDesc}</span> : ""}</>}.
                                 {lkp != null && <>{" "}The {oppName} lineup strikes out at <span style={{color:lkpColor,fontWeight:600}}>{lkp}%</span>{handLabel}{lkpProjected ? <span style={{color:"#484f58",fontSize:10}}> (est.)</span> : ""} — <span style={{color:"#8b949e"}}>{lkpDesc}</span>.</>}
                                 {pf != null && Math.abs(pf - 1.0) >= 0.01 && <>{" "}Tonight's venue {pf > 1 ? "is strikeout-friendly" : "suppresses strikeouts"} (<span style={{color:"#8b949e"}}>{pf > 1 ? "+" : ""}{((pf-1)*100).toFixed(0)}%</span>).</>}
-                                {(recK != null || gameTotal != null) && <>{" "}{recK != null && <><span style={{color:h2h?.kTrendPts===2?"#3fb950":h2h?.kTrendPts===0?"#f78166":"#e3b341",fontWeight:600}}>{recK.toFixed(1)}%</span><span style={{color:"#8b949e"}}> recent K%{h2h?.kTrendPts===2?" ↑":h2h?.kTrendPts===0?" ↓":""}{seaK!=null?` (${seaK.toFixed(1)}% season)`:""}</span>{gameTotal != null ? <span style={{color:"#8b949e"}}>, </span> : <span style={{color:"#8b949e"}}>.</span>}</>}{gameTotal != null && <><span style={{color:"#8b949e"}}>game total </span><span style={{color:totalColor(gameTotal),fontWeight:600}}>{gameTotal}</span><span style={{color:"#8b949e"}}>{gameTotal <= 8.5 ? " — a low-scoring slate, favorable for strikeouts" : gameTotal <= 10.5 ? " — an average total" : " — a high-scoring total, tougher for Ks"}.</span></>}</>}
+                                {gameTotal != null && <>{" "}<span style={{color:"#8b949e"}}>game total </span><span style={{color:totalColor(gameTotal),fontWeight:600}}>{gameTotal}</span><span style={{color:"#8b949e"}}>{gameTotal <= 8.5 ? " — a low-scoring slate, favorable for strikeouts" : gameTotal <= 10.5 ? " — an average total" : " — a high-scoring total, tougher for Ks"}.</span></>}
                                 {kH2HHandRate != null && kH2HHandStarts >= 5 && <>{" "}In <span style={{color:"#8b949e"}}>{kH2HHandStarts} starts vs {kH2HHandMaj === "R" ? "right" : kH2HHandMaj === "L" ? "left" : ""}-heavy lineups</span>, hit {strikeoutsThreshold != null ? `${strikeoutsThreshold}+` : "this threshold"} in <span style={{color:kH2HHandColor,fontWeight:600}}>{kH2HHandRate.toFixed(1)}%</span>.</>}
                                 {_sc != null && <>{" "}<SimBadge sc={_sc} scTitle={scTitle} scColor={scColor} /></>}
                                 {lineupBadgeSK && <>{" "}{lineupBadgeSK}</>}
