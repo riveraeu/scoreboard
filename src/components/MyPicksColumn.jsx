@@ -14,10 +14,15 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
         <div id="my-picks">
         {(() => {
         if (trackedPlays.length === 0) return null;
-        const settled = trackedPlays.filter(p => p.result && p.result !== "dnp");
+        const allSettled = trackedPlays.filter(p => p.result && p.result !== "dnp");
+        // Stats and chart are scoped to the currently-selected month so they line up.
+        const settled = allSettled.filter(p => {
+          const dk = p.gameDate || new Date(p.trackedAt).toISOString().slice(0,10);
+          return dk.startsWith(chartMonth || "");
+        });
         const wons = settled.filter(p => p.result === "won").length;
 
-        // P&L calculations (only won/lost picks, DNP excluded)
+        // P&L calculations (only won/lost picks within selected month, DNP excluded)
         let totalStaked = 0, totalPL = 0;
         settled.forEach(p => {
           const stake = p.units != null ? p.units : Math.abs(p.americanOdds || 0) / 10;
@@ -28,7 +33,7 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
         const roi = totalStaked > 0 ? (totalPL / totalStaked) * 100 : null;
         const plColor = totalPL > 0 ? "#3fb950" : totalPL < 0 ? "#f78166" : "#8b949e";
         const fmt = n => (n >= 0 ? "+" : "") + "$" + Math.abs(n).toFixed(2);
-        // Average odds across settled picks (average decimal odds → back to American)
+        // Average odds across selected-month settled picks
         const oddsSettled = settled.filter(p => p.americanOdds != null);
         const avgDecOdds = oddsSettled.length > 0
           ? oddsSettled.reduce((s, p) => s + (p.americanOdds >= 0 ? p.americanOdds/100+1 : 100/Math.abs(p.americanOdds)+1), 0) / oddsSettled.length
@@ -71,8 +76,8 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
               </div>
             </div>
 
-            {/* P&L Summary */}
-            {settled.length > 0 && (
+            {/* P&L Summary — scoped to selected month so stats line up with the calendar chart below */}
+            {allSettled.length > 0 && (
               <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:10,padding:"12px 16px",marginBottom:12}}>
                 <div style={{display:"flex",gap:20,flexWrap:"wrap",alignItems:"flex-start"}}>
                   <div>
@@ -81,9 +86,11 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                       <span style={{color:"#3fb950"}}>{wons}W</span>
                       <span style={{color:"#484f58"}}> – </span>
                       <span style={{color:"#f78166"}}>{settled.length - wons}L</span>
-                      <span style={{color:"#8b949e",fontSize:11,fontWeight:400,marginLeft:5}}>
-                        ({((wons / settled.length) * 100).toFixed(0)}%)
-                      </span>
+                      {settled.length > 0 && (
+                        <span style={{color:"#8b949e",fontSize:11,fontWeight:400,marginLeft:5}}>
+                          ({((wons / settled.length) * 100).toFixed(0)}%)
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div>
@@ -144,10 +151,9 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                 {(() => {
                   const [selY, selM] = (chartMonth || "").split("-").map(Number);
                   if (!selY || !selM) return null;
-                  const _today = new Date();
-                  const isCurrentMonth = selY === _today.getFullYear() && selM === (_today.getMonth() + 1);
-                  const _lastDay = new Date(selY, selM, 0).getDate(); // last day of month
-                  const lastDayShown = isCurrentMonth ? _today.getDate() : _lastDay;
+                  // Always render the full month so the x-axis scale is consistent across months;
+                  // future days are rendered as empty bars. This makes April vs May visually comparable.
+                  const lastDayShown = new Date(selY, selM, 0).getDate(); // last day of month
                   // Picks settled within the selected month, with computed P&L per pick
                   const monthPrefix = `${selY}-${String(selM).padStart(2,"0")}`;
                   const playsWithPL = [...trackedPlays]
