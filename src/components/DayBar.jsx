@@ -46,14 +46,14 @@ function DayBar({ day, HALF, maxAbs }) {
           opacity: visible ? 1 : 0.85, transition:"opacity 0.15s",
         }}/>
       )}
-      {visible && (
+      {visible && day.plays.length > 0 && (
         <div style={{
           position:"absolute", bottom: HALF + 8, left:"50%", transform:"translateX(-50%)",
           background:"#1c2128", border:"1px solid #30363d", borderRadius:6,
           padding:"6px 8px", zIndex:100, whiteSpace:"nowrap", pointerEvents:"none",
           fontSize:10, color:"#c9d1d9", minWidth:130,
         }}>
-          <div style={{fontWeight:600, marginBottom:4, color:"#8b949e"}}>{day.dateLabel}</div>
+          <div style={{fontWeight:600, marginBottom:4, color:"#8b949e"}}>{day.dateLabel || day.label}</div>
           {day.plays.map((p, i) => (
             <div key={i} style={{display:"flex", justifyContent:"space-between", gap:12}}>
               <span>{p.barLabel}</span>

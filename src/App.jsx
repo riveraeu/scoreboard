@@ -89,7 +89,10 @@ function App() {
   const [bankroll, setBankrollState] = React.useState(() => {
     return parseFloat(localStorage.getItem("scoreboard_bankroll") || "1000");
   });
-  const [chartGroupBy, setChartGroupBy] = React.useState("day");
+  const [chartMonth, setChartMonth] = React.useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+  });
   const [pendingTrackPlay, setPendingTrackPlay] = React.useState(null);
   const [pendingOdds, setPendingOdds] = React.useState("-110");
   const [openPickDays, setOpenPickDays] = React.useState(() => new Set([new Date().toLocaleDateString("en-CA")]));
@@ -2285,8 +2288,8 @@ function App() {
             bankroll={bankroll}
             setBankroll={setBankroll}
             setPickUnits={setPickUnits}
-            chartGroupBy={chartGroupBy}
-            setChartGroupBy={setChartGroupBy}
+            chartMonth={chartMonth}
+            setChartMonth={setChartMonth}
             openPickWeeks={openPickWeeks}
             setOpenPickWeeks={setOpenPickWeeks}
             openPickDays={openPickDays}

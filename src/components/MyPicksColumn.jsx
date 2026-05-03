@@ -5,7 +5,7 @@ import AddPickModal from './AddPickModal.jsx';
 import { buildLiveGameKey, buildLiveDisplay, buildTotalLiveDisplay, resolveTotalGameScore } from '../lib/liveStats.js';
 import { useIsMobile } from '../lib/hooks.js';
 
-function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToTeam, navigateToPlay, bankroll, setBankroll, setPickUnits, chartGroupBy, setChartGroupBy, openPickWeeks, setOpenPickWeeks, openPickDays, setOpenPickDays, editPickId, setEditPickId, setPlayResult, setShowAddPick, oddsToProfit, liveStats = {}, mlbGameScores = {}, nbaGameScores = {}, nhlGameScores = {} }) {
+function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToTeam, navigateToPlay, bankroll, setBankroll, setPickUnits, chartMonth, setChartMonth, openPickWeeks, setOpenPickWeeks, openPickDays, setOpenPickDays, editPickId, setEditPickId, setPlayResult, setShowAddPick, oddsToProfit, liveStats = {}, mlbGameScores = {}, nbaGameScores = {}, nhlGameScores = {} }) {
   const isMobile = useIsMobile();
   // Bump tap targets on mobile so the small ↺ ✎ buttons + stake input meet ~32px touch guidelines.
   const rowBtnPad = isMobile ? "6px 10px" : "2px 6px";
@@ -105,21 +105,48 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                     </div>
                   )}
                   <div style={{marginLeft:"auto"}}>
-                    <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Group by</div>
-                    <select value={chartGroupBy} onChange={e => setChartGroupBy(e.target.value)}
-                      style={{background:"#0d1117",border:"1px solid #30363d",borderRadius:4,color:"#8b949e",fontSize:11,padding:"2px 6px",cursor:"pointer",outline:"none"}}>
-                      <option value="day">Day</option>
-                      <option value="week">Week</option>
-                      <option value="month">Month</option>
-                      <option value="year">Year</option>
-                    </select>
+                    <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Month</div>
+                    {(() => {
+                      // Months with at least one settled pick + current month, descending.
+                      const ymSet = new Set();
+                      for (const p of trackedPlays) {
+                        if (!p.result || p.result === "dnp") continue;
+                        const dk = p.gameDate || new Date(p.trackedAt).toISOString().slice(0,10);
+                        ymSet.add(dk.slice(0,7));
+                      }
+                      const _now = new Date();
+                      const _curYm = `${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,"0")}`;
+                      ymSet.add(_curYm);
+                      const opts = [...ymSet].sort().reverse();
+                      const fmt = (ym) => {
+                        const [y, m] = ym.split("-").map(Number);
+                        return new Date(y, m-1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+                      };
+                      return (
+                        <select value={chartMonth} onChange={e => setChartMonth(e.target.value)}
+                          style={{background:"#0d1117",border:"1px solid #30363d",borderRadius:4,color:"#8b949e",fontSize:11,padding:"2px 6px",cursor:"pointer",outline:"none"}}>
+                          {opts.map(ym => <option key={ym} value={ym}>{fmt(ym)}</option>)}
+                        </select>
+                      );
+                    })()}
                   </div>
                 </div>
-                {/* P&L bar chart */}
+                {/* P&L calendar bar chart — one bar per day in selected month */}
                 {(() => {
+                  const [selY, selM] = (chartMonth || "").split("-").map(Number);
+                  if (!selY || !selM) return null;
+                  const _today = new Date();
+                  const isCurrentMonth = selY === _today.getFullYear() && selM === (_today.getMonth() + 1);
+                  const _lastDay = new Date(selY, selM, 0).getDate(); // last day of month
+                  const lastDayShown = isCurrentMonth ? _today.getDate() : _lastDay;
+                  // Picks settled within the selected month, with computed P&L per pick
+                  const monthPrefix = `${selY}-${String(selM).padStart(2,"0")}`;
                   const playsWithPL = [...trackedPlays]
                     .filter(p => p.result && p.result !== "dnp")
-                    .sort((a, b) => (a.gameDate || "").localeCompare(b.gameDate || "") || a.trackedAt - b.trackedAt)
+                    .filter(p => {
+                      const dk = p.gameDate || new Date(p.trackedAt).toISOString().slice(0,10);
+                      return dk.startsWith(monthPrefix);
+                    })
                     .map(p => {
                       const s = p.units != null ? p.units : Math.abs(p.americanOdds || 0) / 10;
                       const pl = p.result === "won" ? s * oddsToProfit(p.americanOdds) : -s;
@@ -129,37 +156,28 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                         : `${p.playerName} ${p.threshold}+ ${p.stat?.toUpperCase?.() || ""}`.trim();
                       return { pl, dateKey, barLabel };
                     });
-                  if (!playsWithPL.length) return null;
-                  // Bucket key + label per groupBy
-                  const toBucket = (dateKey) => {
-                    const [yr, mo, dy] = dateKey.split("-").map(Number);
-                    if (chartGroupBy === "month") return { key: `${yr}-${String(mo).padStart(2,"0")}`, label: new Date(yr, mo-1, 1).toLocaleDateString("en-US", { month:"short", year:"2-digit" }) };
-                    if (chartGroupBy === "year")  return { key: `${yr}`, label: `${yr}` };
-                    if (chartGroupBy === "week") {
-                      const d = new Date(yr, mo-1, dy);
-                      const dow = d.getDay(); // 0=Sun
-                      const mon = new Date(d); mon.setDate(d.getDate() - ((dow + 6) % 7));
-                      const wKey = mon.toISOString().slice(0,10);
-                      const wLabel = mon.toLocaleDateString("en-US", { month:"short", day:"numeric" });
-                      return { key: wKey, label: wLabel };
-                    }
-                    // day (default)
-                    return { key: dateKey, label: new Date(yr, mo-1, dy).toLocaleDateString("en-US", { month:"short", day:"numeric" }) };
-                  };
-                  const bucketMap = {};
+                  // Build calendar: day 1 → lastDayShown, every day gets a bucket (empty days = zero bar)
+                  const dayBuckets = {};
+                  for (let d = 1; d <= lastDayShown; d++) {
+                    const key = `${monthPrefix}-${String(d).padStart(2,"0")}`;
+                    const dateLabel = new Date(selY, selM-1, d).toLocaleDateString("en-US", { month: "short", day: "numeric", weekday: "short" });
+                    dayBuckets[key] = { key, label: String(d), dateLabel, pl: 0, wins: 0, losses: 0, plays: [] };
+                  }
                   playsWithPL.forEach(p => {
-                    const { key, label } = toBucket(p.dateKey);
-                    if (!bucketMap[key]) bucketMap[key] = { key, label, pl: 0, wins: 0, losses: 0, plays: [] };
-                    bucketMap[key].pl += p.pl;
-                    if (p.pl > 0) bucketMap[key].wins += p.pl;
-                    else if (p.pl < 0) bucketMap[key].losses += Math.abs(p.pl);
-                    bucketMap[key].plays.push(p);
+                    const b = dayBuckets[p.dateKey];
+                    if (!b) return;
+                    b.pl += p.pl;
+                    if (p.pl > 0) b.wins += p.pl;
+                    else if (p.pl < 0) b.losses += Math.abs(p.pl);
+                    b.plays.push(p);
                   });
-                  const days = Object.values(bucketMap).sort((a,b) => a.key.localeCompare(b.key));
+                  const days = Object.values(dayBuckets);
                   const maxAbs = Math.max(...days.map(d => Math.max(d.wins, d.losses)), 0.01);
                   const HALF = 60;
                   const yMax = maxAbs;
                   const yTicks = [yMax, yMax/2, 0, -yMax/2, -yMax];
+                  // Show every day's number, but emphasize 1st/5th/10th/15th/20th/25th/last for readability
+                  const _emphasizeDay = (d) => d === 1 || d === lastDayShown || d % 5 === 0;
                   return (
                     <div style={{marginTop:12,paddingTop:12,borderTop:"1px solid #21262d"}}>
                       <div style={{display:"flex",gap:4}}>
@@ -173,19 +191,23 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                         </div>
                         {/* Bars + x-axis */}
                         <div style={{flex:1,display:"flex",flexDirection:"column"}}>
-                          <div style={{position:"relative",height:HALF*2,display:"flex",gap:3,alignItems:"stretch"}}>
+                          <div style={{position:"relative",height:HALF*2,display:"flex",gap:2,alignItems:"stretch"}}>
                             <div style={{position:"absolute",left:0,right:0,top:HALF,height:1,background:"#30363d",zIndex:1}}/>
                             {days.map((day, i) => (
                               <DayBar key={i} day={day} HALF={HALF} maxAbs={maxAbs} />
                             ))}
                           </div>
-                          {/* X-axis labels */}
-                          <div style={{display:"flex",gap:3,marginTop:3}}>
-                            {days.map((day, i) => (
-                              <div key={i} style={{flex:1,textAlign:"center",color:"#484f58",fontSize:8,lineHeight:1.2,overflow:"hidden"}}>
-                                {day.label}
-                              </div>
-                            ))}
+                          {/* X-axis labels (every day, dim non-emphasized) */}
+                          <div style={{display:"flex",gap:2,marginTop:3}}>
+                            {days.map((day, i) => {
+                              const dayNum = parseInt(day.label, 10);
+                              const emph = _emphasizeDay(dayNum);
+                              return (
+                                <div key={i} style={{flex:1,textAlign:"center",color: emph ? "#8b949e" : "#30363d",fontSize:8,lineHeight:1.2,overflow:"hidden",fontWeight: emph ? 600 : 400}}>
+                                  {day.label}
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       </div>
