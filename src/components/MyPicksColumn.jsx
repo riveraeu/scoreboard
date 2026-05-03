@@ -50,11 +50,23 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
               {(() => {
                 const activeCount = trackedPlays.filter(p => !p.result).length;
                 const finishedCount = trackedPlays.filter(p => p.result && p.result !== "dnp").length;
+                const allWons = allSettled.filter(p => p.result === "won").length;
+                const allLosses = allSettled.length - allWons;
+                const winPct = allSettled.length > 0 ? Math.round((allWons / allSettled.length) * 100) : null;
                 return (
                   <span style={{fontSize:11,color:"#484f58"}}>
                     <span style={{color:"#3fb950"}}>{activeCount} active</span>
                     {" · "}
                     <span style={{color:"#8b949e"}}>{finishedCount} finished</span>
+                    {allSettled.length > 0 && (
+                      <>
+                        {" · "}
+                        <span style={{color:"#3fb950",fontWeight:600}}>{allWons}W</span>
+                        <span style={{color:"#484f58"}}>–</span>
+                        <span style={{color:"#f78166",fontWeight:600}}>{allLosses}L</span>
+                        {winPct != null && <span style={{color:"#484f58",marginLeft:4}}>({winPct}%)</span>}
+                      </>
+                    )}
                   </span>
                 );
               })()}
