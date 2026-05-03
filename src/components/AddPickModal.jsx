@@ -1,4 +1,5 @@
 import React from 'react';
+import { WORKER } from '../lib/constants.js';
 
 function useDebounce(val, ms) {
   const [dv, setDv] = React.useState(val);
@@ -27,6 +28,46 @@ function AddPickModal({ onClose, onAdd, initialOdds = "-110" }) {
   const [form, setForm] = React.useState({ playerName:"", sport:"nba", stat:"points", threshold:"", americanOdds:initialOdds, truePct:"", units: String(suggestUnits(initialOdds)), gameDate: new Date().toISOString().slice(0,10) });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  // Player typeahead — same /api/athletes endpoint as the main search.
+  // On selection we lock in playerId/playerTeam/sport so the saved pick has the
+  // same metadata as one tracked from the play card (live polling, headshot, etc.).
+  const [selectedAthlete, setSelectedAthlete] = React.useState(null);
+  const [suggestions, setSuggestions] = React.useState([]);
+  const [showDrop, setShowDrop] = React.useState(false);
+  const [searching, setSearching] = React.useState(false);
+  const debouncedName = useDebounce(form.playerName, 250);
+
+  React.useEffect(() => {
+    // Don't search if user just picked one (input value === selected name)
+    if (selectedAthlete && selectedAthlete.name === form.playerName) {
+      setSuggestions([]); setShowDrop(false); return;
+    }
+    if (debouncedName.trim().length < 2) { setSuggestions([]); setShowDrop(false); return; }
+    setSearching(true);
+    fetch(`${WORKER}/athletes?q=${encodeURIComponent(debouncedName)}`)
+      .then(r => r.json())
+      .then(data => {
+        const items = (data.items || []).slice(0, 8);
+        setSuggestions(items);
+        setShowDrop(items.length > 0);
+      })
+      .catch(() => setSuggestions([]))
+      .finally(() => setSearching(false));
+  }, [debouncedName, selectedAthlete, form.playerName]);
+
+  function pickAthlete(a) {
+    setSelectedAthlete(a);
+    // Auto-set sport from the athlete (avoids mismatch like NBA player tagged MLB)
+    setForm(f => ({ ...f, playerName: a.name, sport: a.league || f.sport, stat: SPORT_STATS[a.league || f.sport]?.[0] || f.stat }));
+    setShowDrop(false);
+    setSuggestions([]);
+  }
+
+  function onNameChange(v) {
+    set("playerName", v);
+    if (selectedAthlete && v !== selectedAthlete.name) setSelectedAthlete(null);
+  }
+
   // Reset stat when sport changes
   React.useEffect(() => {
     set("stat", SPORT_STATS[form.sport][0]);
@@ -44,6 +85,8 @@ function AddPickModal({ onClose, onAdd, initialOdds = "-110" }) {
       : 100 / (americanOdds + 100) * 100;
     onAdd({
       playerName: form.playerName.trim(),
+      ...(selectedAthlete?.id ? { playerId: String(selectedAthlete.id) } : {}),
+      ...(selectedAthlete?.team ? { playerTeam: selectedAthlete.team } : {}),
       sport: form.sport,
       sportKey: sportFull,
       stat: form.stat,
@@ -72,10 +115,40 @@ function AddPickModal({ onClose, onAdd, initialOdds = "-110" }) {
         </div>
         <form onSubmit={handleSubmit}>
           <div style={{display:"grid",gap:14}}>
-            <div>
-              <label style={lbl}>Player Name</label>
+            <div style={{position:"relative"}}>
+              <label style={lbl}>
+                Player Name
+                {selectedAthlete && (
+                  <span style={{marginLeft:6,fontSize:9,color:"#3fb950",fontWeight:700}}>
+                    ✓ {selectedAthlete.team}/{(selectedAthlete.league||"").toUpperCase()}
+                  </span>
+                )}
+              </label>
               <input style={inp} placeholder="e.g. Nikola Jokic" value={form.playerName}
-                onChange={e => set("playerName", e.target.value)} autoFocus />
+                onChange={e => onNameChange(e.target.value)}
+                onFocus={() => { if (suggestions.length > 0) setShowDrop(true); }}
+                onBlur={() => setTimeout(() => setShowDrop(false), 150)}
+                autoFocus autoComplete="off" />
+              {showDrop && suggestions.length > 0 && (
+                <div style={{position:"absolute",top:"100%",left:0,right:0,marginTop:2,
+                  background:"#0d1117",border:"1px solid #30363d",borderRadius:6,
+                  maxHeight:200,overflowY:"auto",zIndex:10,boxShadow:"0 4px 12px rgba(0,0,0,0.4)"}}>
+                  {suggestions.map(a => (
+                    <div key={a.id} onMouseDown={e => { e.preventDefault(); pickAthlete(a); }}
+                      style={{padding:"7px 10px",fontSize:12,color:"#c9d1d9",cursor:"pointer",
+                        display:"flex",alignItems:"center",gap:8,borderBottom:"1px solid #21262d"}}
+                      onMouseEnter={e => e.currentTarget.style.background = "#161b22"}
+                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                      <span style={{flex:1}}>{a.name}</span>
+                      <span style={{fontSize:10,color:"#8b949e",fontWeight:600}}>{a.team}</span>
+                      <span style={{fontSize:9,color:"#484f58",textTransform:"uppercase"}}>{a.league}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {searching && !showDrop && (
+                <div style={{position:"absolute",right:10,top:30,fontSize:10,color:"#484f58"}}>…</div>
+              )}
             </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
               <div>
