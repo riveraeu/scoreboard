@@ -1,7 +1,7 @@
 import React from 'react';
 import { STAT_LABEL } from '../lib/constants.js';
 
-function DayBar({ day, HALF, maxAbs }) {
+function DayBar({ day, HALF, maxAbs, edgeAnchor = "center" }) {
   const [hovered, setHovered] = React.useState(false);
   const [pinned, setPinned] = React.useState(false);
   const ref = React.useRef(null);
@@ -48,7 +48,10 @@ function DayBar({ day, HALF, maxAbs }) {
       )}
       {visible && day.plays.length > 0 && (
         <div style={{
-          position:"absolute", bottom: HALF + 8, left:"50%", transform:"translateX(-50%)",
+          position:"absolute", bottom: HALF + 8,
+          ...(edgeAnchor === "left" ? { left: 0, transform: "none" }
+            : edgeAnchor === "right" ? { right: 0, transform: "none" }
+            : { left: "50%", transform: "translateX(-50%)" }),
           background:"#1c2128", border:"1px solid #30363d", borderRadius:6,
           padding:"6px 8px", zIndex:100, whiteSpace:"nowrap", pointerEvents:"none",
           fontSize:10, color:"#c9d1d9", minWidth:130,

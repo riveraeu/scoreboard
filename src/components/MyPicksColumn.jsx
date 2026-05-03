@@ -208,9 +208,12 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                         <div style={{flex:1,display:"flex",flexDirection:"column"}}>
                           <div style={{position:"relative",height:HALF*2,display:"flex",gap:2,alignItems:"stretch"}}>
                             <div style={{position:"absolute",left:0,right:0,top:HALF,height:1,background:"#30363d",zIndex:1}}/>
-                            {days.map((day, i) => (
-                              <DayBar key={i} day={day} HALF={HALF} maxAbs={maxAbs} />
-                            ))}
+                            {days.map((day, i) => {
+                              // Anchor the tooltip away from the chart edges so it doesn't get cut off.
+                              // ~3 days on each side use left/right anchoring; everything else centers.
+                              const edgeAnchor = i < 3 ? "left" : (i > days.length - 4 ? "right" : "center");
+                              return <DayBar key={i} day={day} HALF={HALF} maxAbs={maxAbs} edgeAnchor={edgeAnchor} />;
+                            })}
                           </div>
                           {/* X-axis labels (every day, dim non-emphasized) */}
                           <div style={{display:"flex",gap:2,marginTop:3}}>
