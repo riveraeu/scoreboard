@@ -53,6 +53,17 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                 const allWons = allSettled.filter(p => p.result === "won").length;
                 const allLosses = allSettled.length - allWons;
                 const winPct = allSettled.length > 0 ? Math.round((allWons / allSettled.length) * 100) : null;
+                // All-time P&L + ROI for the header alongside record
+                let _allStaked = 0, _allPL = 0;
+                allSettled.forEach(p => {
+                  const stake = p.units != null ? p.units : Math.abs(p.americanOdds || 0) / 10;
+                  _allStaked += stake;
+                  if (p.result === "won") _allPL += stake * oddsToProfit(p.americanOdds);
+                  else _allPL -= stake;
+                });
+                const _allRoi = _allStaked > 0 ? (_allPL / _allStaked) * 100 : null;
+                const _allPLColor = _allPL > 0 ? "#3fb950" : _allPL < 0 ? "#f78166" : "#8b949e";
+                const _fmtPL = n => (n >= 0 ? "+" : "") + "$" + Math.abs(n).toFixed(2);
                 return (
                   <span style={{fontSize:11,color:"#484f58"}}>
                     <span style={{color:"#3fb950"}}>{activeCount} active</span>
@@ -65,6 +76,15 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                         <span style={{color:"#484f58"}}>–</span>
                         <span style={{color:"#f78166",fontWeight:600}}>{allLosses}L</span>
                         {winPct != null && <span style={{color:"#484f58",marginLeft:4}}>({winPct}%)</span>}
+                        {" · "}
+                        <span style={{color:_allPLColor,fontWeight:600}}>{_fmtPL(_allPL)}</span>
+                        {_allRoi != null && (
+                          <>
+                            {" · "}
+                            <span style={{color:_allPLColor,fontWeight:600}}>{_allRoi >= 0 ? "+" : ""}{_allRoi.toFixed(1)}%</span>
+                            <span style={{color:"#484f58",marginLeft:2}}>ROI</span>
+                          </>
+                        )}
                       </>
                     )}
                   </span>
