@@ -2157,8 +2157,23 @@ var worker_default = {
           } else {
             getStat = /* @__PURE__ */ __name((ev) => parseFloat(ev.stats[colIdx]), "getStat");
           }
-          allVals = gl.events.map(getStat).filter((v) => !isNaN(v));
-          playerColCache[cacheKey] = { getStat, allVals };
+          // Pitcher K props: filter gamelog to actual starts (IP ≥ 3 AND TBF ≥ 12).
+          // ESPN gamelog returns all appearances; mixing relief stints in tanks per-threshold
+          // hit rate. Applies once at cache build so all downstream uses (seasonPct, vals25/26,
+          // _bf26, soft-history fallbacks) operate on starter-only data.
+          let _evtPool = gl.events;
+          if (sport === "mlb" && col === "K") {
+            const _ipI = gl.ul.indexOf("IP"), _tbfI = gl.ul.indexOf("TBF");
+            if (_ipI !== -1 && _tbfI !== -1) {
+              _evtPool = gl.events.filter((ev) => {
+                const ip = parseFloat(ev.stats?.[_ipI] ?? "0") || 0;
+                const tbf = parseInt(ev.stats?.[_tbfI] ?? "0") || 0;
+                return ip >= 3.0 && tbf >= 12;
+              });
+            }
+          }
+          allVals = _evtPool.map(getStat).filter((v) => !isNaN(v));
+          playerColCache[cacheKey] = { getStat, allVals, _evtPool };
         }
         const plays = [];
         const dropped = [];
@@ -2233,19 +2248,22 @@ var worker_default = {
             if (isDebug) dropped.push({ ..._dropBase, reason: "col_not_found", col, headers: gl.ul });
             continue;
           }
-          const { getStat, allVals } = colCached;
+          const { getStat, allVals, _evtPool } = colCached;
           if (allVals.length === 0) {
             if (isDebug) dropped.push({ ..._dropBase, reason: "no_gamelog_vals" });
             continue;
           }
           const seasonPct = allVals.filter((v) => v >= threshold).length / allVals.length * 100;
-          const hasSeasonTags = sport === "mlb" && gl.events.length > 0 && gl.events[0].season !== void 0;
-          const vals26 = hasSeasonTags ? gl.events.filter((ev) => ev.season === 2026).map(getStat).filter((v) => !isNaN(v)) : [];
-          const vals25 = hasSeasonTags ? gl.events.filter((ev) => ev.season === 2025).map(getStat).filter((v) => !isNaN(v)) : [];
-          // For pitchers, compute total batters faced in 2026 using TBF column, fallback to IP*3.3, fallback to game count*20
+          // _evtPool is pre-filtered to starts when this is a pitcher K cache (MLB + col="K");
+          // for other props it's just gl.events. Use it for everything that needs season-tagged events.
+          const _glEvents = _evtPool || gl.events;
+          const hasSeasonTags = sport === "mlb" && _glEvents.length > 0 && _glEvents[0].season !== void 0;
           const _tbfIdx = gl.ul.indexOf("TBF");
           const _ipIdx2 = gl.ul.indexOf("IP");
-          const _events26 = hasSeasonTags ? gl.events.filter((ev) => ev.season === 2026) : [];
+          const vals26 = hasSeasonTags ? _glEvents.filter((ev) => ev.season === 2026).map(getStat).filter((v) => !isNaN(v)) : [];
+          const vals25 = hasSeasonTags ? _glEvents.filter((ev) => ev.season === 2025).map(getStat).filter((v) => !isNaN(v)) : [];
+          // For pitchers, compute total batters faced in 2026 using TBF column, fallback to IP*3.3, fallback to game count*20
+          const _events26 = hasSeasonTags ? _glEvents.filter((ev) => ev.season === 2026) : [];
           const _bf26 = sport === "mlb" && stat === "strikeouts"
             ? _tbfIdx !== -1
               ? _events26.reduce((s, ev) => s + (parseFloat(ev.stats[_tbfIdx]) || 0), 0)
@@ -2264,7 +2282,7 @@ var worker_default = {
                 const tIP = evs.reduce((s, ev) => { const ip = parseFloat(ev.stats[_ipIdx2]) || 0; return s + Math.floor(ip) + (ip % 1) * 10 / 3; }, 0);
                 return tIP >= 3 ? parseFloat((tER * 9 / tIP).toFixed(2)) : null;
               };
-              _pitcherEraFromGl = _calcEra(_events26) ?? _calcEra(gl.events);
+              _pitcherEraFromGl = _calcEra(_events26) ?? _calcEra(_glEvents);
             }
           }
           const pct26 = _thresh26 ? vals26.filter((v) => v >= threshold).length / vals26.length * 100 : null;
@@ -2305,7 +2323,7 @@ var worker_default = {
               if (v != null) return v;
               const _bbi = gl.ul.indexOf("BB");
               if (_bf26 == null || _bf26 < 15 || _bbi === -1) return null;
-              const _evs26 = hasSeasonTags ? gl.events.filter(ev => ev.season === 2026) : gl.events;
+              const _evs26 = hasSeasonTags ? _glEvents.filter(ev => ev.season === 2026) : _glEvents;
               const _bb26 = _evs26.reduce((s, e) => s + (parseFloat(e.stats[_bbi]) || 0), 0);
               return parseFloat((vals26.reduce((s, v) => s + v, 0) / _bf26 * 100 - _bb26 / _bf26 * 100).toFixed(1));
             })();
@@ -2319,7 +2337,8 @@ var worker_default = {
               const _pci = gl.ul.indexOf("PC") !== -1 ? gl.ul.indexOf("PC") : gl.ul.indexOf("P");
               if (_pci !== -1) {
                 const _ipIdx = gl.ul.indexOf("IP");
-                const _evs26 = hasSeasonTags ? gl.events.filter(ev => ev.season === 2026) : gl.events;
+                // _glEvents is already start-filtered for pitcher K; the IP>=3 fallback is redundant but kept for safety.
+                const _evs26 = hasSeasonTags ? _glEvents.filter(ev => ev.season === 2026) : _glEvents;
                 const _startEvs = _ipIdx !== -1 ? _evs26.filter(e => parseFloat(e.stats[_ipIdx]) >= 3) : _evs26;
                 const _pv = _startEvs.map(e => parseFloat(e.stats[_pci])).filter(v => !isNaN(v) && v > 0);
                 if (_pv.length >= 1) return parseFloat((_pv.reduce((a, b) => a + b, 0) / _pv.length).toFixed(1));
@@ -2453,15 +2472,16 @@ var worker_default = {
                 .map(([a]) => a)
             );
             const _kFilter = (ev) => similarKAbbrs.size > 0 ? similarKAbbrs.has(ev.oppAbbr) : true;
-            const _kVals26 = hasSeasonTags ? gl.events.filter((ev) => ev.season === 2026 && _kFilter(ev)).map(getStat).filter((v) => !isNaN(v)) : [];
-            const _kVals25 = hasSeasonTags ? gl.events.filter((ev) => ev.season === 2025 && _kFilter(ev)).map(getStat).filter((v) => !isNaN(v)) : [];
+            // Use _glEvents (start-filtered) for pitcher K — relief outings would skew the soft-bucket hit rate.
+            const _kVals26 = hasSeasonTags ? _glEvents.filter((ev) => ev.season === 2026 && _kFilter(ev)).map(getStat).filter((v) => !isNaN(v)) : [];
+            const _kVals25 = hasSeasonTags ? _glEvents.filter((ev) => ev.season === 2025 && _kFilter(ev)).map(getStat).filter((v) => !isNaN(v)) : [];
             // Compute BF for filtered 2026 events; prefer 2026 if 15+ BF, else add 2025
             const _kBF26 = _tbfIdx !== -1
-              ? gl.events.filter((ev) => ev.season === 2026 && _kFilter(ev)).reduce((s, ev) => s + (parseFloat(ev.stats[_tbfIdx]) || 0), 0)
+              ? _glEvents.filter((ev) => ev.season === 2026 && _kFilter(ev)).reduce((s, ev) => s + (parseFloat(ev.stats[_tbfIdx]) || 0), 0)
               : _ipIdx2 !== -1
-              ? gl.events.filter((ev) => ev.season === 2026 && _kFilter(ev)).reduce((s, ev) => { const ip = parseFloat(ev.stats[_ipIdx2]) || 0; return s + Math.floor(ip) * 3 + Math.round((ip % 1) * 10); }, 0)
+              ? _glEvents.filter((ev) => ev.season === 2026 && _kFilter(ev)).reduce((s, ev) => { const ip = parseFloat(ev.stats[_ipIdx2]) || 0; return s + Math.floor(ip) * 3 + Math.round((ip % 1) * 10); }, 0)
               : _kVals26.length * 20;
-            const _kValsAll = gl.events.filter(_kFilter).map(getStat).filter((v) => !isNaN(v));
+            const _kValsAll = _glEvents.filter(_kFilter).map(getStat).filter((v) => !isNaN(v));
             const _kVals2526 = [..._kVals25, ..._kVals26];
             // allVals = all career starts (pre-computed in playerColCache); use as final fallback
             softVals = (_kBF26 >= 15 && _kVals26.length >= 3) ? _kVals26 : _kVals2526.length >= 3 ? _kVals2526 : _kValsAll.length >= 3 ? _kValsAll : allVals;
