@@ -104,32 +104,41 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                       <div style={{color:"#c9d1d9",fontSize:13,fontWeight:700}}>{avgOddsStr}</div>
                     </div>
                   )}
-                  <div style={{marginLeft:"auto"}}>
-                    <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Month</div>
-                    {(() => {
-                      // Months with at least one settled pick + current month, descending.
-                      const ymSet = new Set();
-                      for (const p of trackedPlays) {
-                        if (!p.result || p.result === "dnp") continue;
-                        const dk = p.gameDate || new Date(p.trackedAt).toISOString().slice(0,10);
-                        ymSet.add(dk.slice(0,7));
-                      }
-                      const _now = new Date();
-                      const _curYm = `${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,"0")}`;
-                      ymSet.add(_curYm);
-                      const opts = [...ymSet].sort().reverse();
-                      const fmt = (ym) => {
-                        const [y, m] = ym.split("-").map(Number);
-                        return new Date(y, m-1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
-                      };
-                      return (
-                        <select value={chartMonth} onChange={e => setChartMonth(e.target.value)}
-                          style={{background:"#0d1117",border:"1px solid #30363d",borderRadius:4,color:"#8b949e",fontSize:11,padding:"2px 6px",cursor:"pointer",outline:"none"}}>
-                          {opts.map(ym => <option key={ym} value={ym}>{fmt(ym)}</option>)}
-                        </select>
-                      );
-                    })()}
-                  </div>
+                  {(() => {
+                    // chartMonth is "YYYY-MM"; split into separate Year + Month dropdowns.
+                    const [yStr, mStr] = (chartMonth || "").split("-");
+                    const selYr = parseInt(yStr, 10);
+                    const selMo = parseInt(mStr, 10);
+                    // Years with settled picks + current year, descending.
+                    const ySet = new Set();
+                    for (const p of trackedPlays) {
+                      if (!p.result || p.result === "dnp") continue;
+                      const dk = p.gameDate || new Date(p.trackedAt).toISOString().slice(0,10);
+                      ySet.add(parseInt(dk.slice(0,4), 10));
+                    }
+                    const _now = new Date();
+                    ySet.add(_now.getFullYear());
+                    const yearOpts = [...ySet].sort((a,b) => b - a);
+                    const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+                    const sel = { color:"#8b949e", fontSize:11, padding:"2px 6px", cursor:"pointer", outline:"none",
+                      background:"#0d1117", border:"1px solid #30363d", borderRadius:4 };
+                    return (
+                      <div style={{marginLeft:"auto",display:"flex",gap:8}}>
+                        <div>
+                          <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Month</div>
+                          <select value={selMo} onChange={e => setChartMonth(`${selYr}-${String(e.target.value).padStart(2,"0")}`)} style={sel}>
+                            {monthNames.map((n, i) => <option key={i+1} value={i+1}>{n}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Year</div>
+                          <select value={selYr} onChange={e => setChartMonth(`${e.target.value}-${String(selMo).padStart(2,"0")}`)} style={sel}>
+                            {yearOpts.map(y => <option key={y} value={y}>{y}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
                 {/* P&L calendar bar chart — one bar per day in selected month */}
                 {(() => {
