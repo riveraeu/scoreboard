@@ -53,8 +53,11 @@ function DayBar({ day, HALF, maxAbs, edgeAnchor = "center" }) {
             : edgeAnchor === "right" ? { right: 0, transform: "none" }
             : { left: "50%", transform: "translateX(-50%)" }),
           background:"#1c2128", border:"1px solid #30363d", borderRadius:6,
-          padding:"6px 8px", zIndex:100, whiteSpace:"nowrap", pointerEvents:"none",
+          padding:"6px 8px", zIndex:100, whiteSpace:"nowrap",
           fontSize:10, color:"#c9d1d9", minWidth:130,
+          // Cap height so days with many picks don't overflow the chart top.
+          // Inner scroll keeps content accessible; pointer-events:auto so users can scroll the list.
+          maxHeight:140, overflowY:"auto", pointerEvents: pinned ? "auto" : "none",
         }}>
           <div style={{fontWeight:600, marginBottom:4, color:"#8b949e"}}>{day.dateLabel || day.label}</div>
           {day.plays.map((p, i) => (

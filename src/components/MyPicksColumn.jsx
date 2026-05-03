@@ -191,8 +191,6 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                   const HALF = 60;
                   const yMax = maxAbs;
                   const yTicks = [yMax, yMax/2, 0, -yMax/2, -yMax];
-                  // Show every day's number, but emphasize 1st/5th/10th/15th/20th/25th/last for readability
-                  const _emphasizeDay = (d) => d === 1 || d === lastDayShown || d % 5 === 0;
                   return (
                     <div style={{marginTop:12,paddingTop:12,borderTop:"1px solid #21262d"}}>
                       <div style={{display:"flex",gap:4}}>
@@ -215,17 +213,13 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                               return <DayBar key={i} day={day} HALF={HALF} maxAbs={maxAbs} edgeAnchor={edgeAnchor} />;
                             })}
                           </div>
-                          {/* X-axis labels (every day, dim non-emphasized) */}
+                          {/* X-axis labels (every day, uniform color) */}
                           <div style={{display:"flex",gap:2,marginTop:3}}>
-                            {days.map((day, i) => {
-                              const dayNum = parseInt(day.label, 10);
-                              const emph = _emphasizeDay(dayNum);
-                              return (
-                                <div key={i} style={{flex:1,textAlign:"center",color: emph ? "#8b949e" : "#30363d",fontSize:8,lineHeight:1.2,overflow:"hidden",fontWeight: emph ? 600 : 400}}>
-                                  {day.label}
-                                </div>
-                              );
-                            })}
+                            {days.map((day, i) => (
+                              <div key={i} style={{flex:1,textAlign:"center",color:"#8b949e",fontSize:8,lineHeight:1.2,overflow:"hidden"}}>
+                                {day.label}
+                              </div>
+                            ))}
                           </div>
                         </div>
                       </div>
