@@ -48,16 +48,16 @@ function DayBar({ day, HALF, maxAbs, edgeAnchor = "center" }) {
       )}
       {visible && day.plays.length > 0 && (
         <div style={{
-          position:"absolute", bottom: HALF + 8,
+          // Position below the bar (below the chart container) — avoids the drawer's overflowY:auto
+          // clipping that was cutting off the top of tall tooltips. Top:100% places at parent's bottom.
+          position:"absolute", top: "100%", marginTop: 16,
           ...(edgeAnchor === "left" ? { left: 0, transform: "none" }
             : edgeAnchor === "right" ? { right: 0, transform: "none" }
             : { left: "50%", transform: "translateX(-50%)" }),
           background:"#1c2128", border:"1px solid #30363d", borderRadius:6,
           padding:"6px 8px", zIndex:100, whiteSpace:"nowrap",
           fontSize:10, color:"#c9d1d9", minWidth:130,
-          // Cap height so days with many picks don't overflow the chart top.
-          // Inner scroll keeps content accessible; pointer-events:auto so users can scroll the list.
-          maxHeight:140, overflowY:"auto", pointerEvents: pinned ? "auto" : "none",
+          boxShadow:"0 4px 12px rgba(0,0,0,0.5)",
         }}>
           <div style={{fontWeight:600, marginBottom:4, color:"#8b949e"}}>{day.dateLabel || day.label}</div>
           {day.plays.map((p, i) => (
