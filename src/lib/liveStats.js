@@ -24,12 +24,21 @@ const STAT_LABEL_LIVE = {
   threePointers: "3PM",
 };
 
-// Build the games param key for a pick (used to call /api/live and to look up results)
-export function buildLiveGameKey(pick) {
+// Raw game key without date — used as the `games` param to /api/live.
+export function buildLiveGameKeyRaw(pick) {
   if (pick.gameType === "total") return `${pick.sport}:${pick.awayTeam}:${pick.homeTeam}`;
   if (pick.gameType === "teamTotal") return `${pick.sport}:${pick.scoringTeam}:${pick.oppTeam}`;
   // Player prop — playerTeam + opponent (either order; backend matches both)
   return `${pick.sport}:${pick.playerTeam}:${pick.opponent}`;
+}
+
+// Date-scoped key for the client-side liveStats map. The same matchup (e.g. NYY:BAL) can
+// recur across consecutive days — without the date suffix, an earlier day's response
+// overwrites today's during the merge in fetchLiveStats and stale stats leak into the UI
+// (and the auto-resolver), incorrectly settling today's picks against yesterday's box.
+export function buildLiveGameKey(pick) {
+  const raw = buildLiveGameKeyRaw(pick);
+  return pick.gameDate ? `${raw}|${pick.gameDate}` : raw;
 }
 
 // Extract the relevant numeric stat value for a pick from the live players map.
@@ -74,8 +83,9 @@ export function buildLiveDisplay(pick, liveGame) {
 }
 
 // Resolve a game-score entry for a totals/team-total pick. `liveStats` is keyed by
-// `sport:team:team` (from /api/live polling); `gameScores` is keyed by homeTeam abbr
-// (from mlbMeta/nbaMeta/nhlMeta — frozen at /api/tonight load). Prefer live, fall back.
+// `sport:team:team|gameDate` (from /api/live polling, scoped by pick.gameDate);
+// `gameScores` is keyed by homeTeam abbr (from mlbMeta/nbaMeta/nhlMeta — frozen at
+// /api/tonight load, today only). Prefer live, fall back.
 export function resolveTotalGameScore(pick, liveStats, gameScores) {
   const liveKey = buildLiveGameKey(pick);
   const live = liveStats?.[liveKey];

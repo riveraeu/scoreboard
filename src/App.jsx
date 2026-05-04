@@ -113,7 +113,7 @@ function App() {
   const [authError, setAuthError] = React.useState("");
   const [authLoading, setAuthLoading] = React.useState(false);
   const [syncStatus, setSyncStatus] = React.useState(null); // "saving"|"saved"|"error"
-  const [liveStats, setLiveStats] = React.useState({}); // { "sport:team1:team2": { state, detail, players } }
+  const [liveStats, setLiveStats] = React.useState({}); // { "sport:team1:team2|gameDate": { state, detail, players } }
   const liveIntervalRef = React.useRef(null);
   const liveMetaRef = React.useRef({ mlbMeta: null, nbaMeta: null, nhlMeta: null });
   const syncTimer = React.useRef(null);
@@ -374,32 +374,43 @@ function App() {
     // Collect unique game keys for ALL active picks (player props + totals + team totals),
     // grouped by gameDate so we can hit /api/live with the right date for each batch.
     // Yesterday's picks need yesterday's ESPN scoreboard, today's need today's.
-    const pickKeyMap = new Map(); // pick.id → gameKey
-    const keysByDate = new Map(); // gameDate → Set<gameKey>
+    // pickKeyMap stores DATE-SCOPED keys (`raw|gameDate`); the same matchup recurring
+    // across days would otherwise alias and let one day's response settle another's pick.
+    const pickKeyMap = new Map(); // pick.id → `${rawKey}|${gameDate}`
+    const keysByDate = new Map(); // gameDate → Set<rawKey>  (raw is what /api/live expects)
     for (const p of activePicks) {
-      let key = null;
+      let rawKey = null;
       if (p.gameType === "total") {
-        if (p.homeTeam && p.awayTeam) key = `${p.sport}:${p.awayTeam}:${p.homeTeam}`;
+        if (p.homeTeam && p.awayTeam) rawKey = `${p.sport}:${p.awayTeam}:${p.homeTeam}`;
       } else if (p.gameType === "teamTotal") {
-        if (p.scoringTeam && p.oppTeam) key = `${p.sport}:${p.scoringTeam}:${p.oppTeam}`;
+        if (p.scoringTeam && p.oppTeam) rawKey = `${p.sport}:${p.scoringTeam}:${p.oppTeam}`;
       } else {
         const { playerTeam, opponent } = resolveTeams(p);
-        if (playerTeam && opponent) key = `${p.sport}:${playerTeam}:${opponent}`;
+        if (playerTeam && opponent) rawKey = `${p.sport}:${playerTeam}:${opponent}`;
       }
-      if (!key || !p.gameDate) continue;
-      pickKeyMap.set(p.id, key);
+      if (!rawKey || !p.gameDate) continue;
+      pickKeyMap.set(p.id, `${rawKey}|${p.gameDate}`);
       if (!keysByDate.has(p.gameDate)) keysByDate.set(p.gameDate, new Set());
-      keysByDate.get(p.gameDate).add(key);
+      keysByDate.get(p.gameDate).add(rawKey);
     }
     if (!keysByDate.size) return;
 
     try {
       // Fan out one /api/live call per distinct gameDate. Today omits the date param
-      // (default behavior); other dates pass `&date=YYYY-MM-DD`.
+      // (default behavior); other dates pass `&date=YYYY-MM-DD`. Server response is keyed by
+      // the raw matchup; we re-scope to `raw|gameDate` before merging so cross-day collisions
+      // can't overwrite each other (e.g. NYY:BAL on consecutive days).
       const fetches = [...keysByDate.entries()].map(([gd, keys]) => {
         const games = [...keys].join(",");
         const dateQs = gd === today ? "" : `&date=${gd}`;
-        return fetch(`${WORKER}/live?games=${games}${dateQs}`).then(r => r.ok ? r.json() : {}).catch(() => ({}));
+        return fetch(`${WORKER}/live?games=${games}${dateQs}`)
+          .then(r => r.ok ? r.json() : {})
+          .catch(() => ({}))
+          .then(resp => {
+            const scoped = {};
+            for (const [k, v] of Object.entries(resp)) scoped[`${k}|${gd}`] = v;
+            return scoped;
+          });
       });
       const responses = await Promise.all(fetches);
       const data = Object.assign({}, ...responses);
