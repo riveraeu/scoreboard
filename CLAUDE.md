@@ -48,7 +48,7 @@ User auth (`user:{email}`) and picks (`picks:{userId}`) live in the same Redis. 
 ### Cache keys & TTLs
 | Key | TTL | Notes |
 |---|---|---|
-| `byteam:mlb` | 600s | Probables, lineup K-rates, pitcher avg pitches/BF. **Excludes** `barrelPctMap` (separate). 60s if lineup data empty. |
+| `byteam:mlb` | 600s | Probables, lineup K-rates, pitcher avg pitches/BF. **Excludes** `barrelPctMap` (separate). 60s short-TTL guard when any of `lineupSpotByName`, `pitcherAvgPitches`, `hitterOpsMap`, `pitcherH2HStarts` is empty — independent MLB Stats API calls fail silently (`.catch(() => ({}))`) so a successful lineup hydration alongside a failed OPS or gamelog fetch would otherwise bake partial data for 10min, starving HRR OPS / K H2H Hand / platoon / recent K% columns. |
 | `byteam:nba` / `:scoring` | 1800s / 21600s | Defensive stats / offensive PPG |
 | `byteam:nhl` | 21600s | GAA + SA per team |
 | `byteam:nfl` | 1800s | |
