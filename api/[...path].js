@@ -4199,8 +4199,18 @@ var worker_default = {
             if (sbRes.ok) sbEvents = (await sbRes.json()).events || [];
           } catch { /* scoreboard unavailable — return pre for all */ }
 
+          // ESPN uses different abbrs from our canonical (MLB Stats API) for some teams.
+          // Currently only CWS↔CHW (Chicago White Sox); add more here if discovered.
+          // Translate inputs → ESPN form when matching events; translate ESPN's response → canonical
+          // so downstream consumers (auto-resolver, totals/team-totals lookups keyed by pick.homeTeam)
+          // see the same abbr the pick was tracked with.
+          const MLB_TO_ESPN = sport === "mlb" ? { CWS: "CHW" } : {};
+          const ESPN_TO_MLB = sport === "mlb" ? { CHW: "CWS" } : {};
+          const toEspn = a => MLB_TO_ESPN[a] || a;
+          const toCanonical = a => ESPN_TO_MLB[a] || a;
+
           await Promise.all(uncached.map(async ({ key, teams, cacheKey }) => {
-            const [t1, t2] = teams;
+            const [t1, t2] = teams.map(toEspn);
 
             // Find matching event
             const event = sbEvents.find(ev => {
@@ -4216,8 +4226,8 @@ var worker_default = {
             const detail = comp?.status?.type?.shortDetail || comp?.status?.type?.detail || "";
             const homeComp = (comp?.competitors || []).find(c => c.homeAway === "home");
             const awayComp = (comp?.competitors || []).find(c => c.homeAway === "away");
-            const homeTeam = homeComp?.team?.abbreviation?.toUpperCase() || null;
-            const awayTeam = awayComp?.team?.abbreviation?.toUpperCase() || null;
+            const homeTeam = toCanonical(homeComp?.team?.abbreviation?.toUpperCase()) || null;
+            const awayTeam = toCanonical(awayComp?.team?.abbreviation?.toUpperCase()) || null;
             const homeScore = parseInt(homeComp?.score) || 0;
             const awayScore = parseInt(awayComp?.score) || 0;
 

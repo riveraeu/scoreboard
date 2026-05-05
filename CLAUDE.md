@@ -280,6 +280,8 @@ For totals: dedup key is `homeTeam|awayTeam|threshold` (game) or `sport|scoringT
 
 **NHL_ABBR_MAP**: NHL Stats API teamIds → abbreviations. **UTA (Utah Mammoth) = teamId 68** (rebranded from Utah Hockey Club for 2025-26; old teamId 53 absent). New teams showing `—` for GPG/GAA/SA need their teamId added.
 
+**MLB ESPN abbr mismatch**: ESPN scoreboard uses `CHW` for the Chicago White Sox; our canonical (MLB Stats API via `MLB_ID_TO_ABBR[145]`) is `CWS`. `/api/live` translates at the ESPN boundary via `MLB_TO_ESPN`/`ESPN_TO_MLB` maps so picks tracked with `opponent: "CWS"` still match the ESPN event and so the response's `homeTeam`/`awayTeam` come back as `CWS` (matching `pick.homeTeam` etc.). All other 2026 MLB abbrs match between sources. If a team rebrands or a new abbr mismatch surfaces, add it to both maps in the `/api/live` handler.
+
 **gameTimes lookup chain** (in play loop): `sport:team:gameDate` → `sport:team:tomorrowISOStr` (handles Kalshi encoding tomorrow's games under today's ticker date) → bare `sport:team`.
 
 **`gameScores` today + tomorrow merge**: Each ESPN scoreboard fetch that produces `gameScores` (MLB tonight, NBA tonight, NBA fallback, NHL fallback) fetches **today AND tomorrow in parallel** (PT date, `Date.now() - 7h`) and passes merged events to `parseGameScores`. Today's events alone go to `parseGameOdds`/probables (so tomorrow doesn't overwrite today's pitcher/odds). `parseGameScores` keys by `${hA}|${gameDate}` so today's NYY and tomorrow's NYY don't collide. Without this, when today's MLB is all `state==="post"` (or after midnight UTC for NBA/NHL using UTC date), today's "Final" data is wiped and the today-tab matchup cards have no `gameState` to seed.
