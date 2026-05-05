@@ -1,7 +1,7 @@
 import React from 'react';
 import { STAT_LABEL, STAT_FULL, MLB_TEAM } from '../lib/constants.js';
 import { ordinal, logoUrl } from '../lib/utils.js';
-import { tierColor } from '../lib/colors.js';
+import { tierColor, edgeUnitColor } from '../lib/colors.js';
 import SimBadge from './SimBadge.jsx';
 
 function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilter = [], statFilter = [], trackedPlays, trackPlay, untrackPlay, navigateToPlay, navigateToTeam, expandedPlays, setExpandedPlays, hideHeader, gridColumns }) {
@@ -116,10 +116,12 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                           borderRadius:6,padding:"2px 8px",fontSize:12,color:isUnder?"#f78166":"#58a6ff",fontWeight:700,whiteSpace:"nowrap"}}>
                           {isUnder ? "Under" : "Over"} {lineVal} {tLabel}
                         </span>
-                        <span style={{background:"rgba(63,185,80,0.13)",border:"1px solid #3fb950",
-                          borderRadius:6,padding:"2px 8px",fontSize:12,color:"#3fb950",fontWeight:700,whiteSpace:"nowrap"}}>
-                          +{play.edge}%
-                        </span>
+                        {(() => { const _ec = edgeUnitColor(play.edge); return (
+                          <span style={{background:_ec+"22",border:`1px solid ${_ec}`,
+                            borderRadius:6,padding:"2px 8px",fontSize:12,color:_ec,fontWeight:700,whiteSpace:"nowrap"}}>
+                            +{play.edge}%
+                          </span>
+                        ); })()}
                         <button onClick={e => { e.stopPropagation(); if (isTracked) { untrackPlay(trackId); return; } trackPlay(play, e); }}
                           title={isTracked ? "Remove from My Picks" : "Add to My Picks"}
                           style={{background: isTracked ? "rgba(227,179,65,0.15)" : "transparent",
@@ -269,10 +271,12 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                           borderRadius:6,padding:"2px 8px",fontSize:12,color:isUnder?"#f78166":"#58a6ff",fontWeight:700,whiteSpace:"nowrap"}}>
                           {isUnder ? "Under" : "Over"} {lineVal} {tLabel}
                         </span>
-                        <span style={{background:"rgba(63,185,80,0.13)",border:"1px solid #3fb950",
-                          borderRadius:6,padding:"2px 8px",fontSize:12,color:"#3fb950",fontWeight:700,whiteSpace:"nowrap"}}>
-                          +{play.edge}%
-                        </span>
+                        {(() => { const _ec = edgeUnitColor(play.edge); return (
+                          <span style={{background:_ec+"22",border:`1px solid ${_ec}`,
+                            borderRadius:6,padding:"2px 8px",fontSize:12,color:_ec,fontWeight:700,whiteSpace:"nowrap"}}>
+                            +{play.edge}%
+                          </span>
+                        ); })()}
                         <button onClick={e => { e.stopPropagation(); isTracked ? untrackPlay(trackId) : trackPlay(play, e); }}
                           title={isTracked ? "Remove from My Picks" : "Add to My Picks"}
                           style={{background: isTracked ? "rgba(227,179,65,0.15)" : "transparent",
@@ -488,10 +492,12 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                         borderRadius:6,padding:"2px 8px",fontSize:12,color:"#58a6ff",fontWeight:700,whiteSpace:"nowrap"}}>
                         {play.threshold}+ {STAT_LABEL[play.stat] || play.stat}
                       </span>
-                      <span style={{background:"rgba(63,185,80,0.13)",border:"1px solid #3fb950",
-                        borderRadius:6,padding:"2px 8px",fontSize:12,color:"#3fb950",fontWeight:700,whiteSpace:"nowrap"}}>
-                        +{play.edge}%
-                      </span>
+                      {(() => { const _ec = edgeUnitColor(play.edge); return (
+                        <span style={{background:_ec+"22",border:`1px solid ${_ec}`,
+                          borderRadius:6,padding:"2px 8px",fontSize:12,color:_ec,fontWeight:700,whiteSpace:"nowrap"}}>
+                          +{play.edge}%
+                        </span>
+                      ); })()}
                       <button onClick={e => { e.stopPropagation(); if (isTracked) { untrackPlay(trackId); return; } trackPlay(play, e); }}
                         title={isTracked ? "Remove from My Picks" : "Add to My Picks"}
                         style={{background: isTracked ? "rgba(227,179,65,0.15)" : "transparent",
