@@ -101,6 +101,7 @@ function App() {
     const mon = new Date(d); mon.setDate(d.getDate() - ((dow + 6) % 7));
     return new Set([mon.toLocaleDateString("en-CA")]);
   });
+  const [openPickMonths, setOpenPickMonths] = React.useState(() => new Set([new Date().toLocaleDateString("en-CA").slice(0, 7)]));
   const [showAddPick, setShowAddPick] = React.useState(false);
   const [showPicksDrawer, setShowPicksDrawer] = React.useState(false);
   const [flyingPick, setFlyingPick] = React.useState(null);
@@ -2301,6 +2302,8 @@ function App() {
             setPickUnits={setPickUnits}
             chartMonth={chartMonth}
             setChartMonth={setChartMonth}
+            openPickMonths={openPickMonths}
+            setOpenPickMonths={setOpenPickMonths}
             openPickWeeks={openPickWeeks}
             setOpenPickWeeks={setOpenPickWeeks}
             openPickDays={openPickDays}

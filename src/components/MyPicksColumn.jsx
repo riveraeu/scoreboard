@@ -6,7 +6,7 @@ import { buildLiveGameKey, buildLiveProgress, resolveTotalGameScore } from '../l
 import { edgeUnitColor } from '../lib/colors.js';
 import { useIsMobile } from '../lib/hooks.js';
 
-function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToTeam, navigateToPlay, bankroll, setBankroll, setPickUnits, chartMonth, setChartMonth, openPickWeeks, setOpenPickWeeks, openPickDays, setOpenPickDays, editPickId, setEditPickId, setPlayResult, setShowAddPick, oddsToProfit, liveStats = {}, mlbGameScores = {}, nbaGameScores = {}, nhlGameScores = {} }) {
+function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToTeam, navigateToPlay, bankroll, setBankroll, setPickUnits, chartMonth, setChartMonth, openPickMonths, setOpenPickMonths, openPickWeeks, setOpenPickWeeks, openPickDays, setOpenPickDays, editPickId, setEditPickId, setPlayResult, setShowAddPick, oddsToProfit, liveStats = {}, mlbGameScores = {}, nbaGameScores = {}, nhlGameScores = {} }) {
   const isMobile = useIsMobile();
   // Bump tap targets on mobile so the small ↺ ✎ buttons + stake input meet ~32px touch guidelines.
   const rowBtnPad = isMobile ? "6px 10px" : "2px 6px";
@@ -293,6 +293,7 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
               const yesterdayKey = (() => { const d = new Date(); d.setDate(d.getDate()-1); return d.toLocaleDateString("en-CA"); })();
               const toggleDay = dk => setOpenPickDays(prev => { const n = new Set(prev); n.has(dk) ? n.delete(dk) : n.add(dk); return n; });
               const toggleWeek = wk => setOpenPickWeeks(prev => { const n = new Set(prev); n.has(wk) ? n.delete(wk) : n.add(wk); return n; });
+              const toggleMonth = mk => setOpenPickMonths(prev => { const n = new Set(prev); n.has(mk) ? n.delete(mk) : n.add(mk); return n; });
               const calcPL = picks => {
                 const settled = picks.filter(p => p.result && p.result !== "dnp");
                 if (!settled.length) return null;
@@ -301,7 +302,44 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                   return sum + (p.result === "won" ? s * oddsToProfit(p.americanOdds) : -s);
                 }, 0);
               };
-              return weekOrder.map(({ wk, dayOrder }) => {
+              // Group weeks by month (key = YYYY-MM of the week's Monday — weeks crossing a
+              // month boundary land in the month they started in, matching the week-of-Monday rule).
+              const monthOrder = []; const monthMap = {};
+              for (const wkObj of weekOrder) {
+                const mk = wkObj.wk.slice(0, 7);
+                if (!monthMap[mk]) { monthMap[mk] = { mk, weeks: [] }; monthOrder.push(monthMap[mk]); }
+                monthMap[mk].weeks.push(wkObj);
+              }
+              return monthOrder.map(({ mk, weeks }) => {
+                const monthOpen = openPickMonths.has(mk);
+                const [myr, mmo] = mk.split("-").map(Number);
+                const monthLabel = new Date(myr, mmo - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+                const allMonthPicks = weeks.flatMap(w => w.dayOrder.flatMap(d => d.picks));
+                const monthPL = calcPL(allMonthPicks);
+                const monthActive = allMonthPicks.filter(p => !p.result).length;
+                const monthPLColor = monthPL > 0 ? "#3fb950" : monthPL < 0 ? "#f78166" : "#8b949e";
+                return (
+                  <div key={mk} style={{marginBottom:10}}>
+                    <div onClick={() => toggleMonth(mk)}
+                      style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",
+                        background:"#0d1117",border:"1px solid #30363d",borderRadius:monthOpen ? "8px 8px 0 0" : 8,
+                        cursor:"pointer",userSelect:"none"}}>
+                      <span style={{color:"#8b949e",fontSize:11,display:"inline-block",
+                        transition:"transform 0.15s",transform:monthOpen?"rotate(90deg)":"rotate(0deg)"}}>▸</span>
+                      <span style={{color:"#e6edf3",fontSize:13,fontWeight:700}}>{monthLabel}</span>
+                      <span style={{background:"#21262d",borderRadius:8,padding:"0px 6px",fontSize:10,color:"#8b949e"}}>
+                        {allMonthPicks.length}
+                      </span>
+                      {monthActive > 0 && <span style={{fontSize:10,color:"#3fb950"}}>{monthActive} active</span>}
+                      {monthPL !== null && (
+                        <span style={{marginLeft:"auto",fontSize:13,fontWeight:700,color:monthPLColor}}>
+                          {monthPL >= 0 ? "+" : ""}${Math.abs(monthPL).toFixed(2)}
+                        </span>
+                      )}
+                    </div>
+                    {monthOpen && (
+                      <div style={{border:"1px solid #30363d",borderTop:"none",borderRadius:"0 0 8px 8px",padding:"6px 6px 2px 6px"}}>
+                        {weeks.map(({ wk, dayOrder }) => {
                 const weekOpen = openPickWeeks.has(wk);
                 const [wyr, wmo, wdy] = wk.split("-").map(Number);
                 const weekLabel = "Week of " + new Date(wyr, wmo-1, wdy).toLocaleDateString("en-US", { month:"short", day:"numeric" });
@@ -613,6 +651,11 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                               )}
                             </div>
                           );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
                         })}
                       </div>
                     )}
