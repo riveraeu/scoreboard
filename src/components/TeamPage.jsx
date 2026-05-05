@@ -1,6 +1,6 @@
 import React from 'react';
 import { SPORT_KEY, STAT_LABEL } from '../lib/constants.js';
-import { tierColor, edgeUnitColor } from '../lib/colors.js';
+import { tierColor } from '../lib/colors.js';
 import TotalsBarChart from './TotalsBarChart.jsx';
 import SimBadge from './SimBadge.jsx';
 
@@ -468,12 +468,12 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, allTonightPlays, on
                     borderRadius:5,padding:'1px 7px',fontSize:11,color:'#58a6ff',fontWeight:700,whiteSpace:'nowrap'}}>
                     {play.threshold}+ {STAT_LABEL[play.stat] || play.stat}
                   </span>
-                  {isQual && play.edge != null && (() => { const _ec = edgeUnitColor(play.edge); return (
-                    <span style={{background:_ec+'22',border:`1px solid ${_ec}`,
-                      borderRadius:5,padding:'1px 7px',fontSize:11,color:_ec,fontWeight:700,whiteSpace:'nowrap'}}>
+                  {isQual && play.edge != null && (
+                    <span style={{background:'rgba(63,185,80,0.13)',border:'1px solid #3fb950',
+                      borderRadius:5,padding:'1px 7px',fontSize:11,color:'#3fb950',fontWeight:700,whiteSpace:'nowrap'}}>
                       +{play.edge}%
                     </span>
-                  ); })()}
+                  )}
                   {!isQual && <span style={{fontSize:10,color:'#484f58'}}>unqualified</span>}
                   {score != null && (
                     <SimBadge sc={score} scTitle={simTip} scColor={scoreColor}

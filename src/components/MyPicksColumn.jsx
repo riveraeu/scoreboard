@@ -3,7 +3,6 @@ import { SPORT_BADGE_COLOR, STAT_LABEL } from '../lib/constants.js';
 import DayBar from './DayBar.jsx';
 import AddPickModal from './AddPickModal.jsx';
 import { buildLiveGameKey, buildLiveProgress, resolveTotalGameScore } from '../lib/liveStats.js';
-import { edgeUnitColor } from '../lib/colors.js';
 import { useIsMobile } from '../lib/hooks.js';
 
 function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToTeam, navigateToPlay, bankroll, setBankroll, setPickUnits, chartMonth, setChartMonth, openPickMonths, setOpenPickMonths, openPickWeeks, setOpenPickWeeks, openPickDays, setOpenPickDays, editPickId, setEditPickId, setPlayResult, setShowAddPick, oddsToProfit, liveStats = {}, mlbGameScores = {}, nbaGameScores = {}, nhlGameScores = {} }) {
@@ -484,12 +483,12 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                           {pick.sport}
                         </span>
                       )}
-                      {pick.edge != null && (() => { const _ec = edgeUnitColor(pick.edge); return (
-                        <span style={{background:_ec+"22",border:`1px solid ${_ec}`,borderRadius:4,
-                          padding:"0px 5px",fontSize:10,color:_ec,fontWeight:700,flexShrink:0}}>
+                      {pick.edge != null && (
+                        <span style={{background:"rgba(63,185,80,0.12)",border:"1px solid #3fb950",borderRadius:4,
+                          padding:"0px 5px",fontSize:10,color:"#3fb950",fontWeight:700,flexShrink:0}}>
                           +{pick.edge}%
                         </span>
-                      ); })()}
+                      )}
                       {pick.result && (
                         <span style={{fontSize:10,fontWeight:700,color:resultColor,textTransform:"uppercase",letterSpacing:0.3,flexShrink:0}}>
                           {pick.result === "won" ? "✓ Won" : pick.result === "lost" ? "✗ Lost" : "— DNP"}

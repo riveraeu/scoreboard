@@ -374,8 +374,6 @@ Sport tabs: ALL / MLB / NBA / NHL (calibration moved to Model Reference page). C
 ```
 tierColor(pct): ≥90 → #1a7f37 dark green, ≥80 → #3fb950 medium green, ≥70 → #7ee787 light green, ≥60 → #e3b341 yellow, <60 → #f78166 red.
 Single source of truth in src/lib/colors.js. Drives True% bars in App player card, PlaysColumn (truePct + season + soft bars), TotalsBarChart, TeamPage. NOT applied to MarketReport SimScore-component cells (Ssn HR%, H2H HR%, Hit Rate %, K H2H Hand, etc.) — those map to the points actually awarded (2/1/0 → green/yellow/red), and per-component % thresholds vary by stat (e.g. NBA Ssn HR ≥90→2 vs MLB HRR Ssn HR ≥80→2), so a universal ladder would visually misrepresent SimScore.
-
-`edgeUnitColor(edge)` (also in colors.js): green pill badge color mapped to unit-size bands from `unitsForPlay` — edge<7 → #7ee787 (1u light), <12 → #3fb950 (3u medium), ≥12 → #1a7f37 (5u dark); null/negative defaults to 1u light. Drives the `+{edge}%` pill on PlaysColumn (3 sites), MyPicksColumn, TeamPage. **Keep in sync with `unitsForPlay` band cuts in App.jsx** — if those move, the badge legend goes with them. NOT applied to: TotalsBarChart row text or App player-card "Edge (True% − implied)" — those are 3-tier above-gate / above-zero / below-zero indicators, different semantics.
 ```
 
 ### Backend monotonicity for player card
