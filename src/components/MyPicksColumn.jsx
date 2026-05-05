@@ -278,13 +278,19 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                 if (aOpen !== bOpen) return aOpen ? -1 : 1;
                 return b.trackedAt - a.trackedAt;
               });
-              // Group by week → day
-              const weekOrder = []; const weekMap = {};
+              // Group by month → week → day. Month bucket is the pick's own gameDate month
+              // (NOT the canonical week's Monday's month) — so a May 1 pick that falls in the
+              // canonical "Week of Apr 27" still lands in the May bucket. A week that crosses
+              // a month boundary appears under both months with only the days in that month.
+              const monthOrder = []; const monthMap = {};
               sorted.forEach(pick => {
                 const dk = pick.gameDate || new Date(pick.trackedAt).toISOString().slice(0,10);
+                const mk = dk.slice(0, 7);
                 const wk = toWeekKey(dk);
-                if (!weekMap[wk]) { weekMap[wk] = { wk, dayOrder: [], dayMap: {} }; weekOrder.push(weekMap[wk]); }
-                const w = weekMap[wk];
+                if (!monthMap[mk]) { monthMap[mk] = { mk, weekOrder: [], weekMap: {} }; monthOrder.push(monthMap[mk]); }
+                const m = monthMap[mk];
+                if (!m.weekMap[wk]) { m.weekMap[wk] = { wk, dayOrder: [], dayMap: {} }; m.weekOrder.push(m.weekMap[wk]); }
+                const w = m.weekMap[wk];
                 if (!w.dayMap[dk]) { w.dayMap[dk] = { dk, picks: [] }; w.dayOrder.push(w.dayMap[dk]); }
                 w.dayMap[dk].picks.push(pick);
               });
@@ -301,19 +307,11 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                   return sum + (p.result === "won" ? s * oddsToProfit(p.americanOdds) : -s);
                 }, 0);
               };
-              // Group weeks by month (key = YYYY-MM of the week's Monday — weeks crossing a
-              // month boundary land in the month they started in, matching the week-of-Monday rule).
-              const monthOrder = []; const monthMap = {};
-              for (const wkObj of weekOrder) {
-                const mk = wkObj.wk.slice(0, 7);
-                if (!monthMap[mk]) { monthMap[mk] = { mk, weeks: [] }; monthOrder.push(monthMap[mk]); }
-                monthMap[mk].weeks.push(wkObj);
-              }
-              return monthOrder.map(({ mk, weeks }) => {
+              return monthOrder.map(({ mk, weekOrder }) => {
                 const monthOpen = openPickMonths.has(mk);
                 const [myr, mmo] = mk.split("-").map(Number);
                 const monthLabel = new Date(myr, mmo - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
-                const allMonthPicks = weeks.flatMap(w => w.dayOrder.flatMap(d => d.picks));
+                const allMonthPicks = weekOrder.flatMap(w => w.dayOrder.flatMap(d => d.picks));
                 const monthPL = calcPL(allMonthPicks);
                 const monthActive = allMonthPicks.filter(p => !p.result).length;
                 const monthPLColor = monthPL > 0 ? "#3fb950" : monthPL < 0 ? "#f78166" : "#8b949e";
@@ -338,9 +336,13 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                     </div>
                     {monthOpen && (
                       <div style={{border:"1px solid #30363d",borderTop:"none",borderRadius:"0 0 8px 8px",padding:"6px 6px 2px 6px"}}>
-                        {weeks.map(({ wk, dayOrder }) => {
+                        {weekOrder.map(({ wk, dayOrder }) => {
                 const weekOpen = openPickWeeks.has(wk);
-                const [wyr, wmo, wdy] = wk.split("-").map(Number);
+                // Label by the first day of this week that falls in the current month bucket
+                // (dayOrder is sorted desc, so earliest-in-this-month is the last entry). Avoids
+                // the misleading "Week of Apr 27" label on the May slice of an Apr 27→May 3 week.
+                const earliestDk = dayOrder[dayOrder.length - 1].dk;
+                const [wyr, wmo, wdy] = earliestDk.split("-").map(Number);
                 const weekLabel = "Week of " + new Date(wyr, wmo-1, wdy).toLocaleDateString("en-US", { month:"short", day:"numeric" });
                 const allWeekPicks = dayOrder.flatMap(d => d.picks);
                 const weekPL = calcPL(allWeekPicks);
