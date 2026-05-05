@@ -2,7 +2,7 @@ import React from 'react';
 import { SPORT_BADGE_COLOR, STAT_LABEL } from '../lib/constants.js';
 import DayBar from './DayBar.jsx';
 import AddPickModal from './AddPickModal.jsx';
-import { buildLiveGameKey, buildLiveDisplay, buildTotalLiveDisplay, resolveTotalGameScore } from '../lib/liveStats.js';
+import { buildLiveGameKey, buildLiveProgress, resolveTotalGameScore } from '../lib/liveStats.js';
 import { useIsMobile } from '../lib/hooks.js';
 
 function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToTeam, navigateToPlay, bankroll, setBankroll, setPickUnits, chartMonth, setChartMonth, openPickWeeks, setOpenPickWeeks, openPickDays, setOpenPickDays, editPickId, setEditPickId, setPlayResult, setShowAddPick, oddsToProfit, liveStats = {}, mlbGameScores = {}, nbaGameScores = {}, nhlGameScores = {} }) {
@@ -372,25 +372,22 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
               else if (pick.result === "lost") pickPL = -stake;
               // DNP = void, pickPL stays null
               const pickPLColor = pickPL > 0 ? "#3fb950" : pickPL < 0 ? "#f78166" : "#8b949e";
-              // Live stat data
+              // Live progress bar — color-coded by pace (current vs threshold relative to game elapsed).
               const allGameScores = { ...mlbGameScores, ...nbaGameScores, ...nhlGameScores };
               const liveGame = (pick.gameType === "total" || pick.gameType === "teamTotal")
                 ? null
                 : liveStats[buildLiveGameKey(pick)];
-              const liveDisplay = buildLiveDisplay(pick, liveGame);
               const totalGameScore = (pick.gameType === "total" || pick.gameType === "teamTotal")
                 ? resolveTotalGameScore(pick, liveStats, allGameScores)
                 : null;
-              const totalLiveDisplay = totalGameScore ? buildTotalLiveDisplay(pick, totalGameScore) : null;
-              // Right-side live panel data — live time/state + current count.
-              const _boxState = liveGame?.state || totalGameScore?.state || null;
-              const _boxDetail = liveGame?.detail || totalGameScore?.detail || "";
-              const _liveCurrentVal = liveDisplay?.current ?? totalLiveDisplay?.current ?? null;
-              const _liveColor = liveDisplay?.color ?? totalLiveDisplay?.color ?? "#8b949e";
-              const _liveMet = liveDisplay?.met ?? totalLiveDisplay?.met ?? false;
-              const _currentTimeTxt = _boxState === "post" ? "Final" : _boxState === "pre" ? "Pre" : (_boxDetail || (_boxState === "in" ? "Live" : "—"));
-              const _currentValTxt = _liveCurrentVal != null ? `${_liveCurrentVal}${_liveMet ? " ✓" : ""}` : "—";
-              const _showBox = !pick.result && pick.gameTime;
+              const progress = buildLiveProgress(pick, liveGame, totalGameScore);
+              const _showBar = !pick.result && pick.gameTime;
+              const _preStartTxt = (() => {
+                if (!pick.gameTime) return null;
+                try {
+                  return new Date(pick.gameTime).toLocaleTimeString("en-US", { hour:"numeric", minute:"2-digit", timeZoneName:"short" });
+                } catch { return null; }
+              })();
 
               return (
                 <div key={pick.id} style={{background:"#161b22",
@@ -576,11 +573,20 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                       );
                     })()}
                   </div>
-                  {/* Right-side live panel: live time/state + current value (stat tracked + start time are implied by the subtitle row) */}
-                  {_showBox && (
-                    <div style={{flexShrink:0, alignSelf:"center", display:"flex", alignItems:"center", gap:7, paddingLeft:6, borderLeft:"1px solid #21262d", marginLeft:2}}>
-                      <span style={{color:"#c9d1d9", fontSize:10, fontWeight:600, whiteSpace:"nowrap", maxWidth:90, overflow:"hidden", textOverflow:"ellipsis"}}>{_currentTimeTxt}</span>
-                      <span style={{color:_liveColor, fontSize:12, fontWeight:700, whiteSpace:"nowrap"}}>{_currentValTxt}</span>
+                  {/* Right-side live progress bar: fill = current/threshold, color = pace (current vs elapsed). */}
+                  {_showBar && progress && (
+                    <div style={{flexShrink:0, alignSelf:"center", display:"flex", flexDirection:"column", alignItems:"stretch", gap:3, paddingLeft:7, borderLeft:"1px solid #21262d", marginLeft:2, width:96}}>
+                      <div style={{display:"flex", alignItems:"center", gap:5}}>
+                        <div style={{flex:1, height:6, background:"#0d1117", borderRadius:3, overflow:"hidden", border:"1px solid #21262d"}}>
+                          <div style={{width: `${progress.fillPct}%`, height:"100%", background: progress.barColor, transition:"width .3s, background .3s"}} />
+                        </div>
+                      </div>
+                      <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", gap:4}}>
+                        <span style={{color:"#8b949e", fontSize:9, fontWeight:500, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", maxWidth:60}}>
+                          {progress.isPre ? (_preStartTxt || "Pre") : progress.stateLabel}
+                        </span>
+                        <span style={{color: progress.barColor, fontSize:10, fontWeight:700, whiteSpace:"nowrap"}}>{progress.valLabel}</span>
+                      </div>
                     </div>
                   )}
                   {/* Edit / undo buttons — right-aligned at card level */}
