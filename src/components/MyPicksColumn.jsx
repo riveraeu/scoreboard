@@ -512,7 +512,7 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                       )}
                       <span style={{color:"#58a6ff",fontWeight:600,fontSize:10}}>
                         {pick.gameType === "teamTotal"
-                          ? `Over ${(pick.threshold-0.5).toFixed(1)} ${({teamRuns:"Runs",teamPoints:"Pts"})[pick.stat]||pick.stat}`
+                          ? `${pick.direction === "under" ? "Under" : "Over"} ${(pick.threshold-0.5).toFixed(1)} ${({teamRuns:"Runs",teamPoints:"Pts"})[pick.stat]||pick.stat}`
                           : pick.gameType === "total"
                           ? `${pick.direction === "under" ? "Under" : "Over"} ${(pick.threshold-0.5).toFixed(1)} ${({totalRuns:"Runs",totalPoints:"Pts",totalGoals:"Goals"})[pick.stat]||pick.stat}`
                           : `${pick.threshold}+ ${STAT_LABEL[pick.stat] || pick.stat}`}
