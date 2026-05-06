@@ -1138,13 +1138,35 @@ var worker_default = {
           // a fresh response instead of falling through to its (yesterday-aged) stale cache.
           const KALSHI_BATCH = 6;
           const KALSHI_BATCH_DELAY_MS = 300;
+          // Read the previous bundle once so we can preserve entries for any series that came
+          // back rate-limited / empty this cycle. Without this, a successful first fetch fills
+          // the bundle, then a follow-up `?bust=1` racing into Kalshi rate limits would write
+          // an empty entry over the good one and starve subsequent non-bust requests.
+          const priorBundle = CACHE2 ? await CACHE2.get(KALSHI_BUNDLE_KEY, "json").catch(() => null) : null;
           const resultMap = {};
+          const fetchMeta = {};
           for (let off = 0; off < seriesTickers.length; off += KALSHI_BATCH) {
             const batch = seriesTickers.slice(off, off + KALSHI_BATCH);
             const batchRes = await Promise.all(batch.map(fetchKalshiSeries));
-            for (let j = 0; j < batch.length; j++) resultMap[batch[j]] = batchRes[j].data;
+            for (let j = 0; j < batch.length; j++) {
+              resultMap[batch[j]] = batchRes[j].data;
+              fetchMeta[batch[j]] = { rateLimited: !!batchRes[j].rateLimited, failed: !!batchRes[j].failed, stale: !!batchRes[j].stale };
+            }
             if (off + KALSHI_BATCH < seriesTickers.length) {
               await new Promise(res => setTimeout(res, KALSHI_BATCH_DELAY_MS));
+            }
+          }
+          // For any ticker that returned empty due to rate-limit/failure, fall back to the
+          // prior bundle's entry for that ticker if it has data — keeps a partial Kalshi
+          // outage from blanking categories that were healthy minutes ago.
+          if (priorBundle) {
+            for (const t of seriesTickers) {
+              const cur = resultMap[t]?.markets || [];
+              const prior = priorBundle[t]?.markets || [];
+              const meta = fetchMeta[t] || {};
+              if (cur.length === 0 && prior.length > 0 && (meta.rateLimited || meta.failed)) {
+                resultMap[t] = priorBundle[t];
+              }
             }
           }
           kalshiResults = seriesTickers.map(t => resultMap[t] || { markets: [] });

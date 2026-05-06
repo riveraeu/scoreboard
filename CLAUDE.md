@@ -247,6 +247,7 @@ Kalshi series `KXMLBTEAMTOTAL`, `KXNBATEAMTOTAL`. `gameType: "teamTotal"`. NHL/N
 - **Rate limiting**:
   - Bundle cache `kalshi:bundle:{date}` (600s TTL) — all 18 series as one blob, cache hit = zero calls. Bypassed by `?bust=1`.
   - Cold: 6 series at a time with 300ms delay between batches. Without batching, Kalshi 429s the burst's later positions (KXMLBTEAMTOTAL #17 was the canary — silently fell through to stale yesterday-data and starved today's team-total plays). 429 → fall through to `kalshi:stale:{ticker}` (no retry). When `?bust=1`, the per-ticker stale fallback is skipped too — accept empty rather than serve yesterday's residue.
+  - **Bundle preserves prior entries on partial failure**: when a follow-up bundle fetch returns empty for a series due to rate-limit/failure, the prior bundle's entry for that ticker is reused before writing the new bundle. Stops a rapid-bust race from blanking healthy categories (KXMLBTEAMTOTAL was getting blanked between `?bust=1` calls because it was the most rate-limit-prone).
   - Orderbooks (thin markets): 8 at a time with 200ms delay. 429 silently skipped.
 - Blended fill price via orderbook walk for thin markets
 - **Stale-ask fallback**: when `yes_ask ≥ $0.98` AND `yes_bid == 0` AND `last_price > 0`, use `last_price_dollars` instead. Handles maxed-ask illiquid markets.
