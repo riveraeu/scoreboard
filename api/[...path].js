@@ -1097,9 +1097,10 @@ var worker_default = {
         const seriesTickers = Object.keys(SERIES_CONFIG);
         // Bundle cache: stores all series in one Redis key (90s TTL) to avoid hammering Kalshi
         const KALSHI_BUNDLE_KEY = `kalshi:bundle:${new Date().toISOString().slice(0, 10).replace(/-/g, "")}`;
-        // When isBustCache, skip the per-ticker stale fallback so we never serve yesterday's
-        // rate-limited residue back to the user — accept an empty result instead. The bundle
-        // cache (KALSHI_BUNDLE_KEY) is already bypassed by isBustCache higher up.
+        // Per-ticker stale fallback fires for both bust and non-bust — the stale cache holds
+        // the LAST successful fetch (whatever date that was), and is preferable to empty even
+        // on bust. The "yesterday's residue" risk is real only if today never succeeded for a
+        // given ticker; once today succeeds even once, stale gets updated with today's data.
         async function fetchKalshiSeries(ticker) {
           const staleKey = `kalshi:stale:${ticker}`;
           const r = await fetch(`https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=${ticker}&limit=1000&status=open`, {
@@ -1108,7 +1109,7 @@ var worker_default = {
           }).catch(() => null);
           if (r?.status === 429) {
             // Rate limited — fall through to stale immediately, no retry
-            if (!isBustCache && CACHE2) {
+            if (CACHE2) {
               const stale = await CACHE2.get(staleKey, "json").catch(() => null);
               if (stale) return { data: stale, stale: true, rateLimited: true };
             }
@@ -1119,7 +1120,7 @@ var worker_default = {
             if (CACHE2) await CACHE2.put(staleKey, JSON.stringify(fresh)).catch(() => {});
             return { data: fresh };
           }
-          if (!isBustCache && CACHE2) {
+          if (CACHE2) {
             const stale = await CACHE2.get(staleKey, "json").catch(() => null);
             if (stale) return { data: stale, stale: true };
           }
