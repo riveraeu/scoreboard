@@ -3822,10 +3822,12 @@ var worker_default = {
               dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge: overEdge, totalSimScore, lineupsConfirmed: _lineupsConfirmed, reason: "edge_too_low", ..._simData });
             }
             // UNDER play — mirror the OVER filter: require noKalshiPct >= 70 (YES <= 30)
-            // so we only bet UNDERs the market also considers likely (same gate as OVERs)
+            // so we only bet UNDERs the market also considers likely (same gate as OVERs).
+            // Debug-dropped path matches team-totals: push every non-qualifying UNDER so the
+            // market report shows a row for every market, not just those with edge ≥ 3%.
             if (underEdge >= EDGE_GATE && noKalshiPct >= KALSHI_GATE && noKalshiPct <= KALSHI_CAP) {
               totalPlays.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "under", kalshiPct, noKalshiPct, americanOdds: noKalshiAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, rawEdge, edge: underEdge, totalSimScore: underSimScore, qualified: underSimScore >= SIMSCORE_GATE, kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _gameTime, lineupsConfirmed: _lineupsConfirmed, ..._simData });
-            } else if (isDebug && underEdge >= EDGE_GATE) {
+            } else if (isDebug) {
               dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "under", kalshiPct, noKalshiPct, americanOdds: noKalshiAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, rawEdge, edge: underEdge, totalSimScore: underSimScore, lineupsConfirmed: _lineupsConfirmed, reason: noKalshiPct < KALSHI_GATE ? "under_no_price_too_low" : "edge_too_low", ..._simData });
             }
           }
