@@ -25,7 +25,7 @@ function AddPickModal({ onClose, onAdd, initialOdds = "-110" }) {
     receptions:"Receptions", completions:"Completions", attempts:"Attempts",
   };
   const suggestUnits = (odds) => { const o = parseInt(odds) || 0; return o <= -900 ? 5 : o <= -400 ? 4 : o <= -200 ? 3 : o <= -110 ? 2 : 1; };
-  const [form, setForm] = React.useState({ playerName:"", sport:"nba", stat:"points", threshold:"", americanOdds:initialOdds, truePct:"", units: String(suggestUnits(initialOdds)), gameDate: new Date().toISOString().slice(0,10) });
+  const [form, setForm] = React.useState({ playerName:"", sport:"nba", stat:"points", threshold:"", americanOdds:initialOdds, truePct:"", units: String(suggestUnits(initialOdds)), gameDate: new Date().toISOString().slice(0,10), direction:"over" });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   // Player typeahead — same /api/athletes endpoint as the main search.
@@ -80,9 +80,19 @@ function AddPickModal({ onClose, onAdd, initialOdds = "-110" }) {
     if (!form.playerName.trim() || isNaN(threshold) || isNaN(americanOdds)) return;
     const sportFull = { nba:"basketball/nba", mlb:"baseball/mlb", nfl:"football/nfl", nhl:"hockey/nhl" }[form.sport];
     const truePctVal = parseFloat(form.truePct);
-    const kalshiPct = americanOdds < 0
+    // The user's odds are for the side they're betting. Implied probability from those odds
+    // = the market's price for that side. For UNDER picks that's noKalshiPct; the OVER-side
+    // kalshiPct is the complement. truePct entry is "chance the bet hits" so it lines up
+    // with the implied side too — edge = truePctVal - implied is correct in both cases.
+    const impliedSide = americanOdds < 0
       ? Math.abs(americanOdds) / (Math.abs(americanOdds) + 100) * 100
       : 100 / (americanOdds + 100) * 100;
+    const isUnder = form.direction === "under";
+    const kalshiPctOver = parseFloat((isUnder ? 100 - impliedSide : impliedSide).toFixed(1));
+    const noKalshiPctVal = parseFloat((isUnder ? impliedSide : 100 - impliedSide).toFixed(1));
+    const truePctOver = !isNaN(truePctVal) ? parseFloat((isUnder ? 100 - truePctVal : truePctVal).toFixed(1)) : null;
+    const noTruePctVal = !isNaN(truePctVal) ? parseFloat((isUnder ? truePctVal : 100 - truePctVal).toFixed(1)) : null;
+    const edgeVal = !isNaN(truePctVal) ? parseFloat((truePctVal - impliedSide).toFixed(1)) : null;
     onAdd({
       playerName: form.playerName.trim(),
       ...(selectedAthlete?.id ? { playerId: String(selectedAthlete.id) } : {}),
@@ -92,9 +102,10 @@ function AddPickModal({ onClose, onAdd, initialOdds = "-110" }) {
       stat: form.stat,
       threshold,
       americanOdds,
-      kalshiPct: parseFloat(kalshiPct.toFixed(1)),
-      truePct: !isNaN(truePctVal) ? truePctVal : null,
-      edge: !isNaN(truePctVal) ? parseFloat((truePctVal - kalshiPct).toFixed(1)) : null,
+      kalshiPct: kalshiPctOver,
+      truePct: truePctOver,
+      ...(isUnder && { direction: "under", noTruePct: noTruePctVal, noKalshiPct: noKalshiPctVal }),
+      edge: edgeVal,
       units: parseFloat(form.units) || 1,
       gameDate: form.gameDate || new Date().toISOString().slice(0,10),
     });
@@ -169,21 +180,35 @@ function AddPickModal({ onClose, onAdd, initialOdds = "-110" }) {
                 </select>
               </div>
             </div>
+            <div>
+              <label style={lbl}>Direction</label>
+              <div style={{display:"flex",gap:6}}>
+                {[["over","Over"],["under","Under"]].map(([v,l]) => (
+                  <button key={v} type="button" onClick={() => set("direction", v)}
+                    style={{flex:1,padding:"7px 0",borderRadius:6,fontSize:12,fontWeight:600,cursor:"pointer",
+                      background: form.direction === v ? (v === "under" ? "rgba(247,129,102,0.15)" : "rgba(88,166,255,0.15)") : "#0d1117",
+                      border: `1px solid ${form.direction === v ? (v === "under" ? "#f78166" : "#58a6ff") : "#30363d"}`,
+                      color: form.direction === v ? (v === "under" ? "#f78166" : "#58a6ff") : "#8b949e"}}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
               <div>
-                <label style={lbl}>Line (Over)</label>
+                <label style={lbl}>Line</label>
                 <input style={inp} type="number" placeholder="20.5" step="0.5" value={form.threshold}
                   onChange={e => set("threshold", e.target.value)} />
               </div>
               <div>
-                <label style={lbl}>Odds</label>
+                <label style={lbl}>Odds ({form.direction === "under" ? "Under" : "Over"} side)</label>
                 <input style={inp} type="number" placeholder="-110" value={form.americanOdds}
                   onChange={e => { set("americanOdds", e.target.value); setForm(f => ({ ...f, americanOdds: e.target.value, units: String(suggestUnits(e.target.value)) })); }} />
               </div>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
               <div>
-                <label style={lbl}>True Probability %</label>
+                <label style={lbl}>True % (chance bet hits)</label>
                 <input style={inp} type="number" placeholder="75" min="0" max="100" step="0.1" value={form.truePct}
                   onChange={e => set("truePct", e.target.value)} />
               </div>
