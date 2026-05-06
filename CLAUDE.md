@@ -245,8 +245,8 @@ Kalshi series `KXMLBTEAMTOTAL`, `KXNBATEAMTOTAL`. `gameType: "teamTotal"`. NHL/N
 - Series in `SERIES_CONFIG` (18 tickers across all sports/stats)
 - Player props, game totals, team totals: `pct ∈ [KALSHI_GATE, KALSHI_CAP] = [67, 91]` (constants in `api/[...path].js`). Markets outside this band aren't fetched/parsed at all.
 - **Rate limiting**:
-  - Bundle cache `kalshi:bundle:{date}` (90s TTL) — all 18 series as one blob, cache hit = zero calls. Bypassed by `?bust=1`.
-  - Cold: 6 series at a time with 300ms delay. 429 → fall through to `kalshi:stale:{ticker}` (no retry).
+  - Bundle cache `kalshi:bundle:{date}` (600s TTL) — all 18 series as one blob, cache hit = zero calls. Bypassed by `?bust=1`.
+  - Cold: 6 series at a time with 300ms delay between batches. Without batching, Kalshi 429s the burst's later positions (KXMLBTEAMTOTAL #17 was the canary — silently fell through to stale yesterday-data and starved today's team-total plays). 429 → fall through to `kalshi:stale:{ticker}` (no retry). When `?bust=1`, the per-ticker stale fallback is skipped too — accept empty rather than serve yesterday's residue.
   - Orderbooks (thin markets): 8 at a time with 200ms delay. 429 silently skipped.
 - Blended fill price via orderbook walk for thin markets
 - **Stale-ask fallback**: when `yes_ask ≥ $0.98` AND `yes_bid == 0` AND `last_price > 0`, use `last_price_dollars` instead. Handles maxed-ask illiquid markets.

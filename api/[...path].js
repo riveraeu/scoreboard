@@ -1097,6 +1097,9 @@ var worker_default = {
         const seriesTickers = Object.keys(SERIES_CONFIG);
         // Bundle cache: stores all series in one Redis key (90s TTL) to avoid hammering Kalshi
         const KALSHI_BUNDLE_KEY = `kalshi:bundle:${new Date().toISOString().slice(0, 10).replace(/-/g, "")}`;
+        // When isBustCache, skip the per-ticker stale fallback so we never serve yesterday's
+        // rate-limited residue back to the user — accept an empty result instead. The bundle
+        // cache (KALSHI_BUNDLE_KEY) is already bypassed by isBustCache higher up.
         async function fetchKalshiSeries(ticker) {
           const staleKey = `kalshi:stale:${ticker}`;
           const r = await fetch(`https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=${ticker}&limit=1000&status=open`, {
@@ -1105,7 +1108,7 @@ var worker_default = {
           }).catch(() => null);
           if (r?.status === 429) {
             // Rate limited — fall through to stale immediately, no retry
-            if (CACHE2) {
+            if (!isBustCache && CACHE2) {
               const stale = await CACHE2.get(staleKey, "json").catch(() => null);
               if (stale) return { data: stale, stale: true, rateLimited: true };
             }
@@ -1116,7 +1119,7 @@ var worker_default = {
             if (CACHE2) await CACHE2.put(staleKey, JSON.stringify(fresh)).catch(() => {});
             return { data: fresh };
           }
-          if (CACHE2) {
+          if (!isBustCache && CACHE2) {
             const stale = await CACHE2.get(staleKey, "json").catch(() => null);
             if (stale) return { data: stale, stale: true };
           }
@@ -1129,10 +1132,21 @@ var worker_default = {
         if (bundleCached) {
           kalshiResults = seriesTickers.map(t => bundleCached[t] || { markets: [] });
         } else {
-          // Fetch all series in parallel — bundle cache (90s) absorbs rate limiting between requests
-          const fetchResults = await Promise.all(seriesTickers.map(fetchKalshiSeries));
+          // Throttled batch fetch — Kalshi rate-limits a burst of 18 parallel requests, which
+          // silently 429'd later-position series (KXMLBTEAMTOTAL #17 was the canary). Process in
+          // batches of 6 with a 300ms gap between batches so every ticker has a fair shot at
+          // a fresh response instead of falling through to its (yesterday-aged) stale cache.
+          const KALSHI_BATCH = 6;
+          const KALSHI_BATCH_DELAY_MS = 300;
           const resultMap = {};
-          for (let i = 0; i < seriesTickers.length; i++) resultMap[seriesTickers[i]] = fetchResults[i].data;
+          for (let off = 0; off < seriesTickers.length; off += KALSHI_BATCH) {
+            const batch = seriesTickers.slice(off, off + KALSHI_BATCH);
+            const batchRes = await Promise.all(batch.map(fetchKalshiSeries));
+            for (let j = 0; j < batch.length; j++) resultMap[batch[j]] = batchRes[j].data;
+            if (off + KALSHI_BATCH < seriesTickers.length) {
+              await new Promise(res => setTimeout(res, KALSHI_BATCH_DELAY_MS));
+            }
+          }
           kalshiResults = seriesTickers.map(t => resultMap[t] || { markets: [] });
           // Cache bundle if we got real data
           if (CACHE2 && kalshiResults.some(d => (d.markets || []).length > 0)) {
