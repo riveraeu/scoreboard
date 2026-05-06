@@ -1199,7 +1199,11 @@ var worker_default = {
 
             // ── Game total branch (wider pct filter; team-based, not player-based) ──
             if (cfg.gameType === "total") {
-              if (pct < KALSHI_GATE || pct > KALSHI_CAP) continue;
+              // Keep markets where EITHER side (YES/OVER or NO/UNDER) sits in our [67,91]
+              // qualification window. The OVER push gates on YES, the UNDER push gates on NO,
+              // so we don't bet OVERs against an UNDER-favored line and vice versa.
+              const _tNoPct = 100 - pct;
+              if ((pct < KALSHI_GATE || pct > KALSHI_CAP) && (_tNoPct < KALSHI_GATE || _tNoPct > KALSHI_CAP)) continue;
               const [gameTeam1, gameTeam2] = parseGameTeams(m.event_ticker, sport);
               if (!gameTeam1 || !gameTeam2) continue;
               const dedupeKey = `total|${sport}|${gameTeam1}|${gameTeam2}|${threshold}`;
@@ -1223,7 +1227,10 @@ var worker_default = {
 
             // ── Team total branch (single team's score vs opposing defense) ──
             if (cfg.gameType === "teamTotal") {
-              if (pct < KALSHI_GATE || pct > KALSHI_CAP) continue;
+              // Same broadened gate as game totals — accept either OVER-side or UNDER-side
+              // alt lines; the OVER/UNDER push paths apply their own kalshiPct/noKalshiPct gate.
+              const _ttNoPct = 100 - pct;
+              if ((pct < KALSHI_GATE || pct > KALSHI_CAP) && (_ttNoPct < KALSHI_GATE || _ttNoPct > KALSHI_CAP)) continue;
               const [gameTeam1, gameTeam2] = parseGameTeams(m.event_ticker, sport);
               if (!gameTeam1 || !gameTeam2) continue;
               // Extract scoring team from ticker suffix (e.g. "LAD8" → "LAD", "PHI97" → "PHI")
@@ -3815,10 +3822,13 @@ var worker_default = {
               ? ((sportByteam.mlb?.lineupSpotByName?.[homeTeam] != null && !(sportByteam.mlb?.projectedLineupTeams || []).includes(homeTeam))
                  && (sportByteam.mlb?.lineupSpotByName?.[awayTeam] != null && !(sportByteam.mlb?.projectedLineupTeams || []).includes(awayTeam)))
               : void 0;
-            // OVER play
-            if (overEdge >= EDGE_GATE) {
+            // OVER play — require kalshiPct in window so we don't bet OVERs against UNDER-favored
+            // alt lines (e.g. over 12.5 priced at 19c — winning that bet at +426 demands a much
+            // higher truePct than our OVER signal on a 7.5-line market).
+            const _overInWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
+            if (overEdge >= EDGE_GATE && _overInWindow) {
               totalPlays.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge: overEdge, totalSimScore, qualified: totalSimScore >= SIMSCORE_GATE, kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _gameTime, lineupsConfirmed: _lineupsConfirmed, ..._simData });
-            } else if (isDebug) {
+            } else if (isDebug && _overInWindow) {
               dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge: overEdge, totalSimScore, lineupsConfirmed: _lineupsConfirmed, reason: "edge_too_low", ..._simData });
             }
             // UNDER play — mirror the OVER filter: require noKalshiPct >= 70 (YES <= 30)
@@ -3963,9 +3973,10 @@ var worker_default = {
               const _ttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), ...(_ttModelTruePct != null && _ttModelTruePct !== truePct && { modelTruePct: parseFloat(_ttModelTruePct.toFixed(1)) }), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _ttGameTime, lineupsConfirmed: _ttLineupsConfirmed, teamRPG, oppERA, oppWHIP, ...(oppWHIPSource && { oppWHIPSource }), oppRPG, parkFactor: parkRF, gameOuLine, teamExpected: _lam != null ? parseFloat(_lam.toFixed(1)) : null, h2hHitRate, h2hGames, h2hHitRatePts, teamL10RPG, ttL10Pts, ttWhipPts, ttUmpirePts, umpireRunFactor: _ttUmpRunFactor, ...(_ttUmpName && { umpireName: _ttUmpName }), ttSeasonHitRate, ttSeasonHitRatePts, oppStarterHand: _ttOppStarterHand, ...(_ttPlatFactor !== 1.0 && { platoonFactor: _ttPlatFactor }) };
               const rawEdge = parseFloat((truePct - kalshiPct).toFixed(1));
               const edge = rawEdge;
-              if (edge >= EDGE_GATE) {
+              const _ttOverInWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
+              if (edge >= EDGE_GATE && _ttOverInWindow) {
                 teamTotalPlays.push({ ..._ttBaseFields, direction: "over", edge, rawEdge, teamTotalSimScore, qualified: teamTotalSimScore >= SIMSCORE_GATE });
-              } else if (isDebug) {
+              } else if (isDebug && _ttOverInWindow) {
                 dropped.push({ ..._ttBaseFields, direction: "over", edge, rawEdge, teamTotalSimScore, reason: "edge_too_low" });
               }
               // UNDER play
@@ -4032,9 +4043,10 @@ var worker_default = {
               const _nttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _nttGameTime, teamOffRtg, oppDefRtg, teamExpected: _teamExpected != null ? parseFloat(_teamExpected.toFixed(1)) : null, gameOuLine: _nbaOuLine, gameSpread: _gameSpread, h2hHitRate, h2hGames, h2hHitRatePts, ttNbaSeasonHitRate, ttNbaSeasonHitRatePts };
               const rawEdge = parseFloat((truePct - kalshiPct).toFixed(1));
               const edge = rawEdge;
-              if (edge >= EDGE_GATE) {
+              const _nttOverInWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
+              if (edge >= EDGE_GATE && _nttOverInWindow) {
                 teamTotalPlays.push({ ..._nttBaseFields, direction: "over", edge, rawEdge, teamTotalSimScore, qualified: teamTotalSimScore >= SIMSCORE_GATE });
-              } else if (isDebug) {
+              } else if (isDebug && _nttOverInWindow) {
                 dropped.push({ ..._nttBaseFields, direction: "over", edge, rawEdge, teamTotalSimScore, reason: "edge_too_low" });
               }
               // UNDER play
