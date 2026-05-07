@@ -1144,10 +1144,20 @@ var worker_default = {
         } else {
           // Throttled batch fetch — Kalshi rate-limits a burst of 18 parallel requests, which
           // silently 429'd later-position series (KXMLBTEAMTOTAL #17 was the canary). Process in
-          // batches of 6 with a 300ms gap between batches so every ticker has a fair shot at
-          // a fresh response instead of falling through to its (yesterday-aged) stale cache.
-          const KALSHI_BATCH = 6;
-          const KALSHI_BATCH_DELAY_MS = 300;
+          // small batches with a delay between batches so every ticker has a fair shot at
+          // a fresh response instead of falling through to its stale cache. Earlier 6+300ms
+          // values still left ~6/18 series falling back to stale per request — bumped to
+          // 3+700ms which is more conservative but only adds ~3.6s on cold (uncached) paths.
+          const KALSHI_BATCH = 3;
+          const KALSHI_BATCH_DELAY_MS = 700;
+          // Shuffle the ticker order each request so no single series is deterministically
+          // last-in-line. Without this, KXMLBTEAMTOTAL was always batch-position 17/18 and
+          // soaked up the rate limit on every refresh.
+          const _shuffled = [...seriesTickers];
+          for (let _si = _shuffled.length - 1; _si > 0; _si--) {
+            const _sj = Math.floor(Math.random() * (_si + 1));
+            [_shuffled[_si], _shuffled[_sj]] = [_shuffled[_sj], _shuffled[_si]];
+          }
           // Read the previous bundle once so we can preserve entries for any series that came
           // back rate-limited / empty this cycle. Without this, a successful first fetch fills
           // the bundle, then a follow-up `?bust=1` racing into Kalshi rate limits would write
@@ -1155,14 +1165,14 @@ var worker_default = {
           const priorBundle = CACHE2 ? await CACHE2.get(KALSHI_BUNDLE_KEY, "json").catch(() => null) : null;
           const resultMap = {};
           const fetchMeta = {};
-          for (let off = 0; off < seriesTickers.length; off += KALSHI_BATCH) {
-            const batch = seriesTickers.slice(off, off + KALSHI_BATCH);
+          for (let off = 0; off < _shuffled.length; off += KALSHI_BATCH) {
+            const batch = _shuffled.slice(off, off + KALSHI_BATCH);
             const batchRes = await Promise.all(batch.map(fetchKalshiSeries));
             for (let j = 0; j < batch.length; j++) {
               resultMap[batch[j]] = batchRes[j].data;
               fetchMeta[batch[j]] = { rateLimited: !!batchRes[j].rateLimited, failed: !!batchRes[j].failed, stale: !!batchRes[j].stale };
             }
-            if (off + KALSHI_BATCH < seriesTickers.length) {
+            if (off + KALSHI_BATCH < _shuffled.length) {
               await new Promise(res => setTimeout(res, KALSHI_BATCH_DELAY_MS));
             }
           }
