@@ -4259,15 +4259,20 @@ var worker_default = {
             if (sbRes.ok) sbEvents = (await sbRes.json()).events || [];
           } catch { /* scoreboard unavailable — return pre for all */ }
 
-          // ESPN uses different abbrs from our canonical (MLB Stats API) for some teams.
-          // Currently only CWS↔CHW (Chicago White Sox); add more here if discovered.
+          // ESPN scoreboard returns different abbrs from our canonical for some teams.
           // Translate inputs → ESPN form when matching events; translate ESPN's response → canonical
           // so downstream consumers (auto-resolver, totals/team-totals lookups keyed by pick.homeTeam)
           // see the same abbr the pick was tracked with.
-          const MLB_TO_ESPN = sport === "mlb" ? { CWS: "CHW" } : {};
-          const ESPN_TO_MLB = sport === "mlb" ? { CHW: "CWS" } : {};
-          const toEspn = a => MLB_TO_ESPN[a] || a;
-          const toCanonical = a => ESPN_TO_MLB[a] || a;
+          const CANONICAL_TO_ESPN = {
+            mlb: { CWS: "CHW" },
+            nba: { GSW: "GS", SAS: "SA", NYK: "NY", NOP: "NO", UTA: "UTAH", WAS: "WSH" },
+            nhl: { TBL: "TB", NJD: "NJ", LAK: "LA", SJS: "SJ" },
+          }[sport] || {};
+          const ESPN_TO_CANONICAL = Object.fromEntries(
+            Object.entries(CANONICAL_TO_ESPN).map(([k, v]) => [v, k])
+          );
+          const toEspn = a => CANONICAL_TO_ESPN[a] || a;
+          const toCanonical = a => ESPN_TO_CANONICAL[a] || a;
 
           await Promise.all(uncached.map(async ({ key, teams, cacheKey }) => {
             const [t1, t2] = teams.map(toEspn);

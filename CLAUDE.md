@@ -281,7 +281,12 @@ For totals: dedup key is `homeTeam|awayTeam|threshold` (game) or `sport|scoringT
 
 **NHL_ABBR_MAP**: NHL Stats API teamIds → abbreviations. **UTA (Utah Mammoth) = teamId 68** (rebranded from Utah Hockey Club for 2025-26; old teamId 53 absent). New teams showing `—` for GPG/GAA/SA need their teamId added.
 
-**MLB ESPN abbr mismatch**: ESPN scoreboard uses `CHW` for the Chicago White Sox; our canonical (MLB Stats API via `MLB_ID_TO_ABBR[145]`) is `CWS`. `/api/live` translates at the ESPN boundary via `MLB_TO_ESPN`/`ESPN_TO_MLB` maps so picks tracked with `opponent: "CWS"` still match the ESPN event and so the response's `homeTeam`/`awayTeam` come back as `CWS` (matching `pick.homeTeam` etc.). All other 2026 MLB abbrs match between sources. If a team rebrands or a new abbr mismatch surfaces, add it to both maps in the `/api/live` handler.
+**ESPN scoreboard abbr mismatch**: ESPN scoreboard's `team.abbreviation` differs from our canonical for several teams. `/api/live` translates at the ESPN boundary via `CANONICAL_TO_ESPN` / `ESPN_TO_CANONICAL` (sport-keyed) so picks tracked with the canonical abbr still match the ESPN event, and the response's `homeTeam`/`awayTeam` come back canonical (matching `pick.homeTeam` etc.). Symptom of an unmapped team: `/api/live` returns `state:"unknown"` and the pick never auto-resolves. Current map:
+- **MLB**: `CWS↔CHW` (Chicago White Sox; canonical from `MLB_ID_TO_ABBR[145]`)
+- **NBA**: `GSW↔GS`, `SAS↔SA`, `NYK↔NY`, `NOP↔NO`, `UTA↔UTAH`, `WAS↔WSH`
+- **NHL**: `TBL↔TB`, `NJD↔NJ`, `LAK↔LA`, `SJS↔SJ`
+
+If a team rebrands or a new mismatch surfaces, add it to `CANONICAL_TO_ESPN` in the `/api/live` handler — `ESPN_TO_CANONICAL` is auto-derived.
 
 **gameTimes lookup chain** (in play loop): `sport:team:gameDate` → `sport:team:tomorrowISOStr` (handles Kalshi encoding tomorrow's games under today's ticker date) → bare `sport:team`.
 
