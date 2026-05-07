@@ -1111,18 +1111,27 @@ var worker_default = {
             // Rate limited — fall through to stale immediately, no retry
             if (CACHE2) {
               const stale = await CACHE2.get(staleKey, "json").catch(() => null);
-              if (stale) return { data: stale, stale: true, rateLimited: true };
+              if (stale) {
+                for (const m of stale.markets || []) m._kalshiStale = true;
+                return { data: stale, stale: true, rateLimited: true };
+              }
             }
             return { data: { markets: [] }, rateLimited: true };
           }
           const fresh = r?.ok ? await r.json().catch(() => null) : null;
           if (fresh && (fresh.markets || []).length > 0) {
-            if (CACHE2) await CACHE2.put(staleKey, JSON.stringify(fresh)).catch(() => {});
+            // 30-min TTL caps how stale per-ticker fallback can drift if Kalshi keeps 429-ing.
+            // Worst case the series disappears from /api/tonight until Kalshi recovers — preferable
+            // to silently serving 30+ min old prices.
+            if (CACHE2) await CACHE2.put(staleKey, JSON.stringify(fresh), { expirationTtl: 1800 }).catch(() => {});
             return { data: fresh };
           }
           if (CACHE2) {
             const stale = await CACHE2.get(staleKey, "json").catch(() => null);
-            if (stale) return { data: stale, stale: true };
+            if (stale) {
+              for (const m of stale.markets || []) m._kalshiStale = true;
+              return { data: stale, stale: true };
+            }
           }
           return { data: { markets: [] }, failed: true };
         }
@@ -1166,6 +1175,7 @@ var worker_default = {
               const prior = priorBundle[t]?.markets || [];
               const meta = fetchMeta[t] || {};
               if (cur.length === 0 && prior.length > 0 && (meta.rateLimited || meta.failed)) {
+                for (const m of prior) m._kalshiStale = true;
                 resultMap[t] = priorBundle[t];
               }
             }
@@ -1176,6 +1186,21 @@ var worker_default = {
             await CACHE2.put(KALSHI_BUNDLE_KEY, JSON.stringify(resultMap), { expirationTtl: 600 }).catch(() => {});
           }
         }
+        // Series that came from per-ticker stale fallback OR prior-bundle preservation this request.
+        // Surfaced at the top of the response (debug + production) so we can spot when prices have
+        // drifted past one bundle cycle, and used to mark per-play `_kalshiStale: true`.
+        const staleKalshiSeries = [];
+        for (let i = 0; i < seriesTickers.length; i++) {
+          const markets = kalshiResults[i]?.markets || [];
+          if (markets.some(m => m._kalshiStale)) staleKalshiSeries.push(seriesTickers[i]);
+        }
+        const _staleKalshiSet = new Set(staleKalshiSeries);
+        const _findKalshiTicker = (sport, stat, gameType) => {
+          for (const [ticker, cfg] of Object.entries(SERIES_CONFIG)) {
+            if (cfg.sport === sport && cfg.stat === stat && (cfg.gameType || null) === (gameType || null)) return ticker;
+          }
+          return null;
+        };
         const qualifyingMarkets = [];
         const totalMarkets = []; // game total markets (pct 70–97); under plays computed from same markets
         const teamTotalMarkets = []; // single-team score markets (KXMLBTEAMTOTAL, KXNBATEAMTOTAL)
@@ -4126,6 +4151,14 @@ var worker_default = {
             return isNaN(t) || t > _nowMs;
           }));
         }
+        // Mark plays whose source kalshi series fell back to per-ticker stale (or prior-bundle
+        // preservation) this request. Single pass keeps the per-play push sites untouched.
+        if (_staleKalshiSet.size) {
+          for (const p of plays) {
+            const ticker = _findKalshiTicker(p.sport, p.stat, p.gameType);
+            if (ticker && _staleKalshiSet.has(ticker)) p._kalshiStale = true;
+          }
+        }
         if (isDebug) {
           const nbaGlLabels = Object.fromEntries(Object.entries(playerGamelogs).filter(([k]) => k.startsWith("nba|")).map(([k, gl]) => [k, gl?.ul ?? null]));
           const nbaGlSample = Object.fromEntries(Object.entries(playerGamelogs).filter(([k]) => k.startsWith("nba|")).map(([k, gl]) => [k, gl?.events?.slice(0, 3).map(ev => ({ stats: ev.stats?.slice(0, 3), statsLen: ev.stats?.length })) ?? null]));
@@ -4133,7 +4166,7 @@ var worker_default = {
           const debugPlays = sf ? plays.filter(m => m.sport === sf) : plays;
           const debugDropped = sf ? dropped.filter(m => m.sport === sf) : dropped;
           const debugPreDropped = sf ? preDropped.filter(m => m.sport === sf) : preDropped;
-          return jsonResponse({ plays: debugPlays, dropped: debugDropped, preDropped: debugPreDropped, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
+          return jsonResponse({ plays: debugPlays, dropped: debugDropped, preDropped: debugPreDropped, staleKalshiSeries, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
         }
         // Build mlbMeta: pitchers, ML odds, umpires, weather — keyed by team abbr or "home|away"
         const _mlbPitchers = {};
@@ -4195,7 +4228,7 @@ var worker_default = {
           _nhlGameOdds[abbr] = { ml: odds.moneyline ?? null, total: odds.total ?? null, spread: odds.spread ?? null };
         }
         const nhlMeta = { gameScores: sportByteam.nhlGameScores ?? {}, gameOdds: _nhlGameOdds };
-        const playsResult = { plays, nbaDropped, mlbMeta, mlbMetaTomorrow, nbaMeta, nhlMeta, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length };
+        const playsResult = { plays, nbaDropped, mlbMeta, mlbMetaTomorrow, nbaMeta, nhlMeta, staleKalshiSeries, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length };
         const sportsInPlays = new Set(plays.map((p) => p.sport));
         if (CACHE2 && sportsInPlays.size >= 2) {
           const summary = {

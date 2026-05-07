@@ -53,7 +53,7 @@ User auth (`user:{email}`) and picks (`picks:{userId}`) live in the same Redis. 
 | `byteam:nhl` | 21600s | GAA + SA per team |
 | `byteam:nfl` | 1800s | |
 | `kalshi:bundle:{date}` | 600s | All 18 series responses as JSON blob — cache hit = zero Kalshi calls. Bypassed by `?bust=1`. |
-| `kalshi:stale:{ticker}` | none | Stale-while-revalidate per-ticker fallback for 429/empty. |
+| `kalshi:stale:{ticker}` | 1800s | Stale-while-revalidate per-ticker fallback for 429/empty. TTL caps drift if Kalshi keeps 429-ing — series disappears from `/api/tonight` rather than serving 30+ min old prices. |
 | `gameTimes:v2:{date}` | 600s | Stores `sport:team:ptDate` AND bare `sport:team` (first wins). Built from yesterday + today + tomorrow ESPN scoreboards in parallel. Cleared by `?bust=1`. |
 | `nba:pace:2526` | 12h | Pace + OffRtg/DefRtg + leagueAvg. Cleared by `?bust=1`. |
 | `nba:injuries:{date}` | 1800s | ESPN injuries (Out + GTD) |
@@ -250,6 +250,7 @@ Kalshi series `KXMLBTEAMTOTAL`, `KXNBATEAMTOTAL`. `gameType: "teamTotal"`. NHL/N
   - Bundle cache `kalshi:bundle:{date}` (600s TTL) — all 18 series as one blob, cache hit = zero calls. Bypassed by `?bust=1`.
   - Cold: 6 series at a time with 300ms delay between batches. Without batching, Kalshi 429s the burst's later positions (KXMLBTEAMTOTAL #17 was the canary — silently fell through to stale yesterday-data and starved today's team-total plays). 429 → fall through to `kalshi:stale:{ticker}` (no retry). The per-ticker stale fallback fires on both bust and non-bust — it holds the last successful fetch, and is preferable to empty even on bust. (Briefly tried skipping stale on bust to dodge "yesterday's residue", but that strands the 600s bundle once any rate-limited bust call writes empty entries; preserving stale is the safer trade.)
   - **Bundle preserves prior entries on partial failure**: when a follow-up bundle fetch returns empty for a series due to rate-limit/failure, the prior bundle's entry for that ticker is reused before writing the new bundle. Stops a rapid-bust race from blanking healthy categories (KXMLBTEAMTOTAL was getting blanked between `?bust=1` calls because it was the most rate-limit-prone).
+  - **Staleness surfacing**: any series served from per-ticker stale fallback OR prior-bundle preservation marks each affected market `_kalshiStale: true`. Two consumer paths: (1) `/api/tonight` response (debug + production) returns `staleKalshiSeries: ["KXMLBTOTAL", ...]` listing tickers that fell back this request — at-a-glance signal for diagnosing drift like "Kalshi shows -968 but UI shows -669". (2) Each affected play has `_kalshiStale: true` (derived via `(sport, stat, gameType)` → ticker reverse lookup against the stale set). The flag is omitted on fresh plays.
   - Orderbooks (thin markets): 8 at a time with 200ms delay. 429 silently skipped.
 - Blended fill price via orderbook walk for thin markets
 - **Stale-ask fallback**: when `yes_ask ≥ $0.98` AND `yes_bid == 0` AND `last_price > 0`, use `last_price_dollars` instead. Handles maxed-ask illiquid markets.
