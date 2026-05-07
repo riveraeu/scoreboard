@@ -3694,18 +3694,16 @@ var worker_default = {
               const _h2hTotalPts = h2hTotalHitRate == null ? 1 : h2hTotalHitRate >= 80 ? 2 : h2hTotalHitRate >= 60 ? 1 : 0;
               const _combinedRPG = homeRPG != null && awayRPG != null ? parseFloat((homeRPG + awayRPG).toFixed(2)) : null;
               const _combinedRPGPts = _combinedRPG == null ? 1 : _combinedRPG >= 10.5 ? 2 : _combinedRPG >= 8.5 ? 1 : 0;
-              _simData = { homeRPG, awayRPG, homeERA, awayERA, homeWHIP, awayWHIP, ...(homeWHIPSource && { homeWHIPSource }), ...(awayWHIPSource && { awayWHIPSource }), parkFactor: parkRF, homeExpected: _hLam, awayExpected: _aLam, expectedTotal: (_hLam != null && _aLam != null) ? parseFloat((_hLam + _aLam).toFixed(1)) : null, gameOuLine, mlbOuPts: _mlbOuPts, combinedRPG: _combinedRPG, umpireRunFactor: _umpNameT != null ? _umpRunFactor : null, umpireName: _umpNameT, h2hTotalHitRate, h2hTotalGames, homeStarterHand: _homeStarterHand, awayStarterHand: _awayStarterHand, ...(_homePlatFactor !== 1.0 && { homePlatoonFactor: _homePlatFactor }), ...(_awayPlatFactor !== 1.0 && { awayPlatoonFactor: _awayPlatFactor }), ...(_weatherFactor !== 1.0 && { weatherFactor: _weatherFactor, windOutMph: _wData?.windOutMph }) };
+              const _homeWhipPts = homeWHIP == null ? 1 : homeWHIP > 1.35 ? 2 : homeWHIP > 1.20 ? 1 : 0;
+              const _awayWhipPts = awayWHIP == null ? 1 : awayWHIP > 1.35 ? 2 : awayWHIP > 1.20 ? 1 : 0;
+              _simData = { homeRPG, awayRPG, homeERA, awayERA, homeWHIP, awayWHIP, ...(homeWHIPSource && { homeWHIPSource }), ...(awayWHIPSource && { awayWHIPSource }), parkFactor: parkRF, homeExpected: _hLam, awayExpected: _aLam, expectedTotal: (_hLam != null && _aLam != null) ? parseFloat((_hLam + _aLam).toFixed(1)) : null, gameOuLine, mlbOuPts: _mlbOuPts, homeWhipPts: _homeWhipPts, awayWhipPts: _awayWhipPts, combinedRpgPts: _combinedRPGPts, h2hTotalPts: _h2hTotalPts, combinedRPG: _combinedRPG, umpireRunFactor: _umpNameT != null ? _umpRunFactor : null, umpireName: _umpNameT, h2hTotalHitRate, h2hTotalGames, homeStarterHand: _homeStarterHand, awayStarterHand: _awayStarterHand, ...(_homePlatFactor !== 1.0 && { homePlatoonFactor: _homePlatFactor }), ...(_awayPlatFactor !== 1.0 && { awayPlatoonFactor: _awayPlatFactor }), ...(_weatherFactor !== 1.0 && { weatherFactor: _weatherFactor, windOutMph: _wData?.windOutMph }) };
               if (_hLam != null && _aLam != null) {
                 const _dk = `mlb|${homeTeam}|${awayTeam}`;
                 if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateMLBTotalDist(_hLam, _aLam, 10000);
                 truePct = totalDistPct(totalDistCache[_dk], threshold);
               }
               // MLB SimScore (max 10): homeWHIP→0-2, awayWHIP→0-2, combinedRPG→0-2, H2H→0-2, O/U→0-2
-              totalSimScore += homeWHIP == null ? 1 : homeWHIP > 1.35 ? 2 : homeWHIP > 1.20 ? 1 : 0;
-              totalSimScore += awayWHIP == null ? 1 : awayWHIP > 1.35 ? 2 : awayWHIP > 1.20 ? 1 : 0;
-              totalSimScore += _combinedRPGPts;
-              totalSimScore += _h2hTotalPts;
-              totalSimScore += _mlbOuPts;
+              totalSimScore += _homeWhipPts + _awayWhipPts + _combinedRPGPts + _h2hTotalPts + _mlbOuPts;
             } else if (sport === "nba") {
               const _hp = nbaPaceData?.teamPace?.[homeTeam] ?? null, _ap = nbaPaceData?.teamPace?.[awayTeam] ?? null;
               const _lgPace = nbaPaceData?.leagueAvgPace ?? null;
@@ -3745,65 +3743,72 @@ var worker_default = {
               // Combined OffRtg and DefRtg averages
               const _combOffRtg = (_hOffRtg != null && _aOffRtg != null) ? parseFloat(((_hOffRtg + _aOffRtg) / 2).toFixed(1)) : (_hOffRtg ?? _aOffRtg);
               const _combDefRtg = (_hDefRtg != null && _aDefRtg != null) ? parseFloat(((_hDefRtg + _aDefRtg) / 2).toFixed(1)) : (_hDefRtg ?? _aDefRtg);
-              _simData = { homeOffRtg: _hOffRtg, awayOffRtg: _aOffRtg, homeDefRtg: _hDefRtg, awayDefRtg: _aDefRtg, combOffRtg: _combOffRtg, combDefRtg: _combDefRtg, homePace: _hp, awayPace: _ap, leagueAvgPace: _lgPace, projPace: _projPace, gameOuLine: _nbaOuLine, homeOut: _homeOut, awayOut: _awayOut, nbaGtH2HRate, nbaGtH2HGames, homeExpected: _homeExpRaw != null ? parseFloat(_homeExpRaw.toFixed(1)) : null, awayExpected: _awayExpRaw != null ? parseFloat(_awayExpRaw.toFixed(1)) : null, expectedTotal: (_homeExpRaw != null && _awayExpRaw != null) ? parseFloat((_homeExpRaw + _awayExpRaw).toFixed(1)) : null };
+              // NBA SimScore (max 10): combOffRtg→0-2, combDefRtg→0-2, pace→0-2, H2H HR%→0-2, O/U→0-2
+              const _pacePts = (_hp == null || _ap == null || _lgPace == null) ? 1 : (_hp > _lgPace + 2 && _ap > _lgPace + 2) ? 2 : (_hp > _lgPace || _ap > _lgPace) ? 1 : 0;
+              const _combOffRtgPts = _combOffRtg == null ? 1 : _combOffRtg >= 118 ? 2 : _combOffRtg >= 113 ? 1 : 0;
+              const _combDefRtgPts = _combDefRtg == null ? 1 : _combDefRtg >= 118 ? 2 : _combDefRtg >= 113 ? 1 : 0;
+              const _nbaGtH2HPts = nbaGtH2HRate == null ? 1 : nbaGtH2HRate >= 80 ? 2 : nbaGtH2HRate >= 60 ? 1 : 0;
+              const _nbaOuPts = _nbaOuLine == null ? 1 : _nbaOuLine >= 225 ? 2 : _nbaOuLine >= 215 ? 1 : 0;
+              _simData = { homeOffRtg: _hOffRtg, awayOffRtg: _aOffRtg, homeDefRtg: _hDefRtg, awayDefRtg: _aDefRtg, combOffRtg: _combOffRtg, combDefRtg: _combDefRtg, homePace: _hp, awayPace: _ap, leagueAvgPace: _lgPace, projPace: _projPace, gameOuLine: _nbaOuLine, homeOut: _homeOut, awayOut: _awayOut, nbaGtH2HRate, nbaGtH2HGames, combOffRtgPts: _combOffRtgPts, combDefRtgPts: _combDefRtgPts, pacePts: _pacePts, nbaGtH2HPts: _nbaGtH2HPts, nbaOuPts: _nbaOuPts, homeExpected: _homeExpRaw != null ? parseFloat(_homeExpRaw.toFixed(1)) : null, awayExpected: _awayExpRaw != null ? parseFloat(_awayExpRaw.toFixed(1)) : null, expectedTotal: (_homeExpRaw != null && _awayExpRaw != null) ? parseFloat((_homeExpRaw + _awayExpRaw).toFixed(1)) : null };
               if (_homeExpRaw != null && _awayExpRaw != null) {
                 const _dk = `nba|${homeTeam}|${awayTeam}`;
                 if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateNBATotalDist(_homeExpRaw, _awayExpRaw, 11, 11, 10000);
                 truePct = totalDistPct(totalDistCache[_dk], threshold);
               }
-              // NBA SimScore (max 10): combOffRtg→0-2, combDefRtg→0-2, pace→0-2, H2H HR%→0-2, O/U→0-2
-              const _pacePts = (_hp == null || _ap == null || _lgPace == null) ? 1 : (_hp > _lgPace + 2 && _ap > _lgPace + 2) ? 2 : (_hp > _lgPace || _ap > _lgPace) ? 1 : 0;
-              totalSimScore += _combOffRtg == null ? 1 : _combOffRtg >= 118 ? 2 : _combOffRtg >= 113 ? 1 : 0;
-              totalSimScore += _combDefRtg == null ? 1 : _combDefRtg >= 118 ? 2 : _combDefRtg >= 113 ? 1 : 0;
-              totalSimScore += _pacePts;
-              totalSimScore += nbaGtH2HRate == null ? 1 : nbaGtH2HRate >= 80 ? 2 : nbaGtH2HRate >= 60 ? 1 : 0;
-              if (_nbaOuLine != null) totalSimScore += _nbaOuLine >= 225 ? 2 : _nbaOuLine >= 215 ? 1 : 0;
-              else totalSimScore += 1; // null → abstain
+              totalSimScore += _combOffRtgPts + _combDefRtgPts + _pacePts + _nbaGtH2HPts + _nbaOuPts;
             } else if (sport === "nhl") {
               const homeGPG = nhlGPGMap[homeTeam] ?? null, awayGPG = nhlGPGMap[awayTeam] ?? null;
               const homeGAA = nhlGAAMap[homeTeam] ?? null, awayGAA = nhlGAAMap[awayTeam] ?? null;
               const _nhlOuLine = sportByteam.nhlGameOdds?.[homeTeam]?.total ?? sportByteam.nhlGameOdds?.[awayTeam]?.total ?? null;
               const _hGLRaw = homeGPG != null ? Math.max(0.5, Math.min(8, homeGPG * (awayGAA != null ? awayGAA / nhlLeagueAvgGAA : 1))) : null;
               const _aGLRaw = awayGPG != null ? Math.max(0.5, Math.min(8, awayGPG * (homeGAA != null ? homeGAA / nhlLeagueAvgGAA : 1))) : null;
-              _simData = { homeGPG, awayGPG, homeGAA, awayGAA, gameOuLine: _nhlOuLine, homeExpected: _hGLRaw != null ? parseFloat(_hGLRaw.toFixed(2)) : null, awayExpected: _aGLRaw != null ? parseFloat(_aGLRaw.toFixed(2)) : null, expectedTotal: (_hGLRaw != null && _aGLRaw != null) ? parseFloat((_hGLRaw + _aGLRaw).toFixed(1)) : null };
+              // NHL SimScore (max 10): homeGPG→0-2, awayGPG→0-2, homeGAA→0-2, awayGAA→0-2, O/U→0-2
+              const _homeGpgPts = homeGPG == null ? 1 : homeGPG >= 3.5 ? 2 : homeGPG >= 3.0 ? 1 : 0;
+              const _awayGpgPts = awayGPG == null ? 1 : awayGPG >= 3.5 ? 2 : awayGPG >= 3.0 ? 1 : 0;
+              const _homeGaaPts = homeGAA == null ? 1 : homeGAA >= 3.5 ? 2 : homeGAA >= 3.0 ? 1 : 0;
+              const _awayGaaPts = awayGAA == null ? 1 : awayGAA >= 3.5 ? 2 : awayGAA >= 3.0 ? 1 : 0;
+              const _nhlOuPts = _nhlOuLine == null ? 1 : _nhlOuLine >= 7 ? 2 : _nhlOuLine >= 5.5 ? 1 : 0;
+              _simData = { homeGPG, awayGPG, homeGAA, awayGAA, gameOuLine: _nhlOuLine, homeGpgPts: _homeGpgPts, awayGpgPts: _awayGpgPts, homeGaaPts: _homeGaaPts, awayGaaPts: _awayGaaPts, nhlOuPts: _nhlOuPts, homeExpected: _hGLRaw != null ? parseFloat(_hGLRaw.toFixed(2)) : null, awayExpected: _aGLRaw != null ? parseFloat(_aGLRaw.toFixed(2)) : null, expectedTotal: (_hGLRaw != null && _aGLRaw != null) ? parseFloat((_hGLRaw + _aGLRaw).toFixed(1)) : null };
               if (_hGLRaw != null && _aGLRaw != null) {
                 const _dk = `nhl|${homeTeam}|${awayTeam}`;
                 if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateNHLTotalDist(_hGLRaw, _aGLRaw, 10000);
                 truePct = totalDistPct(totalDistCache[_dk], threshold);
               }
-              // NHL SimScore (max 10): homeGPG→0-2, awayGPG→0-2, homeGAA→0-2, awayGAA→0-2, O/U→0-2
-              totalSimScore += homeGPG == null ? 1 : homeGPG >= 3.5 ? 2 : homeGPG >= 3.0 ? 1 : 0;
-              totalSimScore += awayGPG == null ? 1 : awayGPG >= 3.5 ? 2 : awayGPG >= 3.0 ? 1 : 0;
-              totalSimScore += homeGAA == null ? 1 : homeGAA >= 3.5 ? 2 : homeGAA >= 3.0 ? 1 : 0;
-              totalSimScore += awayGAA == null ? 1 : awayGAA >= 3.5 ? 2 : awayGAA >= 3.0 ? 1 : 0;
-              if (_nhlOuLine != null) totalSimScore += _nhlOuLine >= 7 ? 2 : _nhlOuLine >= 5.5 ? 1 : 0;
-              else totalSimScore += 1; // null → abstain
+              totalSimScore += _homeGpgPts + _awayGpgPts + _homeGaaPts + _awayGaaPts + _nhlOuPts;
             }
             // ── UNDER SimScore (inverted tiers — low values favor under) ──
+            // _underComponents is spread into UNDER pushes to override the OVER-direction *Pts
+            // fields inherited from _simData, so each pick's components reflect the bet direction.
             let underSimScore = 0;
+            let _underComponents = {};
             if (sport === "mlb") {
               const { homeWHIP: _hW, awayWHIP: _aW, combinedRPG: _cRPG, gameOuLine, h2hTotalHitRate: _h2hTR } = _simData;
-              underSimScore += _hW == null ? 1 : _hW <= 1.10 ? 2 : _hW <= 1.25 ? 1 : 0;
-              underSimScore += _aW == null ? 1 : _aW <= 1.10 ? 2 : _aW <= 1.25 ? 1 : 0;
-              underSimScore += _cRPG == null ? 1 : _cRPG < 8.5 ? 2 : _cRPG <= 10.5 ? 1 : 0;
-              underSimScore += _h2hTR == null ? 1 : _h2hTR <= 20 ? 2 : _h2hTR <= 40 ? 1 : 0;
-              underSimScore += gameOuLine == null ? 1 : gameOuLine < 7.5 ? 2 : gameOuLine < 9.5 ? 1 : 0;
+              const _uHomeWhipPts = _hW == null ? 1 : _hW <= 1.10 ? 2 : _hW <= 1.25 ? 1 : 0;
+              const _uAwayWhipPts = _aW == null ? 1 : _aW <= 1.10 ? 2 : _aW <= 1.25 ? 1 : 0;
+              const _uCombRpgPts = _cRPG == null ? 1 : _cRPG < 8.5 ? 2 : _cRPG <= 10.5 ? 1 : 0;
+              const _uH2hTotalPts = _h2hTR == null ? 1 : _h2hTR <= 20 ? 2 : _h2hTR <= 40 ? 1 : 0;
+              const _uMlbOuPts = gameOuLine == null ? 1 : gameOuLine < 7.5 ? 2 : gameOuLine < 9.5 ? 1 : 0;
+              underSimScore = _uHomeWhipPts + _uAwayWhipPts + _uCombRpgPts + _uH2hTotalPts + _uMlbOuPts;
+              _underComponents = { homeWhipPts: _uHomeWhipPts, awayWhipPts: _uAwayWhipPts, combinedRpgPts: _uCombRpgPts, h2hTotalPts: _uH2hTotalPts, mlbOuPts: _uMlbOuPts };
             } else if (sport === "nba") {
               // UNDER SimScore: inverted — weak offenses, strong defenses, slow pace, no H2H history of scoring, low O/U
               const { combOffRtg, combDefRtg, homePace, awayPace, leagueAvgPace, gameOuLine, nbaGtH2HRate: _nbaH2H } = _simData;
-              underSimScore += combOffRtg == null ? 1 : combOffRtg < 113 ? 2 : combOffRtg < 118 ? 1 : 0;
-              underSimScore += combDefRtg == null ? 1 : combDefRtg < 113 ? 2 : combDefRtg < 118 ? 1 : 0;
+              const _uCombOffRtgPts = combOffRtg == null ? 1 : combOffRtg < 113 ? 2 : combOffRtg < 118 ? 1 : 0;
+              const _uCombDefRtgPts = combDefRtg == null ? 1 : combDefRtg < 113 ? 2 : combDefRtg < 118 ? 1 : 0;
               const _uPacePts = (homePace == null || awayPace == null || leagueAvgPace == null) ? 1 : (homePace < leagueAvgPace - 2 && awayPace < leagueAvgPace - 2) ? 2 : (homePace < leagueAvgPace || awayPace < leagueAvgPace) ? 1 : 0;
-              underSimScore += _uPacePts;
-              underSimScore += _nbaH2H == null ? 1 : _nbaH2H <= 30 ? 2 : _nbaH2H <= 50 ? 1 : 0;
-              underSimScore += gameOuLine == null ? 1 : gameOuLine < 215 ? 2 : gameOuLine < 225 ? 1 : 0;
+              const _uNbaGtH2HPts = _nbaH2H == null ? 1 : _nbaH2H <= 30 ? 2 : _nbaH2H <= 50 ? 1 : 0;
+              const _uNbaOuPts = gameOuLine == null ? 1 : gameOuLine < 215 ? 2 : gameOuLine < 225 ? 1 : 0;
+              underSimScore = _uCombOffRtgPts + _uCombDefRtgPts + _uPacePts + _uNbaGtH2HPts + _uNbaOuPts;
+              _underComponents = { combOffRtgPts: _uCombOffRtgPts, combDefRtgPts: _uCombDefRtgPts, pacePts: _uPacePts, nbaGtH2HPts: _uNbaGtH2HPts, nbaOuPts: _uNbaOuPts };
             } else if (sport === "nhl") {
               const { homeGPG, awayGPG, homeGAA, awayGAA, gameOuLine } = _simData;
-              underSimScore += homeGPG == null ? 1 : homeGPG < 3.0 ? 2 : homeGPG < 3.5 ? 1 : 0;
-              underSimScore += awayGPG == null ? 1 : awayGPG < 3.0 ? 2 : awayGPG < 3.5 ? 1 : 0;
-              underSimScore += homeGAA == null ? 1 : homeGAA < 3.0 ? 2 : homeGAA < 3.5 ? 1 : 0;
-              underSimScore += awayGAA == null ? 1 : awayGAA < 3.0 ? 2 : awayGAA < 3.5 ? 1 : 0;
-              underSimScore += gameOuLine == null ? 1 : gameOuLine < 5.5 ? 2 : gameOuLine < 7 ? 1 : 0;
+              const _uHomeGpgPts = homeGPG == null ? 1 : homeGPG < 3.0 ? 2 : homeGPG < 3.5 ? 1 : 0;
+              const _uAwayGpgPts = awayGPG == null ? 1 : awayGPG < 3.0 ? 2 : awayGPG < 3.5 ? 1 : 0;
+              const _uHomeGaaPts = homeGAA == null ? 1 : homeGAA < 3.0 ? 2 : homeGAA < 3.5 ? 1 : 0;
+              const _uAwayGaaPts = awayGAA == null ? 1 : awayGAA < 3.0 ? 2 : awayGAA < 3.5 ? 1 : 0;
+              const _uNhlOuPts = gameOuLine == null ? 1 : gameOuLine < 5.5 ? 2 : gameOuLine < 7 ? 1 : 0;
+              underSimScore = _uHomeGpgPts + _uAwayGpgPts + _uHomeGaaPts + _uAwayGaaPts + _uNhlOuPts;
+              _underComponents = { homeGpgPts: _uHomeGpgPts, awayGpgPts: _uAwayGpgPts, homeGaaPts: _uHomeGaaPts, awayGaaPts: _uAwayGaaPts, nhlOuPts: _uNhlOuPts };
             }
             if (truePct == null) {
               if (isDebug) dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, totalSimScore, underSimScore, reason: "no_simulation_data", ..._simData });
@@ -3836,9 +3841,9 @@ var worker_default = {
             // Debug-dropped path matches team-totals: push every non-qualifying UNDER so the
             // market report shows a row for every market, not just those with edge ≥ 3%.
             if (underEdge >= EDGE_GATE && noKalshiPct >= KALSHI_GATE && noKalshiPct <= KALSHI_CAP) {
-              totalPlays.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "under", kalshiPct, noKalshiPct, americanOdds: noKalshiAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, rawEdge, edge: underEdge, totalSimScore: underSimScore, qualified: underSimScore >= SIMSCORE_GATE, kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _gameTime, lineupsConfirmed: _lineupsConfirmed, ..._simData });
+              totalPlays.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "under", kalshiPct, noKalshiPct, americanOdds: noKalshiAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, rawEdge, edge: underEdge, totalSimScore: underSimScore, qualified: underSimScore >= SIMSCORE_GATE, kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _gameTime, lineupsConfirmed: _lineupsConfirmed, ..._simData, ..._underComponents });
             } else if (isDebug) {
-              dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "under", kalshiPct, noKalshiPct, americanOdds: noKalshiAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, rawEdge, edge: underEdge, totalSimScore: underSimScore, lineupsConfirmed: _lineupsConfirmed, reason: noKalshiPct < KALSHI_GATE ? "under_no_price_too_low" : "edge_too_low", ..._simData });
+              dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "under", kalshiPct, noKalshiPct, americanOdds: noKalshiAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, rawEdge, edge: underEdge, totalSimScore: underSimScore, lineupsConfirmed: _lineupsConfirmed, reason: noKalshiPct < KALSHI_GATE ? "under_no_price_too_low" : "edge_too_low", ..._simData, ..._underComponents });
             }
           }
         }
@@ -3927,7 +3932,8 @@ var worker_default = {
               const _normTTUmp = n => n?.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
               const _ttUmpKF = _ttUmpName ? (UMPIRE_KFACTOR[_normTTUmp(_ttUmpName)] ?? 1.0) : 1.0;
               const _ttUmpRunFactor = parseFloat((1 / _ttUmpKF).toFixed(3));
-              const ttUmpirePts = _ttUmpName == null ? 1 : _ttUmpRunFactor >= 1.05 ? 2 : _ttUmpRunFactor >= 0.97 ? 1 : 0;
+              // Note: umpire factor adjusts the lambda (so it's reflected in truePct) but is
+              // intentionally not a separate SimScore component to avoid double-counting.
               const _lam = teamRPG != null ? parseFloat((Math.max(0.5, Math.min(12, teamRPG * _oppMult * parkRF * _ttPlatFactor * _ttWeatherFactor * _ttUmpRunFactor))).toFixed(2)) : null;
               if (_lam != null) {
                 const _dk = `mlb|team|${scoringTeam}|${oppTeam}`;
@@ -3960,17 +3966,14 @@ var worker_default = {
               const h2hHitRate = _h2h?.rate ?? null;
               const h2hGames = _h2h?.games ?? null;
               const h2hHitRatePts = h2hHitRate == null ? 1 : h2hHitRate >= 80 ? 2 : h2hHitRate >= 60 ? 1 : 0;
-              teamTotalSimScore += ttSeasonHitRatePts;
-              teamTotalSimScore += ttWhipPts;
-              teamTotalSimScore += ttL10Pts;
-              teamTotalSimScore += h2hHitRatePts;
-              teamTotalSimScore += gameOuLine == null ? 1 : gameOuLine >= 9.5 ? 2 : gameOuLine >= 7.5 ? 1 : 0;
-              if (truePct == null) { if (isDebug) dropped.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, teamTotalSimScore, teamRPG, oppERA, oppWHIP, ...(oppWHIPSource && { oppWHIPSource }), oppRPG, parkFactor: parkRF, gameOuLine, h2hHitRate, h2hGames, h2hHitRatePts, teamL10RPG, ttL10Pts, ttWhipPts, ttUmpirePts, ttSeasonHitRate, ttSeasonHitRatePts, umpireName: _ttUmpName, reason: "no_simulation_data" }); continue; }
+              const ttOuPts = gameOuLine == null ? 1 : gameOuLine >= 9.5 ? 2 : gameOuLine >= 7.5 ? 1 : 0;
+              teamTotalSimScore += ttSeasonHitRatePts + ttWhipPts + ttL10Pts + h2hHitRatePts + ttOuPts;
+              if (truePct == null) { if (isDebug) dropped.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, teamTotalSimScore, teamRPG, oppERA, oppWHIP, ...(oppWHIPSource && { oppWHIPSource }), oppRPG, parkFactor: parkRF, gameOuLine, h2hHitRate, h2hGames, h2hHitRatePts, teamL10RPG, ttL10Pts, ttWhipPts, ttOuPts, ttSeasonHitRate, ttSeasonHitRatePts, umpireName: _ttUmpName, reason: "no_simulation_data" }); continue; }
               const _ttGameTime = gameTimes[`${sport}:${homeTeam}:${gameDate}`] ?? gameTimes[`${sport}:${awayTeam}:${gameDate}`] ?? gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null;
               // Both lineups confirmed (MLB only): scoringTeam + oppTeam each have a posted lineup, neither projected.
               const _ttLineupsConfirmed = (sportByteam.mlb?.lineupSpotByName?.[scoringTeam] != null && !(sportByteam.mlb?.projectedLineupTeams || []).includes(scoringTeam))
                 && (sportByteam.mlb?.lineupSpotByName?.[oppTeam] != null && !(sportByteam.mlb?.projectedLineupTeams || []).includes(oppTeam));
-              const _ttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), ...(_ttModelTruePct != null && _ttModelTruePct !== truePct && { modelTruePct: parseFloat(_ttModelTruePct.toFixed(1)) }), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _ttGameTime, lineupsConfirmed: _ttLineupsConfirmed, teamRPG, oppERA, oppWHIP, ...(oppWHIPSource && { oppWHIPSource }), oppRPG, parkFactor: parkRF, gameOuLine, teamExpected: _lam != null ? parseFloat(_lam.toFixed(1)) : null, h2hHitRate, h2hGames, h2hHitRatePts, teamL10RPG, ttL10Pts, ttWhipPts, ttUmpirePts, umpireRunFactor: _ttUmpRunFactor, ...(_ttUmpName && { umpireName: _ttUmpName }), ttSeasonHitRate, ttSeasonHitRatePts, oppStarterHand: _ttOppStarterHand, ...(_ttPlatFactor !== 1.0 && { platoonFactor: _ttPlatFactor }) };
+              const _ttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), ...(_ttModelTruePct != null && _ttModelTruePct !== truePct && { modelTruePct: parseFloat(_ttModelTruePct.toFixed(1)) }), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _ttGameTime, lineupsConfirmed: _ttLineupsConfirmed, teamRPG, oppERA, oppWHIP, ...(oppWHIPSource && { oppWHIPSource }), oppRPG, parkFactor: parkRF, gameOuLine, teamExpected: _lam != null ? parseFloat(_lam.toFixed(1)) : null, h2hHitRate, h2hGames, h2hHitRatePts, teamL10RPG, ttL10Pts, ttWhipPts, ttOuPts, umpireRunFactor: _ttUmpRunFactor, ...(_ttUmpName && { umpireName: _ttUmpName }), ttSeasonHitRate, ttSeasonHitRatePts, oppStarterHand: _ttOppStarterHand, ...(_ttPlatFactor !== 1.0 && { platoonFactor: _ttPlatFactor }) };
               const rawEdge = parseFloat((truePct - kalshiPct).toFixed(1));
               const edge = rawEdge;
               const _ttOverInWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
@@ -3984,16 +3987,17 @@ var worker_default = {
               const _ttNoKalshiPct = 100 - kalshiPct;
               const _ttUnderEdge = parseFloat((_ttNoTruePct - _ttNoKalshiPct).toFixed(1));
               const _ttNoKalshiAO = _ttNoKalshiPct >= 50 ? Math.round(-(_ttNoKalshiPct/(100-_ttNoKalshiPct))*100) : Math.round((100-_ttNoKalshiPct)/_ttNoKalshiPct*100);
-              let _ttUnderSimScore = 0;
-              _ttUnderSimScore += ttSeasonHitRate == null ? 1 : ttSeasonHitRate <= 20 ? 2 : ttSeasonHitRate <= 40 ? 1 : 0;
-              _ttUnderSimScore += oppWHIP == null ? 1 : oppWHIP <= 1.10 ? 2 : oppWHIP <= 1.25 ? 1 : 0;
-              _ttUnderSimScore += teamL10RPG == null ? 1 : teamL10RPG <= 3.5 ? 2 : teamL10RPG <= 4.5 ? 1 : 0;
-              _ttUnderSimScore += h2hHitRate == null ? 1 : h2hHitRate <= 30 ? 2 : h2hHitRate <= 50 ? 1 : 0;
-              _ttUnderSimScore += gameOuLine == null ? 1 : gameOuLine < 7.5 ? 2 : gameOuLine < 9.5 ? 1 : 0;
+              const _uTtSeasonHitRatePts = ttSeasonHitRate == null ? 1 : ttSeasonHitRate <= 20 ? 2 : ttSeasonHitRate <= 40 ? 1 : 0;
+              const _uTtWhipPts = oppWHIP == null ? 1 : oppWHIP <= 1.10 ? 2 : oppWHIP <= 1.25 ? 1 : 0;
+              const _uTtL10Pts = teamL10RPG == null ? 1 : teamL10RPG <= 3.5 ? 2 : teamL10RPG <= 4.5 ? 1 : 0;
+              const _uH2hHitRatePts = h2hHitRate == null ? 1 : h2hHitRate <= 30 ? 2 : h2hHitRate <= 50 ? 1 : 0;
+              const _uTtOuPts = gameOuLine == null ? 1 : gameOuLine < 7.5 ? 2 : gameOuLine < 9.5 ? 1 : 0;
+              const _ttUnderSimScore = _uTtSeasonHitRatePts + _uTtWhipPts + _uTtL10Pts + _uH2hHitRatePts + _uTtOuPts;
+              const _ttUnderComponents = { ttSeasonHitRatePts: _uTtSeasonHitRatePts, ttWhipPts: _uTtWhipPts, ttL10Pts: _uTtL10Pts, h2hHitRatePts: _uH2hHitRatePts, ttOuPts: _uTtOuPts };
               if (_ttUnderEdge >= EDGE_GATE && _ttNoKalshiPct >= KALSHI_GATE && _ttNoKalshiPct <= KALSHI_CAP) {
-                teamTotalPlays.push({ ..._ttBaseFields, direction: "under", noTruePct: _ttNoTruePct, noKalshiPct: _ttNoKalshiPct, americanOdds: _ttNoKalshiAO, edge: _ttUnderEdge, rawEdge: _ttUnderEdge, teamTotalSimScore: _ttUnderSimScore, qualified: _ttUnderSimScore >= SIMSCORE_GATE });
+                teamTotalPlays.push({ ..._ttBaseFields, ..._ttUnderComponents, direction: "under", noTruePct: _ttNoTruePct, noKalshiPct: _ttNoKalshiPct, americanOdds: _ttNoKalshiAO, edge: _ttUnderEdge, rawEdge: _ttUnderEdge, teamTotalSimScore: _ttUnderSimScore, qualified: _ttUnderSimScore >= SIMSCORE_GATE });
               } else if (isDebug) {
-                dropped.push({ ..._ttBaseFields, direction: "under", noTruePct: _ttNoTruePct, noKalshiPct: _ttNoKalshiPct, edge: _ttUnderEdge, teamTotalSimScore: _ttUnderSimScore, reason: _ttNoKalshiPct < KALSHI_GATE ? "under_no_price_too_low" : "edge_too_low" });
+                dropped.push({ ..._ttBaseFields, ..._ttUnderComponents, direction: "under", noTruePct: _ttNoTruePct, noKalshiPct: _ttNoKalshiPct, edge: _ttUnderEdge, teamTotalSimScore: _ttUnderSimScore, reason: _ttNoKalshiPct < KALSHI_GATE ? "under_no_price_too_low" : "edge_too_low" });
               }
             } else if (sport === "nba") {
               const nbaDefRank = STAT_SOFT["nba|points"]?.rankMap ?? {};
@@ -4033,14 +4037,13 @@ var worker_default = {
               const h2hGames = _h2h?.games ?? null;
               const h2hHitRatePts = h2hHitRate == null ? 1 : h2hHitRate >= 80 ? 2 : h2hHitRate >= 60 ? 1 : 0;
               // SimScore (max 10): OffRtg→0-2, oppDefRtg→0-2, Season HR%→0-2, H2H HR%→0-2, O/U→0-2
-              teamTotalSimScore += teamOffRtg == null ? 1 : teamOffRtg >= 118 ? 2 : teamOffRtg >= 113 ? 1 : 0;
-              teamTotalSimScore += oppDefRtg == null ? 1 : oppDefRtg >= 118 ? 2 : oppDefRtg >= 113 ? 1 : 0;
-              teamTotalSimScore += ttNbaSeasonHitRatePts;
-              teamTotalSimScore += h2hHitRatePts;
-              teamTotalSimScore += _nbaOuLine == null ? 1 : _nbaOuLine >= 225 ? 2 : _nbaOuLine >= 215 ? 1 : 0;
-              if (truePct == null) { if (isDebug) dropped.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, teamTotalSimScore, teamOffRtg, oppDefRtg, gameOuLine: _nbaOuLine, h2hHitRate, h2hGames, h2hHitRatePts, ttNbaSeasonHitRate, ttNbaSeasonHitRatePts, reason: "no_simulation_data" }); continue; }
+              const ttOffRtgPts = teamOffRtg == null ? 1 : teamOffRtg >= 118 ? 2 : teamOffRtg >= 113 ? 1 : 0;
+              const ttDefRtgPts = oppDefRtg == null ? 1 : oppDefRtg >= 118 ? 2 : oppDefRtg >= 113 ? 1 : 0;
+              const ttNbaOuPts = _nbaOuLine == null ? 1 : _nbaOuLine >= 225 ? 2 : _nbaOuLine >= 215 ? 1 : 0;
+              teamTotalSimScore += ttOffRtgPts + ttDefRtgPts + ttNbaSeasonHitRatePts + h2hHitRatePts + ttNbaOuPts;
+              if (truePct == null) { if (isDebug) dropped.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, teamTotalSimScore, teamOffRtg, oppDefRtg, ttOffRtgPts, ttDefRtgPts, ttNbaOuPts, gameOuLine: _nbaOuLine, h2hHitRate, h2hGames, h2hHitRatePts, ttNbaSeasonHitRate, ttNbaSeasonHitRatePts, reason: "no_simulation_data" }); continue; }
               const _nttGameTime = gameTimes[`${sport}:${homeTeam}:${gameDate}`] ?? gameTimes[`${sport}:${awayTeam}:${gameDate}`] ?? gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null;
-              const _nttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _nttGameTime, teamOffRtg, oppDefRtg, teamExpected: _teamExpected != null ? parseFloat(_teamExpected.toFixed(1)) : null, gameOuLine: _nbaOuLine, gameSpread: _gameSpread, h2hHitRate, h2hGames, h2hHitRatePts, ttNbaSeasonHitRate, ttNbaSeasonHitRatePts };
+              const _nttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _nttGameTime, teamOffRtg, oppDefRtg, teamExpected: _teamExpected != null ? parseFloat(_teamExpected.toFixed(1)) : null, gameOuLine: _nbaOuLine, gameSpread: _gameSpread, h2hHitRate, h2hGames, h2hHitRatePts, ttNbaSeasonHitRate, ttNbaSeasonHitRatePts, ttOffRtgPts, ttDefRtgPts, ttNbaOuPts };
               const rawEdge = parseFloat((truePct - kalshiPct).toFixed(1));
               const edge = rawEdge;
               const _nttOverInWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
@@ -4054,16 +4057,17 @@ var worker_default = {
               const _nttNoKalshiPct = 100 - kalshiPct;
               const _nttUnderEdge = parseFloat((_nttNoTruePct - _nttNoKalshiPct).toFixed(1));
               const _nttNoKalshiAO = _nttNoKalshiPct >= 50 ? Math.round(-(_nttNoKalshiPct/(100-_nttNoKalshiPct))*100) : Math.round((100-_nttNoKalshiPct)/_nttNoKalshiPct*100);
-              let _nttUnderSimScore = 0;
-              _nttUnderSimScore += teamOffRtg == null ? 1 : teamOffRtg < 113 ? 2 : teamOffRtg < 118 ? 1 : 0;
-              _nttUnderSimScore += oppDefRtg == null ? 1 : oppDefRtg < 113 ? 2 : oppDefRtg < 118 ? 1 : 0;
-              _nttUnderSimScore += ttNbaSeasonHitRate == null ? 1 : ttNbaSeasonHitRate <= 20 ? 2 : ttNbaSeasonHitRate <= 40 ? 1 : 0;
-              _nttUnderSimScore += h2hHitRate == null ? 1 : h2hHitRate <= 30 ? 2 : h2hHitRate <= 50 ? 1 : 0;
-              _nttUnderSimScore += _nbaOuLine == null ? 1 : _nbaOuLine < 215 ? 2 : _nbaOuLine < 225 ? 1 : 0;
+              const _uTtOffRtgPts = teamOffRtg == null ? 1 : teamOffRtg < 113 ? 2 : teamOffRtg < 118 ? 1 : 0;
+              const _uTtDefRtgPts = oppDefRtg == null ? 1 : oppDefRtg < 113 ? 2 : oppDefRtg < 118 ? 1 : 0;
+              const _uTtNbaSeasonHitRatePts = ttNbaSeasonHitRate == null ? 1 : ttNbaSeasonHitRate <= 20 ? 2 : ttNbaSeasonHitRate <= 40 ? 1 : 0;
+              const _uNbaH2hHitRatePts = h2hHitRate == null ? 1 : h2hHitRate <= 30 ? 2 : h2hHitRate <= 50 ? 1 : 0;
+              const _uTtNbaOuPts = _nbaOuLine == null ? 1 : _nbaOuLine < 215 ? 2 : _nbaOuLine < 225 ? 1 : 0;
+              const _nttUnderSimScore = _uTtOffRtgPts + _uTtDefRtgPts + _uTtNbaSeasonHitRatePts + _uNbaH2hHitRatePts + _uTtNbaOuPts;
+              const _nttUnderComponents = { ttOffRtgPts: _uTtOffRtgPts, ttDefRtgPts: _uTtDefRtgPts, ttNbaSeasonHitRatePts: _uTtNbaSeasonHitRatePts, h2hHitRatePts: _uNbaH2hHitRatePts, ttNbaOuPts: _uTtNbaOuPts };
               if (_nttUnderEdge >= EDGE_GATE && _nttNoKalshiPct >= KALSHI_GATE && _nttNoKalshiPct <= KALSHI_CAP) {
-                teamTotalPlays.push({ ..._nttBaseFields, direction: "under", noTruePct: _nttNoTruePct, noKalshiPct: _nttNoKalshiPct, americanOdds: _nttNoKalshiAO, edge: _nttUnderEdge, rawEdge: _nttUnderEdge, teamTotalSimScore: _nttUnderSimScore, qualified: _nttUnderSimScore >= SIMSCORE_GATE });
+                teamTotalPlays.push({ ..._nttBaseFields, ..._nttUnderComponents, direction: "under", noTruePct: _nttNoTruePct, noKalshiPct: _nttNoKalshiPct, americanOdds: _nttNoKalshiAO, edge: _nttUnderEdge, rawEdge: _nttUnderEdge, teamTotalSimScore: _nttUnderSimScore, qualified: _nttUnderSimScore >= SIMSCORE_GATE });
               } else if (isDebug) {
-                dropped.push({ ..._nttBaseFields, direction: "under", noTruePct: _nttNoTruePct, noKalshiPct: _nttNoKalshiPct, edge: _nttUnderEdge, teamTotalSimScore: _nttUnderSimScore, reason: _nttNoKalshiPct < KALSHI_GATE ? "under_no_price_too_low" : "edge_too_low" });
+                dropped.push({ ..._nttBaseFields, ..._nttUnderComponents, direction: "under", noTruePct: _nttNoTruePct, noKalshiPct: _nttNoKalshiPct, edge: _nttUnderEdge, teamTotalSimScore: _nttUnderSimScore, reason: _nttNoKalshiPct < KALSHI_GATE ? "under_no_price_too_low" : "edge_too_low" });
               }
             }
           }

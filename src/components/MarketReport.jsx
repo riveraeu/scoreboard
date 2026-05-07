@@ -319,7 +319,6 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                         case "ttOppERA": return m.oppERA ?? 999;
                         case "ttOppRPG": return m.oppRPG ?? 0;
                         case "ttPark": return m.parkFactor ?? 1;
-                        case "ttUmpire": return m.ttUmpirePts ?? 0;
                         case "ttWhip": return m.oppWHIP ?? 999;
                         case "ttL10RPG": return m.teamL10RPG ?? 0;
                         case "ttOu": return m.gameOuLine ?? 0;
@@ -463,7 +462,6 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                           if (k==="ttOppERA") { const v=m.oppERA; return v!=null?<span style={{color:v>4.5?"#3fb950":v>3.5?"#e3b341":"#8b949e",fontWeight:600}}>{parseFloat(v).toFixed(2)}</span>:DASH; }
                           if (k==="ttOppRPG") { const v=m.oppRPG; return v!=null?<span style={{color:v>5.0?"#3fb950":v>4.0?"#e3b341":"#8b949e",fontWeight:600}}>{v.toFixed(1)}</span>:DASH; }
                           if (k==="ttPark") { const pf=m.parkFactor; if(pf==null) return DASH; const pct=Math.round((pf-1)*100); return <span style={{color:pf>1.05?"#3fb950":pf>1.00?"#e3b341":"#8b949e"}}>{(pct>=0?"+":"")+pct+"%"}</span>; }
-                          if (k==="ttUmpire") { const pts=m.ttUmpirePts; const rf=m.umpireRunFactor ?? (m.ttUmpirePts!=null ? null : null); const name=m.umpireName; if (pts==null) return DASH; const color=pts>=2?"#3fb950":pts>=1?"#e3b341":"#8b949e"; return <span style={{color}} title={name||undefined}>{pts}/2</span>; }
                           if (k==="ttSeasonHR") { const v=m.ttSeasonHitRate; if (v==null) return DASH; const isU=m.direction==="under"; const pts=m.ttSeasonHitRatePts??(isU?(v<=20?2:v<=40?1:0):(v>=80?2:v>=60?1:0)); const color=pts>=2?"#3fb950":pts>=1?"#e3b341":"#f78166"; return <span style={{color,fontWeight:600}}>{v}%</span>; }
                           if (k==="ttWhip") { const v=m.oppWHIP; if (v==null) return DASH; const isU=m.direction==="under"; const color=isU?(v<=1.10?"#3fb950":v<=1.25?"#e3b341":"#f78166"):(v>1.35?"#3fb950":v>1.20?"#e3b341":"#f78166"); return <span style={{color,fontWeight:600}}>{v.toFixed(2)}</span>; }
                           if (k==="ttL10RPG") { const v=m.teamL10RPG; if (v==null) return DASH; const isU=m.direction==="under"; const color=isU?(v<=3.5?"#3fb950":v<=4.5?"#e3b341":"#f78166"):(v>5.0?"#3fb950":v>4.0?"#e3b341":"#f78166"); return <span style={{color,fontWeight:600}}>{v.toFixed(1)}</span>; }
@@ -550,7 +548,6 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                           ttOppERA:"Opponent starter ERA — higher = more hittable pitcher = better for over (green >4.5, yellow >3.5)",
                           ttOppRPG:"Opponent runs per game — higher = game environment favors scoring (green >5.0, yellow >4.0)",
                           ttPark:"Park run factor — green = hitter-friendly (>+5% green, >0% yellow)",
-                          ttUmpire:"Umpire run factor (1/K-factor) — now applied directly to the simulation lambda; no longer a SimScore component.",
                           ttSeasonHR:"Season HR% — scoring team's rate of scoring ≥ threshold across all completed season games. ≥80% green (2pts), ≥60% yellow (1pt), <60% red (0pts); null = 1pt abstain",
                           ttWhip:"Opponent starter WHIP — measures actual baserunner traffic beyond ERA. green >1.35 (2pts), yellow >1.20 (1pt), ≤1.20 = lockdown (0pts); null = 1pt abstain",
                           ttL10RPG:"Scoring team RPG over last 10 games — momentum signal. green >5.0 (2pts), yellow >4.0 (1pt), ≤4.0 = cold (0pts); null = 1pt abstain",
