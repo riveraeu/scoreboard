@@ -226,7 +226,7 @@ OffRtg/DefRtg from same ESPN team-stats call as pace. `nba:pace:2526` stores `te
 
 **Dedup**: one play per game (homeTeam+awayTeam+sport) — best edge wins across OVER+UNDER AND across game total vs team total. Track ID: `total|sport|home|away|threshold|gameDate[|under]`.
 
-**`Kalshi NBA O/U fallback`**: ESPN omits odds for live/imminent games. After ESPN fetch, `kalshiNbaOuMap` (built from all KXNBATOTAL markets, unfiltered pct) fills missing entries: highest threshold where YES ≥ 50%, set `total = threshold − 0.5`.
+**`Kalshi O/U fallback (NBA + MLB + NHL)`**: Built via `_buildKalshiOuMap(sport, ticker)` from all KX{SPORT}TOTAL markets (unfiltered pct). Highest threshold where YES ≥ 50%, set `total = threshold − 0.5`. Three call sites populate `sportByteam.nbaGameOdds`, `sportByteam.mlb.gameOdds`, `sportByteam.nhlGameOdds` for any team missing a `total`. Originally NBA-only (ESPN omits odds for live/imminent games); MLB+NHL added 2026-05-07 because today's ESPN scoreboard never carries tomorrow's odds and `mlbMetaTomorrow.gameOdds` is intentionally empty — without the fallback, every tomorrow MLB/NHL game total play renders with O/U "—".
 
 ### Team Totals (MLB, NBA only)
 Kalshi series `KXMLBTEAMTOTAL`, `KXNBATEAMTOTAL`. `gameType: "teamTotal"`. NHL/NFL absent on Kalshi. Scoring team extracted from ticker suffix (e.g. `LAD8` → LAD).

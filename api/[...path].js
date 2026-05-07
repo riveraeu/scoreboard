@@ -1352,40 +1352,45 @@ var worker_default = {
         // Derive implied NBA game O/U line from Kalshi KXNBATOTAL markets.
         // Uses ALL pcts (no 70-97 filter) to find the 50% YES crossing per game.
         // Falls back into nbaGameOdds for teams ESPN doesn't include in today's scoreboard odds.
-        const kalshiNbaOuMap = {};
-        {
-          const _kxnbaIdx = seriesTickers.indexOf("KXNBATOTAL");
-          if (_kxnbaIdx >= 0) {
-            const _ouByGame = {};
-            for (const m of kalshiResults[_kxnbaIdx].markets || []) {
-              const _strike = parseFloat(m.floor_strike);
-              if (isNaN(_strike)) continue;
-              const _thr = Math.round(_strike + 0.5);
-              const _ask = parseFloat(m.yes_ask_dollars) || 0;
-              const _last = parseFloat(m.last_price_dollars) || 0;
-              const _bid = parseFloat(m.yes_bid_dollars) || 0;
-              const _price = (_ask >= 0.98 && _bid === 0 && _last > 0) ? _last : (_ask > 0 ? _ask : _last);
-              const _pct = Math.round(_price * 100);
-              if (_pct <= 0 || _pct >= 100) continue;
-              const [_t1, _t2] = parseGameTeams(m.event_ticker, "nba");
-              if (!_t1 || !_t2) continue;
-              const _gk = `${_t1}|${_t2}`;
-              if (!_ouByGame[_gk]) _ouByGame[_gk] = [];
-              _ouByGame[_gk].push({ threshold: _thr, pct: _pct });
-            }
-            for (const [_gk, _mks] of Object.entries(_ouByGame)) {
-              _mks.sort((a, b) => a.threshold - b.threshold);
-              // Highest threshold where YES >= 50% → that threshold - 0.5 is implied O/U line
-              let _ouLine = null;
-              for (const _mk of _mks) { if (_mk.pct >= 50) _ouLine = _mk.threshold - 0.5; }
-              if (_ouLine != null) {
-                const [_t1, _t2] = _gk.split("|");
-                kalshiNbaOuMap[_t1] = _ouLine;
-                kalshiNbaOuMap[_t2] = _ouLine;
-              }
+        // Same fallback applied for MLB + NHL below — ESPN scoreboard only carries today's odds,
+        // so tomorrow's games render with O/U "—" without a Kalshi-derived backfill.
+        const _buildKalshiOuMap = (sport, ticker) => {
+          const _map = {};
+          const _idx = seriesTickers.indexOf(ticker);
+          if (_idx < 0) return _map;
+          const _ouByGame = {};
+          for (const m of kalshiResults[_idx].markets || []) {
+            const _strike = parseFloat(m.floor_strike);
+            if (isNaN(_strike)) continue;
+            const _thr = Math.round(_strike + 0.5);
+            const _ask = parseFloat(m.yes_ask_dollars) || 0;
+            const _last = parseFloat(m.last_price_dollars) || 0;
+            const _bid = parseFloat(m.yes_bid_dollars) || 0;
+            const _price = (_ask >= 0.98 && _bid === 0 && _last > 0) ? _last : (_ask > 0 ? _ask : _last);
+            const _pct = Math.round(_price * 100);
+            if (_pct <= 0 || _pct >= 100) continue;
+            const [_t1, _t2] = parseGameTeams(m.event_ticker, sport);
+            if (!_t1 || !_t2) continue;
+            const _gk = `${_t1}|${_t2}`;
+            if (!_ouByGame[_gk]) _ouByGame[_gk] = [];
+            _ouByGame[_gk].push({ threshold: _thr, pct: _pct });
+          }
+          for (const [_gk, _mks] of Object.entries(_ouByGame)) {
+            _mks.sort((a, b) => a.threshold - b.threshold);
+            // Highest threshold where YES >= 50% → that threshold - 0.5 is implied O/U line
+            let _ouLine = null;
+            for (const _mk of _mks) { if (_mk.pct >= 50) _ouLine = _mk.threshold - 0.5; }
+            if (_ouLine != null) {
+              const [_t1, _t2] = _gk.split("|");
+              _map[_t1] = _ouLine;
+              _map[_t2] = _ouLine;
             }
           }
-        }
+          return _map;
+        };
+        const kalshiNbaOuMap = _buildKalshiOuMap("nba", "KXNBATOTAL");
+        const kalshiMlbOuMap = _buildKalshiOuMap("mlb", "KXMLBTOTAL");
+        const kalshiNhlOuMap = _buildKalshiOuMap("nhl", "KXNHLTOTAL");
         // Blended fill price: walk the orderbook for unit-sized positions so kalshiPct reflects
         // true cost, not just top-of-book ask. 1 unit = $100 at risk; tiers: 70-83% = 1u, 83-93% = 3u, 93%+ = 5u.
         const UNIT_DOLLARS = 50; // 1 unit = 1% of $5k bankroll
@@ -1809,6 +1814,24 @@ var worker_default = {
           for (const [_team, _ouLine] of Object.entries(kalshiNbaOuMap)) {
             if (!sportByteam.nbaGameOdds[_team]) sportByteam.nbaGameOdds[_team] = {};
             if (sportByteam.nbaGameOdds[_team].total == null) sportByteam.nbaGameOdds[_team].total = _ouLine;
+          }
+        }
+        // Same Kalshi fallback for MLB — covers tomorrow's games where today's ESPN scoreboard
+        // doesn't carry odds and `mlbMetaTomorrow.gameOdds` is intentionally empty.
+        if (Object.keys(kalshiMlbOuMap).length > 0) {
+          if (!sportByteam.mlb) sportByteam.mlb = {};
+          if (!sportByteam.mlb.gameOdds) sportByteam.mlb.gameOdds = {};
+          for (const [_team, _ouLine] of Object.entries(kalshiMlbOuMap)) {
+            if (!sportByteam.mlb.gameOdds[_team]) sportByteam.mlb.gameOdds[_team] = {};
+            if (sportByteam.mlb.gameOdds[_team].total == null) sportByteam.mlb.gameOdds[_team].total = _ouLine;
+          }
+        }
+        // Same Kalshi fallback for NHL.
+        if (Object.keys(kalshiNhlOuMap).length > 0) {
+          if (!sportByteam.nhlGameOdds) sportByteam.nhlGameOdds = {};
+          for (const [_team, _ouLine] of Object.entries(kalshiNhlOuMap)) {
+            if (!sportByteam.nhlGameOdds[_team]) sportByteam.nhlGameOdds[_team] = {};
+            if (sportByteam.nhlGameOdds[_team].total == null) sportByteam.nhlGameOdds[_team].total = _ouLine;
           }
         }
         const STAT_SOFT = {};
