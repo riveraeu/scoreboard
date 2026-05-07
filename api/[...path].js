@@ -177,6 +177,20 @@ var worker_default = {
           getRaw = await getRes.json();
         } catch (e) { getRaw = { fetchError: String(e) }; }
         return jsonResponse({ setStatus, setRaw, getStatus, getRaw, expectedVal: testVal, match: getRaw?.result === testVal });
+      } else if (path === "auth/clear-kalshi-stale" && method === "POST") {
+        // Force-evict a per-ticker stale entry so the next /api/tonight cold path tries Kalshi
+        // fresh. Used when stale data has drifted past tolerance and rate-limiting prevents
+        // a successful refresh from landing organically. Validates ticker format to prevent
+        // arbitrary key deletion.
+        const clearAdminKey = (request.headers.get("Authorization") || "").replace("Bearer ", "");
+        if (!env?.ADMIN_KEY) return errorResponse("ADMIN_KEY not set", 500);
+        if (clearAdminKey !== env.ADMIN_KEY) return errorResponse("Forbidden", 403);
+        const ticker = (params.get("ticker") || "").toUpperCase();
+        if (!/^KX[A-Z0-9]+$/.test(ticker)) return errorResponse("Invalid ticker (expected KX...)", 400);
+        if (!CACHE2) return errorResponse("Cache unavailable", 500);
+        const key = `kalshi:stale:${ticker}`;
+        await CACHE2.delete(key);
+        return jsonResponse({ ok: true, deleted: key });
       } else if (path === "auth/list-users" && method === "GET") {
         const listAdminKey = (request.headers.get("Authorization") || "").replace("Bearer ", "");
         if (listAdminKey !== env?.ADMIN_KEY) return errorResponse("Forbidden", 403);
