@@ -950,12 +950,36 @@ var worker_default = {
         }
         return jsonResponse({ markets }, 900);
       } else if (path === "tonight") {
+        // Hardcoded valid team abbreviations per sport — used to disambiguate Kalshi tickers
+        // where a 2-char prefix (e.g. "NY" → NYK) is a substring of a 3-char team code starting
+        // the same way (e.g. "NYK" itself). Without validation, "NYKPHI" was parsing as NY+KPH
+        // instead of NYK+PHI; same for SASMIN→SA+SMI. Try 3+3 first, validate, fall back to 2+3.
+        const _VALID_TEAMS = {
+          nba: new Set(["ATL","BOS","BKN","CHA","CHI","CLE","DAL","DEN","DET","GSW","HOU","IND","LAC","LAL","MEM","MIA","MIL","MIN","NOP","NYK","OKC","ORL","PHI","PHX","POR","SAC","SAS","TOR","UTA","WAS"]),
+          nhl: new Set(["ANA","BOS","BUF","CGY","CAR","CHI","COL","CBJ","DAL","DET","EDM","FLA","LAK","MIN","MTL","NSH","NJD","NYI","NYR","OTT","PHI","PIT","STL","SJS","SEA","TBL","TOR","UTA","VAN","VGK","WSH","WPG"]),
+          mlb: new Set(["ARI","ATL","ATH","BAL","BOS","CHC","CIN","CLE","COL","CWS","DET","HOU","KC","LAA","LAD","MIA","MIL","MIN","NYM","NYY","PHI","PIT","SD","SEA","SF","STL","TB","TEX","TOR","WSH"]),
+          nfl: new Set(["ARI","ATL","BAL","BUF","CAR","CHI","CIN","CLE","DAL","DEN","DET","GB","HOU","IND","JAX","KC","LAC","LAR","LV","MIA","MIN","NE","NO","NYG","NYJ","PHI","PIT","SEA","SF","TB","TEN","WSH"]),
+        };
         let parseGameTeams = function(eventTicker, sport) {
           const seg = (eventTicker || "").split("-")[1] || "";
           let rest = seg.slice(7);
           if (/^\d{4}[A-Z]/.test(rest)) rest = rest.slice(4);
           if (rest.length < 4) return [null, null];
+          const valid = _VALID_TEAMS[sport];
+          // Try 3+3 first when length >= 6: only commit if both halves are recognized teams.
+          if (rest.length >= 6) {
+            const a3 = normTeam(sport, rest.slice(0, 3));
+            const b3 = normTeam(sport, rest.slice(3, 6));
+            if (valid && valid.has(a3) && valid.has(b3)) return [a3, b3];
+          }
           const has2charPrefix = TEAM_NORM[sport]?.[rest.slice(0, 2)] !== void 0;
+          // Validated 2+3 split — covers Kalshi tickers using 2-char shorthand for first team.
+          if (rest.length >= 5 && has2charPrefix) {
+            const a2 = normTeam(sport, rest.slice(0, 2));
+            const b3 = normTeam(sport, rest.slice(2, 5));
+            if (valid && valid.has(a2) && valid.has(b3)) return [a2, b3];
+          }
+          // Unvalidated fallbacks (legacy ordering preserved for sports without _VALID_TEAMS).
           if (rest.length >= 6 && !has2charPrefix) return [normTeam(sport, rest.slice(0, 3)), normTeam(sport, rest.slice(3, 6))];
           if (rest.length >= 5 && has2charPrefix) return [normTeam(sport, rest.slice(0, 2)), normTeam(sport, rest.slice(2, 5))];
           if (rest.length >= 5) return [normTeam(sport, rest.slice(0, 3)), normTeam(sport, rest.slice(3, 5))];
