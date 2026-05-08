@@ -3716,16 +3716,21 @@ var worker_default = {
           { const _gtHTs = new Set(); for (const tm of totalMarkets) { if (tm.sport === "mlb" || tm.sport === "nba" || tm.sport === "nhl") { _gtHTs.add(`${tm.sport}:${tm.gameTeam1}`); _gtHTs.add(`${tm.sport}:${tm.gameTeam2}`); } } await Promise.all([..._gtHTs].map(async spHt => { const [sp, ht] = spHt.split(':'); const league = _leagueOf(sp); const ck = `teamschedule:v2:${sp}:${ht.toLowerCase()}`; let ev = isBustCache ? null : await CACHE2?.get(ck, "json").catch(() => null); if (!ev) { try { const base = `https://site.api.espn.com/apis/site/v2/sports/${league}/teams/${_toEspnSlug(sp, ht)}/schedule`; const r25 = await fetch(`${base}?season=2025`, { signal: AbortSignal.timeout(3000) }); const e25 = r25.ok ? _parseSchedEvts(await r25.json()) : []; const r26 = await fetch(base, { signal: AbortSignal.timeout(3000) }); const e26 = r26.ok ? _parseSchedEvts(await r26.json()) : []; ev = [...e25, ...e26]; if (ev.length && CACHE2) await CACHE2.put(ck, JSON.stringify(ev), { expirationTtl: 3600 }).catch(() => {}); } catch(e) {} } if (ev) _gtScheduleMap[spHt] = ev; })); }
           const _gtH2HRate = (ht, at, thr) => { const evts = _gtScheduleMap[`mlb:${ht}`] ?? _gtScheduleMap[ht] ?? []; const h2h = evts.filter(ev => ev.comps.some(c => normTeam("mlb", c.abbr) === at)).slice(-10); if (h2h.length < 3) return null; const hits = h2h.filter(ev => ev.comps.reduce((s, c) => s + (c.score || 0), 0) >= thr).length; return { rate: Math.round(hits / h2h.length * 100), games: h2h.length }; };
           // Season hit rate for MLB/NBA/NHL game totals: average of home + away team's full-season
-          // rate of games where combined score >= threshold. Used as a 50/50 blend against the
-          // sim model truePct to correct for tail-thinness at far-from-line thresholds. Mirrors
-          // the team-totals seasonHitRate blend. Requires both teams to have >= 5 schedule games.
+          // rate of games where combined score >= threshold. Used as a sample-weighted blend
+          // against the sim model truePct to correct for tail-thinness at far-from-line thresholds.
+          // Returns { rate, sample } where sample = min(home games, away games) for blend weighting.
+          // Requires both teams to have >= 5 schedule games.
           const _gtSeasonHitRate = (sport, ht, at, thr) => {
             const hEvts = _gtScheduleMap[`${sport}:${ht}`] || [];
             const aEvts = _gtScheduleMap[`${sport}:${at}`] || [];
             if (hEvts.length < 5 || aEvts.length < 5) return null;
             const _rate = (evts) => evts.filter(ev => ev.comps.reduce((s, c) => s + (c.score || 0), 0) >= thr).length / evts.length * 100;
-            return Math.round((_rate(hEvts) + _rate(aEvts)) / 2);
+            return { rate: Math.round((_rate(hEvts) + _rate(aEvts)) / 2), sample: Math.min(hEvts.length, aEvts.length) };
           };
+          // Sample-weighted blend factor: model retains at least 30% weight so tonight-specific
+          // factors (pitcher matchup, pace, weather) aren't drowned out. Caps obs weight at 0.7
+          // when N >= 40 games; ramps linearly from 0 (no schedule) to 0.7.
+          const _ssnBlendWeight = (sample) => Math.min(1, (sample || 0) / 40) * 0.7;
           const _nbaGtH2HRate = (ht, at, thr) => { const evts = _gtScheduleMap[`nba:${ht}`] ?? []; const h2h = evts.filter(ev => ev.comps.some(c => normTeam("nba", c.abbr) === at)).slice(-10); if (h2h.length < 3) return null; const hits = h2h.filter(ev => ev.comps.reduce((s, c) => s + (c.score || 0), 0) >= thr).length; return { rate: Math.round(hits / h2h.length * 100), games: h2h.length }; };
           const _gtVolumeMap = {};
           for (const tm of totalMarkets) { const _gk = `${tm.sport}|${tm.gameTeam1}|${tm.gameTeam2}`; _gtVolumeMap[_gk] = (_gtVolumeMap[_gk] ?? 0) + (tm.kalshiVolume ?? 0); }
@@ -3797,13 +3802,16 @@ var worker_default = {
                 if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateMLBTotalDist(_hLam, _aLam, 10000);
                 truePct = totalDistPct(totalDistCache[_dk], threshold);
               }
-              // 50/50 blend with season hit rate corrects Poisson thin-tail underestimation at
-              // high thresholds (e.g. over 12.5 runs). Mirrors team-totals blend pattern.
-              const _gtMlbSsnHR = (truePct != null) ? _gtSeasonHitRate("mlb", homeTeam, awayTeam, threshold) : null;
-              if (_gtMlbSsnHR != null) {
+              // Sample-weighted blend with season hit rate corrects Poisson thin-tail
+              // underestimation at high thresholds (e.g. over 12.5 runs). Mirrors team-totals
+              // blend pattern. obs weight ramps to 0.7 max at N=40+ games.
+              const _gtMlbSsn = (truePct != null) ? _gtSeasonHitRate("mlb", homeTeam, awayTeam, threshold) : null;
+              if (_gtMlbSsn != null) {
+                const _w = _ssnBlendWeight(_gtMlbSsn.sample);
                 _simData.modelTruePct = parseFloat(truePct.toFixed(1));
-                _simData.gtSeasonHitRate = _gtMlbSsnHR;
-                truePct = parseFloat((0.5 * truePct + 0.5 * _gtMlbSsnHR).toFixed(1));
+                _simData.gtSeasonHitRate = _gtMlbSsn.rate;
+                _simData.gtSsnSample = _gtMlbSsn.sample;
+                truePct = parseFloat(((1 - _w) * truePct + _w * _gtMlbSsn.rate).toFixed(1));
               }
               // MLB SimScore (max 10): homeWHIP→0-2, awayWHIP→0-2, combinedRPG→0-2, H2H→0-2, O/U→0-2
               totalSimScore += _homeWhipPts + _awayWhipPts + _combinedRPGPts + _h2hTotalPts + _mlbOuPts;
@@ -3870,13 +3878,15 @@ var worker_default = {
                 if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateNBATotalDist(_homeExpRaw, _awayExpRaw, 13, 13, 10000);
                 truePct = totalDistPct(totalDistCache[_dk], threshold);
               }
-              // Same 50/50 seasonHitRate blend as MLB — corrects residual tail thinness in Normal
-              // sim and pulls truePct toward observed scoring environment per team.
-              const _gtNbaSsnHR = (truePct != null) ? _gtSeasonHitRate("nba", homeTeam, awayTeam, threshold) : null;
-              if (_gtNbaSsnHR != null) {
+              // Sample-weighted seasonHitRate blend (same as MLB) — corrects residual tail
+              // thinness in Normal sim and pulls truePct toward observed scoring environment.
+              const _gtNbaSsn = (truePct != null) ? _gtSeasonHitRate("nba", homeTeam, awayTeam, threshold) : null;
+              if (_gtNbaSsn != null) {
+                const _w = _ssnBlendWeight(_gtNbaSsn.sample);
                 _simData.modelTruePct = parseFloat(truePct.toFixed(1));
-                _simData.gtSeasonHitRate = _gtNbaSsnHR;
-                truePct = parseFloat((0.5 * truePct + 0.5 * _gtNbaSsnHR).toFixed(1));
+                _simData.gtSeasonHitRate = _gtNbaSsn.rate;
+                _simData.gtSsnSample = _gtNbaSsn.sample;
+                truePct = parseFloat(((1 - _w) * truePct + _w * _gtNbaSsn.rate).toFixed(1));
               }
               totalSimScore += _combOffRtgPts + _combDefRtgPts + _pacePts + _nbaGtH2HPts + _nbaOuPts;
             } else if (sport === "nhl") {
@@ -3897,14 +3907,16 @@ var worker_default = {
                 if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateNHLTotalDist(_hGLRaw, _aGLRaw, 10000);
                 truePct = totalDistPct(totalDistCache[_dk], threshold);
               }
-              // Same 50/50 seasonHitRate blend as MLB/NBA. NHL Poisson tails are particularly thin
-              // for high-scoring matchups (overdispersion from PP swings), and there's no fatter-tail
-              // alternative wired in — blend is the practical correction.
-              const _gtNhlSsnHR = (truePct != null) ? _gtSeasonHitRate("nhl", homeTeam, awayTeam, threshold) : null;
-              if (_gtNhlSsnHR != null) {
+              // Same sample-weighted seasonHitRate blend as MLB/NBA. NHL Poisson tails are
+              // particularly thin for high-scoring matchups (overdispersion from PP swings),
+              // and there's no fatter-tail alternative wired in — blend is the practical correction.
+              const _gtNhlSsn = (truePct != null) ? _gtSeasonHitRate("nhl", homeTeam, awayTeam, threshold) : null;
+              if (_gtNhlSsn != null) {
+                const _w = _ssnBlendWeight(_gtNhlSsn.sample);
                 _simData.modelTruePct = parseFloat(truePct.toFixed(1));
-                _simData.gtSeasonHitRate = _gtNhlSsnHR;
-                truePct = parseFloat((0.5 * truePct + 0.5 * _gtNhlSsnHR).toFixed(1));
+                _simData.gtSeasonHitRate = _gtNhlSsn.rate;
+                _simData.gtSsnSample = _gtNhlSsn.sample;
+                truePct = parseFloat(((1 - _w) * truePct + _w * _gtNhlSsn.rate).toFixed(1));
               }
               totalSimScore += _homeGpgPts + _awayGpgPts + _homeGaaPts + _awayGaaPts + _nhlOuPts;
             }
@@ -4097,11 +4109,12 @@ var worker_default = {
               const _ttSeasonHits = _ttSched.filter(ev => { const mine = ev.comps.find(c => normTeam("mlb", c.abbr) === scoringTeam); return mine && mine.score >= threshold; });
               const ttSeasonHitRate = _ttSched.length >= 5 ? Math.round(_ttSeasonHits.length / _ttSched.length * 100) : null;
               const ttSeasonHitRatePts = ttSeasonHitRate == null ? 1 : ttSeasonHitRate >= 80 ? 2 : ttSeasonHitRate >= 60 ? 1 : 0;
-              // Blend Poisson model with season hit rate to correct systematic overestimation at low thresholds
-              // Poisson averages ~12pts above actual hit rate; season rate is the ground truth measurement
+              // Sample-weighted blend of Poisson model with season hit rate. obs weight ramps
+              // to 0.7 max at N=40+; preserves 30% min model weight for tonight-specific factors.
               const _ttModelTruePct = truePct;
               if (truePct != null && ttSeasonHitRate != null) {
-                truePct = parseFloat((0.5 * truePct + 0.5 * ttSeasonHitRate).toFixed(1));
+                const _w = _ssnBlendWeight(_ttSched.length);
+                truePct = parseFloat(((1 - _w) * truePct + _w * ttSeasonHitRate).toFixed(1));
               }
               const _h2h = _ttH2HRate("mlb", scoringTeam, oppTeam, threshold);
               const h2hHitRate = _h2h?.rate ?? null;
@@ -4178,14 +4191,15 @@ var worker_default = {
               const _ttNbaSeasonHits = _ttNbaSched.filter(ev => { const mine = ev.comps.find(c => normTeam("nba", c.abbr) === scoringTeam); return mine && mine.score >= threshold; });
               const ttNbaSeasonHitRate = _ttNbaSched.length >= 5 ? Math.round(_ttNbaSeasonHits.length / _ttNbaSched.length * 100) : null;
               const ttNbaSeasonHitRatePts = ttNbaSeasonHitRate == null ? 1 : ttNbaSeasonHitRate >= 80 ? 2 : ttNbaSeasonHitRate >= 60 ? 1 : 0;
-              // 50/50 blend with ttNbaSeasonHitRate corrects Normal-sim tail thinness for NBA team
-              // totals — same pattern as NBA/MLB game totals and MLB team totals. Without this, the
-              // model was overconfident on far-from-mean thresholds (e.g. PHI U113.5 edge inflated
-              // because Normal sim says 12% but observed season rate is 27%).
+              // Sample-weighted blend with ttNbaSeasonHitRate corrects Normal-sim tail thinness
+              // for NBA team totals — same pattern as NBA/MLB game totals and MLB team totals.
+              // Without this, the model was overconfident on far-from-mean thresholds (e.g.
+              // PHI U113.5 edge inflated because Normal sim says 12% but observed rate is 27%).
               let _ttNbaModelTruePct = null;
               if (truePct != null && ttNbaSeasonHitRate != null) {
                 _ttNbaModelTruePct = parseFloat(truePct.toFixed(1));
-                truePct = parseFloat((0.5 * truePct + 0.5 * ttNbaSeasonHitRate).toFixed(1));
+                const _w = _ssnBlendWeight(_ttNbaSched.length);
+                truePct = parseFloat(((1 - _w) * truePct + _w * ttNbaSeasonHitRate).toFixed(1));
               }
               const _h2h = _ttH2HRate("nba", scoringTeam, oppTeam, threshold);
               const h2hHitRate = _h2h?.rate ?? null;
