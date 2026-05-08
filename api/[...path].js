@@ -3713,7 +3713,7 @@ var worker_default = {
           const _toEspnSlug = (sp, a) => (_SCHED_TO_ESPN[sp]?.[a] || a).toLowerCase();
           const _leagueOf = (sp) => sp === 'mlb' ? 'baseball/mlb' : sp === 'nhl' ? 'hockey/nhl' : 'basketball/nba';
           { const _gtHTs = new Set(); for (const tm of totalMarkets) { if (tm.sport === "mlb" || tm.sport === "nba" || tm.sport === "nhl") { _gtHTs.add(`${tm.sport}:${tm.gameTeam1}`); _gtHTs.add(`${tm.sport}:${tm.gameTeam2}`); } } await Promise.all([..._gtHTs].map(async spHt => { const [sp, ht] = spHt.split(':'); const league = _leagueOf(sp); const ck = `teamschedule:v2:${sp}:${ht.toLowerCase()}`; let ev = isBustCache ? null : await CACHE2?.get(ck, "json").catch(() => null); if (!ev) { try { const base = `https://site.api.espn.com/apis/site/v2/sports/${league}/teams/${_toEspnSlug(sp, ht)}/schedule`; const r25 = await fetch(`${base}?season=2025`, { signal: AbortSignal.timeout(3000) }); const e25 = r25.ok ? _parseSchedEvts(await r25.json()) : []; const r26 = await fetch(base, { signal: AbortSignal.timeout(3000) }); const e26 = r26.ok ? _parseSchedEvts(await r26.json()) : []; ev = [...e25, ...e26]; if (ev.length && CACHE2) await CACHE2.put(ck, JSON.stringify(ev), { expirationTtl: 3600 }).catch(() => {}); } catch(e) {} } if (ev) _gtScheduleMap[spHt] = ev; })); }
-          const _gtH2HRate = (ht, at, thr) => { const evts = _gtScheduleMap[`mlb:${ht}`] ?? _gtScheduleMap[ht] ?? []; const h2h = evts.filter(ev => ev.comps.some(c => c.abbr === at)).slice(-10); if (h2h.length < 3) return null; const hits = h2h.filter(ev => ev.comps.reduce((s, c) => s + (c.score || 0), 0) >= thr).length; return { rate: Math.round(hits / h2h.length * 100), games: h2h.length }; };
+          const _gtH2HRate = (ht, at, thr) => { const evts = _gtScheduleMap[`mlb:${ht}`] ?? _gtScheduleMap[ht] ?? []; const h2h = evts.filter(ev => ev.comps.some(c => normTeam("mlb", c.abbr) === at)).slice(-10); if (h2h.length < 3) return null; const hits = h2h.filter(ev => ev.comps.reduce((s, c) => s + (c.score || 0), 0) >= thr).length; return { rate: Math.round(hits / h2h.length * 100), games: h2h.length }; };
           // Season hit rate for MLB/NBA/NHL game totals: average of home + away team's full-season
           // rate of games where combined score >= threshold. Used as a 50/50 blend against the
           // sim model truePct to correct for tail-thinness at far-from-line thresholds. Mirrors
@@ -4089,11 +4089,11 @@ var worker_default = {
               // L10 RPG — computed from already-fetched team schedule (same cache as H2H)
               const _ttSched = _ttScheduleMap[`mlb:${scoringTeam}`] || [];
               const _ttLast10 = _ttSched.slice(-10);
-              const _ttRunVals = _ttLast10.map(ev => ev.comps?.find(c => c.abbr === scoringTeam)?.score ?? null).filter(v => v !== null && !isNaN(v));
+              const _ttRunVals = _ttLast10.map(ev => ev.comps?.find(c => normTeam("mlb", c.abbr) === scoringTeam)?.score ?? null).filter(v => v !== null && !isNaN(v));
               const teamL10RPG = _ttRunVals.length >= 5 ? parseFloat((_ttRunVals.reduce((a, b) => a + b, 0) / _ttRunVals.length).toFixed(2)) : null;
               const ttL10Pts = teamL10RPG == null ? 1 : teamL10RPG > 5.0 ? 2 : teamL10RPG > 4.0 ? 1 : 0;
               // Season hit rate: scoring team's rate of scoring >= threshold across all completed season games
-              const _ttSeasonHits = _ttSched.filter(ev => { const mine = ev.comps.find(c => c.abbr === scoringTeam); return mine && mine.score >= threshold; });
+              const _ttSeasonHits = _ttSched.filter(ev => { const mine = ev.comps.find(c => normTeam("mlb", c.abbr) === scoringTeam); return mine && mine.score >= threshold; });
               const ttSeasonHitRate = _ttSched.length >= 5 ? Math.round(_ttSeasonHits.length / _ttSched.length * 100) : null;
               const ttSeasonHitRatePts = ttSeasonHitRate == null ? 1 : ttSeasonHitRate >= 80 ? 2 : ttSeasonHitRate >= 60 ? 1 : 0;
               // Blend Poisson model with season hit rate to correct systematic overestimation at low thresholds
