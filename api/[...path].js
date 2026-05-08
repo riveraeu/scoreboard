@@ -3706,8 +3706,19 @@ var worker_default = {
           const _MLB_ERA = 4.20;
           // Pre-fetch home team schedules for MLB + NBA game total H2H hit rate
           const _gtScheduleMap = {};
-          { const _gtHTs = new Set(); for (const tm of totalMarkets) { if (tm.sport === "mlb") { let ht = tm.gameTeam1; if (sportByteam.mlb?.gameHomeTeams?.[tm.gameTeam2]) ht = tm.gameTeam2; _gtHTs.add(`mlb:${ht}`); } else if (tm.sport === "nba") { _gtHTs.add(`nba:${tm.gameTeam1}`); } } await Promise.all([..._gtHTs].map(async spHt => { const [sp, ht] = spHt.split(':'); const league = sp === 'mlb' ? 'baseball/mlb' : 'basketball/nba'; const ck = `teamschedule:v2:${sp}:${ht.toLowerCase()}`; let ev = isBustCache ? null : await CACHE2?.get(ck, "json").catch(() => null); if (!ev) { try { const base = `https://site.api.espn.com/apis/site/v2/sports/${league}/teams/${ht.toLowerCase()}/schedule`; const r25 = await fetch(`${base}?season=2025`, { signal: AbortSignal.timeout(3000) }); const e25 = r25.ok ? _parseSchedEvts(await r25.json()) : []; const r26 = await fetch(base, { signal: AbortSignal.timeout(3000) }); const e26 = r26.ok ? _parseSchedEvts(await r26.json()) : []; ev = [...e25, ...e26]; if (ev.length && CACHE2) await CACHE2.put(ck, JSON.stringify(ev), { expirationTtl: 3600 }).catch(() => {}); } catch(e) {} } if (ev) _gtScheduleMap[spHt] = ev; })); }
+          { const _gtHTs = new Set(); for (const tm of totalMarkets) { if (tm.sport === "mlb") { _gtHTs.add(`mlb:${tm.gameTeam1}`); _gtHTs.add(`mlb:${tm.gameTeam2}`); } else if (tm.sport === "nba") { _gtHTs.add(`nba:${tm.gameTeam1}`); } } await Promise.all([..._gtHTs].map(async spHt => { const [sp, ht] = spHt.split(':'); const league = sp === 'mlb' ? 'baseball/mlb' : 'basketball/nba'; const ck = `teamschedule:v2:${sp}:${ht.toLowerCase()}`; let ev = isBustCache ? null : await CACHE2?.get(ck, "json").catch(() => null); if (!ev) { try { const base = `https://site.api.espn.com/apis/site/v2/sports/${league}/teams/${ht.toLowerCase()}/schedule`; const r25 = await fetch(`${base}?season=2025`, { signal: AbortSignal.timeout(3000) }); const e25 = r25.ok ? _parseSchedEvts(await r25.json()) : []; const r26 = await fetch(base, { signal: AbortSignal.timeout(3000) }); const e26 = r26.ok ? _parseSchedEvts(await r26.json()) : []; ev = [...e25, ...e26]; if (ev.length && CACHE2) await CACHE2.put(ck, JSON.stringify(ev), { expirationTtl: 3600 }).catch(() => {}); } catch(e) {} } if (ev) _gtScheduleMap[spHt] = ev; })); }
           const _gtH2HRate = (ht, at, thr) => { const evts = _gtScheduleMap[`mlb:${ht}`] ?? _gtScheduleMap[ht] ?? []; const h2h = evts.filter(ev => ev.comps.some(c => c.abbr === at)).slice(-10); if (h2h.length < 3) return null; const hits = h2h.filter(ev => ev.comps.reduce((s, c) => s + (c.score || 0), 0) >= thr).length; return { rate: Math.round(hits / h2h.length * 100), games: h2h.length }; };
+          // Season hit rate for MLB game totals: average of home + away team's full-season rate
+          // of games where combined score >= threshold. Used as a 50/50 blend against Poisson
+          // truePct to correct for thin-tail underestimation at high thresholds. Mirrors the
+          // team-totals seasonHitRate blend. Requires both teams to have >= 5 schedule games.
+          const _gtMlbSeasonHitRate = (ht, at, thr) => {
+            const hEvts = _gtScheduleMap[`mlb:${ht}`] || [];
+            const aEvts = _gtScheduleMap[`mlb:${at}`] || [];
+            if (hEvts.length < 5 || aEvts.length < 5) return null;
+            const _rate = (evts) => evts.filter(ev => ev.comps.reduce((s, c) => s + (c.score || 0), 0) >= thr).length / evts.length * 100;
+            return Math.round((_rate(hEvts) + _rate(aEvts)) / 2);
+          };
           const _nbaGtH2HRate = (ht, at, thr) => { const evts = _gtScheduleMap[`nba:${ht}`] ?? []; const h2h = evts.filter(ev => ev.comps.some(c => normTeam("nba", c.abbr) === at)).slice(-10); if (h2h.length < 3) return null; const hits = h2h.filter(ev => ev.comps.reduce((s, c) => s + (c.score || 0), 0) >= thr).length; return { rate: Math.round(hits / h2h.length * 100), games: h2h.length }; };
           const _gtVolumeMap = {};
           for (const tm of totalMarkets) { const _gk = `${tm.sport}|${tm.gameTeam1}|${tm.gameTeam2}`; _gtVolumeMap[_gk] = (_gtVolumeMap[_gk] ?? 0) + (tm.kalshiVolume ?? 0); }
@@ -3778,6 +3789,14 @@ var worker_default = {
                 const _dk = `mlb|${homeTeam}|${awayTeam}`;
                 if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateMLBTotalDist(_hLam, _aLam, 10000);
                 truePct = totalDistPct(totalDistCache[_dk], threshold);
+              }
+              // 50/50 blend with season hit rate corrects Poisson thin-tail underestimation at
+              // high thresholds (e.g. over 12.5 runs). Mirrors team-totals blend pattern.
+              const _gtMlbSsnHR = (truePct != null) ? _gtMlbSeasonHitRate(homeTeam, awayTeam, threshold) : null;
+              if (_gtMlbSsnHR != null) {
+                _simData.modelTruePct = parseFloat(truePct.toFixed(1));
+                _simData.gtSeasonHitRate = _gtMlbSsnHR;
+                truePct = parseFloat((0.5 * truePct + 0.5 * _gtMlbSsnHR).toFixed(1));
               }
               // MLB SimScore (max 10): homeWHIP→0-2, awayWHIP→0-2, combinedRPG→0-2, H2H→0-2, O/U→0-2
               totalSimScore += _homeWhipPts + _awayWhipPts + _combinedRPGPts + _h2hTotalPts + _mlbOuPts;
@@ -3901,10 +3920,17 @@ var worker_default = {
               continue;
             }
             const rawEdge = kalshiPct != null ? parseFloat((truePct - kalshiPct).toFixed(1)) : null;
-            const overEdge = rawEdge ?? 0;
             const noTruePct = parseFloat((100 - truePct).toFixed(1));
             const noKalshiPct = 100 - kalshiPct;
-            const underEdge = parseFloat((noTruePct - noKalshiPct).toFixed(1));
+            const _rawUnderEdge = parseFloat((noTruePct - noKalshiPct).toFixed(1));
+            // MLB-only edge dampener: when threshold is far from market line, Poisson tails
+            // overstate edge. Multiplicative shrink keeps the bet directionally honest while
+            // forcing more conservative sizing. Skipped on NBA (Normal sim, symmetric) and NHL.
+            const _farFromLine = (sport === "mlb" && gameOuLine != null && Math.abs(threshold - gameOuLine) > 3);
+            const _edgeDampener = _farFromLine ? 0.7 : 1.0;
+            const overEdge = parseFloat(((rawEdge ?? 0) * _edgeDampener).toFixed(1));
+            const underEdge = parseFloat((_rawUnderEdge * _edgeDampener).toFixed(1));
+            if (_farFromLine) { _simData.edgeDampened = _edgeDampener; _simData.rawUnderEdge = _rawUnderEdge; }
             const noKalshiAO = noKalshiPct >= 50 ? Math.round(-(noKalshiPct/(100-noKalshiPct))*100) : Math.round((100-noKalshiPct)/noKalshiPct*100);
             const _gameTime = gameTimes[`${sport}:${homeTeam}:${gameDate}`] ?? gameTimes[`${sport}:${awayTeam}:${gameDate}`] ?? gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null;
             // MLB-only: both lineups confirmed = both teams have a posted lineup (in lineupSpotByName)

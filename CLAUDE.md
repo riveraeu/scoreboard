@@ -184,7 +184,9 @@ Stats: `passingYards`, `rushingYards`, `receivingYards`, `receptions`, `completi
 ### Game Totals (MLB/NBA/NHL/NFL)
 Kalshi series: `KXMLBTOTAL`, `KXNBATOTAL`, `KXNHLTOTAL`, `KXNFLTOTAL`. `gameType: "total"`. Market format: `floor_strike = N` means YES = total ≥ N (i.e. "over N−0.5").
 
-**True%**: Poisson MC for MLB/NHL, Normal for NBA. `_simData` includes per-team expected and `expectedTotal`.
+**True%**: Poisson MC for MLB/NHL, Normal for NBA. `_simData` includes per-team expected and `expectedTotal`. **MLB blends Poisson 50/50 with `gtSeasonHitRate`** (mirror of team-totals blend) — average of home + away team's season rate of games where combined score ≥ threshold; requires ≥5 schedule games per team. Saves `modelTruePct` (pre-blend) and `gtSeasonHitRate` in `_simData`. Blend corrects Poisson thin-tail underestimation at extreme thresholds (e.g. over 12.5 runs in a 7.5-line game). NBA/NHL game totals not blended (NBA Normal is symmetric; NHL fewer extreme thresholds).
+
+**MLB edge dampener**: when `|threshold − gameOuLine| > 3`, multiply `overEdge`/`underEdge` by 0.7 before gate check. Mechanical correction for residual tail thinness after the blend; protects bet sizing on Poisson-tail-fueled UNDERs that were inflating edge to 16–26%. Stored as `edgeDampened: 0.7` on the play; `rawEdge` and `rawUnderEdge` preserved for debug. NBA/NHL skipped.
 
 **Lambda / projection formulas**:
 
