@@ -3810,7 +3810,10 @@ var worker_default = {
                 _awayExpRaw = awayOff != null ? awayOff * (homeDef != null && nbaAvgDef ? homeDef / nbaAvgDef : 1) : null;
               }
               // Playoff scoring boost — RS-aggregate ratings under-project playoff totals.
-              const _isPlayoff = !!(sportByteam.nbaGameScores?.[homeTeam]?.seriesSummary || sportByteam.nbaGameScores?.[awayTeam]?.seriesSummary);
+              // gameScores is keyed `${home}|${date}` so we have to scan values, not lookup by abbr.
+              const _isPlayoff = Object.values(sportByteam.nbaGameScores || {}).some(g =>
+                g?.seriesSummary && (g.homeTeam === homeTeam || g.awayTeam === homeTeam || g.homeTeam === awayTeam || g.awayTeam === awayTeam)
+              );
               if (_isPlayoff) {
                 if (_homeExpRaw != null) _homeExpRaw *= _PLAYOFF_OFF_BOOST;
                 if (_awayExpRaw != null) _awayExpRaw *= _PLAYOFF_OFF_BOOST;
@@ -4106,7 +4109,9 @@ var worker_default = {
                 if (teamOff != null) _teamExpected = teamOff * (oppDef != null && nbaAvgDef ? oppDef / nbaAvgDef : 1);
               }
               // Same playoff scoring boost as NBA game totals (see _PLAYOFF_OFF_BOOST).
-              const _ttIsPlayoff = !!(sportByteam.nbaGameScores?.[scoringTeam]?.seriesSummary || sportByteam.nbaGameScores?.[oppTeam]?.seriesSummary);
+              const _ttIsPlayoff = Object.values(sportByteam.nbaGameScores || {}).some(g =>
+                g?.seriesSummary && (g.homeTeam === scoringTeam || g.awayTeam === scoringTeam || g.homeTeam === oppTeam || g.awayTeam === oppTeam)
+              );
               if (_ttIsPlayoff && _teamExpected != null) _teamExpected *= _PLAYOFF_OFF_BOOST;
               if (_teamExpected != null) {
                 const _dk = `nba|team|${scoringTeam}|${oppTeam}`;
