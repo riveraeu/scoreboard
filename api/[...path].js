@@ -3706,7 +3706,12 @@ var worker_default = {
           const _MLB_ERA = 4.20;
           // Pre-fetch home team schedules for MLB + NBA game total H2H hit rate
           const _gtScheduleMap = {};
-          { const _gtHTs = new Set(); for (const tm of totalMarkets) { if (tm.sport === "mlb") { _gtHTs.add(`mlb:${tm.gameTeam1}`); _gtHTs.add(`mlb:${tm.gameTeam2}`); } else if (tm.sport === "nba") { _gtHTs.add(`nba:${tm.gameTeam1}`); } } await Promise.all([..._gtHTs].map(async spHt => { const [sp, ht] = spHt.split(':'); const league = sp === 'mlb' ? 'baseball/mlb' : 'basketball/nba'; const ck = `teamschedule:v2:${sp}:${ht.toLowerCase()}`; let ev = isBustCache ? null : await CACHE2?.get(ck, "json").catch(() => null); if (!ev) { try { const base = `https://site.api.espn.com/apis/site/v2/sports/${league}/teams/${ht.toLowerCase()}/schedule`; const r25 = await fetch(`${base}?season=2025`, { signal: AbortSignal.timeout(3000) }); const e25 = r25.ok ? _parseSchedEvts(await r25.json()) : []; const r26 = await fetch(base, { signal: AbortSignal.timeout(3000) }); const e26 = r26.ok ? _parseSchedEvts(await r26.json()) : []; ev = [...e25, ...e26]; if (ev.length && CACHE2) await CACHE2.put(ck, JSON.stringify(ev), { expirationTtl: 3600 }).catch(() => {}); } catch(e) {} } if (ev) _gtScheduleMap[spHt] = ev; })); }
+          // Canonical → ESPN team-route slug translation (mirrors CANONICAL_TO_ESPN in /api/live).
+          // Without this, e.g. CWS (canonical) fetches /teams/cws/schedule which 404s — ESPN's
+          // White Sox slug is chw. Cache key keeps the canonical form so reads are consistent.
+          const _SCHED_TO_ESPN = { mlb: { CWS: "CHW" } };
+          const _toEspnSlug = (sp, a) => (_SCHED_TO_ESPN[sp]?.[a] || a).toLowerCase();
+          { const _gtHTs = new Set(); for (const tm of totalMarkets) { if (tm.sport === "mlb") { _gtHTs.add(`mlb:${tm.gameTeam1}`); _gtHTs.add(`mlb:${tm.gameTeam2}`); } else if (tm.sport === "nba") { _gtHTs.add(`nba:${tm.gameTeam1}`); } } await Promise.all([..._gtHTs].map(async spHt => { const [sp, ht] = spHt.split(':'); const league = sp === 'mlb' ? 'baseball/mlb' : 'basketball/nba'; const ck = `teamschedule:v2:${sp}:${ht.toLowerCase()}`; let ev = isBustCache ? null : await CACHE2?.get(ck, "json").catch(() => null); if (!ev) { try { const base = `https://site.api.espn.com/apis/site/v2/sports/${league}/teams/${_toEspnSlug(sp, ht)}/schedule`; const r25 = await fetch(`${base}?season=2025`, { signal: AbortSignal.timeout(3000) }); const e25 = r25.ok ? _parseSchedEvts(await r25.json()) : []; const r26 = await fetch(base, { signal: AbortSignal.timeout(3000) }); const e26 = r26.ok ? _parseSchedEvts(await r26.json()) : []; ev = [...e25, ...e26]; if (ev.length && CACHE2) await CACHE2.put(ck, JSON.stringify(ev), { expirationTtl: 3600 }).catch(() => {}); } catch(e) {} } if (ev) _gtScheduleMap[spHt] = ev; })); }
           const _gtH2HRate = (ht, at, thr) => { const evts = _gtScheduleMap[`mlb:${ht}`] ?? _gtScheduleMap[ht] ?? []; const h2h = evts.filter(ev => ev.comps.some(c => c.abbr === at)).slice(-10); if (h2h.length < 3) return null; const hits = h2h.filter(ev => ev.comps.reduce((s, c) => s + (c.score || 0), 0) >= thr).length; return { rate: Math.round(hits / h2h.length * 100), games: h2h.length }; };
           // Season hit rate for MLB game totals: average of home + away team's full-season rate
           // of games where combined score >= threshold. Used as a 50/50 blend against Poisson
@@ -3927,7 +3932,7 @@ var worker_default = {
             // overstate edge. Multiplicative shrink keeps the bet directionally honest while
             // forcing more conservative sizing. Skipped on NBA (Normal sim, symmetric) and NHL.
             // Use _simData.gameOuLine — gameOuLine const is scoped to the MLB branch only.
-            const _farFromLine = (sport === "mlb" && _simData?.gameOuLine != null && Math.abs(threshold - _simData.gameOuLine) > 3);
+            const _farFromLine = (sport === "mlb" && _simData?.gameOuLine != null && Math.abs(threshold - _simData.gameOuLine) >= 3);
             const _edgeDampener = _farFromLine ? 0.7 : 1.0;
             const overEdge = parseFloat(((rawEdge ?? 0) * _edgeDampener).toFixed(1));
             const underEdge = parseFloat((_rawUnderEdge * _edgeDampener).toFixed(1));
@@ -3992,7 +3997,8 @@ var worker_default = {
             if (!events) {
               try {
                 const league = sp === 'mlb' ? 'baseball/mlb' : 'basketball/nba';
-                const base = `https://site.api.espn.com/apis/site/v2/sports/${league}/teams/${abbr.toLowerCase()}/schedule`;
+                const _ttEspnSlug = ({ mlb: { CWS: "CHW" } }[sp]?.[abbr] || abbr).toLowerCase();
+                const base = `https://site.api.espn.com/apis/site/v2/sports/${league}/teams/${_ttEspnSlug}/schedule`;
                 const r25 = await fetch(`${base}?season=2025`, { signal: AbortSignal.timeout(3000) });
                 const ev25 = r25.ok ? _parseSchedEvts(await r25.json()) : [];
                 const r26 = await fetch(base, { signal: AbortSignal.timeout(3000) });

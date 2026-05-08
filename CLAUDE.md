@@ -186,7 +186,9 @@ Kalshi series: `KXMLBTOTAL`, `KXNBATOTAL`, `KXNHLTOTAL`, `KXNFLTOTAL`. `gameType
 
 **True%**: Poisson MC for MLB/NHL, Normal for NBA. `_simData` includes per-team expected and `expectedTotal`. **MLB blends Poisson 50/50 with `gtSeasonHitRate`** (mirror of team-totals blend) — average of home + away team's season rate of games where combined score ≥ threshold; requires ≥5 schedule games per team. Saves `modelTruePct` (pre-blend) and `gtSeasonHitRate` in `_simData`. Blend corrects Poisson thin-tail underestimation at extreme thresholds (e.g. over 12.5 runs in a 7.5-line game). NBA/NHL game totals not blended (NBA Normal is symmetric; NHL fewer extreme thresholds).
 
-**MLB edge dampener**: when `|threshold − gameOuLine| > 3`, multiply `overEdge`/`underEdge` by 0.7 before gate check. Mechanical correction for residual tail thinness after the blend; protects bet sizing on Poisson-tail-fueled UNDERs that were inflating edge to 16–26%. Stored as `edgeDampened: 0.7` on the play; `rawEdge` and `rawUnderEdge` preserved for debug. NBA/NHL skipped.
+**MLB edge dampener**: when `|threshold − gameOuLine| ≥ 3`, multiply `overEdge`/`underEdge` by 0.7 before gate check. Mechanical correction for residual tail thinness after the blend; protects bet sizing on Poisson-tail-fueled UNDERs that were inflating edge to 16–26%. Stored as `edgeDampened: 0.7` on the play; `rawEdge` and `rawUnderEdge` preserved for debug. NBA/NHL skipped.
+
+**Schedule fetch abbr translation**: `_gtScheduleMap` (game totals) and `_ttScheduleMap` (team totals) translate canonical → ESPN team-route slug before building the schedule URL — mirrors `CANONICAL_TO_ESPN` in `/api/live`. Currently MLB-only with `CWS → CHW` (ESPN's team-route slug for the White Sox is `chw`, not `cws`). Cache keys keep the canonical form so cached reads are consistent. Without this, schedules for affected teams silently fetched as empty arrays, breaking H2H and game-total seasonHitRate blends for any matchup involving them.
 
 **Lambda / projection formulas**:
 
