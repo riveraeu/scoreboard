@@ -4113,7 +4113,7 @@ var worker_default = {
               // to 0.7 max at N=40+; preserves 30% min model weight for tonight-specific factors.
               const _ttModelTruePct = truePct;
               if (truePct != null && ttSeasonHitRate != null) {
-                const _w = _ssnBlendWeight(_ttSched.length);
+                const _w = Math.min(1, _ttSched.length / 40) * 0.7;
                 truePct = parseFloat(((1 - _w) * truePct + _w * ttSeasonHitRate).toFixed(1));
               }
               const _h2h = _ttH2HRate("mlb", scoringTeam, oppTeam, threshold);
@@ -4198,7 +4198,7 @@ var worker_default = {
               let _ttNbaModelTruePct = null;
               if (truePct != null && ttNbaSeasonHitRate != null) {
                 _ttNbaModelTruePct = parseFloat(truePct.toFixed(1));
-                const _w = _ssnBlendWeight(_ttNbaSched.length);
+                const _w = Math.min(1, _ttNbaSched.length / 40) * 0.7;
                 truePct = parseFloat(((1 - _w) * truePct + _w * ttNbaSeasonHitRate).toFixed(1));
               }
               const _h2h = _ttH2HRate("nba", scoringTeam, oppTeam, threshold);
