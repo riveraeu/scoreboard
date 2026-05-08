@@ -1004,6 +1004,11 @@ var worker_default = {
         const isDebugMode = params.get("debug") === "1";
         const isBustCache = params.get("bust") === "1";
         const reportSportFilter = params.get("sport") || null;
+        // NBA totals: regular-season aggregate OffRtg/DefRtg systematically under-projects playoff
+        // scoring (LAL/OKC G3 = 232 vs model 199 vs market 210.5). Multiplier on home/away expected
+        // closes most of the gap to market without erasing genuine edge. Single tunable; calibrate
+        // after 2 weeks of playoff data. Applied via _isPlayoffNbaGame() against seriesSummary.
+        const _PLAYOFF_OFF_BOOST = 1.04;
         if (params.get("mock") === "true") {
           return jsonResponse({ plays: [
             { playerName: "Shai Gilgeous-Alexander", playerId: "4278073", sport: "nba", playerTeam: "OKC", position: "PG", posGroup: "PG", opponent: "DAL", oppRank: 2, oppMetricValue: 119.8, oppMetricLabel: "PPG allowed", oppMetricUnit: "PPG", stat: "points", threshold: 30, kalshiPct: 74, americanOdds: -163, seasonPct: 78.4, softPct: 84.2, softGames: 11, truePct: 81.3, edge: 7.3, gameDate: "2026-04-08", gameTime: "2026-04-09T00:30:00Z" },
@@ -3804,6 +3809,12 @@ var worker_default = {
                 _homeExpRaw = homeOff != null ? homeOff * (awayDef != null && nbaAvgDef ? awayDef / nbaAvgDef : 1) : null;
                 _awayExpRaw = awayOff != null ? awayOff * (homeDef != null && nbaAvgDef ? homeDef / nbaAvgDef : 1) : null;
               }
+              // Playoff scoring boost — RS-aggregate ratings under-project playoff totals.
+              const _isPlayoff = !!(sportByteam.nbaGameScores?.[homeTeam]?.seriesSummary || sportByteam.nbaGameScores?.[awayTeam]?.seriesSummary);
+              if (_isPlayoff) {
+                if (_homeExpRaw != null) _homeExpRaw *= _PLAYOFF_OFF_BOOST;
+                if (_awayExpRaw != null) _awayExpRaw *= _PLAYOFF_OFF_BOOST;
+              }
               // Keep injuries in simData for reference (not scored)
               const _NBAshort = { GSW:"GS", SAS:"SA", NYK:"NY", NOP:"NO", PHX:"PHO" };
               const _homeOut = (nbaInjuryMap.get(homeTeam) || nbaInjuryMap.get(_NBAshort[homeTeam]) || []).length;
@@ -3821,7 +3832,7 @@ var worker_default = {
               const _combDefRtgPts = _combDefRtg == null ? 1 : _combDefRtg >= 118 ? 2 : _combDefRtg >= 113 ? 1 : 0;
               const _nbaGtH2HPts = nbaGtH2HRate == null ? 1 : nbaGtH2HRate >= 80 ? 2 : nbaGtH2HRate >= 60 ? 1 : 0;
               const _nbaOuPts = _nbaOuLine == null ? 1 : _nbaOuLine >= 225 ? 2 : _nbaOuLine >= 215 ? 1 : 0;
-              _simData = { homeOffRtg: _hOffRtg, awayOffRtg: _aOffRtg, homeDefRtg: _hDefRtg, awayDefRtg: _aDefRtg, combOffRtg: _combOffRtg, combDefRtg: _combDefRtg, homePace: _hp, awayPace: _ap, leagueAvgPace: _lgPace, projPace: _projPace, gameOuLine: _nbaOuLine, homeOut: _homeOut, awayOut: _awayOut, nbaGtH2HRate, nbaGtH2HGames, combOffRtgPts: _combOffRtgPts, combDefRtgPts: _combDefRtgPts, pacePts: _pacePts, nbaGtH2HPts: _nbaGtH2HPts, nbaOuPts: _nbaOuPts, homeExpected: _homeExpRaw != null ? parseFloat(_homeExpRaw.toFixed(1)) : null, awayExpected: _awayExpRaw != null ? parseFloat(_awayExpRaw.toFixed(1)) : null, expectedTotal: (_homeExpRaw != null && _awayExpRaw != null) ? parseFloat((_homeExpRaw + _awayExpRaw).toFixed(1)) : null };
+              _simData = { homeOffRtg: _hOffRtg, awayOffRtg: _aOffRtg, homeDefRtg: _hDefRtg, awayDefRtg: _aDefRtg, combOffRtg: _combOffRtg, combDefRtg: _combDefRtg, homePace: _hp, awayPace: _ap, leagueAvgPace: _lgPace, projPace: _projPace, gameOuLine: _nbaOuLine, homeOut: _homeOut, awayOut: _awayOut, nbaGtH2HRate, nbaGtH2HGames, combOffRtgPts: _combOffRtgPts, combDefRtgPts: _combDefRtgPts, pacePts: _pacePts, nbaGtH2HPts: _nbaGtH2HPts, nbaOuPts: _nbaOuPts, homeExpected: _homeExpRaw != null ? parseFloat(_homeExpRaw.toFixed(1)) : null, awayExpected: _awayExpRaw != null ? parseFloat(_awayExpRaw.toFixed(1)) : null, expectedTotal: (_homeExpRaw != null && _awayExpRaw != null) ? parseFloat((_homeExpRaw + _awayExpRaw).toFixed(1)) : null, ...(_isPlayoff && { playoffBoost: _PLAYOFF_OFF_BOOST }) };
               if (_homeExpRaw != null && _awayExpRaw != null) {
                 const _dk = `nba|${homeTeam}|${awayTeam}`;
                 if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateNBATotalDist(_homeExpRaw, _awayExpRaw, 11, 11, 10000);
@@ -4094,6 +4105,9 @@ var worker_default = {
                 const oppDef = nbaDefRank[oppTeam]?.value ?? null;
                 if (teamOff != null) _teamExpected = teamOff * (oppDef != null && nbaAvgDef ? oppDef / nbaAvgDef : 1);
               }
+              // Same playoff scoring boost as NBA game totals (see _PLAYOFF_OFF_BOOST).
+              const _ttIsPlayoff = !!(sportByteam.nbaGameScores?.[scoringTeam]?.seriesSummary || sportByteam.nbaGameScores?.[oppTeam]?.seriesSummary);
+              if (_ttIsPlayoff && _teamExpected != null) _teamExpected *= _PLAYOFF_OFF_BOOST;
               if (_teamExpected != null) {
                 const _dk = `nba|team|${scoringTeam}|${oppTeam}`;
                 if (!teamTotalDistCache[_dk]) teamTotalDistCache[_dk] = simulateTeamPtsDist(_teamExpected, 11, 10000);
@@ -4115,7 +4129,7 @@ var worker_default = {
               teamTotalSimScore += ttOffRtgPts + ttDefRtgPts + ttNbaSeasonHitRatePts + h2hHitRatePts + ttNbaOuPts;
               if (truePct == null) { if (isDebug) dropped.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, teamTotalSimScore, teamOffRtg, oppDefRtg, ttOffRtgPts, ttDefRtgPts, ttNbaOuPts, gameOuLine: _nbaOuLine, h2hHitRate, h2hGames, h2hHitRatePts, ttNbaSeasonHitRate, ttNbaSeasonHitRatePts, reason: "no_simulation_data" }); continue; }
               const _nttGameTime = gameTimes[`${sport}:${homeTeam}:${gameDate}`] ?? gameTimes[`${sport}:${awayTeam}:${gameDate}`] ?? gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null;
-              const _nttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _nttGameTime, teamOffRtg, oppDefRtg, teamExpected: _teamExpected != null ? parseFloat(_teamExpected.toFixed(1)) : null, gameOuLine: _nbaOuLine, gameSpread: _gameSpread, h2hHitRate, h2hGames, h2hHitRatePts, ttNbaSeasonHitRate, ttNbaSeasonHitRatePts, ttOffRtgPts, ttDefRtgPts, ttNbaOuPts };
+              const _nttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _nttGameTime, teamOffRtg, oppDefRtg, teamExpected: _teamExpected != null ? parseFloat(_teamExpected.toFixed(1)) : null, gameOuLine: _nbaOuLine, gameSpread: _gameSpread, h2hHitRate, h2hGames, h2hHitRatePts, ttNbaSeasonHitRate, ttNbaSeasonHitRatePts, ttOffRtgPts, ttDefRtgPts, ttNbaOuPts, ...(_ttIsPlayoff && { playoffBoost: _PLAYOFF_OFF_BOOST }) };
               const rawEdge = parseFloat((truePct - kalshiPct).toFixed(1));
               const edge = rawEdge;
               const _nttOverInWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;

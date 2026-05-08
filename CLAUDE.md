@@ -211,8 +211,11 @@ awayLambda = awayGPG × (homeGAA / leagueAvgGAA)  # clamped [0.5, 8]
 projPace = (homePace × awayPace) / leagueAvgPace                        # geometric mean
 homeExpected = (homeOffRtg × awayDefRtg / leagueAvgOffRtg²) × projPace
 awayExpected = (awayOffRtg × homeDefRtg / leagueAvgOffRtg²) × projPace
+# Playoff scoring boost when seriesSummary non-null on either team:
+#   homeExpected *= _PLAYOFF_OFF_BOOST  (1.04)
+#   awayExpected *= _PLAYOFF_OFF_BOOST
 ```
-OffRtg/DefRtg from same ESPN team-stats call as pace. `nba:pace:2526` stores `teamOffRtg`, `teamDefRtg`, `leagueAvgOffRtg`, `leagueAvgDefRtg`.
+OffRtg/DefRtg from same ESPN team-stats call as pace. `nba:pace:2526` stores `teamOffRtg`, `teamDefRtg`, `leagueAvgOffRtg`, `leagueAvgDefRtg`. `_PLAYOFF_OFF_BOOST` is a single tunable at the top of the tonight handler — RS-aggregate ratings systematically under-projected playoff totals (LAL/OKC G3 = 232 vs model 199 vs market 210.5); +4% closes most of the model-vs-market gap. Surfaced as `playoffBoost: 1.04` in `_simData` when applied. Same boost applied to NBA team totals (`_teamExpected *= _PLAYOFF_OFF_BOOST`).
 
 **SimScore — MLB**: homeWHIP, awayWHIP (>1.35→2, >1.20→1, ≤1.20→0), combinedRPG (`homeRPG+awayRPG`; ≥10.5→2, ≥8.5→1), H2H combined hit rate% (homeScore+awayScore ≥ threshold last 10 H2H; ≥3 games required), O/U line (≥9.5→2, ≥7.5→1). WHIP fallback: `pitcherWHIPByTeam[abbr]` → `teamWHIPMap[abbr]` → 1pt abstain. `homeWHIPSource`/`awayWHIPSource` = `"starter"|"team"|null` flags which path fired (covers debut/late-announcement starters).
 
