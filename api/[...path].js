@@ -3445,6 +3445,7 @@ var worker_default = {
           }
           const mlbH2H = sport === "mlb" && softPct !== null;
           plays.push({
+            qualified: true,
             playerName: playerNameDisplay || playerName,
             playerId: info.id,
             sport,
@@ -4177,6 +4178,15 @@ var worker_default = {
               const _ttNbaSeasonHits = _ttNbaSched.filter(ev => { const mine = ev.comps.find(c => normTeam("nba", c.abbr) === scoringTeam); return mine && mine.score >= threshold; });
               const ttNbaSeasonHitRate = _ttNbaSched.length >= 5 ? Math.round(_ttNbaSeasonHits.length / _ttNbaSched.length * 100) : null;
               const ttNbaSeasonHitRatePts = ttNbaSeasonHitRate == null ? 1 : ttNbaSeasonHitRate >= 80 ? 2 : ttNbaSeasonHitRate >= 60 ? 1 : 0;
+              // 50/50 blend with ttNbaSeasonHitRate corrects Normal-sim tail thinness for NBA team
+              // totals — same pattern as NBA/MLB game totals and MLB team totals. Without this, the
+              // model was overconfident on far-from-mean thresholds (e.g. PHI U113.5 edge inflated
+              // because Normal sim says 12% but observed season rate is 27%).
+              let _ttNbaModelTruePct = null;
+              if (truePct != null && ttNbaSeasonHitRate != null) {
+                _ttNbaModelTruePct = parseFloat(truePct.toFixed(1));
+                truePct = parseFloat((0.5 * truePct + 0.5 * ttNbaSeasonHitRate).toFixed(1));
+              }
               const _h2h = _ttH2HRate("nba", scoringTeam, oppTeam, threshold);
               const h2hHitRate = _h2h?.rate ?? null;
               const h2hGames = _h2h?.games ?? null;
@@ -4188,7 +4198,7 @@ var worker_default = {
               teamTotalSimScore += ttOffRtgPts + ttDefRtgPts + ttNbaSeasonHitRatePts + h2hHitRatePts + ttNbaOuPts;
               if (truePct == null) { if (isDebug) dropped.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, teamTotalSimScore, teamOffRtg, oppDefRtg, ttOffRtgPts, ttDefRtgPts, ttNbaOuPts, gameOuLine: _nbaOuLine, h2hHitRate, h2hGames, h2hHitRatePts, ttNbaSeasonHitRate, ttNbaSeasonHitRatePts, reason: "no_simulation_data" }); continue; }
               const _nttGameTime = gameTimes[`${sport}:${homeTeam}:${gameDate}`] ?? gameTimes[`${sport}:${awayTeam}:${gameDate}`] ?? gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null;
-              const _nttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _nttGameTime, teamOffRtg, oppDefRtg, teamExpected: _teamExpected != null ? parseFloat(_teamExpected.toFixed(1)) : null, gameOuLine: _nbaOuLine, gameSpread: _gameSpread, h2hHitRate, h2hGames, h2hHitRatePts, ttNbaSeasonHitRate, ttNbaSeasonHitRatePts, ttOffRtgPts, ttDefRtgPts, ttNbaOuPts, ...(_ttIsPlayoff && { playoffBoost: _PLAYOFF_OFF_BOOST }) };
+              const _nttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), ...(_ttNbaModelTruePct != null && _ttNbaModelTruePct !== truePct && { modelTruePct: _ttNbaModelTruePct }), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _nttGameTime, teamOffRtg, oppDefRtg, teamExpected: _teamExpected != null ? parseFloat(_teamExpected.toFixed(1)) : null, gameOuLine: _nbaOuLine, gameSpread: _gameSpread, h2hHitRate, h2hGames, h2hHitRatePts, ttNbaSeasonHitRate, ttNbaSeasonHitRatePts, ttOffRtgPts, ttDefRtgPts, ttNbaOuPts, ...(_ttIsPlayoff && { playoffBoost: _PLAYOFF_OFF_BOOST }) };
               const rawEdge = parseFloat((truePct - kalshiPct).toFixed(1));
               const edge = rawEdge;
               const _nttOverInWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
