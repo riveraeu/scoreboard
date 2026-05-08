@@ -232,7 +232,10 @@ function App() {
     if (_sc) { _applyData(_sc); setTonightLoading(false); return; }
     let cancelled = false;
     setTonightLoading(true);
-    fetch(`${WORKER}/tonight`)
+    // Initial page-load fetch always busts so users get fresh Kalshi data on entry. The
+    // sessionStorage check above (2-min TTL) absorbs repeat loads/navigations within the same
+    // tab session, so this only fires on truly new sessions or after the sessionStorage expires.
+    fetch(`${WORKER}/tonight?bust=1`)
       .then(r => r.json())
       .then(data => { if (cancelled) return; try { sessionStorage.setItem(_sk, JSON.stringify({ts: Date.now(), data})); } catch {} _applyData(data); setTonightLoading(false); })
       .catch(() => { if (cancelled) return; setAllTonightPlays([]); setNbaDropped([]); setTonightPlays([]); setTonightLoading(false); });
