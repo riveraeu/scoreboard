@@ -3764,6 +3764,16 @@ var worker_default = {
             const spreadAdj = kalshiSpread != null ? parseFloat((kalshiSpread / 2).toFixed(1)) : 0;
             const lowVolume = (_gtVolumeMap[`${sport}|${gameTeam1}|${gameTeam2}`] ?? 0) < 50;
             let truePct = null, homeTeam = gameTeam1, awayTeam = gameTeam2, totalSimScore = 0, _simData = {};
+            // Kalshi ticker order doesn't reflect ESPN home/away. Swap if needed so the matchup
+            // card and downstream consumers see the same home/away as gameScores.
+            if (sport === "nba" || sport === "nhl") {
+              const _gsMap = sport === "nba" ? sportByteam.nbaGameScores : sportByteam.nhlGameScores;
+              if (_gsMap) {
+                for (const _gs of Object.values(_gsMap)) {
+                  if (_gs?.homeTeam === gameTeam2 && _gs?.awayTeam === gameTeam1) { homeTeam = gameTeam2; awayTeam = gameTeam1; break; }
+                }
+              }
+            }
             if (sport === "mlb") {
               if (sportByteam.mlb?.gameHomeTeams?.[gameTeam2]) { homeTeam = gameTeam2; awayTeam = gameTeam1; }
               // Road RPG strips home-park bias from the lambda numerator (fallback to overall RPG)
@@ -4083,6 +4093,11 @@ var worker_default = {
             // Determine home/away (same correction logic as game total loop)
             let homeTeam = gameTeam1, awayTeam = gameTeam2;
             if (sport === "mlb" && sportByteam.mlb?.gameHomeTeams?.[gameTeam2]) { homeTeam = gameTeam2; awayTeam = gameTeam1; }
+            else if (sport === "nba" && sportByteam.nbaGameScores) {
+              for (const _gs of Object.values(sportByteam.nbaGameScores)) {
+                if (_gs?.homeTeam === gameTeam2 && _gs?.awayTeam === gameTeam1) { homeTeam = gameTeam2; awayTeam = gameTeam1; break; }
+              }
+            }
             const isHome = scoringTeam === homeTeam;
             const oppTeam = isHome ? awayTeam : homeTeam;
             let truePct = null, teamTotalSimScore = 0;
