@@ -3926,7 +3926,8 @@ var worker_default = {
             // MLB-only edge dampener: when threshold is far from market line, Poisson tails
             // overstate edge. Multiplicative shrink keeps the bet directionally honest while
             // forcing more conservative sizing. Skipped on NBA (Normal sim, symmetric) and NHL.
-            const _farFromLine = (sport === "mlb" && gameOuLine != null && Math.abs(threshold - gameOuLine) > 3);
+            // Use _simData.gameOuLine — gameOuLine const is scoped to the MLB branch only.
+            const _farFromLine = (sport === "mlb" && _simData?.gameOuLine != null && Math.abs(threshold - _simData.gameOuLine) > 3);
             const _edgeDampener = _farFromLine ? 0.7 : 1.0;
             const overEdge = parseFloat(((rawEdge ?? 0) * _edgeDampener).toFixed(1));
             const underEdge = parseFloat((_rawUnderEdge * _edgeDampener).toFixed(1));
