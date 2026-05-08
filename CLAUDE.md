@@ -67,7 +67,7 @@ User auth (`user:{email}`) and picks (`picks:{userId}`) live in the same Redis. 
 | `live:{sport}:{teams sorted}:{ptDate}` | 60s in / 300s post | `/api/live` boxscore |
 
 ### Routes
-- `/api/tonight` — main play generation. `?debug=1` returns dropped/preDropped + debug fields. `?bust=1` bypasses caches. **Frontend always passes `?bust=1` on the initial page-load fetch** (`App.jsx` ~line 235); a 2-min sessionStorage cache (`tonight_v1_${date}`) absorbs repeat loads/navigations within the same tab session, so the bust only fires on truly new sessions or after the sessionStorage expires. Trade-off: cold loads ~5–8s instead of ~50ms cache hit, in exchange for absolute freshness on entry. Manual ↻ button (`bustCache()`) continues to use `?bust=1` and clears sessionStorage.
+- `/api/tonight` — main play generation. `?debug=1` returns dropped/preDropped + debug fields. `?bust=1` bypasses caches. **Frontend always passes `?bust=1` on the initial page-load fetch** (`App.jsx` ~line 230). The previous client-side sessionStorage cache (`tonight_v1_${date}`, 2-min TTL) was removed for absolute freshness — every browser tab session now pays the cold cost (~5–8s) once on entry. App is a SPA so this useEffect fires once per tab session, not per in-app navigation. Manual ↻ button (`bustCache()`) also fetches `?bust=1`.
 - `/api/kalshi` — raw Kalshi market data
 - `/api/player`, `/api/gamelog` — ESPN player info + gamelog
 - `/api/team` — team page data (gameLog, lineup, season stats, nextGame)

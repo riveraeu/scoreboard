@@ -226,25 +226,22 @@ function App() {
 
   // Fetch tonight's plays on mount
   React.useEffect(() => {
-    const _sk = `tonight_v1_${new Date().toLocaleDateString('en-CA')}`;
-    const _sc = (() => { try { const s = sessionStorage.getItem(_sk); if (!s) return null; const p = JSON.parse(s); return Date.now() - p.ts < 120000 ? p.data : null; } catch { return null; } })();
     const _applyData = (data) => { const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore >= SIMSCORE_GATE) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore >= SIMSCORE_GATE))); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); if (data.mlbMeta) setMlbMeta(data.mlbMeta); if (data.mlbMetaTomorrow) setMlbMetaTomorrow(data.mlbMetaTomorrow); if (data.nbaMeta) setNbaMeta(data.nbaMeta); if (data.nhlMeta) setNhlMeta(data.nhlMeta); };
-    if (_sc) { _applyData(_sc); setTonightLoading(false); return; }
     let cancelled = false;
     setTonightLoading(true);
-    // Initial page-load fetch always busts so users get fresh Kalshi data on entry. The
-    // sessionStorage check above (2-min TTL) absorbs repeat loads/navigations within the same
-    // tab session, so this only fires on truly new sessions or after the sessionStorage expires.
+    // Initial page-load fetch always busts to skip both the server-side Kalshi cache and any
+    // client-side cache layer. App is a SPA so this useEffect fires once per browser tab session
+    // (not per in-app navigation); cost: ~5-8s cold rebuild per session, in exchange for absolute
+    // price freshness on entry.
     fetch(`${WORKER}/tonight?bust=1`)
       .then(r => r.json())
-      .then(data => { if (cancelled) return; try { sessionStorage.setItem(_sk, JSON.stringify({ts: Date.now(), data})); } catch {} _applyData(data); setTonightLoading(false); })
+      .then(data => { if (cancelled) return; _applyData(data); setTonightLoading(false); })
       .catch(() => { if (cancelled) return; setAllTonightPlays([]); setNbaDropped([]); setTonightPlays([]); setTonightLoading(false); });
     return () => { cancelled = true; };
   }, []);
 
   const bustCache = () => {
     if (bustLoading) return;
-    try { sessionStorage.removeItem(`tonight_v1_${new Date().toLocaleDateString('en-CA')}`); } catch {}
     setBustLoading(true);
     setTonightLoading(true);
     fetch(`${WORKER}/tonight?bust=1`)
