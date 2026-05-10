@@ -2,6 +2,7 @@ import { ALLOWED_ORIGIN, corsHeaders, jsonResponse, errorResponse, parseGameOdds
 import { PARK_KFACTOR, PARK_HITFACTOR, PARK_RUNFACTOR, UMPIRE_KFACTOR, log5K, poissonCDF, log5HitRate, simulateKsDist, kDistPct, buildNbaStatDist, nbaDistPct, simulateHits, simulateMLBTotalDist, simulateNBATotalDist, simulateNHLTotalDist, totalDistPct, simulateTeamTotalDist, simulateTeamPtsDist } from "./lib/simulate.js";
 import { buildLineupKPct, buildBarrelPct, buildPitcherKPct, MLB_ID_TO_ABBR } from "./lib/mlb.js";
 import { warmPlayerInfoCache, buildNbaDvpStage1, buildNbaDvpFromBettingPros, buildNbaDepthChartPos, buildNbaPaceData, buildNbaPlayerPosFromSleeper, buildNbaDvpStage3FG, buildNbaUsageRate, buildNbaInjuryReport } from "./lib/nba.js";
+import { buildWnbaPaceData, buildWnbaUsageRate, buildWnbaInjuryReport, buildWnbaDvp, WNBA_TEAM_IDS, WNBA_ESPN_TO_CANON, WNBA_CANON_TO_ESPN } from "./lib/wnba.js";
 
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
@@ -956,6 +957,9 @@ var worker_default = {
         // instead of NYK+PHI; same for SASMIN→SA+SMI. Try 3+3 first, validate, fall back to 2+3.
         const _VALID_TEAMS = {
           nba: new Set(["ATL","BOS","BKN","CHA","CHI","CLE","DAL","DEN","DET","GSW","HOU","IND","LAC","LAL","MEM","MIA","MIL","MIN","NOP","NYK","OKC","ORL","PHI","PHX","POR","SAC","SAS","TOR","UTA","WAS"]),
+          // WNBA has multiple 2-char abbrs (GS/LV/LA/NY/DA) and pairs like LVNY/LANY/GSLA/LVGS hit 2+2
+          // splits. Validation guards against 2-char-prefix stealing the parse from a 3-char team.
+          wnba: new Set(["ATL","CHI","CONN","DAL","GS","IND","LV","LA","MIN","NY","PHX","POR","SEA","TOR","WSH"]),
           nhl: new Set(["ANA","BOS","BUF","CGY","CAR","CHI","COL","CBJ","DAL","DET","EDM","FLA","LAK","MIN","MTL","NSH","NJD","NYI","NYR","OTT","PHI","PIT","STL","SJS","SEA","TBL","TOR","UTA","VAN","VGK","WSH","WPG"]),
           mlb: new Set(["ARI","ATL","ATH","BAL","BOS","CHC","CIN","CLE","COL","CWS","DET","HOU","KC","LAA","LAD","MIA","MIL","MIN","NYM","NYY","PHI","PIT","SD","SEA","SF","STL","TB","TEX","TOR","WSH"]),
           nfl: new Set(["ARI","ATL","BAL","BUF","CAR","CHI","CIN","CLE","DAL","DEN","DET","GB","HOU","IND","JAX","KC","LAC","LAR","LV","MIA","MIN","NE","NO","NYG","NYJ","PHI","PIT","SEA","SF","TB","TEN","WSH"]),
@@ -966,6 +970,19 @@ var worker_default = {
           if (/^\d{4}[A-Z]/.test(rest)) rest = rest.slice(4);
           if (rest.length < 4) return [null, null];
           const valid = _VALID_TEAMS[sport];
+          // WNBA has 2-, 3-, and 4-char canonical abbrs (LV/NY/GS/LA + ATL/IND/DAL + CONN).
+          // Try every (i, len-i) split and accept the first one where both halves validate.
+          // Prefer longer left-side first so e.g. CONNIN parses as CONN+IND, not CO+NNIN.
+          if (sport === "wnba" && valid) {
+            for (let i = Math.min(4, rest.length - 2); i >= 2; i--) {
+              const a = normTeam(sport, rest.slice(0, i));
+              for (let j = Math.min(4, rest.length - i); j >= 2; j--) {
+                const b = normTeam(sport, rest.slice(i, i + j));
+                if (valid.has(a) && valid.has(b)) return [a, b];
+              }
+            }
+            return [null, null];
+          }
           // Try 3+3 first when length >= 6: only commit if both halves are recognized teams.
           if (rest.length >= 6) {
             const a3 = normTeam(sport, rest.slice(0, 3));
@@ -1084,6 +1101,10 @@ var worker_default = {
           KXNBAREB: { sport: "nba", league: "nba", stat: "rebounds", col: "REB" },
           KXNBAAST: { sport: "nba", league: "nba", stat: "assists", col: "AST" },
           KXNBA3PT: { sport: "nba", league: "nba", stat: "threePointers", col: "3PT" },
+          KXWNBAPTS: { sport: "wnba", league: "wnba", stat: "points", col: "PTS" },
+          KXWNBAREB: { sport: "wnba", league: "wnba", stat: "rebounds", col: "REB" },
+          KXWNBAAST: { sport: "wnba", league: "wnba", stat: "assists", col: "AST" },
+          KXWNBA3PT: { sport: "wnba", league: "wnba", stat: "threePointers", col: "3PT" },
           KXNHLPTS: { sport: "nhl", league: "nhl", stat: "points", col: "PTS" },
           KXMLBHITS: { sport: "mlb", league: "mlb", stat: "hits", col: "H" },
           KXMLBKS: { sport: "mlb", league: "mlb", stat: "strikeouts", col: "K" },
@@ -1095,6 +1116,7 @@ var worker_default = {
           // Game totals — both over and under plays surfaced per market
           KXMLBTOTAL: { sport: "mlb", league: "mlb", stat: "totalRuns",   col: "R",   gameType: "total" },
           KXNBATOTAL: { sport: "nba", league: "nba", stat: "totalPoints", col: "PTS", gameType: "total" },
+          KXWNBATOTAL: { sport: "wnba", league: "wnba", stat: "totalPoints", col: "PTS", gameType: "total" },
           KXNHLTOTAL: { sport: "nhl", league: "nhl", stat: "totalGoals",  col: "G",   gameType: "total" },
           KXNFLTOTAL: { sport: "nfl", league: "nfl", stat: "totalPoints", col: "PTS", gameType: "total" },
           // Team totals — single team's score vs opposing defense
@@ -1103,6 +1125,9 @@ var worker_default = {
         };
         const TEAM_NORM = {
           nba: { GS: "GSW", SA: "SAS", NY: "NYK", NJ: "BKN", NO: "NOP", PHO: "PHX", WPH: "PHX", KAT: "ATL" },
+          // WNBA: Kalshi uses CONN/DAL but ESPN scoreboard returns CONNECTICU/DALLAS — translate via parallel
+          // map (WNBA_CANON_TO_ESPN) when fetching ESPN; canonical (short) lives here.
+          wnba: { CONNECTICU: "CONN", DALLAS: "DAL", WAS: "WSH", GSV: "GS", LAS: "LA" },
           nhl: { NJ: "NJD", TB: "TBL", LA: "LAK", SJ: "SJS", VGK: "VGK" },
           mlb: { KCR: "KC", SFG: "SF", SDP: "SD", TBR: "TB", CHW: "CWS", AZ: "ARI", KC: "KC", SD: "SD", SF: "SF", TB: "TB", OAK: "ATH", WSN: "WSH", WAS: "WSH" },
           nfl: { LA: "LAR" }
@@ -1418,6 +1443,7 @@ var worker_default = {
           return _map;
         };
         const kalshiNbaOuMap = _buildKalshiOuMap("nba", "KXNBATOTAL");
+        const kalshiWnbaOuMap = _buildKalshiOuMap("wnba", "KXWNBATOTAL");
         const kalshiMlbOuMap = _buildKalshiOuMap("mlb", "KXMLBTOTAL");
         const kalshiNhlOuMap = _buildKalshiOuMap("nhl", "KXNHLTOTAL");
         // Blended fill price: walk the orderbook for unit-sized positions so kalshiPct reflects
@@ -1497,7 +1523,7 @@ var worker_default = {
           await Promise.all([...sportsNeeded].map(async (sport) => {
             // When busting, skip the cache read for MLB so fresh computation is forced.
             // Deleting + reading in the same request is unreliable due to KV eventual consistency.
-            if (isBustCache && (sport === "mlb" || sport === "nhl" || sport === "nba")) return;
+            if (isBustCache && (sport === "mlb" || sport === "nhl" || sport === "nba" || sport === "wnba")) return;
             const cached = await CACHE2.get(`byteam:${sport}`, "json").catch(() => null);
             if (cached) sportByteam[sport] = cached;
           }));
@@ -1530,6 +1556,32 @@ var worker_default = {
               if (CACHE2) {
                 await CACHE2.put("byteam:nba", JSON.stringify(sportByteam.nba), { expirationTtl: 21600 });
                 await CACHE2.put("byteam:nba:scoring", JSON.stringify(sportByteam.nbaScoring), { expirationTtl: 21600 });
+              }
+            }),
+            sportsNeedingFetch.has("wnba") && Promise.all([
+              fetch("https://site.web.api.espn.com/apis/common/v3/sports/basketball/wnba/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=20&category=defensive&seasontype=2&season=2025", {
+                headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" }
+              }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
+              fetch("https://site.web.api.espn.com/apis/common/v3/sports/basketball/wnba/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=20&category=scoring&seasontype=2&season=2025", {
+                headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" }
+              }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
+              (() => {
+                const _wd0 = new Date(Date.now() - 7 * 3600 * 1000); const _wd1 = new Date(_wd0); _wd1.setDate(_wd1.getDate() + 1);
+                const _wfmt = (d) => d.toISOString().slice(0,10).replace(/-/g,'');
+                const _h = { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" };
+                return Promise.all([
+                  fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard?dates=${_wfmt(_wd0)}`, { headers: _h }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+                  fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard?dates=${_wfmt(_wd1)}`, { headers: _h }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+                ]).then(([sb0, sb1]) => ({ events: sb0.events || [], eventsAll: [...(sb0.events || []), ...(sb1.events || [])] }));
+              })()
+            ]).then(async ([d, scoringData, sbData]) => {
+              sportByteam.wnba = d.teams || [];
+              sportByteam.wnbaScoring = scoringData.teams || [];
+              sportByteam.wnbaGameOdds = parseGameOdds(sbData.events || []);
+              sportByteam.wnbaGameScores = parseGameScores(sbData.eventsAll || sbData.events || [], a => normTeam("wnba", a));
+              if (CACHE2) {
+                await CACHE2.put("byteam:wnba", JSON.stringify(sportByteam.wnba), { expirationTtl: 21600 });
+                await CACHE2.put("byteam:wnba:scoring", JSON.stringify(sportByteam.wnbaScoring), { expirationTtl: 21600 });
               }
             }),
             sportsNeedingFetch.has("nhl") && Promise.all([
@@ -1719,6 +1771,17 @@ var worker_default = {
             }
           }
         }
+        if (sportsNeeded.has("wnba") && !sportByteam.wnbaScoring) {
+          if (CACHE2 && !isBustCache) sportByteam.wnbaScoring = await CACHE2.get("byteam:wnba:scoring", "json").catch(() => null);
+          if (!sportByteam.wnbaScoring) {
+            sportByteam.wnbaScoring = await fetch("https://site.web.api.espn.com/apis/common/v3/sports/basketball/wnba/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=20&category=scoring&seasontype=2&season=2025", {
+              headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" }
+            }).then(r => r.ok ? r.json() : {}).then(d => d.teams || []).catch(() => []);
+            if (CACHE2 && Array.isArray(sportByteam.wnbaScoring) && sportByteam.wnbaScoring.length > 0) {
+              await CACHE2.put("byteam:wnba:scoring", JSON.stringify(sportByteam.wnbaScoring), { expirationTtl: 21600 }).catch(() => {});
+            }
+          }
+        }
         // Fetch game start times + NBA player availability for tonight's games
         const todayDateStr = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10).replace(/-/g, "");
         let [gameTimes, nbaPlayerStatus, _cachedWeather] = await Promise.all([
@@ -1732,7 +1795,7 @@ var worker_default = {
         if (needGameTimes || needNbaStatus) {
           gameTimes = gameTimes || {};
           nbaPlayerStatus = nbaPlayerStatus || {};
-          const SPORT_SB_PATH = { nba: "basketball/nba", nhl: "hockey/nhl", mlb: "baseball/mlb" };
+          const SPORT_SB_PATH = { nba: "basketball/nba", wnba: "basketball/wnba", nhl: "hockey/nhl", mlb: "baseball/mlb" };
           const sportsToFetch = needGameTimes ? [...sportsNeeded].filter(s => SPORT_SB_PATH[s]) : (needNbaStatus ? ["nba"] : []);
           const yesterdayDateStr = new Date(Date.now() - 86400000).toISOString().slice(0, 10).replace(/-/g, "");
           const tomorrowDateStr = new Date(Date.now() + 86400000).toISOString().slice(0, 10).replace(/-/g, "");
@@ -1781,6 +1844,12 @@ var worker_default = {
             if (_nbaSbResult?.events.length > 0 && !sportByteam.nbaGameScores) {
               sportByteam.nbaGameScores = parseGameScores(_nbaSbResult.events, a => normTeam("nba", a));
             }
+            // Extract WNBA game odds + scores from already-fetched ESPN events
+            const _wnbaSbResult = sbResults.find(r => r.sport === "wnba");
+            if (_wnbaSbResult?.events.length > 0) {
+              if (!sportByteam.wnbaGameOdds) sportByteam.wnbaGameOdds = Object.fromEntries(Object.entries(parseGameOdds(_wnbaSbResult.events)).map(([k, v]) => [normTeam("wnba", k), v]));
+              if (!sportByteam.wnbaGameScores) sportByteam.wnbaGameScores = parseGameScores(_wnbaSbResult.events, a => normTeam("wnba", a));
+            }
           }
           if (needNbaStatus) {
             const nbaEvents = sbResults.find(r => r.sport === "nba")?.events || [];
@@ -1823,6 +1892,20 @@ var worker_default = {
           sportByteam.nhlGameOdds = Object.fromEntries(Object.entries(parseGameOdds(_nhlFbToday)).map(([k, v]) => [normTeam("nhl", k), v]));
           if (!sportByteam.nhlGameScores) sportByteam.nhlGameScores = parseGameScores(_nhlFbAll, a => normTeam("nhl", a));
         }
+        // Fetch WNBA game odds + scores if wnba byteam was loaded from cache (scoreboard not fetched above)
+        if (sportsNeeded.has("wnba") && !sportByteam.wnbaGameOdds) {
+          const _wd2a = new Date(Date.now() - 7 * 3600 * 1000); const _wd2b = new Date(_wd2a); _wd2b.setDate(_wd2b.getDate() + 1);
+          const _ws2fmt = (d) => d.toISOString().slice(0,10).replace(/-/g,'');
+          const _wh2 = { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" };
+          const [_wnbaFbSb0, _wnbaFbSb1] = await Promise.all([
+            fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard?dates=${_ws2fmt(_wd2a)}`, { headers: _wh2 }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+            fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard?dates=${_ws2fmt(_wd2b)}`, { headers: _wh2 }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+          ]);
+          const _wnbaFbToday = _wnbaFbSb0.events || [];
+          const _wnbaFbAll = [..._wnbaFbToday, ...(_wnbaFbSb1.events || [])];
+          sportByteam.wnbaGameOdds = Object.fromEntries(Object.entries(parseGameOdds(_wnbaFbToday)).map(([k, v]) => [normTeam("wnba", k), v]));
+          if (!sportByteam.wnbaGameScores) sportByteam.wnbaGameScores = parseGameScores(_wnbaFbAll, a => normTeam("wnba", a));
+        }
         // Fetch NBA game odds + scores if nba byteam was loaded from cache (scoreboard not fetched above)
         if (sportsNeeded.has("nba") && !sportByteam.nbaGameOdds) {
           const _nd2a = new Date(Date.now() - 7 * 3600 * 1000); const _nd2b = new Date(_nd2a); _nd2b.setDate(_nd2b.getDate() + 1);
@@ -1843,6 +1926,13 @@ var worker_default = {
           for (const [_team, _ouLine] of Object.entries(kalshiNbaOuMap)) {
             if (!sportByteam.nbaGameOdds[_team]) sportByteam.nbaGameOdds[_team] = {};
             if (sportByteam.nbaGameOdds[_team].total == null) sportByteam.nbaGameOdds[_team].total = _ouLine;
+          }
+        }
+        if (Object.keys(kalshiWnbaOuMap).length > 0) {
+          if (!sportByteam.wnbaGameOdds) sportByteam.wnbaGameOdds = {};
+          for (const [_team, _ouLine] of Object.entries(kalshiWnbaOuMap)) {
+            if (!sportByteam.wnbaGameOdds[_team]) sportByteam.wnbaGameOdds[_team] = {};
+            if (sportByteam.wnbaGameOdds[_team].total == null) sportByteam.wnbaGameOdds[_team].total = _ouLine;
           }
         }
         // Same Kalshi fallback for MLB — covers tomorrow's games where today's ESPN scoreboard
@@ -1879,6 +1969,25 @@ var worker_default = {
             }
             for (const raw of [...ss.softTeams]) {
               const norm = _nbaAbbrs[raw];
+              if (norm) ss.softTeams.add(norm);
+            }
+          }
+        }
+        if (sportByteam.wnba) {
+          for (const st of ["points", "rebounds", "assists", "threePointers"]) {
+            STAT_SOFT[`wnba|${st}`] = { softTeams: new Set(buildSoftTeamAbbrs(sportByteam.wnba, st)), rankMap: buildTeamRankMap(sportByteam.wnba, st) };
+          }
+          // Normalize ESPN's irregular WNBA codes (CONNECTICU→CONN, DALLAS→DAL) to canonical
+          const _wnbaAbbrs = TEAM_NORM.wnba;
+          for (const st of ["points", "rebounds", "assists", "threePointers"]) {
+            const ss = STAT_SOFT[`wnba|${st}`];
+            if (!ss) continue;
+            for (const [raw, val] of Object.entries(ss.rankMap)) {
+              const norm = _wnbaAbbrs[raw];
+              if (norm && !ss.rankMap[norm]) ss.rankMap[norm] = val;
+            }
+            for (const raw of [...ss.softTeams]) {
+              const norm = _wnbaAbbrs[raw];
               if (norm) ss.softTeams.add(norm);
             }
           }
@@ -1940,15 +2049,22 @@ var worker_default = {
           (sportsNeeded.has("mlb") && CACHE2) ? CACHE2.get("mlb:barrelPct", "json").catch(() => null) : null,
           (sportsNeeded.has("nba") && CACHE2 && !isBustCache) ? CACHE2.get("nba:pace:2526", "json").catch(() => null) : null
         ]);
+        // WNBA: pace + DVP (cached first, cold-build if missing). Mirrors NBA pace+depthchart pair.
+        let _cachedWnbaPace = (sportsNeeded.has("wnba") && CACHE2 && !isBustCache) ? await CACHE2.get("wnba:pace:2025", "json").catch(() => null) : null;
+        let _cachedWnbaDvp = (sportsNeeded.has("wnba") && CACHE2 && !isBustCache) ? await CACHE2.get(`wnba:dvp:2025:${(/* @__PURE__ */ new Date()).toISOString().slice(0,10)}`, "json").catch(() => null) : null;
         // Fire cold fallbacks in parallel
-        [allPositionsDvp, nbaDepthChartPos, _cachedBarrel, _cachedPace] = await Promise.all([
+        [allPositionsDvp, nbaDepthChartPos, _cachedBarrel, _cachedPace, _cachedWnbaPace, _cachedWnbaDvp] = await Promise.all([
           (!allPositionsDvp && CACHE2) ? buildNbaDvpFromBettingPros(CACHE2).catch(() => null) : allPositionsDvp,
           (!nbaDepthChartPos && CACHE2) ? buildNbaDepthChartPos(CACHE2).catch(() => null) : nbaDepthChartPos,
           (!_cachedBarrel && sportsNeeded.has("mlb")) ? buildBarrelPct().then(async m => { if (CACHE2 && Object.keys(m).length > 0) await CACHE2.put("mlb:barrelPct", JSON.stringify(m), { expirationTtl: 21600 }).catch(() => {}); return m; }).catch(() => null) : _cachedBarrel,
-          (!_cachedPace && sportsNeeded.has("nba")) ? buildNbaPaceData(CACHE2).catch(() => null) : _cachedPace
+          (!_cachedPace && sportsNeeded.has("nba")) ? buildNbaPaceData(CACHE2).catch(() => null) : _cachedPace,
+          (!_cachedWnbaPace && sportsNeeded.has("wnba")) ? buildWnbaPaceData(CACHE2, 2025).catch(() => null) : _cachedWnbaPace,
+          (!_cachedWnbaDvp && sportsNeeded.has("wnba")) ? buildWnbaDvp(CACHE2, 2025).catch(() => null) : _cachedWnbaDvp
         ]);
         if (sportByteam.mlb && _cachedBarrel) sportByteam.mlb.barrelPctMap = _cachedBarrel;
         const nbaPaceData = _cachedPace;
+        const wnbaPaceData = _cachedWnbaPace;
+        const wnbaDvpMap = _cachedWnbaDvp;
         const preFilteredMarkets = [];
         const preDropped = [];
         for (const m of qualifyingMarkets) {
@@ -2039,6 +2155,8 @@ var worker_default = {
         const isDebug = isDebugMode || params.get("debug") === "true";
         const GAMELOG_API = {
           nba: /* @__PURE__ */ __name((id) => `https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/${id}/gamelog?season=2026`, "nba"),
+          // WNBA anchors on 2025 (most-complete signal; 2026 season just opening). Trust ramps via vals26.
+          wnba: /* @__PURE__ */ __name((id) => `https://site.web.api.espn.com/apis/common/v3/sports/basketball/wnba/athletes/${id}/gamelog?season=2025`, "wnba"),
           nfl: /* @__PURE__ */ __name((id) => `https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/athletes/${id}/gamelog?season=2025`, "nfl"),
           nhl: /* @__PURE__ */ __name((id) => `https://site.web.api.espn.com/apis/common/v3/sports/hockey/nhl/athletes/${id}/gamelog?season=2026`, "nhl"),
           mlb: /* @__PURE__ */ __name((id) => `https://site.web.api.espn.com/apis/common/v3/sports/baseball/mlb/athletes/${id}/gamelog?season=2026`, "mlb")
@@ -2186,7 +2304,7 @@ var worker_default = {
           }));
         }
         const leagueAvgCache = {};
-        for (const key of ["nba|points", "nba|rebounds", "nba|assists", "nba|threePointers", "nhl|points"]) {
+        for (const key of ["nba|points", "nba|rebounds", "nba|assists", "nba|threePointers", "wnba|points", "wnba|rebounds", "wnba|assists", "wnba|threePointers", "nhl|points"]) {
           const sd = STAT_SOFT[key];
           if (!sd) continue;
           const vals = Object.values(sd.rankMap).map((r) => r.value).filter((v) => v > 0);
@@ -2258,6 +2376,23 @@ var worker_default = {
           ]);
           Object.assign(nbaUsageMap, _usgResult);
           nbaInjuryMap = _injResult;
+        }
+        // Same pattern for WNBA — 2025-anchored USG; injuries.
+        const wnbaUsageMap = {};
+        let wnbaInjuryMap = new Map();
+        if (sportsNeeded.has("wnba")) {
+          const _wnbaPlayerIds = [...new Set(
+            Object.entries(playerInfoMap)
+              .filter(([k]) => k.startsWith("wnba|"))
+              .map(([, v]) => v?.id)
+              .filter(Boolean)
+          )];
+          const [_wusgResult, _winjResult] = await Promise.all([
+            _wnbaPlayerIds.length > 0 ? buildWnbaUsageRate(_wnbaPlayerIds, CACHE2, 2025) : Promise.resolve({}),
+            buildWnbaInjuryReport(CACHE2)
+          ]);
+          Object.assign(wnbaUsageMap, _wusgResult);
+          wnbaInjuryMap = _winjResult;
         }
         const NBA_POS_MAP = {
           PG: "PG",
@@ -2336,6 +2471,9 @@ var worker_default = {
         const pitcherKDistCache = {};
         // Cache NBA stat distributions keyed by playerId|stat so all thresholds share one sim run.
         const nbaPlayerDistCache = {};
+        // Cache WNBA stat distributions — separate keyspace from NBA to avoid id collisions
+        // (ESPN player IDs are global but treating them as separate keeps semantics clean).
+        const wnbaPlayerDistCache = {};
         // Cache NHL stat distributions keyed by playerId|stat — same monotonicity guarantee as NBA.
         const nhlPlayerDistCache = {};
         for (const { playerName, playerNameDisplay, sport, stat, col, threshold, kalshiPct, americanOdds, kalshiVolume, kalshiSpread, gameTeam1, gameTeam2, kalshiPlayerTeam, gameDate, lineMove, thinMarket, marketConfidence } of loopMarkets) {
@@ -2736,7 +2874,7 @@ var worker_default = {
           // simScore gate moved here so simPctOut is available for qualified:false push
           let recentAvgOut = null, dvpFactorOut = null, teamDefFactorOut = null, projectedStatOut = null;
           let posDvpRankOut = null, posDvpValueOut = null, posGroupOut = null, oppDvpRatioOut = null;
-          if (sport === "nba" || sport === "nhl") {
+          if (sport === "nba" || sport === "nhl" || sport === "wnba") {
             const recentVals = gl.events.slice(0, 10).map(getStat).filter((v) => !isNaN(v));
             recentAvgOut = recentVals.length >= 5 ? parseFloat((recentVals.reduce((a, b) => a + b, 0) / recentVals.length).toFixed(2)) : null;
             if (recentAvgOut !== null && rankMap[tonightOpp]?.value != null) {
@@ -2746,6 +2884,18 @@ var worker_default = {
                 teamDefFactorOut = dvpFactorOut; // general team defense (not position-adjusted)
                 const adjustedFactor = sport === "nhl" ? dvpFactorOut * 1.06 : dvpFactorOut;
                 projectedStatOut = parseFloat((recentAvgOut * adjustedFactor).toFixed(2));
+              }
+            }
+            // WNBA: aggregate stat-allowed DVP (option A). Single-tier ratio per stat; same fields as NBA.
+            if (sport === "wnba" && wnbaDvpMap?.rankings?.[stat]) {
+              const _wEntry = wnbaDvpMap.rankings[stat].find(t => t.abbr === tonightOpp);
+              if (_wEntry) {
+                posDvpRankOut = _wEntry.rank;
+                posDvpValueOut = parseFloat(_wEntry.avgPts.toFixed(1));
+                oppDvpRatioOut = _wEntry.ratio ?? null;
+                if (recentAvgOut !== null && oppDvpRatioOut !== null) {
+                  projectedStatOut = parseFloat((recentAvgOut * oppDvpRatioOut).toFixed(2));
+                }
               }
             }
             if (sport === "nba" && allPositionsDvp && nbaPos) {
@@ -2769,11 +2919,11 @@ var worker_default = {
               }
             }
           }
-          const isHomeGame = sport === "mlb" ? sportByteam.mlb?.gameHomeTeams?.[playerTeam] === playerTeam : sport === "nba" ? sportByteam.nba?.gameHomeTeams?.[playerTeam] === playerTeam : null;
+          const isHomeGame = sport === "mlb" ? sportByteam.mlb?.gameHomeTeams?.[playerTeam] === playerTeam : sport === "nba" ? sportByteam.nba?.gameHomeTeams?.[playerTeam] === playerTeam : sport === "wnba" ? sportByteam.wnba?.gameHomeTeams?.[playerTeam] === playerTeam : null;
           const yesterday = /* @__PURE__ */ new Date();
           yesterday.setDate(yesterday.getDate() - 1);
           const yesterdayStr = yesterday.toISOString().slice(0, 10);
-          const isB2B = (sport === "nba" || sport === "nhl") && gl.events.length > 0 && (gl.events[0]?.date || "").startsWith(yesterdayStr);
+          const isB2B = (sport === "nba" || sport === "nhl" || sport === "wnba") && gl.events.length > 0 && (gl.events[0]?.date || "").startsWith(yesterdayStr);
           // Provisional truePct for MLB hitter debug drops (computed before gates so all drops can include it)
           let _hlSeasonPct = null, _hlSoftPct = null, _hlTruePct = null, _hlEdge = null;
           if (sport === "mlb" && stat !== "strikeouts" && hasSeasonTags) {
@@ -3057,6 +3207,84 @@ var worker_default = {
             }
             nbaSimPctOut = nbaDistPct(nbaPlayerDistCache[_nbaDistKey], threshold);
           }
+          // WNBA: pre-edge SimScore + Monte Carlo sim. Mirrors NBA but with WNBA-tuned thresholds:
+          //   USG ≥27/≥22 (vs 28/22); MIN ≥27/≥22 (vs 30/25, WNBA caps at 40min/game);
+          //   game total ≥168/≥158 (vs 215, WNBA totals run 150–175).
+          let wnbaSimPctOut = null, wnbaPreSimScore = null, wnbaPaceAdj = null, wnbaOpportunity = null, wnbaTotalPts = null, wnbaGameTotal = null;
+          let wnbaBlowoutAdj = null, wnbaSplitAdj = null, wnbaMiscAdj = 1.0, wnba3pMPG = null;
+          if (sport === "wnba") {
+            let _wsc = 0;
+            if (wnbaPaceData) {
+              const _wtp = wnbaPaceData.teamPace?.[playerTeam] ?? null;
+              const _wop = wnbaPaceData.teamPace?.[tonightOpp] ?? null;
+              if (_wtp !== null && _wop !== null) {
+                wnbaPaceAdj = parseFloat(((_wtp + _wop) / 2 - (wnbaPaceData.leagueAvgPace ?? 90)).toFixed(1));
+              }
+            }
+            const _wminIdx = gl.ul.indexOf("MIN");
+            if (_wminIdx !== -1) {
+              const _wminVals = gl.events.slice(0, 10).map(ev => parseFloat(ev.stats[_wminIdx])).filter(v => !isNaN(v) && v > 0);
+              if (_wminVals.length >= 3) {
+                wnbaOpportunity = parseFloat((_wminVals.reduce((a, b) => a + b, 0) / _wminVals.length).toFixed(1));
+              }
+            }
+            const _wusgEntry = wnbaUsageMap[String(info.id)] ?? null;
+            const _wusg = _wusgEntry?.usg ?? null;
+            // 1. Stat-appropriate opportunity. USG tiers: ≥27/≥22 (NBA: 28/22 — WNBA shorter game compresses USG slightly).
+            //    Rebounds use MIN tiers: ≥27/≥22 (NBA: 30/25 — 40-min game vs 48).
+            if (stat === "threePointers") {
+              const _w3pIdx = gl.ul.indexOf("3P");
+              if (_w3pIdx !== -1) {
+                const _w3pVals = gl.events.slice(0, 10).map(ev => parseFloat(ev.stats[_w3pIdx])).filter(v => !isNaN(v) && v >= 0);
+                if (_w3pVals.length >= 3) wnba3pMPG = parseFloat((_w3pVals.reduce((a, b) => a + b, 0) / _w3pVals.length).toFixed(2));
+              }
+              _wsc += _wusg == null ? 1 : _wusg >= 27 ? 2 : _wusg >= 22 ? 1 : 0;
+            } else if (stat === "rebounds") {
+              _wsc += wnbaOpportunity == null ? 1 : wnbaOpportunity >= 27 ? 2 : wnbaOpportunity >= 22 ? 1 : 0;
+            } else {
+              _wsc += _wusg == null ? 1 : _wusg >= 27 ? 2 : _wusg >= 22 ? 1 : 0;
+            }
+            // 2. DVP ratio (single-tier, stat-allowed aggregate from buildWnbaDvp)
+            const _wdvpPts = oppDvpRatioOut == null ? 0 : oppDvpRatioOut >= 1.05 ? 2 : oppDvpRatioOut >= 1.02 ? 1 : 0;
+            _wsc += _wdvpPts;
+            // 3. Season hit rate (primary = 2025-anchored blended): ≥90→2, ≥80→1
+            const _wnbaSeasonHRPts = primaryPct >= 90 ? 2 : primaryPct >= 80 ? 1 : 0;
+            _wsc += _wnbaSeasonHRPts;
+            // 4. Soft hit rate: ≥90→2, ≥80→1; null→1 abstain
+            const _wnbaSoftHRPts = softPct == null ? 1 : softPct >= 90 ? 2 : softPct >= 80 ? 1 : 0;
+            _wsc += _wnbaSoftHRPts;
+            // 5. Game O/U: WNBA totals run 150–175 (NBA: 215–235). ≥168 → 2pts; ≥158 → 1pt; null→1 abstain
+            wnbaGameTotal = (sportByteam.wnbaGameOdds ?? {})[playerTeam]?.total ?? null;
+            wnbaTotalPts = wnbaGameTotal === null ? 1 : wnbaGameTotal >= 168 ? 2 : wnbaGameTotal >= 158 ? 1 : 0;
+            _wsc += wnbaTotalPts;
+            wnbaPreSimScore = _wsc;
+            // Blowout / split / injury adjustments — same shape as NBA, identical multipliers
+            const _wnbaSpread = (sportByteam.wnbaGameOdds ?? {})[playerTeam]?.spread ?? null;
+            if (_wnbaSpread != null) {
+              const _absSpreadW = Math.abs(_wnbaSpread);
+              wnbaBlowoutAdj = _absSpreadW > 10 ? Math.max(0.85, 1 - (_absSpreadW - 10) * 0.007) : 1.0;
+            }
+            const _wisHomeGame = sportByteam.wnba?.gameHomeTeams?.[playerTeam] === playerTeam;
+            const _wnbaGameValsAll = gl.events.map(getStat).filter(v => !isNaN(v) && v >= 0);
+            if (_wnbaGameValsAll.length >= 10) {
+              const _wlocVals = gl.events.filter(ev => (ev.isHome === _wisHomeGame)).map(getStat).filter(v => !isNaN(v) && v >= 0);
+              if (_wlocVals.length >= 5) {
+                const _woverallMean = _wnbaGameValsAll.slice(0, 10).reduce((a, b) => a + b, 0) / Math.min(10, _wnbaGameValsAll.length);
+                const _wlocMean = _wlocVals.slice(0, 10).reduce((a, b) => a + b, 0) / Math.min(10, _wlocVals.length);
+                const _wsplitMean = _wlocMean * 0.7 + _woverallMean * 0.3;
+                wnbaSplitAdj = _woverallMean > 0 ? parseFloat((_wsplitMean / _woverallMean).toFixed(3)) : null;
+              }
+            }
+            const _wInjured = wnbaInjuryMap.get(playerTeam) || [];
+            const _wInjBoost = _wInjured.length > 0 ? Math.min(1.15, 1 + _wInjured.length * 0.08) : 1.0;
+            wnbaMiscAdj = _wInjBoost * (wnbaBlowoutAdj ?? 1.0) * (wnbaSplitAdj ?? 1.0);
+            const _wnbaDistKey = `${info.id}|${stat}`;
+            if (!wnbaPlayerDistCache[_wnbaDistKey]) {
+              const _wnSim = _wsc >= 8 ? 10000 : _wsc >= 5 ? 5000 : 2000;
+              wnbaPlayerDistCache[_wnbaDistKey] = buildNbaStatDist(_wnbaGameValsAll, teamDefFactorOut, wnbaPaceAdj, isB2B, _wnSim, wnbaMiscAdj);
+            }
+            wnbaSimPctOut = nbaDistPct(wnbaPlayerDistCache[_wnbaDistKey], threshold);
+          }
           // NHL: pre-edge SimScore + Monte Carlo simulation (same normal-distribution approach as NBA)
           let nhlSimPctOut = null, nhlPreSimScore = null, nhlShotsAdj = null, nhlOpportunity = null, nhlSaRank = null, nhlTeamGPG = null;
           let nhlGameTotal = null, nhlSeasonHitRatePts = null, nhlDvpHitRatePts = null, _gaaRank = null;
@@ -3156,6 +3384,12 @@ var worker_default = {
               if (isB2B) base = Math.max(0, base - 4);
               return base;
             }
+            if (sport === "wnba") {
+              if (wnbaSimPctOut !== null) return wnbaSimPctOut;
+              let base = softPct !== null ? (seasonPct + softPct) / 2 : seasonPct;
+              if (isB2B) base = Math.max(0, base - 4);
+              return base;
+            }
             if (sport === "nhl") {
               // Monte Carlo simulation is primary model; fall back to dvp-adjusted average
               if (nhlSimPctOut !== null) return nhlSimPctOut;
@@ -3210,6 +3444,10 @@ var worker_default = {
           if (sport === "nba" && nbaPreSimScore !== null) {
             nbaSimScore = nbaPreSimScore;
           }
+          let wnbaSimScore = null;
+          if (sport === "wnba" && wnbaPreSimScore !== null) {
+            wnbaSimScore = wnbaPreSimScore;
+          }
           // NHL SimScore — edge is a gate only (not scored), same pattern as NBA/MLB
           let nhlSimScore = null;
           if (sport === "nhl" && nhlPreSimScore !== null) {
@@ -3262,6 +3500,16 @@ var worker_default = {
                 nbaAvgAst: nbaUsageMap[String(info.id)]?.avgAst ?? null,
                 nbaAvgReb: nbaUsageMap[String(info.id)]?.avgReb ?? null,
               } : {}),
+              ...(sport === "wnba" ? {
+                wnbaSimScore, wnbaPreSimScore, wnbaSimPct: wnbaSimPctOut, wnbaPaceAdj, wnbaOpportunity, isB2B,
+                wnbaGameTotal, wnbaTotalPts, wnba3pMPG, wnbaBlowoutAdj, wnbaSplitAdj,
+                wnbaSeasonHitRatePts: primaryPct >= 90 ? 2 : primaryPct >= 80 ? 1 : 0,
+                wnbaSoftHitRatePts: softPct == null ? 1 : softPct >= 90 ? 2 : softPct >= 80 ? 1 : 0,
+                posDvpValue: posDvpValueOut, dvpRatio: oppDvpRatioOut,
+                wnbaUsage: wnbaUsageMap[String(info.id)]?.usg ?? null,
+                wnbaAvgAst: wnbaUsageMap[String(info.id)]?.avgAst ?? null,
+                wnbaAvgReb: wnbaUsageMap[String(info.id)]?.avgReb ?? null,
+              } : {}),
               ...(sport === "nhl" ? { nhlSimScore, nhlPreSimScore, nhlSimPct: nhlSimPctOut, nhlShotsAdj, nhlOpportunity, nhlTeamGPG, nhlSaRank, gaaRank: _gaaRank, nhlGameTotal, nhlSeasonHitRatePts, nhlDvpHitRatePts, isB2B } : {}),
             };
             if (isDebug) dropped.push(_dropObj);
@@ -3282,7 +3530,7 @@ var worker_default = {
               lineupConfirmed: !(sportByteam.mlb?.projectedLineupTeams || []).includes(tonightOpp),
               playerStatus: null,
             };
-            if (sport === "mlb" || sport === "nba" || sport === "nhl") plays.push(_qualFalseBase);
+            if (sport === "mlb" || sport === "nba" || sport === "nhl" || sport === "wnba") plays.push(_qualFalseBase);
             continue;
           }
           // Threshold sanity gate: reject plays where the threshold far exceeds expected Ks.
@@ -3380,6 +3628,42 @@ var worker_default = {
             if (isDebug) dropped.push(_nbaLowScoreDrop);
             plays.push({
               ..._nbaLowScoreDrop,
+              qualified: false,
+              playerName: playerNameDisplay || playerName,
+              playerId: info.id,
+              sport, playerTeam, stat, threshold, kalshiPct, americanOdds,
+              truePct: parseFloat(truePct.toFixed(1)),
+              log5Pct: simPctOut ?? log5PctOut,
+              simPct: simPctOut,
+              spreadAdj,
+              gameDate,
+              gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}:${_tomorrowISOStr}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
+              playerStatus: null,
+            });
+            continue;
+          }
+          // WNBA SimScore gate (≥SIMSCORE_GATE qualifies; lower → qualified:false for player card)
+          if (sport === "wnba" && wnbaSimScore !== null && wnbaSimScore < SIMSCORE_GATE) {
+            const _wnbaLowScoreDrop = {
+              ..._dropBase,
+              reason: "low_confidence",
+              wnbaSimScore, wnbaPreSimScore,
+              opponent: tonightOpp,
+              seasonPct: parseFloat(primaryPct.toFixed(1)),
+              softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
+              truePct: parseFloat(truePct.toFixed(1)), edge: parseFloat(edge.toFixed(1)),
+              wnbaSimPct: wnbaSimPctOut, wnbaPaceAdj, wnbaOpportunity, isB2B,
+              wnbaGameTotal, wnbaTotalPts, wnba3pMPG, wnbaBlowoutAdj, wnbaSplitAdj,
+              wnbaSeasonHitRatePts: primaryPct >= 90 ? 2 : primaryPct >= 80 ? 1 : 0,
+              wnbaSoftHitRatePts: softPct == null ? 1 : softPct >= 90 ? 2 : softPct >= 80 ? 1 : 0,
+              posDvpRank: posDvpRankOut, posDvpValue: posDvpValueOut, dvpRatio: oppDvpRatioOut,
+              wnbaUsage: wnbaUsageMap[String(info.id)]?.usg ?? null,
+              wnbaAvgAst: wnbaUsageMap[String(info.id)]?.avgAst ?? null,
+              wnbaAvgReb: wnbaUsageMap[String(info.id)]?.avgReb ?? null,
+            };
+            if (isDebug) dropped.push(_wnbaLowScoreDrop);
+            plays.push({
+              ..._wnbaLowScoreDrop,
               qualified: false,
               playerName: playerNameDisplay || playerName,
               playerId: info.id,
@@ -3586,6 +3870,21 @@ var worker_default = {
             nba3pMPG: sport === "nba" && stat === "threePointers" ? nba3pMPG : void 0,
             nbaBlowoutAdj: sport === "nba" ? nbaBlowoutAdj : void 0,
             nbaSplitAdj: sport === "nba" ? nbaSplitAdj : void 0,
+            wnbaSimScore: sport === "wnba" ? wnbaSimScore : void 0,
+            wnbaPreSimScore: sport === "wnba" ? wnbaPreSimScore : void 0,
+            wnbaSimPct: sport === "wnba" ? wnbaSimPctOut : void 0,
+            wnbaPaceAdj: sport === "wnba" ? wnbaPaceAdj : void 0,
+            wnbaOpportunity: sport === "wnba" ? wnbaOpportunity : void 0,
+            wnbaTotalPts: sport === "wnba" ? wnbaTotalPts : void 0,
+            wnbaSeasonHitRatePts: sport === "wnba" ? (primaryPct >= 90 ? 2 : primaryPct >= 80 ? 1 : 0) : void 0,
+            wnbaSoftHitRatePts: sport === "wnba" ? (softPct == null ? 1 : softPct >= 90 ? 2 : softPct >= 80 ? 1 : 0) : void 0,
+            wnbaGameTotal: sport === "wnba" ? wnbaGameTotal : void 0,
+            wnbaUsage: sport === "wnba" ? ((wnbaUsageMap[String(info.id)]?.usg) ?? null) : void 0,
+            wnbaAvgAst: sport === "wnba" ? ((wnbaUsageMap[String(info.id)]?.avgAst) ?? null) : void 0,
+            wnbaAvgReb: sport === "wnba" ? ((wnbaUsageMap[String(info.id)]?.avgReb) ?? null) : void 0,
+            wnba3pMPG: sport === "wnba" && stat === "threePointers" ? wnba3pMPG : void 0,
+            wnbaBlowoutAdj: sport === "wnba" ? wnbaBlowoutAdj : void 0,
+            wnbaSplitAdj: sport === "wnba" ? wnbaSplitAdj : void 0,
             nhlSimScore: sport === "nhl" ? nhlSimScore : void 0,
             nhlPreSimScore: sport === "nhl" ? nhlPreSimScore : void 0,
             nhlSimPct: sport === "nhl" ? nhlSimPctOut : void 0,
@@ -3736,8 +4035,12 @@ var worker_default = {
           // White Sox slug is chw. Cache key keeps the canonical form so reads are consistent.
           const _SCHED_TO_ESPN = { mlb: { CWS: "CHW" }, nhl: { TBL: "TB", NJD: "NJ", LAK: "LA", SJS: "SJ" } };
           const _toEspnSlug = (sp, a) => (_SCHED_TO_ESPN[sp]?.[a] || a).toLowerCase();
-          const _leagueOf = (sp) => sp === 'mlb' ? 'baseball/mlb' : sp === 'nhl' ? 'hockey/nhl' : 'basketball/nba';
-          { const _gtHTs = new Set(); for (const tm of totalMarkets) { if (tm.sport === "mlb" || tm.sport === "nba" || tm.sport === "nhl") { _gtHTs.add(`${tm.sport}:${tm.gameTeam1}`); _gtHTs.add(`${tm.sport}:${tm.gameTeam2}`); } } await Promise.all([..._gtHTs].map(async spHt => { const [sp, ht] = spHt.split(':'); const league = _leagueOf(sp); const ck = `teamschedule:v2:${sp}:${ht.toLowerCase()}`; let ev = isBustCache ? null : await CACHE2?.get(ck, "json").catch(() => null); if (!ev) { try { const base = `https://site.api.espn.com/apis/site/v2/sports/${league}/teams/${_toEspnSlug(sp, ht)}/schedule`; const r25 = await fetch(`${base}?season=2025`, { signal: AbortSignal.timeout(3000) }); const e25 = r25.ok ? _parseSchedEvts(await r25.json()) : []; const r26 = await fetch(base, { signal: AbortSignal.timeout(3000) }); const e26 = r26.ok ? _parseSchedEvts(await r26.json()) : []; ev = [...e25, ...e26]; if (ev.length && CACHE2) await CACHE2.put(ck, JSON.stringify(ev), { expirationTtl: 3600 }).catch(() => {}); } catch(e) {} } if (ev) _gtScheduleMap[spHt] = ev; })); }
+          const _leagueOf = (sp) => sp === 'mlb' ? 'baseball/mlb' : sp === 'nhl' ? 'hockey/nhl' : sp === 'wnba' ? 'basketball/wnba' : 'basketball/nba';
+          // WNBA slugs: ESPN uses CONNECTICU/DALLAS in scoreboard responses but team-route URLs accept short forms.
+          // Build a canonical→ESPN slug map mirroring _SCHED_TO_ESPN structure.
+          const _WNBA_SCHED_TO_ESPN = { CONN: "conn", DAL: "dal", GS: "gs", LA: "la", LV: "lv", NY: "ny", PHX: "phx", POR: "por", SEA: "sea", TOR: "tor", WSH: "wsh", ATL: "atl", CHI: "chi", IND: "ind", MIN: "min" };
+          const _toEspnSlugW = (sp, a) => sp === "wnba" ? (_WNBA_SCHED_TO_ESPN[a] || a.toLowerCase()) : _toEspnSlug(sp, a);
+          { const _gtHTs = new Set(); for (const tm of totalMarkets) { if (tm.sport === "mlb" || tm.sport === "nba" || tm.sport === "nhl" || tm.sport === "wnba") { _gtHTs.add(`${tm.sport}:${tm.gameTeam1}`); _gtHTs.add(`${tm.sport}:${tm.gameTeam2}`); } } await Promise.all([..._gtHTs].map(async spHt => { const [sp, ht] = spHt.split(':'); const league = _leagueOf(sp); const ck = `teamschedule:v2:${sp}:${ht.toLowerCase()}`; let ev = isBustCache ? null : await CACHE2?.get(ck, "json").catch(() => null); if (!ev) { try { const base = `https://site.api.espn.com/apis/site/v2/sports/${league}/teams/${_toEspnSlugW(sp, ht)}/schedule`; const r25 = await fetch(`${base}?season=2025`, { signal: AbortSignal.timeout(3000) }); const e25 = r25.ok ? _parseSchedEvts(await r25.json()) : []; const r26 = await fetch(base, { signal: AbortSignal.timeout(3000) }); const e26 = r26.ok ? _parseSchedEvts(await r26.json()) : []; ev = [...e25, ...e26]; if (ev.length && CACHE2) await CACHE2.put(ck, JSON.stringify(ev), { expirationTtl: 3600 }).catch(() => {}); } catch(e) {} } if (ev) _gtScheduleMap[spHt] = ev; })); }
           const _gtH2HRate = (ht, at, thr) => { const evts = _gtScheduleMap[`mlb:${ht}`] ?? _gtScheduleMap[ht] ?? []; const h2h = evts.filter(ev => ev.comps.some(c => normTeam("mlb", c.abbr) === at)).slice(-10); if (h2h.length < 3) return null; const hits = h2h.filter(ev => ev.comps.reduce((s, c) => s + (c.score || 0), 0) >= thr).length; return { rate: Math.round(hits / h2h.length * 100), games: h2h.length }; };
           // Season hit rate for MLB/NBA/NHL game totals: average of home + away team's full-season
           // rate of games where combined score >= threshold. Used as a sample-weighted blend
@@ -3766,8 +4069,8 @@ var worker_default = {
             let truePct = null, homeTeam = gameTeam1, awayTeam = gameTeam2, totalSimScore = 0, _simData = {};
             // Kalshi ticker order doesn't reflect ESPN home/away. Swap if needed so the matchup
             // card and downstream consumers see the same home/away as gameScores.
-            if (sport === "nba" || sport === "nhl") {
-              const _gsMap = sport === "nba" ? sportByteam.nbaGameScores : sportByteam.nhlGameScores;
+            if (sport === "nba" || sport === "nhl" || sport === "wnba") {
+              const _gsMap = sport === "nba" ? sportByteam.nbaGameScores : sport === "wnba" ? sportByteam.wnbaGameScores : sportByteam.nhlGameScores;
               if (_gsMap) {
                 for (const _gs of Object.values(_gsMap)) {
                   if (_gs?.homeTeam === gameTeam2 && _gs?.awayTeam === gameTeam1) { homeTeam = gameTeam2; awayTeam = gameTeam1; break; }
@@ -3923,6 +4226,73 @@ var worker_default = {
                 truePct = parseFloat(((1 - _w) * truePct + _w * _gtNbaSsn.rate).toFixed(1));
               }
               totalSimScore += _combOffRtgPts + _combDefRtgPts + _pacePts + _nbaGtH2HPts + _nbaOuPts;
+            } else if (sport === "wnba") {
+              // Same possession-based projection as NBA; uses wnbaPaceData (2025 anchored)
+              const _whp = wnbaPaceData?.teamPace?.[homeTeam] ?? null;
+              const _wap = wnbaPaceData?.teamPace?.[awayTeam] ?? null;
+              const _wlgPace = wnbaPaceData?.leagueAvgPace ?? null;
+              const _wnbaOuLine = sportByteam.wnbaGameOdds?.[homeTeam]?.total ?? sportByteam.wnbaGameOdds?.[awayTeam]?.total ?? null;
+              const _whOffRtg = wnbaPaceData?.teamOffRtg?.[homeTeam] ?? null;
+              const _waOffRtg = wnbaPaceData?.teamOffRtg?.[awayTeam] ?? null;
+              const _wlgOffRtg = wnbaPaceData?.leagueAvgOffRtg ?? 92.7;
+              const _whDefRtg = wnbaPaceData?.teamDefRtg?.[homeTeam] ?? null;
+              const _waDefRtg = wnbaPaceData?.teamDefRtg?.[awayTeam] ?? null;
+              let _wHomeExpRaw = null, _wAwayExpRaw = null, _wProjPace = null;
+              if (_whOffRtg != null && _waDefRtg != null && _waOffRtg != null && _whDefRtg != null && _whp != null && _wap != null && _wlgPace != null && _wlgPace > 0) {
+                _wProjPace = parseFloat(((_whp * _wap) / _wlgPace).toFixed(1));
+                _wHomeExpRaw = (_whOffRtg * _waDefRtg / (_wlgOffRtg * _wlgOffRtg)) * _wProjPace;
+                _wAwayExpRaw = (_waOffRtg * _whDefRtg / (_wlgOffRtg * _wlgOffRtg)) * _wProjPace;
+              }
+              // H2H combined hit rate (last 10 H2H)
+              const _wnbaH2H = (() => {
+                const evts = _gtScheduleMap[`wnba:${homeTeam}`] ?? [];
+                const h2h = evts.filter(ev => ev.comps.some(c => normTeam("wnba", c.abbr) === awayTeam)).slice(-10);
+                if (h2h.length < 3) return null;
+                const hits = h2h.filter(ev => ev.comps.reduce((s, c) => s + (c.score || 0), 0) >= threshold).length;
+                return { rate: Math.round(hits / h2h.length * 100), games: h2h.length };
+              })();
+              const wnbaGtH2HRate = _wnbaH2H?.rate ?? null;
+              const wnbaGtH2HGames = _wnbaH2H?.games ?? null;
+              const _wCombOffRtg = (_whOffRtg != null && _waOffRtg != null) ? parseFloat(((_whOffRtg + _waOffRtg) / 2).toFixed(1)) : (_whOffRtg ?? _waOffRtg);
+              const _wCombDefRtg = (_whDefRtg != null && _waDefRtg != null) ? parseFloat(((_whDefRtg + _waDefRtg) / 2).toFixed(1)) : (_whDefRtg ?? _waDefRtg);
+              // WNBA SimScore tiers — calibrated to WNBA scoring environment:
+              //   OffRtg ≥98 / ≥93 (NBA: ≥118 / ≥113)
+              //   DefRtg same (defensive efficiency uses same rating scale)
+              //   Pace ≥ leagueAvg+1 (smaller variance than NBA)
+              //   O/U ≥ 168 / ≥ 158 (NBA: ≥225 / ≥215)
+              const _wPacePts = (_whp == null || _wap == null || _wlgPace == null) ? 1 : (_whp > _wlgPace + 1 && _wap > _wlgPace + 1) ? 2 : (_whp > _wlgPace || _wap > _wlgPace) ? 1 : 0;
+              const _wCombOffRtgPts = _wCombOffRtg == null ? 1 : _wCombOffRtg >= 98 ? 2 : _wCombOffRtg >= 93 ? 1 : 0;
+              const _wCombDefRtgPts = _wCombDefRtg == null ? 1 : _wCombDefRtg >= 98 ? 2 : _wCombDefRtg >= 93 ? 1 : 0;
+              const _wnbaGtH2HPts = wnbaGtH2HRate == null ? 1 : wnbaGtH2HRate >= 80 ? 2 : wnbaGtH2HRate >= 60 ? 1 : 0;
+              const _wnbaOuPts = _wnbaOuLine == null ? 1 : _wnbaOuLine >= 168 ? 2 : _wnbaOuLine >= 158 ? 1 : 0;
+              _simData = {
+                homeOffRtg: _whOffRtg, awayOffRtg: _waOffRtg, homeDefRtg: _whDefRtg, awayDefRtg: _waDefRtg,
+                combOffRtg: _wCombOffRtg, combDefRtg: _wCombDefRtg,
+                homePace: _whp, awayPace: _wap, leagueAvgPace: _wlgPace, projPace: _wProjPace,
+                gameOuLine: _wnbaOuLine, wnbaGtH2HRate, wnbaGtH2HGames,
+                combOffRtgPts: _wCombOffRtgPts, combDefRtgPts: _wCombDefRtgPts, pacePts: _wPacePts,
+                wnbaGtH2HPts: _wnbaGtH2HPts, wnbaOuPts: _wnbaOuPts,
+                homeExpected: _wHomeExpRaw != null ? parseFloat(_wHomeExpRaw.toFixed(1)) : null,
+                awayExpected: _wAwayExpRaw != null ? parseFloat(_wAwayExpRaw.toFixed(1)) : null,
+                expectedTotal: (_wHomeExpRaw != null && _wAwayExpRaw != null) ? parseFloat((_wHomeExpRaw + _wAwayExpRaw).toFixed(1)) : null
+              };
+              if (_wHomeExpRaw != null && _wAwayExpRaw != null) {
+                const _dk = `wnba|${homeTeam}|${awayTeam}`;
+                // Per-team std=11 (WNBA scoring variance is roughly NBA × (40/48) × scale factor;
+                // empirically the game-total std runs ~13–15, so per-team std=11 produces ~15.6).
+                if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateNBATotalDist(_wHomeExpRaw, _wAwayExpRaw, 11, 11, 10000);
+                truePct = totalDistPct(totalDistCache[_dk], threshold);
+              }
+              // Sample-weighted seasonHitRate blend
+              const _gtWnbaSsn = (truePct != null) ? _gtSeasonHitRate("wnba", homeTeam, awayTeam, threshold) : null;
+              if (_gtWnbaSsn != null) {
+                const _w = _ssnBlendWeight(_gtWnbaSsn.sample);
+                _simData.modelTruePct = parseFloat(truePct.toFixed(1));
+                _simData.gtSeasonHitRate = _gtWnbaSsn.rate;
+                _simData.gtSsnSample = _gtWnbaSsn.sample;
+                truePct = parseFloat(((1 - _w) * truePct + _w * _gtWnbaSsn.rate).toFixed(1));
+              }
+              totalSimScore += _wCombOffRtgPts + _wCombDefRtgPts + _wPacePts + _wnbaGtH2HPts + _wnbaOuPts;
             } else if (sport === "nhl") {
               const homeGPG = nhlGPGMap[homeTeam] ?? null, awayGPG = nhlGPGMap[awayTeam] ?? null;
               const homeGAA = nhlGAAMap[homeTeam] ?? null, awayGAA = nhlGAAMap[awayTeam] ?? null;
@@ -3978,6 +4348,15 @@ var worker_default = {
               const _uNbaOuPts = gameOuLine == null ? 1 : gameOuLine < 215 ? 2 : gameOuLine < 225 ? 1 : 0;
               underSimScore = _uCombOffRtgPts + _uCombDefRtgPts + _uPacePts + _uNbaGtH2HPts + _uNbaOuPts;
               _underComponents = { combOffRtgPts: _uCombOffRtgPts, combDefRtgPts: _uCombDefRtgPts, pacePts: _uPacePts, nbaGtH2HPts: _uNbaGtH2HPts, nbaOuPts: _uNbaOuPts };
+            } else if (sport === "wnba") {
+              const { combOffRtg, combDefRtg, homePace, awayPace, leagueAvgPace, gameOuLine, wnbaGtH2HRate: _wH2H } = _simData;
+              const _uCombOffRtgPts = combOffRtg == null ? 1 : combOffRtg < 93 ? 2 : combOffRtg < 98 ? 1 : 0;
+              const _uCombDefRtgPts = combDefRtg == null ? 1 : combDefRtg < 93 ? 2 : combDefRtg < 98 ? 1 : 0;
+              const _uPacePts = (homePace == null || awayPace == null || leagueAvgPace == null) ? 1 : (homePace < leagueAvgPace - 1 && awayPace < leagueAvgPace - 1) ? 2 : (homePace < leagueAvgPace || awayPace < leagueAvgPace) ? 1 : 0;
+              const _uWnbaGtH2HPts = _wH2H == null ? 1 : _wH2H <= 30 ? 2 : _wH2H <= 50 ? 1 : 0;
+              const _uWnbaOuPts = gameOuLine == null ? 1 : gameOuLine < 158 ? 2 : gameOuLine < 168 ? 1 : 0;
+              underSimScore = _uCombOffRtgPts + _uCombDefRtgPts + _uPacePts + _uWnbaGtH2HPts + _uWnbaOuPts;
+              _underComponents = { combOffRtgPts: _uCombOffRtgPts, combDefRtgPts: _uCombDefRtgPts, pacePts: _uPacePts, wnbaGtH2HPts: _uWnbaGtH2HPts, wnbaOuPts: _uWnbaOuPts };
             } else if (sport === "nhl") {
               const { homeGPG, awayGPG, homeGAA, awayGAA, gameOuLine } = _simData;
               const _uHomeGpgPts = homeGPG == null ? 1 : homeGPG < 3.0 ? 2 : homeGPG < 3.5 ? 1 : 0;
@@ -4406,12 +4785,25 @@ var worker_default = {
           _nbaInjuries[abbr] = players; // keep original key too for fallback
         }
         const nbaMeta = { gameOdds: _nbaGameOdds, injuries: _nbaInjuries, gameScores: sportByteam.nbaGameScores ?? {} };
+        // WNBA meta — same shape as NBA. Canonical-only keys (CONNECTICU/DALLAS already normalized to CONN/DAL).
+        const _wnbaGameOdds = {};
+        for (const [abbr, odds] of Object.entries(sportByteam.wnbaGameOdds ?? {})) {
+          const key = TEAM_NORM.wnba[abbr] || abbr;
+          _wnbaGameOdds[key] = { ml: odds.moneyline ?? null, total: odds.total ?? null, spread: odds.spread ?? null };
+        }
+        const _wnbaInjuries = {};
+        for (const [abbr, players] of (wnbaInjuryMap || new Map()).entries()) {
+          const key = TEAM_NORM.wnba[abbr] || abbr;
+          _wnbaInjuries[key] = players;
+          _wnbaInjuries[abbr] = players;
+        }
+        const wnbaMeta = { gameOdds: _wnbaGameOdds, injuries: _wnbaInjuries, gameScores: sportByteam.wnbaGameScores ?? {} };
         const _nhlGameOdds = {};
         for (const [abbr, odds] of Object.entries(sportByteam.nhlGameOdds ?? {})) {
           _nhlGameOdds[abbr] = { ml: odds.moneyline ?? null, total: odds.total ?? null, spread: odds.spread ?? null };
         }
         const nhlMeta = { gameScores: sportByteam.nhlGameScores ?? {}, gameOdds: _nhlGameOdds };
-        const playsResult = { plays, nbaDropped, mlbMeta, mlbMetaTomorrow, nbaMeta, nhlMeta, staleKalshiSeries, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length };
+        const playsResult = { plays, nbaDropped, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta, staleKalshiSeries, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length };
         const sportsInPlays = new Set(plays.map((p) => p.sport));
         if (CACHE2 && sportsInPlays.size >= 2) {
           const summary = {
@@ -4440,7 +4832,7 @@ var worker_default = {
           ? (dateParamRaw.length === 8 ? `${dateParamRaw.slice(0,4)}-${dateParamRaw.slice(4,6)}-${dateParamRaw.slice(6,8)}` : dateParamRaw)
           : new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles" }).format(new Date());
         const ptDateStr = ptDate.replace(/-/g, "");
-        const SPORT_PATHS = { mlb: "baseball/mlb", nba: "basketball/nba", nhl: "hockey/nhl" };
+        const SPORT_PATHS = { mlb: "baseball/mlb", nba: "basketball/nba", wnba: "basketball/wnba", nhl: "hockey/nhl" };
 
         const gameTuples = gamesParam.split(",").map(g => {
           const [sport, ...teams] = g.split(":");
@@ -4486,6 +4878,8 @@ var worker_default = {
           const CANONICAL_TO_ESPN = {
             mlb: { CWS: "CHW" },
             nba: { GSW: "GS", SAS: "SA", NYK: "NY", NOP: "NO", UTA: "UTAH", WAS: "WSH" },
+            // WNBA: ESPN scoreboard returns CONNECTICU / DALLAS instead of CONN / DAL.
+            wnba: { CONN: "CONNECTICU", DAL: "DALLAS" },
             nhl: { TBL: "TB", NJD: "NJ", LAK: "LA", SJS: "SJ" },
           }[sport] || {};
           const ESPN_TO_CANONICAL = Object.fromEntries(

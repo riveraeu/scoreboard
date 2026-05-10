@@ -50,6 +50,7 @@ function App() {
   const [mlbMeta, setMlbMeta] = React.useState(null); // pitchers, ML odds, umpires, weather
   const [mlbMetaTomorrow, setMlbMetaTomorrow] = React.useState(null); // tomorrow's probables + umpires
   const [nbaMeta, setNbaMeta] = React.useState(null); // NBA game odds + injuries + gameScores
+  const [wnbaMeta, setWnbaMeta] = React.useState(null); // WNBA game odds + injuries + gameScores
   const [nhlMeta, setNhlMeta] = React.useState(null); // NHL gameScores
   const [bustLoading, setBustLoading] = React.useState(false);
 
@@ -116,7 +117,7 @@ function App() {
   const [syncStatus, setSyncStatus] = React.useState(null); // "saving"|"saved"|"error"
   const [liveStats, setLiveStats] = React.useState({}); // { "sport:team1:team2|gameDate": { state, detail, players } }
   const liveIntervalRef = React.useRef(null);
-  const liveMetaRef = React.useRef({ mlbMeta: null, nbaMeta: null, nhlMeta: null });
+  const liveMetaRef = React.useRef({ mlbMeta: null, nbaMeta: null, wnbaMeta: null, nhlMeta: null });
   const syncTimer = React.useRef(null);
   const fabRef = React.useRef(null);
   const picksLoaded = React.useRef(!localStorage.getItem("sb_token")); // true if no token (no server load needed)
@@ -140,7 +141,7 @@ function App() {
     if (slug === "model") { setPlayer(null); setTeamPage(null); setModelPage(true); return; }
     setModelPage(false);
     const upper = slug.toUpperCase();
-    const spPriority = sportOverride ? [sportOverride] : ["mlb","nba","nhl"];
+    const spPriority = sportOverride ? [sportOverride] : ["mlb","nba","wnba","nhl"];
     for (const sp of spPriority) {
       const match = TEAM_DB.find(t => t.abbr === upper && t.sport === sp);
       if (match) { loadTeamPage(match.abbr, match.sport); return; }
@@ -226,7 +227,7 @@ function App() {
 
   // Fetch tonight's plays on mount
   React.useEffect(() => {
-    const _applyData = (data) => { const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore >= SIMSCORE_GATE) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore >= SIMSCORE_GATE))); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); if (data.mlbMeta) setMlbMeta(data.mlbMeta); if (data.mlbMetaTomorrow) setMlbMetaTomorrow(data.mlbMetaTomorrow); if (data.nbaMeta) setNbaMeta(data.nbaMeta); if (data.nhlMeta) setNhlMeta(data.nhlMeta); };
+    const _applyData = (data) => { const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore >= SIMSCORE_GATE) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore >= SIMSCORE_GATE))); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); if (data.mlbMeta) setMlbMeta(data.mlbMeta); if (data.mlbMetaTomorrow) setMlbMetaTomorrow(data.mlbMetaTomorrow); if (data.nbaMeta) setNbaMeta(data.nbaMeta); if (data.wnbaMeta) setWnbaMeta(data.wnbaMeta); if (data.nhlMeta) setNhlMeta(data.nhlMeta); };
     let cancelled = false;
     setTonightLoading(true);
     // Initial page-load fetch always busts to skip both the server-side Kalshi cache and any
@@ -246,7 +247,7 @@ function App() {
     setTonightLoading(true);
     fetch(`${WORKER}/tonight?bust=1`)
       .then(r => r.json())
-      .then(data => { const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore >= SIMSCORE_GATE) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore >= SIMSCORE_GATE))); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); if (data.mlbMeta) setMlbMeta(data.mlbMeta); if (data.mlbMetaTomorrow) setMlbMetaTomorrow(data.mlbMetaTomorrow); if (data.nbaMeta) setNbaMeta(data.nbaMeta); if (data.nhlMeta) setNhlMeta(data.nhlMeta); setTonightLoading(false); setBustLoading(false); })
+      .then(data => { const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore >= SIMSCORE_GATE) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore >= SIMSCORE_GATE))); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); if (data.mlbMeta) setMlbMeta(data.mlbMeta); if (data.mlbMetaTomorrow) setMlbMetaTomorrow(data.mlbMetaTomorrow); if (data.nbaMeta) setNbaMeta(data.nbaMeta); if (data.wnbaMeta) setWnbaMeta(data.wnbaMeta); if (data.nhlMeta) setNhlMeta(data.nhlMeta); setTonightLoading(false); setBustLoading(false); })
       .catch(() => { setAllTonightPlays([]); setNbaDropped([]); setTonightPlays([]); setTonightLoading(false); setBustLoading(false); });
   };
 
@@ -357,6 +358,7 @@ function App() {
       if (playerTeam && opponent) return { playerTeam, opponent };
       const scores = pick.sport === "mlb" ? currentMeta?.mlbMeta?.gameScores
                    : pick.sport === "nba" ? currentMeta?.nbaMeta?.gameScores
+                   : pick.sport === "wnba" ? currentMeta?.wnbaMeta?.gameScores
                    : pick.sport === "nhl" ? currentMeta?.nhlMeta?.gameScores
                    : null;
       if (!scores) return { playerTeam, opponent };
@@ -462,6 +464,7 @@ function App() {
     const allScores = {
       ...(mlbMeta?.gameScores || {}),
       ...(nbaMeta?.gameScores || {}),
+      ...(wnbaMeta?.gameScores || {}),
       ...(nhlMeta?.gameScores || {}),
     };
     const hasAnyData = Object.keys(allScores).length > 0 || Object.keys(liveStats).length > 0;
@@ -490,21 +493,21 @@ function App() {
       const met = isUnder ? current < pick.threshold : current >= pick.threshold;
       return { ...pick, result: met ? "won" : "lost" };
     }));
-  }, [mlbMeta, nbaMeta, nhlMeta, liveStats]);
+  }, [mlbMeta, nbaMeta, wnbaMeta, nhlMeta, liveStats]);
 
   // Keep latest meta in a ref so the polling interval reads fresh values
   // (effect dep array can't include meta without re-creating the interval).
   React.useEffect(() => {
     const prev = liveMetaRef.current;
-    liveMetaRef.current = { mlbMeta, nbaMeta, nhlMeta };
+    liveMetaRef.current = { mlbMeta, nbaMeta, wnbaMeta, nhlMeta };
     // When meta first becomes available, fire an immediate poll so picks
     // tracked without `opponent` can resolve via the gameScores backfill
     // without waiting up to 60s.
     const becameAvailable = (k) => !prev?.[k]?.gameScores && liveMetaRef.current[k]?.gameScores;
-    if ((becameAvailable("mlbMeta") || becameAvailable("nbaMeta") || becameAvailable("nhlMeta")) && liveIntervalRef.current) {
+    if ((becameAvailable("mlbMeta") || becameAvailable("nbaMeta") || becameAvailable("wnbaMeta") || becameAvailable("nhlMeta")) && liveIntervalRef.current) {
       setTrackedPlays(current => { fetchLiveStats(current, liveMetaRef.current); return current; });
     }
-  }, [mlbMeta, nbaMeta, nhlMeta]);
+  }, [mlbMeta, nbaMeta, wnbaMeta, nhlMeta]);
 
   // Start/stop background polling every 60s
   React.useEffect(() => {
@@ -2210,6 +2213,7 @@ function App() {
           mlbMeta={mlbMeta}
           mlbMetaTomorrow={mlbMetaTomorrow}
           nbaMeta={nbaMeta}
+          wnbaMeta={wnbaMeta}
           nhlMeta={nhlMeta}
           trackedPlays={trackedPlays}
           untrackPlay={untrackPlay}
@@ -2316,6 +2320,7 @@ function App() {
             liveStats={liveStats}
             mlbGameScores={mlbMeta?.gameScores || {}}
             nbaGameScores={nbaMeta?.gameScores || {}}
+            wnbaGameScores={wnbaMeta?.gameScores || {}}
             nhlGameScores={nhlMeta?.gameScores || {}}
           />
         </div>

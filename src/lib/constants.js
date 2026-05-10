@@ -2,6 +2,7 @@ export const WORKER = "https://scoreboard-ivory-xi.vercel.app/api";
 
 export const SPORTS = [
   { label: "NBA",  value: "basketball/nba" },
+  { label: "WNBA", value: "basketball/wnba" },
   { label: "NFL",  value: "football/nfl" },
   { label: "MLB",  value: "baseball/mlb" },
   { label: "NHL",  value: "hockey/nhl" },
@@ -87,6 +88,22 @@ export const TEAM_DB = [
   {abbr:"TOR",sport:"nba",name:"Toronto Raptors",short:"Raptors"},
   {abbr:"UTA",sport:"nba",name:"Utah Jazz",short:"Jazz"},
   {abbr:"WAS",sport:"nba",name:"Washington Wizards",short:"Wizards"},
+  // WNBA
+  {abbr:"ATL",sport:"wnba",name:"Atlanta Dream",short:"Dream"},
+  {abbr:"CHI",sport:"wnba",name:"Chicago Sky",short:"Sky"},
+  {abbr:"CONN",sport:"wnba",name:"Connecticut Sun",short:"Sun"},
+  {abbr:"DAL",sport:"wnba",name:"Dallas Wings",short:"Wings"},
+  {abbr:"GS",sport:"wnba",name:"Golden State Valkyries",short:"Valkyries"},
+  {abbr:"IND",sport:"wnba",name:"Indiana Fever",short:"Fever"},
+  {abbr:"LV",sport:"wnba",name:"Las Vegas Aces",short:"Aces"},
+  {abbr:"LA",sport:"wnba",name:"Los Angeles Sparks",short:"Sparks"},
+  {abbr:"MIN",sport:"wnba",name:"Minnesota Lynx",short:"Lynx"},
+  {abbr:"NY",sport:"wnba",name:"New York Liberty",short:"Liberty"},
+  {abbr:"PHX",sport:"wnba",name:"Phoenix Mercury",short:"Mercury"},
+  {abbr:"POR",sport:"wnba",name:"Portland Fire",short:"Fire"},
+  {abbr:"SEA",sport:"wnba",name:"Seattle Storm",short:"Storm"},
+  {abbr:"TOR",sport:"wnba",name:"Toronto Tempo",short:"Tempo"},
+  {abbr:"WSH",sport:"wnba",name:"Washington Mystics",short:"Mystics"},
   // NHL
   {abbr:"ANA",sport:"nhl",name:"Anaheim Ducks",short:"Ducks"},
   {abbr:"BOS",sport:"nhl",name:"Boston Bruins",short:"Bruins"},
@@ -124,6 +141,7 @@ export const TEAM_DB = [
 export const TOTAL_THRESHOLDS = {
   mlb: [5,6,7,8,9,10,11],
   nba: [200,210,215,220,225,230,235,240,250],
+  wnba: [150,155,160,165,170,175,180],
   nhl: [3,4,5,6,7,8],
 };
 
@@ -139,11 +157,11 @@ export const STAT_LABEL = {
   passingYards:"PASS YDS", rushingYards:"RUSH YDS", receivingYards:"REC YDS", touchdowns:"TD",
 };
 
-export const SPORT_KEY = { nba:"basketball/nba", nfl:"football/nfl", nhl:"hockey/nhl", mlb:"baseball/mlb" };
+export const SPORT_KEY = { nba:"basketball/nba", wnba:"basketball/wnba", nfl:"football/nfl", nhl:"hockey/nhl", mlb:"baseball/mlb" };
 
 
 
-export const SPORT_BADGE_COLOR = { nba:"#58a6ff", nhl:"#a5d8ff", mlb:"#3fb950", nfl:"#f78166" };
+export const SPORT_BADGE_COLOR = { nba:"#58a6ff", wnba:"#ff8fab", nhl:"#a5d8ff", mlb:"#3fb950", nfl:"#f78166" };
 
 export const GAMELOG_COLS = {
   "baseball/mlb_pitcher": [
@@ -170,6 +188,17 @@ export const GAMELOG_COLS = {
     { key:"hrr",       label:"HRR",  tooltip:"Hits + Runs + RBIs combined (Kalshi stat)"                },
   ],
   "basketball/nba": [
+    { key:"date",          label:"Date", tooltip:"Game date",                                                    align:"left"   },
+    { key:"isHome",        label:"H/A",  tooltip:"Home (blank) or away (@)",                                    align:"center" },
+    { key:"oppAbbr",       label:"Opp",  tooltip:"Opponent",                                                    align:"left"   },
+    { key:"points",        label:"PTS",  tooltip:"Points scored"                                                               },
+    { key:"rebounds",      label:"REB",  tooltip:"Rebounds"                                                                    },
+    { key:"assists",       label:"AST",  tooltip:"Assists"                                                                     },
+    { key:"threePointers", label:"3P",   tooltip:"Three-pointers made"                                                         },
+    { key:"min",           label:"MIN",  tooltip:"Minutes played (display only — not a SimScore component)"                   },
+    { key:"rest",          label:"Rest", tooltip:"Days since last game — 1 = back-to-back (reduces simulation mean by 7%)"    },
+  ],
+  "basketball/wnba": [
     { key:"date",          label:"Date", tooltip:"Game date",                                                    align:"left"   },
     { key:"isHome",        label:"H/A",  tooltip:"Home (blank) or away (@)",                                    align:"center" },
     { key:"oppAbbr",       label:"Opp",  tooltip:"Opponent",                                                    align:"left"   },

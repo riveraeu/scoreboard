@@ -160,6 +160,25 @@ function buildSimTooltip(m) {
         `O/U (${ou ?? '—'}): ${ouPts(ou)}/2`,
       ].join('\n');
     }
+    if (m.sport === "wnba") {
+      const cOR = m.combOffRtg, cDR = m.combDefRtg, ou = m.gameOuLine;
+      const hp = m.homePace, ap = m.awayPace, lgP = m.leagueAvgPace, pp = m.projPace;
+      const isU = m.direction === "under";
+      const rtgPts = v => v == null ? 1 : isU ? (v < 93 ? 2 : v < 98 ? 1 : 0) : (v >= 98 ? 2 : v >= 93 ? 1 : 0);
+      const ouPts = v => v == null ? 1 : isU ? (v < 158 ? 2 : v < 168 ? 1 : 0) : (v >= 168 ? 2 : v >= 158 ? 1 : 0);
+      const pacePts = (hp == null || ap == null || lgP == null) ? 1
+        : isU ? ((hp < lgP - 1 && ap < lgP - 1) ? 2 : (hp < lgP || ap < lgP) ? 1 : 0)
+        : ((hp > lgP + 1 && ap > lgP + 1) ? 2 : (hp > lgP || ap > lgP) ? 1 : 0);
+      const gtH2H = m.wnbaGtH2HRate;
+      const gtH2HPts = gtH2H == null ? 1 : isU ? (gtH2H <= 30 ? 2 : gtH2H <= 50 ? 1 : 0) : (gtH2H >= 80 ? 2 : gtH2H >= 60 ? 1 : 0);
+      return [
+        `${isU ? "[Under SimScore]\n" : ""}Pace (proj ${pp ?? '—'}): ${pacePts}/2`,
+        `Comb OffRtg (${cOR != null ? cOR.toFixed(1) : '—'}): ${rtgPts(cOR)}/2`,
+        `Comb DefRtg (${cDR != null ? cDR.toFixed(1) : '—'}): ${rtgPts(cDR)}/2`,
+        `H2H HR% (${gtH2H != null ? gtH2H + '%' : '—'}): ${gtH2HPts}/2`,
+        `O/U (${ou ?? '—'}): ${ouPts(ou)}/2`,
+      ].join('\n');
+    }
   }
   return null;
 }
@@ -184,7 +203,7 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
             </div>
             {/* Sport tabs */}
             <div style={{display:"flex",gap:2,padding:"10px 20px 0",borderBottom:"1px solid #21262d"}}>
-              {["mlb","nba","nhl"].map(s => (
+              {["mlb","nba","wnba","nhl"].map(s => (
                 <button key={s} onClick={() => { setReportSport(s); if (!reportDataBySport[s]) fetchReport(s); }} style={{
                   padding:"5px 14px",borderRadius:"6px 6px 0 0",border:"none",cursor:"pointer",fontSize:12,
                   background: reportSport===s ? "#0d1117" : "transparent",
@@ -376,6 +395,11 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                           "nba|rebounds":   [{k:"sim",l:"Score"},{k:"nbaC1",l:"AvgMin"},{k:"dvp",l:"DVP"},{k:"nbaSeasonHR",l:"Ssn HR%"},{k:"nbaSoftHR",l:"Tier HR%"},{k:"nbaPaceTotal",l:"Game Total"}],
                           "nba|assists":    [{k:"sim",l:"Score"},{k:"nbaC1",l:"Usage"},{k:"dvp",l:"DVP"},{k:"nbaSeasonHR",l:"Ssn HR%"},{k:"nbaSoftHR",l:"Tier HR%"},{k:"nbaPaceTotal",l:"Game Total"}],
                           "nba|threePointers":[{k:"sim",l:"Score"},{k:"nbaC1",l:"Usage"},{k:"dvp",l:"DVP"},{k:"nbaSeasonHR",l:"Ssn HR%"},{k:"nbaSoftHR",l:"Tier HR%"},{k:"nbaPaceTotal",l:"Game Total"}],
+                          "wnba|points":    [{k:"sim",l:"Score"},{k:"wnbaC1",l:"Usage"},{k:"dvp",l:"DVP"},{k:"wnbaSeasonHR",l:"Ssn HR%"},{k:"wnbaSoftHR",l:"Tier HR%"},{k:"wnbaPaceTotal",l:"Game Total"}],
+                          "wnba|rebounds":  [{k:"sim",l:"Score"},{k:"wnbaC1",l:"AvgMin"},{k:"dvp",l:"DVP"},{k:"wnbaSeasonHR",l:"Ssn HR%"},{k:"wnbaSoftHR",l:"Tier HR%"},{k:"wnbaPaceTotal",l:"Game Total"}],
+                          "wnba|assists":   [{k:"sim",l:"Score"},{k:"wnbaC1",l:"Usage"},{k:"dvp",l:"DVP"},{k:"wnbaSeasonHR",l:"Ssn HR%"},{k:"wnbaSoftHR",l:"Tier HR%"},{k:"wnbaPaceTotal",l:"Game Total"}],
+                          "wnba|threePointers":[{k:"sim",l:"Score"},{k:"wnbaC1",l:"Usage"},{k:"dvp",l:"DVP"},{k:"wnbaSeasonHR",l:"Ssn HR%"},{k:"wnbaSoftHR",l:"Tier HR%"},{k:"wnbaPaceTotal",l:"Game Total"}],
+                          "wnba|totalPoints":  [{k:"sim",l:"Score"},{k:"wnbaTotPace",l:"Pace"},{k:"wnbaCombOff",l:"Comb OffRtg"},{k:"wnbaCombDef",l:"Comb DefRtg"},{k:"wnbaGtH2H",l:"H2H HR%"},{k:"totalOu",l:"O/U"}],
                           "nhl|points": [{k:"sim",l:"Score"},{k:"nhltoi",l:"AvgTOI"},{k:"nhlgaa",l:"GAA Rank"},{k:"nhlSeasonHR",l:"Ssn HR%"},{k:"nhlDvpHR",l:"DVP HR%"},{k:"nhlGameTotalOu",l:"O/U"}],
                           "mlb|totalRuns":    [{k:"sim",l:"Score"},{k:"combinedRPG",l:"Comb RPG"},{k:"homeWhip",l:"H WHIP"},{k:"awayWhip",l:"A WHIP"},{k:"gtH2HHR",l:"H2H HR%"},{k:"mlbOu",l:"O/U"}],
                           "nba|totalPoints":  [{k:"sim",l:"Score"},{k:"nbaTotPace",l:"Pace"},{k:"nbaCombOff",l:"Comb OffRtg"},{k:"nbaCombDef",l:"Comb DefRtg"},{k:"nbaGtH2H",l:"H2H HR%"},{k:"totalOu",l:"O/U"}],
@@ -412,7 +436,7 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                           if (k==="ou")  return C(ou  != null ? ou : null, ou <= 7.5 ? "#3fb950" : ou < 10.5 ? "#e3b341" : "#f78166");
                           if (k==="mlbOu") { const v = m.gameOuLine ?? m.hitterGameTotal; if (v == null) return DASH; const isU=m.direction==="under"; const color=isU?(v<7.5?"#3fb950":v<9.5?"#e3b341":"#f78166"):(v>=9.5?"#3fb950":v>=7.5?"#e3b341":"#f78166"); return <span style={{color}}>{v}</span>; }
                           if (k==="dvp") { const r = m.posDvpRank; const ratio = m.dvpRatio; const dvpColor = ratio == null ? "#f78166" : ratio >= 1.05 ? "#3fb950" : ratio >= 1.02 ? "#e3b341" : "#f78166"; return C(r != null ? `#${r}${m.posGroup?" "+m.posGroup:""}` : null, dvpColor); }
-                          if (k==="sim") { const sc = m.teamTotalSimScore ?? m.totalSimScore ?? m.finalSimScore ?? m.hitterFinalSimScore ?? m.nbaSimScore ?? m.nhlSimScore ?? m.simScore ?? m.hitterSimScore; const tip = buildSimTooltip(m); return sc != null ? <Tip tip={tip} style={{color:sc>=8?"#3fb950":sc>=5?"#e3b341":"#f78166",fontWeight:600,cursor:tip?"pointer":"default"}}>{sc}/10</Tip> : DASH; }
+                          if (k==="sim") { const sc = m.teamTotalSimScore ?? m.totalSimScore ?? m.finalSimScore ?? m.hitterFinalSimScore ?? m.nbaSimScore ?? m.wnbaSimScore ?? m.nhlSimScore ?? m.simScore ?? m.hitterSimScore; const tip = buildSimTooltip(m); return sc != null ? <Tip tip={tip} style={{color:sc>=8?"#3fb950":sc>=5?"#e3b341":"#f78166",fontWeight:600,cursor:tip?"pointer":"default"}}>{sc}/10</Tip> : DASH; }
                           if (k==="env") { const pf = m.parkFactor ?? m.hitterParkKF; if (pf == null) return DASH; const pct = Math.round((pf-1)*100); const disp = (pct>=0?"+":"")+pct+"%"; return <span style={{color:pf>1.02?"#3fb950":pf<0.98?"#f78166":"#8b949e"}}>{disp}</span>; }
                           if (k==="brrl") { const b = m.hitterBarrelPct; return b != null ? <span style={{color:b>=14?"#3fb950":b>=10?"#e3b341":b>=7?"#8b949e":"#f78166"}}>{b.toFixed(1)+"%"}</span> : DASH; }
                           if (k==="nbapace") { const p = m.nbaPaceAdj; return p != null ? <span style={{color:p>0?"#3fb950":p>-2?"#e3b341":"#8b949e"}}>{p>0?"+":""}{p.toFixed(1)}</span> : DASH; }
@@ -423,6 +447,15 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                           if (k==="nbaSeasonHR") { const v = m.seasonPct; const pts = m.nbaSeasonHitRatePts ?? (v==null?1:v>=90?2:v>=80?1:0); const color = pts>=2?"#3fb950":pts>=1?"#e3b341":"#f78166"; return v!=null ? <span style={{color}}>{v.toFixed(0)}%</span> : DASH; }
                           if (k==="nbaSoftHR") { const v = m.softPct; if (v==null) return DASH; const pts = m.nbaSoftHitRatePts ?? (v>=90?2:v>=80?1:0); const color = pts>=2?"#3fb950":pts>=1?"#e3b341":"#f78166"; return <span style={{color}}>{v.toFixed(0)}%</span>; }
                           if (k==="nbaPaceTotal") { const pts = m.nbaTotalPts ?? 1; const ou = m.nbaGameTotal; const color = pts>=2?"#3fb950":pts>=1?"#e3b341":"#f78166"; return ou != null ? <span style={{color,fontWeight:600}}>{ou}</span> : DASH; }
+                          // WNBA equivalents — tiers retuned for WNBA scoring environment
+                          if (k==="wnbaC1") { const isReb = m.stat==="rebounds"; const v = isReb ? m.wnbaOpportunity : m.wnbaUsage; if (v == null) return DASH; const color = isReb ? (v>=27?"#3fb950":v>=22?"#e3b341":"#f78166") : (v>=27?"#3fb950":v>=22?"#e3b341":"#f78166"); return <span style={{color}}>{isReb ? v.toFixed(0)+"m" : v.toFixed(1)+"%"}</span>; }
+                          if (k==="wnbaSeasonHR") { const v = m.seasonPct; const pts = m.wnbaSeasonHitRatePts ?? (v==null?1:v>=90?2:v>=80?1:0); const color = pts>=2?"#3fb950":pts>=1?"#e3b341":"#f78166"; return v!=null ? <span style={{color}}>{v.toFixed(0)}%</span> : DASH; }
+                          if (k==="wnbaSoftHR") { const v = m.softPct; if (v==null) return DASH; const pts = m.wnbaSoftHitRatePts ?? (v>=90?2:v>=80?1:0); const color = pts>=2?"#3fb950":pts>=1?"#e3b341":"#f78166"; return <span style={{color}}>{v.toFixed(0)}%</span>; }
+                          if (k==="wnbaPaceTotal") { const pts = m.wnbaTotalPts ?? 1; const ou = m.wnbaGameTotal; const color = pts>=2?"#3fb950":pts>=1?"#e3b341":"#f78166"; return ou != null ? <span style={{color,fontWeight:600}}>{ou}</span> : DASH; }
+                          if (k==="wnbaTotPace") { const pa = m.projPace != null && m.leagueAvgPace != null ? parseFloat((m.projPace - m.leagueAvgPace).toFixed(1)) : null; if (pa == null) return DASH; const isU=m.direction==="under"; const _pp = (m.homePace==null||m.awayPace==null||m.leagueAvgPace==null)?1:isU?((m.homePace<m.leagueAvgPace-1&&m.awayPace<m.leagueAvgPace-1)?2:(m.homePace<m.leagueAvgPace||m.awayPace<m.leagueAvgPace)?1:0):((m.homePace>m.leagueAvgPace+1&&m.awayPace>m.leagueAvgPace+1)?2:(m.homePace>m.leagueAvgPace||m.awayPace>m.leagueAvgPace)?1:0); return <span style={{color:_pp===2?"#3fb950":_pp===1?"#e3b341":"#f78166",fontWeight:600}}>{(pa>0?"+":"")+pa}</span>; }
+                          if (k==="wnbaCombOff") { const v=m.combOffRtg; if(v==null) return DASH; const isU=m.direction==="under"; const color=isU?(v<93?"#3fb950":v<98?"#e3b341":"#f78166"):(v>=98?"#3fb950":v>=93?"#e3b341":"#f78166"); return <span style={{color,fontWeight:600}}>{v.toFixed(1)}</span>; }
+                          if (k==="wnbaCombDef") { const v=m.combDefRtg; if(v==null) return DASH; const isU=m.direction==="under"; const color=isU?(v<93?"#3fb950":v<98?"#e3b341":"#f78166"):(v>=98?"#3fb950":v>=93?"#e3b341":"#f78166"); return <span style={{color,fontWeight:600}}>{v.toFixed(1)}</span>; }
+                          if (k==="wnbaGtH2H") { const v=m.wnbaGtH2HRate; if(v==null) return DASH; const isU=m.direction==="under"; const color=isU?(v<=30?"#3fb950":v<=50?"#e3b341":"#f78166"):(v>=80?"#3fb950":v>=60?"#e3b341":"#f78166"); return <span style={{color}}>{v}%</span>; }
                           if (k==="nba_spread") { const adj = m.nbaBlowoutAdj; if (adj == null) return DASH; const color = adj===1.0?"#3fb950":adj>0.92?"#e3b341":"#f78166"; const sp = m.nbaBlowoutAdj!=null && adj<1.0 ? Math.round((1-adj)/0.007+10) : null; return <span style={{color}}>{adj===1.0?"Tight":sp!=null?`-${sp}`:"—"}</span>; }
                           if (k==="nhlgaa") { const r = m.gaaRank; return C(r != null ? `#${r}` : null, r<=10?"#3fb950":r<=15?"#e3b341":"#f78166"); }
                           if (k==="nhlsa")  { const v = m.nhlShotsAdj; const r = m.nhlSaRank; return v != null ? <span style={{color:(r!=null&&r<=10)?"#3fb950":v>0?"#e3b341":"#f78166"}}>{v>0?"+":""}{v.toFixed(1)}</span> : DASH; }
@@ -614,8 +647,8 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                                       <span style={{color:sc>=8?"#3fb950":"#e3b341",fontSize:9}}>{tier}</span>
                                     </span>;
                                   }
-                                  if (sport === "nba" && m.nbaSimScore != null) {
-                                    const sc = m.nbaSimScore;
+                                  if ((sport === "nba" || sport === "wnba") && (m.nbaSimScore ?? m.wnbaSimScore) != null) {
+                                    const sc = m.nbaSimScore ?? m.wnbaSimScore;
                                     const scColor = sc >= 8 ? "#3fb950" : sc >= 5 ? "#e3b341" : "#8b949e";
                                     const tier = sc >= 8 ? "Alpha" : sc >= 5 ? "Mid" : "Low";
                                     return <span style={{background:"rgba(63,185,80,0.15)",borderRadius:4,padding:"1px 6px",display:"inline-flex",gap:4,alignItems:"center"}}>

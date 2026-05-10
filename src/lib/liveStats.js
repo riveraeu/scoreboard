@@ -72,15 +72,17 @@ export function gameElapsedFrac(sport, state, detail) {
     return Math.min(1, frac);
   }
 
-  if (sport === "nba") {
+  if (sport === "nba" || sport === "wnba") {
     if (/\bot\b/.test(d)) return 0.97;
     const qm = d.match(/q\s*(\d)/) || d.match(/(\d)(?:st|nd|rd|th)\s*q/);
     if (!qm) return 0.5;
     const q = parseInt(qm[1]);
+    // WNBA: 4×10-minute quarters. NBA: 4×12.
+    const qLen = sport === "wnba" ? 10 : 12;
     const tm = d.match(/(\d+):(\d+)/);
     if (tm) {
       const minLeft = parseInt(tm[1]) + parseInt(tm[2]) / 60;
-      const elapsedInQ = Math.max(0, Math.min(1, (12 - minLeft) / 12));
+      const elapsedInQ = Math.max(0, Math.min(1, (qLen - minLeft) / qLen));
       return Math.min(1, ((q - 1) + elapsedInQ) / 4);
     }
     if (/end/.test(d)) return Math.min(1, q / 4);

@@ -24,6 +24,7 @@ Single Vercel Edge Function. Imports four ES module lib files:
 - `api/lib/simulate.js` — park factors + simulation functions (`log5K`, `simulateKsDist`, `buildNbaStatDist`, `simulateHits`, `simulateMLBTotalDist/NBATotalDist/NHLTotalDist`, `simulateTeamTotalDist`, `simulateTeamPtsDist`, `kDistPct/nbaDistPct/totalDistPct`, kelly/EV math), `TTO_DECAY_FACTOR`, `UMPIRE_KFACTOR`
 - `api/lib/mlb.js` — `buildLineupKPct` (also exports `batterSplitBA`, `batterHRRSplits`), `buildBarrelPct`, `buildPitcherKPct` (also exports `pitcherRecentKPct`, `pitcherLastStartDate`, `pitcherLastStartPC`, `pitcherInfoByTeam`, `pitcherAvgBF`, `pitcherStdBF`, `umpireByGame`), `MLB_ID_TO_ABBR`. Pitcher gamelog batch uses `Promise.allSettled`.
 - `api/lib/nba.js` — `buildNbaDvpStage1/FromBettingPros/Stage3FG`, `buildNbaDepthChartPos`, `buildNbaPaceData`, `buildNbaPlayerPosFromSleeper`, `warmPlayerInfoCache`, `buildNbaUsageRate`, `buildNbaInjuryReport`
+- `api/lib/wnba.js` — `buildWnbaPaceData`, `buildWnbaUsageRate`, `buildWnbaInjuryReport`, `buildWnbaDvp` (server-side stat-allowed aggregate — BettingPros has no WNBA page), `WNBA_TEAM_IDS` (15 hardcoded; ESPN `/teams` list endpoint is broken for WNBA), `WNBA_ESPN_TO_CANON`/`WNBA_CANON_TO_ESPN` (CONNECTICU↔CONN, DALLAS↔DAL). WNBA model anchors on 2025 season data; 2026 trust ramps via `vals26.length/10`.
 - `api/lib/utils.js` — CORS helpers, `parseGameOdds` (returns `{total, moneyline, spread}`), `parseGameScores` (returns `{state, detail, homeScore, awayScore, gameDate, gameTime, seriesSummary}` keyed by home abbr; `seriesSummary` non-null in NBA/NHL playoffs), team rank helpers (`buildSoftTeamAbbrs`, `buildHardTeamAbbrs`, `buildTeamRankMap`)
 
 ### Frontend: Vite + React (`src/`)
@@ -50,13 +51,17 @@ User auth (`user:{email}`) and picks (`picks:{userId}`) live in the same Redis. 
 |---|---|---|
 | `byteam:mlb` | 600s | Probables, lineup K-rates, pitcher avg pitches/BF. **Excludes** `barrelPctMap` (separate). 60s short-TTL guard when any of `lineupSpotByName`, `pitcherAvgPitches`, `hitterOpsMap`, `pitcherH2HStarts` is empty — independent MLB Stats API calls fail silently (`.catch(() => ({}))`) so a successful lineup hydration alongside a failed OPS or gamelog fetch would otherwise bake partial data for 10min, starving HRR OPS / K H2H Hand / platoon / recent K% columns. |
 | `byteam:nba` / `:scoring` | 1800s / 21600s | Defensive stats / offensive PPG |
+| `byteam:wnba` / `:scoring` | 21600s | Defensive stats / offensive PPG (2025 season). Same `buildSoftTeamAbbrs` / `buildTeamRankMap` helpers as NBA. |
 | `byteam:nhl` | 21600s | GAA + SA per team |
 | `byteam:nfl` | 1800s | |
 | `kalshi:bundle:{date}` | 600s | All 18 series responses as JSON blob — cache hit = zero Kalshi calls. Bypassed by `?bust=1`. |
 | `kalshi:stale:{ticker}` | 1800s | Stale-while-revalidate per-ticker fallback for 429/empty. TTL caps drift if Kalshi keeps 429-ing — series disappears from `/api/tonight` rather than serving 30+ min old prices. |
 | `gameTimes:v2:{date}` | 600s | Stores `sport:team:ptDate` AND bare `sport:team` (first wins). Built from yesterday + today + tomorrow ESPN scoreboards in parallel. Cleared by `?bust=1`. |
 | `nba:pace:2526` | 12h | Pace + OffRtg/DefRtg + leagueAvg. Cleared by `?bust=1`. |
-| `nba:injuries:{date}` | 1800s | ESPN injuries (Out + GTD) |
+| `wnba:pace:2025` | 12h | Pace (avgEstimatedPossessions) + OffRtg/DefRtg/PPG. 2025 anchor. |
+| `wnba:dvp:2025:{date}` | 12h | Stat-allowed DVP aggregated server-side from prior-season player gamelogs (no BettingPros equivalent). Flat (no per-position split). |
+| `wnba:injuries:{date}` | 1800s | ESPN injuries (Out + GTD) |
+| `wnba:usg:{playerId}:2025` | 6h | Per-player USG% — falls back to `(avgFGA + 0.44·avgFTA + avgTO) / (avgMin × 1.88)` when ESPN omits direct USG (1.88 = 2.255 × 40/48 rescales NBA formula to 40-min game). |
 | `nba:depth:{date}` | daily | |
 | `mlb:barrelPct` | 6h | Baseball Savant CSV |
 | `mlbSchedTomorrow:{date}` | 600s | Tomorrow's MLB schedule (probables only) |
@@ -164,6 +169,26 @@ Included in **all** drop objects so the market report renders pitcher info for n
 
 **Gates**: edge ≥ 3%, nbaSimScore ≥ 8. No soft-matchup pre-filter — all NBA markets enter the play loop.
 
+### WNBA player props
+Kalshi series: `KXWNBAPTS`, `KXWNBAREB`, `KXWNBAAST`, `KXWNBA3PT`. No team totals on Kalshi (mirrors NHL/NFL).
+
+**True%**: reuses `buildNbaStatDist` + `nbaDistPct`. Cache key `wnbaPlayerDistCache[playerId|stat]`. Same formula as NBA: `× teamDefFactor × (1 + paceAdj×0.002) × 0.93 if B2B × wnbaMiscAdj`. nSim scales with pre-edge simScore.
+
+**Anchor**: 2025 season as base; 2026 trust ramps `vals26.length/10` (vs NBA's `/15`) because the WNBA season is ~40g vs 82g, so equivalent trust accumulates faster relative to season length.
+
+**SimScore — calibrated to WNBA scoring environment**:
+- C1 opportunity (from `buildWnbaUsageRate`):
+  - points/assists/threePointers: USG% ≥27→2, ≥22→1, <22→0 (vs NBA 28/22 — slightly compressed)
+  - rebounds: avgMin ≥27→2, ≥22→1, <22→0 (vs NBA 30/25 — 40-min game vs 48)
+- DVP ratio (`dvpRatio`): ≥1.05→2, ≥1.02→1, else 0 (same tiers as NBA, single-tier from `buildWnbaDvp` aggregate — no per-position split, no BettingPros equivalent)
+- `wnbaSeasonHitRatePts` — `primaryPct` at threshold (≥90/≥80, same as NBA)
+- `wnbaSoftHitRatePts` — same DVP-tier matching as NBA
+- `wnbaTotalPts` — Game O/U: ≥168→2, ≥158→1, <158→0 (vs NBA 215/215; WNBA totals run 150–175)
+
+**USG fallback formula adjustment**: `(avgFGA + 0.44·avgFTA + avgTO) / (avgMin × 1.88) × 100` — coefficient 1.88 = NBA's 2.255 × (40/48) to rescale for 40-min game. Without this rescale, WNBA USG would be ~20% inflated relative to NBA tiers.
+
+**Gates**: edge ≥ 3%, wnbaSimScore ≥ 8.
+
 ### NHL Points
 **True%**: reuses `buildNbaStatDist` + `nbaDistPct`. Cache key `nhlPlayerDistCache[playerId|stat]`. Adjusted: `× teamDefFactor × (1 + shotsAdj×0.002) × 0.93 if B2B × nhlToiTrendAdj`. `teamDefFactor` = opp GAA / league avg.
 
@@ -181,8 +206,10 @@ Display-only: `nhlSaRank`, `nhlTeamGPG`. **B2B detection**: last gamelog event w
 ### NFL
 Stats: `passingYards`, `rushingYards`, `receivingYards`, `receptions`, `completions`, `attempts`. Gate: opp in soft teams; edge ≥ 3%.
 
-### Game Totals (MLB/NBA/NHL/NFL)
-Kalshi series: `KXMLBTOTAL`, `KXNBATOTAL`, `KXNHLTOTAL`, `KXNFLTOTAL`. `gameType: "total"`. Market format: `floor_strike = N` means YES = total ≥ N (i.e. "over N−0.5").
+### Game Totals (MLB/NBA/WNBA/NHL/NFL)
+Kalshi series: `KXMLBTOTAL`, `KXNBATOTAL`, `KXWNBATOTAL`, `KXNHLTOTAL`, `KXNFLTOTAL`. `gameType: "total"`. Market format: `floor_strike = N` means YES = total ≥ N (i.e. "over N−0.5").
+
+**WNBA totals**: same possession-based projection as NBA but with `wnbaPaceData` (2025 anchor). Per-team std=11 (WNBA scoring variance roughly NBA × (40/48); empirical game-total std ~13–15). **SimScore tiers retuned**: Comb OffRtg/DefRtg ≥98/≥93 (vs NBA 118/113), Pace > leagueAvg+1 (vs +2), O/U ≥168/≥158 (vs 225/215). Pace data from ESPN `avgEstimatedPossessions` (no separate `paceFactor` field for WNBA). Sample-weighted seasonHitRate blend via `_ssnBlendWeight`, same as NBA/MLB/NHL.
 
 **True%**: Poisson MC for MLB/NHL, Normal for NBA. `_simData` includes per-team expected and `expectedTotal`. **All three sports blend the sim with `gtSeasonHitRate`** via shared `_gtSeasonHitRate(sport, home, away, thr)` helper which returns `{ rate, sample }` — average of home + away team's season rate of games where combined score ≥ threshold; requires ≥5 schedule games per team. Sample = `min(home games, away games)`. **Blend is sample-weighted** via `_ssnBlendWeight(sample) = min(1, sample/40) × 0.7` — observations earn up to 70% weight at N≥40, model retains a 30% minimum for tonight-specific factors. Replaced the prior fixed 50/50 weighting on 2026-05-08 because UNDERS were undertested vs player props and tonight's slate showed several team-total UNDERs with model/observed gaps where the 50/50 blend underweighted observations. Saves `modelTruePct` (pre-blend), `gtSeasonHitRate`, and `gtSsnSample` in `_simData`. Blend corrects tail-thinness across distributions (Poisson for MLB/NHL, Normal-with-std=13 for NBA). NBA per-team std bumped from 11 → 13 (game total std ≈ 18.4, closer to empirical NBA game-total std). `_gtScheduleMap` populates both teams for every sport that has game totals; `_SCHED_TO_ESPN` translates canonical → ESPN team-route slug for MLB CWS→CHW and NHL TBL→TB / NJD→NJ / LAK→LA / SJS→SJ.
 
@@ -292,7 +319,9 @@ For totals: dedup key is `homeTeam|awayTeam|threshold` (game) or `sport|scoringT
 
 ## Key Gotchas
 
-**TEAM_NORM (Kalshi → ESPN)**: NBA `{ GS→GSW, SA→SAS, NY→NYK, NJ→BKN, NO→NOP, PHO→PHX, WPH→PHX, KAT→ATL }`. After building `STAT_SOFT["nba|*"]` rankMaps from ESPN byteam (which also returns short codes), a post-normalization loop adds the long-form key so `nbaDefRank["GSW"]` resolves.
+**TEAM_NORM (Kalshi → ESPN)**: NBA `{ GS→GSW, SA→SAS, NY→NYK, NJ→BKN, NO→NOP, PHO→PHX, WPH→PHX, KAT→ATL }`. WNBA `{ CONNECTICU→CONN, DALLAS→DAL, WAS→WSH, GSV→GS, LAS→LA }` — ESPN scoreboard returns truncated/irregular forms (`CONNECTICU`, `DALLAS`); Kalshi tickers use canonical (`CONN`, `DAL`). After building `STAT_SOFT["nba|*"]` / `STAT_SOFT["wnba|*"]` rankMaps from ESPN byteam (which also returns short codes), a post-normalization loop adds the long-form key so `nbaDefRank["GSW"]` resolves.
+
+**WNBA `parseGameTeams` — variable-length abbrs**: WNBA mixes 2-, 3-, and 4-char canonical abbrs (`LV/NY/GS/LA` + `ATL/IND/DAL` + `CONN`). NBA's 3+3-first / 2+3-fallback parser doesn't handle 2+2 (`LVNY`, `GSLA`) or 4-char halves (`CONNIN`, `LVCONN`). The WNBA branch in `parseGameTeams` tries every (i, len−i) split with both halves length 2–4, preferring longer left-side first (so `CONNIN` → `CONN+IND`, not `CO+NNIN`). `_VALID_TEAMS["wnba"]` is the 15-team canonical set; tickers also use this set, so the longest-prefix-wins heuristic is safe.
 
 **`parseGameTeams` validation via `_VALID_TEAMS`**: The Kalshi event ticker's team segment is parsed by trying splits in order. Without validation, a 2-char Kalshi prefix that's *also* the first 2 chars of the actual 3-char team would steal the parse — e.g. `NYKPHI` would split as `NY`(→NYK) + `KPH` (garbage), turning a PHI vs NYK matchup into NYK vs KPH. Same for `SASMIN`→`SA`+`SMI`. Symptom: duplicate matchup cards on the home page (one keyed by the Kalshi-corrupted abbrs, one by ESPN's correct gameScores entry). Fix: hardcoded `_VALID_TEAMS` set per sport — the parser tries 3+3 first when length≥6 and only commits if both halves validate; falls back to 2+3 (also validated) only if 3+3 fails. Affected pairings: NBA SAS/SAC/NYK/NOP, NHL NJD/TBL/LAK/SJS, MLB ARI (via "AZ" prefix). Maintain `_VALID_TEAMS` when teams rebrand (e.g. OAK→ATH).
 
@@ -303,6 +332,7 @@ For totals: dedup key is `homeTeam|awayTeam|threshold` (game) or `sport|scoringT
 **ESPN scoreboard abbr mismatch**: ESPN scoreboard's `team.abbreviation` differs from our canonical for several teams. `/api/live` translates at the ESPN boundary via `CANONICAL_TO_ESPN` / `ESPN_TO_CANONICAL` (sport-keyed) so picks tracked with the canonical abbr still match the ESPN event, and the response's `homeTeam`/`awayTeam` come back canonical (matching `pick.homeTeam` etc.). Symptom of an unmapped team: `/api/live` returns `state:"unknown"` and the pick never auto-resolves. Current map:
 - **MLB**: `CWS↔CHW` (Chicago White Sox; canonical from `MLB_ID_TO_ABBR[145]`)
 - **NBA**: `GSW↔GS`, `SAS↔SA`, `NYK↔NY`, `NOP↔NO`, `UTA↔UTAH`, `WAS↔WSH`
+- **WNBA**: `CONN↔CONNECTICU`, `DAL↔DALLAS`
 - **NHL**: `TBL↔TB`, `NJD↔NJ`, `LAK↔LA`, `SJS↔SJ`
 
 If a team rebrands or a new mismatch surfaces, add it to `CANONICAL_TO_ESPN` in the `/api/live` handler — `ESPN_TO_CANONICAL` is auto-derived.

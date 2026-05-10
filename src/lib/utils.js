@@ -13,6 +13,8 @@ export const oddsToImpliedProb = odds => {
 const LOGO_CDN_ABBR = {
   nhl: { tbl: 'tb', njd: 'nj', lak: 'la', sjs: 'sj' },
   nba: { kat: 'atl' },
+  // ESPN's WNBA CDN uses lowercase canonical forms. WSH is "wsh" but ESPN actually serves "was".
+  wnba: { wsh: 'was' },
 };
 export const logoUrl = (sport, abbr) => {
   if (!abbr) return null;

@@ -2,8 +2,8 @@ import React from 'react';
 import MatchupCard from './MatchupCard.jsx';
 import { useIsMobile } from '../lib/hooks.js';
 
-const SPORT_ORDER = { mlb: 0, nba: 1, nhl: 2 };
-const SPORT_LABEL = { mlb: 'MLB', nba: 'NBA', nhl: 'NHL' };
+const SPORT_ORDER = { mlb: 0, nba: 1, wnba: 2, nhl: 3 };
+const SPORT_LABEL = { mlb: 'MLB', nba: 'NBA', wnba: 'WNBA', nhl: 'NHL' };
 
 // Build ordered games list for a single sport.
 function buildGames(allPlays, sport, meta) {
@@ -77,10 +77,11 @@ function buildGames(allPlays, sport, meta) {
 }
 
 // All sports combined.
-function buildAllGames(allPlays, mlbMeta, nbaMeta, nhlMeta) {
+function buildAllGames(allPlays, mlbMeta, nbaMeta, wnbaMeta, nhlMeta) {
   return [
     ...buildGames(allPlays, 'mlb', mlbMeta),
     ...buildGames(allPlays, 'nba', nbaMeta),
+    ...buildGames(allPlays, 'wnba', wnbaMeta),
     ...buildGames(allPlays, 'nhl', nhlMeta),
   ];
 }
@@ -125,6 +126,7 @@ export default function LineupsPage({
   mlbMeta,
   mlbMetaTomorrow,
   nbaMeta,
+  wnbaMeta,
   nhlMeta,
   trackedPlays,
   untrackPlay,
@@ -174,7 +176,7 @@ export default function LineupsPage({
 
   // All games for the active day, sorted by sport then game time
   const gamesForDay = React.useMemo(() => {
-    const all = buildAllGames(allTonightPlays, mlbMeta, nbaMeta, nhlMeta);
+    const all = buildAllGames(allTonightPlays, mlbMeta, nbaMeta, wnbaMeta, nhlMeta);
     return all
       .filter(g => {
         const d = g.gameTime ? ptDate(g.gameTime) : (g.gameDate || '');
@@ -326,7 +328,7 @@ export default function LineupsPage({
       )}
 
       {/* Sport-grouped game cards */}
-      {['mlb', 'nba', 'nhl'].map(sport => {
+      {['mlb', 'nba', 'wnba', 'nhl'].map(sport => {
         const games = sportGroups[sport];
         if (!games || games.length === 0) return null;
         return (
