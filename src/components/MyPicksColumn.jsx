@@ -532,21 +532,92 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                     {editPickId === pick.id && (() => {
                       const SPORT_STATS_EDIT = {
                         nba:["points","rebounds","assists","threePointers"],
+                        wnba:["points","rebounds","assists","threePointers"],
                         mlb:["hits","hrr","strikeouts"],
                         nfl:["passingYards","rushingYards","receivingYards","receptions"],
                         nhl:["points"],
                       };
                       const ei = { background:"#0d1117", border:"1px solid #30363d", borderRadius:5, color:"#c9d1d9", fontSize:12, padding:"4px 7px", outline:"none", width:"100%" };
+                      const isTotal = pick.gameType === "total";
+                      const isTeamTotal = pick.gameType === "teamTotal";
+                      const isTotalish = isTotal || isTeamTotal;
+                      // For totals: stored threshold is the ceiling (e.g. 8 for "O7.5") but the user thinks
+                      // in line terms — display/edit as (threshold - 0.5) and store back as line + 0.5.
+                      const lineDisplay = isTotalish ? (pick.threshold - 0.5) : pick.threshold;
+                      // Parse "TEAM1 @ TEAM2" / "TEAM1 vs TEAM2" / "TEAM1 TEAM2" — same parser as AddPickModal
+                      const parseMatchup = (s) => {
+                        const norm = (s || "").trim().toUpperCase().replace(/\s*@\s*|\s+VS?\s+|\s*,\s*/gi, ' ');
+                        const parts = norm.split(/\s+/).filter(Boolean);
+                        return parts.length >= 2 ? [parts[0], parts[1]] : null;
+                      };
+                      // Default matchup string in edit mode reflects the convention used to enter the pick.
+                      const matchupDefault = isTotal
+                        ? `${pick.awayTeam || ""} @ ${pick.homeTeam || ""}`
+                        : isTeamTotal
+                          ? `${pick.scoringTeam || ""} vs ${pick.oppTeam || ""}`
+                          : "";
                       return (
                         <div style={{marginTop:8,padding:10,background:"#0d1117",borderRadius:7,border:"1px solid #30363d"}}>
+                          {/* Direction toggle — first row, full width so it's hard to miss */}
+                          <div style={{display:"flex",gap:6,marginBottom:8}}>
+                            {[["over","Over"],["under","Under"]].map(([v,l]) => {
+                              const active = (pick.direction || "over") === v;
+                              return (
+                                <button key={v} type="button"
+                                  onClick={() => setTrackedPlays(prev => prev.map(p => {
+                                    if (p.id !== pick.id) return p;
+                                    if ((p.direction || "over") === v) return p;
+                                    // Flipping direction also flips the OVER-side kalshiPct/truePct stored on the pick.
+                                    const newDir = v;
+                                    const flippedKalshi = p.kalshiPct != null ? parseFloat((100 - p.kalshiPct).toFixed(1)) : null;
+                                    const flippedTrue = p.truePct != null ? parseFloat((100 - p.truePct).toFixed(1)) : null;
+                                    return {
+                                      ...p,
+                                      direction: newDir === "over" ? undefined : "under",
+                                      kalshiPct: flippedKalshi,
+                                      truePct: flippedTrue,
+                                      noKalshiPct: flippedKalshi != null ? parseFloat((100 - flippedKalshi).toFixed(1)) : null,
+                                      noTruePct: flippedTrue != null ? parseFloat((100 - flippedTrue).toFixed(1)) : null,
+                                      edge: (flippedTrue != null && flippedKalshi != null) ? parseFloat((flippedTrue - flippedKalshi).toFixed(1)) : p.edge,
+                                    };
+                                  }))}
+                                  style={{flex:1,padding:"5px 0",borderRadius:5,fontSize:11,fontWeight:600,cursor:"pointer",
+                                    background: active ? (v === "under" ? "rgba(247,129,102,0.15)" : "rgba(88,166,255,0.15)") : "transparent",
+                                    border: `1px solid ${active ? (v === "under" ? "#f78166" : "#58a6ff") : "#30363d"}`,
+                                    color: active ? (v === "under" ? "#f78166" : "#58a6ff") : "#8b949e"}}>
+                                  {l}
+                                </button>
+                              );
+                            })}
+                          </div>
                           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
-                            <div>
-                              <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Stat</div>
-                              <select style={ei} value={pick.stat}
-                                onChange={e => setTrackedPlays(prev => prev.map(p => p.id === pick.id ? {...p, stat: e.target.value} : p))}>
-                                {(SPORT_STATS_EDIT[pick.sport] || []).map(s => <option key={s} value={s}>{STAT_LABEL[s] || s}</option>)}
-                              </select>
-                            </div>
+                            {/* Player props show stat selector; totals show editable matchup input */}
+                            {isTotalish ? (
+                              <div style={{gridColumn:"1 / -1"}}>
+                                <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>
+                                  {isTeamTotal ? "Matchup (Scoring vs Opp)" : "Matchup (Away @ Home)"}
+                                </div>
+                                <input style={ei} defaultValue={matchupDefault}
+                                  onBlur={e => {
+                                    const parsed = parseMatchup(e.target.value);
+                                    if (!parsed) return;
+                                    setTrackedPlays(prev => prev.map(p => {
+                                      if (p.id !== pick.id) return p;
+                                      return isTotal
+                                        ? { ...p, awayTeam: parsed[0], homeTeam: parsed[1] }
+                                        : { ...p, scoringTeam: parsed[0], oppTeam: parsed[1] };
+                                    }));
+                                  }} />
+                              </div>
+                            ) : (
+                              <div>
+                                <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Stat</div>
+                                <select style={ei} value={pick.stat}
+                                  onChange={e => setTrackedPlays(prev => prev.map(p => p.id === pick.id ? {...p, stat: e.target.value} : p))}>
+                                  {(SPORT_STATS_EDIT[pick.sport] || []).map(s => <option key={s} value={s}>{STAT_LABEL[s] || s}</option>)}
+                                </select>
+                              </div>
+                            )}
                             <div>
                               <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Stake ($)</div>
                               <input style={ei} type="number" min="0" step="0.1" defaultValue={units}
@@ -554,8 +625,14 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                             </div>
                             <div>
                               <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Line</div>
-                              <input style={ei} type="number" step="0.5" defaultValue={pick.threshold}
-                                onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) setTrackedPlays(prev => prev.map(p => p.id === pick.id ? {...p, threshold: v} : p)); }} />
+                              <input style={ei} type="number" step="0.5" defaultValue={lineDisplay}
+                                onBlur={e => {
+                                  const v = parseFloat(e.target.value);
+                                  if (isNaN(v)) return;
+                                  // For totals, convert the line input back to the threshold-ceiling convention.
+                                  const newThreshold = isTotalish ? Math.round(v + 0.5) : v;
+                                  setTrackedPlays(prev => prev.map(p => p.id === pick.id ? {...p, threshold: newThreshold} : p));
+                                }} />
                             </div>
                             <div>
                               <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Odds</div>

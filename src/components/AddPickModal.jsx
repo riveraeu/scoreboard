@@ -39,13 +39,25 @@ function AddPickModal({ onClose, onAdd, initialOdds = "-110" }) {
   const [pickType, setPickType] = React.useState("player");
   const [form, setForm] = React.useState({
     playerName: "", sport: "nba", stat: "points",
-    homeTeam: "", awayTeam: "", scoringTeam: "", oppTeam: "",
+    // Single combined matchup input for both game totals ("away @ home") and team totals
+    // ("scoring vs opp"). Parsed on submit via parseMatchup().
+    matchup: "",
     threshold: "", americanOdds: initialOdds, truePct: "",
     units: String(suggestUnits(initialOdds)),
     gameDate: new Date().toISOString().slice(0, 10),
     direction: "over"
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  // Parse "TEAM1 @ TEAM2" / "TEAM1 vs TEAM2" / "TEAM1 v TEAM2" / "TEAM1,TEAM2" / "TEAM1 TEAM2".
+  // Normalizes separators to whitespace then splits — works regardless of which separator the
+  // user typed (or none, just a space). Returns null when fewer than 2 tokens parse out.
+  const parseMatchup = (s) => {
+    const norm = (s || "").trim().toUpperCase().replace(/\s*@\s*|\s+VS?\s+|\s*,\s*/gi, ' ');
+    const parts = norm.split(/\s+/).filter(Boolean);
+    if (parts.length < 2) return null;
+    return [parts[0], parts[1]];
+  };
 
   // Player typeahead — same /api/athletes endpoint as the main search.
   // On selection we lock in playerId/playerTeam/sport so the saved pick has the
@@ -150,9 +162,11 @@ function AddPickModal({ onClose, onAdd, initialOdds = "-110" }) {
       const line = parseFloat(form.threshold);
       if (isNaN(line)) return;
       const threshold = Math.round(line + 0.5);
-      const homeTeam = form.homeTeam.trim().toUpperCase();
-      const awayTeam = form.awayTeam.trim().toUpperCase();
-      if (!homeTeam || !awayTeam) return;
+      const parsed = parseMatchup(form.matchup);
+      if (!parsed) return;
+      // Convention: "AWAY @ HOME" — first token is away, second is home. Matches scoreboard
+      // notation. resolveTotalGameScore for game totals looks up gameScores[pick.homeTeam].
+      const [awayTeam, homeTeam] = parsed;
       onAdd({
         gameType: "total",
         homeTeam, awayTeam,
@@ -164,9 +178,10 @@ function AddPickModal({ onClose, onAdd, initialOdds = "-110" }) {
       const line = parseFloat(form.threshold);
       if (isNaN(line)) return;
       const threshold = Math.round(line + 0.5);
-      const scoringTeam = form.scoringTeam.trim().toUpperCase();
-      const oppTeam = form.oppTeam.trim().toUpperCase();
-      if (!scoringTeam || !oppTeam) return;
+      const parsed = parseMatchup(form.matchup);
+      if (!parsed) return;
+      // Convention: "SCORING vs OPP" — first token is the team you're betting on.
+      const [scoringTeam, oppTeam] = parsed;
       onAdd({
         gameType: "teamTotal",
         scoringTeam, oppTeam,
@@ -293,20 +308,13 @@ function AddPickModal({ onClose, onAdd, initialOdds = "-110" }) {
                     {sportOptions.map(s => <option key={s} value={s}>{SPORT_LABELS[s]}</option>)}
                   </select>
                 </div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-                  <div>
-                    <label style={lbl}>Home Team</label>
-                    <input style={inp} placeholder="LAD" value={form.homeTeam}
-                      onChange={e => set("homeTeam", e.target.value.toUpperCase())} />
+                <div>
+                  <label style={lbl}>Matchup (Away @ Home)</label>
+                  <input style={inp} placeholder="SD @ LAD" value={form.matchup}
+                    onChange={e => set("matchup", e.target.value)} />
+                  <div style={{fontSize:10,color:"#484f58",marginTop:4}}>
+                    Canonical abbrs (LAD, OKC, GS, LV, CONN…). Order matters — away first.
                   </div>
-                  <div>
-                    <label style={lbl}>Away Team</label>
-                    <input style={inp} placeholder="SD" value={form.awayTeam}
-                      onChange={e => set("awayTeam", e.target.value.toUpperCase())} />
-                  </div>
-                </div>
-                <div style={{fontSize:10,color:"#484f58",marginTop:-8,marginBottom:-4}}>
-                  Use canonical abbrs — e.g. LAD, OKC, GS, LV, CONN. Home team is the bottom team on the sportsbook ticket.
                 </div>
               </>
             )}
@@ -320,20 +328,13 @@ function AddPickModal({ onClose, onAdd, initialOdds = "-110" }) {
                     {sportOptions.map(s => <option key={s} value={s}>{SPORT_LABELS[s]}</option>)}
                   </select>
                 </div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-                  <div>
-                    <label style={lbl}>Scoring Team</label>
-                    <input style={inp} placeholder="LAD" value={form.scoringTeam}
-                      onChange={e => set("scoringTeam", e.target.value.toUpperCase())} />
+                <div>
+                  <label style={lbl}>Matchup (Scoring vs Opponent)</label>
+                  <input style={inp} placeholder="LAD vs SD" value={form.matchup}
+                    onChange={e => set("matchup", e.target.value)} />
+                  <div style={{fontSize:10,color:"#484f58",marginTop:4}}>
+                    Scoring team first — the side whose runs/points you're betting.
                   </div>
-                  <div>
-                    <label style={lbl}>Opponent</label>
-                    <input style={inp} placeholder="SD" value={form.oppTeam}
-                      onChange={e => set("oppTeam", e.target.value.toUpperCase())} />
-                  </div>
-                </div>
-                <div style={{fontSize:10,color:"#484f58",marginTop:-8,marginBottom:-4}}>
-                  Scoring team is the side whose runs/points you're betting.
                 </div>
               </>
             )}
