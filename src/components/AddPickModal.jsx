@@ -201,15 +201,16 @@ function AddPickModal({ onClose, onAdd, initialOdds = "-110" }) {
     : pickType === "total" ? TOTAL_SPORTS
     : ["nba", "wnba", "mlb", "nfl", "nhl"];
 
-  // Pick type toggle — mirrors the direction (Over/Under) styling
+  // Pick type toggle — uses purple to differentiate from the blue direction (Over/Under) toggle
+  // below it. Avoids the easy mis-click of clicking the wrong row's toggle.
   const typeBtn = (v, label) => {
     const active = pickType === v;
     return (
       <button key={v} type="button" onClick={() => setPickType(v)}
         style={{flex:1,padding:"7px 0",borderRadius:6,fontSize:12,fontWeight:600,cursor:"pointer",
-          background: active ? "rgba(88,166,255,0.15)" : "#0d1117",
-          border: `1px solid ${active ? "#58a6ff" : "#30363d"}`,
-          color: active ? "#58a6ff" : "#8b949e"}}>
+          background: active ? "rgba(163,113,247,0.18)" : "#0d1117",
+          border: `1px solid ${active ? "#a371f7" : "#30363d"}`,
+          color: active ? "#d2a8ff" : "#8b949e"}}>
         {label}
       </button>
     );

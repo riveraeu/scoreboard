@@ -556,9 +556,48 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                         : isTeamTotal
                           ? `${pick.scoringTeam || ""} vs ${pick.oppTeam || ""}`
                           : "";
+                      // Allow switching pick type after-the-fact (fixes mis-clicks like a game total
+                      // saved as a team total). Field migration on switch:
+                      //   total → teamTotal: scoringTeam=awayTeam, oppTeam=homeTeam
+                      //   teamTotal → total: awayTeam=scoringTeam, homeTeam=oppTeam
+                      // The "first slot" of the matchup is preserved as scoring/away across the switch.
+                      const switchPickType = (newType) => {
+                        if (newType === pick.gameType || (newType === "player" && !pick.gameType)) return;
+                        setTrackedPlays(prev => prev.map(p => {
+                          if (p.id !== pick.id) return p;
+                          if (newType === "total") {
+                            const awayTeam = p.awayTeam || p.scoringTeam || "";
+                            const homeTeam = p.homeTeam || p.oppTeam || "";
+                            return { ...p, gameType: "total", homeTeam, awayTeam, scoringTeam: undefined, oppTeam: undefined };
+                          }
+                          if (newType === "teamTotal") {
+                            const scoringTeam = p.scoringTeam || p.awayTeam || "";
+                            const oppTeam = p.oppTeam || p.homeTeam || "";
+                            return { ...p, gameType: "teamTotal", scoringTeam, oppTeam, homeTeam: undefined, awayTeam: undefined };
+                          }
+                          // newType === "player"
+                          return { ...p, gameType: undefined };
+                        }));
+                      };
+                      const currentType = pick.gameType || "player";
                       return (
                         <div style={{marginTop:8,padding:10,background:"#0d1117",borderRadius:7,border:"1px solid #30363d"}}>
-                          {/* Direction toggle — first row, full width so it's hard to miss */}
+                          {/* Pick-type toggle — switch this in place if it was saved wrong */}
+                          <div style={{display:"flex",gap:6,marginBottom:8}}>
+                            {[["player","Player"],["total","Game Total"],["teamTotal","Team Total"]].map(([v,l]) => {
+                              const active = currentType === v;
+                              return (
+                                <button key={v} type="button" onClick={() => switchPickType(v)}
+                                  style={{flex:1,padding:"5px 0",borderRadius:5,fontSize:10,fontWeight:600,cursor:"pointer",
+                                    background: active ? "rgba(88,166,255,0.15)" : "transparent",
+                                    border: `1px solid ${active ? "#58a6ff" : "#30363d"}`,
+                                    color: active ? "#58a6ff" : "#8b949e"}}>
+                                  {l}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {/* Direction toggle — second row, full width so it's hard to miss */}
                           <div style={{display:"flex",gap:6,marginBottom:8}}>
                             {[["over","Over"],["under","Under"]].map(([v,l]) => {
                               const active = (pick.direction || "over") === v;
