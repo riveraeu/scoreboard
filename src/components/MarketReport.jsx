@@ -13,6 +13,7 @@ function buildSimTooltip(m) {
   const isKPlay  = m.finalSimScore != null && m.totalSimScore == null && !isTeamTotal;
   const isHRR    = m.hitterFinalSimScore != null && m.finalSimScore == null && !isTeamTotal;
   const isNBA    = m.nbaSimScore != null && m.totalSimScore == null && !isTeamTotal;
+  const isWNBA   = m.wnbaSimScore != null && m.totalSimScore == null && !isTeamTotal;
   const isNHL    = m.nhlSimScore != null && m.totalSimScore == null && !isTeamTotal;
 
   if (isKPlay) {
@@ -51,6 +52,29 @@ function buildSimTooltip(m) {
       `DVP: ${dvpPts}/2`,
       `Season HR: ${m.nbaSeasonHitRatePts??1}/2`,
       `Tier HR: ${m.nbaSoftHitRatePts??1}/2`,
+      `Game Total: ${ouPts5}/2`,
+    ].join('\n');
+  }
+  if (isWNBA) {
+    // WNBA retuned tiers: USG ≥27/≥22 (NBA: 28/22), MIN ≥27/≥22 (NBA: 30/25, 40-min vs 48-min game),
+    // game total ≥168/≥158 (NBA: 215/225).
+    const dvpPts = m.dvpRatio >= 1.05 ? 2 : m.dvpRatio >= 1.02 ? 1 : 0;
+    const ouPts5 = m.wnbaTotalPts ?? 1;
+    let c1Label, c1Pts;
+    if (m.stat === 'rebounds') {
+      const v = m.wnbaOpportunity;
+      c1Pts = v == null ? 1 : v >= 27 ? 2 : v >= 22 ? 1 : 0;
+      c1Label = `AvgMin ${v != null ? v.toFixed(0) + 'm' : '—'}`;
+    } else {
+      const u = m.wnbaUsage;
+      c1Pts = u == null ? 1 : u >= 27 ? 2 : u >= 22 ? 1 : 0;
+      c1Label = `USG% ${u != null ? u.toFixed(1) + '%' : '—'}`;
+    }
+    return [
+      `${c1Label}: ${c1Pts}/2`,
+      `DVP: ${dvpPts}/2`,
+      `Season HR: ${m.wnbaSeasonHitRatePts??1}/2`,
+      `Tier HR: ${m.wnbaSoftHitRatePts??1}/2`,
       `Game Total: ${ouPts5}/2`,
     ].join('\n');
   }
