@@ -431,7 +431,7 @@ Sport tabs: ALL / MLB / NBA / NHL (calibration moved to Model Reference page). C
 
 ### Color tiers (utility)
 ```
-tierColor(pct): ≥90 → #1a7f37 dark green, ≥80 → #3fb950 medium green, ≥70 → #7ee787 light green, ≥60 → #e3b341 yellow, <60 → #f78166 red.
+tierColor(pct): ≥70 → #3fb950 green, ≥60 → #e3b341 yellow, <60 → #f78166 red.
 Single source of truth in src/lib/colors.js. Drives True% bars in App player card, PlaysColumn (truePct + season + soft bars), TotalsBarChart, TeamPage. NOT applied to MarketReport SimScore-component cells (Ssn HR%, H2H HR%, Hit Rate %, K H2H Hand, etc.) — those map to the points actually awarded (2/1/0 → green/yellow/red), and per-component % thresholds vary by stat (e.g. NBA Ssn HR ≥90→2 vs MLB HRR Ssn HR ≥80→2), so a universal ladder would visually misrepresent SimScore.
 ```
 
