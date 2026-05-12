@@ -1506,7 +1506,7 @@ function App() {
                           const pkpLabel = csw != null ? "CSW%" : "K%";
                           const pkpColor  = pkp == null ? "#8b949e" : (csw != null ? (pkp >= 30 ? "#3fb950" : pkp > 26 ? "#e3b341" : "#f78166") : (pkp >= 27 ? "#3fb950" : pkp >= 24 ? "#e3b341" : "#f78166"));
                           const lkpProjected = h2h?.lineupKPctProjected === true;
-                          const lkpColor  = lkp == null ? "#8b949e" : lkp > 24 ? "#3fb950" : lkp > 20 ? "#e3b341" : "#f78166";
+                          const lkpColor  = lkp == null ? "#8b949e" : lkp > 24 ? "#3fb950" : lkp > 22 ? "#e3b341" : "#f78166";
                           const oppColor  = lkp != null ? (lkp >= 24 ? "#3fb950" : lkp < 20 ? "#f78166" : "#c9d1d9") : "#c9d1d9";
                           const strikeoutsThreshold = Object.entries(tonightPlayerMap).find(([k]) => k.startsWith("strikeouts|"))?.[1]?.threshold ?? null;
                           const expKColor = expK != null && strikeoutsThreshold != null ? (expK >= strikeoutsThreshold ? "#3fb950" : expK >= strikeoutsThreshold - 1 ? "#c9d1d9" : "#f78166") : "#c9d1d9";
@@ -1527,7 +1527,7 @@ function App() {
                           const kH2HHandStarts = h2h?.kH2HHandStarts ?? 0;
                           const kH2HHandMaj = h2h?.kH2HHandMaj ?? null;
                           const kH2HHandColor = kH2HHandRate == null ? "#8b949e" : kH2HHandRate >= 80 ? "#3fb950" : kH2HHandRate >= 65 ? "#e3b341" : "#f78166";
-                          const apColor = ap == null ? "#8b949e" : ap > 85 ? "#3fb950" : ap > 75 ? "#e3b341" : "#f78166";
+                          const apColor = "#8b949e"; // avgPitches not in SimScore
                           const pkpQual = pkp == null ? "" : csw != null ? (pkp >= 30 ? "elite" : pkp > 26 ? "above-average" : "below-average") : (pkp > 24 ? "above-average" : "below-average");
                           const apDesc = ap == null ? null : ap > 85 ? "expect him to work deep into the game" : ap > 75 ? "typically goes 5–6 innings" : null;
                           const lkpDesc = lkp == null ? null : lkp > 24 ? "a high-strikeout lineup — works in his favor" : lkp > 20 ? "below-average strikeout tendency" : "elite contact lineup — a tougher test";
@@ -1581,7 +1581,7 @@ function App() {
                           const whipColor = whip == null ? "#8b949e" : whip > 1.35 ? "#3fb950" : whip > 1.20 ? "#e3b341" : "#f78166";
                           const fipColor = fip == null ? "#8b949e" : fip > 4.5 ? "#3fb950" : fip > 3.5 ? "#e3b341" : "#8b949e";
                           const scColor = sc != null ? (sc >= 8 ? "#3fb950" : sc >= 5 ? "#e3b341" : "#8b949e") : "#8b949e";
-                          const seasonColor = seasonPct == null ? "#c9d1d9" : seasonPct >= 75 ? "#3fb950" : seasonPct >= 60 ? "#c9d1d9" : "#f78166";
+                          const seasonColor = seasonPct == null ? "#c9d1d9" : seasonPct >= 80 ? "#3fb950" : seasonPct >= 70 ? "#e3b341" : "#f78166";
                           const spotDesc = lineupSpot == null ? null : lineupSpot <= 3 ? "top of the order — guaranteed at-bats every game" : lineupSpot <= 4 ? "heart of the order — plenty of at-bats" : null;
                           const whipDesc = whip == null ? null : whip > 1.35 ? "a lot of baserunners" : whip > 1.20 ? "some traffic on base" : null;
                           const fipDesc = fip == null ? null : fip > 4.5 ? "hittable pitcher" : fip > 3.5 ? "average pitcher" : null;
@@ -1667,10 +1667,11 @@ function App() {
                             const isNBAHard = !isNBAStrong && effectiveOpp && (dvpData.hardTeams?.[safeTab] || []).includes(effectiveOpp);
                             const rankColor = isNBAHard ? "#f78166" : (displayRank != null && displayRank <= 10) ? "#3fb950" : (displayRank != null && displayRank <= 15) ? "#e3b341" : isNBAStrong ? "#3fb950" : "#c9d1d9";
                             const scColor = sc != null ? (sc >= 8 ? "#3fb950" : sc >= 5 ? "#e3b341" : "#8b949e") : "#8b949e";
-                            const seasonColor = seasonPct == null ? "#c9d1d9" : isWNBA ? (seasonPct >= 90 ? "#3fb950" : seasonPct >= 80 ? "#e3b341" : "#f78166") : (seasonPct >= 75 ? "#3fb950" : seasonPct >= 60 ? "#c9d1d9" : "#f78166");
+                            const seasonColor = seasonPct == null ? "#c9d1d9" : seasonPct >= 90 ? "#3fb950" : seasonPct >= 80 ? "#e3b341" : "#f78166";
                             // Tiers retuned for WNBA's 40-min game vs NBA's 48 (MIN ≥27/≥22 vs ≥30/≥25)
                             const minHi = isWNBA ? 27 : 30, minMid = isWNBA ? 22 : 25;
-                            const minColor = nbaOpportunity == null ? "#8b949e" : nbaOpportunity >= minHi ? "#3fb950" : nbaOpportunity >= minMid ? "#e3b341" : "#f78166";
+                            // AvgMin is the SimScore C1 only for rebounds; for other stats USG is C1, so color minutes neutral.
+                            const minColor = safeTab !== "rebounds" ? "#8b949e" : nbaOpportunity == null ? "#8b949e" : nbaOpportunity >= minHi ? "#3fb950" : nbaOpportunity >= minMid ? "#e3b341" : "#f78166";
                             const minDesc = nbaOpportunity == null ? null : nbaOpportunity >= (isWNBA?30:33) ? "a featured starter with a big role" : nbaOpportunity >= minHi ? "a key starter" : nbaOpportunity >= minMid ? "solid rotation player" : "limited role";
                             const rankDesc = displayRank == null ? null : displayRank <= 3 ? "one of the worst defenses in the league" : displayRank <= 8 ? "a weak defense" : displayRank <= 15 ? "a soft matchup" : null;
                             const nbaGameTotal = tonightTabPlay?.nbaGameTotal ?? tonightTabPlay?.wnbaGameTotal ?? null;
@@ -1701,9 +1702,9 @@ function App() {
                                     : <>{first}</>
                                   }
                                   {nbaOpportunity != null ? <>, averaging <span style={{color:minColor,fontWeight:600}}>{nbaOpportunity.toFixed(0)} minutes</span> a night{minDesc ? <span style={{color:"#8b949e"}}> — {minDesc}</span> : ""}</> : ""}
-                                  {safeTab !== "rebounds" && safeTab !== "assists" && nbaUsage != null ? <> (<span style={{color:nbaUsage>=usgHi?"#3fb950":nbaUsage>=usgMid?"#e3b341":"#f78166",fontWeight:600}}>{nbaUsage.toFixed(0)}% USG</span>)</> : ""}.
+                                  {safeTab !== "rebounds" && nbaUsage != null ? <> (<span style={{color:nbaUsage>=usgHi?"#3fb950":nbaUsage>=usgMid?"#e3b341":"#f78166",fontWeight:600}}>{nbaUsage.toFixed(0)}% USG</span>)</> : ""}.
                                   {displayRank != null && <>{" "}{effectiveOpp} has {rankDesc || `the ${ordinal(displayRank)}-worst defense`} in {statName} allowed{posName ? ` to ${posName}s` : ""}{displayValue != null ? <> — giving up <span style={{color:rankColor,fontWeight:600}}>{displayValue} per game</span></> : <>, ranked <span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}</span></>}.</>}
-                                  {softPctDisplay != null && <>{" "}{first} hits this in <span style={{color:isWNBA?(softPctDisplay>=90?"#3fb950":softPctDisplay>=80?"#e3b341":"#f78166"):(softPctDisplay>=70?"#3fb950":softPctDisplay>=60?"#e3b341":"#f78166"),fontWeight:600}}>{softPctDisplay}%</span> of games against soft defenses{softGamesDisplay ? <span style={{color:"#484f58",fontSize:10}}> ({softGamesDisplay}g)</span> : ""}.</>}
+                                  {softPctDisplay != null && <>{" "}{first} hits this in <span style={{color:softPctDisplay>=90?"#3fb950":softPctDisplay>=80?"#e3b341":"#f78166",fontWeight:600}}>{softPctDisplay}%</span> of games against soft defenses{softGamesDisplay ? <span style={{color:"#484f58",fontSize:10}}> ({softGamesDisplay}g)</span> : ""}.</>}
                                   {nbaGameTotal != null && <>{" "}Game total <span style={{color:nbaTotalPts>=3?"#3fb950":nbaTotalPts>=2?"#e3b341":nbaTotalPts>=1?"#8b949e":"#f78166",fontWeight:600}}>{nbaGameTotal}</span><span style={{color:"#8b949e"}}>{isWNBA ? (nbaGameTotal>=175?" — a high-scoring slate":nbaGameTotal>=168?" — above-average scoring":nbaGameTotal>=158?" — an average total":" — a low-scoring slate") : (nbaGameTotal>=235?" — a high-scoring slate":nbaGameTotal>=225?" — above-average scoring":nbaGameTotal>=215?" — an average total":" — a low-scoring slate")}.</span></>}
                                   {nbaBlowoutAdj != null && nbaBlowoutAdj < 0.99 && <>{" "}<span style={{color:"#f78166",fontWeight:600}}>Blowout risk</span> — large spread reduces model mean by {Math.round((1-nbaBlowoutAdj)*100)}%.</>}
                                   {isB2B != null && <>{" "}{isB2B ? <><span style={{color:"#f78166",fontWeight:600}}>Back-to-back</span> — model applies a scoring reduction.</> : <>Fully rested tonight.</>}</>}
@@ -1715,20 +1716,15 @@ function App() {
                           }
                           if (isNHL) {
                             const nhlOpportunity = tonightTabPlay?.nhlOpportunity ?? null;
-                            const nhlShotsAdj = tonightTabPlay?.nhlShotsAdj ?? null;
                             const nhlIsB2B = tonightTabPlay?.isB2B ?? null;
                             const sc = tonightTabPlay?.nhlSimScore ?? null;
-                            const edge = tonightTabPlay?.edge ?? null;
                             const seasonPct = tonightTabPlay?.seasonPct ?? null;
                             const scColor = sc != null ? (sc >= 8 ? "#3fb950" : sc >= 5 ? "#e3b341" : "#8b949e") : "#8b949e";
-                            const seasonColor = seasonPct == null ? "#c9d1d9" : seasonPct >= 75 ? "#3fb950" : seasonPct >= 60 ? "#c9d1d9" : "#f78166";
+                            const seasonColor = seasonPct == null ? "#c9d1d9" : seasonPct >= 90 ? "#3fb950" : seasonPct >= 80 ? "#e3b341" : "#f78166";
                             const toiColor = nhlOpportunity == null ? "#8b949e" : nhlOpportunity >= 18 ? "#3fb950" : nhlOpportunity >= 15 ? "#e3b341" : "#f78166";
-                            const nhlSaRank = tonightTabPlay?.nhlSaRank ?? null;
-                            const saColor = nhlShotsAdj == null ? "#8b949e" : (nhlSaRank != null && nhlSaRank <= 10) ? "#3fb950" : nhlShotsAdj > 0 ? "#e3b341" : "#f78166";
-                            const rankColor = rank != null && rank <= 5 ? "#3fb950" : "#e3b341";
+                            const rankColor = rank == null ? "#8b949e" : rank <= 10 ? "#3fb950" : rank <= 15 ? "#e3b341" : "#f78166";
                             const toiDesc = nhlOpportunity == null ? null : nhlOpportunity >= 21 ? "a top-line role" : nhlOpportunity >= 18 ? "a key contributor" : nhlOpportunity >= 15 ? "solid ice time" : "limited role";
                             const rankDesc = rank == null ? null : rank <= 3 ? "one of the worst defenses in the league" : rank <= 8 ? "a weak defense" : rank <= 15 ? "a soft matchup" : null;
-                            const saDesc = nhlShotsAdj == null ? null : nhlShotsAdj > 2 ? "generating high shot volume — more scoring chances" : nhlShotsAdj > 0 ? "above-average shot volume" : nhlShotsAdj > -2 ? "slightly below average" : "low shot volume allowed";
                             const _nhlToiPts = nhlOpportunity != null && nhlOpportunity >= 18 ? 2 : nhlOpportunity != null && nhlOpportunity >= 15 ? 1 : 0;
                             const _nhlGaaPts = rank != null ? (rank <= 10 ? 2 : rank <= 15 ? 1 : 0) : 1;
                             const nhlGameTotalPC = tonightTabPlay?.nhlGameTotal ?? null;
@@ -1745,8 +1741,7 @@ function App() {
                                   }
                                   {nhlOpportunity != null ? <>, averaging <span style={{color:toiColor,fontWeight:600}}>{nhlOpportunity.toFixed(0)} min</span> of ice time{toiDesc ? <span style={{color:"#8b949e"}}> — {toiDesc}</span> : ""}</> : ""}.
                                   {rank != null && <>{" "}{effectiveOpp} has {rankDesc || `the ${ordinal(rank)}-worst defense`} in points allowed — ranked <span style={{color:rankColor,fontWeight:700}}>{ordinal(rank)}</span> in goals against.</>}
-                                  {nhlShotsAdj != null && <>{" "}They allow <span style={{color:saColor,fontWeight:600}}>{nhlShotsAdj > 0 ? "+" : ""}{nhlShotsAdj}</span> shots/game above average — {saDesc}.</>}
-                                  {softPctDisplay != null && <>{" "}{first} hits this in <span style={{color:"#3fb950",fontWeight:600}}>{softPctDisplay}%</span> vs weak defenses{softGamesDisplay ? <span style={{color:"#484f58",fontSize:10}}> ({softGamesDisplay}g)</span> : ""}.</>}
+                                  {softPctDisplay != null && <>{" "}{first} hits this in <span style={{color:softPctDisplay>=90?"#3fb950":softPctDisplay>=80?"#e3b341":"#f78166",fontWeight:600}}>{softPctDisplay}%</span> vs weak defenses{softGamesDisplay ? <span style={{color:"#484f58",fontSize:10}}> ({softGamesDisplay}g)</span> : ""}.</>}
                                   {nhlIsB2B != null && <>{" "}{nhlIsB2B ? <><span style={{color:"#f78166",fontWeight:600}}>Back-to-back</span> — model applies a fatigue reduction.</> : <>Fully rested tonight.</>}</>}
                                   {isOppFallback && <div style={{color:"#8b949e",fontSize:10,marginTop:3}}>Showing last game vs {effectiveOpp} — updates when next game is scheduled.</div>}
                                   {sc != null && <>{" "}<SimBadge sc={sc} scTitle={scTitle} scColor={scColor} /></>}

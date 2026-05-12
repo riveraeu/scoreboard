@@ -180,7 +180,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                         const l10Desc = play.teamL10RPG == null ? null : isUnder ? (play.teamL10RPG <= 3.5 ? "cold offense recently" : play.teamL10RPG <= 4.5 ? "moderate recent offense" : "active lineup recently — under risk") : (play.teamL10RPG > 5.0 ? "hot offense recently" : play.teamL10RPG > 4.0 ? "solid recent production" : "below-average recent offense");
                         const ouColor = play.gameOuLine == null ? "#8b949e" : isUnder ? (play.gameOuLine < 7.5 ? "#3fb950" : play.gameOuLine < 9.5 ? "#e3b341" : "#f78166") : (play.gameOuLine >= 9.5 ? "#3fb950" : play.gameOuLine >= 7.5 ? "#e3b341" : "#f78166");
                         const ouDesc = play.gameOuLine == null ? null : isUnder ? (play.gameOuLine < 7.5 ? "a low total" : play.gameOuLine < 9.5 ? "an average total" : "a high total — under risk") : (play.gameOuLine >= 9.5 ? "a high-scoring game" : play.gameOuLine >= 7.5 ? "an average total" : "a pitcher's duel");
-                        const etColor = play.teamExpected == null ? "#8b949e" : isUnder ? (play.teamExpected <= play.threshold - 1.5 ? "#3fb950" : play.teamExpected <= play.threshold + 0.5 ? "#e3b341" : "#8b949e") : (play.teamExpected >= play.threshold + 1.5 ? "#3fb950" : play.teamExpected >= play.threshold - 0.5 ? "#e3b341" : "#8b949e");
+                        const etColor = "#8b949e";
                         const h2hColor = play.h2hHitRate == null ? "#8b949e" : isUnder ? (play.h2hHitRate <= 30 ? "#3fb950" : play.h2hHitRate <= 50 ? "#e3b341" : "#f78166") : (play.h2hHitRate >= 80 ? "#3fb950" : play.h2hHitRate >= 60 ? "#e3b341" : "#f78166");
                         const scTitle = [isUnder?"[Under SimScore]":null,`Ssn HR% (${ssnRate != null ? ssnRate.toFixed(0)+"%" : "—"}): ${_ssnPts}/2`,`Opp WHIP (${play.oppWHIP?.toFixed(2) ?? "—"}): ${_whipPts}/2`,`L10 RPG (${play.teamL10RPG?.toFixed(1) ?? "—"}): ${_l10Pts}/2`,`H2H HR% (${play.h2hHitRate?.toFixed(0) ?? "—"}%): ${_h2hPts}/2`,`O/U (${play.gameOuLine ?? "—"}): ${_ouPts}/2`].filter(Boolean).join("\n");
                         return (
@@ -203,7 +203,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                         const ssnHR = play.ttNbaSeasonHitRate ?? null;
                         const ssnColor = ssnHR == null ? "#8b949e" : isUnder ? (ssnHR <= 20 ? "#3fb950" : ssnHR <= 40 ? "#e3b341" : "#f78166") : (ssnHR >= 80 ? "#3fb950" : ssnHR >= 60 ? "#e3b341" : "#f78166");
                         const ouDesc2 = play.gameOuLine == null ? null : isUnder ? (play.gameOuLine < 215 ? "a low-total game" : play.gameOuLine < 225 ? "a moderate total" : "a high-total game — under risk") : (play.gameOuLine >= 225 ? "a fast-paced game" : play.gameOuLine >= 215 ? "an above-average total" : "a low-total game");
-                        const etColor = play.teamExpected == null ? "#8b949e" : isUnder ? (play.teamExpected <= play.threshold - 5 ? "#3fb950" : play.teamExpected <= play.threshold + 5 ? "#e3b341" : "#8b949e") : (play.teamExpected >= play.threshold + 5 ? "#3fb950" : play.teamExpected >= play.threshold - 5 ? "#e3b341" : "#8b949e");
+                        const etColor = "#8b949e";
                         const h2hColor = play.h2hHitRate == null ? "#8b949e" : isUnder ? (play.h2hHitRate <= 30 ? "#3fb950" : play.h2hHitRate <= 50 ? "#e3b341" : "#f78166") : (play.h2hHitRate >= 80 ? "#3fb950" : play.h2hHitRate >= 60 ? "#e3b341" : "#f78166");
                         const _offPts = offRtg == null ? 1 : isUnder ? (offRtg < 113 ? 2 : offRtg < 118 ? 1 : 0) : (offRtg >= 118 ? 2 : offRtg >= 113 ? 1 : 0);
                         const _defPts = defRtg == null ? 1 : isUnder ? (defRtg < 113 ? 2 : defRtg < 118 ? 1 : 0) : (defRtg >= 118 ? 2 : defRtg >= 113 ? 1 : 0);
@@ -590,8 +590,8 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                           const oppName = MLB_TEAM[play.opponent] || play.opponent;
                           const pkpColor = pkp == null ? "#8b949e" : (csw != null ? (pkp >= 30 ? "#3fb950" : pkp > 26 ? "#e3b341" : "#f78166") : (pkp >= 27 ? "#3fb950" : pkp >= 24 ? "#e3b341" : "#f78166"));
                           const kbbColor = kbb == null ? "#8b949e" : kbb > 18 ? "#3fb950" : kbb > 12 ? "#e3b341" : "#f78166";
-                          const apColor = ap == null ? "#8b949e" : ap > 85 ? "#3fb950" : ap > 75 ? "#e3b341" : "#f78166";
-                          const lkpColor = lkp == null ? "#8b949e" : lkp > 24 ? "#3fb950" : lkp > 20 ? "#e3b341" : "#f78166";
+                          const apColor = "#8b949e"; // avgPitches not in SimScore
+                          const lkpColor = lkp == null ? "#8b949e" : lkp > 24 ? "#3fb950" : lkp > 22 ? "#e3b341" : "#f78166";
                           const totalColor = t => t == null ? "#8b949e" : t <= 7.5 ? "#3fb950" : t < 10.5 ? "#e3b341" : "#f78166";
                           const mlColor = ml => ml == null ? "#8b949e" : ml <= -121 ? "#3fb950" : ml <= 120 ? "#e3b341" : "#f78166";
                           const pkpQual = pkp == null ? "" : csw != null ? (pkp >= 30 ? "elite" : pkp > 26 ? "above-average" : "below-average") : (pkp > 24 ? "above-average" : "below-average");
@@ -643,7 +643,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                           const whipColor = whip == null ? "#8b949e" : whip > 1.35 ? "#3fb950" : whip > 1.20 ? "#e3b341" : "#f78166";
                           const fipColor = fip == null ? "#8b949e" : fip > 4.5 ? "#3fb950" : fip > 3.5 ? "#e3b341" : "#8b949e";
                           const scColor = sc != null ? (sc >= 8 ? "#3fb950" : sc >= 5 ? "#e3b341" : "#8b949e") : "#8b949e";
-                          const seasonColor = play.seasonPct >= 75 ? "#3fb950" : play.seasonPct >= 60 ? "#c9d1d9" : "#f78166";
+                          const seasonColor = play.seasonPct == null ? "#c9d1d9" : play.seasonPct >= 80 ? "#3fb950" : play.seasonPct >= 70 ? "#e3b341" : "#f78166";
                           const spotDesc = lineupSpot == null ? null : lineupSpot <= 3 ? "top of the order — guaranteed at-bats every game" : lineupSpot <= 4 ? "heart of the order — plenty of at-bats" : null;
                           const whipDesc = whip == null ? null : whip > 1.35 ? "a lot of baserunners" : whip > 1.20 ? "some traffic on base" : null;
                           const fipDesc = fip == null ? null : fip > 4.5 ? "hittable pitcher" : fip > 3.5 ? "average pitcher" : null;
@@ -694,8 +694,9 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                           const first = play.playerName.split(" ")[0];
                           const scColor = sc != null ? (sc >= 8 ? "#3fb950" : sc >= 5 ? "#e3b341" : "#8b949e") : "#8b949e";
                           const rankColor = play.isHardMatchup ? "#f78166" : (displayRank != null && displayRank <= 10) ? "#3fb950" : (displayRank != null && displayRank <= 15) ? "#e3b341" : play.softPct !== null ? "#3fb950" : "#c9d1d9";
-                          const seasonColor = play.seasonPct == null ? "#c9d1d9" : play.seasonPct >= 75 ? "#3fb950" : play.seasonPct >= 60 ? "#c9d1d9" : "#f78166";
-                          const minColor = play.nbaOpportunity == null ? "#8b949e" : play.nbaOpportunity >= 30 ? "#3fb950" : play.nbaOpportunity >= 25 ? "#e3b341" : "#f78166";
+                          const seasonColor = play.seasonPct == null ? "#c9d1d9" : play.seasonPct >= 90 ? "#3fb950" : play.seasonPct >= 80 ? "#e3b341" : "#f78166";
+                          // AvgMin is the SimScore C1 only for rebounds; for other stats USG is C1, so color minutes neutral.
+                          const minColor = play.stat !== "rebounds" ? "#8b949e" : play.nbaOpportunity == null ? "#8b949e" : play.nbaOpportunity >= 30 ? "#3fb950" : play.nbaOpportunity >= 25 ? "#e3b341" : "#f78166";
                           const minDesc = play.nbaOpportunity == null ? null : play.nbaOpportunity >= 33 ? "a featured starter with a big role" : play.nbaOpportunity >= 30 ? "a key starter" : play.nbaOpportunity >= 25 ? "solid rotation player" : "limited role";
                           const rankDesc = displayRank == null ? null : displayRank <= 3 ? "one of the worst defenses in the league" : displayRank <= 8 ? "a weak defense" : displayRank <= 15 ? "a soft matchup" : null;
                           const _usgPts = play.stat === "rebounds"
@@ -712,10 +713,10 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                           return (
                             <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.65}}>
                               <div>
-                                {play.nbaOpportunity != null ? <>{first} averages <span style={{color:minColor,fontWeight:600}}>{play.nbaOpportunity.toFixed(0)} minutes</span> a night{minDesc ? <span style={{color:"#8b949e"}}> — {minDesc}</span> : ""}{play.stat !== "rebounds" && play.stat !== "assists" && play.nbaUsage != null ? <> (<span style={{color:play.nbaUsage>=28?"#3fb950":play.nbaUsage>=22?"#e3b341":"#f78166",fontWeight:600}}>{play.nbaUsage.toFixed(0)}% USG</span>)</> : ""}.</> : null}
+                                {play.nbaOpportunity != null ? <>{first} averages <span style={{color:minColor,fontWeight:600}}>{play.nbaOpportunity.toFixed(0)} minutes</span> a night{minDesc ? <span style={{color:"#8b949e"}}> — {minDesc}</span> : ""}{play.stat !== "rebounds" && play.nbaUsage != null ? <> (<span style={{color:play.nbaUsage>=28?"#3fb950":play.nbaUsage>=22?"#e3b341":"#f78166",fontWeight:600}}>{play.nbaUsage.toFixed(0)}% USG</span>)</> : ""}.</> : null}
                                 {" "}{first} hits this line in <span style={{color:seasonColor,fontWeight:600}}>{play.seasonPct}%</span> of games{play.seasonGames ? <span style={{color:"#484f58",fontSize:10}}> ({play.seasonGames}g)</span> : ""}.
                                 {displayRank != null && <>{" "}{play.opponent} has {rankDesc || `the ${ordinal(displayRank)}-worst defense`} in {statName} allowed{posName ? ` to ${posName}s` : ""}{displayValue != null ? <> — giving up <span style={{color:rankColor,fontWeight:600}}>{displayValue} per game</span></> : <>, ranked <span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}</span></>}.</>}
-                                {play.softPct != null && <>{" "}{first} hits this in <span style={{color:play.softPct>=70?"#3fb950":play.softPct>=60?"#e3b341":"#f78166",fontWeight:600}}>{play.softPct}%</span> of games vs same-tier defenses{play.softGames ? <span style={{color:"#484f58",fontSize:10}}> ({play.softGames}g)</span> : ""}.</>}
+                                {play.softPct != null && <>{" "}{first} hits this in <span style={{color:play.softPct>=90?"#3fb950":play.softPct>=80?"#e3b341":"#f78166",fontWeight:600}}>{play.softPct}%</span> of games vs same-tier defenses{play.softGames ? <span style={{color:"#484f58",fontSize:10}}> ({play.softGames}g)</span> : ""}.</>}
                                 {play.nbaGameTotal != null && <>{" "}Game total <span style={{color:play.nbaTotalPts>=2?"#3fb950":play.nbaTotalPts>=1?"#e3b341":"#8b949e",fontWeight:600}}>{play.nbaGameTotal}</span><span style={{color:"#8b949e"}}>{play.nbaGameTotal>=225?" — above-average scoring":play.nbaGameTotal>=215?" — an average total":" — a low-scoring slate"}.</span></>}
                                 {play.nbaBlowoutAdj != null && play.nbaBlowoutAdj < 0.99 && <>{" "}<span style={{color:"#f78166",fontWeight:600}}>Blowout risk</span> — large spread reduces model mean by {Math.round((1-play.nbaBlowoutAdj)*100)}%.</>}
                                 {play.isB2B != null && <>{" "}{play.isB2B ? <><span style={{color:"#f78166",fontWeight:600}}>Back-to-back</span> — model applies a scoring reduction.</> : <>Fully rested tonight.</>}</>}
@@ -734,7 +735,8 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                           const scColor = sc != null ? (sc >= 8 ? "#3fb950" : sc >= 5 ? "#e3b341" : "#8b949e") : "#8b949e";
                           const rankColor = play.isHardMatchup ? "#f78166" : (displayRank != null && displayRank <= 10) ? "#3fb950" : (displayRank != null && displayRank <= 15) ? "#e3b341" : play.softPct !== null ? "#3fb950" : "#c9d1d9";
                           const seasonColor = play.seasonPct == null ? "#c9d1d9" : play.seasonPct >= 90 ? "#3fb950" : play.seasonPct >= 80 ? "#e3b341" : "#f78166";
-                          const minColor = play.wnbaOpportunity == null ? "#8b949e" : play.wnbaOpportunity >= 27 ? "#3fb950" : play.wnbaOpportunity >= 22 ? "#e3b341" : "#f78166";
+                          // AvgMin is the SimScore C1 only for rebounds; for other stats USG is C1, so color minutes neutral.
+                          const minColor = play.stat !== "rebounds" ? "#8b949e" : play.wnbaOpportunity == null ? "#8b949e" : play.wnbaOpportunity >= 27 ? "#3fb950" : play.wnbaOpportunity >= 22 ? "#e3b341" : "#f78166";
                           const minDesc = play.wnbaOpportunity == null ? null : play.wnbaOpportunity >= 30 ? "a featured starter with a big role" : play.wnbaOpportunity >= 27 ? "a key starter" : play.wnbaOpportunity >= 22 ? "solid rotation player" : "limited role";
                           const rankDesc = displayRank == null ? null : displayRank <= 3 ? "one of the worst defenses in the league" : displayRank <= 8 ? "a weak defense" : displayRank <= 15 ? "a soft matchup" : null;
                           const _usgPts = play.stat === "rebounds"
@@ -751,7 +753,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                           return (
                             <div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#8b949e",lineHeight:1.65}}>
                               <div>
-                                {play.wnbaOpportunity != null ? <>{first} averages <span style={{color:minColor,fontWeight:600}}>{play.wnbaOpportunity.toFixed(0)} minutes</span> a night{minDesc ? <span style={{color:"#8b949e"}}> — {minDesc}</span> : ""}{play.stat !== "rebounds" && play.stat !== "assists" && play.wnbaUsage != null ? <> (<span style={{color:play.wnbaUsage>=27?"#3fb950":play.wnbaUsage>=22?"#e3b341":"#f78166",fontWeight:600}}>{play.wnbaUsage.toFixed(0)}% USG</span>)</> : ""}.</> : null}
+                                {play.wnbaOpportunity != null ? <>{first} averages <span style={{color:minColor,fontWeight:600}}>{play.wnbaOpportunity.toFixed(0)} minutes</span> a night{minDesc ? <span style={{color:"#8b949e"}}> — {minDesc}</span> : ""}{play.stat !== "rebounds" && play.wnbaUsage != null ? <> (<span style={{color:play.wnbaUsage>=27?"#3fb950":play.wnbaUsage>=22?"#e3b341":"#f78166",fontWeight:600}}>{play.wnbaUsage.toFixed(0)}% USG</span>)</> : ""}.</> : null}
                                 {" "}{first} hits this line in <span style={{color:seasonColor,fontWeight:600}}>{play.seasonPct}%</span> of games{play.seasonGames ? <span style={{color:"#484f58",fontSize:10}}> ({play.seasonGames}g)</span> : ""}.
                                 {displayRank != null && <>{" "}{play.opponent} has {rankDesc || `the ${ordinal(displayRank)}-worst defense`} in {statName} allowed{displayValue != null ? <> — giving up <span style={{color:rankColor,fontWeight:600}}>{displayValue} per game</span></> : <>, ranked <span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}</span></>}.</>}
                                 {play.softPct != null && <>{" "}{first} hits this in <span style={{color:play.softPct>=90?"#3fb950":play.softPct>=80?"#e3b341":"#f78166",fontWeight:600}}>{play.softPct}%</span> of games vs same-tier defenses{play.softGames ? <span style={{color:"#484f58",fontSize:10}}> ({play.softGames}g)</span> : ""}.</>}
@@ -769,13 +771,11 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                           const sc = play.nhlSimScore;
                           const first = play.playerName.split(" ")[0];
                           const scColor = sc != null ? (sc >= 8 ? "#3fb950" : sc >= 5 ? "#e3b341" : "#8b949e") : "#8b949e";
-                          const seasonColor = play.seasonPct >= 75 ? "#3fb950" : play.seasonPct >= 60 ? "#c9d1d9" : "#f78166";
+                          const seasonColor = play.seasonPct == null ? "#c9d1d9" : play.seasonPct >= 90 ? "#3fb950" : play.seasonPct >= 80 ? "#e3b341" : "#f78166";
                           const toiColor = play.nhlOpportunity == null ? "#8b949e" : play.nhlOpportunity >= 18 ? "#3fb950" : play.nhlOpportunity >= 15 ? "#e3b341" : "#f78166";
-                          const saColor = play.nhlShotsAdj == null ? "#8b949e" : (play.nhlSaRank != null && play.nhlSaRank <= 10) ? "#3fb950" : play.nhlShotsAdj > 0 ? "#e3b341" : "#f78166";
-                          const rankColor = play.oppRank != null && play.oppRank <= 5 ? "#3fb950" : "#e3b341";
+                          const rankColor = play.oppRank == null ? "#8b949e" : play.oppRank <= 10 ? "#3fb950" : play.oppRank <= 15 ? "#e3b341" : "#f78166";
                           const toiDesc = play.nhlOpportunity == null ? null : play.nhlOpportunity >= 21 ? "a top-line role" : play.nhlOpportunity >= 18 ? "a key contributor" : play.nhlOpportunity >= 15 ? "solid ice time" : "limited role";
                           const rankDesc = play.oppRank == null ? null : play.oppRank <= 3 ? "one of the worst defenses in the league" : play.oppRank <= 8 ? "a weak defense" : play.oppRank <= 15 ? "a soft matchup" : null;
-                          const saDesc = play.nhlShotsAdj == null ? null : play.nhlShotsAdj > 2 ? "generating high shot volume — more scoring chances" : play.nhlShotsAdj > 0 ? "above-average shot volume" : play.nhlShotsAdj > -2 ? "slightly below average" : "low shot volume allowed";
                           const _nhlToiPtsPC = play.nhlOpportunity != null && play.nhlOpportunity >= 18 ? 2 : play.nhlOpportunity != null && play.nhlOpportunity >= 15 ? 1 : 0;
                           const _nhlGaaPtsPC = play.oppRank != null ? (play.oppRank <= 10 ? 2 : play.oppRank <= 15 ? 1 : 0) : 1;
                           const _nhlTotalPtsPC = play.nhlGameTotal == null ? 1 : play.nhlGameTotal >= 7 ? 2 : play.nhlGameTotal >= 5.5 ? 1 : 0;
