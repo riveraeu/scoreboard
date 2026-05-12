@@ -485,15 +485,27 @@ export async function buildPitcherKPct(mlbSched) {
       const totalBF = startSplits.reduce((sum, s) => sum + (s.stat?.battersFaced || 0), 0);
       const s26 = pitcherStats26[id];
       const s25 = pitcherStats25[id];
-      let avgP = null;
+      // Sample-weighted blend with 2025 anchor when 2026 sample is light.
+      // trust26 = min(1, gs26/15) — fully trusts 2026 at 15+ starts (half-season).
+      // Stabilizes early-season workload swings (e.g. Skenes 2026 avgP=81 ramp-up
+      // vs 2025 ace baseline ~95) where the raw 2026 number drags expectedBF
+      // below his actual outing length and tanks truePct on K markets.
+      const _gs26 = s26?.gs ?? 0;
+      const _trust26 = Math.min(1, _gs26 / 15);
+      let avgP_2026 = null;
       if (startSplits.length > 0 && totalNP > 0) {
-        avgP = parseFloat((totalNP / startSplits.length).toFixed(1));
+        avgP_2026 = totalNP / startSplits.length;
       } else if (s26 && s26.gs >= 1 && s26.np > 0) {
-        // Gamelog NP missing or zero → fall back to 2026 season aggregate
-        avgP = parseFloat((s26.np / s26.gs).toFixed(1));
-      } else if (s25 && s25.gs >= 1 && s25.np > 0) {
-        // No 2026 data → fall back to 2025 season aggregate
-        avgP = parseFloat((s25.np / s25.gs).toFixed(1));
+        avgP_2026 = s26.np / s26.gs;
+      }
+      const avgP_2025 = (s25 && s25.gs >= 1 && s25.np > 0) ? s25.np / s25.gs : null;
+      let avgP = null;
+      if (avgP_2026 !== null && avgP_2025 !== null) {
+        avgP = parseFloat((_trust26 * avgP_2026 + (1 - _trust26) * avgP_2025).toFixed(1));
+      } else if (avgP_2026 !== null) {
+        avgP = parseFloat(avgP_2026.toFixed(1));
+      } else if (avgP_2025 !== null) {
+        avgP = parseFloat(avgP_2025.toFixed(1));
       }
       if (avgP !== null) {
         pitcherAvgPitchesById[id] = avgP; // per-ID: used in pitcherStatsByName for overwritten pitchers
@@ -501,13 +513,21 @@ export async function buildPitcherKPct(mlbSched) {
       }
       // avgBF: empirical batters faced per start — direct measure of pitcher volume,
       // avoids the 3.85 pitches/PA league-average constant used in expectedBF.
-      let avgBF = null;
+      // Same trust26 blend as avgP so the two stay consistent.
+      let avgBF_2026 = null;
       if (startSplits.length > 0 && totalBF > 0) {
-        avgBF = parseFloat((totalBF / startSplits.length).toFixed(1));
+        avgBF_2026 = totalBF / startSplits.length;
       } else if (s26 && s26.gs >= 1 && s26.bf > 0) {
-        avgBF = parseFloat((s26.bf / s26.gs).toFixed(1));
-      } else if (s25 && s25.gs >= 1 && s25.bf > 0) {
-        avgBF = parseFloat((s25.bf / s25.gs).toFixed(1));
+        avgBF_2026 = s26.bf / s26.gs;
+      }
+      const avgBF_2025 = (s25 && s25.gs >= 1 && s25.bf > 0) ? s25.bf / s25.gs : null;
+      let avgBF = null;
+      if (avgBF_2026 !== null && avgBF_2025 !== null) {
+        avgBF = parseFloat((_trust26 * avgBF_2026 + (1 - _trust26) * avgBF_2025).toFixed(1));
+      } else if (avgBF_2026 !== null) {
+        avgBF = parseFloat(avgBF_2026.toFixed(1));
+      } else if (avgBF_2025 !== null) {
+        avgBF = parseFloat(avgBF_2025.toFixed(1));
       }
       if (avgBF !== null) {
         pitcherAvgBFById[id] = avgBF;
