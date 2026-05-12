@@ -108,7 +108,7 @@ function MatchupCard({
       {totalPlays > 0 && (
         <div style={{
           overflow: 'hidden',
-          maxHeight: playsOpen ? 1000 : 0,
+          maxHeight: playsOpen ? 4000 : 0,
           opacity: playsOpen ? 1 : 0,
           transition: playsOpen
             ? 'max-height 0.35s ease, opacity 0.2s ease 0.05s'
