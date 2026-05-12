@@ -655,6 +655,12 @@ const STAT_CONFIGS = {
     assists:  { label: 'Assists',  thresholds: [2,3,4,5,6,7,8,9,10],      unit: 'AST' },
     threePointers: { label: '3-Pointers', thresholds: [1,2,3,4,5,6,7], unit: '3PM' },
   },
+  'basketball/wnba': {
+    points:   { label: 'Points',   thresholds: [10,15,20,25,30],          unit: 'PTS' },
+    rebounds: { label: 'Rebounds', thresholds: [2,4,6,8,10,12],           unit: 'REB' },
+    assists:  { label: 'Assists',  thresholds: [2,3,4,5,6,7,8],           unit: 'AST' },
+    threePointers: { label: '3-Pointers', thresholds: [1,2,3,4,5],        unit: '3PM' },
+  },
   'football/nfl': {
     passingYards:   { label: 'Pass Yds',    thresholds: [150,200,250,300,350,400], unit: 'YDS' },
     completions:    { label: 'Completions', thresholds: [10,15,20,25,30,35],       unit: 'CMP' },
