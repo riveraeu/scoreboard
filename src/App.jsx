@@ -1565,7 +1565,7 @@ function App() {
                           const baTierLabel = baTier === "elite" ? "elite" : baTier === "good" ? "good" : baTier === "avg" ? "average" : null;
                           const baColor = baTier === "elite" ? "#58a6ff" : baTier === "good" ? "#3fb950" : "#8b949e";
                           const lineupSpot = tonightHitPlay?.hitterLineupSpot ?? null;
-                          const spotColor = lineupSpot == null ? "#8b949e" : lineupSpot <= 3 ? "#3fb950" : lineupSpot <= 4 ? "#e3b341" : "#8b949e";
+                          const spotColor = "#8b949e";
                           const pitcherName = tonightHitPlay?.hitterPitcherName ?? h2h?.pitcherName ?? null;
                           const whip = tonightHitPlay?.pitcherWHIP ?? null;
                           const fip = tonightHitPlay?.pitcherFIP ?? null;
@@ -1590,7 +1590,6 @@ function App() {
                           const hitterTotalColor = t => t == null ? "#8b949e" : t >= 9.5 ? "#3fb950" : t >= 7.5 ? "#e3b341" : "#f78166";
                           const barrelPct = tonightHitPlay?.hitterBarrelPct ?? null;
                           const barrelColor = barrelPct == null ? "#8b949e" : barrelPct >= 14 ? "#3fb950" : barrelPct >= 10 ? "#e3b341" : barrelPct >= 7 ? "#8b949e" : "#f78166";
-                          const platoonPts = tonightHitPlay?.hitterPlatoonPts ?? null;
                           const pitcherHand = tonightHitPlay?.oppPitcherHand ?? null;
                           const isPlatoonFallback = tonightHitPlay?.hitterSoftLabel === "vs RHP" || tonightHitPlay?.hitterSoftLabel === "vs LHP";
                           const h2hSource = tonightHitPlay?.hitterH2HSource;
@@ -1619,8 +1618,6 @@ function App() {
                                 })()}
                                 {pf != null && Math.abs(pf - 1.0) >= 0.03 && <>{" "}Tonight's venue is {pf > 1 ? "hitter-friendly" : "pitcher-friendly"} (<span style={{color:"#8b949e"}}>{pf > 1 ? "+" : ""}{((pf-1)*100).toFixed(0)}% park factor</span>).</>}
                                 {hitterGameTotal != null && <>{" "}<span style={{color:"#8b949e"}}>Game total </span><span style={{color:hitterTotalColor(hitterGameTotal),fontWeight:600}}>{hitterGameTotal}</span><span style={{color:"#8b949e"}}>{hitterGameTotal >= 9.5 ? " — a high-scoring game, favorable for hitting" : hitterGameTotal >= 7.5 ? " — an average total" : " — a low-scoring game, tougher for hitters"}.</span></>}
-                                {!isPlatoonFallback && platoonPts === 2 && pitcherHand && (() => { const splitBA = tonightHitPlay?.hitterSplitBA; const handStr = pitcherHand === "R" ? "RHP" : "LHP"; return splitBA != null ? <>{" "}<span style={{color:"#8b949e"}}>Hits </span><span style={{color:"#3fb950",fontWeight:600}}>.{Math.round(splitBA*1000).toString().padStart(3,"0")}</span><span style={{color:"#8b949e"}}> vs {handStr} — platoon edge.</span></> : <>{" "}<span style={{color:"#8b949e"}}>Platoon edge vs {handStr}.</span></>; })()}
-                                {!isPlatoonFallback && platoonPts === 0 && pitcherHand && (() => { const splitBA = tonightHitPlay?.hitterSplitBA; const seasonBA = tonightHitPlay?.hitterBa; const handStr = pitcherHand === "R" ? "RHP" : "LHP"; return splitBA != null ? <>{" "}<span style={{color:"#8b949e"}}>Hits </span><span style={{color:"#f78166",fontWeight:600}}>.{Math.round(splitBA*1000).toString().padStart(3,"0")}</span><span style={{color:"#8b949e"}}> vs {handStr} — platoon disadvantage{seasonBA != null ? <> (<span style={{color:"#c9d1d9"}}>.{Math.round(seasonBA*1000).toString().padStart(3,"0")}</span> season)</> : ""}.</span></> : <>{" "}<span style={{color:"#8b949e"}}>Platoon disadvantage vs {handStr}.</span></>; })()}
                                 {sc != null && <>{" "}<SimBadge sc={sc} scTitle={scTitle} scColor={scColor} /></>}
                                 {(() => { const _lc = tonightHitPlay?.lineupConfirmed ?? null; const _gt = tonightHitPlay?.gameTime ?? null; const _imm = _gt && Date.now() >= new Date(_gt).getTime() - 30*60*1000; return _lc === true ? <>{" "}<span title="Official lineup posted" style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(63,185,80,0.12)",border:"1px solid #3fb950",color:"#3fb950",verticalAlign:"middle"}}>✓ Lineup</span></> : _lc === false && !_imm ? <>{" "}<span title="Projected lineup — not yet official" style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(139,148,158,0.12)",border:"1px solid #484f58",color:"#8b949e",verticalAlign:"middle"}}>Proj. Lineup</span></> : null; })()}
                               </div>
@@ -1663,7 +1660,6 @@ function App() {
                             const statName = { points:"points", rebounds:"rebounds", assists:"assists", threePointers:"3-pointers" }[safeTab] || safeTab;
                             const seasonPct = tonightTabPlay?.seasonPct ?? null;
                             const nbaOpportunity = tonightTabPlay?.nbaOpportunity ?? tonightTabPlay?.wnbaOpportunity ?? null;
-                            const nbaPaceAdj = tonightTabPlay?.nbaPaceAdj ?? tonightTabPlay?.wnbaPaceAdj ?? null;
                             const isB2B = tonightTabPlay?.isB2B ?? null;
                             const sc = tonightTabPlay?.nbaSimScore ?? tonightTabPlay?.wnbaSimScore ?? null;
                             const edge = tonightTabPlay?.edge ?? null;
@@ -1675,15 +1671,11 @@ function App() {
                             // Tiers retuned for WNBA's 40-min game vs NBA's 48 (MIN ≥27/≥22 vs ≥30/≥25)
                             const minHi = isWNBA ? 27 : 30, minMid = isWNBA ? 22 : 25;
                             const minColor = nbaOpportunity == null ? "#8b949e" : nbaOpportunity >= minHi ? "#3fb950" : nbaOpportunity >= minMid ? "#e3b341" : "#f78166";
-                            const paceColor = nbaPaceAdj == null ? "#8b949e" : nbaPaceAdj > 0 ? "#3fb950" : nbaPaceAdj > -2 ? "#e3b341" : "#f78166";
                             const minDesc = nbaOpportunity == null ? null : nbaOpportunity >= (isWNBA?30:33) ? "a featured starter with a big role" : nbaOpportunity >= minHi ? "a key starter" : nbaOpportunity >= minMid ? "solid rotation player" : "limited role";
-                            const paceDesc = nbaPaceAdj == null ? null : nbaPaceAdj > 2 ? "a fast game — more possessions, more opportunities to score" : nbaPaceAdj > 0 ? "slightly above-average pace" : nbaPaceAdj > -2 ? "slightly slower pace" : "a slow game — fewer scoring opportunities";
                             const rankDesc = displayRank == null ? null : displayRank <= 3 ? "one of the worst defenses in the league" : displayRank <= 8 ? "a weak defense" : displayRank <= 15 ? "a soft matchup" : null;
                             const nbaGameTotal = tonightTabPlay?.nbaGameTotal ?? tonightTabPlay?.wnbaGameTotal ?? null;
                             const nbaTotalPts = tonightTabPlay?.nbaTotalPts ?? tonightTabPlay?.wnbaTotalPts ?? null;
                             const nbaUsage = tonightTabPlay?.nbaUsage ?? tonightTabPlay?.wnbaUsage ?? null;
-                            const nbaAvgAst = tonightTabPlay?.nbaAvgAst ?? tonightTabPlay?.wnbaAvgAst ?? null;
-                            const nbaAvgReb = tonightTabPlay?.nbaAvgReb ?? tonightTabPlay?.wnbaAvgReb ?? null;
                             const nba3pMPG = tonightTabPlay?.nba3pMPG ?? tonightTabPlay?.wnba3pMPG ?? null;
                             const nbaBlowoutAdj = tonightTabPlay?.nbaBlowoutAdj ?? tonightTabPlay?.wnbaBlowoutAdj ?? null;
                             // WNBA tiers: USG ≥27/≥22 (NBA: 28/22), MIN ≥27/≥22 (NBA: 30/25), game total ≥168/≥158 (NBA: ≥225)
@@ -1699,11 +1691,8 @@ function App() {
                             const _softHRPtsField = tonightTabPlay?.nbaSoftHitRatePts ?? tonightTabPlay?.wnbaSoftHitRatePts;
                             const _nbaSeasonHRPts = _seasonHRPtsField ?? (seasonPct >= 90 ? 2 : seasonPct >= 80 ? 1 : 0);
                             const _nbaSoftHRPts = _softHRPtsField ?? (tonightTabPlay?.softPct == null ? 1 : tonightTabPlay.softPct >= 90 ? 2 : tonightTabPlay.softPct >= 80 ? 1 : 0);
-                            const _paceGood = nbaPaceAdj != null && nbaPaceAdj > 0;
-                            const _totalThresholdHi = isWNBA ? 168 : 225;
-                            const _totalGood = nbaGameTotal != null && nbaGameTotal >= _totalThresholdHi;
-                            const _comboPts = (_paceGood && _totalGood) ? 2 : (_paceGood || _totalGood) ? 1 : 0;
-                            const scTitle = sc != null ? [_c1Label,`DVP: ${_dvpPts}/2`,`Season HR: ${_nbaSeasonHRPts}/2`,`Soft HR: ${_nbaSoftHRPts}/2`,`Pace+Total: ${_comboPts}/2`].join("\n") : null;
+                            const _totalPts = nbaTotalPts ?? 1;
+                            const scTitle = sc != null ? [_c1Label,`DVP: ${_dvpPts}/2`,`Season HR: ${_nbaSeasonHRPts}/2`,`Soft HR: ${_nbaSoftHRPts}/2`,`Game Total: ${_totalPts}/2`].join("\n") : null;
                             return (
                               <>
                                 <div>
@@ -1712,10 +1701,9 @@ function App() {
                                     : <>{first}</>
                                   }
                                   {nbaOpportunity != null ? <>, averaging <span style={{color:minColor,fontWeight:600}}>{nbaOpportunity.toFixed(0)} minutes</span> a night{minDesc ? <span style={{color:"#8b949e"}}> — {minDesc}</span> : ""}</> : ""}
-                                  {safeTab === "assists" && nbaAvgAst != null ? <> (<span style={{color:nbaAvgAst>=7?"#3fb950":nbaAvgAst>=5?"#e3b341":"#f78166",fontWeight:600}}>{nbaAvgAst.toFixed(1)} APG</span>)</> : safeTab === "rebounds" && nbaAvgReb != null ? <> (<span style={{color:nbaAvgReb>=9?"#3fb950":nbaAvgReb>=7?"#e3b341":"#f78166",fontWeight:600}}>{nbaAvgReb.toFixed(1)} RPG</span>)</> : nbaUsage != null ? <> (<span style={{color:nbaUsage>=usgHi?"#3fb950":nbaUsage>=usgMid?"#e3b341":"#f78166",fontWeight:600}}>{nbaUsage.toFixed(0)}% USG</span>)</> : ""}.
+                                  {safeTab !== "rebounds" && safeTab !== "assists" && nbaUsage != null ? <> (<span style={{color:nbaUsage>=usgHi?"#3fb950":nbaUsage>=usgMid?"#e3b341":"#f78166",fontWeight:600}}>{nbaUsage.toFixed(0)}% USG</span>)</> : ""}.
                                   {displayRank != null && <>{" "}{effectiveOpp} has {rankDesc || `the ${ordinal(displayRank)}-worst defense`} in {statName} allowed{posName ? ` to ${posName}s` : ""}{displayValue != null ? <> — giving up <span style={{color:rankColor,fontWeight:600}}>{displayValue} per game</span></> : <>, ranked <span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}</span></>}.</>}
                                   {softPctDisplay != null && <>{" "}{first} hits this in <span style={{color:isWNBA?(softPctDisplay>=90?"#3fb950":softPctDisplay>=80?"#e3b341":"#f78166"):(softPctDisplay>=70?"#3fb950":softPctDisplay>=60?"#e3b341":"#f78166"),fontWeight:600}}>{softPctDisplay}%</span> of games against soft defenses{softGamesDisplay ? <span style={{color:"#484f58",fontSize:10}}> ({softGamesDisplay}g)</span> : ""}.</>}
-                                  {nbaPaceAdj != null && <>{" "}Game pace is <span style={{color:paceColor,fontWeight:600}}>{nbaPaceAdj > 0 ? "+" : ""}{nbaPaceAdj}</span> possessions above average — {paceDesc}.</>}
                                   {nbaGameTotal != null && <>{" "}Game total <span style={{color:nbaTotalPts>=3?"#3fb950":nbaTotalPts>=2?"#e3b341":nbaTotalPts>=1?"#8b949e":"#f78166",fontWeight:600}}>{nbaGameTotal}</span><span style={{color:"#8b949e"}}>{isWNBA ? (nbaGameTotal>=175?" — a high-scoring slate":nbaGameTotal>=168?" — above-average scoring":nbaGameTotal>=158?" — an average total":" — a low-scoring slate") : (nbaGameTotal>=235?" — a high-scoring slate":nbaGameTotal>=225?" — above-average scoring":nbaGameTotal>=215?" — an average total":" — a low-scoring slate")}.</span></>}
                                   {nbaBlowoutAdj != null && nbaBlowoutAdj < 0.99 && <>{" "}<span style={{color:"#f78166",fontWeight:600}}>Blowout risk</span> — large spread reduces model mean by {Math.round((1-nbaBlowoutAdj)*100)}%.</>}
                                   {isB2B != null && <>{" "}{isB2B ? <><span style={{color:"#f78166",fontWeight:600}}>Back-to-back</span> — model applies a scoring reduction.</> : <>Fully rested tonight.</>}</>}
