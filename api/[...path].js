@@ -3974,6 +3974,21 @@ var worker_default = {
             (_preDedupSkPlays[k] = _preDedupSkPlays[k] || []).push(play);
           }
         }
+        // WNBA-only: tighten qualified dedup to one play per player (across stats). The highest-edge
+        // qualified play wins; the rest are demoted to qualified:false so allTonightPlays still has
+        // them for the player card, but the homepage Plays card only shows the winner.
+        const _wnbaBestByPlayer = {};
+        for (const play of plays) {
+          if (play.sport !== "wnba" || play.qualified === false) continue;
+          const k = play.playerName;
+          if (!_wnbaBestByPlayer[k] || play.edge > _wnbaBestByPlayer[k].edge) {
+            _wnbaBestByPlayer[k] = play;
+          }
+        }
+        for (const play of plays) {
+          if (play.sport !== "wnba" || play.qualified === false) continue;
+          if (_wnbaBestByPlayer[play.playerName] !== play) play.qualified = false;
+        }
         const bestMap = {};
         for (const play of plays) {
           // qualified:false plays exist for the player card (all thresholds needed) — keep per-threshold.
