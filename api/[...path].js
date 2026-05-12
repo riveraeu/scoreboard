@@ -697,6 +697,45 @@ var worker_default = {
             return jsonResponse({ position, metric: "pts", teams, softTeams, hardTeams, rankMaps, source: "byteam" }, 21600);
           }
           return errorResponse("NBA byteam data unavailable", 500);
+        } else if (sport === "basketball/wnba") {
+          let wnbaByteam = CACHE2 ? await CACHE2.get("byteam:wnba", "json").catch(() => null) : null;
+          if (!wnbaByteam || wnbaByteam.length === 0) {
+            const r = await fetch(
+              "https://site.web.api.espn.com/apis/common/v3/sports/basketball/wnba/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=20&category=defensive&seasontype=2&season=2025",
+              { headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" } }
+            ).catch(() => null);
+            if (r?.ok) {
+              const d = await r.json();
+              wnbaByteam = d.teams || [];
+              if (CACHE2 && wnbaByteam.length > 0) CACHE2.put("byteam:wnba", JSON.stringify(wnbaByteam), { expirationTtl: 21600 }).catch(() => {});
+            }
+          }
+          if (wnbaByteam && wnbaByteam.length > 0) {
+            const STATS = ["points", "rebounds", "assists", "threePointers"];
+            const softTeams = Object.fromEntries(STATS.map((s) => [s, buildSoftTeamAbbrs(wnbaByteam, s)]));
+            const hardTeams = Object.fromEntries(STATS.map((s) => [s, buildHardTeamAbbrs(wnbaByteam, s)]));
+            const rankMaps = Object.fromEntries(STATS.map((s) => [s, buildTeamRankMap(wnbaByteam, s)]));
+            for (const s of STATS) {
+              const rm = rankMaps[s];
+              for (const [raw, val] of Object.entries(rm)) {
+                const norm = WNBA_ESPN_TO_CANON[raw];
+                if (norm && !rm[norm]) rm[norm] = val;
+              }
+              const st = softTeams[s];
+              const ht = hardTeams[s];
+              for (const raw of [...st]) {
+                const norm = WNBA_ESPN_TO_CANON[raw];
+                if (norm && !st.includes(norm)) st.push(norm);
+              }
+              for (const raw of [...ht]) {
+                const norm = WNBA_ESPN_TO_CANON[raw];
+                if (norm && !ht.includes(norm)) ht.push(norm);
+              }
+            }
+            const teams = Object.entries(rankMaps.points).map(([abbr, { rank, value }]) => ({ abbr, rank, avgPts: value })).sort((a, b) => a.rank - b.rank);
+            return jsonResponse({ position, metric: "pts", teams, softTeams, hardTeams, rankMaps, source: "byteam" }, 21600);
+          }
+          return errorResponse("WNBA byteam data unavailable", 500);
         } else if (sport === "football/nfl") {
           const NFL_POS_CAT = {
             QB: { catName: "Opponent Passing", valIdx: 8, metric: "oppPassingYardsPerGame" },
