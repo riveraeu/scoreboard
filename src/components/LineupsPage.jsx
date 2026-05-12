@@ -12,6 +12,10 @@ function buildGames(allPlays, sport, meta) {
 
   for (const play of allPlays || []) {
     if (play.sport !== sport) continue;
+    // Only qualified plays seed matchup cards. qualified:false plays exist solely for the player
+    // card (alt thresholds, missed gates). Without this, future-date Kalshi game-total markets
+    // (e.g. NHL series game 6 posted before ESPN schedules it) would create phantom duplicate cards.
+    if (play.qualified === false) continue;
 
     let homeTeam, awayTeam, gameDate, gameTime, ouLine;
 
