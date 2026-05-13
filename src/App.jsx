@@ -830,7 +830,7 @@ function App() {
       const lv = lbl => byLabel(stats, lbl);
       const gs = {}; // per-game stats for DvP
 
-      if (sport === "basketball/nba") {
+      if (sport === "basketball/nba" || sport === "basketball/wnba") {
         const pts = lv("PTS"), reb = lv("REB"), ast = lv("AST");
         if (pts !== undefined) { result.points?.push(pts); gs.points = pts; }
         if (reb !== undefined) { result.rebounds?.push(reb); gs.rebounds = reb; }
