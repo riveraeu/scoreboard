@@ -5010,8 +5010,9 @@ var worker_default = {
                       }
                     }
                   }
-                } else if (sport === "nba") {
-                  // NBA: all players in boxscore.players[team].statistics[0]
+                } else if (sport === "nba" || sport === "wnba") {
+                  // NBA + WNBA: all players in boxscore.players[team].statistics[0]
+                  // Same basketball box-score schema — PTS/REB/AST/3PM labels.
                   for (const teamData of sum.boxscore?.players || []) {
                     const stats = teamData.statistics?.[0];
                     if (!stats) continue;
