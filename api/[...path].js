@@ -3503,6 +3503,10 @@ var worker_default = {
               reason: edge < EDGE_GATE ? "edge_too_low" : kalshiPct > KALSHI_CAP ? "kalshi_pct_too_high" : "kalshi_pct_too_low",
               opponent: tonightOpp, seasonPct: parseFloat((primaryPct).toFixed(1)),
               softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
+              oppRank: posDvpRankOut ?? rankMap[tonightOpp]?.rank ?? null,
+              oppMetricValue: posDvpValueOut ?? rankMap[tonightOpp]?.value ?? null,
+              oppMetricLabel: rankMap[tonightOpp]?.label || null,
+              oppMetricUnit: rankMap[tonightOpp]?.unit ?? null,
               posDvpRank: posDvpRankOut, dvpRatio: oppDvpRatioOut, posGroup: posGroupOut,
               ...(sport === "mlb" && stat === "strikeouts" ? {
                 simScore, finalSimScore,
