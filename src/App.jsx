@@ -1656,7 +1656,7 @@ function App() {
                             const posName = {PG:"point guard",SG:"shooting guard",SF:"small forward",PF:"power forward",C:"center"}[posGroup] ?? null;
                             const hasPosDvp = tonightTabPlay?.posDvpRank != null;
                             const displayRank = hasPosDvp ? tonightTabPlay.posDvpRank : rank;
-                            const displayValue = hasPosDvp ? tonightTabPlay.posDvpValue : null;
+                            const displayValue = hasPosDvp ? tonightTabPlay.posDvpValue : tabOppMetricValue;
                             const statName = { points:"points", rebounds:"rebounds", assists:"assists", threePointers:"3-pointers" }[safeTab] || safeTab;
                             const seasonPct = tonightTabPlay?.seasonPct ?? null;
                             const nbaOpportunity = tonightTabPlay?.nbaOpportunity ?? tonightTabPlay?.wnbaOpportunity ?? null;

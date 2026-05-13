@@ -2925,12 +2925,15 @@ var worker_default = {
                 projectedStatOut = parseFloat((recentAvgOut * adjustedFactor).toFixed(2));
               }
             }
-            // WNBA: aggregate stat-allowed DVP (option A). Single-tier ratio per stat; same fields as NBA.
+            // WNBA: aggregate stat-allowed DVP. Keep dvpRatio for SimScore (unitless), but do NOT
+            // expose buildWnbaDvp's per-player avgPts as posDvpRank/posDvpValue — its unit (~12 ppg
+            // per individual player) doesn't match the rankMap "PPG allowed" label (~88 team PPG)
+            // that the UI displays. Letting oppRank/oppMetricValue fall through to rankMap keeps
+            // the value and label consistent ("DAL has the 2nd-worst defense in points allowed —
+            // giving up 88 per game"). No per-position split exists for WNBA so posGroup stays null.
             if (sport === "wnba" && wnbaDvpMap?.rankings?.[stat]) {
               const _wEntry = wnbaDvpMap.rankings[stat].find(t => t.abbr === tonightOpp);
               if (_wEntry) {
-                posDvpRankOut = _wEntry.rank;
-                posDvpValueOut = parseFloat(_wEntry.avgPts.toFixed(1));
                 oppDvpRatioOut = _wEntry.ratio ?? null;
                 if (recentAvgOut !== null && oppDvpRatioOut !== null) {
                   projectedStatOut = parseFloat((recentAvgOut * oppDvpRatioOut).toFixed(2));
