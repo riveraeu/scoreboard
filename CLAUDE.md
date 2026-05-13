@@ -334,7 +334,7 @@ For totals: dedup key is `homeTeam|awayTeam|threshold` (game) or `sport|scoringT
 **ESPN scoreboard abbr mismatch**: ESPN scoreboard's `team.abbreviation` differs from our canonical for several teams. `/api/live` translates at the ESPN boundary via `CANONICAL_TO_ESPN` / `ESPN_TO_CANONICAL` (sport-keyed) so picks tracked with the canonical abbr still match the ESPN event, and the response's `homeTeam`/`awayTeam` come back canonical (matching `pick.homeTeam` etc.). Symptom of an unmapped team: `/api/live` returns `state:"unknown"` and the pick never auto-resolves. Current map:
 - **MLB**: `CWS↔CHW` (Chicago White Sox; canonical from `MLB_ID_TO_ABBR[145]`)
 - **NBA**: `GSW↔GS`, `SAS↔SA`, `NYK↔NY`, `NOP↔NO`, `UTA↔UTAH`, `WAS↔WSH`
-- **WNBA**: `CONN↔CONNECTICU`, `DAL↔DALLAS`
+- **WNBA**: `CONN↔CON` (live scoreboard returns short `CON`; older byteam returns `CONNECTICU`; `DAL` matches canonical on the scoreboard so no `/api/live` translation needed)
 - **NHL**: `TBL↔TB`, `NJD↔NJ`, `LAK↔LA`, `SJS↔SJ`
 
 If a team rebrands or a new mismatch surfaces, add it to `CANONICAL_TO_ESPN` in the `/api/live` handler — `ESPN_TO_CANONICAL` is auto-derived.

@@ -4932,8 +4932,9 @@ var worker_default = {
           const CANONICAL_TO_ESPN = {
             mlb: { CWS: "CHW" },
             nba: { GSW: "GS", SAS: "SA", NYK: "NY", NOP: "NO", UTA: "UTAH", WAS: "WSH" },
-            // WNBA: ESPN scoreboard returns CONNECTICU / DALLAS instead of CONN / DAL.
-            wnba: { CONN: "CONNECTICU", DAL: "DALLAS" },
+            // WNBA: ESPN scoreboard returns CON for Connecticut; other abbrs match canonical.
+            // (Older byteam responses use CONNECTICU/DALLAS — those are normalized via TEAM_NORM elsewhere.)
+            wnba: { CONN: "CON" },
             nhl: { TBL: "TB", NJD: "NJ", LAK: "LA", SJS: "SJ" },
           }[sport] || {};
           const ESPN_TO_CANONICAL = Object.fromEntries(
