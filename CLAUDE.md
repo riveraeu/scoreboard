@@ -321,7 +321,7 @@ For totals: dedup key is `homeTeam|awayTeam|threshold` (game) or `sport|scoringT
 
 ## Key Gotchas
 
-**TEAM_NORM (Kalshi → ESPN)**: NBA `{ GS→GSW, SA→SAS, NY→NYK, NJ→BKN, NO→NOP, PHO→PHX, WPH→PHX, KAT→ATL }`. WNBA `{ CONNECTICU→CONN, DALLAS→DAL, WAS→WSH, GSV→GS, LAS→LA }` — ESPN scoreboard returns truncated/irregular forms (`CONNECTICU`, `DALLAS`); Kalshi tickers use canonical (`CONN`, `DAL`). After building `STAT_SOFT["nba|*"]` / `STAT_SOFT["wnba|*"]` rankMaps from ESPN byteam (which also returns short codes), a post-normalization loop adds the long-form key so `nbaDefRank["GSW"]` resolves.
+**TEAM_NORM (Kalshi → ESPN)**: NBA `{ GS→GSW, SA→SAS, NY→NYK, NJ→BKN, NO→NOP, PHO→PHX, WPH→PHX, KAT→ATL }`. WNBA `{ CONNECTICU→CONN, CON→CONN, DALLAS→DAL, WAS→WSH, GSV→GS, LAS→LA }` — ESPN returns Connecticut as either `CON` (current byteam) or `CONNECTICU` (older scoreboard); both alias to canonical `CONN`. Kalshi tickers use canonical (`CONN`, `DAL`). After building `STAT_SOFT["nba|*"]` / `STAT_SOFT["wnba|*"]` rankMaps from ESPN byteam (which also returns short codes), a post-normalization loop adds the long-form key so `nbaDefRank["GSW"]` resolves.
 
 **WNBA `parseGameTeams` — variable-length abbrs**: WNBA mixes 2-, 3-, and 4-char canonical abbrs (`LV/NY/GS/LA` + `ATL/IND/DAL` + `CONN`). NBA's 3+3-first / 2+3-fallback parser doesn't handle 2+2 (`LVNY`, `GSLA`) or 4-char halves (`CONNIN`, `LVCONN`). The WNBA branch in `parseGameTeams` tries every (i, len−i) split with both halves length 2–4, preferring longer left-side first (so `CONNIN` → `CONN+IND`, not `CO+NNIN`). `_VALID_TEAMS["wnba"]` is the 15-team canonical set; tickers also use this set, so the longest-prefix-wins heuristic is safe.
 
