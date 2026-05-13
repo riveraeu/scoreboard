@@ -1794,6 +1794,16 @@ function App() {
                   { const _mts = [..._apiThresholds].filter(t => _rawTruePctMap[t] != null).sort((a,b) => b-a);
                     let _mx = 0;
                     for (const _t of _mts) { if (_rawTruePctMap[_t] < _mx) _rawTruePctMap[_t] = _mx; else _mx = _rawTruePctMap[_t]; } }
+                  // Cap fallback thresholds above an API anchor: P(X>=t) cannot exceed P(X>=t') for t > t'.
+                  // Walk low→high; once an API value is seen, every later (higher-threshold) fallback is capped at it.
+                  { const _ts = [...new Set(displayRates.map(r => r.t))].sort((a,b) => a-b);
+                    let _apiCap = null;
+                    for (const _t of _ts) {
+                      if (_apiThresholds.has(_t)) { _apiCap = _rawTruePctMap[_t]; }
+                      else if (_apiCap != null && _rawTruePctMap[_t] != null && _rawTruePctMap[_t] > _apiCap) {
+                        _rawTruePctMap[_t] = _apiCap;
+                      }
+                    } }
                   return displayRates.map(({t, count: countOver, pct: pctOver}) => {
                     const isUnder = direction === "under";
                     // Flip all hit-rate values for "under" direction

@@ -253,4 +253,5 @@ For totals: dedup key is `homeTeam|awayTeam|threshold` (game) or `sport|scoringT
 Strikeout truePct is enforced via:
 1. `qualified:false` plays in `plays[]` keep all thresholds (key `playerName|sport|stat|threshold` so no dedup collision)
 2. Post-loop sweep re-derives truePct for every threshold from `pitcherKDistCache` distribution
-3. Frontend `_rawTruePctMap` walks highest→lowest tracking running max as safety net
+3. Frontend `_rawTruePctMap` walks highest→lowest tracking running max across API thresholds as safety net (fallback values excluded so noisy fallbacks can't lift API values)
+4. Frontend cap pass: walks low→high, and any fallback threshold above an API anchor is capped at the anchor's truePct (P(X≥t) cannot exceed P(X≥t') for t > t'). Needed because the player card hits `/api/kalshi` directly — bypasses the [67,91] gate — so thresholds outside the band render with `(seasonHitRate + softPct) / 2` fallback that can otherwise exceed the in-band API anchor.
