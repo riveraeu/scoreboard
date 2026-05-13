@@ -2,10 +2,10 @@
 
 ## Workflow for New Features and Debugging
 
-1. **Check memory and CLAUDE.md** — Read `MEMORY.md` and relevant memory files. Scan CLAUDE.md for the area being changed.
+1. **Check memory and CLAUDE.md** — Read `MEMORY.md` and relevant memory files. Scan CLAUDE.md for the area being changed; load `docs/MODEL.md`, `docs/INFRA.md`, or `docs/FRONTEND.md` if the change touches those areas.
 2. **Plan and get approval** — Present the full plan as text only (files to change, logic, edge cases). Wait for explicit user approval before editing any files.
 3. **Implement** — Make the changes. If backend logic changed, confirm with `/api/tonight?debug=1` (or relevant endpoint) and print key fields proving the change is correct.
-4. **Deploy and document** — `git push origin main` to deploy. Update CLAUDE.md in the same commit. Save a memory entry for anything non-obvious future sessions should know.
+4. **Deploy and document** — `git push origin main` to deploy. Update CLAUDE.md (and the relevant `docs/*.md`) in the same commit. Save a memory entry for anything non-obvious future sessions should know.
 
 ---
 
@@ -17,6 +17,19 @@ Sports prop betting dashboard that pulls Kalshi prediction market prices, comput
 
 ---
 
+## Where to look
+
+| Topic | File |
+|---|---|
+| Per-sport modeling internals (SimScore tiers, lambdas, miscAdj, gates, Kalshi parsing details, dedup logic) | `docs/MODEL.md` |
+| Cache keys + TTLs, Upstash storage, env vars, deployment, testing, data sources | `docs/INFRA.md` |
+| URL routing, App.jsx state shape, Market Report internals, live tracking mechanics, sizing, color doctrine + per-play-type explanation table | `docs/FRONTEND.md` |
+| Common debugging recipes | `docs/DEBUGGING.md` |
+
+The cross-cutting gotchas at the bottom of this file are kept inline because they bite during *any* change, not just modeling work.
+
+---
+
 ## Architecture
 
 ### API: `api/[...path].js` + `api/lib/`
@@ -24,7 +37,7 @@ Single Vercel Edge Function. Imports four ES module lib files:
 - `api/lib/simulate.js` — park factors + simulation functions (`log5K`, `simulateKsDist`, `buildNbaStatDist`, `simulateHits`, `simulateMLBTotalDist/NBATotalDist/NHLTotalDist`, `simulateTeamTotalDist`, `simulateTeamPtsDist`, `kDistPct/nbaDistPct/totalDistPct`, kelly/EV math), `TTO_DECAY_FACTOR`, `UMPIRE_KFACTOR`
 - `api/lib/mlb.js` — `buildLineupKPct` (also exports `batterSplitBA`, `batterHRRSplits`), `buildBarrelPct`, `buildPitcherKPct` (also exports `pitcherRecentKPct`, `pitcherLastStartDate`, `pitcherLastStartPC`, `pitcherInfoByTeam`, `pitcherAvgBF`, `pitcherStdBF`, `umpireByGame`), `MLB_ID_TO_ABBR`. Pitcher gamelog batch uses `Promise.allSettled`.
 - `api/lib/nba.js` — `buildNbaDvpStage1/FromBettingPros/Stage3FG`, `buildNbaDepthChartPos`, `buildNbaPaceData`, `buildNbaPlayerPosFromSleeper`, `warmPlayerInfoCache`, `buildNbaUsageRate`, `buildNbaInjuryReport`
-- `api/lib/wnba.js` — `buildWnbaPaceData`, `buildWnbaUsageRate`, `buildWnbaInjuryReport`, `buildWnbaDvp` (server-side stat-allowed aggregate — BettingPros has no WNBA page), `WNBA_TEAM_IDS` (15 hardcoded; ESPN `/teams` list endpoint is broken for WNBA), `WNBA_ESPN_TO_CANON`/`WNBA_CANON_TO_ESPN` (CONNECTICU↔CONN, DALLAS↔DAL). WNBA model anchors on 2025 season data; 2026 trust ramps via `vals26.length/10`.
+- `api/lib/wnba.js` — `buildWnbaPaceData`, `buildWnbaUsageRate`, `buildWnbaInjuryReport`, `buildWnbaDvp` (server-side stat-allowed aggregate — BettingPros has no WNBA page), `WNBA_TEAM_IDS` (15 hardcoded; ESPN `/teams` list endpoint is broken for WNBA), `WNBA_ESPN_TO_CANON`/`WNBA_CANON_TO_ESPN` (CONNECTICU↔CONN, DALLAS↔DAL). WNBA model anchors on 2025 season data.
 - `api/lib/utils.js` — CORS helpers, `parseGameOdds` (returns `{total, moneyline, spread}`), `parseGameScores` (returns `{state, detail, homeScore, awayScore, gameDate, gameTime, seriesSummary}` keyed by home abbr; `seriesSummary` non-null in NBA/NHL playoffs), team rank helpers (`buildSoftTeamAbbrs`, `buildHardTeamAbbrs`, `buildTeamRankMap`)
 
 ### Frontend: Vite + React (`src/`)
@@ -35,49 +48,21 @@ Entry: `index.html` → `src/main.jsx` → `src/App.jsx`. Vercel runs `npm run b
 - `src/lib/utils.js` — `slugify`, `teamUrl`, `logoUrl(sport, abbr)` (handles ESPN CDN abbr mismatches NHL `tbl→tb, njd→nj, lak→la, sjs→sj`; NBA `kat→atl`)
 - `src/lib/liveStats.js` — live pick tracking helpers
 - `src/lib/hooks.js` — `useIsMobile(threshold=600)`: resize+orientation-aware boolean. Use this for responsive layouts (e.g. `LineupsPage` toolbar wraps to 2 rows on mobile). `SimBadge`/`DayBar` tooltips also support tap-to-pin so SimScore breakdowns are accessible on touch devices.
-- `src/components/` — `LineupsPage` (homepage tab layout), `MatchupCard` (per-game card), `PlaysColumn` (per-sport explanation branches: MLB-K, MLB-hitter, NBA, WNBA, NHL + generic fallback; WNBA mirrors NBA with retuned tiers — USG ≥27/≥22, MIN ≥27/≥22, game total ≥168/≥158/≥175 — and reads `play.wnba*` fields), `MyPicksColumn`, `MarketReport`, `ModelPage`, `TeamPage`, `TotalsBarChart`, `DayBar`, `AddPickModal`
+- `src/components/` — `LineupsPage` (homepage tab layout), `MatchupCard` (per-game card), `PlaysColumn` (per-sport explanation branches: MLB-K, MLB-hitter, NBA, WNBA, NHL + generic fallback; WNBA mirrors NBA with retuned tiers and reads `play.wnba*` fields), `MyPicksColumn`, `MarketReport`, `ModelPage`, `TeamPage`, `TotalsBarChart`, `DayBar`, `AddPickModal`
 
 **Dev proxy**: `vite.config.js` proxies `/api` to production so `npm run dev` works without local backend.
 
-### Storage: Upstash Redis
-On Vercel, `env.CACHE` (Cloudflare KV binding) is unavailable — `makeCache()` falls through to Upstash REST client (`UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`).
+See `docs/INFRA.md` for storage and cache details.
 
-**Free tier 500k commands/month** — when exceeded, all reads/writes silently return null (Upstash returns HTTP 400 but the `cmd()` wrapper only extracts `result`). Diagnose with `curl -H "Authorization: Bearer <ADMIN_KEY>" .../api/auth/debug-redis`.
+---
 
-User auth (`user:{email}`) and picks (`picks:{userId}`) live in the same Redis. JWT expires after 365 days. Picks also kept in `localStorage` as backup — restored to server if server returns 0 but local has data.
-
-### Cache keys & TTLs
-| Key | TTL | Notes |
-|---|---|---|
-| `byteam:mlb` | 600s | Probables, lineup K-rates, pitcher avg pitches/BF. **Excludes** `barrelPctMap` (separate). 60s short-TTL guard when any of `lineupSpotByName`, `pitcherAvgPitches`, `hitterOpsMap`, `pitcherH2HStarts` is empty — independent MLB Stats API calls fail silently (`.catch(() => ({}))`) so a successful lineup hydration alongside a failed OPS or gamelog fetch would otherwise bake partial data for 10min, starving HRR OPS / K H2H Hand / platoon / recent K% columns. |
-| `byteam:nba` / `:scoring` | 1800s / 21600s | Defensive stats / offensive PPG |
-| `byteam:wnba` / `:scoring` | 21600s | Defensive stats / offensive PPG (2025 season). Same `buildSoftTeamAbbrs` / `buildTeamRankMap` helpers as NBA. |
-| `byteam:nhl` | 21600s | GAA + SA per team |
-| `byteam:nfl` | 1800s | |
-| `kalshi:bundle:{date}` | 600s | All 18 series responses as JSON blob — cache hit = zero Kalshi calls. Bypassed by `?bust=1`. |
-| `kalshi:stale:{ticker}` | 1800s | Stale-while-revalidate per-ticker fallback for 429/empty. TTL caps drift if Kalshi keeps 429-ing — series disappears from `/api/tonight` rather than serving 30+ min old prices. |
-| `gameTimes:v2:{date}` | 600s | Stores `sport:team:ptDate` AND bare `sport:team` (first wins). Built from yesterday + today + tomorrow ESPN scoreboards in parallel. Cleared by `?bust=1`. |
-| `nba:pace:2526` | 12h | Pace + OffRtg/DefRtg + leagueAvg. Cleared by `?bust=1`. |
-| `wnba:pace:2025` | 12h | Pace (avgEstimatedPossessions) + OffRtg/DefRtg/PPG. 2025 anchor. |
-| `wnba:dvp:2025:{date}` | 12h | Stat-allowed DVP aggregated server-side from prior-season player gamelogs (no BettingPros equivalent). Flat (no per-position split). |
-| `wnba:injuries:{date}` | 1800s | ESPN injuries (Out + GTD) |
-| `wnba:usg:{playerId}:2025` | 6h | Per-player USG% — falls back to `(avgFGA + 0.44·avgFTA + avgTO) / (avgMin × 1.88)` when ESPN omits direct USG (1.88 = 2.255 × 40/48 rescales NBA formula to 40-min game). |
-| `nba:depth:{date}` | daily | |
-| `mlb:barrelPct` | 6h | Baseball Savant CSV |
-| `mlbSchedTomorrow:{date}` | 600s | Tomorrow's MLB schedule (probables only) |
-| `weather:mlb:{date}` | 600s | ESPN weather, refreshed independently of gameTimes |
-| `teamschedule:v2:{sport}:{abbr}` | 3600s | H2H + season hit rates. Cleared by `?bust=1`. |
-| `lineOpen:{ticker}:{gameDate}` | 2 days | E1 line-movement opening price |
-| `team:v3:{sport}:{abbr}:{date}` | 3600s | `/api/team` data |
-| `live:{sport}:{teams sorted}:{ptDate}` | 60s in / 300s post | `/api/live` boxscore |
-
-### Routes
+## Routes
 - `/api/tonight` — main play generation. `?debug=1` returns dropped/preDropped + debug fields. `?bust=1` bypasses caches. **Frontend always passes `?bust=1` on the initial page-load fetch** (`App.jsx` ~line 230). The previous client-side sessionStorage cache (`tonight_v1_${date}`, 2-min TTL) was removed for absolute freshness — every browser tab session now pays the cold cost (~5–8s) once on entry. App is a SPA so this useEffect fires once per tab session, not per in-app navigation. Manual ↻ button (`bustCache()`) also fetches `?bust=1`.
 - `/api/kalshi` — raw Kalshi market data
 - `/api/player`, `/api/gamelog` — ESPN player info + gamelog
 - `/api/team` — team page data (gameLog, lineup, season stats, nextGame)
 - `/api/live` — in-game boxscore for pick tracking (`?games=mlb:LAD:SD,nba:GSW:LAL`); player props poll this; total/team-total picks resolve from existing `meta.gameScores` (no extra fetch)
-- `/api/dvp`, `/api/nba-depth`, `/api/dvp/debug-dc` — DVP/depth chart. Branches: `basketball/nba`, `basketball/wnba` (returns `position`, `rankMaps`/`softTeams`/`hardTeams` for points/rebounds/assists/threePointers from `byteam:wnba`; canonical aliases added via `WNBA_ESPN_TO_CANON` so lookups by ticker abbr resolve — without this the WNBA player-card explanation block + SimBadge skip-render because they gate on `dvpData.position` and `dvpData.rankMaps`), `football/nfl`, `hockey/nhl`, `baseball/mlb`.
+- `/api/dvp`, `/api/nba-depth`, `/api/dvp/debug-dc` — DVP/depth chart. Branches: `basketball/nba`, `basketball/wnba` (returns `position`, `rankMaps`/`softTeams`/`hardTeams` for points/rebounds/assists/threePointers from `byteam:wnba`; canonical aliases added via `WNBA_ESPN_TO_CANON` so lookups by ticker abbr resolve), `football/nfl`, `hockey/nhl`, `baseball/mlb`.
 - `/api/auth/{register,login,reset,list-users,debug-redis,calibration,clear-kalshi-stale}` — auth + admin. Password min 8 chars. Admin endpoints fail-closed if `ADMIN_KEY` missing.
 - `/api/auth/clear-kalshi-stale` — `POST ?ticker=KXMLBTEAMTOTAL` with `Authorization: Bearer <ADMIN_KEY>`. Deletes `kalshi:stale:{ticker}` so the next cold bundle build attempts Kalshi fresh instead of serving the stale entry. Use when a series has been rate-limit-stuck on stale data past the 30-min TTL window. Ticker validated against `/^KX[A-Z0-9]+$/`.
 - `/api/auth/calibration` — outcome stats. Auth: bearer JWT (any user) or `?adminKey=`. Returns `overall`, `byCategory`, `byCategoryDetail` (per-category truePct buckets, used by `CalibModule` per ModelPage tab), `kStrikeouts` (K-feature breakdowns).
@@ -86,236 +71,17 @@ User auth (`user:{email}`) and picks (`picks:{userId}`) live in the same Redis. 
 
 ---
 
-## Models
+## Models (summary)
+See `docs/MODEL.md` for SimScore tiers, lambda formulas, gates, dedup, and Kalshi parsing details.
 
-### Universal definitions
-- **SimScore**: 5 components × 2pts each → max 10. Qualifies at ≥ 8. Null component → 1pt abstain (unless noted otherwise).
-- **Edge gate**: `edge = truePct − kalshiPct ≥ 3%`. `kalshiPct` is already the fill price (ask or blended orderbook walk); `spreadAdj` is computed but **not** subtracted.
-- **`pct ∈ [67, 91]` filter**: universal qualification window for player props, game totals, and team totals. UNDER discovery uses `noKalshiPct ∈ [67, 91]`.
-- **UNDER plays** (totals only): `underEdge = (100−truePct) − (100−kalshiPct) ≥ 3%` AND `noKalshiPct ∈ [67, 91]`. `direction:"under"`, badge red, bars use `noTruePct`/`noKalshiPct`, prose colors inverted, track ID appends `|under`.
-
-### MLB Strikeouts
-**True%**: `simulateKsDist(orderedKPcts, pitcherKPct, parkFactor, nSim, totalPA, earlyExitProb, stdBF)` → `kDistPct(dist, threshold)`. Shared distribution per pitcher (key `team|hand`) guarantees monotonicity. nSim 10k if simScore ≥ 8 else 5k.
-
-**Adjustments inside `simulateKsDist`**:
-- TTO decay: K% × `TTO_DECAY_FACTOR (0.88)` for BF ≥ 19
-- Blowout hook: `_earlyExitProb` from pitcher team ML (`+150→8%, +200→12%, +250+→18%`); each trial may pull pitcher early (BF = rand[10,15])
-- stdBF variance: each trial samples `trialPA ~ Normal(totalPA, stdBF)` clamped [10,27] via scoped Box-Muller (function-scoped to prevent cross-request races). 0 if <3 qualified starts.
-
-**Pre-sim adjustments**:
-- A1 recent form: effective K% = `recentKPct × 0.6 + seasonKPct × 0.4` when ≥3 starts and 30+ BF in last 5 (uses `a1Splits` filter, no NP minimum)
-- A2 rest/fatigue: × 0.96 if days since last start ≤ 3; × 0.92 if also last PC ≥ 95
-- E3a umpire: `pitcherKPctAdj = min(40, pitcherKPctOut × umpireKFactor)`; lookup is ASCII-normalized
-- K% regression: `trust = min(1, bf26/200)` blends 2026 actual with 2025 anchor (or league avg 22.2%)
-- E3b expectedBF: `clamp(round(_avgBF), 15, 27)`. Fallback chain: `pitcherStatsByName.avgBF` → `sportByteam.mlb.pitcherAvgBF` (team key) → `clamp(round(avgP/3.85), 15, 27)`. Default 24. Both `avgP` and `avgBF` are sample-weighted blends of 2026 and 2025 anchors: `trust26 = min(1, gs26/15)`, blended = `trust26 × val26 + (1 − trust26) × val25`. Stabilizes early-season ramp-up workloads (e.g. Skenes 2026 avgP=81 with ~7 starts blended toward his 2025 ace baseline ~95) where raw 2026 sample alone would tank expectedBF and the K-market truePct. Pitchers with only one season's data use it as-is.
-
-**SimScore**:
-- `kpctPts` — CSW% (≥30→2, >26→1, ≤26→0); falls back to regressed K% (>27/>24/≤24)
-- `lkpPts` — Lineup oK% hand-adjusted (>24→2, >22→1, ≤22→0)
-- `kHitRatePts` — Trust-weighted blend of 2026 observed and 2025 computed K-threshold hit rate (≥90→2, ≥80→1, <80→0). `trust26 = min(1, vals26.length/15)`. `blendedHitRate` is the value. **Pitcher gamelog is filtered to starts only** (`IP ≥ 3.0 AND TBF ≥ 12`) — ESPN gamelog returns all appearances incl. relief stints; mixing them in would tank per-threshold hit rate (e.g. Ashcraft 2025: 8 starts but 26 total appearances → unfiltered hit rate at ≥4 K was ~31%, start-only is ~95%). Filter applied once at `playerColCache` build (`_evtPool`); all downstream pitcher-K consumers (`vals25`/`vals26`/`_bf26`/`seasonPct`/soft-bucket history) operate on starter-only data.
-- `kH2HHandPts` — Pitcher's K hit rate vs opponents whose lineup hand majority matches tonight's. Tonight uses full switch-hitter adjustment (S vs RHP→L); historical uses `staticTeamHandMajority` (S = 0.5R + 0.5L). ≥5 starts required (≥80→2, ≥65→1, <65→0).
-- `totalPts` — O/U tier (≤7.5→2, <10.5→1, ≥10.5→0)
-
-**Display-only fields** (not in SimScore, kept for debug/calibration): `kbbPts`, `parkMeets`, `mlPts`, `kTrendPts` (calibration breakdown only — no longer shown in prose), `pitchesPts`. Recent K% still drives the A1 effective-K blend in the model; just removed from explanations to declutter.
-
-**Gates** (in addition to SimScore ≥ 8):
-1. Threshold sanity: `threshold > ceil(expectedKs) + 2` → `qualified:false` (only when lineup confirmed and expectedKs available)
-2. Insufficient_starts: if `pitcherHasAnchor !== true` (gs25 ≥ 5 AND bf25 ≥ 100) requires `gs26 ≥ 8`. Catches TJ-return / pure-reliever cases. Checked in pre-filter AND main loop.
-
-### MLB Hitters (HRR)
-**True%**: logit-sigmoid park adjustment on blended base rate (no Monte Carlo for HRR — `simulateHits` only used for hits stat).
-```
-rawMlbPct = (primaryPct + softPct) / 2
-truePct = sigmoid(logit(rawMlbPct/100) + ln(parkFactor)) × 100
-```
-- `primaryPct` = 2026 HRR 1+ rate (fallback: 2025+2026 blend, then career)
-- `softPct` = HRR 1+ rate vs tonight's pitcher (BvP, ≥10 games). **Handedness fallback** when BvP <10: `batterHRRSplits[name][vsR/vsL]` (MLB Stats API, 2025+2026 combined), Poisson approx `1 − e^(−lambda)` where `lambda = totalHRR/games`; ≥10 games vs that hand required. `softLabel` set to `"vs RHP"`/`"vs LHP"`.
-- B2 batter recent form: `hitterEffectiveBA = 0.3 × recentBA + 0.7 × seasonBA` when ≥20 AB in last 10 (used by `simulateHits`, not HRR formula)
-
-**SimScore**:
-- `hitterOpsPts` — 2026 OPS (≥.850→2, ≥.720→1, <.720→0). Fetched via 7th parallel request in `buildLineupKPct`.
-- `hitterWhipPts` — Pitcher WHIP (>1.35→2, >1.20→1, ≤1.20→0)
-- `hitterSeasonHitRatePts` — Blended season HRR rate (≥80→2, ≥70→1, <70→0). `trust26 = min(1, vals26.length/30)`.
-- `hitterH2HHitRatePts` — BvP path (≥10g): ≥80→2, ≥70→1; or handedness path (<10 BvP, hand known, ≥10g vs hand): same tiers. `hitterH2HSource` = `"bvp"|"hand"|"abstain"`.
-- O/U tier (≥9.5→2, ≥7.5→1, <7.5→0)
-
-**Gates**: lineup spot 1–5 required (6+ dropped); `low_lineup_spot` and `hitterSimScore < 5` are pre-gates that do NOT push to `plays[]`.
-
-**Pitcher data fallback chain** (for `hitterPitcherName`/`hitterPitcherEra`, also for gamelog loading):
-1. `sportByteam.mlb.probables[oppAbbr]` (ESPN scoreboard)
-2. `sportByteam.mlb.pitcherInfoByTeam[oppAbbr]` (MLB Stats API — announced day before, very reliable)
-3. `pitcherGamelogs[oppAbbr].name` (if gamelog loaded)
-
-Included in **all** drop objects so the market report renders pitcher info for non-qualified rows.
-
-### NBA player props
-**True%**: `buildNbaStatDist(gameValues, dvpFactor, paceAdj, isB2B, nSim, miscAdj)` → `nbaDistPct`. Dist cached per `playerId|stat` so all thresholds share one distribution. Mean from last 10, std from full season. Adjusted: `× teamDefFactor × (1 + paceAdj×0.002) × 0.93 if B2B × miscAdj`. nSim scales with pre-edge simScore (≥8 → 10k, ≥5 → 5k, else 2k).
-
-**`miscAdj` = C2 × C3 × C4**:
-- C2 injury boost: `1.08` per Out player on own team, capped 1.15× (from `buildNbaInjuryReport`)
-- C3 blowout risk: `max(0.85, 1 − (|spread|−10) × 0.007)` when `|spread| > 10`
-- C4 home/away split: `splitMean / overallMean` weighted (0.7 home / 0.3 away)
-
-`teamDefFactor` = general team defense (`rankMap[opp].value / leagueAvg`), NOT position-adjusted. Falls back to `avg(seasonPct, softPct) − 4% if B2B` when sim returns null (<5 game values).
-
-**SimScore**:
-- C1 stat-specific opportunity (from `buildNbaUsageRate`):
-  - points/assists/threePointers: USG% ≥28→2, ≥22→1, <22→0 (USG% formula: `(avgFGA + 0.44×avgFTA + avgTO) / (avgMin × 2.255) × 100` — ESPN `usageRate` is 0.0 so fallback always runs)
-  - rebounds: avgMin ≥30→2, ≥25→1, <25→0
-- DVP ratio (`dvpRatio`): ≥1.05→2, ≥1.02→1, else 0
-- `nbaSeasonHitRatePts` — `primaryPct` at threshold (≥90→2, ≥80→1, <80→0)
-- `nbaSoftHitRatePts` — `softPct` = hit rate vs teams in **same DVP tier** as tonight's opp (rank 1–10 soft, 11–20 neutral, 21–30 hard). ≥90→2, ≥80→1, <80→0.
-- `nbaTotalPts` — Game O/U (≥215→2, <215→0). Game totals from `sportByteam.nbaGameOdds`. Pace applied to sim mean but NOT scored.
-
-**Gates**: edge ≥ 3%, nbaSimScore ≥ 8. No soft-matchup pre-filter — all NBA markets enter the play loop.
-
-### WNBA player props
-Kalshi series: `KXWNBAPTS`, `KXWNBAREB`, `KXWNBAAST`, `KXWNBA3PT`. No team totals on Kalshi (mirrors NHL/NFL).
-
-**True%**: reuses `buildNbaStatDist` + `nbaDistPct`. Cache key `wnbaPlayerDistCache[playerId|stat]`. Same formula as NBA: `× teamDefFactor × (1 + paceAdj×0.002) × 0.93 if B2B × wnbaMiscAdj`. nSim scales with pre-edge simScore.
-
-**Anchor**: 2025 season as base; 2026 trust ramps `vals26.length/10` (vs NBA's `/15`) because the WNBA season is ~40g vs 82g, so equivalent trust accumulates faster relative to season length.
-
-**SimScore — calibrated to WNBA scoring environment**:
-- C1 opportunity (from `buildWnbaUsageRate`):
-  - points/assists/threePointers: USG% ≥27→2, ≥22→1, <22→0 (vs NBA 28/22 — slightly compressed)
-  - rebounds: avgMin ≥27→2, ≥22→1, <22→0 (vs NBA 30/25 — 40-min game vs 48)
-- DVP ratio (`dvpRatio`): ≥1.05→2, ≥1.02→1, else 0 (same tiers as NBA, single-tier from `buildWnbaDvp` aggregate — no per-position split, no BettingPros equivalent)
-- `wnbaSeasonHitRatePts` — `primaryPct` at threshold (≥90/≥80, same as NBA)
-- `wnbaSoftHitRatePts` — same DVP-tier matching as NBA
-- `wnbaTotalPts` — Game O/U: ≥168→2, ≥158→1, <158→0 (vs NBA 215/215; WNBA totals run 150–175)
-
-**USG fallback formula adjustment**: `(avgFGA + 0.44·avgFTA + avgTO) / (avgMin × 1.88) × 100` — coefficient 1.88 = NBA's 2.255 × (40/48) to rescale for 40-min game. Without this rescale, WNBA USG would be ~20% inflated relative to NBA tiers.
-
-**Gates**: edge ≥ 3%, wnbaSimScore ≥ 8.
-
-### NHL Points
-**True%**: reuses `buildNbaStatDist` + `nbaDistPct`. Cache key `nhlPlayerDistCache[playerId|stat]`. Adjusted: `× teamDefFactor × (1 + shotsAdj×0.002) × 0.93 if B2B × nhlToiTrendAdj`. `teamDefFactor` = opp GAA / league avg.
-
-**D3 TOI trend** (passed as `miscAdj`): `clamp(recent3TOI / last10TOI, 0.92, 1.08)`. Only applied when ratio >1.05 or <0.95.
-
-**SimScore**:
-- `nhlOpportunity` — Avg TOI last 10 (≥18min→2, ≥15min→1, <15→0)
-- `_gaaRank` — Opp GAA rank (≤10→2, ≤15→1, else 0)
-- `nhlSeasonHitRatePts` — Career rate at threshold (≥90→2, ≥80→1, <80→0)
-- `nhlDvpHitRatePts` — Rate vs teams with GAA > league avg (≥3 qualifying games; ≥90→2, ≥80→1, <80→0)
-- `nhlGameTotal` — O/U line (≥7→2, ≥5.5→1, <5.5→0)
-
-Display-only: `nhlSaRank`, `nhlTeamGPG`. **B2B detection**: last gamelog event was yesterday UTC.
-
-### NFL
-Stats: `passingYards`, `rushingYards`, `receivingYards`, `receptions`, `completions`, `attempts`. Gate: opp in soft teams; edge ≥ 3%.
-
-### Game Totals (MLB/NBA/WNBA/NHL/NFL)
-Kalshi series: `KXMLBTOTAL`, `KXNBATOTAL`, `KXWNBATOTAL`, `KXNHLTOTAL`, `KXNFLTOTAL`. `gameType: "total"`. Market format: `floor_strike = N` means YES = total ≥ N (i.e. "over N−0.5").
-
-**WNBA totals**: same possession-based projection as NBA but with `wnbaPaceData` (2025 anchor). Per-team std=11 (WNBA scoring variance roughly NBA × (40/48); empirical game-total std ~13–15). **SimScore tiers retuned**: Comb OffRtg/DefRtg ≥98/≥93 (vs NBA 118/113), Pace > leagueAvg+1 (vs +2), O/U ≥168/≥158 (vs 225/215). Pace data from ESPN `avgEstimatedPossessions` (no separate `paceFactor` field for WNBA). Sample-weighted seasonHitRate blend via `_ssnBlendWeight`, same as NBA/MLB/NHL.
-
-**True%**: Poisson MC for MLB/NHL, Normal for NBA. `_simData` includes per-team expected and `expectedTotal`. **All three sports blend the sim with `gtSeasonHitRate`** via shared `_gtSeasonHitRate(sport, home, away, thr)` helper which returns `{ rate, sample }` — average of home + away team's season rate of games where combined score ≥ threshold; requires ≥5 schedule games per team. Sample = `min(home games, away games)`. **Blend is sample-weighted** via `_ssnBlendWeight(sample) = min(1, sample/40) × 0.7` — observations earn up to 70% weight at N≥40, model retains a 30% minimum for tonight-specific factors. Replaced the prior fixed 50/50 weighting on 2026-05-08 because UNDERS were undertested vs player props and tonight's slate showed several team-total UNDERs with model/observed gaps where the 50/50 blend underweighted observations. Saves `modelTruePct` (pre-blend), `gtSeasonHitRate`, and `gtSsnSample` in `_simData`. Blend corrects tail-thinness across distributions (Poisson for MLB/NHL, Normal-with-std=13 for NBA). NBA per-team std bumped from 11 → 13 (game total std ≈ 18.4, closer to empirical NBA game-total std). `_gtScheduleMap` populates both teams for every sport that has game totals; `_SCHED_TO_ESPN` translates canonical → ESPN team-route slug for MLB CWS→CHW and NHL TBL→TB / NJD→NJ / LAK→LA / SJS→SJ.
-
-**MLB edge dampener**: when `|threshold − gameOuLine| ≥ 3`, multiply `overEdge`/`underEdge` by 0.7 before gate check. Mechanical correction for residual tail thinness after the blend; protects bet sizing on Poisson-tail-fueled UNDERs that were inflating edge to 16–26%. Stored as `edgeDampened: 0.7` on the play; `rawEdge` and `rawUnderEdge` preserved for debug. NBA/NHL skipped.
-
-**Schedule fetch abbr translation**: `_gtScheduleMap` (game totals) and `_ttScheduleMap` (team totals) translate canonical → ESPN team-route slug before building the schedule URL — mirrors `CANONICAL_TO_ESPN` in `/api/live`. `_SCHED_TO_ESPN` covers MLB `CWS → CHW` and NHL `TBL → TB / NJD → NJ / LAK → LA / SJS → SJ`. Cache keys keep the canonical form so cached reads are consistent. Without this, schedules for affected teams silently fetched as empty arrays, breaking H2H and game-total seasonHitRate blends for any matchup involving them.
-
-**ESPN schedule event abbrs are NOT canonical** — they're whatever ESPN puts on each competitor (e.g. `c.abbr === "CHW"` in the events even when fetched via the `chw` slug). **Any consumer of `_gtScheduleMap` / `_ttScheduleMap` events that filters by team abbr must normalize via `normTeam(sport, c.abbr)` before comparing to canonical scoringTeam/oppTeam values.** Three sites had silent bugs where this was missing: `_gtH2HRate`, `_ttRunVals` (teamL10RPG), `_ttSeasonHits` (ttSeasonHitRate) — all caused CWS team-total picks to read `ttSeasonHitRate=0` because filters didn't match `CHW`-form abbrs. NBA equivalents (`_nbaGtH2HRate`, `_ttNbaSeasonHits`) already used `normTeam`. This is the third instance of the canonical-vs-ESPN-abbr divergence (after live-API translation and schedule URL slugs); always normalize when filtering ESPN-sourced events.
-
-**Lambda / projection formulas**:
-
-*MLB*:
-```
-awayMult = 0.6 × (awayERA/4.20) + 0.4 × (awayTeamERA/4.20)
-homeMult = 0.6 × (homeERA/4.20) + 0.4 × (homeTeamERA/4.20)
-homeLambda = homeRoadRPG × awayMult × parkRF × homePlatoonFactor × weatherFactor × umpireRunFactor  # clamped [1,12]
-awayLambda = awayRoadRPG × homeMult × parkRF × awayPlatoonFactor × weatherFactor × umpireRunFactor  # clamped [1,12]
-```
-- **Platoon factor**: `(lineup composite BA vs starter's hand) / (lineup composite overall BA)` from `batterSplitBA`. Falls back to 1.0 when hand unknown or sample <80 AB. **Note**: MLB Stats API `/teams/stats` does NOT support pitcher-handedness sitCodes (`vl/vr` returns empty) — handedness splits are individual-only. Same factor applied to team total lambda.
-- **Weather factor**: `1 + windOutMph × 0.013 + (tempF − 72) × 0.001`, clamped [0.85, 1.15]. `windOutMph` parsed from ESPN `displayValue` ("Out to LF/CF/RF" positive, "In from..." negative, "L to R"/"R to L" = 0). Skipped for `_MLB_DOMED` parks (TB/TOR/HOU/MIA/SEA/ARI/TEX/MIL).
-- **Road RPG**: from MLB Stats API `sitCodes=A`, stored as `mlbRoadRPGMap`.
-- `umpireRunFactor = 1 / UMPIRE_KFACTOR` applied to both lambdas (and team total lambda).
-
-*NHL*:
-```
-homeLambda = homeGPG × (awayGAA / leagueAvgGAA)  # clamped [0.5, 8]
-awayLambda = awayGPG × (homeGAA / leagueAvgGAA)  # clamped [0.5, 8]
-```
-
-*NBA* (possession-based):
-```
-projPace = (homePace × awayPace) / leagueAvgPace                        # geometric mean
-homeExpected = (homeOffRtg × awayDefRtg / leagueAvgOffRtg²) × projPace
-awayExpected = (awayOffRtg × homeDefRtg / leagueAvgOffRtg²) × projPace
-# Playoff scoring boost when seriesSummary non-null on either team:
-#   homeExpected *= _PLAYOFF_OFF_BOOST  (1.04)
-#   awayExpected *= _PLAYOFF_OFF_BOOST
-```
-OffRtg/DefRtg from same ESPN team-stats call as pace. `nba:pace:2526` stores `teamOffRtg`, `teamDefRtg`, `leagueAvgOffRtg`, `leagueAvgDefRtg`. `_PLAYOFF_OFF_BOOST` is a single tunable at the top of the tonight handler — RS-aggregate ratings systematically under-projected playoff totals (LAL/OKC G3 = 232 vs model 199 vs market 210.5); +4% closes most of the model-vs-market gap. Surfaced as `playoffBoost: 1.04` in `_simData` when applied. Same boost applied to NBA team totals (`_teamExpected *= _PLAYOFF_OFF_BOOST`).
-
-**SimScore — MLB**: homeWHIP, awayWHIP (>1.35→2, >1.20→1, ≤1.20→0), combinedRPG (`homeRPG+awayRPG`; ≥10.5→2, ≥8.5→1), H2H combined hit rate% (homeScore+awayScore ≥ threshold last 10 H2H; ≥3 games required), O/U line (≥9.5→2, ≥7.5→1). WHIP fallback: `pitcherWHIPByTeam[abbr]` → `teamWHIPMap[abbr]` → 1pt abstain. `homeWHIPSource`/`awayWHIPSource` = `"starter"|"team"|null` flags which path fired (covers debut/late-announcement starters).
-
-**SimScore — NBA**: combined pace (both > lgAvg+2 → 2, one > lgAvg → 1), `combOffRtg = (home+away)/2` (≥118→2, ≥113→1), `combDefRtg` (same), `nbaGtH2HRate` (combined score ≥ threshold last 10 H2H; ≥3 games), O/U (≥225→2, ≥215→1).
-
-**SimScore — NHL**: homeGPG, awayGPG, homeGAA, awayGAA (all ≥3.5→2, ≥3.0→1, <3.0→0), O/U (≥7→2, ≥5.5→1).
-
-**UNDER inverted tiers** (representative): MLB WHIP ≤1.10→2, ≤1.25→1; NBA OffRtg/DefRtg <113→2, <118→1; NHL GPG/GAA <3.0→2, <3.5→1; H2H ≤30→2, ≤50→1; O/U inverts thresholds.
-
-**Component point fields are direction-correct** (game totals + team totals): every play stores per-component `*Pts` fields (`homeWhipPts`, `combOffRtgPts`, `ttSeasonHitRatePts`, etc.) reflecting the bet direction. OVER picks store OVER-tier point values; UNDER picks override the same field names with UNDER-tier values via `_underComponents` / `_ttUnderComponents` / `_nttUnderComponents` spread last. **Pre-2026-05-08 UNDER picks have OVER-tier values stored** — calibration analysis on `direction === "under"` rows must filter by `trackedAt >= 1778270400000` (epoch ms for 2026-05-08T16:00Z) to trust per-component fields. Umpire is **not** a SimScore component (the run factor is applied to lambda directly); `ttUmpirePts` was dropped from the API response on 2026-05-08.
-
-**Dedup**: one play per game (homeTeam+awayTeam+sport) — best edge wins across OVER+UNDER AND across game total vs team total. Track ID: `total|sport|home|away|threshold|gameDate[|under]`.
-
-**`Kalshi O/U fallback (NBA + MLB + NHL)`**: Built via `_buildKalshiOuMap(sport, ticker)` from all KX{SPORT}TOTAL markets (unfiltered pct). Highest threshold where YES ≥ 50%, set `total = threshold − 0.5`. Three call sites populate `sportByteam.nbaGameOdds`, `sportByteam.mlb.gameOdds`, `sportByteam.nhlGameOdds` for any team missing a `total`. Originally NBA-only (ESPN omits odds for live/imminent games); MLB+NHL added 2026-05-07 because today's ESPN scoreboard never carries tomorrow's odds and `mlbMetaTomorrow.gameOdds` is intentionally empty — without the fallback, every tomorrow MLB/NHL game total play renders with O/U "—".
-
-### Team Totals (MLB, NBA only)
-Kalshi series `KXMLBTEAMTOTAL`, `KXNBATEAMTOTAL`. `gameType: "teamTotal"`. NHL/NFL absent on Kalshi. Scoring team extracted from ticker suffix (e.g. `LAD8` → LAD).
-
-**True%**:
-- MLB: `simulateTeamTotalDist(lambda)` Poisson, `lambda = teamRPG × (oppERA/4.20) × parkRF`, clamped [0.5, 12]. **Blend**: `truePct = 0.5 × model + 0.5 × ttSeasonHitRate` when season data available. Corrects ~12pt Poisson overestimation at low thresholds. `modelTruePct` stored in debug output.
-- NBA: `simulateTeamPtsDist(mean, std=11)` Normal. `mean = (teamOffRtg × oppDefRtg / lgOffRtg²) × projPace`. `oppDefRtg = oppDefPPG/oppPace × 100`.
-
-**SimScore — MLB OVER**: seasonHitRate% (≥80→2, ≥60→1), oppWHIP (>1.35→2, >1.20→1), teamL10RPG (>5.0→2, >4.0→1), H2H HR% (≥80→2, ≥60→1), O/U (≥9.5→2, ≥7.5→1). `oppWHIP` uses same starter→team fallback as game totals; `oppWHIPSource` flag indicates path.
-**SimScore — NBA OVER**: teamOffRtg, oppDefRtg (≥118→2, ≥113→1), Season HR%, H2H HR% (≥80→2, ≥60→1), O/U (≥225→2, ≥215→1).
-
-**NBA team total truePct also blends sample-weighted with `ttNbaSeasonHitRate`** when available (≥5 schedule games) — same `_ssnBlendWeight` helper as game totals. Saves `modelTruePct` (pre-blend Normal sim) in the play when blend changed the value. Without this, NBA team totals were over-confident on far-from-mean thresholds.
-
-**H2H HR%** (team total): scoring team's hit rate ≥ threshold in last 10 H2H vs opp. **Season HR%** (MLB team total): full-season rate from `_ttScheduleMap`. Both from ESPN team schedule cached at `teamschedule:v2:{sport}:{abbr}`. Requires ≥3 H2H or ≥5 season games; null = 1pt abstain.
-
-**Dedup**: one play per `sport|scoringTeam|oppTeam`, best edge across OVER/UNDER. `_ttBestMap` rule: qualified wins over non-qualified even if edge is lower (commit 4903d5c).
-
----
-
-## Kalshi Market Parsing
-- Series in `SERIES_CONFIG` (18 tickers across all sports/stats)
-- Player props, game totals, team totals: `pct ∈ [KALSHI_GATE, KALSHI_CAP] = [67, 91]` (constants in `api/[...path].js`). Markets outside this band aren't fetched/parsed at all.
-- **Rate limiting**:
-  - Bundle cache `kalshi:bundle:{date}` (600s TTL) — all 18 series as one blob, cache hit = zero calls. Bypassed by `?bust=1`.
-  - Cold: **3 series at a time with 700ms delay** between batches, **shuffled order**. 6+300ms still left ~6/18 series falling back to stale per `?bust=1` (KXMLBTEAMTOTAL was always last-in-line). Shuffling distributes rate-limit pain across categories instead of starving the same tickers. Cost: ~3.6s on cold builds; bundle hits unaffected. 429 → fall through to `kalshi:stale:{ticker}` (no retry). The per-ticker stale fallback fires on both bust and non-bust — it holds the last successful fetch, and is preferable to empty even on bust. (Briefly tried skipping stale on bust to dodge "yesterday's residue", but that strands the 600s bundle once any rate-limited bust call writes empty entries; preserving stale is the safer trade.)
-  - **Bundle preserves prior entries on partial failure**: when a follow-up bundle fetch returns empty for a series due to rate-limit/failure, the prior bundle's entry for that ticker is reused before writing the new bundle. Stops a rapid-bust race from blanking healthy categories (KXMLBTEAMTOTAL was getting blanked between `?bust=1` calls because it was the most rate-limit-prone).
-  - **Staleness surfacing**: any series served from per-ticker stale fallback OR prior-bundle preservation marks each affected market `_kalshiStale: true`. Two consumer paths: (1) `/api/tonight` response (debug + production) returns `staleKalshiSeries: ["KXMLBTOTAL", ...]` listing tickers that fell back this request — at-a-glance signal for diagnosing drift like "Kalshi shows -968 but UI shows -669". (2) Each affected play has `_kalshiStale: true` (derived via `(sport, stat, gameType)` → ticker reverse lookup against the stale set). The flag is omitted on fresh plays.
-  - Orderbooks (thin markets): 8 at a time with 200ms delay. 429 silently skipped.
-- Blended fill price via orderbook walk for thin markets
-- **Stale-ask fallback**: when `yes_ask ≥ $0.98` AND `yes_bid == 0` AND `last_price > 0`, use `last_price_dollars` instead. Handles maxed-ask illiquid markets.
-- `kalshiSpread` = bid-ask in cents. Kept as liquidity signal but **not** subtracted from edge.
-- E1 line movement: opening yesAsk stored at `lineOpen:{ticker}:{gameDate}` (2-day TTL). `lineMove = current − opening`. Badge `▲/▼ Xc` when `|lineMove| ≥ 3`.
-- E2 market depth: `lowVolume = vol < 50`, `thinMarket = spread > 8`, `marketConfidence = "deep" (vol≥50 && spread≤4) | "moderate" | "thin"`.
-
-### Time-based filters
-- **Date cutoff** (`cutoffStr`, ~`[...path].js:3492`): drops plays with `gameDate < yesterday`. Applied to player props pre-merge; game/team totals do an inline `gameDate < cutoffStr` skip in their loops.
-- **Game-start cutoff** (post-dedup, after cross-dedup loop): drops any play whose `gameTime` is already in the past (pre-game market closed; model truePct built on pre-game inputs is no longer valid in-game). Plays missing `gameTime` are kept (already gated by gameDate).
-
-### preDropped vs dropped vs qualified:false
-- `preDropped[]` — filtered before main play loop (no ESPN info yet). Debug-only.
-- `dropped[]` — filtered inside play loop. Debug-only. **Includes game totals** that fail edge or have no sim data (`reason: "edge_too_low"` or `"no_simulation_data"`).
-- `nbaDropped[]` — always present in regular `/api/tonight` response (now empty after pre-filter removed; kept as fallback for `tonightPlayerMap` building).
-- **`qualified:false` plays** — pushed to `plays[]` so player card explanation renders. `tonightPlays` filters them out client-side; `allTonightPlays` keeps them (used to build `tonightPlayerMap`).
-  - MLB strikeouts: edge gate, threshold_too_high, simScore<8 — all thresholds pushed for monotonicity
-  - MLB HRR: edge gate, simScore<8 — `low_lineup_spot` and `hitterSimScore<5` are pre-gates that do NOT push
-  - NBA, NHL: edge gate, simScore<8
-
-### bestMap deduplication
-Dedupe to one play per `playerName|sport|stat`. Winner = highest edge. Non-qualifying plays use threshold-inclusive key and don't compete. After bestMap, non-winning qualified thresholds are re-added as `qualified:false`.
-
-**WNBA pre-pass**: before bestMap, qualified WNBA plays are deduped to one per **player** (across all stats), highest edge wins. Losing stats are mutated to `qualified:false` so allTonightPlays still has them for the player card, but the homepage Plays card only shows the per-player winner. Tighter than NBA/NHL because WNBA slates are small and a player's points/rebounds/assists markets often correlate — showing all of them was clutter.
-
-For totals: dedup key is `homeTeam|awayTeam|threshold` (game) or `sport|scoringTeam|oppTeam` (team). All threshold plays passing edge gate (≥3%) are pushed; best per game is qualified, rest are `qualified:false` (used by team-page bar chart).
+- **MLB Strikeouts** — `simulateKsDist` Monte Carlo (10k/5k), shared distribution per `team|hand` for monotonicity. Pre-sim: A1 recent form, A2 rest, E3a umpire, K% regression, E3b expectedBF blended 2026/2025. SimScore: CSW%, lineup oK%, blended hit rate (starts-only), H2H Hand, O/U.
+- **MLB Hitters (HRR)** — logit-sigmoid park adjustment on `(primaryPct + softPct)/2`. softPct = BvP rate or handedness fallback. Gates: lineup spot 1–5.
+- **NBA player props** — `buildNbaStatDist`, `miscAdj = injuryBoost × blowoutRisk × homeAwaySplit`. SimScore: USG% (or AvgMin for REB), DVP ratio, Season HR, Soft/Tier HR, game O/U.
+- **WNBA player props** — same engine, retuned tiers (USG 27/22, MIN 27/22, game O/U 168/158). 2025 anchor.
+- **NHL Points** — same engine. SimScore: TOI, GAA rank, Season HR, DVP HR, O/U.
+- **NFL** — passing/rushing/receiving yards, receptions, completions, attempts. Gate: opp in soft teams.
+- **Game Totals** — Poisson MC for MLB/NHL, Normal for NBA/WNBA; sample-weighted blend with seasonHitRate. MLB edge dampener when `|threshold − OU| ≥ 3`.
+- **Team Totals (MLB, NBA only)** — MLB Poisson with 50/50 ttSeasonHitRate blend; NBA Normal with sample-weighted blend.
 
 ---
 
@@ -337,7 +103,7 @@ For totals: dedup key is `homeTeam|awayTeam|threshold` (game) or `sport|scoringT
 - **WNBA**: `CONN↔CON` (live scoreboard returns short `CON`; older byteam returns `CONNECTICU`; `DAL` matches canonical on the scoreboard so no `/api/live` translation needed)
 - **NHL**: `TBL↔TB`, `NJD↔NJ`, `LAK↔LA`, `SJS↔SJ`
 
-If a team rebrands or a new mismatch surfaces, add it to `CANONICAL_TO_ESPN` in the `/api/live` handler — `ESPN_TO_CANONICAL` is auto-derived.
+If a team rebrands or a new mismatch surfaces, add it to `CANONICAL_TO_ESPN` in the `/api/live` handler — `ESPN_TO_CANONICAL` is auto-derived. Same canonical-vs-ESPN-abbr divergence applies when filtering ESPN-sourced schedule events — see `docs/MODEL.md` for `_gtScheduleMap`/`_ttScheduleMap` `normTeam` requirement.
 
 **gameTimes lookup chain** (in play loop): `sport:team:gameDate` → `sport:team:tomorrowISOStr` (handles Kalshi encoding tomorrow's games under today's ticker date) → bare `sport:team`.
 
@@ -351,6 +117,8 @@ If a team rebrands or a new mismatch surfaces, add it to `CANONICAL_TO_ESPN` in 
 
 **MLB lineup**: (1) MLB Stats API schedule `hydrate=lineups,probables` (PT date `Date.now()-7h`); (2) active roster fallback (non-pitchers, up to 12, `spot:null`, `lineupConfirmed:false`).
 
+**byteam:mlb partial-cache trap**: MLB byteam hydrates several MLB Stats API calls in parallel and each `.catch(() => ({}))` silently. A successful lineup fetch alongside a failed OPS or gamelog fetch would otherwise bake partial data for 10min — short-TTL guard (60s) fires when any of `lineupSpotByName`, `pitcherAvgPitches`, `hitterOpsMap`, `pitcherH2HStarts` is empty. Symptom: MarketReport columns null across many rows; diff cached vs `?bust=1` to confirm.
+
 **Edge handler env-var wiring**: ALL env vars must be passed through `process.env` to the explicit `env` object at the bottom of `api/[...path].js`. Vercel doesn't auto-attach them. If you add a new env var, add it here too:
 ```js
 const env = {
@@ -361,149 +129,3 @@ const env = {
 };
 ```
 Symptom of missing wire-up: `env?.VAR` is `undefined` even though Vercel dashboard shows it set. JWT_SECRET specifically: `TextEncoder.encode(undefined)` = 0 bytes → `"Imported HMAC key length (0)"` 500 on login.
-
----
-
-## Frontend
-
-### URL Routing
-History.pushState + popstate. Routes:
-- `/:ABBR` → team page (uppercase, e.g. `/LAD`, `/GSW`)
-- `/:ABBR?sport=nhl` → disambiguate multi-sport abbrs (`_multiSportAbbrs` Set)
-- `/:SlugName` → player page (CamelCase via `slugify`)
-- `/model` → Model Reference page
-
-`vercel.json` `/:slug` rewrite serves `index.html` for cold loads. `resolveSlug` checks `"model"` first, then `TEAM_DB`, else stores `pendingSlug` for async ESPN athlete search.
-
-`navigateToPlayer` accepts player objects without `id`; `loadPlayer` resolves ESPN athlete ID via `/athletes?q={name}` when missing.
-
-### State (App.jsx)
-- `tonightPlays` — qualified plays (filtered `qualified !== false`)
-- `allTonightPlays` — raw including `qualified:false`. Used to build `tonightPlayerMap` so all market-report players have explanation data.
-- `mlbMeta` — `{ pitchers, gameOdds, umpires, weather, projectedLineupTeams, teamsWithLineup }` — pitchers merged from ESPN probables + MLB API. `gameOdds` includes total+spread (from ESPN MLB scoreboard, today OR tomorrow if today complete; no date gate in MatchupCard).
-- `mlbMetaTomorrow` — same shape from tomorrow's MLB API schedule. Pitchers only (era null); gameOdds/weather always empty.
-- `nbaMeta` — `{ gameOdds, injuries, gameScores }`. `gameScores` from `parseGameScores`, includes `seriesSummary` in playoffs.
-- `nhlMeta` — `{ gameScores, gameOdds }`. Same shape.
-- `reportData` — full debug response for Market Report overlay
-- `player`, `teamPage`, `teamPageData`, `pendingSlug`, `trackedPlays`
-
-### Market Report
-Sport tabs: ALL / MLB / NBA / NHL (calibration moved to Model Reference page). Columns vary by sport/stat via `XCOLS` map; `COL_TIPS` dictionary supplies hover tooltips. `xcell` function in `MarketReport.jsx` is authoritative for column color tiers — match SimScore tiers (yellow = middle tier, gray = abstain or lowest, red = 0pts).
-
-`fetchReport` updates `tonightPlays` and `allTonightPlays` from the debug response so the plays card stays in sync.
-
-**SimScore tooltip** (hover any `X/10` badge): `buildSimTooltip(m)` in `MarketReport.jsx` is the canonical helper for all play types. Per-component breakdown with actual values.
-
-**Sort defaults**: team totals = Score desc. HRR table: threshold=1 only (others filtered client-side).
-
-**Score>7 highlight**: MLB rows show white+bold name only when `finalSimScore ?? hitterFinalSimScore > 7` (Alpha tier). Other rows use `m.qualified`.
-
-### Live Pick Tracking
-- `App.jsx` polls `/api/live` every 60s when any active pick has `gameDate ∈ {yesterday, today, tomorrow}` — including totals/team-totals. Yesterday's window catches games that ended after midnight UTC and didn't auto-resolve before the page closed; once they settle, polling auto-stops.
-- `fetchLiveStats` groups game keys by `gameDate` and fans out one `/api/live` call per distinct date (today omits the date param, others pass `&date=YYYY-MM-DD`). `/api/live` accepts `date=YYYY-MM-DD` or `YYYYMMDD`; cache key segregates by date so each date's slate is cached independently.
-- **Client liveStats key is date-scoped**: server response is keyed by raw matchup (`mlb:NYY:BAL`); `fetchLiveStats` re-keys each per-date response to `${rawKey}|${gameDate}` before merging into `liveStats`. Without this, the same matchup recurring on consecutive days collides during `Object.assign(...responses)` and last-write-wins — caused a 5/4 Bellinger HRR pick to settle "won" against 5/3's final box (commit fixing this on 2026-05-04). `buildLiveGameKey(pick)` in `liveStats.js` produces the date-scoped form; `buildLiveGameKeyRaw(pick)` is the server-facing form.
-- `/api/live` returns `{ state, detail, players, homeTeam, awayTeam, homeScore, awayScore }` per game key. Player props read `players` for current stat; totals read `homeScore`/`awayScore` directly.
-- Player props: auto-resolve on threshold met (`won`), state==="post" + stat<threshold (`lost`), or player absent from boxscore after game end (`DNP`).
-- Totals/team totals auto-resolve in a separate effect on `[mlbMeta, nbaMeta, nhlMeta]` change (not from /api/live polling). Display falls back to `mlbMeta.gameScores` when /api/live hasn't populated yet — `resolveTotalGameScore(pick, liveStats, gameScores)` in `liveStats.js` encapsulates the prefer-live-fall-back-to-meta lookup.
-- `fetchLiveStats` requires `pick.opponent` to build the `sport:team1:team2` game key. Picks tracked from the **player card** include `opponent: tonightPlay?.opponent` (App.jsx track button); the play card's `trackPlay` already spreads it from the API. For older picks lacking `opponent`, `fetchLiveStats` resolves it from `currentMeta.{sport}Meta.gameScores` by `playerTeam` and backfills it on the pick (one-time mutation persisted via `setTrackedPlays`). `AddPickModal` does NOT collect opponent for **player props** — manual player picks stay unresolved unless the user enters the result by hand. Manual **game-total** and **team-total** picks include the full team pair (`homeTeam`/`awayTeam` or `scoringTeam`/`oppTeam`) so they resolve via the standard total-resolver path.
-- Polling effect must read meta from `liveMetaRef.current` (not closure). The polling `useEffect` deps are `[unresolvedCount, fetchLiveStats]` so it does NOT re-run when meta loads asynchronously — without the ref, the 60s `setInterval` callback would forever close over the empty initial meta and the backfill path would never fire. A separate effect on `[mlbMeta, nbaMeta, nhlMeta]` updates the ref and triggers an immediate poll the first time `gameScores` becomes available.
-- Player-name lookup must be diacritic-tolerant via `findLivePlayer(players, name)` in `liveStats.js`. ESPN's scoreboard returns ASCII names (`"Nikola Jokic"`) while the player profile/search returns the original (`"Nikola Jokić"`). Picks tracked from the player card store the diacritic form, so a direct `players[pick.playerName]` lookup misses. The helper does an exact-key check first (cheap), then falls back to NFD-normalized scan. Used in both `buildLiveProgress` and the auto-resolve path in `App.jsx fetchLiveStats`.
-- **Pick-card progress bar** (`buildLiveProgress(pick, liveGame, totalGameScore)` in `liveStats.js`): replaces the old text "Top 2nd · 2/4" panel. Fill = `current/threshold`; color is **pace-based**, not just progress: `pace = (current/threshold) / elapsed`. OVER ≥1 → green, ≥0.66 → yellow, else red. UNDER inverted: <0.85 → green, <1.1 → yellow, else red. `gameElapsedFrac(sport, state, detail)` parses ESPN status strings — MLB `Top|Bot|Mid|End N` over 9 innings, NBA `Q[1-4] MM:SS` over 4×12min (OT→0.97), NHL `[1-3](st|nd|rd) MM:SS` over 3×20min (OT/SO→0.97). Pre-game bar is empty/gray and shows formatted `gameTime`; post collapses to met/not-met green/red.
-
-### Game time + lineup badges
-- Play card subtitle: `"Today · 7:40 PM PT"` / `"Tomorrow · 1:10 PM PT"` from `play.gameTime`.
-- Lineup badge: `play.lineupConfirmed === true` → green `✓ Lineup`; `=== false` → gray `Proj. Lineup`. **`Proj. Lineup` suppressed when game is within 30min of start** (`Date.now() ≥ new Date(gameTime).getTime() - 30*60*1000`).
-
-### Stake / pick units
-**Edge-tiered sizing** (`unitsForPlay(play)` in App.jsx, "Scheme B"):
-- edge < 7%   → 1u
-- edge 7–12%  → 3u
-- edge ≥ 12%  → 5u
-- missing edge → 1u baseline
-
-`UNIT_DOLLARS = 30` (one-line tunable in App.jsx); stake in dollars = `unitsForPlay(play)`. Stored on tracked picks as `units` (in dollars). User can override odds at track time via the pending-track confirm dialog (`pendingOdds`); the sportsbook odds change but the stake stays edge-tiered. Picks editor has `$` input for manual override.
-
-**Existing picks pre-2026-05-02 use the older `|americanOdds|/10` ladder** — not retroactively migrated. The `units` field is whatever was stored at track time.
-
-`AddPickModal` (manual ad-hoc entry) keeps its own odds-based ladder (`<= -900 ? 5 : <= -400 ? 4 : <= -200 ? 3 : <= -110 ? 2 : 1`) — manual entries don't typically have an `edge` field to band against.
-
-**AddPickModal supports three pick types** via a top-level toggle: Player Prop, Game Total, Team Total. Game-total form collects `homeTeam`/`awayTeam` (canonical abbrs) and submits `gameType: "total"`. Team-total form collects `scoringTeam`/`oppTeam` and submits `gameType: "teamTotal"`. **Line semantics**: for player props the input IS the threshold (20.5 stored as 20.5); for totals the input is the half-integer line shown on the sportsbook (7.5) and `threshold = Math.round(line + 0.5)` (matches API convention so `buildLiveProgress` renders `(threshold - 0.5).toFixed(1)`). Game-total sport options: NBA/WNBA/MLB/NHL/NFL. Team-total sport options: NBA/MLB only (no Kalshi team-total series for the others). Stat is derived from sport per `TOTAL_STAT`/`TEAM_TOTAL_STAT` maps.
-
-### Color tiers (utility)
-```
-tierColor(pct): ≥70 → #3fb950 green, ≥60 → #e3b341 yellow, <60 → #f78166 red.
-Single source of truth in src/lib/colors.js. Drives True% bars in App player card, PlaysColumn (truePct + season + soft bars), TotalsBarChart, TeamPage. NOT applied to MarketReport SimScore-component cells (Ssn HR%, H2H HR%, Hit Rate %, K H2H Hand, etc.) — those map to the points actually awarded (2/1/0 → green/yellow/red), and per-component % thresholds vary by stat (e.g. NBA Ssn HR ≥90→2 vs MLB HRR Ssn HR ≥80→2), so a universal ladder would visually misrepresent SimScore.
-```
-
-### Explanation text — color parity with SimScore
-Play-card and player-card narrative text colors **must map to the play type's 5 SimScore components** (one color per metric matching the 2/1/0 point tiers). Decorative non-SimScore stats render in gray (`#8b949e` or `#c9d1d9` for opponent/labels). Established tier-per-component:
-
-| Play type | C1 opportunity | C2 | C3 | C4 | C5 |
-|---|---|---|---|---|---|
-| **MLB K** | CSW%/K% (≥30/>26 CSW; ≥27/≥24 K%) | Lineup K% (>24/>22) | Hit Rate % (≥90/≥80, blended) | H2H Hand (≥80/≥65) | O/U (≤7.5/<10.5) |
-| **MLB HRR** | OPS (≥.850/≥.720) | Pitcher WHIP (>1.35/>1.20) | Season HR (≥80/≥70) | H2H HR (≥80/≥70, BvP or hand) | O/U (≥9.5/≥7.5) |
-| **NBA** | USG% for pts/3PT/AST (≥28/≥22) or AvgMin for REB (≥30/≥25) | DVP rank/ratio (≤10/≤15) | Season HR (≥90/≥80) | Soft/Tier HR (≥90/≥80) | Game Total (`nbaTotalPts`) |
-| **WNBA** | USG% (≥27/≥22) or AvgMin REB (≥27/≥22) | DVP ratio (≥1.05/≥1.02) | Season HR (≥90/≥80) | Soft/Tier HR (≥90/≥80) | Game Total (`wnbaTotalPts`) |
-| **NHL** | TOI (≥18/≥15) | GAA rank (≤10/≤15) | Season HR (≥90/≥80) | DVP HR (≥90/≥80) | O/U (≥7/≥5.5) |
-| **Team total MLB** | Season HR | Opp WHIP | L10 RPG | H2H HR | O/U |
-| **Game total MLB** | Home/Away WHIP | Combined road RPG | H2H HR | O/U | — |
-| **Game total NBA** | Combined pace | OffRtg/DefRtg | Season HR | H2H HR | O/U |
-
-**Always gray** (non-SimScore decoration): batting spot, pitcher avgPitches/start, NHL shots-against adjustment, NBA/WNBA pace adjustment (applied to sim but not scored), game-total / team-total model-projected expected runs/pts (truePct already conveys the result; the projection is internal). Penalty chips (back-to-back red, blowout-risk red) stay red as warnings, not measurements.
-
-If you add a new metric to the explanation text, ask: is this stat directly assigned points by the SimScore engine for this play type? If no, render it gray. If yes, color it with the tier that matches the points awarded (2pt = green, 1pt = yellow, 0pt = red).
-
-### Backend monotonicity for player card
-Strikeout truePct is enforced via:
-1. `qualified:false` plays in `plays[]` keep all thresholds (key `playerName|sport|stat|threshold` so no dedup collision)
-2. Post-loop sweep re-derives truePct for every threshold from `pitcherKDistCache` distribution
-3. Frontend `_rawTruePctMap` walks highest→lowest tracking running max as safety net
-
----
-
-## Data Sources
-
-| Source | Used for | Reliability |
-|---|---|---|
-| Kalshi Trade API | Market prices | ✅ |
-| MLB Stats API | Schedule, lineups, pitcher stats, season aggregates, splits | ✅ |
-| ESPN APIs (`site.web.api.espn.com`) | Player info, gamelogs (all sports) | ✅ |
-| ESPN scoreboard | Probables, game odds, weather, scores, series | ✅ |
-| Baseball Savant | Barrel% CSV | ⚠️ 5s timeout, cached 6h |
-| ESPN DVP, depth chart | DVP, NBA position | ✅ |
-| ESPN `sports.core.api.espn.com` | NBA pace + OffRtg/DefRtg | ✅ cached 12h |
-| stats.nba.com | — | ❌ blocks server-side |
-
----
-
-## Deployment
-- Vercel Edge Functions; auto-deploys on `git push origin main` (no `vercel` CLI). Frontend built by Vercel via `npm run build`.
-- Rewrites in `vercel.json`: `/api/:path*` → `/api/[...path]`. CORS headers also there (required for OPTIONS preflight through rewrite layer).
-- Cron: `/api/keepalive` daily at noon UTC.
-
-### Required env vars (Vercel dashboard AND wired via `env` object — see Gotchas):
-| Variable | Purpose | Generate |
-|---|---|---|
-| `JWT_SECRET` | HMAC for auth tokens | `openssl rand -base64 32` |
-| `ADMIN_KEY` | Admin endpoint shared secret | `openssl rand -base64 32` |
-| `UPSTASH_REDIS_REST_URL` | Upstash REST endpoint | Upstash console |
-| `UPSTASH_REDIS_REST_TOKEN` | Upstash auth token | Upstash console |
-
-No hardcoded fallbacks. Missing `JWT_SECRET` → 500 on auth. Missing `ADMIN_KEY` → 403 on all admin endpoints (fail-closed). Redeploy after rotating.
-
----
-
-## Testing
-```
-# Preferred (no Node — uses macOS JavaScriptCore):
-osascript -l JavaScript api/lib/simulate.test.jxa.js
-
-# If Node installed:
-node --test api/lib/simulate.test.js
-```
-Both files kept in sync. Coverage: `kDistPct` monotonicity, `simulateKsDist` validity, `buildNbaStatDist`, API monotonicity sweep, `allTonightPlays` player card fix, frontend `_rawTruePctMap` enforcement, NBA simScore, report filter logic, `_parseWind` ESPN string parsing, `weatherFactor` formula. 55 tests total.
-
----
-
-## Common Debugging
-See [docs/DEBUGGING.md](docs/DEBUGGING.md).
