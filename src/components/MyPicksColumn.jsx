@@ -198,9 +198,13 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                       const s = p.units != null ? p.units : Math.abs(p.americanOdds || 0) / 10;
                       const pl = p.result === "won" ? s * oddsToProfit(p.americanOdds) : -s;
                       const dateKey = p.gameDate || new Date(p.trackedAt).toISOString().slice(0,10);
-                      const barLabel = p.gameType === "total"
-                        ? `${p.awayTeam}@${p.homeTeam} O${(p.threshold-0.5).toFixed(1)}`
-                        : `${p.playerName} ${p.threshold}+ ${p.stat?.toUpperCase?.() || ""}`.trim();
+                      const _dir = p.direction === "under" ? "U" : "O";
+                      const _line = (p.threshold - 0.5).toFixed(1);
+                      const barLabel = p.gameType === "teamTotal"
+                        ? `${p.scoringTeam} Team ${_dir}${_line}`
+                        : p.gameType === "total"
+                          ? `${p.awayTeam}@${p.homeTeam} ${_dir}${_line}`
+                          : `${p.playerName} ${p.threshold}+ ${p.stat?.toUpperCase?.() || ""}`.trim();
                       return { pl, dateKey, barLabel };
                     });
                   // Build calendar: day 1 → lastDayShown, every day gets a bucket (empty days = zero bar)
