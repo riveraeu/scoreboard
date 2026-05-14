@@ -1592,7 +1592,7 @@ var worker_default = {
               sportByteam.nbaScoring = scoringData.teams || [];
               sportByteam.nbaGameOdds = parseGameOdds(sbData.events || []);
               sportByteam.nbaGameScores = parseGameScores(sbData.eventsAll || sbData.events || [], a => normTeam("nba", a));
-              sportByteam.nbaTopPlayers = parseTopPlayers(sbData.events || [], a => normTeam("nba", a), "nba");
+              sportByteam.nbaTopPlayers = parseTopPlayers(sbData.eventsAll || sbData.events || [], a => normTeam("nba", a), "nba");
               if (CACHE2) {
                 await CACHE2.put("byteam:nba", JSON.stringify(sportByteam.nba), { expirationTtl: 21600 });
                 await CACHE2.put("byteam:nba:scoring", JSON.stringify(sportByteam.nbaScoring), { expirationTtl: 21600 });
@@ -1619,7 +1619,7 @@ var worker_default = {
               sportByteam.wnbaScoring = scoringData.teams || [];
               sportByteam.wnbaGameOdds = parseGameOdds(sbData.events || []);
               sportByteam.wnbaGameScores = parseGameScores(sbData.eventsAll || sbData.events || [], a => normTeam("wnba", a));
-              sportByteam.wnbaTopPlayers = parseTopPlayers(sbData.events || [], a => normTeam("wnba", a), "wnba");
+              sportByteam.wnbaTopPlayers = parseTopPlayers(sbData.eventsAll || sbData.events || [], a => normTeam("wnba", a), "wnba");
               if (CACHE2) {
                 await CACHE2.put("byteam:wnba", JSON.stringify(sportByteam.wnba), { expirationTtl: 21600 });
                 await CACHE2.put("byteam:wnba:scoring", JSON.stringify(sportByteam.wnbaScoring), { expirationTtl: 21600 });
@@ -1881,7 +1881,7 @@ var worker_default = {
               const _raw = parseGameOdds(_nhlSbResult.events);
               sportByteam.nhlGameOdds = Object.fromEntries(Object.entries(_raw).map(([k, v]) => [normTeam("nhl", k), v]));
               sportByteam.nhlGameScores = parseGameScores(_nhlSbResult.events, a => normTeam("nhl", a));
-              sportByteam.nhlTopPlayers = parseTopPlayers(_nhlSbResult.events, a => normTeam("nhl", a), "nhl");
+              sportByteam.nhlTopPlayers = parseTopPlayers(_nhlSbResult.eventsAll || _nhlSbResult.events, a => normTeam("nhl", a), "nhl");
             }
             // Extract NBA game scores from already-fetched ESPN events
             const _nbaSbResult = sbResults.find(r => r.sport === "nba");
@@ -1935,7 +1935,7 @@ var worker_default = {
           const _nhlFbAll = [..._nhlFbToday, ...(_nhlFbSb1.events || [])];
           sportByteam.nhlGameOdds = Object.fromEntries(Object.entries(parseGameOdds(_nhlFbToday)).map(([k, v]) => [normTeam("nhl", k), v]));
           if (!sportByteam.nhlGameScores) sportByteam.nhlGameScores = parseGameScores(_nhlFbAll, a => normTeam("nhl", a));
-          if (!sportByteam.nhlTopPlayers) sportByteam.nhlTopPlayers = parseTopPlayers(_nhlFbToday, a => normTeam("nhl", a), "nhl");
+          if (!sportByteam.nhlTopPlayers) sportByteam.nhlTopPlayers = parseTopPlayers(_nhlFbAll, a => normTeam("nhl", a), "nhl");
         }
         // Fetch WNBA game odds + scores if wnba byteam was loaded from cache (scoreboard not fetched above)
         if (sportsNeeded.has("wnba") && !sportByteam.wnbaGameOdds) {
@@ -1950,7 +1950,7 @@ var worker_default = {
           const _wnbaFbAll = [..._wnbaFbToday, ...(_wnbaFbSb1.events || [])];
           sportByteam.wnbaGameOdds = Object.fromEntries(Object.entries(parseGameOdds(_wnbaFbToday)).map(([k, v]) => [normTeam("wnba", k), v]));
           if (!sportByteam.wnbaGameScores) sportByteam.wnbaGameScores = parseGameScores(_wnbaFbAll, a => normTeam("wnba", a));
-          if (!sportByteam.wnbaTopPlayers) sportByteam.wnbaTopPlayers = parseTopPlayers(_wnbaFbToday, a => normTeam("wnba", a), "wnba");
+          if (!sportByteam.wnbaTopPlayers) sportByteam.wnbaTopPlayers = parseTopPlayers(_wnbaFbAll, a => normTeam("wnba", a), "wnba");
         }
         // Fetch NBA game odds + scores if nba byteam was loaded from cache (scoreboard not fetched above)
         if (sportsNeeded.has("nba") && !sportByteam.nbaGameOdds) {
@@ -1965,7 +1965,7 @@ var worker_default = {
           const _nbaFbAll = [..._nbaFbToday, ...(_nbaFbSb1.events || [])];
           sportByteam.nbaGameOdds = parseGameOdds(_nbaFbToday);
           if (!sportByteam.nbaGameScores) sportByteam.nbaGameScores = parseGameScores(_nbaFbAll, a => normTeam("nba", a));
-          if (!sportByteam.nbaTopPlayers) sportByteam.nbaTopPlayers = parseTopPlayers(_nbaFbToday, a => normTeam("nba", a), "nba");
+          if (!sportByteam.nbaTopPlayers) sportByteam.nbaTopPlayers = parseTopPlayers(_nbaFbAll, a => normTeam("nba", a), "nba");
         }
         // Fill in missing NBA game O/U totals from Kalshi (ESPN omits odds for live/imminent games)
         if (Object.keys(kalshiNbaOuMap).length > 0) {
