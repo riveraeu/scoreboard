@@ -14,7 +14,7 @@ function fmtSeries(summary) {
 }
 
 function MatchupCard({
-  game, mlbMeta, mlbMetaTomorrow, nbaMeta, nhlMeta, navigateToPlayer, navigateToTeam,
+  game, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta, navigateToPlayer, navigateToTeam,
   gamePlays, allTonightPlays, trackedPlays, trackPlay, untrackPlay,
   navigateToPlay, navigateToModel, expandedPlays, setExpandedPlays, openPicksDrawer,
 }) {

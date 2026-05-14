@@ -356,6 +356,7 @@ export default function LineupsPage({
                     mlbMeta={mlbMeta}
                     mlbMetaTomorrow={mlbMetaTomorrow}
                     nbaMeta={nbaMeta}
+                    wnbaMeta={wnbaMeta}
                     nhlMeta={nhlMeta}
                     navigateToPlayer={navigateToPlayer}
                     navigateToTeam={navigateToTeam}
