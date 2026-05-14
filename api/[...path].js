@@ -5056,6 +5056,11 @@ var worker_default = {
               if (snap) {
                 if (snap.home) liveMap[hA] = snap.home;
                 if (snap.away) liveMap[aA] = snap.away;
+              } else {
+                // No closing snapshot (game started before we captured it). Clear odds so we
+                // don't show misleading in-game model values from ESPN-cache/Kalshi-live.
+                delete liveMap[hA];
+                delete liveMap[aA];
               }
             }
           }
