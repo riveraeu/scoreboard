@@ -23,10 +23,18 @@ function MatchupCard({
 
   const gameTimeStr = fmtGameTime(gameTime);
 
-  // MLB starting pitcher row — prefer today's meta, fall back to tomorrow's
+  // MLB starting pitcher row — pick today vs tomorrow meta by gameDate.
+  // Same team can pitch on consecutive days with different starters; using "today first
+  // then tomorrow fallback" caused tomorrow-tab cards to show today's pitcher.
+  const ptToday = React.useMemo(
+    () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date()),
+    []
+  );
+  const isTomorrowGame = sport === 'mlb' && gameDate && gameDate > ptToday;
+  const mlbPitchSrc = isTomorrowGame ? mlbMetaTomorrow : mlbMeta;
   const pitcherFor = (abbr) => {
     if (sport !== 'mlb' || !abbr) return null;
-    const p = mlbMeta?.pitchers?.[abbr] ?? mlbMetaTomorrow?.pitchers?.[abbr];
+    const p = mlbPitchSrc?.pitchers?.[abbr];
     return p?.name ? p : null;
   };
   const awayPitcher = pitcherFor(awayTeam);
@@ -47,8 +55,9 @@ function MatchupCard({
 
   // Game odds shown in pitcher-row center (MLB only). Server overlays the closing line
   // once the game state transitions to in/post, so this displays closing — not live — odds.
-  const awayOdds = sport === 'mlb' ? (mlbMeta?.gameOdds?.[awayTeam] ?? mlbMetaTomorrow?.gameOdds?.[awayTeam] ?? null) : null;
-  const homeOdds = sport === 'mlb' ? (mlbMeta?.gameOdds?.[homeTeam] ?? mlbMetaTomorrow?.gameOdds?.[homeTeam] ?? null) : null;
+  // Source picked by gameDate so a tomorrow game doesn't pull today's odds for the same team.
+  const awayOdds = sport === 'mlb' ? (mlbPitchSrc?.gameOdds?.[awayTeam] ?? null) : null;
+  const homeOdds = sport === 'mlb' ? (mlbPitchSrc?.gameOdds?.[homeTeam] ?? null) : null;
   const oddsTotal = awayOdds?.total ?? homeOdds?.total ?? null;
   const fmtMl = (ml) => (ml == null || isNaN(ml)) ? null : (ml > 0 ? `+${ml}` : `${ml}`);
   const hasOdds = oddsTotal != null || awayOdds?.ml != null || homeOdds?.ml != null;
