@@ -4936,10 +4936,26 @@ var worker_default = {
             return p >= 0.5 ? -Math.round((p / (1 - p)) * 100) : Math.round(((1 - p) / p) * 100);
           };
           const kOdds = {}; // "{abbr}|{abbr}|{gameDate}" → { total, mlByTeam: {abbr: ml} }
-          const _gIdx = seriesTickers.indexOf('KXMLBGAME');
-          if (_gIdx >= 0) {
+          // KXMLBGAME isn't in SERIES_CONFIG (it's not a player-prop series), so fetch it
+          // separately with a short Upstash cache.
+          let _gameMarkets = [];
+          {
+            const _gKey = 'kalshi:KXMLBGAME';
+            let _gData = (CACHE2 && !isBustCache) ? await CACHE2.get(_gKey, 'json').catch(() => null) : null;
+            if (!_gData) {
+              const r = await fetch('https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=KXMLBGAME&limit=1000&status=open', {
+                headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }
+              }).catch(() => null);
+              if (r?.ok) {
+                _gData = await r.json().catch(() => null);
+                if (_gData && CACHE2) CACHE2.put(_gKey, JSON.stringify(_gData), { expirationTtl: 600 }).catch(() => {});
+              }
+            }
+            _gameMarkets = _gData?.markets || [];
+          }
+          if (_gameMarkets.length > 0) {
             const byEvent = {};
-            for (const m of (kalshiResults[_gIdx]?.markets || [])) {
+            for (const m of _gameMarkets) {
               const tk = m.ticker || '';
               const lastDash = tk.lastIndexOf('-');
               if (lastDash < 0) continue;
