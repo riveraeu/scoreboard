@@ -1643,7 +1643,7 @@ var worker_default = {
                 return Promise.all([
                   fetch(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${_tfmt(_td0)}`, { headers: _h }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
                   fetch(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${_tfmt(_td1)}`, { headers: _h }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
-                ]).then(([sb0, sb1]) => ({ events: sb0.events || [], eventsAll: [...(sb0.events || []), ...(sb1.events || [])] }));
+                ]).then(([sb0, sb1]) => ({ events: sb0.events || [], eventsTomorrow: sb1.events || [], eventsAll: [...(sb0.events || []), ...(sb1.events || [])] }));
               })(),
               (() => {
                 const _td0 = new Date(Date.now() - 7 * 3600 * 1000); const _td1 = new Date(_td0); _td1.setDate(_td1.getDate() + 1);
@@ -1682,6 +1682,8 @@ var worker_default = {
               }
               const gameOddsRaw = parseGameOdds(sbData.events);
               const gameOdds = Object.fromEntries(Object.entries(gameOddsRaw).map(([k, v]) => [normMlbAbbr(k), v]));
+              const gameOddsTomorrowRaw = parseGameOdds(sbData.eventsTomorrow || []);
+              const gameOddsTomorrow = Object.fromEntries(Object.entries(gameOddsTomorrowRaw).map(([k, v]) => [normMlbAbbr(k), v]));
               // Game scores for matchup cards (includes finished games with no active Kalshi markets).
               // Iterate today+tomorrow merged events so both day tabs see scheduled/finished games.
               // Key includes gameDate so today and tomorrow's same-home-team don't collide.
@@ -1781,7 +1783,7 @@ var worker_default = {
                 }
                 if (rCount + lCount > 0) staticTeamHandMajority[abbr] = rCount >= lCount ? 'R' : 'L';
               }
-              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, pitcherWHIPByTeam, pitcherFIPByTeam, pitcherWinsByTeam, pitcherLossesByTeam, projectedLineupTeams, gameOdds, pitcherStatsByName, batterSplitBA, hitterOpsMap, batterHandByName, batterHRRSplits, pitcherH2HStarts, staticTeamHandMajority, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam, roadRPGMap, teamERAMap, teamWHIPMap, teamPlatoonRPGMap, gameScores };
+              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, pitcherWHIPByTeam, pitcherFIPByTeam, pitcherWinsByTeam, pitcherLossesByTeam, projectedLineupTeams, gameOdds, gameOddsTomorrow, pitcherStatsByName, batterSplitBA, hitterOpsMap, batterHandByName, batterHRRSplits, pitcherH2HStarts, staticTeamHandMajority, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam, roadRPGMap, teamERAMap, teamWHIPMap, teamPlatoonRPGMap, gameScores };
               // Use short TTL (60s) if key data is missing — lineup/probables not confirmed yet,
               // or independent MLB Stats API hydrations (OPS, pitcher gamelogs) silently returned empty.
               // Prevents partial data from baking into cache for the full 600s and starving downstream
@@ -4912,14 +4914,18 @@ var worker_default = {
         for (const [abbr, odds] of Object.entries(sportByteam.mlb?.gameOdds ?? {})) {
           _mlbGameOdds[abbr] = { ml: odds.moneyline ?? null, total: odds.total ?? null, spread: odds.spread ?? null };
         }
+        // Tomorrow's gameOdds from ESPN scoreboard (sb1.events parsed at the byteam build site).
+        const _mlbGameOddsTomorrow = {};
+        for (const [abbr, odds] of Object.entries(sportByteam.mlb?.gameOddsTomorrow ?? {})) {
+          _mlbGameOddsTomorrow[abbr] = { ml: odds.moneyline ?? null, total: odds.total ?? null, spread: odds.spread ?? null };
+        }
         // Closing-line preservation: ESPN drops odds once a game starts. Snapshot pre-game
         // odds keyed by "{home}|{away}|{gameDate}" so once state transitions to in/post we can
-        // overlay the last pre-game odds (= closing line) onto _mlbGameOdds. One Redis key per
-        // PT date, 36h TTL.
+        // overlay the last pre-game odds (= closing line) onto live odds maps. Single global
+        // Redis key (`mlbClosingOdds`) survives date rollover; 36h TTL refreshes on each write.
         try {
           const _scores = sportByteam.mlb?.gameScores ?? {};
-          const _ptDateOdds = new Date(Date.now() - 7 * 3600 * 1000).toISOString().slice(0, 10);
-          const _odsSnapKey = `mlbClosingOdds:${_ptDateOdds}`;
+          const _odsSnapKey = 'mlbClosingOdds';
           const _odsSnapPrev = (CACHE2 && !isBustCache) ? ((await CACHE2.get(_odsSnapKey, 'json').catch(() => null)) || {}) : {};
           const _odsSnap = { ..._odsSnapPrev };
           let _odsSnapDirty = false;
@@ -4927,8 +4933,10 @@ var worker_default = {
             const hA = sc?.homeTeam, aA = sc?.awayTeam, gD = sc?.gameDate, state = sc?.state;
             if (!hA || !aA || !gD) continue;
             const gK = `${hA}|${aA}|${gD}`;
-            const homeLive = _mlbGameOdds[hA];
-            const awayLive = _mlbGameOdds[aA];
+            // Pick live odds from the day's source: today odds for today's games, tomorrow odds for tomorrow's.
+            const liveMap = (gD > new Date(Date.now() - 7 * 3600 * 1000).toISOString().slice(0, 10)) ? _mlbGameOddsTomorrow : _mlbGameOdds;
+            const homeLive = liveMap[hA];
+            const awayLive = liveMap[aA];
             if (state === 'pre') {
               if ((homeLive && (homeLive.ml != null || homeLive.total != null)) ||
                   (awayLive && (awayLive.ml != null || awayLive.total != null))) {
@@ -4938,8 +4946,8 @@ var worker_default = {
             } else if (state === 'in' || state === 'post') {
               const snap = _odsSnap[gK];
               if (snap) {
-                if (snap.home) _mlbGameOdds[hA] = snap.home;
-                if (snap.away) _mlbGameOdds[aA] = snap.away;
+                if (snap.home) liveMap[hA] = snap.home;
+                if (snap.away) liveMap[aA] = snap.away;
               }
             }
           }
@@ -4947,7 +4955,7 @@ var worker_default = {
         } catch { /* non-fatal */ }
         const mlbMeta = { pitchers: _mlbPitchers, gameOdds: _mlbGameOdds, umpires: sportByteam.mlb?.umpireByGame ?? {}, weather: weatherByGame, projectedLineupTeams: sportByteam.mlb?.projectedLineupTeams ?? [], teamsWithLineup: Object.keys(sportByteam.mlb?.lineupSpotByName ?? {}), homeTeams: sportByteam.mlb?.gameHomeTeams ?? {}, gameScores: sportByteam.mlb?.gameScores ?? {} };
         // Build mlbMetaTomorrow: tomorrow's probables + umpires (no lineup/weather data available yet)
-        let mlbMetaTomorrow = { pitchers: {}, gameOdds: {}, umpires: {}, weather: {}, projectedLineupTeams: [], teamsWithLineup: [], homeTeams: {}, gameScores: {} };
+        let mlbMetaTomorrow = { pitchers: {}, gameOdds: _mlbGameOddsTomorrow, umpires: {}, weather: {}, projectedLineupTeams: [], teamsWithLineup: [], homeTeams: {}, gameScores: {} };
         try {
           const _tmrPT = new Date(Date.now() - 7 * 3600 * 1000 + 86400 * 1000);
           const _tmrDateStr = _tmrPT.toISOString().slice(0, 10);
@@ -5005,7 +5013,7 @@ var worker_default = {
               if (typeof _s.losses === 'number') _tmrPitchers[abbr].losses = _s.losses;
             }
           }
-          mlbMetaTomorrow = { pitchers: _tmrPitchers, gameOdds: {}, umpires: _tmrUmpires, weather: {}, projectedLineupTeams: [], teamsWithLineup: [], homeTeams: _tmrHomeTeams, gameScores: {} };
+          mlbMetaTomorrow = { pitchers: _tmrPitchers, gameOdds: _mlbGameOddsTomorrow, umpires: _tmrUmpires, weather: {}, projectedLineupTeams: [], teamsWithLineup: [], homeTeams: _tmrHomeTeams, gameScores: {} };
         } catch { /* leave empty */ }
         // NBA meta: normalized game odds + injury report for matchup cards
         const _nbaOddsNorm = { GS: "GSW", SA: "SAS", NY: "NYK", NJ: "BKN", NO: "NOP", PHO: "PHX", WPH: "PHX" };
