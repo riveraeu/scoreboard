@@ -26,6 +26,7 @@ Per-sport modeling internals. CLAUDE.md has the architecture map and load-bearin
 - E3a umpire: `pitcherKPctAdj = min(40, pitcherKPctOut × umpireKFactor)`; lookup is ASCII-normalized
 - K% regression: `trust = min(1, bf26/200)` blends 2026 actual with 2025 anchor (or league avg 22.2%)
 - E3b expectedBF: `clamp(round(_avgBF), 15, 27)`. Fallback chain: `pitcherStatsByName.avgBF` → `sportByteam.mlb.pitcherAvgBF` (team key) → `clamp(round(avgP/3.85), 15, 27)`. Default 24. Both `avgP` and `avgBF` are sample-weighted blends of 2026 and 2025 anchors: `trust26 = min(1, gs26/15)`, blended = `trust26 × val26 + (1 − trust26) × val25`. Stabilizes early-season ramp-up workloads (e.g. Skenes 2026 avgP=81 with ~7 starts blended toward his 2025 ace baseline ~95) where raw 2026 sample alone would tank expectedBF and the K-market truePct. Pitchers with only one season's data use it as-is.
+  - **Pitch-limited start cap**: when `pitcherLastStartPC ≤ 70` AND `gs26 < 5`, the pitcher is on a build-up (e.g., spot starter coming up from bullpen). The 2025 anchor still dominates the blend (`1 − trust26 ≥ 80%`), over-projecting volume relative to recent reality. Cap `_expectedBF = min(blended, round(lastStartPC / 3.85 + 3))` — last start's pitch count converted to BF at league-average 3.85 P/PA, plus a 3-BF cushion for moderate progression to the next outing. Floor stays at 15. Only fires when the cap is *below* the blend, so normal starters are unaffected.
 
 **SimScore**:
 - `kpctPts` — CSW% (≥30→2, >26→1, ≤26→0); falls back to regressed K% (>27/>24/≤24)

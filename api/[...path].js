@@ -2698,6 +2698,20 @@ var worker_default = {
             _expectedBF = _avgBF != null
               ? Math.min(27, Math.max(15, Math.round(_avgBF)))
               : (_avgP != null ? Math.min(27, Math.max(15, Math.round(_avgP / 3.85))) : 24);
+            // Pitch-limited start guard: when last start was <=70 pitches and the pitcher
+            // has few 2026 starts, they're on a build-up (e.g., spot starter coming out of
+            // bullpen). _avgBF blends 2026 with the 2025 anchor (80% weight at gs26<3), which
+            // over-projects volume — cap _expectedBF to last-start pitch count converted to
+            // BF (P / 3.85 league avg) + 3 BF cushion for moderate progression.
+            const _lastPcCap = (() => {
+              const lpc = _pt(sportByteam.mlb?.pitcherLastStartPC, "lastStartPC");
+              const gs26 = _pt(sportByteam.mlb?.pitcherGS26, "gs26") ?? 0;
+              if (lpc == null || lpc > 70 || gs26 >= 5) return null;
+              return Math.round(lpc / 3.85 + 3);
+            })();
+            if (_lastPcCap != null && _lastPcCap < _expectedBF) {
+              _expectedBF = Math.max(15, _lastPcCap);
+            }
             const _lkpVR = sportByteam.mlb?.lineupKPctVR?.[tonightOpp] ?? null;
             const _lkpVL = sportByteam.mlb?.lineupKPctVL?.[tonightOpp] ?? null;
             const _lkpAll = sportByteam.mlb?.lineupKPct?.[tonightOpp] ?? null;
