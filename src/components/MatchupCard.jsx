@@ -45,6 +45,14 @@ function MatchupCard({
     navigateToPlayer({ id: null, name: p.name, team, sportKey: 'baseball/mlb' }, 'strikeouts');
   };
 
+  // Game odds shown in pitcher-row center (MLB only)
+  const awayOdds = sport === 'mlb' ? (mlbMeta?.gameOdds?.[awayTeam] ?? mlbMetaTomorrow?.gameOdds?.[awayTeam] ?? null) : null;
+  const homeOdds = sport === 'mlb' ? (mlbMeta?.gameOdds?.[homeTeam] ?? mlbMetaTomorrow?.gameOdds?.[homeTeam] ?? null) : null;
+  const oddsTotal = awayOdds?.total ?? homeOdds?.total ?? null;
+  const fmtMl = (ml) => (ml == null || isNaN(ml)) ? null : (ml > 0 ? `+${ml}` : `${ml}`);
+  const mlbTotalColor = (t) => t == null ? '#8b949e' : t <= 7.5 ? '#3fb950' : t < 10.5 ? '#e3b341' : '#f78166';
+  const hasOdds = oddsTotal != null || awayOdds?.ml != null || homeOdds?.ml != null;
+
   // Play notification badge state
   const totalPlays = (gamePlays || []).length;
   const trackedCount = (gamePlays || []).filter(gp => (trackedPlays || []).some(tp => tp.id === gp.id)).length;
@@ -149,8 +157,25 @@ function MatchupCard({
             </div>
           </div>
 
-          {/* Spacer matches header center column */}
-          <div style={{ minWidth: 120, padding: '0 8px' }} />
+          {/* Center: game total + per-team ML (aligned under game time) */}
+          <div style={{ textAlign: 'center', minWidth: 120, padding: '0 8px' }}>
+            {hasOdds ? (
+              <>
+                {oddsTotal != null && (
+                  <div style={{ fontSize: 11, color: '#8b949e' }}>
+                    O/U <span style={{ color: mlbTotalColor(oddsTotal), fontWeight: 600 }}>{oddsTotal}</span>
+                  </div>
+                )}
+                {(awayOdds?.ml != null || homeOdds?.ml != null) && (
+                  <div style={{ fontSize: 10, color: '#8b949e', marginTop: 2 }}>
+                    {awayOdds?.ml != null && <>{awayTeam} <span style={{ color: '#c9d1d9' }}>{fmtMl(awayOdds.ml)}</span></>}
+                    {awayOdds?.ml != null && homeOdds?.ml != null && ' · '}
+                    {homeOdds?.ml != null && <>{homeTeam} <span style={{ color: '#c9d1d9' }}>{fmtMl(homeOdds.ml)}</span></>}
+                  </div>
+                )}
+              </>
+            ) : null}
+          </div>
 
           {/* Home pitcher */}
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end', minWidth: 0, cursor: homePitcher ? 'pointer' : 'default' }}
