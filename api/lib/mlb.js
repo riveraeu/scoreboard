@@ -373,13 +373,24 @@ export async function buildPitcherKPct(mlbSched) {
     const pitcherStats25 = {}, pitcherStats26 = {};
     const pitcherHandById = {};
     const safeEra = (v) => { const n = parseFloat(v); return isNaN(n) ? null : n; };
+    // MLB Stats API returns inningsPitched as "45.2" meaning 45 ⅔ innings (NOT decimal).
+    // ".0" → +0, ".1" → +1/3, ".2" → +2/3.
+    const parseIP = (v) => {
+      if (v == null || v === "") return 0;
+      const s = String(v);
+      const dot = s.indexOf(".");
+      if (dot < 0) { const n = parseFloat(s); return isNaN(n) ? 0 : n; }
+      const whole = parseInt(s.slice(0, dot), 10) || 0;
+      const frac = s.slice(dot + 1);
+      return whole + (frac === "1" ? 1/3 : frac === "2" ? 2/3 : 0);
+    };
     for (const person of (res25.people || [])) {
       const pid = person.id;
       if (!pid) continue;
       if (person.pitchHand?.code) pitcherHandById[pid] = person.pitchHand.code;
       const split = person.stats?.[0]?.splits?.[0]?.stat;
       if (!split) continue;
-      pitcherStats25[pid] = { so: split.strikeOuts || 0, bf: split.battersFaced || 0, bb: split.baseOnBalls || 0, era: safeEra(split.era), whip: safeEra(split.whip), gs: split.gamesStarted || 0, np: split.numberOfPitches || 0 };
+      pitcherStats25[pid] = { so: split.strikeOuts || 0, bf: split.battersFaced || 0, bb: split.baseOnBalls || 0, hbp: split.hitByPitch || 0, hr: split.homeRuns || 0, ip: parseIP(split.inningsPitched), era: safeEra(split.era), whip: safeEra(split.whip), gs: split.gamesStarted || 0, np: split.numberOfPitches || 0 };
     }
     for (const person of (res26.people || [])) {
       const pid = person.id;
@@ -387,14 +398,22 @@ export async function buildPitcherKPct(mlbSched) {
       if (person.pitchHand?.code) pitcherHandById[pid] = person.pitchHand.code;
       const split = person.stats?.[0]?.splits?.[0]?.stat;
       if (!split) continue;
-      pitcherStats26[pid] = { so: split.strikeOuts || 0, bf: split.battersFaced || 0, bb: split.baseOnBalls || 0, era: safeEra(split.era), whip: safeEra(split.whip), gs: split.gamesStarted || 0, np: split.numberOfPitches || 0 };
+      pitcherStats26[pid] = { so: split.strikeOuts || 0, bf: split.battersFaced || 0, bb: split.baseOnBalls || 0, hbp: split.hitByPitch || 0, hr: split.homeRuns || 0, ip: parseIP(split.inningsPitched), era: safeEra(split.era), whip: safeEra(split.whip), gs: split.gamesStarted || 0, np: split.numberOfPitches || 0 };
     }
     // Fill in pitcherHand from People API for any missing entries
     for (const [abbr, id] of Object.entries(pitcherByTeam)) {
       if (!pitcherHand[abbr] && pitcherHandById[id]) pitcherHand[abbr] = pitcherHandById[id];
     }
     const LEAGUE_PITCHER_K = 0.222;
-    const pitcherKPct = {}, pitcherKBBPct = {}, pitcherEra = {}, pitcherWHIP = {}, pitcherHasAnchor = {};
+    const pitcherKPct = {}, pitcherKBBPct = {}, pitcherEra = {}, pitcherWHIP = {}, pitcherFIP = {}, pitcherHasAnchor = {};
+    // FIP constant aligns FIP onto the same numeric scale as ERA (~4.20 league baseline).
+    // Slightly varies per season; 3.10 is a stable approximation for 2025–2026.
+    const _FIP_CONST = 3.10;
+    const _seasonFIP = (s) => {
+      if (!s || !s.ip || s.ip < 1) return null;
+      const raw = ((13 * s.hr) + (3 * (s.bb + s.hbp)) - (2 * s.so)) / s.ip + _FIP_CONST;
+      return parseFloat(raw.toFixed(2));
+    };
     for (const [abbr, id] of Object.entries(pitcherByTeam)) {
       const s26 = pitcherStats26[id];
       const s25 = pitcherStats25[id];
@@ -427,6 +446,19 @@ export async function buildPitcherKPct(mlbSched) {
       const whip25 = s25?.whip ?? null;
       if (whip26 != null) pitcherWHIP[abbr] = whip26;
       else if (whip25 != null) pitcherWHIP[abbr] = whip25;
+      // FIP: sample-weighted blend (trust26 = min(1, gs26/15)) — same regression pattern as avgP/avgBF.
+      // Computed per-season from raw HR/BB/HBP/K/IP, then blended; nulls when neither season has IP>=1.
+      const fip26 = _seasonFIP(s26);
+      const fip25 = _seasonFIP(s25);
+      const _gs26 = s26?.gs ?? 0;
+      const _trust26 = Math.min(1, _gs26 / 15);
+      if (fip26 != null && fip25 != null) {
+        pitcherFIP[abbr] = parseFloat((_trust26 * fip26 + (1 - _trust26) * fip25).toFixed(2));
+      } else if (fip26 != null) {
+        pitcherFIP[abbr] = fip26;
+      } else if (fip25 != null) {
+        pitcherFIP[abbr] = fip25;
+      }
     }
     const pitcherCSWPct = {};
     const pitcherAvgPitches = {};
@@ -719,9 +751,9 @@ export async function buildPitcherKPct(mlbSched) {
         if (!pitcherInfoByTeam[a]) pitcherInfoByTeam[a] = { name: person.fullName, id };
       }
     }
-    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherWHIP, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam, pitcherH2HStarts };
+    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherWHIP, pitcherFIP, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam, pitcherH2HStarts };
   } catch (err) {
     console.error("[buildPitcherKPct] failed:", err?.message || err);
-    return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherAvgBF: {}, pitcherStdBF: {}, pitcherGS26: {}, pitcherHasAnchor: {}, pitcherRecentKPct: {}, pitcherLastStartDate: {}, pitcherLastStartPC: {}, umpireByGame: {}, pitcherInfoByTeam: {}, pitcherH2HStarts: {} };
+    return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherWHIP: {}, pitcherFIP: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherAvgBF: {}, pitcherStdBF: {}, pitcherGS26: {}, pitcherHasAnchor: {}, pitcherRecentKPct: {}, pitcherLastStartDate: {}, pitcherLastStartPC: {}, umpireByGame: {}, pitcherInfoByTeam: {}, pitcherH2HStarts: {} };
   }
 }

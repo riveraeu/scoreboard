@@ -153,11 +153,13 @@ Kalshi series: `KXMLBTOTAL`, `KXNBATOTAL`, `KXWNBATOTAL`, `KXNHLTOTAL`, `KXNFLTO
 
 *MLB*:
 ```
-awayMult = 0.6 × (awayERA/4.20) + 0.4 × (awayTeamERA/4.20)
-homeMult = 0.6 × (homeERA/4.20) + 0.4 × (homeTeamERA/4.20)
+starterMult(fip, era) = 0.5 × (fip/4.20) + 0.5 × (era/4.20)   # falls back to whichever is non-null
+awayMult = 0.6 × starterMult(awayFIP, awayERA) + 0.4 × (awayTeamERA/4.20)
+homeMult = 0.6 × starterMult(homeFIP, homeERA) + 0.4 × (homeTeamERA/4.20)
 homeLambda = homeRoadRPG × awayMult × parkRF × homePlatoonFactor × weatherFactor × umpireRunFactor  # clamped [1,12]
 awayLambda = awayRoadRPG × homeMult × parkRF × awayPlatoonFactor × weatherFactor × umpireRunFactor  # clamped [1,12]
 ```
+- **FIP** (`api/lib/mlb.js` `_seasonFIP`): `((13×HR) + (3×(BB+HBP)) − (2×K)) / IP + 3.10` per season; sample-weighted blend of 2026/2025 via `trust26 = min(1, gs26/15)` (same regression as avgP/avgBF). FIP constant 3.10 aligns FIP onto the ~4.20 ERA scale. IP parsed from MLB Stats API string format ("45.2" = 45 ⅔). Strips fielding/sequencing luck from the starter signal — a "lucky" starter (low ERA / high FIP) gets penalized, an "unlucky" one (high ERA / low FIP) gets credit. ERA stays as the second half of the starter blend so observed run prevention still counts. `pitcherFIPByTeam` exported from `buildPitcherKPct` and surfaced as `homeFIP`/`awayFIP` in `_simData`.
 - **Platoon factor**: `(lineup composite BA vs starter's hand) / (lineup composite overall BA)` from `batterSplitBA`. Falls back to 1.0 when hand unknown or sample <80 AB. **Note**: MLB Stats API `/teams/stats` does NOT support pitcher-handedness sitCodes (`vl/vr` returns empty) — handedness splits are individual-only. Same factor applied to team total lambda.
 - **Weather factor**: `1 + windOutMph × 0.013 + (tempF − 72) × 0.001`, clamped [0.85, 1.15]. `windOutMph` parsed from ESPN `displayValue` ("Out to LF/CF/RF" positive, "In from..." negative, "L to R"/"R to L" = 0). Skipped for `_MLB_DOMED` parks (TB/TOR/HOU/MIA/SEA/ARI/TEX/MIL).
 - **Road RPG**: from MLB Stats API `sitCodes=A`, stored as `mlbRoadRPGMap`.
@@ -200,7 +202,7 @@ OffRtg/DefRtg from same ESPN team-stats call as pace. `nba:pace:2526` stores `te
 Kalshi series `KXMLBTEAMTOTAL`, `KXNBATEAMTOTAL`. `gameType: "teamTotal"`. NHL/NFL absent on Kalshi. Scoring team extracted from ticker suffix (e.g. `LAD8` → LAD).
 
 **True%**:
-- MLB: `simulateTeamTotalDist(lambda)` Poisson, `lambda = teamRPG × (oppERA/4.20) × parkRF`, clamped [0.5, 12]. **Blend**: `truePct = 0.5 × model + 0.5 × ttSeasonHitRate` when season data available. Corrects ~12pt Poisson overestimation at low thresholds. `modelTruePct` stored in debug output.
+- MLB: `simulateTeamTotalDist(lambda)` Poisson. `oppMult = 0.6 × starterMult(oppFIP, oppERA) + 0.4 × (oppTeamERA/4.20)` (same FIP/ERA blend as game totals). `lambda = teamRPG × oppMult × parkRF × platoonFactor × weatherFactor × umpireRunFactor`, clamped [0.5, 12]. **Blend**: `truePct = 0.5 × model + 0.5 × ttSeasonHitRate` when season data available. Corrects ~12pt Poisson overestimation at low thresholds. `modelTruePct` stored in debug output.
 - NBA: `simulateTeamPtsDist(mean, std=11)` Normal. `mean = (teamOffRtg × oppDefRtg / lgOffRtg²) × projPace`. `oppDefRtg = oppDefPPG/oppPace × 100`.
 
 **SimScore — MLB OVER**: seasonHitRate% (≥80→2, ≥60→1), oppWHIP (>1.35→2, >1.20→1), teamL10RPG (>5.0→2, >4.0→1), H2H HR% (≥80→2, ≥60→1), O/U (≥9.5→2, ≥7.5→1). `oppWHIP` uses same starter→team fallback as game totals; `oppWHIPSource` flag indicates path.
