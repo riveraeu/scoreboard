@@ -89,6 +89,71 @@ export function parseGameScores(events, normFn) {
   return scores;
 }
 
+// Extract a "top player" per team from ESPN scoreboard competitors[].leaders.
+// NBA/WNBA: use RAT (Rating) leader; parse displayValue ("X PPG, Y RPG, Z APG, ...") into "X PPG · Y RPG · Z APG".
+// NHL: no RAT; use Points leader and derive G/A from same-player Goals leader entry when available.
+// Returns { abbr → { name, id, headshot, stats } }. normFn maps raw ESPN abbreviations to canonical.
+export function parseTopPlayers(events, normFn, sport) {
+  const result = {};
+  const cdnLeague = sport === "wnba" ? "wnba" : sport === "nhl" ? "nhl" : "nba";
+  for (const event of events || []) {
+    const comp = event.competitions?.[0];
+    if (!comp) continue;
+    for (const c of (comp.competitors || [])) {
+      const rawAbbr = c.team?.abbreviation;
+      const abbr = normFn ? normFn(rawAbbr) : rawAbbr;
+      if (!abbr) continue;
+      const leaders = c.leaders || [];
+      let entry = null;
+      if (sport === "nba" || sport === "wnba") {
+        const rat = leaders.find(l => (l.shortDisplayName || l.name) === "RAT") || leaders.find(l => /rating/i.test(l.displayName || ""));
+        const top = rat?.leaders?.[0];
+        if (!top?.athlete) continue;
+        const dv = top.displayValue || "";
+        // Pull leading numeric values for PPG/RPG/APG; skip anything beyond.
+        const pick = (label) => {
+          const m = dv.match(new RegExp(`([0-9]+(?:\\.[0-9])?)\\s*${label}`, "i"));
+          return m ? m[1] : null;
+        };
+        const ppg = pick("PPG"), rpg = pick("RPG"), apg = pick("APG");
+        const parts = [ppg && `${ppg} PPG`, rpg && `${rpg} RPG`, apg && `${apg} APG`].filter(Boolean);
+        entry = {
+          name: top.athlete.displayName || top.athlete.fullName || null,
+          id: top.athlete.id || null,
+          headshot: top.athlete.headshot?.href || (top.athlete.id ? `https://a.espncdn.com/i/headshots/${cdnLeague}/players/full/${top.athlete.id}.png` : null),
+          stats: parts.length ? parts.join(" · ") : null,
+        };
+      } else if (sport === "nhl") {
+        const pts = leaders.find(l => /^points$/i.test(l.displayName || "") || (l.shortDisplayName || "").toLowerCase() === "points");
+        const top = pts?.leaders?.[0];
+        if (!top?.athlete) continue;
+        const pVal = parseInt(top.displayValue, 10);
+        // Find Goals leader; if it's the same athlete, derive A = P - G.
+        const goals = leaders.find(l => /^goals$/i.test(l.displayName || ""));
+        const gTop = goals?.leaders?.[0];
+        let gVal = null, aVal = null;
+        if (gTop?.athlete?.id && gTop.athlete.id === top.athlete.id) {
+          gVal = parseInt(gTop.displayValue, 10);
+          if (!isNaN(gVal) && !isNaN(pVal)) aVal = pVal - gVal;
+        }
+        const parts = [
+          gVal != null && !isNaN(gVal) ? `${gVal} G` : null,
+          aVal != null && !isNaN(aVal) ? `${aVal} A` : null,
+          !isNaN(pVal) ? `${pVal} PTS` : null,
+        ].filter(Boolean);
+        entry = {
+          name: top.athlete.displayName || top.athlete.fullName || null,
+          id: top.athlete.id || null,
+          headshot: top.athlete.headshot?.href || (top.athlete.id ? `https://a.espncdn.com/i/headshots/${cdnLeague}/players/full/${top.athlete.id}.png` : null),
+          stats: parts.length ? parts.join(" · ") : null,
+        };
+      }
+      if (entry?.name) result[abbr] = entry;
+    }
+  }
+  return result;
+}
+
 export function buildSoftTeamAbbrs(teams, stat = "points", n = 10) {
   try {
     const { hint, idx } = SOFT_TEAM_METRIC[stat] || SOFT_TEAM_METRIC.points;

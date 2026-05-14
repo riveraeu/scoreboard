@@ -23,44 +23,59 @@ function MatchupCard({
 
   const gameTimeStr = fmtGameTime(gameTime);
 
-  // MLB starting pitcher row — pick today vs tomorrow meta by gameDate.
-  // Same team can pitch on consecutive days with different starters; using "today first
-  // then tomorrow fallback" caused tomorrow-tab cards to show today's pitcher.
+  // Feature player row — MLB starting pitcher, or NBA/WNBA/NHL "top player" (Rating/Points leader).
+  // For MLB: pick today vs tomorrow meta by gameDate so consecutive-day starters don't collide.
   const ptToday = React.useMemo(
     () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date()),
     []
   );
   const isTomorrowGame = sport === 'mlb' && gameDate && gameDate > ptToday;
   const mlbPitchSrc = isTomorrowGame ? mlbMetaTomorrow : mlbMeta;
-  const pitcherFor = (abbr) => {
-    if (sport !== 'mlb' || !abbr) return null;
-    const p = mlbPitchSrc?.pitchers?.[abbr];
-    return p?.name ? p : null;
+
+  const featureFor = (abbr) => {
+    if (!abbr) return null;
+    if (sport === 'mlb') {
+      const p = mlbPitchSrc?.pitchers?.[abbr];
+      if (!p?.name) return null;
+      const eraStr = (p.era != null && !isNaN(p.era)) ? `${(+p.era).toFixed(2)} ERA` : null;
+      const recStr = (p.wins != null && p.losses != null) ? `${p.wins}-${p.losses}` : null;
+      const stats = [eraStr, recStr].filter(Boolean).join(' · ') || null;
+      return {
+        name: p.name,
+        id: p.id,
+        headshot: p.id ? `https://midfield.mlbstatic.com/v1/people/${p.id}/spots/120` : null,
+        stats,
+        sportKey: 'baseball/mlb',
+        tab: 'strikeouts',
+      };
+    }
+    const meta = sport === 'nba' ? nbaMeta : sport === 'wnba' ? wnbaMeta : sport === 'nhl' ? nhlMeta : null;
+    const tp = meta?.topPlayers?.[abbr];
+    if (!tp?.name) return null;
+    return {
+      name: tp.name,
+      id: tp.id,
+      headshot: tp.headshot,
+      stats: tp.stats,
+      sportKey: sport === 'nba' ? 'basketball/nba' : sport === 'wnba' ? 'basketball/wnba' : 'hockey/nhl',
+      tab: 'points',
+    };
   };
-  const awayPitcher = pitcherFor(awayTeam);
-  const homePitcher = pitcherFor(homeTeam);
-  const hasPitcherRow = sport === 'mlb' && (awayPitcher || homePitcher);
-  const fmtEraRec = (p) => {
-    if (!p) return null;
-    const eraStr = (p.era != null && !isNaN(p.era)) ? `${(+p.era).toFixed(2)} ERA` : null;
-    const recStr = (p.wins != null && p.losses != null) ? `${p.wins}-${p.losses}` : null;
-    if (eraStr && recStr) return `${eraStr} · ${recStr}`;
-    return eraStr || recStr || null;
-  };
-  const headshotUrl = (id) => id ? `https://midfield.mlbstatic.com/v1/people/${id}/spots/120` : null;
-  const openPitcher = (p, team) => {
-    if (!p?.name) return;
-    navigateToPlayer({ id: null, name: p.name, team, sportKey: 'baseball/mlb' }, 'strikeouts');
+  const awayFeature = featureFor(awayTeam);
+  const homeFeature = featureFor(homeTeam);
+  const hasFeatureRow = !!(awayFeature || homeFeature);
+  const openFeature = (f, team) => {
+    if (!f?.name) return;
+    navigateToPlayer({ id: null, name: f.name, team, sportKey: f.sportKey }, f.tab);
   };
 
-  // Game odds shown in pitcher-row center (MLB only). Server overlays the closing line
+  // Game odds shown in feature-row center (MLB only). Server overlays the closing line
   // once the game state transitions to in/post, so this displays closing — not live — odds.
-  // Source picked by gameDate so a tomorrow game doesn't pull today's odds for the same team.
   const awayOdds = sport === 'mlb' ? (mlbPitchSrc?.gameOdds?.[awayTeam] ?? null) : null;
   const homeOdds = sport === 'mlb' ? (mlbPitchSrc?.gameOdds?.[homeTeam] ?? null) : null;
   const oddsTotal = awayOdds?.total ?? homeOdds?.total ?? null;
   const fmtMl = (ml) => (ml == null || isNaN(ml)) ? null : (ml > 0 ? `+${ml}` : `${ml}`);
-  const hasOdds = oddsTotal != null || awayOdds?.ml != null || homeOdds?.ml != null;
+  const hasOdds = sport === 'mlb' && (oddsTotal != null || awayOdds?.ml != null || homeOdds?.ml != null);
 
   // Play notification badge state
   const totalPlays = (gamePlays || []).length;
@@ -143,14 +158,14 @@ function MatchupCard({
         </div>
       </div>
 
-      {/* Pitcher row (MLB only) — headshot + name + ERA · W-L */}
-      {hasPitcherRow && (
+      {/* Feature player row — MLB starting pitcher or NBA/WNBA/NHL top player */}
+      {hasFeatureRow && (
         <div style={{ borderTop: '1px solid #21262d', padding: '8px 16px 10px', display: 'flex', alignItems: 'center' }}>
-          {/* Away pitcher */}
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, cursor: awayPitcher ? 'pointer' : 'default' }}
-            onClick={() => openPitcher(awayPitcher, awayTeam)}>
-            {awayPitcher?.id ? (
-              <img src={headshotUrl(awayPitcher.id)} alt={awayPitcher.name}
+          {/* Away feature */}
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, cursor: awayFeature ? 'pointer' : 'default' }}
+            onClick={() => openFeature(awayFeature, awayTeam)}>
+            {awayFeature?.headshot ? (
+              <img src={awayFeature.headshot} alt={awayFeature.name}
                 style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', background: '#0d1117' }}
                 onError={e => { e.target.style.visibility = 'hidden'; }} />
             ) : (
@@ -158,15 +173,15 @@ function MatchupCard({
             )}
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 12, color: '#c9d1d9', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {awayPitcher?.name || '—'}
+                {awayFeature?.name || '—'}
               </div>
-              {fmtEraRec(awayPitcher) && (
-                <div style={{ fontSize: 10, color: '#8b949e' }}>{fmtEraRec(awayPitcher)}</div>
+              {awayFeature?.stats && (
+                <div style={{ fontSize: 10, color: '#8b949e' }}>{awayFeature.stats}</div>
               )}
             </div>
           </div>
 
-          {/* Center: game total + per-team ML (aligned under game time) */}
+          {/* Center: MLB game total + per-team ML; spacer for other sports */}
           <div style={{ textAlign: 'center', minWidth: 120, padding: '0 8px' }}>
             {hasOdds ? (
               <>
@@ -186,19 +201,19 @@ function MatchupCard({
             ) : null}
           </div>
 
-          {/* Home pitcher */}
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end', minWidth: 0, cursor: homePitcher ? 'pointer' : 'default' }}
-            onClick={() => openPitcher(homePitcher, homeTeam)}>
+          {/* Home feature */}
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end', minWidth: 0, cursor: homeFeature ? 'pointer' : 'default' }}
+            onClick={() => openFeature(homeFeature, homeTeam)}>
             <div style={{ textAlign: 'right', minWidth: 0 }}>
               <div style={{ fontSize: 12, color: '#c9d1d9', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {homePitcher?.name || '—'}
+                {homeFeature?.name || '—'}
               </div>
-              {fmtEraRec(homePitcher) && (
-                <div style={{ fontSize: 10, color: '#8b949e' }}>{fmtEraRec(homePitcher)}</div>
+              {homeFeature?.stats && (
+                <div style={{ fontSize: 10, color: '#8b949e' }}>{homeFeature.stats}</div>
               )}
             </div>
-            {homePitcher?.id ? (
-              <img src={headshotUrl(homePitcher.id)} alt={homePitcher.name}
+            {homeFeature?.headshot ? (
+              <img src={homeFeature.headshot} alt={homeFeature.name}
                 style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', background: '#0d1117' }}
                 onError={e => { e.target.style.visibility = 'hidden'; }} />
             ) : (
