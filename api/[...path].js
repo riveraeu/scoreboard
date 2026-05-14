@@ -4919,6 +4919,98 @@ var worker_default = {
         for (const [abbr, odds] of Object.entries(sportByteam.mlb?.gameOddsTomorrow ?? {})) {
           _mlbGameOddsTomorrow[abbr] = { ml: odds.moneyline ?? null, total: odds.total ?? null, spread: odds.spread ?? null };
         }
+        // Kalshi-derived fallback for MLB game ML + total. ESPN doesn't post tomorrow's lines
+        // until close to first pitch; Kalshi's KXMLBGAME / KXMLBTOTAL markets are priced earlier.
+        // We fill only missing fields so ESPN remains authoritative once it has data.
+        try {
+          const _kPtFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' });
+          const _kGameDate = (m) => m?.expected_expiration_time ? _kPtFmt.format(new Date(m.expected_expiration_time)) : null;
+          const _kImpliedProb = (m) => {
+            const a = parseFloat(m.yes_ask_dollars) || 0;
+            const l = parseFloat(m.last_price_dollars) || 0;
+            const b = parseFloat(m.yes_bid_dollars) || 0;
+            return (a >= 0.98 && b === 0 && l > 0) ? l : (a > 0 ? a : l);
+          };
+          const _toAmerican = (p) => {
+            if (!p || p <= 0 || p >= 1) return null;
+            return p >= 0.5 ? -Math.round((p / (1 - p)) * 100) : Math.round(((1 - p) / p) * 100);
+          };
+          const kOdds = {}; // "{abbr}|{abbr}|{gameDate}" → { total, mlByTeam: {abbr: ml} }
+          const _gIdx = seriesTickers.indexOf('KXMLBGAME');
+          if (_gIdx >= 0) {
+            const byEvent = {};
+            for (const m of (kalshiResults[_gIdx]?.markets || [])) {
+              const tk = m.ticker || '';
+              const lastDash = tk.lastIndexOf('-');
+              if (lastDash < 0) continue;
+              const abbr = tk.slice(lastDash + 1);
+              const eventT = m.event_ticker;
+              if (!eventT || !abbr) continue;
+              const p = _kImpliedProb(m);
+              if (!p || p <= 0 || p >= 1) continue;
+              if (!byEvent[eventT]) byEvent[eventT] = { probs: {}, gameDate: _kGameDate(m) };
+              byEvent[eventT].probs[abbr] = p;
+            }
+            for (const info of Object.values(byEvent)) {
+              const teams = Object.keys(info.probs);
+              if (teams.length !== 2 || !info.gameDate) continue;
+              const [t1, t2] = teams;
+              const sum = info.probs[t1] + info.probs[t2];
+              if (sum <= 0) continue;
+              const ml1 = _toAmerican(info.probs[t1] / sum);
+              const ml2 = _toAmerican(info.probs[t2] / sum);
+              const payload = { mlByTeam: { [t1]: ml1, [t2]: ml2 } };
+              const k1 = `${t1}|${t2}|${info.gameDate}`;
+              const k2 = `${t2}|${t1}|${info.gameDate}`;
+              kOdds[k1] = { ...(kOdds[k1] || {}), ...payload };
+              kOdds[k2] = { ...(kOdds[k2] || {}), ...payload };
+            }
+          }
+          const _tIdx = seriesTickers.indexOf('KXMLBTOTAL');
+          if (_tIdx >= 0) {
+            const byEvent = {};
+            for (const m of (kalshiResults[_tIdx]?.markets || [])) {
+              const strike = parseFloat(m.floor_strike);
+              if (isNaN(strike)) continue;
+              const thr = Math.round(strike + 0.5);
+              const p = _kImpliedProb(m);
+              const pct = Math.round(p * 100);
+              if (pct <= 0 || pct >= 100) continue;
+              const [t1, t2] = parseGameTeams(m.event_ticker, 'mlb');
+              if (!t1 || !t2) continue;
+              const eventT = m.event_ticker;
+              if (!byEvent[eventT]) byEvent[eventT] = { thrs: [], teams: [t1, t2], gameDate: _kGameDate(m) };
+              byEvent[eventT].thrs.push({ thr, pct });
+            }
+            for (const info of Object.values(byEvent)) {
+              if (!info.gameDate) continue;
+              info.thrs.sort((a, b) => a.thr - b.thr);
+              let line = null;
+              for (const x of info.thrs) { if (x.pct >= 50) line = x.thr - 0.5; }
+              if (line == null) continue;
+              const [t1, t2] = info.teams;
+              const k1 = `${t1}|${t2}|${info.gameDate}`;
+              const k2 = `${t2}|${t1}|${info.gameDate}`;
+              kOdds[k1] = { ...(kOdds[k1] || {}), total: line };
+              kOdds[k2] = { ...(kOdds[k2] || {}), total: line };
+            }
+          }
+          // Fill missing fields on _mlbGameOdds / _mlbGameOddsTomorrow from kOdds.
+          const _ptToday = new Date(Date.now() - 7 * 3600 * 1000).toISOString().slice(0, 10);
+          for (const sc of Object.values(sportByteam.mlb?.gameScores ?? {})) {
+            const hA = sc?.homeTeam, aA = sc?.awayTeam, gD = sc?.gameDate;
+            if (!hA || !aA || !gD) continue;
+            const k = kOdds[`${hA}|${aA}|${gD}`];
+            if (!k) continue;
+            const map = (gD > _ptToday) ? _mlbGameOddsTomorrow : _mlbGameOdds;
+            if (!map[hA]) map[hA] = { ml: null, total: null, spread: null };
+            if (!map[aA]) map[aA] = { ml: null, total: null, spread: null };
+            if (map[hA].ml == null && k.mlByTeam?.[hA] != null) map[hA].ml = k.mlByTeam[hA];
+            if (map[aA].ml == null && k.mlByTeam?.[aA] != null) map[aA].ml = k.mlByTeam[aA];
+            if (map[hA].total == null && k.total != null) map[hA].total = k.total;
+            if (map[aA].total == null && k.total != null) map[aA].total = k.total;
+          }
+        } catch { /* non-fatal */ }
         // Closing-line preservation: ESPN drops odds once a game starts. Snapshot pre-game
         // odds keyed by "{home}|{away}|{gameDate}" so once state transitions to in/post we can
         // overlay the last pre-game odds (= closing line) onto live odds maps. Single global
