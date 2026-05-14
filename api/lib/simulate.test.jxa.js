@@ -17,6 +17,45 @@ function poissonCDF(k, lambda) {
   return Math.min(1, sum);
 }
 
+function lambdaForPoissonTail(threshold, targetProb) {
+  if (targetProb == null || targetProb <= 0 || targetProb >= 1 || threshold == null || threshold < 1) return null;
+  function tailAt(lam) { return 1 - poissonCDF(threshold - 1, lam); }
+  var lo = 0.05, hi = 25;
+  if (tailAt(lo) > targetProb) return lo;
+  if (tailAt(hi) < targetProb) return hi;
+  for (var i = 0; i < 30; i++) {
+    var mid = (lo + hi) / 2;
+    if (tailAt(mid) < targetProb) lo = mid; else hi = mid;
+  }
+  return parseFloat(((lo + hi) / 2).toFixed(3));
+}
+
+function _normInv(p) {
+  if (p <= 0 || p >= 1) return null;
+  var a = [-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02, 1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00];
+  var b = [-5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02, 6.680131188771972e+01, -1.328068155288572e+01];
+  var c = [-7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00, -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00];
+  var d = [7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00, 3.754408661907416e+00];
+  var pl = 0.02425, ph = 1 - pl;
+  if (p < pl) {
+    var q1 = Math.sqrt(-2 * Math.log(p));
+    return (((((c[0]*q1+c[1])*q1+c[2])*q1+c[3])*q1+c[4])*q1+c[5]) / ((((d[0]*q1+d[1])*q1+d[2])*q1+d[3])*q1+1);
+  }
+  if (p <= ph) {
+    var q2 = p - 0.5, r = q2 * q2;
+    return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q2 / (((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1);
+  }
+  var q3 = Math.sqrt(-2 * Math.log(1 - p));
+  return -(((((c[0]*q3+c[1])*q3+c[2])*q3+c[3])*q3+c[4])*q3+c[5]) / ((((d[0]*q3+d[1])*q3+d[2])*q3+d[3])*q3+1);
+}
+
+function meanForNormalTail(threshold, targetProb, std) {
+  if (targetProb == null || targetProb <= 0 || targetProb >= 1 || std == null || std <= 0) return null;
+  var z = _normInv(1 - targetProb);
+  if (z == null) return null;
+  return parseFloat((threshold - std * z).toFixed(3));
+}
+
 var TTO_DECAY_FACTOR = 0.88;
 
 function simulateKsDist(orderedKPcts, pitcherKPct, parkFactor, nSim, totalPA, earlyExitProb, stdBF) {
@@ -708,6 +747,54 @@ test('weatherFactor: null temp defaults to 72F (no temp contribution)', function
   var f = calcWeatherFactor(5, null);
   var expected = 1 + 5 * 0.013;
   assert.ok(Math.abs(f - expected) < 0.001, 'null temp = 72F baseline');
+});
+
+// ---- lambdaForPoissonTail / meanForNormalTail ----
+
+test('lambdaForPoissonTail: returns null on bad inputs', function() {
+  assert.equal(lambdaForPoissonTail(null, 0.5), null);
+  assert.equal(lambdaForPoissonTail(5, null), null);
+  assert.equal(lambdaForPoissonTail(5, 0), null);
+  assert.equal(lambdaForPoissonTail(5, 1), null);
+  assert.equal(lambdaForPoissonTail(0, 0.5), null);
+});
+
+test('lambdaForPoissonTail: round-trip — λ that gives P(X≥thr)=p, then poissonCDF agrees', function() {
+  var lam = lambdaForPoissonTail(9, 0.45);
+  var tail = 1 - poissonCDF(8, lam);
+  assert.ok(Math.abs(tail - 0.45) < 0.005, 'tail prob within 0.5pt of target');
+});
+
+test('lambdaForPoissonTail: higher targetProb → higher λ', function() {
+  var lamLo = lambdaForPoissonTail(8, 0.30);
+  var lamHi = lambdaForPoissonTail(8, 0.70);
+  assert.ok(lamHi > lamLo, 'higher tail prob requires higher rate');
+});
+
+test('lambdaForPoissonTail: clamps to [0.05, 25] for extreme requests', function() {
+  var lamTiny = lambdaForPoissonTail(15, 0.0001);
+  var lamHuge = lambdaForPoissonTail(2, 0.9999);
+  assert.ok(lamTiny <= 25 && lamTiny >= 0.05);
+  assert.ok(lamHuge <= 25 && lamHuge >= 0.05);
+});
+
+test('meanForNormalTail: round-trip — μ that gives P(X≥thr)=p, std=11', function() {
+  // P(N(μ, 11) >= 215) = 0.50 → μ = 215
+  var mu = meanForNormalTail(215, 0.50, 11);
+  assert.ok(Math.abs(mu - 215) < 0.01, 'p=0.5 → μ=threshold');
+});
+
+test('meanForNormalTail: higher targetProb → higher μ', function() {
+  var muLo = meanForNormalTail(220, 0.30, 13);
+  var muHi = meanForNormalTail(220, 0.70, 13);
+  assert.ok(muHi > muLo, 'higher tail prob requires higher mean');
+});
+
+test('meanForNormalTail: returns null on bad inputs', function() {
+  assert.equal(meanForNormalTail(220, 0, 11), null);
+  assert.equal(meanForNormalTail(220, 1, 11), null);
+  assert.equal(meanForNormalTail(220, 0.5, 0), null);
+  assert.equal(meanForNormalTail(220, 0.5, null), null);
 });
 
 // ---- Summary ----

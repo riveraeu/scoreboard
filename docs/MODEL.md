@@ -31,7 +31,7 @@ Per-sport modeling internals. CLAUDE.md has the architecture map and load-bearin
 - `kpctPts` — CSW% (≥30→2, >26→1, ≤26→0); falls back to regressed K% (>27/>24/≤24)
 - `lkpPts` — Lineup oK% hand-adjusted (>24→2, >22→1, ≤22→0)
 - `kHitRatePts` — Trust-weighted blend of 2026 observed and 2025 computed K-threshold hit rate (≥90→2, ≥80→1, <80→0). `trust26 = min(1, vals26.length/15)`. `blendedHitRate` is the value. **Pitcher gamelog is filtered to starts only** (`IP ≥ 3.0 AND TBF ≥ 12`) — ESPN gamelog returns all appearances incl. relief stints; mixing them in would tank per-threshold hit rate (e.g. Ashcraft 2025: 8 starts but 26 total appearances → unfiltered hit rate at ≥4 K was ~31%, start-only is ~95%). Filter applied once at `playerColCache` build (`_evtPool`); all downstream pitcher-K consumers (`vals25`/`vals26`/`_bf26`/`seasonPct`/soft-bucket history) operate on starter-only data.
-- `kH2HHandPts` — Pitcher's K hit rate vs opponents whose lineup hand majority matches tonight's. Tonight uses full switch-hitter adjustment (S vs RHP→L); historical uses `staticTeamHandMajority` (S = 0.5R + 0.5L). ≥5 starts required (≥80→2, ≥65→1, <65→0).
+- `kH2HHandPts` — Pitcher's K hit rate vs opponents whose lineup hand majority matches tonight's. Tonight uses full switch-hitter adjustment (S vs RHP→L); historical uses `staticTeamHandMajority` (S = 0.5R + 0.5L). ≥5 starts required (≥80→2, ≥65→1, <65→0). **Folded into K lambda 2026-05-13**: `_kHandAdj = clamp(h2hHandRate / 70, [0.90, 1.10])` multiplies into `_pitcherKPctAdj` before `simulateKsDist`. Was SimScore-only.
 - `totalPts` — O/U tier (≤7.5→2, <10.5→1, ≥10.5→0)
 
 **Display-only fields** (not in SimScore, kept for debug/calibration): `kbbPts`, `parkMeets`, `mlPts`, `kTrendPts` (calibration breakdown only — no longer shown in prose), `pitchesPts`. Recent K% still drives the A1 effective-K blend in the model; just removed from explanations to declutter.
@@ -43,11 +43,15 @@ Per-sport modeling internals. CLAUDE.md has the architecture map and load-bearin
 ---
 
 ## MLB Hitters (HRR)
-**True%**: logit-sigmoid park adjustment on blended base rate (no Monte Carlo for HRR — `simulateHits` only used for hits stat).
+**True%**: logit-sigmoid base-rate adjustment with park, hitter OPS, and pitcher WHIP shifts (no Monte Carlo for HRR — `simulateHits` only used for hits stat).
 ```
 rawMlbPct = (primaryPct + softPct) / 2
-truePct = sigmoid(logit(rawMlbPct/100) + ln(parkFactor)) × 100
+opsAdj  = clamp(hitterOPS / 0.720, [0.85, 1.15])           # weight 0.4 in logit
+whipAdj = clamp((pitcherWHIP / 1.30)^0.5, [0.92, 1.08])    # weight 0.3 in logit (third-order)
+truePct = sigmoid(logit(rawMlbPct/100) + ln(parkFactor) + 0.4·ln(opsAdj) + 0.3·ln(whipAdj)) × 100
 ```
+- OPS folded into lambda 2026-05-13 (was SimScore-only). Top-quartile (~.850) lifts truePct ~1.5–2pt.
+- WHIP folded into lambda 2026-05-13 (was SimScore-only). Lower weight than OPS; high-WHIP pitcher → more contact → higher HRR base rate beyond what BvP captures.
 - `primaryPct` = 2026 HRR 1+ rate (fallback: 2025+2026 blend, then career)
 - `softPct` = HRR 1+ rate vs tonight's pitcher (BvP, ≥10 games). **Handedness fallback** when BvP <10: `batterHRRSplits[name][vsR/vsL]` (MLB Stats API, 2025+2026 combined), Poisson approx `1 − e^(−lambda)` where `lambda = totalHRR/games`; ≥10 games vs that hand required. `softLabel` set to `"vs RHP"`/`"vs LHP"`.
 - B2 batter recent form: `hitterEffectiveBA = 0.3 × recentBA + 0.7 × seasonBA` when ≥20 AB in last 10 (used by `simulateHits`, not HRR formula)
@@ -141,7 +145,14 @@ Kalshi series: `KXMLBTOTAL`, `KXNBATOTAL`, `KXWNBATOTAL`, `KXNHLTOTAL`, `KXNFLTO
 
 **WNBA totals**: same possession-based projection as NBA but with `wnbaPaceData` (2025 anchor). Per-team std=11 (WNBA scoring variance roughly NBA × (40/48); empirical game-total std ~13–15). **SimScore tiers retuned**: Comb OffRtg/DefRtg ≥98/≥93 (vs NBA 118/113), Pace > leagueAvg+1 (vs +2), O/U ≥168/≥158 (vs 225/215). Pace data from ESPN `avgEstimatedPossessions` (no separate `paceFactor` field for WNBA). Sample-weighted seasonHitRate blend via `_ssnBlendWeight`, same as NBA/MLB/NHL.
 
-**True%**: Poisson MC for MLB/NHL, Normal for NBA. `_simData` includes per-team expected and `expectedTotal`. **All three sports blend the sim with `gtSeasonHitRate`** via shared `_gtSeasonHitRate(sport, home, away, thr)` helper which returns `{ rate, sample }` — average of home + away team's season rate of games where combined score ≥ threshold; requires ≥5 schedule games per team. Sample = `min(home games, away games)`. **Blend is sample-weighted** via `_ssnBlendWeight(sample) = min(1, sample/40) × 0.7` — observations earn up to 70% weight at N≥40, model retains a 30% minimum for tonight-specific factors. Replaced the prior fixed 50/50 weighting on 2026-05-08 because UNDERS were undertested vs player props and tonight's slate showed several team-total UNDERs with model/observed gaps where the 50/50 blend underweighted observations. Saves `modelTruePct` (pre-blend), `gtSeasonHitRate`, and `gtSsnSample` in `_simData`. Blend corrects tail-thinness across distributions (Poisson for MLB/NHL, Normal-with-std=13 for NBA). NBA per-team std bumped from 11 → 13 (game total std ≈ 18.4, closer to empirical NBA game-total std). `_gtScheduleMap` populates both teams for every sport that has game totals; `_SCHED_TO_ESPN` translates canonical → ESPN team-route slug for MLB CWS→CHW and NHL TBL→TB / NJD→NJ / LAK→LA / SJS→SJ.
+**True%**: Poisson MC for MLB/NHL, Normal for NBA/WNBA. `_simData` includes per-team expected and `expectedTotal`. **All four sports blend `gtSeasonHitRate` into the lambda PRE-sim** (changed 2026-05-13 from post-sim truePct blend) — for the threshold being predicted, solve for the rate that would produce the observed seasonHitRate, then sample-weighted blend with model lambda.
+- Poisson sports: `impliedLambda = lambdaForPoissonTail(threshold, ssnRate/100)` (bisection in `simulate.js`); `blendedLambda = (1-w) × modelLambda + w × impliedLambda`; `truePct = (1 - poissonCDF(threshold-1, blendedLambda)) × 100`.
+- Normal sports: `impliedMean = meanForNormalTail(threshold, ssnRate/100, totalStd)` (closed form via inverse Φ); `blendedMean = (1-w) × modelMean + w × impliedMean`; `truePct = (1 - normCDF(threshold - 0.5, blendedMean, totalStd)) × 100` (with 0.5 continuity correction).
+- Total std (Normal): `sqrt(homeStd² + awayStd²)` — NBA std=13 per team → ~18.4 total; WNBA std=11 per team → ~15.6 total.
+- Why pre-sim: clean attribution. seasonHitRate is now an upstream lambda input, comparable to FIP/ERA/WHIP/RPG via counterfactual Δ rather than a separate post-hoc correction.
+- `_gtSeasonHitRate(sport, home, away, thr)` helper returns `{ rate, sample }` — average of home + away team's season rate of games where combined score ≥ threshold; requires ≥5 schedule games per team. Sample = `min(home games, away games)`. `_ssnBlendWeight(sample) = min(1, sample/40) × 0.7` — observations earn up to 70% weight at N≥40, model retains a 30% minimum for tonight-specific factors.
+- Saves `modelTruePct` (pre-blend), `gtSeasonHitRate`, `gtSsnSample`, `modelLambda`/`impliedLambda`/`blendedLambda` (or `modelMean`/`impliedMean`/`blendedMean` for Normal) in `_simData`.
+- `_gtScheduleMap` populates both teams for every sport that has game totals; `_SCHED_TO_ESPN` translates canonical → ESPN team-route slug for MLB CWS→CHW and NHL TBL→TB / NJD→NJ / LAK→LA / SJS→SJ.
 
 **MLB edge dampener**: when `|threshold − gameOuLine| ≥ 3`, multiply `overEdge`/`underEdge` by 0.7 before gate check. Mechanical correction for residual tail thinness after the blend; protects bet sizing on Poisson-tail-fueled UNDERs that were inflating edge to 16–26%. Stored as `edgeDampened: 0.7` on the play; `rawEdge` and `rawUnderEdge` preserved for debug. NBA/NHL skipped.
 
@@ -153,12 +164,14 @@ Kalshi series: `KXMLBTOTAL`, `KXNBATOTAL`, `KXWNBATOTAL`, `KXNHLTOTAL`, `KXNFLTO
 
 *MLB*:
 ```
-starterMult(fip, era) = 0.5 × (fip/4.20) + 0.5 × (era/4.20)   # falls back to whichever is non-null
-awayMult = 0.6 × starterMult(awayFIP, awayERA) + 0.4 × (awayTeamERA/4.20)
-homeMult = 0.6 × starterMult(homeFIP, homeERA) + 0.4 × (homeTeamERA/4.20)
+whipAdj(whip)         = clamp((whip/1.30)^0.5, [0.90, 1.10])
+starterMult(fip, era, whip) = (0.5×(fip/4.20) + 0.5×(era/4.20)) × whipAdj(whip)   # FIP/ERA fallbacks apply
+awayMult = 0.6 × starterMult(awayFIP, awayERA, awayWHIP) + 0.4 × (awayTeamERA/4.20)
+homeMult = 0.6 × starterMult(homeFIP, homeERA, homeWHIP) + 0.4 × (homeTeamERA/4.20)
 homeLambda = homeRoadRPG × awayMult × parkRF × homePlatoonFactor × weatherFactor × umpireRunFactor  # clamped [1,12]
 awayLambda = awayRoadRPG × homeMult × parkRF × awayPlatoonFactor × weatherFactor × umpireRunFactor  # clamped [1,12]
 ```
+- WHIP folded into lambda 2026-05-13 (was SimScore-only). Exponent 0.5 dampens overlap with FIP/ERA. Same adjustment applied to team-total `oppMult`.
 - **FIP** (`api/lib/mlb.js` `_seasonFIP`): `((13×HR) + (3×(BB+HBP)) − (2×K)) / IP + 3.10` per season; sample-weighted blend of 2026/2025 via `trust26 = min(1, gs26/15)` (same regression as avgP/avgBF). FIP constant 3.10 aligns FIP onto the ~4.20 ERA scale. IP parsed from MLB Stats API string format ("45.2" = 45 ⅔). Strips fielding/sequencing luck from the starter signal — a "lucky" starter (low ERA / high FIP) gets penalized, an "unlucky" one (high ERA / low FIP) gets credit. ERA stays as the second half of the starter blend so observed run prevention still counts. `pitcherFIPByTeam` exported from `buildPitcherKPct` and surfaced as `homeFIP`/`awayFIP` in `_simData`.
 - **Platoon factor**: `(lineup composite BA vs starter's hand) / (lineup composite overall BA)` from `batterSplitBA`. Falls back to 1.0 when hand unknown or sample <80 AB. **Note**: MLB Stats API `/teams/stats` does NOT support pitcher-handedness sitCodes (`vl/vr` returns empty) — handedness splits are individual-only. Same factor applied to team total lambda.
 - **Weather factor**: `1 + windOutMph × 0.013 + (tempF − 72) × 0.001`, clamped [0.85, 1.15]. `windOutMph` parsed from ESPN `displayValue` ("Out to LF/CF/RF" positive, "In from..." negative, "L to R"/"R to L" = 0). Skipped for `_MLB_DOMED` parks (TB/TOR/HOU/MIA/SEA/ARI/TEX/MIL).
@@ -202,8 +215,8 @@ OffRtg/DefRtg from same ESPN team-stats call as pace. `nba:pace:2526` stores `te
 Kalshi series `KXMLBTEAMTOTAL`, `KXNBATEAMTOTAL`. `gameType: "teamTotal"`. NHL/NFL absent on Kalshi. Scoring team extracted from ticker suffix (e.g. `LAD8` → LAD).
 
 **True%**:
-- MLB: `simulateTeamTotalDist(lambda)` Poisson. `oppMult = 0.6 × starterMult(oppFIP, oppERA) + 0.4 × (oppTeamERA/4.20)` (same FIP/ERA blend as game totals). `lambda = teamRPG × oppMult × parkRF × platoonFactor × weatherFactor × umpireRunFactor`, clamped [0.5, 12]. **Blend**: `truePct = 0.5 × model + 0.5 × ttSeasonHitRate` when season data available. Corrects ~12pt Poisson overestimation at low thresholds. `modelTruePct` stored in debug output.
-- NBA: `simulateTeamPtsDist(mean, std=11)` Normal. `mean = (teamOffRtg × oppDefRtg / lgOffRtg²) × projPace`. `oppDefRtg = oppDefPPG/oppPace × 100`.
+- MLB: `simulateTeamTotalDist(lambda)` Poisson. `oppMult = 0.6 × starterMult(oppFIP, oppERA, oppWHIP) + 0.4 × (oppTeamERA/4.20)` (FIP/ERA/WHIP starter blend, same as game totals). `lambda = teamRPG × oppMult × parkRF × platoonFactor × weatherFactor × umpireRunFactor`, clamped [0.5, 12]. **Pre-sim lambda blend**: `impliedLambda = lambdaForPoissonTail(threshold, ttSeasonHitRate/100)`; `blendedLambda = (1-w) × lambda + w × impliedLambda` where `w = min(1, sample/40) × 0.7`. truePct from analytical `1 - poissonCDF(threshold-1, blendedLambda)`. `modelTruePct`, `ttImpliedLambda`, `ttBlendedLambda` stored in debug output.
+- NBA: `simulateTeamPtsDist(mean, std=11)` Normal. `mean = (teamOffRtg × oppDefRtg / lgOffRtg²) × projPace`. `oppDefRtg = oppDefPPG/oppPace × 100`. **Pre-sim mean blend**: `impliedMean = meanForNormalTail(threshold, ttNbaSeasonHitRate/100, 11)`; `blendedMean = (1-w) × mean + w × impliedMean`. truePct from analytical `1 - normCDF(threshold - 0.5, blendedMean, 11)`. `modelTruePct`, `ttNbaImpliedMean`, `ttNbaBlendedMean` stored in debug output.
 
 **SimScore — MLB OVER**: seasonHitRate% (≥80→2, ≥60→1), oppWHIP (>1.35→2, >1.20→1), teamL10RPG (>5.0→2, >4.0→1), H2H HR% (≥80→2, ≥60→1), O/U (≥9.5→2, ≥7.5→1). `oppWHIP` uses same starter→team fallback as game totals; `oppWHIPSource` flag indicates path.
 **SimScore — NBA OVER**: teamOffRtg, oppDefRtg (≥118→2, ≥113→1), Season HR%, H2H HR% (≥80→2, ≥60→1), O/U (≥225→2, ≥215→1).

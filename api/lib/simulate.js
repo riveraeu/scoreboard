@@ -143,6 +143,63 @@ export function log5HitRate(log5Avg, threshold, avgBF = 26) {
   return (1 - poissonCDF(threshold - 1, lambda)) * 100;
 }
 
+// Inverse-CDF: find Poisson rate λ such that P(X >= threshold) = targetProb.
+// Used to translate observed seasonHitRate into an equivalent lambda for blending.
+// Bisection in [0.05, 25]; ~30 iters → ε ≈ 1e-7. Returns null when target unreachable.
+export function lambdaForPoissonTail(threshold, targetProb) {
+  if (targetProb == null || targetProb <= 0 || targetProb >= 1 || threshold == null || threshold < 1) return null;
+  const tailAt = (lam) => 1 - poissonCDF(threshold - 1, lam);
+  let lo = 0.05, hi = 25;
+  if (tailAt(lo) > targetProb) return lo;
+  if (tailAt(hi) < targetProb) return hi;
+  for (let i = 0; i < 30; i++) {
+    const mid = (lo + hi) / 2;
+    if (tailAt(mid) < targetProb) lo = mid; else hi = mid;
+  }
+  return parseFloat(((lo + hi) / 2).toFixed(3));
+}
+
+// Standard normal inverse CDF (Acklam approximation, ~1e-9 max error). Internal.
+function _normInv(p) {
+  if (p <= 0 || p >= 1) return null;
+  const a = [-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02, 1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00];
+  const b = [-5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02, 6.680131188771972e+01, -1.328068155288572e+01];
+  const c = [-7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00, -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00];
+  const d = [7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00, 3.754408661907416e+00];
+  const pl = 0.02425, ph = 1 - pl;
+  if (p < pl) {
+    const q = Math.sqrt(-2 * Math.log(p));
+    return (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+  }
+  if (p <= ph) {
+    const q = p - 0.5, r = q * q;
+    return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q / (((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1);
+  }
+  const q = Math.sqrt(-2 * Math.log(1 - p));
+  return -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+}
+
+// Inverse-CDF: find Normal mean μ such that P(N(μ, std) >= threshold) = targetProb.
+// Closed form: μ = threshold - std * Φ^-1(1 - targetProb).
+export function meanForNormalTail(threshold, targetProb, std) {
+  if (targetProb == null || targetProb <= 0 || targetProb >= 1 || std == null || std <= 0) return null;
+  const z = _normInv(1 - targetProb);
+  if (z == null) return null;
+  return parseFloat((threshold - std * z).toFixed(3));
+}
+
+// Standard normal CDF via erf approximation (Abramowitz & Stegun 7.1.26, ~1.5e-7 max error).
+// Used to compute truePct from a (mean, std) pair without re-running the sim.
+export function normCDF(x, mean = 0, std = 1) {
+  if (std <= 0) return null;
+  const z = (x - mean) / (std * Math.SQRT2);
+  // erf approximation
+  const t = 1 / (1 + 0.3275911 * Math.abs(z));
+  const y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-z * z);
+  const erfZ = z >= 0 ? y : -y;
+  return 0.5 * (1 + erfZ);
+}
+
 // K% multiplier applied to BF 19+ (third time through the order).
 // League-average decline: ~10–15% drop in K% on 3rd pass due to batter familiarity.
 const TTO_DECAY_FACTOR = 0.88;

@@ -1,5 +1,5 @@
 import { ALLOWED_ORIGIN, corsHeaders, jsonResponse, errorResponse, parseGameOdds, parseGameScores, buildSoftTeamAbbrs, buildHardTeamAbbrs, buildTeamRankMap } from "./lib/utils.js";
-import { PARK_KFACTOR, PARK_HITFACTOR, PARK_RUNFACTOR, UMPIRE_KFACTOR, log5K, poissonCDF, log5HitRate, simulateKsDist, kDistPct, buildNbaStatDist, nbaDistPct, simulateHits, simulateMLBTotalDist, simulateNBATotalDist, simulateNHLTotalDist, totalDistPct, simulateTeamTotalDist, simulateTeamPtsDist } from "./lib/simulate.js";
+import { PARK_KFACTOR, PARK_HITFACTOR, PARK_RUNFACTOR, UMPIRE_KFACTOR, log5K, poissonCDF, log5HitRate, simulateKsDist, kDistPct, buildNbaStatDist, nbaDistPct, simulateHits, simulateMLBTotalDist, simulateNBATotalDist, simulateNHLTotalDist, totalDistPct, simulateTeamTotalDist, simulateTeamPtsDist, lambdaForPoissonTail, meanForNormalTail, normCDF } from "./lib/simulate.js";
 import { buildLineupKPct, buildBarrelPct, buildPitcherKPct, MLB_ID_TO_ABBR } from "./lib/mlb.js";
 import { warmPlayerInfoCache, buildNbaDvpStage1, buildNbaDvpFromBettingPros, buildNbaDepthChartPos, buildNbaPaceData, buildNbaPlayerPosFromSleeper, buildNbaDvpStage3FG, buildNbaUsageRate, buildNbaInjuryReport } from "./lib/nba.js";
 import { buildWnbaPaceData, buildWnbaUsageRate, buildWnbaInjuryReport, buildWnbaDvp, WNBA_TEAM_IDS, WNBA_ESPN_TO_CANON, WNBA_CANON_TO_ESPN } from "./lib/wnba.js";
@@ -2901,7 +2901,13 @@ var worker_default = {
                 const _distKey = `${playerTeam}|${_pitcherHand ?? ""}`;
                 if (!pitcherKDistCache[_distKey]) {
                   const _nSim = simScore !== null && simScore >= 8 ? 10000 : 5000;
-                  const _pitcherKPctAdj = Math.min(40, pitcherKPctOut * _umpireKFactor);
+                  // K H2H Hand factor: pitcher's K hit rate vs same-handed-majority lineups (≥5 starts).
+                  // Neutral pivot 70 (rough threshold-neutral hit rate); clamp ±10% to keep this third-order
+                  // signal from dominating ERA/FIP/WHIP. Replaces SimScore-only role.
+                  const _kHandAdj = (_kH2HHandRate != null && _kH2HHandStarts >= 5)
+                    ? Math.max(0.90, Math.min(1.10, _kH2HHandRate / 70))
+                    : 1.0;
+                  const _pitcherKPctAdj = Math.min(40, pitcherKPctOut * _umpireKFactor * _kHandAdj);
                   pitcherKDistCache[_distKey] = simulateKsDist(orderedKPcts, _pitcherKPctAdj, parkFactorOut, _nSim, _expectedBF, _earlyExitProb, _stdBF);
                 }
                 simPctOut = kDistPct(pitcherKDistCache[_distKey], threshold);
@@ -3415,8 +3421,16 @@ var worker_default = {
               const rawMlbPct = softPct !== null ? (basePct + softPct) / 2 : basePct;
               const homeTeam = sportByteam.mlb?.gameHomeTeams?.[playerTeam] ?? tonightOpp;
               const parkFactor = PARK_HITFACTOR[homeTeam] ?? 1;
+              // OPS adjustment: ratio to league-avg OPS shifts the logit. Top-quartile (~.850 OPS)
+              // lifts truePct ~1.5–2pt; replaces OPS-as-SimScore-only with a real lambda input.
+              const _LG_OPS = 0.720;
+              const opsAdj = _hitterOps != null ? Math.max(0.85, Math.min(1.15, _hitterOps / _LG_OPS)) : 1.0;
+              // WHIP adjustment: pitcher traffic factor (high WHIP = more contact = more HRR opportunities).
+              // Lower weight (0.3) than OPS — already partially baked into primaryPct vs this pitcher.
+              const _LG_WHIP_HRR = 1.30;
+              const whipAdj = pitcherWHIP != null ? Math.max(0.92, Math.min(1.08, Math.pow(pitcherWHIP / _LG_WHIP_HRR, 0.5))) : 1.0;
               const _p = Math.max(0.01, Math.min(0.99, rawMlbPct / 100));
-              const _logOddsAdj = Math.log(_p / (1 - _p)) + Math.log(parkFactor);
+              const _logOddsAdj = Math.log(_p / (1 - _p)) + Math.log(parkFactor) + 0.4 * Math.log(opsAdj) + 0.3 * Math.log(whipAdj);
               return Math.min(99.9, parseFloat((100 / (1 + Math.exp(-_logOddsAdj))).toFixed(1)));
             }
             if (sport === "nba") {
@@ -4171,16 +4185,21 @@ var worker_default = {
               const parkRF = PARK_RUNFACTOR[homeTeam] ?? 1;
               const gameOuLine = sportByteam.mlb?.gameOdds?.[homeTeam]?.total ?? sportByteam.mlb?.gameOdds?.[awayTeam]?.total ?? null;
               const _mlbOuPts = gameOuLine == null ? 1 : gameOuLine >= 9.5 ? 2 : gameOuLine >= 7.5 ? 1 : 0;
-              // Starter component: 50/50 FIP/ERA blend (FIP strips fielding/sequencing luck, ERA captures recent results).
+              // Starter component: 50/50 FIP/ERA blend (FIP strips fielding/sequencing luck, ERA captures recent results),
+              // multiplied by a WHIP traffic factor. Exponent 0.5 dampens WHIP so it doesn't fully double-count ERA/FIP.
               // Falls back gracefully when one or both are missing.
-              const _starterMult = (fip, era) =>
-                fip != null && era != null ? 0.5*(fip/_MLB_ERA) + 0.5*(era/_MLB_ERA)
-                : fip != null ? fip/_MLB_ERA
-                : era != null ? era/_MLB_ERA
-                : null;
+              const _LG_WHIP = 1.30;
+              const _whipAdj = (whip) => whip != null ? Math.max(0.90, Math.min(1.10, Math.pow(whip / _LG_WHIP, 0.5))) : 1.0;
+              const _starterMult = (fip, era, whip) => {
+                const erafipMult = fip != null && era != null ? 0.5*(fip/_MLB_ERA) + 0.5*(era/_MLB_ERA)
+                  : fip != null ? fip/_MLB_ERA
+                  : era != null ? era/_MLB_ERA
+                  : null;
+                return erafipMult != null ? erafipMult * _whipAdj(whip) : null;
+              };
               // 60/40 starter/team-ERA blend — away staff vs home offense, home staff vs away offense
-              const _awayStarter = _starterMult(awayFIP, awayERA);
-              const _homeStarter = _starterMult(homeFIP, homeERA);
+              const _awayStarter = _starterMult(awayFIP, awayERA, awayWHIP);
+              const _homeStarter = _starterMult(homeFIP, homeERA, homeWHIP);
               const _awayMult = _awayStarter != null && awayTeamERA != null ? 0.6*_awayStarter + 0.4*(awayTeamERA/_MLB_ERA) : _awayStarter != null ? _awayStarter : awayTeamERA != null ? awayTeamERA/_MLB_ERA : 1;
               const _homeMult = _homeStarter != null && homeTeamERA != null ? 0.6*_homeStarter + 0.4*(homeTeamERA/_MLB_ERA) : _homeStarter != null ? _homeStarter : homeTeamERA != null ? homeTeamERA/_MLB_ERA : 1;
               // Platoon adjustment: ratio of team's RPG vs opposing starter's hand to overall RPG
@@ -4223,16 +4242,25 @@ var worker_default = {
                 if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateMLBTotalDist(_hLam, _aLam, 10000);
                 truePct = totalDistPct(totalDistCache[_dk], threshold);
               }
-              // Sample-weighted blend with season hit rate corrects Poisson thin-tail
-              // underestimation at high thresholds (e.g. over 12.5 runs). Mirrors team-totals
-              // blend pattern. obs weight ramps to 0.7 max at N=40+ games.
-              const _gtMlbSsn = (truePct != null) ? _gtSeasonHitRate("mlb", homeTeam, awayTeam, threshold) : null;
+              // Pre-sim lambda blend: solve for the Poisson rate that would produce the observed
+              // season hit rate at this threshold, then sample-weighted blend with model lambda.
+              // Cleaner attribution than post-sim blend — seasonHitRate is now an input to the
+              // distribution, not a correction on its output. Falls back to model lambda if no obs.
+              const _gtMlbSsn = (truePct != null && _hLam != null && _aLam != null) ? _gtSeasonHitRate("mlb", homeTeam, awayTeam, threshold) : null;
               if (_gtMlbSsn != null) {
                 const _w = _ssnBlendWeight(_gtMlbSsn.sample);
-                _simData.modelTruePct = parseFloat(truePct.toFixed(1));
-                _simData.gtSeasonHitRate = _gtMlbSsn.rate;
-                _simData.gtSsnSample = _gtMlbSsn.sample;
-                truePct = parseFloat(((1 - _w) * truePct + _w * _gtMlbSsn.rate).toFixed(1));
+                const _modelLambda = _hLam + _aLam;
+                const _impliedLambda = lambdaForPoissonTail(threshold, _gtMlbSsn.rate / 100);
+                if (_impliedLambda != null) {
+                  const _blendedLambda = (1 - _w) * _modelLambda + _w * _impliedLambda;
+                  _simData.modelTruePct = parseFloat(truePct.toFixed(1));
+                  _simData.gtSeasonHitRate = _gtMlbSsn.rate;
+                  _simData.gtSsnSample = _gtMlbSsn.sample;
+                  _simData.modelLambda = parseFloat(_modelLambda.toFixed(2));
+                  _simData.impliedLambda = _impliedLambda;
+                  _simData.blendedLambda = parseFloat(_blendedLambda.toFixed(2));
+                  truePct = parseFloat(((1 - poissonCDF(threshold - 1, _blendedLambda)) * 100).toFixed(1));
+                }
               }
               // MLB SimScore (max 10): homeWHIP→0-2, awayWHIP→0-2, combinedRPG→0-2, H2H→0-2, O/U→0-2
               totalSimScore += _homeWhipPts + _awayWhipPts + _combinedRPGPts + _h2hTotalPts + _mlbOuPts;
@@ -4299,15 +4327,25 @@ var worker_default = {
                 if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateNBATotalDist(_homeExpRaw, _awayExpRaw, 13, 13, 10000);
                 truePct = totalDistPct(totalDistCache[_dk], threshold);
               }
-              // Sample-weighted seasonHitRate blend (same as MLB) — corrects residual tail
-              // thinness in Normal sim and pulls truePct toward observed scoring environment.
-              const _gtNbaSsn = (truePct != null) ? _gtSeasonHitRate("nba", homeTeam, awayTeam, threshold) : null;
+              // Pre-sim mean blend: solve for the Normal mean that would produce the observed
+              // season hit rate at this threshold, then sample-weighted blend with model mean.
+              // total std = sqrt(13^2 + 13^2) ≈ 18.4 (per-team std=13 in sim above).
+              const _gtNbaSsn = (truePct != null && _homeExpRaw != null && _awayExpRaw != null) ? _gtSeasonHitRate("nba", homeTeam, awayTeam, threshold) : null;
               if (_gtNbaSsn != null) {
                 const _w = _ssnBlendWeight(_gtNbaSsn.sample);
-                _simData.modelTruePct = parseFloat(truePct.toFixed(1));
-                _simData.gtSeasonHitRate = _gtNbaSsn.rate;
-                _simData.gtSsnSample = _gtNbaSsn.sample;
-                truePct = parseFloat(((1 - _w) * truePct + _w * _gtNbaSsn.rate).toFixed(1));
+                const _totalStd = Math.sqrt(13 * 13 + 13 * 13);
+                const _modelMean = _homeExpRaw + _awayExpRaw;
+                const _impliedMean = meanForNormalTail(threshold, _gtNbaSsn.rate / 100, _totalStd);
+                if (_impliedMean != null) {
+                  const _blendedMean = (1 - _w) * _modelMean + _w * _impliedMean;
+                  _simData.modelTruePct = parseFloat(truePct.toFixed(1));
+                  _simData.gtSeasonHitRate = _gtNbaSsn.rate;
+                  _simData.gtSsnSample = _gtNbaSsn.sample;
+                  _simData.modelMean = parseFloat(_modelMean.toFixed(2));
+                  _simData.impliedMean = _impliedMean;
+                  _simData.blendedMean = parseFloat(_blendedMean.toFixed(2));
+                  truePct = parseFloat(((1 - normCDF(threshold - 0.5, _blendedMean, _totalStd)) * 100).toFixed(1));
+                }
               }
               totalSimScore += _combOffRtgPts + _combDefRtgPts + _pacePts + _nbaGtH2HPts + _nbaOuPts;
             } else if (sport === "wnba") {
@@ -4367,14 +4405,23 @@ var worker_default = {
                 if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateNBATotalDist(_wHomeExpRaw, _wAwayExpRaw, 11, 11, 10000);
                 truePct = totalDistPct(totalDistCache[_dk], threshold);
               }
-              // Sample-weighted seasonHitRate blend
-              const _gtWnbaSsn = (truePct != null) ? _gtSeasonHitRate("wnba", homeTeam, awayTeam, threshold) : null;
+              // Pre-sim mean blend (same pattern as NBA). Total std = sqrt(11^2 + 11^2) ≈ 15.6.
+              const _gtWnbaSsn = (truePct != null && _wHomeExpRaw != null && _wAwayExpRaw != null) ? _gtSeasonHitRate("wnba", homeTeam, awayTeam, threshold) : null;
               if (_gtWnbaSsn != null) {
                 const _w = _ssnBlendWeight(_gtWnbaSsn.sample);
-                _simData.modelTruePct = parseFloat(truePct.toFixed(1));
-                _simData.gtSeasonHitRate = _gtWnbaSsn.rate;
-                _simData.gtSsnSample = _gtWnbaSsn.sample;
-                truePct = parseFloat(((1 - _w) * truePct + _w * _gtWnbaSsn.rate).toFixed(1));
+                const _wTotalStd = Math.sqrt(11 * 11 + 11 * 11);
+                const _modelMean = _wHomeExpRaw + _wAwayExpRaw;
+                const _impliedMean = meanForNormalTail(threshold, _gtWnbaSsn.rate / 100, _wTotalStd);
+                if (_impliedMean != null) {
+                  const _blendedMean = (1 - _w) * _modelMean + _w * _impliedMean;
+                  _simData.modelTruePct = parseFloat(truePct.toFixed(1));
+                  _simData.gtSeasonHitRate = _gtWnbaSsn.rate;
+                  _simData.gtSsnSample = _gtWnbaSsn.sample;
+                  _simData.modelMean = parseFloat(_modelMean.toFixed(2));
+                  _simData.impliedMean = _impliedMean;
+                  _simData.blendedMean = parseFloat(_blendedMean.toFixed(2));
+                  truePct = parseFloat(((1 - normCDF(threshold - 0.5, _blendedMean, _wTotalStd)) * 100).toFixed(1));
+                }
               }
               totalSimScore += _wCombOffRtgPts + _wCombDefRtgPts + _wPacePts + _wnbaGtH2HPts + _wnbaOuPts;
             } else if (sport === "nhl") {
@@ -4398,13 +4445,22 @@ var worker_default = {
               // Same sample-weighted seasonHitRate blend as MLB/NBA. NHL Poisson tails are
               // particularly thin for high-scoring matchups (overdispersion from PP swings),
               // and there's no fatter-tail alternative wired in — blend is the practical correction.
-              const _gtNhlSsn = (truePct != null) ? _gtSeasonHitRate("nhl", homeTeam, awayTeam, threshold) : null;
+              // Pre-sim lambda blend (Poisson, same as MLB).
+              const _gtNhlSsn = (truePct != null && _hGLRaw != null && _aGLRaw != null) ? _gtSeasonHitRate("nhl", homeTeam, awayTeam, threshold) : null;
               if (_gtNhlSsn != null) {
                 const _w = _ssnBlendWeight(_gtNhlSsn.sample);
-                _simData.modelTruePct = parseFloat(truePct.toFixed(1));
-                _simData.gtSeasonHitRate = _gtNhlSsn.rate;
-                _simData.gtSsnSample = _gtNhlSsn.sample;
-                truePct = parseFloat(((1 - _w) * truePct + _w * _gtNhlSsn.rate).toFixed(1));
+                const _modelLambda = _hGLRaw + _aGLRaw;
+                const _impliedLambda = lambdaForPoissonTail(threshold, _gtNhlSsn.rate / 100);
+                if (_impliedLambda != null) {
+                  const _blendedLambda = (1 - _w) * _modelLambda + _w * _impliedLambda;
+                  _simData.modelTruePct = parseFloat(truePct.toFixed(1));
+                  _simData.gtSeasonHitRate = _gtNhlSsn.rate;
+                  _simData.gtSsnSample = _gtNhlSsn.sample;
+                  _simData.modelLambda = parseFloat(_modelLambda.toFixed(2));
+                  _simData.impliedLambda = _impliedLambda;
+                  _simData.blendedLambda = parseFloat(_blendedLambda.toFixed(2));
+                  truePct = parseFloat(((1 - poissonCDF(threshold - 1, _blendedLambda)) * 100).toFixed(1));
+                }
               }
               totalSimScore += _homeGpgPts + _awayGpgPts + _homeGaaPts + _awayGaaPts + _nhlOuPts;
             }
@@ -4572,11 +4628,18 @@ var worker_default = {
               const oppTeamERA = mlbTeamERAMap[oppTeam] ?? null;
               const parkRF = PARK_RUNFACTOR[homeTeam] ?? 1;
               const gameOuLine = sportByteam.mlb?.gameOdds?.[homeTeam]?.total ?? sportByteam.mlb?.gameOdds?.[awayTeam]?.total ?? null;
-              // Starter component: 50/50 FIP/ERA blend; falls back when one or both are missing.
-              const _oppStarter = oppFIP != null && oppERA != null ? 0.5*(oppFIP/_MLB_ERA) + 0.5*(oppERA/_MLB_ERA)
+              // Starter WHIP (resolved early so it can feed the starter mult).
+              const oppStarterWHIP = sportByteam.mlb?.pitcherWHIPByTeam?.[oppTeam] ?? null;
+              const oppWHIP = oppStarterWHIP ?? mlbTeamWHIPMap[oppTeam] ?? null;
+              const oppWHIPSource = oppStarterWHIP != null ? "starter" : (mlbTeamWHIPMap[oppTeam] != null ? "team" : null);
+              // Starter component: 50/50 FIP/ERA blend × WHIP traffic factor (exp=0.5 dampens overlap with ERA).
+              const _LG_WHIP_TT = 1.30;
+              const _ttWhipAdj = oppWHIP != null ? Math.max(0.90, Math.min(1.10, Math.pow(oppWHIP / _LG_WHIP_TT, 0.5))) : 1.0;
+              const _oppErafip = oppFIP != null && oppERA != null ? 0.5*(oppFIP/_MLB_ERA) + 0.5*(oppERA/_MLB_ERA)
                 : oppFIP != null ? oppFIP/_MLB_ERA
                 : oppERA != null ? oppERA/_MLB_ERA
                 : null;
+              const _oppStarter = _oppErafip != null ? _oppErafip * _ttWhipAdj : null;
               const _oppMult = _oppStarter != null && oppTeamERA != null ? 0.6*_oppStarter + 0.4*(oppTeamERA/_MLB_ERA) : _oppStarter != null ? _oppStarter : oppTeamERA != null ? oppTeamERA/_MLB_ERA : 1;
               const _ttPlatoonMap = sportByteam.mlb?.teamPlatoonRPGMap ?? {};
               const _ttOppStarterHand = sportByteam.mlb?.pitcherHand?.[oppTeam] ?? null;
@@ -4601,11 +4664,7 @@ var worker_default = {
                 if (!teamTotalDistCache[_dk]) teamTotalDistCache[_dk] = simulateTeamTotalDist(_lam, 10000);
                 truePct = totalDistPct(teamTotalDistCache[_dk], threshold);
               }
-              // Starter WHIP (independent quality signal — traffic indicator beyond ERA).
-              // Falls back to team-staff WHIP when starter unknown (debut/late-announcement).
-              const oppStarterWHIP = sportByteam.mlb?.pitcherWHIPByTeam?.[oppTeam] ?? null;
-              const oppWHIP = oppStarterWHIP ?? mlbTeamWHIPMap[oppTeam] ?? null;
-              const oppWHIPSource = oppStarterWHIP != null ? "starter" : (mlbTeamWHIPMap[oppTeam] != null ? "team" : null);
+              // WHIP is now folded into _oppStarter above (line ~4585). SimScore tier kept for display continuity.
               const ttWhipPts = oppWHIP == null ? 1 : oppWHIP > 1.35 ? 2 : oppWHIP > 1.20 ? 1 : 0;
               // L10 RPG — computed from already-fetched team schedule (same cache as H2H)
               const _ttSched = _ttScheduleMap[`mlb:${scoringTeam}`] || [];
@@ -4617,12 +4676,18 @@ var worker_default = {
               const _ttSeasonHits = _ttSched.filter(ev => { const mine = ev.comps.find(c => normTeam("mlb", c.abbr) === scoringTeam); return mine && mine.score >= threshold; });
               const ttSeasonHitRate = _ttSched.length >= 5 ? Math.round(_ttSeasonHits.length / _ttSched.length * 100) : null;
               const ttSeasonHitRatePts = ttSeasonHitRate == null ? 1 : ttSeasonHitRate >= 80 ? 2 : ttSeasonHitRate >= 60 ? 1 : 0;
-              // Sample-weighted blend of Poisson model with season hit rate. obs weight ramps
-              // to 0.7 max at N=40+; preserves 30% min model weight for tonight-specific factors.
+              // Pre-sim lambda blend (Poisson). Solve for the rate that would give the observed
+              // ttSeasonHitRate at this threshold; sample-weighted blend with model lambda.
+              // Cleaner attribution than post-sim — seasonHitRate is a lambda input now.
               const _ttModelTruePct = truePct;
-              if (truePct != null && ttSeasonHitRate != null) {
+              let _ttImpliedLambda = null, _ttBlendedLambda = null;
+              if (truePct != null && ttSeasonHitRate != null && _lam != null) {
                 const _w = Math.min(1, _ttSched.length / 40) * 0.7;
-                truePct = parseFloat(((1 - _w) * truePct + _w * ttSeasonHitRate).toFixed(1));
+                _ttImpliedLambda = lambdaForPoissonTail(threshold, ttSeasonHitRate / 100);
+                if (_ttImpliedLambda != null) {
+                  _ttBlendedLambda = parseFloat(((1 - _w) * _lam + _w * _ttImpliedLambda).toFixed(2));
+                  truePct = parseFloat(((1 - poissonCDF(threshold - 1, _ttBlendedLambda)) * 100).toFixed(1));
+                }
               }
               const _h2h = _ttH2HRate("mlb", scoringTeam, oppTeam, threshold);
               const h2hHitRate = _h2h?.rate ?? null;
@@ -4635,7 +4700,7 @@ var worker_default = {
               // Both lineups confirmed (MLB only): scoringTeam + oppTeam each have a posted lineup, neither projected.
               const _ttLineupsConfirmed = (sportByteam.mlb?.lineupSpotByName?.[scoringTeam] != null && !(sportByteam.mlb?.projectedLineupTeams || []).includes(scoringTeam))
                 && (sportByteam.mlb?.lineupSpotByName?.[oppTeam] != null && !(sportByteam.mlb?.projectedLineupTeams || []).includes(oppTeam));
-              const _ttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), ...(_ttModelTruePct != null && _ttModelTruePct !== truePct && { modelTruePct: parseFloat(_ttModelTruePct.toFixed(1)) }), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _ttGameTime, lineupsConfirmed: _ttLineupsConfirmed, teamRPG, oppERA, oppFIP, oppWHIP, ...(oppWHIPSource && { oppWHIPSource }), oppRPG, parkFactor: parkRF, gameOuLine, teamExpected: _lam != null ? parseFloat(_lam.toFixed(1)) : null, h2hHitRate, h2hGames, h2hHitRatePts, teamL10RPG, ttL10Pts, ttWhipPts, ttOuPts, umpireRunFactor: _ttUmpRunFactor, ...(_ttUmpName && { umpireName: _ttUmpName }), ttSeasonHitRate, ttSeasonHitRatePts, oppStarterHand: _ttOppStarterHand, ...(_ttPlatFactor !== 1.0 && { platoonFactor: _ttPlatFactor }) };
+              const _ttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), ...(_ttModelTruePct != null && _ttModelTruePct !== truePct && { modelTruePct: parseFloat(_ttModelTruePct.toFixed(1)) }), ...(_ttImpliedLambda != null && { ttImpliedLambda: _ttImpliedLambda, ttBlendedLambda: _ttBlendedLambda }), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _ttGameTime, lineupsConfirmed: _ttLineupsConfirmed, teamRPG, oppERA, oppFIP, oppWHIP, ...(oppWHIPSource && { oppWHIPSource }), oppRPG, parkFactor: parkRF, gameOuLine, teamExpected: _lam != null ? parseFloat(_lam.toFixed(1)) : null, h2hHitRate, h2hGames, h2hHitRatePts, teamL10RPG, ttL10Pts, ttWhipPts, ttOuPts, umpireRunFactor: _ttUmpRunFactor, ...(_ttUmpName && { umpireName: _ttUmpName }), ttSeasonHitRate, ttSeasonHitRatePts, oppStarterHand: _ttOppStarterHand, ...(_ttPlatFactor !== 1.0 && { platoonFactor: _ttPlatFactor }) };
               const rawEdge = parseFloat((truePct - kalshiPct).toFixed(1));
               const edge = rawEdge;
               const _ttOverInWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
@@ -4699,15 +4764,17 @@ var worker_default = {
               const _ttNbaSeasonHits = _ttNbaSched.filter(ev => { const mine = ev.comps.find(c => normTeam("nba", c.abbr) === scoringTeam); return mine && mine.score >= threshold; });
               const ttNbaSeasonHitRate = _ttNbaSched.length >= 5 ? Math.round(_ttNbaSeasonHits.length / _ttNbaSched.length * 100) : null;
               const ttNbaSeasonHitRatePts = ttNbaSeasonHitRate == null ? 1 : ttNbaSeasonHitRate >= 80 ? 2 : ttNbaSeasonHitRate >= 60 ? 1 : 0;
-              // Sample-weighted blend with ttNbaSeasonHitRate corrects Normal-sim tail thinness
-              // for NBA team totals — same pattern as NBA/MLB game totals and MLB team totals.
-              // Without this, the model was overconfident on far-from-mean thresholds (e.g.
-              // PHI U113.5 edge inflated because Normal sim says 12% but observed rate is 27%).
-              let _ttNbaModelTruePct = null;
-              if (truePct != null && ttNbaSeasonHitRate != null) {
+              // Pre-sim mean blend (Normal). Single-team std=11 for NBA. Same lambda-blend
+              // attribution pattern as game totals.
+              let _ttNbaModelTruePct = null, _ttNbaImpliedMean = null, _ttNbaBlendedMean = null;
+              if (truePct != null && ttNbaSeasonHitRate != null && _teamExpected != null) {
                 _ttNbaModelTruePct = parseFloat(truePct.toFixed(1));
                 const _w = Math.min(1, _ttNbaSched.length / 40) * 0.7;
-                truePct = parseFloat(((1 - _w) * truePct + _w * ttNbaSeasonHitRate).toFixed(1));
+                _ttNbaImpliedMean = meanForNormalTail(threshold, ttNbaSeasonHitRate / 100, 11);
+                if (_ttNbaImpliedMean != null) {
+                  _ttNbaBlendedMean = parseFloat(((1 - _w) * _teamExpected + _w * _ttNbaImpliedMean).toFixed(2));
+                  truePct = parseFloat(((1 - normCDF(threshold - 0.5, _ttNbaBlendedMean, 11)) * 100).toFixed(1));
+                }
               }
               const _h2h = _ttH2HRate("nba", scoringTeam, oppTeam, threshold);
               const h2hHitRate = _h2h?.rate ?? null;
@@ -4720,7 +4787,7 @@ var worker_default = {
               teamTotalSimScore += ttOffRtgPts + ttDefRtgPts + ttNbaSeasonHitRatePts + h2hHitRatePts + ttNbaOuPts;
               if (truePct == null) { if (isDebug) dropped.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, teamTotalSimScore, teamOffRtg, oppDefRtg, ttOffRtgPts, ttDefRtgPts, ttNbaOuPts, gameOuLine: _nbaOuLine, h2hHitRate, h2hGames, h2hHitRatePts, ttNbaSeasonHitRate, ttNbaSeasonHitRatePts, reason: "no_simulation_data" }); continue; }
               const _nttGameTime = gameTimes[`${sport}:${homeTeam}:${gameDate}`] ?? gameTimes[`${sport}:${awayTeam}:${gameDate}`] ?? gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null;
-              const _nttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), ...(_ttNbaModelTruePct != null && _ttNbaModelTruePct !== truePct && { modelTruePct: _ttNbaModelTruePct }), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _nttGameTime, teamOffRtg, oppDefRtg, teamExpected: _teamExpected != null ? parseFloat(_teamExpected.toFixed(1)) : null, gameOuLine: _nbaOuLine, gameSpread: _gameSpread, h2hHitRate, h2hGames, h2hHitRatePts, ttNbaSeasonHitRate, ttNbaSeasonHitRatePts, ttOffRtgPts, ttDefRtgPts, ttNbaOuPts, ...(_ttIsPlayoff && { playoffBoost: _PLAYOFF_OFF_BOOST }) };
+              const _nttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), ...(_ttNbaModelTruePct != null && _ttNbaModelTruePct !== truePct && { modelTruePct: _ttNbaModelTruePct }), ...(_ttNbaImpliedMean != null && { ttNbaImpliedMean: _ttNbaImpliedMean, ttNbaBlendedMean: _ttNbaBlendedMean }), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _nttGameTime, teamOffRtg, oppDefRtg, teamExpected: _teamExpected != null ? parseFloat(_teamExpected.toFixed(1)) : null, gameOuLine: _nbaOuLine, gameSpread: _gameSpread, h2hHitRate, h2hGames, h2hHitRatePts, ttNbaSeasonHitRate, ttNbaSeasonHitRatePts, ttOffRtgPts, ttDefRtgPts, ttNbaOuPts, ...(_ttIsPlayoff && { playoffBoost: _PLAYOFF_OFF_BOOST }) };
               const rawEdge = parseFloat((truePct - kalshiPct).toFixed(1));
               const edge = rawEdge;
               const _nttOverInWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
