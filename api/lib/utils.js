@@ -128,13 +128,18 @@ export function parseTopPlayers(events, normFn, sport) {
         const top = pts?.leaders?.[0];
         if (!top?.athlete) continue;
         const pVal = parseInt(top.displayValue, 10);
-        // Find Goals leader; if it's the same athlete, derive A = P - G.
+        // Derive the other leg from whichever same-athlete category we can find.
         const goals = leaders.find(l => /^goals$/i.test(l.displayName || ""));
+        const assists = leaders.find(l => /^assists$/i.test(l.displayName || ""));
         const gTop = goals?.leaders?.[0];
+        const aTop = assists?.leaders?.[0];
         let gVal = null, aVal = null;
-        if (gTop?.athlete?.id && gTop.athlete.id === top.athlete.id) {
+        if (gTop?.athlete?.id === top.athlete.id) {
           gVal = parseInt(gTop.displayValue, 10);
           if (!isNaN(gVal) && !isNaN(pVal)) aVal = pVal - gVal;
+        } else if (aTop?.athlete?.id === top.athlete.id) {
+          aVal = parseInt(aTop.displayValue, 10);
+          if (!isNaN(aVal) && !isNaN(pVal)) gVal = pVal - aVal;
         }
         const parts = [
           gVal != null && !isNaN(gVal) ? `${gVal} G` : null,

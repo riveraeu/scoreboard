@@ -69,13 +69,18 @@ function MatchupCard({
     navigateToPlayer({ id: null, name: f.name, team, sportKey: f.sportKey }, f.tab);
   };
 
-  // Game odds shown in feature-row center (MLB only). Server overlays the closing line
-  // once the game state transitions to in/post, so this displays closing — not live — odds.
-  const awayOdds = sport === 'mlb' ? (mlbPitchSrc?.gameOdds?.[awayTeam] ?? null) : null;
-  const homeOdds = sport === 'mlb' ? (mlbPitchSrc?.gameOdds?.[homeTeam] ?? null) : null;
+  // Game odds shown in feature-row center. Server overlays the closing line once the game
+  // state transitions to in/post, so this displays closing — not live — odds across all sports.
+  const oddsMeta = sport === 'mlb' ? mlbPitchSrc
+    : sport === 'nba' ? nbaMeta
+    : sport === 'wnba' ? wnbaMeta
+    : sport === 'nhl' ? nhlMeta
+    : null;
+  const awayOdds = oddsMeta?.gameOdds?.[awayTeam] ?? null;
+  const homeOdds = oddsMeta?.gameOdds?.[homeTeam] ?? null;
   const oddsTotal = awayOdds?.total ?? homeOdds?.total ?? null;
   const fmtMl = (ml) => (ml == null || isNaN(ml)) ? null : (ml > 0 ? `+${ml}` : `${ml}`);
-  const hasOdds = sport === 'mlb' && (oddsTotal != null || awayOdds?.ml != null || homeOdds?.ml != null);
+  const hasOdds = oddsTotal != null || awayOdds?.ml != null || homeOdds?.ml != null;
 
   // Play notification badge state
   const totalPlays = (gamePlays || []).length;
