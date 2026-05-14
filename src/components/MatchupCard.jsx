@@ -45,12 +45,12 @@ function MatchupCard({
     navigateToPlayer({ id: null, name: p.name, team, sportKey: 'baseball/mlb' }, 'strikeouts');
   };
 
-  // Game odds shown in pitcher-row center (MLB only)
+  // Game odds shown in pitcher-row center (MLB only). Server overlays the closing line
+  // once the game state transitions to in/post, so this displays closing — not live — odds.
   const awayOdds = sport === 'mlb' ? (mlbMeta?.gameOdds?.[awayTeam] ?? mlbMetaTomorrow?.gameOdds?.[awayTeam] ?? null) : null;
   const homeOdds = sport === 'mlb' ? (mlbMeta?.gameOdds?.[homeTeam] ?? mlbMetaTomorrow?.gameOdds?.[homeTeam] ?? null) : null;
   const oddsTotal = awayOdds?.total ?? homeOdds?.total ?? null;
   const fmtMl = (ml) => (ml == null || isNaN(ml)) ? null : (ml > 0 ? `+${ml}` : `${ml}`);
-  const mlbTotalColor = (t) => t == null ? '#8b949e' : t <= 7.5 ? '#3fb950' : t < 10.5 ? '#e3b341' : '#f78166';
   const hasOdds = oddsTotal != null || awayOdds?.ml != null || homeOdds?.ml != null;
 
   // Play notification badge state
@@ -163,7 +163,7 @@ function MatchupCard({
               <>
                 {oddsTotal != null && (
                   <div style={{ fontSize: 11, color: '#8b949e' }}>
-                    O/U <span style={{ color: mlbTotalColor(oddsTotal), fontWeight: 600 }}>{oddsTotal}</span>
+                    Total <span style={{ color: '#c9d1d9' }}>{oddsTotal}</span>
                   </div>
                 )}
                 {(awayOdds?.ml != null || homeOdds?.ml != null) && (

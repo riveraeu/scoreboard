@@ -4912,6 +4912,39 @@ var worker_default = {
         for (const [abbr, odds] of Object.entries(sportByteam.mlb?.gameOdds ?? {})) {
           _mlbGameOdds[abbr] = { ml: odds.moneyline ?? null, total: odds.total ?? null, spread: odds.spread ?? null };
         }
+        // Closing-line preservation: ESPN drops odds once a game starts. Snapshot pre-game
+        // odds keyed by "{home}|{away}|{gameDate}" so once state transitions to in/post we can
+        // overlay the last pre-game odds (= closing line) onto _mlbGameOdds. One Redis key per
+        // PT date, 36h TTL.
+        try {
+          const _scores = sportByteam.mlb?.gameScores ?? {};
+          const _ptDateOdds = new Date(Date.now() - 7 * 3600 * 1000).toISOString().slice(0, 10);
+          const _odsSnapKey = `mlbClosingOdds:${_ptDateOdds}`;
+          const _odsSnapPrev = (CACHE2 && !isBustCache) ? ((await CACHE2.get(_odsSnapKey, 'json').catch(() => null)) || {}) : {};
+          const _odsSnap = { ..._odsSnapPrev };
+          let _odsSnapDirty = false;
+          for (const sc of Object.values(_scores)) {
+            const hA = sc?.homeTeam, aA = sc?.awayTeam, gD = sc?.gameDate, state = sc?.state;
+            if (!hA || !aA || !gD) continue;
+            const gK = `${hA}|${aA}|${gD}`;
+            const homeLive = _mlbGameOdds[hA];
+            const awayLive = _mlbGameOdds[aA];
+            if (state === 'pre') {
+              if ((homeLive && (homeLive.ml != null || homeLive.total != null)) ||
+                  (awayLive && (awayLive.ml != null || awayLive.total != null))) {
+                _odsSnap[gK] = { home: homeLive ?? null, away: awayLive ?? null };
+                _odsSnapDirty = true;
+              }
+            } else if (state === 'in' || state === 'post') {
+              const snap = _odsSnap[gK];
+              if (snap) {
+                if (snap.home) _mlbGameOdds[hA] = snap.home;
+                if (snap.away) _mlbGameOdds[aA] = snap.away;
+              }
+            }
+          }
+          if (_odsSnapDirty && CACHE2) CACHE2.put(_odsSnapKey, JSON.stringify(_odsSnap), { expirationTtl: 36 * 3600 }).catch(() => {});
+        } catch { /* non-fatal */ }
         const mlbMeta = { pitchers: _mlbPitchers, gameOdds: _mlbGameOdds, umpires: sportByteam.mlb?.umpireByGame ?? {}, weather: weatherByGame, projectedLineupTeams: sportByteam.mlb?.projectedLineupTeams ?? [], teamsWithLineup: Object.keys(sportByteam.mlb?.lineupSpotByName ?? {}), homeTeams: sportByteam.mlb?.gameHomeTeams ?? {}, gameScores: sportByteam.mlb?.gameScores ?? {} };
         // Build mlbMetaTomorrow: tomorrow's probables + umpires (no lineup/weather data available yet)
         let mlbMetaTomorrow = { pitchers: {}, gameOdds: {}, umpires: {}, weather: {}, projectedLineupTeams: [], teamsWithLineup: [], homeTeams: {}, gameScores: {} };
