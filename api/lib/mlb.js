@@ -364,7 +364,7 @@ export async function buildPitcherKPct(mlbSched) {
       }
     }
     const allIds = [...allScheduledPitcherIds];
-    if (allIds.length === 0) return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherAvgBF: {}, pitcherStdBF: {}, pitcherGS26: {}, pitcherHasAnchor: {}, pitcherRecentKPct: {}, pitcherLastStartDate: {}, pitcherLastStartPC: {}, umpireByGame };
+    if (allIds.length === 0) return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherWins: {}, pitcherLosses: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherAvgBF: {}, pitcherStdBF: {}, pitcherGS26: {}, pitcherHasAnchor: {}, pitcherRecentKPct: {}, pitcherLastStartDate: {}, pitcherLastStartPC: {}, umpireByGame };
     const idStr = allIds.join(",");
     const [res25, res26] = await Promise.all([
       fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=pitching,type=season,season=2025,gameType=R)`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
@@ -390,7 +390,7 @@ export async function buildPitcherKPct(mlbSched) {
       if (person.pitchHand?.code) pitcherHandById[pid] = person.pitchHand.code;
       const split = person.stats?.[0]?.splits?.[0]?.stat;
       if (!split) continue;
-      pitcherStats25[pid] = { so: split.strikeOuts || 0, bf: split.battersFaced || 0, bb: split.baseOnBalls || 0, hbp: split.hitByPitch || 0, hr: split.homeRuns || 0, ip: parseIP(split.inningsPitched), era: safeEra(split.era), whip: safeEra(split.whip), gs: split.gamesStarted || 0, np: split.numberOfPitches || 0 };
+      pitcherStats25[pid] = { so: split.strikeOuts || 0, bf: split.battersFaced || 0, bb: split.baseOnBalls || 0, hbp: split.hitByPitch || 0, hr: split.homeRuns || 0, ip: parseIP(split.inningsPitched), era: safeEra(split.era), whip: safeEra(split.whip), gs: split.gamesStarted || 0, np: split.numberOfPitches || 0, w: split.wins || 0, l: split.losses || 0 };
     }
     for (const person of (res26.people || [])) {
       const pid = person.id;
@@ -398,7 +398,7 @@ export async function buildPitcherKPct(mlbSched) {
       if (person.pitchHand?.code) pitcherHandById[pid] = person.pitchHand.code;
       const split = person.stats?.[0]?.splits?.[0]?.stat;
       if (!split) continue;
-      pitcherStats26[pid] = { so: split.strikeOuts || 0, bf: split.battersFaced || 0, bb: split.baseOnBalls || 0, hbp: split.hitByPitch || 0, hr: split.homeRuns || 0, ip: parseIP(split.inningsPitched), era: safeEra(split.era), whip: safeEra(split.whip), gs: split.gamesStarted || 0, np: split.numberOfPitches || 0 };
+      pitcherStats26[pid] = { so: split.strikeOuts || 0, bf: split.battersFaced || 0, bb: split.baseOnBalls || 0, hbp: split.hitByPitch || 0, hr: split.homeRuns || 0, ip: parseIP(split.inningsPitched), era: safeEra(split.era), whip: safeEra(split.whip), gs: split.gamesStarted || 0, np: split.numberOfPitches || 0, w: split.wins || 0, l: split.losses || 0 };
     }
     // Fill in pitcherHand from People API for any missing entries
     for (const [abbr, id] of Object.entries(pitcherByTeam)) {
@@ -406,6 +406,7 @@ export async function buildPitcherKPct(mlbSched) {
     }
     const LEAGUE_PITCHER_K = 0.222;
     const pitcherKPct = {}, pitcherKBBPct = {}, pitcherEra = {}, pitcherWHIP = {}, pitcherFIP = {}, pitcherHasAnchor = {};
+    const pitcherWins = {}, pitcherLosses = {};
     // FIP constant aligns FIP onto the same numeric scale as ERA (~4.20 league baseline).
     // Slightly varies per season; 3.10 is a stable approximation for 2025–2026.
     const _FIP_CONST = 3.10;
@@ -446,6 +447,12 @@ export async function buildPitcherKPct(mlbSched) {
       const whip25 = s25?.whip ?? null;
       if (whip26 != null) pitcherWHIP[abbr] = whip26;
       else if (whip25 != null) pitcherWHIP[abbr] = whip25;
+      // W-L: prefer 2026 if pitcher has any 2026 starts, else 2025
+      if ((s26?.gs ?? 0) > 0 || (s26?.w ?? 0) + (s26?.l ?? 0) > 0) {
+        pitcherWins[abbr] = s26.w; pitcherLosses[abbr] = s26.l;
+      } else if (s25 && ((s25.gs ?? 0) > 0 || (s25.w ?? 0) + (s25.l ?? 0) > 0)) {
+        pitcherWins[abbr] = s25.w; pitcherLosses[abbr] = s25.l;
+      }
       // FIP: sample-weighted blend (trust26 = min(1, gs26/15)) — same regression pattern as avgP/avgBF.
       // Computed per-season from raw HR/BB/HBP/K/IP, then blended; nulls when neither season has IP>=1.
       const fip26 = _seasonFIP(s26);
@@ -751,9 +758,9 @@ export async function buildPitcherKPct(mlbSched) {
         if (!pitcherInfoByTeam[a]) pitcherInfoByTeam[a] = { name: person.fullName, id };
       }
     }
-    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherWHIP, pitcherFIP, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam, pitcherH2HStarts };
+    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherWHIP, pitcherFIP, pitcherWins, pitcherLosses, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam, pitcherH2HStarts };
   } catch (err) {
     console.error("[buildPitcherKPct] failed:", err?.message || err);
-    return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherWHIP: {}, pitcherFIP: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherAvgBF: {}, pitcherStdBF: {}, pitcherGS26: {}, pitcherHasAnchor: {}, pitcherRecentKPct: {}, pitcherLastStartDate: {}, pitcherLastStartPC: {}, umpireByGame: {}, pitcherInfoByTeam: {}, pitcherH2HStarts: {} };
+    return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherWHIP: {}, pitcherFIP: {}, pitcherWins: {}, pitcherLosses: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherAvgBF: {}, pitcherStdBF: {}, pitcherGS26: {}, pitcherHasAnchor: {}, pitcherRecentKPct: {}, pitcherLastStartDate: {}, pitcherLastStartPC: {}, umpireByGame: {}, pitcherInfoByTeam: {}, pitcherH2HStarts: {} };
   }
 }

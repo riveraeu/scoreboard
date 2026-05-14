@@ -23,6 +23,28 @@ function MatchupCard({
 
   const gameTimeStr = fmtGameTime(gameTime);
 
+  // MLB starting pitcher row — prefer today's meta, fall back to tomorrow's
+  const pitcherFor = (abbr) => {
+    if (sport !== 'mlb' || !abbr) return null;
+    const p = mlbMeta?.pitchers?.[abbr] ?? mlbMetaTomorrow?.pitchers?.[abbr];
+    return p?.name ? p : null;
+  };
+  const awayPitcher = pitcherFor(awayTeam);
+  const homePitcher = pitcherFor(homeTeam);
+  const hasPitcherRow = sport === 'mlb' && (awayPitcher || homePitcher);
+  const fmtEraRec = (p) => {
+    if (!p) return null;
+    const eraStr = (p.era != null && !isNaN(p.era)) ? `${(+p.era).toFixed(2)} ERA` : null;
+    const recStr = (p.wins != null && p.losses != null) ? `${p.wins}-${p.losses}` : null;
+    if (eraStr && recStr) return `${eraStr} · ${recStr}`;
+    return eraStr || recStr || null;
+  };
+  const headshotUrl = (id) => id ? `https://midfield.mlbstatic.com/v1/people/${id}/spots/120` : null;
+  const openPitcher = (p, team) => {
+    if (!p?.name) return;
+    navigateToPlayer({ id: null, name: p.name, team, sportKey: 'baseball/mlb' }, 'strikeouts');
+  };
+
   // Play notification badge state
   const totalPlays = (gamePlays || []).length;
   const trackedCount = (gamePlays || []).filter(gp => (trackedPlays || []).some(tp => tp.id === gp.id)).length;
@@ -103,6 +125,54 @@ function MatchupCard({
             onError={e => { e.target.style.display = 'none'; }} />
         </div>
       </div>
+
+      {/* Pitcher row (MLB only) — headshot + name + ERA · W-L */}
+      {hasPitcherRow && (
+        <div style={{ borderTop: '1px solid #21262d', padding: '8px 16px 10px', display: 'flex', alignItems: 'center' }}>
+          {/* Away pitcher */}
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, cursor: awayPitcher ? 'pointer' : 'default' }}
+            onClick={() => openPitcher(awayPitcher, awayTeam)}>
+            {awayPitcher?.id ? (
+              <img src={headshotUrl(awayPitcher.id)} alt={awayPitcher.name}
+                style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', background: '#0d1117' }}
+                onError={e => { e.target.style.visibility = 'hidden'; }} />
+            ) : (
+              <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#0d1117' }} />
+            )}
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 12, color: '#c9d1d9', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {awayPitcher?.name || '—'}
+              </div>
+              {fmtEraRec(awayPitcher) && (
+                <div style={{ fontSize: 10, color: '#8b949e' }}>{fmtEraRec(awayPitcher)}</div>
+              )}
+            </div>
+          </div>
+
+          {/* Spacer matches header center column */}
+          <div style={{ minWidth: 120, padding: '0 8px' }} />
+
+          {/* Home pitcher */}
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end', minWidth: 0, cursor: homePitcher ? 'pointer' : 'default' }}
+            onClick={() => openPitcher(homePitcher, homeTeam)}>
+            <div style={{ textAlign: 'right', minWidth: 0 }}>
+              <div style={{ fontSize: 12, color: '#c9d1d9', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {homePitcher?.name || '—'}
+              </div>
+              {fmtEraRec(homePitcher) && (
+                <div style={{ fontSize: 10, color: '#8b949e' }}>{fmtEraRec(homePitcher)}</div>
+              )}
+            </div>
+            {homePitcher?.id ? (
+              <img src={headshotUrl(homePitcher.id)} alt={homePitcher.name}
+                style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', background: '#0d1117' }}
+                onError={e => { e.target.style.visibility = 'hidden'; }} />
+            ) : (
+              <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#0d1117' }} />
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Inline play drawer — always mounted when plays exist so transition works */}
       {totalPlays > 0 && (

@@ -1708,7 +1708,7 @@ var worker_default = {
               }
               const [lineupResult, pitcherResult] = await Promise.all([buildLineupKPct(mlbSched), buildPitcherKPct(mlbSched)]);
               const { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, projectedLineupTeams, batterSplitBA, hitterOpsMap, batterHandByName, batterHRRSplits } = lineupResult;
-              const { pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, pitcherWHIP: pitcherWHIPByTeam, pitcherFIP: pitcherFIPByTeam, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam, pitcherH2HStarts } = pitcherResult;
+              const { pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, pitcherWHIP: pitcherWHIPByTeam, pitcherFIP: pitcherFIPByTeam, pitcherWins: pitcherWinsByTeam, pitcherLosses: pitcherLossesByTeam, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam, pitcherH2HStarts } = pitcherResult;
               // barrelPctMap is NOT stored in byteam:mlb — it lives in mlb:barrelPct with its own 6h TTL.
               // This prevents a bust (which deletes byteam:mlb) from baking an empty barrelPctMap
               // into the cache when Baseball Savant is slow.
@@ -1781,7 +1781,7 @@ var worker_default = {
                 }
                 if (rCount + lCount > 0) staticTeamHandMajority[abbr] = rCount >= lCount ? 'R' : 'L';
               }
-              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, pitcherWHIPByTeam, pitcherFIPByTeam, projectedLineupTeams, gameOdds, pitcherStatsByName, batterSplitBA, hitterOpsMap, batterHandByName, batterHRRSplits, pitcherH2HStarts, staticTeamHandMajority, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam, roadRPGMap, teamERAMap, teamWHIPMap, teamPlatoonRPGMap, gameScores };
+              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, pitcherWHIPByTeam, pitcherFIPByTeam, pitcherWinsByTeam, pitcherLossesByTeam, projectedLineupTeams, gameOdds, pitcherStatsByName, batterSplitBA, hitterOpsMap, batterHandByName, batterHRRSplits, pitcherH2HStarts, staticTeamHandMajority, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam, roadRPGMap, teamERAMap, teamWHIPMap, teamPlatoonRPGMap, gameScores };
               // Use short TTL (60s) if key data is missing — lineup/probables not confirmed yet,
               // or independent MLB Stats API hydrations (OPS, pitcher gamelogs) silently returned empty.
               // Prevents partial data from baking into cache for the full 600s and starving downstream
@@ -4888,12 +4888,25 @@ var worker_default = {
           return jsonResponse({ plays: debugPlays, dropped: debugDropped, preDropped: debugPreDropped, staleKalshiSeries, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
         }
         // Build mlbMeta: pitchers, ML odds, umpires, weather — keyed by team abbr or "home|away"
+        // Pitcher entries: { name, id, era, wins, losses }. MLB Stats API (pitcherInfoByTeam) preferred
+        // for id (powers midfield.mlbstatic.com headshots); ESPN probables fallback for early-day.
+        const _mlbPitcherEra = sportByteam.mlb?.pitcherEra ?? {};
+        const _mlbPitcherWins = sportByteam.mlb?.pitcherWinsByTeam ?? {};
+        const _mlbPitcherLosses = sportByteam.mlb?.pitcherLossesByTeam ?? {};
+        const _mlbPitcherInfo = sportByteam.mlb?.pitcherInfoByTeam ?? {};
+        const _mlbProbables = sportByteam.mlb?.probables ?? {};
         const _mlbPitchers = {};
-        for (const [abbr, p] of Object.entries(sportByteam.mlb?.probables ?? {})) {
-          if (p?.name) _mlbPitchers[abbr] = { name: p.name, era: p.era ?? null };
-        }
-        for (const [abbr, p] of Object.entries(sportByteam.mlb?.pitcherInfoByTeam ?? {})) {
-          if (!_mlbPitchers[abbr] && p?.name) _mlbPitchers[abbr] = { name: p.name, era: null };
+        const _allPitcherAbbrs = new Set([...Object.keys(_mlbProbables), ...Object.keys(_mlbPitcherInfo)]);
+        for (const abbr of _allPitcherAbbrs) {
+          const prob = _mlbProbables[abbr];
+          const info = _mlbPitcherInfo[abbr];
+          const name = prob?.name ?? info?.name ?? null;
+          if (!name) continue;
+          const id = info?.id ?? prob?.id ?? null;
+          const era = _mlbPitcherEra[abbr] ?? prob?.era ?? null;
+          const wins = _mlbPitcherWins[abbr] ?? null;
+          const losses = _mlbPitcherLosses[abbr] ?? null;
+          _mlbPitchers[abbr] = { name, id, era, wins, losses };
         }
         const _mlbGameOdds = {};
         for (const [abbr, odds] of Object.entries(sportByteam.mlb?.gameOdds ?? {})) {
@@ -4913,17 +4926,50 @@ var worker_default = {
           ).then(r => r.ok ? r.json() : {}).catch(() => ({}));
           if (!_tmrCached && CACHE2) CACHE2.put(_tmrCacheKey, JSON.stringify(_tmrSched), { expirationTtl: 600 }).catch(() => {});
           const _tmrPitchers = {}, _tmrUmpires = {}, _tmrHomeTeams = {};
+          const _tmrPitcherIdsByAbbr = {}; // abbr → MLB Stats API id
           for (const _td of _tmrSched.dates || []) {
             for (const _tg of _td.games || []) {
               const _tHome = MLB_ID_TO_ABBR[_tg.teams?.home?.team?.id] || _tg.teams?.home?.team?.abbreviation;
               const _tAway = MLB_ID_TO_ABBR[_tg.teams?.away?.team?.id] || _tg.teams?.away?.team?.abbreviation;
               const _tHomeName = _tg.teams?.home?.probablePitcher?.fullName;
               const _tAwayName = _tg.teams?.away?.probablePitcher?.fullName;
-              if (_tHome && _tHomeName) _tmrPitchers[_tHome] = { name: _tHomeName, era: null };
-              if (_tAway && _tAwayName) _tmrPitchers[_tAway] = { name: _tAwayName, era: null };
+              const _tHomeId = _tg.teams?.home?.probablePitcher?.id || null;
+              const _tAwayId = _tg.teams?.away?.probablePitcher?.id || null;
+              if (_tHome && _tHomeName) {
+                _tmrPitchers[_tHome] = { name: _tHomeName, id: _tHomeId, era: null, wins: null, losses: null };
+                if (_tHomeId) _tmrPitcherIdsByAbbr[_tHome] = _tHomeId;
+              }
+              if (_tAway && _tAwayName) {
+                _tmrPitchers[_tAway] = { name: _tAwayName, id: _tAwayId, era: null, wins: null, losses: null };
+                if (_tAwayId) _tmrPitcherIdsByAbbr[_tAway] = _tAwayId;
+              }
               const _tHp = (_tg.officials || []).find(o => o.officialType === 'Home Plate');
               if (_tHp?.official?.fullName && _tHome && _tAway) _tmrUmpires[`${_tHome}|${_tAway}`] = _tHp.official.fullName;
               if (_tHome) _tmrHomeTeams[_tHome] = _tHome;
+            }
+          }
+          // Hydrate tomorrow's probables with ERA + W-L (one MLB Stats API call, cached).
+          const _tmrIds = Object.values(_tmrPitcherIdsByAbbr).filter(Boolean);
+          if (_tmrIds.length > 0) {
+            const _tmrStatsKey = `mlbTmrPitcherStats:${_tmrDateStr}`;
+            const _tmrStatsCached = CACHE2 && !isBustCache ? await CACHE2.get(_tmrStatsKey, 'json').catch(() => null) : null;
+            const _tmrStatsRes = _tmrStatsCached ?? await fetch(
+              `https://statsapi.mlb.com/api/v1/people?personIds=${_tmrIds.join(',')}&hydrate=stats(group=pitching,type=season,season=2026,gameType=R)`,
+              { headers: { 'User-Agent': 'Mozilla/5.0' } }
+            ).then(r => r.ok ? r.json() : {}).catch(() => ({}));
+            if (!_tmrStatsCached && CACHE2) CACHE2.put(_tmrStatsKey, JSON.stringify(_tmrStatsRes), { expirationTtl: 600 }).catch(() => {});
+            const _statsById = {};
+            for (const _p of (_tmrStatsRes.people || [])) {
+              const _split = _p.stats?.[0]?.splits?.[0]?.stat;
+              if (_split) _statsById[_p.id] = _split;
+            }
+            for (const [abbr, id] of Object.entries(_tmrPitcherIdsByAbbr)) {
+              const _s = _statsById[id];
+              if (!_s || !_tmrPitchers[abbr]) continue;
+              const _era = parseFloat(_s.era);
+              if (!isNaN(_era)) _tmrPitchers[abbr].era = _era;
+              if (typeof _s.wins === 'number') _tmrPitchers[abbr].wins = _s.wins;
+              if (typeof _s.losses === 'number') _tmrPitchers[abbr].losses = _s.losses;
             }
           }
           mlbMetaTomorrow = { pitchers: _tmrPitchers, gameOdds: {}, umpires: _tmrUmpires, weather: {}, projectedLineupTeams: [], teamsWithLineup: [], homeTeams: _tmrHomeTeams, gameScores: {} };
