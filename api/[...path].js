@@ -220,8 +220,11 @@ var worker_default = {
           "KXMLBGAME",
         ];
         const startMs = Date.now();
-        const _SNAP_BATCH = 6;
-        const _SNAP_BATCH_DELAY_MS = 300;
+        // Match /api/tonight's hot-path throttle (3 parallel / 700ms delay). Cron isn't
+        // user-facing, so slower is fine; what matters is not getting 429s, which the more
+        // aggressive 6/300ms settings did on ~half the tickers per run.
+        const _SNAP_BATCH = 3;
+        const _SNAP_BATCH_DELAY_MS = 700;
         const _snapResults = {};
         const _snapFailed = [];
         const _snapShuffled = [...KALSHI_SERIES_TICKERS];
@@ -245,8 +248,11 @@ var worker_default = {
           const batch = _snapShuffled.slice(off, off + _SNAP_BATCH);
           const batchRes = await Promise.all(batch.map(_snapFetchOne));
           for (const r of batchRes) {
-            if (r.ok && (r.data?.markets || []).length > 0) {
-              _snapResults[r.ticker] = r.data;
+            // Empty markets is a legitimate Kalshi response for off-season / pre-open series
+            // and must be cached so the snap-first read can succeed for sports we're not
+            // actively betting. Only treat actual HTTP failures (429, timeout, !ok) as failed.
+            if (r.ok) {
+              _snapResults[r.ticker] = { markets: r.data?.markets || [] };
             } else {
               _snapFailed.push({ ticker: r.ticker, status: r.status, err: r.err });
             }
@@ -1368,8 +1374,11 @@ var worker_default = {
             if (Array.isArray(_mget) && _mget.length === seriesTickers.length) {
               const _parsed = _mget.map(s => { try { return s ? JSON.parse(s) : null; } catch { return null; } });
               const _now = Date.now();
+              // Empty markets is a valid snap (off-season / no-game-tonight series). Require
+                // only that the snap exists and is fresh; downstream loops iterate markets and
+                // naturally yield zero plays for empty series.
               const _allFresh = _parsed.every(s =>
-                s && Array.isArray(s.markets) && s.markets.length > 0
+                s && Array.isArray(s.markets)
                 && (_now - (s.writtenAt || 0) <= SNAP_FRESHNESS_MS)
               );
               if (_allFresh) {
