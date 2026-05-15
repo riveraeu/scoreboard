@@ -12,11 +12,19 @@ const KALSHI_GATE = 67;   // ~-200 American odds floor (66.67% rounded up)
 const KALSHI_CAP = 91;    // ~-1000 American odds cap (90.91% rounded up)
 const EDGE_GATE = 3;
 const SIMSCORE_GATE = 8;
-// dataConfidence per-sport gate thresholds — see docs/MODEL.md "dataConfidence". 8 for WNBA/NHL
-// reflects structural -1 (no per-position DvP for WNBA; no lineup data exposed for NHL); both
-// would gate at 9 if those gaps closed. dcQualified is computed but NOT actively used as a
-// filter today — info-only until the v2 model toggle adopts it as the gate (Phase B).
-const DC_GATE = { mlb: 9, nba: 9, wnba: 8, nhl: 8, nfl: 9 };
+// dataConfidence per-sport AND per-play-type gate thresholds — see docs/MODEL.md "dataConfidence".
+// Totals/teamTotals have a higher ceiling than player props (no lineup-confirmation penalty, no
+// per-player sample-size penalty) so they'd dominate a flat-9 gate. Asymmetric gates:
+//   props:  9 (mlb/nba/nfl), 8 (wnba/nhl)  ← wnba/nhl have structural -1 (no DvP / no lineup data)
+//   totals: 10 (mlb/nba/nfl), 9 (wnba/nhl)
+// dcQualified is computed but NOT actively used as a filter today — info-only until the v2 model
+// toggle adopts it as the gate (Phase B).
+const DC_GATE = (sport, gameType) => {
+  const isTotal = gameType === "total" || gameType === "teamTotal";
+  const softer = sport === "wnba" || sport === "nhl";
+  if (isTotal) return softer ? 9 : 10;
+  return softer ? 8 : 9;
+};
 
 // worker.js
 function makeCache(env) {
@@ -5161,9 +5169,10 @@ var worker_default = {
               p.nbaStarterConfirmed = null;
               _pen("nbaLineupNotPosted", 2);
             }
-          } else if (sport === "wnba" || sport === "nhl") {
+          } else if ((sport === "wnba" || sport === "nhl") && isPlayerProp) {
             // Structural: no exposed lineup data for these sports today. -1 baseline penalty
-            // until builders land for them. Once exposed, replace with same logic as MLB/NBA.
+            // on PLAYER PROPS only (totals don't depend on individual starter status). Once
+            // exposed, replace with same logic as MLB/NBA.
             _pen("noLineupData", 1);
           }
           // ── Player availability (player props only)
@@ -5251,7 +5260,7 @@ var worker_default = {
           }
           const totalPenalty = Object.values(penalties).reduce((s, v) => s + v, 0);
           const dataConfidence = Math.max(0, Math.min(10, 10 + totalPenalty));
-          const gate = DC_GATE[sport] ?? 9;
+          const gate = DC_GATE(sport, gameType);
           return { dataConfidence, dcPenalties: penalties, dcQualified: dataConfidence >= gate, dcGate: gate };
         };
         for (const _p of plays) {
