@@ -4764,15 +4764,14 @@ var worker_default = {
             // parse site couldn't fetch no_ask_dollars (older snap shape / missing field).
             const noKalshiPct = _tmNoPct ?? (100 - kalshiPct);
             const _rawUnderEdge = parseFloat((noTruePct - noKalshiPct).toFixed(1));
-            // MLB-only edge dampener: when threshold is far from market line, Poisson tails
-            // overstate edge. Multiplicative shrink keeps the bet directionally honest while
-            // forcing more conservative sizing. Skipped on NBA (Normal sim, symmetric) and NHL.
-            // Use _simData.gameOuLine — gameOuLine const is scoped to the MLB branch only.
-            const _farFromLine = (sport === "mlb" && _simData?.gameOuLine != null && Math.abs(threshold - _simData.gameOuLine) >= 3);
-            const _edgeDampener = _farFromLine ? 0.7 : 1.0;
-            const overEdge = parseFloat(((rawEdge ?? 0) * _edgeDampener).toFixed(1));
-            const underEdge = parseFloat((_rawUnderEdge * _edgeDampener).toFixed(1));
-            if (_farFromLine) { _simData.edgeDampened = _edgeDampener; _simData.rawUnderEdge = _rawUnderEdge; }
+            // Raw edges (undampened). The MLB tail-distance edge dampener (0.7× when |thr - O/U| ≥ 3)
+            // was removed 2026-05-15: it was a pre-calibration heuristic, and dataConfidence's new
+            // threshold-distance penalty (modestlyFromLine / farFromLine) now handles tail-skepticism
+            // at the gate level instead of in edge math. Re-introduce dampening only if the
+            // 2026-05-27 calibration audit shows MLB tails systematically over-hit. See
+            // [[project-mlb-tail-dampener-removal]].
+            const overEdge = rawEdge ?? 0;
+            const underEdge = _rawUnderEdge;
             const noKalshiAO = _tmNoAO ?? (noKalshiPct >= 50 ? Math.round(-(noKalshiPct/(100-noKalshiPct))*100) : Math.round((100-noKalshiPct)/noKalshiPct*100));
             const _gameTime = gameTimes[`${sport}:${homeTeam}:${gameDate}`] ?? gameTimes[`${sport}:${awayTeam}:${gameDate}`] ?? gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null;
             // MLB-only: both lineups confirmed = both teams have a posted lineup (in lineupSpotByName)
