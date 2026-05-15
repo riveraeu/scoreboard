@@ -1477,27 +1477,35 @@ var worker_default = {
             if (isNaN(strike)) continue;
             const threshold = Math.round(strike + 0.5);
             const yesAsk = parseFloat(m.yes_ask_dollars) || 0;
+            const noAsk = parseFloat(m.no_ask_dollars) || 0;
             const last = parseFloat(m.last_price_dollars) || 0;
             const volume = parseInt(m.volume_fp) || parseInt(m.volume) || 0;
             const yesBidEarly = parseFloat(m.yes_bid_dollars) || 0;
             // Stale ask: market maker maxed ask at 99¢ with no bid — use last traded price instead
             const price = (yesAsk >= 0.98 && yesBidEarly === 0 && last > 0) ? last : (yesAsk > 0 ? yesAsk : last);
             const pct = Math.round(price * 100);
+            // Real NO-side ask (cost to actually buy the UNDER). Kalshi's YES and NO books are
+            // independent — `1 - yes_ask` is the *fair* synthetic NO price, but the real fill
+            // is no_ask, which can be 3–7 cents higher due to spread. Using 1 - pct here would
+            // systematically underprice UNDERs (e.g. yes_ask=0.17 → fake NO=-488 vs real NO=-720).
+            // Fall back to 1 - pct only when no_ask is missing.
+            const noPct = noAsk > 0 ? Math.round(noAsk * 100) : (100 - pct);
             if (price === 0) continue;
 
             // ── Game total branch (wider pct filter; team-based, not player-based) ──
             if (cfg.gameType === "total") {
               // Keep markets where EITHER side (YES/OVER or NO/UNDER) sits in our [67,91]
-              // qualification window. The OVER push gates on YES, the UNDER push gates on NO,
-              // so we don't bet OVERs against an UNDER-favored line and vice versa.
-              const _tNoPct = 100 - pct;
-              if ((pct < KALSHI_GATE || pct > KALSHI_CAP) && (_tNoPct < KALSHI_GATE || _tNoPct > KALSHI_CAP)) continue;
+              // qualification window. The OVER push gates on YES (yesAsk), the UNDER push
+              // gates on NO (noAsk = real ask, not synthetic 1-yesAsk), so we don't bet
+              // OVERs against an UNDER-favored line and vice versa.
+              if ((pct < KALSHI_GATE || pct > KALSHI_CAP) && (noPct < KALSHI_GATE || noPct > KALSHI_CAP)) continue;
               const [gameTeam1, gameTeam2] = parseGameTeams(m.event_ticker, sport);
               if (!gameTeam1 || !gameTeam2) continue;
               const dedupeKey = `total|${sport}|${gameTeam1}|${gameTeam2}|${threshold}`;
               if (globalSeen.has(dedupeKey)) continue;
               globalSeen.add(dedupeKey);
               const _toAO = pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
+              const _tNoAO = noPct >= 50 ? Math.round(-(noPct / (100 - noPct)) * 100) : Math.round((100 - noPct) / noPct * 100);
               const _tDateSeg = (m.event_ticker || "").split("-")[1] || "";
               let _tGameDate = null;
               if (_tDateSeg.length >= 7) {
@@ -1509,7 +1517,7 @@ var worker_default = {
               }
               const _tYesBid = parseFloat(m.yes_bid_dollars) || 0;
               const _tSpread = yesAsk > 0 && _tYesBid > 0 ? Math.round((yesAsk - _tYesBid) * 100) : null;
-              totalMarkets.push({ gameType: "total", sport, stat, col, threshold, kalshiPct: pct, americanOdds: _toAO, kalshiVolume: volume, gameTeam1, gameTeam2, gameDate: _tGameDate, kalshiSpread: _tSpread, _ticker: m.ticker, _yesAsk: yesAsk, _yesBid: _tYesBid });
+              totalMarkets.push({ gameType: "total", sport, stat, col, threshold, kalshiPct: pct, americanOdds: _toAO, noKalshiPct: noPct, noKalshiAO: _tNoAO, kalshiVolume: volume, gameTeam1, gameTeam2, gameDate: _tGameDate, kalshiSpread: _tSpread, _ticker: m.ticker, _yesAsk: yesAsk, _yesBid: _tYesBid, _noAsk: noAsk });
               continue;
             }
 
@@ -1517,8 +1525,8 @@ var worker_default = {
             if (cfg.gameType === "teamTotal") {
               // Same broadened gate as game totals — accept either OVER-side or UNDER-side
               // alt lines; the OVER/UNDER push paths apply their own kalshiPct/noKalshiPct gate.
-              const _ttNoPct = 100 - pct;
-              if ((pct < KALSHI_GATE || pct > KALSHI_CAP) && (_ttNoPct < KALSHI_GATE || _ttNoPct > KALSHI_CAP)) continue;
+              // UNDER side uses real noAsk (not 1-yesAsk) since YES/NO books are independent.
+              if ((pct < KALSHI_GATE || pct > KALSHI_CAP) && (noPct < KALSHI_GATE || noPct > KALSHI_CAP)) continue;
               const [gameTeam1, gameTeam2] = parseGameTeams(m.event_ticker, sport);
               if (!gameTeam1 || !gameTeam2) continue;
               // Extract scoring team from ticker suffix (e.g. "LAD8" → "LAD", "PHI97" → "PHI")
@@ -1530,6 +1538,7 @@ var worker_default = {
               if (globalSeen.has(dedupeKey)) continue;
               globalSeen.add(dedupeKey);
               const _ttAO = pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
+              const _ttNoAO = noPct >= 50 ? Math.round(-(noPct / (100 - noPct)) * 100) : Math.round((100 - noPct) / noPct * 100);
               const _ttDateSeg = (m.event_ticker || "").split("-")[1] || "";
               let _ttGameDate = null;
               if (_ttDateSeg.length >= 7) {
@@ -1541,7 +1550,7 @@ var worker_default = {
               }
               const _ttYesBid = parseFloat(m.yes_bid_dollars) || 0;
               const _ttSpread = yesAsk > 0 && _ttYesBid > 0 ? Math.round((yesAsk - _ttYesBid) * 100) : null;
-              teamTotalMarkets.push({ gameType: "teamTotal", sport, stat, col, threshold, kalshiPct: pct, americanOdds: _ttAO, kalshiVolume: volume, gameTeam1, gameTeam2, scoringTeam, gameDate: _ttGameDate, kalshiSpread: _ttSpread, _ticker: m.ticker, _yesAsk: yesAsk });
+              teamTotalMarkets.push({ gameType: "teamTotal", sport, stat, col, threshold, kalshiPct: pct, americanOdds: _ttAO, noKalshiPct: noPct, noKalshiAO: _ttNoAO, kalshiVolume: volume, gameTeam1, gameTeam2, scoringTeam, gameDate: _ttGameDate, kalshiSpread: _ttSpread, _ticker: m.ticker, _yesAsk: yesAsk, _noAsk: noAsk });
               continue;
             }
 
@@ -4317,7 +4326,7 @@ var worker_default = {
           const _gtVolumeMap = {};
           for (const tm of totalMarkets) { const _gk = `${tm.sport}|${tm.gameTeam1}|${tm.gameTeam2}`; _gtVolumeMap[_gk] = (_gtVolumeMap[_gk] ?? 0) + (tm.kalshiVolume ?? 0); }
           for (const tm of totalMarkets) {
-            const { sport, stat, threshold, kalshiPct, americanOdds, gameTeam1, gameTeam2, gameDate, kalshiSpread, kalshiVolume } = tm;
+            const { sport, stat, threshold, kalshiPct, americanOdds, noKalshiPct: _tmNoPct, noKalshiAO: _tmNoAO, gameTeam1, gameTeam2, gameDate, kalshiSpread, kalshiVolume } = tm;
             if (gameDate && gameDate < cutoffStr) continue;
             const spreadAdj = kalshiSpread != null ? parseFloat((kalshiSpread / 2).toFixed(1)) : 0;
             const lowVolume = (_gtVolumeMap[`${sport}|${gameTeam1}|${gameTeam2}`] ?? 0) < 50;
@@ -4681,7 +4690,9 @@ var worker_default = {
             }
             const rawEdge = kalshiPct != null ? parseFloat((truePct - kalshiPct).toFixed(1)) : null;
             const noTruePct = parseFloat((100 - truePct).toFixed(1));
-            const noKalshiPct = 100 - kalshiPct;
+            // Real no_ask price flows through `_tmNoPct`. Fall back to 1 - kalshiPct only when
+            // parse site couldn't fetch no_ask_dollars (older snap shape / missing field).
+            const noKalshiPct = _tmNoPct ?? (100 - kalshiPct);
             const _rawUnderEdge = parseFloat((noTruePct - noKalshiPct).toFixed(1));
             // MLB-only edge dampener: when threshold is far from market line, Poisson tails
             // overstate edge. Multiplicative shrink keeps the bet directionally honest while
@@ -4692,7 +4703,7 @@ var worker_default = {
             const overEdge = parseFloat(((rawEdge ?? 0) * _edgeDampener).toFixed(1));
             const underEdge = parseFloat((_rawUnderEdge * _edgeDampener).toFixed(1));
             if (_farFromLine) { _simData.edgeDampened = _edgeDampener; _simData.rawUnderEdge = _rawUnderEdge; }
-            const noKalshiAO = noKalshiPct >= 50 ? Math.round(-(noKalshiPct/(100-noKalshiPct))*100) : Math.round((100-noKalshiPct)/noKalshiPct*100);
+            const noKalshiAO = _tmNoAO ?? (noKalshiPct >= 50 ? Math.round(-(noKalshiPct/(100-noKalshiPct))*100) : Math.round((100-noKalshiPct)/noKalshiPct*100));
             const _gameTime = gameTimes[`${sport}:${homeTeam}:${gameDate}`] ?? gameTimes[`${sport}:${awayTeam}:${gameDate}`] ?? gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null;
             // MLB-only: both lineups confirmed = both teams have a posted lineup (in lineupSpotByName)
             // AND neither is in the projected-fallback set. Undefined for non-MLB so the badge hides.
@@ -4774,7 +4785,7 @@ var worker_default = {
           const _ttVolumeMap = {};
           for (const tm of teamTotalMarkets) { const _ttgk = `${tm.sport}|${tm.gameTeam1}|${tm.gameTeam2}`; _ttVolumeMap[_ttgk] = (_ttVolumeMap[_ttgk] ?? 0) + (tm.kalshiVolume ?? 0); }
           for (const tm of teamTotalMarkets) {
-            const { sport, stat, threshold, kalshiPct, americanOdds, gameTeam1, gameTeam2, scoringTeam, gameDate, kalshiSpread, kalshiVolume } = tm;
+            const { sport, stat, threshold, kalshiPct, americanOdds, noKalshiPct: _ttmNoPct, noKalshiAO: _ttmNoAO, gameTeam1, gameTeam2, scoringTeam, gameDate, kalshiSpread, kalshiVolume } = tm;
             if (gameDate && gameDate < cutoffStr) continue;
             const lowVolume = (_ttVolumeMap[`${sport}|${gameTeam1}|${gameTeam2}`] ?? 0) < 50;
             // Determine home/away (same correction logic as game total loop)
@@ -4877,11 +4888,13 @@ var worker_default = {
               } else if (isDebug && _ttOverInWindow) {
                 dropped.push({ ..._ttBaseFields, direction: "over", edge, rawEdge, teamTotalSimScore, reason: "edge_too_low" });
               }
-              // UNDER play
+              // UNDER play — use real no_ask price flowed through from the parse site.
+              // Pre-2026-05-15 this synthesized noPct from 1 - kalshiPct, which underpriced
+              // UNDERs by the Kalshi YES/NO spread (~3–7 cents). See CLAUDE.md "Kalshi UNDER pricing".
               const _ttNoTruePct = parseFloat((100 - truePct).toFixed(1));
-              const _ttNoKalshiPct = 100 - kalshiPct;
+              const _ttNoKalshiPct = _ttmNoPct ?? (100 - kalshiPct);
               const _ttUnderEdge = parseFloat((_ttNoTruePct - _ttNoKalshiPct).toFixed(1));
-              const _ttNoKalshiAO = _ttNoKalshiPct >= 50 ? Math.round(-(_ttNoKalshiPct/(100-_ttNoKalshiPct))*100) : Math.round((100-_ttNoKalshiPct)/_ttNoKalshiPct*100);
+              const _ttNoKalshiAO = _ttmNoAO ?? (_ttNoKalshiPct >= 50 ? Math.round(-(_ttNoKalshiPct/(100-_ttNoKalshiPct))*100) : Math.round((100-_ttNoKalshiPct)/_ttNoKalshiPct*100));
               const _uTtSeasonHitRatePts = ttSeasonHitRate == null ? 1 : ttSeasonHitRate <= 20 ? 2 : ttSeasonHitRate <= 40 ? 1 : 0;
               const _uTtWhipPts = oppWHIP == null ? 1 : oppWHIP <= 1.10 ? 2 : oppWHIP <= 1.25 ? 1 : 0;
               const _uTtL10Pts = teamL10RPG == null ? 1 : teamL10RPG <= 3.5 ? 2 : teamL10RPG <= 4.5 ? 1 : 0;
@@ -4964,11 +4977,11 @@ var worker_default = {
               } else if (isDebug && _nttOverInWindow) {
                 dropped.push({ ..._nttBaseFields, direction: "over", edge, rawEdge, teamTotalSimScore, reason: "edge_too_low" });
               }
-              // UNDER play
+              // UNDER play — same real-no_ask correction as MLB team total UNDER above.
               const _nttNoTruePct = parseFloat((100 - truePct).toFixed(1));
-              const _nttNoKalshiPct = 100 - kalshiPct;
+              const _nttNoKalshiPct = _ttmNoPct ?? (100 - kalshiPct);
               const _nttUnderEdge = parseFloat((_nttNoTruePct - _nttNoKalshiPct).toFixed(1));
-              const _nttNoKalshiAO = _nttNoKalshiPct >= 50 ? Math.round(-(_nttNoKalshiPct/(100-_nttNoKalshiPct))*100) : Math.round((100-_nttNoKalshiPct)/_nttNoKalshiPct*100);
+              const _nttNoKalshiAO = _ttmNoAO ?? (_nttNoKalshiPct >= 50 ? Math.round(-(_nttNoKalshiPct/(100-_nttNoKalshiPct))*100) : Math.round((100-_nttNoKalshiPct)/_nttNoKalshiPct*100));
               const _uTtOffRtgPts = teamOffRtg == null ? 1 : teamOffRtg < 113 ? 2 : teamOffRtg < 118 ? 1 : 0;
               const _uTtDefRtgPts = oppDefRtg == null ? 1 : oppDefRtg < 113 ? 2 : oppDefRtg < 118 ? 1 : 0;
               const _uTtNbaSeasonHitRatePts = ttNbaSeasonHitRate == null ? 1 : ttNbaSeasonHitRate <= 20 ? 2 : ttNbaSeasonHitRate <= 40 ? 1 : 0;
