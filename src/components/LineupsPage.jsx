@@ -6,7 +6,7 @@ const SPORT_ORDER = { mlb: 0, nba: 1, wnba: 2, nhl: 3 };
 const SPORT_LABEL = { mlb: 'MLB', nba: 'NBA', wnba: 'WNBA', nhl: 'NHL' };
 
 // Build ordered games list for a single sport.
-function buildGames(allPlays, sport, meta) {
+function buildGames(allPlays, sport, meta, metaTomorrow) {
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
   const gameMap = new Map();
 
@@ -28,14 +28,18 @@ function buildGames(allPlays, sport, meta) {
     } else {
       const t1 = play.playerTeam, t2 = play.opponent;
       if (!t1 || !t2) continue;
-      const _metaHome = meta?.homeTeams?.[t1] || meta?.homeTeams?.[t2];
+      gameDate = play.gameDate ?? '';
+      gameTime = play.gameTime ?? null;
+      // For future-day plays, prefer the day-matched homeTeams map. Today's `meta.homeTeams`
+      // would otherwise incorrectly anchor (e.g. PHI@BOS today → PHI mapped to BOS) when the
+      // play is for a different opponent tomorrow.
+      const _metaForDay = (gameDate && gameDate > today && metaTomorrow) ? metaTomorrow : meta;
+      const _metaHome = _metaForDay?.homeTeams?.[t1] || _metaForDay?.homeTeams?.[t2];
       if (_metaHome) {
         homeTeam = _metaHome; awayTeam = _metaHome === t1 ? t2 : t1;
       } else {
         [homeTeam, awayTeam] = [t1, t2].sort();
       }
-      gameDate = play.gameDate ?? '';
-      gameTime = play.gameTime ?? null;
     }
 
     if (gameDate && gameDate < today) continue;
@@ -81,9 +85,9 @@ function buildGames(allPlays, sport, meta) {
 }
 
 // All sports combined.
-function buildAllGames(allPlays, mlbMeta, nbaMeta, wnbaMeta, nhlMeta) {
+function buildAllGames(allPlays, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta) {
   return [
-    ...buildGames(allPlays, 'mlb', mlbMeta),
+    ...buildGames(allPlays, 'mlb', mlbMeta, mlbMetaTomorrow),
     ...buildGames(allPlays, 'nba', nbaMeta),
     ...buildGames(allPlays, 'wnba', wnbaMeta),
     ...buildGames(allPlays, 'nhl', nhlMeta),
@@ -180,7 +184,7 @@ export default function LineupsPage({
 
   // All games for the active day, sorted by sport then game time
   const gamesForDay = React.useMemo(() => {
-    const all = buildAllGames(allTonightPlays, mlbMeta, nbaMeta, wnbaMeta, nhlMeta);
+    const all = buildAllGames(allTonightPlays, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta);
     return all
       .filter(g => {
         const d = g.gameTime ? ptDate(g.gameTime) : (g.gameDate || '');
@@ -191,7 +195,7 @@ export default function LineupsPage({
         if (sd !== 0) return sd;
         return (a.gameTime || '').localeCompare(b.gameTime || '');
       });
-  }, [allTonightPlays, mlbMeta, nbaMeta, nhlMeta, activeDayTab]);
+  }, [allTonightPlays, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta, activeDayTab]);
 
   const sportGroups = React.useMemo(() => {
     const groups = {};
