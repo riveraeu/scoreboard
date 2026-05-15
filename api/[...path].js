@@ -1772,45 +1772,6 @@ var worker_default = {
               sportByteam.nbaGameOdds = parseGameOdds(sbData.events || []);
               sportByteam.nbaGameScores = parseGameScores(sbData.eventsAll || sbData.events || [], a => normTeam("nba", a));
               sportByteam.nbaTopPlayers = parseTopPlayers(sbData.eventsAll || sbData.events || [], a => normTeam("nba", a), "nba");
-              // NBA starter map for dataConfidence lineupConf. Pre-game ESPN may not have boxscore
-              // starters yet — confirmedTeams will be empty in that case, which is the correct
-              // signal (lineup unknown). Cached 600s; same TTL as the snap cron, so we re-pay at
-              // most once per 10min if uncached. Parallel summary fetch per game; failures silently
-              // skipped so one bad game doesn't poison the map.
-              const _nbaStarterPtDate = new Date(Date.now() - 7*3600*1000).toISOString().slice(0,10);
-              const _nbaStarterKey = `nba:starters:${_nbaStarterPtDate}`;
-              let _nbaStarters = isBustCache ? null : (CACHE2 ? await CACHE2.get(_nbaStarterKey, "json").catch(() => null) : null);
-              if (!_nbaStarters) {
-                const _todayEvents = sbData.events || [];
-                const _starterHdrs = { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" };
-                const _summaryResults = await Promise.all(_todayEvents.map(async ev => {
-                  try {
-                    const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=${ev.id}`, { headers: _starterHdrs });
-                    if (!r.ok) return null;
-                    return await r.json();
-                  } catch { return null; }
-                }));
-                const confirmedTeams = [];
-                const startersByTeam = {};
-                for (const sum of _summaryResults) {
-                  if (!sum?.boxscore?.players) continue;
-                  for (const tp of sum.boxscore.players) {
-                    const abbr = normTeam("nba", tp.team?.abbreviation || "");
-                    if (!abbr) continue;
-                    const athletes = tp.statistics?.[0]?.athletes || [];
-                    const starterIds = athletes.filter(a => a.starter).map(a => String(a.athlete?.id || "")).filter(Boolean);
-                    if (starterIds.length > 0) {
-                      confirmedTeams.push(abbr);
-                      startersByTeam[abbr] = starterIds;
-                    }
-                  }
-                }
-                _nbaStarters = { confirmedTeams, startersByTeam };
-                if (CACHE2 && confirmedTeams.length > 0) {
-                  CACHE2.put(_nbaStarterKey, JSON.stringify(_nbaStarters), { expirationTtl: 600 }).catch(() => {});
-                }
-              }
-              sportByteam.nbaStarters = _nbaStarters;
               if (CACHE2) {
                 await CACHE2.put("byteam:nba", JSON.stringify(sportByteam.nba), { expirationTtl: 21600 });
                 await CACHE2.put("byteam:nba:scoring", JSON.stringify(sportByteam.nbaScoring), { expirationTtl: 21600 });
@@ -2045,6 +2006,11 @@ var worker_default = {
         }
         // Fetch game start times + NBA player availability for tonight's games
         const todayDateStr = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10).replace(/-/g, "");
+        // nbaStarters loaded in parallel with nbaPlayerStatus since the fetch that populates
+        // them shares the same ESPN summary URL — same lifecycle (600s TTL).
+        let nbaStarters = (sportsNeeded.has("nba") && CACHE2 && !isBustCache)
+          ? await CACHE2.get(`nba:starters:${todayDateStr}`, "json").catch(() => null)
+          : null;
         let [gameTimes, nbaPlayerStatus, _cachedWeather] = await Promise.all([
           CACHE2 && !isBustCache ? CACHE2.get(`gameTimes:v2:${todayDateStr}`, "json").catch(() => null) : null,
           CACHE2 ? CACHE2.get(`nbaStatus:${todayDateStr}`, "json").catch(() => null) : null,
@@ -2053,11 +2019,13 @@ var worker_default = {
         const weatherByGame = _cachedWeather ? { ..._cachedWeather } : {}; // keyed "homeAbbr|awayAbbr" → {temp, condition}
         const needGameTimes = !gameTimes;
         const needNbaStatus = !nbaPlayerStatus && sportsNeeded.has("nba");
-        if (needGameTimes || needNbaStatus) {
+        const needNbaStarters = !nbaStarters && sportsNeeded.has("nba");
+        const needNbaSummaries = needNbaStatus || needNbaStarters;
+        if (needGameTimes || needNbaSummaries) {
           gameTimes = gameTimes || {};
           nbaPlayerStatus = nbaPlayerStatus || {};
           const SPORT_SB_PATH = { nba: "basketball/nba", wnba: "basketball/wnba", nhl: "hockey/nhl", mlb: "baseball/mlb" };
-          const sportsToFetch = needGameTimes ? [...sportsNeeded].filter(s => SPORT_SB_PATH[s]) : (needNbaStatus ? ["nba"] : []);
+          const sportsToFetch = needGameTimes ? [...sportsNeeded].filter(s => SPORT_SB_PATH[s]) : (needNbaSummaries ? ["nba"] : []);
           const yesterdayDateStr = new Date(Date.now() - 86400000).toISOString().slice(0, 10).replace(/-/g, "");
           const tomorrowDateStr = new Date(Date.now() + 86400000).toISOString().slice(0, 10).replace(/-/g, "");
           const sbResults = await Promise.all(sportsToFetch.map(async s => {
@@ -2113,25 +2081,51 @@ var worker_default = {
               if (!sportByteam.wnbaGameScores) sportByteam.wnbaGameScores = parseGameScores(_wnbaSbResult.events, a => normTeam("wnba", a));
             }
           }
-          if (needNbaStatus) {
+          if (needNbaSummaries) {
+            // One fetch per game serves BOTH injuries (nbaPlayerStatus) and boxscore starters
+            // (nbaStarters). Both feed downstream consumers with 600s TTL on the same cycle.
             const nbaEvents = sbResults.find(r => r.sport === "nba")?.events || [];
+            const _starterConfirmedTeams = [];
+            const _starterByTeam = {};
             await Promise.all(nbaEvents.map(async ev => {
               try {
                 const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=${ev.id}`, { headers: { "User-Agent": "Mozilla/5.0" } });
                 if (!r.ok) return;
                 const d = await r.json();
-                for (const teamInj of d.injuries || []) {
-                  for (const inj of teamInj.injuries || []) {
-                    const aid = inj.athlete?.id;
-                    if (aid) nbaPlayerStatus[String(aid)] = (inj.status || "Out").toLowerCase();
+                if (needNbaStatus) {
+                  for (const teamInj of d.injuries || []) {
+                    for (const inj of teamInj.injuries || []) {
+                      const aid = inj.athlete?.id;
+                      if (aid) nbaPlayerStatus[String(aid)] = (inj.status || "Out").toLowerCase();
+                    }
+                  }
+                }
+                if (needNbaStarters) {
+                  for (const tp of d.boxscore?.players || []) {
+                    const abbr = normTeam("nba", tp.team?.abbreviation || "");
+                    if (!abbr) continue;
+                    const athletes = tp.statistics?.[0]?.athletes || [];
+                    const starterIds = athletes.filter(a => a.starter).map(a => String(a.athlete?.id || "")).filter(Boolean);
+                    if (starterIds.length > 0) {
+                      _starterConfirmedTeams.push(abbr);
+                      _starterByTeam[abbr] = starterIds;
+                    }
                   }
                 }
               } catch {}
             }));
-            if (CACHE2) await CACHE2.put(`nbaStatus:${todayDateStr}`, JSON.stringify(nbaPlayerStatus), { expirationTtl: 600 }).catch(() => {});
+            if (needNbaStatus && CACHE2) await CACHE2.put(`nbaStatus:${todayDateStr}`, JSON.stringify(nbaPlayerStatus), { expirationTtl: 600 }).catch(() => {});
+            if (needNbaStarters) {
+              nbaStarters = { confirmedTeams: _starterConfirmedTeams, startersByTeam: _starterByTeam };
+              if (CACHE2) await CACHE2.put(`nba:starters:${todayDateStr}`, JSON.stringify(nbaStarters), { expirationTtl: 600 }).catch(() => {});
+            }
           }
         }
         nbaPlayerStatus = nbaPlayerStatus || {};
+        // sportByteam.nbaStarters is the single source the dataConfidence helper reads.
+        // Always assign — populated either by the needNbaSummaries block above (cache miss path)
+        // or by the parallel cache load at the top of this section (warm path).
+        sportByteam.nbaStarters = nbaStarters || { confirmedTeams: [], startersByTeam: {} };
         // Refresh MLB weather independently if cache was empty (gameTimes may have been cached)
         if (sportsNeeded.has("mlb") && Object.keys(weatherByGame).length === 0 && !isBustCache) {
           try {
