@@ -1772,6 +1772,45 @@ var worker_default = {
               sportByteam.nbaGameOdds = parseGameOdds(sbData.events || []);
               sportByteam.nbaGameScores = parseGameScores(sbData.eventsAll || sbData.events || [], a => normTeam("nba", a));
               sportByteam.nbaTopPlayers = parseTopPlayers(sbData.eventsAll || sbData.events || [], a => normTeam("nba", a), "nba");
+              // NBA starter map for dataConfidence lineupConf. Pre-game ESPN may not have boxscore
+              // starters yet — confirmedTeams will be empty in that case, which is the correct
+              // signal (lineup unknown). Cached 600s; same TTL as the snap cron, so we re-pay at
+              // most once per 10min if uncached. Parallel summary fetch per game; failures silently
+              // skipped so one bad game doesn't poison the map.
+              const _nbaStarterPtDate = new Date(Date.now() - 7*3600*1000).toISOString().slice(0,10);
+              const _nbaStarterKey = `nba:starters:${_nbaStarterPtDate}`;
+              let _nbaStarters = isBustCache ? null : (CACHE2 ? await CACHE2.get(_nbaStarterKey, "json").catch(() => null) : null);
+              if (!_nbaStarters) {
+                const _todayEvents = sbData.events || [];
+                const _starterHdrs = { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" };
+                const _summaryResults = await Promise.all(_todayEvents.map(async ev => {
+                  try {
+                    const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=${ev.id}`, { headers: _starterHdrs });
+                    if (!r.ok) return null;
+                    return await r.json();
+                  } catch { return null; }
+                }));
+                const confirmedTeams = [];
+                const startersByTeam = {};
+                for (const sum of _summaryResults) {
+                  if (!sum?.boxscore?.players) continue;
+                  for (const tp of sum.boxscore.players) {
+                    const abbr = normTeam("nba", tp.team?.abbreviation || "");
+                    if (!abbr) continue;
+                    const athletes = tp.statistics?.[0]?.athletes || [];
+                    const starterIds = athletes.filter(a => a.starter).map(a => String(a.athlete?.id || "")).filter(Boolean);
+                    if (starterIds.length > 0) {
+                      confirmedTeams.push(abbr);
+                      startersByTeam[abbr] = starterIds;
+                    }
+                  }
+                }
+                _nbaStarters = { confirmedTeams, startersByTeam };
+                if (CACHE2 && confirmedTeams.length > 0) {
+                  CACHE2.put(_nbaStarterKey, JSON.stringify(_nbaStarters), { expirationTtl: 600 }).catch(() => {});
+                }
+              }
+              sportByteam.nbaStarters = _nbaStarters;
               if (CACHE2) {
                 await CACHE2.put("byteam:nba", JSON.stringify(sportByteam.nba), { expirationTtl: 21600 });
                 await CACHE2.put("byteam:nba:scoring", JSON.stringify(sportByteam.nbaScoring), { expirationTtl: 21600 });
@@ -5102,14 +5141,30 @@ var worker_default = {
           if (p._kalshiStale === true) freshness = 0;
           else if (p.lowVolume === true || (p.kalshiSpread != null && p.kalshiSpread >= 7)) freshness = 1;
           else freshness = 2;
-          // (2) Lineup / probable confirmation — only meaningful for MLB today; non-MLB stays neutral
-          // until we surface starter status for NBA/WNBA/NHL.
+          // (2) Lineup / probable confirmation — MLB uses lineupConfirmed/lineupsConfirmed.
+          // NBA player props use sportByteam.nbaStarters (boxscore starter map fetched per game).
+          // WNBA/NHL still neutral until similar maps land.
           let lineupConf = 1;
           if (sport === "mlb") {
             const conf = isPlayerProp ? p.lineupConfirmed : p.lineupsConfirmed;
             if (conf === true) lineupConf = 2;
             else if (conf === false) lineupConf = 0;
             else lineupConf = 1;
+          } else if (sport === "nba" && isPlayerProp) {
+            const starters = sportByteam.nbaStarters;
+            const team = p.playerTeam;
+            const pid = String(p.playerId || "");
+            if (starters && team && pid) {
+              const confirmed = (starters.confirmedTeams || []).includes(team);
+              const isStarter = confirmed && ((starters.startersByTeam || {})[team] || []).includes(pid);
+              p.nbaStarterConfirmed = confirmed ? isStarter : null;
+              if (confirmed && isStarter) lineupConf = 2;
+              else if (confirmed) lineupConf = 1; // bench player on a team with a posted lineup
+              else lineupConf = 0; // lineup not yet posted
+            } else {
+              p.nbaStarterConfirmed = null;
+              lineupConf = 1; // neutral when map unavailable (cold start / fetch failure)
+            }
           }
           // (3) Player availability — player props only; totals get neutral.
           let availability = 1;

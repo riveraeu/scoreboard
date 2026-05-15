@@ -34,6 +34,7 @@ User auth (`user:{email}`) and picks (`picks:{userId}`) live in the same Redis. 
 | `wnba:injuries:{date}` | 1800s | ESPN injuries (Out + GTD) |
 | `wnba:usg:{playerId}:2025` | 6h | Per-player USG% — falls back to `(avgFGA + 0.44·avgFTA + avgTO) / (avgMin × 1.88)` when ESPN omits direct USG (1.88 = 2.255 × 40/48 rescales NBA formula to 40-min game). |
 | `nba:depth:{date}` | daily | |
+| `nba:starters:{date}` | 600s | Per-game ESPN boxscore starters parsed for tonight's NBA slate. Shape: `{confirmedTeams: [abbr], startersByTeam: {abbr: [playerId]}}`. Feeds the dataConfidence `lineupConf` component for NBA player props. Empty pre-game when ESPN hasn't populated starters yet (correct signal — lineup unknown). Cleared by `?bust=1`. |
 | `mlb:barrelPct` | 6h | Baseball Savant CSV |
 | `mlbSchedTomorrow:{date}` | 600s | Tomorrow's MLB schedule (probables only) |
 | `weather:mlb:{date}` | 600s | ESPN weather, refreshed independently of gameTimes |
