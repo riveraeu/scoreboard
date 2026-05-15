@@ -4905,7 +4905,7 @@ var worker_default = {
               if (_ttUnderEdge >= EDGE_GATE && _ttNoKalshiPct >= KALSHI_GATE && _ttNoKalshiPct <= KALSHI_CAP) {
                 teamTotalPlays.push({ ..._ttBaseFields, ..._ttUnderComponents, direction: "under", noTruePct: _ttNoTruePct, noKalshiPct: _ttNoKalshiPct, americanOdds: _ttNoKalshiAO, edge: _ttUnderEdge, rawEdge: _ttUnderEdge, teamTotalSimScore: _ttUnderSimScore, qualified: _ttUnderSimScore >= SIMSCORE_GATE });
               } else if (isDebug) {
-                dropped.push({ ..._ttBaseFields, ..._ttUnderComponents, direction: "under", noTruePct: _ttNoTruePct, noKalshiPct: _ttNoKalshiPct, edge: _ttUnderEdge, teamTotalSimScore: _ttUnderSimScore, reason: _ttNoKalshiPct < KALSHI_GATE ? "under_no_price_too_low" : "edge_too_low" });
+                dropped.push({ ..._ttBaseFields, ..._ttUnderComponents, direction: "under", noTruePct: _ttNoTruePct, noKalshiPct: _ttNoKalshiPct, americanOdds: _ttNoKalshiAO, edge: _ttUnderEdge, teamTotalSimScore: _ttUnderSimScore, reason: _ttNoKalshiPct < KALSHI_GATE ? "under_no_price_too_low" : "edge_too_low" });
               }
             } else if (sport === "nba") {
               const nbaDefRank = STAT_SOFT["nba|points"]?.rankMap ?? {};
@@ -4992,7 +4992,7 @@ var worker_default = {
               if (_nttUnderEdge >= EDGE_GATE && _nttNoKalshiPct >= KALSHI_GATE && _nttNoKalshiPct <= KALSHI_CAP) {
                 teamTotalPlays.push({ ..._nttBaseFields, ..._nttUnderComponents, direction: "under", noTruePct: _nttNoTruePct, noKalshiPct: _nttNoKalshiPct, americanOdds: _nttNoKalshiAO, edge: _nttUnderEdge, rawEdge: _nttUnderEdge, teamTotalSimScore: _nttUnderSimScore, qualified: _nttUnderSimScore >= SIMSCORE_GATE });
               } else if (isDebug) {
-                dropped.push({ ..._nttBaseFields, ..._nttUnderComponents, direction: "under", noTruePct: _nttNoTruePct, noKalshiPct: _nttNoKalshiPct, edge: _nttUnderEdge, teamTotalSimScore: _nttUnderSimScore, reason: _nttNoKalshiPct < KALSHI_GATE ? "under_no_price_too_low" : "edge_too_low" });
+                dropped.push({ ..._nttBaseFields, ..._nttUnderComponents, direction: "under", noTruePct: _nttNoTruePct, noKalshiPct: _nttNoKalshiPct, americanOdds: _nttNoKalshiAO, edge: _nttUnderEdge, teamTotalSimScore: _nttUnderSimScore, reason: _nttNoKalshiPct < KALSHI_GATE ? "under_no_price_too_low" : "edge_too_low" });
               }
             }
           }
