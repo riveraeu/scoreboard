@@ -229,9 +229,17 @@ function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
 
+  // v1: SimScore ≥ 8 gate (with qualified flag). v2: dcQualified === true AND edge ≥ 3. Both
+  // exclude `qualified: false` server-side artifacts. Centralized so /fetch and bustCache share
+  // the same filter and the model-version branch only lives in one place.
+  const _v2Filter = React.useCallback((p) => p.dcQualified === true && (p.edge ?? 0) >= EDGE_GATE, []);
+  const _v1Filter = React.useCallback((p) => p.qualified !== false
+    && (p.finalSimScore == null || p.finalSimScore >= SIMSCORE_GATE)
+    && (p.hitterFinalSimScore == null || p.hitterFinalSimScore >= SIMSCORE_GATE), []);
+  const _qualifiedFilter = modelVersion === "v2" ? _v2Filter : _v1Filter;
   // Fetch tonight's plays on mount
   React.useEffect(() => {
-    const _applyData = (data) => { const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore >= SIMSCORE_GATE) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore >= SIMSCORE_GATE))); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); if (data.mlbMeta) setMlbMeta(data.mlbMeta); if (data.mlbMetaTomorrow) setMlbMetaTomorrow(data.mlbMetaTomorrow); if (data.nbaMeta) setNbaMeta(data.nbaMeta); if (data.wnbaMeta) setWnbaMeta(data.wnbaMeta); if (data.nhlMeta) setNhlMeta(data.nhlMeta); };
+    const _applyData = (data) => { const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(_qualifiedFilter)); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); if (data.mlbMeta) setMlbMeta(data.mlbMeta); if (data.mlbMetaTomorrow) setMlbMetaTomorrow(data.mlbMetaTomorrow); if (data.nbaMeta) setNbaMeta(data.nbaMeta); if (data.wnbaMeta) setWnbaMeta(data.wnbaMeta); if (data.nhlMeta) setNhlMeta(data.nhlMeta); };
     let cancelled = false;
     setTonightLoading(true);
     // Initial page-load fetch always busts to skip both the server-side Kalshi cache and any
@@ -251,7 +259,7 @@ function App() {
     setTonightLoading(true);
     fetch(`${WORKER}/tonight?bust=1${_modelSuffix}`)
       .then(r => r.json())
-      .then(data => { const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore >= SIMSCORE_GATE) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore >= SIMSCORE_GATE))); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); if (data.mlbMeta) setMlbMeta(data.mlbMeta); if (data.mlbMetaTomorrow) setMlbMetaTomorrow(data.mlbMetaTomorrow); if (data.nbaMeta) setNbaMeta(data.nbaMeta); if (data.wnbaMeta) setWnbaMeta(data.wnbaMeta); if (data.nhlMeta) setNhlMeta(data.nhlMeta); setTonightLoading(false); setBustLoading(false); })
+      .then(data => { const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(_qualifiedFilter)); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); if (data.mlbMeta) setMlbMeta(data.mlbMeta); if (data.mlbMetaTomorrow) setMlbMetaTomorrow(data.mlbMetaTomorrow); if (data.nbaMeta) setNbaMeta(data.nbaMeta); if (data.wnbaMeta) setWnbaMeta(data.wnbaMeta); if (data.nhlMeta) setNhlMeta(data.nhlMeta); setTonightLoading(false); setBustLoading(false); })
       .catch(() => { setAllTonightPlays([]); setNbaDropped([]); setTonightPlays([]); setTonightLoading(false); setBustLoading(false); });
   };
 
