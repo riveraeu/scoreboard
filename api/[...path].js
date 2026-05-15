@@ -312,16 +312,36 @@ var worker_default = {
         const upUrl = env?.UPSTASH_REDIS_REST_URL;
         const upAuth = `Bearer ${env?.UPSTASH_REDIS_REST_TOKEN}`;
         if (!upUrl) return errorResponse("No Redis URL", 500);
+        // Optional filter: ?modelVersion=v1|v2|all (default "all"). Picks tracked before the
+        // version toggle landed have no `modelVersion` field and are treated as v1 for grouping.
+        const _calibModelFilter = (params.get("modelVersion") || "all").toLowerCase();
+        const _normModelV = (p) => p.modelVersion === "v2" ? "v2" : "v1";
         // Scan all picks keys
         const keysRes = await fetch(upUrl, { method: "POST", headers: { Authorization: upAuth, "Content-Type": "application/json" }, body: JSON.stringify(["KEYS", "picks:*"]) });
         const { result: picksKeys } = await keysRes.json();
-        if (!picksKeys || picksKeys.length === 0) return jsonResponse({ totalPicks: 0, finalizedPicks: 0, overall: [], byCategory: {} });
+        if (!picksKeys || picksKeys.length === 0) return jsonResponse({ totalPicks: 0, finalizedPicks: 0, overall: [], byCategory: {}, byModelVersion: { v1: { n: 0, finalized: 0 }, v2: { n: 0, finalized: 0 } } });
         // Fetch all picks records in parallel
-        const allPicks = [];
+        const _allPicksRaw = [];
         await Promise.all((picksKeys || []).map(async key => {
           const data = await CACHE2.get(key, "json").catch(() => null);
-          (data?.picks || []).forEach(p => allPicks.push(p));
+          (data?.picks || []).forEach(p => _allPicksRaw.push(p));
         }));
+        // Always compute per-version counts before filtering, so the response can show v1 vs v2
+        // volumes regardless of which version the user filtered to.
+        const byModelVersion = { v1: { n: 0, finalized: 0, wins: 0 }, v2: { n: 0, finalized: 0, wins: 0 } };
+        for (const p of _allPicksRaw) {
+          const mv = _normModelV(p);
+          byModelVersion[mv].n++;
+          if (p.result === "won" || p.result === "lost") byModelVersion[mv].finalized++;
+          if (p.result === "won") byModelVersion[mv].wins++;
+        }
+        for (const mv of ["v1", "v2"]) {
+          const d = byModelVersion[mv];
+          d.hitRate = d.finalized > 0 ? parseFloat((d.wins / d.finalized * 100).toFixed(1)) : null;
+        }
+        const allPicks = _calibModelFilter === "all"
+          ? _allPicksRaw
+          : _allPicksRaw.filter(p => _normModelV(p) === (_calibModelFilter === "v2" ? "v2" : "v1"));
         const finalized = allPicks.filter(p => p.result === "won" || p.result === "lost");
         // Group by truePct bucket
         const _buckets = [
@@ -431,7 +451,7 @@ var worker_default = {
             })
           ])
         );
-        return jsonResponse({ totalPicks: allPicks.length, finalizedPicks: finalized.length, overall, byCategory, byCategoryDetail, kStrikeouts: { bySimScore, byKpctPts, byKTrendPts, byStdBF, n: ksFinalized.length } });
+        return jsonResponse({ totalPicks: allPicks.length, finalizedPicks: finalized.length, overall, byCategory, byCategoryDetail, byModelVersion, modelFilter: _calibModelFilter, kStrikeouts: { bySimScore, byKpctPts, byKTrendPts, byStdBF, n: ksFinalized.length } });
       } else if (path === "auth/reset" && method === "POST") {
         const { email, newPassword, adminKey } = await request.json();
         if (adminKey !== env?.ADMIN_KEY) return errorResponse("Forbidden", 403);
@@ -1186,6 +1206,10 @@ var worker_default = {
         __name(glCacheKey, "glCacheKey");
         const isDebugMode = params.get("debug") === "1";
         const isBustCache = params.get("bust") === "1";
+        // Phase A: read but don't branch behavior — output identical for v1 / v2. Echoed back
+        // in the response for frontend debugging and tagged onto any pick the user tracks while
+        // v2 is active. Phase B will branch truePct / SimScore gate on this.
+        const modelVersion = params.get("model") === "v2" ? "v2" : "v1";
         const reportSportFilter = params.get("sport") || null;
         // NBA totals: regular-season aggregate OffRtg/DefRtg systematically under-projects playoff
         // scoring (LAL/OKC G3 = 232 vs model 199 vs market 210.5). Multiplier on home/away expected
@@ -5071,7 +5095,7 @@ var worker_default = {
             meta: kalshiSnapMeta,
             ageMs: kalshiSnapMeta?.lastRunAt ? Date.now() - kalshiSnapMeta.lastRunAt : null,
           };
-          return jsonResponse({ plays: debugPlays, dropped: debugDropped, preDropped: debugPreDropped, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
+          return jsonResponse({ plays: debugPlays, dropped: debugDropped, preDropped: debugPreDropped, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, modelVersion, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
         }
         // Build mlbMeta: pitchers, ML odds, umpires, weather — keyed by team abbr or "home|away"
         // Pitcher entries: { name, id, era, wins, losses }. MLB Stats API (pitcherInfoByTeam) preferred
@@ -5392,7 +5416,7 @@ var worker_default = {
         }
         await _applyClosingSnapshot('nhlClosingOdds', sportByteam.nhlGameScores, _nhlGameOdds);
         const nhlMeta = { gameScores: sportByteam.nhlGameScores ?? {}, gameOdds: _nhlGameOdds, topPlayers: sportByteam.nhlTopPlayers ?? {} };
-        const playsResult = { plays, nbaDropped, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta, staleKalshiSeries, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length };
+        const playsResult = { plays, nbaDropped, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta, staleKalshiSeries, modelVersion, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length };
         const sportsInPlays = new Set(plays.map((p) => p.sport));
         if (CACHE2 && sportsInPlays.size >= 2) {
           const summary = {

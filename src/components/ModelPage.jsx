@@ -1,7 +1,9 @@
 import React from 'react';
+import { useModelVersion } from '../lib/hooks.js';
 
 function ModelPage({ onBack, calibData, calibLoading, fetchCalib, authToken }) {
   const [tab, setTab] = React.useState("mlb-k");
+  const [modelVersion, setModelVersion] = useModelVersion();
 
   // Fetch calibration on first mount when logged in and data not yet loaded
   React.useEffect(() => {
@@ -680,6 +682,45 @@ truePct = P(teamPoints ≥ threshold)`}</Formula>
         <div>
           <div style={{color:"#c9d1d9",fontSize:17,fontWeight:700}}>Model Reference</div>
           <div style={{color:"#484f58",fontSize:11,marginTop:2}}>True% formulas, inputs, and SimScore breakdowns for every play type</div>
+        </div>
+      </div>
+
+      {/* Model version toggle (Phase A — infra only; v1/v2 produce identical output today).
+          v2 selection persists to localStorage and tags any new picks with modelVersion:"v2"
+          so calibration audits can split v1/v2 outcomes once Phase B behavior lands. */}
+      <div style={{background:"#161b22",border:`1px solid ${modelVersion==="v2"?"#a371f7":"#30363d"}`,borderRadius:10,padding:"10px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
+        <div style={{flex:"0 0 auto"}}>
+          <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>MODEL VERSION</div>
+          <div style={{display:"flex",gap:6}}>
+            {[
+              { v:"v1", label:"v1 (current)" },
+              { v:"v2", label:"v2 (beta)" },
+            ].map(({v,label}) => {
+              const active = modelVersion === v;
+              const accent = v === "v2" ? "#a371f7" : "#58a6ff";
+              return (
+                <button key={v} type="button"
+                  onClick={() => {
+                    if (modelVersion === v) return;
+                    setModelVersion(v);
+                    // Page reload picks up the new model param on the next /api/tonight fetch
+                    // and reflows any cached play state.
+                    window.location.reload();
+                  }}
+                  style={{padding:"4px 11px",borderRadius:6,fontSize:11,fontWeight:active?700:500,cursor:"pointer",
+                    background: active ? (v==="v2"?"rgba(163,113,247,0.18)":"rgba(88,166,255,0.12)") : "transparent",
+                    border: `1px solid ${active ? accent : "#30363d"}`,
+                    color: active ? accent : "#8b949e"}}>
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div style={{flex:"1 1 280px",color:"#8b949e",fontSize:11,lineHeight:1.5}}>
+          {modelVersion === "v2"
+            ? <><span style={{color:"#a371f7",fontWeight:600}}>v2:</span> SimScore is purely attribution — does not influence truePct and does not gate qualification. <span style={{color:"#484f58"}}>(Phase A: identical output to v1 — toggle is wired but behavior changes ship in Phase B.)</span></>
+            : <><span style={{color:"#58a6ff",fontWeight:600}}>v1:</span> Current model — Phase 1 lambda gap-fill landed 2026-05-13. SimScore ≥ 8 gate active.</>}
         </div>
       </div>
 

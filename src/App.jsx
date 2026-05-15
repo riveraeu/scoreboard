@@ -1,7 +1,7 @@
 import React from 'react';
 import { WORKER, SPORTS, STAT_FULL, MLB_TEAM, TEAM_DB, TOTAL_THRESHOLDS, STAT_LABEL, SPORT_KEY, SPORT_BADGE_COLOR, GAMELOG_COLS } from './lib/constants.js';
 import { ordinal, slugify, teamUrl } from './lib/utils.js';
-import { useIsMobile } from './lib/hooks.js';
+import { useIsMobile, useModelVersion } from './lib/hooks.js';
 import { buildLiveGameKey, getPickCurrentStat, findLivePlayer, resolveTotalGameScore } from './lib/liveStats.js';
 import { tierColor } from './lib/colors.js';
 import TotalsBarChart from './components/TotalsBarChart.jsx';
@@ -23,6 +23,10 @@ const SIMSCORE_GATE = 8;
 
 function App() {
   const isMobile = useIsMobile();
+  const [modelVersion, setModelVersion] = useModelVersion();
+  // Suffix to append to /api/tonight URLs — `&model=v2` when v2 is active, "" otherwise. Phase A
+  // is identical-output so this is purely instrumentation; Phase B will branch server-side.
+  const _modelSuffix = modelVersion === "v2" ? "&model=v2" : "";
   const [sport, setSport] = React.useState("basketball/nba"); // derived from selected player
   const [perGame, setPerGame] = React.useState([]);
   const [dvpData, setDvpData] = React.useState(null);
@@ -234,7 +238,7 @@ function App() {
     // client-side cache layer. App is a SPA so this useEffect fires once per browser tab session
     // (not per in-app navigation); cost: ~5-8s cold rebuild per session, in exchange for absolute
     // price freshness on entry.
-    fetch(`${WORKER}/tonight?bust=1`)
+    fetch(`${WORKER}/tonight?bust=1${_modelSuffix}`)
       .then(r => r.json())
       .then(data => { if (cancelled) return; _applyData(data); setTonightLoading(false); })
       .catch(() => { if (cancelled) return; setAllTonightPlays([]); setNbaDropped([]); setTonightPlays([]); setTonightLoading(false); });
@@ -245,7 +249,7 @@ function App() {
     if (bustLoading) return;
     setBustLoading(true);
     setTonightLoading(true);
-    fetch(`${WORKER}/tonight?bust=1`)
+    fetch(`${WORKER}/tonight?bust=1${_modelSuffix}`)
       .then(r => r.json())
       .then(data => { const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(p => p.qualified !== false && (p.finalSimScore == null || p.finalSimScore >= SIMSCORE_GATE) && (p.hitterFinalSimScore == null || p.hitterFinalSimScore >= SIMSCORE_GATE))); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); if (data.mlbMeta) setMlbMeta(data.mlbMeta); if (data.mlbMetaTomorrow) setMlbMetaTomorrow(data.mlbMetaTomorrow); if (data.nbaMeta) setNbaMeta(data.nbaMeta); if (data.wnbaMeta) setWnbaMeta(data.wnbaMeta); if (data.nhlMeta) setNhlMeta(data.nhlMeta); setTonightLoading(false); setBustLoading(false); })
       .catch(() => { setAllTonightPlays([]); setNbaDropped([]); setTonightPlays([]); setTonightLoading(false); setBustLoading(false); });
@@ -278,7 +282,10 @@ function App() {
     const newKalshiPct = parseFloat(impliedFromOdds.toFixed(1));
     const truePct = play.direction === "under" ? (play.noTruePct ?? play.truePct) : play.truePct;
     const newEdge = truePct != null ? parseFloat((truePct - newKalshiPct).toFixed(1)) : (play.edge ?? null);
-    const enriched = { ...play, americanOdds: savedOdds, kalshiPct: newKalshiPct, edge: newEdge };
+    // modelVersion stamps every pick with the active model so calibration audits can split
+    // v1 / v2 outcomes cleanly. Server-side /api/user/picks just round-trips the JSON so no
+    // backend schema change is needed; the field is persisted verbatim.
+    const enriched = { ...play, americanOdds: savedOdds, kalshiPct: newKalshiPct, edge: newEdge, modelVersion };
     setTrackedPlays(prev => {
       if (prev.find(p => p.id === id)) return prev;
       return [{ ...enriched, id, trackedAt: Date.now(), result: null,
@@ -677,7 +684,7 @@ function App() {
     if (reportDataBySport[sport]) return; // already cached
     setReportLoadingSport(sport);
     try {
-      const r = await fetch(`${WORKER}/tonight?debug=1&sport=${sport}`);
+      const r = await fetch(`${WORKER}/tonight?debug=1&sport=${sport}${_modelSuffix}`);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const d = await r.json();
       setReportDataBySport(prev => ({ ...prev, [sport]: d }));
