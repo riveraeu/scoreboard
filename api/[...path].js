@@ -5222,6 +5222,33 @@ var worker_default = {
           } else if (sport === "nba" && gameType === "teamTotal") {
             if (p.oppDefRtg == null) _pen("noOppDefRtg", 3);
           }
+          // ── Threshold-distance penalty (totals & team totals) — tail probabilities are harder
+          // to estimate than central ones, so plays far from the market O/U line have noisier
+          // edge measurements. Per-sport buckets reflect each sport's scoring magnitude. For
+          // team totals, gameOuLine/2 is a half-line heuristic (assumes roughly equal split).
+          if ((gameType === "total" || gameType === "teamTotal") && p.gameOuLine != null && p.threshold != null) {
+            const halfLine = gameType === "teamTotal" ? p.gameOuLine / 2 : p.gameOuLine;
+            const dist = Math.abs(p.threshold - halfLine);
+            const buckets = {
+              mlb:  gameType === "total" ? [3, 5] : [2, 3],
+              nba:  gameType === "total" ? [10, 20] : [5, 10],
+              wnba: gameType === "total" ? [10, 20] : [5, 10],
+              nhl:  gameType === "total" ? [2, 3]  : [1, 2],
+            }[sport];
+            if (buckets) {
+              if (dist >= buckets[1]) _pen("farFromLine", 2);
+              else if (dist >= buckets[0]) _pen("modestlyFromLine", 1);
+            }
+          }
+          // ── MLB game total: both starters via starter source. Pitcher quality is the primary
+          // input to the lambda — fallback to staff-wide WHIP is a meaningful trust hit. Team
+          // totals already check `oppWHIPSource`; here we cover both sides for game totals.
+          if (sport === "mlb" && gameType === "total") {
+            if (p.homeWHIPSource == null) _pen("noHomeWhipSource", 2);
+            else if (p.homeWHIPSource === "team") _pen("homeWhipTeamFallback", 1);
+            if (p.awayWHIPSource == null) _pen("noAwayWhipSource", 2);
+            else if (p.awayWHIPSource === "team") _pen("awayWhipTeamFallback", 1);
+          }
           const totalPenalty = Object.values(penalties).reduce((s, v) => s + v, 0);
           const dataConfidence = Math.max(0, Math.min(10, 10 + totalPenalty));
           const gate = DC_GATE[sport] ?? 9;

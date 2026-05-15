@@ -28,6 +28,14 @@ Per-sport modeling internals. CLAUDE.md has the architecture map and load-bearin
     - Game totals: `gameOuLine == null` → -2
     - MLB teamTotal: `oppWHIPSource == null` → -3 · `"team"` (fallback) → -1
     - NBA teamTotal: `oppDefRtg == null` → -3
+  - **Threshold-distance from O/U line** (totals & team totals only): tail probabilities are noisier than central ones. Per-sport buckets — for team totals, half-line heuristic uses `gameOuLine / 2`:
+    - MLB total: dist ≥ 3 → -1, ≥ 5 → -2 · teamTotal: ≥ 2 → -1, ≥ 3 → -2
+    - NBA total: ≥ 10 → -1, ≥ 20 → -2 · teamTotal: ≥ 5 → -1, ≥ 10 → -2
+    - WNBA total: ≥ 10 → -1, ≥ 20 → -2 · teamTotal: ≥ 5 → -1, ≥ 10 → -2
+    - NHL total: ≥ 2 → -1, ≥ 3 → -2 · teamTotal: ≥ 1 → -1, ≥ 2 → -2
+  - **MLB game total — both starters via starter source**: pitcher quality is the primary lambda input, so a team-WHIP fallback is a real trust hit. Per-side check — worst case -4 (both unknown).
+    - `homeWHIPSource == null` → -2 · `"team"` (fallback) → -1
+    - `awayWHIPSource == null` → -2 · `"team"` (fallback) → -1
 
 ---
 
