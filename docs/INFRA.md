@@ -22,8 +22,11 @@ User auth (`user:{email}`) and picks (`picks:{userId}`) live in the same Redis. 
 | `byteam:wnba` / `:scoring` | 21600s | Defensive stats / offensive PPG (2025 season). Same `buildSoftTeamAbbrs` / `buildTeamRankMap` helpers as NBA. |
 | `byteam:nhl` | 21600s | GAA + SA per team |
 | `byteam:nfl` | 1800s | |
-| `kalshi:bundle:{date}` | 600s | All 18 series responses as JSON blob — cache hit = zero Kalshi calls. Bypassed by `?bust=1`. |
-| `kalshi:stale:{ticker}` | 1800s | Stale-while-revalidate per-ticker fallback for 429/empty. TTL caps drift if Kalshi keeps 429-ing — series disappears from `/api/tonight` rather than serving 30+ min old prices. |
+| `kalshi:snap:{ticker}` | 300s | Per-ticker snapshot written by `/api/kalshi-snapshot` cron every 2 min. Value: `{markets, writtenAt}`. `/api/tonight` reads via Upstash MGET; uses snaps only if all are within 180s freshness (all-or-nothing). Eliminates per-request Kalshi REST burst on warm path. Bypassed by `?bust=1`. |
+| `kalshi:snap:_meta` | 600s | `{lastRunAt, successCount, failedTickers[], durationMs}` from the latest cron run. Surfaced in `/api/tonight?debug=1` as `kalshiSnap`. |
+| `kalshi:bundle:{date}` | 600s | Legacy bundle (all 18 series in one JSON blob). Now a second-tier fallback below snaps; still populated by the cold REST path so manual `?bust=1` still works without the cron. Bypassed by `?bust=1`. |
+| `kalshi:stale:{ticker}` | 1800s | Stale-while-revalidate per-ticker fallback for 429/empty in the REST path. TTL caps drift if Kalshi keeps 429-ing — series disappears from `/api/tonight` rather than serving 30+ min old prices. |
+| `kalshi:KXMLBGAME` | 600s | Legacy MLB game-ML bundle. Tier-2 below `kalshi:snap:KXMLBGAME`, tier-1 above direct REST. |
 | `gameTimes:v2:{date}` | 600s | Stores `sport:team:ptDate` AND bare `sport:team` (first wins). Built from yesterday + today + tomorrow ESPN scoreboards in parallel. Cleared by `?bust=1`. |
 | `nba:pace:2526` | 12h | Pace + OffRtg/DefRtg + leagueAvg. Cleared by `?bust=1`. |
 | `wnba:pace:2025` | 12h | Pace (avgEstimatedPossessions) + OffRtg/DefRtg/PPG. 2025 anchor. |
@@ -59,7 +62,9 @@ User auth (`user:{email}`) and picks (`picks:{userId}`) live in the same Redis. 
 ## Deployment
 - Vercel Edge Functions; auto-deploys on `git push origin main` (no `vercel` CLI). Frontend built by Vercel via `npm run build`.
 - Rewrites in `vercel.json`: `/api/:path*` → `/api/[...path]`. CORS headers also there (required for OPTIONS preflight through rewrite layer).
-- Cron: `/api/keepalive` daily at noon UTC.
+- Crons (`vercel.json`):
+  - `/api/keepalive` — daily at noon UTC. Keeps Upstash from idle-suspending.
+  - `/api/kalshi-snapshot` — `*/2 * * * *` (every 2 min). Pre-warms `kalshi:snap:{ticker}` so `/api/tonight` skips per-request Kalshi REST. Bearer-auth via `CRON_SECRET` (Vercel auto-attaches when set). Returns `{ok, successCount, failedCount, failed[], durationMs}`. Throttled batches of 6 with 300ms delay; pipelined Upstash write (1 HTTP request for all SETs).
 
 ### Required env vars
 Vercel dashboard AND wired via `env` object — see CLAUDE.md "Edge handler env-var wiring" gotcha.
@@ -68,6 +73,7 @@ Vercel dashboard AND wired via `env` object — see CLAUDE.md "Edge handler env-
 |---|---|---|
 | `JWT_SECRET` | HMAC for auth tokens | `openssl rand -base64 32` |
 | `ADMIN_KEY` | Admin endpoint shared secret | `openssl rand -base64 32` |
+| `CRON_SECRET` | Vercel Cron bearer auth (currently `/api/kalshi-snapshot`) | `openssl rand -base64 32` |
 | `UPSTASH_REDIS_REST_URL` | Upstash REST endpoint | Upstash console |
 | `UPSTASH_REDIS_REST_TOKEN` | Upstash auth token | Upstash console |
 

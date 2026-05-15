@@ -16,6 +16,7 @@
     { "source": "/:slug", "destination": "/index.html" }
   ],
   "crons": [
-    { "path": "/api/keepalive", "schedule": "0 12 * * *" }
+    { "path": "/api/keepalive", "schedule": "0 12 * * *" },
+    { "path": "/api/kalshi-snapshot", "schedule": "*/2 * * * *" }
   ]
 }

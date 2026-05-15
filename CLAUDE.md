@@ -64,7 +64,8 @@ See `docs/INFRA.md` for storage and cache details.
 - `/api/live` — in-game boxscore for pick tracking (`?games=mlb:LAD:SD,nba:GSW:LAL`); player props poll this; total/team-total picks resolve from existing `meta.gameScores` (no extra fetch)
 - `/api/dvp`, `/api/nba-depth`, `/api/dvp/debug-dc` — DVP/depth chart. Branches: `basketball/nba`, `basketball/wnba` (returns `position`, `rankMaps`/`softTeams`/`hardTeams` for points/rebounds/assists/threePointers from `byteam:wnba`; canonical aliases added via `WNBA_ESPN_TO_CANON` so lookups by ticker abbr resolve), `football/nfl`, `hockey/nhl`, `baseball/mlb`.
 - `/api/auth/{register,login,reset,list-users,debug-redis,calibration,clear-kalshi-stale}` — auth + admin. Password min 8 chars. Admin endpoints fail-closed if `ADMIN_KEY` missing.
-- `/api/auth/clear-kalshi-stale` — `POST ?ticker=KXMLBTEAMTOTAL` with `Authorization: Bearer <ADMIN_KEY>`. Deletes `kalshi:stale:{ticker}` so the next cold bundle build attempts Kalshi fresh instead of serving the stale entry. Use when a series has been rate-limit-stuck on stale data past the 30-min TTL window. Ticker validated against `/^KX[A-Z0-9]+$/`.
+- `/api/auth/clear-kalshi-stale` — `POST ?ticker=KXMLBTEAMTOTAL` with `Authorization: Bearer <ADMIN_KEY>`. Deletes `kalshi:stale:{ticker}` so the next cold bundle build attempts Kalshi fresh instead of serving the stale entry. Use when a series has been rate-limit-stuck on stale data past the 30-min TTL window. Ticker validated against `/^KX[A-Z0-9]+$/`. Does **not** affect `kalshi:snap:{ticker}` — those refresh on the 2-min cron.
+- `/api/kalshi-snapshot` — cron-only (`*/2 * * * *` in vercel.json). Fetches all 24 Kalshi series tickers (18 SERIES_CONFIG + game totals + KXMLBGAME) and writes per-ticker `kalshi:snap:{ticker}` keys via Upstash pipeline. Bearer-auth: `CRON_SECRET`. Returns `{ok, successCount, failedCount, failed[], durationMs}`. **Hardcoded ticker list MUST stay in sync** with `SERIES_CONFIG` inside `/api/tonight` — add new series to both places.
 - `/api/auth/calibration` — outcome stats. Auth: bearer JWT (any user) or `?adminKey=`. Returns `overall`, `byCategory`, `byCategoryDetail` (per-category truePct buckets, used by `CalibModule` per ModelPage tab), `kStrikeouts` (K-feature breakdowns).
 - `/api/user/picks` — GET/POST user picks (bearer JWT)
 - `/api/keepalive` — daily cron
@@ -136,6 +137,16 @@ const env = {
   UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
   JWT_SECRET: process.env.JWT_SECRET,
   ADMIN_KEY: process.env.ADMIN_KEY,
+  CRON_SECRET: process.env.CRON_SECRET,
 };
 ```
 Symptom of missing wire-up: `env?.VAR` is `undefined` even though Vercel dashboard shows it set. JWT_SECRET specifically: `TextEncoder.encode(undefined)` = 0 bytes → `"Imported HMAC key length (0)"` 500 on login.
+
+**Kalshi snap-first read chain (`/api/tonight`)**: Layered fallback so a cron-down or 429-spiked Kalshi doesn't blank the page:
+1. **`kalshi:snap:{ticker}`** — written every 2 min by `/api/kalshi-snapshot` cron. All-or-nothing: if every series snap is fresh (`writtenAt` within 180s, i.e. 1.5 cron cycles) we use them and skip Kalshi REST entirely. Read via single Upstash MGET so each `/api/tonight` invocation is 1 Upstash command for snap data + 1 for meta.
+2. **`kalshi:bundle:{date}`** — legacy 600s bundle. Used if snap-first fails (cron down, partial snap miss).
+3. **REST + `kalshi:stale:{ticker}`** — existing per-ticker fetch with throttled batches and 30-min stale fallback. Kicks in for cold-start and full-snap-miss cases.
+
+`KXMLBGAME` (MLB game ML, not in `SERIES_CONFIG` but used for tomorrow's odds fallback) has the same 3-tier chain: `kalshi:snap:KXMLBGAME` → `kalshi:KXMLBGAME` (600s legacy) → direct REST.
+
+The all-or-nothing snap gate is intentional. Mixed-source recovery (some snaps fresh, some REST) adds complexity without meaningfully reducing failure modes — the bundle/REST fallback already handles a partial snap miss correctly.

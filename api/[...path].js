@@ -192,6 +192,103 @@ var worker_default = {
         const key = `kalshi:stale:${ticker}`;
         await CACHE2.delete(key);
         return jsonResponse({ ok: true, deleted: key });
+      } else if (path === "kalshi-snapshot") {
+        // Vercel Cron-triggered snapshot of every Kalshi series we care about, written to
+        // kalshi:snap:{ticker} so /api/tonight can read pre-warmed snaps instead of hammering
+        // Kalshi REST on each invocation. Cron schedule lives in vercel.json (*/2 * * * *).
+        //
+        // Auth: when CRON_SECRET is set in Vercel, the cron runner attaches
+        // `Authorization: Bearer ${CRON_SECRET}`. Fail-closed if the env var is missing.
+        const cronAuth = (request.headers.get("Authorization") || "").replace("Bearer ", "");
+        if (!env?.CRON_SECRET) return errorResponse("CRON_SECRET not set", 500);
+        if (cronAuth !== env.CRON_SECRET) return errorResponse("Forbidden", 403);
+        if (!CACHE2) return errorResponse("Cache unavailable", 500);
+        if (!env?.UPSTASH_REDIS_REST_URL || !env?.UPSTASH_REDIS_REST_TOKEN) {
+          return errorResponse("Upstash not configured", 500);
+        }
+        // MUST stay in sync with SERIES_CONFIG inside /api/tonight. Plus KXMLBGAME (game ML,
+        // not in SERIES_CONFIG since it isn't a player-prop series but feeds tomorrow's MLB
+        // odds fallback).
+        const KALSHI_SERIES_TICKERS = [
+          "KXNBAPTS", "KXNBAREB", "KXNBAAST", "KXNBA3PT",
+          "KXWNBAPTS", "KXWNBAREB", "KXWNBAAST", "KXWNBA3PT",
+          "KXNHLPTS",
+          "KXMLBHITS", "KXMLBKS", "KXMLBHRR",
+          "KXNFLPAYDS", "KXNFLRUYDS", "KXNFLREYDS", "KXNFLTDS",
+          "KXMLBTOTAL", "KXNBATOTAL", "KXWNBATOTAL", "KXNHLTOTAL", "KXNFLTOTAL",
+          "KXMLBTEAMTOTAL", "KXNBATEAMTOTAL",
+          "KXMLBGAME",
+        ];
+        const startMs = Date.now();
+        const _SNAP_BATCH = 6;
+        const _SNAP_BATCH_DELAY_MS = 300;
+        const _snapResults = {};
+        const _snapFailed = [];
+        const _snapShuffled = [...KALSHI_SERIES_TICKERS];
+        for (let _i = _snapShuffled.length - 1; _i > 0; _i--) {
+          const _j = Math.floor(Math.random() * (_i + 1));
+          [_snapShuffled[_i], _snapShuffled[_j]] = [_snapShuffled[_j], _snapShuffled[_i]];
+        }
+        const _snapFetchOne = async (ticker) => {
+          try {
+            const r = await fetch(`https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=${ticker}&limit=1000&status=open`, {
+              headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" },
+            });
+            if (!r.ok) return { ticker, ok: false, status: r.status };
+            const data = await r.json();
+            return { ticker, ok: true, data };
+          } catch (e) {
+            return { ticker, ok: false, err: String(e?.message || e) };
+          }
+        };
+        for (let off = 0; off < _snapShuffled.length; off += _SNAP_BATCH) {
+          const batch = _snapShuffled.slice(off, off + _SNAP_BATCH);
+          const batchRes = await Promise.all(batch.map(_snapFetchOne));
+          for (const r of batchRes) {
+            if (r.ok && (r.data?.markets || []).length > 0) {
+              _snapResults[r.ticker] = r.data;
+            } else {
+              _snapFailed.push({ ticker: r.ticker, status: r.status, err: r.err });
+            }
+          }
+          if (off + _SNAP_BATCH < _snapShuffled.length) {
+            await new Promise(res => setTimeout(res, _SNAP_BATCH_DELAY_MS));
+          }
+        }
+        const writtenAt = Date.now();
+        const successCount = Object.keys(_snapResults).length;
+        // Pipelined Upstash write: 1 HTTP request for all SETs. Upstash bills per command
+        // (not per request) so this doesn't cut Upstash billing; it cuts Vercel observability
+        // event count (1 fetch event instead of N).
+        if (successCount > 0) {
+          const _snapCmds = [];
+          for (const [ticker, data] of Object.entries(_snapResults)) {
+            const value = JSON.stringify({ markets: data.markets || [], writtenAt });
+            _snapCmds.push(["SET", `kalshi:snap:${ticker}`, value, "EX", 300]);
+          }
+          _snapCmds.push(["SET", "kalshi:snap:_meta", JSON.stringify({
+            lastRunAt: writtenAt,
+            successCount,
+            failedTickers: _snapFailed.map(f => f.ticker),
+            durationMs: Date.now() - startMs,
+          }), "EX", 600]);
+          try {
+            await fetch(`${env.UPSTASH_REDIS_REST_URL}/pipeline`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${env.UPSTASH_REDIS_REST_TOKEN}`, "Content-Type": "application/json" },
+              body: JSON.stringify(_snapCmds),
+            });
+          } catch (e) {
+            return errorResponse(`Pipeline write failed: ${e.message}`, 500);
+          }
+        }
+        return jsonResponse({
+          ok: successCount > 0,
+          successCount,
+          failedCount: _snapFailed.length,
+          failed: _snapFailed,
+          durationMs: Date.now() - startMs,
+        });
       } else if (path === "auth/list-users" && method === "GET") {
         const listAdminKey = (request.headers.get("Authorization") || "").replace("Bearer ", "");
         if (listAdminKey !== env?.ADMIN_KEY) return errorResponse("Forbidden", 403);
@@ -1243,10 +1340,50 @@ var worker_default = {
           return { data: { markets: [] }, failed: true };
         }
         __name(fetchKalshiSeries, "fetchKalshiSeries");
-        // Check bundle cache before making any Kalshi calls
+        // Snap-first read: /api/kalshi-snapshot cron writes per-ticker `kalshi:snap:{ticker}`
+        // keys every 2 min. If all series have fresh snaps (≤180s old, i.e. within 1.5 cron
+        // cycles) we use those and skip both the bundle cache and the per-request Kalshi REST
+        // burst. Single MGET keeps Upstash command count to 2 (MGET + meta GET). All-or-nothing
+        // — if any snap is missing/stale, fall through to the existing bundle/REST path which
+        // already covers cold-start and cron-down cases.
+        const SNAP_FRESHNESS_MS = 180_000;
         let kalshiResults;
-        const bundleCached = !isBustCache && CACHE2 ? await CACHE2.get(KALSHI_BUNDLE_KEY, "json").catch(() => null) : null;
-        if (bundleCached) {
+        let kalshiSnapMeta = null;
+        let kalshiUsedSnaps = false;
+        if (!isBustCache && env?.UPSTASH_REDIS_REST_URL && env?.UPSTASH_REDIS_REST_TOKEN) {
+          const _snapAuth = `Bearer ${env.UPSTASH_REDIS_REST_TOKEN}`;
+          try {
+            const _snapCmds = [
+              ["MGET", ...seriesTickers.map(t => `kalshi:snap:${t}`)],
+              ["GET", "kalshi:snap:_meta"],
+            ];
+            const _pipeRes = await fetch(`${env.UPSTASH_REDIS_REST_URL}/pipeline`, {
+              method: "POST",
+              headers: { Authorization: _snapAuth, "Content-Type": "application/json" },
+              body: JSON.stringify(_snapCmds),
+            }).then(r => r.json()).catch(() => null);
+            const _mget = _pipeRes?.[0]?.result;
+            const _metaRaw = _pipeRes?.[1]?.result;
+            try { kalshiSnapMeta = _metaRaw ? JSON.parse(_metaRaw) : null; } catch {}
+            if (Array.isArray(_mget) && _mget.length === seriesTickers.length) {
+              const _parsed = _mget.map(s => { try { return s ? JSON.parse(s) : null; } catch { return null; } });
+              const _now = Date.now();
+              const _allFresh = _parsed.every(s =>
+                s && Array.isArray(s.markets) && s.markets.length > 0
+                && (_now - (s.writtenAt || 0) <= SNAP_FRESHNESS_MS)
+              );
+              if (_allFresh) {
+                kalshiResults = _parsed.map(s => ({ markets: s.markets }));
+                kalshiUsedSnaps = true;
+              }
+            }
+          } catch {}
+        }
+        // Check bundle cache before making any Kalshi calls
+        const bundleCached = !kalshiUsedSnaps && !isBustCache && CACHE2 ? await CACHE2.get(KALSHI_BUNDLE_KEY, "json").catch(() => null) : null;
+        if (kalshiUsedSnaps) {
+          // already populated from snaps
+        } else if (bundleCached) {
           kalshiResults = seriesTickers.map(t => bundleCached[t] || { markets: [] });
         } else {
           // Throttled batch fetch — Kalshi rate-limits a burst of 18 parallel requests, which
@@ -4907,7 +5044,12 @@ var worker_default = {
           const debugPlays = sf ? plays.filter(m => m.sport === sf) : plays;
           const debugDropped = sf ? dropped.filter(m => m.sport === sf) : dropped;
           const debugPreDropped = sf ? preDropped.filter(m => m.sport === sf) : preDropped;
-          return jsonResponse({ plays: debugPlays, dropped: debugDropped, preDropped: debugPreDropped, staleKalshiSeries, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
+          const _kalshiSnapDebug = {
+            usedSnaps: kalshiUsedSnaps,
+            meta: kalshiSnapMeta,
+            ageMs: kalshiSnapMeta?.lastRunAt ? Date.now() - kalshiSnapMeta.lastRunAt : null,
+          };
+          return jsonResponse({ plays: debugPlays, dropped: debugDropped, preDropped: debugPreDropped, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
         }
         // Build mlbMeta: pitchers, ML odds, umpires, weather — keyed by team abbr or "home|away"
         // Pitcher entries: { name, id, era, wins, losses }. MLB Stats API (pitcherInfoByTeam) preferred
@@ -4956,12 +5098,24 @@ var worker_default = {
             return p >= 0.5 ? -Math.round((p / (1 - p)) * 100) : Math.round(((1 - p) / p) * 100);
           };
           const kOdds = {}; // "{abbr}|{abbr}|{gameDate}" → { total, mlByTeam: {abbr: ml} }
-          // KXMLBGAME isn't in SERIES_CONFIG (it's not a player-prop series), so fetch it
-          // separately with a short Upstash cache.
+          // KXMLBGAME isn't in SERIES_CONFIG (it's not a player-prop series). The /api/kalshi-snapshot
+          // cron writes kalshi:snap:KXMLBGAME alongside the rest; try that first, then fall back to
+          // the legacy kalshi:KXMLBGAME bundle and finally a direct REST fetch.
           let _gameMarkets = [];
           {
+            const _gSnapKey = 'kalshi:snap:KXMLBGAME';
             const _gKey = 'kalshi:KXMLBGAME';
-            let _gData = (CACHE2 && !isBustCache) ? await CACHE2.get(_gKey, 'json').catch(() => null) : null;
+            let _gData = null;
+            if (CACHE2 && !isBustCache) {
+              const _gSnap = await CACHE2.get(_gSnapKey, 'json').catch(() => null);
+              if (_gSnap && Array.isArray(_gSnap.markets) && _gSnap.markets.length > 0 &&
+                  (Date.now() - (_gSnap.writtenAt || 0) <= 180_000)) {
+                _gData = { markets: _gSnap.markets };
+              }
+            }
+            if (!_gData && CACHE2 && !isBustCache) {
+              _gData = await CACHE2.get(_gKey, 'json').catch(() => null);
+            }
             if (!_gData) {
               const r = await fetch('https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=KXMLBGAME&limit=1000&status=open', {
                 headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }
@@ -5650,6 +5804,7 @@ export default async function handler(request) {
     UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
     JWT_SECRET: process.env.JWT_SECRET,
     ADMIN_KEY: process.env.ADMIN_KEY,
+    CRON_SECRET: process.env.CRON_SECRET,
   };
   const ctx = { waitUntil: (p) => { try { p.catch?.(() => {}); } catch {} } };
   return worker_default.fetch(request, env, ctx);
