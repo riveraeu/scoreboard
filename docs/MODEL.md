@@ -9,12 +9,25 @@ Per-sport modeling internals. CLAUDE.md has the architecture map and load-bearin
 - **Edge gate**: `edge = truePct − kalshiPct ≥ 3%`. `kalshiPct` is already the fill price (ask or blended orderbook walk); `spreadAdj` is computed but **not** subtracted.
 - **`pct ∈ [67, 91]` filter**: universal qualification window for player props, game totals, and team totals. UNDER discovery uses `noKalshiPct ∈ [67, 91]`. Tunables `KALSHI_GATE` / `KALSHI_CAP` / `EDGE_GATE` / `SIMSCORE_GATE` live in both `api/[...path].js` and `src/App.jsx` — change in both places.
 - **UNDER plays** (totals only): `underEdge = (100−truePct) − (100−kalshiPct) ≥ 3%` AND `noKalshiPct ∈ [67, 91]`. `direction:"under"`, badge red, bars use `noTruePct`/`noKalshiPct`, prose colors inverted, track ID appends `|under`.
-- **dataConfidence** (0–10): informational signal of input-data trust, separate from SimScore (which scores matchup favorability). Five 0–2 components: Kalshi freshness/liquidity, lineup/probable confirmation, player availability, sample size, opponent data quality. Computed centrally in a post-process pass over the `plays` array (`_computeDataConfidence` in `/api/tonight`) and emitted on every play as `dataConfidence` + `dcComponents: {freshness, lineupConf, availability, sampleSize, oppData}`. **Not a qualification gate today** — emitted so its calibration can be compared against SimScore's before being wired into the v2 gate (`project-model-version-toggle`). Component rules per play type:
-  - **freshness**: `_kalshiStale` → 0; `lowVolume` or `kalshiSpread ≥ 7` → 1; else 2
-  - **lineupConf**: MLB — `lineupConfirmed` (player) / `lineupsConfirmed` (totals) true → 2, false → 0. NBA player props — looks up `sportByteam.nbaStarters` (ESPN game summary boxscore starters, cached `nba:starters:{date}` 600s): confirmed lineup + player in starters → 2, confirmed lineup + bench → 1, lineup not yet posted → 0. WNBA/NHL stays neutral 1 until similar maps land. NBA play also carries `nbaStarterConfirmed: bool|null` for debugging
-  - **availability**: player props only — `playerStatus` null → 2; `"questionable"/"doubtful"/"GTD"/"out"` → 0; else 1; totals neutral 1
-  - **sampleSize**: MLB-K `stdBF` low→2/high→1/null→0; MLB-Hitter `softGames` ≥16→2/5–15→1/<5→0; NBA/WNBA/NHL props use `softGames` when present (≥10→2, 5–9→1, <5→0) else neutral 1; game totals use `gtSsnSample` (≥30→2, 10–29→1, else 0); team totals use `h2hGames` (≥6→2, 3–5→1, else 0)
-  - **oppData**: MLB-K `lineupKPct` + `lineupConfirmed` both true → 2, only `lineupKPct` → 1, else 0; MLB-Hitter `hitterH2HSource === "bvp"` → 2, `"hand"` → 1, else 0; NBA/WNBA props `dvpRatio` non-null → 2, `oppRank` non-null → 1, else 0 (WNBA caps at 1 — no per-position DvP); NHL props `oppMetricValue` non-null → 2, else 0; MLB/NBA/WNBA game totals `gameOuLine` non-null → 2, else 0; MLB teamTotal `oppWHIPSource === "starter"` → 2, `"team"` → 1, else 0; NBA teamTotal `oppDefRtg` non-null → 2, else 0
+- **dataConfidence** (0–10, penalty-based since 2026-05-15 refactor): score of input-data trust, separate from SimScore (which scores matchup favorability). Starts at 10, subtracts penalties for issues, clamps `[0, 10]`. Computed centrally in `_computeDataConfidence` in `/api/tonight`; emitted as `dataConfidence`, `dcPenalties: {reason: -cost}` (only non-zero entries), `dcQualified: bool` (= `dataConfidence >= DC_GATE[sport]`), and `dcGate` (per-sport threshold). Per-sport gates: **MLB 9, NBA 9, WNBA 8, NHL 8** — WNBA/NHL get a softer gate due to structural data gaps (WNBA has no per-position DvP, NHL has no exposed lineup data). `dcQualified` is **emitted but not actively filtering**; the v2 model toggle adopts it as the gate in Phase B. Penalty table:
+  - **Market quality**: `_kalshiStale` → -4 · `lowVolume` → -2 · `kalshiSpread ≥ 5` → -1
+  - **Lineup**: MLB `lineupConfirmed/lineupsConfirmed === false` (or undefined) → -3 · NBA team not in `confirmedTeams` → -2 · NBA confirmed bench → -2 · WNBA/NHL structural → -1
+  - **Availability** (player props): `playerStatus` `"out"/"inactive"` → -10 (effective drop) · `"questionable"/"doubtful"/"GTD"` → -2
+  - **Sample size**:
+    - MLB-K: `stdBF == null` → -3 · stdBF > 2.5 → -1
+    - MLB-Hitter: `softGames < 5` (or null) → -3 · 5–9 → -2 · 10–15 → -1
+    - NBA/WNBA/NHL prop: `softGames < 5` → -2 · 5–9 → -1 · absent → -1
+    - Game total: `gtSsnSample == null` → -3 · <10 → -2 · 10–29 → -1
+    - Team total: `h2hGames == null` → -3 · <3 → -2 · 3–5 → -1
+  - **Opp data**:
+    - MLB-K: `lineupKPct == null` → -3 · opp lineup projected (not confirmed) → -1
+    - MLB-Hitter: `hitterH2HSource == null` → -3 · `"hand"` (handedness only) → -1
+    - NBA prop: both `dvpRatio` AND `oppRank` null → -3 · `dvpRatio` null only → -1
+    - WNBA prop: `oppRank == null` → -3 · `dvpRatio` structural (always null) → -1
+    - NHL prop: `oppMetricValue == null` → -3
+    - Game totals: `gameOuLine == null` → -2
+    - MLB teamTotal: `oppWHIPSource == null` → -3 · `"team"` (fallback) → -1
+    - NBA teamTotal: `oppDefRtg == null` → -3
 
 ---
 

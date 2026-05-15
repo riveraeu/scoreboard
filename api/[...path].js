@@ -12,6 +12,11 @@ const KALSHI_GATE = 67;   // ~-200 American odds floor (66.67% rounded up)
 const KALSHI_CAP = 91;    // ~-1000 American odds cap (90.91% rounded up)
 const EDGE_GATE = 3;
 const SIMSCORE_GATE = 8;
+// dataConfidence per-sport gate thresholds — see docs/MODEL.md "dataConfidence". 8 for WNBA/NHL
+// reflects structural -1 (no per-position DvP for WNBA; no lineup data exposed for NHL); both
+// would gate at 9 if those gaps closed. dcQualified is computed but NOT actively used as a
+// filter today — info-only until the v2 model toggle adopts it as the gate (Phase B).
+const DC_GATE = { mlb: 9, nba: 9, wnba: 8, nhl: 8, nfl: 9 };
 
 // worker.js
 function makeCache(env) {
@@ -5116,34 +5121,32 @@ var worker_default = {
             if (ticker && _staleKalshiSet.has(ticker)) p._kalshiStale = true;
           }
         }
-        // ── dataConfidence (0-10) — informational signal of input-data trust, not model bullishness.
-        // Computed centrally over the already-built plays array so the per-play-type emit sites stay
-        // unchanged. Five 0-2 components: Kalshi freshness/liquidity, lineup/probable confirmation,
-        // player availability, sample size, opponent data quality. NOT a qualification gate today —
-        // emitted only so we can compare its calibration vs SimScore's over the next ~weeks before
-        // wiring it into the v2 gate (see [[project-model-version-toggle]]). Spec details in
-        // docs/MODEL.md "dataConfidence". Must run AFTER the _kalshiStale propagation above and
-        // BEFORE the isDebug return below so debug-mode plays carry the field too.
+        // ── dataConfidence (0-10) — penalty-based score starting at 10, subtracting for input-data
+        // issues. Strict by design: only plays with zero or one minor issue reach the gate. NOT
+        // YET an active filter — `dcQualified` is computed and emitted but the v1 frontend still
+        // ignores it. The v2 model toggle (Phase B) is where this becomes the gate.
+        //
+        // Spec details + full penalty table in docs/MODEL.md "dataConfidence". Must run AFTER the
+        // _kalshiStale propagation above and BEFORE the isDebug return below so debug-mode plays
+        // carry the field too.
         const _computeDataConfidence = (p) => {
           const sport = p.sport;
           const gameType = p.gameType; // "total" | "teamTotal" | undefined
           const isPlayerProp = !gameType;
           const isMlbK = sport === "mlb" && p.stat === "strikeouts";
           const isMlbHitter = sport === "mlb" && (p.stat === "hits" || p.stat === "hrr" || p.stat === "homeRuns");
-          // (1) Kalshi freshness & liquidity
-          let freshness;
-          if (p._kalshiStale === true) freshness = 0;
-          else if (p.lowVolume === true || (p.kalshiSpread != null && p.kalshiSpread >= 7)) freshness = 1;
-          else freshness = 2;
-          // (2) Lineup / probable confirmation — MLB uses lineupConfirmed/lineupsConfirmed.
-          // NBA player props use sportByteam.nbaStarters (boxscore starter map fetched per game).
-          // WNBA/NHL still neutral until similar maps land.
-          let lineupConf = 1;
+          const penalties = {};
+          const _pen = (label, cost) => { if (cost) penalties[label] = -Math.abs(cost); };
+          // ── Market quality
+          if (p._kalshiStale === true) _pen("kalshiStale", 4);
+          if (p.lowVolume === true) _pen("lowVolume", 2);
+          if (p.kalshiSpread != null && p.kalshiSpread >= 5) _pen("wideSpread", 1);
+          // ── Lineup / starter confirmation
           if (sport === "mlb") {
             const conf = isPlayerProp ? p.lineupConfirmed : p.lineupsConfirmed;
-            if (conf === true) lineupConf = 2;
-            else if (conf === false) lineupConf = 0;
-            else lineupConf = 1;
+            if (conf === false) _pen("mlbLineupNotConfirmed", 3);
+            // conf === undefined (no data at all) is treated as not-confirmed for strictness
+            else if (conf == null) _pen("mlbLineupUnknown", 3);
           } else if (sport === "nba" && isPlayerProp) {
             const starters = sportByteam.nbaStarters;
             const team = p.playerTeam;
@@ -5152,92 +5155,84 @@ var worker_default = {
               const confirmed = (starters.confirmedTeams || []).includes(team);
               const isStarter = confirmed && ((starters.startersByTeam || {})[team] || []).includes(pid);
               p.nbaStarterConfirmed = confirmed ? isStarter : null;
-              if (confirmed && isStarter) lineupConf = 2;
-              else if (confirmed) lineupConf = 1; // bench player on a team with a posted lineup
-              else lineupConf = 0; // lineup not yet posted
+              if (!confirmed) _pen("nbaLineupNotPosted", 2);
+              else if (!isStarter) _pen("nbaBench", 2);
             } else {
               p.nbaStarterConfirmed = null;
-              lineupConf = 1; // neutral when map unavailable (cold start / fetch failure)
+              _pen("nbaLineupNotPosted", 2);
             }
+          } else if (sport === "wnba" || sport === "nhl") {
+            // Structural: no exposed lineup data for these sports today. -1 baseline penalty
+            // until builders land for them. Once exposed, replace with same logic as MLB/NBA.
+            _pen("noLineupData", 1);
           }
-          // (3) Player availability — player props only; totals get neutral.
-          let availability = 1;
+          // ── Player availability (player props only)
           if (isPlayerProp) {
             const ps = (p.playerStatus || "").toLowerCase();
-            if (!ps) availability = 2;
-            else if (ps.includes("question") || ps.includes("doubt") || ps.includes("gtd") || ps.includes("out")) availability = 0;
-            else availability = 1; // probable / day-to-day / unknown-but-flagged
+            if (ps.includes("out") || ps.includes("inactive")) _pen("playerOut", 10);
+            else if (ps.includes("question") || ps.includes("doubt") || ps.includes("gtd")) _pen("playerQuestionable", 2);
           }
-          // (4) Sample size — per-play-type signal.
-          let sampleSize = 1; // neutral fallback
+          // ── Sample size (per play type)
           if (isMlbK) {
             const sb = p.stdBF;
-            if (sb == null) sampleSize = 0;
-            else if (typeof sb === "number" && sb > 2.5) sampleSize = 1;
-            else if (typeof sb === "number") sampleSize = 2;
-            else sampleSize = 0;
+            if (sb == null) _pen("noStdBF", 3);
+            else if (typeof sb === "number" && sb > 2.5) _pen("highStdBF", 1);
           } else if (isMlbHitter) {
             const sg = p.softGames;
-            if (sg == null) sampleSize = 0;
-            else if (sg >= 16) sampleSize = 2;
-            else if (sg >= 5) sampleSize = 1;
-            else sampleSize = 0;
+            if (sg == null || sg < 5) _pen("tinyBvPSample", 3);
+            else if (sg < 10) _pen("smallBvPSample", 2);
+            else if (sg < 16) _pen("modestBvPSample", 1);
           } else if (isPlayerProp) {
             const sg = p.softGames;
-            if (sg == null) sampleSize = 1; // NBA/WNBA/NHL plays often don't carry softGames — neutral, not penalty
-            else if (sg >= 10) sampleSize = 2;
-            else if (sg >= 5) sampleSize = 1;
-            else sampleSize = 0;
+            if (sg == null) _pen("noSoftGames", 1);
+            else if (sg < 5) _pen("tinySoftSample", 2);
+            else if (sg < 10) _pen("smallSoftSample", 1);
           } else if (gameType === "total") {
             const ss = p.gtSsnSample;
-            if (ss == null) sampleSize = 0;
-            else if (ss >= 30) sampleSize = 2;
-            else if (ss >= 10) sampleSize = 1;
-            else sampleSize = 0;
+            if (ss == null) _pen("noSeasonSample", 3);
+            else if (ss < 10) _pen("tinySeasonSample", 2);
+            else if (ss < 30) _pen("smallSeasonSample", 1);
           } else if (gameType === "teamTotal") {
             const hg = p.h2hGames;
-            if (hg == null) sampleSize = 0;
-            else if (hg >= 6) sampleSize = 2;
-            else if (hg >= 3) sampleSize = 1;
-            else sampleSize = 0;
+            if (hg == null) _pen("noH2HSample", 3);
+            else if (hg < 3) _pen("tinyH2HSample", 2);
+            else if (hg < 6) _pen("smallH2HSample", 1);
           }
-          // (5) Opponent data quality — per-play-type.
-          let oppData = 1;
+          // ── Opponent data quality (per play type)
           if (isMlbK) {
-            if (p.lineupKPct != null && p.lineupConfirmed === true) oppData = 2;
-            else if (p.lineupKPct != null) oppData = 1;
-            else oppData = 0;
+            if (p.lineupKPct == null) _pen("noOppLineupKPct", 3);
+            else if (p.lineupConfirmed === false) _pen("oppLineupProjected", 1);
           } else if (isMlbHitter) {
-            if (p.hitterH2HSource === "bvp") oppData = 2;
-            else if (p.hitterH2HSource === "hand") oppData = 1;
-            else oppData = 0;
-          } else if ((sport === "nba" || sport === "wnba") && isPlayerProp) {
-            // WNBA has no per-position DvP today, so dvpRatio is always null there — caps at 1.
-            if (p.dvpRatio != null) oppData = 2;
-            else if (p.oppRank != null) oppData = 1;
-            else oppData = 0;
+            if (p.hitterH2HSource == null) _pen("noBvPSource", 3);
+            else if (p.hitterH2HSource === "hand") _pen("handednessOnly", 1);
+          } else if (sport === "nba" && isPlayerProp) {
+            if (p.dvpRatio == null && p.oppRank == null) _pen("noOppMetric", 3);
+            else if (p.dvpRatio == null) _pen("noDvpRatio", 1);
+          } else if (sport === "wnba" && isPlayerProp) {
+            if (p.oppRank == null) _pen("noOppRank", 3);
+            // WNBA dvpRatio is always null (no per-position DvP) — structural penalty
+            _pen("noDvpRatioStructural", 1);
           } else if (sport === "nhl" && isPlayerProp) {
-            oppData = p.oppMetricValue != null ? 2 : 0;
-          } else if (sport === "mlb" && gameType === "total") {
-            oppData = p.gameOuLine != null ? 2 : 0;
-          } else if ((sport === "nba" || sport === "wnba") && gameType === "total") {
-            oppData = p.gameOuLine != null ? 2 : 0;
+            if (p.oppMetricValue == null) _pen("noOppMetric", 3);
+          } else if (gameType === "total" && (sport === "mlb" || sport === "nba" || sport === "wnba" || sport === "nhl")) {
+            if (p.gameOuLine == null) _pen("noGameOuLine", 2);
           } else if (sport === "mlb" && gameType === "teamTotal") {
-            if (p.oppWHIPSource === "starter") oppData = 2;
-            else if (p.oppWHIPSource === "team") oppData = 1;
-            else oppData = 0;
+            if (p.oppWHIPSource == null) _pen("noOppWhipSource", 3);
+            else if (p.oppWHIPSource === "team") _pen("oppWhipTeamFallback", 1);
           } else if (sport === "nba" && gameType === "teamTotal") {
-            oppData = p.oppDefRtg != null ? 2 : 0;
+            if (p.oppDefRtg == null) _pen("noOppDefRtg", 3);
           }
-          return {
-            dataConfidence: freshness + lineupConf + availability + sampleSize + oppData,
-            dcComponents: { freshness, lineupConf, availability, sampleSize, oppData },
-          };
+          const totalPenalty = Object.values(penalties).reduce((s, v) => s + v, 0);
+          const dataConfidence = Math.max(0, Math.min(10, 10 + totalPenalty));
+          const gate = DC_GATE[sport] ?? 9;
+          return { dataConfidence, dcPenalties: penalties, dcQualified: dataConfidence >= gate, dcGate: gate };
         };
         for (const _p of plays) {
           const dc = _computeDataConfidence(_p);
           _p.dataConfidence = dc.dataConfidence;
-          _p.dcComponents = dc.dcComponents;
+          _p.dcPenalties = dc.dcPenalties;
+          _p.dcQualified = dc.dcQualified;
+          _p.dcGate = dc.dcGate;
         }
         if (isDebug) {
           const nbaGlLabels = Object.fromEntries(Object.entries(playerGamelogs).filter(([k]) => k.startsWith("nba|")).map(([k, gl]) => [k, gl?.ul ?? null]));
