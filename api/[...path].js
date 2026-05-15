@@ -5083,6 +5083,113 @@ var worker_default = {
             if (ticker && _staleKalshiSet.has(ticker)) p._kalshiStale = true;
           }
         }
+        // ── dataConfidence (0-10) — informational signal of input-data trust, not model bullishness.
+        // Computed centrally over the already-built plays array so the per-play-type emit sites stay
+        // unchanged. Five 0-2 components: Kalshi freshness/liquidity, lineup/probable confirmation,
+        // player availability, sample size, opponent data quality. NOT a qualification gate today —
+        // emitted only so we can compare its calibration vs SimScore's over the next ~weeks before
+        // wiring it into the v2 gate (see [[project-model-version-toggle]]). Spec details in
+        // docs/MODEL.md "dataConfidence". Must run AFTER the _kalshiStale propagation above and
+        // BEFORE the isDebug return below so debug-mode plays carry the field too.
+        const _computeDataConfidence = (p) => {
+          const sport = p.sport;
+          const gameType = p.gameType; // "total" | "teamTotal" | undefined
+          const isPlayerProp = !gameType;
+          const isMlbK = sport === "mlb" && p.stat === "strikeouts";
+          const isMlbHitter = sport === "mlb" && (p.stat === "hits" || p.stat === "hrr" || p.stat === "homeRuns");
+          // (1) Kalshi freshness & liquidity
+          let freshness;
+          if (p._kalshiStale === true) freshness = 0;
+          else if (p.lowVolume === true || (p.kalshiSpread != null && p.kalshiSpread >= 7)) freshness = 1;
+          else freshness = 2;
+          // (2) Lineup / probable confirmation — only meaningful for MLB today; non-MLB stays neutral
+          // until we surface starter status for NBA/WNBA/NHL.
+          let lineupConf = 1;
+          if (sport === "mlb") {
+            const conf = isPlayerProp ? p.lineupConfirmed : p.lineupsConfirmed;
+            if (conf === true) lineupConf = 2;
+            else if (conf === false) lineupConf = 0;
+            else lineupConf = 1;
+          }
+          // (3) Player availability — player props only; totals get neutral.
+          let availability = 1;
+          if (isPlayerProp) {
+            const ps = (p.playerStatus || "").toLowerCase();
+            if (!ps) availability = 2;
+            else if (ps.includes("question") || ps.includes("doubt") || ps.includes("gtd") || ps.includes("out")) availability = 0;
+            else availability = 1; // probable / day-to-day / unknown-but-flagged
+          }
+          // (4) Sample size — per-play-type signal.
+          let sampleSize = 1; // neutral fallback
+          if (isMlbK) {
+            const sb = p.stdBF;
+            if (sb == null) sampleSize = 0;
+            else if (typeof sb === "number" && sb > 2.5) sampleSize = 1;
+            else if (typeof sb === "number") sampleSize = 2;
+            else sampleSize = 0;
+          } else if (isMlbHitter) {
+            const sg = p.softGames;
+            if (sg == null) sampleSize = 0;
+            else if (sg >= 16) sampleSize = 2;
+            else if (sg >= 5) sampleSize = 1;
+            else sampleSize = 0;
+          } else if (isPlayerProp) {
+            const sg = p.softGames;
+            if (sg == null) sampleSize = 1; // NBA/WNBA/NHL plays often don't carry softGames — neutral, not penalty
+            else if (sg >= 10) sampleSize = 2;
+            else if (sg >= 5) sampleSize = 1;
+            else sampleSize = 0;
+          } else if (gameType === "total") {
+            const ss = p.gtSsnSample;
+            if (ss == null) sampleSize = 0;
+            else if (ss >= 30) sampleSize = 2;
+            else if (ss >= 10) sampleSize = 1;
+            else sampleSize = 0;
+          } else if (gameType === "teamTotal") {
+            const hg = p.h2hGames;
+            if (hg == null) sampleSize = 0;
+            else if (hg >= 6) sampleSize = 2;
+            else if (hg >= 3) sampleSize = 1;
+            else sampleSize = 0;
+          }
+          // (5) Opponent data quality — per-play-type.
+          let oppData = 1;
+          if (isMlbK) {
+            if (p.lineupKPct != null && p.lineupConfirmed === true) oppData = 2;
+            else if (p.lineupKPct != null) oppData = 1;
+            else oppData = 0;
+          } else if (isMlbHitter) {
+            if (p.hitterH2HSource === "bvp") oppData = 2;
+            else if (p.hitterH2HSource === "hand") oppData = 1;
+            else oppData = 0;
+          } else if ((sport === "nba" || sport === "wnba") && isPlayerProp) {
+            // WNBA has no per-position DvP today, so dvpRatio is always null there — caps at 1.
+            if (p.dvpRatio != null) oppData = 2;
+            else if (p.oppRank != null) oppData = 1;
+            else oppData = 0;
+          } else if (sport === "nhl" && isPlayerProp) {
+            oppData = p.oppMetricValue != null ? 2 : 0;
+          } else if (sport === "mlb" && gameType === "total") {
+            oppData = p.gameOuLine != null ? 2 : 0;
+          } else if ((sport === "nba" || sport === "wnba") && gameType === "total") {
+            oppData = p.gameOuLine != null ? 2 : 0;
+          } else if (sport === "mlb" && gameType === "teamTotal") {
+            if (p.oppWHIPSource === "starter") oppData = 2;
+            else if (p.oppWHIPSource === "team") oppData = 1;
+            else oppData = 0;
+          } else if (sport === "nba" && gameType === "teamTotal") {
+            oppData = p.oppDefRtg != null ? 2 : 0;
+          }
+          return {
+            dataConfidence: freshness + lineupConf + availability + sampleSize + oppData,
+            dcComponents: { freshness, lineupConf, availability, sampleSize, oppData },
+          };
+        };
+        for (const _p of plays) {
+          const dc = _computeDataConfidence(_p);
+          _p.dataConfidence = dc.dataConfidence;
+          _p.dcComponents = dc.dcComponents;
+        }
         if (isDebug) {
           const nbaGlLabels = Object.fromEntries(Object.entries(playerGamelogs).filter(([k]) => k.startsWith("nba|")).map(([k, gl]) => [k, gl?.ul ?? null]));
           const nbaGlSample = Object.fromEntries(Object.entries(playerGamelogs).filter(([k]) => k.startsWith("nba|")).map(([k, gl]) => [k, gl?.events?.slice(0, 3).map(ev => ({ stats: ev.stats?.slice(0, 3), statsLen: ev.stats?.length })) ?? null]));
