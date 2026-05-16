@@ -472,12 +472,8 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                           <span style={{color:"#6e7681"}}>·</span>
                         )}
                         {play.gameTime && (() => { const _d = new Date(play.gameTime); const ptFmt = new Intl.DateTimeFormat("en-CA",{timeZone:"America/Los_Angeles"}); const tPT = ptFmt.format(new Date()), rPT = ptFmt.format(new Date(Date.now()+86400000)); const gd = play.gameDate || ptFmt.format(_d); const dl = gd===tPT?"Today":gd===rPT?"Tomorrow":new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",month:"short",day:"numeric"}).format(_d); const tp = new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",hour:"numeric",minute:"2-digit",hour12:true}).format(_d); return <span style={{color:"#8b949e"}}>{dl} · {tp} PT</span>; })()}
-                        {play.lineupConfirmed === true && (
-                          <span title="Official lineup posted" style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(63,185,80,0.12)",border:"1px solid #3fb950",color:"#3fb950"}}>✓ Lineup</span>
-                        )}
-                        {play.lineupConfirmed === false && !(play.gameTime && Date.now() >= new Date(play.gameTime).getTime() - 30*60*1000) && (
-                          <span title="Projected lineup — not yet official" style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(139,148,158,0.12)",border:"1px solid #484f58",color:"#8b949e"}}>Proj. Lineup</span>
-                        )}
+                        {/* Lineup badge moved to MatchupCard (rendered once per game above) to avoid
+                            redundancy on each play card in the game's drawer. */}
                         {play.playerStatus === "out" && (
                           <span title="Listed as Out" style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(248,113,113,0.15)",border:"1px solid #f87171",color:"#f87171"}}>Out</span>
                         )}
