@@ -6,16 +6,18 @@ const SPORT_ORDER = { mlb: 0, nba: 1, wnba: 2, nhl: 3 };
 const SPORT_LABEL = { mlb: 'MLB', nba: 'NBA', wnba: 'WNBA', nhl: 'NHL' };
 
 // Build ordered games list for a single sport.
-function buildGames(allPlays, sport, meta, metaTomorrow) {
+function buildGames(allPlays, sport, meta, metaTomorrow, modelVersion) {
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
   const gameMap = new Map();
 
   for (const play of allPlays || []) {
     if (play.sport !== sport) continue;
-    // Only qualified plays seed matchup cards. qualified:false plays exist solely for the player
-    // card (alt thresholds, missed gates). Without this, future-date Kalshi game-total markets
-    // (e.g. NHL series game 6 posted before ESPN schedules it) would create phantom duplicate cards.
-    if (play.qualified === false) continue;
+    // Only gate-passing plays seed matchup cards. qualified:false plays exist solely for the
+    // player card (alt thresholds, missed gates). Without this, future-date Kalshi game-total
+    // markets (e.g. NHL series game 6 posted before ESPN schedules it) would create phantom
+    // duplicate cards. v2 plays often have `qualified: false` (SimScore-based dedup losers)
+    // but pass the dcQualified gate — must seed cards from them or v2 has nowhere to render.
+    if (!passesGate(play, modelVersion)) continue;
 
     let homeTeam, awayTeam, gameDate, gameTime, ouLine;
 
@@ -85,12 +87,12 @@ function buildGames(allPlays, sport, meta, metaTomorrow) {
 }
 
 // All sports combined.
-function buildAllGames(allPlays, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta) {
+function buildAllGames(allPlays, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta, modelVersion) {
   return [
-    ...buildGames(allPlays, 'mlb', mlbMeta, mlbMetaTomorrow),
-    ...buildGames(allPlays, 'nba', nbaMeta),
-    ...buildGames(allPlays, 'wnba', wnbaMeta),
-    ...buildGames(allPlays, 'nhl', nhlMeta),
+    ...buildGames(allPlays, 'mlb', mlbMeta, mlbMetaTomorrow, modelVersion),
+    ...buildGames(allPlays, 'nba', nbaMeta, undefined, modelVersion),
+    ...buildGames(allPlays, 'wnba', wnbaMeta, undefined, modelVersion),
+    ...buildGames(allPlays, 'nhl', nhlMeta, undefined, modelVersion),
   ];
 }
 
@@ -191,16 +193,16 @@ export default function LineupsPage({
   const qualifiedByDay = React.useMemo(() => {
     const counts = {};
     for (const p of allTonightPlays || []) {
-      if (p.qualified === false) continue;
+      if (!passesGate(p, modelVersion)) continue;
       const d = p.gameTime ? ptDate(p.gameTime) : p.gameDate;
       if (d) counts[d] = (counts[d] || 0) + 1;
     }
     return counts;
-  }, [allTonightPlays]);
+  }, [allTonightPlays, modelVersion]);
 
   // All games for the active day, sorted by sport then game time
   const gamesForDay = React.useMemo(() => {
-    const all = buildAllGames(allTonightPlays, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta);
+    const all = buildAllGames(allTonightPlays, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta, modelVersion);
     return all
       .filter(g => {
         const d = g.gameTime ? ptDate(g.gameTime) : (g.gameDate || '');
@@ -211,7 +213,7 @@ export default function LineupsPage({
         if (sd !== 0) return sd;
         return (a.gameTime || '').localeCompare(b.gameTime || '');
       });
-  }, [allTonightPlays, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta, activeDayTab]);
+  }, [allTonightPlays, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta, activeDayTab, modelVersion]);
 
   const sportGroups = React.useMemo(() => {
     const groups = {};
