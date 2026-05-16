@@ -67,7 +67,7 @@ See `docs/INFRA.md` for storage and cache details.
 - `/api/auth/clear-kalshi-stale` — `POST ?ticker=KXMLBTEAMTOTAL` with `Authorization: Bearer <ADMIN_KEY>`. Deletes `kalshi:stale:{ticker}` so the next cold bundle build attempts Kalshi fresh instead of serving the stale entry. Use when a series has been rate-limit-stuck on stale data past the 30-min TTL window. Ticker validated against `/^KX[A-Z0-9]+$/`. Does **not** affect `kalshi:snap:{ticker}` — those refresh on the 2-min cron.
 - `/api/kalshi-snapshot` — cron-only (`*/2 * * * *` in vercel.json). Fetches all 24 Kalshi series tickers (18 SERIES_CONFIG + game totals + KXMLBGAME) and writes per-ticker `kalshi:snap:{ticker}` keys via Upstash pipeline. Bearer-auth: `CRON_SECRET`. Returns `{ok, successCount, failedCount, failed[], durationMs}`. **Hardcoded ticker list MUST stay in sync** with `SERIES_CONFIG` inside `/api/tonight` — add new series to both places.
 - `/api/auth/calibration` — outcome stats. Auth: bearer JWT (any user) or `?adminKey=`. Returns `overall`, `byCategory`, `byCategoryDetail` (per-category truePct buckets, used by `CalibModule` per ModelPage tab), `kStrikeouts` (K-feature breakdowns).
-- `/api/user/picks` — GET/POST user picks (bearer JWT)
+- `/api/user/picks` — GET/POST user picks (bearer JWT). POST accepts two body shapes: legacy `{picks: [...all], bankroll}` (full overwrite, kept for old cached clients) and delta `{upserts: [pick,...], deletes: [id,...], bankroll}` (read-modify-write merge). Client always sends delta. Initial load seeds `lastSyncedPicks` ref on the frontend so the first save after mount is a true diff. See `savePicks` in `src/App.jsx`.
 - `/api/keepalive` — daily cron
 
 ---

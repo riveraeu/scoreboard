@@ -151,6 +151,17 @@ function App() {
   const syncTimer = React.useRef(null);
   const fabRef = React.useRef(null);
   const picksLoaded = React.useRef(!localStorage.getItem("sb_token")); // true if no token (no server load needed)
+  // Delta-save bookkeeping. lastSyncedPicks is the last server-confirmed state, indexed by
+  // pick id → serialized JSON. savePicks diffs trackedPlays against this map and POSTs only
+  // the upserts/deletes. Refs (not state) so updates inside the save handler don't trigger
+  // re-renders. trackedPlaysRef/bankrollRef mirror state so a re-fired save after an inflight
+  // one reads the latest values, not a stale closure.
+  const lastSyncedPicks = React.useRef(new Map());
+  const lastSyncedBankroll = React.useRef(null);
+  const inflightSave = React.useRef(false);
+  const pendingSave = React.useRef(false);
+  const trackedPlaysRef = React.useRef([]);
+  const bankrollRef = React.useRef(null);
   const debouncedQuery = useDebounce(query, 300);
   const dropRef = React.useRef(null);
   const inputRef = React.useRef(null);
@@ -632,21 +643,60 @@ function App() {
     finally { setAuthLoading(false); }
   }
 
+  // Delta save. Computes upserts/deletes against lastSyncedPicks and POSTs only the diff.
+  // Serialized via inflightSave; if a save fires while one's in flight, pendingSave is
+  // marked and a follow-up save runs after the current one with the latest state from refs
+  // (so any changes made during the in-flight request aren't lost).
   async function savePicks(token, picks, roll) {
     if (!token) return;
+    if (inflightSave.current) { pendingSave.current = true; return; }
+    inflightSave.current = true;
     try {
-      // NOTE: `keepalive: true` was tried here for tab-close reliability but it has a
-      // 64KB body cap (cumulative across in-flight keepalive requests). Once the user's
-      // picks array exceeded ~64KB serialized (~45 picks), every save was silently dropped.
-      // Revert: rely on the 400ms debounce + active-tab fetch. The flush handler still
-      // calls savePicks on visibility/pagehide; modern browsers usually keep an in-flight
-      // fetch alive long enough on desktop. Mobile tab-close may still lose the last save.
-      await fetch(`${WORKER}/user/picks`, {
-        method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},
-        body: JSON.stringify({ picks, bankroll: roll }),
+      const upserts = [];
+      const currentIds = new Set();
+      for (const p of picks) {
+        if (!p || !p.id) continue;
+        currentIds.add(p.id);
+        const serialized = JSON.stringify(p);
+        if (lastSyncedPicks.current.get(p.id) !== serialized) upserts.push(p);
+      }
+      const deletes = [];
+      for (const id of lastSyncedPicks.current.keys()) {
+        if (!currentIds.has(id)) deletes.push(id);
+      }
+      const bankrollChanged = roll !== lastSyncedBankroll.current;
+
+      if (upserts.length === 0 && deletes.length === 0 && !bankrollChanged) {
+        setSyncStatus("saved");
+        return;
+      }
+
+      const body = { upserts, deletes };
+      if (bankrollChanged) body.bankroll = roll;
+      const res = await fetch(`${WORKER}/user/picks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify(body),
       });
-      setSyncStatus("saved");
-    } catch { setSyncStatus("error"); }
+
+      if (res.ok) {
+        for (const p of upserts) lastSyncedPicks.current.set(p.id, JSON.stringify(p));
+        for (const id of deletes) lastSyncedPicks.current.delete(id);
+        if (bankrollChanged) lastSyncedBankroll.current = roll;
+        setSyncStatus("saved");
+      } else {
+        setSyncStatus("error");
+      }
+    } catch {
+      setSyncStatus("error");
+    } finally {
+      inflightSave.current = false;
+      if (pendingSave.current) {
+        pendingSave.current = false;
+        // Re-run with the latest state from refs to catch changes made during the in-flight save.
+        setTimeout(() => savePicks(token, trackedPlaysRef.current, bankrollRef.current), 0);
+      }
+    }
   }
 
   function logout() {
@@ -658,6 +708,9 @@ function App() {
     setAuthEmail(null);
     setTrackedPlays([]);
     setBankrollState(1000);
+    // Reset delta-save baseline so a re-login doesn't diff against a stale prior-user snapshot.
+    lastSyncedPicks.current = new Map();
+    lastSyncedBankroll.current = null;
   }
 
   // Auto-save picks to server whenever they change (debounced 400ms — short enough that mobile
@@ -670,6 +723,10 @@ function App() {
     syncTimer.current = setTimeout(() => savePicks(authToken, trackedPlays, bankroll), 400);
     return () => clearTimeout(syncTimer.current);
   }, [trackedPlays, bankroll, authToken]);
+
+  // Mirror state into refs so a follow-up save after an inflight one reads the latest values.
+  React.useEffect(() => { trackedPlaysRef.current = trackedPlays; }, [trackedPlays]);
+  React.useEffect(() => { bankrollRef.current = bankroll; }, [bankroll]);
 
   // Flush pending picks before the tab is hidden/closed — covers the case where the user
   // taps star then immediately backgrounds the app on mobile (Safari/iOS may not fire
@@ -711,6 +768,13 @@ function App() {
         if (pd) {
           const serverPicks = pd.picks || [];
           if (pd.bankroll) setBankrollState(pd.bankroll);
+          // Seed the delta-save baseline with the server's authoritative snapshot. Without
+          // this, savePicks would diff against an empty Map and treat every pick as an upsert
+          // on the first save after load.
+          lastSyncedPicks.current = new Map(
+            serverPicks.filter(p => p && p.id).map(p => [p.id, JSON.stringify(p)])
+          );
+          lastSyncedBankroll.current = pd.bankroll != null ? pd.bankroll : null;
           // One-time migration: union any legacy-local picks the server doesn't have, then
           // drop the legacy key. After this runs successfully once, localStorage is never
           // consulted for picks again.

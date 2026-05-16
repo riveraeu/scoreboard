@@ -497,8 +497,26 @@ var worker_default = {
         const payload = await verifyJWT(token, JWT_SECRET);
         if (!payload) return errorResponse("Unauthorized", 401);
         const body = await request.json();
-        await CACHE2.put(`picks:${payload.userId}`, JSON.stringify({ picks: body.picks || [], bankroll: body.bankroll || 1e3 }));
-        return jsonResponse({ ok: true });
+        // Two body shapes accepted:
+        //   Legacy:  { picks: [...all], bankroll }                  — full overwrite
+        //   Delta:   { upserts: [pick,...], deletes: [id,...], bankroll }  — incremental
+        // Legacy is retained so any cached old-JS client during a deploy still works.
+        if (Array.isArray(body.picks)) {
+          await CACHE2.put(`picks:${payload.userId}`, JSON.stringify({
+            picks: body.picks,
+            bankroll: body.bankroll != null ? body.bankroll : 1e3,
+          }));
+          return jsonResponse({ ok: true, count: body.picks.length });
+        }
+        const existing = (await CACHE2.get(`picks:${payload.userId}`, "json")) || { picks: [], bankroll: 1e3 };
+        const upserts = (Array.isArray(body.upserts) ? body.upserts : []).filter(p => p && p.id);
+        const deletes = new Set(Array.isArray(body.deletes) ? body.deletes : []);
+        const upsertMap = new Map(upserts.map(p => [p.id, p]));
+        const kept = (existing.picks || []).filter(p => !deletes.has(p.id) && !upsertMap.has(p.id));
+        const picks = [...kept, ...upserts];
+        const bankroll = body.bankroll != null ? body.bankroll : (existing.bankroll != null ? existing.bankroll : 1e3);
+        await CACHE2.put(`picks:${payload.userId}`, JSON.stringify({ picks, bankroll }));
+        return jsonResponse({ ok: true, count: picks.length });
       } else if (path === "headshot") {
         const hsId = params.get("id");
         const hsLeague = params.get("sport") || "nba";
