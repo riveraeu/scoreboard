@@ -501,10 +501,12 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                         ];
                         const xcols = isV2 ? V2_XCOLS : (XCOLS[`${sport}|${stat}`] || []);
                         const DASH = <span style={{color:"#21262d"}}>—</span>;
+                        const _GROUP_NAME = { freshness: "Market quality", lineup: "Lineup", availability: "Availability", sample: "Sample size", oppData: "Opp data", distance: "Threshold distance" };
                         const _dcCell = (m, group) => {
+                          if (m.dataConfidence == null) return DASH;
                           const { total, labels } = dcGroupTotal(m, group);
-                          if (total === 0) return <span style={{color:"#3fb950"}}>✓</span>;
-                          const tip = labels.join('\n');
+                          if (total === 0) return <Tip tip={`${_GROUP_NAME[group]}: no penalty`} style={{color:"#3fb950", cursor:"pointer"}}>✓</Tip>;
+                          const tip = `${_GROUP_NAME[group]}:\n` + labels.join('\n');
                           return <Tip tip={tip} style={{color: total <= -3 ? "#f78166" : total <= -1 ? "#e3b341" : "#3fb950", cursor: "pointer"}}>{total}</Tip>;
                         };
                         const xcell = (m, k) => {
@@ -708,6 +710,14 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                           ttOppDef:"Opponent defensive PPG allowed — higher = worse defense = easier scoring (green ≥118, yellow ≥113)",
                           ttPace:"Team pace vs league average — positive = faster pace = more possessions = more scoring opportunities",
                           ttSpread:"Game spread — tight game (≤5) = full minutes competitive play (green ≤5, yellow ≤10, red >10)",
+                          // v2 dataConfidence columns
+                          dc: "dataConfidence (0–10) — input-data trust score. Starts at 10, subtracts penalties. Per-sport gate: MLB/NBA totals ≥10; MLB/NBA props ≥9; WNBA/NHL props ≥8. Hover the cell for penalty breakdown.",
+                          dcMkt: "Market quality — Kalshi staleness / liquidity. Penalties: kalshiStale -4, lowVolume -2, wideSpread -1. ✓ = no penalty.",
+                          dcLineup: "Lineup / starter confirmation. MLB lineup unconfirmed -3 · NBA lineup not posted -2 · NBA confirmed bench -2 · WNBA/NHL structural -1. ✓ = confirmed.",
+                          dcAvail: "Player availability (player props only). Out/inactive -10 (effective drop), questionable/doubtful/GTD -2. ✓ = no concerns.",
+                          dcSample: "Sample size of underlying data. MLB-K stdBF, MLB-Hitter BvP softGames, NBA softGames, totals gtSsnSample, teamTotals h2hGames. Penalties scale -1 to -3 by sample size. ✓ = strong sample.",
+                          dcOppData: "Opponent data quality. MLB-K opp lineup confirmation, MLB-Hitter BvP vs handedness, NBA/WNBA DvP availability, NHL GAA, totals gameOuLine, teamTotal pitcher source. Penalties -1 to -3. ✓ = clean.",
+                          dcDist: "Threshold distance from O/U line — tail probabilities are noisier than central ones. Per-sport thresholds for -1 (modest) / -2 (far). Totals & teamTotals only. ✓ = at-or-near line.",
                         };
                         const _hdr = (col, label, extraStyle={}, textAlign="right") => {
                           const active = _sc?.col === col;

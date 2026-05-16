@@ -5269,6 +5269,15 @@ var worker_default = {
           _p.dcQualified = dc.dcQualified;
           _p.dcGate = dc.dcGate;
         }
+        // Also compute DC for `dropped` plays so the debug Market Report shows DC columns for
+        // every row (otherwise pre-DC drops like edge_too_low / no_simulation_data render DC=—).
+        for (const _p of dropped) {
+          const dc = _computeDataConfidence(_p);
+          _p.dataConfidence = dc.dataConfidence;
+          _p.dcPenalties = dc.dcPenalties;
+          _p.dcQualified = dc.dcQualified;
+          _p.dcGate = dc.dcGate;
+        }
         if (isDebug) {
           const nbaGlLabels = Object.fromEntries(Object.entries(playerGamelogs).filter(([k]) => k.startsWith("nba|")).map(([k, gl]) => [k, gl?.ul ?? null]));
           const nbaGlSample = Object.fromEntries(Object.entries(playerGamelogs).filter(([k]) => k.startsWith("nba|")).map(([k, gl]) => [k, gl?.events?.slice(0, 3).map(ev => ({ stats: ev.stats?.slice(0, 3), statsLen: ev.stats?.length })) ?? null]));
