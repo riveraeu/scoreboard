@@ -210,9 +210,9 @@ function MatchupCard({
               <img src={awayFeature.headshot} alt={awayFeature.name}
                 style={{ width: featHsSize, height: featHsSize, borderRadius: '50%', objectFit: 'cover', background: '#0d1117', flexShrink: 0 }}
                 onError={e => { e.target.style.visibility = 'hidden'; }} />
-            ) : (
+            ) : sport !== 'mlb' ? (
               <div style={{ width: featHsSize, height: featHsSize, borderRadius: '50%', background: '#0d1117', flexShrink: 0 }} />
-            )}
+            ) : null}
             <div style={{ minWidth: 0 }}>
               {awayFeature?.lineupStatus && (
                 <LineupBadge status={awayFeature.lineupStatus} />
@@ -264,9 +264,9 @@ function MatchupCard({
               <img src={homeFeature.headshot} alt={homeFeature.name}
                 style={{ width: featHsSize, height: featHsSize, borderRadius: '50%', objectFit: 'cover', background: '#0d1117', flexShrink: 0 }}
                 onError={e => { e.target.style.visibility = 'hidden'; }} />
-            ) : (
+            ) : sport !== 'mlb' ? (
               <div style={{ width: featHsSize, height: featHsSize, borderRadius: '50%', background: '#0d1117', flexShrink: 0 }} />
-            )}
+            ) : null}
           </div>
         </div>
       )}
