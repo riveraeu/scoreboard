@@ -20,7 +20,11 @@ import SimBadge from './components/SimBadge.jsx';
 // Universal qualification tunables — keep in sync with backend constants in api/[...path].js
 const KALSHI_GATE = 67;   // ~-200 American odds floor
 const KALSHI_CAP = 91;    // ~-1000 American odds cap
-const EDGE_GATE = 3;
+// Raised 2026-05-16 from 3 → 5. Stricter filter on the unproven-edge regime per
+// feedback_totals_aggressive_corrections; pairs with dedup removal so alt-line winners
+// surface independently when each clears 5%. Server-side EDGE_GATE in api/[...path].js
+// stays at 3 to preserve play data for calibration analysis; the client tightens display.
+const EDGE_GATE = 5;
 const SIMSCORE_GATE = 8;
 
 function App() {
@@ -82,9 +86,12 @@ function App() {
   //   missing edge → 1u baseline
   // Tunable: $30 per unit. Change UNIT_DOLLARS or the band cuts to retune.
   const UNIT_DOLLARS = 30;
+  // Unit tiers — adjusted 2026-05-16 to match EDGE_GATE raise (3 → 5). Original deltas above
+  // the gate were +4 (1u→3u) and +9 (3u→5u). Shifted with the gate: 1u at 5–9%, 3u at 9–14%,
+  // 5u at 14%+. Preserves the proportional shape of the Scheme B experiment.
   const unitsForPlay = (play) => {
     const e = play?.edge ?? null;
-    const u = e == null ? 1 : e < 7 ? 1 : e < 12 ? 3 : 5;
+    const u = e == null ? 1 : e < 9 ? 1 : e < 14 ? 3 : 5;
     return u * UNIT_DOLLARS;
   };
   const kalshiCache = React.useRef({}); // memoize Kalshi fetches by "playerName|sport|stat"

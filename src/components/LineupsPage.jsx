@@ -100,7 +100,7 @@ function buildAllGames(allPlays, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nh
 // consistent between the top-level plays list and the per-game lookup. v2 also needs alt-line
 // dedup since server-side bestMap is SimScore-keyed (marks non-winners as qualified:false,
 // which v2 ignores) — see v2WinnerSet below.
-const EDGE_GATE = 3;
+const EDGE_GATE = 5;
 const SIMSCORE_GATE = 8;
 // Group key for v2 dedup: same matchup + direction, ignoring threshold. Highest-edge play
 // within each group survives. Mirrors the server's bestMap key shape for v1.
@@ -123,11 +123,13 @@ function buildV2WinnerSet(allPlays) {
   }
   return new Set([...groupBest.values()].map(v => v.fullId));
 }
-function passesGate(p, modelVersion, v2WinnerSet) {
+// v2 alt-line dedup removed 2026-05-16 — paired with edge gate raise (3 → 5). At edge ≥ 5
+// the alt-line correlation concern is smaller (each line clears the stricter bar on its own)
+// and surfacing multiple thresholds gives the user more flexibility to pick which payout/safety
+// tradeoff they want. v2WinnerSet still accepted as a parameter for back-compat but ignored.
+function passesGate(p, modelVersion, _v2WinnerSet) {
   if (modelVersion === 'v2') {
-    if (!(p.dcQualified === true && (p.edge ?? 0) >= EDGE_GATE)) return false;
-    if (v2WinnerSet && !v2WinnerSet.has(v2FullId(p))) return false;
-    return true;
+    return p.dcQualified === true && (p.edge ?? 0) >= EDGE_GATE;
   }
   if (p.qualified === false) return false;
   if (p.finalSimScore != null && p.finalSimScore < SIMSCORE_GATE) return false;
@@ -211,13 +213,9 @@ export default function LineupsPage({
     }
   }, [dayTabs, activeDayTab]);
 
-  // v2 dedup: one play per matchup+direction (highest edge wins). Server-side bestMap is
-  // SimScore-keyed so it's wrong for v2. Memoized so the same set is reused across the per-day
-  // count, the games builder, and per-game filter.
-  const v2WinnerSet = React.useMemo(() => {
-    if (modelVersion !== 'v2') return null;
-    return buildV2WinnerSet(allTonightPlays);
-  }, [allTonightPlays, modelVersion]);
+  // v2 dedup removed 2026-05-16 (paired with edge gate raise 3 → 5). Kept as null so the
+  // existing passesGate signatures stay backward-compatible.
+  const v2WinnerSet = null;
 
   // Qualified play count per day for tab badges
   const qualifiedByDay = React.useMemo(() => {
