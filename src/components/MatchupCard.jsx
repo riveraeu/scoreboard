@@ -59,8 +59,10 @@ function MatchupCard({
 
   // Per-team MLB lineup confirmation. teamsWithLineup includes any team with lineup data
   // (confirmed or projected); projectedLineupTeams flags the ones that are still projections.
+  // Hidden once the game starts — the lineup question is settled, badge becomes noise.
   const mlbLineupStatus = (abbr) => {
     if (sport !== 'mlb' || !abbr) return null;
+    if (gameState === 'in' || gameState === 'post') return null;
     const teams = mlbPitchSrc?.teamsWithLineup || [];
     const projected = mlbPitchSrc?.projectedLineupTeams || [];
     if (!teams.includes(abbr)) return null;
