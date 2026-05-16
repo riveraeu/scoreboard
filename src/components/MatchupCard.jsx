@@ -4,6 +4,24 @@ import { logoUrl, fmtGameTime } from '../lib/utils.js';
 import { useIsMobile } from '../lib/hooks.js';
 import PlaysColumn from './PlaysColumn.jsx';
 
+// Lineup confirmation badge (MLB only). status: 'confirmed' → green, 'projected' → yellow.
+function LineupBadge({ status, align }) {
+  const isConfirmed = status === 'confirmed';
+  const color = isConfirmed ? '#3fb950' : '#e3b341';
+  const bg = isConfirmed ? 'rgba(63,185,80,0.12)' : 'rgba(227,179,65,0.12)';
+  return (
+    <span style={{
+      display: 'inline-block', marginBottom: 3,
+      fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 4,
+      background: bg, border: `1px solid ${color}`, color,
+      whiteSpace: 'nowrap',
+    }}
+      title={isConfirmed ? 'Lineup confirmed' : 'Projected lineup — not yet official'}>
+      ✓ Lineup
+    </span>
+  );
+}
+
 // "BOS leads series 3-2" → "BOS 3-2", "Series tied 2-2" → "2-2"
 function fmtSeries(summary) {
   if (!summary) return null;
@@ -39,6 +57,15 @@ function MatchupCard({
   const isTomorrowGame = sport === 'mlb' && gameDate && gameDate > ptToday;
   const mlbPitchSrc = isTomorrowGame ? mlbMetaTomorrow : mlbMeta;
 
+  // Per-team MLB lineup confirmation. teamsWithLineup includes any team with lineup data
+  // (confirmed or projected); projectedLineupTeams flags the ones that are still projections.
+  const mlbLineupStatus = (abbr) => {
+    if (sport !== 'mlb' || !abbr) return null;
+    const teams = mlbPitchSrc?.teamsWithLineup || [];
+    const projected = mlbPitchSrc?.projectedLineupTeams || [];
+    if (!teams.includes(abbr)) return null;
+    return projected.includes(abbr) ? 'projected' : 'confirmed';
+  };
   const featureFor = (abbr) => {
     if (!abbr) return null;
     if (sport === 'mlb') {
@@ -50,10 +77,13 @@ function MatchupCard({
       return {
         name: p.name,
         id: p.id,
-        headshot: p.id ? `https://midfield.mlbstatic.com/v1/people/${p.id}/spots/120` : null,
+        // MLB pitcher headshot is intentionally hidden — saves vertical real estate, focus stays
+        // on the stat row + lineup confirmation badge. NBA/WNBA/NHL still show headshots below.
+        headshot: null,
         stats,
         sportKey: 'baseball/mlb',
         tab: 'strikeouts',
+        lineupStatus: mlbLineupStatus(abbr),
       };
     }
     const meta = sport === 'nba' ? nbaMeta : sport === 'wnba' ? wnbaMeta : sport === 'nhl' ? nhlMeta : null;
@@ -184,6 +214,9 @@ function MatchupCard({
               <div style={{ width: featHsSize, height: featHsSize, borderRadius: '50%', background: '#0d1117', flexShrink: 0 }} />
             )}
             <div style={{ minWidth: 0 }}>
+              {awayFeature?.lineupStatus && (
+                <LineupBadge status={awayFeature.lineupStatus} />
+              )}
               <div style={{ fontSize: 12, color: '#c9d1d9', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {awayFeature?.name || '—'}
               </div>
@@ -217,6 +250,9 @@ function MatchupCard({
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end', minWidth: 0, cursor: homeFeature ? 'pointer' : 'default' }}
             onClick={() => openFeature(homeFeature, homeTeam)}>
             <div style={{ textAlign: 'right', minWidth: 0 }}>
+              {homeFeature?.lineupStatus && (
+                <LineupBadge status={homeFeature.lineupStatus} align="right" />
+              )}
               <div style={{ fontSize: 12, color: '#c9d1d9', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {homeFeature?.name || '—'}
               </div>
