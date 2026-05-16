@@ -86,12 +86,11 @@ function App() {
   //   missing edge → 1u baseline
   // Tunable: $30 per unit. Change UNIT_DOLLARS or the band cuts to retune.
   const UNIT_DOLLARS = 30;
-  // Unit tiers — adjusted 2026-05-16 to match EDGE_GATE raise (3 → 5). Original deltas above
-  // the gate were +4 (1u→3u) and +9 (3u→5u). Shifted with the gate: 1u at 5–9%, 3u at 9–14%,
-  // 5u at 14%+. Preserves the proportional shape of the Scheme B experiment.
+  // Unit tiers — round 5-point bands aligned with the 5% edge gate:
+  // 1u at 5–10%, 3u at 10–15%, 5u at 15%+. Edge < gate (or null) falls to 1u baseline.
   const unitsForPlay = (play) => {
     const e = play?.edge ?? null;
-    const u = e == null ? 1 : e < 9 ? 1 : e < 14 ? 3 : 5;
+    const u = e == null ? 1 : e < 10 ? 1 : e < 15 ? 3 : 5;
     return u * UNIT_DOLLARS;
   };
   const kalshiCache = React.useRef({}); // memoize Kalshi fetches by "playerName|sport|stat"
