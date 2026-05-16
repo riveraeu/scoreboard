@@ -303,11 +303,35 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                 const REPORT_SPORT_COL = { mlb:"#4ade80", nba:"#f97316", nhl:"#60a5fa" };
                 const SPORT_ORD = { mlb:0, nba:1, nhl:2, nfl:3 };
 
-                // In v2, "qualified" is dcQualified ∧ edge ≥ 3 — not the SimScore-based flag.
-                // Recompute so the UI's qualified-sort, badge count, and color treat v2 consistently.
-                const _isV2Q = (p) => p.dcQualified === true && (p.edge ?? 0) >= 3;
+                // v2 "qualified" means "would show on homepage" — must mirror LineupsPage logic:
+                // (1) in `plays[]` (server-side gates passed: edge ≥ 3 AND Kalshi window),
+                // (2) dcQualified ∧ edge ≥ 3 (the new v2 client gate), and
+                // (3) is the matchup+direction alt-line winner (highest edge per group).
+                // Without (1), Market Report flagged Kalshi-cap-failures as qualified that the
+                // homepage filters out. Without (3), alt-line duplicates all rendered as green.
+                const _v2GroupKey = (p) => {
+                  const dir = p.direction || 'over';
+                  if (p.gameType === 'total') return `total|${p.sport}|${p.homeTeam}|${p.awayTeam}|${p.gameDate||''}|${dir}`;
+                  if (p.gameType === 'teamTotal') return `tt|${p.sport}|${p.scoringTeam}|${p.oppTeam}|${p.gameDate||''}|${dir}`;
+                  return `prop|${p.sport}|${p.playerName}|${p.stat}|${p.gameDate||''}|${dir}`;
+                };
+                const _v2FullId = (p) => `${_v2GroupKey(p)}|${p.threshold}`;
+                const _v2WinnerSet = (() => {
+                  if (!isV2) return null;
+                  const groupBest = new Map();
+                  for (const p of (reportData.plays || [])) {
+                    if (!(p.dcQualified === true && (p.edge ?? 0) >= 3)) continue;
+                    const k = _v2GroupKey(p);
+                    const prev = groupBest.get(k);
+                    if (!prev || (p.edge ?? 0) > prev.edge) groupBest.set(k, { edge: p.edge ?? 0, fullId: _v2FullId(p) });
+                  }
+                  return new Set([...groupBest.values()].map(v => v.fullId));
+                })();
+                const _isV2Q = (p) => p.dcQualified === true && (p.edge ?? 0) >= 3 && _v2WinnerSet?.has(_v2FullId(p));
                 const plays = (reportData.plays || []).map(p => ({ ...p, qualified: isV2 ? _isV2Q(p) : (p.qualified !== false) }));
-                const dropped = (reportData.dropped || []).map(p => ({ ...p, qualified: isV2 ? _isV2Q(p) : false }));
+                // Dropped plays were filtered server-side (Kalshi cap, no sim data, etc.) and never
+                // reach the homepage — never count as qualified, even if their DC + edge look good.
+                const dropped = (reportData.dropped || []).map(p => ({ ...p, qualified: false }));
                 const filtered = [...plays, ...dropped];
 
                 // Group by sport+stat (totals also split by direction)
