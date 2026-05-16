@@ -624,6 +624,7 @@ function App() {
       await fetch(`${WORKER}/user/picks`, {
         method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},
         body: JSON.stringify({ picks, bankroll: roll }),
+        keepalive: true,
       });
       setSyncStatus("saved");
     } catch { setSyncStatus("error"); }
@@ -695,9 +696,11 @@ function App() {
           // pick gone.
           const serverPicks = pd.picks || [];
           const serverIds = new Set(serverPicks.map(p => p.id));
-          // Only resurrect local picks added recently — older ones absent from server were
-          // probably intentionally deleted (untrack) and should stay deleted.
-          const RECENT_MS = 5 * 60 * 1000;
+          // Only resurrect local picks added very recently — older ones absent from server were
+          // probably intentionally deleted (untrack) on another device and must stay deleted.
+          // Window is short (30s) because savePicks now uses keepalive:true, so the debounce-vs-
+          // refresh race shouldn't need a long crutch.
+          const RECENT_MS = 30 * 1000;
           const now = Date.now();
           const unsyncedLocal = (localBackup || []).filter(p =>
             !serverIds.has(p.id) && (now - (p.trackedAt || 0)) < RECENT_MS
