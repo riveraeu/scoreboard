@@ -420,13 +420,8 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                   {/* Header row — click navigates to player card */}
                   <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,cursor:"pointer"}}
                     onClick={() => navigateToPlay(play)}>
-                    {/* Headshot */}
-                    {headshotUrl && (
-                      <img src={headshotUrl} alt={play.playerName}
-                        style={{width:44,height:44,borderRadius:"50%",objectFit:"cover",objectPosition:"top",
-                          background:"#21262d",flexShrink:0,border:"1px solid #30363d"}}
-                        onError={e => { e.target.style.display="none"; }}/>
-                    )}
+                    {/* Headshot removed to match the headshot-less game/team-total play cards.
+                        Player identity is conveyed via the inline name + threshold headline. */}
                     <div style={{flex:1,minWidth:0}}>
                       {/* Player name + threshold + stat inline as the bet headline.
                           Matchup + time live on the MatchupCard above. */}

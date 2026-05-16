@@ -14,8 +14,8 @@ export default function InputList({ inputs, output, compact = true }) {
   return (
     <div style={{ marginTop: 8, fontSize: 11, lineHeight: 1.5 }}>
       {output && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, padding: '6px 8px',
-          background: '#0d1117', border: '1px solid #21262d', borderRadius: 6, marginBottom: 8 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, padding: '4px 0',
+          marginBottom: 8 }}>
           <div style={{ color: '#8b949e', fontSize: 10, fontWeight: 600, letterSpacing: 0.5 }}>MODEL OUTPUT</div>
           {output.expected && <span><span style={labelStyle}>Expected:</span> <span style={{ color: '#c9d1d9', fontWeight: 600 }}>{output.expected}</span></span>}
           {output.sigma && <span><span style={labelStyle}>σ:</span> <span style={{ color: '#c9d1d9' }}>{output.sigma}</span></span>}
