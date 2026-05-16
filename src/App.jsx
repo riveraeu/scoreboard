@@ -295,7 +295,25 @@ function App() {
     // modelVersion stamps every pick with the active model so calibration audits can split
     // v1 / v2 outcomes cleanly. Server-side /api/user/picks just round-trips the JSON so no
     // backend schema change is needed; the field is persisted verbatim.
-    const enriched = { ...play, americanOdds: savedOdds, kalshiPct: newKalshiPct, edge: newEdge, modelVersion };
+    // Live tracking requires { playerTeam, opponent } (or for totals: { homeTeam, awayTeam } /
+    // { scoringTeam, oppTeam }) to build a `sport:team:opp` key for /api/live. Manual picks
+    // from AddPickModal only know playerTeam — backfill opponent here from current gameScores
+    // so the pick is fully resolvable from the moment it's saved.
+    let extras = {};
+    if (!play.gameType && play.sport && play.playerTeam && !play.opponent) {
+      const scoresMap = play.sport === "mlb" ? mlbMeta?.gameScores
+                      : play.sport === "nba" ? nbaMeta?.gameScores
+                      : play.sport === "wnba" ? wnbaMeta?.gameScores
+                      : play.sport === "nhl" ? nhlMeta?.gameScores
+                      : null;
+      if (scoresMap) {
+        for (const g of Object.values(scoresMap)) {
+          if (g?.homeTeam === play.playerTeam) { extras.opponent = g.awayTeam; break; }
+          if (g?.awayTeam === play.playerTeam) { extras.opponent = g.homeTeam; break; }
+        }
+      }
+    }
+    const enriched = { ...play, ...extras, americanOdds: savedOdds, kalshiPct: newKalshiPct, edge: newEdge, modelVersion };
     setTrackedPlays(prev => {
       if (prev.find(p => p.id === id)) return prev;
       return [{ ...enriched, id, trackedAt: Date.now(), result: null,

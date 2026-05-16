@@ -147,6 +147,12 @@ function AddPickModal({ onClose, onAdd, initialOdds = "-110" }) {
     if (pickType === "player") {
       const threshold = parseFloat(form.threshold);
       if (!form.playerName.trim() || isNaN(threshold)) return;
+      // Manual player picks need playerTeam (from selected athlete) for live tracking to
+      // resolve the game and poll /api/live. Warn but don't block — user might want to
+      // track a pick on a player not in our search index.
+      if (!selectedAthlete?.team) {
+        if (!confirm("No team selected from suggestions — live tracking won't auto-resolve this pick. Track anyway?")) return;
+      }
       onAdd({
         playerName: form.playerName.trim(),
         ...(selectedAthlete?.id ? { playerId: String(selectedAthlete.id) } : {}),
