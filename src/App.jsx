@@ -2219,6 +2219,7 @@ function App() {
       {!player && !teamPage && !modelPage && (
         <LineupsPage
           allTonightPlays={allTonightPlays || []}
+          modelVersion={modelVersion}
           tonightLoading={tonightLoading}
           navigateToPlayer={navigateToPlayer}
           navigateToTeam={navigateToTeam}

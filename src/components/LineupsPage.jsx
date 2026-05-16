@@ -94,10 +94,25 @@ function buildAllGames(allPlays, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nh
   ];
 }
 
-// Returns qualified plays belonging to a given game.
-function playsForGame(allPlays, game) {
+// Returns qualified plays belonging to a given game. Mirror of App.jsx's _qualifiedFilter so
+// v1 (SimScore) and v2 (dcQualified) gating is consistent between the top-level plays list and
+// the per-game lookup. Without this, App.jsx applies v2 gating but LineupsPage re-applies v1's
+// `p.qualified === false` (which marks SimScore-based dedup losers) and drops all v2 plays
+// since most lose the SimScore tiebreak.
+const EDGE_GATE = 3;
+const SIMSCORE_GATE = 8;
+function passesGate(p, modelVersion) {
+  if (modelVersion === 'v2') {
+    return p.dcQualified === true && (p.edge ?? 0) >= EDGE_GATE;
+  }
+  if (p.qualified === false) return false;
+  if (p.finalSimScore != null && p.finalSimScore < SIMSCORE_GATE) return false;
+  if (p.hitterFinalSimScore != null && p.hitterFinalSimScore < SIMSCORE_GATE) return false;
+  return true;
+}
+function playsForGame(allPlays, game, modelVersion) {
   return (allPlays || []).filter(p => {
-    if (p.qualified === false) return false;
+    if (!passesGate(p, modelVersion)) return false;
     if (p.sport !== game.sport) return false;
     if (game.gameDate && p.gameDate && p.gameDate !== game.gameDate) return false;
     const teams = new Set([game.homeTeam, game.awayTeam]);
@@ -122,6 +137,7 @@ function dayTabLabel(dateStr) {
 
 export default function LineupsPage({
   allTonightPlays,
+  modelVersion,
   tonightLoading,
   navigateToPlayer,
   navigateToTeam,
@@ -352,7 +368,7 @@ export default function LineupsPage({
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(480px, 100%), 1fr))', gap: 12, alignItems: 'start' }}>
               {games.map((game, i) => {
                 const isPostponed = (game.gameDetail || '').toLowerCase().includes('postpone');
-                const gPlays = isPostponed ? [] : playsForGame(allTonightPlays, game);
+                const gPlays = isPostponed ? [] : playsForGame(allTonightPlays, game, modelVersion);
                 return (
                   <MatchupCard
                     key={`${sport}|${game.homeTeam}|${game.awayTeam}|${game.gameDate}|${i}`}
