@@ -79,19 +79,37 @@ function App() {
   const [calibData, setCalibData] = React.useState(null);
   const [calibLoading, setCalibLoading] = React.useState(false);
   const [gamelogSort, setGamelogSort] = React.useState({ col: 'date', dir: 'desc' });
-  // Edge-based stake sizing (Scheme B):
-  //   edge 3–7%   → 1u
-  //   edge 7–12%  → 3u
-  //   edge ≥ 12%  → 5u
-  //   missing edge → 1u baseline
-  // Tunable: $30 per unit. Change UNIT_DOLLARS or the band cuts to retune.
+  // Stake sizing — Tier × fractional-Kelly (replaced flat Scheme B on 2026-05-16):
+  //   edge < 10%     → ⅛-Kelly       (small edges, low confidence)
+  //   edge 10–15%    → flat $50        (clamp — calibration-bug band, K 90-95% overconfident)
+  //   edge ≥ 15%     → ½-Kelly        (high-edge / high-confidence)
+  //   missing data   → 1u baseline ($30)
+  //   max single bet → $500 cap        (caps tail risk on rare huge-Kelly recommendations)
+  // Last 60-day backtest: +4.9% ROI vs +0.9% on flat Scheme B. See conversation 2026-05-16
+  // for the analysis behind the band cuts and clamp; the clamp exists because the 10-15%
+  // band had 71.4% hit rate (vs ~85% in adjacent bands) and lost in every aggressive scheme.
   const UNIT_DOLLARS = 30;
-  // Unit tiers — round 5-point bands aligned with the 5% edge gate:
-  // 1u at 5–10%, 3u at 10–15%, 5u at 15%+. Edge < gate (or null) falls to 1u baseline.
+  const STAKE_CAP = 500;
   const unitsForPlay = (play) => {
     const e = play?.edge ?? null;
+    // Clamp band — calibration-bug zone, fixed $50 regardless of Kelly math.
+    if (e != null && e >= 10 && e < 15) return 50;
+
+    // Kelly inputs. UNDER direction uses noTruePct so the probability matches the side taken.
+    const truePct = play?.direction === "under" ? (play?.noTruePct ?? play?.truePct) : play?.truePct;
+    const ao = play?.americanOdds;
+    const kFrac = e == null ? null : e < 10 ? 0.125 : 0.5;
+    if (kFrac != null && truePct != null && ao != null && ao !== 0) {
+      const b = ao > 0 ? ao / 100 : 100 / Math.abs(ao);
+      const p = truePct / 100;
+      const f = Math.max(0, (b * p - (1 - p)) / b);
+      const stake = bankroll * f * kFrac;
+      if (stake > 0) return Math.min(stake, STAKE_CAP);
+    }
+
+    // Fallback when Kelly can't compute (missing truePct/odds, or Kelly = 0).
     const u = e == null ? 1 : e < 10 ? 1 : e < 15 ? 3 : 5;
-    return u * UNIT_DOLLARS;
+    return Math.min(u * UNIT_DOLLARS, STAKE_CAP);
   };
   const kalshiCache = React.useRef({}); // memoize Kalshi fetches by "playerName|sport|stat"
   const [expandedPlays, setExpandedPlays] = React.useState(new Set());
