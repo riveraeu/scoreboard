@@ -226,7 +226,7 @@ var worker_default = {
           "KXNBAPTS", "KXNBAREB", "KXNBAAST", "KXNBA3PT",
           "KXWNBAPTS", "KXWNBAREB", "KXWNBAAST", "KXWNBA3PT",
           "KXNHLPTS",
-          "KXMLBHITS", "KXMLBKS", "KXMLBHRR",
+          "KXMLBKS", "KXMLBHRR",
           "KXNFLPAYDS", "KXNFLRUYDS", "KXNFLREYDS", "KXNFLTDS",
           "KXMLBTOTAL", "KXNBATOTAL", "KXWNBATOTAL", "KXNHLTOTAL", "KXNFLTOTAL",
           "KXMLBTEAMTOTAL", "KXNBATEAMTOTAL",
@@ -1093,7 +1093,7 @@ var worker_default = {
         const SERIES = {
           nba: { points: "KXNBAPTS", rebounds: "KXNBAREB", assists: "KXNBAAST", threePointers: "KXNBA3PT" },
           nhl: { points: "KXNHLPTS" },
-          mlb: { hits: "KXMLBHITS", hrr: "KXMLBHRR", strikeouts: "KXMLBKS" }
+          mlb: { hrr: "KXMLBHRR", strikeouts: "KXMLBKS" }
         };
         const series = SERIES[sportParam]?.[stat];
         if (!series || !playerName) return jsonResponse({ markets: [] });
@@ -1285,7 +1285,6 @@ var worker_default = {
           KXWNBAAST: { sport: "wnba", league: "wnba", stat: "assists", col: "AST" },
           KXWNBA3PT: { sport: "wnba", league: "wnba", stat: "threePointers", col: "3PT" },
           KXNHLPTS: { sport: "nhl", league: "nhl", stat: "points", col: "PTS" },
-          KXMLBHITS: { sport: "mlb", league: "mlb", stat: "hits", col: "H" },
           KXMLBKS: { sport: "mlb", league: "mlb", stat: "strikeouts", col: "K" },
           KXMLBHRR: { sport: "mlb", league: "mlb", stat: "hrr", col: "HRR" },
           KXNFLPAYDS: { sport: "nfl", league: "nfl", stat: "passingYards", col: "YDS" },
@@ -3665,7 +3664,18 @@ var worker_default = {
             if (sport === "mlb" && hasSeasonTags) {
               if (hitterSimPctOut !== null) return hitterSimPctOut;
               const basePct = primaryPct;
-              const rawMlbPct = softPct !== null ? (basePct + softPct) / 2 : basePct;
+              // BvP shrinkage (2026-05-16): small-sample BvP rates (e.g., 10/10 = 100%) were
+              // dominating the 50/50 blend and inflating truePct (Bellinger vs Brazoban case:
+              // truePct 90.9% vs market 74% = +16.9% edge). Bayesian-style shrinkage with N=20
+              // "prior games" pulls extreme BvP rates toward the player's own season rate.
+              // At softGames=20 the blend is 50/50 BvP/season-prior; at softGames=10, BvP gets
+              // ~33% weight. Hand-source softPct skips shrinkage (handedness samples are large).
+              const _bvpN = 20;
+              const _isBvPSrc = hitterH2HSource === 'bvp' && softVals.length > 0 && softPct !== null;
+              const _shrunkSoftPct = _isBvPSrc
+                ? (softVals.length * softPct + _bvpN * primaryPct) / (softVals.length + _bvpN)
+                : softPct;
+              const rawMlbPct = _shrunkSoftPct !== null ? (basePct + _shrunkSoftPct) / 2 : basePct;
               const homeTeam = sportByteam.mlb?.gameHomeTeams?.[playerTeam] ?? tonightOpp;
               const parkFactor = PARK_HITFACTOR[homeTeam] ?? 1;
               // OPS adjustment: ratio to league-avg OPS shifts the logit. Top-quartile (~.850 OPS)

@@ -71,13 +71,17 @@ Per-sport modeling internals. CLAUDE.md has the architecture map and load-bearin
 ---
 
 ## MLB Hitters (HRR)
-**True%**: logit-sigmoid base-rate adjustment with park, hitter OPS, and pitcher WHIP shifts (no Monte Carlo for HRR — `simulateHits` only used for hits stat).
+**True%**: logit-sigmoid base-rate adjustment with park, hitter OPS, and pitcher WHIP shifts (no Monte Carlo for HRR — `simulateHits` removed when MLB hits stat dropped 2026-05-16).
 ```
-rawMlbPct = (primaryPct + softPct) / 2
-opsAdj  = clamp(hitterOPS / 0.720, [0.85, 1.15])           # weight 0.4 in logit
-whipAdj = clamp((pitcherWHIP / 1.30)^0.5, [0.92, 1.08])    # weight 0.3 in logit (third-order)
+# BvP shrinkage (2026-05-16) — only when hitterH2HSource === "bvp"
+N = 20                                                       # prior weight in games
+shrunkSoftPct = (softGames·softPct + N·primaryPct) / (softGames + N)
+rawMlbPct = (primaryPct + shrunkSoftPct) / 2
+opsAdj  = clamp(hitterOPS / 0.720, [0.85, 1.15])             # weight 0.4 in logit
+whipAdj = clamp((pitcherWHIP / 1.30)^0.5, [0.92, 1.08])      # weight 0.3 in logit (third-order)
 truePct = sigmoid(logit(rawMlbPct/100) + ln(parkFactor) + 0.4·ln(opsAdj) + 0.3·ln(whipAdj)) × 100
 ```
+- **BvP shrinkage added 2026-05-16**: small-sample BvP rates (10 games at 100%) were dominating the 50/50 blend. Bayesian-style: at softGames=20 the blend is 50/50 BvP/season-prior; at softGames=10, BvP gets ~33% weight. Hand-source `softPct` skips shrinkage (handedness samples are large by definition).
 - OPS folded into lambda 2026-05-13 (was SimScore-only). Top-quartile (~.850) lifts truePct ~1.5–2pt.
 - WHIP folded into lambda 2026-05-13 (was SimScore-only). Lower weight than OPS; high-WHIP pitcher → more contact → higher HRR base rate beyond what BvP captures.
 - `primaryPct` = 2026 HRR 1+ rate (fallback: 2025+2026 blend, then career)

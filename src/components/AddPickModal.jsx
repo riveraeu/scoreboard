@@ -22,7 +22,7 @@ function AddPickModal({ onClose, onAdd, initialOdds = "-110" }) {
   const SPORT_STATS = {
     nba: ["points","rebounds","assists","threePointers"],
     wnba: ["points","rebounds","assists","threePointers"],
-    mlb: ["hits","hrr","strikeouts"],
+    mlb: ["hrr","strikeouts"],
     nfl: ["passingYards","rushingYards","receivingYards","receptions","completions","attempts"],
     nhl: ["points"],
   };
