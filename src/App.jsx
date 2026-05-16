@@ -1172,7 +1172,7 @@ function App() {
                     }
                   }}
                   style={{flex:1,background:"#0d1117",border:"1px solid #30363d",borderRadius:7,
-                    color:"#c9d1d9",fontSize:15,padding:"7px 10px",outline:"none",textAlign:"center"}}
+                    color:"#c9d1d9",fontSize:16,padding:"7px 10px",outline:"none",textAlign:"center"}}
                 />
                 <span style={{fontSize:16,fontWeight:700,color,minWidth:52,textAlign:"right",whiteSpace:"nowrap"}}>
                   {implied !== null ? `${implied.toFixed(1)}%` : "—"}

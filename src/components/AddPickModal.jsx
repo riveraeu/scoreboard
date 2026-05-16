@@ -193,8 +193,10 @@ function AddPickModal({ onClose, onAdd, initialOdds = "-110" }) {
     onClose();
   }
 
+  // fontSize must be ≥16 to prevent iOS Safari auto-zoom on focus. Padding bumped slightly
+  // so the field still feels compact at 16px.
   const inp = { background:"#0d1117", border:"1px solid #30363d", borderRadius:6, color:"#c9d1d9",
-    fontSize:13, padding:"7px 10px", width:"100%", outline:"none" };
+    fontSize:16, padding:"8px 10px", width:"100%", outline:"none" };
   const lbl = { color:"#8b949e", fontSize:11, marginBottom:4, display:"block" };
 
   const sportOptions = pickType === "teamTotal" ? TEAM_TOTAL_SPORTS
