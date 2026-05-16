@@ -2,6 +2,8 @@ import React from 'react';
 import { WORKER, SPORTS, STAT_FULL, MLB_TEAM, TEAM_DB, TOTAL_THRESHOLDS, STAT_LABEL, SPORT_KEY, SPORT_BADGE_COLOR, GAMELOG_COLS } from './lib/constants.js';
 import { ordinal, slugify, teamUrl } from './lib/utils.js';
 import { useIsMobile, useModelVersion } from './lib/hooks.js';
+import InputList from './components/InputList.jsx';
+import { buildLambdaInputs, buildModelOutput } from './lib/lambdaInputs.js';
 import { buildLiveGameKey, getPickCurrentStat, findLivePlayer, resolveTotalGameScore } from './lib/liveStats.js';
 import { tierColor } from './lib/colors.js';
 import TotalsBarChart from './components/TotalsBarChart.jsx';
@@ -1476,7 +1478,18 @@ function App() {
             ) : (
               <>
                 {/* Explanation at top */}
-                {showExplanation && (
+                {showExplanation && modelVersion === "v2" && (() => {
+                  // v2: render lambda inputs for the active tab's tonight play (if one exists).
+                  // Player card may load for players with no current play — in that case hide.
+                  const activePlay = Object.values(tonightPlayerMap).find(p => p.stat === safeTab) || null;
+                  if (!activePlay) return null;
+                  return (
+                    <div style={{background:"#0d1117",borderRadius:8,padding:"8px 12px",marginBottom:12}}>
+                      <InputList inputs={buildLambdaInputs(activePlay)} output={buildModelOutput(activePlay)} />
+                    </div>
+                  );
+                })()}
+                {showExplanation && modelVersion !== "v2" && (
                   <div style={{background:"#0d1117",borderRadius:8,padding:"8px 12px",fontSize:11,color:"#8b949e",lineHeight:1.6,marginBottom:12}}>
                     {(() => {
                       const first = player.name.split(" ")[0];
