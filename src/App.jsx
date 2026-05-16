@@ -635,10 +635,15 @@ function App() {
   async function savePicks(token, picks, roll) {
     if (!token) return;
     try {
+      // NOTE: `keepalive: true` was tried here for tab-close reliability but it has a
+      // 64KB body cap (cumulative across in-flight keepalive requests). Once the user's
+      // picks array exceeded ~64KB serialized (~45 picks), every save was silently dropped.
+      // Revert: rely on the 400ms debounce + active-tab fetch. The flush handler still
+      // calls savePicks on visibility/pagehide; modern browsers usually keep an in-flight
+      // fetch alive long enough on desktop. Mobile tab-close may still lose the last save.
       await fetch(`${WORKER}/user/picks`, {
         method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},
         body: JSON.stringify({ picks, bankroll: roll }),
-        keepalive: true,
       });
       setSyncStatus("saved");
     } catch { setSyncStatus("error"); }
