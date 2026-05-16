@@ -11,7 +11,7 @@ function LineupBadge({ status, align }) {
   const bg = isConfirmed ? 'rgba(63,185,80,0.12)' : 'rgba(139,148,158,0.10)';
   return (
     <span style={{
-      display: 'inline-block', marginBottom: 5,
+      display: 'inline-block', marginTop: 2, marginBottom: 4,
       fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4,
       background: bg, border: `1px solid ${color}`, color,
       whiteSpace: 'nowrap',
