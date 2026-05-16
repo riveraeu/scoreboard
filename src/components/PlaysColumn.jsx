@@ -100,22 +100,11 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                     onMouseEnter={e => e.currentTarget.style.borderColor="#58a6ff"}
                     onMouseLeave={e => e.currentTarget.style.borderColor="#30363d"}>
                     <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                          <img src={logoUrl(play.sport, play.scoringTeam)} alt={play.scoringTeam}
-                            onClick={e=>{e.stopPropagation();navigateToTeam(play.scoringTeam,play.sport);}}
-                            style={{width:44,height:44,objectFit:"contain",background:"#21262d",borderRadius:6,padding:2,flexShrink:0,cursor:"pointer"}}
-                            onError={e=>e.target.style.display="none"}/>
-                          <span onClick={e=>{e.stopPropagation();navigateToTeam(play.scoringTeam,play.sport);}}
-                            style={{color:"#c9d1d9",fontSize:12,fontWeight:600,cursor:"pointer",textDecoration:"underline",textDecorationColor:"#484f58"}}>{play.scoringTeam}</span>
-                          <span style={{color:"#484f58",fontSize:11}}>vs</span>
-                          <span onClick={e=>{e.stopPropagation();navigateToTeam(play.oppTeam,play.sport);}}
-                            style={{color:"#8b949e",fontSize:12,cursor:"pointer",textDecoration:"underline",textDecorationColor:"#484f58"}}>{play.oppTeam}</span>
-                        </div>
-                        <div style={{color:"#8b949e",fontSize:11,marginTop:3,display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
-                          {play.gameTime && (() => { const _d = new Date(play.gameTime); const ptFmt = new Intl.DateTimeFormat("en-CA",{timeZone:"America/Los_Angeles"}); const tPT = ptFmt.format(new Date()), rPT = ptFmt.format(new Date(Date.now()+86400000)); const gd = play.gameDate || ptFmt.format(_d); const dl = gd===tPT?"Today":gd===rPT?"Tomorrow":new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",month:"short",day:"numeric"}).format(_d); const tp = new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",hour:"numeric",minute:"2-digit",hour12:true}).format(_d); return <span>{dl} · {tp} PT</span>; })()}
-                        </div>
-                      </div>
+                      {/* Compact team label — matchup + time live on the MatchupCard above */}
+                      <span onClick={e=>{e.stopPropagation();navigateToTeam(play.scoringTeam,play.sport);}}
+                        style={{flex:1,minWidth:0,color:"#c9d1d9",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                        {play.scoringTeam}
+                      </span>
                       <div style={{display:"flex",alignItems:"center",gap:7,flexShrink:0}}>
                         <span style={{background:isUnder?"rgba(247,129,102,0.12)":"rgba(88,166,255,0.12)",border:`1px solid ${isUnder?"#f78166":"#58a6ff"}`,
                           borderRadius:6,padding:"2px 8px",fontSize:12,color:isUnder?"#f78166":"#58a6ff",fontWeight:700,whiteSpace:"nowrap"}}>
@@ -246,29 +235,12 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                       padding:"14px 16px",marginBottom:10,transition:"border-color 0.15s"}}
                     onMouseEnter={e => e.currentTarget.style.borderColor="#58a6ff"}
                     onMouseLeave={e => e.currentTarget.style.borderColor="#30363d"}>
-                    {/* Header */}
+                    {/* Header — matchup + time on the MatchupCard above; just market badges + bet pill here */}
                     <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-                      {/* Matchup info */}
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
-                          <img src={logoUrl(play.sport, play.awayTeam)} alt={play.awayTeam} onClick={e=>{e.stopPropagation();navigateToTeam(play.awayTeam,play.sport);}}
-                            style={{width:44,height:44,objectFit:"contain",background:"#21262d",borderRadius:6,padding:2,flexShrink:0,cursor:"pointer"}}
-                            onError={e=>e.target.style.display="none"}/>
-                          <span onClick={e=>{e.stopPropagation();navigateToTeam(play.awayTeam,play.sport);}}
-                            style={{color:"#c9d1d9",fontSize:12,fontWeight:600,cursor:"pointer",textDecoration:"underline",textDecorationColor:"#484f58"}}>{play.awayTeam}</span>
-                          <span style={{color:"#484f58",fontSize:11}}>@</span>
-                          <span onClick={e=>{e.stopPropagation();navigateToTeam(play.homeTeam,play.sport);}}
-                            style={{color:"#c9d1d9",fontSize:12,fontWeight:600,cursor:"pointer",textDecoration:"underline",textDecorationColor:"#484f58"}}>{play.homeTeam}</span>
-                          <img src={logoUrl(play.sport, play.homeTeam)} alt={play.homeTeam} onClick={e=>{e.stopPropagation();navigateToTeam(play.homeTeam,play.sport);}}
-                            style={{width:44,height:44,objectFit:"contain",background:"#21262d",borderRadius:6,padding:2,flexShrink:0,cursor:"pointer"}}
-                            onError={e=>e.target.style.display="none"}/>
-                        </div>
-                        <div style={{color:"#8b949e",fontSize:11,marginTop:3,display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
-                          {play.gameTime && (() => { const _d = new Date(play.gameTime); const ptFmt = new Intl.DateTimeFormat("en-CA",{timeZone:"America/Los_Angeles"}); const tPT = ptFmt.format(new Date()), rPT = ptFmt.format(new Date(Date.now()+86400000)); const gd = play.gameDate || ptFmt.format(_d); const dl = gd===tPT?"Today":gd===rPT?"Tomorrow":new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",month:"short",day:"numeric"}).format(_d); const tp = new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",hour:"numeric",minute:"2-digit",hour12:true}).format(_d); return <span>{dl} · {tp} PT</span>; })()}
-                          {play.lowVolume && <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(231,179,49,0.12)",border:"1px solid #e3b341",color:"#e3b341"}}>Low Vol</span>}
-                          {play.thinMarket && <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(247,129,102,0.10)",border:"1px solid #f78166",color:"#f78166"}}>Wide Spread</span>}
-                          {play.lineMove != null && Math.abs(play.lineMove) >= 3 && <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:play.lineMove > 0 ? "rgba(63,185,80,0.10)" : "rgba(247,129,102,0.10)",border:`1px solid ${play.lineMove > 0 ? "#3fb950" : "#f78166"}`,color:play.lineMove > 0 ? "#3fb950" : "#f78166"}}>{play.lineMove > 0 ? "▲" : "▼"} {Math.abs(play.lineMove)}c</span>}
-                        </div>
+                      <div style={{flex:1,minWidth:0,display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
+                        {play.lowVolume && <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(231,179,49,0.12)",border:"1px solid #e3b341",color:"#e3b341"}}>Low Vol</span>}
+                        {play.thinMarket && <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(247,129,102,0.10)",border:"1px solid #f78166",color:"#f78166"}}>Wide Spread</span>}
+                        {play.lineMove != null && Math.abs(play.lineMove) >= 3 && <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:play.lineMove > 0 ? "rgba(63,185,80,0.10)" : "rgba(247,129,102,0.10)",border:`1px solid ${play.lineMove > 0 ? "#3fb950" : "#f78166"}`,color:play.lineMove > 0 ? "#3fb950" : "#f78166"}}>{play.lineMove > 0 ? "▲" : "▼"} {Math.abs(play.lineMove)}c</span>}
                       </div>
                       {/* Threshold badge + edge badge + star button */}
                       <div style={{display:"flex",alignItems:"center",gap:7,flexShrink:0}}>
@@ -466,14 +438,9 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                       <div style={{display:"flex",alignItems:"center",gap:6}}>
                         <div style={{color:"#fff",fontSize:14,fontWeight:700}}>{play.playerName}</div>
                       </div>
+                      {/* Team/opp + time live on the MatchupCard above. Position + status badges stay. */}
                       <div style={{color:"#8b949e",fontSize:11,marginTop:2,display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
-                        <span>{play.playerTeam} vs {play.opponent}{play.position ? ` · ${play.position}` : ""}</span>
-                        {play.gameTime && (
-                          <span style={{color:"#6e7681"}}>·</span>
-                        )}
-                        {play.gameTime && (() => { const _d = new Date(play.gameTime); const ptFmt = new Intl.DateTimeFormat("en-CA",{timeZone:"America/Los_Angeles"}); const tPT = ptFmt.format(new Date()), rPT = ptFmt.format(new Date(Date.now()+86400000)); const gd = play.gameDate || ptFmt.format(_d); const dl = gd===tPT?"Today":gd===rPT?"Tomorrow":new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",month:"short",day:"numeric"}).format(_d); const tp = new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",hour:"numeric",minute:"2-digit",hour12:true}).format(_d); return <span style={{color:"#8b949e"}}>{dl} · {tp} PT</span>; })()}
-                        {/* Lineup badge moved to MatchupCard (rendered once per game above) to avoid
-                            redundancy on each play card in the game's drawer. */}
+                        {play.position && <span>{play.position}</span>}
                         {play.playerStatus === "out" && (
                           <span title="Listed as Out" style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(248,113,113,0.15)",border:"1px solid #f87171",color:"#f87171"}}>Out</span>
                         )}
