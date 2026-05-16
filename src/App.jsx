@@ -673,11 +673,18 @@ function App() {
 
       const body = { upserts, deletes };
       if (bankrollChanged) body.bankroll = roll;
-      const res = await fetch(`${WORKER}/user/picks`, {
+      const bodyStr = JSON.stringify(body);
+      // keepalive has a 64 KiB cumulative body cap (per Fetch spec). Opt in only when the
+      // delta fits comfortably so tab-close / visibility-hidden flushes have a chance to
+      // land. Larger deltas (rare with delta saves — would need ~40+ picks changing at
+      // once) fall back to plain fetch and rely on the active tab to keep it alive.
+      const fetchOpts = {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify(body),
-      });
+        body: bodyStr,
+      };
+      if (bodyStr.length < 60 * 1024) fetchOpts.keepalive = true;
+      const res = await fetch(`${WORKER}/user/picks`, fetchOpts);
 
       if (res.ok) {
         for (const p of upserts) lastSyncedPicks.current.set(p.id, JSON.stringify(p));
