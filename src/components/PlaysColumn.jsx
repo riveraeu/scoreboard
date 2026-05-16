@@ -3,7 +3,7 @@ import { STAT_LABEL, STAT_FULL, MLB_TEAM } from '../lib/constants.js';
 import { ordinal, logoUrl } from '../lib/utils.js';
 import { tierColor } from '../lib/colors.js';
 import { useModelVersion } from '../lib/hooks.js';
-import { buildLambdaInputs, buildModelOutput } from '../lib/lambdaInputs.js';
+import { buildLambdaInputs } from '../lib/lambdaInputs.js';
 import SimBadge from './SimBadge.jsx';
 import InputList from './InputList.jsx';
 
@@ -149,7 +149,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                       );
                     })()}
                     {/* v2: lambda inputs panel — replaces SimScore-based prose */}
-                    {isV2 && <InputList inputs={buildLambdaInputs(play)} output={buildModelOutput(play)} />}
+                    {isV2 && <InputList inputs={buildLambdaInputs(play)} />}
                     {/* v1: Explanation prose with SimBadge */}
                     {!isV2 && (<div style={{marginTop:4}}>
                       {play.sport === "mlb" && (() => {
@@ -283,7 +283,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                       );
                     })()}
                     {/* v2: lambda inputs panel */}
-                    {isV2 && <InputList inputs={buildLambdaInputs(play)} output={buildModelOutput(play)} />}
+                    {isV2 && <InputList inputs={buildLambdaInputs(play)} />}
                     {/* v1: Rich text explanation with SimBadge */}
                     {!isV2 && (<div style={{display:"flex",flexDirection:"column",gap:8,marginTop:4}}>
                       {/* MLB Total */}
@@ -519,7 +519,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                     )}
                   </div>}
                   {/* v2: lambda inputs panel */}
-                  {isV2 && <InputList inputs={buildLambdaInputs(play)} output={buildModelOutput(play)} />}
+                  {isV2 && <InputList inputs={buildLambdaInputs(play)} />}
                   {/* v1: Matchup explanations — always visible */}
                   {!isV2 && (<div style={{display:"flex",flexDirection:"column",gap:8,marginTop:play.sport==="mlb"?0:8}}>
                         {/* ── MLB Strikeouts ── */}
