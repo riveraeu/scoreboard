@@ -610,15 +610,35 @@ function App() {
     setBankrollState(1000);
   }
 
-  // Auto-save picks to server whenever they change (debounced 1.5s)
-  // Guard: don't save until server picks have been loaded — prevents overwriting with [] on mount
+  // Auto-save picks to server whenever they change (debounced 400ms — short enough that mobile
+  // users tapping a star and immediately refreshing have a good chance of the save landing).
+  // Guard: don't save until server picks have been loaded — prevents overwriting with [] on mount.
   React.useEffect(() => {
     if (!authToken || !picksLoaded.current) return;
     setSyncStatus("saving");
     clearTimeout(syncTimer.current);
-    syncTimer.current = setTimeout(() => savePicks(authToken, trackedPlays, bankroll), 1500);
+    syncTimer.current = setTimeout(() => savePicks(authToken, trackedPlays, bankroll), 400);
     return () => clearTimeout(syncTimer.current);
   }, [trackedPlays, bankroll, authToken]);
+
+  // Flush pending picks before the tab is hidden/closed — covers the case where the user
+  // taps star then immediately backgrounds the app on mobile (Safari/iOS may not fire
+  // beforeunload). pagehide and visibilitychange combined cover all platforms.
+  React.useEffect(() => {
+    if (!authToken) return;
+    const flush = () => {
+      if (!picksLoaded.current) return;
+      clearTimeout(syncTimer.current);
+      savePicks(authToken, trackedPlays, bankroll).catch(() => {});
+    };
+    const onVis = () => { if (document.visibilityState === 'hidden') flush(); };
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('pagehide', flush);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('pagehide', flush);
+    };
+  }, [authToken, trackedPlays, bankroll]);
 
   // Load picks from server on mount if token exists
   React.useEffect(() => {
@@ -638,14 +658,28 @@ function App() {
       })
       .then(pd => {
         if (pd) {
-          // Use server data if it has picks; otherwise fall back to localStorage backup
+          // Merge server + local. Server is authoritative for what exists, BUT preserve any
+          // local picks that aren't on the server yet — they're likely recent additions that
+          // didn't make it through the auto-save debounce before refresh (common on mobile).
+          // Symptom of the prior "server replaces local" bug: tap star on mobile, refresh fast,
+          // pick gone.
           const serverPicks = pd.picks || [];
-          const picks = serverPicks.length > 0 ? serverPicks : localBackup;
-          setTrackedPlays(picks);
+          const serverIds = new Set(serverPicks.map(p => p.id));
+          // Only resurrect local picks added recently — older ones absent from server were
+          // probably intentionally deleted (untrack) and should stay deleted.
+          const RECENT_MS = 5 * 60 * 1000;
+          const now = Date.now();
+          const unsyncedLocal = (localBackup || []).filter(p =>
+            !serverIds.has(p.id) && (now - (p.trackedAt || 0)) < RECENT_MS
+          );
+          const merged = [...unsyncedLocal, ...serverPicks].sort((a, b) =>
+            (b.trackedAt || 0) - (a.trackedAt || 0)
+          );
+          setTrackedPlays(merged);
           if (pd.bankroll) setBankrollState(pd.bankroll);
-          // If we fell back to local backup, push it up to the server now
-          if (serverPicks.length === 0 && localBackup.length > 0) {
-            savePicks(authToken, localBackup, null).catch(() => {});
+          // If local-only picks remained or server was empty, push the merged set back to server.
+          if (unsyncedLocal.length > 0 || (serverPicks.length === 0 && localBackup.length > 0)) {
+            savePicks(authToken, merged.length > 0 ? merged : localBackup, null).catch(() => {});
           }
         }
         picksLoaded.current = true; // unblock auto-save now that server picks are loaded
