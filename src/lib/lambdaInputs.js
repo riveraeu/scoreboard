@@ -155,104 +155,119 @@ function buildNhlPropInputs(p) {
   ];
 }
 
+// Direction-aware tier helpers. For UNDER plays, "good" means low value
+// (low RPG, low ERA, low WHIP, low H2H rate, etc.) — invert the tier function.
+const tierDir = (isUnder, v, gHigh, yHigh) => isUnder ? tierLow(v, yHigh, gHigh) : tier(v, gHigh, yHigh);
+const factorDir = (isUnder, v) => isUnder ? factorLow(v) : factor(v);
+
 function buildMlbTotalInputs(p) {
+  const isUnder = p.direction === 'under';
   const whipSrc = (src) => src === 'starter' ? '' : src === 'team' ? ' (team)' : '';
   return [
-    { label: 'Home RPG', value: dec1(p.homeRPG), color: tier(p.homeRPG, 5, 4) },
-    { label: 'Away RPG', value: dec1(p.awayRPG), color: tier(p.awayRPG, 5, 4) },
+    { label: 'Home RPG', value: dec1(p.homeRPG), color: tierDir(isUnder, p.homeRPG, 5, 4) },
+    { label: 'Away RPG', value: dec1(p.awayRPG), color: tierDir(isUnder, p.awayRPG, 5, 4) },
     { label: 'Home WHIP', value: p.homeWHIP == null ? null
         : `${p.homeWHIP.toFixed(2)}${whipSrc(p.homeWHIPSource)}`,
-      color: tier(p.homeWHIP, 1.35, 1.20) },
+      color: tierDir(isUnder, p.homeWHIP, 1.35, 1.20) },
     { label: 'Away WHIP', value: p.awayWHIP == null ? null
         : `${p.awayWHIP.toFixed(2)}${whipSrc(p.awayWHIPSource)}`,
-      color: tier(p.awayWHIP, 1.35, 1.20) },
-    { label: 'Home FIP', value: dec2(p.homeFIP), color: tier(p.homeFIP, 4.50, 3.80) },
-    { label: 'Away FIP', value: dec2(p.awayFIP), color: tier(p.awayFIP, 4.50, 3.80) },
+      color: tierDir(isUnder, p.awayWHIP, 1.35, 1.20) },
+    { label: 'Home FIP', value: dec2(p.homeFIP), color: tierDir(isUnder, p.homeFIP, 4.50, 3.80) },
+    { label: 'Away FIP', value: dec2(p.awayFIP), color: tierDir(isUnder, p.awayFIP, 4.50, 3.80) },
     { label: 'Park run', value: p.parkFactor == null ? null
         : `${p.parkFactor >= 1 ? '+' : '−'}${Math.abs(Math.round((p.parkFactor - 1) * 100))}%`,
-      color: factor(p.parkFactor) },
+      color: factorDir(isUnder, p.parkFactor) },
     { label: 'Weather', value: p.weatherFactor == null ? null
         : `${p.weatherFactor >= 1 ? '+' : '−'}${Math.abs(Math.round((p.weatherFactor - 1) * 100))}%${p.windOutMph ? ` (${p.windOutMph}mph)` : ''}`,
-      color: factor(p.weatherFactor) },
+      color: factorDir(isUnder, p.weatherFactor) },
     { label: 'Umpire', value: p.umpireRunFactor == null ? null
         : `${p.umpireRunFactor >= 1 ? '+' : '−'}${Math.abs(Math.round((p.umpireRunFactor - 1) * 100))}%${p.umpireName ? ` (${p.umpireName})` : ''}`,
-      color: factor(p.umpireRunFactor) },
+      color: factorDir(isUnder, p.umpireRunFactor) },
     { label: 'Ssn rate ≥thr', value: p.gtSeasonHitRate == null ? null
         : `${p.gtSeasonHitRate}%${p.gtSsnSample ? ` (${p.gtSsnSample}g)` : ''}`,
-      color: tier(p.gtSeasonHitRate, 50, 35) },
+      color: tierDir(isUnder, p.gtSeasonHitRate, 50, 35) },
     { label: 'H2H ≥thr', value: p.h2hTotalHitRate == null ? null
         : `${p.h2hTotalHitRate}%${p.h2hTotalGames ? ` (${p.h2hTotalGames}g)` : ''}`,
-      color: tier(p.h2hTotalHitRate, 60, 40) },
+      color: tierDir(isUnder, p.h2hTotalHitRate, 60, 40) },
   ];
 }
 
 function buildNbaTotalInputs(p) {
+  const isUnder = p.direction === 'under';
+  const paceAdj = p.projPace != null && p.leagueAvgPace != null ? (p.projPace - p.leagueAvgPace) : null;
   return [
-    { label: 'Comb OffRtg', value: dec1(p.combOffRtg), color: tier(p.combOffRtg, 118, 113) },
-    { label: 'Comb DefRtg', value: dec1(p.combDefRtg), color: tier(p.combDefRtg, 118, 113) },
-    { label: 'Pace adj', value: p.projPace == null || p.leagueAvgPace == null ? null
-        : `${(p.projPace - p.leagueAvgPace) > 0 ? '+' : ''}${(p.projPace - p.leagueAvgPace).toFixed(1)}`,
-      color: p.projPace == null ? null
-        : (p.projPace - p.leagueAvgPace) > 1 ? GREEN
-        : (p.projPace - p.leagueAvgPace) > -2 ? YELLOW : RED },
+    { label: 'Comb OffRtg', value: dec1(p.combOffRtg), color: tierDir(isUnder, p.combOffRtg, 118, 113) },
+    { label: 'Comb DefRtg', value: dec1(p.combDefRtg), color: tierDir(isUnder, p.combDefRtg, 118, 113) },
+    { label: 'Pace adj', value: paceAdj == null ? null
+        : `${paceAdj > 0 ? '+' : ''}${paceAdj.toFixed(1)}`,
+      color: paceAdj == null ? null
+        : isUnder ? (paceAdj < -1 ? GREEN : paceAdj < 2 ? YELLOW : RED)
+                  : (paceAdj > 1 ? GREEN : paceAdj > -2 ? YELLOW : RED) },
     { label: 'H2H ≥thr', value: p.nbaGtH2HRate == null ? null
         : `${p.nbaGtH2HRate}%${p.nbaGtH2HGames ? ` (${p.nbaGtH2HGames}g)` : ''}`,
-      color: tier(p.nbaGtH2HRate, 60, 40) },
+      color: tierDir(isUnder, p.nbaGtH2HRate, 60, 40) },
     { label: 'Ssn ≥thr', value: p.gtSeasonHitRate == null ? null
         : `${p.gtSeasonHitRate}%${p.gtSsnSample ? ` (${p.gtSsnSample}g)` : ''}`,
-      color: tier(p.gtSeasonHitRate, 50, 35) },
+      color: tierDir(isUnder, p.gtSeasonHitRate, 50, 35) },
     { label: 'Injuries', value: p.homeOut != null || p.awayOut != null
         ? `${(p.homeOut ?? 0) + (p.awayOut ?? 0)}` : null,
-      color: ((p.homeOut ?? 0) + (p.awayOut ?? 0)) <= 1 ? GREEN
-        : ((p.homeOut ?? 0) + (p.awayOut ?? 0)) <= 3 ? YELLOW : RED },
+      // More injuries → fewer pts → good for under
+      color: (() => {
+        const outs = (p.homeOut ?? 0) + (p.awayOut ?? 0);
+        if (isUnder) return outs >= 3 ? GREEN : outs >= 1 ? YELLOW : GRAY;
+        return outs <= 1 ? GREEN : outs <= 3 ? YELLOW : RED;
+      })() },
     { label: 'Playoff boost', value: p.playoffBoost == null ? null
-        : `×${p.playoffBoost.toFixed(2)}`, color: GREEN },
+        : `×${p.playoffBoost.toFixed(2)}`, color: isUnder ? RED : GREEN },
   ];
 }
 
 function buildNhlTotalInputs(p) {
+  const isUnder = p.direction === 'under';
   return [
-    { label: 'Home GPG', value: dec2(p.homeGPG), color: tier(p.homeGPG, 3.5, 3.0) },
-    { label: 'Away GPG', value: dec2(p.awayGPG), color: tier(p.awayGPG, 3.5, 3.0) },
-    { label: 'Home GAA', value: dec2(p.homeGAA), color: tier(p.homeGAA, 3.5, 3.0) },
-    { label: 'Away GAA', value: dec2(p.awayGAA), color: tier(p.awayGAA, 3.5, 3.0) },
+    { label: 'Home GPG', value: dec2(p.homeGPG), color: tierDir(isUnder, p.homeGPG, 3.5, 3.0) },
+    { label: 'Away GPG', value: dec2(p.awayGPG), color: tierDir(isUnder, p.awayGPG, 3.5, 3.0) },
+    { label: 'Home GAA', value: dec2(p.homeGAA), color: tierDir(isUnder, p.homeGAA, 3.5, 3.0) },
+    { label: 'Away GAA', value: dec2(p.awayGAA), color: tierDir(isUnder, p.awayGAA, 3.5, 3.0) },
     { label: 'Ssn ≥thr', value: p.gtSeasonHitRate == null ? null
         : `${p.gtSeasonHitRate}%${p.gtSsnSample ? ` (${p.gtSsnSample}g)` : ''}`,
-      color: tier(p.gtSeasonHitRate, 50, 35) },
+      color: tierDir(isUnder, p.gtSeasonHitRate, 50, 35) },
   ];
 }
 
 function buildMlbTeamTotalInputs(p) {
+  const isUnder = p.direction === 'under';
   const whipSrc = (src) => src === 'starter' ? '' : src === 'team' ? ' (team)' : '';
   return [
-    { label: 'Team RPG', value: dec1(p.teamRPG), color: tier(p.teamRPG, 5, 4) },
-    { label: 'Opp ERA', value: dec2(p.oppERA), color: tier(p.oppERA, 4.50, 3.50) },
-    { label: 'Opp FIP', value: dec2(p.oppFIP), color: tier(p.oppFIP, 4.50, 3.80) },
+    { label: 'Team RPG', value: dec1(p.teamRPG), color: tierDir(isUnder, p.teamRPG, 5, 4) },
+    { label: 'Opp ERA', value: dec2(p.oppERA), color: tierDir(isUnder, p.oppERA, 4.50, 3.50) },
+    { label: 'Opp FIP', value: dec2(p.oppFIP), color: tierDir(isUnder, p.oppFIP, 4.50, 3.80) },
     { label: 'Opp WHIP', value: p.oppWHIP == null ? null
         : `${p.oppWHIP.toFixed(2)}${whipSrc(p.oppWHIPSource)}`,
-      color: tier(p.oppWHIP, 1.35, 1.20) },
+      color: tierDir(isUnder, p.oppWHIP, 1.35, 1.20) },
     { label: 'Park run', value: p.parkFactor == null ? null
         : `${p.parkFactor >= 1 ? '+' : '−'}${Math.abs(Math.round((p.parkFactor - 1) * 100))}%`,
-      color: factor(p.parkFactor) },
-    { label: 'L10 RPG', value: dec1(p.teamL10RPG), color: tier(p.teamL10RPG, 5, 4) },
+      color: factorDir(isUnder, p.parkFactor) },
+    { label: 'L10 RPG', value: dec1(p.teamL10RPG), color: tierDir(isUnder, p.teamL10RPG, 5, 4) },
     { label: 'H2H ≥thr', value: p.h2hHitRate == null ? null
         : `${p.h2hHitRate}%${p.h2hGames ? ` (${p.h2hGames}g)` : ''}`,
-      color: tier(p.h2hHitRate, 60, 40) },
+      color: tierDir(isUnder, p.h2hHitRate, 60, 40) },
     { label: 'Umpire run', value: p.umpireRunFactor == null ? null
         : `${p.umpireRunFactor >= 1 ? '+' : '−'}${Math.abs(Math.round((p.umpireRunFactor - 1) * 100))}%${p.umpireName ? ` (${p.umpireName})` : ''}`,
-      color: factor(p.umpireRunFactor) },
+      color: factorDir(isUnder, p.umpireRunFactor) },
     { label: 'Platoon', value: p.platoonFactor == null ? null
         : `${p.platoonFactor >= 1 ? '+' : '−'}${Math.abs(Math.round((p.platoonFactor - 1) * 100))}%`,
-      color: factor(p.platoonFactor) },
+      color: factorDir(isUnder, p.platoonFactor) },
     { label: 'Ssn ≥thr', value: p.ttSeasonHitRate == null ? null
-        : `${p.ttSeasonHitRate}%`, color: tier(p.ttSeasonHitRate, 50, 35) },
+        : `${p.ttSeasonHitRate}%`, color: tierDir(isUnder, p.ttSeasonHitRate, 50, 35) },
   ];
 }
 
 function buildNbaTeamTotalInputs(p) {
+  const isUnder = p.direction === 'under';
   return [
-    { label: 'Team OffRtg', value: dec1(p.teamOffRtg), color: tier(p.teamOffRtg, 118, 113) },
-    { label: 'Opp DefRtg', value: dec1(p.oppDefRtg), color: tier(p.oppDefRtg, 118, 113) },
+    { label: 'Team OffRtg', value: dec1(p.teamOffRtg), color: tierDir(isUnder, p.teamOffRtg, 118, 113) },
+    { label: 'Opp DefRtg', value: dec1(p.oppDefRtg), color: tierDir(isUnder, p.oppDefRtg, 118, 113) },
     { label: 'Team expected', value: dec1(p.teamExpected), color: GRAY },
     { label: 'Game spread', value: p.gameSpread == null ? null
         : `${p.gameSpread > 0 ? '+' : ''}${p.gameSpread}`,
@@ -260,11 +275,11 @@ function buildNbaTeamTotalInputs(p) {
         : Math.abs(p.gameSpread) <= 5 ? GREEN : Math.abs(p.gameSpread) <= 10 ? YELLOW : RED },
     { label: 'H2H ≥thr', value: p.h2hHitRate == null ? null
         : `${p.h2hHitRate}%${p.h2hGames ? ` (${p.h2hGames}g)` : ''}`,
-      color: tier(p.h2hHitRate, 60, 40) },
+      color: tierDir(isUnder, p.h2hHitRate, 60, 40) },
     { label: 'Ssn ≥thr', value: p.ttNbaSeasonHitRate == null ? null
-        : `${p.ttNbaSeasonHitRate}%`, color: tier(p.ttNbaSeasonHitRate, 50, 35) },
+        : `${p.ttNbaSeasonHitRate}%`, color: tierDir(isUnder, p.ttNbaSeasonHitRate, 50, 35) },
     { label: 'Playoff boost', value: p.playoffBoost == null ? null
-        : `×${p.playoffBoost.toFixed(2)}`, color: GREEN },
+        : `×${p.playoffBoost.toFixed(2)}`, color: isUnder ? RED : GREEN },
   ];
 }
 
