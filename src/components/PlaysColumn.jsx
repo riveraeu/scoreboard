@@ -2,10 +2,15 @@ import React from 'react';
 import { STAT_LABEL, STAT_FULL, MLB_TEAM } from '../lib/constants.js';
 import { ordinal, logoUrl } from '../lib/utils.js';
 import { tierColor } from '../lib/colors.js';
+import { useModelVersion } from '../lib/hooks.js';
+import { buildLambdaInputs, buildModelOutput } from '../lib/lambdaInputs.js';
 import SimBadge from './SimBadge.jsx';
+import InputList from './InputList.jsx';
 
 function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilter = [], statFilter = [], trackedPlays, trackPlay, untrackPlay, navigateToPlay, navigateToTeam, expandedPlays, setExpandedPlays, hideHeader, gridColumns }) {
   const cols = gridColumns || 1;
+  const [modelVersion] = useModelVersion();
+  const isV2 = modelVersion === 'v2';
   return (
         <div>
           {tonightLoading ? (
@@ -157,8 +162,10 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                         </div>
                       );
                     })()}
-                    {/* Explanation prose */}
-                    <div style={{marginTop:4}}>
+                    {/* v2: lambda inputs panel — replaces SimScore-based prose */}
+                    {isV2 && <InputList inputs={buildLambdaInputs(play)} output={buildModelOutput(play)} />}
+                    {/* v1: Explanation prose with SimBadge */}
+                    {!isV2 && (<div style={{marginTop:4}}>
                       {play.sport === "mlb" && (() => {
                         const _ssnPts = isUnder ? (play.ttSeasonHitRate == null ? 1 : play.ttSeasonHitRate <= 20 ? 2 : play.ttSeasonHitRate <= 40 ? 1 : 0) : (play.ttSeasonHitRatePts ?? 1);
                         const _whipPts = play.ttWhipPts ?? 1;
@@ -217,7 +224,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                           </div>
                         );
                       })()}
-                    </div>
+                    </div>)}
                   </div>
                 );
               }
@@ -310,8 +317,10 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                         </div>
                       );
                     })()}
-                    {/* Rich text explanation */}
-                    <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:4}}>
+                    {/* v2: lambda inputs panel */}
+                    {isV2 && <InputList inputs={buildLambdaInputs(play)} output={buildModelOutput(play)} />}
+                    {/* v1: Rich text explanation with SimBadge */}
+                    {!isV2 && (<div style={{display:"flex",flexDirection:"column",gap:8,marginTop:4}}>
                       {/* MLB Total */}
                       {play.sport === "mlb" && (() => {
                         const sc = play.totalSimScore;
@@ -432,7 +441,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                           </div>
                         );
                       })()}
-                    </div>
+                    </div>)}
                   </div>
                 );
               }
@@ -558,8 +567,10 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                       </div>
                     )}
                   </div>}
-                  {/* Matchup explanations — always visible */}
-                  <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:play.sport==="mlb"?0:8}}>
+                  {/* v2: lambda inputs panel */}
+                  {isV2 && <InputList inputs={buildLambdaInputs(play)} output={buildModelOutput(play)} />}
+                  {/* v1: Matchup explanations — always visible */}
+                  {!isV2 && (<div style={{display:"flex",flexDirection:"column",gap:8,marginTop:play.sport==="mlb"?0:8}}>
                         {/* ── MLB Strikeouts ── */}
                         {play.stat === "strikeouts" && play.sport === "mlb" && (() => {
                           const csw = play.pitcherCSWPct ?? null;
@@ -826,7 +837,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                             })()}
                           </div>
                         )}
-                  </div>
+                  </div>)}
                 </div>
               );
             })}
