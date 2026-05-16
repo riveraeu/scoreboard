@@ -386,8 +386,9 @@ function App() {
 
     // Resolve playerTeam + opponent from gameScores when one or both are missing on the pick.
     // Older picks may have empty playerTeam ("") or null opponent; backfill from whichever is present.
+    // Also treat any value containing "|" as invalid (legacy bug saved opponent as "STL|date").
     const resolveTeams = (pick) => {
-      const has = (v) => typeof v === "string" && v.length > 0;
+      const has = (v) => typeof v === "string" && v.length > 0 && !v.includes("|");
       let playerTeam = has(pick.playerTeam) ? pick.playerTeam : null;
       let opponent = has(pick.opponent) ? pick.opponent : null;
       if (playerTeam && opponent) return { playerTeam, opponent };
@@ -460,8 +461,13 @@ function App() {
         if (pick.gameType === "total" || pick.gameType === "teamTotal") return pick; // handled separately
         const gameKey = pickKeyMap.get(pick.id);
         if (!gameKey) return pick;
-        const [, resolvedTeam, resolvedOpp] = gameKey.split(":");
-        const has = (v) => typeof v === "string" && v.length > 0;
+        // gameKey is `sport:team:opp|gameDate` (date-scoped) — strip the `|date` from the opp
+        // segment so backfilled `opponent` is the clean team abbr. Previously this set
+        // opponent="STL|2026-05-16", breaking subsequent live polls (split key never matched).
+        const parts = gameKey.split(":");
+        const resolvedTeam = parts[1];
+        const resolvedOpp = parts[2]?.split("|")[0];
+        const has = (v) => typeof v === "string" && v.length > 0 && !v.includes("|");
         const backfill = {};
         if (!has(pick.playerTeam) && resolvedTeam) backfill.playerTeam = resolvedTeam;
         if (!has(pick.opponent) && resolvedOpp) backfill.opponent = resolvedOpp;
