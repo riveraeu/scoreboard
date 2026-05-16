@@ -2327,6 +2327,7 @@ function App() {
       <div style={{
         position:"fixed", top:0, right:0, bottom:0,
         width: isMobile ? "100vw" : "min(max(340px, 50vw), 680px)",
+        maxWidth: "100vw",
         background:"#0d1117",
         borderLeft: isMobile ? "none" : "1px solid #30363d",
         zIndex:598,
@@ -2334,6 +2335,11 @@ function App() {
         transform: showPicksDrawer ? "translateX(0)" : "translateX(100%)",
         transition:"transform 0.3s ease",
         boxShadow:"-4px 0 32px rgba(0,0,0,0.6)",
+        // overflowX:hidden on the panel + inner content prevents wide child elements
+        // (cards with long names, week/day pickers, chart rows) from pushing horizontal
+        // scroll on mobile where the drawer is 100vw.
+        overflowX:"hidden",
+        boxSizing:"border-box",
       }}>
         {/* Drawer header */}
         <div style={{
@@ -2352,7 +2358,7 @@ function App() {
           </button>
         </div>
         {/* Drawer content */}
-        <div style={{flex:1, overflowY:"auto", padding:"12px 20px 24px"}}>
+        <div style={{flex:1, overflowY:"auto", overflowX:"hidden", padding:"12px 20px 24px", boxSizing:"border-box", minWidth:0}}>
           <MyPicksColumn
             trackedPlays={trackedPlays}
             setTrackedPlays={setTrackedPlays}
