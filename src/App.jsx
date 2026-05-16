@@ -95,10 +95,10 @@ function App() {
   };
   const kalshiCache = React.useRef({}); // memoize Kalshi fetches by "playerName|sport|stat"
   const [expandedPlays, setExpandedPlays] = React.useState(new Set());
-  const [trackedPlays, setTrackedPlays] = React.useState(() => {
-    // Always load from localStorage as initial state — server load will overwrite if it has more data
-    try { return JSON.parse(localStorage.getItem("scoreboard_tracked_plays") || "[]"); } catch { return []; }
-  });
+  // Picks are server-authoritative. Initial state is empty; the server-load effect below
+  // fills it (and runs a one-time migration to push any legacy localStorage picks up before
+  // dropping localStorage as a picks store entirely).
+  const [trackedPlays, setTrackedPlays] = React.useState([]);
   const [bankroll, setBankrollState] = React.useState(() => {
     return parseFloat(localStorage.getItem("scoreboard_bankroll") || "1000");
   });
@@ -271,10 +271,6 @@ function App() {
       .catch(() => { setAllTonightPlays([]); setNbaDropped([]); setTonightPlays([]); setTonightLoading(false); setBustLoading(false); });
   };
 
-  // Always persist tracked plays to localStorage as a backup (server is authoritative when logged in, but localStorage is the fallback)
-  React.useEffect(() => {
-    localStorage.setItem("scoreboard_tracked_plays", JSON.stringify(trackedPlays));
-  }, [trackedPlays, authToken]);
 
   function setBankroll(val) {
     const n = Math.max(1, parseFloat(val) || 0);
@@ -671,14 +667,15 @@ function App() {
     };
   }, [authToken, trackedPlays, bankroll]);
 
-  // Load picks from server on mount if token exists
+  // Load picks from server on mount if token exists.
+  // Server is the single source of truth — no localStorage merging. A one-time migration
+  // pushes any legacy localStorage picks not on the server up before clearing local state.
   React.useEffect(() => {
     if (!authToken) return;
-    const localBackup = (() => { try { return JSON.parse(localStorage.getItem("scoreboard_tracked_plays") || "[]"); } catch { return []; } })();
+    const legacyLocal = (() => { try { return JSON.parse(localStorage.getItem("scoreboard_tracked_plays") || "[]"); } catch { return []; } })();
     fetch(`${WORKER}/user/picks`, { headers:{"Authorization":`Bearer ${authToken}`} })
       .then(r => {
         if (r.status === 401) {
-          // Token expired — clear auth state so user sees the logged-out experience
           localStorage.removeItem("sb_token");
           localStorage.removeItem("sb_email");
           setAuthToken(null);
@@ -689,36 +686,29 @@ function App() {
       })
       .then(pd => {
         if (pd) {
-          // Merge server + local. Server is authoritative for what exists, BUT preserve any
-          // local picks that aren't on the server yet — they're likely recent additions that
-          // didn't make it through the auto-save debounce before refresh (common on mobile).
-          // Symptom of the prior "server replaces local" bug: tap star on mobile, refresh fast,
-          // pick gone.
           const serverPicks = pd.picks || [];
-          const serverIds = new Set(serverPicks.map(p => p.id));
-          // Only resurrect local picks added very recently — older ones absent from server were
-          // probably intentionally deleted (untrack) on another device and must stay deleted.
-          // Window is short (30s) because savePicks now uses keepalive:true, so the debounce-vs-
-          // refresh race shouldn't need a long crutch.
-          const RECENT_MS = 30 * 1000;
-          const now = Date.now();
-          const unsyncedLocal = (localBackup || []).filter(p =>
-            !serverIds.has(p.id) && (now - (p.trackedAt || 0)) < RECENT_MS
-          );
-          const merged = [...unsyncedLocal, ...serverPicks].sort((a, b) =>
-            (b.trackedAt || 0) - (a.trackedAt || 0)
-          );
-          setTrackedPlays(merged);
           if (pd.bankroll) setBankrollState(pd.bankroll);
-          // If local-only picks remained or server was empty, push the merged set back to server.
-          if (unsyncedLocal.length > 0 || (serverPicks.length === 0 && localBackup.length > 0)) {
-            savePicks(authToken, merged.length > 0 ? merged : localBackup, null).catch(() => {});
+          // One-time migration: union any legacy-local picks the server doesn't have, then
+          // drop the legacy key. After this runs successfully once, localStorage is never
+          // consulted for picks again.
+          if (legacyLocal.length > 0) {
+            const serverIds = new Set(serverPicks.map(p => p.id));
+            const localOnly = legacyLocal.filter(p => !serverIds.has(p.id));
+            const merged = [...localOnly, ...serverPicks].sort((a, b) => (b.trackedAt || 0) - (a.trackedAt || 0));
+            setTrackedPlays(merged);
+            if (localOnly.length > 0) {
+              savePicks(authToken, merged, pd.bankroll ?? null).catch(() => {});
+            }
+            localStorage.removeItem("scoreboard_tracked_plays");
+          } else {
+            setTrackedPlays(serverPicks);
           }
         }
-        picksLoaded.current = true; // unblock auto-save now that server picks are loaded
+        picksLoaded.current = true;
       })
       .catch(() => {
-        // Server unreachable — keep localStorage data already loaded in initial state
+        // Server unreachable — leave trackedPlays empty and leave any legacy localStorage
+        // key in place so the next successful load can migrate it.
         picksLoaded.current = true;
       });
   }, []);
