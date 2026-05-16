@@ -103,9 +103,8 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                       {/* Bet headline: "TOR Under 5.5 Runs" — team + direction + line + stat in one
                           read. Matchup + time live on the MatchupCard above. */}
                       <span onClick={e=>{e.stopPropagation();navigateToTeam(play.scoringTeam,play.sport);}}
-                        style={{flex:1,minWidth:0,fontSize:14,fontWeight:700,cursor:"pointer",lineHeight:1.3}}>
-                        <span style={{color:"#c9d1d9"}}>{play.scoringTeam}</span>{" "}
-                        <span style={{color:isUnder?"#f78166":"#58a6ff"}}>{isUnder ? "Under" : "Over"} {lineVal} {tLabel}</span>
+                        style={{flex:1,minWidth:0,fontSize:14,fontWeight:700,cursor:"pointer",lineHeight:1.3,color:"#c9d1d9"}}>
+                        {play.scoringTeam} {isUnder ? "Under" : "Over"} {lineVal} {tLabel}
                       </span>
                       <div style={{display:"flex",alignItems:"center",gap:7,flexShrink:0}}>
                         <span style={{background:"rgba(63,185,80,0.13)",border:"1px solid #3fb950",
@@ -235,8 +234,8 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                     onMouseLeave={e => e.currentTarget.style.borderColor="#30363d"}>
                     {/* Header — bet headline + edge + star. Matchup logos + time live on the MatchupCard above. */}
                     <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-                      <span style={{flex:1,minWidth:0,fontSize:14,fontWeight:700,lineHeight:1.3,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                        <span><span style={{color:"#c9d1d9"}}>{play.awayTeam} @ {play.homeTeam}</span>{" "}<span style={{color:isUnder?"#f78166":"#58a6ff"}}>{isUnder ? "Under" : "Over"} {lineVal} {tLabel}</span></span>
+                      <span style={{flex:1,minWidth:0,fontSize:14,fontWeight:700,lineHeight:1.3,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",color:"#c9d1d9"}}>
+                        <span>{play.awayTeam} @ {play.homeTeam} {isUnder ? "Under" : "Over"} {lineVal} {tLabel}</span>
                         {play.lowVolume && <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(231,179,49,0.12)",border:"1px solid #e3b341",color:"#e3b341"}}>Low Vol</span>}
                         {play.thinMarket && <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(247,129,102,0.10)",border:"1px solid #f78166",color:"#f78166"}}>Wide Spread</span>}
                         {play.lineMove != null && Math.abs(play.lineMove) >= 3 && <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:play.lineMove > 0 ? "rgba(63,185,80,0.10)" : "rgba(247,129,102,0.10)",border:`1px solid ${play.lineMove > 0 ? "#3fb950" : "#f78166"}`,color:play.lineMove > 0 ? "#3fb950" : "#f78166"}}>{play.lineMove > 0 ? "▲" : "▼"} {Math.abs(play.lineMove)}c</span>}
@@ -433,7 +432,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                           Matchup + time live on the MatchupCard above. */}
                       <div style={{display:"flex",alignItems:"baseline",gap:6,flexWrap:"wrap"}}>
                         <span style={{color:"#fff",fontSize:14,fontWeight:700}}>{play.playerName}</span>
-                        <span style={{color:"#58a6ff",fontSize:13,fontWeight:700,whiteSpace:"nowrap"}}>
+                        <span style={{color:"#c9d1d9",fontSize:13,fontWeight:700,whiteSpace:"nowrap"}}>
                           {play.threshold}+ {STAT_LABEL[play.stat] || play.stat}
                         </span>
                       </div>
