@@ -4,15 +4,15 @@ import { logoUrl, fmtGameTime } from '../lib/utils.js';
 import { useIsMobile } from '../lib/hooks.js';
 import PlaysColumn from './PlaysColumn.jsx';
 
-// Lineup confirmation badge (MLB only). status: 'confirmed' → green, 'projected' → yellow.
+// Lineup confirmation badge (MLB only). status: 'confirmed' → green, 'projected' → grey.
 function LineupBadge({ status, align }) {
   const isConfirmed = status === 'confirmed';
-  const color = isConfirmed ? '#3fb950' : '#e3b341';
-  const bg = isConfirmed ? 'rgba(63,185,80,0.12)' : 'rgba(227,179,65,0.12)';
+  const color = isConfirmed ? '#3fb950' : '#8b949e';
+  const bg = isConfirmed ? 'rgba(63,185,80,0.12)' : 'rgba(139,148,158,0.10)';
   return (
     <span style={{
-      display: 'inline-block', marginBottom: 3,
-      fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 4,
+      display: 'inline-block', marginBottom: 5,
+      fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4,
       background: bg, border: `1px solid ${color}`, color,
       whiteSpace: 'nowrap',
     }}
