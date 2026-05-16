@@ -100,16 +100,14 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                     onMouseEnter={e => e.currentTarget.style.borderColor="#58a6ff"}
                     onMouseLeave={e => e.currentTarget.style.borderColor="#30363d"}>
                     <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-                      {/* Compact team label — matchup + time live on the MatchupCard above */}
+                      {/* Bet headline: "TOR Under 5.5 Runs" — team + direction + line + stat in one
+                          read. Matchup + time live on the MatchupCard above. */}
                       <span onClick={e=>{e.stopPropagation();navigateToTeam(play.scoringTeam,play.sport);}}
-                        style={{flex:1,minWidth:0,color:"#c9d1d9",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                        {play.scoringTeam}
+                        style={{flex:1,minWidth:0,fontSize:14,fontWeight:700,cursor:"pointer",lineHeight:1.3}}>
+                        <span style={{color:"#c9d1d9"}}>{play.scoringTeam}</span>{" "}
+                        <span style={{color:isUnder?"#f78166":"#58a6ff"}}>{isUnder ? "Under" : "Over"} {lineVal} {tLabel}</span>
                       </span>
                       <div style={{display:"flex",alignItems:"center",gap:7,flexShrink:0}}>
-                        <span style={{background:isUnder?"rgba(247,129,102,0.12)":"rgba(88,166,255,0.12)",border:`1px solid ${isUnder?"#f78166":"#58a6ff"}`,
-                          borderRadius:6,padding:"2px 8px",fontSize:12,color:isUnder?"#f78166":"#58a6ff",fontWeight:700,whiteSpace:"nowrap"}}>
-                          {isUnder ? "Under" : "Over"} {lineVal} {tLabel}
-                        </span>
                         <span style={{background:"rgba(63,185,80,0.13)",border:"1px solid #3fb950",
                           borderRadius:6,padding:"2px 8px",fontSize:12,color:"#3fb950",fontWeight:700,whiteSpace:"nowrap"}}>
                           +{play.edge}%
@@ -235,19 +233,15 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                       padding:"14px 16px",marginBottom:10,transition:"border-color 0.15s"}}
                     onMouseEnter={e => e.currentTarget.style.borderColor="#58a6ff"}
                     onMouseLeave={e => e.currentTarget.style.borderColor="#30363d"}>
-                    {/* Header — matchup + time on the MatchupCard above; just market badges + bet pill here */}
+                    {/* Header — bet headline + edge + star. Matchup logos + time live on the MatchupCard above. */}
                     <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-                      <div style={{flex:1,minWidth:0,display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
+                      <span style={{flex:1,minWidth:0,fontSize:14,fontWeight:700,lineHeight:1.3,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                        <span><span style={{color:"#c9d1d9"}}>{play.awayTeam} @ {play.homeTeam}</span>{" "}<span style={{color:isUnder?"#f78166":"#58a6ff"}}>{isUnder ? "Under" : "Over"} {lineVal} {tLabel}</span></span>
                         {play.lowVolume && <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(231,179,49,0.12)",border:"1px solid #e3b341",color:"#e3b341"}}>Low Vol</span>}
                         {play.thinMarket && <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(247,129,102,0.10)",border:"1px solid #f78166",color:"#f78166"}}>Wide Spread</span>}
                         {play.lineMove != null && Math.abs(play.lineMove) >= 3 && <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:play.lineMove > 0 ? "rgba(63,185,80,0.10)" : "rgba(247,129,102,0.10)",border:`1px solid ${play.lineMove > 0 ? "#3fb950" : "#f78166"}`,color:play.lineMove > 0 ? "#3fb950" : "#f78166"}}>{play.lineMove > 0 ? "▲" : "▼"} {Math.abs(play.lineMove)}c</span>}
-                      </div>
-                      {/* Threshold badge + edge badge + star button */}
+                      </span>
                       <div style={{display:"flex",alignItems:"center",gap:7,flexShrink:0}}>
-                        <span style={{background:isUnder?"rgba(247,129,102,0.12)":"rgba(88,166,255,0.12)",border:`1px solid ${isUnder?"#f78166":"#58a6ff"}`,
-                          borderRadius:6,padding:"2px 8px",fontSize:12,color:isUnder?"#f78166":"#58a6ff",fontWeight:700,whiteSpace:"nowrap"}}>
-                          {isUnder ? "Under" : "Over"} {lineVal} {tLabel}
-                        </span>
                         <span style={{background:"rgba(63,185,80,0.13)",border:"1px solid #3fb950",
                           borderRadius:6,padding:"2px 8px",fontSize:12,color:"#3fb950",fontWeight:700,whiteSpace:"nowrap"}}>
                           +{play.edge}%
@@ -435,10 +429,14 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                         onError={e => { e.target.style.display="none"; }}/>
                     )}
                     <div style={{flex:1,minWidth:0}}>
-                      <div style={{display:"flex",alignItems:"center",gap:6}}>
-                        <div style={{color:"#fff",fontSize:14,fontWeight:700}}>{play.playerName}</div>
+                      {/* Player name + threshold + stat inline as the bet headline.
+                          Matchup + time live on the MatchupCard above. */}
+                      <div style={{display:"flex",alignItems:"baseline",gap:6,flexWrap:"wrap"}}>
+                        <span style={{color:"#fff",fontSize:14,fontWeight:700}}>{play.playerName}</span>
+                        <span style={{color:"#58a6ff",fontSize:13,fontWeight:700,whiteSpace:"nowrap"}}>
+                          {play.threshold}+ {STAT_LABEL[play.stat] || play.stat}
+                        </span>
                       </div>
-                      {/* Team/opp + time live on the MatchupCard above. Position + status badges stay. */}
                       <div style={{color:"#8b949e",fontSize:11,marginTop:2,display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
                         {play.position && <span>{play.position}</span>}
                         {play.playerStatus === "out" && (
@@ -456,10 +454,6 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                       </div>
                     </div>
                     <div style={{display:"flex",alignItems:"center",gap:7,flexShrink:0}}>
-                      <span style={{background:"rgba(88,166,255,0.12)",border:"1px solid #58a6ff",
-                        borderRadius:6,padding:"2px 8px",fontSize:12,color:"#58a6ff",fontWeight:700,whiteSpace:"nowrap"}}>
-                        {play.threshold}+ {STAT_LABEL[play.stat] || play.stat}
-                      </span>
                       <span style={{background:"rgba(63,185,80,0.13)",border:"1px solid #3fb950",
                         borderRadius:6,padding:"2px 8px",fontSize:12,color:"#3fb950",fontWeight:700,whiteSpace:"nowrap"}}>
                         +{play.edge}%
