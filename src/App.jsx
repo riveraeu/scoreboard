@@ -1045,6 +1045,7 @@ function App() {
         setReportSort={setReportSort}
         navigateToPlayer={navigateToPlayer}
         navigateToTeam={navigateToTeam}
+        modelVersion={modelVersion}
       />}
 
       {/* Auth modal */}

@@ -207,7 +207,45 @@ function buildSimTooltip(m) {
   return null;
 }
 
-function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, setReportSport, reportLoadingSport, reportSort, setReportSort, navigateToPlayer, navigateToTeam }) {
+// Map each dcPenalty key to a DC component group, so the v2 report can sum penalties per
+// component column. Mirrors the buckets in `_computeDataConfidence` in api/[...path].js.
+const DC_PENALTY_GROUP = {
+  // Market quality
+  kalshiStale: "freshness", lowVolume: "freshness", wideSpread: "freshness",
+  // Lineup
+  mlbLineupNotConfirmed: "lineup", mlbLineupUnknown: "lineup",
+  nbaLineupNotPosted: "lineup", nbaBench: "lineup", noLineupData: "lineup",
+  // Availability
+  playerOut: "availability", playerQuestionable: "availability",
+  // Sample size
+  noStdBF: "sample", highStdBF: "sample",
+  tinyBvPSample: "sample", smallBvPSample: "sample", modestBvPSample: "sample",
+  tinySoftSample: "sample", smallSoftSample: "sample", noSoftGames: "sample",
+  noSeasonSample: "sample", tinySeasonSample: "sample", smallSeasonSample: "sample",
+  noH2HSample: "sample", tinyH2HSample: "sample", smallH2HSample: "sample",
+  // Opp data
+  noOppLineupKPct: "oppData", oppLineupProjected: "oppData",
+  noBvPSource: "oppData", handednessOnly: "oppData",
+  noOppMetric: "oppData", noDvpRatio: "oppData", noDvpRatioStructural: "oppData",
+  noOppRank: "oppData", noGameOuLine: "oppData",
+  noOppWhipSource: "oppData", oppWhipTeamFallback: "oppData", noOppDefRtg: "oppData",
+  noHomeWhipSource: "oppData", homeWhipTeamFallback: "oppData",
+  noAwayWhipSource: "oppData", awayWhipTeamFallback: "oppData",
+  // Threshold distance (totals only)
+  modestlyFromLine: "distance", farFromLine: "distance",
+};
+function dcGroupTotal(m, group) {
+  const pens = m.dcPenalties || {};
+  let total = 0;
+  let labels = [];
+  for (const [k, v] of Object.entries(pens)) {
+    if (DC_PENALTY_GROUP[k] === group) { total += v; labels.push(`${k} ${v}`); }
+  }
+  return { total, labels };
+}
+
+function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, setReportSport, reportLoadingSport, reportSort, setReportSort, navigateToPlayer, navigateToTeam, modelVersion }) {
+  const isV2 = modelVersion === "v2";
         const reportData = reportDataBySport[reportSport] || null;
         const reportLoading = reportLoadingSport === reportSport;
   return (
@@ -265,8 +303,11 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                 const REPORT_SPORT_COL = { mlb:"#4ade80", nba:"#f97316", nhl:"#60a5fa" };
                 const SPORT_ORD = { mlb:0, nba:1, nhl:2, nfl:3 };
 
-                const plays = (reportData.plays || []).map(p => ({ ...p, qualified: p.qualified !== false }));
-                const dropped = (reportData.dropped || []).map(p => ({ ...p, qualified: false }));
+                // In v2, "qualified" is dcQualified ∧ edge ≥ 3 — not the SimScore-based flag.
+                // Recompute so the UI's qualified-sort, badge count, and color treat v2 consistently.
+                const _isV2Q = (p) => p.dcQualified === true && (p.edge ?? 0) >= 3;
+                const plays = (reportData.plays || []).map(p => ({ ...p, qualified: isV2 ? _isV2Q(p) : (p.qualified !== false) }));
+                const dropped = (reportData.dropped || []).map(p => ({ ...p, qualified: isV2 ? _isV2Q(p) : false }));
                 const filtered = [...plays, ...dropped];
 
                 // Group by sport+stat (totals also split by direction)
@@ -340,6 +381,13 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                         case "ou": return m.gameTotal ?? 0;
                         case "dvp": return m.posDvpRank ?? m.oppRank ?? 99;
                         case "sim": return (direction === "under" ? (m.underSimScore ?? m.teamTotalSimScore ?? m.totalSimScore) : (m.teamTotalSimScore ?? m.totalSimScore)) ?? m.finalSimScore ?? m.hitterFinalSimScore ?? m.nbaSimScore ?? 0;
+                        case "dc": return m.dataConfidence ?? 0;
+                        case "dcMkt": return dcGroupTotal(m, "freshness").total;
+                        case "dcLineup": return dcGroupTotal(m, "lineup").total;
+                        case "dcAvail": return dcGroupTotal(m, "availability").total;
+                        case "dcSample": return dcGroupTotal(m, "sample").total;
+                        case "dcOppData": return dcGroupTotal(m, "oppData").total;
+                        case "dcDist": return dcGroupTotal(m, "distance").total;
                         case "env": return m.parkFactor ?? m.hitterParkKF ?? 1;
                         case "brrl": return m.hitterBarrelPct ?? 0;
                         case "nbapace": return m.nbaPaceAdj ?? -99;
@@ -391,6 +439,13 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                       return _sortCfg.dir === "desc" ? -cmp : cmp;
                     }
                     if ((a.qualified !== false) !== (b.qualified !== false)) return (a.qualified !== false) ? -1 : 1;
+                    if (isV2) {
+                      // v2: rank by DC desc, then edge desc. Replaces SimScore-based sort.
+                      const dca = a.dataConfidence ?? 0;
+                      const dcb = b.dataConfidence ?? 0;
+                      if (dcb !== dca) return dcb - dca;
+                      return (b.edge || b.kalshiPct || 0) - (a.edge || a.kalshiPct || 0);
+                    }
                     const _simF = m => direction === "under" ? (m.underSimScore ?? m.totalSimScore ?? m.teamTotalSimScore) : (m.totalSimScore ?? m.teamTotalSimScore);
                     const sa = _simF(a) ?? a.finalSimScore ?? a.hitterFinalSimScore ?? a.nbaSimScore ?? a.nhlSimScore ?? a.simScore ?? a.hitterSimScore ?? 0;
                     const sb = _simF(b) ?? b.finalSimScore ?? b.hitterFinalSimScore ?? b.nbaSimScore ?? b.nhlSimScore ?? b.simScore ?? b.hitterSimScore ?? 0;
@@ -431,8 +486,27 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                           "mlb|teamRuns":     [{k:"sim",l:"Score"},{k:"ttSeasonHR",l:"Ssn HR%"},{k:"ttWhip",l:"WHIP"},{k:"ttL10RPG",l:"L10 RPG"},{k:"ttH2HHR",l:"H2H HR%"},{k:"ttOu",l:"O/U"},{k:"ttOpp",l:"Opp",flex:2}],
                           "nba|teamPoints":   [{k:"sim",l:"Score"},{k:"ttNbaOff",l:"OffRtg"},{k:"ttNbaDef",l:"DefRtg"},{k:"ttNbaSsnHR",l:"Ssn HR%"},{k:"ttH2HHR",l:"H2H HR%"},{k:"ttOu",l:"O/U"},{k:"ttOpp",l:"Opp",flex:2}],
                         };
-                        const xcols = XCOLS[`${sport}|${stat}`] || [];
+                        // v2 mode: universal DC penalty columns instead of per-(sport,stat) SimScore
+                        // breakdowns. The matchup-quality detail (CSW%, USG, etc.) is dropped — those
+                        // signals already feed truePct via the lambda (per docs/SIMSCORE_AUDIT.md).
+                        const _isTotalsType = (stat === "totalRuns" || stat === "totalPoints" || stat === "totalGoals" || stat === "teamRuns" || stat === "teamPoints");
+                        const V2_XCOLS = [
+                          {k:"dc", l:"DC"},
+                          {k:"dcMkt", l:"Mkt"},
+                          {k:"dcLineup", l:"Lineup"},
+                          {k:"dcAvail", l:"Avail"},
+                          {k:"dcSample", l:"Sample"},
+                          {k:"dcOppData", l:"Opp"},
+                          ..._isTotalsType ? [{k:"dcDist", l:"Dist"}] : [],
+                        ];
+                        const xcols = isV2 ? V2_XCOLS : (XCOLS[`${sport}|${stat}`] || []);
                         const DASH = <span style={{color:"#21262d"}}>—</span>;
+                        const _dcCell = (m, group) => {
+                          const { total, labels } = dcGroupTotal(m, group);
+                          if (total === 0) return <span style={{color:"#3fb950"}}>✓</span>;
+                          const tip = labels.join('\n');
+                          return <Tip tip={tip} style={{color: total <= -3 ? "#f78166" : total <= -1 ? "#e3b341" : "#3fb950", cursor: "pointer"}}>{total}</Tip>;
+                        };
                         const xcell = (m, k) => {
                           const C = (v, col) => v != null ? <span style={{color:col}}>{v}</span> : DASH;
                           const era = m.hitterPitcherEra ?? m.pitcherEra ?? m.era;
@@ -461,6 +535,21 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                           if (k==="mlbOu") { const v = m.gameOuLine ?? m.hitterGameTotal; if (v == null) return DASH; const isU=m.direction==="under"; const color=isU?(v<7.5?"#3fb950":v<9.5?"#e3b341":"#f78166"):(v>=9.5?"#3fb950":v>=7.5?"#e3b341":"#f78166"); return <span style={{color}}>{v}</span>; }
                           if (k==="dvp") { const r = m.posDvpRank ?? m.oppRank; const ratio = m.dvpRatio; const dvpColor = ratio == null ? "#f78166" : ratio >= 1.05 ? "#3fb950" : ratio >= 1.02 ? "#e3b341" : "#f78166"; return C(r != null ? `#${r}${m.posGroup?" "+m.posGroup:""}` : null, dvpColor); }
                           if (k==="sim") { const sc = m.teamTotalSimScore ?? m.totalSimScore ?? m.finalSimScore ?? m.hitterFinalSimScore ?? m.nbaSimScore ?? m.wnbaSimScore ?? m.nhlSimScore ?? m.simScore ?? m.hitterSimScore; const tip = buildSimTooltip(m); return sc != null ? <Tip tip={tip} style={{color:sc>=8?"#3fb950":sc>=5?"#e3b341":"#f78166",fontWeight:600,cursor:tip?"pointer":"default"}}>{sc}/10</Tip> : DASH; }
+                          if (k==="dc") {
+                            const dc = m.dataConfidence;
+                            if (dc == null) return DASH;
+                            const gate = m.dcGate ?? 9;
+                            const pens = Object.entries(m.dcPenalties || {});
+                            const tip = pens.length === 0 ? `DC ${dc}/10 (clean, gate ≥ ${gate})` : `DC ${dc}/10 (gate ≥ ${gate})\n` + pens.map(([k, v]) => `${k} ${v}`).join('\n');
+                            const color = dc >= gate ? "#3fb950" : dc >= gate - 2 ? "#e3b341" : "#f78166";
+                            return <Tip tip={tip} style={{color, fontWeight: 600, cursor: "pointer"}}>{dc}/10</Tip>;
+                          }
+                          if (k==="dcMkt") return _dcCell(m, "freshness");
+                          if (k==="dcLineup") return _dcCell(m, "lineup");
+                          if (k==="dcAvail") return _dcCell(m, "availability");
+                          if (k==="dcSample") return _dcCell(m, "sample");
+                          if (k==="dcOppData") return _dcCell(m, "oppData");
+                          if (k==="dcDist") return _dcCell(m, "distance");
                           if (k==="env") { const pf = m.parkFactor ?? m.hitterParkKF; if (pf == null) return DASH; const pct = Math.round((pf-1)*100); const disp = (pct>=0?"+":"")+pct+"%"; return <span style={{color:pf>1.02?"#3fb950":pf<0.98?"#f78166":"#8b949e"}}>{disp}</span>; }
                           if (k==="brrl") { const b = m.hitterBarrelPct; return b != null ? <span style={{color:b>=14?"#3fb950":b>=10?"#e3b341":b>=7?"#8b949e":"#f78166"}}>{b.toFixed(1)+"%"}</span> : DASH; }
                           if (k==="nbapace") { const p = m.nbaPaceAdj; return p != null ? <span style={{color:p>0?"#3fb950":p>-2?"#e3b341":"#8b949e"}}>{p>0?"+":""}{p.toFixed(1)}</span> : DASH; }
