@@ -2042,6 +2042,23 @@ var worker_default = {
             const keys = Object.keys(m);
             return { size: keys.length, keys: keys.slice(0, 12), sample: keys.slice(0, 3).map(k => ({ key: k, value: m[k] })) };
           })();
+          // Probe a specific pitcher to verify lookup path. PIT (Skenes) used as default;
+          // override via `?probe=TEAM` (e.g. ?debug=byteam&probe=NYY).
+          const probeTeam = (params.get("probe") || "PIT").toUpperCase();
+          const probeName = (mlb.probables?.[probeTeam] || {}).name || null;
+          const probeOpp = (mlb.probables?.[probeTeam] || {}).opp || null;
+          const probeNameNorm = probeName ? probeName.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase() : null;
+          // Replicate the play-loop _pt() helper exactly so the answer reflects what the
+          // emission code would see: name-keyed first, then team|opp, then team.
+          const _psProbe = probeName ? mlb.pitcherStatsByName?.[probeName] : null;
+          const _psProbeNorm = probeNameNorm ? mlb.pitcherStatsByName?.[probeNameNorm] : null;
+          const _ptProbe = (m, f) => {
+            const ps = _psProbe;
+            const stepName = (f != null && ps?.[f] !== undefined ? ps[f] : null);
+            const stepMatchup = m?.[`${probeTeam}|${probeOpp}`] ?? null;
+            const stepTeam = m?.[probeTeam] ?? null;
+            return { fromName: stepName, fromMatchup: stepMatchup, fromTeam: stepTeam, resolved: stepName ?? stepMatchup ?? stepTeam ?? null };
+          };
           return jsonResponse({
             ok: true,
             debug: "byteam",
@@ -2059,6 +2076,20 @@ var worker_default = {
               pitcherStatsByName: _statsByNameSample,
               probables: _previewMap(mlb.probables),
               gameHomeTeams: _previewMap(mlb.gameHomeTeams),
+            },
+            probe: {
+              team: probeTeam,
+              opp: probeOpp,
+              name: probeName,
+              nameNormalized: probeNameNorm,
+              psLookup_caseExact: _psProbe ?? null,
+              psLookup_normalized: _psProbeNorm ?? null,
+              kPct: _ptProbe(mlb.pitcherKPct, "kPct"),
+              kbbPct: _ptProbe(mlb.pitcherKBBPct, "kbbPct"),
+              cswPct: _ptProbe(mlb.pitcherCSWPct, "cswPct"),
+              avgBF: _ptProbe(mlb.pitcherAvgBF, "avgBF"),
+              stdBF: _ptProbe(mlb.pitcherStdBF, "stdBF"),
+              gs26: _ptProbe(mlb.pitcherGS26, "gs26"),
             },
           });
         }
