@@ -99,19 +99,17 @@ function App() {
     const truePct = play?.direction === "under" ? (play?.noTruePct ?? play?.truePct) : play?.truePct;
     const ao = play?.americanOdds;
     const kFrac = e == null ? null : e < 10 ? 0.125 : 0.5;
-    // Round to cents — raw Kelly floats (e.g. 148.137105) overflow the narrow stake input in MyPicksColumn.
-    const round2 = (n) => Math.round(n * 100) / 100;
     if (kFrac != null && truePct != null && ao != null && ao !== 0) {
       const b = ao > 0 ? ao / 100 : 100 / Math.abs(ao);
       const p = truePct / 100;
       const f = Math.max(0, (b * p - (1 - p)) / b);
       const stake = bankroll * f * kFrac;
-      if (stake > 0) return round2(Math.min(stake, STAKE_CAP));
+      if (stake > 0) return Math.round(Math.min(stake, STAKE_CAP));
     }
 
     // Fallback when Kelly can't compute (missing truePct/odds, or Kelly = 0).
     const u = e == null ? 1 : e < 10 ? 1 : e < 15 ? 3 : 5;
-    return round2(Math.min(u * UNIT_DOLLARS, STAKE_CAP));
+    return Math.round(Math.min(u * UNIT_DOLLARS, STAKE_CAP));
   };
   const kalshiCache = React.useRef({}); // memoize Kalshi fetches by "playerName|sport|stat"
   const [expandedPlays, setExpandedPlays] = React.useState(new Set());
