@@ -16,8 +16,11 @@ const SIMSCORE_GATE = 8;
 // allowed in the season-hit-rate blend. Stops runaway inversions when seasonHitRate is near 0/100 at
 // far-from-line thresholds — the inversion math is brittle and double-counts signal already in the
 // model mean. Also drives a dataConfidence -1 penalty (seasonRateDivergent) when the raw delta exceeds
-// the cap, so picks built on a clamped implied mean drop a confidence point.
+// the cap, so picks built on a clamped implied mean drop a confidence point. Team-total caps are
+// tighter than game-total caps because single-team std is smaller, so a given mean displacement has
+// a bigger probability impact.
 const _GT_IMPLIED_CAP = { nba: 8, wnba: 6, mlb: 1.5, nhl: 1.0 };
+const _TT_IMPLIED_CAP = { nba: 6, mlb: 1.0 };
 // dataConfidence per-sport AND per-play-type gate thresholds — see docs/MODEL.md "dataConfidence".
 // Totals/teamTotals have a higher ceiling than player props (no lineup-confirmation penalty, no
 // per-player sample-size penalty) so they'd dominate a flat-9 gate. Asymmetric gates:
@@ -5057,12 +5060,15 @@ var worker_default = {
               // ttSeasonHitRate at this threshold; sample-weighted blend with model lambda.
               // Cleaner attribution than post-sim — seasonHitRate is a lambda input now.
               const _ttModelTruePct = truePct;
-              let _ttImpliedLambda = null, _ttBlendedLambda = null;
+              let _ttImpliedLambda = null, _ttBlendedLambda = null, _ttImpliedLambdaClamped = null;
               if (truePct != null && ttSeasonHitRate != null && _lam != null) {
                 const _w = Math.min(1, _ttSched.length / 40) * 0.7;
                 _ttImpliedLambda = lambdaForPoissonTail(threshold, ttSeasonHitRate / 100);
                 if (_ttImpliedLambda != null) {
-                  _ttBlendedLambda = parseFloat(((1 - _w) * _lam + _w * _ttImpliedLambda).toFixed(2));
+                  const _cap = _TT_IMPLIED_CAP.mlb;
+                  const _impliedClamped = Math.max(_lam - _cap, Math.min(_lam + _cap, _ttImpliedLambda));
+                  if (_impliedClamped !== _ttImpliedLambda) _ttImpliedLambdaClamped = parseFloat(_impliedClamped.toFixed(2));
+                  _ttBlendedLambda = parseFloat(((1 - _w) * _lam + _w * _impliedClamped).toFixed(2));
                   truePct = parseFloat(((1 - poissonCDF(threshold - 1, _ttBlendedLambda)) * 100).toFixed(1));
                 }
               }
@@ -5077,7 +5083,7 @@ var worker_default = {
               // Both lineups confirmed (MLB only): scoringTeam + oppTeam each have a posted lineup, neither projected.
               const _ttLineupsConfirmed = (sportByteam.mlb?.lineupSpotByName?.[scoringTeam] != null && !(sportByteam.mlb?.projectedLineupTeams || []).includes(scoringTeam))
                 && (sportByteam.mlb?.lineupSpotByName?.[oppTeam] != null && !(sportByteam.mlb?.projectedLineupTeams || []).includes(oppTeam));
-              const _ttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), ...(_ttModelTruePct != null && _ttModelTruePct !== truePct && { modelTruePct: parseFloat(_ttModelTruePct.toFixed(1)) }), ...(_ttImpliedLambda != null && { ttImpliedLambda: _ttImpliedLambda, ttBlendedLambda: _ttBlendedLambda }), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _ttGameTime, lineupsConfirmed: _ttLineupsConfirmed, teamRPG, oppERA, oppFIP, oppWHIP, ...(oppWHIPSource && { oppWHIPSource }), oppRPG, parkFactor: parkRF, gameOuLine, teamExpected: _lam != null ? parseFloat(_lam.toFixed(1)) : null, h2hHitRate, h2hGames, h2hHitRatePts, teamL10RPG, ttL10Pts, ttWhipPts, ttOuPts, umpireRunFactor: _ttUmpRunFactor, ...(_ttUmpName && { umpireName: _ttUmpName }), ttSeasonHitRate, ttSeasonHitRatePts, oppStarterHand: _ttOppStarterHand, ...(_ttPlatFactor !== 1.0 && { platoonFactor: _ttPlatFactor }) };
+              const _ttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), ...(_ttModelTruePct != null && _ttModelTruePct !== truePct && { modelTruePct: parseFloat(_ttModelTruePct.toFixed(1)) }), ...(_ttImpliedLambda != null && { ttImpliedLambda: _ttImpliedLambda, ttBlendedLambda: _ttBlendedLambda }), ...(_ttImpliedLambdaClamped != null && { ttImpliedLambdaClamped: _ttImpliedLambdaClamped }), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _ttGameTime, lineupsConfirmed: _ttLineupsConfirmed, teamRPG, oppERA, oppFIP, oppWHIP, ...(oppWHIPSource && { oppWHIPSource }), oppRPG, parkFactor: parkRF, gameOuLine, teamExpected: _lam != null ? parseFloat(_lam.toFixed(1)) : null, h2hHitRate, h2hGames, h2hHitRatePts, teamL10RPG, ttL10Pts, ttWhipPts, ttOuPts, umpireRunFactor: _ttUmpRunFactor, ...(_ttUmpName && { umpireName: _ttUmpName }), ttSeasonHitRate, ttSeasonHitRatePts, oppStarterHand: _ttOppStarterHand, ...(_ttPlatFactor !== 1.0 && { platoonFactor: _ttPlatFactor }) };
               const rawEdge = parseFloat((truePct - kalshiPct).toFixed(1));
               const edge = rawEdge;
               const _ttOverInWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
@@ -5145,13 +5151,16 @@ var worker_default = {
               const ttNbaSeasonHitRatePts = ttNbaSeasonHitRate == null ? 1 : ttNbaSeasonHitRate >= 80 ? 2 : ttNbaSeasonHitRate >= 60 ? 1 : 0;
               // Pre-sim mean blend (Normal). Single-team std=11 for NBA. Same lambda-blend
               // attribution pattern as game totals.
-              let _ttNbaModelTruePct = null, _ttNbaImpliedMean = null, _ttNbaBlendedMean = null;
+              let _ttNbaModelTruePct = null, _ttNbaImpliedMean = null, _ttNbaBlendedMean = null, _ttNbaImpliedMeanClamped = null;
               if (truePct != null && ttNbaSeasonHitRate != null && _teamExpected != null) {
                 _ttNbaModelTruePct = parseFloat(truePct.toFixed(1));
                 const _w = Math.min(1, _ttNbaSched.length / 40) * 0.7;
                 _ttNbaImpliedMean = meanForNormalTail(threshold, ttNbaSeasonHitRate / 100, 11);
                 if (_ttNbaImpliedMean != null) {
-                  _ttNbaBlendedMean = parseFloat(((1 - _w) * _teamExpected + _w * _ttNbaImpliedMean).toFixed(2));
+                  const _cap = _TT_IMPLIED_CAP.nba;
+                  const _impliedClamped = Math.max(_teamExpected - _cap, Math.min(_teamExpected + _cap, _ttNbaImpliedMean));
+                  if (_impliedClamped !== _ttNbaImpliedMean) _ttNbaImpliedMeanClamped = parseFloat(_impliedClamped.toFixed(2));
+                  _ttNbaBlendedMean = parseFloat(((1 - _w) * _teamExpected + _w * _impliedClamped).toFixed(2));
                   truePct = parseFloat(((1 - normCDF(threshold - 0.5, _ttNbaBlendedMean, 11)) * 100).toFixed(1));
                 }
               }
@@ -5175,7 +5184,7 @@ var worker_default = {
                 : null;
               const _ttScoringOut = (nbaInjuryMap.get(scoringTeam) || []).length;
               const _ttOppOut = (nbaInjuryMap.get(oppTeam) || []).length;
-              const _nttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), ...(_ttNbaModelTruePct != null && _ttNbaModelTruePct !== truePct && { modelTruePct: _ttNbaModelTruePct }), ...(_ttNbaImpliedMean != null && { ttNbaImpliedMean: _ttNbaImpliedMean, ttNbaBlendedMean: _ttNbaBlendedMean }), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _nttGameTime, teamOffRtg, oppDefRtg, teamExpected: _teamExpected != null ? parseFloat(_teamExpected.toFixed(1)) : null, gameOuLine: _nbaOuLine, gameSpread: _gameSpread, projPace: _ttNbaProjPace, leagueAvgPace: _lgPaceNba, scoringOut: _ttScoringOut, oppOut: _ttOppOut, h2hHitRate, h2hGames, h2hHitRatePts, ttNbaSeasonHitRate, ttNbaSeasonHitRatePts, ttOffRtgPts, ttDefRtgPts, ttNbaOuPts, ...(_ttIsPlayoff && { playoffBoost: _PLAYOFF_OFF_BOOST }) };
+              const _nttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), ...(_ttNbaModelTruePct != null && _ttNbaModelTruePct !== truePct && { modelTruePct: _ttNbaModelTruePct }), ...(_ttNbaImpliedMean != null && { ttNbaImpliedMean: _ttNbaImpliedMean, ttNbaBlendedMean: _ttNbaBlendedMean }), ...(_ttNbaImpliedMeanClamped != null && { ttNbaImpliedMeanClamped: _ttNbaImpliedMeanClamped }), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _nttGameTime, teamOffRtg, oppDefRtg, teamExpected: _teamExpected != null ? parseFloat(_teamExpected.toFixed(1)) : null, gameOuLine: _nbaOuLine, gameSpread: _gameSpread, projPace: _ttNbaProjPace, leagueAvgPace: _lgPaceNba, scoringOut: _ttScoringOut, oppOut: _ttOppOut, h2hHitRate, h2hGames, h2hHitRatePts, ttNbaSeasonHitRate, ttNbaSeasonHitRatePts, ttOffRtgPts, ttDefRtgPts, ttNbaOuPts, ...(_ttIsPlayoff && { playoffBoost: _PLAYOFF_OFF_BOOST }) };
               const rawEdge = parseFloat((truePct - kalshiPct).toFixed(1));
               const edge = rawEdge;
               const _nttOverInWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
@@ -5382,14 +5391,21 @@ var worker_default = {
           } else if (sport === "nba" && gameType === "teamTotal") {
             if (p.oppDefRtg == null) _pen("noOppDefRtg", 3);
           }
-          // ── Season-hit-rate divergence penalty (game totals) — when the rate-inverted
-          // implied mean/lambda diverges from the model mean/lambda by more than _GT_IMPLIED_CAP,
-          // the blend clamps in the simulate path but the play is built on softened math. Drop a
-          // dataConfidence point so divergent picks fail the v2 dcGate (Phase B).
+          // ── Season-hit-rate divergence penalty (game + team totals) — when the rate-inverted
+          // implied mean/lambda diverges from the model mean/lambda by more than the per-sport
+          // cap, the blend clamps in the simulate path but the play is built on softened math.
+          // Drop a dataConfidence point so divergent picks fail the v2 dcGate (Phase B). Caps
+          // differ between game totals and team totals because single-team std is smaller.
           if (gameType === "total" && _GT_IMPLIED_CAP[sport] != null) {
             const _model = p.modelMean ?? p.modelLambda;
             const _impl  = p.impliedMean ?? p.impliedLambda;
             if (_model != null && _impl != null && Math.abs(_impl - _model) > _GT_IMPLIED_CAP[sport]) {
+              _pen("seasonRateDivergent", 1);
+            }
+          } else if (gameType === "teamTotal" && _TT_IMPLIED_CAP[sport] != null) {
+            const _model = p.teamExpected;
+            const _impl  = p.ttNbaImpliedMean ?? p.ttImpliedLambda;
+            if (_model != null && _impl != null && Math.abs(_impl - _model) > _TT_IMPLIED_CAP[sport]) {
               _pen("seasonRateDivergent", 1);
             }
           }
