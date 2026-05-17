@@ -2024,6 +2024,42 @@ var worker_default = {
             })
           ].filter(Boolean));
         }
+        // ── ?debug=byteam diagnostic ────────────────────────────────────────────────────────
+        // Dumps key pitcher maps to verify what made it into sportByteam.mlb before the play
+        // loops run. Symptom we're investigating: pitcherKPct/avgBF/stdBF/gs26 null on emitted
+        // plays even though pitcherKBBPct/cswPct populate correctly for the same pitchers.
+        if (params.get("debug") === "byteam") {
+          const mlb = sportByteam.mlb || {};
+          const _previewMap = (m) => {
+            if (!m || typeof m !== "object") return { type: typeof m, value: m };
+            const keys = Object.keys(m);
+            return { size: keys.length, sample: Object.fromEntries(keys.slice(0, 8).map(k => [k, m[k]])) };
+          };
+          const _statsByNameSample = (() => {
+            const m = mlb.pitcherStatsByName || {};
+            const keys = Object.keys(m);
+            return { size: keys.length, keys: keys.slice(0, 12), sample: keys.slice(0, 3).map(k => ({ key: k, value: m[k] })) };
+          })();
+          return jsonResponse({
+            ok: true,
+            debug: "byteam",
+            mlb: {
+              pitcherKPct: _previewMap(mlb.pitcherKPct),
+              pitcherKBBPct: _previewMap(mlb.pitcherKBBPct),
+              pitcherCSWPct: _previewMap(mlb.pitcherCSWPct),
+              pitcherAvgPitches: _previewMap(mlb.pitcherAvgPitches),
+              pitcherAvgBF: _previewMap(mlb.pitcherAvgBF),
+              pitcherStdBF: _previewMap(mlb.pitcherStdBF),
+              pitcherGS26: _previewMap(mlb.pitcherGS26),
+              pitcherHasAnchor: _previewMap(mlb.pitcherHasAnchor),
+              pitcherHand: _previewMap(mlb.pitcherHand),
+              pitcherEra: _previewMap(mlb.pitcherEra),
+              pitcherStatsByName: _statsByNameSample,
+              probables: _previewMap(mlb.probables),
+              gameHomeTeams: _previewMap(mlb.gameHomeTeams),
+            },
+          });
+        }
         // NBA scoring (offensive PPG) — load from KV cache or fetch fresh when nba byteam was served from cache
         if (sportsNeeded.has("nba") && !sportByteam.nbaScoring) {
           if (CACHE2 && !isBustCache) sportByteam.nbaScoring = await CACHE2.get("byteam:nba:scoring", "json").catch(() => null);
