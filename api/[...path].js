@@ -3939,11 +3939,18 @@ var worker_default = {
                 parkFactor: parkFactorOut,
                 gameMoneyline: sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null,
                 gameTotal: sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null,
+                pitcherKPct: pitcherKPctOut,
                 pitcherCSWPct: _pt(sportByteam.mlb?.pitcherCSWPct, "cswPct"),
                 pitcherKBBPct: _pt(sportByteam.mlb?.pitcherKBBPct, "kbbPct"),
                 pitcherRecentKPct: _recentKPct, pitcherSeasonKPct: _seasonKPct,
                 lineupKPct: lineupKPctOut, pitcherAvgPitches: _avgP,
                 expectedBF: _expectedBF !== 24 ? _expectedBF : null,
+                // stdBF is what feeds the dataConfidence noStdBF check — must travel with the play
+                // on every emit path (qualifying + early-drop) or every dropped MLB-K pick lights up
+                // -3 noStdBF for a value that actually exists.
+                stdBF: _stdBF != null ? _stdBF : null,
+                pitcherGS26: _pt(sportByteam.mlb?.pitcherGS26, "gs26"),
+                pitcherHasAnchor: _pt(sportByteam.mlb?.pitcherHasAnchor, "hasAnchor"),
                 kpctMeets, kpctPts, kbbMeets, kbbPts, lkpMeets, pitchesPts, parkMeets, mlPts, totalPts, kTrendPts, kHitRatePts, kH2HHandPts, kH2HHandRate: _kH2HHandRate, kH2HHandStarts: _kH2HHandStarts, kH2HHandMaj: _kH2HHandMaj, blendedHitRate: _blendedHR != null ? parseFloat(_blendedHR.toFixed(1)) : null,
               } : {}),
               ...(sport === "mlb" && stat !== "strikeouts" ? {
