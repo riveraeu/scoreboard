@@ -138,6 +138,12 @@ function buildWnbaPropInputs(p) {
       tooltip: 'WNBA: no per-position DvP available' },
     { label: 'Season rate', value: pct0(p.seasonPct), color: tier(p.seasonPct, 80, 70) },
     { label: 'Soft tier rate', value: pct0(p.softPct), color: tier(p.softPct, 80, 70) },
+    { label: 'Pace adj', value: p.wnbaPaceAdj == null ? null
+        : `${p.wnbaPaceAdj > 0 ? '+' : ''}${p.wnbaPaceAdj.toFixed(1)}`,
+      color: p.wnbaPaceAdj == null ? null
+        : p.wnbaPaceAdj > 0 ? GREEN : p.wnbaPaceAdj > -2 ? YELLOW : GRAY },
+    { label: 'Rest', value: p.isB2B == null ? null : (p.isB2B ? 'B2B' : 'Rested'),
+      color: p.isB2B == null ? null : (p.isB2B ? RED : GREEN) },
     { label: 'Status', value: p.playerStatus && p.playerStatus !== 'active' ? p.playerStatus : null,
       color: p.playerStatus && p.playerStatus !== 'active' ? RED : null },
   ];
@@ -195,6 +201,10 @@ function buildMlbTotalInputs(p) {
 function buildNbaTotalInputs(p) {
   const isUnder = p.direction === 'under';
   const paceAdj = p.projPace != null && p.leagueAvgPace != null ? (p.projPace - p.leagueAvgPace) : null;
+  // H2H rate has different server-side field names: NBA emits `nbaGtH2HRate`, WNBA emits
+  // `wnbaGtH2HRate`. Read either so the shared NBA/WNBA total builder picks up the right value.
+  const h2hRate = p.nbaGtH2HRate ?? p.wnbaGtH2HRate ?? null;
+  const h2hGames = p.nbaGtH2HGames ?? p.wnbaGtH2HGames ?? null;
   return [
     { label: 'Comb OffRtg', value: dec1(p.combOffRtg), color: tierDir(isUnder, p.combOffRtg, 118, 113) },
     { label: 'Comb DefRtg', value: dec1(p.combDefRtg), color: tierDir(isUnder, p.combDefRtg, 118, 113) },
@@ -203,9 +213,9 @@ function buildNbaTotalInputs(p) {
       color: paceAdj == null ? null
         : isUnder ? (paceAdj < -1 ? GREEN : paceAdj < 2 ? YELLOW : RED)
                   : (paceAdj > 1 ? GREEN : paceAdj > -2 ? YELLOW : RED) },
-    { label: 'H2H ≥thr', value: p.nbaGtH2HRate == null ? null
-        : `${p.nbaGtH2HRate}%${p.nbaGtH2HGames ? ` (${p.nbaGtH2HGames}g)` : ''}`,
-      color: tierDir(isUnder, p.nbaGtH2HRate, 60, 40) },
+    { label: 'H2H ≥thr', value: h2hRate == null ? null
+        : `${h2hRate}%${h2hGames ? ` (${h2hGames}g)` : ''}`,
+      color: tierDir(isUnder, h2hRate, 60, 40) },
     { label: 'Ssn ≥thr', value: p.gtSeasonHitRate == null ? null
         : `${p.gtSeasonHitRate}%${p.gtSsnSample ? ` (${p.gtSsnSample}g)` : ''}`,
       color: tierDir(isUnder, p.gtSeasonHitRate, 50, 35) },

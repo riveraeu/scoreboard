@@ -4650,6 +4650,8 @@ var worker_default = {
               })();
               const wnbaGtH2HRate = _wnbaH2H?.rate ?? null;
               const wnbaGtH2HGames = _wnbaH2H?.games ?? null;
+              const _wnbaHomeOut = (wnbaInjuryMap.get(homeTeam) || []).length;
+              const _wnbaAwayOut = (wnbaInjuryMap.get(awayTeam) || []).length;
               const _wCombOffRtg = (_whOffRtg != null && _waOffRtg != null) ? parseFloat(((_whOffRtg + _waOffRtg) / 2).toFixed(1)) : (_whOffRtg ?? _waOffRtg);
               const _wCombDefRtg = (_whDefRtg != null && _waDefRtg != null) ? parseFloat(((_whDefRtg + _waDefRtg) / 2).toFixed(1)) : (_whDefRtg ?? _waDefRtg);
               // WNBA SimScore tiers — calibrated to WNBA scoring environment:
@@ -4667,6 +4669,7 @@ var worker_default = {
                 combOffRtg: _wCombOffRtg, combDefRtg: _wCombDefRtg,
                 homePace: _whp, awayPace: _wap, leagueAvgPace: _wlgPace, projPace: _wProjPace,
                 gameOuLine: _wnbaOuLine, wnbaGtH2HRate, wnbaGtH2HGames,
+                homeOut: _wnbaHomeOut, awayOut: _wnbaAwayOut,
                 combOffRtgPts: _wCombOffRtgPts, combDefRtgPts: _wCombDefRtgPts, pacePts: _wPacePts,
                 wnbaGtH2HPts: _wnbaGtH2HPts, wnbaOuPts: _wnbaOuPts,
                 homeExpected: _wHomeExpRaw != null ? parseFloat(_wHomeExpRaw.toFixed(1)) : null,
