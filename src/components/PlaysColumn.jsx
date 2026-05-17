@@ -100,6 +100,9 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                     onMouseEnter={e => e.currentTarget.style.borderColor="#58a6ff"}
                     onMouseLeave={e => e.currentTarget.style.borderColor="#30363d"}>
                     <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                      <img src={`https://a.espncdn.com/i/teamlogos/${play.sport}/500/${(play.scoringTeam||"").toLowerCase()}.png`} alt={play.scoringTeam}
+                        style={{width:22,height:22,objectFit:"contain",flexShrink:0}}
+                        onError={e=>{e.target.style.visibility="hidden";}} />
                       {/* Bet headline: "TOR Under 5.5 Runs" — team + direction + line + stat in one
                           read. Matchup + time live on the MatchupCard above. */}
                       <span onClick={e=>{e.stopPropagation();navigateToTeam(play.scoringTeam,play.sport);}}
@@ -234,6 +237,14 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                     onMouseLeave={e => e.currentTarget.style.borderColor="#30363d"}>
                     {/* Header — bet headline + edge + star. Matchup logos + time live on the MatchupCard above. */}
                     <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                      <div style={{width:22,height:22,flexShrink:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:1}}>
+                        <img src={`https://a.espncdn.com/i/teamlogos/${play.sport}/500/${(play.awayTeam||"").toLowerCase()}.png`} alt={play.awayTeam}
+                          style={{width:11,height:11,objectFit:"contain"}}
+                          onError={e=>{e.target.style.visibility="hidden";}} />
+                        <img src={`https://a.espncdn.com/i/teamlogos/${play.sport}/500/${(play.homeTeam||"").toLowerCase()}.png`} alt={play.homeTeam}
+                          style={{width:11,height:11,objectFit:"contain"}}
+                          onError={e=>{e.target.style.visibility="hidden";}} />
+                      </div>
                       <span style={{flex:1,minWidth:0,fontSize:14,fontWeight:700,lineHeight:1.3,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",color:"#c9d1d9"}}>
                         <span>{play.awayTeam} @ {play.homeTeam} {isUnder ? "Under" : "Over"} {lineVal} {tLabel}</span>
                         {play.lowVolume && <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(231,179,49,0.12)",border:"1px solid #e3b341",color:"#e3b341"}}>Low Vol</span>}
@@ -420,8 +431,13 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                   {/* Header row — click navigates to player card */}
                   <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,cursor:"pointer"}}
                     onClick={() => navigateToPlay(play)}>
-                    {/* Headshot removed to match the headshot-less game/team-total play cards.
-                        Player identity is conveyed via the inline name + threshold headline. */}
+                    {headshotUrl ? (
+                      <img src={headshotUrl} alt={play.playerName}
+                        style={{width:22,height:22,borderRadius:"50%",objectFit:"cover",objectPosition:"top center",background:"#0d1117",flexShrink:0}}
+                        onError={e=>{e.target.style.visibility="hidden";}} />
+                    ) : (
+                      <div style={{width:22,height:22,borderRadius:"50%",background:"#21262d",flexShrink:0}} />
+                    )}
                     <div style={{flex:1,minWidth:0}}>
                       {/* Player name + threshold + stat inline as the bet headline.
                           Matchup + time live on the MatchupCard above. */}
