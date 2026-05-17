@@ -41,6 +41,15 @@ function buildMlbKInputs(p) {
     { label: 'Park K', value: p.parkFactor == null ? null
         : `${p.parkFactor < 1 ? '−' : '+'}${Math.abs(Math.round((p.parkFactor - 1) * 100))}%`,
       color: factorLow(p.parkFactor) },
+    { label: 'Umpire K', value: p.umpireKFactor == null ? null
+        : `${p.umpireKFactor >= 1 ? '+' : '−'}${Math.abs(Math.round((p.umpireKFactor - 1) * 100))}%${p.umpireName ? ` (${p.umpireName})` : ''}`,
+      color: factor(p.umpireKFactor) },
+    { label: 'Days rest', value: p.pitcherDaysRest == null ? null : `${p.pitcherDaysRest}d`,
+      // Standard rest is 4-5 days. Short (≤3) drags K% via fatigueAdj; long (≥7) is rust/uncertainty.
+      color: p.pitcherDaysRest == null ? null
+        : p.pitcherDaysRest <= 3 ? RED
+        : p.pitcherDaysRest >= 7 ? YELLOW
+        : GREEN },
     { label: 'Opp lineup K%', value: p.lineupKPct == null ? null
         : `${p.lineupKPct.toFixed(1)}%${p.lineupConfirmed ? '' : ' (proj)'}`,
       color: tier(p.lineupKPct, 24, 22) },
@@ -116,6 +125,10 @@ function buildNbaPropInputs(p) {
         : p.nbaStarterConfirmed === false ? YELLOW : null },
     { label: 'Rest', value: p.isB2B == null ? null : (p.isB2B ? 'B2B' : 'Rested'),
       color: p.isB2B == null ? null : (p.isB2B ? RED : GREEN) },
+    { label: 'Home/away split', value: p.nbaSplitAdj == null ? null
+        : `${p.nbaSplitAdj >= 1 ? '+' : '−'}${Math.abs(Math.round((p.nbaSplitAdj - 1) * 100))}%`,
+      color: p.nbaSplitAdj == null ? null
+        : p.nbaSplitAdj >= 1.05 ? GREEN : p.nbaSplitAdj >= 0.95 ? YELLOW : RED },
     { label: 'Game spread', value: p.gameSpread == null ? null
         : `${p.gameSpread > 0 ? '+' : ''}${p.gameSpread}`,
       color: p.gameSpread == null ? null
@@ -148,6 +161,10 @@ function buildWnbaPropInputs(p) {
         : p.wnbaStarterConfirmed === false ? YELLOW : null },
     { label: 'Rest', value: p.isB2B == null ? null : (p.isB2B ? 'B2B' : 'Rested'),
       color: p.isB2B == null ? null : (p.isB2B ? RED : GREEN) },
+    { label: 'Home/away split', value: p.wnbaSplitAdj == null ? null
+        : `${p.wnbaSplitAdj >= 1 ? '+' : '−'}${Math.abs(Math.round((p.wnbaSplitAdj - 1) * 100))}%`,
+      color: p.wnbaSplitAdj == null ? null
+        : p.wnbaSplitAdj >= 1.05 ? GREEN : p.wnbaSplitAdj >= 0.95 ? YELLOW : RED },
     { label: 'Game spread', value: p.gameSpread == null ? null
         : `${p.gameSpread > 0 ? '+' : ''}${p.gameSpread}`,
       color: p.gameSpread == null ? null
@@ -164,8 +181,15 @@ function buildNhlPropInputs(p) {
     { label: 'Opp GAA', value: p.oppMetricValue == null ? null
         : `#${p.oppRank} (${p.oppMetricValue.toFixed(2)})`,
       color: p.oppRank == null ? null : p.oppRank <= 10 ? GREEN : p.oppRank <= 20 ? YELLOW : RED },
+    { label: 'Team GPG', value: dec2(p.nhlTeamGPG), color: tier(p.nhlTeamGPG, 3.5, 3.0) },
+    { label: 'Shots adj', value: p.nhlShotsAdj == null ? null
+        : `${p.nhlShotsAdj > 0 ? '+' : ''}${p.nhlShotsAdj.toFixed(1)}`,
+      color: p.nhlShotsAdj == null ? null
+        : p.nhlShotsAdj > 1 ? GREEN : p.nhlShotsAdj > -1 ? YELLOW : RED },
     { label: 'Season rate', value: pct0(p.seasonPct), color: tier(p.seasonPct, 75, 65) },
     { label: 'Soft tier rate', value: pct0(p.softPct), color: tier(p.softPct, 75, 65) },
+    { label: 'Rest', value: p.isB2B == null ? null : (p.isB2B ? 'B2B' : 'Rested'),
+      color: p.isB2B == null ? null : (p.isB2B ? RED : GREEN) },
   ];
 }
 
@@ -227,6 +251,14 @@ function buildNbaTotalInputs(p) {
     { label: 'Ssn ≥thr', value: p.gtSeasonHitRate == null ? null
         : `${p.gtSeasonHitRate}%${p.gtSsnSample ? ` (${p.gtSsnSample}g)` : ''}`,
       color: tierDir(isUnder, p.gtSeasonHitRate, 50, 35) },
+    // Wider spreads tend to suppress totals — game ends with bench minutes for the trailing
+    // team. Color tier mirrors team-total convention.
+    { label: 'Game spread', value: p.gameSpread == null ? null
+        : `${p.gameSpread > 0 ? '+' : ''}${p.gameSpread}`,
+      color: p.gameSpread == null ? null
+        : (isUnder
+          ? (Math.abs(p.gameSpread) > 10 ? GREEN : Math.abs(p.gameSpread) > 5 ? YELLOW : RED)
+          : (Math.abs(p.gameSpread) <= 5 ? GREEN : Math.abs(p.gameSpread) <= 10 ? YELLOW : RED)) },
     { label: 'Injuries', value: p.homeOut != null || p.awayOut != null
         ? `${(p.homeOut ?? 0) + (p.awayOut ?? 0)}` : null,
       // More injuries → fewer pts → good for under
@@ -247,6 +279,9 @@ function buildNhlTotalInputs(p) {
     { label: 'Away GPG', value: dec2(p.awayGPG), color: tierDir(isUnder, p.awayGPG, 3.5, 3.0) },
     { label: 'Home GAA', value: dec2(p.homeGAA), color: tierDir(isUnder, p.homeGAA, 3.5, 3.0) },
     { label: 'Away GAA', value: dec2(p.awayGAA), color: tierDir(isUnder, p.awayGAA, 3.5, 3.0) },
+    { label: 'H2H ≥thr', value: p.nhlGtH2HRate == null ? null
+        : `${p.nhlGtH2HRate}%${p.nhlGtH2HGames ? ` (${p.nhlGtH2HGames}g)` : ''}`,
+      color: tierDir(isUnder, p.nhlGtH2HRate, 60, 40) },
     { label: 'Ssn ≥thr', value: p.gtSeasonHitRate == null ? null
         : `${p.gtSeasonHitRate}%${p.gtSsnSample ? ` (${p.gtSsnSample}g)` : ''}`,
       color: tierDir(isUnder, p.gtSeasonHitRate, 50, 35) },
@@ -283,14 +318,30 @@ function buildMlbTeamTotalInputs(p) {
 
 function buildNbaTeamTotalInputs(p) {
   const isUnder = p.direction === 'under';
+  const paceAdj = p.projPace != null && p.leagueAvgPace != null ? (p.projPace - p.leagueAvgPace) : null;
   return [
     { label: 'Team OffRtg', value: dec1(p.teamOffRtg), color: tierDir(isUnder, p.teamOffRtg, 118, 113) },
     { label: 'Opp DefRtg', value: dec1(p.oppDefRtg), color: tierDir(isUnder, p.oppDefRtg, 118, 113) },
     { label: 'Team expected', value: dec1(p.teamExpected), color: GRAY },
+    { label: 'Pace adj', value: paceAdj == null ? null
+        : `${paceAdj > 0 ? '+' : ''}${paceAdj.toFixed(1)}`,
+      color: paceAdj == null ? null
+        : isUnder ? (paceAdj < -1 ? GREEN : paceAdj < 2 ? YELLOW : RED)
+                  : (paceAdj > 1 ? GREEN : paceAdj > -2 ? YELLOW : RED) },
     { label: 'Game spread', value: p.gameSpread == null ? null
         : `${p.gameSpread > 0 ? '+' : ''}${p.gameSpread}`,
       color: p.gameSpread == null ? null
         : Math.abs(p.gameSpread) <= 5 ? GREEN : Math.abs(p.gameSpread) <= 10 ? YELLOW : RED },
+    // Injuries: scoring team's outs hurt the OVER; opp's outs help the OVER. Combined count
+    // with a directional color tier — under flips the polarity.
+    { label: 'Injuries', value: p.scoringOut != null || p.oppOut != null
+        ? `${p.scoringOut ?? 0} sco / ${p.oppOut ?? 0} opp` : null,
+      color: (() => {
+        const net = (p.oppOut ?? 0) - (p.scoringOut ?? 0); // +ve favors over
+        if (p.scoringOut == null && p.oppOut == null) return null;
+        if (isUnder) return net <= -1 ? GREEN : net <= 1 ? YELLOW : RED;
+        return net >= 1 ? GREEN : net >= -1 ? YELLOW : RED;
+      })() },
     { label: 'H2H ≥thr', value: p.h2hHitRate == null ? null
         : `${p.h2hHitRate}%${p.h2hGames ? ` (${p.h2hGames}g)` : ''}`,
       color: tierDir(isUnder, p.h2hHitRate, 60, 40) },

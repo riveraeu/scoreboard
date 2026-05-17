@@ -4226,6 +4226,10 @@ var worker_default = {
             pitcherAvgPitches: sport === "mlb" && stat === "strikeouts" ? _avgP : void 0,
             umpireName: sport === "mlb" && stat === "strikeouts" ? _umpireName : void 0,
             umpireKFactor: sport === "mlb" && stat === "strikeouts" && _umpireKFactor !== 1.0 ? _umpireKFactor : void 0,
+            pitcherDaysRest: sport === "mlb" && stat === "strikeouts" ? (() => {
+              const _lsd = _pt(sportByteam.mlb?.pitcherLastStartDate, "lastStartDate");
+              return _lsd ? Math.round((Date.now() - new Date(_lsd).getTime()) / 86400000) : null;
+            })() : void 0,
             expectedBF: sport === "mlb" && stat === "strikeouts" && _expectedBF !== 24 ? _expectedBF : void 0,
             earlyExitProb: sport === "mlb" && stat === "strikeouts" && _earlyExitProb > 0 ? _earlyExitProb : void 0,
             stdBF: sport === "mlb" && stat === "strikeouts" && _stdBF > 0 ? _stdBF : void 0,
@@ -4586,6 +4590,7 @@ var worker_default = {
               const _hp = nbaPaceData?.teamPace?.[homeTeam] ?? null, _ap = nbaPaceData?.teamPace?.[awayTeam] ?? null;
               const _lgPace = nbaPaceData?.leagueAvgPace ?? null;
               const _nbaOuLine = sportByteam.nbaGameOdds?.[homeTeam]?.total ?? sportByteam.nbaGameOdds?.[awayTeam]?.total ?? null;
+              const _nbaGtSpread = sportByteam.nbaGameOdds?.[homeTeam]?.spread ?? sportByteam.nbaGameOdds?.[awayTeam]?.spread ?? null;
               // Possession-based projection — eliminates pace double-count from raw PPG
               // OffRtg = avgPoints / pace * 100 (derived in buildNbaPaceData from ESPN stats)
               // DefRtg = defPPGAllowed / pace * 100 (derived inline from existing nbaDefRank data)
@@ -4636,7 +4641,7 @@ var worker_default = {
               const _combDefRtgPts = _combDefRtg == null ? 1 : _combDefRtg >= 118 ? 2 : _combDefRtg >= 113 ? 1 : 0;
               const _nbaGtH2HPts = nbaGtH2HRate == null ? 1 : nbaGtH2HRate >= 80 ? 2 : nbaGtH2HRate >= 60 ? 1 : 0;
               const _nbaOuPts = _nbaOuLine == null ? 1 : _nbaOuLine >= 225 ? 2 : _nbaOuLine >= 215 ? 1 : 0;
-              _simData = { homeOffRtg: _hOffRtg, awayOffRtg: _aOffRtg, homeDefRtg: _hDefRtg, awayDefRtg: _aDefRtg, combOffRtg: _combOffRtg, combDefRtg: _combDefRtg, homePace: _hp, awayPace: _ap, leagueAvgPace: _lgPace, projPace: _projPace, gameOuLine: _nbaOuLine, homeOut: _homeOut, awayOut: _awayOut, nbaGtH2HRate, nbaGtH2HGames, combOffRtgPts: _combOffRtgPts, combDefRtgPts: _combDefRtgPts, pacePts: _pacePts, nbaGtH2HPts: _nbaGtH2HPts, nbaOuPts: _nbaOuPts, homeExpected: _homeExpRaw != null ? parseFloat(_homeExpRaw.toFixed(1)) : null, awayExpected: _awayExpRaw != null ? parseFloat(_awayExpRaw.toFixed(1)) : null, expectedTotal: (_homeExpRaw != null && _awayExpRaw != null) ? parseFloat((_homeExpRaw + _awayExpRaw).toFixed(1)) : null, ...(_isPlayoff && { playoffBoost: _PLAYOFF_OFF_BOOST }) };
+              _simData = { homeOffRtg: _hOffRtg, awayOffRtg: _aOffRtg, homeDefRtg: _hDefRtg, awayDefRtg: _aDefRtg, combOffRtg: _combOffRtg, combDefRtg: _combDefRtg, homePace: _hp, awayPace: _ap, leagueAvgPace: _lgPace, projPace: _projPace, gameOuLine: _nbaOuLine, gameSpread: _nbaGtSpread, homeOut: _homeOut, awayOut: _awayOut, nbaGtH2HRate, nbaGtH2HGames, combOffRtgPts: _combOffRtgPts, combDefRtgPts: _combDefRtgPts, pacePts: _pacePts, nbaGtH2HPts: _nbaGtH2HPts, nbaOuPts: _nbaOuPts, homeExpected: _homeExpRaw != null ? parseFloat(_homeExpRaw.toFixed(1)) : null, awayExpected: _awayExpRaw != null ? parseFloat(_awayExpRaw.toFixed(1)) : null, expectedTotal: (_homeExpRaw != null && _awayExpRaw != null) ? parseFloat((_homeExpRaw + _awayExpRaw).toFixed(1)) : null, ...(_isPlayoff && { playoffBoost: _PLAYOFF_OFF_BOOST }) };
               if (_homeExpRaw != null && _awayExpRaw != null) {
                 const _dk = `nba|${homeTeam}|${awayTeam}`;
                 // Per-team std=13 (was 11) — produces game-total std ≈ 18.4, closer to empirical
@@ -4672,6 +4677,7 @@ var worker_default = {
               const _wap = wnbaPaceData?.teamPace?.[awayTeam] ?? null;
               const _wlgPace = wnbaPaceData?.leagueAvgPace ?? null;
               const _wnbaOuLine = sportByteam.wnbaGameOdds?.[homeTeam]?.total ?? sportByteam.wnbaGameOdds?.[awayTeam]?.total ?? null;
+              const _wnbaGtSpread = sportByteam.wnbaGameOdds?.[homeTeam]?.spread ?? sportByteam.wnbaGameOdds?.[awayTeam]?.spread ?? null;
               const _whOffRtg = wnbaPaceData?.teamOffRtg?.[homeTeam] ?? null;
               const _waOffRtg = wnbaPaceData?.teamOffRtg?.[awayTeam] ?? null;
               const _wlgOffRtg = wnbaPaceData?.leagueAvgOffRtg ?? 92.7;
@@ -4711,7 +4717,7 @@ var worker_default = {
                 homeOffRtg: _whOffRtg, awayOffRtg: _waOffRtg, homeDefRtg: _whDefRtg, awayDefRtg: _waDefRtg,
                 combOffRtg: _wCombOffRtg, combDefRtg: _wCombDefRtg,
                 homePace: _whp, awayPace: _wap, leagueAvgPace: _wlgPace, projPace: _wProjPace,
-                gameOuLine: _wnbaOuLine, wnbaGtH2HRate, wnbaGtH2HGames,
+                gameOuLine: _wnbaOuLine, gameSpread: _wnbaGtSpread, wnbaGtH2HRate, wnbaGtH2HGames,
                 homeOut: _wnbaHomeOut, awayOut: _wnbaAwayOut,
                 combOffRtgPts: _wCombOffRtgPts, combDefRtgPts: _wCombDefRtgPts, pacePts: _wPacePts,
                 wnbaGtH2HPts: _wnbaGtH2HPts, wnbaOuPts: _wnbaOuPts,
@@ -4757,7 +4763,17 @@ var worker_default = {
               const _homeGaaPts = homeGAA == null ? 1 : homeGAA >= 3.5 ? 2 : homeGAA >= 3.0 ? 1 : 0;
               const _awayGaaPts = awayGAA == null ? 1 : awayGAA >= 3.5 ? 2 : awayGAA >= 3.0 ? 1 : 0;
               const _nhlOuPts = _nhlOuLine == null ? 1 : _nhlOuLine >= 7 ? 2 : _nhlOuLine >= 5.5 ? 1 : 0;
-              _simData = { homeGPG, awayGPG, homeGAA, awayGAA, gameOuLine: _nhlOuLine, homeGpgPts: _homeGpgPts, awayGpgPts: _awayGpgPts, homeGaaPts: _homeGaaPts, awayGaaPts: _awayGaaPts, nhlOuPts: _nhlOuPts, homeExpected: _hGLRaw != null ? parseFloat(_hGLRaw.toFixed(2)) : null, awayExpected: _aGLRaw != null ? parseFloat(_aGLRaw.toFixed(2)) : null, expectedTotal: (_hGLRaw != null && _aGLRaw != null) ? parseFloat((_hGLRaw + _aGLRaw).toFixed(1)) : null };
+              // H2H combined hit rate (last 10 H2H) — same pattern as NBA/WNBA/MLB.
+              const _nhlH2H = (() => {
+                const evts = _gtScheduleMap[`nhl:${homeTeam}`] ?? [];
+                const h2h = evts.filter(ev => ev.comps.some(c => normTeam("nhl", c.abbr) === awayTeam)).slice(-10);
+                if (h2h.length < 3) return null;
+                const hits = h2h.filter(ev => ev.comps.reduce((s, c) => s + (c.score || 0), 0) >= threshold).length;
+                return { rate: Math.round(hits / h2h.length * 100), games: h2h.length };
+              })();
+              const nhlGtH2HRate = _nhlH2H?.rate ?? null;
+              const nhlGtH2HGames = _nhlH2H?.games ?? null;
+              _simData = { homeGPG, awayGPG, homeGAA, awayGAA, gameOuLine: _nhlOuLine, nhlGtH2HRate, nhlGtH2HGames, homeGpgPts: _homeGpgPts, awayGpgPts: _awayGpgPts, homeGaaPts: _homeGaaPts, awayGaaPts: _awayGaaPts, nhlOuPts: _nhlOuPts, homeExpected: _hGLRaw != null ? parseFloat(_hGLRaw.toFixed(2)) : null, awayExpected: _aGLRaw != null ? parseFloat(_aGLRaw.toFixed(2)) : null, expectedTotal: (_hGLRaw != null && _aGLRaw != null) ? parseFloat((_hGLRaw + _aGLRaw).toFixed(1)) : null };
               if (_hGLRaw != null && _aGLRaw != null) {
                 const _dk = `nhl|${homeTeam}|${awayTeam}`;
                 if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateNHLTotalDist(_hGLRaw, _aGLRaw, 10000);
@@ -5111,7 +5127,16 @@ var worker_default = {
               teamTotalSimScore += ttOffRtgPts + ttDefRtgPts + ttNbaSeasonHitRatePts + h2hHitRatePts + ttNbaOuPts;
               if (truePct == null) { if (isDebug) dropped.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, teamTotalSimScore, teamOffRtg, oppDefRtg, ttOffRtgPts, ttDefRtgPts, ttNbaOuPts, gameOuLine: _nbaOuLine, h2hHitRate, h2hGames, h2hHitRatePts, ttNbaSeasonHitRate, ttNbaSeasonHitRatePts, reason: "no_simulation_data" }); continue; }
               const _nttGameTime = gameTimes[`${sport}:${homeTeam}:${gameDate}`] ?? gameTimes[`${sport}:${awayTeam}:${gameDate}`] ?? gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null;
-              const _nttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), ...(_ttNbaModelTruePct != null && _ttNbaModelTruePct !== truePct && { modelTruePct: _ttNbaModelTruePct }), ...(_ttNbaImpliedMean != null && { ttNbaImpliedMean: _ttNbaImpliedMean, ttNbaBlendedMean: _ttNbaBlendedMean }), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _nttGameTime, teamOffRtg, oppDefRtg, teamExpected: _teamExpected != null ? parseFloat(_teamExpected.toFixed(1)) : null, gameOuLine: _nbaOuLine, gameSpread: _gameSpread, h2hHitRate, h2hGames, h2hHitRatePts, ttNbaSeasonHitRate, ttNbaSeasonHitRatePts, ttOffRtgPts, ttDefRtgPts, ttNbaOuPts, ...(_ttIsPlayoff && { playoffBoost: _PLAYOFF_OFF_BOOST }) };
+              // Pace + injury surfacing for the lambda inputs panel. Pace is the projected joint
+              // pace minus league average (matches the game-total convention). Injuries reported
+              // as scoring team's outs / opponent's outs separately so the user can see direction
+              // (scoring team injured = bad for the team total; opp injured = good).
+              const _ttNbaProjPace = (_teamPaceNba != null && _oppPaceNba != null && _lgPaceNba != null && _lgPaceNba > 0)
+                ? parseFloat(((_teamPaceNba * _oppPaceNba) / _lgPaceNba).toFixed(1))
+                : null;
+              const _ttScoringOut = (nbaInjuryMap.get(scoringTeam) || []).length;
+              const _ttOppOut = (nbaInjuryMap.get(oppTeam) || []).length;
+              const _nttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), ...(_ttNbaModelTruePct != null && _ttNbaModelTruePct !== truePct && { modelTruePct: _ttNbaModelTruePct }), ...(_ttNbaImpliedMean != null && { ttNbaImpliedMean: _ttNbaImpliedMean, ttNbaBlendedMean: _ttNbaBlendedMean }), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _nttGameTime, teamOffRtg, oppDefRtg, teamExpected: _teamExpected != null ? parseFloat(_teamExpected.toFixed(1)) : null, gameOuLine: _nbaOuLine, gameSpread: _gameSpread, projPace: _ttNbaProjPace, leagueAvgPace: _lgPaceNba, scoringOut: _ttScoringOut, oppOut: _ttOppOut, h2hHitRate, h2hGames, h2hHitRatePts, ttNbaSeasonHitRate, ttNbaSeasonHitRatePts, ttOffRtgPts, ttDefRtgPts, ttNbaOuPts, ...(_ttIsPlayoff && { playoffBoost: _PLAYOFF_OFF_BOOST }) };
               const rawEdge = parseFloat((truePct - kalshiPct).toFixed(1));
               const edge = rawEdge;
               const _nttOverInWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
