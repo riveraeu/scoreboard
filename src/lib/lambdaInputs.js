@@ -58,6 +58,9 @@ function buildMlbKInputs(p) {
       color: tier(p.kH2HHandRate, 80, 65) },
     { label: 'Hit rate ≥thr', value: p.blendedHitRate == null ? null : `${p.blendedHitRate.toFixed(0)}%`,
       color: tier(p.blendedHitRate, 90, 80) },
+    { label: 'L10 ≥thr', value: p.l10HitRate == null ? null
+        : `${p.l10HitRate}%${p.l10Games ? ` (${p.l10Games}g)` : ''}`,
+      color: tier(p.l10HitRate, 80, 60) },
     { label: 'Team ML', value: p.gameMoneyline == null ? null
         : (p.gameMoneyline > 0 ? `+${p.gameMoneyline}` : `${p.gameMoneyline}`),
       color: p.gameMoneyline == null ? null
@@ -118,6 +121,9 @@ function buildNbaPropInputs(p) {
         : p.dvpRatio >= 1.05 ? GREEN : p.dvpRatio >= 1.02 ? YELLOW : RED },
     { label: 'Season rate', value: pct0(p.seasonPct), color: tier(p.seasonPct, 80, 70) },
     { label: 'Soft tier rate', value: pct0(p.softPct), color: tier(p.softPct, 80, 70) },
+    { label: 'L10 ≥thr', value: p.l10HitRate == null ? null
+        : `${p.l10HitRate}%${p.l10Games ? ` (${p.l10Games}g)` : ''}`,
+      color: tier(p.l10HitRate, 80, 60) },
     { label: 'Pace adj', value: p.nbaPaceAdj == null ? null
         : `${p.nbaPaceAdj > 0 ? '+' : ''}${p.nbaPaceAdj.toFixed(1)}`,
       color: p.nbaPaceAdj == null ? null
@@ -154,6 +160,9 @@ function buildWnbaPropInputs(p) {
       tooltip: 'WNBA: no per-position DvP available' },
     { label: 'Season rate', value: pct0(p.seasonPct), color: tier(p.seasonPct, 80, 70) },
     { label: 'Soft tier rate', value: pct0(p.softPct), color: tier(p.softPct, 80, 70) },
+    { label: 'L10 ≥thr', value: p.l10HitRate == null ? null
+        : `${p.l10HitRate}%${p.l10Games ? ` (${p.l10Games}g)` : ''}`,
+      color: tier(p.l10HitRate, 80, 60) },
     { label: 'Pace adj', value: p.wnbaPaceAdj == null ? null
         : `${p.wnbaPaceAdj > 0 ? '+' : ''}${p.wnbaPaceAdj.toFixed(1)}`,
       color: p.wnbaPaceAdj == null ? null
@@ -191,6 +200,9 @@ function buildNhlPropInputs(p) {
         : p.nhlShotsAdj > 1 ? GREEN : p.nhlShotsAdj > -1 ? YELLOW : RED },
     { label: 'Season rate', value: pct0(p.seasonPct), color: tier(p.seasonPct, 75, 65) },
     { label: 'Soft tier rate', value: pct0(p.softPct), color: tier(p.softPct, 75, 65) },
+    { label: 'L10 ≥thr', value: p.l10HitRate == null ? null
+        : `${p.l10HitRate}%${p.l10Games ? ` (${p.l10Games}g)` : ''}`,
+      color: tier(p.l10HitRate, 70, 50) },
     { label: 'Rest', value: p.isB2B == null ? null : (p.isB2B ? 'B2B' : 'Rested'),
       color: p.isB2B == null ? null : (p.isB2B ? RED : GREEN) },
   ];
