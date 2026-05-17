@@ -574,17 +574,17 @@ export async function buildPitcherKPct(mlbSched) {
       }
       // stdBF: standard deviation of BF per start — captures "all-or-nothing" vs "steady" arms.
       // Single-pass sum-of-squares is safe: BF values in [15,35], n ≤ 35 starts, no precision risk.
-      // Requires countBF >= 3 to avoid hallucinating variance from 1–2 starts.
+      // Requires countBF >= 3 to avoid hallucinating variance from 1–2 starts. Store 0 (rather
+      // than skipping) when variance is 0 — distinguishes "consistent arm" from "no data" at
+      // the downstream dataConfidence check.
       if (startSplits.length >= 3 && totalBF > 0) {
         const n = startSplits.length;
         const sqSum = startSplits.reduce((s, sp) => s + (sp.stat?.battersFaced || 0) ** 2, 0);
         const mean = totalBF / n;
-        const variance = sqSum / n - mean * mean;
-        if (variance > 0) {
-          const stdBFVal = parseFloat(Math.sqrt(variance).toFixed(2));
-          pitcherStdBFById[id] = stdBFVal;
-          for (const a of abbrs) pitcherStdBF[a] = stdBFVal;
-        }
+        const variance = Math.max(0, sqSum / n - mean * mean);
+        const stdBFVal = parseFloat(Math.sqrt(variance).toFixed(2));
+        pitcherStdBFById[id] = stdBFVal;
+        for (const a of abbrs) pitcherStdBF[a] = stdBFVal;
       }
       // A1: Recent form — last 5 starts K% (min 30 total BF to trust the sample).
       // Uses a looser filter than avgPitches: any completed start regardless of NP.
@@ -704,6 +704,7 @@ export async function buildPitcherKPct(mlbSched) {
           cswPct: pitcherCSWPct[a] ?? null,
           avgPitches: pitcherAvgPitches[a] ?? null,
           avgBF: pitcherAvgBF[a] ?? null,
+          stdBF: pitcherStdBF[a] ?? null,
           gs26: pitcherGS26[a] ?? null,
           hasAnchor: pitcherHasAnchor[a] ?? null,
           recentKPct: pitcherRecentKPct[a] ?? null,     // A1

@@ -442,14 +442,15 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                       const cmp = typeof va === "string" ? va.localeCompare(vb) : va - vb;
                       return _sortCfg.dir === "desc" ? -cmp : cmp;
                     }
-                    if ((a.qualified !== false) !== (b.qualified !== false)) return (a.qualified !== false) ? -1 : 1;
                     if (isV2) {
-                      // v2: rank by DC desc, then edge desc. Replaces SimScore-based sort.
+                      // v2: rank purely by DC desc, then edge desc. SimScore-`qualified` is
+                      // a v1 concept and doesn't belong in v2's ordering — DC is the gate now.
                       const dca = a.dataConfidence ?? 0;
                       const dcb = b.dataConfidence ?? 0;
                       if (dcb !== dca) return dcb - dca;
                       return (b.edge || b.kalshiPct || 0) - (a.edge || a.kalshiPct || 0);
                     }
+                    if ((a.qualified !== false) !== (b.qualified !== false)) return (a.qualified !== false) ? -1 : 1;
                     const _simF = m => direction === "under" ? (m.underSimScore ?? m.totalSimScore ?? m.teamTotalSimScore) : (m.totalSimScore ?? m.teamTotalSimScore);
                     const sa = _simF(a) ?? a.finalSimScore ?? a.hitterFinalSimScore ?? a.nbaSimScore ?? a.nhlSimScore ?? a.simScore ?? a.hitterSimScore ?? 0;
                     const sb = _simF(b) ?? b.finalSimScore ?? b.hitterFinalSimScore ?? b.nbaSimScore ?? b.nhlSimScore ?? b.simScore ?? b.hitterSimScore ?? 0;

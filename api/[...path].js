@@ -2944,7 +2944,7 @@ var worker_default = {
           let _umpireKFactor = 1.0;  // factor relative to league avg (>1 = high-K zone)
           let _expectedBF = 24;      // E3b: expected batters faced from avg pitch count
           let _earlyExitProb = 0;    // blowout hook: P(pitcher pulled before BF 16) per trial
-          let _stdBF = 0;            // std dev of BF per start — widens trialPA distribution in MC
+          let _stdBF = null;         // std dev of BF per start — widens trialPA distribution in MC (null = unknown, 0 = consistent arm)
           if (sport === "mlb" && stat === "strikeouts") {
             _pitcherHand = _pt(sportByteam.mlb?.pitcherHand, "hand");
             const _csw = _pt(sportByteam.mlb?.pitcherCSWPct, "cswPct");
@@ -3061,7 +3061,8 @@ var worker_default = {
             _earlyExitProb = _teamML == null ? 0 : _teamML >= 250 ? 0.18 : _teamML >= 200 ? 0.12 : _teamML >= 150 ? 0.08 : 0;
             // stdBF: std dev of BF per start from gamelog — same priority chain as _avgBF.
             // Requires ≥3 NP≥30 starts in mlb.js; 0 when insufficient data → deterministic totalPA.
-            _stdBF = _ps?.stdBF || _pt(sportByteam.mlb?.pitcherStdBF, "stdBF") || 0;
+            // `??` (not `||`) so a legitimately-computed 0 (consistent-BF arm) propagates instead of falling through.
+            _stdBF = _ps?.stdBF ?? _pt(sportByteam.mlb?.pitcherStdBF, "stdBF") ?? null;
             // O/U total (low total = pitcher-friendly): ≤7.5 → 2pts, <10.5 → 1pt, ≥10.5 → 0pts; null → 1pt
             const _gameTotal = sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null;
             totalPts = _gameTotal == null ? 1 : _gameTotal <= 7.5 ? 2 : _gameTotal < 10.5 ? 1 : 0;
@@ -4262,7 +4263,7 @@ var worker_default = {
             })() : void 0,
             expectedBF: sport === "mlb" && stat === "strikeouts" && _expectedBF !== 24 ? _expectedBF : void 0,
             earlyExitProb: sport === "mlb" && stat === "strikeouts" && _earlyExitProb > 0 ? _earlyExitProb : void 0,
-            stdBF: sport === "mlb" && stat === "strikeouts" && _stdBF > 0 ? _stdBF : void 0,
+            stdBF: sport === "mlb" && stat === "strikeouts" && _stdBF != null ? _stdBF : void 0,
             gameTotal: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null : void 0,
             gameMoneyline: sport === "mlb" && stat === "strikeouts" ? sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null : void 0,
             pitcherCSWPct: sport === "mlb" && stat === "strikeouts" ? _pt(sportByteam.mlb?.pitcherCSWPct, "cswPct") : void 0,
