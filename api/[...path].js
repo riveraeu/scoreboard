@@ -2885,6 +2885,12 @@ var worker_default = {
           // _evtPool is pre-filtered to starts when this is a pitcher K cache (MLB + col="K");
           // for other props it's just gl.events. Use it for everything that needs season-tagged events.
           const _glEvents = _evtPool || gl.events;
+          // L10 hit rate at this threshold — recent-form proxy. Universal across props
+          // (uses the same `getStat` extractor as the season rate, so it always reflects the
+          // current market's stat). Surfaced in the lambda input panel; not currently a model input.
+          const _l10Vals = _glEvents.slice(0, 10).map(getStat).filter((v) => !isNaN(v) && v >= 0);
+          const _l10HitRate = _l10Vals.length >= 5 ? Math.round(_l10Vals.filter((v) => v >= threshold).length / _l10Vals.length * 100) : null;
+          const _l10Games = _l10Vals.length;
           const hasSeasonTags = sport === "mlb" && _glEvents.length > 0 && _glEvents[0].season !== void 0;
           const _tbfIdx = gl.ul.indexOf("TBF");
           const _ipIdx2 = gl.ul.indexOf("IP");
@@ -3843,6 +3849,7 @@ var worker_default = {
               reason: edge < EDGE_GATE ? "edge_too_low" : kalshiPct > KALSHI_CAP ? "kalshi_pct_too_high" : "kalshi_pct_too_low",
               opponent: tonightOpp, seasonPct: parseFloat((primaryPct).toFixed(1)),
               softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
+              l10HitRate: _l10HitRate, l10Games: _l10Games,
               oppRank: posDvpRankOut ?? rankMap[tonightOpp]?.rank ?? null,
               oppMetricValue: posDvpValueOut ?? rankMap[tonightOpp]?.value ?? null,
               oppMetricLabel: rankMap[tonightOpp]?.label || null,
@@ -4183,6 +4190,8 @@ var worker_default = {
             seasonPct: parseFloat((primaryPct).toFixed(1)),
             seasonGames: allVals.length,
             blendGames: blendVals.length,
+            l10HitRate: _l10HitRate,
+            l10Games: _l10Games,
             pct25: pct25 !== null ? parseFloat(pct25.toFixed(1)) : null,
             pct25Games: vals25.length,
             pct26: pct26 !== null ? parseFloat(pct26.toFixed(1)) : null,

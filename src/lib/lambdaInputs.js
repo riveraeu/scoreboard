@@ -76,6 +76,9 @@ function buildMlbHitterInputs(p) {
         : `${p.softPct.toFixed(1)}%${isBvP && p.softGames ? ` (${p.softGames})` : ''}`,
       color: tier(p.softPct, 80, 70) },
     { label: 'Season rate', value: pct1(p.seasonPct), color: tier(p.seasonPct, 80, 70) },
+    { label: 'L10 ≥thr', value: p.l10HitRate == null ? null
+        : `${p.l10HitRate}%${p.l10Games ? ` (${p.l10Games}g)` : ''}`,
+      color: tier(p.l10HitRate, 70, 50) },
     { label: 'Hitter OPS', value: p.hitterOps == null ? null : p.hitterOps.toFixed(3),
       color: tier(p.hitterOps, 0.850, 0.720) },
     { label: 'Hitter BA', value: p.hitterBa == null ? null
