@@ -4,11 +4,17 @@ import { logoUrl, fmtGameTime } from '../lib/utils.js';
 import { useIsMobile } from '../lib/hooks.js';
 import PlaysColumn from './PlaysColumn.jsx';
 
-// Lineup confirmation badge (MLB only). status: 'confirmed' → green, 'projected' → grey.
+// Lineup confirmation badge (MLB only). status: 'confirmed' → green, 'projected' → grey,
+// 'pending' → grey "Lineup TBD" for future games where no lineup data exists yet.
 function LineupBadge({ status, align }) {
   const isConfirmed = status === 'confirmed';
+  const isPending = status === 'pending';
   const color = isConfirmed ? '#3fb950' : '#8b949e';
   const bg = isConfirmed ? 'rgba(63,185,80,0.12)' : 'rgba(139,148,158,0.10)';
+  const label = isPending ? 'Lineup TBD' : '✓ Lineup';
+  const tip = isConfirmed ? 'Lineup confirmed'
+    : isPending ? 'Lineup not yet posted'
+    : 'Projected lineup — not yet official';
   return (
     <span style={{
       display: 'inline-block', marginTop: 2, marginBottom: 4,
@@ -16,8 +22,8 @@ function LineupBadge({ status, align }) {
       background: bg, border: `1px solid ${color}`, color,
       whiteSpace: 'nowrap',
     }}
-      title={isConfirmed ? 'Lineup confirmed' : 'Projected lineup — not yet official'}>
-      ✓ Lineup
+      title={tip}>
+      {label}
     </span>
   );
 }
@@ -60,12 +66,15 @@ function MatchupCard({
   // Per-team MLB lineup confirmation. teamsWithLineup includes any team with lineup data
   // (confirmed or projected); projectedLineupTeams flags the ones that are still projections.
   // Hidden once the game starts — the lineup question is settled, badge becomes noise.
+  // For tomorrow's games we don't fetch lineup data at all (mlbMetaTomorrow.teamsWithLineup
+  // is always empty); return 'pending' so the UI shows a "Lineup TBD" badge rather than
+  // silently omitting it — silent omission looked identical to "confirmed" to the user.
   const mlbLineupStatus = (abbr) => {
     if (sport !== 'mlb' || !abbr) return null;
     if (gameState === 'in' || gameState === 'post') return null;
     const teams = mlbPitchSrc?.teamsWithLineup || [];
     const projected = mlbPitchSrc?.projectedLineupTeams || [];
-    if (!teams.includes(abbr)) return null;
+    if (!teams.includes(abbr)) return isTomorrowGame ? 'pending' : null;
     return projected.includes(abbr) ? 'projected' : 'confirmed';
   };
   const featureFor = (abbr) => {
