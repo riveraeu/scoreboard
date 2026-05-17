@@ -534,7 +534,7 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                       <input type="number" min="0" step="0.1" value={units}
                         onChange={e => setPickUnits(pick.id, e.target.value)}
                         style={{background:"transparent",border:"none",outline:"none",color:"#c9d1d9",
-                          fontSize:10,width:46,padding:"0 2px",textAlign:"left"}}/>
+                          fontSize:10,width:56,padding:"0 2px",textAlign:"left"}}/>
                     </div>
                     {/* Edit mode: full inline form */}
                     {editPickId === pick.id && (() => {
