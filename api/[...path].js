@@ -2041,6 +2041,9 @@ var worker_default = {
         let nbaStarters = (sportsNeeded.has("nba") && CACHE2 && !isBustCache)
           ? await CACHE2.get(`nba:starters:${todayDateStr}`, "json").catch(() => null)
           : null;
+        let wnbaStarters = (sportsNeeded.has("wnba") && CACHE2 && !isBustCache)
+          ? await CACHE2.get(`wnba:starters:${todayDateStr}`, "json").catch(() => null)
+          : null;
         let [gameTimes, nbaPlayerStatus, _cachedWeather] = await Promise.all([
           CACHE2 && !isBustCache ? CACHE2.get(`gameTimes:v2:${todayDateStr}`, "json").catch(() => null) : null,
           CACHE2 ? CACHE2.get(`nbaStatus:${todayDateStr}`, "json").catch(() => null) : null,
@@ -2050,12 +2053,21 @@ var worker_default = {
         const needGameTimes = !gameTimes;
         const needNbaStatus = !nbaPlayerStatus && sportsNeeded.has("nba");
         const needNbaStarters = !nbaStarters && sportsNeeded.has("nba");
+        const needWnbaStarters = !wnbaStarters && sportsNeeded.has("wnba");
         const needNbaSummaries = needNbaStatus || needNbaStarters;
-        if (needGameTimes || needNbaSummaries) {
+        const needAnySummary = needNbaSummaries || needWnbaStarters;
+        if (needGameTimes || needAnySummary) {
           gameTimes = gameTimes || {};
           nbaPlayerStatus = nbaPlayerStatus || {};
           const SPORT_SB_PATH = { nba: "basketball/nba", wnba: "basketball/wnba", nhl: "hockey/nhl", mlb: "baseball/mlb" };
-          const sportsToFetch = needGameTimes ? [...sportsNeeded].filter(s => SPORT_SB_PATH[s]) : (needNbaSummaries ? ["nba"] : []);
+          // When game times are already cached we still need scoreboards for any sport that
+          // needs summary data (NBA + WNBA both fetch starters via per-event summary endpoints).
+          const sportsToFetch = needGameTimes
+            ? [...sportsNeeded].filter(s => SPORT_SB_PATH[s])
+            : [
+                ...(needNbaSummaries ? ["nba"] : []),
+                ...(needWnbaStarters ? ["wnba"] : []),
+              ];
           const yesterdayDateStr = new Date(Date.now() - 86400000).toISOString().slice(0, 10).replace(/-/g, "");
           const tomorrowDateStr = new Date(Date.now() + 86400000).toISOString().slice(0, 10).replace(/-/g, "");
           const sbResults = await Promise.all(sportsToFetch.map(async s => {
@@ -2150,12 +2162,39 @@ var worker_default = {
               if (CACHE2) await CACHE2.put(`nba:starters:${todayDateStr}`, JSON.stringify(nbaStarters), { expirationTtl: 600 }).catch(() => {});
             }
           }
+          if (needWnbaStarters) {
+            // Mirror the NBA starter detection for WNBA. Boxscore shape is identical at the
+            // basketball/wnba/summary endpoint. Same 600s cache TTL.
+            const wnbaEvents = sbResults.find(r => r.sport === "wnba")?.events || [];
+            const _wStarterConfirmedTeams = [];
+            const _wStarterByTeam = {};
+            await Promise.all(wnbaEvents.map(async ev => {
+              try {
+                const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/summary?event=${ev.id}`, { headers: { "User-Agent": "Mozilla/5.0" } });
+                if (!r.ok) return;
+                const d = await r.json();
+                for (const tp of d.boxscore?.players || []) {
+                  const abbr = normTeam("wnba", tp.team?.abbreviation || "");
+                  if (!abbr) continue;
+                  const athletes = tp.statistics?.[0]?.athletes || [];
+                  const starterIds = athletes.filter(a => a.starter).map(a => String(a.athlete?.id || "")).filter(Boolean);
+                  if (starterIds.length > 0) {
+                    _wStarterConfirmedTeams.push(abbr);
+                    _wStarterByTeam[abbr] = starterIds;
+                  }
+                }
+              } catch {}
+            }));
+            wnbaStarters = { confirmedTeams: _wStarterConfirmedTeams, startersByTeam: _wStarterByTeam };
+            if (CACHE2) await CACHE2.put(`wnba:starters:${todayDateStr}`, JSON.stringify(wnbaStarters), { expirationTtl: 600 }).catch(() => {});
+          }
         }
         nbaPlayerStatus = nbaPlayerStatus || {};
-        // sportByteam.nbaStarters is the single source the dataConfidence helper reads.
-        // Always assign — populated either by the needNbaSummaries block above (cache miss path)
+        // sportByteam.{nba,wnba}Starters are the single sources the dataConfidence helper reads.
+        // Always assign — populated either by the summary fetch block above (cache miss path)
         // or by the parallel cache load at the top of this section (warm path).
         sportByteam.nbaStarters = nbaStarters || { confirmedTeams: [], startersByTeam: {} };
+        sportByteam.wnbaStarters = wnbaStarters || { confirmedTeams: [], startersByTeam: {} };
         // Refresh MLB weather independently if cache was empty (gameTimes may have been cached)
         if (sportsNeeded.has("mlb") && Object.keys(weatherByGame).length === 0 && !isBustCache) {
           try {
@@ -3834,6 +3873,7 @@ var worker_default = {
                 nbaUsage: nbaUsageMap[String(info.id)]?.usg ?? null,
                 nbaAvgAst: nbaUsageMap[String(info.id)]?.avgAst ?? null,
                 nbaAvgReb: nbaUsageMap[String(info.id)]?.avgReb ?? null,
+                gameSpread: (sportByteam.nbaGameOdds ?? {})[playerTeam]?.spread ?? null,
               } : {}),
               ...(sport === "wnba" ? {
                 wnbaSimScore, wnbaPreSimScore, wnbaSimPct: wnbaSimPctOut, wnbaPaceAdj, wnbaOpportunity, isB2B,
@@ -3844,6 +3884,7 @@ var worker_default = {
                 wnbaUsage: wnbaUsageMap[String(info.id)]?.usg ?? null,
                 wnbaAvgAst: wnbaUsageMap[String(info.id)]?.avgAst ?? null,
                 wnbaAvgReb: wnbaUsageMap[String(info.id)]?.avgReb ?? null,
+                gameSpread: (sportByteam.wnbaGameOdds ?? {})[playerTeam]?.spread ?? null,
               } : {}),
               ...(sport === "nhl" ? { nhlSimScore, nhlPreSimScore, nhlSimPct: nhlSimPctOut, nhlShotsAdj, nhlOpportunity, nhlTeamGPG, nhlSaRank, gaaRank: _gaaRank, nhlGameTotal, nhlSeasonHitRatePts, nhlDvpHitRatePts, isB2B } : {}),
             };
@@ -4217,6 +4258,7 @@ var worker_default = {
             nba3pMPG: sport === "nba" && stat === "threePointers" ? nba3pMPG : void 0,
             nbaBlowoutAdj: sport === "nba" ? nbaBlowoutAdj : void 0,
             nbaSplitAdj: sport === "nba" ? nbaSplitAdj : void 0,
+            ...(sport === "nba" ? { gameSpread: (sportByteam.nbaGameOdds ?? {})[playerTeam]?.spread ?? null } : {}),
             wnbaSimScore: sport === "wnba" ? wnbaSimScore : void 0,
             wnbaPreSimScore: sport === "wnba" ? wnbaPreSimScore : void 0,
             wnbaSimPct: sport === "wnba" ? wnbaSimPctOut : void 0,
@@ -4232,6 +4274,7 @@ var worker_default = {
             wnba3pMPG: sport === "wnba" && stat === "threePointers" ? wnba3pMPG : void 0,
             wnbaBlowoutAdj: sport === "wnba" ? wnbaBlowoutAdj : void 0,
             wnbaSplitAdj: sport === "wnba" ? wnbaSplitAdj : void 0,
+            ...(sport === "wnba" ? { gameSpread: (sportByteam.wnbaGameOdds ?? {})[playerTeam]?.spread ?? null } : {}),
             nhlSimScore: sport === "nhl" ? nhlSimScore : void 0,
             nhlPreSimScore: sport === "nhl" ? nhlPreSimScore : void 0,
             nhlSimPct: sport === "nhl" ? nhlSimPctOut : void 0,
@@ -5199,10 +5242,24 @@ var worker_default = {
               p.nbaStarterConfirmed = null;
               _pen("nbaLineupNotPosted", 2);
             }
-          } else if ((sport === "wnba" || sport === "nhl") && isPlayerProp) {
-            // Structural: no exposed lineup data for these sports today. -1 baseline penalty
-            // on PLAYER PROPS only (totals don't depend on individual starter status). Once
-            // exposed, replace with same logic as MLB/NBA.
+          } else if (sport === "wnba" && isPlayerProp) {
+            // Mirrors the NBA branch — wnbaStarters is populated from basketball/wnba/summary
+            // boxscore.players[].statistics[0].athletes[].starter.
+            const starters = sportByteam.wnbaStarters;
+            const team = p.playerTeam;
+            const pid = String(p.playerId || "");
+            if (starters && team && pid) {
+              const confirmed = (starters.confirmedTeams || []).includes(team);
+              const isStarter = confirmed && ((starters.startersByTeam || {})[team] || []).includes(pid);
+              p.wnbaStarterConfirmed = confirmed ? isStarter : null;
+              if (!confirmed) _pen("wnbaLineupNotPosted", 2);
+              else if (!isStarter) _pen("wnbaBench", 2);
+            } else {
+              p.wnbaStarterConfirmed = null;
+              _pen("wnbaLineupNotPosted", 2);
+            }
+          } else if (sport === "nhl" && isPlayerProp) {
+            // Structural: no exposed lineup data for NHL today. -1 baseline penalty.
             _pen("noLineupData", 1);
           }
           // ── Player availability (player props only)

@@ -142,8 +142,16 @@ function buildWnbaPropInputs(p) {
         : `${p.wnbaPaceAdj > 0 ? '+' : ''}${p.wnbaPaceAdj.toFixed(1)}`,
       color: p.wnbaPaceAdj == null ? null
         : p.wnbaPaceAdj > 0 ? GREEN : p.wnbaPaceAdj > -2 ? YELLOW : GRAY },
+    { label: 'Starter', value: p.wnbaStarterConfirmed === true ? 'Confirmed'
+        : p.wnbaStarterConfirmed === false ? 'Bench' : null,
+      color: p.wnbaStarterConfirmed === true ? GREEN
+        : p.wnbaStarterConfirmed === false ? YELLOW : null },
     { label: 'Rest', value: p.isB2B == null ? null : (p.isB2B ? 'B2B' : 'Rested'),
       color: p.isB2B == null ? null : (p.isB2B ? RED : GREEN) },
+    { label: 'Game spread', value: p.gameSpread == null ? null
+        : `${p.gameSpread > 0 ? '+' : ''}${p.gameSpread}`,
+      color: p.gameSpread == null ? null
+        : Math.abs(p.gameSpread) <= 5 ? GREEN : Math.abs(p.gameSpread) <= 10 ? YELLOW : RED },
     { label: 'Status', value: p.playerStatus && p.playerStatus !== 'active' ? p.playerStatus : null,
       color: p.playerStatus && p.playerStatus !== 'active' ? RED : null },
   ];
