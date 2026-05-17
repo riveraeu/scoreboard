@@ -425,7 +425,11 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                 ? resolveTotalGameScore(pick, liveStats, allGameScores)
                 : null;
               const progress = buildLiveProgress(pick, liveGame, totalGameScore);
-              const _showBar = !pick.result && pick.gameTime;
+              // Bar renders when we have either a scheduled start time OR computed live
+              // progress. Manually-added picks may lack gameTime (AddPickModal doesn't ask
+              // for it); without this `|| progress` fallback the live bar never appears for
+              // them even when /api/live data is flowing in.
+              const _showBar = !pick.result && (pick.gameTime || progress);
               const _preStartTxt = (() => {
                 if (!pick.gameTime) return null;
                 try {

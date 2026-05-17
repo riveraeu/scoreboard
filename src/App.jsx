@@ -327,20 +327,43 @@ function App() {
     // v1 / v2 outcomes cleanly. Server-side /api/user/picks just round-trips the JSON so no
     // backend schema change is needed; the field is persisted verbatim.
     // Live tracking requires { playerTeam, opponent } (or for totals: { homeTeam, awayTeam } /
-    // { scoringTeam, oppTeam }) to build a `sport:team:opp` key for /api/live. Manual picks
-    // from AddPickModal only know playerTeam — backfill opponent here from current gameScores
-    // so the pick is fully resolvable from the moment it's saved.
+    // { scoringTeam, oppTeam }) to build a `sport:team:opp` key for /api/live, and the pick
+    // card's live progress bar is gated on pick.gameTime. /api/tonight-derived picks have
+    // these; manual picks from AddPickModal don't — backfill from gameScores here so the
+    // pick is fully resolvable from the moment it's saved.
     let extras = {};
-    if (!play.gameType && play.sport && play.playerTeam && !play.opponent) {
-      const scoresMap = play.sport === "mlb" ? mlbMeta?.gameScores
-                      : play.sport === "nba" ? nbaMeta?.gameScores
-                      : play.sport === "wnba" ? wnbaMeta?.gameScores
-                      : play.sport === "nhl" ? nhlMeta?.gameScores
-                      : null;
-      if (scoresMap) {
+    const scoresMap = play.sport === "mlb" ? mlbMeta?.gameScores
+                    : play.sport === "nba" ? nbaMeta?.gameScores
+                    : play.sport === "wnba" ? wnbaMeta?.gameScores
+                    : play.sport === "nhl" ? nhlMeta?.gameScores
+                    : null;
+    if (scoresMap) {
+      let matchedGame = null;
+      if (play.gameType === "total" && play.homeTeam) {
+        matchedGame = scoresMap[play.homeTeam] ||
+          Object.values(scoresMap).find(g => g?.homeTeam === play.homeTeam && g?.awayTeam === play.awayTeam) ||
+          null;
+      } else if (play.gameType === "teamTotal" && play.scoringTeam) {
+        matchedGame = scoresMap[play.scoringTeam] ||
+          Object.values(scoresMap).find(g =>
+            (g?.homeTeam === play.scoringTeam && g?.awayTeam === play.oppTeam) ||
+            (g?.awayTeam === play.scoringTeam && g?.homeTeam === play.oppTeam)
+          ) || null;
+      } else if (!play.gameType && play.playerTeam) {
         for (const g of Object.values(scoresMap)) {
-          if (g?.homeTeam === play.playerTeam) { extras.opponent = g.awayTeam; break; }
-          if (g?.awayTeam === play.playerTeam) { extras.opponent = g.homeTeam; break; }
+          if (g?.homeTeam === play.playerTeam || g?.awayTeam === play.playerTeam) { matchedGame = g; break; }
+        }
+        if (matchedGame && !play.opponent) {
+          extras.opponent = matchedGame.homeTeam === play.playerTeam ? matchedGame.awayTeam : matchedGame.homeTeam;
+        }
+      }
+      if (matchedGame) {
+        if (!play.gameTime && matchedGame.gameTime) extras.gameTime = matchedGame.gameTime;
+        // For teamTotal, surface homeTeam/awayTeam too — used by some UI paths and consistent
+        // with /api/tonight-derived picks.
+        if (play.gameType === "teamTotal") {
+          if (!play.homeTeam && matchedGame.homeTeam) extras.homeTeam = matchedGame.homeTeam;
+          if (!play.awayTeam && matchedGame.awayTeam) extras.awayTeam = matchedGame.awayTeam;
         }
       }
     }
