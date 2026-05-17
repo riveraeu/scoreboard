@@ -33,6 +33,7 @@ Per-sport modeling internals. CLAUDE.md has the architecture map and load-bearin
     - NBA total: ≥ 10 → -1, ≥ 20 → -2 · teamTotal: ≥ 5 → -1, ≥ 10 → -2
     - WNBA total: ≥ 10 → -1, ≥ 20 → -2 · teamTotal: ≥ 5 → -1, ≥ 10 → -2
     - NHL total: ≥ 2 → -1, ≥ 3 → -2 · teamTotal: ≥ 1 → -1, ≥ 2 → -2
+  - **Season-rate divergence** (game totals only): when the rate-inverted implied mean/lambda diverges from the model mean/lambda by more than `_GT_IMPLIED_CAP[sport]`, the blend math is clamped in the simulate path and the resulting truePct is built on softened evidence. `|impliedMean − modelMean| > cap` (NBA pts ≥ 8, WNBA ≥ 6) or `|impliedLambda − modelLambda| > cap` (MLB runs ≥ 1.5, NHL goals ≥ 1.0) → `seasonRateDivergent` -1. The cap itself stops runaway inversions at far-from-line thresholds where seasonHitRate is near 0/100; the dataConfidence penalty stops the dampened pick from passing the v2 dcGate.
   - **MLB game total — both starters via starter source**: pitcher quality is the primary lambda input, so a team-WHIP fallback is a real trust hit. Per-side check — worst case -4 (both unknown).
     - `homeWHIPSource == null` → -2 · `"team"` (fallback) → -1
     - `awayWHIPSource == null` → -2 · `"team"` (fallback) → -1

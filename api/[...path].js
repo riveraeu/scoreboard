@@ -12,6 +12,12 @@ const KALSHI_GATE = 67;   // ~-200 American odds floor (66.67% rounded up)
 const KALSHI_CAP = 91;    // ~-1000 American odds cap (90.91% rounded up)
 const EDGE_GATE = 3;
 const SIMSCORE_GATE = 8;
+// Maximum |impliedMean − modelMean| (NBA/WNBA pts) or |impliedLambda − modelLambda| (MLB runs / NHL goals)
+// allowed in the season-hit-rate blend. Stops runaway inversions when seasonHitRate is near 0/100 at
+// far-from-line thresholds — the inversion math is brittle and double-counts signal already in the
+// model mean. Also drives a dataConfidence -1 penalty (seasonRateDivergent) when the raw delta exceeds
+// the cap, so picks built on a clamped implied mean drop a confidence point.
+const _GT_IMPLIED_CAP = { nba: 8, wnba: 6, mlb: 1.5, nhl: 1.0 };
 // dataConfidence per-sport AND per-play-type gate thresholds — see docs/MODEL.md "dataConfidence".
 // Totals/teamTotals have a higher ceiling than player props (no lineup-confirmation penalty, no
 // per-player sample-size penalty) so they'd dominate a flat-9 gate. Asymmetric gates:
@@ -4595,12 +4601,15 @@ var worker_default = {
                 const _modelLambda = _hLam + _aLam;
                 const _impliedLambda = lambdaForPoissonTail(threshold, _gtMlbSsn.rate / 100);
                 if (_impliedLambda != null) {
-                  const _blendedLambda = (1 - _w) * _modelLambda + _w * _impliedLambda;
+                  const _cap = _GT_IMPLIED_CAP.mlb;
+                  const _impliedClamped = Math.max(_modelLambda - _cap, Math.min(_modelLambda + _cap, _impliedLambda));
+                  const _blendedLambda = (1 - _w) * _modelLambda + _w * _impliedClamped;
                   _simData.modelTruePct = parseFloat(truePct.toFixed(1));
                   _simData.gtSeasonHitRate = _gtMlbSsn.rate;
                   _simData.gtSsnSample = _gtMlbSsn.sample;
                   _simData.modelLambda = parseFloat(_modelLambda.toFixed(2));
                   _simData.impliedLambda = _impliedLambda;
+                  if (_impliedClamped !== _impliedLambda) _simData.impliedLambdaClamped = parseFloat(_impliedClamped.toFixed(2));
                   _simData.blendedLambda = parseFloat(_blendedLambda.toFixed(2));
                   truePct = parseFloat(((1 - poissonCDF(threshold - 1, _blendedLambda)) * 100).toFixed(1));
                 }
@@ -4681,12 +4690,15 @@ var worker_default = {
                 const _modelMean = _homeExpRaw + _awayExpRaw;
                 const _impliedMean = meanForNormalTail(threshold, _gtNbaSsn.rate / 100, _totalStd);
                 if (_impliedMean != null) {
-                  const _blendedMean = (1 - _w) * _modelMean + _w * _impliedMean;
+                  const _cap = _GT_IMPLIED_CAP.nba;
+                  const _impliedClamped = Math.max(_modelMean - _cap, Math.min(_modelMean + _cap, _impliedMean));
+                  const _blendedMean = (1 - _w) * _modelMean + _w * _impliedClamped;
                   _simData.modelTruePct = parseFloat(truePct.toFixed(1));
                   _simData.gtSeasonHitRate = _gtNbaSsn.rate;
                   _simData.gtSsnSample = _gtNbaSsn.sample;
                   _simData.modelMean = parseFloat(_modelMean.toFixed(2));
                   _simData.impliedMean = _impliedMean;
+                  if (_impliedClamped !== _impliedMean) _simData.impliedMeanClamped = parseFloat(_impliedClamped.toFixed(2));
                   _simData.blendedMean = parseFloat(_blendedMean.toFixed(2));
                   truePct = parseFloat(((1 - normCDF(threshold - 0.5, _blendedMean, _totalStd)) * 100).toFixed(1));
                 }
@@ -4761,12 +4773,15 @@ var worker_default = {
                 const _modelMean = _wHomeExpRaw + _wAwayExpRaw;
                 const _impliedMean = meanForNormalTail(threshold, _gtWnbaSsn.rate / 100, _wTotalStd);
                 if (_impliedMean != null) {
-                  const _blendedMean = (1 - _w) * _modelMean + _w * _impliedMean;
+                  const _cap = _GT_IMPLIED_CAP.wnba;
+                  const _impliedClamped = Math.max(_modelMean - _cap, Math.min(_modelMean + _cap, _impliedMean));
+                  const _blendedMean = (1 - _w) * _modelMean + _w * _impliedClamped;
                   _simData.modelTruePct = parseFloat(truePct.toFixed(1));
                   _simData.gtSeasonHitRate = _gtWnbaSsn.rate;
                   _simData.gtSsnSample = _gtWnbaSsn.sample;
                   _simData.modelMean = parseFloat(_modelMean.toFixed(2));
                   _simData.impliedMean = _impliedMean;
+                  if (_impliedClamped !== _impliedMean) _simData.impliedMeanClamped = parseFloat(_impliedClamped.toFixed(2));
                   _simData.blendedMean = parseFloat(_blendedMean.toFixed(2));
                   truePct = parseFloat(((1 - normCDF(threshold - 0.5, _blendedMean, _wTotalStd)) * 100).toFixed(1));
                 }
@@ -4810,12 +4825,15 @@ var worker_default = {
                 const _modelLambda = _hGLRaw + _aGLRaw;
                 const _impliedLambda = lambdaForPoissonTail(threshold, _gtNhlSsn.rate / 100);
                 if (_impliedLambda != null) {
-                  const _blendedLambda = (1 - _w) * _modelLambda + _w * _impliedLambda;
+                  const _cap = _GT_IMPLIED_CAP.nhl;
+                  const _impliedClamped = Math.max(_modelLambda - _cap, Math.min(_modelLambda + _cap, _impliedLambda));
+                  const _blendedLambda = (1 - _w) * _modelLambda + _w * _impliedClamped;
                   _simData.modelTruePct = parseFloat(truePct.toFixed(1));
                   _simData.gtSeasonHitRate = _gtNhlSsn.rate;
                   _simData.gtSsnSample = _gtNhlSsn.sample;
                   _simData.modelLambda = parseFloat(_modelLambda.toFixed(2));
                   _simData.impliedLambda = _impliedLambda;
+                  if (_impliedClamped !== _impliedLambda) _simData.impliedLambdaClamped = parseFloat(_impliedClamped.toFixed(2));
                   _simData.blendedLambda = parseFloat(_blendedLambda.toFixed(2));
                   truePct = parseFloat(((1 - poissonCDF(threshold - 1, _blendedLambda)) * 100).toFixed(1));
                 }
@@ -5363,6 +5381,17 @@ var worker_default = {
             else if (p.oppWHIPSource === "team") _pen("oppWhipTeamFallback", 1);
           } else if (sport === "nba" && gameType === "teamTotal") {
             if (p.oppDefRtg == null) _pen("noOppDefRtg", 3);
+          }
+          // ── Season-hit-rate divergence penalty (game totals) — when the rate-inverted
+          // implied mean/lambda diverges from the model mean/lambda by more than _GT_IMPLIED_CAP,
+          // the blend clamps in the simulate path but the play is built on softened math. Drop a
+          // dataConfidence point so divergent picks fail the v2 dcGate (Phase B).
+          if (gameType === "total" && _GT_IMPLIED_CAP[sport] != null) {
+            const _model = p.modelMean ?? p.modelLambda;
+            const _impl  = p.impliedMean ?? p.impliedLambda;
+            if (_model != null && _impl != null && Math.abs(_impl - _model) > _GT_IMPLIED_CAP[sport]) {
+              _pen("seasonRateDivergent", 1);
+            }
           }
           // ── Threshold-distance penalty (totals & team totals) — tail probabilities are harder
           // to estimate than central ones, so plays far from the market O/U line have noisier
