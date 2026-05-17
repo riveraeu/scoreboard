@@ -46,9 +46,8 @@ function MatchupCard({
   const { sport, homeTeam, awayTeam, gameDate, gameTime, gameState, gameDetail, homeScore, awayScore, seriesSummary } = game;
   const [playsOpen, setPlaysOpen] = React.useState(false);
   const isMobile = useIsMobile();
-  // Mobile sizing for the feature-player row — tighter center column + smaller headshot
-  // give each side ~25px more text room so player names + stats don't truncate to "D…".
-  const featHsSize = isMobile ? 30 : 36;
+  // Mobile sizing for the feature-player row — tighter center column gives each side
+  // more text room so player names + stats don't truncate to "D…".
   const featCenterMin = isMobile ? 90 : 120;
   const featCenterPadX = isMobile ? 4 : 8;
 
@@ -217,13 +216,6 @@ function MatchupCard({
           {/* Away feature */}
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, cursor: awayFeature ? 'pointer' : 'default' }}
             onClick={() => openFeature(awayFeature, awayTeam)}>
-            {awayFeature?.headshot ? (
-              <img src={awayFeature.headshot} alt={awayFeature.name}
-                style={{ width: featHsSize, height: featHsSize, borderRadius: '50%', objectFit: 'cover', background: '#0d1117', flexShrink: 0 }}
-                onError={e => { e.target.style.visibility = 'hidden'; }} />
-            ) : sport !== 'mlb' ? (
-              <div style={{ width: featHsSize, height: featHsSize, borderRadius: '50%', background: '#0d1117', flexShrink: 0 }} />
-            ) : null}
             <div style={{ minWidth: 0 }}>
               {awayFeature?.lineupStatus && (
                 <LineupBadge status={awayFeature.lineupStatus} />
@@ -271,13 +263,6 @@ function MatchupCard({
                 <div style={{ fontSize: 10, color: '#8b949e' }}>{homeFeature.stats}</div>
               )}
             </div>
-            {homeFeature?.headshot ? (
-              <img src={homeFeature.headshot} alt={homeFeature.name}
-                style={{ width: featHsSize, height: featHsSize, borderRadius: '50%', objectFit: 'cover', background: '#0d1117', flexShrink: 0 }}
-                onError={e => { e.target.style.visibility = 'hidden'; }} />
-            ) : sport !== 'mlb' ? (
-              <div style={{ width: featHsSize, height: featHsSize, borderRadius: '50%', background: '#0d1117', flexShrink: 0 }} />
-            ) : null}
           </div>
         </div>
       )}
