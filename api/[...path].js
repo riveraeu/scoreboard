@@ -1229,7 +1229,11 @@ var worker_default = {
           return { softTeams, rankMap };
         }, glCacheKey = function(key) {
           const [sport] = key.split("|");
-          return sport === "mlb" ? `gl:mlb242526v2|${key}` : `gl:v2|${key}`;
+          // Non-MLB version bumped v2→v3 on 2026-05-16: gamelog event shape now includes
+          // `isHome` (was missing from `parseEspnGamelog`), which the NBA/WNBA home-away
+          // split adjustment depends on. Old v2 cache entries lack isHome → splitAdj always
+          // falls back to 1.0. Bumping invalidates them in one cycle.
+          return sport === "mlb" ? `gl:mlb242526v2|${key}` : `gl:v3|${key}`;
         };
         __name(parseGameTeams, "parseGameTeams");
         __name(nhlSoftTeams, "nhlSoftTeams");
@@ -2535,7 +2539,15 @@ var worker_default = {
                   const meta = d.events?.[ev.eventId];
                   if (!meta || meta.opponent?.isAllStar) continue;
                   seenIds.add(ev.eventId);
-                  events.push({ stats: ev.stats || [], oppAbbr: meta.opponent?.abbreviation || "" });
+                  // isHome: ESPN's atVs field is "vs"/"@" depending on home/away. Required by
+                  // the NBA/WNBA home-away split adjustment (nbaSplitAdj / wnbaSplitAdj) which
+                  // filters gamelog events by location. Without this field on each event the
+                  // splitAdj computation silently falls back to 1.0.
+                  events.push({
+                    stats: ev.stats || [],
+                    oppAbbr: meta.opponent?.abbreviation || "",
+                    isHome: meta.atVs != null ? meta.atVs !== "@" : null,
+                  });
                 }
               }
             }
