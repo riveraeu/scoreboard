@@ -5394,19 +5394,20 @@ var worker_default = {
           // ── Season-hit-rate divergence penalty (game + team totals) — when the rate-inverted
           // implied mean/lambda diverges from the model mean/lambda by more than the per-sport
           // cap, the blend clamps in the simulate path but the play is built on softened math.
-          // Drop a dataConfidence point so divergent picks fail the v2 dcGate (Phase B). Caps
-          // differ between game totals and team totals because single-team std is smaller.
+          // -2 (was -1, bumped 2026-05-17) so clamping = definitive drop in both v2 NBA/MLB gates
+          // (10 - 2 = 8 < 10) and softer WNBA/NHL gates (9 - 2 = 7 < 9). Caps differ between game
+          // totals and team totals because single-team std is smaller.
           if (gameType === "total" && _GT_IMPLIED_CAP[sport] != null) {
             const _model = p.modelMean ?? p.modelLambda;
             const _impl  = p.impliedMean ?? p.impliedLambda;
             if (_model != null && _impl != null && Math.abs(_impl - _model) > _GT_IMPLIED_CAP[sport]) {
-              _pen("seasonRateDivergent", 1);
+              _pen("seasonRateDivergent", 2);
             }
           } else if (gameType === "teamTotal" && _TT_IMPLIED_CAP[sport] != null) {
             const _model = p.teamExpected;
             const _impl  = p.ttNbaImpliedMean ?? p.ttImpliedLambda;
             if (_model != null && _impl != null && Math.abs(_impl - _model) > _TT_IMPLIED_CAP[sport]) {
-              _pen("seasonRateDivergent", 1);
+              _pen("seasonRateDivergent", 2);
             }
           }
           // ── Threshold-distance penalty (totals & team totals) — tail probabilities are harder
