@@ -2033,7 +2033,9 @@ var worker_default = {
           const _previewMap = (m) => {
             if (!m || typeof m !== "object") return { type: typeof m, value: m };
             const keys = Object.keys(m);
-            return { size: keys.length, sample: Object.fromEntries(keys.slice(0, 8).map(k => [k, m[k]])) };
+            // Surface single-team keys (no `|`) — those are what _pt's final fallback reads.
+            const teamKeys = keys.filter(k => !k.includes("|"));
+            return { size: keys.length, teamKeys: teamKeys.sort(), sample: Object.fromEntries(teamKeys.slice(0, 10).map(k => [k, m[k]])) };
           };
           const _statsByNameSample = (() => {
             const m = mlb.pitcherStatsByName || {};
