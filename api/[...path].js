@@ -4600,34 +4600,41 @@ var worker_default = {
           }
           mlbMetaTomorrow = { pitchers: _tmrPitchers, gameOdds: _mlbGameOddsTomorrow, umpires: _tmrUmpires, weather: {}, projectedLineupTeams: [], teamsWithLineup: [], homeTeams: _tmrHomeTeams, gameScores: {} };
         } catch { /* leave empty */ }
-        // NBA meta: normalized game odds + injury report for matchup cards
-        const _nbaGameOdds = _buildOddsMap(sportByteam.nbaGameOdds, TEAM_NORM.nba);
-        await applyClosingSnapshot(CACHE2, isBustCache,'nbaClosingOdds', sportByteam.nbaGameScores, _nbaGameOdds);
-        const _nbaInjuries = {};
-        for (const [abbr, players] of (nbaInjuryMap || new Map()).entries()) {
-          // Enrich each player with avgMin from the usage map. Frontend uses this to filter
-          // the matchup-card badge to starters only (NBA cutoff: avgMin >= 25).
-          const enriched = players.map(p => ({ ...p, avgMin: (p.id && nbaUsageMap[p.id]?.avgMin) ?? null }));
-          const key = TEAM_NORM.nba[abbr] || abbr;
-          _nbaInjuries[key] = enriched;
-          _nbaInjuries[abbr] = enriched; // keep original key too for fallback
-        }
-        const nbaMeta = { gameOdds: _nbaGameOdds, injuries: _nbaInjuries, gameScores: sportByteam.nbaGameScores ?? {}, topPlayers: sportByteam.nbaTopPlayers ?? {} };
-        // WNBA meta — same shape as NBA. Canonical-only keys (CONNECTICU/DALLAS already normalized to CONN/DAL).
-        const _wnbaGameOdds = _buildOddsMap(sportByteam.wnbaGameOdds, TEAM_NORM.wnba);
-        await applyClosingSnapshot(CACHE2, isBustCache,'wnbaClosingOdds', sportByteam.wnbaGameScores, _wnbaGameOdds);
-        const _wnbaInjuries = {};
-        for (const [abbr, players] of (wnbaInjuryMap || new Map()).entries()) {
-          // Same avgMin enrichment as NBA (frontend WNBA cutoff: avgMin >= 20 for 40-min game).
-          const enriched = players.map(p => ({ ...p, avgMin: (p.id && wnbaUsageMap[p.id]?.avgMin) ?? null }));
-          const key = TEAM_NORM.wnba[abbr] || abbr;
-          _wnbaInjuries[key] = enriched;
-          _wnbaInjuries[abbr] = enriched;
-        }
-        const wnbaMeta = { gameOdds: _wnbaGameOdds, injuries: _wnbaInjuries, gameScores: sportByteam.wnbaGameScores ?? {}, topPlayers: sportByteam.wnbaTopPlayers ?? {} };
-        const _nhlGameOdds = _buildOddsMap(sportByteam.nhlGameOdds);
-        await applyClosingSnapshot(CACHE2, isBustCache,'nhlClosingOdds', sportByteam.nhlGameScores, _nhlGameOdds);
-        const nhlMeta = { gameScores: sportByteam.nhlGameScores ?? {}, gameOdds: _nhlGameOdds, topPlayers: sportByteam.nhlTopPlayers ?? {}, injuries: sportByteam.nhl?.injuryByTeam ?? {} };
+        // Sport meta builders — same shape, varying inputs. injuryMap entries get enriched with
+        // avgMin from the usage map (frontend filters the matchup-card injury badge to starters
+        // only: NBA avgMin >= 25, WNBA >= 20 for 40-min game). Dual-keyed (normalized + raw) so
+        // either abbr form looks up.
+        const _enrichInjuries = (injuryMap, usageMap, normMap) => {
+          const out = {};
+          for (const [abbr, players] of (injuryMap || new Map()).entries()) {
+            const enriched = players.map(p => ({ ...p, avgMin: (p.id && usageMap[p.id]?.avgMin) ?? null }));
+            const key = normMap[abbr] || abbr;
+            out[key] = enriched;
+            out[abbr] = enriched;
+          }
+          return out;
+        };
+        const _buildSportMeta = async (snapKey, gameOddsRaw, normMap, scoresMap, topPlayers, injuries) => {
+          const gameOdds = _buildOddsMap(gameOddsRaw, normMap);
+          await applyClosingSnapshot(CACHE2, isBustCache, snapKey, scoresMap, gameOdds);
+          return { gameOdds, injuries, gameScores: scoresMap ?? {}, topPlayers: topPlayers ?? {} };
+        };
+        const nbaMeta = await _buildSportMeta(
+          'nbaClosingOdds', sportByteam.nbaGameOdds, TEAM_NORM.nba,
+          sportByteam.nbaGameScores, sportByteam.nbaTopPlayers,
+          _enrichInjuries(nbaInjuryMap, nbaUsageMap, TEAM_NORM.nba)
+        );
+        const wnbaMeta = await _buildSportMeta(
+          'wnbaClosingOdds', sportByteam.wnbaGameOdds, TEAM_NORM.wnba,
+          sportByteam.wnbaGameScores, sportByteam.wnbaTopPlayers,
+          _enrichInjuries(wnbaInjuryMap, wnbaUsageMap, TEAM_NORM.wnba)
+        );
+        // NHL: no usage map, so injuries pass through unenriched (matchup card shows all NHL out players).
+        const nhlMeta = await _buildSportMeta(
+          'nhlClosingOdds', sportByteam.nhlGameOdds, {},
+          sportByteam.nhlGameScores, sportByteam.nhlTopPlayers,
+          sportByteam.nhl?.injuryByTeam ?? {}
+        );
         const playsResult = { plays, nbaDropped, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta, staleKalshiSeries, modelVersion, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length };
         const sportsInPlays = new Set(plays.map((p) => p.sport));
         if (CACHE2 && sportsInPlays.size >= 2) {
