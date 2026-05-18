@@ -2088,7 +2088,7 @@ var worker_default = {
             // Sim-Score components
             const _hlHomeTeam2 = sportByteam.mlb?.gameHomeTeams?.[playerTeam] ?? tonightOpp;
             const _hlParkKF2 = PARK_HITFACTOR?.[_hlHomeTeam2] ?? 1;
-            const _hlEra = sportByteam.mlb?.probables?.[tonightOpp]?.era ?? sportByteam.mlb?.pitcherEra?.[tonightOpp] ?? null;
+            const _hlEra = sportByteam.mlb?.pitcherEra?.[tonightOpp] ?? sportByteam.mlb?.probables?.[tonightOpp]?.era ?? null;
             hitterWhipMeets = pitcherWHIP != null ? pitcherWHIP > 1.35 : null;
             // WHIP tiered (max 2pts): >1.35→2pts, >1.20→1pt, ≤1.20→0pts, null→1pt abstain
             hitterWhipPts = pitcherWHIP == null ? 1 : pitcherWHIP > 1.35 ? 2 : pitcherWHIP > 1.20 ? 1 : 0;
@@ -2604,7 +2604,7 @@ var worker_default = {
                 hitterSoftLabel: softLabel ?? undefined,
                 softGames: softVals.length,
                 hitterPitcherName: sportByteam.mlb?.probables?.[tonightOpp]?.name ?? sportByteam.mlb?.pitcherInfoByTeam?.[tonightOpp]?.name ?? pitcherGamelogs[tonightOpp]?.name ?? null,
-                hitterPitcherEra: sportByteam.mlb?.probables?.[tonightOpp]?.era ?? sportByteam.mlb?.pitcherEra?.[tonightOpp] ?? null,
+                hitterPitcherEra: sportByteam.mlb?.pitcherEra?.[tonightOpp] ?? sportByteam.mlb?.probables?.[tonightOpp]?.era ?? null,
               } : {}),
               ...(sport === "nba" ? {
                 nbaSimScore, nbaPreSimScore, nbaSimPct: nbaSimPctOut, nbaPaceAdj, nbaOpportunity, isB2B,
@@ -2861,7 +2861,7 @@ var worker_default = {
               oppPitcherHand: hitterOppPitcherHand ?? undefined,
               hitterSoftLabel: softLabel ?? undefined,
               hitterPitcherName: sportByteam.mlb?.probables?.[tonightOpp]?.name ?? sportByteam.mlb?.pitcherInfoByTeam?.[tonightOpp]?.name ?? pitcherGamelogs[tonightOpp]?.name ?? null,
-              hitterPitcherEra: sportByteam.mlb?.probables?.[tonightOpp]?.era ?? sportByteam.mlb?.pitcherEra?.[tonightOpp] ?? null,
+              hitterPitcherEra: sportByteam.mlb?.pitcherEra?.[tonightOpp] ?? sportByteam.mlb?.probables?.[tonightOpp]?.era ?? null,
             };
             if (isDebug) dropped.push(_hitterLowScoreDrop);
             plays.push({
@@ -2990,7 +2990,7 @@ var worker_default = {
             hitterAbVsPitcher: sport === "mlb" && stat !== "strikeouts" ? hitterAbVsPitcher : void 0,
             hitterPitcherName: sport === "mlb" && stat !== "strikeouts" ? (sportByteam.mlb?.probables?.[tonightOpp]?.name ?? sportByteam.mlb?.pitcherInfoByTeam?.[tonightOpp]?.name ?? pitcherGamelogs[tonightOpp]?.name ?? null) : void 0,
             hitterSoftLabel: sport === "mlb" && stat !== "strikeouts" ? softLabel : void 0,
-            hitterPitcherEra: sport === "mlb" && stat !== "strikeouts" ? (sportByteam.mlb?.probables?.[tonightOpp]?.era ?? sportByteam.mlb?.pitcherEra?.[tonightOpp] ?? null) : void 0,
+            hitterPitcherEra: sport === "mlb" && stat !== "strikeouts" ? (sportByteam.mlb?.pitcherEra?.[tonightOpp] ?? sportByteam.mlb?.probables?.[tonightOpp]?.era ?? null) : void 0,
             nbaSimScore: sport === "nba" ? nbaSimScore : void 0,
             nbaPreSimScore: sport === "nba" ? nbaPreSimScore : void 0,
             nbaSimPct: sport === "nba" ? nbaSimPctOut : void 0,
@@ -3241,8 +3241,10 @@ var worker_default = {
               // Road RPG strips home-park bias from the lambda numerator (fallback to overall RPG)
               const homeRPG = mlbRoadRPGMap[homeTeam] ?? mlbRPGMap[homeTeam] ?? null;
               const awayRPG = mlbRoadRPGMap[awayTeam] ?? mlbRPGMap[awayTeam] ?? null;
-              const homeERA = sportByteam.mlb?.probables?.[homeTeam]?.era ?? null;
-              const awayERA = sportByteam.mlb?.probables?.[awayTeam]?.era ?? null;
+              // Regressed pitcherEra (two-step shrinkage, see api/lib/mlb.js) preferred over raw probables.era;
+              // probables fallback only fires for pitchers with no 2026/2025 sample (debut/late-announcement).
+              const homeERA = sportByteam.mlb?.pitcherEra?.[homeTeam] ?? sportByteam.mlb?.probables?.[homeTeam]?.era ?? null;
+              const awayERA = sportByteam.mlb?.pitcherEra?.[awayTeam] ?? sportByteam.mlb?.probables?.[awayTeam]?.era ?? null;
               const homeFIP = sportByteam.mlb?.pitcherFIPByTeam?.[homeTeam] ?? null;
               const awayFIP = sportByteam.mlb?.pitcherFIPByTeam?.[awayTeam] ?? null;
               // Starter WHIP first; fall back to team-staff WHIP when starter unknown (debut/late-announcement).
@@ -3803,7 +3805,7 @@ var worker_default = {
             if (sport === "mlb") {
               const teamRPG = mlbRoadRPGMap[scoringTeam] ?? mlbRPGMap[scoringTeam] ?? null;
               const oppRPG = mlbRoadRPGMap[oppTeam] ?? mlbRPGMap[oppTeam] ?? null;
-              const oppERA = sportByteam.mlb?.probables?.[oppTeam]?.era ?? null;
+              const oppERA = sportByteam.mlb?.pitcherEra?.[oppTeam] ?? sportByteam.mlb?.probables?.[oppTeam]?.era ?? null;
               const oppFIP = sportByteam.mlb?.pitcherFIPByTeam?.[oppTeam] ?? null;
               const oppTeamERA = mlbTeamERAMap[oppTeam] ?? null;
               // Bullpen ERA replaces whole-staff teamERA in the 40% rest-of-game share (same rationale
