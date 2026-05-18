@@ -449,7 +449,7 @@ export async function buildNbaUsageRate(playerIds, cache) {
   const hdrs = { "User-Agent": "Mozilla/5.0" };
   const result = {};
   // Check cache first (parallel), then fetch only uncached players
-  const cacheKeys = playerIds.map(id => `nba:usg:${id}`);
+  const cacheKeys = playerIds.map(id => `nba:usg:v2:${id}`);
   const cached = cache ? await Promise.all(cacheKeys.map(k => cache.get(k, "json").catch(() => null))) : playerIds.map(() => null);
   const toFetch = [];
   for (let i = 0; i < playerIds.length; i++) {
@@ -480,16 +480,17 @@ export async function buildNbaUsageRate(playerIds, cache) {
       }
       const _avgAst = avgAst > 0 ? parseFloat(avgAst.toFixed(1)) : null;
       const _avgReb = avgReb > 0 ? parseFloat(avgReb.toFixed(1)) : null;
+      const _avgMin = avgMin > 0 ? parseFloat(avgMin.toFixed(1)) : null;
       let entry = null;
       if (usg != null) {
-        entry = { usg, avgAst: _avgAst, avgReb: _avgReb, source: "espn" };
+        entry = { usg, avgMin: _avgMin, avgAst: _avgAst, avgReb: _avgReb, source: "espn" };
       } else if (avgMin > 10 && avgFGA > 0) {
         const est = (avgFGA + 0.44 * avgFTA + avgTO) / (avgMin * 2.255) * 100;
-        entry = { usg: parseFloat(Math.min(50, Math.max(0, est)).toFixed(1)), avgAst: _avgAst, avgReb: _avgReb, source: "estimated" };
+        entry = { usg: parseFloat(Math.min(50, Math.max(0, est)).toFixed(1)), avgMin: _avgMin, avgAst: _avgAst, avgReb: _avgReb, source: "estimated" };
       }
       if (entry) {
         result[String(id)] = entry;
-        if (cache) cache.put(`nba:usg:${id}`, JSON.stringify(entry), { expirationTtl: 21600 }).catch(() => {});
+        if (cache) cache.put(`nba:usg:v2:${id}`, JSON.stringify(entry), { expirationTtl: 21600 }).catch(() => {});
       }
     } catch {}
   }));

@@ -128,15 +128,22 @@ function MatchupCard({
     };
   };
   // Per-team injury list for NBA/WNBA/NHL — one entry per Out/GTD player. Sorted Out-first so
-  // the more impactful absences render to the left of the wrap container. Suppressed during
-  // live/final (the relevant question is who actually played).
+  // the more impactful absences render to the left of the wrap container. Filtered to starters
+  // only for NBA/WNBA (avgMin threshold catches starters + heavy rotation, excludes deep bench).
+  // NHL shows all — no per-player TOI data fetched. Suppressed during live/final.
+  const STARTER_MIN = { nba: 25, wnba: 20 };
   const injuryFor = (abbr) => {
     if (!abbr || sport === 'mlb' || sport === 'nfl') return null;
     if (gameState === 'in' || gameState === 'post') return null;
     const meta = sport === 'nba' ? nbaMeta : sport === 'wnba' ? wnbaMeta : sport === 'nhl' ? nhlMeta : null;
     const players = meta?.injuries?.[abbr];
     if (!players?.length) return null;
-    const sorted = [...players].sort((a, b) => {
+    const minThreshold = STARTER_MIN[sport];
+    const filtered = minThreshold != null
+      ? players.filter(p => typeof p.avgMin === 'number' && p.avgMin >= minThreshold)
+      : players;
+    if (!filtered.length) return null;
+    const sorted = [...filtered].sort((a, b) => {
       if (a.status !== b.status) return a.status === 'out' ? -1 : 1;
       return 0;
     });

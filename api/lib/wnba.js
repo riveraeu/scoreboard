@@ -100,7 +100,7 @@ export async function buildWnbaPaceData(cache, season = 2025) {
 export async function buildWnbaUsageRate(playerIds, cache, season = 2025) {
   const hdrs = { "User-Agent": "Mozilla/5.0" };
   const result = {};
-  const cacheKeys = playerIds.map(id => `wnba:usg:${id}:${season}`);
+  const cacheKeys = playerIds.map(id => `wnba:usg:v2:${id}:${season}`);
   const cached = cache ? await Promise.all(cacheKeys.map(k => cache.get(k, "json").catch(() => null))) : playerIds.map(() => null);
   const toFetch = [];
   for (let i = 0; i < playerIds.length; i++) {
@@ -131,18 +131,19 @@ export async function buildWnbaUsageRate(playerIds, cache, season = 2025) {
       }
       const _avgAst = avgAst > 0 ? parseFloat(avgAst.toFixed(1)) : null;
       const _avgReb = avgReb > 0 ? parseFloat(avgReb.toFixed(1)) : null;
+      const _avgMin = avgMin > 0 ? parseFloat(avgMin.toFixed(1)) : null;
       let entry = null;
       if (usg != null) {
-        entry = { usg, avgAst: _avgAst, avgReb: _avgReb, source: "espn" };
+        entry = { usg, avgMin: _avgMin, avgAst: _avgAst, avgReb: _avgReb, source: "espn" };
       } else if (avgMin > 8 && avgFGA > 0) {
         // 40-min game → minutes coefficient is 2.255 × (40/48) = 1.88 vs NBA's 2.255.
         // Using 2.255 directly would inflate WNBA USG by ~20%; rescale to a 40-min game.
         const est = (avgFGA + 0.44 * avgFTA + avgTO) / (avgMin * 1.88) * 100;
-        entry = { usg: parseFloat(Math.min(50, Math.max(0, est)).toFixed(1)), avgAst: _avgAst, avgReb: _avgReb, source: "estimated" };
+        entry = { usg: parseFloat(Math.min(50, Math.max(0, est)).toFixed(1)), avgMin: _avgMin, avgAst: _avgAst, avgReb: _avgReb, source: "estimated" };
       }
       if (entry) {
         result[String(id)] = entry;
-        if (cache) cache.put(`wnba:usg:${id}:${season}`, JSON.stringify(entry), { expirationTtl: 21600 }).catch(() => {});
+        if (cache) cache.put(`wnba:usg:v2:${id}:${season}`, JSON.stringify(entry), { expirationTtl: 21600 }).catch(() => {});
       }
     } catch {}
   }));

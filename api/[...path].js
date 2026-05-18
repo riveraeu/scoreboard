@@ -6010,9 +6010,12 @@ var worker_default = {
         await _applyClosingSnapshot('nbaClosingOdds', sportByteam.nbaGameScores, _nbaGameOdds);
         const _nbaInjuries = {};
         for (const [abbr, players] of (nbaInjuryMap || new Map()).entries()) {
+          // Enrich each player with avgMin from the usage map. Frontend uses this to filter
+          // the matchup-card badge to starters only (NBA cutoff: avgMin >= 25).
+          const enriched = players.map(p => ({ ...p, avgMin: (p.id && nbaUsageMap[p.id]?.avgMin) ?? null }));
           const key = _nbaOddsNorm[abbr] || abbr;
-          _nbaInjuries[key] = players;
-          _nbaInjuries[abbr] = players; // keep original key too for fallback
+          _nbaInjuries[key] = enriched;
+          _nbaInjuries[abbr] = enriched; // keep original key too for fallback
         }
         const nbaMeta = { gameOdds: _nbaGameOdds, injuries: _nbaInjuries, gameScores: sportByteam.nbaGameScores ?? {}, topPlayers: sportByteam.nbaTopPlayers ?? {} };
         // WNBA meta — same shape as NBA. Canonical-only keys (CONNECTICU/DALLAS already normalized to CONN/DAL).
@@ -6024,9 +6027,11 @@ var worker_default = {
         await _applyClosingSnapshot('wnbaClosingOdds', sportByteam.wnbaGameScores, _wnbaGameOdds);
         const _wnbaInjuries = {};
         for (const [abbr, players] of (wnbaInjuryMap || new Map()).entries()) {
+          // Same avgMin enrichment as NBA (frontend WNBA cutoff: avgMin >= 20 for 40-min game).
+          const enriched = players.map(p => ({ ...p, avgMin: (p.id && wnbaUsageMap[p.id]?.avgMin) ?? null }));
           const key = TEAM_NORM.wnba[abbr] || abbr;
-          _wnbaInjuries[key] = players;
-          _wnbaInjuries[abbr] = players;
+          _wnbaInjuries[key] = enriched;
+          _wnbaInjuries[abbr] = enriched;
         }
         const wnbaMeta = { gameOdds: _wnbaGameOdds, injuries: _wnbaInjuries, gameScores: sportByteam.wnbaGameScores ?? {}, topPlayers: sportByteam.wnbaTopPlayers ?? {} };
         const _nhlGameOdds = {};
