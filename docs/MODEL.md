@@ -182,7 +182,7 @@ Stats: `passingYards`, `rushingYards`, `receivingYards`, `receptions`, `completi
 ## Game Totals (MLB/NBA/WNBA/NHL/NFL)
 Kalshi series: `KXMLBTOTAL`, `KXNBATOTAL`, `KXWNBATOTAL`, `KXNHLTOTAL`, `KXNFLTOTAL`. `gameType: "total"`. Market format: `floor_strike = N` means YES = total ≥ N (i.e. "over N−0.5").
 
-**WNBA totals**: same possession-based projection as NBA but with `wnbaPaceData` (2025 anchor). Per-team std=11 (WNBA scoring variance roughly NBA × (40/48); empirical game-total std ~13–15). **SimScore tiers retuned**: Comb OffRtg/DefRtg ≥98/≥93 (vs NBA 118/113), Pace > leagueAvg+1 (vs +2), O/U ≥168/≥158 (vs 225/215). Pace data from ESPN `avgEstimatedPossessions` (no separate `paceFactor` field for WNBA). Sample-weighted seasonHitRate blend via `_ssnBlendWeight`, same as NBA/MLB/NHL.
+**WNBA totals**: same possession-based projection as NBA but with `wnbaPaceData` (2025 anchor). Per-team std=11 (WNBA scoring variance roughly NBA × (40/48); empirical game-total std ~13–15). **SimScore tiers retuned**: Comb OffRtg/DefRtg ≥98/≥93 (vs NBA 118/113), Pace > leagueAvg+1 (vs +2), O/U ≥168/≥158 (vs 225/215). Pace data from ESPN `avgEstimatedPossessions` (no separate `paceFactor` field for WNBA). Sample-weighted seasonHitRate blend via `_ssnBlendWeight`, same as NBA/MLB/NHL. Same injury-adjusted OffRtg as NBA (2026-05-17, 0.15 replacement factor, cap 0.85) — WNBA rosters are smaller and stars carry larger usage shares, but starting with the same factor for calibration parity (adjust later if data shows under-correction).
 
 **True%**: Poisson MC for MLB/NHL, Normal for NBA/WNBA. `_simData` includes per-team expected and `expectedTotal`. **All four sports blend `gtSeasonHitRate` into the lambda PRE-sim** (changed 2026-05-13 from post-sim truePct blend) — for the threshold being predicted, solve for the rate that would produce the observed seasonHitRate, then sample-weighted blend with model lambda.
 - Poisson sports: `impliedLambda = lambdaForPoissonTail(threshold, ssnRate/100)` (bisection in `simulate.js`); `blendedLambda = (1-w) × modelLambda + w × impliedLambda`; `truePct = (1 - poissonCDF(threshold-1, blendedLambda)) × 100`.
@@ -236,13 +236,18 @@ awayLambda = awayGPG × goalieFactor(homeGoalieSV, homeGAA)  # clamped [0.5, 8]
 *NBA* (possession-based):
 ```
 projPace = (homePace × awayPace) / leagueAvgPace                        # geometric mean
-homeExpected = (homeOffRtg × awayDefRtg / leagueAvgOffRtg²) × projPace
-awayExpected = (awayOffRtg × homeDefRtg / leagueAvgOffRtg²) × projPace
+# Injury-adjusted OffRtg: reduce by sum-of-Out-player-USG × replacement penalty (0.15), cap [0.85, 1.00].
+offRtgAdj(team)    = clamp(1 - Σ(usg[Out players on team])/100 × 0.15, [0.85, 1.00])
+homeOffRtgAdj      = homeOffRtg × offRtgAdj(home)
+awayOffRtgAdj      = awayOffRtg × offRtgAdj(away)
+homeExpected = (homeOffRtgAdj × awayDefRtg / leagueAvgOffRtg²) × projPace
+awayExpected = (awayOffRtgAdj × homeDefRtg / leagueAvgOffRtg²) × projPace
 # Playoff scoring boost when seriesSummary non-null on either team:
 #   homeExpected *= _PLAYOFF_OFF_BOOST  (1.04)
 #   awayExpected *= _PLAYOFF_OFF_BOOST
 ```
 OffRtg/DefRtg from same ESPN team-stats call as pace. `nba:pace:2526` stores `teamOffRtg`, `teamDefRtg`, `leagueAvgOffRtg`, `leagueAvgDefRtg`. `_PLAYOFF_OFF_BOOST` is a single tunable at the top of the tonight handler — RS-aggregate ratings systematically under-projected playoff totals (LAL/OKC G3 = 232 vs model 199 vs market 210.5); +4% closes most of the model-vs-market gap. Surfaced as `playoffBoost: 1.04` in `_simData` when applied. Same boost applied to NBA team totals (`_teamExpected *= _PLAYOFF_OFF_BOOST`).
+- **Injury OffRtg adjustment added 2026-05-17**: previously totals lambda used season-to-date OffRtg unchanged regardless of who's Out tonight. Now we sum the USG% of every Out player (via `nbaInjuryMap` × `nbaUsageMap`) and apply a 0.15 replacement-penalty factor. Empirical calibration: losing LeBron (28% USG) drops Lakers ~4.2% OffRtg, matching real-world LAL-without-LeBron data. Cap at 0.85 prevents multi-star scenarios from cratering lambda. DefRtg intentionally NOT adjusted — losing a defensive specialist has no clean usage proxy. Supplementary `buildNbaUsageRate` call after the parallel hydration backfills usage for injured players who don't have Kalshi prop markets tonight (e.g., 7th-man bench star out). `_simData` adds `homeOffRtgAdj`, `awayOffRtgAdj`, `homeUsageOut`, `awayUsageOut`, and `homeOffRtgFactor`/`awayOffRtgFactor` (omitted when factor = 1.0). Same swap applied to NBA team-total lambda via `teamOffRtgAdj`/`scoringUsageOut`/`scoringOffRtgFactor`. **No dataConfidence penalty** — adjustment makes lambda more accurate, not less.
 
 **SimScore — MLB**: homeWHIP, awayWHIP (>1.35→2, >1.20→1, ≤1.20→0), combinedRPG (`homeRPG+awayRPG`; ≥10.5→2, ≥8.5→1), H2H combined hit rate% (homeScore+awayScore ≥ threshold last 10 H2H; ≥3 games required), O/U line (≥9.5→2, ≥7.5→1). WHIP fallback: `pitcherWHIPByTeam[abbr]` → `teamWHIPMap[abbr]` → 1pt abstain. `homeWHIPSource`/`awayWHIPSource` = `"starter"|"team"|null` flags which path fired (covers debut/late-announcement starters).
 

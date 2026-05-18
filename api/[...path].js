@@ -2758,6 +2758,19 @@ var worker_default = {
           ]);
           Object.assign(nbaUsageMap, _usgResult);
           nbaInjuryMap = _injResult;
+          // Supplementary usage fetch for Out players not in the Kalshi-driven playerInfoMap
+          // (e.g., a 7th man with no prop markets). Lets the totals lambda's offRtgAdj cover
+          // every Out player, not just those who happen to have Kalshi props tonight.
+          const _injOutIds = [];
+          for (const players of nbaInjuryMap.values()) {
+            for (const p of players) {
+              if (p.id && p.status === "out" && !nbaUsageMap[p.id]) _injOutIds.push(p.id);
+            }
+          }
+          if (_injOutIds.length > 0) {
+            const _injUsg = await buildNbaUsageRate(_injOutIds, CACHE2);
+            Object.assign(nbaUsageMap, _injUsg);
+          }
         }
         // Same pattern for WNBA — 2025-anchored USG; injuries.
         const wnbaUsageMap = {};
@@ -2775,7 +2788,37 @@ var worker_default = {
           ]);
           Object.assign(wnbaUsageMap, _wusgResult);
           wnbaInjuryMap = _winjResult;
+          const _wInjOutIds = [];
+          for (const players of wnbaInjuryMap.values()) {
+            for (const p of players) {
+              if (p.id && p.status === "out" && !wnbaUsageMap[p.id]) _wInjOutIds.push(p.id);
+            }
+          }
+          if (_wInjOutIds.length > 0) {
+            const _wInjUsg = await buildWnbaUsageRate(_wInjOutIds, CACHE2, 2025);
+            Object.assign(wnbaUsageMap, _wInjUsg);
+          }
         }
+        // Injury-adjusted OffRtg helper for NBA/WNBA totals lambda. Sums USG% of all Out players
+        // on a team and applies replacement-penalty factor (0.15 — empirically calibrated: losing a
+        // 28% USG star drops team OffRtg ~4%). Returns the {share, adj} pair so _simData can expose
+        // both. Cap at 0.85 prevents multi-star scenarios from cratering lambda below 85% of base.
+        // Players missing usage data contribute 0 (won't error; treated as not playing meaningfully).
+        const _OFFRTG_INJ_FACTOR = 0.15;
+        const _OFFRTG_INJ_CAP = 0.85;
+        const _NBAshortNorm = { GSW:"GS", SAS:"SA", NYK:"NY", NOP:"NO", PHX:"PHO" };
+        const _injuryOffRtgAdj = (team, injuryMap, usageMap, shortMap) => {
+          const players = injuryMap.get(team) || injuryMap.get(shortMap?.[team]) || [];
+          let share = 0;
+          for (const p of players) {
+            if (p.status !== "out") continue;
+            const usg = p.id ? usageMap[p.id]?.usg : null;
+            if (usg != null && usg > 0) share += usg;
+          }
+          share = parseFloat(share.toFixed(1));
+          const adj = Math.max(_OFFRTG_INJ_CAP, 1 - share / 100 * _OFFRTG_INJ_FACTOR);
+          return { share, adj: parseFloat(adj.toFixed(3)) };
+        };
         const NBA_POS_MAP = {
           PG: "PG",
           "PG/SG": "PG",
@@ -4686,18 +4729,26 @@ var worker_default = {
               // DefRtg: PPG allowed / pace * 100 — eliminates pace from defense metric too
               const _hDefRtg = (nbaDefRank[homeTeam]?.value != null && _hp != null && _hp > 0) ? parseFloat((nbaDefRank[homeTeam].value / _hp * 100).toFixed(1)) : null;
               const _aDefRtg = (nbaDefRank[awayTeam]?.value != null && _ap != null && _ap > 0) ? parseFloat((nbaDefRank[awayTeam].value / _ap * 100).toFixed(1)) : null;
+              // Injury-adjusted OffRtg: reduce season OffRtg by sum-of-Out-player-USG × replacement penalty (0.15).
+              // Bench replacements cover most of the absolute scoring volume; reduction reflects efficiency loss.
+              const _homeInjAdj = _injuryOffRtgAdj(homeTeam, nbaInjuryMap, nbaUsageMap, _NBAshortNorm);
+              const _awayInjAdj = _injuryOffRtgAdj(awayTeam, nbaInjuryMap, nbaUsageMap, _NBAshortNorm);
+              const _hOffRtgAdj = _hOffRtg != null ? parseFloat((_hOffRtg * _homeInjAdj.adj).toFixed(1)) : null;
+              const _aOffRtgAdj = _aOffRtg != null ? parseFloat((_aOffRtg * _awayInjAdj.adj).toFixed(1)) : null;
               let _homeExpRaw = null, _awayExpRaw = null, _projPace = null;
               if (_hOffRtg != null && _aDefRtg != null && _aOffRtg != null && _hDefRtg != null && _hp != null && _ap != null && _lgPace != null && _lgPace > 0) {
                 // Geometric-mean pace: correctly handles extreme pace matchups without simple averaging
                 _projPace = parseFloat(((_hp * _ap) / _lgPace).toFixed(1));
-                _homeExpRaw = (_hOffRtg * _aDefRtg / (_lgOffRtg * _lgOffRtg)) * _projPace;
-                _awayExpRaw = (_aOffRtg * _hDefRtg / (_lgOffRtg * _lgOffRtg)) * _projPace;
+                _homeExpRaw = (_hOffRtgAdj * _aDefRtg / (_lgOffRtg * _lgOffRtg)) * _projPace;
+                _awayExpRaw = (_aOffRtgAdj * _hDefRtg / (_lgOffRtg * _lgOffRtg)) * _projPace;
               } else {
-                // Fallback: old PPG-based formula when pace data unavailable
+                // Fallback: old PPG-based formula when pace data unavailable. Apply same injury adj.
                 const homeOff = nbaOffPPGMap[homeTeam] ?? null, awayOff = nbaOffPPGMap[awayTeam] ?? null;
                 const homeDef = nbaDefRank[homeTeam]?.value ?? null, awayDef = nbaDefRank[awayTeam]?.value ?? null;
-                _homeExpRaw = homeOff != null ? homeOff * (awayDef != null && nbaAvgDef ? awayDef / nbaAvgDef : 1) : null;
-                _awayExpRaw = awayOff != null ? awayOff * (homeDef != null && nbaAvgDef ? homeDef / nbaAvgDef : 1) : null;
+                const _homeOffAdj = homeOff != null ? homeOff * _homeInjAdj.adj : null;
+                const _awayOffAdj = awayOff != null ? awayOff * _awayInjAdj.adj : null;
+                _homeExpRaw = _homeOffAdj != null ? _homeOffAdj * (awayDef != null && nbaAvgDef ? awayDef / nbaAvgDef : 1) : null;
+                _awayExpRaw = _awayOffAdj != null ? _awayOffAdj * (homeDef != null && nbaAvgDef ? homeDef / nbaAvgDef : 1) : null;
               }
               // Playoff scoring boost — RS-aggregate ratings under-project playoff totals.
               // gameScores is keyed `${home}|${date}` so we have to scan values, not lookup by abbr.
@@ -4725,7 +4776,7 @@ var worker_default = {
               const _combDefRtgPts = _combDefRtg == null ? 1 : _combDefRtg >= 118 ? 2 : _combDefRtg >= 113 ? 1 : 0;
               const _nbaGtH2HPts = nbaGtH2HRate == null ? 1 : nbaGtH2HRate >= 80 ? 2 : nbaGtH2HRate >= 60 ? 1 : 0;
               const _nbaOuPts = _nbaOuLine == null ? 1 : _nbaOuLine >= 225 ? 2 : _nbaOuLine >= 215 ? 1 : 0;
-              _simData = { homeOffRtg: _hOffRtg, awayOffRtg: _aOffRtg, homeDefRtg: _hDefRtg, awayDefRtg: _aDefRtg, combOffRtg: _combOffRtg, combDefRtg: _combDefRtg, homePace: _hp, awayPace: _ap, leagueAvgPace: _lgPace, projPace: _projPace, gameOuLine: _nbaOuLine, gameSpread: _nbaGtSpread, homeOut: _homeOut, awayOut: _awayOut, nbaGtH2HRate, nbaGtH2HGames, combOffRtgPts: _combOffRtgPts, combDefRtgPts: _combDefRtgPts, pacePts: _pacePts, nbaGtH2HPts: _nbaGtH2HPts, nbaOuPts: _nbaOuPts, homeExpected: _homeExpRaw != null ? parseFloat(_homeExpRaw.toFixed(1)) : null, awayExpected: _awayExpRaw != null ? parseFloat(_awayExpRaw.toFixed(1)) : null, expectedTotal: (_homeExpRaw != null && _awayExpRaw != null) ? parseFloat((_homeExpRaw + _awayExpRaw).toFixed(1)) : null, ...(_isPlayoff && { playoffBoost: _PLAYOFF_OFF_BOOST }) };
+              _simData = { homeOffRtg: _hOffRtg, awayOffRtg: _aOffRtg, homeOffRtgAdj: _hOffRtgAdj, awayOffRtgAdj: _aOffRtgAdj, homeDefRtg: _hDefRtg, awayDefRtg: _aDefRtg, combOffRtg: _combOffRtg, combDefRtg: _combDefRtg, homePace: _hp, awayPace: _ap, leagueAvgPace: _lgPace, projPace: _projPace, gameOuLine: _nbaOuLine, gameSpread: _nbaGtSpread, homeOut: _homeOut, awayOut: _awayOut, homeUsageOut: _homeInjAdj.share, awayUsageOut: _awayInjAdj.share, ...(_homeInjAdj.adj < 1 && { homeOffRtgFactor: _homeInjAdj.adj }), ...(_awayInjAdj.adj < 1 && { awayOffRtgFactor: _awayInjAdj.adj }), nbaGtH2HRate, nbaGtH2HGames, combOffRtgPts: _combOffRtgPts, combDefRtgPts: _combDefRtgPts, pacePts: _pacePts, nbaGtH2HPts: _nbaGtH2HPts, nbaOuPts: _nbaOuPts, homeExpected: _homeExpRaw != null ? parseFloat(_homeExpRaw.toFixed(1)) : null, awayExpected: _awayExpRaw != null ? parseFloat(_awayExpRaw.toFixed(1)) : null, expectedTotal: (_homeExpRaw != null && _awayExpRaw != null) ? parseFloat((_homeExpRaw + _awayExpRaw).toFixed(1)) : null, ...(_isPlayoff && { playoffBoost: _PLAYOFF_OFF_BOOST }) };
               if (_homeExpRaw != null && _awayExpRaw != null) {
                 const _dk = `nba|${homeTeam}|${awayTeam}`;
                 // Per-team std=13 (was 11) — produces game-total std ≈ 18.4, closer to empirical
@@ -4770,11 +4821,18 @@ var worker_default = {
               const _wlgOffRtg = wnbaPaceData?.leagueAvgOffRtg ?? 92.7;
               const _whDefRtg = wnbaPaceData?.teamDefRtg?.[homeTeam] ?? null;
               const _waDefRtg = wnbaPaceData?.teamDefRtg?.[awayTeam] ?? null;
+              // Injury-adjusted OffRtg: same formula as NBA. WNBA rosters are smaller (12 vs 15) and
+              // stars carry slightly larger usage shares, but starting with the same 0.15 factor for
+              // calibration parity — adjust later if WNBA-specific data shows under-correction.
+              const _wHomeInjAdj = _injuryOffRtgAdj(homeTeam, wnbaInjuryMap, wnbaUsageMap);
+              const _wAwayInjAdj = _injuryOffRtgAdj(awayTeam, wnbaInjuryMap, wnbaUsageMap);
+              const _whOffRtgAdj = _whOffRtg != null ? parseFloat((_whOffRtg * _wHomeInjAdj.adj).toFixed(1)) : null;
+              const _waOffRtgAdj = _waOffRtg != null ? parseFloat((_waOffRtg * _wAwayInjAdj.adj).toFixed(1)) : null;
               let _wHomeExpRaw = null, _wAwayExpRaw = null, _wProjPace = null;
               if (_whOffRtg != null && _waDefRtg != null && _waOffRtg != null && _whDefRtg != null && _whp != null && _wap != null && _wlgPace != null && _wlgPace > 0) {
                 _wProjPace = parseFloat(((_whp * _wap) / _wlgPace).toFixed(1));
-                _wHomeExpRaw = (_whOffRtg * _waDefRtg / (_wlgOffRtg * _wlgOffRtg)) * _wProjPace;
-                _wAwayExpRaw = (_waOffRtg * _whDefRtg / (_wlgOffRtg * _wlgOffRtg)) * _wProjPace;
+                _wHomeExpRaw = (_whOffRtgAdj * _waDefRtg / (_wlgOffRtg * _wlgOffRtg)) * _wProjPace;
+                _wAwayExpRaw = (_waOffRtgAdj * _whDefRtg / (_wlgOffRtg * _wlgOffRtg)) * _wProjPace;
               }
               // H2H combined hit rate (last 10 H2H)
               const _wnbaH2H = (() => {
@@ -4801,11 +4859,15 @@ var worker_default = {
               const _wnbaGtH2HPts = wnbaGtH2HRate == null ? 1 : wnbaGtH2HRate >= 80 ? 2 : wnbaGtH2HRate >= 60 ? 1 : 0;
               const _wnbaOuPts = _wnbaOuLine == null ? 1 : _wnbaOuLine >= 168 ? 2 : _wnbaOuLine >= 158 ? 1 : 0;
               _simData = {
-                homeOffRtg: _whOffRtg, awayOffRtg: _waOffRtg, homeDefRtg: _whDefRtg, awayDefRtg: _waDefRtg,
+                homeOffRtg: _whOffRtg, awayOffRtg: _waOffRtg, homeOffRtgAdj: _whOffRtgAdj, awayOffRtgAdj: _waOffRtgAdj,
+                homeDefRtg: _whDefRtg, awayDefRtg: _waDefRtg,
                 combOffRtg: _wCombOffRtg, combDefRtg: _wCombDefRtg,
                 homePace: _whp, awayPace: _wap, leagueAvgPace: _wlgPace, projPace: _wProjPace,
                 gameOuLine: _wnbaOuLine, gameSpread: _wnbaGtSpread, wnbaGtH2HRate, wnbaGtH2HGames,
                 homeOut: _wnbaHomeOut, awayOut: _wnbaAwayOut,
+                homeUsageOut: _wHomeInjAdj.share, awayUsageOut: _wAwayInjAdj.share,
+                ...(_wHomeInjAdj.adj < 1 && { homeOffRtgFactor: _wHomeInjAdj.adj }),
+                ...(_wAwayInjAdj.adj < 1 && { awayOffRtgFactor: _wAwayInjAdj.adj }),
                 combOffRtgPts: _wCombOffRtgPts, combDefRtgPts: _wCombDefRtgPts, pacePts: _wPacePts,
                 wnbaGtH2HPts: _wnbaGtH2HPts, wnbaOuPts: _wnbaOuPts,
                 homeExpected: _wHomeExpRaw != null ? parseFloat(_wHomeExpRaw.toFixed(1)) : null,
@@ -5205,6 +5267,9 @@ var worker_default = {
               const _oppPaceNba = nbaPaceData?.teamPace?.[oppTeam] ?? null;
               const oppDefPPGNba = nbaDefRank[oppTeam]?.value ?? null;
               const oppDefRtg = (oppDefPPGNba != null && _oppPaceNba != null && _oppPaceNba > 0) ? parseFloat((oppDefPPGNba / _oppPaceNba * 100).toFixed(1)) : null;
+              // Injury adjustment for scoring team's OffRtg (mirrors NBA game total).
+              const _ttScoringInjAdj = _injuryOffRtgAdj(scoringTeam, nbaInjuryMap, nbaUsageMap, _NBAshortNorm);
+              const _teamOffRtgAdj = teamOffRtg != null ? parseFloat((teamOffRtg * _ttScoringInjAdj.adj).toFixed(1)) : null;
               // Simulation: OffRtg-based projection when available, fall back to PPG
               const _teamPaceNba = nbaPaceData?.teamPace?.[scoringTeam] ?? null;
               const _lgPaceNba = nbaPaceData?.leagueAvgPace ?? null;
@@ -5212,11 +5277,12 @@ var worker_default = {
               let _teamExpected = null;
               if (teamOffRtg != null && oppDefRtg != null && _teamPaceNba != null && _oppPaceNba != null && _lgPaceNba != null && _lgPaceNba > 0) {
                 const _projPaceNba = (_teamPaceNba * _oppPaceNba) / _lgPaceNba;
-                _teamExpected = (teamOffRtg * oppDefRtg / (_lgOffRtgNba * _lgOffRtgNba)) * _projPaceNba;
+                _teamExpected = (_teamOffRtgAdj * oppDefRtg / (_lgOffRtgNba * _lgOffRtgNba)) * _projPaceNba;
               } else {
                 const teamOff = nbaOffPPGMap[scoringTeam] ?? null;
                 const oppDef = nbaDefRank[oppTeam]?.value ?? null;
-                if (teamOff != null) _teamExpected = teamOff * (oppDef != null && nbaAvgDef ? oppDef / nbaAvgDef : 1);
+                const _teamOffPPGAdj = teamOff != null ? teamOff * _ttScoringInjAdj.adj : null;
+                if (_teamOffPPGAdj != null) _teamExpected = _teamOffPPGAdj * (oppDef != null && nbaAvgDef ? oppDef / nbaAvgDef : 1);
               }
               // Same playoff scoring boost as NBA game totals (see _PLAYOFF_OFF_BOOST).
               const _ttIsPlayoff = Object.values(sportByteam.nbaGameScores || {}).some(g =>
@@ -5268,7 +5334,7 @@ var worker_default = {
                 : null;
               const _ttScoringOut = (nbaInjuryMap.get(scoringTeam) || []).length;
               const _ttOppOut = (nbaInjuryMap.get(oppTeam) || []).length;
-              const _nttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), ...(_ttNbaModelTruePct != null && _ttNbaModelTruePct !== truePct && { modelTruePct: _ttNbaModelTruePct }), ...(_ttNbaImpliedMean != null && { ttNbaImpliedMean: _ttNbaImpliedMean, ttNbaBlendedMean: _ttNbaBlendedMean }), ...(_ttNbaImpliedMeanClamped != null && { ttNbaImpliedMeanClamped: _ttNbaImpliedMeanClamped }), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _nttGameTime, teamOffRtg, oppDefRtg, teamExpected: _teamExpected != null ? parseFloat(_teamExpected.toFixed(1)) : null, gameOuLine: _nbaOuLine, gameSpread: _gameSpread, projPace: _ttNbaProjPace, leagueAvgPace: _lgPaceNba, scoringOut: _ttScoringOut, oppOut: _ttOppOut, h2hHitRate, h2hGames, h2hHitRatePts, ttNbaSeasonHitRate, ttNbaSeasonHitRatePts, ttOffRtgPts, ttDefRtgPts, ttNbaOuPts, ...(_ttIsPlayoff && { playoffBoost: _PLAYOFF_OFF_BOOST }) };
+              const _nttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), ...(_ttNbaModelTruePct != null && _ttNbaModelTruePct !== truePct && { modelTruePct: _ttNbaModelTruePct }), ...(_ttNbaImpliedMean != null && { ttNbaImpliedMean: _ttNbaImpliedMean, ttNbaBlendedMean: _ttNbaBlendedMean }), ...(_ttNbaImpliedMeanClamped != null && { ttNbaImpliedMeanClamped: _ttNbaImpliedMeanClamped }), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _nttGameTime, teamOffRtg, teamOffRtgAdj: _teamOffRtgAdj, oppDefRtg, teamExpected: _teamExpected != null ? parseFloat(_teamExpected.toFixed(1)) : null, gameOuLine: _nbaOuLine, gameSpread: _gameSpread, projPace: _ttNbaProjPace, leagueAvgPace: _lgPaceNba, scoringOut: _ttScoringOut, oppOut: _ttOppOut, scoringUsageOut: _ttScoringInjAdj.share, ...(_ttScoringInjAdj.adj < 1 && { scoringOffRtgFactor: _ttScoringInjAdj.adj }), h2hHitRate, h2hGames, h2hHitRatePts, ttNbaSeasonHitRate, ttNbaSeasonHitRatePts, ttOffRtgPts, ttDefRtgPts, ttNbaOuPts, ...(_ttIsPlayoff && { playoffBoost: _PLAYOFF_OFF_BOOST }) };
               const rawEdge = parseFloat((truePct - kalshiPct).toFixed(1));
               const edge = rawEdge;
               const _nttOverInWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;

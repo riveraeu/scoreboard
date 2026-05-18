@@ -178,7 +178,8 @@ export async function buildWnbaInjuryReport(cache) {
         if (!isOut && !isGtd) continue;
         if (!abbr) abbr = inj.athlete?.team?.abbreviation || null;
         const name = inj.athlete?.displayName || "";
-        if (name) outPlayers.push({ name, status: isOut ? "out" : "gtd" });
+        const id = inj.athlete?.id ? String(inj.athlete.id) : null;
+        if (name) outPlayers.push({ name, id, status: isOut ? "out" : "gtd" });
       }
       if (abbr && outPlayers.length) {
         const canon = WNBA_ESPN_TO_CANON[abbr] || abbr;
