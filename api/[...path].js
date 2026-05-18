@@ -3,6 +3,7 @@ import { PARK_KFACTOR, PARK_HITFACTOR, PARK_RUNFACTOR, UMPIRE_KFACTOR, log5K, po
 import { buildLineupKPct, buildBarrelPct, buildPitcherKPct, MLB_ID_TO_ABBR } from "./lib/mlb.js";
 import { warmPlayerInfoCache, buildNbaDvpStage1, buildNbaDvpFromBettingPros, buildNbaDepthChartPos, buildNbaPaceData, buildNbaPlayerPosFromSleeper, buildNbaDvpStage3FG, buildNbaUsageRate, buildNbaInjuryReport } from "./lib/nba.js";
 import { buildWnbaPaceData, buildWnbaUsageRate, buildWnbaInjuryReport, buildWnbaDvp, WNBA_TEAM_IDS, WNBA_ESPN_TO_CANON, WNBA_CANON_TO_ESPN } from "./lib/wnba.js";
+import { buildNhlGoalieData } from "./lib/nhl.js";
 
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
@@ -1849,9 +1850,15 @@ var worker_default = {
             }),
             sportsNeedingFetch.has("nhl") && Promise.all([
               fetch("https://api.nhle.com/stats/rest/en/team/summary?isAggregate=false&isGame=false&sort=goalsAgainstPerGame&start=0&limit=50&cayenneExp=seasonId%3D20252026%20and%20gameTypeId%3D2", { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
-              fetch("https://api.nhle.com/stats/rest/en/team/summary?isAggregate=false&isGame=false&sort=shotsAgainstPerGame&start=0&limit=50&cayenneExp=seasonId%3D20252026%20and%20gameTypeId%3D2", { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({}))
-            ]).then(async ([gaData, saData]) => {
-              sportByteam.nhl = { ga: gaData.data || [], sa: saData.data || [] };
+              fetch("https://api.nhle.com/stats/rest/en/team/summary?isAggregate=false&isGame=false&sort=shotsAgainstPerGame&start=0&limit=50&cayenneExp=seasonId%3D20252026%20and%20gameTypeId%3D2", { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
+              buildNhlGoalieData(CACHE2).catch(() => ({ goalieByTeam: {}, leagueAvgSV: 0.905 }))
+            ]).then(async ([gaData, saData, goalieData]) => {
+              sportByteam.nhl = {
+                ga: gaData.data || [],
+                sa: saData.data || [],
+                goalieByTeam: goalieData?.goalieByTeam || {},
+                leagueAvgSV: goalieData?.leagueAvgSV ?? 0.905,
+              };
               if (CACHE2) await CACHE2.put("byteam:nhl", JSON.stringify(sportByteam.nhl), { expirationTtl: 21600 });
             }),
             sportsNeedingFetch.has("mlb") && Promise.all([
@@ -2695,6 +2702,11 @@ var worker_default = {
         }
         const nhlLeagueAvgGAA = leagueAvgCache["nhl|points"] ?? 3.0;
         const nhlLeagueAvgGPG = (() => { const vals = Object.values(nhlGPGMap).filter(v => v > 0); return vals.length >= 15 ? parseFloat((vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2)) : 2.9; })();
+        // Starting-goalie data (buildNhlGoalieData). goalieByTeam[abbr] = {starterName, starterSV, starterGS, source}.
+        // Used in NHL game-total lambda to shift opponent factor toward tonight's actual goaltender instead of
+        // team-aggregate GAA (which conflates starter and backup). Fallback to team GAA when goalie absent.
+        const nhlGoalieByTeam = sportByteam.nhl?.goalieByTeam || {};
+        const nhlLeagueAvgSV = sportByteam.nhl?.leagueAvgSV ?? 0.905;
         const nbaOffPPGMap = {};
         if (Array.isArray(sportByteam.nbaScoring)) {
           const _NBA2 = { GS: "GSW", SA: "SAS", NY: "NYK", NJ: "BKN", NO: "NOP", PHO: "PHX" };
@@ -4802,8 +4814,22 @@ var worker_default = {
               const homeGPG = nhlGPGMap[homeTeam] ?? null, awayGPG = nhlGPGMap[awayTeam] ?? null;
               const homeGAA = nhlGAAMap[homeTeam] ?? null, awayGAA = nhlGAAMap[awayTeam] ?? null;
               const _nhlOuLine = sportByteam.nhlGameOdds?.[homeTeam]?.total ?? sportByteam.nhlGameOdds?.[awayTeam]?.total ?? null;
-              const _hGLRaw = homeGPG != null ? Math.max(0.5, Math.min(8, homeGPG * (awayGAA != null ? awayGAA / nhlLeagueAvgGAA : 1))) : null;
-              const _aGLRaw = awayGPG != null ? Math.max(0.5, Math.min(8, awayGPG * (homeGAA != null ? homeGAA / nhlLeagueAvgGAA : 1))) : null;
+              // Goalie-aware opponent factor: (1 - starterSV) / (1 - leagueAvgSV) is goals-allowed-per-shot
+              // normalized to league. Falls back to team GAA ratio when starter SV% unavailable.
+              const _homeGoalie = nhlGoalieByTeam[homeTeam] || null;
+              const _awayGoalie = nhlGoalieByTeam[awayTeam] || null;
+              const _gFactor = (goalie, teamGAA) => {
+                if (goalie && goalie.starterSV != null && nhlLeagueAvgSV > 0 && nhlLeagueAvgSV < 1) {
+                  return (1 - goalie.starterSV) / (1 - nhlLeagueAvgSV);
+                }
+                return teamGAA != null ? teamGAA / nhlLeagueAvgGAA : 1;
+              };
+              const _homeFactor = _gFactor(_awayGoalie, awayGAA);
+              const _awayFactor = _gFactor(_homeGoalie, homeGAA);
+              const _hGLRaw = homeGPG != null ? Math.max(0.5, Math.min(8, homeGPG * _homeFactor)) : null;
+              const _aGLRaw = awayGPG != null ? Math.max(0.5, Math.min(8, awayGPG * _awayFactor)) : null;
+              const _homeGoalieSource = _awayGoalie ? "starter" : "team";
+              const _awayGoalieSource = _homeGoalie ? "starter" : "team";
               // NHL SimScore (max 10): homeGPG→0-2, awayGPG→0-2, homeGAA→0-2, awayGAA→0-2, O/U→0-2
               const _homeGpgPts = homeGPG == null ? 1 : homeGPG >= 3.5 ? 2 : homeGPG >= 3.0 ? 1 : 0;
               const _awayGpgPts = awayGPG == null ? 1 : awayGPG >= 3.5 ? 2 : awayGPG >= 3.0 ? 1 : 0;
@@ -4820,7 +4846,21 @@ var worker_default = {
               })();
               const nhlGtH2HRate = _nhlH2H?.rate ?? null;
               const nhlGtH2HGames = _nhlH2H?.games ?? null;
-              _simData = { homeGPG, awayGPG, homeGAA, awayGAA, gameOuLine: _nhlOuLine, nhlGtH2HRate, nhlGtH2HGames, homeGpgPts: _homeGpgPts, awayGpgPts: _awayGpgPts, homeGaaPts: _homeGaaPts, awayGaaPts: _awayGaaPts, nhlOuPts: _nhlOuPts, homeExpected: _hGLRaw != null ? parseFloat(_hGLRaw.toFixed(2)) : null, awayExpected: _aGLRaw != null ? parseFloat(_aGLRaw.toFixed(2)) : null, expectedTotal: (_hGLRaw != null && _aGLRaw != null) ? parseFloat((_hGLRaw + _aGLRaw).toFixed(1)) : null };
+              _simData = {
+                homeGPG, awayGPG, homeGAA, awayGAA,
+                gameOuLine: _nhlOuLine, nhlGtH2HRate, nhlGtH2HGames,
+                homeGpgPts: _homeGpgPts, awayGpgPts: _awayGpgPts, homeGaaPts: _homeGaaPts, awayGaaPts: _awayGaaPts, nhlOuPts: _nhlOuPts,
+                homeGoalie: _homeGoalie?.starterName ?? null,
+                awayGoalie: _awayGoalie?.starterName ?? null,
+                homeGoalieSV: _homeGoalie?.starterSV ?? null,
+                awayGoalieSV: _awayGoalie?.starterSV ?? null,
+                homeGoalieSource: _homeGoalieSource,
+                awayGoalieSource: _awayGoalieSource,
+                leagueAvgSV: nhlLeagueAvgSV,
+                homeExpected: _hGLRaw != null ? parseFloat(_hGLRaw.toFixed(2)) : null,
+                awayExpected: _aGLRaw != null ? parseFloat(_aGLRaw.toFixed(2)) : null,
+                expectedTotal: (_hGLRaw != null && _aGLRaw != null) ? parseFloat((_hGLRaw + _aGLRaw).toFixed(1)) : null
+              };
               if (_hGLRaw != null && _aGLRaw != null) {
                 const _dk = `nhl|${homeTeam}|${awayTeam}`;
                 if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateNHLTotalDist(_hGLRaw, _aGLRaw, 10000);
@@ -5444,6 +5484,12 @@ var worker_default = {
             else if (p.homeWHIPSource === "team") _pen("homeWhipTeamFallback", 1);
             if (p.awayWHIPSource == null) _pen("noAwayWhipSource", 2);
             else if (p.awayWHIPSource === "team") _pen("awayWhipTeamFallback", 1);
+          }
+          // ── NHL game total: starting-goalie SV%. Lambda's opponent factor is set by tonight's
+          // goalie when known; team-GAA fallback works but loses precision. -1 per side (max -2).
+          if (sport === "nhl" && gameType === "total") {
+            if (p.homeGoalieSource === "team") _pen("homeGoalieTeamFallback", 1);
+            if (p.awayGoalieSource === "team") _pen("awayGoalieTeamFallback", 1);
           }
           const totalPenalty = Object.values(penalties).reduce((s, v) => s + v, 0);
           const dataConfidence = Math.max(0, Math.min(10, 10 + totalPenalty));

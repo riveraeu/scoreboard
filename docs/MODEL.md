@@ -37,6 +37,9 @@ Per-sport modeling internals. CLAUDE.md has the architecture map and load-bearin
   - **MLB game total — both starters via starter source**: pitcher quality is the primary lambda input, so a team-WHIP fallback is a real trust hit. Per-side check — worst case -4 (both unknown).
     - `homeWHIPSource == null` → -2 · `"team"` (fallback) → -1
     - `awayWHIPSource == null` → -2 · `"team"` (fallback) → -1
+  - **NHL game total — starting goalie SV%**: opponent factor is keyed off tonight's goalie when known; team-GAA fallback is a smaller trust hit. Per-side check — worst case -2 (both unknown).
+    - `homeGoalieSource === "team"` → -1
+    - `awayGoalieSource === "team"` → -1
 
 ---
 
@@ -213,9 +216,16 @@ awayLambda = awayRoadRPG × homeMult × parkRF × awayPlatoonFactor × weatherFa
 
 *NHL*:
 ```
-homeLambda = homeGPG × (awayGAA / leagueAvgGAA)  # clamped [0.5, 8]
-awayLambda = awayGPG × (homeGAA / leagueAvgGAA)  # clamped [0.5, 8]
+# Opponent factor prefers tonight's goalie SV% when known; falls back to team GAA.
+goalieFactor(goalieSV, teamGAA) = goalieSV != null
+  ? (1 - goalieSV) / (1 - leagueAvgSV)   # goals-allowed-per-shot, league-normalized
+  : (teamGAA / leagueAvgGAA)              # fallback when no qualified starter
+homeLambda = homeGPG × goalieFactor(awayGoalieSV, awayGAA)  # clamped [0.5, 8]
+awayLambda = awayGPG × goalieFactor(homeGoalieSV, homeGAA)  # clamped [0.5, 8]
 ```
+- **Goalie SV% source**: `buildNhlGoalieData` (`api/lib/nhl.js`) hits `stats/rest/en/goalie/summary` once per hydration (cache `nhl:goaliepool:20252026`, 6h TTL), filters to goalies with ≥5 regular-season starts, picks the team's max-GS goalie as the "primary starter". League-avg SV% is the GS-weighted mean of the same pool. NHL's pre-game endpoints don't reliably expose tonight's confirmed starter, so we treat each team's season-leading starter as the goalie of record — true ~75%+ of nights in regular season and ~90% in playoffs. When the backup actually starts, team-GAA fallback would have been equally biased (it averages across both), so swapping to primary-goalie-SV% nets ahead in expectation.
+- **Why SV% not GAA per goalie**: SV% is per-shot and independent of team shot-allowed volume (already captured in `homeGPG`/`awayGPG`). GAA conflates the two.
+- `_simData` for NHL game totals adds: `homeGoalie`, `awayGoalie`, `homeGoalieSV`, `awayGoalieSV`, `homeGoalieSource`/`awayGoalieSource` (`"starter"|"team"`), `leagueAvgSV`. dataConfidence penalty -1 per side when source is `"team"` (max -2).
 
 *NBA* (possession-based):
 ```

@@ -33,11 +33,12 @@ The cross-cutting gotchas at the bottom of this file are kept inline because the
 ## Architecture
 
 ### API: `api/[...path].js` + `api/lib/`
-Single Vercel Edge Function. Imports four ES module lib files:
+Single Vercel Edge Function. Imports five ES module lib files:
 - `api/lib/simulate.js` — park factors + simulation functions (`log5K`, `simulateKsDist`, `buildNbaStatDist`, `simulateHits`, `simulateMLBTotalDist/NBATotalDist/NHLTotalDist`, `simulateTeamTotalDist`, `simulateTeamPtsDist`, `kDistPct/nbaDistPct/totalDistPct`, kelly/EV math), `TTO_DECAY_FACTOR`, `UMPIRE_KFACTOR`
 - `api/lib/mlb.js` — `buildLineupKPct` (also exports `batterSplitBA`, `batterHRRSplits`), `buildBarrelPct`, `buildPitcherKPct` (also exports `pitcherRecentKPct`, `pitcherLastStartDate`, `pitcherLastStartPC`, `pitcherInfoByTeam`, `pitcherAvgBF`, `pitcherStdBF`, `umpireByGame`), `MLB_ID_TO_ABBR`. Pitcher gamelog batch uses `Promise.allSettled`.
 - `api/lib/nba.js` — `buildNbaDvpStage1/FromBettingPros/Stage3FG`, `buildNbaDepthChartPos`, `buildNbaPaceData`, `buildNbaPlayerPosFromSleeper`, `warmPlayerInfoCache`, `buildNbaUsageRate`, `buildNbaInjuryReport`
 - `api/lib/wnba.js` — `buildWnbaPaceData`, `buildWnbaUsageRate`, `buildWnbaInjuryReport`, `buildWnbaDvp` (server-side stat-allowed aggregate — BettingPros has no WNBA page), `WNBA_TEAM_IDS` (15 hardcoded; ESPN `/teams` list endpoint is broken for WNBA), `WNBA_ESPN_TO_CANON`/`WNBA_CANON_TO_ESPN` (CONNECTICU↔CONN, DALLAS↔DAL). WNBA model anchors on 2025 season data.
+- `api/lib/nhl.js` — `buildNhlGoalieData` returns `{ goalieByTeam: {abbr: {starterName, starterId, starterSV, starterGS, source: "starter"}}, leagueAvgSV }` from one `stats/rest/en/goalie/summary` call (~77 rows, filtered to ≥5 GS). Cached `nhl:goaliepool:20252026` 6h. Primary goalie per team = max gamesStarted; team-leading starter is true ~75% of nights in RS, ~90% in playoffs. Used by NHL game-total lambda to override team-GAA fallback. NHL stats abbrs match canonical (TBL/NJD/LAK/SJS) — no translation needed.
 - `api/lib/utils.js` — CORS helpers, `parseGameOdds` (returns `{total, moneyline, spread}`), `parseGameScores` (returns `{state, detail, homeScore, awayScore, gameDate, gameTime, seriesSummary}` keyed by home abbr; `seriesSummary` non-null in NBA/NHL playoffs), team rank helpers (`buildSoftTeamAbbrs`, `buildHardTeamAbbrs`, `buildTeamRankMap`)
 
 ### Frontend: Vite + React (`src/`)
