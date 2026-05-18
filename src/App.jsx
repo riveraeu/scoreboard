@@ -302,6 +302,8 @@ function App() {
       ? `teamtotal|${play.sport}|${play.scoringTeam}|${play.oppTeam}|${play.threshold}|${play.gameDate || ""}${play.direction === "under" ? "|under" : ""}`
       : play.gameType === "total"
       ? `total|${play.sport}|${play.homeTeam}|${play.awayTeam}|${play.threshold}|${play.gameDate || ""}${play.direction === "under" ? "|under" : ""}`
+      : play.gameType === "ml"
+      ? `ml|${play.sport}|${play.pickTeam}|${play.homeTeam}|${play.awayTeam}|${play.gameDate || ""}`
       : `${play.sport || "nba"}|${play.playerName}|${play.stat}|${play.threshold}|${play.gameDate || ""}`;
     const savedOdds = play.americanOdds ?? -110;
     // Recompute implied%, edge, and units from savedOdds. When the user overrides odds
@@ -331,7 +333,7 @@ function App() {
                     : null;
     if (scoresMap) {
       let matchedGame = null;
-      if (play.gameType === "total" && play.homeTeam) {
+      if ((play.gameType === "total" || play.gameType === "ml") && play.homeTeam) {
         matchedGame = scoresMap[play.homeTeam] ||
           Object.values(scoresMap).find(g => g?.homeTeam === play.homeTeam && g?.awayTeam === play.awayTeam) ||
           null;
@@ -469,6 +471,8 @@ function App() {
         if (p.homeTeam && p.awayTeam) rawKey = `${p.sport}:${p.awayTeam}:${p.homeTeam}`;
       } else if (p.gameType === "teamTotal") {
         if (p.scoringTeam && p.oppTeam) rawKey = `${p.sport}:${p.scoringTeam}:${p.oppTeam}`;
+      } else if (p.gameType === "ml") {
+        if (p.homeTeam && p.awayTeam) rawKey = `${p.sport}:${p.awayTeam}:${p.homeTeam}`;
       } else {
         const { playerTeam, opponent } = resolveTeams(p);
         if (playerTeam && opponent) rawKey = `${p.sport}:${playerTeam}:${opponent}`;
@@ -504,7 +508,7 @@ function App() {
       // Auto-resolve: check each active player-prop pick against live data
       setTrackedPlays(prev => prev.map(pick => {
         if (pick.result) return pick; // already settled
-        if (pick.gameType === "total" || pick.gameType === "teamTotal") return pick; // handled separately
+        if (pick.gameType === "total" || pick.gameType === "teamTotal" || pick.gameType === "ml") return pick; // handled separately
         const gameKey = pickKeyMap.get(pick.id);
         if (!gameKey) return pick;
         // gameKey is `sport:team:opp|gameDate` (date-scoped) — strip the `|date` from the opp
@@ -559,11 +563,25 @@ function App() {
 
     setTrackedPlays(prev => prev.map(pick => {
       if (pick.result) return pick;
-      if (pick.gameType !== "total" && pick.gameType !== "teamTotal") return pick;
+      if (pick.gameType !== "total" && pick.gameType !== "teamTotal" && pick.gameType !== "ml") return pick;
       if (pick.gameDate !== today && pick.gameDate !== yesterday && pick.gameDate !== tomorrow) return pick;
 
       const gameScore = resolveTotalGameScore(pick, liveStats, allScores);
       if (!gameScore || (gameScore.state !== "post" && gameScore.state !== "in")) return pick;
+
+      if (pick.gameType === "ml") {
+        // ML resolves only at Final — no early "winning at half" win-locking. The pre-game
+        // model truePct is based on full 9-inning outcomes; in-game leads have plenty of
+        // variance left.
+        if (gameScore.state !== "post") return pick;
+        const winningTeam = (gameScore.homeScore ?? 0) > (gameScore.awayScore ?? 0)
+          ? gameScore.homeTeam
+          : (gameScore.awayScore ?? 0) > (gameScore.homeScore ?? 0)
+            ? gameScore.awayTeam
+            : null;
+        if (winningTeam == null) return pick; // tie shouldn't happen in MLB regulation; defensive
+        return { ...pick, result: winningTeam === pick.pickTeam ? "won" : "lost" };
+      }
 
       const isHome = gameScore.homeTeam === (pick.gameType === "total" ? pick.homeTeam : pick.scoringTeam);
       const current = pick.gameType === "total"
@@ -1103,7 +1121,7 @@ function App() {
 
   // Navigate to player card from a play/pick object — looks up ID by name if missing
   const navigateToPlay = async (play) => {
-    if (play.gameType === "total" || play.gameType === "teamTotal") return; // totals don't have a player card
+    if (play.gameType === "total" || play.gameType === "teamTotal" || play.gameType === "ml") return; // totals/ML don't have a player card
     const sportFull = SPORT_KEY[play.sport] || play.sportKey || "basketball/nba";
     let pid = play.playerId;
     if (!pid) {
@@ -1270,7 +1288,7 @@ function App() {
           else if (n > 0) implied = 100 / (n + 100) * 100;
         }
         const color = implied === null ? "#8b949e" : implied >= 70 ? "#3fb950" : implied >= 50 ? "#e3b341" : "#f78166";
-        const name = play.playerName ?? (play.gameType === "total" ? `${play.awayTeam} @ ${play.homeTeam}` : play.scoringTeam ?? "");
+        const name = play.playerName ?? (play.gameType === "total" ? `${play.awayTeam} @ ${play.homeTeam}` : play.gameType === "ml" ? `${play.pickTeam} ML` : play.scoringTeam ?? "");
         const statLabel = play.stat ? play.stat.toUpperCase() : play.sport ? play.sport.toUpperCase() : "";
         const dirLabel = play.direction === "under" ? `Under ${play.threshold}` : `Over ${play.threshold}`;
         const subtitle = play.playerName ? `${play.stat?.toUpperCase()} ${play.threshold}+` : dirLabel;

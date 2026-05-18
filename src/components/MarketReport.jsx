@@ -350,6 +350,8 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                       ? `${m.scoringTeam}|${m.oppTeam}|${m.threshold}${m.direction === "under" ? "|under" : ""}`
                       : m.gameType === "total"
                       ? `${m.homeTeam}|${m.awayTeam}|${m.threshold}${m.direction === "under" ? "|under" : ""}`
+                      : m.gameType === "ml"
+                      ? `${m.pickTeam}|${m.oppTeam}`
                       : `${m.playerName}|${m.threshold}`;
                     if (!dedupeMap[k] || (!dedupeMap[k].qualified && m.qualified)) dedupeMap[k] = m;
                   }
@@ -761,8 +763,9 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                               })();
                               const isTotal = m.gameType === "total";
                               const isTeamTotal = m.gameType === "teamTotal";
-                              const _nameWhite = (isTotal || isTeamTotal) ? m.qualified : sport === "mlb" ? (_highScore && m.qualified !== false) : m.qualified;
-                              const _rowKey = isTeamTotal ? `${m.scoringTeam}|${m.oppTeam}|${m.threshold}${m.direction==="under"?"|under":""}|${i}` : isTotal ? `${m.homeTeam}|${m.awayTeam}|${m.threshold}|${i}` : `${m.playerName}|${m.threshold}|${i}`;
+                              const isMl = m.gameType === "ml";
+                              const _nameWhite = (isTotal || isTeamTotal || isMl) ? m.qualified : sport === "mlb" ? (_highScore && m.qualified !== false) : m.qualified;
+                              const _rowKey = isTeamTotal ? `${m.scoringTeam}|${m.oppTeam}|${m.threshold}${m.direction==="under"?"|under":""}|${i}` : isTotal ? `${m.homeTeam}|${m.awayTeam}|${m.threshold}|${i}` : isMl ? `${m.pickTeam}|${m.oppTeam}|${i}` : `${m.playerName}|${m.threshold}|${i}`;
                               return (
                                 <div key={_rowKey} style={{
                                   display:"flex",alignItems:"center",gap:6,padding:"6px 12px",
@@ -774,18 +777,22 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                                       ? <><span onClick={() => { onClose(); navigateToTeam(m.awayTeam, m.sport); }} style={{color:_nameWhite?"#c9d1d9":"#8b949e",whiteSpace:"nowrap",cursor:"pointer"}}>{_teamShort(m.awayTeam, m.sport)}</span>
                                           <span style={{color:"#484f58"}}> @ </span>
                                           <span onClick={() => { onClose(); navigateToTeam(m.homeTeam, m.sport); }} style={{color:_nameWhite?"#c9d1d9":"#8b949e",whiteSpace:"nowrap",cursor:"pointer"}}>{_teamShort(m.homeTeam, m.sport)}</span></>
+                                      : isMl
+                                      ? <><span onClick={() => { onClose(); navigateToTeam(m.pickTeam, m.sport); }} style={{color:_nameWhite?"#c9d1d9":"#8b949e",whiteSpace:"nowrap",cursor:"pointer"}}>{_teamShort(m.pickTeam, m.sport)}</span>
+                                          <span style={{color:"#484f58"}}> {m.side === "home" ? "vs" : "@"} </span>
+                                          <span onClick={() => { onClose(); navigateToTeam(m.oppTeam, m.sport); }} style={{color:"#484f58",whiteSpace:"nowrap",cursor:"pointer"}}>{_teamShort(m.oppTeam, m.sport)}</span></>
                                       : <><span onClick={() => { onClose(); navigateToPlayer({ id: m.playerId, name: m.playerName, sportKey: SPORT_KEY[m.sport] }, m.stat); }} style={{color:_nameWhite?"#c9d1d9":"#8b949e",whiteSpace:"nowrap",textTransform:"capitalize",cursor:"pointer"}}>{m.playerNameDisplay||m.playerName}</span>
                                          {(m.playerTeam||m.kalshiPlayerTeam)&&<span style={{color:"#484f58",fontWeight:400,flexShrink:0,fontSize:10}}>({m.playerTeam||m.kalshiPlayerTeam})</span>}</>
                                     }
                                   </div>
                                   <div style={{flex:1,color:"#8b949e",fontSize:11,textAlign:"right"}}>
-                                    {(isTotal || isTeamTotal) ? `${m.direction === "under" ? "U" : "O"}${(m.threshold - 0.5).toFixed(1)}` : `${m.threshold}+`}
+                                    {isMl ? "ML" : (isTotal || isTeamTotal) ? `${m.direction === "under" ? "U" : "O"}${(m.threshold - 0.5).toFixed(1)}` : `${m.threshold}+`}
                                   </div>
                                   {(() => { const _tp = m.direction === "under" ? (m.noTruePct ?? null) : (m.truePct ?? null); return <div style={{flex:1,fontSize:11,textAlign:"right",color:_tp!=null?"#e3b341":"#21262d",fontWeight:_tp!=null?600:400}}>{_tp!=null?`${_tp}%`:"—"}</div>; })()}
                                   {(() => { const _kp = m.direction === "under" ? (m.noKalshiPct ?? null) : (m.kalshiPct ?? null); return <div style={{flex:1,fontSize:11,textAlign:"right"}}><span style={{color:_kp != null ? "#c9d1d9" : "#484f58"}}>{_kp != null ? `${_kp}%` : "—"}</span></div>; })()}
                                   <div style={{flex:1,fontSize:11,textAlign:"right",color:edge!=null&&edge>=3?"#3fb950":edge!=null&&edge<0?"#f78166":"#8b949e"}}>{edge!=null?(edge>=0?`+${edge.toFixed(1)}`:`${edge.toFixed(1)}`)+"%" :"—"}</div>
                                   {xcols.map(c => <div key={c.k} style={{flex:c.flex??1,fontSize:11,textAlign:"right"}}>{xcell(m,c.k)}</div>)}
-                                  {!isTotal && !isTeamTotal && <div style={{flex:_oppFlex,fontSize:10,textAlign:"right",whiteSpace:"nowrap"}}>
+                                  {!isTotal && !isTeamTotal && !isMl && <div style={{flex:_oppFlex,fontSize:10,textAlign:"right",whiteSpace:"nowrap"}}>
                                     {(() => { const pn = m.pitcherName || m.hitterPitcherName; const parts = pn ? pn.trim().split(" ") : []; const shortPn = parts.length >= 2 ? `${parts[0][0]}. ${parts.slice(1).join(" ")}` : pn; return m.sport==="mlb" && m.stat!=="strikeouts" && pn
                                       ? <><span style={{color:"#8b949e"}}>{shortPn}</span> <span style={{color:"#484f58"}}>({m.opponent})</span></>
                                       : <span onClick={() => { if (m.opponent) { onClose(); navigateToTeam(m.opponent, m.sport); } }} style={{color:"#484f58",cursor:m.opponent?"pointer":"default"}}>{_teamShort(m.opponent, m.sport)||m.opponent||""}</span>; })()}

@@ -66,6 +66,7 @@ function ModelPage({ onBack, calibData, calibLoading, fetchCalib, authToken }) {
     "nhl-gt":  ["nhl|totalGoals"],
     "mlb-tt":  ["mlb|teamRuns"],
     "nba-tt":  ["nba|teamPoints"],
+    "mlb-ml":  ["mlb|ml"],
   };
 
   const deltaColor = d => d == null ? "#8b949e" : d >= 3 ? "#3fb950" : d <= -3 ? "#f78166" : "#e3b341";
@@ -208,6 +209,7 @@ function ModelPage({ onBack, calibData, calibLoading, fetchCalib, authToken }) {
       { id:"mlb-hrr", label:"MLB H+R+RBI" },
       { id:"mlb-gt",  label:"MLB Game Total" },
       { id:"mlb-tt",  label:"MLB Team Total" },
+      { id:"mlb-ml",  label:"MLB Moneyline" },
     ]},
     { sport:"NBA", tabs:[
       { id:"nba",    label:"NBA Props" },

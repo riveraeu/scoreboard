@@ -204,7 +204,9 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                         ? `${p.scoringTeam} Team ${_dir}${_line}`
                         : p.gameType === "total"
                           ? `${p.awayTeam}@${p.homeTeam} ${_dir}${_line}`
-                          : `${p.playerName} ${p.threshold}+ ${p.stat?.toUpperCase?.() || ""}`.trim();
+                          : p.gameType === "ml"
+                            ? `${p.pickTeam} ML`
+                            : `${p.playerName} ${p.threshold}+ ${p.stat?.toUpperCase?.() || ""}`.trim();
                       return { pl, dateKey, barLabel };
                     });
                   // Build calendar: day 1 → lastDayShown, every day gets a bucket (empty days = zero bar)
@@ -418,10 +420,10 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
               const pickPLColor = pickPL > 0 ? "#3fb950" : pickPL < 0 ? "#f78166" : "#8b949e";
               // Live progress bar — color-coded by pace (current vs threshold relative to game elapsed).
               const allGameScores = { ...mlbGameScores, ...nbaGameScores, ...nhlGameScores };
-              const liveGame = (pick.gameType === "total" || pick.gameType === "teamTotal")
+              const liveGame = (pick.gameType === "total" || pick.gameType === "teamTotal" || pick.gameType === "ml")
                 ? null
                 : liveStats[buildLiveGameKey(pick)];
-              const totalGameScore = (pick.gameType === "total" || pick.gameType === "teamTotal")
+              const totalGameScore = (pick.gameType === "total" || pick.gameType === "teamTotal" || pick.gameType === "ml")
                 ? resolveTotalGameScore(pick, liveStats, allGameScores)
                 : null;
               const progress = buildLiveProgress(pick, liveGame, totalGameScore);
@@ -446,6 +448,11 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                   {pick.gameType === "teamTotal" ? (
                     <div style={{width:36,height:36,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:"#21262d",borderRadius:18}}>
                       <img src={`https://a.espncdn.com/i/teamlogos/${pick.sport}/500/${(pick.scoringTeam||"").toLowerCase()}.png`}
+                        style={{width:28,height:28,objectFit:"contain"}} onError={e=>e.target.style.opacity="0"} />
+                    </div>
+                  ) : pick.gameType === "ml" ? (
+                    <div style={{width:36,height:36,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:"#21262d",borderRadius:18}}>
+                      <img src={`https://a.espncdn.com/i/teamlogos/${pick.sport}/500/${(pick.pickTeam||"").toLowerCase()}.png`}
                         style={{width:28,height:28,objectFit:"contain"}} onError={e=>e.target.style.opacity="0"} />
                     </div>
                   ) : pick.gameType === "total" ? (
@@ -474,6 +481,11 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                         <span style={{color:"#fff",fontSize:12,fontWeight:700,flexShrink:1,minWidth:0}}>
                           <span onClick={()=>navigateToTeam(pick.scoringTeam,pick.sport)} style={{cursor:"pointer",textDecoration:"underline",textDecorationColor:"#484f58"}}>{pick.scoringTeam}</span>
                           <span style={{color:"#484f58",fontWeight:400}}> vs {pick.oppTeam}</span>
+                        </span>
+                      ) : pick.gameType === "ml" ? (
+                        <span style={{color:"#fff",fontSize:12,fontWeight:700,flexShrink:1,minWidth:0}}>
+                          <span onClick={()=>navigateToTeam(pick.pickTeam,pick.sport)} style={{cursor:"pointer",textDecoration:"underline",textDecorationColor:"#484f58"}}>{pick.pickTeam}</span>
+                          <span style={{color:"#484f58",fontWeight:400}}> {pick.side === "home" ? "vs" : "@"} {pick.oppTeam}</span>
                         </span>
                       ) : pick.gameType === "total" ? (
                         <span style={{color:"#fff",fontSize:12,fontWeight:700,flexShrink:1,minWidth:0}}>
@@ -512,7 +524,7 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                     </div>
                     {/* Row 2: subtitle + stake */}
                     <div style={{flex:1,minWidth:0,display:"flex",alignItems:"center",flexWrap:"wrap",lineHeight:1.4}}>
-                      {pick.gameType !== "total" && pick.gameType !== "teamTotal" && (
+                      {pick.gameType !== "total" && pick.gameType !== "teamTotal" && pick.gameType !== "ml" && (
                         <span style={{color:"#8b949e",fontSize:10}}>
                           {pick.playerTeam} vs {pick.opponent}
                           <span style={{color:"#484f58",margin:"0 3px"}}>·</span>
@@ -523,6 +535,8 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                           ? `${pick.direction === "under" ? "Under" : "Over"} ${(pick.threshold-0.5).toFixed(1)} ${({teamRuns:"Runs",teamPoints:"Pts"})[pick.stat]||pick.stat}`
                           : pick.gameType === "total"
                           ? `${pick.direction === "under" ? "Under" : "Over"} ${(pick.threshold-0.5).toFixed(1)} ${({totalRuns:"Runs",totalPoints:"Pts",totalGoals:"Goals"})[pick.stat]||pick.stat}`
+                          : pick.gameType === "ml"
+                          ? `Moneyline`
                           : `${pick.threshold}+ ${STAT_LABEL[pick.stat] || pick.stat}`}
                       </span>
                       <span style={{color:"#484f58",fontSize:10,margin:"0 3px"}}>·</span>

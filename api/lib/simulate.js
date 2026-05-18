@@ -386,6 +386,36 @@ export function totalDistPct(dist, threshold) {
   return parseFloat((hits / dist.length * 100).toFixed(1));
 }
 
+// MLB joint per-team distributions for ML/spread. Same Poisson draws as simulateMLBTotalDist
+// but exposes home[] and away[] separately so we can count P(home > away) for moneyline and
+// P(home - away > line) for spread. nSim default matches game-total sims for monotonicity.
+export function simulateMLBJoint(homeLambda, awayLambda, nSim = 10000) {
+  if (!homeLambda || !awayLambda || homeLambda <= 0 || awayLambda <= 0) return null;
+  const home = new Int16Array(nSim);
+  const away = new Int16Array(nSim);
+  for (let i = 0; i < nSim; i++) {
+    home[i] = poissonSample(homeLambda);
+    away[i] = poissonSample(awayLambda);
+  }
+  return { home, away };
+}
+
+// P(home wins) over non-tie sims. Real MLB resolves in extras, so we drop tied sims rather
+// than splitting them 50/50 — the Poisson model has no notion of extra-inning scoring and
+// dropping ties is the cleanest proxy. Returns null if both arrays are missing or every
+// sim tied (shouldn't happen with realistic lambdas).
+export function mlPctFromJoint(home, away) {
+  if (!home || !away || home.length !== away.length) return null;
+  let wins = 0, decided = 0;
+  for (let i = 0; i < home.length; i++) {
+    if (home[i] === away[i]) continue;
+    decided++;
+    if (home[i] > away[i]) wins++;
+  }
+  if (decided === 0) return null;
+  return parseFloat((wins / decided * 100).toFixed(1));
+}
+
 // Single-team runs/goals distribution (Poisson): for MLB and NHL team totals.
 // lambda = expected runs/goals for this team. Returns Int16Array; query with totalDistPct.
 export function simulateTeamTotalDist(lambda, nSim = 10000) {

@@ -367,6 +367,47 @@ function buildNbaTeamTotalInputs(p) {
   ];
 }
 
+// MLB moneyline — pickTeam-oriented factor list. Pick λ vs opp λ is the core driver;
+// margin (pick − opp) is the cleanest single-number summary. Pitcher quality breakouts +
+// shared game-level factors (park, weather, umpire) round it out.
+function buildMlbMlInputs(p) {
+  const isHomePick = p.pickTeam === p.homeTeam;
+  const pickLambda = isHomePick ? p.homeLambda : p.awayLambda;
+  const oppLambda = isHomePick ? p.awayLambda : p.homeLambda;
+  const margin = (pickLambda != null && oppLambda != null) ? pickLambda - oppLambda : null;
+  const pickFIP = isHomePick ? p.homeFIP : p.awayFIP;
+  const oppFIP = isHomePick ? p.awayFIP : p.homeFIP;
+  const pickWHIP = isHomePick ? p.homeWHIP : p.awayWHIP;
+  const oppWHIP = isHomePick ? p.awayWHIP : p.homeWHIP;
+  const pickWHIPSrc = isHomePick ? p.homeWHIPSource : p.awayWHIPSource;
+  const oppWHIPSrc = isHomePick ? p.awayWHIPSource : p.homeWHIPSource;
+  const whipSrc = (src) => src === 'starter' ? '' : src === 'team' ? ' (team)' : '';
+  return [
+    { label: 'Pick λ runs', value: dec1(pickLambda), color: tier(pickLambda, 5, 4) },
+    { label: 'Opp λ runs', value: dec1(oppLambda), color: tierLow(oppLambda, 4, 5) },
+    { label: 'Margin (runs)', value: margin == null ? null
+        : `${margin >= 0 ? '+' : ''}${margin.toFixed(2)}`,
+      color: margin == null ? null : margin > 0.4 ? GREEN : margin > 0 ? YELLOW : RED },
+    { label: 'Pick FIP', value: dec2(pickFIP), color: tierLow(pickFIP, 3.80, 4.50) },
+    { label: 'Opp FIP', value: dec2(oppFIP), color: tier(oppFIP, 4.50, 3.80) },
+    { label: 'Pick WHIP', value: pickWHIP == null ? null
+        : `${pickWHIP.toFixed(2)}${whipSrc(pickWHIPSrc)}`,
+      color: tierLow(pickWHIP, 1.20, 1.35) },
+    { label: 'Opp WHIP', value: oppWHIP == null ? null
+        : `${oppWHIP.toFixed(2)}${whipSrc(oppWHIPSrc)}`,
+      color: tier(oppWHIP, 1.35, 1.20) },
+    { label: 'Park run', value: p.parkFactor == null ? null
+        : `${p.parkFactor >= 1 ? '+' : '−'}${Math.abs(Math.round((p.parkFactor - 1) * 100))}%`,
+      color: GRAY },
+    { label: 'Weather', value: p.weatherFactor == null ? null
+        : `${p.weatherFactor >= 1 ? '+' : '−'}${Math.abs(Math.round((p.weatherFactor - 1) * 100))}%${p.windOutMph ? ` (${p.windOutMph}mph)` : ''}`,
+      color: GRAY },
+    { label: 'Umpire', value: p.umpireRunFactor == null ? null
+        : `${p.umpireRunFactor >= 1 ? '+' : '−'}${Math.abs(Math.round((p.umpireRunFactor - 1) * 100))}%${p.umpireName ? ` (${p.umpireName})` : ''}`,
+      color: GRAY },
+  ];
+}
+
 // Dispatcher — picks the right builder per play type
 export function buildLambdaInputs(p) {
   const { sport, stat, gameType } = p;
@@ -379,6 +420,10 @@ export function buildLambdaInputs(p) {
   if (gameType === 'teamTotal') {
     if (sport === 'mlb') return buildMlbTeamTotalInputs(p);
     if (sport === 'nba') return buildNbaTeamTotalInputs(p);
+    return [];
+  }
+  if (gameType === 'ml') {
+    if (sport === 'mlb') return buildMlbMlInputs(p);
     return [];
   }
   if (sport === 'mlb' && stat === 'strikeouts') return buildMlbKInputs(p);
@@ -397,6 +442,12 @@ export function buildModelOutput(p) {
   if (p.gameType === 'total' || p.gameType === 'teamTotal') {
     const expected = p.expectedTotal ?? p.teamExpected;
     return { expected: expected != null ? expected.toFixed(1) : null, prob: probStr };
+  }
+  if (p.gameType === 'ml') {
+    // Pick team's expected runs is the cleanest single number for ML; margin is in the input list.
+    const isHomePick = p.pickTeam === p.homeTeam;
+    const pickLambda = isHomePick ? p.homeLambda : p.awayLambda;
+    return { expected: pickLambda != null ? pickLambda.toFixed(1) : null, prob: probStr };
   }
   if (p.sport === 'mlb' && p.stat === 'strikeouts') {
     return { expected: p.expectedKs != null ? p.expectedKs.toFixed(1) : null, prob: probStr };

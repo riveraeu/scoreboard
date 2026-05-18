@@ -289,6 +289,25 @@ Kalshi series `KXMLBTEAMTOTAL`, `KXNBATEAMTOTAL`. `gameType: "teamTotal"`. NHL/N
 
 ---
 
+## MLB Moneyline (v1, shipped 2026-05-18)
+Kalshi series `KXMLBGAME` (same series that powers the MLB game-odds fallback). `gameType: "ml"`, `stat: "ml"`. MLB-only in v1; other sports waiting on confirmed Kalshi tickers.
+
+**True%**: `simulateMLBJoint(homeLambda, awayLambda, 10000)` draws each team's runs as independent Poissons (same lambdas the game-total sim uses — captured in `_mlbMlContext` during the totals loop). `mlPctFromJoint(home, away)` counts `home[i] > away[i]` over non-tie sims; tied sims are dropped, not split 50/50, since real MLB resolves in extras and the Poisson model has no notion of extra-inning scoring. `awayTruePct = 100 − homeTruePct` once ties are out of the denominator.
+
+**Kalshi pricing**: each ML side is its own market on Kalshi (one YES per team), so each side's `kalshiPct = own yes_ask_dollars × 100`. The totals UNDER `no_ask_dollars` workaround **doesn't apply here** because we never have to synthesize the opposite side from `1 − yes_ask`. Overround stays in the price the user actually pays (typical: 3–5% combined, identical to existing OVER kalshiPct convention).
+
+**Gate**: standard `dcQualified === true && edge ≥ 5` (client) / `edge ≥ 3` (server, for calibration continuity). Kalshi window 67–91 same as totals. No SimScore — display-only attribution lives in the InputList factor breakdown (`buildMlbMlInputs` in `src/lib/lambdaInputs.js`).
+
+**dataConfidence**: shares the MLB game-total starter/bullpen-source penalty table (homeWHIPSource/awayWHIPSource, homeBullpenSource/awayBullpenSource) plus the both-sides-lineup-confirmed signal. `DC_GATE("mlb", "ml") = 10`. No threshold-distance or seasonRateDivergent penalty (no threshold; no season-rate blend in v1).
+
+**No correlation shrinkage in v1**: MLB park/weather/umpire are already shared per-game inputs, so independent Poissons don't over-disperse the margin much. Revisit if calibration shows tail bias on heavy favorites/dogs.
+
+**Live resolution**: reads `meta.gameScores[homeTeam][gameDate]`. `pickTeam` wins iff its final score is higher. Resolves only at `state === "post"` (unlike OVER totals, which can win mid-game when the threshold is crossed — for ML, in-game leads have plenty of variance left).
+
+**Emission**: one pass after team-total cross-dedup. For each `_mlbMlContext` entry with a matching `_mlbMlMarkets` ML pair, run the joint sim once (cached per `homeTeam|awayTeam`), then emit a play per qualifying side. Both sides can in theory pass the Kalshi 67–91 window if the dog is priced near 30c (= no_ask ~70c); in practice the favorite side is what we usually see.
+
+---
+
 ## Kalshi Market Parsing
 - Series in `SERIES_CONFIG` (18 tickers across all sports/stats)
 - Player props, game totals, team totals: `pct ∈ [KALSHI_GATE, KALSHI_CAP] = [67, 91]` (constants in `api/[...path].js`). Markets outside this band aren't fetched/parsed at all.

@@ -84,6 +84,7 @@ See `docs/MODEL.md` for SimScore tiers, lambda formulas, gates, dedup, and Kalsh
 - **NFL** — passing/rushing/receiving yards, receptions, completions, attempts. Gate: opp in soft teams.
 - **Game Totals** — Poisson MC for MLB/NHL, Normal for NBA/WNBA; sample-weighted blend with seasonHitRate. MLB edge dampener when `|threshold − OU| ≥ 3`.
 - **Team Totals (MLB, NBA only)** — MLB Poisson with 50/50 ttSeasonHitRate blend; NBA Normal with sample-weighted blend.
+- **MLB Moneyline (v1, 2026-05-18)** — Joint Poisson sim (`simulateMLBJoint`) from the same per-team lambdas as MLB game totals; `mlPctFromJoint` counts `home > away` over non-tie sims (ties dropped, since MLB resolves in extras). Per-side `kalshiPct` = own `yes_ask_dollars` × 100 (each ML side is its own Kalshi market, so the totals UNDER `no_ask` workaround doesn't apply). No SimScore; `dcQualified + edge ≥ 5` is the gate. Lambdas + simData cached per game in `_mlbMlContext` inside the MLB total loop; emission runs after team-total cross-dedup. `stat: "ml"` so MarketReport groups and `/api/auth/calibration` byCategory bucket under `mlb|ml`. Calibration tab: `mlb-ml`.
 
 ---
 

@@ -18,6 +18,7 @@ export function findLivePlayer(players, name) {
 export function buildLiveGameKeyRaw(pick) {
   if (pick.gameType === "total") return `${pick.sport}:${pick.awayTeam}:${pick.homeTeam}`;
   if (pick.gameType === "teamTotal") return `${pick.sport}:${pick.scoringTeam}:${pick.oppTeam}`;
+  if (pick.gameType === "ml") return `${pick.sport}:${pick.awayTeam}:${pick.homeTeam}`;
   // Player prop — playerTeam + opponent (either order; backend matches both)
   return `${pick.sport}:${pick.playerTeam}:${pick.opponent}`;
 }
@@ -138,7 +139,8 @@ function _paceColor({ current, threshold, elapsed, isUnder, isPost, isPre }) {
 // Returns null only when there's truly nothing to show (pre-game with no detail to render
 // is still returned so the bar can render an empty/gray state with start time).
 export function buildLiveProgress(pick, liveGame, totalGameScore) {
-  const isTotalish = pick.gameType === "total" || pick.gameType === "teamTotal";
+  const isMl = pick.gameType === "ml";
+  const isTotalish = pick.gameType === "total" || pick.gameType === "teamTotal" || isMl;
   const game = isTotalish ? totalGameScore : liveGame;
   const state = game?.state || "pre";
   const isPre = state === "pre" || state === "unknown" || !game;
@@ -146,6 +148,32 @@ export function buildLiveProgress(pick, liveGame, totalGameScore) {
   const isUnder = pick.direction === "under";
 
   let current = null, threshold = pick.threshold, valLabel = null;
+
+  if (isMl) {
+    // ML has no threshold/over-under — show "pickTeam X - Y oppTeam" and color by lead.
+    let pickScore = null, oppScore = null;
+    if (game) {
+      const isHomePick = game.homeTeam === pick.pickTeam;
+      pickScore = isHomePick ? (game.homeScore ?? 0) : (game.awayScore ?? 0);
+      oppScore = isHomePick ? (game.awayScore ?? 0) : (game.homeScore ?? 0);
+    }
+    const elapsed = gameElapsedFrac(pick.sport, state, game?.detail);
+    const winning = pickScore != null && oppScore != null && pickScore > oppScore;
+    const tied = pickScore != null && oppScore != null && pickScore === oppScore;
+    valLabel = pickScore != null ? `${pick.pickTeam} ${pickScore}–${oppScore}` : `${pick.pickTeam} ML`;
+    const barColor = isPre ? "#484f58"
+      : isPost ? (winning ? "#3fb950" : "#f78166")
+      : winning ? "#3fb950"
+      : tied ? "#e3b341"
+      : "#f78166";
+    return {
+      current: pickScore, threshold: null,
+      fillPct: isPre ? 0 : Math.min(100, elapsed * 100),
+      barColor, valLabel,
+      stateLabel: isPre ? null : (isPost ? "Final" : (game?.detail || "Live")),
+      isPre, isPost, elapsed,
+    };
+  }
 
   if (isTotalish) {
     const lineDisplay = (threshold - 0.5).toFixed(1);
@@ -207,7 +235,7 @@ export function resolveTotalGameScore(pick, liveStats, gameScores) {
   if (live && live.state !== "unknown") return live;
 
   if (!gameScores) return null;
-  if (pick.gameType === "total") return gameScores[pick.homeTeam] || null;
+  if (pick.gameType === "total" || pick.gameType === "ml") return gameScores[pick.homeTeam] || null;
   if (pick.gameType === "teamTotal") {
     return gameScores[pick.scoringTeam] ||
       Object.values(gameScores).find(g => g.awayTeam === pick.scoringTeam && g.homeTeam === pick.oppTeam) ||

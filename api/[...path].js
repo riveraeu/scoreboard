@@ -1,5 +1,5 @@
 import { ALLOWED_ORIGIN, corsHeaders, jsonResponse, errorResponse, parseGameOdds, parseGameScores, parseTopPlayers, buildSoftTeamAbbrs, buildHardTeamAbbrs, buildTeamRankMap } from "./lib/utils.js";
-import { PARK_KFACTOR, PARK_HITFACTOR, PARK_RUNFACTOR, UMPIRE_KFACTOR, log5K, poissonCDF, log5HitRate, simulateKsDist, kDistPct, buildNbaStatDist, nbaDistPct, simulateHits, simulateMLBTotalDist, simulateNBATotalDist, simulateNHLTotalDist, totalDistPct, simulateTeamTotalDist, simulateTeamPtsDist, lambdaForPoissonTail, meanForNormalTail, normCDF } from "./lib/simulate.js";
+import { PARK_KFACTOR, PARK_HITFACTOR, PARK_RUNFACTOR, UMPIRE_KFACTOR, log5K, poissonCDF, log5HitRate, simulateKsDist, kDistPct, buildNbaStatDist, nbaDistPct, simulateHits, simulateMLBTotalDist, simulateMLBJoint, mlPctFromJoint, simulateNBATotalDist, simulateNHLTotalDist, totalDistPct, simulateTeamTotalDist, simulateTeamPtsDist, lambdaForPoissonTail, meanForNormalTail, normCDF } from "./lib/simulate.js";
 import { buildLineupKPct, buildBarrelPct, buildPitcherKPct, MLB_ID_TO_ABBR, buildMlbByteam } from "./lib/mlb.js";
 import { warmPlayerInfoCache, buildNbaDvpStage1, buildNbaDvpFromBettingPros, buildNbaDepthChartPos, buildNbaPaceData, buildNbaPlayerPosFromSleeper, buildNbaDvpStage3FG, buildNbaUsageRate, buildNbaInjuryReport, buildNbaByteam } from "./lib/nba.js";
 import { buildWnbaPaceData, buildWnbaUsageRate, buildWnbaInjuryReport, buildWnbaDvp, WNBA_TEAM_IDS, WNBA_ESPN_TO_CANON, WNBA_CANON_TO_ESPN, buildWnbaByteam } from "./lib/wnba.js";
@@ -3179,6 +3179,11 @@ var worker_default = {
           .map(ev => ({ date: ev.date || null, comps: (ev.competitions[0].competitors ?? []).map(c => ({ abbr: (c.team?.abbreviation ?? '').toUpperCase(), score: parseFloat(c.score?.value ?? c.score ?? 0) })) }));
         const totalDistCache = {};
         const totalPlays = [];
+        // Captured during the MLB game-total loop body so the downstream MLB-ML emission can
+        // reuse the per-game lambdas, simData (FIP/ERA/WHIP/bullpen sources), and gateable fields
+        // without recomputing. Key: `${homeTeam}|${awayTeam}|${gameDate}`. Populated only when
+        // _hLam and _aLam are both non-null — ML requires a valid joint distribution.
+        const _mlbMlContext = {};
         {
           const _MLB_ERA = 4.20;
           // Pre-fetch home team schedules for MLB + NBA game total H2H hit rate
@@ -3318,6 +3323,10 @@ var worker_default = {
                 const _dk = `mlb|${homeTeam}|${awayTeam}`;
                 if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateMLBTotalDist(_hLam, _aLam, 10000);
                 truePct = totalDistPct(totalDistCache[_dk], threshold);
+                const _mlCtxKey = `${homeTeam}|${awayTeam}|${gameDate}`;
+                if (!_mlbMlContext[_mlCtxKey]) {
+                  _mlbMlContext[_mlCtxKey] = { homeTeam, awayTeam, gameDate, homeLambda: _hLam, awayLambda: _aLam, kalshiVolume, kalshiSpread, lowVolume, _simData: { ..._simData } };
+                }
               }
               // Pre-sim lambda blend: solve for the Poisson rate that would produce the observed
               // season hit rate at this threshold, then sample-weighted blend with model lambda.
@@ -4056,6 +4065,128 @@ var worker_default = {
             if (p.gameType !== "total" || p.qualified === false) continue;
             const crossWinner = _crossBestMap[`${p.sport}|${p.homeTeam}|${p.awayTeam}`];
             if (crossWinner?.gameType === "teamTotal") plays[i] = { ...p, qualified: false };
+          }
+        }
+        // ── MLB ML plays (KXMLBGAME) ──────────────────────────────────────────────────────────
+        // v1 of moneyline play type. Joint sim from the per-team Poisson lambdas computed in
+        // the game-total loop above; each side's kalshiPct comes straight from its Kalshi
+        // yes_ask (each ML side is its own market, so no UNDER `no_ask` workaround needed).
+        // Qualification matches game totals (Kalshi window + edge gate + dcQualified).
+        //
+        // Self-contained Kalshi fetch + parse so this block doesn't depend on the late
+        // mlbMeta-build KXMLBGAME parse below. The two share an Upstash cache, so the
+        // second fetch hits warm storage — minimal extra cost. Decoupled scope keeps ML
+        // emission orderable independently of the mlbMeta build.
+        const _mlbMlMarkets = {};
+        try {
+          const _kImpliedProbMl = (m) => {
+            const a = parseFloat(m.yes_ask_dollars) || 0;
+            const l = parseFloat(m.last_price_dollars) || 0;
+            const b = parseFloat(m.yes_bid_dollars) || 0;
+            return (a >= 0.98 && b === 0 && l > 0) ? l : (a > 0 ? a : l);
+          };
+          const _kGameDateMl = (m) => m?.expected_expiration_time ? PT_FMT.format(new Date(m.expected_expiration_time)) : null;
+          let _gMarketsMl = [];
+          {
+            const _gSnapKey = 'kalshi:snap:KXMLBGAME';
+            const _gKey = 'kalshi:KXMLBGAME';
+            let _gData = null;
+            if (CACHE2 && !isBustCache) {
+              const _gSnap = await CACHE2.get(_gSnapKey, 'json').catch(() => null);
+              if (_gSnap && Array.isArray(_gSnap.markets) && _gSnap.markets.length > 0 &&
+                  (Date.now() - (_gSnap.writtenAt || 0) <= 180_000)) {
+                _gData = { markets: _gSnap.markets };
+              }
+            }
+            if (!_gData && CACHE2 && !isBustCache) {
+              _gData = await CACHE2.get(_gKey, 'json').catch(() => null);
+            }
+            if (!_gData) {
+              const r = await fetch('https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=KXMLBGAME&limit=1000&status=open', {
+                headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }
+              }).catch(() => null);
+              if (r?.ok) {
+                _gData = await r.json().catch(() => null);
+                if (_gData && CACHE2) CACHE2.put(_gKey, JSON.stringify(_gData), { expirationTtl: 600 }).catch(() => {});
+              }
+            }
+            _gMarketsMl = _gData?.markets || [];
+          }
+          const _byEventMl = {};
+          for (const m of _gMarketsMl) {
+            const tk = m.ticker || '';
+            const lastDash = tk.lastIndexOf('-');
+            if (lastDash < 0) continue;
+            const abbr = tk.slice(lastDash + 1);
+            const eventT = m.event_ticker;
+            if (!eventT || !abbr) continue;
+            const p = _kImpliedProbMl(m);
+            if (!p || p <= 0 || p >= 1) continue;
+            if (!_byEventMl[eventT]) _byEventMl[eventT] = { probs: {}, gameDate: _kGameDateMl(m) };
+            _byEventMl[eventT].probs[abbr] = p;
+          }
+          for (const info of Object.values(_byEventMl)) {
+            const teams = Object.keys(info.probs);
+            if (teams.length !== 2 || !info.gameDate) continue;
+            const [t1, t2] = teams;
+            const yesPayload = { yesByTeam: { [t1]: info.probs[t1], [t2]: info.probs[t2] } };
+            _mlbMlMarkets[`${t1}|${t2}|${info.gameDate}`] = yesPayload;
+            _mlbMlMarkets[`${t2}|${t1}|${info.gameDate}`] = yesPayload;
+          }
+        } catch { /* non-fatal — no ML plays if fetch/parse blows up */ }
+        {
+          const _mlJointCache = {};
+          for (const ctx of Object.values(_mlbMlContext)) {
+            const { homeTeam, awayTeam, gameDate, homeLambda, awayLambda, kalshiVolume, kalshiSpread, lowVolume, _simData } = ctx;
+            if (gameDate && gameDate < cutoffStr) continue;
+            const mlMarket = _mlbMlMarkets[`${homeTeam}|${awayTeam}|${gameDate}`];
+            if (!mlMarket?.yesByTeam) continue;
+            const homeYesAsk = mlMarket.yesByTeam[homeTeam];
+            const awayYesAsk = mlMarket.yesByTeam[awayTeam];
+            if (homeYesAsk == null || awayYesAsk == null) continue;
+            const _mlk = `${homeTeam}|${awayTeam}`;
+            if (!_mlJointCache[_mlk]) _mlJointCache[_mlk] = simulateMLBJoint(homeLambda, awayLambda, 10000);
+            const joint = _mlJointCache[_mlk];
+            if (!joint) continue;
+            const homeTruePct = mlPctFromJoint(joint.home, joint.away);
+            if (homeTruePct == null) continue;
+            const awayTruePct = parseFloat((100 - homeTruePct).toFixed(1));
+            const _gameTime = gameTimes[`mlb:${homeTeam}:${gameDate}`] ?? gameTimes[`mlb:${awayTeam}:${gameDate}`] ?? gameTimes[`mlb:${homeTeam}`] ?? gameTimes[`mlb:${awayTeam}`] ?? null;
+            const _lineupsConfirmed = (sportByteam.mlb?.lineupSpotByName?.[homeTeam] != null && !(sportByteam.mlb?.projectedLineupTeams || []).includes(homeTeam))
+              && (sportByteam.mlb?.lineupSpotByName?.[awayTeam] != null && !(sportByteam.mlb?.projectedLineupTeams || []).includes(awayTeam));
+            const _toAO = (p) => p == null ? null : p >= 50 ? Math.round(-(p / (100 - p)) * 100) : Math.round((100 - p) / p * 100);
+            for (const side of ["home", "away"]) {
+              const pickTeam = side === "home" ? homeTeam : awayTeam;
+              const oppTeam = side === "home" ? awayTeam : homeTeam;
+              const yesAsk = side === "home" ? homeYesAsk : awayYesAsk;
+              const truePct = side === "home" ? homeTruePct : awayTruePct;
+              const kalshiPct = parseFloat((yesAsk * 100).toFixed(1));
+              const edge = parseFloat((truePct - kalshiPct).toFixed(1));
+              const americanOdds = _toAO(kalshiPct);
+              const inWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
+              if (edge >= EDGE_GATE && inWindow) {
+                plays.push({
+                  gameType: "ml", sport: "mlb", stat: "ml",
+                  homeTeam, awayTeam, pickTeam, oppTeam, side, gameDate,
+                  kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge,
+                  totalSimScore: 0, qualified: false,
+                  kalshiVolume, kalshiSpread, lowVolume,
+                  gameTime: _gameTime, lineupsConfirmed: _lineupsConfirmed,
+                  homeLambda, awayLambda,
+                  ..._simData,
+                });
+              } else if (isDebug && inWindow) {
+                dropped.push({
+                  gameType: "ml", sport: "mlb", stat: "ml",
+                  homeTeam, awayTeam, pickTeam, oppTeam, side, gameDate,
+                  kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge,
+                  lineupsConfirmed: _lineupsConfirmed,
+                  reason: "edge_too_low",
+                  homeLambda, awayLambda,
+                  ..._simData,
+                });
+              }
+            }
           }
         }
         // Drop plays whose scheduled gameTime has already passed — pre-game market is closed,

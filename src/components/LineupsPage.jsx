@@ -24,6 +24,9 @@ function buildGames(allPlays, sport, meta, metaTomorrow) {
     } else if (play.gameType === 'teamTotal') {
       ({ homeTeam, awayTeam, gameDate, gameTime } = play);
       ouLine = play.gameOuLine ?? null;
+    } else if (play.gameType === 'ml') {
+      ({ homeTeam, awayTeam, gameDate, gameTime } = play);
+      ouLine = play.gameOuLine ?? null;
     } else {
       const t1 = play.playerTeam, t2 = play.opponent;
       if (!t1 || !t2) continue;
@@ -108,6 +111,7 @@ function playsForGame(allPlays, game) {
     const teams = new Set([game.homeTeam, game.awayTeam]);
     if (p.gameType === 'total') return p.homeTeam === game.homeTeam && p.awayTeam === game.awayTeam;
     if (p.gameType === 'teamTotal') return teams.has(p.scoringTeam);
+    if (p.gameType === 'ml') return p.homeTeam === game.homeTeam && p.awayTeam === game.awayTeam;
     return teams.has(p.playerTeam);
   });
 }

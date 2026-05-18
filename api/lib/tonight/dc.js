@@ -16,6 +16,11 @@ export const DC_GATE = (sport, gameType) => {
     if (sport === "wnba" || sport === "nhl") return 9;
     return 10;
   }
+  if (gameType === "ml") {
+    // MLB-only in v1; match the MLB game-total strictness (10) since ML reuses the same
+    // lambda inputs (FIP/ERA/WHIP/bullpen sources). Pre-game-confirmed market like totals.
+    return 10;
+  }
   if (sport === "wnba" || sport === "nhl") return 8;
   return 9;
 };
@@ -45,7 +50,12 @@ export function computeDataConfidence(p, ctx = {}) {
   if (p.kalshiSpread != null && p.kalshiSpread >= 5) _pen("wideSpread", 1);
 
   // ── Lineup / starter confirmation
-  if (sport === "mlb") {
+  if (sport === "mlb" && gameType === "ml") {
+    // ML uses the both-sides-confirmed signal (same as MLB game total). Treated identically.
+    const conf = p.lineupsConfirmed;
+    if (conf === false) _pen("mlbLineupNotConfirmed", 3);
+    else if (conf == null) _pen("mlbLineupUnknown", 3);
+  } else if (sport === "mlb") {
     const conf = isPlayerProp ? p.lineupConfirmed : p.lineupsConfirmed;
     if (conf === false) _pen("mlbLineupNotConfirmed", 3);
     // conf === undefined (no data at all) is treated as not-confirmed for strictness
@@ -184,7 +194,8 @@ export function computeDataConfidence(p, ctx = {}) {
   // ── MLB game total: both starters via starter source. Pitcher quality is the primary
   // input to the lambda — fallback to staff-wide WHIP is a meaningful trust hit. Team
   // totals already check `oppWHIPSource`; here we cover both sides for game totals.
-  if (sport === "mlb" && gameType === "total") {
+  // Same penalty table is applied to MLB ML since both reuse the same lambda inputs.
+  if (sport === "mlb" && (gameType === "total" || gameType === "ml")) {
     if (p.homeWHIPSource == null) _pen("noHomeWhipSource", 2);
     else if (p.homeWHIPSource === "team") _pen("homeWhipTeamFallback", 1);
     if (p.awayWHIPSource == null) _pen("noAwayWhipSource", 2);
