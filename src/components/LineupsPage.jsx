@@ -18,13 +18,7 @@ function buildGames(allPlays, sport, meta, metaTomorrow) {
 
     let homeTeam, awayTeam, gameDate, gameTime, ouLine;
 
-    if (play.gameType === 'total') {
-      ({ homeTeam, awayTeam, gameDate, gameTime } = play);
-      ouLine = play.gameOuLine ?? null;
-    } else if (play.gameType === 'teamTotal') {
-      ({ homeTeam, awayTeam, gameDate, gameTime } = play);
-      ouLine = play.gameOuLine ?? null;
-    } else if (play.gameType === 'ml') {
+    if (play.gameType === 'total' || play.gameType === 'teamTotal' || play.gameType === 'ml' || play.gameType === 'spread') {
       ({ homeTeam, awayTeam, gameDate, gameTime } = play);
       ouLine = play.gameOuLine ?? null;
     } else {
@@ -54,7 +48,7 @@ function buildGames(allPlays, sport, meta, metaTomorrow) {
       gameMap.set(key, { sport, homeTeam, awayTeam, gameDate, gameTime, ouLine });
     }
     const g = gameMap.get(key);
-    if (play.gameType === 'total') {
+    if (play.gameType === 'total' || play.gameType === 'ml' || play.gameType === 'spread') {
       g.homeTeam = play.homeTeam;
       g.awayTeam = play.awayTeam;
     }
@@ -112,6 +106,7 @@ function playsForGame(allPlays, game) {
     if (p.gameType === 'total') return p.homeTeam === game.homeTeam && p.awayTeam === game.awayTeam;
     if (p.gameType === 'teamTotal') return teams.has(p.scoringTeam);
     if (p.gameType === 'ml') return p.homeTeam === game.homeTeam && p.awayTeam === game.awayTeam;
+    if (p.gameType === 'spread') return p.homeTeam === game.homeTeam && p.awayTeam === game.awayTeam;
     return teams.has(p.playerTeam);
   });
 }
