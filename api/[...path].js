@@ -16,6 +16,9 @@ const SIMSCORE_GATE = 8;
 // PT date formatter — used throughout for "today's date PT" comparisons (game dates,
 // cache keys, B2B detection). Hoisted so we don't re-instantiate per request.
 const PT_FMT = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles" });
+// Production sport set (sports with active play generation + matchup cards). NFL is
+// supported in code but not currently in any active Kalshi market lookup paths.
+const PROD_SPORTS = new Set(["mlb", "nba", "nhl", "wnba"]);
 // B2B lambda dampener constants — see docs/MODEL.md "B2B dampener". NBA/WNBA dampen own
 // offense by -2.5%; NHL boosts opp goalie factor by +5% (B2B team gives up more goals).
 // MLB plays daily; no B2B concept.
@@ -1818,7 +1821,7 @@ var worker_default = {
           await Promise.all([...sportsNeeded].map(async (sport) => {
             // When busting, skip the cache read for MLB so fresh computation is forced.
             // Deleting + reading in the same request is unreliable due to KV eventual consistency.
-            if (isBustCache && (sport === "mlb" || sport === "nhl" || sport === "nba" || sport === "wnba")) return;
+            if (isBustCache && PROD_SPORTS.has(sport)) return;
             const cached = await CACHE2.get(`byteam:${sport}`, "json").catch(() => null);
             if (cached) sportByteam[sport] = cached;
           }));
@@ -2767,10 +2770,9 @@ var worker_default = {
         const nhlLeagueAvgSV = sportByteam.nhl?.leagueAvgSV ?? 0.905;
         const nbaOffPPGMap = {};
         if (Array.isArray(sportByteam.nbaScoring)) {
-          const _NBA2 = { GS: "GSW", SA: "SAS", NY: "NYK", NJ: "BKN", NO: "NOP", PHO: "PHX" };
           for (const team of sportByteam.nbaScoring) {
             const rawAbbr = team.team?.abbreviation || "";
-            const abbr = _NBA2[rawAbbr] || rawAbbr;
+            const abbr = TEAM_NORM.nba[rawAbbr] || rawAbbr;
             if (!abbr) continue;
             const offCat = (team.categories || []).find(c => { const dn = (c.displayName || c.name || "").toLowerCase(); return dn.includes("offensive") || dn.includes("scoring"); });
             const ppg = parseFloat(offCat?.values?.[0] ?? 0);
@@ -4055,7 +4057,7 @@ var worker_default = {
               lineupConfirmed: !(sportByteam.mlb?.projectedLineupTeams || []).includes(tonightOpp),
               playerStatus: null,
             };
-            if (sport === "mlb" || sport === "nba" || sport === "nhl" || sport === "wnba") plays.push(_qualFalseBase);
+            if (PROD_SPORTS.has(sport)) plays.push(_qualFalseBase);
             continue;
           }
           // Threshold sanity gate: reject plays where the threshold far exceeds expected Ks.
@@ -4600,7 +4602,7 @@ var worker_default = {
           // Build a canonical→ESPN slug map mirroring _SCHED_TO_ESPN structure.
           const _WNBA_SCHED_TO_ESPN = { CONN: "conn", DAL: "dal", GS: "gs", LA: "la", LV: "lv", NY: "ny", PHX: "phx", POR: "por", SEA: "sea", TOR: "tor", WSH: "wsh", ATL: "atl", CHI: "chi", IND: "ind", MIN: "min" };
           const _toEspnSlugW = (sp, a) => sp === "wnba" ? (_WNBA_SCHED_TO_ESPN[a] || a.toLowerCase()) : _toEspnSlug(sp, a);
-          { const _gtHTs = new Set(); for (const tm of totalMarkets) { if (tm.sport === "mlb" || tm.sport === "nba" || tm.sport === "nhl" || tm.sport === "wnba") { _gtHTs.add(`${tm.sport}:${tm.gameTeam1}`); _gtHTs.add(`${tm.sport}:${tm.gameTeam2}`); } } await Promise.all([..._gtHTs].map(async spHt => { const [sp, ht] = spHt.split(':'); const league = _leagueOf(sp); const ck = `teamschedule:v3:${sp}:${ht.toLowerCase()}`; let ev = isBustCache ? null : await CACHE2?.get(ck, "json").catch(() => null); if (!ev) { try { const base = `https://site.api.espn.com/apis/site/v2/sports/${league}/teams/${_toEspnSlugW(sp, ht)}/schedule`; const r25 = await fetch(`${base}?season=2025`, { signal: AbortSignal.timeout(3000) }); const e25 = r25.ok ? _parseSchedEvts(await r25.json()) : []; const r26 = await fetch(base, { signal: AbortSignal.timeout(3000) }); const e26 = r26.ok ? _parseSchedEvts(await r26.json()) : []; ev = [...e25, ...e26]; if (ev.length && CACHE2) await CACHE2.put(ck, JSON.stringify(ev), { expirationTtl: 3600 }).catch(() => {}); } catch(e) {} } if (ev) _gtScheduleMap[spHt] = ev; })); }
+          { const _gtHTs = new Set(); for (const tm of totalMarkets) { if (PROD_SPORTS.has(tm.sport)) { _gtHTs.add(`${tm.sport}:${tm.gameTeam1}`); _gtHTs.add(`${tm.sport}:${tm.gameTeam2}`); } } await Promise.all([..._gtHTs].map(async spHt => { const [sp, ht] = spHt.split(':'); const league = _leagueOf(sp); const ck = `teamschedule:v3:${sp}:${ht.toLowerCase()}`; let ev = isBustCache ? null : await CACHE2?.get(ck, "json").catch(() => null); if (!ev) { try { const base = `https://site.api.espn.com/apis/site/v2/sports/${league}/teams/${_toEspnSlugW(sp, ht)}/schedule`; const r25 = await fetch(`${base}?season=2025`, { signal: AbortSignal.timeout(3000) }); const e25 = r25.ok ? _parseSchedEvts(await r25.json()) : []; const r26 = await fetch(base, { signal: AbortSignal.timeout(3000) }); const e26 = r26.ok ? _parseSchedEvts(await r26.json()) : []; ev = [...e25, ...e26]; if (ev.length && CACHE2) await CACHE2.put(ck, JSON.stringify(ev), { expirationTtl: 3600 }).catch(() => {}); } catch(e) {} } if (ev) _gtScheduleMap[spHt] = ev; })); }
           const _gtH2HRate = (ht, at, thr) => { const evts = _gtScheduleMap[`mlb:${ht}`] ?? _gtScheduleMap[ht] ?? []; const h2h = evts.filter(ev => ev.comps.some(c => normTeam("mlb", c.abbr) === at)).slice(-10); if (h2h.length < 3) return null; const hits = h2h.filter(ev => ev.comps.reduce((s, c) => s + (c.score || 0), 0) >= thr).length; return { rate: Math.round(hits / h2h.length * 100), games: h2h.length }; };
           // Season hit rate for MLB/NBA/NHL game totals: average of home + away team's full-season
           // rate of games where combined score >= threshold. Used as a sample-weighted blend
@@ -5592,7 +5594,7 @@ var worker_default = {
             _pen("noDvpRatioStructural", 1);
           } else if (sport === "nhl" && isPlayerProp) {
             if (p.oppMetricValue == null) _pen("noOppMetric", 3);
-          } else if (gameType === "total" && (sport === "mlb" || sport === "nba" || sport === "wnba" || sport === "nhl")) {
+          } else if (gameType === "total" && PROD_SPORTS.has(sport)) {
             if (p.gameOuLine == null) _pen("noGameOuLine", 2);
           } else if (sport === "mlb" && gameType === "teamTotal") {
             if (p.oppWHIPSource == null) _pen("noOppWhipSource", 3);
@@ -5982,15 +5984,14 @@ var worker_default = {
           } catch { /* non-fatal */ }
         }
         // NBA meta: normalized game odds + injury report for matchup cards
-        const _nbaOddsNorm = { GS: "GSW", SA: "SAS", NY: "NYK", NJ: "BKN", NO: "NOP", PHO: "PHX", WPH: "PHX" };
-        const _nbaGameOdds = _buildOddsMap(sportByteam.nbaGameOdds, _nbaOddsNorm);
+        const _nbaGameOdds = _buildOddsMap(sportByteam.nbaGameOdds, TEAM_NORM.nba);
         await _applyClosingSnapshot('nbaClosingOdds', sportByteam.nbaGameScores, _nbaGameOdds);
         const _nbaInjuries = {};
         for (const [abbr, players] of (nbaInjuryMap || new Map()).entries()) {
           // Enrich each player with avgMin from the usage map. Frontend uses this to filter
           // the matchup-card badge to starters only (NBA cutoff: avgMin >= 25).
           const enriched = players.map(p => ({ ...p, avgMin: (p.id && nbaUsageMap[p.id]?.avgMin) ?? null }));
-          const key = _nbaOddsNorm[abbr] || abbr;
+          const key = TEAM_NORM.nba[abbr] || abbr;
           _nbaInjuries[key] = enriched;
           _nbaInjuries[abbr] = enriched; // keep original key too for fallback
         }
