@@ -765,3 +765,220 @@ export async function buildPitcherKPct(mlbSched) {
     return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherWHIP: {}, pitcherFIP: {}, pitcherWins: {}, pitcherLosses: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherAvgBF: {}, pitcherStdBF: {}, pitcherGS26: {}, pitcherHasAnchor: {}, pitcherRecentKPct: {}, pitcherLastStartDate: {}, pitcherLastStartPC: {}, umpireByGame: {}, pitcherInfoByTeam: {}, pitcherH2HStarts: {} };
   }
 }
+
+// Full MLB byteam hydration pipeline. Single call that fetches every MLB upstream we need for
+// /api/tonight and returns the consolidated byteam:mlb object. Also writes to cache with a
+// partial-data guard (60s TTL when key fields are empty, 600s otherwise).
+//
+// Args:
+//   cache  — Vercel KV / Upstash cache (CACHE2)
+//   PT_FMT — Intl.DateTimeFormat for PT date strings (passed in to avoid re-importing pt.js)
+//   parseGameOdds — utils helper (passed in to avoid cross-lib cycles)
+import { parseGameOdds as _parseGameOdds } from "./utils.js";
+import { PT_FMT } from "./pt.js";
+
+export async function buildMlbByteam(cache) {
+  const [pitchData, batData, roadBatData, bullpenData, sbData, mlbSched] = await Promise.all([
+    fetch("https://site.web.api.espn.com/apis/common/v3/sports/baseball/mlb/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=50&category=pitching", { headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
+    fetch("https://site.web.api.espn.com/apis/common/v3/sports/baseball/mlb/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=50&category=batting", { headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
+    fetch("https://statsapi.mlb.com/api/v1/teams/stats?season=2026&group=batting&gameType=R&sportId=1&sitCodes=A", { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
+    // Bullpen-only pitching aggregates (relievers, season). Lets MLB game-total lambda separate
+    // the 40% rest-of-game share from the starter who's double-counted in teamERA.
+    fetch("https://statsapi.mlb.com/api/v1/teams/stats?season=2026&group=pitching&gameType=R&sportId=1&playerPool=bullpen", { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
+    (() => {
+      // Always fetch today + tomorrow in parallel. sbData.events = today (probables/gameOdds);
+      // sbData.eventsAll = today+tomorrow (gameScores, so both day tabs see scheduled/finished games).
+      const _td0 = new Date(Date.now() - 7 * 3600 * 1000); const _td1 = new Date(_td0); _td1.setDate(_td1.getDate() + 1);
+      const _tfmt = (d) => d.toISOString().slice(0, 10).replace(/-/g, "");
+      const _h = { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" };
+      return Promise.all([
+        fetch(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${_tfmt(_td0)}`, { headers: _h }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
+        fetch(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${_tfmt(_td1)}`, { headers: _h }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
+      ]).then(([sb0, sb1]) => ({ events: sb0.events || [], eventsTomorrow: sb1.events || [], eventsAll: [...(sb0.events || []), ...(sb1.events || [])] }));
+    })(),
+    (() => {
+      const _td0 = new Date(Date.now() - 7 * 3600 * 1000); const _td1 = new Date(_td0); _td1.setDate(_td1.getDate() + 1);
+      const _tfmt2 = (d) => d.toISOString().slice(0, 10);
+      return fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${_tfmt2(_td0)}&hydrate=lineups,probablePitcher,officials`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})).then((s0) => {
+        const allFinal = (s0.dates || []).flatMap((d) => d.games || []).every((g) => g.status?.abstractGameState === "Final");
+        if ((s0.dates || []).length === 0 || allFinal) {
+          return fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${_tfmt2(_td1)}&hydrate=lineups,probablePitcher,officials`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({}));
+        }
+        return s0;
+      });
+    })(),
+  ]);
+
+  // ESPN uses different abbreviations than Kalshi for some MLB teams
+  const MLB_ESPN_NORM = { CHW: "CWS", KCR: "KC", SFG: "SF", SDP: "SD", TBR: "TB", AZ: "ARI", OAK: "ATH", WSN: "WSH", WAS: "WSH" };
+  const normMlbAbbr = (a) => MLB_ESPN_NORM[a] || a;
+
+  const probables = {};
+  for (const event of sbData.events || []) {
+    for (const comp of event.competitions || []) {
+      const gameAbbrs = (comp.competitors || []).map((c) => normMlbAbbr(c.team?.abbreviation)).filter(Boolean);
+      for (const competitor of comp.competitors || []) {
+        const abbr = normMlbAbbr(competitor.team?.abbreviation);
+        const probable = (competitor.probables || [])[0];
+        if (!abbr || !probable) continue;
+        const stats = probable.statistics || [];
+        const eraStat = stats.find((s) => s.abbreviation === "ERA");
+        const era = eraStat ? parseFloat(eraStat.displayValue) : null;
+        const whipStat = stats.find((s) => s.abbreviation === "WHIP");
+        const whip = whipStat ? parseFloat(whipStat.displayValue) : null;
+        const name = probable.athlete?.displayName || probable.athlete?.fullName || null;
+        const id = probable.athlete?.id || null;
+        const opp = gameAbbrs.find((a) => a !== abbr) || null;
+        probables[abbr] = { name, era, whip, id, opp };
+      }
+    }
+  }
+  const gameOddsRaw = _parseGameOdds(sbData.events);
+  const gameOdds = Object.fromEntries(Object.entries(gameOddsRaw).map(([k, v]) => [normMlbAbbr(k), v]));
+  const gameOddsTomorrowRaw = _parseGameOdds(sbData.eventsTomorrow || []);
+  const gameOddsTomorrow = Object.fromEntries(Object.entries(gameOddsTomorrowRaw).map(([k, v]) => [normMlbAbbr(k), v]));
+  // Game scores for matchup cards (includes finished games with no active Kalshi markets).
+  // Iterate today+tomorrow merged events so both day tabs see scheduled/finished games.
+  // Key includes gameDate so today and tomorrow's same-home-team don't collide.
+  const gameScores = {};
+  for (const event of sbData.eventsAll || sbData.events || []) {
+    const comp = event.competitions?.[0];
+    if (!comp) continue;
+    const homeComp = (comp.competitors || []).find(c => c.homeAway === "home");
+    const awayComp = (comp.competitors || []).find(c => c.homeAway === "away");
+    if (!homeComp || !awayComp) continue;
+    const hA = normMlbAbbr(homeComp.team?.abbreviation), awA = normMlbAbbr(awayComp.team?.abbreviation);
+    if (!hA || !awA) continue;
+    const gsDate = event.date ? PT_FMT.format(new Date(event.date)) : null;
+    gameScores[`${hA}|${gsDate ?? ""}`] = {
+      homeTeam: hA, awayTeam: awA,
+      state: comp.status?.type?.state ?? "pre",
+      detail: comp.status?.type?.shortDetail || comp.status?.type?.detail || "",
+      homeScore: parseInt(homeComp.score ?? 0) || 0,
+      awayScore: parseInt(awayComp.score ?? 0) || 0,
+      gameDate: gsDate,
+      gameTime: event.date || null,
+    };
+  }
+  const [lineupResult, pitcherResult] = await Promise.all([buildLineupKPct(mlbSched), buildPitcherKPct(mlbSched)]);
+  const { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, projectedLineupTeams, batterSplitBA, hitterOpsMap, batterHandByName, batterHRRSplits } = lineupResult;
+  const { pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, pitcherWHIP: pitcherWHIPByTeam, pitcherFIP: pitcherFIPByTeam, pitcherWins: pitcherWinsByTeam, pitcherLosses: pitcherLossesByTeam, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam, pitcherH2HStarts } = pitcherResult;
+  // barrelPctMap is NOT stored in byteam:mlb — it lives in mlb:barrelPct with its own 6h TTL.
+  // This prevents a bust (which deletes byteam:mlb) from baking an empty barrelPctMap
+  // into the cache when Baseball Savant is slow.
+
+  // Road RPG (away-only batting) — strips home park bias before applying parkRF in lambda
+  const roadRPGMap = {};
+  for (const split of (roadBatData?.stats?.[0]?.splits || [])) {
+    const _ra = MLB_ESPN_NORM[split.team?.abbreviation] || split.team?.abbreviation;
+    if (!_ra) continue;
+    const gp = split.stat?.gamesPlayed ?? 0;
+    const runs = split.stat?.runs ?? 0;
+    if (gp > 0 && runs > 0) roadRPGMap[_ra] = parseFloat((runs / gp).toFixed(2));
+  }
+
+  // Team platoon ratio (BA-proxy). MLB Stats API /teams/stats does not support pitcher-handedness
+  // sitCodes (only A/H), so derived from individual batter splits in batterSplitBA.
+  const _bsNormKey = (n) => n ? n.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase() : "";
+  const teamPlatoonRPGMap = {};
+  for (const [abbr, spotMap] of Object.entries(lineupResult.lineupSpotByName || {})) {
+    let hL = 0, abL = 0, hR = 0, abR = 0;
+    for (const name of Object.keys(spotMap)) {
+      const splits = batterSplitBA[_bsNormKey(name)];
+      if (!splits) continue;
+      const aL = splits.vsLPA ?? 0, aR = splits.vsRPA ?? 0;
+      if (splits.vsL != null && aL >= 10) { hL += splits.vsL * aL; abL += aL; }
+      if (splits.vsR != null && aR >= 10) { hR += splits.vsR * aR; abR += aR; }
+    }
+    const totalAB = abL + abR;
+    if (totalAB < 80) continue;
+    const overallBA = (hL + hR) / totalAB;
+    if (overallBA === 0) continue;
+    teamPlatoonRPGMap[abbr] = {
+      vl: abL >= 25 ? parseFloat(((hL / abL) / overallBA).toFixed(3)) : 1.0,
+      vr: abR >= 25 ? parseFloat(((hR / abR) / overallBA).toFixed(3)) : 1.0,
+    };
+  }
+
+  // Team ERA + WHIP (staff-wide). teamERA is the 60/40 bullpen-proxy fallback;
+  // teamWHIP backs up SimScore when starter WHIP is missing (debut / late-announcement).
+  const teamERAMap = {};
+  const teamWHIPMap = {};
+  const _ptCat = (pitchData?.categories || []).find(c => c.name === "pitching");
+  const _eraIdx = (_ptCat?.names || []).findIndex(n => n === "ERA" || n === "era");
+  const _whipIdx = (_ptCat?.names || []).findIndex(n => n === "WHIP" || n === "whip");
+  if (_eraIdx !== -1 || _whipIdx !== -1) {
+    for (const team of (pitchData?.teams || [])) {
+      const _ta = MLB_ESPN_NORM[team.team?.abbreviation] || team.team?.abbreviation;
+      if (!_ta) continue;
+      const tc = (team.categories || []).find(c => c.name === "pitching");
+      if (_eraIdx !== -1) {
+        const era = parseFloat(tc?.values?.[_eraIdx] ?? NaN);
+        if (!isNaN(era) && era > 0) teamERAMap[_ta] = era;
+      }
+      if (_whipIdx !== -1) {
+        const whip = parseFloat(tc?.values?.[_whipIdx] ?? NaN);
+        if (!isNaN(whip) && whip > 0) teamWHIPMap[_ta] = parseFloat(whip.toFixed(2));
+      }
+    }
+  }
+
+  // Bullpen-only ERA + WHIP per team (relievers, season). Replaces whole-staff teamERA in the
+  // 40% rest-of-game share of game-total + team-total lambdas. MLB Stats API returns team by
+  // `id` (no abbreviation), so we translate via MLB_ID_TO_ABBR.
+  const bullpenERAMap = {};
+  const bullpenWHIPMap = {};
+  for (const split of (bullpenData?.stats?.[0]?.splits || [])) {
+    const _abbr = MLB_ID_TO_ABBR[split.team?.id];
+    if (!_abbr) continue;
+    const era = parseFloat(split.stat?.era ?? NaN);
+    if (!isNaN(era) && era > 0) bullpenERAMap[_abbr] = parseFloat(era.toFixed(2));
+    const whip = parseFloat(split.stat?.whip ?? NaN);
+    if (!isNaN(whip) && whip > 0) bullpenWHIPMap[_abbr] = parseFloat(whip.toFixed(2));
+  }
+
+  // staticTeamHandMajority: majority batting hand per team using natural side (S=0.5R+0.5L).
+  // Used to filter pitcher's historical starts by opposing lineup handedness composition.
+  // Switch hitters counted as neutral (0.5/0.5) here since we don't know each historical pitcher hand;
+  // tonight's matchup uses the full per-pitcher adjustment in the K play loop.
+  const staticTeamHandMajority = {};
+  for (const [abbr, spotMap] of Object.entries(lineupSpotByName || {})) {
+    let rCount = 0, lCount = 0;
+    for (const name of Object.keys(spotMap)) {
+      const hand = batterHandByName[_bsNormKey(name)];
+      if (hand === 'R') rCount++;
+      else if (hand === 'L') lCount++;
+      else if (hand === 'S') { rCount += 0.5; lCount += 0.5; }
+    }
+    if (rCount + lCount > 0) staticTeamHandMajority[abbr] = rCount >= lCount ? 'R' : 'L';
+  }
+
+  const byteam = {
+    pitching: pitchData, batting: batData, probables,
+    lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL,
+    lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered,
+    lineupSpotByName, gameHomeTeams,
+    pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF,
+    pitcherGS26, pitcherHasAnchor, pitcherHand,
+    pitcherEra: pitcherEraByTeam, pitcherWHIPByTeam, pitcherFIPByTeam, pitcherWinsByTeam, pitcherLossesByTeam,
+    projectedLineupTeams, gameOdds, gameOddsTomorrow, pitcherStatsByName,
+    batterSplitBA, hitterOpsMap, batterHandByName, batterHRRSplits, pitcherH2HStarts,
+    staticTeamHandMajority,
+    pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC,
+    umpireByGame, pitcherInfoByTeam,
+    roadRPGMap, teamERAMap, teamWHIPMap, bullpenERAMap, bullpenWHIPMap,
+    teamPlatoonRPGMap, gameScores,
+  };
+
+  // Use short TTL (60s) if key data is missing — lineup/probables not confirmed yet, or
+  // independent MLB Stats API hydrations (OPS, pitcher gamelogs) silently returned empty.
+  // Prevents partial data from baking into cache for the full 600s and starving downstream
+  // SimScore columns (HRR OPS, K H2H Hand, platoon, recent K%).
+  const _mlbDataReady = Object.keys(lineupSpotByName || {}).length > 0
+    && Object.keys(pitcherAvgPitches || {}).length > 0
+    && Object.keys(hitterOpsMap || {}).length > 0
+    && Object.keys(pitcherH2HStarts || {}).length > 0;
+  if (cache) await cache.put("byteam:mlb", JSON.stringify(byteam), { expirationTtl: _mlbDataReady ? 600 : 60 });
+
+  return byteam;
+}
