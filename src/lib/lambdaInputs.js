@@ -408,6 +408,55 @@ function buildMlbMlInputs(p) {
   ];
 }
 
+// MLB spread — pickTeam-oriented factor list. Same backbone as ML (margin from pickλ - oppλ
+// is the core driver) plus the line itself so the user can see how the model's margin compares
+// to the spread bar. For YES picks (negative pickLine) we want margin > |pickLine|; for NO
+// picks (positive pickLine) we want margin > -pickLine. The "Cover by" row formats this.
+function buildMlbSpreadInputs(p) {
+  const isHomePick = p.pickTeam === p.homeTeam;
+  const pickLambda = isHomePick ? p.homeLambda : p.awayLambda;
+  const oppLambda = isHomePick ? p.awayLambda : p.homeLambda;
+  const margin = (pickLambda != null && oppLambda != null) ? pickLambda - oppLambda : null;
+  const needed = p.pickLine != null ? -p.pickLine : null; // model margin needed to cover
+  const surplus = (margin != null && needed != null) ? margin - needed : null;
+  const pickFIP = isHomePick ? p.homeFIP : p.awayFIP;
+  const oppFIP = isHomePick ? p.awayFIP : p.homeFIP;
+  const pickWHIP = isHomePick ? p.homeWHIP : p.awayWHIP;
+  const oppWHIP = isHomePick ? p.awayWHIP : p.homeWHIP;
+  const pickWHIPSrc = isHomePick ? p.homeWHIPSource : p.awayWHIPSource;
+  const oppWHIPSrc = isHomePick ? p.awayWHIPSource : p.homeWHIPSource;
+  const whipSrc = (src) => src === 'starter' ? '' : src === 'team' ? ' (team)' : '';
+  const pickLineStr = p.pickLine == null ? null : (p.pickLine > 0 ? `+${p.pickLine}` : `${p.pickLine}`);
+  return [
+    { label: 'Spread', value: pickLineStr, color: GRAY },
+    { label: 'Pick λ runs', value: dec1(pickLambda), color: tier(pickLambda, 5, 4) },
+    { label: 'Opp λ runs', value: dec1(oppLambda), color: tierLow(oppLambda, 4, 5) },
+    { label: 'Model margin', value: margin == null ? null
+        : `${margin >= 0 ? '+' : ''}${margin.toFixed(2)}`,
+      color: margin == null ? null : margin > 0.4 ? GREEN : margin > 0 ? YELLOW : RED },
+    { label: 'Cover by', value: surplus == null ? null
+        : `${surplus >= 0 ? '+' : ''}${surplus.toFixed(2)}`,
+      color: surplus == null ? null : surplus > 0.5 ? GREEN : surplus > 0 ? YELLOW : RED },
+    { label: 'Pick FIP', value: dec2(pickFIP), color: tierLow(pickFIP, 3.80, 4.50) },
+    { label: 'Opp FIP', value: dec2(oppFIP), color: tier(oppFIP, 4.50, 3.80) },
+    { label: 'Pick WHIP', value: pickWHIP == null ? null
+        : `${pickWHIP.toFixed(2)}${whipSrc(pickWHIPSrc)}`,
+      color: tierLow(pickWHIP, 1.20, 1.35) },
+    { label: 'Opp WHIP', value: oppWHIP == null ? null
+        : `${oppWHIP.toFixed(2)}${whipSrc(oppWHIPSrc)}`,
+      color: tier(oppWHIP, 1.35, 1.20) },
+    { label: 'Park run', value: p.parkFactor == null ? null
+        : `${p.parkFactor >= 1 ? '+' : '−'}${Math.abs(Math.round((p.parkFactor - 1) * 100))}%`,
+      color: GRAY },
+    { label: 'Weather', value: p.weatherFactor == null ? null
+        : `${p.weatherFactor >= 1 ? '+' : '−'}${Math.abs(Math.round((p.weatherFactor - 1) * 100))}%${p.windOutMph ? ` (${p.windOutMph}mph)` : ''}`,
+      color: GRAY },
+    { label: 'Umpire', value: p.umpireRunFactor == null ? null
+        : `${p.umpireRunFactor >= 1 ? '+' : '−'}${Math.abs(Math.round((p.umpireRunFactor - 1) * 100))}%${p.umpireName ? ` (${p.umpireName})` : ''}`,
+      color: GRAY },
+  ];
+}
+
 // Dispatcher — picks the right builder per play type
 export function buildLambdaInputs(p) {
   const { sport, stat, gameType } = p;
@@ -424,6 +473,10 @@ export function buildLambdaInputs(p) {
   }
   if (gameType === 'ml') {
     if (sport === 'mlb') return buildMlbMlInputs(p);
+    return [];
+  }
+  if (gameType === 'spread') {
+    if (sport === 'mlb') return buildMlbSpreadInputs(p);
     return [];
   }
   if (sport === 'mlb' && stat === 'strikeouts') return buildMlbKInputs(p);

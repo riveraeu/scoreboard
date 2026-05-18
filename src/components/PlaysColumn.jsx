@@ -69,6 +69,8 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                 ? `total-${play.sport}-${play.homeTeam}-${play.awayTeam}-${play.threshold}${play.direction === "under" ? "-under" : ""}`
                 : play.gameType === "ml"
                 ? `ml-${play.sport}-${play.pickTeam}-${play.homeTeam}-${play.awayTeam}`
+                : play.gameType === "spread"
+                ? `spread-${play.sport}-${play.pickTeam}-${play.homeTeam}-${play.awayTeam}-${play.pickLine}`
                 : `${play.playerName}-${play.stat}-${play.threshold}`;
               const oddsStr = play.americanOdds >= 0 ? `+${play.americanOdds}` : `${play.americanOdds}`;
               const isExpanded = expandedPlays.has(playKey);
@@ -78,6 +80,8 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                 ? `total|${play.sport}|${play.homeTeam}|${play.awayTeam}|${play.threshold}|${play.gameDate || ""}${play.direction === "under" ? "|under" : ""}`
                 : play.gameType === "ml"
                 ? `ml|${play.sport}|${play.pickTeam}|${play.homeTeam}|${play.awayTeam}|${play.gameDate || ""}`
+                : play.gameType === "spread"
+                ? `spread|${play.sport}|${play.pickTeam}|${play.homeTeam}|${play.awayTeam}|${play.pickLine}|${play.gameDate || ""}`
                 : `${play.sport || "nba"}|${play.playerName}|${play.stat}|${play.threshold}|${play.gameDate || ""}`;
               const isTracked = trackedPlays.some(p => p.id === trackId);
               const headshotUrl = play.playerId ? `https://a.espncdn.com/i/headshots/${play.sport || "nba"}/players/full/${play.playerId}.png` : null;
@@ -224,6 +228,74 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                 );
               }
               // ── End ML play card ────────────────────────────────────────────────────────────────
+
+              // ── Spread play card ────────────────────────────────────────────────────────────────
+              if (play.gameType === "spread") {
+                const tColor = tierColor(play.truePct);
+                const tTrueOdds = play.truePct >= 100 ? -99999 : (play.truePct >= 50 ? Math.round(-(play.truePct/(100-play.truePct))*100) : Math.round((100-play.truePct)/play.truePct*100));
+                const tTrueOddsStr = tTrueOdds > 0 ? `+${tTrueOdds}` : `${tTrueOdds}`;
+                const pickLineStr = play.pickLine > 0 ? `+${play.pickLine}` : `${play.pickLine}`;
+                return (
+                  <div key={playKey}
+                    style={{background:"#161b22",border:"1px solid #30363d",borderRadius:12,
+                      padding:"14px 16px",marginBottom:10,transition:"border-color 0.15s"}}
+                    onMouseEnter={e => e.currentTarget.style.borderColor="#58a6ff"}
+                    onMouseLeave={e => e.currentTarget.style.borderColor="#30363d"}>
+                    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                      <img src={`https://a.espncdn.com/i/teamlogos/${play.sport}/500/${(play.pickTeam||"").toLowerCase()}.png`} alt={play.pickTeam}
+                        style={{width:22,height:22,objectFit:"contain",flexShrink:0}}
+                        onError={e=>{e.target.style.visibility="hidden";}} />
+                      <span onClick={e=>{e.stopPropagation();navigateToTeam(play.pickTeam,play.sport);}}
+                        style={{flex:1,minWidth:0,fontSize:14,fontWeight:700,cursor:"pointer",lineHeight:1.3,color:"#c9d1d9"}}>
+                        {play.pickTeam} {pickLineStr} <span style={{color:"#484f58",fontWeight:400}}>({play.side === "home" ? "vs" : "@"} {play.oppTeam})</span>
+                      </span>
+                      <div style={{display:"flex",alignItems:"center",gap:7,flexShrink:0}}>
+                        <span style={{background:"rgba(63,185,80,0.13)",border:"1px solid #3fb950",
+                          borderRadius:6,padding:"2px 8px",fontSize:12,color:"#3fb950",fontWeight:700,whiteSpace:"nowrap"}}>
+                          +{play.edge}%
+                        </span>
+                        <button onClick={e => { e.stopPropagation(); if (isTracked) { untrackPlay(trackId); return; } trackPlay(play, e); }}
+                          title={isTracked ? "Remove from My Picks" : "Add to My Picks"}
+                          style={{background: isTracked ? "rgba(227,179,65,0.15)" : "transparent",
+                            border: `1px solid ${isTracked ? "#e3b341" : "#30363d"}`,
+                            borderRadius:6, padding:"2px 7px", cursor:"pointer",
+                            color: isTracked ? "#e3b341" : "#484f58", fontSize:14, lineHeight:1}}>
+                          {isTracked ? "★" : "☆"}
+                        </button>
+                      </div>
+                    </div>
+                    {/* Model cover% bar */}
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}>
+                      <div style={{flex:1,background:"#21262d",borderRadius:4,height:14,overflow:"hidden"}}>
+                        <div style={{width:`${play.truePct}%`,background:tColor,height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:play.truePct>0?3:0}}/>
+                      </div>
+                      <div style={{width:70,flexShrink:0,display:"flex",justifyContent:"flex-end",alignItems:"baseline",gap:4}}>
+                        <span style={{color:tColor,fontSize:12,fontWeight:700}}>{play.truePct}%</span>
+                        <span style={{color:tColor,fontSize:10}}>({tTrueOddsStr})</span>
+                      </div>
+                    </div>
+                    {/* Kalshi price bar */}
+                    {play.kalshiPct != null && (() => {
+                      const kPct = play.kalshiPct;
+                      const kOdds = kPct >= 50 ? Math.round(-(kPct/(100-kPct))*100) : Math.round((100-kPct)/kPct*100);
+                      const kOddsStr = kOdds > 0 ? `+${kOdds}` : `${kOdds}`;
+                      return (
+                        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}>
+                          <div style={{flex:1,background:"#21262d",borderRadius:4,height:10,overflow:"hidden"}}>
+                            <div style={{width:`${kPct}%`,background:"#6e40c9",height:"100%",borderRadius:4,transition:"width 0.5s ease",minWidth:kPct>0?3:0}}/>
+                          </div>
+                          <div style={{width:70,flexShrink:0,display:"flex",justifyContent:"flex-end",alignItems:"baseline",gap:4}}>
+                            <span style={{color:"#6e40c9",fontSize:12,fontWeight:600}}>{kPct}%</span>
+                            <span style={{color:"#6e40c9",fontSize:10}}>({kOddsStr})</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                    <InputList inputs={buildLambdaInputs(play)} />
+                  </div>
+                );
+              }
+              // ── End spread play card ────────────────────────────────────────────────────────────
 
               // ── Game total play card ────────────────────────────────────────────────────────────
               if (play.gameType === "total") {
