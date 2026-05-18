@@ -1,8 +1,8 @@
 import { ALLOWED_ORIGIN, corsHeaders, jsonResponse, errorResponse, parseGameOdds, parseGameScores, parseTopPlayers, buildSoftTeamAbbrs, buildHardTeamAbbrs, buildTeamRankMap } from "./lib/utils.js";
 import { PARK_KFACTOR, PARK_HITFACTOR, PARK_RUNFACTOR, UMPIRE_KFACTOR, log5K, poissonCDF, log5HitRate, simulateKsDist, kDistPct, buildNbaStatDist, nbaDistPct, simulateHits, simulateMLBTotalDist, simulateNBATotalDist, simulateNHLTotalDist, totalDistPct, simulateTeamTotalDist, simulateTeamPtsDist, lambdaForPoissonTail, meanForNormalTail, normCDF } from "./lib/simulate.js";
 import { buildLineupKPct, buildBarrelPct, buildPitcherKPct, MLB_ID_TO_ABBR, buildMlbByteam } from "./lib/mlb.js";
-import { warmPlayerInfoCache, buildNbaDvpStage1, buildNbaDvpFromBettingPros, buildNbaDepthChartPos, buildNbaPaceData, buildNbaPlayerPosFromSleeper, buildNbaDvpStage3FG, buildNbaUsageRate, buildNbaInjuryReport } from "./lib/nba.js";
-import { buildWnbaPaceData, buildWnbaUsageRate, buildWnbaInjuryReport, buildWnbaDvp, WNBA_TEAM_IDS, WNBA_ESPN_TO_CANON, WNBA_CANON_TO_ESPN } from "./lib/wnba.js";
+import { warmPlayerInfoCache, buildNbaDvpStage1, buildNbaDvpFromBettingPros, buildNbaDepthChartPos, buildNbaPaceData, buildNbaPlayerPosFromSleeper, buildNbaDvpStage3FG, buildNbaUsageRate, buildNbaInjuryReport, buildNbaByteam } from "./lib/nba.js";
+import { buildWnbaPaceData, buildWnbaUsageRate, buildWnbaInjuryReport, buildWnbaDvp, WNBA_TEAM_IDS, WNBA_ESPN_TO_CANON, WNBA_CANON_TO_ESPN, buildWnbaByteam } from "./lib/wnba.js";
 import { buildNhlGoalieData, buildNhlInjuryReport } from "./lib/nhl.js";
 import { verifyJWT } from "./lib/auth-utils.js";
 import { handleAuthRoutes } from "./lib/handlers/auth.js";
@@ -652,61 +652,8 @@ var worker_default = {
         const sportsNeedingFetch = new Set([...sportsNeeded].filter((s) => !sportByteam[s]));
         if (sportsNeedingFetch.size > 0) {
           await Promise.all([
-            sportsNeedingFetch.has("nba") && Promise.all([
-              fetch("https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=50&category=defensive&seasontype=2", {
-                headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" }
-              }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
-              fetch("https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=50&category=scoring&seasontype=2", {
-                headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" }
-              }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
-              (() => {
-                // PT-aware today + tomorrow scoreboard fetch. gameOdds = today only; gameScores = both days.
-                const _nd0 = new Date(Date.now() - 7 * 3600 * 1000); const _nd1 = new Date(_nd0); _nd1.setDate(_nd1.getDate() + 1);
-                const _nfmt = (d) => d.toISOString().slice(0,10).replace(/-/g,'');
-                const _h = { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" };
-                return Promise.all([
-                  fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${_nfmt(_nd0)}`, { headers: _h }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
-                  fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${_nfmt(_nd1)}`, { headers: _h }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
-                ]).then(([sb0, sb1]) => ({ events: sb0.events || [], eventsAll: [...(sb0.events || []), ...(sb1.events || [])] }));
-              })()
-            ]).then(async ([d, scoringData, sbData]) => {
-              sportByteam.nba = d.teams || [];
-              sportByteam.nbaScoring = scoringData.teams || [];
-              sportByteam.nbaGameOdds = parseGameOdds(sbData.events || []);
-              sportByteam.nbaGameScores = parseGameScores(sbData.eventsAll || sbData.events || [], a => normTeam("nba", a));
-              sportByteam.nbaTopPlayers = parseTopPlayers(sbData.eventsAll || sbData.events || [], a => normTeam("nba", a), "nba");
-              if (CACHE2) {
-                await CACHE2.put("byteam:nba", JSON.stringify(sportByteam.nba), { expirationTtl: 21600 });
-                await CACHE2.put("byteam:nba:scoring", JSON.stringify(sportByteam.nbaScoring), { expirationTtl: 21600 });
-              }
-            }),
-            sportsNeedingFetch.has("wnba") && Promise.all([
-              fetch("https://site.web.api.espn.com/apis/common/v3/sports/basketball/wnba/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=20&category=defensive&seasontype=2&season=2025", {
-                headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" }
-              }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
-              fetch("https://site.web.api.espn.com/apis/common/v3/sports/basketball/wnba/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=20&category=scoring&seasontype=2&season=2025", {
-                headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" }
-              }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
-              (() => {
-                const _wd0 = new Date(Date.now() - 7 * 3600 * 1000); const _wd1 = new Date(_wd0); _wd1.setDate(_wd1.getDate() + 1);
-                const _wfmt = (d) => d.toISOString().slice(0,10).replace(/-/g,'');
-                const _h = { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" };
-                return Promise.all([
-                  fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard?dates=${_wfmt(_wd0)}`, { headers: _h }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
-                  fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard?dates=${_wfmt(_wd1)}`, { headers: _h }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
-                ]).then(([sb0, sb1]) => ({ events: sb0.events || [], eventsAll: [...(sb0.events || []), ...(sb1.events || [])] }));
-              })()
-            ]).then(async ([d, scoringData, sbData]) => {
-              sportByteam.wnba = d.teams || [];
-              sportByteam.wnbaScoring = scoringData.teams || [];
-              sportByteam.wnbaGameOdds = parseGameOdds(sbData.events || []);
-              sportByteam.wnbaGameScores = parseGameScores(sbData.eventsAll || sbData.events || [], a => normTeam("wnba", a));
-              sportByteam.wnbaTopPlayers = parseTopPlayers(sbData.eventsAll || sbData.events || [], a => normTeam("wnba", a), "wnba");
-              if (CACHE2) {
-                await CACHE2.put("byteam:wnba", JSON.stringify(sportByteam.wnba), { expirationTtl: 21600 });
-                await CACHE2.put("byteam:wnba:scoring", JSON.stringify(sportByteam.wnbaScoring), { expirationTtl: 21600 });
-              }
-            }),
+            sportsNeedingFetch.has("nba") && buildNbaByteam(CACHE2, normTeam).then(r => Object.assign(sportByteam, r)),
+            sportsNeedingFetch.has("wnba") && buildWnbaByteam(CACHE2, normTeam).then(r => Object.assign(sportByteam, r)),
             sportsNeedingFetch.has("nhl") && Promise.all([
               fetch("https://api.nhle.com/stats/rest/en/team/summary?isAggregate=false&isGame=false&sort=goalsAgainstPerGame&start=0&limit=50&cayenneExp=seasonId%3D20252026%20and%20gameTypeId%3D2", { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
               fetch("https://api.nhle.com/stats/rest/en/team/summary?isAggregate=false&isGame=false&sort=shotsAgainstPerGame&start=0&limit=50&cayenneExp=seasonId%3D20252026%20and%20gameTypeId%3D2", { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),

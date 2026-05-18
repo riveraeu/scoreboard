@@ -592,3 +592,42 @@ export async function buildNbaDvpStage3FG(cache) {
     return null;
   }
 }
+
+// Full NBA byteam hydration. Fetches defensive + scoring stats + today/tomorrow scoreboards,
+// builds gameOdds/gameScores/topPlayers, and writes byteam:nba + byteam:nba:scoring caches.
+// Returns { nba, nbaScoring, nbaGameOdds, nbaGameScores, nbaTopPlayers }.
+import { parseGameOdds as _pgo, parseGameScores as _pgs, parseTopPlayers as _ptp } from "./utils.js";
+
+export async function buildNbaByteam(cache, normTeamFn) {
+  const [d, scoringData, sbData] = await Promise.all([
+    fetch("https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=50&category=defensive&seasontype=2", {
+      headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" }
+    }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
+    fetch("https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=50&category=scoring&seasontype=2", {
+      headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" }
+    }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
+    (() => {
+      // PT-aware today + tomorrow scoreboard fetch. gameOdds = today only; gameScores = both days.
+      const _nd0 = new Date(Date.now() - 7 * 3600 * 1000); const _nd1 = new Date(_nd0); _nd1.setDate(_nd1.getDate() + 1);
+      const _nfmt = (d) => d.toISOString().slice(0,10).replace(/-/g,'');
+      const _h = { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" };
+      return Promise.all([
+        fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${_nfmt(_nd0)}`, { headers: _h }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+        fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${_nfmt(_nd1)}`, { headers: _h }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+      ]).then(([sb0, sb1]) => ({ events: sb0.events || [], eventsAll: [...(sb0.events || []), ...(sb1.events || [])] }));
+    })()
+  ]);
+  const nba = d.teams || [];
+  const nbaScoring = scoringData.teams || [];
+  const out = {
+    nba, nbaScoring,
+    nbaGameOdds: _pgo(sbData.events || []),
+    nbaGameScores: _pgs(sbData.eventsAll || sbData.events || [], a => normTeamFn("nba", a)),
+    nbaTopPlayers: _ptp(sbData.eventsAll || sbData.events || [], a => normTeamFn("nba", a), "nba"),
+  };
+  if (cache) {
+    await cache.put("byteam:nba", JSON.stringify(nba), { expirationTtl: 21600 });
+    await cache.put("byteam:nba:scoring", JSON.stringify(nbaScoring), { expirationTtl: 21600 });
+  }
+  return out;
+}
