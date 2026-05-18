@@ -4136,13 +4136,15 @@ var worker_default = {
             _mlbMlMarkets[`${t2}|${t1}|${info.gameDate}`] = yesPayload;
           }
         } catch { /* non-fatal — no ML plays if fetch/parse blows up */ }
+        const _mlDebug = { contextN: Object.keys(_mlbMlContext).length, marketsN: Object.keys(_mlbMlMarkets).length, lookupHits: 0, lookupMisses: 0, missKeys: [], marketKeys: Object.keys(_mlbMlMarkets).slice(0, 6) };
         {
           const _mlJointCache = {};
           for (const ctx of Object.values(_mlbMlContext)) {
             const { homeTeam, awayTeam, gameDate, homeLambda, awayLambda, kalshiVolume, kalshiSpread, lowVolume, _simData } = ctx;
             if (gameDate && gameDate < cutoffStr) continue;
             const mlMarket = _mlbMlMarkets[`${homeTeam}|${awayTeam}|${gameDate}`];
-            if (!mlMarket?.yesByTeam) continue;
+            if (!mlMarket?.yesByTeam) { _mlDebug.lookupMisses++; if (_mlDebug.missKeys.length < 6) _mlDebug.missKeys.push(`${homeTeam}|${awayTeam}|${gameDate}`); continue; }
+            _mlDebug.lookupHits++;
             const homeYesAsk = mlMarket.yesByTeam[homeTeam];
             const awayYesAsk = mlMarket.yesByTeam[awayTeam];
             if (homeYesAsk == null || awayYesAsk == null) continue;
@@ -4246,7 +4248,7 @@ var worker_default = {
             meta: kalshiSnapMeta,
             ageMs: kalshiSnapMeta?.lastRunAt ? Date.now() - kalshiSnapMeta.lastRunAt : null,
           };
-          return jsonResponse({ plays: debugPlays, dropped: debugDropped, preDropped: debugPreDropped, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
+          return jsonResponse({ plays: debugPlays, dropped: debugDropped, preDropped: debugPreDropped, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, mlDebug: _mlDebug, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
         }
         // Build mlbMeta: pitchers, ML odds, umpires, weather — keyed by team abbr or "home|away"
         // Pitcher entries: { name, id, era, wins, losses }. MLB Stats API (pitcherInfoByTeam) preferred
