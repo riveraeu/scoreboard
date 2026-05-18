@@ -1148,6 +1148,23 @@ var worker_default = {
           }
         }));
         const isDebug = isDebugMode || params.get("debug") === "true";
+        if (params.get("probeSpreads") === "1") {
+          const candidates = ["KXMLBSPREAD","KXMLBRL","KXMLBRUNLINE","KXMLBSPRD","KXMLBRUN","KXMLBHANDICAP","KXMLBALT"];
+          const out = {};
+          await Promise.all(candidates.map(async t => {
+            try {
+              const r = await fetch(`https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=${t}&limit=5&status=open`, {
+                headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" },
+                signal: AbortSignal.timeout(4000)
+              });
+              if (!r.ok) { out[t] = { status: r.status }; return; }
+              const j = await r.json();
+              const markets = j?.markets || [];
+              out[t] = { status: 200, marketsCount: markets.length, sample: markets.slice(0, 3).map(m => ({ ticker: m.ticker, title: m.title, yes_ask: m.yes_ask, no_ask: m.no_ask })) };
+            } catch (e) { out[t] = { error: String(e?.message || e) }; }
+          }));
+          return jsonResponse({ spreadProbe: out }, true);
+        }
         const GAMELOG_API = {
           nba: /* @__PURE__ */ __name((id) => `https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/${id}/gamelog?season=2026`, "nba"),
           // WNBA anchors on 2025 (most-complete signal; 2026 season just opening). Trust ramps via vals26.
