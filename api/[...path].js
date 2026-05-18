@@ -4136,7 +4136,7 @@ var worker_default = {
             _mlbMlMarkets[`${t2}|${t1}|${info.gameDate}`] = yesPayload;
           }
         } catch { /* non-fatal — no ML plays if fetch/parse blows up */ }
-        const _mlDebug = { contextN: Object.keys(_mlbMlContext).length, marketsN: Object.keys(_mlbMlMarkets).length, lookupHits: 0, lookupMisses: 0, missKeys: [], marketKeys: Object.keys(_mlbMlMarkets).slice(0, 6) };
+        const _mlDebug = { contextN: Object.keys(_mlbMlContext).length, marketsN: Object.keys(_mlbMlMarkets).length, lookupHits: 0, lookupMisses: 0, missKeys: [], marketKeys: Object.keys(_mlbMlMarkets).slice(0, 6), sidesSeen: 0, sidesInWindow: 0, sidesQualified: 0, sideSample: [] };
         {
           const _mlJointCache = {};
           for (const ctx of Object.values(_mlbMlContext)) {
@@ -4168,7 +4168,11 @@ var worker_default = {
               const edge = parseFloat((truePct - kalshiPct).toFixed(1));
               const americanOdds = _toAO(kalshiPct);
               const inWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
+              _mlDebug.sidesSeen++;
+              if (inWindow) _mlDebug.sidesInWindow++;
+              if (_mlDebug.sideSample.length < 8) _mlDebug.sideSample.push({ matchup: `${awayTeam}@${homeTeam}`, side, pickTeam, kalshiPct, truePct: parseFloat(truePct.toFixed(1)), edge, inWindow });
               if (edge >= EDGE_GATE && inWindow) {
+                _mlDebug.sidesQualified++;
                 plays.push({
                   gameType: "ml", sport: "mlb", stat: "ml",
                   homeTeam, awayTeam, pickTeam, oppTeam, side, gameDate,
