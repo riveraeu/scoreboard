@@ -4117,7 +4117,9 @@ var worker_default = {
             const tk = m.ticker || '';
             const lastDash = tk.lastIndexOf('-');
             if (lastDash < 0) continue;
-            const abbr = tk.slice(lastDash + 1);
+            // Apply MLB Kalshi→canonical normalization (TBR→TB, KCR→KC, SDP→SD, CHW→CWS, AZ→ARI,
+            // OAK→ATH, WSN/WAS→WSH) so the lookup against canonical _mlbMlContext keys lines up.
+            const abbr = normTeam('mlb', tk.slice(lastDash + 1));
             const eventT = m.event_ticker;
             if (!eventT || !abbr) continue;
             const p = _kImpliedProbMl(m);
