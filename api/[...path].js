@@ -3,7 +3,7 @@ import { PARK_KFACTOR, PARK_HITFACTOR, PARK_RUNFACTOR, UMPIRE_KFACTOR, log5K, po
 import { buildLineupKPct, buildBarrelPct, buildPitcherKPct, MLB_ID_TO_ABBR } from "./lib/mlb.js";
 import { warmPlayerInfoCache, buildNbaDvpStage1, buildNbaDvpFromBettingPros, buildNbaDepthChartPos, buildNbaPaceData, buildNbaPlayerPosFromSleeper, buildNbaDvpStage3FG, buildNbaUsageRate, buildNbaInjuryReport } from "./lib/nba.js";
 import { buildWnbaPaceData, buildWnbaUsageRate, buildWnbaInjuryReport, buildWnbaDvp, WNBA_TEAM_IDS, WNBA_ESPN_TO_CANON, WNBA_CANON_TO_ESPN } from "./lib/wnba.js";
-import { buildNhlGoalieData } from "./lib/nhl.js";
+import { buildNhlGoalieData, buildNhlInjuryReport } from "./lib/nhl.js";
 
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
@@ -1851,13 +1851,19 @@ var worker_default = {
             sportsNeedingFetch.has("nhl") && Promise.all([
               fetch("https://api.nhle.com/stats/rest/en/team/summary?isAggregate=false&isGame=false&sort=goalsAgainstPerGame&start=0&limit=50&cayenneExp=seasonId%3D20252026%20and%20gameTypeId%3D2", { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
               fetch("https://api.nhle.com/stats/rest/en/team/summary?isAggregate=false&isGame=false&sort=shotsAgainstPerGame&start=0&limit=50&cayenneExp=seasonId%3D20252026%20and%20gameTypeId%3D2", { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
-              buildNhlGoalieData(CACHE2).catch(() => ({ goalieByTeam: {}, leagueAvgSV: 0.905 }))
-            ]).then(async ([gaData, saData, goalieData]) => {
+              buildNhlGoalieData(CACHE2).catch(() => ({ goalieByTeam: {}, leagueAvgSV: 0.905 })),
+              buildNhlInjuryReport(CACHE2).catch(() => new Map())
+            ]).then(async ([gaData, saData, goalieData, injuryMap]) => {
+              // Serialize Map → plain object for the byteam:nhl JSON cache; the consumer site
+              // does NOT need a Map (just object lookups by team abbr).
+              const _nhlInjuryObj = {};
+              for (const [k, v] of (injuryMap || new Map()).entries()) _nhlInjuryObj[k] = v;
               sportByteam.nhl = {
                 ga: gaData.data || [],
                 sa: saData.data || [],
                 goalieByTeam: goalieData?.goalieByTeam || {},
                 leagueAvgSV: goalieData?.leagueAvgSV ?? 0.905,
+                injuryByTeam: _nhlInjuryObj,
               };
               if (CACHE2) await CACHE2.put("byteam:nhl", JSON.stringify(sportByteam.nhl), { expirationTtl: 21600 });
             }),
@@ -6028,7 +6034,7 @@ var worker_default = {
           _nhlGameOdds[abbr] = { ml: odds.moneyline ?? null, total: odds.total ?? null, spread: odds.spread ?? null };
         }
         await _applyClosingSnapshot('nhlClosingOdds', sportByteam.nhlGameScores, _nhlGameOdds);
-        const nhlMeta = { gameScores: sportByteam.nhlGameScores ?? {}, gameOdds: _nhlGameOdds, topPlayers: sportByteam.nhlTopPlayers ?? {} };
+        const nhlMeta = { gameScores: sportByteam.nhlGameScores ?? {}, gameOdds: _nhlGameOdds, topPlayers: sportByteam.nhlTopPlayers ?? {}, injuries: sportByteam.nhl?.injuryByTeam ?? {} };
         const playsResult = { plays, nbaDropped, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta, staleKalshiSeries, modelVersion, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length };
         const sportsInPlays = new Set(plays.map((p) => p.sport));
         if (CACHE2 && sportsInPlays.size >= 2) {

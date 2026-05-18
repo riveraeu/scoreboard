@@ -28,6 +28,27 @@ function LineupBadge({ status, align }) {
   );
 }
 
+// NBA/WNBA/NHL injury badge. Renders when ≥1 player is Out. Tooltip lists Out names
+// (and GTD names if present). Same position/style as LineupBadge but red.
+function InjuryBadge({ outNames, gtdNames }) {
+  const outCount = outNames?.length || 0;
+  if (outCount === 0) return null;
+  const parts = [];
+  parts.push(`Out: ${outNames.join(', ')}`);
+  if (gtdNames?.length) parts.push(`GTD: ${gtdNames.join(', ')}`);
+  return (
+    <span style={{
+      display: 'inline-block', marginTop: 2, marginBottom: 4,
+      fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4,
+      background: 'rgba(248,81,73,0.12)', border: '1px solid #f85149', color: '#f85149',
+      whiteSpace: 'nowrap',
+    }}
+      title={parts.join('\n')}>
+      {`✕ ${outCount} Out`}
+    </span>
+  );
+}
+
 // "BOS leads series 3-2" → "BOS 3-2", "Series tied 2-2" → "2-2"
 function fmtSeries(summary) {
   if (!summary) return null;
@@ -108,6 +129,21 @@ function MatchupCard({
       tab: 'points',
     };
   };
+  // Per-team injury info for NBA/WNBA/NHL. Suppressed during live/final (badge becomes noise
+  // once the game has started — the relevant question is who actually played).
+  const injuryFor = (abbr) => {
+    if (!abbr || sport === 'mlb' || sport === 'nfl') return null;
+    if (gameState === 'in' || gameState === 'post') return null;
+    const meta = sport === 'nba' ? nbaMeta : sport === 'wnba' ? wnbaMeta : sport === 'nhl' ? nhlMeta : null;
+    const players = meta?.injuries?.[abbr];
+    if (!players?.length) return null;
+    const outNames = players.filter(p => p.status === 'out').map(p => p.name);
+    const gtdNames = players.filter(p => p.status === 'gtd').map(p => p.name);
+    if (outNames.length === 0) return null;
+    return { outNames, gtdNames };
+  };
+  const awayInjury = injuryFor(awayTeam);
+  const homeInjury = injuryFor(homeTeam);
   const awayFeature = featureFor(awayTeam);
   const homeFeature = featureFor(homeTeam);
   const hasFeatureRow = !!(awayFeature || homeFeature);
@@ -220,6 +256,9 @@ function MatchupCard({
               {awayFeature?.lineupStatus && (
                 <LineupBadge status={awayFeature.lineupStatus} />
               )}
+              {awayInjury && (
+                <InjuryBadge outNames={awayInjury.outNames} gtdNames={awayInjury.gtdNames} />
+              )}
               <div style={{ fontSize: 12, color: '#c9d1d9', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {awayFeature?.name || '—'}
               </div>
@@ -255,6 +294,9 @@ function MatchupCard({
             <div style={{ textAlign: 'right', minWidth: 0 }}>
               {homeFeature?.lineupStatus && (
                 <LineupBadge status={homeFeature.lineupStatus} align="right" />
+              )}
+              {homeInjury && (
+                <InjuryBadge outNames={homeInjury.outNames} gtdNames={homeInjury.gtdNames} />
               )}
               <div style={{ fontSize: 12, color: '#c9d1d9', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {homeFeature?.name || '—'}

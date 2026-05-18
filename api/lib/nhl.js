@@ -88,3 +88,58 @@ export async function buildNhlGoalieData(cache) {
   }
   return out;
 }
+
+// ESPN NHL injury report. Returns Map<teamAbbr, [{name, id, status}]> for Out / GTD players.
+// Mirrors buildNbaInjuryReport — ESPN omits athlete.id but embeds it in playercard link href.
+// Cached at nhl:injuries:{date} for 1800s (30 min).
+export async function buildNhlInjuryReport(cache) {
+  try {
+    const date = new Date().toISOString().slice(0, 10);
+    const cacheKey = `nhl:injuries:${date}`;
+    if (cache) {
+      const cached = await cache.get(cacheKey, "json").catch(() => null);
+      if (cached) {
+        const m = new Map();
+        for (const [k, v] of Object.entries(cached)) m.set(k, v);
+        return m;
+      }
+    }
+    const r = await fetch(
+      "https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/injuries",
+      { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(6000) }
+    );
+    if (!r.ok) return new Map();
+    const d = await r.json().catch(() => ({}));
+    const injMap = {};
+    for (const teamEntry of d.injuries || []) {
+      const outPlayers = [];
+      let abbr = null;
+      for (const inj of teamEntry.injuries || []) {
+        const statusRaw = (inj.status || "").toLowerCase();
+        const isOut = statusRaw === "out";
+        const isGtd = statusRaw.includes("day") || statusRaw.includes("game-time") || statusRaw === "questionable" || statusRaw === "doubtful";
+        if (!isOut && !isGtd) continue;
+        if (!abbr) abbr = inj.athlete?.team?.abbreviation || null;
+        const name = inj.athlete?.displayName || "";
+        let id = null;
+        for (const lk of (inj.athlete?.links || [])) {
+          const m = (lk.href || "").match(/\/id\/(\d+)\//);
+          if (m) { id = m[1]; break; }
+        }
+        if (name) outPlayers.push({ name, id, status: isOut ? "out" : "gtd" });
+      }
+      // ESPN NHL uses short forms (TB/NJ/LA/SJ) on some endpoints. Normalize to canonical.
+      const NORM = { TB: "TBL", NJ: "NJD", LA: "LAK", SJ: "SJS" };
+      const canon = abbr ? (NORM[abbr] || abbr) : null;
+      if (canon && outPlayers.length) injMap[canon] = outPlayers;
+    }
+    if (cache && Object.keys(injMap).length > 0) {
+      await cache.put(cacheKey, JSON.stringify(injMap), { expirationTtl: 1800 }).catch(() => {});
+    }
+    const m = new Map();
+    for (const [k, v] of Object.entries(injMap)) m.set(k, v);
+    return m;
+  } catch {
+    return new Map();
+  }
+}
