@@ -75,22 +75,19 @@ function App() {
   const [calibData, setCalibData] = React.useState(null);
   const [calibLoading, setCalibLoading] = React.useState(false);
   const [gamelogSort, setGamelogSort] = React.useState({ col: 'date', dir: 'desc' });
-  // Stake sizing — Tier × fractional-Kelly (replaced flat Scheme B on 2026-05-16):
+  // Stake sizing — Tier × fractional-Kelly:
   //   edge < 10%     → ⅛-Kelly       (small edges, low confidence)
-  //   edge 10–15%    → flat $50        (clamp — calibration-bug band, K 90-95% overconfident)
-  //   edge ≥ 15%     → ½-Kelly        (high-edge / high-confidence)
+  //   edge ≥ 10%     → ½-Kelly        (high-edge / high-confidence)
   //   missing data   → 1u baseline ($30)
   //   max single bet → $500 cap        (caps tail risk on rare huge-Kelly recommendations)
-  // Last 60-day backtest: +4.9% ROI vs +0.9% on flat Scheme B. See conversation 2026-05-16
-  // for the analysis behind the band cuts and clamp; the clamp exists because the 10-15%
-  // band had 71.4% hit rate (vs ~85% in adjacent bands) and lost in every aggressive scheme.
+  // Dropped 10-15% flat-$50 clamp on 2026-05-18 — re-audit of n=28 picks in that band showed
+  // the 78.6% hit rate was driven by strikeouts (12 picks, 67%) and hrr (7 picks, 71%);
+  // non-K plays in the band hit 88%, same as adjacent. K plays rarely qualify post the
+  // 2026-05-17 emit-bug fix anyway. Bands now flow through Kelly without the clamp.
   const UNIT_DOLLARS = 30;
   const STAKE_CAP = 500;
   const unitsForPlay = (play) => {
     const e = play?.edge ?? null;
-    // Clamp band — calibration-bug zone, fixed $50 regardless of Kelly math.
-    if (e != null && e >= 10 && e < 15) return 50;
-
     // Kelly inputs. UNDER direction uses noTruePct so the probability matches the side taken.
     const truePct = play?.direction === "under" ? (play?.noTruePct ?? play?.truePct) : play?.truePct;
     const ao = play?.americanOdds;
