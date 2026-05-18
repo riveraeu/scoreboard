@@ -28,23 +28,21 @@ function LineupBadge({ status, align }) {
   );
 }
 
-// NBA/WNBA/NHL injury badge. Renders when ≥1 player is Out. Tooltip lists Out names
-// (and GTD names if present). Same position/style as LineupBadge but red.
-function InjuryBadge({ outNames, gtdNames }) {
-  const outCount = outNames?.length || 0;
-  if (outCount === 0) return null;
-  const parts = [];
-  parts.push(`Out: ${outNames.join(', ')}`);
-  if (gtdNames?.length) parts.push(`GTD: ${gtdNames.join(', ')}`);
+// NBA/WNBA/NHL per-player injury pill. Red = Out, yellow = GTD (color carries status info,
+// so the pill text is just the player's name). One pill per player; multiple pills wrap.
+function InjuryBadge({ name, status }) {
+  const isOut = status === 'out';
+  const color = isOut ? '#f85149' : '#e3b341';
+  const bg = isOut ? 'rgba(248,81,73,0.12)' : 'rgba(227,179,65,0.12)';
   return (
     <span style={{
-      display: 'inline-block', marginTop: 2, marginBottom: 4,
-      fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4,
-      background: 'rgba(248,81,73,0.12)', border: '1px solid #f85149', color: '#f85149',
+      display: 'inline-block',
+      fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 4,
+      background: bg, border: `1px solid ${color}`, color,
       whiteSpace: 'nowrap',
     }}
-      title={parts.join('\n')}>
-      {`✕ ${outCount} Out`}
+      title={isOut ? 'Out' : 'Game-time decision / day-to-day'}>
+      {name}
     </span>
   );
 }
@@ -129,18 +127,20 @@ function MatchupCard({
       tab: 'points',
     };
   };
-  // Per-team injury info for NBA/WNBA/NHL. Suppressed during live/final (badge becomes noise
-  // once the game has started — the relevant question is who actually played).
+  // Per-team injury list for NBA/WNBA/NHL — one entry per Out/GTD player. Sorted Out-first so
+  // the more impactful absences render to the left of the wrap container. Suppressed during
+  // live/final (the relevant question is who actually played).
   const injuryFor = (abbr) => {
     if (!abbr || sport === 'mlb' || sport === 'nfl') return null;
     if (gameState === 'in' || gameState === 'post') return null;
     const meta = sport === 'nba' ? nbaMeta : sport === 'wnba' ? wnbaMeta : sport === 'nhl' ? nhlMeta : null;
     const players = meta?.injuries?.[abbr];
     if (!players?.length) return null;
-    const outNames = players.filter(p => p.status === 'out').map(p => p.name);
-    const gtdNames = players.filter(p => p.status === 'gtd').map(p => p.name);
-    if (outNames.length === 0) return null;
-    return { outNames, gtdNames };
+    const sorted = [...players].sort((a, b) => {
+      if (a.status !== b.status) return a.status === 'out' ? -1 : 1;
+      return 0;
+    });
+    return sorted;
   };
   const awayInjury = injuryFor(awayTeam);
   const homeInjury = injuryFor(homeTeam);
@@ -257,7 +257,11 @@ function MatchupCard({
                 <LineupBadge status={awayFeature.lineupStatus} />
               )}
               {awayInjury && (
-                <InjuryBadge outNames={awayInjury.outNames} gtdNames={awayInjury.gtdNames} />
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 2, marginBottom: 4 }}>
+                  {awayInjury.map(p => (
+                    <InjuryBadge key={p.id || p.name} name={p.name} status={p.status} />
+                  ))}
+                </div>
               )}
               <div style={{ fontSize: 12, color: '#c9d1d9', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {awayFeature?.name || '—'}
@@ -296,7 +300,11 @@ function MatchupCard({
                 <LineupBadge status={homeFeature.lineupStatus} align="right" />
               )}
               {homeInjury && (
-                <InjuryBadge outNames={homeInjury.outNames} gtdNames={homeInjury.gtdNames} />
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 2, marginBottom: 4, justifyContent: 'flex-end' }}>
+                  {homeInjury.map(p => (
+                    <InjuryBadge key={p.id || p.name} name={p.name} status={p.status} />
+                  ))}
+                </div>
               )}
               <div style={{ fontSize: 12, color: '#c9d1d9', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {homeFeature?.name || '—'}
