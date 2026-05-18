@@ -76,14 +76,16 @@ function App() {
   const [calibLoading, setCalibLoading] = React.useState(false);
   const [gamelogSort, setGamelogSort] = React.useState({ col: 'date', dir: 'desc' });
   // Stake sizing — Tier × fractional-Kelly:
-  //   edge < 10%     → ⅛-Kelly       (small edges, low confidence)
-  //   edge ≥ 10%     → ½-Kelly        (high-edge / high-confidence)
+  //   edge < 15%     → ⅛-Kelly       (small + middling edges, including the bad 10-15% band)
+  //   edge ≥ 15%     → ½-Kelly        (high-edge / high-confidence)
   //   missing data   → 1u baseline ($30)
   //   max single bet → $500 cap        (caps tail risk on rare huge-Kelly recommendations)
-  // Dropped 10-15% flat-$50 clamp on 2026-05-18 — re-audit of n=28 picks in that band showed
-  // the 78.6% hit rate was driven by strikeouts (12 picks, 67%) and hrr (7 picks, 71%);
-  // non-K plays in the band hit 88%, same as adjacent. K plays rarely qualify post the
-  // 2026-05-17 emit-bug fix anyway. Bands now flow through Kelly without the clamp.
+  // Threshold raised 10→15 on 2026-05-18 after full-sample audit (n=215, 81.9% hit) showed
+  // the 10-15% band loses -8 to -10% ROI in EVERY Kelly fraction (73.3% hit vs 82-86% adjacent).
+  // Treating 10-15% as low-confidence (⅛-Kelly) yields +1.25% ROI / $1,246 MDD vs -0.76% / $1,748
+  // for the prior cross-at-10 setup. The 15%+ band (86.7% hit, +13% ROI) keeps ½-Kelly. Earlier
+  // attempt to drop the $50 clamp without raising the threshold was a misread of a sub-slice;
+  // full data shows the 10-15% band is genuinely broken regardless of K/non-K composition.
   const UNIT_DOLLARS = 30;
   const STAKE_CAP = 500;
   const unitsForPlay = (play) => {
@@ -91,7 +93,7 @@ function App() {
     // Kelly inputs. UNDER direction uses noTruePct so the probability matches the side taken.
     const truePct = play?.direction === "under" ? (play?.noTruePct ?? play?.truePct) : play?.truePct;
     const ao = play?.americanOdds;
-    const kFrac = e == null ? null : e < 10 ? 0.125 : 0.5;
+    const kFrac = e == null ? null : e < 15 ? 0.125 : 0.5;
     if (kFrac != null && truePct != null && ao != null && ao !== 0) {
       const b = ao > 0 ? ao / 100 : 100 / Math.abs(ao);
       const p = truePct / 100;
