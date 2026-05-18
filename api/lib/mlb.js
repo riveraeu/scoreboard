@@ -415,6 +415,29 @@ export async function buildPitcherKPct(mlbSched) {
       const raw = ((13 * s.hr) + (3 * (s.bb + s.hbp)) - (2 * s.so)) / s.ip + _FIP_CONST;
       return parseFloat(raw.toFixed(2));
     };
+    // Two-step regression: (1) blend 2026↔2025 by trust26=min(1, gs26/15), (2) shrink the
+    // blended estimate toward league mean with priorIP weight (Bayesian-style). Used for
+    // ERA/WHIP (PRIOR_IP=50) and FIP (PRIOR_IP=30, since FIP stabilizes faster). The blended
+    // sample size = full 2026 IP + (1−trust26) × 2025 IP so the league anchor pulls harder
+    // on early-season pitchers without flattening true talent at full sample.
+    const _regressedRate = (val26, ip26, val25, ip25, gs26, lgMean, priorIP) => {
+      const has26 = val26 != null && ip26 >= 1;
+      const has25 = val25 != null && ip25 >= 1;
+      let blendedVal, blendedIp;
+      if (has26 && has25) {
+        const trust26 = Math.min(1, gs26 / 15);
+        blendedVal = trust26 * val26 + (1 - trust26) * val25;
+        blendedIp = ip26 + (1 - trust26) * ip25;
+      } else if (has26) {
+        blendedVal = val26; blendedIp = ip26;
+      } else if (has25) {
+        blendedVal = val25; blendedIp = ip25;
+      } else {
+        return null;
+      }
+      const shrunk = (blendedIp * blendedVal + priorIP * lgMean) / (blendedIp + priorIP);
+      return parseFloat(shrunk.toFixed(2));
+    };
     for (const [abbr, id] of Object.entries(pitcherByTeam)) {
       const s26 = pitcherStats26[id];
       const s25 = pitcherStats25[id];
@@ -438,34 +461,23 @@ export async function buildPitcherKPct(mlbSched) {
         const kbbRegressed = kbb26 !== null ? kbb26 * trust + anchorKBB * (1 - trust) : anchorKBB;
         pitcherKBBPct[abbr] = parseFloat((kbbRegressed * 100).toFixed(1));
       }
-      // ERA + WHIP: prefer 2026 if available (any starts), fall back to 2025
-      const era26 = s26?.era ?? null;
-      const era25 = s25?.era ?? null;
-      if (era26 != null) pitcherEra[abbr] = era26;
-      else if (era25 != null) pitcherEra[abbr] = era25;
-      const whip26 = s26?.whip ?? null;
-      const whip25 = s25?.whip ?? null;
-      if (whip26 != null) pitcherWHIP[abbr] = whip26;
-      else if (whip25 != null) pitcherWHIP[abbr] = whip25;
+      // ERA + WHIP: two-step regression (26↔25 sample-weighted blend, then league-anchor shrink).
+      const _eraReg = _regressedRate(s26?.era ?? null, s26?.ip ?? 0, s25?.era ?? null, s25?.ip ?? 0, s26?.gs ?? 0, 4.20, 50);
+      if (_eraReg != null) pitcherEra[abbr] = _eraReg;
+      const _whipReg = _regressedRate(s26?.whip ?? null, s26?.ip ?? 0, s25?.whip ?? null, s25?.ip ?? 0, s26?.gs ?? 0, 1.30, 50);
+      if (_whipReg != null) pitcherWHIP[abbr] = _whipReg;
       // W-L: prefer 2026 if pitcher has any 2026 starts, else 2025
       if ((s26?.gs ?? 0) > 0 || (s26?.w ?? 0) + (s26?.l ?? 0) > 0) {
         pitcherWins[abbr] = s26.w; pitcherLosses[abbr] = s26.l;
       } else if (s25 && ((s25.gs ?? 0) > 0 || (s25.w ?? 0) + (s25.l ?? 0) > 0)) {
         pitcherWins[abbr] = s25.w; pitcherLosses[abbr] = s25.l;
       }
-      // FIP: sample-weighted blend (trust26 = min(1, gs26/15)) — same regression pattern as avgP/avgBF.
-      // Computed per-season from raw HR/BB/HBP/K/IP, then blended; nulls when neither season has IP>=1.
+      // FIP: same two-step regression as ERA/WHIP, with PRIOR_IP=30 (FIP stabilizes faster).
+      // Computed per-season from raw HR/BB/HBP/K/IP, then blended + shrunk toward league mean.
       const fip26 = _seasonFIP(s26);
       const fip25 = _seasonFIP(s25);
-      const _gs26 = s26?.gs ?? 0;
-      const _trust26 = Math.min(1, _gs26 / 15);
-      if (fip26 != null && fip25 != null) {
-        pitcherFIP[abbr] = parseFloat((_trust26 * fip26 + (1 - _trust26) * fip25).toFixed(2));
-      } else if (fip26 != null) {
-        pitcherFIP[abbr] = fip26;
-      } else if (fip25 != null) {
-        pitcherFIP[abbr] = fip25;
-      }
+      const _fipReg = _regressedRate(fip26, s26?.ip ?? 0, fip25, s25?.ip ?? 0, s26?.gs ?? 0, 4.20, 30);
+      if (_fipReg != null) pitcherFIP[abbr] = _fipReg;
     }
     const pitcherCSWPct = {};
     const pitcherAvgPitches = {};
