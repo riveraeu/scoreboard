@@ -13,6 +13,7 @@ import { handleKalshiRoutes } from "./lib/handlers/kalshi.js";
 import { PT_FMT, ptDateMinusOne } from "./lib/pt.js";
 import { computeDataConfidence, DC_GATE, _GT_IMPLIED_CAP, _TT_IMPLIED_CAP } from "./lib/tonight/dc.js";
 import { applyClosingSnapshot } from "./lib/tonight/closing-odds.js";
+import { fetchKalshiMarkets } from "./lib/tonight/kalshi-pipeline.js";
 
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
@@ -380,158 +381,9 @@ var worker_default = {
           }
         };
         const seriesTickers = Object.keys(SERIES_CONFIG);
-        // Bundle cache: stores all series in one Redis key (90s TTL) to avoid hammering Kalshi
-        const KALSHI_BUNDLE_KEY = `kalshi:bundle:${new Date().toISOString().slice(0, 10).replace(/-/g, "")}`;
-        // Per-ticker stale fallback fires for both bust and non-bust — the stale cache holds
-        // the LAST successful fetch (whatever date that was), and is preferable to empty even
-        // on bust. The "yesterday's residue" risk is real only if today never succeeded for a
-        // given ticker; once today succeeds even once, stale gets updated with today's data.
-        async function fetchKalshiSeries(ticker) {
-          const staleKey = `kalshi:stale:${ticker}`;
-          const r = await fetch(`https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=${ticker}&limit=1000&status=open`, {
-            headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" },
-            cf: { cacheEverything: false }
-          }).catch(() => null);
-          if (r?.status === 429) {
-            // Rate limited — fall through to stale immediately, no retry
-            if (CACHE2) {
-              const stale = await CACHE2.get(staleKey, "json").catch(() => null);
-              if (stale) {
-                for (const m of stale.markets || []) m._kalshiStale = true;
-                return { data: stale, stale: true, rateLimited: true };
-              }
-            }
-            return { data: { markets: [] }, rateLimited: true };
-          }
-          const fresh = r?.ok ? await r.json().catch(() => null) : null;
-          if (fresh && (fresh.markets || []).length > 0) {
-            // 30-min TTL caps how stale per-ticker fallback can drift if Kalshi keeps 429-ing.
-            // Worst case the series disappears from /api/tonight until Kalshi recovers — preferable
-            // to silently serving 30+ min old prices.
-            if (CACHE2) await CACHE2.put(staleKey, JSON.stringify(fresh), { expirationTtl: 1800 }).catch(() => {});
-            return { data: fresh };
-          }
-          if (CACHE2) {
-            const stale = await CACHE2.get(staleKey, "json").catch(() => null);
-            if (stale) {
-              for (const m of stale.markets || []) m._kalshiStale = true;
-              return { data: stale, stale: true };
-            }
-          }
-          return { data: { markets: [] }, failed: true };
-        }
-        __name(fetchKalshiSeries, "fetchKalshiSeries");
-        // Snap-first read: /api/kalshi-snapshot cron writes per-ticker `kalshi:snap:{ticker}`
-        // keys every 2 min. If all series have fresh snaps (≤180s old, i.e. within 1.5 cron
-        // cycles) we use those and skip both the bundle cache and the per-request Kalshi REST
-        // burst. Single MGET keeps Upstash command count to 2 (MGET + meta GET). All-or-nothing
-        // — if any snap is missing/stale, fall through to the existing bundle/REST path which
-        // already covers cold-start and cron-down cases.
-        const SNAP_FRESHNESS_MS = 180_000;
-        let kalshiResults;
-        let kalshiSnapMeta = null;
-        let kalshiUsedSnaps = false;
-        if (!isBustCache && env?.UPSTASH_REDIS_REST_URL && env?.UPSTASH_REDIS_REST_TOKEN) {
-          const _snapAuth = `Bearer ${env.UPSTASH_REDIS_REST_TOKEN}`;
-          try {
-            const _snapCmds = [
-              ["MGET", ...seriesTickers.map(t => `kalshi:snap:${t}`)],
-              ["GET", "kalshi:snap:_meta"],
-            ];
-            const _pipeRes = await fetch(`${env.UPSTASH_REDIS_REST_URL}/pipeline`, {
-              method: "POST",
-              headers: { Authorization: _snapAuth, "Content-Type": "application/json" },
-              body: JSON.stringify(_snapCmds),
-            }).then(r => r.json()).catch(() => null);
-            const _mget = _pipeRes?.[0]?.result;
-            const _metaRaw = _pipeRes?.[1]?.result;
-            try { kalshiSnapMeta = _metaRaw ? JSON.parse(_metaRaw) : null; } catch {}
-            if (Array.isArray(_mget) && _mget.length === seriesTickers.length) {
-              const _parsed = _mget.map(s => { try { return s ? JSON.parse(s) : null; } catch { return null; } });
-              const _now = Date.now();
-              // Empty markets is a valid snap (off-season / no-game-tonight series). Require
-                // only that the snap exists and is fresh; downstream loops iterate markets and
-                // naturally yield zero plays for empty series.
-              const _allFresh = _parsed.every(s =>
-                s && Array.isArray(s.markets)
-                && (_now - (s.writtenAt || 0) <= SNAP_FRESHNESS_MS)
-              );
-              if (_allFresh) {
-                kalshiResults = _parsed.map(s => ({ markets: s.markets }));
-                kalshiUsedSnaps = true;
-              }
-            }
-          } catch {}
-        }
-        // Check bundle cache before making any Kalshi calls
-        const bundleCached = !kalshiUsedSnaps && !isBustCache && CACHE2 ? await CACHE2.get(KALSHI_BUNDLE_KEY, "json").catch(() => null) : null;
-        if (kalshiUsedSnaps) {
-          // already populated from snaps
-        } else if (bundleCached) {
-          kalshiResults = seriesTickers.map(t => bundleCached[t] || { markets: [] });
-        } else {
-          // Throttled batch fetch — Kalshi rate-limits a burst of 18 parallel requests, which
-          // silently 429'd later-position series (KXMLBTEAMTOTAL #17 was the canary). Process in
-          // small batches with a delay between batches so every ticker has a fair shot at
-          // a fresh response instead of falling through to its stale cache. Earlier 6+300ms
-          // values still left ~6/18 series falling back to stale per request — bumped to
-          // 3+700ms which is more conservative but only adds ~3.6s on cold (uncached) paths.
-          const KALSHI_BATCH = 3;
-          const KALSHI_BATCH_DELAY_MS = 700;
-          // Shuffle the ticker order each request so no single series is deterministically
-          // last-in-line. Without this, KXMLBTEAMTOTAL was always batch-position 17/18 and
-          // soaked up the rate limit on every refresh.
-          const _shuffled = [...seriesTickers];
-          for (let _si = _shuffled.length - 1; _si > 0; _si--) {
-            const _sj = Math.floor(Math.random() * (_si + 1));
-            [_shuffled[_si], _shuffled[_sj]] = [_shuffled[_sj], _shuffled[_si]];
-          }
-          // Read the previous bundle once so we can preserve entries for any series that came
-          // back rate-limited / empty this cycle. Without this, a successful first fetch fills
-          // the bundle, then a follow-up `?bust=1` racing into Kalshi rate limits would write
-          // an empty entry over the good one and starve subsequent non-bust requests.
-          const priorBundle = CACHE2 ? await CACHE2.get(KALSHI_BUNDLE_KEY, "json").catch(() => null) : null;
-          const resultMap = {};
-          const fetchMeta = {};
-          for (let off = 0; off < _shuffled.length; off += KALSHI_BATCH) {
-            const batch = _shuffled.slice(off, off + KALSHI_BATCH);
-            const batchRes = await Promise.all(batch.map(fetchKalshiSeries));
-            for (let j = 0; j < batch.length; j++) {
-              resultMap[batch[j]] = batchRes[j].data;
-              fetchMeta[batch[j]] = { rateLimited: !!batchRes[j].rateLimited, failed: !!batchRes[j].failed, stale: !!batchRes[j].stale };
-            }
-            if (off + KALSHI_BATCH < _shuffled.length) {
-              await new Promise(res => setTimeout(res, KALSHI_BATCH_DELAY_MS));
-            }
-          }
-          // For any ticker that returned empty due to rate-limit/failure, fall back to the
-          // prior bundle's entry for that ticker if it has data — keeps a partial Kalshi
-          // outage from blanking categories that were healthy minutes ago.
-          if (priorBundle) {
-            for (const t of seriesTickers) {
-              const cur = resultMap[t]?.markets || [];
-              const prior = priorBundle[t]?.markets || [];
-              const meta = fetchMeta[t] || {};
-              if (cur.length === 0 && prior.length > 0 && (meta.rateLimited || meta.failed)) {
-                for (const m of prior) m._kalshiStale = true;
-                resultMap[t] = priorBundle[t];
-              }
-            }
-          }
-          kalshiResults = seriesTickers.map(t => resultMap[t] || { markets: [] });
-          // Cache bundle if we got real data
-          if (CACHE2 && kalshiResults.some(d => (d.markets || []).length > 0)) {
-            await CACHE2.put(KALSHI_BUNDLE_KEY, JSON.stringify(resultMap), { expirationTtl: 600 }).catch(() => {});
-          }
-        }
-        // Series that came from per-ticker stale fallback OR prior-bundle preservation this request.
-        // Surfaced at the top of the response (debug + production) so we can spot when prices have
-        // drifted past one bundle cycle, and used to mark per-play `_kalshiStale: true`.
-        const staleKalshiSeries = [];
-        for (let i = 0; i < seriesTickers.length; i++) {
-          const markets = kalshiResults[i]?.markets || [];
-          if (markets.some(m => m._kalshiStale)) staleKalshiSeries.push(seriesTickers[i]);
-        }
+        // 3-tier Kalshi read chain (snap → bundle → REST + stale). See lib/tonight/kalshi-pipeline.js.
+        const { kalshiResults, staleKalshiSeries, kalshiSnapMeta, kalshiUsedSnaps } =
+          await fetchKalshiMarkets({ seriesTickers, cache: CACHE2, env, isBustCache });
         const _staleKalshiSet = new Set(staleKalshiSeries);
         const _findKalshiTicker = (sport, stat, gameType) => {
           for (const [ticker, cfg] of Object.entries(SERIES_CONFIG)) {
