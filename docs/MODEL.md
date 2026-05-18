@@ -37,6 +37,9 @@ Per-sport modeling internals. CLAUDE.md has the architecture map and load-bearin
   - **MLB game total — both starters via starter source**: pitcher quality is the primary lambda input, so a team-WHIP fallback is a real trust hit. Per-side check — worst case -4 (both unknown).
     - `homeWHIPSource == null` → -2 · `"team"` (fallback) → -1
     - `awayWHIPSource == null` → -2 · `"team"` (fallback) → -1
+  - **MLB game/team total — bullpen ERA source**: 40% rest-of-game share prefers bullpen-only ERA; whole-staff fallback is tolerable but double-counts the starter. -1 per side (game total max -2, team total max -1).
+    - Game total: `homeBullpenSource === "team"` → -1 · `awayBullpenSource === "team"` → -1
+    - Team total: `oppBullpenSource === "team"` → -1
   - **NHL game total — starting goalie SV%**: opponent factor is keyed off tonight's goalie when known; team-GAA fallback is a smaller trust hit. Per-side check — worst case -2 (both unknown).
     - `homeGoalieSource === "team"` → -1
     - `awayGoalieSource === "team"` → -1
@@ -202,11 +205,14 @@ Kalshi series: `KXMLBTOTAL`, `KXNBATOTAL`, `KXWNBATOTAL`, `KXNHLTOTAL`, `KXNFLTO
 ```
 whipAdj(whip)         = clamp((whip/1.30)^0.5, [0.90, 1.10])
 starterMult(fip, era, whip) = (0.5×(fip/4.20) + 0.5×(era/4.20)) × whipAdj(whip)   # FIP/ERA fallbacks apply
-awayMult = 0.6 × starterMult(awayFIP, awayERA, awayWHIP) + 0.4 × (awayTeamERA/4.20)
-homeMult = 0.6 × starterMult(homeFIP, homeERA, homeWHIP) + 0.4 × (homeTeamERA/4.20)
+restERA(team)        = bullpenERA[team] ?? teamERA[team]                          # bullpen preferred (cleaner rest-of-game proxy)
+awayMult = 0.6 × starterMult(awayFIP, awayERA, awayWHIP) + 0.4 × (restERA(away)/4.20)
+homeMult = 0.6 × starterMult(homeFIP, homeERA, homeWHIP) + 0.4 × (restERA(home)/4.20)
 homeLambda = homeRoadRPG × awayMult × parkRF × homePlatoonFactor × weatherFactor × umpireRunFactor  # clamped [1,12]
 awayLambda = awayRoadRPG × homeMult × parkRF × awayPlatoonFactor × weatherFactor × umpireRunFactor  # clamped [1,12]
 ```
+- **Bullpen-only ERA folded into the 40% rest-of-game share 2026-05-17** (was whole-staff teamERA). Whole-staff ERA includes the starter who's already counted in the 60% term — double-count. Bullpen-only (`playerPool=bullpen` on MLB Stats API team-stats endpoint, one extra fetch in the MLB hydration Promise.all) is the clean rest-of-game proxy and typically runs 0.10–0.40 ERA below whole-staff. `_simData` adds `homeBullpenERA`/`awayBullpenERA` (value used) and `homeBullpenSource`/`awayBullpenSource` (`"bullpen" | "team" | null`). Same swap applied to team-total lambda via `oppBullpenERA`/`oppBullpenSource`. dataConfidence penalty -1 per side when source is `"team"` (game total max -2; team total max -1).
+- 60/40 weights unchanged — workload-weighted starter share (`starterShare = expectedBF/38`) is the natural follow-up tunable but kept fixed for now so calibration can isolate the bullpen-separation impact alone.
 - WHIP folded into lambda 2026-05-13 (was SimScore-only). Exponent 0.5 dampens overlap with FIP/ERA. Same adjustment applied to team-total `oppMult`.
 - **FIP** (`api/lib/mlb.js` `_seasonFIP`): `((13×HR) + (3×(BB+HBP)) − (2×K)) / IP + 3.10` per season; sample-weighted blend of 2026/2025 via `trust26 = min(1, gs26/15)` (same regression as avgP/avgBF). FIP constant 3.10 aligns FIP onto the ~4.20 ERA scale. IP parsed from MLB Stats API string format ("45.2" = 45 ⅔). Strips fielding/sequencing luck from the starter signal — a "lucky" starter (low ERA / high FIP) gets penalized, an "unlucky" one (high ERA / low FIP) gets credit. ERA stays as the second half of the starter blend so observed run prevention still counts. `pitcherFIPByTeam` exported from `buildPitcherKPct` and surfaced as `homeFIP`/`awayFIP` in `_simData`.
 - **Platoon factor**: `(lineup composite BA vs starter's hand) / (lineup composite overall BA)` from `batterSplitBA`. Falls back to 1.0 when hand unknown or sample <80 AB. **Note**: MLB Stats API `/teams/stats` does NOT support pitcher-handedness sitCodes (`vl/vr` returns empty) — handedness splits are individual-only. Same factor applied to team total lambda.

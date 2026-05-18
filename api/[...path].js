@@ -1865,6 +1865,9 @@ var worker_default = {
               fetch("https://site.web.api.espn.com/apis/common/v3/sports/baseball/mlb/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=50&category=pitching", { headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
               fetch("https://site.web.api.espn.com/apis/common/v3/sports/baseball/mlb/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=50&category=batting", { headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
               fetch("https://statsapi.mlb.com/api/v1/teams/stats?season=2026&group=batting&gameType=R&sportId=1&sitCodes=A", { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
+              // Bullpen-only pitching aggregates (relievers, season). Lets MLB game-total lambda
+              // separate the 40% rest-of-game share from the starter who's double-counted in teamERA.
+              fetch("https://statsapi.mlb.com/api/v1/teams/stats?season=2026&group=pitching&gameType=R&sportId=1&playerPool=bullpen", { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
               (() => {
                 // Always fetch today + tomorrow in parallel. sbData.events = today (probables/gameOdds);
                 // sbData.eventsAll = today+tomorrow (gameScores, so both day tabs see finished/scheduled games).
@@ -1887,7 +1890,7 @@ var worker_default = {
                   return s0;
                 });
               })()
-            ]).then(async ([pitchData, batData, roadBatData, sbData, mlbSched]) => {
+            ]).then(async ([pitchData, batData, roadBatData, bullpenData, sbData, mlbSched]) => {
               // ESPN uses different abbreviations than Kalshi for some MLB teams
               const MLB_ESPN_NORM = { CHW: "CWS", KCR: "KC", SFG: "SF", SDP: "SD", TBR: "TB", AZ: "ARI", OAK: "ATH", WSN: "WSH", WAS: "WSH" };
               const normMlbAbbr = (a) => MLB_ESPN_NORM[a] || a;
@@ -1999,6 +2002,19 @@ var worker_default = {
                   }
                 }
               }
+              // Bullpen-only ERA + WHIP per team (relievers, season). Used to replace whole-staff teamERA
+              // in the 40% rest-of-game share of game-total + team-total lambdas. MLB Stats API returns
+              // team by `id` (no abbreviation), so we translate via MLB_ID_TO_ABBR.
+              const bullpenERAMap = {};
+              const bullpenWHIPMap = {};
+              for (const split of (bullpenData?.stats?.[0]?.splits || [])) {
+                const _abbr = MLB_ID_TO_ABBR[split.team?.id];
+                if (!_abbr) continue;
+                const era = parseFloat(split.stat?.era ?? NaN);
+                if (!isNaN(era) && era > 0) bullpenERAMap[_abbr] = parseFloat(era.toFixed(2));
+                const whip = parseFloat(split.stat?.whip ?? NaN);
+                if (!isNaN(whip) && whip > 0) bullpenWHIPMap[_abbr] = parseFloat(whip.toFixed(2));
+              }
               // staticTeamHandMajority: majority batting hand per team using natural side (S=0.5R+0.5L).
               // Used to filter pitcher's historical starts by opposing lineup handedness composition.
               // Switch hitters counted as neutral (0.5/0.5) here since we don't know each historical pitcher hand;
@@ -2014,7 +2030,7 @@ var worker_default = {
                 }
                 if (rCount + lCount > 0) staticTeamHandMajority[abbr] = rCount >= lCount ? 'R' : 'L';
               }
-              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, pitcherWHIPByTeam, pitcherFIPByTeam, pitcherWinsByTeam, pitcherLossesByTeam, projectedLineupTeams, gameOdds, gameOddsTomorrow, pitcherStatsByName, batterSplitBA, hitterOpsMap, batterHandByName, batterHRRSplits, pitcherH2HStarts, staticTeamHandMajority, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam, roadRPGMap, teamERAMap, teamWHIPMap, teamPlatoonRPGMap, gameScores };
+              sportByteam.mlb = { pitching: pitchData, batting: batData, probables, lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, pitcherWHIPByTeam, pitcherFIPByTeam, pitcherWinsByTeam, pitcherLossesByTeam, projectedLineupTeams, gameOdds, gameOddsTomorrow, pitcherStatsByName, batterSplitBA, hitterOpsMap, batterHandByName, batterHRRSplits, pitcherH2HStarts, staticTeamHandMajority, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam, roadRPGMap, teamERAMap, teamWHIPMap, bullpenERAMap, bullpenWHIPMap, teamPlatoonRPGMap, gameScores };
               // Use short TTL (60s) if key data is missing — lineup/probables not confirmed yet,
               // or independent MLB Stats API hydrations (OPS, pitcher gamelogs) silently returned empty.
               // Prevents partial data from baking into cache for the full 600s and starving downstream
@@ -2690,6 +2706,11 @@ var worker_default = {
         const mlbRoadRPGMap = sportByteam.mlb?.roadRPGMap || {};
         const mlbTeamERAMap = sportByteam.mlb?.teamERAMap || {};
         const mlbTeamWHIPMap = sportByteam.mlb?.teamWHIPMap || {};
+        // Bullpen-only maps. Used in MLB game-total + team-total lambda's 40% rest-of-game share
+        // to replace whole-staff teamERA (which double-counts the starter). Falls back to teamERA
+        // when bullpen aggregate is missing (rare — MLB Stats API is reliable).
+        const mlbBullpenERAMap = sportByteam.mlb?.bullpenERAMap || {};
+        const mlbBullpenWHIPMap = sportByteam.mlb?.bullpenWHIPMap || {};
         const nhlGPGMap = {};
         const nhlGAAMap = {};
         if (sportByteam.nhl) {
@@ -4554,6 +4575,14 @@ var worker_default = {
               const awayWHIPSource = awayStarterWHIP != null ? "starter" : (mlbTeamWHIPMap[awayTeam] != null ? "team" : null);
               const homeTeamERA = mlbTeamERAMap[homeTeam] ?? null;
               const awayTeamERA = mlbTeamERAMap[awayTeam] ?? null;
+              // Bullpen ERA replaces whole-staff teamERA in the 40% rest-of-game share so the starter
+              // isn't double-counted. Falls back to teamERA when bullpen aggregate is missing (rare).
+              const _homeBullpenERA = mlbBullpenERAMap[homeTeam] ?? null;
+              const _awayBullpenERA = mlbBullpenERAMap[awayTeam] ?? null;
+              const homeBullpenSource = _homeBullpenERA != null ? "bullpen" : (homeTeamERA != null ? "team" : null);
+              const awayBullpenSource = _awayBullpenERA != null ? "bullpen" : (awayTeamERA != null ? "team" : null);
+              const _homeRestERA = _homeBullpenERA ?? homeTeamERA ?? null;
+              const _awayRestERA = _awayBullpenERA ?? awayTeamERA ?? null;
               const parkRF = PARK_RUNFACTOR[homeTeam] ?? 1;
               const gameOuLine = sportByteam.mlb?.gameOdds?.[homeTeam]?.total ?? sportByteam.mlb?.gameOdds?.[awayTeam]?.total ?? null;
               const _mlbOuPts = gameOuLine == null ? 1 : gameOuLine >= 9.5 ? 2 : gameOuLine >= 7.5 ? 1 : 0;
@@ -4569,11 +4598,13 @@ var worker_default = {
                   : null;
                 return erafipMult != null ? erafipMult * _whipAdj(whip) : null;
               };
-              // 60/40 starter/team-ERA blend — away staff vs home offense, home staff vs away offense
+              // 60/40 starter/bullpen blend — away staff vs home offense, home staff vs away offense.
+              // 40% term is bullpen-only (preferred) or whole-staff teamERA (fallback). Whole-staff
+              // double-counts the starter; bullpen-only is the clean rest-of-game proxy.
               const _awayStarter = _starterMult(awayFIP, awayERA, awayWHIP);
               const _homeStarter = _starterMult(homeFIP, homeERA, homeWHIP);
-              const _awayMult = _awayStarter != null && awayTeamERA != null ? 0.6*_awayStarter + 0.4*(awayTeamERA/_MLB_ERA) : _awayStarter != null ? _awayStarter : awayTeamERA != null ? awayTeamERA/_MLB_ERA : 1;
-              const _homeMult = _homeStarter != null && homeTeamERA != null ? 0.6*_homeStarter + 0.4*(homeTeamERA/_MLB_ERA) : _homeStarter != null ? _homeStarter : homeTeamERA != null ? homeTeamERA/_MLB_ERA : 1;
+              const _awayMult = _awayStarter != null && _awayRestERA != null ? 0.6*_awayStarter + 0.4*(_awayRestERA/_MLB_ERA) : _awayStarter != null ? _awayStarter : _awayRestERA != null ? _awayRestERA/_MLB_ERA : 1;
+              const _homeMult = _homeStarter != null && _homeRestERA != null ? 0.6*_homeStarter + 0.4*(_homeRestERA/_MLB_ERA) : _homeStarter != null ? _homeStarter : _homeRestERA != null ? _homeRestERA/_MLB_ERA : 1;
               // Platoon adjustment: ratio of team's RPG vs opposing starter's hand to overall RPG
               // Park effects cancel in the ratio (same mix of home/away games in numerator & denominator)
               const _platoonMap = sportByteam.mlb?.teamPlatoonRPGMap ?? {};
@@ -4608,7 +4639,7 @@ var worker_default = {
               const _combinedRPGPts = _combinedRPG == null ? 1 : _combinedRPG >= 10.5 ? 2 : _combinedRPG >= 8.5 ? 1 : 0;
               const _homeWhipPts = homeWHIP == null ? 1 : homeWHIP > 1.35 ? 2 : homeWHIP > 1.20 ? 1 : 0;
               const _awayWhipPts = awayWHIP == null ? 1 : awayWHIP > 1.35 ? 2 : awayWHIP > 1.20 ? 1 : 0;
-              _simData = { homeRPG, awayRPG, homeERA, awayERA, homeFIP, awayFIP, homeWHIP, awayWHIP, ...(homeWHIPSource && { homeWHIPSource }), ...(awayWHIPSource && { awayWHIPSource }), parkFactor: parkRF, homeExpected: _hLam, awayExpected: _aLam, expectedTotal: (_hLam != null && _aLam != null) ? parseFloat((_hLam + _aLam).toFixed(1)) : null, gameOuLine, mlbOuPts: _mlbOuPts, homeWhipPts: _homeWhipPts, awayWhipPts: _awayWhipPts, combinedRpgPts: _combinedRPGPts, h2hTotalPts: _h2hTotalPts, combinedRPG: _combinedRPG, umpireRunFactor: _umpNameT != null ? _umpRunFactor : null, umpireName: _umpNameT, h2hTotalHitRate, h2hTotalGames, homeStarterHand: _homeStarterHand, awayStarterHand: _awayStarterHand, ...(_homePlatFactor !== 1.0 && { homePlatoonFactor: _homePlatFactor }), ...(_awayPlatFactor !== 1.0 && { awayPlatoonFactor: _awayPlatFactor }), ...(_weatherFactor !== 1.0 && { weatherFactor: _weatherFactor, windOutMph: _wData?.windOutMph }) };
+              _simData = { homeRPG, awayRPG, homeERA, awayERA, homeFIP, awayFIP, homeWHIP, awayWHIP, ...(homeWHIPSource && { homeWHIPSource }), ...(awayWHIPSource && { awayWHIPSource }), homeBullpenERA: _homeRestERA, awayBullpenERA: _awayRestERA, ...(homeBullpenSource && { homeBullpenSource }), ...(awayBullpenSource && { awayBullpenSource }), parkFactor: parkRF, homeExpected: _hLam, awayExpected: _aLam, expectedTotal: (_hLam != null && _aLam != null) ? parseFloat((_hLam + _aLam).toFixed(1)) : null, gameOuLine, mlbOuPts: _mlbOuPts, homeWhipPts: _homeWhipPts, awayWhipPts: _awayWhipPts, combinedRpgPts: _combinedRPGPts, h2hTotalPts: _h2hTotalPts, combinedRPG: _combinedRPG, umpireRunFactor: _umpNameT != null ? _umpRunFactor : null, umpireName: _umpNameT, h2hTotalHitRate, h2hTotalGames, homeStarterHand: _homeStarterHand, awayStarterHand: _awayStarterHand, ...(_homePlatFactor !== 1.0 && { homePlatoonFactor: _homePlatFactor }), ...(_awayPlatFactor !== 1.0 && { awayPlatoonFactor: _awayPlatFactor }), ...(_weatherFactor !== 1.0 && { weatherFactor: _weatherFactor, windOutMph: _wData?.windOutMph }) };
               if (_hLam != null && _aLam != null) {
                 const _dk = `mlb|${homeTeam}|${awayTeam}`;
                 if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateMLBTotalDist(_hLam, _aLam, 10000);
@@ -5054,6 +5085,11 @@ var worker_default = {
               const oppERA = sportByteam.mlb?.probables?.[oppTeam]?.era ?? null;
               const oppFIP = sportByteam.mlb?.pitcherFIPByTeam?.[oppTeam] ?? null;
               const oppTeamERA = mlbTeamERAMap[oppTeam] ?? null;
+              // Bullpen ERA replaces whole-staff teamERA in the 40% rest-of-game share (same rationale
+              // as game-total lambda — whole-staff double-counts the starter).
+              const _oppBullpenERA = mlbBullpenERAMap[oppTeam] ?? null;
+              const oppBullpenSource = _oppBullpenERA != null ? "bullpen" : (oppTeamERA != null ? "team" : null);
+              const _oppRestERA = _oppBullpenERA ?? oppTeamERA ?? null;
               const parkRF = PARK_RUNFACTOR[homeTeam] ?? 1;
               const gameOuLine = sportByteam.mlb?.gameOdds?.[homeTeam]?.total ?? sportByteam.mlb?.gameOdds?.[awayTeam]?.total ?? null;
               // Starter WHIP (resolved early so it can feed the starter mult).
@@ -5068,7 +5104,7 @@ var worker_default = {
                 : oppERA != null ? oppERA/_MLB_ERA
                 : null;
               const _oppStarter = _oppErafip != null ? _oppErafip * _ttWhipAdj : null;
-              const _oppMult = _oppStarter != null && oppTeamERA != null ? 0.6*_oppStarter + 0.4*(oppTeamERA/_MLB_ERA) : _oppStarter != null ? _oppStarter : oppTeamERA != null ? oppTeamERA/_MLB_ERA : 1;
+              const _oppMult = _oppStarter != null && _oppRestERA != null ? 0.6*_oppStarter + 0.4*(_oppRestERA/_MLB_ERA) : _oppStarter != null ? _oppStarter : _oppRestERA != null ? _oppRestERA/_MLB_ERA : 1;
               const _ttPlatoonMap = sportByteam.mlb?.teamPlatoonRPGMap ?? {};
               const _ttOppStarterHand = sportByteam.mlb?.pitcherHand?.[oppTeam] ?? null;
               const _ttPlatCode = _ttOppStarterHand === 'L' ? 'vl' : _ttOppStarterHand === 'R' ? 'vr' : null;
@@ -5126,12 +5162,12 @@ var worker_default = {
               const h2hHitRatePts = h2hHitRate == null ? 1 : h2hHitRate >= 80 ? 2 : h2hHitRate >= 60 ? 1 : 0;
               const ttOuPts = gameOuLine == null ? 1 : gameOuLine >= 9.5 ? 2 : gameOuLine >= 7.5 ? 1 : 0;
               teamTotalSimScore += ttSeasonHitRatePts + ttWhipPts + ttL10Pts + h2hHitRatePts + ttOuPts;
-              if (truePct == null) { if (isDebug) dropped.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, teamTotalSimScore, teamRPG, oppERA, oppFIP, oppWHIP, ...(oppWHIPSource && { oppWHIPSource }), oppRPG, parkFactor: parkRF, gameOuLine, h2hHitRate, h2hGames, h2hHitRatePts, teamL10RPG, ttL10Pts, ttWhipPts, ttOuPts, ttSeasonHitRate, ttSeasonHitRatePts, umpireName: _ttUmpName, reason: "no_simulation_data" }); continue; }
+              if (truePct == null) { if (isDebug) dropped.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, teamTotalSimScore, teamRPG, oppERA, oppFIP, oppWHIP, ...(oppWHIPSource && { oppWHIPSource }), oppBullpenERA: _oppRestERA, ...(oppBullpenSource && { oppBullpenSource }), oppRPG, parkFactor: parkRF, gameOuLine, h2hHitRate, h2hGames, h2hHitRatePts, teamL10RPG, ttL10Pts, ttWhipPts, ttOuPts, ttSeasonHitRate, ttSeasonHitRatePts, umpireName: _ttUmpName, reason: "no_simulation_data" }); continue; }
               const _ttGameTime = gameTimes[`${sport}:${homeTeam}:${gameDate}`] ?? gameTimes[`${sport}:${awayTeam}:${gameDate}`] ?? gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null;
               // Both lineups confirmed (MLB only): scoringTeam + oppTeam each have a posted lineup, neither projected.
               const _ttLineupsConfirmed = (sportByteam.mlb?.lineupSpotByName?.[scoringTeam] != null && !(sportByteam.mlb?.projectedLineupTeams || []).includes(scoringTeam))
                 && (sportByteam.mlb?.lineupSpotByName?.[oppTeam] != null && !(sportByteam.mlb?.projectedLineupTeams || []).includes(oppTeam));
-              const _ttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), ...(_ttModelTruePct != null && _ttModelTruePct !== truePct && { modelTruePct: parseFloat(_ttModelTruePct.toFixed(1)) }), ...(_ttImpliedLambda != null && { ttImpliedLambda: _ttImpliedLambda, ttBlendedLambda: _ttBlendedLambda }), ...(_ttImpliedLambdaClamped != null && { ttImpliedLambdaClamped: _ttImpliedLambdaClamped }), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _ttGameTime, lineupsConfirmed: _ttLineupsConfirmed, teamRPG, oppERA, oppFIP, oppWHIP, ...(oppWHIPSource && { oppWHIPSource }), oppRPG, parkFactor: parkRF, gameOuLine, teamExpected: _lam != null ? parseFloat(_lam.toFixed(1)) : null, h2hHitRate, h2hGames, h2hHitRatePts, teamL10RPG, ttL10Pts, ttWhipPts, ttOuPts, umpireRunFactor: _ttUmpRunFactor, ...(_ttUmpName && { umpireName: _ttUmpName }), ttSeasonHitRate, ttSeasonHitRatePts, oppStarterHand: _ttOppStarterHand, ...(_ttPlatFactor !== 1.0 && { platoonFactor: _ttPlatFactor }) };
+              const _ttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), ...(_ttModelTruePct != null && _ttModelTruePct !== truePct && { modelTruePct: parseFloat(_ttModelTruePct.toFixed(1)) }), ...(_ttImpliedLambda != null && { ttImpliedLambda: _ttImpliedLambda, ttBlendedLambda: _ttBlendedLambda }), ...(_ttImpliedLambdaClamped != null && { ttImpliedLambdaClamped: _ttImpliedLambdaClamped }), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _ttGameTime, lineupsConfirmed: _ttLineupsConfirmed, teamRPG, oppERA, oppFIP, oppWHIP, ...(oppWHIPSource && { oppWHIPSource }), oppBullpenERA: _oppRestERA, ...(oppBullpenSource && { oppBullpenSource }), oppRPG, parkFactor: parkRF, gameOuLine, teamExpected: _lam != null ? parseFloat(_lam.toFixed(1)) : null, h2hHitRate, h2hGames, h2hHitRatePts, teamL10RPG, ttL10Pts, ttWhipPts, ttOuPts, umpireRunFactor: _ttUmpRunFactor, ...(_ttUmpName && { umpireName: _ttUmpName }), ttSeasonHitRate, ttSeasonHitRatePts, oppStarterHand: _ttOppStarterHand, ...(_ttPlatFactor !== 1.0 && { platoonFactor: _ttPlatFactor }) };
               const rawEdge = parseFloat((truePct - kalshiPct).toFixed(1));
               const edge = rawEdge;
               const _ttOverInWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
@@ -5484,6 +5520,14 @@ var worker_default = {
             else if (p.homeWHIPSource === "team") _pen("homeWhipTeamFallback", 1);
             if (p.awayWHIPSource == null) _pen("noAwayWhipSource", 2);
             else if (p.awayWHIPSource === "team") _pen("awayWhipTeamFallback", 1);
+            // Bullpen ERA powers the 40% rest-of-game share. Whole-staff fallback double-counts
+            // the starter; tolerable but less precise. -1 per side (max -2).
+            if (p.homeBullpenSource === "team") _pen("homeBullpenTeamFallback", 1);
+            if (p.awayBullpenSource === "team") _pen("awayBullpenTeamFallback", 1);
+          }
+          // ── MLB team total: same bullpen-source check on opponent side.
+          if (sport === "mlb" && gameType === "teamTotal") {
+            if (p.oppBullpenSource === "team") _pen("oppBullpenTeamFallback", 1);
           }
           // ── NHL game total: starting-goalie SV%. Lambda's opponent factor is set by tonight's
           // goalie when known; team-GAA fallback works but loses precision. -1 per side (max -2).
