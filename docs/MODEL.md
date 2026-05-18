@@ -309,6 +309,26 @@ Kalshi series `KXMLBGAME` (same series that powers the MLB game-odds fallback). 
 
 ---
 
+## MLB Spread / Run-line v1 (2026-05-18)
+
+**Series**: `KXMLBSPREAD`. Per-market title: "Team X wins by over Y runs?" Ticker: `KXMLBSPREAD-{eventTicker}-{team}{N}` where the suffix decodes to `marginTeam` (the side on the win-by question) and `line = floor_strike = N − 0.5`. Half-lines only — integer lines would allow pushes; not modeled in v1 (parse skips them via `strike === Math.floor(strike)` check).
+
+**True%**: `spreadPctFromJoint(home, away, line, side)` reuses the joint Poisson draws cached in `_mlJointCache` (hoisted out of the ML emission block so ML + spread share the same 10k draws per game). Side = "home"/"away" indicates which team is on the margin question. YES = `P(side − opp > line)`; NO = complement (no pushes). Same per-team lambdas as MLB game totals + ML.
+
+**Kalshi pricing**: each spread market is an independent YES/NO book. YES side pays `yes_ask_dollars × 100` for the margin team (`-line`); NO side pays `no_ask_dollars × 100` for the cover team (`+line`) — **must use real `no_ask`, not `1 − yes_ask`** (same gotcha as totals UNDER, since YES/NO books are independent and typical spread is 3–7c).
+
+**Lines emitted**: ALL Kalshi-listed alt lines per game. Typical: ±1.5, ±2.5, ±3.5; sometimes ±4.5+ for big mismatches. Both sides of each line are independent Kalshi markets (e.g. "LAD wins by 1.5+" AND "SD wins by 1.5+" are both listed for LAD@SD), so the parser handles both orientations via `parseGameTeams` + `marginTeam` decode. `pickLine` field is signed from the pick's perspective: `-1.5` for margin side, `+1.5` for cover side.
+
+**Gate**: standard `dcQualified === true && edge ≥ 5` (client) / `edge ≥ 3` (server). Kalshi window 67-91. `DC_GATE("mlb", "spread") = 8` — same as ML, since spread reuses identical lambda inputs (FIP/ERA/WHIP/bullpen sources, lineup confirmation). The `gameType === "spread"` clause is added to all MLB ml branches in `api/lib/tonight/dc.js` (gate, lineup-confirmation penalty, starter-source penalty).
+
+**No correlation shrinkage in v1**: park/weather/umpire are shared per-game inputs so independent Poissons don't over-disperse margins much. Heavy-favorite alt lines (e.g. -3.5 or worse) are the highest-variance corner — watch calibration there first.
+
+**Live resolution (frontend, not yet wired)**: at `state === "post"`, pickTeam covers if `(pickTeamFinal − oppFinal) > line` for YES picks, or `(oppFinal − pickTeamFinal) ≤ line` for NO picks. Half-lines only → no pushes. Same `meta.gameScores[homeTeam][gameDate]` lookup as ML.
+
+**Asymmetry vs ML (observed 2026-05-18 deploy)**: tonight has 0 qualifying ML plays (no MLB ML favorite hits 67% Kalshi) but 43 qualifying spread plays. Reason: spread `no_ask` for moderate underdog +X.5 covers naturally lands in 67-91 (favorite -X.5 priced 10-30% → cover 70-90%). If 43/night turns out to be too many on real calibration, consider tightening with a `kalshiVolume` floor or restricting to ±1.5 only.
+
+---
+
 ## Kalshi Market Parsing
 - Series in `SERIES_CONFIG` (18 tickers across all sports/stats)
 - Player props, game totals, team totals: `pct ∈ [KALSHI_GATE, KALSHI_CAP] = [67, 91]` (constants in `api/[...path].js`). Markets outside this band aren't fetched/parsed at all.
