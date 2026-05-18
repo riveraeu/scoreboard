@@ -244,8 +244,7 @@ function dcGroupTotal(m, group) {
   return { total, labels };
 }
 
-function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, setReportSport, reportLoadingSport, reportSort, setReportSort, navigateToPlayer, navigateToTeam, modelVersion }) {
-  const isV2 = modelVersion === "v2";
+function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, setReportSport, reportLoadingSport, reportSort, setReportSort, navigateToPlayer, navigateToTeam }) {
         const reportData = reportDataBySport[reportSport] || null;
         const reportLoading = reportLoadingSport === reportSport;
   return (
@@ -303,12 +302,10 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                 const REPORT_SPORT_COL = { mlb:"#4ade80", nba:"#f97316", nhl:"#60a5fa" };
                 const SPORT_ORD = { mlb:0, nba:1, nhl:2, nfl:3 };
 
-                // v2 "qualified" mirrors LineupsPage: in `plays[]` (server gates passed) AND
-                // dcQualified ∧ edge ≥ 5. Alt-line dedup REMOVED 2026-05-16 — at the stricter
-                // 5% gate every qualifier is a meaningful disagreement with the market on its
-                // own threshold, so showing all of them is more informative than picking one.
-                const _isV2Q = (p) => p.dcQualified === true && (p.edge ?? 0) >= 5;
-                const plays = (reportData.plays || []).map(p => ({ ...p, qualified: isV2 ? _isV2Q(p) : (p.qualified !== false) }));
+                // "Qualified" = dcQualified ∧ edge ≥ 5, mirroring LineupsPage. (v1's
+                // SimScore gate was dropped 2026-05-18.)
+                const _isQ = (p) => p.dcQualified === true && (p.edge ?? 0) >= 5;
+                const plays = (reportData.plays || []).map(p => ({ ...p, qualified: _isQ(p) }));
                 // Dropped plays were filtered server-side (Kalshi cap, no sim data, etc.) and never
                 // reach the homepage — never count as qualified, even if their DC + edge look good.
                 const dropped = (reportData.dropped || []).map(p => ({ ...p, qualified: false }));
@@ -442,19 +439,11 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                       const cmp = typeof va === "string" ? va.localeCompare(vb) : va - vb;
                       return _sortCfg.dir === "desc" ? -cmp : cmp;
                     }
-                    if (isV2) {
-                      // v2: rank purely by DC desc, then edge desc. SimScore-`qualified` is
-                      // a v1 concept and doesn't belong in v2's ordering — DC is the gate now.
-                      const dca = a.dataConfidence ?? 0;
-                      const dcb = b.dataConfidence ?? 0;
-                      if (dcb !== dca) return dcb - dca;
-                      return (b.edge || b.kalshiPct || 0) - (a.edge || a.kalshiPct || 0);
-                    }
-                    if ((a.qualified !== false) !== (b.qualified !== false)) return (a.qualified !== false) ? -1 : 1;
-                    const _simF = m => direction === "under" ? (m.underSimScore ?? m.totalSimScore ?? m.teamTotalSimScore) : (m.totalSimScore ?? m.teamTotalSimScore);
-                    const sa = _simF(a) ?? a.finalSimScore ?? a.hitterFinalSimScore ?? a.nbaSimScore ?? a.nhlSimScore ?? a.simScore ?? a.hitterSimScore ?? 0;
-                    const sb = _simF(b) ?? b.finalSimScore ?? b.hitterFinalSimScore ?? b.nbaSimScore ?? b.nhlSimScore ?? b.simScore ?? b.hitterSimScore ?? 0;
-                    if (sb !== sa) return sb - sa;
+                    // Rank by dataConfidence desc, then edge desc. (v1 SimScore-`qualified`
+                    // tiebreaker was dropped 2026-05-18 along with the v1 toggle.)
+                    const dca = a.dataConfidence ?? 0;
+                    const dcb = b.dataConfidence ?? 0;
+                    if (dcb !== dca) return dcb - dca;
                     return (b.edge || b.kalshiPct || 0) - (a.edge || a.kalshiPct || 0);
                   }).filter(r => stat !== "hrr" || r.threshold === 1);
                   const qualCount = rows.filter(r => r.qualified).length;
@@ -470,32 +459,12 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                         <span style={{color:"#484f58",fontSize:11,marginLeft:"auto"}}>{rows.length} markets · <span style={{color:"#3fb950"}}>{qualCount}</span> play{qualCount!==1?"s":""}</span>
                       </div>
                       {(() => {
-                        // Sport+stat specific extra columns
-                        const XCOLS = {
-                          "mlb|hrr":        [{k:"sim",l:"Score"},{k:"ops",l:"OPS"},{k:"whip",l:"WHIP"},{k:"hSsnHR",l:"Ssn HR%"},{k:"hH2HHR",l:"H2H HR%"},{k:"mlbOu",l:"O/U"}],
-                          "mlb|hits":       [{k:"sim",l:"Score"},{k:"ops",l:"OPS"},{k:"whip",l:"WHIP"},{k:"hSsnHR",l:"Ssn HR%"},{k:"hH2HHR",l:"H2H HR%"},{k:"mlbOu",l:"O/U"}],
-                          "mlb|strikeouts": [{k:"sim",l:"Score"},{k:"csw",l:"CSW%"},{k:"lkp",l:"Lineup K%"},{k:"kHitRate",l:"Hit Rate %"},{k:"kH2HHand",l:"H2H Hand"},{k:"ou",l:"O/U"}],
-                          "nba|points":     [{k:"sim",l:"Score"},{k:"nbaC1",l:"Usage"},{k:"dvp",l:"DVP"},{k:"nbaSeasonHR",l:"Ssn HR%"},{k:"nbaSoftHR",l:"Tier HR%"},{k:"nbaPaceTotal",l:"Game Total"}],
-                          "nba|rebounds":   [{k:"sim",l:"Score"},{k:"nbaC1",l:"AvgMin"},{k:"dvp",l:"DVP"},{k:"nbaSeasonHR",l:"Ssn HR%"},{k:"nbaSoftHR",l:"Tier HR%"},{k:"nbaPaceTotal",l:"Game Total"}],
-                          "nba|assists":    [{k:"sim",l:"Score"},{k:"nbaC1",l:"Usage"},{k:"dvp",l:"DVP"},{k:"nbaSeasonHR",l:"Ssn HR%"},{k:"nbaSoftHR",l:"Tier HR%"},{k:"nbaPaceTotal",l:"Game Total"}],
-                          "nba|threePointers":[{k:"sim",l:"Score"},{k:"nbaC1",l:"Usage"},{k:"dvp",l:"DVP"},{k:"nbaSeasonHR",l:"Ssn HR%"},{k:"nbaSoftHR",l:"Tier HR%"},{k:"nbaPaceTotal",l:"Game Total"}],
-                          "wnba|points":    [{k:"sim",l:"Score"},{k:"wnbaC1",l:"Usage"},{k:"dvp",l:"DVP"},{k:"wnbaSeasonHR",l:"Ssn HR%"},{k:"wnbaSoftHR",l:"Tier HR%"},{k:"wnbaPaceTotal",l:"Game Total"}],
-                          "wnba|rebounds":  [{k:"sim",l:"Score"},{k:"wnbaC1",l:"AvgMin"},{k:"dvp",l:"DVP"},{k:"wnbaSeasonHR",l:"Ssn HR%"},{k:"wnbaSoftHR",l:"Tier HR%"},{k:"wnbaPaceTotal",l:"Game Total"}],
-                          "wnba|assists":   [{k:"sim",l:"Score"},{k:"wnbaC1",l:"Usage"},{k:"dvp",l:"DVP"},{k:"wnbaSeasonHR",l:"Ssn HR%"},{k:"wnbaSoftHR",l:"Tier HR%"},{k:"wnbaPaceTotal",l:"Game Total"}],
-                          "wnba|threePointers":[{k:"sim",l:"Score"},{k:"wnbaC1",l:"Usage"},{k:"dvp",l:"DVP"},{k:"wnbaSeasonHR",l:"Ssn HR%"},{k:"wnbaSoftHR",l:"Tier HR%"},{k:"wnbaPaceTotal",l:"Game Total"}],
-                          "wnba|totalPoints":  [{k:"sim",l:"Score"},{k:"wnbaTotPace",l:"Pace"},{k:"wnbaCombOff",l:"Comb OffRtg"},{k:"wnbaCombDef",l:"Comb DefRtg"},{k:"wnbaGtH2H",l:"H2H HR%"},{k:"totalOu",l:"O/U"}],
-                          "nhl|points": [{k:"sim",l:"Score"},{k:"nhltoi",l:"AvgTOI"},{k:"nhlgaa",l:"GAA Rank"},{k:"nhlSeasonHR",l:"Ssn HR%"},{k:"nhlDvpHR",l:"DVP HR%"},{k:"nhlGameTotalOu",l:"O/U"}],
-                          "mlb|totalRuns":    [{k:"sim",l:"Score"},{k:"combinedRPG",l:"Comb RPG"},{k:"homeWhip",l:"H WHIP"},{k:"awayWhip",l:"A WHIP"},{k:"gtH2HHR",l:"H2H HR%"},{k:"mlbOu",l:"O/U"}],
-                          "nba|totalPoints":  [{k:"sim",l:"Score"},{k:"nbaTotPace",l:"Pace"},{k:"nbaCombOff",l:"Comb OffRtg"},{k:"nbaCombDef",l:"Comb DefRtg"},{k:"nbaGtH2H",l:"H2H HR%"},{k:"totalOu",l:"O/U"}],
-                          "nhl|totalGoals":   [{k:"sim",l:"Score"},{k:"homeGPG",l:"H GPG"},{k:"awayGPG",l:"A GPG"},{k:"homeGAA",l:"H GAA"},{k:"awayGAA",l:"A GAA"},{k:"totalOu",l:"O/U"}],
-                          "mlb|teamRuns":     [{k:"sim",l:"Score"},{k:"ttSeasonHR",l:"Ssn HR%"},{k:"ttWhip",l:"WHIP"},{k:"ttL10RPG",l:"L10 RPG"},{k:"ttH2HHR",l:"H2H HR%"},{k:"ttOu",l:"O/U"},{k:"ttOpp",l:"Opp",flex:2}],
-                          "nba|teamPoints":   [{k:"sim",l:"Score"},{k:"ttNbaOff",l:"OffRtg"},{k:"ttNbaDef",l:"DefRtg"},{k:"ttNbaSsnHR",l:"Ssn HR%"},{k:"ttH2HHR",l:"H2H HR%"},{k:"ttOu",l:"O/U"},{k:"ttOpp",l:"Opp",flex:2}],
-                        };
-                        // v2 mode: universal DC penalty columns instead of per-(sport,stat) SimScore
-                        // breakdowns. The matchup-quality detail (CSW%, USG, etc.) is dropped — those
-                        // signals already feed truePct via the lambda (per docs/SIMSCORE_AUDIT.md).
+                        // Report extra columns. Universal DC penalty columns — matchup-quality
+                        // detail (CSW%, USG, etc.) is dropped since those signals already feed
+                        // truePct via the lambda. v1's per-(sport,stat) SimScore col set was
+                        // removed 2026-05-18 with the v1 toggle deprecation.
                         const _isTotalsType = (stat === "totalRuns" || stat === "totalPoints" || stat === "totalGoals" || stat === "teamRuns" || stat === "teamPoints");
-                        const V2_XCOLS = [
+                        const xcols = [
                           {k:"dc", l:"DC"},
                           {k:"dcMkt", l:"Mkt"},
                           {k:"dcLineup", l:"Lineup"},
@@ -504,7 +473,6 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                           {k:"dcOppData", l:"Opp"},
                           ..._isTotalsType ? [{k:"dcDist", l:"Dist"}] : [],
                         ];
-                        const xcols = isV2 ? V2_XCOLS : (XCOLS[`${sport}|${stat}`] || []);
                         const DASH = <span style={{color:"#21262d"}}>—</span>;
                         const _GROUP_NAME = { freshness: "Market quality", lineup: "Lineup", availability: "Availability", sample: "Sample size", oppData: "Opp data", distance: "Threshold distance" };
                         const _dcCell = (m, group) => {

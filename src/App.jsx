@@ -1,7 +1,7 @@
 import React from 'react';
 import { WORKER, SPORTS, STAT_FULL, MLB_TEAM, TEAM_DB, TOTAL_THRESHOLDS, STAT_LABEL, SPORT_KEY, SPORT_BADGE_COLOR, GAMELOG_COLS } from './lib/constants.js';
 import { ordinal, slugify, teamUrl } from './lib/utils.js';
-import { useIsMobile, useModelVersion } from './lib/hooks.js';
+import { useIsMobile } from './lib/hooks.js';
 import InputList from './components/InputList.jsx';
 import { buildLambdaInputs, buildModelOutput } from './lib/lambdaInputs.js';
 import { buildLiveGameKey, getPickCurrentStat, findLivePlayer, resolveTotalGameScore } from './lib/liveStats.js';
@@ -29,10 +29,6 @@ const SIMSCORE_GATE = 8;
 
 function App() {
   const isMobile = useIsMobile();
-  const [modelVersion, setModelVersion] = useModelVersion();
-  // Suffix to append to /api/tonight URLs — `&model=v2` when v2 is active, "" otherwise. Phase A
-  // is identical-output so this is purely instrumentation; Phase B will branch server-side.
-  const _modelSuffix = modelVersion === "v2" ? "&model=v2" : "";
   const [sport, setSport] = React.useState("basketball/nba"); // derived from selected player
   const [perGame, setPerGame] = React.useState([]);
   const [dvpData, setDvpData] = React.useState(null);
@@ -266,14 +262,9 @@ function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
 
-  // v1: SimScore ≥ 8 gate (with qualified flag). v2: dcQualified === true AND edge ≥ 3. Both
-  // exclude `qualified: false` server-side artifacts. Centralized so /fetch and bustCache share
-  // the same filter and the model-version branch only lives in one place.
-  const _v2Filter = React.useCallback((p) => p.dcQualified === true && (p.edge ?? 0) >= EDGE_GATE, []);
-  const _v1Filter = React.useCallback((p) => p.qualified !== false
-    && (p.finalSimScore == null || p.finalSimScore >= SIMSCORE_GATE)
-    && (p.hitterFinalSimScore == null || p.hitterFinalSimScore >= SIMSCORE_GATE), []);
-  const _qualifiedFilter = modelVersion === "v2" ? _v2Filter : _v1Filter;
+  // Qualified play filter: dcQualified=true AND edge >= 5%. v1 (SimScore-gated) was dropped
+  // 2026-05-18 — SimScore is display/attribution only now. See [[project-model-version-toggle]].
+  const _qualifiedFilter = React.useCallback((p) => p.dcQualified === true && (p.edge ?? 0) >= EDGE_GATE, []);
   // Fetch tonight's plays on mount
   React.useEffect(() => {
     const _applyData = (data) => { const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(_qualifiedFilter)); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); if (data.mlbMeta) setMlbMeta(data.mlbMeta); if (data.mlbMetaTomorrow) setMlbMetaTomorrow(data.mlbMetaTomorrow); if (data.nbaMeta) setNbaMeta(data.nbaMeta); if (data.wnbaMeta) setWnbaMeta(data.wnbaMeta); if (data.nhlMeta) setNhlMeta(data.nhlMeta); };
@@ -283,7 +274,7 @@ function App() {
     // client-side cache layer. App is a SPA so this useEffect fires once per browser tab session
     // (not per in-app navigation); cost: ~5-8s cold rebuild per session, in exchange for absolute
     // price freshness on entry.
-    fetch(`${WORKER}/tonight?bust=1${_modelSuffix}`)
+    fetch(`${WORKER}/tonight?bust=1`)
       .then(r => r.json())
       .then(data => { if (cancelled) return; _applyData(data); setTonightLoading(false); })
       .catch(() => { if (cancelled) return; setAllTonightPlays([]); setNbaDropped([]); setTonightPlays([]); setTonightLoading(false); });
@@ -294,7 +285,7 @@ function App() {
     if (bustLoading) return;
     setBustLoading(true);
     setTonightLoading(true);
-    fetch(`${WORKER}/tonight?bust=1${_modelSuffix}`)
+    fetch(`${WORKER}/tonight?bust=1`)
       .then(r => r.json())
       .then(data => { const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(_qualifiedFilter)); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); if (data.mlbMeta) setMlbMeta(data.mlbMeta); if (data.mlbMetaTomorrow) setMlbMetaTomorrow(data.mlbMetaTomorrow); if (data.nbaMeta) setNbaMeta(data.nbaMeta); if (data.wnbaMeta) setWnbaMeta(data.wnbaMeta); if (data.nhlMeta) setNhlMeta(data.nhlMeta); setTonightLoading(false); setBustLoading(false); })
       .catch(() => { setAllTonightPlays([]); setNbaDropped([]); setTonightPlays([]); setTonightLoading(false); setBustLoading(false); });
@@ -323,9 +314,10 @@ function App() {
     const newKalshiPct = parseFloat(impliedFromOdds.toFixed(1));
     const truePct = play.direction === "under" ? (play.noTruePct ?? play.truePct) : play.truePct;
     const newEdge = truePct != null ? parseFloat((truePct - newKalshiPct).toFixed(1)) : (play.edge ?? null);
-    // modelVersion stamps every pick with the active model so calibration audits can split
-    // v1 / v2 outcomes cleanly. Server-side /api/user/picks just round-trips the JSON so no
-    // backend schema change is needed; the field is persisted verbatim.
+    // Every new pick stamped modelVersion:"v2". v1 was dropped 2026-05-18 but the field stays
+    // on new picks so /api/auth/calibration can continue to split historical (v1) vs current
+    // (v2) outcomes. Without this, post-drop picks would be unstamped and treated as v1 by
+    // the calibration code, polluting the historical bucket.
     // Live tracking requires { playerTeam, opponent } (or for totals: { homeTeam, awayTeam } /
     // { scoringTeam, oppTeam }) to build a `sport:team:opp` key for /api/live, and the pick
     // card's live progress bar is gated on pick.gameTime. /api/tonight-derived picks have
@@ -367,7 +359,7 @@ function App() {
         }
       }
     }
-    const enriched = { ...play, ...extras, americanOdds: savedOdds, kalshiPct: newKalshiPct, edge: newEdge, modelVersion };
+    const enriched = { ...play, ...extras, americanOdds: savedOdds, kalshiPct: newKalshiPct, edge: newEdge, modelVersion: "v2" };
     setTrackedPlays(prev => {
       if (prev.find(p => p.id === id)) return prev;
       return [{ ...enriched, id, trackedAt: Date.now(), result: null,
@@ -868,7 +860,7 @@ function App() {
     if (reportDataBySport[sport]) return; // already cached
     setReportLoadingSport(sport);
     try {
-      const r = await fetch(`${WORKER}/tonight?debug=1&sport=${sport}${_modelSuffix}`);
+      const r = await fetch(`${WORKER}/tonight?debug=1&sport=${sport}`);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const d = await r.json();
       setReportDataBySport(prev => ({ ...prev, [sport]: d }));
@@ -1221,7 +1213,6 @@ function App() {
         setReportSort={setReportSort}
         navigateToPlayer={navigateToPlayer}
         navigateToTeam={navigateToTeam}
-        modelVersion={modelVersion}
       />}
 
       {/* Auth modal */}
@@ -1652,7 +1643,7 @@ function App() {
             ) : (
               <>
                 {/* Explanation at top */}
-                {showExplanation && modelVersion === "v2" && (() => {
+                {showExplanation && (() => {
                   // v2: render lambda inputs for the active tab's tonight play (if one exists).
                   // Player card may load for players with no current play — in that case hide.
                   const activePlay = Object.values(tonightPlayerMap).find(p => p.stat === safeTab) || null;
@@ -1663,301 +1654,6 @@ function App() {
                     </div>
                   );
                 })()}
-                {showExplanation && modelVersion !== "v2" && (
-                  <div style={{background:"#0d1117",borderRadius:8,padding:"8px 12px",fontSize:11,color:"#8b949e",lineHeight:1.6,marginBottom:12}}>
-                    {(() => {
-                      const first = player.name.split(" ")[0];
-                      // For strikeout tab, prefer tonight play data (canonical source) over DVP endpoint to keep in sync with plays card
-                      const h2h = (() => {
-                        if (isMLB && safeTab === "strikeouts") {
-                          const allKPlays = Object.values(tonightPlayerMap).filter(p => p.stat === "strikeouts");
-                          const tp = allKPlays.reduce((best, p) => {
-                            const sc = p.finalSimScore ?? p.simScore ?? -1;
-                            const bsc = best ? (best.finalSimScore ?? best.simScore ?? -1) : -1;
-                            return sc > bsc ? p : best;
-                          }, null) ?? allKPlays[0] ?? null;
-                          if (tp) return { opp: tp.opponent, lineupKPct: tp.lineupKPct ?? dvpData?.h2h?.lineupKPct ?? null, lineupKPctProjected: tp.lineupKPctProjected ?? dvpData?.h2h?.lineupKPctProjected ?? false,
-                            pitcherCSWPct: tp.pitcherCSWPct, pitcherKPct: tp.pitcherKPct, pitcherKBBPct: tp.pitcherKBBPct, pitcherAvgPitches: tp.pitcherAvgPitches, log5Avg: tp.log5Avg,
-                            expectedKs: tp.expectedKs, parkFactor: tp.parkFactor, pitcherHand: tp.pitcherHand,
-                            pitcherEra: tp.pitcherEra ?? null,
-                            simScore: tp.simScore ?? null, finalSimScore: tp.finalSimScore ?? null,
-                            kpctMeets: tp.kpctMeets, kpctPts: tp.kpctPts, kbbMeets: tp.kbbMeets, kbbPts: tp.kbbPts, lkpMeets: tp.lkpMeets, lkpPts: tp.lkpPts, pitchesPts: tp.pitchesPts, parkMeets: tp.parkMeets, mlPts: tp.mlPts, totalPts: tp.totalPts, kHitRatePts: tp.kHitRatePts, kH2HHandPts: tp.kH2HHandPts, kH2HHandRate: tp.kH2HHandRate, kH2HHandStarts: tp.kH2HHandStarts, kH2HHandMaj: tp.kH2HHandMaj,
-                            edge: tp.edge, rawEdge: tp.rawEdge, spreadAdj: tp.spreadAdj,
-                            gameTotal: tp.gameTotal, gameMoneyline: tp.gameMoneyline,
-                            lineupConfirmed: tp.lineupConfirmed ?? null, gameTime: tp.gameTime ?? null };
-                        }
-                        return dvpData?.h2h || null;
-                      })();
-                      if (isMLB) {
-                        if (safeTab === "strikeouts") {
-                          const lkp   = h2h?.lineupKPct   ?? null;
-                          const l5    = h2h?.log5Avg      ?? null;
-                          const expK  = h2h?.expectedKs   ?? null;
-                          const pf    = h2h?.parkFactor   ?? null;
-                          const glK  = logs25?.strikeouts  || logs?.strikeouts  || [];
-                          const glBB = logs25?.bb          || logs?.bb          || [];
-                          const glIP = logs25?.ip          || logs?.ip          || [];
-                          const glH  = logs25?.hitsAllowed || logs?.hitsAllowed || [];
-                          const sumK  = glK.reduce((a,b)=>a+b,0);
-                          const sumBB = glBB.reduce((a,b)=>a+b,0);
-                          const sumIP = glIP.reduce((a,b)=>a+b,0);
-                          const sumH  = glH.reduce((a,b)=>a+b,0);
-                          const estBF = sumIP > 0 ? (sumIP * 3 + sumH + sumBB) : 0;
-                          const csw = h2h?.pitcherCSWPct ?? null;
-                          const pkpRaw = h2h?.pitcherKPct ?? (estBF >= 15 ? parseFloat((sumK / estBF * 100).toFixed(1)) : null);
-                          const pkp = csw ?? pkpRaw;
-                          const pkpLabel = csw != null ? "CSW%" : "K%";
-                          const pkpColor  = pkp == null ? "#8b949e" : (csw != null ? (pkp >= 30 ? "#3fb950" : pkp > 26 ? "#e3b341" : "#f78166") : (pkp >= 27 ? "#3fb950" : pkp >= 24 ? "#e3b341" : "#f78166"));
-                          const lkpProjected = h2h?.lineupKPctProjected === true;
-                          const lkpColor  = lkp == null ? "#8b949e" : lkp > 24 ? "#3fb950" : lkp > 22 ? "#e3b341" : "#f78166";
-                          const oppColor  = lkp != null ? (lkp >= 24 ? "#3fb950" : lkp < 20 ? "#f78166" : "#c9d1d9") : "#c9d1d9";
-                          const strikeoutsThreshold = Object.entries(tonightPlayerMap).find(([k]) => k.startsWith("strikeouts|"))?.[1]?.threshold ?? null;
-                          const expKColor = expK != null && strikeoutsThreshold != null ? (expK >= strikeoutsThreshold ? "#3fb950" : expK >= strikeoutsThreshold - 1 ? "#c9d1d9" : "#f78166") : "#c9d1d9";
-                          const pitcherEra = h2h?.pitcherEra ?? null;
-                          const eraColor = pitcherEra == null ? "#8b949e" : pitcherEra < 3.5 ? "#3fb950" : pitcherEra < 4.5 ? "#8b949e" : "#f78166";
-                          const simScore = h2h?.simScore ?? null;
-                          const finalSimScore = h2h?.finalSimScore ?? null;
-                          const gameTotal = h2h?.gameTotal ?? null;
-                          const gameML = h2h?.gameMoneyline ?? null;
-                          const pitcherHand = h2h?.pitcherHand ?? null;
-                          const handLabel = pitcherHand === "R" ? " against RHP" : pitcherHand === "L" ? " against LHP" : "";
-                          const totalColor = t => t == null ? "#8b949e" : t <= 7.5 ? "#3fb950" : t < 10.5 ? "#e3b341" : "#f78166";
-                          const mlColor = ml => ml == null ? "#8b949e" : ml <= -121 ? "#3fb950" : ml <= 120 ? "#e3b341" : "#f78166";
-                          const oppName = MLB_TEAM[h2h?.opp || mlbH2HOpp] || h2h?.opp || mlbH2HOpp;
-                          const pitcherTeamName = MLB_TEAM[player.team] || player.team;
-                          const ap = h2h?.pitcherAvgPitches ?? null;
-                          const kH2HHandRate = h2h?.kH2HHandRate ?? null;
-                          const kH2HHandStarts = h2h?.kH2HHandStarts ?? 0;
-                          const kH2HHandMaj = h2h?.kH2HHandMaj ?? null;
-                          const kH2HHandColor = kH2HHandRate == null ? "#8b949e" : kH2HHandRate >= 80 ? "#3fb950" : kH2HHandRate >= 65 ? "#e3b341" : "#f78166";
-                          const apColor = "#8b949e"; // avgPitches not in SimScore
-                          const pkpQual = pkp == null ? "" : csw != null ? (pkp >= 30 ? "elite" : pkp > 26 ? "above-average" : "below-average") : (pkp > 24 ? "above-average" : "below-average");
-                          const apDesc = ap == null ? null : ap > 85 ? "expect him to work deep into the game" : ap > 75 ? "typically goes 5–6 innings" : null;
-                          const lkpDesc = lkp == null ? null : lkp > 24 ? "a high-strikeout lineup — works in his favor" : lkp > 20 ? "below-average strikeout tendency" : "elite contact lineup — a tougher test";
-                          const _sc = finalSimScore ?? simScore;
-                          const scColor = _sc == null ? "#8b949e" : _sc >= 8 ? "#3fb950" : _sc >= 5 ? "#e3b341" : "#8b949e";
-                          const scTitle = _sc != null ? [`CSW%/K%: ${h2h?.kpctPts ?? 1}/2`,`Lineup K%: ${h2h?.lkpPts ?? 1}/2`,`Hit Rate %: ${h2h?.kHitRatePts ?? 1}/2`,`H2H Hand: ${h2h?.kH2HHandPts ?? 1}/2`,`O/U: ${h2h?.totalPts ?? 1}/2`].join("\n") : null;
-                          // Lineup badge removed — surfaced on MatchupCard above this prose.
-                          return (
-                            <>
-                              <div>
-                                {first} has {pkpQual ? <>{pkpQual} </> : ""}swing-and-miss stuff
-                                {pkp != null && <> — <span style={{color:pkpColor,fontWeight:600}}>{pkp}%</span> {pkpLabel}</>}
-                                {ap != null && <>, averaging <span style={{color:apColor,fontWeight:600}}>{Math.round(ap)}</span> pitches/start{apDesc ? <span style={{color:"#8b949e"}}> — {apDesc}</span> : ""}</>}.
-                                {lkp != null && <>{" "}The {oppName} lineup strikes out at <span style={{color:lkpColor,fontWeight:600}}>{lkp}%</span>{handLabel}{lkpProjected ? <span style={{color:"#484f58",fontSize:10}}> (est.)</span> : ""} — <span style={{color:"#8b949e"}}>{lkpDesc}</span>.</>}
-                                {pf != null && Math.abs(pf - 1.0) >= 0.01 && <>{" "}Tonight's venue {pf > 1 ? "is strikeout-friendly" : "suppresses strikeouts"} (<span style={{color:"#8b949e"}}>{pf > 1 ? "+" : ""}{((pf-1)*100).toFixed(0)}%</span>).</>}
-                                {gameTotal != null && <>{" "}<span style={{color:"#8b949e"}}>game total </span><span style={{color:totalColor(gameTotal),fontWeight:600}}>{gameTotal}</span><span style={{color:"#8b949e"}}>{gameTotal <= 8.5 ? " — a low-scoring slate, favorable for strikeouts" : gameTotal <= 10.5 ? " — an average total" : " — a high-scoring total, tougher for Ks"}.</span></>}
-                                {kH2HHandRate != null && kH2HHandStarts >= 5 && <>{" "}In <span style={{color:"#8b949e"}}>{kH2HHandStarts} starts vs {kH2HHandMaj === "R" ? "right" : kH2HHandMaj === "L" ? "left" : ""}-heavy lineups</span>, hit {strikeoutsThreshold != null ? `${strikeoutsThreshold}+` : "this threshold"} in <span style={{color:kH2HHandColor,fontWeight:600}}>{kH2HHandRate.toFixed(1)}%</span>.</>}
-                                {_sc != null && <>{" "}<SimBadge sc={_sc} scTitle={scTitle} scColor={scColor} /></>}
-                              </div>
-                            </>
-                          );
-                        }
-                        {
-                          const tonightHitPlay = Object.values(tonightPlayerMap).find(p => p.stat === safeTab) || null;
-                          const baVal = tonightHitPlay?.hitterBa ? `.${Math.round(tonightHitPlay.hitterBa * 1000).toString().padStart(3,"0")}` : null;
-                          const baTier = tonightHitPlay?.hitterBaTier;
-                          const baTierLabel = baTier === "elite" ? "elite" : baTier === "good" ? "good" : baTier === "avg" ? "average" : null;
-                          const baColor = baTier === "elite" ? "#58a6ff" : baTier === "good" ? "#3fb950" : "#8b949e";
-                          const lineupSpot = tonightHitPlay?.hitterLineupSpot ?? null;
-                          const spotColor = "#8b949e";
-                          const pitcherName = tonightHitPlay?.hitterPitcherName ?? h2h?.pitcherName ?? null;
-                          const whip = tonightHitPlay?.pitcherWHIP ?? null;
-                          const fip = tonightHitPlay?.pitcherFIP ?? null;
-                          const era = tonightHitPlay?.hitterPitcherEra ?? tonightHitPlay?.pitcherEra ?? h2h?.pitcherEra ?? null;
-                          const pf = tonightHitPlay?.parkFactor ?? tonightHitPlay?.hitterParkKF ?? null;
-                          const seasonPct = tonightHitPlay?.seasonPct ?? null;
-                          const softPct = tonightHitPlay?.softPct ?? null;
-                          const seasonG = tonightHitPlay?.pct26 != null ? tonightHitPlay?.pct26Games : (tonightHitPlay?.blendGames || tonightHitPlay?.seasonGames);
-                          const seasonWindow = tonightHitPlay?.pct26 != null ? "this season" : "2025-26";
-                          const threshold = tonightHitPlay?.threshold ?? null;
-                          const statFull = STAT_FULL[safeTab] || safeTab;
-                          const sc = tonightHitPlay?.hitterFinalSimScore ?? tonightHitPlay?.hitterSimScore ?? null;
-                          const whipColor = whip == null ? "#8b949e" : whip > 1.35 ? "#3fb950" : whip > 1.20 ? "#e3b341" : "#f78166";
-                          const fipColor = fip == null ? "#8b949e" : fip > 4.5 ? "#3fb950" : fip > 3.5 ? "#e3b341" : "#8b949e";
-                          const scColor = sc != null ? (sc >= 8 ? "#3fb950" : sc >= 5 ? "#e3b341" : "#8b949e") : "#8b949e";
-                          const seasonColor = seasonPct == null ? "#c9d1d9" : seasonPct >= 80 ? "#3fb950" : seasonPct >= 70 ? "#e3b341" : "#f78166";
-                          const spotDesc = lineupSpot == null ? null : lineupSpot <= 3 ? "top of the order — guaranteed at-bats every game" : lineupSpot <= 4 ? "heart of the order — plenty of at-bats" : null;
-                          const whipDesc = whip == null ? null : whip > 1.35 ? "a lot of baserunners" : whip > 1.20 ? "some traffic on base" : null;
-                          const fipDesc = fip == null ? null : fip > 4.5 ? "hittable pitcher" : fip > 3.5 ? "average pitcher" : null;
-                          const mkH = (meets, label) => meets != null ? <span key={label} style={{color:meets?"#3fb950":"#f78166",fontSize:9,whiteSpace:"nowrap"}}>{meets?"✓":"✗"}{label}</span> : null;
-                          const hitterGameTotal = tonightHitPlay?.hitterGameTotal ?? null;
-                          const hitterTotalColor = t => t == null ? "#8b949e" : t >= 9.5 ? "#3fb950" : t >= 7.5 ? "#e3b341" : "#f78166";
-                          const barrelPct = tonightHitPlay?.hitterBarrelPct ?? null;
-                          const barrelColor = barrelPct == null ? "#8b949e" : barrelPct >= 14 ? "#3fb950" : barrelPct >= 10 ? "#e3b341" : barrelPct >= 7 ? "#8b949e" : "#f78166";
-                          const pitcherHand = tonightHitPlay?.oppPitcherHand ?? null;
-                          const isPlatoonFallback = tonightHitPlay?.hitterSoftLabel === "vs RHP" || tonightHitPlay?.hitterSoftLabel === "vs LHP";
-                          const h2hSource = tonightHitPlay?.hitterH2HSource;
-                          const softRateColor = (h2hSource === 'bvp' || h2hSource === 'hand') && softPct != null
-                            ? softPct >= 80 ? "#3fb950" : softPct >= 70 ? "#e3b341" : "#f78166"
-                            : "#3fb950";
-                          const hitterOps = tonightHitPlay?.hitterOps ?? null;
-                          const hitterOpsPts = tonightHitPlay?.hitterOpsPts ?? null;
-                          const opsColor = hitterOpsPts == null ? "#8b949e" : hitterOpsPts >= 2 ? "#3fb950" : hitterOpsPts >= 1 ? "#e3b341" : "#f78166";
-                          const scTitle = sc != null ? [`OPS: ${tonightHitPlay?.hitterOpsPts ?? 1}/2`,`WHIP: ${tonightHitPlay?.hitterWhipPts ?? 1}/2`,`Season HR: ${tonightHitPlay?.hitterSeasonHitRatePts ?? 1}/2`,`H2H HR: ${tonightHitPlay?.hitterH2HHitRatePts ?? 1}/2`,`O/U: ${tonightHitPlay?.hitterTotalPts ?? 1}/2`].join("\n") : null;
-                          return (
-                            <>
-                              <div>
-                                {first}{lineupSpot != null && <>, batting <span style={{color:spotColor,fontWeight:600}}>#{lineupSpot}</span>{spotDesc ? <span style={{color:"#8b949e"}}> — {spotDesc}</span> : ""}</>}.{hitterOps != null && <>{" "}<span style={{color:"#8b949e"}}>OPS </span><span style={{color:opsColor,fontWeight:600}}>{hitterOps.toFixed(3)}</span><span style={{color:"#8b949e"}}>{hitterOps >= 0.850 ? " — elite hitter" : hitterOps >= 0.720 ? " — above-average producer" : " — below-average OPS"}.</span></>}
-                                {(pitcherName || whip != null) && (
-                                  <>{" "}Facing{pitcherName ? <> <span style={{color:"#c9d1d9",fontWeight:600}}>{pitcherName}</span></> : " the opposing starter"}{whip != null ? <> — WHIP <span style={{color:whipColor,fontWeight:600}}>{whip}</span>{whipDesc ? <span style={{color:"#8b949e"}}> ({whipDesc})</span> : ""}</> : ""}.</>
-                                )}
-                                {seasonPct != null && <>{" "}{first} has gone {threshold}+ {statFull} in <span style={{color:seasonColor,fontWeight:600}}>{seasonPct}%</span> of games {seasonWindow}{seasonG ? <span style={{color:"#484f58",fontSize:10}}> ({seasonG}g)</span> : ""}</>}
-                                {softPct != null ? <>, and <span style={{color:softRateColor,fontWeight:600}}>{softPct}%</span> {tonightHitPlay?.hitterSoftLabel ?? "against weak pitching matchups"}{isPlatoonFallback && tonightHitPlay?.hitterSplitBA != null ? <span style={{color:"#484f58",fontSize:10}}> (hits .{Math.round(tonightHitPlay.hitterSplitBA*1000).toString().padStart(3,"0")} vs {pitcherHand === "R" ? "RHP" : "LHP"})</span> : !isPlatoonFallback && tonightHitPlay?.softGames ? <span style={{color:"#484f58",fontSize:10}}> ({tonightHitPlay.softGames}g)</span> : ""}.</> : seasonPct != null ? "." : ""}
-                                {tonightHitPlay?.oppRank && softPct === null && (() => {
-                                  const _opp2 = <span style={{color:"#c9d1d9",fontWeight:600}}>{tonightHitPlay.opponent}</span>;
-                                  const _rank2 = <span style={{color:"#c9d1d9",fontWeight:600}}>{ordinal(tonightHitPlay.oppRank)}-worst</span>;
-                                  const _metricStr2 = tonightHitPlay.oppMetricValue ? ` (${tonightHitPlay.oppMetricValue} ${tonightHitPlay.oppMetricUnit || ""})` : "";
-                                  const _ctx2 = {"mlb|hits":"one of the easiest pitching matchups in the league — their staff has a high ERA this season","mlb|hrr":"one of the easiest pitching matchups in the league — their staff allows hits, runs, and RBIs at a high rate"}[`mlb|${safeTab}`] || "one of the weakest defenses for this stat";
-                                  return <>{" "}{_opp2} ranks {_rank2} in {tonightHitPlay.oppMetricLabel || "this stat"}{_metricStr2} this season — {_ctx2}.{<>{" "}No head-to-head history yet{tonightHitPlay.pct25 != null && tonightHitPlay.pct25Games >= 5 ? <> — was at <span style={{color:"#c9d1d9"}}>{tonightHitPlay.pct25}%</span> in {tonightHitPlay.pct25Games} games in 2025</> : ""}.</>}</>;
-                                })()}
-                                {pf != null && Math.abs(pf - 1.0) >= 0.03 && <>{" "}Tonight's venue is {pf > 1 ? "hitter-friendly" : "pitcher-friendly"} (<span style={{color:"#8b949e"}}>{pf > 1 ? "+" : ""}{((pf-1)*100).toFixed(0)}% park factor</span>).</>}
-                                {hitterGameTotal != null && <>{" "}<span style={{color:"#8b949e"}}>Game total </span><span style={{color:hitterTotalColor(hitterGameTotal),fontWeight:600}}>{hitterGameTotal}</span><span style={{color:"#8b949e"}}>{hitterGameTotal >= 9.5 ? " — a high-scoring game, favorable for hitting" : hitterGameTotal >= 7.5 ? " — an average total" : " — a low-scoring game, tougher for hitters"}.</span></>}
-                                {sc != null && <>{" "}<SimBadge sc={sc} scTitle={scTitle} scColor={scColor} /></>}
-                              </div>
-                            </>
-                          );
-                        }
-                      }
-                      if (dvpData?.position) {
-                        const opp = player.opponent;
-                        const statLabel = {points:"scoring",rebounds:"rebounding",assists:"playmaking",threePointers:"3-point shooting",goals:"scoring",shotsOnGoal:"shots on goal"}[safeTab]||safeTab;
-                        const rank = tabOppRank;
-                        const metricVal = tabOppMetricValue;
-                        const metricUnit = tabRankEntry?.unit ?? player?.oppMetricUnit;
-                        const tonightTabPlay = Object.values(tonightPlayerMap).find(p => p.stat === safeTab) || null;
-                        const proj = tonightTabPlay?.projectedStat ?? player.projectedStat ?? null;
-                        const recent = tonightTabPlay?.recentAvg ?? player.recentAvg ?? null;
-                        const dvpFactor = tonightTabPlay?.dvpFactor ?? player.dvpFactor ?? null;
-                        const tabTonightPlay = tonightPlayerMap[`${safeTab}|${player.playThreshold}`] || tonightTabPlay;
-                        const softPctDisplay = tabTonightPlay?.softPct ?? (dvpMap[player.playThreshold]?.wPct ?? null);
-                        const softGamesDisplay = tabTonightPlay?.softGames ?? wTotal;
-                        const thresholdDisplay = tabTonightPlay?.threshold ?? player.playThreshold;
-                        if (effectiveOpp && rank != null) {
-                          const opp = effectiveOpp;
-                          const metricStr = metricVal != null ? ` (${metricVal}${metricUnit ? " "+metricUnit : ""})` : "";
-                          const oppEl = <span style={{color:"#c9d1d9",fontWeight:600}}>{opp}</span>;
-                          const rankEl = <span style={{color:"#f78166",fontWeight:700}}>{ordinal(rank)}-worst</span>;
-                          const hitRate = softPctDisplay != null ? <span style={{color:"#3fb950",fontWeight:600}}>{softPctDisplay.toFixed ? softPctDisplay.toFixed(1) : softPctDisplay}%</span> : null;
-                          const games = softGamesDisplay ? ` (${softGamesDisplay} games)` : "";
-                          const isNBA = sport === "basketball/nba";
-                          const isWNBA = sport === "basketball/wnba";
-                          const isBball = isNBA || isWNBA;
-                          const isNHL = sport === "hockey/nhl";
-                          if (isBball) {
-                            // WNBA play data uses wnba* prefix; NBA uses nba*. Read whichever is present.
-                            const posGroup = tonightTabPlay?.posGroup ?? null;
-                            const posName = {PG:"point guard",SG:"shooting guard",SF:"small forward",PF:"power forward",C:"center"}[posGroup] ?? null;
-                            const hasPosDvp = tonightTabPlay?.posDvpRank != null;
-                            const displayRank = hasPosDvp ? tonightTabPlay.posDvpRank : rank;
-                            const displayValue = hasPosDvp ? tonightTabPlay.posDvpValue : tabOppMetricValue;
-                            const statName = { points:"points", rebounds:"rebounds", assists:"assists", threePointers:"3-pointers" }[safeTab] || safeTab;
-                            const seasonPct = tonightTabPlay?.seasonPct ?? null;
-                            const nbaOpportunity = tonightTabPlay?.nbaOpportunity ?? tonightTabPlay?.wnbaOpportunity ?? null;
-                            const isB2B = tonightTabPlay?.isB2B ?? null;
-                            const sc = tonightTabPlay?.nbaSimScore ?? tonightTabPlay?.wnbaSimScore ?? null;
-                            const edge = tonightTabPlay?.edge ?? null;
-                            const isNBAStrong = tonightTabPlay?.softPct != null;
-                            const isNBAHard = !isNBAStrong && effectiveOpp && (dvpData.hardTeams?.[safeTab] || []).includes(effectiveOpp);
-                            const rankColor = isNBAHard ? "#f78166" : (displayRank != null && displayRank <= 10) ? "#3fb950" : (displayRank != null && displayRank <= 15) ? "#e3b341" : isNBAStrong ? "#3fb950" : "#c9d1d9";
-                            const scColor = sc != null ? (sc >= 8 ? "#3fb950" : sc >= 5 ? "#e3b341" : "#8b949e") : "#8b949e";
-                            const seasonColor = seasonPct == null ? "#c9d1d9" : seasonPct >= 90 ? "#3fb950" : seasonPct >= 80 ? "#e3b341" : "#f78166";
-                            // Tiers retuned for WNBA's 40-min game vs NBA's 48 (MIN ≥27/≥22 vs ≥30/≥25)
-                            const minHi = isWNBA ? 27 : 30, minMid = isWNBA ? 22 : 25;
-                            // AvgMin is the SimScore C1 only for rebounds; for other stats USG is C1, so color minutes neutral.
-                            const minColor = safeTab !== "rebounds" ? "#8b949e" : nbaOpportunity == null ? "#8b949e" : nbaOpportunity >= minHi ? "#3fb950" : nbaOpportunity >= minMid ? "#e3b341" : "#f78166";
-                            const minDesc = nbaOpportunity == null ? null : nbaOpportunity >= (isWNBA?30:33) ? "a featured starter with a big role" : nbaOpportunity >= minHi ? "a key starter" : nbaOpportunity >= minMid ? "solid rotation player" : "limited role";
-                            const rankDesc = displayRank == null ? null : displayRank <= 3 ? "one of the worst defenses in the league" : displayRank <= 8 ? "a weak defense" : displayRank <= 15 ? "a soft matchup" : null;
-                            const nbaGameTotal = tonightTabPlay?.nbaGameTotal ?? tonightTabPlay?.wnbaGameTotal ?? null;
-                            const nbaTotalPts = tonightTabPlay?.nbaTotalPts ?? tonightTabPlay?.wnbaTotalPts ?? null;
-                            const nbaUsage = tonightTabPlay?.nbaUsage ?? tonightTabPlay?.wnbaUsage ?? null;
-                            const nba3pMPG = tonightTabPlay?.nba3pMPG ?? tonightTabPlay?.wnba3pMPG ?? null;
-                            const nbaBlowoutAdj = tonightTabPlay?.nbaBlowoutAdj ?? tonightTabPlay?.wnbaBlowoutAdj ?? null;
-                            // WNBA tiers: USG ≥27/≥22 (NBA: 28/22), MIN ≥27/≥22 (NBA: 30/25), game total ≥168/≥158 (NBA: ≥225)
-                            const usgHi = isWNBA ? 27 : 28, usgMid = 22;
-                            const _usgPts = safeTab === "rebounds"
-                              ? (nbaOpportunity == null ? 1 : nbaOpportunity >= minHi ? 2 : nbaOpportunity >= minMid ? 1 : 0)
-                              : (nbaUsage == null ? 1 : nbaUsage >= usgHi ? 2 : nbaUsage >= usgMid ? 1 : 0);
-                            const _c1Label = safeTab === "rebounds"
-                              ? `AvgMin: ${nbaOpportunity != null ? nbaOpportunity.toFixed(0)+"m → "+_usgPts : "—"}/2`
-                              : `USG%: ${nbaUsage != null ? nbaUsage.toFixed(1)+"% → "+_usgPts : "—"}/2`;
-                            const _dvpPts = tonightTabPlay?.dvpRatio != null ? (tonightTabPlay.dvpRatio >= 1.05 ? 2 : tonightTabPlay.dvpRatio >= 1.02 ? 1 : 0) : 0;
-                            const _seasonHRPtsField = tonightTabPlay?.nbaSeasonHitRatePts ?? tonightTabPlay?.wnbaSeasonHitRatePts;
-                            const _softHRPtsField = tonightTabPlay?.nbaSoftHitRatePts ?? tonightTabPlay?.wnbaSoftHitRatePts;
-                            const _nbaSeasonHRPts = _seasonHRPtsField ?? (seasonPct >= 90 ? 2 : seasonPct >= 80 ? 1 : 0);
-                            const _nbaSoftHRPts = _softHRPtsField ?? (tonightTabPlay?.softPct == null ? 1 : tonightTabPlay.softPct >= 90 ? 2 : tonightTabPlay.softPct >= 80 ? 1 : 0);
-                            const _totalPts = nbaTotalPts ?? 1;
-                            const scTitle = sc != null ? [_c1Label,`DVP: ${_dvpPts}/2`,`Season HR: ${_nbaSeasonHRPts}/2`,`Soft HR: ${_nbaSoftHRPts}/2`,`Game Total: ${_totalPts}/2`].join("\n") : null;
-                            return (
-                              <>
-                                <div>
-                                  {seasonPct != null
-                                    ? <>{first} hits this line in <span style={{color:seasonColor,fontWeight:600}}>{seasonPct}%</span> of games{tonightTabPlay?.seasonGames ? <span style={{color:"#484f58",fontSize:10}}> ({tonightTabPlay.seasonGames}g)</span> : ""}</>
-                                    : <>{first}</>
-                                  }
-                                  {nbaOpportunity != null ? <>, averaging <span style={{color:minColor,fontWeight:600}}>{nbaOpportunity.toFixed(0)} minutes</span> a night{minDesc ? <span style={{color:"#8b949e"}}> — {minDesc}</span> : ""}</> : ""}
-                                  {safeTab !== "rebounds" && nbaUsage != null ? <> (<span style={{color:nbaUsage>=usgHi?"#3fb950":nbaUsage>=usgMid?"#e3b341":"#f78166",fontWeight:600}}>{nbaUsage.toFixed(0)}% USG</span>)</> : ""}.
-                                  {displayRank != null && <>{" "}{effectiveOpp} has {rankDesc || `the ${ordinal(displayRank)}-worst defense`} in {statName} allowed{posName ? ` to ${posName}s` : ""}{displayValue != null ? <> — giving up <span style={{color:rankColor,fontWeight:600}}>{displayValue} per game</span></> : <>, ranked <span style={{color:rankColor,fontWeight:700}}>{ordinal(displayRank)}</span></>}.</>}
-                                  {softPctDisplay != null && <>{" "}{first} hits this in <span style={{color:softPctDisplay>=90?"#3fb950":softPctDisplay>=80?"#e3b341":"#f78166",fontWeight:600}}>{softPctDisplay}%</span> of games against soft defenses{softGamesDisplay ? <span style={{color:"#484f58",fontSize:10}}> ({softGamesDisplay}g)</span> : ""}.</>}
-                                  {nbaGameTotal != null && <>{" "}Game total <span style={{color:nbaTotalPts>=3?"#3fb950":nbaTotalPts>=2?"#e3b341":nbaTotalPts>=1?"#8b949e":"#f78166",fontWeight:600}}>{nbaGameTotal}</span><span style={{color:"#8b949e"}}>{isWNBA ? (nbaGameTotal>=175?" — a high-scoring slate":nbaGameTotal>=168?" — above-average scoring":nbaGameTotal>=158?" — an average total":" — a low-scoring slate") : (nbaGameTotal>=235?" — a high-scoring slate":nbaGameTotal>=225?" — above-average scoring":nbaGameTotal>=215?" — an average total":" — a low-scoring slate")}.</span></>}
-                                  {nbaBlowoutAdj != null && nbaBlowoutAdj < 0.99 && <>{" "}<span style={{color:"#f78166",fontWeight:600}}>Blowout risk</span> — large spread reduces model mean by {Math.round((1-nbaBlowoutAdj)*100)}%.</>}
-                                  {isB2B != null && <>{" "}{isB2B ? <><span style={{color:"#f78166",fontWeight:600}}>Back-to-back</span> — model applies a scoring reduction.</> : <>Fully rested tonight.</>}</>}
-                                  {sc != null && <>{" "}<SimBadge sc={sc} scTitle={scTitle} scColor={scColor} /></>}
-                                  {isOppFallback && <div style={{color:"#8b949e",fontSize:10,marginTop:3}}>Showing last game vs {effectiveOpp} — updates when next game is scheduled.</div>}
-                                </div>
-                              </>
-                            );
-                          }
-                          if (isNHL) {
-                            const nhlOpportunity = tonightTabPlay?.nhlOpportunity ?? null;
-                            const nhlIsB2B = tonightTabPlay?.isB2B ?? null;
-                            const sc = tonightTabPlay?.nhlSimScore ?? null;
-                            const seasonPct = tonightTabPlay?.seasonPct ?? null;
-                            const scColor = sc != null ? (sc >= 8 ? "#3fb950" : sc >= 5 ? "#e3b341" : "#8b949e") : "#8b949e";
-                            const seasonColor = seasonPct == null ? "#c9d1d9" : seasonPct >= 90 ? "#3fb950" : seasonPct >= 80 ? "#e3b341" : "#f78166";
-                            const toiColor = nhlOpportunity == null ? "#8b949e" : nhlOpportunity >= 18 ? "#3fb950" : nhlOpportunity >= 15 ? "#e3b341" : "#f78166";
-                            const rankColor = rank == null ? "#8b949e" : rank <= 10 ? "#3fb950" : rank <= 15 ? "#e3b341" : "#f78166";
-                            const toiDesc = nhlOpportunity == null ? null : nhlOpportunity >= 21 ? "a top-line role" : nhlOpportunity >= 18 ? "a key contributor" : nhlOpportunity >= 15 ? "solid ice time" : "limited role";
-                            const rankDesc = rank == null ? null : rank <= 3 ? "one of the worst defenses in the league" : rank <= 8 ? "a weak defense" : rank <= 15 ? "a soft matchup" : null;
-                            const _nhlToiPts = nhlOpportunity != null && nhlOpportunity >= 18 ? 2 : nhlOpportunity != null && nhlOpportunity >= 15 ? 1 : 0;
-                            const _nhlGaaPts = rank != null ? (rank <= 10 ? 2 : rank <= 15 ? 1 : 0) : 1;
-                            const nhlGameTotalPC = tonightTabPlay?.nhlGameTotal ?? null;
-                            const _nhlTotalPts = nhlGameTotalPC == null ? 1 : nhlGameTotalPC >= 7 ? 2 : nhlGameTotalPC >= 5.5 ? 1 : 0;
-                            const _nhlSeasonHRPts = tonightTabPlay?.nhlSeasonHitRatePts ?? (seasonPct == null ? 1 : seasonPct >= 90 ? 2 : seasonPct >= 80 ? 1 : 0);
-                            const _nhlDvpHRPts = tonightTabPlay?.nhlDvpHitRatePts ?? 1;
-                            const scTitle = sc != null ? [`TOI ${nhlOpportunity != null ? nhlOpportunity.toFixed(0) + "m" : "—"}: ${_nhlToiPts}/2`, `GAA rank: ${_nhlGaaPts}/2`, `Season HR: ${_nhlSeasonHRPts}/2`, `DVP HR: ${_nhlDvpHRPts}/2`, `O/U ${nhlGameTotalPC ?? "—"}: ${_nhlTotalPts}/2`].join("\n") : null;
-                            return (
-                              <>
-                                <div>
-                                  {seasonPct != null
-                                    ? <>{first} hits this line in <span style={{color:seasonColor,fontWeight:600}}>{seasonPct}%</span> of games{tonightTabPlay?.seasonGames ? <span style={{color:"#484f58",fontSize:10}}> ({tonightTabPlay.seasonGames}g)</span> : ""}</>
-                                    : <>{first}</>
-                                  }
-                                  {nhlOpportunity != null ? <>, averaging <span style={{color:toiColor,fontWeight:600}}>{nhlOpportunity.toFixed(0)} min</span> of ice time{toiDesc ? <span style={{color:"#8b949e"}}> — {toiDesc}</span> : ""}</> : ""}.
-                                  {rank != null && <>{" "}{effectiveOpp} has {rankDesc || `the ${ordinal(rank)}-worst defense`} in points allowed — ranked <span style={{color:rankColor,fontWeight:700}}>{ordinal(rank)}</span> in goals against.</>}
-                                  {softPctDisplay != null && <>{" "}{first} hits this in <span style={{color:softPctDisplay>=90?"#3fb950":softPctDisplay>=80?"#e3b341":"#f78166",fontWeight:600}}>{softPctDisplay}%</span> vs weak defenses{softGamesDisplay ? <span style={{color:"#484f58",fontSize:10}}> ({softGamesDisplay}g)</span> : ""}.</>}
-                                  {nhlIsB2B != null && <>{" "}{nhlIsB2B ? <><span style={{color:"#f78166",fontWeight:600}}>Back-to-back</span> — model applies a fatigue reduction.</> : <>Fully rested tonight.</>}</>}
-                                  {isOppFallback && <div style={{color:"#8b949e",fontSize:10,marginTop:3}}>Showing last game vs {effectiveOpp} — updates when next game is scheduled.</div>}
-                                  {sc != null && <>{" "}<SimBadge sc={sc} scTitle={scTitle} scColor={scColor} /></>}
-                                </div>
-                              </>
-                            );
-                          }
-                          return <>
-                            {first} {isOppFallback ? "last faced" : "faces"} {oppEl} {isOppFallback ? "" : "tonight "}— they rank <span style={{color:"#f78166",fontWeight:600}}>#{rank}</span> in {statLabel} allowed{metricStr}, giving up {rank === 1 ? "the most" : rank <= 5 ? "among the most" : "a lot of"} in the league.
-                            {isOppFallback && <div style={{color:"#8b949e",fontSize:10,marginTop:3}}>Showing last game vs {opp} — updates when next game is scheduled.</div>}
-                          </>;
-                        }
-                        if (wTotal > 0) {
-                          const softNames = weakTeamList.slice(0,4).map(t=>t.abbr).join(", ");
-                          return <>As a <span style={{color:"#58a6ff",fontWeight:600}}>{dvpData.position}</span>, {first} has {wTotal} game{wTotal>1?"s":""} vs weak {statLabel} defenses{softNames?<> ({softNames})</>:<>.</>} — position-specific matchup data used.</>;
-                        }
-                        return <>Position-specific DvP loaded for <span style={{color:"#58a6ff",fontWeight:600}}>{dvpData.position}</span> — identifies weak {statLabel} defenses for tonight's matchup.</>;
-                      }
-                      return null;
-                    })()}
-                  </div>
-                )}
 
                 {showTriple && !isMLB && (
                   <div style={{color:"#8b949e",fontSize:11,marginBottom:14}}>
@@ -2398,7 +2094,6 @@ function App() {
       {!player && !teamPage && !modelPage && (
         <LineupsPage
           allTonightPlays={allTonightPlays || []}
-          modelVersion={modelVersion}
           tonightLoading={tonightLoading}
           navigateToPlayer={navigateToPlayer}
           navigateToTeam={navigateToTeam}

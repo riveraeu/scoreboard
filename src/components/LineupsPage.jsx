@@ -6,18 +6,15 @@ const SPORT_ORDER = { mlb: 0, nba: 1, wnba: 2, nhl: 3 };
 const SPORT_LABEL = { mlb: 'MLB', nba: 'NBA', wnba: 'WNBA', nhl: 'NHL' };
 
 // Build ordered games list for a single sport.
-function buildGames(allPlays, sport, meta, metaTomorrow, modelVersion, v2WinnerSet) {
+function buildGames(allPlays, sport, meta, metaTomorrow) {
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
   const gameMap = new Map();
 
   for (const play of allPlays || []) {
     if (play.sport !== sport) continue;
     // Only gate-passing plays seed matchup cards. qualified:false plays exist solely for the
-    // player card (alt thresholds, missed gates). Without this, future-date Kalshi game-total
-    // markets (e.g. NHL series game 6 posted before ESPN schedules it) would create phantom
-    // duplicate cards. v2 plays often have `qualified: false` (SimScore-based dedup losers)
-    // but pass the dcQualified gate — must seed cards from them or v2 has nowhere to render.
-    if (!passesGate(play, modelVersion, v2WinnerSet)) continue;
+    // player card (alt thresholds, missed gates).
+    if (!passesGate(play)) continue;
 
     let homeTeam, awayTeam, gameDate, gameTime, ouLine;
 
@@ -87,58 +84,25 @@ function buildGames(allPlays, sport, meta, metaTomorrow, modelVersion, v2WinnerS
 }
 
 // All sports combined.
-function buildAllGames(allPlays, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta, modelVersion, v2WinnerSet) {
+function buildAllGames(allPlays, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta) {
   return [
-    ...buildGames(allPlays, 'mlb', mlbMeta, mlbMetaTomorrow, modelVersion, v2WinnerSet),
-    ...buildGames(allPlays, 'nba', nbaMeta, undefined, modelVersion, v2WinnerSet),
-    ...buildGames(allPlays, 'wnba', wnbaMeta, undefined, modelVersion, v2WinnerSet),
-    ...buildGames(allPlays, 'nhl', nhlMeta, undefined, modelVersion, v2WinnerSet),
+    ...buildGames(allPlays, 'mlb', mlbMeta, mlbMetaTomorrow),
+    ...buildGames(allPlays, 'nba', nbaMeta, undefined),
+    ...buildGames(allPlays, 'wnba', wnbaMeta, undefined),
+    ...buildGames(allPlays, 'nhl', nhlMeta, undefined),
   ];
 }
 
-// Mirror of App.jsx's _qualifiedFilter so v1 (SimScore) and v2 (dcQualified) gating stays
-// consistent between the top-level plays list and the per-game lookup. v2 also needs alt-line
-// dedup since server-side bestMap is SimScore-keyed (marks non-winners as qualified:false,
-// which v2 ignores) — see v2WinnerSet below.
+// Mirror of App.jsx's _qualifiedFilter. v1 (SimScore-gated) was dropped 2026-05-18; this is
+// now just the v2 dc + edge filter. Alt-line dedup was removed 2026-05-16 (paired with the
+// edge gate raise to 5; surfacing multiple thresholds gives users more payout/safety choice).
 const EDGE_GATE = 5;
-const SIMSCORE_GATE = 8;
-// Group key for v2 dedup: same matchup + direction, ignoring threshold. Highest-edge play
-// within each group survives. Mirrors the server's bestMap key shape for v1.
-function v2GroupKey(p) {
-  const direction = p.direction || 'over';
-  if (p.gameType === 'total') return `total|${p.sport}|${p.homeTeam}|${p.awayTeam}|${p.gameDate||''}|${direction}`;
-  if (p.gameType === 'teamTotal') return `tt|${p.sport}|${p.scoringTeam}|${p.oppTeam}|${p.gameDate||''}|${direction}`;
-  return `prop|${p.sport}|${p.playerName}|${p.stat}|${p.gameDate||''}|${direction}`;
+function passesGate(p) {
+  return p.dcQualified === true && (p.edge ?? 0) >= EDGE_GATE;
 }
-// Full ID including threshold — uniquely identifies a single play row.
-function v2FullId(p) { return `${v2GroupKey(p)}|${p.threshold}`; }
-function buildV2WinnerSet(allPlays) {
-  const groupBest = new Map(); // groupKey -> {edge, fullId}
-  for (const p of allPlays || []) {
-    if (!(p.dcQualified === true && (p.edge ?? 0) >= EDGE_GATE)) continue;
-    const key = v2GroupKey(p);
-    const fullId = v2FullId(p);
-    const prev = groupBest.get(key);
-    if (!prev || (p.edge ?? 0) > prev.edge) groupBest.set(key, { edge: p.edge ?? 0, fullId });
-  }
-  return new Set([...groupBest.values()].map(v => v.fullId));
-}
-// v2 alt-line dedup removed 2026-05-16 — paired with edge gate raise (3 → 5). At edge ≥ 5
-// the alt-line correlation concern is smaller (each line clears the stricter bar on its own)
-// and surfacing multiple thresholds gives the user more flexibility to pick which payout/safety
-// tradeoff they want. v2WinnerSet still accepted as a parameter for back-compat but ignored.
-function passesGate(p, modelVersion, _v2WinnerSet) {
-  if (modelVersion === 'v2') {
-    return p.dcQualified === true && (p.edge ?? 0) >= EDGE_GATE;
-  }
-  if (p.qualified === false) return false;
-  if (p.finalSimScore != null && p.finalSimScore < SIMSCORE_GATE) return false;
-  if (p.hitterFinalSimScore != null && p.hitterFinalSimScore < SIMSCORE_GATE) return false;
-  return true;
-}
-function playsForGame(allPlays, game, modelVersion, v2WinnerSet) {
+function playsForGame(allPlays, game) {
   return (allPlays || []).filter(p => {
-    if (!passesGate(p, modelVersion, v2WinnerSet)) return false;
+    if (!passesGate(p)) return false;
     if (p.sport !== game.sport) return false;
     if (game.gameDate && p.gameDate && p.gameDate !== game.gameDate) return false;
     const teams = new Set([game.homeTeam, game.awayTeam]);
@@ -163,7 +127,6 @@ function dayTabLabel(dateStr) {
 
 export default function LineupsPage({
   allTonightPlays,
-  modelVersion,
   tonightLoading,
   navigateToPlayer,
   navigateToTeam,
@@ -213,24 +176,20 @@ export default function LineupsPage({
     }
   }, [dayTabs, activeDayTab]);
 
-  // v2 dedup removed 2026-05-16 (paired with edge gate raise 3 → 5). Kept as null so the
-  // existing passesGate signatures stay backward-compatible.
-  const v2WinnerSet = null;
-
   // Qualified play count per day for tab badges
   const qualifiedByDay = React.useMemo(() => {
     const counts = {};
     for (const p of allTonightPlays || []) {
-      if (!passesGate(p, modelVersion, v2WinnerSet)) continue;
+      if (!passesGate(p)) continue;
       const d = p.gameTime ? ptDate(p.gameTime) : p.gameDate;
       if (d) counts[d] = (counts[d] || 0) + 1;
     }
     return counts;
-  }, [allTonightPlays, modelVersion, v2WinnerSet]);
+  }, [allTonightPlays]);
 
   // All games for the active day, sorted by sport then game time
   const gamesForDay = React.useMemo(() => {
-    const all = buildAllGames(allTonightPlays, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta, modelVersion, v2WinnerSet);
+    const all = buildAllGames(allTonightPlays, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta);
     return all
       .filter(g => {
         const d = g.gameTime ? ptDate(g.gameTime) : (g.gameDate || '');
@@ -241,7 +200,7 @@ export default function LineupsPage({
         if (sd !== 0) return sd;
         return (a.gameTime || '').localeCompare(b.gameTime || '');
       });
-  }, [allTonightPlays, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta, activeDayTab, modelVersion, v2WinnerSet]);
+  }, [allTonightPlays, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta, activeDayTab]);
 
   const sportGroups = React.useMemo(() => {
     const groups = {};
@@ -398,7 +357,7 @@ export default function LineupsPage({
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(480px, 100%), 1fr))', gap: 12, alignItems: 'start' }}>
               {games.map((game, i) => {
                 const isPostponed = (game.gameDetail || '').toLowerCase().includes('postpone');
-                const gPlays = isPostponed ? [] : playsForGame(allTonightPlays, game, modelVersion, v2WinnerSet);
+                const gPlays = isPostponed ? [] : playsForGame(allTonightPlays, game);
                 return (
                   <MatchupCard
                     key={`${sport}|${game.homeTeam}|${game.awayTeam}|${game.gameDate}|${i}`}
