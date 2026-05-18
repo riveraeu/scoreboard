@@ -4,6 +4,8 @@ import { buildLineupKPct, buildBarrelPct, buildPitcherKPct, MLB_ID_TO_ABBR } fro
 import { warmPlayerInfoCache, buildNbaDvpStage1, buildNbaDvpFromBettingPros, buildNbaDepthChartPos, buildNbaPaceData, buildNbaPlayerPosFromSleeper, buildNbaDvpStage3FG, buildNbaUsageRate, buildNbaInjuryReport } from "./lib/nba.js";
 import { buildWnbaPaceData, buildWnbaUsageRate, buildWnbaInjuryReport, buildWnbaDvp, WNBA_TEAM_IDS, WNBA_ESPN_TO_CANON, WNBA_CANON_TO_ESPN } from "./lib/wnba.js";
 import { buildNhlGoalieData, buildNhlInjuryReport } from "./lib/nhl.js";
+import { verifyJWT } from "./lib/auth-utils.js";
+import { handleAuthRoutes } from "./lib/handlers/auth.js";
 
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
@@ -124,43 +126,8 @@ var VALID_SPORTS = [
   "basketball/mens-college-basketball",
   "football/college-football"
 ];
-async function pbkdf2Hash(password, salt) {
-  const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveBits"]);
-  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt: enc.encode(salt), iterations: 1e5, hash: "SHA-256" }, key, 256);
-  return btoa(String.fromCharCode(...new Uint8Array(bits)));
-}
-__name(pbkdf2Hash, "pbkdf2Hash");
-async function makeJWT(payload, secret) {
-  const enc = new TextEncoder();
-  const h = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" })).replace(/=+$/, "");
-  const b = btoa(JSON.stringify(payload)).replace(/=+$/, "");
-  const msg = `${h}.${b}`;
-  const k = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const sig = await crypto.subtle.sign("HMAC", k, enc.encode(msg));
-  const sigB64 = btoa(String.fromCharCode(...new Uint8Array(sig))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-  return `${msg}.${sigB64}`;
-}
-__name(makeJWT, "makeJWT");
-async function verifyJWT(token, secret) {
-  if (!token) return null;
-  const parts = token.split(".");
-  if (parts.length !== 3) return null;
-  try {
-    const enc = new TextEncoder();
-    const msg = `${parts[0]}.${parts[1]}`;
-    const k = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
-    const sig = Uint8Array.from(atob(parts[2].replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
-    const valid = await crypto.subtle.verify("HMAC", k, sig, enc.encode(msg));
-    if (!valid) return null;
-    const payload = JSON.parse(atob(parts[1]));
-    if (payload.exp && Date.now() > payload.exp) return null;
-    return payload;
-  } catch {
-    return null;
-  }
-}
-__name(verifyJWT, "verifyJWT");
+// pbkdf2Hash / makeJWT / verifyJWT live in ./lib/auth-utils.js (used by handlers/auth.js).
+// verifyJWT is also imported into this file for the /api/tonight calibration check below.
 var worker_default = {
   // Daily crons (DvP build — KV reads are free, so state passes between stages via KV):
   //   17:00 UTC (9am PST):  Stage 1 — fetch teams+rosters (31 req), cache posMap to KV; warm player info
@@ -201,56 +168,12 @@ var worker_default = {
     const method = request.method;
     const JWT_SECRET = env?.JWT_SECRET;
     try {
-      if (path === "auth/register" && method === "POST") {
-        const { email, password } = await request.json();
-        if (!email || !password) return errorResponse("Email and password required", 400);
-        if (password.length < 8) return errorResponse("Password must be at least 8 characters", 400);
-        const emailKey = `user:${email.toLowerCase()}`;
-        if (await CACHE2.get(emailKey)) return errorResponse("Account already exists", 409);
-        const userId = crypto.randomUUID();
-        const salt = crypto.randomUUID();
-        const passwordHash = await pbkdf2Hash(password, salt);
-        await CACHE2.put(emailKey, JSON.stringify({ id: userId, email, passwordHash, salt }));
-        const token = await makeJWT({ userId, email, exp: Date.now() + 365 * 24 * 60 * 60 * 1e3 }, JWT_SECRET);
-        return jsonResponse({ token, userId, email });
-      } else if (path === "keepalive") {
+      // /api/auth/* + /api/user/picks — extracted handler returns Response on match, null otherwise.
+      const _authResp = await handleAuthRoutes({ path, method, request, params, env, CACHE2, JWT_SECRET });
+      if (_authResp) return _authResp;
+      if (path === "keepalive") {
         if (CACHE2) await CACHE2.put("keepalive", new Date().toISOString(), { expirationTtl: 172800 });
         return jsonResponse({ ok: true, ts: new Date().toISOString() });
-      } else if (path === "auth/debug-redis" && method === "GET") {
-        const debugAdminKey = (request.headers.get("Authorization") || "").replace("Bearer ", "");
-        if (debugAdminKey !== env?.ADMIN_KEY) return errorResponse("Forbidden", 403);
-        const upUrl = env?.UPSTASH_REDIS_REST_URL;
-        const upToken = env?.UPSTASH_REDIS_REST_TOKEN;
-        if (!upUrl) return errorResponse("UPSTASH_REDIS_REST_URL not set", 500);
-        const upAuth = `Bearer ${upToken}`;
-        const testKey = "debug:redis:test";
-        const testVal = `ok-${Date.now()}`;
-        let setRaw = null, getRaw = null, setStatus = null, getStatus = null;
-        try {
-          const setRes = await fetch(upUrl, { method: "POST", headers: { Authorization: upAuth, "Content-Type": "application/json" }, body: JSON.stringify(["SET", testKey, testVal, "EX", 60]) });
-          setStatus = setRes.status;
-          setRaw = await setRes.json();
-        } catch (e) { setRaw = { fetchError: String(e) }; }
-        try {
-          const getRes = await fetch(upUrl, { method: "POST", headers: { Authorization: upAuth, "Content-Type": "application/json" }, body: JSON.stringify(["GET", testKey]) });
-          getStatus = getRes.status;
-          getRaw = await getRes.json();
-        } catch (e) { getRaw = { fetchError: String(e) }; }
-        return jsonResponse({ setStatus, setRaw, getStatus, getRaw, expectedVal: testVal, match: getRaw?.result === testVal });
-      } else if (path === "auth/clear-kalshi-stale" && method === "POST") {
-        // Force-evict a per-ticker stale entry so the next /api/tonight cold path tries Kalshi
-        // fresh. Used when stale data has drifted past tolerance and rate-limiting prevents
-        // a successful refresh from landing organically. Validates ticker format to prevent
-        // arbitrary key deletion.
-        const clearAdminKey = (request.headers.get("Authorization") || "").replace("Bearer ", "");
-        if (!env?.ADMIN_KEY) return errorResponse("ADMIN_KEY not set", 500);
-        if (clearAdminKey !== env.ADMIN_KEY) return errorResponse("Forbidden", 403);
-        const ticker = (params.get("ticker") || "").toUpperCase();
-        if (!/^KX[A-Z0-9]+$/.test(ticker)) return errorResponse("Invalid ticker (expected KX...)", 400);
-        if (!CACHE2) return errorResponse("Cache unavailable", 500);
-        const key = `kalshi:stale:${ticker}`;
-        await CACHE2.delete(key);
-        return jsonResponse({ ok: true, deleted: key });
       } else if (path === "kalshi-snapshot") {
         // Vercel Cron-triggered snapshot of every Kalshi series we care about, written to
         // kalshi:snap:{ticker} so /api/tonight can read pre-warmed snaps instead of hammering
@@ -354,215 +277,6 @@ var worker_default = {
           failed: _snapFailed,
           durationMs: Date.now() - startMs,
         });
-      } else if (path === "auth/list-users" && method === "GET") {
-        const listAdminKey = (request.headers.get("Authorization") || "").replace("Bearer ", "");
-        if (listAdminKey !== env?.ADMIN_KEY) return errorResponse("Forbidden", 403);
-        const upUrl = env?.UPSTASH_REDIS_REST_URL;
-        const upAuth = `Bearer ${env?.UPSTASH_REDIS_REST_TOKEN}`;
-        if (!upUrl) return errorResponse("No Redis URL", 500);
-        const r = await fetch(upUrl, { method: "POST", headers: { Authorization: upAuth, "Content-Type": "application/json" }, body: JSON.stringify(["KEYS", "user:*"]) });
-        const { result } = await r.json();
-        return jsonResponse({ users: result || [] });
-      } else if (path === "auth/calibration" && method === "GET") {
-        const calibToken = (request.headers.get("Authorization") || "").replace("Bearer ", "");
-        const calibPayload = calibToken ? await verifyJWT(calibToken, JWT_SECRET) : null;
-        const calibAdminKey = params.get("adminKey");
-        if (!calibPayload && calibAdminKey !== env?.ADMIN_KEY) return errorResponse("Forbidden", 403);
-        const upUrl = env?.UPSTASH_REDIS_REST_URL;
-        const upAuth = `Bearer ${env?.UPSTASH_REDIS_REST_TOKEN}`;
-        if (!upUrl) return errorResponse("No Redis URL", 500);
-        // Optional filter: ?modelVersion=v1|v2|all (default "all"). Picks tracked before the
-        // version toggle landed have no `modelVersion` field and are treated as v1 for grouping.
-        const _calibModelFilter = (params.get("modelVersion") || "all").toLowerCase();
-        const _normModelV = (p) => p.modelVersion === "v2" ? "v2" : "v1";
-        // Scan all picks keys
-        const keysRes = await fetch(upUrl, { method: "POST", headers: { Authorization: upAuth, "Content-Type": "application/json" }, body: JSON.stringify(["KEYS", "picks:*"]) });
-        const { result: picksKeys } = await keysRes.json();
-        if (!picksKeys || picksKeys.length === 0) return jsonResponse({ totalPicks: 0, finalizedPicks: 0, overall: [], byCategory: {}, byModelVersion: { v1: { n: 0, finalized: 0 }, v2: { n: 0, finalized: 0 } } });
-        // Fetch all picks records in parallel
-        const _allPicksRaw = [];
-        await Promise.all((picksKeys || []).map(async key => {
-          const data = await CACHE2.get(key, "json").catch(() => null);
-          (data?.picks || []).forEach(p => _allPicksRaw.push(p));
-        }));
-        // Always compute per-version counts before filtering, so the response can show v1 vs v2
-        // volumes regardless of which version the user filtered to.
-        const byModelVersion = { v1: { n: 0, finalized: 0, wins: 0 }, v2: { n: 0, finalized: 0, wins: 0 } };
-        for (const p of _allPicksRaw) {
-          const mv = _normModelV(p);
-          byModelVersion[mv].n++;
-          if (p.result === "won" || p.result === "lost") byModelVersion[mv].finalized++;
-          if (p.result === "won") byModelVersion[mv].wins++;
-        }
-        for (const mv of ["v1", "v2"]) {
-          const d = byModelVersion[mv];
-          d.hitRate = d.finalized > 0 ? parseFloat((d.wins / d.finalized * 100).toFixed(1)) : null;
-        }
-        const allPicks = _calibModelFilter === "all"
-          ? _allPicksRaw
-          : _allPicksRaw.filter(p => _normModelV(p) === (_calibModelFilter === "v2" ? "v2" : "v1"));
-        const finalized = allPicks.filter(p => p.result === "won" || p.result === "lost");
-        // Group by truePct bucket
-        const _buckets = [
-          { label: "70-75", min: 70, max: 75 },
-          { label: "75-80", min: 75, max: 80 },
-          { label: "80-85", min: 80, max: 85 },
-          { label: "85-90", min: 85, max: 90 },
-          { label: "90-95", min: 90, max: 95 },
-          { label: "95+",   min: 95, max: 101 },
-        ];
-        const overall = _buckets.map(b => {
-          const inBucket = finalized.filter(p => (p.truePct ?? 0) >= b.min && (p.truePct ?? 0) < b.max);
-          const wins = inBucket.filter(p => p.result === "won").length;
-          return {
-            bucket: b.label,
-            predicted: (b.min + Math.min(b.max, 100)) / 2,
-            actual: inBucket.length > 0 ? parseFloat((wins / inBucket.length * 100).toFixed(1)) : null,
-            n: inBucket.length,
-            delta: inBucket.length > 0 ? parseFloat((wins / inBucket.length * 100 - (b.min + Math.min(b.max, 100)) / 2).toFixed(1)) : null,
-          };
-        });
-        // By sport|stat category
-        const _cats = {};
-        for (const p of finalized) {
-          const cat = `${p.sport || "?"}|${p.stat || "?"}`;
-          if (!_cats[cat]) _cats[cat] = { wins: 0, n: 0 };
-          _cats[cat].n++;
-          if (p.result === "won") _cats[cat].wins++;
-        }
-        const byCategory = Object.fromEntries(
-          Object.entries(_cats).map(([cat, d]) => [cat, {
-            hitRate: parseFloat((d.wins / d.n * 100).toFixed(1)),
-            n: d.n,
-          }])
-        );
-        // MLB strikeout-specific breakdowns for model calibration
-        const ksFinalized = finalized.filter(p => p.sport === "mlb" && p.stat === "strikeouts");
-        const _bySimScore = {};
-        for (const p of ksFinalized) {
-          const sc = p.finalSimScore ?? p.simScore;
-          if (sc == null) continue;
-          const key = String(sc);
-          if (!_bySimScore[key]) _bySimScore[key] = { wins: 0, n: 0 };
-          _bySimScore[key].n++;
-          if (p.result === "won") _bySimScore[key].wins++;
-        }
-        const bySimScore = Object.fromEntries(
-          Object.entries(_bySimScore).sort((a, b) => Number(a[0]) - Number(b[0])).map(([sc, d]) => [sc, {
-            hitRate: parseFloat((d.wins / d.n * 100).toFixed(1)), n: d.n,
-          }])
-        );
-        const _byKpctPts = {};
-        for (const p of ksFinalized) {
-          const key = String(p.kpctPts ?? "null");
-          if (!_byKpctPts[key]) _byKpctPts[key] = { wins: 0, n: 0 };
-          _byKpctPts[key].n++;
-          if (p.result === "won") _byKpctPts[key].wins++;
-        }
-        const byKpctPts = Object.fromEntries(
-          Object.entries(_byKpctPts).map(([k, d]) => [k, {
-            hitRate: parseFloat((d.wins / d.n * 100).toFixed(1)), n: d.n,
-          }])
-        );
-        const _byKTrendPts = {};
-        for (const p of ksFinalized) {
-          const key = String(p.kTrendPts ?? "null");
-          if (!_byKTrendPts[key]) _byKTrendPts[key] = { wins: 0, n: 0 };
-          _byKTrendPts[key].n++;
-          if (p.result === "won") _byKTrendPts[key].wins++;
-        }
-        const byKTrendPts = Object.fromEntries(
-          Object.entries(_byKTrendPts).map(([k, d]) => [k, {
-            hitRate: parseFloat((d.wins / d.n * 100).toFixed(1)), n: d.n,
-          }])
-        );
-        const _byStdBF = {};
-        for (const p of ksFinalized) {
-          const bf = p.stdBF ?? 0;
-          const key = bf === 0 ? "none" : bf <= 2.5 ? "low" : "high";
-          if (!_byStdBF[key]) _byStdBF[key] = { wins: 0, n: 0 };
-          _byStdBF[key].n++;
-          if (p.result === "won") _byStdBF[key].wins++;
-        }
-        const byStdBF = Object.fromEntries(
-          Object.entries(_byStdBF).map(([k, d]) => [k, {
-            hitRate: parseFloat((d.wins / d.n * 100).toFixed(1)), n: d.n,
-          }])
-        );
-        // Per-category truePct bucket breakdown (same 6 buckets as overall, filtered per sport|stat)
-        const _byCatDetail = {};
-        for (const p of finalized) {
-          const cat = `${p.sport || "?"}|${p.stat || "?"}`;
-          const b = _buckets.find(bk => (p.truePct ?? 0) >= bk.min && (p.truePct ?? 0) < bk.max);
-          if (!b) continue;
-          if (!_byCatDetail[cat]) _byCatDetail[cat] = {};
-          if (!_byCatDetail[cat][b.label]) _byCatDetail[cat][b.label] = { wins: 0, n: 0 };
-          _byCatDetail[cat][b.label].n++;
-          if (p.result === "won") _byCatDetail[cat][b.label].wins++;
-        }
-        const byCategoryDetail = Object.fromEntries(
-          Object.entries(_byCatDetail).map(([cat, buckets]) => [cat,
-            _buckets.map(b => {
-              const d = buckets[b.label] || { wins: 0, n: 0 };
-              const predicted = (b.min + Math.min(b.max, 100)) / 2;
-              const actual = d.n > 0 ? parseFloat((d.wins / d.n * 100).toFixed(1)) : null;
-              return { bucket: b.label, predicted, actual, n: d.n, delta: actual != null ? parseFloat((actual - predicted).toFixed(1)) : null };
-            })
-          ])
-        );
-        return jsonResponse({ totalPicks: allPicks.length, finalizedPicks: finalized.length, overall, byCategory, byCategoryDetail, byModelVersion, modelFilter: _calibModelFilter, kStrikeouts: { bySimScore, byKpctPts, byKTrendPts, byStdBF, n: ksFinalized.length } });
-      } else if (path === "auth/reset" && method === "POST") {
-        const { email, newPassword, adminKey } = await request.json();
-        if (adminKey !== env?.ADMIN_KEY) return errorResponse("Forbidden", 403);
-        if (!email || !newPassword) return errorResponse("Email and newPassword required", 400);
-        const emailKey = `user:${email.toLowerCase()}`;
-        const userStr = await CACHE2.get(emailKey);
-        if (!userStr) return errorResponse("Account not found", 404);
-        const user = JSON.parse(userStr);
-        const newSalt = crypto.randomUUID();
-        const newHash = await pbkdf2Hash(newPassword, newSalt);
-        await CACHE2.put(emailKey, JSON.stringify({ ...user, passwordHash: newHash, salt: newSalt }));
-        return jsonResponse({ ok: true });
-      } else if (path === "auth/login" && method === "POST") {
-        const { email, password } = await request.json();
-        const userStr = await CACHE2.get(`user:${email.toLowerCase()}`);
-        if (!userStr) return errorResponse("Invalid credentials", 401);
-        const user = JSON.parse(userStr);
-        const hash = await pbkdf2Hash(password, user.salt);
-        if (hash !== user.passwordHash) return errorResponse("Invalid credentials", 401);
-        const token = await makeJWT({ userId: user.id, email: user.email, exp: Date.now() + 365 * 24 * 60 * 60 * 1e3 }, JWT_SECRET);
-        return jsonResponse({ token, userId: user.id, email: user.email });
-      } else if (path === "user/picks" && method === "GET") {
-        const token = (request.headers.get("Authorization") || "").replace("Bearer ", "");
-        const payload = await verifyJWT(token, JWT_SECRET);
-        if (!payload) return errorResponse("Unauthorized", 401);
-        const data = await CACHE2.get(`picks:${payload.userId}`, "json");
-        return jsonResponse(data || { picks: [], bankroll: 1e3 });
-      } else if (path === "user/picks" && method === "POST") {
-        const token = (request.headers.get("Authorization") || "").replace("Bearer ", "");
-        const payload = await verifyJWT(token, JWT_SECRET);
-        if (!payload) return errorResponse("Unauthorized", 401);
-        const body = await request.json();
-        // Two body shapes accepted:
-        //   Legacy:  { picks: [...all], bankroll }                  — full overwrite
-        //   Delta:   { upserts: [pick,...], deletes: [id,...], bankroll }  — incremental
-        // Legacy is retained so any cached old-JS client during a deploy still works.
-        if (Array.isArray(body.picks)) {
-          await CACHE2.put(`picks:${payload.userId}`, JSON.stringify({
-            picks: body.picks,
-            bankroll: body.bankroll != null ? body.bankroll : 1e3,
-          }));
-          return jsonResponse({ ok: true, count: body.picks.length });
-        }
-        const existing = (await CACHE2.get(`picks:${payload.userId}`, "json")) || { picks: [], bankroll: 1e3 };
-        const upserts = (Array.isArray(body.upserts) ? body.upserts : []).filter(p => p && p.id);
-        const deletes = new Set(Array.isArray(body.deletes) ? body.deletes : []);
-        const upsertMap = new Map(upserts.map(p => [p.id, p]));
-        const kept = (existing.picks || []).filter(p => !deletes.has(p.id) && !upsertMap.has(p.id));
-        const picks = [...kept, ...upserts];
-        const bankroll = body.bankroll != null ? body.bankroll : (existing.bankroll != null ? existing.bankroll : 1e3);
-        await CACHE2.put(`picks:${payload.userId}`, JSON.stringify({ picks, bankroll }));
-        return jsonResponse({ ok: true, count: picks.length });
       } else if (path === "headshot") {
         const hsId = params.get("id");
         const hsLeague = params.get("sport") || "nba";
