@@ -17,9 +17,10 @@ export const DC_GATE = (sport, gameType) => {
     return 10;
   }
   if (gameType === "ml") {
-    // MLB-only in v1; match the MLB game-total strictness (10) since ML reuses the same
-    // lambda inputs (FIP/ERA/WHIP/bullpen sources). Pre-game-confirmed market like totals.
-    return 10;
+    // MLB-only in v1. DC_GATE=8 (loosened from 10 on 2026-05-18) — 10 was effectively
+    // unreachable given typical lineup/source penalties even on clean ML matchups. Combined
+    // with the universal Kalshi 67-91 window, qualified ML plays remain rare by design.
+    return 8;
   }
   if (sport === "wnba" || sport === "nhl") return 8;
   return 9;
