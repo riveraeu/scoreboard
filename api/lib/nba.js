@@ -497,11 +497,11 @@ export async function buildNbaUsageRate(playerIds, cache) {
 }
 
 // C2: Fetch ESPN NBA injury report. Returns Map<teamAbbr, [{name, status}]> for "Out" players.
-// Cached at nba:injuries:{date} for 1800s (30 min).
+// Cached at nba:injuries:v2:{date} for 1800s (30 min). v2 added player IDs (2026-05-17).
 export async function buildNbaInjuryReport(cache) {
   try {
     const date = new Date().toISOString().slice(0, 10);
-    const cacheKey = `nba:injuries:${date}`;
+    const cacheKey = `nba:injuries:v2:${date}`;
     if (cache) {
       const cached = await cache.get(cacheKey, "json").catch(() => null);
       if (cached) {
@@ -529,7 +529,12 @@ export async function buildNbaInjuryReport(cache) {
         // Team abbreviation lives inside athlete.team, not teamEntry.team
         if (!abbr) abbr = inj.athlete?.team?.abbreviation || null;
         const name = inj.athlete?.displayName || "";
-        const id = inj.athlete?.id ? String(inj.athlete.id) : null;
+        // ESPN injury endpoint omits athlete.id but embeds it in the playercard link.
+        let id = null;
+        for (const lk of (inj.athlete?.links || [])) {
+          const m = (lk.href || "").match(/\/id\/(\d+)\//);
+          if (m) { id = m[1]; break; }
+        }
         if (name) outPlayers.push({ name, id, status: isOut ? "out" : "gtd" });
       }
       if (abbr && outPlayers.length) injMap[abbr] = outPlayers;

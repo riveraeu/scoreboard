@@ -152,7 +152,7 @@ export async function buildWnbaUsageRate(playerIds, cache, season = 2025) {
 export async function buildWnbaInjuryReport(cache) {
   try {
     const date = new Date().toISOString().slice(0, 10);
-    const cacheKey = `wnba:injuries:${date}`;
+    const cacheKey = `wnba:injuries:v2:${date}`;
     if (cache) {
       const cached = await cache.get(cacheKey, "json").catch(() => null);
       if (cached) {
@@ -178,7 +178,12 @@ export async function buildWnbaInjuryReport(cache) {
         if (!isOut && !isGtd) continue;
         if (!abbr) abbr = inj.athlete?.team?.abbreviation || null;
         const name = inj.athlete?.displayName || "";
-        const id = inj.athlete?.id ? String(inj.athlete.id) : null;
+        // ESPN injury endpoint omits athlete.id but embeds it in the playercard link.
+        let id = null;
+        for (const lk of (inj.athlete?.links || [])) {
+          const m = (lk.href || "").match(/\/id\/(\d+)\//);
+          if (m) { id = m[1]; break; }
+        }
         if (name) outPlayers.push({ name, id, status: isOut ? "out" : "gtd" });
       }
       if (abbr && outPlayers.length) {
