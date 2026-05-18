@@ -12,6 +12,7 @@ import { handleDvpRoutes } from "./lib/handlers/dvp.js";
 import { handleKalshiRoutes } from "./lib/handlers/kalshi.js";
 import { PT_FMT, ptDateMinusOne } from "./lib/pt.js";
 import { computeDataConfidence, DC_GATE, _GT_IMPLIED_CAP, _TT_IMPLIED_CAP } from "./lib/tonight/dc.js";
+import { applyClosingSnapshot } from "./lib/tonight/closing-odds.js";
 
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
@@ -4747,42 +4748,9 @@ var worker_default = {
           }
           mlbMetaTomorrow = { pitchers: _tmrPitchers, gameOdds: _mlbGameOddsTomorrow, umpires: _tmrUmpires, weather: {}, projectedLineupTeams: [], teamsWithLineup: [], homeTeams: _tmrHomeTeams, gameScores: {} };
         } catch { /* leave empty */ }
-        // Closing-line snapshot helper — pre writes, in/post overlays, missing snapshot clears.
-        // Same Redis-backed pattern used for MLB above; one key per sport.
-        async function _applyClosingSnapshot(snapKey, scoresMap, oddsMap) {
-          try {
-            const prev = (CACHE2 && !isBustCache) ? ((await CACHE2.get(snapKey, 'json').catch(() => null)) || {}) : {};
-            const snap = { ...prev };
-            let dirty = false;
-            for (const sc of Object.values(scoresMap || {})) {
-              const hA = sc?.homeTeam, aA = sc?.awayTeam, gD = sc?.gameDate, state = sc?.state;
-              if (!hA || !aA || !gD) continue;
-              const gK = `${hA}|${aA}|${gD}`;
-              const homeLive = oddsMap[hA];
-              const awayLive = oddsMap[aA];
-              if (state === 'pre') {
-                if ((homeLive && (homeLive.ml != null || homeLive.total != null)) ||
-                    (awayLive && (awayLive.ml != null || awayLive.total != null))) {
-                  snap[gK] = { home: homeLive ?? null, away: awayLive ?? null };
-                  dirty = true;
-                }
-              } else if (state === 'in' || state === 'post') {
-                const s = snap[gK];
-                if (s) {
-                  if (s.home) oddsMap[hA] = s.home;
-                  if (s.away) oddsMap[aA] = s.away;
-                } else {
-                  delete oddsMap[hA];
-                  delete oddsMap[aA];
-                }
-              }
-            }
-            if (dirty && CACHE2) CACHE2.put(snapKey, JSON.stringify(snap), { expirationTtl: 36 * 3600 }).catch(() => {});
-          } catch { /* non-fatal */ }
-        }
         // NBA meta: normalized game odds + injury report for matchup cards
         const _nbaGameOdds = _buildOddsMap(sportByteam.nbaGameOdds, TEAM_NORM.nba);
-        await _applyClosingSnapshot('nbaClosingOdds', sportByteam.nbaGameScores, _nbaGameOdds);
+        await applyClosingSnapshot(CACHE2, isBustCache,'nbaClosingOdds', sportByteam.nbaGameScores, _nbaGameOdds);
         const _nbaInjuries = {};
         for (const [abbr, players] of (nbaInjuryMap || new Map()).entries()) {
           // Enrich each player with avgMin from the usage map. Frontend uses this to filter
@@ -4795,7 +4763,7 @@ var worker_default = {
         const nbaMeta = { gameOdds: _nbaGameOdds, injuries: _nbaInjuries, gameScores: sportByteam.nbaGameScores ?? {}, topPlayers: sportByteam.nbaTopPlayers ?? {} };
         // WNBA meta — same shape as NBA. Canonical-only keys (CONNECTICU/DALLAS already normalized to CONN/DAL).
         const _wnbaGameOdds = _buildOddsMap(sportByteam.wnbaGameOdds, TEAM_NORM.wnba);
-        await _applyClosingSnapshot('wnbaClosingOdds', sportByteam.wnbaGameScores, _wnbaGameOdds);
+        await applyClosingSnapshot(CACHE2, isBustCache,'wnbaClosingOdds', sportByteam.wnbaGameScores, _wnbaGameOdds);
         const _wnbaInjuries = {};
         for (const [abbr, players] of (wnbaInjuryMap || new Map()).entries()) {
           // Same avgMin enrichment as NBA (frontend WNBA cutoff: avgMin >= 20 for 40-min game).
@@ -4806,7 +4774,7 @@ var worker_default = {
         }
         const wnbaMeta = { gameOdds: _wnbaGameOdds, injuries: _wnbaInjuries, gameScores: sportByteam.wnbaGameScores ?? {}, topPlayers: sportByteam.wnbaTopPlayers ?? {} };
         const _nhlGameOdds = _buildOddsMap(sportByteam.nhlGameOdds);
-        await _applyClosingSnapshot('nhlClosingOdds', sportByteam.nhlGameScores, _nhlGameOdds);
+        await applyClosingSnapshot(CACHE2, isBustCache,'nhlClosingOdds', sportByteam.nhlGameScores, _nhlGameOdds);
         const nhlMeta = { gameScores: sportByteam.nhlGameScores ?? {}, gameOdds: _nhlGameOdds, topPlayers: sportByteam.nhlTopPlayers ?? {}, injuries: sportByteam.nhl?.injuryByTeam ?? {} };
         const playsResult = { plays, nbaDropped, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta, staleKalshiSeries, modelVersion, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length };
         const sportsInPlays = new Set(plays.map((p) => p.sport));
