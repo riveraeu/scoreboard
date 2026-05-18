@@ -13,6 +13,39 @@ const KALSHI_GATE = 67;   // ~-200 American odds floor (66.67% rounded up)
 const KALSHI_CAP = 91;    // ~-1000 American odds cap (90.91% rounded up)
 const EDGE_GATE = 3;
 const SIMSCORE_GATE = 8;
+// PT date formatter — used throughout for "today's date PT" comparisons (game dates,
+// cache keys, B2B detection). Hoisted so we don't re-instantiate per request.
+const PT_FMT = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles" });
+// B2B lambda dampener constants — see docs/MODEL.md "B2B dampener". NBA/WNBA dampen own
+// offense by -2.5%; NHL boosts opp goalie factor by +5% (B2B team gives up more goals).
+// MLB plays daily; no B2B concept.
+const B2B_NBA  = 0.975;
+const B2B_WNBA = 0.975;
+const B2B_NHL  = 1.05;
+// Given a "YYYY-MM-DD" PT date, return the prior day in the same format. Returns null on
+// invalid input. Used by B2B detection to pivot off the game's date, not today's date.
+const _ptDateMinusOne = (ymd) => {
+  if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return null;
+  const [y, m, d] = ymd.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() - 1);
+  return dt.toISOString().slice(0, 10);
+};
+// Per-team B2B detection: most-recent completed event's PT date == (gameDate − 1) PT date.
+// scheduleMap caller passes either _gtScheduleMap (game total) or _ttScheduleMap (team total).
+const _isB2B = (scheduleMap, sport, team, gameDate) => {
+  const evts = scheduleMap[`${sport}:${team}`] ?? [];
+  if (!evts.length) return false;
+  const target = _ptDateMinusOne(gameDate);
+  if (!target) return false;
+  let latestDate = null;
+  for (const ev of evts) {
+    if (!ev.date) continue;
+    if (latestDate == null || ev.date > latestDate) latestDate = ev.date;
+  }
+  if (!latestDate) return false;
+  return PT_FMT.format(new Date(latestDate)) === target;
+};
 // Maximum |impliedMean − modelMean| (NBA/WNBA pts) or |impliedLambda − modelLambda| (MLB runs / NHL goals)
 // allowed in the season-hit-rate blend. Stops runaway inversions when seasonHitRate is near 0/100 at
 // far-from-line thresholds — the inversion math is brittle and double-counts signal already in the
@@ -1928,7 +1961,6 @@ var worker_default = {
               // Iterate today+tomorrow merged events so both day tabs see scheduled/finished games.
               // Key includes gameDate so today and tomorrow's same-home-team don't collide.
               const gameScores = {};
-              const _ptFmtGs = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles" });
               for (const event of sbData.eventsAll || sbData.events || []) {
                 const comp = event.competitions?.[0];
                 if (!comp) continue;
@@ -1937,7 +1969,7 @@ var worker_default = {
                 if (!homeComp || !awayComp) continue;
                 const hA = normMlbAbbr(homeComp.team?.abbreviation), awA = normMlbAbbr(awayComp.team?.abbreviation);
                 if (!hA || !awA) continue;
-                const gsDate = event.date ? _ptFmtGs.format(new Date(event.date)) : null;
+                const gsDate = event.date ? PT_FMT.format(new Date(event.date)) : null;
                 gameScores[`${hA}|${gsDate ?? ""}`] = {
                   homeTeam: hA, awayTeam: awA,
                   state: comp.status?.type?.state ?? "pre",
@@ -2125,12 +2157,11 @@ var worker_default = {
             } catch { return { sport: s, events: [] }; }
           }));
           if (needGameTimes) {
-            const _ptDateFmt = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles" });
             for (const { sport, events } of sbResults) {
               for (const ev of events) {
                 const abbrs = (ev.competitions?.[0]?.competitors || []).map(c => c.team?.abbreviation).filter(Boolean);
                 if (ev.date && abbrs.length === 2) {
-                  const ptDate = _ptDateFmt.format(new Date(ev.date));
+                  const ptDate = PT_FMT.format(new Date(ev.date));
                   for (const abbr of abbrs) {
                     const key = `${sport}:${normTeam(sport, abbr)}`;
                     const _existDt = gameTimes[`${key}:${ptDate}`];
@@ -4588,36 +4619,7 @@ var worker_default = {
           // when N >= 40 games; ramps linearly from 0 (no schedule) to 0.7.
           const _ssnBlendWeight = (sample) => Math.min(1, (sample || 0) / 40) * 0.7;
           const _nbaGtH2HRate = (ht, at, thr) => { const evts = _gtScheduleMap[`nba:${ht}`] ?? []; const h2h = evts.filter(ev => ev.comps.some(c => normTeam("nba", c.abbr) === at)).slice(-10); if (h2h.length < 3) return null; const hits = h2h.filter(ev => ev.comps.reduce((s, c) => s + (c.score || 0), 0) >= thr).length; return { rate: Math.round(hits / h2h.length * 100), games: h2h.length }; };
-          // Per-team B2B detection: most-recent completed event's PT date == (gameDate − 1) PT date.
-          // Drives the B2B lambda dampener for NBA/WNBA totals (own offense -2.5%) and NHL totals
-          // (opp goalie factor +5%, since the B2B team gives up more on the second night). MLB
-          // plays daily; concept doesn't apply. gameDate is the per-play PT date string so the
-          // "prior day" pivots correctly for both today's and tomorrow's games.
-          const _ptFmtB2B = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles" });
-          const _ptDateMinusOne = (ymd) => {
-            if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return null;
-            const [y, m, d] = ymd.split('-').map(Number);
-            const dt = new Date(Date.UTC(y, m - 1, d));
-            dt.setUTCDate(dt.getUTCDate() - 1);
-            return dt.toISOString().slice(0, 10);
-          };
-          const _isTeamB2B = (sport, team, gameDate) => {
-            const evts = _gtScheduleMap[`${sport}:${team}`] ?? [];
-            if (!evts.length) return false;
-            const target = _ptDateMinusOne(gameDate);
-            if (!target) return false;
-            // Events are pushed in order (2025 first, then 2026); find latest by date.
-            let latestDate = null;
-            for (const ev of evts) {
-              if (!ev.date) continue;
-              if (latestDate == null || ev.date > latestDate) latestDate = ev.date;
-            }
-            if (!latestDate) return false;
-            return _ptFmtB2B.format(new Date(latestDate)) === target;
-          };
-          const _B2B_NBA  = 0.975;  // own offense -2.5% on B2B (empirical: ~2-3% scoring drop)
-          const _B2B_WNBA = 0.975;  // same as NBA (shorter game but similar fatigue impact)
-          const _B2B_NHL  = 1.05;   // opp goalie factor +5% (B2B team gives up ~3-5% more goals)
+          // B2B detection + dampener constants are hoisted to module scope (see top of file).
           const _gtVolumeMap = {};
           for (const tm of totalMarkets) { const _gk = `${tm.sport}|${tm.gameTeam1}|${tm.gameTeam2}`; _gtVolumeMap[_gk] = (_gtVolumeMap[_gk] ?? 0) + (tm.kalshiVolume ?? 0); }
           for (const tm of totalMarkets) {
@@ -4770,10 +4772,10 @@ var worker_default = {
               const _homeInjAdj = _injuryOffRtgAdj(homeTeam, nbaInjuryMap, nbaUsageMap, _NBAshortNorm);
               const _awayInjAdj = _injuryOffRtgAdj(awayTeam, nbaInjuryMap, nbaUsageMap, _NBAshortNorm);
               // B2B dampener: own offense -2.5% if the team played yesterday in PT.
-              const _homeB2B = _isTeamB2B("nba", homeTeam, gameDate);
-              const _awayB2B = _isTeamB2B("nba", awayTeam, gameDate);
-              const _homeB2BFactor = _homeB2B ? _B2B_NBA : 1.0;
-              const _awayB2BFactor = _awayB2B ? _B2B_NBA : 1.0;
+              const _homeB2B = _isB2B(_gtScheduleMap, "nba", homeTeam, gameDate);
+              const _awayB2B = _isB2B(_gtScheduleMap, "nba", awayTeam, gameDate);
+              const _homeB2BFactor = _homeB2B ? B2B_NBA : 1.0;
+              const _awayB2BFactor = _awayB2B ? B2B_NBA : 1.0;
               const _hOffRtgAdj = _hOffRtg != null ? parseFloat((_hOffRtg * _homeInjAdj.adj * _homeB2BFactor).toFixed(1)) : null;
               const _aOffRtgAdj = _aOffRtg != null ? parseFloat((_aOffRtg * _awayInjAdj.adj * _awayB2BFactor).toFixed(1)) : null;
               let _homeExpRaw = null, _awayExpRaw = null, _projPace = null;
@@ -4867,10 +4869,10 @@ var worker_default = {
               // calibration parity — adjust later if WNBA-specific data shows under-correction.
               const _wHomeInjAdj = _injuryOffRtgAdj(homeTeam, wnbaInjuryMap, wnbaUsageMap);
               const _wAwayInjAdj = _injuryOffRtgAdj(awayTeam, wnbaInjuryMap, wnbaUsageMap);
-              const _wHomeB2B = _isTeamB2B("wnba", homeTeam, gameDate);
-              const _wAwayB2B = _isTeamB2B("wnba", awayTeam, gameDate);
-              const _wHomeB2BFactor = _wHomeB2B ? _B2B_WNBA : 1.0;
-              const _wAwayB2BFactor = _wAwayB2B ? _B2B_WNBA : 1.0;
+              const _wHomeB2B = _isB2B(_gtScheduleMap, "wnba", homeTeam, gameDate);
+              const _wAwayB2B = _isB2B(_gtScheduleMap, "wnba", awayTeam, gameDate);
+              const _wHomeB2BFactor = _wHomeB2B ? B2B_WNBA : 1.0;
+              const _wAwayB2BFactor = _wAwayB2B ? B2B_WNBA : 1.0;
               const _whOffRtgAdj = _whOffRtg != null ? parseFloat((_whOffRtg * _wHomeInjAdj.adj * _wHomeB2BFactor).toFixed(1)) : null;
               const _waOffRtgAdj = _waOffRtg != null ? parseFloat((_waOffRtg * _wAwayInjAdj.adj * _wAwayB2BFactor).toFixed(1)) : null;
               let _wHomeExpRaw = null, _wAwayExpRaw = null, _wProjPace = null;
@@ -4967,10 +4969,10 @@ var worker_default = {
               // B2B: a team on the second night of a B2B gives up more (goalie fatigue / backup more
               // likely). _homeFactor scales home's lambda via AWAY team's defense → if AWAY is on B2B,
               // their defense softens → _homeFactor *= 1.05 (home scores more). Vice versa for away.
-              const _nhlHomeB2B = _isTeamB2B("nhl", homeTeam, gameDate);
-              const _nhlAwayB2B = _isTeamB2B("nhl", awayTeam, gameDate);
-              const _homeFactor = _gFactor(_awayGoalie, awayGAA) * (_nhlAwayB2B ? _B2B_NHL : 1.0);
-              const _awayFactor = _gFactor(_homeGoalie, homeGAA) * (_nhlHomeB2B ? _B2B_NHL : 1.0);
+              const _nhlHomeB2B = _isB2B(_gtScheduleMap, "nhl", homeTeam, gameDate);
+              const _nhlAwayB2B = _isB2B(_gtScheduleMap, "nhl", awayTeam, gameDate);
+              const _homeFactor = _gFactor(_awayGoalie, awayGAA) * (_nhlAwayB2B ? B2B_NHL : 1.0);
+              const _awayFactor = _gFactor(_homeGoalie, homeGAA) * (_nhlHomeB2B ? B2B_NHL : 1.0);
               const _hGLRaw = homeGPG != null ? Math.max(0.5, Math.min(8, homeGPG * _homeFactor)) : null;
               const _aGLRaw = awayGPG != null ? Math.max(0.5, Math.min(8, awayGPG * _awayFactor)) : null;
               const _homeGoalieSource = _awayGoalie ? "starter" : "team";
@@ -5178,30 +5180,7 @@ var worker_default = {
             const hits = h2h.filter(ev => { const mine = ev.comps.find(c => normTeam(sport, c.abbr) === scoringTeam); return mine && mine.score >= threshold; });
             return { rate: Math.round(hits.length / h2h.length * 100), games: h2h.length };
           };
-          // B2B detection for team total (separate scope from game-total block but same logic).
-          // gameDate parameter pivots the "prior day" so tomorrow's games look at today.
-          const _ptFmtB2BTT = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles" });
-          const _ptDateMinusOneTT = (ymd) => {
-            if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return null;
-            const [y, m, d] = ymd.split('-').map(Number);
-            const dt = new Date(Date.UTC(y, m - 1, d));
-            dt.setUTCDate(dt.getUTCDate() - 1);
-            return dt.toISOString().slice(0, 10);
-          };
-          const _isTeamB2BTT = (sport, team, gameDate) => {
-            const evts = _ttScheduleMap[`${sport}:${team}`] ?? [];
-            if (!evts.length) return false;
-            const target = _ptDateMinusOneTT(gameDate);
-            if (!target) return false;
-            let latestDate = null;
-            for (const ev of evts) {
-              if (!ev.date) continue;
-              if (latestDate == null || ev.date > latestDate) latestDate = ev.date;
-            }
-            if (!latestDate) return false;
-            return _ptFmtB2BTT.format(new Date(latestDate)) === target;
-          };
-          const _B2B_NBA_TT = 0.975;
+          // B2B detection uses the module-scope _isB2B helper; team total passes _ttScheduleMap.
           const _ttVolumeMap = {};
           for (const tm of teamTotalMarkets) { const _ttgk = `${tm.sport}|${tm.gameTeam1}|${tm.gameTeam2}`; _ttVolumeMap[_ttgk] = (_ttVolumeMap[_ttgk] ?? 0) + (tm.kalshiVolume ?? 0); }
           for (const tm of teamTotalMarkets) {
@@ -5347,8 +5326,8 @@ var worker_default = {
               const oppDefRtg = (oppDefPPGNba != null && _oppPaceNba != null && _oppPaceNba > 0) ? parseFloat((oppDefPPGNba / _oppPaceNba * 100).toFixed(1)) : null;
               // Injury adjustment for scoring team's OffRtg (mirrors NBA game total).
               const _ttScoringInjAdj = _injuryOffRtgAdj(scoringTeam, nbaInjuryMap, nbaUsageMap, _NBAshortNorm);
-              const _ttScoringB2B = _isTeamB2BTT("nba", scoringTeam, gameDate);
-              const _ttScoringB2BFactor = _ttScoringB2B ? _B2B_NBA_TT : 1.0;
+              const _ttScoringB2B = _isB2B(_ttScheduleMap, "nba", scoringTeam, gameDate);
+              const _ttScoringB2BFactor = _ttScoringB2B ? B2B_NBA : 1.0;
               const _teamOffRtgAdj = teamOffRtg != null ? parseFloat((teamOffRtg * _ttScoringInjAdj.adj * _ttScoringB2BFactor).toFixed(1)) : null;
               // Simulation: OffRtg-based projection when available, fall back to PPG
               const _teamPaceNba = nbaPaceData?.teamPace?.[scoringTeam] ?? null;
@@ -5737,21 +5716,23 @@ var worker_default = {
           const losses = _mlbPitcherLosses[abbr] ?? null;
           _mlbPitchers[abbr] = { name, id, era, wins, losses };
         }
-        const _mlbGameOdds = {};
-        for (const [abbr, odds] of Object.entries(sportByteam.mlb?.gameOdds ?? {})) {
-          _mlbGameOdds[abbr] = { ml: odds.moneyline ?? null, total: odds.total ?? null, spread: odds.spread ?? null };
-        }
+        // Build {team: {ml, total, spread}} from raw gameOdds, optionally normalizing team abbrs.
+        const _buildOddsMap = (raw, normMap = null) => {
+          const out = {};
+          for (const [abbr, odds] of Object.entries(raw ?? {})) {
+            const key = normMap?.[abbr] || abbr;
+            out[key] = { ml: odds.moneyline ?? null, total: odds.total ?? null, spread: odds.spread ?? null };
+          }
+          return out;
+        };
+        const _mlbGameOdds = _buildOddsMap(sportByteam.mlb?.gameOdds);
         // Tomorrow's gameOdds from ESPN scoreboard (sb1.events parsed at the byteam build site).
-        const _mlbGameOddsTomorrow = {};
-        for (const [abbr, odds] of Object.entries(sportByteam.mlb?.gameOddsTomorrow ?? {})) {
-          _mlbGameOddsTomorrow[abbr] = { ml: odds.moneyline ?? null, total: odds.total ?? null, spread: odds.spread ?? null };
-        }
+        const _mlbGameOddsTomorrow = _buildOddsMap(sportByteam.mlb?.gameOddsTomorrow);
         // Kalshi-derived fallback for MLB game ML + total. ESPN doesn't post tomorrow's lines
         // until close to first pitch; Kalshi's KXMLBGAME / KXMLBTOTAL markets are priced earlier.
         // We fill only missing fields so ESPN remains authoritative once it has data.
         try {
-          const _kPtFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' });
-          const _kGameDate = (m) => m?.expected_expiration_time ? _kPtFmt.format(new Date(m.expected_expiration_time)) : null;
+          const _kGameDate = (m) => m?.expected_expiration_time ? PT_FMT.format(new Date(m.expected_expiration_time)) : null;
           const _kImpliedProb = (m) => {
             const a = parseFloat(m.yes_ask_dollars) || 0;
             const l = parseFloat(m.last_price_dollars) || 0;
@@ -6002,11 +5983,7 @@ var worker_default = {
         }
         // NBA meta: normalized game odds + injury report for matchup cards
         const _nbaOddsNorm = { GS: "GSW", SA: "SAS", NY: "NYK", NJ: "BKN", NO: "NOP", PHO: "PHX", WPH: "PHX" };
-        const _nbaGameOdds = {};
-        for (const [abbr, odds] of Object.entries(sportByteam.nbaGameOdds ?? {})) {
-          const key = _nbaOddsNorm[abbr] || abbr;
-          _nbaGameOdds[key] = { ml: odds.moneyline ?? null, total: odds.total ?? null, spread: odds.spread ?? null };
-        }
+        const _nbaGameOdds = _buildOddsMap(sportByteam.nbaGameOdds, _nbaOddsNorm);
         await _applyClosingSnapshot('nbaClosingOdds', sportByteam.nbaGameScores, _nbaGameOdds);
         const _nbaInjuries = {};
         for (const [abbr, players] of (nbaInjuryMap || new Map()).entries()) {
@@ -6019,11 +5996,7 @@ var worker_default = {
         }
         const nbaMeta = { gameOdds: _nbaGameOdds, injuries: _nbaInjuries, gameScores: sportByteam.nbaGameScores ?? {}, topPlayers: sportByteam.nbaTopPlayers ?? {} };
         // WNBA meta — same shape as NBA. Canonical-only keys (CONNECTICU/DALLAS already normalized to CONN/DAL).
-        const _wnbaGameOdds = {};
-        for (const [abbr, odds] of Object.entries(sportByteam.wnbaGameOdds ?? {})) {
-          const key = TEAM_NORM.wnba[abbr] || abbr;
-          _wnbaGameOdds[key] = { ml: odds.moneyline ?? null, total: odds.total ?? null, spread: odds.spread ?? null };
-        }
+        const _wnbaGameOdds = _buildOddsMap(sportByteam.wnbaGameOdds, TEAM_NORM.wnba);
         await _applyClosingSnapshot('wnbaClosingOdds', sportByteam.wnbaGameScores, _wnbaGameOdds);
         const _wnbaInjuries = {};
         for (const [abbr, players] of (wnbaInjuryMap || new Map()).entries()) {
@@ -6034,10 +6007,7 @@ var worker_default = {
           _wnbaInjuries[abbr] = enriched;
         }
         const wnbaMeta = { gameOdds: _wnbaGameOdds, injuries: _wnbaInjuries, gameScores: sportByteam.wnbaGameScores ?? {}, topPlayers: sportByteam.wnbaTopPlayers ?? {} };
-        const _nhlGameOdds = {};
-        for (const [abbr, odds] of Object.entries(sportByteam.nhlGameOdds ?? {})) {
-          _nhlGameOdds[abbr] = { ml: odds.moneyline ?? null, total: odds.total ?? null, spread: odds.spread ?? null };
-        }
+        const _nhlGameOdds = _buildOddsMap(sportByteam.nhlGameOdds);
         await _applyClosingSnapshot('nhlClosingOdds', sportByteam.nhlGameScores, _nhlGameOdds);
         const nhlMeta = { gameScores: sportByteam.nhlGameScores ?? {}, gameOdds: _nhlGameOdds, topPlayers: sportByteam.nhlTopPlayers ?? {}, injuries: sportByteam.nhl?.injuryByTeam ?? {} };
         const playsResult = { plays, nbaDropped, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta, staleKalshiSeries, modelVersion, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length };
@@ -6067,7 +6037,7 @@ var worker_default = {
         const dateParamRaw = (params.get("date") || "").trim();
         const ptDate = dateParamRaw
           ? (dateParamRaw.length === 8 ? `${dateParamRaw.slice(0,4)}-${dateParamRaw.slice(4,6)}-${dateParamRaw.slice(6,8)}` : dateParamRaw)
-          : new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles" }).format(new Date());
+          : PT_FMT.format(new Date());
         const ptDateStr = ptDate.replace(/-/g, "");
         const SPORT_PATHS = { mlb: "baseball/mlb", nba: "basketball/nba", wnba: "basketball/wnba", nhl: "hockey/nhl" };
 
