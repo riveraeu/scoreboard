@@ -16,10 +16,12 @@ export const DC_GATE = (sport, gameType) => {
     if (sport === "wnba" || sport === "nhl") return 9;
     return 10;
   }
-  if (gameType === "ml") {
-    // MLB-only in v1. DC_GATE=8 (loosened from 10 on 2026-05-18) — 10 was effectively
-    // unreachable given typical lineup/source penalties even on clean ML matchups. Combined
-    // with the universal Kalshi 67-91 window, qualified ML plays remain rare by design.
+  if (gameType === "ml" || gameType === "spread") {
+    // MLB-only in v1 (ML 2026-05-18, spread 2026-05-18). DC_GATE=8 (loosened from 10) —
+    // 10 was effectively unreachable given typical lineup/source penalties even on clean
+    // matchups. Combined with the universal Kalshi 67-91 window, qualified ML/spread plays
+    // remain rare by design. Spread reuses the ML lambda inputs (same FIP/ERA/WHIP/bullpen
+    // sources) so the gate + penalty table mirror.
     return 8;
   }
   if (sport === "wnba" || sport === "nhl") return 8;
@@ -51,8 +53,8 @@ export function computeDataConfidence(p, ctx = {}) {
   if (p.kalshiSpread != null && p.kalshiSpread >= 5) _pen("wideSpread", 1);
 
   // ── Lineup / starter confirmation
-  if (sport === "mlb" && gameType === "ml") {
-    // ML uses the both-sides-confirmed signal (same as MLB game total). Treated identically.
+  if (sport === "mlb" && (gameType === "ml" || gameType === "spread")) {
+    // ML + spread use the both-sides-confirmed signal (same as MLB game total). Treated identically.
     const conf = p.lineupsConfirmed;
     if (conf === false) _pen("mlbLineupNotConfirmed", 3);
     else if (conf == null) _pen("mlbLineupUnknown", 3);
@@ -196,7 +198,7 @@ export function computeDataConfidence(p, ctx = {}) {
   // input to the lambda — fallback to staff-wide WHIP is a meaningful trust hit. Team
   // totals already check `oppWHIPSource`; here we cover both sides for game totals.
   // Same penalty table is applied to MLB ML since both reuse the same lambda inputs.
-  if (sport === "mlb" && (gameType === "total" || gameType === "ml")) {
+  if (sport === "mlb" && (gameType === "total" || gameType === "ml" || gameType === "spread")) {
     if (p.homeWHIPSource == null) _pen("noHomeWhipSource", 2);
     else if (p.homeWHIPSource === "team") _pen("homeWhipTeamFallback", 1);
     if (p.awayWHIPSource == null) _pen("noAwayWhipSource", 2);

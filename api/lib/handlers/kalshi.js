@@ -86,6 +86,7 @@ export async function handleKalshiRoutes(ctx) {
       "KXMLBTOTAL", "KXNBATOTAL", "KXWNBATOTAL", "KXNHLTOTAL", "KXNFLTOTAL",
       "KXMLBTEAMTOTAL", "KXNBATEAMTOTAL",
       "KXMLBGAME",
+      "KXMLBSPREAD",
     ];
     const startMs = Date.now();
     // Match /api/tonight's hot-path throttle (3 parallel / 700ms delay). Cron isn't

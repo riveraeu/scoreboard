@@ -416,6 +416,26 @@ export function mlPctFromJoint(home, away) {
   return parseFloat((wins / decided * 100).toFixed(1));
 }
 
+// P(`side` wins by more than `line` runs) from the joint Poisson draws. Used for MLB run-line /
+// spread markets where Kalshi prices "Team X wins by over Y runs" (half-integer Y). Caller
+// passes the side that's on the win-by-margin question; the YES probability is returned. NO is
+// the simple complement (1 - YES) since half-lines have no pushes. Returns null on bad inputs
+// or non-half-integer line (integer lines would require push handling we don't model in v1).
+export function spreadPctFromJoint(home, away, line, side) {
+  if (!home || !away || home.length !== away.length) return null;
+  if (line == null || line <= 0) return null;
+  if (line === Math.floor(line)) return null; // integer line → pushes possible; not supported
+  if (side !== "home" && side !== "away") return null;
+  let wins = 0;
+  const N = home.length;
+  if (side === "home") {
+    for (let i = 0; i < N; i++) if (home[i] - away[i] > line) wins++;
+  } else {
+    for (let i = 0; i < N; i++) if (away[i] - home[i] > line) wins++;
+  }
+  return parseFloat((wins / N * 100).toFixed(1));
+}
+
 // Single-team runs/goals distribution (Poisson): for MLB and NHL team totals.
 // lambda = expected runs/goals for this team. Returns Int16Array; query with totalDistPct.
 export function simulateTeamTotalDist(lambda, nSim = 10000) {

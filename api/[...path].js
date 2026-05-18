@@ -1,5 +1,5 @@
 import { ALLOWED_ORIGIN, corsHeaders, jsonResponse, errorResponse, parseGameOdds, parseGameScores, parseTopPlayers, buildSoftTeamAbbrs, buildHardTeamAbbrs, buildTeamRankMap } from "./lib/utils.js";
-import { PARK_KFACTOR, PARK_HITFACTOR, PARK_RUNFACTOR, UMPIRE_KFACTOR, log5K, poissonCDF, log5HitRate, simulateKsDist, kDistPct, buildNbaStatDist, nbaDistPct, simulateHits, simulateMLBTotalDist, simulateMLBJoint, mlPctFromJoint, simulateNBATotalDist, simulateNHLTotalDist, totalDistPct, simulateTeamTotalDist, simulateTeamPtsDist, lambdaForPoissonTail, meanForNormalTail, normCDF } from "./lib/simulate.js";
+import { PARK_KFACTOR, PARK_HITFACTOR, PARK_RUNFACTOR, UMPIRE_KFACTOR, log5K, poissonCDF, log5HitRate, simulateKsDist, kDistPct, buildNbaStatDist, nbaDistPct, simulateHits, simulateMLBTotalDist, simulateMLBJoint, mlPctFromJoint, spreadPctFromJoint, simulateNBATotalDist, simulateNHLTotalDist, totalDistPct, simulateTeamTotalDist, simulateTeamPtsDist, lambdaForPoissonTail, meanForNormalTail, normCDF } from "./lib/simulate.js";
 import { buildLineupKPct, buildBarrelPct, buildPitcherKPct, MLB_ID_TO_ABBR, buildMlbByteam } from "./lib/mlb.js";
 import { warmPlayerInfoCache, buildNbaDvpStage1, buildNbaDvpFromBettingPros, buildNbaDepthChartPos, buildNbaPaceData, buildNbaPlayerPosFromSleeper, buildNbaDvpStage3FG, buildNbaUsageRate, buildNbaInjuryReport, buildNbaByteam } from "./lib/nba.js";
 import { buildWnbaPaceData, buildWnbaUsageRate, buildWnbaInjuryReport, buildWnbaDvp, WNBA_TEAM_IDS, WNBA_ESPN_TO_CANON, WNBA_CANON_TO_ESPN, buildWnbaByteam } from "./lib/wnba.js";
@@ -339,6 +339,8 @@ var worker_default = {
           // Team totals — single team's score vs opposing defense
           KXMLBTEAMTOTAL: { sport: "mlb", league: "mlb", stat: "teamRuns",   col: "R",   gameType: "teamTotal" },
           KXNBATEAMTOTAL: { sport: "nba", league: "nba", stat: "teamPoints", col: "PTS", gameType: "teamTotal" },
+          // Spreads — MLB run-line; per-market is "Team X wins by over Y runs?", line=N-0.5 from suffix `{team}{N}`
+          KXMLBSPREAD: { sport: "mlb", league: "mlb", stat: "spread", col: "R", gameType: "spread" },
         };
         const TEAM_NORM = {
           nba: { GS: "GSW", SA: "SAS", NY: "NYK", NJ: "BKN", NO: "NOP", PHO: "PHX", WPH: "PHX", KAT: "ATL" },
@@ -393,6 +395,7 @@ var worker_default = {
         const qualifyingMarkets = [];
         const totalMarkets = []; // game total markets (pct 70–97); under plays computed from same markets
         const teamTotalMarkets = []; // single-team score markets (KXMLBTEAMTOTAL, KXNBATEAMTOTAL)
+        const spreadMarkets = []; // MLB run-line / spread markets (KXMLBSPREAD) — line = strike, marginTeam = win-by side
         const globalSeen = /* @__PURE__ */ new Set();
         for (let i = 0; i < seriesTickers.length; i++) {
           const ticker = seriesTickers[i];
@@ -477,6 +480,40 @@ var worker_default = {
               const _ttYesBid = parseFloat(m.yes_bid_dollars) || 0;
               const _ttSpread = yesAsk > 0 && _ttYesBid > 0 ? Math.round((yesAsk - _ttYesBid) * 100) : null;
               teamTotalMarkets.push({ gameType: "teamTotal", sport, stat, col, threshold, kalshiPct: pct, americanOdds: _ttAO, noKalshiPct: noPct, noKalshiAO: _ttNoAO, kalshiVolume: volume, gameTeam1, gameTeam2, scoringTeam, gameDate: _ttGameDate, kalshiSpread: _ttSpread, _ticker: m.ticker, _yesAsk: yesAsk, _noAsk: noAsk });
+              continue;
+            }
+
+            // ── Spread branch (MLB run-line: "Team X wins by over Y runs?") ──
+            // Suffix `{team}{N}` where line = strike (== N - 0.5). YES = the margin side; NO = the
+            // cover side (handled identically to totals UNDER via real no_ask, not 1 - yes_ask).
+            // Same broad gate as totals: keep if either side sits in [67,91]; emission re-gates.
+            if (cfg.gameType === "spread") {
+              if ((pct < KALSHI_GATE || pct > KALSHI_CAP) && (noPct < KALSHI_GATE || noPct > KALSHI_CAP)) continue;
+              const [gameTeam1, gameTeam2] = parseGameTeams(m.event_ticker, sport);
+              if (!gameTeam1 || !gameTeam2) continue;
+              const _spSuffix = (m.ticker || "").split("-").pop() || "";
+              const _spMatch = _spSuffix.match(/^([A-Z]+)(\d+)$/);
+              if (!_spMatch) continue;
+              const marginTeam = normTeam(sport, _spMatch[1]);
+              // Trust the parsed strike (floor_strike) as the line; suffix N is a sanity-check tier.
+              if (isNaN(strike) || strike <= 0 || strike === Math.floor(strike)) continue;
+              const dedupeKey = `spread|${sport}|${marginTeam}|${gameTeam1}|${gameTeam2}|${strike}`;
+              if (globalSeen.has(dedupeKey)) continue;
+              globalSeen.add(dedupeKey);
+              const _spAO = pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
+              const _spNoAO = noPct >= 50 ? Math.round(-(noPct / (100 - noPct)) * 100) : Math.round((100 - noPct) / noPct * 100);
+              const _spDateSeg = (m.event_ticker || "").split("-")[1] || "";
+              let _spGameDate = null;
+              if (_spDateSeg.length >= 7) {
+                const _KMON3 = { JAN: "01", FEB: "02", MAR: "03", APR: "04", MAY: "05", JUN: "06", JUL: "07", AUG: "08", SEP: "09", OCT: "10", NOV: "11", DEC: "12" };
+                const _spYr = "20" + _spDateSeg.slice(0, 2);
+                const _spMo = _KMON3[_spDateSeg.slice(2, 5).toUpperCase()];
+                const _spDy = _spDateSeg.slice(5, 7);
+                if (_spMo) _spGameDate = `${_spYr}-${_spMo}-${_spDy}`;
+              }
+              const _spYesBid = parseFloat(m.yes_bid_dollars) || 0;
+              const _spSpread = yesAsk > 0 && _spYesBid > 0 ? Math.round((yesAsk - _spYesBid) * 100) : null;
+              spreadMarkets.push({ gameType: "spread", sport, stat, col, line: strike, marginTeam, kalshiPct: pct, americanOdds: _spAO, noKalshiPct: noPct, noKalshiAO: _spNoAO, kalshiVolume: volume, gameTeam1, gameTeam2, gameDate: _spGameDate, kalshiSpread: _spSpread, _ticker: m.ticker, _yesAsk: yesAsk, _noAsk: noAsk });
               continue;
             }
 
@@ -4138,8 +4175,10 @@ var worker_default = {
             _mlbMlMarkets[`${t2}|${t1}|${info.gameDate}`] = yesPayload;
           }
         } catch { /* non-fatal — no ML plays if fetch/parse blows up */ }
+        // Shared joint Poisson cache across ML + spread emission — same `${home}|${away}` key,
+        // same 10k draws fed to both `mlPctFromJoint` and `spreadPctFromJoint`.
+        const _mlJointCache = {};
         {
-          const _mlJointCache = {};
           for (const ctx of Object.values(_mlbMlContext)) {
             const { homeTeam, awayTeam, gameDate, homeLambda, awayLambda, kalshiVolume, kalshiSpread, lowVolume, _simData } = ctx;
             if (gameDate && gameDate < cutoffStr) continue;
@@ -4183,6 +4222,71 @@ var worker_default = {
                 dropped.push({
                   gameType: "ml", sport: "mlb", stat: "ml",
                   homeTeam, awayTeam, pickTeam, oppTeam, side, gameDate,
+                  kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge,
+                  lineupsConfirmed: _lineupsConfirmed,
+                  reason: "edge_too_low",
+                  homeLambda, awayLambda,
+                  ..._simData,
+                });
+              }
+            }
+          }
+        }
+        // ── MLB spread emission (KXMLBSPREAD) ───────────────────────────────────────────────
+        // Walk parsed spreadMarkets, look up the matching _mlbMlContext (try both Kalshi-ticker
+        // orientations since gameTeam1/2 don't necessarily match ESPN home/away), pull the joint
+        // sim from _mlJointCache (shared with ML; built on demand), and emit YES (margin side)
+        // and NO (cover side) plays. Each direction has its own Kalshi market price (yes_ask /
+        // no_ask are independent books — same UNDER-pricing gotcha as totals).
+        {
+          for (const m of spreadMarkets) {
+            if (m.gameDate && m.gameDate < cutoffStr) continue;
+            const { gameTeam1, gameTeam2, gameDate, marginTeam, line, kalshiPct: yesKalshi, americanOdds: yesAO, noKalshiPct: noKalshi, noKalshiAO: noAO, kalshiVolume, kalshiSpread } = m;
+            const ctx = _mlbMlContext[`${gameTeam1}|${gameTeam2}|${gameDate}`] ?? _mlbMlContext[`${gameTeam2}|${gameTeam1}|${gameDate}`];
+            if (!ctx) continue;
+            const { homeTeam, awayTeam, homeLambda, awayLambda, _simData } = ctx;
+            if (marginTeam !== homeTeam && marginTeam !== awayTeam) continue;
+            const _mlk = `${homeTeam}|${awayTeam}`;
+            if (!_mlJointCache[_mlk]) _mlJointCache[_mlk] = simulateMLBJoint(homeLambda, awayLambda, 10000);
+            const joint = _mlJointCache[_mlk];
+            if (!joint) continue;
+            const marginSide = marginTeam === homeTeam ? "home" : "away";
+            const yesTruePct = spreadPctFromJoint(joint.home, joint.away, line, marginSide);
+            if (yesTruePct == null) continue;
+            const noTruePct = parseFloat((100 - yesTruePct).toFixed(1));
+            const _gameTime = gameTimes[`mlb:${homeTeam}:${gameDate}`] ?? gameTimes[`mlb:${awayTeam}:${gameDate}`] ?? gameTimes[`mlb:${homeTeam}`] ?? gameTimes[`mlb:${awayTeam}`] ?? null;
+            const _lineupsConfirmed = (sportByteam.mlb?.lineupSpotByName?.[homeTeam] != null && !(sportByteam.mlb?.projectedLineupTeams || []).includes(homeTeam))
+              && (sportByteam.mlb?.lineupSpotByName?.[awayTeam] != null && !(sportByteam.mlb?.projectedLineupTeams || []).includes(awayTeam));
+            // Two directions: YES (marginTeam covers `-line`), NO (other team covers `+line`).
+            for (const dir of ["yes", "no"]) {
+              const pickTeam = dir === "yes" ? marginTeam : (marginTeam === homeTeam ? awayTeam : homeTeam);
+              const oppTeam = dir === "yes" ? (marginTeam === homeTeam ? awayTeam : homeTeam) : marginTeam;
+              const pickSide = pickTeam === homeTeam ? "home" : "away";
+              const truePct = dir === "yes" ? yesTruePct : noTruePct;
+              const kalshiPct = dir === "yes" ? yesKalshi : noKalshi;
+              const americanOdds = dir === "yes" ? yesAO : noAO;
+              // Signed spread from the pick's perspective: YES picks the margin side → -line;
+              // NO picks the cover side → +line. Display: `-1.5` or `+1.5`.
+              const pickLine = dir === "yes" ? -line : line;
+              const edge = parseFloat((truePct - kalshiPct).toFixed(1));
+              const inWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
+              if (edge >= EDGE_GATE && inWindow) {
+                plays.push({
+                  gameType: "spread", sport: "mlb", stat: "spread",
+                  homeTeam, awayTeam, pickTeam, oppTeam, side: pickSide, gameDate,
+                  line, pickLine, marginTeam,
+                  kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge,
+                  totalSimScore: 0, qualified: false,
+                  kalshiVolume, kalshiSpread, lowVolume: ctx.lowVolume,
+                  gameTime: _gameTime, lineupsConfirmed: _lineupsConfirmed,
+                  homeLambda, awayLambda,
+                  ..._simData,
+                });
+              } else if (isDebug && inWindow) {
+                dropped.push({
+                  gameType: "spread", sport: "mlb", stat: "spread",
+                  homeTeam, awayTeam, pickTeam, oppTeam, side: pickSide, gameDate,
+                  line, pickLine, marginTeam,
                   kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge,
                   lineupsConfirmed: _lineupsConfirmed,
                   reason: "edge_too_low",
