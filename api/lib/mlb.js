@@ -796,7 +796,7 @@ import { PT_FMT } from "./pt.js";
 export async function buildMlbInjuryReport(cache) {
   try {
     const date = new Date().toISOString().slice(0, 10);
-    const cacheKey = `mlb:injuries:v3:${date}`;
+    const cacheKey = `mlb:injuries:v4:${date}`;
     if (cache) {
       const cached = await cache.get(cacheKey, "json").catch(() => null);
       if (cached) {
@@ -828,11 +828,13 @@ export async function buildMlbInjuryReport(cache) {
         if (!isOut && !isGtd) continue;
         // SECOND filter: stale Day-To-Day. ESPN keeps backup IF/C guys on "Day-To-Day" for weeks
         // with a far-out expectedReturn while the team plays a replacement. If returnDate is more
-        // than 5 days away, treat as long-term (already absorbed into team RPG, same as IL).
+        // than 3 days away, treat as long-term (already absorbed into team RPG, same as IL).
+        // 3-day cutoff: real day-of scratches return within 1-2 days; "DTD with 4+ day return"
+        // is effectively a soft IL stint.
         const returnDate = inj.details?.returnDate || inj.details?.expectedReturn || null;
         if (returnDate) {
           const retMs = Date.parse(returnDate);
-          if (!isNaN(retMs) && (retMs - Date.now()) > 5 * 86400 * 1000) continue;
+          if (!isNaN(retMs) && (retMs - Date.now()) > 3 * 86400 * 1000) continue;
         }
         if (!abbr) abbr = inj.athlete?.team?.abbreviation || null;
         const name = inj.athlete?.displayName || "";
