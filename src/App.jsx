@@ -1458,6 +1458,7 @@ function App() {
           abbr={teamPage.abbr} sport={teamPage.sport}
           teamPageData={teamPageData}
           tonightPlays={tonightPlays}
+          tonightLoading={tonightLoading}
           allTonightPlays={allTonightPlays}
           onBack={goBack}
           navigateToTeam={navigateToTeam}
@@ -1468,8 +1469,15 @@ function App() {
         />
       )}
 
+      {/* Player loading state — when accessed via direct URL, tonightPlays is null while the
+          initial /api/tonight fetch is in-flight. Show a centered loader (matches LineupsPage
+          pattern) instead of rendering an empty page. */}
+      {player && !teamPage && tonightLoading && !tonightPlays && (
+        <div style={{textAlign:'center',padding:52,color:'#8b949e',fontSize:13}}>Loading {player.name}…</div>
+      )}
+
       {/* Player header */}
-              {player && !teamPage && (
+              {player && !teamPage && !(tonightLoading && !tonightPlays) && (
         <div style={{marginBottom:20}}>
         <button onClick={goBack}
           style={{background:"none",border:"none",color:"#8b949e",fontSize:13,cursor:"pointer",
@@ -1523,7 +1531,7 @@ function App() {
       )}
 
       {/* Stat tabs */}
-      {player && !teamPage && (
+      {player && !teamPage && !(tonightLoading && !tonightPlays) && (
         <div style={{display:"flex",gap:6,marginBottom:18}}>
           {tabs.map(k => (
             <button key={k} onClick={() => { setActiveTab(k); setDirection("over"); setSelectedThreshold(null); }} style={{flex:1,padding:"9px 0",borderRadius:8,
@@ -1539,7 +1547,7 @@ function App() {
       )}
 
       {/* Combined chart: Season + Soft Matchup + True Probability */}
-      {player && !teamPage && (() => {
+      {player && !teamPage && !(tonightLoading && !tonightPlays) && (() => {
         const hasDvp = dvpData && perGame.length > 0 && !loading && totalGames > 0;
         const isMLB = sport === "baseball/mlb";
         const WEAK_N = 10;

@@ -120,7 +120,7 @@ function buildSimTip(play) {
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
-function TeamPage({ abbr, sport, teamPageData, tonightPlays, allTonightPlays, onBack, navigateToTeam, navigateToPlayer, trackedPlays, trackPlay, untrackPlay }) {
+function TeamPage({ abbr, sport, teamPageData, tonightPlays, tonightLoading, allTonightPlays, onBack, navigateToTeam, navigateToPlayer, trackedPlays, trackPlay, untrackPlay }) {
   const [glSort, setGlSort] = React.useState({ col:'date', dir:'desc' });
 
   const { loading, error, data } = teamPageData || {};
@@ -193,7 +193,10 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, allTonightPlays, on
     } catch {}
   }
 
-  if (loading) return (
+  // Show loading when EITHER the team data fetch is in-flight OR the global tonightPlays fetch
+  // hasn't completed (direct URL access lands here before /api/tonight returns; without this
+  // gate the threshold tabs and lambda panel render empty even though data is en route).
+  if (loading || (tonightLoading && !tonightPlays)) return (
     <div style={{textAlign:'center',padding:52,color:'#8b949e',fontSize:13}}>Loading {abbr} data…</div>
   );
   if (error) return (
