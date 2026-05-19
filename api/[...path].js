@@ -4366,6 +4366,36 @@ var worker_default = {
             return isNaN(t) || t > _nowMs;
           }));
         }
+        // Per-matchup alt-line dedup (added 2026-05-18) for game total / team total / spread.
+        // Multiple alt lines on the same matchup × direction (or for spread: same pickTeam) are
+        // strongly correlated — a single "team blowout" outcome resolves them all together. The
+        // sizing scheme treats each as independent, leading to ~3× over-exposure on one game.
+        // Keep highest-edge line per group; demoted lines move to dropped[] (debug visibility)
+        // with reason "altLineDedup". Player props are NOT deduped — alt thresholds for the same
+        // player are far less correlated (Player goes for 1 hit vs 2 hits is partially independent).
+        {
+          const _ddKey = (p) => {
+            if (p.gameType === "total") return `gt|${p.sport}|${p.homeTeam}|${p.awayTeam}|${p.gameDate}|${p.direction || 'over'}`;
+            if (p.gameType === "teamTotal") return `tt|${p.sport}|${p.scoringTeam}|${p.oppTeam}|${p.gameDate}|${p.direction || 'over'}`;
+            if (p.gameType === "spread") return `sp|${p.sport}|${p.pickTeam}|${p.oppTeam}|${p.gameDate}`;
+            return null;
+          };
+          const _bestByKey = {};
+          for (const p of plays) {
+            const k = _ddKey(p);
+            if (!k) continue;
+            if (!_bestByKey[k] || (p.edge ?? 0) > (_bestByKey[k].edge ?? 0)) _bestByKey[k] = p;
+          }
+          const _kept = [];
+          const _demoted = [];
+          for (const p of plays) {
+            const k = _ddKey(p);
+            if (!k || _bestByKey[k] === p) _kept.push(p);
+            else _demoted.push({ ...p, reason: "altLineDedup", qualified: false, dcQualified: false });
+          }
+          plays.splice(0, plays.length, ..._kept);
+          if (isDebug) dropped.push(..._demoted);
+        }
         // Mark plays whose source kalshi series fell back to per-ticker stale (or prior-bundle
         // preservation) this request. Single pass keeps the per-play push sites untouched.
         if (_staleKalshiSet.size) {
