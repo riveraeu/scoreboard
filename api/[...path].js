@@ -519,6 +519,9 @@ var worker_default = {
 
             if (pct < KALSHI_GATE) continue;
             if (pct > KALSHI_CAP) continue;
+            // HRR: only bet 1+ threshold — user never bets 2+/3+ alt lines (sub-1% baseline hit
+            // rate makes those plays speculative). Skip at parse so they don't even reach dedup.
+            if (stat === "hrr" && threshold > 1) continue;
             const raw = m.event_title || m.title || "";
             let playerName = raw.replace(/\s*:\s*\d.*$/, "").replace(/\s+(Points?|Rebounds?|Assists?|3-Pointers?|Three Pointers?|Made Threes?|Goals?|Shots on Goal|Hits?|Home Runs?|RBIs?|Strikeouts?|Total Bases?|Passing Yards?|Rushing Yards?|Receiving Yards?|Touchdowns?)\b.*/i, "").replace(/\s+Over\s+\d.*$/i, "").replace(/\s+Under\s+\d.*$/i, "").replace(/\s*\(.*\)\s*$/, "").replace(/\s*-\s*$/, "").trim();
             if (!playerName || playerName.length < 4) continue;
