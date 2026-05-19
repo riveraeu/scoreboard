@@ -796,7 +796,7 @@ import { PT_FMT } from "./pt.js";
 export async function buildMlbInjuryReport(cache) {
   try {
     const date = new Date().toISOString().slice(0, 10);
-    const cacheKey = `mlb:injuries:v2:${date}`;
+    const cacheKey = `mlb:injuries:v3:${date}`;
     if (cache) {
       const cached = await cache.get(cacheKey, "json").catch(() => null);
       if (cached) {
@@ -820,12 +820,20 @@ export async function buildMlbInjuryReport(cache) {
         // Only count FRESH absences — players whose unavailability is not already absorbed into
         // season RPG. EXCLUDES X-Day-IL stays (10-Day-IL / 15-Day-IL / 60-Day-IL): those players
         // have been replaced on the roster for weeks/months, and the team's road RPG already
-        // reflects life without them. Long-IL pitchers are similarly already off the rotation.
+        // reflects life without them.
         const isIl = statusRaw.includes("-day-il") || statusRaw.includes("60-day") || statusRaw.includes("15-day") || statusRaw.includes("10-day");
         if (isIl) continue;
         const isOut = statusRaw === "out";
         const isGtd = statusRaw === "day-to-day" || statusRaw === "questionable" || statusRaw === "doubtful" || statusRaw.includes("game-time");
         if (!isOut && !isGtd) continue;
+        // SECOND filter: stale Day-To-Day. ESPN keeps backup IF/C guys on "Day-To-Day" for weeks
+        // with a far-out expectedReturn while the team plays a replacement. If returnDate is more
+        // than 5 days away, treat as long-term (already absorbed into team RPG, same as IL).
+        const returnDate = inj.details?.returnDate || inj.details?.expectedReturn || null;
+        if (returnDate) {
+          const retMs = Date.parse(returnDate);
+          if (!isNaN(retMs) && (retMs - Date.now()) > 5 * 86400 * 1000) continue;
+        }
         if (!abbr) abbr = inj.athlete?.team?.abbreviation || null;
         const name = inj.athlete?.displayName || "";
         let id = inj.athlete?.id ? String(inj.athlete.id) : null;
