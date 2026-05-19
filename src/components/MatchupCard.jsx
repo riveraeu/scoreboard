@@ -172,9 +172,13 @@ function MatchupCard({
   const fmtMl = (ml) => (ml == null || isNaN(ml)) ? null : (ml > 0 ? `+${ml}` : `${ml}`);
   const hasOdds = oddsTotal != null || awayOdds?.ml != null || homeOdds?.ml != null;
 
-  // Play notification badge state
-  const totalPlays = (gamePlays || []).length;
-  const trackedCount = (gamePlays || []).filter(gp => (trackedPlays || []).some(tp => tp.id === gp.id)).length;
+  // Play notification badge state. Exclude synthesized-from-tracked plays from the count —
+  // those exist solely to show the user's bet in context; they shouldn't make every
+  // tracked-pick matchup register as "all tracked" (which would change the badge click from
+  // expand-card to open-picks-drawer).
+  const _realPlays = (gamePlays || []).filter(gp => !gp._synthFromTracked);
+  const totalPlays = _realPlays.length;
+  const trackedCount = _realPlays.filter(gp => (trackedPlays || []).some(tp => tp.id === gp.id)).length;
   const allTracked = totalPlays > 0 && trackedCount === totalPlays;
 
   function onPlayBadgeClick(e) {

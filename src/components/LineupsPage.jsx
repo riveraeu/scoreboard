@@ -132,6 +132,20 @@ function passesGate(p, trackedIds) {
   if (p.dcQualified !== true || (p.edge ?? 0) < EDGE_GATE) return false;
   return _passesCleanData(p);
 }
+// Mirror the server-side _ddKey from api/[...path].js so the client can decide whether a
+// given API play sits in the same dedup-group as a tracked pick (and if so, suppress it in
+// favor of the user's tracked alt).
+function _dedupKey(p) {
+  const gd = p.gameDate || '';
+  if (p.gameType === 'total') return `gt|${p.sport}|${p.homeTeam}|${p.awayTeam}|${gd}|${p.direction || 'over'}`;
+  if (p.gameType === 'teamTotal') return `tt|${p.sport}|${p.scoringTeam}|${p.oppTeam}|${gd}|${p.direction || 'over'}`;
+  if (p.gameType === 'spread') {
+    const teams = [p.pickTeam, p.oppTeam].sort().join('|');
+    return `sp|${p.sport}|${teams}|${gd}`;
+  }
+  if (!p.gameType && p.playerName && p.stat) return `pp|${p.sport}|${p.playerName}|${p.stat}|${gd}`;
+  return null;
+}
 function _matchesGame(p, game) {
   if (p.sport !== game.sport) return false;
   if (game.gameDate && p.gameDate && p.gameDate !== game.gameDate) return false;
@@ -143,20 +157,34 @@ function _matchesGame(p, game) {
   return teams.has(p.playerTeam);
 }
 function playsForGame(allPlays, game, trackedIds, trackedPlays) {
-  const apiPlays = (allPlays || []).filter(p => passesGate(p, trackedIds) && _matchesGame(p, game));
-  // Synthesize a play for any tracked pick on this matchup that wasn't in the API response
-  // (e.g. tracked LAD +1.5 today — server-side EDGE_GATE filtered it out before dedup, so it
-  // doesn't exist in plays[] for the tracked-id check to match against). The tracked pick
-  // itself has every field a play card needs (truePct/edge/kalshiPct/etc. from when tracked).
-  // Note: stored values are from track-time, not current — accept slight staleness in exchange
-  // for keeping the user's bet visible in its matchup card.
-  if (!trackedPlays) return apiPlays;
-  const apiIds = new Set(apiPlays.map(trackIdFor));
-  const extras = (trackedPlays || []).filter(p => {
-    if (apiIds.has(p.id)) return false;
-    if (!_matchesGame(p, game)) return false;
+  // Tracked dedup-keys for this matchup — any API alt that lands in the same group as a
+  // tracked pick gets suppressed (unless it IS the tracked pick). E.g. user tracked LAD +1.5,
+  // server emits LAD +2.5 as the highest-edge alt; we hide LAD +2.5 because the user already
+  // has a bet on this matchup's spread.
+  const trackedKeysForMatchup = new Set();
+  for (const tp of (trackedPlays || [])) {
+    if (!_matchesGame(tp, game)) continue;
+    const k = _dedupKey(tp);
+    if (k) trackedKeysForMatchup.add(k);
+  }
+  const apiPlays = (allPlays || []).filter(p => {
+    if (!passesGate(p, trackedIds) || !_matchesGame(p, game)) return false;
+    const k = _dedupKey(p);
+    // If this play sits in a dedup-group the user has tracked AND it's not their tracked pick,
+    // hide it — their tracked alt is shown instead.
+    if (k && trackedKeysForMatchup.has(k) && !trackedIds.has(trackIdFor(p))) return false;
     return true;
   });
+  // Synthesize a play for any tracked pick on this matchup that wasn't in the API response
+  // (e.g. tracked LAD +1.5 today — server-side EDGE_GATE filtered it out before dedup, so it
+  // doesn't exist in plays[] for the tracked-id check to match against). _synthFromTracked
+  // marker prevents the matchup-card badge "all tracked" check from firing on cards where the
+  // only plays are synthesized (which would always evaluate as all-tracked).
+  if (!trackedPlays) return apiPlays;
+  const apiIds = new Set(apiPlays.map(trackIdFor));
+  const extras = (trackedPlays || [])
+    .filter(p => !apiIds.has(p.id) && _matchesGame(p, game))
+    .map(p => ({ ...p, _synthFromTracked: true }));
   return [...apiPlays, ...extras];
 }
 
