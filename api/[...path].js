@@ -1812,9 +1812,14 @@ var worker_default = {
             // +150→8%, +200→12%, +250+→18%. Null ML (no line yet) = no adjustment.
             _earlyExitProb = _teamML == null ? 0 : _teamML >= 250 ? 0.18 : _teamML >= 200 ? 0.12 : _teamML >= 150 ? 0.08 : 0;
             // stdBF: std dev of BF per start from gamelog — same priority chain as _avgBF.
-            // Requires ≥3 NP≥30 starts in mlb.js; 0 when insufficient data → deterministic totalPA.
+            // Requires ≥3 NP≥30 starts in mlb.js; 0 when insufficient data.
             // `??` (not `||`) so a legitimately-computed 0 (consistent-BF arm) propagates instead of falling through.
-            _stdBF = _ps?.stdBF ?? _pt(sportByteam.mlb?.pitcherStdBF, "stdBF") ?? null;
+            // Final fallback: league-average ~2.5 for rookies / early-season / post-trade starters where
+            // we have skill data (kPct / CSW) + workload (avgBF) but not yet enough starts to compute
+            // variance. 2.5 is the boundary where dc.js's highStdBF penalty triggers (>2.5), so it's
+            // the most neutral value — no penalty, realistic sim variance. (Added 2026-05-19 — was
+            // null-falling-through to dc -3 noStdBF for ~50% of K plays in early season.)
+            _stdBF = _ps?.stdBF ?? _pt(sportByteam.mlb?.pitcherStdBF, "stdBF") ?? 2.5;
             // O/U total (low total = pitcher-friendly): ≤7.5 → 2pts, <10.5 → 1pt, ≥10.5 → 0pts; null → 1pt
             const _gameTotal = sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null;
             totalPts = _gameTotal == null ? 1 : _gameTotal <= 7.5 ? 2 : _gameTotal < 10.5 ? 1 : 0;
