@@ -17,9 +17,9 @@ function LineupBadge({ status, align }) {
     : 'Projected lineup — not yet official';
   return (
     <span style={{
-      display: 'inline-block', marginTop: 2, marginBottom: 4,
+      display: 'inline-block', marginTop: 0, marginBottom: 9,
       fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4,
-      background: bg, border: `1px solid ${color}`, color,
+      background: bg, color,
       whiteSpace: 'nowrap',
     }}
       title={tip}>
@@ -36,7 +36,7 @@ function InjuryBadge({ name, status }) {
   const bg = isOut ? 'rgba(248,81,73,0.12)' : 'rgba(227,179,65,0.12)';
   return (
     <span style={{
-      display: 'inline-block',
+      display: 'inline-block', marginTop: 0, marginBottom: 9,
       fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 4,
       background: bg, color,
       whiteSpace: 'nowrap',
