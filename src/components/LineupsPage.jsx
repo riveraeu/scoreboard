@@ -132,18 +132,32 @@ function passesGate(p, trackedIds) {
   if (p.dcQualified !== true || (p.edge ?? 0) < EDGE_GATE) return false;
   return _passesCleanData(p);
 }
-function playsForGame(allPlays, game, trackedIds) {
-  return (allPlays || []).filter(p => {
-    if (!passesGate(p, trackedIds)) return false;
-    if (p.sport !== game.sport) return false;
-    if (game.gameDate && p.gameDate && p.gameDate !== game.gameDate) return false;
-    const teams = new Set([game.homeTeam, game.awayTeam]);
-    if (p.gameType === 'total') return p.homeTeam === game.homeTeam && p.awayTeam === game.awayTeam;
-    if (p.gameType === 'teamTotal') return teams.has(p.scoringTeam);
-    if (p.gameType === 'ml') return p.homeTeam === game.homeTeam && p.awayTeam === game.awayTeam;
-    if (p.gameType === 'spread') return p.homeTeam === game.homeTeam && p.awayTeam === game.awayTeam;
-    return teams.has(p.playerTeam);
+function _matchesGame(p, game) {
+  if (p.sport !== game.sport) return false;
+  if (game.gameDate && p.gameDate && p.gameDate !== game.gameDate) return false;
+  const teams = new Set([game.homeTeam, game.awayTeam]);
+  if (p.gameType === 'total') return p.homeTeam === game.homeTeam && p.awayTeam === game.awayTeam;
+  if (p.gameType === 'teamTotal') return teams.has(p.scoringTeam);
+  if (p.gameType === 'ml') return p.homeTeam === game.homeTeam && p.awayTeam === game.awayTeam;
+  if (p.gameType === 'spread') return p.homeTeam === game.homeTeam && p.awayTeam === game.awayTeam;
+  return teams.has(p.playerTeam);
+}
+function playsForGame(allPlays, game, trackedIds, trackedPlays) {
+  const apiPlays = (allPlays || []).filter(p => passesGate(p, trackedIds) && _matchesGame(p, game));
+  // Synthesize a play for any tracked pick on this matchup that wasn't in the API response
+  // (e.g. tracked LAD +1.5 today — server-side EDGE_GATE filtered it out before dedup, so it
+  // doesn't exist in plays[] for the tracked-id check to match against). The tracked pick
+  // itself has every field a play card needs (truePct/edge/kalshiPct/etc. from when tracked).
+  // Note: stored values are from track-time, not current — accept slight staleness in exchange
+  // for keeping the user's bet visible in its matchup card.
+  if (!trackedPlays) return apiPlays;
+  const apiIds = new Set(apiPlays.map(trackIdFor));
+  const extras = (trackedPlays || []).filter(p => {
+    if (apiIds.has(p.id)) return false;
+    if (!_matchesGame(p, game)) return false;
+    return true;
   });
+  return [...apiPlays, ...extras];
 }
 
 function ptDate(ts) {
@@ -394,7 +408,7 @@ export default function LineupsPage({
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(480px, 100%), 1fr))', gap: 12, alignItems: 'start' }}>
               {games.map((game, i) => {
                 const isPostponed = (game.gameDetail || '').toLowerCase().includes('postpone');
-                const gPlays = isPostponed ? [] : playsForGame(allTonightPlays, game, trackedIds);
+                const gPlays = isPostponed ? [] : playsForGame(allTonightPlays, game, trackedIds, activePicks);
                 return (
                   <MatchupCard
                     key={`${sport}|${game.homeTeam}|${game.awayTeam}|${game.gameDate}|${i}`}
