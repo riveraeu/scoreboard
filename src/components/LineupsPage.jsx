@@ -111,14 +111,26 @@ function trackIdFor(p) {
   if (p.gameType === 'spread') return `spread|${p.sport}|${p.pickTeam}|${p.homeTeam}|${p.awayTeam}|${p.pickLine}|${gd}`;
   return `${p.sport || 'nba'}|${p.playerName}|${p.stat}|${p.threshold}|${gd}`;
 }
+// dc=10 OR (dc=9 with ONLY noSoftGames penalty). noSoftGames fires structurally on NBA series
+// openers — measurement gap, not a data-quality concern — so it's whitelisted. Other -1
+// penalties (modestBvPSample, lineupHeavyOut, wideSpread, lowVolume, etc.) still disqualify.
+function _passesCleanData(p) {
+  const dc = p.dataConfidence ?? 0;
+  if (dc === 10) return true;
+  if (dc === 9) {
+    const keys = Object.keys(p.dcPenalties || {});
+    if (keys.length === 1 && keys[0] === 'noSoftGames') return true;
+  }
+  return false;
+}
 function passesGate(p, trackedIds) {
   // Tracked picks always pass — keep visibility of the user's actual bet even if dedup
   // demoted it. Check this BEFORE the dedup filter so tracked alts survive.
   if (trackedIds && trackedIds.has(trackIdFor(p))) return true;
   // Server demoted this alt line in favor of a higher-edge alt — skip on home page.
   if (p._altLineDemoted === true) return false;
-  if (p.dcQualified === true && (p.edge ?? 0) >= EDGE_GATE) return true;
-  return false;
+  if (p.dcQualified !== true || (p.edge ?? 0) < EDGE_GATE) return false;
+  return _passesCleanData(p);
 }
 function playsForGame(allPlays, game, trackedIds) {
   return (allPlays || []).filter(p => {

@@ -266,7 +266,20 @@ function App() {
 
   // Qualified play filter: dcQualified=true AND edge >= 5%. v1 (SimScore-gated) was dropped
   // 2026-05-18 — SimScore is display/attribution only now. See [[project-model-version-toggle]].
-  const _qualifiedFilter = React.useCallback((p) => p.dcQualified === true && (p.edge ?? 0) >= EDGE_GATE, []);
+  // Clean-data tier: dc=10 OR (dc=9 with ONLY noSoftGames). Mirrors passesGate in LineupsPage —
+  // keep these in sync. Reduces nightly play count by ~30-40% by requiring fully clean inputs
+  // (modestBvPSample / lineupHeavyOut / lowVolume / wideSpread all disqualify); whitelisted
+  // noSoftGames is the NBA series-opener measurement gap, not a quality issue.
+  const _qualifiedFilter = React.useCallback((p) => {
+    if (p.dcQualified !== true || (p.edge ?? 0) < EDGE_GATE) return false;
+    const dc = p.dataConfidence ?? 0;
+    if (dc === 10) return true;
+    if (dc === 9) {
+      const keys = Object.keys(p.dcPenalties || {});
+      if (keys.length === 1 && keys[0] === 'noSoftGames') return true;
+    }
+    return false;
+  }, []);
   // Fetch tonight's plays on mount
   React.useEffect(() => {
     const _applyData = (data) => { const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(_qualifiedFilter)); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); if (data.mlbMeta) setMlbMeta(data.mlbMeta); if (data.mlbMetaTomorrow) setMlbMetaTomorrow(data.mlbMetaTomorrow); if (data.nbaMeta) setNbaMeta(data.nbaMeta); if (data.wnbaMeta) setWnbaMeta(data.wnbaMeta); if (data.nhlMeta) setNhlMeta(data.nhlMeta); };
