@@ -4402,7 +4402,14 @@ var worker_default = {
           const _ddKey = (p) => {
             if (p.gameType === "total") return `gt|${p.sport}|${p.homeTeam}|${p.awayTeam}|${p.gameDate}|${p.direction || 'over'}`;
             if (p.gameType === "teamTotal") return `tt|${p.sport}|${p.scoringTeam}|${p.oppTeam}|${p.gameDate}|${p.direction || 'over'}`;
-            if (p.gameType === "spread") return `sp|${p.sport}|${p.pickTeam}|${p.oppTeam}|${p.gameDate}`;
+            // Spread: matchup-symmetric key (sort teams) so BOTH sides of the same game land in
+            // the same group — keeps only the highest-edge spread pick per matchup. Both-sides
+            // qualifying happens on near-pick'em games where the model thinks each team keeps
+            // it close on the cover line; correlation risk is similar to alt-line stacking.
+            if (p.gameType === "spread") {
+              const teams = [p.pickTeam, p.oppTeam].sort().join('|');
+              return `sp|${p.sport}|${teams}|${p.gameDate}`;
+            }
             // Player props (no gameType): same player × stat across alt thresholds are sampling the
             // same underlying random variable (Tucker 1+/2+/3+ HRR draws from his HRR distribution).
             // Keep highest-edge threshold per player×stat — reverses the 2026-05-16 "see all alts"
