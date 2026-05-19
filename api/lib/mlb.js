@@ -406,6 +406,7 @@ export async function buildPitcherKPct(mlbSched) {
     }
     const LEAGUE_PITCHER_K = 0.222;
     const pitcherKPct = {}, pitcherKBBPct = {}, pitcherEra = {}, pitcherWHIP = {}, pitcherFIP = {}, pitcherHasAnchor = {};
+    const pitcherHasAnchorById = {};
     const pitcherWins = {}, pitcherLosses = {};
     // FIP constant aligns FIP onto the same numeric scale as ERA (~4.20 league baseline).
     // Slightly varies per season; 3.10 is a stable approximation for 2025–2026.
@@ -449,6 +450,7 @@ export async function buildPitcherKPct(mlbSched) {
       // A reliever-turned-starter has bf25 > 0 but gs25 = 0 — reliever K% is not a valid starter anchor.
       // Also require bf25 >= 100 to exclude injury-shortened seasons (e.g. TJ recovery with 5 starts but minimal workload)
       pitcherHasAnchor[abbr] = gs25 >= 5 && bf25 >= 100; // true = reliable 2025 starter anchor (5+ starts, 100+ BF)
+      pitcherHasAnchorById[id] = pitcherHasAnchor[abbr]; // also key by ID so pitcherStatsByName can recover overwritten pitchers
       const k26 = (s26 && bf26 > 0) ? s26.so / bf26 : null;
       const anchor = (s25 && bf25 >= 50) ? s25.so / bf25 : LEAGUE_PITCHER_K;
       const trust = Math.min(1.0, bf26 / 200);
@@ -495,9 +497,13 @@ export async function buildPitcherKPct(mlbSched) {
     const pitcherLastStartDateById = {};
     const pitcherLastStartPC = {};
     const pitcherLastStartPCById = {};
+    const pitcherGS26ById = {};
     for (const [abbr, id] of Object.entries(pitcherByTeam)) {
       const s26 = pitcherStats26[id];
-      if (s26 && s26.gs > 0) pitcherGS26[abbr] = s26.gs;
+      if (s26 && s26.gs > 0) {
+        pitcherGS26[abbr] = s26.gs;
+        pitcherGS26ById[id] = s26.gs;
+      }
     }
     // Step 1: fetch game logs (2026 for avgP/avgBF/stdBF/recentK; also 2025 for H2H hand component)
     let glFetch = [], glFetch25 = [];
@@ -708,20 +714,26 @@ export async function buildPitcherKPct(mlbSched) {
       const abbrs = Object.keys(pitcherByTeam).filter(a => pitcherByTeam[a] === id);
       if (abbrs.length > 0) {
         const a = abbrs[0]; // stats are same regardless of which abbr we pick
+        // For fields with a per-ID map, PREFER the ById lookup. The per-team maps overwrite when
+        // multiple pitchers share a team key (NYM has Senga + Manaea + Megill + McLean — last one
+        // wins). The ID-keyed map is per-pitcher so it always returns the correct value for the
+        // person we're stamping. Without this, McLean (and any pitcher who isn't "last processed"
+        // for their team) loses stdBF/gs26/hasAnchor/recentKPct/lastStart* even when their data
+        // is computed and stored — they just can't be retrieved.
         pitcherStatsByName[name] = {
-          hand: pitcherHand[a] ?? null,
+          hand: pitcherHandById[id] ?? pitcherHand[a] ?? null,
           kPct: pitcherKPct[a] ?? null,
           kbbPct: pitcherKBBPct[a] ?? null,
           era: pitcherEra[a] ?? null,
           cswPct: pitcherCSWPct[a] ?? null,
-          avgPitches: pitcherAvgPitches[a] ?? null,
-          avgBF: pitcherAvgBF[a] ?? null,
-          stdBF: pitcherStdBF[a] ?? null,
-          gs26: pitcherGS26[a] ?? null,
-          hasAnchor: pitcherHasAnchor[a] ?? null,
-          recentKPct: pitcherRecentKPct[a] ?? null,     // A1
-          lastStartDate: pitcherLastStartDate[a] ?? null, // A2
-          lastStartPC: pitcherLastStartPC[a] ?? null,    // A2
+          avgPitches: pitcherAvgPitchesById[id] ?? pitcherAvgPitches[a] ?? null,
+          avgBF: pitcherAvgBFById[id] ?? pitcherAvgBF[a] ?? null,
+          stdBF: pitcherStdBFById[id] ?? pitcherStdBF[a] ?? null,
+          gs26: pitcherGS26ById[id] ?? pitcherGS26[a] ?? null,
+          hasAnchor: pitcherHasAnchorById[id] ?? pitcherHasAnchor[a] ?? null,
+          recentKPct: pitcherRecentKPctById[id] ?? pitcherRecentKPct[a] ?? null,
+          lastStartDate: pitcherLastStartDateById[id] ?? pitcherLastStartDate[a] ?? null,
+          lastStartPC: pitcherLastStartPCById[id] ?? pitcherLastStartPC[a] ?? null,
         };
       } else if (allScheduledPitcherIds.has(id)) {
         // Overwritten pitcher — compute stats directly from raw ID-keyed data
