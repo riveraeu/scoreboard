@@ -38,7 +38,7 @@ function InjuryBadge({ name, status }) {
     <span style={{
       display: 'inline-block',
       fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 4,
-      background: bg, border: `1px solid ${color}`, color,
+      background: bg, color,
       whiteSpace: 'nowrap',
     }}
       title={isOut ? 'Out' : 'Game-time decision / day-to-day'}>
