@@ -17,7 +17,7 @@ function LineupBadge({ status, align }) {
     : 'Projected lineup — not yet official';
   return (
     <span style={{
-      display: 'inline-block', marginTop: 0, marginBottom: 9,
+      display: 'inline-block',
       fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4,
       background: bg, color,
       whiteSpace: 'nowrap',
@@ -36,7 +36,7 @@ function InjuryBadge({ name, status }) {
   const bg = isOut ? 'rgba(248,81,73,0.12)' : 'rgba(227,179,65,0.12)';
   return (
     <span style={{
-      display: 'inline-block', marginTop: 0, marginBottom: 9,
+      display: 'inline-block',
       fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 4,
       background: bg, color,
       whiteSpace: 'nowrap',
@@ -261,10 +261,12 @@ function MatchupCard({
             onClick={() => openFeature(awayFeature, awayTeam)}>
             <div style={{ minWidth: 0 }}>
               {awayFeature?.lineupStatus && (
-                <LineupBadge status={awayFeature.lineupStatus} />
+                <div style={{ marginTop: 0, marginBottom: 9 }}>
+                  <LineupBadge status={awayFeature.lineupStatus} />
+                </div>
               )}
               {awayInjury && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 2, marginBottom: 4 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 0, marginBottom: 9 }}>
                   {awayInjury.map(p => (
                     <InjuryBadge key={p.id || p.name} name={p.name} status={p.status} />
                   ))}
@@ -304,10 +306,12 @@ function MatchupCard({
             onClick={() => openFeature(homeFeature, homeTeam)}>
             <div style={{ textAlign: 'right', minWidth: 0 }}>
               {homeFeature?.lineupStatus && (
-                <LineupBadge status={homeFeature.lineupStatus} align="right" />
+                <div style={{ marginTop: 0, marginBottom: 9 }}>
+                  <LineupBadge status={homeFeature.lineupStatus} align="right" />
+                </div>
               )}
               {homeInjury && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 2, marginBottom: 4, justifyContent: 'flex-end' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 0, marginBottom: 9, justifyContent: 'flex-end' }}>
                   {homeInjury.map(p => (
                     <InjuryBadge key={p.id || p.name} name={p.name} status={p.status} />
                   ))}
