@@ -112,11 +112,12 @@ function trackIdFor(p) {
   return `${p.sport || 'nba'}|${p.playerName}|${p.stat}|${p.threshold}|${gd}`;
 }
 function passesGate(p, trackedIds) {
-  if (p.dcQualified === true && (p.edge ?? 0) >= EDGE_GATE) return true;
-  // Re-surface demoted alt lines that the user is already tracking — keeps the user's
-  // actual bet visible in the matchup card even when the dedup pass picked a different
-  // alt line. Tracked ids match the trackId convention used when the pick was added.
+  // Tracked picks always pass — keep visibility of the user's actual bet even if dedup
+  // demoted it. Check this BEFORE the dedup filter so tracked alts survive.
   if (trackedIds && trackedIds.has(trackIdFor(p))) return true;
+  // Server demoted this alt line in favor of a higher-edge alt — skip on home page.
+  if (p._altLineDemoted === true) return false;
+  if (p.dcQualified === true && (p.edge ?? 0) >= EDGE_GATE) return true;
   return false;
 }
 function playsForGame(allPlays, game, trackedIds) {

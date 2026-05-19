@@ -4421,12 +4421,12 @@ var worker_default = {
           for (const p of plays) {
             const k = _ddKey(p);
             if (!k || _bestByKey[k] === p) _kept.push(p);
-            else _demoted.push({ ...p, reason: "altLineDedup", qualified: false, dcQualified: false });
+            // Mark with `_altLineDemoted: true` — separate from dcQualified because the
+            // dataConfidence pass below overwrites dcQualified per-play and would otherwise
+            // restore the demoted alt to qualified. _altLineDemoted is the dedup-stable marker
+            // the client filter uses to exclude (unless the user has the pick tracked).
+            else _demoted.push({ ...p, reason: "altLineDedup", _altLineDemoted: true });
           }
-          // Keep demoted plays in plays[] (marked qualified/dcQualified false) so the client
-          // can re-surface them when the user has them tracked — preserves the alt line the
-          // user actually bet, even when a different alt won the dedup pass after they
-          // tracked it. Default client filters (dcQualified + edge≥5) still skip them.
           plays.splice(0, plays.length, ..._kept, ..._demoted);
           if (isDebug) dropped.push(..._demoted);
         }
