@@ -11,7 +11,7 @@ function LineupBadge({ status, align }) {
   const isPending = status === 'pending';
   const color = isConfirmed ? '#3fb950' : '#8b949e';
   const bg = isConfirmed ? 'rgba(63,185,80,0.12)' : 'rgba(139,148,158,0.10)';
-  const label = isPending ? 'Lineup TBD' : '✓ Lineup';
+  const label = isPending ? 'Lineup TBD' : isConfirmed ? 'Confirmed Lineup' : 'Projected Lineup';
   const tip = isConfirmed ? 'Lineup confirmed'
     : isPending ? 'Lineup not yet posted'
     : 'Projected lineup — not yet official';
