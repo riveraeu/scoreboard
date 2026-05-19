@@ -43,6 +43,9 @@ function App() {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState(null);
   const [activeTab, setActiveTab] = React.useState("points");
+  // Player-card per-threshold tab — null means "show default (first qualified or first available)".
+  // Reset when stat tab or direction changes (different threshold sets), or when player changes.
+  const [selectedThreshold, setSelectedThreshold] = React.useState(null);
   const [kalshiOdds, setKalshiOdds] = React.useState({});
   const [showBreakdown, setShowBreakdown] = React.useState(false);
   const [direction, setDirection] = React.useState("over"); // "over" | "under"
@@ -1523,7 +1526,7 @@ function App() {
       {player && !teamPage && (
         <div style={{display:"flex",gap:6,marginBottom:18}}>
           {tabs.map(k => (
-            <button key={k} onClick={() => { setActiveTab(k); setDirection("over"); }} style={{flex:1,padding:"9px 0",borderRadius:8,
+            <button key={k} onClick={() => { setActiveTab(k); setDirection("over"); setSelectedThreshold(null); }} style={{flex:1,padding:"9px 0",borderRadius:8,
               border:"1px solid",cursor:"pointer",fontSize:13,
               borderColor: safeTab===k?"#58a6ff":"#30363d",
               background: safeTab===k?"rgba(88,166,255,0.12)":"#161b22",
@@ -1674,15 +1677,27 @@ function App() {
               <div style={{color:"#8b949e",textAlign:"center",padding:48,fontSize:13}}>No game data found.</div>
             ) : (
               <>
-                {/* Explanation at top */}
+                {/* Explanation at top — follows the active threshold tab (selectedThreshold).
+                    Default = first qualified threshold for the stat, else lowest-numbered.
+                    Falls through when no tonight play exists for the active stat. */}
                 {showExplanation && (() => {
-                  // v2: render lambda inputs for the active tab's tonight play (if one exists).
-                  // Player card may load for players with no current play — in that case hide.
-                  const activePlay = Object.values(tonightPlayerMap).find(p => p.stat === safeTab) || null;
+                  const _hasK = Object.keys(kalshiOdds).length > 0;
+                  const _allRates = _hasK ? rates.filter(({t}) => kalshiOdds[t]) : rates;
+                  const _qm = {};
+                  for (const {t} of _allRates) {
+                    const tp = tonightPlayerMap[`${safeTab}|${t}`];
+                    _qm[t] = !!tp && tp.qualified !== false && (tp.edge ?? 0) >= EDGE_GATE;
+                  }
+                  const _defaultT = _allRates.find(({t}) => _qm[t])?.t ?? _allRates[0]?.t ?? null;
+                  const _activeT = selectedThreshold != null && _allRates.some(r => r.t === selectedThreshold)
+                    ? selectedThreshold : _defaultT;
+                  const activePlay = _activeT != null
+                    ? tonightPlayerMap[`${safeTab}|${_activeT}`]
+                    : (Object.values(tonightPlayerMap).find(p => p.stat === safeTab) || null);
                   if (!activePlay) return null;
                   return (
                     <div style={{background:"#0d1117",borderRadius:8,padding:"8px 12px",marginBottom:12}}>
-                      <InputList inputs={buildLambdaInputs(activePlay)} output={buildModelOutput(activePlay)} />
+                      <InputList inputs={buildLambdaInputs({ ...activePlay, direction })} output={buildModelOutput(activePlay)} />
                     </div>
                   );
                 })()}
@@ -1693,10 +1708,57 @@ function App() {
                   </div>
                 )}
 
-                {/* Threshold rows — filter to Kalshi thresholds when available */}
+                {/* Per-threshold tab strip — show one tab per available threshold (qualified ones
+                    marked with a green ★). Click to drill into that threshold's row + lambda inputs.
+                    Falls through to no-op when only one threshold is available. */}
+                {(() => {
+                  const hasK = Object.keys(kalshiOdds).length > 0;
+                  const tabRates = hasK ? rates.filter(({t}) => kalshiOdds[t]) : rates;
+                  if (tabRates.length <= 1) return null;
+                  const qualMap = {};
+                  for (const {t} of tabRates) {
+                    const tp = tonightPlayerMap[`${safeTab}|${t}`];
+                    qualMap[t] = !!tp && tp.qualified !== false && (tp.edge ?? 0) >= EDGE_GATE;
+                  }
+                  const defaultT = tabRates.find(({t}) => qualMap[t])?.t ?? tabRates[0]?.t ?? null;
+                  const activeT = selectedThreshold != null && tabRates.some(r => r.t === selectedThreshold)
+                    ? selectedThreshold : defaultT;
+                  return (
+                    <div style={{display:"flex",gap:4,marginBottom:14,overflowX:"auto",paddingBottom:4}}>
+                      {tabRates.map(({t}) => {
+                        const active = t === activeT;
+                        const q = qualMap[t];
+                        const label = direction === "under" ? `<${t}` : `${t}+`;
+                        return (
+                          <button key={t} onClick={() => setSelectedThreshold(t)}
+                            style={{padding:"5px 10px",borderRadius:6,
+                              border:`1px solid ${active ? "#58a6ff" : q ? "#3fb950" : "#30363d"}`,
+                              background: active ? "rgba(88,166,255,0.12)" : q ? "rgba(63,185,80,0.08)" : "#161b22",
+                              color: active ? "#58a6ff" : q ? "#3fb950" : "#8b949e",
+                              fontSize:11,fontWeight: active ? 700 : 500,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>
+                            {label}{q && !active ? " ★" : ""}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+
+                {/* Threshold rows — filter to Kalshi thresholds when available, then drill into
+                    selectedThreshold (single-row render). Lambda InputList rendered after the row. */}
                 {(() => {
                   const hasKalshi = Object.keys(kalshiOdds).length > 0;
-                  const displayRates = hasKalshi ? rates.filter(({t}) => kalshiOdds[t]) : rates;
+                  const allRates = hasKalshi ? rates.filter(({t}) => kalshiOdds[t]) : rates;
+                  // Default to first qualified threshold, fall back to first available
+                  const _qm = {};
+                  for (const {t} of allRates) {
+                    const tp = tonightPlayerMap[`${safeTab}|${t}`];
+                    _qm[t] = !!tp && tp.qualified !== false && (tp.edge ?? 0) >= EDGE_GATE;
+                  }
+                  const _defaultT = allRates.find(({t}) => _qm[t])?.t ?? allRates[0]?.t ?? null;
+                  const _activeT = selectedThreshold != null && allRates.some(r => r.t === selectedThreshold)
+                    ? selectedThreshold : _defaultT;
+                  const displayRates = allRates.filter(({t}) => t === _activeT);
                   // Pre-compute raw truePct per threshold. Track which thresholds have API truePct
                   // so the monotonicity walk doesn't let a noisy fallback value lift an API value.
                   const _rawTruePctMap = {};

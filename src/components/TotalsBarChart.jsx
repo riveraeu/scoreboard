@@ -1,6 +1,8 @@
 import React from 'react';
 import { TOTAL_THRESHOLDS, TEAM_TOTAL_THRESHOLDS } from '../lib/constants.js';
 import { tierColor } from '../lib/colors.js';
+import { buildLambdaInputs } from '../lib/lambdaInputs.js';
+import InputList from './InputList.jsx';
 
 // Universal qualification tunables — keep in sync with backend constants in api/[...path].js
 const KALSHI_GATE = 67;
@@ -39,6 +41,24 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, trackedP
     return { t, count, pct };
   });
 
+  // Default-selected threshold: first qualified one (qualified=true && edge>=EDGE_GATE) else
+  // the first threshold in the data list. Re-derives when thresholds change (e.g. switching
+  // playType from game→team or vice versa).
+  const defaultT = React.useMemo(() => {
+    const qual = thresholds.find(t => {
+      const tp = tonightTotalMap?.[t];
+      if (!tp || tp.qualified !== true) return false;
+      const e = tp.edge ?? 0;
+      return e >= EDGE_GATE;
+    });
+    return qual ?? thresholds[0] ?? null;
+  }, [thresholds.join(','), tonightTotalMap, playType]);
+  const [selectedT, setSelectedT] = React.useState(defaultT);
+  // Reset selectedT when the threshold list shifts (playType change) or default changes
+  React.useEffect(() => {
+    if (!thresholds.includes(selectedT)) setSelectedT(defaultT);
+  }, [defaultT, thresholds.join(',')]);
+
   return (
     <div>
       {/* Tab strip */}
@@ -64,7 +84,33 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, trackedP
         </div>
       )}
 
-      {data.map(({ t, count, pct }) => {
+      {/* Per-threshold tab strip — one tab per available threshold. Scrolls horizontally on
+          narrow screens. Active tab = selectedT; clicking switches the rendered row + InputList. */}
+      {thresholds.length > 1 && (
+        <div style={{ display: 'flex', gap: 4, marginBottom: 14, overflowX: 'auto', paddingBottom: 4 }}>
+          {thresholds.map(t => {
+            const tp = tonightTotalMap?.[t];
+            const tEdge = tp?.edge ?? null;
+            const tQualified = tp?.qualified === true && tEdge != null && tEdge >= EDGE_GATE;
+            const active = t === selectedT;
+            const label = isUnder ? `U${(t - 0.5).toFixed(1)}` : `O${(t - 0.5).toFixed(1)}`;
+            return (
+              <button key={t} onClick={() => setSelectedT(t)}
+                style={{
+                  padding: '5px 10px', borderRadius: 6,
+                  border: `1px solid ${active ? '#58a6ff' : tQualified ? '#3fb950' : '#30363d'}`,
+                  background: active ? 'rgba(88,166,255,0.12)' : tQualified ? 'rgba(63,185,80,0.08)' : '#161b22',
+                  color: active ? '#58a6ff' : tQualified ? '#3fb950' : '#8b949e',
+                  fontSize: 11, fontWeight: active ? 700 : 500, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
+                }}>
+                {label}{tQualified && !active ? ' ★' : ''}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {data.filter(({ t }) => t === selectedT).map(({ t, count, pct }) => {
         const tp = tonightTotalMap?.[t] ?? null;
         const lineLabel = `O${(t - 0.5).toFixed(1)}`;
 
@@ -165,6 +211,23 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, trackedP
           </div>
         );
       })}
+
+      {/* Lambda inputs for the selected threshold — replaces the old SimScore explanation.
+          Reuses the same component PlaysColumn cards render so the factor list matches what
+          users see on the home page. Empty array = no tonight play data; render nothing. */}
+      {(() => {
+        const tp = tonightTotalMap?.[selectedT];
+        if (!tp) return null;
+        const inputs = buildLambdaInputs({ ...tp, direction: isUnder ? 'under' : 'over' });
+        if (!inputs || inputs.length === 0) return null;
+        return (
+          <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid #21262d' }}>
+            <div style={{ color: '#484f58', fontSize: 9, fontWeight: 700, letterSpacing: 0.5,
+              textTransform: 'uppercase', marginBottom: 6 }}>Lambda Inputs</div>
+            <InputList inputs={inputs} />
+          </div>
+        );
+      })()}
     </div>
   );
 }
