@@ -483,34 +483,85 @@ function buildMlbSpreadInputs(p) {
   ].filter(Boolean);
 }
 
-// Dispatcher — picks the right builder per play type
+// Humanize dc penalty keys for display — keep these in sync with api/lib/tonight/dc.js.
+const _DC_LABELS = {
+  kalshiStale: 'Stale Kalshi data', lowVolume: 'Low Kalshi volume', wideSpread: 'Wide Kalshi spread',
+  mlbLineupNotConfirmed: 'MLB lineup not confirmed', mlbLineupUnknown: 'MLB lineup unknown',
+  oppLineupProjected: 'Opp lineup projected',
+  nbaLineupNotPosted: 'NBA lineup not posted', nbaBench: 'NBA bench / not starting',
+  wnbaLineupNotPosted: 'WNBA lineup not posted', wnbaBench: 'WNBA bench / not starting',
+  noStdBF: 'No std-BF data (rookie / small sample)', highStdBF: 'Volatile starter (high stdBF)',
+  tinyBvPSample: 'Tiny BvP sample (<5g)', smallBvPSample: 'Small BvP sample (<10g)', modestBvPSample: 'Modest BvP sample (<16g)',
+  noSoftGames: 'No soft-games sample',
+  noHomeWhipSource: 'No home WHIP source', homeWhipTeamFallback: 'Home WHIP = team fallback',
+  noAwayWhipSource: 'No away WHIP source', awayWhipTeamFallback: 'Away WHIP = team fallback',
+  homeBullpenTeamFallback: 'Home bullpen = team fallback', awayBullpenTeamFallback: 'Away bullpen = team fallback',
+  oppBullpenTeamFallback: 'Opp bullpen = team fallback',
+  nhlHomeGoalieTeamFallback: 'Home goalie = team GAA fallback', nhlAwayGoalieTeamFallback: 'Away goalie = team GAA fallback',
+  farFromLine: 'Far from O/U line', modestlyFromLine: 'Modestly far from O/U line',
+  seasonRateDivergent: 'Season-rate divergent (clamped)',
+  homeLineupHeavyOut: 'Home ≥2 hitters out', awayLineupHeavyOut: 'Away ≥2 hitters out',
+  scoringLineupHeavyOut: 'Scoring team ≥2 hitters out',
+  homePitcherOnIL: 'Home pitcher on IL', awayPitcherOnIL: 'Away pitcher on IL',
+  oppPitcherOnIL: 'Opp pitcher on IL',
+  playerOut: 'Player Out', playerQuestionable: 'Player questionable',
+};
+// Append dc penalty rows after the play-type-specific lambda inputs. Each penalty becomes a
+// red-tinted row showing humanized label + signed point value. Skipped when dcPenalties is
+// missing/empty. Also shows the resulting dc score + gate for context.
+function _appendDcRows(inputs, p) {
+  const pens = p?.dcPenalties || {};
+  const keys = Object.keys(pens);
+  if (!keys.length && p?.dataConfidence == null) return inputs;
+  const rows = [];
+  // Header: dc score + gate
+  if (p?.dataConfidence != null) {
+    const dc = p.dataConfidence;
+    const gate = p.dcGate ?? null;
+    const dcColor = dc >= 9 ? GREEN : dc >= 7 ? YELLOW : RED;
+    rows.push({ label: 'Data Confidence',
+      value: `${dc}/10${gate != null ? ` (gate ≥${gate})` : ''}`, color: dcColor });
+  }
+  for (const k of keys) {
+    const v = pens[k];
+    if (v == null || v === 0) continue;
+    rows.push({ label: _DC_LABELS[k] || k, value: `${v > 0 ? '+' : ''}${v}`, color: v < 0 ? RED : YELLOW });
+  }
+  return [...inputs, ...rows];
+}
+
+// Dispatcher — picks the right builder per play type, then appends DC penalty rows so users
+// see WHY dc dropped below the gate (and where the model is operating on shaky data).
 export function buildLambdaInputs(p) {
   const { sport, stat, gameType } = p;
+  let inputs;
   if (gameType === 'total') {
-    if (sport === 'mlb') return buildMlbTotalInputs(p);
-    if (sport === 'nba' || sport === 'wnba') return buildNbaTotalInputs(p);
-    if (sport === 'nhl') return buildNhlTotalInputs(p);
-    return [];
+    inputs = sport === 'mlb' ? buildMlbTotalInputs(p)
+      : (sport === 'nba' || sport === 'wnba') ? buildNbaTotalInputs(p)
+      : sport === 'nhl' ? buildNhlTotalInputs(p)
+      : [];
+  } else if (gameType === 'teamTotal') {
+    inputs = sport === 'mlb' ? buildMlbTeamTotalInputs(p)
+      : sport === 'nba' ? buildNbaTeamTotalInputs(p)
+      : [];
+  } else if (gameType === 'ml') {
+    inputs = sport === 'mlb' ? buildMlbMlInputs(p) : [];
+  } else if (gameType === 'spread') {
+    inputs = sport === 'mlb' ? buildMlbSpreadInputs(p) : [];
+  } else if (sport === 'mlb' && stat === 'strikeouts') {
+    inputs = buildMlbKInputs(p);
+  } else if (sport === 'mlb') {
+    inputs = buildMlbHitterInputs(p);
+  } else if (sport === 'nba') {
+    inputs = buildNbaPropInputs(p);
+  } else if (sport === 'wnba') {
+    inputs = buildWnbaPropInputs(p);
+  } else if (sport === 'nhl') {
+    inputs = buildNhlPropInputs(p);
+  } else {
+    inputs = [];
   }
-  if (gameType === 'teamTotal') {
-    if (sport === 'mlb') return buildMlbTeamTotalInputs(p);
-    if (sport === 'nba') return buildNbaTeamTotalInputs(p);
-    return [];
-  }
-  if (gameType === 'ml') {
-    if (sport === 'mlb') return buildMlbMlInputs(p);
-    return [];
-  }
-  if (gameType === 'spread') {
-    if (sport === 'mlb') return buildMlbSpreadInputs(p);
-    return [];
-  }
-  if (sport === 'mlb' && stat === 'strikeouts') return buildMlbKInputs(p);
-  if (sport === 'mlb') return buildMlbHitterInputs(p);
-  if (sport === 'nba') return buildNbaPropInputs(p);
-  if (sport === 'wnba') return buildWnbaPropInputs(p);
-  if (sport === 'nhl') return buildNhlPropInputs(p);
-  return [];
+  return _appendDcRows(inputs, p);
 }
 
 // Model output mini-section — expected value + sigma (if Normal) + final probability.

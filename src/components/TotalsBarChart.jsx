@@ -86,7 +86,10 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, extraAlt
       )}
 
       {/* Per-threshold tab strip — one tab per available threshold. Scrolls horizontally on
-          narrow screens. Active tab = selectedT; clicking switches the rendered row + InputList. */}
+          narrow screens. Active tab = selectedT; clicking switches the rendered row + InputList.
+          Qualified thresholds show inline edge + a star to track/untrack from the tab (avoids
+          the click-into-tab-then-click-star two-step). Star uses stopPropagation so clicking it
+          doesn't also switch the tab. */}
       {thresholds.length > 1 && (
         <div style={{ display: 'flex', gap: 4, marginBottom: 14, overflowX: 'auto', paddingBottom: 4 }}>
           {thresholds.map(t => {
@@ -95,17 +98,46 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, extraAlt
             const tQualified = tp?.qualified === true && tEdge != null && tEdge >= EDGE_GATE;
             const active = t === selectedT;
             const label = isUnder ? `U${(t - 0.5).toFixed(1)}` : `O${(t - 0.5).toFixed(1)}`;
+            // Per-threshold trackId — mirrors the row-level logic below for consistent pick-id.
+            let _trackId = null, _isTrackedTab = false;
+            if (tp && tQualified) {
+              const _gameType = tp.gameType ?? 'total';
+              const _isUnderPlay = tp.direction === 'under';
+              _trackId = _gameType === 'teamTotal'
+                ? `teamtotal|${tp.sport}|${tp.scoringTeam}|${tp.oppTeam}|${t}|${tp.gameDate||''}${_isUnderPlay?'|under':''}`
+                : `total|${tp.sport}|${tp.homeTeam}|${tp.awayTeam}|${t}|${tp.gameDate||''}${_isUnderPlay?'|under':''}`;
+              _isTrackedTab = (trackedPlays || []).some(p => p.id === _trackId);
+            }
             return (
-              <button key={t} onClick={() => setSelectedT(t)}
+              <div key={t} onClick={() => setSelectedT(t)}
                 style={{
-                  padding: '5px 10px', borderRadius: 6,
+                  display: 'flex', alignItems: 'center', gap: 5, padding: '5px 8px', borderRadius: 6,
                   border: `1px solid ${active ? '#58a6ff' : tQualified ? '#3fb950' : '#30363d'}`,
                   background: active ? 'rgba(88,166,255,0.12)' : tQualified ? 'rgba(63,185,80,0.08)' : '#161b22',
                   color: active ? '#58a6ff' : tQualified ? '#3fb950' : '#8b949e',
                   fontSize: 11, fontWeight: active ? 700 : 500, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
                 }}>
-                {label}{tQualified && !active ? ' ★' : ''}
-              </button>
+                <span>{label}</span>
+                {tQualified && tEdge != null && (
+                  <span style={{ fontSize: 10, fontWeight: 700, color: '#3fb950' }}>
+                    {tEdge >= 0 ? '+' : ''}{tEdge}%
+                  </span>
+                )}
+                {tQualified && (
+                  <button onClick={e => {
+                      e.stopPropagation();
+                      if (_isTrackedTab) onUntrack?.(_trackId);
+                      else onTrack?.({ ...tp, threshold: t });
+                    }}
+                    title={_isTrackedTab ? 'Remove pick' : 'Add to My Picks'}
+                    style={{
+                      background: _isTrackedTab ? 'rgba(227,179,65,0.18)' : 'transparent',
+                      border: `1px solid ${_isTrackedTab ? '#e3b341' : '#30363d'}`,
+                      borderRadius: 4, padding: '0 4px', cursor: 'pointer', lineHeight: 1,
+                      color: _isTrackedTab ? '#e3b341' : '#484f58', fontSize: 11,
+                    }}>{_isTrackedTab ? '★' : '☆'}</button>
+                )}
+              </div>
             );
           })}
         </div>
