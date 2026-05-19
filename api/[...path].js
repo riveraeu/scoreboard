@@ -1624,6 +1624,19 @@ var worker_default = {
             ? (sportByteam.mlb?.pitcherStatsByName?.[playerName] ?? null) : null;
           // _pt(map, field): try name-based (_ps.field) first, then team|opp key, then team key
           const _pt = (m, f) => (f != null && _ps?.[f] !== undefined ? _ps[f] : null) ?? (m?.[`${playerTeam}|${tonightOpp}`] ?? null) ?? m?.[playerTeam] ?? null;
+          // MLB lineupConfirmed signal — stat-aware:
+          //   - strikeouts (pitcher prop): opp team's batting lineup confirmed
+          //   - hrr/hits (hitter prop): OWN team's lineup confirmed AND opp pitcher known
+          //     (opp batting lineup is irrelevant — hitter faces the pitcher, not the batters)
+          // null when not MLB (other sports use their own confirmation paths).
+          const _mlbLineupConf = (() => {
+            if (sport !== "mlb") return null;
+            const _proj = sportByteam.mlb?.projectedLineupTeams || [];
+            if (stat === "strikeouts") return !_proj.includes(tonightOpp);
+            const _ownLineupConf = !_proj.includes(playerTeam);
+            const _oppPitcherKnown = sportByteam.mlb?.probables?.[tonightOpp]?.name != null;
+            return _ownLineupConf && _oppPitcherKnown;
+          })();
           // Base fields included on every drop in this loop
           const _dropBase = { playerName: playerNameDisplay || playerName, sport, stat, threshold, kalshiPct, playerTeam };
           // Manual position overrides for known depth-chart misclassifications
@@ -2699,7 +2712,7 @@ var worker_default = {
               spreadAdj,
               gameDate,
               gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}:${_tomorrowISOStr}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
-              lineupConfirmed: !(sportByteam.mlb?.projectedLineupTeams || []).includes(tonightOpp),
+              lineupConfirmed: _mlbLineupConf,
               playerStatus: null,
             };
             if (PROD_SPORTS.has(sport)) plays.push(_qualFalseBase);
@@ -2734,7 +2747,7 @@ var worker_default = {
               spreadAdj: kalshiSpread != null ? parseFloat((kalshiSpread / 2).toFixed(1)) : 0,
               gameDate,
               gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}:${_tomorrowISOStr}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
-              lineupConfirmed: !(sportByteam.mlb?.projectedLineupTeams || []).includes(tonightOpp),
+              lineupConfirmed: _mlbLineupConf,
               playerStatus: null,
             });
             continue;
@@ -2780,7 +2793,7 @@ var worker_default = {
               spreadAdj,
               gameDate,
               gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}:${_tomorrowISOStr}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
-              lineupConfirmed: !(sportByteam.mlb?.projectedLineupTeams || []).includes(tonightOpp),
+              lineupConfirmed: _mlbLineupConf,
               playerStatus: null,
             });
             continue;
@@ -2937,7 +2950,7 @@ var worker_default = {
               spreadAdj,
               gameDate,
               gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}:${_tomorrowISOStr}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
-              lineupConfirmed: !(sportByteam.mlb?.projectedLineupTeams || []).includes(tonightOpp),
+              lineupConfirmed: _mlbLineupConf,
               playerStatus: null,
             });
             continue;
@@ -3114,11 +3127,7 @@ var worker_default = {
             hitterMoneyline: sport === "mlb" && stat !== "strikeouts" ? sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null : void 0,
             gameDate,
             gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}:${_tomorrowISOStr}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
-            lineupConfirmed: sport === "mlb" ? !(
-              stat === "strikeouts"
-                ? (sportByteam.mlb?.projectedLineupTeams || []).includes(tonightOpp)
-                : (sportByteam.mlb?.projectedLineupTeams || []).includes(playerTeam)
-            ) : null,
+            lineupConfirmed: _mlbLineupConf,
             playerStatus: sport === "nba" ? (nbaPlayerStatus[String(info.id)] || null) : null,
             lineMove: lineMove ?? null,
             thinMarket: thinMarket ?? false,
