@@ -4378,18 +4378,24 @@ var worker_default = {
             return isNaN(t) || t > _nowMs;
           }));
         }
-        // Per-matchup alt-line dedup (added 2026-05-18) for game total / team total / spread.
-        // Multiple alt lines on the same matchup × direction (or for spread: same pickTeam) are
-        // strongly correlated — a single "team blowout" outcome resolves them all together. The
-        // sizing scheme treats each as independent, leading to ~3× over-exposure on one game.
-        // Keep highest-edge line per group; demoted lines move to dropped[] (debug visibility)
-        // with reason "altLineDedup". Player props are NOT deduped — alt thresholds for the same
-        // player are far less correlated (Player goes for 1 hit vs 2 hits is partially independent).
+        // Per-matchup alt-line dedup (added 2026-05-18, extended to player props 2026-05-19) for
+        // every play type that has multiple alt thresholds/lines per logical bet:
+        //   - total: same matchup × direction (correlated by game outcome)
+        //   - teamTotal: same scoring team × direction
+        //   - spread: same pickTeam × opponent
+        //   - player props: same player × stat (alt thresholds sample one distribution)
+        // ML is excluded (each side is its own play, no alt lines). Keeps highest-edge line per
+        // group; demoted lines move to dropped[] in debug mode with reason "altLineDedup".
         {
           const _ddKey = (p) => {
             if (p.gameType === "total") return `gt|${p.sport}|${p.homeTeam}|${p.awayTeam}|${p.gameDate}|${p.direction || 'over'}`;
             if (p.gameType === "teamTotal") return `tt|${p.sport}|${p.scoringTeam}|${p.oppTeam}|${p.gameDate}|${p.direction || 'over'}`;
             if (p.gameType === "spread") return `sp|${p.sport}|${p.pickTeam}|${p.oppTeam}|${p.gameDate}`;
+            // Player props (no gameType): same player × stat across alt thresholds are sampling the
+            // same underlying random variable (Tucker 1+/2+/3+ HRR draws from his HRR distribution).
+            // Keep highest-edge threshold per player×stat — reverses the 2026-05-16 "see all alts"
+            // decision since correlation is too strong to size independently.
+            if (!p.gameType && p.playerName && p.stat) return `pp|${p.sport}|${p.playerName}|${p.stat}|${p.gameDate}`;
             return null;
           };
           const _bestByKey = {};
