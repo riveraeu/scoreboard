@@ -213,12 +213,16 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, trackedP
       })}
 
       {/* Lambda inputs for the selected threshold — replaces the old SimScore explanation.
-          Reuses the same component PlaysColumn cards render so the factor list matches what
-          users see on the home page. Empty array = no tonight play data; render nothing. */}
+          Reuses the same component PlaysColumn cards render. Lambdas are per-GAME (not per-
+          threshold), so when the selected threshold has no tonight play (e.g. Kalshi doesn't
+          list O4.5 because the OVER is near-100%), fall back to any tp in the matchup map. */}
       {(() => {
-        const tp = tonightTotalMap?.[selectedT];
+        const tp = tonightTotalMap?.[selectedT]
+          ?? Object.values(tonightTotalMap || {}).find(p => p && (p.homeExpected != null || p.awayExpected != null));
         if (!tp) return null;
-        const inputs = buildLambdaInputs({ ...tp, direction: isUnder ? 'under' : 'over' });
+        // Use the play's actual direction for prop semantics; ml/spread don't have one.
+        const dirForInputs = tp.direction || (isUnder ? 'under' : 'over');
+        const inputs = buildLambdaInputs({ ...tp, direction: dirForInputs, threshold: selectedT });
         if (!inputs || inputs.length === 0) return null;
         return (
           <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid #21262d' }}>
