@@ -1,5 +1,6 @@
 // Kalshi-related endpoints + tiny meta endpoints that don't justify their own file:
 //   /api/kalshi             — player-prop market lookup
+//   /api/kalshi-totals      — all alt-line prices for a game/team total matchup (no gate)
 //   /api/kalshi-snapshot    — cron-only snapshot writer (auth: CRON_SECRET)
 //   /api/keepalive          — KV liveness ping
 //
@@ -58,6 +59,76 @@ export async function handleKalshiRoutes(ctx) {
       markets.push({ threshold, pct, americanOdds });
     }
     return jsonResponse({ markets }, 900);
+  }
+
+  if (path === "kalshi-totals") {
+    // All alt-line Kalshi prices for a single matchup × gameType — used by TeamPage to fill
+    // threshold tabs that fall OUTSIDE the universal [67, 91] /api/tonight gate (e.g. O4.5 at
+    // ~95% YES is too high to be a tradeable play but the user wants to see the price).
+    //
+    // Params: sport ∈ {mlb, nba, wnba, nhl, nfl}, awayTeam, homeTeam, gameType ∈ {total, teamTotal},
+    //         scoringTeam (required when gameType === "teamTotal").
+    // Returns: { thresholds: { N: { pct, americanOdds, noPct, noAmericanOdds, kalshiVolume } }, eventTicker }
+    // No filtering by gate — caller decides what to display.
+    const sportParam = params.get("sport") || "mlb";
+    const gtParam = params.get("gameType") || "total";
+    const awayTeam = (params.get("awayTeam") || "").toUpperCase();
+    const homeTeam = (params.get("homeTeam") || "").toUpperCase();
+    const scoringTeam = (params.get("scoringTeam") || "").toUpperCase();
+    if (!awayTeam || !homeTeam) return jsonResponse({ thresholds: {} });
+    const SERIES_TOTALS = {
+      mlb: { total: "KXMLBTOTAL", teamTotal: "KXMLBTEAMTOTAL" },
+      nba: { total: "KXNBATOTAL", teamTotal: "KXNBATEAMTOTAL" },
+      wnba: { total: "KXWNBATOTAL" },
+      nhl: { total: "KXNHLTOTAL" },
+      nfl: { total: "KXNFLTOTAL" },
+    };
+    const series = SERIES_TOTALS[sportParam]?.[gtParam];
+    if (!series) return jsonResponse({ thresholds: {} });
+    // Kalshi tickers concatenate team abbrs as `{awayHome}` OR `{homeAway}` — match either order.
+    const matchKey1 = `${awayTeam}${homeTeam}`;
+    const matchKey2 = `${homeTeam}${awayTeam}`;
+    const cacheKey = `kalshi:alts:${series}:${matchKey1}${gtParam === "teamTotal" ? `:${scoringTeam}` : ""}`;
+    if (CACHE2) {
+      const cached = await CACHE2.get(cacheKey, "json").catch(() => null);
+      if (cached) return jsonResponse(cached, 300);
+    }
+    const url = `https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=${series}&limit=1000&status=open`;
+    const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" } }).catch(() => null);
+    if (!res || !res.ok) return jsonResponse({ thresholds: {} });
+    const data = await res.json().catch(() => ({ markets: [] }));
+    const thresholds = {};
+    let eventTickerOut = null;
+    for (const m of data.markets || []) {
+      const ev = (m.event_ticker || "").toUpperCase();
+      if (!ev.includes(matchKey1) && !ev.includes(matchKey2)) continue;
+      // For team total, the per-team line suffix is `{team}{N}` — only count markets whose
+      // scoring side matches the requested team.
+      if (gtParam === "teamTotal") {
+        if (!scoringTeam) continue;
+        const suf = (m.ticker || "").split("-").pop() || "";
+        const suffixMatch = suf.match(/^([A-Z]+)(\d+)$/);
+        if (!suffixMatch || suffixMatch[1] !== scoringTeam) continue;
+      }
+      const strike = parseFloat(m.floor_strike);
+      if (isNaN(strike)) continue;
+      const threshold = Math.round(strike + 0.5);
+      const yesAsk = parseFloat(m.yes_ask_dollars) || 0;
+      const noAsk = parseFloat(m.no_ask_dollars) || 0;
+      if (yesAsk <= 0 && noAsk <= 0) continue;
+      const pct = Math.round(yesAsk * 100);
+      const noPct = noAsk > 0 ? Math.round(noAsk * 100) : (100 - pct);
+      const americanOdds = pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
+      const noAmericanOdds = noPct >= 50 ? Math.round(-(noPct / (100 - noPct)) * 100) : Math.round((100 - noPct) / noPct * 100);
+      const kalshiVolume = parseInt(m.volume_fp) || parseInt(m.volume) || 0;
+      thresholds[threshold] = { pct, americanOdds, noPct, noAmericanOdds, kalshiVolume };
+      if (!eventTickerOut) eventTickerOut = m.event_ticker;
+    }
+    const out = { thresholds, eventTicker: eventTickerOut };
+    if (CACHE2 && Object.keys(thresholds).length > 0) {
+      await CACHE2.put(cacheKey, JSON.stringify(out), { expirationTtl: 300 }).catch(() => {});
+    }
+    return jsonResponse(out, 300);
   }
 
   if (path === "kalshi-snapshot") {

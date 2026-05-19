@@ -16,7 +16,7 @@ const TAB_LABELS = {
   team_under: 'Team Under',
 };
 
-function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, trackedPlays, onTrack, onUntrack, playType, onPlayTypeChange }) {
+function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, extraAltMap, trackedPlays, onTrack, onUntrack, playType, onPlayTypeChange }) {
   const isTeamTotal = playType?.startsWith('team_') ?? false;
   const isUnder = playType?.includes('under') ?? false;
   const completed = (gameLog || []).filter(g => g.result);
@@ -31,7 +31,8 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, trackedP
     ? (TEAM_TOTAL_THRESHOLDS[sport] || [3,4,5,6,7,8])
     : (TOTAL_THRESHOLDS[sport] || [5,6,7,8,9,10]);
   const tonightKeys = Object.keys(tonightTotalMap || {}).map(Number).filter(n => !isNaN(n) && n > 0);
-  const thresholds = [...new Set([...defaultThresholds, ...tonightKeys])].sort((a, b) => a - b);
+  const altKeys = Object.keys(extraAltMap || {}).map(Number).filter(n => !isNaN(n) && n > 0);
+  const thresholds = [...new Set([...defaultThresholds, ...tonightKeys, ...altKeys])].sort((a, b) => a - b);
 
   const statField = isTeamTotal ? 'teamScore' : 'total';
   const data = thresholds.map(t => {
@@ -112,9 +113,15 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, trackedP
 
       {data.filter(({ t }) => t === selectedT).map(({ t, count, pct }) => {
         const tp = tonightTotalMap?.[t] ?? null;
+        const alt = extraAltMap?.[t] ?? null;
         const lineLabel = `O${(t - 0.5).toFixed(1)}`;
 
-        const rawKalshiPct = tp ? (isUnder ? (tp.noKalshiPct ?? tp.kalshiPct) : tp.kalshiPct) : null;
+        // Kalshi price: tonight play preferred (has full edge/qualified data), else fall back
+        // to extraAltMap which carries the raw market price for thresholds outside the [67, 91]
+        // /api/tonight gate. UNDER side uses noPct from either source.
+        const rawKalshiPct = tp
+          ? (isUnder ? (tp.noKalshiPct ?? tp.kalshiPct) : tp.kalshiPct)
+          : (alt ? (isUnder ? alt.noPct : alt.pct) : null);
         const rawModelPct  = tp ? (isUnder ? (tp.noTruePct  ?? tp.truePct)  : tp.truePct)  : null;
         const kalshiPct = rawKalshiPct ?? null;
         const modelPct  = rawModelPct  ?? null;

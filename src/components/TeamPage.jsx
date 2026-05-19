@@ -1,5 +1,5 @@
 import React from 'react';
-import { SPORT_KEY, STAT_LABEL } from '../lib/constants.js';
+import { SPORT_KEY, STAT_LABEL, WORKER } from '../lib/constants.js';
 import { tierColor } from '../lib/colors.js';
 import TotalsBarChart from './TotalsBarChart.jsx';
 import SimBadge from './SimBadge.jsx';
@@ -162,6 +162,28 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, allTonightPlays, on
   const _tMinDate = _tPool.reduce((min, p) => (p.gameDate||'') < min ? (p.gameDate||'') : min, _tPool[0]?.gameDate||'');
   const tonightPlay = _tPool.filter(p => p.gameDate === _tMinDate).sort((a,b) => (b.edge||0)-(a.edge||0))[0] ?? null;
 
+  // Fetch ALL alt-line Kalshi prices for this matchup (game total + team total) — fills tabs
+  // outside the universal [67, 91] gate that /api/tonight skips. One fetch per gameType per
+  // page load. Cached server-side 5min. altKalshi[playType] = { thresholds: { N: {pct, ...} } }.
+  const [altKalshi, setAltKalshi] = React.useState({ total: {}, teamTotal: {} });
+  React.useEffect(() => {
+    if (!tonightPlay || !tonightPlay.homeTeam || !tonightPlay.awayTeam) return;
+    const { homeTeam, awayTeam } = tonightPlay;
+    const params = `sport=${sport}&awayTeam=${awayTeam}&homeTeam=${homeTeam}`;
+    const fetches = [
+      fetch(`${WORKER}/kalshi-totals?${params}&gameType=total`).then(r => r.ok ? r.json() : { thresholds: {} }).catch(() => ({ thresholds: {} })),
+    ];
+    // Team total: only for sports where the series exists (MLB/NBA). Always scope to abbr.
+    if (sport === 'mlb' || sport === 'nba') {
+      fetches.push(
+        fetch(`${WORKER}/kalshi-totals?${params}&gameType=teamTotal&scoringTeam=${abbr}`).then(r => r.ok ? r.json() : { thresholds: {} }).catch(() => ({ thresholds: {} }))
+      );
+    }
+    Promise.all(fetches).then(([gt, tt]) => {
+      setAltKalshi({ total: gt?.thresholds || {}, teamTotal: tt?.thresholds || {} });
+    });
+  }, [abbr, sport, tonightPlay?.homeTeam, tonightPlay?.awayTeam, tonightPlay?.gameDate]);
+
   function handleTabChange(newType) {
     setPlayType(newType);
     try {
@@ -254,9 +276,10 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, allTonightPlays, on
       <div style={{background:'#161b22',border:'1px solid #30363d',borderRadius:12,padding:'20px 22px'}}>
 
 
-        {/* Totals bar chart — passes tab state */}
+        {/* Totals bar chart — passes tab state + alt-line Kalshi prices for tabs outside [67,91] */}
         <TotalsBarChart gameLog={gameLog} sport={sport}
           tonightTotalMap={activeTotalMap} tonightPlay={activePlay}
+          extraAltMap={_activeType.startsWith('team_') ? altKalshi.teamTotal : altKalshi.total}
           trackedPlays={trackedPlays} onTrack={trackPlay} onUntrack={untrackPlay}
           playType={_activeType} onPlayTypeChange={handleTabChange}/>
 
