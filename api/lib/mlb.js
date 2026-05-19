@@ -817,8 +817,14 @@ export async function buildMlbInjuryReport(cache) {
       let abbr = null;
       for (const inj of teamEntry.injuries || []) {
         const statusRaw = (inj.status || "").toLowerCase();
-        const isOut = statusRaw === "out" || statusRaw.includes("injured list");
-        const isGtd = statusRaw.includes("day") || statusRaw.includes("game-time") || statusRaw === "questionable" || statusRaw === "doubtful";
+        // Only count FRESH absences — players whose unavailability is not already absorbed into
+        // season RPG. EXCLUDES X-Day-IL stays (10-Day-IL / 15-Day-IL / 60-Day-IL): those players
+        // have been replaced on the roster for weeks/months, and the team's road RPG already
+        // reflects life without them. Long-IL pitchers are similarly already off the rotation.
+        const isIl = statusRaw.includes("-day-il") || statusRaw.includes("60-day") || statusRaw.includes("15-day") || statusRaw.includes("10-day");
+        if (isIl) continue;
+        const isOut = statusRaw === "out";
+        const isGtd = statusRaw === "day-to-day" || statusRaw === "questionable" || statusRaw === "doubtful" || statusRaw.includes("game-time");
         if (!isOut && !isGtd) continue;
         if (!abbr) abbr = inj.athlete?.team?.abbreviation || null;
         const name = inj.athlete?.displayName || "";
