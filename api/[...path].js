@@ -2751,6 +2751,13 @@ var worker_default = {
               pitcherKPct: pitcherKPctOut, pitcherKBBPct: pitcherKBBPctOut, pitcherRecentKPct: _recentKPct, pitcherSeasonKPct: _seasonKPct,
               pitcherAvgPitches: _avgP,
               expectedBF: _expectedBF !== 24 ? _expectedBF : null,
+              // stdBF / pitcherGS26 / pitcherHasAnchor MUST travel even on the low_confidence drop
+              // path — dataConfidence reads them and the absence triggers noStdBF -3 even though
+              // the data is computed (see project_mlbk_dc_emit_bug memory; same divergence the
+              // 2026-05-17 fix addressed for the qualified path but missed for this drop branch).
+              stdBF: _stdBF != null ? _stdBF : null,
+              pitcherGS26: sportByteam.mlb?.pitcherStatsByName?.[playerName]?.gs26 ?? sportByteam.mlb?.pitcherGS26?.[playerTeam] ?? null,
+              pitcherHasAnchor: sportByteam.mlb?.pitcherStatsByName?.[playerName]?.hasAnchor ?? sportByteam.mlb?.pitcherHasAnchor?.[playerTeam] ?? null,
               lineupKPct: lineupKPctOut,
               pitcherEra: _pitcherEraFromGl ?? _pt(sportByteam.mlb?.pitcherEra, "era") ?? null,
               pitcherHand: _pitcherHand ?? null, simPct: simPctOut,
