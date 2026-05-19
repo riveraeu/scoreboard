@@ -33,7 +33,7 @@ function LineupBadge({ status, align }) {
 function InjuryBadge({ name, status }) {
   const isOut = status === 'out';
   const color = isOut ? '#f85149' : '#e3b341';
-  const bg = isOut ? 'rgba(248,81,73,0.12)' : 'rgba(227,179,65,0.12)';
+  const bg = 'rgba(139, 148, 158, 0.1)';
   return (
     <span style={{
       display: 'inline-block',

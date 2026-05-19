@@ -15,6 +15,10 @@ function useDebounce(val, ms) {
 // Mirrors SERIES_CONFIG in api/[...path].js. WNBA has no team totals on Kalshi today.
 const TOTAL_SPORTS = ["nba", "wnba", "mlb", "nhl", "nfl"];
 const TEAM_TOTAL_SPORTS = ["nba", "mlb"];
+// ML + spread are MLB-only in v1 (KXMLBGAME + KXMLBSPREAD); other sports' ML/spread tickers
+// haven't been wired. Manual entry still allows only MLB here to match.
+const ML_SPORTS = ["mlb"];
+const SPREAD_SPORTS = ["mlb"];
 const TOTAL_STAT = { mlb: "totalRuns", nba: "totalPoints", wnba: "totalPoints", nhl: "totalGoals", nfl: "totalPoints" };
 const TEAM_TOTAL_STAT = { mlb: "teamRuns", nba: "teamPoints" };
 
@@ -35,13 +39,19 @@ function AddPickModal({ onClose, onAdd, initialOdds = "-110" }) {
   const SPORT_LABELS = { nba: "NBA", wnba: "WNBA", mlb: "MLB", nhl: "NHL", nfl: "NFL" };
   const suggestUnits = (odds) => { const o = parseInt(odds) || 0; return o <= -900 ? 5 : o <= -400 ? 4 : o <= -200 ? 3 : o <= -110 ? 2 : 1; };
 
-  // pickType: "player" | "total" | "teamTotal"
+  // pickType: "player" | "total" | "teamTotal" | "ml" | "spread"
   const [pickType, setPickType] = React.useState("player");
   const [form, setForm] = React.useState({
     playerName: "", sport: "nba", stat: "points",
-    // Single combined matchup input for both game totals ("away @ home") and team totals
-    // ("scoring vs opp"). Parsed on submit via parseMatchup().
+    // Single combined matchup input for game totals + team totals + ml + spread.
+    // For total/ml/spread: "AWAY @ HOME". For teamTotal: "SCORING vs OPP". Parsed on submit.
     matchup: "",
+    // For ml/spread: which side of the matchup is the user's pick ("away" or "home"). Tied to
+    // the parsed AWAY @ HOME order so we know which is pickTeam vs oppTeam.
+    pickSide: "away",
+    // For spread: signed line from the pick's perspective (e.g. "-1.5" = pickTeam covers -1.5,
+    // "+1.5" = pickTeam covers +1.5). Stored as `pickLine` on the saved pick.
+    pickLine: "",
     threshold: "", americanOdds: initialOdds, truePct: "",
     units: String(suggestUnits(initialOdds)),
     gameDate: new Date().toISOString().slice(0, 10),
@@ -106,6 +116,8 @@ function AddPickModal({ onClose, onAdd, initialOdds = "-110" }) {
       set("sport", "nba");
     } else if (pickType === "total" && !TOTAL_SPORTS.includes(form.sport)) {
       set("sport", "nba");
+    } else if ((pickType === "ml" || pickType === "spread") && !ML_SPORTS.includes(form.sport)) {
+      set("sport", "mlb");
     }
   }, [pickType]);
 
@@ -195,6 +207,51 @@ function AddPickModal({ onClose, onAdd, initialOdds = "-110" }) {
         threshold,
         ...common,
       });
+    } else if (pickType === "ml") {
+      const parsed = parseMatchup(form.matchup);
+      if (!parsed) return;
+      // Convention: "AWAY @ HOME" — pickSide picks which side is the user's bet.
+      const [awayTeam, homeTeam] = parsed;
+      const pickTeam = form.pickSide === "home" ? homeTeam : awayTeam;
+      const oppTeam = form.pickSide === "home" ? awayTeam : homeTeam;
+      // ML payload mirrors auto-generated plays from /api/tonight emission. No direction
+      // (ML doesn't have over/under); no threshold. `stat: "ml"` for MarketReport grouping
+      // + /api/auth/calibration bucket. Side = which side of the game we're betting.
+      const { direction: _ignored, ...mlCommon } = common;
+      onAdd({
+        gameType: "ml",
+        stat: "ml",
+        homeTeam, awayTeam, pickTeam, oppTeam,
+        side: form.pickSide,
+        ...mlCommon,
+      });
+    } else if (pickType === "spread") {
+      const pickLineNum = parseFloat(form.pickLine);
+      if (isNaN(pickLineNum) || pickLineNum === Math.floor(pickLineNum)) return; // half-lines only
+      const parsed = parseMatchup(form.matchup);
+      if (!parsed) return;
+      const [awayTeam, homeTeam] = parsed;
+      const pickTeam = form.pickSide === "home" ? homeTeam : awayTeam;
+      const oppTeam = form.pickSide === "home" ? awayTeam : homeTeam;
+      // Spread payload: line is positive (margin threshold); pickLine signed from pick's
+      // perspective (negative = margin side, positive = cover side). marginTeam is the team
+      // whose "wins by over X" Kalshi market this corresponds to — opp when pickLine<0
+      // (pickTeam covers, betting against opp's margin), pickTeam when pickLine>0 (pickTeam
+      // gets points, betting against pickTeam's own margin... no, betting AGAINST opp covering).
+      // Actually: marginTeam is always the FAVORITE side's "wins by over X" market in Kalshi.
+      // For pickLine=-1.5 (pickTeam is the margin side), marginTeam=pickTeam.
+      // For pickLine=+1.5 (pickTeam is the cover side), marginTeam=oppTeam.
+      const line = Math.abs(pickLineNum);
+      const marginTeam = pickLineNum < 0 ? pickTeam : oppTeam;
+      const { direction: _ignored, ...spreadCommon } = common;
+      onAdd({
+        gameType: "spread",
+        stat: "spread",
+        homeTeam, awayTeam, pickTeam, oppTeam,
+        side: form.pickSide,
+        line, pickLine: pickLineNum, marginTeam,
+        ...spreadCommon,
+      });
     }
     onClose();
   }
@@ -207,6 +264,8 @@ function AddPickModal({ onClose, onAdd, initialOdds = "-110" }) {
 
   const sportOptions = pickType === "teamTotal" ? TEAM_TOTAL_SPORTS
     : pickType === "total" ? TOTAL_SPORTS
+    : pickType === "ml" ? ML_SPORTS
+    : pickType === "spread" ? SPREAD_SPORTS
     : ["nba", "wnba", "mlb", "nfl", "nhl"];
 
   // Pick type toggle — uses purple to differentiate from the blue direction (Over/Under) toggle
@@ -244,10 +303,12 @@ function AddPickModal({ onClose, onAdd, initialOdds = "-110" }) {
             {/* Pick type toggle */}
             <div>
               <label style={lbl}>Pick Type</label>
-              <div style={{display:"flex",gap:6}}>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                 {typeBtn("player", "Player")}
                 {typeBtn("total", "Game Total")}
                 {typeBtn("teamTotal", "Team Total")}
+                {typeBtn("ml", "ML")}
+                {typeBtn("spread", "Spread")}
               </div>
             </div>
 
@@ -348,31 +409,81 @@ function AddPickModal({ onClose, onAdd, initialOdds = "-110" }) {
               </>
             )}
 
-            {/* Common: direction */}
-            <div>
-              <label style={lbl}>Direction</label>
-              <div style={{display:"flex",gap:6}}>
-                {[["over","Over"],["under","Under"]].map(([v,l]) => (
-                  <button key={v} type="button" onClick={() => set("direction", v)}
-                    style={{flex:1,padding:"7px 0",borderRadius:6,fontSize:12,fontWeight:600,cursor:"pointer",
-                      background: form.direction === v ? (v === "under" ? "rgba(247,129,102,0.15)" : "rgba(88,166,255,0.15)") : "#0d1117",
-                      border: `1px solid ${form.direction === v ? (v === "under" ? "#f78166" : "#58a6ff") : "#30363d"}`,
-                      color: form.direction === v ? (v === "under" ? "#f78166" : "#58a6ff") : "#8b949e"}}>
-                    {l}
-                  </button>
-                ))}
-              </div>
-            </div>
+            {/* ML + Spread fields (MLB-only in v1) */}
+            {(pickType === "ml" || pickType === "spread") && (
+              <>
+                <div>
+                  <label style={lbl}>Sport</label>
+                  <select style={inp} value={form.sport} onChange={e => set("sport", e.target.value)} autoFocus>
+                    {sportOptions.map(s => <option key={s} value={s}>{SPORT_LABELS[s]}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={lbl}>Matchup (Away @ Home)</label>
+                  <input style={inp} placeholder="ATL @ MIA" value={form.matchup}
+                    onChange={e => set("matchup", e.target.value)} />
+                  <div style={{fontSize:10,color:"#484f58",marginTop:4}}>
+                    Canonical abbrs. Away first, home second — same convention as game totals.
+                  </div>
+                </div>
+                <div>
+                  <label style={lbl}>Pick Side</label>
+                  <div style={{display:"flex",gap:6}}>
+                    {[["away","Away"],["home","Home"]].map(([v,l]) => (
+                      <button key={v} type="button" onClick={() => set("pickSide", v)}
+                        style={{flex:1,padding:"7px 0",borderRadius:6,fontSize:12,fontWeight:600,cursor:"pointer",
+                          background: form.pickSide === v ? "rgba(88,166,255,0.15)" : "#0d1117",
+                          border: `1px solid ${form.pickSide === v ? "#58a6ff" : "#30363d"}`,
+                          color: form.pickSide === v ? "#58a6ff" : "#8b949e"}}>
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {pickType === "spread" && (
+                  <div>
+                    <label style={lbl}>Line (signed from your pick's perspective)</label>
+                    <input style={inp} type="number" placeholder="-1.5" step="0.5" value={form.pickLine}
+                      onChange={e => set("pickLine", e.target.value)} />
+                    <div style={{fontSize:10,color:"#484f58",marginTop:4}}>
+                      −1.5 = pickTeam covers margin (wins by 2+). +1.5 = pickTeam covers underdog cushion. Half-lines only.
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
 
-            {/* Common: line + odds */}
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            {/* Common: direction (skipped for ml + spread — no over/under) */}
+            {pickType !== "ml" && pickType !== "spread" && (
               <div>
-                <label style={lbl}>Line</label>
-                <input style={inp} type="number" placeholder={linePlaceholder} step="0.5" value={form.threshold}
-                  onChange={e => set("threshold", e.target.value)} />
+                <label style={lbl}>Direction</label>
+                <div style={{display:"flex",gap:6}}>
+                  {[["over","Over"],["under","Under"]].map(([v,l]) => (
+                    <button key={v} type="button" onClick={() => set("direction", v)}
+                      style={{flex:1,padding:"7px 0",borderRadius:6,fontSize:12,fontWeight:600,cursor:"pointer",
+                        background: form.direction === v ? (v === "under" ? "rgba(247,129,102,0.15)" : "rgba(88,166,255,0.15)") : "#0d1117",
+                        border: `1px solid ${form.direction === v ? (v === "under" ? "#f78166" : "#58a6ff") : "#30363d"}`,
+                        color: form.direction === v ? (v === "under" ? "#f78166" : "#58a6ff") : "#8b949e"}}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
               </div>
+            )}
+
+            {/* Common: line + odds (line skipped for ml + spread — ml has no line; spread line entered above) */}
+            <div style={{display:"grid",gridTemplateColumns: pickType === "ml" || pickType === "spread" ? "1fr" : "1fr 1fr",gap:10}}>
+              {pickType !== "ml" && pickType !== "spread" && (
+                <div>
+                  <label style={lbl}>Line</label>
+                  <input style={inp} type="number" placeholder={linePlaceholder} step="0.5" value={form.threshold}
+                    onChange={e => set("threshold", e.target.value)} />
+                </div>
+              )}
               <div>
-                <label style={lbl}>Odds ({form.direction === "under" ? "Under" : "Over"} side)</label>
+                <label style={lbl}>
+                  Odds ({pickType === "ml" || pickType === "spread" ? "your pick" : form.direction === "under" ? "Under" : "Over"} side)
+                </label>
                 <input style={inp} type="number" placeholder="-110" value={form.americanOdds}
                   onChange={e => { setForm(f => ({ ...f, americanOdds: e.target.value, units: String(suggestUnits(e.target.value)) })); }} />
               </div>

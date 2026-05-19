@@ -567,7 +567,11 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                       const ei = { background:"#0d1117", border:"1px solid #30363d", borderRadius:5, color:"#c9d1d9", fontSize:12, padding:"4px 7px", outline:"none", width:"100%" };
                       const isTotal = pick.gameType === "total";
                       const isTeamTotal = pick.gameType === "teamTotal";
+                      const isMl = pick.gameType === "ml";
+                      const isSpread = pick.gameType === "spread";
                       const isTotalish = isTotal || isTeamTotal;
+                      const isGameLevel = isTotal || isTeamTotal || isMl || isSpread;
+                      const hasDirection = isTotal || isTeamTotal || !pick.gameType; // ml/spread have no over/under
                       // For totals: stored threshold is the ceiling (e.g. 8 for "O7.5") but the user thinks
                       // in line terms — display/edit as (threshold - 0.5) and store back as line + 0.5.
                       const lineDisplay = isTotalish ? (pick.threshold - 0.5) : pick.threshold;
@@ -582,12 +586,13 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                         ? `${pick.awayTeam || ""} @ ${pick.homeTeam || ""}`
                         : isTeamTotal
                           ? `${pick.scoringTeam || ""} vs ${pick.oppTeam || ""}`
-                          : "";
-                      // Allow switching pick type after-the-fact (fixes mis-clicks like a game total
-                      // saved as a team total). Field migration on switch:
-                      //   total → teamTotal: scoringTeam=awayTeam, oppTeam=homeTeam
-                      //   teamTotal → total: awayTeam=scoringTeam, homeTeam=oppTeam
-                      // The "first slot" of the matchup is preserved as scoring/away across the switch.
+                          : (isMl || isSpread)
+                            ? `${pick.awayTeam || ""} @ ${pick.homeTeam || ""}`
+                            : "";
+                      // Allow switching pick type after-the-fact. Field migration:
+                      //   total ↔ teamTotal: scoringTeam=awayTeam, oppTeam=homeTeam (and reverse)
+                      //   total/teamTotal → ml/spread: pickTeam=awayTeam (default), oppTeam=homeTeam, side="away"
+                      //   ml ↔ spread: same fields preserved
                       const switchPickType = (newType) => {
                         if (newType === pick.gameType || (newType === "player" && !pick.gameType)) return;
                         setTrackedPlays(prev => prev.map(p => {
@@ -595,12 +600,23 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                           if (newType === "total") {
                             const awayTeam = p.awayTeam || p.scoringTeam || "";
                             const homeTeam = p.homeTeam || p.oppTeam || "";
-                            return { ...p, gameType: "total", homeTeam, awayTeam, scoringTeam: undefined, oppTeam: undefined };
+                            return { ...p, gameType: "total", homeTeam, awayTeam, scoringTeam: undefined, oppTeam: undefined, pickTeam: undefined, line: undefined, pickLine: undefined, marginTeam: undefined, side: undefined };
                           }
                           if (newType === "teamTotal") {
-                            const scoringTeam = p.scoringTeam || p.awayTeam || "";
+                            const scoringTeam = p.scoringTeam || p.pickTeam || p.awayTeam || "";
                             const oppTeam = p.oppTeam || p.homeTeam || "";
-                            return { ...p, gameType: "teamTotal", scoringTeam, oppTeam, homeTeam: undefined, awayTeam: undefined };
+                            return { ...p, gameType: "teamTotal", scoringTeam, oppTeam, homeTeam: undefined, awayTeam: undefined, pickTeam: undefined, line: undefined, pickLine: undefined, marginTeam: undefined, side: undefined };
+                          }
+                          if (newType === "ml" || newType === "spread") {
+                            const awayTeam = p.awayTeam || p.scoringTeam || "";
+                            const homeTeam = p.homeTeam || p.oppTeam || "";
+                            const pickTeam = p.pickTeam || awayTeam;
+                            const oppTeam = pickTeam === homeTeam ? awayTeam : homeTeam;
+                            const side = pickTeam === homeTeam ? "home" : "away";
+                            const base = { ...p, gameType: newType, stat: newType, homeTeam, awayTeam, pickTeam, oppTeam, side, scoringTeam: undefined, threshold: undefined, direction: undefined };
+                            return newType === "spread"
+                              ? { ...base, line: p.line ?? 1.5, pickLine: p.pickLine ?? -1.5, marginTeam: p.marginTeam ?? pickTeam }
+                              : { ...base, line: undefined, pickLine: undefined, marginTeam: undefined };
                           }
                           // newType === "player"
                           return { ...p, gameType: undefined };
@@ -610,12 +626,12 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                       return (
                         <div style={{marginTop:8,padding:10,background:"#0d1117",borderRadius:7,border:"1px solid #30363d"}}>
                           {/* Pick-type toggle — switch this in place if it was saved wrong */}
-                          <div style={{display:"flex",gap:6,marginBottom:8}}>
-                            {[["player","Player"],["total","Game Total"],["teamTotal","Team Total"]].map(([v,l]) => {
+                          <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
+                            {[["player","Player"],["total","Total"],["teamTotal","Team"],["ml","ML"],["spread","Spread"]].map(([v,l]) => {
                               const active = currentType === v;
                               return (
                                 <button key={v} type="button" onClick={() => switchPickType(v)}
-                                  style={{flex:1,padding:"5px 0",borderRadius:5,fontSize:10,fontWeight:600,cursor:"pointer",
+                                  style={{flex:"1 1 60px",padding:"5px 0",borderRadius:5,fontSize:10,fontWeight:600,cursor:"pointer",
                                     background: active ? "rgba(88,166,255,0.15)" : "transparent",
                                     border: `1px solid ${active ? "#58a6ff" : "#30363d"}`,
                                     color: active ? "#58a6ff" : "#8b949e"}}>
@@ -624,7 +640,8 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                               );
                             })}
                           </div>
-                          {/* Direction toggle — second row, full width so it's hard to miss */}
+                          {/* Direction toggle — skipped for ml/spread (no over/under). Second row, full width. */}
+                          {hasDirection && (
                           <div style={{display:"flex",gap:6,marginBottom:8}}>
                             {[["over","Over"],["under","Under"]].map(([v,l]) => {
                               const active = (pick.direction || "over") === v;
@@ -656,12 +673,15 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                               );
                             })}
                           </div>
+                          )}
                           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
-                            {/* Player props show stat selector; totals show editable matchup input */}
-                            {isTotalish ? (
+                            {/* Player props show stat selector; game-level types (total/teamTotal/ml/spread) show editable matchup */}
+                            {isGameLevel ? (
                               <div style={{gridColumn:"1 / -1"}}>
                                 <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>
-                                  {isTeamTotal ? "Matchup (Scoring vs Opp)" : "Matchup (Away @ Home)"}
+                                  {isTeamTotal ? "Matchup (Scoring vs Opp)"
+                                   : isMl || isSpread ? `Matchup (Away @ Home) — pick: ${pick.pickTeam || '—'}`
+                                   : "Matchup (Away @ Home)"}
                                 </div>
                                 <input style={ei} defaultValue={matchupDefault}
                                   onBlur={e => {
@@ -669,9 +689,15 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                                     if (!parsed) return;
                                     setTrackedPlays(prev => prev.map(p => {
                                       if (p.id !== pick.id) return p;
-                                      return isTotal
-                                        ? { ...p, awayTeam: parsed[0], homeTeam: parsed[1] }
-                                        : { ...p, scoringTeam: parsed[0], oppTeam: parsed[1] };
+                                      if (isTotal) return { ...p, awayTeam: parsed[0], homeTeam: parsed[1] };
+                                      if (isTeamTotal) return { ...p, scoringTeam: parsed[0], oppTeam: parsed[1] };
+                                      // ml/spread: maintain pickSide — if old pickTeam matched old away/home,
+                                      // remap to the new away/home in the same slot
+                                      const [newAway, newHome] = parsed;
+                                      const oldSide = p.side || "away";
+                                      const newPickTeam = oldSide === "home" ? newHome : newAway;
+                                      const newOppTeam = oldSide === "home" ? newAway : newHome;
+                                      return { ...p, awayTeam: newAway, homeTeam: newHome, pickTeam: newPickTeam, oppTeam: newOppTeam };
                                     }));
                                   }} />
                               </div>
@@ -689,17 +715,35 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                               <input style={ei} type="number" min="0" step="0.1" defaultValue={units}
                                 onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) setPickUnits(pick.id, v); }} />
                             </div>
-                            <div>
-                              <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Line</div>
-                              <input style={ei} type="number" step="0.5" defaultValue={lineDisplay}
-                                onBlur={e => {
-                                  const v = parseFloat(e.target.value);
-                                  if (isNaN(v)) return;
-                                  // For totals, convert the line input back to the threshold-ceiling convention.
-                                  const newThreshold = isTotalish ? Math.round(v + 0.5) : v;
-                                  setTrackedPlays(prev => prev.map(p => p.id === pick.id ? {...p, threshold: newThreshold} : p));
-                                }} />
-                            </div>
+                            {/* Line input — for ml, hidden (no line). For spread, signed pickLine. Others, threshold. */}
+                            {isMl ? null : isSpread ? (
+                              <div>
+                                <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Line (signed, e.g. -1.5)</div>
+                                <input style={ei} type="number" step="0.5" defaultValue={pick.pickLine ?? ""}
+                                  onBlur={e => {
+                                    const v = parseFloat(e.target.value);
+                                    if (isNaN(v) || v === Math.floor(v)) return; // half-lines only
+                                    setTrackedPlays(prev => prev.map(p => {
+                                      if (p.id !== pick.id) return p;
+                                      const line = Math.abs(v);
+                                      const marginTeam = v < 0 ? p.pickTeam : p.oppTeam;
+                                      return { ...p, pickLine: v, line, marginTeam };
+                                    }));
+                                  }} />
+                              </div>
+                            ) : (
+                              <div>
+                                <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Line</div>
+                                <input style={ei} type="number" step="0.5" defaultValue={lineDisplay}
+                                  onBlur={e => {
+                                    const v = parseFloat(e.target.value);
+                                    if (isNaN(v)) return;
+                                    // For totals, convert the line input back to the threshold-ceiling convention.
+                                    const newThreshold = isTotalish ? Math.round(v + 0.5) : v;
+                                    setTrackedPlays(prev => prev.map(p => p.id === pick.id ? {...p, threshold: newThreshold} : p));
+                                  }} />
+                              </div>
+                            )}
                             <div>
                               <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Odds</div>
                               <input style={ei} type="number" defaultValue={pick.americanOdds}
