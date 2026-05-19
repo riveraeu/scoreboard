@@ -87,17 +87,32 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, extraAlt
 
       {/* Per-threshold tab strip — one tab per available threshold. Scrolls horizontally on
           narrow screens. Active tab = selectedT; clicking switches the rendered row + InputList.
-          Qualified thresholds show inline edge + a star to track/untrack from the tab (avoids
-          the click-into-tab-then-click-star two-step). Star uses stopPropagation so clicking it
-          doesn't also switch the tab. */}
+          Edge shown on EVERY tab (not just qualified): from tonight play when available,
+          falling back to (season hit rate − Kalshi price) — same metric the row body shows
+          implicitly. Green = qualified (model edge ≥ EDGE_GATE, tp.qualified true); yellow =
+          positive non-qualified; red = negative. Star tracks/untracks from the tab on qualified. */}
       {thresholds.length > 1 && (
         <div style={{ display: 'flex', gap: 4, marginBottom: 14, overflowX: 'auto', paddingBottom: 4 }}>
           {thresholds.map(t => {
             const tp = tonightTotalMap?.[t];
+            const alt = extraAltMap?.[t];
             const tEdge = tp?.edge ?? null;
             const tQualified = tp?.qualified === true && tEdge != null && tEdge >= EDGE_GATE;
             const active = t === selectedT;
             const label = isUnder ? `U${(t - 0.5).toFixed(1)}` : `O${(t - 0.5).toFixed(1)}`;
+            // Fallback edge: season hit rate vs Kalshi price (extraAltMap). UNDER flips both.
+            const _seasonRow = data.find(d => d.t === t);
+            const _seasonPct = _seasonRow?.pct ?? null;
+            const _kalshiForEdge = tp
+              ? (isUnder ? (tp.noKalshiPct ?? tp.kalshiPct) : tp.kalshiPct)
+              : (alt ? (isUnder ? alt.noPct : alt.pct) : null);
+            const fallbackEdge = (tEdge == null && _seasonPct != null && _kalshiForEdge != null)
+              ? parseFloat((_seasonPct - _kalshiForEdge).toFixed(1)) : null;
+            const displayEdge = tEdge ?? fallbackEdge;
+            const edgeColor = displayEdge == null ? null
+              : tQualified ? '#3fb950'
+              : displayEdge >= EDGE_GATE ? '#3fb950'
+              : displayEdge >= 0 ? '#e3b341' : '#f78166';
             // Per-threshold trackId — mirrors the row-level logic below for consistent pick-id.
             let _trackId = null, _isTrackedTab = false;
             if (tp && tQualified) {
@@ -118,9 +133,9 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, extraAlt
                   fontSize: 11, fontWeight: active ? 700 : 500, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
                 }}>
                 <span>{label}</span>
-                {tQualified && tEdge != null && (
-                  <span style={{ fontSize: 10, fontWeight: 700, color: '#3fb950' }}>
-                    {tEdge >= 0 ? '+' : ''}{tEdge}%
+                {displayEdge != null && (
+                  <span style={{ fontSize: 10, fontWeight: 700, color: edgeColor }}>
+                    {displayEdge >= 0 ? '+' : ''}{displayEdge}%
                   </span>
                 )}
                 {tQualified && (
