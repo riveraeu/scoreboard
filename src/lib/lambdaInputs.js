@@ -24,6 +24,18 @@ const pct0 = (v) => v == null ? null : `${v.toFixed(0)}%`;
 const dec2 = (v) => v == null ? null : v.toFixed(2);
 const dec1 = (v) => v == null ? null : v.toFixed(1);
 
+// MLB lineup-injury display row: shows "−X% (N out)" when lineup factor < 1.0.
+const lineupRow = (label, nOut, factor) => {
+  if (!nOut || nOut === 0 || factor == null || factor === 1.0) return null;
+  return { label, value: `−${Math.round((1 - factor) * 100)}% (${nOut} out)`,
+    color: factor >= 0.97 ? YELLOW : RED };
+};
+// MLB pitcher-IL display row: shows "Yes — bullpen day" when probable starter on IL.
+const pitcherIlRow = (label, onIL) => {
+  if (!onIL) return null;
+  return { label, value: 'Yes — bullpen day', color: RED };
+};
+
 function buildMlbKInputs(p) {
   return [
     { label: 'Pitcher K%', value: pct1(p.pitcherKPct), color: tier(p.pitcherKPct, 27, 24) },
@@ -242,7 +254,11 @@ function buildMlbTotalInputs(p) {
     { label: 'H2H ≥thr', value: p.h2hTotalHitRate == null ? null
         : `${p.h2hTotalHitRate}%${p.h2hTotalGames ? ` (${p.h2hTotalGames}g)` : ''}`,
       color: tierDir(isUnder, p.h2hTotalHitRate, 60, 40) },
-  ];
+    lineupRow('Home lineup', p.homeTopOut, p.homeLineupFactor),
+    lineupRow('Away lineup', p.awayTopOut, p.awayLineupFactor),
+    pitcherIlRow('Home pitcher IL', p.homePitcherOnIL),
+    pitcherIlRow('Away pitcher IL', p.awayPitcherOnIL),
+  ].filter(Boolean);
 }
 
 function buildNbaTotalInputs(p) {
@@ -328,7 +344,9 @@ function buildMlbTeamTotalInputs(p) {
       color: factorDir(isUnder, p.platoonFactor) },
     { label: 'Ssn ≥thr', value: p.ttSeasonHitRate == null ? null
         : `${p.ttSeasonHitRate}%`, color: tierDir(isUnder, p.ttSeasonHitRate, 50, 35) },
-  ];
+    lineupRow('Team lineup', p.scoringTopOut, p.scoringLineupFactor),
+    pitcherIlRow('Opp pitcher IL', p.oppPitcherOnIL),
+  ].filter(Boolean);
 }
 
 function buildNbaTeamTotalInputs(p) {
@@ -405,7 +423,11 @@ function buildMlbMlInputs(p) {
     { label: 'Umpire', value: p.umpireRunFactor == null ? null
         : `${p.umpireRunFactor >= 1 ? '+' : '−'}${Math.abs(Math.round((p.umpireRunFactor - 1) * 100))}%${p.umpireName ? ` (${p.umpireName})` : ''}`,
       color: GRAY },
-  ];
+    lineupRow('Pick lineup', isHomePick ? p.homeTopOut : p.awayTopOut, isHomePick ? p.homeLineupFactor : p.awayLineupFactor),
+    lineupRow('Opp lineup', isHomePick ? p.awayTopOut : p.homeTopOut, isHomePick ? p.awayLineupFactor : p.homeLineupFactor),
+    pitcherIlRow('Pick pitcher IL', isHomePick ? p.homePitcherOnIL : p.awayPitcherOnIL),
+    pitcherIlRow('Opp pitcher IL', isHomePick ? p.awayPitcherOnIL : p.homePitcherOnIL),
+  ].filter(Boolean);
 }
 
 // MLB spread — pickTeam-oriented factor list. Same backbone as ML (margin from pickλ - oppλ
@@ -454,7 +476,11 @@ function buildMlbSpreadInputs(p) {
     { label: 'Umpire', value: p.umpireRunFactor == null ? null
         : `${p.umpireRunFactor >= 1 ? '+' : '−'}${Math.abs(Math.round((p.umpireRunFactor - 1) * 100))}%${p.umpireName ? ` (${p.umpireName})` : ''}`,
       color: GRAY },
-  ];
+    lineupRow('Pick lineup', isHomePick ? p.homeTopOut : p.awayTopOut, isHomePick ? p.homeLineupFactor : p.awayLineupFactor),
+    lineupRow('Opp lineup', isHomePick ? p.awayTopOut : p.homeTopOut, isHomePick ? p.awayLineupFactor : p.homeLineupFactor),
+    pitcherIlRow('Pick pitcher IL', isHomePick ? p.homePitcherOnIL : p.awayPitcherOnIL),
+    pitcherIlRow('Opp pitcher IL', isHomePick ? p.awayPitcherOnIL : p.homePitcherOnIL),
+  ].filter(Boolean);
 }
 
 // Dispatcher — picks the right builder per play type

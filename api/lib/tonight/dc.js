@@ -211,6 +211,19 @@ export function computeDataConfidence(p, ctx = {}) {
   if (sport === "mlb" && gameType === "teamTotal") {
     if (p.oppBullpenSource === "team") _pen("oppBullpenTeamFallback", 1);
   }
+  // ── MLB lineup / pitcher-injury penalties (added 2026-05-18) — lambda already adjusts for
+  // missing hitters and IL starters, but high injury exposure increases model variance regardless.
+  // Game total / ML / spread look at both sides; team total looks at scoring side + opp pitcher.
+  if (sport === "mlb" && (gameType === "total" || gameType === "ml" || gameType === "spread")) {
+    if ((p.homeTopOut || 0) >= 2) _pen("homeLineupHeavyOut", 1);
+    if ((p.awayTopOut || 0) >= 2) _pen("awayLineupHeavyOut", 1);
+    if (p.homePitcherOnIL === true) _pen("homePitcherOnIL", 2);
+    if (p.awayPitcherOnIL === true) _pen("awayPitcherOnIL", 2);
+  }
+  if (sport === "mlb" && gameType === "teamTotal") {
+    if ((p.scoringTopOut || 0) >= 2) _pen("scoringLineupHeavyOut", 1);
+    if (p.oppPitcherOnIL === true) _pen("oppPitcherOnIL", 2);
+  }
   // ── NHL game total: starting-goalie SV%. Lambda's opponent factor is set by tonight's
   // goalie when known; team-GAA fallback works but loses precision. -1 per side (max -2).
   if (sport === "nhl" && gameType === "total") {

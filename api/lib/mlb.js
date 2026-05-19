@@ -789,6 +789,65 @@ export async function buildPitcherKPct(mlbSched) {
 import { parseGameOdds as _parseGameOdds } from "./utils.js";
 import { PT_FMT } from "./pt.js";
 
+// ESPN MLB injury report. Returns Map<teamAbbr, [{name, id, status}]> for Out / GTD players.
+// Mirrors buildNhlInjuryReport / buildNbaInjuryReport — ESPN omits athlete.id but embeds it in
+// playercard link href. ESPN uses CHW for Chicago White Sox; normalize to canonical CWS.
+// Cached at mlb:injuries:{date} for 1800s (30 min).
+export async function buildMlbInjuryReport(cache) {
+  try {
+    const date = new Date().toISOString().slice(0, 10);
+    const cacheKey = `mlb:injuries:${date}`;
+    if (cache) {
+      const cached = await cache.get(cacheKey, "json").catch(() => null);
+      if (cached) {
+        const m = new Map();
+        for (const [k, v] of Object.entries(cached)) m.set(k, v);
+        return m;
+      }
+    }
+    const r = await fetch(
+      "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/injuries",
+      { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(6000) }
+    );
+    if (!r.ok) return new Map();
+    const d = await r.json().catch(() => ({}));
+    const injMap = {};
+    for (const teamEntry of d.injuries || []) {
+      const outPlayers = [];
+      let abbr = null;
+      for (const inj of teamEntry.injuries || []) {
+        const statusRaw = (inj.status || "").toLowerCase();
+        const isOut = statusRaw === "out" || statusRaw.includes("injured list");
+        const isGtd = statusRaw.includes("day") || statusRaw.includes("game-time") || statusRaw === "questionable" || statusRaw === "doubtful";
+        if (!isOut && !isGtd) continue;
+        if (!abbr) abbr = inj.athlete?.team?.abbreviation || null;
+        const name = inj.athlete?.displayName || "";
+        let id = inj.athlete?.id ? String(inj.athlete.id) : null;
+        if (!id) {
+          for (const lk of (inj.athlete?.links || [])) {
+            const m = (lk.href || "").match(/\/id\/(\d+)\//);
+            if (m) { id = m[1]; break; }
+          }
+        }
+        const pos = inj.athlete?.position?.abbreviation || null;
+        if (name) outPlayers.push({ name, id, status: isOut ? "out" : "gtd", pos });
+      }
+      // ESPN MLB uses CHW for Chicago White Sox; canonical is CWS.
+      const NORM = { CHW: "CWS" };
+      const canon = abbr ? (NORM[abbr] || abbr) : null;
+      if (canon && outPlayers.length) injMap[canon] = outPlayers;
+    }
+    if (cache && Object.keys(injMap).length > 0) {
+      await cache.put(cacheKey, JSON.stringify(injMap), { expirationTtl: 1800 }).catch(() => {});
+    }
+    const m = new Map();
+    for (const [k, v] of Object.entries(injMap)) m.set(k, v);
+    return m;
+  } catch {
+    return new Map();
+  }
+}
+
 export async function buildMlbByteam(cache) {
   const [pitchData, batData, roadBatData, bullpenData, sbData, mlbSched] = await Promise.all([
     fetch("https://site.web.api.espn.com/apis/common/v3/sports/baseball/mlb/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=50&category=pitching", { headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
