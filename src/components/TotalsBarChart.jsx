@@ -16,7 +16,7 @@ const TAB_LABELS = {
   team_under: 'Team Under',
 };
 
-function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, extraAltMap, trackedPlays, onTrack, onUntrack, playType, onPlayTypeChange }) {
+function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, extraAltMap, allMatchupPlays, trackedPlays, onTrack, onUntrack, playType, onPlayTypeChange }) {
   const isTeamTotal = playType?.startsWith('team_') ?? false;
   const isUnder = playType?.includes('under') ?? false;
   const completed = (gameLog || []).filter(g => g.result);
@@ -221,11 +221,17 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, extraAlt
 
       {/* Lambda inputs for the selected threshold — replaces the old SimScore explanation.
           Reuses the same component PlaysColumn cards render. Lambdas are per-GAME (not per-
-          threshold), so when the selected threshold has no tonight play (e.g. Kalshi doesn't
-          list O4.5 because the OVER is near-100%), fall back to any tp in the matchup map. */}
+          threshold), so when the selected threshold has no tonight play, fall back through:
+          (1) any tp in the active map, (2) any play in allMatchupPlays for the active gameType.
+          Field check covers BOTH game-total (homeExpected/teamRPG) and team-total (teamExpected)
+          shapes so Team Over/Under tabs find their team-total play even when the active-direction
+          map is empty. */}
       {(() => {
+        const _hasLambda = (p) => p && (p.homeExpected != null || p.awayExpected != null
+          || p.teamExpected != null || p.teamRPG != null || p.homeLambda != null);
         const tp = tonightTotalMap?.[selectedT]
-          ?? Object.values(tonightTotalMap || {}).find(p => p && (p.homeExpected != null || p.awayExpected != null));
+          ?? Object.values(tonightTotalMap || {}).find(_hasLambda)
+          ?? (allMatchupPlays || []).find(_hasLambda);
         if (!tp) return null;
         // Use the play's actual direction for prop semantics; ml/spread don't have one.
         const dirForInputs = tp.direction || (isUnder ? 'under' : 'over');

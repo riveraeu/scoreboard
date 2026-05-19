@@ -276,10 +276,19 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, allTonightPlays, on
       <div style={{background:'#161b22',border:'1px solid #30363d',borderRadius:12,padding:'20px 22px'}}>
 
 
-        {/* Totals bar chart — passes tab state + alt-line Kalshi prices for tabs outside [67,91] */}
+        {/* Totals bar chart — passes tab state + alt-line Kalshi prices for tabs outside [67,91].
+            allMatchupPlays = ALL plays of the active gameType for this matchup (any direction)
+            so the Lambda Inputs panel can find a play with lambda data even when the
+            active-direction map is empty (e.g. Game Under with no qualifying UNDER plays). */}
         <TotalsBarChart gameLog={gameLog} sport={sport}
           tonightTotalMap={activeTotalMap} tonightPlay={activePlay}
           extraAltMap={_activeType.startsWith('team_') ? altKalshi.teamTotal : altKalshi.total}
+          allMatchupPlays={(_allPlays || []).filter(p =>
+            p.sport === sport && p.gameType === (_activeType.startsWith('team_') ? 'teamTotal' : 'total') &&
+            (_activeType.startsWith('team_')
+              ? p.scoringTeam?.toUpperCase() === abbr
+              : (p.homeTeam?.toUpperCase() === abbr || p.awayTeam?.toUpperCase() === abbr))
+          )}
           trackedPlays={trackedPlays} onTrack={trackPlay} onUntrack={untrackPlay}
           playType={_activeType} onPlayTypeChange={handleTabChange}/>
 
