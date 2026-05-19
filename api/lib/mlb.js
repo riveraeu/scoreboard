@@ -796,7 +796,7 @@ import { PT_FMT } from "./pt.js";
 export async function buildMlbInjuryReport(cache) {
   try {
     const date = new Date().toISOString().slice(0, 10);
-    const cacheKey = `mlb:injuries:${date}`;
+    const cacheKey = `mlb:injuries:v2:${date}`;
     if (cache) {
       const cached = await cache.get(cacheKey, "json").catch(() => null);
       if (cached) {
