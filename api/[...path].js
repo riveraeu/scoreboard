@@ -4423,7 +4423,11 @@ var worker_default = {
             if (!k || _bestByKey[k] === p) _kept.push(p);
             else _demoted.push({ ...p, reason: "altLineDedup", qualified: false, dcQualified: false });
           }
-          plays.splice(0, plays.length, ..._kept);
+          // Keep demoted plays in plays[] (marked qualified/dcQualified false) so the client
+          // can re-surface them when the user has them tracked — preserves the alt line the
+          // user actually bet, even when a different alt won the dedup pass after they
+          // tracked it. Default client filters (dcQualified + edge≥5) still skip them.
+          plays.splice(0, plays.length, ..._kept, ..._demoted);
           if (isDebug) dropped.push(..._demoted);
         }
         // Mark plays whose source kalshi series fell back to per-ticker stale (or prior-bundle

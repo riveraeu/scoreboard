@@ -94,12 +94,34 @@ function buildAllGames(allPlays, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nh
 // now just the v2 dc + edge filter. Alt-line dedup was removed 2026-05-16 (paired with the
 // edge gate raise to 5; surfacing multiple thresholds gives users more payout/safety choice).
 const EDGE_GATE = 5;
-function passesGate(p) {
-  return p.dcQualified === true && (p.edge ?? 0) >= EDGE_GATE;
+// Build a tracked-id Set so passesGate can re-surface alt-line picks the user has tracked
+// (server-side dedup may have demoted them in favor of a higher-edge alt; we want them
+// visible in their matchup card regardless).
+function buildTrackedIds(trackedPlays) {
+  const ids = new Set();
+  for (const p of (trackedPlays || [])) if (p?.id) ids.add(p.id);
+  return ids;
 }
-function playsForGame(allPlays, game) {
+function trackIdFor(p) {
+  // Mirror the trackId construction used in PlaysColumn / App.jsx trackPlay
+  const gd = p.gameDate || '';
+  if (p.gameType === 'teamTotal') return `teamtotal|${p.sport}|${p.scoringTeam}|${p.oppTeam}|${p.threshold}|${gd}${p.direction === 'under' ? '|under' : ''}`;
+  if (p.gameType === 'total') return `total|${p.sport}|${p.homeTeam}|${p.awayTeam}|${p.threshold}|${gd}${p.direction === 'under' ? '|under' : ''}`;
+  if (p.gameType === 'ml') return `ml|${p.sport}|${p.pickTeam}|${p.homeTeam}|${p.awayTeam}|${gd}`;
+  if (p.gameType === 'spread') return `spread|${p.sport}|${p.pickTeam}|${p.homeTeam}|${p.awayTeam}|${p.pickLine}|${gd}`;
+  return `${p.sport || 'nba'}|${p.playerName}|${p.stat}|${p.threshold}|${gd}`;
+}
+function passesGate(p, trackedIds) {
+  if (p.dcQualified === true && (p.edge ?? 0) >= EDGE_GATE) return true;
+  // Re-surface demoted alt lines that the user is already tracking — keeps the user's
+  // actual bet visible in the matchup card even when the dedup pass picked a different
+  // alt line. Tracked ids match the trackId convention used when the pick was added.
+  if (trackedIds && trackedIds.has(trackIdFor(p))) return true;
+  return false;
+}
+function playsForGame(allPlays, game, trackedIds) {
   return (allPlays || []).filter(p => {
-    if (!passesGate(p)) return false;
+    if (!passesGate(p, trackedIds)) return false;
     if (p.sport !== game.sport) return false;
     if (game.gameDate && p.gameDate && p.gameDate !== game.gameDate) return false;
     const teams = new Set([game.homeTeam, game.awayTeam]);
@@ -215,6 +237,9 @@ export default function LineupsPage({
     ? { fontSize: 12, padding: '0 12px', height: 32 }
     : { fontSize: 10, padding: '0 8px', height: 22 };
   const activePicks = (trackedPlays || []).filter(p => !p.result || p.result === 'dnp');
+  // Build trackedIds once per render so playsForGame can re-surface demoted alt-line picks
+  // the user is already tracking (server-side dedup may demote them — see passesGate).
+  const trackedIds = React.useMemo(() => buildTrackedIds(activePicks), [activePicks]);
 
   const dayTabsEl = (
     <div style={{ display: 'flex', gap: 0, overflowX: 'auto', flex: isMobile ? '1 1 auto' : '0 0 auto', scrollbarWidth: 'none' }}>
@@ -356,7 +381,7 @@ export default function LineupsPage({
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(480px, 100%), 1fr))', gap: 12, alignItems: 'start' }}>
               {games.map((game, i) => {
                 const isPostponed = (game.gameDetail || '').toLowerCase().includes('postpone');
-                const gPlays = isPostponed ? [] : playsForGame(allTonightPlays, game);
+                const gPlays = isPostponed ? [] : playsForGame(allTonightPlays, game, trackedIds);
                 return (
                   <MatchupCard
                     key={`${sport}|${game.homeTeam}|${game.awayTeam}|${game.gameDate}|${i}`}
