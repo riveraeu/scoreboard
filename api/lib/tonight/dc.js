@@ -107,7 +107,7 @@ export function computeDataConfidence(p, ctx = {}) {
   if (isMlbK) {
     const sb = p.stdBF;
     if (sb == null) _pen("noStdBF", 3);
-    else if (typeof sb === "number" && sb > 2.5) _pen("highStdBF", 1);
+    else if (typeof sb === "number" && sb > 2.5) _pen("highStdBF", 2);
   } else if (isMlbHitter) {
     const sg = p.softGames;
     if (sg == null || sg < 5) _pen("tinyBvPSample", 3);
