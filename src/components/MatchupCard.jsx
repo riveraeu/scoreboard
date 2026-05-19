@@ -261,7 +261,7 @@ function MatchupCard({
             onClick={() => openFeature(awayFeature, awayTeam)}>
             <div style={{ minWidth: 0 }}>
               {awayFeature?.lineupStatus && (
-                <div style={{ marginTop: 0, marginBottom: 9 }}>
+                <div style={{ display: 'flex', marginTop: 0, marginBottom: 9 }}>
                   <LineupBadge status={awayFeature.lineupStatus} />
                 </div>
               )}
@@ -306,7 +306,7 @@ function MatchupCard({
             onClick={() => openFeature(homeFeature, homeTeam)}>
             <div style={{ textAlign: 'right', minWidth: 0 }}>
               {homeFeature?.lineupStatus && (
-                <div style={{ marginTop: 0, marginBottom: 9 }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 0, marginBottom: 9 }}>
                   <LineupBadge status={homeFeature.lineupStatus} align="right" />
                 </div>
               )}
