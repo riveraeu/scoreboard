@@ -244,9 +244,10 @@ export function computeDataConfidence(p, ctx = {}) {
     if ((p.scoringTopOut || 0) >= 2) _pen("scoringLineupHeavyOut", 1);
     if (p.oppPitcherOnIL === true) _pen("oppPitcherOnIL", 2);
   }
-  // ── NHL game total: starting-goalie SV%. Lambda's opponent factor is set by tonight's
-  // goalie when known; team-GAA fallback works but loses precision. -1 per side (max -2).
-  if (sport === "nhl" && gameType === "total") {
+  // ── NHL game total / ML / spread: starting-goalie SV%. Lambda's opponent factor is set by
+  // tonight's goalie when known; team-GAA fallback works but loses precision. -1 per side (max -2).
+  // ML/spread reuse the same lambdas as total, so the penalty applies identically.
+  if (sport === "nhl" && (gameType === "total" || gameType === "ml" || gameType === "spread")) {
     if (p.homeGoalieSource === "team") _pen("homeGoalieTeamFallback", 1);
     if (p.awayGoalieSource === "team") _pen("awayGoalieTeamFallback", 1);
   }

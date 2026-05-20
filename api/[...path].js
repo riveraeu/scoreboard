@@ -3765,6 +3765,10 @@ var worker_default = {
                 const _dk = `nhl|${homeTeam}|${awayTeam}`;
                 if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateNHLTotalDist(_hGLRaw, _aGLRaw, 10000);
                 truePct = totalDistPct(totalDistCache[_dk], threshold);
+                const _mlCtxKey = `${homeTeam}|${awayTeam}|${gameDate}`;
+                if (!_nhlMlContext[_mlCtxKey]) {
+                  _nhlMlContext[_mlCtxKey] = { homeTeam, awayTeam, gameDate, homeLambda: parseFloat(_hGLRaw.toFixed(2)), awayLambda: parseFloat(_aGLRaw.toFixed(2)), kalshiVolume, kalshiSpread, lowVolume, _simData: { ..._simData } };
+                }
               }
               // Same sample-weighted seasonHitRate blend as MLB/NBA. NHL Poisson tails are
               // particularly thin for high-scoring matchups (overdispersion from PP swings),
@@ -4751,6 +4755,180 @@ var worker_default = {
               } else if (isDebug && inWindow) {
                 dropped.push({
                   gameType: "spread", sport: "wnba", stat: "spread",
+                  homeTeam, awayTeam, pickTeam, oppTeam, side: pickSide, gameDate,
+                  line, pickLine, marginTeam,
+                  kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge,
+                  reason: "edge_too_low",
+                  homeLambda, awayLambda,
+                  ..._simData,
+                });
+              }
+            }
+          }
+        }
+        // ── NHL ML plays (KXNHLGAME) ──────────────────────────────────────────────────────────
+        // Per-team Poisson joint sim — same engine as MLB (goals and runs are both independent
+        // count distributions). `simulateMLBJoint` is sport-agnostic; reusing it directly here
+        // rather than renaming to avoid touching the MLB call site. Ties dropped from ML
+        // numerator (real NHL ~22% of games go to OT/SO; this approximation under-projects the
+        // favorite slightly since OT/SO winners are weighted toward the favored team in reality).
+        const _nhlMlMarkets = {};
+        try {
+          const _kImpliedProbMlH = (m) => {
+            const a = parseFloat(m.yes_ask_dollars) || 0;
+            const l = parseFloat(m.last_price_dollars) || 0;
+            const b = parseFloat(m.yes_bid_dollars) || 0;
+            return (a >= 0.98 && b === 0 && l > 0) ? l : (a > 0 ? a : l);
+          };
+          const _kGameDateMlH = (m) => m?.expected_expiration_time ? PT_FMT.format(new Date(m.expected_expiration_time)) : null;
+          let _gMarketsMlH = [];
+          {
+            const _gSnapKey = 'kalshi:snap:KXNHLGAME';
+            const _gKey = 'kalshi:KXNHLGAME';
+            let _gData = null;
+            if (CACHE2 && !isBustCache) {
+              const _gSnap = await CACHE2.get(_gSnapKey, 'json').catch(() => null);
+              if (_gSnap && Array.isArray(_gSnap.markets) && _gSnap.markets.length > 0 &&
+                  (Date.now() - (_gSnap.writtenAt || 0) <= 180_000)) {
+                _gData = { markets: _gSnap.markets };
+              }
+            }
+            if (!_gData && CACHE2 && !isBustCache) {
+              _gData = await CACHE2.get(_gKey, 'json').catch(() => null);
+            }
+            if (!_gData) {
+              const r = await fetch('https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=KXNHLGAME&limit=1000&status=open', {
+                headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }
+              }).catch(() => null);
+              if (r?.ok) {
+                _gData = await r.json().catch(() => null);
+                if (_gData && CACHE2) CACHE2.put(_gKey, JSON.stringify(_gData), { expirationTtl: 600 }).catch(() => {});
+              }
+            }
+            _gMarketsMlH = _gData?.markets || [];
+          }
+          const _byEventMlH = {};
+          for (const m of _gMarketsMlH) {
+            const tk = m.ticker || '';
+            const lastDash = tk.lastIndexOf('-');
+            if (lastDash < 0) continue;
+            const abbr = normTeam('nhl', tk.slice(lastDash + 1));
+            const eventT = m.event_ticker;
+            if (!eventT || !abbr) continue;
+            const p = _kImpliedProbMlH(m);
+            if (!p || p <= 0 || p >= 1) continue;
+            if (!_byEventMlH[eventT]) _byEventMlH[eventT] = { probs: {}, gameDate: _kGameDateMlH(m) };
+            _byEventMlH[eventT].probs[abbr] = p;
+          }
+          for (const info of Object.values(_byEventMlH)) {
+            const teams = Object.keys(info.probs);
+            if (teams.length !== 2 || !info.gameDate) continue;
+            const [t1, t2] = teams;
+            const yesPayload = { yesByTeam: { [t1]: info.probs[t1], [t2]: info.probs[t2] } };
+            _nhlMlMarkets[`${t1}|${t2}|${info.gameDate}`] = yesPayload;
+            _nhlMlMarkets[`${t2}|${t1}|${info.gameDate}`] = yesPayload;
+          }
+        } catch { /* non-fatal */ }
+        const _nhlJointCache = {};
+        {
+          for (const ctx of Object.values(_nhlMlContext)) {
+            const { homeTeam, awayTeam, gameDate, homeLambda, awayLambda, kalshiVolume, kalshiSpread, lowVolume, _simData } = ctx;
+            if (gameDate && gameDate < cutoffStr) continue;
+            const mlMarket = _nhlMlMarkets[`${homeTeam}|${awayTeam}|${gameDate}`];
+            if (!mlMarket?.yesByTeam) continue;
+            const homeYesAsk = mlMarket.yesByTeam[homeTeam];
+            const awayYesAsk = mlMarket.yesByTeam[awayTeam];
+            if (homeYesAsk == null || awayYesAsk == null) continue;
+            const _mlk = `${homeTeam}|${awayTeam}`;
+            if (!_nhlJointCache[_mlk]) _nhlJointCache[_mlk] = simulateMLBJoint(homeLambda, awayLambda, 10000);
+            const joint = _nhlJointCache[_mlk];
+            if (!joint) continue;
+            const homeTruePct = mlPctFromJoint(joint.home, joint.away);
+            if (homeTruePct == null) continue;
+            const awayTruePct = parseFloat((100 - homeTruePct).toFixed(1));
+            const _gameTime = gameTimes[`nhl:${homeTeam}:${gameDate}`] ?? gameTimes[`nhl:${awayTeam}:${gameDate}`] ?? gameTimes[`nhl:${homeTeam}`] ?? gameTimes[`nhl:${awayTeam}`] ?? null;
+            const _toAO = (p) => p == null ? null : p >= 50 ? Math.round(-(p / (100 - p)) * 100) : Math.round((100 - p) / p * 100);
+            for (const side of ["home", "away"]) {
+              const pickTeam = side === "home" ? homeTeam : awayTeam;
+              const oppTeam = side === "home" ? awayTeam : homeTeam;
+              const yesAsk = side === "home" ? homeYesAsk : awayYesAsk;
+              const truePct = side === "home" ? homeTruePct : awayTruePct;
+              const kalshiPct = parseFloat((yesAsk * 100).toFixed(1));
+              const edge = parseFloat((truePct - kalshiPct).toFixed(1));
+              const americanOdds = _toAO(kalshiPct);
+              const inWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
+              if (edge >= EDGE_GATE && inWindow) {
+                plays.push({
+                  gameType: "ml", sport: "nhl", stat: "ml",
+                  homeTeam, awayTeam, pickTeam, oppTeam, side, gameDate,
+                  kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge,
+                  totalSimScore: 0, qualified: false,
+                  kalshiVolume, kalshiSpread, lowVolume,
+                  gameTime: _gameTime,
+                  homeLambda, awayLambda,
+                  ..._simData,
+                });
+              } else if (isDebug && inWindow) {
+                dropped.push({
+                  gameType: "ml", sport: "nhl", stat: "ml",
+                  homeTeam, awayTeam, pickTeam, oppTeam, side, gameDate,
+                  kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge,
+                  reason: "edge_too_low",
+                  homeLambda, awayLambda,
+                  ..._simData,
+                });
+              }
+            }
+          }
+        }
+        // ── NHL spread emission (KXNHLSPREAD) ────────────────────────────────────────────────
+        // Half-lines only (Kalshi NHL: ±1.5, ±2.5). v1 approximation: regulation-only Poisson
+        // sim. OT/SO winners get +1 goal in reality, so spread truePct is slightly understated
+        // on tight games where the favorite wins by exactly 1 in regulation but goes 2 in OT.
+        // Acceptable v1 noise; revisit if calibration shows systematic miss on -1.5 favorites.
+        {
+          for (const m of spreadMarkets) {
+            if (m.sport !== "nhl") continue;
+            if (m.gameDate && m.gameDate < cutoffStr) continue;
+            const { gameTeam1, gameTeam2, gameDate, marginTeam, line, kalshiPct: yesKalshi, americanOdds: yesAO, noKalshiPct: noKalshi, noKalshiAO: noAO, kalshiVolume, kalshiSpread } = m;
+            const ctx = _nhlMlContext[`${gameTeam1}|${gameTeam2}|${gameDate}`] ?? _nhlMlContext[`${gameTeam2}|${gameTeam1}|${gameDate}`];
+            if (!ctx) continue;
+            const { homeTeam, awayTeam, homeLambda, awayLambda, _simData } = ctx;
+            if (marginTeam !== homeTeam && marginTeam !== awayTeam) continue;
+            const _mlk = `${homeTeam}|${awayTeam}`;
+            if (!_nhlJointCache[_mlk]) _nhlJointCache[_mlk] = simulateMLBJoint(homeLambda, awayLambda, 10000);
+            const joint = _nhlJointCache[_mlk];
+            if (!joint) continue;
+            const marginSide = marginTeam === homeTeam ? "home" : "away";
+            const yesTruePct = spreadPctFromJoint(joint.home, joint.away, line, marginSide);
+            if (yesTruePct == null) continue;
+            const noTruePct = parseFloat((100 - yesTruePct).toFixed(1));
+            const _gameTime = gameTimes[`nhl:${homeTeam}:${gameDate}`] ?? gameTimes[`nhl:${awayTeam}:${gameDate}`] ?? gameTimes[`nhl:${homeTeam}`] ?? gameTimes[`nhl:${awayTeam}`] ?? null;
+            for (const dir of ["yes", "no"]) {
+              const pickTeam = dir === "yes" ? marginTeam : (marginTeam === homeTeam ? awayTeam : homeTeam);
+              const oppTeam = dir === "yes" ? (marginTeam === homeTeam ? awayTeam : homeTeam) : marginTeam;
+              const pickSide = pickTeam === homeTeam ? "home" : "away";
+              const truePct = dir === "yes" ? yesTruePct : noTruePct;
+              const kalshiPct = dir === "yes" ? yesKalshi : noKalshi;
+              const americanOdds = dir === "yes" ? yesAO : noAO;
+              const pickLine = dir === "yes" ? -line : line;
+              const edge = parseFloat((truePct - kalshiPct).toFixed(1));
+              const inWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
+              if (edge >= EDGE_GATE && inWindow) {
+                plays.push({
+                  gameType: "spread", sport: "nhl", stat: "spread",
+                  homeTeam, awayTeam, pickTeam, oppTeam, side: pickSide, gameDate,
+                  line, pickLine, marginTeam,
+                  kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge,
+                  totalSimScore: 0, qualified: false,
+                  kalshiVolume, kalshiSpread, lowVolume: ctx.lowVolume,
+                  gameTime: _gameTime,
+                  homeLambda, awayLambda,
+                  ..._simData,
+                });
+              } else if (isDebug && inWindow) {
+                dropped.push({
+                  gameType: "spread", sport: "nhl", stat: "spread",
                   homeTeam, awayTeam, pickTeam, oppTeam, side: pickSide, gameDate,
                   line, pickLine, marginTeam,
                   kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge,
