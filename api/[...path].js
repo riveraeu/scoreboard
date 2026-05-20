@@ -4486,13 +4486,14 @@ var worker_default = {
             if (!mlMarket?.yesByTeam) { if (isDebug) dropped.push({ debugTag: "nbaMlNoMarket", homeTeam, awayTeam, gameDate, lookupKey: `${homeTeam}|${awayTeam}|${gameDate}` }); continue; }
             const homeYesAsk = mlMarket.yesByTeam[homeTeam];
             const awayYesAsk = mlMarket.yesByTeam[awayTeam];
-            if (homeYesAsk == null || awayYesAsk == null) continue;
+            if (homeYesAsk == null || awayYesAsk == null) { if (isDebug) dropped.push({ debugTag: "nbaMlNoAsk", homeTeam, awayTeam, yesByTeam: mlMarket.yesByTeam, homeYesAsk, awayYesAsk }); continue; }
             const _mlk = `${homeTeam}|${awayTeam}`;
             if (!_nbaJointCache[_mlk]) _nbaJointCache[_mlk] = simulateNBAJoint(homeLambda, awayLambda, 13, 13, 10000);
             const joint = _nbaJointCache[_mlk];
-            if (!joint) continue;
+            if (!joint) { if (isDebug) dropped.push({ debugTag: "nbaMlNoJoint", homeTeam, awayTeam, homeLambda, awayLambda }); continue; }
             const homeTruePct = mlPctFromJoint(joint.home, joint.away);
-            if (homeTruePct == null) continue;
+            if (homeTruePct == null) { if (isDebug) dropped.push({ debugTag: "nbaMlNoTruePct", homeTeam, awayTeam }); continue; }
+            if (isDebug) dropped.push({ debugTag: "nbaMlReached", homeTeam, awayTeam, homeTruePct, homeYesAsk, awayYesAsk });
             const awayTruePct = parseFloat((100 - homeTruePct).toFixed(1));
             const _gameTime = gameTimes[`nba:${homeTeam}:${gameDate}`] ?? gameTimes[`nba:${awayTeam}:${gameDate}`] ?? gameTimes[`nba:${homeTeam}`] ?? gameTimes[`nba:${awayTeam}`] ?? null;
             const _toAO = (p) => p == null ? null : p >= 50 ? Math.round(-(p / (100 - p)) * 100) : Math.round((100 - p) / p * 100);
