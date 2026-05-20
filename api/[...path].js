@@ -4293,7 +4293,8 @@ var worker_default = {
             if (homeTruePct == null) continue;
             const awayTruePct = parseFloat((100 - homeTruePct).toFixed(1));
             const _gameTime = gameTimes[`mlb:${homeTeam}:${gameDate}`] ?? gameTimes[`mlb:${awayTeam}:${gameDate}`] ?? gameTimes[`mlb:${homeTeam}`] ?? gameTimes[`mlb:${awayTeam}`] ?? null;
-            const _lineupsConfirmed = (sportByteam.mlb?.lineupSpotByName?.[homeTeam] != null && !(sportByteam.mlb?.projectedLineupTeams || []).includes(homeTeam))
+            const _lineupsConfirmed = gameDate === _todayPT
+              && (sportByteam.mlb?.lineupSpotByName?.[homeTeam] != null && !(sportByteam.mlb?.projectedLineupTeams || []).includes(homeTeam))
               && (sportByteam.mlb?.lineupSpotByName?.[awayTeam] != null && !(sportByteam.mlb?.projectedLineupTeams || []).includes(awayTeam));
             const _toAO = (p) => p == null ? null : p >= 50 ? Math.round(-(p / (100 - p)) * 100) : Math.round((100 - p) / p * 100);
             for (const side of ["home", "away"]) {
@@ -4353,7 +4354,8 @@ var worker_default = {
             if (yesTruePct == null) continue;
             const noTruePct = parseFloat((100 - yesTruePct).toFixed(1));
             const _gameTime = gameTimes[`mlb:${homeTeam}:${gameDate}`] ?? gameTimes[`mlb:${awayTeam}:${gameDate}`] ?? gameTimes[`mlb:${homeTeam}`] ?? gameTimes[`mlb:${awayTeam}`] ?? null;
-            const _lineupsConfirmed = (sportByteam.mlb?.lineupSpotByName?.[homeTeam] != null && !(sportByteam.mlb?.projectedLineupTeams || []).includes(homeTeam))
+            const _lineupsConfirmed = gameDate === _todayPT
+              && (sportByteam.mlb?.lineupSpotByName?.[homeTeam] != null && !(sportByteam.mlb?.projectedLineupTeams || []).includes(homeTeam))
               && (sportByteam.mlb?.lineupSpotByName?.[awayTeam] != null && !(sportByteam.mlb?.projectedLineupTeams || []).includes(awayTeam));
             // Two directions: YES (marginTeam covers `-line`), NO (other team covers `+line`).
             for (const dir of ["yes", "no"]) {
