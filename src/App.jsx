@@ -78,17 +78,8 @@ function App() {
   const [calibData, setCalibData] = React.useState(null);
   const [calibLoading, setCalibLoading] = React.useState(false);
   const [gamelogSort, setGamelogSort] = React.useState({ col: 'date', dir: 'desc' });
-  // Stake sizing — Tier × fractional-Kelly:
-  //   edge < 15%     → ⅛-Kelly       (small + middling edges, including the bad 10-15% band)
-  //   edge ≥ 15%     → ½-Kelly        (high-edge / high-confidence)
-  //   missing data   → 1u baseline ($30)
-  //   max single bet → $500 cap        (caps tail risk on rare huge-Kelly recommendations)
-  // Threshold raised 10→15 on 2026-05-18 after full-sample audit (n=215, 81.9% hit) showed
-  // the 10-15% band loses -8 to -10% ROI in EVERY Kelly fraction (73.3% hit vs 82-86% adjacent).
-  // Treating 10-15% as low-confidence (⅛-Kelly) yields +1.25% ROI / $1,246 MDD vs -0.76% / $1,748
-  // for the prior cross-at-10 setup. The 15%+ band (86.7% hit, +13% ROI) keeps ½-Kelly. Earlier
-  // attempt to drop the $50 clamp without raising the threshold was a misread of a sub-slice;
-  // full data shows the 10-15% band is genuinely broken regardless of K/non-K composition.
+  // Stake sizing — flat ⅛-Kelly for every play, 1u ($30) when Kelly can't compute,
+  // $500 hard cap to bound tail risk on rare huge-Kelly recommendations.
   const UNIT_DOLLARS = 30;
   const STAKE_CAP = 500;
   const unitsForPlay = (play) => {
@@ -96,7 +87,7 @@ function App() {
     // Kelly inputs. UNDER direction uses noTruePct so the probability matches the side taken.
     const truePct = play?.direction === "under" ? (play?.noTruePct ?? play?.truePct) : play?.truePct;
     const ao = play?.americanOdds;
-    const kFrac = e == null ? null : e < 15 ? 0.125 : 0.5;
+    const kFrac = e == null ? null : 0.125;
     if (kFrac != null && truePct != null && ao != null && ao !== 0) {
       const b = ao > 0 ? ao / 100 : 100 / Math.abs(ao);
       const p = truePct / 100;
@@ -106,8 +97,7 @@ function App() {
     }
 
     // Fallback when Kelly can't compute (missing truePct/odds, or Kelly = 0).
-    const u = e == null ? 1 : e < 10 ? 1 : e < 15 ? 3 : 5;
-    return Math.round(Math.min(u * UNIT_DOLLARS, STAKE_CAP));
+    return Math.round(Math.min(UNIT_DOLLARS, STAKE_CAP));
   };
   const kalshiCache = React.useRef({}); // memoize Kalshi fetches by "playerName|sport|stat"
   const [expandedPlays, setExpandedPlays] = React.useState(new Set());
