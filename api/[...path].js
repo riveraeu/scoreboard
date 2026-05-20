@@ -4896,19 +4896,20 @@ var worker_default = {
         {
           for (const m of spreadMarkets) {
             if (m.sport !== "nhl") continue;
-            if (m.gameDate && m.gameDate < cutoffStr) continue;
+            if (m.gameDate && m.gameDate < cutoffStr) { if (isDebug) dropped.push({debugTag:"nhlSprStep", step:"cutoff", m}); continue; }
             const { gameTeam1, gameTeam2, gameDate, marginTeam, line, kalshiPct: yesKalshi, americanOdds: yesAO, noKalshiPct: noKalshi, noKalshiAO: noAO, kalshiVolume, kalshiSpread } = m;
             const ctx = _nhlMlContext[`${gameTeam1}|${gameTeam2}|${gameDate}`] ?? _nhlMlContext[`${gameTeam2}|${gameTeam1}|${gameDate}`];
-            if (!ctx) continue;
+            if (!ctx) { if (isDebug) dropped.push({debugTag:"nhlSprStep", step:"noCtx", gameTeam1, gameTeam2, gameDate}); continue; }
             const { homeTeam, awayTeam, homeLambda, awayLambda, _simData } = ctx;
-            if (marginTeam !== homeTeam && marginTeam !== awayTeam) continue;
+            if (marginTeam !== homeTeam && marginTeam !== awayTeam) { if (isDebug) dropped.push({debugTag:"nhlSprStep", step:"marginMismatch", marginTeam, homeTeam, awayTeam}); continue; }
             const _mlk = `${homeTeam}|${awayTeam}`;
             if (!_nhlJointCache[_mlk]) _nhlJointCache[_mlk] = simulateMLBJoint(homeLambda, awayLambda, 10000);
             const joint = _nhlJointCache[_mlk];
-            if (!joint) continue;
+            if (!joint) { if (isDebug) dropped.push({debugTag:"nhlSprStep", step:"noJoint", homeLambda, awayLambda}); continue; }
             const marginSide = marginTeam === homeTeam ? "home" : "away";
             const yesTruePct = spreadPctFromJoint(joint.home, joint.away, line, marginSide);
-            if (yesTruePct == null) continue;
+            if (yesTruePct == null) { if (isDebug) dropped.push({debugTag:"nhlSprStep", step:"noTruePct", line, marginSide}); continue; }
+            if (isDebug) dropped.push({debugTag:"nhlSprStep", step:"reached", marginTeam, homeTeam, awayTeam, line, yesTruePct, yesKalshi, noKalshi});
             const noTruePct = parseFloat((100 - yesTruePct).toFixed(1));
             const _gameTime = gameTimes[`nhl:${homeTeam}:${gameDate}`] ?? gameTimes[`nhl:${awayTeam}:${gameDate}`] ?? gameTimes[`nhl:${homeTeam}`] ?? gameTimes[`nhl:${awayTeam}`] ?? null;
             for (const dir of ["yes", "no"]) {
