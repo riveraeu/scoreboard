@@ -1629,13 +1629,18 @@ var worker_default = {
           //   - hrr/hits (hitter prop): OWN team's lineup confirmed AND opp pitcher known
           //     (opp batting lineup is irrelevant — hitter faces the pitcher, not the batters)
           // null when not MLB (other sports use their own confirmation paths).
+          // A team is "confirmed" only when it BOTH has lineup data posted (in lineupSpotByName)
+          // AND that data isn't a projection. Checking only !projectedLineupTeams returns true
+          // for teams with NO data at all (tomorrow's games, byteam:mlb hasn't pulled them) —
+          // would stamp tomorrow's MLB plays as lineupConfirmed=true and bypass the dc penalty.
           const _mlbLineupConf = (() => {
             if (sport !== "mlb") return null;
             const _proj = sportByteam.mlb?.projectedLineupTeams || [];
-            if (stat === "strikeouts") return !_proj.includes(tonightOpp);
-            const _ownLineupConf = !_proj.includes(playerTeam);
+            const _spotMap = sportByteam.mlb?.lineupSpotByName || {};
+            const _teamConfirmed = (t) => _spotMap[t] != null && !_proj.includes(t);
+            if (stat === "strikeouts") return _teamConfirmed(tonightOpp);
             const _oppPitcherKnown = sportByteam.mlb?.probables?.[tonightOpp]?.name != null;
-            return _ownLineupConf && _oppPitcherKnown;
+            return _teamConfirmed(playerTeam) && _oppPitcherKnown;
           })();
           // Base fields included on every drop in this loop
           const _dropBase = { playerName: playerNameDisplay || playerName, sport, stat, threshold, kalshiPct, playerTeam };
