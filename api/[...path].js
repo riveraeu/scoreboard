@@ -4889,6 +4889,10 @@ var worker_default = {
         // sim. OT/SO winners get +1 goal in reality, so spread truePct is slightly understated
         // on tight games where the favorite wins by exactly 1 in regulation but goes 2 in OT.
         // Acceptable v1 noise; revisit if calibration shows systematic miss on -1.5 favorites.
+        if (isDebug) {
+          const _nhlSpr = spreadMarkets.filter(m => m.sport === "nhl");
+          dropped.push({ debugTag: "nhlSpreadDiag", count: _nhlSpr.length, sample: _nhlSpr.slice(0,3).map(m => ({ marginTeam: m.marginTeam, gameTeam1: m.gameTeam1, gameTeam2: m.gameTeam2, gameDate: m.gameDate, line: m.line, kalshiPct: m.kalshiPct, noKalshiPct: m.noKalshiPct })) });
+        }
         {
           for (const m of spreadMarkets) {
             if (m.sport !== "nhl") continue;
