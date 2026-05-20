@@ -758,6 +758,18 @@ var worker_default = {
         // is a team-level map without date scoping; without this guard, a team playing
         // back-to-back days would inherit today's confirmation for tomorrow's game).
         const _todayPT = PT_FMT.format(new Date());
+        // Single source of truth for "both teams have a confirmed (non-projected) lineup posted
+        // for this game's date". Used by game-total / team-total / ML / spread emission. Player
+        // props use the asymmetric _mlbLineupConf helper (per stat: K = opp only, hitter = own +
+        // opp-pitcher-known). DO NOT inline this check — duplicate definitions drift (see
+        // 187f9f3 where I missed two sites updating just one). teamA/teamB are interchangeable.
+        const _mlbBothTeamsConfirmed = (teamA, teamB, gameDate) => {
+          if (gameDate !== _todayPT) return false;
+          const _spotMap = sportByteam.mlb?.lineupSpotByName || {};
+          const _proj = sportByteam.mlb?.projectedLineupTeams || [];
+          const _ok = (t) => _spotMap[t] != null && !_proj.includes(t);
+          return _ok(teamA) && _ok(teamB);
+        };
         // nbaStarters loaded in parallel with nbaPlayerStatus since the fetch that populates
         // them shares the same ESPN summary URL — same lifecycle (600s TTL).
         let nbaStarters = (sportsNeeded.has("nba") && CACHE2 && !isBustCache)
@@ -3824,9 +3836,7 @@ var worker_default = {
             // MLB-only: both lineups confirmed = both teams have a posted lineup (in lineupSpotByName)
             // AND neither is in the projected-fallback set. Undefined for non-MLB so the badge hides.
             const _lineupsConfirmed = sport === "mlb"
-              ? (gameDate === _todayPT
-                 && (sportByteam.mlb?.lineupSpotByName?.[homeTeam] != null && !(sportByteam.mlb?.projectedLineupTeams || []).includes(homeTeam))
-                 && (sportByteam.mlb?.lineupSpotByName?.[awayTeam] != null && !(sportByteam.mlb?.projectedLineupTeams || []).includes(awayTeam)))
+              ? _mlbBothTeamsConfirmed(homeTeam, awayTeam, gameDate)
               : void 0;
             // OVER play — require kalshiPct in window so we don't bet OVERs against UNDER-favored
             // alt lines (e.g. over 12.5 priced at 19c — winning that bet at +426 demands a much
@@ -4022,9 +4032,7 @@ var worker_default = {
               if (truePct == null) { if (isDebug) dropped.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, teamTotalSimScore, teamRPG, oppERA, oppFIP, oppWHIP, ...(oppWHIPSource && { oppWHIPSource }), oppBullpenERA: _oppRestERA, ...(oppBullpenSource && { oppBullpenSource }), oppRPG, parkFactor: parkRF, gameOuLine, h2hHitRate, h2hGames, h2hHitRatePts, teamL10RPG, ttL10Pts, ttWhipPts, ttOuPts, ttSeasonHitRate, ttSeasonHitRatePts, umpireName: _ttUmpName, reason: "no_simulation_data" }); continue; }
               const _ttGameTime = gameTimes[`${sport}:${homeTeam}:${gameDate}`] ?? gameTimes[`${sport}:${awayTeam}:${gameDate}`] ?? gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null;
               // Both lineups confirmed (MLB only): scoringTeam + oppTeam each have a posted lineup, neither projected.
-              const _ttLineupsConfirmed = gameDate === _todayPT
-                && (sportByteam.mlb?.lineupSpotByName?.[scoringTeam] != null && !(sportByteam.mlb?.projectedLineupTeams || []).includes(scoringTeam))
-                && (sportByteam.mlb?.lineupSpotByName?.[oppTeam] != null && !(sportByteam.mlb?.projectedLineupTeams || []).includes(oppTeam));
+              const _ttLineupsConfirmed = _mlbBothTeamsConfirmed(scoringTeam, oppTeam, gameDate);
               const _ttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), ...(_ttModelTruePct != null && _ttModelTruePct !== truePct && { modelTruePct: parseFloat(_ttModelTruePct.toFixed(1)) }), ...(_ttImpliedLambda != null && { ttImpliedLambda: _ttImpliedLambda, ttBlendedLambda: _ttBlendedLambda }), ...(_ttImpliedLambdaClamped != null && { ttImpliedLambdaClamped: _ttImpliedLambdaClamped }), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _ttGameTime, lineupsConfirmed: _ttLineupsConfirmed, teamRPG, oppERA, oppFIP, oppWHIP, ...(oppWHIPSource && { oppWHIPSource }), oppBullpenERA: _oppRestERA, ...(oppBullpenSource && { oppBullpenSource }), oppRPG, parkFactor: parkRF, gameOuLine, teamExpected: _lam != null ? parseFloat(_lam.toFixed(1)) : null, h2hHitRate, h2hGames, h2hHitRatePts, teamL10RPG, ttL10Pts, ttWhipPts, ttOuPts, umpireRunFactor: _ttUmpRunFactor, ...(_ttUmpName && { umpireName: _ttUmpName }), ttSeasonHitRate, ttSeasonHitRatePts, oppStarterHand: _ttOppStarterHand, ...(_ttPlatFactor !== 1.0 && { platoonFactor: _ttPlatFactor }), ...(scoringTopOut > 0 && { scoringTopOut, scoringLineupFactor: lineupFactor }), ...(oppPitcherOnIL && { oppPitcherOnIL: true }) };
               const rawEdge = parseFloat((truePct - kalshiPct).toFixed(1));
               const edge = rawEdge;
@@ -4293,9 +4301,7 @@ var worker_default = {
             if (homeTruePct == null) continue;
             const awayTruePct = parseFloat((100 - homeTruePct).toFixed(1));
             const _gameTime = gameTimes[`mlb:${homeTeam}:${gameDate}`] ?? gameTimes[`mlb:${awayTeam}:${gameDate}`] ?? gameTimes[`mlb:${homeTeam}`] ?? gameTimes[`mlb:${awayTeam}`] ?? null;
-            const _lineupsConfirmed = gameDate === _todayPT
-              && (sportByteam.mlb?.lineupSpotByName?.[homeTeam] != null && !(sportByteam.mlb?.projectedLineupTeams || []).includes(homeTeam))
-              && (sportByteam.mlb?.lineupSpotByName?.[awayTeam] != null && !(sportByteam.mlb?.projectedLineupTeams || []).includes(awayTeam));
+            const _lineupsConfirmed = _mlbBothTeamsConfirmed(homeTeam, awayTeam, gameDate);
             const _toAO = (p) => p == null ? null : p >= 50 ? Math.round(-(p / (100 - p)) * 100) : Math.round((100 - p) / p * 100);
             for (const side of ["home", "away"]) {
               const pickTeam = side === "home" ? homeTeam : awayTeam;
@@ -4354,9 +4360,7 @@ var worker_default = {
             if (yesTruePct == null) continue;
             const noTruePct = parseFloat((100 - yesTruePct).toFixed(1));
             const _gameTime = gameTimes[`mlb:${homeTeam}:${gameDate}`] ?? gameTimes[`mlb:${awayTeam}:${gameDate}`] ?? gameTimes[`mlb:${homeTeam}`] ?? gameTimes[`mlb:${awayTeam}`] ?? null;
-            const _lineupsConfirmed = gameDate === _todayPT
-              && (sportByteam.mlb?.lineupSpotByName?.[homeTeam] != null && !(sportByteam.mlb?.projectedLineupTeams || []).includes(homeTeam))
-              && (sportByteam.mlb?.lineupSpotByName?.[awayTeam] != null && !(sportByteam.mlb?.projectedLineupTeams || []).includes(awayTeam));
+            const _lineupsConfirmed = _mlbBothTeamsConfirmed(homeTeam, awayTeam, gameDate);
             // Two directions: YES (marginTeam covers `-line`), NO (other team covers `+line`).
             for (const dir of ["yes", "no"]) {
               const pickTeam = dir === "yes" ? marginTeam : (marginTeam === homeTeam ? awayTeam : homeTeam);
