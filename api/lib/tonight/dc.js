@@ -70,6 +70,14 @@ export function computeDataConfidence(p, ctx = {}) {
     // shrinkage caps at 0.85, so a team missing 30%+ of its usage is materially under-modeled.
     if ((p.homeUsageOut || 0) >= 0.30) _pen("nbaHomeHeavyInjury", 1);
     if ((p.awayUsageOut || 0) >= 0.30) _pen("nbaAwayHeavyInjury", 1);
+  } else if (sport === "wnba" && (gameType === "ml" || gameType === "spread")) {
+    // WNBA mirror of NBA. Uses sportByteam.wnbaStarters + homeUsageOut/awayUsageOut.
+    const starters = sportByteam.wnbaStarters;
+    const confirmedTeams = new Set(starters?.confirmedTeams || []);
+    if (!confirmedTeams.has(p.homeTeam)) _pen("wnbaHomeLineupNotPosted", 1);
+    if (!confirmedTeams.has(p.awayTeam)) _pen("wnbaAwayLineupNotPosted", 1);
+    if ((p.homeUsageOut || 0) >= 0.30) _pen("wnbaHomeHeavyInjury", 1);
+    if ((p.awayUsageOut || 0) >= 0.30) _pen("wnbaAwayHeavyInjury", 1);
   } else if (sport === "mlb") {
     const conf = isPlayerProp ? p.lineupConfirmed : p.lineupsConfirmed;
     if (conf === false) _pen("mlbLineupNotConfirmed", 3);

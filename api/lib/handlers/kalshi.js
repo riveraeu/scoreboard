@@ -145,9 +145,9 @@ export async function handleKalshiRoutes(ctx) {
     if (!env?.UPSTASH_REDIS_REST_URL || !env?.UPSTASH_REDIS_REST_TOKEN) {
       return errorResponse("Upstash not configured", 500);
     }
-    // MUST stay in sync with SERIES_CONFIG inside /api/tonight. Plus KXMLBGAME / KXNBAGAME
-    // (game ML, not in SERIES_CONFIG since they aren't player-prop series — they feed the
-    // ML emission loops + tomorrow's odds fallback).
+    // MUST stay in sync with SERIES_CONFIG inside /api/tonight. Plus *GAME tickers
+    // (per-sport moneyline series, not player-prop series — they feed the ML emission
+    // loops + tomorrow's odds fallback for MLB).
     const KALSHI_SERIES_TICKERS = [
       "KXNBAPTS", "KXNBAREB", "KXNBAAST", "KXNBA3PT",
       "KXWNBAPTS", "KXWNBAREB", "KXWNBAAST", "KXWNBA3PT",
@@ -156,8 +156,8 @@ export async function handleKalshiRoutes(ctx) {
       "KXNFLPAYDS", "KXNFLRUYDS", "KXNFLREYDS", "KXNFLTDS",
       "KXMLBTOTAL", "KXNBATOTAL", "KXWNBATOTAL", "KXNHLTOTAL", "KXNFLTOTAL",
       "KXMLBTEAMTOTAL", "KXNBATEAMTOTAL",
-      "KXMLBGAME", "KXNBAGAME",
-      "KXMLBSPREAD", "KXNBASPREAD",
+      "KXMLBGAME", "KXNBAGAME", "KXWNBAGAME", "KXNHLGAME",
+      "KXMLBSPREAD", "KXNBASPREAD", "KXWNBASPREAD", "KXNHLSPREAD",
     ];
     const startMs = Date.now();
     // Match /api/tonight's hot-path throttle (3 parallel / 700ms delay). Cron isn't

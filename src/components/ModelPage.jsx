@@ -70,6 +70,10 @@ function ModelPage({ onBack, calibData, calibLoading, fetchCalib, authToken }) {
     "mlb-spread": ["mlb|spread"],
     "nba-ml":  ["nba|ml"],
     "nba-spread": ["nba|spread"],
+    "wnba-ml": ["wnba|ml"],
+    "wnba-spread": ["wnba|spread"],
+    "nhl-ml":  ["nhl|ml"],
+    "nhl-spread": ["nhl|spread"],
   };
 
   const deltaColor = d => d == null ? "#8b949e" : d >= 3 ? "#3fb950" : d <= -3 ? "#f78166" : "#e3b341";
@@ -222,9 +226,15 @@ function ModelPage({ onBack, calibData, calibLoading, fetchCalib, authToken }) {
       { id:"nba-ml", label:"NBA Moneyline" },
       { id:"nba-spread", label:"NBA Spread" },
     ]},
+    { sport:"WNBA", tabs:[
+      { id:"wnba-ml", label:"WNBA Moneyline" },
+      { id:"wnba-spread", label:"WNBA Spread" },
+    ]},
     { sport:"NHL", tabs:[
       { id:"nhl",    label:"NHL Points" },
       { id:"nhl-gt", label:"NHL Game Total" },
+      { id:"nhl-ml", label:"NHL Moneyline" },
+      { id:"nhl-spread", label:"NHL Spread" },
     ]},
   ];
   const TABS = TAB_ROWS.flatMap(r => r.tabs);
