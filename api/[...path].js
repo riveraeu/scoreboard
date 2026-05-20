@@ -4472,7 +4472,10 @@ var worker_default = {
             _nbaMlMarkets[`${t1}|${t2}|${info.gameDate}`] = yesPayload;
             _nbaMlMarkets[`${t2}|${t1}|${info.gameDate}`] = yesPayload;
           }
-        } catch { /* non-fatal */ }
+        } catch (_e) { if (isDebug) dropped.push({ debugTag: "nbaMlFetchFail", error: String(_e) }); }
+        if (isDebug) {
+          dropped.push({ debugTag: "nbaMlDiag", contextCount: Object.keys(_nbaMlContext).length, marketCount: Object.keys(_nbaMlMarkets).length, contextKeys: Object.keys(_nbaMlContext).slice(0, 5), marketKeys: Object.keys(_nbaMlMarkets).slice(0, 5) });
+        }
         // Shared joint Normal cache for NBA ML + spread emission.
         const _nbaJointCache = {};
         {
@@ -4480,7 +4483,7 @@ var worker_default = {
             const { homeTeam, awayTeam, gameDate, homeLambda, awayLambda, kalshiVolume, kalshiSpread, lowVolume, _simData } = ctx;
             if (gameDate && gameDate < cutoffStr) continue;
             const mlMarket = _nbaMlMarkets[`${homeTeam}|${awayTeam}|${gameDate}`];
-            if (!mlMarket?.yesByTeam) continue;
+            if (!mlMarket?.yesByTeam) { if (isDebug) dropped.push({ debugTag: "nbaMlNoMarket", homeTeam, awayTeam, gameDate, lookupKey: `${homeTeam}|${awayTeam}|${gameDate}` }); continue; }
             const homeYesAsk = mlMarket.yesByTeam[homeTeam];
             const awayYesAsk = mlMarket.yesByTeam[awayTeam];
             if (homeYesAsk == null || awayYesAsk == null) continue;
