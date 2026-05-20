@@ -483,6 +483,129 @@ function buildMlbSpreadInputs(p) {
   ].filter(Boolean);
 }
 
+// NBA/WNBA moneyline — pickTeam-oriented factor list. Pick λ vs opp λ from possession-based
+// projection; margin (pick − opp) is the cleanest single-number summary. Includes OffRtg/DefRtg
+// breakdown, pace, injuries, and playoff boost (NBA only). Same builder works for both sports
+// since they share the same per-team Normal-mean simData shape; σ differs (NBA 13, WNBA 11)
+// but that's a sim-internal — not surfaced as an input row.
+function buildNbaWnbaMlInputs(p) {
+  const isHomePick = p.pickTeam === p.homeTeam;
+  const pickLambda = isHomePick ? p.homeLambda : p.awayLambda;
+  const oppLambda = isHomePick ? p.awayLambda : p.homeLambda;
+  const margin = (pickLambda != null && oppLambda != null) ? pickLambda - oppLambda : null;
+  const pickOffRtg = isHomePick ? p.homeOffRtg : p.awayOffRtg;
+  const oppOffRtg = isHomePick ? p.awayOffRtg : p.homeOffRtg;
+  const pickDefRtg = isHomePick ? p.homeDefRtg : p.awayDefRtg;
+  const oppDefRtg = isHomePick ? p.awayDefRtg : p.homeDefRtg;
+  const pickOut = isHomePick ? p.homeOut : p.awayOut;
+  const oppOut = isHomePick ? p.awayOut : p.homeOut;
+  const pickUsageOut = isHomePick ? p.homeUsageOut : p.awayUsageOut;
+  const oppUsageOut = isHomePick ? p.awayUsageOut : p.homeUsageOut;
+  const pickB2B = isHomePick ? p.homeB2B : p.awayB2B;
+  const oppB2B = isHomePick ? p.awayB2B : p.homeB2B;
+  const paceAdj = p.projPace != null && p.leagueAvgPace != null ? (p.projPace - p.leagueAvgPace) : null;
+  return [
+    { label: 'Pick λ pts', value: dec1(pickLambda), color: tier(pickLambda, 115, 105) },
+    { label: 'Opp λ pts', value: dec1(oppLambda), color: tierLow(oppLambda, 105, 115) },
+    { label: 'Margin (pts)', value: margin == null ? null
+        : `${margin >= 0 ? '+' : ''}${margin.toFixed(1)}`,
+      color: margin == null ? null : margin > 3 ? GREEN : margin > 0 ? YELLOW : RED },
+    { label: 'Pick OffRtg', value: dec1(pickOffRtg), color: tier(pickOffRtg, 118, 113) },
+    { label: 'Opp DefRtg', value: dec1(oppDefRtg), color: tierLow(oppDefRtg, 113, 118) },
+    { label: 'Pick DefRtg', value: dec1(pickDefRtg), color: tierLow(pickDefRtg, 113, 118) },
+    { label: 'Opp OffRtg', value: dec1(oppOffRtg), color: tier(oppOffRtg, 118, 113) },
+    { label: 'Pace adj', value: paceAdj == null ? null
+        : `${paceAdj > 0 ? '+' : ''}${paceAdj.toFixed(1)}`, color: GRAY },
+    { label: 'Pick injuries', value: pickOut != null ? `${pickOut} out${pickUsageOut ? ` (${Math.round(pickUsageOut*100)}% USG)` : ''}` : null,
+      color: pickUsageOut == null ? GRAY : pickUsageOut >= 0.30 ? RED : pickUsageOut >= 0.15 ? YELLOW : GREEN },
+    { label: 'Opp injuries', value: oppOut != null ? `${oppOut} out${oppUsageOut ? ` (${Math.round(oppUsageOut*100)}% USG)` : ''}` : null,
+      color: oppUsageOut == null ? GRAY : oppUsageOut >= 0.30 ? GREEN : oppUsageOut >= 0.15 ? YELLOW : GRAY },
+    pickB2B ? { label: 'Pick B2B', value: 'yes', color: RED } : null,
+    oppB2B ? { label: 'Opp B2B', value: 'yes', color: GREEN } : null,
+    p.playoffBoost != null ? { label: 'Playoff boost', value: `×${p.playoffBoost.toFixed(2)}`, color: GRAY } : null,
+  ].filter(Boolean);
+}
+
+// NBA/WNBA spread — same backbone as ML plus the line + cover-by surplus, mirroring MLB.
+function buildNbaWnbaSpreadInputs(p) {
+  const base = buildNbaWnbaMlInputs(p);
+  const pickLineStr = p.pickLine == null ? null : (p.pickLine > 0 ? `+${p.pickLine}` : `${p.pickLine}`);
+  const isHomePick = p.pickTeam === p.homeTeam;
+  const pickLambda = isHomePick ? p.homeLambda : p.awayLambda;
+  const oppLambda = isHomePick ? p.awayLambda : p.homeLambda;
+  const margin = (pickLambda != null && oppLambda != null) ? pickLambda - oppLambda : null;
+  const needed = p.pickLine != null ? -p.pickLine : null;
+  const surplus = (margin != null && needed != null) ? margin - needed : null;
+  return [
+    { label: 'Spread', value: pickLineStr, color: GRAY },
+    { label: 'Cover by', value: surplus == null ? null
+        : `${surplus >= 0 ? '+' : ''}${surplus.toFixed(1)}`,
+      color: surplus == null ? null : surplus > 2 ? GREEN : surplus > 0 ? YELLOW : RED },
+    ...base,
+  ];
+}
+
+// NHL moneyline — Poisson goals λ on each side, goalie SV% breakouts (lambdas already
+// incorporate goalie when known; fallback flag is surfaced as a "(team)" suffix), GPG/GAA gut
+// checks, and B2B flags.
+function buildNhlMlInputs(p) {
+  const isHomePick = p.pickTeam === p.homeTeam;
+  const pickLambda = isHomePick ? p.homeLambda : p.awayLambda;
+  const oppLambda = isHomePick ? p.awayLambda : p.homeLambda;
+  const margin = (pickLambda != null && oppLambda != null) ? pickLambda - oppLambda : null;
+  const pickGPG = isHomePick ? p.homeGPG : p.awayGPG;
+  const oppGPG = isHomePick ? p.awayGPG : p.homeGPG;
+  const pickGAA = isHomePick ? p.homeGAA : p.awayGAA;
+  const oppGAA = isHomePick ? p.awayGAA : p.homeGAA;
+  const pickGoalie = isHomePick ? p.homeGoalie : p.awayGoalie;
+  const oppGoalie = isHomePick ? p.awayGoalie : p.homeGoalie;
+  const pickGoalieSV = isHomePick ? p.homeGoalieSV : p.awayGoalieSV;
+  const oppGoalieSV = isHomePick ? p.awayGoalieSV : p.homeGoalieSV;
+  const pickGoalieSrc = isHomePick ? p.homeGoalieSource : p.awayGoalieSource;
+  const oppGoalieSrc = isHomePick ? p.awayGoalieSource : p.homeGoalieSource;
+  const goalieSrc = (src) => src === 'starter' ? '' : src === 'team' ? ' (team)' : '';
+  const pickB2B = isHomePick ? p.homeB2B : p.awayB2B;
+  const oppB2B = isHomePick ? p.awayB2B : p.homeB2B;
+  return [
+    { label: 'Pick λ goals', value: dec2(pickLambda), color: tier(pickLambda, 3.5, 3.0) },
+    { label: 'Opp λ goals', value: dec2(oppLambda), color: tierLow(oppLambda, 3.0, 3.5) },
+    { label: 'Margin (goals)', value: margin == null ? null
+        : `${margin >= 0 ? '+' : ''}${margin.toFixed(2)}`,
+      color: margin == null ? null : margin > 0.3 ? GREEN : margin > 0 ? YELLOW : RED },
+    { label: 'Pick goalie SV%', value: pickGoalieSV == null ? null
+        : `${(pickGoalieSV * 100).toFixed(1)}%${goalieSrc(pickGoalieSrc)}${pickGoalie ? ` (${pickGoalie})` : ''}`,
+      color: tier(pickGoalieSV, 0.915, 0.895) },
+    { label: 'Opp goalie SV%', value: oppGoalieSV == null ? null
+        : `${(oppGoalieSV * 100).toFixed(1)}%${goalieSrc(oppGoalieSrc)}${oppGoalie ? ` (${oppGoalie})` : ''}`,
+      color: tierLow(oppGoalieSV, 0.895, 0.915) },
+    { label: 'Pick GPG', value: dec2(pickGPG), color: tier(pickGPG, 3.5, 3.0) },
+    { label: 'Opp GAA', value: dec2(oppGAA), color: tier(oppGAA, 3.5, 3.0) },
+    { label: 'Pick GAA', value: dec2(pickGAA), color: tierLow(pickGAA, 3.0, 3.5) },
+    { label: 'Opp GPG', value: dec2(oppGPG), color: tierLow(oppGPG, 3.0, 3.5) },
+    pickB2B ? { label: 'Pick B2B', value: 'yes', color: RED } : null,
+    oppB2B ? { label: 'Opp B2B', value: 'yes', color: GREEN } : null,
+  ].filter(Boolean);
+}
+
+// NHL spread — same backbone as NHL ML plus line + cover-by surplus.
+function buildNhlSpreadInputs(p) {
+  const base = buildNhlMlInputs(p);
+  const pickLineStr = p.pickLine == null ? null : (p.pickLine > 0 ? `+${p.pickLine}` : `${p.pickLine}`);
+  const isHomePick = p.pickTeam === p.homeTeam;
+  const pickLambda = isHomePick ? p.homeLambda : p.awayLambda;
+  const oppLambda = isHomePick ? p.awayLambda : p.homeLambda;
+  const margin = (pickLambda != null && oppLambda != null) ? pickLambda - oppLambda : null;
+  const needed = p.pickLine != null ? -p.pickLine : null;
+  const surplus = (margin != null && needed != null) ? margin - needed : null;
+  return [
+    { label: 'Spread', value: pickLineStr, color: GRAY },
+    { label: 'Cover by', value: surplus == null ? null
+        : `${surplus >= 0 ? '+' : ''}${surplus.toFixed(2)}`,
+      color: surplus == null ? null : surplus > 0.3 ? GREEN : surplus > 0 ? YELLOW : RED },
+    ...base,
+  ];
+}
+
 // Humanize dc penalty keys for display — keep these in sync with api/lib/tonight/dc.js.
 const _DC_LABELS = {
   kalshiStale: 'Stale Kalshi data', lowVolume: 'Low Kalshi volume', wideSpread: 'Wide Kalshi spread',
@@ -498,6 +621,11 @@ const _DC_LABELS = {
   homeBullpenTeamFallback: 'Home bullpen = team fallback', awayBullpenTeamFallback: 'Away bullpen = team fallback',
   oppBullpenTeamFallback: 'Opp bullpen = team fallback',
   nhlHomeGoalieTeamFallback: 'Home goalie = team GAA fallback', nhlAwayGoalieTeamFallback: 'Away goalie = team GAA fallback',
+  homeGoalieTeamFallback: 'Home goalie = team GAA fallback', awayGoalieTeamFallback: 'Away goalie = team GAA fallback',
+  nbaHomeLineupNotPosted: 'Home lineup not posted', nbaAwayLineupNotPosted: 'Away lineup not posted',
+  nbaHomeHeavyInjury: 'Home heavy injury (≥30% USG out)', nbaAwayHeavyInjury: 'Away heavy injury (≥30% USG out)',
+  wnbaHomeLineupNotPosted: 'Home lineup not posted', wnbaAwayLineupNotPosted: 'Away lineup not posted',
+  wnbaHomeHeavyInjury: 'Home heavy injury (≥30% USG out)', wnbaAwayHeavyInjury: 'Away heavy injury (≥30% USG out)',
   farFromLine: 'Far from O/U line', modestlyFromLine: 'Modestly far from O/U line',
   seasonRateDivergent: 'Season-rate divergent (clamped)',
   homeLineupHeavyOut: 'Home ≥2 hitters out', awayLineupHeavyOut: 'Away ≥2 hitters out',
@@ -545,9 +673,15 @@ export function buildLambdaInputs(p) {
       : sport === 'nba' ? buildNbaTeamTotalInputs(p)
       : [];
   } else if (gameType === 'ml') {
-    inputs = sport === 'mlb' ? buildMlbMlInputs(p) : [];
+    inputs = sport === 'mlb' ? buildMlbMlInputs(p)
+      : (sport === 'nba' || sport === 'wnba') ? buildNbaWnbaMlInputs(p)
+      : sport === 'nhl' ? buildNhlMlInputs(p)
+      : [];
   } else if (gameType === 'spread') {
-    inputs = sport === 'mlb' ? buildMlbSpreadInputs(p) : [];
+    inputs = sport === 'mlb' ? buildMlbSpreadInputs(p)
+      : (sport === 'nba' || sport === 'wnba') ? buildNbaWnbaSpreadInputs(p)
+      : sport === 'nhl' ? buildNhlSpreadInputs(p)
+      : [];
   } else if (sport === 'mlb' && stat === 'strikeouts') {
     inputs = buildMlbKInputs(p);
   } else if (sport === 'mlb') {
