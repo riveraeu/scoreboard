@@ -450,6 +450,9 @@ var worker_default = {
               }
               const _tYesBid = parseFloat(m.yes_bid_dollars) || 0;
               const _tSpread = yesAsk > 0 && _tYesBid > 0 ? Math.round((yesAsk - _tYesBid) * 100) : null;
+              if (sport === "nhl") {
+                dropped.push({ debugTag: "nhlTotalParse", event_ticker: m.event_ticker, _tDateSeg, slice02: _tDateSeg.slice(0,2), slice25: _tDateSeg.slice(2,5), slice57: _tDateSeg.slice(5,7), _tGameDate });
+              }
               totalMarkets.push({ gameType: "total", sport, stat, col, threshold, kalshiPct: pct, americanOdds: _toAO, noKalshiPct: noPct, noKalshiAO: _tNoAO, kalshiVolume: volume, gameTeam1, gameTeam2, gameDate: _tGameDate, kalshiSpread: _tSpread, _ticker: m.ticker, _yesAsk: yesAsk, _yesBid: _tYesBid, _noAsk: noAsk });
               continue;
             }
