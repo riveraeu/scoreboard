@@ -59,23 +59,14 @@ export function computeDataConfidence(p, ctx = {}) {
     if (conf === false) _pen("mlbLineupNotConfirmed", 3);
     else if (conf == null) _pen("mlbLineupUnknown", 3);
   } else if (sport === "nba" && (gameType === "ml" || gameType === "spread")) {
-    // NBA lineup confirmation via sportByteam.nbaStarters (same source as player-prop branch).
-    // -1 per side that hasn't posted starters yet. Lambda already accounts for known-out injuries,
-    // but unposted lineups mean we might be running on yesterday's roster assumptions.
-    const starters = sportByteam.nbaStarters;
-    const confirmedTeams = new Set(starters?.confirmedTeams || []);
-    if (!confirmedTeams.has(p.homeTeam)) _pen("nbaHomeLineupNotPosted", 1);
-    if (!confirmedTeams.has(p.awayTeam)) _pen("nbaAwayLineupNotPosted", 1);
-    // Heavy-injury penalty: lambda already shrinks OffRtg by Σ(out-player USG) × 0.15 but the
-    // shrinkage caps at 0.85, so a team missing 30%+ of its usage is materially under-modeled.
+    // No lineup-posted penalty: NBA starting 5 isn't officially posted pre-game (ESPN
+    // `boxscore.players[].starter` is only populated in/post). The lambda already adjusts
+    // OffRtg for known-out players via the injury report (Σ out-USG × 0.15, capped at 0.85);
+    // we just penalize the cap-busting case where the team is materially under-modeled.
     if ((p.homeUsageOut || 0) >= 0.30) _pen("nbaHomeHeavyInjury", 1);
     if ((p.awayUsageOut || 0) >= 0.30) _pen("nbaAwayHeavyInjury", 1);
   } else if (sport === "wnba" && (gameType === "ml" || gameType === "spread")) {
-    // WNBA mirror of NBA. Uses sportByteam.wnbaStarters + homeUsageOut/awayUsageOut.
-    const starters = sportByteam.wnbaStarters;
-    const confirmedTeams = new Set(starters?.confirmedTeams || []);
-    if (!confirmedTeams.has(p.homeTeam)) _pen("wnbaHomeLineupNotPosted", 1);
-    if (!confirmedTeams.has(p.awayTeam)) _pen("wnbaAwayLineupNotPosted", 1);
+    // Same as NBA — no pre-game starter feed. Heavy-injury penalty only.
     if ((p.homeUsageOut || 0) >= 0.30) _pen("wnbaHomeHeavyInjury", 1);
     if ((p.awayUsageOut || 0) >= 0.30) _pen("wnbaAwayHeavyInjury", 1);
   } else if (sport === "mlb") {
