@@ -4,7 +4,7 @@ import { ordinal, slugify, teamUrl } from './lib/utils.js';
 import { useIsMobile } from './lib/hooks.js';
 import InputList from './components/InputList.jsx';
 import { buildLambdaInputs, buildModelOutput } from './lib/lambdaInputs.js';
-import { buildLiveGameKey, getPickCurrentStat, findLivePlayer, resolveTotalGameScore } from './lib/liveStats.js';
+import { buildLiveGameKey, getPickCurrentStat, findLivePlayer, resolveTotalGameScore, pitcherIsOut } from './lib/liveStats.js';
 import { tierColor } from './lib/colors.js';
 import TotalsBarChart from './components/TotalsBarChart.jsx';
 import TeamPage, { STAT_CONFIGS } from './components/TeamPage.jsx';
@@ -549,6 +549,13 @@ function App() {
 
         if (current !== null && current >= pick.threshold) {
           return { ...pick, ...backfill, result: "won" };
+        }
+        // MLB strikeouts: once the starter is pulled, their K count is final. Resolve "lost"
+        // without waiting for the game to end so the pick card stops showing as in-progress.
+        if (pick.sport === "mlb" && pick.stat === "strikeouts"
+            && liveGame.state === "in"
+            && pitcherIsOut(playerStats, liveGame.detail)) {
+          return { ...pick, ...backfill, result: "lost" };
         }
         if (liveGame.state === "post") {
           if (playerStats === undefined && pick.stat !== "strikeouts") {

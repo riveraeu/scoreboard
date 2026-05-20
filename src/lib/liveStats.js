@@ -136,6 +136,22 @@ function _paceColor({ current, threshold, elapsed, isUnder, isPost, isPre }) {
   return "#f78166";
 }
 
+// MLB-K pitchers: detect when the starter has been pulled so the K pick can resolve as
+// "lost" the moment the bullpen takes over (instead of waiting for the game to end).
+// Conservative heuristic: pitcher is OUT when the current inning is 2+ past their last
+// completed inning. e.g. IP=5.0 + currentInning=7+ → relieved. Catches "pulled mid-6th"
+// within 1-2 innings of lag; avoids false-positives mid-inning when IP is still updating.
+// Returns false when we can't tell (missing data, near-boundary inning, etc.).
+export function pitcherIsOut(playerStats, gameDetail) {
+  if (!playerStats?.ip || !gameDetail) return false;
+  const ip = parseFloat(playerStats.ip);
+  if (isNaN(ip) || ip <= 0) return false;
+  const m = gameDetail.match(/(\d+)/);
+  if (!m) return false;
+  const inning = parseInt(m[1]);
+  return inning > Math.floor(ip) + 1;
+}
+
 // Build progress-bar display for any active pick (player prop, total, team total).
 // Returns null only when there's truly nothing to show (pre-game with no detail to render
 // is still returned so the bar can render an empty/gray state with start time).
