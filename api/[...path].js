@@ -4831,14 +4831,11 @@ var worker_default = {
         } catch { /* non-fatal */ }
         const _nhlJointCache = {};
         {
-          if (isDebug) {
-            dropped.push({ debugTag: "nhlMlDiag", contextCount: Object.keys(_nhlMlContext).length, marketCount: Object.keys(_nhlMlMarkets).length, contextKeys: Object.keys(_nhlMlContext).slice(0, 5), marketKeys: Object.keys(_nhlMlMarkets).slice(0, 5) });
-          }
           for (const ctx of Object.values(_nhlMlContext)) {
             const { homeTeam, awayTeam, gameDate, homeLambda, awayLambda, kalshiVolume, kalshiSpread, lowVolume, _simData } = ctx;
             if (gameDate && gameDate < cutoffStr) continue;
             const mlMarket = _nhlMlMarkets[`${homeTeam}|${awayTeam}|${gameDate}`];
-            if (!mlMarket?.yesByTeam) { if (isDebug) dropped.push({ debugTag: "nhlMlNoMarket", homeTeam, awayTeam, gameDate, lookupKey: `${homeTeam}|${awayTeam}|${gameDate}` }); continue; }
+            if (!mlMarket?.yesByTeam) continue;
             const homeYesAsk = mlMarket.yesByTeam[homeTeam];
             const awayYesAsk = mlMarket.yesByTeam[awayTeam];
             if (homeYesAsk == null || awayYesAsk == null) continue;
@@ -4889,27 +4886,22 @@ var worker_default = {
         // sim. OT/SO winners get +1 goal in reality, so spread truePct is slightly understated
         // on tight games where the favorite wins by exactly 1 in regulation but goes 2 in OT.
         // Acceptable v1 noise; revisit if calibration shows systematic miss on -1.5 favorites.
-        if (isDebug) {
-          const _nhlSpr = spreadMarkets.filter(m => m.sport === "nhl");
-          dropped.push({ debugTag: "nhlSpreadDiag", count: _nhlSpr.length, sample: _nhlSpr.slice(0,3).map(m => ({ marginTeam: m.marginTeam, gameTeam1: m.gameTeam1, gameTeam2: m.gameTeam2, gameDate: m.gameDate, line: m.line, kalshiPct: m.kalshiPct, noKalshiPct: m.noKalshiPct })) });
-        }
         {
           for (const m of spreadMarkets) {
             if (m.sport !== "nhl") continue;
-            if (m.gameDate && m.gameDate < cutoffStr) { if (isDebug) dropped.push({debugTag:"nhlSprStep", step:"cutoff", m}); continue; }
+            if (m.gameDate && m.gameDate < cutoffStr) continue;
             const { gameTeam1, gameTeam2, gameDate, marginTeam, line, kalshiPct: yesKalshi, americanOdds: yesAO, noKalshiPct: noKalshi, noKalshiAO: noAO, kalshiVolume, kalshiSpread } = m;
             const ctx = _nhlMlContext[`${gameTeam1}|${gameTeam2}|${gameDate}`] ?? _nhlMlContext[`${gameTeam2}|${gameTeam1}|${gameDate}`];
-            if (!ctx) { if (isDebug) dropped.push({debugTag:"nhlSprStep", step:"noCtx", gameTeam1, gameTeam2, gameDate}); continue; }
+            if (!ctx) continue;
             const { homeTeam, awayTeam, homeLambda, awayLambda, _simData } = ctx;
-            if (marginTeam !== homeTeam && marginTeam !== awayTeam) { if (isDebug) dropped.push({debugTag:"nhlSprStep", step:"marginMismatch", marginTeam, homeTeam, awayTeam}); continue; }
+            if (marginTeam !== homeTeam && marginTeam !== awayTeam) continue;
             const _mlk = `${homeTeam}|${awayTeam}`;
             if (!_nhlJointCache[_mlk]) _nhlJointCache[_mlk] = simulateMLBJoint(homeLambda, awayLambda, 10000);
             const joint = _nhlJointCache[_mlk];
-            if (!joint) { if (isDebug) dropped.push({debugTag:"nhlSprStep", step:"noJoint", homeLambda, awayLambda}); continue; }
+            if (!joint) continue;
             const marginSide = marginTeam === homeTeam ? "home" : "away";
             const yesTruePct = spreadPctFromJoint(joint.home, joint.away, line, marginSide);
-            if (yesTruePct == null) { if (isDebug) dropped.push({debugTag:"nhlSprStep", step:"noTruePct", line, marginSide}); continue; }
-            if (isDebug) dropped.push({debugTag:"nhlSprStep", step:"reached", marginTeam, homeTeam, awayTeam, line, yesTruePct, yesKalshi, noKalshi});
+            if (yesTruePct == null) continue;
             const noTruePct = parseFloat((100 - yesTruePct).toFixed(1));
             const _gameTime = gameTimes[`nhl:${homeTeam}:${gameDate}`] ?? gameTimes[`nhl:${awayTeam}:${gameDate}`] ?? gameTimes[`nhl:${homeTeam}`] ?? gameTimes[`nhl:${awayTeam}`] ?? null;
             for (const dir of ["yes", "no"]) {
