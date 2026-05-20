@@ -163,7 +163,10 @@ export function buildLiveProgress(pick, liveGame, totalGameScore) {
     const elapsed = gameElapsedFrac(pick.sport, state, game?.detail);
     const covering = pickScore != null && oppScore != null && (pickScore - oppScore) + (pick.pickLine ?? 0) > 0;
     const pickLineStr = pick.pickLine > 0 ? `+${pick.pickLine}` : `${pick.pickLine}`;
-    valLabel = pickScore != null ? `${pick.pickTeam} ${pickScore}–${oppScore} (${pickLineStr})` : `${pick.pickTeam} ${pickLineStr}`;
+    // Pre-game shows pickTeam + line; in/post shows pickTeam + score only. Line suffix was
+    // pushing the state label (Mid 6th / End 4th) below the truncation cap on the live bar.
+    // Cover status (line context) is already conveyed by the bar color.
+    valLabel = pickScore != null ? `${pick.pickTeam} ${pickScore}–${oppScore}` : `${pick.pickTeam} ${pickLineStr}`;
     const barColor = isPre ? "#484f58"
       : isPost ? (covering ? "#3fb950" : "#f78166")
       : covering ? "#3fb950"
