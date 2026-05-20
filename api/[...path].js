@@ -753,6 +753,11 @@ var worker_default = {
         }
         // Fetch game start times + NBA player availability for tonight's games
         const todayDateStr = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10).replace(/-/g, "");
+        // Today's PT date in ISO (YYYY-MM-DD) — used by lineupConfirmed checks to refuse
+        // crediting today's lineup data toward tomorrow's games (sportByteam.mlb.lineupSpotByName
+        // is a team-level map without date scoping; without this guard, a team playing
+        // back-to-back days would inherit today's confirmation for tomorrow's game).
+        const _todayPT = PT_FMT.format(new Date());
         // nbaStarters loaded in parallel with nbaPlayerStatus since the fetch that populates
         // them shares the same ESPN summary URL — same lifecycle (600s TTL).
         let nbaStarters = (sportsNeeded.has("nba") && CACHE2 && !isBustCache)
@@ -1635,6 +1640,10 @@ var worker_default = {
           // would stamp tomorrow's MLB plays as lineupConfirmed=true and bypass the dc penalty.
           const _mlbLineupConf = (() => {
             if (sport !== "mlb") return null;
+            // Tomorrow's (or any future) game can't use today's lineup data — lineupSpotByName
+            // is team-keyed, not date-scoped, so a team that played today + plays tomorrow would
+            // inherit today's confirmation for tomorrow's card without this guard.
+            if (gameDate && gameDate !== _todayPT) return false;
             const _proj = sportByteam.mlb?.projectedLineupTeams || [];
             const _spotMap = sportByteam.mlb?.lineupSpotByName || {};
             const _teamConfirmed = (t) => _spotMap[t] != null && !_proj.includes(t);
@@ -3815,7 +3824,8 @@ var worker_default = {
             // MLB-only: both lineups confirmed = both teams have a posted lineup (in lineupSpotByName)
             // AND neither is in the projected-fallback set. Undefined for non-MLB so the badge hides.
             const _lineupsConfirmed = sport === "mlb"
-              ? ((sportByteam.mlb?.lineupSpotByName?.[homeTeam] != null && !(sportByteam.mlb?.projectedLineupTeams || []).includes(homeTeam))
+              ? (gameDate === _todayPT
+                 && (sportByteam.mlb?.lineupSpotByName?.[homeTeam] != null && !(sportByteam.mlb?.projectedLineupTeams || []).includes(homeTeam))
                  && (sportByteam.mlb?.lineupSpotByName?.[awayTeam] != null && !(sportByteam.mlb?.projectedLineupTeams || []).includes(awayTeam)))
               : void 0;
             // OVER play — require kalshiPct in window so we don't bet OVERs against UNDER-favored
@@ -4012,7 +4022,8 @@ var worker_default = {
               if (truePct == null) { if (isDebug) dropped.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, teamTotalSimScore, teamRPG, oppERA, oppFIP, oppWHIP, ...(oppWHIPSource && { oppWHIPSource }), oppBullpenERA: _oppRestERA, ...(oppBullpenSource && { oppBullpenSource }), oppRPG, parkFactor: parkRF, gameOuLine, h2hHitRate, h2hGames, h2hHitRatePts, teamL10RPG, ttL10Pts, ttWhipPts, ttOuPts, ttSeasonHitRate, ttSeasonHitRatePts, umpireName: _ttUmpName, reason: "no_simulation_data" }); continue; }
               const _ttGameTime = gameTimes[`${sport}:${homeTeam}:${gameDate}`] ?? gameTimes[`${sport}:${awayTeam}:${gameDate}`] ?? gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null;
               // Both lineups confirmed (MLB only): scoringTeam + oppTeam each have a posted lineup, neither projected.
-              const _ttLineupsConfirmed = (sportByteam.mlb?.lineupSpotByName?.[scoringTeam] != null && !(sportByteam.mlb?.projectedLineupTeams || []).includes(scoringTeam))
+              const _ttLineupsConfirmed = gameDate === _todayPT
+                && (sportByteam.mlb?.lineupSpotByName?.[scoringTeam] != null && !(sportByteam.mlb?.projectedLineupTeams || []).includes(scoringTeam))
                 && (sportByteam.mlb?.lineupSpotByName?.[oppTeam] != null && !(sportByteam.mlb?.projectedLineupTeams || []).includes(oppTeam));
               const _ttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), ...(_ttModelTruePct != null && _ttModelTruePct !== truePct && { modelTruePct: parseFloat(_ttModelTruePct.toFixed(1)) }), ...(_ttImpliedLambda != null && { ttImpliedLambda: _ttImpliedLambda, ttBlendedLambda: _ttBlendedLambda }), ...(_ttImpliedLambdaClamped != null && { ttImpliedLambdaClamped: _ttImpliedLambdaClamped }), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _ttGameTime, lineupsConfirmed: _ttLineupsConfirmed, teamRPG, oppERA, oppFIP, oppWHIP, ...(oppWHIPSource && { oppWHIPSource }), oppBullpenERA: _oppRestERA, ...(oppBullpenSource && { oppBullpenSource }), oppRPG, parkFactor: parkRF, gameOuLine, teamExpected: _lam != null ? parseFloat(_lam.toFixed(1)) : null, h2hHitRate, h2hGames, h2hHitRatePts, teamL10RPG, ttL10Pts, ttWhipPts, ttOuPts, umpireRunFactor: _ttUmpRunFactor, ...(_ttUmpName && { umpireName: _ttUmpName }), ttSeasonHitRate, ttSeasonHitRatePts, oppStarterHand: _ttOppStarterHand, ...(_ttPlatFactor !== 1.0 && { platoonFactor: _ttPlatFactor }), ...(scoringTopOut > 0 && { scoringTopOut, scoringLineupFactor: lineupFactor }), ...(oppPitcherOnIL && { oppPitcherOnIL: true }) };
               const rawEdge = parseFloat((truePct - kalshiPct).toFixed(1));
