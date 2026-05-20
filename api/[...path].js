@@ -4472,10 +4472,7 @@ var worker_default = {
             _nbaMlMarkets[`${t1}|${t2}|${info.gameDate}`] = yesPayload;
             _nbaMlMarkets[`${t2}|${t1}|${info.gameDate}`] = yesPayload;
           }
-        } catch (_e) { if (isDebug) dropped.push({ debugTag: "nbaMlFetchFail", error: String(_e) }); }
-        if (isDebug) {
-          dropped.push({ debugTag: "nbaMlDiag", contextCount: Object.keys(_nbaMlContext).length, marketCount: Object.keys(_nbaMlMarkets).length, contextKeys: Object.keys(_nbaMlContext).slice(0, 5), marketKeys: Object.keys(_nbaMlMarkets).slice(0, 5) });
-        }
+        } catch { /* non-fatal */ }
         // Shared joint Normal cache for NBA ML + spread emission.
         const _nbaJointCache = {};
         {
@@ -4483,17 +4480,16 @@ var worker_default = {
             const { homeTeam, awayTeam, gameDate, homeLambda, awayLambda, kalshiVolume, kalshiSpread, lowVolume, _simData } = ctx;
             if (gameDate && gameDate < cutoffStr) continue;
             const mlMarket = _nbaMlMarkets[`${homeTeam}|${awayTeam}|${gameDate}`];
-            if (!mlMarket?.yesByTeam) { if (isDebug) dropped.push({ debugTag: "nbaMlNoMarket", homeTeam, awayTeam, gameDate, lookupKey: `${homeTeam}|${awayTeam}|${gameDate}` }); continue; }
+            if (!mlMarket?.yesByTeam) continue;
             const homeYesAsk = mlMarket.yesByTeam[homeTeam];
             const awayYesAsk = mlMarket.yesByTeam[awayTeam];
-            if (homeYesAsk == null || awayYesAsk == null) { if (isDebug) dropped.push({ debugTag: "nbaMlNoAsk", homeTeam, awayTeam, yesByTeam: mlMarket.yesByTeam, homeYesAsk, awayYesAsk }); continue; }
+            if (homeYesAsk == null || awayYesAsk == null) continue;
             const _mlk = `${homeTeam}|${awayTeam}`;
             if (!_nbaJointCache[_mlk]) _nbaJointCache[_mlk] = simulateNBAJoint(homeLambda, awayLambda, 13, 13, 10000);
             const joint = _nbaJointCache[_mlk];
-            if (!joint) { if (isDebug) dropped.push({ debugTag: "nbaMlNoJoint", homeTeam, awayTeam, homeLambda, awayLambda }); continue; }
+            if (!joint) continue;
             const homeTruePct = mlPctFromJoint(joint.home, joint.away);
-            if (homeTruePct == null) { if (isDebug) dropped.push({ debugTag: "nbaMlNoTruePct", homeTeam, awayTeam }); continue; }
-            if (isDebug) dropped.push({ debugTag: "nbaMlReached", homeTeam, awayTeam, homeTruePct, homeYesAsk, awayYesAsk });
+            if (homeTruePct == null) continue;
             const awayTruePct = parseFloat((100 - homeTruePct).toFixed(1));
             const _gameTime = gameTimes[`nba:${homeTeam}:${gameDate}`] ?? gameTimes[`nba:${awayTeam}:${gameDate}`] ?? gameTimes[`nba:${homeTeam}`] ?? gameTimes[`nba:${awayTeam}`] ?? null;
             const _toAO = (p) => p == null ? null : p >= 50 ? Math.round(-(p / (100 - p)) * 100) : Math.round((100 - p) / p * 100);
