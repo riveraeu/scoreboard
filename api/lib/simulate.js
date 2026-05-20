@@ -400,10 +400,32 @@ export function simulateMLBJoint(homeLambda, awayLambda, nSim = 10000) {
   return { home, away };
 }
 
+// NBA joint per-team distributions for ML/spread. Independent Normal draws per team via
+// Box-Muller (matches simulateNBATotalDist's per-team treatment). homeMean/awayMean = expected
+// points per team; per-team stddev defaults to 11 (matches simulateNBATotalDist default). Each
+// per-team draw clamped at 0 before rounding. Returns home/away Int16Arrays sized nSim.
+// Same shape as simulateMLBJoint so mlPctFromJoint/spreadPctFromJoint accept either.
+export function simulateNBAJoint(homeMean, awayMean, homeStd = 11, awayStd = 11, nSim = 10000) {
+  if (!homeMean || !awayMean || homeMean <= 0 || awayMean <= 0) return null;
+  const home = new Int16Array(nSim);
+  const away = new Int16Array(nSim);
+  for (let i = 0; i < nSim; i++) {
+    const u1h = Math.random() + 1e-10, u2h = Math.random();
+    const u1a = Math.random() + 1e-10, u2a = Math.random();
+    const zh = Math.sqrt(-2 * Math.log(u1h)) * Math.cos(2 * Math.PI * u2h);
+    const za = Math.sqrt(-2 * Math.log(u1a)) * Math.cos(2 * Math.PI * u2a);
+    home[i] = Math.round(Math.max(0, homeMean + homeStd * zh));
+    away[i] = Math.round(Math.max(0, awayMean + awayStd * za));
+  }
+  return { home, away };
+}
+
 // P(home wins) over non-tie sims. Real MLB resolves in extras, so we drop tied sims rather
 // than splitting them 50/50 — the Poisson model has no notion of extra-inning scoring and
-// dropping ties is the cleanest proxy. Returns null if both arrays are missing or every
-// sim tied (shouldn't happen with realistic lambdas).
+// dropping ties is the cleanest proxy. NBA/WNBA ties are theoretically possible from the
+// rounded-Normal draws but vanishingly rare (~0.5% of sims) and reality always resolves in
+// OT, so dropping is also the right call there. Returns null if both arrays are missing or
+// every sim tied (shouldn't happen with realistic lambdas).
 export function mlPctFromJoint(home, away) {
   if (!home || !away || home.length !== away.length) return null;
   let wins = 0, decided = 0;

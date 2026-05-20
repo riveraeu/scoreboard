@@ -17,11 +17,11 @@ export const DC_GATE = (sport, gameType) => {
     return 10;
   }
   if (gameType === "ml" || gameType === "spread") {
-    // MLB-only in v1 (ML 2026-05-18, spread 2026-05-18). DC_GATE=8 (loosened from 10) —
-    // 10 was effectively unreachable given typical lineup/source penalties even on clean
-    // matchups. Combined with the universal Kalshi 67-91 window, qualified ML/spread plays
-    // remain rare by design. Spread reuses the ML lambda inputs (same FIP/ERA/WHIP/bullpen
-    // sources) so the gate + penalty table mirror.
+    // MLB launched 2026-05-18 with gate=8 (loosened from 10) — 10 was effectively unreachable
+    // given typical lineup/source penalties even on clean matchups. NBA added 2026-05-20 with
+    // matching gate=8 for parity. NBA has fewer applicable penalty rules (no WHIP/bullpen
+    // source check, no pitcher-on-IL) but adds nbaLineup + nbaHeavyInjury rules below. Both
+    // sports' spread plays reuse the ML penalty table (same lambdas → same trust signals).
     return 8;
   }
   if (sport === "wnba" || sport === "nhl") return 8;
@@ -58,6 +58,18 @@ export function computeDataConfidence(p, ctx = {}) {
     const conf = p.lineupsConfirmed;
     if (conf === false) _pen("mlbLineupNotConfirmed", 3);
     else if (conf == null) _pen("mlbLineupUnknown", 3);
+  } else if (sport === "nba" && (gameType === "ml" || gameType === "spread")) {
+    // NBA lineup confirmation via sportByteam.nbaStarters (same source as player-prop branch).
+    // -1 per side that hasn't posted starters yet. Lambda already accounts for known-out injuries,
+    // but unposted lineups mean we might be running on yesterday's roster assumptions.
+    const starters = sportByteam.nbaStarters;
+    const confirmedTeams = new Set(starters?.confirmedTeams || []);
+    if (!confirmedTeams.has(p.homeTeam)) _pen("nbaHomeLineupNotPosted", 1);
+    if (!confirmedTeams.has(p.awayTeam)) _pen("nbaAwayLineupNotPosted", 1);
+    // Heavy-injury penalty: lambda already shrinks OffRtg by Σ(out-player USG) × 0.15 but the
+    // shrinkage caps at 0.85, so a team missing 30%+ of its usage is materially under-modeled.
+    if ((p.homeUsageOut || 0) >= 0.30) _pen("nbaHomeHeavyInjury", 1);
+    if ((p.awayUsageOut || 0) >= 0.30) _pen("nbaAwayHeavyInjury", 1);
   } else if (sport === "mlb") {
     const conf = isPlayerProp ? p.lineupConfirmed : p.lineupsConfirmed;
     if (conf === false) _pen("mlbLineupNotConfirmed", 3);
