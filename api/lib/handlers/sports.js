@@ -117,18 +117,29 @@ export async function handleSportsRoutes(ctx) {
                   const rIdx = labels.indexOf("R");
                   const rbiIdx = labels.indexOf("RBI");
 
+                  // Track team's pitchers in appearance order so we can flag the most recent
+                  // one as "currently in" (ESPN lists chronologically: starter/opener →
+                  // reliever → reliever). The pitcher-K early-resolve uses this flag instead
+                  // of an IP-vs-inning heuristic that breaks for bulk pitchers behind openers.
+                  const teamPitchers = [];
                   for (const ath of statsSection.athletes || []) {
                     const name = ath.athlete?.fullName || ath.athlete?.displayName;
                     if (!name) continue;
                     const s = ath.stats || [];
                     if (hasPitching && kIdx !== -1) {
-                      players[name] = { strikeouts: parseInt(s[kIdx]) || 0, ip: s[ipIdx] ?? "0.0" };
+                      players[name] = { strikeouts: parseInt(s[kIdx]) || 0, ip: s[ipIdx] ?? "0.0", isCurrentPitcher: false };
+                      teamPitchers.push(name);
                     } else if (hasBatting && hIdx !== -1) {
                       const h = parseInt(s[hIdx]) || 0;
                       const r = parseInt(s[rIdx]) || 0;
                       const rbi = parseInt(s[rbiIdx]) || 0;
                       players[name] = { hits: h, runs: r, rbi, hrr: h + r + rbi };
                     }
+                  }
+                  // Mark the last pitcher in this team's list as current.
+                  if (teamPitchers.length > 0) {
+                    const lastP = teamPitchers[teamPitchers.length - 1];
+                    if (players[lastP]) players[lastP].isCurrentPitcher = true;
                   }
                 }
               }

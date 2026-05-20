@@ -550,11 +550,12 @@ function App() {
         if (current !== null && current >= pick.threshold) {
           return { ...pick, ...backfill, result: "won" };
         }
-        // MLB strikeouts: once the starter is pulled, their K count is final. Resolve "lost"
+        // MLB strikeouts: once the pitcher is pulled, their K count is final. Resolve "lost"
         // without waiting for the game to end so the pick card stops showing as in-progress.
+        // Uses isCurrentPitcher flag from /api/live (correct for bulk pitchers behind openers).
         if (pick.sport === "mlb" && pick.stat === "strikeouts"
             && liveGame.state === "in"
-            && pitcherIsOut(playerStats, liveGame.detail)) {
+            && pitcherIsOut(playerStats)) {
           return { ...pick, ...backfill, result: "lost" };
         }
         if (liveGame.state === "post") {

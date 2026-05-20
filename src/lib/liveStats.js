@@ -136,20 +136,18 @@ function _paceColor({ current, threshold, elapsed, isUnder, isPost, isPre }) {
   return "#f78166";
 }
 
-// MLB-K pitchers: detect when the starter has been pulled so the K pick can resolve as
+// MLB-K pitchers: detect when the pitcher has been pulled so the K pick can resolve as
 // "lost" the moment the bullpen takes over (instead of waiting for the game to end).
-// Conservative heuristic: pitcher is OUT when the current inning is 2+ past their last
-// completed inning. e.g. IP=5.0 + currentInning=7+ → relieved. Catches "pulled mid-6th"
-// within 1-2 innings of lag; avoids false-positives mid-inning when IP is still updating.
-// Returns false when we can't tell (missing data, near-boundary inning, etc.).
-export function pitcherIsOut(playerStats, gameDetail) {
-  if (!playerStats?.ip || !gameDetail) return false;
-  const ip = parseFloat(playerStats.ip);
-  if (isNaN(ip) || ip <= 0) return false;
-  const m = gameDetail.match(/(\d+)/);
-  if (!m) return false;
-  const inning = parseInt(m[1]);
-  return inning > Math.floor(ip) + 1;
+// Primary signal: /api/live now flags `isCurrentPitcher` on the last pitcher in each team's
+// boxscore (ESPN lists chronologically — starter/opener → reliever → reliever). If our
+// pitcher's flag is false, someone else has come in. Robust to bulk pitchers behind openers
+// (where IP grows slower than current inning while they're still pitching — broke the prior
+// IP-vs-inning heuristic).
+export function pitcherIsOut(playerStats) {
+  if (!playerStats) return false;
+  // Flag only meaningful when set — undefined means /api/live response predates the flag.
+  if (playerStats.isCurrentPitcher === false) return true;
+  return false;
 }
 
 // Build progress-bar display for any active pick (player prop, total, team total).
