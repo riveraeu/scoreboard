@@ -254,21 +254,12 @@ function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
 
-  // Qualified play filter: dcQualified=true AND edge >= 5%. v1 (SimScore-gated) was dropped
-  // 2026-05-18 — SimScore is display/attribution only now. See [[project-model-version-toggle]].
-  // Clean-data tier: dc=10 OR (dc=9 with ONLY noSoftGames). Mirrors passesGate in LineupsPage —
-  // keep these in sync. Reduces nightly play count by ~30-40% by requiring fully clean inputs
-  // (modestBvPSample / lineupHeavyOut / lowVolume / wideSpread all disqualify); whitelisted
-  // noSoftGames is the NBA series-opener measurement gap, not a quality issue.
+  // Qualified play filter: dcQualified=true AND edge >= 5% AND dc=10 (fully clean inputs). v1
+  // (SimScore-gated) was dropped 2026-05-18 — SimScore is display/attribution only now. Mirrors
+  // passesGate in LineupsPage; keep these in sync.
   const _qualifiedFilter = React.useCallback((p) => {
     if (p.dcQualified !== true || (p.edge ?? 0) < EDGE_GATE) return false;
-    const dc = p.dataConfidence ?? 0;
-    if (dc === 10) return true;
-    if (dc === 9) {
-      const keys = Object.keys(p.dcPenalties || {});
-      if (keys.length === 1 && keys[0] === 'noSoftGames') return true;
-    }
-    return false;
+    return (p.dataConfidence ?? 0) === 10;
   }, []);
   // Fetch tonight's plays on mount
   React.useEffect(() => {

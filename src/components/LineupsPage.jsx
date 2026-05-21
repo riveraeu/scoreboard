@@ -111,17 +111,10 @@ function trackIdFor(p) {
   if (p.gameType === 'spread') return `spread|${p.sport}|${p.pickTeam}|${p.homeTeam}|${p.awayTeam}|${p.pickLine}|${gd}`;
   return `${p.sport || 'nba'}|${p.playerName}|${p.stat}|${p.threshold}|${gd}`;
 }
-// dc=10 OR (dc=9 with ONLY noSoftGames penalty). noSoftGames fires structurally on NBA series
-// openers — measurement gap, not a data-quality concern — so it's whitelisted. Other -1
-// penalties (modestBvPSample, lineupHeavyOut, wideSpread, lowVolume, etc.) still disqualify.
+// Clean-data gate: dc=10 only. Any -1 penalty (modestBvPSample, lineupHeavyOut, wideSpread,
+// lowVolume, noSoftGames, etc.) disqualifies the play from the qualified set.
 function _passesCleanData(p) {
-  const dc = p.dataConfidence ?? 0;
-  if (dc === 10) return true;
-  if (dc === 9) {
-    const keys = Object.keys(p.dcPenalties || {});
-    if (keys.length === 1 && keys[0] === 'noSoftGames') return true;
-  }
-  return false;
+  return (p.dataConfidence ?? 0) === 10;
 }
 function passesGate(p, trackedIds) {
   // Tracked picks always pass — keep visibility of the user's actual bet even if dedup

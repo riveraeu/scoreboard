@@ -2713,6 +2713,7 @@ var worker_default = {
                 nbaAvgAst: nbaUsageMap[String(info.id)]?.avgAst ?? null,
                 nbaAvgReb: nbaUsageMap[String(info.id)]?.avgReb ?? null,
                 gameSpread: (sportByteam.nbaGameOdds ?? {})[playerTeam]?.spread ?? null,
+                softGames: softVals.length,
               } : {}),
               ...(sport === "wnba" ? {
                 wnbaSimScore, wnbaPreSimScore, wnbaSimPct: wnbaSimPctOut, wnbaPaceAdj, wnbaOpportunity, isB2B,
@@ -2724,8 +2725,9 @@ var worker_default = {
                 wnbaAvgAst: wnbaUsageMap[String(info.id)]?.avgAst ?? null,
                 wnbaAvgReb: wnbaUsageMap[String(info.id)]?.avgReb ?? null,
                 gameSpread: (sportByteam.wnbaGameOdds ?? {})[playerTeam]?.spread ?? null,
+                softGames: softVals.length,
               } : {}),
-              ...(sport === "nhl" ? { nhlSimScore, nhlPreSimScore, nhlSimPct: nhlSimPctOut, nhlShotsAdj, nhlOpportunity, nhlTeamGPG, nhlSaRank, gaaRank: _gaaRank, nhlGameTotal, nhlSeasonHitRatePts, nhlDvpHitRatePts, isB2B } : {}),
+              ...(sport === "nhl" ? { nhlSimScore, nhlPreSimScore, nhlSimPct: nhlSimPctOut, nhlShotsAdj, nhlOpportunity, nhlTeamGPG, nhlSaRank, gaaRank: _gaaRank, nhlGameTotal, nhlSeasonHitRatePts, nhlDvpHitRatePts, isB2B, softGames: softVals.length } : {}),
             };
             if (isDebug) dropped.push(_dropObj);
             // For all player prop sports: include in plays with qualified:false so player card
@@ -2850,6 +2852,7 @@ var worker_default = {
               nbaUsage: nbaUsageMap[String(info.id)]?.usg ?? null,
               nbaAvgAst: nbaUsageMap[String(info.id)]?.avgAst ?? null,
               nbaAvgReb: nbaUsageMap[String(info.id)]?.avgReb ?? null,
+              softGames: softVals.length,
             };
             if (isDebug) dropped.push(_nbaLowScoreDrop);
             plays.push({
@@ -2890,6 +2893,7 @@ var worker_default = {
               wnbaUsage: wnbaUsageMap[String(info.id)]?.usg ?? null,
               wnbaAvgAst: wnbaUsageMap[String(info.id)]?.avgAst ?? null,
               wnbaAvgReb: wnbaUsageMap[String(info.id)]?.avgReb ?? null,
+              softGames: softVals.length,
             };
             if (isDebug) dropped.push(_wnbaLowScoreDrop);
             plays.push({
@@ -2925,6 +2929,7 @@ var worker_default = {
               nhlSimPct: nhlSimPctOut, nhlShotsAdj, nhlOpportunity, nhlTeamGPG, nhlSaRank, gaaRank: _gaaRank, isB2B,
               nhlGameTotal, nhlSeasonHitRatePts, nhlDvpHitRatePts,
               posDvpRank: posDvpRankOut, dvpRatio: oppDvpRatioOut, posGroup: posGroupOut,
+              softGames: softVals.length,
             };
             if (isDebug) dropped.push(_nhlLowScoreDrop);
             plays.push({
