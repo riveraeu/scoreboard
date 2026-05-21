@@ -329,7 +329,95 @@ export async function handleAuthRoutes(ctx) {
       };
     }
 
-    return jsonResponse({ totalPicks: allPicks.length, finalizedPicks: finalized.length, overall, byCategory, byCategoryDetail, byModelVersion, modelFilter: _calibModelFilter, kStrikeouts: { bySimScore, byKpctPts, byKTrendPts, byStdBF, n: ksFinalized.length }, ...(_sliceExtras ? { dcPenaltySlice: _sliceExtras } : {}) });
+    // Optional ?slice=tailTotals — audit of how distance-from-line correlates with
+    // actual hit rate on game/team totals. Question being answered: is the
+    // clamp+seasonRateDivergent regime throwing away real edge at tail thresholds,
+    // or are tail plays already correctly downweighted?
+    let _tailSlice = null;
+    if (params.get("slice") === "tailTotals") {
+      // Threshold-distance buckets per sport — mirror the dc.js _GT_IMPLIED_CAP / threshold-
+      // distance check. [modestCutoff, farCutoff]: dist >= modestCutoff is "modest", dist >=
+      // farCutoff is "far". Plays with dist < modestCutoff are "central" (the clean band).
+      const _DIST_BUCKETS = {
+        total:     { mlb: [3, 5],  nba: [10, 20], wnba: [10, 20], nhl: [2, 3] },
+        teamTotal: { mlb: [2, 3],  nba: [5, 10],  wnba: [5, 10],  nhl: [1, 2] },
+      };
+      // Blend cap shipped 2026-05-17; pre-cutoff totals don't carry the seasonRateDivergent
+      // penalty consistently. Limit the slice to post-cutoff to keep penalty composition
+      // comparable across plays.
+      const _blendCapShipped = Date.UTC(2026, 4, 17, 7, 0, 0);
+      const totalsAll = finalized.filter(p =>
+        (p.gameType === "total" || p.gameType === "teamTotal") &&
+        (p.trackedAt ?? 0) >= _blendCapShipped
+      );
+      const _bucketFor = (p) => {
+        const cuts = _DIST_BUCKETS[p.gameType]?.[p.sport];
+        if (!cuts) return null;
+        if (p.gameOuLine == null || p.threshold == null) return "noLine";
+        const halfLine = p.gameType === "teamTotal" ? p.gameOuLine / 2 : p.gameOuLine;
+        const dist = Math.abs(p.threshold - halfLine);
+        if (dist < cuts[0]) return "central";
+        if (dist < cuts[1]) return "modest";
+        return "far";
+      };
+      // Aggregate: per (sport, gameType, bucket), wins/n + mean predicted truePct + mean edge
+      // + % of picks with seasonRateDivergent firing + % with any distance penalty firing.
+      const _byBucket = {};
+      for (const p of totalsAll) {
+        const b = _bucketFor(p);
+        if (!b) continue;
+        const k = `${p.sport}|${p.gameType}|${b}`;
+        if (!_byBucket[k]) _byBucket[k] = {
+          n: 0, wins: 0, predSum: 0, edgeSum: 0, divergentN: 0, distPenN: 0,
+        };
+        const d = _byBucket[k];
+        d.n++;
+        if (p.result === "won") d.wins++;
+        if (typeof p.truePct === "number") d.predSum += p.truePct;
+        if (typeof p.edge === "number") d.edgeSum += p.edge;
+        const pens = p.dcPenalties || {};
+        if (pens.seasonRateDivergent != null) d.divergentN++;
+        if (pens.farFromLine != null || pens.modestlyFromLine != null) d.distPenN++;
+      }
+      const byBucket = Object.fromEntries(
+        Object.entries(_byBucket).map(([k, d]) => [k, {
+          n: d.n,
+          wins: d.wins,
+          actualHitRate: d.n > 0 ? parseFloat((d.wins / d.n * 100).toFixed(1)) : null,
+          predictedTruePct: d.n > 0 ? parseFloat((d.predSum / d.n).toFixed(1)) : null,
+          delta: d.n > 0 ? parseFloat((d.wins / d.n * 100 - d.predSum / d.n).toFixed(1)) : null,
+          avgEdge: d.n > 0 ? parseFloat((d.edgeSum / d.n).toFixed(2)) : null,
+          divergentPct: d.n > 0 ? parseFloat((d.divergentN / d.n * 100).toFixed(0)) : null,
+          distPenPct: d.n > 0 ? parseFloat((d.distPenN / d.n * 100).toFixed(0)) : null,
+        }])
+      );
+      // Penalty-composition cross-cut: hit rate of tail totals WITH the divergent penalty
+      // vs WITHOUT, regardless of bucket. Tells us whether the penalty itself correlates
+      // with actual underperformance.
+      const _withDivergent = totalsAll.filter(p => (p.dcPenalties || {}).seasonRateDivergent != null);
+      const _withoutDivergent = totalsAll.filter(p => (p.dcPenalties || {}).seasonRateDivergent == null);
+      const _summarizeTotals = (arr) => {
+        const wins = arr.filter(p => p.result === "won").length;
+        const predSum = arr.reduce((s, p) => s + (typeof p.truePct === "number" ? p.truePct : 0), 0);
+        const predN = arr.filter(p => typeof p.truePct === "number").length;
+        return {
+          n: arr.length,
+          wins,
+          actualHitRate: arr.length > 0 ? parseFloat((wins / arr.length * 100).toFixed(1)) : null,
+          predictedTruePct: predN > 0 ? parseFloat((predSum / predN).toFixed(1)) : null,
+          delta: arr.length > 0 && predN > 0 ? parseFloat((wins / arr.length * 100 - predSum / predN).toFixed(1)) : null,
+        };
+      };
+      _tailSlice = {
+        byBucket,
+        withSeasonRateDivergent: _summarizeTotals(_withDivergent),
+        withoutSeasonRateDivergent: _summarizeTotals(_withoutDivergent),
+        sampleStartDate: "2026-05-17T07:00:00Z",
+        bucketCutoffs: _DIST_BUCKETS,
+      };
+    }
+
+    return jsonResponse({ totalPicks: allPicks.length, finalizedPicks: finalized.length, overall, byCategory, byCategoryDetail, byModelVersion, modelFilter: _calibModelFilter, kStrikeouts: { bySimScore, byKpctPts, byKTrendPts, byStdBF, n: ksFinalized.length }, ...(_sliceExtras ? { dcPenaltySlice: _sliceExtras } : {}), ...(_tailSlice ? { tailTotalsSlice: _tailSlice } : {}) });
   }
 
   return null;
