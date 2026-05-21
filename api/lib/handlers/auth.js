@@ -259,7 +259,77 @@ export async function handleAuthRoutes(ctx) {
         })
       ])
     );
-    return jsonResponse({ totalPicks: allPicks.length, finalizedPicks: finalized.length, overall, byCategory, byCategoryDetail, byModelVersion, modelFilter: _calibModelFilter, kStrikeouts: { bySimScore, byKpctPts, byKTrendPts, byStdBF, n: ksFinalized.length } });
+
+    // Optional ?slice=byDcPenalty — audit of how dataConfidence penalty composition
+    // correlates with hit rate. Specifically: is the clean-data filter's noSoftGames
+    // whitelist (dc=9 with that penalty alone) calibrated, or is it leaking weak plays?
+    let _sliceExtras = null;
+    if (params.get("slice") === "byDcPenalty") {
+      // Clean-data filter shipped 2026-05-19 00:00 PT. Pre-cutoff picks matching the
+      // whitelist pattern existed but were never *exposed* as qualified plays — they came
+      // from MarketReport / manual entry, so they're a noisier signal than post-cutoff
+      // picks the user took because the filter recommended them.
+      const _filterCutoff = Date.UTC(2026, 4, 19, 7, 0, 0);
+      const _patternKey = (p) => {
+        const keys = Object.keys(p.dcPenalties || {}).sort();
+        return keys.length === 0 ? "clean" : keys.join("+");
+      };
+      const _byDcPattern = {};
+      for (const p of finalized) {
+        const key = _patternKey(p);
+        if (!_byDcPattern[key]) _byDcPattern[key] = { wins: 0, n: 0, edgeSum: 0, edgeN: 0 };
+        _byDcPattern[key].n++;
+        if (p.result === "won") _byDcPattern[key].wins++;
+        if (typeof p.edge === "number") {
+          _byDcPattern[key].edgeSum += p.edge;
+          _byDcPattern[key].edgeN++;
+        }
+      }
+      const byDcPattern = Object.fromEntries(
+        Object.entries(_byDcPattern)
+          .sort(([, a], [, b]) => b.n - a.n)
+          .map(([k, d]) => [k, {
+            n: d.n,
+            wins: d.wins,
+            hitRate: parseFloat((d.wins / d.n * 100).toFixed(1)),
+            avgEdge: d.edgeN > 0 ? parseFloat((d.edgeSum / d.edgeN).toFixed(2)) : null,
+          }])
+      );
+      const _isWhitelisted = (p) => {
+        if (p.dataConfidence !== 9) return false;
+        const keys = Object.keys(p.dcPenalties || {});
+        return keys.length === 1 && keys[0] === "noSoftGames";
+      };
+      const _isDc10 = (p) => p.dataConfidence === 10;
+      const _bucketize = (picks) => _buckets.map(b => {
+        const inB = picks.filter(p => (p.truePct ?? 0) >= b.min && (p.truePct ?? 0) < b.max);
+        const wins = inB.filter(p => p.result === "won").length;
+        const predicted = (b.min + Math.min(b.max, 100)) / 2;
+        const actual = inB.length > 0 ? parseFloat((wins / inB.length * 100).toFixed(1)) : null;
+        return { bucket: b.label, predicted, actual, n: inB.length, delta: actual != null ? parseFloat((actual - predicted).toFixed(1)) : null };
+      });
+      const _summarize = (picks) => {
+        const wins = picks.filter(p => p.result === "won").length;
+        return {
+          n: picks.length,
+          wins,
+          hitRate: picks.length > 0 ? parseFloat((wins / picks.length * 100).toFixed(1)) : null,
+          buckets: _bucketize(picks),
+        };
+      };
+      const whitelistedAll = finalized.filter(_isWhitelisted);
+      const whitelistedPost = whitelistedAll.filter(p => (p.trackedAt ?? 0) >= _filterCutoff);
+      const dc10All = finalized.filter(_isDc10);
+      const dc10Post = dc10All.filter(p => (p.trackedAt ?? 0) >= _filterCutoff);
+      _sliceExtras = {
+        byDcPattern,
+        whitelisted: { all: _summarize(whitelistedAll), postFilterShipped: _summarize(whitelistedPost) },
+        dc10Baseline: { all: _summarize(dc10All), postFilterShipped: _summarize(dc10Post) },
+        filterShippedAt: "2026-05-19T07:00:00Z",
+      };
+    }
+
+    return jsonResponse({ totalPicks: allPicks.length, finalizedPicks: finalized.length, overall, byCategory, byCategoryDetail, byModelVersion, modelFilter: _calibModelFilter, kStrikeouts: { bySimScore, byKpctPts, byKTrendPts, byStdBF, n: ksFinalized.length }, ...(_sliceExtras ? { dcPenaltySlice: _sliceExtras } : {}) });
   }
 
   return null;
