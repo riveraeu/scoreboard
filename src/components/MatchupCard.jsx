@@ -28,21 +28,70 @@ function LineupBadge({ status, align }) {
   );
 }
 
-// NBA/WNBA/NHL per-player injury pill. Red = Out, yellow = GTD (color carries status info,
-// so the pill text is just the player's name). One pill per player; multiple pills wrap.
-function InjuryBadge({ name, status }) {
-  const isOut = status === 'out';
-  const color = isOut ? '#f85149' : '#e3b341';
-  const bg = 'rgba(139, 148, 158, 0.1)';
+// NBA/WNBA/NHL injury summary pill. One badge per team; hover/tap reveals a tooltip
+// listing each injured player with their status dot. Red = any Out, yellow = only GTD.
+// align controls tooltip anchor — "left" or "right" matches the column's text alignment.
+function InjuryReportBadge({ players, align = 'left' }) {
+  const [hovered, setHovered] = React.useState(false);
+  const [pinned, setPinned] = React.useState(false);
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    if (!pinned) return;
+    const close = (e) => {
+      if (!ref.current || !ref.current.contains(e.target)) setPinned(false);
+    };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('touchstart', close);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('touchstart', close);
+    };
+  }, [pinned]);
+  if (!players?.length) return null;
+  const visible = hovered || pinned;
+  const hasOut = players.some(p => p.status === 'out');
+  const color = hasOut ? '#f85149' : '#e3b341';
   return (
-    <span style={{
-      display: 'inline-block',
-      fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 4,
-      background: bg, color,
-      whiteSpace: 'nowrap',
-    }}
-      title={isOut ? 'Out' : 'Game-time decision / day-to-day'}>
-      {name}
+    <span ref={ref}
+      style={{ position: 'relative', display: 'inline-block', cursor: 'pointer' }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onClick={(e) => { e.stopPropagation(); setPinned(p => !p); }}>
+      <span style={{
+        display: 'inline-block',
+        fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 4,
+        background: 'rgba(139, 148, 158, 0.1)', color,
+        whiteSpace: 'nowrap',
+      }}>
+        Injury Report · {players.length}
+      </span>
+      {visible && (
+        <div style={{
+          position: 'absolute', top: '100%', marginTop: 4,
+          ...(align === 'right' ? { right: 0 } : { left: 0 }),
+          background: '#1c2128', border: '1px solid #30363d', borderRadius: 6,
+          padding: '6px 8px', zIndex: 100, whiteSpace: 'nowrap',
+          fontSize: 10, color: '#c9d1d9', minWidth: 130,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+          textAlign: 'left',
+        }}>
+          {players.map(p => {
+            const isOut = p.status === 'out';
+            return (
+              <div key={p.id || p.name} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '1px 0' }}>
+                <span style={{
+                  display: 'inline-block', width: 6, height: 6, borderRadius: '50%',
+                  background: isOut ? '#f85149' : '#e3b341', flexShrink: 0,
+                }} title={isOut ? 'Out' : 'Game-time decision / day-to-day'} />
+                <span style={{ color: '#c9d1d9' }}>{p.name}</span>
+                <span style={{ color: '#8b949e', fontSize: 9, marginLeft: 'auto' }}>
+                  {isOut ? 'Out' : 'GTD'}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </span>
   );
 }
@@ -270,10 +319,8 @@ function MatchupCard({
                 </div>
               )}
               {awayInjury && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 0, marginBottom: 9 }}>
-                  {awayInjury.map(p => (
-                    <InjuryBadge key={p.id || p.name} name={p.name} status={p.status} />
-                  ))}
+                <div style={{ display: 'flex', marginTop: 0, marginBottom: 9 }}>
+                  <InjuryReportBadge players={awayInjury} align="left" />
                 </div>
               )}
               <div style={{ fontSize: 12, color: '#c9d1d9', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -315,10 +362,8 @@ function MatchupCard({
                 </div>
               )}
               {homeInjury && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 0, marginBottom: 9, justifyContent: 'flex-end' }}>
-                  {homeInjury.map(p => (
-                    <InjuryBadge key={p.id || p.name} name={p.name} status={p.status} />
-                  ))}
+                <div style={{ display: 'flex', marginTop: 0, marginBottom: 9, justifyContent: 'flex-end' }}>
+                  <InjuryReportBadge players={homeInjury} align="right" />
                 </div>
               )}
               <div style={{ fontSize: 12, color: '#c9d1d9', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
