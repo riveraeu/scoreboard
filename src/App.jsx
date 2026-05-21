@@ -261,20 +261,51 @@ function App() {
     if (p.dcQualified !== true || (p.edge ?? 0) < EDGE_GATE) return false;
     return (p.dataConfidence ?? 0) === 10;
   }, []);
-  // Fetch tonight's plays on mount
+  // Fetch tonight's plays on mount + poll every 2min to align with Kalshi snap cron.
+  // Initial fetch no-busts: snap-first server path delivers warm-cached response in a few
+  // hundred ms (vs ~5-8s with bust=1). The 2min snap cron is the effective freshness
+  // ceiling regardless, so busting on mount doesn't buy anything the snap doesn't already
+  // provide. Polling pauses when the tab is hidden and fires an immediate catch-up fetch
+  // on visibility resume so users returning after a long idle don't wait up to 2min.
+  // Manual ↻ button (bustCache below) is the only path that still uses ?bust=1.
   React.useEffect(() => {
     const _applyData = (data) => { const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(_qualifiedFilter)); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); if (data.mlbMeta) setMlbMeta(data.mlbMeta); if (data.mlbMetaTomorrow) setMlbMetaTomorrow(data.mlbMetaTomorrow); if (data.nbaMeta) setNbaMeta(data.nbaMeta); if (data.wnbaMeta) setWnbaMeta(data.wnbaMeta); if (data.nhlMeta) setNhlMeta(data.nhlMeta); };
     let cancelled = false;
-    setTonightLoading(true);
-    // Initial page-load fetch always busts to skip both the server-side Kalshi cache and any
-    // client-side cache layer. App is a SPA so this useEffect fires once per browser tab session
-    // (not per in-app navigation); cost: ~5-8s cold rebuild per session, in exchange for absolute
-    // price freshness on entry.
-    fetch(`${WORKER}/tonight?bust=1`)
-      .then(r => r.json())
-      .then(data => { if (cancelled) return; _applyData(data); setTonightLoading(false); })
-      .catch(() => { if (cancelled) return; setAllTonightPlays([]); setNbaDropped([]); setTonightPlays([]); setTonightLoading(false); });
-    return () => { cancelled = true; };
+    let intervalId = null;
+    const POLL_MS = 120_000;
+    const doFetch = (isInitial) => {
+      if (cancelled) return;
+      if (isInitial) setTonightLoading(true);
+      fetch(`${WORKER}/tonight`)
+        .then(r => r.json())
+        .then(data => { if (cancelled) return; _applyData(data); if (isInitial) setTonightLoading(false); })
+        .catch(() => { if (cancelled || !isInitial) return; setAllTonightPlays([]); setNbaDropped([]); setTonightPlays([]); setTonightLoading(false); });
+    };
+    const startPolling = () => {
+      if (intervalId != null) return;
+      intervalId = setInterval(() => doFetch(false), POLL_MS);
+    };
+    const stopPolling = () => {
+      if (intervalId == null) return;
+      clearInterval(intervalId);
+      intervalId = null;
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        doFetch(false);
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    };
+    doFetch(true);
+    if (document.visibilityState === "visible") startPolling();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      cancelled = true;
+      stopPolling();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, []);
 
   const bustCache = () => {
