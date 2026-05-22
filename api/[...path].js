@@ -3329,7 +3329,12 @@ var worker_default = {
           if (wSum < 3) return null;
           return { mean: scoreSum / wSum, effectiveSample: wSum };
         };
-        const _regimeBlendWeight = (sample) => Math.min(0.5, (sample || 0) / 30 * 0.5);
+        // Max weight 0.7 (up from 0.5) + sample denominator 12 (down from 30). The original
+        // tuning capped regime influence too aggressively — a playoff team with 6-10 effective
+        // recent-game samples landed at w=0.1, not enough to bridge the rating-vs-recent gap.
+        // 0.7 cap lets recent form dominate when it has stable sample; rating-based keeps
+        // 30% floor so matchup-specific Off×Def interaction still feeds in.
+        const _regimeBlendWeight = (sample) => Math.min(0.7, (sample || 0) / 12 * 0.7);
         {
           const _MLB_ERA = 4.20;
           // Pre-fetch home team schedules for MLB + NBA game total H2H hit rate
