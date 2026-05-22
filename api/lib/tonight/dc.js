@@ -153,8 +153,11 @@ export function computeDataConfidence(p, ctx = {}) {
     else if (p.dvpRatio == null) _pen("noDvpRatio", 1);
   } else if (sport === "wnba" && isPlayerProp) {
     if (p.oppRank == null) _pen("noOppRank", 3);
-    // WNBA dvpRatio is always null (no per-position DvP) — structural penalty
-    _pen("noDvpRatioStructural", 1);
+    // Conditional -1: was unconditional when WNBA had no DvP. The WNBA build (shipped
+    // 2026-05-10) now populates dvpRatio from `wnbaDvpMap.rankings[stat][i].ratio` —
+    // aggregate stat-allowed (not per-position like NBA), but a real signal. Only fire
+    // when actually missing. Same shape as the NBA branch above.
+    if (p.dvpRatio == null) _pen("noDvpRatio", 1);
   } else if (sport === "nhl" && isPlayerProp) {
     if (p.oppMetricValue == null) _pen("noOppMetric", 3);
   } else if (gameType === "total" && _PROD_SPORTS.has(sport)) {
