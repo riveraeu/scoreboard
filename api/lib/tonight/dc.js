@@ -10,12 +10,11 @@
 
 // Per-sport AND per-play-type qualification thresholds. Player props softer than totals because
 // totals can't accumulate per-player penalties; flat gate would let totals dominate. WNBA/NHL
-// get -1 across the board for structural data gaps.
+// previously had a -1 sport-wide structural penalty (noDvpRatioStructural, noLineupData) so
+// their gates were one tick lower to compensate. Both penalties removed 2026-05-21 — gates
+// now match NBA/MLB across the board.
 export const DC_GATE = (sport, gameType) => {
-  if (gameType === "total" || gameType === "teamTotal") {
-    if (sport === "wnba" || sport === "nhl") return 9;
-    return 10;
-  }
+  if (gameType === "total" || gameType === "teamTotal") return 10;
   if (gameType === "ml" || gameType === "spread") {
     // MLB launched 2026-05-18 with gate=8 (loosened from 10) — 10 was effectively unreachable
     // given typical lineup/source penalties even on clean matchups. NBA added 2026-05-20 with
@@ -24,7 +23,6 @@ export const DC_GATE = (sport, gameType) => {
     // sports' spread plays reuse the ML penalty table (same lambdas → same trust signals).
     return 8;
   }
-  if (sport === "wnba" || sport === "nhl") return 8;
   return 9;
 };
 
@@ -102,10 +100,12 @@ export function computeDataConfidence(p, ctx = {}) {
       p.wnbaStarterConfirmed = null;
       _pen("wnbaLineupNotPosted", 2);
     }
-  } else if (sport === "nhl" && isPlayerProp) {
-    // Structural: no exposed lineup data for NHL today. -1 baseline penalty.
-    _pen("noLineupData", 1);
   }
+  // NHL: no penalty for missing lineup data. ESPN doesn't expose pre-game NHL lineups,
+  // so a "structural" -1 fired on every play and capped the entire prop class at dc=9 —
+  // blocking all NHL props from the strict dc=10 client filter without telling us anything
+  // about an individual play's quality. Sport-wide data limitations are documented, not
+  // penalized at the play level.
 
   // ── Player availability (player props only)
   if (isPlayerProp) {
