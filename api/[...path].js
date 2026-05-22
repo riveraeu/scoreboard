@@ -3326,6 +3326,39 @@ var worker_default = {
             const _rate = (evts) => evts.filter(ev => ev.comps.reduce((s, c) => s + (c.score || 0), 0) >= thr).length / evts.length * 100;
             return { rate: Math.round((_rate(hEvts) + _rate(aEvts)) / 2), sample: Math.min(hEvts.length, aEvts.length) };
           };
+          // ── Regime-aware lambda: blends a team's recency-weighted recent-score average
+          // into the rating-based expected. Half-life 21 days. Replaces the fixed 4% playoff
+          // boost — a team-specific data-driven signal catches both playoff scoring shifts
+          // AND mid-season hot/cold streaks without a manually-tuned multiplier.
+          //
+          // Sample-weighted: w caps at 50% so rating-based stays the primary driver (matchup-
+          // specific Off×Def interaction is information the raw average can't capture).
+          // Returns { mean, effectiveSample } or null if <5 games on the schedule.
+          const _SEASON_HALF_LIFE_DAYS = 21;
+          const _gtRefMs = Date.now();
+          const _recencyWeight = (dateStr) => {
+            if (!dateStr) return 0;
+            const t = new Date(dateStr).getTime();
+            if (!isFinite(t)) return 0;
+            const daysAgo = Math.max(0, (_gtRefMs - t) / 86400000);
+            return Math.pow(0.5, daysAgo / _SEASON_HALF_LIFE_DAYS);
+          };
+          const _recentTeamScoreMean = (sport, team) => {
+            const evts = _gtScheduleMap[`${sport}:${team}`] || [];
+            if (evts.length < 5) return null;
+            let wSum = 0, scoreSum = 0;
+            for (const ev of evts) {
+              const w = _recencyWeight(ev.date);
+              if (w <= 0) continue;
+              const mine = ev.comps.find(c => normTeam(sport, c.abbr) === team);
+              if (!mine || typeof mine.score !== "number") continue;
+              wSum += w;
+              scoreSum += w * mine.score;
+            }
+            if (wSum < 3) return null;
+            return { mean: scoreSum / wSum, effectiveSample: wSum };
+          };
+          const _regimeBlendWeight = (sample) => Math.min(0.5, (sample || 0) / 30 * 0.5);
           // Sample-weighted blend factor: model retains at least 30% weight so tonight-specific
           // factors (pitcher matchup, pace, weather) aren't drowned out. Caps obs weight at 0.7
           // when N >= 40 games; ramps linearly from 0 (no schedule) to 0.7.
@@ -3541,14 +3574,22 @@ var worker_default = {
                 _homeExpRaw = _homeOffAdj != null ? _homeOffAdj * (awayDef != null && nbaAvgDef ? awayDef / nbaAvgDef : 1) : null;
                 _awayExpRaw = _awayOffAdj != null ? _awayOffAdj * (homeDef != null && nbaAvgDef ? homeDef / nbaAvgDef : 1) : null;
               }
-              // Playoff scoring boost — RS-aggregate ratings under-project playoff totals.
-              // gameScores is keyed `${home}|${date}` so we have to scan values, not lookup by abbr.
+              // Playoff context detection retained for simData attribution only — the
+              // _PLAYOFF_OFF_BOOST static 4% multiplier was replaced 2026-05-21 with the
+              // regime-blend below (recency-weighted recent-score average folded into the
+              // rating-based expected). The blend captures playoff scoring shifts AND
+              // mid-season hot/cold streaks without a manually-tuned multiplier.
               const _isPlayoff = Object.values(sportByteam.nbaGameScores || {}).some(g =>
                 g?.seriesSummary && (g.homeTeam === homeTeam || g.awayTeam === homeTeam || g.homeTeam === awayTeam || g.awayTeam === awayTeam)
               );
-              if (_isPlayoff) {
-                if (_homeExpRaw != null) _homeExpRaw *= _PLAYOFF_OFF_BOOST;
-                if (_awayExpRaw != null) _awayExpRaw *= _PLAYOFF_OFF_BOOST;
+              const _homeRecent = _recentTeamScoreMean("nba", homeTeam);
+              const _awayRecent = _recentTeamScoreMean("nba", awayTeam);
+              let _regimeBlendW = 0;
+              if (_homeRecent && _awayRecent && _homeExpRaw != null && _awayExpRaw != null) {
+                const _sample = Math.min(_homeRecent.effectiveSample, _awayRecent.effectiveSample);
+                _regimeBlendW = _regimeBlendWeight(_sample);
+                _homeExpRaw = (1 - _regimeBlendW) * _homeExpRaw + _regimeBlendW * _homeRecent.mean;
+                _awayExpRaw = (1 - _regimeBlendW) * _awayExpRaw + _regimeBlendW * _awayRecent.mean;
               }
               // Keep injuries in simData for reference (not scored)
               const _NBAshort = { GSW:"GS", SAS:"SA", NYK:"NY", NOP:"NO", PHX:"PHO" };
@@ -3567,7 +3608,7 @@ var worker_default = {
               const _combDefRtgPts = _combDefRtg == null ? 1 : _combDefRtg >= 118 ? 2 : _combDefRtg >= 113 ? 1 : 0;
               const _nbaGtH2HPts = nbaGtH2HRate == null ? 1 : nbaGtH2HRate >= 80 ? 2 : nbaGtH2HRate >= 60 ? 1 : 0;
               const _nbaOuPts = _nbaOuLine == null ? 1 : _nbaOuLine >= 225 ? 2 : _nbaOuLine >= 215 ? 1 : 0;
-              _simData = { homeOffRtg: _hOffRtg, awayOffRtg: _aOffRtg, homeOffRtgAdj: _hOffRtgAdj, awayOffRtgAdj: _aOffRtgAdj, homeDefRtg: _hDefRtg, awayDefRtg: _aDefRtg, combOffRtg: _combOffRtg, combDefRtg: _combDefRtg, homePace: _hp, awayPace: _ap, leagueAvgPace: _lgPace, projPace: _projPace, gameOuLine: _nbaOuLine, gameSpread: _nbaGtSpread, homeOut: _homeOut, awayOut: _awayOut, homeUsageOut: _homeInjAdj.share, awayUsageOut: _awayInjAdj.share, ...(_homeInjAdj.adj < 1 && { homeOffRtgFactor: _homeInjAdj.adj }), ...(_awayInjAdj.adj < 1 && { awayOffRtgFactor: _awayInjAdj.adj }), ...(_homeB2B && { homeB2B: true, homeB2BFactor: _homeB2BFactor }), ...(_awayB2B && { awayB2B: true, awayB2BFactor: _awayB2BFactor }), nbaGtH2HRate, nbaGtH2HGames, combOffRtgPts: _combOffRtgPts, combDefRtgPts: _combDefRtgPts, pacePts: _pacePts, nbaGtH2HPts: _nbaGtH2HPts, nbaOuPts: _nbaOuPts, homeExpected: _homeExpRaw != null ? parseFloat(_homeExpRaw.toFixed(1)) : null, awayExpected: _awayExpRaw != null ? parseFloat(_awayExpRaw.toFixed(1)) : null, expectedTotal: (_homeExpRaw != null && _awayExpRaw != null) ? parseFloat((_homeExpRaw + _awayExpRaw).toFixed(1)) : null, ...(_isPlayoff && { playoffBoost: _PLAYOFF_OFF_BOOST }) };
+              _simData = { homeOffRtg: _hOffRtg, awayOffRtg: _aOffRtg, homeOffRtgAdj: _hOffRtgAdj, awayOffRtgAdj: _aOffRtgAdj, homeDefRtg: _hDefRtg, awayDefRtg: _aDefRtg, combOffRtg: _combOffRtg, combDefRtg: _combDefRtg, homePace: _hp, awayPace: _ap, leagueAvgPace: _lgPace, projPace: _projPace, gameOuLine: _nbaOuLine, gameSpread: _nbaGtSpread, homeOut: _homeOut, awayOut: _awayOut, homeUsageOut: _homeInjAdj.share, awayUsageOut: _awayInjAdj.share, ...(_homeInjAdj.adj < 1 && { homeOffRtgFactor: _homeInjAdj.adj }), ...(_awayInjAdj.adj < 1 && { awayOffRtgFactor: _awayInjAdj.adj }), ...(_homeB2B && { homeB2B: true, homeB2BFactor: _homeB2BFactor }), ...(_awayB2B && { awayB2B: true, awayB2BFactor: _awayB2BFactor }), nbaGtH2HRate, nbaGtH2HGames, combOffRtgPts: _combOffRtgPts, combDefRtgPts: _combDefRtgPts, pacePts: _pacePts, nbaGtH2HPts: _nbaGtH2HPts, nbaOuPts: _nbaOuPts, homeExpected: _homeExpRaw != null ? parseFloat(_homeExpRaw.toFixed(1)) : null, awayExpected: _awayExpRaw != null ? parseFloat(_awayExpRaw.toFixed(1)) : null, expectedTotal: (_homeExpRaw != null && _awayExpRaw != null) ? parseFloat((_homeExpRaw + _awayExpRaw).toFixed(1)) : null, ...(_isPlayoff && { isPlayoff: true }), ...(_regimeBlendW > 0 && { regimeBlendW: parseFloat(_regimeBlendW.toFixed(2)), homeRecentMean: parseFloat(_homeRecent.mean.toFixed(1)), awayRecentMean: parseFloat(_awayRecent.mean.toFixed(1)) }) };
               if (_homeExpRaw != null && _awayExpRaw != null) {
                 const _dk = `nba|${homeTeam}|${awayTeam}`;
                 // Per-team std=13 (was 11) — produces game-total std ≈ 18.4, closer to empirical
@@ -3632,6 +3673,17 @@ var worker_default = {
                 _wProjPace = parseFloat(((_whp * _wap) / _wlgPace).toFixed(1));
                 _wHomeExpRaw = (_whOffRtgAdj * _waDefRtg / (_wlgOffRtg * _wlgOffRtg)) * _wProjPace;
                 _wAwayExpRaw = (_waOffRtgAdj * _whDefRtg / (_wlgOffRtg * _wlgOffRtg)) * _wProjPace;
+              }
+              // Regime-aware blend (same shape as NBA) — recency-weighted recent-score average
+              // folded into the rating-based expected to track hot/cold form.
+              const _whRecent = _recentTeamScoreMean("wnba", homeTeam);
+              const _waRecent = _recentTeamScoreMean("wnba", awayTeam);
+              let _wRegimeBlendW = 0;
+              if (_whRecent && _waRecent && _wHomeExpRaw != null && _wAwayExpRaw != null) {
+                const _wSample = Math.min(_whRecent.effectiveSample, _waRecent.effectiveSample);
+                _wRegimeBlendW = _regimeBlendWeight(_wSample);
+                _wHomeExpRaw = (1 - _wRegimeBlendW) * _wHomeExpRaw + _wRegimeBlendW * _whRecent.mean;
+                _wAwayExpRaw = (1 - _wRegimeBlendW) * _wAwayExpRaw + _wRegimeBlendW * _waRecent.mean;
               }
               // H2H combined hit rate (last 10 H2H)
               const _wnbaH2H = (() => {
@@ -3729,8 +3781,19 @@ var worker_default = {
               const _nhlAwayB2B = _isB2B(_gtScheduleMap, "nhl", awayTeam, gameDate);
               const _homeFactor = _gFactor(_awayGoalie, awayGAA) * (_nhlAwayB2B ? B2B_NHL : 1.0);
               const _awayFactor = _gFactor(_homeGoalie, homeGAA) * (_nhlHomeB2B ? B2B_NHL : 1.0);
-              const _hGLRaw = homeGPG != null ? Math.max(0.5, Math.min(8, homeGPG * _homeFactor)) : null;
-              const _aGLRaw = awayGPG != null ? Math.max(0.5, Math.min(8, awayGPG * _awayFactor)) : null;
+              let _hGLRaw = homeGPG != null ? Math.max(0.5, Math.min(8, homeGPG * _homeFactor)) : null;
+              let _aGLRaw = awayGPG != null ? Math.max(0.5, Math.min(8, awayGPG * _awayFactor)) : null;
+              // Regime-aware blend — each team's recency-weighted recent-goals average folded
+              // into the goalie-adjusted GPG so the lambda tracks playoff/hot/cold form.
+              const _nhlHomeRecent = _recentTeamScoreMean("nhl", homeTeam);
+              const _nhlAwayRecent = _recentTeamScoreMean("nhl", awayTeam);
+              let _nhlRegimeBlendW = 0;
+              if (_nhlHomeRecent && _nhlAwayRecent && _hGLRaw != null && _aGLRaw != null) {
+                const _nhlSample = Math.min(_nhlHomeRecent.effectiveSample, _nhlAwayRecent.effectiveSample);
+                _nhlRegimeBlendW = _regimeBlendWeight(_nhlSample);
+                _hGLRaw = (1 - _nhlRegimeBlendW) * _hGLRaw + _nhlRegimeBlendW * _nhlHomeRecent.mean;
+                _aGLRaw = (1 - _nhlRegimeBlendW) * _aGLRaw + _nhlRegimeBlendW * _nhlAwayRecent.mean;
+              }
               const _homeGoalieSource = _awayGoalie ? "starter" : "team";
               const _awayGoalieSource = _homeGoalie ? "starter" : "team";
               // NHL SimScore (max 10): homeGPG→0-2, awayGPG→0-2, homeGAA→0-2, awayGAA→0-2, O/U→0-2
@@ -4120,11 +4183,17 @@ var worker_default = {
                 const _teamOffPPGAdj = teamOff != null ? teamOff * _ttScoringInjAdj.adj : null;
                 if (_teamOffPPGAdj != null) _teamExpected = _teamOffPPGAdj * (oppDef != null && nbaAvgDef ? oppDef / nbaAvgDef : 1);
               }
-              // Same playoff scoring boost as NBA game totals (see _PLAYOFF_OFF_BOOST).
+              // Same regime-aware blend as NBA game totals — scoring team's recent-form
+              // average (recency-weighted) blends into the rating-based expected.
               const _ttIsPlayoff = Object.values(sportByteam.nbaGameScores || {}).some(g =>
                 g?.seriesSummary && (g.homeTeam === scoringTeam || g.awayTeam === scoringTeam || g.homeTeam === oppTeam || g.awayTeam === oppTeam)
               );
-              if (_ttIsPlayoff && _teamExpected != null) _teamExpected *= _PLAYOFF_OFF_BOOST;
+              const _ttRecent = _recentTeamScoreMean("nba", scoringTeam);
+              let _ttRegimeBlendW = 0;
+              if (_ttRecent && _teamExpected != null) {
+                _ttRegimeBlendW = _regimeBlendWeight(_ttRecent.effectiveSample);
+                _teamExpected = (1 - _ttRegimeBlendW) * _teamExpected + _ttRegimeBlendW * _ttRecent.mean;
+              }
               if (_teamExpected != null) {
                 const _dk = `nba|team|${scoringTeam}|${oppTeam}`;
                 if (!teamTotalDistCache[_dk]) teamTotalDistCache[_dk] = simulateTeamPtsDist(_teamExpected, 11, 10000);
@@ -4170,7 +4239,7 @@ var worker_default = {
                 : null;
               const _ttScoringOut = (nbaInjuryMap.get(scoringTeam) || []).length;
               const _ttOppOut = (nbaInjuryMap.get(oppTeam) || []).length;
-              const _nttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), ...(_ttNbaModelTruePct != null && _ttNbaModelTruePct !== truePct && { modelTruePct: _ttNbaModelTruePct }), ...(_ttNbaImpliedMean != null && { ttNbaImpliedMean: _ttNbaImpliedMean, ttNbaBlendedMean: _ttNbaBlendedMean }), ...(_ttNbaImpliedMeanClamped != null && { ttNbaImpliedMeanClamped: _ttNbaImpliedMeanClamped }), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _nttGameTime, teamOffRtg, teamOffRtgAdj: _teamOffRtgAdj, oppDefRtg, teamExpected: _teamExpected != null ? parseFloat(_teamExpected.toFixed(1)) : null, gameOuLine: _nbaOuLine, gameSpread: _gameSpread, projPace: _ttNbaProjPace, leagueAvgPace: _lgPaceNba, scoringOut: _ttScoringOut, oppOut: _ttOppOut, scoringUsageOut: _ttScoringInjAdj.share, ...(_ttScoringInjAdj.adj < 1 && { scoringOffRtgFactor: _ttScoringInjAdj.adj }), ...(_ttScoringB2B && { scoringB2B: true, scoringB2BFactor: _ttScoringB2BFactor }), h2hHitRate, h2hGames, h2hHitRatePts, ttNbaSeasonHitRate, ttNbaSeasonHitRatePts, ttOffRtgPts, ttDefRtgPts, ttNbaOuPts, ...(_ttIsPlayoff && { playoffBoost: _PLAYOFF_OFF_BOOST }) };
+              const _nttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), ...(_ttNbaModelTruePct != null && _ttNbaModelTruePct !== truePct && { modelTruePct: _ttNbaModelTruePct }), ...(_ttNbaImpliedMean != null && { ttNbaImpliedMean: _ttNbaImpliedMean, ttNbaBlendedMean: _ttNbaBlendedMean }), ...(_ttNbaImpliedMeanClamped != null && { ttNbaImpliedMeanClamped: _ttNbaImpliedMeanClamped }), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _nttGameTime, teamOffRtg, teamOffRtgAdj: _teamOffRtgAdj, oppDefRtg, teamExpected: _teamExpected != null ? parseFloat(_teamExpected.toFixed(1)) : null, gameOuLine: _nbaOuLine, gameSpread: _gameSpread, projPace: _ttNbaProjPace, leagueAvgPace: _lgPaceNba, scoringOut: _ttScoringOut, oppOut: _ttOppOut, scoringUsageOut: _ttScoringInjAdj.share, ...(_ttScoringInjAdj.adj < 1 && { scoringOffRtgFactor: _ttScoringInjAdj.adj }), ...(_ttScoringB2B && { scoringB2B: true, scoringB2BFactor: _ttScoringB2BFactor }), h2hHitRate, h2hGames, h2hHitRatePts, ttNbaSeasonHitRate, ttNbaSeasonHitRatePts, ttOffRtgPts, ttDefRtgPts, ttNbaOuPts, ...(_ttIsPlayoff && { isPlayoff: true }), ...(_ttRegimeBlendW > 0 && { regimeBlendW: parseFloat(_ttRegimeBlendW.toFixed(2)), scoringRecentMean: parseFloat(_ttRecent.mean.toFixed(1)) }) };
               const rawEdge = parseFloat((truePct - kalshiPct).toFixed(1));
               const edge = rawEdge;
               const _nttOverInWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
