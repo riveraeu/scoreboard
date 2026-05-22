@@ -688,7 +688,7 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                           ttPace:"Team pace vs league average — positive = faster pace = more possessions = more scoring opportunities",
                           ttSpread:"Game spread — tight game (≤5) = full minutes competitive play (green ≤5, yellow ≤10, red >10)",
                           // v2 dataConfidence columns
-                          dc: "dataConfidence (0–10) — input-data trust score. Starts at 10, subtracts penalties. Per-sport gate: MLB/NBA totals ≥10; MLB/NBA props ≥9; WNBA/NHL props ≥8. Hover the cell for penalty breakdown.",
+                          dc: "dataConfidence (0–10) — input-data trust score. Starts at 10, subtracts penalties. Server gates: totals ≥10, player props ≥9, ML/spread ≥8 (uniform across sports). Client filter requires dc=10 strict. Hover the cell for penalty breakdown.",
                           dcMkt: "Market quality — Kalshi staleness / liquidity. Penalties: kalshiStale -4, lowVolume -2, wideSpread -1. ✓ = no penalty.",
                           dcLineup: "Lineup / starter confirmation. MLB lineup unconfirmed -3 · NBA lineup not posted -2 · NBA confirmed bench -2 · WNBA/NHL structural -1. ✓ = confirmed.",
                           dcAvail: "Player availability (player props only). Out/inactive -10 (effective drop), questionable/doubtful/GTD -2. ✓ = no concerns.",
