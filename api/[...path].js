@@ -3298,6 +3298,38 @@ var worker_default = {
         // NHL analog. homeLambda/awayLambda are Poisson goals (mirror MLB but lower magnitude).
         // simulateMLBJoint is reused — the function is sport-agnostic per-team Poisson.
         const _nhlMlContext = {};
+        // ── Regime-aware lambda helpers (shared by game-total + team-total blocks). Blends a
+        // team's recency-weighted recent-score average into the rating-based expected.
+        // Half-life 21 days. Replaces the fixed 4% NBA playoff boost — a team-specific
+        // data-driven signal catches both playoff scoring shifts AND mid-season hot/cold
+        // streaks without a manually-tuned multiplier. Sample-weighted: w caps at 50%.
+        const _SEASON_HALF_LIFE_DAYS = 21;
+        const _gtRefMs = Date.now();
+        const _recencyWeight = (dateStr) => {
+          if (!dateStr) return 0;
+          const t = new Date(dateStr).getTime();
+          if (!isFinite(t)) return 0;
+          const daysAgo = Math.max(0, (_gtRefMs - t) / 86400000);
+          return Math.pow(0.5, daysAgo / _SEASON_HALF_LIFE_DAYS);
+        };
+        // Takes a schedule map (gtScheduleMap or ttScheduleMap) + sport + team. Both maps
+        // share the same shape: { "sport:team": [{ date, comps: [{ abbr, score }] }] }.
+        const _recentTeamScoreMean = (schedMap, sport, team) => {
+          const evts = schedMap?.[`${sport}:${team}`] || [];
+          if (evts.length < 5) return null;
+          let wSum = 0, scoreSum = 0;
+          for (const ev of evts) {
+            const w = _recencyWeight(ev.date);
+            if (w <= 0) continue;
+            const mine = ev.comps.find(c => normTeam(sport, c.abbr) === team);
+            if (!mine || typeof mine.score !== "number") continue;
+            wSum += w;
+            scoreSum += w * mine.score;
+          }
+          if (wSum < 3) return null;
+          return { mean: scoreSum / wSum, effectiveSample: wSum };
+        };
+        const _regimeBlendWeight = (sample) => Math.min(0.5, (sample || 0) / 30 * 0.5);
         {
           const _MLB_ERA = 4.20;
           // Pre-fetch home team schedules for MLB + NBA game total H2H hit rate
@@ -3326,39 +3358,6 @@ var worker_default = {
             const _rate = (evts) => evts.filter(ev => ev.comps.reduce((s, c) => s + (c.score || 0), 0) >= thr).length / evts.length * 100;
             return { rate: Math.round((_rate(hEvts) + _rate(aEvts)) / 2), sample: Math.min(hEvts.length, aEvts.length) };
           };
-          // ── Regime-aware lambda: blends a team's recency-weighted recent-score average
-          // into the rating-based expected. Half-life 21 days. Replaces the fixed 4% playoff
-          // boost — a team-specific data-driven signal catches both playoff scoring shifts
-          // AND mid-season hot/cold streaks without a manually-tuned multiplier.
-          //
-          // Sample-weighted: w caps at 50% so rating-based stays the primary driver (matchup-
-          // specific Off×Def interaction is information the raw average can't capture).
-          // Returns { mean, effectiveSample } or null if <5 games on the schedule.
-          const _SEASON_HALF_LIFE_DAYS = 21;
-          const _gtRefMs = Date.now();
-          const _recencyWeight = (dateStr) => {
-            if (!dateStr) return 0;
-            const t = new Date(dateStr).getTime();
-            if (!isFinite(t)) return 0;
-            const daysAgo = Math.max(0, (_gtRefMs - t) / 86400000);
-            return Math.pow(0.5, daysAgo / _SEASON_HALF_LIFE_DAYS);
-          };
-          const _recentTeamScoreMean = (sport, team) => {
-            const evts = _gtScheduleMap[`${sport}:${team}`] || [];
-            if (evts.length < 5) return null;
-            let wSum = 0, scoreSum = 0;
-            for (const ev of evts) {
-              const w = _recencyWeight(ev.date);
-              if (w <= 0) continue;
-              const mine = ev.comps.find(c => normTeam(sport, c.abbr) === team);
-              if (!mine || typeof mine.score !== "number") continue;
-              wSum += w;
-              scoreSum += w * mine.score;
-            }
-            if (wSum < 3) return null;
-            return { mean: scoreSum / wSum, effectiveSample: wSum };
-          };
-          const _regimeBlendWeight = (sample) => Math.min(0.5, (sample || 0) / 30 * 0.5);
           // Sample-weighted blend factor: model retains at least 30% weight so tonight-specific
           // factors (pitcher matchup, pace, weather) aren't drowned out. Caps obs weight at 0.7
           // when N >= 40 games; ramps linearly from 0 (no schedule) to 0.7.
@@ -3582,8 +3581,8 @@ var worker_default = {
               const _isPlayoff = Object.values(sportByteam.nbaGameScores || {}).some(g =>
                 g?.seriesSummary && (g.homeTeam === homeTeam || g.awayTeam === homeTeam || g.homeTeam === awayTeam || g.awayTeam === awayTeam)
               );
-              const _homeRecent = _recentTeamScoreMean("nba", homeTeam);
-              const _awayRecent = _recentTeamScoreMean("nba", awayTeam);
+              const _homeRecent = _recentTeamScoreMean(_gtScheduleMap, "nba", homeTeam);
+              const _awayRecent = _recentTeamScoreMean(_gtScheduleMap, "nba", awayTeam);
               let _regimeBlendW = 0;
               if (_homeRecent && _awayRecent && _homeExpRaw != null && _awayExpRaw != null) {
                 const _sample = Math.min(_homeRecent.effectiveSample, _awayRecent.effectiveSample);
@@ -3676,8 +3675,8 @@ var worker_default = {
               }
               // Regime-aware blend (same shape as NBA) — recency-weighted recent-score average
               // folded into the rating-based expected to track hot/cold form.
-              const _whRecent = _recentTeamScoreMean("wnba", homeTeam);
-              const _waRecent = _recentTeamScoreMean("wnba", awayTeam);
+              const _whRecent = _recentTeamScoreMean(_gtScheduleMap, "wnba", homeTeam);
+              const _waRecent = _recentTeamScoreMean(_gtScheduleMap, "wnba", awayTeam);
               let _wRegimeBlendW = 0;
               if (_whRecent && _waRecent && _wHomeExpRaw != null && _wAwayExpRaw != null) {
                 const _wSample = Math.min(_whRecent.effectiveSample, _waRecent.effectiveSample);
@@ -3785,8 +3784,8 @@ var worker_default = {
               let _aGLRaw = awayGPG != null ? Math.max(0.5, Math.min(8, awayGPG * _awayFactor)) : null;
               // Regime-aware blend — each team's recency-weighted recent-goals average folded
               // into the goalie-adjusted GPG so the lambda tracks playoff/hot/cold form.
-              const _nhlHomeRecent = _recentTeamScoreMean("nhl", homeTeam);
-              const _nhlAwayRecent = _recentTeamScoreMean("nhl", awayTeam);
+              const _nhlHomeRecent = _recentTeamScoreMean(_gtScheduleMap, "nhl", homeTeam);
+              const _nhlAwayRecent = _recentTeamScoreMean(_gtScheduleMap, "nhl", awayTeam);
               let _nhlRegimeBlendW = 0;
               if (_nhlHomeRecent && _nhlAwayRecent && _hGLRaw != null && _aGLRaw != null) {
                 const _nhlSample = Math.min(_nhlHomeRecent.effectiveSample, _nhlAwayRecent.effectiveSample);
@@ -4188,7 +4187,7 @@ var worker_default = {
               const _ttIsPlayoff = Object.values(sportByteam.nbaGameScores || {}).some(g =>
                 g?.seriesSummary && (g.homeTeam === scoringTeam || g.awayTeam === scoringTeam || g.homeTeam === oppTeam || g.awayTeam === oppTeam)
               );
-              const _ttRecent = _recentTeamScoreMean("nba", scoringTeam);
+              const _ttRecent = _recentTeamScoreMean(_ttScheduleMap, "nba", scoringTeam);
               let _ttRegimeBlendW = 0;
               if (_ttRecent && _teamExpected != null) {
                 _ttRegimeBlendW = _regimeBlendWeight(_ttRecent.effectiveSample);
