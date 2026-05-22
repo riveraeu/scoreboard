@@ -3282,6 +3282,36 @@ var worker_default = {
         const _parseSchedEvts = d => (d.events ?? [])
           .filter(ev => ev.competitions?.[0]?.status?.type?.completed)
           .map(ev => ({ date: ev.date || null, comps: (ev.competitions[0].competitors ?? []).map(c => ({ abbr: (c.team?.abbreviation ?? '').toUpperCase(), score: parseFloat(c.score?.value ?? c.score ?? 0) })) }));
+        // Exponential-decay weight for a single past game, used by every season-hit-rate
+        // computation in the totals + team-totals loops. Half-life 21 days: a 3-week-old
+        // game contributes half as much as today's, a 6-week-old game contributes a quarter,
+        // and a regular-season game from 3 months ago contributes ~8% — small but non-zero.
+        // Purpose: smoothly transition seasonHitRate across the regular-season → playoff
+        // regime boundary so playoff lines (which are tighter than RS averages) don't trip
+        // seasonRateDivergent on every NBA/NHL play. Effective sample = sum of weights, so
+        // the existing sample-weighted blend factor automatically captures the regime shift.
+        const _SEASON_HALF_LIFE_DAYS = 21;
+        const _gtRefMs = Date.now();
+        const _recencyWeight = (dateStr) => {
+          if (!dateStr) return 0;
+          const t = new Date(dateStr).getTime();
+          if (!isFinite(t)) return 0;
+          const daysAgo = Math.max(0, (_gtRefMs - t) / 86400000);
+          return Math.pow(0.5, daysAgo / _SEASON_HALF_LIFE_DAYS);
+        };
+        // Weighted hit rate: sum of weights on hit-events / sum of all weights, scaled to %.
+        // Effective sample = total weight sum (used for blend weighting + sample-size dc penalty).
+        const _weightedRate = (evts, hitFn) => {
+          let wSum = 0, wHit = 0;
+          for (const ev of evts) {
+            const w = _recencyWeight(ev.date);
+            if (w <= 0) continue;
+            wSum += w;
+            if (hitFn(ev)) wHit += w;
+          }
+          if (wSum <= 0) return { rate: null, effectiveSample: 0 };
+          return { rate: wHit / wSum * 100, effectiveSample: wSum };
+        };
         const totalDistCache = {};
         const totalPlays = [];
         // Captured during the MLB game-total loop body so the downstream MLB-ML emission can
@@ -3323,8 +3353,11 @@ var worker_default = {
             const hEvts = _gtScheduleMap[`${sport}:${ht}`] || [];
             const aEvts = _gtScheduleMap[`${sport}:${at}`] || [];
             if (hEvts.length < 5 || aEvts.length < 5) return null;
-            const _rate = (evts) => evts.filter(ev => ev.comps.reduce((s, c) => s + (c.score || 0), 0) >= thr).length / evts.length * 100;
-            return { rate: Math.round((_rate(hEvts) + _rate(aEvts)) / 2), sample: Math.min(hEvts.length, aEvts.length) };
+            const hitFn = (ev) => ev.comps.reduce((s, c) => s + (c.score || 0), 0) >= thr;
+            const h = _weightedRate(hEvts, hitFn);
+            const a = _weightedRate(aEvts, hitFn);
+            if (h.rate == null || a.rate == null) return null;
+            return { rate: Math.round((h.rate + a.rate) / 2), sample: Math.min(h.effectiveSample, a.effectiveSample) };
           };
           // Sample-weighted blend factor: model retains at least 30% weight so tonight-specific
           // factors (pitcher matchup, pace, weather) aren't drowned out. Caps obs weight at 0.7
@@ -4034,8 +4067,9 @@ var worker_default = {
               const teamL10RPG = _ttRunVals.length >= 5 ? parseFloat((_ttRunVals.reduce((a, b) => a + b, 0) / _ttRunVals.length).toFixed(2)) : null;
               const ttL10Pts = teamL10RPG == null ? 1 : teamL10RPG > 5.0 ? 2 : teamL10RPG > 4.0 ? 1 : 0;
               // Season hit rate: scoring team's rate of scoring >= threshold across all completed season games
-              const _ttSeasonHits = _ttSched.filter(ev => { const mine = ev.comps.find(c => normTeam("mlb", c.abbr) === scoringTeam); return mine && mine.score >= threshold; });
-              const ttSeasonHitRate = _ttSched.length >= 5 ? Math.round(_ttSeasonHits.length / _ttSched.length * 100) : null;
+              const _ttSeasonHitFn = (ev) => { const mine = ev.comps.find(c => normTeam("mlb", c.abbr) === scoringTeam); return mine && mine.score >= threshold; };
+              const _ttSeasonWeighted = _ttSched.length >= 5 ? _weightedRate(_ttSched, _ttSeasonHitFn) : { rate: null, effectiveSample: 0 };
+              const ttSeasonHitRate = _ttSeasonWeighted.rate != null ? Math.round(_ttSeasonWeighted.rate) : null;
               const ttSeasonHitRatePts = ttSeasonHitRate == null ? 1 : ttSeasonHitRate >= 80 ? 2 : ttSeasonHitRate >= 60 ? 1 : 0;
               // Pre-sim lambda blend (Poisson). Solve for the rate that would give the observed
               // ttSeasonHitRate at this threshold; sample-weighted blend with model lambda.
@@ -4043,7 +4077,7 @@ var worker_default = {
               const _ttModelTruePct = truePct;
               let _ttImpliedLambda = null, _ttBlendedLambda = null, _ttImpliedLambdaClamped = null;
               if (truePct != null && ttSeasonHitRate != null && _lam != null) {
-                const _w = Math.min(1, _ttSched.length / 40) * 0.7;
+                const _w = Math.min(1, _ttSeasonWeighted.effectiveSample / 40) * 0.7;
                 _ttImpliedLambda = lambdaForPoissonTail(threshold, ttSeasonHitRate / 100);
                 if (_ttImpliedLambda != null) {
                   const _cap = _TT_IMPLIED_CAP.mlb;
@@ -4130,17 +4164,18 @@ var worker_default = {
                 if (!teamTotalDistCache[_dk]) teamTotalDistCache[_dk] = simulateTeamPtsDist(_teamExpected, 11, 10000);
                 truePct = totalDistPct(teamTotalDistCache[_dk], threshold);
               }
-              // Season HR%: scoring team's rate of scoring >= threshold this season
+              // Season HR%: scoring team's rate of scoring >= threshold this season (recency-weighted)
               const _ttNbaSched = _ttScheduleMap[`nba:${scoringTeam}`] || [];
-              const _ttNbaSeasonHits = _ttNbaSched.filter(ev => { const mine = ev.comps.find(c => normTeam("nba", c.abbr) === scoringTeam); return mine && mine.score >= threshold; });
-              const ttNbaSeasonHitRate = _ttNbaSched.length >= 5 ? Math.round(_ttNbaSeasonHits.length / _ttNbaSched.length * 100) : null;
+              const _ttNbaSeasonHitFn = (ev) => { const mine = ev.comps.find(c => normTeam("nba", c.abbr) === scoringTeam); return mine && mine.score >= threshold; };
+              const _ttNbaSeasonWeighted = _ttNbaSched.length >= 5 ? _weightedRate(_ttNbaSched, _ttNbaSeasonHitFn) : { rate: null, effectiveSample: 0 };
+              const ttNbaSeasonHitRate = _ttNbaSeasonWeighted.rate != null ? Math.round(_ttNbaSeasonWeighted.rate) : null;
               const ttNbaSeasonHitRatePts = ttNbaSeasonHitRate == null ? 1 : ttNbaSeasonHitRate >= 80 ? 2 : ttNbaSeasonHitRate >= 60 ? 1 : 0;
               // Pre-sim mean blend (Normal). Single-team std=11 for NBA. Same lambda-blend
               // attribution pattern as game totals.
               let _ttNbaModelTruePct = null, _ttNbaImpliedMean = null, _ttNbaBlendedMean = null, _ttNbaImpliedMeanClamped = null;
               if (truePct != null && ttNbaSeasonHitRate != null && _teamExpected != null) {
                 _ttNbaModelTruePct = parseFloat(truePct.toFixed(1));
-                const _w = Math.min(1, _ttNbaSched.length / 40) * 0.7;
+                const _w = Math.min(1, _ttNbaSeasonWeighted.effectiveSample / 40) * 0.7;
                 _ttNbaImpliedMean = meanForNormalTail(threshold, ttNbaSeasonHitRate / 100, 11);
                 if (_ttNbaImpliedMean != null) {
                   const _cap = _TT_IMPLIED_CAP.nba;
