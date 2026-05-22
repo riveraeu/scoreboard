@@ -3329,12 +3329,12 @@ var worker_default = {
           if (wSum < 3) return null;
           return { mean: scoreSum / wSum, effectiveSample: wSum };
         };
-        // Max weight 0.7 (up from 0.5) + sample denominator 12 (down from 30). The original
-        // tuning capped regime influence too aggressively — a playoff team with 6-10 effective
-        // recent-game samples landed at w=0.1, not enough to bridge the rating-vs-recent gap.
-        // 0.7 cap lets recent form dominate when it has stable sample; rating-based keeps
-        // 30% floor so matchup-specific Off×Def interaction still feeds in.
-        const _regimeBlendWeight = (sample) => Math.min(0.7, (sample || 0) / 12 * 0.7);
+        // Cap 0.85 / denominator 8. With 21-day half-life, a typical playoff team has ~6-8
+        // effective recent-game samples, so 0.85/8 produces ~0.65-0.85 weight — recent form
+        // dominates. Rating-based keeps a 15% floor for matchup-specific Off×Def signal.
+        // Prior tunings (0.5/30, 0.7/12) underweighted regime and left divergent penalties
+        // firing on nearly all playoff totals.
+        const _regimeBlendWeight = (sample) => Math.min(0.85, (sample || 0) / 8 * 0.85);
         {
           const _MLB_ERA = 4.20;
           // Pre-fetch home team schedules for MLB + NBA game total H2H hit rate
