@@ -15,13 +15,18 @@ export function findLivePlayer(players, name) {
 }
 
 // Raw game key without date — used as the `games` param to /api/live.
+// When `pick.gameTime` is present, append `@gameTime` so same-day doubleheaders are
+// disambiguated server-side (e.g. DET @ BAL plays at 16:35Z and 22:05Z resolve against
+// the right ESPN event instead of always settling against the first match).
 export function buildLiveGameKeyRaw(pick) {
-  if (pick.gameType === "total") return `${pick.sport}:${pick.awayTeam}:${pick.homeTeam}`;
-  if (pick.gameType === "teamTotal") return `${pick.sport}:${pick.scoringTeam}:${pick.oppTeam}`;
-  if (pick.gameType === "ml") return `${pick.sport}:${pick.awayTeam}:${pick.homeTeam}`;
-  if (pick.gameType === "spread") return `${pick.sport}:${pick.awayTeam}:${pick.homeTeam}`;
+  let base;
+  if (pick.gameType === "total") base = `${pick.sport}:${pick.awayTeam}:${pick.homeTeam}`;
+  else if (pick.gameType === "teamTotal") base = `${pick.sport}:${pick.scoringTeam}:${pick.oppTeam}`;
+  else if (pick.gameType === "ml") base = `${pick.sport}:${pick.awayTeam}:${pick.homeTeam}`;
+  else if (pick.gameType === "spread") base = `${pick.sport}:${pick.awayTeam}:${pick.homeTeam}`;
   // Player prop — playerTeam + opponent (either order; backend matches both)
-  return `${pick.sport}:${pick.playerTeam}:${pick.opponent}`;
+  else base = `${pick.sport}:${pick.playerTeam}:${pick.opponent}`;
+  return pick.gameTime ? `${base}@${pick.gameTime}` : base;
 }
 
 // Date-scoped key for the client-side liveStats map. The same matchup (e.g. NYY:BAL) can

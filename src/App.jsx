@@ -507,6 +507,8 @@ function App() {
         if (playerTeam && opponent) rawKey = `${p.sport}:${playerTeam}:${opponent}`;
       }
       if (!rawKey || !p.gameDate) continue;
+      // Append @gameTime when present so /api/live can disambiguate same-day doubleheaders.
+      if (p.gameTime) rawKey = `${rawKey}@${p.gameTime}`;
       pickKeyMap.set(p.id, `${rawKey}|${p.gameDate}`);
       if (!keysByDate.has(p.gameDate)) keysByDate.set(p.gameDate, new Set());
       keysByDate.get(p.gameDate).add(rawKey);

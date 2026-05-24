@@ -21,8 +21,14 @@ export async function handleSportsRoutes(ctx) {
     const SPORT_PATHS = { mlb: "baseball/mlb", nba: "basketball/nba", wnba: "basketball/wnba", nhl: "hockey/nhl" };
 
     const gameTuples = gamesParam.split(",").map(g => {
-      const [sport, ...teams] = g.split(":");
-      return { sport, key: g, teams: teams.map(t => t.toUpperCase()) };
+      // Format: `sport:team1:team2` or `sport:team1:team2@gameTimeISO`. gameTime is
+      // optional; when present, used to disambiguate same-day doubleheaders so the
+      // pick resolves against the correct ESPN event rather than always the first match.
+      const atIdx = g.indexOf("@");
+      const base = atIdx >= 0 ? g.slice(0, atIdx) : g;
+      const gameTime = atIdx >= 0 ? g.slice(atIdx + 1) : null;
+      const [sport, ...teams] = base.split(":");
+      return { sport, key: g, teams: teams.map(t => t.toUpperCase()), gameTime };
     }).filter(g => SPORT_PATHS[g.sport] && g.teams.length >= 2);
 
     const bySport = {};
@@ -38,7 +44,10 @@ export async function handleSportsRoutes(ctx) {
 
       const uncached = [];
       for (const tuple of tuples) {
-        const cacheKey = `live:${sport}:${tuple.teams.slice().sort().join(":")}:${ptDate}`;
+        // Cache key includes gameTime so same-day doubleheader games don't share a slot
+        // (would otherwise return game 1's boxscore for a pick on game 2 and vice versa).
+        const _gtSuffix = tuple.gameTime ? `:${tuple.gameTime}` : "";
+        const cacheKey = `live:${sport}:${tuple.teams.slice().sort().join(":")}:${ptDate}${_gtSuffix}`;
         const cached = CACHE2 ? await CACHE2.get(cacheKey, "json").catch(() => null) : null;
         if (cached) { liveResult[tuple.key] = cached; }
         else uncached.push({ ...tuple, cacheKey });
@@ -70,13 +79,21 @@ export async function handleSportsRoutes(ctx) {
       const toEspn = a => CANONICAL_TO_ESPN[a] || a;
       const toCanonical = a => ESPN_TO_CANONICAL[a] || a;
 
-      await Promise.all(uncached.map(async ({ key, teams, cacheKey }) => {
+      await Promise.all(uncached.map(async ({ key, teams, cacheKey, gameTime }) => {
         const [t1, t2] = teams.map(toEspn);
 
+        // Match by teams first; when a gameTime is supplied (doubleheader disambiguation),
+        // also require the event's date to match. ESPN uses `2026-05-24T16:35Z` (no seconds);
+        // tolerate either form by comparing the first 16 chars (`YYYY-MM-DDTHH:MM`).
+        // No fallback if a gameTime was supplied but doesn't match — falling back would
+        // reintroduce the bug where a pick on game 2 resolves against game 1's final.
+        const _gtPrefix = gameTime ? gameTime.slice(0, 16) : null;
         const event = sbEvents.find(ev => {
           const abbrs = (ev.competitions?.[0]?.competitors || [])
             .map(c => c.team?.abbreviation?.toUpperCase());
-          return abbrs.includes(t1) && abbrs.includes(t2);
+          if (!(abbrs.includes(t1) && abbrs.includes(t2))) return false;
+          if (_gtPrefix && (ev.date || "").slice(0, 16) !== _gtPrefix) return false;
+          return true;
         });
 
         if (!event) { liveResult[key] = { state: "unknown" }; return; }
