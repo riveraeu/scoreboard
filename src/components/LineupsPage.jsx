@@ -143,6 +143,9 @@ function _dedupKey(p) {
 function _matchesGame(p, game) {
   if (p.sport !== game.sport) return false;
   if (game.gameDate && p.gameDate && p.gameDate !== game.gameDate) return false;
+  // Same-day doubleheader disambiguation: when both sides know the time, require an exact
+  // match so a play attached to game 2 (22:05Z) doesn't also surface on game 1's card.
+  if (game.gameTime && p.gameTime && p.gameTime !== game.gameTime) return false;
   const teams = new Set([game.homeTeam, game.awayTeam]);
   if (p.gameType === 'total') return p.homeTeam === game.homeTeam && p.awayTeam === game.awayTeam;
   if (p.gameType === 'teamTotal') return teams.has(p.scoringTeam);
