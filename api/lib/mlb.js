@@ -332,6 +332,12 @@ export async function buildPitcherKPct(mlbSched) {
     // doubleheaders (SD vs SEA twice), dropping the earlier pitcher's ID from allIds.
     // This set collects every ID seen so their stats are always fetched.
     const allScheduledPitcherIds = new Set();
+    // pitcherIdByGame: per-game pitcher id keyed "{team}|{gameKey}" where gameKey is the
+    // ESPN-style ISO (no seconds) — lets the frontend show the right pitcher per DH card.
+    // MLB Stats API gameDate is "2026-05-24T16:35:00Z"; ESPN's event.date is "2026-05-24T16:35Z".
+    // Trim seconds so the two sources line up on the same key.
+    const _trimSec = (iso) => (iso ? iso.replace(/:\d{2}Z$/, "Z") : null);
+    const pitcherIdByGame = {};
     // umpireByGame: home plate umpire name keyed "homeAbbr|awayAbbr"
     // Populated from game.officials when hydrate=officials is included in the schedule fetch.
     const umpireByGame = {};
@@ -343,6 +349,7 @@ export async function buildPitcherKPct(mlbSched) {
         const awayId = game.teams?.away?.probablePitcher?.id;
         const homeHand = game.teams?.home?.probablePitcher?.pitchHand?.code || null;
         const awayHand = game.teams?.away?.probablePitcher?.pitchHand?.code || null;
+        const gameKey = _trimSec(game.gameDate);
         // Extract home plate umpire (populated when hydrate=officials is in schedule request)
         const _hp = (game.officials || []).find(o => o.officialType === "Home Plate");
         if (_hp?.official?.fullName && homeAbbr && awayAbbr) {
@@ -353,18 +360,20 @@ export async function buildPitcherKPct(mlbSched) {
           pitcherHand[homeAbbr] = homeHand;
           // Also key by matchup so doubleheaders don't overwrite each other
           if (awayAbbr) { pitcherByTeam[`${homeAbbr}|${awayAbbr}`] = homeId; pitcherHand[`${homeAbbr}|${awayAbbr}`] = homeHand; }
+          if (gameKey) pitcherIdByGame[`${homeAbbr}|${gameKey}`] = homeId;
         }
         if (awayAbbr && awayId) {
           pitcherByTeam[awayAbbr] = awayId;
           pitcherHand[awayAbbr] = awayHand;
           if (homeAbbr) { pitcherByTeam[`${awayAbbr}|${homeAbbr}`] = awayId; pitcherHand[`${awayAbbr}|${homeAbbr}`] = awayHand; }
+          if (gameKey) pitcherIdByGame[`${awayAbbr}|${gameKey}`] = awayId;
         }
         if (homeId) allScheduledPitcherIds.add(homeId);
         if (awayId) allScheduledPitcherIds.add(awayId);
       }
     }
     const allIds = [...allScheduledPitcherIds];
-    if (allIds.length === 0) return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherWins: {}, pitcherLosses: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherAvgBF: {}, pitcherStdBF: {}, pitcherGS26: {}, pitcherHasAnchor: {}, pitcherRecentKPct: {}, pitcherLastStartDate: {}, pitcherLastStartPC: {}, umpireByGame };
+    if (allIds.length === 0) return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherWins: {}, pitcherLosses: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherAvgBF: {}, pitcherStdBF: {}, pitcherGS26: {}, pitcherHasAnchor: {}, pitcherRecentKPct: {}, pitcherLastStartDate: {}, pitcherLastStartPC: {}, umpireByGame, pitcherIdByGame, pitcherEraById: {}, pitcherWinsById: {}, pitcherLossesById: {}, pitcherNameById: {} };
     const idStr = allIds.join(",");
     const [res25, res26] = await Promise.all([
       fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=pitching,type=season,season=2025,gameType=R)`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
@@ -783,10 +792,35 @@ export async function buildPitcherKPct(mlbSched) {
         if (!pitcherInfoByTeam[a]) pitcherInfoByTeam[a] = { name: person.fullName, id };
       }
     }
-    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherWHIP, pitcherFIP, pitcherWins, pitcherLosses, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam, pitcherH2HStarts };
+    // Per-id ERA/W-L/name. The team-keyed pitcherEra/Wins/Losses above only iterate
+    // pitcherByTeam, which holds one id per team — so for doubleheaders the earlier
+    // pitcher's regressed values are never stored. This loop covers every scheduled
+    // pitcher (including DH game-1 starters) so the API meta build can serve per-game
+    // pitcher attribution via pitcherIdByGame → id → stats.
+    const pitcherEraById = {};
+    const pitcherWinsById = {};
+    const pitcherLossesById = {};
+    const pitcherNameById = {};
+    for (const person of [...(res26.people || []), ...(res25.people || [])]) {
+      if (person.id && person.fullName && !pitcherNameById[person.id]) {
+        pitcherNameById[person.id] = person.fullName;
+      }
+    }
+    for (const id of allScheduledPitcherIds) {
+      const s26 = pitcherStats26[id];
+      const s25 = pitcherStats25[id];
+      const _eraReg = _regressedRate(s26?.era ?? null, s26?.ip ?? 0, s25?.era ?? null, s25?.ip ?? 0, s26?.gs ?? 0, 4.20, 50);
+      if (_eraReg != null) pitcherEraById[id] = _eraReg;
+      if ((s26?.gs ?? 0) > 0 || (s26?.w ?? 0) + (s26?.l ?? 0) > 0) {
+        pitcherWinsById[id] = s26.w; pitcherLossesById[id] = s26.l;
+      } else if (s25 && ((s25.gs ?? 0) > 0 || (s25.w ?? 0) + (s25.l ?? 0) > 0)) {
+        pitcherWinsById[id] = s25.w; pitcherLossesById[id] = s25.l;
+      }
+    }
+    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherWHIP, pitcherFIP, pitcherWins, pitcherLosses, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam, pitcherH2HStarts, pitcherIdByGame, pitcherEraById, pitcherWinsById, pitcherLossesById, pitcherNameById };
   } catch (err) {
     console.error("[buildPitcherKPct] failed:", err?.message || err);
-    return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherWHIP: {}, pitcherFIP: {}, pitcherWins: {}, pitcherLosses: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherAvgBF: {}, pitcherStdBF: {}, pitcherGS26: {}, pitcherHasAnchor: {}, pitcherRecentKPct: {}, pitcherLastStartDate: {}, pitcherLastStartPC: {}, umpireByGame: {}, pitcherInfoByTeam: {}, pitcherH2HStarts: {} };
+    return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherWHIP: {}, pitcherFIP: {}, pitcherWins: {}, pitcherLosses: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherAvgBF: {}, pitcherStdBF: {}, pitcherGS26: {}, pitcherHasAnchor: {}, pitcherRecentKPct: {}, pitcherLastStartDate: {}, pitcherLastStartPC: {}, umpireByGame: {}, pitcherInfoByTeam: {}, pitcherH2HStarts: {}, pitcherIdByGame: {}, pitcherEraById: {}, pitcherWinsById: {}, pitcherLossesById: {}, pitcherNameById: {} };
   }
 }
 
@@ -962,7 +996,7 @@ export async function buildMlbByteam(cache) {
   }
   const [lineupResult, pitcherResult] = await Promise.all([buildLineupKPct(mlbSched), buildPitcherKPct(mlbSched)]);
   const { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, projectedLineupTeams, batterSplitBA, hitterOpsMap, batterHandByName, batterHRRSplits } = lineupResult;
-  const { pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, pitcherWHIP: pitcherWHIPByTeam, pitcherFIP: pitcherFIPByTeam, pitcherWins: pitcherWinsByTeam, pitcherLosses: pitcherLossesByTeam, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam, pitcherH2HStarts } = pitcherResult;
+  const { pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, pitcherWHIP: pitcherWHIPByTeam, pitcherFIP: pitcherFIPByTeam, pitcherWins: pitcherWinsByTeam, pitcherLosses: pitcherLossesByTeam, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam, pitcherH2HStarts, pitcherIdByGame, pitcherEraById, pitcherWinsById, pitcherLossesById, pitcherNameById } = pitcherResult;
   // barrelPctMap is NOT stored in byteam:mlb — it lives in mlb:barrelPct with its own 6h TTL.
   // This prevents a bust (which deletes byteam:mlb) from baking an empty barrelPctMap
   // into the cache when Baseball Savant is slow.
@@ -1066,6 +1100,7 @@ export async function buildMlbByteam(cache) {
     staticTeamHandMajority,
     pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC,
     umpireByGame, pitcherInfoByTeam,
+    pitcherIdByGame, pitcherEraById, pitcherWinsById, pitcherLossesById, pitcherNameById,
     roadRPGMap, teamERAMap, teamWHIPMap, bullpenERAMap, bullpenWHIPMap,
     teamPlatoonRPGMap, gameScores,
   };

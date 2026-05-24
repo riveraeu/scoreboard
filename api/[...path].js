@@ -5143,6 +5143,27 @@ var worker_default = {
           const losses = _mlbPitcherLosses[abbr] ?? null;
           _mlbPitchers[abbr] = { name, id, era, wins, losses };
         }
+        // Per-game pitcher map for doubleheader correctness — team-keyed _mlbPitchers above
+        // only holds one entry per team (the late game's pitcher wins). Key shape mirrors
+        // gameScores: "{team}|{gameKey}" where gameKey is the ESPN-style ISO (no seconds).
+        const _mlbPitcherIdByGame = sportByteam.mlb?.pitcherIdByGame ?? {};
+        const _mlbPitcherEraById = sportByteam.mlb?.pitcherEraById ?? {};
+        const _mlbPitcherWinsById = sportByteam.mlb?.pitcherWinsById ?? {};
+        const _mlbPitcherLossesById = sportByteam.mlb?.pitcherLossesById ?? {};
+        const _mlbPitcherNameById = sportByteam.mlb?.pitcherNameById ?? {};
+        const _mlbPitchersByGame = {};
+        for (const [gameSideKey, pid] of Object.entries(_mlbPitcherIdByGame)) {
+          if (!pid) continue;
+          const name = _mlbPitcherNameById[pid];
+          if (!name) continue;
+          _mlbPitchersByGame[gameSideKey] = {
+            name,
+            id: pid,
+            era: _mlbPitcherEraById[pid] ?? null,
+            wins: _mlbPitcherWinsById[pid] ?? null,
+            losses: _mlbPitcherLossesById[pid] ?? null,
+          };
+        }
         // Build {team: {ml, total, spread}} from raw gameOdds, optionally normalizing team abbrs.
         const _buildOddsMap = (raw, normMap = null) => {
           const out = {};
@@ -5313,9 +5334,9 @@ var worker_default = {
           }
           if (_odsSnapDirty && CACHE2) CACHE2.put(_odsSnapKey, JSON.stringify(_odsSnap), { expirationTtl: 36 * 3600 }).catch(() => {});
         } catch { /* non-fatal */ }
-        const mlbMeta = { pitchers: _mlbPitchers, gameOdds: _mlbGameOdds, umpires: sportByteam.mlb?.umpireByGame ?? {}, weather: weatherByGame, projectedLineupTeams: sportByteam.mlb?.projectedLineupTeams ?? [], teamsWithLineup: Object.keys(sportByteam.mlb?.lineupSpotByName ?? {}), homeTeams: sportByteam.mlb?.gameHomeTeams ?? {}, gameScores: sportByteam.mlb?.gameScores ?? {} };
+        const mlbMeta = { pitchers: _mlbPitchers, pitchersByGame: _mlbPitchersByGame, gameOdds: _mlbGameOdds, umpires: sportByteam.mlb?.umpireByGame ?? {}, weather: weatherByGame, projectedLineupTeams: sportByteam.mlb?.projectedLineupTeams ?? [], teamsWithLineup: Object.keys(sportByteam.mlb?.lineupSpotByName ?? {}), homeTeams: sportByteam.mlb?.gameHomeTeams ?? {}, gameScores: sportByteam.mlb?.gameScores ?? {} };
         // Build mlbMetaTomorrow: tomorrow's probables + umpires (no lineup/weather data available yet)
-        let mlbMetaTomorrow = { pitchers: {}, gameOdds: _mlbGameOddsTomorrow, umpires: {}, weather: {}, projectedLineupTeams: [], teamsWithLineup: [], homeTeams: {}, gameScores: {} };
+        let mlbMetaTomorrow = { pitchers: {}, pitchersByGame: {}, gameOdds: _mlbGameOddsTomorrow, umpires: {}, weather: {}, projectedLineupTeams: [], teamsWithLineup: [], homeTeams: {}, gameScores: {} };
         try {
           const _tmrPT = new Date(Date.now() - 7 * 3600 * 1000 + 86400 * 1000);
           const _tmrDateStr = _tmrPT.toISOString().slice(0, 10);
@@ -5328,6 +5349,9 @@ var worker_default = {
           if (!_tmrCached && CACHE2) CACHE2.put(_tmrCacheKey, JSON.stringify(_tmrSched), { expirationTtl: 600 }).catch(() => {});
           const _tmrPitchers = {}, _tmrUmpires = {}, _tmrHomeTeams = {};
           const _tmrPitcherIdsByAbbr = {}; // abbr → MLB Stats API id
+          const _tmrPitchersByGame = {}; // "{team}|{gameKey}" → pitcher entry (DH-safe)
+          const _tmrTrimSec = (iso) => (iso ? iso.replace(/:\d{2}Z$/, 'Z') : null);
+          const _tmrGameEntries = []; // [{abbr, gameKey, id, name}] — fill stats later
           for (const _td of _tmrSched.dates || []) {
             for (const _tg of _td.games || []) {
               const _tHome = MLB_ID_TO_ABBR[_tg.teams?.home?.team?.id] || _tg.teams?.home?.team?.abbreviation;
@@ -5336,13 +5360,16 @@ var worker_default = {
               const _tAwayName = _tg.teams?.away?.probablePitcher?.fullName;
               const _tHomeId = _tg.teams?.home?.probablePitcher?.id || null;
               const _tAwayId = _tg.teams?.away?.probablePitcher?.id || null;
+              const _gameKey = _tmrTrimSec(_tg.gameDate);
               if (_tHome && _tHomeName) {
                 _tmrPitchers[_tHome] = { name: _tHomeName, id: _tHomeId, era: null, wins: null, losses: null };
                 if (_tHomeId) _tmrPitcherIdsByAbbr[_tHome] = _tHomeId;
+                if (_gameKey) _tmrGameEntries.push({ abbr: _tHome, gameKey: _gameKey, id: _tHomeId, name: _tHomeName });
               }
               if (_tAway && _tAwayName) {
                 _tmrPitchers[_tAway] = { name: _tAwayName, id: _tAwayId, era: null, wins: null, losses: null };
                 if (_tAwayId) _tmrPitcherIdsByAbbr[_tAway] = _tAwayId;
+                if (_gameKey) _tmrGameEntries.push({ abbr: _tAway, gameKey: _gameKey, id: _tAwayId, name: _tAwayName });
               }
               const _tHp = (_tg.officials || []).find(o => o.officialType === 'Home Plate');
               if (_tHp?.official?.fullName && _tHome && _tAway) _tmrUmpires[`${_tHome}|${_tAway}`] = _tHp.official.fullName;
@@ -5351,6 +5378,7 @@ var worker_default = {
           }
           // Hydrate tomorrow's probables with ERA + W-L (one MLB Stats API call, cached).
           const _tmrIds = Object.values(_tmrPitcherIdsByAbbr).filter(Boolean);
+          const _tmrStatsById = {};
           if (_tmrIds.length > 0) {
             const _tmrStatsKey = `mlbTmrPitcherStats:${_tmrDateStr}`;
             const _tmrStatsCached = CACHE2 && !isBustCache ? await CACHE2.get(_tmrStatsKey, 'json').catch(() => null) : null;
@@ -5359,13 +5387,12 @@ var worker_default = {
               { headers: { 'User-Agent': 'Mozilla/5.0' } }
             ).then(r => r.ok ? r.json() : {}).catch(() => ({}));
             if (!_tmrStatsCached && CACHE2) CACHE2.put(_tmrStatsKey, JSON.stringify(_tmrStatsRes), { expirationTtl: 600 }).catch(() => {});
-            const _statsById = {};
             for (const _p of (_tmrStatsRes.people || [])) {
               const _split = _p.stats?.[0]?.splits?.[0]?.stat;
-              if (_split) _statsById[_p.id] = _split;
+              if (_split) _tmrStatsById[_p.id] = _split;
             }
             for (const [abbr, id] of Object.entries(_tmrPitcherIdsByAbbr)) {
-              const _s = _statsById[id];
+              const _s = _tmrStatsById[id];
               if (!_s || !_tmrPitchers[abbr]) continue;
               const _era = parseFloat(_s.era);
               if (!isNaN(_era)) _tmrPitchers[abbr].era = _era;
@@ -5373,7 +5400,19 @@ var worker_default = {
               if (typeof _s.losses === 'number') _tmrPitchers[abbr].losses = _s.losses;
             }
           }
-          mlbMetaTomorrow = { pitchers: _tmrPitchers, gameOdds: _mlbGameOddsTomorrow, umpires: _tmrUmpires, weather: {}, projectedLineupTeams: [], teamsWithLineup: [], homeTeams: _tmrHomeTeams, gameScores: {} };
+          // Populate per-game map now that stats are resolved.
+          for (const { abbr, gameKey, id, name } of _tmrGameEntries) {
+            const _s = id ? _tmrStatsById[id] : null;
+            const _era = _s ? parseFloat(_s.era) : NaN;
+            _tmrPitchersByGame[`${abbr}|${gameKey}`] = {
+              name,
+              id,
+              era: !isNaN(_era) ? _era : null,
+              wins: typeof _s?.wins === 'number' ? _s.wins : null,
+              losses: typeof _s?.losses === 'number' ? _s.losses : null,
+            };
+          }
+          mlbMetaTomorrow = { pitchers: _tmrPitchers, pitchersByGame: _tmrPitchersByGame, gameOdds: _mlbGameOddsTomorrow, umpires: _tmrUmpires, weather: {}, projectedLineupTeams: [], teamsWithLineup: [], homeTeams: _tmrHomeTeams, gameScores: {} };
         } catch { /* leave empty */ }
         // Sport meta builders — same shape, varying inputs. injuryMap entries get enriched with
         // avgMin from the usage map (frontend filters the matchup-card injury badge to starters

@@ -147,7 +147,9 @@ function MatchupCard({
   const featureFor = (abbr) => {
     if (!abbr) return null;
     if (sport === 'mlb') {
-      const p = mlbPitchSrc?.pitchers?.[abbr];
+      // Per-game map first (DH-safe); fallback to per-team map for missing data / old clients.
+      const p = (gameTime && mlbPitchSrc?.pitchersByGame?.[`${abbr}|${gameTime}`])
+        || mlbPitchSrc?.pitchers?.[abbr];
       if (!p?.name) return null;
       const eraStr = (p.era != null && !isNaN(p.era)) ? `${(+p.era).toFixed(2)} ERA` : null;
       const recStr = (p.wins != null && p.losses != null) ? `${p.wins}-${p.losses}` : null;
