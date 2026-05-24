@@ -42,7 +42,8 @@ function buildGames(allPlays, sport, meta, metaTomorrow) {
     if (!homeTeam || !awayTeam) continue;
 
     const sortedPair = [homeTeam, awayTeam].sort().join('|');
-    const key = `${sortedPair}|${gameDate ?? ''}`;
+    // gameTime included so same-day doubleheaders (e.g. DET @ BAL twice) get separate cards.
+    const key = `${sortedPair}|${gameDate ?? ''}|${gameTime ?? ''}`;
 
     if (!gameMap.has(key)) {
       gameMap.set(key, { sport, homeTeam, awayTeam, gameDate, gameTime, ouLine });
@@ -63,7 +64,7 @@ function buildGames(allPlays, sport, meta, metaTomorrow) {
       if (!gsHome || !gsAway) continue;
       if (gsDate && gsDate < today) continue;
       const sortedPair = [gsHome, gsAway].sort().join('|');
-      const key = `${sortedPair}|${gsDate ?? ''}`;
+      const key = `${sortedPair}|${gsDate ?? ''}|${gsTime ?? ''}`;
       if (!gameMap.has(key)) {
         gameMap.set(key, { sport, homeTeam: gsHome, awayTeam: gsAway, gameDate: gsDate, gameTime: gsTime, ouLine: null });
       }

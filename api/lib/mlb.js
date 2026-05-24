@@ -938,7 +938,8 @@ export async function buildMlbByteam(cache) {
   const gameOddsTomorrow = Object.fromEntries(Object.entries(gameOddsTomorrowRaw).map(([k, v]) => [normMlbAbbr(k), v]));
   // Game scores for matchup cards (includes finished games with no active Kalshi markets).
   // Iterate today+tomorrow merged events so both day tabs see scheduled/finished games.
-  // Key includes gameDate so today and tomorrow's same-home-team don't collide.
+  // Key includes gameDate (today vs tomorrow collision) AND event.date (same-day
+  // doubleheader collision, e.g. DET @ BAL twice).
   const gameScores = {};
   for (const event of sbData.eventsAll || sbData.events || []) {
     const comp = event.competitions?.[0];
@@ -949,7 +950,7 @@ export async function buildMlbByteam(cache) {
     const hA = normMlbAbbr(homeComp.team?.abbreviation), awA = normMlbAbbr(awayComp.team?.abbreviation);
     if (!hA || !awA) continue;
     const gsDate = event.date ? PT_FMT.format(new Date(event.date)) : null;
-    gameScores[`${hA}|${gsDate ?? ""}`] = {
+    gameScores[`${hA}|${gsDate ?? ""}|${event.date ?? ""}`] = {
       homeTeam: hA, awayTeam: awA,
       state: comp.status?.type?.state ?? "pre",
       detail: comp.status?.type?.shortDetail || comp.status?.type?.detail || "",

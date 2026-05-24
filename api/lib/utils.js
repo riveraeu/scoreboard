@@ -74,8 +74,9 @@ export function parseGameScores(events, normFn) {
     const awA = normFn ? normFn(awayComp.team?.abbreviation) : awayComp.team?.abbreviation;
     if (!hA || !awA) continue;
     const gameDate = event.date ? ptFmt.format(new Date(event.date)) : null;
-    // Key includes gameDate so today and tomorrow's same-home-team games don't collide.
-    scores[`${hA}|${gameDate ?? ""}`] = {
+    // Key includes gameDate so today and tomorrow's same-home-team games don't collide,
+    // and event.date (full ISO) so same-day doubleheaders (e.g. DET @ BAL twice) don't either.
+    scores[`${hA}|${gameDate ?? ""}|${event.date ?? ""}`] = {
       homeTeam: hA, awayTeam: awA,
       state: comp.status?.type?.state ?? "pre",
       detail: comp.status?.type?.shortDetail || comp.status?.type?.detail || "",
