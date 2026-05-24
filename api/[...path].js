@@ -732,6 +732,48 @@ var worker_default = {
             })
           ].filter(Boolean));
         }
+        // Kalshi MLB postponed-ticker reattribution: when a game is rained out, Kalshi
+        // keeps the original ticker (date segment + expected_expiration_time both stale)
+        // and reuses it for the makeup game. The market parse loop above stamps gameDate
+        // from the ticker segment, so a postponed-but-played-today market would otherwise
+        // get filtered out as "yesterday's game". Look up the actual next-scheduled game
+        // between the two teams in ESPN's schedule and overwrite gameDate in place.
+        // _mlbNextGameByTeams + _reattrMlbGameDate are hoisted out so the ML/spread
+        // emission loops below can reattribute using the same logic (their expected_
+        // expiration_time-derived gameDate hits the same staleness).
+        const _todayForReattr = PT_FMT.format(new Date());
+        const _mlbNextGameByTeams = {};
+        if (sportByteam.mlb?.gameScores) {
+          for (const gs of Object.values(sportByteam.mlb.gameScores)) {
+            if (gs?.state !== "pre" || !gs.gameDate || gs.gameDate < _todayForReattr) continue;
+            if (!gs.homeTeam || !gs.awayTeam) continue;
+            const k = [gs.homeTeam, gs.awayTeam].sort().join("|");
+            const existing = _mlbNextGameByTeams[k];
+            if (!existing || (gs.gameTime && existing.gameTime && gs.gameTime < existing.gameTime) || (gs.gameDate < existing.gameDate)) {
+              _mlbNextGameByTeams[k] = { gameDate: gs.gameDate, gameTime: gs.gameTime };
+            }
+          }
+        }
+        const _reattrMlbGameDate = (parsedGameDate, teamA, teamB, isResolved) => {
+          if (!parsedGameDate || parsedGameDate >= _todayForReattr) return parsedGameDate;
+          if (isResolved) return parsedGameDate;
+          if (!teamA || !teamB) return parsedGameDate;
+          const next = _mlbNextGameByTeams[[teamA, teamB].sort().join("|")];
+          return next?.gameDate ?? parsedGameDate;
+        };
+        const _isMlbResolvedMarket = (m) => {
+          const ya = m._yesAsk ?? 0;
+          const na = m._noAsk ?? 0;
+          const _atFloor = (v) => v > 0 && v <= 0.02;
+          const _atCeil = (v) => v >= 0.99;
+          return (_atFloor(ya) || _atCeil(ya)) && (_atFloor(na) || _atCeil(na));
+        };
+        for (const arr of [totalMarkets, teamTotalMarkets, spreadMarkets]) {
+          for (const m of arr) {
+            if (m.sport !== "mlb") continue;
+            m.gameDate = _reattrMlbGameDate(m.gameDate, m.gameTeam1, m.gameTeam2, _isMlbResolvedMarket(m));
+          }
+        }
         // NBA scoring (offensive PPG) — load from KV cache or fetch fresh when nba byteam was served from cache
         if (sportsNeeded.has("nba") && !sportByteam.nbaScoring) {
           if (CACHE2 && !isBustCache) sportByteam.nbaScoring = await CACHE2.get("byteam:nba:scoring", "json").catch(() => null);
@@ -4379,9 +4421,15 @@ var worker_default = {
             const teams = Object.keys(info.probs);
             if (teams.length !== 2 || !info.gameDate) continue;
             const [t1, t2] = teams;
+            // Reattribute stale postponed-ticker gameDate (e.g. 26MAY231605DETBAL re-used
+            // for today's makeup game). Skip when the market is resolved (one side near
+            // certainty — likely yesterday's actual outcome, not a live makeup).
+            const _mlResolved = Math.min(info.probs[t1], info.probs[t2]) <= 0.02
+                              || Math.max(info.probs[t1], info.probs[t2]) >= 0.99;
+            const _attrDate = _reattrMlbGameDate(info.gameDate, t1, t2, _mlResolved);
             const yesPayload = { yesByTeam: { [t1]: info.probs[t1], [t2]: info.probs[t2] } };
-            _mlbMlMarkets[`${t1}|${t2}|${info.gameDate}`] = yesPayload;
-            _mlbMlMarkets[`${t2}|${t1}|${info.gameDate}`] = yesPayload;
+            _mlbMlMarkets[`${t1}|${t2}|${_attrDate}`] = yesPayload;
+            _mlbMlMarkets[`${t2}|${t1}|${_attrDate}`] = yesPayload;
           }
         } catch { /* non-fatal — no ML plays if fetch/parse blows up */ }
         // Shared joint Poisson cache across ML + spread emission — same `${home}|${away}` key,
@@ -5241,11 +5289,14 @@ var worker_default = {
               const [t1, t2] = teams;
               const sum = info.probs[t1] + info.probs[t2];
               if (sum <= 0) continue;
+              const _resolved = Math.min(info.probs[t1], info.probs[t2]) <= 0.02
+                              || Math.max(info.probs[t1], info.probs[t2]) >= 0.99;
+              const _attr = _reattrMlbGameDate(info.gameDate, t1, t2, _resolved);
               const ml1 = _toAmerican(info.probs[t1] / sum);
               const ml2 = _toAmerican(info.probs[t2] / sum);
               const payload = { mlByTeam: { [t1]: ml1, [t2]: ml2 } };
-              const k1 = `${t1}|${t2}|${info.gameDate}`;
-              const k2 = `${t2}|${t1}|${info.gameDate}`;
+              const k1 = `${t1}|${t2}|${_attr}`;
+              const k2 = `${t2}|${t1}|${_attr}`;
               kOdds[k1] = { ...(kOdds[k1] || {}), ...payload };
               kOdds[k2] = { ...(kOdds[k2] || {}), ...payload };
             }
@@ -5273,8 +5324,11 @@ var worker_default = {
               for (const x of info.thrs) { if (x.pct >= 50) line = x.thr - 0.5; }
               if (line == null) continue;
               const [t1, t2] = info.teams;
-              const k1 = `${t1}|${t2}|${info.gameDate}`;
-              const k2 = `${t2}|${t1}|${info.gameDate}`;
+              // Resolved when no threshold sits in an actively-trading band [5,95].
+              const _resolved = !info.thrs.some(x => x.pct >= 5 && x.pct <= 95);
+              const _attr = _reattrMlbGameDate(info.gameDate, t1, t2, _resolved);
+              const k1 = `${t1}|${t2}|${_attr}`;
+              const k2 = `${t2}|${t1}|${_attr}`;
               kOdds[k1] = { ...(kOdds[k1] || {}), total: line };
               kOdds[k2] = { ...(kOdds[k2] || {}), total: line };
             }
