@@ -205,12 +205,18 @@ Kalshi series: `KXMLBTOTAL`, `KXNBATOTAL`, `KXWNBATOTAL`, `KXNHLTOTAL`, `KXNFLTO
 *MLB*:
 ```
 whipAdj(whip)         = clamp((whip/1.30)^0.5, [0.90, 1.10])
-starterMult(fip, era, whip) = (0.5×(fip/4.20) + 0.5×(era/4.20)) × whipAdj(whip)   # FIP/ERA fallbacks apply
+ttoBump(expectedBF)  = 1 + clamp((expectedBF − 22)/22 × 0.30, [0, 0.10])           # 3rd-TTO penalty on FIP+ERA (since 2026-05-25)
+starterMult(fip, era, whip, ttoBump)
+                      = (0.5×(fip×ttoBump/4.20) + 0.5×(era×ttoBump/4.20)) × whipAdj(whip)   # FIP/ERA fallbacks apply
 restERA(team)        = bullpenERA[team] ?? teamERA[team]                          # bullpen preferred (cleaner rest-of-game proxy)
-awayMult = 0.6 × starterMult(awayFIP, awayERA, awayWHIP) + 0.4 × (restERA(away)/4.20)
-homeMult = 0.6 × starterMult(homeFIP, homeERA, homeWHIP) + 0.4 × (restERA(home)/4.20)
-homeLambda = homeRoadRPG × awayMult × parkRF × homePlatoonFactor × weatherFactor × umpireRunFactor  # clamped [1,12]
-awayLambda = awayRoadRPG × homeMult × parkRF × awayPlatoonFactor × weatherFactor × umpireRunFactor  # clamped [1,12]
+awayMult = 0.6 × starterMult(awayFIP, awayERA, awayWHIP, ttoBump(awayBF)) + 0.4 × (restERA(away)/4.20)
+homeMult = 0.6 × starterMult(homeFIP, homeERA, homeWHIP, ttoBump(homeBF)) + 0.4 × (restERA(home)/4.20)
+homeLambda₀ = homeRoadRPG × awayMult × parkRF × homePlatoonFactor × weatherFactor × umpireRunFactor × homeLineupFactor   # clamped [1,12]
+awayLambda₀ = awayRoadRPG × homeMult × parkRF × awayPlatoonFactor × weatherFactor × umpireRunFactor × awayLineupFactor   # clamped [1,12]
+# Regime-aware blend (since 2026-05-25, 14-day half-life via _MLB_HALF_LIFE_DAYS):
+homeLambda = (1 − w) × homeLambda₀ + w × homeRecentMean
+awayLambda = (1 − w) × awayLambda₀ + w × awayRecentMean
+# w = _regimeBlendWeight(min(homeSample, awaySample)) — caps at 0.85
 ```
 - **Bullpen-only ERA folded into the 40% rest-of-game share 2026-05-17** (was whole-staff teamERA). Whole-staff ERA includes the starter who's already counted in the 60% term — double-count. Bullpen-only (`playerPool=bullpen` on MLB Stats API team-stats endpoint, one extra fetch in the MLB hydration Promise.all) is the clean rest-of-game proxy and typically runs 0.10–0.40 ERA below whole-staff. `_simData` adds `homeBullpenERA`/`awayBullpenERA` (value used) and `homeBullpenSource`/`awayBullpenSource` (`"bullpen" | "team" | null`). Same swap applied to team-total lambda via `oppBullpenERA`/`oppBullpenSource`. dataConfidence penalty -1 per side when source is `"team"` (game total max -2; team total max -1).
 - 60/40 weights unchanged — workload-weighted starter share (`starterShare = expectedBF/38`) is the natural follow-up tunable but kept fixed for now so calibration can isolate the bullpen-separation impact alone.
@@ -221,6 +227,8 @@ awayLambda = awayRoadRPG × homeMult × parkRF × awayPlatoonFactor × weatherFa
 - **Weather factor**: `1 + windOutMph × 0.013 + (tempF − 72) × 0.001`, clamped [0.85, 1.15]. `windOutMph` parsed from ESPN `displayValue` ("Out to LF/CF/RF" positive, "In from..." negative, "L to R"/"R to L" = 0). Skipped for `_MLB_DOMED` parks (TB/TOR/HOU/MIA/SEA/ARI/TEX/MIL).
 - **Road RPG**: from MLB Stats API `sitCodes=A`, stored as `mlbRoadRPGMap`.
 - `umpireRunFactor = 1 / UMPIRE_KFACTOR` applied to both lambdas (and team total lambda).
+- **TTO penalty on starter (added 2026-05-25)**: 3rd-time-through-order PAs run ~0.50 ERA / 15% wOBA higher than 1st. When `pitcherAvgBF[team] > 22`, the starter's FIP and ERA inputs are multiplied by `ttoBump = 1 + clamp((expectedBF − 22)/22 × 0.30, [0, 0.10])` — ramps from 1.0 at BF=22 to 1.10 at BF≥29. WHIP is a traffic measure (not run-rate) so it stays untouched. ML/spread inherit via `_mlbMlContext`. `_simData` adds `homeExpectedBF`/`awayExpectedBF` + `homeTtoBump`/`awayTtoBump` when bump > 1.0. Filter `trackedAt < 2026-05-25` from MLB total/team-total/ML/spread calibration for this change.
+- **Regime-aware lambda blend (added 2026-05-25)**: parallels the 2026-05-21 NBA/WNBA/NHL change with a 14-day half-life (MLB plays daily; faster turnover). `_recentTeamScoreMean(_gtScheduleMap, "mlb", team, _MLB_HALF_LIFE_DAYS)` computes the team's recency-weighted recent-runs mean and blends with the pitcher-matchup-derived λ via `_regimeBlendWeight` (cap 0.85, denom 8). ML/spread inherit. `_simData` adds `regimeBlendW`, `homeRecentMean`, `awayRecentMean` when blend fires. Same calibration cutoff as TTO.
 - **Lineup / pitcher-injury adjustment (added 2026-05-18)**: each team's λ is multiplied by `lineupFactor(topOut)` — `0/1/2/3+ → 1.0/0.98/0.96/0.93` — where `topOut` counts FRESH hitter absences (status `out` / `day-to-day` / `questionable` / `doubtful` / `game-time`) from `sportByteam.mlb.injuryByTeam[team]`, excluding pitchers (by `pos` ∈ {P, SP, RP} OR by ID match against `pitcherInfoByTeam[team].id`). **Long-IL stays (10/15/60-Day-IL) are EXCLUDED** — those players are replaced on the roster and team RPG already reflects life without them. Probable pitcher on IL (ID match) → starter inputs nulled → existing fallback uses bullpen-only ERA (catches lag between IL announcement and ESPN probable update). Same logic mirrors to team-total λ via `scoringLineupFactor` + `oppPitcherOnIL`. ML + spread inherit via `_mlbMlContext`. `buildMlbInjuryReport` in `api/lib/mlb.js` (ESPN endpoint, `mlb:injuries:v2:{date}` 30min cache, CHW→CWS normalization). dataConfidence: -1 per side at `topOut ≥ 2`, -2 per side at `pitcherOnIL`. Player props are NOT affected (HRR uses `hitterLineupSpot`; K uses `lineupKPct` — both already lineup-aware). Filter `trackedAt < 2026-05-18` for total/teamTotal/ML/spread calibration across this change.
 
 *NHL*:
@@ -229,9 +237,13 @@ awayLambda = awayRoadRPG × homeMult × parkRF × awayPlatoonFactor × weatherFa
 goalieFactor(goalieSV, teamGAA) = goalieSV != null
   ? (1 - goalieSV) / (1 - leagueAvgSV)   # goals-allowed-per-shot, league-normalized
   : (teamGAA / leagueAvgGAA)              # fallback when no qualified starter
-homeLambda = homeGPG × goalieFactor(awayGoalieSV, awayGAA)  # clamped [0.5, 8]
-awayLambda = awayGPG × goalieFactor(homeGoalieSV, homeGAA)  # clamped [0.5, 8]
+# Special-teams adjustment (since 2026-05-25): own PP advantage + opp PK weakness.
+# 0.20 weight ≈ PP+PK goals as a share of all NHL scoring.
+stAdj(ownPP, lgPP, oppPK, lgPK) = clamp(1 + ((ownPP − lgPP) + (lgPK − oppPK)) × 0.20, [0.90, 1.10])
+homeLambda = homeGPG × goalieFactor(awayGoalieSV, awayGAA) × stAdj(homePP, lgPP, awayPK, lgPK)  # clamped [0.5, 8]
+awayLambda = awayGPG × goalieFactor(homeGoalieSV, homeGAA) × stAdj(awayPP, lgPP, homePK, lgPK)  # clamped [0.5, 8]
 ```
+- **PP/PK adjustment (added 2026-05-25)**: PP+PK goals are ~20% of NHL scoring; team aggregates (GPG / GAA / SV%) flatten ST advantage. `buildNhlSpecialTeams` (`api/lib/nhl.js`) fetches `stats/rest/en/team/powerplay` + `team/penaltykill` once per request (cache `nhl:specialteams:20252026`, 6h TTL) and stores `{ ppPct, pkPct, ppOppPerGame, penaltiesPerGame }` per abbr on `sportByteam.nhl.specialTeams.byTeam`. Net-ST factor clamped at ±10%. Missing data on either side → factor = 1.0 (no adjustment, fail-soft). ML/spread inherit via `_nhlMlContext`. `_simData` adds `homePPPct`, `awayPPPct`, `homePKPct`, `awayPKPct`, `homeSTAdj`/`awaySTAdj` when non-trivial. Filter `trackedAt < 2026-05-25` from NHL total/ML/spread calibration.
 - **Goalie SV% source**: `buildNhlGoalieData` (`api/lib/nhl.js`) hits `stats/rest/en/goalie/summary` once per hydration (cache `nhl:goaliepool:20252026`, 6h TTL), filters to goalies with ≥5 regular-season starts, picks the team's max-GS goalie as the "primary starter". League-avg SV% is the GS-weighted mean of the same pool. NHL's pre-game endpoints don't reliably expose tonight's confirmed starter, so we treat each team's season-leading starter as the goalie of record — true ~75%+ of nights in regular season and ~90% in playoffs. When the backup actually starts, team-GAA fallback would have been equally biased (it averages across both), so swapping to primary-goalie-SV% nets ahead in expectation.
 - **Why SV% not GAA per goalie**: SV% is per-shot and independent of team shot-allowed volume (already captured in `homeGPG`/`awayGPG`). GAA conflates the two.
 - `_simData` for NHL game totals adds: `homeGoalie`, `awayGoalie`, `homeGoalieSV`, `awayGoalieSV`, `homeGoalieSource`/`awayGoalieSource` (`"starter"|"team"`), `leagueAvgSV`. dataConfidence penalty -1 per side when source is `"team"` (max -2).
