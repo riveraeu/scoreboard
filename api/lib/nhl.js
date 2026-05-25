@@ -89,6 +89,68 @@ export async function buildNhlGoalieData(cache) {
   return out;
 }
 
+// Team-level power-play and penalty-kill rates. Two REST calls (one each for the
+// powerplay and penaltykill team-stat groups), keyed by teamId in the NHL Stats API.
+// Caller passes a `teamIdToAbbr` map (NHL_ABBR_MAP lives in api/[...path].js).
+// Returns:
+//   {
+//     byTeam: { abbr: { ppPct, pkPct, ppOppPerGame, penaltiesPerGame } },
+//     leaguePPPct, leaguePKPct
+//   }
+// All rates are 0–1. `penaltiesPerGame` here = `timesShorthandedPerGame` (penalties drawn
+// against this team, i.e. PP opportunities given to opponents). Cached at
+// `nhl:specialteams:{season}` for 6h.
+export async function buildNhlSpecialTeams(cache, teamIdToAbbr) {
+  const CACHE_KEY = `nhl:specialteams:${SEASON}`;
+  const CACHE_TTL = 6 * 3600;
+  if (cache) {
+    try {
+      const hit = await cache.get(CACHE_KEY);
+      if (hit) return JSON.parse(hit);
+    } catch {}
+  }
+  const base = `https://api.nhle.com/stats/rest/en/team`;
+  const cay = `?cayenneExp=seasonId=${SEASON}%20and%20gameTypeId=2`;
+  const [ppRes, pkRes] = await Promise.all([
+    fetch(`${base}/powerplay${cay}`, { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(8000) }).catch(() => null),
+    fetch(`${base}/penaltykill${cay}`, { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(8000) }).catch(() => null),
+  ]);
+  const ppRows = ppRes?.ok ? (await ppRes.json().catch(() => ({}))).data || [] : [];
+  const pkRows = pkRes?.ok ? (await pkRes.json().catch(() => ({}))).data || [] : [];
+
+  const byTeam = {};
+  let lgPpNum = 0, lgPpDen = 0, lgPkNum = 0, lgPkDen = 0;
+  for (const r of ppRows) {
+    const abbr = teamIdToAbbr?.[r.teamId];
+    if (!abbr) continue;
+    const ppPct = typeof r.powerPlayPct === "number" ? r.powerPlayPct : null;
+    const ppOpp = typeof r.ppOpportunitiesPerGame === "number" ? r.ppOpportunitiesPerGame : null;
+    byTeam[abbr] = byTeam[abbr] || {};
+    if (ppPct != null) byTeam[abbr].ppPct = parseFloat(ppPct.toFixed(4));
+    if (ppOpp != null) byTeam[abbr].ppOppPerGame = parseFloat(ppOpp.toFixed(3));
+    if (ppPct != null && r.ppOpportunities) { lgPpNum += ppPct * r.ppOpportunities; lgPpDen += r.ppOpportunities; }
+  }
+  for (const r of pkRows) {
+    const abbr = teamIdToAbbr?.[r.teamId];
+    if (!abbr) continue;
+    const pkPct = typeof r.penaltyKillPct === "number" ? r.penaltyKillPct : null;
+    const sh   = typeof r.timesShorthandedPerGame === "number" ? r.timesShorthandedPerGame : null;
+    byTeam[abbr] = byTeam[abbr] || {};
+    if (pkPct != null) byTeam[abbr].pkPct = parseFloat(pkPct.toFixed(4));
+    if (sh != null)    byTeam[abbr].penaltiesPerGame = parseFloat(sh.toFixed(3));
+    if (pkPct != null && r.timesShorthanded) { lgPkNum += pkPct * r.timesShorthanded; lgPkDen += r.timesShorthanded; }
+  }
+  const out = {
+    byTeam,
+    leaguePPPct: lgPpDen > 0 ? parseFloat((lgPpNum / lgPpDen).toFixed(4)) : 0.21,
+    leaguePKPct: lgPkDen > 0 ? parseFloat((lgPkNum / lgPkDen).toFixed(4)) : 0.79,
+  };
+  if (cache && (ppRows.length || pkRows.length)) {
+    try { await cache.put(CACHE_KEY, JSON.stringify(out), { expirationTtl: CACHE_TTL }); } catch {}
+  }
+  return out;
+}
+
 // ESPN NHL injury report. Returns Map<teamAbbr, [{name, id, status}]> for Out / GTD players.
 // Mirrors buildNbaInjuryReport — ESPN omits athlete.id but embeds it in playercard link href.
 // Cached at nhl:injuries:{date} for 1800s (30 min).

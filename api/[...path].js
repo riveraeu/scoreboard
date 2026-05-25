@@ -3,7 +3,7 @@ import { PARK_KFACTOR, PARK_HITFACTOR, PARK_RUNFACTOR, UMPIRE_KFACTOR, log5K, po
 import { buildLineupKPct, buildBarrelPct, buildPitcherKPct, MLB_ID_TO_ABBR, buildMlbByteam, buildMlbInjuryReport } from "./lib/mlb.js";
 import { warmPlayerInfoCache, buildNbaDvpStage1, buildNbaDvpFromBettingPros, buildNbaDepthChartPos, buildNbaPaceData, buildNbaPlayerPosFromSleeper, buildNbaDvpStage3FG, buildNbaUsageRate, buildNbaInjuryReport, buildNbaByteam } from "./lib/nba.js";
 import { buildWnbaPaceData, buildWnbaUsageRate, buildWnbaInjuryReport, buildWnbaDvp, WNBA_TEAM_IDS, WNBA_ESPN_TO_CANON, WNBA_CANON_TO_ESPN, buildWnbaByteam } from "./lib/wnba.js";
-import { buildNhlGoalieData, buildNhlInjuryReport } from "./lib/nhl.js";
+import { buildNhlGoalieData, buildNhlInjuryReport, buildNhlSpecialTeams } from "./lib/nhl.js";
 import { verifyJWT } from "./lib/auth-utils.js";
 import { handleAuthRoutes } from "./lib/handlers/auth.js";
 import { handlePlayerRoutes } from "./lib/handlers/player.js";
@@ -701,8 +701,9 @@ var worker_default = {
               fetch("https://api.nhle.com/stats/rest/en/team/summary?isAggregate=false&isGame=false&sort=goalsAgainstPerGame&start=0&limit=50&cayenneExp=seasonId%3D20252026%20and%20gameTypeId%3D2", { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
               fetch("https://api.nhle.com/stats/rest/en/team/summary?isAggregate=false&isGame=false&sort=shotsAgainstPerGame&start=0&limit=50&cayenneExp=seasonId%3D20252026%20and%20gameTypeId%3D2", { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
               buildNhlGoalieData(CACHE2).catch(() => ({ goalieByTeam: {}, leagueAvgSV: 0.905 })),
-              buildNhlInjuryReport(CACHE2).catch(() => new Map())
-            ]).then(async ([gaData, saData, goalieData, injuryMap]) => {
+              buildNhlInjuryReport(CACHE2).catch(() => new Map()),
+              buildNhlSpecialTeams(CACHE2, NHL_ABBR_MAP).catch(() => ({ byTeam: {}, leaguePPPct: 0.21, leaguePKPct: 0.79 }))
+            ]).then(async ([gaData, saData, goalieData, injuryMap, stData]) => {
               // Serialize Map → plain object for the byteam:nhl JSON cache; the consumer site
               // does NOT need a Map (just object lookups by team abbr).
               const _nhlInjuryObj = {};
@@ -713,6 +714,7 @@ var worker_default = {
                 goalieByTeam: goalieData?.goalieByTeam || {},
                 leagueAvgSV: goalieData?.leagueAvgSV ?? 0.905,
                 injuryByTeam: _nhlInjuryObj,
+                specialTeams: stData || { byTeam: {}, leaguePPPct: 0.21, leaguePKPct: 0.79 },
               };
               if (CACHE2) await CACHE2.put("byteam:nhl", JSON.stringify(sportByteam.nhl), { expirationTtl: 21600 });
             }),
@@ -3864,8 +3866,26 @@ var worker_default = {
               const _nhlAwayB2B = _isB2B(_gtScheduleMap, "nhl", awayTeam, gameDate);
               const _homeFactor = _gFactor(_awayGoalie, awayGAA) * (_nhlAwayB2B ? B2B_NHL : 1.0);
               const _awayFactor = _gFactor(_homeGoalie, homeGAA) * (_nhlHomeB2B ? B2B_NHL : 1.0);
-              let _hGLRaw = homeGPG != null ? Math.max(0.5, Math.min(8, homeGPG * _homeFactor)) : null;
-              let _aGLRaw = awayGPG != null ? Math.max(0.5, Math.min(8, awayGPG * _awayFactor)) : null;
+              // Special teams: own PP% advantage + opp PK% weakness shift goal expectation.
+              // PP+PK goals are ~20% of NHL scoring (NHL Stats 2024-25 league-wide), so a team
+              // 5pp above league PP% facing a team 5pp below league PK% nets ~+2% goals — small
+              // but real, and the model otherwise ignores special teams entirely. Clamped ±10%
+              // so extreme mismatches don't run away. ST data caches in sportByteam.nhl.specialTeams.
+              const _nhlST = sportByteam.nhl?.specialTeams || null;
+              const _homePP = _nhlST?.byTeam?.[homeTeam]?.ppPct ?? null;
+              const _awayPP = _nhlST?.byTeam?.[awayTeam]?.ppPct ?? null;
+              const _homePK = _nhlST?.byTeam?.[homeTeam]?.pkPct ?? null;
+              const _awayPK = _nhlST?.byTeam?.[awayTeam]?.pkPct ?? null;
+              const _lgPP = _nhlST?.leaguePPPct ?? 0.21;
+              const _lgPK = _nhlST?.leaguePKPct ?? 0.79;
+              const _stWeight = 0.20;
+              const _stClamp = (x) => Math.max(0.90, Math.min(1.10, x));
+              const _homeSTAdj = (_homePP != null && _awayPK != null)
+                ? _stClamp(1 + ((_homePP - _lgPP) + (_lgPK - _awayPK)) * _stWeight) : 1.0;
+              const _awaySTAdj = (_awayPP != null && _homePK != null)
+                ? _stClamp(1 + ((_awayPP - _lgPP) + (_lgPK - _homePK)) * _stWeight) : 1.0;
+              let _hGLRaw = homeGPG != null ? Math.max(0.5, Math.min(8, homeGPG * _homeFactor * _homeSTAdj)) : null;
+              let _aGLRaw = awayGPG != null ? Math.max(0.5, Math.min(8, awayGPG * _awayFactor * _awaySTAdj)) : null;
               // Regime-aware blend — each team's recency-weighted recent-goals average folded
               // into the goalie-adjusted GPG so the lambda tracks playoff/hot/cold form.
               const _nhlHomeRecent = _recentTeamScoreMean(_gtScheduleMap, "nhl", homeTeam);
@@ -3908,6 +3928,12 @@ var worker_default = {
                 leagueAvgSV: nhlLeagueAvgSV,
                 ...(_nhlHomeB2B && { homeB2B: true }),
                 ...(_nhlAwayB2B && { awayB2B: true }),
+                ...(_homePP != null && { homePPPct: _homePP }),
+                ...(_awayPP != null && { awayPPPct: _awayPP }),
+                ...(_homePK != null && { homePKPct: _homePK }),
+                ...(_awayPK != null && { awayPKPct: _awayPK }),
+                ...(_homeSTAdj !== 1.0 && { homeSTAdj: parseFloat(_homeSTAdj.toFixed(3)) }),
+                ...(_awaySTAdj !== 1.0 && { awaySTAdj: parseFloat(_awaySTAdj.toFixed(3)) }),
                 homeExpected: _hGLRaw != null ? parseFloat(_hGLRaw.toFixed(2)) : null,
                 awayExpected: _aGLRaw != null ? parseFloat(_aGLRaw.toFixed(2)) : null,
                 expectedTotal: (_hGLRaw != null && _aGLRaw != null) ? parseFloat((_hGLRaw + _aGLRaw).toFixed(1)) : null
