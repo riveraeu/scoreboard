@@ -2616,7 +2616,8 @@ var worker_default = {
               // the real opportunity delta. Requires GP ≥ 20 for the baseline to populate.
               const _paFromSpot = (spot) => spot == null ? null : Math.max(3.5, 4.7 - 0.13 * (spot - 1));
               const _nPAtonight = _paFromSpot(hitterLineupSpot);
-              const _hitterTypicalPA = sportByteam.mlb?.hitterTypicalPA?.[_opsNorm(playerName)] ?? sportByteam.mlb?.hitterTypicalPA?.[_opsNorm(playerNameDisplay)] ?? null;
+              const _bsNormInline = n => n ? n.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase() : "";
+              const _hitterTypicalPA = sportByteam.mlb?.hitterTypicalPA?.[_bsNormInline(playerName)] ?? sportByteam.mlb?.hitterTypicalPA?.[_bsNormInline(playerNameDisplay)] ?? null;
               let basePct = primaryPct;
               let _adjSoft = softPct;
               if (_nPAtonight != null && _hitterTypicalPA != null && Math.abs(_nPAtonight - _hitterTypicalPA) >= 0.3) {
