@@ -3348,23 +3348,25 @@ var worker_default = {
         // Half-life 21 days. Replaces the fixed 4% NBA playoff boost — a team-specific
         // data-driven signal catches both playoff scoring shifts AND mid-season hot/cold
         // streaks without a manually-tuned multiplier. Sample-weighted: w caps at 50%.
-        const _SEASON_HALF_LIFE_DAYS = 21;
+        const _SEASON_HALF_LIFE_DAYS = 21;  // default for NBA/WNBA/NHL — see _recentTeamScoreMean
+        const _MLB_HALF_LIFE_DAYS    = 14;  // MLB plays daily; faster turnover ⇒ shorter half-life
         const _gtRefMs = Date.now();
-        const _recencyWeight = (dateStr) => {
+        const _recencyWeight = (dateStr, halfLife = _SEASON_HALF_LIFE_DAYS) => {
           if (!dateStr) return 0;
           const t = new Date(dateStr).getTime();
           if (!isFinite(t)) return 0;
           const daysAgo = Math.max(0, (_gtRefMs - t) / 86400000);
-          return Math.pow(0.5, daysAgo / _SEASON_HALF_LIFE_DAYS);
+          return Math.pow(0.5, daysAgo / halfLife);
         };
         // Takes a schedule map (gtScheduleMap or ttScheduleMap) + sport + team. Both maps
         // share the same shape: { "sport:team": [{ date, comps: [{ abbr, score }] }] }.
-        const _recentTeamScoreMean = (schedMap, sport, team) => {
+        // halfLife defaults to _SEASON_HALF_LIFE_DAYS; MLB callers pass _MLB_HALF_LIFE_DAYS.
+        const _recentTeamScoreMean = (schedMap, sport, team, halfLife) => {
           const evts = schedMap?.[`${sport}:${team}`] || [];
           if (evts.length < 5) return null;
           let wSum = 0, scoreSum = 0;
           for (const ev of evts) {
-            const w = _recencyWeight(ev.date);
+            const w = _recencyWeight(ev.date, halfLife);
             if (w <= 0) continue;
             const mine = ev.comps.find(c => normTeam(sport, c.abbr) === team);
             if (!mine || typeof mine.score !== "number") continue;
@@ -3587,8 +3589,22 @@ var worker_default = {
               const _normUT = n => n?.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
               const _umpKFT = _umpNameT ? (UMPIRE_KFACTOR[_normUT(_umpNameT)] ?? 1.0) : 1.0;
               const _umpRunFactor = parseFloat((1 / _umpKFT).toFixed(3));
-              const _hLam = homeRPG != null ? parseFloat((Math.max(1, Math.min(12, homeRPG * _awayMult * parkRF * _homePlatFactor * _weatherFactor * _umpRunFactor * homeLineupFactor))).toFixed(1)) : null;
-              const _aLam = awayRPG != null ? parseFloat((Math.max(1, Math.min(12, awayRPG * _homeMult * parkRF * _awayPlatFactor * _weatherFactor * _umpRunFactor * awayLineupFactor))).toFixed(1)) : null;
+              let _hLam = homeRPG != null ? parseFloat((Math.max(1, Math.min(12, homeRPG * _awayMult * parkRF * _homePlatFactor * _weatherFactor * _umpRunFactor * homeLineupFactor))).toFixed(1)) : null;
+              let _aLam = awayRPG != null ? parseFloat((Math.max(1, Math.min(12, awayRPG * _homeMult * parkRF * _awayPlatFactor * _weatherFactor * _umpRunFactor * awayLineupFactor))).toFixed(1)) : null;
+              // Regime-aware blend — each team's recency-weighted recent-runs average folded
+              // into the pitcher-matchup-derived lambda so it tracks current form. Mirrors the
+              // 2026-05-21 NBA/WNBA/NHL change but with a 14-day half-life (MLB plays daily;
+              // turnover is faster). The pitcher-driven lambda is still the primary signal;
+              // _regimeBlendWeight caps the recency share at 0.85 with denominator 8.
+              const _mlbHomeRecent = _recentTeamScoreMean(_gtScheduleMap, "mlb", homeTeam, _MLB_HALF_LIFE_DAYS);
+              const _mlbAwayRecent = _recentTeamScoreMean(_gtScheduleMap, "mlb", awayTeam, _MLB_HALF_LIFE_DAYS);
+              let _mlbRegimeBlendW = 0;
+              if (_mlbHomeRecent && _mlbAwayRecent && _hLam != null && _aLam != null) {
+                const _mlbSample = Math.min(_mlbHomeRecent.effectiveSample, _mlbAwayRecent.effectiveSample);
+                _mlbRegimeBlendW = _regimeBlendWeight(_mlbSample);
+                _hLam = parseFloat(((1 - _mlbRegimeBlendW) * _hLam + _mlbRegimeBlendW * _mlbHomeRecent.mean).toFixed(2));
+                _aLam = parseFloat(((1 - _mlbRegimeBlendW) * _aLam + _mlbRegimeBlendW * _mlbAwayRecent.mean).toFixed(2));
+              }
               // H2H combined hit rate: how often (homeScore+awayScore) >= threshold in last 10 H2H meetings
               const _gtH2H = _gtH2HRate(homeTeam, awayTeam, threshold);
               const h2hTotalHitRate = _gtH2H?.rate ?? null;
@@ -3598,7 +3614,7 @@ var worker_default = {
               const _combinedRPGPts = _combinedRPG == null ? 1 : _combinedRPG >= 10.5 ? 2 : _combinedRPG >= 8.5 ? 1 : 0;
               const _homeWhipPts = homeWHIP == null ? 1 : homeWHIP > 1.35 ? 2 : homeWHIP > 1.20 ? 1 : 0;
               const _awayWhipPts = awayWHIP == null ? 1 : awayWHIP > 1.35 ? 2 : awayWHIP > 1.20 ? 1 : 0;
-              _simData = { homeRPG, awayRPG, homeERA, awayERA, homeFIP, awayFIP, homeWHIP, awayWHIP, ...(homeWHIPSource && { homeWHIPSource }), ...(awayWHIPSource && { awayWHIPSource }), homeBullpenERA: _homeRestERA, awayBullpenERA: _awayRestERA, ...(homeBullpenSource && { homeBullpenSource }), ...(awayBullpenSource && { awayBullpenSource }), parkFactor: parkRF, homeExpected: _hLam, awayExpected: _aLam, expectedTotal: (_hLam != null && _aLam != null) ? parseFloat((_hLam + _aLam).toFixed(1)) : null, gameOuLine, mlbOuPts: _mlbOuPts, homeWhipPts: _homeWhipPts, awayWhipPts: _awayWhipPts, combinedRpgPts: _combinedRPGPts, h2hTotalPts: _h2hTotalPts, combinedRPG: _combinedRPG, umpireRunFactor: _umpNameT != null ? _umpRunFactor : null, umpireName: _umpNameT, h2hTotalHitRate, h2hTotalGames, homeStarterHand: _homeStarterHand, awayStarterHand: _awayStarterHand, ...(_homePlatFactor !== 1.0 && { homePlatoonFactor: _homePlatFactor }), ...(_awayPlatFactor !== 1.0 && { awayPlatoonFactor: _awayPlatFactor }), ...(_weatherFactor !== 1.0 && { weatherFactor: _weatherFactor, windOutMph: _wData?.windOutMph }), ...(homeTopOut > 0 && { homeTopOut, homeLineupFactor }), ...(awayTopOut > 0 && { awayTopOut, awayLineupFactor }), ...(homePitcherOnIL && { homePitcherOnIL: true }), ...(awayPitcherOnIL && { awayPitcherOnIL: true }), ...(_homeTto !== 1.0 && { homeExpectedBF: _homeBF, homeTtoBump: parseFloat(_homeTto.toFixed(3)) }), ...(_awayTto !== 1.0 && { awayExpectedBF: _awayBF, awayTtoBump: parseFloat(_awayTto.toFixed(3)) }) };
+              _simData = { homeRPG, awayRPG, homeERA, awayERA, homeFIP, awayFIP, homeWHIP, awayWHIP, ...(homeWHIPSource && { homeWHIPSource }), ...(awayWHIPSource && { awayWHIPSource }), homeBullpenERA: _homeRestERA, awayBullpenERA: _awayRestERA, ...(homeBullpenSource && { homeBullpenSource }), ...(awayBullpenSource && { awayBullpenSource }), parkFactor: parkRF, homeExpected: _hLam, awayExpected: _aLam, expectedTotal: (_hLam != null && _aLam != null) ? parseFloat((_hLam + _aLam).toFixed(1)) : null, gameOuLine, mlbOuPts: _mlbOuPts, homeWhipPts: _homeWhipPts, awayWhipPts: _awayWhipPts, combinedRpgPts: _combinedRPGPts, h2hTotalPts: _h2hTotalPts, combinedRPG: _combinedRPG, umpireRunFactor: _umpNameT != null ? _umpRunFactor : null, umpireName: _umpNameT, h2hTotalHitRate, h2hTotalGames, homeStarterHand: _homeStarterHand, awayStarterHand: _awayStarterHand, ...(_homePlatFactor !== 1.0 && { homePlatoonFactor: _homePlatFactor }), ...(_awayPlatFactor !== 1.0 && { awayPlatoonFactor: _awayPlatFactor }), ...(_weatherFactor !== 1.0 && { weatherFactor: _weatherFactor, windOutMph: _wData?.windOutMph }), ...(homeTopOut > 0 && { homeTopOut, homeLineupFactor }), ...(awayTopOut > 0 && { awayTopOut, awayLineupFactor }), ...(homePitcherOnIL && { homePitcherOnIL: true }), ...(awayPitcherOnIL && { awayPitcherOnIL: true }), ...(_homeTto !== 1.0 && { homeExpectedBF: _homeBF, homeTtoBump: parseFloat(_homeTto.toFixed(3)) }), ...(_awayTto !== 1.0 && { awayExpectedBF: _awayBF, awayTtoBump: parseFloat(_awayTto.toFixed(3)) }), ...(_mlbRegimeBlendW > 0 && { regimeBlendW: parseFloat(_mlbRegimeBlendW.toFixed(2)), homeRecentMean: parseFloat(_mlbHomeRecent.mean.toFixed(2)), awayRecentMean: parseFloat(_mlbAwayRecent.mean.toFixed(2)) }) };
               if (_hLam != null && _aLam != null) {
                 const _dk = `mlb|${homeTeam}|${awayTeam}`;
                 if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateMLBTotalDist(_hLam, _aLam, _mlbDispR, 10000);
