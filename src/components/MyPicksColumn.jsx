@@ -548,12 +548,13 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                       <span style={{color:"#a855f7",fontSize:10}}>{oddsStr}</span>
                       <span style={{color:"#484f58",fontSize:10,margin:"0 3px"}}>·</span>
                       <span style={{color:"#e3b341",fontSize:10}}>{pick.direction === "under" ? (pick.noTruePct ?? pick.truePct) : pick.truePct}% true</span>
-                      <span style={{color:"#484f58",fontSize:10,margin:"0 3px"}}>·</span>
-                      <span style={{color:"#484f58",fontSize:10}}>$</span>
-                      <input type="number" min="0" step="0.1" value={units}
-                        onChange={e => setPickUnits(pick.id, e.target.value)}
-                        style={{background:"transparent",border:"none",outline:"none",color:"#c9d1d9",
-                          fontSize:10,width:56,padding:"0 2px",textAlign:"left"}}/>
+                      <span style={{display:"inline-flex",alignItems:"center",whiteSpace:"nowrap",marginLeft:"auto",paddingLeft:6}}>
+                        <span style={{color:"#484f58",fontSize:10}}>$</span>
+                        <input type="number" min="0" step="0.1" value={units}
+                          onChange={e => setPickUnits(pick.id, e.target.value)}
+                          style={{background:"transparent",border:"none",outline:"none",color:"#c9d1d9",
+                            fontSize:10,width:56,padding:"0 2px",textAlign:"left"}}/>
+                      </span>
                     </div>
                     {/* Edit mode: full inline form */}
                     {editPickId === pick.id && (() => {
