@@ -78,16 +78,27 @@ Per-sport modeling internals. CLAUDE.md has the architecture map and load-bearin
 ---
 
 ## MLB Hitters (HRR)
-**True%**: logit-sigmoid base-rate adjustment with park, hitter OPS, and pitcher WHIP shifts (no Monte Carlo for HRR — `simulateHits` removed when MLB hits stat dropped 2026-05-16).
+**True%**: logit-sigmoid base-rate adjustment with park, hitter OPS, and pitcher WHIP shifts (no Monte Carlo for HRR — `simulateHits` removed when MLB hits stat dropped 2026-05-16). **PA-aware adjustment (since 2026-05-25)**: convert per-game seasonPct + softPct to per-PA via inversion, re-compose at tonight's PA count from `hitterLineupSpot`, then continue the existing pipeline.
 ```
-# BvP shrinkage (2026-05-16) — only when hitterH2HSource === "bvp"
-N = 20                                                       # prior weight in games
-shrunkSoftPct = (softGames·softPct + N·primaryPct) / (softGames + N)
-rawMlbPct = (primaryPct + shrunkSoftPct) / 2
-opsAdj  = clamp(hitterOPS / 0.720, [0.85, 1.15])             # weight 0.4 in logit
-whipAdj = clamp((pitcherWHIP / 1.30)^0.5, [0.92, 1.08])      # weight 0.3 in logit (third-order)
+# PA-aware adjustment (2026-05-25)
+paFromSpot(spot) = max(3.5, 4.7 - 0.13·(spot - 1))           # spot 1 → 4.7, spot 4 → 4.31, spot 9 → 3.66
+nPAtonight = paFromSpot(hitterLineupSpot)
+nPAtypical = 4.0                                              # baseline (cancels for non-edge spots)
+paAdjust(pctGame) =
+    let perPA = 1 - (1 - pctGame/100)^(1/nPAtypical)
+    in   (1 - (1 - perPA)^nPAtonight) × 100
+primaryPctAdj = paAdjust(primaryPct)
+softPctAdj    = paAdjust(softPct)
+
+# BvP shrinkage (2026-05-16) — only when hitterH2HSource === "bvp" (now over PA-adjusted values)
+N = 20                                                        # prior weight in games
+shrunkSoftPct = (softGames·softPctAdj + N·primaryPctAdj) / (softGames + N)
+rawMlbPct = (primaryPctAdj + shrunkSoftPct) / 2
+opsAdj  = clamp(hitterOPS / 0.720, [0.85, 1.15])              # weight 0.4 in logit
+whipAdj = clamp((pitcherWHIP / 1.30)^0.5, [0.92, 1.08])       # weight 0.3 in logit (third-order)
 truePct = sigmoid(logit(rawMlbPct/100) + ln(parkFactor) + 0.4·ln(opsAdj) + 0.3·ln(whipAdj)) × 100
 ```
+- **PA-aware adjustment added 2026-05-25**: HRR ≥1 is built from per-PA Bernoulli outcomes. Spot 1 sees ~4.7 PAs, spot 4 ~4.3, spot 9 ~3.65 — currently spots 1-5 are gated in but not differentiated. Each per-game rate is inverted to per-PA at a 4.0 PA baseline, then re-composed at tonight's actual PAs. Emits `hitterPaFromSpot`, `hitterTypicalPA`, `seasonPctAdj`, `softPctAdj` when the adjustment fires. Closes the observed -15.9pt spot-4 underperformance in the 5/16-5/24 audit. Filter `trackedAt < 2026-05-25` for HRR calibration across this change.
 - **BvP shrinkage added 2026-05-16**: small-sample BvP rates (10 games at 100%) were dominating the 50/50 blend. Bayesian-style: at softGames=20 the blend is 50/50 BvP/season-prior; at softGames=10, BvP gets ~33% weight. Hand-source `softPct` skips shrinkage (handedness samples are large by definition).
 - OPS folded into lambda 2026-05-13 (was SimScore-only). Top-quartile (~.850) lifts truePct ~1.5–2pt.
 - WHIP folded into lambda 2026-05-13 (was SimScore-only). Lower weight than OPS; high-WHIP pitcher → more contact → higher HRR base rate beyond what BvP captures.
@@ -114,7 +125,9 @@ Included in **all** drop objects so the market report renders pitcher info for n
 ---
 
 ## NBA player props
-**True%**: `buildNbaStatDist(gameValues, dvpFactor, paceAdj, isB2B, nSim, miscAdj)` → `nbaDistPct`. Dist cached per `playerId|stat` so all thresholds share one distribution. Mean from last 10, std from full season. Adjusted: `× teamDefFactor × (1 + paceAdj×0.002) × 0.93 if B2B × miscAdj`. nSim scales with pre-edge simScore (≥8 → 10k, ≥5 → 5k, else 2k).
+**True%**: `buildNbaStatDist(gameValues, dvpFactor, paceAdj, isB2B, nSim, miscAdj, paceFactor)` → `nbaDistPct`. Dist cached per `playerId|stat` so all thresholds share one distribution. Mean from last 10, std from full season. Adjusted: `× teamDefFactor × paceFactor (clamp [0.92, 1.08]) × 0.93 if B2B × miscAdj`. nSim scales with pre-edge simScore (≥8 → 10k, ≥5 → 5k, else 2k).
+
+**Pace (since 2026-05-25)**: `paceFactor = (teamPace × oppPace) / (leagueAvgPace²)` — matches the NBA totals math. Replaces the prior linear-delta path `(1 + paceAdj × 0.002)` capped at ±3%, which severely under-projected the ±10% possession swings real matchups exhibit. NHL props still use `paceAdj` (linear shots-against delta — different semantics, kept on the legacy pathway). Emits `nbaPaceFactor`/`wnbaPaceFactor` alongside the existing display-only `nbaPaceAdj`/`wnbaPaceAdj`. Filter `trackedAt < 2026-05-25` for NBA/WNBA player prop calibration across this change.
 
 **`miscAdj` = C2 × C3 × C4**:
 - C2 injury boost: `1.08` per Out player on own team, capped 1.15× (from `buildNbaInjuryReport`)
@@ -206,11 +219,15 @@ Kalshi series: `KXMLBTOTAL`, `KXNBATOTAL`, `KXWNBATOTAL`, `KXNHLTOTAL`, `KXNFLTO
 ```
 whipAdj(whip)         = clamp((whip/1.30)^0.5, [0.90, 1.10])
 ttoBump(expectedBF)  = 1 + clamp((expectedBF − 22)/22 × 0.30, [0, 0.10])           # 3rd-TTO penalty on FIP+ERA (since 2026-05-25)
-starterMult(fip, era, whip, ttoBump)
-                      = (0.5×(fip×ttoBump/4.20) + 0.5×(era×ttoBump/4.20)) × whipAdj(whip)   # FIP/ERA fallbacks apply
+# Pitcher vs-L/vs-R split modifiers (since 2026-05-25). Switch hitters bat opposite the starter's hand.
+lFrac(oppLineup, starterHand) = (oppLineup.l + (starterHand=="R" ? oppLineup.s : 0)) / total
+fipMod(starter, lFrac) = lFrac × splits[starter].vlFipMod + (1-lFrac) × splits[starter].vrFipMod   # 1.0 = no platoon
+whipMod analogous; fipEff = fip × fipMod; whipEff = whip × whipMod
+starterMult(fipEff, era, whipEff, ttoBump)
+                      = (0.5×(fipEff×ttoBump/4.20) + 0.5×(era×ttoBump/4.20)) × whipAdj(whipEff)   # ERA not split-exposed
 restERA(team)        = bullpenERA[team] ?? teamERA[team]                          # bullpen preferred (cleaner rest-of-game proxy)
-awayMult = 0.6 × starterMult(awayFIP, awayERA, awayWHIP, ttoBump(awayBF)) + 0.4 × (restERA(away)/4.20)
-homeMult = 0.6 × starterMult(homeFIP, homeERA, homeWHIP, ttoBump(homeBF)) + 0.4 × (restERA(home)/4.20)
+awayMult = 0.6 × starterMult(awayFipEff, awayERA, awayWhipEff, ttoBump(awayBF)) + 0.4 × (restERA(away)/4.20)
+homeMult = 0.6 × starterMult(homeFipEff, homeERA, homeWhipEff, ttoBump(homeBF)) + 0.4 × (restERA(home)/4.20)
 homeLambda₀ = homeRoadRPG × awayMult × parkRF × homePlatoonFactor × weatherFactor × umpireRunFactor × homeLineupFactor   # clamped [1,12]
 awayLambda₀ = awayRoadRPG × homeMult × parkRF × awayPlatoonFactor × weatherFactor × umpireRunFactor × awayLineupFactor   # clamped [1,12]
 # Regime-aware blend (since 2026-05-25, 14-day half-life via _MLB_HALF_LIFE_DAYS):
@@ -227,6 +244,7 @@ awayLambda = (1 − w) × awayLambda₀ + w × awayRecentMean
 - **Weather factor**: `1 + windOutMph × 0.013 + (tempF − 72) × 0.001`, clamped [0.85, 1.15]. `windOutMph` parsed from ESPN `displayValue` ("Out to LF/CF/RF" positive, "In from..." negative, "L to R"/"R to L" = 0). Skipped for `_MLB_DOMED` parks (TB/TOR/HOU/MIA/SEA/ARI/TEX/MIL).
 - **Road RPG**: from MLB Stats API `sitCodes=A`, stored as `mlbRoadRPGMap`.
 - `umpireRunFactor = 1 / UMPIRE_KFACTOR` applied to both lambdas (and team total lambda).
+- **Pitcher vs-L/vs-R split modifiers (added 2026-05-25)**: `buildPitcherKPct` fetches `statSplits` with `sitCodes=vl,vr` for every scheduled pitcher in 2026 + 2025. ERA isn't exposed on these endpoints (returns null), but K/BB/HR/IP and WHIP are — enough to compute split-FIP and use exposed split WHIP. Each split rate is shrunk toward the overall regressed value with `PRIOR_IP=20` (see `_regressedRate`); the resulting ratio (`splitRate / overallRate`) is a multiplicative modifier, 1.0 means no platoon. `pitcherSplitsByTeam[abbr] = { vlFipMod, vrFipMod, vlWhipMod, vrWhipMod, vlBf, vrBf }`. `buildLineupKPct` returns `lineupHandByTeam[abbr] = { l, r, s }` (counts of L/R/Switch bats in tonight's projected lineup, ≥6 required). Effective rates: `effFIP = overallFIP × (lFrac × vlFipMod + (1−lFrac) × vrFipMod)`; same for WHIP. ERA stays at overall (not split-exposed). Falls back to overall when split or lineup data missing. ML/spread inherit. `_simData` adds `home/awayOppLFrac`, `home/awayFipMod`, `home/awayWhipMod`, `home/awayFipEff`, `home/awayWhipEff` when present. Filter `trackedAt < 2026-05-25` from MLB total/team-total/ML/spread calibration for this change.
 - **TTO penalty on starter (added 2026-05-25)**: 3rd-time-through-order PAs run ~0.50 ERA / 15% wOBA higher than 1st. When `pitcherAvgBF[team] > 22`, the starter's FIP and ERA inputs are multiplied by `ttoBump = 1 + clamp((expectedBF − 22)/22 × 0.30, [0, 0.10])` — ramps from 1.0 at BF=22 to 1.10 at BF≥29. WHIP is a traffic measure (not run-rate) so it stays untouched. ML/spread inherit via `_mlbMlContext`. `_simData` adds `homeExpectedBF`/`awayExpectedBF` + `homeTtoBump`/`awayTtoBump` when bump > 1.0. Filter `trackedAt < 2026-05-25` from MLB total/team-total/ML/spread calibration for this change.
 - **Regime-aware lambda blend (added 2026-05-25)**: parallels the 2026-05-21 NBA/WNBA/NHL change with a 14-day half-life (MLB plays daily; faster turnover). `_recentTeamScoreMean(_gtScheduleMap, "mlb", team, _MLB_HALF_LIFE_DAYS)` computes the team's recency-weighted recent-runs mean and blends with the pitcher-matchup-derived λ via `_regimeBlendWeight` (cap 0.85, denom 8). ML/spread inherit. `_simData` adds `regimeBlendW`, `homeRecentMean`, `awayRecentMean` when blend fires. Same calibration cutoff as TTO.
 - **Lineup / pitcher-injury adjustment (added 2026-05-18)**: each team's λ is multiplied by `lineupFactor(topOut)` — `0/1/2/3+ → 1.0/0.98/0.96/0.93` — where `topOut` counts FRESH hitter absences (status `out` / `day-to-day` / `questionable` / `doubtful` / `game-time`) from `sportByteam.mlb.injuryByTeam[team]`, excluding pitchers (by `pos` ∈ {P, SP, RP} OR by ID match against `pitcherInfoByTeam[team].id`). **Long-IL stays (10/15/60-Day-IL) are EXCLUDED** — those players are replaced on the roster and team RPG already reflects life without them. Probable pitcher on IL (ID match) → starter inputs nulled → existing fallback uses bullpen-only ERA (catches lag between IL announcement and ESPN probable update). Same logic mirrors to team-total λ via `scoringLineupFactor` + `oppPitcherOnIL`. ML + spread inherit via `_mlbMlContext`. `buildMlbInjuryReport` in `api/lib/mlb.js` (ESPN endpoint, `mlb:injuries:v2:{date}` 30min cache, CHW→CWS normalization). dataConfidence: -1 per side at `topOut ≥ 2`, -2 per side at `pitcherOnIL`. Player props are NOT affected (HRR uses `hitterLineupSpot`; K uses `lineupKPct` — both already lineup-aware). Filter `trackedAt < 2026-05-18` for total/teamTotal/ML/spread calibration across this change.
