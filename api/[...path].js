@@ -1,5 +1,5 @@
 import { ALLOWED_ORIGIN, corsHeaders, jsonResponse, errorResponse, parseGameOdds, parseGameScores, parseTopPlayers, buildSoftTeamAbbrs, buildHardTeamAbbrs, buildTeamRankMap } from "./lib/utils.js";
-import { PARK_KFACTOR, PARK_HITFACTOR, PARK_RUNFACTOR, UMPIRE_KFACTOR, log5K, poissonCDF, log5HitRate, simulateKsDist, kDistPct, buildNbaStatDist, nbaDistPct, simulateHits, simulateMLBTotalDist, simulateMLBJoint, simulateNBAJoint, mlPctFromJoint, spreadPctFromJoint, simulateNBATotalDist, simulateNHLTotalDist, totalDistPct, simulateTeamTotalDist, simulateTeamPtsDist, lambdaForPoissonTail, meanForNormalTail, normCDF } from "./lib/simulate.js";
+import { PARK_KFACTOR, PARK_HITFACTOR, PARK_RUNFACTOR, UMPIRE_KFACTOR, log5K, poissonCDF, log5HitRate, simulateKsDist, kDistPct, buildNbaStatDist, nbaDistPct, simulateHits, simulateMLBTotalDist, simulateMLBJoint, simulateNBAJoint, mlPctFromJoint, spreadPctFromJoint, simulateNBATotalDist, simulateNHLTotalDist, totalDistPct, simulateTeamTotalDist, simulateTeamPtsDist, lambdaForPoissonTail, muForNegBinTail, negBinCDF, meanForNormalTail, normCDF } from "./lib/simulate.js";
 import { buildLineupKPct, buildBarrelPct, buildPitcherKPct, MLB_ID_TO_ABBR, buildMlbByteam, buildMlbInjuryReport } from "./lib/mlb.js";
 import { warmPlayerInfoCache, buildNbaDvpStage1, buildNbaDvpFromBettingPros, buildNbaDepthChartPos, buildNbaPaceData, buildNbaPlayerPosFromSleeper, buildNbaDvpStage3FG, buildNbaUsageRate, buildNbaInjuryReport, buildNbaByteam } from "./lib/nba.js";
 import { buildWnbaPaceData, buildWnbaUsageRate, buildWnbaInjuryReport, buildWnbaDvp, WNBA_TEAM_IDS, WNBA_ESPN_TO_CANON, WNBA_CANON_TO_ESPN, buildWnbaByteam } from "./lib/wnba.js";
@@ -3338,7 +3338,8 @@ var worker_default = {
         // WNBA analog. Same shape as _nbaMlContext but per-team std = 11 (matches WNBA total sim).
         const _wnbaMlContext = {};
         // NHL analog. homeLambda/awayLambda are Poisson goals (mirror MLB but lower magnitude).
-        // simulateMLBJoint is reused — the function is sport-agnostic per-team Poisson.
+        // simulateMLBJoint is reused with r=null so it falls back to Poisson sampling (NHL hasn't
+        // been fit for NegBin dispersion yet; phase 2). MLB ML/spread pass _mlbDispR to opt in.
         const _nhlMlContext = {};
         // ── Regime-aware lambda helpers (shared by game-total + team-total blocks). Blends a
         // team's recency-weighted recent-score average into the rating-based expected.
@@ -3405,6 +3406,40 @@ var worker_default = {
             const _rate = (evts) => evts.filter(ev => ev.comps.reduce((s, c) => s + (c.score || 0), 0) >= thr).length / evts.length * 100;
             return { rate: Math.round((_rate(hEvts) + _rate(aEvts)) / 2), sample: Math.min(hEvts.length, aEvts.length) };
           };
+          // League-wide MLB run dispersion: pooled method-of-moments fit on per-team residuals
+          // from _gtScheduleMap. Real MLB game totals are overdispersed vs Poisson (~2× var/mean
+          // ratio) due to big-inning fat tails + no-hit thin left tail. Lambdas are still right;
+          // variance is wrong. r is the NegBin dispersion (lower r = fatter tails, r → ∞ recovers
+          // Poisson). Sampled per request from current schedule so it self-adjusts as the season
+          // matures. Falls back to 8 (~empirical from May 2026 audit) when sample is thin.
+          const _fitMlbDispersion = () => {
+            let sumResid2 = 0, sumMean = 0, nGames = 0;
+            for (const key in _gtScheduleMap) {
+              if (!key.startsWith("mlb:")) continue;
+              const team = key.slice(4);
+              const evts = _gtScheduleMap[key];
+              if (!evts || evts.length < 8) continue;
+              const scores = [];
+              for (const ev of evts) {
+                const myComp = ev.comps?.find(c => normTeam("mlb", c.abbr) === team);
+                if (myComp?.score != null) scores.push(myComp.score);
+              }
+              if (scores.length < 8) continue;
+              const mean = scores.reduce((a, b) => a + b, 0) / scores.length;
+              for (const s of scores) {
+                sumResid2 += (s - mean) * (s - mean);
+                sumMean += mean;
+                nGames += 1;
+              }
+            }
+            if (nGames < 100) return 8;
+            const pooledMean = sumMean / nGames;
+            const pooledVar = sumResid2 / nGames;
+            if (pooledVar <= pooledMean) return 50;
+            const r = (pooledMean * pooledMean) / (pooledVar - pooledMean);
+            return Math.max(3, Math.min(50, parseFloat(r.toFixed(2))));
+          };
+          const _mlbDispR = _fitMlbDispersion();
           // Sample-weighted blend factor: model retains at least 30% weight so tonight-specific
           // factors (pitcher matchup, pace, weather) aren't drowned out. Caps obs weight at 0.7
           // when N >= 40 games; ramps linearly from 0 (no schedule) to 0.7.
@@ -3546,22 +3581,23 @@ var worker_default = {
               _simData = { homeRPG, awayRPG, homeERA, awayERA, homeFIP, awayFIP, homeWHIP, awayWHIP, ...(homeWHIPSource && { homeWHIPSource }), ...(awayWHIPSource && { awayWHIPSource }), homeBullpenERA: _homeRestERA, awayBullpenERA: _awayRestERA, ...(homeBullpenSource && { homeBullpenSource }), ...(awayBullpenSource && { awayBullpenSource }), parkFactor: parkRF, homeExpected: _hLam, awayExpected: _aLam, expectedTotal: (_hLam != null && _aLam != null) ? parseFloat((_hLam + _aLam).toFixed(1)) : null, gameOuLine, mlbOuPts: _mlbOuPts, homeWhipPts: _homeWhipPts, awayWhipPts: _awayWhipPts, combinedRpgPts: _combinedRPGPts, h2hTotalPts: _h2hTotalPts, combinedRPG: _combinedRPG, umpireRunFactor: _umpNameT != null ? _umpRunFactor : null, umpireName: _umpNameT, h2hTotalHitRate, h2hTotalGames, homeStarterHand: _homeStarterHand, awayStarterHand: _awayStarterHand, ...(_homePlatFactor !== 1.0 && { homePlatoonFactor: _homePlatFactor }), ...(_awayPlatFactor !== 1.0 && { awayPlatoonFactor: _awayPlatFactor }), ...(_weatherFactor !== 1.0 && { weatherFactor: _weatherFactor, windOutMph: _wData?.windOutMph }), ...(homeTopOut > 0 && { homeTopOut, homeLineupFactor }), ...(awayTopOut > 0 && { awayTopOut, awayLineupFactor }), ...(homePitcherOnIL && { homePitcherOnIL: true }), ...(awayPitcherOnIL && { awayPitcherOnIL: true }) };
               if (_hLam != null && _aLam != null) {
                 const _dk = `mlb|${homeTeam}|${awayTeam}`;
-                if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateMLBTotalDist(_hLam, _aLam, 10000);
+                if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateMLBTotalDist(_hLam, _aLam, _mlbDispR, 10000);
                 truePct = totalDistPct(totalDistCache[_dk], threshold);
                 const _mlCtxKey = `${homeTeam}|${awayTeam}|${gameDate}`;
                 if (!_mlbMlContext[_mlCtxKey]) {
-                  _mlbMlContext[_mlCtxKey] = { homeTeam, awayTeam, gameDate, homeLambda: _hLam, awayLambda: _aLam, kalshiVolume, kalshiSpread, lowVolume, _simData: { ..._simData } };
+                  _mlbMlContext[_mlCtxKey] = { homeTeam, awayTeam, gameDate, homeLambda: _hLam, awayLambda: _aLam, dispR: _mlbDispR, kalshiVolume, kalshiSpread, lowVolume, _simData: { ..._simData } };
                 }
               }
-              // Pre-sim lambda blend: solve for the Poisson rate that would produce the observed
-              // season hit rate at this threshold, then sample-weighted blend with model lambda.
-              // Cleaner attribution than post-sim blend — seasonHitRate is now an input to the
-              // distribution, not a correction on its output. Falls back to model lambda if no obs.
+              // Pre-sim lambda blend: solve for the NegBin mean that would produce the observed
+              // season hit rate at this threshold (matches the sim's NegBin variance), then
+              // sample-weighted blend with model lambda. Cleaner attribution than post-sim blend —
+              // seasonHitRate is now an input to the distribution, not a correction on its output.
+              // Falls back to model lambda if no obs.
               const _gtMlbSsn = (truePct != null && _hLam != null && _aLam != null) ? _gtSeasonHitRate("mlb", homeTeam, awayTeam, threshold) : null;
               if (_gtMlbSsn != null) {
                 const _w = _ssnBlendWeight(_gtMlbSsn.sample);
                 const _modelLambda = _hLam + _aLam;
-                const _impliedLambda = lambdaForPoissonTail(threshold, _gtMlbSsn.rate / 100);
+                const _impliedLambda = muForNegBinTail(threshold, _gtMlbSsn.rate / 100, _mlbDispR);
                 if (_impliedLambda != null) {
                   const _cap = _GT_IMPLIED_CAP.mlb;
                   const _impliedClamped = Math.max(_modelLambda - _cap, Math.min(_modelLambda + _cap, _impliedLambda));
@@ -3573,7 +3609,8 @@ var worker_default = {
                   _simData.impliedLambda = _impliedLambda;
                   if (_impliedClamped !== _impliedLambda) _simData.impliedLambdaClamped = parseFloat(_impliedClamped.toFixed(2));
                   _simData.blendedLambda = parseFloat(_blendedLambda.toFixed(2));
-                  truePct = parseFloat(((1 - poissonCDF(threshold - 1, _blendedLambda)) * 100).toFixed(1));
+                  _simData.mlbDispR = _mlbDispR;
+                  truePct = parseFloat(((1 - negBinCDF(threshold - 1, _blendedLambda, _mlbDispR)) * 100).toFixed(1));
                 }
               }
               // MLB SimScore (max 10): homeWHIP→0-2, awayWHIP→0-2, combinedRPG→0-2, H2H→0-2, O/U→0-2
@@ -4437,7 +4474,7 @@ var worker_default = {
         const _mlJointCache = {};
         {
           for (const ctx of Object.values(_mlbMlContext)) {
-            const { homeTeam, awayTeam, gameDate, homeLambda, awayLambda, kalshiVolume, kalshiSpread, lowVolume, _simData } = ctx;
+            const { homeTeam, awayTeam, gameDate, homeLambda, awayLambda, dispR, kalshiVolume, kalshiSpread, lowVolume, _simData } = ctx;
             if (gameDate && gameDate < cutoffStr) continue;
             const mlMarket = _mlbMlMarkets[`${homeTeam}|${awayTeam}|${gameDate}`];
             if (!mlMarket?.yesByTeam) continue;
@@ -4445,7 +4482,7 @@ var worker_default = {
             const awayYesAsk = mlMarket.yesByTeam[awayTeam];
             if (homeYesAsk == null || awayYesAsk == null) continue;
             const _mlk = `${homeTeam}|${awayTeam}`;
-            if (!_mlJointCache[_mlk]) _mlJointCache[_mlk] = simulateMLBJoint(homeLambda, awayLambda, 10000);
+            if (!_mlJointCache[_mlk]) _mlJointCache[_mlk] = simulateMLBJoint(homeLambda, awayLambda, dispR, 10000);
             const joint = _mlJointCache[_mlk];
             if (!joint) continue;
             const homeTruePct = mlPctFromJoint(joint.home, joint.away);
@@ -4500,10 +4537,10 @@ var worker_default = {
             const { gameTeam1, gameTeam2, gameDate, marginTeam, line, kalshiPct: yesKalshi, americanOdds: yesAO, noKalshiPct: noKalshi, noKalshiAO: noAO, kalshiVolume, kalshiSpread } = m;
             const ctx = _mlbMlContext[`${gameTeam1}|${gameTeam2}|${gameDate}`] ?? _mlbMlContext[`${gameTeam2}|${gameTeam1}|${gameDate}`];
             if (!ctx) continue;
-            const { homeTeam, awayTeam, homeLambda, awayLambda, _simData } = ctx;
+            const { homeTeam, awayTeam, homeLambda, awayLambda, dispR, _simData } = ctx;
             if (marginTeam !== homeTeam && marginTeam !== awayTeam) continue;
             const _mlk = `${homeTeam}|${awayTeam}`;
-            if (!_mlJointCache[_mlk]) _mlJointCache[_mlk] = simulateMLBJoint(homeLambda, awayLambda, 10000);
+            if (!_mlJointCache[_mlk]) _mlJointCache[_mlk] = simulateMLBJoint(homeLambda, awayLambda, dispR, 10000);
             const joint = _mlJointCache[_mlk];
             if (!joint) continue;
             const marginSide = marginTeam === homeTeam ? "home" : "away";
@@ -4966,7 +5003,7 @@ var worker_default = {
             const awayYesAsk = mlMarket.yesByTeam[awayTeam];
             if (homeYesAsk == null || awayYesAsk == null) continue;
             const _mlk = `${homeTeam}|${awayTeam}`;
-            if (!_nhlJointCache[_mlk]) _nhlJointCache[_mlk] = simulateMLBJoint(homeLambda, awayLambda, 10000);
+            if (!_nhlJointCache[_mlk]) _nhlJointCache[_mlk] = simulateMLBJoint(homeLambda, awayLambda, null, 10000);
             const joint = _nhlJointCache[_mlk];
             if (!joint) continue;
             const homeTruePct = mlPctFromJoint(joint.home, joint.away);
@@ -5022,7 +5059,7 @@ var worker_default = {
             const { homeTeam, awayTeam, homeLambda, awayLambda, _simData } = ctx;
             if (marginTeam !== homeTeam && marginTeam !== awayTeam) continue;
             const _mlk = `${homeTeam}|${awayTeam}`;
-            if (!_nhlJointCache[_mlk]) _nhlJointCache[_mlk] = simulateMLBJoint(homeLambda, awayLambda, 10000);
+            if (!_nhlJointCache[_mlk]) _nhlJointCache[_mlk] = simulateMLBJoint(homeLambda, awayLambda, null, 10000);
             const joint = _nhlJointCache[_mlk];
             if (!joint) continue;
             const marginSide = marginTeam === homeTeam ? "home" : "away";

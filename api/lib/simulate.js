@@ -159,6 +159,70 @@ export function lambdaForPoissonTail(threshold, targetProb) {
   return parseFloat(((lo + hi) / 2).toFixed(3));
 }
 
+// Gamma(shape, scale) sampler via Marsaglia & Tsang. Shape boosting for shape < 1.
+function gammaSample(shape, scale) {
+  if (shape < 1) {
+    return gammaSample(shape + 1, scale) * Math.pow(Math.random() + 1e-12, 1 / shape);
+  }
+  const d = shape - 1 / 3;
+  const c = 1 / Math.sqrt(9 * d);
+  while (true) {
+    let z, v;
+    do {
+      const u1 = Math.random() + 1e-10, u2 = Math.random();
+      z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+      v = 1 + c * z;
+    } while (v <= 0);
+    v = v * v * v;
+    const u = Math.random();
+    if (u < 1 - 0.0331 * z * z * z * z) return d * v * scale;
+    if (Math.log(u) < 0.5 * z * z + d * (1 - v + Math.log(v))) return d * v * scale;
+  }
+}
+
+// Negative Binomial sampler via Poisson-Gamma mixture. Mean = mu, variance = mu + mu²/r.
+// As r → ∞, NegBin → Poisson. r is the dispersion parameter (lower r → fatter tails).
+// Returns an integer count.
+export function negBinSample(mu, r) {
+  if (mu <= 0) return 0;
+  if (!r || r >= 100) return poissonSample(mu);
+  const lam = gammaSample(r, mu / r);
+  return poissonSample(lam);
+}
+
+// NegBin CDF: P(X <= k | mean = mu, dispersion = r). Computes pmf iteratively in log space
+// to avoid overflow at moderate mu. Falls back to Poisson when r is missing or large.
+export function negBinCDF(k, mu, r) {
+  if (k < 0 || mu == null || mu <= 0) return 0;
+  if (!r || r >= 100) return poissonCDF(k, mu);
+  const p = r / (r + mu);
+  const log1mP = Math.log(1 - p);
+  let logPmf = r * Math.log(p);
+  let sum = Math.exp(logPmf);
+  for (let i = 1; i <= k; i++) {
+    logPmf += Math.log((i + r - 1) / i) + log1mP;
+    sum += Math.exp(logPmf);
+  }
+  return Math.min(1, sum);
+}
+
+// Inverse: find μ such that P(X >= threshold | μ, r) = targetProb under NegBin.
+// Mirror of lambdaForPoissonTail; used to translate observed seasonHitRate to an
+// implied lambda that's consistent with the NegBin variance assumption. Bisection.
+export function muForNegBinTail(threshold, targetProb, r) {
+  if (targetProb == null || targetProb <= 0 || targetProb >= 1 || threshold == null || threshold < 1) return null;
+  if (!r || r >= 100) return lambdaForPoissonTail(threshold, targetProb);
+  const tailAt = (mu) => 1 - negBinCDF(threshold - 1, mu, r);
+  let lo = 0.05, hi = 25;
+  if (tailAt(lo) > targetProb) return lo;
+  if (tailAt(hi) < targetProb) return hi;
+  for (let i = 0; i < 30; i++) {
+    const mid = (lo + hi) / 2;
+    if (tailAt(mid) < targetProb) lo = mid; else hi = mid;
+  }
+  return parseFloat(((lo + hi) / 2).toFixed(3));
+}
+
 // Standard normal inverse CDF (Acklam approximation, ~1e-9 max error). Internal.
 function _normInv(p) {
   if (p <= 0 || p >= 1) return null;
@@ -336,14 +400,18 @@ function poissonSample(lambda) {
   return k - 1;
 }
 
-// MLB combined runs distribution: two independent Poisson teams summed.
-// homeLambda/awayLambda = expected runs per team (season RPG adjusted by pitcher ERA & park).
-// Returns Int16Array of nSim combined run totals; query with totalDistPct(dist, threshold).
-export function simulateMLBTotalDist(homeLambda, awayLambda, nSim = 10000) {
+// MLB combined runs distribution: two independent NegBin teams summed (Poisson if r is
+// null/large for backward compat). homeLambda/awayLambda = expected runs per team (season
+// RPG adjusted by pitcher ERA & park). r = NegBin dispersion (league-wide pooled MoM fit
+// from per-team game-by-game residuals, typically 5-10 for MLB). Real MLB game totals are
+// ~2× overdispersed vs Poisson; NegBin restores the fat-tail behavior so far-from-line
+// alt thresholds aren't systematically overconfident. Returns Int16Array of nSim combined
+// run totals; query with totalDistPct(dist, threshold).
+export function simulateMLBTotalDist(homeLambda, awayLambda, r = null, nSim = 10000) {
   if (!homeLambda || !awayLambda || homeLambda <= 0 || awayLambda <= 0) return null;
   const dist = new Int16Array(nSim);
   for (let i = 0; i < nSim; i++) {
-    dist[i] = poissonSample(homeLambda) + poissonSample(awayLambda);
+    dist[i] = negBinSample(homeLambda, r) + negBinSample(awayLambda, r);
   }
   return dist;
 }
@@ -386,16 +454,17 @@ export function totalDistPct(dist, threshold) {
   return parseFloat((hits / dist.length * 100).toFixed(1));
 }
 
-// MLB joint per-team distributions for ML/spread. Same Poisson draws as simulateMLBTotalDist
+// MLB joint per-team distributions for ML/spread. Same NegBin draws as simulateMLBTotalDist
 // but exposes home[] and away[] separately so we can count P(home > away) for moneyline and
-// P(home - away > line) for spread. nSim default matches game-total sims for monotonicity.
-export function simulateMLBJoint(homeLambda, awayLambda, nSim = 10000) {
+// P(home - away > line) for spread. r matches the totals sim so ML/spread/total share the
+// same per-team variance assumption.
+export function simulateMLBJoint(homeLambda, awayLambda, r = null, nSim = 10000) {
   if (!homeLambda || !awayLambda || homeLambda <= 0 || awayLambda <= 0) return null;
   const home = new Int16Array(nSim);
   const away = new Int16Array(nSim);
   for (let i = 0; i < nSim; i++) {
-    home[i] = poissonSample(homeLambda);
-    away[i] = poissonSample(awayLambda);
+    home[i] = negBinSample(homeLambda, r);
+    away[i] = negBinSample(awayLambda, r);
   }
   return { home, away };
 }
