@@ -2348,16 +2348,22 @@ var worker_default = {
             }
           }
           // NBA: pre-edge SimScore + Monte Carlo simulation (runs before rawTruePct)
-          let nbaSimPctOut = null, nbaPreSimScore = null, nbaPaceAdj = null, nbaOpportunity = null, nbaTotalPts = null, nbaGameTotal = null;
+          let nbaSimPctOut = null, nbaPreSimScore = null, nbaPaceAdj = null, nbaPaceFactor = null, nbaOpportunity = null, nbaTotalPts = null, nbaGameTotal = null;
           let nbaBlowoutAdj = null, nbaSplitAdj = null, nbaMiscAdj = 1.0, nba3pMPG = null;
           if (sport === "nba") {
             let _sc = 0;
-            // Pace: computed for display/simulation; no longer scored separately (combined with total below)
+            // Pace: linear delta (nbaPaceAdj) retained for emit only — display field, no sim effect now.
+            // nbaPaceFactor = geometric-mean ratio (matches NBA totals math). Captures pace's actual
+            // ±10% possession swing on a typical season, vs the prior linear δ × 0.002 capped at ±3%.
             if (nbaPaceData) {
               const _tp = nbaPaceData.teamPace?.[playerTeam] ?? null;
               const _op = nbaPaceData.teamPace?.[tonightOpp] ?? null;
+              const _lg = nbaPaceData.leagueAvgPace ?? null;
               if (_tp !== null && _op !== null) {
-                nbaPaceAdj = parseFloat(((_tp + _op) / 2 - (nbaPaceData.leagueAvgPace ?? 100)).toFixed(1));
+                nbaPaceAdj = parseFloat(((_tp + _op) / 2 - (_lg ?? 100)).toFixed(1));
+                if (_lg && _lg > 0) {
+                  nbaPaceFactor = parseFloat(((_tp * _op) / (_lg * _lg)).toFixed(3));
+                }
               }
             }
             // AvgMin computed for display
@@ -2429,22 +2435,26 @@ var worker_default = {
             const _nbaDistKey = `${info.id}|${stat}`;
             if (!nbaPlayerDistCache[_nbaDistKey]) {
               const _nSim = _sc >= 8 ? 10000 : _sc >= 5 ? 5000 : 2000;
-              nbaPlayerDistCache[_nbaDistKey] = buildNbaStatDist(_nbaGameValsAll, teamDefFactorOut, nbaPaceAdj, isB2B, _nSim, nbaMiscAdj);
+              nbaPlayerDistCache[_nbaDistKey] = buildNbaStatDist(_nbaGameValsAll, teamDefFactorOut, null, isB2B, _nSim, nbaMiscAdj, nbaPaceFactor);
             }
             nbaSimPctOut = nbaDistPct(nbaPlayerDistCache[_nbaDistKey], threshold);
           }
           // WNBA: pre-edge SimScore + Monte Carlo sim. Mirrors NBA but with WNBA-tuned thresholds:
           //   USG ≥27/≥22 (vs 28/22); MIN ≥27/≥22 (vs 30/25, WNBA caps at 40min/game);
           //   game total ≥168/≥158 (vs 215, WNBA totals run 150–175).
-          let wnbaSimPctOut = null, wnbaPreSimScore = null, wnbaPaceAdj = null, wnbaOpportunity = null, wnbaTotalPts = null, wnbaGameTotal = null;
+          let wnbaSimPctOut = null, wnbaPreSimScore = null, wnbaPaceAdj = null, wnbaPaceFactor = null, wnbaOpportunity = null, wnbaTotalPts = null, wnbaGameTotal = null;
           let wnbaBlowoutAdj = null, wnbaSplitAdj = null, wnbaMiscAdj = 1.0, wnba3pMPG = null;
           if (sport === "wnba") {
             let _wsc = 0;
             if (wnbaPaceData) {
               const _wtp = wnbaPaceData.teamPace?.[playerTeam] ?? null;
               const _wop = wnbaPaceData.teamPace?.[tonightOpp] ?? null;
+              const _wlg = wnbaPaceData.leagueAvgPace ?? null;
               if (_wtp !== null && _wop !== null) {
-                wnbaPaceAdj = parseFloat(((_wtp + _wop) / 2 - (wnbaPaceData.leagueAvgPace ?? 90)).toFixed(1));
+                wnbaPaceAdj = parseFloat(((_wtp + _wop) / 2 - (_wlg ?? 90)).toFixed(1));
+                if (_wlg && _wlg > 0) {
+                  wnbaPaceFactor = parseFloat(((_wtp * _wop) / (_wlg * _wlg)).toFixed(3));
+                }
               }
             }
             const _wminIdx = gl.ul.indexOf("MIN");
@@ -2507,7 +2517,7 @@ var worker_default = {
             const _wnbaDistKey = `${info.id}|${stat}`;
             if (!wnbaPlayerDistCache[_wnbaDistKey]) {
               const _wnSim = _wsc >= 8 ? 10000 : _wsc >= 5 ? 5000 : 2000;
-              wnbaPlayerDistCache[_wnbaDistKey] = buildNbaStatDist(_wnbaGameValsAll, teamDefFactorOut, wnbaPaceAdj, isB2B, _wnSim, wnbaMiscAdj);
+              wnbaPlayerDistCache[_wnbaDistKey] = buildNbaStatDist(_wnbaGameValsAll, teamDefFactorOut, null, isB2B, _wnSim, wnbaMiscAdj, wnbaPaceFactor);
             }
             wnbaSimPctOut = nbaDistPct(wnbaPlayerDistCache[_wnbaDistKey], threshold);
           }
@@ -3148,6 +3158,7 @@ var worker_default = {
             nbaPreSimScore: sport === "nba" ? nbaPreSimScore : void 0,
             nbaSimPct: sport === "nba" ? nbaSimPctOut : void 0,
             nbaPaceAdj: sport === "nba" ? nbaPaceAdj : void 0,
+            nbaPaceFactor: sport === "nba" ? nbaPaceFactor : void 0,
             nbaOpportunity: sport === "nba" ? nbaOpportunity : void 0,
             nbaTotalPts: sport === "nba" ? nbaTotalPts : void 0,
             nbaSeasonHitRatePts: sport === "nba" ? (primaryPct >= 90 ? 2 : primaryPct >= 80 ? 1 : 0) : void 0,
@@ -3164,6 +3175,7 @@ var worker_default = {
             wnbaPreSimScore: sport === "wnba" ? wnbaPreSimScore : void 0,
             wnbaSimPct: sport === "wnba" ? wnbaSimPctOut : void 0,
             wnbaPaceAdj: sport === "wnba" ? wnbaPaceAdj : void 0,
+            wnbaPaceFactor: sport === "wnba" ? wnbaPaceFactor : void 0,
             wnbaOpportunity: sport === "wnba" ? wnbaOpportunity : void 0,
             wnbaTotalPts: sport === "wnba" ? wnbaTotalPts : void 0,
             wnbaSeasonHitRatePts: sport === "wnba" ? (primaryPct >= 90 ? 2 : primaryPct >= 80 ? 1 : 0) : void 0,

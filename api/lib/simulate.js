@@ -329,7 +329,11 @@ export function kDistPct(dist, threshold) {
 // NBA Monte Carlo: build a shared Float32Array of simulated per-game values.
 // All thresholds for the same player+stat query the same distribution →
 // guarantees P(X≥3) ≥ P(X≥4) ≥ P(X≥5) by construction.
-export function buildNbaStatDist(gameValues, dvpFactor, paceAdj, isB2B, nSim = 5000, miscAdj = 1.0) {
+// paceAdj (linear delta from league avg) is the legacy NHL-shots-against pathway and
+// still feeds NHL props. paceFactor (geometric-mean ratio) is the NBA/WNBA pathway
+// added 2026-05-25 — the previous +0.002-per-pace-unit linear bump capped at ±3% volume
+// effect, way under the ~±10% possession swings real NBA matchups exhibit.
+export function buildNbaStatDist(gameValues, dvpFactor, paceAdj, isB2B, nSim = 5000, miscAdj = 1.0, paceFactor = null) {
   if (gameValues.length < 5) return null;
   // Mean from recent 10 (recency), std from full season (stability)
   const recentSlice = gameValues.slice(0, Math.min(10, gameValues.length));
@@ -342,6 +346,7 @@ export function buildNbaStatDist(gameValues, dvpFactor, paceAdj, isB2B, nSim = 5
   let adjMean = meanRecent;
   if (dvpFactor != null) adjMean *= dvpFactor;
   if (paceAdj != null) adjMean *= (1 + Math.min(Math.max(paceAdj, -15), 15) * 0.002);
+  if (paceFactor != null) adjMean *= Math.max(0.92, Math.min(1.08, paceFactor));
   if (isB2B) adjMean *= 0.93;
   if (miscAdj !== 1.0) adjMean *= miscAdj; // blowout/home-away/injury/PPTOI adj
   adjMean = Math.max(0, adjMean);
