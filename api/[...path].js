@@ -3539,11 +3539,29 @@ var worker_default = {
                   : null;
                 return erafipMult != null ? erafipMult * _whipAdj(whip) : null;
               };
+              // TTO (Third Time Through Order) penalty: 3rd-TTO PAs run ~0.50 ERA / 15% wOBA
+              // higher than 1st. When expectedBF > 22, the starter is going through the lineup
+              // a third time and the back-end PAs deserve a multiplicative bump on their
+              // run-rate inputs. Ramps from 1.0 at BF=22 to a cap of 1.10 at BF≥29 (covers
+              // both ERA and FIP — WHIP is a traffic measure and stays untouched).
+              const _ttoBump = (bf) => bf == null ? 1.0 : 1 + Math.max(0, Math.min(0.10, (bf - 22) / 22 * 0.30));
+              const _homeBF = sportByteam.mlb?.pitcherAvgBF?.[homeTeam] ?? null;
+              const _awayBF = sportByteam.mlb?.pitcherAvgBF?.[awayTeam] ?? null;
+              const _homeTto = _ttoBump(_homeBF);
+              const _awayTto = _ttoBump(_awayBF);
               // 60/40 starter/bullpen blend — away staff vs home offense, home staff vs away offense.
               // 40% term is bullpen-only (preferred) or whole-staff teamERA (fallback). Whole-staff
               // double-counts the starter; bullpen-only is the clean rest-of-game proxy.
-              const _awayStarter = _starterMult(awayFIP, awayERA, awayWHIP);
-              const _homeStarter = _starterMult(homeFIP, homeERA, homeWHIP);
+              const _awayStarter = _starterMult(
+                awayFIP != null ? awayFIP * _awayTto : null,
+                awayERA != null ? awayERA * _awayTto : null,
+                awayWHIP
+              );
+              const _homeStarter = _starterMult(
+                homeFIP != null ? homeFIP * _homeTto : null,
+                homeERA != null ? homeERA * _homeTto : null,
+                homeWHIP
+              );
               const _awayMult = _awayStarter != null && _awayRestERA != null ? 0.6*_awayStarter + 0.4*(_awayRestERA/_MLB_ERA) : _awayStarter != null ? _awayStarter : _awayRestERA != null ? _awayRestERA/_MLB_ERA : 1;
               const _homeMult = _homeStarter != null && _homeRestERA != null ? 0.6*_homeStarter + 0.4*(_homeRestERA/_MLB_ERA) : _homeStarter != null ? _homeStarter : _homeRestERA != null ? _homeRestERA/_MLB_ERA : 1;
               // Platoon adjustment: ratio of team's RPG vs opposing starter's hand to overall RPG
@@ -3580,7 +3598,7 @@ var worker_default = {
               const _combinedRPGPts = _combinedRPG == null ? 1 : _combinedRPG >= 10.5 ? 2 : _combinedRPG >= 8.5 ? 1 : 0;
               const _homeWhipPts = homeWHIP == null ? 1 : homeWHIP > 1.35 ? 2 : homeWHIP > 1.20 ? 1 : 0;
               const _awayWhipPts = awayWHIP == null ? 1 : awayWHIP > 1.35 ? 2 : awayWHIP > 1.20 ? 1 : 0;
-              _simData = { homeRPG, awayRPG, homeERA, awayERA, homeFIP, awayFIP, homeWHIP, awayWHIP, ...(homeWHIPSource && { homeWHIPSource }), ...(awayWHIPSource && { awayWHIPSource }), homeBullpenERA: _homeRestERA, awayBullpenERA: _awayRestERA, ...(homeBullpenSource && { homeBullpenSource }), ...(awayBullpenSource && { awayBullpenSource }), parkFactor: parkRF, homeExpected: _hLam, awayExpected: _aLam, expectedTotal: (_hLam != null && _aLam != null) ? parseFloat((_hLam + _aLam).toFixed(1)) : null, gameOuLine, mlbOuPts: _mlbOuPts, homeWhipPts: _homeWhipPts, awayWhipPts: _awayWhipPts, combinedRpgPts: _combinedRPGPts, h2hTotalPts: _h2hTotalPts, combinedRPG: _combinedRPG, umpireRunFactor: _umpNameT != null ? _umpRunFactor : null, umpireName: _umpNameT, h2hTotalHitRate, h2hTotalGames, homeStarterHand: _homeStarterHand, awayStarterHand: _awayStarterHand, ...(_homePlatFactor !== 1.0 && { homePlatoonFactor: _homePlatFactor }), ...(_awayPlatFactor !== 1.0 && { awayPlatoonFactor: _awayPlatFactor }), ...(_weatherFactor !== 1.0 && { weatherFactor: _weatherFactor, windOutMph: _wData?.windOutMph }), ...(homeTopOut > 0 && { homeTopOut, homeLineupFactor }), ...(awayTopOut > 0 && { awayTopOut, awayLineupFactor }), ...(homePitcherOnIL && { homePitcherOnIL: true }), ...(awayPitcherOnIL && { awayPitcherOnIL: true }) };
+              _simData = { homeRPG, awayRPG, homeERA, awayERA, homeFIP, awayFIP, homeWHIP, awayWHIP, ...(homeWHIPSource && { homeWHIPSource }), ...(awayWHIPSource && { awayWHIPSource }), homeBullpenERA: _homeRestERA, awayBullpenERA: _awayRestERA, ...(homeBullpenSource && { homeBullpenSource }), ...(awayBullpenSource && { awayBullpenSource }), parkFactor: parkRF, homeExpected: _hLam, awayExpected: _aLam, expectedTotal: (_hLam != null && _aLam != null) ? parseFloat((_hLam + _aLam).toFixed(1)) : null, gameOuLine, mlbOuPts: _mlbOuPts, homeWhipPts: _homeWhipPts, awayWhipPts: _awayWhipPts, combinedRpgPts: _combinedRPGPts, h2hTotalPts: _h2hTotalPts, combinedRPG: _combinedRPG, umpireRunFactor: _umpNameT != null ? _umpRunFactor : null, umpireName: _umpNameT, h2hTotalHitRate, h2hTotalGames, homeStarterHand: _homeStarterHand, awayStarterHand: _awayStarterHand, ...(_homePlatFactor !== 1.0 && { homePlatoonFactor: _homePlatFactor }), ...(_awayPlatFactor !== 1.0 && { awayPlatoonFactor: _awayPlatFactor }), ...(_weatherFactor !== 1.0 && { weatherFactor: _weatherFactor, windOutMph: _wData?.windOutMph }), ...(homeTopOut > 0 && { homeTopOut, homeLineupFactor }), ...(awayTopOut > 0 && { awayTopOut, awayLineupFactor }), ...(homePitcherOnIL && { homePitcherOnIL: true }), ...(awayPitcherOnIL && { awayPitcherOnIL: true }), ...(_homeTto !== 1.0 && { homeExpectedBF: _homeBF, homeTtoBump: parseFloat(_homeTto.toFixed(3)) }), ...(_awayTto !== 1.0 && { awayExpectedBF: _awayBF, awayTtoBump: parseFloat(_awayTto.toFixed(3)) }) };
               if (_hLam != null && _aLam != null) {
                 const _dk = `mlb|${homeTeam}|${awayTeam}`;
                 if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateMLBTotalDist(_hLam, _aLam, _mlbDispR, 10000);
