@@ -1334,11 +1334,25 @@ function App() {
         const play = pendingTrackPlay;
         const raw = pendingOdds.trim();
         const n = parseInt(raw, 10);
+        const oddsValid = !isNaN(n) && raw !== "" && raw !== "-" && raw !== "+";
         let implied = null;
-        if (!isNaN(n) && raw !== "" && raw !== "-" && raw !== "+") {
+        if (oddsValid) {
           if (n < 0) implied = Math.abs(n) / (Math.abs(n) + 100) * 100;
           else if (n > 0) implied = 100 / (n + 100) * 100;
         }
+        // truePct from the pick's perspective — UNDER uses noTruePct.
+        const _tp = play.direction === "under" ? (play.noTruePct ?? (play.truePct != null ? 100 - play.truePct : null)) : play.truePct;
+        const edge = (_tp != null && implied != null) ? parseFloat((_tp - implied).toFixed(1)) : null;
+        // Suggested stake — mirror unitsForPlay (⅛-Kelly, $500 cap, $30 fallback) using the
+        // user-entered odds so the recommendation updates live as they type.
+        const suggestedStake = (() => {
+          if (_tp == null || !oddsValid) return UNIT_DOLLARS;
+          const b = n > 0 ? n / 100 : 100 / Math.abs(n);
+          const p = _tp / 100;
+          const f = Math.max(0, (b * p - (1 - p)) / b);
+          const stake = bankroll * f * 0.125;
+          return stake > 0 ? Math.round(Math.min(stake, STAKE_CAP)) : UNIT_DOLLARS;
+        })();
         const color = implied === null ? "#8b949e" : implied >= 70 ? "#3fb950" : implied >= 50 ? "#e3b341" : "#f78166";
         const name = play.playerName ?? (play.gameType === "total" ? `${play.awayTeam} @ ${play.homeTeam}` : play.gameType === "ml" ? `${play.pickTeam} ML` : play.gameType === "spread" ? `${play.pickTeam} ${play.pickLine > 0 ? "+" : ""}${play.pickLine}` : play.scoringTeam ?? "");
         const statLabel = play.stat ? play.stat.toUpperCase() : play.sport ? play.sport.toUpperCase() : "";
@@ -1379,17 +1393,20 @@ function App() {
                   {implied !== null ? `${implied.toFixed(1)}%` : "—"}
                 </span>
               </div>
-              {(() => { const _tp = play.direction === "under" ? (play.noTruePct ?? (play.truePct != null ? 100 - play.truePct : null)) : play.truePct; return _tp != null && implied !== null && (
+              {edge !== null && (
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",
-                  marginBottom:14,fontSize:11,color:"#484f58"}}>
+                  marginBottom:8,fontSize:11,color:"#484f58"}}>
                   <span>Edge (True% − implied)</span>
-                  {(() => {
-                    const edge = parseFloat((_tp - implied).toFixed(1));
-                    const edgeColor = edge >= EDGE_GATE ? "#3fb950" : edge >= 0 ? "#e3b341" : "#f78166";
-                    return <span style={{color:edgeColor,fontWeight:700}}>{edge >= 0 ? "+" : ""}{edge}%</span>;
-                  })()}
+                  <span style={{color: edge >= EDGE_GATE ? "#3fb950" : edge >= 0 ? "#e3b341" : "#f78166", fontWeight:700}}>
+                    {edge >= 0 ? "+" : ""}{edge}%
+                  </span>
                 </div>
-              ); })()}
+              )}
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",
+                marginBottom:14,fontSize:11,color:"#484f58"}}>
+                <span>Suggested stake (⅛-Kelly)</span>
+                <span style={{color:"#c9d1d9",fontWeight:700}}>${suggestedStake}</span>
+              </div>
               <div style={{display:"flex",gap:8}}>
                 <button onClick={() => setPendingTrackPlay(null)}
                   style={{flex:1,padding:"8px 0",fontSize:12,borderRadius:7,border:"1px solid #30363d",
