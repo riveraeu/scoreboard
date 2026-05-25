@@ -481,17 +481,17 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                     {/* Row 1: name + badges + (settled: result+P&L+undo) + edit/remove */}
                     <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:2}}>
                       {pick.gameType === "teamTotal" ? (
-                        <span style={{color:"#fff",fontSize:12,fontWeight:700,flexShrink:1,minWidth:0}}>
+                        <span style={{color:"#fff",fontSize:12,fontWeight:700,flexShrink:1,minWidth:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
                           <span onClick={()=>navigateToTeam(pick.scoringTeam,pick.sport)} style={{cursor:"pointer",textDecoration:"underline",textDecorationColor:"#484f58"}}>{pick.scoringTeam}</span>
                           <span style={{color:"#484f58",fontWeight:400}}> vs {pick.oppTeam}</span>
                         </span>
                       ) : pick.gameType === "ml" || pick.gameType === "spread" ? (
-                        <span style={{color:"#fff",fontSize:12,fontWeight:700,flexShrink:1,minWidth:0}}>
+                        <span style={{color:"#fff",fontSize:12,fontWeight:700,flexShrink:1,minWidth:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
                           <span onClick={()=>navigateToTeam(pick.pickTeam,pick.sport)} style={{cursor:"pointer",textDecoration:"underline",textDecorationColor:"#484f58"}}>{pick.pickTeam}</span>
                           <span style={{color:"#484f58",fontWeight:400}}> {pick.side === "home" ? "vs" : "@"} {pick.oppTeam}</span>
                         </span>
                       ) : pick.gameType === "total" ? (
-                        <span style={{color:"#fff",fontSize:12,fontWeight:700,flexShrink:1,minWidth:0}}>
+                        <span style={{color:"#fff",fontSize:12,fontWeight:700,flexShrink:1,minWidth:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
                           <span onClick={()=>navigateToTeam(pick.awayTeam,pick.sport)} style={{cursor:"pointer",textDecoration:"underline",textDecorationColor:"#484f58"}}>{pick.awayTeam}</span>
                           {" @ "}
                           <span onClick={()=>navigateToTeam(pick.homeTeam,pick.sport)} style={{cursor:"pointer",textDecoration:"underline",textDecorationColor:"#484f58"}}>{pick.homeTeam}</span>
@@ -525,15 +525,14 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                         </span>
                       )}
                     </div>
-                    {/* Row 2: subtitle + stake */}
-                    <div style={{flex:1,minWidth:0,display:"flex",alignItems:"center",flexWrap:"wrap",lineHeight:1.4}}>
+                    {/* Row 2a: subtitle (bet description) — clipped, never wraps */}
+                    <div style={{minWidth:0,display:"flex",alignItems:"center",lineHeight:1.4,gap:5,whiteSpace:"nowrap",overflow:"hidden"}}>
                       {pick.gameType !== "total" && pick.gameType !== "teamTotal" && pick.gameType !== "ml" && pick.gameType !== "spread" && (
-                        <span style={{color:"#8b949e",fontSize:10}}>
+                        <span style={{color:"#8b949e",fontSize:10,flexShrink:0}}>
                           {pick.playerTeam} vs {pick.opponent}
-                          <span style={{color:"#484f58",margin:"0 3px"}}>·</span>
                         </span>
                       )}
-                      <span style={{color:"#58a6ff",fontWeight:600,fontSize:10}}>
+                      <span style={{color:"#58a6ff",fontWeight:600,fontSize:10,overflow:"hidden",textOverflow:"ellipsis"}}>
                         {pick.gameType === "teamTotal"
                           ? `${pick.direction === "under" ? "Under" : "Over"} ${(pick.threshold-0.5).toFixed(1)} ${({teamRuns:"Runs",teamPoints:"Pts"})[pick.stat]||pick.stat}`
                           : pick.gameType === "total"
@@ -544,16 +543,18 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                           ? `${pick.pickLine > 0 ? "+" : ""}${pick.pickLine} Spread`
                           : `${pick.threshold}+ ${STAT_LABEL[pick.stat] || pick.stat}`}
                       </span>
-                      <span style={{color:"#484f58",fontSize:10,margin:"0 3px"}}>·</span>
+                    </div>
+                    {/* Row 2b: odds · true% — stake (stake pinned right) */}
+                    <div style={{minWidth:0,display:"flex",alignItems:"center",lineHeight:1.4,gap:4,whiteSpace:"nowrap"}}>
                       <span style={{color:"#a855f7",fontSize:10}}>{oddsStr}</span>
-                      <span style={{color:"#484f58",fontSize:10,margin:"0 3px"}}>·</span>
-                      <span style={{color:"#e3b341",fontSize:10}}>{pick.direction === "under" ? (pick.noTruePct ?? pick.truePct) : pick.truePct}% true</span>
-                      <span style={{display:"inline-flex",alignItems:"center",whiteSpace:"nowrap",marginLeft:"auto",paddingLeft:6}}>
+                      <span style={{color:"#484f58",fontSize:10}}>·</span>
+                      <span style={{color:"#e3b341",fontSize:10}}>{pick.direction === "under" ? (pick.noTruePct ?? pick.truePct) : pick.truePct}%</span>
+                      <span style={{display:"inline-flex",alignItems:"center",marginLeft:"auto"}}>
                         <span style={{color:"#484f58",fontSize:10}}>$</span>
                         <input type="number" min="0" step="0.1" value={units}
                           onChange={e => setPickUnits(pick.id, e.target.value)}
                           style={{background:"transparent",border:"none",outline:"none",color:"#c9d1d9",
-                            fontSize:10,width:56,padding:"0 2px",textAlign:"left"}}/>
+                            fontSize:10,width:46,padding:"0 2px",textAlign:"left"}}/>
                       </span>
                     </div>
                     {/* Edit mode: full inline form */}
