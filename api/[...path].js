@@ -2595,6 +2595,7 @@ var worker_default = {
             }
             nhlSimPctOut = nbaDistPct(nhlPlayerDistCache[_nhlDistKey], threshold);
           }
+          let _hrrBarrelAdj = null;
           const rawTruePct = (() => {
             if (sport === "mlb" && stat === "strikeouts") {
               // Simulation is the primary model when lineup data is available
@@ -2635,8 +2636,15 @@ var worker_default = {
               // Lower weight (0.3) than OPS — already partially baked into primaryPct vs this pitcher.
               const _LG_WHIP_HRR = 1.30;
               const whipAdj = pitcherWHIP != null ? Math.max(0.92, Math.min(1.08, Math.pow(pitcherWHIP / _LG_WHIP_HRR, 0.5))) : 1.0;
+              // Barrel% adjustment (2026-05-25): quality-of-contact signal beyond OPS. Top barrel
+              // hitters (~14%) lift truePct ~1.5pt; weakest contact (~5%) drops ~1.5pt. Weight 0.25
+              // (lower than OPS) since barrel rate is per-batted-ball — more volatile per game than
+              // season OPS. Was previously SimScore-only via hitterBarrelPts; now also in lambda.
+              const _LG_BARREL = 8.5;
+              const barrelAdj = hitterBarrelPct != null ? Math.max(0.92, Math.min(1.10, hitterBarrelPct / _LG_BARREL)) : 1.0;
+              if (barrelAdj !== 1.0) _hrrBarrelAdj = parseFloat(barrelAdj.toFixed(3));
               const _p = Math.max(0.01, Math.min(0.99, rawMlbPct / 100));
-              const _logOddsAdj = Math.log(_p / (1 - _p)) + Math.log(parkFactor) + 0.4 * Math.log(opsAdj) + 0.3 * Math.log(whipAdj);
+              const _logOddsAdj = Math.log(_p / (1 - _p)) + Math.log(parkFactor) + 0.4 * Math.log(opsAdj) + 0.3 * Math.log(whipAdj) + 0.25 * Math.log(barrelAdj);
               return Math.min(99.9, parseFloat((100 / (1 + Math.exp(-_logOddsAdj))).toFixed(1)));
             }
             if (sport === "nba") {
@@ -2751,6 +2759,7 @@ var worker_default = {
               ...(sport === "mlb" && stat !== "strikeouts" ? {
                 hitterSimScore, hitterFinalSimScore,
                 hitterLineupSpot, pitcherWHIP, pitcherFIP, hitterParkKF, hitterMoneyline, hitterBarrelPct,
+                ...(_hrrBarrelAdj !== null && { hitterBarrelAdj: _hrrBarrelAdj }),
                 hitterBarrelPts, hitterTotalPts, hitterGameTotal, hitterPlatoonPts,
                 hitterPlatoonRatio: hitterPlatoonRatio ?? undefined,
                 hitterH2HSource: hitterH2HSource ?? undefined,
@@ -3021,6 +3030,7 @@ var worker_default = {
               softGames: softVals.length,
               truePct: parseFloat(truePct.toFixed(1)), edge: parseFloat(edge.toFixed(1)),
               hitterLineupSpot, pitcherWHIP, pitcherFIP, hitterBarrelPct,
+              ...(_hrrBarrelAdj !== null && { hitterBarrelAdj: _hrrBarrelAdj }),
               hitterBarrelPts, hitterTotalPts, hitterGameTotal, hitterPlatoonPts,
               hitterPlatoonRatio: hitterPlatoonRatio ?? undefined,
               hitterH2HSource: hitterH2HSource ?? undefined,
