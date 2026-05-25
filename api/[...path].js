@@ -2596,6 +2596,7 @@ var worker_default = {
             nhlSimPctOut = nbaDistPct(nhlPlayerDistCache[_nhlDistKey], threshold);
           }
           let _hrrBarrelAdj = null;
+          let _hrrPaFromSpot = null, _hrrTypicalPA = null, _hrrSeasonPctAdj = null, _hrrSoftPctAdj = null;
           const rawTruePct = (() => {
             if (sport === "mlb" && stat === "strikeouts") {
               // Simulation is the primary model when lineup data is available
@@ -2606,14 +2607,35 @@ var worker_default = {
             }
             if (sport === "mlb" && hasSeasonTags) {
               if (hitterSimPctOut !== null) return hitterSimPctOut;
-              // PA-aware adjustment was shipped 2026-05-25 then immediately reverted: the
-              // _nPAtypical = 4.0 baseline assumed each hitter's seasonPct was observed at 4.0
-              // PA/game on average, but in reality a hitter who normally bats in spot 4 was
-              // observed at ~4.31 PAs. Without per-hitter typical-spot history the adjustment
-              // pushed predictions in the wrong direction (UP for all spots 1-5, when the audit
-              // showed spot 4 was already over-predicted). Revisit when per-hitter typical PA
-              // can be derived from gamelogs.
-              const basePct = primaryPct;
+              // PA-aware adjustment (retry 2026-05-25). First attempt used a flat 4.0 PA baseline
+              // and was reverted — pushed predictions UP for every spot since all of spots 1-5 sit
+              // above 4.0 PAs/game. This retry uses the hitter's actual typical PA/game derived
+              // from season GP, gated to only adjust when typical ≠ tonight by ≥0.3 PAs. Hitters
+              // batting at their normal spot get no adjustment (which is correct — their seasonPct
+              // already reflects games at this PA load). Hitters bumped up/down in the order get
+              // the real opportunity delta. Requires GP ≥ 20 for the baseline to populate.
+              const _paFromSpot = (spot) => spot == null ? null : Math.max(3.5, 4.7 - 0.13 * (spot - 1));
+              const _nPAtonight = _paFromSpot(hitterLineupSpot);
+              const _hitterTypicalPA = sportByteam.mlb?.hitterTypicalPA?.[_opsNorm(playerName)] ?? sportByteam.mlb?.hitterTypicalPA?.[_opsNorm(playerNameDisplay)] ?? null;
+              let basePct = primaryPct;
+              let _adjSoft = softPct;
+              if (_nPAtonight != null && _hitterTypicalPA != null && Math.abs(_nPAtonight - _hitterTypicalPA) >= 0.3) {
+                _hrrPaFromSpot = _nPAtonight;
+                _hrrTypicalPA  = _hitterTypicalPA;
+                const _paAdjust = (pctGame) => {
+                  if (pctGame == null) return pctGame;
+                  const _p = Math.max(0.001, Math.min(0.999, pctGame / 100));
+                  const perPA = 1 - Math.pow(1 - _p, 1 / _hitterTypicalPA);
+                  return parseFloat(((1 - Math.pow(1 - perPA, _nPAtonight)) * 100).toFixed(2));
+                };
+                const _adjPrimary = _paAdjust(primaryPct);
+                if (_adjPrimary !== primaryPct) _hrrSeasonPctAdj = _adjPrimary;
+                if (softPct !== null) {
+                  _adjSoft = _paAdjust(softPct);
+                  if (_adjSoft !== softPct) _hrrSoftPctAdj = _adjSoft;
+                }
+                basePct = _adjPrimary;
+              }
               // BvP shrinkage (2026-05-16): small-sample BvP rates (e.g., 10/10 = 100%) were
               // dominating the 50/50 blend and inflating truePct (Bellinger vs Brazoban case:
               // truePct 90.9% vs market 74% = +16.9% edge). Bayesian-style shrinkage with N=20
@@ -2621,10 +2643,10 @@ var worker_default = {
               // At softGames=20 the blend is 50/50 BvP/season-prior; at softGames=10, BvP gets
               // ~33% weight. Hand-source softPct skips shrinkage (handedness samples are large).
               const _bvpN = 20;
-              const _isBvPSrc = hitterH2HSource === 'bvp' && softVals.length > 0 && softPct !== null;
+              const _isBvPSrc = hitterH2HSource === 'bvp' && softVals.length > 0 && _adjSoft !== null;
               const _shrunkSoftPct = _isBvPSrc
-                ? (softVals.length * softPct + _bvpN * primaryPct) / (softVals.length + _bvpN)
-                : softPct;
+                ? (softVals.length * _adjSoft + _bvpN * basePct) / (softVals.length + _bvpN)
+                : _adjSoft;
               const rawMlbPct = _shrunkSoftPct !== null ? (basePct + _shrunkSoftPct) / 2 : basePct;
               const homeTeam = sportByteam.mlb?.gameHomeTeams?.[playerTeam] ?? tonightOpp;
               const parkFactor = PARK_HITFACTOR[homeTeam] ?? 1;
@@ -2760,6 +2782,9 @@ var worker_default = {
                 hitterSimScore, hitterFinalSimScore,
                 hitterLineupSpot, pitcherWHIP, pitcherFIP, hitterParkKF, hitterMoneyline, hitterBarrelPct,
                 ...(_hrrBarrelAdj !== null && { hitterBarrelAdj: _hrrBarrelAdj }),
+                ...(_hrrPaFromSpot !== null && { hitterPaFromSpot: _hrrPaFromSpot, hitterTypicalPA: _hrrTypicalPA }),
+                ...(_hrrSeasonPctAdj !== null && { seasonPctAdj: _hrrSeasonPctAdj }),
+                ...(_hrrSoftPctAdj !== null && { softPctAdj: _hrrSoftPctAdj }),
                 hitterBarrelPts, hitterTotalPts, hitterGameTotal, hitterPlatoonPts,
                 hitterPlatoonRatio: hitterPlatoonRatio ?? undefined,
                 hitterH2HSource: hitterH2HSource ?? undefined,
@@ -3031,6 +3056,9 @@ var worker_default = {
               truePct: parseFloat(truePct.toFixed(1)), edge: parseFloat(edge.toFixed(1)),
               hitterLineupSpot, pitcherWHIP, pitcherFIP, hitterBarrelPct,
               ...(_hrrBarrelAdj !== null && { hitterBarrelAdj: _hrrBarrelAdj }),
+              ...(_hrrPaFromSpot !== null && { hitterPaFromSpot: _hrrPaFromSpot, hitterTypicalPA: _hrrTypicalPA }),
+              ...(_hrrSeasonPctAdj !== null && { seasonPctAdj: _hrrSeasonPctAdj }),
+              ...(_hrrSoftPctAdj !== null && { softPctAdj: _hrrSoftPctAdj }),
               hitterBarrelPts, hitterTotalPts, hitterGameTotal, hitterPlatoonPts,
               hitterPlatoonRatio: hitterPlatoonRatio ?? undefined,
               hitterH2HSource: hitterH2HSource ?? undefined,

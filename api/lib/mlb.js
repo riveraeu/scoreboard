@@ -138,12 +138,12 @@ export async function buildLineupKPct(mlbSched) {
     for (const person of (res25.people || [])) {
       const pid = person.id; if (!pid) continue;
       const split = person.stats?.[0]?.splits?.[0]?.stat; if (!split) continue;
-      playerStats25[pid] = { so: split.strikeOuts || 0, pa: split.plateAppearances || 0 };
+      playerStats25[pid] = { so: split.strikeOuts || 0, pa: split.plateAppearances || 0, g: split.gamesPlayed || 0 };
     }
     for (const person of (res26.people || [])) {
       const pid = person.id; if (!pid) continue;
       const split = person.stats?.[0]?.splits?.[0]?.stat; if (!split) continue;
-      playerStats26[pid] = { so: split.strikeOuts || 0, pa: split.plateAppearances || 0 };
+      playerStats26[pid] = { so: split.strikeOuts || 0, pa: split.plateAppearances || 0, g: split.gamesPlayed || 0 };
     }
     // Per-batter: prefer 2026 (20+ PA in current season), fall back to 2025
     const playerStats = {};
@@ -212,6 +212,12 @@ export async function buildLineupKPct(mlbSched) {
     const hitterOpsMap = {};
     const batterHandByName = {};
     const batterHandById = {};
+    // Per-hitter typical PAs/game from this season's batting stats — the empirical baseline
+    // for HRR PA-aware adjustment (2026-05-25 retry). Uses 2026 only when GP ≥ 20 (full
+    // sample); falls back to 2026 + 2025 combined when 2026 GP < 20 to avoid early-season
+    // single-game outliers. Indexed by normalized name (consumed via _bsNorm on the player
+    // name at pick time).
+    const hitterTypicalPA = {};
     for (const person of (resBatSideOps.people || [])) {
       if (!person.fullName) continue;
       const name = _bsNorm(person.fullName);
@@ -221,6 +227,12 @@ export async function buildLineupKPct(mlbSched) {
       }
       const ops = person.stats?.[0]?.splits?.[0]?.stat?.ops;
       if (ops != null) hitterOpsMap[name] = parseFloat(parseFloat(ops).toFixed(3));
+      const pid = person.id;
+      const s26 = pid ? playerStats26[pid] : null;
+      const s25 = pid ? playerStats25[pid] : null;
+      const pa = (s26?.g >= 20) ? s26.pa : ((s26?.pa ?? 0) + (s25?.pa ?? 0));
+      const g  = (s26?.g >= 20) ? s26.g  : ((s26?.g  ?? 0) + (s25?.g  ?? 0));
+      if (g >= 20 && pa > 0) hitterTypicalPA[name] = parseFloat((pa / g).toFixed(2));
     }
     const LEAGUE_K = 0.222; // MLB average K rate fallback
     // Regression-to-mean: blend 2026 with 2025 anchor weighted by PA
@@ -291,10 +303,10 @@ export async function buildLineupKPct(mlbSched) {
         }
       }
     }
-    return { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, projectedLineupTeams: [...projectedLineupTeams], batterSplitBA, hitterOpsMap, batterHandByName, batterHRRSplits, lineupHandByTeam };
+    return { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, projectedLineupTeams: [...projectedLineupTeams], batterSplitBA, hitterOpsMap, batterHandByName, batterHRRSplits, lineupHandByTeam, hitterTypicalPA };
   } catch (err) {
     console.error("[buildLineupKPct] failed:", err?.message || err);
-    return { lineupKPct: {}, lineupBatterKPcts: {}, lineupKPctVR: {}, lineupKPctVL: {}, lineupBatterKPctsOrdered: {}, lineupBatterKPctsVROrdered: {}, lineupBatterKPctsVLOrdered: {}, lineupSpotByName: {}, gameHomeTeams: {}, projectedLineupTeams: [], batterSplitBA: {}, hitterOpsMap: {}, batterHandByName: {}, batterHRRSplits: {}, lineupHandByTeam: {} };
+    return { lineupKPct: {}, lineupBatterKPcts: {}, lineupKPctVR: {}, lineupKPctVL: {}, lineupBatterKPctsOrdered: {}, lineupBatterKPctsVROrdered: {}, lineupBatterKPctsVLOrdered: {}, lineupSpotByName: {}, gameHomeTeams: {}, projectedLineupTeams: [], batterSplitBA: {}, hitterOpsMap: {}, batterHandByName: {}, batterHRRSplits: {}, lineupHandByTeam: {}, hitterTypicalPA: {} };
   }
 }
 
@@ -1070,7 +1082,7 @@ export async function buildMlbByteam(cache) {
     };
   }
   const [lineupResult, pitcherResult] = await Promise.all([buildLineupKPct(mlbSched), buildPitcherKPct(mlbSched)]);
-  const { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, projectedLineupTeams, batterSplitBA, hitterOpsMap, batterHandByName, batterHRRSplits, lineupHandByTeam } = lineupResult;
+  const { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, projectedLineupTeams, batterSplitBA, hitterOpsMap, batterHandByName, batterHRRSplits, lineupHandByTeam, hitterTypicalPA } = lineupResult;
   const { pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, pitcherWHIP: pitcherWHIPByTeam, pitcherFIP: pitcherFIPByTeam, pitcherWins: pitcherWinsByTeam, pitcherLosses: pitcherLossesByTeam, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam, pitcherH2HStarts, pitcherIdByGame, pitcherEraById, pitcherWinsById, pitcherLossesById, pitcherNameById, pitcherSplitsByTeam, pitcherSplitsById } = pitcherResult;
   // barrelPctMap is NOT stored in byteam:mlb — it lives in mlb:barrelPct with its own 6h TTL.
   // This prevents a bust (which deletes byteam:mlb) from baking an empty barrelPctMap
@@ -1176,7 +1188,7 @@ export async function buildMlbByteam(cache) {
     pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC,
     umpireByGame, pitcherInfoByTeam,
     pitcherIdByGame, pitcherEraById, pitcherWinsById, pitcherLossesById, pitcherNameById,
-    pitcherSplitsByTeam, pitcherSplitsById, lineupHandByTeam,
+    pitcherSplitsByTeam, pitcherSplitsById, lineupHandByTeam, hitterTypicalPA,
     roadRPGMap, teamERAMap, teamWHIPMap, bullpenERAMap, bullpenWHIPMap,
     teamPlatoonRPGMap, gameScores,
   };
