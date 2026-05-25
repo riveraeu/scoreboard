@@ -2595,6 +2595,7 @@ var worker_default = {
             }
             nhlSimPctOut = nbaDistPct(nhlPlayerDistCache[_nhlDistKey], threshold);
           }
+          let _hrrPaFromSpot = null, _hrrTypicalPA = null, _hrrSeasonPctAdj = null, _hrrSoftPctAdj = null;
           const rawTruePct = (() => {
             if (sport === "mlb" && stat === "strikeouts") {
               // Simulation is the primary model when lineup data is available
@@ -2605,7 +2606,28 @@ var worker_default = {
             }
             if (sport === "mlb" && hasSeasonTags) {
               if (hitterSimPctOut !== null) return hitterSimPctOut;
-              const basePct = primaryPct;
+              // PA-aware adjustment (2026-05-25): hitter game-rate hit% is built from per-PA
+              // Bernoulli outcomes. Spot 1 sees ~4.7 PAs, spot 4 ~4.3, spot 9 ~3.6 — currently
+              // we just gate to spots 1-5. Invert each per-game rate to a per-PA rate (at a 4.0
+              // PA typical baseline), then re-compose at tonight's actual PA count. Closes the
+              // observed -15.9 spot-4 underperformance in the 5/16-5/24 HRR audit.
+              const _paFromSpot = (spot) => spot == null ? 4.0 : Math.max(3.5, 4.7 - 0.13 * (spot - 1));
+              const _nPAtonight = _paFromSpot(hitterLineupSpot);
+              const _nPAtypical = 4.0;
+              _hrrPaFromSpot = _nPAtonight;
+              _hrrTypicalPA  = _nPAtypical;
+              const _paAdjust = (pctGame) => {
+                if (pctGame == null) return pctGame;
+                if (_nPAtonight === _nPAtypical) return pctGame;
+                const _p = Math.max(0.001, Math.min(0.999, pctGame / 100));
+                const perPA = 1 - Math.pow(1 - _p, 1 / _nPAtypical);
+                return parseFloat(((1 - Math.pow(1 - perPA, _nPAtonight)) * 100).toFixed(2));
+              };
+              const _adjPrimary = _paAdjust(primaryPct);
+              const _adjSoft    = softPct !== null ? _paAdjust(softPct) : null;
+              if (_adjPrimary !== primaryPct) _hrrSeasonPctAdj = _adjPrimary;
+              if (_adjSoft !== softPct) _hrrSoftPctAdj = _adjSoft;
+              const basePct = _adjPrimary;
               // BvP shrinkage (2026-05-16): small-sample BvP rates (e.g., 10/10 = 100%) were
               // dominating the 50/50 blend and inflating truePct (Bellinger vs Brazoban case:
               // truePct 90.9% vs market 74% = +16.9% edge). Bayesian-style shrinkage with N=20
@@ -2614,9 +2636,9 @@ var worker_default = {
               // ~33% weight. Hand-source softPct skips shrinkage (handedness samples are large).
               const _bvpN = 20;
               const _isBvPSrc = hitterH2HSource === 'bvp' && softVals.length > 0 && softPct !== null;
-              const _shrunkSoftPct = _isBvPSrc
-                ? (softVals.length * softPct + _bvpN * primaryPct) / (softVals.length + _bvpN)
-                : softPct;
+              const _shrunkSoftPct = _isBvPSrc && _adjSoft !== null
+                ? (softVals.length * _adjSoft + _bvpN * _adjPrimary) / (softVals.length + _bvpN)
+                : _adjSoft;
               const rawMlbPct = _shrunkSoftPct !== null ? (basePct + _shrunkSoftPct) / 2 : basePct;
               const homeTeam = sportByteam.mlb?.gameHomeTeams?.[playerTeam] ?? tonightOpp;
               const parkFactor = PARK_HITFACTOR[homeTeam] ?? 1;
@@ -2754,6 +2776,9 @@ var worker_default = {
                 oppPitcherHand: hitterOppPitcherHand ?? undefined,
                 hitterSoftLabel: softLabel ?? undefined,
                 softGames: softVals.length,
+                ...(_hrrPaFromSpot !== null && { hitterPaFromSpot: _hrrPaFromSpot, hitterTypicalPA: _hrrTypicalPA }),
+                ...(_hrrSeasonPctAdj !== null && { seasonPctAdj: _hrrSeasonPctAdj }),
+                ...(_hrrSoftPctAdj !== null && { softPctAdj: _hrrSoftPctAdj }),
                 hitterPitcherName: sportByteam.mlb?.probables?.[tonightOpp]?.name ?? sportByteam.mlb?.pitcherInfoByTeam?.[tonightOpp]?.name ?? pitcherGamelogs[tonightOpp]?.name ?? null,
                 hitterPitcherEra: sportByteam.mlb?.pitcherEra?.[tonightOpp] ?? sportByteam.mlb?.probables?.[tonightOpp]?.era ?? null,
               } : {}),
@@ -3025,6 +3050,9 @@ var worker_default = {
               hitterSoftLabel: softLabel ?? undefined,
               hitterPitcherName: sportByteam.mlb?.probables?.[tonightOpp]?.name ?? sportByteam.mlb?.pitcherInfoByTeam?.[tonightOpp]?.name ?? pitcherGamelogs[tonightOpp]?.name ?? null,
               hitterPitcherEra: sportByteam.mlb?.pitcherEra?.[tonightOpp] ?? sportByteam.mlb?.probables?.[tonightOpp]?.era ?? null,
+              ...(_hrrPaFromSpot !== null && { hitterPaFromSpot: _hrrPaFromSpot, hitterTypicalPA: _hrrTypicalPA }),
+              ...(_hrrSeasonPctAdj !== null && { seasonPctAdj: _hrrSeasonPctAdj }),
+              ...(_hrrSoftPctAdj !== null && { softPctAdj: _hrrSoftPctAdj }),
             };
             if (isDebug) dropped.push(_hitterLowScoreDrop);
             plays.push({
