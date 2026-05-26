@@ -1376,6 +1376,8 @@ function App() {
                   }}
                   onKeyDown={e => {
                     if (e.key === "Enter") {
+                      // Block submission when entered odds put edge below the home-page gate.
+                      if (edge !== null && edge < EDGE_GATE) return;
                       const _n = parseInt(pendingOdds.trim(), 10);
                       const oddsVal = !isNaN(_n) && pendingOdds.trim() !== "-" && pendingOdds.trim() !== "+" ? _n : null;
                       trackPlay(oddsVal ? { ...play, americanOdds: oddsVal } : play);
@@ -1413,18 +1415,36 @@ function App() {
                     background:"transparent",color:"#8b949e",cursor:"pointer"}}>
                   Cancel
                 </button>
-                <button onClick={() => {
-                  const _n = parseInt(pendingOdds.trim(), 10);
-                  const oddsVal = !isNaN(_n) && pendingOdds.trim() !== "-" && pendingOdds.trim() !== "+" ? _n : null;
-                  trackPlay(oddsVal ? { ...play, americanOdds: oddsVal } : play);
-                  setPendingTrackPlay(null);
-                  openPickDate(play.gameDate);
-                  triggerFlyAnimation();
-                }}
-                  style={{flex:1,padding:"8px 0",fontSize:12,borderRadius:7,border:"1px solid #3fb950",
-                    background:"rgba(63,185,80,0.12)",color:"#3fb950",cursor:"pointer",fontWeight:600}}>
-                  Add Pick
-                </button>
+                {(() => {
+                  // Disable when entered odds put edge below the home-page gate (5%) — those
+                  // wouldn't qualify on the home page anyway and are almost always misclicks
+                  // (e.g. user tabbed past the field with a stale -110 default). Edge null
+                  // (no odds entered yet) doesn't disable — let the user type first.
+                  const _belowGate = edge !== null && edge < EDGE_GATE;
+                  return (
+                    <button
+                      disabled={_belowGate}
+                      title={_belowGate ? `Edge ${edge}% is below the ${EDGE_GATE}% gate — adjust odds or cancel` : undefined}
+                      onClick={() => {
+                        if (_belowGate) return;
+                        const _n = parseInt(pendingOdds.trim(), 10);
+                        const oddsVal = !isNaN(_n) && pendingOdds.trim() !== "-" && pendingOdds.trim() !== "+" ? _n : null;
+                        trackPlay(oddsVal ? { ...play, americanOdds: oddsVal } : play);
+                        setPendingTrackPlay(null);
+                        openPickDate(play.gameDate);
+                        triggerFlyAnimation();
+                      }}
+                      style={{flex:1,padding:"8px 0",fontSize:12,borderRadius:7,
+                        border:`1px solid ${_belowGate ? "#30363d" : "#3fb950"}`,
+                        background: _belowGate ? "transparent" : "rgba(63,185,80,0.12)",
+                        color: _belowGate ? "#484f58" : "#3fb950",
+                        cursor: _belowGate ? "not-allowed" : "pointer",
+                        fontWeight:600,
+                        opacity: _belowGate ? 0.6 : 1}}>
+                      Add Pick
+                    </button>
+                  );
+                })()}
               </div>
             </div>
           </div>
