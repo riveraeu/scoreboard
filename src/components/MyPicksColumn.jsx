@@ -549,40 +549,43 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                           </span>
                         </>
                       );
-                      const oddsTpStakeEl = (
-                        <>
-                          <span style={{color:"#a855f7",fontSize:10}}>{oddsStr}</span>
-                          <span style={{color:"#484f58",fontSize:10}}>·</span>
-                          <span style={{color:"#e3b341",fontSize:10}}>{pick.direction === "under" ? (pick.noTruePct ?? pick.truePct) : pick.truePct}%</span>
-                          <span style={{display:"inline-flex",alignItems:"center",marginLeft:"auto"}}>
-                            <span style={{color:"#484f58",fontSize:10}}>$</span>
-                            <input type="number" min="0" step="0.1" value={units}
-                              onChange={e => setPickUnits(pick.id, e.target.value)}
-                              style={{background:"transparent",border:"none",outline:"none",color:"#c9d1d9",
-                                fontSize:10,width:46,padding:"0 2px",textAlign:"left"}}/>
-                          </span>
-                        </>
-                      );
                       if (isMobile) {
+                        // Mobile (unchanged): row 2a description, row 2b odds · true% — stake pinned right.
                         return (
                           <>
                             <div style={{minWidth:0,display:"flex",alignItems:"center",lineHeight:1.4,gap:5,whiteSpace:"nowrap",overflow:"hidden"}}>
                               {subtitleEl}
                             </div>
                             <div style={{minWidth:0,display:"flex",alignItems:"center",lineHeight:1.4,gap:4,whiteSpace:"nowrap"}}>
-                              {oddsTpStakeEl}
+                              <span style={{color:"#a855f7",fontSize:10}}>{oddsStr}</span>
+                              <span style={{color:"#484f58",fontSize:10}}>·</span>
+                              <span style={{color:"#e3b341",fontSize:10}}>{pick.direction === "under" ? (pick.noTruePct ?? pick.truePct) : pick.truePct}%</span>
+                              <span style={{display:"inline-flex",alignItems:"center",marginLeft:"auto"}}>
+                                <span style={{color:"#484f58",fontSize:10}}>$</span>
+                                <input type="number" min="0" step="0.1" value={units}
+                                  onChange={e => setPickUnits(pick.id, e.target.value)}
+                                  style={{background:"transparent",border:"none",outline:"none",color:"#c9d1d9",
+                                    fontSize:10,width:46,padding:"0 2px",textAlign:"left"}}/>
+                              </span>
                             </div>
                           </>
                         );
                       }
-                      // Desktop: single row — threshold/description, then odds · true%, then
-                      // stake pinned right. marginLeft:auto on the stake group still aligns it
-                      // to the far right thanks to the flex container's full width.
+                      // Desktop: single row — threshold/description, odds, true%, stake all
+                      // flow left with consistent gap spacing. No dot separators, no right-pin
+                      // on the stake.
                       return (
-                        <div style={{minWidth:0,display:"flex",alignItems:"center",lineHeight:1.4,gap:6,whiteSpace:"nowrap",overflow:"hidden"}}>
+                        <div style={{minWidth:0,display:"flex",alignItems:"center",lineHeight:1.4,gap:8,whiteSpace:"nowrap",overflow:"hidden"}}>
                           {subtitleEl}
-                          <span style={{color:"#484f58",fontSize:10,marginLeft:4}}>·</span>
-                          {oddsTpStakeEl}
+                          <span style={{color:"#a855f7",fontSize:10}}>{oddsStr}</span>
+                          <span style={{color:"#e3b341",fontSize:10}}>{pick.direction === "under" ? (pick.noTruePct ?? pick.truePct) : pick.truePct}%</span>
+                          <span style={{display:"inline-flex",alignItems:"center"}}>
+                            <span style={{color:"#484f58",fontSize:10}}>$</span>
+                            <input type="number" min="0" step="0.1" value={units}
+                              onChange={e => setPickUnits(pick.id, e.target.value)}
+                              style={{background:"transparent",border:"none",outline:"none",color:"#c9d1d9",
+                                fontSize:10,width:46,padding:"0 2px",textAlign:"left"}}/>
+                          </span>
                         </div>
                       );
                     })()}
