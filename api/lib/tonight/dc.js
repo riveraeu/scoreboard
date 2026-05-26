@@ -64,9 +64,17 @@ export function computeDataConfidence(p, ctx = {}) {
     if ((p.homeUsageOut || 0) >= 0.30) _pen("nbaHomeHeavyInjury", 1);
     if ((p.awayUsageOut || 0) >= 0.30) _pen("nbaAwayHeavyInjury", 1);
   } else if (sport === "wnba" && (gameType === "ml" || gameType === "spread")) {
-    // Same as NBA — no pre-game starter feed. Heavy-injury penalty only.
-    if ((p.homeUsageOut || 0) >= 0.30) _pen("wnbaHomeHeavyInjury", 1);
-    if ((p.awayUsageOut || 0) >= 0.30) _pen("wnbaAwayHeavyInjury", 1);
+    // No pre-game starter feed (same as NBA). Heavy-injury penalty fires once per game
+    // for the heavier-injured side only — WNBA roster sizes are small enough that both
+    // sides crossing the 30% USG-out threshold is common (~69% of games in the 2026-05-26
+    // audit), and stacking the penalty to -2 was auto-capping most WNBA ML/spread plays
+    // at dc=8. Single -1 reflects "one side's lambda is materially uncertain" which is
+    // the actionable signal; the other side rarely tips the call.
+    const home = p.homeUsageOut || 0;
+    const away = p.awayUsageOut || 0;
+    if (home >= 0.30 || away >= 0.30) {
+      _pen(home >= away ? "wnbaHomeHeavyInjury" : "wnbaAwayHeavyInjury", 1);
+    }
   } else if (sport === "mlb") {
     const conf = isPlayerProp ? p.lineupConfirmed : p.lineupsConfirmed;
     if (conf === false) _pen("mlbLineupNotConfirmed", 3);
