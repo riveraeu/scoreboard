@@ -1376,8 +1376,10 @@ function App() {
                   }}
                   onKeyDown={e => {
                     if (e.key === "Enter") {
-                      // Block submission when entered odds put edge below the home-page gate.
-                      if (edge !== null && edge < EDGE_GATE) return;
+                      // Block submission when entered odds put edge below the track-popup gate (3%).
+                      // Looser than the home-page qualified gate (5%) — picks tracked at 3-5% edge
+                      // are intentional, not misclicks; we only disable the truly negative-EV cases.
+                      if (edge !== null && edge < 3) return;
                       const _n = parseInt(pendingOdds.trim(), 10);
                       const oddsVal = !isNaN(_n) && pendingOdds.trim() !== "-" && pendingOdds.trim() !== "+" ? _n : null;
                       trackPlay(oddsVal ? { ...play, americanOdds: oddsVal } : play);
@@ -1416,15 +1418,16 @@ function App() {
                   Cancel
                 </button>
                 {(() => {
-                  // Disable when entered odds put edge below the home-page gate (5%) — those
-                  // wouldn't qualify on the home page anyway and are almost always misclicks
-                  // (e.g. user tabbed past the field with a stale -110 default). Edge null
-                  // (no odds entered yet) doesn't disable — let the user type first.
-                  const _belowGate = edge !== null && edge < EDGE_GATE;
+                  // Disable when entered odds put edge below the track-popup gate (3%) — looser
+                  // than the home-page qualified filter (5%) since picks at 3-5% edge are still
+                  // intentional adds (closing-line value, hedges, etc.), just won't surface in
+                  // the qualified feed. Edge null (no odds entered) doesn't disable.
+                  const TRACK_MIN_EDGE = 3;
+                  const _belowGate = edge !== null && edge < TRACK_MIN_EDGE;
                   return (
                     <button
                       disabled={_belowGate}
-                      title={_belowGate ? `Edge ${edge}% is below the ${EDGE_GATE}% gate — adjust odds or cancel` : undefined}
+                      title={_belowGate ? `Edge ${edge}% is below the ${TRACK_MIN_EDGE}% minimum — adjust odds or cancel` : undefined}
                       onClick={() => {
                         if (_belowGate) return;
                         const _n = parseInt(pendingOdds.trim(), 10);
