@@ -302,9 +302,13 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                 const REPORT_SPORT_COL = { mlb:"#4ade80", nba:"#f97316", nhl:"#60a5fa" };
                 const SPORT_ORD = { mlb:0, nba:1, nhl:2, nfl:3 };
 
-                // "Qualified" = dcQualified ∧ edge ≥ 5, mirroring LineupsPage. (v1's
-                // SimScore gate was dropped 2026-05-18.)
-                const _isQ = (p) => p.dcQualified === true && (p.edge ?? 0) >= 5;
+                // "Qualified" mirrors the home-page filter (App.jsx _qualifiedFilter +
+                // LineupsPage passesGate): dcQualified ∧ edge ≥ 5 ∧ dc === 10 strict. The
+                // server's looser per-play-type dcQualified (props 9, ml/spread 8) is kept
+                // as a diagnostic signal in the DC cell color, but the badge here uses the
+                // same binding gate as the home page so a "Qualified" play in this report
+                // matches what users actually see on the homepage.
+                const _isQ = (p) => p.dcQualified === true && (p.edge ?? 0) >= 5 && (p.dataConfidence ?? 0) === 10;
                 const plays = (reportData.plays || []).map(p => ({ ...p, qualified: _isQ(p) }));
                 // Dropped plays were filtered server-side (Kalshi cap, no sim data, etc.) and never
                 // reach the homepage — never count as qualified, even if their DC + edge look good.
@@ -688,7 +692,7 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                           ttPace:"Team pace vs league average — positive = faster pace = more possessions = more scoring opportunities",
                           ttSpread:"Game spread — tight game (≤5) = full minutes competitive play (green ≤5, yellow ≤10, red >10)",
                           // v2 dataConfidence columns
-                          dc: "dataConfidence (0–10) — input-data trust score. Starts at 10, subtracts penalties. Server gates: totals ≥10, player props ≥9, ML/spread ≥8 (uniform across sports). Client filter requires dc=10 strict. Hover the cell for penalty breakdown.",
+                          dc: "dataConfidence (0–10) — input-data trust score. Starts at 10, subtracts penalties. A play counts as Qualified (here and on the home page) only at dc=10 (clean inputs). The cell color uses the server's looser per-play-type gate (totals ≥10, props ≥9, ML/spread ≥8) as a diagnostic signal. Hover the cell for the penalty breakdown.",
                           dcMkt: "Market quality — Kalshi staleness / liquidity. Penalties: kalshiStale -4, lowVolume -2, wideSpread -1. ✓ = no penalty.",
                           dcLineup: "Lineup / starter confirmation. MLB lineup unconfirmed -3 · NBA lineup not posted -2 · NBA confirmed bench -2 · WNBA/NHL structural -1. ✓ = confirmed.",
                           dcAvail: "Player availability (player props only). Out/inactive -10 (effective drop), questionable/doubtful/GTD -2. ✓ = no concerns.",
