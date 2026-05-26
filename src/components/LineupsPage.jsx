@@ -252,16 +252,12 @@ export default function LineupsPage({
     }
   }, [dayTabs, activeDayTab]);
 
-  // Qualified play count per day for tab badges
-  const qualifiedByDay = React.useMemo(() => {
-    const counts = {};
-    for (const p of allTonightPlays || []) {
-      if (!passesGate(p)) continue;
-      const d = p.gameTime ? ptDate(p.gameTime) : p.gameDate;
-      if (d) counts[d] = (counts[d] || 0) + 1;
-    }
-    return counts;
-  }, [allTonightPlays]);
+  // DNP excluded — it's a settled result (player didn't play), not an active pick.
+  // Matches MyPicksColumn's "active" stat so the badge count agrees with the drawer.
+  const activePicks = (trackedPlays || []).filter(p => !p.result);
+  // Build trackedIds once per render so playsForGame can re-surface demoted alt-line picks
+  // the user is already tracking (server-side dedup may demote them — see passesGate).
+  const trackedIds = React.useMemo(() => buildTrackedIds(activePicks), [activePicks]);
   // Tracked active picks per day for the second (gold) tab badge.
   const trackedByDay = React.useMemo(() => {
     const counts = {};
@@ -272,6 +268,43 @@ export default function LineupsPage({
     }
     return counts;
   }, [trackedPlays]);
+  // Dedup keys for tracked picks per day — used to mirror playsForGame's tracked-alt
+  // suppression logic at the day-tab level (so a non-tracked alt the user has tracked-
+  // at-a-different-line doesn't get double-counted alongside the tracked one).
+  const trackedDedupKeysByDay = React.useMemo(() => {
+    const map = {};
+    for (const p of (trackedPlays || [])) {
+      if (p.result) continue;
+      const d = p.gameTime ? ptDate(p.gameTime) : p.gameDate;
+      if (!d) continue;
+      const k = _dedupKey(p);
+      if (!k) continue;
+      if (!map[d]) map[d] = new Set();
+      map[d].add(k);
+    }
+    return map;
+  }, [trackedPlays]);
+  // Untracked-visible count per day for the green tab badge. Mirrors what the user actually
+  // sees on the matchup cards: plays passing the gate (incl tracked-bypass for low-dc tracked
+  // picks), minus tracked picks themselves, minus alt-line plays hidden because the user
+  // tracked a different alt of the same dedup-group.
+  const qualifiedByDay = React.useMemo(() => {
+    const counts = {};
+    for (const p of allTonightPlays || []) {
+      if (!passesGate(p, trackedIds)) continue;
+      const d = p.gameTime ? ptDate(p.gameTime) : p.gameDate;
+      if (!d) continue;
+      // Exclude tracked picks (they're counted by trackedByDay → gold badge).
+      if (trackedIds.has(trackIdFor(p))) continue;
+      // Mirror playsForGame's dedup-hide: if user tracked a different alt of the same
+      // dedup-group, this play is hidden on the card and shouldn't count here either.
+      const k = _dedupKey(p);
+      const dayDedup = trackedDedupKeysByDay[d];
+      if (k && dayDedup && dayDedup.has(k)) continue;
+      counts[d] = (counts[d] || 0) + 1;
+    }
+    return counts;
+  }, [allTonightPlays, trackedIds, trackedDedupKeysByDay]);
 
   // All games for the active day, sorted by sport then game time
   const gamesForDay = React.useMemo(() => {
@@ -301,12 +334,6 @@ export default function LineupsPage({
   const btnSize = isMobile
     ? { fontSize: 12, padding: '0 12px', height: 32 }
     : { fontSize: 10, padding: '0 8px', height: 22 };
-  // DNP excluded — it's a settled result (player didn't play), not an active pick.
-  // Matches MyPicksColumn's "active" stat so the badge count agrees with the drawer.
-  const activePicks = (trackedPlays || []).filter(p => !p.result);
-  // Build trackedIds once per render so playsForGame can re-surface demoted alt-line picks
-  // the user is already tracking (server-side dedup may demote them — see passesGate).
-  const trackedIds = React.useMemo(() => buildTrackedIds(activePicks), [activePicks]);
 
   const dayTabsEl = (
     <div style={{ display: 'flex', gap: 0, overflowX: 'auto', flex: isMobile ? '1 1 auto' : '0 0 auto', scrollbarWidth: 'none' }}>

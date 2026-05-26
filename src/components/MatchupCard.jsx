@@ -247,21 +247,24 @@ function MatchupCard({
   return (
     <div style={{ background: '#161b22', border: '1px solid #21262d', borderRadius: 12, position: 'relative' }}>
 
-      {/* Play count badges — top right. Green = qualified plays on this card, gold = tracked
-          active picks among them. Both rendered as a unit (single click target) so the toggle
-          behavior (expand card vs open drawer for all-tracked) is preserved. */}
+      {/* Play count badges — top right. Green = untracked qualifying plays remaining for user
+          to consider; gold = tracked active picks. Sum = totalPlays. Both rendered as a unit
+          (single click target) so the toggle behavior (expand card vs open drawer for
+          all-tracked) is preserved. Green hidden when 0 (e.g. all plays already tracked). */}
       {totalPlays > 0 && (
         <button onClick={onPlayBadgeClick} style={{
           position: 'absolute', top: 5, right: 5, zIndex: 1,
           display: 'flex', alignItems: 'center', gap: 3,
           background: 'none', border: 'none', padding: 0, cursor: 'pointer',
         }}>
-          <span style={{
-            fontSize: 10, fontWeight: 700,
-            color: '#3fb950', background: 'rgba(63,185,80,0.12)',
-            border: '1px solid rgba(63,185,80,0.3)', borderRadius: 10,
-            padding: '1px 5px',
-          }}>{totalPlays}</span>
+          {(totalPlays - trackedCount) > 0 && (
+            <span style={{
+              fontSize: 10, fontWeight: 700,
+              color: '#3fb950', background: 'rgba(63,185,80,0.12)',
+              border: '1px solid rgba(63,185,80,0.3)', borderRadius: 10,
+              padding: '1px 5px',
+            }}>{totalPlays - trackedCount}</span>
+          )}
           {trackedCount > 0 && (
             <span style={{
               fontSize: 10, fontWeight: 700,
