@@ -200,6 +200,7 @@ function dayTabLabel(dateStr) {
 
 export default function LineupsPage({
   allTonightPlays,
+  tonightPlays = [],
   tonightLoading,
   navigateToPlayer,
   navigateToTeam,
@@ -343,9 +344,16 @@ export default function LineupsPage({
           color: showPicksDrawer ? '#58a6ff' : '#484f58', fontWeight: 600,
           display: 'flex', alignItems: 'center', gap: 4 }}>
         <span style={{ color: '#e3b341' }}>★</span> Picks
-        {activePicks.length > 0 && (
-          <span style={{ background: 'rgba(63,185,80,0.12)', border: '1px solid rgba(63,185,80,0.3)',
+        {tonightPlays.length > 0 && (
+          <span title="Qualified plays" style={{ background: 'rgba(63,185,80,0.12)', border: '1px solid rgba(63,185,80,0.3)',
             color: '#3fb950', fontSize: 9, fontWeight: 700,
+            borderRadius: 8, padding: '0 4px', lineHeight: '14px' }}>
+            {tonightPlays.length}
+          </span>
+        )}
+        {activePicks.length > 0 && (
+          <span title="Tracked picks" style={{ background: 'rgba(227,179,65,0.12)', border: '1px solid rgba(227,179,65,0.3)',
+            color: '#e3b341', fontSize: 9, fontWeight: 700,
             borderRadius: 8, padding: '0 4px', lineHeight: '14px' }}>
             {activePicks.length}
           </span>

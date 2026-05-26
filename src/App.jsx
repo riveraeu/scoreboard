@@ -1379,7 +1379,6 @@ function App() {
                       const oddsVal = !isNaN(_n) && pendingOdds.trim() !== "-" && pendingOdds.trim() !== "+" ? _n : null;
                       trackPlay(oddsVal ? { ...play, americanOdds: oddsVal } : play);
                       setPendingTrackPlay(null);
-                      setShowPicksDrawer(true);
                       openPickDate(play.gameDate);
                       triggerFlyAnimation();
                     } else if (e.key === "Escape") {
@@ -1418,7 +1417,6 @@ function App() {
                   const oddsVal = !isNaN(_n) && pendingOdds.trim() !== "-" && pendingOdds.trim() !== "+" ? _n : null;
                   trackPlay(oddsVal ? { ...play, americanOdds: oddsVal } : play);
                   setPendingTrackPlay(null);
-                  setShowPicksDrawer(true);
                   openPickDate(play.gameDate);
                   triggerFlyAnimation();
                 }}
@@ -2248,6 +2246,7 @@ function App() {
       {!player && !teamPage && !modelPage && (
         <LineupsPage
           allTonightPlays={allTonightPlays || []}
+          tonightPlays={tonightPlays || []}
           tonightLoading={tonightLoading}
           navigateToPlayer={navigateToPlayer}
           navigateToTeam={navigateToTeam}
