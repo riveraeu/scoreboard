@@ -694,7 +694,7 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                           // v2 dataConfidence columns
                           dc: "dataConfidence (0–10) — input-data trust score. Starts at 10, subtracts penalties. A play counts as Qualified (here and on the home page) only at dc=10 (clean inputs). The cell color uses the server's looser per-play-type gate (totals ≥10, props ≥9, ML/spread ≥8) as a diagnostic signal. Hover the cell for the penalty breakdown.",
                           dcMkt: "Market quality — Kalshi staleness / liquidity. Penalties: kalshiStale -4, lowVolume -2, wideSpread -1. ✓ = no penalty.",
-                          dcLineup: "Lineup / starter confirmation. MLB lineup unconfirmed -3 · NBA lineup not posted -2 · NBA confirmed bench -2 · WNBA/NHL structural -1. ✓ = confirmed.",
+                          dcLineup: "Lineup / starter confirmation. MLB lineup unconfirmed -3 · NBA/WNBA confirmed bench -2. No NBA/WNBA “not posted” penalty — ESPN doesn’t expose pre-game starters, so we treat unknown as neutral. NHL has no lineup data at all. ✓ = confirmed or unknown.",
                           dcAvail: "Player availability (player props only). Out/inactive -10 (effective drop), questionable/doubtful/GTD -2. ✓ = no concerns.",
                           dcSample: "Sample size of underlying data. MLB-K stdBF, MLB-Hitter BvP softGames, NBA softGames, totals gtSsnSample, teamTotals h2hGames. Penalties scale -1 to -3 by sample size. ✓ = strong sample.",
                           dcOppData: "Opponent data quality. MLB-K opp lineup confirmation, MLB-Hitter BvP vs handedness, NBA/WNBA DvP availability, NHL GAA, totals gameOuLine, teamTotal pitcher source. Penalties -1 to -3. ✓ = clean.",

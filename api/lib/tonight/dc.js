@@ -73,6 +73,13 @@ export function computeDataConfidence(p, ctx = {}) {
     // conf === undefined (no data at all) is treated as not-confirmed for strictness
     else if (conf == null) _pen("mlbLineupUnknown", 3);
   } else if (sport === "nba" && isPlayerProp) {
+    // NBA: only penalize bench (lineup IS posted AND player isn't in it — model assumed
+    // starter minutes, prop is wrong). "Lineup not posted" is the default pre-game state
+    // for NBA (ESPN's boxscore.players[].starter only populates in/post) — penalizing it
+    // would cap every pre-game NBA prop at dc=8 and block them all from the strict dc=10
+    // home-page filter without saying anything about an individual play's quality. Same
+    // logic as the NHL branch below. Side effect: p.nbaStarterConfirmed still stamped for
+    // downstream display (true/false/null).
     const starters = sportByteam.nbaStarters;
     const team = p.playerTeam;
     const pid = String(p.playerId || "");
@@ -80,13 +87,12 @@ export function computeDataConfidence(p, ctx = {}) {
       const confirmed = (starters.confirmedTeams || []).includes(team);
       const isStarter = confirmed && ((starters.startersByTeam || {})[team] || []).includes(pid);
       p.nbaStarterConfirmed = confirmed ? isStarter : null;
-      if (!confirmed) _pen("nbaLineupNotPosted", 2);
-      else if (!isStarter) _pen("nbaBench", 2);
+      if (confirmed && !isStarter) _pen("nbaBench", 2);
     } else {
       p.nbaStarterConfirmed = null;
-      _pen("nbaLineupNotPosted", 2);
     }
   } else if (sport === "wnba" && isPlayerProp) {
+    // WNBA: mirror of NBA — only penalize confirmed-bench. Same structural-data-gap reasoning.
     const starters = sportByteam.wnbaStarters;
     const team = p.playerTeam;
     const pid = String(p.playerId || "");
@@ -94,18 +100,14 @@ export function computeDataConfidence(p, ctx = {}) {
       const confirmed = (starters.confirmedTeams || []).includes(team);
       const isStarter = confirmed && ((starters.startersByTeam || {})[team] || []).includes(pid);
       p.wnbaStarterConfirmed = confirmed ? isStarter : null;
-      if (!confirmed) _pen("wnbaLineupNotPosted", 2);
-      else if (!isStarter) _pen("wnbaBench", 2);
+      if (confirmed && !isStarter) _pen("wnbaBench", 2);
     } else {
       p.wnbaStarterConfirmed = null;
-      _pen("wnbaLineupNotPosted", 2);
     }
   }
-  // NHL: no penalty for missing lineup data. ESPN doesn't expose pre-game NHL lineups,
-  // so a "structural" -1 fired on every play and capped the entire prop class at dc=9 —
-  // blocking all NHL props from the strict dc=10 client filter without telling us anything
-  // about an individual play's quality. Sport-wide data limitations are documented, not
-  // penalized at the play level.
+  // NHL: no penalty for missing lineup data. ESPN doesn't expose pre-game NHL lineups, same
+  // as NBA/WNBA above — sport-wide data limitations are documented, not penalized at the
+  // play level.
 
   // ── Player availability (player props only)
   if (isPlayerProp) {
