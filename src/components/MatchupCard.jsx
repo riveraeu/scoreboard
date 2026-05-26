@@ -108,7 +108,7 @@ function fmtSeries(summary) {
 
 function MatchupCard({
   game, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta, navigateToPlayer, navigateToTeam,
-  gamePlays, allTonightPlays, trackedPlays, trackPlay, untrackPlay,
+  gamePlays, gamePlaysTrackedCount = 0, allTonightPlays, trackedPlays, trackPlay, untrackPlay,
   navigateToPlay, navigateToModel, expandedPlays, setExpandedPlays, openPicksDrawer,
 }) {
   const { sport, homeTeam, awayTeam, gameDate, gameTime, gameState, gameDetail, homeScore, awayScore, seriesSummary, homeRecord, awayRecord } = game;
@@ -229,9 +229,10 @@ function MatchupCard({
   // expand-card to open-picks-drawer).
   const _realPlays = (gamePlays || []).filter(gp => !gp._synthFromTracked);
   const totalPlays = _realPlays.length;
-  // trackedCount counts active (unresolved) tracked picks shown on this card. Settled picks
-  // (won/lost/dnp) don't count toward the gold badge — matches day-tab + Picks-button gold.
-  const trackedCount = _realPlays.filter(gp => (trackedPlays || []).some(tp => tp.id === gp.id && !tp.result)).length;
+  // trackedCount is computed by LineupsPage (where trackIdFor is in scope) and passed in —
+  // API plays don't carry an `id` field, so a direct `tp.id === gp.id` match here always
+  // misses. The count covers active (unresolved) tracked picks on this card.
+  const trackedCount = gamePlaysTrackedCount;
   const allTracked = totalPlays > 0 && trackedCount === totalPlays;
 
   function onPlayBadgeClick(e) {

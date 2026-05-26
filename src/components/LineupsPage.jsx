@@ -464,6 +464,11 @@ export default function LineupsPage({
               {games.map((game, i) => {
                 const isPostponed = (game.gameDetail || '').toLowerCase().includes('postpone');
                 const gPlays = isPostponed ? [] : playsForGame(allTonightPlays, game, trackedIds, activePicks);
+                // Count tracked picks shown on this card — API plays don't have an `id` field
+                // (only tracked picks do), so we re-compute via trackIdFor and match against the
+                // trackedIds Set built from activePicks (settled picks excluded). Synth plays are
+                // already filtered out of the badge count inside MatchupCard via _realPlays.
+                const _gPlayTrackedCount = gPlays.filter(gp => !gp._synthFromTracked && trackedIds.has(trackIdFor(gp))).length;
                 return (
                   <MatchupCard
                     key={`${sport}|${game.homeTeam}|${game.awayTeam}|${game.gameDate}|${i}`}
@@ -476,6 +481,7 @@ export default function LineupsPage({
                     navigateToPlayer={navigateToPlayer}
                     navigateToTeam={navigateToTeam}
                     gamePlays={gPlays}
+                    gamePlaysTrackedCount={_gPlayTrackedCount}
                     allTonightPlays={allTonightPlays}
                     trackedPlays={trackedPlays}
                     trackPlay={trackPlay}
