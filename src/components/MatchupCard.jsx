@@ -111,7 +111,7 @@ function MatchupCard({
   gamePlays, allTonightPlays, trackedPlays, trackPlay, untrackPlay,
   navigateToPlay, navigateToModel, expandedPlays, setExpandedPlays, openPicksDrawer,
 }) {
-  const { sport, homeTeam, awayTeam, gameDate, gameTime, gameState, gameDetail, homeScore, awayScore, seriesSummary } = game;
+  const { sport, homeTeam, awayTeam, gameDate, gameTime, gameState, gameDetail, homeScore, awayScore, seriesSummary, homeRecord, awayRecord } = game;
   const [playsOpen, setPlaysOpen] = React.useState(false);
   const isMobile = useIsMobile();
   // Mobile sizing for the feature-player row — tighter center column gives each side
@@ -267,6 +267,7 @@ function MatchupCard({
             onError={e => { e.target.style.display = 'none'; }} />
           <div>
             <div style={{ fontSize: 16, fontWeight: 700, color: '#c9d1d9' }}>{awayTeam}</div>
+            {awayRecord && <div style={{ fontSize: 10, color: '#8b949e' }}>{awayRecord}</div>}
             <div style={{ fontSize: 10, color: '#484f58' }}>Away</div>
           </div>
         </div>
@@ -300,6 +301,7 @@ function MatchupCard({
           onClick={() => navigateToTeam(homeTeam, sport)}>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: 16, fontWeight: 700, color: '#c9d1d9' }}>{homeTeam}</div>
+            {homeRecord && <div style={{ fontSize: 10, color: '#8b949e' }}>{homeRecord}</div>}
             <div style={{ fontSize: 10, color: '#484f58' }}>Home</div>
           </div>
           <img src={logoUrl(sport, homeTeam)} alt={homeTeam}
