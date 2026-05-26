@@ -262,6 +262,16 @@ export default function LineupsPage({
     }
     return counts;
   }, [allTonightPlays]);
+  // Tracked active picks per day for the second (gold) tab badge.
+  const trackedByDay = React.useMemo(() => {
+    const counts = {};
+    for (const p of (trackedPlays || [])) {
+      if (p.result) continue; // settled (won/lost/dnp) doesn't count as active
+      const d = p.gameTime ? ptDate(p.gameTime) : p.gameDate;
+      if (d) counts[d] = (counts[d] || 0) + 1;
+    }
+    return counts;
+  }, [trackedPlays]);
 
   // All games for the active day, sorted by sport then game time
   const gamesForDay = React.useMemo(() => {
@@ -303,6 +313,7 @@ export default function LineupsPage({
       {dayTabs.map(dateStr => {
         const active = activeDayTab === dateStr;
         const count = qualifiedByDay[dateStr] ?? 0;
+        const tracked = trackedByDay[dateStr] ?? 0;
         return (
           <button
             key={dateStr}
@@ -322,6 +333,13 @@ export default function LineupsPage({
                 background: 'rgba(63,185,80,0.12)', border: '1px solid rgba(63,185,80,0.3)',
                 borderRadius: 10, padding: '1px 5px',
               }}>{count}</span>
+            )}
+            {tracked > 0 && (
+              <span style={{
+                marginLeft: 3, fontSize: 10, fontWeight: 700, color: '#e3b341',
+                background: 'rgba(227,179,65,0.12)', border: '1px solid rgba(227,179,65,0.3)',
+                borderRadius: 10, padding: '1px 5px',
+              }}>{tracked}</span>
             )}
           </button>
         );

@@ -229,7 +229,9 @@ function MatchupCard({
   // expand-card to open-picks-drawer).
   const _realPlays = (gamePlays || []).filter(gp => !gp._synthFromTracked);
   const totalPlays = _realPlays.length;
-  const trackedCount = _realPlays.filter(gp => (trackedPlays || []).some(tp => tp.id === gp.id)).length;
+  // trackedCount counts active (unresolved) tracked picks shown on this card. Settled picks
+  // (won/lost/dnp) don't count toward the gold badge — matches day-tab + Picks-button gold.
+  const trackedCount = _realPlays.filter(gp => (trackedPlays || []).some(tp => tp.id === gp.id && !tp.result)).length;
   const allTracked = totalPlays > 0 && trackedCount === totalPlays;
 
   function onPlayBadgeClick(e) {
@@ -244,16 +246,29 @@ function MatchupCard({
   return (
     <div style={{ background: '#161b22', border: '1px solid #21262d', borderRadius: 12, position: 'relative' }}>
 
-      {/* Play count badge — top right */}
+      {/* Play count badges — top right. Green = qualified plays on this card, gold = tracked
+          active picks among them. Both rendered as a unit (single click target) so the toggle
+          behavior (expand card vs open drawer for all-tracked) is preserved. */}
       {totalPlays > 0 && (
         <button onClick={onPlayBadgeClick} style={{
           position: 'absolute', top: 5, right: 5, zIndex: 1,
-          fontSize: 10, fontWeight: 700, cursor: 'pointer',
-          color: '#3fb950', background: 'rgba(63,185,80,0.12)',
-          border: '1px solid rgba(63,185,80,0.3)', borderRadius: 10,
-          padding: '1px 5px',
+          display: 'flex', alignItems: 'center', gap: 3,
+          background: 'none', border: 'none', padding: 0, cursor: 'pointer',
         }}>
-          {totalPlays}
+          <span style={{
+            fontSize: 10, fontWeight: 700,
+            color: '#3fb950', background: 'rgba(63,185,80,0.12)',
+            border: '1px solid rgba(63,185,80,0.3)', borderRadius: 10,
+            padding: '1px 5px',
+          }}>{totalPlays}</span>
+          {trackedCount > 0 && (
+            <span style={{
+              fontSize: 10, fontWeight: 700,
+              color: '#e3b341', background: 'rgba(227,179,65,0.12)',
+              border: '1px solid rgba(227,179,65,0.3)', borderRadius: 10,
+              padding: '1px 5px',
+            }}>{trackedCount}</span>
+          )}
         </button>
       )}
 
