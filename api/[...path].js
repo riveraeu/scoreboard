@@ -2808,6 +2808,7 @@ var worker_default = {
               edge: parseFloat(edge.toFixed(1)),
               reason: edge < EDGE_GATE ? "edge_too_low" : kalshiPct > KALSHI_CAP ? "kalshi_pct_too_high" : "kalshi_pct_too_low",
               opponent: tonightOpp, seasonPct: parseFloat((primaryPct).toFixed(1)),
+              seasonGames: allVals.length,
               softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
               l10HitRate: _l10HitRate, l10Games: _l10Games,
               oppRank: posDvpRankOut ?? rankMap[tonightOpp]?.rank ?? null,
