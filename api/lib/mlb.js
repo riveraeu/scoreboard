@@ -1071,6 +1071,11 @@ export async function buildMlbByteam(cache) {
     const hA = normMlbAbbr(homeComp.team?.abbreviation), awA = normMlbAbbr(awayComp.team?.abbreviation);
     if (!hA || !awA) continue;
     const gsDate = event.date ? PT_FMT.format(new Date(event.date)) : null;
+    const pickRecord = (recs) => {
+      if (!Array.isArray(recs)) return null;
+      const overall = recs.find(r => r?.type === "total" || r?.name === "overall");
+      return overall?.summary ?? recs[0]?.summary ?? null;
+    };
     gameScores[`${hA}|${gsDate ?? ""}|${event.date ?? ""}`] = {
       homeTeam: hA, awayTeam: awA,
       state: comp.status?.type?.state ?? "pre",
@@ -1079,6 +1084,8 @@ export async function buildMlbByteam(cache) {
       awayScore: parseInt(awayComp.score ?? 0) || 0,
       gameDate: gsDate,
       gameTime: event.date || null,
+      homeRecord: pickRecord(homeComp.records),
+      awayRecord: pickRecord(awayComp.records),
     };
   }
   const [lineupResult, pitcherResult] = await Promise.all([buildLineupKPct(mlbSched), buildPitcherKPct(mlbSched)]);
