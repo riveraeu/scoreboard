@@ -291,7 +291,9 @@ export default function LineupsPage({
   const btnSize = isMobile
     ? { fontSize: 12, padding: '0 12px', height: 32 }
     : { fontSize: 10, padding: '0 8px', height: 22 };
-  const activePicks = (trackedPlays || []).filter(p => !p.result || p.result === 'dnp');
+  // DNP excluded — it's a settled result (player didn't play), not an active pick.
+  // Matches MyPicksColumn's "active" stat so the badge count agrees with the drawer.
+  const activePicks = (trackedPlays || []).filter(p => !p.result);
   // Build trackedIds once per render so playsForGame can re-surface demoted alt-line picks
   // the user is already tracking (server-side dedup may demote them — see passesGate).
   const trackedIds = React.useMemo(() => buildTrackedIds(activePicks), [activePicks]);
