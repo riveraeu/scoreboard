@@ -2632,13 +2632,16 @@ var worker_default = {
           let _hrrPaFromSpot = null, _hrrTypicalPA = null, _hrrSeasonPctAdj = null, _hrrSoftPctAdj = null;
           // Sample-weighted seasonRate blend for prop truePct (added 2026-05-26). Same shape
           // as the game-total seasonHitRate blend: anchor pure-sim truePct toward the
-          // empirical threshold hit rate from the player's own gamelog. Cap 0.5 → at 20+
-          // games seasonRate gets 50% weight. The reference rate matches each sport's
-          // existing no-sim fallback formula so the blend is a smooth transition. Skipped
-          // for MLB HRR (the logit-sigmoid model is already rate-based at its core).
-          const _propBlend = (simPct, refPct, sample) => {
+          // empirical threshold hit rate from the player's own gamelog. The reference rate
+          // matches each sport's existing no-sim fallback formula so the blend is a smooth
+          // transition. capWeight is the max anchor strength at 20+ games:
+          //   - 0.50 for sim-based props (NBA/WNBA/NHL/MLB-K) — pure-sim drift correction
+          //   - 0.25 for MLB HRR (added later same day) — already rate-based at the logit
+          //     core, so the blend is a sanity check against multiplicative stacking
+          //     (park × ops × whip × barrel), not a real damper.
+          const _propBlend = (simPct, refPct, sample, capWeight = 0.5) => {
             if (simPct == null || refPct == null) return simPct;
-            const _w = Math.min(1, (sample || 0) / 20) * 0.5;
+            const _w = Math.min(1, (sample || 0) / 20) * capWeight;
             return _w > 0 ? (1 - _w) * simPct + _w * refPct : simPct;
           };
           const rawTruePct = (() => {
@@ -2712,7 +2715,13 @@ var worker_default = {
               if (barrelAdj !== 1.0) _hrrBarrelAdj = parseFloat(barrelAdj.toFixed(3));
               const _p = Math.max(0.01, Math.min(0.99, rawMlbPct / 100));
               const _logOddsAdj = Math.log(_p / (1 - _p)) + Math.log(parkFactor) + 0.4 * Math.log(opsAdj) + 0.3 * Math.log(whipAdj) + 0.25 * Math.log(barrelAdj);
-              return Math.min(99.9, parseFloat((100 / (1 + Math.exp(-_logOddsAdj))).toFixed(1)));
+              const _hrrAdjusted = Math.min(99.9, parseFloat((100 / (1 + Math.exp(-_logOddsAdj))).toFixed(1)));
+              // Gentle seasonRate anchor (capWeight=0.25, half the sim-based prop cap). HRR's
+              // logit-sigmoid is rate-based at its core (base = rawMlbPct = (primaryPct + softPct)/2)
+              // but the multiplicative adjustments (park × OPS × WHIP × barrel) can drift ~7 pp
+              // above the un-adjusted base when stacked. Blending back toward rawMlbPct preserves
+              // most of the matchup signal while sanity-checking against extreme stacks.
+              return _propBlend(_hrrAdjusted, rawMlbPct, allVals.length, 0.25);
             }
             if (sport === "nba") {
               const _nbaRef = softPct !== null ? (seasonPct + softPct) / 2 : seasonPct;
