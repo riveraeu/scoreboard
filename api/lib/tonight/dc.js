@@ -61,15 +61,19 @@ export function computeDataConfidence(p, ctx = {}) {
     // `boxscore.players[].starter` is only populated in/post). The lambda already adjusts
     // OffRtg for known-out players via the injury report (Σ out-USG × 0.15, capped at 0.85);
     // we just penalize the cap-busting case where the team is materially under-modeled.
-    if ((p.homeUsageOut || 0) >= 0.30) _pen("nbaHomeHeavyInjury", 1);
-    if ((p.awayUsageOut || 0) >= 0.30) _pen("nbaAwayHeavyInjury", 1);
+    // Heavy-injury fires once per game for the heavier side only (same shape as WNBA
+    // below) — stacking both sides was auto-capping plays at dc=8 on rare both-injured
+    // games without adding signal beyond the dominant side.
+    const home = p.homeUsageOut || 0;
+    const away = p.awayUsageOut || 0;
+    if (home >= 0.30 || away >= 0.30) {
+      _pen(home >= away ? "nbaHomeHeavyInjury" : "nbaAwayHeavyInjury", 1);
+    }
   } else if (sport === "wnba" && (gameType === "ml" || gameType === "spread")) {
-    // No pre-game starter feed (same as NBA). Heavy-injury penalty fires once per game
-    // for the heavier-injured side only — WNBA roster sizes are small enough that both
-    // sides crossing the 30% USG-out threshold is common (~69% of games in the 2026-05-26
-    // audit), and stacking the penalty to -2 was auto-capping most WNBA ML/spread plays
-    // at dc=8. Single -1 reflects "one side's lambda is materially uncertain" which is
-    // the actionable signal; the other side rarely tips the call.
+    // No pre-game starter feed (same as NBA). Heavy-injury fires once per game for the
+    // heavier-injured side only — WNBA roster sizes make both-sides cases common (~69%
+    // of games in the 2026-05-26 audit), and stacking to -2 was auto-capping most ML/
+    // spread plays at dc=8. NBA branch above matches for consistency (added 2026-05-26).
     const home = p.homeUsageOut || 0;
     const away = p.awayUsageOut || 0;
     if (home >= 0.30 || away >= 0.30) {
