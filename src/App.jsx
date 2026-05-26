@@ -258,6 +258,7 @@ function App() {
   // (SimScore-gated) was dropped 2026-05-18 — SimScore is display/attribution only now. Mirrors
   // passesGate in LineupsPage; keep these in sync.
   const _qualifiedFilter = React.useCallback((p) => {
+    if (p._altLineDemoted === true) return false;
     if (p.dcQualified !== true || (p.edge ?? 0) < EDGE_GATE) return false;
     return (p.dataConfidence ?? 0) === 10;
   }, []);
