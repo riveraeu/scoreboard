@@ -2630,10 +2630,21 @@ var worker_default = {
           }
           let _hrrBarrelAdj = null;
           let _hrrPaFromSpot = null, _hrrTypicalPA = null, _hrrSeasonPctAdj = null, _hrrSoftPctAdj = null;
+          // Sample-weighted seasonRate blend for prop truePct (added 2026-05-26). Same shape
+          // as the game-total seasonHitRate blend: anchor pure-sim truePct toward the
+          // empirical threshold hit rate from the player's own gamelog. Cap 0.5 → at 20+
+          // games seasonRate gets 50% weight. The reference rate matches each sport's
+          // existing no-sim fallback formula so the blend is a smooth transition. Skipped
+          // for MLB HRR (the logit-sigmoid model is already rate-based at its core).
+          const _propBlend = (simPct, refPct, sample) => {
+            if (simPct == null || refPct == null) return simPct;
+            const _w = Math.min(1, (sample || 0) / 20) * 0.5;
+            return _w > 0 ? (1 - _w) * simPct + _w * refPct : simPct;
+          };
           const rawTruePct = (() => {
             if (sport === "mlb" && stat === "strikeouts") {
-              // Simulation is the primary model when lineup data is available
-              if (simPctOut !== null) return simPctOut;
+              const _kRef = softPct !== null ? (primaryPct + softPct) / 2 : primaryPct;
+              if (simPctOut !== null) return _propBlend(simPctOut, _kRef, allVals.length);
               // Fallback: average of season rate + soft matchup rate
               const parts = [primaryPct, ...softPct !== null ? [softPct] : []];
               return parts.reduce((a, b) => a + b, 0) / parts.length;
@@ -2704,21 +2715,23 @@ var worker_default = {
               return Math.min(99.9, parseFloat((100 / (1 + Math.exp(-_logOddsAdj))).toFixed(1)));
             }
             if (sport === "nba") {
-              // Monte Carlo simulation is primary model; fall back to season/soft blend
-              if (nbaSimPctOut !== null) return nbaSimPctOut;
-              let base = softPct !== null ? (seasonPct + softPct) / 2 : seasonPct;
+              const _nbaRef = softPct !== null ? (seasonPct + softPct) / 2 : seasonPct;
+              if (nbaSimPctOut !== null) return _propBlend(nbaSimPctOut, _nbaRef, allVals.length);
+              // Fallback: season/soft blend when sim couldn't run
+              let base = _nbaRef;
               if (isB2B) base = Math.max(0, base - 4);
               return base;
             }
             if (sport === "wnba") {
-              if (wnbaSimPctOut !== null) return wnbaSimPctOut;
-              let base = softPct !== null ? (seasonPct + softPct) / 2 : seasonPct;
+              const _wnbaRef = softPct !== null ? (seasonPct + softPct) / 2 : seasonPct;
+              if (wnbaSimPctOut !== null) return _propBlend(wnbaSimPctOut, _wnbaRef, allVals.length);
+              let base = _wnbaRef;
               if (isB2B) base = Math.max(0, base - 4);
               return base;
             }
             if (sport === "nhl") {
-              // Monte Carlo simulation is primary model; fall back to dvp-adjusted average
-              if (nhlSimPctOut !== null) return nhlSimPctOut;
+              const _nhlRef = softPct !== null ? (seasonPct + softPct) / 2 : seasonPct;
+              if (nhlSimPctOut !== null) return _propBlend(nhlSimPctOut, _nhlRef, allVals.length);
               if (dvpFactorOut !== null) {
                 const dvpAdjustedPct = Math.min(99, seasonPct * dvpFactorOut);
                 const _nhlParts = [seasonPct, dvpAdjustedPct, ...softPct !== null ? [softPct] : []];
