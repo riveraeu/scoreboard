@@ -92,6 +92,10 @@ export function parseGameScores(events, normFn) {
       seriesSummary: comp.series?.summary || null,
       homeRecord: pickRecord(homeComp.records),
       awayRecord: pickRecord(awayComp.records),
+      // ESPN convention: 1=preseason, 2=regular, 3=postseason. Captured for calibration
+      // splits — lets /api/auth/calibration filter or bucket plays by season type. Null
+      // when ESPN omits it (rare).
+      seasonType: event.season?.type ?? null,
     };
   }
   return scores;

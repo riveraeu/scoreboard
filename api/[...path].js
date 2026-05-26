@@ -1310,6 +1310,10 @@ var worker_default = {
             for (const st of d.seasonTypes || []) {
               const _stDn = (st.displayName || "").toLowerCase();
               if (_stDn.includes("pre") || _stDn.includes("spring") || _stDn.includes("exhibition")) continue;
+              // Postseason detection — preserved per-event for playoff-aware prop lambdas
+              // (added 2026-05-26). Both "postseason" and "playoff" surface in ESPN labels
+              // depending on sport; checking both covers NBA/WNBA/NHL.
+              const _isPlayoff = _stDn.includes("post") || _stDn.includes("playoff");
               for (const cat of st.categories || []) {
                 for (const ev of cat.events || []) {
                   if (seenIds.has(ev.eventId)) continue;
@@ -1324,6 +1328,7 @@ var worker_default = {
                     stats: ev.stats || [],
                     oppAbbr: meta.opponent?.abbreviation || "",
                     isHome: meta.atVs != null ? meta.atVs !== "@" : null,
+                    isPlayoff: _isPlayoff,
                   });
                 }
               }
@@ -2435,7 +2440,18 @@ var worker_default = {
             const _nbaDistKey = `${info.id}|${stat}`;
             if (!nbaPlayerDistCache[_nbaDistKey]) {
               const _nSim = _sc >= 8 ? 10000 : _sc >= 5 ? 5000 : 2000;
-              nbaPlayerDistCache[_nbaDistKey] = buildNbaStatDist(_nbaGameValsAll, teamDefFactorOut, null, isB2B, _nSim, nbaMiscAdj, nbaPaceFactor);
+              // Playoff-aware lambda (added 2026-05-26): if tonight's game is postseason
+              // AND the player has ≥5 playoff games in their gamelog, use playoff-only
+              // games as the meanRecent source. The full sample still drives std/variance.
+              // Falls back gracefully to the existing flat-10 mixed slice otherwise.
+              const _nbaIsPlayoff = Object.values(sportByteam.nbaGameScores || {}).some(g =>
+                g?.seasonType === 3 && (g.homeTeam === playerTeam || g.awayTeam === playerTeam)
+              );
+              const _nbaPlayoffVals = _nbaIsPlayoff
+                ? gl.events.filter(ev => ev.isPlayoff).map(getStat).filter(v => !isNaN(v) && v >= 0)
+                : null;
+              const _nbaRecentVals = (_nbaPlayoffVals && _nbaPlayoffVals.length >= 5) ? _nbaPlayoffVals : null;
+              nbaPlayerDistCache[_nbaDistKey] = buildNbaStatDist(_nbaGameValsAll, teamDefFactorOut, null, isB2B, _nSim, nbaMiscAdj, nbaPaceFactor, _nbaRecentVals);
             }
             nbaSimPctOut = nbaDistPct(nbaPlayerDistCache[_nbaDistKey], threshold);
           }
@@ -2517,7 +2533,15 @@ var worker_default = {
             const _wnbaDistKey = `${info.id}|${stat}`;
             if (!wnbaPlayerDistCache[_wnbaDistKey]) {
               const _wnSim = _wsc >= 8 ? 10000 : _wsc >= 5 ? 5000 : 2000;
-              wnbaPlayerDistCache[_wnbaDistKey] = buildNbaStatDist(_wnbaGameValsAll, teamDefFactorOut, null, isB2B, _wnSim, wnbaMiscAdj, wnbaPaceFactor);
+              // Playoff-aware lambda (added 2026-05-26) — mirror of NBA branch.
+              const _wnbaIsPlayoff = Object.values(sportByteam.wnbaGameScores || {}).some(g =>
+                g?.seasonType === 3 && (g.homeTeam === playerTeam || g.awayTeam === playerTeam)
+              );
+              const _wnbaPlayoffVals = _wnbaIsPlayoff
+                ? gl.events.filter(ev => ev.isPlayoff).map(getStat).filter(v => !isNaN(v) && v >= 0)
+                : null;
+              const _wnbaRecentVals = (_wnbaPlayoffVals && _wnbaPlayoffVals.length >= 5) ? _wnbaPlayoffVals : null;
+              wnbaPlayerDistCache[_wnbaDistKey] = buildNbaStatDist(_wnbaGameValsAll, teamDefFactorOut, null, isB2B, _wnSim, wnbaMiscAdj, wnbaPaceFactor, _wnbaRecentVals);
             }
             wnbaSimPctOut = nbaDistPct(wnbaPlayerDistCache[_wnbaDistKey], threshold);
           }
@@ -2591,7 +2615,16 @@ var worker_default = {
             if (!nhlPlayerDistCache[_nhlDistKey]) {
               const _nhlGameVals = gl.events.map(getStat).filter(v => !isNaN(v) && v >= 0);
               const _nSim = _sc >= 8 ? 10000 : _sc >= 5 ? 5000 : 2000;
-              nhlPlayerDistCache[_nhlDistKey] = buildNbaStatDist(_nhlGameVals, teamDefFactorOut, nhlShotsAdj, isB2B, _nSim, nhlToiTrendAdj);
+              // Playoff-aware lambda (added 2026-05-26) — NHL playoffs run May–June, so this
+              // is the immediate beneficiary. Mirror of NBA/WNBA branches.
+              const _nhlIsPlayoff = Object.values(sportByteam.nhlGameScores || {}).some(g =>
+                g?.seasonType === 3 && (g.homeTeam === playerTeam || g.awayTeam === playerTeam)
+              );
+              const _nhlPlayoffVals = _nhlIsPlayoff
+                ? gl.events.filter(ev => ev.isPlayoff).map(getStat).filter(v => !isNaN(v) && v >= 0)
+                : null;
+              const _nhlRecentVals = (_nhlPlayoffVals && _nhlPlayoffVals.length >= 5) ? _nhlPlayoffVals : null;
+              nhlPlayerDistCache[_nhlDistKey] = buildNbaStatDist(_nhlGameVals, teamDefFactorOut, nhlShotsAdj, isB2B, _nSim, nhlToiTrendAdj, null, _nhlRecentVals);
             }
             nhlSimPctOut = nbaDistPct(nhlPlayerDistCache[_nhlDistKey], threshold);
           }
@@ -5334,6 +5367,32 @@ var worker_default = {
             const ticker = _findKalshiTicker(p.sport, p.stat, p.gameType);
             if (ticker && _staleKalshiSet.has(ticker)) p._kalshiStale = true;
           }
+        }
+        // ── seasonType stamping (added 2026-05-26) — ESPN convention: 2=RS, 3=postseason.
+        // Pulled from gameScores. Lets /api/auth/calibration bucket plays by seasonType
+        // without changing emission sites. Single lookup table keyed by `sport|home|gameDate`
+        // (lowest-cost denominator that's stable across pipelines — gameTime varies between
+        // play-emission and the ESPN event ISO with seconds precision differences).
+        {
+          const _seasonTypeMap = {};
+          const _addSrc = (sport, gsObj) => {
+            for (const v of Object.values(gsObj || {})) {
+              if (v?.homeTeam && v?.gameDate && v?.seasonType != null) {
+                _seasonTypeMap[`${sport}|${v.homeTeam}|${v.gameDate}`] = v.seasonType;
+              }
+            }
+          };
+          _addSrc("mlb", sportByteam.mlb?.gameScores);
+          _addSrc("nba", sportByteam.nbaGameScores);
+          _addSrc("wnba", sportByteam.wnbaGameScores);
+          _addSrc("nhl", sportByteam.nhlGameScores);
+          const _stampSeasonType = (p) => {
+            const home = p.homeTeam || p.scoringTeam || p.playerTeam;
+            const st = _seasonTypeMap[`${p.sport}|${home}|${p.gameDate || ""}`];
+            if (st != null) p.seasonType = st;
+          };
+          for (const p of plays) _stampSeasonType(p);
+          for (const p of dropped) _stampSeasonType(p);
         }
         // ── dataConfidence (0-10) — penalty-based score starting at 10, subtracting for input-data
         // issues. Strict by design: only plays with zero or one minor issue reach the gate. NOT

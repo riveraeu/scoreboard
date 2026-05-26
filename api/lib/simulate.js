@@ -333,10 +333,16 @@ export function kDistPct(dist, threshold) {
 // still feeds NHL props. paceFactor (geometric-mean ratio) is the NBA/WNBA pathway
 // added 2026-05-25 — the previous +0.002-per-pace-unit linear bump capped at ±3% volume
 // effect, way under the ~±10% possession swings real NBA matchups exhibit.
-export function buildNbaStatDist(gameValues, dvpFactor, paceAdj, isB2B, nSim = 5000, miscAdj = 1.0, paceFactor = null) {
+export function buildNbaStatDist(gameValues, dvpFactor, paceAdj, isB2B, nSim = 5000, miscAdj = 1.0, paceFactor = null, recentVals = null) {
   if (gameValues.length < 5) return null;
-  // Mean from recent 10 (recency), std from full season (stability)
-  const recentSlice = gameValues.slice(0, Math.min(10, gameValues.length));
+  // Mean from recent 10 (recency), std from full season (stability). When `recentVals` is
+  // provided (playoff-aware path, added 2026-05-26), the caller has pre-filtered to a
+  // regime-specific subset (e.g. playoff-only games for a player whose team is still in
+  // the postseason) — we use that for meanRecent while keeping the full sample's std/var.
+  // Caller is expected to gate `recentVals.length >= 5` before passing.
+  const recentSlice = (recentVals && recentVals.length >= 5)
+    ? recentVals.slice(0, Math.min(10, recentVals.length))
+    : gameValues.slice(0, Math.min(10, gameValues.length));
   const meanRecent = recentSlice.reduce((a, b) => a + b, 0) / recentSlice.length;
   const meanAll = gameValues.reduce((a, b) => a + b, 0) / gameValues.length;
   const variance = gameValues.reduce((a, b) => a + (b - meanAll) ** 2, 0) / gameValues.length;

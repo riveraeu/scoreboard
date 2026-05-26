@@ -1086,6 +1086,7 @@ export async function buildMlbByteam(cache) {
       gameTime: event.date || null,
       homeRecord: pickRecord(homeComp.records),
       awayRecord: pickRecord(awayComp.records),
+      seasonType: event.season?.type ?? null,
     };
   }
   const [lineupResult, pitcherResult] = await Promise.all([buildLineupKPct(mlbSched), buildPitcherKPct(mlbSched)]);

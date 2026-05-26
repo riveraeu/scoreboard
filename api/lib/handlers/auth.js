@@ -151,9 +151,14 @@ export async function handleAuthRoutes(ctx) {
     // version toggle landed have no `modelVersion` field and are treated as v1 for grouping.
     const _calibModelFilter = (params.get("modelVersion") || "all").toLowerCase();
     const _normModelV = (p) => p.modelVersion === "v2" ? "v2" : "v1";
+    // Optional filter: ?seasonType=2|3|all (default "all"). 2=regular season, 3=postseason
+    // (ESPN convention). Picks tracked before 2026-05-26 have no `seasonType` field and
+    // are bucketed as "unknown". Stamped server-side from gameScores at emission time.
+    const _calibSeasonFilter = (params.get("seasonType") || "all").toLowerCase();
+    const _normSeasonT = (p) => p.seasonType === 3 ? "postseason" : p.seasonType === 2 ? "rs" : "unknown";
     const keysRes = await fetch(upUrl, { method: "POST", headers: { Authorization: upAuth, "Content-Type": "application/json" }, body: JSON.stringify(["KEYS", "picks:*"]) });
     const { result: picksKeys } = await keysRes.json();
-    if (!picksKeys || picksKeys.length === 0) return jsonResponse({ totalPicks: 0, finalizedPicks: 0, overall: [], byCategory: {}, byModelVersion: { v1: { n: 0, finalized: 0 }, v2: { n: 0, finalized: 0 } } });
+    if (!picksKeys || picksKeys.length === 0) return jsonResponse({ totalPicks: 0, finalizedPicks: 0, overall: [], byCategory: {}, byModelVersion: { v1: { n: 0, finalized: 0 }, v2: { n: 0, finalized: 0 } }, bySeasonType: { rs: { n: 0, finalized: 0 }, postseason: { n: 0, finalized: 0 }, unknown: { n: 0, finalized: 0 } } });
     const _allPicksRaw = [];
     await Promise.all((picksKeys || []).map(async key => {
       const data = await CACHE2.get(key, "json").catch(() => null);
@@ -170,9 +175,23 @@ export async function handleAuthRoutes(ctx) {
       const d = byModelVersion[mv];
       d.hitRate = d.finalized > 0 ? parseFloat((d.wins / d.finalized * 100).toFixed(1)) : null;
     }
-    const allPicks = _calibModelFilter === "all"
+    const bySeasonType = { rs: { n: 0, finalized: 0, wins: 0 }, postseason: { n: 0, finalized: 0, wins: 0 }, unknown: { n: 0, finalized: 0, wins: 0 } };
+    for (const p of _allPicksRaw) {
+      const st = _normSeasonT(p);
+      bySeasonType[st].n++;
+      if (p.result === "won" || p.result === "lost") bySeasonType[st].finalized++;
+      if (p.result === "won") bySeasonType[st].wins++;
+    }
+    for (const st of ["rs", "postseason", "unknown"]) {
+      const d = bySeasonType[st];
+      d.hitRate = d.finalized > 0 ? parseFloat((d.wins / d.finalized * 100).toFixed(1)) : null;
+    }
+    const _picksAfterModel = _calibModelFilter === "all"
       ? _allPicksRaw
       : _allPicksRaw.filter(p => _normModelV(p) === (_calibModelFilter === "v2" ? "v2" : "v1"));
+    const allPicks = _calibSeasonFilter === "all"
+      ? _picksAfterModel
+      : _picksAfterModel.filter(p => _normSeasonT(p) === (_calibSeasonFilter === "3" || _calibSeasonFilter === "postseason" ? "postseason" : _calibSeasonFilter === "2" || _calibSeasonFilter === "rs" ? "rs" : "unknown"));
     const finalized = allPicks.filter(p => p.result === "won" || p.result === "lost");
     const _buckets = [
       { label: "70-75", min: 70, max: 75 },
@@ -417,7 +436,7 @@ export async function handleAuthRoutes(ctx) {
       };
     }
 
-    return jsonResponse({ totalPicks: allPicks.length, finalizedPicks: finalized.length, overall, byCategory, byCategoryDetail, byModelVersion, modelFilter: _calibModelFilter, kStrikeouts: { bySimScore, byKpctPts, byKTrendPts, byStdBF, n: ksFinalized.length }, ...(_sliceExtras ? { dcPenaltySlice: _sliceExtras } : {}), ...(_tailSlice ? { tailTotalsSlice: _tailSlice } : {}) });
+    return jsonResponse({ totalPicks: allPicks.length, finalizedPicks: finalized.length, overall, byCategory, byCategoryDetail, byModelVersion, bySeasonType, modelFilter: _calibModelFilter, seasonFilter: _calibSeasonFilter, kStrikeouts: { bySimScore, byKpctPts, byKTrendPts, byStdBF, n: ksFinalized.length }, ...(_sliceExtras ? { dcPenaltySlice: _sliceExtras } : {}), ...(_tailSlice ? { tailTotalsSlice: _tailSlice } : {}) });
   }
 
   return null;
