@@ -525,38 +525,67 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                         </span>
                       )}
                     </div>
-                    {/* Row 2a: subtitle (bet description) — clipped, never wraps */}
-                    <div style={{minWidth:0,display:"flex",alignItems:"center",lineHeight:1.4,gap:5,whiteSpace:"nowrap",overflow:"hidden"}}>
-                      {pick.gameType !== "total" && pick.gameType !== "teamTotal" && pick.gameType !== "ml" && pick.gameType !== "spread" && (
-                        <span style={{color:"#8b949e",fontSize:10,flexShrink:0}}>
-                          {pick.playerTeam} vs {pick.opponent}
-                        </span>
-                      )}
-                      <span style={{color:"#58a6ff",fontWeight:600,fontSize:10,overflow:"hidden",textOverflow:"ellipsis"}}>
-                        {pick.gameType === "teamTotal"
-                          ? `${pick.direction === "under" ? "Under" : "Over"} ${(pick.threshold-0.5).toFixed(1)} ${({teamRuns:"Runs",teamPoints:"Pts"})[pick.stat]||pick.stat}`
-                          : pick.gameType === "total"
-                          ? `${pick.direction === "under" ? "Under" : "Over"} ${(pick.threshold-0.5).toFixed(1)} ${({totalRuns:"Runs",totalPoints:"Pts",totalGoals:"Goals"})[pick.stat]||pick.stat}`
-                          : pick.gameType === "ml"
-                          ? `Moneyline`
-                          : pick.gameType === "spread"
-                          ? `${pick.pickLine > 0 ? "+" : ""}${pick.pickLine} Spread`
-                          : `${pick.threshold}+ ${STAT_LABEL[pick.stat] || pick.stat}`}
-                      </span>
-                    </div>
-                    {/* Row 2b: odds · true% — stake (stake pinned right) */}
-                    <div style={{minWidth:0,display:"flex",alignItems:"center",lineHeight:1.4,gap:4,whiteSpace:"nowrap"}}>
-                      <span style={{color:"#a855f7",fontSize:10}}>{oddsStr}</span>
-                      <span style={{color:"#484f58",fontSize:10}}>·</span>
-                      <span style={{color:"#e3b341",fontSize:10}}>{pick.direction === "under" ? (pick.noTruePct ?? pick.truePct) : pick.truePct}%</span>
-                      <span style={{display:"inline-flex",alignItems:"center",marginLeft:"auto"}}>
-                        <span style={{color:"#484f58",fontSize:10}}>$</span>
-                        <input type="number" min="0" step="0.1" value={units}
-                          onChange={e => setPickUnits(pick.id, e.target.value)}
-                          style={{background:"transparent",border:"none",outline:"none",color:"#c9d1d9",
-                            fontSize:10,width:46,padding:"0 2px",textAlign:"left"}}/>
-                      </span>
-                    </div>
+                    {/* Row 2 — bet description + odds · true% · stake. On desktop, all on one
+                        line (threshold left, odds/true%/stake right). On mobile, split into 2a
+                        (description) and 2b (odds/stake) so nothing wraps in the narrow column. */}
+                    {(() => {
+                      const subtitleEl = (
+                        <>
+                          {pick.gameType !== "total" && pick.gameType !== "teamTotal" && pick.gameType !== "ml" && pick.gameType !== "spread" && (
+                            <span style={{color:"#8b949e",fontSize:10,flexShrink:0}}>
+                              {pick.playerTeam} vs {pick.opponent}
+                            </span>
+                          )}
+                          <span style={{color:"#58a6ff",fontWeight:600,fontSize:10,overflow:"hidden",textOverflow:"ellipsis"}}>
+                            {pick.gameType === "teamTotal"
+                              ? `${pick.direction === "under" ? "Under" : "Over"} ${(pick.threshold-0.5).toFixed(1)} ${({teamRuns:"Runs",teamPoints:"Pts"})[pick.stat]||pick.stat}`
+                              : pick.gameType === "total"
+                              ? `${pick.direction === "under" ? "Under" : "Over"} ${(pick.threshold-0.5).toFixed(1)} ${({totalRuns:"Runs",totalPoints:"Pts",totalGoals:"Goals"})[pick.stat]||pick.stat}`
+                              : pick.gameType === "ml"
+                              ? `Moneyline`
+                              : pick.gameType === "spread"
+                              ? `${pick.pickLine > 0 ? "+" : ""}${pick.pickLine} Spread`
+                              : `${pick.threshold}+ ${STAT_LABEL[pick.stat] || pick.stat}`}
+                          </span>
+                        </>
+                      );
+                      const oddsTpStakeEl = (
+                        <>
+                          <span style={{color:"#a855f7",fontSize:10}}>{oddsStr}</span>
+                          <span style={{color:"#484f58",fontSize:10}}>·</span>
+                          <span style={{color:"#e3b341",fontSize:10}}>{pick.direction === "under" ? (pick.noTruePct ?? pick.truePct) : pick.truePct}%</span>
+                          <span style={{display:"inline-flex",alignItems:"center",marginLeft:"auto"}}>
+                            <span style={{color:"#484f58",fontSize:10}}>$</span>
+                            <input type="number" min="0" step="0.1" value={units}
+                              onChange={e => setPickUnits(pick.id, e.target.value)}
+                              style={{background:"transparent",border:"none",outline:"none",color:"#c9d1d9",
+                                fontSize:10,width:46,padding:"0 2px",textAlign:"left"}}/>
+                          </span>
+                        </>
+                      );
+                      if (isMobile) {
+                        return (
+                          <>
+                            <div style={{minWidth:0,display:"flex",alignItems:"center",lineHeight:1.4,gap:5,whiteSpace:"nowrap",overflow:"hidden"}}>
+                              {subtitleEl}
+                            </div>
+                            <div style={{minWidth:0,display:"flex",alignItems:"center",lineHeight:1.4,gap:4,whiteSpace:"nowrap"}}>
+                              {oddsTpStakeEl}
+                            </div>
+                          </>
+                        );
+                      }
+                      // Desktop: single row — threshold/description, then odds · true%, then
+                      // stake pinned right. marginLeft:auto on the stake group still aligns it
+                      // to the far right thanks to the flex container's full width.
+                      return (
+                        <div style={{minWidth:0,display:"flex",alignItems:"center",lineHeight:1.4,gap:6,whiteSpace:"nowrap",overflow:"hidden"}}>
+                          {subtitleEl}
+                          <span style={{color:"#484f58",fontSize:10,marginLeft:4}}>·</span>
+                          {oddsTpStakeEl}
+                        </div>
+                      );
+                    })()}
                     {/* Edit mode: full inline form */}
                     {editPickId === pick.id && (() => {
                       const SPORT_STATS_EDIT = {
