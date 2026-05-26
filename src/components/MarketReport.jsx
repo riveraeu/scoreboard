@@ -713,7 +713,7 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                             {_colTip && <Tip tip={_colTip} stopPropagation style={{marginLeft:3,fontSize:9,color:"#484f58",cursor:"pointer"}}>ⓘ</Tip>}
                           </div>;
                         };
-                        const _oppFlex = 2;
+                        const _oppFlex = 1;
                         return <React.Fragment>
                           <div style={{overflowX:"auto"}}>
                           <div style={{minWidth:680}}>
