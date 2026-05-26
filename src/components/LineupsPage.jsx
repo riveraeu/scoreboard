@@ -393,13 +393,20 @@ export default function LineupsPage({
           color: showPicksDrawer ? '#58a6ff' : '#484f58', fontWeight: 600,
           display: 'flex', alignItems: 'center', gap: 4 }}>
         <span style={{ color: '#e3b341' }}>★</span> Picks
-        {tonightPlays.length > 0 && (
-          <span title="Qualified plays" style={{ background: 'rgba(63,185,80,0.12)', border: '1px solid rgba(63,185,80,0.3)',
-            color: '#3fb950', fontSize: 9, fontWeight: 700,
-            borderRadius: 8, padding: '0 4px', lineHeight: '14px' }}>
-            {tonightPlays.length}
-          </span>
-        )}
+        {(() => {
+          // Sum the per-day untracked-visible counts so the green badge matches day-tab
+          // semantics (untracked picks remaining to consider, dedup-aware). Was previously
+          // tonightPlays.length which is strict-qualified count and doesn't account for
+          // dedup hides or tracked-but-low-dc visibility — out of sync with day tabs.
+          const untracked = Object.values(qualifiedByDay).reduce((a, b) => a + b, 0);
+          return untracked > 0 && (
+            <span title="Untracked picks remaining" style={{ background: 'rgba(63,185,80,0.12)', border: '1px solid rgba(63,185,80,0.3)',
+              color: '#3fb950', fontSize: 9, fontWeight: 700,
+              borderRadius: 8, padding: '0 4px', lineHeight: '14px' }}>
+              {untracked}
+            </span>
+          );
+        })()}
         {activePicks.length > 0 && (
           <span title="Tracked picks" style={{ background: 'rgba(227,179,65,0.12)', border: '1px solid rgba(227,179,65,0.3)',
             color: '#e3b341', fontSize: 9, fontWeight: 700,
