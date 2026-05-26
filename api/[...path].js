@@ -3388,7 +3388,20 @@ var worker_default = {
             for (const other of (_preDedupSkPlays[k] || [])) {
               if (_existingSkKeys.has(`${other.playerTeam}|${other.gameDate}|${other.threshold}`)) continue;
               const _truePct = _dist ? kDistPct(_dist, other.threshold) : other.truePct;
-              _extraSkPlays.push({ ...other, qualified: false, truePct: _truePct ?? other.truePct, simPct: _truePct ?? other.simPct, edge: _truePct != null ? parseFloat((_truePct - other.kalshiPct).toFixed(1)) : other.edge });
+              // Apply the seasonRate blend (same shape as the IIFE/monotonicity step) so the
+              // qualified:false extras shown on the player card have blended truePct too.
+              let _blendedTp = _truePct;
+              if (_truePct != null) {
+                const _refRate = (other.softPct != null && other.seasonPct != null)
+                  ? (other.seasonPct + other.softPct) / 2
+                  : other.seasonPct;
+                const _sample = other.seasonGames ?? 0;
+                const _w = Math.min(1, _sample / 20) * 0.5;
+                if (_w > 0 && _refRate != null) {
+                  _blendedTp = parseFloat(((1 - _w) * _truePct + _w * _refRate).toFixed(1));
+                }
+              }
+              _extraSkPlays.push({ ...other, qualified: false, truePct: _blendedTp ?? other.truePct, simPct: _truePct ?? other.simPct, edge: _blendedTp != null ? parseFloat((_blendedTp - other.kalshiPct).toFixed(1)) : other.edge });
               _existingSkKeys.add(`${other.playerTeam}|${other.gameDate}|${other.threshold}`);
             }
           }
@@ -3414,12 +3427,23 @@ var worker_default = {
             const _dist = pitcherKDistCache[`${_pTeam}|${_hand}`];
             if (_dist) {
               // Re-derive all thresholds from the shared distribution — guarantees distinct monotonic values.
+              // Re-apply the seasonRate blend that buildTruePct already applies in the IIFE — otherwise
+              // this step overwrites it with raw sim, which is exactly the bug that made Peterson's
+              // 89.3% truePct lock in despite seasonPct=54.5% (audit 2026-05-26).
               for (const play of group) {
                 const _recomp = kDistPct(_dist, play.threshold);
                 if (_recomp != null) {
-                  play.truePct = _recomp;
                   play.simPct = _recomp;
-                  play.edge = parseFloat((_recomp - play.kalshiPct).toFixed(1));
+                  const _refRate = (play.softPct != null && play.seasonPct != null)
+                    ? (play.seasonPct + play.softPct) / 2
+                    : play.seasonPct;
+                  const _sample = play.seasonGames ?? 0;
+                  const _w = Math.min(1, _sample / 20) * 0.5;
+                  const _blended = (_w > 0 && _refRate != null)
+                    ? (1 - _w) * _recomp + _w * _refRate
+                    : _recomp;
+                  play.truePct = parseFloat(_blended.toFixed(1));
+                  play.edge = parseFloat((play.truePct - play.kalshiPct).toFixed(1));
                 }
               }
             } else {
