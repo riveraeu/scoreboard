@@ -335,27 +335,33 @@ export function kDistPct(dist, threshold) {
 // effect, way under the ~±10% possession swings real NBA matchups exhibit.
 export function buildNbaStatDist(gameValues, dvpFactor, paceAdj, isB2B, nSim = 5000, miscAdj = 1.0, paceFactor = null, recentVals = null) {
   if (gameValues.length < 5) return null;
-  // Mean from recent 10 (recency), std from full season (stability). When `recentVals` is
-  // provided (playoff-aware path, added 2026-05-26), it's a regime-specific subset (e.g.
-  // playoff-only games). Caller gates `recentVals.length >= 5` before passing.
+  // Mean from recent 10 with **exponential-decay recency weighting** (added 2026-05-26 same
+  // day as the playoff filter + Bayesian shrinkage). Flat-10 averaging treats a hot game from
+  // 8 days ago the same as last night's cold game; exp-decay with HALF_LIFE games half-weights
+  // a game from HALF_LIFE games back, surfacing recent regime shifts (slumps, hot streaks).
+  // HALF_LIFE=5: most-recent game weight 1.0, 5 games back 0.50, 10 games back 0.25. Std/var
+  // still come from the full sample for stability — exp-decaying variance over-fits to noise.
   //
-  // **Bayesian shrinkage (added 2026-05-26)**: a 7-game playoff sample has sample-mean std
-  // ≈ std/sqrt(7) — too noisy to trust as ground truth. We shrink the playoff mean toward
-  // the flat-10 mixed slice with `w = n_playoff / (n_playoff + PLAYOFF_PRIOR_N)`. Effects:
-  //   n=5  → w=0.33 (heavy shrinkage to mixed)
-  //   n=7  → w=0.41
-  //   n=10 → w=0.50
-  //   n=20 → w=0.67
-  //   n=∞  → w→1.0 (no shrinkage when sample is huge)
-  // PLAYOFF_PRIOR_N=10 means "trust the mixed-recency baseline as much as 10 playoff games".
-  // Tunable below; raise to be more conservative, lower to trust playoffs more.
+  // Combined with the existing Bayesian playoff shrinkage: each slice (playoff-only and
+  // mixed-flat-10) is collapsed to a weighted mean first, then the playoff/mixed means are
+  // blended with `w = n_playoff / (n_playoff + 10)`.
+  const HALF_LIFE = 5;
+  const _DECAY = Math.log(2) / HALF_LIFE;
+  const _weightedMean = (vals) => {
+    const n = Math.min(10, vals.length);
+    let sumW = 0, sumWV = 0;
+    for (let i = 0; i < n; i++) {
+      const w = Math.exp(-_DECAY * i); // i=0 = most recent
+      sumW += w;
+      sumWV += w * vals[i];
+    }
+    return sumWV / sumW;
+  };
   const PLAYOFF_PRIOR_N = 10;
-  const mixedSlice = gameValues.slice(0, Math.min(10, gameValues.length));
-  const meanMixed = mixedSlice.reduce((a, b) => a + b, 0) / mixedSlice.length;
+  const meanMixed = _weightedMean(gameValues);
   let meanRecent;
   if (recentVals && recentVals.length >= 5) {
-    const playoffSlice = recentVals.slice(0, Math.min(10, recentVals.length));
-    const meanPlayoff = playoffSlice.reduce((a, b) => a + b, 0) / playoffSlice.length;
+    const meanPlayoff = _weightedMean(recentVals);
     const w = recentVals.length / (recentVals.length + PLAYOFF_PRIOR_N);
     meanRecent = meanPlayoff * w + meanMixed * (1 - w);
   } else {
