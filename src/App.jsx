@@ -5,6 +5,7 @@ import { useIsMobile } from './lib/hooks.js';
 import { useTonight } from './lib/useTonight.js';
 import { useSavePicks } from './lib/useSavePicks.js';
 import { useLiveStats } from './lib/useLiveStats.js';
+import { usePicks } from './lib/usePicks.js';
 import InputList from './components/InputList.jsx';
 import { buildLambdaInputs, buildModelOutput } from './lib/lambdaInputs.js';
 import { tierColor } from './lib/colors.js';
@@ -62,36 +63,8 @@ function App() {
   const [calibData, setCalibData] = React.useState(null);
   const [calibLoading, setCalibLoading] = React.useState(false);
   const [gamelogSort, setGamelogSort] = React.useState({ col: 'date', dir: 'desc' });
-  // Stake sizing — flat ⅛-Kelly for every play, 1u ($30) when Kelly can't compute,
-  // $500 hard cap to bound tail risk on rare huge-Kelly recommendations.
-  const UNIT_DOLLARS = 30;
-  const STAKE_CAP = 500;
-  const unitsForPlay = (play) => {
-    const e = play?.edge ?? null;
-    // Kelly inputs. UNDER direction uses noTruePct so the probability matches the side taken.
-    const truePct = play?.direction === "under" ? (play?.noTruePct ?? play?.truePct) : play?.truePct;
-    const ao = play?.americanOdds;
-    const kFrac = e == null ? null : 0.125;
-    if (kFrac != null && truePct != null && ao != null && ao !== 0) {
-      const b = ao > 0 ? ao / 100 : 100 / Math.abs(ao);
-      const p = truePct / 100;
-      const f = Math.max(0, (b * p - (1 - p)) / b);
-      const stake = bankroll * f * kFrac;
-      if (stake > 0) return Math.round(Math.min(stake, STAKE_CAP));
-    }
-
-    // Fallback when Kelly can't compute (missing truePct/odds, or Kelly = 0).
-    return Math.round(Math.min(UNIT_DOLLARS, STAKE_CAP));
-  };
   const kalshiCache = React.useRef({}); // memoize Kalshi fetches by "playerName|sport|stat"
   const [expandedPlays, setExpandedPlays] = React.useState(new Set());
-  // Picks are server-authoritative. Initial state is empty; the server-load effect below
-  // fills it (and runs a one-time migration to push any legacy localStorage picks up before
-  // dropping localStorage as a picks store entirely).
-  const [trackedPlays, setTrackedPlays] = React.useState([]);
-  const [bankroll, setBankrollState] = React.useState(() => {
-    return parseFloat(localStorage.getItem("scoreboard_bankroll") || "1000");
-  });
   const [chartMonth, setChartMonth] = React.useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
@@ -120,13 +93,7 @@ function App() {
   const syncTimer = React.useRef(null);
   const fabRef = React.useRef(null);
   const picksLoaded = React.useRef(!localStorage.getItem("sb_token")); // true if no token (no server load needed)
-  // trackedPlaysRef/bankrollRef mirror state so the useSavePicks retry path reads the latest
-  // values, not a stale closure from when the in-flight save fired.
-  const trackedPlaysRef = React.useRef([]);
-  const bankrollRef = React.useRef(null);
-  const { savePicks, syncStatus, setSyncStatus, primeSync, resetSync } = useSavePicks({
-    getCurrent: () => ({ picks: trackedPlaysRef.current, bankroll: bankrollRef.current }),
-  });
+  // usePicks + useSavePicks are called below after useTonight (they need meta + each other's refs).
   const debouncedQuery = useDebounce(query, 300);
   const dropRef = React.useRef(null);
   const inputRef = React.useRef(null);
@@ -246,84 +213,17 @@ function App() {
     bustCache, bustLoading,
   } = useTonight(_qualifiedFilter);
 
+  const {
+    trackedPlays, setTrackedPlays,
+    bankroll, setBankrollState, setBankroll,
+    unitsForPlay,
+    trackPlay, untrackPlay, setPlayResult, setPickUnits,
+    trackedPlaysRef, bankrollRef,
+  } = usePicks({ mlbMeta, nbaMeta, wnbaMeta, nhlMeta });
 
-  function setBankroll(val) {
-    const n = Math.max(1, parseFloat(val) || 0);
-    setBankrollState(n);
-    localStorage.setItem("scoreboard_bankroll", String(n));
-  }
-  function trackPlay(play) {
-    const id = play.gameType === "teamTotal"
-      ? `teamtotal|${play.sport}|${play.scoringTeam}|${play.oppTeam}|${play.threshold}|${play.gameDate || ""}${play.direction === "under" ? "|under" : ""}`
-      : play.gameType === "total"
-      ? `total|${play.sport}|${play.homeTeam}|${play.awayTeam}|${play.threshold}|${play.gameDate || ""}${play.direction === "under" ? "|under" : ""}`
-      : play.gameType === "ml"
-      ? `ml|${play.sport}|${play.pickTeam}|${play.homeTeam}|${play.awayTeam}|${play.gameDate || ""}`
-      : play.gameType === "spread"
-      ? `spread|${play.sport}|${play.pickTeam}|${play.homeTeam}|${play.awayTeam}|${play.pickLine}|${play.gameDate || ""}`
-      : `${play.sport || "nba"}|${play.playerName}|${play.stat}|${play.threshold}|${play.gameDate || ""}`;
-    const savedOdds = play.americanOdds ?? -110;
-    // Recompute implied%, edge, and units from savedOdds. When the user overrides odds
-    // via the pendingOdds dialog (e.g. takes -250 at sportsbook vs -350 at Kalshi),
-    // the saved pick's edge/kalshiPct must reflect the price actually taken — otherwise
-    // unitsForPlay reads the stale Kalshi edge and the bet is sized for the wrong band.
-    const impliedFromOdds = savedOdds < 0
-      ? Math.abs(savedOdds) / (Math.abs(savedOdds) + 100) * 100
-      : 100 / (savedOdds + 100) * 100;
-    const newKalshiPct = parseFloat(impliedFromOdds.toFixed(1));
-    const truePct = play.direction === "under" ? (play.noTruePct ?? play.truePct) : play.truePct;
-    const newEdge = truePct != null ? parseFloat((truePct - newKalshiPct).toFixed(1)) : (play.edge ?? null);
-    // Stamp modelVersion:"v2" so /api/auth/calibration can split historical (pre-v2-drop)
-    // vs current outcomes. Without the stamp, post-drop picks would be treated as v1.
-    // Live tracking requires { playerTeam, opponent } (or for totals: { homeTeam, awayTeam } /
-    // { scoringTeam, oppTeam }) to build a `sport:team:opp` key for /api/live, and the pick
-    // card's live progress bar is gated on pick.gameTime. /api/tonight-derived picks have
-    // these; manual picks from AddPickModal don't — backfill from gameScores here so the
-    // pick is fully resolvable from the moment it's saved.
-    let extras = {};
-    const scoresMap = play.sport === "mlb" ? mlbMeta?.gameScores
-                    : play.sport === "nba" ? nbaMeta?.gameScores
-                    : play.sport === "wnba" ? wnbaMeta?.gameScores
-                    : play.sport === "nhl" ? nhlMeta?.gameScores
-                    : null;
-    if (scoresMap) {
-      let matchedGame = null;
-      if ((play.gameType === "total" || play.gameType === "ml" || play.gameType === "spread") && play.homeTeam) {
-        matchedGame = scoresMap[play.homeTeam] ||
-          Object.values(scoresMap).find(g => g?.homeTeam === play.homeTeam && g?.awayTeam === play.awayTeam) ||
-          null;
-      } else if (play.gameType === "teamTotal" && play.scoringTeam) {
-        matchedGame = scoresMap[play.scoringTeam] ||
-          Object.values(scoresMap).find(g =>
-            (g?.homeTeam === play.scoringTeam && g?.awayTeam === play.oppTeam) ||
-            (g?.awayTeam === play.scoringTeam && g?.homeTeam === play.oppTeam)
-          ) || null;
-      } else if (!play.gameType && play.playerTeam) {
-        for (const g of Object.values(scoresMap)) {
-          if (g?.homeTeam === play.playerTeam || g?.awayTeam === play.playerTeam) { matchedGame = g; break; }
-        }
-        if (matchedGame && !play.opponent) {
-          extras.opponent = matchedGame.homeTeam === play.playerTeam ? matchedGame.awayTeam : matchedGame.homeTeam;
-        }
-      }
-      if (matchedGame) {
-        if (!play.gameTime && matchedGame.gameTime) extras.gameTime = matchedGame.gameTime;
-        // For teamTotal, surface homeTeam/awayTeam too — used by some UI paths and consistent
-        // with /api/tonight-derived picks.
-        if (play.gameType === "teamTotal") {
-          if (!play.homeTeam && matchedGame.homeTeam) extras.homeTeam = matchedGame.homeTeam;
-          if (!play.awayTeam && matchedGame.awayTeam) extras.awayTeam = matchedGame.awayTeam;
-        }
-      }
-    }
-    const enriched = { ...play, ...extras, americanOdds: savedOdds, kalshiPct: newKalshiPct, edge: newEdge, modelVersion: "v2" };
-    setTrackedPlays(prev => {
-      if (prev.find(p => p.id === id)) return prev;
-      return [{ ...enriched, id, trackedAt: Date.now(), result: null,
-        units: unitsForPlay(enriched),
-      }, ...prev];
-    });
-  }
+  const { savePicks, syncStatus, setSyncStatus, primeSync, resetSync } = useSavePicks({
+    getCurrent: () => ({ picks: trackedPlaysRef.current, bankroll: bankrollRef.current }),
+  });
   function initiateTrack(play, event) {
     if (event) {
       const rect = event.currentTarget.getBoundingClientRect();
@@ -357,20 +257,6 @@ function App() {
     const wk = mon.toLocaleDateString("en-CA");
     setOpenPickDays(prev => new Set([...prev, dk]));
     setOpenPickWeeks(prev => new Set([...prev, wk]));
-  }
-  function untrackPlay(id) {
-    setTrackedPlays(prev => prev.filter(p => p.id !== id));
-  }
-  function setPlayResult(id, result) {
-    setTrackedPlays(prev => prev.map(p => {
-      if (p.id !== id) return p;
-      // Send outcome to feedback loop — updates per-sport/stat calibration in worker
-      return { ...p, result };
-    }));
-  }
-  function setPickUnits(id, units) {
-    const u = Math.max(0, parseFloat(units) || 0);
-    setTrackedPlays(prev => prev.map(p => p.id === id ? { ...p, units: u } : p));
   }
   // P&L helpers (American odds → decimal profit multiplier on stake)
   function oddsToProfit(americanOdds) {
@@ -437,9 +323,6 @@ function App() {
     return () => clearTimeout(syncTimer.current);
   }, [trackedPlays, bankroll, authToken]);
 
-  // Mirror state into refs so a follow-up save after an inflight one reads the latest values.
-  React.useEffect(() => { trackedPlaysRef.current = trackedPlays; }, [trackedPlays]);
-  React.useEffect(() => { bankrollRef.current = bankroll; }, [bankroll]);
 
   // Flush pending picks before the tab is hidden/closed — covers the case where the user
   // taps star then immediately backgrounds the app on mobile (Safari/iOS may not fire
