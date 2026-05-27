@@ -2,6 +2,7 @@ import React from 'react';
 import { WORKER, SPORTS, STAT_FULL, MLB_TEAM, TEAM_DB, TOTAL_THRESHOLDS, STAT_LABEL, SPORT_KEY, SPORT_BADGE_COLOR, GAMELOG_COLS } from './lib/constants.js';
 import { ordinal, slugify, teamUrl } from './lib/utils.js';
 import { useIsMobile } from './lib/hooks.js';
+import { useTonight } from './lib/useTonight.js';
 import InputList from './components/InputList.jsx';
 import { buildLambdaInputs, buildModelOutput } from './lib/lambdaInputs.js';
 import { buildLiveGameKey, getPickCurrentStat, findLivePlayer, resolveTotalGameScore, pitcherIsOut } from './lib/liveStats.js';
@@ -43,17 +44,7 @@ function App() {
   const [direction, setDirection] = React.useState("over"); // "over" | "under"
   const [editPickId, setEditPickId] = React.useState(null); // pick.id being edited
   const [searching, setSearching] = React.useState(false);
-  const [tonightPlays, setTonightPlays] = React.useState(null);
-  const [allTonightPlays, setAllTonightPlays] = React.useState(null); // unfiltered — includes qualified:false, used for player card truePct lookup
-  const [nbaDropped, setNbaDropped] = React.useState(null); // NBA opp_not_soft drops — used for player card explanation when play didn't qualify
-  const [tonightLoading, setTonightLoading] = React.useState(true);
-  const [tonightMeta, setTonightMeta] = React.useState(null);
-  const [mlbMeta, setMlbMeta] = React.useState(null); // pitchers, ML odds, umpires, weather
-  const [mlbMetaTomorrow, setMlbMetaTomorrow] = React.useState(null); // tomorrow's probables + umpires
-  const [nbaMeta, setNbaMeta] = React.useState(null); // NBA game odds + injuries + gameScores
-  const [wnbaMeta, setWnbaMeta] = React.useState(null); // WNBA game odds + injuries + gameScores
-  const [nhlMeta, setNhlMeta] = React.useState(null); // NHL gameScores
-  const [bustLoading, setBustLoading] = React.useState(false);
+  // tonight fetch/poll/visibility state lives in useTonight() — called below after _qualifiedFilter is defined.
 
   const [sportFilter, setSportFilter] = React.useState([]); // empty = all sports
   const [statFilter, setStatFilter] = React.useState([]);  // empty = all stats
@@ -254,62 +245,12 @@ function App() {
     if (p.dcQualified !== true || (p.edge ?? 0) < EDGE_GATE) return false;
     return (p.dataConfidence ?? 0) === 10;
   }, []);
-  // Fetch tonight's plays on mount + poll every 2min to align with Kalshi snap cron.
-  // Initial fetch no-busts: snap-first server path delivers warm-cached response in a few
-  // hundred ms (vs ~5-8s with bust=1). The 2min snap cron is the effective freshness
-  // ceiling regardless, so busting on mount doesn't buy anything the snap doesn't already
-  // provide. Polling pauses when the tab is hidden and fires an immediate catch-up fetch
-  // on visibility resume so users returning after a long idle don't wait up to 2min.
-  // Manual ↻ button (bustCache below) is the only path that still uses ?bust=1.
-  React.useEffect(() => {
-    const _applyData = (data) => { const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(_qualifiedFilter)); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); if (data.mlbMeta) setMlbMeta(data.mlbMeta); if (data.mlbMetaTomorrow) setMlbMetaTomorrow(data.mlbMetaTomorrow); if (data.nbaMeta) setNbaMeta(data.nbaMeta); if (data.wnbaMeta) setWnbaMeta(data.wnbaMeta); if (data.nhlMeta) setNhlMeta(data.nhlMeta); };
-    let cancelled = false;
-    let intervalId = null;
-    const POLL_MS = 120_000;
-    const doFetch = (isInitial) => {
-      if (cancelled) return;
-      if (isInitial) setTonightLoading(true);
-      fetch(`${WORKER}/tonight`)
-        .then(r => r.json())
-        .then(data => { if (cancelled) return; _applyData(data); if (isInitial) setTonightLoading(false); })
-        .catch(() => { if (cancelled || !isInitial) return; setAllTonightPlays([]); setNbaDropped([]); setTonightPlays([]); setTonightLoading(false); });
-    };
-    const startPolling = () => {
-      if (intervalId != null) return;
-      intervalId = setInterval(() => doFetch(false), POLL_MS);
-    };
-    const stopPolling = () => {
-      if (intervalId == null) return;
-      clearInterval(intervalId);
-      intervalId = null;
-    };
-    const onVisibility = () => {
-      if (document.visibilityState === "visible") {
-        doFetch(false);
-        startPolling();
-      } else {
-        stopPolling();
-      }
-    };
-    doFetch(true);
-    if (document.visibilityState === "visible") startPolling();
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      cancelled = true;
-      stopPolling();
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, []);
-
-  const bustCache = () => {
-    if (bustLoading) return;
-    setBustLoading(true);
-    setTonightLoading(true);
-    fetch(`${WORKER}/tonight?bust=1`)
-      .then(r => r.json())
-      .then(data => { const all = data.plays || []; setAllTonightPlays(all); setNbaDropped(data.nbaDropped || []); setTonightPlays(all.filter(_qualifiedFilter)); setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount }); if (data.mlbMeta) setMlbMeta(data.mlbMeta); if (data.mlbMetaTomorrow) setMlbMetaTomorrow(data.mlbMetaTomorrow); if (data.nbaMeta) setNbaMeta(data.nbaMeta); if (data.wnbaMeta) setWnbaMeta(data.wnbaMeta); if (data.nhlMeta) setNhlMeta(data.nhlMeta); setTonightLoading(false); setBustLoading(false); })
-      .catch(() => { setAllTonightPlays([]); setNbaDropped([]); setTonightPlays([]); setTonightLoading(false); setBustLoading(false); });
-  };
+  const {
+    tonightPlays, allTonightPlays, nbaDropped,
+    tonightMeta, tonightLoading,
+    mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta,
+    bustCache, bustLoading,
+  } = useTonight(_qualifiedFilter);
 
 
   function setBankroll(val) {
