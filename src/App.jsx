@@ -12,6 +12,7 @@ import { useRouting } from './lib/useRouting.js';
 import { usePlayerSearch } from './lib/usePlayerSearch.js';
 import { useReportData } from './lib/useReportData.js';
 import { usePickInteractions } from './lib/usePickInteractions.js';
+import { useAuthFlow } from './lib/useAuthFlow.js';
 import InputList from './components/InputList.jsx';
 import { buildLambdaInputs, buildModelOutput } from './lib/lambdaInputs.js';
 import { tierColor } from './lib/colors.js';
@@ -83,7 +84,7 @@ function App() {
     authError, authLoading,
     authenticate, logout: authLogout, clearToken: authClearToken,
   } = useAuth();
-  const [showAuthModal, setShowAuthModal] = React.useState(false);
+  // showAuthModal + authSubmit + logout live in useAuthFlow() below.
   // live polling + auto-resolve state lives in useLiveStats() — called below after trackedPlays + meta.
   // usePicks + useSavePicks + useAuthPickSync are called below after useTonight (they need meta + each other's refs).
   const fetchRef = React.useRef(null);
@@ -148,35 +149,12 @@ function App() {
 
   const { liveStats } = useLiveStats({ trackedPlays, setTrackedPlays, mlbMeta, nbaMeta, wnbaMeta, nhlMeta });
 
-  // --- Auth ---
-  async function authSubmit(e) {
-    e.preventDefault();
-    const res = await authenticate(authMode);
-    if (!res.ok) return;
-    setShowAuthModal(false);
-    // On login: load picks from server (server is authoritative).
-    // On register: push current local picks to server.
-    if (authMode === "register") {
-      await savePicks(res.token, trackedPlays, bankroll);
-    } else {
-      const pr = await fetch(`${WORKER}/user/picks`, { headers: { "Authorization": `Bearer ${res.token}` } });
-      if (pr.ok) {
-        const pd = await pr.json();
-        setTrackedPlays(pd.picks || []);
-        if (pd.bankroll) setBankrollState(pd.bankroll);
-      }
-    }
-  }
-
-  function logout() {
-    localStorage.removeItem("scoreboard_tracked_plays");
-    localStorage.removeItem("scoreboard_bankroll");
-    authLogout();
-    setTrackedPlays([]);
-    setBankrollState(1000);
-    // Reset delta-save baseline so a re-login doesn't diff against a stale prior-user snapshot.
-    resetSync();
-  }
+  const { showAuthModal, setShowAuthModal, authSubmit, logout } = useAuthFlow({
+    authenticate, authMode, authLogout,
+    savePicks, resetSync,
+    trackedPlays, bankroll,
+    setTrackedPlays, setBankrollState,
+  });
 
   useAuthPickSync({
     authToken,
