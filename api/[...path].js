@@ -3337,21 +3337,12 @@ var worker_default = {
             (_preDedupSkPlays[k] = _preDedupSkPlays[k] || []).push(play);
           }
         }
-        // WNBA-only: tighten qualified dedup to one play per player (across stats). The highest-edge
-        // qualified play wins; the rest are demoted to qualified:false so allTonightPlays still has
-        // them for the player card, but the homepage Plays card only shows the winner.
-        const _wnbaBestByPlayer = {};
-        for (const play of plays) {
-          if (play.sport !== "wnba" || play.qualified === false) continue;
-          const k = play.playerName;
-          if (!_wnbaBestByPlayer[k] || play.edge > _wnbaBestByPlayer[k].edge) {
-            _wnbaBestByPlayer[k] = play;
-          }
-        }
-        for (const play of plays) {
-          if (play.sport !== "wnba" || play.qualified === false) continue;
-          if (_wnbaBestByPlayer[play.playerName] !== play) play.qualified = false;
-        }
+        // (Removed 2026-05-26) WNBA-only "one play per player across stats" dedup. Was setting
+        // play.qualified = false on the lower-edge stat, but post-v2 (2026-05-18) the client
+        // filter no longer reads the `qualified` field — only dcQualified, edge, dc, and
+        // _altLineDemoted. Code was a silent no-op. Both NBA and WNBA now uniformly allow
+        // multiple stats per player to qualify (e.g. Chet 10+ PTS + Chet 6+ REB,
+        // Sabally 10+ PTS + Sabally 4+ REB).
         const bestMap = {};
         for (const play of plays) {
           // qualified:false plays exist for the player card (all thresholds needed) — keep per-threshold.
