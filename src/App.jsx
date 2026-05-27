@@ -11,6 +11,7 @@ import { useAuthPickSync } from './lib/useAuthPickSync.js';
 import { useRouting } from './lib/useRouting.js';
 import { usePlayerSearch } from './lib/usePlayerSearch.js';
 import { useReportData } from './lib/useReportData.js';
+import { usePickInteractions } from './lib/usePickInteractions.js';
 import InputList from './components/InputList.jsx';
 import { buildLambdaInputs, buildModelOutput } from './lib/lambdaInputs.js';
 import { tierColor } from './lib/colors.js';
@@ -60,19 +61,21 @@ function App() {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
   });
-  const [pendingTrackPlay, setPendingTrackPlay] = React.useState(null);
-  const [pendingOdds, setPendingOdds] = React.useState("-110");
-  const [openPickDays, setOpenPickDays] = React.useState(() => new Set([new Date().toLocaleDateString("en-CA")]));
-  const [openPickWeeks, setOpenPickWeeks] = React.useState(() => {
-    const d = new Date(); const dow = d.getDay();
-    const mon = new Date(d); mon.setDate(d.getDate() - ((dow + 6) % 7));
-    return new Set([mon.toLocaleDateString("en-CA")]);
-  });
-  const [openPickMonths, setOpenPickMonths] = React.useState(() => new Set([new Date().toLocaleDateString("en-CA").slice(0, 7)]));
-  const [showAddPick, setShowAddPick] = React.useState(false);
-  const [showPicksDrawer, setShowPicksDrawer] = React.useState(false);
-  const [flyingPick, setFlyingPick] = React.useState(null);
-  const [starClickOrigin, setStarClickOrigin] = React.useState(null);
+  // pendingTrackPlay / pendingOdds / openPickDays/Weeks/Months / showAddPick /
+  // showPicksDrawer / flyingPick / starClickOrigin / fabRef + initiateTrack /
+  // triggerFlyAnimation / openPickDate all live in usePickInteractions() below.
+  const {
+    pendingTrackPlay, setPendingTrackPlay,
+    pendingOdds, setPendingOdds,
+    openPickDays, setOpenPickDays,
+    openPickWeeks, setOpenPickWeeks,
+    openPickMonths, setOpenPickMonths,
+    showAddPick, setShowAddPick,
+    showPicksDrawer, setShowPicksDrawer,
+    flyingPick, setFlyingPick,
+    fabRef,
+    initiateTrack, triggerFlyAnimation, openPickDate,
+  } = usePickInteractions();
   const {
     authToken, authEmail,
     authMode, setAuthMode,
@@ -82,7 +85,6 @@ function App() {
   } = useAuth();
   const [showAuthModal, setShowAuthModal] = React.useState(false);
   // live polling + auto-resolve state lives in useLiveStats() — called below after trackedPlays + meta.
-  const fabRef = React.useRef(null);
   // usePicks + useSavePicks + useAuthPickSync are called below after useTonight (they need meta + each other's refs).
   const fetchRef = React.useRef(null);
 
@@ -139,40 +141,6 @@ function App() {
   const { savePicks, syncStatus, setSyncStatus, primeSync, resetSync } = useSavePicks({
     getCurrent: () => ({ picks: trackedPlaysRef.current, bankroll: bankrollRef.current }),
   });
-  function initiateTrack(play, event) {
-    if (event) {
-      const rect = event.currentTarget.getBoundingClientRect();
-      setStarClickOrigin({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
-    } else {
-      setStarClickOrigin(null);
-    }
-    const odds = play.americanOdds;
-    const defaultOdds = odds != null ? (odds > 0 ? `+${odds}` : `${odds}`) : "-110";
-    setPendingOdds(defaultOdds);
-    setPendingTrackPlay(play);
-  }
-  function triggerFlyAnimation() {
-    if (!starClickOrigin || !fabRef.current) return;
-    const fabRect = fabRef.current.getBoundingClientRect();
-    setFlyingPick({
-      x: starClickOrigin.x,
-      y: starClickOrigin.y,
-      destX: fabRect.left + fabRect.width / 2,
-      destY: fabRect.top + fabRect.height / 2,
-      key: Date.now(),
-    });
-    setStarClickOrigin(null);
-  }
-  function openPickDate(gameDate) {
-    const dk = gameDate || new Date().toLocaleDateString("en-CA");
-    const [yr, mo, dy] = dk.split("-").map(Number);
-    const d = new Date(yr, mo - 1, dy);
-    const mon = new Date(d);
-    mon.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-    const wk = mon.toLocaleDateString("en-CA");
-    setOpenPickDays(prev => new Set([...prev, dk]));
-    setOpenPickWeeks(prev => new Set([...prev, wk]));
-  }
   // P&L helpers (American odds → decimal profit multiplier on stake)
   function oddsToProfit(americanOdds) {
     return americanOdds >= 0 ? americanOdds / 100 : 100 / Math.abs(americanOdds);
