@@ -3,6 +3,7 @@ import { WORKER, SPORTS, STAT_FULL, MLB_TEAM, TEAM_DB, TOTAL_THRESHOLDS, STAT_LA
 import { ordinal, slugify, teamUrl } from './lib/utils.js';
 import { useIsMobile } from './lib/hooks.js';
 import { useTonight } from './lib/useTonight.js';
+import { useSavePicks } from './lib/useSavePicks.js';
 import InputList from './components/InputList.jsx';
 import { buildLambdaInputs, buildModelOutput } from './lib/lambdaInputs.js';
 import { buildLiveGameKey, getPickCurrentStat, findLivePlayer, resolveTotalGameScore, pitcherIsOut } from './lib/liveStats.js';
@@ -115,24 +116,19 @@ function App() {
   const [authForm, setAuthForm] = React.useState({ email:"", password:"" });
   const [authError, setAuthError] = React.useState("");
   const [authLoading, setAuthLoading] = React.useState(false);
-  const [syncStatus, setSyncStatus] = React.useState(null); // "saving"|"saved"|"error"
   const [liveStats, setLiveStats] = React.useState({}); // { "sport:team1:team2|gameDate": { state, detail, players } }
   const liveIntervalRef = React.useRef(null);
   const liveMetaRef = React.useRef({ mlbMeta: null, nbaMeta: null, wnbaMeta: null, nhlMeta: null });
   const syncTimer = React.useRef(null);
   const fabRef = React.useRef(null);
   const picksLoaded = React.useRef(!localStorage.getItem("sb_token")); // true if no token (no server load needed)
-  // Delta-save bookkeeping. lastSyncedPicks is the last server-confirmed state, indexed by
-  // pick id → serialized JSON. savePicks diffs trackedPlays against this map and POSTs only
-  // the upserts/deletes. Refs (not state) so updates inside the save handler don't trigger
-  // re-renders. trackedPlaysRef/bankrollRef mirror state so a re-fired save after an inflight
-  // one reads the latest values, not a stale closure.
-  const lastSyncedPicks = React.useRef(new Map());
-  const lastSyncedBankroll = React.useRef(null);
-  const inflightSave = React.useRef(false);
-  const pendingSave = React.useRef(false);
+  // trackedPlaysRef/bankrollRef mirror state so the useSavePicks retry path reads the latest
+  // values, not a stale closure from when the in-flight save fired.
   const trackedPlaysRef = React.useRef([]);
   const bankrollRef = React.useRef(null);
+  const { savePicks, syncStatus, setSyncStatus, primeSync, resetSync } = useSavePicks({
+    getCurrent: () => ({ picks: trackedPlaysRef.current, bankroll: bankrollRef.current }),
+  });
   const debouncedQuery = useDebounce(query, 300);
   const dropRef = React.useRef(null);
   const inputRef = React.useRef(null);
@@ -660,69 +656,6 @@ function App() {
     finally { setAuthLoading(false); }
   }
 
-  // Delta save. Computes upserts/deletes against lastSyncedPicks and POSTs only the diff.
-  // Serialized via inflightSave; if a save fires while one's in flight, pendingSave is
-  // marked and a follow-up save runs after the current one with the latest state from refs
-  // (so any changes made during the in-flight request aren't lost).
-  async function savePicks(token, picks, roll) {
-    if (!token) return;
-    if (inflightSave.current) { pendingSave.current = true; return; }
-    inflightSave.current = true;
-    try {
-      const upserts = [];
-      const currentIds = new Set();
-      for (const p of picks) {
-        if (!p || !p.id) continue;
-        currentIds.add(p.id);
-        const serialized = JSON.stringify(p);
-        if (lastSyncedPicks.current.get(p.id) !== serialized) upserts.push(p);
-      }
-      const deletes = [];
-      for (const id of lastSyncedPicks.current.keys()) {
-        if (!currentIds.has(id)) deletes.push(id);
-      }
-      const bankrollChanged = roll !== lastSyncedBankroll.current;
-
-      if (upserts.length === 0 && deletes.length === 0 && !bankrollChanged) {
-        setSyncStatus("saved");
-        return;
-      }
-
-      const body = { upserts, deletes };
-      if (bankrollChanged) body.bankroll = roll;
-      const bodyStr = JSON.stringify(body);
-      // keepalive has a 64 KiB cumulative body cap (per Fetch spec). Opt in only when the
-      // delta fits comfortably so tab-close / visibility-hidden flushes have a chance to
-      // land. Larger deltas (rare with delta saves — would need ~40+ picks changing at
-      // once) fall back to plain fetch and rely on the active tab to keep it alive.
-      const fetchOpts = {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: bodyStr,
-      };
-      if (bodyStr.length < 60 * 1024) fetchOpts.keepalive = true;
-      const res = await fetch(`${WORKER}/user/picks`, fetchOpts);
-
-      if (res.ok) {
-        for (const p of upserts) lastSyncedPicks.current.set(p.id, JSON.stringify(p));
-        for (const id of deletes) lastSyncedPicks.current.delete(id);
-        if (bankrollChanged) lastSyncedBankroll.current = roll;
-        setSyncStatus("saved");
-      } else {
-        setSyncStatus("error");
-      }
-    } catch {
-      setSyncStatus("error");
-    } finally {
-      inflightSave.current = false;
-      if (pendingSave.current) {
-        pendingSave.current = false;
-        // Re-run with the latest state from refs to catch changes made during the in-flight save.
-        setTimeout(() => savePicks(token, trackedPlaysRef.current, bankrollRef.current), 0);
-      }
-    }
-  }
-
   function logout() {
     localStorage.removeItem("sb_token");
     localStorage.removeItem("sb_email");
@@ -733,8 +666,7 @@ function App() {
     setTrackedPlays([]);
     setBankrollState(1000);
     // Reset delta-save baseline so a re-login doesn't diff against a stale prior-user snapshot.
-    lastSyncedPicks.current = new Map();
-    lastSyncedBankroll.current = null;
+    resetSync();
   }
 
   // Auto-save picks to server whenever they change (debounced 400ms — short enough that mobile
@@ -795,10 +727,7 @@ function App() {
           // Seed the delta-save baseline with the server's authoritative snapshot. Without
           // this, savePicks would diff against an empty Map and treat every pick as an upsert
           // on the first save after load.
-          lastSyncedPicks.current = new Map(
-            serverPicks.filter(p => p && p.id).map(p => [p.id, JSON.stringify(p)])
-          );
-          lastSyncedBankroll.current = pd.bankroll != null ? pd.bankroll : null;
+          primeSync(serverPicks, pd.bankroll);
           // One-time migration: union any legacy-local picks the server doesn't have, then
           // drop the legacy key. After this runs successfully once, localStorage is never
           // consulted for picks again.
