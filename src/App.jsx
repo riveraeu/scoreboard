@@ -14,6 +14,7 @@ import { useReportData } from './lib/useReportData.js';
 import { usePickInteractions } from './lib/usePickInteractions.js';
 import { useAuthFlow } from './lib/useAuthFlow.js';
 import { usePlayerLoad } from './lib/usePlayerLoad.js';
+import { useKalshiOdds } from './lib/useKalshiOdds.js';
 import InputList from './components/InputList.jsx';
 import { buildLambdaInputs, buildModelOutput } from './lib/lambdaInputs.js';
 import { tierColor } from './lib/colors.js';
@@ -39,7 +40,7 @@ function App() {
   // Player-card per-threshold tab — null means "show default (first qualified or first available)".
   // Reset when stat tab or direction changes (different threshold sets), or when player changes.
   const [selectedThreshold, setSelectedThreshold] = React.useState(null);
-  const [kalshiOdds, setKalshiOdds] = React.useState({});
+  // kalshiOdds + kalshiCache live in useKalshiOdds() below (called after safeTab is derived).
   const [showBreakdown, setShowBreakdown] = React.useState(false);
   const [direction, setDirection] = React.useState("over"); // "over" | "under"
   const [editPickId, setEditPickId] = React.useState(null); // pick.id being edited
@@ -51,7 +52,6 @@ function App() {
   // teamPage / teamPageData / modelPage / pendingSlug live in useRouting() below.
   // report* + calib* state lives in useReportData() below.
   const [gamelogSort, setGamelogSort] = React.useState({ col: 'date', dir: 'desc' });
-  const kalshiCache = React.useRef({}); // memoize Kalshi fetches by "playerName|sport|stat"
   const [expandedPlays, setExpandedPlays] = React.useState(new Set());
   const [chartMonth, setChartMonth] = React.useState(() => {
     const d = new Date();
@@ -245,28 +245,8 @@ function App() {
     return [t, totalGames25 > 0 ? (count / totalGames25) * 100 : null];
   })) : {};
 
-  // Fetch Kalshi odds — placed here so safeTab is already defined
-  React.useEffect(() => {
-    const KALSHI_STATS = {
-      "basketball/nba": { points:"points", rebounds:"rebounds", assists:"assists", threePointers:"threePointers" },
-      "hockey/nhl":     { points:"points" },
-      "baseball/mlb":   { hits:"hits", hrr:"hrr", strikeouts:"strikeouts" },
-    };
-    const kalshiStat = KALSHI_STATS[sport]?.[safeTab];
-    if (!player || !kalshiStat) { setKalshiOdds({}); return; }
-    const cacheKey = `${player.name}|${sport.split("/")[1]}|${kalshiStat}`;
-    if (kalshiCache.current[cacheKey]) { setKalshiOdds(kalshiCache.current[cacheKey]); return; }
-    const sportSlug = sport.split("/")[1];
-    fetch(`${WORKER}/kalshi?playerName=${encodeURIComponent(player.name)}&stat=${kalshiStat}&sport=${sportSlug}`)
-      .then(r => r.json())
-      .then(data => {
-        const map = {};
-        (data.markets || []).forEach(m => { map[m.threshold] = m; });
-        kalshiCache.current[cacheKey] = map;
-        setKalshiOdds(map);
-      })
-      .catch(() => setKalshiOdds({}));
-  }, [player, safeTab, sport]);
+  // Kalshi player-prop odds fetch — called after safeTab is derived above.
+  const { kalshiOdds } = useKalshiOdds({ player, sport, safeTab });
 
   return (
     <div style={{maxWidth:1280,margin:"0 auto",padding:"24px 16px"}}>
