@@ -10,6 +10,7 @@ import { useAuth } from './lib/useAuth.js';
 import { useAuthPickSync } from './lib/useAuthPickSync.js';
 import { useRouting } from './lib/useRouting.js';
 import { usePlayerSearch } from './lib/usePlayerSearch.js';
+import { useReportData } from './lib/useReportData.js';
 import InputList from './components/InputList.jsx';
 import { buildLambdaInputs, buildModelOutput } from './lib/lambdaInputs.js';
 import { tierColor } from './lib/colors.js';
@@ -50,14 +51,8 @@ function App() {
   const [sportFilter, setSportFilter] = React.useState([]); // empty = all sports
   const [statFilter, setStatFilter] = React.useState([]);  // empty = all stats
   const [showPlaysInfo, setShowPlaysInfo] = React.useState(false);
-  const [reportSort, setReportSort] = React.useState({"mlb|teamRuns":{col:"sim",dir:"desc"},"nba|teamPoints":{col:"sim",dir:"desc"}}); // { "sport|stat": { col, dir } }
-  const [showReport, setShowReport] = React.useState(false);
   // teamPage / teamPageData / modelPage / pendingSlug live in useRouting() below.
-  const [reportDataBySport, setReportDataBySport] = React.useState({});
-  const [reportLoadingSport, setReportLoadingSport] = React.useState(null); // "mlb"|"nba"|"nhl"|null
-  const [reportSport, setReportSport] = React.useState("mlb");
-  const [calibData, setCalibData] = React.useState(null);
-  const [calibLoading, setCalibLoading] = React.useState(false);
+  // report* + calib* state lives in useReportData() below.
   const [gamelogSort, setGamelogSort] = React.useState({ col: 'date', dir: 'desc' });
   const kalshiCache = React.useRef({}); // memoize Kalshi fetches by "playerName|sport|stat"
   const [expandedPlays, setExpandedPlays] = React.useState(new Set());
@@ -108,6 +103,15 @@ function App() {
     modelPage,
     navigateToTeam, navigateToPlayer, goBack, navigateToModel,
   } = useRouting({ setPlayer, setQuery, selectPlayerRef });
+  const {
+    showReport, setShowReport,
+    reportSort, setReportSort,
+    reportDataBySport,
+    reportLoadingSport,
+    reportSport, setReportSport,
+    calibData, calibLoading,
+    fetchReport, fetchCalib,
+  } = useReportData({ authToken });
 
   // Qualified play filter: dcQualified=true AND edge >= 5% AND dc=10 (fully clean inputs). v1
   // (SimScore-gated) was dropped 2026-05-18 — SimScore is display/attribution only now. Mirrors
@@ -213,36 +217,6 @@ function App() {
     setTrackedPlays, setBankrollState,
     authClearToken,
   });
-
-  async function fetchReport(sport) {
-    if (!sport) return;
-    setReportSport(sport);
-    setShowReport(true);
-    if (reportDataBySport[sport]) return; // already cached
-    setReportLoadingSport(sport);
-    try {
-      const r = await fetch(`${WORKER}/tonight?debug=1&sport=${sport}`);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const d = await r.json();
-      setReportDataBySport(prev => ({ ...prev, [sport]: d }));
-    } catch(e) {
-      setReportDataBySport(prev => ({ ...prev, [sport]: { error: e.message } }));
-    }
-    setReportLoadingSport(null);
-  }
-
-  async function fetchCalib() {
-    setCalibLoading(true);
-    setCalibData(null);
-    try {
-      const r = await fetch(`${WORKER}/auth/calibration`, { headers: authToken ? { Authorization: `Bearer ${authToken}` } : {} });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      setCalibData(await r.json());
-    } catch(e) {
-      setCalibData({ error: e.message });
-    }
-    setCalibLoading(false);
-  }
 
   async function loadPlayer(p, activeSport) {
     const sp = activeSport || sport;
