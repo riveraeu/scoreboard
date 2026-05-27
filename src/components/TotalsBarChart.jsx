@@ -3,9 +3,7 @@ import { TOTAL_THRESHOLDS, TEAM_TOTAL_THRESHOLDS } from '../lib/constants.js';
 import { tierColor } from '../lib/colors.js';
 import { buildLambdaInputs } from '../lib/lambdaInputs.js';
 import InputList from './InputList.jsx';
-// EDGE_GATE is intentionally the server value (3, looser) here — TotalsBarChart shows the
-// full server-qualified set; the main UI (App.jsx, LineupsPage) gates at 5 for display.
-import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER as EDGE_GATE } from '../../api/lib/config.js';
+import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_CLIENT as EDGE_GATE } from '../../api/lib/config.js';
 
 const TAB_LABELS = {
   game_over:  'Game Over',
