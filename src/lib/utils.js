@@ -9,6 +9,12 @@ export const oddsToImpliedProb = odds => {
   return null;
 };
 
+// American odds → decimal profit multiplier on the stake.
+//   -110 → 0.909  (risk $110 to win $100)
+//   +150 → 1.5    (risk $100 to win $150)
+export const oddsToProfit = americanOdds =>
+  americanOdds >= 0 ? americanOdds / 100 : 100 / Math.abs(americanOdds);
+
 // ESPN CDN abbreviation overrides — some teams use shorter codes than API/Kalshi
 const LOGO_CDN_ABBR = {
   nhl: { tbl: 'tb', njd: 'nj', lak: 'la', sjs: 'sj' },

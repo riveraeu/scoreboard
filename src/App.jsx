@@ -1,6 +1,6 @@
 import React from 'react';
 import { WORKER, SPORTS, STAT_FULL, MLB_TEAM, TOTAL_THRESHOLDS, STAT_LABEL, SPORT_KEY, SPORT_BADGE_COLOR, GAMELOG_COLS } from './lib/constants.js';
-import { ordinal, slugify } from './lib/utils.js';
+import { ordinal, slugify, oddsToProfit } from './lib/utils.js';
 import { useIsMobile } from './lib/hooks.js';
 import { useTonight } from './lib/useTonight.js';
 import { useSavePicks } from './lib/useSavePicks.js';
@@ -15,6 +15,7 @@ import { usePickInteractions } from './lib/usePickInteractions.js';
 import { useAuthFlow } from './lib/useAuthFlow.js';
 import { usePlayerLoad } from './lib/usePlayerLoad.js';
 import { useKalshiOdds } from './lib/useKalshiOdds.js';
+import { usePlayerCardState } from './lib/usePlayerCardState.js';
 import InputList from './components/InputList.jsx';
 import { buildLambdaInputs, buildModelOutput } from './lib/lambdaInputs.js';
 import { tierColor } from './lib/colors.js';
@@ -36,27 +37,22 @@ function App() {
   // player / perGame / dvpData / mlbIsPitcher / logs / logs25 / loading / error
   // + loadPlayer live in usePlayerLoad() below.
   // query / suggestions / showDrop / activeIdx / searching live in usePlayerSearch() below.
-  const [activeTab, setActiveTab] = React.useState("points");
-  // Player-card per-threshold tab — null means "show default (first qualified or first available)".
-  // Reset when stat tab or direction changes (different threshold sets), or when player changes.
-  const [selectedThreshold, setSelectedThreshold] = React.useState(null);
+  // activeTab / selectedThreshold / showBreakdown / direction / editPickId / gamelogSort /
+  // expandedPlays / chartMonth live in usePlayerCardState() below.
   // kalshiOdds + kalshiCache live in useKalshiOdds() below (called after safeTab is derived).
-  const [showBreakdown, setShowBreakdown] = React.useState(false);
-  const [direction, setDirection] = React.useState("over"); // "over" | "under"
-  const [editPickId, setEditPickId] = React.useState(null); // pick.id being edited
   // tonight fetch/poll/visibility state lives in useTonight() — called below after _qualifiedFilter is defined.
-
-  const [sportFilter, setSportFilter] = React.useState([]); // empty = all sports
-  const [statFilter, setStatFilter] = React.useState([]);  // empty = all stats
-  const [showPlaysInfo, setShowPlaysInfo] = React.useState(false);
   // teamPage / teamPageData / modelPage / pendingSlug live in useRouting() below.
   // report* + calib* state lives in useReportData() below.
-  const [gamelogSort, setGamelogSort] = React.useState({ col: 'date', dir: 'desc' });
-  const [expandedPlays, setExpandedPlays] = React.useState(new Set());
-  const [chartMonth, setChartMonth] = React.useState(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
-  });
+  const {
+    activeTab, setActiveTab,
+    selectedThreshold, setSelectedThreshold,
+    showBreakdown, setShowBreakdown,
+    direction, setDirection,
+    editPickId, setEditPickId,
+    gamelogSort, setGamelogSort,
+    expandedPlays, setExpandedPlays,
+    chartMonth, setChartMonth,
+  } = usePlayerCardState();
   // pendingTrackPlay / pendingOdds / openPickDays/Weeks/Months / showAddPick /
   // showPicksDrawer / flyingPick / starClickOrigin / fabRef + initiateTrack /
   // triggerFlyAnimation / openPickDate all live in usePickInteractions() below.
@@ -145,11 +141,6 @@ function App() {
   const { savePicks, syncStatus, setSyncStatus, primeSync, resetSync } = useSavePicks({
     getCurrent: () => ({ picks: trackedPlaysRef.current, bankroll: bankrollRef.current }),
   });
-  // P&L helpers (American odds → decimal profit multiplier on stake)
-  function oddsToProfit(americanOdds) {
-    return americanOdds >= 0 ? americanOdds / 100 : 100 / Math.abs(americanOdds);
-  }
-
   const { liveStats } = useLiveStats({ trackedPlays, setTrackedPlays, mlbMeta, nbaMeta, wnbaMeta, nhlMeta });
 
   const { showAuthModal, setShowAuthModal, authSubmit, logout } = useAuthFlow({
