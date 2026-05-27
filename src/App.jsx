@@ -17,14 +17,7 @@ import MyPicksColumn from './components/MyPicksColumn.jsx';
 import LineupsPage from './components/LineupsPage.jsx';
 import SimBadge from './components/SimBadge.jsx';
 
-// Universal qualification tunables — keep in sync with backend constants in api/[...path].js
-const KALSHI_GATE = 67;   // ~-200 American odds floor
-const KALSHI_CAP = 91;    // ~-1000 American odds cap
-// Raised 2026-05-16 from 3 → 5. Stricter filter on the unproven-edge regime per
-// feedback_totals_aggressive_corrections; pairs with dedup removal so alt-line winners
-// surface independently when each clears 5%. Server-side EDGE_GATE in api/[...path].js
-// stays at 3 to preserve play data for calibration analysis; the client tightens display.
-const EDGE_GATE = 5;
+import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_CLIENT as EDGE_GATE } from "../api/lib/config.js";
 
 function App() {
   const isMobile = useIsMobile();

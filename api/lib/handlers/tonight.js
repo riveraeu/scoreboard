@@ -14,14 +14,10 @@ import { PT_FMT, ptDateMinusOne } from "../pt.js";
 import { computeDataConfidence, DC_GATE, _GT_IMPLIED_CAP, _TT_IMPLIED_CAP } from "../tonight/dc.js";
 import { applyClosingSnapshot } from "../tonight/closing-odds.js";
 import { fetchKalshiMarkets } from "../tonight/kalshi-pipeline.js";
+import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER as EDGE_GATE } from "../config.js";
 
 const __defProp = Object.defineProperty;
 const __name = (target, value) => __defProp(target, "name", { value, configurable: true });
-
-// Universal qualification tunables — see CLAUDE.md "Universal qualification".
-const KALSHI_GATE = 67;   // ~-200 American odds floor (66.67% rounded up)
-const KALSHI_CAP = 91;    // ~-1000 American odds cap (90.91% rounded up)
-const EDGE_GATE = 3;
 // Production sport set (sports with active play generation + matchup cards). NFL is
 // supported in code but not currently in any active Kalshi market lookup paths.
 const PROD_SPORTS = new Set(["mlb", "nba", "nhl", "wnba"]);

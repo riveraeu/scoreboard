@@ -13,7 +13,7 @@
 Sports prop betting dashboard that pulls Kalshi prediction market prices, computes a model True%, and shows qualified plays with edge over the market. Vercel Edge runtime (Web Fetch + KV/Redis only — no Node APIs).
 
 **Production**: `https://scoreboard-ivory-xi.vercel.app`
-**Universal qualification**: Kalshi 67–91% · Edge ≥ 5% (client) / ≥ 3% (server, kept loose for calibration data). Game/team totals gate UNDERs by the same `noKalshiPct ∈ [67, 91]` window. SimScore is display-only since v1 was dropped 2026-05-26. Tunables `KALSHI_GATE` (67) / `KALSHI_CAP` (91) / `EDGE_GATE` live in `api/lib/handlers/tonight.js` and `src/App.jsx` — change in both places. (Phase D will consolidate to one source.)
+**Universal qualification**: Kalshi 67–91% · Edge ≥ 5% (client) / ≥ 3% (server, kept loose for calibration data). Game/team totals gate UNDERs by the same `noKalshiPct ∈ [67, 91]` window. SimScore is display-only since v1 was dropped 2026-05-26. Tunables live in **one source** at `api/lib/config.js` (`KALSHI_GATE` 67, `KALSHI_CAP` 91, `EDGE_GATE_SERVER` 3, `EDGE_GATE_CLIENT` 5); both server (tonight.js) and client (App.jsx, LineupsPage.jsx, TotalsBarChart.jsx) import from there. **Note**: `TotalsBarChart.jsx` imports `EDGE_GATE_SERVER` (3) — that's a looser display on the totals bar than the rest of the UI; revisit if you want symmetry at 5.
 
 ---
 

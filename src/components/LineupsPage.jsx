@@ -1,6 +1,7 @@
 import React from 'react';
 import MatchupCard from './MatchupCard.jsx';
 import { useIsMobile } from '../lib/hooks.js';
+import { EDGE_GATE_CLIENT as EDGE_GATE } from '../../api/lib/config.js';
 
 const SPORT_ORDER = { mlb: 0, nba: 1, wnba: 2, nhl: 3 };
 const SPORT_LABEL = { mlb: 'MLB', nba: 'NBA', wnba: 'WNBA', nhl: 'NHL' };
@@ -95,7 +96,7 @@ function buildAllGames(allPlays, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nh
 
 // Mirror of App.jsx's _qualifiedFilter: dc + edge gate, no SimScore. Alt-line dedup is
 // suppressed client-side so each threshold that clears EDGE_GATE surfaces independently.
-const EDGE_GATE = 5;
+// EDGE_GATE imported from shared config.
 // Build a tracked-id Set so passesGate can re-surface alt-line picks the user has tracked
 // (server-side dedup may have demoted them in favor of a higher-edge alt; we want them
 // visible in their matchup card regardless).
