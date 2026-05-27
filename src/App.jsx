@@ -6,6 +6,7 @@ import { useTonight } from './lib/useTonight.js';
 import { useSavePicks } from './lib/useSavePicks.js';
 import { useLiveStats } from './lib/useLiveStats.js';
 import { usePicks } from './lib/usePicks.js';
+import { useAuth } from './lib/useAuth.js';
 import InputList from './components/InputList.jsx';
 import { buildLambdaInputs, buildModelOutput } from './lib/lambdaInputs.js';
 import { tierColor } from './lib/colors.js';
@@ -82,13 +83,14 @@ function App() {
   const [showPicksDrawer, setShowPicksDrawer] = React.useState(false);
   const [flyingPick, setFlyingPick] = React.useState(null);
   const [starClickOrigin, setStarClickOrigin] = React.useState(null);
-  const [authToken, setAuthToken] = React.useState(() => localStorage.getItem("sb_token") || null);
-  const [authEmail, setAuthEmail] = React.useState(() => localStorage.getItem("sb_email") || null);
+  const {
+    authToken, authEmail,
+    authMode, setAuthMode,
+    authForm, setAuthForm,
+    authError, authLoading,
+    authenticate, logout: authLogout, clearToken: authClearToken,
+  } = useAuth();
   const [showAuthModal, setShowAuthModal] = React.useState(false);
-  const [authMode, setAuthMode] = React.useState("login");
-  const [authForm, setAuthForm] = React.useState({ email:"", password:"" });
-  const [authError, setAuthError] = React.useState("");
-  const [authLoading, setAuthLoading] = React.useState(false);
   // live polling + auto-resolve state lives in useLiveStats() — called below after trackedPlays + meta.
   const syncTimer = React.useRef(null);
   const fabRef = React.useRef(null);
@@ -268,44 +270,27 @@ function App() {
   // --- Auth ---
   async function authSubmit(e) {
     e.preventDefault();
-    setAuthError(""); setAuthLoading(true);
-    const endpoint = authMode === "login" ? "auth/login" : "auth/register";
-    try {
-      const r = await fetch(`${WORKER}/${endpoint}`, {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ email: authForm.email.trim(), password: authForm.password }),
-      });
-      const data = await r.json();
-      if (!r.ok) { setAuthError(data.error || "Something went wrong"); return; }
-      localStorage.setItem("sb_token", data.token);
-      localStorage.setItem("sb_email", data.email);
-      setAuthToken(data.token);
-      setAuthEmail(data.email);
-      setShowAuthModal(false);
-      setAuthForm({ email:"", password:"" });
-      // On login: load picks from server (server is authoritative)
-      // On register: push current local picks to server
-      if (authMode === "register") {
-        await savePicks(data.token, trackedPlays, bankroll);
-      } else {
-        const pr = await fetch(`${WORKER}/user/picks`, { headers:{"Authorization":`Bearer ${data.token}`} });
-        if (pr.ok) {
-          const pd = await pr.json();
-          setTrackedPlays(pd.picks || []);
-          if (pd.bankroll) setBankrollState(pd.bankroll);
-        }
+    const res = await authenticate(authMode);
+    if (!res.ok) return;
+    setShowAuthModal(false);
+    // On login: load picks from server (server is authoritative).
+    // On register: push current local picks to server.
+    if (authMode === "register") {
+      await savePicks(res.token, trackedPlays, bankroll);
+    } else {
+      const pr = await fetch(`${WORKER}/user/picks`, { headers: { "Authorization": `Bearer ${res.token}` } });
+      if (pr.ok) {
+        const pd = await pr.json();
+        setTrackedPlays(pd.picks || []);
+        if (pd.bankroll) setBankrollState(pd.bankroll);
       }
-    } catch { setAuthError("Network error"); }
-    finally { setAuthLoading(false); }
+    }
   }
 
   function logout() {
-    localStorage.removeItem("sb_token");
-    localStorage.removeItem("sb_email");
     localStorage.removeItem("scoreboard_tracked_plays");
     localStorage.removeItem("scoreboard_bankroll");
-    setAuthToken(null);
-    setAuthEmail(null);
+    authLogout();
     setTrackedPlays([]);
     setBankrollState(1000);
     // Reset delta-save baseline so a re-login doesn't diff against a stale prior-user snapshot.
@@ -352,10 +337,7 @@ function App() {
     fetch(`${WORKER}/user/picks`, { headers:{"Authorization":`Bearer ${authToken}`} })
       .then(r => {
         if (r.status === 401) {
-          localStorage.removeItem("sb_token");
-          localStorage.removeItem("sb_email");
-          setAuthToken(null);
-          setAuthEmail(null);
+          authClearToken();
           return null;
         }
         return r.ok ? r.json() : null;
