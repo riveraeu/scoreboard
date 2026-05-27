@@ -1,6 +1,6 @@
 import React from 'react';
 import { WORKER, SPORTS, STAT_FULL, MLB_TEAM, TEAM_DB, TOTAL_THRESHOLDS, STAT_LABEL, SPORT_KEY, SPORT_BADGE_COLOR, GAMELOG_COLS } from './lib/constants.js';
-import { ordinal, slugify, teamUrl } from './lib/utils.js';
+import { ordinal, slugify } from './lib/utils.js';
 import { useIsMobile } from './lib/hooks.js';
 import { useTonight } from './lib/useTonight.js';
 import { useSavePicks } from './lib/useSavePicks.js';
@@ -8,6 +8,7 @@ import { useLiveStats } from './lib/useLiveStats.js';
 import { usePicks } from './lib/usePicks.js';
 import { useAuth } from './lib/useAuth.js';
 import { useAuthPickSync } from './lib/useAuthPickSync.js';
+import { useRouting } from './lib/useRouting.js';
 import InputList from './components/InputList.jsx';
 import { buildLambdaInputs, buildModelOutput } from './lib/lambdaInputs.js';
 import { tierColor } from './lib/colors.js';
@@ -55,10 +56,7 @@ function App() {
   const [showPlaysInfo, setShowPlaysInfo] = React.useState(false);
   const [reportSort, setReportSort] = React.useState({"mlb|teamRuns":{col:"sim",dir:"desc"},"nba|teamPoints":{col:"sim",dir:"desc"}}); // { "sport|stat": { col, dir } }
   const [showReport, setShowReport] = React.useState(false);
-  const [teamPage, setTeamPage] = React.useState(null);       // { abbr, sport }
-  const [teamPageData, setTeamPageData] = React.useState(null); // { loading, error, data }
-  const [pendingSlug, setPendingSlug] = React.useState(null);  // player slug to resolve after load
-  const [modelPage, setModelPage] = React.useState(false);
+  // teamPage / teamPageData / modelPage / pendingSlug live in useRouting() below.
   const [reportDataBySport, setReportDataBySport] = React.useState({});
   const [reportLoadingSport, setReportLoadingSport] = React.useState(null); // "mlb"|"nba"|"nhl"|null
   const [reportSport, setReportSport] = React.useState("mlb");
@@ -109,95 +107,13 @@ function App() {
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
-  // ── URL routing ──────────────────────────────────────────────────────────────
-  function resolveSlug(slug, sportOverride) {
-    if (!slug) { setPlayer(null); setTeamPage(null); setModelPage(false); return; }
-    if (slug === "model") { setPlayer(null); setTeamPage(null); setModelPage(true); return; }
-    setModelPage(false);
-    const upper = slug.toUpperCase();
-    const spPriority = sportOverride ? [sportOverride] : ["mlb","nba","wnba","nhl"];
-    for (const sp of spPriority) {
-      const match = TEAM_DB.find(t => t.abbr === upper && t.sport === sp);
-      if (match) { loadTeamPage(match.abbr, match.sport); return; }
-    }
-    // Player slug — store and resolve after athletes search
-    setPendingSlug(slug);
-  }
-
-  // On mount: resolve URL slug; listen for back/forward
-  React.useEffect(() => {
-    const slug = window.location.pathname.slice(1);
-    const sp = new URLSearchParams(window.location.search).get("sport");
-    if (slug) resolveSlug(slug, sp);
-    const onPop = () => {
-      const s = window.location.pathname.slice(1);
-      const qp = new URLSearchParams(window.location.search).get("sport");
-      if (!s) { setPlayer(null); setTeamPage(null); }
-      else resolveSlug(s, qp);
-    };
-    window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
-  }, []);
-
-  // Resolve pending player slug via ESPN search
-  React.useEffect(() => {
-    if (!pendingSlug) return;
-    // CamelCase → "Gavin Williams"
-    const name = pendingSlug.replace(/([A-Z][a-z]*)/g, "$1 ").trim();
-    fetch(`${WORKER}/athletes?q=${encodeURIComponent(name)}`)
-      .then(r => r.json())
-      .then(d => {
-        const items = d.items || [];
-        const match = items.find(a => slugify(a.name) === pendingSlug) || items[0];
-        if (match) selectPlayer(match);
-      })
-      .catch(() => {})
-      .finally(() => setPendingSlug(null));
-  }, [pendingSlug]);
-
-  async function loadTeamPage(abbr, sport) {
-    setPlayer(null);
-    setTeamPage({ abbr: abbr.toUpperCase(), sport });
-    setTeamPageData({ loading: true, error: null, data: null });
-    try {
-      const r = await fetch(`${WORKER}/team?abbr=${abbr}&sport=${sport}`);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const data = await r.json();
-      setTeamPageData({ loading: false, error: null, data });
-    } catch(e) {
-      setTeamPageData({ loading: false, error: e.message, data: null });
-    }
-  }
-
-  const navigateToTeam = React.useCallback((abbr, sport) => {
-    const url = teamUrl(abbr, sport);
-    history.pushState({}, "", url);
-    loadTeamPage(abbr, sport);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const navigateToPlayer = React.useCallback((p, tab) => {
-    const slug = slugify(p.name);
-    history.pushState({}, "", `/${slug}`);
-    selectPlayer(p, tab);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const goBack = React.useCallback(() => {
-    history.pushState({}, "", "/");
-    setPlayer(null);
-    setTeamPage(null);
-    setModelPage(false);
-    setQuery("");
-  }, []);
-
-  const navigateToModel = React.useCallback(() => {
-    history.pushState({}, "", "/model");
-    setPlayer(null);
-    setTeamPage(null);
-    setModelPage(true);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }, []);
+  const selectPlayerRef = React.useRef(null);
+  const {
+    teamPage, setTeamPage,
+    teamPageData,
+    modelPage,
+    navigateToTeam, navigateToPlayer, goBack, navigateToModel,
+  } = useRouting({ setPlayer, setQuery, selectPlayerRef });
 
   // Qualified play filter: dcQualified=true AND edge >= 5% AND dc=10 (fully clean inputs). v1
   // (SimScore-gated) was dropped 2026-05-18 — SimScore is display/attribution only now. Mirrors
@@ -582,6 +498,9 @@ function App() {
     setQuery(""); setSuggestions([]); setShowDrop(false); setActiveIdx(-1);
     loadPlayer(p, newSport);
   };
+  // Bridge for useRouting — navigateToPlayer + pendingSlug resolution call through this ref
+  // so the hook doesn't have to re-create callbacks each time selectPlayer's identity changes.
+  selectPlayerRef.current = selectPlayer;
 
   // Navigate to player card from a play/pick object — looks up ID by name if missing
   const navigateToPlay = async (play) => {
