@@ -13,7 +13,7 @@
 Sports prop betting dashboard that pulls Kalshi prediction market prices, computes a model True%, and shows qualified plays with edge over the market. Vercel Edge runtime (Web Fetch + KV/Redis only — no Node APIs).
 
 **Production**: `https://scoreboard-ivory-xi.vercel.app`
-**Universal qualification**: Kalshi 67–91% · Edge ≥ 3% · SimScore ≥ 8/10. Game/team totals gate UNDERs by the same `noKalshiPct ∈ [67, 91]` window. Tunables live as module-level constants `KALSHI_GATE` (67, ~-200 floor) / `KALSHI_CAP` (91, ~-1000 cap) / `EDGE_GATE` / `SIMSCORE_GATE` in both `api/[...path].js` and `src/App.jsx` — change in both places.
+**Universal qualification**: Kalshi 67–91% · Edge ≥ 3% · SimScore ≥ 8/10. Game/team totals gate UNDERs by the same `noKalshiPct ∈ [67, 91]` window. Tunables live as module-level constants `KALSHI_GATE` (67, ~-200 floor) / `KALSHI_CAP` (91, ~-1000 cap) / `EDGE_GATE` / `SIMSCORE_GATE` in both `api/lib/handlers/tonight.js` and `src/App.jsx` — change in both places. (Phase D will consolidate to one source.)
 
 ---
 
@@ -32,8 +32,16 @@ The cross-cutting gotchas at the bottom of this file are kept inline because the
 
 ## Architecture
 
-### API: `api/[...path].js` + `api/lib/`
-Single Vercel Edge Function. Imports five ES module lib files:
+### API: `api/[...path].js` (router) + `api/lib/handlers/*.js` (routes) + `api/lib/*.js` (sport modules)
+Single Vercel Edge Function. `api/[...path].js` is now a ~140-line thin router: it handles CORS preflight, calls `makeCache`, and dispatches to one handler per route family. Each handler returns a `Response` on path match or `null` to fall through. The route handlers live in `api/lib/handlers/` (Phase A route split, 2026-05-26):
+- `api/lib/handlers/auth.js` — `/api/auth/*` (register, login, reset, calibration, list-users, debug-redis, clear-kalshi-stale, user/picks)
+- `api/lib/handlers/player.js` — `/api/player`, `/api/gamelog`, `/api/headshot`
+- `api/lib/handlers/sports.js` — `/api/team`, `/api/live`
+- `api/lib/handlers/dvp.js` — `/api/dvp`, `/api/nba-depth`, `/api/dvp/debug-dc`
+- `api/lib/handlers/kalshi.js` — `/api/kalshi`, `/api/kalshi-snapshot`, `/api/keepalive`
+- `api/lib/handlers/tonight.js` — `/api/tonight` (the play-generation pipeline, ~5700 lines). Owns `KALSHI_GATE`/`KALSHI_CAP`/`EDGE_GATE`/`SIMSCORE_GATE`, `PROD_SPORTS`, `B2B_*` constants, `_isB2B` helper, plus the inline `TEAM_NORM` / `NHL_ABBR_MAP` / `_VALID_TEAMS` tables and the `parseGameTeams` parser.
+
+The sport/utility modules under `api/lib/`:
 - `api/lib/simulate.js` — park factors + simulation functions (`log5K`, `simulateKsDist`, `buildNbaStatDist`, `simulateHits`, `simulateMLBTotalDist/NBATotalDist/NHLTotalDist`, `simulateTeamTotalDist`, `simulateTeamPtsDist`, `kDistPct/nbaDistPct/totalDistPct`, kelly/EV math), `TTO_DECAY_FACTOR`, `UMPIRE_KFACTOR`
 - `api/lib/mlb.js` — `buildLineupKPct` (also exports `batterSplitBA`, `batterHRRSplits`), `buildBarrelPct`, `buildPitcherKPct` (also exports `pitcherRecentKPct`, `pitcherLastStartDate`, `pitcherLastStartPC`, `pitcherInfoByTeam`, `pitcherAvgBF`, `pitcherStdBF`, `umpireByGame`), `MLB_ID_TO_ABBR`. Pitcher gamelog batch uses `Promise.allSettled`.
 - `api/lib/nba.js` — `buildNbaDvpStage1/FromBettingPros/Stage3FG`, `buildNbaDepthChartPos`, `buildNbaPaceData`, `buildNbaPlayerPosFromSleeper`, `warmPlayerInfoCache`, `buildNbaUsageRate`, `buildNbaInjuryReport`
