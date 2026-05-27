@@ -1,5 +1,12 @@
 import React from 'react';
 
+// Stake sizing — flat ⅛-Kelly for every play, 1u ($30) when Kelly can't compute,
+// $500 hard cap to bound tail risk on rare huge-Kelly recommendations. Exported so the
+// AddPickModal's live "suggested stake" can mirror the same math against the user-entered
+// odds (lives in App.jsx since it consumes pendingTrackPlay / pendingOdds state).
+export const UNIT_DOLLARS = 30;
+export const STAKE_CAP = 500;
+
 // Pick state + handlers, extracted from App.jsx 2026-05-27.
 //
 // Owns: trackedPlays, bankroll (with localStorage init), mirror refs that useSavePicks
@@ -23,10 +30,6 @@ export function usePicks({ mlbMeta, nbaMeta, wnbaMeta, nhlMeta }) {
   React.useEffect(() => { trackedPlaysRef.current = trackedPlays; }, [trackedPlays]);
   React.useEffect(() => { bankrollRef.current = bankroll; }, [bankroll]);
 
-  // Stake sizing — flat ⅛-Kelly for every play, 1u ($30) when Kelly can't compute,
-  // $500 hard cap to bound tail risk on rare huge-Kelly recommendations.
-  const UNIT_DOLLARS = 30;
-  const STAKE_CAP = 500;
   const unitsForPlay = React.useCallback((play) => {
     const e = play?.edge ?? null;
     // Kelly inputs. UNDER direction uses noTruePct so the probability matches the side taken.

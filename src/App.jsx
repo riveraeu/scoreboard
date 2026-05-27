@@ -5,7 +5,7 @@ import { useIsMobile } from './lib/hooks.js';
 import { useTonight } from './lib/useTonight.js';
 import { useSavePicks } from './lib/useSavePicks.js';
 import { useLiveStats } from './lib/useLiveStats.js';
-import { usePicks } from './lib/usePicks.js';
+import { usePicks, UNIT_DOLLARS, STAKE_CAP } from './lib/usePicks.js';
 import { useAuth } from './lib/useAuth.js';
 import { useAuthPickSync } from './lib/useAuthPickSync.js';
 import { useRouting } from './lib/useRouting.js';
