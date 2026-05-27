@@ -4066,9 +4066,18 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               const _ttUmpRunFactor = parseFloat((1 / _ttUmpKF).toFixed(3));
               // Note: umpire factor adjusts the lambda (so it's reflected in truePct) but is
               // intentionally not a separate SimScore component to avoid double-counting.
-              const _lam = teamRPG != null ? parseFloat((Math.max(0.5, Math.min(12, teamRPG * _oppMult * parkRF * _ttPlatFactor * _ttWeatherFactor * _ttUmpRunFactor * lineupFactor))).toFixed(2)) : null;
+              let _lam = teamRPG != null ? parseFloat((Math.max(0.5, Math.min(12, teamRPG * _oppMult * parkRF * _ttPlatFactor * _ttWeatherFactor * _ttUmpRunFactor * lineupFactor))).toFixed(2)) : null;
+              // Regime-aware blend: shift λ toward recency-weighted recent runs.
+              // Conservative cap (0.5 share / denom 12) — half of game-total cap because
+              // single-team variance is larger than two-team-combined variance.
+              const _ttMlbRecent = _lam != null ? _recentTeamScoreMean(_ttScheduleMap, "mlb", scoringTeam, _MLB_HALF_LIFE_DAYS) : null;
+              let _ttMlbRegimeBlendW = 0;
+              if (_ttMlbRecent && _ttMlbRecent.effectiveSample >= 3) {
+                _ttMlbRegimeBlendW = Math.min(0.50, _ttMlbRecent.effectiveSample / 12 * 0.50);
+                _lam = parseFloat(((1 - _ttMlbRegimeBlendW) * _lam + _ttMlbRegimeBlendW * _ttMlbRecent.mean).toFixed(2));
+              }
               if (_lam != null) {
-                const _dk = `mlb|team|${scoringTeam}|${oppTeam}`;
+                const _dk = `mlb|team|${scoringTeam}|${oppTeam}|${_lam}`;
                 if (!teamTotalDistCache[_dk]) teamTotalDistCache[_dk] = simulateTeamTotalDist(_lam, 10000);
                 truePct = totalDistPct(teamTotalDistCache[_dk], threshold);
               }
@@ -4110,7 +4119,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               const _ttGameTime = gameTimes[`${sport}:${homeTeam}:${gameDate}`] ?? gameTimes[`${sport}:${awayTeam}:${gameDate}`] ?? gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null;
               // Both lineups confirmed (MLB only): scoringTeam + oppTeam each have a posted lineup, neither projected.
               const _ttLineupsConfirmed = _mlbBothTeamsConfirmed(scoringTeam, oppTeam, gameDate);
-              const _ttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), ...(_ttModelTruePct != null && _ttModelTruePct !== truePct && { modelTruePct: parseFloat(_ttModelTruePct.toFixed(1)) }), ...(_ttImpliedLambda != null && { ttImpliedLambda: _ttImpliedLambda, ttBlendedLambda: _ttBlendedLambda }), ...(_ttImpliedLambdaClamped != null && { ttImpliedLambdaClamped: _ttImpliedLambdaClamped }), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _ttGameTime, lineupsConfirmed: _ttLineupsConfirmed, teamRPG, oppERA, oppFIP, oppWHIP, ...(oppWHIPSource && { oppWHIPSource }), oppBullpenERA: _oppRestERA, ...(oppBullpenSource && { oppBullpenSource }), oppRPG, parkFactor: parkRF, gameOuLine, teamExpected: _lam != null ? parseFloat(_lam.toFixed(1)) : null, h2hHitRate, h2hGames, h2hHitRatePts, teamL10RPG, ttL10Pts, ttWhipPts, ttOuPts, umpireRunFactor: _ttUmpRunFactor, ...(_ttUmpName && { umpireName: _ttUmpName }), ttSeasonHitRate, ttSeasonHitRatePts, oppStarterHand: _ttOppStarterHand, ...(_ttPlatFactor !== 1.0 && { platoonFactor: _ttPlatFactor }), ...(scoringTopOut > 0 && { scoringTopOut, scoringLineupFactor: lineupFactor }), ...(oppPitcherOnIL && { oppPitcherOnIL: true }) };
+              const _ttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), ...(_ttModelTruePct != null && _ttModelTruePct !== truePct && { modelTruePct: parseFloat(_ttModelTruePct.toFixed(1)) }), ...(_ttImpliedLambda != null && { ttImpliedLambda: _ttImpliedLambda, ttBlendedLambda: _ttBlendedLambda }), ...(_ttImpliedLambdaClamped != null && { ttImpliedLambdaClamped: _ttImpliedLambdaClamped }), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _ttGameTime, lineupsConfirmed: _ttLineupsConfirmed, teamRPG, oppERA, oppFIP, oppWHIP, ...(oppWHIPSource && { oppWHIPSource }), oppBullpenERA: _oppRestERA, ...(oppBullpenSource && { oppBullpenSource }), oppRPG, parkFactor: parkRF, gameOuLine, teamExpected: _lam != null ? parseFloat(_lam.toFixed(1)) : null, h2hHitRate, h2hGames, h2hHitRatePts, teamL10RPG, ttL10Pts, ttWhipPts, ttOuPts, umpireRunFactor: _ttUmpRunFactor, ...(_ttUmpName && { umpireName: _ttUmpName }), ttSeasonHitRate, ttSeasonHitRatePts, oppStarterHand: _ttOppStarterHand, ...(_ttPlatFactor !== 1.0 && { platoonFactor: _ttPlatFactor }), ...(scoringTopOut > 0 && { scoringTopOut, scoringLineupFactor: lineupFactor }), ...(oppPitcherOnIL && { oppPitcherOnIL: true }), ...(_ttMlbRegimeBlendW > 0 && { regimeBlendW: parseFloat(_ttMlbRegimeBlendW.toFixed(2)), scoringRecentMean: parseFloat(_ttMlbRecent.mean.toFixed(2)) }) };
               const rawEdge = parseFloat((truePct - kalshiPct).toFixed(1));
               const edge = rawEdge;
               const _ttOverInWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
