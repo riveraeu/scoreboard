@@ -7,6 +7,7 @@ import { useSavePicks } from './lib/useSavePicks.js';
 import { useLiveStats } from './lib/useLiveStats.js';
 import { usePicks } from './lib/usePicks.js';
 import { useAuth } from './lib/useAuth.js';
+import { useAuthPickSync } from './lib/useAuthPickSync.js';
 import InputList from './components/InputList.jsx';
 import { buildLambdaInputs, buildModelOutput } from './lib/lambdaInputs.js';
 import { tierColor } from './lib/colors.js';
@@ -92,10 +93,8 @@ function App() {
   } = useAuth();
   const [showAuthModal, setShowAuthModal] = React.useState(false);
   // live polling + auto-resolve state lives in useLiveStats() — called below after trackedPlays + meta.
-  const syncTimer = React.useRef(null);
   const fabRef = React.useRef(null);
-  const picksLoaded = React.useRef(!localStorage.getItem("sb_token")); // true if no token (no server load needed)
-  // usePicks + useSavePicks are called below after useTonight (they need meta + each other's refs).
+  // usePicks + useSavePicks + useAuthPickSync are called below after useTonight (they need meta + each other's refs).
   const debouncedQuery = useDebounce(query, 300);
   const dropRef = React.useRef(null);
   const inputRef = React.useRef(null);
@@ -297,83 +296,13 @@ function App() {
     resetSync();
   }
 
-  // Auto-save picks to server whenever they change (debounced 400ms — short enough that mobile
-  // users tapping a star and immediately refreshing have a good chance of the save landing).
-  // Guard: don't save until server picks have been loaded — prevents overwriting with [] on mount.
-  React.useEffect(() => {
-    if (!authToken || !picksLoaded.current) return;
-    setSyncStatus("saving");
-    clearTimeout(syncTimer.current);
-    syncTimer.current = setTimeout(() => savePicks(authToken, trackedPlays, bankroll), 400);
-    return () => clearTimeout(syncTimer.current);
-  }, [trackedPlays, bankroll, authToken]);
-
-
-  // Flush pending picks before the tab is hidden/closed — covers the case where the user
-  // taps star then immediately backgrounds the app on mobile (Safari/iOS may not fire
-  // beforeunload). pagehide and visibilitychange combined cover all platforms.
-  React.useEffect(() => {
-    if (!authToken) return;
-    const flush = () => {
-      if (!picksLoaded.current) return;
-      clearTimeout(syncTimer.current);
-      savePicks(authToken, trackedPlays, bankroll).catch(() => {});
-    };
-    const onVis = () => { if (document.visibilityState === 'hidden') flush(); };
-    document.addEventListener('visibilitychange', onVis);
-    window.addEventListener('pagehide', flush);
-    return () => {
-      document.removeEventListener('visibilitychange', onVis);
-      window.removeEventListener('pagehide', flush);
-    };
-  }, [authToken, trackedPlays, bankroll]);
-
-  // Load picks from server on mount if token exists.
-  // Server is the single source of truth — no localStorage merging. A one-time migration
-  // pushes any legacy localStorage picks not on the server up before clearing local state.
-  React.useEffect(() => {
-    if (!authToken) return;
-    const legacyLocal = (() => { try { return JSON.parse(localStorage.getItem("scoreboard_tracked_plays") || "[]"); } catch { return []; } })();
-    fetch(`${WORKER}/user/picks`, { headers:{"Authorization":`Bearer ${authToken}`} })
-      .then(r => {
-        if (r.status === 401) {
-          authClearToken();
-          return null;
-        }
-        return r.ok ? r.json() : null;
-      })
-      .then(pd => {
-        if (pd) {
-          const serverPicks = pd.picks || [];
-          if (pd.bankroll) setBankrollState(pd.bankroll);
-          // Seed the delta-save baseline with the server's authoritative snapshot. Without
-          // this, savePicks would diff against an empty Map and treat every pick as an upsert
-          // on the first save after load.
-          primeSync(serverPicks, pd.bankroll);
-          // One-time migration: union any legacy-local picks the server doesn't have, then
-          // drop the legacy key. After this runs successfully once, localStorage is never
-          // consulted for picks again.
-          if (legacyLocal.length > 0) {
-            const serverIds = new Set(serverPicks.map(p => p.id));
-            const localOnly = legacyLocal.filter(p => !serverIds.has(p.id));
-            const merged = [...localOnly, ...serverPicks].sort((a, b) => (b.trackedAt || 0) - (a.trackedAt || 0));
-            setTrackedPlays(merged);
-            if (localOnly.length > 0) {
-              savePicks(authToken, merged, pd.bankroll ?? null).catch(() => {});
-            }
-            localStorage.removeItem("scoreboard_tracked_plays");
-          } else {
-            setTrackedPlays(serverPicks);
-          }
-        }
-        picksLoaded.current = true;
-      })
-      .catch(() => {
-        // Server unreachable — leave trackedPlays empty and leave any legacy localStorage
-        // key in place so the next successful load can migrate it.
-        picksLoaded.current = true;
-      });
-  }, []);
+  useAuthPickSync({
+    authToken,
+    trackedPlays, bankroll,
+    savePicks, primeSync, setSyncStatus,
+    setTrackedPlays, setBankrollState,
+    authClearToken,
+  });
 
   // Client-side team search (instant, no API call)
   const teamSuggestions = React.useMemo(() => {
