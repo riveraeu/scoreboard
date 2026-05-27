@@ -1,5 +1,5 @@
 import React from 'react';
-import { WORKER, SPORTS, STAT_FULL, MLB_TEAM, TEAM_DB, TOTAL_THRESHOLDS, STAT_LABEL, SPORT_KEY, SPORT_BADGE_COLOR, GAMELOG_COLS } from './lib/constants.js';
+import { WORKER, SPORTS, STAT_FULL, MLB_TEAM, TOTAL_THRESHOLDS, STAT_LABEL, SPORT_KEY, SPORT_BADGE_COLOR, GAMELOG_COLS } from './lib/constants.js';
 import { ordinal, slugify } from './lib/utils.js';
 import { useIsMobile } from './lib/hooks.js';
 import { useTonight } from './lib/useTonight.js';
@@ -9,13 +9,13 @@ import { usePicks } from './lib/usePicks.js';
 import { useAuth } from './lib/useAuth.js';
 import { useAuthPickSync } from './lib/useAuthPickSync.js';
 import { useRouting } from './lib/useRouting.js';
+import { usePlayerSearch } from './lib/usePlayerSearch.js';
 import InputList from './components/InputList.jsx';
 import { buildLambdaInputs, buildModelOutput } from './lib/lambdaInputs.js';
 import { tierColor } from './lib/colors.js';
 import TotalsBarChart from './components/TotalsBarChart.jsx';
 import TeamPage, { STAT_CONFIGS } from './components/TeamPage.jsx';
 import DayBar from './components/DayBar.jsx';
-import { useDebounce } from './components/AddPickModal.jsx';
 import AddPickModal from './components/AddPickModal.jsx';
 import ModelPage from './components/ModelPage.jsx';
 import MarketReport from './components/MarketReport.jsx';
@@ -32,10 +32,7 @@ function App() {
   const [dvpData, setDvpData] = React.useState(null);
   const [mlbIsPitcher, setMlbIsPitcher] = React.useState(null); // null = unknown, true/false for MLB
   const [logs25, setLogs25] = React.useState(null); // MLB 2025 season aggregated (for truePct)
-  const [query, setQuery] = React.useState("");
-  const [suggestions, setSuggestions] = React.useState([]);
-  const [showDrop, setShowDrop] = React.useState(false);
-  const [activeIdx, setActiveIdx] = React.useState(-1);
+  // query / suggestions / showDrop / activeIdx / searching live in usePlayerSearch() below.
   const [player, setPlayer] = React.useState(null);
   const [logs, setLogs] = React.useState(null);
   const [loading, setLoading] = React.useState(false);
@@ -48,7 +45,6 @@ function App() {
   const [showBreakdown, setShowBreakdown] = React.useState(false);
   const [direction, setDirection] = React.useState("over"); // "over" | "under"
   const [editPickId, setEditPickId] = React.useState(null); // pick.id being edited
-  const [searching, setSearching] = React.useState(false);
   // tonight fetch/poll/visibility state lives in useTonight() — called below after _qualifiedFilter is defined.
 
   const [sportFilter, setSportFilter] = React.useState([]); // empty = all sports
@@ -93,21 +89,19 @@ function App() {
   // live polling + auto-resolve state lives in useLiveStats() — called below after trackedPlays + meta.
   const fabRef = React.useRef(null);
   // usePicks + useSavePicks + useAuthPickSync are called below after useTonight (they need meta + each other's refs).
-  const debouncedQuery = useDebounce(query, 300);
-  const dropRef = React.useRef(null);
-  const inputRef = React.useRef(null);
   const fetchRef = React.useRef(null);
 
-  React.useEffect(() => {
-    const h = e => {
-      if (!dropRef.current?.contains(e.target) && !inputRef.current?.contains(e.target))
-        setShowDrop(false);
-    };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, []);
-
   const selectPlayerRef = React.useRef(null);
+  const {
+    query, setQuery,
+    suggestions, setSuggestions,
+    showDrop, setShowDrop,
+    activeIdx, setActiveIdx,
+    searching,
+    teamSuggestions,
+    handleKeyDown,
+    dropRef, inputRef,
+  } = usePlayerSearch({ selectPlayerRef });
   const {
     teamPage, setTeamPage,
     teamPageData,
@@ -219,37 +213,6 @@ function App() {
     setTrackedPlays, setBankrollState,
     authClearToken,
   });
-
-  // Client-side team search (instant, no API call)
-  const teamSuggestions = React.useMemo(() => {
-    const q = debouncedQuery.trim().toLowerCase();
-    if (q.length < 2) return [];
-    return TEAM_DB.filter(t =>
-      t.name.toLowerCase().includes(q) ||
-      t.short.toLowerCase().includes(q) ||
-      t.abbr.toLowerCase() === q ||
-      t.abbr.toLowerCase().startsWith(q)
-    ).slice(0, 5);
-  }, [debouncedQuery]);
-
-  // Show dropdown immediately when team suggestions exist
-  React.useEffect(() => {
-    if (teamSuggestions.length > 0) setShowDrop(true);
-  }, [teamSuggestions]);
-
-  React.useEffect(() => {
-    if (debouncedQuery.trim().length < 2) { setSuggestions([]); setShowDrop(false); return; }
-    setSearching(true);
-    fetch(`${WORKER}/athletes?q=${encodeURIComponent(debouncedQuery)}`)
-      .then(r => r.json())
-      .then(data => {
-        const items = (data.items || []);
-        setSuggestions(items);
-        setShowDrop(items.length > 0 || teamSuggestions.length > 0);
-      })
-      .catch(e => { console.error("search error:", e); setSuggestions([]); })
-      .finally(() => setSearching(false));
-  }, [debouncedQuery]);
 
   async function fetchReport(sport) {
     if (!sport) return;
@@ -525,14 +488,6 @@ function App() {
       playSoftPct: play.softPct, playSoftGames: play.softGames,
       playSport: play.sport, playThreshold: play.threshold, playStat: play.stat }, play.stat);
     window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const handleKeyDown = e => {
-    if (!showDrop) return;
-    if (e.key === "ArrowDown") { e.preventDefault(); setActiveIdx(i => Math.min(i+1, suggestions.length-1)); }
-    else if (e.key === "ArrowUp") { e.preventDefault(); setActiveIdx(i => Math.max(i-1, 0)); }
-    else if (e.key === "Enter" && activeIdx >= 0) selectPlayer(suggestions[activeIdx]);
-    else if (e.key === "Escape") setShowDrop(false);
   };
 
   const highlight = (name, q) => {
