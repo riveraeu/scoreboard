@@ -22,7 +22,6 @@ const __name = (target, value) => __defProp(target, "name", { value, configurabl
 const KALSHI_GATE = 67;   // ~-200 American odds floor (66.67% rounded up)
 const KALSHI_CAP = 91;    // ~-1000 American odds cap (90.91% rounded up)
 const EDGE_GATE = 3;
-const SIMSCORE_GATE = 8;
 // Production sport set (sports with active play generation + matchup cards). NFL is
 // supported in code but not currently in any active Kalshi market lookup paths.
 const PROD_SPORTS = new Set(["mlb", "nba", "nhl", "wnba"]);
@@ -148,9 +147,6 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
         __name(glCacheKey, "glCacheKey");
         const isDebugMode = params.get("debug") === "1";
         const isBustCache = params.get("bust") === "1";
-        // v1 model toggle dropped 2026-05-18; ?model= param ignored (clients pre-drop may still
-        // send it). /api/auth/calibration keeps the modelVersion filter for historical pick
-        // analysis. See [[project-model-version-toggle]].
         const reportSportFilter = params.get("sport") || null;
         // NBA totals: regular-season aggregate OffRtg/DefRtg systematically under-projects playoff
         // scoring (LAL/OKC G3 = 232 vs model 199 vs market 210.5). Multiplier on home/away expected
@@ -2825,217 +2821,6 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             });
             continue;
           }
-          // Strikeout finalSimScore gate: must reach >= 11 (Alpha tier) to qualify as a play.
-          // Scores 7-10 show in report but marked qualified:false so player card still shows truePct.
-          if (sport === "mlb" && stat === "strikeouts" && finalSimScore !== null && finalSimScore < SIMSCORE_GATE) {
-            const _dropLowScore = {
-              ..._dropBase,
-              reason: "low_confidence",
-              simScore, finalSimScore,
-              opponent: tonightOpp,
-              kpctMeets, kpctPts, kbbMeets, kbbPts, lkpMeets, lkpPts, pitchesPts, parkMeets, mlPts, totalPts, kTrendPts, kHitRatePts, kH2HHandPts, kH2HHandRate: _kH2HHandRate, kH2HHandStarts: _kH2HHandStarts, kH2HHandMaj: _kH2HHandMaj, blendedHitRate: _blendedHR != null ? parseFloat(_blendedHR.toFixed(1)) : null,
-              seasonPct: parseFloat(primaryPct.toFixed(1)), softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
-              seasonGames: allVals.length,
-              truePct: parseFloat(truePct.toFixed(1)), edge: parseFloat(edge.toFixed(1)),
-              pitcherCSWPct: _pt(sportByteam.mlb?.pitcherCSWPct, "cswPct"),
-              pitcherKPct: pitcherKPctOut, pitcherKBBPct: pitcherKBBPctOut, pitcherRecentKPct: _recentKPct, pitcherSeasonKPct: _seasonKPct,
-              pitcherAvgPitches: _avgP,
-              expectedBF: _expectedBF !== 24 ? _expectedBF : null,
-              // stdBF / pitcherGS26 / pitcherHasAnchor MUST travel even on the low_confidence drop
-              // path — dataConfidence reads them and the absence triggers noStdBF -3 even though
-              // the data is computed (see project_mlbk_dc_emit_bug memory; same divergence the
-              // 2026-05-17 fix addressed for the qualified path but missed for this drop branch).
-              stdBF: _stdBF != null ? _stdBF : null,
-              pitcherGS26: sportByteam.mlb?.pitcherStatsByName?.[playerName]?.gs26 ?? sportByteam.mlb?.pitcherGS26?.[playerTeam] ?? null,
-              pitcherHasAnchor: sportByteam.mlb?.pitcherStatsByName?.[playerName]?.hasAnchor ?? sportByteam.mlb?.pitcherHasAnchor?.[playerTeam] ?? null,
-              lineupKPct: lineupKPctOut,
-              pitcherEra: _pitcherEraFromGl ?? _pt(sportByteam.mlb?.pitcherEra, "era") ?? null,
-              pitcherHand: _pitcherHand ?? null, simPct: simPctOut,
-              parkFactor: parkFactorOut ?? 1,
-              gameMoneyline: sportByteam.mlb?.gameOdds?.[playerTeam]?.moneyline ?? null,
-              gameTotal: sportByteam.mlb?.gameOdds?.[playerTeam]?.total ?? null,
-            };
-            if (isDebug) dropped.push(_dropLowScore);
-            plays.push({
-              ..._dropLowScore,
-              qualified: false,
-              playerName: playerNameDisplay || playerName,
-              playerId: info.id,
-              sport, playerTeam, stat, threshold, kalshiPct, americanOdds,
-              truePct: parseFloat(truePct.toFixed(1)),
-              log5Pct: simPctOut ?? log5PctOut, simPct: simPctOut,
-              spreadAdj,
-              gameDate,
-              gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}:${_tomorrowISOStr}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
-              lineupConfirmed: _mlbLineupConf,
-              playerStatus: null,
-            });
-            continue;
-          }
-          // NBA SimScore gate: must reach >= 11 (Alpha tier) to qualify as a play
-          if (sport === "nba" && nbaSimScore !== null && nbaSimScore < SIMSCORE_GATE) {
-            const _nbaLowScoreDrop = {
-              ..._dropBase,
-              reason: "low_confidence",
-              nbaSimScore, nbaPreSimScore,
-              opponent: tonightOpp,
-              oppRank: posDvpRankOut ?? rankMap[tonightOpp]?.rank ?? null,
-              oppMetricValue: posDvpValueOut ?? rankMap[tonightOpp]?.value ?? null,
-              oppMetricLabel: rankMap[tonightOpp]?.label || null,
-              oppMetricUnit: rankMap[tonightOpp]?.unit ?? null,
-              seasonPct: parseFloat(primaryPct.toFixed(1)),
-              softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
-              truePct: parseFloat(truePct.toFixed(1)), edge: parseFloat(edge.toFixed(1)),
-              nbaSimPct: nbaSimPctOut, nbaPaceAdj, nbaPaceFactor, nbaOpportunity, isB2B,
-              nbaGameTotal, nbaTotalPts, nba3pMPG, nbaBlowoutAdj, nbaSplitAdj,
-              nbaSeasonHitRatePts: primaryPct >= 90 ? 2 : primaryPct >= 80 ? 1 : 0,
-              nbaSoftHitRatePts: softPct == null ? 1 : softPct >= 90 ? 2 : softPct >= 80 ? 1 : 0,
-              posDvpRank: posDvpRankOut, posDvpValue: posDvpValueOut, dvpRatio: oppDvpRatioOut, posGroup: posGroupOut,
-              nbaUsage: nbaUsageMap[String(info.id)]?.usg ?? null,
-              nbaAvgAst: nbaUsageMap[String(info.id)]?.avgAst ?? null,
-              nbaAvgReb: nbaUsageMap[String(info.id)]?.avgReb ?? null,
-              softGames: softVals.length,
-            };
-            if (isDebug) dropped.push(_nbaLowScoreDrop);
-            plays.push({
-              ..._nbaLowScoreDrop,
-              qualified: false,
-              playerName: playerNameDisplay || playerName,
-              playerId: info.id,
-              sport, playerTeam, stat, threshold, kalshiPct, americanOdds,
-              truePct: parseFloat(truePct.toFixed(1)),
-              log5Pct: simPctOut ?? log5PctOut,
-              simPct: simPctOut,
-              spreadAdj,
-              gameDate,
-              gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}:${_tomorrowISOStr}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
-              playerStatus: null,
-            });
-            continue;
-          }
-          // WNBA SimScore gate (≥SIMSCORE_GATE qualifies; lower → qualified:false for player card)
-          if (sport === "wnba" && wnbaSimScore !== null && wnbaSimScore < SIMSCORE_GATE) {
-            const _wnbaLowScoreDrop = {
-              ..._dropBase,
-              reason: "low_confidence",
-              wnbaSimScore, wnbaPreSimScore,
-              opponent: tonightOpp,
-              oppRank: posDvpRankOut ?? rankMap[tonightOpp]?.rank ?? null,
-              oppMetricValue: posDvpValueOut ?? rankMap[tonightOpp]?.value ?? null,
-              oppMetricLabel: rankMap[tonightOpp]?.label || null,
-              oppMetricUnit: rankMap[tonightOpp]?.unit ?? null,
-              seasonPct: parseFloat(primaryPct.toFixed(1)),
-              softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
-              truePct: parseFloat(truePct.toFixed(1)), edge: parseFloat(edge.toFixed(1)),
-              wnbaSimPct: wnbaSimPctOut, wnbaPaceAdj, wnbaPaceFactor, wnbaOpportunity, isB2B,
-              wnbaGameTotal, wnbaTotalPts, wnba3pMPG, wnbaBlowoutAdj, wnbaSplitAdj,
-              wnbaSeasonHitRatePts: primaryPct >= 90 ? 2 : primaryPct >= 80 ? 1 : 0,
-              wnbaSoftHitRatePts: softPct == null ? 1 : softPct >= 90 ? 2 : softPct >= 80 ? 1 : 0,
-              posDvpRank: posDvpRankOut, posDvpValue: posDvpValueOut, dvpRatio: oppDvpRatioOut,
-              wnbaUsage: wnbaUsageMap[String(info.id)]?.usg ?? null,
-              wnbaAvgAst: wnbaUsageMap[String(info.id)]?.avgAst ?? null,
-              wnbaAvgReb: wnbaUsageMap[String(info.id)]?.avgReb ?? null,
-              softGames: softVals.length,
-            };
-            if (isDebug) dropped.push(_wnbaLowScoreDrop);
-            plays.push({
-              ..._wnbaLowScoreDrop,
-              qualified: false,
-              playerName: playerNameDisplay || playerName,
-              playerId: info.id,
-              sport, playerTeam, stat, threshold, kalshiPct, americanOdds,
-              truePct: parseFloat(truePct.toFixed(1)),
-              log5Pct: simPctOut ?? log5PctOut,
-              simPct: simPctOut,
-              spreadAdj,
-              gameDate,
-              gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}:${_tomorrowISOStr}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
-              playerStatus: null,
-            });
-            continue;
-          }
-          // NHL SimScore gate: must reach >= 11 (Alpha tier) to qualify as a play
-          if (sport === "nhl" && nhlSimScore !== null && nhlSimScore < SIMSCORE_GATE) {
-            const _nhlLowScoreDrop = {
-              ..._dropBase,
-              reason: "low_confidence",
-              nhlSimScore, nhlPreSimScore,
-              opponent: tonightOpp,
-              oppRank: posDvpRankOut ?? rankMap[tonightOpp]?.rank ?? null,
-              oppMetricValue: posDvpValueOut ?? rankMap[tonightOpp]?.value ?? null,
-              oppMetricLabel: rankMap[tonightOpp]?.label || null,
-              oppMetricUnit: rankMap[tonightOpp]?.unit ?? null,
-              seasonPct: parseFloat(primaryPct.toFixed(1)),
-              softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
-              truePct: parseFloat(truePct.toFixed(1)), edge: parseFloat(edge.toFixed(1)),
-              nhlSimPct: nhlSimPctOut, nhlShotsAdj, nhlOpportunity, nhlTeamGPG, nhlSaRank, gaaRank: _gaaRank, isB2B,
-              nhlGameTotal, nhlSeasonHitRatePts, nhlDvpHitRatePts,
-              posDvpRank: posDvpRankOut, dvpRatio: oppDvpRatioOut, posGroup: posGroupOut,
-              softGames: softVals.length,
-            };
-            if (isDebug) dropped.push(_nhlLowScoreDrop);
-            plays.push({
-              ..._nhlLowScoreDrop,
-              qualified: false,
-              playerName: playerNameDisplay || playerName,
-              playerId: info.id,
-              sport, playerTeam, stat, threshold, kalshiPct, americanOdds,
-              truePct: parseFloat(truePct.toFixed(1)),
-              log5Pct: simPctOut ?? log5PctOut,
-              simPct: simPctOut,
-              spreadAdj,
-              gameDate,
-              gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}:${_tomorrowISOStr}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
-              playerStatus: null,
-            });
-            continue;
-          }
-          // HRR SimScore gate: must reach >= 11 (Alpha tier) to qualify as a play
-          if (sport === "mlb" && stat !== "strikeouts" && hitterFinalSimScore !== null && hitterFinalSimScore < SIMSCORE_GATE) {
-            const _hitterLowScoreDrop = {
-              ..._dropBase,
-              reason: "low_confidence",
-              hitterSimScore, hitterFinalSimScore,
-              opponent: tonightOpp,
-              seasonPct: parseFloat(primaryPct.toFixed(1)),
-              softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
-              softGames: softVals.length,
-              truePct: parseFloat(truePct.toFixed(1)), edge: parseFloat(edge.toFixed(1)),
-              hitterLineupSpot, pitcherWHIP, pitcherFIP, hitterBarrelPct,
-              ...(_hrrBarrelAdj !== null && { hitterBarrelAdj: _hrrBarrelAdj }),
-              ...(_hrrPaFromSpot !== null && { hitterPaFromSpot: _hrrPaFromSpot, hitterTypicalPA: _hrrTypicalPA }),
-              ...(_hrrSeasonPctAdj !== null && { seasonPctAdj: _hrrSeasonPctAdj }),
-              ...(_hrrSoftPctAdj !== null && { softPctAdj: _hrrSoftPctAdj }),
-              hitterBarrelPts, hitterTotalPts, hitterGameTotal, hitterPlatoonPts,
-              hitterPlatoonRatio: hitterPlatoonRatio ?? undefined,
-              hitterH2HSource: hitterH2HSource ?? undefined,
-              hitterOps: _hitterOps ?? undefined, hitterOpsPts, hitterSeasonHitRatePts, hitterH2HHitRatePts,
-              hitterBa: hitterBa !== null ? hitterBa : undefined,
-              hitterBaTier: hitterBaTier ?? undefined,
-              hitterWhipPts, hitterSplitBA,
-              oppPitcherHand: hitterOppPitcherHand ?? undefined,
-              hitterSoftLabel: softLabel ?? undefined,
-              hitterPitcherName: sportByteam.mlb?.probables?.[tonightOpp]?.name ?? sportByteam.mlb?.pitcherInfoByTeam?.[tonightOpp]?.name ?? pitcherGamelogs[tonightOpp]?.name ?? null,
-              hitterPitcherEra: sportByteam.mlb?.pitcherEra?.[tonightOpp] ?? sportByteam.mlb?.probables?.[tonightOpp]?.era ?? null,
-            };
-            if (isDebug) dropped.push(_hitterLowScoreDrop);
-            plays.push({
-              ..._hitterLowScoreDrop,
-              qualified: false,
-              playerName: playerNameDisplay || playerName,
-              playerId: info.id,
-              sport, playerTeam, stat, threshold, kalshiPct, americanOdds,
-              truePct: parseFloat(truePct.toFixed(1)),
-              log5Pct: simPctOut ?? log5PctOut,
-              simPct: simPctOut,
-              spreadAdj,
-              gameDate,
-              gameTime: gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}:${_tomorrowISOStr}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null,
-              lineupConfirmed: _mlbLineupConf,
-              playerStatus: null,
-            });
-            continue;
-          }
           const mlbH2H = sport === "mlb" && softPct !== null;
           plays.push({
             qualified: true,
@@ -3226,16 +3011,11 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             (_preDedupSkPlays[k] = _preDedupSkPlays[k] || []).push(play);
           }
         }
-        // (Removed 2026-05-26) WNBA-only "one play per player across stats" dedup. Was setting
-        // play.qualified = false on the lower-edge stat, but post-v2 (2026-05-18) the client
-        // filter no longer reads the `qualified` field — only dcQualified, edge, dc, and
-        // _altLineDemoted. Code was a silent no-op. Both NBA and WNBA now uniformly allow
-        // multiple stats per player to qualify (e.g. Chet 10+ PTS + Chet 6+ REB,
-        // Sabally 10+ PTS + Sabally 4+ REB).
+        // Dedup plays to one per player+stat for the plays card. Non-headline thresholds carry
+        // qualified:false so the player card can still show them per-threshold (keys include
+        // threshold to preserve them).
         const bestMap = {};
         for (const play of plays) {
-          // qualified:false plays exist for the player card (all thresholds needed) — keep per-threshold.
-          // qualified:true/null plays are deduped to one per player+stat for the plays card display.
           const key = play.qualified === false
             ? `${play.playerName}|${play.sport}|${play.stat}|${play.threshold}`
             : `${play.playerName}|${play.sport}|${play.stat}`;
@@ -4146,7 +3926,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             // higher truePct than our OVER signal on a 7.5-line market).
             const _overInWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
             if (overEdge >= EDGE_GATE && _overInWindow) {
-              totalPlays.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge: overEdge, totalSimScore, qualified: totalSimScore >= SIMSCORE_GATE, kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _gameTime, lineupsConfirmed: _lineupsConfirmed, ..._simData });
+              totalPlays.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge: overEdge, totalSimScore, qualified: true, kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _gameTime, lineupsConfirmed: _lineupsConfirmed, ..._simData });
             } else if (isDebug && _overInWindow) {
               dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge: overEdge, totalSimScore, lineupsConfirmed: _lineupsConfirmed, reason: "edge_too_low", ..._simData });
             }
@@ -4155,21 +3935,19 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             // Debug-dropped path matches team-totals: push every non-qualifying UNDER so the
             // market report shows a row for every market, not just those with edge ≥ 3%.
             if (underEdge >= EDGE_GATE && noKalshiPct >= KALSHI_GATE && noKalshiPct <= KALSHI_CAP) {
-              totalPlays.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "under", kalshiPct, noKalshiPct, americanOdds: noKalshiAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, rawEdge, edge: underEdge, totalSimScore: underSimScore, qualified: underSimScore >= SIMSCORE_GATE, kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _gameTime, lineupsConfirmed: _lineupsConfirmed, ..._simData, ..._underComponents });
+              totalPlays.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "under", kalshiPct, noKalshiPct, americanOdds: noKalshiAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, rawEdge, edge: underEdge, totalSimScore: underSimScore, qualified: true, kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _gameTime, lineupsConfirmed: _lineupsConfirmed, ..._simData, ..._underComponents });
             } else if (isDebug) {
               dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "under", kalshiPct, noKalshiPct, americanOdds: noKalshiAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, rawEdge, edge: underEdge, totalSimScore: underSimScore, lineupsConfirmed: _lineupsConfirmed, reason: noKalshiPct < KALSHI_GATE ? "under_no_price_too_low" : "edge_too_low", ..._simData, ..._underComponents });
             }
           }
         }
         {
-          // Step 1: per-game dedup for game totals — qualified (simScore≥8) beats non-qualified; ties broken by edge
+          // Step 1: per-game dedup for game totals — pure edge dominance (SimScore tiebreak dropped with v1).
           const _totalBestMap = {};
           for (const tp of totalPlays) {
             const key = `${tp.sport}|${tp.homeTeam}|${tp.awayTeam}`;
-            const tpQ = tp.totalSimScore >= SIMSCORE_GATE;
             const prev = _totalBestMap[key];
-            const prevQ = prev && (prev.totalSimScore >= SIMSCORE_GATE);
-            if (!prev || (!prevQ && tpQ) || (prevQ === tpQ && tp.edge > prev.edge)) _totalBestMap[key] = tp;
+            if (!prev || tp.edge > prev.edge) _totalBestMap[key] = tp;
           }
           const _bestTotalIds = new Set(Object.values(_totalBestMap).map(tp => `${tp.sport}|${tp.homeTeam}|${tp.awayTeam}|${tp.threshold}|${tp.direction}`));
           // NOTE: team total cross-dedup applied after teamTotalPlays loop below
@@ -4341,7 +4119,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               const edge = rawEdge;
               const _ttOverInWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
               if (edge >= EDGE_GATE && _ttOverInWindow) {
-                teamTotalPlays.push({ ..._ttBaseFields, direction: "over", edge, rawEdge, teamTotalSimScore, qualified: teamTotalSimScore >= SIMSCORE_GATE });
+                teamTotalPlays.push({ ..._ttBaseFields, direction: "over", edge, rawEdge, teamTotalSimScore, qualified: true });
               } else if (isDebug && _ttOverInWindow) {
                 dropped.push({ ..._ttBaseFields, direction: "over", edge, rawEdge, teamTotalSimScore, reason: "edge_too_low" });
               }
@@ -4360,7 +4138,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               const _ttUnderSimScore = _uTtSeasonHitRatePts + _uTtWhipPts + _uTtL10Pts + _uH2hHitRatePts + _uTtOuPts;
               const _ttUnderComponents = { ttSeasonHitRatePts: _uTtSeasonHitRatePts, ttWhipPts: _uTtWhipPts, ttL10Pts: _uTtL10Pts, h2hHitRatePts: _uH2hHitRatePts, ttOuPts: _uTtOuPts };
               if (_ttUnderEdge >= EDGE_GATE && _ttNoKalshiPct >= KALSHI_GATE && _ttNoKalshiPct <= KALSHI_CAP) {
-                teamTotalPlays.push({ ..._ttBaseFields, ..._ttUnderComponents, direction: "under", noTruePct: _ttNoTruePct, noKalshiPct: _ttNoKalshiPct, americanOdds: _ttNoKalshiAO, edge: _ttUnderEdge, rawEdge: _ttUnderEdge, teamTotalSimScore: _ttUnderSimScore, qualified: _ttUnderSimScore >= SIMSCORE_GATE });
+                teamTotalPlays.push({ ..._ttBaseFields, ..._ttUnderComponents, direction: "under", noTruePct: _ttNoTruePct, noKalshiPct: _ttNoKalshiPct, americanOdds: _ttNoKalshiAO, edge: _ttUnderEdge, rawEdge: _ttUnderEdge, teamTotalSimScore: _ttUnderSimScore, qualified: true });
               } else if (isDebug) {
                 dropped.push({ ..._ttBaseFields, ..._ttUnderComponents, direction: "under", noTruePct: _ttNoTruePct, noKalshiPct: _ttNoKalshiPct, americanOdds: _ttNoKalshiAO, edge: _ttUnderEdge, teamTotalSimScore: _ttUnderSimScore, reason: _ttNoKalshiPct < KALSHI_GATE ? "under_no_price_too_low" : "edge_too_low" });
               }
@@ -4454,7 +4232,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               const edge = rawEdge;
               const _nttOverInWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
               if (edge >= EDGE_GATE && _nttOverInWindow) {
-                teamTotalPlays.push({ ..._nttBaseFields, direction: "over", edge, rawEdge, teamTotalSimScore, qualified: teamTotalSimScore >= SIMSCORE_GATE });
+                teamTotalPlays.push({ ..._nttBaseFields, direction: "over", edge, rawEdge, teamTotalSimScore, qualified: true });
               } else if (isDebug && _nttOverInWindow) {
                 dropped.push({ ..._nttBaseFields, direction: "over", edge, rawEdge, teamTotalSimScore, reason: "edge_too_low" });
               }
@@ -4471,41 +4249,31 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               const _nttUnderSimScore = _uTtOffRtgPts + _uTtDefRtgPts + _uTtNbaSeasonHitRatePts + _uNbaH2hHitRatePts + _uTtNbaOuPts;
               const _nttUnderComponents = { ttOffRtgPts: _uTtOffRtgPts, ttDefRtgPts: _uTtDefRtgPts, ttNbaSeasonHitRatePts: _uTtNbaSeasonHitRatePts, h2hHitRatePts: _uNbaH2hHitRatePts, ttNbaOuPts: _uTtNbaOuPts };
               if (_nttUnderEdge >= EDGE_GATE && _nttNoKalshiPct >= KALSHI_GATE && _nttNoKalshiPct <= KALSHI_CAP) {
-                teamTotalPlays.push({ ..._nttBaseFields, ..._nttUnderComponents, direction: "under", noTruePct: _nttNoTruePct, noKalshiPct: _nttNoKalshiPct, americanOdds: _nttNoKalshiAO, edge: _nttUnderEdge, rawEdge: _nttUnderEdge, teamTotalSimScore: _nttUnderSimScore, qualified: _nttUnderSimScore >= SIMSCORE_GATE });
+                teamTotalPlays.push({ ..._nttBaseFields, ..._nttUnderComponents, direction: "under", noTruePct: _nttNoTruePct, noKalshiPct: _nttNoKalshiPct, americanOdds: _nttNoKalshiAO, edge: _nttUnderEdge, rawEdge: _nttUnderEdge, teamTotalSimScore: _nttUnderSimScore, qualified: true });
               } else if (isDebug) {
                 dropped.push({ ..._nttBaseFields, ..._nttUnderComponents, direction: "under", noTruePct: _nttNoTruePct, noKalshiPct: _nttNoKalshiPct, americanOdds: _nttNoKalshiAO, edge: _nttUnderEdge, teamTotalSimScore: _nttUnderSimScore, reason: _nttNoKalshiPct < KALSHI_GATE ? "under_no_price_too_low" : "edge_too_low" });
               }
             }
           }
-          // Dedup: one play per scoringTeam+oppTeam+direction (qualified plays win over non-qualified; edge breaks ties within same tier)
+          // Dedup: one play per scoringTeam+oppTeam+direction — pure edge dominance (SimScore tiebreak dropped with v1).
           const _ttBestMap = {};
           for (const tp of teamTotalPlays) {
             const key = `${tp.sport}|${tp.scoringTeam}|${tp.oppTeam}|${tp.direction}`;
             const prev = _ttBestMap[key];
-            const tpQ = tp.qualified !== false;
-            const prevQ = prev && prev.qualified !== false;
-            if (!prev || (!prevQ && tpQ) || (prevQ === tpQ && tp.edge > prev.edge)) _ttBestMap[key] = tp;
+            if (!prev || tp.edge > prev.edge) _ttBestMap[key] = tp;
           }
           const _ttBestIds = new Set(Object.values(_ttBestMap).map(tp => `${tp.sport}|${tp.scoringTeam}|${tp.oppTeam}|${tp.threshold}|${tp.direction}`));
-          // Cross-type dedup: one qualified play per game across game totals AND team totals
-          // Qualified (simScore≥8) always beats non-qualified; ties broken by edge
+          // Cross-type dedup: one play per game across game totals AND team totals — pure edge dominance.
           const _crossBestMap = {};
           for (const tp of [...Object.values(_ttBestMap)]) {
             const key = `${tp.sport}|${tp.homeTeam}|${tp.awayTeam}`;
-            const tpQ = tp.teamTotalSimScore >= SIMSCORE_GATE;
             const prev = _crossBestMap[key];
-            const prevQ = prev && (prev.teamTotalSimScore != null ? prev.teamTotalSimScore >= SIMSCORE_GATE : prev.totalSimScore >= SIMSCORE_GATE);
-            if (!prev || (!prevQ && tpQ) || (prevQ === tpQ && tp.edge > prev.edge)) _crossBestMap[key] = tp;
+            if (!prev || tp.edge > prev.edge) _crossBestMap[key] = tp;
           }
-          // Compare team total winners against any qualified game total for the same game
+          // Compare team total winners against any non-demoted game total for the same game; game total wins on edge tie.
           for (const [key, gameTp] of Object.entries(_crossBestMap)) {
             const existingGameTotal = plays.find(p => p.gameType === "total" && p.sport === gameTp.sport && p.homeTeam === gameTp.homeTeam && p.awayTeam === gameTp.awayTeam && p.qualified !== false);
-            if (existingGameTotal) {
-              const gtQ = existingGameTotal.totalSimScore >= SIMSCORE_GATE;
-              const ttQ = gameTp.teamTotalSimScore >= SIMSCORE_GATE;
-              // Game total wins if: team total isn't qualified, OR both qualified and game total has higher/equal edge
-              if (!ttQ || (gtQ && existingGameTotal.edge >= gameTp.edge)) _crossBestMap[key] = existingGameTotal;
-            }
+            if (existingGameTotal && existingGameTotal.edge >= gameTp.edge) _crossBestMap[key] = existingGameTotal;
           }
           for (const tp of teamTotalPlays) {
             const isTypeBest = _ttBestIds.has(`${tp.sport}|${tp.scoringTeam}|${tp.oppTeam}|${tp.threshold}|${tp.direction}`);

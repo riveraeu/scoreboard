@@ -25,7 +25,6 @@ const KALSHI_CAP = 91;    // ~-1000 American odds cap
 // surface independently when each clears 5%. Server-side EDGE_GATE in api/[...path].js
 // stays at 3 to preserve play data for calibration analysis; the client tightens display.
 const EDGE_GATE = 5;
-const SIMSCORE_GATE = 8;
 
 function App() {
   const isMobile = useIsMobile();
@@ -346,10 +345,8 @@ function App() {
     const newKalshiPct = parseFloat(impliedFromOdds.toFixed(1));
     const truePct = play.direction === "under" ? (play.noTruePct ?? play.truePct) : play.truePct;
     const newEdge = truePct != null ? parseFloat((truePct - newKalshiPct).toFixed(1)) : (play.edge ?? null);
-    // Every new pick stamped modelVersion:"v2". v1 was dropped 2026-05-18 but the field stays
-    // on new picks so /api/auth/calibration can continue to split historical (v1) vs current
-    // (v2) outcomes. Without this, post-drop picks would be unstamped and treated as v1 by
-    // the calibration code, polluting the historical bucket.
+    // Stamp modelVersion:"v2" so /api/auth/calibration can split historical (pre-v2-drop)
+    // vs current outcomes. Without the stamp, post-drop picks would be treated as v1.
     // Live tracking requires { playerTeam, opponent } (or for totals: { homeTeam, awayTeam } /
     // { scoringTeam, oppTeam }) to build a `sport:team:opp` key for /api/live, and the pick
     // card's live progress bar is gated on pick.gameTime. /api/tonight-derived picks have
@@ -1768,7 +1765,7 @@ function App() {
                   const _qm = {};
                   for (const {t} of _allRates) {
                     const tp = tonightPlayerMap[`${safeTab}|${t}`];
-                    _qm[t] = !!tp && tp.qualified !== false && (tp.edge ?? 0) >= EDGE_GATE;
+                    _qm[t] = !!tp && (tp.edge ?? 0) >= EDGE_GATE;
                   }
                   const _defaultT = _allRates.find(({t}) => _qm[t])?.t ?? _allRates[0]?.t ?? null;
                   const _activeT = selectedThreshold != null && _allRates.some(r => r.t === selectedThreshold)
@@ -1800,7 +1797,7 @@ function App() {
                   const qualMap = {};
                   for (const {t} of tabRates) {
                     const tp = tonightPlayerMap[`${safeTab}|${t}`];
-                    qualMap[t] = !!tp && tp.qualified !== false && (tp.edge ?? 0) >= EDGE_GATE;
+                    qualMap[t] = !!tp && (tp.edge ?? 0) >= EDGE_GATE;
                   }
                   const defaultT = tabRates.find(({t}) => qualMap[t])?.t ?? tabRates[0]?.t ?? null;
                   const activeT = selectedThreshold != null && tabRates.some(r => r.t === selectedThreshold)
@@ -1835,7 +1832,7 @@ function App() {
                   const _qm = {};
                   for (const {t} of allRates) {
                     const tp = tonightPlayerMap[`${safeTab}|${t}`];
-                    _qm[t] = !!tp && tp.qualified !== false && (tp.edge ?? 0) >= EDGE_GATE;
+                    _qm[t] = !!tp && (tp.edge ?? 0) >= EDGE_GATE;
                   }
                   const _defaultT = allRates.find(({t}) => _qm[t])?.t ?? allRates[0]?.t ?? null;
                   const _activeT = selectedThreshold != null && allRates.some(r => r.t === selectedThreshold)
@@ -1918,11 +1915,10 @@ function App() {
                     const edgeColor = edge === null ? null : edge >= EDGE_GATE ? "#3fb950" : edge >= 0 ? "#e3b341" : "#f78166";
                     const edgeStr = edge === null ? null : (edge >= 0 ? `+${edge.toFixed(1)}%` : `${edge.toFixed(1)}%`);
 
-                    // Show track button only when the API marked this play+threshold as qualified
-                    // (kalshi within [KALSHI_GATE, KALSHI_CAP], edge >= EDGE_GATE, and per-threshold simScore >= SIMSCORE_GATE).
-                    // Player props don't always set qualified:true on the success path — undefined === passing.
+                    // Show track button only when the play+threshold qualifies:
+                    // kalshi within [KALSHI_GATE, KALSHI_CAP] and edge >= EDGE_GATE.
                     const qualifyingPct = truePct !== null ? truePct : pct;
-                    const qualifies = k && k.pct >= KALSHI_GATE && k.pct <= KALSHI_CAP && edge >= EDGE_GATE && tonightPlay && tonightPlay.qualified !== false;
+                    const qualifies = k && k.pct >= KALSHI_GATE && k.pct <= KALSHI_CAP && edge >= EDGE_GATE && tonightPlay;
                     const sportSlug = sport.split("/")[1];
                     const trackId = `${sportSlug}|${player.name}|${safeTab}|${t}|${tonightPlay?.gameDate || ""}`;
                     const _today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();

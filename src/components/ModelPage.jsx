@@ -701,8 +701,7 @@ truePct = P(teamPoints ≥ threshold)`}</Formula>
         </div>
       </div>
 
-      {/* v1 model toggle UI removed 2026-05-18. Qualification = dcQualified + edge≥5. SimScore
-          is display/attribution only — see [[project-model-version-toggle]]. */}
+      {/* Qualification = dcQualified + edge≥5. SimScore is display/attribution only. */}
 
       {/* Qualification summary */}
       <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:10,padding:"10px 14px",marginBottom:12,

@@ -33,7 +33,6 @@ function pickBestTabFn(allPlays, abbr, sport) {
     if (pt.gameType === 'teamTotal' && sport === 'nhl') continue;
     const m = buildTotalMapFn(allPlays, abbr, sport, pt.gameType, pt.isUnder);
     const mx = Object.values(m)
-      .filter(p => p.qualified !== false)
       .reduce((a, p) => Math.max(a, p.edge ?? 0), -Infinity);
     if (mx > bestEdge) { bestEdge = mx; best = pt.key; }
   }
@@ -148,8 +147,7 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, tonightLoading, all
 
   // Best play for active tab (used in explanation)
   const _activeVals = Object.values(activeTotalMap);
-  const _activeQual = _activeVals.filter(p => p.qualified !== false);
-  const activePlay = (_activeQual.length > 0 ? _activeQual : _activeVals)
+  const activePlay = _activeVals
     .sort((a,b) => (b.edge||0)-(a.edge||0))[0] ?? null;
 
   // Original tonightPlay kept for game log color-coding and header fallback
@@ -157,10 +155,8 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, tonightLoading, all
     p.gameType === 'total' && p.sport === sport &&
     (p.homeTeam?.toUpperCase() === abbr || p.awayTeam?.toUpperCase() === abbr)
   );
-  const _tq = tonightTotals.filter(p => p.qualified !== false);
-  const _tPool = _tq.length > 0 ? _tq : tonightTotals;
-  const _tMinDate = _tPool.reduce((min, p) => (p.gameDate||'') < min ? (p.gameDate||'') : min, _tPool[0]?.gameDate||'');
-  const tonightPlay = _tPool.filter(p => p.gameDate === _tMinDate).sort((a,b) => (b.edge||0)-(a.edge||0))[0] ?? null;
+  const _tMinDate = tonightTotals.reduce((min, p) => (p.gameDate||'') < min ? (p.gameDate||'') : min, tonightTotals[0]?.gameDate||'');
+  const tonightPlay = tonightTotals.filter(p => p.gameDate === _tMinDate).sort((a,b) => (b.edge||0)-(a.edge||0))[0] ?? null;
 
   // Fetch ALL alt-line Kalshi prices for this matchup (game total + team total) — fills tabs
   // outside the universal [67, 91] gate that /api/tonight skips. One fetch per gameType per
@@ -315,24 +311,22 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, tonightLoading, all
             const kp = play.kalshiPct;
             const kOdds = play.americanOdds;
             const kOddsStr = kOdds != null ? (kOdds > 0 ? `+${kOdds}` : `${kOdds}`) : null;
-            const isQual = play.qualified !== false;
             const score = getPlayScore(play);
             const scoreColor = score == null ? '#484f58' : score >= 8 ? '#3fb950' : score >= 5 ? '#e3b341' : '#8b949e';
             const simTip = score != null ? buildSimTip(play) : null;
             return (
-              <div style={{marginTop:6,background:'#161b22',border:`1px solid ${isQual?'#30363d':'#21262d'}`,borderRadius:8,padding:'8px 10px'}}>
+              <div style={{marginTop:6,background:'#161b22',border:'1px solid #30363d',borderRadius:8,padding:'8px 10px'}}>
                 <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:6,flexWrap:'wrap'}}>
                   <span style={{background:'rgba(88,166,255,0.12)',border:'1px solid #58a6ff',
                     borderRadius:5,padding:'1px 7px',fontSize:11,color:'#58a6ff',fontWeight:700,whiteSpace:'nowrap'}}>
                     {play.threshold}+ {STAT_LABEL[play.stat] || play.stat}
                   </span>
-                  {isQual && play.edge != null && (
+                  {play.edge != null && (
                     <span style={{background:'rgba(63,185,80,0.13)',border:'1px solid #3fb950',
                       borderRadius:5,padding:'1px 7px',fontSize:11,color:'#3fb950',fontWeight:700,whiteSpace:'nowrap'}}>
                       +{play.edge}%
                     </span>
                   )}
-                  {!isQual && <span style={{fontSize:10,color:'#484f58'}}>unqualified</span>}
                   {score != null && (
                     <SimBadge sc={score} scTitle={simTip} scColor={scoreColor}
                       style={{marginLeft:'auto'}}
@@ -368,10 +362,7 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, tonightLoading, all
 
           const renderLineupRow = ({ key, posLabel, posStyle, imgSrc, name, subLabel, subStyle, rowStyle }) => {
             const plays = playerPlaysMap[name] || [];
-            const sortedPlays = [...plays].sort((a,b) => {
-              if ((a.qualified !== false) !== (b.qualified !== false)) return (a.qualified !== false) ? -1 : 1;
-              return (a.threshold||0) - (b.threshold||0);
-            });
+            const sortedPlays = [...plays].sort((a,b) => (a.threshold||0) - (b.threshold||0));
             const hasPlays = sortedPlays.length > 0;
             const refPlay = sortedPlays[0];
             const SPORT_KEY_MAP = { mlb:'baseball/mlb', nba:'basketball/nba', nhl:'hockey/nhl' };

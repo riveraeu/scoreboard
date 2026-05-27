@@ -13,7 +13,7 @@
 Sports prop betting dashboard that pulls Kalshi prediction market prices, computes a model True%, and shows qualified plays with edge over the market. Vercel Edge runtime (Web Fetch + KV/Redis only — no Node APIs).
 
 **Production**: `https://scoreboard-ivory-xi.vercel.app`
-**Universal qualification**: Kalshi 67–91% · Edge ≥ 3% · SimScore ≥ 8/10. Game/team totals gate UNDERs by the same `noKalshiPct ∈ [67, 91]` window. Tunables live as module-level constants `KALSHI_GATE` (67, ~-200 floor) / `KALSHI_CAP` (91, ~-1000 cap) / `EDGE_GATE` / `SIMSCORE_GATE` in both `api/lib/handlers/tonight.js` and `src/App.jsx` — change in both places. (Phase D will consolidate to one source.)
+**Universal qualification**: Kalshi 67–91% · Edge ≥ 5% (client) / ≥ 3% (server, kept loose for calibration data). Game/team totals gate UNDERs by the same `noKalshiPct ∈ [67, 91]` window. SimScore is display-only since v1 was dropped 2026-05-26. Tunables `KALSHI_GATE` (67) / `KALSHI_CAP` (91) / `EDGE_GATE` live in `api/lib/handlers/tonight.js` and `src/App.jsx` — change in both places. (Phase D will consolidate to one source.)
 
 ---
 
@@ -39,7 +39,7 @@ Single Vercel Edge Function. `api/[...path].js` is now a ~140-line thin router: 
 - `api/lib/handlers/sports.js` — `/api/team`, `/api/live`
 - `api/lib/handlers/dvp.js` — `/api/dvp`, `/api/nba-depth`, `/api/dvp/debug-dc`
 - `api/lib/handlers/kalshi.js` — `/api/kalshi`, `/api/kalshi-snapshot`, `/api/keepalive`
-- `api/lib/handlers/tonight.js` — `/api/tonight` (the play-generation pipeline, ~5700 lines). Owns `KALSHI_GATE`/`KALSHI_CAP`/`EDGE_GATE`/`SIMSCORE_GATE`, `PROD_SPORTS`, `B2B_*` constants, `_isB2B` helper, plus the inline `TEAM_NORM` / `NHL_ABBR_MAP` / `_VALID_TEAMS` tables and the `parseGameTeams` parser.
+- `api/lib/handlers/tonight.js` — `/api/tonight` (the play-generation pipeline, ~5500 lines). Owns `KALSHI_GATE`/`KALSHI_CAP`/`EDGE_GATE`, `PROD_SPORTS`, `B2B_*` constants, `_isB2B` helper, plus the inline `TEAM_NORM` / `NHL_ABBR_MAP` / `_VALID_TEAMS` tables and the `parseGameTeams` parser.
 
 The sport/utility modules under `api/lib/`:
 - `api/lib/simulate.js` — park factors + simulation functions (`log5K`, `simulateKsDist`, `buildNbaStatDist`, `simulateHits`, `simulateMLBTotalDist/NBATotalDist/NHLTotalDist`, `simulateTeamTotalDist`, `simulateTeamPtsDist`, `kDistPct/nbaDistPct/totalDistPct`, kelly/EV math), `TTO_DECAY_FACTOR`, `UMPIRE_KFACTOR`
@@ -167,13 +167,12 @@ const env = {
 ```
 Symptom of missing wire-up: `env?.VAR` is `undefined` even though Vercel dashboard shows it set. JWT_SECRET specifically: `TextEncoder.encode(undefined)` = 0 bytes → `"Imported HMAC key length (0)"` 500 on login.
 
-**Model version (v1 dropped 2026-05-18)**: Universal client qualification is now `dcQualified === true && edge >= 5`. The previous v1 (SimScore-gated `qualified && finalSimScore >= 8 && hitterFinalSimScore >= 8`) was deprecated — SimScore was "just another filter that limited plays" without lifting hit rate. SimScore is now display/attribution only.
+**Model version (v1 fully dropped 2026-05-26)**: Universal client qualification is `dcQualified === true && edge >= 5`. The previous v1 SimScore gate (`finalSimScore >= 8` etc.) was deprecated 2026-05-18; the v1-specific server emit branches and client `qualified !== false` filters were removed 2026-05-26. SimScore is computed and emitted for display/attribution only. **Behavior change**: plays with SimScore < 8 now qualify if `dcQualified + edge ≥ 5`. Filter `trackedAt < 2026-05-26` from calibration when comparing pre/post-cleanup pick volumes.
 
-- Client `EDGE_GATE = 5` (App.jsx:27, LineupsPage.jsx). Server `EDGE_GATE = 3` for calibration continuity — every pick is stored at edge≥3, client filters to ≥5.
-- `trackPlay` still stamps every new pick `modelVersion: "v2"` so `/api/auth/calibration` can keep splitting historical v1 picks vs current v2 picks. Without this, post-drop picks would be unstamped and the calibration code treats those as `"v1"` (polluting historical buckets).
-- `useModelVersion` hook + `scoreboard_modelVersion` localStorage flag removed. The orphaned localStorage key in user browsers is harmless.
-- `params.get("model")` server-side parse + `modelVersion` response echo removed. Pre-drop clients sending `&model=v2` are ignored (no-op).
-- `/api/auth/calibration` retains `?modelVersion=v1|v2|all` filter + `byModelVersion: { v1, v2 }` breakdown for historical comparison. Picks tracked before 2026-05-15 have no `modelVersion` field and are treated as v1 for grouping.
+- Client `EDGE_GATE = 5` (App.jsx, LineupsPage.jsx). Server `EDGE_GATE = 3` for calibration continuity — every pick is stored at edge≥3, client filters to ≥5.
+- `trackPlay` still stamps every new pick `modelVersion: "v2"` so `/api/auth/calibration` can keep splitting historical v1 picks vs current v2 picks.
+- The `qualified` field is still emitted by the server but only carries an alt-line-demotion semantic (winning alt-line = `qualified: true`, demoted = `qualified: false`) and the MLB-K per-threshold extras for the player card. It no longer reflects SimScore.
+- `/api/auth/calibration` retains `?modelVersion=v1|v2|all` filter + `byModelVersion: { v1, v2 }` breakdown for historical comparison.
 
 **Kalshi UNDER pricing — use `no_ask_dollars`, not `1 - yes_ask_dollars`**: Kalshi binary markets have **independent** YES and NO order books. `yes_ask` is the cost to buy YES; `no_ask` is the cost to buy NO. They are NOT mirrors — typical spread is 3–7 cents (e.g. yes_ask=0.17, no_ask=0.87 instead of the "fair" 0.83). Synthesizing the UNDER price as `1 - yes_ask` systematically underprices UNDERs and inflates their measured edge by 3–7%. **Fix landed 2026-05-15**: the parse loop now reads `m.no_ask_dollars` alongside `yes_ask_dollars` and propagates `noKalshiPct` + `noKalshiAO` through `totalMarkets`/`teamTotalMarkets` push payloads. Emission sites (game total ~4684, team total MLB ~4882, team total NBA ~4969) consume the passed-through fields with a `?? (100 - kalshiPct)` fallback for the missing-data case. Player-prop UNDERs are not affected (Kalshi doesn't list player-prop UNDER alt lines as separate markets). Pre-fix UNDER picks tracked before 2026-05-15 have wrong `kalshiPct`/`americanOdds`/`edge` values — filter them out of calibration.
 

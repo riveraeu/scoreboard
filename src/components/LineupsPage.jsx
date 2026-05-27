@@ -93,9 +93,8 @@ function buildAllGames(allPlays, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nh
   ];
 }
 
-// Mirror of App.jsx's _qualifiedFilter. v1 (SimScore-gated) was dropped 2026-05-18; this is
-// now just the v2 dc + edge filter. Alt-line dedup was removed 2026-05-16 (paired with the
-// edge gate raise to 5; surfacing multiple thresholds gives users more payout/safety choice).
+// Mirror of App.jsx's _qualifiedFilter: dc + edge gate, no SimScore. Alt-line dedup is
+// suppressed client-side so each threshold that clears EDGE_GATE surfaces independently.
 const EDGE_GATE = 5;
 // Build a tracked-id Set so passesGate can re-surface alt-line picks the user has tracked
 // (server-side dedup may have demoted them in favor of a higher-edge alt; we want them

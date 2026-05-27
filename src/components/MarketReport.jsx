@@ -447,8 +447,7 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                       const cmp = typeof va === "string" ? va.localeCompare(vb) : va - vb;
                       return _sortCfg.dir === "desc" ? -cmp : cmp;
                     }
-                    // Rank by dataConfidence desc, then edge desc. (v1 SimScore-`qualified`
-                    // tiebreaker was dropped 2026-05-18 along with the v1 toggle.)
+                    // Rank by dataConfidence desc, then edge desc.
                     const dca = a.dataConfidence ?? 0;
                     const dcb = b.dataConfidence ?? 0;
                     if (dcb !== dca) return dcb - dca;
@@ -469,8 +468,7 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                       {(() => {
                         // Report extra columns. Universal DC penalty columns — matchup-quality
                         // detail (CSW%, USG, etc.) is dropped since those signals already feed
-                        // truePct via the lambda. v1's per-(sport,stat) SimScore col set was
-                        // removed 2026-05-18 with the v1 toggle deprecation.
+                        // truePct via the lambda.
                         const _isTotalsType = (stat === "totalRuns" || stat === "totalPoints" || stat === "totalGoals" || stat === "teamRuns" || stat === "teamPoints");
                         const xcols = [
                           {k:"dc", l:"DC"},
@@ -771,7 +769,7 @@ function MarketReport({ onClose, fetchReport, reportDataBySport, reportSport, se
                               const isTeamTotal = m.gameType === "teamTotal";
                               const isMl = m.gameType === "ml";
                               const isSpread = m.gameType === "spread";
-                              const _nameWhite = (isTotal || isTeamTotal || isMl || isSpread) ? m.qualified : sport === "mlb" ? (_highScore && m.qualified !== false) : m.qualified;
+                              const _nameWhite = (isTotal || isTeamTotal || isMl || isSpread) ? m.qualified : sport === "mlb" ? (_highScore && m.qualified) : m.qualified;
                               const _rowKey = isTeamTotal ? `${m.scoringTeam}|${m.oppTeam}|${m.threshold}${m.direction==="under"?"|under":""}|${i}` : isTotal ? `${m.homeTeam}|${m.awayTeam}|${m.threshold}|${i}` : isMl ? `${m.pickTeam}|${m.oppTeam}|${i}` : isSpread ? `${m.pickTeam}|${m.oppTeam}|${m.pickLine}|${i}` : `${m.playerName}|${m.threshold}|${i}`;
                               return (
                                 <div key={_rowKey} style={{
