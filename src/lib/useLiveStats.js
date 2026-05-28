@@ -2,6 +2,15 @@ import React from 'react';
 import { WORKER } from './constants.js';
 import { getPickCurrentStat, findLivePlayer, resolveTotalGameScore, pitcherIsOut } from './liveStats.js';
 
+// Used by the player-prop DNP check: a player still missing from the boxscore past this
+// point of the game is overwhelmingly a coach's decision / IL, not a late check-in.
+const pastMidpoint = (sport, detail) => {
+  if (!detail) return false;
+  if (sport === "nba" || sport === "wnba") return /(3rd|4th|OT|End of 2nd|Halftime)/i.test(detail);
+  if (sport === "nhl")                     return /(3rd|OT|SO|End of 2nd)/i.test(detail);
+  return false;
+};
+
 // Live-stat polling + auto-resolve for tracked picks. Extracted from App.jsx 2026-05-27.
 //
 // Owns: liveStats state, the polling interval ref, the meta ref (for closure-fresh meta
@@ -134,6 +143,14 @@ export function useLiveStats({ trackedPlays, setTrackedPlays, mlbMeta, nbaMeta, 
         if (current !== null && current >= pick.threshold) {
           return { ...pick, ...backfill, result: "won" };
         }
+        // Mid-game DNP: player not in boxscore + game has passed the midpoint = coach's
+        // decision / IL. Resolve "dnp" without waiting for game end. Conservative — only
+        // fires past halftime (NBA/WNBA) / 2nd-period end (NHL) so a starter who's late
+        // checking in early game isn't false-positive resolved. MLB skipped (pitcherIsOut
+        // handles K-prop DNP via explicit isCurrentPitcher flag).
+        if (playerStats === undefined && liveGame.state === "in" && pastMidpoint(pick.sport, liveGame.detail)) {
+          return { ...pick, ...backfill, result: "dnp" };
+        }
         // MLB strikeouts: once the pitcher is pulled, their K count is final. Resolve "lost"
         // without waiting for the game to end so the pick card stops showing as in-progress.
         // Uses isCurrentPitcher flag from /api/live (correct for bulk pitchers behind openers).
@@ -211,10 +228,12 @@ export function useLiveStats({ trackedPlays, setTrackedPlays, mlbMeta, nbaMeta, 
         : (isHome ? (gameScore.homeScore ?? 0) : (gameScore.awayScore ?? 0));
 
       const isUnder = pick.direction === "under";
-      // OVER: resolve won mid-game the moment threshold is crossed; resolve lost only at game end
-      // UNDER: must wait for game to end
+      // Totals are monotonic — scores only go up. Once the threshold is crossed mid-game,
+      // OVER is locked won and UNDER is locked lost; neither can recover. Resolve both
+      // immediately rather than waiting for `state === "post"`.
       if (gameScore.state === "in") {
         if (!isUnder && current >= pick.threshold) return { ...pick, result: "won" };
+        if ( isUnder && current >= pick.threshold) return { ...pick, result: "lost" };
         return pick;
       }
       const met = isUnder ? current < pick.threshold : current >= pick.threshold;
