@@ -30,7 +30,7 @@ History.pushState + popstate. Routes:
 ---
 
 ## ReportPage (Market Report + Model Reference)
-Merged into a single full-page route at `/model` (2026-05-29). Entry points: the homepage **Model** button (lands on the Model Reference tab) and the **Report** button (lands on the Market Report tab, sport pre-seeded to MLB). Both go through `useRouting.navigateToModel(opts)` which writes `modelEntryOpts = {tab, sport}` so `ReportPage` can seed its initial selection.
+Merged into a single full-page route at `/model` (2026-05-29). Homepage entry point: the **Research** button — lands on the Market Report tab with MLB pre-seeded. Direct `/model` URL visits (paste, back/forward) default to the Model Reference tab. Entry passes through `useRouting.navigateToModel(opts)` which writes `modelEntryOpts = {tab, sport}` so `ReportPage` can seed its initial selection.
 
 **Selectors** (top of the page): a sport dropdown (MLB / NBA / WNBA / NHL) and a play-type dropdown filtered by sport. The play-type catalog lives in `PLAY_TYPES` in `ReportPage.jsx` — each entry has `{ id, label, statKeys }`. `id` is the calibration tab key (e.g. `mlb-k`, `nba-1htotal`); `statKeys` is the array of `m.stat` values that belong to this play type. NBA "Props" rolls four stats (`points/rebounds/assists/threePointers`) into a single entry to mirror calibration's merged bucket.
 
