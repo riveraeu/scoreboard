@@ -127,7 +127,6 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, tonightLoading, all
   const sortedGL = [...(gameLog || [])].sort((a, b) => {
     const { col, dir } = glSort;
     let va = a[col], vb = b[col];
-    if (col === 'isHome') { va = a.isHome ? 0 : 1; vb = b.isHome ? 0 : 1; }
     if (col === 'result') { va = a.result || ''; vb = b.result || ''; }
     const cmp = typeof va === 'string' ? va.localeCompare(vb) : (va ?? 0) - (vb ?? 0);
     return dir === 'desc' ? -cmp : cmp;
@@ -135,7 +134,6 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, tonightLoading, all
 
   const glCols = [
     { key:'date',     label:'Date',  align:'left'   },
-    { key:'isHome',   label:'H/A',   align:'center' },
     { key:'opp',      label:'Opp',   align:'left'   },
     { key:'teamScore',label:'Us'                    },
     { key:'oppScore', label:'Opp'                   },
@@ -306,8 +304,8 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, tonightLoading, all
                         borderTop:'1px solid #21262d',
                         background: i%2===0?'#0d1117':'transparent'}}>
                         <td style={{padding:'5px 8px',color:'#8b949e',textAlign:'left'}}>{g.date ? g.date.slice(5) : '—'}</td>
-                        <td style={{padding:'5px 8px',color:'#484f58',textAlign:'center'}}>{g.isHome ? '' : '@'}</td>
-                        <td style={{padding:'5px 8px',color:'#c9d1d9',textAlign:'left'}}>
+                        <td style={{padding:'5px 8px',color:'#c9d1d9',textAlign:'left',whiteSpace:'nowrap'}}>
+                          {!g.isHome && <span style={{color:'#484f58',marginRight:3}}>@</span>}
                           <button onClick={() => navigateToTeam(g.opp, sport)}
                             style={{background:'none',border:'none',color:'#c9d1d9',cursor:'pointer',padding:0,fontSize:12,textDecoration:'underline',textDecorationColor:'#484f58'}}>
                             {g.opp}
