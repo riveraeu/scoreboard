@@ -144,10 +144,15 @@ export function computeDataConfidence(p, ctx = {}) {
     else if (sg < 5) _pen("tinySoftSample", 2);
     else if (sg < 10) _pen("smallSoftSample", 1);
   } else if (gameType === "total") {
-    const ss = p.gtSsnSample;
-    if (ss == null) _pen("noSeasonSample", 3);
-    else if (ss < 10) _pen("tinySeasonSample", 2);
-    else if (ss < 30) _pen("smallSeasonSample", 1);
+    // F5 (first-5-innings) totals don't have per-game F5-runs season-hit-rate data in v1, so
+    // skip the season-sample penalty for them. Full-game gtSsnSample remains the trust signal
+    // for full-game totals.
+    if (p.segment !== "f5") {
+      const ss = p.gtSsnSample;
+      if (ss == null) _pen("noSeasonSample", 3);
+      else if (ss < 10) _pen("tinySeasonSample", 2);
+      else if (ss < 30) _pen("smallSeasonSample", 1);
+    }
   } else if (gameType === "teamTotal") {
     const hg = p.h2hGames;
     if (hg == null) _pen("noH2HSample", 3);

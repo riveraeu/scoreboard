@@ -226,6 +226,12 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           KXNBASPREAD: { sport: "nba", league: "nba", stat: "spread", col: "PTS", gameType: "spread" },
           KXWNBASPREAD: { sport: "wnba", league: "wnba", stat: "spread", col: "PTS", gameType: "spread" },
           KXNHLSPREAD: { sport: "nhl", league: "nhl", stat: "spread", col: "G", gameType: "spread" },
+          // MLB First-5-Innings — segmented totals and spreads on the starter-only portion of the
+          // game. Parse goes through the same total/spread branches as full-game, but records are
+          // stamped with `segment: "f5"` and emit through a separate F5 block that uses F5-specific
+          // lambdas (starter-only, no bullpen, no TTO).
+          KXMLBF5TOTAL:  { sport: "mlb", league: "mlb", stat: "f5total",  col: "R", gameType: "total",  segment: "f5" },
+          KXMLBF5SPREAD: { sport: "mlb", league: "mlb", stat: "f5spread", col: "R", gameType: "spread", segment: "f5" },
         };
         const TEAM_NORM = {
           nba: { GS: "GSW", SA: "SAS", NY: "NYK", NJ: "BKN", NO: "NOP", PHO: "PHX", WPH: "PHX", KAT: "ATL" },
@@ -286,6 +292,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           const ticker = seriesTickers[i];
           const cfg = SERIES_CONFIG[ticker];
           const { sport, stat, col } = cfg;
+          const segment = cfg.segment || "full"; // "f5" for segmented markets, "full" otherwise
           for (const m of kalshiResults[i].markets || []) {
             const strike = parseFloat(m.floor_strike);
             if (isNaN(strike)) continue;
@@ -315,7 +322,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               if ((pct < KALSHI_GATE || pct > KALSHI_CAP) && (noPct < KALSHI_GATE || noPct > KALSHI_CAP)) continue;
               const [gameTeam1, gameTeam2] = parseGameTeams(m.event_ticker, sport);
               if (!gameTeam1 || !gameTeam2) continue;
-              const dedupeKey = `total|${sport}|${gameTeam1}|${gameTeam2}|${threshold}`;
+              const dedupeKey = `total|${sport}|${segment}|${gameTeam1}|${gameTeam2}|${threshold}`;
               if (globalSeen.has(dedupeKey)) continue;
               globalSeen.add(dedupeKey);
               const _toAO = pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
@@ -331,7 +338,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               }
               const _tYesBid = parseFloat(m.yes_bid_dollars) || 0;
               const _tSpread = yesAsk > 0 && _tYesBid > 0 ? Math.round((yesAsk - _tYesBid) * 100) : null;
-              totalMarkets.push({ gameType: "total", sport, stat, col, threshold, kalshiPct: pct, americanOdds: _toAO, noKalshiPct: noPct, noKalshiAO: _tNoAO, kalshiVolume: volume, gameTeam1, gameTeam2, gameDate: _tGameDate, kalshiSpread: _tSpread, _ticker: m.ticker, _yesAsk: yesAsk, _yesBid: _tYesBid, _noAsk: noAsk });
+              totalMarkets.push({ gameType: "total", sport, stat, col, segment, threshold, kalshiPct: pct, americanOdds: _toAO, noKalshiPct: noPct, noKalshiAO: _tNoAO, kalshiVolume: volume, gameTeam1, gameTeam2, gameDate: _tGameDate, kalshiSpread: _tSpread, _ticker: m.ticker, _yesAsk: yesAsk, _yesBid: _tYesBid, _noAsk: noAsk });
               continue;
             }
 
@@ -382,7 +389,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               const marginTeam = normTeam(sport, _spMatch[1]);
               // Trust the parsed strike (floor_strike) as the line; suffix N is a sanity-check tier.
               if (isNaN(strike) || strike <= 0 || strike === Math.floor(strike)) continue;
-              const dedupeKey = `spread|${sport}|${marginTeam}|${gameTeam1}|${gameTeam2}|${strike}`;
+              const dedupeKey = `spread|${sport}|${segment}|${marginTeam}|${gameTeam1}|${gameTeam2}|${strike}`;
               if (globalSeen.has(dedupeKey)) continue;
               globalSeen.add(dedupeKey);
               const _spAO = pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
@@ -398,7 +405,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               }
               const _spYesBid = parseFloat(m.yes_bid_dollars) || 0;
               const _spSpread = yesAsk > 0 && _spYesBid > 0 ? Math.round((yesAsk - _spYesBid) * 100) : null;
-              spreadMarkets.push({ gameType: "spread", sport, stat, col, line: strike, marginTeam, kalshiPct: pct, americanOdds: _spAO, noKalshiPct: noPct, noKalshiAO: _spNoAO, kalshiVolume: volume, gameTeam1, gameTeam2, gameDate: _spGameDate, kalshiSpread: _spSpread, _ticker: m.ticker, _yesAsk: yesAsk, _noAsk: noAsk });
+              spreadMarkets.push({ gameType: "spread", sport, stat, col, segment, line: strike, marginTeam, kalshiPct: pct, americanOdds: _spAO, noKalshiPct: noPct, noKalshiAO: _spNoAO, kalshiVolume: volume, gameTeam1, gameTeam2, gameDate: _spGameDate, kalshiSpread: _spSpread, _ticker: m.ticker, _yesAsk: yesAsk, _noAsk: noAsk });
               continue;
             }
 
@@ -3270,6 +3277,9 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           for (const tm of totalMarkets) { const _gk = `${tm.sport}|${tm.gameTeam1}|${tm.gameTeam2}`; _gtVolumeMap[_gk] = (_gtVolumeMap[_gk] ?? 0) + (tm.kalshiVolume ?? 0); }
           for (const tm of totalMarkets) {
             const { sport, stat, threshold, kalshiPct, americanOdds, noKalshiPct: _tmNoPct, noKalshiAO: _tmNoAO, gameTeam1, gameTeam2, gameDate, kalshiSpread, kalshiVolume } = tm;
+            // Segmented markets (e.g. MLB F5) emit through a dedicated F5 block further down;
+            // skip them in the full-game total loop to avoid running full-game lambdas on F5 lines.
+            if (tm.segment && tm.segment !== "full") continue;
             if (gameDate && gameDate < cutoffStr) continue;
             const spreadAdj = kalshiSpread != null ? parseFloat((kalshiSpread / 2).toFixed(1)) : 0;
             const lowVolume = (_gtVolumeMap[`${sport}|${gameTeam1}|${gameTeam2}`] ?? 0) < 50;
@@ -3469,6 +3479,29 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
                 _hLam = parseFloat(((1 - _mlbRegimeBlendW) * _hLam + _mlbRegimeBlendW * _mlbHomeRecent.mean).toFixed(2));
                 _aLam = parseFloat(((1 - _mlbRegimeBlendW) * _aLam + _mlbRegimeBlendW * _mlbAwayRecent.mean).toFixed(2));
               }
+              // F5 (First 5 Innings) lambdas — starter-only, scaled to 5/9 of a 9-inning game.
+              // Skips two full-game terms: (1) TTO bump (3rd-time-through penalty kicks in past
+              // BF=22 = inning 6+, so F5 ≈ 1st time + part of 2nd time), and (2) bullpen 40% share
+              // (F5 assumes the starter still in). Days-rest, vs-L/R splits, park, platoon, weather,
+              // umpire, and lineup-out multipliers all still apply. No regime blend in v1 — schedule
+              // cache stores full-game runs, not per-inning splits.
+              const _F5_FRAC = 5 / 9;
+              const _awayStarter_F5 = _starterMult(
+                awayFipEff != null ? awayFipEff * _awayRestBump : (awayFIP != null ? awayFIP * _awayRestBump : null),
+                awayERA != null ? awayERA * _awayRestBump : null,
+                awayWhipEff != null ? awayWhipEff : awayWHIP
+              );
+              const _homeStarter_F5 = _starterMult(
+                homeFipEff != null ? homeFipEff * _homeRestBump : (homeFIP != null ? homeFIP * _homeRestBump : null),
+                homeERA != null ? homeERA * _homeRestBump : null,
+                homeWhipEff != null ? homeWhipEff : homeWHIP
+              );
+              const _hLam_F5 = (homeRPG != null && _awayStarter_F5 != null)
+                ? parseFloat((Math.max(0.3, Math.min(8, homeRPG * _F5_FRAC * _awayStarter_F5 * parkRF * _homePlatFactor * _weatherFactor * _umpRunFactor * homeLineupFactor))).toFixed(2))
+                : null;
+              const _aLam_F5 = (awayRPG != null && _homeStarter_F5 != null)
+                ? parseFloat((Math.max(0.3, Math.min(8, awayRPG * _F5_FRAC * _homeStarter_F5 * parkRF * _awayPlatFactor * _weatherFactor * _umpRunFactor * awayLineupFactor))).toFixed(2))
+                : null;
               // H2H combined hit rate: how often (homeScore+awayScore) >= threshold in last 10 H2H meetings
               const _gtH2H = _gtH2HRate(homeTeam, awayTeam, threshold);
               const h2hTotalHitRate = _gtH2H?.rate ?? null;
@@ -3485,7 +3518,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
                 truePct = totalDistPct(totalDistCache[_dk], threshold);
                 const _mlCtxKey = `${homeTeam}|${awayTeam}|${gameDate}`;
                 if (!_mlbMlContext[_mlCtxKey]) {
-                  _mlbMlContext[_mlCtxKey] = { homeTeam, awayTeam, gameDate, homeLambda: _hLam, awayLambda: _aLam, dispR: _mlbDispR, kalshiVolume, kalshiSpread, lowVolume, _simData: { ..._simData } };
+                  _mlbMlContext[_mlCtxKey] = { homeTeam, awayTeam, gameDate, homeLambda: _hLam, awayLambda: _aLam, f5HomeLambda: _hLam_F5, f5AwayLambda: _aLam_F5, dispR: _mlbDispR, kalshiVolume, kalshiSpread, lowVolume, _simData: { ..._simData } };
                 }
               }
               // Pre-sim lambda blend: solve for the NegBin mean that would produce the observed
@@ -4467,6 +4500,8 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
         // no_ask are independent books — same UNDER-pricing gotcha as totals).
         {
           for (const m of spreadMarkets) {
+            // F5 spread emits through the dedicated F5 block below.
+            if (m.segment && m.segment !== "full") continue;
             if (m.gameDate && m.gameDate < cutoffStr) continue;
             const { gameTeam1, gameTeam2, gameDate, marginTeam, line, kalshiPct: yesKalshi, americanOdds: yesAO, noKalshiPct: noKalshi, noKalshiAO: noAO, kalshiVolume, kalshiSpread } = m;
             const ctx = _mlbMlContext[`${gameTeam1}|${gameTeam2}|${gameDate}`] ?? _mlbMlContext[`${gameTeam2}|${gameTeam1}|${gameDate}`];
@@ -4517,6 +4552,136 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
                   lineupsConfirmed: _lineupsConfirmed,
                   reason: "edge_too_low",
                   homeLambda, awayLambda,
+                  ..._simData,
+                });
+              }
+            }
+          }
+        }
+        // ── MLB First-5-Innings emission (KXMLBF5TOTAL + KXMLBF5SPREAD) ─────────────────────
+        // Reuses the per-game F5 lambdas already stashed on _mlbMlContext (computed in the MLB
+        // total loop). NegBin joint sim shares dispR with full-game (acceptable v1 bias — F5 is
+        // slightly less overdispersed than full-game since bullpen variance is absent, so reusing
+        // full-r under-disperses F5 tails marginally). One joint cache per game; total queries
+        // derive the combined-runs Int16Array from home[i]+away[i] for monotonicity.
+        const _mlbF5JointCache = {};
+        const _mlbF5TotalDistCache = {};
+        {
+          // F5 totals (KXMLBF5TOTAL)
+          for (const tm of totalMarkets) {
+            if (tm.segment !== "f5" || tm.sport !== "mlb") continue;
+            if (tm.gameDate && tm.gameDate < cutoffStr) continue;
+            const { threshold, kalshiPct, americanOdds, noKalshiPct: _tmNoPct, noKalshiAO: _tmNoAO, gameTeam1, gameTeam2, gameDate, kalshiSpread, kalshiVolume } = tm;
+            const ctx = _mlbMlContext[`${gameTeam1}|${gameTeam2}|${gameDate}`] ?? _mlbMlContext[`${gameTeam2}|${gameTeam1}|${gameDate}`];
+            if (!ctx) continue;
+            const { homeTeam, awayTeam, f5HomeLambda, f5AwayLambda, dispR, _simData } = ctx;
+            if (f5HomeLambda == null || f5AwayLambda == null) continue;
+            const _f5k = `${homeTeam}|${awayTeam}`;
+            if (!_mlbF5JointCache[_f5k]) _mlbF5JointCache[_f5k] = simulateMLBJoint(f5HomeLambda, f5AwayLambda, dispR, 10000);
+            const joint = _mlbF5JointCache[_f5k];
+            if (!joint) continue;
+            if (!_mlbF5TotalDistCache[_f5k]) {
+              const _dist = new Int16Array(joint.home.length);
+              for (let i = 0; i < joint.home.length; i++) _dist[i] = joint.home[i] + joint.away[i];
+              _mlbF5TotalDistCache[_f5k] = _dist;
+            }
+            const truePct = totalDistPct(_mlbF5TotalDistCache[_f5k], threshold);
+            if (truePct == null) continue;
+            const noTruePct = parseFloat((100 - truePct).toFixed(1));
+            const _gameTime = gameTimes[`mlb:${homeTeam}:${gameDate}`] ?? gameTimes[`mlb:${awayTeam}:${gameDate}`] ?? gameTimes[`mlb:${homeTeam}`] ?? gameTimes[`mlb:${awayTeam}`] ?? null;
+            const _lineupsConfirmed = _mlbBothTeamsConfirmed(homeTeam, awayTeam, gameDate);
+            // F5 OU line: derive from full-game OU × 5/9 so the dc threshold-distance penalty
+            // bucket has an anchor (mlb buckets are [3, 5] for full-game; ~5/9 scaling makes them
+            // [1.7, 2.8] effective for F5 — slightly tighter than ideal but workable v1).
+            const _fullGameOu = _simData?.gameOuLine ?? null;
+            const _f5GameOuLine = _fullGameOu != null ? parseFloat((_fullGameOu * 5 / 9).toFixed(1)) : null;
+            // F5 expected total = sum of F5 lambdas (mirrors full-game expectedTotal field)
+            const _f5ExpectedTotal = parseFloat((f5HomeLambda + f5AwayLambda).toFixed(2));
+            const _f5Common = {
+              gameType: "total", sport: "mlb", stat: "f5total", segment: "f5",
+              homeTeam, awayTeam, gameDate, threshold,
+              totalSimScore: 0, qualified: false,
+              kalshiVolume, kalshiSpread, lowVolume: ctx.lowVolume,
+              gameTime: _gameTime, lineupsConfirmed: _lineupsConfirmed,
+              homeLambda: f5HomeLambda, awayLambda: f5AwayLambda,
+              ..._simData,
+              // F5-specific overrides (must follow _simData spread to win)
+              homeExpected: f5HomeLambda, awayExpected: f5AwayLambda,
+              expectedTotal: _f5ExpectedTotal,
+              gameOuLine: _f5GameOuLine,
+            };
+            // OVER
+            {
+              const edge = parseFloat((truePct - kalshiPct).toFixed(1));
+              const inWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
+              if (edge >= EDGE_GATE && inWindow) {
+                plays.push({ ..._f5Common, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge });
+              } else if (isDebug && inWindow) {
+                dropped.push({ ..._f5Common, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge, reason: "edge_too_low" });
+              }
+            }
+            // UNDER (use real no_ask, not 1-yes_ask)
+            {
+              const edge = parseFloat((noTruePct - _tmNoPct).toFixed(1));
+              const inWindow = _tmNoPct >= KALSHI_GATE && _tmNoPct <= KALSHI_CAP;
+              if (edge >= EDGE_GATE && inWindow) {
+                plays.push({ ..._f5Common, direction: "under", kalshiPct, noKalshiPct: _tmNoPct, americanOdds: _tmNoAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, edge });
+              } else if (isDebug && inWindow) {
+                dropped.push({ ..._f5Common, direction: "under", kalshiPct, noKalshiPct: _tmNoPct, americanOdds: _tmNoAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, edge, reason: _tmNoPct < KALSHI_GATE ? "under_no_price_too_low" : "edge_too_low" });
+              }
+            }
+          }
+          // F5 spreads (KXMLBF5SPREAD)
+          for (const m of spreadMarkets) {
+            if (m.segment !== "f5" || m.sport !== "mlb") continue;
+            if (m.gameDate && m.gameDate < cutoffStr) continue;
+            const { gameTeam1, gameTeam2, gameDate, marginTeam, line, kalshiPct: yesKalshi, americanOdds: yesAO, noKalshiPct: noKalshi, noKalshiAO: noAO, kalshiVolume, kalshiSpread } = m;
+            const ctx = _mlbMlContext[`${gameTeam1}|${gameTeam2}|${gameDate}`] ?? _mlbMlContext[`${gameTeam2}|${gameTeam1}|${gameDate}`];
+            if (!ctx) continue;
+            const { homeTeam, awayTeam, f5HomeLambda, f5AwayLambda, dispR, _simData } = ctx;
+            if (f5HomeLambda == null || f5AwayLambda == null) continue;
+            if (marginTeam !== homeTeam && marginTeam !== awayTeam) continue;
+            const _f5k = `${homeTeam}|${awayTeam}`;
+            if (!_mlbF5JointCache[_f5k]) _mlbF5JointCache[_f5k] = simulateMLBJoint(f5HomeLambda, f5AwayLambda, dispR, 10000);
+            const joint = _mlbF5JointCache[_f5k];
+            if (!joint) continue;
+            const marginSide = marginTeam === homeTeam ? "home" : "away";
+            const yesTruePct = spreadPctFromJoint(joint.home, joint.away, line, marginSide);
+            if (yesTruePct == null) continue;
+            const noTruePct = parseFloat((100 - yesTruePct).toFixed(1));
+            const _gameTime = gameTimes[`mlb:${homeTeam}:${gameDate}`] ?? gameTimes[`mlb:${awayTeam}:${gameDate}`] ?? gameTimes[`mlb:${homeTeam}`] ?? gameTimes[`mlb:${awayTeam}`] ?? null;
+            const _lineupsConfirmed = _mlbBothTeamsConfirmed(homeTeam, awayTeam, gameDate);
+            for (const dir of ["yes", "no"]) {
+              const pickTeam = dir === "yes" ? marginTeam : (marginTeam === homeTeam ? awayTeam : homeTeam);
+              const oppTeam = dir === "yes" ? (marginTeam === homeTeam ? awayTeam : homeTeam) : marginTeam;
+              const pickSide = pickTeam === homeTeam ? "home" : "away";
+              const truePct = dir === "yes" ? yesTruePct : noTruePct;
+              const kalshiPct = dir === "yes" ? yesKalshi : noKalshi;
+              const americanOdds = dir === "yes" ? yesAO : noAO;
+              const pickLine = dir === "yes" ? -line : line;
+              const edge = parseFloat((truePct - kalshiPct).toFixed(1));
+              const inWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
+              if (edge >= EDGE_GATE && inWindow) {
+                plays.push({
+                  gameType: "spread", sport: "mlb", stat: "f5spread", segment: "f5",
+                  homeTeam, awayTeam, pickTeam, oppTeam, side: pickSide, gameDate,
+                  line, pickLine, marginTeam,
+                  kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge,
+                  totalSimScore: 0, qualified: false,
+                  kalshiVolume, kalshiSpread, lowVolume: ctx.lowVolume,
+                  gameTime: _gameTime, lineupsConfirmed: _lineupsConfirmed,
+                  homeLambda: f5HomeLambda, awayLambda: f5AwayLambda,
+                  ..._simData,
+                });
+              } else if (isDebug && inWindow) {
+                dropped.push({
+                  gameType: "spread", sport: "mlb", stat: "f5spread", segment: "f5",
+                  homeTeam, awayTeam, pickTeam, oppTeam, side: pickSide, gameDate,
+                  line, pickLine, marginTeam,
+                  kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge,
+                  lineupsConfirmed: _lineupsConfirmed,
+                  reason: "edge_too_low",
+                  homeLambda: f5HomeLambda, awayLambda: f5AwayLambda,
                   ..._simData,
                 });
               }

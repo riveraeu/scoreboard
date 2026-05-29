@@ -377,6 +377,45 @@ Kalshi series `KXMLBGAME` (same series that powers the MLB game-odds fallback). 
 
 ---
 
+## MLB First-5-Innings v1 (2026-05-28)
+
+**Series**: `KXMLBF5TOTAL`, `KXMLBF5SPREAD`. (`KXMLBF5` 3-way ML deferred — different shape.) Same ticker date+team segment as full-game; same `parseGameTeams` handles them.
+
+**Lambda**: per-side F5 lambda computed alongside full-game λ in the MLB total loop and stashed in `_mlbMlContext` as `f5HomeLambda` / `f5AwayLambda`:
+
+```
+λ_F5_side = teamRPG × (5/9) × oppStarterMult_F5 × parkRF × platoonFactor × weatherFactor × umpRunFactor × lineupOutFactor
+```
+
+where `oppStarterMult_F5 = _starterMult(fipEff × restBump, era × restBump, whipEff)` — i.e. `_starterMult` called with restBump applied but **without** the TTO bump (which kicks in past BF=22, after F5). The 60/40 starter/bullpen blend is replaced by 100% starter — F5 assumes the starter goes the distance. Clamped to `[0.3, 8]` runs.
+
+**Differences from full-game λ**:
+- No TTO bump on starter inputs (F5 ≈ 1st time through + part of 2nd; 3rd TTO doesn't happen yet)
+- No bullpen 40% share (no bullpen in F5 under starter-goes-5 assumption)
+- No regime blend (no per-game F5 runs in `_gtScheduleMap`; would require schedule cache extension)
+- Same days-rest, vs-L/R splits, park, platoon, weather, umpire, lineup-out adjustments
+
+**Joint sim**: `simulateMLBJoint(f5HomeLambda, f5AwayLambda, dispR, 10000)` — same NegBin per-team draws as full-game, sharing the same `dispR` from `_fitMlbDispersion`. F5 is structurally slightly less overdispersed than full-game (no bullpen-variance source), so reusing full-game `r` under-disperses F5 tails marginally. Acceptable v1 bias; revisit if calibration shows systematic miss on far-from-line F5 alt thresholds.
+
+**Total True%**: build combined-runs Int16Array as `home[i] + away[i]` from the joint draws, then `totalDistPct(dist, threshold)` for OVER prob; `1 − overPct` for UNDER. Cached per game in `_mlbF5TotalDistCache` for monotonicity across thresholds.
+
+**Spread True%**: reuse `spreadPctFromJoint(joint.home, joint.away, line, marginSide)` — sport-agnostic since the math is identical to full-game.
+
+**Emission**: F5 picks carry `segment: "f5"` and `stat: "f5total"` / `"f5spread"` so calibration groups them under `mlb|f5total` / `mlb|f5spread` (auto-derived from `${sport}|${stat}`). PlaysColumn renders through the existing `gameType === "total"` / `"spread"` branches with an "F5" pill in the header; segment-aware `playKey` / `trackId` prevent collisions with full-game picks at the same threshold/line.
+
+**Gates**: same as full-game — `DC_GATE("mlb", "total") = 10` for F5 total, `DC_GATE("mlb", "spread") = 8` for F5 spread. Server `EDGE_GATE = 3`, client `EDGE_GATE_CLIENT = 5`. Kalshi window 67–91. Same penalty table since F5 reuses the same lambda inputs (starter source, lineup confirmed, bullpen source — even though F5 doesn't use bullpen ERA, the penalty plumbing shares the field).
+
+**dc carve-out**: `noSeasonSample` / `tinySeasonSample` / `smallSeasonSample` are skipped when `p.segment === "f5"`. F5 has no per-game F5-runs season-hit-rate data in v1, so the sample-size penalty would auto-fire (-3) and block every F5 pick. Threshold-distance penalty (`farFromLine` / `modestlyFromLine`) does still apply, anchored against a synthesized F5 OU line = `fullGameOuLine × 5/9`. The full-game mlb buckets `[3, 5]` translate to effective `[1.7, 2.8]` against the F5 distribution — slightly tighter than ideal but workable v1.
+
+**Live resolution (deferred)**: v1 resolves F5 picks only at game end (`state === "post"`). Mid-game resolution from per-inning linescore (once bottom of 5 finishes) is a follow-up commit that touches `/api/live` (to expose `f5HomeScore` / `f5AwayScore` / `f5Complete`) and `App.jsx` / `liveStats.js` (to gate resolution on `f5Complete` rather than full-game `post`). Until that lands, F5 picks track but don't lock until the game finishes.
+
+**Deferred to v2 (not in this commit)**:
+- F5 ML (`KXMLBF5`) — 3-way home/away/tie market; needs `mlbF5MlPct` with non-dropped tie counting. Joint cache already exists; emission is a separate block.
+- F5-specific regime blend — requires extending `_gtScheduleMap` to capture per-game `linescore.innings[0..4]` from MLB Stats API.
+- `f5StarterShortLeash` dc penalty (-1 when `pitcherAvgBF < 18`) — only adds if calibration shows the low-BF subgroup misses systematically.
+
+---
+
 ## Kalshi Market Parsing
 - Series in `SERIES_CONFIG` (18 tickers across all sports/stats)
 - Player props, game totals, team totals: `pct ∈ [KALSHI_GATE, KALSHI_CAP] = [67, 91]` (constants in `api/[...path].js`). Markets outside this band aren't fetched/parsed at all.

@@ -68,6 +68,8 @@ function ModelPage({ onBack, calibData, calibLoading, fetchCalib, authToken }) {
     "nba-tt":  ["nba|teamPoints"],
     "mlb-ml":  ["mlb|ml"],
     "mlb-spread": ["mlb|spread"],
+    "mlb-f5total": ["mlb|f5total"],
+    "mlb-f5spread": ["mlb|f5spread"],
     "nba-ml":  ["nba|ml"],
     "nba-spread": ["nba|spread"],
     "wnba-ml": ["wnba|ml"],
@@ -218,6 +220,8 @@ function ModelPage({ onBack, calibData, calibLoading, fetchCalib, authToken }) {
       { id:"mlb-tt",  label:"MLB Team Total" },
       { id:"mlb-ml",  label:"MLB Moneyline" },
       { id:"mlb-spread", label:"MLB Spread" },
+      { id:"mlb-f5total",  label:"MLB F5 Total" },
+      { id:"mlb-f5spread", label:"MLB F5 Spread" },
     ]},
     { sport:"NBA", tabs:[
       { id:"nba",    label:"NBA Props" },

@@ -63,25 +63,27 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                   const tb = b.gameTime || "9999";
                   return ta < tb ? -1 : ta > tb ? 1 : b.edge - a.edge;
                 }).map((play) => {
+              const segSuffix = play.segment && play.segment !== "full" ? `-${play.segment}` : "";
               const playKey = play.gameType === "teamTotal"
                 ? `teamtotal-${play.sport}-${play.scoringTeam}-${play.oppTeam}-${play.threshold}${play.direction === "under" ? "-under" : ""}`
                 : play.gameType === "total"
-                ? `total-${play.sport}-${play.homeTeam}-${play.awayTeam}-${play.threshold}${play.direction === "under" ? "-under" : ""}`
+                ? `total-${play.sport}${segSuffix}-${play.homeTeam}-${play.awayTeam}-${play.threshold}${play.direction === "under" ? "-under" : ""}`
                 : play.gameType === "ml"
                 ? `ml-${play.sport}-${play.pickTeam}-${play.homeTeam}-${play.awayTeam}`
                 : play.gameType === "spread"
-                ? `spread-${play.sport}-${play.pickTeam}-${play.homeTeam}-${play.awayTeam}-${play.pickLine}`
+                ? `spread-${play.sport}${segSuffix}-${play.pickTeam}-${play.homeTeam}-${play.awayTeam}-${play.pickLine}`
                 : `${play.playerName}-${play.stat}-${play.threshold}`;
               const oddsStr = play.americanOdds >= 0 ? `+${play.americanOdds}` : `${play.americanOdds}`;
               const isExpanded = expandedPlays.has(playKey);
+              const segIdSuffix = play.segment && play.segment !== "full" ? `|${play.segment}` : "";
               const trackId = play.gameType === "teamTotal"
                 ? `teamtotal|${play.sport}|${play.scoringTeam}|${play.oppTeam}|${play.threshold}|${play.gameDate || ""}${play.direction === "under" ? "|under" : ""}`
                 : play.gameType === "total"
-                ? `total|${play.sport}|${play.homeTeam}|${play.awayTeam}|${play.threshold}|${play.gameDate || ""}${play.direction === "under" ? "|under" : ""}`
+                ? `total|${play.sport}${segIdSuffix}|${play.homeTeam}|${play.awayTeam}|${play.threshold}|${play.gameDate || ""}${play.direction === "under" ? "|under" : ""}`
                 : play.gameType === "ml"
                 ? `ml|${play.sport}|${play.pickTeam}|${play.homeTeam}|${play.awayTeam}|${play.gameDate || ""}`
                 : play.gameType === "spread"
-                ? `spread|${play.sport}|${play.pickTeam}|${play.homeTeam}|${play.awayTeam}|${play.pickLine}|${play.gameDate || ""}`
+                ? `spread|${play.sport}${segIdSuffix}|${play.pickTeam}|${play.homeTeam}|${play.awayTeam}|${play.pickLine}|${play.gameDate || ""}`
                 : `${play.sport || "nba"}|${play.playerName}|${play.stat}|${play.threshold}|${play.gameDate || ""}`;
               const isTracked = trackedPlays.some(p => p.id === trackId);
               const headshotUrl = play.playerId ? `https://a.espncdn.com/i/headshots/${play.sport || "nba"}/players/full/${play.playerId}.png` : null;
@@ -246,8 +248,9 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                         style={{width:22,height:22,objectFit:"contain",flexShrink:0}}
                         onError={e=>{e.target.style.visibility="hidden";}} />
                       <span onClick={e=>{e.stopPropagation();navigateToTeam(play.pickTeam,play.sport);}}
-                        style={{flex:1,minWidth:0,fontSize:14,fontWeight:700,cursor:"pointer",lineHeight:1.3,color:"#c9d1d9"}}>
-                        {play.pickTeam} {pickLineStr} <span style={{color:"#484f58",fontWeight:400}}>({play.side === "home" ? "vs" : "@"} {play.oppTeam})</span>
+                        style={{flex:1,minWidth:0,fontSize:14,fontWeight:700,cursor:"pointer",lineHeight:1.3,color:"#c9d1d9",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                        <span>{play.pickTeam} {pickLineStr} <span style={{color:"#484f58",fontWeight:400}}>({play.side === "home" ? "vs" : "@"} {play.oppTeam})</span></span>
+                        {play.segment === "f5" && <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(110,64,201,0.12)",border:"1px solid #6e40c9",color:"#a5a5ff"}}>F5</span>}
                       </span>
                       <div style={{display:"flex",alignItems:"center",gap:7,flexShrink:0}}>
                         <span style={{background:"rgba(63,185,80,0.13)",border:"1px solid #3fb950",
@@ -303,7 +306,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                 const displayTruePct = isUnder ? play.noTruePct : play.truePct;
                 const displayKalshiPct = isUnder ? play.noKalshiPct : play.kalshiPct;
                 const tColor = tierColor(displayTruePct);
-                const tLabel = { totalRuns:"Runs", totalPoints:"Pts", totalGoals:"Goals" }[play.stat] || play.stat;
+                const tLabel = { totalRuns:"Runs", totalPoints:"Pts", totalGoals:"Goals", f5total:"Runs (F5)" }[play.stat] || play.stat;
                 const lineVal = (play.threshold - 0.5).toFixed(1);
                 const tTrueOdds = displayTruePct >= 100 ? -99999 : (displayTruePct >= 50 ? Math.round(-(displayTruePct/(100-displayTruePct))*100) : Math.round((100-displayTruePct)/displayTruePct*100));
                 const tTrueOddsStr = tTrueOdds > 0 ? `+${tTrueOdds}` : `${tTrueOdds}`;
@@ -325,6 +328,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                       </div>
                       <span style={{flex:1,minWidth:0,fontSize:14,fontWeight:700,lineHeight:1.3,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",color:"#c9d1d9"}}>
                         <span>{play.awayTeam} @ {play.homeTeam} {isUnder ? "Under" : "Over"} {lineVal} {tLabel}</span>
+                        {play.segment === "f5" && <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(110,64,201,0.12)",border:"1px solid #6e40c9",color:"#a5a5ff"}}>F5</span>}
                         {play.lowVolume && <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(231,179,49,0.12)",border:"1px solid #e3b341",color:"#e3b341"}}>Low Vol</span>}
                         {play.thinMarket && <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(247,129,102,0.10)",border:"1px solid #f78166",color:"#f78166"}}>Wide Spread</span>}
                         {play.lineMove != null && Math.abs(play.lineMove) >= 3 && <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:play.lineMove > 0 ? "rgba(63,185,80,0.10)" : "rgba(247,129,102,0.10)",border:`1px solid ${play.lineMove > 0 ? "#3fb950" : "#f78166"}`,color:play.lineMove > 0 ? "#3fb950" : "#f78166"}}>{play.lineMove > 0 ? "▲" : "▼"} {Math.abs(play.lineMove)}c</span>}
