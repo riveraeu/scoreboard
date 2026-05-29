@@ -4462,7 +4462,8 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           for (const ctx of Object.values(_mlbMlContext)) {
             const { homeTeam, awayTeam, gameDate, homeLambda, awayLambda, dispR, kalshiVolume, kalshiSpread, lowVolume, _simData } = ctx;
             if (gameDate && gameDate < cutoffStr) continue;
-            const mlMarket = _mlbMlMarkets[`${homeTeam}|${awayTeam}|${gameDate}`];
+            const mlMarket = _mlbMlMarkets[`${homeTeam}|${awayTeam}|${gameDate}`]
+                          ?? (gameDate == null ? (_mlbMlMarkets[`${homeTeam}|${awayTeam}|${_todayPT}`] ?? _mlbMlMarkets[`${awayTeam}|${homeTeam}|${_todayPT}`]) : null);
             if (!mlMarket?.yesByTeam) continue;
             const homeYesAsk = mlMarket.yesByTeam[homeTeam];
             const awayYesAsk = mlMarket.yesByTeam[awayTeam];
@@ -4475,7 +4476,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             if (homeTruePct == null) continue;
             const awayTruePct = parseFloat((100 - homeTruePct).toFixed(1));
             const _gameTime = gameTimes[`mlb:${homeTeam}:${gameDate}`] ?? gameTimes[`mlb:${awayTeam}:${gameDate}`] ?? gameTimes[`mlb:${homeTeam}`] ?? gameTimes[`mlb:${awayTeam}`] ?? null;
-            const _lineupsConfirmed = _mlbBothTeamsConfirmed(homeTeam, awayTeam, gameDate);
+            const _lineupsConfirmed = _mlbBothTeamsConfirmed(homeTeam, awayTeam, gameDate ?? _todayPT);
             const _toAO = (p) => p == null ? null : p >= 50 ? Math.round(-(p / (100 - p)) * 100) : Math.round((100 - p) / p * 100);
             for (const side of ["home", "away"]) {
               const pickTeam = side === "home" ? homeTeam : awayTeam;
@@ -4523,7 +4524,8 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             if (m.segment && m.segment !== "full") continue;
             if (m.gameDate && m.gameDate < cutoffStr) continue;
             const { gameTeam1, gameTeam2, gameDate, marginTeam, line, kalshiPct: yesKalshi, americanOdds: yesAO, noKalshiPct: noKalshi, noKalshiAO: noAO, kalshiVolume, kalshiSpread } = m;
-            const ctx = _mlbMlContext[`${gameTeam1}|${gameTeam2}|${gameDate}`] ?? _mlbMlContext[`${gameTeam2}|${gameTeam1}|${gameDate}`];
+            const ctx = _mlbMlContext[`${gameTeam1}|${gameTeam2}|${gameDate}`] ?? _mlbMlContext[`${gameTeam2}|${gameTeam1}|${gameDate}`]
+                     ?? _mlbMlContext[`${gameTeam1}|${gameTeam2}|null`] ?? _mlbMlContext[`${gameTeam2}|${gameTeam1}|null`];
             if (!ctx) continue;
             const { homeTeam, awayTeam, homeLambda, awayLambda, dispR, _simData } = ctx;
             if (marginTeam !== homeTeam && marginTeam !== awayTeam) continue;
@@ -4536,7 +4538,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             if (yesTruePct == null) continue;
             const noTruePct = parseFloat((100 - yesTruePct).toFixed(1));
             const _gameTime = gameTimes[`mlb:${homeTeam}:${gameDate}`] ?? gameTimes[`mlb:${awayTeam}:${gameDate}`] ?? gameTimes[`mlb:${homeTeam}`] ?? gameTimes[`mlb:${awayTeam}`] ?? null;
-            const _lineupsConfirmed = _mlbBothTeamsConfirmed(homeTeam, awayTeam, gameDate);
+            const _lineupsConfirmed = _mlbBothTeamsConfirmed(homeTeam, awayTeam, ctx.gameDate ?? _todayPT);
             // Two directions: YES (marginTeam covers `-line`), NO (other team covers `+line`).
             for (const dir of ["yes", "no"]) {
               const pickTeam = dir === "yes" ? marginTeam : (marginTeam === homeTeam ? awayTeam : homeTeam);
@@ -4591,7 +4593,8 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             if (tm.segment !== "f5" || tm.sport !== "mlb") continue;
             if (tm.gameDate && tm.gameDate < cutoffStr) continue;
             const { threshold, kalshiPct, americanOdds, noKalshiPct: _tmNoPct, noKalshiAO: _tmNoAO, gameTeam1, gameTeam2, gameDate, kalshiSpread, kalshiVolume } = tm;
-            const ctx = _mlbMlContext[`${gameTeam1}|${gameTeam2}|${gameDate}`] ?? _mlbMlContext[`${gameTeam2}|${gameTeam1}|${gameDate}`];
+            const ctx = _mlbMlContext[`${gameTeam1}|${gameTeam2}|${gameDate}`] ?? _mlbMlContext[`${gameTeam2}|${gameTeam1}|${gameDate}`]
+                     ?? _mlbMlContext[`${gameTeam1}|${gameTeam2}|null`] ?? _mlbMlContext[`${gameTeam2}|${gameTeam1}|null`];
             if (!ctx) continue;
             const { homeTeam, awayTeam, f5HomeLambda, f5AwayLambda, dispR, _simData } = ctx;
             if (f5HomeLambda == null || f5AwayLambda == null) continue;
@@ -4608,7 +4611,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             if (truePct == null) continue;
             const noTruePct = parseFloat((100 - truePct).toFixed(1));
             const _gameTime = gameTimes[`mlb:${homeTeam}:${gameDate}`] ?? gameTimes[`mlb:${awayTeam}:${gameDate}`] ?? gameTimes[`mlb:${homeTeam}`] ?? gameTimes[`mlb:${awayTeam}`] ?? null;
-            const _lineupsConfirmed = _mlbBothTeamsConfirmed(homeTeam, awayTeam, gameDate);
+            const _lineupsConfirmed = _mlbBothTeamsConfirmed(homeTeam, awayTeam, ctx.gameDate ?? _todayPT);
             // F5 OU line: derive from full-game OU × 5/9 so the dc threshold-distance penalty
             // bucket has an anchor (mlb buckets are [3, 5] for full-game; ~5/9 scaling makes them
             // [1.7, 2.8] effective for F5 — slightly tighter than ideal but workable v1).
@@ -4658,7 +4661,8 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             if (m.segment !== "f5" || m.sport !== "mlb") continue;
             if (m.gameDate && m.gameDate < cutoffStr) continue;
             const { gameTeam1, gameTeam2, gameDate, marginTeam, line, kalshiPct: yesKalshi, americanOdds: yesAO, noKalshiPct: noKalshi, noKalshiAO: noAO, kalshiVolume, kalshiSpread } = m;
-            const ctx = _mlbMlContext[`${gameTeam1}|${gameTeam2}|${gameDate}`] ?? _mlbMlContext[`${gameTeam2}|${gameTeam1}|${gameDate}`];
+            const ctx = _mlbMlContext[`${gameTeam1}|${gameTeam2}|${gameDate}`] ?? _mlbMlContext[`${gameTeam2}|${gameTeam1}|${gameDate}`]
+                     ?? _mlbMlContext[`${gameTeam1}|${gameTeam2}|null`] ?? _mlbMlContext[`${gameTeam2}|${gameTeam1}|null`];
             if (!ctx) continue;
             const { homeTeam, awayTeam, f5HomeLambda, f5AwayLambda, dispR, _simData } = ctx;
             if (f5HomeLambda == null || f5AwayLambda == null) continue;
@@ -4672,7 +4676,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             if (yesTruePct == null) continue;
             const noTruePct = parseFloat((100 - yesTruePct).toFixed(1));
             const _gameTime = gameTimes[`mlb:${homeTeam}:${gameDate}`] ?? gameTimes[`mlb:${awayTeam}:${gameDate}`] ?? gameTimes[`mlb:${homeTeam}`] ?? gameTimes[`mlb:${awayTeam}`] ?? null;
-            const _lineupsConfirmed = _mlbBothTeamsConfirmed(homeTeam, awayTeam, gameDate);
+            const _lineupsConfirmed = _mlbBothTeamsConfirmed(homeTeam, awayTeam, ctx.gameDate ?? _todayPT);
             // F5 OU + expected: full-game OU × 5/9 anchor, sum of F5 lambdas. Override after the
             // _simData spread so spread picks don't display full-game values.
             const _fullGameOu = _simData?.gameOuLine ?? null;
@@ -4786,7 +4790,8 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               const { homeTeam, awayTeam, gameDate, f5HomeLambda, f5AwayLambda, dispR, kalshiVolume, kalshiSpread, lowVolume, _simData } = ctx;
               if (gameDate && gameDate < cutoffStr) continue;
               if (f5HomeLambda == null || f5AwayLambda == null) continue;
-              const f5MlMarket = _mlbF5MlMarkets[`${homeTeam}|${awayTeam}|${gameDate}`];
+              const f5MlMarket = _mlbF5MlMarkets[`${homeTeam}|${awayTeam}|${gameDate}`]
+                              ?? (gameDate == null ? (_mlbF5MlMarkets[`${homeTeam}|${awayTeam}|${_todayPT}`] ?? _mlbF5MlMarkets[`${awayTeam}|${homeTeam}|${_todayPT}`]) : null);
               if (!f5MlMarket?.probs) continue;
               const homeYes = f5MlMarket.probs[homeTeam];
               const awayYes = f5MlMarket.probs[awayTeam];
@@ -4801,7 +4806,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               const tieTruePct  = joint3WayPct(joint.home, joint.away, "tie");
               if (homeTruePct == null || awayTruePct == null || tieTruePct == null) continue;
               const _gameTime = gameTimes[`mlb:${homeTeam}:${gameDate}`] ?? gameTimes[`mlb:${awayTeam}:${gameDate}`] ?? gameTimes[`mlb:${homeTeam}`] ?? gameTimes[`mlb:${awayTeam}`] ?? null;
-              const _lineupsConfirmed = _mlbBothTeamsConfirmed(homeTeam, awayTeam, gameDate);
+              const _lineupsConfirmed = _mlbBothTeamsConfirmed(homeTeam, awayTeam, gameDate ?? _todayPT);
               const _toAO = (p) => p == null ? null : p >= 50 ? Math.round(-(p / (100 - p)) * 100) : Math.round((100 - p) / p * 100);
               const _fullGameOu = _simData?.gameOuLine ?? null;
               const _f5GameOuLine = _fullGameOu != null ? parseFloat((_fullGameOu * 5 / 9).toFixed(1)) : null;
