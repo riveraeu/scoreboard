@@ -205,8 +205,8 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                       <span onClick={e=>{e.stopPropagation(); if (!isTie) navigateToTeam(play.pickTeam,play.sport);}}
                         style={{flex:1,minWidth:0,fontSize:14,fontWeight:700,cursor:isTie?"default":"pointer",lineHeight:1.3,color:"#c9d1d9",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                         {isTie
-                          ? <span>Tie {mlLabel} <span style={{color:"#484f58",fontWeight:400}}>({play.awayTeam} @ {play.homeTeam}{segmentPillLabel(play.segment) ? ` · ${segmentPillLabel(play.segment)}` : ""})</span></span>
-                          : <span>{play.pickTeam} {mlLabel} <span style={{color:"#484f58",fontWeight:400}}>({play.side === "home" ? "vs" : "@"} {play.oppTeam}{segmentPillLabel(play.segment) ? ` · ${segmentPillLabel(play.segment)}` : ""})</span></span>}
+                          ? <span>Tie {mlLabel} {play.awayTeam} @ {play.homeTeam}{segmentPillLabel(play.segment) && <span style={{color:"#484f58",fontWeight:400}}> ({segmentPillLabel(play.segment)})</span>}</span>
+                          : <span>{play.pickTeam} {mlLabel} {play.side === "home" ? "vs" : "@"} {play.oppTeam}{segmentPillLabel(play.segment) && <span style={{color:"#484f58",fontWeight:400}}> ({segmentPillLabel(play.segment)})</span>}</span>}
                       </span>
                       <div style={{display:"flex",alignItems:"center",gap:7,flexShrink:0}}>
                         <span style={{background:"rgba(63,185,80,0.13)",border:"1px solid #3fb950",
@@ -274,7 +274,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                         onError={e=>{e.target.style.visibility="hidden";}} />
                       <span onClick={e=>{e.stopPropagation();navigateToTeam(play.pickTeam,play.sport);}}
                         style={{flex:1,minWidth:0,fontSize:14,fontWeight:700,cursor:"pointer",lineHeight:1.3,color:"#c9d1d9",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                        <span>{play.pickTeam} {pickLineStr} <span style={{color:"#484f58",fontWeight:400}}>({play.side === "home" ? "vs" : "@"} {play.oppTeam}{segmentPillLabel(play.segment) ? ` · ${segmentPillLabel(play.segment)}` : ""})</span></span>
+                        <span>{play.pickTeam} {pickLineStr} {play.side === "home" ? "vs" : "@"} {play.oppTeam}{segmentPillLabel(play.segment) && <span style={{color:"#484f58",fontWeight:400}}> ({segmentPillLabel(play.segment)})</span>}</span>
                       </span>
                       <div style={{display:"flex",alignItems:"center",gap:7,flexShrink:0}}>
                         <span style={{background:"rgba(63,185,80,0.13)",border:"1px solid #3fb950",
@@ -330,7 +330,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                 const displayTruePct = isUnder ? play.noTruePct : play.truePct;
                 const displayKalshiPct = isUnder ? play.noKalshiPct : play.kalshiPct;
                 const tColor = tierColor(displayTruePct);
-                const tLabel = { totalRuns:"Runs", totalPoints:"Pts", totalGoals:"Goals", f5total:"Runs (F5)", h1total:"Pts (1H)", h2total:"Pts (2H)" }[play.stat] || play.stat;
+                const tLabel = { totalRuns:"Runs", totalPoints:"Pts", totalGoals:"Goals", f5total:"Runs", h1total:"Pts", h2total:"Pts" }[play.stat] || play.stat;
                 const lineVal = (play.threshold - 0.5).toFixed(1);
                 const tTrueOdds = displayTruePct >= 100 ? -99999 : (displayTruePct >= 50 ? Math.round(-(displayTruePct/(100-displayTruePct))*100) : Math.round((100-displayTruePct)/displayTruePct*100));
                 const tTrueOddsStr = tTrueOdds > 0 ? `+${tTrueOdds}` : `${tTrueOdds}`;
@@ -351,7 +351,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                           onError={e=>{e.target.style.visibility="hidden";}} />
                       </div>
                       <span style={{flex:1,minWidth:0,fontSize:14,fontWeight:700,lineHeight:1.3,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",color:"#c9d1d9"}}>
-                        <span>{play.awayTeam} @ {play.homeTeam} {isUnder ? "Under" : "Over"} {lineVal} {tLabel}</span>
+                        <span>{play.awayTeam} @ {play.homeTeam} {isUnder ? "Under" : "Over"} {lineVal} {tLabel}{segmentPillLabel(play.segment) && <span style={{color:"#484f58",fontWeight:400}}> ({segmentPillLabel(play.segment)})</span>}</span>
                         {play.lowVolume && <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(231,179,49,0.12)",border:"1px solid #e3b341",color:"#e3b341"}}>Low Vol</span>}
                         {play.thinMarket && <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(247,129,102,0.10)",border:"1px solid #f78166",color:"#f78166"}}>Wide Spread</span>}
                         {play.lineMove != null && Math.abs(play.lineMove) >= 3 && <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:play.lineMove > 0 ? "rgba(63,185,80,0.10)" : "rgba(247,129,102,0.10)",border:`1px solid ${play.lineMove > 0 ? "#3fb950" : "#f78166"}`,color:play.lineMove > 0 ? "#3fb950" : "#f78166"}}>{play.lineMove > 0 ? "▲" : "▼"} {Math.abs(play.lineMove)}c</span>}
