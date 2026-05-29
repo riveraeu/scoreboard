@@ -2,6 +2,8 @@ import React from 'react';
 import { WORKER } from '../lib/constants.js';
 import { useIsMobile } from '../lib/hooks.js';
 import TotalsBarChart from './TotalsBarChart.jsx';
+import InputList from './InputList.jsx';
+import { buildLambdaInputs } from '../lib/lambdaInputs.js';
 
 // ── Play-type tab definitions ─────────────────────────────────────────────────
 const PLAY_TYPES = [
@@ -41,6 +43,7 @@ function pickBestTabFn(allPlays, abbr, sport) {
 // ── Component ─────────────────────────────────────────────────────────────────
 function TeamPage({ abbr, sport, teamPageData, tonightPlays, tonightLoading, allTonightPlays, onBack, navigateToTeam, navigateToPlayer, trackedPlays, trackPlay, untrackPlay }) {
   const [glSort, setGlSort] = React.useState({ col:'date', dir:'desc' });
+  const [lambdaPlay, setLambdaPlay] = React.useState(null);
   const isMobile = useIsMobile(768);
 
   const { loading, error, data } = teamPageData || {};
@@ -211,7 +214,8 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, tonightLoading, all
               : (p.homeTeam?.toUpperCase() === abbr || p.awayTeam?.toUpperCase() === abbr))
           )}
           trackedPlays={trackedPlays} onTrack={trackPlay} onUntrack={untrackPlay}
-          playType={_activeType} onPlayTypeChange={handleTabChange}/>
+          playType={_activeType} onPlayTypeChange={handleTabChange}
+          onSelectPlay={setLambdaPlay}/>
 
         {/* Lineup (left) + Game Log (right) — side by side on desktop, stacked on mobile */}
         {(() => {
@@ -333,15 +337,39 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, tonightLoading, all
             </div>
           );
 
-          // No lineup data (NHL, WNBA, or when the lineup endpoint returned empty) → game log full width
+          const lambdaInputs = lambdaPlay ? (() => {
+            const dirForInputs = lambdaPlay.direction || (isUnder ? 'under' : 'over');
+            return buildLambdaInputs({ ...lambdaPlay, direction: dirForInputs });
+          })() : null;
+          const lambdaCol = lambdaInputs && lambdaInputs.length > 0 ? (
+            <div>
+              <div style={{color:'#484f58',fontSize:10,marginBottom:6}}>Lambda Inputs</div>
+              <div style={{background:'#0d1117',border:'1px solid #21262d',borderRadius:8,padding:'10px 12px'}}>
+                <InputList inputs={lambdaInputs} compact={true} />
+              </div>
+            </div>
+          ) : null;
+
+          // No lineup data (NHL, WNBA, or when the lineup endpoint returned empty):
+          // show game log + lambda side by side, or just game log if no lambda yet.
           if (!lineupCol) {
-            return <div style={{marginTop:22}}>{gameLogCol}</div>;
+            if (!lambdaCol) return <div style={{marginTop:22}}>{gameLogCol}</div>;
+            return (
+              <div style={{marginTop:22,display:'grid',gap:16,
+                gridTemplateColumns: isMobile ? '1fr' : 'minmax(0,1.6fr) minmax(0,1fr)'}}>
+                {gameLogCol}
+                {lambdaCol}
+              </div>
+            );
           }
           return (
             <div style={{marginTop:22,display:'grid',gap:16,
-              gridTemplateColumns: isMobile ? '1fr' : 'minmax(0,1fr) minmax(0,1.6fr)'}}>
+              gridTemplateColumns: isMobile ? '1fr' : lambdaCol
+                ? 'minmax(0,1fr) minmax(0,1.4fr) minmax(0,1fr)'
+                : 'minmax(0,1fr) minmax(0,1.6fr)'}}>
               {lineupCol}
               {gameLogCol}
+              {lambdaCol}
             </div>
           );
         })()}

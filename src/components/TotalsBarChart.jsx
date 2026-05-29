@@ -1,8 +1,6 @@
 import React from 'react';
 import { TOTAL_THRESHOLDS, TEAM_TOTAL_THRESHOLDS } from '../lib/constants.js';
 import { tierColor } from '../lib/colors.js';
-import { buildLambdaInputs } from '../lib/lambdaInputs.js';
-import InputList from './InputList.jsx';
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_CLIENT as EDGE_GATE } from '../../api/lib/config.js';
 
 const TAB_LABELS = {
@@ -12,7 +10,7 @@ const TAB_LABELS = {
   team_under: 'Team Under',
 };
 
-function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, extraAltMap, allMatchupPlays, trackedPlays, onTrack, onUntrack, playType, onPlayTypeChange }) {
+function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, extraAltMap, allMatchupPlays, trackedPlays, onTrack, onUntrack, playType, onPlayTypeChange, onSelectPlay }) {
   const isTeamTotal = playType?.startsWith('team_') ?? false;
   const isUnder = playType?.includes('under') ?? false;
   const completed = (gameLog || []).filter(g => g.result);
@@ -55,6 +53,18 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, extraAlt
   React.useEffect(() => {
     if (!thresholds.includes(selectedT)) setSelectedT(defaultT);
   }, [defaultT, thresholds.join(',')]);
+
+  // The play object that drives lambda inputs — lifted to a memo so TeamPage can consume it.
+  const _hasLambda = (p) => p && (p.homeExpected != null || p.awayExpected != null
+    || p.teamExpected != null || p.teamRPG != null || p.homeLambda != null);
+  const selectedPlay = React.useMemo(() => (
+    tonightTotalMap?.[selectedT]
+    ?? Object.values(tonightTotalMap || {}).find(_hasLambda)
+    ?? (allMatchupPlays || []).find(_hasLambda)
+    ?? null
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ), [selectedT, tonightTotalMap, allMatchupPlays]);
+  React.useEffect(() => { onSelectPlay?.(selectedPlay); }, [selectedPlay]);
 
   return (
     <div>
@@ -262,32 +272,6 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, extraAlt
         );
       })}
 
-      {/* Lambda inputs for the selected threshold — replaces the old SimScore explanation.
-          Reuses the same component PlaysColumn cards render. Lambdas are per-GAME (not per-
-          threshold), so when the selected threshold has no tonight play, fall back through:
-          (1) any tp in the active map, (2) any play in allMatchupPlays for the active gameType.
-          Field check covers BOTH game-total (homeExpected/teamRPG) and team-total (teamExpected)
-          shapes so Team Over/Under tabs find their team-total play even when the active-direction
-          map is empty. */}
-      {(() => {
-        const _hasLambda = (p) => p && (p.homeExpected != null || p.awayExpected != null
-          || p.teamExpected != null || p.teamRPG != null || p.homeLambda != null);
-        const tp = tonightTotalMap?.[selectedT]
-          ?? Object.values(tonightTotalMap || {}).find(_hasLambda)
-          ?? (allMatchupPlays || []).find(_hasLambda);
-        if (!tp) return null;
-        // Use the play's actual direction for prop semantics; ml/spread don't have one.
-        const dirForInputs = tp.direction || (isUnder ? 'under' : 'over');
-        const inputs = buildLambdaInputs({ ...tp, direction: dirForInputs, threshold: selectedT });
-        if (!inputs || inputs.length === 0) return null;
-        return (
-          <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid #21262d' }}>
-            <div style={{ color: '#484f58', fontSize: 9, fontWeight: 700, letterSpacing: 0.5,
-              textTransform: 'uppercase', marginBottom: 6 }}>Lambda Inputs</div>
-            <InputList inputs={inputs} />
-          </div>
-        );
-      })()}
     </div>
   );
 }
