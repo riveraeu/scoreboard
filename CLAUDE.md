@@ -23,7 +23,7 @@ Sports prop betting dashboard that pulls Kalshi prediction market prices, comput
 |---|---|
 | Per-sport modeling internals (SimScore tiers, lambdas, miscAdj, gates, Kalshi parsing details, dedup logic) | `docs/MODEL.md` |
 | Cache keys + TTLs, Upstash storage, env vars, deployment, testing, data sources | `docs/INFRA.md` |
-| URL routing, App.jsx state shape, ReportPage internals (Market Report + Model Reference), live tracking mechanics, sizing, color doctrine + per-play-type explanation table | `docs/FRONTEND.md` |
+| URL routing, App.jsx state shape, ReportPage internals (Market Report + calibration Results), live tracking mechanics, sizing, color doctrine + per-play-type explanation table | `docs/FRONTEND.md` |
 | Common debugging recipes | `docs/DEBUGGING.md` |
 
 The cross-cutting gotchas at the bottom of this file are kept inline because they bite during *any* change, not just modeling work.
@@ -57,7 +57,7 @@ Entry: `index.html` → `src/main.jsx` → `src/App.jsx`. Vercel runs `npm run b
 - `src/lib/utils.js` — `slugify`, `teamUrl`, `logoUrl(sport, abbr)` (handles ESPN CDN abbr mismatches NHL `tbl→tb, njd→nj, lak→la, sjs→sj`; NBA `kat→atl`)
 - `src/lib/liveStats.js` — live pick tracking helpers
 - `src/lib/hooks.js` — `useIsMobile(threshold=600)`: resize+orientation-aware boolean. Use this for responsive layouts (e.g. `LineupsPage` toolbar wraps to 2 rows on mobile). `SimBadge`/`DayBar` tooltips also support tap-to-pin so SimScore breakdowns are accessible on touch devices.
-- `src/components/` — `LineupsPage` (homepage tab layout), `MatchupCard` (per-game card; MLB renders a starting-pitcher row + game total/ML center column, NBA/WNBA/NHL render a "top player" row with the scoreboard Rating/Points leader and their stats), `PlaysColumn` (per-sport explanation branches: MLB-K, MLB-hitter, NBA, WNBA, NHL + generic fallback; WNBA mirrors NBA with retuned tiers and reads `play.wnba*` fields), `MyPicksColumn`, `ReportPage` (merged Market Report + Model Reference at `/model`, driven by a sport + play-type dropdown — see `docs/FRONTEND.md`), `TeamPage`, `TotalsBarChart`, `DayBar`, `AddPickModal`
+- `src/components/` — `LineupsPage` (homepage tab layout), `MatchupCard` (per-game card; MLB renders a starting-pitcher row + game total/ML center column, NBA/WNBA/NHL render a "top player" row with the scoreboard Rating/Points leader and their stats), `PlaysColumn` (per-sport explanation branches: MLB-K, MLB-hitter, NBA, WNBA, NHL + generic fallback; WNBA mirrors NBA with retuned tiers and reads `play.wnba*` fields), `MyPicksColumn`, `ReportPage` (Market Report + calibration Results tabs at `/model`, driven by a sport + play-type selector — see `docs/FRONTEND.md`), `TeamPage`, `TotalsBarChart`, `DayBar`, `AddPickModal`
 
 **Dev proxy**: `vite.config.js` proxies `/api` to production so `npm run dev` works without local backend.
 

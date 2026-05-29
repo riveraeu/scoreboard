@@ -9,7 +9,7 @@ History.pushState + popstate. Routes:
 - `/:ABBR` → team page (uppercase, e.g. `/LAD`, `/GSW`)
 - `/:ABBR?sport=nhl` → disambiguate multi-sport abbrs (`_multiSportAbbrs` Set)
 - `/:SlugName` → player page (CamelCase via `slugify`)
-- `/model` → Model Reference page
+- `/model` → Research page (Market Report + calibration Results tabs)
 
 `vercel.json` `/:slug` rewrite serves `index.html` for cold loads. `resolveSlug` checks `"model"` first, then `TEAM_DB`, else stores `pendingSlug` for async ESPN athlete search.
 
@@ -29,12 +29,12 @@ History.pushState + popstate. Routes:
 
 ---
 
-## ReportPage (Market Report + Model Reference)
-Merged into a single full-page route at `/model` (2026-05-29). Homepage entry point: the **Research** button — lands on the Market Report tab with MLB pre-seeded. Direct `/model` URL visits (paste, back/forward) default to the Model Reference tab. Entry passes through `useRouting.navigateToModel(opts)` which writes `modelEntryOpts = {tab, sport}` so `ReportPage` can seed its initial selection.
+## ReportPage (Market Report + Results)
+Single full-page route at `/model` (merged 2026-05-29; Model Reference prose dropped 2026-05-29 — see below). Homepage entry point: the **Research** button — lands on the Market Report tab with MLB pre-seeded. Direct `/model` URL visits (paste, back/forward) default to the Results tab. Entry passes through `useRouting.navigateToModel(opts)` which writes `modelEntryOpts = {tab, sport}` so `ReportPage` can seed its initial selection.
 
-**Selectors** (top of the page): a sport dropdown (MLB / NBA / WNBA / NHL) and a play-type dropdown filtered by sport. The play-type catalog lives in `PLAY_TYPES` in `ReportPage.jsx` — each entry has `{ id, label, statKeys }`. `id` is the calibration tab key (e.g. `mlb-k`, `nba-1htotal`); `statKeys` is the array of `m.stat` values that belong to this play type. NBA "Props" rolls four stats (`points/rebounds/assists/threePointers`) into a single entry to mirror calibration's merged bucket.
+**Selectors** (top of the page): a 4-button sport pill row (MLB / NBA / WNBA / NHL) and a play-type dropdown filtered by sport. The play-type catalog lives in `PLAY_TYPES` in `ReportPage.jsx` — each entry has `{ id, label, statKeys }`. `id` is the calibration category key (e.g. `mlb-k`, `nba-1htotal`); `statKeys` is the array of `m.stat` values that belong to this play type. NBA "Props" rolls four stats (`points/rebounds/assists/threePointers`) into a single entry to mirror calibration's merged bucket.
 
-**Tab bar** (under the dropdowns): two tabs — Market Report and Model Reference. The selected (sport, play type) drives both.
+**Tab bar** (under the selectors): two tabs — Market Report and Results. The selected (sport, play type) drives both.
 
 ### Market Report tab
 Filters the `/tonight?debug=1&sport=X` payload down to plays whose `m.sport === sport && playType.statKeys.includes(m.stat)`. Totals/teamTotals further split into Over and Under sub-groups within the same play type. `MarketGroupSection` renders one group: header + sortable table. Columns vary by sport/stat via the `xcols` array; `COL_TIPS` dictionary supplies hover tooltips. The `xcell` switch in `MarketGroupSection` is authoritative for column color tiers — match SimScore tiers (yellow = middle tier, gray = abstain or lowest, red = 0pts).
@@ -47,8 +47,10 @@ Filters the `/tonight?debug=1&sport=X` payload down to plays whose `m.sport === 
 
 **Score>7 highlight**: MLB rows show white+bold name only when `finalSimScore ?? hitterFinalSimScore > 7` (Alpha tier). Other rows use `m.qualified`.
 
-### Model Reference tab
-For each play-type id, renders the explanation card (`MODEL_CONTENT[tabId]`) + the `CalibModule` calibration table. Tabs without a content entry (e.g. `mlb-ml`, all F5 / half markets, all ml/spread variants) just render `CalibModule` — keeps the page useful even when there's no prose write-up yet. `TAB_CAT` maps each tab id to the calibration category keys it covers; multi-key entries (e.g. `nba`) merge buckets via `mergeBuckets`.
+### Results tab
+Renders the qualification-summary box (Kalshi gate · edge gate · DC gate · edge calc) followed by `CalibModule` — the per-bucket truePct calibration table for the selected play type. `TAB_CAT` maps each tab id to the calibration category keys it covers; multi-key entries (e.g. `nba`) merge buckets via `mergeBuckets`. The MLB-K tab additionally shows per-feature breakdown tables (by SimScore, by K% tier, by K-Trend, by stdBF).
+
+**Why no prose Model Reference**: prior versions hand-wrote True%/SimScore explanations for ~9 of the 32 play types and they kept drifting out of sync with the rapidly-evolving model (`MODEL_CONTENT` const, dropped 2026-05-29). Authoritative model spec lives in `docs/MODEL.md` and `CLAUDE.md`. The in-app tab is now reserved for calibration-driven outcomes, which stay fresh automatically.
 
 ---
 

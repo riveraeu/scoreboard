@@ -476,7 +476,7 @@ function App() {
       </div>
       </div>{/* end top row */}
 
-      {/* Report page — Market Report + Model Reference, per (sport, play type) */}
+      {/* Research page — Market Report + calibration Results, per (sport, play type) */}
       {modelPage && !player && !teamPage && (
         <ReportPage
           onBack={goBack}

@@ -20,7 +20,7 @@ export function useRouting({ setPlayer, setQuery, selectPlayerRef }) {
   const [modelPage, setModelPage] = React.useState(false);
   // Entry hints for ReportPage. Reset on every navigateToModel call so a deep-link from
   // the Report button (`{tab:"market", sport:"mlb"}`) doesn't leak into a later direct
-  // /model visit, which should default to the Model Reference tab.
+  // /model visit, which should default to the Results tab.
   const [modelEntryOpts, setModelEntryOpts] = React.useState({});
 
   const loadTeamPage = React.useCallback(async (abbr, sport) => {
