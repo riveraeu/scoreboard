@@ -302,7 +302,7 @@ export async function handleSportsRoutes(ctx) {
     if (!abbr || !["mlb","nba","nhl"].includes(sport)) return errorResponse("abbr and sport (mlb|nba|nhl) required", 400);
     const bust = params.get("bust") === "1";
     const today = new Date().toISOString().slice(0, 10);
-    const cacheKey = `team:v3:${sport}:${abbr}:${today}`;
+    const cacheKey = `team:v4:${sport}:${abbr}:${today}`;
     if (CACHE2 && !bust) {
       const cached = await CACHE2.get(cacheKey, "json").catch(() => null);
       if (cached) return jsonResponse(cached);
