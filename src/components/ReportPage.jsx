@@ -1392,28 +1392,27 @@ function ReportPage({
             color:"#8b949e",fontSize:12,padding:"4px 10px",cursor:"pointer"}}>
           ← Back
         </button>
-        <div>
-          <div style={{color:"#c9d1d9",fontSize:17,fontWeight:700}}>Report</div>
-          <div style={{color:"#484f58",fontSize:11,marginTop:2}}>Market Report + Model Reference, per sport and play type</div>
-        </div>
+        <div style={{color:"#c9d1d9",fontSize:17,fontWeight:700}}>Research</div>
+        <div style={{color:"#484f58",fontSize:11,marginLeft:"auto"}}>Market Report + Model Reference</div>
       </div>
 
-      {/* Sport + play-type dropdowns */}
-      <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap",marginBottom:10}}>
-        <div style={{display:"flex",flexDirection:"column",gap:3}}>
-          <label style={{color:"#484f58",fontSize:10,fontWeight:600}}>SPORT</label>
-          <select value={sport} onChange={e => onSportChange(e.target.value)}
-            style={{background:"#0d1117",color:"#c9d1d9",border:"1px solid #30363d",borderRadius:6,fontSize:12,padding:"5px 8px",cursor:"pointer",minWidth:110}}>
-            {SPORTS.map(sp => <option key={sp} value={sp}>{sp.toUpperCase()}</option>)}
-          </select>
+      {/* Sport pills + play-type dropdown */}
+      <div style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap",marginBottom:12}}>
+        <div style={{display:"flex",gap:4}}>
+          {SPORTS.map(sp => (
+            <button key={sp} onClick={() => onSportChange(sp)}
+              style={{padding:"5px 12px",borderRadius:6,fontSize:11,fontWeight:sport===sp?700:600,cursor:"pointer",
+                border:`1px solid ${sport===sp?"#58a6ff":"#30363d"}`,
+                background: sport===sp ? "rgba(88,166,255,0.12)" : "transparent",
+                color: sport===sp ? "#58a6ff" : "#8b949e"}}>
+              {sp.toUpperCase()}
+            </button>
+          ))}
         </div>
-        <div style={{display:"flex",flexDirection:"column",gap:3,flex:1,minWidth:200}}>
-          <label style={{color:"#484f58",fontSize:10,fontWeight:600}}>PLAY TYPE</label>
-          <select value={playTypeId} onChange={e => setPlayTypeId(e.target.value)}
-            style={{background:"#0d1117",color:"#c9d1d9",border:"1px solid #30363d",borderRadius:6,fontSize:12,padding:"5px 8px",cursor:"pointer",width:"100%"}}>
-            {PLAY_TYPES[sport].map(pt => <option key={pt.id} value={pt.id}>{pt.label}</option>)}
-          </select>
-        </div>
+        <select value={playTypeId} onChange={e => setPlayTypeId(e.target.value)}
+          style={{background:"#0d1117",color:"#c9d1d9",border:"1px solid #30363d",borderRadius:6,fontSize:12,fontWeight:600,padding:"5px 10px",cursor:"pointer",minWidth:200,maxWidth:280}}>
+          {PLAY_TYPES[sport].map(pt => <option key={pt.id} value={pt.id}>{pt.label}</option>)}
+        </select>
       </div>
 
       {/* Tab bar */}
