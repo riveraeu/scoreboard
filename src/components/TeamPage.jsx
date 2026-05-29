@@ -41,6 +41,7 @@ function pickBestTabFn(allPlays, abbr, sport) {
 // ── Component ─────────────────────────────────────────────────────────────────
 function TeamPage({ abbr, sport, teamPageData, tonightPlays, tonightLoading, allTonightPlays, onBack, navigateToTeam, navigateToPlayer, trackedPlays, trackPlay, untrackPlay }) {
   const [glSort, setGlSort] = React.useState({ col:'date', dir:'desc' });
+  const isMobile = useIsMobile(768);
 
   const { loading, error, data } = teamPageData || {};
   const sportLabel = { mlb:'MLB', nba:'NBA', nhl:'NHL' }[sport] || sport.toUpperCase();
@@ -121,7 +122,6 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, tonightLoading, all
   if (!data) return null;
 
   const { teamName, record, wins, losses, gameLog, seasonStats, lineup, lineupConfirmed, nextGame } = data;
-  const isMobile = useIsMobile(768);
 
   // Game log sort
   const sortedGL = [...(gameLog || [])].sort((a, b) => {
