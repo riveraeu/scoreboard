@@ -451,7 +451,36 @@ export async function handleSportsRoutes(ctx) {
           }
         } catch(e) {}
       }
-      if (lineup.length === 0 && mlbId) {
+      // Projected batting order — if today's lineup isn't posted yet, fall back to the
+      // most-recent posted lineup from the past 10 days. Better than the alphabetical
+      // active roster: it reflects the manager's recent batting order, which is the
+      // closest "expected" we can show pre-confirmation.
+      if (lineup.filter(p => !p.isProbable).length === 0 && mlbId) {
+        try {
+          const today = new Date(Date.now() - 7 * 3600 * 1000);
+          const endDate = today.toISOString().slice(0, 10);
+          const startDate = new Date(today.getTime() - 10 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+          const histRes = await fetch(`https://statsapi.mlb.com/api/v1/schedule?startDate=${startDate}&endDate=${endDate}&hydrate=lineups&sportId=1&teamId=${mlbId}`, { headers: H });
+          if (histRes.ok) {
+            const histData = await histRes.json();
+            // Walk newest → oldest; first game with a posted batting order wins.
+            const games = (histData.dates || []).flatMap(d => d.games || []).reverse();
+            for (const game of games) {
+              const isHome = game.teams?.home?.team?.id === mlbId;
+              const lp = isHome ? (game.lineups?.homePlayers || []) : (game.lineups?.awayPlayers || []);
+              if (lp.length > 0) {
+                const hitterEntries = lp.map((p, i) => ({ spot: i + 1, name: p.fullName || "Unknown", position: p.primaryPosition?.abbreviation || "?", playerId: String(p.id || "") }));
+                // Preserve probable pitcher entries (added above) and slot hitters before them
+                const probables = lineup.filter(p => p.isProbable);
+                lineup = [...hitterEntries, ...probables];
+                lineupConfirmed = false;
+                break;
+              }
+            }
+          }
+        } catch(e) {}
+      }
+      if (lineup.filter(p => !p.isProbable).length === 0 && mlbId) {
         try {
           const rosRes = await fetch(`https://statsapi.mlb.com/api/v1/teams/${mlbId}/roster?season=2026&rosterType=active`, { headers: H });
           if (rosRes.ok) {

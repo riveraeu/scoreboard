@@ -236,7 +236,9 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, tonightLoading, all
               {!lineupConfirmed && (
                 <div style={{color:'#e3b341',fontSize:11,marginBottom:10,padding:'5px 10px',
                   background:'rgba(227,179,65,0.08)',borderRadius:6,border:'1px solid rgba(227,179,65,0.2)'}}>
-                  Depth chart order — today's lineup not yet confirmed
+                  {sport === 'mlb' && lineup.some(p => p.spot)
+                    ? "Expected batting order — based on most-recent posted lineup"
+                    : "Depth chart order — today's lineup not yet confirmed"}
                 </div>
               )}
               {sport === 'nba' && (
