@@ -3189,6 +3189,15 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
         // Prior tunings (0.5/30, 0.7/12) underweighted regime and left divergent penalties
         // firing on nearly all playoff totals.
         const _regimeBlendWeight = (sample) => Math.min(0.85, (sample || 0) / 8 * 0.85);
+        // Injury-aware damping factor for regime/seasonHitRate blends (NBA/WNBA only).
+        // When a team has heavy USG-out tonight, both the recency-weighted recent-score
+        // mean AND the season-wide hit rate are anchored to games where the now-injured
+        // players DID play — so they pull λ upward toward healthy-team scoring even
+        // though tonight's roster can't produce that. Damp scales blends linearly to 0
+        // between 30% and 60% USG out: ≤30 → 1.0 (full blend), 45 → 0.5, ≥60 → 0.0
+        // (rating-based λ only, no blend). 30% threshold matches the existing
+        // nbaHeavyInjury / wnbaHeavyInjury dc rule for consistency.
+        const _injuryBlendDamp = (usageOut) => Math.max(0, Math.min(1, (60 - (usageOut || 0)) / 30));
         {
           const _MLB_ERA = 4.20;
           // Pre-fetch home team schedules for MLB + NBA game total H2H hit rate
@@ -3559,11 +3568,15 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               const _homeRecent = _recentTeamScoreMean(_gtScheduleMap, "nba", homeTeam);
               const _awayRecent = _recentTeamScoreMean(_gtScheduleMap, "nba", awayTeam);
               let _regimeBlendW = 0;
+              const _hInjDamp = _injuryBlendDamp(_homeInjAdj.share);
+              const _aInjDamp = _injuryBlendDamp(_awayInjAdj.share);
               if (_homeRecent && _awayRecent && _homeExpRaw != null && _awayExpRaw != null) {
                 const _sample = Math.min(_homeRecent.effectiveSample, _awayRecent.effectiveSample);
                 _regimeBlendW = _regimeBlendWeight(_sample);
-                _homeExpRaw = (1 - _regimeBlendW) * _homeExpRaw + _regimeBlendW * _homeRecent.mean;
-                _awayExpRaw = (1 - _regimeBlendW) * _awayExpRaw + _regimeBlendW * _awayRecent.mean;
+                const _hRegimeW = _regimeBlendW * _hInjDamp;
+                const _aRegimeW = _regimeBlendW * _aInjDamp;
+                _homeExpRaw = (1 - _hRegimeW) * _homeExpRaw + _hRegimeW * _homeRecent.mean;
+                _awayExpRaw = (1 - _aRegimeW) * _awayExpRaw + _aRegimeW * _awayRecent.mean;
               }
               // Keep injuries in simData for reference (not scored)
               const _NBAshort = { GSW:"GS", SAS:"SA", NYK:"NY", NOP:"NO", PHX:"PHO" };
@@ -3582,7 +3595,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               const _combDefRtgPts = _combDefRtg == null ? 1 : _combDefRtg >= 118 ? 2 : _combDefRtg >= 113 ? 1 : 0;
               const _nbaGtH2HPts = nbaGtH2HRate == null ? 1 : nbaGtH2HRate >= 80 ? 2 : nbaGtH2HRate >= 60 ? 1 : 0;
               const _nbaOuPts = _nbaOuLine == null ? 1 : _nbaOuLine >= 225 ? 2 : _nbaOuLine >= 215 ? 1 : 0;
-              _simData = { homeOffRtg: _hOffRtg, awayOffRtg: _aOffRtg, homeOffRtgAdj: _hOffRtgAdj, awayOffRtgAdj: _aOffRtgAdj, homeDefRtg: _hDefRtg, awayDefRtg: _aDefRtg, combOffRtg: _combOffRtg, combDefRtg: _combDefRtg, homePace: _hp, awayPace: _ap, leagueAvgPace: _lgPace, projPace: _projPace, gameOuLine: _nbaOuLine, gameSpread: _nbaGtSpread, homeOut: _homeOut, awayOut: _awayOut, homeUsageOut: _homeInjAdj.share, awayUsageOut: _awayInjAdj.share, ...(_homeInjAdj.adj < 1 && { homeOffRtgFactor: _homeInjAdj.adj }), ...(_awayInjAdj.adj < 1 && { awayOffRtgFactor: _awayInjAdj.adj }), ...(_homeB2B && { homeB2B: true, homeB2BFactor: _homeB2BFactor }), ...(_awayB2B && { awayB2B: true, awayB2BFactor: _awayB2BFactor }), nbaGtH2HRate, nbaGtH2HGames, combOffRtgPts: _combOffRtgPts, combDefRtgPts: _combDefRtgPts, pacePts: _pacePts, nbaGtH2HPts: _nbaGtH2HPts, nbaOuPts: _nbaOuPts, homeExpected: _homeExpRaw != null ? parseFloat(_homeExpRaw.toFixed(1)) : null, awayExpected: _awayExpRaw != null ? parseFloat(_awayExpRaw.toFixed(1)) : null, expectedTotal: (_homeExpRaw != null && _awayExpRaw != null) ? parseFloat((_homeExpRaw + _awayExpRaw).toFixed(1)) : null, ...(_isPlayoff && { isPlayoff: true }), ...(_regimeBlendW > 0 && { regimeBlendW: parseFloat(_regimeBlendW.toFixed(2)), homeRecentMean: parseFloat(_homeRecent.mean.toFixed(1)), awayRecentMean: parseFloat(_awayRecent.mean.toFixed(1)) }) };
+              _simData = { homeOffRtg: _hOffRtg, awayOffRtg: _aOffRtg, homeOffRtgAdj: _hOffRtgAdj, awayOffRtgAdj: _aOffRtgAdj, homeDefRtg: _hDefRtg, awayDefRtg: _aDefRtg, combOffRtg: _combOffRtg, combDefRtg: _combDefRtg, homePace: _hp, awayPace: _ap, leagueAvgPace: _lgPace, projPace: _projPace, gameOuLine: _nbaOuLine, gameSpread: _nbaGtSpread, homeOut: _homeOut, awayOut: _awayOut, homeUsageOut: _homeInjAdj.share, awayUsageOut: _awayInjAdj.share, ...(_homeInjAdj.adj < 1 && { homeOffRtgFactor: _homeInjAdj.adj }), ...(_awayInjAdj.adj < 1 && { awayOffRtgFactor: _awayInjAdj.adj }), ...(_homeB2B && { homeB2B: true, homeB2BFactor: _homeB2BFactor }), ...(_awayB2B && { awayB2B: true, awayB2BFactor: _awayB2BFactor }), nbaGtH2HRate, nbaGtH2HGames, combOffRtgPts: _combOffRtgPts, combDefRtgPts: _combDefRtgPts, pacePts: _pacePts, nbaGtH2HPts: _nbaGtH2HPts, nbaOuPts: _nbaOuPts, homeExpected: _homeExpRaw != null ? parseFloat(_homeExpRaw.toFixed(1)) : null, awayExpected: _awayExpRaw != null ? parseFloat(_awayExpRaw.toFixed(1)) : null, expectedTotal: (_homeExpRaw != null && _awayExpRaw != null) ? parseFloat((_homeExpRaw + _awayExpRaw).toFixed(1)) : null, ...(_isPlayoff && { isPlayoff: true }), ...(_regimeBlendW > 0 && { regimeBlendW: parseFloat(_regimeBlendW.toFixed(2)), homeRecentMean: parseFloat(_homeRecent.mean.toFixed(1)), awayRecentMean: parseFloat(_awayRecent.mean.toFixed(1)) }), ...(_hInjDamp < 1 && { homeInjDamp: parseFloat(_hInjDamp.toFixed(2)) }), ...(_aInjDamp < 1 && { awayInjDamp: parseFloat(_aInjDamp.toFixed(2)) }) };
               if (_homeExpRaw != null && _awayExpRaw != null) {
                 const _dk = `nba|${homeTeam}|${awayTeam}`;
                 // Per-team std=13 (was 11) — produces game-total std ≈ 18.4, closer to empirical
@@ -3653,11 +3666,15 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               const _whRecent = _recentTeamScoreMean(_gtScheduleMap, "wnba", homeTeam);
               const _waRecent = _recentTeamScoreMean(_gtScheduleMap, "wnba", awayTeam);
               let _wRegimeBlendW = 0;
+              const _whInjDamp = _injuryBlendDamp(_wHomeInjAdj.share);
+              const _waInjDamp = _injuryBlendDamp(_wAwayInjAdj.share);
               if (_whRecent && _waRecent && _wHomeExpRaw != null && _wAwayExpRaw != null) {
                 const _wSample = Math.min(_whRecent.effectiveSample, _waRecent.effectiveSample);
                 _wRegimeBlendW = _regimeBlendWeight(_wSample);
-                _wHomeExpRaw = (1 - _wRegimeBlendW) * _wHomeExpRaw + _wRegimeBlendW * _whRecent.mean;
-                _wAwayExpRaw = (1 - _wRegimeBlendW) * _wAwayExpRaw + _wRegimeBlendW * _waRecent.mean;
+                const _whRegimeW = _wRegimeBlendW * _whInjDamp;
+                const _waRegimeW = _wRegimeBlendW * _waInjDamp;
+                _wHomeExpRaw = (1 - _whRegimeW) * _wHomeExpRaw + _whRegimeW * _whRecent.mean;
+                _wAwayExpRaw = (1 - _waRegimeW) * _wAwayExpRaw + _waRegimeW * _waRecent.mean;
               }
               // H2H combined hit rate (last 10 H2H)
               const _wnbaH2H = (() => {
@@ -3699,7 +3716,10 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
                 wnbaGtH2HPts: _wnbaGtH2HPts, wnbaOuPts: _wnbaOuPts,
                 homeExpected: _wHomeExpRaw != null ? parseFloat(_wHomeExpRaw.toFixed(1)) : null,
                 awayExpected: _wAwayExpRaw != null ? parseFloat(_wAwayExpRaw.toFixed(1)) : null,
-                expectedTotal: (_wHomeExpRaw != null && _wAwayExpRaw != null) ? parseFloat((_wHomeExpRaw + _wAwayExpRaw).toFixed(1)) : null
+                expectedTotal: (_wHomeExpRaw != null && _wAwayExpRaw != null) ? parseFloat((_wHomeExpRaw + _wAwayExpRaw).toFixed(1)) : null,
+                ...(_wRegimeBlendW > 0 && { regimeBlendW: parseFloat(_wRegimeBlendW.toFixed(2)), homeRecentMean: parseFloat(_whRecent.mean.toFixed(1)), awayRecentMean: parseFloat(_waRecent.mean.toFixed(1)) }),
+                ...(_whInjDamp < 1 && { homeInjDamp: parseFloat(_whInjDamp.toFixed(2)) }),
+                ...(_waInjDamp < 1 && { awayInjDamp: parseFloat(_waInjDamp.toFixed(2)) })
               };
               if (_wHomeExpRaw != null && _wAwayExpRaw != null) {
                 const _dk = `wnba|${homeTeam}|${awayTeam}`;
@@ -4195,9 +4215,11 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               );
               const _ttRecent = _recentTeamScoreMean(_ttScheduleMap, "nba", scoringTeam);
               let _ttRegimeBlendW = 0;
+              const _ttInjDamp = _injuryBlendDamp(_ttScoringInjAdj.share);
               if (_ttRecent && _teamExpected != null) {
                 _ttRegimeBlendW = _regimeBlendWeight(_ttRecent.effectiveSample);
-                _teamExpected = (1 - _ttRegimeBlendW) * _teamExpected + _ttRegimeBlendW * _ttRecent.mean;
+                const _ttEffectiveRegimeW = _ttRegimeBlendW * _ttInjDamp;
+                _teamExpected = (1 - _ttEffectiveRegimeW) * _teamExpected + _ttEffectiveRegimeW * _ttRecent.mean;
               }
               if (_teamExpected != null) {
                 const _dk = `nba|team|${scoringTeam}|${oppTeam}`;
@@ -4214,7 +4236,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               let _ttNbaModelTruePct = null, _ttNbaImpliedMean = null, _ttNbaBlendedMean = null, _ttNbaImpliedMeanClamped = null;
               if (truePct != null && ttNbaSeasonHitRate != null && _teamExpected != null) {
                 _ttNbaModelTruePct = parseFloat(truePct.toFixed(1));
-                const _w = Math.min(1, _ttNbaSched.length / 40) * 0.7;
+                const _w = Math.min(1, _ttNbaSched.length / 40) * 0.7 * _ttInjDamp;
                 _ttNbaImpliedMean = meanForNormalTail(threshold, ttNbaSeasonHitRate / 100, 11);
                 if (_ttNbaImpliedMean != null) {
                   const _cap = _TT_IMPLIED_CAP.nba;
@@ -4244,7 +4266,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
                 : null;
               const _ttScoringOut = (nbaInjuryMap.get(scoringTeam) || []).length;
               const _ttOppOut = (nbaInjuryMap.get(oppTeam) || []).length;
-              const _nttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), ...(_ttNbaModelTruePct != null && _ttNbaModelTruePct !== truePct && { modelTruePct: _ttNbaModelTruePct }), ...(_ttNbaImpliedMean != null && { ttNbaImpliedMean: _ttNbaImpliedMean, ttNbaBlendedMean: _ttNbaBlendedMean }), ...(_ttNbaImpliedMeanClamped != null && { ttNbaImpliedMeanClamped: _ttNbaImpliedMeanClamped }), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _nttGameTime, teamOffRtg, teamOffRtgAdj: _teamOffRtgAdj, oppDefRtg, teamExpected: _teamExpected != null ? parseFloat(_teamExpected.toFixed(1)) : null, gameOuLine: _nbaOuLine, gameSpread: _gameSpread, projPace: _ttNbaProjPace, leagueAvgPace: _lgPaceNba, scoringOut: _ttScoringOut, oppOut: _ttOppOut, scoringUsageOut: _ttScoringInjAdj.share, ...(_ttScoringInjAdj.adj < 1 && { scoringOffRtgFactor: _ttScoringInjAdj.adj }), ...(_ttScoringB2B && { scoringB2B: true, scoringB2BFactor: _ttScoringB2BFactor }), h2hHitRate, h2hGames, h2hHitRatePts, ttNbaSeasonHitRate, ttNbaSeasonHitRatePts, ttOffRtgPts, ttDefRtgPts, ttNbaOuPts, ...(_ttIsPlayoff && { isPlayoff: true }), ...(_ttRegimeBlendW > 0 && { regimeBlendW: parseFloat(_ttRegimeBlendW.toFixed(2)), scoringRecentMean: parseFloat(_ttRecent.mean.toFixed(1)) }) };
+              const _nttBaseFields = { gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), ...(_ttNbaModelTruePct != null && _ttNbaModelTruePct !== truePct && { modelTruePct: _ttNbaModelTruePct }), ...(_ttNbaImpliedMean != null && { ttNbaImpliedMean: _ttNbaImpliedMean, ttNbaBlendedMean: _ttNbaBlendedMean }), ...(_ttNbaImpliedMeanClamped != null && { ttNbaImpliedMeanClamped: _ttNbaImpliedMeanClamped }), kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _nttGameTime, teamOffRtg, teamOffRtgAdj: _teamOffRtgAdj, oppDefRtg, teamExpected: _teamExpected != null ? parseFloat(_teamExpected.toFixed(1)) : null, gameOuLine: _nbaOuLine, gameSpread: _gameSpread, projPace: _ttNbaProjPace, leagueAvgPace: _lgPaceNba, scoringOut: _ttScoringOut, oppOut: _ttOppOut, scoringUsageOut: _ttScoringInjAdj.share, ...(_ttScoringInjAdj.adj < 1 && { scoringOffRtgFactor: _ttScoringInjAdj.adj }), ...(_ttScoringB2B && { scoringB2B: true, scoringB2BFactor: _ttScoringB2BFactor }), h2hHitRate, h2hGames, h2hHitRatePts, ttNbaSeasonHitRate, ttNbaSeasonHitRatePts, ttOffRtgPts, ttDefRtgPts, ttNbaOuPts, ...(_ttIsPlayoff && { isPlayoff: true }), ...(_ttRegimeBlendW > 0 && { regimeBlendW: parseFloat(_ttRegimeBlendW.toFixed(2)), scoringRecentMean: parseFloat(_ttRecent.mean.toFixed(1)) }), ...(_ttInjDamp < 1 && { scoringInjDamp: parseFloat(_ttInjDamp.toFixed(2)) }) };
               const rawEdge = parseFloat((truePct - kalshiPct).toFixed(1));
               const edge = rawEdge;
               const _nttOverInWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
