@@ -222,12 +222,8 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, extraAlt
         const labelColor = tp ? '#c9d1d9' : '#8b949e';
 
         return (
-          <div key={t} style={{ display: 'flex', gap: 10, marginBottom: 14, alignItems: 'flex-start' }}>
-            <div style={{ color: labelColor, fontSize: 13, width: 40, textAlign: 'right',
-              flexShrink: 0, paddingTop: 2, fontWeight: 400 }}>
-              {lineLabel}
-            </div>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
+          <div key={t} style={{ marginBottom: 14 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
               {/* Primary bar */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <div style={{ flex: 1, background: '#21262d', borderRadius: 5, height: 18, overflow: 'hidden' }}>
@@ -239,12 +235,6 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, extraAlt
                 </div>
                 <div style={{ flexShrink: 0, width: 110, display: 'flex', alignItems: 'center', gap: 4 }}>
                   <span style={{ color: '#484f58', fontSize: 10, flex: 1 }}>{count}/{completed.length}g</span>
-                  {hasTonightData && edge != null && (
-                    <span style={{ background: edgeColor + '22', border: `1px solid ${edgeColor}`, borderRadius: 4,
-                      padding: '1px 5px', fontSize: 10, fontWeight: 700, color: edgeColor, whiteSpace: 'nowrap' }}>
-                      {edge >= 0 ? '+' : ''}{edge}%
-                    </span>
-                  )}
                   {trackBtn}
                 </div>
               </div>
