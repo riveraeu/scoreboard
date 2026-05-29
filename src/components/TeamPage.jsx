@@ -1,8 +1,7 @@
 import React from 'react';
-import { SPORT_KEY, STAT_LABEL, WORKER } from '../lib/constants.js';
-import { tierColor } from '../lib/colors.js';
+import { WORKER } from '../lib/constants.js';
+import { useIsMobile } from '../lib/hooks.js';
 import TotalsBarChart from './TotalsBarChart.jsx';
-import SimBadge from './SimBadge.jsx';
 
 // ── Play-type tab definitions ─────────────────────────────────────────────────
 const PLAY_TYPES = [
@@ -37,85 +36,6 @@ function pickBestTabFn(allPlays, abbr, sport) {
     if (mx > bestEdge) { bestEdge = mx; best = pt.key; }
   }
   return best;
-}
-
-// Resolve the SimScore field from any play object
-function getPlayScore(play) {
-  return play.finalSimScore ?? play.hitterFinalSimScore ?? play.nbaSimScore
-    ?? play.nhlSimScore ?? play.teamTotalSimScore ?? play.totalSimScore ?? null;
-}
-
-// Build per-component SimScore tooltip string (mirrors ReportPage xcell sim logic)
-function buildSimTip(play) {
-  const sport = play.sport;
-  const stat  = play.stat;
-  // MLB strikeouts
-  if (play.finalSimScore != null && play.totalSimScore == null && play.teamTotalSimScore == null) {
-    return [`CSW%/K%: ${play.kpctPts??1}/2`, `Lineup K%: ${play.lkpPts??1}/2`, `Hit Rate %: ${play.kHitRatePts??1}/2`, `H2H Hand: ${play.kH2HHandPts??1}/2`, `O/U: ${play.totalPts??1}/2`].join('\n');
-  }
-  // MLB HRR
-  if (play.hitterFinalSimScore != null) {
-    return [`OPS: ${play.hitterOpsPts??1}/2`, `WHIP: ${play.hitterWhipPts??1}/2`, `Season HR: ${play.hitterSeasonHitRatePts??1}/2`, `H2H HR: ${play.hitterH2HHitRatePts??1}/2`, `O/U: ${play.hitterTotalPts??1}/2`].join('\n');
-  }
-  // NBA player props
-  if (play.nbaSimScore != null && play.totalSimScore == null && play.teamTotalSimScore == null) {
-    const dvpPts = (play.dvpRatio??0)>=1.05?2:(play.dvpRatio??0)>=1.02?1:0;
-    const c1Pts  = stat==='rebounds'
-      ? (play.nbaOpportunity==null?1:play.nbaOpportunity>=30?2:play.nbaOpportunity>=25?1:0)
-      : (play.nbaUsage==null?1:play.nbaUsage>=28?2:play.nbaUsage>=22?1:0);
-    return [`C1: ${c1Pts}/2`, `DVP: ${dvpPts}/2`, `Season HR: ${play.nbaSeasonHitRatePts??1}/2`, `Tier HR: ${play.nbaSoftHitRatePts??1}/2`, `Game Total: ${play.nbaTotalPts??1}/2`].join('\n');
-  }
-  // NHL player props
-  if (play.nhlSimScore != null && play.totalSimScore == null) {
-    const toiPts  = play.nhlOpportunity>=18?2:play.nhlOpportunity>=15?1:play.nhlOpportunity!=null?0:1;
-    const gaaPts  = play.posDvpRank==null?1:play.posDvpRank<=10?2:play.posDvpRank<=15?1:0;
-    const ouPts   = play.nhlGameTotal==null?1:play.nhlGameTotal>=7?2:play.nhlGameTotal>=5.5?1:0;
-    return [`TOI: ${toiPts}/2`, `GAA rank: ${gaaPts}/2`, `Season HR: ${play.nhlSeasonHitRatePts??1}/2`, `DVP HR: ${play.nhlDvpHitRatePts??1}/2`, `O/U: ${ouPts}/2`].join('\n');
-  }
-  // Game totals
-  if (play.totalSimScore != null) {
-    if (sport === 'mlb') {
-      const w = v => v==null?1:v>1.35?2:v>1.20?1:0;
-      const cR = play.combinedRPG, h2h = play.h2hTotalHitRate, ou = play.gameOuLine;
-      return [`H WHIP: ${w(play.homeWHIP)}/2`, `A WHIP: ${w(play.awayWHIP)}/2`, `Comb RPG: ${cR==null?1:cR>=10.5?2:cR>=8.5?1:0}/2`, `H2H HR%: ${h2h==null?1:h2h>=80?2:h2h>=60?1:0}/2`, `O/U: ${ou==null?1:ou>=9.5?2:ou>=7.5?1:0}/2`].join('\n');
-    }
-    if (sport === 'nba') {
-      const rtgPts = v => v==null?1:v>=118?2:v>=113?1:0;
-      const hp=play.homePace, ap=play.awayPace, lgP=play.leagueAvgPace;
-      const pacePts = (hp==null||ap==null||lgP==null)?1:(hp>lgP+2&&ap>lgP+2)?2:(hp>lgP||ap>lgP)?1:0;
-      const gtH2H = play.nbaGtH2HRate;
-      const gtH2HPts = gtH2H==null?1:gtH2H>=80?2:gtH2H>=60?1:0;
-      const ou = play.gameOuLine;
-      return [`Pace: ${pacePts}/2`, `Comb OffRtg: ${rtgPts(play.combOffRtg)}/2`, `Comb DefRtg: ${rtgPts(play.combDefRtg)}/2`, `H2H HR% (${gtH2H??'—'}): ${gtH2HPts}/2`, `O/U: ${ou==null?1:ou>=225?2:ou>=215?1:0}/2`].join('\n');
-    }
-    if (sport === 'nhl') {
-      const g = v => v==null?1:v>=3.5?2:v>=3.0?1:0;
-      const ou = play.gameOuLine;
-      return [`H GPG: ${g(play.homeGPG)}/2`, `A GPG: ${g(play.awayGPG)}/2`, `H GAA: ${g(play.homeGAA)}/2`, `A GAA: ${g(play.awayGAA)}/2`, `O/U: ${ou==null?1:ou>=7?2:ou>=5.5?1:0}/2`].join('\n');
-    }
-  }
-  // Team totals
-  if (play.teamTotalSimScore != null) {
-    const isU = play.direction === 'under';
-    if (sport === 'mlb') {
-      const ssnPts  = isU?(play.ttSeasonHitRate==null?1:play.ttSeasonHitRate<=20?2:play.ttSeasonHitRate<=40?1:0):(play.ttSeasonHitRatePts??1);
-      const whipPts = isU?(play.oppWHIP==null?1:play.oppWHIP<=1.10?2:play.oppWHIP<=1.25?1:0):(play.ttWhipPts??1);
-      const l10Pts  = isU?(play.teamL10RPG==null?1:play.teamL10RPG<=3.5?2:play.teamL10RPG<=4.5?1:0):(play.ttL10Pts??1);
-      const h2hPts  = isU?(play.h2hHitRate==null?1:play.h2hHitRate<=30?2:play.h2hHitRate<=50?1:0):(play.h2hHitRatePts??1);
-      const ou = play.gameOuLine;
-      return [`Ssn HR%: ${ssnPts}/2`, `WHIP: ${whipPts}/2`, `L10 RPG: ${l10Pts}/2`, `H2H HR%: ${h2hPts}/2`, `O/U: ${ou==null?1:isU?(ou<7.5?2:ou<9.5?1:0):(ou>=9.5?2:ou>=7.5?1:0)}/2`].join('\n');
-    }
-    if (sport === 'nba') {
-      const rtgPts = v => v==null?1:isU?(v<113?2:v<118?1:0):(v>=118?2:v>=113?1:0);
-      const ou = play.gameOuLine;
-      const ouPts = ou==null?1:isU?(ou<215?2:ou<225?1:0):(ou>=225?2:ou>=215?1:0);
-      const ssnHR = play.ttNbaSeasonHitRate;
-      const ssnPts = play.ttNbaSeasonHitRatePts ?? (ssnHR==null?1:isU?(ssnHR<=20?2:ssnHR<=40?1:0):(ssnHR>=80?2:ssnHR>=60?1:0));
-      const h2hPts = isU?(play.h2hHitRate==null?1:play.h2hHitRate<=30?2:play.h2hHitRate<=50?1:0):(play.h2hHitRatePts??1);
-      return [`OffRtg: ${rtgPts(play.teamOffRtg)}/2`, `DefRtg: ${rtgPts(play.oppDefRtg)}/2`, `Ssn HR%: ${ssnPts}/2`, `H2H HR%: ${h2hPts}/2`, `O/U: ${ouPts}/2`].join('\n');
-    }
-  }
-  return null;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -201,6 +121,7 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, tonightLoading, all
   if (!data) return null;
 
   const { teamName, record, wins, losses, gameLog, seasonStats, lineup, lineupConfirmed, nextGame } = data;
+  const isMobile = useIsMobile(768);
 
   // Game log sort
   const sortedGL = [...(gameLog || [])].sort((a, b) => {
@@ -291,113 +212,29 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, tonightLoading, all
           trackedPlays={trackedPlays} onTrack={trackPlay} onUntrack={untrackPlay}
           playType={_activeType} onPlayTypeChange={handleTabChange}/>
 
-        {/* Lineup — shown above game log when available */}
-        {lineup.length > 0 && (() => {
-          const allPlays = allTonightPlays || tonightPlays || [];
-          const playerPlaysMap = {};
-          allPlays.forEach(pl => {
-            if (pl.gameType === 'total') return;
-            const key = pl.playerName;
-            if (!playerPlaysMap[key]) playerPlaysMap[key] = [];
-            playerPlaysMap[key].push(pl);
-          });
+        {/* Lineup (left) + Game Log (right) — side by side on desktop, stacked on mobile */}
+        {(() => {
+          const SPORT_KEY_MAP = { mlb:'baseball/mlb', nba:'basketball/nba', nhl:'hockey/nhl' };
+          const sportKey = SPORT_KEY_MAP[sport] || sport;
 
-          // Compact inline play card with SimScore badge
-          const MiniPlayCard = ({ play }) => {
-            const tc = tierColor(play.truePct);
-            const tp = play.truePct;
-            const trueOdds = tp != null ? (tp >= 100 ? -99999 : tp >= 50 ? Math.round(-(tp/(100-tp))*100) : Math.round((100-tp)/tp*100)) : null;
-            const trueOddsStr = trueOdds != null ? (trueOdds > 0 ? `+${trueOdds}` : `${trueOdds}`) : null;
-            const kp = play.kalshiPct;
-            const kOdds = play.americanOdds;
-            const kOddsStr = kOdds != null ? (kOdds > 0 ? `+${kOdds}` : `${kOdds}`) : null;
-            const score = getPlayScore(play);
-            const scoreColor = score == null ? '#484f58' : score >= 8 ? '#3fb950' : score >= 5 ? '#e3b341' : '#8b949e';
-            const simTip = score != null ? buildSimTip(play) : null;
+          const renderLineupRow = ({ key, posLabel, posStyle, imgSrc, name, playerId, subLabel, subStyle, rowStyle }) => {
+            const playerObj = { id: playerId, name, sportKey };
             return (
-              <div style={{marginTop:6,background:'#161b22',border:'1px solid #30363d',borderRadius:8,padding:'8px 10px'}}>
-                <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:6,flexWrap:'wrap'}}>
-                  <span style={{background:'rgba(88,166,255,0.12)',border:'1px solid #58a6ff',
-                    borderRadius:5,padding:'1px 7px',fontSize:11,color:'#58a6ff',fontWeight:700,whiteSpace:'nowrap'}}>
-                    {play.threshold}+ {STAT_LABEL[play.stat] || play.stat}
-                  </span>
-                  {play.edge != null && (
-                    <span style={{background:'rgba(63,185,80,0.13)',border:'1px solid #3fb950',
-                      borderRadius:5,padding:'1px 7px',fontSize:11,color:'#3fb950',fontWeight:700,whiteSpace:'nowrap'}}>
-                      +{play.edge}%
-                    </span>
-                  )}
-                  {score != null && (
-                    <SimBadge sc={score} scTitle={simTip} scColor={scoreColor}
-                      style={{marginLeft:'auto'}}
-                      customStyle={{background:`${scoreColor}18`,border:`1px solid ${scoreColor}`,whiteSpace:'nowrap'}}
-                      onClick={e => e.stopPropagation()} />
-                  )}
-                </div>
-                {/* True% bar */}
-                <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}>
-                  <div style={{flex:1,background:'#21262d',borderRadius:3,height:10,overflow:'hidden'}}>
-                    <div style={{width:`${tp}%`,background:tc,height:'100%',borderRadius:3,minWidth:tp>0?2:0}}/>
-                  </div>
-                  <div style={{width:80,flexShrink:0,display:'flex',justifyContent:'flex-end',alignItems:'baseline',gap:3}}>
-                    <span style={{color:tc,fontSize:11,fontWeight:700}}>{tp}%</span>
-                    {trueOddsStr && <span style={{color:tc,fontSize:10}}>({trueOddsStr})</span>}
-                  </div>
-                </div>
-                {/* Kalshi bar */}
-                {kp != null && (
-                  <div style={{display:'flex',alignItems:'center',gap:8}}>
-                    <div style={{flex:1,background:'#21262d',borderRadius:3,height:8,overflow:'hidden'}}>
-                      <div style={{width:`${kp}%`,background:'#6e40c9',height:'100%',borderRadius:3,minWidth:kp>0?2:0}}/>
-                    </div>
-                    <div style={{width:80,flexShrink:0,display:'flex',justifyContent:'flex-end',alignItems:'baseline',gap:3}}>
-                      <span style={{color:'#6e40c9',fontSize:11,fontWeight:600}}>{kp}%</span>
-                      {kOddsStr && <span style={{color:'#6e40c9',fontSize:10}}>({kOddsStr})</span>}
-                    </div>
-                  </div>
-                )}
+              <div key={key} style={{...rowStyle, display:'flex', alignItems:'center', gap:10, cursor: navigateToPlayer ? 'pointer' : 'default'}}
+                onClick={() => navigateToPlayer && navigateToPlayer(playerObj, null)}>
+                <span style={{...posStyle,flexShrink:0}}>{posLabel}</span>
+                <img src={imgSrc} alt={name} style={{width:32,height:32,borderRadius:8,objectFit:'cover',objectPosition:'top',background:'#21262d',flexShrink:0}}
+                  onError={e=>e.target.style.visibility='hidden'}/>
+                <span style={{color:'#c9d1d9',fontSize:13,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{name}</span>
+                {subLabel && <span style={subStyle}>{subLabel}</span>}
+                {navigateToPlayer && <span style={{color:'#484f58',fontSize:11,flexShrink:0}}>›</span>}
               </div>
             );
           };
 
-          const renderLineupRow = ({ key, posLabel, posStyle, imgSrc, name, subLabel, subStyle, rowStyle }) => {
-            const plays = playerPlaysMap[name] || [];
-            const sortedPlays = [...plays].sort((a,b) => (a.threshold||0) - (b.threshold||0));
-            const hasPlays = sortedPlays.length > 0;
-            const refPlay = sortedPlays[0];
-            const SPORT_KEY_MAP = { mlb:'baseball/mlb', nba:'basketball/nba', nhl:'hockey/nhl' };
-            const sportKey = SPORT_KEY_MAP[sport] || sport;
-            const playerObj = refPlay
-              ? { id: refPlay.playerId, name, team: refPlay.playerTeam, sportKey: SPORT_KEY_MAP[refPlay.sport] || sportKey,
-                  opponent: refPlay.opponent, oppRank: refPlay.oppRank, oppMetricValue: refPlay.oppMetricValue,
-                  oppMetricLabel: refPlay.oppMetricLabel, oppMetricUnit: refPlay.oppMetricUnit,
-                  playSport: refPlay.sport, playThreshold: refPlay.threshold, playStat: refPlay.stat }
-              : { name, sportKey };
-            return (
-              <div key={key} style={{...rowStyle, flexDirection:'column', alignItems:'stretch', cursor: navigateToPlayer ? 'pointer' : 'default'}}
-                onClick={() => navigateToPlayer && navigateToPlayer(playerObj, refPlay?.stat || null)}>
-                <div style={{display:'flex',alignItems:'center',gap:10}}>
-                  <span style={{...posStyle,flexShrink:0}}>{posLabel}</span>
-                  <img src={imgSrc} alt={name} style={{width:32,height:32,borderRadius:8,objectFit:'cover',objectPosition:'top',background:'#21262d',flexShrink:0}}
-                    onError={e=>e.target.style.visibility='hidden'}/>
-                  <span style={{color:'#c9d1d9',fontSize:13,flex:1,fontWeight: hasPlays ? 600 : 400,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{name}</span>
-                  {subLabel && <span style={subStyle}>{subLabel}</span>}
-                  {navigateToPlayer && <span style={{color:'#484f58',fontSize:11,flexShrink:0}}>›</span>}
-                </div>
-                {sortedPlays.map((pl, i) => (
-                  <div key={i} onClick={e => e.stopPropagation()}>
-                    <MiniPlayCard play={pl}/>
-                  </div>
-                ))}
-              </div>
-            );
-          };
-
-          // 2-column grid on desktop, 1-column on mobile
-          const isMobile = typeof window !== 'undefined' && window.innerWidth <= 480;
-
-          return (
-            <div style={{marginTop:22}}>
+          const lineupCol = lineup.length > 0 ? (
+            <div>
+              <div style={{color:'#484f58',fontSize:10,marginBottom:6}}>Starting Lineup</div>
               {!lineupConfirmed && (
                 <div style={{color:'#e3b341',fontSize:11,marginBottom:10,padding:'5px 10px',
                   background:'rgba(227,179,65,0.08)',borderRadius:6,border:'1px solid rgba(227,179,65,0.2)'}}>
@@ -405,92 +242,106 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, tonightLoading, all
                 </div>
               )}
               {sport === 'nba' && (
-                <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(2,1fr)',gap:8}}>
+                <div style={{display:'flex',flexDirection:'column',gap:6}}>
                   {lineup.map(p => renderLineupRow({
                     key: p.position,
                     posLabel: p.position,
                     posStyle: {color:'#58a6ff',fontSize:11,fontWeight:700,width:32},
                     imgSrc: `https://a.espncdn.com/i/headshots/nba/players/full/${p.playerId}.png`,
                     name: p.name,
+                    playerId: p.playerId,
                     subLabel: null,
                     subStyle: {},
-                    rowStyle: {display:'flex',background:'#0d1117',border:'1px solid #21262d',borderRadius:8,padding:'8px 12px'},
+                    rowStyle: {background:'#0d1117',border:'1px solid #21262d',borderRadius:8,padding:'8px 12px'},
                   }))}
                 </div>
               )}
               {sport === 'mlb' && (
-                <div style={{display:'flex',flexDirection:'column',gap:3}}>
-                  <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(2,1fr)',gap:8}}>
-                    {lineup.filter(p => !p.isProbable).map((p, i) => renderLineupRow({
-                      key: p.spot ?? p.playerId ?? i,
-                      posLabel: p.spot,
-                      posStyle: {color:'#58a6ff',fontSize:11,fontWeight:700,width:24,textAlign:'right'},
-                      imgSrc: `https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_213,q_auto:best/v1/people/${p.playerId}/headshot/67/current`,
-                      name: p.name,
-                      subLabel: p.position,
-                      subStyle: {color:'#484f58',fontSize:11},
-                      rowStyle: {display:'flex',background:'#0d1117',border:'1px solid #21262d',borderRadius:8,padding:'8px 12px'},
-                    }))}
-                  </div>
+                <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                  {lineup.filter(p => !p.isProbable).map((p, i) => renderLineupRow({
+                    key: p.spot ?? p.playerId ?? i,
+                    posLabel: p.spot,
+                    posStyle: {color:'#58a6ff',fontSize:11,fontWeight:700,width:24,textAlign:'right'},
+                    imgSrc: `https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_213,q_auto:best/v1/people/${p.playerId}/headshot/67/current`,
+                    name: p.name,
+                    playerId: p.playerId,
+                    subLabel: p.position,
+                    subStyle: {color:'#484f58',fontSize:11},
+                    rowStyle: {background:'#0d1117',border:'1px solid #21262d',borderRadius:8,padding:'8px 12px'},
+                  }))}
                   {lineup.filter(p => p.isProbable).map(p => renderLineupRow({
                     key: 'sp',
                     posLabel: 'SP',
                     posStyle: {color:'#58a6ff',fontSize:11,fontWeight:700,width:24,textAlign:'right'},
                     imgSrc: `https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_213,q_auto:best/v1/people/${p.playerId}/headshot/67/current`,
                     name: p.name,
+                    playerId: p.playerId,
                     subLabel: 'probable',
                     subStyle: {color:'#484f58',fontSize:10},
-                    rowStyle: {display:'flex',marginTop:6,background:'rgba(88,166,255,0.06)',border:'1px solid rgba(88,166,255,0.2)',borderRadius:8,padding:'8px 12px'},
+                    rowStyle: {background:'rgba(88,166,255,0.06)',border:'1px solid rgba(88,166,255,0.2)',borderRadius:8,padding:'8px 12px'},
                   }))}
                 </div>
               )}
             </div>
+          ) : null;
+
+          const gameLogCol = (
+            <div style={{overflowX:'auto'}}>
+              <div style={{color:'#484f58',fontSize:10,marginBottom:6}}>Game Log — 2025-26</div>
+              <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                <thead>
+                  <tr>
+                    {glCols.map(c => (
+                      <th key={c.key} onClick={() => toggleSort(c.key)} style={thStyle(c.key)}>
+                        {c.label}{glSort.col===c.key?(glSort.dir==='desc'?'↓':'↑'):''}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedGL.map((g, i) => {
+                    const isW = g.result === 'W';
+                    return (
+                      <tr key={`${g.date}-${i}`} style={{
+                        borderTop:'1px solid #21262d',
+                        background: i%2===0?'#0d1117':'transparent'}}>
+                        <td style={{padding:'5px 8px',color:'#8b949e',textAlign:'left'}}>{g.date ? g.date.slice(5) : '—'}</td>
+                        <td style={{padding:'5px 8px',color:'#484f58',textAlign:'center'}}>{g.isHome ? '' : '@'}</td>
+                        <td style={{padding:'5px 8px',color:'#c9d1d9',textAlign:'left'}}>
+                          <button onClick={() => navigateToTeam(g.opp, sport)}
+                            style={{background:'none',border:'none',color:'#c9d1d9',cursor:'pointer',padding:0,fontSize:12,textDecoration:'underline',textDecorationColor:'#484f58'}}>
+                            {g.opp}
+                          </button>
+                        </td>
+                        <td style={{padding:'5px 8px',textAlign:'right',color:'#c9d1d9',fontWeight:600}}>{g.teamScore}</td>
+                        <td style={{padding:'5px 8px',textAlign:'right',color:'#8b949e'}}>{g.oppScore}</td>
+                        <td style={{padding:'5px 8px',textAlign:'right',color:
+                          tonightPlay && g.total >= tonightPlay.threshold ? '#3fb950' :
+                          tonightPlay && g.total < tonightPlay.threshold ? '#f78166' : '#c9d1d9',
+                          fontWeight:600}}>{g.total}</td>
+                        <td style={{padding:'5px 8px',textAlign:'right',color:isW?'#3fb950':'#f78166',fontWeight:700}}>
+                          {g.result || '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          );
+
+          // No lineup data (NHL, WNBA, or when the lineup endpoint returned empty) → game log full width
+          if (!lineupCol) {
+            return <div style={{marginTop:22}}>{gameLogCol}</div>;
+          }
+          return (
+            <div style={{marginTop:22,display:'grid',gap:16,
+              gridTemplateColumns: isMobile ? '1fr' : 'minmax(0,1fr) minmax(0,1.6fr)'}}>
+              {lineupCol}
+              {gameLogCol}
+            </div>
           );
         })()}
-
-        {/* Game log table */}
-        <div style={{marginTop:22,overflowX:'auto'}}>
-          <div style={{color:'#484f58',fontSize:10,marginBottom:6}}>Game Log — 2025-26</div>
-          <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
-            <thead>
-              <tr>
-                {glCols.map(c => (
-                  <th key={c.key} onClick={() => toggleSort(c.key)} style={thStyle(c.key)}>
-                    {c.label}{glSort.col===c.key?(glSort.dir==='desc'?'↓':'↑'):''}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {sortedGL.map((g, i) => {
-                const isW = g.result === 'W';
-                return (
-                  <tr key={`${g.date}-${i}`} style={{
-                    borderTop:'1px solid #21262d',
-                    background: i%2===0?'#0d1117':'transparent'}}>
-                    <td style={{padding:'5px 8px',color:'#8b949e',textAlign:'left'}}>{g.date ? g.date.slice(5) : '—'}</td>
-                    <td style={{padding:'5px 8px',color:'#484f58',textAlign:'center'}}>{g.isHome ? '' : '@'}</td>
-                    <td style={{padding:'5px 8px',color:'#c9d1d9',textAlign:'left'}}>
-                      <button onClick={() => navigateToTeam(g.opp, sport)}
-                        style={{background:'none',border:'none',color:'#c9d1d9',cursor:'pointer',padding:0,fontSize:12,textDecoration:'underline',textDecorationColor:'#484f58'}}>
-                        {g.opp}
-                      </button>
-                    </td>
-                    <td style={{padding:'5px 8px',textAlign:'right',color:'#c9d1d9',fontWeight:600}}>{g.teamScore}</td>
-                    <td style={{padding:'5px 8px',textAlign:'right',color:'#8b949e'}}>{g.oppScore}</td>
-                    <td style={{padding:'5px 8px',textAlign:'right',color:
-                      tonightPlay && g.total >= tonightPlay.threshold ? '#3fb950' :
-                      tonightPlay && g.total < tonightPlay.threshold ? '#f78166' : '#c9d1d9',
-                      fontWeight:600}}>{g.total}</td>
-                    <td style={{padding:'5px 8px',textAlign:'right',color:isW?'#3fb950':'#f78166',fontWeight:700}}>
-                      {g.result || '—'}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
 
       </div>
     </div>
