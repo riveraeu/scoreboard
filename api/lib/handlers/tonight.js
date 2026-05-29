@@ -4624,7 +4624,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               homeTeam, awayTeam, gameDate, threshold,
               totalSimScore: 0, qualified: false,
               kalshiVolume, kalshiSpread, lowVolume: ctx.lowVolume,
-              gameTime: _gameTime, lineupsConfirmed: _lineupsConfirmed,
+              gameTime: _gameTime, lineupsConfirmed: _lineupsConfirmed, _dbgCtxGameDate: ctx.gameDate,
               homeLambda: f5HomeLambda, awayLambda: f5AwayLambda,
               ..._simData,
               // F5-specific overrides (must follow _simData spread to win)
