@@ -4628,6 +4628,9 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               homeExpected: f5HomeLambda, awayExpected: f5AwayLambda,
               expectedTotal: _f5ExpectedTotal,
               gameOuLine: _f5GameOuLine,
+              // H2H uses full-game _gtScheduleMap scores — meaningless vs F5 thresholds.
+              // Null these out so the play card doesn't show a misleading 80–100% OVER rate.
+              h2hTotalHitRate: null, h2hTotalGames: null, h2hTotalPts: 1,
             };
             // OVER
             {
@@ -4699,6 +4702,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
                 homeExpected: f5HomeLambda, awayExpected: f5AwayLambda,
                 expectedTotal: _f5ExpectedTotal,
                 gameOuLine: _f5GameOuLine,
+                h2hTotalHitRate: null, h2hTotalGames: null, h2hTotalPts: 1,
               };
               if (edge >= EDGE_GATE && inWindow) {
                 plays.push(_base);
@@ -4825,6 +4829,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
                   homeExpected: f5HomeLambda, awayExpected: f5AwayLambda,
                   expectedTotal: _f5ExpectedTotal,
                   gameOuLine: _f5GameOuLine,
+                  h2hTotalHitRate: null, h2hTotalGames: null, h2hTotalPts: 1,
                 };
                 if (edge >= EDGE_GATE && inWindow) {
                   plays.push(_base);
