@@ -249,9 +249,9 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, extraAlt
                         transition: 'width 0.5s ease', minWidth: kalshiPct > 0 ? 2 : 0 }} />
                     </div>
                     <div style={{ color: '#6e40c9', fontSize: 13, fontWeight: 600, width: 42, textAlign: 'right', flexShrink: 0 }}>
-                      {kalshiPct}%
+                      {(+kalshiPct).toFixed(1)}%
                     </div>
-                    <div style={{ color: '#6e40c9', fontSize: 13, flexShrink: 0, paddingLeft: 2 }}>
+                    <div style={{ color: '#6e40c9', fontSize: 10, flexShrink: 0, paddingLeft: 2 }}>
                       ({kOddsStr})
                     </div>
                   </div>
