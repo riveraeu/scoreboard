@@ -207,7 +207,6 @@ export default function LineupsPage({
   navigateToPlayer,
   navigateToTeam,
   navigateToModel,
-  fetchReport,
   authEmail,
   logout,
   syncStatus,
@@ -381,7 +380,7 @@ export default function LineupsPage({
           border: '1px solid #30363d', background: 'transparent', color: '#484f58', fontWeight: 600 }}>
         Model
       </button>
-      <button onClick={() => fetchReport('mlb')}
+      <button onClick={() => navigateToModel({ tab: 'market', sport: 'mlb' })}
         style={{ ...btnSize, borderRadius: 6, cursor: 'pointer',
           border: '1px solid #30363d', background: 'transparent', color: '#484f58', fontWeight: 600 }}>
         Report

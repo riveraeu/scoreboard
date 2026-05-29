@@ -215,7 +215,7 @@ function AddPickModal({ onClose, onAdd, initialOdds = "-110" }) {
       const pickTeam = form.pickSide === "home" ? homeTeam : awayTeam;
       const oppTeam = form.pickSide === "home" ? awayTeam : homeTeam;
       // ML payload mirrors auto-generated plays from /api/tonight emission. No direction
-      // (ML doesn't have over/under); no threshold. `stat: "ml"` for MarketReport grouping
+      // (ML doesn't have over/under); no threshold. `stat: "ml"` for ReportPage grouping
       // + /api/auth/calibration bucket. Side = which side of the game we're betting.
       const { direction: _ignored, ...mlCommon } = common;
       onAdd({

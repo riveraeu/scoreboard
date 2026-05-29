@@ -23,7 +23,7 @@ Sports prop betting dashboard that pulls Kalshi prediction market prices, comput
 |---|---|
 | Per-sport modeling internals (SimScore tiers, lambdas, miscAdj, gates, Kalshi parsing details, dedup logic) | `docs/MODEL.md` |
 | Cache keys + TTLs, Upstash storage, env vars, deployment, testing, data sources | `docs/INFRA.md` |
-| URL routing, App.jsx state shape, Market Report internals, live tracking mechanics, sizing, color doctrine + per-play-type explanation table | `docs/FRONTEND.md` |
+| URL routing, App.jsx state shape, ReportPage internals (Market Report + Model Reference), live tracking mechanics, sizing, color doctrine + per-play-type explanation table | `docs/FRONTEND.md` |
 | Common debugging recipes | `docs/DEBUGGING.md` |
 
 The cross-cutting gotchas at the bottom of this file are kept inline because they bite during *any* change, not just modeling work.
@@ -57,7 +57,7 @@ Entry: `index.html` → `src/main.jsx` → `src/App.jsx`. Vercel runs `npm run b
 - `src/lib/utils.js` — `slugify`, `teamUrl`, `logoUrl(sport, abbr)` (handles ESPN CDN abbr mismatches NHL `tbl→tb, njd→nj, lak→la, sjs→sj`; NBA `kat→atl`)
 - `src/lib/liveStats.js` — live pick tracking helpers
 - `src/lib/hooks.js` — `useIsMobile(threshold=600)`: resize+orientation-aware boolean. Use this for responsive layouts (e.g. `LineupsPage` toolbar wraps to 2 rows on mobile). `SimBadge`/`DayBar` tooltips also support tap-to-pin so SimScore breakdowns are accessible on touch devices.
-- `src/components/` — `LineupsPage` (homepage tab layout), `MatchupCard` (per-game card; MLB renders a starting-pitcher row + game total/ML center column, NBA/WNBA/NHL render a "top player" row with the scoreboard Rating/Points leader and their stats), `PlaysColumn` (per-sport explanation branches: MLB-K, MLB-hitter, NBA, WNBA, NHL + generic fallback; WNBA mirrors NBA with retuned tiers and reads `play.wnba*` fields), `MyPicksColumn`, `MarketReport`, `ModelPage`, `TeamPage`, `TotalsBarChart`, `DayBar`, `AddPickModal`
+- `src/components/` — `LineupsPage` (homepage tab layout), `MatchupCard` (per-game card; MLB renders a starting-pitcher row + game total/ML center column, NBA/WNBA/NHL render a "top player" row with the scoreboard Rating/Points leader and their stats), `PlaysColumn` (per-sport explanation branches: MLB-K, MLB-hitter, NBA, WNBA, NHL + generic fallback; WNBA mirrors NBA with retuned tiers and reads `play.wnba*` fields), `MyPicksColumn`, `ReportPage` (merged Market Report + Model Reference at `/model`, driven by a sport + play-type dropdown — see `docs/FRONTEND.md`), `TeamPage`, `TotalsBarChart`, `DayBar`, `AddPickModal`
 
 **Dev proxy**: `vite.config.js` proxies `/api` to production so `npm run dev` works without local backend.
 
@@ -75,7 +75,7 @@ See `docs/INFRA.md` for storage and cache details.
 - `/api/auth/{register,login,reset,list-users,debug-redis,calibration,clear-kalshi-stale}` — auth + admin. Password min 8 chars. Admin endpoints fail-closed if `ADMIN_KEY` missing.
 - `/api/auth/clear-kalshi-stale` — `POST ?ticker=KXMLBTEAMTOTAL` with `Authorization: Bearer <ADMIN_KEY>`. Deletes `kalshi:stale:{ticker}` so the next cold bundle build attempts Kalshi fresh instead of serving the stale entry. Use when a series has been rate-limit-stuck on stale data past the 30-min TTL window. Ticker validated against `/^KX[A-Z0-9]+$/`. Does **not** affect `kalshi:snap:{ticker}` — those refresh on the 2-min cron.
 - `/api/kalshi-snapshot` — cron-only (`*/2 * * * *` in vercel.json). Fetches all 26 Kalshi series tickers (19 SERIES_CONFIG + game totals + KXMLBGAME + KXNBAGAME) and writes per-ticker `kalshi:snap:{ticker}` keys via Upstash pipeline. Bearer-auth: `CRON_SECRET`. Returns `{ok, successCount, failedCount, failed[], durationMs}`. **Hardcoded ticker list MUST stay in sync** with `SERIES_CONFIG` inside `/api/tonight` — add new series to both places.
-- `/api/auth/calibration` — outcome stats. Auth: bearer JWT (any user) or `?adminKey=`. Returns `overall`, `byCategory`, `byCategoryDetail` (per-category truePct buckets, used by `CalibModule` per ModelPage tab), `kStrikeouts` (K-feature breakdowns).
+- `/api/auth/calibration` — outcome stats. Auth: bearer JWT (any user) or `?adminKey=`. Returns `overall`, `byCategory`, `byCategoryDetail` (per-category truePct buckets, used by the `CalibModule` per ReportPage Model tab), `kStrikeouts` (K-feature breakdowns).
 - `/api/user/picks` — GET/POST user picks (bearer JWT). POST accepts two body shapes: legacy `{picks: [...all], bankroll}` (full overwrite, kept for old cached clients) and delta `{upserts: [pick,...], deletes: [id,...], bankroll}` (read-modify-write merge). Client always sends delta. Initial load seeds `lastSyncedPicks` ref on the frontend so the first save after mount is a true diff. See `savePicks` in `src/App.jsx`.
 - `/api/keepalive` — daily cron
 
@@ -163,7 +163,7 @@ If a team rebrands or a new mismatch surfaces, add it to `CANONICAL_TO_ESPN` in 
 
 **`{sport}Meta.topPlayers[abbr]` (NBA/WNBA/NHL)**: `{ name, id, headshot, stats }` extracted from ESPN scoreboard `competitions[].competitors[].leaders` by `parseTopPlayers` in `api/lib/utils.js`. NBA/WNBA use the `RAT` (Rating) category leader and parse `displayValue` (`"X PPG, Y RPG, Z APG, …"`) into `"X PPG · Y RPG · Z APG"`. NHL uses the `Points` leader; derives the missing leg whichever way it can — if the same athlete also leads Goals, computes `A = P − G`; if they also lead Assists, computes `G = P − A`; otherwise falls back to just `"PTS"`. Headshot prefers `athlete.headshot.href`, falls back to `https://a.espncdn.com/i/headshots/{league}/players/full/{id}.png`. Today-only — `MatchupCard` looks up by raw `homeTeam`/`awayTeam` abbr without a date-based selector (NBA/NHL/WNBA tabs are typically single-day).
 
-**byteam:mlb partial-cache trap**: MLB byteam hydrates several MLB Stats API calls in parallel and each `.catch(() => ({}))` silently. A successful lineup fetch alongside a failed OPS or gamelog fetch would otherwise bake partial data for 10min — short-TTL guard (60s) fires when any of `lineupSpotByName`, `pitcherAvgPitches`, `hitterOpsMap`, `pitcherH2HStarts` is empty. Symptom: MarketReport columns null across many rows; diff cached vs `?bust=1` to confirm.
+**byteam:mlb partial-cache trap**: MLB byteam hydrates several MLB Stats API calls in parallel and each `.catch(() => ({}))` silently. A successful lineup fetch alongside a failed OPS or gamelog fetch would otherwise bake partial data for 10min — short-TTL guard (60s) fires when any of `lineupSpotByName`, `pitcherAvgPitches`, `hitterOpsMap`, `pitcherH2HStarts` is empty. Symptom: ReportPage Market tab columns null across many rows; diff cached vs `?bust=1` to confirm.
 
 **Edge handler env-var wiring**: ALL env vars must be passed through `process.env` to the explicit `env` object at the bottom of `api/[...path].js`. Vercel doesn't auto-attach them. If you add a new env var, add it here too:
 ```js

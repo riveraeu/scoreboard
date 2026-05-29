@@ -23,8 +23,7 @@ import TotalsBarChart from './components/TotalsBarChart.jsx';
 import TeamPage, { STAT_CONFIGS } from './components/TeamPage.jsx';
 import DayBar from './components/DayBar.jsx';
 import AddPickModal from './components/AddPickModal.jsx';
-import ModelPage from './components/ModelPage.jsx';
-import MarketReport from './components/MarketReport.jsx';
+import ReportPage from './components/ReportPage.jsx';
 import MyPicksColumn from './components/MyPicksColumn.jsx';
 import LineupsPage from './components/LineupsPage.jsx';
 import SimBadge from './components/SimBadge.jsx';
@@ -103,10 +102,10 @@ function App() {
     teamPage, setTeamPage,
     teamPageData,
     modelPage,
+    modelEntryOpts,
     navigateToTeam, navigateToPlayer, goBack, navigateToModel,
   } = useRouting({ setPlayer, setQuery, selectPlayerRef });
   const {
-    showReport, setShowReport,
     reportSort, setReportSort,
     reportDataBySport,
     reportLoadingSport,
@@ -241,20 +240,6 @@ function App() {
 
   return (
     <div style={{maxWidth:1280,margin:"0 auto",padding:"24px 16px"}}>
-
-      {/* Market Report overlay */}
-      {showReport && <MarketReport
-        onClose={() => setShowReport(false)}
-        fetchReport={fetchReport}
-        reportDataBySport={reportDataBySport}
-        reportSport={reportSport}
-        setReportSport={setReportSport}
-        reportLoadingSport={reportLoadingSport}
-        reportSort={reportSort}
-        setReportSort={setReportSort}
-        navigateToPlayer={navigateToPlayer}
-        navigateToTeam={navigateToTeam}
-      />}
 
       {/* Auth modal */}
       {showAuthModal && (
@@ -491,9 +476,26 @@ function App() {
       </div>
       </div>{/* end top row */}
 
-      {/* Model reference page */}
+      {/* Report page — Market Report + Model Reference, per (sport, play type) */}
       {modelPage && !player && !teamPage && (
-        <ModelPage onBack={goBack} calibData={calibData} calibLoading={calibLoading} fetchCalib={fetchCalib} authToken={authToken} />
+        <ReportPage
+          onBack={goBack}
+          reportSort={reportSort}
+          setReportSort={setReportSort}
+          reportDataBySport={reportDataBySport}
+          reportLoadingSport={reportLoadingSport}
+          reportSport={reportSport}
+          setReportSport={setReportSport}
+          fetchReport={fetchReport}
+          calibData={calibData}
+          calibLoading={calibLoading}
+          fetchCalib={fetchCalib}
+          authToken={authToken}
+          navigateToPlayer={navigateToPlayer}
+          navigateToTeam={navigateToTeam}
+          initialTab={modelEntryOpts.tab}
+          initialSport={modelEntryOpts.sport}
+        />
       )}
 
       {/* Team page */}
@@ -1244,7 +1246,6 @@ function App() {
           navigateToPlayer={navigateToPlayer}
           navigateToTeam={navigateToTeam}
           navigateToModel={navigateToModel}
-          fetchReport={fetchReport}
           authEmail={authEmail}
           logout={logout}
           syncStatus={syncStatus}

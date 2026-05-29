@@ -24,21 +24,31 @@ History.pushState + popstate. Routes:
 - `mlbMetaTomorrow` — same shape from tomorrow's MLB API schedule. Pitchers only (era null); gameOdds/weather always empty.
 - `nbaMeta` — `{ gameOdds, injuries, gameScores }`. `gameScores` from `parseGameScores`, includes `seriesSummary` in playoffs.
 - `nhlMeta` — `{ gameScores, gameOdds }`. Same shape.
-- `reportData` — full debug response for Market Report overlay
+- `reportData` — full debug response for ReportPage
 - `player`, `teamPage`, `teamPageData`, `pendingSlug`, `trackedPlays`
 
 ---
 
-## Market Report
-Sport tabs: ALL / MLB / NBA / NHL (calibration moved to Model Reference page). Columns vary by sport/stat via `XCOLS` map; `COL_TIPS` dictionary supplies hover tooltips. `xcell` function in `MarketReport.jsx` is authoritative for column color tiers — match SimScore tiers (yellow = middle tier, gray = abstain or lowest, red = 0pts).
+## ReportPage (Market Report + Model Reference)
+Merged into a single full-page route at `/model` (2026-05-29). Entry points: the homepage **Model** button (lands on the Model Reference tab) and the **Report** button (lands on the Market Report tab, sport pre-seeded to MLB). Both go through `useRouting.navigateToModel(opts)` which writes `modelEntryOpts = {tab, sport}` so `ReportPage` can seed its initial selection.
 
-`fetchReport` updates `tonightPlays` and `allTonightPlays` from the debug response so the plays card stays in sync.
+**Selectors** (top of the page): a sport dropdown (MLB / NBA / WNBA / NHL) and a play-type dropdown filtered by sport. The play-type catalog lives in `PLAY_TYPES` in `ReportPage.jsx` — each entry has `{ id, label, statKeys }`. `id` is the calibration tab key (e.g. `mlb-k`, `nba-1htotal`); `statKeys` is the array of `m.stat` values that belong to this play type. NBA "Props" rolls four stats (`points/rebounds/assists/threePointers`) into a single entry to mirror calibration's merged bucket.
 
-**SimScore tooltip** (hover any `X/10` badge): `buildSimTooltip(m)` in `MarketReport.jsx` is the canonical helper for all play types. Per-component breakdown with actual values.
+**Tab bar** (under the dropdowns): two tabs — Market Report and Model Reference. The selected (sport, play type) drives both.
+
+### Market Report tab
+Filters the `/tonight?debug=1&sport=X` payload down to plays whose `m.sport === sport && playType.statKeys.includes(m.stat)`. Totals/teamTotals further split into Over and Under sub-groups within the same play type. `MarketGroupSection` renders one group: header + sortable table. Columns vary by sport/stat via the `xcols` array; `COL_TIPS` dictionary supplies hover tooltips. The `xcell` switch in `MarketGroupSection` is authoritative for column color tiers — match SimScore tiers (yellow = middle tier, gray = abstain or lowest, red = 0pts).
+
+`fetchReport(sport)` (in `useReportData.js`) memoizes the debug response per-sport in `reportDataBySport`, so switching play types within a sport never refetches.
+
+**SimScore tooltip** (hover any `X/10` badge): `buildSimTooltip(m)` is the canonical helper for all play types. Per-component breakdown with actual values.
 
 **Sort defaults**: team totals = Score desc. HRR table: threshold=1 only (others filtered client-side).
 
 **Score>7 highlight**: MLB rows show white+bold name only when `finalSimScore ?? hitterFinalSimScore > 7` (Alpha tier). Other rows use `m.qualified`.
+
+### Model Reference tab
+For each play-type id, renders the explanation card (`MODEL_CONTENT[tabId]`) + the `CalibModule` calibration table. Tabs without a content entry (e.g. `mlb-ml`, all F5 / half markets, all ml/spread variants) just render `CalibModule` — keeps the page useful even when there's no prose write-up yet. `TAB_CAT` maps each tab id to the calibration category keys it covers; multi-key entries (e.g. `nba`) merge buckets via `mergeBuckets`.
 
 ---
 
@@ -82,7 +92,7 @@ Sport tabs: ALL / MLB / NBA / NHL (calibration moved to Model Reference page). C
 ## Color tiers (utility)
 ```
 tierColor(pct): ≥70 → #3fb950 green, ≥60 → #e3b341 yellow, <60 → #f78166 red.
-Single source of truth in src/lib/colors.js. Drives True% bars in App player card, PlaysColumn (truePct + season + soft bars), TotalsBarChart, TeamPage. NOT applied to MarketReport SimScore-component cells (Ssn HR%, H2H HR%, Hit Rate %, K H2H Hand, etc.) — those map to the points actually awarded (2/1/0 → green/yellow/red), and per-component % thresholds vary by stat (e.g. NBA Ssn HR ≥90→2 vs MLB HRR Ssn HR ≥80→2), so a universal ladder would visually misrepresent SimScore.
+Single source of truth in src/lib/colors.js. Drives True% bars in App player card, PlaysColumn (truePct + season + soft bars), TotalsBarChart, TeamPage. NOT applied to ReportPage Market-tab SimScore-component cells (Ssn HR%, H2H HR%, Hit Rate %, K H2H Hand, etc.) — those map to the points actually awarded (2/1/0 → green/yellow/red), and per-component % thresholds vary by stat (e.g. NBA Ssn HR ≥90→2 vs MLB HRR Ssn HR ≥80→2), so a universal ladder would visually misrepresent SimScore.
 ```
 
 ---

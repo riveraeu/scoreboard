@@ -18,6 +18,10 @@ export function useRouting({ setPlayer, setQuery, selectPlayerRef }) {
   const [teamPageData, setTeamPageData] = React.useState(null);
   const [pendingSlug, setPendingSlug] = React.useState(null);
   const [modelPage, setModelPage] = React.useState(false);
+  // Entry hints for ReportPage. Reset on every navigateToModel call so a deep-link from
+  // the Report button (`{tab:"market", sport:"mlb"}`) doesn't leak into a later direct
+  // /model visit, which should default to the Model Reference tab.
+  const [modelEntryOpts, setModelEntryOpts] = React.useState({});
 
   const loadTeamPage = React.useCallback(async (abbr, sport) => {
     setPlayer(null);
@@ -35,7 +39,11 @@ export function useRouting({ setPlayer, setQuery, selectPlayerRef }) {
 
   const resolveSlug = React.useCallback((slug, sportOverride) => {
     if (!slug) { setPlayer(null); setTeamPage(null); setModelPage(false); return; }
-    if (slug === "model") { setPlayer(null); setTeamPage(null); setModelPage(true); return; }
+    if (slug === "model") {
+      // Slug-driven entry (mount, back/forward, paste-URL) — clear any leftover opts
+      // from a prior in-app navigateToModel({...}) so we default to the Model tab.
+      setPlayer(null); setTeamPage(null); setModelEntryOpts({}); setModelPage(true); return;
+    }
     setModelPage(false);
     const upper = slug.toUpperCase();
     const spPriority = sportOverride ? [sportOverride] : ["mlb","nba","wnba","nhl"];
@@ -107,10 +115,11 @@ export function useRouting({ setPlayer, setQuery, selectPlayerRef }) {
     setQuery("");
   }, [setPlayer, setQuery]);
 
-  const navigateToModel = React.useCallback(() => {
+  const navigateToModel = React.useCallback((opts = {}) => {
     history.pushState({}, "", "/model");
     setPlayer(null);
     setTeamPage(null);
+    setModelEntryOpts(opts);
     setModelPage(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [setPlayer]);
@@ -119,6 +128,7 @@ export function useRouting({ setPlayer, setQuery, selectPlayerRef }) {
     teamPage, setTeamPage,
     teamPageData,
     modelPage,
+    modelEntryOpts,
     navigateToTeam, navigateToPlayer, goBack, navigateToModel,
   };
 }

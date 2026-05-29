@@ -45,7 +45,7 @@ function getPlayScore(play) {
     ?? play.nhlSimScore ?? play.teamTotalSimScore ?? play.totalSimScore ?? null;
 }
 
-// Build per-component SimScore tooltip string (mirrors MarketReport xcell sim logic)
+// Build per-component SimScore tooltip string (mirrors ReportPage xcell sim logic)
 function buildSimTip(play) {
   const sport = play.sport;
   const stat  = play.stat;
