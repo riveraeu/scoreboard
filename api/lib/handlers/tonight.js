@@ -4651,6 +4651,11 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             const noTruePct = parseFloat((100 - yesTruePct).toFixed(1));
             const _gameTime = gameTimes[`mlb:${homeTeam}:${gameDate}`] ?? gameTimes[`mlb:${awayTeam}:${gameDate}`] ?? gameTimes[`mlb:${homeTeam}`] ?? gameTimes[`mlb:${awayTeam}`] ?? null;
             const _lineupsConfirmed = _mlbBothTeamsConfirmed(homeTeam, awayTeam, gameDate);
+            // F5 OU + expected: full-game OU × 5/9 anchor, sum of F5 lambdas. Override after the
+            // _simData spread so spread picks don't display full-game values.
+            const _fullGameOu = _simData?.gameOuLine ?? null;
+            const _f5GameOuLine = _fullGameOu != null ? parseFloat((_fullGameOu * 5 / 9).toFixed(1)) : null;
+            const _f5ExpectedTotal = parseFloat((f5HomeLambda + f5AwayLambda).toFixed(2));
             for (const dir of ["yes", "no"]) {
               const pickTeam = dir === "yes" ? marginTeam : (marginTeam === homeTeam ? awayTeam : homeTeam);
               const oppTeam = dir === "yes" ? (marginTeam === homeTeam ? awayTeam : homeTeam) : marginTeam;
@@ -4661,29 +4666,25 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               const pickLine = dir === "yes" ? -line : line;
               const edge = parseFloat((truePct - kalshiPct).toFixed(1));
               const inWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
+              const _base = {
+                gameType: "spread", sport: "mlb", stat: "f5spread", segment: "f5",
+                homeTeam, awayTeam, pickTeam, oppTeam, side: pickSide, gameDate,
+                line, pickLine, marginTeam,
+                kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge,
+                totalSimScore: 0, qualified: false,
+                kalshiVolume, kalshiSpread, lowVolume: ctx.lowVolume,
+                gameTime: _gameTime, lineupsConfirmed: _lineupsConfirmed,
+                ..._simData,
+                // F5-specific overrides (must follow _simData spread to win)
+                homeLambda: f5HomeLambda, awayLambda: f5AwayLambda,
+                homeExpected: f5HomeLambda, awayExpected: f5AwayLambda,
+                expectedTotal: _f5ExpectedTotal,
+                gameOuLine: _f5GameOuLine,
+              };
               if (edge >= EDGE_GATE && inWindow) {
-                plays.push({
-                  gameType: "spread", sport: "mlb", stat: "f5spread", segment: "f5",
-                  homeTeam, awayTeam, pickTeam, oppTeam, side: pickSide, gameDate,
-                  line, pickLine, marginTeam,
-                  kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge,
-                  totalSimScore: 0, qualified: false,
-                  kalshiVolume, kalshiSpread, lowVolume: ctx.lowVolume,
-                  gameTime: _gameTime, lineupsConfirmed: _lineupsConfirmed,
-                  homeLambda: f5HomeLambda, awayLambda: f5AwayLambda,
-                  ..._simData,
-                });
+                plays.push(_base);
               } else if (isDebug && inWindow) {
-                dropped.push({
-                  gameType: "spread", sport: "mlb", stat: "f5spread", segment: "f5",
-                  homeTeam, awayTeam, pickTeam, oppTeam, side: pickSide, gameDate,
-                  line, pickLine, marginTeam,
-                  kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge,
-                  lineupsConfirmed: _lineupsConfirmed,
-                  reason: "edge_too_low",
-                  homeLambda: f5HomeLambda, awayLambda: f5AwayLambda,
-                  ..._simData,
-                });
+                dropped.push({ ..._base, reason: "edge_too_low" });
               }
             }
           }
