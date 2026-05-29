@@ -143,10 +143,13 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, tonightLoading, all
 
   const thStyle = col => {
     const active = glSort.col === col;
+    // "vs" column absorbs slack; everything else hugs its content via the width:1% trick.
+    const isFlex = col === 'opp';
     return {
       padding:'3px 8px', fontSize:10, textAlign: glCols.find(c=>c.key===col)?.align||'right',
       color: active ? '#c9d1d9' : '#484f58', cursor:'pointer', userSelect:'none',
       background:'#0d1117', position:'sticky', top:0,
+      ...(isFlex ? {} : { width:'1%', whiteSpace:'nowrap' }),
     };
   };
   const toggleSort = col => setGlSort(prev =>
@@ -288,7 +291,7 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, tonightLoading, all
           const gameLogCol = (
             <div style={{overflowX:'auto'}}>
               <div style={{color:'#484f58',fontSize:10,marginBottom:6}}>Game Log — 2025-26</div>
-              <table style={{width:'auto',borderCollapse:'collapse',fontSize:12}}>
+              <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
                 <thead>
                   <tr>
                     {glCols.map(c => (
