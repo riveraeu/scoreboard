@@ -5223,15 +5223,19 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
         // group; demoted lines move to dropped[] in debug mode with reason "altLineDedup".
         {
           const _ddKey = (p) => {
-            if (p.gameType === "total") return `gt|${p.sport}|${p.homeTeam}|${p.awayTeam}|${p.gameDate}|${p.direction || 'over'}`;
-            if (p.gameType === "teamTotal") return `tt|${p.sport}|${p.scoringTeam}|${p.oppTeam}|${p.gameDate}|${p.direction || 'over'}`;
+            // Segment qualifier: F5 (first-5-innings) and full-game markets on the same matchup
+            // are *independent* bets — different outcomes resolve them — so they must not dedup
+            // against each other. Default to "full" when absent.
+            const _seg = p.segment || "full";
+            if (p.gameType === "total") return `gt|${p.sport}|${_seg}|${p.homeTeam}|${p.awayTeam}|${p.gameDate}|${p.direction || 'over'}`;
+            if (p.gameType === "teamTotal") return `tt|${p.sport}|${_seg}|${p.scoringTeam}|${p.oppTeam}|${p.gameDate}|${p.direction || 'over'}`;
             // Spread: matchup-symmetric key (sort teams) so BOTH sides of the same game land in
             // the same group — keeps only the highest-edge spread pick per matchup. Both-sides
             // qualifying happens on near-pick'em games where the model thinks each team keeps
             // it close on the cover line; correlation risk is similar to alt-line stacking.
             if (p.gameType === "spread") {
               const teams = [p.pickTeam, p.oppTeam].sort().join('|');
-              return `sp|${p.sport}|${teams}|${p.gameDate}`;
+              return `sp|${p.sport}|${_seg}|${teams}|${p.gameDate}`;
             }
             // Player props (no gameType): same player × stat across alt thresholds are sampling the
             // same underlying random variable (Tucker 1+/2+/3+ HRR draws from his HRR distribution).
