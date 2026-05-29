@@ -541,6 +541,25 @@ export function mlPctFromJoint(home, away) {
   return parseFloat((wins / decided * 100).toFixed(1));
 }
 
+// 3-way MLB First-5-Innings ML. Ties are a real outcome here (Kalshi lists a separate `-TIE`
+// market priced ~15-17% in v1 samples), so unlike mlPctFromJoint we do NOT drop them — the
+// denominator is the full sim count. side ∈ {"home","away","tie"}. Returns null on bad inputs.
+export function mlbF5MlPct(home, away, side) {
+  if (!home || !away || home.length !== away.length) return null;
+  const N = home.length;
+  let hits = 0;
+  if (side === "home") {
+    for (let i = 0; i < N; i++) if (home[i] > away[i]) hits++;
+  } else if (side === "away") {
+    for (let i = 0; i < N; i++) if (away[i] > home[i]) hits++;
+  } else if (side === "tie") {
+    for (let i = 0; i < N; i++) if (home[i] === away[i]) hits++;
+  } else {
+    return null;
+  }
+  return parseFloat((hits / N * 100).toFixed(1));
+}
+
 // P(`side` wins by more than `line` runs) from the joint Poisson draws. Used for MLB run-line /
 // spread markets where Kalshi prices "Team X wins by over Y runs" (half-integer Y). Caller
 // passes the side that's on the win-by-margin question; the YES probability is returned. NO is

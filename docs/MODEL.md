@@ -409,10 +409,12 @@ where `oppStarterMult_F5 = _starterMult(fipEff × restBump, era × restBump, whi
 
 **Live resolution (deferred)**: v1 resolves F5 picks only at game end (`state === "post"`). Mid-game resolution from per-inning linescore (once bottom of 5 finishes) is a follow-up commit that touches `/api/live` (to expose `f5HomeScore` / `f5AwayScore` / `f5Complete`) and `App.jsx` / `liveStats.js` (to gate resolution on `f5Complete` rather than full-game `post`). Until that lands, F5 picks track but don't lock until the game finishes.
 
+**F5 ML 3-way (added 2026-05-28)**: `KXMLBF5` series — Kalshi lists three independent markets per event (home / away / TIE). Unlike full-game `KXMLBGAME` which is 2-way (ties resolve in extras), F5 ties are a real settlement outcome and priced 15-17% in typical samples. New sim helper `mlbF5MlPct(home, away, side)` in `api/lib/simulate.js` counts home/away/tie probabilities over the joint draws **without dropping ties** — denominator is the full 10k sim count. Reuses `_mlbF5JointCache` built by F5 total/spread emission so all three F5 markets share one joint sim per game. Series fetched inline via snap → 600s legacy → REST (mirror of `KXMLBGAME`, not via SERIES_CONFIG because it's a 3-way ticket-suffix-as-team-or-"TIE" market). Emission loop iterates `["home", "away", "tie"]` sides — each independent on `dcQualified + edge ≥ 5`. Tie picks carry `pickTeam: "TIE"`, `oppTeam: null`, `side: "tie"`. PlaysColumn ML card renders these specially: stacked away/home logos, "Tie F5 ML (away @ home)" headline, no team-page navigation on click. Same DC gate (`DC_GATE("mlb", "ml") = 8`) and penalty table as full-game ML since F5 ML reuses identical lambda inputs. Calibration bucket: `mlb|f5ml`, tab: `mlb-f5ml`.
+
 **Deferred to v2 (not in this commit)**:
-- F5 ML (`KXMLBF5`) — 3-way home/away/tie market; needs `mlbF5MlPct` with non-dropped tie counting. Joint cache already exists; emission is a separate block.
 - F5-specific regime blend — requires extending `_gtScheduleMap` to capture per-game `linescore.innings[0..4]` from MLB Stats API.
 - `f5StarterShortLeash` dc penalty (-1 when `pitcherAvgBF < 18`) — only adds if calibration shows the low-BF subgroup misses systematically.
+- Live mid-game resolution — fire when bottom of 5 finishes (currently picks resolve at `state === "post"`). Requires `/api/live` to expose `f5HomeScore`/`f5AwayScore`/`f5Complete` from ESPN per-inning linescore, plus a resolution branch in `App.jsx`/`liveStats.js`.
 
 ---
 

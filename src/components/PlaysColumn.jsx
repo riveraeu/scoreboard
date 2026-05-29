@@ -69,7 +69,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                 : play.gameType === "total"
                 ? `total-${play.sport}${segSuffix}-${play.homeTeam}-${play.awayTeam}-${play.threshold}${play.direction === "under" ? "-under" : ""}`
                 : play.gameType === "ml"
-                ? `ml-${play.sport}-${play.pickTeam}-${play.homeTeam}-${play.awayTeam}`
+                ? `ml-${play.sport}${segSuffix}-${play.pickTeam}-${play.homeTeam}-${play.awayTeam}`
                 : play.gameType === "spread"
                 ? `spread-${play.sport}${segSuffix}-${play.pickTeam}-${play.homeTeam}-${play.awayTeam}-${play.pickLine}`
                 : `${play.playerName}-${play.stat}-${play.threshold}`;
@@ -81,7 +81,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                 : play.gameType === "total"
                 ? `total|${play.sport}${segIdSuffix}|${play.homeTeam}|${play.awayTeam}|${play.threshold}|${play.gameDate || ""}${play.direction === "under" ? "|under" : ""}`
                 : play.gameType === "ml"
-                ? `ml|${play.sport}|${play.pickTeam}|${play.homeTeam}|${play.awayTeam}|${play.gameDate || ""}`
+                ? `ml|${play.sport}${segIdSuffix}|${play.pickTeam}|${play.homeTeam}|${play.awayTeam}|${play.gameDate || ""}`
                 : play.gameType === "spread"
                 ? `spread|${play.sport}${segIdSuffix}|${play.pickTeam}|${play.homeTeam}|${play.awayTeam}|${play.pickLine}|${play.gameDate || ""}`
                 : `${play.sport || "nba"}|${play.playerName}|${play.stat}|${play.threshold}|${play.gameDate || ""}`;
@@ -169,6 +169,8 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                 const tColor = tierColor(play.truePct);
                 const tTrueOdds = play.truePct >= 100 ? -99999 : (play.truePct >= 50 ? Math.round(-(play.truePct/(100-play.truePct))*100) : Math.round((100-play.truePct)/play.truePct*100));
                 const tTrueOddsStr = tTrueOdds > 0 ? `+${tTrueOdds}` : `${tTrueOdds}`;
+                const isTie = play.side === "tie";
+                const mlLabel = play.segment === "f5" ? "F5 ML" : "ML";
                 return (
                   <div key={playKey}
                     style={{background:"#161b22",border:"1px solid #30363d",borderRadius:12,
@@ -176,12 +178,26 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                     onMouseEnter={e => e.currentTarget.style.borderColor="#58a6ff"}
                     onMouseLeave={e => e.currentTarget.style.borderColor="#30363d"}>
                     <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-                      <img src={`https://a.espncdn.com/i/teamlogos/${play.sport}/500/${(play.pickTeam||"").toLowerCase()}.png`} alt={play.pickTeam}
-                        style={{width:22,height:22,objectFit:"contain",flexShrink:0}}
-                        onError={e=>{e.target.style.visibility="hidden";}} />
-                      <span onClick={e=>{e.stopPropagation();navigateToTeam(play.pickTeam,play.sport);}}
-                        style={{flex:1,minWidth:0,fontSize:14,fontWeight:700,cursor:"pointer",lineHeight:1.3,color:"#c9d1d9"}}>
-                        {play.pickTeam} ML <span style={{color:"#484f58",fontWeight:400}}>({play.side === "home" ? "vs" : "@"} {play.oppTeam})</span>
+                      {isTie ? (
+                        <div style={{width:22,height:22,flexShrink:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:1}}>
+                          <img src={`https://a.espncdn.com/i/teamlogos/${play.sport}/500/${(play.awayTeam||"").toLowerCase()}.png`} alt={play.awayTeam}
+                            style={{width:11,height:11,objectFit:"contain"}}
+                            onError={e=>{e.target.style.visibility="hidden";}} />
+                          <img src={`https://a.espncdn.com/i/teamlogos/${play.sport}/500/${(play.homeTeam||"").toLowerCase()}.png`} alt={play.homeTeam}
+                            style={{width:11,height:11,objectFit:"contain"}}
+                            onError={e=>{e.target.style.visibility="hidden";}} />
+                        </div>
+                      ) : (
+                        <img src={`https://a.espncdn.com/i/teamlogos/${play.sport}/500/${(play.pickTeam||"").toLowerCase()}.png`} alt={play.pickTeam}
+                          style={{width:22,height:22,objectFit:"contain",flexShrink:0}}
+                          onError={e=>{e.target.style.visibility="hidden";}} />
+                      )}
+                      <span onClick={e=>{e.stopPropagation(); if (!isTie) navigateToTeam(play.pickTeam,play.sport);}}
+                        style={{flex:1,minWidth:0,fontSize:14,fontWeight:700,cursor:isTie?"default":"pointer",lineHeight:1.3,color:"#c9d1d9",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                        {isTie
+                          ? <span>Tie {mlLabel} <span style={{color:"#484f58",fontWeight:400}}>({play.awayTeam} @ {play.homeTeam})</span></span>
+                          : <span>{play.pickTeam} {mlLabel} <span style={{color:"#484f58",fontWeight:400}}>({play.side === "home" ? "vs" : "@"} {play.oppTeam})</span></span>}
+                        {play.segment === "f5" && <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:"rgba(110,64,201,0.12)",border:"1px solid #6e40c9",color:"#a5a5ff"}}>F5</span>}
                       </span>
                       <div style={{display:"flex",alignItems:"center",gap:7,flexShrink:0}}>
                         <span style={{background:"rgba(63,185,80,0.13)",border:"1px solid #3fb950",

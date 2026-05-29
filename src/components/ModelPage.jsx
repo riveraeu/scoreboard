@@ -70,6 +70,7 @@ function ModelPage({ onBack, calibData, calibLoading, fetchCalib, authToken }) {
     "mlb-spread": ["mlb|spread"],
     "mlb-f5total": ["mlb|f5total"],
     "mlb-f5spread": ["mlb|f5spread"],
+    "mlb-f5ml": ["mlb|f5ml"],
     "nba-ml":  ["nba|ml"],
     "nba-spread": ["nba|spread"],
     "wnba-ml": ["wnba|ml"],
@@ -222,6 +223,7 @@ function ModelPage({ onBack, calibData, calibLoading, fetchCalib, authToken }) {
       { id:"mlb-spread", label:"MLB Spread" },
       { id:"mlb-f5total",  label:"MLB F5 Total" },
       { id:"mlb-f5spread", label:"MLB F5 Spread" },
+      { id:"mlb-f5ml",     label:"MLB F5 ML (3-way)" },
     ]},
     { sport:"NBA", tabs:[
       { id:"nba",    label:"NBA Props" },
