@@ -205,8 +205,8 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                       <span onClick={e=>{e.stopPropagation(); if (!isTie) navigateToTeam(play.pickTeam,play.sport);}}
                         style={{flex:1,minWidth:0,fontSize:14,fontWeight:700,cursor:isTie?"default":"pointer",lineHeight:1.3,color:"#c9d1d9",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                         {isTie
-                          ? <span>Tie {mlLabel} <span style={{color:"#484f58",fontWeight:400}}>({play.awayTeam} @ {play.homeTeam})</span></span>
-                          : <span>{play.pickTeam} {mlLabel} <span style={{color:"#484f58",fontWeight:400}}>({play.side === "home" ? "vs" : "@"} {play.oppTeam})</span></span>}
+                          ? <span>Tie {mlLabel} <span style={{color:"#484f58",fontWeight:400}}>({play.awayTeam} @ {play.homeTeam}){segmentPillLabel(play.segment) ? ` (${segmentPillLabel(play.segment)})` : ""}</span></span>
+                          : <span>{play.pickTeam} {mlLabel} <span style={{color:"#484f58",fontWeight:400}}>({play.side === "home" ? "vs" : "@"} {play.oppTeam}){segmentPillLabel(play.segment) ? ` (${segmentPillLabel(play.segment)})` : ""}</span></span>}
                       </span>
                       <div style={{display:"flex",alignItems:"center",gap:7,flexShrink:0}}>
                         <span style={{background:"rgba(63,185,80,0.13)",border:"1px solid #3fb950",
@@ -274,7 +274,7 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                         onError={e=>{e.target.style.visibility="hidden";}} />
                       <span onClick={e=>{e.stopPropagation();navigateToTeam(play.pickTeam,play.sport);}}
                         style={{flex:1,minWidth:0,fontSize:14,fontWeight:700,cursor:"pointer",lineHeight:1.3,color:"#c9d1d9",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                        <span>{play.pickTeam} {pickLineStr} <span style={{color:"#484f58",fontWeight:400}}>({play.side === "home" ? "vs" : "@"} {play.oppTeam})</span></span>
+                        <span>{play.pickTeam} {pickLineStr} <span style={{color:"#484f58",fontWeight:400}}>({play.side === "home" ? "vs" : "@"} {play.oppTeam}){segmentPillLabel(play.segment) ? ` (${segmentPillLabel(play.segment)})` : ""}</span></span>
                       </span>
                       <div style={{display:"flex",alignItems:"center",gap:7,flexShrink:0}}>
                         <span style={{background:"rgba(63,185,80,0.13)",border:"1px solid #3fb950",
