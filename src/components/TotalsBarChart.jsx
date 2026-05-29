@@ -233,8 +233,8 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, extraAlt
                 <div style={{ color: barColor, fontSize: 13, fontWeight: 700, width: 42, textAlign: 'right', flexShrink: 0 }}>
                   {primaryPct.toFixed(1)}%
                 </div>
-                <div style={{ flexShrink: 0, width: 110, display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <span style={{ color: '#484f58', fontSize: 10, flex: 1 }}>{count}/{completed.length}g</span>
+                <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ color: '#484f58', fontSize: 10 }}>{count}/{completed.length}g</span>
                   {trackBtn}
                 </div>
               </div>
@@ -248,10 +248,10 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, extraAlt
                       <div style={{ width: `${kalshiPct}%`, background: '#6e40c9', height: '100%', borderRadius: 4,
                         transition: 'width 0.5s ease', minWidth: kalshiPct > 0 ? 2 : 0 }} />
                     </div>
-                    <div style={{ color: '#6e40c9', fontSize: 11, fontWeight: 600, width: 42, textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{ color: '#6e40c9', fontSize: 13, fontWeight: 600, width: 42, textAlign: 'right', flexShrink: 0 }}>
                       {kalshiPct}%
                     </div>
-                    <div style={{ color: '#6e40c9', fontSize: 10, width: 110, flexShrink: 0, paddingLeft: 2 }}>
+                    <div style={{ color: '#6e40c9', fontSize: 13, flexShrink: 0, paddingLeft: 2 }}>
                       ({kOddsStr})
                     </div>
                   </div>
