@@ -541,10 +541,12 @@ export function mlPctFromJoint(home, away) {
   return parseFloat((wins / decided * 100).toFixed(1));
 }
 
-// 3-way MLB First-5-Innings ML. Ties are a real outcome here (Kalshi lists a separate `-TIE`
-// market priced ~15-17% in v1 samples), so unlike mlPctFromJoint we do NOT drop them — the
-// denominator is the full sim count. side ∈ {"home","away","tie"}. Returns null on bad inputs.
-export function mlbF5MlPct(home, away, side) {
+// 3-way joint sim reduction with ties NOT dropped. Used for any Kalshi market where a TIE
+// outcome is a real settlement option — MLB First-5-Innings ML (~15-17% tie rate), NBA/WNBA
+// 1H and 2H winner markets (~3-5% tie rate). Distinct from mlPctFromJoint which drops ties
+// since full-game MLB/NBA resolve in extras/OT. side ∈ {"home","away","tie"}. Returns null
+// on bad inputs.
+export function joint3WayPct(home, away, side) {
   if (!home || !away || home.length !== away.length) return null;
   const N = home.length;
   let hits = 0;

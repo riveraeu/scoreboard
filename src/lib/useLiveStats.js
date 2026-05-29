@@ -195,41 +195,51 @@ export function useLiveStats({ trackedPlays, setTrackedPlays, mlbMeta, nbaMeta, 
       const gameScore = resolveTotalGameScore(pick, liveStats, allScores);
       if (!gameScore || (gameScore.state !== "post" && gameScore.state !== "in")) return pick;
 
-      // F5 (First-5-Innings) picks resolve as soon as the bottom of the 5th completes,
-      // independent of full-game state. /api/live stamps f5Complete + f5HomeScore +
-      // f5AwayScore on the MLB live response once both teams have ≥5 innings batted.
-      // If state==="post" but f5Complete is false, the game was called before the 5th
-      // (rainout) — Kalshi voids these, so we mark "void".
-      if (pick.segment === "f5") {
-        const f5Done = gameScore.f5Complete === true;
-        if (!f5Done) {
+      // Segmented picks (MLB F5, NBA/WNBA 1H/2H) resolve as soon as the segment endpoint
+      // completes — independent of full-game state. /api/live stamps the segment-specific
+      // scores + complete flag on the relevant sport's response. If state==="post" but the
+      // segment never completed (rainout / called game), Kalshi voids these markets.
+      if (pick.segment === "f5" || pick.segment === "1h" || pick.segment === "2h") {
+        let segDone, segHome, segAway;
+        if (pick.segment === "f5") {
+          segDone = gameScore.f5Complete === true;
+          segHome = gameScore.f5HomeScore ?? 0;
+          segAway = gameScore.f5AwayScore ?? 0;
+        } else if (pick.segment === "1h") {
+          segDone = gameScore.h1Complete === true;
+          segHome = gameScore.h1HomeScore ?? 0;
+          segAway = gameScore.h1AwayScore ?? 0;
+        } else {
+          // 2H — locks at game end (state==="post" implies h2Complete in /api/live)
+          segDone = gameScore.h2Complete === true;
+          segHome = gameScore.h2HomeScore ?? 0;
+          segAway = gameScore.h2AwayScore ?? 0;
+        }
+        if (!segDone) {
           if (gameScore.state === "post") return { ...pick, result: "void" };
           return pick;
         }
-        const f5Home = gameScore.f5HomeScore ?? 0;
-        const f5Away = gameScore.f5AwayScore ?? 0;
         if (pick.gameType === "total") {
-          const total = f5Home + f5Away;
+          const total = segHome + segAway;
           const isUnder = pick.direction === "under";
           const met = isUnder ? total < pick.threshold : total >= pick.threshold;
           return { ...pick, result: met ? "won" : "lost" };
         }
         if (pick.gameType === "spread") {
           const pickIsHome = gameScore.homeTeam === pick.pickTeam;
-          const pickF5 = pickIsHome ? f5Home : f5Away;
-          const oppF5 = pickIsHome ? f5Away : f5Home;
-          const covered = (pickF5 - oppF5) + (pick.pickLine ?? 0) > 0;
+          const pickSeg = pickIsHome ? segHome : segAway;
+          const oppSeg = pickIsHome ? segAway : segHome;
+          const covered = (pickSeg - oppSeg) + (pick.pickLine ?? 0) > 0;
           return { ...pick, result: covered ? "won" : "lost" };
         }
         if (pick.gameType === "ml") {
-          // F5 ML is 3-way: home/away/tie. Tie is a legitimate winning side.
+          // 3-way: home/away/tie. Tie is a legitimate winning side.
           if (pick.side === "tie") {
-            return { ...pick, result: f5Home === f5Away ? "won" : "lost" };
+            return { ...pick, result: segHome === segAway ? "won" : "lost" };
           }
-          const winner = f5Home > f5Away ? gameScore.homeTeam
-                       : f5Away > f5Home ? gameScore.awayTeam
+          const winner = segHome > segAway ? gameScore.homeTeam
+                       : segAway > segHome ? gameScore.awayTeam
                        : null;
-          // If tied through 5 and pick was on a team (not tie), pick loses.
           if (winner == null) return { ...pick, result: "lost" };
           return { ...pick, result: winner === pick.pickTeam ? "won" : "lost" };
         }

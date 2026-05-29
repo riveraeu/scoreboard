@@ -125,6 +125,27 @@ export async function handleSportsRoutes(ctx) {
             f5Complete = true;
           }
         }
+        // NBA / WNBA half breakdown — linescores array has one entry per played quarter.
+        // 1H = Q1+Q2 (linescores indices 0,1); 2H = Q3+Q4+OT (indices 2..N) = total - 1H.
+        // h1Complete = both teams have ≥2 entries (Q1+Q2 played). h2Complete = state==="post"
+        // (2H includes OT, locked at game end). Picks resolve to "void" if state==="post"
+        // but !h1Complete (game called before halftime — extremely rare in NBA/WNBA).
+        let h1HomeScore = null, h1AwayScore = null, h1Complete = false;
+        let h2HomeScore = null, h2AwayScore = null, h2Complete = false;
+        if (sport === "nba" || sport === "wnba") {
+          const hLs = homeComp?.linescores || [];
+          const aLs = awayComp?.linescores || [];
+          if (hLs.length >= 2 && aLs.length >= 2) {
+            h1HomeScore = hLs.slice(0, 2).reduce((s, x) => s + (parseFloat(x?.value) || 0), 0);
+            h1AwayScore = aLs.slice(0, 2).reduce((s, x) => s + (parseFloat(x?.value) || 0), 0);
+            h1Complete = true;
+          }
+          if (state === "post" && h1Complete) {
+            h2HomeScore = homeScore - h1HomeScore;
+            h2AwayScore = awayScore - h1AwayScore;
+            h2Complete = true;
+          }
+        }
 
         if (state === "pre") {
           liveResult[key] = { state: "pre", detail, homeTeam, awayTeam, homeScore: 0, awayScore: 0 };
@@ -233,6 +254,16 @@ export async function handleSportsRoutes(ctx) {
           gameData.f5HomeScore = f5HomeScore;
           gameData.f5AwayScore = f5AwayScore;
           gameData.f5Complete = true;
+        }
+        if ((sport === "nba" || sport === "wnba") && h1Complete) {
+          gameData.h1HomeScore = h1HomeScore;
+          gameData.h1AwayScore = h1AwayScore;
+          gameData.h1Complete = true;
+          if (h2Complete) {
+            gameData.h2HomeScore = h2HomeScore;
+            gameData.h2AwayScore = h2AwayScore;
+            gameData.h2Complete = true;
+          }
         }
         liveResult[key] = gameData;
         if (CACHE2) {

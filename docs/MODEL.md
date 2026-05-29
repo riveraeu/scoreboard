@@ -429,6 +429,42 @@ where `oppStarterMult_F5 = _starterMult(fipEff × restBump, era × restBump, whi
 
 ---
 
+## NBA + WNBA Halves v1 (2026-05-28)
+
+**Series**: `KXNBA1HTOTAL`, `KXNBA1HSPREAD`, `KXNBA1HWINNER` (3-way), `KXNBA2HTOTAL`, `KXNBA2HSPREAD`, `KXNBA2HWINNER` (3-way), plus WNBA equivalents. 12 series total.
+
+**Lambda decomposition (v1)**: `λ_half_team = full_λ_team × 0.5` for both 1H and 2H. Stashed on `_nbaMlContext` / `_wnbaMlContext` per game alongside full-game lambdas (`h1HomeLambda`, `h1AwayLambda`, `h2HomeLambda`, `h2AwayLambda`). Reality is ~49.5%/50.5% with ~6% OT contribution to 2H — refinement comes after calibration data accumulates. Variance: half σ = full σ × `sqrt(0.5)` ≈ 9.2 NBA, 7.8 WNBA.
+
+**Joint sim**: independent per-half via `simulateNBAJoint(λ_half_home, λ_half_away, halfσ, halfσ, 10000)`. Cache keyed by `${sport}|${homeTeam}|${awayTeam}|${half}` so 1H and 2H draws don't collide. **v1 limitation**: 1H and 2H drawn independently — full-game team-strength correlation across halves isn't preserved. A team that overperforms in 1H tends to also overperform in 2H, so independent draws slightly over-disperse the full-game implication. Single-half picks aren't affected; this matters only if cross-half stacking proves an edge worth modeling.
+
+**Three reductions per half**:
+- **Total**: combined-runs Int16Array = `home[i] + away[i]`, query with `totalDistPct`. Cached per game+half in `_halfTotalDistCache`.
+- **Spread**: existing `spreadPctFromJoint(home, away, line, side)` works unchanged.
+- **Winner (3-way)**: `joint3WayPct(home, away, side)` — renamed from `mlbF5MlPct` since the math is sport-agnostic. Counts home/away/tie without dropping ties (winner markets resolve TIE explicitly).
+
+**Winner-market fetch**: `KX..1HWINNER` and `KX..2HWINNER` go through inline fetch (snap → 600s legacy → REST), parallel to KXMLBF5 / KXMLBGAME pattern. The unified SERIES_CONFIG parse loop handles only total/teamTotal/spread branches. Loop over `[["nba","1h","KXNBA1HWINNER"], ...]` builds 4 winner-market lookup tables.
+
+**Same gates as full-game**: `DC_GATE("nba","total") = 10`, `("nba","spread") = 8`, `("nba","ml") = 8`; same for WNBA. Half picks share DC carve-outs with F5 — `noSeasonSample`/`tinySeasonSample`/`smallSeasonSample` are skipped when `p.segment && p.segment !== "full"` (no per-half season-hit-rate data). Synthesized half OU line = `full_OU × 0.5` for threshold-distance penalty anchor.
+
+**Calibration**: 12 buckets — `{nba,wnba}|{h1,h2}{total,spread,ml}`. Tabs in ModelPage: `nba-1htotal` through `wnba-2hml`.
+
+**Live resolution**:
+- `/api/live` NBA + WNBA branch reads ESPN per-quarter `linescores`. 1H = Q1+Q2 (indices 0,1). 2H = full − 1H (includes OT).
+- `h1Complete: true` once both teams have ≥2 linescore entries → 1H picks lock at halftime
+- `h2Complete: true` when `state === "post"` AND h1 was completed → 2H picks lock at game end (including any OT)
+- Game called before halftime (rare in NBA/WNBA) → `state === "post" && !h1Complete` → both 1H and 2H picks resolve to `result: "void"`
+- `useLiveStats.js` segment branch generalized from F5-only to handle any segmented pick (`pick.segment === "f5" | "1h" | "2h"`) via a switch on segment name
+
+**Frontend**: PlaysColumn uses shared `segmentPillLabel` helper returning "F5" / "1H" / "2H" / null. Total card `tLabel` mapping extended: `h1total → "Pts (1H)"`, `h2total → "Pts (2H)"`. Same segment-aware playKey/trackId from F5 work prevents collision with full-game picks.
+
+**Deferred to v2**:
+- NBA quarter markets (Q1-Q4) — pace isn't quarter-resolved in our pre-game data (Q1 slow, Q4 garbage-time fast).
+- 1H/2H correlation in joint sim — would require sampling full-game then splitting, or modeling shared team-strength factor explicitly.
+- 2H lambda OT adjustment — minor (~6% × small OT scoring).
+- Half-specific dc threshold-distance buckets — full-game buckets translate to ~half-scale workable v1.
+
+---
+
 ## Kalshi Market Parsing
 - Series in `SERIES_CONFIG` (18 tickers across all sports/stats)
 - Player props, game totals, team totals: `pct ∈ [KALSHI_GATE, KALSHI_CAP] = [67, 91]` (constants in `api/[...path].js`). Markets outside this band aren't fetched/parsed at all.
