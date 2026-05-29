@@ -134,7 +134,7 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, tonightLoading, all
 
   const glCols = [
     { key:'date',     label:'Date',  align:'left'   },
-    { key:'opp',      label:'Opp',   align:'left'   },
+    { key:'opp',      label:'vs',    align:'left'   },
     { key:'teamScore',label:'Us'                    },
     { key:'oppScore', label:'Opp'                   },
     { key:'total',    label:'Total'                 },
@@ -288,7 +288,7 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, tonightLoading, all
           const gameLogCol = (
             <div style={{overflowX:'auto'}}>
               <div style={{color:'#484f58',fontSize:10,marginBottom:6}}>Game Log — 2025-26</div>
-              <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+              <table style={{width:'auto',borderCollapse:'collapse',fontSize:12}}>
                 <thead>
                   <tr>
                     {glCols.map(c => (

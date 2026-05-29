@@ -452,25 +452,40 @@ export async function handleSportsRoutes(ctx) {
         } catch(e) {}
       }
       // Projected batting order — if today's lineup isn't posted yet, fall back to the
-      // most-recent posted lineup from the past 10 days. Better than the alphabetical
-      // active roster: it reflects the manager's recent batting order, which is the
-      // closest "expected" we can show pre-confirmation.
+      // most-recent posted batting order from the team's past 10 days. The MLB Stats API
+      // exposes pre-game `lineups` only briefly (it gets replaced once the game starts);
+      // for completed games we read `battingOrder` off the boxscore instead. Two-fetch
+      // path: 1) past-10-day schedule for gamePks, 2) boxscore for the most-recent Final.
       if (lineup.filter(p => !p.isProbable).length === 0 && mlbId) {
         try {
           const today = new Date(Date.now() - 7 * 3600 * 1000);
           const endDate = today.toISOString().slice(0, 10);
           const startDate = new Date(today.getTime() - 10 * 24 * 3600 * 1000).toISOString().slice(0, 10);
-          const histRes = await fetch(`https://statsapi.mlb.com/api/v1/schedule?startDate=${startDate}&endDate=${endDate}&hydrate=lineups&sportId=1&teamId=${mlbId}`, { headers: H });
+          const histRes = await fetch(`https://statsapi.mlb.com/api/v1/schedule?startDate=${startDate}&endDate=${endDate}&sportId=1&teamId=${mlbId}`, { headers: H });
           if (histRes.ok) {
             const histData = await histRes.json();
-            // Walk newest → oldest; first game with a posted batting order wins.
-            const games = (histData.dates || []).flatMap(d => d.games || []).reverse();
-            for (const game of games) {
+            const finals = (histData.dates || []).flatMap(d => d.games || [])
+              .filter(g => g.status?.abstractGameState === "Final")
+              .sort((a, b) => (b.gameDate || "").localeCompare(a.gameDate || ""));
+            for (const game of finals) {
+              const boxRes = await fetch(`https://statsapi.mlb.com/api/v1/game/${game.gamePk}/boxscore`, { headers: H });
+              if (!boxRes.ok) continue;
+              const box = await boxRes.json();
               const isHome = game.teams?.home?.team?.id === mlbId;
-              const lp = isHome ? (game.lineups?.homePlayers || []) : (game.lineups?.awayPlayers || []);
-              if (lp.length > 0) {
-                const hitterEntries = lp.map((p, i) => ({ spot: i + 1, name: p.fullName || "Unknown", position: p.primaryPosition?.abbreviation || "?", playerId: String(p.id || "") }));
-                // Preserve probable pitcher entries (added above) and slot hitters before them
+              const teamBox = isHome ? box.teams?.home : box.teams?.away;
+              const battingOrder = teamBox?.battingOrder || [];
+              if (battingOrder.length >= 9) {
+                const players = teamBox.players || {};
+                const hitterEntries = battingOrder.slice(0, 9).map((pid, i) => {
+                  const p = players[`ID${pid}`];
+                  return {
+                    spot: i + 1,
+                    name: p?.person?.fullName || "Unknown",
+                    position: p?.position?.abbreviation || "?",
+                    playerId: String(pid),
+                  };
+                });
+                // Preserve probable pitcher entry (added above) and slot hitters before it
                 const probables = lineup.filter(p => p.isProbable);
                 lineup = [...hitterEntries, ...probables];
                 lineupConfirmed = false;
