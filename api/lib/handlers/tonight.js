@@ -1429,13 +1429,24 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             Object.assign(wnbaUsageMap, _wInjUsg);
           }
         }
-        // Injury-adjusted OffRtg helper for NBA/WNBA totals lambda. Sums USG% of all Out players
-        // on a team and applies replacement-penalty factor (0.15 — empirically calibrated: losing a
-        // 28% USG star drops team OffRtg ~4%). Returns the {share, adj} pair so _simData can expose
-        // both. Cap at 0.85 prevents multi-star scenarios from cratering lambda below 85% of base.
-        // Players missing usage data contribute 0 (won't error; treated as not playing meaningfully).
-        const _OFFRTG_INJ_FACTOR = 0.15;
-        const _OFFRTG_INJ_CAP = 0.85;
+        // Injury-adjusted OffRtg helper for NBA/WNBA totals lambda. Sums USG% of all Out
+        // players on a team and applies a piecewise-increasing replacement penalty.
+        // Players missing usage data contribute 0 (won't error; treated as not playing
+        // meaningfully). Cap floor 0.70 (was 0.85 pre-2026-05-28) gives multi-star
+        // scenarios more room to shrink — losing 50%+ USG previously bottomed out at
+        // -7% adjustment regardless of how many stars were absent.
+        //
+        // Why piecewise: the previous linear ×0.15 was calibrated for single-star-out
+        // (~28% USG) cases where dropping a 28% USG star empirically dropped team OffRtg
+        // ~4%. Losing a primary creator collapses motion offense (other players' efficiency
+        // drops too) — empirically a super-linear effect that linear couldn't capture.
+        // Tiers below are calibrated against expected role/star usage levels:
+        // - share ≤ 20:        factor 0.15  (~one role player / part-time starter)
+        // - 20 < share ≤ 35:   factor 0.22  (~one starter incl. mid stars)
+        // - 35 < share ≤ 50:   factor 0.30  (~two starters out / one primary creator)
+        // - share > 50:        factor 0.35  (gut-the-rotation; SGA + Chet + role)
+        const _OFFRTG_INJ_CAP = 0.70;
+        const _injuryOffRtgFactor = (share) => share <= 20 ? 0.15 : share <= 35 ? 0.22 : share <= 50 ? 0.30 : 0.35;
         const _NBAshortNorm = { GSW:"GS", SAS:"SA", NYK:"NY", NOP:"NO", PHX:"PHO" };
         const _injuryOffRtgAdj = (team, injuryMap, usageMap, shortMap) => {
           const players = injuryMap.get(team) || injuryMap.get(shortMap?.[team]) || [];
@@ -1446,7 +1457,8 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             if (usg != null && usg > 0) share += usg;
           }
           share = parseFloat(share.toFixed(1));
-          const adj = Math.max(_OFFRTG_INJ_CAP, 1 - share / 100 * _OFFRTG_INJ_FACTOR);
+          const factor = _injuryOffRtgFactor(share);
+          const adj = Math.max(_OFFRTG_INJ_CAP, 1 - share / 100 * factor);
           return { share, adj: parseFloat(adj.toFixed(3)) };
         };
         const NBA_POS_MAP = {
