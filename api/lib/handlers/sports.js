@@ -108,6 +108,24 @@ export async function handleSportsRoutes(ctx) {
         const homeScore = parseInt(homeComp?.score) || 0;
         const awayScore = parseInt(awayComp?.score) || 0;
 
+        // MLB First-5-Innings breakdown — used by F5 picks to resolve mid-game once the
+        // bottom of the 5th completes (instead of waiting on state==="post"). ESPN's
+        // linescores array appends an entry per half-inning played; both teams reaching
+        // length≥5 means each has batted 5 full innings (top-of-5 + bottom-of-5 complete).
+        // Home team always bats in bottom of 5 even when leading after top of 5, so this
+        // criterion is symmetric. F5 picks void client-side if state==="post" but
+        // !f5Complete (rainout / called game before 5).
+        let f5HomeScore = null, f5AwayScore = null, f5Complete = false;
+        if (sport === "mlb") {
+          const hLs = homeComp?.linescores || [];
+          const aLs = awayComp?.linescores || [];
+          if (hLs.length >= 5 && aLs.length >= 5) {
+            f5HomeScore = hLs.slice(0, 5).reduce((s, x) => s + (parseFloat(x?.value) || 0), 0);
+            f5AwayScore = aLs.slice(0, 5).reduce((s, x) => s + (parseFloat(x?.value) || 0), 0);
+            f5Complete = true;
+          }
+        }
+
         if (state === "pre") {
           liveResult[key] = { state: "pre", detail, homeTeam, awayTeam, homeScore: 0, awayScore: 0 };
           return;
@@ -211,6 +229,11 @@ export async function handleSportsRoutes(ctx) {
         } catch {}
 
         const gameData = { state, detail, players, homeTeam, awayTeam, homeScore, awayScore };
+        if (sport === "mlb" && f5Complete) {
+          gameData.f5HomeScore = f5HomeScore;
+          gameData.f5AwayScore = f5AwayScore;
+          gameData.f5Complete = true;
+        }
         liveResult[key] = gameData;
         if (CACHE2) {
           const ttl = state === "post" ? 300 : 60;

@@ -195,6 +195,47 @@ export function useLiveStats({ trackedPlays, setTrackedPlays, mlbMeta, nbaMeta, 
       const gameScore = resolveTotalGameScore(pick, liveStats, allScores);
       if (!gameScore || (gameScore.state !== "post" && gameScore.state !== "in")) return pick;
 
+      // F5 (First-5-Innings) picks resolve as soon as the bottom of the 5th completes,
+      // independent of full-game state. /api/live stamps f5Complete + f5HomeScore +
+      // f5AwayScore on the MLB live response once both teams have ≥5 innings batted.
+      // If state==="post" but f5Complete is false, the game was called before the 5th
+      // (rainout) — Kalshi voids these, so we mark "void".
+      if (pick.segment === "f5") {
+        const f5Done = gameScore.f5Complete === true;
+        if (!f5Done) {
+          if (gameScore.state === "post") return { ...pick, result: "void" };
+          return pick;
+        }
+        const f5Home = gameScore.f5HomeScore ?? 0;
+        const f5Away = gameScore.f5AwayScore ?? 0;
+        if (pick.gameType === "total") {
+          const total = f5Home + f5Away;
+          const isUnder = pick.direction === "under";
+          const met = isUnder ? total < pick.threshold : total >= pick.threshold;
+          return { ...pick, result: met ? "won" : "lost" };
+        }
+        if (pick.gameType === "spread") {
+          const pickIsHome = gameScore.homeTeam === pick.pickTeam;
+          const pickF5 = pickIsHome ? f5Home : f5Away;
+          const oppF5 = pickIsHome ? f5Away : f5Home;
+          const covered = (pickF5 - oppF5) + (pick.pickLine ?? 0) > 0;
+          return { ...pick, result: covered ? "won" : "lost" };
+        }
+        if (pick.gameType === "ml") {
+          // F5 ML is 3-way: home/away/tie. Tie is a legitimate winning side.
+          if (pick.side === "tie") {
+            return { ...pick, result: f5Home === f5Away ? "won" : "lost" };
+          }
+          const winner = f5Home > f5Away ? gameScore.homeTeam
+                       : f5Away > f5Home ? gameScore.awayTeam
+                       : null;
+          // If tied through 5 and pick was on a team (not tie), pick loses.
+          if (winner == null) return { ...pick, result: "lost" };
+          return { ...pick, result: winner === pick.pickTeam ? "won" : "lost" };
+        }
+        return pick;
+      }
+
       if (pick.gameType === "ml") {
         // ML resolves only at Final — no early "winning at half" win-locking. The pre-game
         // model truePct is based on full 9-inning outcomes; in-game leads have plenty of
