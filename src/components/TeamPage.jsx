@@ -43,6 +43,7 @@ function pickBestTabFn(allPlays, abbr, sport) {
 // ── Component ─────────────────────────────────────────────────────────────────
 function TeamPage({ abbr, sport, teamPageData, tonightPlays, tonightLoading, allTonightPlays, onBack, navigateToTeam, navigateToPlayer, trackedPlays, trackPlay, untrackPlay }) {
   const [glSort, setGlSort] = React.useState({ col:'date', dir:'desc' });
+  const [glExpanded, setGlExpanded] = React.useState(false);
   const [lambdaPlay, setLambdaPlay] = React.useState(null);
   const isMobile = useIsMobile(768);
 
@@ -146,13 +147,10 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, tonightLoading, all
 
   const thStyle = col => {
     const active = glSort.col === col;
-    // "vs" column absorbs slack; everything else hugs its content via the width:1% trick.
-    const isFlex = col === 'opp';
     return {
       padding:'3px 8px', fontSize:10, textAlign: glCols.find(c=>c.key===col)?.align||'right',
       color: active ? '#c9d1d9' : '#484f58', cursor:'pointer', userSelect:'none',
       background:'#0d1117', position:'sticky', top:0,
-      ...(isFlex ? {} : { width:'1%', whiteSpace:'nowrap' }),
     };
   };
   const toggleSort = col => setGlSort(prev =>
@@ -292,10 +290,13 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, tonightLoading, all
             </div>
           ) : null;
 
+          const GL_CAP = 15;
+          const visibleGL = glExpanded ? sortedGL : sortedGL.slice(0, GL_CAP);
+          const hasMore = sortedGL.length > GL_CAP;
           const gameLogCol = (
             <div style={{overflowX:'auto'}}>
               <div style={{color:'#484f58',fontSize:10,marginBottom:6}}>Game Log — 2025-26</div>
-              <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+              <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,tableLayout:'fixed'}}>
                 <thead>
                   <tr>
                     {glCols.map(c => (
@@ -306,14 +307,14 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, tonightLoading, all
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedGL.map((g, i) => {
+                  {visibleGL.map((g, i) => {
                     const isW = g.result === 'W';
                     return (
                       <tr key={`${g.date}-${i}`} style={{
                         borderTop:'1px solid #21262d',
                         background: i%2===0?'#0d1117':'transparent'}}>
-                        <td style={{padding:'5px 8px',color:'#8b949e',textAlign:'left'}}>{g.date ? g.date.slice(5) : '—'}</td>
-                        <td style={{padding:'5px 8px',color:'#c9d1d9',textAlign:'left',whiteSpace:'nowrap'}}>
+                        <td style={{padding:'5px 8px',color:'#8b949e',textAlign:'left',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{g.date ? g.date.slice(5) : '—'}</td>
+                        <td style={{padding:'5px 8px',color:'#c9d1d9',textAlign:'left',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
                           {!g.isHome && <span style={{color:'#484f58',marginRight:3}}>@</span>}
                           <button onClick={() => navigateToTeam(g.opp, sport)}
                             style={{background:'none',border:'none',color:'#c9d1d9',cursor:'pointer',padding:0,fontSize:12,textDecoration:'underline',textDecorationColor:'#484f58'}}>
@@ -334,6 +335,14 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, tonightLoading, all
                   })}
                 </tbody>
               </table>
+              {hasMore && (
+                <button onClick={() => setGlExpanded(e => !e)}
+                  style={{width:'100%',marginTop:6,padding:'6px 0',background:'none',
+                    border:'1px solid #30363d',borderRadius:6,color:'#8b949e',fontSize:11,
+                    cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:4}}>
+                  {glExpanded ? '↑ Show less' : `↓ Show all ${sortedGL.length} games`}
+                </button>
+              )}
             </div>
           );
 
@@ -345,7 +354,7 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, tonightLoading, all
             <div>
               <div style={{color:'#484f58',fontSize:10,marginBottom:6}}>Lambda Inputs</div>
               <div style={{background:'#0d1117',border:'1px solid #21262d',borderRadius:8,padding:'10px 12px'}}>
-                <InputList inputs={lambdaInputs} compact={true} />
+                <InputList inputs={lambdaInputs} compact={false} />
               </div>
             </div>
           ) : null;
