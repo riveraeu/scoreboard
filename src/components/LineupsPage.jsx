@@ -375,11 +375,6 @@ export default function LineupsPage({
 
   const actionButtonsEl = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6, ...(isMobile ? { justifyContent: 'flex-end', flexWrap: 'wrap' } : { flex: 1, justifyContent: 'flex-end' }) }}>
-      <button onClick={() => navigateToModel({ tab: 'market', sport: 'mlb' })}
-        style={{ ...btnSize, borderRadius: 6, cursor: 'pointer',
-          border: '1px solid #30363d', background: 'transparent', color: '#484f58', fontWeight: 600 }}>
-        Research
-      </button>
       <button ref={picksButtonRef} onClick={openPicksDrawer}
         style={{ ...btnSize, borderRadius: 6, cursor: 'pointer',
           border: `1px solid ${showPicksDrawer ? '#58a6ff' : '#30363d'}`,
@@ -408,6 +403,11 @@ export default function LineupsPage({
             {activePicks.length}
           </span>
         )}
+      </button>
+      <button onClick={() => navigateToModel({ tab: 'market', sport: 'mlb' })}
+        style={{ ...btnSize, borderRadius: 6, cursor: 'pointer',
+          border: '1px solid #30363d', background: 'transparent', color: '#484f58', fontWeight: 600 }}>
+        Research
       </button>
       {authEmail ? (
         <button onClick={logout}
