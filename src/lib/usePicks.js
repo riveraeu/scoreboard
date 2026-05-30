@@ -116,10 +116,15 @@ export function usePicks({ mlbMeta, nbaMeta, wnbaMeta, nhlMeta }) {
       }
     }
     const enriched = { ...play, ...extras, americanOdds: savedOdds, kalshiPct: newKalshiPct, edge: newEdge, modelVersion: "v2" };
+    // When a Kalshi order actually filled, the caller passes `unitsOverride` = the real
+    // dollar cost of the fill (and americanOdds already reflects the avg fill price). Use it
+    // verbatim so the ledger row matches Kalshi exactly instead of the ⅛-Kelly estimate.
+    const _units = play.unitsOverride != null ? Math.round(play.unitsOverride * 100) / 100 : unitsForPlay(enriched);
+    delete enriched.unitsOverride;
     setTrackedPlays(prev => {
       if (prev.find(p => p.id === id)) return prev;
       return [{ ...enriched, id, trackedAt: Date.now(), result: null,
-        units: unitsForPlay(enriched),
+        units: _units,
       }, ...prev];
     });
   }, [mlbMeta, nbaMeta, wnbaMeta, nhlMeta, unitsForPlay]);

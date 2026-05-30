@@ -348,10 +348,31 @@ function App() {
         const _canPlace = play.kalshiTicker && authEmail && _kalshiCount >= 1;
         const TRACK_MIN_EDGE = 3;
         const _belowGate = edge !== null && edge < TRACK_MIN_EDGE;
-        const _doTrack = () => {
+        // A Kalshi contract pays $1 on win. Buying YES/NO at `cents` is equivalent to risking
+        // `cents` to win `(100 - cents)` — convert that to American odds so the ledger stores
+        // the true price taken, not the model's Kalshi snapshot price.
+        const _centsToAmerican = (cents) => {
+          if (!cents || cents <= 0 || cents >= 100) return null;
+          return cents >= 50 ? -Math.round((cents / (100 - cents)) * 100) : Math.round(((100 - cents) / cents) * 100);
+        };
+        // `fill` is passed explicitly (not read from kalshiOrderResult state) because _doTrack
+        // runs via setTimeout after _doPlaceOrder — the closed-over state would be the pre-fill
+        // value from the click-time render, not the post-fill one.
+        const _doTrack = (fill = null) => {
           const _n = parseInt(pendingOdds.trim(), 10);
           const oddsVal = !isNaN(_n) && pendingOdds.trim() !== "-" && pendingOdds.trim() !== "+" ? _n : null;
-          trackPlay(oddsVal ? { ...play, americanOdds: oddsVal } : play);
+          // If a Kalshi order was placed, reconcile the pick to it: a filled order uses its real
+          // avg price + cost; a resting order uses the limit price + intended cost (both carried
+          // on `fill`). Either way the ledger matches the order, not the ⅛-Kelly model estimate.
+          // No order placed (fill null) → keep the manually-entered odds and Kelly sizing.
+          let override = null;
+          if (fill && fill.costDollars > 0) {
+            const ao = _centsToAmerican(fill.avgCents);
+            override = { ...play, ...(ao != null ? { americanOdds: ao } : {}), unitsOverride: fill.costDollars };
+          } else if (oddsVal) {
+            override = { ...play, americanOdds: oddsVal };
+          }
+          trackPlay(override || play);
           setPendingTrackPlay(null);
           openPickDate(play.gameDate);
           triggerFlyAnimation();
@@ -371,12 +392,30 @@ function App() {
             if (!r.ok) {
               setKalshiOrderResult({ ok: false, msg: data.error || `Error ${r.status}` });
             } else {
-              setKalshiOrderResult({ ok: true, msg: `${_kalshiCount} contracts placed` });
+              // Kalshi returns the order with realized-fill fields. taker_fill_cost is in cents.
+              const o = data.order || {};
+              const filledCount = o.taker_fill_count ?? 0;
+              const costCents = o.taker_fill_cost ?? 0;
+              const restingCount = o.remaining_count ?? Math.max(0, _kalshiCount - filledCount);
+              let fill;
+              if (filledCount > 0) {
+                const costDollars = parseFloat((costCents / 100).toFixed(2));
+                const avgCents = Math.round(costCents / filledCount);
+                const restNote = restingCount > 0 ? ` · ${restingCount} resting` : "";
+                fill = { filledCount, costDollars, avgCents, restingCount };
+                setKalshiOrderResult({ ok: true, msg: `${filledCount} filled @ ${avgCents}¢ = $${costDollars}${restNote}`, fill });
+              } else {
+                // Nothing matched immediately — order is resting on the book. Track at intended size.
+                fill = { filledCount: 0, costDollars: _kalshiCost, avgCents: _kalshiPrice, restingCount: _kalshiCount };
+                setKalshiOrderResult({ ok: true, msg: `Order resting — ${_kalshiCount} × ${_kalshiPrice}¢ not yet filled`, fill });
+              }
               fetchKalshiBalance();
+              return fill;
             }
           } catch (e) {
             setKalshiOrderResult({ ok: false, msg: e?.message || "Network error" });
           }
+          return null;
         };
         return (
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:700,display:"flex",alignItems:"center",justifyContent:"center"}}
@@ -460,9 +499,10 @@ function App() {
                   onClick={async () => {
                     if (_belowGate || kalshiOrderResult?.loading) return;
                     if (placeOnKalshi && _kalshiCount >= 1) {
-                      await _doPlaceOrder();
-                      // Short pause so the user sees the result, then close + track
-                      setTimeout(_doTrack, 1200);
+                      const fill = await _doPlaceOrder();
+                      // Short pause so the user sees the result, then close + track with the
+                      // real fill (passed explicitly to avoid stale-closure reads of state).
+                      setTimeout(() => _doTrack(fill), 1200);
                     } else {
                       _doTrack();
                     }
