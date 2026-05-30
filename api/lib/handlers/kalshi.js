@@ -267,7 +267,7 @@ export async function handleKalshiRoutes(ctx) {
     if (!env?.KALSHI_API_KEY_ID || !env?.KALSHI_PRIVATE_KEY) return errorResponse("Kalshi API not configured", 500);
     // Build order payload
     const kalshiPath = "/trade-api/v2/portfolio/orders";
-    const timestamp = String(Date.now());
+    const timestamp = String(Math.floor(Date.now() / 1000));
     const orderPayload = {
       ticker, side, action: "buy", type: "limit", count,
       ...(side === "yes" ? { yes_price: price } : { no_price: price }),
