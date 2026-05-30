@@ -335,12 +335,17 @@ export async function handleKalshiRoutes(ctx) {
   }
 
   if (path === "kalshi-fills" && method === "GET") {
-    // Admin-gated read of the account's actual Kalshi fills, signed with the server's RSA-PSS
-    // API key (no browser session cookie needed). Used to reconcile real fills vs the app's
-    // stored picks. ADMIN_KEY (Bearer) rather than user JWT so it's runnable from curl/CI.
-    const fillsAdminKey = (request.headers.get("Authorization") || "").replace("Bearer ", "").trim();
-    if (!env?.ADMIN_KEY) return errorResponse("ADMIN_KEY not set", 500);
-    if (fillsAdminKey !== env.ADMIN_KEY) return errorResponse("Forbidden", 403);
+    // Read of the account's actual Kalshi fills, signed with the server's RSA-PSS API key
+    // (no browser session cookie needed). Used to reconcile real fills vs the app's stored
+    // picks. Auth: user JWT (cookie sb_token or Bearer) — same level as kalshi-balance —
+    // OR Bearer ADMIN_KEY so it's also runnable from curl/CI.
+    const _fcookie = request.headers.get("Cookie") || "";
+    const _fcookieM = _fcookie.match(/(?:^|;\s*)sb_token=([^;]+)/);
+    const _fbearer = (request.headers.get("Authorization") || "").replace("Bearer ", "").trim();
+    const _fjwt = _fcookieM?.[1] || _fbearer;
+    const _fjwtOk = (_fjwt && JWT_SECRET) ? await verifyJWT(_fjwt, JWT_SECRET) : null;
+    const _fadminOk = env?.ADMIN_KEY && _fbearer === env.ADMIN_KEY;
+    if (!_fjwtOk && !_fadminOk) return errorResponse("Unauthorized", 401);
     if (!env?.KALSHI_API_KEY_ID || !env?.KALSHI_PRIVATE_KEY) return errorResponse("Kalshi API not configured", 500);
     // Optional filters: ?limit=N (default 200, Kalshi max 1000), ?min_ts=<unix_seconds>.
     const _limit = Math.min(1000, Math.max(1, parseInt(params.get("limit") || "200", 10) || 200));
