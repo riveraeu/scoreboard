@@ -284,7 +284,7 @@ export async function handleKalshiRoutes(ctx) {
     } catch (e) {
       return errorResponse(`Signing failed: ${e?.message || e}`, 500);
     }
-    const resp = await fetch(`https://trading-api.kalshi.com${kalshiPath}`, {
+    const resp = await fetch(`https://api.elections.kalshi.com${kalshiPath}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
