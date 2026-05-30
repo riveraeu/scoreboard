@@ -53,14 +53,15 @@ export function usePicks({ mlbMeta, nbaMeta, wnbaMeta, nhlMeta }) {
   }
 
   const trackPlay = React.useCallback((play) => {
+    const segSuffix = play.segment && play.segment !== "full" ? `|${play.segment}` : "";
     const id = play.gameType === "teamTotal"
       ? `teamtotal|${play.sport}|${play.scoringTeam}|${play.oppTeam}|${play.threshold}|${play.gameDate || ""}${play.direction === "under" ? "|under" : ""}`
       : play.gameType === "total"
-      ? `total|${play.sport}|${play.homeTeam}|${play.awayTeam}|${play.threshold}|${play.gameDate || ""}${play.direction === "under" ? "|under" : ""}`
+      ? `total|${play.sport}${segSuffix}|${play.homeTeam}|${play.awayTeam}|${play.threshold}|${play.gameDate || ""}${play.direction === "under" ? "|under" : ""}`
       : play.gameType === "ml"
-      ? `ml|${play.sport}|${play.pickTeam}|${play.homeTeam}|${play.awayTeam}|${play.gameDate || ""}`
+      ? `ml|${play.sport}${segSuffix}|${play.pickTeam}|${play.homeTeam}|${play.awayTeam}|${play.gameDate || ""}`
       : play.gameType === "spread"
-      ? `spread|${play.sport}|${play.pickTeam}|${play.homeTeam}|${play.awayTeam}|${play.pickLine}|${play.gameDate || ""}`
+      ? `spread|${play.sport}${segSuffix}|${play.pickTeam}|${play.homeTeam}|${play.awayTeam}|${play.pickLine}|${play.gameDate || ""}`
       : `${play.sport || "nba"}|${play.playerName}|${play.stat}|${play.threshold}|${play.gameDate || ""}`;
     const savedOdds = play.americanOdds ?? -110;
     // Recompute implied%, edge, and units from savedOdds. When the user overrides odds

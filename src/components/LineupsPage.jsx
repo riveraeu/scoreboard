@@ -106,12 +106,13 @@ function buildTrackedIds(trackedPlays) {
   return ids;
 }
 function trackIdFor(p) {
-  // Mirror the trackId construction used in PlaysColumn / App.jsx trackPlay
+  // Mirror the trackId construction used in PlaysColumn / usePicks.trackPlay
   const gd = p.gameDate || '';
+  const seg = p.segment && p.segment !== 'full' ? `|${p.segment}` : '';
   if (p.gameType === 'teamTotal') return `teamtotal|${p.sport}|${p.scoringTeam}|${p.oppTeam}|${p.threshold}|${gd}${p.direction === 'under' ? '|under' : ''}`;
-  if (p.gameType === 'total') return `total|${p.sport}|${p.homeTeam}|${p.awayTeam}|${p.threshold}|${gd}${p.direction === 'under' ? '|under' : ''}`;
-  if (p.gameType === 'ml') return `ml|${p.sport}|${p.pickTeam}|${p.homeTeam}|${p.awayTeam}|${gd}`;
-  if (p.gameType === 'spread') return `spread|${p.sport}|${p.pickTeam}|${p.homeTeam}|${p.awayTeam}|${p.pickLine}|${gd}`;
+  if (p.gameType === 'total') return `total|${p.sport}${seg}|${p.homeTeam}|${p.awayTeam}|${p.threshold}|${gd}${p.direction === 'under' ? '|under' : ''}`;
+  if (p.gameType === 'ml') return `ml|${p.sport}${seg}|${p.pickTeam}|${p.homeTeam}|${p.awayTeam}|${gd}`;
+  if (p.gameType === 'spread') return `spread|${p.sport}${seg}|${p.pickTeam}|${p.homeTeam}|${p.awayTeam}|${p.pickLine}|${gd}`;
   return `${p.sport || 'nba'}|${p.playerName}|${p.stat}|${p.threshold}|${gd}`;
 }
 // Clean-data gate: dc=10 only. Any -1 penalty (modestBvPSample, lineupHeavyOut, wideSpread,
