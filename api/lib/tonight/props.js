@@ -7,7 +7,7 @@ import { log5K, log5HitRate, PARK_KFACTOR, PARK_HITFACTOR, UMPIRE_KFACTOR, poiss
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER as EDGE_GATE } from "../config.js";
 
 const PROD_SPORTS = new Set(["mlb", "nba", "nhl", "wnba"]);
-const normName = (s) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const normName = (s) => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
 // Context: loopMarkets, playerInfoMap, playerGamelogs, STAT_SOFT, sportByteam, gameTimes,
 //          nba/wnba injury+usage maps, allPositionsDvp, nbaDepthChartPos, wnbaDvpMap,

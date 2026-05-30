@@ -1348,6 +1348,9 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           allPositionsDvp, nbaDepthChartPos, wnbaDvpMap,
           isDebug, _todayPT,
         });
+        // Filter out plays from old dates (yesterday cutoff handles UTC/local differences
+        // for late games: a 9:40pm ET game = 1:40am UTC next day).
+        const cutoffStr = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
         // ── Game Total + Team Total plays — all sports ───────────────────────────────────
         // Extracted to api/lib/tonight/game-totals.js (Phase B5, 2026-05-29).
         const { _mlbMlContext, _nbaMlContext, _wnbaMlContext, _nhlMlContext } =
