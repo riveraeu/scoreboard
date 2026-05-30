@@ -300,5 +300,39 @@ export async function handleKalshiRoutes(ctx) {
     return jsonResponse({ ok: true, order: respBody.order ?? respBody });
   }
 
+  if (path === "kalshi-balance" && method === "GET") {
+    if (!JWT_SECRET) return errorResponse("Auth not configured", 500);
+    const _cookie = request.headers.get("Cookie") || "";
+    const _cookieM = _cookie.match(/(?:^|;\s*)sb_token=([^;]+)/);
+    const jwtToken = _cookieM?.[1] || (request.headers.get("Authorization") || "").replace("Bearer ", "").trim();
+    if (!jwtToken) return errorResponse("Unauthorized", 401);
+    const _jwtPayload = await verifyJWT(jwtToken, JWT_SECRET);
+    if (!_jwtPayload) return errorResponse("Unauthorized", 401);
+    if (!env?.KALSHI_API_KEY_ID || !env?.KALSHI_PRIVATE_KEY) return errorResponse("Kalshi API not configured", 500);
+    const kalshiPath = "/trade-api/v2/portfolio/balance";
+    const timestamp = String(Date.now());
+    let signature;
+    try {
+      const key = await _importKalshiKey(env.KALSHI_PRIVATE_KEY);
+      const msgBuf = new TextEncoder().encode(timestamp + "GET" + kalshiPath);
+      const sigBuf = await crypto.subtle.sign({ name: "RSA-PSS", saltLength: 32 }, key, msgBuf);
+      signature = btoa(String.fromCharCode(...new Uint8Array(sigBuf)));
+    } catch (e) {
+      return errorResponse(`Signing failed: ${e?.message || e}`, 500);
+    }
+    const resp = await fetch(`https://api.elections.kalshi.com${kalshiPath}`, {
+      headers: {
+        "KALSHI-ACCESS-KEY": env.KALSHI_API_KEY_ID,
+        "KALSHI-ACCESS-TIMESTAMP": timestamp,
+        "KALSHI-ACCESS-SIGNATURE": signature,
+      },
+    }).catch(() => null);
+    if (!resp) return errorResponse("Kalshi unreachable", 502);
+    const respBody = await resp.json().catch(() => ({}));
+    if (!resp.ok) return errorResponse(respBody?.error?.message || `Kalshi error ${resp.status}`, resp.status);
+    const balanceCents = respBody.balance ?? 0;
+    return jsonResponse({ balanceCents, balanceDollars: balanceCents / 100 });
+  }
+
   return null;
 }

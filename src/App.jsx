@@ -69,6 +69,8 @@ function App() {
   } = usePickInteractions();
   const [placeOnKalshi, setPlaceOnKalshi] = React.useState(false);
   const [kalshiOrderResult, setKalshiOrderResult] = React.useState(null); // null | {ok, msg}
+  const [kalshiBalance, setKalshiBalance] = React.useState(null); // dollars, null = not fetched
+  const _prevResolvedCount = React.useRef(0);
   const {
     authEmail,
     authMode, setAuthMode,
@@ -158,6 +160,29 @@ function App() {
     setTrackedPlays, setBankrollState,
     authClearToken,
   });
+
+  const fetchKalshiBalance = React.useCallback(async () => {
+    if (!authEmail) return;
+    try {
+      const r = await fetch(`${WORKER}/kalshi-balance`, { credentials: "include" });
+      if (!r.ok) return;
+      const data = await r.json().catch(() => ({}));
+      if (data.balanceDollars != null) {
+        setKalshiBalance(data.balanceDollars);
+        setBankrollState(data.balanceDollars);
+      }
+    } catch {}
+  }, [authEmail, setBankrollState]);
+
+  // Fetch on login
+  React.useEffect(() => { fetchKalshiBalance(); }, [fetchKalshiBalance]);
+
+  // Fetch after any pick resolves
+  React.useEffect(() => {
+    const resolved = trackedPlays.filter(p => p.result).length;
+    if (resolved > _prevResolvedCount.current) fetchKalshiBalance();
+    _prevResolvedCount.current = resolved;
+  }, [trackedPlays, fetchKalshiBalance]);
 
   const selectPlayer = (p, tab = null) => {
     const newSport = p.sportKey || sport;
@@ -347,6 +372,7 @@ function App() {
               setKalshiOrderResult({ ok: false, msg: data.error || `Error ${r.status}` });
             } else {
               setKalshiOrderResult({ ok: true, msg: `${_kalshiCount} contracts placed` });
+              fetchKalshiBalance();
             }
           } catch (e) {
             setKalshiOrderResult({ ok: false, msg: e?.message || "Network error" });
@@ -1396,6 +1422,7 @@ function App() {
             navigateToPlay={navigateToPlay}
             bankroll={bankroll}
             setBankroll={setBankroll}
+            kalshiBalance={kalshiBalance}
             setPickUnits={setPickUnits}
             chartMonth={chartMonth}
             setChartMonth={setChartMonth}

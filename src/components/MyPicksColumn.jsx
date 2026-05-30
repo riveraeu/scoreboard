@@ -5,7 +5,7 @@ import AddPickModal from './AddPickModal.jsx';
 import { buildLiveGameKey, buildLiveProgress, resolveTotalGameScore } from '../lib/liveStats.js';
 import { useIsMobile } from '../lib/hooks.js';
 
-function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToTeam, navigateToPlay, bankroll, setBankroll, setPickUnits, chartMonth, setChartMonth, openPickMonths, setOpenPickMonths, openPickWeeks, setOpenPickWeeks, openPickDays, setOpenPickDays, editPickId, setEditPickId, setPlayResult, setShowAddPick, oddsToProfit, liveStats = {}, mlbGameScores = {}, nbaGameScores = {}, nhlGameScores = {} }) {
+function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToTeam, navigateToPlay, bankroll, setBankroll, kalshiBalance, setPickUnits, chartMonth, setChartMonth, openPickMonths, setOpenPickMonths, openPickWeeks, setOpenPickWeeks, openPickDays, setOpenPickDays, editPickId, setEditPickId, setPlayResult, setShowAddPick, oddsToProfit, liveStats = {}, mlbGameScores = {}, nbaGameScores = {}, nhlGameScores = {} }) {
   const isMobile = useIsMobile();
   // Bump tap targets on mobile so the small ↺ ✎ buttons + stake input meet ~32px touch guidelines.
   const rowBtnPad = isMobile ? "6px 10px" : "2px 6px";
@@ -95,16 +95,25 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                   border:"1px solid #238636",background:"rgba(35,134,54,0.15)",color:"#3fb950",fontWeight:600}}>
                 + Add
               </button>
-              {/* Bankroll input */}
+              {/* Bankroll — live Kalshi balance (read-only) or manual input */}
               <div style={{display:"flex",alignItems:"center",gap:6,marginLeft:"auto"}}>
-                <span style={{color:"#484f58",fontSize:11}}>Bankroll</span>
-                <div style={{display:"flex",alignItems:"center",background:"#0d1117",border:"1px solid #30363d",borderRadius:6,overflow:"hidden"}}>
-                  <span style={{color:"#8b949e",fontSize:12,padding:"2px 6px 2px 8px"}}>$</span>
-                  <input type="number" min="1" value={bankroll}
-                    onChange={e => setBankroll(e.target.value)}
-                    style={{background:"transparent",border:"none",outline:"none",color:"#c9d1d9",
-                      fontSize:12,width:70,padding:"3px 6px 3px 0"}}/>
-                </div>
+                <span style={{color:"#484f58",fontSize:11}}>{kalshiBalance != null ? "Kalshi" : "Bankroll"}</span>
+                {kalshiBalance != null ? (
+                  <div style={{display:"flex",alignItems:"center",background:"#0d1117",border:"1px solid #30363d",borderRadius:6,padding:"3px 8px",gap:2}}>
+                    <span style={{color:"#8b949e",fontSize:12}}>$</span>
+                    <span style={{color:"#c9d1d9",fontSize:12,fontVariantNumeric:"tabular-nums"}}>
+                      {kalshiBalance.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}
+                    </span>
+                  </div>
+                ) : (
+                  <div style={{display:"flex",alignItems:"center",background:"#0d1117",border:"1px solid #30363d",borderRadius:6,overflow:"hidden"}}>
+                    <span style={{color:"#8b949e",fontSize:12,padding:"2px 6px 2px 8px"}}>$</span>
+                    <input type="number" min="1" value={bankroll}
+                      onChange={e => setBankroll(e.target.value)}
+                      style={{background:"transparent",border:"none",outline:"none",color:"#c9d1d9",
+                        fontSize:12,width:70,padding:"3px 6px 3px 0"}}/>
+                  </div>
+                )}
               </div>
             </div>
 
