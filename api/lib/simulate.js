@@ -467,14 +467,16 @@ export function simulateNBATotalDist(homeMean, awayMean, homeStd = 11, awayStd =
   return dist;
 }
 
-// NHL combined goals distribution: two independent Poisson teams summed.
+// NHL combined goals distribution: two independent NegBin teams summed (Poisson if r is null).
 // homeLambda/awayLambda = expected goals per team (season GPG adjusted by opp GAA & home adv).
+// r = NegBin dispersion fit from per-team schedule residuals; null falls back to Poisson.
 // Returns Int16Array of nSim combined goal totals; query with totalDistPct(dist, threshold).
-export function simulateNHLTotalDist(homeLambda, awayLambda, nSim = 10000) {
+export function simulateNHLTotalDist(homeLambda, awayLambda, r = null, nSim = 10000) {
   if (!homeLambda || !awayLambda || homeLambda <= 0 || awayLambda <= 0) return null;
   const dist = new Int16Array(nSim);
   for (let i = 0; i < nSim; i++) {
-    dist[i] = poissonSample(homeLambda) + poissonSample(awayLambda);
+    dist[i] = (r != null ? negBinSample(homeLambda, r) : poissonSample(homeLambda)) +
+              (r != null ? negBinSample(awayLambda, r) : poissonSample(awayLambda));
   }
   return dist;
 }

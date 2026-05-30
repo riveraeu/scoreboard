@@ -1150,7 +1150,7 @@ export async function emitAllMlAndSpread({
       const awayYesAsk = mlMarket.yesByTeam[awayTeam];
       if (homeYesAsk == null || awayYesAsk == null) continue;
       const _mlk = `${homeTeam}|${awayTeam}`;
-      if (!_nhlJointCache[_mlk]) _nhlJointCache[_mlk] = simulateMLBJoint(homeLambda, awayLambda, null, 10000);
+      if (!_nhlJointCache[_mlk]) _nhlJointCache[_mlk] = simulateMLBJoint(homeLambda, awayLambda, ctx.dispR ?? null, 10000);
       const joint = _nhlJointCache[_mlk];
       if (!joint) continue;
       const homeTruePct = mlPctFromJoint(joint.home, joint.away);
@@ -1192,11 +1192,13 @@ export async function emitAllMlAndSpread({
     }
   }
   // ── NHL spread emission (KXNHLSPREAD) ────────────────────────────────────────────────
-  // Half-lines only (Kalshi NHL: ±1.5, ±2.5). v1 approximation: regulation-only Poisson
-  // sim. OT/SO winners get +1 goal in reality, so spread truePct is slightly understated
-  // on tight games where the favorite wins by exactly 1 in regulation but goes 2 in OT.
-  // Acceptable v1 noise; revisit if calibration shows systematic miss on -1.5 favorites.
+  // Half-lines only (Kalshi NHL: ±1.5, ±2.5). NegBin sim (dispR fit from schedule residuals)
+  // replaces Poisson to capture goal-scoring overdispersion — fatter tails reduce systematic
+  // overconfidence on underdog covers. Dampener blends 20% toward 65% reference while
+  // calibration sample is thin (6 picks, 50% actual vs 83% model as of 2026-05-29).
   {
+    const _NHL_SPREAD_DAMP_W = 0.20;
+    const _NHL_SPREAD_DAMP_REF = 65;
     for (const m of spreadMarkets) {
       if (m.sport !== "nhl") continue;
       if (m.gameDate && m.gameDate < cutoffStr) continue;
@@ -1206,12 +1208,13 @@ export async function emitAllMlAndSpread({
       const { homeTeam, awayTeam, homeLambda, awayLambda, _simData } = ctx;
       if (marginTeam !== homeTeam && marginTeam !== awayTeam) continue;
       const _mlk = `${homeTeam}|${awayTeam}`;
-      if (!_nhlJointCache[_mlk]) _nhlJointCache[_mlk] = simulateMLBJoint(homeLambda, awayLambda, null, 10000);
+      if (!_nhlJointCache[_mlk]) _nhlJointCache[_mlk] = simulateMLBJoint(homeLambda, awayLambda, ctx.dispR ?? null, 10000);
       const joint = _nhlJointCache[_mlk];
       if (!joint) continue;
       const marginSide = marginTeam === homeTeam ? "home" : "away";
-      const yesTruePct = spreadPctFromJoint(joint.home, joint.away, line, marginSide);
-      if (yesTruePct == null) continue;
+      const _simYesTruePct = spreadPctFromJoint(joint.home, joint.away, line, marginSide);
+      if (_simYesTruePct == null) continue;
+      const yesTruePct = parseFloat(((1 - _NHL_SPREAD_DAMP_W) * _simYesTruePct + _NHL_SPREAD_DAMP_W * _NHL_SPREAD_DAMP_REF).toFixed(1));
       const noTruePct = parseFloat((100 - yesTruePct).toFixed(1));
       const _gameTime = gameTimes[`nhl:${homeTeam}:${gameDate}`] ?? gameTimes[`nhl:${awayTeam}:${gameDate}`] ?? gameTimes[`nhl:${homeTeam}`] ?? gameTimes[`nhl:${awayTeam}`] ?? null;
       for (const dir of ["yes", "no"]) {

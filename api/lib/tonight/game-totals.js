@@ -83,9 +83,9 @@ export async function emitGameTotalPlays({
   const _nbaMlContext = {};
   // WNBA analog. Same shape as _nbaMlContext but per-team std = 11 (matches WNBA total sim).
   const _wnbaMlContext = {};
-  // NHL analog. homeLambda/awayLambda are Poisson goals (mirror MLB but lower magnitude).
-  // simulateMLBJoint is reused with r=null so it falls back to Poisson sampling (NHL hasn't
-  // been fit for NegBin dispersion yet; phase 2). MLB ML/spread pass _mlbDispR to opt in.
+  // NHL analog. homeLambda/awayLambda are NegBin goals — same engine as MLB; dispR fit
+  // per-request from schedule residuals via _fitNhlDispersion (2026-05-29). Stored in
+  // _nhlMlContext.dispR so ml-spread.js can pass it to simulateMLBJoint for ML + spread.
   const _nhlMlContext = {};
   // ── Regime-aware lambda helpers (shared by game-total + team-total blocks). Blends a
   // team's recency-weighted recent-score average into the rating-based expected.
@@ -189,6 +189,30 @@ export async function emitGameTotalPlays({
       return Math.max(3, Math.min(50, parseFloat(r.toFixed(2))));
     };
     const _mlbDispR = _fitMlbDispersion();
+    const _fitNhlDispersion = () => {
+      let sumResid2 = 0, sumMean = 0, nGames = 0;
+      for (const key in _gtScheduleMap) {
+        if (!key.startsWith("nhl:")) continue;
+        const team = key.slice(4);
+        const evts = _gtScheduleMap[key];
+        if (!evts || evts.length < 8) continue;
+        const scores = [];
+        for (const ev of evts) {
+          const myComp = ev.comps?.find(c => normTeam("nhl", c.abbr) === team);
+          if (myComp?.score != null) scores.push(myComp.score);
+        }
+        if (scores.length < 8) continue;
+        const mean = scores.reduce((a, b) => a + b, 0) / scores.length;
+        for (const s of scores) { sumResid2 += (s - mean) * (s - mean); sumMean += mean; nGames += 1; }
+      }
+      if (nGames < 50) return 6;
+      const pooledMean = sumMean / nGames;
+      const pooledVar = sumResid2 / nGames;
+      if (pooledVar <= pooledMean) return 50;
+      const r = (pooledMean * pooledMean) / (pooledVar - pooledMean);
+      return Math.max(3, Math.min(50, parseFloat(r.toFixed(2))));
+    };
+    const _nhlDispR = _fitNhlDispersion();
     // Sample-weighted blend factor: model retains at least 30% weight so tonight-specific
     // factors (pitcher matchup, pace, weather) aren't drowned out. Caps obs weight at 0.7
     // when N >= 40 games; ramps linearly from 0 (no schedule) to 0.7.
@@ -811,11 +835,11 @@ export async function emitGameTotalPlays({
         };
         if (_hGLRaw != null && _aGLRaw != null) {
           const _dk = `nhl|${homeTeam}|${awayTeam}`;
-          if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateNHLTotalDist(_hGLRaw, _aGLRaw, 10000);
+          if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateNHLTotalDist(_hGLRaw, _aGLRaw, _nhlDispR, 10000);
           truePct = totalDistPct(totalDistCache[_dk], threshold);
           const _mlCtxKey = `${homeTeam}|${awayTeam}|${gameDate}`;
           if (!_nhlMlContext[_mlCtxKey]) {
-            _nhlMlContext[_mlCtxKey] = { homeTeam, awayTeam, gameDate, homeLambda: parseFloat(_hGLRaw.toFixed(2)), awayLambda: parseFloat(_aGLRaw.toFixed(2)), kalshiVolume, kalshiSpread, lowVolume, _simData: { ..._simData } };
+            _nhlMlContext[_mlCtxKey] = { homeTeam, awayTeam, gameDate, homeLambda: parseFloat(_hGLRaw.toFixed(2)), awayLambda: parseFloat(_aGLRaw.toFixed(2)), dispR: _nhlDispR, kalshiVolume, kalshiSpread, lowVolume, _simData: { ..._simData } };
           }
         }
         // Same sample-weighted seasonHitRate blend as MLB/NBA. NHL Poisson tails are
@@ -826,7 +850,7 @@ export async function emitGameTotalPlays({
         if (_gtNhlSsn != null) {
           const _w = _ssnBlendWeight(_gtNhlSsn.sample);
           const _modelLambda = _hGLRaw + _aGLRaw;
-          const _impliedLambda = lambdaForPoissonTail(threshold, _gtNhlSsn.rate / 100);
+          const _impliedLambda = muForNegBinTail(threshold, _gtNhlSsn.rate / 100, _nhlDispR);
           if (_impliedLambda != null) {
             const _cap = _GT_IMPLIED_CAP.nhl;
             const _impliedClamped = Math.max(_modelLambda - _cap, Math.min(_modelLambda + _cap, _impliedLambda));
@@ -836,9 +860,10 @@ export async function emitGameTotalPlays({
             _simData.gtSsnSample = _gtNhlSsn.sample;
             _simData.modelLambda = parseFloat(_modelLambda.toFixed(2));
             _simData.impliedLambda = _impliedLambda;
+            _simData.nhlDispR = _nhlDispR;
             if (_impliedClamped !== _impliedLambda) _simData.impliedLambdaClamped = parseFloat(_impliedClamped.toFixed(2));
             _simData.blendedLambda = parseFloat(_blendedLambda.toFixed(2));
-            truePct = parseFloat(((1 - poissonCDF(threshold - 1, _blendedLambda)) * 100).toFixed(1));
+            truePct = parseFloat(((1 - negBinCDF(threshold - 1, _blendedLambda, _nhlDispR)) * 100).toFixed(1));
           }
         }
         totalSimScore += _homeGpgPts + _awayGpgPts + _homeGaaPts + _awayGaaPts + _nhlOuPts;
