@@ -31,11 +31,25 @@ export async function handleAuthRoutes(ctx) {
 
   if (path === "auth/login" && method === "POST") {
     const { email, password } = await request.json();
-    const userStr = await CACHE2.get(`user:${email.toLowerCase()}`);
-    if (!userStr) return errorResponse("Invalid credentials", 401);
+    const emailKey = email?.toLowerCase();
+    if (!emailKey || !password) return errorResponse("Email and password required", 400);
+
+    const failKey = `login_fail:${emailKey}`;
+    const attempts = parseInt(await CACHE2.get(failKey) || "0", 10);
+    if (attempts >= 5) return errorResponse("Too many login attempts. Try again in 5 minutes.", 429);
+
+    const userStr = await CACHE2.get(`user:${emailKey}`);
+    if (!userStr) {
+      await CACHE2.incrWithTtl(failKey, 300);
+      return errorResponse("Invalid credentials", 401);
+    }
     const user = JSON.parse(userStr);
     const hash = await pbkdf2Hash(password, user.salt);
-    if (hash !== user.passwordHash) return errorResponse("Invalid credentials", 401);
+    if (hash !== user.passwordHash) {
+      await CACHE2.incrWithTtl(failKey, 300);
+      return errorResponse("Invalid credentials", 401);
+    }
+    await CACHE2.delete(failKey);
     const token = await makeJWT({ userId: user.id, email: user.email, exp: Date.now() + 365 * 24 * 60 * 60 * 1e3 }, JWT_SECRET);
     return jsonResponse({ token, userId: user.id, email: user.email });
   }

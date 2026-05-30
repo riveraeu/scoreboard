@@ -710,7 +710,7 @@ export async function buildPitcherKPct(mlbSched) {
       const r5BF = recent5.reduce((s, sp) => {
         if (sp.stat?.battersFaced) return s + sp.stat.battersFaced;
         const ip = parseFloat(sp.stat?.inningsPitched || 0);
-        return s + (Math.floor(ip) * 3 + Math.round((ip % 1) * 10));
+        return s + (Math.floor(ip) * 3 + Math.round(ip * 10) % 10);
       }, 0);
       const _recentKPct = (recent5.length >= 3 && r5BF >= 30) ? parseFloat((r5K / r5BF * 100).toFixed(1)) : null;
       if (_recentKPct !== null) {

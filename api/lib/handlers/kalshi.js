@@ -9,6 +9,7 @@
 // normName + jsonResponse/errorResponse imported directly (utils is stable).
 
 import { jsonResponse, errorResponse } from "../utils.js";
+import { SERIES_CONFIG, CRON_ONLY_TICKERS } from "../series-config.js";
 
 const normName = (s) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
@@ -145,25 +146,9 @@ export async function handleKalshiRoutes(ctx) {
     if (!env?.UPSTASH_REDIS_REST_URL || !env?.UPSTASH_REDIS_REST_TOKEN) {
       return errorResponse("Upstash not configured", 500);
     }
-    // MUST stay in sync with SERIES_CONFIG inside /api/tonight. Plus *GAME tickers
-    // (per-sport moneyline series, not player-prop series — they feed the ML emission
-    // loops + tomorrow's odds fallback for MLB).
-    const KALSHI_SERIES_TICKERS = [
-      "KXNBAPTS", "KXNBAREB", "KXNBAAST", "KXNBA3PT",
-      "KXWNBAPTS", "KXWNBAREB", "KXWNBAAST", "KXWNBA3PT",
-      "KXNHLPTS",
-      "KXMLBKS", "KXMLBHRR",
-      "KXNFLPAYDS", "KXNFLRUYDS", "KXNFLREYDS", "KXNFLTDS",
-      "KXMLBTOTAL", "KXNBATOTAL", "KXWNBATOTAL", "KXNHLTOTAL", "KXNFLTOTAL",
-      "KXMLBTEAMTOTAL", "KXNBATEAMTOTAL",
-      "KXMLBGAME", "KXNBAGAME", "KXWNBAGAME", "KXNHLGAME",
-      "KXMLBSPREAD", "KXNBASPREAD", "KXWNBASPREAD", "KXNHLSPREAD",
-      "KXMLBF5TOTAL", "KXMLBF5SPREAD", "KXMLBF5",
-      "KXNBA1HTOTAL", "KXNBA1HSPREAD", "KXNBA1HWINNER",
-      "KXNBA2HTOTAL", "KXNBA2HSPREAD", "KXNBA2HWINNER",
-      "KXWNBA1HTOTAL", "KXWNBA1HSPREAD", "KXWNBA1HWINNER",
-      "KXWNBA2HTOTAL", "KXWNBA2HSPREAD", "KXWNBA2HWINNER",
-    ];
+    // Derived from shared SERIES_CONFIG + cron-only tickers (game ML series, winner
+    // markets, 3-way F5 ML). Defined in api/lib/series-config.js — edit there.
+    const KALSHI_SERIES_TICKERS = [...Object.keys(SERIES_CONFIG), ...CRON_ONLY_TICKERS];
     const startMs = Date.now();
     // Match /api/tonight's hot-path throttle (3 parallel / 700ms delay). Cron isn't
     // user-facing, so slower is fine; what matters is not getting 429s, which the more

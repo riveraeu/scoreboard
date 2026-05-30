@@ -45,7 +45,14 @@ function makeCache(env) {
       },
       async delete(key) {
         await cmd("DEL", key);
-      }
+      },
+      // Atomically increment a counter and set its TTL on the first increment.
+      // Used for rate limiting (INCR + EXPIRE only fires EXPIRE when count === 1).
+      async incrWithTtl(key, ttlSec) {
+        const { result: count } = await cmd("INCR", key);
+        if (count === 1) await cmd("EXPIRE", key, ttlSec);
+        return count ?? 1;
+      },
     };
   }
   try { return CACHE || null; } catch { return null; }

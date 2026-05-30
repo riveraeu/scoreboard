@@ -1,0 +1,57 @@
+// Shared Kalshi series configuration.
+// Imported by tonight.js (play pipeline) and kalshi.js (snapshot cron).
+// To add a new series: add it here — both consumers update automatically.
+
+export const SERIES_CONFIG = {
+  // Player props
+  KXNBAPTS:    { sport: "nba",  league: "nba",  stat: "points",         col: "PTS" },
+  KXNBAREB:    { sport: "nba",  league: "nba",  stat: "rebounds",       col: "REB" },
+  KXNBAAST:    { sport: "nba",  league: "nba",  stat: "assists",        col: "AST" },
+  KXNBA3PT:    { sport: "nba",  league: "nba",  stat: "threePointers",  col: "3PT" },
+  KXWNBAPTS:   { sport: "wnba", league: "wnba", stat: "points",         col: "PTS" },
+  KXWNBAREB:   { sport: "wnba", league: "wnba", stat: "rebounds",       col: "REB" },
+  KXWNBAAST:   { sport: "wnba", league: "wnba", stat: "assists",        col: "AST" },
+  KXWNBA3PT:   { sport: "wnba", league: "wnba", stat: "threePointers",  col: "3PT" },
+  KXNHLPTS:    { sport: "nhl",  league: "nhl",  stat: "points",         col: "PTS" },
+  KXMLBKS:     { sport: "mlb",  league: "mlb",  stat: "strikeouts",     col: "K"   },
+  KXMLBHRR:    { sport: "mlb",  league: "mlb",  stat: "hrr",            col: "HRR" },
+  KXNFLPAYDS:  { sport: "nfl",  league: "nfl",  stat: "passingYards",   col: "YDS" },
+  KXNFLRUYDS:  { sport: "nfl",  league: "nfl",  stat: "rushingYards",   col: "YDS" },
+  KXNFLREYDS:  { sport: "nfl",  league: "nfl",  stat: "receivingYards", col: "YDS" },
+  KXNFLTDS:    { sport: "nfl",  league: "nfl",  stat: "touchdowns",     col: "TD"  },
+  // Game totals
+  KXMLBTOTAL:     { sport: "mlb",  league: "mlb",  stat: "totalRuns",   col: "R",   gameType: "total"     },
+  KXNBATOTAL:     { sport: "nba",  league: "nba",  stat: "totalPoints", col: "PTS", gameType: "total"     },
+  KXWNBATOTAL:    { sport: "wnba", league: "wnba", stat: "totalPoints", col: "PTS", gameType: "total"     },
+  KXNHLTOTAL:     { sport: "nhl",  league: "nhl",  stat: "totalGoals",  col: "G",   gameType: "total"     },
+  KXNFLTOTAL:     { sport: "nfl",  league: "nfl",  stat: "totalPoints", col: "PTS", gameType: "total"     },
+  // Team totals
+  KXMLBTEAMTOTAL:  { sport: "mlb", league: "mlb",  stat: "teamRuns",    col: "R",   gameType: "teamTotal" },
+  KXNBATEAMTOTAL:  { sport: "nba", league: "nba",  stat: "teamPoints",  col: "PTS", gameType: "teamTotal" },
+  // Spreads
+  KXMLBSPREAD:   { sport: "mlb",  league: "mlb",  stat: "spread", col: "R",   gameType: "spread" },
+  KXNBASPREAD:   { sport: "nba",  league: "nba",  stat: "spread", col: "PTS", gameType: "spread" },
+  KXWNBASPREAD:  { sport: "wnba", league: "wnba", stat: "spread", col: "PTS", gameType: "spread" },
+  KXNHLSPREAD:   { sport: "nhl",  league: "nhl",  stat: "spread", col: "G",   gameType: "spread" },
+  // MLB First-5-Innings
+  KXMLBF5TOTAL:  { sport: "mlb", league: "mlb", stat: "f5total",  col: "R", gameType: "total",  segment: "f5" },
+  KXMLBF5SPREAD: { sport: "mlb", league: "mlb", stat: "f5spread", col: "R", gameType: "spread", segment: "f5" },
+  // NBA/WNBA halves
+  KXNBA1HTOTAL:   { sport: "nba",  league: "nba",  stat: "h1total",  col: "PTS", gameType: "total",  segment: "1h" },
+  KXNBA1HSPREAD:  { sport: "nba",  league: "nba",  stat: "h1spread", col: "PTS", gameType: "spread", segment: "1h" },
+  KXNBA2HTOTAL:   { sport: "nba",  league: "nba",  stat: "h2total",  col: "PTS", gameType: "total",  segment: "2h" },
+  KXNBA2HSPREAD:  { sport: "nba",  league: "nba",  stat: "h2spread", col: "PTS", gameType: "spread", segment: "2h" },
+  KXWNBA1HTOTAL:  { sport: "wnba", league: "wnba", stat: "h1total",  col: "PTS", gameType: "total",  segment: "1h" },
+  KXWNBA1HSPREAD: { sport: "wnba", league: "wnba", stat: "h1spread", col: "PTS", gameType: "spread", segment: "1h" },
+  KXWNBA2HTOTAL:  { sport: "wnba", league: "wnba", stat: "h2total",  col: "PTS", gameType: "total",  segment: "2h" },
+  KXWNBA2HSPREAD: { sport: "wnba", league: "wnba", stat: "h2spread", col: "PTS", gameType: "spread", segment: "2h" },
+};
+
+// Tickers fetched by the snapshot cron but not part of the play pipeline:
+// per-sport moneyline series, winner markets, and the 3-way F5 ML series.
+export const CRON_ONLY_TICKERS = [
+  "KXMLBGAME", "KXNBAGAME", "KXWNBAGAME", "KXNHLGAME",
+  "KXMLBF5",
+  "KXNBA1HWINNER", "KXNBA2HWINNER",
+  "KXWNBA1HWINNER", "KXWNBA2HWINNER",
+];

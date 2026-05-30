@@ -8,6 +8,7 @@ import { PARK_KFACTOR, PARK_HITFACTOR, PARK_RUNFACTOR, UMPIRE_KFACTOR, log5K, po
 import { buildLineupKPct, buildBarrelPct, buildPitcherKPct, MLB_ID_TO_ABBR, buildMlbByteam, buildMlbInjuryReport } from "../mlb.js";
 import { buildNbaDepthChartPos, buildNbaDvpFromBettingPros, buildNbaPaceData, buildNbaPlayerPosFromSleeper, buildNbaUsageRate, buildNbaInjuryReport, buildNbaByteam } from "../nba.js";
 import { buildWnbaPaceData, buildWnbaUsageRate, buildWnbaInjuryReport, buildWnbaDvp, WNBA_TEAM_IDS, WNBA_ESPN_TO_CANON, WNBA_CANON_TO_ESPN, buildWnbaByteam } from "../wnba.js";
+import { SERIES_CONFIG } from "../series-config.js";
 import { buildNhlGoalieData, buildNhlInjuryReport, buildNhlSpecialTeams } from "../nhl.js";
 import { verifyJWT } from "../auth-utils.js";
 import { PT_FMT, ptDateMinusOne } from "../pt.js";
@@ -195,56 +196,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             { playerName: "Shohei Ohtani", playerId: "39949", sport: "mlb", playerTeam: "LAD", position: "DH", opponent: "SD", oppRank: 4, oppMetricValue: 4.85, oppMetricLabel: "ERA allowed", oppMetricUnit: "ERA", stat: "hits", threshold: 1, kalshiPct: 72, americanOdds: -300, seasonPct: 73.8, softPct: 76.4, truePct: 76.1, edge: 4.1, hitterBa: 0.291, hitterBaTier: "good", hitterMoneyline: -175, gameDate: "2026-04-08", gameTime: "2026-04-09T02:10:00Z", lineupConfirmed: false }
           ], mock: true }, true);
         }
-        const SERIES_CONFIG = {
-          KXNBAPTS: { sport: "nba", league: "nba", stat: "points", col: "PTS" },
-          KXNBAREB: { sport: "nba", league: "nba", stat: "rebounds", col: "REB" },
-          KXNBAAST: { sport: "nba", league: "nba", stat: "assists", col: "AST" },
-          KXNBA3PT: { sport: "nba", league: "nba", stat: "threePointers", col: "3PT" },
-          KXWNBAPTS: { sport: "wnba", league: "wnba", stat: "points", col: "PTS" },
-          KXWNBAREB: { sport: "wnba", league: "wnba", stat: "rebounds", col: "REB" },
-          KXWNBAAST: { sport: "wnba", league: "wnba", stat: "assists", col: "AST" },
-          KXWNBA3PT: { sport: "wnba", league: "wnba", stat: "threePointers", col: "3PT" },
-          KXNHLPTS: { sport: "nhl", league: "nhl", stat: "points", col: "PTS" },
-          KXMLBKS: { sport: "mlb", league: "mlb", stat: "strikeouts", col: "K" },
-          KXMLBHRR: { sport: "mlb", league: "mlb", stat: "hrr", col: "HRR" },
-          KXNFLPAYDS: { sport: "nfl", league: "nfl", stat: "passingYards", col: "YDS" },
-          KXNFLRUYDS: { sport: "nfl", league: "nfl", stat: "rushingYards", col: "YDS" },
-          KXNFLREYDS: { sport: "nfl", league: "nfl", stat: "receivingYards", col: "YDS" },
-          KXNFLTDS: { sport: "nfl", league: "nfl", stat: "touchdowns", col: "TD" },
-          // Game totals — both over and under plays surfaced per market
-          KXMLBTOTAL: { sport: "mlb", league: "mlb", stat: "totalRuns",   col: "R",   gameType: "total" },
-          KXNBATOTAL: { sport: "nba", league: "nba", stat: "totalPoints", col: "PTS", gameType: "total" },
-          KXWNBATOTAL: { sport: "wnba", league: "wnba", stat: "totalPoints", col: "PTS", gameType: "total" },
-          KXNHLTOTAL: { sport: "nhl", league: "nhl", stat: "totalGoals",  col: "G",   gameType: "total" },
-          KXNFLTOTAL: { sport: "nfl", league: "nfl", stat: "totalPoints", col: "PTS", gameType: "total" },
-          // Team totals — single team's score vs opposing defense
-          KXMLBTEAMTOTAL: { sport: "mlb", league: "mlb", stat: "teamRuns",   col: "R",   gameType: "teamTotal" },
-          KXNBATEAMTOTAL: { sport: "nba", league: "nba", stat: "teamPoints", col: "PTS", gameType: "teamTotal" },
-          // Spreads — per-market is "Team X wins by over Y units?", line=N-0.5 from suffix `{team}{N}`.
-          // Kalshi only lists half-lines (no integer pushes). Same parser branch handles every sport.
-          KXMLBSPREAD: { sport: "mlb", league: "mlb", stat: "spread", col: "R", gameType: "spread" },
-          KXNBASPREAD: { sport: "nba", league: "nba", stat: "spread", col: "PTS", gameType: "spread" },
-          KXWNBASPREAD: { sport: "wnba", league: "wnba", stat: "spread", col: "PTS", gameType: "spread" },
-          KXNHLSPREAD: { sport: "nhl", league: "nhl", stat: "spread", col: "G", gameType: "spread" },
-          // MLB First-5-Innings — segmented totals and spreads on the starter-only portion of the
-          // game. Parse goes through the same total/spread branches as full-game, but records are
-          // stamped with `segment: "f5"` and emit through a separate F5 block that uses F5-specific
-          // lambdas (starter-only, no bullpen, no TTO).
-          KXMLBF5TOTAL:  { sport: "mlb", league: "mlb", stat: "f5total",  col: "R", gameType: "total",  segment: "f5" },
-          KXMLBF5SPREAD: { sport: "mlb", league: "mlb", stat: "f5spread", col: "R", gameType: "spread", segment: "f5" },
-          // NBA/WNBA half markets — 1H ends at halftime, 2H runs through end of regulation + OT.
-          // Lambdas derive from full-game λ × 0.5; variance σ × sqrt(0.5). Winner markets are
-          // 3-way (home/away/tie) and fetched inline (KXNBA1HWINNER/etc) since the unified
-          // parse loop only knows total/teamTotal/spread branches.
-          KXNBA1HTOTAL:   { sport: "nba",  league: "nba",  stat: "h1total",  col: "PTS", gameType: "total",  segment: "1h" },
-          KXNBA1HSPREAD:  { sport: "nba",  league: "nba",  stat: "h1spread", col: "PTS", gameType: "spread", segment: "1h" },
-          KXNBA2HTOTAL:   { sport: "nba",  league: "nba",  stat: "h2total",  col: "PTS", gameType: "total",  segment: "2h" },
-          KXNBA2HSPREAD:  { sport: "nba",  league: "nba",  stat: "h2spread", col: "PTS", gameType: "spread", segment: "2h" },
-          KXWNBA1HTOTAL:  { sport: "wnba", league: "wnba", stat: "h1total",  col: "PTS", gameType: "total",  segment: "1h" },
-          KXWNBA1HSPREAD: { sport: "wnba", league: "wnba", stat: "h1spread", col: "PTS", gameType: "spread", segment: "1h" },
-          KXWNBA2HTOTAL:  { sport: "wnba", league: "wnba", stat: "h2total",  col: "PTS", gameType: "total",  segment: "2h" },
-          KXWNBA2HSPREAD: { sport: "wnba", league: "wnba", stat: "h2spread", col: "PTS", gameType: "spread", segment: "2h" },
-        };
+        // SERIES_CONFIG imported from api/lib/series-config.js
         const TEAM_NORM = {
           nba: { GS: "GSW", SA: "SAS", NY: "NYK", NJ: "BKN", NO: "NOP", PHO: "PHX", WPH: "PHX", KAT: "ATL" },
           // WNBA: Kalshi uses CONN/DAL but ESPN scoreboard returns CONNECTICU/DALLAS — translate via parallel
