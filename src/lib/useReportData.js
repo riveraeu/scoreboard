@@ -10,7 +10,7 @@ import { WORKER } from './constants.js';
 //
 // Pure data-fetching glue — no refs, no circular deps. ReportPage destructures the
 // outputs and drives its own (sport, play-type, tab) selection on top of them.
-export function useReportData({ authToken }) {
+export function useReportData() {
   const [reportSort, setReportSort] = React.useState({"mlb|teamRuns":{col:"sim",dir:"desc"},"nba|teamPoints":{col:"sim",dir:"desc"}});
   const [reportDataBySport, setReportDataBySport] = React.useState({});
   const [reportLoadingSport, setReportLoadingSport] = React.useState(null); // "mlb"|"nba"|"wnba"|"nhl"|null
@@ -38,14 +38,14 @@ export function useReportData({ authToken }) {
     setCalibLoading(true);
     setCalibData(null);
     try {
-      const r = await fetch(`${WORKER}/auth/calibration`, { headers: authToken ? { Authorization: `Bearer ${authToken}` } : {} });
+      const r = await fetch(`${WORKER}/auth/calibration`);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       setCalibData(await r.json());
     } catch(e) {
       setCalibData({ error: e.message });
     }
     setCalibLoading(false);
-  }, [authToken]);
+  }, []);
 
   return {
     reportSort, setReportSort,

@@ -1,4 +1,6 @@
 // MLB data fetchers: lineups, barrel%, pitcher stats.
+import { fetchSafe } from "./utils.js";
+const _fs = (label, url, opts) => fetchSafe(`mlb:${label}`, url, opts);
 
 export const MLB_ID_TO_ABBR = {
   108: "LAA",
@@ -77,10 +79,9 @@ export async function buildLineupKPct(mlbSched) {
       const today = new Date();
       const end = new Date(today.getTime() - 864e5).toISOString().slice(0, 10);
       const start = new Date(today.getTime() - 14 * 864e5).toISOString().slice(0, 10);
-      const recentSched = await fetch(
+      const recentSched = await _fs("recent-sched",
         `https://statsapi.mlb.com/api/v1/schedule?sportId=1&startDate=${start}&endDate=${end}&hydrate=lineups`,
-        { headers: { "User-Agent": "Mozilla/5.0" } }
-      ).then((r) => r.ok ? r.json() : {}).catch(() => ({}));
+        { headers: { "User-Agent": "Mozilla/5.0" } });
       // recentLineups: most recent game with players, used for K% stat fetching
       const recentLineups = {};
       // recentPlayerSpots: per-player most recent batting spot across all scanned games.
@@ -125,14 +126,15 @@ export async function buildLineupKPct(mlbSched) {
     const allIds = [...new Set(Object.values(teamLineups).flat())];
     if (allIds.length === 0) return { lineupKPct: {}, lineupBatterKPcts: {}, lineupKPctVR: {}, lineupKPctVL: {}, lineupBatterKPctsOrdered: {}, lineupBatterKPctsVROrdered: {}, lineupBatterKPctsVLOrdered: {}, lineupSpotByName: {}, gameHomeTeams, projectedLineupTeams: [], batterSplitBA: {}, hitterOpsMap: {}, batterHandByName: {}, batterHRRSplits: {} };
     const idStr = allIds.join(",");
+    const H = { headers: { "User-Agent": "Mozilla/5.0" } };
     const [res25, res26, resSplitVR, resSplitVL, resSplitVR25, resSplitVL25, resBatSideOps] = await Promise.all([
-      fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=batting,type=season,season=2025,gameType=R)`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
-      fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=batting,type=season,season=2026,gameType=R)`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
-      fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=batting,type=statSplits,season=2026,sitCodes=vr,gameType=R)`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
-      fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=batting,type=statSplits,season=2026,sitCodes=vl,gameType=R)`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
-      fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=batting,type=statSplits,season=2025,sitCodes=vr,gameType=R)`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
-      fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=batting,type=statSplits,season=2025,sitCodes=vl,gameType=R)`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
-      fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=batting,type=season,season=2026,gameType=R)&fields=people,id,fullName,batSide,code,stats,splits,stat,ops`, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({}))
+      _fs("bat-stats-2025",   `https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=batting,type=season,season=2025,gameType=R)`, H),
+      _fs("bat-stats-2026",   `https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=batting,type=season,season=2026,gameType=R)`, H),
+      _fs("bat-split-vr-26",  `https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=batting,type=statSplits,season=2026,sitCodes=vr,gameType=R)`, H),
+      _fs("bat-split-vl-26",  `https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=batting,type=statSplits,season=2026,sitCodes=vl,gameType=R)`, H),
+      _fs("bat-split-vr-25",  `https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=batting,type=statSplits,season=2025,sitCodes=vr,gameType=R)`, H),
+      _fs("bat-split-vl-25",  `https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=batting,type=statSplits,season=2025,sitCodes=vl,gameType=R)`, H),
+      _fs("bat-side-ops-26",  `https://statsapi.mlb.com/api/v1/people?personIds=${idStr}&hydrate=stats(group=batting,type=season,season=2026,gameType=R)&fields=people,id,fullName,batSide,code,stats,splits,stat,ops`, H),
     ]);
     const playerStats25 = {}, playerStats26 = {};
     for (const person of (res25.people || [])) {

@@ -1,18 +1,20 @@
 import React from 'react';
 import { WORKER } from './constants.js';
 
-// Auth state + login/register/logout, extracted from App.jsx 2026-05-27.
+// Auth state + login/register/logout.
 //
-// Owns: authToken/authEmail (localStorage-backed), authMode (login/register form toggle),
-// authForm (email/password), authError, authLoading. Exposes `authenticate(mode)` which
-// performs the API call and returns `{ ok, token?, email? }`. On `ok: true` the hook has
-// already updated state + localStorage; the caller handles pick load / pick push.
+// Token is kept in React state only — never written to localStorage.
+// An HttpOnly session cookie (sb_token) is set by the server on login/register,
+// so the browser automatically sends it on every same-origin request. This means:
+//   - XSS cannot steal the token (HttpOnly = not readable by JS)
+//   - Page reloads preserve the session via cookie; authToken in state resets to null
+//     but useAuthPickSync uses authEmail (localStorage) as the "is logged in" signal
+//     and loads picks via the cookie on mount.
 //
-// `logout` clears the auth state + sb_token/sb_email localStorage keys. Callers should
-// also reset pick state / sync baseline / pick-storage localStorage in App.jsx since those
-// cross hook boundaries.
+// authLogout() calls POST /api/auth/logout to clear the server-side cookie, then
+// drops the local email so the UI shows the login prompt.
 export function useAuth() {
-  const [authToken, setAuthToken] = React.useState(() => localStorage.getItem("sb_token") || null);
+  const [authToken, setAuthToken] = React.useState(null); // memory only — not localStorage
   const [authEmail, setAuthEmail] = React.useState(() => localStorage.getItem("sb_email") || null);
   const [authMode, setAuthMode] = React.useState("login");
   const [authForm, setAuthForm] = React.useState({ email: "", password: "" });
@@ -34,12 +36,11 @@ export function useAuth() {
         setAuthError(data.error || "Something went wrong");
         return { ok: false };
       }
-      localStorage.setItem("sb_token", data.token);
+      // Server sets the HttpOnly cookie; we only store the non-sensitive email locally.
       localStorage.setItem("sb_email", data.email);
-      setAuthToken(data.token);
       setAuthEmail(data.email);
       setAuthForm({ email: "", password: "" });
-      return { ok: true, token: data.token, email: data.email };
+      return { ok: true, email: data.email };
     } catch {
       setAuthError("Network error");
       return { ok: false };
@@ -48,16 +49,16 @@ export function useAuth() {
     }
   }, [authForm.email, authForm.password]);
 
-  const logout = React.useCallback(() => {
-    localStorage.removeItem("sb_token");
+  const logout = React.useCallback(async () => {
+    // Clear the server-side HttpOnly cookie.
+    await fetch(`${WORKER}/auth/logout`, { method: "POST" }).catch(() => {});
     localStorage.removeItem("sb_email");
     setAuthToken(null);
     setAuthEmail(null);
   }, []);
 
-  // Used by the pick-load effect to clear stale tokens server-rejected as 401.
+  // Used by useAuthPickSync to drop local state when the server returns 401.
   const clearToken = React.useCallback(() => {
-    localStorage.removeItem("sb_token");
     localStorage.removeItem("sb_email");
     setAuthToken(null);
     setAuthEmail(null);

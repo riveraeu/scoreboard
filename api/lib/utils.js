@@ -24,6 +24,21 @@ export function errorResponse(msg, status = 400) {
   });
 }
 
+// Fetch with named error logging. Returns {} on any failure so callers get graceful
+// degradation without silently swallowing the root cause.
+export function fetchSafe(label, url, opts) {
+  return fetch(url, opts)
+    .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+    .catch(e => { console.error(`[${label}]`, e?.message ?? String(e), url.slice(0, 120)); return {}; });
+}
+
+// JSON response that also sets an HttpOnly cookie (used by auth login/register/logout).
+export function cookieResponse(data, cookie) {
+  return new Response(JSON.stringify(data), {
+    headers: { "Content-Type": "application/json", ...corsHeaders(), "Set-Cookie": cookie },
+  });
+}
+
 // Maps NBA stat name → ESPN byteam category hint and value index.
 export const SOFT_TEAM_METRIC = {
   points: { hint: "opponent offensive", idx: 0, label: "PPG allowed", unit: "PPG" },

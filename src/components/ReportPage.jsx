@@ -347,11 +347,11 @@ const barW = pct => pct != null ? `${Math.min(100, pct)}%` : "0%";
 const thCalib = { padding:"5px 10px", color:"#6e7681", fontSize:11, fontWeight:600, textAlign:"left", borderBottom:"1px solid #21262d", whiteSpace:"nowrap" };
 const tdCalib = { padding:"5px 10px", fontSize:11, borderBottom:"1px solid #161b22" };
 
-function CalibModule({ tabId, calibData, calibLoading, fetchCalib, authToken }) {
+function CalibModule({ tabId, calibData, calibLoading, fetchCalib, isLoggedIn }) {
   const cats = TAB_CAT[tabId] || [];
   const isKTab = tabId === "mlb-k";
 
-  if (!authToken) return (
+  if (!isLoggedIn) return (
     <div style={{..._CARD_STYLE, marginTop:8}}>
       <div style={{color:"#484f58", fontSize:12}}>Log in to see calibration data for this model.</div>
     </div>
@@ -826,7 +826,7 @@ function ReportPage({
   reportSport, setReportSport,
   fetchReport,
   // Calibration data
-  calibData, calibLoading, fetchCalib, authToken,
+  calibData, calibLoading, fetchCalib, isLoggedIn,
   // Shared nav
   navigateToPlayer, navigateToTeam,
   // Entry hints from useRouting
@@ -862,9 +862,9 @@ function ReportPage({
     }
   }, [tab, sport, reportDataBySport, reportLoadingSport, fetchReport]);
   React.useEffect(() => {
-    if (tab === "model" && authToken && !calibData && !calibLoading) fetchCalib();
+    if (tab === "model" && isLoggedIn && !calibData && !calibLoading) fetchCalib();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, authToken]);
+  }, [tab, isLoggedIn]);
 
   const reportData = reportDataBySport[sport] || null;
   const reportLoading = reportLoadingSport === sport;
@@ -991,7 +991,7 @@ function ReportPage({
             </div>
           </div>
 
-          <CalibModule tabId={playType.id} calibData={calibData} calibLoading={calibLoading} fetchCalib={fetchCalib} authToken={authToken} />
+          <CalibModule tabId={playType.id} calibData={calibData} calibLoading={calibLoading} fetchCalib={fetchCalib} isLoggedIn={isLoggedIn} />
         </div>
       )}
     </div>

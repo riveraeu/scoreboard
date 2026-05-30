@@ -35,9 +35,9 @@ export function useAuthFlow({
     // On login: load picks from server (server is authoritative).
     // On register: push current local picks to server.
     if (authMode === "register") {
-      await savePicks(res.token, trackedPlays, bankroll);
+      await savePicks(trackedPlays, bankroll);
     } else {
-      const pr = await fetch(`${WORKER}/user/picks`, { headers: { "Authorization": `Bearer ${res.token}` } });
+      const pr = await fetch(`${WORKER}/user/picks`);
       if (pr.ok) {
         const pd = await pr.json();
         setTrackedPlays(pd.picks || []);

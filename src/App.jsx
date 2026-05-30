@@ -68,7 +68,7 @@ function App() {
     initiateTrack, triggerFlyAnimation, openPickDate,
   } = usePickInteractions();
   const {
-    authToken, authEmail,
+    authEmail,
     authMode, setAuthMode,
     authForm, setAuthForm,
     authError, authLoading,
@@ -112,7 +112,7 @@ function App() {
     reportSport, setReportSport,
     calibData, calibLoading,
     fetchReport, fetchCalib,
-  } = useReportData({ authToken });
+  } = useReportData();
 
   // Qualified play filter: dcQualified=true AND edge >= 5% AND dc=10 (fully clean inputs). v1
   // (SimScore-gated) was dropped 2026-05-18 — SimScore is display/attribution only now. Mirrors
@@ -150,7 +150,7 @@ function App() {
   });
 
   useAuthPickSync({
-    authToken,
+    authEmail,
     trackedPlays, bankroll,
     savePicks, primeSync, setSyncStatus,
     setTrackedPlays, setBankrollState,
@@ -490,7 +490,7 @@ function App() {
           calibData={calibData}
           calibLoading={calibLoading}
           fetchCalib={fetchCalib}
-          authToken={authToken}
+          isLoggedIn={!!authEmail}
           navigateToPlayer={navigateToPlayer}
           navigateToTeam={navigateToTeam}
           initialTab={modelEntryOpts.tab}

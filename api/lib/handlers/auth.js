@@ -9,8 +9,29 @@
 //
 // /api/auth/calibration is here too — needs verifyJWT and shares the user-data scoping.
 
-import { errorResponse, jsonResponse } from "../utils.js";
+import { errorResponse, jsonResponse, cookieResponse } from "../utils.js";
 import { pbkdf2Hash, makeJWT, verifyJWT } from "../auth-utils.js";
+
+// Cookie name used for session persistence.
+const SESSION_COOKIE = "sb_token";
+// Max-Age = 1 year in seconds.
+const SESSION_TTL = 365 * 24 * 60 * 60;
+
+// Build the Set-Cookie header value for the session token.
+// localhost is treated as a secure origin by modern browsers, so Secure is safe in dev.
+function _cookieHeader(token, maxAge = SESSION_TTL) {
+  return `${SESSION_COOKIE}=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${maxAge}`;
+}
+
+// Extract JWT from the session cookie first, then fall back to Authorization: Bearer.
+// Fallback lets admin curl scripts keep using -H "Authorization: Bearer <token>".
+function _extractToken(request) {
+  const cookie = request.headers.get("Cookie") || "";
+  const m = cookie.match(/(?:^|;\s*)sb_token=([^;]+)/);
+  if (m?.[1]) return m[1];
+  const bearer = (request.headers.get("Authorization") || "").replace("Bearer ", "");
+  return bearer || null;
+}
 
 export async function handleAuthRoutes(ctx) {
   const { path, method, request, params, env, CACHE2, JWT_SECRET } = ctx;
@@ -26,7 +47,11 @@ export async function handleAuthRoutes(ctx) {
     const passwordHash = await pbkdf2Hash(password, salt);
     await CACHE2.put(emailKey, JSON.stringify({ id: userId, email, passwordHash, salt }));
     const token = await makeJWT({ userId, email, exp: Date.now() + 365 * 24 * 60 * 60 * 1e3 }, JWT_SECRET);
-    return jsonResponse({ token, userId, email });
+    return cookieResponse({ userId, email }, _cookieHeader(token));
+  }
+
+  if (path === "auth/logout" && method === "POST") {
+    return cookieResponse({ ok: true }, _cookieHeader("", 0));
   }
 
   if (path === "auth/login" && method === "POST") {
@@ -51,7 +76,7 @@ export async function handleAuthRoutes(ctx) {
     }
     await CACHE2.delete(failKey);
     const token = await makeJWT({ userId: user.id, email: user.email, exp: Date.now() + 365 * 24 * 60 * 60 * 1e3 }, JWT_SECRET);
-    return jsonResponse({ token, userId: user.id, email: user.email });
+    return cookieResponse({ userId: user.id, email: user.email }, _cookieHeader(token));
   }
 
   if (path === "auth/reset" && method === "POST") {
@@ -119,16 +144,14 @@ export async function handleAuthRoutes(ctx) {
   }
 
   if (path === "user/picks" && method === "GET") {
-    const token = (request.headers.get("Authorization") || "").replace("Bearer ", "");
-    const payload = await verifyJWT(token, JWT_SECRET);
+    const payload = await verifyJWT(_extractToken(request), JWT_SECRET);
     if (!payload) return errorResponse("Unauthorized", 401);
     const data = await CACHE2.get(`picks:${payload.userId}`, "json");
     return jsonResponse(data || { picks: [], bankroll: 1e3 });
   }
 
   if (path === "user/picks" && method === "POST") {
-    const token = (request.headers.get("Authorization") || "").replace("Bearer ", "");
-    const payload = await verifyJWT(token, JWT_SECRET);
+    const payload = await verifyJWT(_extractToken(request), JWT_SECRET);
     if (!payload) return errorResponse("Unauthorized", 401);
     const body = await request.json();
     // Two body shapes accepted:
@@ -154,8 +177,7 @@ export async function handleAuthRoutes(ctx) {
   }
 
   if (path === "auth/calibration" && method === "GET") {
-    const calibToken = (request.headers.get("Authorization") || "").replace("Bearer ", "");
-    const calibPayload = calibToken ? await verifyJWT(calibToken, JWT_SECRET) : null;
+    const calibPayload = await verifyJWT(_extractToken(request), JWT_SECRET);
     const calibAdminKey = params.get("adminKey");
     if (!calibPayload && calibAdminKey !== env?.ADMIN_KEY) return errorResponse("Forbidden", 403);
     const upUrl = env?.UPSTASH_REDIS_REST_URL;

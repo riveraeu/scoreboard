@@ -24,8 +24,7 @@ export function useSavePicks({ getCurrent }) {
   const getCurrentRef = React.useRef(getCurrent);
   React.useEffect(() => { getCurrentRef.current = getCurrent; }, [getCurrent]);
 
-  const savePicks = React.useCallback(async function savePicks(token, picks, roll) {
-    if (!token) return;
+  const savePicks = React.useCallback(async function savePicks(picks, roll) {
     if (inflightSave.current) { pendingSave.current = true; return; }
     inflightSave.current = true;
     try {
@@ -57,7 +56,7 @@ export function useSavePicks({ getCurrent }) {
       // once) fall back to plain fetch and rely on the active tab to keep it alive.
       const fetchOpts = {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        headers: { "Content-Type": "application/json" },
         body: bodyStr,
       };
       if (bodyStr.length < 60 * 1024) fetchOpts.keepalive = true;
@@ -79,7 +78,7 @@ export function useSavePicks({ getCurrent }) {
         pendingSave.current = false;
         // Re-run with the latest state to catch changes made during the in-flight save.
         const current = getCurrentRef.current?.();
-        if (current) setTimeout(() => savePicks(token, current.picks, current.bankroll), 0);
+        if (current) setTimeout(() => savePicks(current.picks, current.bankroll), 0);
       }
     }
   }, []);
