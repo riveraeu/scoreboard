@@ -30,7 +30,7 @@ async function _importKalshiKey(pemString) {
   const pemBody = pem.replace(/-----[^-]+-----/g, '').replace(/\s/g, '');
   const der = Uint8Array.from(atob(pemBody), c => c.charCodeAt(0));
   const pkcs8Der = pem.includes('BEGIN RSA PRIVATE KEY') ? _pkcs1ToPkcs8(der) : der;
-  return crypto.subtle.importKey('pkcs8', pkcs8Der.buffer, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign']);
+  return crypto.subtle.importKey('pkcs8', pkcs8Der.buffer, { name: 'RSA-PSS', hash: 'SHA-256' }, false, ['sign']);
 }
 
 export async function handleKalshiRoutes(ctx) {
@@ -267,19 +267,19 @@ export async function handleKalshiRoutes(ctx) {
     if (!env?.KALSHI_API_KEY_ID || !env?.KALSHI_PRIVATE_KEY) return errorResponse("Kalshi API not configured", 500);
     // Build order payload
     const kalshiPath = "/trade-api/v2/portfolio/orders";
-    const timestamp = String(Math.floor(Date.now() / 1000));
+    const timestamp = String(Date.now()); // milliseconds, as Kalshi SDK uses
     const orderPayload = {
       ticker, side, action: "buy", type: "limit", count,
       ...(side === "yes" ? { yes_price: price } : { no_price: price }),
       ...(clientOrderId ? { client_order_id: clientOrderId } : {}),
     };
     const payloadStr = JSON.stringify(orderPayload);
-    // Sign: timestamp + method + path + body
+    // Sign: timestamp + method + path only (no body) using RSA-PSS SHA-256 with DIGEST_LENGTH salt (32)
     let signature;
     try {
       const key = await _importKalshiKey(env.KALSHI_PRIVATE_KEY);
-      const msgBuf = new TextEncoder().encode(timestamp + "POST" + kalshiPath + payloadStr);
-      const sigBuf = await crypto.subtle.sign({ name: "RSASSA-PKCS1-v1_5" }, key, msgBuf);
+      const msgBuf = new TextEncoder().encode(timestamp + "POST" + kalshiPath);
+      const sigBuf = await crypto.subtle.sign({ name: "RSA-PSS", saltLength: 32 }, key, msgBuf);
       signature = btoa(String.fromCharCode(...new Uint8Array(sigBuf)));
     } catch (e) {
       return errorResponse(`Signing failed: ${e?.message || e}`, 500);
