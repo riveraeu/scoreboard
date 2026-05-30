@@ -254,7 +254,8 @@ export async function handleKalshiRoutes(ctx) {
     const _cookieM = _cookie.match(/(?:^|;\s*)sb_token=([^;]+)/);
     const jwtToken = _cookieM?.[1] || (request.headers.get("Authorization") || "").replace("Bearer ", "").trim();
     if (!jwtToken) return errorResponse("Unauthorized", 401);
-    try { await verifyJWT(jwtToken, JWT_SECRET); } catch { return errorResponse("Unauthorized", 401); }
+    const _jwtPayload = await verifyJWT(jwtToken, JWT_SECRET);
+    if (!_jwtPayload) return errorResponse("Unauthorized", 401);
     // Parse + validate body
     let body;
     try { body = await request.json(); } catch { return errorResponse("Invalid JSON", 400); }
