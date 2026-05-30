@@ -334,5 +334,42 @@ export async function handleKalshiRoutes(ctx) {
     return jsonResponse({ balanceCents, balanceDollars: balanceCents / 100 });
   }
 
+  if (path === "kalshi-fills" && method === "GET") {
+    // Admin-gated read of the account's actual Kalshi fills, signed with the server's RSA-PSS
+    // API key (no browser session cookie needed). Used to reconcile real fills vs the app's
+    // stored picks. ADMIN_KEY (Bearer) rather than user JWT so it's runnable from curl/CI.
+    const fillsAdminKey = (request.headers.get("Authorization") || "").replace("Bearer ", "").trim();
+    if (!env?.ADMIN_KEY) return errorResponse("ADMIN_KEY not set", 500);
+    if (fillsAdminKey !== env.ADMIN_KEY) return errorResponse("Forbidden", 403);
+    if (!env?.KALSHI_API_KEY_ID || !env?.KALSHI_PRIVATE_KEY) return errorResponse("Kalshi API not configured", 500);
+    // Optional filters: ?limit=N (default 200, Kalshi max 1000), ?min_ts=<unix_seconds>.
+    const _limit = Math.min(1000, Math.max(1, parseInt(params.get("limit") || "200", 10) || 200));
+    const _minTs = params.get("min_ts");
+    const _qs = `?limit=${_limit}${_minTs ? `&min_ts=${encodeURIComponent(_minTs)}` : ""}`;
+    // Signature covers the path only (no query string), matching the balance/order endpoints.
+    const kalshiPath = "/trade-api/v2/portfolio/fills";
+    const timestamp = String(Date.now());
+    let signature;
+    try {
+      const key = await _importKalshiKey(env.KALSHI_PRIVATE_KEY);
+      const msgBuf = new TextEncoder().encode(timestamp + "GET" + kalshiPath);
+      const sigBuf = await crypto.subtle.sign({ name: "RSA-PSS", saltLength: 32 }, key, msgBuf);
+      signature = btoa(String.fromCharCode(...new Uint8Array(sigBuf)));
+    } catch (e) {
+      return errorResponse(`Signing failed: ${e?.message || e}`, 500);
+    }
+    const resp = await fetch(`https://api.elections.kalshi.com${kalshiPath}${_qs}`, {
+      headers: {
+        "KALSHI-ACCESS-KEY": env.KALSHI_API_KEY_ID,
+        "KALSHI-ACCESS-TIMESTAMP": timestamp,
+        "KALSHI-ACCESS-SIGNATURE": signature,
+      },
+    }).catch(() => null);
+    if (!resp) return errorResponse("Kalshi unreachable", 502);
+    const respBody = await resp.json().catch(() => ({}));
+    if (!resp.ok) return errorResponse(respBody?.error?.message || `Kalshi error ${resp.status}`, resp.status);
+    return jsonResponse({ ok: true, fills: respBody.fills ?? [], cursor: respBody.cursor ?? null });
+  }
+
   return null;
 }
