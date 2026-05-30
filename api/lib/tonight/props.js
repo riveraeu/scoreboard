@@ -53,19 +53,19 @@ export async function emitPropPlays({
         playerColCache[cacheKey] = null;
         continue;
       }
-      getStat = /* @__PURE__ */ __name((ev) => (parseFloat(ev.stats[hIdx]) || 0) + (parseFloat(ev.stats[dIdx]) || 0) + 2 * (parseFloat(ev.stats[tIdx]) || 0) + 3 * (parseFloat(ev.stats[hrIdx]) || 0), "getStat");
+      getStat = (ev) => (parseFloat(ev.stats[hIdx]) || 0) + (parseFloat(ev.stats[dIdx]) || 0) + 2 * (parseFloat(ev.stats[tIdx]) || 0) + 3 * (parseFloat(ev.stats[hrIdx]) || 0);
     } else if (colIdx === -1 && col === "HRR" && sport === "mlb") {
       const hIdx = gl.ul.indexOf("H"), rIdx = gl.ul.indexOf("R"), rbiIdx = gl.ul.indexOf("RBI");
       if (hIdx === -1 || rIdx === -1 || rbiIdx === -1) {
         playerColCache[cacheKey] = null;
         continue;
       }
-      getStat = /* @__PURE__ */ __name((ev) => (parseFloat(ev.stats[hIdx]) || 0) + (parseFloat(ev.stats[rIdx]) || 0) + (parseFloat(ev.stats[rbiIdx]) || 0), "getStat");
+      getStat = (ev) => (parseFloat(ev.stats[hIdx]) || 0) + (parseFloat(ev.stats[rIdx]) || 0) + (parseFloat(ev.stats[rbiIdx]) || 0);
     } else if (colIdx === -1) {
       playerColCache[cacheKey] = null;
       continue;
     } else {
-      getStat = /* @__PURE__ */ __name((ev) => parseFloat(ev.stats[colIdx]), "getStat");
+      getStat = (ev) => parseFloat(ev.stats[colIdx]);
     }
     // Pitcher K props: filter gamelog to actual starts (IP ≥ 3 AND TBF ≥ 12).
     // ESPN gamelog returns all appearances; mixing relief stints in tanks per-threshold
@@ -602,7 +602,7 @@ export async function emitPropPlays({
       }
     }
     const isHomeGame = sport === "mlb" ? sportByteam.mlb?.gameHomeTeams?.[playerTeam] === playerTeam : sport === "nba" ? sportByteam.nba?.gameHomeTeams?.[playerTeam] === playerTeam : sport === "wnba" ? sportByteam.wnba?.gameHomeTeams?.[playerTeam] === playerTeam : null;
-    const yesterday = /* @__PURE__ */ new Date();
+    const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayStr = yesterday.toISOString().slice(0, 10);
     const isB2B = (sport === "nba" || sport === "nhl" || sport === "wnba") && gl.events.length > 0 && (gl.events[0]?.date || "").startsWith(yesterdayStr);
