@@ -104,7 +104,7 @@ export async function emitPropPlays({
   const wnbaPlayerDistCache = {};
   // Cache NHL stat distributions keyed by playerId|stat — same monotonicity guarantee as NBA.
   const nhlPlayerDistCache = {};
-  for (const { playerName, playerNameDisplay, sport, stat, col, threshold, kalshiPct, americanOdds, kalshiVolume, kalshiSpread, gameTeam1, gameTeam2, kalshiPlayerTeam, gameDate, lineMove, thinMarket, marketConfidence } of loopMarkets) {
+  for (const { playerName, playerNameDisplay, sport, stat, col, threshold, kalshiPct, americanOdds, kalshiVolume, kalshiSpread, gameTeam1, gameTeam2, kalshiPlayerTeam, gameDate, lineMove, thinMarket, marketConfidence, _ticker: _propKalshiTicker } of loopMarkets) {
     const key = `${sport}|${playerName}`;
     const info = playerInfoMap[key];
     const gl = playerGamelogs[key];
@@ -1568,7 +1568,8 @@ export async function emitPropPlays({
       playerStatus: sport === "nba" ? (nbaPlayerStatus[String(info.id)] || null) : null,
       lineMove: lineMove ?? null,
       thinMarket: thinMarket ?? false,
-      marketConfidence: marketConfidence ?? "thin"
+      marketConfidence: marketConfidence ?? "thin",
+      kalshiTicker: _propKalshiTicker ?? null, kalshiSide: "yes",
     });
   }
   // Save all MLB strikeout plays before dedup so we can re-add non-winning thresholds as

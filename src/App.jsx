@@ -67,6 +67,8 @@ function App() {
     fabRef,
     initiateTrack, triggerFlyAnimation, openPickDate,
   } = usePickInteractions();
+  const [placeOnKalshi, setPlaceOnKalshi] = React.useState(false);
+  const [kalshiOrderResult, setKalshiOrderResult] = React.useState(null); // null | {ok, msg}
   const {
     authEmail,
     authMode, setAuthMode,
@@ -314,9 +316,45 @@ function App() {
         const statLabel = play.stat ? play.stat.toUpperCase() : play.sport ? play.sport.toUpperCase() : "";
         const dirLabel = play.direction === "under" ? `Under ${play.threshold}` : `Over ${play.threshold}`;
         const subtitle = play.playerName ? `${play.stat?.toUpperCase()} ${play.threshold}+` : dirLabel;
+        // Kalshi order: price in cents for the side being bet, contract count at suggested stake
+        const _kalshiPrice = play.kalshiTicker ? (play.kalshiSide === "no" ? Math.round(play.noKalshiPct ?? play.kalshiPct) : Math.round(play.kalshiPct)) : null;
+        const _kalshiCount = (_kalshiPrice && suggestedStake > 0) ? Math.floor(suggestedStake / (_kalshiPrice / 100)) : 0;
+        const _kalshiCost = _kalshiCount > 0 ? parseFloat((_kalshiCount * _kalshiPrice / 100).toFixed(2)) : 0;
+        const _canPlace = play.kalshiTicker && authEmail && _kalshiCount >= 1;
+        const TRACK_MIN_EDGE = 3;
+        const _belowGate = edge !== null && edge < TRACK_MIN_EDGE;
+        const _doTrack = () => {
+          const _n = parseInt(pendingOdds.trim(), 10);
+          const oddsVal = !isNaN(_n) && pendingOdds.trim() !== "-" && pendingOdds.trim() !== "+" ? _n : null;
+          trackPlay(oddsVal ? { ...play, americanOdds: oddsVal } : play);
+          setPendingTrackPlay(null);
+          openPickDate(play.gameDate);
+          triggerFlyAnimation();
+          setPlaceOnKalshi(false);
+          setKalshiOrderResult(null);
+        };
+        const _doPlaceOrder = async () => {
+          setKalshiOrderResult({ loading: true });
+          try {
+            const r = await fetch(`${WORKER}/kalshi-order`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ticker: play.kalshiTicker, side: play.kalshiSide, price: _kalshiPrice, count: _kalshiCount }),
+              credentials: "include",
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok) {
+              setKalshiOrderResult({ ok: false, msg: data.error || `Error ${r.status}` });
+            } else {
+              setKalshiOrderResult({ ok: true, msg: `${_kalshiCount} contracts placed` });
+            }
+          } catch (e) {
+            setKalshiOrderResult({ ok: false, msg: e?.message || "Network error" });
+          }
+        };
         return (
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:700,display:"flex",alignItems:"center",justifyContent:"center"}}
-            onClick={() => setPendingTrackPlay(null)}>
+            onClick={() => { setPendingTrackPlay(null); setPlaceOnKalshi(false); setKalshiOrderResult(null); }}>
             <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:12,padding:"20px 22px",width:360}}
               onClick={e => e.stopPropagation()}>
               <div style={{fontSize:13,color:"#c9d1d9",fontWeight:600,marginBottom:2}}>{name}</div>
@@ -335,14 +373,9 @@ function App() {
                       // Looser than the home-page qualified gate (5%) — picks tracked at 3-5% edge
                       // are intentional, not misclicks; we only disable the truly negative-EV cases.
                       if (edge !== null && edge < 3) return;
-                      const _n = parseInt(pendingOdds.trim(), 10);
-                      const oddsVal = !isNaN(_n) && pendingOdds.trim() !== "-" && pendingOdds.trim() !== "+" ? _n : null;
-                      trackPlay(oddsVal ? { ...play, americanOdds: oddsVal } : play);
-                      setPendingTrackPlay(null);
-                      openPickDate(play.gameDate);
-                      triggerFlyAnimation();
+                      _doTrack();
                     } else if (e.key === "Escape") {
-                      setPendingTrackPlay(null);
+                      setPendingTrackPlay(null); setPlaceOnKalshi(false); setKalshiOrderResult(null);
                     }
                   }}
                   style={{flex:1,background:"#0d1117",border:"1px solid #30363d",borderRadius:7,
@@ -362,47 +395,61 @@ function App() {
                 </div>
               )}
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",
-                marginBottom:14,fontSize:11,color:"#484f58"}}>
+                marginBottom: _canPlace ? 8 : 14,fontSize:11,color:"#484f58"}}>
                 <span>Suggested stake (⅛-Kelly)</span>
                 <span style={{color:"#c9d1d9",fontWeight:700}}>${suggestedStake}</span>
               </div>
+              {_canPlace && (
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14,fontSize:11}}>
+                  <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",color:"#8b949e"}}>
+                    <input type="checkbox" checked={placeOnKalshi} onChange={e => { setPlaceOnKalshi(e.target.checked); setKalshiOrderResult(null); }}
+                      style={{accentColor:"#388bfd",cursor:"pointer"}} />
+                    Place on Kalshi
+                  </label>
+                  {placeOnKalshi && (
+                    <span style={{color:"#c9d1d9"}}>
+                      {_kalshiCount} × {_kalshiPrice}¢ = <span style={{fontWeight:700}}>${_kalshiCost}</span>
+                    </span>
+                  )}
+                </div>
+              )}
+              {kalshiOrderResult && (
+                <div style={{marginBottom:10,fontSize:11,padding:"5px 8px",borderRadius:6,
+                  background: kalshiOrderResult.loading ? "rgba(136,176,253,0.08)" : kalshiOrderResult.ok ? "rgba(63,185,80,0.12)" : "rgba(247,129,102,0.12)",
+                  color: kalshiOrderResult.loading ? "#8b949e" : kalshiOrderResult.ok ? "#3fb950" : "#f78166",
+                  border: `1px solid ${kalshiOrderResult.loading ? "#30363d" : kalshiOrderResult.ok ? "#3fb950" : "#f78166"}`,
+                }}>
+                  {kalshiOrderResult.loading ? "Placing order…" : kalshiOrderResult.msg}
+                </div>
+              )}
               <div style={{display:"flex",gap:8}}>
-                <button onClick={() => setPendingTrackPlay(null)}
+                <button onClick={() => { setPendingTrackPlay(null); setPlaceOnKalshi(false); setKalshiOrderResult(null); }}
                   style={{flex:1,padding:"8px 0",fontSize:12,borderRadius:7,border:"1px solid #30363d",
                     background:"transparent",color:"#8b949e",cursor:"pointer"}}>
                   Cancel
                 </button>
-                {(() => {
-                  // Disable when entered odds put edge below the track-popup gate (3%) — looser
-                  // than the home-page qualified filter (5%) since picks at 3-5% edge are still
-                  // intentional adds (closing-line value, hedges, etc.), just won't surface in
-                  // the qualified feed. Edge null (no odds entered) doesn't disable.
-                  const TRACK_MIN_EDGE = 3;
-                  const _belowGate = edge !== null && edge < TRACK_MIN_EDGE;
-                  return (
-                    <button
-                      disabled={_belowGate}
-                      title={_belowGate ? `Edge ${edge}% is below the ${TRACK_MIN_EDGE}% minimum — adjust odds or cancel` : undefined}
-                      onClick={() => {
-                        if (_belowGate) return;
-                        const _n = parseInt(pendingOdds.trim(), 10);
-                        const oddsVal = !isNaN(_n) && pendingOdds.trim() !== "-" && pendingOdds.trim() !== "+" ? _n : null;
-                        trackPlay(oddsVal ? { ...play, americanOdds: oddsVal } : play);
-                        setPendingTrackPlay(null);
-                        openPickDate(play.gameDate);
-                        triggerFlyAnimation();
-                      }}
-                      style={{flex:1,padding:"8px 0",fontSize:12,borderRadius:7,
-                        border:`1px solid ${_belowGate ? "#30363d" : "#3fb950"}`,
-                        background: _belowGate ? "transparent" : "rgba(63,185,80,0.12)",
-                        color: _belowGate ? "#484f58" : "#3fb950",
-                        cursor: _belowGate ? "not-allowed" : "pointer",
-                        fontWeight:600,
-                        opacity: _belowGate ? 0.6 : 1}}>
-                      Add Pick
-                    </button>
-                  );
-                })()}
+                <button
+                  disabled={_belowGate || kalshiOrderResult?.loading}
+                  title={_belowGate ? `Edge ${edge}% is below the ${TRACK_MIN_EDGE}% minimum — adjust odds or cancel` : undefined}
+                  onClick={async () => {
+                    if (_belowGate || kalshiOrderResult?.loading) return;
+                    if (placeOnKalshi && _kalshiCount >= 1) {
+                      await _doPlaceOrder();
+                      // Short pause so the user sees the result, then close + track
+                      setTimeout(_doTrack, 1200);
+                    } else {
+                      _doTrack();
+                    }
+                  }}
+                  style={{flex:1,padding:"8px 0",fontSize:12,borderRadius:7,
+                    border:`1px solid ${_belowGate ? "#30363d" : "#3fb950"}`,
+                    background: _belowGate ? "transparent" : "rgba(63,185,80,0.12)",
+                    color: _belowGate ? "#484f58" : "#3fb950",
+                    cursor: _belowGate || kalshiOrderResult?.loading ? "not-allowed" : "pointer",
+                    fontWeight:600,
+                    opacity: _belowGate ? 0.6 : 1}}>
+                  {placeOnKalshi && _kalshiCount >= 1 ? "Track + Place" : "Add Pick"}
+                </button>
               </div>
             </div>
           </div>

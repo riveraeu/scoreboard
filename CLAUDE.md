@@ -38,7 +38,7 @@ Single Vercel Edge Function. `api/[...path].js` is now a ~140-line thin router: 
 - `api/lib/handlers/player.js` — `/api/player`, `/api/gamelog`, `/api/headshot`
 - `api/lib/handlers/sports.js` — `/api/team`, `/api/live`
 - `api/lib/handlers/dvp.js` — `/api/dvp`, `/api/nba-depth`, `/api/dvp/debug-dc`
-- `api/lib/handlers/kalshi.js` — `/api/kalshi`, `/api/kalshi-snapshot`, `/api/keepalive`
+- `api/lib/handlers/kalshi.js` — `/api/kalshi`, `/api/kalshi-snapshot`, `/api/keepalive`, `/api/kalshi-order`
 - `api/lib/handlers/tonight.js` — `/api/tonight` (the play-generation pipeline, ~1857 lines after Phase B6, 2026-05-29). Remaining: Kalshi parse loop, byteam hydration, data-prep fetches, emit calls, post-emit passes, response assembly. Owns `KALSHI_GATE`/`KALSHI_CAP`/`EDGE_GATE`, `PROD_SPORTS`, `B2B_*` constants, `_isB2B` helper. `TEAM_NORM`/`normTeam`/`parseGameTeams` moved to `api/lib/tonight/parse-teams.js`; `NHL_ABBR_MAP` exported from `api/lib/nhl.js`; ML/spread/F5/halves emission moved to `api/lib/tonight/ml-spread.js`; pure helpers (nhlSoftTeams, mlbSoftTeams, glCacheKey, _parseWind, _extractMlbWeather, injury helpers) hoisted to module scope within tonight.js.
 
 The sport/utility modules under `api/lib/`:
@@ -81,6 +81,7 @@ See `docs/INFRA.md` for storage and cache details.
 - `/api/dvp`, `/api/nba-depth`, `/api/dvp/debug-dc` — DVP/depth chart. Branches: `basketball/nba`, `basketball/wnba` (returns `position`, `rankMaps`/`softTeams`/`hardTeams` for points/rebounds/assists/threePointers from `byteam:wnba`; canonical aliases added via `WNBA_ESPN_TO_CANON` so lookups by ticker abbr resolve), `football/nfl`, `hockey/nhl`, `baseball/mlb`.
 - `/api/auth/{register,login,reset,list-users,debug-redis,calibration,clear-kalshi-stale}` — auth + admin. Password min 8 chars. Admin endpoints fail-closed if `ADMIN_KEY` missing.
 - `/api/auth/clear-kalshi-stale` — `POST ?ticker=KXMLBTEAMTOTAL` with `Authorization: Bearer <ADMIN_KEY>`. Deletes `kalshi:stale:{ticker}` so the next cold bundle build attempts Kalshi fresh instead of serving the stale entry. Use when a series has been rate-limit-stuck on stale data past the 30-min TTL window. Ticker validated against `/^KX[A-Z0-9]+$/`. Does **not** affect `kalshi:snap:{ticker}` — those refresh on the 2-min cron.
+- `/api/kalshi-order` — `POST`, authenticated (cookie `sb_token` first, then `Authorization: Bearer`). Places a limit buy order on Kalshi's trading API. Body: `{ ticker, side: "yes"|"no", price: int (1–99 cents), count: int, clientOrderId? }`. Signs via RSASSA-PKCS1-v1_5 / SHA-256 using `KALSHI_API_KEY_ID` + `KALSHI_PRIVATE_KEY` env vars (PEM — supports both PKCS#1 `BEGIN RSA PRIVATE KEY` and PKCS#8; `_pkcs1ToPkcs8()` wraps PKCS#1 in a PKCS#8 ASN.1 container for Web Crypto). Signature message: `timestamp + "POST" + "/trade-api/v2/portfolio/orders" + bodyStr`. Every qualifying play now carries `kalshiTicker` (specific market ticker) and `kalshiSide` ("yes"/"no") in the `/api/tonight` response. Frontend shows a "Place on Kalshi" toggle in the track-play modal when the play has a ticker and the user is logged in; button becomes "Track + Place" which fires the order then tracks the pick with a 1.2s delay.
 - `/api/kalshi-snapshot` — cron-only (`*/2 * * * *` in vercel.json). Fetches all 26 Kalshi series tickers (19 SERIES_CONFIG + game totals + KXMLBGAME + KXNBAGAME) and writes per-ticker `kalshi:snap:{ticker}` keys via Upstash pipeline. Bearer-auth: `CRON_SECRET`. Returns `{ok, successCount, failedCount, failed[], durationMs}`. **Hardcoded ticker list MUST stay in sync** with `SERIES_CONFIG` inside `/api/tonight` — add new series to both places.
 - `/api/auth/calibration` — outcome stats. Auth: bearer JWT (any user) or `?adminKey=`. Returns `overall`, `byCategory`, `byCategoryDetail` (per-category truePct buckets, used by the `CalibModule` per ReportPage Model tab), `kStrikeouts` (K-feature breakdowns).
 - `/api/user/picks` — GET/POST user picks (bearer JWT). POST accepts two body shapes: legacy `{picks: [...all], bankroll}` (full overwrite, kept for old cached clients) and delta `{upserts: [pick,...], deletes: [id,...], bankroll}` (read-modify-write merge). Client always sends delta. Initial load seeds `lastSyncedPicks` ref on the frontend so the first save after mount is a true diff. See `savePicks` in `src/App.jsx`.
@@ -182,6 +183,8 @@ const env = {
   JWT_SECRET: process.env.JWT_SECRET,
   ADMIN_KEY: process.env.ADMIN_KEY,
   CRON_SECRET: process.env.CRON_SECRET,
+  KALSHI_API_KEY_ID: process.env.KALSHI_API_KEY_ID,
+  KALSHI_PRIVATE_KEY: process.env.KALSHI_PRIVATE_KEY,
 };
 ```
 Symptom of missing wire-up: `env?.VAR` is `undefined` even though Vercel dashboard shows it set. JWT_SECRET specifically: `TextEncoder.encode(undefined)` = 0 bytes → `"Imported HMAC key length (0)"` 500 on login.

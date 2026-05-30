@@ -76,8 +76,9 @@ export async function emitAllMlAndSpread({
       if (!eventT || !abbr) continue;
       const p = _kImpliedProbMl(m);
       if (!p || p <= 0 || p >= 1) continue;
-      if (!_byEventMl[eventT]) _byEventMl[eventT] = { probs: {}, gameDate: _kGameDateMl(m) };
+      if (!_byEventMl[eventT]) _byEventMl[eventT] = { probs: {}, tickers: {}, gameDate: _kGameDateMl(m) };
       _byEventMl[eventT].probs[abbr] = p;
+      _byEventMl[eventT].tickers[abbr] = tk;
     }
     for (const info of Object.values(_byEventMl)) {
       const teams = Object.keys(info.probs);
@@ -89,7 +90,7 @@ export async function emitAllMlAndSpread({
       const _mlResolved = Math.min(info.probs[t1], info.probs[t2]) <= 0.02
                         || Math.max(info.probs[t1], info.probs[t2]) >= 0.99;
       const _attrDate = _reattrMlbGameDate(info.gameDate, t1, t2, _mlResolved);
-      const yesPayload = { yesByTeam: { [t1]: info.probs[t1], [t2]: info.probs[t2] } };
+      const yesPayload = { yesByTeam: { [t1]: info.probs[t1], [t2]: info.probs[t2] }, tickerByTeam: { [t1]: info.tickers?.[t1], [t2]: info.tickers?.[t2] } };
       _mlbMlMarkets[`${t1}|${t2}|${_attrDate}`] = yesPayload;
       _mlbMlMarkets[`${t2}|${t1}|${_attrDate}`] = yesPayload;
     }
@@ -134,6 +135,7 @@ export async function emitAllMlAndSpread({
             totalSimScore: 0, qualified: false,
             kalshiVolume, kalshiSpread, lowVolume,
             gameTime: _gameTime, lineupsConfirmed: _lineupsConfirmed,
+            kalshiTicker: mlMarket.tickerByTeam?.[pickTeam] ?? null, kalshiSide: "yes",
             homeLambda, awayLambda,
             ..._simData,
           });
@@ -200,6 +202,7 @@ export async function emitAllMlAndSpread({
             totalSimScore: 0, qualified: false,
             kalshiVolume, kalshiSpread, lowVolume: ctx.lowVolume,
             gameTime: _gameTime, lineupsConfirmed: _lineupsConfirmed,
+            kalshiTicker: m._ticker ?? null, kalshiSide: dir === "yes" ? "yes" : "no",
             homeLambda, awayLambda,
             ..._simData,
           });
@@ -279,7 +282,7 @@ export async function emitAllMlAndSpread({
         const edge = parseFloat((truePct - kalshiPct).toFixed(1));
         const inWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
         if (edge >= EDGE_GATE && inWindow) {
-          plays.push({ ..._f5Common, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge });
+          plays.push({ ..._f5Common, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge, kalshiTicker: tm._ticker ?? null, kalshiSide: "yes" });
         } else if (isDebug && inWindow) {
           dropped.push({ ..._f5Common, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge, reason: "edge_too_low" });
         }
@@ -289,7 +292,7 @@ export async function emitAllMlAndSpread({
         const edge = parseFloat((noTruePct - _tmNoPct).toFixed(1));
         const inWindow = _tmNoPct >= KALSHI_GATE && _tmNoPct <= KALSHI_CAP;
         if (edge >= EDGE_GATE && inWindow) {
-          plays.push({ ..._f5Common, direction: "under", kalshiPct, noKalshiPct: _tmNoPct, americanOdds: _tmNoAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, edge });
+          plays.push({ ..._f5Common, direction: "under", kalshiPct, noKalshiPct: _tmNoPct, americanOdds: _tmNoAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, edge, kalshiTicker: tm._ticker ?? null, kalshiSide: "no" });
         } else if (isDebug && inWindow) {
           dropped.push({ ..._f5Common, direction: "under", kalshiPct, noKalshiPct: _tmNoPct, americanOdds: _tmNoAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, edge, reason: _tmNoPct < KALSHI_GATE ? "under_no_price_too_low" : "edge_too_low" });
         }
@@ -339,6 +342,7 @@ export async function emitAllMlAndSpread({
           totalSimScore: 0, qualified: false,
           kalshiVolume, kalshiSpread, lowVolume: ctx.lowVolume,
           gameTime: _gameTime, lineupsConfirmed: _lineupsConfirmed,
+          kalshiTicker: m._ticker ?? null, kalshiSide: dir === "yes" ? "yes" : "no",
           ..._simData,
           // F5-specific overrides (must follow _simData spread to win)
           homeLambda: f5HomeLambda, awayLambda: f5AwayLambda,
@@ -405,8 +409,9 @@ export async function emitAllMlAndSpread({
         if (!eventT || !key) continue;
         const p = _kImpliedProbF5Ml(m);
         if (!p || p <= 0 || p >= 1) continue;
-        if (!_byEventF5[eventT]) _byEventF5[eventT] = { probs: {}, gameDate: _kGameDateF5Ml(m) };
+        if (!_byEventF5[eventT]) _byEventF5[eventT] = { probs: {}, tickers: {}, gameDate: _kGameDateF5Ml(m) };
         _byEventF5[eventT].probs[key] = p;
+        _byEventF5[eventT].tickers[key] = tk;
       }
       for (const info of Object.values(_byEventF5)) {
         const keys = Object.keys(info.probs);
@@ -418,7 +423,7 @@ export async function emitAllMlAndSpread({
         const _resolved = Math.min(...keys.map(k => info.probs[k])) <= 0.02
                         || Math.max(...keys.map(k => info.probs[k])) >= 0.99;
         const _attrDate = _reattrMlbGameDate(info.gameDate, t1, t2, _resolved);
-        const payload = { probs: { ...info.probs } };
+        const payload = { probs: { ...info.probs }, tickersByKey: { ...info.tickers } };
         _mlbF5MlMarkets[`${t1}|${t2}|${_attrDate}`] = payload;
         _mlbF5MlMarkets[`${t2}|${t1}|${_attrDate}`] = payload;
       }
@@ -467,6 +472,7 @@ export async function emitAllMlAndSpread({
             totalSimScore: 0, qualified: false,
             kalshiVolume, kalshiSpread, lowVolume,
             gameTime: _gameTime, lineupsConfirmed: _lineupsConfirmed,
+            kalshiTicker: f5MlMarket.tickersByKey?.[s.pickTeam] ?? null, kalshiSide: "yes",
             ..._simData,
             // F5-specific overrides (must follow _simData spread to win)
             homeLambda: f5HomeLambda, awayLambda: f5AwayLambda,
@@ -534,14 +540,15 @@ export async function emitAllMlAndSpread({
       if (!eventT || !abbr) continue;
       const p = _kImpliedProbMlN(m);
       if (!p || p <= 0 || p >= 1) continue;
-      if (!_byEventMlN[eventT]) _byEventMlN[eventT] = { probs: {}, gameDate: _kGameDateMlN(m) };
+      if (!_byEventMlN[eventT]) _byEventMlN[eventT] = { probs: {}, tickers: {}, gameDate: _kGameDateMlN(m) };
       _byEventMlN[eventT].probs[abbr] = p;
+      _byEventMlN[eventT].tickers[abbr] = tk;
     }
     for (const info of Object.values(_byEventMlN)) {
       const teams = Object.keys(info.probs);
       if (teams.length !== 2 || !info.gameDate) continue;
       const [t1, t2] = teams;
-      const yesPayload = { yesByTeam: { [t1]: info.probs[t1], [t2]: info.probs[t2] } };
+      const yesPayload = { yesByTeam: { [t1]: info.probs[t1], [t2]: info.probs[t2] }, tickerByTeam: { [t1]: info.tickers?.[t1], [t2]: info.tickers?.[t2] } };
       _nbaMlMarkets[`${t1}|${t2}|${info.gameDate}`] = yesPayload;
       _nbaMlMarkets[`${t2}|${t1}|${info.gameDate}`] = yesPayload;
     }
@@ -583,6 +590,7 @@ export async function emitAllMlAndSpread({
             totalSimScore: 0, qualified: false,
             kalshiVolume, kalshiSpread, lowVolume,
             gameTime: _gameTime,
+            kalshiTicker: mlMarket.tickerByTeam?.[pickTeam] ?? null, kalshiSide: "yes",
             homeLambda, awayLambda,
             ..._simData,
           });
@@ -641,6 +649,7 @@ export async function emitAllMlAndSpread({
             totalSimScore: 0, qualified: false,
             kalshiVolume, kalshiSpread, lowVolume: ctx.lowVolume,
             gameTime: _gameTime,
+            kalshiTicker: m._ticker ?? null, kalshiSide: dir === "yes" ? "yes" : "no",
             homeLambda, awayLambda,
             ..._simData,
           });
@@ -707,14 +716,15 @@ export async function emitAllMlAndSpread({
       if (!eventT || !abbr) continue;
       const p = _kImpliedProbMlW(m);
       if (!p || p <= 0 || p >= 1) continue;
-      if (!_byEventMlW[eventT]) _byEventMlW[eventT] = { probs: {}, gameDate: _kGameDateMlW(m) };
+      if (!_byEventMlW[eventT]) _byEventMlW[eventT] = { probs: {}, tickers: {}, gameDate: _kGameDateMlW(m) };
       _byEventMlW[eventT].probs[abbr] = p;
+      _byEventMlW[eventT].tickers[abbr] = tk;
     }
     for (const info of Object.values(_byEventMlW)) {
       const teams = Object.keys(info.probs);
       if (teams.length !== 2 || !info.gameDate) continue;
       const [t1, t2] = teams;
-      const yesPayload = { yesByTeam: { [t1]: info.probs[t1], [t2]: info.probs[t2] } };
+      const yesPayload = { yesByTeam: { [t1]: info.probs[t1], [t2]: info.probs[t2] }, tickerByTeam: { [t1]: info.tickers?.[t1], [t2]: info.tickers?.[t2] } };
       _wnbaMlMarkets[`${t1}|${t2}|${info.gameDate}`] = yesPayload;
       _wnbaMlMarkets[`${t2}|${t1}|${info.gameDate}`] = yesPayload;
     }
@@ -755,6 +765,7 @@ export async function emitAllMlAndSpread({
             totalSimScore: 0, qualified: false,
             kalshiVolume, kalshiSpread, lowVolume,
             gameTime: _gameTime,
+            kalshiTicker: mlMarket.tickerByTeam?.[pickTeam] ?? null, kalshiSide: "yes",
             homeLambda, awayLambda,
             ..._simData,
           });
@@ -811,6 +822,7 @@ export async function emitAllMlAndSpread({
             totalSimScore: 0, qualified: false,
             kalshiVolume, kalshiSpread, lowVolume: ctx.lowVolume,
             gameTime: _gameTime,
+            kalshiTicker: m._ticker ?? null, kalshiSide: dir === "yes" ? "yes" : "no",
             homeLambda, awayLambda,
             ..._simData,
           });
@@ -888,8 +900,9 @@ export async function emitAllMlAndSpread({
         if (!eventT || !key) continue;
         const p = _impP(m);
         if (!p || p <= 0 || p >= 1) continue;
-        if (!_byEv[eventT]) _byEv[eventT] = { probs: {}, gameDate: _gd(m) };
+        if (!_byEv[eventT]) _byEv[eventT] = { probs: {}, tickers: {}, gameDate: _gd(m) };
         _byEv[eventT].probs[key] = p;
+        _byEv[eventT].tickers[key] = tk;
       }
       for (const info of Object.values(_byEv)) {
         const keys = Object.keys(info.probs);
@@ -897,7 +910,7 @@ export async function emitAllMlAndSpread({
         if (!keys.includes("TIE")) continue;
         const teams = keys.filter(k => k !== "TIE");
         const [t1, t2] = teams;
-        const payload = { probs: { ...info.probs } };
+        const payload = { probs: { ...info.probs }, tickersByKey: { ...info.tickers } };
         _halvesWinnerMarkets[`${_sportH}|${t1}|${t2}|${info.gameDate}|${_halfH}`] = payload;
         _halvesWinnerMarkets[`${_sportH}|${t2}|${t1}|${info.gameDate}|${_halfH}`] = payload;
       }
@@ -960,14 +973,14 @@ export async function emitAllMlAndSpread({
         {
           const edge = parseFloat((truePct - kalshiPct).toFixed(1));
           const inWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
-          if (edge >= EDGE_GATE && inWindow) plays.push({ ..._base, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge });
+          if (edge >= EDGE_GATE && inWindow) plays.push({ ..._base, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge, kalshiTicker: tm._ticker ?? null, kalshiSide: "yes" });
           else if (isDebug && inWindow) dropped.push({ ..._base, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge, reason: "edge_too_low" });
         }
         // UNDER
         {
           const edge = parseFloat((noTruePct - _tmNoPct).toFixed(1));
           const inWindow = _tmNoPct >= KALSHI_GATE && _tmNoPct <= KALSHI_CAP;
-          if (edge >= EDGE_GATE && inWindow) plays.push({ ..._base, direction: "under", kalshiPct, noKalshiPct: _tmNoPct, americanOdds: _tmNoAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, edge });
+          if (edge >= EDGE_GATE && inWindow) plays.push({ ..._base, direction: "under", kalshiPct, noKalshiPct: _tmNoPct, americanOdds: _tmNoAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, edge, kalshiTicker: tm._ticker ?? null, kalshiSide: "no" });
           else if (isDebug && inWindow) dropped.push({ ..._base, direction: "under", kalshiPct, noKalshiPct: _tmNoPct, americanOdds: _tmNoAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, edge, reason: _tmNoPct < KALSHI_GATE ? "under_no_price_too_low" : "edge_too_low" });
         }
       }
@@ -1012,6 +1025,7 @@ export async function emitAllMlAndSpread({
             totalSimScore: 0, qualified: false,
             kalshiVolume, kalshiSpread, lowVolume: ctx.lowVolume,
             gameTime: _gameTime,
+            kalshiTicker: m._ticker ?? null, kalshiSide: dir === "yes" ? "yes" : "no",
             ..._simData,
             homeLambda: hλ, awayLambda: aλ,
             homeExpected: hλ, awayExpected: aλ,
@@ -1064,6 +1078,7 @@ export async function emitAllMlAndSpread({
             totalSimScore: 0, qualified: false,
             kalshiVolume, kalshiSpread, lowVolume,
             gameTime: _gameTime,
+            kalshiTicker: wMarket.tickersByKey?.[s.pickTeam] ?? null, kalshiSide: "yes",
             ..._simData,
             homeLambda: hλ, awayLambda: aλ,
             homeExpected: hλ, awayExpected: aλ,
@@ -1127,14 +1142,15 @@ export async function emitAllMlAndSpread({
       if (!eventT || !abbr) continue;
       const p = _kImpliedProbMlH(m);
       if (!p || p <= 0 || p >= 1) continue;
-      if (!_byEventMlH[eventT]) _byEventMlH[eventT] = { probs: {}, gameDate: _kGameDateMlH(m) };
+      if (!_byEventMlH[eventT]) _byEventMlH[eventT] = { probs: {}, tickers: {}, gameDate: _kGameDateMlH(m) };
       _byEventMlH[eventT].probs[abbr] = p;
+      _byEventMlH[eventT].tickers[abbr] = tk;
     }
     for (const info of Object.values(_byEventMlH)) {
       const teams = Object.keys(info.probs);
       if (teams.length !== 2 || !info.gameDate) continue;
       const [t1, t2] = teams;
-      const yesPayload = { yesByTeam: { [t1]: info.probs[t1], [t2]: info.probs[t2] } };
+      const yesPayload = { yesByTeam: { [t1]: info.probs[t1], [t2]: info.probs[t2] }, tickerByTeam: { [t1]: info.tickers?.[t1], [t2]: info.tickers?.[t2] } };
       _nhlMlMarkets[`${t1}|${t2}|${info.gameDate}`] = yesPayload;
       _nhlMlMarkets[`${t2}|${t1}|${info.gameDate}`] = yesPayload;
     }
@@ -1175,6 +1191,7 @@ export async function emitAllMlAndSpread({
             totalSimScore: 0, qualified: false,
             kalshiVolume, kalshiSpread, lowVolume,
             gameTime: _gameTime,
+            kalshiTicker: mlMarket.tickerByTeam?.[pickTeam] ?? null, kalshiSide: "yes",
             homeLambda, awayLambda,
             ..._simData,
           });
@@ -1236,6 +1253,7 @@ export async function emitAllMlAndSpread({
             totalSimScore: 0, qualified: false,
             kalshiVolume, kalshiSpread, lowVolume: ctx.lowVolume,
             gameTime: _gameTime,
+            kalshiTicker: m._ticker ?? null, kalshiSide: dir === "yes" ? "yes" : "no",
             homeLambda, awayLambda,
             ..._simData,
           });

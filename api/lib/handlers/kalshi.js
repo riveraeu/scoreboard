@@ -10,11 +10,31 @@
 
 import { jsonResponse, errorResponse } from "../utils.js";
 import { SERIES_CONFIG, CRON_ONLY_TICKERS } from "../series-config.js";
+import { verifyJWT } from "../auth-utils.js";
 
 const normName = (s) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
+// Wrap PKCS#1 RSA private key DER bytes in a PKCS#8 container for Web Crypto importKey.
+function _pkcs1ToPkcs8(pkcs1Der) {
+  const _encLen = (len) => len < 128 ? [len] : len < 256 ? [0x81, len] : [0x82, (len >> 8) & 0xff, len & 0xff];
+  const _seq = (c) => [0x30, ..._encLen(c.length), ...c];
+  // AlgorithmIdentifier: SEQUENCE { OID rsaEncryption, NULL }
+  const algId = _seq([0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01, 0x05, 0x00]);
+  const version = [0x02, 0x01, 0x00];
+  const octetStr = [0x04, ..._encLen(pkcs1Der.length), ...pkcs1Der];
+  return new Uint8Array(_seq([...version, ...algId, ...octetStr]));
+}
+
+async function _importKalshiKey(pemString) {
+  const pem = pemString.replace(/\\n/g, '\n').trim();
+  const pemBody = pem.replace(/-----[^-]+-----/g, '').replace(/\s/g, '');
+  const der = Uint8Array.from(atob(pemBody), c => c.charCodeAt(0));
+  const pkcs8Der = pem.includes('BEGIN RSA PRIVATE KEY') ? _pkcs1ToPkcs8(der) : der;
+  return crypto.subtle.importKey('pkcs8', pkcs8Der.buffer, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign']);
+}
+
 export async function handleKalshiRoutes(ctx) {
-  const { path, request, params, env, CACHE2 } = ctx;
+  const { path, request, params, env, CACHE2, method, JWT_SECRET } = ctx;
 
   if (path === "keepalive") {
     if (CACHE2) await CACHE2.put("keepalive", new Date().toISOString(), { expirationTtl: 172800 });
@@ -225,6 +245,58 @@ export async function handleKalshiRoutes(ctx) {
       failed: _snapFailed,
       durationMs: Date.now() - startMs,
     });
+  }
+
+  if (path === "kalshi-order" && method === "POST") {
+    // Verify user JWT — cookie first, then Authorization: Bearer fallback
+    if (!JWT_SECRET) return errorResponse("Auth not configured", 500);
+    const _cookie = request.headers.get("Cookie") || "";
+    const _cookieM = _cookie.match(/(?:^|;\s*)sb_token=([^;]+)/);
+    const jwtToken = _cookieM?.[1] || (request.headers.get("Authorization") || "").replace("Bearer ", "").trim();
+    if (!jwtToken) return errorResponse("Unauthorized", 401);
+    try { await verifyJWT(jwtToken, JWT_SECRET); } catch { return errorResponse("Unauthorized", 401); }
+    // Parse + validate body
+    let body;
+    try { body = await request.json(); } catch { return errorResponse("Invalid JSON", 400); }
+    const { ticker, side, price, count, clientOrderId } = body || {};
+    if (!ticker || !side || price == null || count == null) return errorResponse("Missing required fields: ticker, side, price, count", 400);
+    if (side !== "yes" && side !== "no") return errorResponse("side must be 'yes' or 'no'", 400);
+    if (!Number.isInteger(count) || count < 1 || count > 9999) return errorResponse("count must be integer 1–9999", 400);
+    if (!Number.isInteger(price) || price < 1 || price > 99) return errorResponse("price must be integer 1–99 (cents)", 400);
+    if (!env?.KALSHI_API_KEY_ID || !env?.KALSHI_PRIVATE_KEY) return errorResponse("Kalshi API not configured", 500);
+    // Build order payload
+    const kalshiPath = "/trade-api/v2/portfolio/orders";
+    const timestamp = String(Date.now());
+    const orderPayload = {
+      ticker, side, action: "buy", type: "limit", count,
+      ...(side === "yes" ? { yes_price: price } : { no_price: price }),
+      ...(clientOrderId ? { client_order_id: clientOrderId } : {}),
+    };
+    const payloadStr = JSON.stringify(orderPayload);
+    // Sign: timestamp + method + path + body
+    let signature;
+    try {
+      const key = await _importKalshiKey(env.KALSHI_PRIVATE_KEY);
+      const msgBuf = new TextEncoder().encode(timestamp + "POST" + kalshiPath + payloadStr);
+      const sigBuf = await crypto.subtle.sign({ name: "RSASSA-PKCS1-v1_5" }, key, msgBuf);
+      signature = btoa(String.fromCharCode(...new Uint8Array(sigBuf)));
+    } catch (e) {
+      return errorResponse(`Signing failed: ${e?.message || e}`, 500);
+    }
+    const resp = await fetch(`https://trading-api.kalshi.com${kalshiPath}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "KALSHI-ACCESS-KEY": env.KALSHI_API_KEY_ID,
+        "KALSHI-ACCESS-TIMESTAMP": timestamp,
+        "KALSHI-ACCESS-SIGNATURE": signature,
+      },
+      body: payloadStr,
+    }).catch(() => null);
+    if (!resp) return errorResponse("Kalshi unreachable", 502);
+    const respBody = await resp.json().catch(() => ({}));
+    if (!resp.ok) return errorResponse(respBody?.error?.message || `Kalshi error ${resp.status}`, resp.status);
+    return jsonResponse({ ok: true, order: respBody.order ?? respBody });
   }
 
   return null;

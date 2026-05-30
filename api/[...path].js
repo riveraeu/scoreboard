@@ -123,7 +123,7 @@ var worker_default = {
       if (_sportsResp) return _sportsResp;
       const _dvpResp = await handleDvpRoutes({ path, params, CACHE2, runtimeCtx: ctx, ESPN_CORE, jsonResponse, errorResponse });
       if (_dvpResp) return _dvpResp;
-      const _kalshiResp = await handleKalshiRoutes({ path, request, params, env, CACHE2 });
+      const _kalshiResp = await handleKalshiRoutes({ path, request, params, env, CACHE2, method, JWT_SECRET });
       if (_kalshiResp) return _kalshiResp;
       const _tonightResp = await handleTonightRoute({ path, params, request, env, CACHE2, runtimeCtx: ctx });
       if (_tonightResp) return _tonightResp;
@@ -143,6 +143,8 @@ export default async function handler(request) {
     JWT_SECRET: process.env.JWT_SECRET,
     ADMIN_KEY: process.env.ADMIN_KEY,
     CRON_SECRET: process.env.CRON_SECRET,
+    KALSHI_API_KEY_ID: process.env.KALSHI_API_KEY_ID,
+    KALSHI_PRIVATE_KEY: process.env.KALSHI_PRIVATE_KEY,
   };
   const ctx = { waitUntil: (p) => { try { p.catch?.(() => {}); } catch {} } };
   return worker_default.fetch(request, env, ctx);
