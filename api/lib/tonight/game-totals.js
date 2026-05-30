@@ -64,6 +64,10 @@ export async function emitGameTotalPlays({
   nbaInjuryMap, wnbaInjuryMap, nbaUsageMap, wnbaUsageMap,
   mlbBothTeamsConfirmed: _mlbBothTeamsConfirmed,
   sportByteam,
+  leagueAvgCache,
+  mlbRPGMap, mlbRoadRPGMap, mlbTeamERAMap, mlbTeamWHIPMap, mlbBullpenERAMap,
+  nhlGPGMap, nhlGAAMap, nhlLeagueAvgGAA, nhlGoalieByTeam, nhlLeagueAvgSV,
+  nbaOffPPGMap, nbaLeagueAvgOffPPG,
 }) {
   // ── Game Total plays ─────────────────────────────────────────────────────────────────────
   // Schedule event parser (shared by game total H2H and team total H2H pre-fetches)

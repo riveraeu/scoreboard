@@ -1347,6 +1347,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           nbaInjuryMap, wnbaInjuryMap, nbaUsageMap, wnbaUsageMap,
           allPositionsDvp, nbaDepthChartPos, wnbaDvpMap,
           isDebug, _todayPT,
+          leagueAvgCache, nhlGPGMap, nhlGAAMap, nhlLeagueAvgGAA,
         });
         // Filter out plays from old dates (yesterday cutoff handles UTC/local differences
         // for late games: a 9:40pm ET game = 1:40am UTC next day).
@@ -1362,6 +1363,10 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             nbaInjuryMap, wnbaInjuryMap, nbaUsageMap, wnbaUsageMap,
             mlbBothTeamsConfirmed: _mlbBothTeamsConfirmed,
             sportByteam,
+            leagueAvgCache,
+            mlbRPGMap, mlbRoadRPGMap, mlbTeamERAMap, mlbTeamWHIPMap, mlbBullpenERAMap,
+            nhlGPGMap, nhlGAAMap, nhlLeagueAvgGAA, nhlGoalieByTeam, nhlLeagueAvgSV,
+            nbaOffPPGMap, nbaLeagueAvgOffPPG,
           });
         // ── ML / Spread / F5 / Halves emission — all sports ──────────────────────────────
         // Extracted to api/lib/tonight/ml-spread.js (Phase B, 2026-05-29).

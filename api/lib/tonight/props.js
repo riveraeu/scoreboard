@@ -18,6 +18,7 @@ export async function emitPropPlays({
   nbaInjuryMap, wnbaInjuryMap, nbaUsageMap, wnbaUsageMap,
   allPositionsDvp, nbaDepthChartPos, wnbaDvpMap,
   isDebug, _todayPT,
+  leagueAvgCache, nhlGPGMap, nhlGAAMap, nhlLeagueAvgGAA,
 }) {
   const NBA_POS_MAP = {
     PG: "PG",
