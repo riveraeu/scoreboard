@@ -5,7 +5,7 @@
 
 import { PARK_RUNFACTOR, UMPIRE_KFACTOR, poissonCDF, simulateMLBTotalDist, simulateMLBJoint, simulateNBAJoint, simulateNBATotalDist, simulateNHLTotalDist, totalDistPct, simulateTeamTotalDist, simulateTeamPtsDist, lambdaForPoissonTail, muForNegBinTail, negBinCDF, meanForNormalTail, normCDF } from "../simulate.js";
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER as EDGE_GATE } from "../config.js";
-import { _GT_IMPLIED_CAP, _TT_IMPLIED_CAP } from "../dc.js";
+import { _GT_IMPLIED_CAP, _TT_IMPLIED_CAP } from "./dc.js";
 import { normTeam } from "./parse-teams.js";
 import { PT_FMT, ptDateMinusOne } from "../pt.js";
 
