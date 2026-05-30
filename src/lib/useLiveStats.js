@@ -115,58 +115,64 @@ export function useLiveStats({ trackedPlays, setTrackedPlays, mlbMeta, nbaMeta, 
       const data = Object.assign({}, ...responses);
       setLiveStats(prev => ({ ...prev, ...data }));
 
-      // Auto-resolve: check each active player-prop pick against live data
-      setTrackedPlays(prev => prev.map(pick => {
-        if (pick.result) return pick; // already settled
-        if (pick.gameType === "total" || pick.gameType === "teamTotal" || pick.gameType === "ml" || pick.gameType === "spread") return pick; // handled separately
-        const gameKey = pickKeyMap.get(pick.id);
-        if (!gameKey) return pick;
-        // gameKey is `sport:team:opp|gameDate` (date-scoped) — strip the `|date` from the opp
-        // segment so backfilled `opponent` is the clean team abbr. Previously this set
-        // opponent="STL|2026-05-16", breaking subsequent live polls (split key never matched).
-        const parts = gameKey.split(":");
-        const resolvedTeam = parts[1];
-        const resolvedOpp = parts[2]?.split("|")[0];
-        const has = (v) => typeof v === "string" && v.length > 0 && !v.includes("|");
-        const backfill = {};
-        if (!has(pick.playerTeam) && resolvedTeam) backfill.playerTeam = resolvedTeam;
-        if (!has(pick.opponent) && resolvedOpp) backfill.opponent = resolvedOpp;
-        const hasBackfill = Object.keys(backfill).length > 0;
-        const liveGame = data[gameKey];
-        if (!liveGame || liveGame.state === "pre" || liveGame.state === "unknown") {
-          return hasBackfill ? { ...pick, ...backfill } : pick;
-        }
-
-        const playerStats = findLivePlayer(liveGame.players, pick.playerName);
-        const current = getPickCurrentStat(pick, playerStats);
-
-        if (current !== null && current >= pick.threshold) {
-          return { ...pick, ...backfill, result: "won" };
-        }
-        // Mid-game DNP: player not in boxscore + game has passed the midpoint = coach's
-        // decision / IL. Resolve "dnp" without waiting for game end. Conservative — only
-        // fires past halftime (NBA/WNBA) / 2nd-period end (NHL) so a starter who's late
-        // checking in early game isn't false-positive resolved. MLB skipped (pitcherIsOut
-        // handles K-prop DNP via explicit isCurrentPitcher flag).
-        if (playerStats === undefined && liveGame.state === "in" && pastMidpoint(pick.sport, liveGame.detail)) {
-          return { ...pick, ...backfill, result: "dnp" };
-        }
-        // MLB strikeouts: once the pitcher is pulled, their K count is final. Resolve "lost"
-        // without waiting for the game to end so the pick card stops showing as in-progress.
-        // Uses isCurrentPitcher flag from /api/live (correct for bulk pitchers behind openers).
-        if (pick.sport === "mlb" && pick.stat === "strikeouts"
-            && liveGame.state === "in"
-            && pitcherIsOut(playerStats)) {
-          return { ...pick, ...backfill, result: "lost" };
-        }
-        if (liveGame.state === "post") {
-          if (playerStats === undefined && pick.stat !== "strikeouts") {
-            return { ...pick, ...backfill, result: "dnp" }; // player not in boxscore after game ended
+      // Auto-resolve: check each active player-prop pick against live data.
+      // Return `prev` unchanged when nothing changed so React bails out and avoids
+      // a render loop (Array.map always produces a new reference even for no-op maps,
+      // which would re-fire the totals-resolution effect and reset the save debounce).
+      setTrackedPlays(prev => {
+        const next = prev.map(pick => {
+          if (pick.result) return pick; // already settled
+          if (pick.gameType === "total" || pick.gameType === "teamTotal" || pick.gameType === "ml" || pick.gameType === "spread") return pick; // handled separately
+          const gameKey = pickKeyMap.get(pick.id);
+          if (!gameKey) return pick;
+          // gameKey is `sport:team:opp|gameDate` (date-scoped) — strip the `|date` from the opp
+          // segment so backfilled `opponent` is the clean team abbr. Previously this set
+          // opponent="STL|2026-05-16", breaking subsequent live polls (split key never matched).
+          const parts = gameKey.split(":");
+          const resolvedTeam = parts[1];
+          const resolvedOpp = parts[2]?.split("|")[0];
+          const has = (v) => typeof v === "string" && v.length > 0 && !v.includes("|");
+          const backfill = {};
+          if (!has(pick.playerTeam) && resolvedTeam) backfill.playerTeam = resolvedTeam;
+          if (!has(pick.opponent) && resolvedOpp) backfill.opponent = resolvedOpp;
+          const hasBackfill = Object.keys(backfill).length > 0;
+          const liveGame = data[gameKey];
+          if (!liveGame || liveGame.state === "pre" || liveGame.state === "unknown") {
+            return hasBackfill ? { ...pick, ...backfill } : pick;
           }
-          return { ...pick, ...backfill, result: "lost" };
-        }
-        return hasBackfill ? { ...pick, ...backfill } : pick;
-      }));
+
+          const playerStats = findLivePlayer(liveGame.players, pick.playerName);
+          const current = getPickCurrentStat(pick, playerStats);
+
+          if (current !== null && current >= pick.threshold) {
+            return { ...pick, ...backfill, result: "won" };
+          }
+          // Mid-game DNP: player not in boxscore + game has passed the midpoint = coach's
+          // decision / IL. Resolve "dnp" without waiting for game end. Conservative — only
+          // fires past halftime (NBA/WNBA) / 2nd-period end (NHL) so a starter who's late
+          // checking in early game isn't false-positive resolved. MLB skipped (pitcherIsOut
+          // handles K-prop DNP via explicit isCurrentPitcher flag).
+          if (playerStats === undefined && liveGame.state === "in" && pastMidpoint(pick.sport, liveGame.detail)) {
+            return { ...pick, ...backfill, result: "dnp" };
+          }
+          // MLB strikeouts: once the pitcher is pulled, their K count is final. Resolve "lost"
+          // without waiting for the game to end so the pick card stops showing as in-progress.
+          // Uses isCurrentPitcher flag from /api/live (correct for bulk pitchers behind openers).
+          if (pick.sport === "mlb" && pick.stat === "strikeouts"
+              && liveGame.state === "in"
+              && pitcherIsOut(playerStats)) {
+            return { ...pick, ...backfill, result: "lost" };
+          }
+          if (liveGame.state === "post") {
+            if (playerStats === undefined && pick.stat !== "strikeouts") {
+              return { ...pick, ...backfill, result: "dnp" }; // player not in boxscore after game ended
+            }
+            return { ...pick, ...backfill, result: "lost" };
+          }
+          return hasBackfill ? { ...pick, ...backfill } : pick;
+        });
+        return next.some((p, i) => p !== prev[i]) ? next : prev;
+      });
     } catch { /* network error — silently skip */ }
   }, [setTrackedPlays]);
 
@@ -187,7 +193,8 @@ export function useLiveStats({ trackedPlays, setTrackedPlays, mlbMeta, nbaMeta, 
     const hasAnyData = Object.keys(allScores).length > 0 || Object.keys(liveStats).length > 0;
     if (!hasAnyData) return;
 
-    setTrackedPlays(prev => prev.map(pick => {
+    setTrackedPlays(prev => {
+      const next = prev.map(pick => {
       if (pick.result) return pick;
       if (pick.gameType !== "total" && pick.gameType !== "teamTotal" && pick.gameType !== "ml" && pick.gameType !== "spread") return pick;
       if (pick.gameDate !== today && pick.gameDate !== yesterday && pick.gameDate !== tomorrow) return pick;
@@ -289,7 +296,9 @@ export function useLiveStats({ trackedPlays, setTrackedPlays, mlbMeta, nbaMeta, 
       }
       const met = isUnder ? current < pick.threshold : current >= pick.threshold;
       return { ...pick, result: met ? "won" : "lost" };
-    }));
+      });
+      return next.some((p, i) => p !== prev[i]) ? next : prev;
+    });
   }, [mlbMeta, nbaMeta, wnbaMeta, nhlMeta, liveStats, trackedPlays, setTrackedPlays]);
 
   // Keep latest meta in a ref so the polling interval reads fresh values (effect dep array
