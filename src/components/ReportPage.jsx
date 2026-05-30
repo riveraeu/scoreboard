@@ -40,6 +40,7 @@ const PLAY_TYPES = {
     { id: "nba-2hml",     label: "2H ML (3-way)",     statKeys: ["h2ml"] },
   ],
   wnba: [
+    { id: "wnba",          label: "Props (Pts/Reb/Ast/3P)", statKeys: ["points", "rebounds", "assists", "threePointers"] },
     { id: "wnba-ml",       label: "Moneyline",        statKeys: ["ml"] },
     { id: "wnba-spread",   label: "Spread",           statKeys: ["spread"] },
     { id: "wnba-1htotal",  label: "1H Total",         statKeys: ["h1total"] },
@@ -318,6 +319,7 @@ const TAB_CAT = {
   "wnba-2hml":     ["wnba|h2ml"],
   "nba-ml":  ["nba|ml"],
   "nba-spread": ["nba|spread"],
+  "wnba":    ["wnba|points","wnba|rebounds","wnba|assists","wnba|threePointers"],
   "wnba-ml": ["wnba|ml"],
   "wnba-spread": ["wnba|spread"],
   "nhl-ml":  ["nhl|ml"],
