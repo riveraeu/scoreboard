@@ -16,8 +16,8 @@ import { computeDataConfidence, DC_GATE, _GT_IMPLIED_CAP, _TT_IMPLIED_CAP } from
 import { applyClosingSnapshot } from "../tonight/closing-odds.js";
 import { fetchKalshiMarkets } from "../tonight/kalshi-pipeline.js";
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER as EDGE_GATE } from "../config.js";
-import { TEAM_NORM, normTeam, parseGameTeams } from "./parse-teams.js";
-import { emitAllMlAndSpread } from "./ml-spread.js";
+import { TEAM_NORM, normTeam, parseGameTeams } from "../tonight/parse-teams.js";
+import { emitAllMlAndSpread } from "../tonight/ml-spread.js";
 
 const __defProp = Object.defineProperty;
 const __name = (target, value) => __defProp(target, "name", { value, configurable: true });
