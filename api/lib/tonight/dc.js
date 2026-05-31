@@ -59,14 +59,15 @@ export function computeDataConfidence(p, ctx = {}) {
   } else if (sport === "nba" && (gameType === "ml" || gameType === "spread")) {
     // No lineup-posted penalty: NBA starting 5 isn't officially posted pre-game (ESPN
     // `boxscore.players[].starter` is only populated in/post). The lambda already adjusts
-    // OffRtg for known-out players via the injury report (Σ out-USG × 0.15, capped at 0.85);
-    // we just penalize the cap-busting case where the team is materially under-modeled.
-    // Heavy-injury fires once per game for the heavier side only (same shape as WNBA
-    // below) — stacking both sides was auto-capping plays at dc=8 on rare both-injured
-    // games without adding signal beyond the dominant side.
+    // OffRtg for known-out players via the injury report (piecewise on MPG-weighted USG-out,
+    // floor 0.70 — see _injuryOffRtgAdj); we just penalize the materially-under-modeled case.
+    // Heavy-injury fires once per game for the heavier side only (same shape as WNBA below) —
+    // stacking both sides was auto-capping plays at dc=8 on rare both-injured games without
+    // adding signal beyond the dominant side. Threshold is 30 on the 0–100 usageOut scale
+    // (fixed 2026-05-31 from 0.30, which fired on any injury since usageOut is never 0–1).
     const home = p.homeUsageOut || 0;
     const away = p.awayUsageOut || 0;
-    if (home >= 0.30 || away >= 0.30) {
+    if (home >= 30 || away >= 30) {
       _pen(home >= away ? "nbaHomeHeavyInjury" : "nbaAwayHeavyInjury", 1);
     }
   } else if (sport === "wnba" && (gameType === "ml" || gameType === "spread")) {
@@ -76,7 +77,7 @@ export function computeDataConfidence(p, ctx = {}) {
     // spread plays at dc=8. NBA branch above matches for consistency (added 2026-05-26).
     const home = p.homeUsageOut || 0;
     const away = p.awayUsageOut || 0;
-    if (home >= 0.30 || away >= 0.30) {
+    if (home >= 30 || away >= 30) {
       _pen(home >= away ? "wnbaHomeHeavyInjury" : "wnbaAwayHeavyInjury", 1);
     }
   } else if (sport === "mlb") {
