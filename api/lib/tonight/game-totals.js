@@ -30,8 +30,12 @@ const _isB2B = (scheduleMap, sport, team, gameDate) => {
 };
 
 // NBA/WNBA injury OffRtg adjustment — piecewise factor on pct of usage-weighted out players.
-// Sums USG% of all Out players on a team; applies a piecewise-increasing replacement penalty.
-// Players missing usage data contribute 0. Cap floor 0.70 (raised from 0.85 on 2026-05-28).
+// Sums each Out player's USG% **weighted by their minutes share (avgMin/48)** so a low-minutes
+// bench player can't contribute his full per-possession USG% as if he played the whole game.
+// (Before 2026-05-30 this summed raw USG%, which over-counted: an OKC Game-7 slate with J-Williams
+// + Mitchell + a 0-min rookie OUT summed to 49.1 — pushing the 36-50% tier — vs 27.8 weighted.)
+// Players missing usage data contribute 0; players with usage but missing avgMin get weight 1.0
+// (no de-weighting — conservative, preserves prior behavior for that gap). Cap floor 0.70.
 // Tiers: ≤20% ×0.15, 21-35% ×0.22, 36-50% ×0.30, >50% ×0.35.
 const _OFFRTG_INJ_CAP = 0.70;
 const _injuryOffRtgFactor = (share) => share <= 20 ? 0.15 : share <= 35 ? 0.22 : share <= 50 ? 0.30 : 0.35;
@@ -41,16 +45,26 @@ const _injuryOffRtgAdj = (team, injuryMap, usageMap, shortMap) => {
   let share = 0;
   for (const p of players) {
     if (p.status !== "out") continue;
-    const usg = p.id ? usageMap[p.id]?.usg : null;
-    if (usg != null && usg > 0) share += usg;
+    const u = p.id ? usageMap[p.id] : null;
+    const usg = u?.usg;
+    if (usg != null && usg > 0) {
+      // Weight by minutes share of a 48-min game, capped at 1.0. Missing avgMin → weight 1.0.
+      const w = u?.avgMin != null ? Math.min(1, u.avgMin / 48) : 1;
+      share += usg * w;
+    }
   }
   share = parseFloat(share.toFixed(1));
   const factor = _injuryOffRtgFactor(share);
   const adj = Math.max(_OFFRTG_INJ_CAP, 1 - share / 100 * factor);
   return { share, adj: parseFloat(adj.toFixed(3)) };
 };
-// Damp regime/seasonHitRate blend weight linearly to 0 between 30-60% USG out.
-const _injuryBlendDamp = (usageOut) => Math.max(0, Math.min(1, (60 - (usageOut || 0)) / 30));
+// Damp regime/seasonHitRate blend weight linearly to 0 as USG-out rises. Range rescaled
+// 2026-05-30 (60→42 / 30→21, ×0.7) to match the MPG-weighted usageOut now produced by
+// _injuryOffRtgAdj — a full-time starter's ~0.7 minutes weight means the old 30-60 raw-sum
+// range would no longer trigger damping at the same real injury severity. Pre-rescale, OKC's
+// raw 49.1 gave damp 0.36; weighted 27.8 under the new range gives (42-27.8)/21 = 0.68 (vs 1.0
+// = no damping under the old range), preserving the 2026-05-28 stale-blend protection.
+const _injuryBlendDamp = (usageOut) => Math.max(0, Math.min(1, (42 - (usageOut || 0)) / 21));
 
 // Context: plays/dropped (mutated via push), isDebug, cutoffStr, gameTimes,
 //          CACHE2/isBustCache, PROD_SPORTS, totalMarkets/teamTotalMarkets, weatherByGame,
