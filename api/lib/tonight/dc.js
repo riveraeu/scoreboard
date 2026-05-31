@@ -14,16 +14,16 @@
 // their gates were one tick lower to compensate. Both penalties removed 2026-05-21 — gates
 // now match NBA/MLB across the board.
 export const DC_GATE = (sport, gameType) => {
-  if (gameType === "total" || gameType === "teamTotal") return 10;
-  if (gameType === "ml" || gameType === "spread") {
-    // MLB launched 2026-05-18 with gate=8 (loosened from 10) — 10 was effectively unreachable
-    // given typical lineup/source penalties even on clean matchups. NBA added 2026-05-20 with
-    // matching gate=8 for parity. NBA has fewer applicable penalty rules (no WHIP/bullpen
-    // source check, no pitcher-on-IL) but adds nbaLineup + nbaHeavyInjury rules below. Both
-    // sports' spread plays reuse the ML penalty table (same lambdas → same trust signals).
-    return 8;
-  }
-  return 9;
+  // Unified to 10 for ALL play types (2026-05-31). Previously totals=10, ml/spread=8, props=9.
+  // Rationale: the client (`_passesCleanData` / `_qualifiedFilter` in LineupsPage.jsx + App.jsx,
+  // and MarketReport `_isQ`) already requires `dataConfidence === 10` for every play type, so the
+  // split server gates were a weaker, inconsistent flag the client overrode anyway. `dcQualified`
+  // is stamped in a post-pass and is NOT used to drop plays during emission (emit modules never
+  // reference it), so raising the gate changes only the boolean's meaning — no play-volume change
+  // server-side. Tracked picks are all dc=10 already (client only surfaces dc=10), so calibration
+  // of tracked outcomes is unaffected. The dc heavy-injury (-1) and prop penalties still apply;
+  // they just now correctly read as not-qualified at dc=9 instead of a misleading dcQualified=true.
+  return 10;
 };
 
 // Maximum |impliedMean − modelMean| (NBA/WNBA pts) or |impliedLambda − modelLambda| (MLB runs /
