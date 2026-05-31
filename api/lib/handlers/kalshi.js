@@ -330,8 +330,38 @@ export async function handleKalshiRoutes(ctx) {
     if (!resp) return errorResponse("Kalshi unreachable", 502);
     const respBody = await resp.json().catch(() => ({}));
     if (!resp.ok) return errorResponse(respBody?.error?.message || `Kalshi error ${resp.status}`, resp.status);
-    const balanceCents = respBody.balance ?? 0;
-    return jsonResponse({ balanceCents, balanceDollars: balanceCents / 100 });
+    const cashCents = respBody.balance ?? 0;
+    // Second signed call: open-position cost basis (market_exposure, cents). Summed into the
+    // bankroll so balanceDollars reflects cash + capital deployed in open positions. Signature
+    // covers the path only (no query), matching the order/fills endpoints. Degrades to
+    // positionsCents=0 if this call fails — bankroll still shows cash rather than erroring.
+    let positionsCents = 0;
+    try {
+      const posPath = "/trade-api/v2/portfolio/positions";
+      const posTs = String(Date.now());
+      const posKey = await _importKalshiKey(env.KALSHI_PRIVATE_KEY);
+      const posSigBuf = await crypto.subtle.sign(
+        { name: "RSA-PSS", saltLength: 32 },
+        posKey,
+        new TextEncoder().encode(posTs + "GET" + posPath),
+      );
+      const posSig = btoa(String.fromCharCode(...new Uint8Array(posSigBuf)));
+      const posResp = await fetch(`https://api.elections.kalshi.com${posPath}?settlement_status=unsettled&limit=1000`, {
+        headers: {
+          "KALSHI-ACCESS-KEY": env.KALSHI_API_KEY_ID,
+          "KALSHI-ACCESS-TIMESTAMP": posTs,
+          "KALSHI-ACCESS-SIGNATURE": posSig,
+        },
+      });
+      if (posResp.ok) {
+        const posBody = await posResp.json().catch(() => ({}));
+        for (const p of posBody.market_positions || []) {
+          positionsCents += p.market_exposure || 0;
+        }
+      }
+    } catch { /* leave positionsCents = 0 — bankroll falls back to cash only */ }
+    const balanceCents = cashCents + positionsCents;
+    return jsonResponse({ cashCents, positionsCents, balanceCents, balanceDollars: balanceCents / 100 });
   }
 
   if (path === "kalshi-fills" && method === "GET") {
