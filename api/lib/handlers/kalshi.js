@@ -211,6 +211,57 @@ export async function handleKalshiRoutes(ctx) {
         await new Promise(res => setTimeout(res, _SNAP_BATCH_DELAY_MS));
       }
     }
+    // ── Orderbook depth for in-window markets (added 2026-05-31) ───────────────────────────
+    // For markets in the tradeable Kalshi window (yes_ask OR no_ask ∈ [67,91]), fetch the
+    // orderbook and attach a compact top-3-levels `_depth` so /api/tonight can blend the true
+    // sweep cost (slippage-honest edge) without any live fetch on the hot path. Purely additive:
+    // if a depth fetch fails or the budget is exhausted, the market simply lacks `_depth` and
+    // downstream blending falls back to top-of-book. Hard fetch cap protects the 2-min cron
+    // window; highest-volume markets get depth first when the slate exceeds the cap.
+    const DEPTH_GATE_LO = 67, DEPTH_GATE_HI = 91;
+    const DEPTH_FETCH_CAP = 150;          // max orderbook fetches per cron run
+    const DEPTH_BATCH = 3, DEPTH_BATCH_DELAY_MS = 700;  // mirror the series throttle
+    const _depthTargets = [];             // { ticker, vol, market } refs into _snapResults
+    for (const data of Object.values(_snapResults)) {
+      for (const m of data.markets || []) {
+        const ya = Math.round((parseFloat(m.yes_ask_dollars) || 0) * 100);
+        const na = Math.round((parseFloat(m.no_ask_dollars) || 0) * 100);
+        const inWin = (ya >= DEPTH_GATE_LO && ya <= DEPTH_GATE_HI) ||
+                      (na >= DEPTH_GATE_LO && na <= DEPTH_GATE_HI);
+        if (!inWin || !m.ticker) continue;
+        const vol = parseInt(m.volume_fp) || parseInt(m.volume) || 0;
+        _depthTargets.push({ ticker: m.ticker, vol, market: m });
+      }
+    }
+    // Cap: keep the highest-volume (most-liquid, most-likely-bet) markets when over budget.
+    _depthTargets.sort((a, b) => b.vol - a.vol);
+    const _depthBudgeted = _depthTargets.slice(0, DEPTH_FETCH_CAP);
+    let _depthOk = 0, _depthFail = 0;
+    const _topLevels = (rows) => (Array.isArray(rows) ? rows : [])
+      .map(([p, q]) => [Math.round(parseFloat(p) * 100), Math.round(parseFloat(q))])
+      .filter(([c, q]) => c > 0 && c < 100 && q > 0)
+      .sort((a, b) => b[0] - a[0])   // descending price (highest bid first)
+      .slice(0, 3);
+    const _fetchDepth = async ({ ticker, market }) => {
+      try {
+        const r = await fetch(`https://api.elections.kalshi.com/trade-api/v2/markets/${ticker}/orderbook`, {
+          headers: { "User-Agent": "Mozilla/5.0", Accept: "application/json" },
+        });
+        if (!r.ok) { _depthFail++; return; }
+        const ob = (await r.json())?.orderbook_fp || {};
+        const n = _topLevels(ob.no_dollars);
+        const y = _topLevels(ob.yes_dollars);
+        if (n.length || y.length) { market._depth = { n, y }; _depthOk++; }
+      } catch { _depthFail++; }
+    };
+    for (let off = 0; off < _depthBudgeted.length; off += DEPTH_BATCH) {
+      const batch = _depthBudgeted.slice(off, off + DEPTH_BATCH);
+      await Promise.all(batch.map(_fetchDepth));
+      if (off + DEPTH_BATCH < _depthBudgeted.length) {
+        await new Promise(res => setTimeout(res, DEPTH_BATCH_DELAY_MS));
+      }
+    }
+
     const writtenAt = Date.now();
     const successCount = Object.keys(_snapResults).length;
     // Pipelined Upstash write: 1 HTTP request for all SETs. Upstash bills per command
@@ -227,6 +278,9 @@ export async function handleKalshiRoutes(ctx) {
         successCount,
         failedTickers: _snapFailed.map(f => f.ticker),
         durationMs: Date.now() - startMs,
+        depthOk: _depthOk,
+        depthFail: _depthFail,
+        depthTargets: _depthTargets.length,
       }), "EX", 600]);
       try {
         await fetch(`${env.UPSTASH_REDIS_REST_URL}/pipeline`, {
@@ -244,6 +298,10 @@ export async function handleKalshiRoutes(ctx) {
       failedCount: _snapFailed.length,
       failed: _snapFailed,
       durationMs: Date.now() - startMs,
+      depthOk: _depthOk,
+      depthFail: _depthFail,
+      depthTargets: _depthTargets.length,
+      depthBudgeted: _depthBudgeted.length,
     });
   }
 

@@ -15,6 +15,7 @@ import { PT_FMT } from "../pt.js";
 import { computeDataConfidence, DC_GATE, _GT_IMPLIED_CAP, _TT_IMPLIED_CAP } from "../tonight/dc.js";
 import { applyClosingSnapshot } from "../tonight/closing-odds.js";
 import { fetchKalshiMarkets } from "../tonight/kalshi-pipeline.js";
+import { blendMarketPrice } from "../tonight/blend-fill.js";
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER as EDGE_GATE } from "../config.js";
 import { TEAM_NORM, normTeam, parseGameTeams } from "../tonight/parse-teams.js";
 import { emitAllMlAndSpread } from "../tonight/ml-spread.js";
@@ -240,7 +241,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               }
               const _tYesBid = parseFloat(m.yes_bid_dollars) || 0;
               const _tSpread = yesAsk > 0 && _tYesBid > 0 ? Math.round((yesAsk - _tYesBid) * 100) : null;
-              totalMarkets.push({ gameType: "total", sport, stat, col, segment, threshold, kalshiPct: pct, americanOdds: _toAO, noKalshiPct: noPct, noKalshiAO: _tNoAO, kalshiVolume: volume, gameTeam1, gameTeam2, gameDate: _tGameDate, kalshiSpread: _tSpread, _ticker: m.ticker, _yesAsk: yesAsk, _yesBid: _tYesBid, _noAsk: noAsk });
+              totalMarkets.push({ gameType: "total", sport, stat, col, segment, threshold, kalshiPct: pct, americanOdds: _toAO, noKalshiPct: noPct, noKalshiAO: _tNoAO, kalshiVolume: volume, gameTeam1, gameTeam2, gameDate: _tGameDate, kalshiSpread: _tSpread, _ticker: m.ticker, _yesAsk: yesAsk, _yesBid: _tYesBid, _noAsk: noAsk, _depth: m._depth });
               continue;
             }
 
@@ -273,7 +274,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               }
               const _ttYesBid = parseFloat(m.yes_bid_dollars) || 0;
               const _ttSpread = yesAsk > 0 && _ttYesBid > 0 ? Math.round((yesAsk - _ttYesBid) * 100) : null;
-              teamTotalMarkets.push({ gameType: "teamTotal", sport, stat, col, threshold, kalshiPct: pct, americanOdds: _ttAO, noKalshiPct: noPct, noKalshiAO: _ttNoAO, kalshiVolume: volume, gameTeam1, gameTeam2, scoringTeam, gameDate: _ttGameDate, kalshiSpread: _ttSpread, _ticker: m.ticker, _yesAsk: yesAsk, _noAsk: noAsk });
+              teamTotalMarkets.push({ gameType: "teamTotal", sport, stat, col, threshold, kalshiPct: pct, americanOdds: _ttAO, noKalshiPct: noPct, noKalshiAO: _ttNoAO, kalshiVolume: volume, gameTeam1, gameTeam2, scoringTeam, gameDate: _ttGameDate, kalshiSpread: _ttSpread, _ticker: m.ticker, _yesAsk: yesAsk, _noAsk: noAsk, _depth: m._depth });
               continue;
             }
 
@@ -307,7 +308,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               }
               const _spYesBid = parseFloat(m.yes_bid_dollars) || 0;
               const _spSpread = yesAsk > 0 && _spYesBid > 0 ? Math.round((yesAsk - _spYesBid) * 100) : null;
-              spreadMarkets.push({ gameType: "spread", sport, stat, col, segment, line: strike, marginTeam, kalshiPct: pct, americanOdds: _spAO, noKalshiPct: noPct, noKalshiAO: _spNoAO, kalshiVolume: volume, gameTeam1, gameTeam2, gameDate: _spGameDate, kalshiSpread: _spSpread, _ticker: m.ticker, _yesAsk: yesAsk, _noAsk: noAsk });
+              spreadMarkets.push({ gameType: "spread", sport, stat, col, segment, line: strike, marginTeam, kalshiPct: pct, americanOdds: _spAO, noKalshiPct: noPct, noKalshiAO: _spNoAO, kalshiVolume: volume, gameTeam1, gameTeam2, gameDate: _spGameDate, kalshiSpread: _spSpread, _ticker: m.ticker, _yesAsk: yesAsk, _noAsk: noAsk, _depth: m._depth });
               continue;
             }
 
@@ -351,7 +352,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             const yesBid = parseFloat(m.yes_bid_dollars) || 0;
             const yesAskSize = parseFloat(m.yes_ask_size_fp) || 0;
             const kalshiSpread = yesAsk > 0 && yesBid > 0 ? Math.round((yesAsk - yesBid) * 100) : null;
-            qualifyingMarkets.push({ playerName, playerNameDisplay, sport, stat, col, threshold, kalshiPct: pct, americanOdds, kalshiVolume: volume, gameTeam1, gameTeam2, kalshiPlayerTeam, gameDate, kalshiSpread, _ticker: m.ticker, _yesAsk: yesAsk, _yesBid: yesBid, _yesAskSize: yesAskSize });
+            qualifyingMarkets.push({ playerName, playerNameDisplay, sport, stat, col, threshold, kalshiPct: pct, americanOdds, kalshiVolume: volume, gameTeam1, gameTeam2, kalshiPlayerTeam, gameDate, kalshiSpread, _ticker: m.ticker, _yesAsk: yesAsk, _yesBid: yesBid, _yesAskSize: yesAskSize, _depth: m._depth });
           }
         }
         if (qualifyingMarkets.length === 0 && totalMarkets.length === 0) {
@@ -400,49 +401,14 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
         const kalshiWnbaOuMap = _buildKalshiOuMap("wnba", "KXWNBATOTAL");
         const kalshiMlbOuMap = _buildKalshiOuMap("mlb", "KXMLBTOTAL");
         const kalshiNhlOuMap = _buildKalshiOuMap("nhl", "KXNHLTOTAL");
-        // Blended fill price: walk the orderbook for unit-sized positions so kalshiPct reflects
-        // true cost, not just top-of-book ask. 1 unit = $100 at risk; tiers: 70-83% = 1u, 83-93% = 3u, 93%+ = 5u.
-        const UNIT_DOLLARS = 50; // 1 unit = 1% of $5k bankroll
-        const getContracts = (pct, ask) => ask > 0 ? Math.ceil(UNIT_DOLLARS * (pct >= 93 ? 5 : pct >= 83 ? 3 : 1) / ask) : 0;
-        const thinMarkets = qualifyingMarkets.filter((m) => m._ticker && getContracts(m.kalshiPct, m._yesAsk) > m._yesAskSize);
-        const obMap = {};
-        if (thinMarkets.length > 0) {
-          const obFetches = await Promise.all(thinMarkets.map((m) =>
-            fetch(`https://api.elections.kalshi.com/trade-api/v2/markets/${m._ticker}/orderbook`, {
-              headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0" }
-            }).then((r) => (r.ok && r.status !== 429) ? r.json() : null).catch(() => null)
-          ));
-          for (let i = 0; i < thinMarkets.length; i++) {
-            if (obFetches[i]?.orderbook_fp) obMap[thinMarkets[i]._ticker] = obFetches[i].orderbook_fp;
-          }
-        }
+        // Blended fill price (player props): re-price kalshiPct to the true cost of sweeping a
+        // unit-sized position, not just top-of-book ask. Depth comes from the snapshot cron's
+        // cached `_depth` (kalshi:snap:{ticker}) — NO live orderbook fetch on the hot path
+        // (replaced the prior live walk 2026-05-31; see blend-fill.js). Player props are always
+        // a YES buy. Markets without cached depth keep top-of-book (blendMarketPrice → null).
         for (const m of qualifyingMarkets) {
-          const contracts = getContracts(m.kalshiPct, m._yesAsk);
-          if (contracts <= 0 || m._yesAskSize >= contracts) continue;
-          const book = obMap[m._ticker];
-          if (!book) continue;
-          // no_dollars are NO bids sorted ascending; YES ask at level = 1 - no_price
-          // Walk highest no_price first (= lowest YES ask first) to fill the position
-          const levels = (book.no_dollars || []).map(([p, q]) => [parseFloat(p), parseFloat(q)]).sort((a, b) => b[0] - a[0]);
-          let filled = 0, totalCost = 0;
-          for (const [noPrice, qty] of levels) {
-            if (filled >= contracts) break;
-            const yesAsk = 1 - noPrice;
-            if (yesAsk >= 1) continue;
-            const take = Math.min(qty, contracts - filled);
-            totalCost += take * yesAsk;
-            filled += take;
-          }
-          if (filled === 0) continue;
-          if (filled < contracts && levels.length > 0) {
-            // Book exhausted; extend at worst quoted price
-            totalCost += (contracts - filled) * Math.min(0.99, 1 - levels[levels.length - 1][0]);
-          }
-          const blendedPct = Math.round((totalCost / contracts) * 100);
-          if (blendedPct > m.kalshiPct && blendedPct <= 97) {
-            m.kalshiPct = blendedPct;
-            m.americanOdds = blendedPct >= 50 ? Math.round(-(blendedPct / (100 - blendedPct)) * 100) : Math.round((100 - blendedPct) / blendedPct * 100);
-          }
+          const blended = blendMarketPrice(m._depth, "yes", m.kalshiPct);
+          if (blended) { m.kalshiPct = blended.pct; m.americanOdds = blended.americanOdds; }
         }
         // E1: Line movement tracking — record opening price the first time we see each ticker.
         // lineMove = current yesAsk (after blend) - openYesAsk (first seen today).
