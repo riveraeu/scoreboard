@@ -40,7 +40,7 @@ Single Vercel Edge Function. `api/[...path].js` is a ~140-line thin router: hand
 - `api/lib/handlers/player.js` — `/api/player`, `/api/gamelog`, `/api/headshot`
 - `api/lib/handlers/sports.js` — `/api/team`, `/api/live`
 - `api/lib/handlers/dvp.js` — `/api/dvp`, `/api/nba-depth`, `/api/dvp/debug-dc`
-- `api/lib/handlers/kalshi.js` — `/api/kalshi`, `/api/kalshi-snapshot`, `/api/keepalive`, `/api/kalshi-order`
+- `api/lib/handlers/kalshi.js` — `/api/kalshi`, `/api/kalshi-snapshot`, `/api/keepalive`, `/api/kalshi-order`, `/api/kalshi-balance`, `/api/kalshi-fills`
 - `api/lib/handlers/tonight.js` — `/api/tonight` (~1857 lines after Phase B6). Owns Kalshi parse loop, byteam hydration, data-prep, emit calls, response assembly.
 
 Sport/utility modules under `api/lib/`:

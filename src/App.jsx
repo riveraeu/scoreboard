@@ -368,7 +368,17 @@ function App() {
           let override = null;
           if (fill && fill.costDollars > 0) {
             const ao = _centsToAmerican(fill.avgCents);
-            override = { ...play, ...(ao != null ? { americanOdds: ao } : {}), unitsOverride: fill.costDollars };
+            // Stamp the real Kalshi position onto the pick so it's self-documenting: filled
+            // contract count, avg fill price (cents), and total cost. Makes partial/resting
+            // fills explicit (kalshiRestingCount) and lets any future reconciliation match by
+            // these instead of re-deriving from the model snapshot.
+            override = { ...play,
+              ...(ao != null ? { americanOdds: ao } : {}),
+              unitsOverride: fill.costDollars,
+              kalshiCount: fill.filledCount,
+              kalshiAvgCents: fill.avgCents,
+              ...(fill.restingCount > 0 ? { kalshiRestingCount: fill.restingCount } : {}),
+            };
           } else if (oddsVal) {
             override = { ...play, americanOdds: oddsVal };
           }
