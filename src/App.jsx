@@ -25,7 +25,7 @@ import DayBar from './components/DayBar.jsx';
 import AddPickModal from './components/AddPickModal.jsx';
 import ReportPage from './components/ReportPage.jsx';
 import MyPicksColumn from './components/MyPicksColumn.jsx';
-import LineupsPage from './components/LineupsPage.jsx';
+import LineupsPage, { trackIdFor } from './components/LineupsPage.jsx';
 import SimBadge from './components/SimBadge.jsx';
 
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_CLIENT as EDGE_GATE } from "../api/lib/config.js";
@@ -70,6 +70,8 @@ function App() {
   const [placeOnKalshi, setPlaceOnKalshi] = React.useState(false);
   const [kalshiOrderResult, setKalshiOrderResult] = React.useState(null); // null | {ok, msg}
   const [kalshiBalance, setKalshiBalance] = React.useState(null); // dollars, null = not fetched
+  const [showPlaceAll, setShowPlaceAll] = React.useState(false); // batch-place modal open
+  const [placeAllStatus, setPlaceAllStatus] = React.useState(null); // null | { running, rows: {id->{state,msg}} }
   const _prevResolvedCount = React.useRef(0);
   const {
     authEmail,
@@ -183,6 +185,116 @@ function App() {
     if (resolved > _prevResolvedCount.current) fetchKalshiBalance();
     _prevResolvedCount.current = resolved;
   }, [trackedPlays, fetchKalshiBalance]);
+
+  // ── Batch "Place All" ────────────────────────────────────────────────────
+  // cents → American odds, mirroring the single-bet flow (_centsToAmerican in the
+  // track-confirm modal). A Kalshi contract pays $1; buying at `cents` risks `cents`
+  // to win `(100 - cents)`.
+  const _centsToAmericanB = React.useCallback((cents) => {
+    if (!cents || cents <= 0 || cents >= 100) return null;
+    return cents >= 50 ? -Math.round((cents / (100 - cents)) * 100) : Math.round(((100 - cents) / cents) * 100);
+  }, []);
+  // Per-play Kalshi order sizing — mirrors the track-confirm modal's suggestedStake exactly:
+  // ⅛-Kelly on the side actually being bet (truePct + odds both from that side), $500 cap,
+  // $30 fallback → contract count at the side's ask price. Returns null if not placeable.
+  const _placeAllSizing = React.useCallback((play) => {
+    if (!play.kalshiTicker) return null;
+    const price = play.kalshiSide === "no"
+      ? Math.round(play.noKalshiPct ?? play.kalshiPct)
+      : Math.round(play.kalshiPct);
+    if (!price || price <= 0 || price >= 100) return null;
+    const ao = _centsToAmericanB(price);
+    const tp = play.direction === "under"
+      ? (play.noTruePct ?? (play.truePct != null ? 100 - play.truePct : null))
+      : play.truePct;
+    let stake = UNIT_DOLLARS;
+    if (tp != null && ao != null && ao !== 0) {
+      const b = ao > 0 ? ao / 100 : 100 / Math.abs(ao);
+      const p = tp / 100;
+      const f = Math.max(0, (b * p - (1 - p)) / b);
+      const s = bankroll * f * 0.125;
+      stake = s > 0 ? Math.round(Math.min(s, STAKE_CAP)) : UNIT_DOLLARS;
+    }
+    const count = Math.floor(stake / (price / 100));
+    if (count < 1) return null;
+    const cost = parseFloat((count * price / 100).toFixed(2));
+    return { price, count, cost, side: play.kalshiSide, ao };
+  }, [bankroll, _centsToAmericanB]);
+  // Candidate set: qualified (tonightPlays) + placeable + untracked + game not yet started.
+  const placeAllCandidates = React.useMemo(() => {
+    if (!authEmail) return [];
+    const trackedIds = new Set((trackedPlays || []).map(p => p.id).filter(Boolean));
+    const nowMs = Date.now();
+    const out = [];
+    for (const p of (tonightPlays || [])) {
+      if (trackedIds.has(trackIdFor(p))) continue;             // already tracked — don't double-place
+      if (p.gameTime && new Date(p.gameTime).getTime() <= nowMs) continue; // game started
+      const sizing = _placeAllSizing(p);
+      if (!sizing) continue;
+      out.push({ play: p, ...sizing });
+    }
+    return out;
+  }, [authEmail, tonightPlays, trackedPlays, _placeAllSizing]);
+
+  // Place every candidate sequentially (await each — avoids Kalshi 429s), tracking each pick
+  // with its real fill. Mirrors the single-bet _doPlaceOrder + _doTrack reconciliation.
+  const runPlaceAll = React.useCallback(async () => {
+    const cands = placeAllCandidates;
+    if (cands.length === 0) return;
+    const rows = {};
+    for (const c of cands) rows[c.play.id ?? trackIdFor(c.play)] = { state: "pending" };
+    setPlaceAllStatus({ running: true, rows: { ...rows } });
+    for (const c of cands) {
+      const key = c.play.id ?? trackIdFor(c.play);
+      rows[key] = { state: "placing" };
+      setPlaceAllStatus({ running: true, rows: { ...rows } });
+      try {
+        const r = await fetch(`${WORKER}/kalshi-order`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ticker: c.play.kalshiTicker, side: c.side, price: c.price, count: c.count }),
+          credentials: "include",
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          rows[key] = { state: "error", msg: data.error || `Error ${r.status}` };
+          setPlaceAllStatus({ running: true, rows: { ...rows } });
+          continue;
+        }
+        const o = data.order || {};
+        const filledCount = o.taker_fill_count ?? 0;
+        const costCents = o.taker_fill_cost ?? 0;
+        const restingCount = o.remaining_count ?? Math.max(0, c.count - filledCount);
+        let fill, msg;
+        if (filledCount > 0) {
+          const costDollars = parseFloat((costCents / 100).toFixed(2));
+          const avgCents = Math.round(costCents / filledCount);
+          fill = { filledCount, costDollars, avgCents, restingCount };
+          msg = `${filledCount} @ ${avgCents}¢ = $${costDollars}${restingCount > 0 ? ` · ${restingCount} resting` : ""}`;
+        } else {
+          fill = { filledCount: 0, costDollars: c.cost, avgCents: c.price, restingCount: c.count };
+          msg = `resting — ${c.count} × ${c.price}¢`;
+        }
+        // Stamp the real fill onto the pick (same override shape as the single flow).
+        const ao = _centsToAmericanB(fill.avgCents);
+        const override = { ...c.play,
+          ...(ao != null ? { americanOdds: ao } : {}),
+          unitsOverride: fill.costDollars,
+          kalshiCount: fill.filledCount,
+          kalshiAvgCents: fill.avgCents,
+          ...(fill.restingCount > 0 ? { kalshiRestingCount: fill.restingCount } : {}),
+        };
+        trackPlay(override);
+        rows[key] = { state: filledCount > 0 ? "filled" : "resting", msg };
+        setPlaceAllStatus({ running: true, rows: { ...rows } });
+      } catch (e) {
+        rows[key] = { state: "error", msg: e?.message || "Network error" };
+        setPlaceAllStatus({ running: true, rows: { ...rows } });
+      }
+    }
+    setPlaceAllStatus({ running: false, rows: { ...rows } });
+    fetchKalshiBalance();
+  }, [placeAllCandidates, trackPlay, _centsToAmericanB, fetchKalshiBalance]);
 
   const selectPlayer = (p, tab = null) => {
     const newSport = p.sportKey || sport;
@@ -526,6 +638,103 @@ function App() {
                     opacity: _belowGate ? 0.6 : 1}}>
                   {placeOnKalshi && _kalshiCount >= 1 ? "Track + Place" : "Add Pick"}
                 </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Place All modal — batch-place every qualified, untracked, placeable Kalshi bet */}
+      {showPlaceAll && (() => {
+        const cands = placeAllCandidates;
+        const totalCost = parseFloat(cands.reduce((s, c) => s + c.cost, 0).toFixed(2));
+        const cash = kalshiBalance;
+        const shortfall = cash != null && totalCost > cash ? parseFloat((totalCost - cash).toFixed(2)) : 0;
+        const status = placeAllStatus;
+        const running = status?.running === true;
+        const done = status != null && status.running === false;
+        const rowsState = status?.rows || {};
+        const nameFor = (p) => p.playerName
+          ?? (p.gameType === "total" ? `${p.awayTeam} @ ${p.homeTeam}`
+            : p.gameType === "teamTotal" ? `${p.scoringTeam} team`
+            : p.gameType === "ml" ? `${p.pickTeam} ML`
+            : p.gameType === "spread" ? `${p.pickTeam} ${p.pickLine > 0 ? "+" : ""}${p.pickLine}`
+            : "");
+        const subFor = (p) => p.playerName ? `${p.stat?.toUpperCase()} ${p.direction === "under" ? "U" : ""}${p.threshold}`
+          : p.gameType === "total" ? `${p.direction === "under" ? "U" : "O"}${p.threshold}`
+          : p.gameType === "teamTotal" ? `${p.direction === "under" ? "U" : "O"}${p.threshold}`
+          : "";
+        const close = () => { if (!running) { setShowPlaceAll(false); setPlaceAllStatus(null); } };
+        const stateColor = { filled: "#3fb950", resting: "#e3b341", error: "#f78166", placing: "#58a6ff", pending: "#484f58" };
+        return (
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:700,display:"flex",alignItems:"center",justifyContent:"center"}}
+            onClick={close}>
+            <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:12,padding:"20px 22px",width:440,maxHeight:"82vh",display:"flex",flexDirection:"column"}}
+              onClick={e => e.stopPropagation()}>
+              <div style={{fontSize:14,color:"#c9d1d9",fontWeight:700,marginBottom:2}}>
+                {done ? "Placement complete" : `Place ${cands.length} bet${cands.length === 1 ? "" : "s"} on Kalshi`}
+              </div>
+              <div style={{fontSize:11,color:"#8b949e",marginBottom:14}}>
+                Real-money orders · ⅛-Kelly sizing · qualified + untracked only
+              </div>
+              <div style={{flex:1,overflowY:"auto",marginBottom:14,minHeight:0}}>
+                {cands.map(c => {
+                  const key = c.play.id ?? trackIdFor(c.play);
+                  const rs = rowsState[key];
+                  return (
+                    <div key={key} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,
+                      padding:"6px 0",borderBottom:"1px solid #21262d",fontSize:12}}>
+                      <div style={{minWidth:0,flex:1}}>
+                        <div style={{color:"#c9d1d9",fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                          {nameFor(c.play)} <span style={{color:"#8b949e",fontWeight:400}}>{subFor(c.play)}</span>
+                        </div>
+                        <div style={{color:"#484f58",fontSize:10}}>
+                          {(c.play.sport || "").toUpperCase()} · {c.count} × {c.price}¢ = ${c.cost}
+                        </div>
+                      </div>
+                      <div style={{textAlign:"right",whiteSpace:"nowrap",fontSize:11,
+                        color: rs ? stateColor[rs.state] : "#8b949e", fontWeight:600}}>
+                        {!rs ? `$${c.cost}`
+                          : rs.state === "placing" ? "placing…"
+                          : rs.state === "pending" ? "queued"
+                          : rs.state === "error" ? `✗ ${rs.msg}`
+                          : rs.state === "resting" ? `◔ ${rs.msg}`
+                          : `✓ ${rs.msg}`}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}>
+                <span style={{color:"#8b949e"}}>Total cost</span>
+                <span style={{color:"#c9d1d9",fontWeight:700}}>${totalCost.toFixed(2)}</span>
+              </div>
+              {cash != null && (
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:shortfall > 0 ? 4 : 14}}>
+                  <span style={{color:"#8b949e"}}>Available (Kalshi)</span>
+                  <span style={{color:"#c9d1d9",fontWeight:700}}>${cash.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+                </div>
+              )}
+              {shortfall > 0 && (
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:14,color:"#f78166"}}>
+                  <span>Short by ${shortfall.toFixed(2)} — underfunded orders will be rejected</span>
+                </div>
+              )}
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={close} disabled={running}
+                  style={{flex:1,padding:"8px 0",fontSize:12,borderRadius:7,border:"1px solid #30363d",
+                    background:"transparent",color:"#8b949e",cursor:running ? "not-allowed" : "pointer",opacity:running ? 0.6 : 1}}>
+                  {done ? "Done" : "Cancel"}
+                </button>
+                {!done && (
+                  <button onClick={runPlaceAll} disabled={running || cands.length === 0}
+                    style={{flex:2,padding:"8px 0",fontSize:12,borderRadius:7,fontWeight:600,
+                      border:"1px solid #d29922",
+                      background: running ? "transparent" : "rgba(210,153,34,0.15)",
+                      color:"#e3b341",cursor:running ? "not-allowed" : "pointer",opacity:running ? 0.7 : 1}}>
+                    {running ? "Placing…" : `⚡ Place ${cands.length} bet${cands.length === 1 ? "" : "s"} ($${totalCost.toFixed(2)})`}
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -1385,6 +1594,8 @@ function App() {
           openPicksDrawer={() => setShowPicksDrawer(d => !d)}
           showPicksDrawer={showPicksDrawer}
           picksButtonRef={fabRef}
+          placeAllCount={placeAllCandidates.length}
+          onPlaceAll={() => { setPlaceAllStatus(null); setShowPlaceAll(true); }}
         />
       )}
 
