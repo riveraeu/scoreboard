@@ -482,38 +482,18 @@ export async function handleAuthRoutes(ctx) {
     if (ak !== env.ADMIN_KEY) return errorResponse("Forbidden", 403);
 
     // Debug: surface all Neon connection string hosts (no passwords).
-    const _allVars = {
-      DATABASE_URL_UNPOOLED: env?.DATABASE_URL_UNPOOLED,
-      POSTGRES_URL_NON_POOLING: env?.POSTGRES_URL_NON_POOLING,
-      NEON_DATABASE_URL: env?.NEON_DATABASE_URL,
-      POSTGRES_URL: env?.POSTGRES_URL,
-    };
-    const _hostMap = {};
-    for (const [k, v] of Object.entries(_allVars)) {
-      if (v) {
-        try { _hostMap[k] = new URL(v.replace(/^postgresql:\/\//, "https://")).hostname; } catch { _hostMap[k] = "(parse-failed)"; }
-      } else {
-        _hostMap[k] = null;
-      }
-    }
-    const _connStr =
-      env?.DATABASE_URL_UNPOOLED ||
-      env?.POSTGRES_URL_NON_POOLING ||
-      env?.NEON_DATABASE_URL ||
-      env?.POSTGRES_URL;
-    if (!_connStr) return errorResponse("No Neon connection string set", 500);
-    let _neonHost = "(parse-failed)";
-    try { _neonHost = new URL(_connStr.replace(/^postgresql:\/\//, "https://")).hostname; } catch {}
     const _neonVarUsed = env?.DATABASE_URL_UNPOOLED ? "DATABASE_URL_UNPOOLED"
       : env?.POSTGRES_URL_NON_POOLING ? "POSTGRES_URL_NON_POOLING"
       : env?.NEON_DATABASE_URL ? "NEON_DATABASE_URL"
-      : "POSTGRES_URL";
+      : env?.POSTGRES_URL ? "POSTGRES_URL" : "(none)";
+    const _pgHostUsed = env?.PGHOST_UNPOOLED || env?.PGHOST || null;
+    const _pgVarsSet = !!(env?.PGHOST_UNPOOLED && env?.PGUSER && env?.PGPASSWORD && env?.PGDATABASE);
 
     let tables;
     try {
       tables = await neonQuery("SELECT tablename FROM pg_tables WHERE schemaname='public'", [], env);
     } catch (e) {
-      return jsonResponse({ _debug: { neonVarUsed: _neonVarUsed, neonHost: _neonHost, allHosts: _hostMap }, error: String(e) }, 500);
+      return jsonResponse({ _debug: { neonVarUsed: _neonVarUsed, pgHostUsed: _pgHostUsed, pgVarsSet: _pgVarsSet }, error: String(e) }, 500);
     }
     const hasShadow = tables.some(r => r.tablename === "shadow_plays");
     if (!hasShadow) return jsonResponse({ tables: tables.map(r => r.tablename), shadow_plays: null });
@@ -526,7 +506,7 @@ export async function handleAuthRoutes(ctx) {
     ]);
 
     return jsonResponse({
-      _debug: { neonVarUsed: _neonVarUsed, neonHost: _neonHost },
+      _debug: { neonVarUsed: _neonVarUsed, pgHostUsed: _pgHostUsed, pgVarsSet: _pgVarsSet },
       tables: tables.map(r => r.tablename),
       shadow_plays: {
         total: Number(totals[0]?.total ?? 0),

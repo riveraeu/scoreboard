@@ -152,6 +152,11 @@ export default async function handler(request) {
     NEON_DATABASE_URL: process.env.NEON_DATABASE_URL,
     DATABASE_URL_UNPOOLED: process.env.DATABASE_URL_UNPOOLED,
     POSTGRES_URL_NON_POOLING: process.env.POSTGRES_URL_NON_POOLING,
+    PGHOST_UNPOOLED: process.env.PGHOST_UNPOOLED,
+    PGHOST: process.env.PGHOST,
+    PGUSER: process.env.PGUSER,
+    PGPASSWORD: process.env.PGPASSWORD,
+    PGDATABASE: process.env.PGDATABASE,
   };
   const ctx = { waitUntil: (p) => { try { p.catch?.(() => {}); } catch {} } };
   return worker_default.fetch(request, env, ctx);
