@@ -1,78 +1,37 @@
-// Pure-fetch HTTP client for Neon's serverless SQL API (Edge-compatible, no Node APIs).
-// Neon HTTP endpoint: POST https://{host}/sql
-// Auth: tries Neon-Connection-String header first (how @neondatabase/serverless works),
-//       falls back to Basic auth from PG component vars if available.
-// NEON_DATABASE_URL format: postgresql://user:pass@ep-xxx.region.aws.neon.tech/dbname
+// Neon database client using @neondatabase/serverless — Edge-compatible (uses fetch, not TCP).
+// The package handles auth, connection string parsing, and HTTP endpoint routing automatically.
+// Supports Vercel's Neon Marketplace integration (DATABASE_URL_UNPOOLED preferred for HTTP SQL).
 
-function _parseConnStr(connStr) {
-  // Normalise protocol so URL constructor accepts it.
-  const safe = connStr.replace(/^postgres(ql)?:\/\//, "https://");
-  try {
-    const u = new URL(safe);
-    return {
-      host: u.hostname,
-      user: decodeURIComponent(u.username),
-      pass: decodeURIComponent(u.password),
-    };
-  } catch {
-    return null;
-  }
-}
+import { neon as _neon } from "@neondatabase/serverless";
 
-export async function neonQuery(sql, params = [], env) {
-  // Prefer unpooled (direct compute) URLs; HTTP SQL API requires a non-pooler endpoint.
-  const connStr =
+function _getConnStr(env) {
+  // Prefer direct (non-pooled) connection for the HTTP SQL API.
+  return (
     env?.DATABASE_URL_UNPOOLED ||
     env?.POSTGRES_URL_NON_POOLING ||
     env?.NEON_DATABASE_URL ||
-    env?.POSTGRES_URL;
+    env?.POSTGRES_URL
+  );
+}
 
-  // PG component vars (also provided by Vercel's Neon integration).
-  const pgHost = env?.PGHOST_UNPOOLED || env?.PGHOST;
-  const pgUser = env?.PGUSER;
-  const pgPass = env?.PGPASSWORD;
-  const pgDb   = env?.PGDATABASE;
-
-  if (!connStr && !pgHost) throw new Error("No Neon connection string or PG vars available");
-
-  // Determine endpoint host and credentials.
-  let host, user, pass, fullConnStr;
-  if (pgHost && pgUser && pgPass && pgDb) {
-    // Use component vars — no URL-parsing ambiguity with special chars in password.
-    host = pgHost;
-    user = pgUser;
-    pass = pgPass;
-    fullConnStr = connStr || `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}/${pgDb}`;
-  } else {
-    const parsed = _parseConnStr(connStr);
-    if (!parsed) throw new Error("Could not parse Neon connection string");
-    ({ host, user, pass } = parsed);
-    fullConnStr = connStr;
-  }
-
-  const resp = await fetch(`https://${host}/sql`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Neon-Connection-String": fullConnStr,
-      "Authorization": `Basic ${btoa(`${user}:${pass}`)}`,
-    },
-    body: JSON.stringify({ query: sql, params }),
-  });
-
-  if (!resp.ok) {
-    const txt = await resp.text().catch(() => resp.statusText);
-    throw new Error(`Neon ${resp.status}: ${txt}`);
-  }
-
-  const data = await resp.json();
-  return data.rows ?? [];
+export async function neonQuery(sql, params = [], env) {
+  const connStr = _getConnStr(env);
+  if (!connStr) throw new Error("No Neon connection string available (DATABASE_URL_UNPOOLED not set)");
+  const sql_fn = _neon(connStr);
+  // neon() tagged template doesn't support positional params directly.
+  // Use the unsafe() helper for parameterized queries.
+  const result = await sql_fn.query(sql, params);
+  return result.rows ?? [];
 }
 
 // Batch-insert helper. Builds a single parameterized INSERT for up to `chunkSize` rows.
 // Uses ON CONFLICT DO NOTHING for idempotent re-runs.
 export async function neonBatchUpsert(table, columns, rows, env, chunkSize = 100) {
   if (!rows.length) return;
+  const connStr = _getConnStr(env);
+  if (!connStr) throw new Error("No Neon connection string available");
+  const sql = _neon(connStr);
+
   const chunks = [];
   for (let i = 0; i < rows.length; i += chunkSize) chunks.push(rows.slice(i, i + chunkSize));
 
@@ -81,7 +40,9 @@ export async function neonBatchUpsert(table, columns, rows, env, chunkSize = 100
       `(${columns.map((_, ci) => `$${ri * columns.length + ci + 1}`).join(", ")})`
     ).join(", ");
     const values = chunk.flatMap(row => columns.map(col => row[col] ?? null));
-    const sql = `INSERT INTO ${table} (${columns.join(", ")}) VALUES ${placeholders} ON CONFLICT (id) DO NOTHING`;
-    await neonQuery(sql, values, env);
+    const insertSql = `INSERT INTO ${table} (${columns.join(", ")}) VALUES ${placeholders} ON CONFLICT (id) DO NOTHING`;
+    const result = await sql.query(insertSql, values);
+    // neon.query returns a result object; errors throw automatically.
+    void result;
   }
 }
