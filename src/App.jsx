@@ -67,7 +67,7 @@ function App() {
     fabRef,
     initiateTrack, triggerFlyAnimation, openPickDate,
   } = usePickInteractions();
-  const [placeOnKalshi, setPlaceOnKalshi] = React.useState(false);
+  const [placeOnKalshi, setPlaceOnKalshi] = React.useState(true);
   const [kalshiOrderResult, setKalshiOrderResult] = React.useState(null); // null | {ok, msg}
   const [kalshiBalance, setKalshiBalance] = React.useState(null); // dollars, null = not fetched
   const [showPlaceAll, setShowPlaceAll] = React.useState(false); // batch-place modal open
@@ -498,7 +498,7 @@ function App() {
           setPendingTrackPlay(null);
           openPickDate(play.gameDate);
           triggerFlyAnimation();
-          setPlaceOnKalshi(false);
+          setPlaceOnKalshi(true);
           setKalshiOrderResult(null);
         };
         const _doPlaceOrder = async () => {
@@ -541,7 +541,7 @@ function App() {
         };
         return (
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:700,display:"flex",alignItems:"center",justifyContent:"center"}}
-            onClick={() => { setPendingTrackPlay(null); setPlaceOnKalshi(false); setKalshiOrderResult(null); }}>
+            onClick={() => { setPendingTrackPlay(null); setPlaceOnKalshi(true); setKalshiOrderResult(null); }}>
             <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:12,padding:"20px 22px",width:360}}
               onClick={e => e.stopPropagation()}>
               <div style={{fontSize:13,color:"#c9d1d9",fontWeight:600,marginBottom:2}}>{name}</div>
@@ -562,7 +562,7 @@ function App() {
                       if (edge !== null && edge < 3) return;
                       _doTrack();
                     } else if (e.key === "Escape") {
-                      setPendingTrackPlay(null); setPlaceOnKalshi(false); setKalshiOrderResult(null);
+                      setPendingTrackPlay(null); setPlaceOnKalshi(true); setKalshiOrderResult(null);
                     }
                   }}
                   style={{flex:1,background:"#0d1117",border:"1px solid #30363d",borderRadius:7,
@@ -610,7 +610,7 @@ function App() {
                 </div>
               )}
               <div style={{display:"flex",gap:8}}>
-                <button onClick={() => { setPendingTrackPlay(null); setPlaceOnKalshi(false); setKalshiOrderResult(null); }}
+                <button onClick={() => { setPendingTrackPlay(null); setPlaceOnKalshi(true); setKalshiOrderResult(null); }}
                   style={{flex:1,padding:"8px 0",fontSize:12,borderRadius:7,border:"1px solid #30363d",
                     background:"transparent",color:"#8b949e",cursor:"pointer"}}>
                   Cancel
