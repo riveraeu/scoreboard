@@ -211,18 +211,59 @@ export async function handleKalshiRoutes(ctx) {
         await new Promise(res => setTimeout(res, _SNAP_BATCH_DELAY_MS));
       }
     }
-    // ── Orderbook depth for in-window markets (added 2026-05-31) ───────────────────────────
-    // For markets in the tradeable Kalshi window (yes_ask OR no_ask ∈ [67,91]), fetch the
-    // orderbook and attach a compact top-3-levels `_depth` so /api/tonight can blend the true
-    // sweep cost (slippage-honest edge) without any live fetch on the hot path. Purely additive:
-    // if a depth fetch fails or the budget is exhausted, the market simply lacks `_depth` and
-    // downstream blending falls back to top-of-book. Hard fetch cap protects the 2-min cron
-    // window; highest-volume markets get depth first when the slate exceeds the cap.
+    // ── Snap write #1: persist snaps IMMEDIATELY, before any orderbook depth work ───────────
+    // The depth loop below can take 30s+; the Edge function's wall-clock ceiling is ~25s, so
+    // running it BEFORE the write was killing the cron mid-flight → no snaps written → /api/tonight
+    // never took the snap-first path (usedSnaps stayed false, _depth never flowed). Decoupled
+    // 2026-05-31: write snaps first so they ALWAYS land, then fetch depth best-effort and re-write
+    // only the snaps that gained it. `writtenAt` is shared across both writes (one cron cycle);
+    // the read side judges freshness from it (180s gate).
+    const writtenAt = Date.now();
+    const successCount = Object.keys(_snapResults).length;
+    // Pipelined Upstash write: 1 HTTP request for all SETs. Upstash bills per command (not per
+    // request), so this cuts Vercel observability events, not Upstash cost.
+    const _pipeWrite = async (cmds) => {
+      if (!cmds.length) return;
+      await fetch(`${env.UPSTASH_REDIS_REST_URL}/pipeline`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${env.UPSTASH_REDIS_REST_TOKEN}`, "Content-Type": "application/json" },
+        body: JSON.stringify(cmds),
+      });
+    };
+    const _metaCmd = (extra) => ["SET", "kalshi:snap:_meta", JSON.stringify({
+      lastRunAt: writtenAt,
+      successCount,
+      failedTickers: _snapFailed.map(f => f.ticker),
+      durationMs: Date.now() - startMs,
+      ...extra,
+    }), "EX", 600];
+    if (successCount > 0) {
+      const _snapCmds = [];
+      for (const [ticker, data] of Object.entries(_snapResults)) {
+        _snapCmds.push(["SET", `kalshi:snap:${ticker}`, JSON.stringify({ markets: data.markets || [], writtenAt }), "EX", 300]);
+      }
+      // Depth not fetched yet — record 0/pending so a timed-out depth phase still leaves valid meta.
+      _snapCmds.push(_metaCmd({ depthOk: 0, depthFail: 0, depthTargets: null, depthPending: true }));
+      try {
+        await _pipeWrite(_snapCmds);
+      } catch (e) {
+        return errorResponse(`Pipeline write failed: ${e.message}`, 500);
+      }
+    }
+
+    // ── Orderbook depth for in-window markets (best-effort, time-bounded) ───────────────────
+    // For markets in the tradeable window (yes_ask OR no_ask ∈ [67,91]), fetch the orderbook and
+    // attach a compact top-3-levels `_depth` so /api/tonight can blend the true sweep cost
+    // (slippage-honest edge) with NO live fetch on the hot path. Purely additive: a market that
+    // misses out (fetch failed, budget/deadline hit) simply lacks `_depth` and blending falls back
+    // to top-of-book. Highest-volume (most-likely-bet) markets get depth first; the wall-clock
+    // deadline guarantees room for write #2 before the Edge ceiling.
     const DEPTH_GATE_LO = 67, DEPTH_GATE_HI = 91;
-    const DEPTH_FETCH_CAP = 150;          // max orderbook fetches per cron run
-    const DEPTH_BATCH = 3, DEPTH_BATCH_DELAY_MS = 700;  // mirror the series throttle
-    const _depthTargets = [];             // { ticker, vol, market } refs into _snapResults
-    for (const data of Object.values(_snapResults)) {
+    const DEPTH_FETCH_CAP = 90;            // ceiling; the deadline is the real limiter
+    const DEPTH_BATCH = 3, DEPTH_BATCH_DELAY_MS = 700;  // mirror the series throttle (avoid 429s)
+    const DEPTH_DEADLINE_MS = 21000;       // stop launching batches past this; ~4s headroom to ~25s
+    const _depthTargets = [];              // { ticker, vol, market, series } refs into _snapResults
+    for (const [series, data] of Object.entries(_snapResults)) {
       for (const m of data.markets || []) {
         const ya = Math.round((parseFloat(m.yes_ask_dollars) || 0) * 100);
         const na = Math.round((parseFloat(m.no_ask_dollars) || 0) * 100);
@@ -230,19 +271,20 @@ export async function handleKalshiRoutes(ctx) {
                       (na >= DEPTH_GATE_LO && na <= DEPTH_GATE_HI);
         if (!inWin || !m.ticker) continue;
         const vol = parseInt(m.volume_fp) || parseInt(m.volume) || 0;
-        _depthTargets.push({ ticker: m.ticker, vol, market: m });
+        _depthTargets.push({ ticker: m.ticker, vol, market: m, series });
       }
     }
     // Cap: keep the highest-volume (most-liquid, most-likely-bet) markets when over budget.
     _depthTargets.sort((a, b) => b.vol - a.vol);
     const _depthBudgeted = _depthTargets.slice(0, DEPTH_FETCH_CAP);
     let _depthOk = 0, _depthFail = 0;
+    const _touchedSeries = new Set();      // series snaps that gained depth → re-written in write #2
     const _topLevels = (rows) => (Array.isArray(rows) ? rows : [])
       .map(([p, q]) => [Math.round(parseFloat(p) * 100), Math.round(parseFloat(q))])
       .filter(([c, q]) => c > 0 && c < 100 && q > 0)
       .sort((a, b) => b[0] - a[0])   // descending price (highest bid first)
       .slice(0, 3);
-    const _fetchDepth = async ({ ticker, market }) => {
+    const _fetchDepth = async ({ ticker, market, series }) => {
       try {
         const r = await fetch(`https://api.elections.kalshi.com/trade-api/v2/markets/${ticker}/orderbook`, {
           headers: { "User-Agent": "Mozilla/5.0", Accept: "application/json" },
@@ -251,10 +293,11 @@ export async function handleKalshiRoutes(ctx) {
         const ob = (await r.json())?.orderbook_fp || {};
         const n = _topLevels(ob.no_dollars);
         const y = _topLevels(ob.yes_dollars);
-        if (n.length || y.length) { market._depth = { n, y }; _depthOk++; }
+        if (n.length || y.length) { market._depth = { n, y }; _depthOk++; _touchedSeries.add(series); }
       } catch { _depthFail++; }
     };
     for (let off = 0; off < _depthBudgeted.length; off += DEPTH_BATCH) {
+      if (Date.now() - startMs > DEPTH_DEADLINE_MS) break;  // out of budget — keep what we have
       const batch = _depthBudgeted.slice(off, off + DEPTH_BATCH);
       await Promise.all(batch.map(_fetchDepth));
       if (off + DEPTH_BATCH < _depthBudgeted.length) {
@@ -262,36 +305,23 @@ export async function handleKalshiRoutes(ctx) {
       }
     }
 
-    const writtenAt = Date.now();
-    const successCount = Object.keys(_snapResults).length;
-    // Pipelined Upstash write: 1 HTTP request for all SETs. Upstash bills per command
-    // (not per request) so this doesn't cut Upstash billing; it cuts Vercel observability
-    // event count (1 fetch event instead of N).
-    if (successCount > 0) {
-      const _snapCmds = [];
-      for (const [ticker, data] of Object.entries(_snapResults)) {
-        const value = JSON.stringify({ markets: data.markets || [], writtenAt });
-        _snapCmds.push(["SET", `kalshi:snap:${ticker}`, value, "EX", 300]);
+    // ── Snap write #2: re-persist only the series snaps that gained depth, plus real meta ────
+    // Skipped entirely when no depth landed (timeout/empty slate), so the cheap path costs nothing
+    // extra. `_depth` rides inside the snap JSON, so /api/tonight's read path is unchanged. A failed
+    // write #2 is non-fatal — write #1's snaps already landed; depth is purely additive.
+    if (successCount > 0 && _depthOk > 0) {
+      const _depthCmds = [];
+      for (const series of _touchedSeries) {
+        const data = _snapResults[series];
+        if (!data) continue;
+        _depthCmds.push(["SET", `kalshi:snap:${series}`, JSON.stringify({ markets: data.markets || [], writtenAt }), "EX", 300]);
       }
-      _snapCmds.push(["SET", "kalshi:snap:_meta", JSON.stringify({
-        lastRunAt: writtenAt,
-        successCount,
-        failedTickers: _snapFailed.map(f => f.ticker),
-        durationMs: Date.now() - startMs,
-        depthOk: _depthOk,
-        depthFail: _depthFail,
-        depthTargets: _depthTargets.length,
-      }), "EX", 600]);
+      _depthCmds.push(_metaCmd({ depthOk: _depthOk, depthFail: _depthFail, depthTargets: _depthTargets.length }));
       try {
-        await fetch(`${env.UPSTASH_REDIS_REST_URL}/pipeline`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${env.UPSTASH_REDIS_REST_TOKEN}`, "Content-Type": "application/json" },
-          body: JSON.stringify(_snapCmds),
-        });
-      } catch (e) {
-        return errorResponse(`Pipeline write failed: ${e.message}`, 500);
-      }
+        await _pipeWrite(_depthCmds);
+      } catch { /* write #1 already landed; depth is best-effort */ }
     }
+
     return jsonResponse({
       ok: successCount > 0,
       successCount,
@@ -302,6 +332,7 @@ export async function handleKalshiRoutes(ctx) {
       depthFail: _depthFail,
       depthTargets: _depthTargets.length,
       depthBudgeted: _depthBudgeted.length,
+      touchedSeries: _touchedSeries.size,
     });
   }
 

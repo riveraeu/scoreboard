@@ -410,6 +410,18 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           const blended = blendMarketPrice(m._depth, "yes", m.kalshiPct);
           if (blended) { m.kalshiPct = blended.pct; m.americanOdds = blended.americanOdds; }
         }
+        // Blended fill price (totals / team totals / spreads): same cached-depth blend, but each
+        // of these has TWO tradeable sides — the OVER/margin (YES buy) and the UNDER/cover (NO
+        // buy) — so we re-price both. Done here at the PARSE site (before game-totals.js and
+        // ml-spread.js read these arrays) so the emit modules need zero changes; they consume
+        // already-slippage-adjusted kalshiPct/noKalshiPct. YES re-prices kalshiPct+americanOdds;
+        // NO re-prices noKalshiPct+noKalshiAO. Markets without cached depth keep top-of-book.
+        for (const m of [...totalMarkets, ...teamTotalMarkets, ...spreadMarkets]) {
+          const yb = blendMarketPrice(m._depth, "yes", m.kalshiPct);
+          if (yb) { m.kalshiPct = yb.pct; m.americanOdds = yb.americanOdds; }
+          const nb = blendMarketPrice(m._depth, "no", m.noKalshiPct);
+          if (nb) { m.noKalshiPct = nb.pct; m.noKalshiAO = nb.americanOdds; }
+        }
         // E1: Line movement tracking — record opening price the first time we see each ticker.
         // lineMove = current yesAsk (after blend) - openYesAsk (first seen today).
         // KV key: lineOpen:{ticker}:{gameDate} → openYesAsk (cents, 0-100)

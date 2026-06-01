@@ -477,9 +477,23 @@ export async function emitGameTotalPlays({
         const _homeWhipPts = homeWHIP == null ? 1 : homeWHIP > 1.35 ? 2 : homeWHIP > 1.20 ? 1 : 0;
         const _awayWhipPts = awayWHIP == null ? 1 : awayWHIP > 1.35 ? 2 : awayWHIP > 1.20 ? 1 : 0;
         _simData = { homeRPG, awayRPG, homeERA, awayERA, homeFIP, awayFIP, homeWHIP, awayWHIP, ...(homeWHIPSource && { homeWHIPSource }), ...(awayWHIPSource && { awayWHIPSource }), homeBullpenERA: _homeRestERA, awayBullpenERA: _awayRestERA, ...(homeBullpenSource && { homeBullpenSource }), ...(awayBullpenSource && { awayBullpenSource }), parkFactor: parkRF, homeExpected: _hLam, awayExpected: _aLam, expectedTotal: (_hLam != null && _aLam != null) ? parseFloat((_hLam + _aLam).toFixed(1)) : null, gameOuLine, mlbOuPts: _mlbOuPts, homeWhipPts: _homeWhipPts, awayWhipPts: _awayWhipPts, combinedRpgPts: _combinedRPGPts, h2hTotalPts: _h2hTotalPts, combinedRPG: _combinedRPG, umpireRunFactor: _umpNameT != null ? _umpRunFactor : null, umpireName: _umpNameT, h2hTotalHitRate, h2hTotalGames, homeStarterHand: _homeStarterHand, awayStarterHand: _awayStarterHand, ...(_homePlatFactor !== 1.0 && { homePlatoonFactor: _homePlatFactor }), ...(_awayPlatFactor !== 1.0 && { awayPlatoonFactor: _awayPlatFactor }), ...(_weatherFactor !== 1.0 && { weatherFactor: _weatherFactor, windOutMph: _wData?.windOutMph }), ...(homeTopOut > 0 && { homeTopOut, homeLineupFactor }), ...(awayTopOut > 0 && { awayTopOut, awayLineupFactor }), ...(homePitcherOnIL && { homePitcherOnIL: true }), ...(awayPitcherOnIL && { awayPitcherOnIL: true }), ...(_homeTto !== 1.0 && { homeExpectedBF: _homeBF, homeTtoBump: parseFloat(_homeTto.toFixed(3)) }), ...(_awayTto !== 1.0 && { awayExpectedBF: _awayBF, awayTtoBump: parseFloat(_awayTto.toFixed(3)) }), ...(_homeRestBump !== 1.0 && { homeDaysRest: _homeDaysRest, homeRestBump: parseFloat(_homeRestBump.toFixed(3)) }), ...(_awayRestBump !== 1.0 && { awayDaysRest: _awayDaysRest, awayRestBump: parseFloat(_awayRestBump.toFixed(3)) }), ...(_mlbRegimeBlendW > 0 && { regimeBlendW: parseFloat(_mlbRegimeBlendW.toFixed(2)), homeRecentMean: parseFloat(_mlbHomeRecent.mean.toFixed(2)), awayRecentMean: parseFloat(_mlbAwayRecent.mean.toFixed(2)) }), ...(_homeMix.lFrac != null && { homeOppLFrac: _homeMix.lFrac, homeFipMod: _homeMix.fipMod, homeWhipMod: _homeMix.whipMod, homeFipEff, homeWhipEff }), ...(_awayMix.lFrac != null && { awayOppLFrac: _awayMix.lFrac, awayFipMod: _awayMix.fipMod, awayWhipMod: _awayMix.whipMod, awayFipEff, awayWhipEff }) };
+        // Plan C (2026-06-01 calibration): anchor the total's lambda toward the market O/U
+        // line — the sharpest available prior on the game mean. totalRuns overs ran +17
+        // overconfident (Δ −26.5 side-aware) because the regime blend + seasonHitRate blend
+        // stack λ upward, especially when the threshold sits well below the mean. The anchor
+        // pulls 25% toward the line; it self-targets the overconfident games (biggest pull
+        // where the model diverges most from market) and barely moves games already near the
+        // line. Local to the total truePct only — _mlbMlContext keeps the RAW model lambda so
+        // the (healthy, +11% ROI) ML/spread surfaces are untouched. Gated to plausible lines.
+        const _anchorTotalLam = (lam) =>
+          (gameOuLine != null && Number.isFinite(gameOuLine) && gameOuLine >= 5 && gameOuLine <= 14)
+            ? parseFloat((0.75 * lam + 0.25 * gameOuLine).toFixed(2))
+            : lam;
         if (_hLam != null && _aLam != null) {
+          const _sumLam = _hLam + _aLam;
+          const _lamScale = _sumLam > 0 ? _anchorTotalLam(_sumLam) / _sumLam : 1;
           const _dk = `mlb|${homeTeam}|${awayTeam}`;
-          if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateMLBTotalDist(_hLam, _aLam, _mlbDispR, 10000);
+          if (!totalDistCache[_dk]) totalDistCache[_dk] = simulateMLBTotalDist(_hLam * _lamScale, _aLam * _lamScale, _mlbDispR, 10000);
           truePct = totalDistPct(totalDistCache[_dk], threshold);
           const _mlCtxKey = `${homeTeam}|${awayTeam}|${gameDate}`;
           if (!_mlbMlContext[_mlCtxKey]) {
@@ -497,9 +511,14 @@ export async function emitGameTotalPlays({
           const _modelLambda = _hLam + _aLam;
           const _impliedLambda = muForNegBinTail(threshold, _gtMlbSsn.rate / 100, _mlbDispR);
           if (_impliedLambda != null) {
-            const _cap = _GT_IMPLIED_CAP.mlb;
+            // Plan A (2026-06-01 calibration): tighten the seasonHitRate blend clamp for MLB
+            // totals from 1.5 → 0.75. Decoupled from _GT_IMPLIED_CAP.mlb (still 1.5), which also
+            // drives the seasonRateDivergent dc penalty in dc.js — keeping that at 1.5 means the
+            // same plays qualify/drop; only the blend math softens. Limits the upward pull of a
+            // high season-implied λ at low thresholds. Final λ then anchored toward the market line.
+            const _cap = 0.75;
             const _impliedClamped = Math.max(_modelLambda - _cap, Math.min(_modelLambda + _cap, _impliedLambda));
-            const _blendedLambda = (1 - _w) * _modelLambda + _w * _impliedClamped;
+            const _blendedLambda = _anchorTotalLam((1 - _w) * _modelLambda + _w * _impliedClamped);
             _simData.modelTruePct = parseFloat(truePct.toFixed(1));
             _simData.gtSeasonHitRate = _gtMlbSsn.rate;
             _simData.gtSsnSample = _gtMlbSsn.sample;

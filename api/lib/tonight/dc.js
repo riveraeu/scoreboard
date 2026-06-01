@@ -48,7 +48,11 @@ export function computeDataConfidence(p, ctx = {}) {
   // ── Market quality
   if (p._kalshiStale === true) _pen("kalshiStale", 4);
   if (p.lowVolume === true) _pen("lowVolume", 2);
-  if (p.kalshiSpread != null && p.kalshiSpread >= 5) _pen("wideSpread", 1);
+  // wideSpread penalty dropped 2026-05-31: it was a proxy for "this market will cost more to fill
+  // than top-of-book shows." Now that every surface (props + totals/teamTotal/spread) re-prices
+  // its displayed edge through the cached orderbook-depth blend (blend-fill.js), slippage is
+  // accounted for directly in kalshiPct/noKalshiPct — penalizing the spread again would double-count.
+  // The raw spread is still emitted as `kalshiSpread` for display; it just no longer gates dc.
 
   // ── Lineup / starter confirmation
   if (sport === "mlb" && (gameType === "ml" || gameType === "spread")) {
