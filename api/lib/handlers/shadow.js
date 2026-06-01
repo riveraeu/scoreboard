@@ -138,7 +138,7 @@ export async function handleShadowRoutes({ path, request, env }) {
   const cronAuth = (request.headers.get("authorization") || "").replace(/^Bearer\s+/, "");
   if (cronAuth !== env.CRON_SECRET) return errorResponse("Forbidden", 403);
 
-  if (!env?.NEON_DATABASE_URL) return errorResponse("NEON_DATABASE_URL not set", 500);
+  if (!env?.POSTGRES_URL && !env?.NEON_DATABASE_URL) return errorResponse("POSTGRES_URL not set", 500);
 
   const snapshotDate = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
   const t0 = Date.now();

@@ -4,8 +4,8 @@
 // NEON_DATABASE_URL format: postgresql://user:pass@ep-xxx.region.aws.neon.tech/dbname
 
 export async function neonQuery(sql, params = [], env) {
-  const connStr = env?.NEON_DATABASE_URL;
-  if (!connStr) throw new Error("NEON_DATABASE_URL not set");
+  const connStr = env?.POSTGRES_URL || env?.NEON_DATABASE_URL;
+  if (!connStr) throw new Error("POSTGRES_URL not set");
 
   const parsed = new URL(connStr.replace(/^postgresql:\/\//, "https://"));
   const host = parsed.hostname;

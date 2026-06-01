@@ -148,6 +148,7 @@ export default async function handler(request) {
     CRON_SECRET: process.env.CRON_SECRET,
     KALSHI_API_KEY_ID: process.env.KALSHI_API_KEY_ID,
     KALSHI_PRIVATE_KEY: process.env.KALSHI_PRIVATE_KEY,
+    POSTGRES_URL: process.env.POSTGRES_URL,
     NEON_DATABASE_URL: process.env.NEON_DATABASE_URL,
   };
   const ctx = { waitUntil: (p) => { try { p.catch?.(() => {}); } catch {} } };
