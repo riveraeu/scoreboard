@@ -481,7 +481,21 @@ export async function handleAuthRoutes(ctx) {
     if (!env?.ADMIN_KEY) return errorResponse("ADMIN_KEY not set", 500);
     if (ak !== env.ADMIN_KEY) return errorResponse("Forbidden", 403);
 
-    // Debug: surface which Neon var is resolved and its host (no password).
+    // Debug: surface all Neon connection string hosts (no passwords).
+    const _allVars = {
+      DATABASE_URL_UNPOOLED: env?.DATABASE_URL_UNPOOLED,
+      POSTGRES_URL_NON_POOLING: env?.POSTGRES_URL_NON_POOLING,
+      NEON_DATABASE_URL: env?.NEON_DATABASE_URL,
+      POSTGRES_URL: env?.POSTGRES_URL,
+    };
+    const _hostMap = {};
+    for (const [k, v] of Object.entries(_allVars)) {
+      if (v) {
+        try { _hostMap[k] = new URL(v.replace(/^postgresql:\/\//, "https://")).hostname; } catch { _hostMap[k] = "(parse-failed)"; }
+      } else {
+        _hostMap[k] = null;
+      }
+    }
     const _connStr =
       env?.DATABASE_URL_UNPOOLED ||
       env?.POSTGRES_URL_NON_POOLING ||
@@ -499,7 +513,7 @@ export async function handleAuthRoutes(ctx) {
     try {
       tables = await neonQuery("SELECT tablename FROM pg_tables WHERE schemaname='public'", [], env);
     } catch (e) {
-      return jsonResponse({ _debug: { neonVarUsed: _neonVarUsed, neonHost: _neonHost }, error: String(e) }, 500);
+      return jsonResponse({ _debug: { neonVarUsed: _neonVarUsed, neonHost: _neonHost, allHosts: _hostMap }, error: String(e) }, 500);
     }
     const hasShadow = tables.some(r => r.tablename === "shadow_plays");
     if (!hasShadow) return jsonResponse({ tables: tables.map(r => r.tablename), shadow_plays: null });
