@@ -425,6 +425,7 @@ export async function handleKalshiRoutes(ctx) {
     // covers the path only (no query), matching the order/fills endpoints. Degrades to
     // positionsCents=0 if this call fails — bankroll still shows cash rather than erroring.
     let positionsCents = 0;
+    let positionsDebug = null;
     try {
       const posPath = "/trade-api/v2/portfolio/positions";
       const posTs = String(Date.now());
@@ -442,15 +443,21 @@ export async function handleKalshiRoutes(ctx) {
           "KALSHI-ACCESS-SIGNATURE": posSig,
         },
       });
+      const posBody = await posResp.json().catch(() => ({}));
       if (posResp.ok) {
-        const posBody = await posResp.json().catch(() => ({}));
-        for (const p of posBody.market_positions || []) {
+        const positions = posBody.market_positions || [];
+        for (const p of positions) {
           positionsCents += p.market_exposure || 0;
         }
+        positionsDebug = { status: posResp.status, count: positions.length, positionsCents };
+      } else {
+        positionsDebug = { status: posResp.status, error: posBody?.error?.message || posBody };
       }
-    } catch { /* leave positionsCents = 0 — bankroll falls back to cash only */ }
+    } catch (e) {
+      positionsDebug = { error: e?.message || String(e) };
+    }
     const balanceCents = cashCents + positionsCents;
-    return jsonResponse({ cashCents, positionsCents, balanceCents, balanceDollars: balanceCents / 100 });
+    return jsonResponse({ cashCents, positionsCents, balanceCents, balanceDollars: balanceCents / 100, positionsDebug });
   }
 
   if (path === "kalshi-fills" && method === "GET") {
