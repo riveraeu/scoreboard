@@ -17,6 +17,8 @@ Sports prop betting dashboard that pulls Kalshi prediction market prices, comput
 
 **Model version**: Universal client qualification is `dcQualified === true && edge >= 5`. SimScore is display-only. Client `EDGE_GATE = 5`; server `EDGE_GATE = 3` for calibration continuity. `trackPlay` stamps `modelVersion: "v2"`. The `qualified` field carries only alt-line-demotion semantics now.
 
+**Category gate (2026-06-01)**: UI display is further restricted to categories with confirmed positive ROI (n≥50, working signal). Gate lives in `passesCategoryGate()` in `src/lib/constants.js` — applied in both `App._qualifiedFilter` and `LineupsPage.passesGate`. Currently allows: `mlb|spread`, `mlb|hrr`. Tracked picks bypass the gate so existing bets stay visible. Add new categories here only when shadow calibration confirms ROI>0 at n≥200.
+
 ---
 
 ## Where to look
@@ -188,6 +190,8 @@ const env = {
   CRON_SECRET: process.env.CRON_SECRET,
   KALSHI_API_KEY_ID: process.env.KALSHI_API_KEY_ID,
   KALSHI_PRIVATE_KEY: process.env.KALSHI_PRIVATE_KEY,
+  POSTGRES_URL: process.env.POSTGRES_URL,
+  NEON_DATABASE_URL: process.env.NEON_DATABASE_URL,
 };
 ```
 Symptom of missing wire-up: `env?.VAR` is `undefined` even though Vercel dashboard shows it set.
