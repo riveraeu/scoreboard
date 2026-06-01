@@ -385,8 +385,8 @@ export default function LineupsPage({
             border: '1px solid #30363d', background: 'transparent', color: '#484f58', fontWeight: 600,
             display: 'flex', alignItems: 'center', gap: 4 }}>
           <span>⚡</span> Place All
-          <span style={{ background: 'rgba(72,79,88,0.18)', border: '1px solid rgba(72,79,88,0.35)',
-            color: '#484f58', fontSize: 9, fontWeight: 700, borderRadius: 8, padding: '0 4px', lineHeight: '14px' }}>
+          <span style={{ background: 'rgba(63,185,80,0.12)', border: '1px solid rgba(63,185,80,0.3)',
+            color: '#3fb950', fontSize: 9, fontWeight: 700, borderRadius: 8, padding: '0 4px', lineHeight: '14px' }}>
             {placeAllCount}
           </span>
         </button>
@@ -398,20 +398,6 @@ export default function LineupsPage({
           color: showPicksDrawer ? '#58a6ff' : '#484f58', fontWeight: 600,
           display: 'flex', alignItems: 'center', gap: 4 }}>
         <span style={{ color: '#e3b341' }}>★</span> Picks
-        {(() => {
-          // Sum the per-day untracked-visible counts so the green badge matches day-tab
-          // semantics (untracked picks remaining to consider, dedup-aware). Was previously
-          // tonightPlays.length which is strict-qualified count and doesn't account for
-          // dedup hides or tracked-but-low-dc visibility — out of sync with day tabs.
-          const untracked = Object.values(qualifiedByDay).reduce((a, b) => a + b, 0);
-          return untracked > 0 && (
-            <span title="Untracked picks remaining" style={{ background: 'rgba(63,185,80,0.12)', border: '1px solid rgba(63,185,80,0.3)',
-              color: '#3fb950', fontSize: 9, fontWeight: 700,
-              borderRadius: 8, padding: '0 4px', lineHeight: '14px' }}>
-              {untracked}
-            </span>
-          );
-        })()}
         {activePicks.length > 0 && (
           <span title="Tracked picks" style={{ background: 'rgba(227,179,65,0.12)', border: '1px solid rgba(227,179,65,0.3)',
             color: '#e3b341', fontSize: 9, fontWeight: 700,
