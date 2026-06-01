@@ -73,6 +73,7 @@ function App() {
   const [kalshiBalance, setKalshiBalance] = React.useState(null); // dollars, null = not fetched
   const [showPlaceAll, setShowPlaceAll] = React.useState(false); // batch-place modal open
   const [placeAllStatus, setPlaceAllStatus] = React.useState(null); // null | { running, rows: {id->{state,msg}} }
+  const [placeAllTodayOnly, setPlaceAllTodayOnly] = React.useState(true);
   const _prevResolvedCount = React.useRef(0);
   const {
     authEmail,
@@ -247,9 +248,8 @@ function App() {
 
   // Place every candidate sequentially (await each — avoids Kalshi 429s), tracking each pick
   // with its real fill. Mirrors the single-bet _doPlaceOrder + _doTrack reconciliation.
-  const runPlaceAll = React.useCallback(async () => {
-    const cands = placeAllPlaceable; // only candidates that cleared every HARD pre-flight check
-    if (cands.length === 0) return;
+  const runPlaceAll = React.useCallback(async (cands) => {
+    if (!cands || cands.length === 0) return;
     const rows = {};
     for (const c of cands) rows[c.play.id ?? trackIdFor(c.play)] = { state: "pending" };
     setPlaceAllStatus({ running: true, rows: { ...rows } });
@@ -303,7 +303,7 @@ function App() {
     }
     setPlaceAllStatus({ running: false, rows: { ...rows } });
     fetchKalshiBalance();
-  }, [placeAllPlaceable, trackPlay, _centsToAmericanB, fetchKalshiBalance]);
+  }, [trackPlay, _centsToAmericanB, fetchKalshiBalance]);
 
   const selectPlayer = (p, tab = null) => {
     const newSport = p.sportKey || sport;
@@ -658,8 +658,13 @@ function App() {
         // Pre-flight split: placeable rows (cleared every HARD check) are the only ones ordered;
         // blocked rows are shown greyed with their reason but excluded. Totals + button reflect
         // placeable only — blocked picks are never charged.
-        const placeable = placeAllPlaceable;
-        const blocked = placeAllCandidates.filter(c => c.validation.hard.length > 0);
+        const todayPT = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+        const ptDateOf = (p) => p.gameTime
+          ? new Date(p.gameTime).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
+          : p.gameDate;
+        const inScope = (c) => !placeAllTodayOnly || ptDateOf(c.play) === todayPT;
+        const placeable = placeAllPlaceable.filter(inScope);
+        const blocked = placeAllCandidates.filter(c => c.validation.hard.length > 0 && inScope(c));
         const cands = [...placeable, ...blocked]; // placeable first, blocked at the bottom
         const flaggedCount = placeable.filter(c => c.validation.soft.length > 0).length;
         const readyCount = placeable.length - flaggedCount;
@@ -690,10 +695,18 @@ function App() {
               <div style={{fontSize:14,color:"#c9d1d9",fontWeight:700,marginBottom:2}}>
                 {done ? "Placement complete" : `Place ${placeable.length} bet${placeable.length === 1 ? "" : "s"} on Kalshi`}
               </div>
-              <div style={{fontSize:11,color:"#8b949e",marginBottom:14}}>
+              <div style={{fontSize:11,color:"#8b949e",marginBottom:8}}>
                 {done ? "Real-money orders · ⅛-Kelly sizing"
                   : <>{readyCount} ready{flaggedCount > 0 ? <> · <span style={{color:"#e3b341"}}>{flaggedCount} flagged</span></> : null}{blocked.length > 0 ? <> · <span style={{color:"#f78166"}}>{blocked.length} blocked</span></> : null}</>}
               </div>
+              {!done && (
+                <label style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:"#8b949e",marginBottom:12,cursor:running ? "not-allowed" : "pointer",userSelect:"none"}}>
+                  <input type="checkbox" checked={placeAllTodayOnly} disabled={running}
+                    onChange={e => setPlaceAllTodayOnly(e.target.checked)}
+                    style={{accentColor:"#3fb950",cursor:running ? "not-allowed" : "pointer"}} />
+                  Today's picks only
+                </label>
+              )}
               <div style={{flex:1,overflowY:"auto",marginBottom:14,minHeight:0}}>
                 {cands.map(c => {
                   const key = c.play.id ?? trackIdFor(c.play);
@@ -755,7 +768,7 @@ function App() {
                   {done ? "Done" : "Cancel"}
                 </button>
                 {!done && (
-                  <button onClick={runPlaceAll} disabled={running || placeable.length === 0}
+                  <button onClick={() => runPlaceAll(placeable)} disabled={running || placeable.length === 0}
                     style={{flex:2,padding:"8px 0",fontSize:12,borderRadius:7,fontWeight:600,
                       border:"1px solid #3fb950",background:"rgba(63,185,80,0.12)",
                       color:"#3fb950",cursor:running || placeable.length === 0 ? "not-allowed" : "pointer",opacity:running || placeable.length === 0 ? 0.7 : 1}}>
@@ -1622,7 +1635,7 @@ function App() {
           showPicksDrawer={showPicksDrawer}
           picksButtonRef={fabRef}
           placeAllCount={placeAllPlaceable.length}
-          onPlaceAll={() => { if (!calibData) fetchCalib(); setPlaceAllStatus(null); setShowPlaceAll(true); }}
+          onPlaceAll={() => { if (!calibData) fetchCalib(); setPlaceAllStatus(null); setPlaceAllTodayOnly(true); setShowPlaceAll(true); }}
         />
       )}
 
