@@ -24,7 +24,7 @@ const CALIB_BUCKETS = [
 
 // Tunable gating thresholds. `delta` = actual win% − predicted bucket midpoint (negative = the
 // model ran hot / overconfident in that band).
-const CALIB_BLOCK_DELTA = -10, CALIB_BLOCK_N = 20; // strong, well-sampled overconfidence → block
+const CALIB_BLOCK_DELTA = -10, CALIB_BLOCK_N = 30; // strong, well-sampled overconfidence → block
 const CALIB_WARN_DELTA  = -5,  CALIB_WARN_N  = 10; // milder overconfidence → warn
 const SLIPPAGE_WARN_CENTS = 3;                     // paying ≥3¢ over top-of-book → warn
 
@@ -74,13 +74,6 @@ export function validateCandidate(play, sizing, calibData) {
       soft.push(`calibration: ${ce.bucket}% band ${ce.delta} vs predicted (n=${ce.n})`);
     }
   }
-
-  // ── SOFT: home/away unconfirmed (#2). The emit fell back to Kalshi ticker order because no
-  // authoritative source (gameScores / gameHomeTeams) had this matchup. The BET SIDE is parsed
-  // from the ticker suffix (pickTeam / marginTeam / scoringTeam / direction), so it stays correct
-  // — this only mis-labels home/away for display and slightly perturbs model inputs (park factor,
-  // home-field). Hence a warn, not a block. ──
-  if (play.homeAwayResolved === 'fallback') soft.push('home/away unconfirmed (ticker-order fallback)');
 
   // ── SOFT: slippage (#4) — how far the depth-blended fill sits above top-of-book. Exact when the
   // pre-blend raw price is present (totals/teamTotal/spread/props); ML omits it and falls back to
