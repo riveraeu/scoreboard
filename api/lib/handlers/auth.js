@@ -11,6 +11,7 @@
 
 import { errorResponse, jsonResponse, cookieResponse } from "../utils.js";
 import { pbkdf2Hash, makeJWT, verifyJWT } from "../auth-utils.js";
+import { neonQuery } from "../neon.js";
 
 // Cookie name used for session persistence.
 const SESSION_COOKIE = "sb_token";
@@ -473,6 +474,38 @@ export async function handleAuthRoutes(ctx) {
     }
 
     return jsonResponse({ totalPicks: allPicks.length, finalizedPicks: finalized.length, overall, byCategory, byCategoryDetail, byModelVersion, bySeasonType, modelFilter: _calibModelFilter, seasonFilter: _calibSeasonFilter, kStrikeouts: { bySimScore, byKpctPts, byKTrendPts, byStdBF, n: ksFinalized.length }, ...(_sliceExtras ? { dcPenaltySlice: _sliceExtras } : {}), ...(_tailSlice ? { tailTotalsSlice: _tailSlice } : {}) });
+  }
+
+  if (path === "auth/shadow-stats" && method === "GET") {
+    const ak = (request.headers.get("Authorization") || "").replace("Bearer ", "");
+    if (!env?.ADMIN_KEY) return errorResponse("ADMIN_KEY not set", 500);
+    if (ak !== env.ADMIN_KEY) return errorResponse("Forbidden", 403);
+    if (!env?.POSTGRES_URL && !env?.NEON_DATABASE_URL) return errorResponse("POSTGRES_URL not set", 500);
+
+    const tables = await neonQuery(
+      "SELECT tablename FROM pg_tables WHERE schemaname='public'", [], env
+    );
+    const hasShadow = tables.some(r => r.tablename === "shadow_plays");
+    if (!hasShadow) return jsonResponse({ tables: tables.map(r => r.tablename), shadow_plays: null });
+
+    const [totals, byDate, byCategory, dcDist] = await Promise.all([
+      neonQuery("SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE dc_qualified) as qualified, COUNT(*) FILTER (WHERE resolved) as resolved FROM shadow_plays", [], env),
+      neonQuery("SELECT snapshot_date, COUNT(*) as n FROM shadow_plays GROUP BY 1 ORDER BY 1 DESC LIMIT 7", [], env),
+      neonQuery("SELECT sport, COALESCE(stat, game_type, '?') as category, COUNT(*) as n, COUNT(*) FILTER (WHERE dc_qualified) as qualified FROM shadow_plays GROUP BY 1, 2 ORDER BY n DESC LIMIT 20", [], env),
+      neonQuery("SELECT dc, COUNT(*) as n FROM shadow_plays GROUP BY 1 ORDER BY 1 DESC NULLS LAST", [], env),
+    ]);
+
+    return jsonResponse({
+      tables: tables.map(r => r.tablename),
+      shadow_plays: {
+        total: Number(totals[0]?.total ?? 0),
+        qualified: Number(totals[0]?.qualified ?? 0),
+        resolved: Number(totals[0]?.resolved ?? 0),
+        byDate,
+        byCategory,
+        dcDist,
+      },
+    });
   }
 
   return null;
