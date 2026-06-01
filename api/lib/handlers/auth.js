@@ -482,8 +482,10 @@ export async function handleAuthRoutes(ctx) {
     if (ak !== env.ADMIN_KEY) return errorResponse("Forbidden", 403);
 
     // Optional: ?trigger=1 runs the shadow-snapshot cron inline before returning stats.
+    const _triggerParam = params.get("trigger");
+    const _hasCronSecret = !!env?.CRON_SECRET;
     let triggerResult = null;
-    if (params.get("trigger") === "1" && env?.CRON_SECRET) {
+    if (_triggerParam === "1" && _hasCronSecret) {
       const origin = new URL(request.url).origin;
       try {
         const tr = await fetch(`${origin}/api/shadow-snapshot`, {
@@ -521,7 +523,7 @@ export async function handleAuthRoutes(ctx) {
     ]);
 
     return jsonResponse({
-      _debug: { neonVarUsed: _neonVarUsed, pgHostUsed: _pgHostUsed, pgVarsSet: _pgVarsSet },
+      _debug: { neonVarUsed: _neonVarUsed, pgHostUsed: _pgHostUsed, pgVarsSet: _pgVarsSet, triggerParam: _triggerParam, hasCronSecret: _hasCronSecret },
       ...(triggerResult !== null ? { trigger: triggerResult } : {}),
       tables: tables.map(r => r.tablename),
       shadow_plays: {
