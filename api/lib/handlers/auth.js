@@ -513,7 +513,12 @@ export async function handleAuthRoutes(ctx) {
       return jsonResponse({ _debug: { neonVarUsed: _neonVarUsed, pgHostUsed: _pgHostUsed, pgVarsSet: _pgVarsSet }, error: String(e) }, 500);
     }
     const hasShadow = tables.some(r => r.tablename === "shadow_plays");
-    if (!hasShadow) return jsonResponse({ tables: tables.map(r => r.tablename), shadow_plays: null });
+    if (!hasShadow) return jsonResponse({
+      _debug: { neonVarUsed: _neonVarUsed, triggerParam: _triggerParam, hasCronSecret: _hasCronSecret },
+      ...(triggerResult !== null ? { trigger: triggerResult } : {}),
+      tables: tables.map(r => r.tablename),
+      shadow_plays: null,
+    });
 
     const [totals, byDate, byCategory, dcDist] = await Promise.all([
       neonQuery("SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE dc_qualified) as qualified, COUNT(*) FILTER (WHERE resolved) as resolved FROM shadow_plays", [], env),
