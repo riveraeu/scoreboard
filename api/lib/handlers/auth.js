@@ -481,6 +481,21 @@ export async function handleAuthRoutes(ctx) {
     if (!env?.ADMIN_KEY) return errorResponse("ADMIN_KEY not set", 500);
     if (ak !== env.ADMIN_KEY) return errorResponse("Forbidden", 403);
 
+    // Optional: ?trigger=1 runs the shadow-snapshot cron inline before returning stats.
+    let triggerResult = null;
+    if (params.get("trigger") === "1" && env?.CRON_SECRET) {
+      const origin = new URL(request.url).origin;
+      try {
+        const tr = await fetch(`${origin}/api/shadow-snapshot`, {
+          method: "GET",
+          headers: { "Authorization": `Bearer ${env.CRON_SECRET}` },
+        });
+        triggerResult = await tr.json().catch(() => ({ status: tr.status }));
+      } catch (e) {
+        triggerResult = { error: String(e) };
+      }
+    }
+
     // Debug: surface all Neon connection string hosts (no passwords).
     const _neonVarUsed = env?.DATABASE_URL_UNPOOLED ? "DATABASE_URL_UNPOOLED"
       : env?.POSTGRES_URL_NON_POOLING ? "POSTGRES_URL_NON_POOLING"
@@ -507,6 +522,7 @@ export async function handleAuthRoutes(ctx) {
 
     return jsonResponse({
       _debug: { neonVarUsed: _neonVarUsed, pgHostUsed: _pgHostUsed, pgVarsSet: _pgVarsSet },
+      ...(triggerResult !== null ? { trigger: triggerResult } : {}),
       tables: tables.map(r => r.tablename),
       shadow_plays: {
         total: Number(totals[0]?.total ?? 0),
