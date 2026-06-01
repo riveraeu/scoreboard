@@ -447,9 +447,9 @@ export async function handleKalshiRoutes(ctx) {
       if (posResp.ok) {
         const positions = posBody.market_positions || [];
         for (const p of positions) {
-          positionsCents += p.market_exposure || 0;
+          positionsCents += Math.round(parseFloat(p.market_exposure_dollars || 0) * 100);
         }
-        positionsDebug = { status: posResp.status, count: positions.length, positionsCents, sample: positions.slice(0, 2) };
+        positionsDebug = { status: posResp.status, count: positions.length, positionsCents };
       } else {
         positionsDebug = { status: posResp.status, error: posBody?.error?.message || posBody };
       }
