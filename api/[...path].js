@@ -6,6 +6,7 @@ import { handleSportsRoutes } from "./lib/handlers/sports.js";
 import { handleDvpRoutes } from "./lib/handlers/dvp.js";
 import { handleKalshiRoutes } from "./lib/handlers/kalshi.js";
 import { handleTonightRoute } from "./lib/handlers/tonight.js";
+import { handleShadowRoutes } from "./lib/handlers/shadow.js";
 
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
@@ -127,6 +128,8 @@ var worker_default = {
       if (_kalshiResp) return _kalshiResp;
       const _tonightResp = await handleTonightRoute({ path, params, request, env, CACHE2, runtimeCtx: ctx });
       if (_tonightResp) return _tonightResp;
+      const _shadowResp = await handleShadowRoutes({ path, request, env });
+      if (_shadowResp) return _shadowResp;
       return errorResponse("Unknown route: " + path, 404);
     } catch (e) {
       return errorResponse(e.message, 500);
@@ -145,6 +148,7 @@ export default async function handler(request) {
     CRON_SECRET: process.env.CRON_SECRET,
     KALSHI_API_KEY_ID: process.env.KALSHI_API_KEY_ID,
     KALSHI_PRIVATE_KEY: process.env.KALSHI_PRIVATE_KEY,
+    NEON_DATABASE_URL: process.env.NEON_DATABASE_URL,
   };
   const ctx = { waitUntil: (p) => { try { p.catch?.(() => {}); } catch {} } };
   return worker_default.fetch(request, env, ctx);

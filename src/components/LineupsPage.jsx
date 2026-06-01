@@ -2,6 +2,7 @@ import React from 'react';
 import MatchupCard from './MatchupCard.jsx';
 import { useIsMobile } from '../lib/hooks.js';
 import { EDGE_GATE_CLIENT as EDGE_GATE } from '../../api/lib/config.js';
+import { passesCategoryGate } from '../lib/constants.js';
 
 const SPORT_ORDER = { mlb: 0, nba: 1, wnba: 2, nhl: 3 };
 const SPORT_LABEL = { mlb: 'MLB', nba: 'NBA', wnba: 'WNBA', nhl: 'NHL' };
@@ -127,6 +128,7 @@ function passesGate(p, trackedIds) {
   // Server demoted this alt line in favor of a higher-edge alt — skip on home page.
   if (p._altLineDemoted === true) return false;
   if (p.dcQualified !== true || (p.edge ?? 0) < EDGE_GATE) return false;
+  if (!passesCategoryGate(p)) return false;
   return _passesCleanData(p);
 }
 // Mirror the server-side _ddKey from api/[...path].js so the client can decide whether a

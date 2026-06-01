@@ -1,5 +1,5 @@
 import React from 'react';
-import { WORKER, SPORTS, STAT_FULL, MLB_TEAM, TOTAL_THRESHOLDS, STAT_LABEL, SPORT_KEY, SPORT_BADGE_COLOR, GAMELOG_COLS } from './lib/constants.js';
+import { WORKER, SPORTS, STAT_FULL, MLB_TEAM, TOTAL_THRESHOLDS, STAT_LABEL, SPORT_KEY, SPORT_BADGE_COLOR, GAMELOG_COLS, passesCategoryGate } from './lib/constants.js';
 import { ordinal, slugify, oddsToProfit } from './lib/utils.js';
 import { useIsMobile } from './lib/hooks.js';
 import { useTonight } from './lib/useTonight.js';
@@ -128,6 +128,7 @@ function App() {
   const _qualifiedFilter = React.useCallback((p) => {
     if (p._altLineDemoted === true) return false;
     if (p.dcQualified !== true || (p.edge ?? 0) < EDGE_GATE) return false;
+    if (!passesCategoryGate(p)) return false;
     return (p.dataConfidence ?? 0) === 10;
   }, []);
   const {

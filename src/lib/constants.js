@@ -231,3 +231,11 @@ export const GAMELOG_COLS = {
     { key:"receivingYards", label:"RecYds", tooltip:"Receiving yards"                 },
   ],
 };
+
+// Categories confirmed working by calibration (n≥50, positive ROI signal).
+// Shadow calibration gate: update this set when a new category crosses the threshold.
+// Key format: `${sport}|${stat || gameType}` — matches what the calibration endpoint groups by.
+export function passesCategoryGate(p) {
+  const key = `${p.sport}|${p.stat || p.gameType}`;
+  return key === 'mlb|spread' || key === 'mlb|hrr';
+}
