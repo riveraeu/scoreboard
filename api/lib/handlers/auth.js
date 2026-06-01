@@ -495,9 +495,12 @@ export async function handleAuthRoutes(ctx) {
       : env?.NEON_DATABASE_URL ? "NEON_DATABASE_URL"
       : "POSTGRES_URL";
 
-    const tables = await neonQuery(
-      "SELECT tablename FROM pg_tables WHERE schemaname='public'", [], env
-    );
+    let tables;
+    try {
+      tables = await neonQuery("SELECT tablename FROM pg_tables WHERE schemaname='public'", [], env);
+    } catch (e) {
+      return jsonResponse({ _debug: { neonVarUsed: _neonVarUsed, neonHost: _neonHost }, error: String(e) }, 500);
+    }
     const hasShadow = tables.some(r => r.tablename === "shadow_plays");
     if (!hasShadow) return jsonResponse({ tables: tables.map(r => r.tablename), shadow_plays: null });
 
