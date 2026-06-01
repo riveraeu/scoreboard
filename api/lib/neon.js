@@ -1,27 +1,24 @@
 // Pure-fetch HTTP client for Neon's serverless SQL API (Edge-compatible, no Node APIs).
-// Mirrors the pattern used for Upstash Redis — direct HTTP, no npm driver.
-// Neon HTTP endpoint: POST https://{host}/sql with Basic auth.
+// Auth: Neon-Connection-String header only — matches how @neondatabase/serverless works.
+// Do NOT add Authorization: Basic; Neon derives credentials from the connection string header.
 // NEON_DATABASE_URL format: postgresql://user:pass@ep-xxx.region.aws.neon.tech/dbname
 
 export async function neonQuery(sql, params = [], env) {
-  // Neon's HTTP SQL API requires a direct (non-pooled) endpoint.
-  // Pooled pgbouncer URLs fail with "missing authentication credentials".
+  // Vercel's Neon Marketplace integration sets DATABASE_URL_UNPOOLED for the direct endpoint.
+  // The HTTP SQL API requires a direct (non-pooled) compute endpoint.
   const connStr =
     env?.DATABASE_URL_UNPOOLED ||
     env?.POSTGRES_URL_NON_POOLING ||
     env?.NEON_DATABASE_URL ||
     env?.POSTGRES_URL;
-  if (!connStr) throw new Error("POSTGRES_URL not set");
+  if (!connStr) throw new Error("No Neon connection string available");
 
   const parsed = new URL(connStr.replace(/^postgresql:\/\//, "https://"));
   const host = parsed.hostname;
-  const user = decodeURIComponent(parsed.username);
-  const pass = decodeURIComponent(parsed.password);
 
   const resp = await fetch(`https://${host}/sql`, {
     method: "POST",
     headers: {
-      "Authorization": `Basic ${btoa(`${user}:${pass}`)}`,
       "Content-Type": "application/json",
       "Neon-Connection-String": connStr,
     },
