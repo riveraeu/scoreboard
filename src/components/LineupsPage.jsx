@@ -378,6 +378,19 @@ export default function LineupsPage({
 
   const actionButtonsEl = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6, ...(isMobile ? { justifyContent: 'flex-end', flexWrap: 'wrap' } : { flex: 1, justifyContent: 'flex-end' }) }}>
+      {authEmail && placeAllCount > 0 && (
+        <button onClick={onPlaceAll}
+          title={`Place all ${placeAllCount} qualified Kalshi bets`}
+          style={{ ...btnSize, borderRadius: 6, cursor: 'pointer',
+            border: '1px solid #30363d', background: 'transparent', color: '#484f58', fontWeight: 600,
+            display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span>⚡</span> Place All
+          <span style={{ background: 'rgba(72,79,88,0.18)', border: '1px solid rgba(72,79,88,0.35)',
+            color: '#484f58', fontSize: 9, fontWeight: 700, borderRadius: 8, padding: '0 4px', lineHeight: '14px' }}>
+            {placeAllCount}
+          </span>
+        </button>
+      )}
       <button ref={picksButtonRef} onClick={openPicksDrawer}
         style={{ ...btnSize, borderRadius: 6, cursor: 'pointer',
           border: `1px solid ${showPicksDrawer ? '#58a6ff' : '#30363d'}`,
@@ -407,19 +420,6 @@ export default function LineupsPage({
           </span>
         )}
       </button>
-      {authEmail && placeAllCount > 0 && (
-        <button onClick={onPlaceAll}
-          title={`Place all ${placeAllCount} qualified Kalshi bets`}
-          style={{ ...btnSize, borderRadius: 6, cursor: 'pointer',
-            border: '1px solid #d29922', background: 'rgba(210,153,34,0.12)', color: '#e3b341', fontWeight: 600,
-            display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span>⚡</span> Place All
-          <span style={{ background: 'rgba(227,179,65,0.18)', border: '1px solid rgba(227,179,65,0.35)',
-            color: '#e3b341', fontSize: 9, fontWeight: 700, borderRadius: 8, padding: '0 4px', lineHeight: '14px' }}>
-            {placeAllCount}
-          </span>
-        </button>
-      )}
       <button onClick={() => navigateToModel({ tab: 'market', sport: 'mlb' })}
         style={{ ...btnSize, borderRadius: 6, cursor: 'pointer',
           border: '1px solid #30363d', background: 'transparent', color: '#484f58', fontWeight: 600 }}>
