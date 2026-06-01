@@ -150,6 +150,8 @@ export default async function handler(request) {
     KALSHI_PRIVATE_KEY: process.env.KALSHI_PRIVATE_KEY,
     POSTGRES_URL: process.env.POSTGRES_URL,
     NEON_DATABASE_URL: process.env.NEON_DATABASE_URL,
+    DATABASE_URL_UNPOOLED: process.env.DATABASE_URL_UNPOOLED,
+    POSTGRES_URL_NON_POOLING: process.env.POSTGRES_URL_NON_POOLING,
   };
   const ctx = { waitUntil: (p) => { try { p.catch?.(() => {}); } catch {} } };
   return worker_default.fetch(request, env, ctx);

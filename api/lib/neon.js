@@ -4,7 +4,13 @@
 // NEON_DATABASE_URL format: postgresql://user:pass@ep-xxx.region.aws.neon.tech/dbname
 
 export async function neonQuery(sql, params = [], env) {
-  const connStr = env?.POSTGRES_URL || env?.NEON_DATABASE_URL;
+  // Neon's HTTP SQL API requires a direct (non-pooled) endpoint.
+  // Pooled pgbouncer URLs fail with "missing authentication credentials".
+  const connStr =
+    env?.DATABASE_URL_UNPOOLED ||
+    env?.POSTGRES_URL_NON_POOLING ||
+    env?.NEON_DATABASE_URL ||
+    env?.POSTGRES_URL;
   if (!connStr) throw new Error("POSTGRES_URL not set");
 
   const parsed = new URL(connStr.replace(/^postgresql:\/\//, "https://"));
