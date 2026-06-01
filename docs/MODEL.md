@@ -53,6 +53,7 @@ Per-sport modeling internals. CLAUDE.md has the architecture map and load-bearin
 - TTO decay: K% × `TTO_DECAY_FACTOR (0.88)` for BF ≥ 19
 - Blowout hook: `_earlyExitProb` from pitcher team ML (`+150→8%, +200→12%, +250+→18%`); each trial may pull pitcher early (BF = rand[10,15])
 - stdBF variance: each trial samples `trialPA ~ Normal(totalPA, stdBF)` clamped [10,27] via scoped Box-Muller (function-scoped to prevent cross-request races). 0 if <3 qualified starts.
+- **Between-game form variance (added 2026-06-01)**: each sim draws one mean-1 lognormal multiplier `formMult = exp(K_FORM_SIGMA·Z − K_FORM_SIGMA²/2)` (`K_FORM_SIGMA = 0.22`) and scales every batter's K prob by it. The per-batter Bernoulli loop only captures within-game randomness — it treated the pitcher's true K ability as fixed nightly, under-dispersing the K-count distribution. The 6/1 calibration showed strikeouts Δ −17.9 (n=38), concentrated in the 80–90% truePct band (act ~54%). `E[formMult] = 1` so the **mean K count is preserved** (verified — TTO mean still ≈6.9); only the spread widens, pulling extreme tail (over) truePcts toward 50%. **σ is the tunable knob, intentionally conservative at 0.22** (closes ~⅓ of the gap; an 81% quote → ~77%) — retune up against realized K-residual variance at n≥40. Filter `mlb|strikeouts` calibration `trackedAt < 2026-06-01`.
 
 **Pre-sim adjustments**:
 - A1 recent form: effective K% = `recentKPct × 0.6 + seasonKPct × 0.4` when ≥3 starts and 30+ BF in last 5 (uses `a1Splits` filter, no NP minimum)

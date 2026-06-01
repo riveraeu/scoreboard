@@ -57,6 +57,7 @@ function meanForNormalTail(threshold, targetProb, std) {
 }
 
 var TTO_DECAY_FACTOR = 0.88;
+var K_FORM_SIGMA = 0.22; // between-game pitcher-form variance (see simulate.js)
 
 function simulateKsDist(orderedKPcts, pitcherKPct, parkFactor, nSim, totalPA, earlyExitProb, stdBF) {
   parkFactor = parkFactor == null ? 1 : parkFactor;
@@ -88,9 +89,10 @@ function simulateKsDist(orderedKPcts, pitcherKPct, parkFactor, nSim, totalPA, ea
     } else if (stdBF > 0) {
       trialPA = Math.min(27, Math.max(10, Math.round(randNorm(totalPA, stdBF))));
     }
+    var formMult = Math.exp(K_FORM_SIGMA * randNorm(0, 1) - 0.5 * K_FORM_SIGMA * K_FORM_SIGMA);
     for (var i = 0; i < n; i++) {
       var pa = paArr[i];
-      var p = bf >= 18 ? Math.min(0.95, adjProbs[i] * TTO_DECAY_FACTOR) : adjProbs[i];
+      var p = Math.min(0.95, adjProbs[i] * formMult * (bf >= 18 ? TTO_DECAY_FACTOR : 1));
       for (var j = 0; j < pa; j++) {
         if (bf >= trialPA) break;
         if (Math.random() < p) ks++;

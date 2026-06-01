@@ -268,6 +268,18 @@ export function normCDF(x, mean = 0, std = 1) {
 // League-average decline: ~10–15% drop in K% on 3rd pass due to batter familiarity.
 const TTO_DECAY_FACTOR = 0.88;
 
+// Between-game pitcher-form variance (added 2026-06-01 from the 6/1 calibration).
+// The per-batter Bernoulli loop only captures within-game randomness — it treats the
+// pitcher's true K ability as fixed every night. Real starters have meaningful game-to-game
+// quality swings (sharp vs flat) on top of the binomial, so the point model under-disperses
+// the K-count distribution and over-projects tail (over) thresholds — the 6/1 audit showed
+// strikeouts Δ −17.9 (n=38), concentrated in the 80–90% truePct band (act ~54%). Each sim
+// draws one mean-1 lognormal form multiplier and scales every batter's K prob by it: this
+// widens the distribution (pulls extreme truePct toward 50%) while preserving the mean
+// (E[formMult] = 1, so E[p·formMult] = p). σ is the tunable knob — start conservative and
+// retune against realized K-residual variance at n≥40. See [[project-calibration-audit-2026-06-01]].
+const K_FORM_SIGMA = 0.22;
+
 // Monte Carlo PA-level simulation: runs nSim games and returns the full K-count distribution
 // (array of length nSim with Ks per game). Use kDistPct(dist, t) to get P(Ks >= t).
 // Running once per pitcher and sharing the distribution guarantees monotonicity across thresholds.
@@ -304,9 +316,12 @@ export function simulateKsDist(orderedKPcts, pitcherKPct, parkFactor = 1, nSim =
     } else if (stdBF > 0) {
       trialPA = Math.min(27, Math.max(10, Math.round(randNorm(totalPA, stdBF))));
     }
+    // One mean-1 lognormal form draw per game: exp(σ·Z − σ²/2) so E[formMult] = 1 (mean
+    // preserved). Scales every batter's K prob this sim → between-game quality variance.
+    const formMult = Math.exp(K_FORM_SIGMA * randNorm(0, 1) - 0.5 * K_FORM_SIGMA * K_FORM_SIGMA);
     for (let i = 0; i < n; i++) {
       const pa = paArr[i];
-      const p = bf >= 18 ? Math.min(0.95, adjProbs[i] * TTO_DECAY_FACTOR) : adjProbs[i];
+      const p = Math.min(0.95, adjProbs[i] * formMult * (bf >= 18 ? TTO_DECAY_FACTOR : 1));
       for (let j = 0; j < pa; j++) {
         if (bf >= trialPA) break;
         if (Math.random() < p) ks++;
