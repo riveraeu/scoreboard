@@ -729,8 +729,8 @@ function App() {
                 {!done && (
                   <button onClick={runPlaceAll} disabled={running || cands.length === 0}
                     style={{flex:2,padding:"8px 0",fontSize:12,borderRadius:7,fontWeight:600,
-                      border:"1px solid #30363d",background:"transparent",
-                      color:"#484f58",cursor:running ? "not-allowed" : "pointer",opacity:running ? 0.7 : 1}}>
+                      border:"1px solid #3fb950",background:"rgba(63,185,80,0.12)",
+                      color:"#3fb950",cursor:running ? "not-allowed" : "pointer",opacity:running ? 0.7 : 1}}>
                     {running ? "Placing…" : `⚡ Place ${cands.length} bet${cands.length === 1 ? "" : "s"} ($${totalCost.toFixed(2)})`}
                   </button>
                 )}
