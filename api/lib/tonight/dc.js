@@ -74,6 +74,14 @@ export function computeDataConfidence(p, ctx = {}) {
     if (home >= 30 || away >= 30) {
       _pen(home >= away ? "nbaHomeHeavyInjury" : "nbaAwayHeavyInjury", 1);
     }
+    // Model-vs-market divergence: if the model's expected margin and the market spread
+    // disagree by >10 pts, the rating system likely missed something (injury, form, etc.).
+    // Applies to full-game and half-game spreads (both use gameType="spread").
+    if (gameType === "spread" && p.homeLambda != null && p.awayLambda != null && p.pickLine != null && p.pickTeam != null && p.homeTeam != null) {
+      const homeModelMargin = p.homeLambda - p.awayLambda;
+      const homeMarketMargin = p.pickTeam === p.homeTeam ? -p.pickLine : p.pickLine;
+      if (Math.abs(homeModelMargin - homeMarketMargin) > 10) _pen("spreadModelMarketDivergent", 1);
+    }
   } else if (sport === "wnba" && (gameType === "ml" || gameType === "spread")) {
     // No pre-game starter feed (same as NBA). Heavy-injury fires once per game for the
     // heavier-injured side only — WNBA roster sizes make both-sides cases common (~69%
@@ -83,6 +91,12 @@ export function computeDataConfidence(p, ctx = {}) {
     const away = p.awayUsageOut || 0;
     if (home >= 30 || away >= 30) {
       _pen(home >= away ? "wnbaHomeHeavyInjury" : "wnbaAwayHeavyInjury", 1);
+    }
+    // Same model-vs-market divergence gate as NBA (added 2026-06-01).
+    if (gameType === "spread" && p.homeLambda != null && p.awayLambda != null && p.pickLine != null && p.pickTeam != null && p.homeTeam != null) {
+      const homeModelMargin = p.homeLambda - p.awayLambda;
+      const homeMarketMargin = p.pickTeam === p.homeTeam ? -p.pickLine : p.pickLine;
+      if (Math.abs(homeModelMargin - homeMarketMargin) > 10) _pen("spreadModelMarketDivergent", 1);
     }
   } else if (sport === "mlb") {
     const conf = isPlayerProp ? p.lineupConfirmed : p.lineupsConfirmed;

@@ -624,6 +624,7 @@ const _DC_LABELS = {
   homeGoalieTeamFallback: 'Home goalie = team GAA fallback', awayGoalieTeamFallback: 'Away goalie = team GAA fallback',
   nbaHomeHeavyInjury: 'Home heavy injury (≥30% USG out)', nbaAwayHeavyInjury: 'Away heavy injury (≥30% USG out)',
   wnbaHomeHeavyInjury: 'Home heavy injury (≥30% USG out)', wnbaAwayHeavyInjury: 'Away heavy injury (≥30% USG out)',
+  spreadModelMarketDivergent: 'Model/market margin divergence >10 pts',
   farFromLine: 'Far from O/U line', modestlyFromLine: 'Modestly far from O/U line',
   seasonRateDivergent: 'Season-rate divergent (clamped)',
   homeLineupHeavyOut: 'Home ≥2 hitters out', awayLineupHeavyOut: 'Away ≥2 hitters out',
