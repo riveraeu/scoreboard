@@ -36,6 +36,33 @@ const ESPN_CORE = "https://sports.core.api.espn.com/v2/sports";
 // Hoisted from handleTonightRoute body (Phase B, 2026-05-29). No closure deps — safe at module
 // scope. These replace the old inline `let x = function...` chain.
 
+// Did an authoritative source confirm a game play's home/away orientation, or did the emit
+// fall back to Kalshi ticker order (which doesn't match ESPN — see "Kalshi ticker home/away
+// order" gotcha)? Used by the client Place All pre-flight to block swap-risk plays. Mirrors the
+// per-branch swap logic in game-totals.js/ml-spread.js: MLB consults gameHomeTeams; NBA/WNBA/NHL
+// scan gameScores; props have no home/away bet side so return null. Returns 'authoritative' |
+// 'fallback' | null.
+function _homeAwayResolved(p, sportByteam) {
+  const gt = p.gameType;
+  if (gt !== "total" && gt !== "teamTotal" && gt !== "spread" && gt !== "ml") return null;
+  const a = gt === "teamTotal" ? p.scoringTeam : p.homeTeam;
+  const b = gt === "teamTotal" ? p.oppTeam : p.awayTeam;
+  if (!a || !b) return "fallback";
+  if (p.sport === "mlb") {
+    const ghm = sportByteam.mlb?.gameHomeTeams || {};
+    return ghm[a] || ghm[b] ? "authoritative" : "fallback";
+  }
+  const gs = p.sport === "nba" ? sportByteam.nbaGameScores
+    : p.sport === "wnba" ? sportByteam.wnbaGameScores
+    : p.sport === "nhl" ? sportByteam.nhlGameScores : null;
+  if (!gs) return "fallback";
+  for (const g of Object.values(gs)) {
+    if (!g) continue;
+    if ((g.homeTeam === a && g.awayTeam === b) || (g.homeTeam === b && g.awayTeam === a)) return "authoritative";
+  }
+  return "fallback";
+}
+
 function nhlSoftTeams(arr, sortKey, label, unit, n = 10) {
   const sorted = [...arr].sort((a, b) => b[sortKey] - a[sortKey]);
   const softTeams = new Set();
@@ -407,6 +434,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
         // (replaced the prior live walk 2026-05-31; see blend-fill.js). Player props are always
         // a YES buy. Markets without cached depth keep top-of-book (blendMarketPrice → null).
         for (const m of qualifyingMarkets) {
+          m.rawKalshiPct = m.kalshiPct; // pre-blend top-of-book — lets the client measure true slippage
           const blended = blendMarketPrice(m._depth, "yes", m.kalshiPct);
           if (blended) { m.kalshiPct = blended.pct; m.americanOdds = blended.americanOdds; }
         }
@@ -417,6 +445,8 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
         // already-slippage-adjusted kalshiPct/noKalshiPct. YES re-prices kalshiPct+americanOdds;
         // NO re-prices noKalshiPct+noKalshiAO. Markets without cached depth keep top-of-book.
         for (const m of [...totalMarkets, ...teamTotalMarkets, ...spreadMarkets]) {
+          m.rawKalshiPct = m.kalshiPct;     // pre-blend top-of-book (YES) — client slippage measure
+          m.rawNoKalshiPct = m.noKalshiPct; // pre-blend top-of-book (NO)
           const yb = blendMarketPrice(m._depth, "yes", m.kalshiPct);
           if (yb) { m.kalshiPct = yb.pct; m.americanOdds = yb.americanOdds; }
           const nb = blendMarketPrice(m._depth, "no", m.noKalshiPct);
@@ -1463,6 +1493,22 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
         // Spec details + full penalty table in docs/MODEL.md "dataConfidence". Must run AFTER the
         // _kalshiStale propagation above and BEFORE the isDebug return below so debug-mode plays
         // carry the field too.
+        // Pre-flight evidence for the client Place All validation (Flow A): homeAwayResolved
+        // (swap-risk guard, #2) + rawKalshiPct/rawNoKalshiPct (true slippage measure, #4). Raw
+        // prices are keyed by parse-site ticker; ML uses per-team tickers not in this map, so it
+        // simply omits them and the client falls back to kalshiSpread/lowVolume proxies.
+        const _rawByTicker = {};
+        for (const m of [...qualifyingMarkets, ...totalMarkets, ...teamTotalMarkets, ...spreadMarkets]) {
+          if (m._ticker) _rawByTicker[m._ticker] = { rawKalshiPct: m.rawKalshiPct, rawNoKalshiPct: m.rawNoKalshiPct };
+        }
+        for (const _p of plays) {
+          _p.homeAwayResolved = _homeAwayResolved(_p, sportByteam);
+          const _raw = _p.kalshiTicker ? _rawByTicker[_p.kalshiTicker] : null;
+          if (_raw) {
+            if (_raw.rawKalshiPct != null) _p.rawKalshiPct = _raw.rawKalshiPct;
+            if (_raw.rawNoKalshiPct != null) _p.rawNoKalshiPct = _raw.rawNoKalshiPct;
+          }
+        }
         for (const _p of plays) {
           const dc = computeDataConfidence(_p, { sportByteam });
           _p.dataConfidence = dc.dataConfidence;

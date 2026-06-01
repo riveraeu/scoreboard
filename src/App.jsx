@@ -6,6 +6,7 @@ import { useTonight } from './lib/useTonight.js';
 import { useSavePicks } from './lib/useSavePicks.js';
 import { useLiveStats } from './lib/useLiveStats.js';
 import { usePicks, UNIT_DOLLARS, STAKE_CAP } from './lib/usePicks.js';
+import { validateCandidate } from './lib/placeValidation.js';
 import { useAuth } from './lib/useAuth.js';
 import { useAuthPickSync } from './lib/useAuthPickSync.js';
 import { useRouting } from './lib/useRouting.js';
@@ -220,7 +221,9 @@ function App() {
     const cost = parseFloat((count * price / 100).toFixed(2));
     return { price, count, cost, side: play.kalshiSide, ao };
   }, [bankroll, _centsToAmericanB]);
-  // Candidate set: qualified (tonightPlays) + placeable + untracked + game not yet started.
+  // Candidate set: qualified (tonightPlays) + placeable + untracked + game not yet started. Each
+  // candidate carries a `validation` ({ hard, soft }) from the Flow A pre-flight (placeValidation.js):
+  // candidates with a HARD failure are kept here for display but excluded from the actual batch.
   const placeAllCandidates = React.useMemo(() => {
     if (!authEmail) return [];
     const trackedIds = new Set((trackedPlays || []).map(p => p.id).filter(Boolean));
@@ -231,15 +234,21 @@ function App() {
       if (p.gameTime && new Date(p.gameTime).getTime() <= nowMs) continue; // game started
       const sizing = _placeAllSizing(p);
       if (!sizing) continue;
-      out.push({ play: p, ...sizing });
+      const validation = validateCandidate(p, sizing, calibData);
+      out.push({ play: p, ...sizing, validation });
     }
     return out;
-  }, [authEmail, tonightPlays, trackedPlays, _placeAllSizing]);
+  }, [authEmail, tonightPlays, trackedPlays, _placeAllSizing, calibData]);
+  // Placeable subset — candidates that cleared every HARD pre-flight check. These are the only
+  // ones runPlaceAll actually orders, and the toolbar badge counts these (not blocked ones).
+  const placeAllPlaceable = React.useMemo(
+    () => placeAllCandidates.filter(c => c.validation.hard.length === 0),
+    [placeAllCandidates]);
 
   // Place every candidate sequentially (await each — avoids Kalshi 429s), tracking each pick
   // with its real fill. Mirrors the single-bet _doPlaceOrder + _doTrack reconciliation.
   const runPlaceAll = React.useCallback(async () => {
-    const cands = placeAllCandidates;
+    const cands = placeAllPlaceable; // only candidates that cleared every HARD pre-flight check
     if (cands.length === 0) return;
     const rows = {};
     for (const c of cands) rows[c.play.id ?? trackIdFor(c.play)] = { state: "pending" };
@@ -294,7 +303,7 @@ function App() {
     }
     setPlaceAllStatus({ running: false, rows: { ...rows } });
     fetchKalshiBalance();
-  }, [placeAllCandidates, trackPlay, _centsToAmericanB, fetchKalshiBalance]);
+  }, [placeAllPlaceable, trackPlay, _centsToAmericanB, fetchKalshiBalance]);
 
   const selectPlayer = (p, tab = null) => {
     const newSport = p.sportKey || sport;
@@ -646,8 +655,15 @@ function App() {
 
       {/* Place All modal — batch-place every qualified, untracked, placeable Kalshi bet */}
       {showPlaceAll && (() => {
-        const cands = placeAllCandidates;
-        const totalCost = parseFloat(cands.reduce((s, c) => s + c.cost, 0).toFixed(2));
+        // Pre-flight split: placeable rows (cleared every HARD check) are the only ones ordered;
+        // blocked rows are shown greyed with their reason but excluded. Totals + button reflect
+        // placeable only — blocked picks are never charged.
+        const placeable = placeAllPlaceable;
+        const blocked = placeAllCandidates.filter(c => c.validation.hard.length > 0);
+        const cands = [...placeable, ...blocked]; // placeable first, blocked at the bottom
+        const flaggedCount = placeable.filter(c => c.validation.soft.length > 0).length;
+        const readyCount = placeable.length - flaggedCount;
+        const totalCost = parseFloat(placeable.reduce((s, c) => s + c.cost, 0).toFixed(2));
         const cash = kalshiBalance;
         const shortfall = cash != null && totalCost > cash ? parseFloat((totalCost - cash).toFixed(2)) : 0;
         const status = placeAllStatus;
@@ -672,18 +688,22 @@ function App() {
             <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:12,padding:"20px 22px",width:440,maxHeight:"82vh",display:"flex",flexDirection:"column"}}
               onClick={e => e.stopPropagation()}>
               <div style={{fontSize:14,color:"#c9d1d9",fontWeight:700,marginBottom:2}}>
-                {done ? "Placement complete" : `Place ${cands.length} bet${cands.length === 1 ? "" : "s"} on Kalshi`}
+                {done ? "Placement complete" : `Place ${placeable.length} bet${placeable.length === 1 ? "" : "s"} on Kalshi`}
               </div>
               <div style={{fontSize:11,color:"#8b949e",marginBottom:14}}>
-                Real-money orders · ⅛-Kelly sizing · qualified + untracked only
+                {done ? "Real-money orders · ⅛-Kelly sizing"
+                  : <>{readyCount} ready{flaggedCount > 0 ? <> · <span style={{color:"#e3b341"}}>{flaggedCount} flagged</span></> : null}{blocked.length > 0 ? <> · <span style={{color:"#f78166"}}>{blocked.length} blocked</span></> : null}</>}
               </div>
               <div style={{flex:1,overflowY:"auto",marginBottom:14,minHeight:0}}>
                 {cands.map(c => {
                   const key = c.play.id ?? trackIdFor(c.play);
                   const rs = rowsState[key];
+                  const isBlocked = c.validation.hard.length > 0;
+                  const reason = isBlocked ? c.validation.hard.join("; ")
+                    : c.validation.soft.length > 0 ? c.validation.soft.join("; ") : null;
                   return (
                     <div key={key} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,
-                      padding:"6px 0",borderBottom:"1px solid #21262d",fontSize:12}}>
+                      padding:"6px 0",borderBottom:"1px solid #21262d",fontSize:12,opacity:isBlocked ? 0.55 : 1}}>
                       <div style={{minWidth:0,flex:1}}>
                         <div style={{color:"#c9d1d9",fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
                           {nameFor(c.play)} <span style={{color:"#8b949e",fontWeight:400}}>{subFor(c.play)}</span>
@@ -691,15 +711,23 @@ function App() {
                         <div style={{color:"#484f58",fontSize:10}}>
                           {(c.play.sport || "").toUpperCase()} · {c.count} × {c.price}¢ = ${c.cost}
                         </div>
+                        {reason && !rs && (
+                          <div style={{color: isBlocked ? "#f78166" : "#e3b341", fontSize:10, marginTop:1,
+                            whiteSpace:"normal", lineHeight:1.3}}>
+                            {isBlocked ? "✗" : "⚠"} {reason}
+                          </div>
+                        )}
                       </div>
                       <div style={{textAlign:"right",whiteSpace:"nowrap",fontSize:11,
-                        color: rs ? stateColor[rs.state] : "#8b949e", fontWeight:600}}>
-                        {!rs ? `$${c.cost}`
-                          : rs.state === "placing" ? "placing…"
-                          : rs.state === "pending" ? "queued"
-                          : rs.state === "error" ? `✗ ${rs.msg}`
-                          : rs.state === "resting" ? `◔ ${rs.msg}`
-                          : `✓ ${rs.msg}`}
+                        color: rs ? stateColor[rs.state] : isBlocked ? "#f78166" : c.validation.soft.length > 0 ? "#e3b341" : "#8b949e", fontWeight:600}}>
+                        {rs ? (rs.state === "placing" ? "placing…"
+                            : rs.state === "pending" ? "queued"
+                            : rs.state === "error" ? `✗ ${rs.msg}`
+                            : rs.state === "resting" ? `◔ ${rs.msg}`
+                            : `✓ ${rs.msg}`)
+                          : isBlocked ? "blocked"
+                          : c.validation.soft.length > 0 ? `⚠ $${c.cost}`
+                          : `$${c.cost}`}
                       </div>
                     </div>
                   );
@@ -727,11 +755,11 @@ function App() {
                   {done ? "Done" : "Cancel"}
                 </button>
                 {!done && (
-                  <button onClick={runPlaceAll} disabled={running || cands.length === 0}
+                  <button onClick={runPlaceAll} disabled={running || placeable.length === 0}
                     style={{flex:2,padding:"8px 0",fontSize:12,borderRadius:7,fontWeight:600,
                       border:"1px solid #3fb950",background:"rgba(63,185,80,0.12)",
-                      color:"#3fb950",cursor:running ? "not-allowed" : "pointer",opacity:running ? 0.7 : 1}}>
-                    {running ? "Placing…" : `⚡ Place ${cands.length} bet${cands.length === 1 ? "" : "s"} ($${totalCost.toFixed(2)})`}
+                      color:"#3fb950",cursor:running || placeable.length === 0 ? "not-allowed" : "pointer",opacity:running || placeable.length === 0 ? 0.7 : 1}}>
+                    {running ? "Placing…" : `⚡ Place ${placeable.length} bet${placeable.length === 1 ? "" : "s"} ($${totalCost.toFixed(2)})`}
                   </button>
                 )}
               </div>
@@ -1593,8 +1621,8 @@ function App() {
           openPicksDrawer={() => setShowPicksDrawer(d => !d)}
           showPicksDrawer={showPicksDrawer}
           picksButtonRef={fabRef}
-          placeAllCount={placeAllCandidates.length}
-          onPlaceAll={() => { setPlaceAllStatus(null); setShowPlaceAll(true); }}
+          placeAllCount={placeAllPlaceable.length}
+          onPlaceAll={() => { if (!calibData) fetchCalib(); setPlaceAllStatus(null); setShowPlaceAll(true); }}
         />
       )}
 
