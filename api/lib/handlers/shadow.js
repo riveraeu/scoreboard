@@ -137,12 +137,61 @@ function _normName(s) {
   return (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 }
 
+// Fuzzy-normalize: on top of _normName, remove periods (C.J.→CJ), apostrophes,
+// Jr/Sr/II/III/IV suffixes, and collapse whitespace. Catches the most common
+// Kalshi-vs-ESPN name format divergences without a fuzzy library.
+function _fuzzyName(s) {
+  return _normName(s)
+    .replace(/\./g, "")
+    .replace(/'/g, "")
+    .replace(/\b(jr|sr|ii|iii|iv)\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Levenshtein edit distance — O(m·n) time, O(n) space. Fine for short name strings.
+function _editDist(a, b) {
+  if (a === b) return 0;
+  const m = a.length, n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  const curr = new Array(n + 1);
+  for (let i = 1; i <= m; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= n; j++) {
+      curr[j] = a[i - 1] === b[j - 1] ? prev[j - 1] : 1 + Math.min(prev[j], curr[j - 1], prev[j - 1]);
+    }
+    for (let j = 0; j <= n; j++) prev[j] = curr[j];
+  }
+  return prev[n];
+}
+
 function _findPlayer(players, name) {
   if (!players || !name) return undefined;
+  // 1. Exact key match
   if (players[name] !== undefined) return players[name];
-  const target = _normName(name);
+  // 2. Diacritic-stripped + lowercase (handles accented chars)
+  const norm = _normName(name);
   for (const k in players) {
-    if (_normName(k) === target) return players[k];
+    if (_normName(k) === norm) return players[k];
+  }
+  // 3. Period/suffix stripped (handles C.J.→CJ, Jr./Sr., etc.)
+  const fuzzy = _fuzzyName(name);
+  for (const k in players) {
+    if (_fuzzyName(k) === fuzzy) return players[k];
+  }
+  // 4. Edit distance ≤ 2 on fuzzy names — catches spelling variants like Zach/Zack,
+  //    Cristian/Christian. Only applied for names long enough that ≤2 edits is meaningful.
+  if (fuzzy.length >= 8) {
+    let best = null, bestDist = 3;
+    for (const k in players) {
+      const fk = _fuzzyName(k);
+      if (Math.abs(fk.length - fuzzy.length) > 2) continue;
+      const d = _editDist(fuzzy, fk);
+      if (d < bestDist) { bestDist = d; best = k; }
+    }
+    if (best) return players[best];
   }
   return undefined;
 }
@@ -350,6 +399,19 @@ export async function handleShadowRoutes({ path, request, env }) {
   await neonExec(CREATE_TABLE_SQL, env);
   // One-time: drop debug table left from initial Neon wiring session (2026-06-01).
   await neonQuery("DROP TABLE IF EXISTS _shadow_init_test", [], env).catch(() => {});
+  // One-time reset (2026-06-02): un-resolve prop rows that landed won=null due to name-mismatch
+  // before the fuzzy _findPlayer was added. Only resets rows from the first 2 days where the
+  // resolver ran with the old exact-only matching. Idempotent — re-resolving a genuine DNP
+  // just sets won=null again; no data is lost.
+  await neonQuery(
+    `UPDATE shadow_plays
+     SET resolved = FALSE, won = NULL, actual_value = NULL, resolved_at = NULL
+     WHERE resolved = TRUE AND won IS NULL
+       AND player_name IS NOT NULL
+       AND snapshot_date <= '2026-06-02'`,
+    [], env
+  ).catch(() => {});
+
   // Idempotent backfill: fix prop rows with null home_team/away_team.
   // First pass (2026-06-02): used playerTeam/opponent — missed early-dropped plays.
   // Second pass (2026-06-02): also covers early drops that only have gameTeam1/gameTeam2.
