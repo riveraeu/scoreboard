@@ -14,6 +14,17 @@ function _getConnStr(env) {
   );
 }
 
+// For DDL and writes: prefer the pooled URL (primary write endpoint).
+// DATABASE_URL_UNPOOLED may connect to a read-only replica on Vercel's Neon integration.
+function _getWriteConnStr(env) {
+  return (
+    env?.POSTGRES_URL ||
+    env?.DATABASE_URL_UNPOOLED ||
+    env?.POSTGRES_URL_NON_POOLING ||
+    env?.NEON_DATABASE_URL
+  );
+}
+
 export async function neonQuery(sql, params = [], env) {
   const connStr = _getConnStr(env);
   if (!connStr) throw new Error("No Neon connection string available (DATABASE_URL_UNPOOLED not set)");
@@ -23,10 +34,10 @@ export async function neonQuery(sql, params = [], env) {
 }
 
 // For DDL: splits multi-statement SQL on semicolons and runs each via sql.query().
-// sql.unsafe() is a raw-value marker (not an executor) — DDL uses query() directly.
+// Uses write connection string (pooled primary) — unpooled may be a read-only replica.
 export async function neonExec(ddl, env) {
-  const connStr = _getConnStr(env);
-  if (!connStr) throw new Error("No Neon connection string available");
+  const connStr = _getWriteConnStr(env);
+  if (!connStr) throw new Error("No Neon write connection string available");
   const sql_fn = _neon(connStr);
   const stmts = ddl.split(";").map(s => s.trim()).filter(Boolean);
   for (const stmt of stmts) {
@@ -38,8 +49,8 @@ export async function neonExec(ddl, env) {
 // Uses ON CONFLICT DO NOTHING for idempotent re-runs.
 export async function neonBatchUpsert(table, columns, rows, env, chunkSize = 100) {
   if (!rows.length) return;
-  const connStr = _getConnStr(env);
-  if (!connStr) throw new Error("No Neon connection string available");
+  const connStr = _getWriteConnStr(env);
+  if (!connStr) throw new Error("No Neon write connection string available");
   const sql = _neon(connStr);
 
   const chunks = [];
