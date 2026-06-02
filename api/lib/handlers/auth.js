@@ -476,6 +476,193 @@ export async function handleAuthRoutes(ctx) {
     return jsonResponse({ totalPicks: allPicks.length, finalizedPicks: finalized.length, overall, byCategory, byCategoryDetail, byModelVersion, bySeasonType, modelFilter: _calibModelFilter, seasonFilter: _calibSeasonFilter, kStrikeouts: { bySimScore, byKpctPts, byKTrendPts, byStdBF, n: ksFinalized.length }, ...(_sliceExtras ? { dcPenaltySlice: _sliceExtras } : {}), ...(_tailSlice ? { tailTotalsSlice: _tailSlice } : {}) });
   }
 
+  // ── Shadow calibration — unbiased full-distribution stats from Neon shadow_plays ──────────
+  // GET /api/auth/shadow-calibration
+  // Auth: bearer JWT (same as /api/auth/calibration) or ?adminKey=
+  // Returns overall/byCategory/byCategoryDetail calibration across ALL model predictions
+  // (no edge gate, no dc gate) so categories can be promoted to passesCategoryGate()
+  // when ROI > 0 at 90% CI with n ≥ 200.
+  if (path === "auth/shadow-calibration" && method === "GET") {
+    const scPayload = await verifyJWT(_extractToken(request), JWT_SECRET);
+    const scAdminKey = params.get("adminKey");
+    if (!scPayload && scAdminKey !== env?.ADMIN_KEY) return errorResponse("Forbidden", 403);
+    if (!env?.POSTGRES_URL && !env?.NEON_DATABASE_URL && !env?.DATABASE_URL_UNPOOLED) {
+      return errorResponse("No Neon connection configured", 500);
+    }
+
+    // Build dynamic WHERE clauses — safe parameterized approach.
+    const whereParts = ["resolved = TRUE", "won IS NOT NULL"];
+    const qp = [];
+    const _p = (val) => { qp.push(val); return `$${qp.length}`; };
+
+    // Default window: last 30 days (avoids pre-model-change data swamping results).
+    const sinceDefault = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+      .toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+    const since = params.get("since") || sinceDefault;
+    whereParts.push(`snapshot_date >= ${_p(since)}`);
+
+    if (params.get("dcQualified") === "true") whereParts.push("dc_qualified = TRUE");
+    const _minDcStr = params.get("minDc");
+    if (_minDcStr) {
+      const _minDc = parseInt(_minDcStr, 10);
+      if (!isNaN(_minDc)) whereParts.push(`dc >= ${_p(_minDc)}`);
+    }
+    if (params.get("sport")) whereParts.push(`sport = ${_p(params.get("sport"))}`);
+    if (params.get("thresholdRank") === "1") whereParts.push("threshold_rank = 1");
+    const _stStr = params.get("seasonType");
+    if (_stStr) {
+      const _st = parseInt(_stStr, 10);
+      if (!isNaN(_st)) whereParts.push(`season_type = ${_p(_st)}`);
+    }
+
+    const whereClause = whereParts.join(" AND ");
+
+    // bet_side_pct (bsp): P(bet wins) from model's perspective.
+    // model_true_pct is always OVER-side. For UNDERs: P(under wins) = 1 - model_true_pct.
+    // bet_pct: the market price paid for the bet (no_kalshi_pct for UNDERs, kalshi_pct for OVERs).
+    // ROI per $1 wagered = hitRate/100 - avg(bet_pct).
+    const shadowCalibSql = `
+WITH base AS (
+  SELECT
+    sport,
+    COALESCE(stat, game_type) AS category,
+    CASE WHEN direction = 'under' THEN (1 - model_true_pct) ELSE model_true_pct END AS bsp,
+    (won)::int AS w,
+    CASE WHEN direction = 'under' THEN no_kalshi_pct ELSE kalshi_pct END AS bet_pct,
+    edge
+  FROM shadow_plays
+  WHERE ${whereClause}
+),
+banded AS (
+  SELECT *,
+    CASE
+      WHEN bsp >= 95 THEN '95+'
+      WHEN bsp >= 90 THEN '90-95'
+      WHEN bsp >= 85 THEN '85-90'
+      WHEN bsp >= 80 THEN '80-85'
+      WHEN bsp >= 75 THEN '75-80'
+      WHEN bsp >= 70 THEN '70-75'
+      WHEN bsp >= 65 THEN '65-70'
+      WHEN bsp >= 60 THEN '60-65'
+      ELSE '55-60'
+    END AS band
+  FROM base
+),
+overall_band AS (
+  SELECT 'band'::text AS type, NULL::text AS sport, NULL::text AS category, band,
+    COUNT(*) AS n, SUM(w) AS wins, AVG(bet_pct) AS avg_bet_pct, AVG(edge) AS avg_edge
+  FROM banded GROUP BY band
+),
+by_cat AS (
+  SELECT 'cat'::text AS type, sport, category, NULL::text AS band,
+    COUNT(*) AS n, SUM(w) AS wins, AVG(bet_pct) AS avg_bet_pct, AVG(edge) AS avg_edge
+  FROM banded GROUP BY sport, category
+),
+by_cat_band AS (
+  SELECT 'cat_band'::text AS type, sport, category, band,
+    COUNT(*) AS n, SUM(w) AS wins, AVG(bet_pct) AS avg_bet_pct, AVG(edge) AS avg_edge
+  FROM banded GROUP BY sport, category, band
+)
+SELECT * FROM overall_band
+UNION ALL SELECT * FROM by_cat
+UNION ALL SELECT * FROM by_cat_band`;
+
+    let scRows;
+    try {
+      scRows = await neonQuery(shadowCalibSql, qp, env);
+    } catch (e) {
+      return errorResponse(`Neon query failed: ${e.message}`, 500);
+    }
+
+    const _SC_BANDS = [
+      { label: "55-60", min: 55, max: 60 },
+      { label: "60-65", min: 60, max: 65 },
+      { label: "65-70", min: 65, max: 70 },
+      { label: "70-75", min: 70, max: 75 },
+      { label: "75-80", min: 75, max: 80 },
+      { label: "80-85", min: 80, max: 85 },
+      { label: "85-90", min: 85, max: 90 },
+      { label: "90-95", min: 90, max: 95 },
+      { label: "95+",   min: 95, max: 101 },
+    ];
+    const _scBandMid = Object.fromEntries(
+      _SC_BANDS.map(b => [b.label, parseFloat(((b.min + Math.min(b.max, 100)) / 2).toFixed(1))])
+    );
+
+    function _scCell(row) {
+      const n = Number(row.n ?? 0);
+      const wins = Number(row.wins ?? 0);
+      const avgBetPct = row.avg_bet_pct != null ? parseFloat(Number(row.avg_bet_pct).toFixed(4)) : null;
+      const avgEdge = row.avg_edge != null ? parseFloat(Number(row.avg_edge).toFixed(2)) : null;
+      const actual = n > 0 ? parseFloat((wins / n * 100).toFixed(1)) : null;
+      const predicted = row.band ? (_scBandMid[row.band] ?? null) : null;
+      const delta = actual != null && predicted != null ? parseFloat((actual - predicted).toFixed(1)) : null;
+      const roi = actual != null && avgBetPct != null ? parseFloat((actual / 100 - avgBetPct).toFixed(4)) : null;
+      return { n, wins, actual, predicted, delta, roi, avgEdge, avgBetPct };
+    }
+
+    const _scOverallMap = {};
+    const _scCatMap = {};
+    const _scCatBandMap = {};
+    let scTotalN = 0;
+
+    for (const row of scRows) {
+      if (row.type === "band") {
+        _scOverallMap[row.band] = row;
+      } else if (row.type === "cat") {
+        const key = `${row.sport}|${row.category}`;
+        _scCatMap[key] = row;
+        scTotalN += Number(row.n ?? 0);
+      } else if (row.type === "cat_band") {
+        const key = `${row.sport}|${row.category}`;
+        if (!_scCatBandMap[key]) _scCatBandMap[key] = {};
+        _scCatBandMap[key][row.band] = row;
+      }
+    }
+
+    const _emptyBand = (b) => ({ band: b.label, predicted: _scBandMid[b.label], actual: null, delta: null, n: 0, roi: null, avgEdge: null });
+
+    const scOverall = _SC_BANDS.map(b => {
+      const row = _scOverallMap[b.label];
+      if (!row) return _emptyBand(b);
+      const c = _scCell({ ...row, band: b.label });
+      return { band: b.label, predicted: c.predicted, actual: c.actual, delta: c.delta, n: c.n, roi: c.roi, avgEdge: c.avgEdge };
+    });
+
+    const scByCategory = Object.fromEntries(
+      Object.entries(_scCatMap).map(([key, row]) => {
+        const c = _scCell(row);
+        return [key, { n: c.n, hitRate: c.actual, roi: c.roi, avgEdge: c.avgEdge }];
+      })
+    );
+
+    const scByCategoryDetail = Object.fromEntries(
+      Object.entries(_scCatBandMap).map(([key, bandRows]) => [key,
+        _SC_BANDS.map(b => {
+          const row = bandRows[b.label];
+          if (!row) return _emptyBand(b);
+          const c = _scCell({ ...row, band: b.label });
+          return { band: b.label, predicted: c.predicted, actual: c.actual, delta: c.delta, n: c.n, roi: c.roi, avgEdge: c.avgEdge };
+        })
+      ])
+    );
+
+    return jsonResponse({
+      n: scTotalN,
+      filters: {
+        since,
+        dcQualified: params.get("dcQualified") === "true",
+        minDc: _minDcStr ? parseInt(_minDcStr, 10) : null,
+        sport: params.get("sport") || null,
+        thresholdRank: params.get("thresholdRank") === "1" ? 1 : null,
+        seasonType: _stStr ? parseInt(_stStr, 10) : null,
+      },
+      overall: scOverall,
+      byCategory: scByCategory,
+      byCategoryDetail: scByCategoryDetail,
+    });
+  }
+
   if (path === "auth/shadow-stats" && method === "GET") {
     const ak = (request.headers.get("Authorization") || "").replace("Bearer ", "");
     if (!env?.ADMIN_KEY) return errorResponse("ADMIN_KEY not set", 500);
