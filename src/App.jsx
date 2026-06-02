@@ -120,6 +120,7 @@ function App() {
     reportSport, setReportSport,
     calibData, calibLoading,
     fetchReport, fetchCalib,
+    shadowCalibData, shadowCalibLoading, fetchShadowCalib,
   } = useReportData();
 
   // Qualified play filter: dcQualified=true AND edge >= 5% AND dc=10 (fully clean inputs). v1
@@ -863,6 +864,9 @@ function App() {
           calibData={calibData}
           calibLoading={calibLoading}
           fetchCalib={fetchCalib}
+          shadowCalibData={shadowCalibData}
+          shadowCalibLoading={shadowCalibLoading}
+          fetchShadowCalib={fetchShadowCalib}
           isLoggedIn={!!authEmail}
           navigateToPlayer={navigateToPlayer}
           navigateToTeam={navigateToTeam}

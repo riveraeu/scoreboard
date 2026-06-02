@@ -17,6 +17,8 @@ export function useReportData() {
   const [reportSport, setReportSport] = React.useState("mlb");
   const [calibData, setCalibData] = React.useState(null);
   const [calibLoading, setCalibLoading] = React.useState(false);
+  const [shadowCalibData, setShadowCalibData] = React.useState(null);
+  const [shadowCalibLoading, setShadowCalibLoading] = React.useState(false);
 
   const fetchReport = React.useCallback(async (sport) => {
     if (!sport) return;
@@ -47,6 +49,20 @@ export function useReportData() {
     setCalibLoading(false);
   }, []);
 
+  const fetchShadowCalib = React.useCallback(async (since) => {
+    setShadowCalibLoading(true);
+    setShadowCalibData(null);
+    const url = `${WORKER}/auth/shadow-calibration` + (since ? `?since=${since}` : '');
+    try {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      setShadowCalibData(await r.json());
+    } catch(e) {
+      setShadowCalibData({ error: e.message });
+    }
+    setShadowCalibLoading(false);
+  }, []);
+
   return {
     reportSort, setReportSort,
     reportDataBySport,
@@ -54,5 +70,6 @@ export function useReportData() {
     reportSport, setReportSport,
     calibData, calibLoading,
     fetchReport, fetchCalib,
+    shadowCalibData, shadowCalibLoading, fetchShadowCalib,
   };
 }

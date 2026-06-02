@@ -815,6 +815,181 @@ function MarketGroupSection({ group, reportSort, setReportSort, navigateToPlayer
   );
 }
 
+// --- ShadowCalibModule ------------------------------------------------------------
+// Renders unbiased calibration from Neon shadow_plays (all model predictions,
+// no edge/dc gate). Used to decide when a category is ready for passesCategoryGate().
+
+const ACTIVE_CATS = new Set(['mlb|spread', 'mlb|hrr']); // mirrors passesCategoryGate()
+const _roiColor = r => r == null ? "#8b949e" : r >= 0.02 ? "#3fb950" : r <= -0.02 ? "#f78166" : "#e3b341";
+const _roiFmt = r => r == null ? "—" : `${r >= 0 ? "+" : ""}${(r * 100).toFixed(1)}%`;
+
+const _SC_BANDS = ["55-60","60-65","65-70","70-75","75-80","80-85","85-90","90-95","95+"];
+const _scBandMid = {"55-60":57.5,"60-65":62.5,"65-70":67.5,"70-75":72.5,"75-80":77.5,"80-85":82.5,"85-90":87.5,"90-95":92.5,"95+":97.5};
+
+function _sinceDate(key) {
+  const now = new Date();
+  if (key === '60d') { const d = new Date(now - 60*24*60*60*1000); return d.toLocaleDateString('en-CA',{timeZone:'America/Los_Angeles'}); }
+  if (key === 'all') return '2026-06-01'; // shadow logging started
+  // 30d default
+  const d = new Date(now - 30*24*60*60*1000);
+  return d.toLocaleDateString('en-CA',{timeZone:'America/Los_Angeles'});
+}
+
+function _catStatus(key, d) {
+  if (ACTIVE_CATS.has(key)) return { label: 'Active', color: '#3fb950' };
+  if ((d.n ?? 0) >= 50 && (d.roi ?? -1) > 0) return { label: 'Building', color: '#e3b341' };
+  if ((d.n ?? 0) >= 30 && (d.roi ?? 0) <= 0) return { label: 'Losing', color: '#f78166' };
+  return { label: 'Too few', color: '#484f58' };
+}
+
+function ShadowCalibModule({ sport, shadowCalibData, shadowCalibLoading, fetchShadowCalib, isLoggedIn }) {
+  const [sinceKey, setSinceKey] = React.useState('30d');
+  const [selectedCat, setSelectedCat] = React.useState(null);
+
+  React.useEffect(() => {
+    if (isLoggedIn) fetchShadowCalib(_sinceDate(sinceKey));
+  // Re-fetch when the window changes. fetchShadowCalib is stable (useCallback []).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sinceKey, isLoggedIn]);
+
+  if (!isLoggedIn) return (
+    <div style={{..._CARD_STYLE}}>
+      <div style={{color:"#484f58",fontSize:12}}>Log in to see shadow calibration data.</div>
+    </div>
+  );
+
+  if (shadowCalibLoading) return (
+    <div style={{..._CARD_STYLE}}>
+      <div style={{color:"#8b949e",fontSize:12}}>Loading shadow calibration…</div>
+    </div>
+  );
+
+  const sinceButtons = (
+    <div style={{display:"flex",gap:4}}>
+      {['30d','60d','all'].map(k => (
+        <button key={k} onClick={() => { setSinceKey(k); setSelectedCat(null); }}
+          style={{fontSize:11,padding:"2px 8px",borderRadius:5,cursor:"pointer",border:"1px solid #30363d",
+            background: sinceKey===k ? "#21262d" : "transparent",
+            color: sinceKey===k ? "#c9d1d9" : "#484f58", fontWeight: sinceKey===k ? 700 : 400}}>
+          {k}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (!shadowCalibData || shadowCalibData.error) return (
+    <div style={{..._CARD_STYLE}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+        <span style={{color:"#c9d1d9",fontSize:13,fontWeight:700}}>Shadow Calibration</span>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          {sinceButtons}
+          <button onClick={() => fetchShadowCalib(_sinceDate(sinceKey))}
+            style={{fontSize:11,padding:"3px 10px",borderRadius:6,cursor:"pointer",border:"1px solid #30363d",background:"transparent",color:"#8b949e"}}>↻</button>
+        </div>
+      </div>
+      <div style={{color:"#484f58",fontSize:12}}>{shadowCalibData?.error ? `Error: ${shadowCalibData.error}` : "Shadow calibration not yet loaded."}</div>
+    </div>
+  );
+
+  // Filter categories by selected sport
+  const allCats = Object.entries(shadowCalibData.byCategory || {})
+    .filter(([key]) => !sport || key.startsWith(sport + '|'))
+    .sort(([, a], [, b]) => (b.n ?? 0) - (a.n ?? 0));
+
+  const detailBands = selectedCat
+    ? (shadowCalibData.byCategoryDetail?.[selectedCat] || [])
+    : [];
+
+  return (
+    <div style={{..._CARD_STYLE}}>
+      {/* Header */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <span style={{color:"#c9d1d9",fontSize:13,fontWeight:700}}>Shadow Calibration</span>
+          <span style={{background:"#21262d",color:"#6e7681",fontSize:10,borderRadius:10,padding:"1px 8px"}}>
+            unbiased · all predictions · n={shadowCalibData.n ?? 0}
+          </span>
+        </div>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          {sinceButtons}
+          <button onClick={() => fetchShadowCalib(_sinceDate(sinceKey))}
+            style={{fontSize:11,padding:"3px 10px",borderRadius:6,cursor:"pointer",border:"1px solid #30363d",background:"transparent",color:"#8b949e"}}>↻</button>
+        </div>
+      </div>
+
+      {/* Category summary table */}
+      {allCats.length === 0 ? (
+        <div style={{color:"#484f58",fontSize:12}}>No resolved shadow plays for {sport?.toUpperCase() ?? "any sport"} yet.</div>
+      ) : (
+        <table style={{width:"100%",borderCollapse:"collapse",background:"#0d1117",borderRadius:8,overflow:"hidden",border:"1px solid #21262d",marginBottom:selectedCat?12:0}}>
+          <thead>
+            <tr>{["Category","N","Hit%","ROI","Status",""].map(h => <th key={h} style={thCalib}>{h}</th>)}</tr>
+          </thead>
+          <tbody>
+            {allCats.map(([key, d]) => {
+              const status = _catStatus(key, d);
+              const isSelected = selectedCat === key;
+              return (
+                <tr key={key}
+                  onClick={() => setSelectedCat(isSelected ? null : key)}
+                  style={{cursor:"pointer", background: isSelected ? "#161b22" : "transparent"}}>
+                  <td style={{...tdCalib,color:"#c9d1d9",fontWeight:isSelected?700:400}}>{key}</td>
+                  <td style={{...tdCalib,color:(d.n??0)<10?"#484f58":(d.n??0)<30?"#6e7681":"#c9d1d9"}}>{d.n??0}</td>
+                  <td style={{...tdCalib,color:(d.hitRate??0)>=70?"#3fb950":(d.hitRate??0)>=60?"#e3b341":"#f78166",fontWeight:600}}>
+                    {d.hitRate!=null?`${d.hitRate}%`:"—"}
+                  </td>
+                  <td style={{...tdCalib,color:_roiColor(d.roi),fontWeight:600}}>{_roiFmt(d.roi)}</td>
+                  <td style={{...tdCalib}}><span style={{color:status.color,fontSize:10,fontWeight:600}}>{status.label}</span></td>
+                  <td style={{...tdCalib,color:"#484f58",fontSize:10}}>{isSelected?"▲":"▼"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+
+      {/* Band detail for selected category */}
+      {selectedCat && (
+        <div>
+          <div style={{color:"#8b949e",fontSize:11,fontWeight:600,marginBottom:6}}>
+            {selectedCat} — band detail ({(shadowCalibData.byCategory?.[selectedCat]?.n ?? 0)} resolved plays)
+          </div>
+          <table style={{width:"100%",borderCollapse:"collapse",background:"#0d1117",borderRadius:8,overflow:"hidden",border:"1px solid #21262d"}}>
+            <thead>
+              <tr>{["Band","N","Predicted","Actual","Δ","ROI",""].map(h => <th key={h} style={thCalib}>{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {_SC_BANDS.map(band => {
+                const b = detailBands.find(r => r.band === band) || { band, predicted: _scBandMid[band], actual: null, delta: null, n: 0, roi: null };
+                return (
+                  <tr key={band}>
+                    <td style={tdCalib}><span style={{color:"#c9d1d9"}}>{band}%</span></td>
+                    <td style={{...tdCalib,color:b.n<5?"#484f58":b.n<10?"#6e7681":"#c9d1d9"}}>{b.n||"—"}</td>
+                    <td style={{...tdCalib,color:"#8b949e"}}>{b.predicted!=null?`${b.predicted}%`:"—"}</td>
+                    <td style={{...tdCalib,color:b.actual==null?"#484f58":b.actual>=70?"#3fb950":b.actual>=60?"#e3b341":"#f78166"}}>
+                      {b.actual!=null?`${b.actual}%`:"—"}
+                    </td>
+                    <td style={{...tdCalib,color:deltaColor(b.delta)}}>{b.delta!=null?(b.delta>=0?`+${b.delta}`:b.delta):"—"}</td>
+                    <td style={{...tdCalib,color:_roiColor(b.roi),fontWeight:b.roi!=null?600:400}}>{_roiFmt(b.roi)}</td>
+                    <td style={{...tdCalib,width:100}}>
+                      {b.actual!=null&&(
+                        <div style={{position:"relative",height:7,background:"#21262d",borderRadius:4,overflow:"hidden"}}>
+                          <div style={{position:"absolute",left:0,top:0,height:"100%",width:barW(b.actual),background:b.actual>=70?"#3fb950":b.actual>=60?"#e3b341":"#f78166",borderRadius:4}}/>
+                          <div style={{position:"absolute",left:`${b.predicted}%`,top:0,height:"100%",width:2,background:"#58a6ff",opacity:0.8}}/>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // --- ReportPage --------------------------------------------------------------------
 
 function ReportPage({
@@ -827,6 +1002,8 @@ function ReportPage({
   fetchReport,
   // Calibration data
   calibData, calibLoading, fetchCalib, isLoggedIn,
+  // Shadow calibration
+  shadowCalibData, shadowCalibLoading, fetchShadowCalib,
   // Shared nav
   navigateToPlayer, navigateToTeam,
   // Entry hints from useRouting
@@ -863,6 +1040,11 @@ function ReportPage({
   }, [tab, sport, reportDataBySport, reportLoadingSport, fetchReport]);
   React.useEffect(() => {
     if (tab === "model" && isLoggedIn && !calibData && !calibLoading) fetchCalib();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, isLoggedIn]);
+  React.useEffect(() => {
+    if (tab === "shadow" && isLoggedIn && !shadowCalibData && !shadowCalibLoading) fetchShadowCalib();
+  // ShadowCalibModule also re-fetches on since-window change via its own effect.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, isLoggedIn]);
 
@@ -930,6 +1112,7 @@ function ReportPage({
         {[
           { id:"market", label:"Market Report" },
           { id:"model",  label:"Results" },
+          { id:"shadow", label:"Shadow" },
         ].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             style={{padding:"6px 14px",borderRadius:"6px 6px 0 0",border:"none",cursor:"pointer",fontSize:12,
@@ -992,6 +1175,36 @@ function ReportPage({
           </div>
 
           <CalibModule tabId={playType.id} calibData={calibData} calibLoading={calibLoading} fetchCalib={fetchCalib} isLoggedIn={isLoggedIn} />
+        </div>
+      )}
+
+      {tab === "shadow" && (
+        <div>
+          <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:10,padding:"10px 14px",marginBottom:12,
+            display:"flex",gap:24,flexWrap:"wrap"}}>
+            <div>
+              <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>SOURCE</div>
+              <div style={{color:"#58a6ff",fontSize:12,fontWeight:600}}>All model predictions</div>
+              <div style={{color:"#484f58",fontSize:10}}>No edge gate, no dc gate — unbiased</div>
+            </div>
+            <div>
+              <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>PROMOTE WHEN</div>
+              <div style={{color:"#3fb950",fontSize:12,fontWeight:600}}>n ≥ 200 · ROI {'>'} 0</div>
+              <div style={{color:"#484f58",fontSize:10}}>90% CI positive → add to passesCategoryGate()</div>
+            </div>
+            <div>
+              <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>ROI</div>
+              <div style={{color:"#c9d1d9",fontSize:11}}>hitRate / 100 − avg market price</div>
+              <div style={{color:"#484f58",fontSize:10}}>Expected profit per $1 wagered at Kalshi price</div>
+            </div>
+          </div>
+          <ShadowCalibModule
+            sport={sport}
+            shadowCalibData={shadowCalibData}
+            shadowCalibLoading={shadowCalibLoading}
+            fetchShadowCalib={fetchShadowCalib}
+            isLoggedIn={isLoggedIn}
+          />
         </div>
       )}
     </div>
