@@ -143,18 +143,27 @@ export async function handleShadowRoutes({ path, request, env }) {
   const snapshotDate = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
   const t0 = Date.now();
 
-  // Ensure table exists (no-op if already created). DDL uses neonExec (no prepared stmt).
+  // Ensure table exists — run each DDL statement separately.
+  // First confirm write works by running a simple CREATE TABLE test.
   let ddlError = null;
+  let testResult = null;
   try {
-    await neonExec(CREATE_TABLE_SQL, env);
+    testResult = await neonQuery("CREATE TABLE IF NOT EXISTS _shadow_init_test (x int)", [], env);
   } catch (e) {
-    ddlError = String(e);
+    ddlError = `test-create-err: ${e}`;
+  }
+  if (!ddlError) {
+    try {
+      await neonExec(CREATE_TABLE_SQL, env);
+    } catch (e) {
+      ddlError = String(e);
+    }
   }
   const tablesAfterDdl = await neonQuery(
     "SELECT tablename FROM pg_tables WHERE schemaname='public'", [], env
   ).catch(e => [{ tablename: `(query-err: ${e.message})` }]);
   if (ddlError || !tablesAfterDdl.some(r => r.tablename === "shadow_plays")) {
-    return errorResponse(`DDL failed. ddlError=${ddlError} tables=${tablesAfterDdl.map(r=>r.tablename).join(",")||"none"}`, 500);
+    return errorResponse(`DDL failed. ddlError=${ddlError} testResult=${JSON.stringify(testResult)} tables=${tablesAfterDdl.map(r=>r.tablename).join(",")||"none"}`, 500);
   }
 
   // Fetch tonight debug response — uses cached Kalshi snaps, doesn't bust external APIs.
