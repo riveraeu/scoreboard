@@ -139,13 +139,13 @@ export async function emitAllMlAndSpread({
             homeLambda, awayLambda,
             ..._simData,
           });
-        } else if (isDebug && inWindow) {
+        } else if (isDebug) {
           dropped.push({
             gameType: "ml", sport: "mlb", stat: "ml",
             homeTeam, awayTeam, pickTeam, oppTeam, side, gameDate,
             kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge,
             lineupsConfirmed: _lineupsConfirmed,
-            reason: "edge_too_low",
+            reason: !inWindow ? "kalshi_out_of_window" : "edge_too_low",
             homeLambda, awayLambda,
             ..._simData,
           });
@@ -206,14 +206,14 @@ export async function emitAllMlAndSpread({
             homeLambda, awayLambda,
             ..._simData,
           });
-        } else if (isDebug && inWindow) {
+        } else if (isDebug) {
           dropped.push({
             gameType: "spread", sport: "mlb", stat: "spread",
             homeTeam, awayTeam, pickTeam, oppTeam, side: pickSide, gameDate,
             line, pickLine, marginTeam,
             kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge,
             lineupsConfirmed: _lineupsConfirmed,
-            reason: "edge_too_low",
+            reason: !inWindow ? "kalshi_out_of_window" : "edge_too_low",
             homeLambda, awayLambda,
             ..._simData,
           });
@@ -283,8 +283,8 @@ export async function emitAllMlAndSpread({
         const inWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
         if (edge >= EDGE_GATE && inWindow) {
           plays.push({ ..._f5Common, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge, kalshiTicker: tm._ticker ?? null, kalshiSide: "yes" });
-        } else if (isDebug && inWindow) {
-          dropped.push({ ..._f5Common, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge, reason: "edge_too_low" });
+        } else if (isDebug) {
+          dropped.push({ ..._f5Common, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge, reason: !inWindow ? "kalshi_out_of_window" : "edge_too_low" });
         }
       }
       // UNDER (use real no_ask, not 1-yes_ask)
@@ -293,8 +293,8 @@ export async function emitAllMlAndSpread({
         const inWindow = _tmNoPct >= KALSHI_GATE && _tmNoPct <= KALSHI_CAP;
         if (edge >= EDGE_GATE && inWindow) {
           plays.push({ ..._f5Common, direction: "under", kalshiPct, noKalshiPct: _tmNoPct, americanOdds: _tmNoAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, edge, kalshiTicker: tm._ticker ?? null, kalshiSide: "no" });
-        } else if (isDebug && inWindow) {
-          dropped.push({ ..._f5Common, direction: "under", kalshiPct, noKalshiPct: _tmNoPct, americanOdds: _tmNoAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, edge, reason: _tmNoPct < KALSHI_GATE ? "under_no_price_too_low" : "edge_too_low" });
+        } else if (isDebug) {
+          dropped.push({ ..._f5Common, direction: "under", kalshiPct, noKalshiPct: _tmNoPct, americanOdds: _tmNoAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, edge, reason: !inWindow ? (_tmNoPct > KALSHI_CAP ? "kalshi_pct_too_high" : "under_no_price_too_low") : "edge_too_low" });
         }
       }
     }
@@ -353,8 +353,8 @@ export async function emitAllMlAndSpread({
         };
         if (edge >= EDGE_GATE && inWindow) {
           plays.push(_base);
-        } else if (isDebug && inWindow) {
-          dropped.push({ ..._base, reason: "edge_too_low" });
+        } else if (isDebug) {
+          dropped.push({ ..._base, reason: !inWindow ? "kalshi_out_of_window" : "edge_too_low" });
         }
       }
     }
@@ -483,8 +483,8 @@ export async function emitAllMlAndSpread({
           };
           if (edge >= EDGE_GATE && inWindow) {
             plays.push(_base);
-          } else if (isDebug && inWindow) {
-            dropped.push({ ..._base, reason: "edge_too_low" });
+          } else if (isDebug) {
+            dropped.push({ ..._base, reason: !inWindow ? "kalshi_out_of_window" : "edge_too_low" });
           }
         }
       }
@@ -594,12 +594,12 @@ export async function emitAllMlAndSpread({
             homeLambda, awayLambda,
             ..._simData,
           });
-        } else if (isDebug && inWindow) {
+        } else if (isDebug) {
           dropped.push({
             gameType: "ml", sport: "nba", stat: "ml",
             homeTeam, awayTeam, pickTeam, oppTeam, side, gameDate,
             kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge,
-            reason: "edge_too_low",
+            reason: !inWindow ? "kalshi_out_of_window" : "edge_too_low",
             homeLambda, awayLambda,
             ..._simData,
           });
@@ -653,13 +653,13 @@ export async function emitAllMlAndSpread({
             homeLambda, awayLambda,
             ..._simData,
           });
-        } else if (isDebug && inWindow) {
+        } else if (isDebug) {
           dropped.push({
             gameType: "spread", sport: "nba", stat: "spread",
             homeTeam, awayTeam, pickTeam, oppTeam, side: pickSide, gameDate,
             line, pickLine, marginTeam,
             kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge,
-            reason: "edge_too_low",
+            reason: !inWindow ? "kalshi_out_of_window" : "edge_too_low",
             homeLambda, awayLambda,
             ..._simData,
           });
@@ -769,12 +769,12 @@ export async function emitAllMlAndSpread({
             homeLambda, awayLambda,
             ..._simData,
           });
-        } else if (isDebug && inWindow) {
+        } else if (isDebug) {
           dropped.push({
             gameType: "ml", sport: "wnba", stat: "ml",
             homeTeam, awayTeam, pickTeam, oppTeam, side, gameDate,
             kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge,
-            reason: "edge_too_low",
+            reason: !inWindow ? "kalshi_out_of_window" : "edge_too_low",
             homeLambda, awayLambda,
             ..._simData,
           });
@@ -826,13 +826,13 @@ export async function emitAllMlAndSpread({
             homeLambda, awayLambda,
             ..._simData,
           });
-        } else if (isDebug && inWindow) {
+        } else if (isDebug) {
           dropped.push({
             gameType: "spread", sport: "wnba", stat: "spread",
             homeTeam, awayTeam, pickTeam, oppTeam, side: pickSide, gameDate,
             line, pickLine, marginTeam,
             kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge,
-            reason: "edge_too_low",
+            reason: !inWindow ? "kalshi_out_of_window" : "edge_too_low",
             homeLambda, awayLambda,
             ..._simData,
           });
@@ -974,14 +974,14 @@ export async function emitAllMlAndSpread({
           const edge = parseFloat((truePct - kalshiPct).toFixed(1));
           const inWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
           if (edge >= EDGE_GATE && inWindow) plays.push({ ..._base, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge, kalshiTicker: tm._ticker ?? null, kalshiSide: "yes" });
-          else if (isDebug && inWindow) dropped.push({ ..._base, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge, reason: "edge_too_low" });
+          else if (isDebug) dropped.push({ ..._base, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge, reason: !inWindow ? "kalshi_out_of_window" : "edge_too_low" });
         }
         // UNDER
         {
           const edge = parseFloat((noTruePct - _tmNoPct).toFixed(1));
           const inWindow = _tmNoPct >= KALSHI_GATE && _tmNoPct <= KALSHI_CAP;
           if (edge >= EDGE_GATE && inWindow) plays.push({ ..._base, direction: "under", kalshiPct, noKalshiPct: _tmNoPct, americanOdds: _tmNoAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, edge, kalshiTicker: tm._ticker ?? null, kalshiSide: "no" });
-          else if (isDebug && inWindow) dropped.push({ ..._base, direction: "under", kalshiPct, noKalshiPct: _tmNoPct, americanOdds: _tmNoAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, edge, reason: _tmNoPct < KALSHI_GATE ? "under_no_price_too_low" : "edge_too_low" });
+          else if (isDebug) dropped.push({ ..._base, direction: "under", kalshiPct, noKalshiPct: _tmNoPct, americanOdds: _tmNoAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, edge, reason: !inWindow ? (_tmNoPct > KALSHI_CAP ? "kalshi_pct_too_high" : "under_no_price_too_low") : "edge_too_low" });
         }
       }
       // Spreads
@@ -1033,7 +1033,7 @@ export async function emitAllMlAndSpread({
             gameOuLine: _halfGameOuLine,
           };
           if (edge >= EDGE_GATE && inWindow) plays.push(_base);
-          else if (isDebug && inWindow) dropped.push({ ..._base, reason: "edge_too_low" });
+          else if (isDebug) dropped.push({ ..._base, reason: !inWindow ? "kalshi_out_of_window" : "edge_too_low" });
         }
       }
       // ML 3-way (home/away/tie)
@@ -1086,7 +1086,7 @@ export async function emitAllMlAndSpread({
             gameOuLine: _halfGameOuLine,
           };
           if (edge >= EDGE_GATE && inWindow) plays.push(_base);
-          else if (isDebug && inWindow) dropped.push({ ..._base, reason: "edge_too_low" });
+          else if (isDebug) dropped.push({ ..._base, reason: !inWindow ? "kalshi_out_of_window" : "edge_too_low" });
         }
       }
     }
@@ -1195,12 +1195,12 @@ export async function emitAllMlAndSpread({
             homeLambda, awayLambda,
             ..._simData,
           });
-        } else if (isDebug && inWindow) {
+        } else if (isDebug) {
           dropped.push({
             gameType: "ml", sport: "nhl", stat: "ml",
             homeTeam, awayTeam, pickTeam, oppTeam, side, gameDate,
             kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge,
-            reason: "edge_too_low",
+            reason: !inWindow ? "kalshi_out_of_window" : "edge_too_low",
             homeLambda, awayLambda,
             ..._simData,
           });
@@ -1257,13 +1257,13 @@ export async function emitAllMlAndSpread({
             homeLambda, awayLambda,
             ..._simData,
           });
-        } else if (isDebug && inWindow) {
+        } else if (isDebug) {
           dropped.push({
             gameType: "spread", sport: "nhl", stat: "spread",
             homeTeam, awayTeam, pickTeam, oppTeam, side: pickSide, gameDate,
             line, pickLine, marginTeam,
             kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge,
-            reason: "edge_too_low",
+            reason: !inWindow ? "kalshi_out_of_window" : "edge_too_low",
             homeLambda, awayLambda,
             ..._simData,
           });

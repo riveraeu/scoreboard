@@ -980,8 +980,8 @@ export async function emitGameTotalPlays({
       const _overInWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
       if (overEdge >= EDGE_GATE && _overInWindow) {
         totalPlays.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge: overEdge, totalSimScore, qualified: true, kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _gameTime, lineupsConfirmed: _lineupsConfirmed, kalshiTicker: tm._ticker ?? null, kalshiSide: "yes", ..._simData });
-      } else if (isDebug && _overInWindow) {
-        dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge: overEdge, totalSimScore, lineupsConfirmed: _lineupsConfirmed, reason: "edge_too_low", ..._simData });
+      } else if (isDebug) {
+        dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge: overEdge, totalSimScore, lineupsConfirmed: _lineupsConfirmed, reason: !_overInWindow ? "kalshi_out_of_window" : "edge_too_low", ..._simData });
       }
       // UNDER play — mirror the OVER filter: require noKalshiPct >= 70 (YES <= 30)
       // so we only bet UNDERs the market also considers likely (same gate as OVERs).
@@ -1182,8 +1182,8 @@ export async function emitGameTotalPlays({
         const _ttOverInWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
         if (edge >= EDGE_GATE && _ttOverInWindow) {
           teamTotalPlays.push({ ..._ttBaseFields, direction: "over", edge, rawEdge, teamTotalSimScore, qualified: true, kalshiTicker: tm._ticker ?? null, kalshiSide: "yes" });
-        } else if (isDebug && _ttOverInWindow) {
-          dropped.push({ ..._ttBaseFields, direction: "over", edge, rawEdge, teamTotalSimScore, reason: "edge_too_low" });
+        } else if (isDebug) {
+          dropped.push({ ..._ttBaseFields, direction: "over", edge, rawEdge, teamTotalSimScore, reason: !_ttOverInWindow ? "kalshi_out_of_window" : "edge_too_low" });
         }
         // UNDER play — use real no_ask price flowed through from the parse site.
         // Pre-2026-05-15 this synthesized noPct from 1 - kalshiPct, which underpriced
@@ -1297,8 +1297,8 @@ export async function emitGameTotalPlays({
         const _nttOverInWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
         if (edge >= EDGE_GATE && _nttOverInWindow) {
           teamTotalPlays.push({ ..._nttBaseFields, direction: "over", edge, rawEdge, teamTotalSimScore, qualified: true, kalshiTicker: tm._ticker ?? null, kalshiSide: "yes" });
-        } else if (isDebug && _nttOverInWindow) {
-          dropped.push({ ..._nttBaseFields, direction: "over", edge, rawEdge, teamTotalSimScore, reason: "edge_too_low" });
+        } else if (isDebug) {
+          dropped.push({ ..._nttBaseFields, direction: "over", edge, rawEdge, teamTotalSimScore, reason: !_nttOverInWindow ? "kalshi_out_of_window" : "edge_too_low" });
         }
         // UNDER play — same real-no_ask correction as MLB team total UNDER above.
         const _nttNoTruePct = parseFloat((100 - truePct).toFixed(1));
