@@ -145,6 +145,8 @@ export async function handleShadowRoutes({ path, request, env }) {
 
   // Ensure table exists (no-op if already created). DDL uses neonExec (no prepared stmt).
   await neonExec(CREATE_TABLE_SQL, env);
+  // One-time: drop debug table left from initial Neon wiring session (2026-06-01).
+  await neonQuery("DROP TABLE IF EXISTS _shadow_init_test", [], env).catch(() => {});
 
   // Fetch tonight debug response — uses cached Kalshi snaps, doesn't bust external APIs.
   const origin = new URL(request.url).origin;
