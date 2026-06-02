@@ -29,8 +29,8 @@ export async function neonQuery(sql, params = [], env) {
   const connStr = _getConnStr(env);
   if (!connStr) throw new Error("No Neon connection string available (DATABASE_URL_UNPOOLED not set)");
   const sql_fn = _neon(connStr);
-  const result = await sql_fn.query(sql, params);
-  return result.rows ?? [];
+  // sql.query() resolves to the rows array directly (not { rows: [...] }).
+  return sql_fn.query(sql, params);
 }
 
 // For DDL: splits multi-statement SQL on semicolons and runs each via sql.query().
@@ -62,8 +62,6 @@ export async function neonBatchUpsert(table, columns, rows, env, chunkSize = 100
     ).join(", ");
     const values = chunk.flatMap(row => columns.map(col => row[col] ?? null));
     const insertSql = `INSERT INTO ${table} (${columns.join(", ")}) VALUES ${placeholders} ON CONFLICT (id) DO NOTHING`;
-    const result = await sql.query(insertSql, values);
-    // neon.query returns a result object; errors throw automatically.
-    void result;
+    await sql.query(insertSql, values);
   }
 }
