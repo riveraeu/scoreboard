@@ -18,10 +18,20 @@ export async function neonQuery(sql, params = [], env) {
   const connStr = _getConnStr(env);
   if (!connStr) throw new Error("No Neon connection string available (DATABASE_URL_UNPOOLED not set)");
   const sql_fn = _neon(connStr);
-  // neon() tagged template doesn't support positional params directly.
-  // Use the unsafe() helper for parameterized queries.
   const result = await sql_fn.query(sql, params);
   return result.rows ?? [];
+}
+
+// For DDL or multi-statement SQL that can't go through prepared statements.
+// Splits on semicolons and executes each statement via sql.unsafe().
+export async function neonExec(ddl, env) {
+  const connStr = _getConnStr(env);
+  if (!connStr) throw new Error("No Neon connection string available");
+  const sql_fn = _neon(connStr);
+  const stmts = ddl.split(";").map(s => s.trim()).filter(Boolean);
+  for (const stmt of stmts) {
+    await sql_fn.unsafe(stmt);
+  }
 }
 
 // Batch-insert helper. Builds a single parameterized INSERT for up to `chunkSize` rows.

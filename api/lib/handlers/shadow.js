@@ -3,7 +3,7 @@
 // Auth: CRON_SECRET (same pattern as kalshi-snapshot).
 // Cron: 0 22 * * * (3pm PT — after most lineup confirmations, before first pitch).
 
-import { neonQuery, neonBatchUpsert } from "../neon.js";
+import { neonQuery, neonBatchUpsert, neonExec } from "../neon.js";
 import { errorResponse, jsonResponse } from "../utils.js";
 
 const SHADOW_TABLE = "shadow_plays";
@@ -143,8 +143,8 @@ export async function handleShadowRoutes({ path, request, env }) {
   const snapshotDate = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
   const t0 = Date.now();
 
-  // Ensure table exists (no-op if already created).
-  await neonQuery(CREATE_TABLE_SQL, [], env);
+  // Ensure table exists (no-op if already created). DDL uses neonExec (no prepared stmt).
+  await neonExec(CREATE_TABLE_SQL, env);
 
   // Fetch tonight debug response — uses cached Kalshi snaps, doesn't bust external APIs.
   const origin = new URL(request.url).origin;
