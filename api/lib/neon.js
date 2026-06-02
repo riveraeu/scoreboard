@@ -22,15 +22,15 @@ export async function neonQuery(sql, params = [], env) {
   return result.rows ?? [];
 }
 
-// For DDL or multi-statement SQL that can't go through prepared statements.
-// Splits on semicolons and executes each statement via sql.unsafe().
+// For DDL: splits multi-statement SQL on semicolons and runs each via sql.query().
+// sql.unsafe() is a raw-value marker (not an executor) — DDL uses query() directly.
 export async function neonExec(ddl, env) {
   const connStr = _getConnStr(env);
   if (!connStr) throw new Error("No Neon connection string available");
   const sql_fn = _neon(connStr);
   const stmts = ddl.split(";").map(s => s.trim()).filter(Boolean);
   for (const stmt of stmts) {
-    await sql_fn.unsafe(stmt);
+    await sql_fn.query(stmt, []);
   }
 }
 
