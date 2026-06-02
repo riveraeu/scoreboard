@@ -350,13 +350,17 @@ export async function handleShadowRoutes({ path, request, env }) {
   await neonExec(CREATE_TABLE_SQL, env);
   // One-time: drop debug table left from initial Neon wiring session (2026-06-01).
   await neonQuery("DROP TABLE IF EXISTS _shadow_init_test", [], env).catch(() => {});
-  // One-time backfill (2026-06-02): player prop rows logged before the playerTeam→home_team fix
-  // had null home_team/away_team, so the resolver skipped them. Pull the teams from features JSONB.
+  // Idempotent backfill: fix prop rows with null home_team/away_team.
+  // First pass (2026-06-02): used playerTeam/opponent — missed early-dropped plays.
+  // Second pass (2026-06-02): also covers early drops that only have gameTeam1/gameTeam2.
+  // The resolver only needs two team identifiers to find the ESPN game; order doesn't matter.
   await neonQuery(
     `UPDATE shadow_plays
-     SET home_team = features->>'playerTeam', away_team = features->>'opponent'
+     SET home_team = COALESCE(features->>'playerTeam', features->>'gameTeam1'),
+         away_team = COALESCE(features->>'opponent',   features->>'gameTeam2')
      WHERE home_team IS NULL AND away_team IS NULL
-       AND features IS NOT NULL AND (features::jsonb) ? 'playerTeam'`,
+       AND features IS NOT NULL
+       AND (features::jsonb) ?| array['playerTeam', 'gameTeam1']`,
     [], env
   ).catch(() => {});
 
@@ -393,10 +397,11 @@ export async function handleShadowRoutes({ path, request, env }) {
     game_type: p.gameType || null,
     player_name: p.playerName || null,
     player_id: String(p.playerId || ""),
-    // Player prop plays have playerTeam/opponent instead of homeTeam/awayTeam.
-    // The resolver only needs both teams present to look up the game; order doesn't matter.
-    home_team: p.homeTeam || p.playerTeam || null,
-    away_team: p.awayTeam || p.opponent || null,
+    // Game-type plays have homeTeam/awayTeam; qualified props have playerTeam/opponent;
+    // early-dropped props only have gameTeam1/gameTeam2 from the Kalshi ticker.
+    // The resolver only needs two team identifiers to find the ESPN game; order doesn't matter.
+    home_team: p.homeTeam || p.playerTeam || p.gameTeam1 || null,
+    away_team: p.awayTeam || p.opponent   || p.gameTeam2 || null,
     scoring_team: p.scoringTeam || null,
     pick_team: p.pickTeam || null,
     pick_line: p.pickLine ?? null,
