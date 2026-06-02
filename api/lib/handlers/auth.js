@@ -482,10 +482,8 @@ export async function handleAuthRoutes(ctx) {
     if (ak !== env.ADMIN_KEY) return errorResponse("Forbidden", 403);
 
     // Optional: ?trigger=1 runs the shadow-snapshot cron inline before returning stats.
-    const _triggerParam = params.get("trigger");
-    const _hasCronSecret = !!env?.CRON_SECRET;
     let triggerResult = null;
-    if (_triggerParam === "1" && _hasCronSecret) {
+    if (params.get("trigger") === "1" && env?.CRON_SECRET) {
       const origin = new URL(request.url).origin;
       try {
         const tr = await fetch(`${origin}/api/shadow-snapshot`, {
@@ -498,23 +496,14 @@ export async function handleAuthRoutes(ctx) {
       }
     }
 
-    // Debug: surface all Neon connection string hosts (no passwords).
-    const _neonVarUsed = env?.DATABASE_URL_UNPOOLED ? "DATABASE_URL_UNPOOLED"
-      : env?.POSTGRES_URL_NON_POOLING ? "POSTGRES_URL_NON_POOLING"
-      : env?.NEON_DATABASE_URL ? "NEON_DATABASE_URL"
-      : env?.POSTGRES_URL ? "POSTGRES_URL" : "(none)";
-    const _pgHostUsed = env?.PGHOST_UNPOOLED || env?.PGHOST || null;
-    const _pgVarsSet = !!(env?.PGHOST_UNPOOLED && env?.PGUSER && env?.PGPASSWORD && env?.PGDATABASE);
-
     let tables;
     try {
       tables = await neonQuery("SELECT tablename FROM pg_tables WHERE schemaname='public'", [], env);
     } catch (e) {
-      return jsonResponse({ _debug: { neonVarUsed: _neonVarUsed, pgHostUsed: _pgHostUsed, pgVarsSet: _pgVarsSet }, error: String(e) }, 500);
+      return errorResponse(`Neon query failed: ${e.message}`, 500);
     }
     const hasShadow = tables.some(r => r.tablename === "shadow_plays");
     if (!hasShadow) return jsonResponse({
-      _debug: { neonVarUsed: _neonVarUsed, triggerParam: _triggerParam, hasCronSecret: _hasCronSecret },
       ...(triggerResult !== null ? { trigger: triggerResult } : {}),
       tables: tables.map(r => r.tablename),
       shadow_plays: null,
@@ -528,7 +517,6 @@ export async function handleAuthRoutes(ctx) {
     ]);
 
     return jsonResponse({
-      _debug: { neonVarUsed: _neonVarUsed, pgHostUsed: _pgHostUsed, pgVarsSet: _pgVarsSet, triggerParam: _triggerParam, hasCronSecret: _hasCronSecret },
       ...(triggerResult !== null ? { trigger: triggerResult } : {}),
       tables: tables.map(r => r.tablename),
       shadow_plays: {

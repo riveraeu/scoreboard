@@ -143,25 +143,8 @@ export async function handleShadowRoutes({ path, request, env }) {
   const snapshotDate = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
   const t0 = Date.now();
 
-  // Diagnose read-only state before attempting DDL.
-  const pgInfo = await neonQuery(
-    "SELECT current_user, pg_is_in_recovery() as is_replica, current_database()", [], env
-  ).catch(e => [{ current_user: `err:${e.message}`, is_replica: null }]);
-  const isReplica = pgInfo[0]?.is_replica;
-
-  // Ensure table exists — run each DDL statement separately.
-  let ddlError = null;
-  try {
-    await neonExec(CREATE_TABLE_SQL, env);
-  } catch (e) {
-    ddlError = String(e);
-  }
-  const tablesAfterDdl = await neonQuery(
-    "SELECT tablename FROM pg_tables WHERE schemaname='public'", [], env
-  ).catch(e => [{ tablename: `(query-err: ${e.message})` }]);
-  if (ddlError || !tablesAfterDdl.some(r => r.tablename === "shadow_plays")) {
-    return errorResponse(`DDL failed. isReplica=${isReplica} pgUser=${pgInfo[0]?.current_user} db=${pgInfo[0]?.current_database} ddlError=${ddlError} tables=${tablesAfterDdl.map(r=>r.tablename).join(",")||"none"}`, 500);
-  }
+  // Ensure table exists (no-op if already created). DDL uses neonExec (no prepared stmt).
+  await neonExec(CREATE_TABLE_SQL, env);
 
   // Fetch tonight debug response — uses cached Kalshi snaps, doesn't bust external APIs.
   const origin = new URL(request.url).origin;
