@@ -350,6 +350,15 @@ export async function handleShadowRoutes({ path, request, env }) {
   await neonExec(CREATE_TABLE_SQL, env);
   // One-time: drop debug table left from initial Neon wiring session (2026-06-01).
   await neonQuery("DROP TABLE IF EXISTS _shadow_init_test", [], env).catch(() => {});
+  // One-time backfill (2026-06-02): player prop rows logged before the playerTeam→home_team fix
+  // had null home_team/away_team, so the resolver skipped them. Pull the teams from features JSONB.
+  await neonQuery(
+    `UPDATE shadow_plays
+     SET home_team = features->>'playerTeam', away_team = features->>'opponent'
+     WHERE home_team IS NULL AND away_team IS NULL
+       AND features IS NOT NULL AND (features::jsonb) ? 'playerTeam'`,
+    [], env
+  ).catch(() => {});
 
   // Fetch tonight debug response — uses cached Kalshi snaps, doesn't bust external APIs.
   const origin = new URL(request.url).origin;
@@ -384,8 +393,10 @@ export async function handleShadowRoutes({ path, request, env }) {
     game_type: p.gameType || null,
     player_name: p.playerName || null,
     player_id: String(p.playerId || ""),
-    home_team: p.homeTeam || null,
-    away_team: p.awayTeam || null,
+    // Player prop plays have playerTeam/opponent instead of homeTeam/awayTeam.
+    // The resolver only needs both teams present to look up the game; order doesn't matter.
+    home_team: p.homeTeam || p.playerTeam || null,
+    away_team: p.awayTeam || p.opponent || null,
     scoring_team: p.scoringTeam || null,
     pick_team: p.pickTeam || null,
     pick_line: p.pickLine ?? null,
