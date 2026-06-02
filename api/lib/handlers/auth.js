@@ -592,7 +592,8 @@ UNION ALL SELECT * FROM by_cat_band`;
     function _scCell(row) {
       const n = Number(row.n ?? 0);
       const wins = Number(row.wins ?? 0);
-      const avgBetPct = row.avg_bet_pct != null ? parseFloat(Number(row.avg_bet_pct).toFixed(4)) : null;
+      // kalshi_pct is stored 0–100 (e.g. 70); divide by 100 to get fraction before ROI math.
+      const avgBetPct = row.avg_bet_pct != null ? parseFloat((Number(row.avg_bet_pct) / 100).toFixed(4)) : null;
       const avgEdge = row.avg_edge != null ? parseFloat(Number(row.avg_edge).toFixed(2)) : null;
       const actual = n > 0 ? parseFloat((wins / n * 100).toFixed(1)) : null;
       const predicted = row.band ? (_scBandMid[row.band] ?? null) : null;
