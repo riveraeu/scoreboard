@@ -335,7 +335,9 @@ async function handleShadowResolver({ path, request, env }) {
   for (const row of rows) {
     const { sport, home_team, away_team, game_time } = row;
     // Fall back to snapshot_date for early-dropped prop rows that lack game_date.
-    const effectiveDate = row.game_date || (row.snapshot_date ? String(row.snapshot_date).slice(0, 10) : null);
+    // snapshot_date is a DATE column; Neon may return it as a JS Date object or an ISO
+    // string — both handled via toISOString() so we always get "YYYY-MM-DD".
+    const effectiveDate = row.game_date || (row.snapshot_date ? new Date(row.snapshot_date).toISOString().slice(0, 10) : null);
     let rawKey = `${sport}:${away_team}:${home_team}`;
     if (game_time) rawKey += `@${game_time}`;
     rowToKey.set(row.id, { rawKey, effectiveDate });
@@ -418,18 +420,7 @@ async function handleShadowResolver({ path, request, env }) {
 
   if (updates.length) await neonBatchResolve(updates, env);
 
-  // Temp debug: surface first 3 noData rawKeys + what liveByKey has for them.
-  const _debugSamples = [];
-  for (const row of rows.slice(0, 3)) {
-    const { rawKey, effectiveDate } = rowToKey.get(row.id) || {};
-    const primaryVal = liveByKey.get(`${rawKey}|${effectiveDate}`);
-    const atIdx = rawKey?.indexOf("@") ?? -1;
-    const baseKey = atIdx >= 0 ? rawKey.slice(0, atIdx) : rawKey;
-    const fallbackVal = liveByKey.get(`${baseKey}|${effectiveDate}`);
-    _debugSamples.push({ rawKey, effectiveDate, primaryState: primaryVal?.state ?? null, fallbackState: fallbackVal?.state ?? null });
-  }
-
-  return jsonResponse({ ok: true, resolved: updates.length, skipped, noData, durationMs: Date.now() - t0, _debug: _debugSamples });
+  return jsonResponse({ ok: true, resolved: updates.length, skipped, noData, durationMs: Date.now() - t0 });
 }
 
 // ── Dispatch ──────────────────────────────────────────────────────────────────
