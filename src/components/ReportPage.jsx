@@ -852,6 +852,20 @@ function ShadowCalibModule({ sport, statKeys, shadowCalibData, shadowCalibLoadin
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sinceKey, isLoggedIn]);
 
+  // Auto-open the first (highest-n) category whenever data or the active filter changes.
+  React.useEffect(() => {
+    if (!shadowCalibData?.byCategory) return;
+    const firstKey = Object.entries(shadowCalibData.byCategory)
+      .filter(([key]) => {
+        if (sport && !key.startsWith(sport + '|')) return false;
+        if (statKeys?.length && !statKeys.includes(key.split('|')[1])) return false;
+        return true;
+      })
+      .sort(([, a], [, b]) => (b.n ?? 0) - (a.n ?? 0))[0]?.[0] ?? null;
+    setSelectedCat(firstKey);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shadowCalibData, sport, statKeys]);
+
   if (!isLoggedIn) return (
     <div style={{..._CARD_STYLE}}>
       <div style={{color:"#484f58",fontSize:12}}>Log in to see shadow calibration data.</div>
@@ -867,7 +881,7 @@ function ShadowCalibModule({ sport, statKeys, shadowCalibData, shadowCalibLoadin
   const sinceButtons = (
     <div style={{display:"flex",gap:4}}>
       {['30d','60d','all'].map(k => (
-        <button key={k} onClick={() => { setSinceKey(k); setSelectedCat(null); }}
+        <button key={k} onClick={() => setSinceKey(k)}
           style={{fontSize:11,padding:"2px 8px",borderRadius:5,cursor:"pointer",border:"1px solid #30363d",
             background: sinceKey===k ? "#21262d" : "transparent",
             color: sinceKey===k ? "#c9d1d9" : "#484f58", fontWeight: sinceKey===k ? 700 : 400}}>
