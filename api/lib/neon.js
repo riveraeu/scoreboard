@@ -45,6 +45,31 @@ export async function neonExec(ddl, env) {
   }
 }
 
+// Batch-resolve helper. Updates resolved/won/actual_value/resolved_at on existing rows.
+// Uses UPDATE FROM (VALUES ...) so each chunk is one round-trip.
+export async function neonBatchResolve(updates, env, chunkSize = 100) {
+  if (!updates.length) return;
+  const connStr = _getWriteConnStr(env);
+  if (!connStr) throw new Error("No Neon write connection string available");
+  const sql = _neon(connStr);
+
+  const chunks = [];
+  for (let i = 0; i < updates.length; i += chunkSize) chunks.push(updates.slice(i, i + chunkSize));
+
+  for (const chunk of chunks) {
+    const placeholders = chunk.map((_, ri) =>
+      `($${ri * 3 + 1}, $${ri * 3 + 2}::boolean, $${ri * 3 + 3}::numeric)`
+    ).join(", ");
+    const values = chunk.flatMap(u => [u.id, u.won ?? null, u.actualValue ?? null]);
+    await sql.query(
+      `UPDATE shadow_plays AS t SET resolved=TRUE, won=v.won, actual_value=v.actual_value, resolved_at=NOW()
+       FROM (VALUES ${placeholders}) AS v(id, won, actual_value)
+       WHERE t.id = v.id`,
+      values
+    );
+  }
+}
+
 // Batch-insert helper. Builds a single parameterized INSERT for up to `chunkSize` rows.
 // Uses ON CONFLICT DO NOTHING for idempotent re-runs.
 export async function neonBatchUpsert(table, columns, rows, env, chunkSize = 100) {

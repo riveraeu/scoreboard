@@ -496,6 +496,21 @@ export async function handleAuthRoutes(ctx) {
       }
     }
 
+    // Optional: ?resolvetrigger=1 runs the shadow-resolver cron inline.
+    let resolveResult = null;
+    if (params.get("resolvetrigger") === "1" && env?.CRON_SECRET) {
+      const origin = new URL(request.url).origin;
+      try {
+        const tr = await fetch(`${origin}/api/shadow-resolver`, {
+          method: "GET",
+          headers: { "Authorization": `Bearer ${env.CRON_SECRET}` },
+        });
+        resolveResult = await tr.json().catch(() => ({ status: tr.status }));
+      } catch (e) {
+        resolveResult = { error: String(e) };
+      }
+    }
+
     let tables;
     try {
       tables = await neonQuery("SELECT tablename FROM pg_tables WHERE schemaname='public'", [], env);
@@ -505,6 +520,7 @@ export async function handleAuthRoutes(ctx) {
     const hasShadow = tables.some(r => r.tablename === "shadow_plays");
     if (!hasShadow) return jsonResponse({
       ...(triggerResult !== null ? { trigger: triggerResult } : {}),
+      ...(resolveResult !== null ? { resolve: resolveResult } : {}),
       tables: tables.map(r => r.tablename),
       shadow_plays: null,
     });
@@ -518,6 +534,7 @@ export async function handleAuthRoutes(ctx) {
 
     return jsonResponse({
       ...(triggerResult !== null ? { trigger: triggerResult } : {}),
+      ...(resolveResult !== null ? { resolve: resolveResult } : {}),
       tables: tables.map(r => r.tablename),
       shadow_plays: {
         total: Number(totals[0]?.total ?? 0),
