@@ -231,10 +231,11 @@ const env = {
 ```
 Symptom of missing wire-up: `env?.VAR` is `undefined` even though Vercel dashboard shows it set.
 
-**Neon HTTP SQL API (`api/lib/neon.js`) — three gotchas (2026-06-01)**:
+**Neon HTTP SQL API (`api/lib/neon.js`) — four gotchas (2026-06-01/02)**:
 1. Uses `@neondatabase/serverless` (Edge-compatible). Raw fetch to `ep-*.c-7.us-east-1.aws.neon.tech/sql` fails with "missing authentication credentials" — the Vercel-managed Neon hostname doesn't accept the manual `Authorization: Basic` or `Neon-Connection-String` header approach.
 2. `neon().query(sql, params)` returns the rows array **directly** (not `{ rows: [...] }`). Do NOT do `result.rows ?? []` — just `return await sql_fn.query(sql, params)`.
 3. DDL (`CREATE TABLE`, `CREATE INDEX`) must go through `neonExec()` which splits on `;` and runs each statement separately via `sql_fn.query(stmt, [])`. Multi-statement DDL in a single `query()` call fails with "cannot insert multiple commands into a prepared statement". `sql.unsafe()` is a raw-value marker (used inside template literals), NOT an executor.
+4. **DATE columns come back as JS Date objects, not strings.** `String(row.date_col).slice(0,10)` gives locale format `"Mon Jun 01"` instead of `"2026-06-01"`. Always use `new Date(row.date_col).toISOString().slice(0,10)` to extract "YYYY-MM-DD" safely from both Date objects and ISO strings.
 
 **Kalshi UNDER pricing — use `no_ask_dollars`, not `1 - yes_ask_dollars`**: YES and NO order books are independent — typical spread is 3–7 cents. Synthesizing UNDER price as `1 - yes_ask` inflates measured edge by 3–7%. Fix landed 2026-05-15: parse loop reads `m.no_ask_dollars` and propagates `noKalshiPct` + `noKalshiAO`. Filter UNDER calibration by `trackedAt ≥ 2026-05-15`.
 
