@@ -418,7 +418,18 @@ async function handleShadowResolver({ path, request, env }) {
 
   if (updates.length) await neonBatchResolve(updates, env);
 
-  return jsonResponse({ ok: true, resolved: updates.length, skipped, noData, durationMs: Date.now() - t0 });
+  // Temp debug: surface first 3 noData rawKeys + what liveByKey has for them.
+  const _debugSamples = [];
+  for (const row of rows.slice(0, 3)) {
+    const { rawKey, effectiveDate } = rowToKey.get(row.id) || {};
+    const primaryVal = liveByKey.get(`${rawKey}|${effectiveDate}`);
+    const atIdx = rawKey?.indexOf("@") ?? -1;
+    const baseKey = atIdx >= 0 ? rawKey.slice(0, atIdx) : rawKey;
+    const fallbackVal = liveByKey.get(`${baseKey}|${effectiveDate}`);
+    _debugSamples.push({ rawKey, effectiveDate, primaryState: primaryVal?.state ?? null, fallbackState: fallbackVal?.state ?? null });
+  }
+
+  return jsonResponse({ ok: true, resolved: updates.length, skipped, noData, durationMs: Date.now() - t0, _debug: _debugSamples });
 }
 
 // ── Dispatch ──────────────────────────────────────────────────────────────────
