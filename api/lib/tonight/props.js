@@ -109,12 +109,12 @@ export async function emitPropPlays({
     const info = playerInfoMap[key];
     const gl = playerGamelogs[key];
     if (!info || !gl) {
-      if (isDebug) dropped.push({ playerName: playerNameDisplay || playerName, sport, stat, threshold, kalshiPct, reason: !info ? "no_espn_info" : "no_gamelog", gameTeam1, gameTeam2, kalshiPlayerTeam });
+      if (isDebug) dropped.push({ playerName: playerNameDisplay || playerName, sport, stat, threshold, kalshiPct, reason: !info ? "no_espn_info" : "no_gamelog", gameTeam1, gameTeam2, kalshiPlayerTeam, gameDate });
       continue;
     }
     const softData = STAT_SOFT[`${sport}|${stat}`];
     if (!softData) {
-      if (isDebug) dropped.push({ playerName: playerNameDisplay || playerName, sport, stat, threshold, kalshiPct, reason: "no_soft_data" });
+      if (isDebug) dropped.push({ playerName: playerNameDisplay || playerName, sport, stat, threshold, kalshiPct, reason: "no_soft_data", gameDate });
       continue;
     }
     const { softTeams, rankMap } = softData;

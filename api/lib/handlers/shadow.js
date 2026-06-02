@@ -308,13 +308,15 @@ async function handleShadowResolver({ path, request, env }) {
   const t0 = Date.now();
 
   // Only resolve rows from prior days (today's games may not be finished).
+  // COALESCE(game_date, snapshot_date::varchar) handles early-dropped prop rows
+  // that lack game_date — snapshot_date (3pm PT) is the same calendar day as the game.
   const rows = await neonQuery(
     `SELECT id, sport, stat, game_type, player_name, home_team, away_team,
             scoring_team, pick_team, pick_line, threshold, direction,
-            game_date, game_time, features
+            game_date, game_time, features, snapshot_date
      FROM shadow_plays
      WHERE resolved = FALSE
-       AND game_date < $1
+       AND COALESCE(game_date, snapshot_date::varchar) < $1
        AND home_team IS NOT NULL
        AND away_team IS NOT NULL
      LIMIT 2000`,
@@ -331,12 +333,14 @@ async function handleShadowResolver({ path, request, env }) {
   const rowToKey = new Map();   // row.id → rawKey
 
   for (const row of rows) {
-    const { sport, home_team, away_team, game_date, game_time } = row;
+    const { sport, home_team, away_team, game_time } = row;
+    // Fall back to snapshot_date for early-dropped prop rows that lack game_date.
+    const effectiveDate = row.game_date || (row.snapshot_date ? String(row.snapshot_date).slice(0, 10) : null);
     let rawKey = `${sport}:${away_team}:${home_team}`;
     if (game_time) rawKey += `@${game_time}`;
-    rowToKey.set(row.id, rawKey);
-    if (!keysByDate.has(game_date)) keysByDate.set(game_date, new Set());
-    keysByDate.get(game_date).add(rawKey);
+    rowToKey.set(row.id, { rawKey, effectiveDate });
+    if (!keysByDate.has(effectiveDate)) keysByDate.set(effectiveDate, new Set());
+    keysByDate.get(effectiveDate).add(rawKey);
   }
 
   // Fetch final boxscores from /api/live (one call per distinct game_date).
@@ -364,8 +368,8 @@ async function handleShadowResolver({ path, request, env }) {
   let noData = 0;
 
   for (const row of rows) {
-    const rawKey = rowToKey.get(row.id);
-    const game = liveByKey.get(`${rawKey}|${row.game_date}`);
+    const { rawKey, effectiveDate } = rowToKey.get(row.id);
+    const game = liveByKey.get(`${rawKey}|${effectiveDate}`);
     if (!game) { noData++; continue; } // game not found in ESPN — leave unresolved
     const result = _resolveRow(row, game);
     if (result === null) { skipped++; continue; }
@@ -399,19 +403,6 @@ export async function handleShadowRoutes({ path, request, env }) {
   await neonExec(CREATE_TABLE_SQL, env);
   // One-time: drop debug table left from initial Neon wiring session (2026-06-01).
   await neonQuery("DROP TABLE IF EXISTS _shadow_init_test", [], env).catch(() => {});
-  // One-time reset (2026-06-02): un-resolve prop rows that landed won=null due to name-mismatch
-  // before the fuzzy _findPlayer was added. Only resets rows from the first 2 days where the
-  // resolver ran with the old exact-only matching. Idempotent — re-resolving a genuine DNP
-  // just sets won=null again; no data is lost.
-  await neonQuery(
-    `UPDATE shadow_plays
-     SET resolved = FALSE, won = NULL, actual_value = NULL, resolved_at = NULL
-     WHERE resolved = TRUE AND won IS NULL
-       AND player_name IS NOT NULL
-       AND snapshot_date <= '2026-06-02'`,
-    [], env
-  ).catch(() => {});
-
   // Idempotent backfill: fix prop rows with null home_team/away_team.
   // First pass (2026-06-02): used playerTeam/opponent — missed early-dropped plays.
   // Second pass (2026-06-02): also covers early drops that only have gameTeam1/gameTeam2.
