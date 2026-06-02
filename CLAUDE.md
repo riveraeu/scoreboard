@@ -1,4 +1,30 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # Scoreboard — Project Guide for Claude
+
+## Commands
+
+```bash
+npm run dev        # Vite dev server — proxies /api to production (see vite.config.js)
+npm run build      # Production build → dist/
+npm test           # Node.js test runner on api/lib/simulate.test.js
+npm run test:jxa   # osascript JXA version of the same tests (macOS only)
+git push origin main  # Deploys to Vercel automatically
+```
+
+Admin/debug one-liners (pull ADMIN_KEY via `vercel env pull`):
+```bash
+# Verify tonight's play generation
+curl -s "https://scoreboard-ivory-xi.vercel.app/api/tonight?debug=1" | jq '.plays | length'
+# Trigger shadow snapshot manually
+curl -s "https://scoreboard-ivory-xi.vercel.app/api/auth/shadow-stats?trigger=1" -H "Authorization: Bearer $ADMIN_KEY" | jq '.trigger'
+# Trigger shadow resolver manually
+curl -s "https://scoreboard-ivory-xi.vercel.app/api/auth/shadow-stats?resolvetrigger=1" -H "Authorization: Bearer $ADMIN_KEY" | jq '{resolved, skipped}'
+```
+
+---
 
 ## Workflow for New Features and Debugging
 

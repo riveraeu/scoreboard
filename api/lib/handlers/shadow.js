@@ -362,6 +362,38 @@ async function handleShadowResolver({ path, request, env }) {
     } catch {}
   }));
 
+  // Second pass: rows whose primary lookup returned state:"unknown" (event not found, likely
+  // because a wrong game_time was stored when gameDate was null on the Kalshi ticker) get a
+  // retry with the time-stripped base key. This lets /api/live match any event for those
+  // teams on that date without a time-prefix filter.
+  const retryByDate = new Map(); // effectiveDate → Set<baseKey (no @gameTime)>
+  for (const { rawKey, effectiveDate } of rowToKey.values()) {
+    const atIdx = rawKey.indexOf("@");
+    if (atIdx === -1) continue; // no game_time — already time-agnostic
+    const primary = liveByKey.get(`${rawKey}|${effectiveDate}`);
+    if (primary?.state !== "unknown") continue; // primary found OK
+    const baseKey = rawKey.slice(0, atIdx);
+    if (liveByKey.has(`${baseKey}|${effectiveDate}`)) continue; // already have base lookup
+    if (!retryByDate.has(effectiveDate)) retryByDate.set(effectiveDate, new Set());
+    retryByDate.get(effectiveDate).add(baseKey);
+  }
+  if (retryByDate.size > 0) {
+    await Promise.all([...retryByDate.entries()].map(async ([game_date, keys]) => {
+      const gamesParam = [...keys].join(",");
+      try {
+        const res = await fetch(`${origin}/api/live?games=${encodeURIComponent(gamesParam)}&date=${game_date}`, {
+          headers: { "User-Agent": "shadow-resolver/1.0" },
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        for (const [k, v] of Object.entries(data)) {
+          liveByKey.set(`${k}|${game_date}`, v);
+        }
+      } catch {}
+    }));
+  }
+
   // Resolve each row.
   const updates = [];
   let skipped = 0;
@@ -369,8 +401,16 @@ async function handleShadowResolver({ path, request, env }) {
 
   for (const row of rows) {
     const { rawKey, effectiveDate } = rowToKey.get(row.id);
-    const game = liveByKey.get(`${rawKey}|${effectiveDate}`);
-    if (!game) { noData++; continue; } // game not found in ESPN — leave unresolved
+    let game = liveByKey.get(`${rawKey}|${effectiveDate}`);
+    // If primary lookup was unknown (wrong stored game_time), try base key fallback.
+    if (game?.state === "unknown") {
+      const atIdx = rawKey.indexOf("@");
+      if (atIdx !== -1) {
+        const baseKey = rawKey.slice(0, atIdx);
+        game = liveByKey.get(`${baseKey}|${effectiveDate}`) ?? game;
+      }
+    }
+    if (!game || game.state === "unknown") { noData++; continue; } // game not found in ESPN — leave unresolved
     const result = _resolveRow(row, game);
     if (result === null) { skipped++; continue; }
     updates.push({ id: row.id, won: result.won, actualValue: result.actualValue });
@@ -467,7 +507,11 @@ export async function handleShadowRoutes({ path, request, env }) {
     dc: p.dataConfidence ?? null,
     dc_qualified: p.dcQualified ?? null,
     game_date: p.gameDate || null,
-    game_time: p.gameTime || null,
+    // Null game_time when gameDate is unknown (Kalshi ticker null-date issue) for game-type
+    // plays — the bare-fallback gameTimes value may point to a different day's game,
+    // causing the resolver's /api/live time-prefix match to fail. Without a stored
+    // game_time the resolver does a time-agnostic team lookup instead.
+    game_time: (p.gameDate || !p.gameType) ? (p.gameTime || null) : null,
     group_id: p._gid,
     group_size: p._groupSize,
     threshold_rank: p._rank,
