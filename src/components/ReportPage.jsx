@@ -842,7 +842,7 @@ function _catStatus(key, d) {
   return { label: 'Too few', color: '#484f58' };
 }
 
-function ShadowCalibModule({ sport, shadowCalibData, shadowCalibLoading, fetchShadowCalib, isLoggedIn }) {
+function ShadowCalibModule({ sport, statKeys, shadowCalibData, shadowCalibLoading, fetchShadowCalib, isLoggedIn }) {
   const [sinceKey, setSinceKey] = React.useState('30d');
   const [selectedCat, setSelectedCat] = React.useState(null);
 
@@ -891,9 +891,16 @@ function ShadowCalibModule({ sport, shadowCalibData, shadowCalibLoading, fetchSh
     </div>
   );
 
-  // Filter categories by selected sport
+  // Filter categories by selected sport + play type
   const allCats = Object.entries(shadowCalibData.byCategory || {})
-    .filter(([key]) => !sport || key.startsWith(sport + '|'))
+    .filter(([key]) => {
+      if (sport && !key.startsWith(sport + '|')) return false;
+      if (statKeys?.length) {
+        const stat = key.split('|')[1];
+        if (!statKeys.includes(stat)) return false;
+      }
+      return true;
+    })
     .sort(([, a], [, b]) => (b.n ?? 0) - (a.n ?? 0));
 
   const detailBands = selectedCat
@@ -1200,6 +1207,7 @@ function ReportPage({
           </div>
           <ShadowCalibModule
             sport={sport}
+            statKeys={playType.statKeys}
             shadowCalibData={shadowCalibData}
             shadowCalibLoading={shadowCalibLoading}
             fetchShadowCalib={fetchShadowCalib}
