@@ -144,7 +144,18 @@ export async function handleShadowRoutes({ path, request, env }) {
   const t0 = Date.now();
 
   // Ensure table exists (no-op if already created). DDL uses neonExec (no prepared stmt).
-  await neonExec(CREATE_TABLE_SQL, env);
+  let ddlError = null;
+  try {
+    await neonExec(CREATE_TABLE_SQL, env);
+  } catch (e) {
+    ddlError = String(e);
+  }
+  const tablesAfterDdl = await neonQuery(
+    "SELECT tablename FROM pg_tables WHERE schemaname='public'", [], env
+  ).catch(e => [{ tablename: `(query-err: ${e.message})` }]);
+  if (ddlError || !tablesAfterDdl.some(r => r.tablename === "shadow_plays")) {
+    return errorResponse(`DDL failed. ddlError=${ddlError} tables=${tablesAfterDdl.map(r=>r.tablename).join(",")||"none"}`, 500);
+  }
 
   // Fetch tonight debug response — uses cached Kalshi snaps, doesn't bust external APIs.
   const origin = new URL(request.url).origin;
