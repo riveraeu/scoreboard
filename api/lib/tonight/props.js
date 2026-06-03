@@ -1175,7 +1175,12 @@ export async function emitPropPlays({
         // but the multiplicative adjustments (park × OPS × WHIP × barrel) can drift ~7 pp
         // above the un-adjusted base when stacked. Blending back toward rawMlbPct preserves
         // most of the matchup signal while sanity-checking against extreme stacks.
-        return _propBlend(_hrrAdjusted, rawMlbPct, allVals.length, 0.25);
+        const _hrrBlended = _propBlend(_hrrAdjusted, rawMlbPct, allVals.length, 0.25);
+        // Sigmoid cap: 3-season backtest (571k rows, 2022-2024) shows actual HRR hit rate
+        // plateaus at ~72% then declines to 71→67→61% in higher model bands. Stacked logit
+        // factors (park × OPS × WHIP × barrel) generate spuriously high outputs. Cap compresses
+        // anything above 72% toward a 75% ceiling (knee=72, headroom=3pp, rate=0.5).
+        return _hrrBlended <= 72 ? _hrrBlended : parseFloat((72 + 3 * (1 - Math.exp(-0.5 * (_hrrBlended - 72)))).toFixed(1));
       }
       if (sport === "nba") {
         const _nbaRef = softPct !== null ? (seasonPct + softPct) / 2 : seasonPct;

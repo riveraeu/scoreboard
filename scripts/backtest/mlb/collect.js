@@ -7,8 +7,8 @@ const BASE = "https://statsapi.mlb.com/api/v1";
 // Month chunks for schedule fetching (avoids single huge response).
 function monthChunks(season) {
   const months = [];
-  const start = season === 2024 ? "03-20" : season === 2023 ? "03-30" : "03-31";
-  const end   = season === 2024 ? "10-01" : season === 2023 ? "10-02" : "10-03";
+  const start = season === 2024 ? "03-20" : season === 2023 ? "03-30" : season === 2022 ? "04-07" : "03-31";
+  const end   = season === 2024 ? "10-01" : season === 2023 ? "10-02" : season === 2022 ? "10-07" : "10-03";
   const startDate = new Date(`${season}-${start}`);
   const endDate   = new Date(`${season}-${end}`);
   let cur = new Date(startDate);

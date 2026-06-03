@@ -70,7 +70,18 @@ function hrrLogitTruePct(bBA, pitcherStats, parkHitFactor, hitterOPS) {
     + 0.4 * Math.log(opsAdj)
     + 0.3 * Math.log(whipAdj);
 
-  return parseFloat((100 / (1 + Math.exp(-logOdds))).toFixed(1));
+  const raw = 100 / (1 + Math.exp(-logOdds));
+  // 3-season backtest: actual hit rate plateaus at ~72% (70-75 band), then DECLINES to
+  // 71→67→61% in the 75-80→80-85→85-90 model bands. Logit factor stacking (OPS × WHIP ×
+  // park) generates spuriously high outputs that don't reflect reality. Sigmoid cap compresses
+  // anything above 72% toward a 75% ceiling.
+  return hrrSigmoidCap(raw);
+}
+
+// Sigmoid cap: knee=72%, ceiling=75%, rate=0.5. Identity below 72; asymptotes to 75 above.
+function hrrSigmoidCap(pct) {
+  if (pct <= 72) return parseFloat(pct.toFixed(1));
+  return parseFloat((72 + 3 * (1 - Math.exp(-0.5 * (pct - 72)))).toFixed(1));
 }
 
 // Normalize team abbreviation for park factor lookup.
