@@ -8,6 +8,7 @@
 //
 // Output files written to scripts/backtest/output/
 import { collectMLBSeason } from "./mlb/collect.js";
+import { collectOdds }      from "./mlb/odds.js";
 import { simulateAllMLB }   from "./mlb/simulate.js";
 import { collectNBASeason, simulateAllNBA } from "./nba/index.js";
 import { collectNHLSeason, simulateAllNHL } from "./nhl/index.js";
@@ -33,8 +34,9 @@ async function runMLB(seasons) {
     console.log(`MLB Backtest — ${season}`);
     console.log("=".repeat(60));
 
-    const data = await collectMLBSeason(season);
-    const rows = simulateAllMLB(data);
+    const data    = await collectMLBSeason(season);
+    const oddsMap = await collectOdds(season);
+    const rows    = simulateAllMLB(data, oddsMap);
     for (const r of rows) allRows.push(r);
 
     // Per-season output

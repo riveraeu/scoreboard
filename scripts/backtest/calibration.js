@@ -26,17 +26,24 @@ function bandFor(truePct) {
 
 // rows: array of { category, truePct, hit, threshold, ... }
 export function summarize(rows) {
-  const map = {}; // category → band → { n, hits, sumPct }
+  const map = {}; // category → band → { n, hits, sumPct, edgeN, sumEdge, sumRoi }
   for (const row of rows) {
     if (row.truePct == null || isNaN(row.truePct)) continue;
     const band = bandFor(row.truePct);
     if (!band) continue;
     if (!map[row.category]) map[row.category] = {};
-    if (!map[row.category][band]) map[row.category][band] = { n: 0, hits: 0, sumPct: 0 };
+    if (!map[row.category][band]) map[row.category][band] = { n: 0, hits: 0, sumPct: 0, edgeN: 0, sumEdge: 0, sumRoi: 0 };
     const b = map[row.category][band];
     b.n++;
     if (row.hit) b.hits++;
     b.sumPct += row.truePct;
+    // Edge/ROI accumulation — only when market price is available.
+    if (row.marketPct != null && row.edge != null) {
+      b.edgeN++;
+      b.sumEdge += row.edge;
+      // ROI per bet: win = 1 - marketPct/100 (net), loss = -marketPct/100
+      b.sumRoi += row.hit ? (1 - row.marketPct / 100) : -(row.marketPct / 100);
+    }
   }
 
   const summary = {};
@@ -51,6 +58,9 @@ export function summarize(rows) {
         hitRate: parseFloat(hitRate.toFixed(1)),
         avgPct: parseFloat(avgPct.toFixed(1)),
         delta: parseFloat((hitRate - avgPct).toFixed(1)),
+        edgeN:   b.edgeN,
+        avgEdge: b.edgeN > 0 ? parseFloat((b.sumEdge / b.edgeN).toFixed(2)) : null,
+        roi:     b.edgeN > 0 ? parseFloat((b.sumRoi  / b.edgeN * 100).toFixed(2)) : null,
       };
     }
   }
@@ -59,25 +69,39 @@ export function summarize(rows) {
 
 export function printTable(summary) {
   for (const [cat, bands] of Object.entries(summary)) {
+    // Check if any band in this category has edge data.
+    const hasEdge = Object.values(bands).some(b => b.edgeN > 0);
     console.log(`\n── ${cat} ──`);
-    console.log("Band       N       ActHit%  AvgPct   Delta");
+    if (hasEdge) {
+      console.log("Band       N       ActHit%  AvgPct   Delta    EdgeN   AvgEdge  ROI%");
+    } else {
+      console.log("Band       N       ActHit%  AvgPct   Delta");
+    }
     for (const band of BANDS.map(([l, h]) => `${l}-${h}`)) {
       const b = bands[band];
       if (!b || b.n < 3) continue;
       const delta = b.delta >= 0 ? `+${b.delta}` : `${b.delta}`;
-      console.log(
-        `${band.padEnd(10)} ${String(b.n).padEnd(7)} ${String(b.hitRate).padEnd(8)} ${String(b.avgPct).padEnd(8)} ${delta}`
-      );
+      if (hasEdge) {
+        const edge = b.avgEdge != null ? (b.avgEdge >= 0 ? `+${b.avgEdge}` : `${b.avgEdge}`) : "—";
+        const roi  = b.roi    != null ? (b.roi    >= 0 ? `+${b.roi}%`    : `${b.roi}%`)    : "—";
+        console.log(
+          `${band.padEnd(10)} ${String(b.n).padEnd(7)} ${String(b.hitRate).padEnd(8)} ${String(b.avgPct).padEnd(8)} ${delta.padEnd(8)} ${String(b.edgeN).padEnd(7)} ${edge.padEnd(8)} ${roi}`
+        );
+      } else {
+        console.log(
+          `${band.padEnd(10)} ${String(b.n).padEnd(7)} ${String(b.hitRate).padEnd(8)} ${String(b.avgPct).padEnd(8)} ${delta}`
+        );
+      }
     }
   }
 }
 
 export function writeCsv(summary, filename) {
   const path = join(OUTPUT_DIR, filename);
-  const lines = ["category,band,n,hits,hitRate,avgPct,delta"];
+  const lines = ["category,band,n,hits,hitRate,avgPct,delta,edgeN,avgEdge,roi"];
   for (const [cat, bands] of Object.entries(summary)) {
     for (const [band, b] of Object.entries(bands)) {
-      lines.push(`${cat},${band},${b.n},${b.hits},${b.hitRate},${b.avgPct},${b.delta}`);
+      lines.push(`${cat},${band},${b.n},${b.hits},${b.hitRate},${b.avgPct},${b.delta},${b.edgeN ?? 0},${b.avgEdge ?? ""},${b.roi ?? ""}`);
     }
   }
   writeFileSync(path, lines.join("\n"));
@@ -86,7 +110,7 @@ export function writeCsv(summary, filename) {
 
 export function writeRowsCsv(rows, filename) {
   const path = join(OUTPUT_DIR, filename);
-  const keys = ["date", "category", "subject", "homeTeam", "awayTeam", "threshold", "truePct", "actualValue", "hit"];
+  const keys = ["date", "category", "subject", "homeTeam", "awayTeam", "threshold", "truePct", "actualValue", "hit", "marketPct", "edge"];
   const chunks = [keys.join(",") + "\n"];
   // Build in 10k-row chunks to avoid a single massive string
   const CHUNK = 10000;
