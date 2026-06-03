@@ -599,13 +599,14 @@ export function spreadPctFromJoint(home, away, line, side) {
   return parseFloat((wins / N * 100).toFixed(1));
 }
 
-// Single-team runs/goals distribution (Poisson): for MLB and NHL team totals.
-// lambda = expected runs/goals for this team. Returns Int16Array; query with totalDistPct.
-export function simulateTeamTotalDist(lambda, nSim = 10000) {
+// Single-team runs/goals distribution. Uses NegBin when r is provided (MLB), Poisson
+// otherwise (NHL, backward compat). MLB per-team runs are overdispersed vs Poisson at the
+// same r as game totals — pass the same _mlbDispR that simulateMLBTotalDist receives.
+export function simulateTeamTotalDist(lambda, nSim = 10000, r = null) {
   if (!lambda || lambda <= 0) return null;
   const dist = new Int16Array(nSim);
   for (let i = 0; i < nSim; i++) {
-    dist[i] = poissonSample(lambda);
+    dist[i] = r != null ? negBinSample(lambda, r) : poissonSample(lambda);
   }
   return dist;
 }

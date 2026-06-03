@@ -1135,7 +1135,7 @@ export async function emitGameTotalPlays({
         }
         if (_lam != null) {
           const _dk = `mlb|team|${scoringTeam}|${oppTeam}|${_lam}`;
-          if (!teamTotalDistCache[_dk]) teamTotalDistCache[_dk] = simulateTeamTotalDist(_lam, 10000);
+          if (!teamTotalDistCache[_dk]) teamTotalDistCache[_dk] = simulateTeamTotalDist(_lam, 10000, _mlbDispR);
           truePct = totalDistPct(teamTotalDistCache[_dk], threshold);
         }
         // WHIP is now folded into _oppStarter above (line ~4585). SimScore tier kept for display continuity.

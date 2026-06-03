@@ -5,7 +5,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "node --test api/lib/simulate.test.js",
-    "test:jxa": "osascript -l JavaScript api/lib/simulate.test.jxa.js"
+    "test:jxa": "osascript -l JavaScript api/lib/simulate.test.jxa.js",
+    "backtest": "node scripts/backtest/run.js"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

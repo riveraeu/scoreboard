@@ -1,5 +1,7 @@
 node_modules/
 dist/
+scripts/backtest/.cache/
+scripts/backtest/output/
 
 # wrangler files
 .wrangler
