@@ -514,6 +514,7 @@ export async function handleAuthRoutes(ctx) {
       const _st = parseInt(_stStr, 10);
       if (!isNaN(_st)) whereParts.push(`season_type = ${_p(_st)}`);
     }
+    const bestThreshold = params.get("bestThreshold") === "true";
 
     const whereClause = whereParts.join(" AND ");
 
@@ -521,11 +522,14 @@ export async function handleAuthRoutes(ctx) {
     // model_true_pct is always OVER-side. For UNDERs: P(under wins) = 1 - model_true_pct.
     // bet_pct: the market price paid for the bet (no_kalshi_pct for UNDERs, kalshi_pct for OVERs).
     // ROI per $1 wagered = hitRate/100 - avg(bet_pct).
+    // bestThreshold=true: keep only the highest-bsp row per (sport, category, group_id) — one
+    // prediction per game/player, representing what the bet selection logic would actually pick.
     const shadowCalibSql = `
 WITH base AS (
   SELECT
     sport,
     COALESCE(stat, game_type) AS category,
+    group_id,
     CASE WHEN direction = 'under' THEN (1 - model_true_pct) ELSE model_true_pct END AS bsp,
     (won)::int AS w,
     CASE WHEN direction = 'under' THEN no_kalshi_pct ELSE kalshi_pct END AS bet_pct,
@@ -533,6 +537,14 @@ WITH base AS (
   FROM shadow_plays
   WHERE ${whereClause}
 ),
+${bestThreshold ? `
+best AS (
+  SELECT *, ROW_NUMBER() OVER (
+    PARTITION BY sport, category, group_id ORDER BY bsp DESC
+  ) AS _rn FROM base
+),
+source AS (SELECT sport, category, bsp, w, bet_pct, edge FROM best WHERE _rn = 1),
+` : `source AS (SELECT sport, category, bsp, w, bet_pct, edge FROM base),`}
 banded AS (
   SELECT *,
     CASE
@@ -544,9 +556,20 @@ banded AS (
       WHEN bsp >= 70 THEN '70-75'
       WHEN bsp >= 65 THEN '65-70'
       WHEN bsp >= 60 THEN '60-65'
-      ELSE '55-60'
+      WHEN bsp >= 55 THEN '55-60'
+      WHEN bsp >= 50 THEN '50-55'
+      WHEN bsp >= 45 THEN '45-50'
+      WHEN bsp >= 40 THEN '40-45'
+      WHEN bsp >= 35 THEN '35-40'
+      WHEN bsp >= 30 THEN '30-35'
+      WHEN bsp >= 25 THEN '25-30'
+      WHEN bsp >= 20 THEN '20-25'
+      WHEN bsp >= 15 THEN '15-20'
+      WHEN bsp >= 10 THEN '10-15'
+      WHEN bsp >= 5  THEN '5-10'
+      ELSE '0-5'
     END AS band
-  FROM base
+  FROM source
 ),
 overall_band AS (
   SELECT 'band'::text AS type, NULL::text AS sport, NULL::text AS category, band,
@@ -575,14 +598,25 @@ UNION ALL SELECT * FROM by_cat_band`;
     }
 
     const _SC_BANDS = [
-      { label: "55-60", min: 55, max: 60 },
-      { label: "60-65", min: 60, max: 65 },
-      { label: "65-70", min: 65, max: 70 },
-      { label: "70-75", min: 70, max: 75 },
-      { label: "75-80", min: 75, max: 80 },
-      { label: "80-85", min: 80, max: 85 },
-      { label: "85-90", min: 85, max: 90 },
-      { label: "90-95", min: 90, max: 95 },
+      { label: "0-5",   min: 0,  max: 5   },
+      { label: "5-10",  min: 5,  max: 10  },
+      { label: "10-15", min: 10, max: 15  },
+      { label: "15-20", min: 15, max: 20  },
+      { label: "20-25", min: 20, max: 25  },
+      { label: "25-30", min: 25, max: 30  },
+      { label: "30-35", min: 30, max: 35  },
+      { label: "35-40", min: 35, max: 40  },
+      { label: "40-45", min: 40, max: 45  },
+      { label: "45-50", min: 45, max: 50  },
+      { label: "50-55", min: 50, max: 55  },
+      { label: "55-60", min: 55, max: 60  },
+      { label: "60-65", min: 60, max: 65  },
+      { label: "65-70", min: 65, max: 70  },
+      { label: "70-75", min: 70, max: 75  },
+      { label: "75-80", min: 75, max: 80  },
+      { label: "80-85", min: 80, max: 85  },
+      { label: "85-90", min: 85, max: 90  },
+      { label: "90-95", min: 90, max: 95  },
       { label: "95+",   min: 95, max: 101 },
     ];
     const _scBandMid = Object.fromEntries(
@@ -656,6 +690,7 @@ UNION ALL SELECT * FROM by_cat_band`;
         minDc: _minDcStr ? parseInt(_minDcStr, 10) : null,
         sport: params.get("sport") || null,
         thresholdRank: params.get("thresholdRank") === "1" ? 1 : null,
+        bestThreshold: bestThreshold || null,
         seasonType: _stStr ? parseInt(_stStr, 10) : null,
       },
       overall: scOverall,
