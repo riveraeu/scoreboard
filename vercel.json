@@ -18,6 +18,7 @@
   "crons": [
     { "path": "/api/keepalive", "schedule": "0 12 * * *" },
     { "path": "/api/kalshi-snapshot", "schedule": "*/2 * * * *" },
+    { "path": "/api/shadow-snapshot", "schedule": "0 15 * * *" },
     { "path": "/api/shadow-snapshot", "schedule": "0 22 * * *" },
     { "path": "/api/shadow-resolver", "schedule": "0 9 * * *" }
   ]
