@@ -241,26 +241,34 @@ export async function handleAuthRoutes(ctx) {
     const overall = _buckets.map(b => {
       const inBucket = finalized.filter(p => (p.truePct ?? 0) >= b.min && (p.truePct ?? 0) < b.max);
       const wins = inBucket.filter(p => p.result === "won").length;
+      const kalshiArr = inBucket.map(p => p.kalshiPct).filter(v => typeof v === "number");
+      const avgKalshiPct = kalshiArr.length > 0 ? parseFloat((kalshiArr.reduce((s, v) => s + v, 0) / kalshiArr.length).toFixed(1)) : null;
+      const actual = inBucket.length > 0 ? parseFloat((wins / inBucket.length * 100).toFixed(1)) : null;
+      const roi = actual != null && avgKalshiPct != null ? parseFloat((actual / 100 - avgKalshiPct / 100).toFixed(4)) : null;
       return {
         bucket: b.label,
         predicted: (b.min + Math.min(b.max, 100)) / 2,
-        actual: inBucket.length > 0 ? parseFloat((wins / inBucket.length * 100).toFixed(1)) : null,
+        actual,
         n: inBucket.length,
-        delta: inBucket.length > 0 ? parseFloat((wins / inBucket.length * 100 - (b.min + Math.min(b.max, 100)) / 2).toFixed(1)) : null,
+        delta: actual != null ? parseFloat((actual - (b.min + Math.min(b.max, 100)) / 2).toFixed(1)) : null,
+        ...(avgKalshiPct != null ? { avgKalshiPct, roi } : {}),
       };
     });
     const _cats = {};
     for (const p of finalized) {
       const cat = `${p.sport || "?"}|${p.stat || "?"}`;
-      if (!_cats[cat]) _cats[cat] = { wins: 0, n: 0 };
+      if (!_cats[cat]) _cats[cat] = { wins: 0, n: 0, kalshiSum: 0, kalshiN: 0 };
       _cats[cat].n++;
       if (p.result === "won") _cats[cat].wins++;
+      if (typeof p.kalshiPct === "number") { _cats[cat].kalshiSum += p.kalshiPct; _cats[cat].kalshiN++; }
     }
     const byCategory = Object.fromEntries(
-      Object.entries(_cats).map(([cat, d]) => [cat, {
-        hitRate: parseFloat((d.wins / d.n * 100).toFixed(1)),
-        n: d.n,
-      }])
+      Object.entries(_cats).map(([cat, d]) => {
+        const hitRate = parseFloat((d.wins / d.n * 100).toFixed(1));
+        const avgKalshiPct = d.kalshiN > 0 ? parseFloat((d.kalshiSum / d.kalshiN).toFixed(1)) : null;
+        const roi = avgKalshiPct != null ? parseFloat((hitRate / 100 - avgKalshiPct / 100).toFixed(4)) : null;
+        return [cat, { hitRate, n: d.n, ...(avgKalshiPct != null ? { avgKalshiPct, roi } : {}) }];
+      })
     );
     const ksFinalized = finalized.filter(p => p.sport === "mlb" && p.stat === "strikeouts");
     const _ratesOf = (groups) => Object.fromEntries(
@@ -301,17 +309,20 @@ export async function handleAuthRoutes(ctx) {
       const b = _buckets.find(bk => (p.truePct ?? 0) >= bk.min && (p.truePct ?? 0) < bk.max);
       if (!b) continue;
       if (!_byCatDetail[cat]) _byCatDetail[cat] = {};
-      if (!_byCatDetail[cat][b.label]) _byCatDetail[cat][b.label] = { wins: 0, n: 0 };
+      if (!_byCatDetail[cat][b.label]) _byCatDetail[cat][b.label] = { wins: 0, n: 0, kalshiSum: 0, kalshiN: 0 };
       _byCatDetail[cat][b.label].n++;
       if (p.result === "won") _byCatDetail[cat][b.label].wins++;
+      if (typeof p.kalshiPct === "number") { _byCatDetail[cat][b.label].kalshiSum += p.kalshiPct; _byCatDetail[cat][b.label].kalshiN++; }
     }
     const byCategoryDetail = Object.fromEntries(
       Object.entries(_byCatDetail).map(([cat, buckets]) => [cat,
         _buckets.map(b => {
-          const d = buckets[b.label] || { wins: 0, n: 0 };
+          const d = buckets[b.label] || { wins: 0, n: 0, kalshiSum: 0, kalshiN: 0 };
           const predicted = (b.min + Math.min(b.max, 100)) / 2;
           const actual = d.n > 0 ? parseFloat((d.wins / d.n * 100).toFixed(1)) : null;
-          return { bucket: b.label, predicted, actual, n: d.n, delta: actual != null ? parseFloat((actual - predicted).toFixed(1)) : null };
+          const avgKalshiPct = d.kalshiN > 0 ? parseFloat((d.kalshiSum / d.kalshiN).toFixed(1)) : null;
+          const roi = actual != null && avgKalshiPct != null ? parseFloat((actual / 100 - avgKalshiPct / 100).toFixed(4)) : null;
+          return { bucket: b.label, predicted, actual, n: d.n, delta: actual != null ? parseFloat((actual - predicted).toFixed(1)) : null, ...(avgKalshiPct != null ? { avgKalshiPct, roi } : {}) };
         })
       ])
     );
