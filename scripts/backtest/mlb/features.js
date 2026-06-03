@@ -139,11 +139,17 @@ export function batterKPct(batterId, pitcherHand, batterSplitsVL, batterSplitsVR
   return LEAGUE_K_PCT; // fallback
 }
 
-// Batter BA vs pitcher hand (for HRR).
+// Batter BA vs pitcher hand (for HRR), shrunk toward season BA.
+// Raw split BA at pa≥10 can be as low as .100 (1-for-10), driving rawGameRate
+// to 27% and producing near-zero truePct predictions (actual hit rate ~38%).
+// Mirrors live model's BvP shrinkage: N_PRIOR=30 PA means a 10-PA split
+// carries only 25% weight; splits stabilize around 50+ PA.
+const N_PRIOR_BA = 30;
 export function batterBA(batterId, pitcherHand, batterSplitsVL, batterSplitsVR, batterSeason) {
   const split = pitcherHand === "L" ? batterSplitsVL[batterId] : batterSplitsVR[batterId];
-  if (split?.ba != null) return split.ba;
-  return batterSeason[batterId]?.ba ?? LEAGUE_BA;
+  const seasonBA = batterSeason[batterId]?.ba ?? LEAGUE_BA;
+  if (split?.ba == null) return seasonBA;
+  return (split.pa * split.ba + N_PRIOR_BA * seasonBA) / (split.pa + N_PRIOR_BA);
 }
 
 // Build ordered K% array for lineup (same as live model's orderedKPcts).
