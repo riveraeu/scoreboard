@@ -43,7 +43,7 @@ Sports prop betting dashboard that pulls Kalshi prediction market prices, comput
 
 **Model version**: Universal client qualification is `dcQualified === true && edge >= 5`. SimScore is display-only. Client `EDGE_GATE = 5`; server `EDGE_GATE = 3` for calibration continuity. `trackPlay` stamps `modelVersion: "v2"`. The `qualified` field carries only alt-line-demotion semantics now.
 
-**Category gate (2026-06-01)**: UI display is further restricted to categories with confirmed positive ROI (n≥50, working signal). Gate lives in `passesCategoryGate()` in `src/lib/constants.js` — applied in both `App._qualifiedFilter` and `LineupsPage.passesGate`. Currently allows: `mlb|spread` (truePct ≥ 80% only — bands below 80% showed −2.9% ROI at N=19 in Results + −10.5% in shadow; 2026-06-03), `mlb|hrr`. Tracked picks bypass the gate so existing bets stay visible. Add new categories here only when shadow calibration confirms ROI>0 at n≥200.
+**Category gate (2026-06-01)**: UI display is further restricted to categories with confirmed positive ROI (n≥50, working signal). Gate lives in `passesCategoryGate()` in `src/lib/constants.js` — applied in both `App._qualifiedFilter` and `LineupsPage.passesGate`. Currently allows: `mlb|spread` (truePct ≥ 80% — bands below 80% showed −2.9% ROI N=19 Results + −10.5% shadow; 2026-06-03), `mlb|hrr` (truePct ≥ 75% — 70-75% band shadow N=26 ROI −10.3% vs 75-80% shadow N=28 ROI +7.0%; 2026-06-03). Tracked picks bypass the gate so existing bets stay visible. Add new categories here only when shadow calibration confirms ROI>0 at n≥200.
 
 ---
 

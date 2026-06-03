@@ -238,5 +238,6 @@ export const GAMELOG_COLS = {
 export function passesCategoryGate(p) {
   const key = `${p.sport}|${p.stat || p.gameType}`;
   if (key === 'mlb|spread') return (p.truePct ?? 0) >= 80;
-  return key === 'mlb|hrr';
+  if (key === 'mlb|hrr') return (p.truePct ?? 0) >= 75;
+  return false;
 }
