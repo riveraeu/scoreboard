@@ -1036,6 +1036,21 @@ export async function emitGameTotalPlays({
       }
       if (events) _ttScheduleMap[key] = events;
     }));
+    // MLB NegBin dispersion for team totals — mirrors _fitMlbDispersion from the game-total
+    // block but uses _ttScheduleMap (accessible here) instead of _gtScheduleMap (sibling scope).
+    let _ttMlbDispR = 8;
+    { let _sr2 = 0, _sm = 0, _ng = 0;
+      for (const key in _ttScheduleMap) {
+        if (!key.startsWith("mlb:")) continue;
+        const team = key.slice(4), evts = _ttScheduleMap[key];
+        if (!evts || evts.length < 8) continue;
+        const scores = evts.map(ev => ev.comps?.find(c => normTeam("mlb", c.abbr) === team)?.score ?? null).filter(s => s != null);
+        if (scores.length < 8) continue;
+        const mean = scores.reduce((a, b) => a + b, 0) / scores.length;
+        for (const s of scores) { _sr2 += (s - mean) * (s - mean); _sm += mean; _ng++; }
+      }
+      if (_ng >= 100) { const pm = _sm / _ng, pv = _sr2 / _ng; if (pv > pm) _ttMlbDispR = Math.max(3, Math.min(50, parseFloat(((pm * pm) / (pv - pm)).toFixed(2)))); }
+    }
     const _ttH2HRate = (sport, scoringTeam, oppTeam, threshold) => {
       const events = _ttScheduleMap[`${sport}:${scoringTeam}`] ?? [];
       const h2h = events.filter(ev => ev.comps.some(c => normTeam(sport, c.abbr) === oppTeam)).slice(-10);
@@ -1145,7 +1160,7 @@ export async function emitGameTotalPlays({
         if (_lam != null) _lam = _anchorTeamLam(_lam);
         if (_lam != null) {
           const _dk = `mlb|team|${scoringTeam}|${oppTeam}|${_lam}`;
-          if (!teamTotalDistCache[_dk]) teamTotalDistCache[_dk] = simulateTeamTotalDist(_lam, 10000, _mlbDispR);
+          if (!teamTotalDistCache[_dk]) teamTotalDistCache[_dk] = simulateTeamTotalDist(_lam, 10000, _ttMlbDispR);
           truePct = totalDistPct(teamTotalDistCache[_dk], threshold);
         }
         // WHIP is now folded into _oppStarter above (line ~4585). SimScore tier kept for display continuity.
@@ -1170,13 +1185,13 @@ export async function emitGameTotalPlays({
         let _ttImpliedLambda = null, _ttBlendedLambda = null, _ttImpliedLambdaClamped = null;
         if (truePct != null && ttSeasonHitRate != null && _lam != null) {
           const _w = Math.min(1, _ttSched.length / 40) * 0.7;
-          _ttImpliedLambda = muForNegBinTail(threshold, ttSeasonHitRate / 100, _mlbDispR);
+          _ttImpliedLambda = muForNegBinTail(threshold, ttSeasonHitRate / 100, _ttMlbDispR);
           if (_ttImpliedLambda != null) {
             const _cap = 0.50;
             const _impliedClamped = Math.max(_lam - _cap, Math.min(_lam + _cap, _ttImpliedLambda));
             if (_impliedClamped !== _ttImpliedLambda) _ttImpliedLambdaClamped = parseFloat(_impliedClamped.toFixed(2));
             _ttBlendedLambda = _anchorTeamLam(parseFloat(((1 - _w) * _lam + _w * _impliedClamped).toFixed(2)));
-            truePct = parseFloat(((1 - negBinCDF(threshold - 1, _ttBlendedLambda, _mlbDispR)) * 100).toFixed(1));
+            truePct = parseFloat(((1 - negBinCDF(threshold - 1, _ttBlendedLambda, _ttMlbDispR)) * 100).toFixed(1));
           }
         }
         const _h2h = _ttH2HRate("mlb", scoringTeam, oppTeam, threshold);
