@@ -14,12 +14,13 @@ function cacheKey(url) {
   return join(CACHE_DIR, createHash("md5").update(url).digest("hex") + ".json");
 }
 
-export async function fetchCached(url, { concurrencyToken = null } = {}) {
+export async function fetchCached(url, { concurrencyToken = null, headers = {}, delayMs = 0 } = {}) {
   const path = cacheKey(url);
   if (existsSync(path)) {
     return JSON.parse(readFileSync(path, "utf8"));
   }
-  const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+  if (delayMs > 0) await new Promise(r => setTimeout(r, delayMs));
+  const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0", ...headers } });
   if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
   const data = await res.json();
   writeFileSync(path, JSON.stringify(data));
@@ -27,7 +28,7 @@ export async function fetchCached(url, { concurrencyToken = null } = {}) {
 }
 
 // Fetch a list of URLs with bounded concurrency (avoid hammering the API).
-export async function fetchAll(urls, concurrency = 20, label = "") {
+export async function fetchAll(urls, concurrency = 20, label = "", { headers = {}, delayMs = 0 } = {}) {
   const results = new Array(urls.length);
   let idx = 0;
   let done = 0;
@@ -36,7 +37,7 @@ export async function fetchAll(urls, concurrency = 20, label = "") {
   async function worker() {
     while (idx < urls.length) {
       const i = idx++;
-      results[i] = await fetchCached(urls[i]);
+      results[i] = await fetchCached(urls[i], { headers, delayMs });
       done++;
       if (label && done % 100 === 0) process.stdout.write(`\r  ${label}: ${done}/${total}`);
     }

@@ -3,7 +3,8 @@
 // Usage:
 //   node scripts/backtest/run.js --sport mlb --season 2024
 //   node scripts/backtest/run.js --sport mlb --seasons 2022,2023,2024
-//   node scripts/backtest/run.js --sport nba --season 2024   (Phase 2 — not yet built)
+//   node scripts/backtest/run.js --sport nba --season 2024
+//   node scripts/backtest/run.js --sport nba --seasons 2023,2024
 //   node scripts/backtest/run.js --sport nhl --season 2024   (Phase 3 — not yet built)
 //
 // Output files written to scripts/backtest/output/
@@ -60,6 +61,32 @@ async function runMLB(seasons) {
   return allRows;
 }
 
+async function runNBA(seasons) {
+  const allRows = [];
+  for (const season of seasons) {
+    console.log(`\n${"=".repeat(60)}`);
+    console.log(`NBA Backtest — ${season}`);
+    console.log("=".repeat(60));
+    const data = await collectNBASeason(season);
+    const rows = simulateAllNBA(data);
+    for (const r of rows) allRows.push(r);
+    const summary = summarize(rows);
+    printTable(summary);
+    writeCsv(summary, `calibration-nba-${season}.csv`);
+    writeRowsCsv(rows, `rows-nba-${season}.csv`);
+  }
+  if (seasons.length > 1) {
+    console.log(`\n${"=".repeat(60)}`);
+    console.log(`NBA Combined — ${seasons.join(", ")}`);
+    console.log("=".repeat(60));
+    const combined = summarize(allRows);
+    printTable(combined);
+    writeCsv(combined, `calibration-nba-combined.csv`);
+    writeRowsCsv(allRows, `rows-nba-combined.csv`);
+  }
+  return allRows;
+}
+
 async function main() {
   const { sport, seasons } = parseArgs();
   console.log(`\nBacktest: sport=${sport} seasons=${seasons.join(",")}`);
@@ -71,8 +98,7 @@ async function main() {
   if (sport === "mlb") {
     await runMLB(seasons);
   } else if (sport === "nba") {
-    console.log("NBA Phase 2 not yet implemented. Run with --sport mlb.");
-    process.exit(1);
+    await runNBA(seasons);
   } else if (sport === "nhl") {
     console.log("NHL Phase 3 not yet implemented. Run with --sport mlb.");
     process.exit(1);
