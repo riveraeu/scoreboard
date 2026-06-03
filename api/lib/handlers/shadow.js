@@ -15,6 +15,7 @@ const COLUMNS = [
   "dc", "dc_qualified", "game_date", "game_time",
   "group_id", "group_size", "threshold_rank", "is_best_edge",
   "snapshot_model_version", "season_type", "features",
+  "kalshi_yes_price", "kalshi_no_price",
 ];
 
 const CREATE_TABLE_SQL = `
@@ -56,6 +57,12 @@ CREATE TABLE IF NOT EXISTS ${SHADOW_TABLE} (
 CREATE INDEX IF NOT EXISTS shadow_plays_date_idx ON ${SHADOW_TABLE} (snapshot_date, resolved);
 CREATE INDEX IF NOT EXISTS shadow_plays_cat_idx ON ${SHADOW_TABLE} (sport, stat, game_type, model_true_pct);
 CREATE INDEX IF NOT EXISTS shadow_plays_group_idx ON ${SHADOW_TABLE} (group_id);
+`;
+
+// P0: add decimal price columns for clean ROI math. IF NOT EXISTS makes this idempotent.
+const ADD_KALSHI_PRICE_COLS_SQL = `
+ALTER TABLE shadow_plays ADD COLUMN IF NOT EXISTS kalshi_yes_price NUMERIC;
+ALTER TABLE shadow_plays ADD COLUMN IF NOT EXISTS kalshi_no_price NUMERIC
 `;
 
 // Stable deterministic ID for a play — unique per player/teams + stat/line + date.
@@ -443,6 +450,8 @@ export async function handleShadowRoutes({ path, request, env }) {
 
   // Ensure table exists (no-op if already created). DDL uses neonExec (no prepared stmt).
   await neonExec(CREATE_TABLE_SQL, env);
+  // P0: add kalshi_yes_price / kalshi_no_price decimal price columns (idempotent).
+  await neonExec(ADD_KALSHI_PRICE_COLS_SQL, env).catch(() => {});
   // One-time: drop debug table left from initial Neon wiring session (2026-06-01).
   await neonQuery("DROP TABLE IF EXISTS _shadow_init_test", [], env).catch(() => {});
   // Idempotent backfill: fix prop rows with null home_team/away_team.
@@ -456,6 +465,15 @@ export async function handleShadowRoutes({ path, request, env }) {
      WHERE home_team IS NULL AND away_team IS NULL
        AND features IS NOT NULL
        AND (features::jsonb) ?| array['playerTeam', 'gameTeam1']`,
+    [], env
+  ).catch(() => {});
+  // P0 backfill: populate decimal price columns for existing rows (idempotent — WHERE IS NULL).
+  await neonQuery(
+    `UPDATE shadow_plays
+     SET kalshi_yes_price = kalshi_pct / 100,
+         kalshi_no_price  = no_kalshi_pct / 100
+     WHERE kalshi_yes_price IS NULL
+       AND (kalshi_pct IS NOT NULL OR no_kalshi_pct IS NOT NULL)`,
     [], env
   ).catch(() => {});
 
@@ -521,6 +539,8 @@ export async function handleShadowRoutes({ path, request, env }) {
     snapshot_model_version: p.modelVersion || "v2",
     season_type: p.seasonType ?? null,
     features: extractFeatures(p),
+    kalshi_yes_price: p.kalshiPct != null ? p.kalshiPct / 100 : null,
+    kalshi_no_price: p.noKalshiPct != null ? p.noKalshiPct / 100 : null,
   }));
 
   await neonBatchUpsert(SHADOW_TABLE, COLUMNS, rows, env);
