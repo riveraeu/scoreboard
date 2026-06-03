@@ -87,6 +87,32 @@ async function runNBA(seasons) {
   return allRows;
 }
 
+async function runNHL(seasons) {
+  const allRows = [];
+  for (const season of seasons) {
+    console.log(`\n${"=".repeat(60)}`);
+    console.log(`NHL Backtest — ${season}`);
+    console.log("=".repeat(60));
+    const data = await collectNHLSeason(season);
+    const rows = simulateAllNHL(data);
+    for (const r of rows) allRows.push(r);
+    const summary = summarize(rows);
+    printTable(summary);
+    writeCsv(summary, `calibration-nhl-${season}.csv`);
+    writeRowsCsv(rows, `rows-nhl-${season}.csv`);
+  }
+  if (seasons.length > 1) {
+    console.log(`\n${"=".repeat(60)}`);
+    console.log(`NHL Combined — ${seasons.join(", ")}`);
+    console.log("=".repeat(60));
+    const combined = summarize(allRows);
+    printTable(combined);
+    writeCsv(combined, `calibration-nhl-combined.csv`);
+    writeRowsCsv(allRows, `rows-nhl-combined.csv`);
+  }
+  return allRows;
+}
+
 async function main() {
   const { sport, seasons } = parseArgs();
   console.log(`\nBacktest: sport=${sport} seasons=${seasons.join(",")}`);
@@ -100,8 +126,7 @@ async function main() {
   } else if (sport === "nba") {
     await runNBA(seasons);
   } else if (sport === "nhl") {
-    console.log("NHL Phase 3 not yet implemented. Run with --sport mlb.");
-    process.exit(1);
+    await runNHL(seasons);
   } else {
     console.error(`Unknown sport: ${sport}. Use mlb, nba, or nhl.`);
     process.exit(1);
