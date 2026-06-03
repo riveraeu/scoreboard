@@ -333,13 +333,18 @@ function mergeBuckets(arrays) {
   const LABELS = ["70-75","75-80","80-85","85-90","90-95","95+"];
   const PREDICTED = [72.5, 77.5, 82.5, 87.5, 92.5, 97.5];
   return LABELS.map((label, i) => {
-    let wins = 0, n = 0;
+    let wins = 0, n = 0, kalshiWtSum = 0, kalshiWtN = 0;
     for (const arr of arrays) {
       const b = arr.find(x => x.bucket === label);
-      if (b) { wins += Math.round((b.actual ?? 0) / 100 * b.n); n += b.n; }
+      if (!b) continue;
+      wins += Math.round((b.actual ?? 0) / 100 * b.n);
+      n += b.n;
+      if (b.avgKalshiPct != null) { kalshiWtSum += b.avgKalshiPct * b.n; kalshiWtN += b.n; }
     }
     const actual = n > 0 ? parseFloat((wins / n * 100).toFixed(1)) : null;
-    return { bucket: label, predicted: PREDICTED[i], actual, n, delta: actual != null ? parseFloat((actual - PREDICTED[i]).toFixed(1)) : null };
+    const avgKalshiPct = kalshiWtN > 0 ? parseFloat((kalshiWtSum / kalshiWtN).toFixed(1)) : null;
+    const roi = actual != null && avgKalshiPct != null ? parseFloat((actual / 100 - avgKalshiPct / 100).toFixed(4)) : null;
+    return { bucket: label, predicted: PREDICTED[i], actual, n, delta: actual != null ? parseFloat((actual - PREDICTED[i]).toFixed(1)) : null, avgKalshiPct, roi };
   });
 }
 const deltaColor = d => d == null ? "#8b949e" : d >= 3 ? "#3fb950" : d <= -3 ? "#f78166" : "#e3b341";
@@ -375,10 +380,16 @@ function CalibModule({ tabId, calibData, calibLoading, fetchCalib, isLoggedIn })
   const bucketRows = catArrays.length > 0 ? mergeBuckets(catArrays) : [];
   const catTotals = cats.reduce((acc, c) => {
     const d = calibData.byCategory?.[c];
-    if (d) { acc.n += d.n; acc.wins += Math.round(d.hitRate / 100 * d.n); }
+    if (d) {
+      acc.n += d.n;
+      acc.wins += Math.round(d.hitRate / 100 * d.n);
+      if (d.avgKalshiPct != null) { acc.kalshiWtSum += d.avgKalshiPct * d.n; acc.kalshiWtN += d.n; }
+    }
     return acc;
-  }, { n: 0, wins: 0 });
+  }, { n: 0, wins: 0, kalshiWtSum: 0, kalshiWtN: 0 });
   const catHitRate = catTotals.n > 0 ? (catTotals.wins / catTotals.n * 100).toFixed(1) : null;
+  const catAvgKalshi = catTotals.kalshiWtN > 0 ? catTotals.kalshiWtSum / catTotals.kalshiWtN : null;
+  const catRoi = catHitRate != null && catAvgKalshi != null ? parseFloat(catHitRate) / 100 - catAvgKalshi / 100 : null;
   const hasData = catTotals.n > 0;
 
   return (
@@ -390,6 +401,9 @@ function CalibModule({ tabId, calibData, calibLoading, fetchCalib, isLoggedIn })
           {hasData && catHitRate && (
             <span style={{color: parseFloat(catHitRate)>=70?"#3fb950":parseFloat(catHitRate)>=60?"#e3b341":"#f78166", fontSize:12, fontWeight:600}}>{catHitRate}% hit rate</span>
           )}
+          {hasData && catRoi != null && (
+            <span style={{color:_roiColor(catRoi), fontSize:12, fontWeight:600}}>ROI {_roiFmt(catRoi)}</span>
+          )}
         </div>
         <button onClick={fetchCalib} style={{fontSize:11,padding:"3px 10px",borderRadius:6,cursor:"pointer",border:"1px solid #30363d",background:"transparent",color:"#8b949e"}}>↻</button>
       </div>
@@ -399,7 +413,7 @@ function CalibModule({ tabId, calibData, calibLoading, fetchCalib, isLoggedIn })
       ) : (
         <>
           <table style={{width:"100%",borderCollapse:"collapse",background:"#0d1117",borderRadius:8,overflow:"hidden",border:"1px solid #21262d",marginBottom:isKTab?14:0}}>
-            <thead><tr>{["Bucket","N","Predicted","Actual","Delta",""].map(h=><th key={h} style={thCalib}>{h}</th>)}</tr></thead>
+            <thead><tr>{["Bucket","N","Predicted","Actual","Delta","ROI",""].map(h=><th key={h} style={thCalib}>{h}</th>)}</tr></thead>
             <tbody>
               {bucketRows.map(b => (
                 <tr key={b.bucket}>
@@ -408,6 +422,7 @@ function CalibModule({ tabId, calibData, calibLoading, fetchCalib, isLoggedIn })
                   <td style={{...tdCalib, color:"#8b949e"}}>{b.predicted.toFixed(1)}%</td>
                   <td style={{...tdCalib, color:b.actual==null?"#484f58":b.actual>=70?"#3fb950":b.actual>=60?"#e3b341":"#f78166"}}>{b.actual!=null?`${b.actual}%`:"—"}</td>
                   <td style={{...tdCalib, color:deltaColor(b.delta)}}>{b.delta!=null?(b.delta>=0?`+${b.delta}`:b.delta):"—"}</td>
+                  <td style={{...tdCalib, color:_roiColor(b.roi), fontWeight:b.roi!=null?600:400}}>{_roiFmt(b.roi)}</td>
                   <td style={{...tdCalib, width:120}}>
                     {b.actual!=null&&(
                       <div style={{position:"relative",height:7,background:"#21262d",borderRadius:4,overflow:"hidden"}}>
