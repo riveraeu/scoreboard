@@ -508,32 +508,6 @@ export async function handleShadowRoutes({ path, request, env }) {
 
   // Ensure table exists (no-op if already created). DDL uses neonExec (no prepared stmt).
   await neonExec(CREATE_TABLE_SQL, env);
-  // P0: add kalshi_yes_price / kalshi_no_price decimal price columns (idempotent).
-  await neonExec(ADD_KALSHI_PRICE_COLS_SQL, env).catch(() => {});
-  // One-time: drop debug table left from initial Neon wiring session (2026-06-01).
-  await neonQuery("DROP TABLE IF EXISTS _shadow_init_test", [], env).catch(() => {});
-  // Idempotent backfill: fix prop rows with null home_team/away_team.
-  // First pass (2026-06-02): used playerTeam/opponent — missed early-dropped plays.
-  // Second pass (2026-06-02): also covers early drops that only have gameTeam1/gameTeam2.
-  // The resolver only needs two team identifiers to find the ESPN game; order doesn't matter.
-  await neonQuery(
-    `UPDATE shadow_plays
-     SET home_team = COALESCE(features->>'playerTeam', features->>'gameTeam1'),
-         away_team = COALESCE(features->>'opponent',   features->>'gameTeam2')
-     WHERE home_team IS NULL AND away_team IS NULL
-       AND features IS NOT NULL
-       AND (features::jsonb) ?| array['playerTeam', 'gameTeam1']`,
-    [], env
-  ).catch(() => {});
-  // P0 backfill: populate decimal price columns for existing rows (idempotent — WHERE IS NULL).
-  await neonQuery(
-    `UPDATE shadow_plays
-     SET kalshi_yes_price = kalshi_pct / 100,
-         kalshi_no_price  = no_kalshi_pct / 100
-     WHERE kalshi_yes_price IS NULL
-       AND (kalshi_pct IS NOT NULL OR no_kalshi_pct IS NOT NULL)`,
-    [], env
-  ).catch(() => {});
 
   // Fetch tonight debug response — uses cached Kalshi snaps, doesn't bust external APIs.
   const origin = new URL(request.url).origin;
