@@ -383,28 +383,12 @@ export default function LineupsPage({
 
   const actionButtonsEl = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6, ...(isMobile ? { justifyContent: 'flex-end', flexWrap: 'wrap' } : { flex: 1, justifyContent: 'flex-end' }) }}>
-      {(notifPerm === 'default' || notifPerm === 'granted') && (
+      {notifPerm === 'default' && (
         <button
-          title={notifPerm === 'granted' ? 'Notifications on — click to test' : 'Enable play notifications'}
-          onClick={() => {
-            const live = typeof Notification !== 'undefined' ? Notification.permission : 'unsupported';
-            setNotifPerm(live);
-            if (live === 'granted') {
-              try {
-                new Notification('Test notification', { body: 'Play notifications are working.', icon: '/favicon.ico' });
-              } catch (e) {
-                console.error('[notif] new Notification() threw:', e);
-              }
-            } else if (live === 'default') {
-              Notification.requestPermission().then(p => setNotifPerm(p));
-            } else {
-              console.warn('[notif] permission is', live);
-            }
-          }}
+          title="Enable play notifications"
+          onClick={() => Notification.requestPermission().then(p => setNotifPerm(p))}
           style={{ ...btnSize, borderRadius: 6, cursor: 'pointer',
-            border: `1px solid ${notifPerm === 'granted' ? 'rgba(63,185,80,0.4)' : '#30363d'}`,
-            background: 'transparent',
-            color: notifPerm === 'granted' ? '#3fb950' : '#484f58', fontWeight: 600 }}>
+            border: '1px solid #30363d', background: 'transparent', color: '#484f58', fontWeight: 600 }}>
           🔔
         </button>
       )}
