@@ -420,7 +420,7 @@ async function handleShadowResolver({ path, request, env }) {
       if (primary && primary.state !== "unknown") continue; // already resolved
       const baseKey = rawKey.includes("@") ? rawKey.slice(0, rawKey.indexOf("@")) : rawKey;
       const base = new Date(effectiveDate);
-      for (const deltaDays of [1, 2]) {
+      for (const deltaDays of [1, 2, 3, 4, 5]) {
         const d = new Date(base);
         d.setUTCDate(d.getUTCDate() + deltaDays);
         const offsetDate = d.toISOString().slice(0, 10);
@@ -465,11 +465,11 @@ async function handleShadowResolver({ path, request, env }) {
       }
     }
     // Third-pass fallback: for null-date rows (no game_date or game_time), the effective date
-    // may be a day early. Try offset dates +1 and +2 using the base key.
+    // may be several days early. Try offsets +1 through +5 using the base key.
     if ((!game || game.state === "unknown") && !row.game_date && !row.game_time) {
       const baseKey = rawKey.includes("@") ? rawKey.slice(0, rawKey.indexOf("@")) : rawKey;
       const base = new Date(effectiveDate);
-      for (const deltaDays of [1, 2]) {
+      for (const deltaDays of [1, 2, 3, 4, 5]) {
         const d = new Date(base);
         d.setUTCDate(d.getUTCDate() + deltaDays);
         const offsetDate = d.toISOString().slice(0, 10);
