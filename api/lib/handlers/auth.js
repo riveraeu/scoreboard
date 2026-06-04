@@ -759,12 +759,13 @@ UNION ALL SELECT * FROM by_cat_band`;
       shadow_plays: null,
     });
 
-    const [totals, byDate, byCategory, dcDist, unresolvedByCategory] = await Promise.all([
+    const [totals, byDate, byCategory, dcDist, unresolvedByCategory, unresolvedDetail] = await Promise.all([
       neonQuery("SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE dc_qualified) as qualified, COUNT(*) FILTER (WHERE resolved) as resolved FROM shadow_plays", [], env),
       neonQuery("SELECT snapshot_date, COUNT(*) as n FROM shadow_plays GROUP BY 1 ORDER BY 1 DESC LIMIT 7", [], env),
       neonQuery("SELECT sport, COALESCE(stat, game_type, '?') as category, COUNT(*) as n, COUNT(*) FILTER (WHERE dc_qualified) as qualified FROM shadow_plays GROUP BY 1, 2 ORDER BY n DESC LIMIT 20", [], env),
       neonQuery("SELECT dc, COUNT(*) as n FROM shadow_plays GROUP BY 1 ORDER BY 1 DESC NULLS LAST", [], env),
       neonQuery("SELECT sport, COALESCE(stat, game_type, '?') as category, snapshot_date::date as snapshot_date, COUNT(*) as n FROM shadow_plays WHERE NOT resolved GROUP BY 1, 2, 3 ORDER BY snapshot_date DESC, n DESC LIMIT 30", [], env),
+      neonQuery("SELECT player_name, COALESCE(stat, game_type, '?') as category, home_team, away_team, game_date, game_time, threshold, direction FROM shadow_plays WHERE NOT resolved AND snapshot_date::date < '2026-06-03' ORDER BY snapshot_date, category, player_name", [], env),
     ]);
 
     return jsonResponse({
@@ -779,6 +780,7 @@ UNION ALL SELECT * FROM by_cat_band`;
         byCategory,
         dcDist,
         unresolvedByCategory,
+        unresolvedDetail,
       },
     });
   }
