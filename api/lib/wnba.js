@@ -35,7 +35,9 @@ export const WNBA_ESPN_TO_CANON = {
 // Only includes pairs where ESPN's abbr differs from the canonical short.
 export const WNBA_CANON_TO_ESPN = {
   CONN: "CONNECTICU",
-  DAL: "DALLAS"
+  DAL: "DALLAS",
+  WSH: "WAS",
+  LA: "LAS",
 };
 
 export async function buildWnbaPaceData(cache, season = 2025) {

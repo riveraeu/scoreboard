@@ -70,7 +70,7 @@ export async function handleSportsRoutes(ctx) {
       const CANONICAL_TO_ESPN = {
         mlb: { CWS: "CHW" },
         nba: { GSW: "GS", SAS: "SA", NYK: "NY", NOP: "NO", UTA: "UTAH", WAS: "WSH" },
-        wnba: { CONN: "CON" },
+        wnba: { CONN: "CON", DAL: "DALLAS", WSH: "WAS", LA: "LAS" },
         nhl: { TBL: "TB", NJD: "NJ", LAK: "LA", SJS: "SJ" },
       }[sport] || {};
       const ESPN_TO_CANONICAL = Object.fromEntries(
