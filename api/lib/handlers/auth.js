@@ -783,5 +783,156 @@ UNION ALL SELECT * FROM by_cat_band`;
     });
   }
 
+  // ── Shadow correlation analysis ────────────────────────────────────────────────────────────
+  // GET /api/auth/shadow-analysis
+  // Auth: Authorization: Bearer $ADMIN_KEY
+  // Four analyses: threshold-rank ROI, intra-group unanimity, same-game pairwise phi, concentration.
+  if (path === "auth/shadow-analysis" && method === "GET") {
+    const ak = (request.headers.get("Authorization") || "").replace("Bearer ", "");
+    if (!env?.ADMIN_KEY) return errorResponse("ADMIN_KEY not set", 500);
+    if (ak !== env.ADMIN_KEY) return errorResponse("Forbidden", 403);
+    if (!env?.POSTGRES_URL && !env?.NEON_DATABASE_URL && !env?.DATABASE_URL_UNPOOLED) {
+      return errorResponse("No Neon connection configured", 500);
+    }
+
+    const sinceDefault = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+      .toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+    const since = params.get("since") || sinceDefault;
+
+    // Q1: ROI and calibration by threshold_rank.
+    // threshold_rank=1 is closest to 50% (most informative) for a given group.
+    const q1 = neonQuery(`
+      SELECT
+        COALESCE(threshold_rank::text, 'null') AS threshold_rank,
+        COUNT(*) AS n,
+        SUM(won::int) AS wins,
+        ROUND(AVG(CASE WHEN direction = 'under' THEN no_kalshi_pct ELSE kalshi_pct END) / 100.0, 4) AS avg_bet_price,
+        ROUND(SUM(won::int)::numeric / COUNT(*) * 100, 1) AS hit_rate_pct,
+        ROUND(SUM(won::int)::numeric / COUNT(*) - AVG(CASE WHEN direction = 'under' THEN no_kalshi_pct ELSE kalshi_pct END) / 100.0, 4) AS roi
+      FROM shadow_plays
+      WHERE resolved AND won IS NOT NULL AND snapshot_date >= $1
+      GROUP BY threshold_rank
+      ORDER BY threshold_rank NULLS LAST
+    `, [since], env);
+
+    // Q2: Intra-group unanimity — within alt-line groups (group_size > 1), what % of groups
+    // resolved unanimously (all thresholds won or all lost)? High unanimity = correlated bets.
+    const q2 = neonQuery(`
+      WITH group_outcomes AS (
+        SELECT
+          group_id,
+          sport,
+          COALESCE(stat, game_type) AS category,
+          COUNT(*) AS n,
+          SUM(won::int) AS wins
+        FROM shadow_plays
+        WHERE resolved AND won IS NOT NULL AND snapshot_date >= $1 AND group_size > 1
+        GROUP BY group_id, sport, COALESCE(stat, game_type)
+        HAVING COUNT(*) > 1
+      )
+      SELECT
+        sport,
+        category,
+        COUNT(*) AS n_groups,
+        SUM(n) AS n_plays,
+        ROUND(AVG(n), 1) AS avg_group_size,
+        COUNT(*) FILTER (WHERE wins = n) AS all_win,
+        COUNT(*) FILTER (WHERE wins = 0) AS all_lose,
+        ROUND((COUNT(*) FILTER (WHERE wins = n) + COUNT(*) FILTER (WHERE wins = 0))::numeric / COUNT(*) * 100, 1) AS pct_unanimous
+      FROM group_outcomes
+      GROUP BY sport, category
+      ORDER BY n_groups DESC
+    `, [since], env);
+
+    // Q3: Same-game pairwise phi correlation — for every pair of (category|direction) that
+    // appear in the same game, compute phi = (P(AB) − P(A)P(B)) / sqrt(P(A)(1-P(A))P(B)(1-P(B))).
+    // Uses threshold_rank = 1 only to avoid double-counting multi-threshold groups.
+    // HAVING n >= 10 filters noise. Ordered by |phi| descending.
+    const q3 = neonQuery(`
+      WITH game_plays AS (
+        SELECT
+          sport || '|' || COALESCE(home_team, '') || '|' || COALESCE(away_team, '') || '|' || COALESCE(game_date, snapshot_date::text) AS game_key,
+          sport,
+          COALESCE(stat, game_type) || '|' || COALESCE(direction, '') AS cat_dir,
+          won::int AS w
+        FROM shadow_plays
+        WHERE resolved AND won IS NOT NULL
+          AND snapshot_date >= $1
+          AND threshold_rank = 1
+          AND home_team IS NOT NULL AND away_team IS NOT NULL
+      ),
+      pairs AS (
+        SELECT
+          a.sport,
+          a.cat_dir AS cat_a,
+          b.cat_dir AS cat_b,
+          COUNT(*) AS n,
+          SUM(a.w) AS wins_a,
+          SUM(b.w) AS wins_b,
+          SUM(a.w * b.w) AS joint_wins
+        FROM game_plays a
+        JOIN game_plays b ON b.game_key = a.game_key AND b.cat_dir > a.cat_dir
+        GROUP BY a.sport, a.cat_dir, b.cat_dir
+        HAVING COUNT(*) >= 10
+      )
+      SELECT
+        sport, cat_a, cat_b,
+        n,
+        ROUND(wins_a::numeric / n * 100, 1) AS hit_a,
+        ROUND(wins_b::numeric / n * 100, 1) AS hit_b,
+        ROUND(joint_wins::numeric / n * 100, 1) AS joint_hit,
+        ROUND(
+          (joint_wins::numeric/n - (wins_a::numeric/n) * (wins_b::numeric/n)) /
+          NULLIF(SQRT(
+            (wins_a::numeric/n * (1 - wins_a::numeric/n)) *
+            (wins_b::numeric/n * (1 - wins_b::numeric/n))
+          ), 0)
+        , 3) AS phi
+      FROM pairs
+      ORDER BY ABS(
+        (joint_wins::numeric/n - (wins_a::numeric/n) * (wins_b::numeric/n)) /
+        NULLIF(SQRT(
+          (wins_a::numeric/n * (1 - wins_a::numeric/n)) *
+          (wins_b::numeric/n * (1 - wins_b::numeric/n))
+        ), 0)
+      ) DESC NULLS LAST
+      LIMIT 30
+    `, [since], env);
+
+    // Q4: Concentration distribution — for games with ≥1 play, how many plays per game?
+    // Hit rate by concentration bucket tells us whether same-game plays co-move.
+    const q4 = neonQuery(`
+      WITH game_counts AS (
+        SELECT
+          sport || '|' || COALESCE(home_team, '') || '|' || COALESCE(away_team, '') || '|' || COALESCE(game_date, snapshot_date::text) AS game_key,
+          COUNT(*) AS n_plays,
+          SUM(won::int) AS wins
+        FROM shadow_plays
+        WHERE resolved AND won IS NOT NULL
+          AND snapshot_date >= $1
+          AND threshold_rank = 1
+          AND home_team IS NOT NULL AND away_team IS NOT NULL
+        GROUP BY game_key
+      )
+      SELECT
+        n_plays,
+        COUNT(*) AS n_games,
+        SUM(n_plays) AS total_plays,
+        SUM(wins) AS total_wins,
+        ROUND(SUM(wins)::numeric / SUM(n_plays) * 100, 1) AS hit_rate_pct
+      FROM game_counts
+      GROUP BY n_plays
+      ORDER BY n_plays
+    `, [since], env);
+
+    let [thresholdRankRoi, intraGroupCorr, sameGamePairs, concentration] = await Promise.all([q1, q2, q3, q4]).catch(e => {
+      return [{ error: e.message }];
+    });
+
+    if (thresholdRankRoi?.error) return errorResponse(`Neon query failed: ${thresholdRankRoi.error}`, 500);
+
+    return jsonResponse({ since, thresholdRankRoi, intraGroupCorr, sameGamePairs, concentration });
+  }
+
   return null;
 }
