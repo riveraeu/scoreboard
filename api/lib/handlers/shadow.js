@@ -341,10 +341,14 @@ async function handleShadowResolver({ path, request, env }) {
 
   for (const row of rows) {
     const { sport, home_team, away_team, game_time } = row;
-    // Fall back to snapshot_date for early-dropped prop rows that lack game_date.
-    // snapshot_date is a DATE column; Neon may return it as a JS Date object or an ISO
-    // string — both handled via toISOString() so we always get "YYYY-MM-DD".
-    const effectiveDate = row.game_date || (row.snapshot_date ? new Date(row.snapshot_date).toISOString().slice(0, 10) : null);
+    // Prefer game_date when set. When null (Kalshi ticker date unparseable), extract the
+    // PT calendar date from game_time (ISO string like 2026-06-03T23:00:00Z) — that gives
+    // the correct date even when the snapshot was taken the day before the game. Only fall
+    // back to snapshot_date when neither is available (early-dropped rows without game_time).
+    // snapshot_date is a DATE column; Neon may return JS Date or ISO string — both safe via toISOString().
+    const effectiveDate = row.game_date
+      || (row.game_time ? new Date(row.game_time).toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" }) : null)
+      || (row.snapshot_date ? new Date(row.snapshot_date).toISOString().slice(0, 10) : null);
     let rawKey = `${sport}:${away_team}:${home_team}`;
     if (game_time) rawKey += `@${game_time}`;
     rowToKey.set(row.id, { rawKey, effectiveDate });
