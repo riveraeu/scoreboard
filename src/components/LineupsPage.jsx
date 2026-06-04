@@ -387,10 +387,18 @@ export default function LineupsPage({
         <button
           title={notifPerm === 'granted' ? 'Notifications on — click to test' : 'Enable play notifications'}
           onClick={() => {
-            if (notifPerm === 'granted') {
-              new Notification('Test notification', { body: 'Play notifications are working.', icon: '/favicon.ico' });
-            } else {
+            const live = typeof Notification !== 'undefined' ? Notification.permission : 'unsupported';
+            setNotifPerm(live);
+            if (live === 'granted') {
+              try {
+                new Notification('Test notification', { body: 'Play notifications are working.', icon: '/favicon.ico' });
+              } catch (e) {
+                console.error('[notif] new Notification() threw:', e);
+              }
+            } else if (live === 'default') {
               Notification.requestPermission().then(p => setNotifPerm(p));
+            } else {
+              console.warn('[notif] permission is', live);
             }
           }}
           style={{ ...btnSize, borderRadius: 6, cursor: 'pointer',
