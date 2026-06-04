@@ -1,6 +1,37 @@
 import React from 'react';
 import { WORKER } from './constants.js';
 
+// Stable key for deduplicating qualified plays across polls — mirrors trackIdFor shape.
+function _playKey(p) {
+  const gd = p.gameDate || '';
+  const u = p.direction === 'under' ? '|u' : '';
+  if (p.gameType === 'teamTotal') return `tt|${p.scoringTeam}|${p.threshold}|${gd}${u}`;
+  if (p.gameType === 'total') return `tot|${p.homeTeam}|${p.awayTeam}|${p.threshold}|${gd}${u}`;
+  if (p.gameType === 'ml') return `ml|${p.pickTeam}|${gd}`;
+  if (p.gameType === 'spread') return `sp|${p.pickTeam}|${p.pickLine}|${gd}`;
+  return `${p.sport}|${p.playerName}|${p.stat}|${p.threshold}|${gd}`;
+}
+
+function _notifyNewPlays(plays) {
+  if (!('Notification' in window)) return;
+  const show = () => {
+    const n = plays.length;
+    const first = plays[0];
+    const label = first.playerName
+      ? `${first.playerName} ${first.stat} ${first.direction === 'under' ? 'U' : 'O'}${first.threshold}`
+      : `${first.pickTeam || first.homeTeam} ${first.gameType}`;
+    new Notification(
+      n === 1 ? 'New qualified play' : `${n} new qualified plays`,
+      { body: n === 1 ? label : `${label} +${n - 1} more`, icon: '/favicon.ico' },
+    );
+  };
+  if (Notification.permission === 'granted') {
+    show();
+  } else if (Notification.permission !== 'denied') {
+    Notification.requestPermission().then(p => { if (p === 'granted') show(); });
+  }
+}
+
 // Tonight-plays state + fetch lifecycle, extracted from App.jsx 2026-05-27.
 //
 // Initial fetch is plain `/tonight` — the snap-first server path delivers warm-cached
@@ -27,17 +58,33 @@ export function useTonight(qualifiedFilter) {
   const filterRef = React.useRef(qualifiedFilter);
   React.useEffect(() => { filterRef.current = qualifiedFilter; }, [qualifiedFilter]);
 
+  // null = not yet seeded (first load). After first applyData, holds all play keys seen so far.
+  // Bust resets nothing — won't re-notify plays already seen.
+  const seenIdsRef = React.useRef(null);
+
   const applyData = React.useCallback((data) => {
     const all = data.plays || [];
     setAllTonightPlays(all);
     setNbaDropped(data.nbaDropped || []);
-    setTonightPlays(all.filter(filterRef.current));
+    const qualified = all.filter(filterRef.current);
+    setTonightPlays(qualified);
     setTonightMeta({ qualifyingCount: data.qualifyingCount, preFilteredCount: data.preFilteredCount });
     if (data.mlbMeta) setMlbMeta(data.mlbMeta);
     if (data.mlbMetaTomorrow) setMlbMetaTomorrow(data.mlbMetaTomorrow);
     if (data.nbaMeta) setNbaMeta(data.nbaMeta);
     if (data.wnbaMeta) setWnbaMeta(data.wnbaMeta);
     if (data.nhlMeta) setNhlMeta(data.nhlMeta);
+
+    if (seenIdsRef.current === null) {
+      // Seed on first load — don't notify plays that were already qualified.
+      seenIdsRef.current = new Set(qualified.map(_playKey));
+    } else {
+      const fresh = qualified.filter(p => !seenIdsRef.current.has(_playKey(p)));
+      if (fresh.length > 0) {
+        fresh.forEach(p => seenIdsRef.current.add(_playKey(p)));
+        _notifyNewPlays(fresh);
+      }
+    }
   }, []);
 
   React.useEffect(() => {
