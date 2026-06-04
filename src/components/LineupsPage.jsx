@@ -233,6 +233,9 @@ export default function LineupsPage({
     new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
   );
   const [expandedPlays, setExpandedPlays] = React.useState(new Set());
+  const [notifPerm, setNotifPerm] = React.useState(() =>
+    typeof Notification !== 'undefined' ? Notification.permission : 'unsupported'
+  );
 
   // Collect unique PT dates from all plays + mlbMeta.gameScores
   const dayTabs = React.useMemo(() => {
@@ -380,6 +383,15 @@ export default function LineupsPage({
 
   const actionButtonsEl = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6, ...(isMobile ? { justifyContent: 'flex-end', flexWrap: 'wrap' } : { flex: 1, justifyContent: 'flex-end' }) }}>
+      {notifPerm === 'default' && (
+        <button
+          title="Enable play notifications"
+          onClick={() => Notification.requestPermission().then(p => setNotifPerm(p))}
+          style={{ ...btnSize, borderRadius: 6, cursor: 'pointer',
+            border: '1px solid #30363d', background: 'transparent', color: '#484f58', fontWeight: 600 }}>
+          🔔
+        </button>
+      )}
       {authEmail && placeAllCount > 0 && (
         <button onClick={onPlaceAll}
           title={`Place all ${placeAllCount} qualified Kalshi bets`}
