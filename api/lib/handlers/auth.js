@@ -765,7 +765,7 @@ UNION ALL SELECT * FROM by_cat_band`;
       neonQuery("SELECT sport, COALESCE(stat, game_type, '?') as category, COUNT(*) as n, COUNT(*) FILTER (WHERE dc_qualified) as qualified FROM shadow_plays GROUP BY 1, 2 ORDER BY n DESC LIMIT 20", [], env),
       neonQuery("SELECT dc, COUNT(*) as n FROM shadow_plays GROUP BY 1 ORDER BY 1 DESC NULLS LAST", [], env),
       neonQuery("SELECT sport, COALESCE(stat, game_type, '?') as category, snapshot_date::date as snapshot_date, COUNT(*) as n FROM shadow_plays WHERE NOT resolved GROUP BY 1, 2, 3 ORDER BY snapshot_date DESC, n DESC LIMIT 30", [], env),
-      neonQuery("SELECT id, sport, COALESCE(stat, game_type, '?') as category, home_team, away_team, game_date, snapshot_date::date as snapshot_date FROM shadow_plays WHERE NOT resolved AND snapshot_date::date >= '2026-06-02' LIMIT 20", [], env),
+      neonQuery("SELECT id, sport, COALESCE(stat, game_type, '?') as category, home_team, away_team, game_date, game_time, snapshot_date::date as snapshot_date FROM shadow_plays WHERE NOT resolved AND snapshot_date::date >= '2026-06-02' LIMIT 5", [], env),
     ]);
 
     return jsonResponse({
