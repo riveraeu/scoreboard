@@ -1416,13 +1416,14 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             const _seg = p.segment || "full";
             if (p.gameType === "total") return `gt|${p.sport}|${_seg}|${p.homeTeam}|${p.awayTeam}|${p.gameDate}|${p.direction || 'over'}`;
             if (p.gameType === "teamTotal") return `tt|${p.sport}|${_seg}|${p.scoringTeam}|${p.oppTeam}|${p.gameDate}|${p.direction || 'over'}`;
-            // Spread: matchup-symmetric key (sort teams) so BOTH sides of the same game land in
-            // the same group — keeps only the highest-edge spread pick per matchup. Both-sides
-            // qualifying happens on near-pick'em games where the model thinks each team keeps
-            // it close on the cover line; correlation risk is similar to alt-line stacking.
+            // Spread: matchup-symmetric + line-specific key. Deduplicates both sides of the
+            // same line (MIN +3.5 vs KC -3.5 are the same bet). Different alt lines (MIN +2.5
+            // vs MIN +3.5) get independent groups so each survives the category-gate pass.
             if (p.gameType === "spread") {
               const teams = [p.pickTeam, p.oppTeam].sort().join('|');
-              return `sp|${p.sport}|${_seg}|${teams}|${p.gameDate}`;
+              // Include line so different alt lines (e.g. +2.5 vs +3.5) compete independently.
+              // Still deduplicates both sides of the same line (MIN +3.5 vs KC -3.5).
+              return `sp|${p.sport}|${_seg}|${teams}|${p.line}|${p.gameDate}`;
             }
             // Player props (no gameType): same player × stat across alt thresholds are sampling the
             // same underlying random variable (Tucker 1+/2+/3+ HRR draws from his HRR distribution).
