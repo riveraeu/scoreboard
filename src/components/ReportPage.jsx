@@ -737,7 +737,7 @@ function MarketGroupSection({ group, reportSort, setReportSort, navigateToPlayer
     kalshi:"Kalshi market price", edge:"Model edge over Kalshi market",
     opp:"Tonight's opponent / starting pitcher",
     sim:"Sim-Score (max 10 — 8+ = Alpha tier); hover for component breakdown",
-    dc: "dataConfidence (0–10) — input-data trust score. Starts at 10, subtracts penalties. A play counts as Qualified (here and on the home page) only at dc=10 (clean inputs). Hover the cell for the penalty breakdown.",
+    dc: "dataConfidence (0–10) — signal quality score. Starts at 10; only stale Kalshi data (−4) or player-out (−10) fail the gate (≥7). Remaining penalties (farFromLine, seasonRateDivergent, lowVolume, etc.) are display signals. Hover the cell for the penalty breakdown.",
     dcMkt: "Market quality — Kalshi staleness / liquidity. ✓ = no penalty.",
     dcLineup: "Lineup / starter confirmation. ✓ = confirmed or unknown.",
     dcAvail: "Player availability (player props only). ✓ = no concerns.",
@@ -1090,7 +1090,7 @@ function ReportPage({
   // Build filtered + grouped market data for the visible play type
   const marketGroups = React.useMemo(() => {
     if (!reportData || reportData.error) return [];
-    const _isQ = (p) => p.dcQualified === true && (p.edge ?? 0) >= 5 && (p.dataConfidence ?? 0) === 10;
+    const _isQ = (p) => p.dcQualified === true && (p.edge ?? 0) >= 5;
     const plays = (reportData.plays || []).map(p => ({ ...p, qualified: _isQ(p) }));
     const dropped = (reportData.dropped || []).map(p => ({ ...p, qualified: false }));
     const filtered = [...plays, ...dropped].filter(m => m.sport === sport && playType.statKeys.includes(m.stat));

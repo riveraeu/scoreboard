@@ -123,14 +123,15 @@ function App() {
     shadowCalibData, shadowCalibLoading, fetchShadowCalib,
   } = useReportData();
 
-  // Qualified play filter: dcQualified=true AND edge >= 5% AND dc=10 (fully clean inputs). v1
-  // (SimScore-gated) was dropped 2026-05-18 — SimScore is display/attribution only now. Mirrors
-  // passesGate in LineupsPage; keep these in sync.
+  // Qualified play filter: dcQualified=true (not stale/playerOut) AND edge >= 5% AND category gate.
+  // dc=10 strict requirement removed 2026-06-04: shadow calibration showed data-completeness
+  // penalties were anti-correlated with ROI — fallback paths regress toward the mean and produce
+  // better-calibrated outputs. dcQualified now means dc≥7 (only kalshiStale/playerOut fail).
+  // Mirrors passesGate in LineupsPage; keep these in sync.
   const _qualifiedFilter = React.useCallback((p) => {
     if (p._altLineDemoted === true) return false;
     if (p.dcQualified !== true || (p.edge ?? 0) < EDGE_GATE) return false;
-    if (!passesCategoryGate(p)) return false;
-    return (p.dataConfidence ?? 0) === 10;
+    return passesCategoryGate(p);
   }, []);
   const {
     tonightPlays, allTonightPlays, nbaDropped,

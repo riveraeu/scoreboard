@@ -116,20 +116,17 @@ export function trackIdFor(p) {
   if (p.gameType === 'spread') return `spread|${p.sport}${seg}|${p.pickTeam}|${p.homeTeam}|${p.awayTeam}|${p.pickLine}|${gd}`;
   return `${p.sport || 'nba'}|${p.playerName}|${p.stat}|${p.threshold}|${gd}`;
 }
-// Clean-data gate: dc=10 only. Any -1 penalty (modestBvPSample, lineupHeavyOut, wideSpread,
-// lowVolume, noSoftGames, etc.) disqualifies the play from the qualified set.
-function _passesCleanData(p) {
-  return (p.dataConfidence ?? 0) === 10;
-}
 function passesGate(p, trackedIds) {
   // Tracked picks always pass — keep visibility of the user's actual bet even if dedup
   // demoted it. Check this BEFORE the dedup filter so tracked alts survive.
   if (trackedIds && trackedIds.has(trackIdFor(p))) return true;
   // Server demoted this alt line in favor of a higher-edge alt — skip on home page.
   if (p._altLineDemoted === true) return false;
+  // dcQualified=true means dc≥7: only kalshiStale and playerOut fail (2026-06-04).
+  // Data-completeness dc=10 requirement removed — shadow calibration showed fallback paths
+  // are better calibrated than full-data paths. Category gate does the real ROI filtering.
   if (p.dcQualified !== true || (p.edge ?? 0) < EDGE_GATE) return false;
-  if (!passesCategoryGate(p)) return false;
-  return _passesCleanData(p);
+  return passesCategoryGate(p);
 }
 // Mirror the server-side _ddKey from api/[...path].js so the client can decide whether a
 // given API play sits in the same dedup-group as a tracked pick (and if so, suppress it in

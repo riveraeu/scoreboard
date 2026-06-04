@@ -48,8 +48,7 @@ export function validateCandidate(play, sizing, calibData) {
 
   // ── HARD: re-assert qualification against the freshest tonightPlays data (catches slate drift
   // since the modal opened — a pick can fall out of qualification between open and confirm). ──
-  if ((play.dataConfidence ?? 0) !== 10) hard.push('data confidence dropped below 10');
-  if (play.dcQualified !== true) hard.push('no longer dc-qualified');
+  if (play.dcQualified !== true) hard.push('no longer dc-qualified (stale market or player out)');
   if ((play.edge ?? 0) < EDGE_GATE) hard.push(`edge ${play.edge ?? '—'}% under ${EDGE_GATE}% gate`);
 
   // ── HARD: structural placeability ──
