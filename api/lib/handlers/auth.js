@@ -759,11 +759,12 @@ UNION ALL SELECT * FROM by_cat_band`;
       shadow_plays: null,
     });
 
-    const [totals, byDate, byCategory, dcDist] = await Promise.all([
+    const [totals, byDate, byCategory, dcDist, unresolvedByCategory] = await Promise.all([
       neonQuery("SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE dc_qualified) as qualified, COUNT(*) FILTER (WHERE resolved) as resolved FROM shadow_plays", [], env),
       neonQuery("SELECT snapshot_date, COUNT(*) as n FROM shadow_plays GROUP BY 1 ORDER BY 1 DESC LIMIT 7", [], env),
       neonQuery("SELECT sport, COALESCE(stat, game_type, '?') as category, COUNT(*) as n, COUNT(*) FILTER (WHERE dc_qualified) as qualified FROM shadow_plays GROUP BY 1, 2 ORDER BY n DESC LIMIT 20", [], env),
       neonQuery("SELECT dc, COUNT(*) as n FROM shadow_plays GROUP BY 1 ORDER BY 1 DESC NULLS LAST", [], env),
+      neonQuery("SELECT sport, COALESCE(stat, game_type, '?') as category, snapshot_date::date as snapshot_date, COUNT(*) as n FROM shadow_plays WHERE NOT resolved GROUP BY 1, 2, 3 ORDER BY snapshot_date DESC, n DESC LIMIT 30", [], env),
     ]);
 
     return jsonResponse({
@@ -777,6 +778,7 @@ UNION ALL SELECT * FROM by_cat_band`;
         byDate,
         byCategory,
         dcDist,
+        unresolvedByCategory,
       },
     });
   }
