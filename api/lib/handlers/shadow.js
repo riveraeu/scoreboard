@@ -407,6 +407,47 @@ async function handleShadowResolver({ path, request, env }) {
     }));
   }
 
+  // Third pass: rows where game_date AND game_time were both null get effectiveDate=snapshot_date,
+  // which may be a day early when the game is actually the next day (Kalshi markets open before
+  // the ESPN schedule publishes for the following day). Retry with snapshot_date+1 and +2 for
+  // these rows when the primary lookup is still unknown.
+  const nullDateRows = rows.filter(r => !r.game_date && !r.game_time);
+  if (nullDateRows.length > 0) {
+    const offsetByDate = new Map(); // offsetDate → Set<baseKey>
+    for (const row of nullDateRows) {
+      const { rawKey, effectiveDate } = rowToKey.get(row.id);
+      const primary = liveByKey.get(`${rawKey}|${effectiveDate}`);
+      if (primary && primary.state !== "unknown") continue; // already resolved
+      const baseKey = rawKey.includes("@") ? rawKey.slice(0, rawKey.indexOf("@")) : rawKey;
+      const base = new Date(effectiveDate);
+      for (const deltaDays of [1, 2]) {
+        const d = new Date(base);
+        d.setUTCDate(d.getUTCDate() + deltaDays);
+        const offsetDate = d.toISOString().slice(0, 10);
+        if (offsetDate >= today) continue; // don't look up future dates
+        if (liveByKey.has(`${baseKey}|${offsetDate}`)) continue;
+        if (!offsetByDate.has(offsetDate)) offsetByDate.set(offsetDate, new Set());
+        offsetByDate.get(offsetDate).add(baseKey);
+      }
+    }
+    if (offsetByDate.size > 0) {
+      await Promise.all([...offsetByDate.entries()].map(async ([game_date, keys]) => {
+        const gamesParam = [...keys].join(",");
+        try {
+          const res = await fetch(`${origin}/api/live?games=${encodeURIComponent(gamesParam)}&date=${game_date}`, {
+            headers: { "User-Agent": "shadow-resolver/1.0" },
+            signal: AbortSignal.timeout(10_000),
+          });
+          if (!res.ok) return;
+          const data = await res.json();
+          for (const [k, v] of Object.entries(data)) {
+            liveByKey.set(`${k}|${game_date}`, v);
+          }
+        } catch {}
+      }));
+    }
+  }
+
   // Resolve each row.
   const updates = [];
   let skipped = 0;
@@ -421,6 +462,19 @@ async function handleShadowResolver({ path, request, env }) {
       if (atIdx !== -1) {
         const baseKey = rawKey.slice(0, atIdx);
         game = liveByKey.get(`${baseKey}|${effectiveDate}`) ?? game;
+      }
+    }
+    // Third-pass fallback: for null-date rows (no game_date or game_time), the effective date
+    // may be a day early. Try offset dates +1 and +2 using the base key.
+    if ((!game || game.state === "unknown") && !row.game_date && !row.game_time) {
+      const baseKey = rawKey.includes("@") ? rawKey.slice(0, rawKey.indexOf("@")) : rawKey;
+      const base = new Date(effectiveDate);
+      for (const deltaDays of [1, 2]) {
+        const d = new Date(base);
+        d.setUTCDate(d.getUTCDate() + deltaDays);
+        const offsetDate = d.toISOString().slice(0, 10);
+        const candidate = liveByKey.get(`${baseKey}|${offsetDate}`);
+        if (candidate && candidate.state !== "unknown") { game = candidate; break; }
       }
     }
     if (!game || game.state === "unknown") { noData++; continue; } // game not found in ESPN — leave unresolved
