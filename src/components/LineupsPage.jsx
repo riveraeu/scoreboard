@@ -228,7 +228,6 @@ export default function LineupsPage({
   activeDayTab,
   setActiveDayTab,
   placeAllCountByDay = {},
-  placeAllCountByGame = {},
 }) {
   const [expandedPlays, setExpandedPlays] = React.useState(new Set());
   const [notifPerm, setNotifPerm] = React.useState(() =>
@@ -344,7 +343,7 @@ export default function LineupsPage({
     <div style={{ display: 'flex', gap: 0, overflowX: 'auto', flex: isMobile ? '1 1 auto' : '0 0 auto', scrollbarWidth: 'none' }}>
       {dayTabs.map(dateStr => {
         const active = activeDayTab === dateStr;
-        const count = authEmail ? (placeAllCountByDay[dateStr] ?? 0) : (qualifiedByDay[dateStr] ?? 0);
+        const count = qualifiedByDay[dateStr] ?? 0;
         const tracked = trackedByDay[dateStr] ?? 0;
         return (
           <button
@@ -511,14 +510,7 @@ export default function LineupsPage({
                 // trackedIds Set built from activePicks (settled picks excluded). Synth plays are
                 // already filtered out of the badge count inside MatchupCard via _realPlays.
                 const _gPlayTrackedCount = gPlays.filter(gp => !gp._synthFromTracked && trackedIds.has(trackIdFor(gp))).length;
-                // Green badge: when logged in, use placeAllCountByGame (same source as tab badge
-                // and Place All modal) so all three counts always agree.
-                const _gameKey = authEmail
-                  ? `${game.sport}|${[game.homeTeam, game.awayTeam].sort().join('|')}|${game.gameDate ?? ''}`
-                  : null;
-                const _gPlayUntrackedBadge = _gameKey != null
-                  ? (placeAllCountByGame[_gameKey] ?? 0)
-                  : gPlays.filter(gp => !gp._synthFromTracked && !trackedIds.has(trackIdFor(gp))).length;
+                const _gPlayUntrackedBadge = gPlays.filter(gp => !gp._synthFromTracked && !trackedIds.has(trackIdFor(gp))).length;
                 return (
                   <MatchupCard
                     key={`${sport}|${game.homeTeam}|${game.awayTeam}|${game.gameDate}|${i}`}
@@ -532,7 +524,6 @@ export default function LineupsPage({
                     navigateToTeam={navigateToTeam}
                     gamePlays={gPlays}
                     gamePlaysTrackedCount={_gPlayTrackedCount}
-                    gamePlaysUntrackedBadge={_gPlayUntrackedBadge}
                     allTonightPlays={allTonightPlays}
                     trackedPlays={trackedPlays}
                     trackPlay={trackPlay}

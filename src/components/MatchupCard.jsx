@@ -108,7 +108,7 @@ function fmtSeries(summary) {
 
 function MatchupCard({
   game, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta, navigateToPlayer, navigateToTeam,
-  gamePlays, gamePlaysTrackedCount = 0, gamePlaysUntrackedBadge,
+  gamePlays, gamePlaysTrackedCount = 0,
   allTonightPlays, trackedPlays, trackPlay, untrackPlay,
   navigateToPlay, navigateToModel, expandedPlays, setExpandedPlays, openPicksDrawer,
 }) {
@@ -235,9 +235,7 @@ function MatchupCard({
   // misses. The count covers active (unresolved) tracked picks on this card.
   const trackedCount = gamePlaysTrackedCount;
   const allTracked = totalPlays > 0 && trackedCount === totalPlays;
-  // Green badge: use the Kalshi-filtered count from LineupsPage when provided (matches tab +
-  // Place All), otherwise fall back to all untracked plays.
-  const untrackedBadge = gamePlaysUntrackedBadge ?? (totalPlays - trackedCount);
+  const untrackedBadge = totalPlays - trackedCount;
 
   function onPlayBadgeClick(e) {
     e.stopPropagation();
