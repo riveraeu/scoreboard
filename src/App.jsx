@@ -147,12 +147,9 @@ function App() {
   // penalties were anti-correlated with ROI — fallback paths regress toward the mean and produce
   // better-calibrated outputs. dcQualified now means dc≥7 (only kalshiStale/playerOut fail).
   // Mirrors passesGate in LineupsPage; keep these in sync.
-  // Also requires kalshiTicker so notifications only fire for plays that will
-  // appear in the UI (playsForGame hides non-placeable plays for logged-in users).
   const _qualifiedFilter = React.useCallback((p) => {
     if (p._altLineDemoted === true) return false;
     if (p.dcQualified !== true || (p.edge ?? 0) < EDGE_GATE) return false;
-    if (!p.kalshiTicker) return false;
     return passesCategoryGate(p);
   }, []);
   const {

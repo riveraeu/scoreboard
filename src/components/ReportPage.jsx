@@ -1,5 +1,5 @@
 import React from 'react';
-import { SPORT_KEY, TEAM_DB } from '../lib/constants.js';
+import { SPORT_KEY, TEAM_DB, passesCategoryGate } from '../lib/constants.js';
 import Tip from './Tip.jsx';
 
 const _teamShort = (abbr, sport) => {
@@ -1194,7 +1194,7 @@ function ReportPage({
   // Build filtered + grouped market data for the visible play type
   const marketGroups = React.useMemo(() => {
     if (!reportData || reportData.error) return [];
-    const _isQ = (p) => p.dcQualified === true && (p.edge ?? 0) >= 5;
+    const _isQ = (p) => p.dcQualified === true && (p.edge ?? 0) >= 5 && passesCategoryGate(p);
     const plays = (reportData.plays || []).map(p => ({ ...p, qualified: _isQ(p) }));
     const dropped = (reportData.dropped || []).map(p => ({ ...p, qualified: false }));
     const filtered = [...plays, ...dropped].filter(m => m.sport === sport && playType.statKeys.includes(m.stat));
