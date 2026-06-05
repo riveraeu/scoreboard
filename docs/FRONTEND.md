@@ -116,3 +116,31 @@ Play-card and player-card narrative text colors **must map to the play type's 5 
 **Always gray** (non-SimScore decoration): batting spot, pitcher avgPitches/start, NHL shots-against adjustment, NBA/WNBA pace adjustment (applied to sim but not scored), game-total / team-total model-projected expected runs/pts (truePct already conveys the result; the projection is internal). Penalty chips (back-to-back red, blowout-risk red) stay red as warnings, not measurements.
 
 If you add a new metric to the explanation text, ask: is this stat directly assigned points by the SimScore engine for this play type? If no, render it gray. If yes, color it with the tier that matches the points awarded (2pt = green, 1pt = yellow, 0pt = red).
+
+---
+
+## Shadow Calibration Tab
+
+Shadow tab in ReportPage renders `ShadowCalibModule` — category summary (N deduped/N raw / Hit% / ROI / Status) with click-to-expand band detail (55–60 through 95+). Since filter (30d/60d/All) re-fetches `/api/auth/shadow-calibration?bestThreshold=true` (always deduped: one prediction per player/matchup per group). Sport pills filter categories.
+
+`ACTIVE_CATS` Set inside `ShadowCalibModule` mirrors `passesCategoryGate()` in `src/lib/constants.js` — **keep in sync when promoting a category**. Status labels: Active (in gate) / Building (n≥50 ROI>0) / Losing (n≥30 ROI≤0) / Too few.
+
+**Correlation analysis** (expandable, lazy-load): same-game pairwise φ table + alt-line unanimity table from `/api/auth/shadow-analysis`; auto-fetches when shadow tab opens.
+
+---
+
+## Spread alt-line dedup + category gate display logic (2026-06-05)
+
+`passesGate` (LineupsPage.jsx) and `_qualifiedFilter` (App.jsx) apply: `_altLineDemoted && !passesCategoryGate(p) → false`. Demoted plays that **pass** the category gate are shown. Opposite-side truePcts are complementary (~sum to 100%), so both sides of the same line can never show simultaneously (one side ≥80% forces the other ≤20%). Market Report symptom: bold play visible but absent from LineupsPage card → the dedup winner fails the category gate, allowing the demoted loser through.
+
+---
+
+## `/api/live` doubleheader disambiguation
+
+Wire format: `sport:t1:t2@gameTimeISO`. Client appends `@${pick.gameTime}` when present. Server filters scoreboard events by `ev.date.slice(0,16) === gameTime.slice(0,16)`. No fallback when gameTime is supplied but doesn't match — would reintroduce the game-1/game-2 settlement bug.
+
+---
+
+## MLB pitchers per-game (`mlbMeta.pitchersByGame`)
+
+Keyed `${team}|${gameKey}` (ESPN-style ISO, no seconds). `MatchupCard.featureFor` reads this first, falls back to per-team `pitchers[abbr]` map. Without the per-game map, both DH cards show the same pitcher.

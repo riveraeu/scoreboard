@@ -508,3 +508,31 @@ Strikeout truePct is enforced via:
 2. Post-loop sweep re-derives truePct for every threshold from `pitcherKDistCache` distribution
 3. Frontend `_rawTruePctMap` walks highest→lowest tracking running max across API thresholds as safety net (fallback values excluded so noisy fallbacks can't lift API values)
 4. Frontend cap pass: walks low→high, and any fallback threshold above an API anchor is capped at the anchor's truePct (P(X≥t) cannot exceed P(X≥t') for t > t'). Needed because the player card hits `/api/kalshi` directly — bypasses the [67,91] gate — so thresholds outside the band render with `(seasonHitRate + softPct) / 2` fallback that can otherwise exceed the in-band API anchor.
+
+---
+
+## Calibration Filter Cutoffs & Behavioral Gotchas
+
+Quick reference for calibration audits. Filter data before each cutoff date when the modeling change affects the surface.
+
+**NBA/WNBA spread model-vs-market divergence gate (2026-06-01)**: `dc.js` adds `spreadModelMarketDivergent` (−1 dc) when `|homeLambda − awayLambda − homeMarketMargin| > 10` for NBA/WNBA spread plays (full-game and half-game). `homeMarketMargin = pickTeam===homeTeam ? −pickLine : pickLine`. Fires when the OffRtg/DefRtg model diverges >10 pts from the Kalshi market spread — signals the model missed something (injuries, form, extreme mismatch). Filter NBA/WNBA spread calibration `trackedAt < 2026-06-01`.
+
+**NBA/WNBA injury OffRtg shrink (filter cutoffs)**: piecewise tiers (≤20%×0.15, 20-35%×0.22, 35-50%×0.30, >50%×0.35, floor 0.70) with MPG-weighted USG (`avgMin/48`). Filter `trackedAt < 2026-05-30` (weighting fix), `< 2026-05-31` (dc heavy-injury threshold: was `>= 0.30` bug that fired on any injury; fixed to `>= 30` on the 0–100 scale).
+
+**Regime-aware lambda blend (filter cutoffs)**: `< 2026-05-21` NBA/WNBA/NHL total+teamTotal, `< 2026-05-25` MLB total/ML/spread, `< 2026-05-27` MLB teamTotal.
+
+**MLB strikeouts between-game form variance (2026-06-01)**: `K_FORM_SIGMA = 0.22` in `simulateKsDist`. The embedded copy in `simulate.test.jxa.js` **must stay in sync** with any σ change — run `osascript -l JavaScript api/lib/simulate.test.jxa.js` after editing. Filter `mlb|strikeouts` calibration `trackedAt < 2026-06-01`.
+
+**MLB teamRuns NegBin fix (2026-06-02)**: `simulateTeamTotalDist` accepts optional `r` param (null → Poisson for NHL backward compat); `game-totals.js` passes `_mlbDispR`. Filter `mlb|teamRuns` calibration `trackedAt < 2026-06-02`.
+
+**MLB teamRuns market-line anchor + NegBin season blend (2026-06-03)**: `_anchorTeamLam(lam)` pulls final λ 25% toward `gameOuLine/2` (gated to lines ∈ [5,14]); season blend cap 1.0→0.50 (decoupled from `_TT_IMPLIED_CAP.mlb`=1.0 used by dc.js); season blend uses NegBin. Filter `mlb|teamRuns` calibration `trackedAt < 2026-06-03`.
+
+**MLB HRR sigmoid cap (2026-06-02)**: `pct ≤ 72 ? pct : 72 + 3*(1 - exp(-0.5*(pct-72)))` applied after `_propBlend` in `props.js` and after `hrrLogitTruePct()` in `scripts/backtest/mlb/simulate.js`. Compresses above 72% toward a 75% ceiling. Filter `mlb|hrr` calibration `trackedAt < 2026-06-02`.
+
+**MLB totalRuns market-line anchor + tighter blend clamp (2026-06-01)**: game-total only (teamRuns/F5 untouched). (1) seasonHitRate blend clamp `_cap` hardcoded 0.75 (dc.js still reads `_GT_IMPLIED_CAP.mlb`=1.5 — same plays qualify/drop, only blend softens). (2) `_anchorTotalLam(λ)` pulls 25% toward `gameOuLine` — `_mlbMlContext` keeps raw λ so ML/spread surfaces are untouched. Filter MLB totalRuns calibration `trackedAt < 2026-06-01`.
+
+**MLB lineup-aware lambda (2026-05-18)**: hitter-out tier (0/1/2/3+ → ×1.0/0.98/0.96/0.93). Filter `trackedAt < 2026-05-18` for total/teamTotal/ML/spread calibration.
+
+**Orderbook-depth blend (2026-05-31)**: all surfaces — blends `kalshiPct`/`noKalshiPct` through the cached orderbook depth before any edge computation. Filter totals/spread/teamTotal by `trackedAt ≥ 2026-05-31`.
+
+**Kalshi UNDER pricing (2026-05-15)**: filter UNDER calibration by `trackedAt ≥ 2026-05-15`.

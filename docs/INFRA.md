@@ -91,3 +91,77 @@ osascript -l JavaScript api/lib/simulate.test.jxa.js
 node --test api/lib/simulate.test.js
 ```
 Both files kept in sync. Coverage: `kDistPct` monotonicity, `simulateKsDist` validity, `buildNbaStatDist`, API monotonicity sweep, `allTonightPlays` player card fix, frontend `_rawTruePctMap` enforcement, NBA simScore, report filter logic, `_parseWind` ESPN string parsing, `weatherFactor` formula. 55 tests total.
+
+---
+
+## Route Contracts
+
+### `/api/tonight`
+Main play generation. `?debug=1` returns `dropped[]`, `preDropped[]`, and debug fields. `?bust=1` bypasses all caches. 2-min polling loop in `App.jsx` (`POLL_MS=120_000`), paused when tab hidden. Manual ↻ button is the only `?bust=1` path.
+
+### `/api/kalshi-order`
+`POST`, authenticated (bearer JWT). Body: `{ ticker, side: "yes"|"no", price: int (1–99), count: int }`. Signs via **RSA-PSS / SHA-256 / saltLength=32** with `KALSHI_API_KEY_ID` + `KALSHI_PRIVATE_KEY`. Signature message: `timestamp_ms + "POST" + "/trade-api/v2/portfolio/orders"` (ms timestamp, path only, no body). Supports PKCS#1 and PKCS#8 PEM. Returns full Kalshi `order`; frontend reads `taker_fill_count`/`taker_fill_cost`, stamps pick with real fill (`kalshiCount`/`kalshiAvgCents`/`kalshiRestingCount`).
+
+**"Place All" batch (⚡ button in LineupsPage toolbar):** sequential POSTs (await each). Candidate set = qualified minus tracked minus started minus null-sizing. Sizing (`_placeAllSizing` in App.jsx): ⅛-Kelly on bet side (UNDER uses `noTruePct`+`noKalshiPct`), $500 cap / $30 fallback. **Flow A validation:** `validateCandidate(play, sizing)` in `src/lib/placeValidation.js` → `{ hard, soft }`. Hard failures exclude (✗ greyed); soft annotate (⚠). `placeAllPlaceable` (hard.length===0) is the **single source of truth for all four count surfaces** (toolbar badge, tab badges, card badges, modal). Hard checks: dcQualified+edge≥5, ticker present, count≥1, price in range, distinct teams. Soft: slippage ≥3¢ over `rawKalshiPct`/`rawNoKalshiPct` (emitted by tonight.js as pre-blend top-of-book). `placeAllPlaceableIds` + `placeAllCountByDay` passed to LineupsPage; 5th param to `playsForGame` filters card display. `activeDayTab` lifted to App.jsx (shared by modal + page). **Today-only checkbox** in modal (default unchecked). **Prop dedup:** highest-edge per `playerId|sport|stat`. **Phi-scaled sizing:** `placeAllGrouped` groups by game key, `avgPosPhi` from module-level `_SAME_GAME_PHI` Map (App.jsx, φ from shadow analysis), `effectivePlays = 1 + (n-1)×(1-avgPosPhi)`, proportionally rescales counts. Update `_SAME_GAME_PHI` when shadow-analysis reports new strong pairs (n≥50).
+
+### `/api/kalshi-balance`
+`GET`, authenticated. Returns `{ cashCents, positionsCents, balanceCents, balanceDollars }`. `balanceDollars` = cash + open-position cost basis (sum of `market_exposure_dollars` over unsettled positions). Two signed RSA-PSS GETs: `/trade-api/v2/portfolio/balance` then positions endpoint. Positions call degrades to `positionsCents=0` on failure. Cost basis, not mark-to-market. No caching.
+
+### `/api/kalshi-snapshot`
+Cron-only (`*/2 * * * *`). **Two-phase write:** (1) fetch all series → write snaps immediately with `_meta.depthPending:true`; (2) fetch orderbook depth for in-window markets best-effort under 21s wall-clock deadline (`DEPTH_DEADLINE_MS`, cap `DEPTH_FETCH_CAP=90`, volume-prioritized) → re-write only touched series. Snaps always land regardless of the depth phase. `_meta` carries `depthOk`/`depthFail`/`depthTargets`/`durationMs`. Ticker list derived from `[...Object.keys(SERIES_CONFIG), ...CRON_ONLY_TICKERS]` in `api/lib/series-config.js`.
+
+### `/api/auth/calibration`
+Returns `overall`, `byCategory`, `byCategoryDetail`, `kStrikeouts` — tracked pick outcome stats.
+
+### `/api/auth/shadow-calibration`
+`GET`, bearer JWT or `?adminKey=`. Queries Neon `shadow_plays`. Optional filters: `?since=YYYY-MM-DD` (default 30d), `?bestThreshold=true` (dedup to one play per group), `?dcQualified=true`, `?minDc=N`, `?sport=mlb`, `?thresholdRank=1`, `?seasonType=2|3`. Returns `overall`, `byCategory` (with `nRaw`/`avgGroupSize`), `byCategoryDetail` plus `roi` and `avgEdge` per cell. Bands 55–60 through 95+ (bet-side probability — UNDERs flip to `1 − model_true_pct`).
+
+### `/api/auth/shadow-analysis`
+`GET`, bearer JWT or `Authorization: Bearer $ADMIN_KEY`. Five analyses on `shadow_plays` (since=30d default): (1) `thresholdRankRoi`; (2) `intraGroupCorr` — alt-line group unanimity; (3) `sameGamePairs` — pairwise φ (threshold_rank=1, n≥10); (4) `concentration`; (5) `clvAnalysis` — per-category CLV, edge at snap vs close, hit rate. Requires `price_pre_at IS NOT NULL` rows.
+
+### `/api/auth/shadow-stats`
+`GET`, admin bearer. Row counts by date/category/dc + `unresolvedByCategory`. `?trigger=1` also runs shadow-snapshot inline; `?resolvetrigger=1` runs shadow-resolver.
+
+### `/api/auth/clear-kalshi-stale`
+`POST ?ticker=KXMLBTEAMTOTAL` with `Authorization: Bearer <ADMIN_KEY>`. Deletes `kalshi:stale:{ticker}`. Does **not** affect `kalshi:snap:{ticker}`.
+
+### `/api/shadow-snapshot`
+Cron-only (`0 22 * * *` UTC = 3pm PT). Fetches `/api/tonight?debug=1`, combines `plays + dropped`, annotates `group_id`/`threshold_rank` (rank 1 = closest to 50% truePct), batch-upserts to Neon `shadow_plays`. Stores `home_team`/`away_team` as `homeTeam || playerTeam || gameTeam1`. **Full Kalshi price range:** `dropped` includes game/team total OVERs and ML/spread outside [67,91] (`reason: "kalshi_out_of_window"`). Decimal price columns: `kalshi_yes_price = kalshiPct/100`, `kalshi_no_price = noKalshiPct/100`.
+
+### `/api/shadow-resolver`
+Cron-only (`0 9 * * *` UTC = 2am PT). Queries Neon for unresolved rows from prior days, self-calls `/api/live` per distinct game_date, applies resolution logic (props, totals, teamTotal, ML, spread, F5, NBA halves), batch-updates `resolved/won/actual_value/resolved_at`. **4-pass player name lookup:** exact → diacritic-strip → period/suffix-strip (C.J.→CJ, Jr.) → Levenshtein ≤2. **effectiveDate resolution order:** `game_date` → PT date from `game_time` ISO → `snapshot_date`. **Third pass:** for rows where both are null, retries team lookup against `snapshot_date+1` through `+5`.
+
+### `/api/shadow-pregame-snap`
+Cron-only (`0 3 * * *` UTC = 7pm PT). Fetches `/api/tonight?debug=1`, matches prices to today's `shadow_plays` by `shadowId`, batch-upserts `kalshi_yes_price_pre`/`kalshi_no_price_pre`/`price_pre_at`. CLV = bet-side `price_pre - price_snap`; positive = market confirmed the model direction.
+
+---
+
+## Data Plumbing Gotchas
+
+**gameTimes lookup chain** (in play loop): `sport:team:gameDate` → `sport:team:tomorrowISOStr` → bare `sport:team`.
+
+**`_mlbMlContext` null-gameDate fallback (2026-05-29)**: KXMLBTOTAL tickers routinely have unparseable date segments. Context stored as `_mlbMlContext["HOME|AWAY|null"]`. All context lookups chain `?? _mlbMlContext["t1|t2|null"] ?? _mlbMlContext["t2|t1|null"]` fallback. Symptom if broken: F5/spread/ML plays absent; totalRuns plays present with `gameDate: null`.
+
+**Kalshi MLB postponed-ticker reattribution**: When a game is rained out Kalshi reuses the original ticker. After `sportByteam.mlb` hydrates, `_mlbNextGameByTeams` is built from `state === 'pre'` gameScores entries; `_reattrMlbGameDate` overwrites stale dates on market arrays. Resolved markets (extreme prices) are skipped to prevent yesterday's settled prices from being misattributed.
+
+**Closing-line snapshots** (`mlbClosingOdds` / `nbaClosingOdds` / etc.): ESPN returns empty `odds` once a game is in/post. Redis key per sport holds the last-seen pre-game line. `state==='pre'` writes; `state==='in'|'post'` overlays back. 36h TTL. If no snapshot exists for an in/post game, odds entries are **cleared** rather than shown (model-derived mid-game prices look like real lines but mislead).
+
+**`mlbMeta.gameOdds` vs `mlbMetaTomorrow.gameOdds`**: Today's odds from `parseGameOdds(sbData.events)`; tomorrow's from `parseGameOdds(sbData.eventsTomorrow)`. Both normalized through `MLB_ESPN_NORM`. `MatchupCard` selects by `game.gameDate` vs PT today.
+
+**Kalshi-derived MLB odds fallback**: ESPN doesn't post tomorrow's lines until close to first pitch. Already-fetched `KXMLBGAME`/`KXMLBTOTAL` arrays fill missing fields on `_mlbGameOdds`/`_mlbGameOddsTomorrow` only — ESPN stays authoritative when present.
+
+**`{sport}Meta.topPlayers[abbr]`**: `{ name, id, headshot, stats }` from ESPN scoreboard `competitions[].competitors[].leaders` by `parseTopPlayers` in `api/lib/utils.js`. NBA/WNBA: `RAT` leader; NHL: `Points` leader (derives G or A from secondary leaders when present).
+
+**byteam:mlb partial-cache trap**: MLB byteam hydrates several API calls in parallel and each `.catch(() => ({}))` silently. Short-TTL guard (60s) fires when any of `lineupSpotByName`, `pitcherAvgPitches`, `hitterOpsMap`, `pitcherH2HStarts` is empty. Symptom: ReportPage Market tab columns null; diff cached vs `?bust=1` to confirm.
+
+**Two-way players** (MLB strikeouts): ESPN gamelog defaults to batting stats. The play loop appends `&category=pitching` for K-market players. Separate cache keys (`gl:mlb242526pv1`, `gl:mlb2025p|`, `gl:mlb2026p|`) prevent batting/pitching collision. Without this, two-way players drop with `col_not_found`.
+
+**ESPN gamelog endpoint**: ESPN blocks server-side HTML fetches with AWS WAF. Use the JSON API (`site.web.api.espn.com/apis/common/v3/sports/{sport}/{league}/athletes/{id}/gamelog`) for ALL sports.
+
+**NBA lineup source chain**: (1) ESPN scoreboard → game summary boxscore starters (`lineupConfirmed:true`); (2) most recent **playoff** game first (`seasontype=3`), fallback to last regular-season `lastGameId`; (3) ESPN team roster. ESPN depth chart returns `{}` during playoffs — removed. Prefer playoff over RS — RS finals can have rested/bench starters.
+
+**MLB lineup** (`/api/team`): (1) MLB Stats API `hydrate=lineups,probables` today → `lineupConfirmed:true`; (2) most-recent posted lineup from past-10-day schedule → `lineupConfirmed:false`; (3) active roster fallback. Probable-pitcher entry is preserved across (2).
+
+**`mlbMeta.pitchers[abbr]` shape**: `{ name, id, era, wins, losses }`. `pitcherEra` is the two-step-regressed value (same as the lambda math uses), not raw season ERA. Sources merged in `api/[...path].js` ~line 4890: name/id/era from pitcherInfoByTeam → probables fallback.
+
+**NHL_ABBR_MAP**: NHL Stats API teamIds → abbreviations. **UTA (Utah Mammoth) = teamId 68** (rebranded 2025-26; old teamId 53 absent). New teams showing `—` need their teamId added.
