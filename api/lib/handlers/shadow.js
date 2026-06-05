@@ -3,7 +3,7 @@
 // Auth: CRON_SECRET (same pattern as kalshi-snapshot).
 // Cron: 0 22 * * * (3pm PT — after most lineup confirmations, before first pitch).
 
-import { neonQuery, neonBatchUpsert, neonBatchResolve, neonExec } from "../neon.js";
+import { neonQuery, neonBatchUpsert, neonBatchResolve, neonBatchPrePriceUpdate, neonExec } from "../neon.js";
 import { errorResponse, jsonResponse } from "../utils.js";
 
 const SHADOW_TABLE = "shadow_plays";
@@ -63,6 +63,13 @@ CREATE INDEX IF NOT EXISTS shadow_plays_group_idx ON ${SHADOW_TABLE} (group_id);
 const ADD_KALSHI_PRICE_COLS_SQL = `
 ALTER TABLE shadow_plays ADD COLUMN IF NOT EXISTS kalshi_yes_price NUMERIC;
 ALTER TABLE shadow_plays ADD COLUMN IF NOT EXISTS kalshi_no_price NUMERIC
+`;
+
+// Pre-game price columns for CLV / line-movement tracking.
+const ADD_PRE_PRICE_COLS_SQL = `
+ALTER TABLE shadow_plays ADD COLUMN IF NOT EXISTS kalshi_yes_price_pre NUMERIC;
+ALTER TABLE shadow_plays ADD COLUMN IF NOT EXISTS kalshi_no_price_pre NUMERIC;
+ALTER TABLE shadow_plays ADD COLUMN IF NOT EXISTS price_pre_at TIMESTAMPTZ
 `;
 
 // Stable deterministic ID for a play — unique per player/teams + stat/line + date.
@@ -490,9 +497,79 @@ async function handleShadowResolver({ path, request, env }) {
 
 // ── Dispatch ──────────────────────────────────────────────────────────────────
 
+// ── Shadow Pre-game Price Snap ────────────────────────────────────────────────
+// Cron: 0 3 * * * (7pm PT — ~4h after snapshot, within the typical betting window).
+// Fetches current Kalshi prices from the live cache and stamps them onto today's
+// shadow_plays rows, enabling CLV / line-movement analysis in shadow-analysis.
+
+async function handleShadowPregameSnap({ path, request, env }) {
+  if (path !== "shadow-pregame-snap") return null;
+
+  if (!env?.CRON_SECRET) return errorResponse("CRON_SECRET not set", 500);
+  const cronAuth = (request.headers.get("authorization") || "").replace(/^Bearer\s+/, "");
+  if (cronAuth !== env.CRON_SECRET) return errorResponse("Forbidden", 403);
+
+  if (!env?.POSTGRES_URL && !env?.NEON_DATABASE_URL) return errorResponse("POSTGRES_URL not set", 500);
+
+  const t0 = Date.now();
+  const snapshotDate = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+
+  await neonExec(ADD_PRE_PRICE_COLS_SQL, env);
+
+  // Get current Kalshi prices from the live /tonight cache (reuses 2-min snap, no external fetch).
+  const origin = new URL(request.url).origin;
+  const tonightResp = await fetch(`${origin}/api/tonight?debug=1`, {
+    headers: { "x-shadow-internal": "1" },
+  });
+  if (!tonightResp.ok) return errorResponse(`tonight fetch failed: ${tonightResp.status}`, 502);
+  const tonight = await tonightResp.json();
+
+  // Build priceMap: shadowId(play) → { yes, no } using same deterministic ID as snapshot.
+  const rawPlays = [...(tonight.plays || []), ...(tonight.dropped || [])];
+  const priceMap = new Map();
+  for (const p of rawPlays) {
+    if (p.kalshiPct == null && p.noKalshiPct == null) continue;
+    priceMap.set(shadowId(p), {
+      yes: p.kalshiPct  != null ? p.kalshiPct  / 100 : null,
+      no:  p.noKalshiPct != null ? p.noKalshiPct / 100 : null,
+    });
+  }
+
+  if (priceMap.size === 0) {
+    return jsonResponse({ ok: true, updated: 0, skipped: 0, durationMs: Date.now() - t0 });
+  }
+
+  // Fetch today's rows that haven't been stamped yet.
+  const rows = await neonQuery(
+    `SELECT id FROM shadow_plays WHERE snapshot_date = $1 AND price_pre_at IS NULL`,
+    [snapshotDate], env
+  ).catch(() => []);
+
+  let skipped = 0;
+  const updates = [];
+  for (const row of rows) {
+    const prices = priceMap.get(row.id);
+    if (!prices) { skipped++; continue; }
+    updates.push({ id: row.id, yes: prices.yes, no: prices.no });
+  }
+
+  await neonBatchPrePriceUpdate(updates, env);
+
+  return jsonResponse({
+    ok: true,
+    snapshotDate,
+    updated: updates.length,
+    skipped,
+    durationMs: Date.now() - t0,
+  });
+}
+
 export async function handleShadowRoutes({ path, request, env }) {
   const shadowResolverResp = await handleShadowResolver({ path, request, env });
   if (shadowResolverResp) return shadowResolverResp;
+
+  const pregameResp = await handleShadowPregameSnap({ path, request, env });
+  if (pregameResp) return pregameResp;
 
   if (path !== "shadow-snapshot") return null;
 

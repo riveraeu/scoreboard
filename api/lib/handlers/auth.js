@@ -931,13 +931,50 @@ UNION ALL SELECT * FROM by_cat_band`;
       ORDER BY n_plays
     `, [since], env);
 
-    let [thresholdRankRoi, intraGroupCorr, sameGamePairs, concentration] = await Promise.all([q1, q2, q3, q4]).catch(e => {
+    // Q5: CLV (closing line value) — per-category avg line movement between 3pm snapshot
+    // and 7pm pre-game stamp. Positive clv_pct = market moved toward model prediction.
+    // Only includes rows with price_pre_at populated (post-pregame-snap cron).
+    const q5 = neonQuery(`
+      SELECT
+        sport,
+        COALESCE(stat, game_type) AS category,
+        COUNT(*) AS n,
+        ROUND(AVG(
+          CASE WHEN direction = 'under'
+            THEN (kalshi_no_price_pre  - kalshi_no_price)  * 100
+            ELSE (kalshi_yes_price_pre - kalshi_yes_price) * 100
+          END
+        ), 2) AS avg_clv_pct,
+        ROUND(AVG(
+          CASE WHEN direction = 'under'
+            THEN (model_true_pct / 100.0 - 1 + kalshi_no_price_pre)  * -100
+            ELSE (model_true_pct / 100.0   - kalshi_yes_price_pre)   * 100
+          END
+        ), 2) AS avg_edge_at_close,
+        ROUND(AVG(
+          CASE WHEN direction = 'under'
+            THEN (model_true_pct / 100.0 - 1 + kalshi_no_price)  * -100
+            ELSE (model_true_pct / 100.0   - kalshi_yes_price)   * 100
+          END
+        ), 2) AS avg_edge_at_snap,
+        ROUND(AVG(won::int) * 100, 1) AS hit_rate_pct
+      FROM shadow_plays
+      WHERE resolved AND won IS NOT NULL
+        AND snapshot_date >= $1
+        AND threshold_rank = 1
+        AND kalshi_yes_price_pre IS NOT NULL
+      GROUP BY sport, COALESCE(stat, game_type)
+      HAVING COUNT(*) >= 5
+      ORDER BY n DESC
+    `, [since], env);
+
+    let [thresholdRankRoi, intraGroupCorr, sameGamePairs, concentration, clvAnalysis] = await Promise.all([q1, q2, q3, q4, q5]).catch(e => {
       return [{ error: e.message }];
     });
 
     if (thresholdRankRoi?.error) return errorResponse(`Neon query failed: ${thresholdRankRoi.error}`, 500);
 
-    return jsonResponse({ since, thresholdRankRoi, intraGroupCorr, sameGamePairs, concentration });
+    return jsonResponse({ since, thresholdRankRoi, intraGroupCorr, sameGamePairs, concentration, clvAnalysis });
   }
 
   return null;

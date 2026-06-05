@@ -70,6 +70,34 @@ export async function neonBatchResolve(updates, env, chunkSize = 100) {
   }
 }
 
+// Batch pre-game price update. Updates kalshi_yes_price_pre / kalshi_no_price_pre / price_pre_at
+// only on rows that haven't been stamped yet (price_pre_at IS NULL guard in the WHERE).
+export async function neonBatchPrePriceUpdate(updates, env, chunkSize = 100) {
+  if (!updates.length) return;
+  const connStr = _getWriteConnStr(env);
+  if (!connStr) throw new Error("No Neon write connection string available");
+  const sql = _neon(connStr);
+
+  const chunks = [];
+  for (let i = 0; i < updates.length; i += chunkSize) chunks.push(updates.slice(i, i + chunkSize));
+
+  for (const chunk of chunks) {
+    const placeholders = chunk.map((_, ri) =>
+      `($${ri * 3 + 1}, $${ri * 3 + 2}::numeric, $${ri * 3 + 3}::numeric)`
+    ).join(", ");
+    const values = chunk.flatMap(u => [u.id, u.yes ?? null, u.no ?? null]);
+    await sql.query(
+      `UPDATE shadow_plays AS t
+       SET kalshi_yes_price_pre = v.yes_price,
+           kalshi_no_price_pre  = v.no_price,
+           price_pre_at         = NOW()
+       FROM (VALUES ${placeholders}) AS v(id, yes_price, no_price)
+       WHERE t.id = v.id AND t.price_pre_at IS NULL`,
+      values
+    );
+  }
+}
+
 // Batch-insert helper. Builds a single parameterized INSERT for up to `chunkSize` rows.
 // Uses ON CONFLICT DO NOTHING for idempotent re-runs.
 export async function neonBatchUpsert(table, columns, rows, env, chunkSize = 100) {

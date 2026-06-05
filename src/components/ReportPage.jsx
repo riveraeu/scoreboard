@@ -1047,6 +1047,41 @@ function ShadowCalibModule({ sport, statKeys, shadowCalibData, shadowCalibLoadin
                     </table>
                   </div>
                 )}
+                {(() => {
+                  const clv = (shadowAnalysisData?.clvAnalysis || []).filter(r => !sport || r.sport === sport);
+                  if (!clv.length) return null;
+                  return (
+                    <div style={{marginTop:8}}>
+                      <div style={{color:"#8b949e",fontSize:11,fontWeight:600,marginBottom:4}}>
+                        CLV / line movement (3pm → 7pm PT · + = market confirmed model)
+                      </div>
+                      <table style={{width:"100%",borderCollapse:"collapse",background:"#0d1117",borderRadius:8,overflow:"hidden",border:"1px solid #21262d"}}>
+                        <thead><tr>{["Category","N","CLV","Edge@snap","Edge@close","Hit%"].map(h=><th key={h} style={thCalib}>{h}</th>)}</tr></thead>
+                        <tbody>
+                          {clv.map((r,i) => {
+                            const clvV = parseFloat(r.avg_clv_pct ?? 0);
+                            const clvC = clvV >= 1 ? "#3fb950" : clvV <= -1 ? "#f78166" : "#e3b341";
+                            const edgeSnap = parseFloat(r.avg_edge_at_snap ?? 0);
+                            const edgeClose = parseFloat(r.avg_edge_at_close ?? 0);
+                            const edgeDrift = edgeClose - edgeSnap;
+                            const driftC = edgeDrift >= 0 ? "#3fb950" : "#f78166";
+                            return <tr key={i}>
+                              <td style={{...tdCalib,color:"#c9d1d9"}}>{r.sport}|{r.category}</td>
+                              <td style={tdCalib}>{r.n}</td>
+                              <td style={{...tdCalib,color:clvC,fontWeight:600}}>{clvV>=0?`+${clvV.toFixed(1)}`:clvV.toFixed(1)}%</td>
+                              <td style={{...tdCalib,color:edgeSnap>=5?"#3fb950":edgeSnap>=2?"#e3b341":"#f78166"}}>{edgeSnap.toFixed(1)}%</td>
+                              <td style={{...tdCalib,color:edgeClose>=5?"#3fb950":edgeClose>=2?"#e3b341":"#f78166"}}>
+                                {edgeClose.toFixed(1)}%
+                                {Math.abs(edgeDrift)>=0.5&&<span style={{color:driftC,fontSize:9,marginLeft:3}}>{edgeDrift>=0?'+':''}{edgeDrift.toFixed(1)}</span>}
+                              </td>
+                              <td style={{...tdCalib,color:parseFloat(r.hit_rate_pct??0)>=70?"#3fb950":parseFloat(r.hit_rate_pct??0)>=60?"#e3b341":"#f78166",fontWeight:600}}>{r.hit_rate_pct??'—'}%</td>
+                            </tr>;
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })()}
               </div>
             );
           })()}
