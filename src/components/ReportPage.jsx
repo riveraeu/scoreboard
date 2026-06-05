@@ -588,12 +588,12 @@ function MarketGroupSection({ group, reportSort, setReportSort, navigateToPlayer
 
   const _dirLabel = direction === "over" ? " — Over" : direction === "under" ? " — Under" : "";
 
+  const _isGameType = stat === "spread" || stat === "ml" || _isTotalsType;
   const xcols = [
     {k:"dc", l:"DC"},
     {k:"dcMkt", l:"Mkt"},
-    {k:"dcLineup", l:"Lineup"},
-    {k:"dcAvail", l:"Avail"},
-    ..._isTotalsType ? [{k:"dcDist", l:"Dist"}] : [],
+    ...(!_isGameType ? [{k:"dcLineup", l:"Lineup"}, {k:"dcAvail", l:"Avail"}] : []),
+    ...(_isTotalsType ? [{k:"dcDist", l:"Dist"}] : []),
   ];
   const DASH = <span style={{color:"#21262d"}}>—</span>;
   const _GROUP_NAME = { freshness: "Market quality", lineup: "Lineup", availability: "Availability", distance: "Model/market divergence" };
@@ -762,6 +762,7 @@ function MarketGroupSection({ group, reportSort, setReportSort, navigateToPlayer
         {_hdr("kalshi","Kalshi")}
         {_hdr("edge","Edge")}
         {xcols.map(c => <React.Fragment key={c.k}>{_hdr(c.k,c.l,c.flex?{flex:c.flex}:{})}</React.Fragment>)}
+        {_hdr("gate","Gate")}
         {!stat.startsWith("total") && !stat.startsWith("team") && _hdr("opp","Opp",{flex:_oppFlex})}
       </div>
       <div style={{background:"#0d1117",borderRadius:8,overflow:"hidden"}}>
@@ -802,6 +803,15 @@ function MarketGroupSection({ group, reportSort, setReportSort, navigateToPlayer
               {(() => { const _kp = m.direction === "under" ? (m.noKalshiPct ?? null) : (m.kalshiPct ?? null); return <div style={{flex:1,fontSize:11,textAlign:"right"}}><span style={{color:_kp != null ? "#c9d1d9" : "#484f58"}}>{_kp != null ? `${_kp}%` : "—"}</span></div>; })()}
               <div style={{flex:1,fontSize:11,textAlign:"right",color:edge!=null&&edge>=3?"#3fb950":edge!=null&&edge<0?"#f78166":"#8b949e"}}>{edge!=null?(edge>=0?`+${edge.toFixed(1)}`:`${edge.toFixed(1)}`)+"%" :"—"}</div>
               {xcols.map(c => <div key={c.k} style={{flex:c.flex??1,fontSize:11,textAlign:"right"}}>{xcell(m,c.k)}</div>)}
+              <div style={{flex:1,fontSize:10,textAlign:"right"}}>
+                {m.qualified ? null : (() => {
+                  const reasons = [];
+                  if (!m.dcQualified) reasons.push(<span key="dc" style={{color:"#f78166"}}>dc</span>);
+                  if ((m.edge ?? 0) < 5) reasons.push(<span key="edge" style={{color:"#e3b341"}}>edge</span>);
+                  if (!passesCategoryGate(m)) reasons.push(<span key="cat" style={{color:"#8b949e"}}>cat</span>);
+                  return reasons.length === 0 ? null : reasons.reduce((acc, r, i) => i === 0 ? [r] : [...acc, <span key={`s${i}`} style={{color:"#30363d"}}> · </span>, r], []);
+                })()}
+              </div>
               {!isTotal && !isTeamTotal && !isMl && !isSpread && <div style={{flex:_oppFlex,fontSize:10,textAlign:"right",whiteSpace:"nowrap"}}>
                 {(() => { const pn = m.pitcherName || m.hitterPitcherName; const parts = pn ? pn.trim().split(" ") : []; const shortPn = parts.length >= 2 ? `${parts[0][0]}. ${parts.slice(1).join(" ")}` : pn; return m.sport==="mlb" && m.stat!=="strikeouts" && pn
                   ? <><span style={{color:"#8b949e"}}>{shortPn}</span> <span style={{color:"#484f58"}}>({m.opponent})</span></>
