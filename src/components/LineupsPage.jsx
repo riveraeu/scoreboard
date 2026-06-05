@@ -227,7 +227,6 @@ export default function LineupsPage({
   onPlaceAll,
   activeDayTab,
   setActiveDayTab,
-  placeAllCountByDay = {},
 }) {
   const [expandedPlays, setExpandedPlays] = React.useState(new Set());
   const [notifPerm, setNotifPerm] = React.useState(() =>
@@ -293,9 +292,12 @@ export default function LineupsPage({
   // picks), minus tracked picks themselves, minus alt-line plays hidden because the user
   // tracked a different alt of the same dedup-group.
   const qualifiedByDay = React.useMemo(() => {
+    const nowMs = Date.now();
     const counts = {};
     for (const p of allTonightPlays || []) {
       if (!passesGate(p, trackedIds)) continue;
+      // Exclude plays whose game has already started — can't be bet.
+      if (p.gameTime && new Date(p.gameTime).getTime() <= nowMs) continue;
       const d = p.gameTime ? ptDate(p.gameTime) : p.gameDate;
       if (!d) continue;
       // Exclude tracked picks (they're counted by trackedByDay → gold badge).

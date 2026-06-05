@@ -235,7 +235,9 @@ function MatchupCard({
   // misses. The count covers active (unresolved) tracked picks on this card.
   const trackedCount = gamePlaysTrackedCount;
   const allTracked = totalPlays > 0 && trackedCount === totalPlays;
-  const untrackedBadge = totalPlays - trackedCount;
+  const gameStarted = gameState === 'in' || gameState === 'post'
+    || (game.gameTime != null && new Date(game.gameTime).getTime() <= Date.now());
+  const untrackedBadge = gameStarted ? 0 : (totalPlays - trackedCount);
 
   function onPlayBadgeClick(e) {
     e.stopPropagation();

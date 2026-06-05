@@ -276,17 +276,6 @@ function App() {
     () => placeAllCandidates.filter(c => c.validation.hard.length === 0),
     [placeAllCandidates]);
 
-  // Per-day count of placeable plays — drives the green day-tab badge so it matches the modal.
-  const placeAllCountByDay = React.useMemo(() => {
-    const counts = {};
-    const ptDate = (ts) => new Date(ts).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
-    for (const c of placeAllPlaceable) {
-      const p = c.play;
-      const d = p.gameTime ? ptDate(p.gameTime) : p.gameDate;
-      if (d) counts[d] = (counts[d] || 0) + 1;
-    }
-    return counts;
-  }, [placeAllPlaceable]);
 
   // Grouped view: same-game plays share one ⅛-Kelly slot scaled by avg pairwise phi.
   // effectivePlays = 1 + (n−1)×(1−avgPosPhi) → group_total = anchor×effectivePlays/n.
@@ -1755,7 +1744,6 @@ function App() {
           activeDayTab={activeDayTab}
           setActiveDayTab={setActiveDayTab}
           placeAllCount={placeAllPlaceable.length}
-          placeAllCountByDay={placeAllCountByDay}
           onPlaceAll={() => { setPlaceAllStatus(null); setPlaceAllTodayOnly(true); setShowPlaceAll(true); }}
         />
       )}
