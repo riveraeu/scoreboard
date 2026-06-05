@@ -120,8 +120,9 @@ function passesGate(p, trackedIds) {
   // Tracked picks always pass — keep visibility of the user's actual bet even if dedup
   // demoted it. Check this BEFORE the dedup filter so tracked alts survive.
   if (trackedIds && trackedIds.has(trackIdFor(p))) return true;
-  // Server demoted this alt line in favor of a higher-edge alt — skip on home page.
-  if (p._altLineDemoted === true) return false;
+  // Server demoted this play in favor of a higher-edge alt. Skip unless the winner itself
+  // fails the category gate — in that case the demotion is spurious and this play qualifies.
+  if (p._altLineDemoted === true && !passesCategoryGate(p)) return false;
   // dcQualified=true means dc≥7: only kalshiStale and playerOut fail (2026-06-04).
   // Data-completeness dc=10 requirement removed — shadow calibration showed fallback paths
   // are better calibrated than full-data paths. Category gate does the real ROI filtering.

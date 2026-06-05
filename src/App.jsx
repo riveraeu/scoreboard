@@ -148,7 +148,9 @@ function App() {
   // better-calibrated outputs. dcQualified now means dc≥7 (only kalshiStale/playerOut fail).
   // Mirrors passesGate in LineupsPage; keep these in sync.
   const _qualifiedFilter = React.useCallback((p) => {
-    if (p._altLineDemoted === true) return false;
+    // Demoted by server-side dedup in favor of a higher-edge alt. Allow through when the
+    // winner itself fails the category gate — demotion is spurious if the winner can't qualify.
+    if (p._altLineDemoted === true && !passesCategoryGate(p)) return false;
     if (p.dcQualified !== true || (p.edge ?? 0) < EDGE_GATE) return false;
     return passesCategoryGate(p);
   }, []);
