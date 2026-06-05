@@ -276,16 +276,22 @@ function App() {
     () => placeAllCandidates.filter(c => c.validation.hard.length === 0),
     [placeAllCandidates]);
 
-  // Per-day count of placeable plays — drives the green day-tab badge so it matches the modal.
-  const placeAllCountByDay = React.useMemo(() => {
-    const counts = {};
+  // Per-day and per-game counts of placeable plays — both derived from placeAllPlaceable so
+  // day-tab badge, matchup-card badge, and Place All modal all show the same number.
+  const { placeAllCountByDay, placeAllCountByGame } = React.useMemo(() => {
+    const byDay = {}, byGame = {};
+    const ptDate = (ts) => new Date(ts).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
     for (const c of placeAllPlaceable) {
-      const d = c.play.gameTime
-        ? new Date(c.play.gameTime).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
-        : c.play.gameDate;
-      if (d) counts[d] = (counts[d] || 0) + 1;
+      const p = c.play;
+      const d = p.gameTime ? ptDate(p.gameTime) : p.gameDate;
+      if (d) byDay[d] = (byDay[d] || 0) + 1;
+      const t1 = p.homeTeam ?? p.gameTeam1, t2 = p.awayTeam ?? p.gameTeam2;
+      if (t1 && t2) {
+        const gk = `${p.sport}|${[t1, t2].sort().join('|')}|${p.gameDate ?? ''}`;
+        byGame[gk] = (byGame[gk] || 0) + 1;
+      }
     }
-    return counts;
+    return { placeAllCountByDay: byDay, placeAllCountByGame: byGame };
   }, [placeAllPlaceable]);
 
   // Grouped view: same-game plays share one ⅛-Kelly slot scaled by avg pairwise phi.
@@ -1756,6 +1762,7 @@ function App() {
           setActiveDayTab={setActiveDayTab}
           placeAllCount={placeAllPlaceable.length}
           placeAllCountByDay={placeAllCountByDay}
+          placeAllCountByGame={placeAllCountByGame}
           onPlaceAll={() => { setPlaceAllStatus(null); setPlaceAllTodayOnly(true); setShowPlaceAll(true); }}
         />
       )}

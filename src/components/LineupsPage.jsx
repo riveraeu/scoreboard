@@ -228,6 +228,7 @@ export default function LineupsPage({
   activeDayTab,
   setActiveDayTab,
   placeAllCountByDay = {},
+  placeAllCountByGame = {},
 }) {
   const [expandedPlays, setExpandedPlays] = React.useState(new Set());
   const [notifPerm, setNotifPerm] = React.useState(() =>
@@ -510,10 +511,13 @@ export default function LineupsPage({
                 // trackedIds Set built from activePicks (settled picks excluded). Synth plays are
                 // already filtered out of the badge count inside MatchupCard via _realPlays.
                 const _gPlayTrackedCount = gPlays.filter(gp => !gp._synthFromTracked && trackedIds.has(trackIdFor(gp))).length;
-                // Green badge: when logged in, count only plays placeable on Kalshi (have a
-                // kalshiTicker) so the card badge matches the tab badge and Place All modal.
-                const _gPlayUntrackedBadge = authEmail
-                  ? gPlays.filter(gp => !gp._synthFromTracked && !trackedIds.has(trackIdFor(gp)) && gp.kalshiTicker).length
+                // Green badge: when logged in, use placeAllCountByGame (same source as tab badge
+                // and Place All modal) so all three counts always agree.
+                const _gameKey = authEmail
+                  ? `${game.sport}|${[game.homeTeam, game.awayTeam].sort().join('|')}|${game.gameDate ?? ''}`
+                  : null;
+                const _gPlayUntrackedBadge = _gameKey != null
+                  ? (placeAllCountByGame[_gameKey] ?? 0)
                   : gPlays.filter(gp => !gp._synthFromTracked && !trackedIds.has(trackIdFor(gp))).length;
                 return (
                   <MatchupCard
