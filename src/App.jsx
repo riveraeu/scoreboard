@@ -244,9 +244,10 @@ function App() {
     const cost = parseFloat((count * price / 100).toFixed(2));
     return { price, count, cost, side: play.kalshiSide, ao };
   }, [bankroll, _centsToAmericanB]);
-  // Candidate set: qualified (tonightPlays) + placeable + untracked + game not yet started. Each
-  // candidate carries a `validation` ({ hard, soft }) from the Flow A pre-flight (placeValidation.js):
-  // candidates with a HARD failure are kept here for display but excluded from the actual batch.
+  // Candidate set: qualified (tonightPlays) + untracked + game not yet started. Includes plays
+  // with no Kalshi ticker or zero Kelly sizing as blocked candidates so the modal count matches
+  // the tab/card badge counts. HARD failures stay in for display; runPlaceAll only orders
+  // candidates where validation.hard is empty.
   const placeAllCandidates = React.useMemo(() => {
     if (!authEmail) return [];
     const trackedIds = new Set((trackedPlays || []).map(p => p.id).filter(Boolean));
@@ -256,9 +257,11 @@ function App() {
       if (trackedIds.has(trackIdFor(p))) continue;             // already tracked — don't double-place
       if (p.gameTime && new Date(p.gameTime).getTime() <= nowMs) continue; // game started
       const sizing = _placeAllSizing(p);
-      if (!sizing) continue;
+      // Don't skip when sizing is null — validateCandidate will catch it as a HARD failure
+      // ("size rounds to 0 contracts") so the play appears as blocked in the modal.
+      const { price = null, count = 0, cost = 0, side = null, ao = null } = sizing || {};
       const validation = validateCandidate(p, sizing);
-      out.push({ play: p, ...sizing, validation });
+      out.push({ play: p, price, count, cost, side, ao, validation });
     }
     // Prop dedup: same player + stat → keep highest-edge only (multi-threshold plays
     // resolve unanimously 90% of the time; betting both is near-identical exposure).
@@ -270,8 +273,9 @@ function App() {
     }
     return [...out.filter(c => !c.play.stat), ...propBest.values()];
   }, [authEmail, tonightPlays, trackedPlays, _placeAllSizing]);
-  // Placeable subset — candidates that cleared every HARD pre-flight check. These are the only
-  // ones runPlaceAll actually orders, and the toolbar badge counts these (not blocked ones).
+  // Placeable subset — candidates that cleared every HARD pre-flight check. runPlaceAll only
+  // orders these; the toolbar badge shows placeAllCandidates.length (all qualified plays,
+  // matching the tab/card badge), while the modal header shows "N ready · M blocked".
   const placeAllPlaceable = React.useMemo(
     () => placeAllCandidates.filter(c => c.validation.hard.length === 0),
     [placeAllCandidates]);
@@ -1743,7 +1747,7 @@ function App() {
           picksButtonRef={fabRef}
           activeDayTab={activeDayTab}
           setActiveDayTab={setActiveDayTab}
-          placeAllCount={placeAllPlaceable.length}
+          placeAllCount={placeAllCandidates.length}
           onPlaceAll={() => { setPlaceAllStatus(null); setPlaceAllTodayOnly(true); setShowPlaceAll(true); }}
         />
       )}
