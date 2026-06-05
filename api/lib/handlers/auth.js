@@ -736,6 +736,32 @@ UNION ALL SELECT * FROM by_cat_band`;
       }
     }
 
+    // Optional: ?hrrbyspot=1 returns HRR ROI broken down by lineup spot group.
+    if (params.get("hrrbyspot") === "1") {
+      const rows = await neonQuery(`
+        SELECT
+          CASE
+            WHEN (features->>'hitterLineupSpot')::int <= 3 THEN '1-3 top'
+            WHEN (features->>'hitterLineupSpot')::int <= 5 THEN '4-5 mid'
+            WHEN (features->>'hitterLineupSpot')::int <= 7 THEN '6-7 low'
+            ELSE '8-9 tail'
+          END AS spot_group,
+          COUNT(*) AS n,
+          ROUND(AVG(CASE WHEN won THEN 1.0 ELSE 0.0 END) * 100, 1) AS hit_pct,
+          ROUND(AVG(CASE WHEN won THEN 1.0 ELSE 0.0 END) - AVG(kalshi_yes_price), 3) AS roi,
+          ROUND(AVG(model_true_pct), 1) AS avg_true_pct,
+          ROUND(AVG(kalshi_pct), 1) AS avg_kalshi_pct
+        FROM shadow_plays
+        WHERE sport = 'mlb' AND stat = 'hrr'
+          AND resolved = true AND won IS NOT NULL
+          AND threshold_rank = 1
+          AND features->>'hitterLineupSpot' IS NOT NULL
+        GROUP BY spot_group
+        ORDER BY MIN((features->>'hitterLineupSpot')::int)
+      `, [], env);
+      return jsonResponse({ hrrBySpot: rows });
+    }
+
     // Optional: ?resolvetrigger=1 runs the shadow-resolver cron inline.
     let resolveResult = null;
     if (params.get("resolvetrigger") === "1" && env?.CRON_SECRET) {
