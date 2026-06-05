@@ -227,6 +227,7 @@ export default function LineupsPage({
   onPlaceAll,
   activeDayTab,
   setActiveDayTab,
+  placeAllCountByDay = {},
 }) {
   const [expandedPlays, setExpandedPlays] = React.useState(new Set());
   const [notifPerm, setNotifPerm] = React.useState(() =>
@@ -342,7 +343,7 @@ export default function LineupsPage({
     <div style={{ display: 'flex', gap: 0, overflowX: 'auto', flex: isMobile ? '1 1 auto' : '0 0 auto', scrollbarWidth: 'none' }}>
       {dayTabs.map(dateStr => {
         const active = activeDayTab === dateStr;
-        const count = qualifiedByDay[dateStr] ?? 0;
+        const count = authEmail ? (placeAllCountByDay[dateStr] ?? 0) : (qualifiedByDay[dateStr] ?? 0);
         const tracked = trackedByDay[dateStr] ?? 0;
         return (
           <button
