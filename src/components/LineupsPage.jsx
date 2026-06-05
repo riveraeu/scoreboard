@@ -510,6 +510,11 @@ export default function LineupsPage({
                 // trackedIds Set built from activePicks (settled picks excluded). Synth plays are
                 // already filtered out of the badge count inside MatchupCard via _realPlays.
                 const _gPlayTrackedCount = gPlays.filter(gp => !gp._synthFromTracked && trackedIds.has(trackIdFor(gp))).length;
+                // Green badge: when logged in, count only plays placeable on Kalshi (have a
+                // kalshiTicker) so the card badge matches the tab badge and Place All modal.
+                const _gPlayUntrackedBadge = authEmail
+                  ? gPlays.filter(gp => !gp._synthFromTracked && !trackedIds.has(trackIdFor(gp)) && gp.kalshiTicker).length
+                  : gPlays.filter(gp => !gp._synthFromTracked && !trackedIds.has(trackIdFor(gp))).length;
                 return (
                   <MatchupCard
                     key={`${sport}|${game.homeTeam}|${game.awayTeam}|${game.gameDate}|${i}`}
@@ -523,6 +528,7 @@ export default function LineupsPage({
                     navigateToTeam={navigateToTeam}
                     gamePlays={gPlays}
                     gamePlaysTrackedCount={_gPlayTrackedCount}
+                    gamePlaysUntrackedBadge={_gPlayUntrackedBadge}
                     allTonightPlays={allTonightPlays}
                     trackedPlays={trackedPlays}
                     trackPlay={trackPlay}
