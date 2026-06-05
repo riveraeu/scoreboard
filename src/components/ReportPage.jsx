@@ -857,9 +857,10 @@ function _catStatus(key, d) {
   return { label: 'Too few', color: '#484f58' };
 }
 
-function ShadowCalibModule({ sport, statKeys, shadowCalibData, shadowCalibLoading, fetchShadowCalib, isLoggedIn }) {
+function ShadowCalibModule({ sport, statKeys, shadowCalibData, shadowCalibLoading, fetchShadowCalib, shadowAnalysisData, fetchShadowAnalysis, isLoggedIn }) {
   const [sinceKey, setSinceKey] = React.useState('30d');
   const [selectedCat, setSelectedCat] = React.useState(null);
+  const [showCorr, setShowCorr] = React.useState(false);
 
   React.useEffect(() => {
     if (isLoggedIn) fetchShadowCalib(_sinceDate(sinceKey));
@@ -943,7 +944,7 @@ function ShadowCalibModule({ sport, statKeys, shadowCalibData, shadowCalibLoadin
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <span style={{color:"#c9d1d9",fontSize:13,fontWeight:700}}>Shadow Calibration</span>
           <span style={{background:"#21262d",color:"#6e7681",fontSize:10,borderRadius:10,padding:"1px 8px"}}>
-            unbiased · all predictions · n={shadowCalibData.n ?? 0}
+            unbiased · best-threshold · n={shadowCalibData.n ?? 0}
           </span>
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
@@ -970,7 +971,9 @@ function ShadowCalibModule({ sport, statKeys, shadowCalibData, shadowCalibLoadin
                   onClick={() => setSelectedCat(isSelected ? null : key)}
                   style={{cursor:"pointer", background: isSelected ? "#161b22" : "transparent"}}>
                   <td style={{...tdCalib,color:"#c9d1d9",fontWeight:isSelected?700:400}}>{key}</td>
-                  <td style={{...tdCalib,color:(d.n??0)<10?"#484f58":(d.n??0)<30?"#6e7681":"#c9d1d9"}}>{d.n??0}</td>
+                  <td style={{...tdCalib,color:(d.n??0)<10?"#484f58":(d.n??0)<30?"#6e7681":"#c9d1d9"}}>
+                    {d.n??0}{d.nRaw != null && d.nRaw > (d.n ?? 0) ? <span style={{color:"#484f58",fontSize:9}}>/{d.nRaw}</span> : null}
+                  </td>
                   <td style={{...tdCalib,color:(d.hitRate??0)>=70?"#3fb950":(d.hitRate??0)>=60?"#e3b341":"#f78166",fontWeight:600}}>
                     {d.hitRate!=null?`${d.hitRate}%`:"—"}
                   </td>
@@ -984,12 +987,85 @@ function ShadowCalibModule({ sport, statKeys, shadowCalibData, shadowCalibLoadin
         </table>
       )}
 
+      {/* Correlation analysis — expandable, lazy-loaded */}
+      {isLoggedIn && (
+        <div style={{marginTop:10}}>
+          <button
+            onClick={() => { if (!showCorr && !shadowAnalysisData) fetchShadowAnalysis?.(); setShowCorr(v => !v); }}
+            style={{fontSize:11,padding:"2px 9px",borderRadius:5,cursor:"pointer",border:"1px solid #30363d",background:"transparent",color:"#484f58"}}>
+            {showCorr ? '▲' : '▼'} Correlation analysis
+          </button>
+          {showCorr && (() => {
+            const pairs = (shadowAnalysisData?.sameGamePairs || []).filter(p => !sport || p.sport === sport);
+            const unanim = (shadowAnalysisData?.intraGroupCorr || []).filter(p => !sport || p.sport === sport);
+            if (!shadowAnalysisData) return <div style={{color:"#8b949e",fontSize:12,marginTop:8}}>Loading…</div>;
+            if (shadowAnalysisData.error) return <div style={{color:"#f78166",fontSize:12,marginTop:8}}>{shadowAnalysisData.error}</div>;
+            const hasCorrData = pairs.length > 0 || unanim.length > 0;
+            if (!hasCorrData) return <div style={{color:"#484f58",fontSize:12,marginTop:8}}>No correlation data for {sport?.toUpperCase() ?? "any sport"} yet.</div>;
+            return (
+              <div style={{marginTop:8}}>
+                {pairs.length > 0 && (
+                  <div style={{marginBottom:8}}>
+                    <div style={{color:"#8b949e",fontSize:11,fontWeight:600,marginBottom:4}}>Same-game pair φ (Place All reduces correlated groups to 1 Kelly slot)</div>
+                    <table style={{width:"100%",borderCollapse:"collapse",background:"#0d1117",borderRadius:8,overflow:"hidden",border:"1px solid #21262d"}}>
+                      <thead><tr>{["Pair","N","φ","Hit A%","Hit B%","Joint%"].map(h=><th key={h} style={thCalib}>{h}</th>)}</tr></thead>
+                      <tbody>
+                        {pairs.map((p,i) => {
+                          const phi = parseFloat(p.phi ?? 0);
+                          const pc = phi >= 0.6 ? "#f97316" : phi >= 0.3 ? "#e3b341" : phi <= -0.3 ? "#58a6ff" : "#8b949e";
+                          return <tr key={i}>
+                            <td style={{...tdCalib,fontSize:10,color:"#c9d1d9"}}>{p.cat_a} × {p.cat_b}</td>
+                            <td style={tdCalib}>{p.n}</td>
+                            <td style={{...tdCalib,color:pc,fontWeight:600}}>{phi>=0?`+${phi}`:String(phi)}</td>
+                            <td style={tdCalib}>{p.hit_a}%</td>
+                            <td style={tdCalib}>{p.hit_b}%</td>
+                            <td style={tdCalib}>{p.joint_hit}%</td>
+                          </tr>;
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {unanim.length > 0 && (
+                  <div>
+                    <div style={{color:"#8b949e",fontSize:11,fontWeight:600,marginBottom:4}}>Alt-line unanimity (high % = same bet at diff thresholds)</div>
+                    <table style={{width:"100%",borderCollapse:"collapse",background:"#0d1117",borderRadius:8,overflow:"hidden",border:"1px solid #21262d"}}>
+                      <thead><tr>{["Category","Groups","Plays","Avg size","% unanimous"].map(h=><th key={h} style={thCalib}>{h}</th>)}</tr></thead>
+                      <tbody>
+                        {unanim.map((u,i) => {
+                          const pctU = parseFloat(u.pct_unanimous ?? 0);
+                          const uc = pctU >= 80 ? "#f78166" : pctU >= 60 ? "#e3b341" : "#8b949e";
+                          return <tr key={i}>
+                            <td style={{...tdCalib,color:"#c9d1d9"}}>{u.sport}|{u.category}</td>
+                            <td style={tdCalib}>{u.n_groups}</td>
+                            <td style={tdCalib}>{u.n_plays}</td>
+                            <td style={tdCalib}>{u.avg_group_size}</td>
+                            <td style={{...tdCalib,color:uc,fontWeight:600}}>{pctU}%</td>
+                          </tr>;
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
       {/* Band detail for selected category */}
       {selectedCat && (
         <div>
-          <div style={{color:"#8b949e",fontSize:11,fontWeight:600,marginBottom:6}}>
-            {selectedCat} — band detail ({(shadowCalibData.byCategory?.[selectedCat]?.n ?? 0)} resolved plays)
-          </div>
+          {(() => {
+            const _catD = shadowCalibData.byCategory?.[selectedCat];
+            const _n = _catD?.n ?? 0;
+            const _nR = _catD?.nRaw;
+            return (
+              <div style={{color:"#8b949e",fontSize:11,fontWeight:600,marginBottom:6}}>
+                {selectedCat} — band detail ({_n} deduped{_nR != null && _nR > _n ? ` · ${_nR} raw` : ''})
+              </div>
+            );
+          })()}
           <table style={{width:"100%",borderCollapse:"collapse",background:"#0d1117",borderRadius:8,overflow:"hidden",border:"1px solid #21262d"}}>
             <thead>
               <tr>{["Band","N","Predicted","Actual","Δ","ROI",""].map(h => <th key={h} style={thCalib}>{h}</th>)}</tr>
@@ -1040,6 +1116,8 @@ function ReportPage({
   calibData, calibLoading, fetchCalib, isLoggedIn,
   // Shadow calibration
   shadowCalibData, shadowCalibLoading, fetchShadowCalib,
+  // Shadow analysis (correlation + threshold rank)
+  shadowAnalysisData, shadowAnalysisLoading, fetchShadowAnalysis,
   // Shared nav
   navigateToPlayer, navigateToTeam,
   // Entry hints from useRouting
@@ -1081,6 +1159,10 @@ function ReportPage({
   React.useEffect(() => {
     if (tab === "shadow" && isLoggedIn && !shadowCalibData && !shadowCalibLoading) fetchShadowCalib();
   // ShadowCalibModule also re-fetches on since-window change via its own effect.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, isLoggedIn]);
+  React.useEffect(() => {
+    if (tab === "shadow" && isLoggedIn && !shadowAnalysisData && !shadowAnalysisLoading) fetchShadowAnalysis();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, isLoggedIn]);
 
@@ -1240,6 +1322,8 @@ function ReportPage({
             shadowCalibData={shadowCalibData}
             shadowCalibLoading={shadowCalibLoading}
             fetchShadowCalib={fetchShadowCalib}
+            shadowAnalysisData={shadowAnalysisData}
+            fetchShadowAnalysis={fetchShadowAnalysis}
             isLoggedIn={isLoggedIn}
           />
         </div>

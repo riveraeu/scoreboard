@@ -19,6 +19,8 @@ export function useReportData() {
   const [calibLoading, setCalibLoading] = React.useState(false);
   const [shadowCalibData, setShadowCalibData] = React.useState(null);
   const [shadowCalibLoading, setShadowCalibLoading] = React.useState(false);
+  const [shadowAnalysisData, setShadowAnalysisData] = React.useState(null);
+  const [shadowAnalysisLoading, setShadowAnalysisLoading] = React.useState(false);
 
   const fetchReport = React.useCallback(async (sport) => {
     if (!sport) return;
@@ -52,7 +54,7 @@ export function useReportData() {
   const fetchShadowCalib = React.useCallback(async (since) => {
     setShadowCalibLoading(true);
     setShadowCalibData(null);
-    const url = `${WORKER}/auth/shadow-calibration` + (since ? `?since=${since}` : '');
+    const url = `${WORKER}/auth/shadow-calibration?bestThreshold=true` + (since ? `&since=${since}` : '');
     try {
       const r = await fetch(url);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -63,6 +65,20 @@ export function useReportData() {
     setShadowCalibLoading(false);
   }, []);
 
+  const fetchShadowAnalysis = React.useCallback(async (since) => {
+    setShadowAnalysisLoading(true);
+    setShadowAnalysisData(null);
+    const url = `${WORKER}/auth/shadow-analysis` + (since ? `?since=${since}` : '');
+    try {
+      const r = await fetch(url, { credentials: 'include' });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      setShadowAnalysisData(await r.json());
+    } catch(e) {
+      setShadowAnalysisData({ error: e.message });
+    }
+    setShadowAnalysisLoading(false);
+  }, []);
+
   return {
     reportSort, setReportSort,
     reportDataBySport,
@@ -71,5 +87,6 @@ export function useReportData() {
     calibData, calibLoading,
     fetchReport, fetchCalib,
     shadowCalibData, shadowCalibLoading, fetchShadowCalib,
+    shadowAnalysisData, shadowAnalysisLoading, fetchShadowAnalysis,
   };
 }

@@ -31,6 +31,21 @@ import SimBadge from './components/SimBadge.jsx';
 
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_CLIENT as EDGE_GATE } from "../api/lib/config.js";
 
+// Pairwise same-game phi correlation table from 30-day shadow analysis (2026-06-04).
+// Negative-phi pairs (hedges) are intentionally absent → default 0 = no reduction.
+// Update when shadow N per pair exceeds 200.
+const _PHI_KEY = (a, b) => [a, b].sort().join('\x00');
+const _SAME_GAME_PHI = new Map([
+  [_PHI_KEY('strikeouts|', 'teamRuns|under'),  0.84],
+  [_PHI_KEY('ml|',          'strikeouts|'),     0.51],
+  [_PHI_KEY('teamRuns|over','totalRuns|over'),  0.50],
+  [_PHI_KEY('f5ml|',        'spread|'),         0.46],
+  [_PHI_KEY('hrr|',         'ml|'),             0.32],
+  [_PHI_KEY('hrr|',         'totalRuns|over'),  0.32],
+]);
+function _catDir(play) { return `${play.stat || play.gameType || ''}|${play.direction || ''}`; }
+function _pairPhi(p1, p2) { return _SAME_GAME_PHI.get(_PHI_KEY(_catDir(p1), _catDir(p2))) ?? 0; }
+
 function App() {
   const isMobile = useIsMobile();
   const [sport, setSport] = React.useState("basketball/nba"); // derived from selected player
@@ -121,6 +136,7 @@ function App() {
     calibData, calibLoading,
     fetchReport, fetchCalib,
     shadowCalibData, shadowCalibLoading, fetchShadowCalib,
+    shadowAnalysisData, shadowAnalysisLoading, fetchShadowAnalysis,
   } = useReportData();
 
   // Qualified play filter: dcQualified=true (not stale/playerOut) AND edge >= 5% AND category gate.
@@ -241,13 +257,74 @@ function App() {
       const validation = validateCandidate(p, sizing, calibData);
       out.push({ play: p, ...sizing, validation });
     }
-    return out;
+    // Prop dedup: same player + stat → keep highest-edge only (multi-threshold plays
+    // resolve unanimously 90% of the time; betting both is near-identical exposure).
+    const propBest = new Map();
+    for (const c of out) {
+      if (!c.play.stat) continue;
+      const k = `${c.play.playerId ?? c.play.playerName}|${c.play.sport}|${c.play.stat}`;
+      if (!propBest.has(k) || (c.play.edge ?? 0) > (propBest.get(k).play.edge ?? 0)) propBest.set(k, c);
+    }
+    return [...out.filter(c => !c.play.stat), ...propBest.values()];
   }, [authEmail, tonightPlays, trackedPlays, _placeAllSizing, calibData]);
   // Placeable subset — candidates that cleared every HARD pre-flight check. These are the only
   // ones runPlaceAll actually orders, and the toolbar badge counts these (not blocked ones).
   const placeAllPlaceable = React.useMemo(
     () => placeAllCandidates.filter(c => c.validation.hard.length === 0),
     [placeAllCandidates]);
+
+  // Grouped view: same-game plays share one ⅛-Kelly slot scaled by avg pairwise phi.
+  // effectivePlays = 1 + (n−1)×(1−avgPosPhi) → group_total = anchor×effectivePlays/n.
+  // Negative-phi pairs (hedges) contribute 0 to avgPosPhi → no reduction.
+  const placeAllGrouped = React.useMemo(() => {
+    function gameKey(c) {
+      const p = c.play;
+      const t1 = p.homeTeam ?? p.gameTeam1, t2 = p.awayTeam ?? p.gameTeam2;
+      if (!t1 || !t2) return null;
+      return `${p.sport}|${[t1, t2].sort().join('|')}|${p.gameDate ?? ''}`;
+    }
+    function groupLabel(cands) {
+      const p = cands.find(c => c.play.homeTeam && c.play.awayTeam)?.play ?? cands[0].play;
+      const away = p.awayTeam ?? p.gameTeam1, home = p.homeTeam ?? p.gameTeam2;
+      if (away && home) return `${away} @ ${home}`;
+      const t1 = p.gameTeam1, t2 = p.gameTeam2;
+      return t1 && t2 ? `${t1} vs ${t2}` : (p.sport?.toUpperCase() ?? '');
+    }
+    const byGame = new Map();
+    for (const c of placeAllPlaceable) {
+      const k = gameKey(c) ?? `solo\x00${c.play.id ?? Math.random()}`;
+      if (!byGame.has(k)) byGame.set(k, []);
+      byGame.get(k).push(c);
+    }
+    const groups = [];
+    for (const [key, cands] of byGame) {
+      const n = cands.length;
+      const label = groupLabel(cands);
+      if (n === 1) {
+        groups.push({ key, label, rescaled: cands, groupCost: cands[0].cost, avgPhi: 0, isCorrelated: false });
+        continue;
+      }
+      // Average positive pairwise phi across all pairs in the group.
+      let phiSum = 0, pairs = 0;
+      for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+        phiSum += Math.max(0, _pairPhi(cands[i].play, cands[j].play));
+        pairs++;
+      }
+      const avgPhi = pairs > 0 ? phiSum / pairs : 0;
+      const effectivePlays = 1 + (n - 1) * (1 - avgPhi);
+      const anchorCost = Math.max(...cands.map(c => c.cost));
+      const totalOrig = cands.reduce((s, c) => s + c.cost, 0);
+      const scale = (anchorCost * effectivePlays / n) / totalOrig;
+      const rescaled = cands.map(c => {
+        const target = c.cost * scale;
+        const newCount = Math.max(1, Math.floor(target / (c.price / 100)));
+        return { ...c, count: newCount, cost: parseFloat((newCount * c.price / 100).toFixed(2)) };
+      });
+      const groupCost = parseFloat(rescaled.reduce((s, c) => s + c.cost, 0).toFixed(2));
+      groups.push({ key, label, rescaled, groupCost, avgPhi: parseFloat(avgPhi.toFixed(2)), isCorrelated: true });
+    }
+    return groups;
+  }, [placeAllPlaceable]);
 
   // Place every candidate sequentially (await each — avoids Kalshi 429s), tracking each pick
   // with its real fill. Mirrors the single-bet _doPlaceOrder + _doTrack reconciliation.
@@ -658,17 +735,17 @@ function App() {
 
       {/* Place All modal — batch-place every qualified, untracked, placeable Kalshi bet */}
       {showPlaceAll && (() => {
-        // Pre-flight split: placeable rows (cleared every HARD check) are the only ones ordered;
-        // blocked rows are shown greyed with their reason but excluded. Totals + button reflect
-        // placeable only — blocked picks are never charged.
         const todayPT = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
         const ptDateOf = (p) => p.gameTime
           ? new Date(p.gameTime).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
           : p.gameDate;
         const inScope = (c) => !placeAllTodayOnly || ptDateOf(c.play) === todayPT;
-        const placeable = placeAllPlaceable.filter(inScope);
+        // Scoped groups: filter by today and recompute rescaled stakes for the filtered set.
+        const scopedGroups = placeAllGrouped
+          .map(g => ({ ...g, rescaled: g.rescaled.filter(c => inScope(c)) }))
+          .filter(g => g.rescaled.length > 0);
+        const placeable = scopedGroups.flatMap(g => g.rescaled);
         const blocked = placeAllCandidates.filter(c => c.validation.hard.length > 0 && inScope(c));
-        const cands = [...placeable, ...blocked]; // placeable first, blocked at the bottom
         const flaggedCount = placeable.filter(c => c.validation.soft.length > 0).length;
         const readyCount = placeable.length - flaggedCount;
         const totalCost = parseFloat(placeable.reduce((s, c) => s + c.cost, 0).toFixed(2));
@@ -690,6 +767,44 @@ function App() {
           : "";
         const close = () => { if (!running) { setShowPlaceAll(false); setPlaceAllStatus(null); } };
         const stateColor = { filled: "#3fb950", resting: "#e3b341", error: "#f78166", placing: "#58a6ff", pending: "#484f58" };
+        const renderRow = (c, indent) => {
+          const key = c.play.id ?? trackIdFor(c.play);
+          const rs = rowsState[key];
+          const isBlocked = c.validation.hard.length > 0;
+          const reason = isBlocked ? c.validation.hard.join("; ")
+            : c.validation.soft.length > 0 ? c.validation.soft.join("; ") : null;
+          return (
+            <div key={key} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,
+              padding:"5px 0",paddingLeft: indent ? 10 : 0,
+              borderBottom:"1px solid #21262d",fontSize:12,opacity:isBlocked ? 0.55 : 1}}>
+              <div style={{minWidth:0,flex:1}}>
+                <div style={{color:"#c9d1d9",fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                  {nameFor(c.play)} <span style={{color:"#8b949e",fontWeight:400}}>{subFor(c.play)}</span>
+                </div>
+                <div style={{color:"#484f58",fontSize:10}}>
+                  {(c.play.sport || "").toUpperCase()} · {c.count} × {c.price}¢ = ${c.cost}
+                </div>
+                {reason && !rs && (
+                  <div style={{color: isBlocked ? "#f78166" : "#e3b341", fontSize:10, marginTop:1,
+                    whiteSpace:"normal", lineHeight:1.3}}>
+                    {isBlocked ? "✗" : "⚠"} {reason}
+                  </div>
+                )}
+              </div>
+              <div style={{textAlign:"right",whiteSpace:"nowrap",fontSize:11,
+                color: rs ? stateColor[rs.state] : isBlocked ? "#f78166" : c.validation.soft.length > 0 ? "#e3b341" : "#8b949e", fontWeight:600}}>
+                {rs ? (rs.state === "placing" ? "placing…"
+                    : rs.state === "pending" ? "queued"
+                    : rs.state === "error" ? `✗ ${rs.msg}`
+                    : rs.state === "resting" ? `◔ ${rs.msg}`
+                    : `✓ ${rs.msg}`)
+                  : isBlocked ? "blocked"
+                  : c.validation.soft.length > 0 ? `⚠ $${c.cost}`
+                  : `$${c.cost}`}
+              </div>
+            </div>
+          );
+        };
         return (
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:700,display:"flex",alignItems:"center",justifyContent:"center"}}
             onClick={close}>
@@ -699,7 +814,7 @@ function App() {
                 {done ? "Placement complete" : `Place ${placeable.length} bet${placeable.length === 1 ? "" : "s"} on Kalshi`}
               </div>
               <div style={{fontSize:11,color:"#8b949e",marginBottom:8}}>
-                {done ? "Real-money orders · ⅛-Kelly sizing"
+                {done ? "Real-money orders · ⅛-Kelly · correlation-adjusted"
                   : <>{readyCount} ready{flaggedCount > 0 ? <> · <span style={{color:"#e3b341"}}>{flaggedCount} flagged</span></> : null}{blocked.length > 0 ? <> · <span style={{color:"#f78166"}}>{blocked.length} blocked</span></> : null}</>}
               </div>
               {!done && (
@@ -711,43 +826,23 @@ function App() {
                 </label>
               )}
               <div style={{flex:1,overflowY:"auto",marginBottom:14,minHeight:0}}>
-                {cands.map(c => {
-                  const key = c.play.id ?? trackIdFor(c.play);
-                  const rs = rowsState[key];
-                  const isBlocked = c.validation.hard.length > 0;
-                  const reason = isBlocked ? c.validation.hard.join("; ")
-                    : c.validation.soft.length > 0 ? c.validation.soft.join("; ") : null;
-                  return (
-                    <div key={key} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,
-                      padding:"6px 0",borderBottom:"1px solid #21262d",fontSize:12,opacity:isBlocked ? 0.55 : 1}}>
-                      <div style={{minWidth:0,flex:1}}>
-                        <div style={{color:"#c9d1d9",fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                          {nameFor(c.play)} <span style={{color:"#8b949e",fontWeight:400}}>{subFor(c.play)}</span>
-                        </div>
-                        <div style={{color:"#484f58",fontSize:10}}>
-                          {(c.play.sport || "").toUpperCase()} · {c.count} × {c.price}¢ = ${c.cost}
-                        </div>
-                        {reason && !rs && (
-                          <div style={{color: isBlocked ? "#f78166" : "#e3b341", fontSize:10, marginTop:1,
-                            whiteSpace:"normal", lineHeight:1.3}}>
-                            {isBlocked ? "✗" : "⚠"} {reason}
-                          </div>
-                        )}
+                {scopedGroups.map(g => (
+                  g.isCorrelated ? (
+                    <div key={g.key}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",
+                        padding:"5px 0 3px",fontSize:10,color:"#6e7681",borderBottom:"1px solid #30363d"}}>
+                        <span style={{fontWeight:600}}>{g.label} · {g.rescaled.length} bets</span>
+                        <span style={{color: g.avgPhi >= 0.6 ? "#f78166" : "#e3b341"}}>
+                          φ≈{g.avgPhi} · ${g.groupCost.toFixed(2)}
+                        </span>
                       </div>
-                      <div style={{textAlign:"right",whiteSpace:"nowrap",fontSize:11,
-                        color: rs ? stateColor[rs.state] : isBlocked ? "#f78166" : c.validation.soft.length > 0 ? "#e3b341" : "#8b949e", fontWeight:600}}>
-                        {rs ? (rs.state === "placing" ? "placing…"
-                            : rs.state === "pending" ? "queued"
-                            : rs.state === "error" ? `✗ ${rs.msg}`
-                            : rs.state === "resting" ? `◔ ${rs.msg}`
-                            : `✓ ${rs.msg}`)
-                          : isBlocked ? "blocked"
-                          : c.validation.soft.length > 0 ? `⚠ $${c.cost}`
-                          : `$${c.cost}`}
-                      </div>
+                      {g.rescaled.map(c => renderRow(c, true))}
                     </div>
-                  );
-                })}
+                  ) : (
+                    g.rescaled.map(c => renderRow(c, false))
+                  )
+                ))}
+                {blocked.map(c => renderRow(c, false))}
               </div>
               <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}>
                 <span style={{color:"#8b949e"}}>Total cost</span>
@@ -868,6 +963,9 @@ function App() {
           shadowCalibData={shadowCalibData}
           shadowCalibLoading={shadowCalibLoading}
           fetchShadowCalib={fetchShadowCalib}
+          shadowAnalysisData={shadowAnalysisData}
+          shadowAnalysisLoading={shadowAnalysisLoading}
+          fetchShadowAnalysis={fetchShadowAnalysis}
           isLoggedIn={!!authEmail}
           navigateToPlayer={navigateToPlayer}
           navigateToTeam={navigateToTeam}

@@ -550,12 +550,13 @@ WITH base AS (
 ),
 ${bestThreshold ? `
 best AS (
-  SELECT *, ROW_NUMBER() OVER (
-    PARTITION BY sport, category, group_id ORDER BY bsp DESC
-  ) AS _rn FROM base
+  SELECT *,
+    ROW_NUMBER() OVER (PARTITION BY sport, category, group_id ORDER BY bsp DESC) AS _rn,
+    COUNT(*) OVER (PARTITION BY sport, category, group_id) AS _gs
+  FROM base
 ),
-source AS (SELECT sport, category, bsp, w, bet_pct, edge FROM best WHERE _rn = 1),
-` : `source AS (SELECT sport, category, bsp, w, bet_pct, edge FROM base),`}
+source AS (SELECT sport, category, bsp, w, bet_pct, edge, _gs AS group_size FROM best WHERE _rn = 1),
+` : `source AS (SELECT sport, category, bsp, w, bet_pct, edge, 1 AS group_size FROM base),`}
 banded AS (
   SELECT *,
     CASE
@@ -584,17 +585,20 @@ banded AS (
 ),
 overall_band AS (
   SELECT 'band'::text AS type, NULL::text AS sport, NULL::text AS category, band,
-    COUNT(*) AS n, SUM(w) AS wins, AVG(bet_pct) AS avg_bet_pct, AVG(edge) AS avg_edge
+    COUNT(*) AS n, SUM(w) AS wins, AVG(bet_pct) AS avg_bet_pct, AVG(edge) AS avg_edge,
+    SUM(group_size) AS n_raw, ROUND(AVG(group_size), 1) AS avg_group_size
   FROM banded GROUP BY band
 ),
 by_cat AS (
   SELECT 'cat'::text AS type, sport, category, NULL::text AS band,
-    COUNT(*) AS n, SUM(w) AS wins, AVG(bet_pct) AS avg_bet_pct, AVG(edge) AS avg_edge
+    COUNT(*) AS n, SUM(w) AS wins, AVG(bet_pct) AS avg_bet_pct, AVG(edge) AS avg_edge,
+    SUM(group_size) AS n_raw, ROUND(AVG(group_size), 1) AS avg_group_size
   FROM banded GROUP BY sport, category
 ),
 by_cat_band AS (
   SELECT 'cat_band'::text AS type, sport, category, band,
-    COUNT(*) AS n, SUM(w) AS wins, AVG(bet_pct) AS avg_bet_pct, AVG(edge) AS avg_edge
+    COUNT(*) AS n, SUM(w) AS wins, AVG(bet_pct) AS avg_bet_pct, AVG(edge) AS avg_edge,
+    SUM(group_size) AS n_raw, ROUND(AVG(group_size), 1) AS avg_group_size
   FROM banded GROUP BY sport, category, band
 )
 SELECT * FROM overall_band
@@ -644,7 +648,9 @@ UNION ALL SELECT * FROM by_cat_band`;
       const predicted = row.band ? (_scBandMid[row.band] ?? null) : null;
       const delta = actual != null && predicted != null ? parseFloat((actual - predicted).toFixed(1)) : null;
       const roi = actual != null && avgBetPct != null ? parseFloat((actual / 100 - avgBetPct).toFixed(4)) : null;
-      return { n, wins, actual, predicted, delta, roi, avgEdge, avgBetPct };
+      const nRaw = row.n_raw != null ? Number(row.n_raw) : n;
+      const avgGroupSize = row.avg_group_size != null ? parseFloat(Number(row.avg_group_size).toFixed(1)) : null;
+      return { n, wins, actual, predicted, delta, roi, avgEdge, avgBetPct, nRaw, avgGroupSize };
     }
 
     const _scOverallMap = {};
@@ -678,7 +684,7 @@ UNION ALL SELECT * FROM by_cat_band`;
     const scByCategory = Object.fromEntries(
       Object.entries(_scCatMap).map(([key, row]) => {
         const c = _scCell(row);
-        return [key, { n: c.n, hitRate: c.actual, roi: c.roi, avgEdge: c.avgEdge }];
+        return [key, { n: c.n, hitRate: c.actual, roi: c.roi, avgEdge: c.avgEdge, nRaw: c.nRaw, avgGroupSize: c.avgGroupSize }];
       })
     );
 
@@ -788,9 +794,9 @@ UNION ALL SELECT * FROM by_cat_band`;
   // Auth: Authorization: Bearer $ADMIN_KEY
   // Four analyses: threshold-rank ROI, intra-group unanimity, same-game pairwise phi, concentration.
   if (path === "auth/shadow-analysis" && method === "GET") {
-    const ak = (request.headers.get("Authorization") || "").replace("Bearer ", "");
-    if (!env?.ADMIN_KEY) return errorResponse("ADMIN_KEY not set", 500);
-    if (ak !== env.ADMIN_KEY) return errorResponse("Forbidden", 403);
+    const saPayload = await verifyJWT(_extractToken(request), JWT_SECRET);
+    const saAdminKey = (request.headers.get("Authorization") || "").replace("Bearer ", "");
+    if (!saPayload && saAdminKey !== env?.ADMIN_KEY) return errorResponse("Forbidden", 403);
     if (!env?.POSTGRES_URL && !env?.NEON_DATABASE_URL && !env?.DATABASE_URL_UNPOOLED) {
       return errorResponse("No Neon connection configured", 500);
     }
