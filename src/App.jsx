@@ -244,10 +244,9 @@ function App() {
     const cost = parseFloat((count * price / 100).toFixed(2));
     return { price, count, cost, side: play.kalshiSide, ao };
   }, [bankroll, _centsToAmericanB]);
-  // Candidate set: qualified (tonightPlays) + untracked + game not yet started. Includes plays
-  // with no Kalshi ticker or zero Kelly sizing as blocked candidates so the modal count matches
-  // the tab/card badge counts. HARD failures stay in for display; runPlaceAll only orders
-  // candidates where validation.hard is empty.
+  // Candidate set: qualified (tonightPlays) + placeable (has Kalshi ticker + non-zero Kelly) +
+  // untracked + game not yet started. Kelly=0 and no-ticker plays are excluded — they are not
+  // actionable and would inflate the count vs what the modal can actually order.
   const placeAllCandidates = React.useMemo(() => {
     if (!authEmail) return [];
     const trackedIds = new Set((trackedPlays || []).map(p => p.id).filter(Boolean));
@@ -257,11 +256,9 @@ function App() {
       if (trackedIds.has(trackIdFor(p))) continue;             // already tracked — don't double-place
       if (p.gameTime && new Date(p.gameTime).getTime() <= nowMs) continue; // game started
       const sizing = _placeAllSizing(p);
-      // Don't skip when sizing is null — validateCandidate will catch it as a HARD failure
-      // ("size rounds to 0 contracts") so the play appears as blocked in the modal.
-      const { price = null, count = 0, cost = 0, side = null, ao = null } = sizing || {};
+      if (!sizing) continue;                                   // no ticker or Kelly rounds to 0
       const validation = validateCandidate(p, sizing);
-      out.push({ play: p, price, count, cost, side, ao, validation });
+      out.push({ play: p, ...sizing, validation });
     }
     // Prop dedup: same player + stat → keep highest-edge only (multi-threshold plays
     // resolve unanimously 90% of the time; betting both is near-identical exposure).
@@ -280,6 +277,20 @@ function App() {
     () => placeAllCandidates.filter(c => c.validation.hard.length === 0),
     [placeAllCandidates]);
 
+  // Per-day count + trackId Set for placeAllPlaceable — drives tab badge, card badge, and
+  // playsForGame filter so all three surfaces show the same number.
+  const { placeAllCountByDay, placeAllPlaceableIds } = React.useMemo(() => {
+    const byDay = {};
+    const ids = new Set();
+    const ptDate = (ts) => new Date(ts).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+    for (const c of placeAllPlaceable) {
+      const p = c.play;
+      const d = p.gameTime ? ptDate(p.gameTime) : p.gameDate;
+      if (d) byDay[d] = (byDay[d] || 0) + 1;
+      ids.add(trackIdFor(p));
+    }
+    return { placeAllCountByDay: byDay, placeAllPlaceableIds: ids };
+  }, [placeAllPlaceable]);
 
   // Grouped view: same-game plays share one ⅛-Kelly slot scaled by avg pairwise phi.
   // effectivePlays = 1 + (n−1)×(1−avgPosPhi) → group_total = anchor×effectivePlays/n.
@@ -1747,7 +1758,9 @@ function App() {
           picksButtonRef={fabRef}
           activeDayTab={activeDayTab}
           setActiveDayTab={setActiveDayTab}
-          placeAllCount={placeAllCandidates.length}
+          placeAllCount={placeAllPlaceable.length}
+          placeAllCountByDay={placeAllCountByDay}
+          placeAllPlaceableIds={placeAllPlaceableIds}
           onPlaceAll={() => { setPlaceAllStatus(null); setPlaceAllTodayOnly(true); setShowPlaceAll(true); }}
         />
       )}

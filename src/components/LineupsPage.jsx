@@ -155,7 +155,7 @@ function _matchesGame(p, game) {
   if (p.gameType === 'spread') return p.homeTeam === game.homeTeam && p.awayTeam === game.awayTeam;
   return teams.has(p.playerTeam);
 }
-function playsForGame(allPlays, game, trackedIds, trackedPlays) {
+function playsForGame(allPlays, game, trackedIds, trackedPlays, placeableIds) {
   // Tracked dedup-keys for this matchup — any API alt that lands in the same group as a
   // tracked pick gets suppressed (unless it IS the tracked pick). E.g. user tracked LAD +1.5,
   // server emits LAD +2.5 as the highest-edge alt; we hide LAD +2.5 because the user already
@@ -172,6 +172,9 @@ function playsForGame(allPlays, game, trackedIds, trackedPlays) {
     // If this play sits in a dedup-group the user has tracked AND it's not their tracked pick,
     // hide it — their tracked alt is shown instead.
     if (k && trackedKeysForMatchup.has(k) && !trackedIds.has(trackIdFor(p))) return false;
+    // When a placeable set is provided, hide untracked plays that aren't in it (e.g. Kelly=0).
+    // Tracked plays always show regardless so existing bets stay visible.
+    if (placeableIds && !trackedIds.has(trackIdFor(p)) && !placeableIds.has(trackIdFor(p))) return false;
     return true;
   });
   // Synthesize a play for any tracked pick on this matchup that wasn't in the API response
@@ -227,6 +230,8 @@ export default function LineupsPage({
   onPlaceAll,
   activeDayTab,
   setActiveDayTab,
+  placeAllCountByDay = {},
+  placeAllPlaceableIds = null,
 }) {
   const [expandedPlays, setExpandedPlays] = React.useState(new Set());
   const [notifPerm, setNotifPerm] = React.useState(() =>
@@ -345,7 +350,9 @@ export default function LineupsPage({
     <div style={{ display: 'flex', gap: 0, overflowX: 'auto', flex: isMobile ? '1 1 auto' : '0 0 auto', scrollbarWidth: 'none' }}>
       {dayTabs.map(dateStr => {
         const active = activeDayTab === dateStr;
-        const count = qualifiedByDay[dateStr] ?? 0;
+        const count = (authEmail && placeAllPlaceableIds != null)
+          ? (placeAllCountByDay[dateStr] ?? 0)
+          : (qualifiedByDay[dateStr] ?? 0);
         const tracked = trackedByDay[dateStr] ?? 0;
         return (
           <button
@@ -506,7 +513,7 @@ export default function LineupsPage({
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(480px, 100%), 1fr))', gap: 12, alignItems: 'start' }}>
               {games.map((game, i) => {
                 const isPostponed = (game.gameDetail || '').toLowerCase().includes('postpone');
-                const gPlays = isPostponed ? [] : playsForGame(allTonightPlays, game, trackedIds, activePicks);
+                const gPlays = isPostponed ? [] : playsForGame(allTonightPlays, game, trackedIds, activePicks, placeAllPlaceableIds);
                 // Count tracked picks shown on this card — API plays don't have an `id` field
                 // (only tracked picks do), so we re-compute via trackIdFor and match against the
                 // trackedIds Set built from activePicks (settled picks excluded). Synth plays are
