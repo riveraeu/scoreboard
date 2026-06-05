@@ -252,6 +252,13 @@ function App() {
   const placeAllCandidates = React.useMemo(() => {
     if (!authEmail) return [];
     const trackedIds = new Set((trackedPlays || []).map(p => p.id).filter(Boolean));
+    // Spread team-matchup keys already covered by tracked picks — used below to suppress
+    // alt-line candidates (e.g. +3.5 when +2.5 is already tracked on the same team).
+    const trackedSpreadKeys = new Set(
+      (trackedPlays || [])
+        .filter(p => p.gameType === 'spread')
+        .map(p => `${p.sport}|${p.pickTeam}|${p.oppTeam}|${p.gameDate ?? ''}`)
+    );
     const nowMs = Date.now();
     const out = [];
     for (const p of (tonightPlays || [])) {
@@ -274,10 +281,12 @@ function App() {
     }
     // Spread dedup: same pickTeam + matchup → keep highest-edge line only. Multiple qualifying
     // alt lines (e.g. CWS +2.5 and CWS +3.5) are correlated bets; size only the best one.
+    // Also skip entirely when any line for this team+matchup is already tracked.
     const spreadBest = new Map();
     for (const c of out) {
       if (c.play.gameType !== 'spread') continue;
       const sk = `${c.play.sport}|${c.play.pickTeam}|${c.play.oppTeam}|${c.play.gameDate ?? ''}`;
+      if (trackedSpreadKeys.has(sk)) continue;
       if (!spreadBest.has(sk) || (c.play.edge ?? 0) > (spreadBest.get(sk).play.edge ?? 0)) spreadBest.set(sk, c);
     }
     return [
