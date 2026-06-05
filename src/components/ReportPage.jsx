@@ -261,23 +261,17 @@ function buildSimTooltip(m) {
 }
 
 const DC_PENALTY_GROUP = {
-  kalshiStale: "freshness", lowVolume: "freshness", wideSpread: "freshness",
-  mlbLineupNotConfirmed: "lineup", mlbLineupUnknown: "lineup",
-  nbaLineupNotPosted: "lineup", nbaBench: "lineup", noLineupData: "lineup",
+  // freshness: kalshiStale = hard drop (-4 → dc=6); lowVolume = warning (-2)
+  kalshiStale: "freshness", lowVolume: "freshness",
+  // lineup: bench-only warnings (-2)
+  nbaBench: "lineup", wnbaBench: "lineup",
+  // availability: playerOut = hard drop (-10); questionable + heavy team injury = warnings
   playerOut: "availability", playerQuestionable: "availability",
-  noStdBF: "sample", highStdBF: "sample",
-  tinyBvPSample: "sample", smallBvPSample: "sample", modestBvPSample: "sample",
-  tinySoftSample: "sample", smallSoftSample: "sample", noSoftGames: "sample",
-  noSeasonSample: "sample", tinySeasonSample: "sample", smallSeasonSample: "sample",
-  noH2HSample: "sample", tinyH2HSample: "sample", smallH2HSample: "sample",
-  noOppLineupKPct: "oppData", oppLineupProjected: "oppData",
-  noBvPSource: "oppData", handednessOnly: "oppData",
-  noOppMetric: "oppData", noDvpRatio: "oppData", noDvpRatioStructural: "oppData",
-  noOppRank: "oppData", noGameOuLine: "oppData",
-  noOppWhipSource: "oppData", oppWhipTeamFallback: "oppData", noOppDefRtg: "oppData",
-  noHomeWhipSource: "oppData", homeWhipTeamFallback: "oppData",
-  noAwayWhipSource: "oppData", awayWhipTeamFallback: "oppData",
+  nbaHomeHeavyInjury: "availability", nbaAwayHeavyInjury: "availability",
+  wnbaHomeHeavyInjury: "availability", wnbaAwayHeavyInjury: "availability",
+  // distance: threshold distance + model/market divergence warnings (-1 to -2)
   modestlyFromLine: "distance", farFromLine: "distance",
+  seasonRateDivergent: "distance", spreadModelMarketDivergent: "distance",
 };
 function dcGroupTotal(m, group) {
   const pens = m.dcPenalties || {};
@@ -599,12 +593,10 @@ function MarketGroupSection({ group, reportSort, setReportSort, navigateToPlayer
     {k:"dcMkt", l:"Mkt"},
     {k:"dcLineup", l:"Lineup"},
     {k:"dcAvail", l:"Avail"},
-    {k:"dcSample", l:"Sample"},
-    {k:"dcOppData", l:"Opp"},
     ..._isTotalsType ? [{k:"dcDist", l:"Dist"}] : [],
   ];
   const DASH = <span style={{color:"#21262d"}}>—</span>;
-  const _GROUP_NAME = { freshness: "Market quality", lineup: "Lineup", availability: "Availability", sample: "Sample size", oppData: "Opp data", distance: "Threshold distance" };
+  const _GROUP_NAME = { freshness: "Market quality", lineup: "Lineup", availability: "Availability", distance: "Model/market divergence" };
   const _dcCell = (m, group) => {
     if (m.dataConfidence == null) return DASH;
     const { total, labels } = dcGroupTotal(m, group);
@@ -651,8 +643,6 @@ function MarketGroupSection({ group, reportSort, setReportSort, navigateToPlayer
     if (k==="dcMkt") return _dcCell(m, "freshness");
     if (k==="dcLineup") return _dcCell(m, "lineup");
     if (k==="dcAvail") return _dcCell(m, "availability");
-    if (k==="dcSample") return _dcCell(m, "sample");
-    if (k==="dcOppData") return _dcCell(m, "oppData");
     if (k==="dcDist") return _dcCell(m, "distance");
     if (k==="env") { const pf = m.parkFactor ?? m.hitterParkKF; if (pf == null) return DASH; const pct = Math.round((pf-1)*100); const disp = (pct>=0?"+":"")+pct+"%"; return <span style={{color:pf>1.02?"#3fb950":pf<0.98?"#f78166":"#8b949e"}}>{disp}</span>; }
     if (k==="brrl") { const b = m.hitterBarrelPct; return b != null ? <span style={{color:b>=14?"#3fb950":b>=10?"#e3b341":b>=7?"#8b949e":"#f78166"}}>{b.toFixed(1)+"%"}</span> : DASH; }
@@ -737,12 +727,10 @@ function MarketGroupSection({ group, reportSort, setReportSort, navigateToPlayer
     opp:"Tonight's opponent / starting pitcher",
     sim:"Sim-Score (max 10 — 8+ = Alpha tier); hover for component breakdown",
     dc: "dataConfidence (0–10) — display signal only, not a gate. Starts at 10; penalties like farFromLine, seasonRateDivergent, lowVolume etc. reduce the score for informational purposes. Hover for the penalty breakdown.",
-    dcMkt: "Market quality — Kalshi staleness / liquidity. ✓ = no penalty.",
-    dcLineup: "Lineup / starter confirmation. ✓ = confirmed or unknown.",
-    dcAvail: "Player availability (player props only). ✓ = no concerns.",
-    dcSample: "Sample size of underlying data. ✓ = strong sample.",
-    dcOppData: "Opponent data quality. ✓ = clean.",
-    dcDist: "Threshold distance from O/U line. Totals & teamTotals only. ✓ = at-or-near line.",
+    dcMkt: "Market quality — kalshiStale (hard drop, −4) or lowVolume (warning, −2). ✓ = no penalty.",
+    dcLineup: "Bench penalty — nbaBench / wnbaBench (−2). ✓ = starter or unconfirmed.",
+    dcAvail: "Availability — playerOut (hard drop, −10), playerQuestionable (−2), heavy team injury (−1). ✓ = no concerns.",
+    dcDist: "Model/market divergence — farFromLine (−2), modestlyFromLine (−1), seasonRateDivergent (−2), spreadModelMarketDivergent (−1). Totals & spreads. ✓ = aligned.",
   };
   const _hdr = (col, label, extraStyle={}, textAlign="right") => {
     const active = _sc?.col === col;
