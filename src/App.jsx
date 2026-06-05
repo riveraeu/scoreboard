@@ -624,26 +624,39 @@ function App() {
               <div style={{color:"#c9d1d9",fontWeight:600,fontSize:13,marginBottom:12}}>
                 {name} <span style={{color:"#8b949e",fontWeight:400,fontSize:12}}>{subtitle}</span>
               </div>
-              {play.edge != null && (
-                <div style={{display:"flex",justifyContent:"space-between",marginBottom:8,fontSize:11,color:"#484f58"}}>
-                  <span>Edge (True% − implied)</span>
-                  <span style={{color: play.edge >= EDGE_GATE ? "#3fb950" : play.edge >= 0 ? "#e3b341" : "#f78166", fontWeight:700}}>
-                    {play.edge >= 0 ? "+" : ""}{play.edge}%
-                  </span>
-                </div>
-              )}
-              <div style={{display:"flex",justifyContent:"space-between",marginBottom:14,fontSize:11,color:"#484f58"}}>
-                <span>Suggested stake (⅛-Kelly)</span>
-                <span style={{color:"#c9d1d9",fontWeight:700}}>
-                  {_canPlace ? `${_kalshiCount} × ${_kalshiPrice}¢ = $${_kalshiCost}` : `$${UNIT_DOLLARS}`}
-                </span>
-              </div>
-              {_canPlace && kalshiBalance != null && (
-                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:10}}>
-                  <span style={{color:"#8b949e"}}>Available (Kalshi)</span>
-                  <span style={{color:"#c9d1d9",fontWeight:700}}>${kalshiBalance.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
-                </div>
-              )}
+              {(() => {
+                const _ao = _kalshiPrice ? _centsToAmericanB(_kalshiPrice) : null;
+                const _aoStr = _ao != null ? (_ao >= 0 ? `+${_ao}` : `${_ao}`) : null;
+                const _estWin = _canPlace ? parseFloat((_kalshiCount * (100 - _kalshiPrice) / 100).toFixed(2)) : null;
+                return (<>
+                  {_aoStr && (
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:8,fontSize:11,color:"#484f58"}}>
+                      <span>Odds</span>
+                      <span style={{color:"#c9d1d9",fontWeight:700}}>{_aoStr}</span>
+                    </div>
+                  )}
+                  {play.edge != null && (
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:8,fontSize:11,color:"#484f58"}}>
+                      <span>Edge (True% − implied)</span>
+                      <span style={{color: play.edge >= EDGE_GATE ? "#3fb950" : play.edge >= 0 ? "#e3b341" : "#f78166", fontWeight:700}}>
+                        {play.edge >= 0 ? "+" : ""}{play.edge}%
+                      </span>
+                    </div>
+                  )}
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:14,fontSize:11,color:"#484f58"}}>
+                    <span>Suggested stake (⅛-Kelly)</span>
+                    <span style={{color:"#c9d1d9",fontWeight:700}}>
+                      {_canPlace ? `${_kalshiCount} × ${_kalshiPrice}¢ = $${_kalshiCost}` : `$${UNIT_DOLLARS}`}
+                    </span>
+                  </div>
+                  {_estWin != null && (
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:10}}>
+                      <span style={{color:"#8b949e"}}>Est. winnings</span>
+                      <span style={{color:"#3fb950",fontWeight:700}}>+${_estWin.toFixed(2)}</span>
+                    </div>
+                  )}
+                </>);
+              })()}
               {_validation.hard.map((msg, i) => (
                 <div key={i} style={{marginBottom:6,fontSize:11,padding:"5px 8px",borderRadius:6,
                   background:"rgba(247,129,102,0.08)",color:"#f78166",border:"1px solid rgba(247,129,102,0.3)"}}>
@@ -736,6 +749,9 @@ function App() {
           const isBlocked = c.validation.hard.length > 0;
           const edge = c.play.edge;
           const edgeColor = edge != null ? (edge >= EDGE_GATE ? "#3fb950" : edge >= 0 ? "#e3b341" : "#f78166") : "#484f58";
+          const ao = _centsToAmericanB(c.price);
+          const aoStr = ao != null ? (ao >= 0 ? `+${ao}` : `${ao}`) : null;
+          const estWin = parseFloat((c.count * (100 - c.price) / 100).toFixed(2));
           return (
             <div key={key} style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8,
               padding:"7px 0",paddingLeft: indent ? 10 : 0,
@@ -744,6 +760,12 @@ function App() {
                 <div style={{color:"#c9d1d9",fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",marginBottom:4}}>
                   {nameFor(c.play)} <span style={{color:"#8b949e",fontWeight:400}}>{subFor(c.play)}</span>
                 </div>
+                {!rs && aoStr && (
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#484f58",marginBottom:3}}>
+                    <span>Odds</span>
+                    <span style={{color:"#c9d1d9",fontWeight:700}}>{aoStr}</span>
+                  </div>
+                )}
                 {!rs && edge != null && (
                   <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#484f58",marginBottom:3}}>
                     <span>Edge (True% − implied)</span>
@@ -751,9 +773,15 @@ function App() {
                   </div>
                 )}
                 {!rs && (
-                  <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#484f58",marginBottom:2}}>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#484f58",marginBottom:3}}>
                     <span>Suggested stake (⅛-Kelly)</span>
                     <span style={{color:"#c9d1d9",fontWeight:700}}>{c.count} × {c.price}¢ = ${c.cost}</span>
+                  </div>
+                )}
+                {!rs && (
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#484f58",marginBottom:2}}>
+                    <span>Est. winnings</span>
+                    <span style={{color:"#3fb950",fontWeight:700}}>+${estWin.toFixed(2)}</span>
                   </div>
                 )}
                 {!rs && c.validation.hard.map((msg, i) => (
