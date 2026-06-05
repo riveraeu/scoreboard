@@ -254,7 +254,7 @@ function App() {
       if (p.gameTime && new Date(p.gameTime).getTime() <= nowMs) continue; // game started
       const sizing = _placeAllSizing(p);
       if (!sizing) continue;
-      const validation = validateCandidate(p, sizing, calibData);
+      const validation = validateCandidate(p, sizing);
       out.push({ play: p, ...sizing, validation });
     }
     // Prop dedup: same player + stat → keep highest-edge only (multi-threshold plays
@@ -266,7 +266,7 @@ function App() {
       if (!propBest.has(k) || (c.play.edge ?? 0) > (propBest.get(k).play.edge ?? 0)) propBest.set(k, c);
     }
     return [...out.filter(c => !c.play.stat), ...propBest.values()];
-  }, [authEmail, tonightPlays, trackedPlays, _placeAllSizing, calibData]);
+  }, [authEmail, tonightPlays, trackedPlays, _placeAllSizing]);
   // Placeable subset — candidates that cleared every HARD pre-flight check. These are the only
   // ones runPlaceAll actually orders, and the toolbar badge counts these (not blocked ones).
   const placeAllPlaceable = React.useMemo(
@@ -1739,7 +1739,7 @@ function App() {
           showPicksDrawer={showPicksDrawer}
           picksButtonRef={fabRef}
           placeAllCount={placeAllPlaceable.length}
-          onPlaceAll={() => { if (!calibData) fetchCalib(); setPlaceAllStatus(null); setPlaceAllTodayOnly(true); setShowPlaceAll(true); }}
+          onPlaceAll={() => { setPlaceAllStatus(null); setPlaceAllTodayOnly(true); setShowPlaceAll(true); }}
         />
       )}
 
