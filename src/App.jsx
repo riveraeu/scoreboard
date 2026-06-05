@@ -535,42 +535,19 @@ function App() {
       {/* Confirm pick modal */}
       {pendingTrackPlay && (() => {
         const play = pendingTrackPlay;
-        const raw = pendingOdds.trim();
-        const n = parseInt(raw, 10);
-        const oddsValid = !isNaN(n) && raw !== "" && raw !== "-" && raw !== "+";
-        let implied = null;
-        if (oddsValid) {
-          if (n < 0) implied = Math.abs(n) / (Math.abs(n) + 100) * 100;
-          else if (n > 0) implied = 100 / (n + 100) * 100;
-        }
-        // truePct from the pick's perspective — UNDER uses noTruePct.
-        const _tp = play.direction === "under" ? (play.noTruePct ?? (play.truePct != null ? 100 - play.truePct : null)) : play.truePct;
-        const edge = (_tp != null && implied != null) ? parseFloat((_tp - implied).toFixed(1)) : null;
-        // Suggested stake — mirror unitsForPlay (⅛-Kelly, $500 cap, $30 fallback) using the
-        // user-entered odds so the recommendation updates live as they type.
-        const suggestedStake = (() => {
-          if (_tp == null || !oddsValid) return UNIT_DOLLARS;
-          const b = n > 0 ? n / 100 : 100 / Math.abs(n);
-          const p = _tp / 100;
-          const f = Math.max(0, (b * p - (1 - p)) / b);
-          const stake = bankroll * f * 0.125;
-          return stake > 0 ? Math.round(Math.min(stake, STAKE_CAP)) : UNIT_DOLLARS;
-        })();
-        const color = implied === null ? "#8b949e" : implied >= 70 ? "#3fb950" : implied >= 50 ? "#e3b341" : "#f78166";
         const name = play.playerName ?? (play.gameType === "total" ? `${play.awayTeam} @ ${play.homeTeam}` : play.gameType === "ml" ? `${play.pickTeam} ML` : play.gameType === "spread" ? `${play.pickTeam} ${play.pickLine > 0 ? "+" : ""}${play.pickLine}` : play.scoringTeam ?? "");
         const statLabel = play.stat ? play.stat.toUpperCase() : play.sport ? play.sport.toUpperCase() : "";
         const dirLabel = play.direction === "under" ? `Under ${play.threshold}` : `Over ${play.threshold}`;
         const subtitle = play.playerName ? `${play.stat?.toUpperCase()} ${play.threshold}+` : dirLabel;
-        // Kalshi order: price in cents for the side being bet, contract count at suggested stake
-        const _kalshiPrice = play.kalshiTicker ? (play.kalshiSide === "no" ? Math.round(play.noKalshiPct ?? play.kalshiPct) : Math.round(play.kalshiPct)) : null;
-        const _kalshiCount = (_kalshiPrice && suggestedStake > 0) ? Math.floor(suggestedStake / (_kalshiPrice / 100)) : 0;
-        const _kalshiCost = _kalshiCount > 0 ? parseFloat((_kalshiCount * _kalshiPrice / 100).toFixed(2)) : 0;
-        const _canPlace = play.kalshiTicker && authEmail && _kalshiCount >= 1;
-        const TRACK_MIN_EDGE = 3;
-        const _belowGate = edge !== null && edge < TRACK_MIN_EDGE;
-        // A Kalshi contract pays $1 on win. Buying YES/NO at `cents` is equivalent to risking
-        // `cents` to win `(100 - cents)` — convert that to American odds so the ledger stores
-        // the true price taken, not the model's Kalshi snapshot price.
+        // Use the same ⅛-Kelly sizing as Place All (driven by the play's own Kalshi price)
+        const _sizing = play.kalshiTicker ? _placeAllSizing(play) : null;
+        const _kalshiPrice = _sizing?.price ?? null;
+        const _kalshiCount = _sizing?.count ?? 0;
+        const _kalshiCost = _sizing?.cost ?? 0;
+        const _canPlace = !!_sizing && !!authEmail;
+        const _validation = _sizing ? validateCandidate(play, _sizing) : { hard: [], soft: [] };
+        const _isBlocked = _validation.hard.length > 0;
+        // A Kalshi contract pays $1 on win — convert cents price to American odds for the ledger.
         const _centsToAmerican = (cents) => {
           if (!cents || cents <= 0 || cents >= 100) return null;
           return cents >= 50 ? -Math.round((cents / (100 - cents)) * 100) : Math.round(((100 - cents) / cents) * 100);
@@ -579,19 +556,9 @@ function App() {
         // runs via setTimeout after _doPlaceOrder — the closed-over state would be the pre-fill
         // value from the click-time render, not the post-fill one.
         const _doTrack = (fill = null) => {
-          const _n = parseInt(pendingOdds.trim(), 10);
-          const oddsVal = !isNaN(_n) && pendingOdds.trim() !== "-" && pendingOdds.trim() !== "+" ? _n : null;
-          // If a Kalshi order was placed, reconcile the pick to it: a filled order uses its real
-          // avg price + cost; a resting order uses the limit price + intended cost (both carried
-          // on `fill`). Either way the ledger matches the order, not the ⅛-Kelly model estimate.
-          // No order placed (fill null) → keep the manually-entered odds and Kelly sizing.
           let override = null;
           if (fill && fill.costDollars > 0) {
             const ao = _centsToAmerican(fill.avgCents);
-            // Stamp the real Kalshi position onto the pick so it's self-documenting: filled
-            // contract count, avg fill price (cents), and total cost. Makes partial/resting
-            // fills explicit (kalshiRestingCount) and lets any future reconciliation match by
-            // these instead of re-deriving from the model snapshot.
             override = { ...play,
               ...(ao != null ? { americanOdds: ao } : {}),
               unitsOverride: fill.costDollars,
@@ -599,8 +566,6 @@ function App() {
               kalshiAvgCents: fill.avgCents,
               ...(fill.restingCount > 0 ? { kalshiRestingCount: fill.restingCount } : {}),
             };
-          } else if (oddsVal) {
-            override = { ...play, americanOdds: oddsVal };
           }
           trackPlay(override || play);
           setPendingTrackPlay(null);
@@ -622,7 +587,6 @@ function App() {
             if (!r.ok) {
               setKalshiOrderResult({ ok: false, msg: data.error || `Error ${r.status}` });
             } else {
-              // Kalshi returns the order with realized-fill fields. taker_fill_cost is in cents.
               const o = data.order || {};
               const filledCount = o.taker_fill_count ?? 0;
               const costCents = o.taker_fill_cost ?? 0;
@@ -635,7 +599,6 @@ function App() {
                 fill = { filledCount, costDollars, avgCents, restingCount };
                 setKalshiOrderResult({ ok: true, msg: `${filledCount} filled @ ${avgCents}¢ = $${costDollars}${restNote}`, fill });
               } else {
-                // Nothing matched immediately — order is resting on the book. Track at intended size.
                 fill = { filledCount: 0, costDollars: _kalshiCost, avgCents: _kalshiPrice, restingCount: _kalshiCount };
                 setKalshiOrderResult({ ok: true, msg: `Order resting — ${_kalshiCount} × ${_kalshiPrice}¢ not yet filled`, fill });
               }
@@ -652,62 +615,47 @@ function App() {
             onClick={() => { setPendingTrackPlay(null); setPlaceOnKalshi(true); setKalshiOrderResult(null); }}>
             <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:12,padding:"20px 22px",width:360}}
               onClick={e => e.stopPropagation()}>
-              <div style={{fontSize:13,color:"#c9d1d9",fontWeight:600,marginBottom:2}}>{name}</div>
-              <div style={{fontSize:11,color:"#8b949e",marginBottom:16}}>{subtitle} {statLabel && !play.playerName ? `· ${statLabel}` : ""}</div>
-              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:18}}>
-                <span style={{fontSize:11,color:"#484f58",whiteSpace:"nowrap"}}>Odds</span>
-                <input autoFocus type="text" inputMode="numeric" value={pendingOdds}
-                  onChange={e => {
-                    let v = e.target.value;
-                    if (v.length > 0 && v[0] !== "-" && v[0] !== "+") v = "-" + v;
-                    setPendingOdds(v);
-                  }}
-                  onKeyDown={e => {
-                    if (e.key === "Enter") {
-                      // Block submission when entered odds put edge below the track-popup gate (3%).
-                      // Looser than the home-page qualified gate (5%) — picks tracked at 3-5% edge
-                      // are intentional, not misclicks; we only disable the truly negative-EV cases.
-                      if (edge !== null && edge < 3) return;
-                      _doTrack();
-                    } else if (e.key === "Escape") {
-                      setPendingTrackPlay(null); setPlaceOnKalshi(true); setKalshiOrderResult(null);
-                    }
-                  }}
-                  style={{flex:1,background:"#0d1117",border:"1px solid #30363d",borderRadius:7,
-                    color:"#c9d1d9",fontSize:16,padding:"7px 10px",outline:"none",textAlign:"center"}}
-                />
-                <span style={{fontSize:16,fontWeight:700,color,minWidth:52,textAlign:"right",whiteSpace:"nowrap"}}>
-                  {implied !== null ? `${implied.toFixed(1)}%` : "—"}
-                </span>
+              <div style={{fontSize:14,color:"#c9d1d9",fontWeight:700,marginBottom:2}}>
+                {_canPlace ? "Place 1 bet on Kalshi" : "Track pick"}
               </div>
-              {edge !== null && (
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",
-                  marginBottom:8,fontSize:11,color:"#484f58"}}>
+              <div style={{fontSize:11,color:"#8b949e",marginBottom:14}}>
+                {_canPlace ? "Real-money order · ⅛-Kelly" : "Track without placing"}
+              </div>
+              <div style={{color:"#c9d1d9",fontWeight:600,fontSize:13,marginBottom:12}}>
+                {name} <span style={{color:"#8b949e",fontWeight:400,fontSize:12}}>{subtitle}</span>
+              </div>
+              {play.edge != null && (
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:8,fontSize:11,color:"#484f58"}}>
                   <span>Edge (True% − implied)</span>
-                  <span style={{color: edge >= EDGE_GATE ? "#3fb950" : edge >= 0 ? "#e3b341" : "#f78166", fontWeight:700}}>
-                    {edge >= 0 ? "+" : ""}{edge}%
+                  <span style={{color: play.edge >= EDGE_GATE ? "#3fb950" : play.edge >= 0 ? "#e3b341" : "#f78166", fontWeight:700}}>
+                    {play.edge >= 0 ? "+" : ""}{play.edge}%
                   </span>
                 </div>
               )}
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",
-                marginBottom: _canPlace ? 8 : 14,fontSize:11,color:"#484f58"}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:14,fontSize:11,color:"#484f58"}}>
                 <span>Suggested stake (⅛-Kelly)</span>
-                <span style={{color:"#c9d1d9",fontWeight:700}}>${suggestedStake}</span>
+                <span style={{color:"#c9d1d9",fontWeight:700}}>
+                  {_canPlace ? `${_kalshiCount} × ${_kalshiPrice}¢ = $${_kalshiCost}` : `$${UNIT_DOLLARS}`}
+                </span>
               </div>
-              {_canPlace && (
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14,fontSize:11}}>
-                  <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",color:"#8b949e"}}>
-                    <input type="checkbox" checked={placeOnKalshi} onChange={e => { setPlaceOnKalshi(e.target.checked); setKalshiOrderResult(null); }}
-                      style={{accentColor:"#388bfd",cursor:"pointer"}} />
-                    Place on Kalshi
-                  </label>
-                  {placeOnKalshi && (
-                    <span style={{color:"#c9d1d9"}}>
-                      {_kalshiCount} × {_kalshiPrice}¢ = <span style={{fontWeight:700}}>${_kalshiCost}</span>
-                    </span>
-                  )}
+              {_canPlace && kalshiBalance != null && (
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:10}}>
+                  <span style={{color:"#8b949e"}}>Available (Kalshi)</span>
+                  <span style={{color:"#c9d1d9",fontWeight:700}}>${kalshiBalance.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
                 </div>
               )}
+              {_validation.hard.map((msg, i) => (
+                <div key={i} style={{marginBottom:6,fontSize:11,padding:"5px 8px",borderRadius:6,
+                  background:"rgba(247,129,102,0.08)",color:"#f78166",border:"1px solid rgba(247,129,102,0.3)"}}>
+                  ✗ {msg}
+                </div>
+              ))}
+              {_validation.soft.map((msg, i) => (
+                <div key={i} style={{marginBottom:6,fontSize:11,padding:"5px 8px",borderRadius:6,
+                  background:"rgba(227,179,65,0.08)",color:"#e3b341",border:"1px solid rgba(227,179,65,0.3)"}}>
+                  ⚠ {msg}
+                </div>
+              ))}
               {kalshiOrderResult && (
                 <div style={{marginBottom:10,fontSize:11,padding:"5px 8px",borderRadius:6,
                   background: kalshiOrderResult.loading ? "rgba(136,176,253,0.08)" : kalshiOrderResult.ok ? "rgba(63,185,80,0.12)" : "rgba(247,129,102,0.12)",
@@ -717,34 +665,31 @@ function App() {
                   {kalshiOrderResult.loading ? "Placing order…" : kalshiOrderResult.msg}
                 </div>
               )}
-              <div style={{display:"flex",gap:8}}>
+              <div style={{display:"flex",gap:8,marginTop:4}}>
                 <button onClick={() => { setPendingTrackPlay(null); setPlaceOnKalshi(true); setKalshiOrderResult(null); }}
                   style={{flex:1,padding:"8px 0",fontSize:12,borderRadius:7,border:"1px solid #30363d",
                     background:"transparent",color:"#8b949e",cursor:"pointer"}}>
                   Cancel
                 </button>
                 <button
-                  disabled={_belowGate || kalshiOrderResult?.loading}
-                  title={_belowGate ? `Edge ${edge}% is below the ${TRACK_MIN_EDGE}% minimum — adjust odds or cancel` : undefined}
+                  disabled={(_canPlace && _isBlocked) || !!kalshiOrderResult?.loading}
                   onClick={async () => {
-                    if (_belowGate || kalshiOrderResult?.loading) return;
-                    if (placeOnKalshi && _kalshiCount >= 1) {
+                    if ((_canPlace && _isBlocked) || kalshiOrderResult?.loading) return;
+                    if (_canPlace) {
                       const fill = await _doPlaceOrder();
-                      // Short pause so the user sees the result, then close + track with the
-                      // real fill (passed explicitly to avoid stale-closure reads of state).
                       setTimeout(() => _doTrack(fill), 1200);
                     } else {
                       _doTrack();
                     }
                   }}
                   style={{flex:1,padding:"8px 0",fontSize:12,borderRadius:7,
-                    border:`1px solid ${_belowGate ? "#30363d" : "#3fb950"}`,
-                    background: _belowGate ? "transparent" : "rgba(63,185,80,0.12)",
-                    color: _belowGate ? "#484f58" : "#3fb950",
-                    cursor: _belowGate || kalshiOrderResult?.loading ? "not-allowed" : "pointer",
+                    border:`1px solid ${_canPlace && _isBlocked ? "#30363d" : "#3fb950"}`,
+                    background: _canPlace && _isBlocked ? "transparent" : "rgba(63,185,80,0.12)",
+                    color: _canPlace && _isBlocked ? "#484f58" : "#3fb950",
+                    cursor: (_canPlace && _isBlocked) || kalshiOrderResult?.loading ? "not-allowed" : "pointer",
                     fontWeight:600,
-                    opacity: _belowGate ? 0.6 : 1}}>
-                  {placeOnKalshi && _kalshiCount >= 1 ? "Track + Place" : "Add Pick"}
+                    opacity: _canPlace && _isBlocked ? 0.6 : 1}}>
+                  {_canPlace ? `⚡ Place 1 bet ($${_kalshiCost})` : "Add Pick"}
                 </button>
               </div>
             </div>
@@ -789,37 +734,45 @@ function App() {
           const key = c.play.id ?? trackIdFor(c.play);
           const rs = rowsState[key];
           const isBlocked = c.validation.hard.length > 0;
-          const reason = isBlocked ? c.validation.hard.join("; ")
-            : c.validation.soft.length > 0 ? c.validation.soft.join("; ") : null;
+          const edge = c.play.edge;
+          const edgeColor = edge != null ? (edge >= EDGE_GATE ? "#3fb950" : edge >= 0 ? "#e3b341" : "#f78166") : "#484f58";
           return (
-            <div key={key} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,
-              padding:"5px 0",paddingLeft: indent ? 10 : 0,
+            <div key={key} style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8,
+              padding:"7px 0",paddingLeft: indent ? 10 : 0,
               borderBottom:"1px solid #21262d",fontSize:12,opacity:isBlocked ? 0.55 : 1}}>
               <div style={{minWidth:0,flex:1}}>
-                <div style={{color:"#c9d1d9",fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                <div style={{color:"#c9d1d9",fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",marginBottom:4}}>
                   {nameFor(c.play)} <span style={{color:"#8b949e",fontWeight:400}}>{subFor(c.play)}</span>
                 </div>
-                <div style={{color:"#484f58",fontSize:10}}>
-                  {(c.play.sport || "").toUpperCase()} · {c.count} × {c.price}¢ = ${c.cost}
-                </div>
-                {reason && !rs && (
-                  <div style={{color: isBlocked ? "#f78166" : "#e3b341", fontSize:10, marginTop:1,
-                    whiteSpace:"normal", lineHeight:1.3}}>
-                    {isBlocked ? "✗" : "⚠"} {reason}
+                {!rs && edge != null && (
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#484f58",marginBottom:3}}>
+                    <span>Edge (True% − implied)</span>
+                    <span style={{color:edgeColor,fontWeight:700}}>{edge >= 0 ? "+" : ""}{edge}%</span>
                   </div>
                 )}
+                {!rs && (
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#484f58",marginBottom:2}}>
+                    <span>Suggested stake (⅛-Kelly)</span>
+                    <span style={{color:"#c9d1d9",fontWeight:700}}>{c.count} × {c.price}¢ = ${c.cost}</span>
+                  </div>
+                )}
+                {!rs && c.validation.hard.map((msg, i) => (
+                  <div key={i} style={{color:"#f78166",fontSize:10,marginTop:2,lineHeight:1.3}}>✗ {msg}</div>
+                ))}
+                {!rs && c.validation.soft.map((msg, i) => (
+                  <div key={i} style={{color:"#e3b341",fontSize:10,marginTop:2,lineHeight:1.3}}>⚠ {msg}</div>
+                ))}
               </div>
-              <div style={{textAlign:"right",whiteSpace:"nowrap",fontSize:11,
-                color: rs ? stateColor[rs.state] : isBlocked ? "#f78166" : c.validation.soft.length > 0 ? "#e3b341" : "#8b949e", fontWeight:600}}>
-                {rs ? (rs.state === "placing" ? "placing…"
+              {rs && (
+                <div style={{textAlign:"right",whiteSpace:"nowrap",fontSize:11,
+                  color:stateColor[rs.state],fontWeight:600,paddingTop:2}}>
+                  {rs.state === "placing" ? "placing…"
                     : rs.state === "pending" ? "queued"
                     : rs.state === "error" ? `✗ ${rs.msg}`
                     : rs.state === "resting" ? `◔ ${rs.msg}`
-                    : `✓ ${rs.msg}`)
-                  : isBlocked ? "blocked"
-                  : c.validation.soft.length > 0 ? `⚠ $${c.cost}`
-                  : `$${c.cost}`}
-              </div>
+                    : `✓ ${rs.msg}`}
+                </div>
+              )}
             </div>
           );
         };
