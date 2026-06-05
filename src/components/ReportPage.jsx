@@ -643,10 +643,9 @@ function MarketGroupSection({ group, reportSort, setReportSort, navigateToPlayer
     if (k==="dc") {
       const dc = m.dataConfidence;
       if (dc == null) return DASH;
-      const gate = m.dcGate ?? 9;
       const pens = Object.entries(m.dcPenalties || {});
-      const tip = pens.length === 0 ? `DC ${dc}/10 (clean, gate ≥ ${gate})` : `DC ${dc}/10 (gate ≥ ${gate})\n` + pens.map(([k, v]) => `${k} ${v}`).join('\n');
-      const color = dc >= gate ? "#3fb950" : dc >= gate - 2 ? "#e3b341" : "#f78166";
+      const tip = pens.length === 0 ? `DC ${dc}/10 (no penalties)` : `DC ${dc}/10\n` + pens.map(([k, v]) => `${k} ${v}`).join('\n');
+      const color = dc >= 9 ? "#3fb950" : dc >= 7 ? "#8b949e" : "#f78166";
       return <Tip tip={tip} style={{color, fontWeight: 600, cursor: "pointer"}}>{dc}/10</Tip>;
     }
     if (k==="dcMkt") return _dcCell(m, "freshness");
@@ -737,7 +736,7 @@ function MarketGroupSection({ group, reportSort, setReportSort, navigateToPlayer
     kalshi:"Kalshi market price", edge:"Model edge over Kalshi market",
     opp:"Tonight's opponent / starting pitcher",
     sim:"Sim-Score (max 10 — 8+ = Alpha tier); hover for component breakdown",
-    dc: "dataConfidence (0–10) — signal quality score. Starts at 10; only stale Kalshi data (−4) or player-out (−10) fail the gate (≥7). Remaining penalties (farFromLine, seasonRateDivergent, lowVolume, etc.) are display signals. Hover the cell for the penalty breakdown.",
+    dc: "dataConfidence (0–10) — display signal only, not a gate. Starts at 10; penalties like farFromLine, seasonRateDivergent, lowVolume etc. reduce the score for informational purposes. Hover for the penalty breakdown.",
     dcMkt: "Market quality — Kalshi staleness / liquidity. ✓ = no penalty.",
     dcLineup: "Lineup / starter confirmation. ✓ = confirmed or unknown.",
     dcAvail: "Player availability (player props only). ✓ = no concerns.",
@@ -1307,7 +1306,7 @@ function ReportPage({
             display:"flex",gap:24,flexWrap:"wrap"}}>
             <div>
               <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>MARKET GATE</div>
-              <div style={{color:"#58a6ff",fontSize:12,fontWeight:600}}>Kalshi implied ≥ 70%</div>
+              <div style={{color:"#58a6ff",fontSize:12,fontWeight:600}}>Kalshi implied 67–91%</div>
               <div style={{color:"#484f58",fontSize:10}}>Only markets the book prices likely</div>
             </div>
             <div>
@@ -1316,9 +1315,9 @@ function ReportPage({
               <div style={{color:"#484f58",fontSize:10}}>Model must disagree meaningfully</div>
             </div>
             <div>
-              <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>DATA CONFIDENCE</div>
-              <div style={{color:"#e3b341",fontSize:12,fontWeight:600}}>dc = 10 / 10</div>
-              <div style={{color:"#484f58",fontSize:10}}>Clean inputs — all three must pass</div>
+              <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>CATEGORY GATE</div>
+              <div style={{color:"#e3b341",fontSize:12,fontWeight:600}}>Confirmed ROI category</div>
+              <div style={{color:"#484f58",fontSize:10}}>Shadow n≥200 ROI{'>'} 0 to promote</div>
             </div>
             <div style={{borderLeft:"1px solid #21262d",paddingLeft:24}}>
               <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>EDGE CALC</div>
