@@ -89,6 +89,9 @@ function App() {
   const [showPlaceAll, setShowPlaceAll] = React.useState(false); // batch-place modal open
   const [placeAllStatus, setPlaceAllStatus] = React.useState(null); // null | { running, rows: {id->{state,msg}} }
   const [placeAllTodayOnly, setPlaceAllTodayOnly] = React.useState(true);
+  const [activeDayTab, setActiveDayTab] = React.useState(() =>
+    new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
+  );
   const _prevResolvedCount = React.useRef(0);
   const {
     authEmail,
@@ -735,11 +738,10 @@ function App() {
 
       {/* Place All modal — batch-place every qualified, untracked, placeable Kalshi bet */}
       {showPlaceAll && (() => {
-        const todayPT = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
         const ptDateOf = (p) => p.gameTime
           ? new Date(p.gameTime).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
           : p.gameDate;
-        const inScope = (c) => !placeAllTodayOnly || ptDateOf(c.play) === todayPT;
+        const inScope = (c) => !placeAllTodayOnly || ptDateOf(c.play) === activeDayTab;
         // Scoped groups: filter by today and recompute rescaled stakes for the filtered set.
         const scopedGroups = placeAllGrouped
           .map(g => ({ ...g, rescaled: g.rescaled.filter(c => inScope(c)) }))
@@ -822,7 +824,7 @@ function App() {
                   <input type="checkbox" checked={placeAllTodayOnly} disabled={running}
                     onChange={e => setPlaceAllTodayOnly(e.target.checked)}
                     style={{accentColor:"#3fb950",cursor:running ? "not-allowed" : "pointer"}} />
-                  Today's picks only
+                  This day only
                 </label>
               )}
               <div style={{flex:1,overflowY:"auto",marginBottom:14,minHeight:0}}>
@@ -1738,6 +1740,8 @@ function App() {
           openPicksDrawer={() => setShowPicksDrawer(d => !d)}
           showPicksDrawer={showPicksDrawer}
           picksButtonRef={fabRef}
+          activeDayTab={activeDayTab}
+          setActiveDayTab={setActiveDayTab}
           placeAllCount={placeAllPlaceable.length}
           onPlaceAll={() => { setPlaceAllStatus(null); setPlaceAllTodayOnly(true); setShowPlaceAll(true); }}
         />

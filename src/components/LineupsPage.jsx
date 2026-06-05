@@ -225,10 +225,9 @@ export default function LineupsPage({
   picksButtonRef,
   placeAllCount = 0,
   onPlaceAll,
+  activeDayTab,
+  setActiveDayTab,
 }) {
-  const [activeDayTab, setActiveDayTab] = React.useState(() =>
-    new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
-  );
   const [expandedPlays, setExpandedPlays] = React.useState(new Set());
   const [notifPerm, setNotifPerm] = React.useState(() =>
     typeof Notification !== 'undefined' ? Notification.permission : 'unsupported'
