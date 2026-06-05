@@ -174,7 +174,11 @@ function playsForGame(allPlays, game, trackedIds, trackedPlays, placeableIds) {
     if (k && trackedKeysForMatchup.has(k) && !trackedIds.has(trackIdFor(p))) return false;
     // When a placeable set is provided, hide untracked plays that aren't in it (e.g. Kelly=0).
     // Tracked plays always show regardless so existing bets stay visible.
-    if (placeableIds && !trackedIds.has(trackIdFor(p)) && !placeableIds.has(trackIdFor(p))) return false;
+    // Exception: started/in-progress games always show — placeableIds excludes them to prevent
+    // Place All orders, but users should still be able to view and manually track them.
+    const gameStarted = game.gameState === 'in' || game.gameState === 'post' ||
+      (game.gameTime && new Date(game.gameTime).getTime() <= Date.now());
+    if (placeableIds && !gameStarted && !trackedIds.has(trackIdFor(p)) && !placeableIds.has(trackIdFor(p))) return false;
     return true;
   });
   // Synthesize a play for any tracked pick on this matchup that wasn't in the API response
