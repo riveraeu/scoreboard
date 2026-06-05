@@ -809,7 +809,9 @@ function MarketGroupSection({ group, reportSort, setReportSort, navigateToPlayer
                   if (!m.dcQualified) reasons.push(<span key="dc" style={{color:"#f78166"}}>dc</span>);
                   if ((m.edge ?? 0) < 5) reasons.push(<span key="edge" style={{color:"#e3b341"}}>edge</span>);
                   if (!passesCategoryGate(m)) reasons.push(<span key="cat" style={{color:"#8b949e"}}>cat</span>);
-                  return reasons.length === 0 ? null : reasons.reduce((acc, r, i) => i === 0 ? [r] : [...acc, <span key={`s${i}`} style={{color:"#30363d"}}> · </span>, r], []);
+                  // Server dropped before client gates (e.g. kalshi_out_of_window) — show raw reason
+                  if (reasons.length === 0 && m.reason) reasons.push(<span key="svr" style={{color:"#484f58"}}>{m.reason.replace(/_/g," ")}</span>);
+                  return reasons.length === 0 ? <span style={{color:"#484f58"}}>?</span> : reasons.reduce((acc, r, i) => i === 0 ? [r] : [...acc, <span key={`s${i}`} style={{color:"#30363d"}}> · </span>, r], []);
                 })()}
               </div>
               {!isTotal && !isTeamTotal && !isMl && !isSpread && <div style={{flex:_oppFlex,fontSize:10,textAlign:"right",whiteSpace:"nowrap"}}>
