@@ -272,7 +272,19 @@ function App() {
       const k = `${c.play.playerId ?? c.play.playerName}|${c.play.sport}|${c.play.stat}`;
       if (!propBest.has(k) || (c.play.edge ?? 0) > (propBest.get(k).play.edge ?? 0)) propBest.set(k, c);
     }
-    return [...out.filter(c => !c.play.stat || !c.play.playerName), ...propBest.values()];
+    // Spread dedup: same pickTeam + matchup → keep highest-edge line only. Multiple qualifying
+    // alt lines (e.g. CWS +2.5 and CWS +3.5) are correlated bets; size only the best one.
+    const spreadBest = new Map();
+    for (const c of out) {
+      if (c.play.gameType !== 'spread') continue;
+      const sk = `${c.play.sport}|${c.play.pickTeam}|${c.play.oppTeam}|${c.play.gameDate ?? ''}`;
+      if (!spreadBest.has(sk) || (c.play.edge ?? 0) > (spreadBest.get(sk).play.edge ?? 0)) spreadBest.set(sk, c);
+    }
+    return [
+      ...out.filter(c => c.play.gameType !== 'spread' && (!c.play.stat || !c.play.playerName)),
+      ...propBest.values(),
+      ...spreadBest.values(),
+    ];
   }, [authEmail, tonightPlays, trackedPlays, _placeAllSizing]);
   // Placeable subset — candidates that cleared every HARD pre-flight check. runPlaceAll only
   // orders these; the toolbar badge shows placeAllCandidates.length (all qualified plays,

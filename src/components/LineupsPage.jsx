@@ -182,17 +182,31 @@ function playsForGame(allPlays, game, trackedIds, trackedPlays, placeableIds) {
     if (placeableIds && !gameStarted && !trackedIds.has(trackIdFor(p)) && !placeableIds.has(trackIdFor(p))) return false;
     return true;
   });
+  // Spread alt-line dedup: when multiple qualifying lines exist for the same pickTeam
+  // (e.g. CWS +2.5 and CWS +3.5 both pass the category gate), keep only the highest-edge one.
+  // Tracked plays are exempt — they always show regardless of line.
+  const _spreadBest = new Map();
+  for (const p of apiPlays) {
+    if (p.gameType !== 'spread' || (trackedIds && trackedIds.has(trackIdFor(p)))) continue;
+    const sk = `${p.sport}|${p.pickTeam}|${p.oppTeam}|${p.gameDate ?? ''}`;
+    if (!_spreadBest.has(sk) || (p.edge ?? 0) > (_spreadBest.get(sk).edge ?? 0)) _spreadBest.set(sk, p);
+  }
+  const dedupedApiPlays = apiPlays.filter(p => {
+    if (p.gameType !== 'spread' || (trackedIds && trackedIds.has(trackIdFor(p)))) return true;
+    const sk = `${p.sport}|${p.pickTeam}|${p.oppTeam}|${p.gameDate ?? ''}`;
+    return _spreadBest.get(sk) === p;
+  });
   // Synthesize a play for any tracked pick on this matchup that wasn't in the API response
   // (e.g. tracked LAD +1.5 today — server-side EDGE_GATE filtered it out before dedup, so it
   // doesn't exist in plays[] for the tracked-id check to match against). _synthFromTracked
   // marker prevents the matchup-card badge "all tracked" check from firing on cards where the
   // only plays are synthesized (which would always evaluate as all-tracked).
-  if (!trackedPlays) return apiPlays;
-  const apiIds = new Set(apiPlays.map(trackIdFor));
+  if (!trackedPlays) return dedupedApiPlays;
+  const apiIds = new Set(dedupedApiPlays.map(trackIdFor));
   const extras = (trackedPlays || [])
     .filter(p => !apiIds.has(p.id) && _matchesGame(p, game))
     .map(p => ({ ...p, _synthFromTracked: true }));
-  return [...apiPlays, ...extras];
+  return [...dedupedApiPlays, ...extras];
 }
 
 function ptDate(ts) {
