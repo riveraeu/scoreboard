@@ -262,13 +262,15 @@ function App() {
     }
     // Prop dedup: same player + stat → keep highest-edge only (multi-threshold plays
     // resolve unanimously 90% of the time; betting both is near-identical exposure).
+    // Must check playerName: game-type plays (spread/total/ml) also carry a stat field
+    // (e.g. stat:"spread") and would all collapse to one key without this guard.
     const propBest = new Map();
     for (const c of out) {
-      if (!c.play.stat) continue;
+      if (!c.play.stat || !c.play.playerName) continue;
       const k = `${c.play.playerId ?? c.play.playerName}|${c.play.sport}|${c.play.stat}`;
       if (!propBest.has(k) || (c.play.edge ?? 0) > (propBest.get(k).play.edge ?? 0)) propBest.set(k, c);
     }
-    return [...out.filter(c => !c.play.stat), ...propBest.values()];
+    return [...out.filter(c => !c.play.stat || !c.play.playerName), ...propBest.values()];
   }, [authEmail, tonightPlays, trackedPlays, _placeAllSizing]);
   // Placeable subset — candidates that cleared every HARD pre-flight check. runPlaceAll only
   // orders these; the toolbar badge shows placeAllCandidates.length (all qualified plays,
