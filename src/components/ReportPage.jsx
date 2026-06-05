@@ -763,7 +763,7 @@ function MarketGroupSection({ group, reportSort, setReportSort, navigateToPlayer
         {_hdr("edge","Edge")}
         {xcols.map(c => <React.Fragment key={c.k}>{_hdr(c.k,c.l,c.flex?{flex:c.flex}:{})}</React.Fragment>)}
         {_hdr("gate","Gate")}
-        {!stat.startsWith("total") && !stat.startsWith("team") && _hdr("opp","Opp",{flex:_oppFlex})}
+        {!stat.startsWith("total") && !stat.startsWith("team") && stat !== "spread" && stat !== "ml" && _hdr("opp","Opp",{flex:_oppFlex})}
       </div>
       <div style={{background:"#0d1117",borderRadius:8,overflow:"hidden"}}>
         {rows.map((m, i) => {
