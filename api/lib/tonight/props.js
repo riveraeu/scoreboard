@@ -5,6 +5,7 @@
 
 import { log5K, log5HitRate, PARK_KFACTOR, PARK_HITFACTOR, UMPIRE_KFACTOR, poissonCDF, simulateKsDist, kDistPct, buildNbaStatDist, nbaDistPct, simulateHits } from "../simulate.js";
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER as EDGE_GATE } from "../config.js";
+import { ptDateMinusOne } from "../pt.js";
 
 const PROD_SPORTS = new Set(["mlb", "nba", "nhl", "wnba"]);
 const normName = (s) => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -605,9 +606,7 @@ export async function emitPropPlays({
       }
     }
     const isHomeGame = sport === "mlb" ? sportByteam.mlb?.gameHomeTeams?.[playerTeam] === playerTeam : sport === "nba" ? sportByteam.nba?.gameHomeTeams?.[playerTeam] === playerTeam : sport === "wnba" ? sportByteam.wnba?.gameHomeTeams?.[playerTeam] === playerTeam : null;
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().slice(0, 10);
+    const yesterdayStr = ptDateMinusOne(_todayPT);
     const isB2B = (sport === "nba" || sport === "nhl" || sport === "wnba") && gl.events.length > 0 && (gl.events[0]?.date || "").startsWith(yesterdayStr);
     // Provisional truePct for MLB hitter debug drops (computed before gates so all drops can include it)
     let _hlSeasonPct = null, _hlSoftPct = null, _hlTruePct = null, _hlEdge = null;
