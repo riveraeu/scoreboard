@@ -502,7 +502,7 @@ async function handleShadowResolver({ path, request, env }) {
 // Fetches current Kalshi prices from the live cache and stamps them onto today's
 // shadow_plays rows, enabling CLV / line-movement analysis in shadow-analysis.
 
-async function handleShadowPregameSnap({ path, request, env }) {
+async function handleShadowPregameSnap({ path, request, env, cache }) {
   if (path !== "shadow-pregame-snap") return null;
 
   if (!env?.CRON_SECRET) return errorResponse("CRON_SECRET not set", 500);
@@ -514,7 +514,12 @@ async function handleShadowPregameSnap({ path, request, env }) {
   const t0 = Date.now();
   const snapshotDate = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
 
-  await neonExec(ADD_PRE_PRICE_COLS_SQL, env);
+  const _preSchemaKey = "shadow:pregame-schema:v1";
+  const _preSchemaOk = cache ? await cache.get(_preSchemaKey).catch(() => null) : null;
+  if (!_preSchemaOk) {
+    await neonExec(ADD_PRE_PRICE_COLS_SQL, env);
+    if (cache) cache.put(_preSchemaKey, "1", { expirationTtl: 86400 * 30 }).catch(() => {});
+  }
 
   // Get current Kalshi prices from the live /tonight cache (reuses 2-min snap, no external fetch).
   const origin = new URL(request.url).origin;
@@ -564,11 +569,11 @@ async function handleShadowPregameSnap({ path, request, env }) {
   });
 }
 
-export async function handleShadowRoutes({ path, request, env }) {
+export async function handleShadowRoutes({ path, request, env, cache }) {
   const shadowResolverResp = await handleShadowResolver({ path, request, env });
   if (shadowResolverResp) return shadowResolverResp;
 
-  const pregameResp = await handleShadowPregameSnap({ path, request, env });
+  const pregameResp = await handleShadowPregameSnap({ path, request, env, cache });
   if (pregameResp) return pregameResp;
 
   if (path !== "shadow-snapshot") return null;
@@ -585,10 +590,15 @@ export async function handleShadowRoutes({ path, request, env }) {
   const t0 = Date.now();
 
   try {
-    // Ensure table exists (no-op if already created). DDL uses neonExec (no prepared stmt).
-    console.log("[shadow-snapshot] starting neonExec DDL");
-    await neonExec(CREATE_TABLE_SQL, env);
-    console.log(`[shadow-snapshot] DDL done ${Date.now() - t0}ms`);
+    // DDL is skipped after first successful run (flag cached in Upstash for 30 days).
+    // Avoids 4 cold-Neon round-trips that push the Edge Function past its timeout.
+    const _schemaKey = "shadow:schema:v4";
+    const _schemaOk = cache ? await cache.get(_schemaKey).catch(() => null) : null;
+    if (!_schemaOk) {
+      console.log("[shadow-snapshot] starting neonExec DDL");
+      await neonExec(CREATE_TABLE_SQL, env);
+      console.log(`[shadow-snapshot] DDL done ${Date.now() - t0}ms`);
+    }
 
     // Fetch tonight debug response — uses cached Kalshi snaps, doesn't bust external APIs.
     const origin = new URL(request.url).origin;
@@ -662,6 +672,9 @@ export async function handleShadowRoutes({ path, request, env }) {
     console.log(`[shadow-snapshot] upserting ${rows.length} rows`);
     await neonBatchUpsert(SHADOW_TABLE, COLUMNS, rows, env);
     console.log(`[shadow-snapshot] upsert done ${Date.now() - t0}ms`);
+
+    // Refresh schema flag so next cron run skips DDL (30-day TTL, renewed on each success).
+    if (cache) cache.put("shadow:schema:v4", "1", { expirationTtl: 86400 * 30 }).catch(() => {});
 
     return jsonResponse({
       ok: true,

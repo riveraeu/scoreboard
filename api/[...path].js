@@ -134,7 +134,7 @@ var worker_default = {
       if (_kalshiResp) return _kalshiResp;
       const _tonightResp = await handleTonightRoute({ path, params, request, env, CACHE2, runtimeCtx: ctx });
       if (_tonightResp) return _tonightResp;
-      const _shadowResp = await handleShadowRoutes({ path, request, env });
+      const _shadowResp = await handleShadowRoutes({ path, request, env, cache: CACHE2 });
       if (_shadowResp) return _shadowResp;
       return errorResponse("Unknown route: " + path, 404);
     } catch (e) {
