@@ -559,7 +559,8 @@ export async function emitAllMlAndSpread({
     for (const ctx of Object.values(_nbaMlContext)) {
       const { homeTeam, awayTeam, gameDate, homeLambda, awayLambda, kalshiVolume, kalshiSpread, lowVolume, _simData } = ctx;
       if (gameDate && gameDate < cutoffStr) continue;
-      const mlMarket = _nbaMlMarkets[`${homeTeam}|${awayTeam}|${gameDate}`];
+      const mlMarket = _nbaMlMarkets[`${homeTeam}|${awayTeam}|${gameDate}`]
+                    ?? (gameDate == null ? (_nbaMlMarkets[`${homeTeam}|${awayTeam}|${_todayPT}`] ?? _nbaMlMarkets[`${awayTeam}|${homeTeam}|${_todayPT}`]) : null);
       if (!mlMarket?.yesByTeam) continue;
       const homeYesAsk = mlMarket.yesByTeam[homeTeam];
       const awayYesAsk = mlMarket.yesByTeam[awayTeam];
@@ -734,7 +735,8 @@ export async function emitAllMlAndSpread({
     for (const ctx of Object.values(_wnbaMlContext)) {
       const { homeTeam, awayTeam, gameDate, homeLambda, awayLambda, kalshiVolume, kalshiSpread, lowVolume, _simData } = ctx;
       if (gameDate && gameDate < cutoffStr) continue;
-      const mlMarket = _wnbaMlMarkets[`${homeTeam}|${awayTeam}|${gameDate}`];
+      const mlMarket = _wnbaMlMarkets[`${homeTeam}|${awayTeam}|${gameDate}`]
+                    ?? (gameDate == null ? (_wnbaMlMarkets[`${homeTeam}|${awayTeam}|${_todayPT}`] ?? _wnbaMlMarkets[`${awayTeam}|${homeTeam}|${_todayPT}`]) : null);
       if (!mlMarket?.yesByTeam) continue;
       const homeYesAsk = mlMarket.yesByTeam[homeTeam];
       const awayYesAsk = mlMarket.yesByTeam[awayTeam];

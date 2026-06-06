@@ -179,7 +179,7 @@ export async function handleAuthRoutes(ctx) {
 
   if (path === "auth/calibration" && method === "GET") {
     const calibPayload = await verifyJWT(_extractToken(request), JWT_SECRET);
-    const calibAdminKey = params.get("adminKey");
+    const calibAdminKey = (request.headers.get("Authorization") || "").replace("Bearer ", "");
     if (!calibPayload && calibAdminKey !== env?.ADMIN_KEY) return errorResponse("Forbidden", 403);
     const upUrl = env?.UPSTASH_REDIS_REST_URL;
     const upAuth = `Bearer ${env?.UPSTASH_REDIS_REST_TOKEN}`;
@@ -489,13 +489,13 @@ export async function handleAuthRoutes(ctx) {
 
   // ── Shadow calibration — unbiased full-distribution stats from Neon shadow_plays ──────────
   // GET /api/auth/shadow-calibration
-  // Auth: bearer JWT (same as /api/auth/calibration) or ?adminKey=
+  // Auth: bearer JWT or Authorization: Bearer <ADMIN_KEY>
   // Returns overall/byCategory/byCategoryDetail calibration across ALL model predictions
   // (no edge gate, no dc gate) so categories can be promoted to passesCategoryGate()
   // when ROI > 0 at 90% CI with n ≥ 200.
   if (path === "auth/shadow-calibration" && method === "GET") {
     const scPayload = await verifyJWT(_extractToken(request), JWT_SECRET);
-    const scAdminKey = params.get("adminKey");
+    const scAdminKey = (request.headers.get("Authorization") || "").replace("Bearer ", "");
     if (!scPayload && scAdminKey !== env?.ADMIN_KEY) return errorResponse("Forbidden", 403);
     if (!env?.POSTGRES_URL && !env?.NEON_DATABASE_URL && !env?.DATABASE_URL_UNPOOLED) {
       return errorResponse("No Neon connection configured", 500);
