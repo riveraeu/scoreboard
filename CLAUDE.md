@@ -18,8 +18,8 @@ Admin/debug one-liners (pull ADMIN_KEY via `vercel env pull`):
 ```bash
 # Verify tonight's play generation
 curl -s "https://scoreboard-ivory-xi.vercel.app/api/tonight?debug=1" | jq '.plays | length'
-# Trigger shadow snapshot manually
-curl -s "https://scoreboard-ivory-xi.vercel.app/api/auth/shadow-stats?trigger=1" -H "Authorization: Bearer $ADMIN_KEY" | jq '.trigger'
+# Trigger shadow snapshot manually (ADMIN_KEY bypasses CRON_SECRET)
+curl -s "https://scoreboard-ivory-xi.vercel.app/api/shadow-snapshot" -H "Authorization: Bearer $ADMIN_KEY" | jq '{ok, snapshotDate, logged, durationMs}'
 # Trigger shadow resolver manually
 curl -s "https://scoreboard-ivory-xi.vercel.app/api/auth/shadow-stats?resolvetrigger=1" -H "Authorization: Bearer $ADMIN_KEY" | jq '{resolved, skipped}'
 ```
