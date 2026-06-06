@@ -573,93 +573,106 @@ export async function handleShadowRoutes({ path, request, env }) {
 
   if (path !== "shadow-snapshot") return null;
 
-  // Auth: Vercel cron runner attaches Authorization: Bearer ${CRON_SECRET}.
-  if (!env?.CRON_SECRET) return errorResponse("CRON_SECRET not set", 500);
-  const cronAuth = (request.headers.get("authorization") || "").replace(/^Bearer\s+/, "");
-  if (cronAuth !== env.CRON_SECRET) return errorResponse("Forbidden", 403);
+  // Auth: CRON_SECRET (Vercel cron runner) or ADMIN_KEY (manual trigger).
+  const bearer = (request.headers.get("authorization") || "").replace(/^Bearer\s+/, "");
+  const isAdmin = env?.ADMIN_KEY && bearer === env.ADMIN_KEY;
+  const isCron  = env?.CRON_SECRET && bearer === env.CRON_SECRET;
+  if (!isAdmin && !isCron) return errorResponse("Forbidden", 403);
 
   if (!env?.POSTGRES_URL && !env?.NEON_DATABASE_URL) return errorResponse("POSTGRES_URL not set", 500);
 
   const snapshotDate = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
   const t0 = Date.now();
 
-  // Ensure table exists (no-op if already created). DDL uses neonExec (no prepared stmt).
-  await neonExec(CREATE_TABLE_SQL, env);
+  try {
+    // Ensure table exists (no-op if already created). DDL uses neonExec (no prepared stmt).
+    console.log("[shadow-snapshot] starting neonExec DDL");
+    await neonExec(CREATE_TABLE_SQL, env);
+    console.log(`[shadow-snapshot] DDL done ${Date.now() - t0}ms`);
 
-  // Fetch tonight debug response — uses cached Kalshi snaps, doesn't bust external APIs.
-  const origin = new URL(request.url).origin;
-  const tonightResp = await fetch(`${origin}/api/tonight?debug=1`, {
-    headers: { "x-shadow-internal": "1" },
-  });
-  if (!tonightResp.ok) {
-    return errorResponse(`tonight fetch failed: ${tonightResp.status}`, 502);
+    // Fetch tonight debug response — uses cached Kalshi snaps, doesn't bust external APIs.
+    const origin = new URL(request.url).origin;
+    console.log(`[shadow-snapshot] fetching ${origin}/api/tonight`);
+    const tonightResp = await fetch(`${origin}/api/tonight?debug=1`, {
+      headers: { "x-shadow-internal": "1" },
+    });
+    console.log(`[shadow-snapshot] tonight status=${tonightResp.status} ${Date.now() - t0}ms`);
+    if (!tonightResp.ok) {
+      return errorResponse(`tonight fetch failed: ${tonightResp.status}`, 502);
+    }
+    const tonight = await tonightResp.json();
+    console.log(`[shadow-snapshot] tonight parsed plays=${tonight.plays?.length} dropped=${tonight.dropped?.length} ${Date.now() - t0}ms`);
+
+    // Combine qualified plays + dc-dropped plays. preDropped plays often lack truePct.
+    const rawPlays = [...(tonight.plays || []), ...(tonight.dropped || [])];
+
+    // Filter: must have a computed truePct, and game must be on today's PT date.
+    const plays = rawPlays.filter(p =>
+      typeof p.truePct === "number" && !isNaN(p.truePct) &&
+      (p.gameDate === snapshotDate || !p.gameDate)
+    );
+
+    if (!plays.length) {
+      return jsonResponse({ ok: true, snapshotDate, logged: 0, durationMs: Date.now() - t0 });
+    }
+
+    annotateGroups(plays);
+
+    const rows = plays.map(p => ({
+      id: shadowId(p),
+      snapshot_date: snapshotDate,
+      sport: p.sport || null,
+      stat: p.stat || null,
+      game_type: p.gameType || null,
+      player_name: p.playerName || null,
+      player_id: String(p.playerId || ""),
+      // Game-type plays have homeTeam/awayTeam; qualified props have playerTeam/opponent;
+      // early-dropped props only have gameTeam1/gameTeam2 from the Kalshi ticker.
+      // The resolver only needs two team identifiers to find the ESPN game; order doesn't matter.
+      home_team: p.homeTeam || p.playerTeam || p.gameTeam1 || null,
+      away_team: p.awayTeam || p.opponent   || p.gameTeam2 || null,
+      scoring_team: p.scoringTeam || null,
+      pick_team: p.pickTeam || null,
+      pick_line: p.pickLine ?? null,
+      threshold: p.threshold ?? null,
+      direction: p.direction || null,
+      model_true_pct: p.direction === "under" ? (p.noTruePct ?? parseFloat((100 - p.truePct).toFixed(1))) : p.truePct,
+      kalshi_pct: p.kalshiPct ?? null,
+      no_kalshi_pct: p.noKalshiPct ?? null,
+      edge: p.edge ?? null,
+      dc: p.dataConfidence ?? null,
+      dc_qualified: p.dcQualified ?? null,
+      game_date: p.gameDate || null,
+      // Null game_time when gameDate is unknown (Kalshi ticker null-date issue) for game-type
+      // plays — the bare-fallback gameTimes value may point to a different day's game,
+      // causing the resolver's /api/live time-prefix match to fail. Without a stored
+      // game_time the resolver does a time-agnostic team lookup instead.
+      game_time: (p.gameDate || !p.gameType) ? (p.gameTime || null) : null,
+      group_id: p._gid,
+      group_size: p._groupSize,
+      threshold_rank: p._rank,
+      is_best_edge: p._isBestEdge ?? false,
+      snapshot_model_version: p.modelVersion || "v2",
+      season_type: p.seasonType ?? null,
+      features: extractFeatures(p),
+      kalshi_yes_price: p.kalshiPct != null ? p.kalshiPct / 100 : null,
+      kalshi_no_price: p.noKalshiPct != null ? p.noKalshiPct / 100 : null,
+    }));
+
+    console.log(`[shadow-snapshot] upserting ${rows.length} rows`);
+    await neonBatchUpsert(SHADOW_TABLE, COLUMNS, rows, env);
+    console.log(`[shadow-snapshot] upsert done ${Date.now() - t0}ms`);
+
+    return jsonResponse({
+      ok: true,
+      snapshotDate,
+      logged: rows.length,
+      qualified: tonight.plays?.length ?? 0,
+      dropped: tonight.dropped?.length ?? 0,
+      durationMs: Date.now() - t0,
+    });
+  } catch (e) {
+    console.error("[shadow-snapshot] ERROR:", e?.message, e?.stack);
+    return errorResponse(`snapshot failed: ${e?.message}`, 500);
   }
-  const tonight = await tonightResp.json();
-
-  // Combine qualified plays + dc-dropped plays. preDropped plays often lack truePct.
-  const rawPlays = [...(tonight.plays || []), ...(tonight.dropped || [])];
-
-  // Filter: must have a computed truePct, and game must be on today's PT date.
-  const plays = rawPlays.filter(p =>
-    typeof p.truePct === "number" && !isNaN(p.truePct) &&
-    (p.gameDate === snapshotDate || !p.gameDate)
-  );
-
-  if (!plays.length) {
-    return jsonResponse({ ok: true, snapshotDate, logged: 0, durationMs: Date.now() - t0 });
-  }
-
-  annotateGroups(plays);
-
-  const rows = plays.map(p => ({
-    id: shadowId(p),
-    snapshot_date: snapshotDate,
-    sport: p.sport || null,
-    stat: p.stat || null,
-    game_type: p.gameType || null,
-    player_name: p.playerName || null,
-    player_id: String(p.playerId || ""),
-    // Game-type plays have homeTeam/awayTeam; qualified props have playerTeam/opponent;
-    // early-dropped props only have gameTeam1/gameTeam2 from the Kalshi ticker.
-    // The resolver only needs two team identifiers to find the ESPN game; order doesn't matter.
-    home_team: p.homeTeam || p.playerTeam || p.gameTeam1 || null,
-    away_team: p.awayTeam || p.opponent   || p.gameTeam2 || null,
-    scoring_team: p.scoringTeam || null,
-    pick_team: p.pickTeam || null,
-    pick_line: p.pickLine ?? null,
-    threshold: p.threshold ?? null,
-    direction: p.direction || null,
-    model_true_pct: p.direction === "under" ? (p.noTruePct ?? parseFloat((100 - p.truePct).toFixed(1))) : p.truePct,
-    kalshi_pct: p.kalshiPct ?? null,
-    no_kalshi_pct: p.noKalshiPct ?? null,
-    edge: p.edge ?? null,
-    dc: p.dataConfidence ?? null,
-    dc_qualified: p.dcQualified ?? null,
-    game_date: p.gameDate || null,
-    // Null game_time when gameDate is unknown (Kalshi ticker null-date issue) for game-type
-    // plays — the bare-fallback gameTimes value may point to a different day's game,
-    // causing the resolver's /api/live time-prefix match to fail. Without a stored
-    // game_time the resolver does a time-agnostic team lookup instead.
-    game_time: (p.gameDate || !p.gameType) ? (p.gameTime || null) : null,
-    group_id: p._gid,
-    group_size: p._groupSize,
-    threshold_rank: p._rank,
-    is_best_edge: p._isBestEdge ?? false,
-    snapshot_model_version: p.modelVersion || "v2",
-    season_type: p.seasonType ?? null,
-    features: extractFeatures(p),
-    kalshi_yes_price: p.kalshiPct != null ? p.kalshiPct / 100 : null,
-    kalshi_no_price: p.noKalshiPct != null ? p.noKalshiPct / 100 : null,
-  }));
-
-  await neonBatchUpsert(SHADOW_TABLE, COLUMNS, rows, env);
-
-  return jsonResponse({
-    ok: true,
-    snapshotDate,
-    logged: rows.length,
-    qualified: tonight.plays?.length ?? 0,
-    dropped: tonight.dropped?.length ?? 0,
-    durationMs: Date.now() - t0,
-  });
 }
