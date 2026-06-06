@@ -9,6 +9,9 @@ import { _GT_IMPLIED_CAP, _TT_IMPLIED_CAP } from "./dc.js";
 import { normTeam } from "./parse-teams.js";
 import { PT_FMT, ptDateMinusOne } from "../pt.js";
 
+// Domed MLB stadiums — weather factor does not apply.
+const _MLB_DOMED = new Set(["TB", "TOR", "HOU", "MIA", "SEA", "ARI", "TEX", "MIL"]);
+
 // B2B lambda dampener constants (only used in game-total + team-total emission).
 const B2B_NBA  = 0.975;
 const B2B_WNBA = 0.975;

@@ -629,7 +629,7 @@ export async function handleShadowRoutes({ path, request, env }) {
     pick_line: p.pickLine ?? null,
     threshold: p.threshold ?? null,
     direction: p.direction || null,
-    model_true_pct: p.truePct,
+    model_true_pct: p.direction === "under" ? (p.noTruePct ?? parseFloat((100 - p.truePct).toFixed(1))) : p.truePct,
     kalshi_pct: p.kalshiPct ?? null,
     no_kalshi_pct: p.noKalshiPct ?? null,
     edge: p.edge ?? null,

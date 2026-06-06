@@ -107,9 +107,6 @@ function glCacheKey(key) {
   return sport === "mlb" ? `gl:mlb242526v2|${key}` : `gl:v3|${key}`;
 }
 
-// Domed MLB stadiums — weather factor does not apply.
-const _MLB_DOMED = new Set(["TB", "TOR", "HOU", "MIA", "SEA", "ARI", "TEX", "MIL"]);
-
 // Parse wind direction from ESPN displayValue: "Out to LF" → positive, "In from CF" → negative, crosswind → 0.
 const _parseWind = (dv) => {
   if (!dv) return { windSpeed: null, windOutMph: null };
@@ -144,7 +141,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
   if (path !== "tonight") return null;
   const ctx = runtimeCtx;
   const JWT_SECRET = env?.JWT_SECRET;
-        // nhlSoftTeams / mlbSoftTeams / glCacheKey / _MLB_DOMED / _parseWind / _extractMlbWeather
+        // nhlSoftTeams / mlbSoftTeams / glCacheKey / _parseWind / _extractMlbWeather
         // / injury helpers — moved to module level (Phase B, 2026-05-29).
         const isDebugMode = params.get("debug") === "1";
         const isBustCache = params.get("bust") === "1";
