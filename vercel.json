@@ -18,7 +18,9 @@
   "crons": [
     { "path": "/api/keepalive", "schedule": "0 12 * * *" },
     { "path": "/api/kalshi-snapshot", "schedule": "*/2 * * * *" },
+    { "path": "/api/tonight", "schedule": "3 15 * * *" },
     { "path": "/api/shadow-snapshot", "schedule": "5 15 * * *" },
+    { "path": "/api/tonight", "schedule": "3 22 * * *" },
     { "path": "/api/shadow-snapshot", "schedule": "5 22 * * *" },
     { "path": "/api/shadow-pregame-snap", "schedule": "0 17 * * *" },
     { "path": "/api/shadow-pregame-snap", "schedule": "0 3 * * *" },

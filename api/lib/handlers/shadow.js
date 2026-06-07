@@ -601,11 +601,20 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
     }
 
     // Fetch tonight debug response — uses cached Kalshi snaps, doesn't bust external APIs.
+    // Timeout at 55s (under the 60s edge max) so a cold tonight returns 504 instead of a
+    // silent 502 hang from the edge-function wall-clock limit.
     const origin = new URL(request.url).origin;
     console.log(`[shadow-snapshot] fetching ${origin}/api/tonight`);
-    const tonightResp = await fetch(`${origin}/api/tonight?debug=1`, {
-      headers: { "x-shadow-internal": "1" },
-    });
+    let tonightResp;
+    try {
+      tonightResp = await fetch(`${origin}/api/tonight?debug=1`, {
+        headers: { "x-shadow-internal": "1" },
+        signal: AbortSignal.timeout(55_000),
+      });
+    } catch (fetchErr) {
+      console.error(`[shadow-snapshot] tonight fetch failed: ${fetchErr?.message} ${Date.now() - t0}ms`);
+      return errorResponse(`tonight fetch timed out — re-run manually: ${fetchErr?.message}`, 504);
+    }
     console.log(`[shadow-snapshot] tonight status=${tonightResp.status} ${Date.now() - t0}ms`);
     if (!tonightResp.ok) {
       return errorResponse(`tonight fetch failed: ${tonightResp.status}`, 502);
