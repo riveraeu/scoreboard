@@ -608,30 +608,34 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
       console.log(`[shadow-snapshot] DDL done ${Date.now() - t0}ms`);
     }
 
-    // Fetch tonight debug response — uses cached Kalshi snaps, doesn't bust external APIs.
-    // Timeout at 55s (under the 60s edge max) so a cold tonight returns 504 instead of a
-    // silent 502 hang from the edge-function wall-clock limit.
-    const origin = new URL(request.url).origin;
-    console.log(`[shadow-snapshot] fetching ${origin}/api/tonight`);
-    let tonightResp;
-    try {
-      tonightResp = await fetch(`${origin}/api/tonight?debug=1`, {
-        headers: { "x-shadow-internal": "1" },
-        signal: AbortSignal.timeout(55_000),
-      });
-    } catch (fetchErr) {
-      console.error(`[shadow-snapshot] tonight fetch failed: ${fetchErr?.message} ${Date.now() - t0}ms`);
-      return errorResponse(`tonight fetch timed out — re-run manually: ${fetchErr?.message}`, 504);
+    // Try KV staging written by tonight cron — avoids the 55s re-fetch that hits the 60s wall-clock.
+    let rawPlays = null;
+    if (cache) {
+      const _staged = await cache.get(`shadow:staging:${snapshotDate}`, "json").catch(() => null);
+      if (_staged?.plays) {
+        console.log(`[shadow-snapshot] KV staging hit plays=${_staged.plays.length} dropped=${_staged.dropped?.length ?? 0} ${Date.now() - t0}ms`);
+        rawPlays = [..._staged.plays, ...(_staged.dropped || [])];
+      }
     }
-    console.log(`[shadow-snapshot] tonight status=${tonightResp.status} ${Date.now() - t0}ms`);
-    if (!tonightResp.ok) {
-      return errorResponse(`tonight fetch failed: ${tonightResp.status}`, 502);
+    if (!rawPlays) {
+      const origin = new URL(request.url).origin;
+      console.log(`[shadow-snapshot] fetching ${origin}/api/tonight`);
+      let tonightResp;
+      try {
+        tonightResp = await fetch(`${origin}/api/tonight?debug=1`, {
+          headers: { "x-shadow-internal": "1" },
+          signal: AbortSignal.timeout(55_000),
+        });
+      } catch (fetchErr) {
+        console.error(`[shadow-snapshot] tonight fetch failed: ${fetchErr?.message} ${Date.now() - t0}ms`);
+        return errorResponse(`tonight fetch timed out — re-run manually: ${fetchErr?.message}`, 504);
+      }
+      console.log(`[shadow-snapshot] tonight status=${tonightResp.status} ${Date.now() - t0}ms`);
+      if (!tonightResp.ok) return errorResponse(`tonight fetch failed: ${tonightResp.status}`, 502);
+      const tonight = await tonightResp.json();
+      console.log(`[shadow-snapshot] tonight parsed plays=${tonight.plays?.length} dropped=${tonight.dropped?.length} ${Date.now() - t0}ms`);
+      rawPlays = [...(tonight.plays || []), ...(tonight.dropped || [])];
     }
-    const tonight = await tonightResp.json();
-    console.log(`[shadow-snapshot] tonight parsed plays=${tonight.plays?.length} dropped=${tonight.dropped?.length} ${Date.now() - t0}ms`);
-
-    // Combine qualified plays + dc-dropped plays. preDropped plays often lack truePct.
-    const rawPlays = [...(tonight.plays || []), ...(tonight.dropped || [])];
 
     // Filter: must have a computed truePct, and game must be on today's PT date.
     const plays = rawPlays.filter(p =>

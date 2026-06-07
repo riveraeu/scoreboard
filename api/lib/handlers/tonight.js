@@ -1523,6 +1523,10 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           _p.dcQualified = dc.dcQualified;
           _p.dcGate = dc.dcGate;
         }
+        // Stage plays for shadow-snapshot — eliminates the 55s internal re-fetch.
+        if (CACHE2) {
+          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays, dropped }), { expirationTtl: 21600 }).catch(() => {});
+        }
         if (isDebug) {
           const nbaGlLabels = Object.fromEntries(Object.entries(playerGamelogs).filter(([k]) => k.startsWith("nba|")).map(([k, gl]) => [k, gl?.ul ?? null]));
           const nbaGlSample = Object.fromEntries(Object.entries(playerGamelogs).filter(([k]) => k.startsWith("nba|")).map(([k, gl]) => [k, gl?.events?.slice(0, 3).map(ev => ({ stats: ev.stats?.slice(0, 3), statsLen: ev.stats?.length })) ?? null]));
