@@ -505,9 +505,10 @@ async function handleShadowResolver({ path, request, env }) {
 async function handleShadowPregameSnap({ path, request, env, cache }) {
   if (path !== "shadow-pregame-snap") return null;
 
-  if (!env?.CRON_SECRET) return errorResponse("CRON_SECRET not set", 500);
   const cronAuth = (request.headers.get("authorization") || "").replace(/^Bearer\s+/, "");
-  if (cronAuth !== env.CRON_SECRET) return errorResponse("Forbidden", 403);
+  const isAdmin = env?.ADMIN_KEY && cronAuth === env.ADMIN_KEY;
+  const isCron  = env?.CRON_SECRET && cronAuth === env.CRON_SECRET;
+  if (!isAdmin && !isCron) return errorResponse("Forbidden", 403);
 
   if (!env?.POSTGRES_URL && !env?.NEON_DATABASE_URL) return errorResponse("POSTGRES_URL not set", 500);
 
