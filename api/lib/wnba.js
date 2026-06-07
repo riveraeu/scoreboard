@@ -37,7 +37,6 @@ export const WNBA_CANON_TO_ESPN = {
   CONN: "CONNECTICU",
   DAL: "DALLAS",
   WSH: "WAS",
-  GS: "GSV",
   LA: "LAS",
 };
 

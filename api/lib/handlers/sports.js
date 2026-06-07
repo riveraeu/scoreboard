@@ -4,7 +4,6 @@
 
 import { PT_FMT } from "../pt.js";
 import { jsonResponse, errorResponse } from "../utils.js";
-import { WNBA_CANON_TO_ESPN } from "../wnba.js";
 
 export async function handleSportsRoutes(ctx) {
   const { path, method, params, env, CACHE2, VALID_SPORTS } = ctx;
@@ -71,7 +70,7 @@ export async function handleSportsRoutes(ctx) {
       const CANONICAL_TO_ESPN = {
         mlb: { CWS: "CHW" },
         nba: { GSW: "GS", SAS: "SA", NYK: "NY", NOP: "NO", UTA: "UTAH", WAS: "WSH" },
-        wnba: WNBA_CANON_TO_ESPN,
+        wnba: { CONN: "CON" },
         nhl: { TBL: "TB", NJD: "NJ", LAK: "LA", SJS: "SJ" },
       }[sport] || {};
       const ESPN_TO_CANONICAL = Object.fromEntries(

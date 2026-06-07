@@ -168,9 +168,9 @@ See `docs/MODEL.md` for all formula details, SimScore tiers, lambda formulas, ga
 
 **ESPN scoreboard abbr mismatch**: `/api/live` translates at the ESPN boundary via `CANONICAL_TO_ESPN` / `ESPN_TO_CANONICAL` (sport-keyed). Symptom of unmapped team: `state:"unknown"`, pick never resolves.
 - **MLB**: `CWS↔CHW` · **NBA**: `GSW↔GS`, `SAS↔SA`, `NYK↔NY`, `NOP↔NO`, `UTA↔UTAH`, `WAS↔WSH`
-- **WNBA**: `CONN↔CONNECTICU`, `DAL↔DALLAS`, `WSH↔WAS`, `GS↔GSV`, `LA↔LAS` · **NHL**: `TBL↔TB`, `NJD↔NJ`, `LAK↔LA`, `SJS↔SJ`
+- **WNBA**: `CONN↔CON` (scoreboard only — all other WNBA abbrs match canonical) · **NHL**: `TBL↔TB`, `NJD↔NJ`, `LAK↔LA`, `SJS↔SJ`
 
-Add new mismatches to `WNBA_CANON_TO_ESPN` in `api/lib/wnba.js` — `sports.js` imports it directly so both stay in sync. `ESPN_TO_CANONICAL` is auto-derived from `WNBA_CANON_TO_ESPN` at runtime.
+Add new scoreboard mismatches to `CANONICAL_TO_ESPN.wnba` in `sports.js` directly. Note: `WNBA_CANON_TO_ESPN` in `wnba.js` is for a *different* ESPN endpoint (stats/injuries) and uses different forms (CONNECTICU, DALLAS, WAS, LAS) — do NOT use it for the `/api/live` scoreboard map.
 
 **`gameScores` today + tomorrow merge**: Each scoreboard fetch that produces `gameScores` fetches today AND tomorrow in parallel and merges into `parseGameScores`. Key shape: `${hA}|${gameDate}|${event.date}` — prevents today's Final from being wiped after midnight UTC, and prevents DH game 2 from overwriting game 1. The inline duplicate in `api/lib/mlb.js` (~line 952) must mirror the same key shape. Frontend `LineupsPage.buildGames` keys by `${sortedPair}|${gameDate}|${gameTime}` for the same reason.
 
