@@ -524,9 +524,16 @@ async function handleShadowPregameSnap({ path, request, env, cache }) {
 
   // Get current Kalshi prices from the live /tonight cache (reuses 2-min snap, no external fetch).
   const origin = new URL(request.url).origin;
-  const tonightResp = await fetch(`${origin}/api/tonight?debug=1`, {
-    headers: { "x-shadow-internal": "1" },
-  });
+  let tonightResp;
+  try {
+    tonightResp = await fetch(`${origin}/api/tonight?debug=1`, {
+      headers: { "x-shadow-internal": "1" },
+      signal: AbortSignal.timeout(55_000),
+    });
+  } catch (fetchErr) {
+    console.error(`[shadow-pregame-snap] tonight fetch failed: ${fetchErr?.message} ${Date.now() - t0}ms`);
+    return errorResponse(`tonight fetch timed out — re-run manually: ${fetchErr?.message}`, 504);
+  }
   if (!tonightResp.ok) return errorResponse(`tonight fetch failed: ${tonightResp.status}`, 502);
   const tonight = await tonightResp.json();
 

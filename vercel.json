@@ -22,7 +22,9 @@
     { "path": "/api/shadow-snapshot", "schedule": "5 15 * * *" },
     { "path": "/api/tonight", "schedule": "3 22 * * *" },
     { "path": "/api/shadow-snapshot", "schedule": "5 22 * * *" },
+    { "path": "/api/tonight", "schedule": "58 16 * * *" },
     { "path": "/api/shadow-pregame-snap", "schedule": "0 17 * * *" },
+    { "path": "/api/tonight", "schedule": "58 2 * * *" },
     { "path": "/api/shadow-pregame-snap", "schedule": "0 3 * * *" },
     { "path": "/api/shadow-resolver", "schedule": "0 9 * * *" }
   ]
