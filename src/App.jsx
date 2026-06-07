@@ -1,6 +1,6 @@
 import React from 'react';
 import { WORKER, SPORTS, STAT_FULL, MLB_TEAM, TOTAL_THRESHOLDS, STAT_LABEL, SPORT_KEY, SPORT_BADGE_COLOR, GAMELOG_COLS, passesCategoryGate } from './lib/constants.js';
-import { ordinal, slugify, oddsToProfit } from './lib/utils.js';
+import { ordinal, slugify, oddsToProfit, logoUrl } from './lib/utils.js';
 import { useIsMobile } from './lib/hooks.js';
 import { useTonight } from './lib/useTonight.js';
 import { useSavePicks } from './lib/useSavePicks.js';
@@ -88,7 +88,7 @@ function App() {
   const [kalshiBalance, setKalshiBalance] = React.useState(null); // dollars, null = not fetched
   const [showPlaceAll, setShowPlaceAll] = React.useState(false); // batch-place modal open
   const [placeAllStatus, setPlaceAllStatus] = React.useState(null); // null | { running, rows: {id->{state,msg}} }
-  const [placeAllTodayOnly, setPlaceAllTodayOnly] = React.useState(false);
+  const [placeAllSelected, setPlaceAllSelected] = React.useState(new Set()); // IDs of individually checked bets
   const [activeDayTab, setActiveDayTab] = React.useState(() =>
     new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
   );
@@ -742,25 +742,41 @@ function App() {
 
       {/* Place All modal — batch-place every qualified, untracked, placeable Kalshi bet */}
       {showPlaceAll && (() => {
-        const todayPT = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
-        const ptDateOf = (p) => p.gameTime
-          ? new Date(p.gameTime).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
-          : p.gameDate;
-        const inScope = (c) => !placeAllTodayOnly || ptDateOf(c.play) === todayPT;
+        const allPlaceable = placeAllGrouped.flatMap(g => g.rescaled);
+        // Initialise selection to all placeable IDs on first render of the modal
+        const allIds = allPlaceable.map(c => c.play.id ?? trackIdFor(c.play));
+        if (placeAllSelected.size === 0 && allIds.length > 0 && !placeAllStatus) {
+          setPlaceAllSelected(new Set(allIds));
+          return null;
+        }
         const scopedGroups = placeAllGrouped
-          .map(g => ({ ...g, rescaled: g.rescaled.filter(c => inScope(c)) }))
+          .map(g => ({ ...g, rescaled: g.rescaled }))
           .filter(g => g.rescaled.length > 0);
-        const placeable = scopedGroups.flatMap(g => g.rescaled);
-        const blocked = placeAllCandidates.filter(c => c.validation.hard.length > 0 && inScope(c));
+        const placeable = allPlaceable.filter(c => placeAllSelected.has(c.play.id ?? trackIdFor(c.play)));
+        const blocked = placeAllCandidates.filter(c => c.validation.hard.length > 0);
         const flaggedCount = placeable.filter(c => c.validation.soft.length > 0).length;
         const readyCount = placeable.length - flaggedCount;
         const totalCost = parseFloat(placeable.reduce((s, c) => s + c.cost, 0).toFixed(2));
+        const totalEstWin = parseFloat(placeable.reduce((s, c) => s + c.count * (100 - c.price) / 100, 0).toFixed(2));
         const cash = kalshiBalance;
         const shortfall = cash != null && totalCost > cash ? parseFloat((totalCost - cash).toFixed(2)) : 0;
         const status = placeAllStatus;
         const running = status?.running === true;
         const done = status != null && status.running === false;
         const rowsState = status?.rows || {};
+        const allChecked = allIds.every(id => placeAllSelected.has(id));
+        const toggleAll = () => {
+          if (running) return;
+          setPlaceAllSelected(allChecked ? new Set() : new Set(allIds));
+        };
+        const toggleOne = (id) => {
+          if (running) return;
+          setPlaceAllSelected(prev => {
+            const next = new Set(prev);
+            next.has(id) ? next.delete(id) : next.add(id);
+            return next;
+          });
+        };
         const nameFor = (p) => p.playerName
           ?? (p.gameType === "total" ? `${p.awayTeam} @ ${p.homeTeam}`
             : p.gameType === "teamTotal" ? `${p.scoringTeam} team`
@@ -771,21 +787,39 @@ function App() {
           : p.gameType === "total" ? `${p.direction === "under" ? "U" : "O"}${p.threshold}`
           : p.gameType === "teamTotal" ? `${p.direction === "under" ? "U" : "O"}${p.threshold}`
           : "";
-        const close = () => { if (!running) { setShowPlaceAll(false); setPlaceAllStatus(null); } };
+        const imgFor = (p) => {
+          if (p.playerId) return `https://a.espncdn.com/i/headshots/${p.sport}/players/full/${p.playerId}.png`;
+          const teamAbbr = p.pickTeam ?? p.scoringTeam ?? p.homeTeam;
+          if (teamAbbr && p.sport) return logoUrl(p.sport, teamAbbr);
+          return null;
+        };
+        const close = () => { if (!running) { setShowPlaceAll(false); setPlaceAllStatus(null); setPlaceAllSelected(new Set()); } };
         const stateColor = { filled: "#3fb950", resting: "#e3b341", error: "#f78166", placing: "#58a6ff", pending: "#484f58" };
         const renderRow = (c, indent) => {
           const key = c.play.id ?? trackIdFor(c.play);
           const rs = rowsState[key];
           const isBlocked = c.validation.hard.length > 0;
+          const isChecked = placeAllSelected.has(key);
           const edge = c.play.edge;
           const edgeColor = edge != null ? (edge >= EDGE_GATE ? "#3fb950" : edge >= 0 ? "#e3b341" : "#f78166") : "#484f58";
           const ao = _centsToAmericanB(c.price);
           const aoStr = ao != null ? (ao >= 0 ? `+${ao}` : `${ao}`) : null;
           const estWin = parseFloat((c.count * (100 - c.price) / 100).toFixed(2));
+          const img = imgFor(c.play);
           return (
-            <div key={key} style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8,
+            <div key={key} style={{display:"flex",alignItems:"flex-start",gap:8,
               padding:"7px 0",paddingLeft: indent ? 10 : 0,
-              borderBottom:"1px solid #21262d",fontSize:12,opacity:isBlocked ? 0.55 : 1}}>
+              borderBottom:"1px solid #21262d",fontSize:12,opacity:isBlocked ? 0.45 : 1}}>
+              {!done && !isBlocked && (
+                <input type="checkbox" checked={isChecked} disabled={running || isBlocked}
+                  onChange={() => toggleOne(key)}
+                  style={{marginTop:3,accentColor:"#3fb950",cursor:running || isBlocked ? "not-allowed" : "pointer",flexShrink:0}} />
+              )}
+              {img && (
+                <img src={img} alt="" onError={e => { e.target.style.display = "none"; }}
+                  style={{width:28,height:28,borderRadius:c.play.playerId ? "50%" : 4,
+                    objectFit:"contain",background:"#21262d",flexShrink:0,marginTop:1}} />
+              )}
               <div style={{minWidth:0,flex:1}}>
                 <div style={{color:"#c9d1d9",fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",marginBottom:4}}>
                   {nameFor(c.play)} <span style={{color:"#8b949e",fontWeight:400}}>{subFor(c.play)}</span>
@@ -823,7 +857,7 @@ function App() {
               </div>
               {rs && (
                 <div style={{textAlign:"right",whiteSpace:"nowrap",fontSize:11,
-                  color:stateColor[rs.state],fontWeight:600,paddingTop:2}}>
+                  color:stateColor[rs.state],fontWeight:600,paddingTop:2,flexShrink:0}}>
                   {rs.state === "placing" ? "placing…"
                     : rs.state === "pending" ? "queued"
                     : rs.state === "error" ? `✗ ${rs.msg}`
@@ -837,7 +871,7 @@ function App() {
         return (
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:700,display:"flex",alignItems:"center",justifyContent:"center"}}
             onClick={close}>
-            <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:12,padding:"20px 22px",width:440,maxHeight:"82vh",display:"flex",flexDirection:"column"}}
+            <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:12,padding:"20px 22px",width:460,maxHeight:"82vh",display:"flex",flexDirection:"column"}}
               onClick={e => e.stopPropagation()}>
               <div style={{fontSize:14,color:"#c9d1d9",fontWeight:700,marginBottom:2}}>
                 {done ? "Placement complete" : `Place ${placeable.length} bet${placeable.length === 1 ? "" : "s"} on Kalshi`}
@@ -847,11 +881,12 @@ function App() {
                   : <>{readyCount} ready{flaggedCount > 0 ? <> · <span style={{color:"#e3b341"}}>{flaggedCount} flagged</span></> : null}{blocked.length > 0 ? <> · <span style={{color:"#f78166"}}>{blocked.length} blocked</span></> : null}</>}
               </div>
               {!done && (
-                <label style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:"#8b949e",marginBottom:12,cursor:running ? "not-allowed" : "pointer",userSelect:"none"}}>
-                  <input type="checkbox" checked={placeAllTodayOnly} disabled={running}
-                    onChange={e => setPlaceAllTodayOnly(e.target.checked)}
+                <label style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:"#8b949e",marginBottom:12,cursor:running ? "not-allowed" : "pointer",userSelect:"none",borderBottom:"1px solid #21262d",paddingBottom:10}}>
+                  <input type="checkbox" checked={allChecked} disabled={running}
+                    onChange={toggleAll}
                     style={{accentColor:"#3fb950",cursor:running ? "not-allowed" : "pointer"}} />
-                  Today only
+                  Select all
+                  {!allChecked && placeAllSelected.size > 0 && <span style={{color:"#58a6ff",marginLeft:4}}>{placeAllSelected.size} selected</span>}
                 </label>
               )}
               <div style={{flex:1,overflowY:"auto",marginBottom:14,minHeight:0}}>
@@ -873,21 +908,27 @@ function App() {
                 ))}
                 {blocked.map(c => renderRow(c, false))}
               </div>
-              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}>
-                <span style={{color:"#8b949e"}}>Total cost</span>
-                <span style={{color:"#c9d1d9",fontWeight:700}}>${totalCost.toFixed(2)}</span>
+              <div style={{borderTop:"1px solid #21262d",paddingTop:10,marginBottom:4}}>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}>
+                  <span style={{color:"#8b949e"}}>Total cost</span>
+                  <span style={{color:"#c9d1d9",fontWeight:700}}>${totalCost.toFixed(2)}</span>
+                </div>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom: cash != null ? 4 : 10}}>
+                  <span style={{color:"#8b949e"}}>Est. total winnings</span>
+                  <span style={{color:"#3fb950",fontWeight:700}}>+${totalEstWin.toFixed(2)}</span>
+                </div>
+                {cash != null && (
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:shortfall > 0 ? 4 : 10}}>
+                    <span style={{color:"#8b949e"}}>Available (Kalshi)</span>
+                    <span style={{color:"#c9d1d9",fontWeight:700}}>${cash.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+                  </div>
+                )}
+                {shortfall > 0 && (
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:4,color:"#f78166"}}>
+                    <span>Short by ${shortfall.toFixed(2)} — underfunded orders will be rejected</span>
+                  </div>
+                )}
               </div>
-              {cash != null && (
-                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:shortfall > 0 ? 4 : 14}}>
-                  <span style={{color:"#8b949e"}}>Available (Kalshi)</span>
-                  <span style={{color:"#c9d1d9",fontWeight:700}}>${cash.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
-                </div>
-              )}
-              {shortfall > 0 && (
-                <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:14,color:"#f78166"}}>
-                  <span>Short by ${shortfall.toFixed(2)} — underfunded orders will be rejected</span>
-                </div>
-              )}
               <div style={{display:"flex",gap:8}}>
                 <button onClick={close} disabled={running}
                   style={{flex:1,padding:"8px 0",fontSize:12,borderRadius:7,border:"1px solid #30363d",
@@ -1772,7 +1813,7 @@ function App() {
           placeAllCount={placeAllPlaceable.length}
           placeAllCountByDay={placeAllCountByDay}
           placeAllPlaceableIds={placeAllPlaceableIds}
-          onPlaceAll={() => { setPlaceAllStatus(null); setPlaceAllTodayOnly(false); setShowPlaceAll(true); }}
+          onPlaceAll={() => { setPlaceAllStatus(null); setShowPlaceAll(true); }}
         />
       )}
 
