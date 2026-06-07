@@ -610,10 +610,13 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
 
     // Try KV staging written by tonight cron — avoids the 55s re-fetch that hits the 60s wall-clock.
     let rawPlays = null;
+    let _qualifiedCount = 0, _droppedCount = 0;
     if (cache) {
       const _staged = await cache.get(`shadow:staging:${snapshotDate}`, "json").catch(() => null);
       if (_staged?.plays) {
-        console.log(`[shadow-snapshot] KV staging hit plays=${_staged.plays.length} dropped=${_staged.dropped?.length ?? 0} ${Date.now() - t0}ms`);
+        _qualifiedCount = _staged.plays.length;
+        _droppedCount = _staged.dropped?.length ?? 0;
+        console.log(`[shadow-snapshot] KV staging hit plays=${_qualifiedCount} dropped=${_droppedCount} ${Date.now() - t0}ms`);
         rawPlays = [..._staged.plays, ...(_staged.dropped || [])];
       }
     }
@@ -633,7 +636,9 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
       console.log(`[shadow-snapshot] tonight status=${tonightResp.status} ${Date.now() - t0}ms`);
       if (!tonightResp.ok) return errorResponse(`tonight fetch failed: ${tonightResp.status}`, 502);
       const tonight = await tonightResp.json();
-      console.log(`[shadow-snapshot] tonight parsed plays=${tonight.plays?.length} dropped=${tonight.dropped?.length} ${Date.now() - t0}ms`);
+      _qualifiedCount = tonight.plays?.length ?? 0;
+      _droppedCount = tonight.dropped?.length ?? 0;
+      console.log(`[shadow-snapshot] tonight parsed plays=${_qualifiedCount} dropped=${_droppedCount} ${Date.now() - t0}ms`);
       rawPlays = [...(tonight.plays || []), ...(tonight.dropped || [])];
     }
 
@@ -701,8 +706,8 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
       ok: true,
       snapshotDate,
       logged: rows.length,
-      qualified: tonight.plays?.length ?? 0,
-      dropped: tonight.dropped?.length ?? 0,
+      qualified: _qualifiedCount,
+      dropped: _droppedCount,
       durationMs: Date.now() - t0,
     });
   } catch (e) {
