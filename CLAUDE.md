@@ -121,7 +121,7 @@ See `docs/INFRA.md` for full request/response contracts, auth patterns, cron det
 | `/api/auth/{register,login,reset,…}` | `handlers/auth.js` | Auth + admin (calibration, shadow-stats, clear-kalshi-stale) |
 | `/api/auth/shadow-calibration` | `handlers/auth.js` | Shadow calib stats from Neon (`?since`, `?bestThreshold`, `?sport`) |
 | `/api/auth/shadow-analysis` | `handlers/auth.js` | Five analyses: thresholdRankRoi, intraGroupCorr, sameGamePairs, concentration, clvAnalysis |
-| `/api/shadow-snapshot` | `handlers/shadow.js` | Cron (3pm PT) — logs all plays+drops to Neon `shadow_plays` |
+| `/api/shadow-snapshot` | `handlers/shadow.js` | Crons: 8:05am PT (primary), 8:10am PT (backup), 3:05pm PT, 3:35pm PT — logs plays+drops to Neon `shadow_plays`. Reads `shadow:staging:{date}` from KV first (written by tonight cron); falls back to HTTP fetch of `/api/tonight?debug=1`. |
 | `/api/shadow-resolver` | `handlers/shadow.js` | Cron (2am PT) — resolves shadow plays via ESPN live scores (4-pass name lookup) |
 | `/api/shadow-pregame-snap` | `handlers/shadow.js` | Cron (7pm PT) — captures pre-game Kalshi prices for CLV |
 | `/api/user/picks` | `handlers/auth.js` | GET/POST picks (bearer JWT, delta `{upserts, deletes, bankroll}`) |
@@ -200,6 +200,8 @@ const env = {
 };
 ```
 Symptom of missing wire-up: `env?.VAR` is `undefined` even though Vercel dashboard shows it set.
+
+**Shadow-snapshot KV staging (2026-06-07)**: Tonight handler writes `shadow:staging:{date}` to Upstash (TTL 6h) immediately after DC computation, before the isDebug return. Shadow-snapshot reads this key first (~100ms) instead of re-fetching `/api/tonight?debug=1` (40-55s), keeping it well under the 60s edge wall-clock. **Limitation**: non-debug tonight crons don't populate `dropped` (only debug mode does), so the KV path captures `qualified plays only` (dropped: 0). The HTTP fallback (when KV key is missing) fetches `?debug=1` and captures both plays + dropped. Diagnosing: check runtime logs for `[shadow-snapshot] KV staging hit` (fast path) vs `[shadow-snapshot] fetching ...` (HTTP fallback). If shadow-snapshot fires before tonight cron (manual trigger), call `/api/tonight` first to seed the staging key, then trigger shadow-snapshot.
 
 **Neon HTTP SQL API (`api/lib/neon.js`) — four gotchas**:
 1. Uses `@neondatabase/serverless` (Edge-compatible). Raw fetch to the Neon hostname fails with "missing authentication credentials" — the Vercel-managed host doesn't accept manual `Authorization: Basic` headers.
