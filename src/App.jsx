@@ -382,7 +382,7 @@ function App() {
     setPlaceAllStatus({ running: true, rows: { ...rows } });
     for (let i = 0; i < cands.length; i++) {
       const c = cands[i];
-      if (i > 0) await new Promise(res => setTimeout(res, 800));
+      if (i > 0) await new Promise(res => setTimeout(res, 1500));
       const key = c.play.id ?? trackIdFor(c.play);
       rows[key] = { state: "placing" };
       setPlaceAllStatus({ running: true, rows: { ...rows } });
