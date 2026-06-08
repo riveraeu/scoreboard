@@ -142,12 +142,21 @@ function App() {
     shadowAnalysisData, shadowAnalysisLoading, fetchShadowAnalysis,
   } = useReportData();
 
-  // Qualified play filter: dcQualified=true (not stale/playerOut) AND edge >= 5% AND category gate.
-  // dc=10 strict requirement removed 2026-06-04: shadow calibration showed data-completeness
-  // penalties were anti-correlated with ROI — fallback paths regress toward the mean and produce
-  // better-calibrated outputs. dcQualified now means dc≥7 (only kalshiStale/playerOut fail).
+  // Holds the current tracked pick IDs — populated by the useEffect below after usePicks.
+  // _qualifiedFilter reads this ref so tracked plays bypass the category gate even when their
+  // category is demoted, mirroring the passesGate bypass in LineupsPage. Ref (not state) so
+  // the stable _qualifiedFilter closure sees the latest value without a new function identity.
+  const _trackedIdsRef = React.useRef(new Set());
+
+  // Qualified play filter: dcQualified=true AND edge >= 5% AND category gate.
+  // Tracked plays bypass the category gate so existing bets stay visible after a demotion.
   // Mirrors passesGate in LineupsPage; keep these in sync.
   const _qualifiedFilter = React.useCallback((p) => {
+    // Tracked picks bypass the category gate — visibility of an existing bet must survive
+    // a category demotion. Still enforce dcQualified + edge so stale/out picks drop.
+    if (_trackedIdsRef.current.has(trackIdFor(p))) {
+      return p.dcQualified === true && (p.edge ?? 0) >= EDGE_GATE;
+    }
     // Demoted by server-side dedup in favor of a higher-edge alt. Allow through when the
     // winner itself fails the category gate — demotion is spurious if the winner can't qualify.
     if (p._altLineDemoted === true && !passesCategoryGate(p)) return false;
@@ -172,6 +181,12 @@ function App() {
   const { savePicks, syncStatus, setSyncStatus, primeSync, resetSync } = useSavePicks({
     getCurrent: () => ({ picks: trackedPlaysRef.current, bankroll: bankrollRef.current }),
   });
+
+  // Keep _trackedIdsRef in sync so _qualifiedFilter can bypass the category gate for tracked picks.
+  React.useEffect(() => {
+    _trackedIdsRef.current = new Set((trackedPlays || []).map(p => p.id));
+  }, [trackedPlays]);
+
   const { liveStats } = useLiveStats({ trackedPlays, setTrackedPlays, mlbMeta, nbaMeta, wnbaMeta, nhlMeta });
 
   const { showAuthModal, setShowAuthModal, authSubmit, logout } = useAuthFlow({

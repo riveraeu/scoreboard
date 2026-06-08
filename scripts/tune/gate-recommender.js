@@ -25,10 +25,11 @@ const DEMOTE_ROI    = -0.05; // ROI < -5% to flag a demotion
 
 // ── Current gate (mirrors src/lib/constants.js passesCategoryGate) ────────────
 // Update this when you apply a recommendation so next run sees the new baseline.
+// max: upper-bound cap (exclusive), null = no cap.
 const CURRENT_GATE = {
-  "mlb|strikeouts": 80,
-  "wnba|points":    70,
-  "wnba|rebounds":  60,
+  "mlb|strikeouts": { min: 80, max: 90 },
+  "wnba|points":    { min: 70, max: 80 },
+  "wnba|rebounds":  { min: 70, max: null },
 };
 
 // ── Env loading ───────────────────────────────────────────────────────────────
@@ -69,6 +70,12 @@ function fmtRoi(roi) {
   if (roi == null) return "  n/a  ";
   const pct = (roi * 100).toFixed(1);
   return `${roi >= 0 ? "+" : ""}${pct}%`;
+}
+
+// Produces the truePct guard expression for passesCategoryGate codegen.
+function gateExpr(min, max) {
+  const lo = `(p.truePct ?? 0) >= ${min}`;
+  return max != null ? `${lo} && (p.truePct ?? 0) < ${max}` : lo;
 }
 
 // Cumulative ROI+n for plays with bsp ≥ threshold.
@@ -132,8 +139,10 @@ async function main() {
     const cat     = byCategory[key];
     const bands   = byCategoryDetail[key] ?? [];
     const sweep   = thresholdSweep(bands);
-    const current = CURRENT_GATE[key] ?? null;
-    const inGate  = current != null;
+    const gate       = CURRENT_GATE[key] ?? null;
+    const current    = gate?.min ?? null;  // lower-bound threshold for sweep lookups
+    const currentMax = gate?.max ?? null;  // upper-bound cap (null = no cap)
+    const inGate     = gate != null;
 
     const rec = bestThreshold(sweep, minN);
 
@@ -150,14 +159,14 @@ async function main() {
       } else if (betterT) {
         status = "RAISE  ";
         note   = `Raise ≥${current}→${betterT.threshold}%  ROI ${fmtRoi(betterT.roi)} (n=${betterT.n})`;
-        changeLines.push(`  if (key === '${key}') return (p.truePct ?? 0) >= ${betterT.threshold};`);
+        changeLines.push(`  if (key === '${key}') return ${gateExpr(betterT.threshold, currentMax)};`);
       } else {
         const check = sweep.find(s => s.threshold === current);
         status = "HOLD   ";
         note   = check && check.n > 0
           ? `≥${current}%  ROI ${fmtRoi(check.roi)} (n=${check.n}) — confirmed`
           : `≥${current}%  n=${cat?.n ?? 0} total resolved`;
-        holds.push({ key, threshold: current });
+        holds.push({ key, threshold: current, max: currentMax });
       }
     } else {
       if (!cat) {
@@ -216,8 +225,8 @@ async function main() {
   console.log("  const key = `${p.sport}|${p.stat || p.gameType}`;");
 
   // Unchanged existing gates
-  for (const { key, threshold } of holds) {
-    console.log(`  if (key === '${key}') return (p.truePct ?? 0) >= ${threshold};`);
+  for (const { key, threshold, max } of holds) {
+    console.log(`  if (key === '${key}') return ${gateExpr(threshold, max)};`);
   }
   // Raised existing gates
   for (const line of changeLines) console.log(line);
