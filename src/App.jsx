@@ -822,45 +822,33 @@ function App() {
           const estWin = parseFloat((c.count * (100 - c.price) / 100).toFixed(2));
           const img = imgFor(c.play);
           return (
-            <div key={key} style={{display:"flex",alignItems:"center",gap:8,
+            <div key={key} style={{display:"flex",alignItems:"flex-start",gap:8,
               padding:"6px 0",paddingLeft: indent ? 10 : 0,
               borderBottom:"1px solid #21262d",fontSize:12,opacity:isBlocked ? 0.45 : 1}}>
               {!done && !isBlocked && (
                 <input type="checkbox" checked={isChecked} disabled={running || isBlocked}
                   onChange={() => toggleOne(key)}
-                  style={{accentColor:"#3fb950",cursor:running || isBlocked ? "not-allowed" : "pointer",flexShrink:0,alignSelf:"flex-start",marginTop:4}} />
+                  style={{marginTop:3,accentColor:"#3fb950",cursor:running || isBlocked ? "not-allowed" : "pointer",flexShrink:0}} />
               )}
               {img && (
                 <img src={img} alt="" onError={e => { e.target.style.display = "none"; }}
                   style={{width:28,height:28,borderRadius:c.play.playerId ? "50%" : 4,
-                    objectFit:"contain",background:"#21262d",flexShrink:0,alignSelf:"flex-start",marginTop:2}} />
+                    objectFit:"contain",background:"#21262d",flexShrink:0}} />
               )}
               <div style={{minWidth:0,flex:1}}>
-                <div style={{color:"#c9d1d9",fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",marginBottom:2}}>
+                <div style={{color:"#c9d1d9",fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",marginBottom:3}}>
                   {nameFor(c.play)} <span style={{color:"#8b949e",fontWeight:400}}>{subFor(c.play)}</span>
                 </div>
-                {!rs && aoStr && (
-                  <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#484f58",marginBottom:2}}>
-                    <span>Odds</span>
-                    <span style={{color:"#c9d1d9",fontWeight:700}}>{aoStr}</span>
-                  </div>
-                )}
-                {!rs && edge != null && (
-                  <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#484f58",marginBottom:2}}>
-                    <span>Edge (True% − implied)</span>
-                    <span style={{color:edgeColor,fontWeight:700}}>{edge >= 0 ? "+" : ""}{edge}%</span>
-                  </div>
-                )}
                 {!rs && (
-                  <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#484f58",marginBottom:2}}>
-                    <span>Suggested stake (⅛-Kelly)</span>
-                    <span style={{color:"#c9d1d9",fontWeight:700}}>{c.count} × {c.price}¢ = ${c.cost}</span>
-                  </div>
-                )}
-                {!rs && (
-                  <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#484f58",marginBottom:0}}>
-                    <span>Est. winnings</span>
-                    <span style={{color:"#3fb950",fontWeight:700}}>+${estWin.toFixed(2)}</span>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"2px 8px",fontSize:10}}>
+                    {aoStr && <span style={{color:"#484f58"}}>Odds</span>}
+                    {aoStr && <span style={{color:"#c9d1d9",fontWeight:700,textAlign:"right"}}>{aoStr}</span>}
+                    {edge != null && <span style={{color:"#484f58"}}>Edge</span>}
+                    {edge != null && <span style={{color:edgeColor,fontWeight:700,textAlign:"right"}}>{edge >= 0 ? "+" : ""}{edge}%</span>}
+                    <span style={{color:"#484f58"}}>Stake</span>
+                    <span style={{color:"#c9d1d9",fontWeight:700,textAlign:"right"}}>{c.count} × {c.price}¢ = ${c.cost}</span>
+                    <span style={{color:"#484f58"}}>Est. win</span>
+                    <span style={{color:"#3fb950",fontWeight:700,textAlign:"right"}}>+${estWin.toFixed(2)}</span>
                   </div>
                 )}
                 {!rs && c.validation.hard.map((msg, i) => (
