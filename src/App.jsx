@@ -933,7 +933,7 @@ function App() {
                 )}
               </div>
               <div style={{display:"flex",gap:8}}>
-                <button onClick={close} disabled={running}
+                <button onClick={() => { close(); if (done) setShowPicksDrawer(true); }} disabled={running}
                   style={{flex:1,padding:"8px 0",fontSize:12,borderRadius:7,border:"1px solid #30363d",
                     background:"transparent",color:"#8b949e",cursor:running ? "not-allowed" : "pointer",opacity:running ? 0.6 : 1}}>
                   {done ? "Done" : "Cancel"}
