@@ -840,15 +840,15 @@ function App() {
                   {nameFor(c.play)} <span style={{color:"#8b949e",fontWeight:400}}>{subFor(c.play)}</span>
                 </div>
                 {!rs && (
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"2px 8px",fontSize:10}}>
-                    {aoStr && <span style={{color:"#484f58"}}>Odds</span>}
-                    {aoStr && <span style={{color:"#c9d1d9",fontWeight:700,textAlign:"right"}}>{aoStr}</span>}
-                    {edge != null && <span style={{color:"#484f58"}}>Edge</span>}
-                    {edge != null && <span style={{color:edgeColor,fontWeight:700,textAlign:"right"}}>{edge >= 0 ? "+" : ""}{edge}%</span>}
-                    <span style={{color:"#484f58"}}>Stake</span>
-                    <span style={{color:"#c9d1d9",fontWeight:700,textAlign:"right"}}>{c.count} × {c.price}¢ = ${c.cost}</span>
-                    <span style={{color:"#484f58"}}>Est. win</span>
-                    <span style={{color:"#3fb950",fontWeight:700,textAlign:"right"}}>+${estWin.toFixed(2)}</span>
+                  <div style={{fontSize:10,display:"flex",flexDirection:"column",gap:2}}>
+                    <div style={{display:"flex",gap:12}}>
+                      {aoStr && <span style={{color:"#484f58"}}>Odds <span style={{color:"#c9d1d9",fontWeight:700}}>{aoStr}</span></span>}
+                      {edge != null && <span style={{color:"#484f58"}}>Edge <span style={{color:edgeColor,fontWeight:700}}>{edge >= 0 ? "+" : ""}{edge}%</span></span>}
+                    </div>
+                    <div style={{display:"flex",gap:12}}>
+                      <span style={{color:"#484f58"}}>Stake <span style={{color:"#c9d1d9",fontWeight:700}}>{c.count} × {c.price}¢ = ${c.cost}</span></span>
+                      <span style={{color:"#484f58"}}>Win <span style={{color:"#3fb950",fontWeight:700}}>+${estWin.toFixed(2)}</span></span>
+                    </div>
                   </div>
                 )}
                 {!rs && c.validation.hard.map((msg, i) => (
