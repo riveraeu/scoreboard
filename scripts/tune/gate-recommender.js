@@ -25,7 +25,11 @@ const DEMOTE_ROI    = -0.05; // ROI < -5% to flag a demotion
 
 // ── Current gate (mirrors src/lib/constants.js passesCategoryGate) ────────────
 // Update this when you apply a recommendation so next run sees the new baseline.
-const CURRENT_GATE = {};
+const CURRENT_GATE = {
+  "mlb|strikeouts": 80,
+  "wnba|points":    70,
+  "wnba|rebounds":  60,
+};
 
 // ── Env loading ───────────────────────────────────────────────────────────────
 

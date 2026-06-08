@@ -833,7 +833,7 @@ function MarketGroupSection({ group, reportSort, setReportSort, navigateToPlayer
 // Renders unbiased calibration from Neon shadow_plays (all model predictions,
 // no edge/dc gate). Used to decide when a category is ready for passesCategoryGate().
 
-const ACTIVE_CATS = new Set([]); // mirrors passesCategoryGate()
+const ACTIVE_CATS = new Set(['mlb|strikeouts', 'wnba|points', 'wnba|rebounds']); // mirrors passesCategoryGate()
 const _roiColor = r => r == null ? "#8b949e" : r >= 0.02 ? "#3fb950" : r <= -0.02 ? "#f78166" : "#e3b341";
 const _roiFmt = r => r == null ? "—" : `${r >= 0 ? "+" : ""}${(r * 100).toFixed(1)}%`;
 
