@@ -237,7 +237,5 @@ export const GAMELOG_COLS = {
 // Key format: `${sport}|${stat || gameType}` — matches what the calibration endpoint groups by.
 export function passesCategoryGate(p) {
   const key = `${p.sport}|${p.stat || p.gameType}`;
-  if (key === 'mlb|spread') return (p.truePct ?? 0) >= 80;
-  if (key === 'mlb|hrr') return (p.truePct ?? 0) >= 75;
   return false;
 }
