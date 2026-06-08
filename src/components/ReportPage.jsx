@@ -1104,7 +1104,6 @@ function ShadowCalibModule({ sport, statKeys, shadowCalibData, shadowCalibLoadin
               <tbody>
                 {rows.map((r, i) => {
                   const roi = parseFloat(r.roi ?? 0);
-                  const roiC = roi >= 0.03 ? "#3fb950" : roi >= 0 ? "#e3b341" : "#f78166";
                   const hit = parseFloat(r.hit_rate_pct ?? 0);
                   const price = parseFloat(r.avg_price_pct ?? 0);
                   return (
@@ -1115,7 +1114,7 @@ function ShadowCalibModule({ sport, statKeys, shadowCalibData, shadowCalibLoadin
                       <td style={tdCalib}>{r.avg_plays}</td>
                       <td style={{...tdCalib,color:hit>=70?"#3fb950":hit>=60?"#e3b341":"#f78166",fontWeight:600}}>{hit}%</td>
                       <td style={tdCalib}>{price}%</td>
-                      <td style={{...tdCalib,color:roiC,fontWeight:700}}>{roi>=0?"+":""}{(roi*100).toFixed(1)}%</td>
+                      <td style={{...tdCalib,color:_roiColor(roi),fontWeight:700}}>{_roiFmt(roi)}</td>
                     </tr>
                   );
                 })}

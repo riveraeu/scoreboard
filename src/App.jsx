@@ -873,7 +873,7 @@ function App() {
         };
         return (
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:700,display:"flex",alignItems:"center",justifyContent:"center"}}
-            onClick={close}>
+            onClick={() => { close(); if (done) setShowPicksDrawer(true); }}>
             <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:12,padding:"20px 22px",width:460,maxHeight:"82vh",display:"flex",flexDirection:"column"}}
               onClick={e => e.stopPropagation()}>
               <div style={{fontSize:14,color:"#c9d1d9",fontWeight:700,marginBottom:2}}>
