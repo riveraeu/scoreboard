@@ -372,7 +372,7 @@ async function handleShadowResolver({ path, request, env }) {
     try {
       const res = await fetch(`${origin}/api/live?games=${encodeURIComponent(gamesParam)}&date=${game_date}`, {
         headers: { "User-Agent": "shadow-resolver/1.0" },
-        signal: AbortSignal.timeout(20_000),
+        signal: AbortSignal.timeout(10_000),
       });
       if (!res.ok) return;
       const data = await res.json();
@@ -403,7 +403,7 @@ async function handleShadowResolver({ path, request, env }) {
       try {
         const res = await fetch(`${origin}/api/live?games=${encodeURIComponent(gamesParam)}&date=${game_date}`, {
           headers: { "User-Agent": "shadow-resolver/1.0" },
-          signal: AbortSignal.timeout(10_000),
+          signal: AbortSignal.timeout(5_000),
         });
         if (!res.ok) return;
         const data = await res.json();
@@ -443,7 +443,7 @@ async function handleShadowResolver({ path, request, env }) {
         try {
           const res = await fetch(`${origin}/api/live?games=${encodeURIComponent(gamesParam)}&date=${game_date}`, {
             headers: { "User-Agent": "shadow-resolver/1.0" },
-            signal: AbortSignal.timeout(10_000),
+            signal: AbortSignal.timeout(4_000),
           });
           if (!res.ok) return;
           const data = await res.json();

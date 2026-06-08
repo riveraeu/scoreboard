@@ -6,7 +6,8 @@
     "preview": "vite preview",
     "test": "node --test api/lib/simulate.test.js",
     "test:jxa": "osascript -l JavaScript api/lib/simulate.test.jxa.js",
-    "backtest": "node scripts/backtest/run.js"
+    "backtest": "node scripts/backtest/run.js",
+    "tune:gate": "node scripts/tune/gate-recommender.js"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
