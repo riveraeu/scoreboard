@@ -419,11 +419,11 @@ export default function LineupsPage({
       )}
       {authEmail && placeAllCount > 0 && (
         <button onClick={onPlaceAll}
-          title={`Place all ${placeAllCount} qualified Kalshi bets`}
+          title={`Order all ${placeAllCount} qualified Kalshi contracts`}
           style={{ ...btnSize, borderRadius: 6, cursor: 'pointer',
             border: '1px solid #30363d', background: 'transparent', color: '#484f58', fontWeight: 600,
             display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span>⚡</span> Place All
+          <span>⚡</span> Order
           <span style={{ background: 'rgba(63,185,80,0.12)', border: '1px solid rgba(63,185,80,0.3)',
             color: '#3fb950', fontSize: 9, fontWeight: 700, borderRadius: 8, padding: '0 4px', lineHeight: '14px' }}>
             {placeAllCount}
@@ -436,7 +436,7 @@ export default function LineupsPage({
           background: showPicksDrawer ? 'rgba(88,166,255,0.12)' : 'transparent',
           color: showPicksDrawer ? '#58a6ff' : '#484f58', fontWeight: 600,
           display: 'flex', alignItems: 'center', gap: 4 }}>
-        <span style={{ color: '#e3b341' }}>★</span> Picks
+        <span style={{ color: '#e3b341' }}>★</span> Track
         {activePicks.length > 0 && (
           <span title="Tracked picks" style={{ background: 'rgba(227,179,65,0.12)', border: '1px solid rgba(227,179,65,0.3)',
             color: '#e3b341', fontSize: 9, fontWeight: 700,

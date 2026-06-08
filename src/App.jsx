@@ -889,7 +889,7 @@ function App() {
             <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:12,padding:"20px 22px",width:460,maxHeight:"82vh",display:"flex",flexDirection:"column"}}
               onClick={e => e.stopPropagation()}>
               <div style={{fontSize:14,color:"#c9d1d9",fontWeight:700,marginBottom:2}}>
-                {done ? "Placement complete" : `Place ${placeable.length} bet${placeable.length === 1 ? "" : "s"} on Kalshi`}
+                {done ? "Orders placed" : `Place ${placeable.length} order${placeable.length === 1 ? "" : "s"} on Kalshi`}
               </div>
               <div style={{fontSize:11,color:"#8b949e",marginBottom:8}}>
                 {done ? "Real-money orders · ⅛-Kelly · correlation-adjusted"
@@ -955,7 +955,7 @@ function App() {
                     style={{flex:2,padding:"8px 0",fontSize:12,borderRadius:7,fontWeight:600,
                       border:"1px solid #3fb950",background:"rgba(63,185,80,0.12)",
                       color:"#3fb950",cursor:running || placeable.length === 0 ? "not-allowed" : "pointer",opacity:running || placeable.length === 0 ? 0.7 : 1}}>
-                    {running ? "Placing…" : `⚡ Place ${placeable.length} bet${placeable.length === 1 ? "" : "s"} ($${totalCost.toFixed(2)})`}
+                    {running ? "Ordering…" : `⚡ Place ${placeable.length} order${placeable.length === 1 ? "" : "s"} ($${totalCost.toFixed(2)})`}
                   </button>
                 )}
               </div>
@@ -1897,7 +1897,7 @@ function App() {
           borderBottom:"1px solid #21262d",
           flexShrink:0,
         }}>
-          <span style={{color:"#c9d1d9", fontWeight:700, fontSize:15}}>My Picks</span>
+          <span style={{color:"#c9d1d9", fontWeight:700, fontSize:15}}>Tracking</span>
           <span style={{background:"#21262d", borderRadius:10, padding:"1px 8px", fontSize:11, color:"#8b949e"}}>
             {trackedPlays.length}
           </span>
