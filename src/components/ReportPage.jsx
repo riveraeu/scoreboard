@@ -1087,6 +1087,44 @@ function ShadowCalibModule({ sport, statKeys, shadowCalibData, shadowCalibLoadin
         </div>
       )}
 
+      {/* Daily volume vs ROI */}
+      {(() => {
+        const rows = shadowAnalysisData?.dailyVolumeRoi;
+        if (!rows || rows.length === 0) return null;
+        return (
+          <div style={{marginTop:10}}>
+            <div style={{color:"#8b949e",fontSize:11,fontWeight:600,marginBottom:4}}>
+              Picks/day vs realised ROI (threshold_rank=1 · {shadowAnalysisData?.since} onward)
+            </div>
+            <table style={{width:"100%",borderCollapse:"collapse",background:"#0d1117",borderRadius:8,overflow:"hidden",border:"1px solid #21262d"}}>
+              <thead>
+                <tr>{["Picks/day","Days","Total plays","Avg/day","Hit%","Avg price","ROI"].map(h =>
+                  <th key={h} style={thCalib}>{h}</th>)}</tr>
+              </thead>
+              <tbody>
+                {rows.map((r, i) => {
+                  const roi = parseFloat(r.roi ?? 0);
+                  const roiC = roi >= 0.03 ? "#3fb950" : roi >= 0 ? "#e3b341" : "#f78166";
+                  const hit = parseFloat(r.hit_rate_pct ?? 0);
+                  const price = parseFloat(r.avg_price_pct ?? 0);
+                  return (
+                    <tr key={i}>
+                      <td style={{...tdCalib,color:"#c9d1d9",fontWeight:600}}>{r.picks_bucket}</td>
+                      <td style={tdCalib}>{r.n_days}</td>
+                      <td style={tdCalib}>{r.total_plays}</td>
+                      <td style={tdCalib}>{r.avg_plays}</td>
+                      <td style={{...tdCalib,color:hit>=70?"#3fb950":hit>=60?"#e3b341":"#f78166",fontWeight:600}}>{hit}%</td>
+                      <td style={tdCalib}>{price}%</td>
+                      <td style={{...tdCalib,color:roiC,fontWeight:700}}>{roi>=0?"+":""}{(roi*100).toFixed(1)}%</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
+
       {/* Band detail for selected category */}
       {selectedCat && (
         <div>

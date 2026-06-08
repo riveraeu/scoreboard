@@ -968,13 +968,53 @@ UNION ALL SELECT * FROM by_cat_band`;
       ORDER BY n DESC
     `, [since], env);
 
-    let [thresholdRankRoi, intraGroupCorr, sameGamePairs, concentration, clvAnalysis] = await Promise.all([q1, q2, q3, q4, q5]).catch(e => {
+    // Q6: Daily volume vs ROI — group resolved plays by snapshot_date, then bucket by
+    // plays-per-day to reveal whether high-volume days help or hurt realised ROI.
+    // threshold_rank=1 deduplicates alt-line groups so each player/game counts once.
+    const q6 = neonQuery(`
+      WITH daily AS (
+        SELECT
+          snapshot_date,
+          COUNT(*) AS n_plays,
+          SUM(won::int) AS wins,
+          AVG(CASE WHEN direction = 'under' THEN no_kalshi_pct ELSE kalshi_pct END) / 100.0 AS avg_price
+        FROM shadow_plays
+        WHERE resolved AND won IS NOT NULL AND snapshot_date >= $1 AND threshold_rank = 1
+        GROUP BY snapshot_date
+      )
+      SELECT
+        CASE
+          WHEN n_plays <= 2  THEN '1-2'
+          WHEN n_plays <= 4  THEN '3-4'
+          WHEN n_plays <= 6  THEN '5-6'
+          WHEN n_plays <= 9  THEN '7-9'
+          ELSE '10+'
+        END AS picks_bucket,
+        CASE
+          WHEN n_plays <= 2  THEN 1
+          WHEN n_plays <= 4  THEN 2
+          WHEN n_plays <= 6  THEN 3
+          WHEN n_plays <= 9  THEN 4
+          ELSE 5
+        END AS bucket_order,
+        COUNT(*) AS n_days,
+        SUM(n_plays) AS total_plays,
+        ROUND(AVG(n_plays), 1) AS avg_plays,
+        ROUND(SUM(wins)::numeric / SUM(n_plays) * 100, 1) AS hit_rate_pct,
+        ROUND(AVG(avg_price) * 100, 1) AS avg_price_pct,
+        ROUND((SUM(wins)::numeric / SUM(n_plays)) - AVG(avg_price), 4) AS roi
+      FROM daily
+      GROUP BY picks_bucket, bucket_order
+      ORDER BY bucket_order
+    `, [since], env);
+
+    let [thresholdRankRoi, intraGroupCorr, sameGamePairs, concentration, clvAnalysis, dailyVolumeRoi] = await Promise.all([q1, q2, q3, q4, q5, q6]).catch(e => {
       return [{ error: e.message }];
     });
 
     if (thresholdRankRoi?.error) return errorResponse(`Neon query failed: ${thresholdRankRoi.error}`, 500);
 
-    return jsonResponse({ since, thresholdRankRoi, intraGroupCorr, sameGamePairs, concentration, clvAnalysis });
+    return jsonResponse({ since, thresholdRankRoi, intraGroupCorr, sameGamePairs, concentration, clvAnalysis, dailyVolumeRoi });
   }
 
   return null;
