@@ -523,13 +523,15 @@ async function handleShadowPregameSnap({ path, request, env, cache }) {
     if (cache) cache.put(_preSchemaKey, "1", { expirationTtl: 86400 * 30 }).catch(() => {});
   }
 
-  // Get current Kalshi prices from the live /tonight cache (reuses 2-min snap, no external fetch).
+  // Get current Kalshi prices via the cached /tonight endpoint (no debug=1 — debug bypasses the
+  // play cache and re-fetches every gamelog, adding 40-55s that would blow the 60s Edge wall-clock).
+  // Dropped plays lose CLV coverage but qualified plays are what calibration tracks.
   const origin = new URL(request.url).origin;
   let tonightResp;
   try {
-    tonightResp = await fetch(`${origin}/api/tonight?debug=1`, {
+    tonightResp = await fetch(`${origin}/api/tonight`, {
       headers: { "x-shadow-internal": "1" },
-      signal: AbortSignal.timeout(55_000),
+      signal: AbortSignal.timeout(45_000),
     });
   } catch (fetchErr) {
     console.error(`[shadow-pregame-snap] tonight fetch failed: ${fetchErr?.message} ${Date.now() - t0}ms`);

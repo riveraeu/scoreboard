@@ -143,7 +143,7 @@ var worker_default = {
   }
 };
 
-export const config = { maxDuration: 300 };
+export const config = { runtime: 'edge', maxDuration: 60 };
 
 export default async function handler(request) {
   const env = {
