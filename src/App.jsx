@@ -140,6 +140,7 @@ function App() {
     fetchReport, fetchCalib,
     shadowCalibData, shadowCalibLoading, fetchShadowCalib,
     shadowAnalysisData, shadowAnalysisLoading, fetchShadowAnalysis,
+    shadowReportData, shadowReportLoading, fetchShadowReport,
   } = useReportData();
 
   // Holds the current tracked pick IDs — populated by the useEffect below after usePicks.
@@ -1039,6 +1040,9 @@ function App() {
           shadowAnalysisData={shadowAnalysisData}
           shadowAnalysisLoading={shadowAnalysisLoading}
           fetchShadowAnalysis={fetchShadowAnalysis}
+          shadowReportData={shadowReportData}
+          shadowReportLoading={shadowReportLoading}
+          fetchShadowReport={fetchShadowReport}
           isLoggedIn={!!authEmail}
           navigateToPlayer={navigateToPlayer}
           navigateToTeam={navigateToTeam}

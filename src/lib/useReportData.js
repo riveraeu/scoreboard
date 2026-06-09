@@ -21,6 +21,8 @@ export function useReportData() {
   const [shadowCalibLoading, setShadowCalibLoading] = React.useState(false);
   const [shadowAnalysisData, setShadowAnalysisData] = React.useState(null);
   const [shadowAnalysisLoading, setShadowAnalysisLoading] = React.useState(false);
+  const [shadowReportData, setShadowReportData] = React.useState(null);
+  const [shadowReportLoading, setShadowReportLoading] = React.useState(false);
 
   const fetchReport = React.useCallback(async (sport) => {
     if (!sport) return;
@@ -79,6 +81,19 @@ export function useReportData() {
     setShadowAnalysisLoading(false);
   }, []);
 
+  const fetchShadowReport = React.useCallback(async (bust) => {
+    setShadowReportLoading(true);
+    const url = `${WORKER}/shadow-report` + (bust ? '?bust=1' : '');
+    try {
+      const r = await fetch(url, { credentials: 'include' });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      setShadowReportData(await r.json());
+    } catch(e) {
+      setShadowReportData({ error: e.message });
+    }
+    setShadowReportLoading(false);
+  }, []);
+
   return {
     reportSort, setReportSort,
     reportDataBySport,
@@ -88,5 +103,6 @@ export function useReportData() {
     fetchReport, fetchCalib,
     shadowCalibData, shadowCalibLoading, fetchShadowCalib,
     shadowAnalysisData, shadowAnalysisLoading, fetchShadowAnalysis,
+    shadowReportData, shadowReportLoading, fetchShadowReport,
   };
 }

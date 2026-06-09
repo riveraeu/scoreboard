@@ -5,6 +5,7 @@
 
 import { neonQuery, neonBatchUpsert, neonBatchResolve, neonBatchPrePriceUpdate, neonExec } from "../neon.js";
 import { errorResponse, jsonResponse } from "../utils.js";
+import { verifyJWT } from "../auth-utils.js";
 
 const SHADOW_TABLE = "shadow_plays";
 const COLUMNS = [
@@ -577,7 +578,288 @@ async function handleShadowPregameSnap({ path, request, env, cache }) {
   });
 }
 
+// ── Shadow Morning Report ─────────────────────────────────────────────────────
+// GET /api/shadow-report
+// Cron: 30 16 * * * (9:30am PT) — after shadow-snapshot (8:05am PT) has run.
+// Auth: CRON_SECRET (generate + cache) or ADMIN_KEY / JWT (read).
+// Queries 5 parallel Neon aggregations and caches the result in KV (25h TTL).
+// ?bust=1 forces regeneration even when a cached report exists.
+
+const REPORT_CACHE_KEY_PREFIX = "shadow:report:";
+const REPORT_TTL = 60 * 60 * 25; // 25 hours
+
+// Mirror passesCategoryGate() from src/lib/constants.js — kept in sync manually.
+const _ACTIVE_CATS = new Set(["mlb|strikeouts", "wnba|points", "wnba|rebounds"]);
+// SQL fragment that mirrors passesCategoryGate() for use in top-picks query.
+// model_true_pct is always the bet-side probability (OVER for props, UNDER-adjusted for UNDER plays).
+// These categories only emit OVERs, so model_true_pct == truePct.
+const _CATEGORY_GATE_SQL = `(
+  (sport='mlb' AND stat='strikeouts' AND model_true_pct >= 80 AND model_true_pct < 90) OR
+  (sport='wnba' AND stat='points'    AND model_true_pct >= 70 AND model_true_pct < 80) OR
+  (sport='wnba' AND stat='rebounds'  AND model_true_pct >= 70)
+)`;
+const _BAND_MID = { "55-60":57.5,"60-65":62.5,"65-70":67.5,"70-75":72.5,"75-80":77.5,"80-85":82.5,"85-90":87.5,"90-95":92.5,"95+":97.5 };
+
+function _extractReportToken(request) {
+  const cookie = request.headers.get("Cookie") || "";
+  const m = cookie.match(/(?:^|;\s*)sb_token=([^;]+)/);
+  if (m?.[1]) return m[1];
+  return (request.headers.get("Authorization") || "").replace(/^Bearer\s+/, "");
+}
+
+async function handleShadowReport({ path, request, env, cache }) {
+  if (path !== "shadow-report") return null;
+
+  const bearer = (request.headers.get("authorization") || "").replace(/^Bearer\s+/, "");
+  const isCron  = env?.CRON_SECRET && bearer === env.CRON_SECRET;
+  const isAdmin = env?.ADMIN_KEY && bearer === env.ADMIN_KEY;
+
+  let isUser = false;
+  if (!isCron && !isAdmin && env?.JWT_SECRET) {
+    const token = _extractReportToken(request);
+    const payload = token ? await verifyJWT(token, env.JWT_SECRET) : null;
+    isUser = !!payload;
+  }
+
+  if (!isCron && !isAdmin && !isUser) return errorResponse("Forbidden", 403);
+  if (!env?.POSTGRES_URL && !env?.NEON_DATABASE_URL) return errorResponse("No Neon connection", 500);
+
+  const reportDate = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+  const cacheKey = `${REPORT_CACHE_KEY_PREFIX}${reportDate}`;
+  const bust = new URL(request.url).searchParams.get("bust") === "1";
+
+  // Serve cached report for non-cron reads (cron always regenerates).
+  if (!isCron && !bust) {
+    const cached = cache ? await cache.get(cacheKey, "json").catch(() => null) : null;
+    if (cached) return jsonResponse(cached);
+    // No cached report yet — return a stub so the UI can show a friendly message.
+    return jsonResponse({ notYet: true, reportDate });
+  }
+
+  const t0 = Date.now();
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+    .toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+
+  let catRows, bandRows, clvRows, volRows, picksRows;
+  try {
+    [catRows, bandRows, clvRows, volRows, picksRows] = await Promise.all([
+      // Q1: Category overview — one row per player/game (threshold_rank=1 dedup).
+      neonQuery(`
+        SELECT sport, COALESCE(stat, game_type) AS category,
+          COUNT(*) AS n, SUM(won::int) AS wins,
+          ROUND(AVG(CASE WHEN direction='under' THEN no_kalshi_pct ELSE kalshi_pct END)/100.0, 4) AS avg_bet_pct,
+          ROUND(AVG(edge), 2) AS avg_edge
+        FROM shadow_plays
+        WHERE resolved AND won IS NOT NULL AND snapshot_date >= $1 AND threshold_rank = 1
+        GROUP BY sport, COALESCE(stat, game_type)
+        ORDER BY n DESC LIMIT 20
+      `, [since], env),
+
+      // Q2: Band distribution (55–100%, n≥5) — where is there most data + biggest gap?
+      neonQuery(`
+        WITH src AS (
+          SELECT sport, COALESCE(stat, game_type) AS category,
+            CASE WHEN direction='under' THEN (1 - model_true_pct) ELSE model_true_pct END AS bsp,
+            won::int AS w,
+            CASE WHEN direction='under' THEN no_kalshi_pct ELSE kalshi_pct END AS bet_pct
+          FROM shadow_plays
+          WHERE resolved AND won IS NOT NULL AND snapshot_date >= $1 AND threshold_rank = 1
+        )
+        SELECT sport, category,
+          CASE
+            WHEN bsp >= 95 THEN '95+' WHEN bsp >= 90 THEN '90-95' WHEN bsp >= 85 THEN '85-90'
+            WHEN bsp >= 80 THEN '80-85' WHEN bsp >= 75 THEN '75-80' WHEN bsp >= 70 THEN '70-75'
+            WHEN bsp >= 65 THEN '65-70' WHEN bsp >= 60 THEN '60-65' ELSE '55-60'
+          END AS band,
+          COUNT(*) AS n, SUM(w) AS wins,
+          ROUND(AVG(bsp), 1) AS avg_bsp,
+          ROUND(AVG(bet_pct)/100.0, 4) AS avg_bet_pct
+        FROM src WHERE bsp >= 55
+        GROUP BY sport, category, band HAVING COUNT(*) >= 5
+        ORDER BY n DESC LIMIT 30
+      `, [since], env),
+
+      // Q3: CLV — per-category avg line movement (3pm snapshot → 7pm pre-game stamp).
+      neonQuery(`
+        SELECT sport, COALESCE(stat, game_type) AS category,
+          COUNT(*) AS n,
+          ROUND(AVG(CASE WHEN direction='under'
+            THEN (kalshi_no_price_pre - kalshi_no_price) * 100
+            ELSE (kalshi_yes_price_pre - kalshi_yes_price) * 100 END), 2) AS avg_clv_pct,
+          ROUND(AVG(CASE WHEN direction='under'
+            THEN (model_true_pct/100.0 - 1 + kalshi_no_price_pre) * -100
+            ELSE (model_true_pct/100.0 - kalshi_yes_price_pre) * 100 END), 2) AS avg_edge_at_close,
+          ROUND(AVG(CASE WHEN direction='under'
+            THEN (model_true_pct/100.0 - 1 + kalshi_no_price) * -100
+            ELSE (model_true_pct/100.0 - kalshi_yes_price) * 100 END), 2) AS avg_edge_at_snap,
+          ROUND(AVG(won::int) * 100, 1) AS hit_rate_pct
+        FROM shadow_plays
+        WHERE resolved AND won IS NOT NULL AND snapshot_date >= $1
+          AND threshold_rank = 1 AND kalshi_yes_price_pre IS NOT NULL
+        GROUP BY sport, COALESCE(stat, game_type) HAVING COUNT(*) >= 5
+        ORDER BY n DESC
+      `, [since], env),
+
+      // Q4: Daily volume ROI — plays/day bucket vs realized ROI.
+      neonQuery(`
+        WITH daily AS (
+          SELECT snapshot_date,
+            COUNT(*) AS n_plays, SUM(won::int) AS wins,
+            AVG(CASE WHEN direction='under' THEN no_kalshi_pct ELSE kalshi_pct END)/100.0 AS avg_price
+          FROM shadow_plays
+          WHERE resolved AND won IS NOT NULL AND snapshot_date >= $1 AND threshold_rank = 1
+          GROUP BY snapshot_date
+        )
+        SELECT
+          CASE WHEN n_plays<=2 THEN '1-2' WHEN n_plays<=4 THEN '3-4'
+               WHEN n_plays<=6 THEN '5-6' WHEN n_plays<=9 THEN '7-9' ELSE '10+' END AS picks_bucket,
+          CASE WHEN n_plays<=2 THEN 1 WHEN n_plays<=4 THEN 2
+               WHEN n_plays<=6 THEN 3 WHEN n_plays<=9 THEN 4 ELSE 5 END AS bucket_order,
+          COUNT(*) AS n_days, SUM(n_plays) AS total_plays,
+          ROUND(AVG(n_plays), 1) AS avg_plays,
+          ROUND(SUM(wins)::numeric / SUM(n_plays) * 100, 1) AS hit_rate_pct,
+          ROUND(AVG(avg_price) * 100, 1) AS avg_price_pct,
+          ROUND((SUM(wins)::numeric / SUM(n_plays)) - AVG(avg_price), 4) AS roi
+        FROM daily
+        GROUP BY picks_bucket, bucket_order ORDER BY bucket_order
+      `, [since], env),
+
+      // Q5: Today's top picks — qualified plays from this morning's snapshot.
+      // Category gate is replicated from passesCategoryGate() in src/lib/constants.js.
+      neonQuery(`
+        SELECT sport, COALESCE(stat, game_type) AS category, stat, game_type,
+          player_name, home_team, away_team, pick_team,
+          direction, threshold, pick_line,
+          ROUND(model_true_pct, 1) AS model_true_pct,
+          ROUND(CASE WHEN direction='under' THEN no_kalshi_pct ELSE kalshi_pct END, 1) AS market_pct,
+          ROUND(edge, 2) AS edge,
+          game_time
+        FROM shadow_plays
+        WHERE snapshot_date = $1
+          AND dc_qualified = TRUE
+          AND edge >= 5
+          AND is_best_edge = TRUE
+          AND ${_CATEGORY_GATE_SQL}
+        ORDER BY edge DESC LIMIT 5
+      `, [reportDate], env),
+    ]);
+  } catch (e) {
+    console.error("[shadow-report] query failed:", e?.message);
+    return errorResponse(`query failed: ${e?.message}`, 500);
+  }
+
+  // Process category overview.
+  const categories = catRows.map(r => {
+    const n = Number(r.n ?? 0);
+    const wins = Number(r.wins ?? 0);
+    const hitRate = n > 0 ? parseFloat((wins / n * 100).toFixed(1)) : null;
+    const avgBetPct = r.avg_bet_pct != null ? parseFloat(Number(r.avg_bet_pct).toFixed(4)) : null;
+    const roi = hitRate != null && avgBetPct != null ? parseFloat((hitRate / 100 - avgBetPct).toFixed(4)) : null;
+    const key = `${r.sport}|${r.category}`;
+    const status = _ACTIVE_CATS.has(key) ? "active"
+      : n >= 50 && (roi ?? -1) > 0 ? "building"
+      : n >= 30 && (roi ?? 0) <= 0 ? "losing"
+      : "too_few";
+    return {
+      key, sport: r.sport, category: r.category, n, hitRate,
+      roi, avgEdge: r.avg_edge != null ? parseFloat(Number(r.avg_edge).toFixed(2)) : null, status,
+    };
+  });
+
+  // Process top opportunity bands — most data + biggest calibration gap.
+  const topBands = bandRows.map(r => {
+    const n = Number(r.n ?? 0);
+    const wins = Number(r.wins ?? 0);
+    const actual = n > 0 ? parseFloat((wins / n * 100).toFixed(1)) : null;
+    const predicted = _BAND_MID[r.band] ?? null;
+    const delta = actual != null && predicted != null ? parseFloat((actual - predicted).toFixed(1)) : null;
+    const avgBetPct = r.avg_bet_pct != null ? parseFloat(Number(r.avg_bet_pct).toFixed(4)) : null;
+    const roi = actual != null && avgBetPct != null ? parseFloat((actual / 100 - avgBetPct).toFixed(4)) : null;
+    return {
+      key: `${r.sport}|${r.category}|${r.band}`,
+      sport: r.sport, category: r.category, band: r.band,
+      n, actual, predicted, delta, roi,
+    };
+  // Sort: most data first; within same n, largest |delta| first.
+  }).sort((a, b) => b.n !== a.n ? b.n - a.n : Math.abs(b.delta ?? 0) - Math.abs(a.delta ?? 0))
+    .slice(0, 15);
+
+  // Process CLV analysis.
+  const clv = clvRows.map(r => ({
+    key: `${r.sport}|${r.category}`,
+    sport: r.sport, category: r.category,
+    n: Number(r.n ?? 0),
+    avgClvPct: r.avg_clv_pct != null ? parseFloat(Number(r.avg_clv_pct).toFixed(2)) : null,
+    avgEdgeAtSnap: r.avg_edge_at_snap != null ? parseFloat(Number(r.avg_edge_at_snap).toFixed(2)) : null,
+    avgEdgeAtClose: r.avg_edge_at_close != null ? parseFloat(Number(r.avg_edge_at_close).toFixed(2)) : null,
+    hitRatePct: r.hit_rate_pct != null ? parseFloat(Number(r.hit_rate_pct).toFixed(1)) : null,
+  }));
+
+  // Process daily volume ROI + derive optimal picks/day recommendation.
+  const dailyVolumeRoi = volRows.map(r => ({
+    picksBucket: r.picks_bucket,
+    nDays: Number(r.n_days ?? 0),
+    totalPlays: Number(r.total_plays ?? 0),
+    avgPlays: r.avg_plays != null ? parseFloat(Number(r.avg_plays).toFixed(1)) : null,
+    hitRatePct: r.hit_rate_pct != null ? parseFloat(Number(r.hit_rate_pct).toFixed(1)) : null,
+    avgPricePct: r.avg_price_pct != null ? parseFloat(Number(r.avg_price_pct).toFixed(1)) : null,
+    roi: r.roi != null ? parseFloat(Number(r.roi).toFixed(4)) : null,
+  }));
+
+  // Derive optimal picks/day from buckets with at least 3 sample days.
+  let optimalDailyPicks = null;
+  const eligible = dailyVolumeRoi.filter(r => r.nDays >= 3);
+  if (eligible.length > 0) {
+    const best = eligible.reduce((a, b) => ((b.roi ?? -Infinity) > (a.roi ?? -Infinity) ? b : a));
+    // First bucket (sorted ascending) where ROI turns negative — stop before it.
+    const firstNeg = dailyVolumeRoi.find(r => r.nDays >= 3 && (r.roi ?? 0) < 0);
+    optimalDailyPicks = {
+      bucket: best.picksBucket,
+      roi: best.roi,
+      nDays: best.nDays,
+      stopAt: firstNeg?.picksBucket ?? null,
+      confidence: eligible.some(r => r.nDays >= 10) ? "medium" : "low",
+    };
+  }
+
+  // Process today's top picks.
+  const topPicks = picksRows.map(r => ({
+    sport: r.sport,
+    category: r.category,
+    playerName: r.player_name ?? null,
+    homeTeam: r.home_team ?? null,
+    awayTeam: r.away_team ?? null,
+    pickTeam: r.pick_team ?? null,
+    direction: r.direction ?? null,
+    threshold: r.threshold != null ? parseFloat(Number(r.threshold).toFixed(1)) : null,
+    pickLine: r.pick_line != null ? parseFloat(Number(r.pick_line).toFixed(1)) : null,
+    modelTruePct: r.model_true_pct != null ? parseFloat(Number(r.model_true_pct).toFixed(1)) : null,
+    marketPct: r.market_pct != null ? parseFloat(Number(r.market_pct).toFixed(1)) : null,
+    edge: r.edge != null ? parseFloat(Number(r.edge).toFixed(2)) : null,
+    gameTime: r.game_time ?? null,
+  }));
+
+  const report = {
+    reportDate,
+    generatedAt: new Date().toISOString(),
+    since,
+    topPicks,
+    categories,
+    topBands,
+    clv,
+    dailyVolumeRoi,
+    optimalDailyPicks,
+    durationMs: Date.now() - t0,
+  };
+
+  if (cache) cache.put(cacheKey, JSON.stringify(report), { expirationTtl: REPORT_TTL }).catch(() => {});
+  return jsonResponse(report);
+}
+
 export async function handleShadowRoutes({ path, request, env, cache }) {
+  const reportResp = await handleShadowReport({ path, request, env, cache });
+  if (reportResp) return reportResp;
+
   const shadowResolverResp = await handleShadowResolver({ path, request, env });
   if (shadowResolverResp) return shadowResolverResp;
 
