@@ -458,6 +458,18 @@ function App() {
     fetchKalshiBalance();
   }, [trackPlay, _centsToAmericanB, fetchKalshiBalance]);
 
+  // Auto-close Place All modal and open tracking drawer when all orders finish
+  React.useEffect(() => {
+    if (placeAllStatus?.running !== false) return;
+    const t = setTimeout(() => {
+      setShowPlaceAll(false);
+      setPlaceAllStatus(null);
+      setPlaceAllSelected(new Set());
+      setShowPicksDrawer(true);
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [placeAllStatus]);
+
   const selectPlayer = (p, tab = null) => {
     const newSport = p.sportKey || sport;
     setSport(newSport);
