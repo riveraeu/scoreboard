@@ -124,6 +124,7 @@ See `docs/INFRA.md` for full request/response contracts, auth patterns, cron det
 | `/api/shadow-snapshot` | `handlers/shadow.js` | Crons: 8:05am PT (primary), 8:10am PT (backup), 3:05pm PT, 3:35pm PT — logs plays+drops to Neon `shadow_plays`. Reads `shadow:staging:{date}` from KV first (written by tonight cron); falls back to HTTP fetch of `/api/tonight?debug=1`. |
 | `/api/shadow-resolver` | `handlers/shadow.js` | Cron (2am PT) — resolves shadow plays via ESPN live scores (4-pass name lookup) |
 | `/api/shadow-pregame-snap` | `handlers/shadow.js` | Cron (7pm PT) — captures pre-game Kalshi prices for CLV |
+| `/api/shadow-report` | `handlers/shadow.js` | Cron (9:30am PT) — generates morning briefing: top picks, category scoreboard, opportunity bands, CLV, optimal picks/day. Cached in KV 25h. Auth: CRON_SECRET or ADMIN_KEY/JWT. `?bust=1` forces regen. |
 | `/api/user/picks` | `handlers/auth.js` | GET/POST picks (bearer JWT, delta `{upserts, deletes, bankroll}`) |
 | `/api/keepalive` | `handlers/kalshi.js` | Daily cron — keeps Upstash alive |
 
