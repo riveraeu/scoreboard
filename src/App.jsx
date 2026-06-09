@@ -275,6 +275,13 @@ function App() {
         .filter(p => p.gameType === 'spread')
         .map(p => `${p.sport}|${p.pickTeam}|${p.oppTeam}|${p.gameDate ?? ''}`)
     );
+    // Prop player+stat keys already covered by tracked picks — suppresses lower-threshold
+    // alt candidates when a higher threshold is already tracked (e.g. 3+ K when 4+ K tracked).
+    const trackedPropKeys = new Set(
+      (trackedPlays || [])
+        .filter(p => p.stat && p.playerName && !p.gameType)
+        .map(p => `${p.playerId ?? p.playerName}|${p.sport}|${p.stat}`)
+    );
     const nowMs = Date.now();
     const out = [];
     for (const p of (tonightPlays || [])) {
@@ -293,6 +300,7 @@ function App() {
     for (const c of out) {
       if (!c.play.stat || !c.play.playerName) continue;
       const k = `${c.play.playerId ?? c.play.playerName}|${c.play.sport}|${c.play.stat}`;
+      if (trackedPropKeys.has(k)) continue;                       // player+stat already tracked at another threshold
       if (!propBest.has(k) || (c.play.edge ?? 0) > (propBest.get(k).play.edge ?? 0)) propBest.set(k, c);
     }
     // Spread dedup: same pickTeam + matchup → keep highest-edge line only. Multiple qualifying
