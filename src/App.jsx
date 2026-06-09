@@ -148,6 +148,7 @@ function App() {
   // category is demoted, mirroring the passesGate bypass in LineupsPage. Ref (not state) so
   // the stable _qualifiedFilter closure sees the latest value without a new function identity.
   const _trackedIdsRef = React.useRef(new Set());
+  const _trackedPlaysRef = React.useRef([]);
 
   // Qualified play filter: dcQualified=true AND edge >= 5% AND category gate.
   // Tracked plays bypass the category gate so existing bets stay visible after a demotion.
@@ -169,7 +170,7 @@ function App() {
     tonightMeta, tonightLoading,
     mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta,
     bustCache, bustLoading,
-  } = useTonight(_qualifiedFilter);
+  } = useTonight(_qualifiedFilter, _trackedPlaysRef);
 
   const {
     trackedPlays, setTrackedPlays,
@@ -183,9 +184,10 @@ function App() {
     getCurrent: () => ({ picks: trackedPlaysRef.current, bankroll: bankrollRef.current }),
   });
 
-  // Keep _trackedIdsRef in sync so _qualifiedFilter can bypass the category gate for tracked picks.
+  // Keep _trackedIdsRef and _trackedPlaysRef in sync.
   React.useEffect(() => {
     _trackedIdsRef.current = new Set((trackedPlays || []).map(p => p.id));
+    _trackedPlaysRef.current = trackedPlays || [];
   }, [trackedPlays]);
 
   const { liveStats } = useLiveStats({ trackedPlays, setTrackedPlays, mlbMeta, nbaMeta, wnbaMeta, nhlMeta });

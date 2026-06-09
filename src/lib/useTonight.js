@@ -40,7 +40,7 @@ function _notifyNewPlays(plays) {
 // when the tab is hidden. On visibility resume an immediate catch-up fetch fires so
 // users returning after a long idle don't wait up to 2 min. `bustCache()` is the only
 // path that uses `?bust=1` — the manual ↻ button.
-export function useTonight(qualifiedFilter) {
+export function useTonight(qualifiedFilter, trackedPlaysRef) {
   const [tonightPlays, setTonightPlays] = React.useState(null);
   const [allTonightPlays, setAllTonightPlays] = React.useState(null);
   const [nbaDropped, setNbaDropped] = React.useState(null);
@@ -82,10 +82,25 @@ export function useTonight(qualifiedFilter) {
       const fresh = qualified.filter(p => !seenIdsRef.current.has(_playKey(p)));
       if (fresh.length > 0) {
         fresh.forEach(p => seenIdsRef.current.add(_playKey(p)));
-        _notifyNewPlays(fresh);
+        // Suppress notifications for plays whose player+stat (props) or exact key is
+        // already tracked — prevents pinging when a lower threshold qualifies while a
+        // higher one is already tracked (same exposure, no action needed).
+        const tracked = trackedPlaysRef?.current || [];
+        const trackedPropKeys = new Set(
+          tracked
+            .filter(t => t.stat && t.playerName && !t.gameType)
+            .map(t => `${t.sport}|${t.playerName}|${t.stat}`)
+        );
+        const notifiable = fresh.filter(p => {
+          if (p.playerName && p.stat && !p.gameType) {
+            return !trackedPropKeys.has(`${p.sport}|${p.playerName}|${p.stat}`);
+          }
+          return true;
+        });
+        if (notifiable.length > 0) _notifyNewPlays(notifiable);
       }
     }
-  }, []);
+  }, [trackedPlaysRef]);
 
   React.useEffect(() => {
     let cancelled = false;
