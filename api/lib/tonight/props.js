@@ -1167,7 +1167,12 @@ export async function emitPropPlays({
         const barrelAdj = hitterBarrelPct != null ? Math.max(0.92, Math.min(1.10, hitterBarrelPct / _LG_BARREL)) : 1.0;
         if (barrelAdj !== 1.0) _hrrBarrelAdj = parseFloat(barrelAdj.toFixed(3));
         const _p = Math.max(0.01, Math.min(0.99, rawMlbPct / 100));
-        const _logOddsAdj = Math.log(_p / (1 - _p)) + Math.log(parkFactor) + 0.4 * Math.log(opsAdj) + 0.3 * Math.log(whipAdj) + 0.25 * Math.log(barrelAdj);
+        // OPS weight reduced 0.4→0.25 (2026-06-10): n=345 shadow showed dominant 70–75% band
+        // hitting 68.4% actual vs 72.5% predicted (−4.1 delta, ROI −7%). Kalshi prices HRR at
+        // 72–76% — market is efficient; the 0.4 OPS boost was stacking with WHIP/barrel to push
+        // truePct above what the market already priced in. Smaller weight preserves the signal
+        // direction without overclaiming edge.
+        const _logOddsAdj = Math.log(_p / (1 - _p)) + Math.log(parkFactor) + 0.25 * Math.log(opsAdj) + 0.3 * Math.log(whipAdj) + 0.25 * Math.log(barrelAdj);
         const _hrrAdjusted = Math.min(99.9, parseFloat((100 / (1 + Math.exp(-_logOddsAdj))).toFixed(1)));
         // Gentle seasonRate anchor (capWeight=0.25, half the sim-based prop cap). HRR's
         // logit-sigmoid is rate-based at its core (base = rawMlbPct = (primaryPct + softPct)/2)
@@ -1175,11 +1180,13 @@ export async function emitPropPlays({
         // above the un-adjusted base when stacked. Blending back toward rawMlbPct preserves
         // most of the matchup signal while sanity-checking against extreme stacks.
         const _hrrBlended = _propBlend(_hrrAdjusted, rawMlbPct, allVals.length, 0.25);
-        // Sigmoid cap: 3-season backtest (571k rows, 2022-2024) shows actual HRR hit rate
-        // plateaus at ~72% then declines to 71→67→61% in higher model bands. Stacked logit
-        // factors (park × OPS × WHIP × barrel) generate spuriously high outputs. Cap compresses
-        // anything above 72% toward a 75% ceiling (knee=72, headroom=3pp, rate=0.5).
-        return _hrrBlended <= 72 ? _hrrBlended : parseFloat((72 + 3 * (1 - Math.exp(-0.5 * (_hrrBlended - 72)))).toFixed(1));
+        // Sigmoid cap: compresses high outputs toward a 71% ceiling (knee=68, headroom=3pp,
+        // rate=0.5, max≈71). Shadow n=345 shows actual HRR plateau at ~68–71% (not 72%
+        // from the 2022-24 backtest). Formula: values ≤68 pass unchanged; above 68 compressed.
+        // knee=68 ensures 70→69.9, 72→70.6, 75→70.9, 80→71.0 — matching observed shadow plateau.
+        // Cap knee lowered 72→68 (2026-06-10): combined with OPS weight 0.4→0.25 gives ~2-4pp
+        // deflation in the dominant 70-75% band (actual 68.4%, was predicting 72.5%).
+        return _hrrBlended <= 68 ? _hrrBlended : parseFloat((68 + 3 * (1 - Math.exp(-0.5 * (_hrrBlended - 68)))).toFixed(1));
       }
       if (sport === "nba") {
         const _nbaRef = softPct !== null ? (seasonPct + softPct) / 2 : seasonPct;

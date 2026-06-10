@@ -136,7 +136,7 @@ See `docs/MODEL.md` for all formula details, SimScore tiers, lambda formulas, ga
 | Model | Approach | Key inputs |
 |---|---|---|
 | MLB Strikeouts | `simulateKsDist` Monte Carlo (10k/5k) | K% regression, umpire, expectedBF, lineup oK%, TTO decay |
-| MLB Hitters (HRR) | logit-sigmoid base-rate | park, OPS, WHIP, barrel%, PA-aware adjustment, BvP shrinkage |
+| MLB Hitters (HRR) | logit-sigmoid base-rate | park, OPS (w=0.25), WHIP (w=0.30), barrel% (w=0.25), PA-aware adjustment, BvP shrinkage, sigmoid cap knee=68 max=71 |
 | NBA props | `buildNbaStatDist` Normal MC | paceFactor, recency-weighted mean, playoff Bayesian shrink, DVP |
 | WNBA props | same as NBA | retuned tiers (USG 27/22, O/U 168/158), 2025 anchor |
 | NHL props | same as NBA | TOI, GAA rank, playoff-aware shrink |
