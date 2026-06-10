@@ -983,7 +983,7 @@ export async function emitGameTotalPlays({
       const _overInWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
       if (overEdge >= EDGE_GATE && _overInWindow) {
         totalPlays.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge: overEdge, totalSimScore, qualified: true, kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _gameTime, lineupsConfirmed: _lineupsConfirmed, kalshiTicker: tm._ticker ?? null, kalshiSide: "yes", ..._simData });
-      } else if (isDebug) {
+      } else {
         dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge: overEdge, totalSimScore, lineupsConfirmed: _lineupsConfirmed, reason: !_overInWindow ? "kalshi_out_of_window" : "edge_too_low", ..._simData });
       }
       // UNDER play — mirror the OVER filter: require noKalshiPct >= 70 (YES <= 30)
@@ -992,7 +992,7 @@ export async function emitGameTotalPlays({
       // market report shows a row for every market, not just those with edge ≥ 3%.
       if (underEdge >= EDGE_GATE && noKalshiPct >= KALSHI_GATE && noKalshiPct <= KALSHI_CAP) {
         totalPlays.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "under", kalshiPct, noKalshiPct, americanOdds: noKalshiAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, rawEdge, edge: underEdge, totalSimScore: underSimScore, qualified: true, kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _gameTime, lineupsConfirmed: _lineupsConfirmed, kalshiTicker: tm._ticker ?? null, kalshiSide: "no", ..._simData, ..._underComponents });
-      } else if (isDebug) {
+      } else {
         dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "under", kalshiPct, noKalshiPct, americanOdds: noKalshiAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, rawEdge, edge: underEdge, totalSimScore: underSimScore, lineupsConfirmed: _lineupsConfirmed, reason: noKalshiPct < KALSHI_GATE ? "under_no_price_too_low" : "edge_too_low", ..._simData, ..._underComponents });
       }
     }
@@ -1213,7 +1213,7 @@ export async function emitGameTotalPlays({
         const _ttOverInWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
         if (edge >= EDGE_GATE && _ttOverInWindow) {
           teamTotalPlays.push({ ..._ttBaseFields, direction: "over", edge, rawEdge, teamTotalSimScore, qualified: true, kalshiTicker: tm._ticker ?? null, kalshiSide: "yes" });
-        } else if (isDebug) {
+        } else {
           dropped.push({ ..._ttBaseFields, direction: "over", edge, rawEdge, teamTotalSimScore, reason: !_ttOverInWindow ? "kalshi_out_of_window" : "edge_too_low" });
         }
         // UNDER play — use real no_ask price flowed through from the parse site.
@@ -1232,7 +1232,7 @@ export async function emitGameTotalPlays({
         const _ttUnderComponents = { ttSeasonHitRatePts: _uTtSeasonHitRatePts, ttWhipPts: _uTtWhipPts, ttL10Pts: _uTtL10Pts, h2hHitRatePts: _uH2hHitRatePts, ttOuPts: _uTtOuPts };
         if (_ttUnderEdge >= EDGE_GATE && _ttNoKalshiPct >= KALSHI_GATE && _ttNoKalshiPct <= KALSHI_CAP) {
           teamTotalPlays.push({ ..._ttBaseFields, ..._ttUnderComponents, direction: "under", noTruePct: _ttNoTruePct, noKalshiPct: _ttNoKalshiPct, americanOdds: _ttNoKalshiAO, edge: _ttUnderEdge, rawEdge: _ttUnderEdge, teamTotalSimScore: _ttUnderSimScore, qualified: true, kalshiTicker: tm._ticker ?? null, kalshiSide: "no" });
-        } else if (isDebug) {
+        } else {
           dropped.push({ ..._ttBaseFields, ..._ttUnderComponents, direction: "under", noTruePct: _ttNoTruePct, noKalshiPct: _ttNoKalshiPct, americanOdds: _ttNoKalshiAO, edge: _ttUnderEdge, teamTotalSimScore: _ttUnderSimScore, reason: _ttNoKalshiPct < KALSHI_GATE ? "under_no_price_too_low" : "edge_too_low" });
         }
       } else if (sport === "nba") {
@@ -1328,7 +1328,7 @@ export async function emitGameTotalPlays({
         const _nttOverInWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
         if (edge >= EDGE_GATE && _nttOverInWindow) {
           teamTotalPlays.push({ ..._nttBaseFields, direction: "over", edge, rawEdge, teamTotalSimScore, qualified: true, kalshiTicker: tm._ticker ?? null, kalshiSide: "yes" });
-        } else if (isDebug) {
+        } else {
           dropped.push({ ..._nttBaseFields, direction: "over", edge, rawEdge, teamTotalSimScore, reason: !_nttOverInWindow ? "kalshi_out_of_window" : "edge_too_low" });
         }
         // UNDER play — same real-no_ask correction as MLB team total UNDER above.
@@ -1345,7 +1345,7 @@ export async function emitGameTotalPlays({
         const _nttUnderComponents = { ttOffRtgPts: _uTtOffRtgPts, ttDefRtgPts: _uTtDefRtgPts, ttNbaSeasonHitRatePts: _uTtNbaSeasonHitRatePts, h2hHitRatePts: _uNbaH2hHitRatePts, ttNbaOuPts: _uTtNbaOuPts };
         if (_nttUnderEdge >= EDGE_GATE && _nttNoKalshiPct >= KALSHI_GATE && _nttNoKalshiPct <= KALSHI_CAP) {
           teamTotalPlays.push({ ..._nttBaseFields, ..._nttUnderComponents, direction: "under", noTruePct: _nttNoTruePct, noKalshiPct: _nttNoKalshiPct, americanOdds: _nttNoKalshiAO, edge: _nttUnderEdge, rawEdge: _nttUnderEdge, teamTotalSimScore: _nttUnderSimScore, qualified: true, kalshiTicker: tm._ticker ?? null, kalshiSide: "no" });
-        } else if (isDebug) {
+        } else {
           dropped.push({ ..._nttBaseFields, ..._nttUnderComponents, direction: "under", noTruePct: _nttNoTruePct, noKalshiPct: _nttNoKalshiPct, americanOdds: _nttNoKalshiAO, edge: _nttUnderEdge, teamTotalSimScore: _nttUnderSimScore, reason: _nttNoKalshiPct < KALSHI_GATE ? "under_no_price_too_low" : "edge_too_low" });
         }
       }
