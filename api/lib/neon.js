@@ -25,8 +25,12 @@ function _getWriteConnStr(env) {
   );
 }
 
-export async function neonQuery(sql, params = [], env) {
-  const connStr = _getConnStr(env);
+// opts.write: route the read through the pooled primary (write conn). Use for reads that
+// need read-after-write consistency — DATABASE_URL_UNPOOLED may be a read-only replica that
+// serves stale/empty results on cold wake (2026-06-11 resolver incident: 0 unresolved rows
+// at 10:05 UTC vs 1051 on the primary).
+export async function neonQuery(sql, params = [], env, opts = {}) {
+  const connStr = opts.write ? _getWriteConnStr(env) : _getConnStr(env);
   if (!connStr) throw new Error("No Neon connection string available (DATABASE_URL_UNPOOLED not set)");
   const sql_fn = _neon(connStr);
   // sql.query() resolves to the rows array directly (not { rows: [...] }).

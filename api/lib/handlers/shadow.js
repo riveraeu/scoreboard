@@ -325,6 +325,9 @@ async function handleShadowResolver({ path, request, env }) {
   // Only resolve rows from prior days (today's games may not be finished).
   // COALESCE(game_date, snapshot_date::varchar) handles early-dropped prop rows
   // that lack game_date — snapshot_date (3pm PT) is the same calendar day as the game.
+  // write:true — must read the pooled primary. The unpooled conn may be a read-only
+  // replica that returns 0 rows on cold wake (2026-06-11: both morning crons missed
+  // all 1051 of the prior day's rows).
   const rows = await neonQuery(
     `SELECT id, sport, stat, game_type, player_name, home_team, away_team,
             scoring_team, pick_team, pick_line, threshold, direction,
@@ -336,8 +339,11 @@ async function handleShadowResolver({ path, request, env }) {
        AND away_team IS NOT NULL
      LIMIT 2000`,
     [today],
-    env
+    env,
+    { write: true }
   );
+
+  console.log(`[shadow-resolver] rows=${rows.length} selectMs=${Date.now() - t0}`);
 
   if (!rows.length) {
     return jsonResponse({ ok: true, resolved: 0, skipped: 0, noData: 0, durationMs: Date.now() - t0 });
@@ -493,6 +499,7 @@ async function handleShadowResolver({ path, request, env }) {
 
   if (updates.length) await neonBatchResolve(updates, env);
 
+  console.log(`[shadow-resolver] resolved=${updates.length} skipped=${skipped} noData=${noData} games=${liveByKey.size} durationMs=${Date.now() - t0}`);
   return jsonResponse({ ok: true, resolved: updates.length, skipped, noData, durationMs: Date.now() - t0 });
 }
 
