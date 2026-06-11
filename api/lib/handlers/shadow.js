@@ -74,10 +74,15 @@ ALTER TABLE shadow_plays ADD COLUMN IF NOT EXISTS price_pre_at TIMESTAMPTZ
 `;
 
 // Stable deterministic ID for a play — unique per player/teams + stat/line + date.
-function shadowId(p) {
+// fallbackDate (the PT snapshot date) scopes plays whose gameDate is null: without it,
+// date-less ids collide across days — a next-day Kalshi pre-listing logged yesterday
+// permanently blocked today's row via ON CONFLICT DO NOTHING, and a rematch weeks later
+// with the same threshold could never log at all (found via 17 noData rows, 2026-06-11).
+// Same-day re-snapshots (8:05am vs 3:05pm) still dedup since fallbackDate is equal.
+function shadowId(p, fallbackDate = "") {
   return [
     p.sport || "",
-    p.gameDate || "",
+    p.gameDate || fallbackDate || "",
     p.homeTeam || "",
     p.awayTeam || "",
     p.playerName || "",
@@ -89,19 +94,21 @@ function shadowId(p) {
 }
 
 // group_id links all threshold variants for the same player/matchup on the same game.
-function groupId(p) {
+// Same fallbackDate scoping as shadowId — date-less group_ids would merge different
+// days' alt-line groups in the DB-side analyses (intraGroupCorr, threshold_rank ROI).
+function groupId(p, fallbackDate = "") {
   if (p.playerName) {
-    return `pp|${p.sport}|${p.playerId || p.playerName}|${p.gameDate || ""}`;
+    return `pp|${p.sport}|${p.playerId || p.playerName}|${p.gameDate || fallbackDate || ""}`;
   }
-  return `tm|${p.sport}|${p.gameType || p.stat}|${p.homeTeam}|${p.awayTeam}|${p.gameDate || ""}`;
+  return `tm|${p.sport}|${p.gameType || p.stat}|${p.homeTeam}|${p.awayTeam}|${p.gameDate || fallbackDate || ""}`;
 }
 
 // Annotate each play with threshold_rank (1 = closest to 50% — most information) and
 // is_best_edge within its group. Mutates the plays in-place.
-function annotateGroups(plays) {
+function annotateGroups(plays, fallbackDate = "") {
   const groups = new Map();
   for (const p of plays) {
-    const gid = groupId(p);
+    const gid = groupId(p, fallbackDate);
     p._gid = gid;
     if (!groups.has(gid)) groups.set(gid, []);
     groups.get(gid).push(p);
@@ -601,7 +608,7 @@ async function handleShadowPregameSnap({ path, request, env, cache }) {
   const priceMap = new Map();
   for (const p of rawPlays) {
     if (p.kalshiPct == null && p.noKalshiPct == null) continue;
-    priceMap.set(shadowId(p), {
+    priceMap.set(shadowId(p, snapshotDate), {
       yes: p.kalshiPct  != null ? p.kalshiPct  / 100 : null,
       no:  p.noKalshiPct != null ? p.noKalshiPct / 100 : null,
     });
@@ -1017,10 +1024,10 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
       return jsonResponse({ ok: true, snapshotDate, logged: 0, durationMs: Date.now() - t0 });
     }
 
-    annotateGroups(plays);
+    annotateGroups(plays, snapshotDate);
 
     const rows = plays.map(p => ({
-      id: shadowId(p),
+      id: shadowId(p, snapshotDate),
       snapshot_date: snapshotDate,
       sport: p.sport || null,
       stat: p.stat || null,
