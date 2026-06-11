@@ -18,6 +18,7 @@ import { fetchKalshiMarkets } from "../tonight/kalshi-pipeline.js";
 import { blendMarketPrice } from "../tonight/blend-fill.js";
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER as EDGE_GATE } from "../config.js";
 import { TEAM_NORM, normTeam, parseGameTeams } from "../tonight/parse-teams.js";
+import { dedupAltLines } from "../tonight/dedup.js";
 import { emitAllMlAndSpread } from "../tonight/ml-spread.js";
 import { emitGameTotalPlays } from "../tonight/game-totals.js";
 import { emitPropPlays } from "../tonight/props.js";
@@ -1397,55 +1398,10 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             return isNaN(t) || t > _nowMs;
           }));
         }
-        // Per-matchup alt-line dedup (added 2026-05-18, extended to player props 2026-05-19) for
-        // every play type that has multiple alt thresholds/lines per logical bet:
-        //   - total: same matchup × direction (correlated by game outcome)
-        //   - teamTotal: same scoring team × direction
-        //   - spread: same pickTeam × opponent
-        //   - player props: same player × stat (alt thresholds sample one distribution)
-        // ML is excluded (each side is its own play, no alt lines). Keeps highest-edge line per
-        // group; demoted lines move to dropped[] in debug mode with reason "altLineDedup".
+        // Per-matchup alt-line dedup — key semantics + keep/demote pass extracted to
+        // api/lib/tonight/dedup.js (2026-06-11) so they're unit-testable.
         {
-          const _ddKey = (p) => {
-            // Segment qualifier: F5 (first-5-innings) and full-game markets on the same matchup
-            // are *independent* bets — different outcomes resolve them — so they must not dedup
-            // against each other. Default to "full" when absent.
-            const _seg = p.segment || "full";
-            if (p.gameType === "total") return `gt|${p.sport}|${_seg}|${p.homeTeam}|${p.awayTeam}|${p.gameDate}|${p.direction || 'over'}`;
-            if (p.gameType === "teamTotal") return `tt|${p.sport}|${_seg}|${p.scoringTeam}|${p.oppTeam}|${p.gameDate}|${p.direction || 'over'}`;
-            // Spread: matchup-symmetric + line-specific key. Deduplicates both sides of the
-            // same line (MIN +3.5 vs KC -3.5 are the same bet). Different alt lines (MIN +2.5
-            // vs MIN +3.5) get independent groups so each survives the category-gate pass.
-            if (p.gameType === "spread") {
-              const teams = [p.pickTeam, p.oppTeam].sort().join('|');
-              // Include line so different alt lines (e.g. +2.5 vs +3.5) compete independently.
-              // Still deduplicates both sides of the same line (MIN +3.5 vs KC -3.5).
-              return `sp|${p.sport}|${_seg}|${teams}|${p.line}|${p.gameDate}`;
-            }
-            // Player props (no gameType): same player × stat across alt thresholds are sampling the
-            // same underlying random variable (Tucker 1+/2+/3+ HRR draws from his HRR distribution).
-            // Keep highest-edge threshold per player×stat — reverses the 2026-05-16 "see all alts"
-            // decision since correlation is too strong to size independently.
-            if (!p.gameType && p.playerName && p.stat) return `pp|${p.sport}|${p.playerName}|${p.stat}|${p.gameDate}`;
-            return null;
-          };
-          const _bestByKey = {};
-          for (const p of plays) {
-            const k = _ddKey(p);
-            if (!k) continue;
-            if (!_bestByKey[k] || (p.edge ?? 0) > (_bestByKey[k].edge ?? 0)) _bestByKey[k] = p;
-          }
-          const _kept = [];
-          const _demoted = [];
-          for (const p of plays) {
-            const k = _ddKey(p);
-            if (!k || _bestByKey[k] === p) _kept.push(p);
-            // Mark with `_altLineDemoted: true` — separate from dcQualified because the
-            // dataConfidence pass below overwrites dcQualified per-play and would otherwise
-            // restore the demoted alt to qualified. _altLineDemoted is the dedup-stable marker
-            // the client filter uses to exclude (unless the user has the pick tracked).
-            else _demoted.push({ ...p, reason: "altLineDedup", _altLineDemoted: true });
-          }
+          const { kept: _kept, demoted: _demoted } = dedupAltLines(plays);
           plays.splice(0, plays.length, ..._kept, ..._demoted);
           if (isDebug) dropped.push(..._demoted);
         }

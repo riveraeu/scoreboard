@@ -9,8 +9,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 npm run dev        # Vite dev server — proxies /api to production (see vite.config.js)
 npm run build      # Production build → dist/
-npm test           # Node.js test runner on api/lib/simulate.test.js
-npm run test:jxa   # osascript JXA version of the same tests (macOS only)
+npm test           # Node.js test runner: simulate, utils (parseGameScores keys), parse-teams, dedup, category gate
+npm run test:jxa   # osascript JXA version of the simulate tests only (macOS only)
 git push origin main  # Deploys to Vercel automatically
 ```
 
@@ -84,6 +84,7 @@ Sport/utility modules under `api/lib/`:
 - `api/lib/nhl.js` — `buildNhlGoalieData`, `buildNhlInjuryReport`, `NHL_ABBR_MAP`
 - `api/lib/utils.js` — CORS, `parseGameOdds`, `parseGameScores`, team rank helpers
 - `api/lib/tonight/parse-teams.js` — `TEAM_NORM`, `normTeam`, `_VALID_TEAMS`, `parseGameTeams`
+- `api/lib/tonight/dedup.js` — `dedupKey` + `dedupAltLines` (alt-line dedup, extracted 2026-06-11; tonight.js owns the splice + debug push). Unit tests pin the key semantics — change tests and code together.
 - `api/lib/tonight/props.js` — `emitPropPlays(ctx)` (~1667 LOC)
 - `api/lib/tonight/game-totals.js` — `emitGameTotalPlays(ctx)` (~1225 LOC); returns `_*MlContext` maps
 - `api/lib/tonight/ml-spread.js` — `emitAllMlAndSpread(ctx)` (~1231 LOC)
