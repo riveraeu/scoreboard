@@ -288,12 +288,14 @@ const K_FORM_SIGMA = 0.22;
 // stdBF: standard deviation of batters faced per start. When > 0, each trial samples trialPA from
 //   Normal(totalPA, stdBF), clamped [10,27]. Blowout hook takes precedence when both are set.
 //   stdBF = 0 (default) keeps deterministic totalPA — no variance injected.
+// PA loop cycles the batting order (bf % n) until trialPA (fixed 2026-06-10). The old version
+//   pre-allocated exactly totalPA across the 9 batters consecutively, which (a) silently truncated
+//   upside trialPA draws — stdBF acted as a downside-only haircut, biasing K means ~0.5 low and
+//   over truePcts ~3pts low on stdBF>0 plays — and (b) made early exits cut the bottom of the
+//   order entirely instead of cutting the later trips through the order.
 export function simulateKsDist(orderedKPcts, pitcherKPct, parkFactor = 1, nSim = 5000, totalPA = 24, earlyExitProb = 0, stdBF = 0) {
   const n = orderedKPcts.length;
   if (!n || pitcherKPct == null) return null;
-  const base = Math.floor(totalPA / n);
-  const extras = totalPA % n;
-  const paArr = orderedKPcts.map((_, i) => base + (i < extras ? 1 : 0));
   const adjProbs = orderedKPcts.map(b => Math.min(0.95, log5K(pitcherKPct, b * 100) * parkFactor));
   // Scoped Box-Muller cache — inside function to avoid module-level state (race conditions on
   // concurrent requests). Generates two normals per call, saves the spare for the next invocation,
@@ -319,15 +321,9 @@ export function simulateKsDist(orderedKPcts, pitcherKPct, parkFactor = 1, nSim =
     // One mean-1 lognormal form draw per game: exp(σ·Z − σ²/2) so E[formMult] = 1 (mean
     // preserved). Scales every batter's K prob this sim → between-game quality variance.
     const formMult = Math.exp(K_FORM_SIGMA * randNorm(0, 1) - 0.5 * K_FORM_SIGMA * K_FORM_SIGMA);
-    for (let i = 0; i < n; i++) {
-      const pa = paArr[i];
-      const p = Math.min(0.95, adjProbs[i] * formMult * (bf >= 18 ? TTO_DECAY_FACTOR : 1));
-      for (let j = 0; j < pa; j++) {
-        if (bf >= trialPA) break;
-        if (Math.random() < p) ks++;
-        bf++;
-      }
-      if (bf >= trialPA) break;
+    for (; bf < trialPA; bf++) {
+      const p = Math.min(0.95, adjProbs[bf % n] * formMult * (bf >= 18 ? TTO_DECAY_FACTOR : 1));
+      if (Math.random() < p) ks++;
     }
     dist[sim] = ks;
   }

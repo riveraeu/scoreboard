@@ -67,9 +67,6 @@ function simulateKsDist(orderedKPcts, pitcherKPct, parkFactor, nSim, totalPA, ea
   stdBF = stdBF == null ? 0 : stdBF;
   var n = orderedKPcts.length;
   if (!n || pitcherKPct == null) return null;
-  var base = Math.floor(totalPA / n);
-  var extras = totalPA % n;
-  var paArr = orderedKPcts.map(function(_, i) { return base + (i < extras ? 1 : 0); });
   var adjProbs = orderedKPcts.map(function(b) { return Math.min(0.95, log5K(pitcherKPct, b * 100) * parkFactor); });
   var _bmSpare = false, _bmZ1 = 0;
   function randNorm(mean, std) {
@@ -90,15 +87,11 @@ function simulateKsDist(orderedKPcts, pitcherKPct, parkFactor, nSim, totalPA, ea
       trialPA = Math.min(27, Math.max(10, Math.round(randNorm(totalPA, stdBF))));
     }
     var formMult = Math.exp(K_FORM_SIGMA * randNorm(0, 1) - 0.5 * K_FORM_SIGMA * K_FORM_SIGMA);
-    for (var i = 0; i < n; i++) {
-      var pa = paArr[i];
-      var p = Math.min(0.95, adjProbs[i] * formMult * (bf >= 18 ? TTO_DECAY_FACTOR : 1));
-      for (var j = 0; j < pa; j++) {
-        if (bf >= trialPA) break;
-        if (Math.random() < p) ks++;
-        bf++;
-      }
-      if (bf >= trialPA) break;
+    // Cycle the batting order until trialPA (mirrors simulate.js fix 2026-06-10 — the old
+    // consecutive paArr allocation truncated upside trialPA draws, so stdBF was downside-only).
+    for (; bf < trialPA; bf++) {
+      var p = Math.min(0.95, adjProbs[bf % n] * formMult * (bf >= 18 ? TTO_DECAY_FACTOR : 1));
+      if (Math.random() < p) ks++;
     }
     dist[sim] = ks;
   }
