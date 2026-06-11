@@ -4,98 +4,6 @@ import { logoUrl, fmtGameTime } from '../lib/utils.js';
 import { useIsMobile } from '../lib/hooks.js';
 import PlaysColumn from './PlaysColumn.jsx';
 
-// Lineup confirmation badge (MLB only). status: 'confirmed' → green, 'projected' → grey,
-// 'pending' → grey "Lineup TBD" for future games where no lineup data exists yet.
-function LineupBadge({ status, align }) {
-  const isConfirmed = status === 'confirmed';
-  const isPending = status === 'pending';
-  const color = isConfirmed ? '#3fb950' : '#8b949e';
-  const bg = 'rgba(139, 148, 158, 0.1)';
-  const label = isPending ? 'Lineup TBD' : isConfirmed ? 'Confirmed Lineup' : 'Projected Lineup';
-  const tip = isConfirmed ? 'Lineup confirmed'
-    : isPending ? 'Lineup not yet posted'
-    : 'Projected lineup — not yet official';
-  return (
-    <span style={{
-      display: 'inline-block',
-      fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4,
-      background: bg, color,
-      whiteSpace: 'nowrap',
-    }}
-      title={tip}>
-      {label}
-    </span>
-  );
-}
-
-// NBA/WNBA/NHL injury summary pill. One badge per team; hover/tap reveals a tooltip
-// listing each injured player with their status dot. Red = any Out, yellow = only GTD.
-// align controls tooltip anchor — "left" or "right" matches the column's text alignment.
-function InjuryReportBadge({ players, align = 'left' }) {
-  const [hovered, setHovered] = React.useState(false);
-  const [pinned, setPinned] = React.useState(false);
-  const ref = React.useRef(null);
-  React.useEffect(() => {
-    if (!pinned) return;
-    const close = (e) => {
-      if (!ref.current || !ref.current.contains(e.target)) setPinned(false);
-    };
-    document.addEventListener('mousedown', close);
-    document.addEventListener('touchstart', close);
-    return () => {
-      document.removeEventListener('mousedown', close);
-      document.removeEventListener('touchstart', close);
-    };
-  }, [pinned]);
-  if (!players?.length) return null;
-  const visible = hovered || pinned;
-  const hasOut = players.some(p => p.status === 'out');
-  const color = hasOut ? '#f85149' : '#e3b341';
-  return (
-    <span ref={ref}
-      style={{ position: 'relative', display: 'inline-block', cursor: 'pointer' }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      onClick={(e) => { e.stopPropagation(); setPinned(p => !p); }}>
-      <span style={{
-        display: 'inline-block',
-        fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 4,
-        background: 'rgba(139, 148, 158, 0.1)', color,
-        whiteSpace: 'nowrap',
-      }}>
-        Injury Report · {players.length}
-      </span>
-      {visible && (
-        <div style={{
-          position: 'absolute', top: '100%', marginTop: 4,
-          ...(align === 'right' ? { right: 0 } : { left: 0 }),
-          background: '#1c2128', border: '1px solid #30363d', borderRadius: 6,
-          padding: '6px 8px', zIndex: 100, whiteSpace: 'nowrap',
-          fontSize: 10, color: '#c9d1d9', minWidth: 130,
-          boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
-          textAlign: 'left',
-        }}>
-          {players.map(p => {
-            const isOut = p.status === 'out';
-            return (
-              <div key={p.id || p.name} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '1px 0' }}>
-                <span style={{
-                  display: 'inline-block', width: 6, height: 6, borderRadius: '50%',
-                  background: isOut ? '#f85149' : '#e3b341', flexShrink: 0,
-                }} title={isOut ? 'Out' : 'Game-time decision / day-to-day'} />
-                <span style={{ color: '#c9d1d9' }}>{p.name}</span>
-                <span style={{ color: '#8b949e', fontSize: 9, marginLeft: 'auto' }}>
-                  {isOut ? 'Out' : 'GTD'}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </span>
-  );
-}
-
 // "BOS leads series 3-2" → "BOS 3-2", "Series tied 2-2" → "2-2"
 function fmtSeries(summary) {
   if (!summary) return null;
@@ -131,20 +39,6 @@ function MatchupCard({
   const isTomorrowGame = sport === 'mlb' && gameDate && gameDate > ptToday;
   const mlbPitchSrc = isTomorrowGame ? mlbMetaTomorrow : mlbMeta;
 
-  // Per-team MLB lineup confirmation. teamsWithLineup includes any team with lineup data
-  // (confirmed or projected); projectedLineupTeams flags the ones that are still projections.
-  // Hidden once the game starts — the lineup question is settled, badge becomes noise.
-  // For tomorrow's games we don't fetch lineup data at all (mlbMetaTomorrow.teamsWithLineup
-  // is always empty); return 'pending' so the UI shows a "Lineup TBD" badge rather than
-  // silently omitting it — silent omission looked identical to "confirmed" to the user.
-  const mlbLineupStatus = (abbr) => {
-    if (sport !== 'mlb' || !abbr) return null;
-    if (gameState === 'in' || gameState === 'post') return null;
-    const teams = mlbPitchSrc?.teamsWithLineup || [];
-    const projected = mlbPitchSrc?.projectedLineupTeams || [];
-    if (!teams.includes(abbr)) return isTomorrowGame ? 'pending' : null;
-    return projected.includes(abbr) ? 'projected' : 'confirmed';
-  };
   const featureFor = (abbr) => {
     if (!abbr) return null;
     if (sport === 'mlb') {
@@ -158,13 +52,10 @@ function MatchupCard({
       return {
         name: p.name,
         id: p.id,
-        // MLB pitcher headshot is intentionally hidden — saves vertical real estate, focus stays
-        // on the stat row + lineup confirmation badge. NBA/WNBA/NHL still show headshots below.
         headshot: null,
         stats,
         sportKey: 'baseball/mlb',
         tab: 'strikeouts',
-        lineupStatus: mlbLineupStatus(abbr),
       };
     }
     const meta = sport === 'nba' ? nbaMeta : sport === 'wnba' ? wnbaMeta : sport === 'nhl' ? nhlMeta : null;
@@ -179,30 +70,6 @@ function MatchupCard({
       tab: 'points',
     };
   };
-  // Per-team injury list for NBA/WNBA/NHL — one entry per Out/GTD player. Sorted Out-first so
-  // the more impactful absences render to the left of the wrap container. Filtered to starters
-  // only for NBA/WNBA (avgMin threshold catches starters + heavy rotation, excludes deep bench).
-  // NHL shows all — no per-player TOI data fetched. Suppressed during live/final.
-  const STARTER_MIN = { nba: 25, wnba: 20 };
-  const injuryFor = (abbr) => {
-    if (!abbr || sport === 'mlb' || sport === 'nfl') return null;
-    if (gameState === 'in' || gameState === 'post') return null;
-    const meta = sport === 'nba' ? nbaMeta : sport === 'wnba' ? wnbaMeta : sport === 'nhl' ? nhlMeta : null;
-    const players = meta?.injuries?.[abbr];
-    if (!players?.length) return null;
-    const minThreshold = STARTER_MIN[sport];
-    const filtered = minThreshold != null
-      ? players.filter(p => typeof p.avgMin === 'number' && p.avgMin >= minThreshold)
-      : players;
-    if (!filtered.length) return null;
-    const sorted = [...filtered].sort((a, b) => {
-      if (a.status !== b.status) return a.status === 'out' ? -1 : 1;
-      return 0;
-    });
-    return sorted;
-  };
-  const awayInjury = injuryFor(awayTeam);
-  const homeInjury = injuryFor(homeTeam);
   const awayFeature = featureFor(awayTeam);
   const homeFeature = featureFor(homeTeam);
   const hasFeatureRow = !!(awayFeature || homeFeature);
@@ -340,16 +207,6 @@ function MatchupCard({
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, cursor: awayFeature ? 'pointer' : 'default' }}
             onClick={() => openFeature(awayFeature, awayTeam)}>
             <div style={{ minWidth: 0 }}>
-              {awayFeature?.lineupStatus && (
-                <div style={{ display: 'flex', marginTop: 0, marginBottom: 9 }}>
-                  <LineupBadge status={awayFeature.lineupStatus} />
-                </div>
-              )}
-              {awayInjury && (
-                <div style={{ display: 'flex', marginTop: 0, marginBottom: 9 }}>
-                  <InjuryReportBadge players={awayInjury} align="left" />
-                </div>
-              )}
               <div style={{ fontSize: 12, color: '#c9d1d9', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {awayFeature?.name || '—'}
               </div>
@@ -383,16 +240,6 @@ function MatchupCard({
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end', minWidth: 0, cursor: homeFeature ? 'pointer' : 'default' }}
             onClick={() => openFeature(homeFeature, homeTeam)}>
             <div style={{ textAlign: 'right', minWidth: 0 }}>
-              {homeFeature?.lineupStatus && (
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 0, marginBottom: 9 }}>
-                  <LineupBadge status={homeFeature.lineupStatus} align="right" />
-                </div>
-              )}
-              {homeInjury && (
-                <div style={{ display: 'flex', marginTop: 0, marginBottom: 9, justifyContent: 'flex-end' }}>
-                  <InjuryReportBadge players={homeInjury} align="right" />
-                </div>
-              )}
               <div style={{ fontSize: 12, color: '#c9d1d9', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {homeFeature?.name || '—'}
               </div>
