@@ -328,6 +328,27 @@ async function handleShadowResolver({ path, request, env }) {
   // write:true — must read the pooled primary. The unpooled conn may be a read-only
   // replica that returns 0 rows on cold wake (2026-06-11: both morning crons missed
   // all 1051 of the prior day's rows).
+  // Abandon rows that have sat unresolved for 14+ days (postponed games, unparseable
+  // teams — permanent noData). resolved=TRUE with won=NULL exits them from this scan
+  // without polluting calibration (which filters won IS NOT NULL). Without this they
+  // accumulate (~17/day) and, since the SELECT below is LIMIT-bounded, could eventually
+  // starve fresh rows.
+  const abandoned = await neonQuery(
+    `UPDATE shadow_plays SET resolved = TRUE, resolved_at = NOW()
+     WHERE resolved = FALSE
+       AND COALESCE(game_date, snapshot_date::varchar) < $1
+     RETURNING id`,
+    [new Date(Date.now() - 14 * 86400_000).toISOString().slice(0, 10)],
+    env,
+    { write: true }
+  ).catch((e) => {
+    console.error(`[shadow-resolver] abandon UPDATE failed: ${e?.message}`);
+    return [];
+  });
+  if (abandoned.length) console.log(`[shadow-resolver] abandoned=${abandoned.length} (unresolved >14d)`);
+
+  // ORDER BY newest first: if backlog ever exceeds the LIMIT, fresh rows (still
+  // resolvable) win over old strays rather than Postgres picking arbitrarily.
   const rows = await neonQuery(
     `SELECT id, sport, stat, game_type, player_name, home_team, away_team,
             scoring_team, pick_team, pick_line, threshold, direction,
@@ -337,6 +358,7 @@ async function handleShadowResolver({ path, request, env }) {
        AND COALESCE(game_date, snapshot_date::varchar) < $1
        AND home_team IS NOT NULL
        AND away_team IS NOT NULL
+     ORDER BY snapshot_date DESC
      LIMIT 2000`,
     [today],
     env,
@@ -590,10 +612,18 @@ async function handleShadowPregameSnap({ path, request, env, cache }) {
   }
 
   // Fetch today's rows that haven't been stamped yet.
+  // write:true — read-after-write of rows the snapshot cron inserted earlier today; the
+  // unpooled replica can return 0 rows on cold wake (03:00 UTC run is ~4.4h after the last
+  // Neon touch). Errors are logged, not swallowed — a silent [] here means CLV quietly
+  // vanishes for the day.
   const rows = await neonQuery(
     `SELECT id FROM shadow_plays WHERE snapshot_date = $1 AND price_pre_at IS NULL`,
-    [snapshotDate], env
-  ).catch(() => []);
+    [snapshotDate], env, { write: true }
+  ).catch((e) => {
+    console.error(`[shadow-pregame-snap] rows SELECT failed: ${e?.message}`);
+    return [];
+  });
+  console.log(`[shadow-pregame-snap] unstamped rows=${rows.length} priceMap=${priceMap.size}`);
 
   let skipped = 0;
   const updates = [];
