@@ -61,7 +61,7 @@ User auth (`user:{email}`) and picks (`picks:{userId}`) live in the same Redis. 
 ---
 
 ## Deployment
-- Vercel Edge Functions; auto-deploys on `git push origin main` (no `vercel` CLI). Frontend built by Vercel via `npm run build`.
+- Vercel Node runtime / Fluid Compute (since 2026-06-11; was Edge with a 60s wall — the cause of the 2026-06-10 pregame-snap 504s). `maxDuration: 300` via the `functions` block in vercel.json. `runtimeCtx.waitUntil` is the real `@vercel/functions` waitUntil, so backgrounded work (DvP rebuilds) survives the response. Auto-deploys on `git push origin main` (no `vercel` CLI). Frontend built by Vercel via `npm run build`.
 - Rewrites in `vercel.json`: `/api/:path*` → `/api/[...path]`. CORS headers also there (required for OPTIONS preflight through rewrite layer).
 - Crons (`vercel.json`):
   - `/api/keepalive` — daily at noon UTC. Keeps Upstash from idle-suspending.

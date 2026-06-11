@@ -1,3 +1,4 @@
+import { waitUntil } from "@vercel/functions";
 import { ALLOWED_ORIGIN, corsHeaders, jsonResponse, errorResponse } from "./lib/utils.js";
 import { warmPlayerInfoCache } from "./lib/nba.js";
 import { handleAuthRoutes } from "./lib/handlers/auth.js";
@@ -121,8 +122,11 @@ var worker_default = {
   }
 };
 
-export const config = { runtime: 'edge', maxDuration: 60 };
-
+// Node runtime (Fluid Compute) since 2026-06-11 — was `runtime: 'edge'`, maxDuration 60.
+// All handler code is Web-API style (fetch/Request/Response/crypto.subtle/btoa — Node 20
+// globals), so the migration only swapped the runtime config. maxDuration is set in
+// vercel.json (`functions` block). The 60s Edge wall behind the shadow-snapshot/pregame
+// KV-staging workarounds is gone; staging stays because it's faster anyway.
 export default async function handler(request) {
   const env = {
     UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
@@ -137,6 +141,13 @@ export default async function handler(request) {
     DATABASE_URL_UNPOOLED: process.env.DATABASE_URL_UNPOOLED,
     POSTGRES_URL_NON_POOLING: process.env.POSTGRES_URL_NON_POOLING,
   };
-  const ctx = { waitUntil: (p) => { try { p.catch?.(() => {}); } catch {} } };
+  // Real waitUntil (was a fire-and-forget shim on Edge): background work queued via
+  // runtimeCtx.waitUntil (DvP rebuilds, cache warms) now survives the response.
+  const ctx = {
+    waitUntil: (p) => {
+      try { waitUntil(Promise.resolve(p).catch(() => {})); }
+      catch { try { p.catch?.(() => {}); } catch {} }
+    },
+  };
   return worker_default.fetch(request, env, ctx);
 }

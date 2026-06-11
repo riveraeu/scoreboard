@@ -36,7 +36,7 @@ curl -s "https://scoreboard-ivory-xi.vercel.app/api/auth/shadow-stats?resolvetri
 ---
 
 ## What This Is
-Sports prop betting dashboard that pulls Kalshi prediction market prices, computes a model True%, and shows qualified plays with edge over the market. Vercel Edge runtime (Web Fetch + KV/Redis only — no Node APIs).
+Sports prop betting dashboard that pulls Kalshi prediction market prices, computes a model True%, and shows qualified plays with edge over the market. Vercel **Node runtime (Fluid Compute)** since 2026-06-11 (was Edge; maxDuration 300 via vercel.json `functions`) — handler code stays Web-API style (fetch/Request/Response/crypto.subtle), so don't introduce Node-only APIs casually.
 
 **Production**: `https://scoreboard-ivory-xi.vercel.app`
 **Universal qualification**: Kalshi 67–91% · Edge ≥ 5% (client) / ≥ 3% (server, kept loose for calibration data). Game/team totals gate UNDERs by the same `noKalshiPct ∈ [67, 91]` window. SimScore is display-only since v1 was dropped 2026-05-26. Tunables live in **one source** at `api/lib/config.js` (`KALSHI_GATE` 67, `KALSHI_CAP` 91, `EDGE_GATE_SERVER` 3, `EDGE_GATE_CLIENT` 5); both server (tonight.js) and client (App.jsx, LineupsPage.jsx, TotalsBarChart.jsx) import from there. All client surfaces gate display at EDGE_GATE_CLIENT (5).
@@ -187,7 +187,7 @@ Add new scoreboard mismatches to `CANONICAL_TO_ESPN.wnba` in `sports.js` directl
 
 `KXMLBGAME` has the same 3-tier chain. **Diagnosing `usedSnaps:false`:** check `kalshiSnap.meta` in `/api/tonight?debug=1` — `null` meta means no cron completed in the last 10 min, pointing at a cron-side failure rather than a freshness race. See `docs/INFRA.md` for the two-phase cron write design.
 
-**Edge handler env-var wiring**: ALL env vars must be passed through `process.env` to the explicit `env` object at the bottom of `api/[...path].js`. Vercel doesn't auto-attach them. If you add a new env var, add it here too:
+**API handler env-var wiring**: ALL env vars must be passed through `process.env` to the explicit `env` object at the bottom of `api/[...path].js` (handlers receive `env`, never read `process.env` directly). If you add a new env var, add it here too:
 ```js
 const env = {
   UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
