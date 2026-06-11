@@ -1759,9 +1759,9 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           }
           if (_odsSnapDirty && CACHE2) CACHE2.put(_odsSnapKey, JSON.stringify(_odsSnap), { expirationTtl: 36 * 3600 }).catch(() => {});
         } catch { /* non-fatal */ }
-        const mlbMeta = { pitchers: _mlbPitchers, pitchersByGame: _mlbPitchersByGame, gameOdds: _mlbGameOdds, umpires: sportByteam.mlb?.umpireByGame ?? {}, weather: weatherByGame, projectedLineupTeams: sportByteam.mlb?.projectedLineupTeams ?? [], teamsWithLineup: Object.keys(sportByteam.mlb?.lineupSpotByName ?? {}), homeTeams: sportByteam.mlb?.gameHomeTeams ?? {}, gameScores: sportByteam.mlb?.gameScores ?? {} };
+        const mlbMeta = { pitchers: _mlbPitchers, pitchersByGame: _mlbPitchersByGame, gameOdds: _mlbGameOdds, umpires: sportByteam.mlb?.umpireByGame ?? {}, weather: weatherByGame, homeTeams: sportByteam.mlb?.gameHomeTeams ?? {}, gameScores: sportByteam.mlb?.gameScores ?? {} };
         // Build mlbMetaTomorrow: tomorrow's probables + umpires (no lineup/weather data available yet)
-        let mlbMetaTomorrow = { pitchers: {}, pitchersByGame: {}, gameOdds: _mlbGameOddsTomorrow, umpires: {}, weather: {}, projectedLineupTeams: [], teamsWithLineup: [], homeTeams: {}, gameScores: {} };
+        let mlbMetaTomorrow = { pitchers: {}, pitchersByGame: {}, gameOdds: _mlbGameOddsTomorrow, umpires: {}, weather: {}, homeTeams: {}, gameScores: {} };
         try {
           const _tmrPT = new Date(Date.now() - 7 * 3600 * 1000 + 86400 * 1000);
           const _tmrDateStr = _tmrPT.toISOString().slice(0, 10);
@@ -1837,42 +1837,27 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               losses: typeof _s?.losses === 'number' ? _s.losses : null,
             };
           }
-          mlbMetaTomorrow = { pitchers: _tmrPitchers, pitchersByGame: _tmrPitchersByGame, gameOdds: _mlbGameOddsTomorrow, umpires: _tmrUmpires, weather: {}, projectedLineupTeams: [], teamsWithLineup: [], homeTeams: _tmrHomeTeams, gameScores: {} };
+          mlbMetaTomorrow = { pitchers: _tmrPitchers, pitchersByGame: _tmrPitchersByGame, gameOdds: _mlbGameOddsTomorrow, umpires: _tmrUmpires, weather: {}, homeTeams: _tmrHomeTeams, gameScores: {} };
         } catch { /* leave empty */ }
-        // Sport meta builders — same shape, varying inputs. injuryMap entries get enriched with
-        // avgMin from the usage map (frontend filters the matchup-card injury badge to starters
-        // only: NBA avgMin >= 25, WNBA >= 20 for 40-min game). Dual-keyed (normalized + raw) so
-        // either abbr form looks up.
-        const _enrichInjuries = (injuryMap, usageMap, normMap) => {
-          const out = {};
-          for (const [abbr, players] of (injuryMap || new Map()).entries()) {
-            const enriched = players.map(p => ({ ...p, avgMin: (p.id && usageMap[p.id]?.avgMin) ?? null }));
-            const key = normMap[abbr] || abbr;
-            out[key] = enriched;
-            out[abbr] = enriched;
-          }
-          return out;
-        };
-        const _buildSportMeta = async (snapKey, gameOddsRaw, normMap, scoresMap, topPlayers, injuries) => {
+        // Sport meta builders — same shape, varying inputs. Injury maps are server-side only
+        // (emitPropPlays/emitGameTotalPlays read them via ctx); the client injury badge was
+        // removed 2026-06-10, so injuries are no longer shipped in the response meta.
+        const _buildSportMeta = async (snapKey, gameOddsRaw, normMap, scoresMap, topPlayers) => {
           const gameOdds = _buildOddsMap(gameOddsRaw, normMap);
           await applyClosingSnapshot(CACHE2, isBustCache, snapKey, scoresMap, gameOdds);
-          return { gameOdds, injuries, gameScores: scoresMap ?? {}, topPlayers: topPlayers ?? {} };
+          return { gameOdds, gameScores: scoresMap ?? {}, topPlayers: topPlayers ?? {} };
         };
         const nbaMeta = await _buildSportMeta(
           'nbaClosingOdds', sportByteam.nbaGameOdds, TEAM_NORM.nba,
-          sportByteam.nbaGameScores, sportByteam.nbaTopPlayers,
-          _enrichInjuries(nbaInjuryMap, nbaUsageMap, TEAM_NORM.nba)
+          sportByteam.nbaGameScores, sportByteam.nbaTopPlayers
         );
         const wnbaMeta = await _buildSportMeta(
           'wnbaClosingOdds', sportByteam.wnbaGameOdds, TEAM_NORM.wnba,
-          sportByteam.wnbaGameScores, sportByteam.wnbaTopPlayers,
-          _enrichInjuries(wnbaInjuryMap, wnbaUsageMap, TEAM_NORM.wnba)
+          sportByteam.wnbaGameScores, sportByteam.wnbaTopPlayers
         );
-        // NHL: no usage map, so injuries pass through unenriched (matchup card shows all NHL out players).
         const nhlMeta = await _buildSportMeta(
           'nhlClosingOdds', sportByteam.nhlGameOdds, {},
-          sportByteam.nhlGameScores, sportByteam.nhlTopPlayers,
-          sportByteam.nhl?.injuryByTeam ?? {}
+          sportByteam.nhlGameScores, sportByteam.nhlTopPlayers
         );
         const playsResult = { plays, nbaDropped, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta, staleKalshiSeries, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length };
         const sportsInPlays = new Set(plays.map((p) => p.sport));

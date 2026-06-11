@@ -20,9 +20,9 @@ History.pushState + popstate. Routes:
 ## State (App.jsx)
 - `tonightPlays` — qualified plays (filtered `qualified !== false`)
 - `allTonightPlays` — raw including `qualified:false`. Used to build `tonightPlayerMap` so all market-report players have explanation data.
-- `mlbMeta` — `{ pitchers, gameOdds, umpires, weather, projectedLineupTeams, teamsWithLineup }` — pitchers merged from ESPN probables + MLB API. `gameOdds` includes total+spread (from ESPN MLB scoreboard, today OR tomorrow if today complete; no date gate in MatchupCard).
+- `mlbMeta` — `{ pitchers, gameOdds, umpires, weather }` — pitchers merged from ESPN probables + MLB API. `gameOdds` includes total+spread (from ESPN MLB scoreboard, today OR tomorrow if today complete; no date gate in MatchupCard). `projectedLineupTeams`/`teamsWithLineup` removed 2026-06-10 with the matchup-card lineup badge.
 - `mlbMetaTomorrow` — same shape from tomorrow's MLB API schedule. Pitchers only (era null); gameOdds/weather always empty.
-- `nbaMeta` — `{ gameOdds, injuries, gameScores }`. `gameScores` from `parseGameScores`, includes `seriesSummary` in playoffs.
+- `nbaMeta` — `{ gameOdds, gameScores, topPlayers }`. `gameScores` from `parseGameScores`, includes `seriesSummary` in playoffs. `injuries` removed 2026-06-10 with the matchup-card injury badge (injury maps stay server-side for lambda/dc use).
 - `nhlMeta` — `{ gameScores, gameOdds }`. Same shape.
 - `reportData` — full debug response for ReportPage
 - `player`, `teamPage`, `teamPageData`, `pendingSlug`, `trackedPlays`
@@ -68,9 +68,9 @@ Renders the qualification-summary box (Kalshi gate · edge gate · DC gate · ed
 
 ---
 
-## Game time + lineup badges
+## Game time
 - Play card subtitle: `"Today · 7:40 PM PT"` / `"Tomorrow · 1:10 PM PT"` from `play.gameTime`.
-- Lineup badge: `play.lineupConfirmed === true` → green `✓ Lineup`; `=== false` → gray `Proj. Lineup`. **`Proj. Lineup` suppressed when game is within 30min of start** (`Date.now() ≥ new Date(gameTime).getTime() - 30*60*1000`).
+- No lineup badges anywhere anymore: play-card `✓ Lineup`/`Proj. Lineup` removed 2026-05-16; matchup-card lineup + injury badges removed 2026-06-10. `play.lineupConfirmed` still exists (stamped in props.js) and surfaces only as the `(proj)` suffix on Lineup K% in lambda tooltips and TeamPage's projected-lineup note.
 
 ---
 
