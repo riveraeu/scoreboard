@@ -64,7 +64,7 @@ The cross-cutting gotchas below bite during *any* change regardless of area. Spo
 ## Architecture
 
 ### API: `api/[...path].js` (router) + `api/lib/handlers/*.js` (routes) + `api/lib/*.js` (sport modules)
-Single Vercel Edge Function. `api/[...path].js` is a ~140-line thin router: handles CORS preflight, calls `makeCache`, dispatches to one handler per route family. Route handlers live in `api/lib/handlers/`:
+Single Vercel Edge Function. `api/[...path].js` is a thin router: handles CORS preflight, calls `makeCache`, dispatches to one handler per route family. (A dead Cloudflare-style `scheduled()` DvP handler was removed 2026-06-11 — NBA DvP relies on the lazy build in tonight.js + `/api/dvp/rebuild-pos?stage=N`; consider real vercel.json crons for it before NBA season in Oct.) Route handlers live in `api/lib/handlers/`:
 - `api/lib/handlers/auth.js` — `/api/auth/*`, `/api/user/picks`
 - `api/lib/handlers/player.js` — `/api/player`, `/api/gamelog`, `/api/headshot`
 - `api/lib/handlers/sports.js` — `/api/team`, `/api/live`

@@ -1,5 +1,5 @@
 import { ALLOWED_ORIGIN, corsHeaders, jsonResponse, errorResponse } from "./lib/utils.js";
-import { warmPlayerInfoCache, buildNbaDvpStage1, buildNbaDvpFromBettingPros, buildNbaDvpStage3FG } from "./lib/nba.js";
+import { warmPlayerInfoCache } from "./lib/nba.js";
 import { handleAuthRoutes } from "./lib/handlers/auth.js";
 import { handlePlayerRoutes } from "./lib/handlers/player.js";
 import { handleSportsRoutes } from "./lib/handlers/sports.js";
@@ -77,35 +77,13 @@ var VALID_SPORTS = [
 ];
 // pbkdf2Hash / makeJWT / verifyJWT live in ./lib/auth-utils.js (used by handlers/auth.js
 // and indirectly by handlers/tonight.js for the calibration JWT check).
+// NOTE: a Cloudflare-Workers-style `scheduled()` DvP staging handler lived here until
+// 2026-06-11 — it was dead code on Vercel (only the default-export fetch handler runs;
+// no vercel.json cron targeted it). NBA DvP is covered by the lazy build in
+// handlers/tonight.js, on-demand byteam builds in /api/dvp, and the manual
+// /api/dvp/rebuild-pos?stage=N endpoints. Before NBA season (Oct), consider adding real
+// vercel.json crons hitting /api/dvp/rebuild-pos to pre-warm instead of relying on lazy build.
 var worker_default = {
-  // Daily crons (DvP build — KV reads are free, so state passes between stages via KV):
-  //   17:00 UTC (9am PST):  Stage 1 — fetch teams+rosters (31 req), cache posMap to KV; warm player info
-  //   20:00 UTC (12pm PST): Stage 2 — fetch BettingPros DvP page (1 req) → all positions cached
-  //   23:00 UTC (3pm PST):  Stage 3 — retry Stage 2 if failed; gamelog fallback if BP blocked
-  //   01:00 UTC (5pm PST):  Stage 4 — final refresh; retry BettingPros or gamelog fallback
-  async scheduled(event, env, ctx) {
-    const cache = makeCache(env);
-    const hour = new Date(event.scheduledTime).getUTCHours();
-    const clearPlayCache = /* @__PURE__ */ __name(async () => {
-      const todayKey = `tonight:plays:${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`;
-      await Promise.all([
-        cache.delete(todayKey).catch(() => {
-        }),
-        cache.delete("byteam:mlb").catch(() => {
-        })
-      ]);
-      await warmPlayerInfoCache(cache);
-    }, "clearPlayCache");
-    if (hour === 17) {
-      ctx.waitUntil(Promise.all([buildNbaDvpStage1(cache), warmPlayerInfoCache(cache)]).then(clearPlayCache));
-    } else if (hour === 20) {
-      ctx.waitUntil(buildNbaDvpFromBettingPros(cache).then(clearPlayCache));
-    } else if (hour === 23) {
-      ctx.waitUntil(buildNbaDvpFromBettingPros(cache).then((r) => r || buildNbaDvpStage3FG(cache)).then(clearPlayCache));
-    } else if (hour === 1) {
-      ctx.waitUntil(buildNbaDvpFromBettingPros(cache).then((r) => r || buildNbaDvpStage3FG(cache)).then(clearPlayCache));
-    }
-  },
   async fetch(request, env, ctx) {
     const CACHE2 = makeCache(env);
     const url = new URL(request.url);
