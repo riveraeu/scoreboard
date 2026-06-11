@@ -124,11 +124,19 @@ var worker_default = {
 
 // Node runtime (Fluid Compute) since 2026-06-11 — was `runtime: 'edge'`, maxDuration 60.
 // All handler code is Web-API style (fetch/Request/Response/crypto.subtle/btoa — Node 20
-// globals), so the migration only swapped the runtime config. maxDuration is set in
-// vercel.json (`functions` block). The 60s Edge wall behind the shadow-snapshot/pregame
-// KV-staging workarounds is gone; staging stays because it's faster anyway.
-export default async function handler(request) {
-  const env = {
+// globals). maxDuration is set in vercel.json (`functions` block). The 60s Edge wall
+// behind the shadow-snapshot/pregame KV-staging workarounds is gone; staging stays
+// because it's faster anyway.
+//
+// IMPORTANT: Vercel invokes plain api/ Node functions with the CLASSIC signature
+// (IncomingMessage, ServerResponse) — req.url is path-only, so the worker's
+// `new URL(request.url)` throws Invalid URL without adaptation. The first migration
+// attempt assumed web-handler auto-detection and 500'd every route
+// (FUNCTION_INVOCATION_FAILED, rolled back 2026-06-11). This adapter bridges
+// Node req/res ↔ the Web Request/Response the worker expects, and keeps a
+// pass-through branch in case the platform ever sends a web Request.
+function _envFromProcess() {
+  return {
     UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
     UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
     JWT_SECRET: process.env.JWT_SECRET,
@@ -141,6 +149,10 @@ export default async function handler(request) {
     DATABASE_URL_UNPOOLED: process.env.DATABASE_URL_UNPOOLED,
     POSTGRES_URL_NON_POOLING: process.env.POSTGRES_URL_NON_POOLING,
   };
+}
+
+export default async function handler(req, res) {
+  const env = _envFromProcess();
   // Real waitUntil (was a fire-and-forget shim on Edge): background work queued via
   // runtimeCtx.waitUntil (DvP rebuilds, cache warms) now survives the response.
   const ctx = {
@@ -149,5 +161,34 @@ export default async function handler(request) {
       catch { try { p.catch?.(() => {}); } catch {} }
     },
   };
-  return worker_default.fetch(request, env, ctx);
+
+  // Web Request pass-through (Edge-style invocation): Headers object has .get().
+  if (typeof req?.headers?.get === "function") {
+    return worker_default.fetch(req, env, ctx);
+  }
+
+  // Classic Node invocation — adapt IncomingMessage → web Request.
+  const proto = req.headers["x-forwarded-proto"] || "https";
+  const host = req.headers["x-forwarded-host"] || req.headers.host || "localhost";
+  const url = `${proto}://${host}${req.url}`;
+  const method = req.method || "GET";
+  const headers = new Headers();
+  for (const [k, v] of Object.entries(req.headers)) {
+    if (Array.isArray(v)) { for (const vv of v) headers.append(k, vv); }
+    else if (v != null) headers.set(k, String(v));
+  }
+  let body;
+  if (method !== "GET" && method !== "HEAD") {
+    const chunks = [];
+    for await (const c of req) chunks.push(c);
+    if (chunks.length) body = Buffer.concat(chunks);
+  }
+  const request = new Request(url, { method, headers, body });
+
+  const resp = await worker_default.fetch(request, env, ctx);
+
+  // Web Response → Node res. All routes return buffered JSON (no streaming).
+  res.statusCode = resp.status;
+  resp.headers.forEach((v, k) => res.setHeader(k, v));
+  res.end(Buffer.from(await resp.arrayBuffer()));
 }
