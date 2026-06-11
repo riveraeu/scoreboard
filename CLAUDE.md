@@ -52,7 +52,7 @@ Sports prop betting dashboard that pulls Kalshi prediction market prices, comput
 | Topic | File |
 |---|---|
 | Per-sport modeling internals (SimScore tiers, lambdas, miscAdj, gates, calibration filter cutoffs) | `docs/MODEL.md` |
-| Cache keys + TTLs, Upstash, env vars, deployment, testing, route contracts, data-plumbing gotchas | `docs/INFRA.md` |
+| Cache keys + TTLs, Upstash, env vars, deployment, testing, route contracts, data-plumbing gotchas, **cron table + DST re-pin checklist (due Nov 1, 2026)** | `docs/INFRA.md` |
 | URL routing, App.jsx state shape, ReportPage (Market Report + Results + Shadow tabs), live tracking, sizing, color doctrine | `docs/FRONTEND.md` |
 | Design system: palette, typography, spacing, component patterns — read before adding any UI element | `docs/STYLEGUIDE.md` (tokens: `src/lib/styles.js`) |
 | Common debugging recipes | `docs/DEBUGGING.md` |

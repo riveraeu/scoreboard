@@ -67,6 +67,27 @@ User auth (`user:{email}`) and picks (`picks:{userId}`) live in the same Redis. 
   - `/api/keepalive` — daily at noon UTC. Keeps Upstash from idle-suspending.
   - `/api/kalshi-snapshot` — `*/2 * * * *` (every 2 min). Pre-warms `kalshi:snap:{ticker}` so `/api/tonight` skips per-request Kalshi REST. Bearer-auth via `CRON_SECRET` (Vercel auto-attaches when set). Returns `{ok, successCount, failedCount, failed[], durationMs, depthOk, depthFail, depthTargets, depthBudgeted, touchedSeries}`. Series fetched in throttled batches of 3 with 700ms delay; pipelined Upstash write (1 HTTP request for all SETs). **Two-phase write (2026-05-31):** snaps written first (so they always land within the ~25s Edge ceiling), then orderbook depth fetched best-effort under a 21s wall-clock deadline and only the touched series re-written. Before the split, the depth phase ran before the only write and timed the cron out on full slates → no snaps at all.
 
+### Cron schedule, dependencies & DST policy
+
+Vercel cron schedules are **UTC-pinned**; all timing intent in this project is **Pacific wall-clock** (game schedules, lineup confirmation, "morning after" resolution). When DST ends, every cron fires one hour earlier in PT terms. **Policy (decided 2026-06-11): re-pin in November** — see checklist below. Relative offsets between paired crons are preserved automatically (all UTC), so only the absolute PT anchoring drifts.
+
+| UTC (current) | PDT intent | PST if unshifted | Path | Pairing constraint |
+|---|---|---|---|---|
+| `0 15` | 8:00am tonight | 7:00am | `/api/tonight` | — |
+| `5 15` / `10 15` | 8:05/8:10am snapshot | 7:05/7:10am | `/api/shadow-snapshot` | must trail the `0 15` tonight by 5–10 min |
+| `30 16` | 9:30am report | 8:30am | `/api/shadow-report` | after morning snapshot |
+| `55 16` | 9:55am tonight | 8:55am | `/api/tonight` | — |
+| `0 17` | 10:00am pregame | 9:00am | `/api/shadow-pregame-snap` | must trail the `55 16` tonight by ~5 min (fresh staging) |
+| `0 22` | 3:00pm tonight | 2:00pm | `/api/tonight` | — |
+| `5 22` / `35 22` | 3:05/3:35pm snapshot | 2:05/2:35pm | `/api/shadow-snapshot` | must trail the `0 22` tonight |
+| `10 22` | 3:10pm pregame | 2:10pm | `/api/shadow-pregame-snap` | must trail the `0 22` tonight |
+| `55 2` | 7:55pm tonight | 6:55pm | `/api/tonight` | — |
+| `0 3` | 8:00pm pregame | 7:00pm | `/api/shadow-pregame-snap` | must trail the `55 2` tonight |
+| `0 9` / `5 10` / `0 14` | 2am/3:05am/7am resolver | 1am/2:05am/6am | `/api/shadow-resolver` | after all games final; 7am retry needs warm Neon |
+| `0 12` keepalive · `*/2` kalshi-snapshot | — | — | | DST-exempt, never shift |
+
+**November 1, 2026 checklist (DST ends):** add +1 hour UTC to every row above except the DST-exempt line (e.g. `0 15` → `0 16`, `55 2` → `55 3`, `0 9` → `0 10`), keeping minute offsets identical so pairings hold. Reverse (−1h) when DST returns on 2027-03-14 (second Sunday of March). Update this table's UTC column in the same commit.
+
 ### Required env vars
 Vercel dashboard AND wired via `env` object — see CLAUDE.md "Edge handler env-var wiring" gotcha.
 
