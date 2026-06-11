@@ -190,7 +190,7 @@ export async function buildMlbByteam(cache) {
   }
   const [lineupResult, pitcherResult] = await Promise.all([buildLineupKPct(mlbSched), buildPitcherKPct(mlbSched)]);
   const { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, projectedLineupTeams, batterSplitBA, hitterOpsMap, batterHandByName, batterHRRSplits, lineupHandByTeam, hitterTypicalPA } = lineupResult;
-  const { pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, pitcherWHIP: pitcherWHIPByTeam, pitcherFIP: pitcherFIPByTeam, pitcherWins: pitcherWinsByTeam, pitcherLosses: pitcherLossesByTeam, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam, pitcherH2HStarts, pitcherIdByGame, pitcherEraById, pitcherWinsById, pitcherLossesById, pitcherNameById, pitcherSplitsByTeam, pitcherSplitsById } = pitcherResult;
+  const { pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, pitcherWHIP: pitcherWHIPByTeam, pitcherFIP: pitcherFIPByTeam, pitcherBAA: pitcherBAAByTeam, pitcherWins: pitcherWinsByTeam, pitcherLosses: pitcherLossesByTeam, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam, pitcherH2HStarts, pitcherIdByGame, pitcherEraById, pitcherWinsById, pitcherLossesById, pitcherNameById, pitcherSplitsByTeam, pitcherSplitsById } = pitcherResult;
   // barrelPctMap is NOT stored in byteam:mlb — it lives in mlb:barrelPct with its own 6h TTL.
   // This prevents a bust (which deletes byteam:mlb) from baking an empty barrelPctMap
   // into the cache when Baseball Savant is slow.
@@ -288,7 +288,7 @@ export async function buildMlbByteam(cache) {
     lineupSpotByName, gameHomeTeams,
     pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF,
     pitcherGS26, pitcherHasAnchor, pitcherHand,
-    pitcherEra: pitcherEraByTeam, pitcherWHIPByTeam, pitcherFIPByTeam, pitcherWinsByTeam, pitcherLossesByTeam,
+    pitcherEra: pitcherEraByTeam, pitcherWHIPByTeam, pitcherFIPByTeam, pitcherBAAByTeam, pitcherWinsByTeam, pitcherLossesByTeam,
     projectedLineupTeams, gameOdds, gameOddsTomorrow, pitcherStatsByName,
     batterSplitBA, hitterOpsMap, batterHandByName, batterHRRSplits, pitcherH2HStarts,
     staticTeamHandMajority,

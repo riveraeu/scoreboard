@@ -408,19 +408,31 @@ export function nbaDistPct(dist, threshold) {
   return parseFloat((hits / dist.length * 100).toFixed(1));
 }
 
-export function simulateHits(batterBA, pitcherBAA, parkFactor, threshold, nSim = 10000) {
-  const leagueBA = 0.248;
-  const hitProb = Math.min(0.95, Math.max(0.01, (batterBA * pitcherBAA / leagueBA) * parkFactor));
-  let hits = 0;
-  for (let sim = 0; sim < nSim; sim++) {
-    // Spots 1-4 average ~4 PA per game
-    let count = 0;
-    for (let j = 0; j < 4; j++) {
-      if (Math.random() < hitProb) count++;
+// Exact binomial tail P(X >= threshold) for the MLB hits prop model (2026-06-11).
+// Replaces the MC simulateHits (fixed 4 PA, no lineup-spot awareness): with a known
+// per-AB hit prob and AB count the binomial tail is exact, deterministic, and monotonic
+// across alt thresholds by construction — no nSim noise, no per-player dist cache needed.
+// n may be fractional (expected AB from lineup spot); interpolates linearly between
+// floor(n) and ceil(n) tails. Returns percentage (0-100), or null on bad inputs.
+export function binomTailPct(n, p, threshold) {
+  if (n == null || p == null || !(n > 0) || !(p > 0)) return null;
+  const pc = Math.min(0.99, p);
+  const t = Math.ceil(threshold); // "1+ hits" → 1; "1.5" → 2
+  const tail = (ni) => {
+    if (t <= 0) return 1;
+    if (ni < t) return 0;
+    // 1 - CDF(t-1): accumulate pmf terms via the multiplicative recurrence
+    let term = Math.pow(1 - pc, ni); // k = 0
+    let cdf = term;
+    for (let k = 1; k < t; k++) {
+      term *= ((ni - k + 1) / k) * (pc / (1 - pc));
+      cdf += term;
     }
-    if (count >= threshold) hits++;
-  }
-  return parseFloat((hits / nSim * 100).toFixed(1));
+    return Math.max(0, 1 - cdf);
+  };
+  const n0 = Math.floor(n), frac = n - n0;
+  const pr = frac > 1e-9 ? (1 - frac) * tail(n0) + frac * tail(n0 + 1) : tail(n0);
+  return parseFloat((pr * 100).toFixed(1));
 }
 
 // ─── Game Total Simulation ────────────────────────────────────────────────────

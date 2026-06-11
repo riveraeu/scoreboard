@@ -3,7 +3,7 @@
 // Extracted from api/lib/handlers/tonight.js Phase B6 (2026-05-29). Zero behavior change.
 // Returns { plays, dropped, nbaDropped } for use by the rest of the pipeline.
 
-import { log5K, log5HitRate, PARK_KFACTOR, PARK_HITFACTOR, UMPIRE_KFACTOR, poissonCDF, simulateKsDist, kDistPct, buildNbaStatDist, nbaDistPct, simulateHits } from "../simulate.js";
+import { log5K, log5HitRate, PARK_KFACTOR, PARK_HITFACTOR, UMPIRE_KFACTOR, poissonCDF, simulateKsDist, kDistPct, buildNbaStatDist, nbaDistPct, binomTailPct } from "../simulate.js";
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER as EDGE_GATE } from "../config.js";
 import { ptDateMinusOne } from "../pt.js";
 
@@ -752,8 +752,10 @@ export async function emitPropPlays({
       const _h2hHitRate = _h2hVals.length >= 10 ? _h2hVals.filter(v => v >= threshold).length / _h2hVals.length * 100 : null;
       // Handedness fallback: vsR/vsL HRR splits from MLB Stats API (Poisson approx: 1 - e^(-lambda))
       // Covers all 2025+2026 games vs same-hand pitchers — far broader than pitcherGamelogs cross-reference
+      // HRR only: the lambda is (H+R+RBI)/G — roughly 2× a hits-per-game rate, so this override
+      // would inflate the hits-prop soft ref. Hits gets its platoon signal via batterSplitBA instead.
       let _h2hHandRate = null;
-      if (_h2hHitRate == null && _oppPitcherHand) {
+      if (stat === "hrr" && _h2hHitRate == null && _oppPitcherHand) {
         const _hrrSplitMap = sportByteam.mlb?.batterHRRSplits || {};
         const _hrrEntry = _hrrSplitMap[_bsKey] ?? _hrrSplitMap[_brlNorm(playerNameDisplay)] ?? null;
         const _hrrHandKey = _oppPitcherHand === "R" ? "vsR" : "vsL";
@@ -799,10 +801,37 @@ export async function emitPropPlays({
         if (isDebug) dropped.push({ ..._dropBase, reason: "low_confidence", hitterSimScore, ..._hlCommon });
         continue;
       }
-      // Monte Carlo simulation for hits stat when effectiveBA and pitcherBAA available (B2 feeds this)
-      if (stat === "hits" && hitterEffectiveBA != null && pitcherBAA != null) {
-        const _nSimH = hitterSimScore >= 8 ? 10000 : 1000;
-        hitterSimPctOut = simulateHits(hitterEffectiveBA, pitcherBAA, _hlParkKF2, threshold, _nSimH);
+      // Hits prop model (2026-06-11): exact binomial tail over expected ABs.
+      //   pHit = effectiveBA (recent-blended) × platoon adj × pitcher-BAA ratio × park hit factor
+      //   nAB  = player's own AB/game, scaled by tonight's lineup-spot PA load vs typical
+      // Replaces the v0 MC sim (fixed 4 PA, no platoon, no pitcher-quality regression).
+      if (stat === "hits" && hitterEffectiveBA != null) {
+        const _LG_BA_H = 0.248;
+        // Pitcher BAA: regressed statsapi value (matchup key first — doubleheader-safe),
+        // falling back to the gamelog H/TBF estimate scaled to per-AB units (TBF includes
+        // BB/HBP, deflating it ~11% vs true BAA), then league mean.
+        const _baaMap = sportByteam.mlb?.pitcherBAAByTeam || {};
+        const _baaEff = _baaMap[`${tonightOpp}|${playerTeam}`] ?? _baaMap[tonightOpp]
+          ?? (pitcherBAA != null ? Math.min(0.400, parseFloat((pitcherBAA * 1.12).toFixed(3))) : null);
+        // Platoon: shrunk ratio of split BA to overall BA (batterSplitBA has a ≥20 AB gate upstream)
+        const _platoonAdjH = hitterPlatoonRatio != null ? Math.max(0.88, Math.min(1.12, hitterPlatoonRatio)) : 1.0;
+        const _pHit = Math.max(0.08, Math.min(0.50,
+          hitterEffectiveBA * _platoonAdjH * ((_baaEff ?? _LG_BA_H) / _LG_BA_H) * _hlParkKF2));
+        // Expected ABs: own AB/game (reflects the player's walk rate + usual spot), scaled by
+        // tonight's lineup-spot PA load vs typical when both are known and differ meaningfully
+        // (same gate as the HRR PA-aware adjustment). Spots ≥6 were discarded at Stage 1.
+        let _abPerGame = null;
+        if (abIdxH !== -1 && blendEventsH.length >= 15) {
+          const _abTot = blendEventsH.reduce((s, ev) => s + (parseFloat(ev.stats[abIdxH]) || 0), 0);
+          if (_abTot > 0) _abPerGame = _abTot / blendEventsH.length;
+        }
+        const _paSpotH = hitterLineupSpot != null ? Math.max(3.5, 4.7 - 0.13 * (hitterLineupSpot - 1)) : null;
+        const _typPA_H = sportByteam.mlb?.hitterTypicalPA?.[_brlNorm(playerName)] ?? sportByteam.mlb?.hitterTypicalPA?.[_brlNorm(playerNameDisplay)] ?? null;
+        let _nAB = _abPerGame ?? (_paSpotH != null ? _paSpotH * 0.89 : 3.9);
+        if (_abPerGame != null && _paSpotH != null && _typPA_H != null && Math.abs(_paSpotH - _typPA_H) >= 0.3) {
+          _nAB = _abPerGame * (_paSpotH / _typPA_H);
+        }
+        hitterSimPctOut = binomTailPct(_nAB, _pHit, threshold);
       }
     }
     // NBA: pre-edge SimScore + Monte Carlo simulation (runs before rawTruePct)
@@ -1105,8 +1134,17 @@ export async function emitPropPlays({
         const parts = [primaryPct, ...softPct !== null ? [softPct] : []];
         return parts.reduce((a, b) => a + b, 0) / parts.length;
       }
+      if (sport === "mlb" && stat === "hits" && hasSeasonTags) {
+        // Hits prop: binomial-tail model blended toward the empirical threshold hit rate
+        // (capWeight 0.5 like the other sim-based props), then a conservative sigmoid cap
+        // (knee=80, max≈85 — unproven market, shrink aggressively until shadow calibrates;
+        // P(≥1 hit) for a good hitter legitimately sits in the mid-70s so the HRR 68-knee
+        // below would systematically crush hits truePcts and fabricate UNDER edges).
+        const _hitsRef = softPct !== null ? (primaryPct + softPct) / 2 : primaryPct;
+        const _hitsBase = hitterSimPctOut !== null ? _propBlend(hitterSimPctOut, _hitsRef, allVals.length) : _hitsRef;
+        return _hitsBase <= 80 ? parseFloat(_hitsBase.toFixed(1)) : parseFloat((80 + 5 * (1 - Math.exp(-0.4 * (_hitsBase - 80)))).toFixed(1));
+      }
       if (sport === "mlb" && hasSeasonTags) {
-        if (hitterSimPctOut !== null) return hitterSimPctOut;
         // PA-aware adjustment (retry 2026-05-25). First attempt used a flat 4.0 PA baseline
         // and was reverted — pushed predictions UP for every spot since all of spots 1-5 sit
         // above 4.0 PAs/game. This retry uses the hitter's actual typical PA/game derived

@@ -4,7 +4,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { simulateKsDist, kDistPct, buildNbaStatDist, nbaDistPct } from './simulate.js';
+import { simulateKsDist, kDistPct, buildNbaStatDist, nbaDistPct, binomTailPct } from './simulate.js';
 import {
   LINEUP_SMALL, LINEUP_MED, LINEUP_9_21,
   NBA_GAME_VALUES,
@@ -414,4 +414,44 @@ test('weatherFactor: null temp defaults to 72F (no temp contribution)', () => {
   const f = calcWeatherFactor(5, null);
   const expected = 1 + 5 * 0.013;
   assert.ok(Math.abs(f - expected) < 0.001, `null temp = 72F baseline`);
+});
+
+// ---- binomTailPct tests (MLB hits prop model, 2026-06-11) ----
+
+test('binomTailPct: P(>=1 hit) for .250 hitter with 4 AB = 1 - .75^4 = 68.4', () => {
+  assert.equal(binomTailPct(4, 0.250, 1), 68.4);
+});
+
+test('binomTailPct: P(>=2 hits) for .250 hitter with 4 AB = 26.2', () => {
+  // 1 - [.75^4 + 4(.25)(.75^3)] = 1 - [.3164 + .4219] = .2617
+  assert.equal(binomTailPct(4, 0.250, 2), 26.2);
+});
+
+test('binomTailPct: monotonic non-increasing across thresholds', () => {
+  const vals = [1, 2, 3, 4].map(t => binomTailPct(4.2, 0.300, t));
+  for (let i = 1; i < vals.length; i++) {
+    assert.ok(vals[i] <= vals[i - 1], `t=${i + 1} (${vals[i]}) > t=${i} (${vals[i - 1]})`);
+  }
+});
+
+test('binomTailPct: X.5 threshold ceils to the next integer (1.5 ≡ 2)', () => {
+  assert.equal(binomTailPct(4, 0.250, 1.5), binomTailPct(4, 0.250, 2));
+});
+
+test('binomTailPct: fractional n interpolates between floor and ceil tails', () => {
+  const lo = binomTailPct(4, 0.300, 1);
+  const hi = binomTailPct(5, 0.300, 1);
+  const mid = binomTailPct(4.5, 0.300, 1);
+  assert.ok(mid > lo && mid < hi, `expected ${lo} < ${mid} < ${hi}`);
+});
+
+test('binomTailPct: null/invalid inputs return null', () => {
+  assert.equal(binomTailPct(null, 0.3, 1), null);
+  assert.equal(binomTailPct(4, null, 1), null);
+  assert.equal(binomTailPct(0, 0.3, 1), null);
+  assert.equal(binomTailPct(4, 0, 1), null);
+});
+
+test('binomTailPct: threshold above n is impossible (0%)', () => {
+  assert.equal(binomTailPct(2, 0.3, 3), 0);
 });

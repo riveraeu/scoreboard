@@ -100,7 +100,7 @@ export async function buildPitcherKPct(mlbSched) {
       if (person.pitchHand?.code) pitcherHandById[pid] = person.pitchHand.code;
       const split = person.stats?.[0]?.splits?.[0]?.stat;
       if (!split) continue;
-      pitcherStats25[pid] = { so: split.strikeOuts || 0, bf: split.battersFaced || 0, bb: split.baseOnBalls || 0, hbp: split.hitByPitch || 0, hr: split.homeRuns || 0, ip: parseIP(split.inningsPitched), era: safeEra(split.era), whip: safeEra(split.whip), gs: split.gamesStarted || 0, np: split.numberOfPitches || 0, w: split.wins || 0, l: split.losses || 0 };
+      pitcherStats25[pid] = { so: split.strikeOuts || 0, bf: split.battersFaced || 0, bb: split.baseOnBalls || 0, hbp: split.hitByPitch || 0, hr: split.homeRuns || 0, ip: parseIP(split.inningsPitched), era: safeEra(split.era), whip: safeEra(split.whip), baa: safeEra(split.avg), gs: split.gamesStarted || 0, np: split.numberOfPitches || 0, w: split.wins || 0, l: split.losses || 0 };
     }
     for (const person of (res26.people || [])) {
       const pid = person.id;
@@ -108,7 +108,7 @@ export async function buildPitcherKPct(mlbSched) {
       if (person.pitchHand?.code) pitcherHandById[pid] = person.pitchHand.code;
       const split = person.stats?.[0]?.splits?.[0]?.stat;
       if (!split) continue;
-      pitcherStats26[pid] = { so: split.strikeOuts || 0, bf: split.battersFaced || 0, bb: split.baseOnBalls || 0, hbp: split.hitByPitch || 0, hr: split.homeRuns || 0, ip: parseIP(split.inningsPitched), era: safeEra(split.era), whip: safeEra(split.whip), gs: split.gamesStarted || 0, np: split.numberOfPitches || 0, w: split.wins || 0, l: split.losses || 0 };
+      pitcherStats26[pid] = { so: split.strikeOuts || 0, bf: split.battersFaced || 0, bb: split.baseOnBalls || 0, hbp: split.hitByPitch || 0, hr: split.homeRuns || 0, ip: parseIP(split.inningsPitched), era: safeEra(split.era), whip: safeEra(split.whip), baa: safeEra(split.avg), gs: split.gamesStarted || 0, np: split.numberOfPitches || 0, w: split.wins || 0, l: split.losses || 0 };
     }
     _ingestSplit(resVL26, "vl", "26");
     _ingestSplit(resVR26, "vr", "26");
@@ -119,7 +119,7 @@ export async function buildPitcherKPct(mlbSched) {
       if (!pitcherHand[abbr] && pitcherHandById[id]) pitcherHand[abbr] = pitcherHandById[id];
     }
     const LEAGUE_PITCHER_K = 0.222;
-    const pitcherKPct = {}, pitcherKBBPct = {}, pitcherEra = {}, pitcherWHIP = {}, pitcherFIP = {}, pitcherHasAnchor = {};
+    const pitcherKPct = {}, pitcherKBBPct = {}, pitcherEra = {}, pitcherWHIP = {}, pitcherFIP = {}, pitcherBAA = {}, pitcherHasAnchor = {};
     // Per-pitcher vs-L/vs-R split modifier vs overall. `pitcherSplitsByTeam[abbr] = { vlFipMod, vrFipMod,
     // vlWhipMod, vrWhipMod, vlBf, vrBf }` — modifier 1.0 means "no platoon effect"; > 1.0 means worse
     // vs that hand. Consumers compute lineup-weighted effective FIP/WHIP for the totals lambda.
@@ -186,6 +186,11 @@ export async function buildPitcherKPct(mlbSched) {
       if (_eraReg != null) pitcherEra[abbr] = _eraReg;
       const _whipReg = _regressedRate(s26?.whip ?? null, s26?.ip ?? 0, s25?.whip ?? null, s25?.ip ?? 0, s26?.gs ?? 0, 1.30, 50);
       if (_whipReg != null) pitcherWHIP[abbr] = _whipReg;
+      // BAA (opponent batting average, for the hits prop model): same two-step regression as WHIP.
+      // _regressedRate rounds to 2 decimals which would bucket BAA into .01 steps, so regress in
+      // "points" (×1000, league mean 248) and scale back.
+      const _baaReg = _regressedRate(s26?.baa != null ? s26.baa * 1000 : null, s26?.ip ?? 0, s25?.baa != null ? s25.baa * 1000 : null, s25?.ip ?? 0, s26?.gs ?? 0, 248, 50);
+      if (_baaReg != null) pitcherBAA[abbr] = parseFloat((_baaReg / 1000).toFixed(3));
       // W-L: prefer 2026 if pitcher has any 2026 starts, else 2025
       if ((s26?.gs ?? 0) > 0 || (s26?.w ?? 0) + (s26?.l ?? 0) > 0) {
         pitcherWins[abbr] = s26.w; pitcherLosses[abbr] = s26.l;
@@ -554,9 +559,9 @@ export async function buildPitcherKPct(mlbSched) {
         pitcherWinsById[id] = s25.w; pitcherLossesById[id] = s25.l;
       }
     }
-    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherWHIP, pitcherFIP, pitcherWins, pitcherLosses, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam, pitcherH2HStarts, pitcherIdByGame, pitcherEraById, pitcherWinsById, pitcherLossesById, pitcherNameById, pitcherSplitsByTeam, pitcherSplitsById };
+    return { pitcherKPct, pitcherKBBPct, pitcherHand, pitcherEra, pitcherWHIP, pitcherFIP, pitcherBAA, pitcherWins, pitcherLosses, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam, pitcherH2HStarts, pitcherIdByGame, pitcherEraById, pitcherWinsById, pitcherLossesById, pitcherNameById, pitcherSplitsByTeam, pitcherSplitsById };
   } catch (err) {
     console.error("[buildPitcherKPct] failed:", err?.message || err);
-    return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherWHIP: {}, pitcherFIP: {}, pitcherWins: {}, pitcherLosses: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherAvgBF: {}, pitcherStdBF: {}, pitcherGS26: {}, pitcherHasAnchor: {}, pitcherRecentKPct: {}, pitcherLastStartDate: {}, pitcherLastStartPC: {}, umpireByGame: {}, pitcherInfoByTeam: {}, pitcherH2HStarts: {}, pitcherIdByGame: {}, pitcherEraById: {}, pitcherWinsById: {}, pitcherLossesById: {}, pitcherNameById: {} };
+    return { pitcherKPct: {}, pitcherKBBPct: {}, pitcherHand: {}, pitcherEra: {}, pitcherWHIP: {}, pitcherFIP: {}, pitcherBAA: {}, pitcherWins: {}, pitcherLosses: {}, pitcherCSWPct: {}, pitcherAvgPitches: {}, pitcherAvgBF: {}, pitcherStdBF: {}, pitcherGS26: {}, pitcherHasAnchor: {}, pitcherRecentKPct: {}, pitcherLastStartDate: {}, pitcherLastStartPC: {}, umpireByGame: {}, pitcherInfoByTeam: {}, pitcherH2HStarts: {}, pitcherIdByGame: {}, pitcherEraById: {}, pitcherWinsById: {}, pitcherLossesById: {}, pitcherNameById: {} };
   }
 }

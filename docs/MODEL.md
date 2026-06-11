@@ -79,7 +79,7 @@ Per-sport modeling internals. CLAUDE.md has the architecture map and load-bearin
 ---
 
 ## MLB Hitters (HRR)
-**True%**: logit-sigmoid base-rate adjustment with park, hitter OPS, and pitcher WHIP shifts (no Monte Carlo for HRR — `simulateHits` removed when MLB hits stat dropped 2026-05-16). **PA-aware adjustment (since 2026-05-25)**: convert per-game seasonPct + softPct to per-PA via inversion, re-compose at tonight's PA count from `hitterLineupSpot`, then continue the existing pipeline.
+**True%**: logit-sigmoid base-rate adjustment with park, hitter OPS, and pitcher WHIP shifts (no Monte Carlo for HRR; the separate hits stat — dropped 2026-05-16, re-added 2026-06-11 — has its own binomial model, next section). **PA-aware adjustment (since 2026-05-25)**: convert per-game seasonPct + softPct to per-PA via inversion, re-compose at tonight's PA count from `hitterLineupSpot`, then continue the existing pipeline.
 ```
 # PA-aware adjustment (retry 2026-05-25 with per-hitter baseline)
 paFromSpot(spot)  = max(3.5, 4.7 - 0.13·(spot - 1))             # spot 1 → 4.7, spot 4 → 4.31, spot 9 → 3.66
@@ -98,12 +98,12 @@ softPctAdj    = paAdjust(softPct)      # only when gate passes
 N = 20                                                        # prior weight in games
 shrunkSoftPct = (softGames·softPctAdj + N·primaryPctAdj) / (softGames + N)
 rawMlbPct = (primaryPctAdj + shrunkSoftPct) / 2
-opsAdj    = clamp(hitterOPS / 0.720, [0.85, 1.15])            # weight 0.4 in logit
+opsAdj    = clamp(hitterOPS / 0.720, [0.85, 1.15])            # weight 0.25 in logit (0.4→0.25 2026-06-10)
 whipAdj   = clamp((pitcherWHIP / 1.30)^0.5, [0.92, 1.08])     # weight 0.3 in logit (third-order)
 barrelAdj = clamp(hitterBarrelPct / 8.5, [0.92, 1.10])        # weight 0.25 in logit (added 2026-05-25)
 truePct = sigmoid(
     logit(rawMlbPct/100) + ln(parkFactor)
-    + 0.4·ln(opsAdj) + 0.3·ln(whipAdj) + 0.25·ln(barrelAdj)
+    + 0.25·ln(opsAdj) + 0.3·ln(whipAdj) + 0.25·ln(barrelAdj)
 ) × 100
 ```
 - **PA-aware adjustment (retry 2026-05-25)**: HRR ≥1 is built from per-PA Bernoulli outcomes. Adjustment first shipped with a flat 4.0 PA baseline and was reverted same day (pushed predictions UP for every qualifying spot since all spots 1-5 sit above 4.0 PAs). Retry uses per-hitter typical PA from season GP. **Gate**: only fires when `|tonight − typical| ≥ 0.3 PAs`, so hitters at their normal spot get no adjustment. Requires `gamesPlayed ≥ 20` for the baseline to populate. Emits `hitterPaFromSpot`, `hitterTypicalPA`, `seasonPctAdj`, `softPctAdj` when adjustment fires (often empty when most picks are hitters at their typical spot). Filter `trackedAt < 2026-05-25` for HRR calibration across the retry.
@@ -113,7 +113,7 @@ truePct = sigmoid(
 - WHIP folded into lambda 2026-05-13 (was SimScore-only). Lower weight than OPS; high-WHIP pitcher → more contact → higher HRR base rate beyond what BvP captures.
 - `primaryPct` = 2026 HRR 1+ rate (fallback: 2025+2026 blend, then career)
 - `softPct` = HRR 1+ rate vs tonight's pitcher (BvP, ≥10 games). **Handedness fallback** when BvP <10: `batterHRRSplits[name][vsR/vsL]` (MLB Stats API, 2025+2026 combined), Poisson approx `1 − e^(−lambda)` where `lambda = totalHRR/games`; ≥10 games vs that hand required. `softLabel` set to `"vs RHP"`/`"vs LHP"`.
-- B2 batter recent form: `hitterEffectiveBA = 0.3 × recentBA + 0.7 × seasonBA` when ≥20 AB in last 10 (used by `simulateHits`, not HRR formula)
+- B2 batter recent form: `hitterEffectiveBA = 0.3 × recentBA + 0.7 × seasonBA` when ≥20 AB in last 10 (used by the hits binomial model below, not the HRR formula)
 
 **SimScore**:
 - `hitterOpsPts` — 2026 OPS (≥.850→2, ≥.720→1, <.720→0). Fetched via 7th parallel request in `buildLineupKPct`.
@@ -130,6 +130,32 @@ truePct = sigmoid(
 3. `pitcherGamelogs[oppAbbr].name` (if gamelog loaded)
 
 Included in **all** drop objects so the market report renders pitcher info for non-qualified rows.
+
+---
+
+## MLB Hitters (Hits)
+**Re-added 2026-06-11, shadow-only** (`KXMLBHITS`; previously dropped 2026-05-16 because the user only bet HRR — not a calibration failure). `mlb|hits` is NOT in `passesCategoryGate`, so no UI exposure until shadow ROI confirms at n≥200. Server emits at edge≥3 into `shadow_plays` automatically.
+
+**True%**: exact binomial tail over expected ABs — `binomTailPct(nAB, pHit, threshold)` in `simulate.js` (deterministic, monotonic across alt thresholds by construction; replaces the v0 MC `simulateHits` which assumed a fixed 4 PA).
+```
+pHit = clamp( hitterEffectiveBA × platoonAdj × (pitcherBAA / 0.248) × parkHitFactor, [0.08, 0.50] )
+  hitterEffectiveBA = 0.3·recentBA + 0.7·seasonBA          # B2 recent form (≥20 AB in last 10)
+  platoonAdj        = clamp(splitBA / overallBA, [0.88, 1.12])   # batterSplitBA vs opp pitcher hand
+  pitcherBAA        = regressed statsapi BAA (matchup key `OPP|TEAM` first — doubleheader-safe)
+                      → fallback: opp gamelog H/TBF × 1.12 (TBF deflates BAA ~11%) → league .248
+nAB  = own AB/game from blended '25+'26 gamelog (≥15 games)
+       × (paFromSpot / hitterTypicalPA)  when both known and |Δ| ≥ 0.3 PA   # same gate as HRR PA-adjust
+       fallback: paFromSpot × 0.89, then 3.9
+simPct = binomTailPct(nAB, pHit, threshold)
+truePct = blend(simPct, ref, capWeight=0.5)                # ref = (primaryPct + softPct)/2, like other sim props
+truePct = truePct ≤ 80 ? truePct : 80 + 5·(1 − e^(−0.4·(truePct−80)))   # conservative cap, max ≈85
+```
+- **Pitcher BAA** (added 2026-06-11): `pitcherBAA[abbr]` in `mlb-pitchers.js`, same two-step `_regressedRate` as WHIP (lgMean .248, priorIP 50) but regressed in ×1000 "points" since `_regressedRate` rounds to 2 decimals. Exported as `sportByteam.mlb.pitcherBAAByTeam` (team + `TEAM|OPP` matchup keys).
+- **Cap rationale**: P(≥1 hit) for a good hitter legitimately sits in the mid-70s — the HRR 68-knee cap would crush hits truePcts and fabricate UNDER edges, so hits has its own rawTruePct branch (knee 80, max ≈85; aggressive-shrink doctrine for unproven markets).
+- **HRR-λ softPct override is gated to `stat === "hrr"`**: the `batterHRRSplits` Poisson hand-fallback uses λ = (H+R+RBI)/G ≈ 2× a hits rate and would inflate the hits soft ref. Hits gets its platoon signal via `batterSplitBA` inside `pHit` instead.
+- **Shares the HRR scaffolding**: Stage-1 lineup-spot 1–5 gate, `hitterSimScore ≥ 5` gate (HRR-flavored components — acceptable proxies), `_mlbLineupConf` (own lineup confirmed + opp pitcher known), dc rules (stat-agnostic), all `hitter*` emit fields.
+- **No-sim fallback** (`hitterEffectiveBA` null): rate-based `(primaryPct + softPct)/2` with the hits cap — never the HRR logit path.
+- Resolution: shadow resolver `case "hits"` (`ps.hits` from `/api/live`); frontend `liveStats.js` already handled hits.
 
 ---
 
