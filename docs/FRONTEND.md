@@ -2,6 +2,8 @@
 
 Routing, state shape, Market Report, live tracking mechanics, sizing, color doctrine.
 
+> **Adding new UI?** Read `docs/STYLEGUIDE.md` first (palette, typography, spacing, component patterns). Design tokens + shared style recipes: `src/lib/styles.js` — use in new code instead of hard-coded hex values.
+
 ---
 
 ## URL Routing
