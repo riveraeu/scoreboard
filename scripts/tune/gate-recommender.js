@@ -29,7 +29,8 @@ const DEMOTE_ROI    = -0.05; // ROI < -5% to flag a demotion
 const CURRENT_GATE = {
   "mlb|strikeouts": { min: 80, max: 90 },
   "wnba|points":    { min: 70, max: 80 },
-  "wnba|rebounds":  { min: 70, max: null },
+  "wnba|rebounds":  { min: 70, max: 85 },
+  "wnba|spread":    { min: 65, max: 85 },
 };
 
 // ── Env loading ───────────────────────────────────────────────────────────────
