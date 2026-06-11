@@ -499,9 +499,16 @@ async function handleShadowResolver({ path, request, env }) {
 // ── Dispatch ──────────────────────────────────────────────────────────────────
 
 // ── Shadow Pre-game Price Snap ────────────────────────────────────────────────
-// Cron: 0 3 * * * (7pm PT — ~4h after snapshot, within the typical betting window).
-// Fetches current Kalshi prices from the live cache and stamps them onto today's
-// shadow_plays rows, enabling CLV / line-movement analysis in shadow-analysis.
+// Crons: 0 17, 10 22, 0 3 * * * — each trails a /api/tonight cron by 5–10 min.
+// Reads today's plays (with current Kalshi prices) from the shadow:staging KV key
+// written by tonight, and stamps them onto today's shadow_plays rows, enabling
+// CLV / line-movement analysis in shadow-analysis. Staging older than 15 min is
+// rejected (CLV prices must reflect now); falls back to an HTTP fetch of
+// /api/tonight, which risks the 60s wall on cold rebuilds (the 2026-06-10 failure
+// mode that motivated the KV-first read). `?dry=1` skips the DB write — safe
+// verification without stamping mid-game prices as "pregame".
+
+const PREGAME_STAGING_MAX_AGE_MS = 15 * 60_000;
 
 async function handleShadowPregameSnap({ path, request, env, cache }) {
   if (path !== "shadow-pregame-snap") return null;
@@ -514,6 +521,7 @@ async function handleShadowPregameSnap({ path, request, env, cache }) {
   if (!env?.POSTGRES_URL && !env?.NEON_DATABASE_URL) return errorResponse("POSTGRES_URL not set", 500);
 
   const t0 = Date.now();
+  const isDry = new URL(request.url).searchParams.get("dry") === "1";
   const snapshotDate = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
 
   const _preSchemaKey = "shadow:pregame-schema:v1";
@@ -523,25 +531,44 @@ async function handleShadowPregameSnap({ path, request, env, cache }) {
     if (cache) cache.put(_preSchemaKey, "1", { expirationTtl: 86400 * 30 }).catch(() => {});
   }
 
-  // Get current Kalshi prices via the cached /tonight endpoint (no debug=1 — debug bypasses the
-  // play cache and re-fetches every gamelog, adding 40-55s that would blow the 60s Edge wall-clock).
-  // Dropped plays lose CLV coverage but qualified plays are what calibration tracks.
-  const origin = new URL(request.url).origin;
-  let tonightResp;
-  try {
-    tonightResp = await fetch(`${origin}/api/tonight`, {
-      headers: { "x-shadow-internal": "1" },
-      signal: AbortSignal.timeout(45_000),
-    });
-  } catch (fetchErr) {
-    console.error(`[shadow-pregame-snap] tonight fetch failed: ${fetchErr?.message} ${Date.now() - t0}ms`);
-    return errorResponse(`tonight fetch timed out — re-run manually: ${fetchErr?.message}`, 504);
+  // KV staging first — written on every tonight recompute from ≤2-min-old Kalshi snaps, so
+  // fresh staging carries current prices. Staleness gate matters here (unlike shadow-snapshot):
+  // CLV prices stamped now must reflect now, not whenever tonight last ran.
+  let rawPlays = null;
+  let source = "kv-staging";
+  let stagingAgeMs = null;
+  if (cache) {
+    const _staged = await cache.get(`shadow:staging:${snapshotDate}`, "json").catch(() => null);
+    if (_staged?.plays && _staged.writtenAt) {
+      stagingAgeMs = Date.now() - _staged.writtenAt;
+      if (stagingAgeMs <= PREGAME_STAGING_MAX_AGE_MS) {
+        rawPlays = [..._staged.plays, ...(_staged.dropped || [])];
+        console.log(`[shadow-pregame-snap] KV staging hit plays=${_staged.plays.length} dropped=${_staged.dropped?.length ?? 0} ageMs=${stagingAgeMs}`);
+      } else {
+        console.log(`[shadow-pregame-snap] KV staging stale ageMs=${stagingAgeMs} — falling back to HTTP fetch`);
+      }
+    }
   }
-  if (!tonightResp.ok) return errorResponse(`tonight fetch failed: ${tonightResp.status}`, 502);
-  const tonight = await tonightResp.json();
+
+  if (!rawPlays) {
+    source = "http";
+    const origin = new URL(request.url).origin;
+    let tonightResp;
+    try {
+      tonightResp = await fetch(`${origin}/api/tonight`, {
+        headers: { "x-shadow-internal": "1" },
+        signal: AbortSignal.timeout(45_000),
+      });
+    } catch (fetchErr) {
+      console.error(`[shadow-pregame-snap] tonight fetch failed: ${fetchErr?.message} ${Date.now() - t0}ms`);
+      return errorResponse(`tonight fetch timed out — re-run manually: ${fetchErr?.message}`, 504);
+    }
+    if (!tonightResp.ok) return errorResponse(`tonight fetch failed: ${tonightResp.status}`, 502);
+    const tonight = await tonightResp.json();
+    rawPlays = [...(tonight.plays || []), ...(tonight.dropped || [])];
+  }
 
   // Build priceMap: shadowId(play) → { yes, no } using same deterministic ID as snapshot.
-  const rawPlays = [...(tonight.plays || []), ...(tonight.dropped || [])];
   const priceMap = new Map();
   for (const p of rawPlays) {
     if (p.kalshiPct == null && p.noKalshiPct == null) continue;
@@ -552,7 +579,7 @@ async function handleShadowPregameSnap({ path, request, env, cache }) {
   }
 
   if (priceMap.size === 0) {
-    return jsonResponse({ ok: true, updated: 0, skipped: 0, durationMs: Date.now() - t0 });
+    return jsonResponse({ ok: true, dry: isDry, source, stagingAgeMs, updated: 0, skipped: 0, durationMs: Date.now() - t0 });
   }
 
   // Fetch today's rows that haven't been stamped yet.
@@ -569,11 +596,26 @@ async function handleShadowPregameSnap({ path, request, env, cache }) {
     updates.push({ id: row.id, yes: prices.yes, no: prices.no });
   }
 
+  if (isDry) {
+    return jsonResponse({
+      ok: true,
+      dry: true,
+      snapshotDate,
+      source,
+      stagingAgeMs,
+      wouldUpdate: updates.length,
+      skipped,
+      durationMs: Date.now() - t0,
+    });
+  }
+
   await neonBatchPrePriceUpdate(updates, env);
 
   return jsonResponse({
     ok: true,
     snapshotDate,
+    source,
+    stagingAgeMs,
     updated: updates.length,
     skipped,
     durationMs: Date.now() - t0,

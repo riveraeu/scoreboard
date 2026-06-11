@@ -1525,7 +1525,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
         }
         // Stage plays for shadow-snapshot — eliminates the 55s internal re-fetch.
         if (CACHE2) {
-          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays, dropped }), { expirationTtl: 21600 }).catch(() => {});
+          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays, dropped, writtenAt: Date.now() }), { expirationTtl: 21600 }).catch(() => {});
         }
         if (isDebug) {
           const nbaGlLabels = Object.fromEntries(Object.entries(playerGamelogs).filter(([k]) => k.startsWith("nba|")).map(([k, gl]) => [k, gl?.ul ?? null]));
