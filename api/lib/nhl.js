@@ -19,9 +19,12 @@
 const MIN_STARTS = 5;       // goalie needs at least this many GS for SV% trust
 const SEASON = "20252026";  // bumped each season
 
-// NHL Stats API teamId → canonical abbreviation. UTA = Utah Mammoth (teamId 68, rebranded
-// from Utah Hockey Club for 2025-26; old teamId 53 absent). Add new teamIds as they appear.
-export const NHL_ABBR_MAP = { 1: "NJD", 2: "NYI", 3: "NYR", 4: "PHI", 5: "PIT", 6: "BOS", 7: "BUF", 8: "MTL", 9: "OTT", 10: "TOR", 12: "CAR", 13: "FLA", 14: "TBL", 15: "WSH", 16: "CHI", 17: "DET", 18: "NSH", 19: "STL", 20: "CGY", 21: "COL", 22: "EDM", 23: "VAN", 24: "ANA", 25: "DAL", 26: "LAK", 28: "SJS", 29: "CBJ", 30: "MIN", 52: "WPG", 54: "VGK", 55: "SEA", 68: "UTA" };
+// NHL Stats API teamId → canonical abbreviation. Derived from the team registry
+// (api/lib/teams.js) since 2026-06-11; re-exported here for the historical import path.
+// UTA = Utah Mammoth (teamId 68, rebranded from Utah Hockey Club for 2025-26; old
+// teamId 53 absent). Add new teamIds to the registry as they appear.
+import { NHL_ABBR_MAP } from "./teams.js";
+export { NHL_ABBR_MAP };
 
 // Per-goalie season stats. Single REST call covers every qualifying goalie
 // in the league, then we pick max-GS per team.

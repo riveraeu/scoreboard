@@ -83,6 +83,7 @@ Sport/utility modules under `api/lib/`:
 - `api/lib/wnba.js` — pace, usage, injury, DVP; `WNBA_TEAM_IDS`; `WNBA_ESPN_TO_CANON`/`WNBA_CANON_TO_ESPN`
 - `api/lib/nhl.js` — `buildNhlGoalieData`, `buildNhlInjuryReport`, `NHL_ABBR_MAP`
 - `api/lib/utils.js` — CORS, `parseGameOdds`, `parseGameScores`, team rank helpers
+- `api/lib/teams.js` — **team identity registry** (2026-06-11): per-sport records with canonical abbr + per-surface aliases (kalshi / espnScore / espnStats / numeric ids). Derives `TEAM_NORM`, `_VALID_TEAMS`, `CANONICAL_TO_ESPN`, `WNBA_*`, `NHL_ABBR_MAP`, `MLB_ID_TO_ABBR` — all re-exported from their historical modules, so import paths are unchanged. Team rebrands/aliases: edit the registry ONLY; `teams.test.js` pins derived values. Still inline (out of registry): `_mlbNorm2` in handlers/dvp.js, dvp's NHL_ABBR copy, frontend `logoUrl` fixes.
 - `api/lib/tonight/parse-teams.js` — `TEAM_NORM`, `normTeam`, `_VALID_TEAMS`, `parseGameTeams`
 - `api/lib/tonight/dedup.js` — `dedupKey` + `dedupAltLines` (alt-line dedup, extracted 2026-06-11; tonight.js owns the splice + debug push). Unit tests pin the key semantics — change tests and code together.
 - `api/lib/tonight/props.js` — `emitPropPlays(ctx)` (~1667 LOC)
@@ -162,7 +163,7 @@ See `docs/MODEL.md` for all formula details, SimScore tiers, lambda formulas, ga
 
 **Spread alt-line dedup + category gate interaction (updated 2026-06-05)**: The dedup key is `sp|sport|seg|sortedTeams|line|gameDate`. Different alt lines (e.g. +2.5 vs +3.5) compete independently. Both sides of the same line (MIN +3.5 vs KC -3.5) share one key; the higher-edge side wins. The edge case: if the dedup winner fails the category gate (truePct < 80%) while the demoted loser passes it, `passesGate` (LineupsPage.jsx) and `_qualifiedFilter` (App.jsx) allow the demoted play through — `_altLineDemoted && !passesCategoryGate(p) → false` rather than a blanket block. Opposite-side truePcts are complementary (~sum to 100%), so you can never show both sides simultaneously. Market Report symptom: bold play visible but absent from LineupsPage card.
 
-**TEAM_NORM (Kalshi → ESPN)**: NBA `{ GS→GSW, SA→SAS, NY→NYK, NJ→BKN, NO→NOP, PHO→PHX, WPH→PHX, KAT→ATL }`. WNBA `{ CONNECTICU→CONN, CON→CONN, DALLAS→DAL, WAS→WSH, GSV→GS, LAS→LA }`. After building `STAT_SOFT` rankMaps, a post-normalization loop adds the long-form key so `nbaDefRank["GSW"]` resolves.
+**TEAM_NORM (Kalshi → ESPN)**: NBA `{ GS→GSW, SA→SAS, NY→NYK, NJ→BKN, NO→NOP, PHO→PHX, WPH→PHX, KAT→ATL }`. WNBA `{ CONNECTICU→CONN, CON→CONN, DALLAS→DAL, WAS→WSH, GSV→GS, LAS→LA }`. After building `STAT_SOFT` rankMaps, a post-normalization loop adds the long-form key so `nbaDefRank["GSW"]` resolves. Since 2026-06-11 TEAM_NORM is derived from `api/lib/teams.js` (`kalshi` aliases) — edit the registry, not parse-teams.js. Identity entries (mlb `KC→KC` etc.) are functional: membership marks 2-char prefixes for the 2+3 ticker split.
 
 **WNBA `parseGameTeams` — variable-length abbrs**: WNBA mixes 2-, 3-, and 4-char canonical abbrs. The WNBA branch tries every (i, len−i) split 2–4 chars each half, preferring longer left-side first (`CONNIN` → `CONN+IND`). `_VALID_TEAMS["wnba"]` is the 15-team canonical set.
 
@@ -174,7 +175,7 @@ See `docs/MODEL.md` for all formula details, SimScore tiers, lambda formulas, ga
 - **MLB**: `CWS↔CHW` · **NBA**: `GSW↔GS`, `SAS↔SA`, `NYK↔NY`, `NOP↔NO`, `UTA↔UTAH`, `WAS↔WSH`
 - **WNBA**: `CONN↔CON` (scoreboard only — all other WNBA abbrs match canonical) · **NHL**: `TBL↔TB`, `NJD↔NJ`, `LAK↔LA`, `SJS↔SJ`
 
-Add new scoreboard mismatches to `CANONICAL_TO_ESPN.wnba` in `sports.js` directly. Note: `WNBA_CANON_TO_ESPN` in `wnba.js` is for a *different* ESPN endpoint (stats/injuries) and uses different forms (CONNECTICU, DALLAS, WAS, LAS) — do NOT use it for the `/api/live` scoreboard map.
+Add new scoreboard mismatches to the `espnScore` field in `api/lib/teams.js` (CANONICAL_TO_ESPN is derived from it since 2026-06-11). Note: `WNBA_CANON_TO_ESPN` is for a *different* ESPN endpoint (stats/injuries) and uses different forms (CONNECTICU, DALLAS, WAS, LAS — the registry's `espnStats` field) — do NOT use it for the `/api/live` scoreboard map.
 
 **`gameScores` today + tomorrow merge**: Each scoreboard fetch that produces `gameScores` fetches today AND tomorrow in parallel and merges into `parseGameScores`. Key shape: `${hA}|${gameDate}|${event.date}` — prevents today's Final from being wiped after midnight UTC, and prevents DH game 2 from overwriting game 1. The inline duplicate in `api/lib/mlb.js` (~line 952) must mirror the same key shape. Frontend `LineupsPage.buildGames` keys by `${sortedPair}|${gameDate}|${gameTime}` for the same reason.
 

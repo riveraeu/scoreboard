@@ -12,33 +12,13 @@
 //   WNBA_TEAM_IDS        — canonical abbr → ESPN team id
 //   WNBA_ESPN_TO_CANON   — ESPN-returned abbr → canonical (e.g. CONNECTICU→CONN)
 
-// Canonical WNBA abbreviations → ESPN team IDs.
-// ESPN's /teams list endpoint is broken for WNBA, so IDs are pinned.
-export const WNBA_TEAM_IDS = {
-  ATL: 20, CHI: 19, CONN: 18, DAL: 3, GS: 129689,
-  IND: 5, LV: 17, LA: 6, MIN: 8, NY: 9,
-  PHX: 11, POR: 132052, SEA: 14, TOR: 131935, WSH: 16
-};
-
-// ESPN sometimes returns truncated/irregular forms — normalize to canonical
-// (used in scoreboard/byteam responses; injuries; gamelogs).
-export const WNBA_ESPN_TO_CANON = {
-  CONNECTICU: "CONN",
-  DALLAS: "DAL",
-  WAS: "WSH",
-  GSV: "GS",
-  // ESPN sometimes uses these short forms for the LA team
-  LAS: "LA"
-};
-
-// Reverse map (canonical → ESPN scoreboard abbr) for /api/live + team-route URLs.
-// Only includes pairs where ESPN's abbr differs from the canonical short.
-export const WNBA_CANON_TO_ESPN = {
-  CONN: "CONNECTICU",
-  DAL: "DALLAS",
-  WSH: "WAS",
-  LA: "LAS",
-};
+// WNBA_TEAM_IDS / WNBA_ESPN_TO_CANON / WNBA_CANON_TO_ESPN are derived from the team
+// registry (api/lib/teams.js) since 2026-06-11 and re-exported here for the historical
+// import path. These are the ESPN *stats/injuries* endpoint forms (CONNECTICU, DALLAS,
+// WAS, LAS) — NOT the /api/live scoreboard map (CANONICAL_TO_ESPN, also registry-derived).
+// ESPN's /teams list endpoint is broken for WNBA, so the IDs are pinned in the registry.
+import { WNBA_TEAM_IDS, WNBA_ESPN_TO_CANON, WNBA_CANON_TO_ESPN } from "./teams.js";
+export { WNBA_TEAM_IDS, WNBA_ESPN_TO_CANON, WNBA_CANON_TO_ESPN };
 
 export async function buildWnbaPaceData(cache, season = 2025) {
   try {

@@ -1,0 +1,200 @@
+// api/lib/teams.js — single source of team identity per sport (2026-06-11).
+//
+// Each record: canonical abbr + alias forms per external surface. Every legacy map
+// (TEAM_NORM, _VALID_TEAMS, CANONICAL_TO_ESPN, WNBA_*, NHL_ABBR_MAP, MLB_ID_TO_ABBR)
+// is DERIVED below and re-exported from its historical module, so consumers are
+// unchanged. teams.test.js pins each derived map against the pre-registry literals —
+// a registry typo fails the suite instead of silently breaking a parse.
+//
+// Surfaces (see CLAUDE.md gotchas — these are intentionally separate):
+//   kalshi       — Kalshi ticker abbreviation(s) → canonical (TEAM_NORM). Identity
+//                  aliases (e.g. mlb KC→KC) are FUNCTIONAL: TEAM_NORM membership marks
+//                  2-char prefixes for parseGameTeams' 2+3 split path. Don't prune them.
+//   espnScore    — ESPN *scoreboard* abbr when ≠ canonical (/api/live translation).
+//   espnStats    — ESPN stats/injuries endpoint form (WNBA only; CONNECTICU, DALLAS…).
+//   espnStatsAlt — extra inbound stats-surface forms that normalize to canonical.
+//   espnId / nhlId / mlbId — numeric ids per league data API.
+
+export const TEAMS = {
+  nba: [
+    { abbr: "ATL", kalshi: ["KAT"] },
+    { abbr: "BOS" },
+    { abbr: "BKN", kalshi: ["NJ"] },
+    { abbr: "CHA" },
+    { abbr: "CHI" },
+    { abbr: "CLE" },
+    { abbr: "DAL" },
+    { abbr: "DEN" },
+    { abbr: "DET" },
+    { abbr: "GSW", kalshi: ["GS"], espnScore: "GS" },
+    { abbr: "HOU" },
+    { abbr: "IND" },
+    { abbr: "LAC" },
+    { abbr: "LAL" },
+    { abbr: "MEM" },
+    { abbr: "MIA" },
+    { abbr: "MIL" },
+    { abbr: "MIN" },
+    { abbr: "NOP", kalshi: ["NO"], espnScore: "NO" },
+    { abbr: "NYK", kalshi: ["NY"], espnScore: "NY" },
+    { abbr: "OKC" },
+    { abbr: "ORL" },
+    { abbr: "PHI" },
+    { abbr: "PHX", kalshi: ["PHO", "WPH"] },
+    { abbr: "POR" },
+    { abbr: "SAC" },
+    { abbr: "SAS", kalshi: ["SA"], espnScore: "SA" },
+    { abbr: "TOR" },
+    { abbr: "UTA", espnScore: "UTAH" },
+    { abbr: "WAS", espnScore: "WSH" },
+  ],
+  wnba: [
+    { abbr: "ATL", espnId: 20 },
+    { abbr: "CHI", espnId: 19 },
+    { abbr: "CONN", kalshi: ["CONNECTICU", "CON"], espnScore: "CON", espnStats: "CONNECTICU", espnId: 18 },
+    { abbr: "DAL", kalshi: ["DALLAS"], espnStats: "DALLAS", espnId: 3 },
+    { abbr: "GS", kalshi: ["GSV"], espnStatsAlt: ["GSV"], espnId: 129689 },
+    { abbr: "IND", espnId: 5 },
+    { abbr: "LV", espnId: 17 },
+    { abbr: "LA", kalshi: ["LAS"], espnStats: "LAS", espnId: 6 },
+    { abbr: "MIN", espnId: 8 },
+    { abbr: "NY", espnId: 9 },
+    { abbr: "PHX", espnId: 11 },
+    { abbr: "POR", espnId: 132052 },
+    { abbr: "SEA", espnId: 14 },
+    { abbr: "TOR", espnId: 131935 },
+    { abbr: "WSH", kalshi: ["WAS"], espnStats: "WAS", espnId: 16 },
+  ],
+  nhl: [
+    { abbr: "ANA", nhlId: 24 },
+    { abbr: "BOS", nhlId: 6 },
+    { abbr: "BUF", nhlId: 7 },
+    { abbr: "CGY", nhlId: 20 },
+    { abbr: "CAR", nhlId: 12 },
+    { abbr: "CHI", nhlId: 16 },
+    { abbr: "COL", nhlId: 21 },
+    { abbr: "CBJ", nhlId: 29 },
+    { abbr: "DAL", nhlId: 25 },
+    { abbr: "DET", nhlId: 17 },
+    { abbr: "EDM", nhlId: 22 },
+    { abbr: "FLA", nhlId: 13 },
+    { abbr: "LAK", kalshi: ["LA"], espnScore: "LA", nhlId: 26 },
+    { abbr: "MIN", nhlId: 30 },
+    { abbr: "MTL", nhlId: 8 },
+    { abbr: "NSH", nhlId: 18 },
+    { abbr: "NJD", kalshi: ["NJ"], espnScore: "NJ", nhlId: 1 },
+    { abbr: "NYI", nhlId: 2 },
+    { abbr: "NYR", nhlId: 3 },
+    { abbr: "OTT", nhlId: 9 },
+    { abbr: "PHI", nhlId: 4 },
+    { abbr: "PIT", nhlId: 5 },
+    { abbr: "STL", nhlId: 19 },
+    { abbr: "SJS", kalshi: ["SJ"], espnScore: "SJ", nhlId: 28 },
+    { abbr: "SEA", nhlId: 55 },
+    { abbr: "TBL", kalshi: ["TB"], espnScore: "TB", nhlId: 14 },
+    { abbr: "TOR", nhlId: 10 },
+    { abbr: "UTA", nhlId: 68 },
+    { abbr: "VAN", nhlId: 23 },
+    { abbr: "VGK", kalshi: ["VGK"], nhlId: 54 },
+    { abbr: "WSH", nhlId: 15 },
+    { abbr: "WPG", nhlId: 52 },
+  ],
+  mlb: [
+    { abbr: "ARI", kalshi: ["AZ"], mlbId: 109 },
+    { abbr: "ATL", mlbId: 144 },
+    { abbr: "ATH", kalshi: ["OAK"], mlbId: 133 },
+    { abbr: "BAL", mlbId: 110 },
+    { abbr: "BOS", mlbId: 111 },
+    { abbr: "CHC", mlbId: 112 },
+    { abbr: "CIN", mlbId: 113 },
+    { abbr: "CLE", mlbId: 114 },
+    { abbr: "COL", mlbId: 115 },
+    { abbr: "CWS", kalshi: ["CHW"], espnScore: "CHW", mlbId: 145 },
+    { abbr: "DET", mlbId: 116 },
+    { abbr: "HOU", mlbId: 117 },
+    { abbr: "KC", kalshi: ["KCR", "KC"], mlbId: 118 },
+    { abbr: "LAA", mlbId: 108 },
+    { abbr: "LAD", mlbId: 119 },
+    { abbr: "MIA", mlbId: 146 },
+    { abbr: "MIL", mlbId: 158 },
+    { abbr: "MIN", mlbId: 142 },
+    { abbr: "NYM", mlbId: 121 },
+    { abbr: "NYY", mlbId: 147 },
+    { abbr: "PHI", mlbId: 143 },
+    { abbr: "PIT", mlbId: 134 },
+    { abbr: "SD", kalshi: ["SDP", "SD"], mlbId: 135 },
+    { abbr: "SEA", mlbId: 136 },
+    { abbr: "SF", kalshi: ["SFG", "SF"], mlbId: 137 },
+    { abbr: "STL", mlbId: 138 },
+    { abbr: "TB", kalshi: ["TBR", "TB"], mlbId: 139 },
+    { abbr: "TEX", mlbId: 140 },
+    { abbr: "TOR", mlbId: 141 },
+    { abbr: "WSH", kalshi: ["WSN", "WAS"], mlbId: 120 },
+  ],
+  nfl: [
+    { abbr: "ARI" }, { abbr: "ATL" }, { abbr: "BAL" }, { abbr: "BUF" },
+    { abbr: "CAR" }, { abbr: "CHI" }, { abbr: "CIN" }, { abbr: "CLE" },
+    { abbr: "DAL" }, { abbr: "DEN" }, { abbr: "DET" }, { abbr: "GB" },
+    { abbr: "HOU" }, { abbr: "IND" }, { abbr: "JAX" }, { abbr: "KC" },
+    { abbr: "LAC" },
+    { abbr: "LAR", kalshi: ["LA"] },
+    { abbr: "LV" }, { abbr: "MIA" }, { abbr: "MIN" }, { abbr: "NE" },
+    { abbr: "NO" }, { abbr: "NYG" }, { abbr: "NYJ" }, { abbr: "PHI" },
+    { abbr: "PIT" }, { abbr: "SEA" }, { abbr: "SF" }, { abbr: "TB" },
+    { abbr: "TEN" }, { abbr: "WSH" },
+  ],
+};
+
+// ── Derived maps (legacy shapes, re-exported from their historical modules) ──────
+
+// Kalshi ticker abbr → canonical, per sport (legacy home: tonight/parse-teams.js).
+export const TEAM_NORM = Object.fromEntries(
+  Object.entries(TEAMS).map(([sport, teams]) => {
+    const m = {};
+    for (const t of teams) for (const a of t.kalshi || []) m[a] = t.abbr;
+    return [sport, m];
+  })
+);
+
+// Canonical abbr sets, per sport (legacy home: tonight/parse-teams.js).
+export const _VALID_TEAMS = Object.fromEntries(
+  Object.entries(TEAMS).map(([sport, teams]) => [sport, new Set(teams.map(t => t.abbr))])
+);
+
+// Canonical → ESPN scoreboard abbr, per sport (legacy home: inline in handlers/sports.js).
+// Only sports with at least one mismatch carry entries; consumers do `[sport] || {}`.
+export const CANONICAL_TO_ESPN = Object.fromEntries(
+  Object.entries(TEAMS).map(([sport, teams]) => {
+    const m = {};
+    for (const t of teams) if (t.espnScore) m[t.abbr] = t.espnScore;
+    return [sport, m];
+  })
+);
+
+// WNBA stats/injuries endpoint forms (legacy home: wnba.js). NOT the scoreboard map.
+export const WNBA_CANON_TO_ESPN = (() => {
+  const m = {};
+  for (const t of TEAMS.wnba) if (t.espnStats) m[t.abbr] = t.espnStats;
+  return m;
+})();
+export const WNBA_ESPN_TO_CANON = (() => {
+  const m = {};
+  for (const t of TEAMS.wnba) {
+    if (t.espnStats) m[t.espnStats] = t.abbr;
+    for (const a of t.espnStatsAlt || []) m[a] = t.abbr;
+  }
+  return m;
+})();
+export const WNBA_TEAM_IDS = Object.fromEntries(
+  TEAMS.wnba.map(t => [t.abbr, t.espnId])
+);
+
+// NHL stats API teamId → canonical (legacy home: nhl.js).
+export const NHL_ABBR_MAP = Object.fromEntries(
+  TEAMS.nhl.map(t => [t.nhlId, t.abbr])
+);
+
+// MLB Stats API teamId → canonical (legacy home: mlb-shared.js).
+export const MLB_ID_TO_ABBR = Object.fromEntries(
+  TEAMS.mlb.map(t => [t.mlbId, t.abbr])
+);

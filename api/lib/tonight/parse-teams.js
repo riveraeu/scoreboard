@@ -1,34 +1,15 @@
 // api/lib/tonight/parse-teams.js
-// Kalshi → ESPN team-abbreviation normalization tables + Kalshi event-ticker parser.
-// Extracted from api/lib/handlers/tonight.js Phase B (2026-05-29). Zero behavior change.
+// Kalshi event-ticker parser. TEAM_NORM (Kalshi abbr → canonical) and _VALID_TEAMS
+// (canonical sets used for split validation) are derived from the team registry in
+// api/lib/teams.js since 2026-06-11 and re-exported here for the historical import
+// path. See CLAUDE.md "TEAM_NORM" for the gotcha list; teams.test.js pins the values.
+// Note: identity entries in TEAM_NORM (mlb KC→KC etc.) are functional — membership
+// marks 2-char prefixes for the validated 2+3 split below.
 
-// Kalshi ticker abbreviation → canonical ESPN abbreviation, per sport.
-// See CLAUDE.md "TEAM_NORM" for the full gotcha list.
-export const TEAM_NORM = {
-  nba: { GS: "GSW", SA: "SAS", NY: "NYK", NJ: "BKN", NO: "NOP", PHO: "PHX", WPH: "PHX", KAT: "ATL" },
-  // WNBA: Kalshi uses CONN/DAL but ESPN scoreboard returns CONNECTICU/DALLAS — translate via parallel
-  // map (WNBA_CANON_TO_ESPN) when fetching ESPN; canonical (short) lives here.
-  wnba: { CONNECTICU: "CONN", CON: "CONN", DALLAS: "DAL", WAS: "WSH", GSV: "GS", LAS: "LA" },
-  nhl: { NJ: "NJD", TB: "TBL", LA: "LAK", SJ: "SJS", VGK: "VGK" },
-  mlb: { KCR: "KC", SFG: "SF", SDP: "SD", TBR: "TB", CHW: "CWS", AZ: "ARI", KC: "KC", SD: "SD", SF: "SF", TB: "TB", OAK: "ATH", WSN: "WSH", WAS: "WSH" },
-  nfl: { LA: "LAR" },
-};
+import { TEAM_NORM, _VALID_TEAMS } from "../teams.js";
+export { TEAM_NORM, _VALID_TEAMS };
 
 export const normTeam = (sport, a) => TEAM_NORM[sport]?.[a] || a;
-
-// Hardcoded valid team abbreviations per sport — used to disambiguate Kalshi tickers
-// where a 2-char prefix (e.g. "NY" → NYK) is a substring of a 3-char team code starting
-// the same way (e.g. "NYK" itself). Without validation, "NYKPHI" was parsing as NY+KPH
-// instead of NYK+PHI; same for SASMIN→SA+SMI. Try 3+3 first, validate, fall back to 2+3.
-export const _VALID_TEAMS = {
-  nba: new Set(["ATL","BOS","BKN","CHA","CHI","CLE","DAL","DEN","DET","GSW","HOU","IND","LAC","LAL","MEM","MIA","MIL","MIN","NOP","NYK","OKC","ORL","PHI","PHX","POR","SAC","SAS","TOR","UTA","WAS"]),
-  // WNBA has multiple 2-char abbrs (GS/LV/LA/NY/DA) and pairs like LVNY/LANY/GSLA/LVGS hit 2+2
-  // splits. Validation guards against 2-char-prefix stealing the parse from a 3-char team.
-  wnba: new Set(["ATL","CHI","CONN","DAL","GS","IND","LV","LA","MIN","NY","PHX","POR","SEA","TOR","WSH"]),
-  nhl: new Set(["ANA","BOS","BUF","CGY","CAR","CHI","COL","CBJ","DAL","DET","EDM","FLA","LAK","MIN","MTL","NSH","NJD","NYI","NYR","OTT","PHI","PIT","STL","SJS","SEA","TBL","TOR","UTA","VAN","VGK","WSH","WPG"]),
-  mlb: new Set(["ARI","ATL","ATH","BAL","BOS","CHC","CIN","CLE","COL","CWS","DET","HOU","KC","LAA","LAD","MIA","MIL","MIN","NYM","NYY","PHI","PIT","SD","SEA","SF","STL","TB","TEX","TOR","WSH"]),
-  nfl: new Set(["ARI","ATL","BAL","BUF","CAR","CHI","CIN","CLE","DAL","DEN","DET","GB","HOU","IND","JAX","KC","LAC","LAR","LV","MIA","MIN","NE","NO","NYG","NYJ","PHI","PIT","SEA","SF","TB","TEN","WSH"]),
-};
 
 // Parse Kalshi event ticker segment into canonical [team1, team2] pair.
 // Ticker format: KXSPORT-YYMMDDHHMMTEAM1TEAM2-SUFFIX

@@ -4,6 +4,7 @@
 
 import { PT_FMT } from "../pt.js";
 import { jsonResponse, errorResponse } from "../utils.js";
+import { CANONICAL_TO_ESPN as CANONICAL_TO_ESPN_ALL } from "../teams.js";
 
 export async function handleSportsRoutes(ctx) {
   const { path, method, params, env, CACHE2, VALID_SPORTS } = ctx;
@@ -67,12 +68,9 @@ export async function handleSportsRoutes(ctx) {
       // Translate inputs → ESPN when matching events; translate ESPN's response → canonical
       // so downstream consumers (auto-resolver, totals/team-totals lookups keyed by pick.homeTeam)
       // see the same abbr the pick was tracked with.
-      const CANONICAL_TO_ESPN = {
-        mlb: { CWS: "CHW" },
-        nba: { GSW: "GS", SAS: "SA", NYK: "NY", NOP: "NO", UTA: "UTAH", WAS: "WSH" },
-        wnba: { CONN: "CON" },
-        nhl: { TBL: "TB", NJD: "NJ", LAK: "LA", SJS: "SJ" },
-      }[sport] || {};
+      // Canonical → ESPN scoreboard abbr, derived from the team registry (api/lib/teams.js).
+      // Add new scoreboard mismatches to the registry's `espnScore` field, not here.
+      const CANONICAL_TO_ESPN = CANONICAL_TO_ESPN_ALL[sport] || {};
       const ESPN_TO_CANONICAL = Object.fromEntries(
         Object.entries(CANONICAL_TO_ESPN).map(([k, v]) => [v, k])
       );
