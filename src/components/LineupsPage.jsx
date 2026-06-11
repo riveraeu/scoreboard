@@ -1,8 +1,7 @@
 import React from 'react';
 import MatchupCard from './MatchupCard.jsx';
 import { useIsMobile } from '../lib/hooks.js';
-import { EDGE_GATE_CLIENT as EDGE_GATE } from '../../api/lib/config.js';
-import { passesCategoryGate } from '../lib/constants.js';
+import { qualifiesForDisplay, trackIdFor } from '../lib/qualify.js';
 
 const SPORT_ORDER = { mlb: 0, nba: 1, wnba: 2, nhl: 3 };
 const SPORT_LABEL = { mlb: 'MLB', nba: 'NBA', wnba: 'WNBA', nhl: 'NHL' };
@@ -106,28 +105,13 @@ function buildTrackedIds(trackedPlays) {
   for (const p of (trackedPlays || [])) if (p?.id) ids.add(p.id);
   return ids;
 }
-export function trackIdFor(p) {
-  // Mirror the trackId construction used in PlaysColumn / usePicks.trackPlay
-  const gd = p.gameDate || '';
-  const seg = p.segment && p.segment !== 'full' ? `|${p.segment}` : '';
-  if (p.gameType === 'teamTotal') return `teamtotal|${p.sport}|${p.scoringTeam}|${p.oppTeam}|${p.threshold}|${gd}${p.direction === 'under' ? '|under' : ''}`;
-  if (p.gameType === 'total') return `total|${p.sport}${seg}|${p.homeTeam}|${p.awayTeam}|${p.threshold}|${gd}${p.direction === 'under' ? '|under' : ''}`;
-  if (p.gameType === 'ml') return `ml|${p.sport}${seg}|${p.pickTeam}|${p.homeTeam}|${p.awayTeam}|${gd}`;
-  if (p.gameType === 'spread') return `spread|${p.sport}${seg}|${p.pickTeam}|${p.homeTeam}|${p.awayTeam}|${p.pickLine}|${gd}`;
-  return `${p.sport || 'nba'}|${p.playerName}|${p.stat}|${p.threshold}|${gd}`;
-}
 function passesGate(p, trackedIds) {
   // Tracked picks always pass — keep visibility of the user's actual bet even if dedup
-  // demoted it. Check this BEFORE the dedup filter so tracked alts survive.
+  // demoted it. Check this BEFORE the dedup filter so tracked alts survive. This bypass is
+  // intentionally looser than App's _qualifiedFilter (which still enforces dc + edge):
+  // matchup cards must show the user's actual bet unconditionally.
   if (trackedIds && trackedIds.has(trackIdFor(p))) return true;
-  // Server demoted this play in favor of a higher-edge alt. Skip unless the winner itself
-  // fails the category gate — in that case the demotion is spurious and this play qualifies.
-  if (p._altLineDemoted === true && !passesCategoryGate(p)) return false;
-  // dcQualified=true means dc≥7: only kalshiStale and playerOut fail (2026-06-04).
-  // Data-completeness dc=10 requirement removed — shadow calibration showed fallback paths
-  // are better calibrated than full-data paths. Category gate does the real ROI filtering.
-  if (p.dcQualified !== true || (p.edge ?? 0) < EDGE_GATE) return false;
-  return passesCategoryGate(p);
+  return qualifiesForDisplay(p);
 }
 // Mirror the server-side _ddKey from api/[...path].js so the client can decide whether a
 // given API play sits in the same dedup-group as a tracked pick (and if so, suppress it in

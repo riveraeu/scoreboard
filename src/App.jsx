@@ -1,5 +1,5 @@
 import React from 'react';
-import { WORKER, SPORTS, STAT_FULL, MLB_TEAM, TOTAL_THRESHOLDS, STAT_LABEL, SPORT_KEY, SPORT_BADGE_COLOR, GAMELOG_COLS, passesCategoryGate } from './lib/constants.js';
+import { WORKER, SPORTS, STAT_FULL, MLB_TEAM, TOTAL_THRESHOLDS, STAT_LABEL, SPORT_KEY, SPORT_BADGE_COLOR, GAMELOG_COLS } from './lib/constants.js';
 import { ordinal, slugify, oddsToProfit, logoUrl } from './lib/utils.js';
 import { useIsMobile } from './lib/hooks.js';
 import { useTonight } from './lib/useTonight.js';
@@ -26,7 +26,8 @@ import DayBar from './components/DayBar.jsx';
 import AddPickModal from './components/AddPickModal.jsx';
 import ReportPage from './components/ReportPage.jsx';
 import MyPicksColumn from './components/MyPicksColumn.jsx';
-import LineupsPage, { trackIdFor } from './components/LineupsPage.jsx';
+import LineupsPage from './components/LineupsPage.jsx';
+import { qualifiesForDisplay, trackIdFor } from './lib/qualify.js';
 import SimBadge from './components/SimBadge.jsx';
 
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_CLIENT as EDGE_GATE } from "../api/lib/config.js";
@@ -156,14 +157,11 @@ function App() {
   const _qualifiedFilter = React.useCallback((p) => {
     // Tracked picks bypass the category gate — visibility of an existing bet must survive
     // a category demotion. Still enforce dcQualified + edge so stale/out picks drop.
+    // (Intentionally stricter than LineupsPage's bypass, which always shows tracked bets.)
     if (_trackedIdsRef.current.has(trackIdFor(p))) {
       return p.dcQualified === true && (p.edge ?? 0) >= EDGE_GATE;
     }
-    // Demoted by server-side dedup in favor of a higher-edge alt. Allow through when the
-    // winner itself fails the category gate — demotion is spurious if the winner can't qualify.
-    if (p._altLineDemoted === true && !passesCategoryGate(p)) return false;
-    if (p.dcQualified !== true || (p.edge ?? 0) < EDGE_GATE) return false;
-    return passesCategoryGate(p);
+    return qualifiesForDisplay(p);
   }, []);
   const {
     tonightPlays, allTonightPlays, nbaDropped,

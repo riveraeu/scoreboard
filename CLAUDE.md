@@ -94,6 +94,7 @@ Entry: `index.html` → `src/main.jsx` → `src/App.jsx`. Vercel runs `npm run b
 
 - `src/App.jsx` — top-level state, routing, data fetching, player card
 - `src/lib/constants.js` — `TEAM_DB`, `TOTAL_THRESHOLDS`, `MOCK_PLAYS`, `GAMELOG_COLS`, sport/stat metadata
+- `src/lib/qualify.js` — `qualifiesForDisplay(p)` (shared untracked qualification core: dc + edge + category gate + demotion exception) and `trackIdFor(p)` (pick identity). App `_qualifiedFilter` and LineupsPage `passesGate` both delegate here; only their tracked-pick bypasses differ (App enforces dc+edge on tracked picks, LineupsPage always shows them — intentional).
 - `src/lib/utils.js` — `slugify`, `teamUrl`, `logoUrl(sport, abbr)` (ESPN CDN abbr fixes for NHL/NBA)
 - `src/lib/liveStats.js` — live pick tracking helpers
 - `src/lib/hooks.js` — `useIsMobile(threshold=600)`
