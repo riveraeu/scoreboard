@@ -974,11 +974,13 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
     // Try KV staging written by tonight cron — avoids the 55s re-fetch that hits the 60s wall-clock.
     let rawPlays = null;
     let _qualifiedCount = 0, _droppedCount = 0;
+    let _schedule = null; // per-sport ESPN game counts stamped by tonight (coverage check)
     if (cache) {
       const _staged = await cache.get(`shadow:staging:${snapshotDate}`, "json").catch(() => null);
       if (_staged?.plays) {
         _qualifiedCount = _staged.plays.length;
         _droppedCount = _staged.dropped?.length ?? 0;
+        _schedule = _staged.schedule || null;
         console.log(`[shadow-snapshot] KV staging hit plays=${_qualifiedCount} dropped=${_droppedCount} ${Date.now() - t0}ms`);
         rawPlays = [..._staged.plays, ...(_staged.dropped || [])];
       }
@@ -1062,6 +1064,30 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
     await neonBatchUpsert(SHADOW_TABLE, COLUMNS, rows, env);
     console.log(`[shadow-snapshot] upsert done ${Date.now() - t0}ms`);
 
+    // Coverage check: distinct games per sport in the logged rows vs the ESPN slate stamped
+    // into staging by tonight. Warn-only at <80% — not every ESPN game has Kalshi markets,
+    // and doubleheaders collapse to one game on the rows side (sorted-pair|date keying).
+    // Catches whole-game gaps: parse bugs, Kalshi outages, emit-path regressions.
+    let coverage = null;
+    let coverageWarning = false;
+    if (_schedule) {
+      const _gamesBySport = {};
+      for (const r of rows) {
+        if (!r.sport || !r.home_team || !r.away_team) continue;
+        const pair = [r.home_team, r.away_team].sort().join(":");
+        (_gamesBySport[r.sport] ??= new Set()).add(`${pair}|${r.game_date || snapshotDate}`);
+      }
+      coverage = {};
+      for (const [sp, scheduled] of Object.entries(_schedule)) {
+        const games = _gamesBySport[sp]?.size ?? 0;
+        coverage[sp] = { games, scheduled };
+        if (scheduled > 0 && games / scheduled < 0.8) coverageWarning = true;
+      }
+      const _covStr = Object.entries(coverage).map(([sp, c]) => `${sp}=${c.games}/${c.scheduled}`).join(" ");
+      if (coverageWarning) console.warn(`[shadow-snapshot] COVERAGE WARNING ${_covStr}`);
+      else console.log(`[shadow-snapshot] coverage ${_covStr}`);
+    }
+
     // Refresh schema flag so next cron run skips DDL (30-day TTL, renewed on each success).
     if (cache) cache.put("shadow:schema:v4", "1", { expirationTtl: 86400 * 30 }).catch(() => {});
 
@@ -1071,6 +1097,8 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
       logged: rows.length,
       qualified: _qualifiedCount,
       dropped: _droppedCount,
+      coverage,
+      coverageWarning,
       durationMs: Date.now() - t0,
     });
   } catch (e) {

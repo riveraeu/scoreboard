@@ -1524,8 +1524,24 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           _p.dcGate = dc.dcGate;
         }
         // Stage plays for shadow-snapshot — eliminates the 55s internal re-fetch.
+        // `schedule` = today's ESPN game count per sport, so shadow-snapshot can compare
+        // distinct games in the logged rows against the actual slate (coverage check).
+        // gameScores keys are `${home}|${gameDate}|${eventISO}` with today+tomorrow merged,
+        // so filter on the gameDate segment.
         if (CACHE2) {
-          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays, dropped, writtenAt: Date.now() }), { expirationTtl: 21600 }).catch(() => {});
+          const _schedCounts = {};
+          const _schedSources = {
+            mlb: sportByteam.mlb?.gameScores,
+            nba: sportByteam.nbaGameScores,
+            wnba: sportByteam.wnbaGameScores,
+            nhl: sportByteam.nhlGameScores,
+          };
+          for (const [_sp, _gs] of Object.entries(_schedSources)) {
+            if (!_gs) continue;
+            const _n = Object.keys(_gs).filter(k => k.split("|")[1] === _todayPT).length;
+            if (_n > 0) _schedCounts[_sp] = _n;
+          }
+          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays, dropped, schedule: _schedCounts, writtenAt: Date.now() }), { expirationTtl: 21600 }).catch(() => {});
         }
         if (isDebug) {
           const nbaGlLabels = Object.fromEntries(Object.entries(playerGamelogs).filter(([k]) => k.startsWith("nba|")).map(([k, gl]) => [k, gl?.ul ?? null]));
