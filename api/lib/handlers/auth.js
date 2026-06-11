@@ -773,6 +773,24 @@ UNION ALL SELECT * FROM by_cat_band`;
       neonQuery("SELECT sport, COALESCE(stat, game_type, '?') as category, snapshot_date::date as snapshot_date, COUNT(*) as n FROM shadow_plays WHERE NOT resolved GROUP BY 1, 2, 3 ORDER BY snapshot_date DESC, n DESC LIMIT 30", [], env),
     ]);
 
+    // Optional: ?unresolvedrows=1 — raw key fields of unresolved rows the resolver
+    // would select (prior days only, mirrors its COALESCE filter). Debug aid for
+    // diagnosing noData rows without direct DB access.
+    let unresolvedRows = null;
+    if (params.get("unresolvedrows") === "1") {
+      const todayPT = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+      unresolvedRows = await neonQuery(
+        `SELECT id, sport, stat, game_type, direction, threshold, home_team, away_team,
+                scoring_team, pick_team, game_date, game_time, snapshot_date, features
+         FROM shadow_plays
+         WHERE resolved = FALSE
+           AND COALESCE(game_date, snapshot_date::varchar) < $1
+         ORDER BY snapshot_date DESC, id
+         LIMIT 30`,
+        [todayPT], env
+      ).catch((e) => [{ error: String(e?.message || e) }]);
+    }
+
     return jsonResponse({
       ...(triggerResult !== null ? { trigger: triggerResult } : {}),
       ...(resolveResult !== null ? { resolve: resolveResult } : {}),
@@ -785,6 +803,7 @@ UNION ALL SELECT * FROM by_cat_band`;
         byCategory,
         dcDist,
         unresolvedByCategory,
+        ...(unresolvedRows !== null ? { unresolvedRows } : {}),
       },
     });
   }
