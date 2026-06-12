@@ -337,8 +337,19 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               continue;
             }
 
-            if (pct < KALSHI_GATE) continue;
-            if (pct > KALSHI_CAP) continue;
+            // Player props are YES-side by default. Total bases is the exception (2026-06-12):
+            // Kalshi lists TB thresholds 2+ and up only, and P(2+ TB) never prices ≥67, so the
+            // YES side can't reach the window — the tradeable side in [67,91] is the NO
+            // ("under 2 TB" ~70-85). Push those as under-direction props priced at no_ask.
+            // Scoped to totalBases; every other prop series keeps YES-only behavior.
+            let propDirection = null; // null = YES/over (legacy field shape on all other props)
+            if (stat === "totalBases" && (pct < KALSHI_GATE || pct > KALSHI_CAP)
+                && noPct >= KALSHI_GATE && noPct <= KALSHI_CAP) {
+              propDirection = "under";
+            } else {
+              if (pct < KALSHI_GATE) continue;
+              if (pct > KALSHI_CAP) continue;
+            }
             // HRR: only bet 1+ threshold — user never bets 2+/3+ alt lines (sub-1% baseline hit
             // rate makes those plays speculative). Skip at parse so they don't even reach dedup.
             if (stat === "hrr" && threshold > 1) continue;
@@ -351,6 +362,9 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             if (globalSeen.has(dedupeKey)) continue;
             globalSeen.add(dedupeKey);
             const americanOdds = pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
+            // Under props follow the totals convention: kalshiPct/truePct stay over-framed,
+            // the NO side rides in noKalshiPct/noKalshiAO, and consumers flip on direction.
+            const noKalshiAO = noPct >= 50 ? Math.round(-(noPct / (100 - noPct)) * 100) : Math.round((100 - noPct) / noPct * 100);
             const [gameTeam1, gameTeam2] = parseGameTeams(m.event_ticker, sport);
             const tickerSegs = (m.ticker || "").split("-");
             let kalshiPlayerTeam = null;
@@ -376,8 +390,11 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             }
             const yesBid = parseFloat(m.yes_bid_dollars) || 0;
             const yesAskSize = parseFloat(m.yes_ask_size_fp) || 0;
-            const kalshiSpread = yesAsk > 0 && yesBid > 0 ? Math.round((yesAsk - yesBid) * 100) : null;
-            qualifyingMarkets.push({ playerName, playerNameDisplay, sport, stat, col, threshold, kalshiPct: pct, americanOdds, kalshiVolume: volume, gameTeam1, gameTeam2, kalshiPlayerTeam, gameDate, kalshiSpread, _ticker: m.ticker, _yesAsk: yesAsk, _yesBid: yesBid, _yesAskSize: yesAskSize, _depth: m._depth });
+            const noBid = parseFloat(m.no_bid_dollars) || 0;
+            const kalshiSpread = propDirection === "under"
+              ? (noAsk > 0 && noBid > 0 ? Math.round((noAsk - noBid) * 100) : null)
+              : (yesAsk > 0 && yesBid > 0 ? Math.round((yesAsk - yesBid) * 100) : null);
+            qualifyingMarkets.push({ playerName, playerNameDisplay, sport, stat, col, threshold, kalshiPct: pct, americanOdds, kalshiVolume: volume, gameTeam1, gameTeam2, kalshiPlayerTeam, gameDate, kalshiSpread, ...(propDirection ? { direction: propDirection, noKalshiPct: noPct, noKalshiAO } : {}), _ticker: m.ticker, _yesAsk: yesAsk, _yesBid: yesBid, _yesAskSize: yesAskSize, _depth: m._depth });
           }
         }
         if (qualifyingMarkets.length === 0 && totalMarkets.length === 0) {
@@ -435,6 +452,13 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           m.rawKalshiPct = m.kalshiPct; // pre-blend top-of-book — lets the client measure true slippage
           const blended = blendMarketPrice(m._depth, "yes", m.kalshiPct);
           if (blended) { m.kalshiPct = blended.pct; m.americanOdds = blended.americanOdds; }
+          // Under props (totalBases) actually buy the NO side — re-price it from the NO book
+          // too, mirroring the totals/spreads loop below.
+          if (m.direction === "under" && m.noKalshiPct != null) {
+            m.rawNoKalshiPct = m.noKalshiPct;
+            const nb = blendMarketPrice(m._depth, "no", m.noKalshiPct);
+            if (nb) { m.noKalshiPct = nb.pct; m.noKalshiAO = nb.americanOdds; }
+          }
         }
         // Blended fill price (totals / team totals / spreads): same cached-depth blend, but each
         // of these has TWO tradeable sides — the OVER/margin (YES buy) and the UNDER/cover (NO

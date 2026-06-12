@@ -105,7 +105,7 @@ export async function emitPropPlays({
   const wnbaPlayerDistCache = {};
   // Cache NHL stat distributions keyed by playerId|stat — same monotonicity guarantee as NBA.
   const nhlPlayerDistCache = {};
-  for (const { playerName, playerNameDisplay, sport, stat, col, threshold, kalshiPct, americanOdds, kalshiVolume, kalshiSpread, gameTeam1, gameTeam2, kalshiPlayerTeam, gameDate, lineMove, thinMarket, marketConfidence, _ticker: _propKalshiTicker } of loopMarkets) {
+  for (const { playerName, playerNameDisplay, sport, stat, col, threshold, kalshiPct, americanOdds, kalshiVolume, kalshiSpread, gameTeam1, gameTeam2, kalshiPlayerTeam, gameDate, lineMove, thinMarket, marketConfidence, direction, noKalshiPct, noKalshiAO, _ticker: _propKalshiTicker } of loopMarkets) {
     const key = `${sport}|${playerName}`;
     const info = playerInfoMap[key];
     const gl = playerGamelogs[key];
@@ -171,8 +171,9 @@ export async function emitPropPlays({
       const _oppPitcherKnown = sportByteam.mlb?.probables?.[tonightOpp]?.name != null;
       return _teamConfirmed(playerTeam) && _oppPitcherKnown;
     })();
-    // Base fields included on every drop in this loop
-    const _dropBase = { playerName: playerNameDisplay || playerName, sport, stat, threshold, kalshiPct, playerTeam };
+    // Base fields included on every drop in this loop. direction + noKalshi* ("under",
+    // totalBases only) ride along so shadow rows + debug drops carry the NO side they price.
+    const _dropBase = { playerName: playerNameDisplay || playerName, sport, stat, threshold, kalshiPct, playerTeam, ...(direction ? { direction, noKalshiPct, noKalshiAO } : {}) };
     // Manual position overrides for known depth-chart misclassifications
     const NBA_POS_OVERRIDES = { "4871144": "C" }; // Alperen Sengun listed as PF in depth chart
     const nbaPos = sport === "nba" ? (NBA_POS_OVERRIDES[String(info.id)] || nbaDepthChartPos?.[String(info.id)] || (info.position ? NBA_POS_MAP[info.position] || null : null)) : null;
@@ -1312,7 +1313,13 @@ export async function emitPropPlays({
       }
     }
     const lowVolume = kalshiVolume < 50;
-    const rawEdge = truePct - kalshiPct;
+    // Under-direction props (totalBases, 2026-06-12) follow the totals storage convention:
+    // truePct/kalshiPct stay over-framed everywhere (emit, shadow rows, debug fields); only
+    // the bet-side values below flip — P(<t) vs the NO ask — so edge prices the side we'd
+    // actually buy. The shadow report SQL flips under rows the same way at read time.
+    const _betTruePct = direction === "under" ? 100 - truePct : truePct;
+    const _betKalshiPct = direction === "under" ? (noKalshiPct ?? 100 - kalshiPct) : kalshiPct;
+    const rawEdge = _betTruePct - _betKalshiPct;
     const spreadAdj = kalshiSpread != null ? kalshiSpread / 2 : 0;
     // kalshiPct is already the fill price (yes_ask or blended orderbook); no additional
     // spread deduction needed — spreading the edge by half-spread double-penalizes.
@@ -1339,12 +1346,12 @@ export async function emitPropPlays({
     if (sport === "nhl" && nhlPreSimScore !== null) {
       nhlSimScore = nhlPreSimScore;
     }
-    if (kalshiPct < KALSHI_GATE || kalshiPct > KALSHI_CAP || edge < EDGE_GATE) {
+    if (_betKalshiPct < KALSHI_GATE || _betKalshiPct > KALSHI_CAP || edge < EDGE_GATE) {
       const _dropObj = {
         ..._dropBase,
         truePct: parseFloat(truePct.toFixed(1)), rawTruePct: parseFloat(rawTruePct.toFixed(1)),
         edge: parseFloat(edge.toFixed(1)),
-        reason: edge < EDGE_GATE ? "edge_too_low" : kalshiPct > KALSHI_CAP ? "kalshi_pct_too_high" : "kalshi_pct_too_low",
+        reason: edge < EDGE_GATE ? "edge_too_low" : _betKalshiPct > KALSHI_CAP ? "kalshi_pct_too_high" : "kalshi_pct_too_low",
         opponent: tonightOpp, seasonPct: parseFloat((primaryPct).toFixed(1)),
         seasonGames: allVals.length,
         softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
@@ -1427,7 +1434,8 @@ export async function emitPropPlays({
         qualified: false,
         playerName: playerNameDisplay || playerName,
         playerId: info.id,
-        sport, playerTeam, stat, threshold, kalshiPct, americanOdds,
+        sport, playerTeam, stat, threshold, kalshiPct,
+        americanOdds: direction === "under" ? noKalshiAO : americanOdds,
         truePct: parseFloat(truePct.toFixed(1)),
         log5Pct: simPctOut ?? log5PctOut,
         simPct: simPctOut,
@@ -1477,6 +1485,8 @@ export async function emitPropPlays({
     const mlbH2H = sport === "mlb" && softPct !== null;
     plays.push({
       qualified: true,
+      // Under props: totals convention — over-framed truePct/kalshiPct + NO side fields.
+      ...(direction ? { direction, noKalshiPct, noKalshiAO } : {}),
       playerName: playerNameDisplay || playerName,
       playerId: info.id,
       sport,
@@ -1502,7 +1512,8 @@ export async function emitPropPlays({
       stat,
       threshold,
       kalshiPct,
-      americanOdds,
+      // Under props bet the NO side — americanOdds mirrors the bought side (totals convention).
+      americanOdds: direction === "under" ? noKalshiAO : americanOdds,
       seasonPct: parseFloat((primaryPct).toFixed(1)),
       seasonGames: allVals.length,
       blendGames: blendVals.length,

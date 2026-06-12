@@ -315,7 +315,8 @@ function _resolveRow(row, game) {
       case "threePointers": actual = ps.threePointers ?? 0; break;
       default: return null;
     }
-    return { won: actual >= th, actualValue: actual };
+    // Under-direction props (totalBases NO side, 2026-06-12) win when actual stays below.
+    return { won: isUnder ? actual < th : actual >= th, actualValue: actual };
   }
 
   return null; // unknown type — skip
