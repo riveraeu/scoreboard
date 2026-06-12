@@ -323,8 +323,8 @@ function App() {
     ];
   }, [authEmail, tonightPlays, trackedPlays, _placeAllSizing]);
   // Placeable subset — candidates that cleared every HARD pre-flight check. runPlaceAll only
-  // orders these; the toolbar badge shows placeAllCandidates.length (all qualified plays,
-  // matching the tab/card badge), while the modal header shows "N ready · M blocked".
+  // orders these. The toolbar ⚡ badge shows TODAY's placeable count (placeAllCountByDay,
+  // matching the today-only modal since 2026-06-12); the modal header shows "N ready · M blocked".
   const placeAllPlaceable = React.useMemo(
     () => placeAllCandidates.filter(c => c.validation.hard.length === 0),
     [placeAllCandidates]);
@@ -1851,7 +1851,7 @@ function App() {
           picksButtonRef={fabRef}
           activeDayTab={activeDayTab}
           setActiveDayTab={setActiveDayTab}
-          placeAllCount={placeAllPlaceable.length}
+          placeAllCount={placeAllCountByDay[new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })] ?? 0}
           placeAllCountByDay={placeAllCountByDay}
           placeAllPlaceableIds={placeAllPlaceableIds}
           onPlaceAll={() => { setPlaceAllStatus(null); setShowPlaceAll(true); }}
