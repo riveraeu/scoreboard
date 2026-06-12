@@ -159,6 +159,26 @@ truePct = truePct ≤ 80 ? truePct : 80 + 5·(1 − e^(−0.4·(truePct−80))) 
 
 ---
 
+## MLB Hitters (Total Bases)
+**Added 2026-06-12, shadow-only** (`KXMLBTB` — ticker verified against the live Kalshi series list; ~200 open markets/day, alt thresholds 2+..6+). `mlb|totalBases` is NOT in `passesCategoryGate` — no UI exposure until shadow ROI confirms at n≥200. `tune:gate` checkpoint ~late July.
+
+**True%**: generalizes the hits binomial — each AB yields 0/1/2/3/4 bases, tail via `tbTailPct(nAB, pHit, shares, threshold)` in `simulate.js` (exact DP convolution; reduces to `binomTailPct` when shares = all-singles, pinned by tests).
+```
+pHit, nAB  = identical to the hits model (shared computation in the props.js branch)
+shares     = [1B, 2B, 3B, HR] per-hit split from blended '25+'26 gamelog (1B = H−2B−3B−HR),
+             shrunk toward league [.635, .199, .017, .149] with a 40-hit prior
+             (w = hits / (hits + 40)) — small samples don't fabricate or erase power
+simPct  = tbTailPct(nAB, pHit, shares, threshold)
+truePct = same blend + conservative cap branch as hits (capWeight 0.5, knee 80, max ≈85)
+```
+- Season/soft threshold rates come free: the `col === "TB"` getStat branch in props.js derives per-game TB = H + 2B + 2·3B + 3·HR from the ESPN gamelog (dormant plumbing from the pre-5/16 era, reactivated).
+- `STAT_SOFT["mlb|totalBases"]` shares the hitter soft-teams map (opp starter ERA) with hits/hrr (handlers/tonight.js).
+- Shares the full hits/HRR scaffolding: Stage-1 lineup-spot 1–5 gate, simScore ≥5, `_mlbLineupConf`, hitter emit fields. HRR-λ softPct override stays hrr-only (would inflate the TB ref too).
+- **Resolution — statsapi, not ESPN**: ESPN's box score has no TB/2B/3B. `/api/live?tb=1` (opt-in; cache slots suffixed `:tb`) fetches the statsapi schedule once + boxscore per matched MLB game (`MLB_ID_TO_ABBR` match, doubleheaders by closest start time) and merges `totalBases` per batter by diacritic-stripped name. Shadow resolver sends `tb=1` only when the batch has totalBases rows; `case "totalBases"` returns **null when `ps.totalBases` is absent** (merge failure ⇒ skip/retry, never mis-resolved as 0).
+- No frontend: not in AddPickModal/liveStats — add live tracking only if the category is ever promoted.
+
+---
+
 ## NBA player props
 **True%**: `buildNbaStatDist(gameValues, dvpFactor, paceAdj, isB2B, nSim, miscAdj, paceFactor, recentVals)` → `nbaDistPct`. Dist cached per `playerId|stat` so all thresholds share one distribution. Mean from last 10 with **exponential-decay recency weighting** (added 2026-05-26): `w_i = exp(-ln(2)/HALF_LIFE × i)` where `i` is games-back from most recent. HALF_LIFE=5: game 0 weight 1.0, game 5 weight 0.50, game 10 weight 0.25. Surfaces sustained slumps/hot streaks that flat-10 averaging would hide. Std/variance still use the full sample for stability — exp-decaying variance over-fits to noise. Adjusted: `× teamDefFactor × paceFactor (clamp [0.92, 1.08]) × 0.93 if B2B × miscAdj`. nSim scales with pre-edge simScore (≥8 → 10k, ≥5 → 5k, else 2k).
 

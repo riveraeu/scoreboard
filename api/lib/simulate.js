@@ -435,6 +435,43 @@ export function binomTailPct(n, p, threshold) {
   return parseFloat((pr * 100).toFixed(1));
 }
 
+// Exact total-bases tail P(TB >= threshold) for the MLB total-bases prop model (2026-06-12).
+// Generalizes binomTailPct: each AB yields 0 bases (no hit) or 1/2/3/4 bases (1B/2B/3B/HR),
+// with the hit split given by `shares` [s1B, s2B, s3B, sHR] (must sum to ~1). The TB
+// distribution over ni ABs is the ni-fold convolution of the per-AB pmf — n <= ~6 so the
+// DP is trivial. With shares [1,0,0,0] this reduces exactly to binomTailPct (TB == hits).
+// n may be fractional (expected AB); interpolates linearly between floor(n) and ceil(n)
+// tails like binomTailPct. Returns percentage (0-100), or null on bad inputs.
+export function tbTailPct(n, pHit, shares, threshold) {
+  if (n == null || pHit == null || !(n > 0) || !(pHit > 0)) return null;
+  if (!Array.isArray(shares) || shares.length !== 4 || shares.some((s) => !(s >= 0))) return null;
+  const sSum = shares[0] + shares[1] + shares[2] + shares[3];
+  if (!(sSum > 0)) return null;
+  const pc = Math.min(0.99, pHit);
+  // Per-AB pmf over bases 0..4 (shares renormalized so the pmf sums to 1)
+  const pmfAB = [1 - pc, pc * shares[0] / sSum, pc * shares[1] / sSum, pc * shares[2] / sSum, pc * shares[3] / sSum];
+  const t = Math.ceil(threshold); // "2+ total bases" → 2
+  const tail = (ni) => {
+    if (t <= 0) return 1;
+    if (ni * 4 < t) return 0;
+    let dist = [1]; // P(TB = k) after 0 ABs
+    for (let i = 0; i < ni; i++) {
+      const next = new Array(dist.length + 4).fill(0);
+      for (let k = 0; k < dist.length; k++) {
+        if (dist[k] === 0) continue;
+        for (let b = 0; b <= 4; b++) next[k + b] += dist[k] * pmfAB[b];
+      }
+      dist = next;
+    }
+    let below = 0;
+    for (let k = 0; k < t && k < dist.length; k++) below += dist[k];
+    return Math.max(0, 1 - below);
+  };
+  const n0 = Math.floor(n), frac = n - n0;
+  const pr = frac > 1e-9 ? (1 - frac) * tail(n0) + frac * tail(n0 + 1) : tail(n0);
+  return parseFloat((pr * 100).toFixed(1));
+}
+
 // ─── Game Total Simulation ────────────────────────────────────────────────────
 
 // Park run factors (FanGraphs multi-year rolling avg, "R" column, scale: 1.00 = neutral).

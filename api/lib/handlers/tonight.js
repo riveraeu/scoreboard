@@ -922,7 +922,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           for (const abbr of teamFallback.softTeams) {
             if (!probables[abbr]) hitterSoftTeams.add(abbr);
           }
-          for (const st of ["hits", "hrr"]) {
+          for (const st of ["hits", "hrr", "totalBases"]) {
             STAT_SOFT[`mlb|${st}`] = { softTeams: hitterSoftTeams, rankMap: hitterRankMap };
           }
           STAT_SOFT["mlb|strikeouts"] = mlbSoftTeams(batting, true);

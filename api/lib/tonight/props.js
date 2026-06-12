@@ -3,7 +3,7 @@
 // Extracted from api/lib/handlers/tonight.js Phase B6 (2026-05-29). Zero behavior change.
 // Returns { plays, dropped, nbaDropped } for use by the rest of the pipeline.
 
-import { log5K, log5HitRate, PARK_KFACTOR, PARK_HITFACTOR, UMPIRE_KFACTOR, poissonCDF, simulateKsDist, kDistPct, buildNbaStatDist, nbaDistPct, binomTailPct } from "../simulate.js";
+import { log5K, log5HitRate, PARK_KFACTOR, PARK_HITFACTOR, UMPIRE_KFACTOR, poissonCDF, simulateKsDist, kDistPct, buildNbaStatDist, nbaDistPct, binomTailPct, tbTailPct } from "../simulate.js";
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER as EDGE_GATE } from "../config.js";
 import { ptDateMinusOne } from "../pt.js";
 
@@ -805,7 +805,9 @@ export async function emitPropPlays({
       //   pHit = effectiveBA (recent-blended) × platoon adj × pitcher-BAA ratio × park hit factor
       //   nAB  = player's own AB/game, scaled by tonight's lineup-spot PA load vs typical
       // Replaces the v0 MC sim (fixed 4 PA, no platoon, no pitcher-quality regression).
-      if (stat === "hits" && hitterEffectiveBA != null) {
+      // Total-bases prop model (2026-06-12) shares pHit/nAB and adds a per-hit bases split
+      // (1B/2B/3B/HR shares from the blended gamelog, shrunk to league) → tbTailPct.
+      if ((stat === "hits" || stat === "totalBases") && hitterEffectiveBA != null) {
         const _LG_BA_H = 0.248;
         // Pitcher BAA: regressed statsapi value (matchup key first — doubleheader-safe),
         // falling back to the gamelog H/TBF estimate scaled to per-AB units (TBF includes
@@ -831,7 +833,38 @@ export async function emitPropPlays({
         if (_abPerGame != null && _paSpotH != null && _typPA_H != null && Math.abs(_paSpotH - _typPA_H) >= 0.3) {
           _nAB = _abPerGame * (_paSpotH / _typPA_H);
         }
-        hitterSimPctOut = binomTailPct(_nAB, _pHit, threshold);
+        if (stat === "hits") {
+          hitterSimPctOut = binomTailPct(_nAB, _pHit, threshold);
+        } else {
+          // Hit-type shares [1B, 2B, 3B, HR] from the blended '25+'26 gamelog, shrunk
+          // toward the league split with a 40-hit prior — a 50-hit sample of pure
+          // singles still carries meaningful XBH probability, and small samples don't
+          // fabricate power. Singles derived as H − 2B − 3B − HR.
+          const _LG_SHARES = [0.635, 0.199, 0.017, 0.149];
+          const _PRIOR_HITS = 40;
+          const _dIdxTB = gl.ul.indexOf("2B"), _tIdxTB = gl.ul.indexOf("3B"), _hrIdxTB = gl.ul.indexOf("HR");
+          let _shares = _LG_SHARES;
+          if (hIdx2 !== -1 && _dIdxTB !== -1 && _tIdxTB !== -1 && _hrIdxTB !== -1) {
+            let _h = 0, _d = 0, _t3 = 0, _hr = 0;
+            for (const ev of blendEventsH) {
+              _h  += parseFloat(ev.stats[hIdx2])   || 0;
+              _d  += parseFloat(ev.stats[_dIdxTB]) || 0;
+              _t3 += parseFloat(ev.stats[_tIdxTB]) || 0;
+              _hr += parseFloat(ev.stats[_hrIdxTB]) || 0;
+            }
+            const _s1 = Math.max(0, _h - _d - _t3 - _hr);
+            if (_h > 0) {
+              const _w = _h / (_h + _PRIOR_HITS);
+              _shares = [
+                _w * (_s1 / _h) + (1 - _w) * _LG_SHARES[0],
+                _w * (_d  / _h) + (1 - _w) * _LG_SHARES[1],
+                _w * (_t3 / _h) + (1 - _w) * _LG_SHARES[2],
+                _w * (_hr / _h) + (1 - _w) * _LG_SHARES[3],
+              ];
+            }
+          }
+          hitterSimPctOut = tbTailPct(_nAB, _pHit, _shares, threshold);
+        }
       }
     }
     // NBA: pre-edge SimScore + Monte Carlo simulation (runs before rawTruePct)
@@ -1134,12 +1167,14 @@ export async function emitPropPlays({
         const parts = [primaryPct, ...softPct !== null ? [softPct] : []];
         return parts.reduce((a, b) => a + b, 0) / parts.length;
       }
-      if (sport === "mlb" && stat === "hits" && hasSeasonTags) {
+      if (sport === "mlb" && (stat === "hits" || stat === "totalBases") && hasSeasonTags) {
         // Hits prop: binomial-tail model blended toward the empirical threshold hit rate
         // (capWeight 0.5 like the other sim-based props), then a conservative sigmoid cap
         // (knee=80, max≈85 — unproven market, shrink aggressively until shadow calibrates;
         // P(≥1 hit) for a good hitter legitimately sits in the mid-70s so the HRR 68-knee
         // below would systematically crush hits truePcts and fabricate UNDER edges).
+        // Total bases (2026-06-12) shares this branch: same tail-model shape (tbTailPct),
+        // same empirical-threshold ref via the TB getStat, same conservative cap.
         const _hitsRef = softPct !== null ? (primaryPct + softPct) / 2 : primaryPct;
         const _hitsBase = hitterSimPctOut !== null ? _propBlend(hitterSimPctOut, _hitsRef, allVals.length) : _hitsRef;
         return _hitsBase <= 80 ? parseFloat(_hitsBase.toFixed(1)) : parseFloat((80 + 5 * (1 - Math.exp(-0.4 * (_hitsBase - 80)))).toFixed(1));

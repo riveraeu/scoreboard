@@ -16,6 +16,7 @@ export const SERIES_CONFIG = {
   KXMLBKS:     { sport: "mlb",  league: "mlb",  stat: "strikeouts",     col: "K"   },
   KXMLBHRR:    { sport: "mlb",  league: "mlb",  stat: "hrr",            col: "HRR" },
   KXMLBHIT:    { sport: "mlb",  league: "mlb",  stat: "hits",           col: "H"   },
+  KXMLBTB:     { sport: "mlb",  league: "mlb",  stat: "totalBases",     col: "TB"  },
   KXNFLPAYDS:  { sport: "nfl",  league: "nfl",  stat: "passingYards",   col: "YDS" },
   KXNFLRUYDS:  { sport: "nfl",  league: "nfl",  stat: "rushingYards",   col: "YDS" },
   KXNFLREYDS:  { sport: "nfl",  league: "nfl",  stat: "receivingYards", col: "YDS" },

@@ -4,7 +4,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { simulateKsDist, kDistPct, buildNbaStatDist, nbaDistPct, binomTailPct } from './simulate.js';
+import { simulateKsDist, kDistPct, buildNbaStatDist, nbaDistPct, binomTailPct, tbTailPct } from './simulate.js';
 import {
   LINEUP_SMALL, LINEUP_MED, LINEUP_9_21,
   NBA_GAME_VALUES,
@@ -454,4 +454,58 @@ test('binomTailPct: null/invalid inputs return null', () => {
 
 test('binomTailPct: threshold above n is impossible (0%)', () => {
   assert.equal(binomTailPct(2, 0.3, 3), 0);
+});
+
+// ---- tbTailPct tests (MLB total-bases prop model, 2026-06-12) ----
+
+const ALL_SINGLES = [1, 0, 0, 0];
+const TYP_SHARES = [0.635, 0.199, 0.017, 0.149]; // ~league hit-type split
+
+test('tbTailPct: all-singles shares reduce exactly to binomTailPct (TB == hits)', () => {
+  for (const t of [1, 2, 3]) {
+    assert.equal(tbTailPct(4, 0.250, ALL_SINGLES, t), binomTailPct(4, 0.250, t));
+  }
+  assert.equal(tbTailPct(4.3, 0.310, ALL_SINGLES, 2), binomTailPct(4.3, 0.310, 2));
+});
+
+test('tbTailPct: monotonic non-increasing across thresholds', () => {
+  const vals = [1, 2, 3, 4, 5, 6].map(t => tbTailPct(4.2, 0.280, TYP_SHARES, t));
+  for (let i = 1; i < vals.length; i++) {
+    assert.ok(vals[i] <= vals[i - 1], `t=${i + 1} (${vals[i]}) > t=${i} (${vals[i - 1]})`);
+  }
+});
+
+test('tbTailPct: power shares fatten the high-TB tail vs all-singles', () => {
+  // Same pHit; with extra-base hits possible, P(TB >= 2) must exceed P(hits >= 2)
+  assert.ok(tbTailPct(4, 0.280, TYP_SHARES, 2) > tbTailPct(4, 0.280, ALL_SINGLES, 2));
+  assert.ok(tbTailPct(4, 0.280, TYP_SHARES, 4) > tbTailPct(4, 0.280, ALL_SINGLES, 4));
+});
+
+test('tbTailPct: P(TB >= 1) equals P(hits >= 1) regardless of shares', () => {
+  // Any hit produces at least 1 base, so the t=1 tail only depends on pHit
+  assert.equal(tbTailPct(4, 0.250, TYP_SHARES, 1), binomTailPct(4, 0.250, 1));
+});
+
+test('tbTailPct: fractional n interpolates between floor and ceil tails', () => {
+  const lo = tbTailPct(4, 0.300, TYP_SHARES, 2);
+  const hi = tbTailPct(5, 0.300, TYP_SHARES, 2);
+  const mid = tbTailPct(4.5, 0.300, TYP_SHARES, 2);
+  assert.ok(mid > lo && mid < hi, `expected ${lo} < ${mid} < ${hi}`);
+});
+
+test('tbTailPct: shares are renormalized when they do not sum to 1', () => {
+  assert.equal(tbTailPct(4, 0.250, [2, 0, 0, 0], 2), tbTailPct(4, 0.250, ALL_SINGLES, 2));
+});
+
+test('tbTailPct: null/invalid inputs return null', () => {
+  assert.equal(tbTailPct(null, 0.3, TYP_SHARES, 2), null);
+  assert.equal(tbTailPct(4, null, TYP_SHARES, 2), null);
+  assert.equal(tbTailPct(4, 0.3, null, 2), null);
+  assert.equal(tbTailPct(4, 0.3, [0.5, 0.5], 2), null);          // wrong length
+  assert.equal(tbTailPct(4, 0.3, [0.5, -0.1, 0.3, 0.3], 2), null); // negative share
+  assert.equal(tbTailPct(4, 0.3, [0, 0, 0, 0], 2), null);          // zero-sum shares
+});
+
+test('tbTailPct: threshold above 4*n is impossible (0%)', () => {
+  assert.equal(tbTailPct(2, 0.3, TYP_SHARES, 9), 0);
 });

@@ -4,7 +4,7 @@
 
 import { PT_FMT } from "../pt.js";
 import { jsonResponse, errorResponse } from "../utils.js";
-import { CANONICAL_TO_ESPN as CANONICAL_TO_ESPN_ALL } from "../teams.js";
+import { CANONICAL_TO_ESPN as CANONICAL_TO_ESPN_ALL, MLB_ID_TO_ABBR } from "../teams.js";
 
 export async function handleSportsRoutes(ctx) {
   const { path, method, params, env, CACHE2, VALID_SPORTS } = ctx;
@@ -19,6 +19,10 @@ export async function handleSportsRoutes(ctx) {
       ? (dateParamRaw.length === 8 ? `${dateParamRaw.slice(0,4)}-${dateParamRaw.slice(4,6)}-${dateParamRaw.slice(6,8)}` : dateParamRaw)
       : PT_FMT.format(new Date());
     const ptDateStr = ptDate.replace(/-/g, "");
+    // ?tb=1 — merge MLB total bases from statsapi (ESPN's box score has no TB/2B/3B).
+    // Opt-in: only the shadow resolver sends it (KXMLBTB), so frontend live polling
+    // pays zero extra fetches. Cache slots are suffixed so the two shapes don't mix.
+    const wantTB = params.get("tb") === "1";
     const SPORT_PATHS = { mlb: "baseball/mlb", nba: "basketball/nba", wnba: "basketball/wnba", nhl: "hockey/nhl" };
 
     const gameTuples = gamesParam.split(",").map(g => {
@@ -48,7 +52,8 @@ export async function handleSportsRoutes(ctx) {
         // Cache key includes gameTime so same-day doubleheader games don't share a slot
         // (would otherwise return game 1's boxscore for a pick on game 2 and vice versa).
         const _gtSuffix = tuple.gameTime ? `:${tuple.gameTime}` : "";
-        const cacheKey = `live:${sport}:${tuple.teams.slice().sort().join(":")}:${ptDate}${_gtSuffix}`;
+        const _tbSuffix = wantTB && sport === "mlb" ? ":tb" : "";
+        const cacheKey = `live:${sport}:${tuple.teams.slice().sort().join(":")}:${ptDate}${_gtSuffix}${_tbSuffix}`;
         const cached = CACHE2 ? await CACHE2.get(cacheKey, "json").catch(() => null) : null;
         if (cached) { liveResult[tuple.key] = cached; }
         else uncached.push({ ...tuple, cacheKey });
@@ -76,6 +81,21 @@ export async function handleSportsRoutes(ctx) {
       );
       const toEspn = a => CANONICAL_TO_ESPN[a] || a;
       const toCanonical = a => ESPN_TO_CANONICAL[a] || a;
+
+      // Lazy statsapi schedule for the TB merge — fetched at most once per request,
+      // and only when an MLB tuple actually reaches the merge step below.
+      let _tbSchedPromise = null;
+      const getStatsapiSchedule = () => {
+        if (!_tbSchedPromise) {
+          _tbSchedPromise = fetch(
+            `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${ptDate}`,
+            { signal: AbortSignal.timeout(5000) }
+          ).then(r => r.ok ? r.json() : null)
+            .then(j => j?.dates?.[0]?.games || [])
+            .catch(() => []);
+        }
+        return _tbSchedPromise;
+      };
 
       await Promise.all(uncached.map(async ({ key, teams, cacheKey, gameTime }) => {
         const [t1, t2] = teams.map(toEspn);
@@ -246,6 +266,45 @@ export async function handleSportsRoutes(ctx) {
             }
           }
         } catch {}
+
+        // TB merge (2026-06-12): statsapi boxscore carries totalBases per batter directly.
+        // Match the statsapi game by canonical home/away abbrs; doubleheaders disambiguate
+        // by closest start time to the ESPN event. Batters are merged by diacritic-stripped
+        // name onto the ESPN players map; statsapi-only names get a standalone entry so the
+        // resolver's fuzzy lookup can still find them. Failures leave totalBases absent
+        // (undefined — never 0), which the resolver treats as noData/retry.
+        if (sport === "mlb" && wantTB) {
+          try {
+            const sched = await getStatsapiSchedule();
+            const evTime = Date.parse(event.date || "") || 0;
+            const game = sched
+              .filter(g => MLB_ID_TO_ABBR[g.teams?.home?.team?.id] === homeTeam
+                        && MLB_ID_TO_ABBR[g.teams?.away?.team?.id] === awayTeam)
+              .sort((x, y) => Math.abs(Date.parse(x.gameDate) - evTime) - Math.abs(Date.parse(y.gameDate) - evTime))[0];
+            if (game?.gamePk) {
+              const boxRes = await fetch(
+                `https://statsapi.mlb.com/api/v1/game/${game.gamePk}/boxscore`,
+                { signal: AbortSignal.timeout(5000) }
+              );
+              if (boxRes.ok) {
+                const box = await boxRes.json();
+                const _tbNorm = s => s ? s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase() : "";
+                const espnByNorm = {};
+                for (const k of Object.keys(players)) espnByNorm[_tbNorm(k)] = k;
+                for (const side of ["home", "away"]) {
+                  for (const pl of Object.values(box.teams?.[side]?.players || {})) {
+                    const tb = pl?.stats?.batting?.totalBases;
+                    const nm = pl?.person?.fullName;
+                    if (tb == null || !nm) continue;
+                    const espnKey = espnByNorm[_tbNorm(nm)];
+                    if (espnKey) players[espnKey].totalBases = tb;
+                    else players[nm] = { ...(players[nm] || {}), totalBases: tb };
+                  }
+                }
+              }
+            }
+          } catch {}
+        }
 
         const gameData = { state, detail, players, homeTeam, awayTeam, homeScore, awayScore };
         if (sport === "mlb" && f5Complete) {

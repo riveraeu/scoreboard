@@ -305,6 +305,10 @@ function _resolveRow(row, game) {
       case "strikeouts":    actual = ps.strikeouts ?? 0; break;
       case "hrr":           actual = ps.hrr ?? ((ps.hits ?? 0) + (ps.runs ?? 0) + (ps.rbi ?? 0)); break;
       case "hits":          actual = ps.hits ?? 0; break;
+      // totalBases comes from the statsapi merge (/api/live?tb=1) — ESPN's box score has
+      // no TB. Absent value means the merge failed (statsapi outage / name mismatch), NOT
+      // 0 TB: return null → skipped → retried next run, never mis-resolved as an UNDER win.
+      case "totalBases":    if (ps.totalBases == null) return null; actual = ps.totalBases; break;
       case "points":        actual = ps.points ?? 0; break;
       case "rebounds":      actual = ps.rebounds ?? 0; break;
       case "assists":       actual = ps.assists ?? 0; break;
@@ -402,11 +406,16 @@ async function handleShadowResolver({ path, request, env }) {
   // Fetch final boxscores from /api/live (one call per distinct game_date).
   const liveByKey = new Map(); // `rawKey|game_date` → game object
 
+  // totalBases rows need the statsapi TB merge in /api/live (?tb=1 — ESPN box has no TB).
+  // Request it only when the batch actually contains such rows so regular runs keep the
+  // cheap ESPN-only path and its unsuffixed cache slots.
+  const tbParam = rows.some(r => r.stat === "totalBases") ? "&tb=1" : "";
+
   const origin = new URL(request.url).origin;
   await Promise.all([...keysByDate.entries()].map(async ([game_date, keys]) => {
     const gamesParam = [...keys].join(",");
     try {
-      const res = await fetch(`${origin}/api/live?games=${encodeURIComponent(gamesParam)}&date=${game_date}`, {
+      const res = await fetch(`${origin}/api/live?games=${encodeURIComponent(gamesParam)}&date=${game_date}${tbParam}`, {
         headers: { "User-Agent": "shadow-resolver/1.0" },
         signal: AbortSignal.timeout(10_000),
       });
@@ -437,7 +446,7 @@ async function handleShadowResolver({ path, request, env }) {
     await Promise.all([...retryByDate.entries()].map(async ([game_date, keys]) => {
       const gamesParam = [...keys].join(",");
       try {
-        const res = await fetch(`${origin}/api/live?games=${encodeURIComponent(gamesParam)}&date=${game_date}`, {
+        const res = await fetch(`${origin}/api/live?games=${encodeURIComponent(gamesParam)}&date=${game_date}${tbParam}`, {
           headers: { "User-Agent": "shadow-resolver/1.0" },
           signal: AbortSignal.timeout(5_000),
         });
@@ -477,7 +486,7 @@ async function handleShadowResolver({ path, request, env }) {
       await Promise.all([...offsetByDate.entries()].map(async ([game_date, keys]) => {
         const gamesParam = [...keys].join(",");
         try {
-          const res = await fetch(`${origin}/api/live?games=${encodeURIComponent(gamesParam)}&date=${game_date}`, {
+          const res = await fetch(`${origin}/api/live?games=${encodeURIComponent(gamesParam)}&date=${game_date}${tbParam}`, {
             headers: { "User-Agent": "shadow-resolver/1.0" },
             signal: AbortSignal.timeout(4_000),
           });
