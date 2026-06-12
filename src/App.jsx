@@ -275,12 +275,15 @@ function App() {
         .filter(p => p.gameType === 'spread')
         .map(p => `${p.sport}|${p.pickTeam}|${p.oppTeam}|${p.gameDate ?? ''}`)
     );
-    // Prop player+stat keys already covered by tracked picks — suppresses lower-threshold
-    // alt candidates when a higher threshold is already tracked (e.g. 3+ K when 4+ K tracked).
+    // Prop player+stat+day keys already covered by ACTIVE tracked picks — suppresses
+    // lower-threshold alt candidates when a higher threshold is already tracked for the same
+    // game (e.g. 3+ K when 4+ K tracked). Day-scoped and settled-excluded: trackedPlays holds
+    // full pick history, and an unscoped key permanently hid every previously-bet player from
+    // Place All AND the Lineups page (2026-06-12 bug — Sasaki was the only visible play).
     const trackedPropKeys = new Set(
       (trackedPlays || [])
-        .filter(p => p.stat && p.playerName && !p.gameType)
-        .map(p => `${p.playerId ?? p.playerName}|${p.sport}|${p.stat}`)
+        .filter(p => p.stat && p.playerName && !p.gameType && !p.result)
+        .map(p => `${p.playerId ?? p.playerName}|${p.sport}|${p.stat}|${p.gameDate ?? ''}`)
     );
     const nowMs = Date.now();
     const out = [];
@@ -299,8 +302,8 @@ function App() {
     const propBest = new Map();
     for (const c of out) {
       if (!c.play.stat || !c.play.playerName) continue;
-      const k = `${c.play.playerId ?? c.play.playerName}|${c.play.sport}|${c.play.stat}`;
-      if (trackedPropKeys.has(k)) continue;                       // player+stat already tracked at another threshold
+      const k = `${c.play.playerId ?? c.play.playerName}|${c.play.sport}|${c.play.stat}|${c.play.gameDate ?? ''}`;
+      if (trackedPropKeys.has(k)) continue;                       // player+stat already tracked at another threshold (same day)
       if (!propBest.has(k) || (c.play.edge ?? 0) > (propBest.get(k).play.edge ?? 0)) propBest.set(k, c);
     }
     // Spread dedup: same pickTeam + matchup → keep highest-edge line only. Multiple qualifying

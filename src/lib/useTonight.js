@@ -83,17 +83,19 @@ export function useTonight(qualifiedFilter, trackedPlaysRef) {
       if (fresh.length > 0) {
         fresh.forEach(p => seenIdsRef.current.add(_playKey(p)));
         // Suppress notifications for plays whose player+stat (props) or exact key is
-        // already tracked — prevents pinging when a lower threshold qualifies while a
-        // higher one is already tracked (same exposure, no action needed).
+        // already tracked for the SAME game day — prevents pinging when a lower threshold
+        // qualifies while a higher one is already tracked (same exposure, no action needed).
+        // Day-scoped + active-only: trackedPlays holds full pick history, and an unscoped
+        // key silently muted every previously-bet player forever (2026-06-12 bug).
         const tracked = trackedPlaysRef?.current || [];
         const trackedPropKeys = new Set(
           tracked
-            .filter(t => t.stat && t.playerName && !t.gameType)
-            .map(t => `${t.sport}|${t.playerName}|${t.stat}`)
+            .filter(t => t.stat && t.playerName && !t.gameType && !t.result)
+            .map(t => `${t.sport}|${t.playerName}|${t.stat}|${t.gameDate ?? ''}`)
         );
         const notifiable = fresh.filter(p => {
           if (p.playerName && p.stat && !p.gameType) {
-            return !trackedPropKeys.has(`${p.sport}|${p.playerName}|${p.stat}`);
+            return !trackedPropKeys.has(`${p.sport}|${p.playerName}|${p.stat}|${p.gameDate ?? ''}`);
           }
           return true;
         });
