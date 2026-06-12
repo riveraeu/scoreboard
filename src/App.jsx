@@ -781,7 +781,15 @@ function App() {
 
       {/* Place All modal — batch-place every qualified, untracked, placeable Kalshi bet */}
       {showPlaceAll && (() => {
-        const allPlaceable = placeAllGrouped.flatMap(g => g.rescaled);
+        // Modal is today-only (PT): tomorrow's pre-listings qualify on the page but aren't
+        // orderable until their slate day — betting happens at lineup confirm, same day.
+        const _ptDateStr = ts => new Date(ts).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+        const _todayPt = _ptDateStr(Date.now());
+        const _isToday = c => {
+          const d = c.play.gameTime ? _ptDateStr(c.play.gameTime) : c.play.gameDate;
+          return d === _todayPt;
+        };
+        const allPlaceable = placeAllGrouped.flatMap(g => g.rescaled).filter(_isToday);
         // Initialise selection to all placeable IDs on first render of the modal
         const allIds = allPlaceable.map(c => c.play.id ?? trackIdFor(c.play));
         if (placeAllSelected.size === 0 && allIds.length > 0 && !placeAllStatus) {
@@ -789,10 +797,10 @@ function App() {
           return null;
         }
         const scopedGroups = placeAllGrouped
-          .map(g => ({ ...g, rescaled: g.rescaled }))
+          .map(g => ({ ...g, rescaled: g.rescaled.filter(_isToday) }))
           .filter(g => g.rescaled.length > 0);
         const placeable = allPlaceable.filter(c => placeAllSelected.has(c.play.id ?? trackIdFor(c.play)));
-        const blocked = placeAllCandidates.filter(c => c.validation.hard.length > 0);
+        const blocked = placeAllCandidates.filter(c => c.validation.hard.length > 0 && _isToday(c));
         const flaggedCount = placeable.filter(c => c.validation.soft.length > 0).length;
         const readyCount = placeable.length - flaggedCount;
         const totalCost = parseFloat(placeable.reduce((s, c) => s + c.cost, 0).toFixed(2));
@@ -841,8 +849,10 @@ function App() {
           const isChecked = placeAllSelected.has(key);
           const edge = c.play.edge;
           const edgeColor = edge != null ? (edge >= EDGE_GATE ? "#3fb950" : edge >= 0 ? "#e3b341" : "#f78166") : "#484f58";
-          const ao = _centsToAmericanB(c.price);
-          const aoStr = ao != null ? (ao >= 0 ? `+${ao}` : `${ao}`) : null;
+          // Side-aware True% — mirrors _placeAllSizing (UNDER bets price off noTruePct).
+          const truePctVal = c.play.direction === "under"
+            ? (c.play.noTruePct ?? (c.play.truePct != null ? +(100 - c.play.truePct).toFixed(1) : null))
+            : c.play.truePct;
           const estWin = parseFloat((c.count * (100 - c.price) / 100).toFixed(2));
           const img = imgFor(c.play);
           return (
@@ -866,7 +876,8 @@ function App() {
                 {!rs && (
                   <div style={{fontSize:10,display:"flex",flexDirection:"column",gap:2}}>
                     <div style={{display:"flex",gap:12}}>
-                      {aoStr && <span style={{color:"#484f58"}}>Odds <span style={{color:"#c9d1d9",fontWeight:700}}>{aoStr}</span></span>}
+                      {truePctVal != null && <span style={{color:"#484f58"}}>True <span style={{color:"#c9d1d9",fontWeight:700}}>{truePctVal}%</span></span>}
+                      <span style={{color:"#484f58"}}>Mkt <span style={{color:"#c9d1d9",fontWeight:700}}>{c.price}%</span></span>
                       {edge != null && <span style={{color:"#484f58"}}>Edge <span style={{color:edgeColor,fontWeight:700}}>{edge >= 0 ? "+" : ""}{edge}%</span></span>}
                     </div>
                     <div style={{display:"flex",gap:12}}>
@@ -905,7 +916,7 @@ function App() {
               </div>
               <div style={{fontSize:11,color:"#8b949e",marginBottom:8}}>
                 {done ? "Real-money orders · ⅛-Kelly · correlation-adjusted"
-                  : <>{readyCount} ready{flaggedCount > 0 ? <> · <span style={{color:"#e3b341"}}>{flaggedCount} flagged</span></> : null}{blocked.length > 0 ? <> · <span style={{color:"#f78166"}}>{blocked.length} blocked</span></> : null}</>}
+                  : <>Today's slate · {readyCount} ready{flaggedCount > 0 ? <> · <span style={{color:"#e3b341"}}>{flaggedCount} flagged</span></> : null}{blocked.length > 0 ? <> · <span style={{color:"#f78166"}}>{blocked.length} blocked</span></> : null}</>}
               </div>
               {!done && (
                 <label style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:"#8b949e",marginBottom:12,cursor:running ? "not-allowed" : "pointer",userSelect:"none",borderBottom:"1px solid #21262d",paddingBottom:10}}>
