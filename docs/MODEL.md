@@ -134,7 +134,7 @@ Included in **all** drop objects so the market report renders pitcher info for n
 ---
 
 ## MLB Hitters (Hits)
-**Re-added 2026-06-11, shadow-only** (`KXMLBHITS`; previously dropped 2026-05-16 because the user only bet HRR — not a calibration failure). `mlb|hits` is NOT in `passesCategoryGate`, so no UI exposure until shadow ROI confirms at n≥200. Server emits at edge≥3 into `shadow_plays` automatically.
+**Re-added 2026-06-11, shadow-only** (`KXMLBHIT` — singular; shipped 6/11 with the wrong ticker `KXMLBHITS`, fixed 6/12, so shadow data starts 2026-06-12. Previously dropped 2026-05-16 because the user only bet HRR — not a calibration failure). `mlb|hits` is NOT in `passesCategoryGate`, so no UI exposure until shadow ROI confirms at n≥200. Server emits at edge≥3 into `shadow_plays` automatically.
 
 **True%**: exact binomial tail over expected ABs — `binomTailPct(nAB, pHit, threshold)` in `simulate.js` (deterministic, monotonic across alt thresholds by construction; replaces the v0 MC `simulateHits` which assumed a fixed 4 PA).
 ```
