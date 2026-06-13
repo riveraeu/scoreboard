@@ -28,7 +28,7 @@ curl -s "https://scoreboard-ivory-xi.vercel.app/api/auth/shadow-stats?resolvetri
 
 ## Workflow for New Features and Debugging
 
-1. **Check memory and CLAUDE.md** — Read `MEMORY.md` and relevant memory files. Scan CLAUDE.md for the area being changed; load `docs/MODEL.md`, `docs/INFRA.md`, or `docs/FRONTEND.md` if the change touches those areas.
+1. **Check memory and CLAUDE.md** — Read `MEMORY.md` and relevant memory files. Scan CLAUDE.md for the area being changed; load `docs/MODEL.md`, `docs/INFRA.md`, or `docs/FRONTEND.md` if the change touches those areas. For any change driven by calibration data (tuning a formula, adding an input, adjusting a gate), read `docs/MODEL_IMPROVEMENT.md` first.
 2. **Plan and get approval** — Present the full plan as text only (files to change, logic, edge cases). Wait for explicit user approval before editing any files.
 3. **Implement** — Make the changes. If backend logic changed, confirm with `/api/tonight?debug=1` (or relevant endpoint) and print key fields proving the change is correct.
 4. **Deploy and document** — `git push origin main` to deploy. Update CLAUDE.md (and the relevant `docs/*.md`) in the same commit. Save a memory entry for anything non-obvious future sessions should know.
@@ -52,6 +52,7 @@ Sports prop betting dashboard that pulls Kalshi prediction market prices, comput
 | Topic | File |
 |---|---|
 | Per-sport modeling internals (SimScore tiers, lambdas, miscAdj, gates, calibration filter cutoffs) | `docs/MODEL.md` |
+| **How to improve the model from calibration data** — correction-layer ladder (L0–L5), n thresholds (gate 50 / formula 200), backtest-vs-shadow validation, ship checklist, identifying when a new input is needed | `docs/MODEL_IMPROVEMENT.md` |
 | Cache keys + TTLs, Upstash, env vars, deployment, testing, route contracts, data-plumbing gotchas, **cron table + DST re-pin checklist (due Nov 1, 2026)** | `docs/INFRA.md` |
 | URL routing, App.jsx state shape, ReportPage (Market Report + Results + Shadow tabs), live tracking, sizing, color doctrine | `docs/FRONTEND.md` |
 | Design system: palette, typography, spacing, component patterns — read before adding any UI element | `docs/STYLEGUIDE.md` (tokens: `src/lib/styles.js`) |
