@@ -111,11 +111,17 @@ Two roads, picked by whether the lever is **historically reconstructable**.
      interpretation, but **select on Brier.** Confirm the optimum is a genuine minimum
      (U-shape) and the core (5–70%) is untouched; trust aggregates over jittery single
      bands (each run is a fresh MC draw).
-  - ⚠️ *Outstanding:* `K_FORM_SIGMA 0.26` (2026-06-13) was chosen by minimizing **2024
-    `|Δ|`, evaluated on 2024** — both in-sample and on an improper metric. The U-shape was
-    broad and shadow forward-validates it, so it's likely fine, but it should be
-    re-confirmed by a 2022–23-train / 2024-test Brier sweep. Don't cite it as a clean
-    example of the procedure — it predates this section.
+  - ✅ *Re-confirmed (2026-06-13):* `K_FORM_SIGMA 0.26` was first chosen on in-sample 2024
+    `|Δ|`, then re-validated with a proper **2022–23-train / 2024-test Brier sweep**.
+    Result: generalization passes (train- and test-optimal σ agree, no overfit); the
+    held-out gated Brier confirms the 0.22→0.26 direction (overconfidence was real, not a
+    |Δ| artifact); the optimum is a **broad flat basin ~0.26–0.28**. Global Brier is flat
+    (tail ≈4.5% of rows). Kept 0.26 — the conservative end of the basin (best |Δ|, ~18%
+    more gated bet volume than 0.28). *Lesson that matched the theory:* |Δ| picked 0.26
+    while gated Brier leaned 0.28 — the calibration/sharpness split this section exists to
+    guard against. The gated/tail Brier comparison is also confounded by a σ-dependent
+    shrinking row set, so prefer **global** Brier for the clean proper score and use gated
+    Brier only as decision-relevant color.
 - **Not reconstructable** (any live formula path the backtest approximates differently —
   e.g. the live **HRR** uses empirical gamelog rates while the backtest uses a logit
   path): no shortcut. Ship against shadow, set the cutoff, and wait for post-cutoff
