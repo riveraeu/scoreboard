@@ -276,9 +276,14 @@ const TTO_DECAY_FACTOR = 0.88;
 // strikeouts Δ −17.9 (n=38), concentrated in the 80–90% truePct band (act ~54%). Each sim
 // draws one mean-1 lognormal form multiplier and scales every batter's K prob by it: this
 // widens the distribution (pulls extreme truePct toward 50%) while preserving the mean
-// (E[formMult] = 1, so E[p·formMult] = p). σ is the tunable knob — start conservative and
-// retune against realized K-residual variance at n≥40. See [[project-calibration-audit-2026-06-01]].
-const K_FORM_SIGMA = 0.22;
+// (E[formMult] = 1, so E[p·formMult] = p). σ is the tunable knob — retuned 0.22→0.26 on
+// 2026-06-13 after a backtest σ-sweep (2024, n≈2000 over 70–90%): 0.26 minimizes n-weighted
+// calibration error across the gated 80–90% window (w|Δ| 2.88→1.30) and the broader 70–85%
+// overconfident zone (w|Δ| 1.05), with the core (5–70%) untouched. The 90–95%+ extreme tail is
+// NOT fixed by σ — a mean-preserving symmetric form mult can't create the asymmetric early-hook/
+// rain/ejection downside that caps realized extreme-K rates; it's a separate lever, outside the
+// gate. See [[project-k-form-sigma-retune-026]], [[project-calibration-audit-2026-06-01]].
+const K_FORM_SIGMA = 0.26;
 
 // Monte Carlo PA-level simulation: runs nSim games and returns the full K-count distribution
 // (array of length nSim with Ks per game). Use kDistPct(dist, t) to get P(Ks >= t).

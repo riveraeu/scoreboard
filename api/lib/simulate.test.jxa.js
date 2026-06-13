@@ -57,7 +57,7 @@ function meanForNormalTail(threshold, targetProb, std) {
 }
 
 var TTO_DECAY_FACTOR = 0.88;
-var K_FORM_SIGMA = 0.22; // between-game pitcher-form variance (see simulate.js)
+var K_FORM_SIGMA = 0.26; // between-game pitcher-form variance (see simulate.js) — retuned 0.22→0.26 2026-06-13
 
 function simulateKsDist(orderedKPcts, pitcherKPct, parkFactor, nSim, totalPA, earlyExitProb, stdBF) {
   parkFactor = parkFactor == null ? 1 : parkFactor;
