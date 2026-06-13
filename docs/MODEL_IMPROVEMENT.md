@@ -207,3 +207,25 @@ detect (report + tune:gate, filtered to current cutoff)
 Objective check at every step: a calibration win that doesn't move model-vs-market
 Brier (or CLV) is not a real win.
 ```
+
+---
+
+## Known limitations
+
+These are accepted gaps in the workflow above, recorded so they aren't rediscovered as
+surprises. Neither is currently worth the engineering to close — revisit if a decision
+ever turns on one.
+
+- **Multiple comparisons are only informally controlled.** The daily scan covers ~100+
+  category×band cells; at `|Δ|>2·SE` (~95%) you expect ~5–8 false positives by chance
+  every day. The coherence requirement (3+ adjacent same-direction bands) is a *crude FDR
+  proxy* — a sustained gradient is unlikely under noise — but there is no formal
+  correction (Bonferroni/Benjamini-Hochberg). Mitigation in practice: the `n≥200` +
+  coherence + "must beat market-Brier" gates are conservative enough that isolated
+  chance-misses rarely clear all three. Risk: chasing a noise band on a quiet category.
+- **Backtest-tuned params assume cross-season stationarity.** A parameter fit on
+  2022–24 (e.g. `K_FORM_SIGMA`) is applied to 2026 as if the underlying variance/structure
+  is stationary, which rule changes, a juiced ball, or roster-construction shifts can
+  break (the HRR plateau already moved between the 2022–24 backtest and 2026 shadow).
+  Treat every backtest-tuned value as a **prior pending shadow confirmation**, not a final
+  answer — the `trackedAt` forward-validation is what actually ratifies it.
