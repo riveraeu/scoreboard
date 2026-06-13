@@ -937,6 +937,29 @@ async function handleShadowReport({ path, request, env, cache }) {
     gameTime: r.game_time ?? null,
   }));
 
+  // Newly-listed Kalshi markets we don't consume yet (status='new' in kalshi_series_seen,
+  // populated by the /api/kalshi-series-scan cron). Separate try/catch — the table may not
+  // exist yet on first deploy, and a discovery miss must never break the briefing.
+  let newMarkets = [];
+  try {
+    const nmRows = await neonQuery(`
+      SELECT ticker, title, tags, frequency, sample_market, sample_subtitle, first_seen
+      FROM kalshi_series_seen WHERE status = 'new'
+      ORDER BY first_seen DESC, ticker LIMIT 25
+    `, [], env);
+    newMarkets = nmRows.map(r => ({
+      ticker: r.ticker,
+      title: r.title ?? null,
+      tags: r.tags ?? null,
+      frequency: r.frequency ?? null,
+      sampleMarket: r.sample_market ?? null,
+      sampleSubtitle: r.sample_subtitle ?? null,
+      firstSeen: r.first_seen ? new Date(r.first_seen).toISOString().slice(0, 10) : null,
+    }));
+  } catch (e) {
+    console.error("[shadow-report] newMarkets query skipped:", e?.message);
+  }
+
   const report = {
     reportDate,
     generatedAt: new Date().toISOString(),
@@ -947,6 +970,7 @@ async function handleShadowReport({ path, request, env, cache }) {
     clv,
     dailyVolumeRoi,
     optimalDailyPicks,
+    newMarkets,
     durationMs: Date.now() - t0,
   };
 

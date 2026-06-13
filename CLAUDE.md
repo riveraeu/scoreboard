@@ -70,7 +70,7 @@ Single Vercel Edge Function. `api/[...path].js` is a thin router: handles CORS p
 - `api/lib/handlers/player.js` — `/api/player`, `/api/gamelog`, `/api/headshot`
 - `api/lib/handlers/sports.js` — `/api/team`, `/api/live`
 - `api/lib/handlers/dvp.js` — `/api/dvp`, `/api/nba-depth`, `/api/dvp/debug-dc`
-- `api/lib/handlers/kalshi.js` — `/api/kalshi`, `/api/kalshi-snapshot`, `/api/keepalive`, `/api/kalshi-order`, `/api/kalshi-balance`, `/api/kalshi-fills`
+- `api/lib/handlers/kalshi.js` — `/api/kalshi`, `/api/kalshi-snapshot`, `/api/kalshi-series-scan`, `/api/keepalive`, `/api/kalshi-order`, `/api/kalshi-balance`, `/api/kalshi-fills`
 - `api/lib/handlers/tonight.js` — `/api/tonight` (~1857 lines after Phase B6). Owns Kalshi parse loop, byteam hydration, data-prep, emit calls, response assembly.
 - `api/lib/handlers/shadow.js` — `/api/shadow-snapshot`, `/api/shadow-resolver`, `/api/shadow-pregame-snap`
 
@@ -116,6 +116,7 @@ See `docs/INFRA.md` for full request/response contracts, auth patterns, cron det
 | `/api/tonight` | `handlers/tonight.js` | Main play gen. `?debug=1` adds drops/debug. `?bust=1` bypasses caches. |
 | `/api/kalshi` | `handlers/kalshi.js` | Raw Kalshi market data |
 | `/api/kalshi-snapshot` | `handlers/kalshi.js` | Cron (`*/2 * * * *`) — pre-warms `kalshi:snap:{ticker}` (two-phase write) |
+| `/api/kalshi-series-scan` | `handlers/kalshi.js` | Cron (`15 16 * * *`, 9:15am PT) — discovers new Kalshi Sports series. Diffs the catalog against `SERIES_CONFIG`∪`CRON_ONLY_TICKERS`; records unknowns in Neon `kalshi_series_seen`. First run baseline-seeds (~2200 series) silently; only later additions surface as `status='new'` in the morning report. `?dry=1` no-write; `?dismiss=KX..`/`?undismiss=KX..` (admin) triage noise. |
 | `/api/kalshi-order` | `handlers/kalshi.js` | POST — place a Kalshi order (RSA-PSS signed); includes Place All batch |
 | `/api/kalshi-balance` | `handlers/kalshi.js` | GET — cash + open-position cost basis |
 | `/api/kalshi-fills` | `handlers/kalshi.js` | GET — filled orders (pick recovery) |

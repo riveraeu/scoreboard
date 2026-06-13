@@ -35,6 +35,7 @@
     { "path": "/api/shadow-resolver", "schedule": "0 9 * * *" },
     { "path": "/api/shadow-resolver", "schedule": "5 10 * * *" },
     { "path": "/api/shadow-resolver", "schedule": "0 14 * * *" },
+    { "path": "/api/kalshi-series-scan", "schedule": "15 16 * * *" },
     { "path": "/api/shadow-report", "schedule": "30 16 * * *" }
   ]
 }

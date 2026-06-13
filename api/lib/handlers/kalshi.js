@@ -11,6 +11,7 @@
 import { jsonResponse, errorResponse } from "../utils.js";
 import { SERIES_CONFIG, CRON_ONLY_TICKERS } from "../series-config.js";
 import { verifyJWT } from "../auth-utils.js";
+import { neonQuery, neonExec } from "../neon.js";
 
 const normName = (s) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
@@ -538,6 +539,158 @@ export async function handleKalshiRoutes(ctx) {
     const respBody = await resp.json().catch(() => ({}));
     if (!resp.ok) return errorResponse(respBody?.error?.message || `Kalshi error ${resp.status}`, resp.status);
     return jsonResponse({ ok: true, fills: respBody.fills ?? [], cursor: respBody.cursor ?? null });
+  }
+
+  // ── /api/kalshi-series-scan ──────────────────────────────────────────────
+  // Daily cron. Diffs Kalshi's Sports-category series catalog against the tickers
+  // we actually consume (SERIES_CONFIG + CRON_ONLY_TICKERS) and records unknown
+  // ones in Neon (kalshi_series_seen). The catalog is ~2200 series, almost all of
+  // it futures/awards/novelty noise — so the FIRST run baseline-seeds every
+  // currently-listed unknown ticker as status='baseline' (silently acknowledged);
+  // only series Kalshi lists AFTER today surface as status='new', the alert set the
+  // morning report renders. A known ticker absent from the catalog (e.g. NFL props
+  // off-season) is normal — the diff is one-directional and never flags those.
+  // Auth: CRON_SECRET (cron) or ADMIN_KEY (manual). ?dry=1 skips all DB writes.
+  // ?dismiss=KX.. / ?undismiss=KX.. (admin) triage noise rows out of / into 'new'.
+  if (path === "kalshi-series-scan") {
+    const bearer = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/, "");
+    const isCron  = env?.CRON_SECRET && bearer === env.CRON_SECRET;
+    const isAdmin = env?.ADMIN_KEY  && bearer === env.ADMIN_KEY;
+    if (!isCron && !isAdmin) return errorResponse("Forbidden", 403);
+    if (!env?.DATABASE_URL_UNPOOLED && !env?.POSTGRES_URL && !env?.NEON_DATABASE_URL && !env?.POSTGRES_URL_NON_POOLING) {
+      return errorResponse("No Neon connection", 500);
+    }
+    const url = new URL(request.url);
+    const dry = url.searchParams.get("dry") === "1";
+
+    await neonExec(`
+      CREATE TABLE IF NOT EXISTS kalshi_series_seen (
+        ticker          TEXT PRIMARY KEY,
+        title           TEXT,
+        category        TEXT,
+        tags            TEXT,
+        frequency       TEXT,
+        sample_market   TEXT,
+        sample_subtitle TEXT,
+        status          TEXT NOT NULL DEFAULT 'new',
+        first_seen      DATE NOT NULL,
+        last_seen       DATE NOT NULL
+      )
+    `, env);
+
+    // Admin triage shortcuts.
+    const dismiss = url.searchParams.get("dismiss");
+    const undismiss = url.searchParams.get("undismiss");
+    if (dismiss || undismiss) {
+      if (!isAdmin) return errorResponse("Admin only", 403);
+      if (dismiss) await neonQuery(`UPDATE kalshi_series_seen SET status='dismissed' WHERE ticker = $1`, [dismiss], env, { write: true });
+      if (undismiss) await neonQuery(`UPDATE kalshi_series_seen SET status='new' WHERE ticker = $1 AND status='dismissed'`, [undismiss], env, { write: true });
+      return jsonResponse({ ok: true, dismissed: dismiss || null, undismissed: undismiss || null });
+    }
+
+    // 1. Fetch the Sports-category series catalog (single call; no pagination as of 2026-06).
+    let catalog;
+    try {
+      const r = await fetch("https://api.elections.kalshi.com/trade-api/v2/series?category=Sports", {
+        headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" },
+      });
+      if (!r.ok) return errorResponse(`Kalshi series ${r.status}`, 502);
+      const data = await r.json();
+      catalog = (data?.series || []).filter(s => s && (s.ticker || s.series_ticker));
+    } catch (e) {
+      return errorResponse(`Kalshi unreachable: ${e?.message || e}`, 502);
+    }
+    if (!catalog.length) return errorResponse("Empty catalog", 502);
+
+    // 2. The set of tickers we actually consume (same source the snapshot cron uses).
+    const known = new Set([...Object.keys(SERIES_CONFIG), ...CRON_ONLY_TICKERS]);
+
+    // 3. Tickers already recorded. {write:true} → pooled primary for read-after-create
+    //    consistency (unpooled replica can serve a stale-empty read on cold wake).
+    const existingRows = await neonQuery(`SELECT ticker FROM kalshi_series_seen`, [], env, { write: true });
+    const existing = new Set(existingRows.map(r => r.ticker));
+    const isFirstRun = existing.size === 0;
+
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+
+    // 4. Classify tickers new to the table.
+    const toInsert = [];       // rows for batch insert
+    const enrichTargets = [];  // status='new' rows needing a sample-market fetch
+    for (const s of catalog) {
+      const ticker = s.ticker || s.series_ticker;
+      if (existing.has(ticker)) continue;
+      const status = known.has(ticker) ? "adopted" : (isFirstRun ? "baseline" : "new");
+      const row = {
+        ticker,
+        title: s.title ?? null,
+        category: s.category ?? null,
+        tags: Array.isArray(s.tags) ? s.tags.join(",") : (s.tags ?? null),
+        frequency: s.frequency ?? null,
+        sample_market: null,
+        sample_subtitle: null,
+        status,
+        first_seen: today,
+        last_seen: today,
+      };
+      toInsert.push(row);
+      if (status === "new") enrichTargets.push(row);
+    }
+
+    // 5. Enrich genuinely-new rows with one sample market each (best-effort, capped).
+    const ENRICH_CAP = 25;
+    for (const row of enrichTargets.slice(0, ENRICH_CAP)) {
+      try {
+        const r = await fetch(`https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=${row.ticker}&limit=1`, {
+          headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" },
+        });
+        if (r.ok) {
+          const m = ((await r.json())?.markets || [])[0];
+          if (m) {
+            row.sample_market = m.ticker ?? null;
+            row.sample_subtitle = m.subtitle ?? m.yes_sub_title ?? m.title ?? null;
+          }
+        }
+      } catch { /* enrichment is best-effort */ }
+    }
+
+    const newTickers = enrichTargets.map(r => r.ticker);
+
+    if (dry) {
+      return jsonResponse({
+        ok: true, dry: true, isFirstRun,
+        catalogCount: catalog.length, knownCount: known.size, existingCount: existing.size,
+        toInsertCount: toInsert.length, newCount: newTickers.length,
+        newMarkets: enrichTargets.slice(0, ENRICH_CAP).map(r => ({ ticker: r.ticker, title: r.title })),
+      });
+    }
+
+    // 6a. Batch-insert new-to-table rows.
+    const COLS = ["ticker","title","category","tags","frequency","sample_market","sample_subtitle","status","first_seen","last_seen"];
+    for (let i = 0; i < toInsert.length; i += 100) {
+      const chunk = toInsert.slice(i, i + 100);
+      const placeholders = chunk.map((_, ri) =>
+        `(${COLS.map((_, ci) => `$${ri * COLS.length + ci + 1}`).join(", ")})`
+      ).join(", ");
+      const values = chunk.flatMap(row => COLS.map(c => row[c] ?? null));
+      await neonQuery(
+        `INSERT INTO kalshi_series_seen (${COLS.join(", ")}) VALUES ${placeholders} ON CONFLICT (ticker) DO NOTHING`,
+        values, env, { write: true }
+      );
+    }
+
+    // 6b. Reconcile: any lingering 'new' ticker we've since added to the allowlist → adopted.
+    const knownArr = [...known];
+    const knownPh = knownArr.map((_, i) => `$${i + 1}`).join(", ");
+    await neonQuery(
+      `UPDATE kalshi_series_seen SET status='adopted' WHERE status='new' AND ticker IN (${knownPh})`,
+      knownArr, env, { write: true }
+    );
+
+    return jsonResponse({
+      ok: true, isFirstRun,
+      catalogCount: catalog.length, knownCount: known.size,
+      inserted: toInsert.length, newCount: newTickers.length, newTickers,
+    });
   }
 
   return null;
