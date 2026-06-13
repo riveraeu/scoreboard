@@ -350,9 +350,12 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               if (pct < KALSHI_GATE) continue;
               if (pct > KALSHI_CAP) continue;
             }
-            // HRR: only bet 1+ threshold — user never bets 2+/3+ alt lines (sub-1% baseline hit
-            // rate makes those plays speculative). Skip at parse so they don't even reach dedup.
-            if (stat === "hrr" && threshold > 1) continue;
+            // HRR is YES/over-side only at EVERY threshold (unlike totalBases, which lists no 1+
+            // line and is bet as a NO/under). The 1+ over is the bread-and-butter play; 2+/3+ overs
+            // only reach the [67,91] window for elite bats and pass the YES gate above organically.
+            // 2026-06-12: dropped the `threshold > 1` skip so those higher-line overs flow to shadow
+            // for calibration (mlb|hrr is shadow-only, not in the category gate). Band shadow
+            // analysis by threshold — the 6/10 recalibration was fit on 1+ rows only.
             const raw = m.event_title || m.title || "";
             let playerName = raw.replace(/\s*:\s*\d.*$/, "").replace(/\s+(Points?|Rebounds?|Assists?|3-Pointers?|Three Pointers?|Made Threes?|Goals?|Shots on Goal|Hits?|Home Runs?|RBIs?|Strikeouts?|Total Bases?|Passing Yards?|Rushing Yards?|Receiving Yards?|Touchdowns?)\b.*/i, "").replace(/\s+Over\s+\d.*$/i, "").replace(/\s+Under\s+\d.*$/i, "").replace(/\s*\(.*\)\s*$/, "").replace(/\s*-\s*$/, "").trim();
             if (!playerName || playerName.length < 4) continue;

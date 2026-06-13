@@ -751,10 +751,14 @@ export async function emitPropPlays({
         ? gl.events.filter(ev => _h2hPitcherDates.has(ev.date) && ev.oppAbbr === tonightOpp).map(getStat).filter(v => !isNaN(v))
         : [];
       const _h2hHitRate = _h2hVals.length >= 10 ? _h2hVals.filter(v => v >= threshold).length / _h2hVals.length * 100 : null;
-      // Handedness fallback: vsR/vsL HRR splits from MLB Stats API (Poisson approx: 1 - e^(-lambda))
+      // Handedness fallback: vsR/vsL HRR splits from MLB Stats API (Poisson tail at the line)
       // Covers all 2025+2026 games vs same-hand pitchers — far broader than pitcherGamelogs cross-reference
       // HRR only: the lambda is (H+R+RBI)/G — roughly 2× a hits-per-game rate, so this override
       // would inflate the hits-prop soft ref. Hits gets its platoon signal via batterSplitBA instead.
+      // Threshold-aware (2026-06-12): P(X≥threshold) = 1 − poissonCDF(threshold−1, λ), not a fixed
+      // P(≥1). At threshold 1 this reduces to 1 − e^(−λ) (unchanged for 1+ overs). Caveat: HRR is
+      // lumpy (a solo HR is instantly 3 HRR), so Poisson understates the upper tail for power bats —
+      // this is last-resort only; empirical season/BvP hit rates stay primary via _effectiveHitRate.
       let _h2hHandRate = null;
       if (stat === "hrr" && _h2hHitRate == null && _oppPitcherHand) {
         const _hrrSplitMap = sportByteam.mlb?.batterHRRSplits || {};
@@ -763,7 +767,7 @@ export async function emitPropPlays({
         const _hrrSplit = _hrrEntry?.[_hrrHandKey] ?? null;
         if (_hrrSplit && _hrrSplit.g >= 10) {
           const _lambda = _hrrSplit.hrr / _hrrSplit.g;
-          _h2hHandRate = parseFloat(((1 - Math.exp(-_lambda)) * 100).toFixed(1));
+          _h2hHandRate = parseFloat(((1 - poissonCDF(threshold - 1, _lambda)) * 100).toFixed(1));
           softPct = _h2hHandRate;
           softLabel = _oppPitcherHand === "R" ? "vs RHP" : "vs LHP";
         }
