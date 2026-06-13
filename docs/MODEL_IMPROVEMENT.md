@@ -9,6 +9,33 @@ to correct, and when a new raw input is needed.**
 
 ---
 
+## First principle: what you are actually optimizing
+
+**Calibration is a means, not the goal. The goal is ROI vs. the market.** A model can be
+perfectly calibrated (predicted prob = observed frequency) and still lose money, because
+the **Kalshi price is itself a strong probability estimate** — often a better one than the
+model. The only thing that converts to profit is *beating that price*. Calibration is
+necessary (a miscalibrated model can't have reliable edge) but not sufficient.
+
+- **The market is the baseline every category must beat.** Before treating a category as
+  a source of edge, check the model against "just bet the market price." Benchmark
+  **model-Brier vs. market-Brier** (and CLV) head-to-head. If the market's probability
+  estimate scores better than the model's, you have *negative alpha* there regardless of
+  how well-calibrated the model looks internally — don't gate it, and don't tune it as if
+  calibration alone will rescue it.
+  - *Worked example (HRR, 2026-06-13):* model 72.5% < market ~77% < actual 80.6%. HRR is
+    roughly calibrated yet sits **below** the market — the market is the better estimator,
+    so HRR has no YES edge despite positive raw band ROI. Calibration looked fine; the
+    edge was negative. This is the failure mode this principle exists to catch.
+- **Don't ignore the market as an input.** `_propBlend` shrinks toward season rate, not
+  toward the market price. Where the market beats the model, a model⊕market blend is a
+  free accuracy gain (standard ensembling). Consider it before adding new raw features.
+
+Everything below optimizes calibration because it's the tractable, decomposable target —
+but a calibration win that doesn't move model-vs-market Brier (or CLV) is not a real win.
+
+---
+
 ## The correction ladder
 
 A miscalibration is fixed at the **lowest layer that explains it**. Higher layers are
@@ -70,10 +97,25 @@ Two roads, picked by whether the lever is **historically reconstructable**.
 
 - **Backtest-reconstructable** (pure formula params: `K_FORM_SIGMA`, NegBin `r`, σ,
   sigmoid knees in the backtest's own sim): sweep on the 571k-row MLB / 522k NBA / 49k
-  NHL backtest *today* — no waiting on shadow accumulation. Pick the value that
-  minimizes **n-weighted calibration error across the gated window** while leaving the
-  core (5–70%) untouched. Confirm the U-shape; trust aggregates over jittery single
-  bands (each run is a fresh MC draw). *K_FORM_SIGMA 0.26 was chosen this way.*
+  NHL backtest *today* — no waiting on shadow accumulation. **Two non-negotiables to
+  avoid overfitting the param to noise:**
+  1. **Train/test split — mandatory.** Sweep the param on one set of seasons (e.g.
+     2022–23) and pick the optimum that *also* wins on a **held-out** season (2024). Never
+     select and evaluate on the same data — that's in-sample tuning and it fits the
+     parameter to that season's noise. (P5's Platt corrector did this; follow it.)
+  2. **Score with a proper scoring rule (Brier or log-loss), not just `|Δ|`.** Minimizing
+     calibration error alone is *gameable by under-sharpening* — pushing every prediction
+     toward 50% lowers `|Δ|` while destroying the discrimination you bet on. Brier
+     decomposes into calibration **+** refinement, so it prices the
+     **calibration/sharpness tradeoff** automatically. Report `|Δ|` per band for
+     interpretation, but **select on Brier.** Confirm the optimum is a genuine minimum
+     (U-shape) and the core (5–70%) is untouched; trust aggregates over jittery single
+     bands (each run is a fresh MC draw).
+  - ⚠️ *Outstanding:* `K_FORM_SIGMA 0.26` (2026-06-13) was chosen by minimizing **2024
+    `|Δ|`, evaluated on 2024** — both in-sample and on an improper metric. The U-shape was
+    broad and shadow forward-validates it, so it's likely fine, but it should be
+    re-confirmed by a 2022–23-train / 2024-test Brier sweep. Don't cite it as a clean
+    example of the procedure — it predates this section.
 - **Not reconstructable** (any live formula path the backtest approximates differently —
   e.g. the live **HRR** uses empirical gamelog rates while the backtest uses a logit
   path): no shortcut. Ship against shadow, set the cutoff, and wait for post-cutoff
@@ -157,8 +199,11 @@ divergence exists because a dc rule was added to one path only), env-var wiring 
 
 ```
 detect (report + tune:gate, filtered to current cutoff)
-  → confirm (n≥200, |Δ|>2·SE, coherent, decontaminated)
+  → confirm (n≥200, |Δ|>2·SE, coherent, decontaminated; beats market-Brier?)
     → diagnose layer by signature (L1–L5; L0 if residual survives all)
-      → validate (backtest sweep if reconstructable, else shadow-wait)
+      → validate (backtest: train/test split + select on Brier; else shadow-wait)
         → ship (sync tests, stamp cutoff, docs+memory, deploy, verify, watch drift)
+
+Objective check at every step: a calibration win that doesn't move model-vs-market
+Brier (or CLV) is not a real win.
 ```
