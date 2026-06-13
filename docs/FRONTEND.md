@@ -72,6 +72,7 @@ Renders the qualification-summary box (Kalshi gate · edge gate · DC gate · ed
 
 ## Game time
 - Play card subtitle: `"Today · 7:40 PM PT"` / `"Tomorrow · 1:10 PM PT"` from `play.gameTime`.
+- **Duplicate matchup cards (gameTime-null cause, 2026-06-13)**: `buildGames` (LineupsPage.jsx) keys cards on `sortedPair|gameDate|gameTime`. When the backend `gameTimes` map transiently returns empty (ESPN scoreboard hiccup — affects `?bust=1` too, so it's not a cache miss), every play emits with `gameTime:null` and seeds a timeless card that can't merge with the gameScores-seeded card (which has the real time) → every game with a play renders twice. Visible symptom is usually just the *earliest* game duplicating: empty gameTime sorts first, so the timed duplicate of the earliest start lands above the fold while the rest scroll off-screen. Defended client-side: `buildGames` backfills a null play `gameTime` from the matching gameScores `pair|date` entry (skips doubleheaders). This is distinct from the parseGameTeams duplicate-card cause (bad team-split). If dups recur, check whether plays in `/api/tonight` carry `gameTime` — if null, the backend `gameTimes` ESPN fetch is the real culprit.
 - No lineup badges anywhere anymore: play-card `✓ Lineup`/`Proj. Lineup` removed 2026-05-16; matchup-card lineup + injury badges removed 2026-06-10. `play.lineupConfirmed` still exists (stamped in props.js) and surfaces only as the `(proj)` suffix on Lineup K% in lambda tooltips and TeamPage's projected-lineup note.
 
 ---
