@@ -188,7 +188,7 @@ Add new scoreboard mismatches to the `espnScore` field in `api/lib/teams.js` (CA
 2. **`kalshi:bundle:{date}`** — legacy 600s bundle fallback.
 3. **REST + `kalshi:stale:{ticker}`** — per-ticker fetch with 30-min stale fallback.
 
-`KXMLBGAME` has the same 3-tier chain. **Diagnosing `usedSnaps:false`:** check `kalshiSnap.meta` in `/api/tonight?debug=1` — `null` meta means no cron completed in the last 10 min, pointing at a cron-side failure rather than a freshness race. See `docs/INFRA.md` for the two-phase cron write design.
+`KXMLBGAME` has the same 3-tier chain. **Diagnosing `usedSnaps:false`:** check `kalshiSnap.meta` in `/api/tonight?debug=1` — `null` meta means no cron completed in the last 10 min, pointing at a cron-side failure rather than a freshness race; non-zero `meta.snapWriteFailed` (2026-06-12) means Upstash rejected pipeline chunks. The snapshot pipeline write is size-chunked at 7MB because Upstash caps any HTTP request at 10MB — the full-slate body hit ~11MB once KXMLBTB/KXMLBHIT shipped, and the previously-unchecked fetch swallowed the 413s silently. See `docs/INFRA.md` for the two-phase cron write design.
 
 **API handler env-var wiring**: ALL env vars must be passed through `process.env` to the explicit `env` object at the bottom of `api/[...path].js` (handlers receive `env`, never read `process.env` directly). If you add a new env var, add it here too:
 ```js

@@ -220,15 +220,49 @@ export async function handleKalshiRoutes(ctx) {
     // the read side judges freshness from it (180s gate).
     const writtenAt = Date.now();
     const successCount = Object.keys(_snapResults).length;
-    // Pipelined Upstash write: 1 HTTP request for all SETs. Upstash bills per command (not per
-    // request), so this cuts Vercel observability events, not Upstash cost.
+    // Pipelined Upstash write, chunked by serialized size. Upstash rejects any HTTP request
+    // over 10MB ("Max Request Size") — the single-request version started failing 2026-06-12
+    // when KXMLBTB + the KXMLBHIT ticker fix pushed the full-slate body to ~11MB, and the bare
+    // fetch (no res.ok check) swallowed the 413s silently. Chunks stay well under the cap
+    // (largest single snap ≈ 2.5MB, so every command fits a chunk). Upstash bills per command,
+    // not per request, so chunking costs nothing extra. Never throws; returns
+    // { sent, failed, errors } so callers can surface failures into meta/response.
+    const PIPE_CHUNK_MAX_BYTES = 7 * 1024 * 1024;
     const _pipeWrite = async (cmds) => {
-      if (!cmds.length) return;
-      await fetch(`${env.UPSTASH_REDIS_REST_URL}/pipeline`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${env.UPSTASH_REDIS_REST_TOKEN}`, "Content-Type": "application/json" },
-        body: JSON.stringify(cmds),
-      });
+      const out = { sent: 0, failed: 0, errors: [] };
+      if (!cmds.length) return out;
+      const chunks = [];
+      let cur = [], curBytes = 2; // "[]"
+      for (const c of cmds) {
+        const n = JSON.stringify(c).length + 1; // +1 comma separator
+        if (cur.length && curBytes + n > PIPE_CHUNK_MAX_BYTES) { chunks.push(cur); cur = []; curBytes = 2; }
+        cur.push(c); curBytes += n;
+      }
+      if (cur.length) chunks.push(cur);
+      for (const chunk of chunks) {
+        try {
+          const r = await fetch(`${env.UPSTASH_REDIS_REST_URL}/pipeline`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${env.UPSTASH_REDIS_REST_TOKEN}`, "Content-Type": "application/json" },
+            body: JSON.stringify(chunk),
+          });
+          if (!r.ok) {
+            out.failed += chunk.length;
+            out.errors.push(`HTTP ${r.status}`);
+            continue;
+          }
+          const body = await r.json().catch(() => null);
+          const errs = Array.isArray(body) ? body.filter(x => x?.error) : [];
+          out.sent += chunk.length - errs.length;
+          out.failed += errs.length;
+          if (errs.length) out.errors.push(String(errs[0].error));
+        } catch (e) {
+          out.failed += chunk.length;
+          out.errors.push(String(e?.message || e));
+        }
+      }
+      if (out.errors.length) console.error("[kalshi-snapshot] pipeline write failed:", out.failed, "cmds —", out.errors[0]);
+      return out;
     };
     const _metaCmd = (extra) => ["SET", "kalshi:snap:_meta", JSON.stringify({
       lastRunAt: writtenAt,
@@ -237,18 +271,21 @@ export async function handleKalshiRoutes(ctx) {
       durationMs: Date.now() - startMs,
       ...extra,
     }), "EX", 600];
+    let _w1 = { sent: 0, failed: 0, errors: [] };
     if (successCount > 0) {
       const _snapCmds = [];
       for (const [ticker, data] of Object.entries(_snapResults)) {
         _snapCmds.push(["SET", `kalshi:snap:${ticker}`, JSON.stringify({ markets: data.markets || [], writtenAt }), "EX", 300]);
       }
-      // Depth not fetched yet — record 0/pending so a timed-out depth phase still leaves valid meta.
-      _snapCmds.push(_metaCmd({ depthOk: 0, depthFail: 0, depthTargets: null, depthPending: true }));
-      try {
-        await _pipeWrite(_snapCmds);
-      } catch (e) {
-        return errorResponse(`Pipeline write failed: ${e.message}`, 500);
-      }
+      _w1 = await _pipeWrite(_snapCmds);
+      // Meta goes in its own (tiny) request AFTER the snap chunks, so a fresh meta means the
+      // snap write phase actually ran to completion — and carries its failure count if any
+      // chunk was rejected. Depth not fetched yet — record 0/pending so a timed-out depth
+      // phase still leaves valid meta.
+      await _pipeWrite([_metaCmd({
+        depthOk: 0, depthFail: 0, depthTargets: null, depthPending: true,
+        snapWriteFailed: _w1.failed, ...(_w1.errors.length && { snapWriteError: _w1.errors[0] }),
+      })]);
     }
 
     // ── Orderbook depth for in-window markets (best-effort, time-bounded) ───────────────────
@@ -309,6 +346,7 @@ export async function handleKalshiRoutes(ctx) {
     // Skipped entirely when no depth landed (timeout/empty slate), so the cheap path costs nothing
     // extra. `_depth` rides inside the snap JSON, so /api/tonight's read path is unchanged. A failed
     // write #2 is non-fatal — write #1's snaps already landed; depth is purely additive.
+    let _w2 = { sent: 0, failed: 0, errors: [] };
     if (successCount > 0 && _depthOk > 0) {
       const _depthCmds = [];
       for (const series of _touchedSeries) {
@@ -316,18 +354,25 @@ export async function handleKalshiRoutes(ctx) {
         if (!data) continue;
         _depthCmds.push(["SET", `kalshi:snap:${series}`, JSON.stringify({ markets: data.markets || [], writtenAt }), "EX", 300]);
       }
-      _depthCmds.push(_metaCmd({ depthOk: _depthOk, depthFail: _depthFail, depthTargets: _depthTargets.length }));
-      try {
-        await _pipeWrite(_depthCmds);
-      } catch { /* write #1 already landed; depth is best-effort */ }
+      _w2 = await _pipeWrite(_depthCmds); // failure non-fatal: write #1's snaps already landed; depth is additive
+      const _wFailed = _w1.failed + _w2.failed;
+      const _wErr = _w1.errors[0] ?? _w2.errors[0];
+      await _pipeWrite([_metaCmd({
+        depthOk: _depthOk, depthFail: _depthFail, depthTargets: _depthTargets.length,
+        snapWriteFailed: _wFailed, ...(_wErr && { snapWriteError: _wErr }),
+      })]);
     }
 
     return jsonResponse({
-      ok: successCount > 0,
+      ok: successCount > 0 && _w1.failed === 0,
       successCount,
       failedCount: _snapFailed.length,
       failed: _snapFailed,
       durationMs: Date.now() - startMs,
+      snapWriteSent: _w1.sent,
+      snapWriteFailed: _w1.failed,
+      depthWriteFailed: _w2.failed,
+      writeErrors: [..._w1.errors, ..._w2.errors],
       depthOk: _depthOk,
       depthFail: _depthFail,
       depthTargets: _depthTargets.length,
