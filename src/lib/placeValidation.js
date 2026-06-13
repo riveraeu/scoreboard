@@ -2,6 +2,14 @@ import { EDGE_GATE_CLIENT as EDGE_GATE } from '../../api/lib/config.js';
 
 const SLIPPAGE_WARN_CENTS = 3; // paying ≥3¢ over top-of-book → warn
 
+// A market we can't trust enough to act on yet: untraded (vol 0 → a big edge is likely a
+// stale-quote artifact and the fill is uncertain) or thin (low volume / wide). Single source of
+// truth for both the Place All `risk` tier AND the notification gate (useTonight.js) — a play is
+// pinged only once its market clears this, matching Place All's default-checked state.
+export function isMarketUntrusted(play) {
+  return play.kalshiVolume === 0 || play.lowVolume === true || play.thinMarket === true;
+}
+
 // Validate one Place All candidate. `sizing` is the { price, count, cost, side, ao } object from
 // _placeAllSizing. Returns { hard: string[], soft: string[], risk: string[] }.
 //   hard → not placeable (blocked).  soft → warn, stays checked.
@@ -42,10 +50,12 @@ export function validateCandidate(play, sizing) {
   // ── RISK: illiquid / untested market — auto-unchecked in Place All. A large edge against an
   // untraded price is usually a stale-quote artifact, not alpha, and the fill is uncertain.
   // Independent of the slippage branch above so it fires for every play type, not just ML. ──
-  if (play.kalshiVolume === 0) {
-    risk.push('no market volume — price untested; edge may be a stale-quote artifact and fill is uncertain');
-  } else if (play.lowVolume === true || play.thinMarket === true) {
-    risk.push('thin market (low volume) — edge less reliable and fill may slip');
+  if (isMarketUntrusted(play)) {
+    if (play.kalshiVolume === 0) {
+      risk.push('no market volume — price untested; edge may be a stale-quote artifact and fill is uncertain');
+    } else {
+      risk.push('thin market (low volume) — edge less reliable and fill may slip');
+    }
   }
 
   // ── SOFT: lineup not yet confirmed (player props) — the opposing lineup drives contact/K props.

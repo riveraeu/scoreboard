@@ -1,5 +1,6 @@
 import React from 'react';
 import { WORKER } from './constants.js';
+import { isMarketUntrusted } from './placeValidation.js';
 
 // Stable key for deduplicating qualified plays across polls — mirrors trackIdFor shape.
 function _playKey(p) {
@@ -76,10 +77,16 @@ export function useTonight(qualifiedFilter, trackedPlaysRef) {
     if (data.nhlMeta) setNhlMeta(data.nhlMeta);
 
     if (seenIdsRef.current === null) {
-      // Seed on first load — don't notify plays that were already qualified.
-      seenIdsRef.current = new Set(qualified.map(_playKey));
+      // Seed on first load — don't notify plays that were already qualified. Risky-market plays
+      // are intentionally NOT seeded so they can notify later when their market clears (see below).
+      seenIdsRef.current = new Set(qualified.filter(p => !isMarketUntrusted(p)).map(_playKey));
     } else {
-      const fresh = qualified.filter(p => !seenIdsRef.current.has(_playKey(p)));
+      // Only "settle" (mark seen + notify) plays whose market is trustworthy enough to act on —
+      // mirrors Place All's default-checked state (qualified && !risky). A qualified-but-risky play
+      // (untested/thin market) is left UN-seeded so a later poll re-evaluates it: once its volume
+      // develops it becomes fresh + trustworthy and notifies then, instead of pinging on a stale
+      // zero-volume quote we'd never auto-bet (2026-06-13).
+      const fresh = qualified.filter(p => !isMarketUntrusted(p) && !seenIdsRef.current.has(_playKey(p)));
       if (fresh.length > 0) {
         fresh.forEach(p => seenIdsRef.current.add(_playKey(p)));
         // Suppress notifications for plays whose player+stat (props) or exact key is
