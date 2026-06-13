@@ -86,6 +86,7 @@ Vercel cron schedules are **UTC-pinned**; all timing intent in this project is *
 | `55 2` | 7:55pm tonight | 6:55pm | `/api/tonight` | — |
 | `0 3` | 8:00pm pregame | 7:00pm | `/api/shadow-pregame-snap` | must trail the `55 2` tonight |
 | `0 9` / `5 10` / `0 14` | 2am/3:05am/7am resolver | 1am/2:05am/6am | `/api/shadow-resolver` | after all games final; 7am retry needs warm Neon |
+| `8 15` / `8 22` / `3 17` / `3 3` | 8:08am/3:08pm/10:03am/8:03pm push | 7:08am/2:08pm/9:03am/7:03pm | `/api/push/notify` | each ~3–8 min after a `/api/tonight` cron (needs fresh `shadow:staging`); per-PT-day KV dedup makes the 4 runs idempotent |
 | `0 12` keepalive · `*/2` kalshi-snapshot | — | — | | DST-exempt, never shift |
 
 **November 1, 2026 checklist (DST ends):** add +1 hour UTC to every row above except the DST-exempt line (e.g. `0 15` → `0 16`, `55 2` → `55 3`, `0 9` → `0 10`), keeping minute offsets identical so pairings hold. Reverse (−1h) when DST returns on 2027-03-14 (second Sunday of March). Update this table's UTC column in the same commit.

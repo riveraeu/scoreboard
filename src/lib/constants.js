@@ -232,14 +232,7 @@ export const GAMELOG_COLS = {
   ],
 };
 
-// Categories confirmed working by calibration (n≥50, positive ROI signal).
-// Shadow calibration gate: update this set when a new category crosses the threshold.
-// Key format: `${sport}|${stat || gameType}` — matches what the calibration endpoint groups by.
-export function passesCategoryGate(p) {
-  const key = `${p.sport}|${p.stat || p.gameType}`;
-  if (key === 'mlb|strikeouts') return (p.truePct ?? 0) >= 80 && (p.truePct ?? 0) < 90;
-  if (key === 'wnba|points')    return (p.truePct ?? 0) >= 70 && (p.truePct ?? 0) < 80;
-  if (key === 'wnba|rebounds')  return (p.truePct ?? 0) >= 70 && (p.truePct ?? 0) < 85;
-  if (key === 'wnba|spread')    return (p.truePct ?? 0) >= 65 && (p.truePct ?? 0) < 85;
-  return false;
-}
+// Shadow-calibration category gate. Moved to api/lib/category-gate.js (2026-06-13) so the
+// server-side push-notify cron applies the identical gate; re-exported here to keep the
+// frontend import path (`import { passesCategoryGate } from './constants.js'`) unchanged.
+export { passesCategoryGate } from '../../api/lib/category-gate.js';

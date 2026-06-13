@@ -2,6 +2,7 @@ import React from 'react';
 import MatchupCard from './MatchupCard.jsx';
 import { useIsMobile } from '../lib/hooks.js';
 import { qualifiesForDisplay, trackIdFor } from '../lib/qualify.js';
+import { getPushState, subscribeToPush, unsubscribeFromPush, isStandalone, isIOS, pushSupported } from '../lib/push.js';
 
 const SPORT_ORDER = { mlb: 0, nba: 1, wnba: 2, nhl: 3 };
 const SPORT_LABEL = { mlb: 'MLB', nba: 'NBA', wnba: 'WNBA', nhl: 'NHL' };
@@ -237,9 +238,36 @@ export default function LineupsPage({
   placeAllPlaceableIds = null,
 }) {
   const [expandedPlays, setExpandedPlays] = React.useState(new Set());
-  const [notifPerm, setNotifPerm] = React.useState(() =>
-    typeof Notification !== 'undefined' ? Notification.permission : 'unsupported'
-  );
+  // Web Push subscription state: 'unsupported' | 'denied' | 'subscribed' | 'unsubscribed' | null (loading).
+  const [pushState, setPushState] = React.useState(null);
+  const [pushBusy, setPushBusy] = React.useState(false);
+  React.useEffect(() => { getPushState().then(setPushState); }, []);
+
+  // Toggle background push. On iOS, push only works once installed to the Home Screen —
+  // if we're in a Safari tab, point the user there instead of silently failing.
+  const togglePush = async () => {
+    if (pushBusy) return;
+    if (pushState === 'subscribed') {
+      setPushBusy(true);
+      try { await unsubscribeFromPush(); setPushState('unsubscribed'); }
+      finally { setPushBusy(false); }
+      return;
+    }
+    if (isIOS() && !isStandalone()) {
+      alert('To get alerts on iPhone: tap the Share button in Safari, choose "Add to Home Screen", then open Scoreboard from your Home Screen and enable notifications there.');
+      return;
+    }
+    setPushBusy(true);
+    try {
+      await subscribeToPush();
+      setPushState('subscribed');
+    } catch (e) {
+      setPushState(await getPushState());
+      alert(e?.message || 'Could not enable notifications');
+    } finally {
+      setPushBusy(false);
+    }
+  };
 
   // Collect unique PT dates from all plays + mlbMeta.gameScores
   const dayTabs = React.useMemo(() => {
@@ -392,13 +420,17 @@ export default function LineupsPage({
 
   const actionButtonsEl = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6, ...(isMobile ? { justifyContent: 'flex-end', flexWrap: 'wrap' } : { flex: 1, justifyContent: 'flex-end' }) }}>
-      {notifPerm === 'default' && (
+      {pushSupported() && pushState && pushState !== 'denied' && (
         <button
-          title="Enable play notifications"
-          onClick={() => Notification.requestPermission().then(p => setNotifPerm(p))}
-          style={{ ...btnSize, borderRadius: 6, cursor: 'pointer',
-            border: '1px solid #30363d', background: 'transparent', color: '#484f58', fontWeight: 600 }}>
-          🔔
+          title={pushState === 'subscribed' ? 'Background alerts on — tap to turn off' : 'Get play alerts on this device (even when the app is closed)'}
+          onClick={togglePush}
+          disabled={pushBusy}
+          style={{ ...btnSize, borderRadius: 6, cursor: pushBusy ? 'default' : 'pointer',
+            border: `1px solid ${pushState === 'subscribed' ? 'rgba(63,185,80,0.3)' : '#30363d'}`,
+            background: pushState === 'subscribed' ? 'rgba(63,185,80,0.12)' : 'transparent',
+            color: pushState === 'subscribed' ? '#3fb950' : '#484f58', fontWeight: 600,
+            opacity: pushBusy ? 0.6 : 1 }}>
+          {pushState === 'subscribed' ? '🔔' : '🔕'}
         </button>
       )}
       {authEmail && placeAllCount > 0 && (
