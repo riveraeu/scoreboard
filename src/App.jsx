@@ -90,6 +90,7 @@ function App() {
   const [showPlaceAll, setShowPlaceAll] = React.useState(false); // batch-place modal open
   const [placeAllStatus, setPlaceAllStatus] = React.useState(null); // null | { running, rows: {id->{state,msg}} }
   const [placeAllSelected, setPlaceAllSelected] = React.useState(new Set()); // IDs of individually checked bets
+  const placeAllInitedRef = React.useRef(false); // first-open default-selection guard (reset on close)
   const [activeDayTab, setActiveDayTab] = React.useState(() =>
     new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
   );
@@ -468,6 +469,7 @@ function App() {
       setShowPlaceAll(false);
       setPlaceAllStatus(null);
       setPlaceAllSelected(new Set());
+      placeAllInitedRef.current = false;
       setShowPicksDrawer(true);
     }, 1200);
     return () => clearTimeout(t);
@@ -792,8 +794,15 @@ function App() {
         const allPlaceable = placeAllGrouped.flatMap(g => g.rescaled).filter(_isToday);
         // Initialise selection to all placeable IDs on first render of the modal
         const allIds = allPlaceable.map(c => c.play.id ?? trackIdFor(c.play));
-        if (placeAllSelected.size === 0 && allIds.length > 0 && !placeAllStatus) {
-          setPlaceAllSelected(new Set(allIds));
+        // Default-check only SAFE candidates (no risk flags) so thin/untested-market plays aren't
+        // bet by accident; they stay selectable. Ref-guarded (not size===0) so an all-risky slate
+        // — safeIds empty — can't loop re-initialising, and a user "deselect all" stays empty.
+        const safeIds = allPlaceable
+          .filter(c => (c.validation.risk?.length ?? 0) === 0)
+          .map(c => c.play.id ?? trackIdFor(c.play));
+        if (!placeAllInitedRef.current && allIds.length > 0 && !placeAllStatus) {
+          placeAllInitedRef.current = true;
+          setPlaceAllSelected(new Set(safeIds));
           return null;
         }
         const scopedGroups = placeAllGrouped
@@ -803,6 +812,9 @@ function App() {
         const blocked = placeAllCandidates.filter(c => c.validation.hard.length > 0 && _isToday(c));
         const flaggedCount = placeable.filter(c => c.validation.soft.length > 0).length;
         const readyCount = placeable.length - flaggedCount;
+        // Placeable-but-risky (default-unchecked) count — surfaced in the header so the lower
+        // default selection is explained. Drawn from allPlaceable since risky rows aren't selected.
+        const riskCount = allPlaceable.filter(c => (c.validation.risk?.length ?? 0) > 0).length;
         const totalCost = parseFloat(placeable.reduce((s, c) => s + c.cost, 0).toFixed(2));
         const totalEstWin = parseFloat(placeable.reduce((s, c) => s + c.count * (100 - c.price) / 100, 0).toFixed(2));
         const cash = kalshiBalance;
@@ -840,7 +852,7 @@ function App() {
           if (teamAbbr && p.sport) return logoUrl(p.sport, teamAbbr);
           return null;
         };
-        const close = () => { if (!running) { setShowPlaceAll(false); setPlaceAllStatus(null); setPlaceAllSelected(new Set()); } };
+        const close = () => { if (!running) { setShowPlaceAll(false); setPlaceAllStatus(null); setPlaceAllSelected(new Set()); placeAllInitedRef.current = false; } };
         const stateColor = { filled: "#3fb950", resting: "#e3b341", error: "#f78166", placing: "#58a6ff", pending: "#484f58" };
         const renderRow = (c, indent) => {
           const key = c.play.id ?? trackIdFor(c.play);
@@ -889,6 +901,14 @@ function App() {
                 {!rs && c.validation.hard.map((msg, i) => (
                   <div key={i} style={{color:"#f78166",fontSize:10,marginTop:2,lineHeight:1.3}}>✗ {msg}</div>
                 ))}
+                {!rs && (c.validation.risk?.length ?? 0) > 0 && (
+                  <>
+                    {c.validation.risk.map((msg, i) => (
+                      <div key={i} style={{color:"#f78166",fontSize:10,marginTop:2,lineHeight:1.3,fontWeight:600}}>⚠ {msg}</div>
+                    ))}
+                    {!isChecked && <div style={{color:"#8b949e",fontSize:9,marginTop:1,fontStyle:"italic"}}>unchecked — tick to override</div>}
+                  </>
+                )}
                 {!rs && c.validation.soft.map((msg, i) => (
                   <div key={i} style={{color:"#e3b341",fontSize:10,marginTop:2,lineHeight:1.3}}>⚠ {msg}</div>
                 ))}
@@ -916,7 +936,7 @@ function App() {
               </div>
               <div style={{fontSize:11,color:"#8b949e",marginBottom:8}}>
                 {done ? "Real-money orders · ⅛-Kelly · correlation-adjusted"
-                  : <>Today's slate · {readyCount} ready{flaggedCount > 0 ? <> · <span style={{color:"#e3b341"}}>{flaggedCount} flagged</span></> : null}{blocked.length > 0 ? <> · <span style={{color:"#f78166"}}>{blocked.length} blocked</span></> : null}</>}
+                  : <>Today's slate · {readyCount} ready{flaggedCount > 0 ? <> · <span style={{color:"#e3b341"}}>{flaggedCount} flagged</span></> : null}{riskCount > 0 ? <> · <span style={{color:"#f78166"}}>{riskCount} risky (unchecked)</span></> : null}{blocked.length > 0 ? <> · <span style={{color:"#f78166"}}>{blocked.length} blocked</span></> : null}</>}
               </div>
               {!done && (
                 <label style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:"#8b949e",marginBottom:12,cursor:running ? "not-allowed" : "pointer",userSelect:"none",borderBottom:"1px solid #21262d",paddingBottom:10}}>
