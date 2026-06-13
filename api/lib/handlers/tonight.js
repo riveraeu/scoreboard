@@ -1371,6 +1371,33 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             Object.assign(wnbaUsageMap, _wInjUsg);
           }
         }
+        // Backfill gameTimes from the (independently-fetched) per-sport gameScores maps. The
+        // dedicated scoreboard fetch above can silently come back empty on an ESPN hiccup/429
+        // (`.then(r => r.ok ? r.json() : {})` swallows non-OK), which would leave every play with
+        // gameTime:null → duplicate matchup cards client-side AND the started-game pre-game drop
+        // below no-ops (keeps !gameTime plays). gameScores is a SEPARATE request (MLB from
+        // buildMlbByteam, others from their byteam builders), so it fills the gap. Only sets
+        // absent keys — preserves the dedicated fetch's doubleheader "latest UTC time wins"
+        // entries. Not written back to the gameTimes:v2 cache: the dedicated fetch retries next
+        // request and stays the authoritative source; this is a per-request gap-fill only.
+        for (const [_gtSport, _gtScores] of [
+          ["mlb", sportByteam.mlb?.gameScores],
+          ["nba", sportByteam.nbaGameScores],
+          ["nhl", sportByteam.nhlGameScores],
+          ["wnba", sportByteam.wnbaGameScores],
+        ]) {
+          if (!_gtScores) continue;
+          for (const gs of Object.values(_gtScores)) {
+            if (!gs?.gameTime || !gs.gameDate) continue;
+            for (const team of [gs.homeTeam, gs.awayTeam]) {
+              if (!team) continue;
+              const _dk = `${_gtSport}:${team}:${gs.gameDate}`;
+              if (!gameTimes[_dk]) gameTimes[_dk] = gs.gameTime;
+              const _bk = `${_gtSport}:${team}`;
+              if (!gameTimes[_bk]) gameTimes[_bk] = gs.gameTime;
+            }
+          }
+        }
         // _OFFRTG_INJ_CAP / _injuryOffRtgFactor / _NBAshortNorm / _injuryOffRtgAdj — module level.
         // ── Player prop plays — all sports ──────────────────────────────────────────────
         // Extracted to api/lib/tonight/props.js (Phase B6, 2026-05-29).
