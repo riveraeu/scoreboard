@@ -12,6 +12,19 @@ function buildGames(allPlays, sport, meta, metaTomorrow) {
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
   const gameMap = new Map();
 
+  // Backfill lookup: when a play lacks gameTime (the backend gameTimes map can transiently come
+  // back empty on an ESPN scoreboard hiccup), adopt the start time from the matching gameScores
+  // entry so the play seeds the SAME card key as gameScores instead of spawning a timeless
+  // duplicate card. Skip doubleheaders (2+ games for one pair+date) — a timeless play can't be
+  // disambiguated, so leave it on the empty-time key (existing behavior).
+  const scoreTimeByPairDate = new Map();
+  for (const gs of [...Object.values(meta?.gameScores || {}), ...Object.values(metaTomorrow?.gameScores || {})]) {
+    if (!gs.homeTeam || !gs.awayTeam || !gs.gameTime) continue;
+    const k = `${[gs.homeTeam, gs.awayTeam].sort().join('|')}|${gs.gameDate ?? ''}`;
+    if (!scoreTimeByPairDate.has(k)) scoreTimeByPairDate.set(k, gs.gameTime);
+    else if (scoreTimeByPairDate.get(k) !== gs.gameTime) scoreTimeByPairDate.set(k, null); // DH → ambiguous
+  }
+
   for (const play of allPlays || []) {
     if (play.sport !== sport) continue;
     // Only gate-passing plays seed matchup cards. qualified:false plays exist solely for the
@@ -44,6 +57,12 @@ function buildGames(allPlays, sport, meta, metaTomorrow) {
     if (!homeTeam || !awayTeam) continue;
 
     const sortedPair = [homeTeam, awayTeam].sort().join('|');
+    // If the play has no gameTime, adopt the matching gameScores start time so it merges with
+    // the gameScores-seeded card rather than duplicating it (see scoreTimeByPairDate above).
+    if (!gameTime) {
+      const backfill = scoreTimeByPairDate.get(`${sortedPair}|${gameDate ?? ''}`);
+      if (backfill) gameTime = backfill;
+    }
     // gameTime included so same-day doubleheaders (e.g. DET @ BAL twice) get separate cards.
     const key = `${sortedPair}|${gameDate ?? ''}|${gameTime ?? ''}`;
 
