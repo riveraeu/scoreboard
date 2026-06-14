@@ -722,21 +722,27 @@ async function handleShadowPregameSnap({ path, request, env, cache }) {
 // GET /api/shadow-report
 // Cron: 30 16 * * * (9:30am PT) — after shadow-snapshot (8:05am PT) has run.
 // Auth: CRON_SECRET (generate + cache) or ADMIN_KEY / JWT (read).
-// Queries 6 parallel Neon aggregations and caches the result in KV (25h TTL).
+// Queries 5 parallel Neon aggregations (+ yesterdayRecap from tracked picks) and caches in KV (25h).
 // ?bust=1 forces regeneration even when a cached report exists.
 
 const REPORT_CACHE_KEY_PREFIX = "shadow:report:";
 const REPORT_TTL = 60 * 60 * 25; // 25 hours
 
-// Mirror passesCategoryGate() from src/lib/constants.js — kept in sync manually.
-const _ACTIVE_CATS = new Set(["mlb|strikeouts", "wnba|points", "wnba|rebounds"]);
-// SQL fragment that mirrors passesCategoryGate() for use in top-picks query.
-// model_true_pct is always the bet-side probability (OVER for props, UNDER-adjusted for UNDER plays).
-// These categories only emit OVERs, so model_true_pct == truePct.
+// Mirror passesCategoryGate() from api/lib/category-gate.js — kept in sync manually.
+const _ACTIVE_CATS = new Set(["mlb|strikeouts", "wnba|points", "wnba|rebounds", "wnba|spread"]);
+// SQL fragment that mirrors passesCategoryGate() for use in the top-picks query.
+// passesCategoryGate() keys on p.truePct (always the YES/over-side probability), NOT the
+// bet side. For props (OVER-only) truePct == model_true_pct. For spread, both sides of a
+// line carry the same truePct (the favorite-cover prob); the stored model_true_pct is the
+// bet side, so for direction='under' rows truePct == 100 - model_true_pct (cover probs are
+// complementary). Hence the CASE — it reconstructs p.truePct to mirror the gate exactly.
 const _CATEGORY_GATE_SQL = `(
-  (sport='mlb' AND stat='strikeouts' AND model_true_pct >= 80 AND model_true_pct < 90) OR
-  (sport='wnba' AND stat='points'    AND model_true_pct >= 70 AND model_true_pct < 80) OR
-  (sport='wnba' AND stat='rebounds'  AND model_true_pct >= 70)
+  (sport='mlb'  AND stat='strikeouts' AND model_true_pct >= 80 AND model_true_pct < 90) OR
+  (sport='wnba' AND stat='points'     AND model_true_pct >= 70 AND model_true_pct < 80) OR
+  (sport='wnba' AND stat='rebounds'   AND model_true_pct >= 70 AND model_true_pct < 85) OR
+  (sport='wnba' AND game_type='spread' AND
+     (CASE WHEN direction='under' THEN 100 - model_true_pct ELSE model_true_pct END) >= 65 AND
+     (CASE WHEN direction='under' THEN 100 - model_true_pct ELSE model_true_pct END) <  85)
 )`;
 const _BAND_MID = { "55-60":57.5,"60-65":62.5,"65-70":67.5,"70-75":72.5,"75-80":77.5,"80-85":82.5,"85-90":87.5,"90-95":92.5,"95+":97.5 };
 
@@ -747,6 +753,88 @@ function _extractReportToken(request) {
   return (request.headers.get("Authorization") || "").replace(/^Bearer\s+/, "");
 }
 
+// Build the yesterday recap from TRACKED account picks (Upstash `picks:{userId}`), not the model's
+// gated shadow set — so it reflects what was actually bet and how it resolved. When `userId` is set
+// (JWT read) scope to that account; otherwise pick the most-active picks:* key (solo app). ROI is
+// units-weighted from stored fields only: units = ⅛-Kelly $ stake, kalshiAvgCents = displayed entry
+// for the side taken, result = won|lost|push. Recommendation-based (fill slippage not captured).
+async function buildYesterdayRecap(env, cache, userId, date) {
+  const empty = { date, account: null, n: 0, wins: 0, losses: 0, pushes: 0, pending: 0,
+    hitRatePct: null, staked: 0, profit: 0, roi: null, picks: [] };
+  const upUrl = env?.UPSTASH_REDIS_REST_URL;
+  if (!upUrl || !cache) return empty;
+
+  // Resolve the target picks blob.
+  let picks = null, account = userId || null;
+  if (userId) {
+    const blob = await cache.get(`picks:${userId}`, "json").catch(() => null);
+    picks = blob?.picks || null;
+  } else {
+    const keysRes = await fetch(upUrl, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${env?.UPSTASH_REDIS_REST_TOKEN}`, "Content-Type": "application/json" },
+      body: JSON.stringify(["KEYS", "picks:*"]),
+    });
+    const { result: keys } = await keysRes.json();
+    if (keys?.length) {
+      const blobs = await Promise.all(keys.map(async k => ({
+        k, picks: (await cache.get(k, "json").catch(() => null))?.picks || [],
+      })));
+      // Most-active account = most picks (solo-app heuristic).
+      const best = blobs.reduce((a, b) => (b.picks.length > a.picks.length ? b : a), { k: null, picks: [] });
+      picks = best.picks;
+      account = best.k ? best.k.replace(/^picks:/, "") : null;
+    }
+  }
+  if (!picks?.length) return { ...empty, account };
+
+  // Filter to games played on `date` (pick.gameDate is the game's PT date).
+  const dayPicks = picks.filter(p => p.gameDate === date);
+
+  let wins = 0, losses = 0, pushes = 0, pending = 0, staked = 0, profit = 0;
+  const out = dayPicks.map(p => {
+    const units = Number(p.units) || 0;
+    // Entry price for the side taken: kalshiAvgCents is the displayed avg (already side-aware);
+    // fall back to the side's quoted price.
+    const entryCents = p.kalshiAvgCents != null ? Number(p.kalshiAvgCents)
+      : (p.kalshiSide === "no" && p.noKalshiPct != null) ? Number(p.noKalshiPct)
+      : p.kalshiPct != null ? Number(p.kalshiPct) : null;
+    const pPrice = entryCents != null && entryCents > 0 && entryCents < 100 ? entryCents / 100 : null;
+    let pl = null;
+    if (p.result === "won")       { wins++;   pl = pPrice != null ? units * (1 - pPrice) / pPrice : null; staked += units; }
+    else if (p.result === "lost") { losses++; pl = -units; staked += units; }
+    else if (p.result === "push") { pushes++; pl = 0; }
+    else                          { pending++; }
+    if (pl != null) profit += pl;
+    const trueBet = p.direction === "under" ? (p.noTruePct ?? p.truePct) : p.truePct;
+    return {
+      sport: p.sport ?? null,
+      category: p.stat || p.gameType || null,
+      label: p.playerName || p.pickTeam || null,
+      line: p.threshold ?? p.pickLine ?? null,
+      side: p.direction || p.kalshiSide || null,
+      truePct: trueBet != null ? parseFloat(Number(trueBet).toFixed(1)) : null,
+      entryPct: entryCents != null ? parseFloat(Number(entryCents).toFixed(1)) : null,
+      units: parseFloat(units.toFixed(2)),
+      result: p.result || "pending",
+      pl: pl != null ? parseFloat(pl.toFixed(2)) : null,
+    };
+  }).sort((a, b) => b.units - a.units);
+
+  const settled = wins + losses;
+  return {
+    date,
+    account,
+    n: settled,
+    wins, losses, pushes, pending,
+    hitRatePct: settled > 0 ? parseFloat((wins / settled * 100).toFixed(1)) : null,
+    staked: parseFloat(staked.toFixed(2)),
+    profit: parseFloat(profit.toFixed(2)),
+    roi: staked > 0 ? parseFloat((profit / staked).toFixed(4)) : null,
+    picks: out,
+  };
+}
+
 async function handleShadowReport({ path, request, env, cache }) {
   if (path !== "shadow-report") return null;
 
@@ -755,10 +843,12 @@ async function handleShadowReport({ path, request, env, cache }) {
   const isAdmin = env?.ADMIN_KEY && bearer === env.ADMIN_KEY;
 
   let isUser = false;
+  let reqUserId = null; // when read with a JWT, scope yesterdayRecap to this user's picks
   if (!isCron && !isAdmin && env?.JWT_SECRET) {
     const token = _extractReportToken(request);
     const payload = token ? await verifyJWT(token, env.JWT_SECRET) : null;
     isUser = !!payload;
+    reqUserId = payload?.userId ?? null;
   }
 
   if (!isCron && !isAdmin && !isUser) return errorResponse("Forbidden", 403);
@@ -779,14 +869,14 @@ async function handleShadowReport({ path, request, env, cache }) {
   const t0 = Date.now();
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
     .toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
-  // Yesterday in PT — the recap scopes to yesterday's snapshot. Report runs 9:30am PT,
-  // well clear of the midnight boundary, so a flat 24h subtraction is safe.
+  // Yesterday in PT — the recap scopes to games played yesterday (pick.gameDate). Report runs
+  // 9:30am PT, well clear of the midnight boundary, so a flat 24h subtraction is safe.
   const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000)
     .toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
 
-  let catRows, bandRows, clvRows, volRows, picksRows, recapRows;
+  let catRows, bandRows, clvRows, volRows, picksRows;
   try {
-    [catRows, bandRows, clvRows, volRows, picksRows, recapRows] = await Promise.all([
+    [catRows, bandRows, clvRows, volRows, picksRows] = await Promise.all([
       // Q1: Category overview — one row per player/game (threshold_rank=1 dedup).
       neonQuery(`
         SELECT sport, COALESCE(stat, game_type) AS category,
@@ -886,26 +976,6 @@ async function handleShadowReport({ path, request, env, cache }) {
           AND ${_CATEGORY_GATE_SQL}
         ORDER BY edge DESC LIMIT 5
       `, [reportDate], env),
-
-      // Q6: Yesterday's recap — the same gated set as today's top picks (Q5), one PT day
-      // back, with outcomes. No `won IS NOT NULL` filter so still-pending rows are kept and
-      // separated in JS (pending count). Mirrors how the UI's actionable set actually resolved.
-      neonQuery(`
-        SELECT sport, COALESCE(stat, game_type) AS category, stat, game_type,
-          player_name, home_team, away_team, pick_team,
-          direction, threshold, pick_line,
-          ROUND(model_true_pct, 1) AS model_true_pct,
-          ROUND(CASE WHEN direction='under' THEN no_kalshi_pct ELSE kalshi_pct END, 1) AS market_pct,
-          ROUND(edge, 2) AS edge,
-          game_time, won, resolved
-        FROM shadow_plays
-        WHERE snapshot_date = $1
-          AND dc_qualified = TRUE
-          AND edge >= 5
-          AND is_best_edge = TRUE
-          AND ${_CATEGORY_GATE_SQL}
-        ORDER BY edge DESC LIMIT 30
-      `, [yesterday], env),
     ]);
   } catch (e) {
     console.error("[shadow-report] query failed:", e?.message);
@@ -1003,40 +1073,16 @@ async function handleShadowReport({ path, request, env, cache }) {
     gameTime: r.game_time ?? null,
   }));
 
-  // Process yesterday's recap — settled rows drive the day record; null `won` = still pending.
-  const recapPicks = recapRows.map(r => ({
-    sport: r.sport,
-    category: r.category,
-    playerName: r.player_name ?? null,
-    homeTeam: r.home_team ?? null,
-    awayTeam: r.away_team ?? null,
-    pickTeam: r.pick_team ?? null,
-    direction: r.direction ?? null,
-    threshold: r.threshold != null ? parseFloat(Number(r.threshold).toFixed(1)) : null,
-    pickLine: r.pick_line != null ? parseFloat(Number(r.pick_line).toFixed(1)) : null,
-    modelTruePct: r.model_true_pct != null ? parseFloat(Number(r.model_true_pct).toFixed(1)) : null,
-    marketPct: r.market_pct != null ? parseFloat(Number(r.market_pct).toFixed(1)) : null,
-    edge: r.edge != null ? parseFloat(Number(r.edge).toFixed(2)) : null,
-    gameTime: r.game_time ?? null,
-    won: r.won == null ? null : !!r.won, // null = unresolved/pending
-  }));
-  const _settled = recapPicks.filter(p => p.won != null);
-  const _rWins = _settled.filter(p => p.won).length;
-  const _rN = _settled.length;
-  const _rAvgMkt = _rN > 0 ? _settled.reduce((s, p) => s + (p.marketPct ?? 0), 0) / _rN : null;
-  const _rHitRate = _rN > 0 ? parseFloat((_rWins / _rN * 100).toFixed(1)) : null;
-  const yesterdayRecap = {
-    date: yesterday,
-    n: _rN,
-    wins: _rWins,
-    losses: _rN - _rWins,
-    pending: recapPicks.length - _rN,
-    hitRatePct: _rHitRate,
-    avgMarketPct: _rAvgMkt != null ? parseFloat(_rAvgMkt.toFixed(1)) : null,
-    roi: _rHitRate != null && _rAvgMkt != null
-      ? parseFloat((_rHitRate / 100 - _rAvgMkt / 100).toFixed(4)) : null,
-    picks: recapPicks,
-  };
+  // Yesterday's recap — sourced from the user's TRACKED account picks (not the model's gated
+  // shadow set), so it reflects what was actually bet and resolved. ROI is units-weighted from
+  // stored fields: units = ⅛-Kelly $ stake, kalshiAvgCents = displayed entry price for the side
+  // taken, result = won|lost|push. Recommendation-based (slippage from actual fills not captured).
+  let yesterdayRecap = null;
+  try {
+    yesterdayRecap = await buildYesterdayRecap(env, cache, reqUserId, yesterday);
+  } catch (e) {
+    console.error("[shadow-report] yesterdayRecap skipped:", e?.message);
+  }
 
   // Newly-listed Kalshi markets we don't consume yet (status='new' in kalshi_series_seen,
   // populated by the /api/kalshi-series-scan cron). Separate try/catch — the table may not
