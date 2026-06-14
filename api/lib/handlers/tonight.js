@@ -22,6 +22,7 @@ import { dedupAltLines } from "../tonight/dedup.js";
 import { emitAllMlAndSpread } from "../tonight/ml-spread.js";
 import { emitGameTotalPlays } from "../tonight/game-totals.js";
 import { emitPropPlays } from "../tonight/props.js";
+import { emitTennisMatchPlays } from "../tonight/tennis-match.js";
 
 const __defProp = Object.defineProperty;
 const __name = (target, value) => __defProp(target, "name", { value, configurable: true });
@@ -215,6 +216,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
         const totalMarkets = []; // game total markets (pct 70–97); under plays computed from same markets
         const teamTotalMarkets = []; // single-team score markets (KXMLBTEAMTOTAL, KXNBATEAMTOTAL)
         const spreadMarkets = []; // MLB run-line / spread markets (KXMLBSPREAD) — line = strike, marginTeam = win-by side
+        const tennisMatchMarkets = []; // ATP/WTA match-winner — every priced side (favorite + dog), grouped by event in emit
         const globalSeen = /* @__PURE__ */ new Set();
         for (let i = 0; i < seriesTickers.length; i++) {
           const ticker = seriesTickers[i];
@@ -222,6 +224,43 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           const { sport, stat, col } = cfg;
           const segment = cfg.segment || "full"; // "f5" for segmented markets, "full" otherwise
           for (const m of kalshiResults[i].markets || []) {
+            // ── Tennis match-winner branch ── binary markets have no floor_strike, so handle
+            // before strike parsing. Collect EVERY priced side (favorite + underdog) keyed by
+            // event_ticker; emitTennisMatchPlays groups them so each side knows its opponent and
+            // emits only the favorite (Kalshi in [67,91]). Not team-based → skips parseGameTeams.
+            if (cfg.gameType === "tennisMatch") {
+              const _tYesAsk = parseFloat(m.yes_ask_dollars) || 0;
+              const _tLast = parseFloat(m.last_price_dollars) || 0;
+              const _tYesBid = parseFloat(m.yes_bid_dollars) || 0;
+              const _tPrice = (_tYesAsk >= 0.98 && _tYesBid === 0 && _tLast > 0) ? _tLast : (_tYesAsk > 0 ? _tYesAsk : _tLast);
+              if (_tPrice === 0) continue; // no live book — skip (tennis books fill near match time; sparse is expected)
+              const _tPct = Math.round(_tPrice * 100);
+              const _tVol = parseInt(m.volume_fp) || parseInt(m.volume) || 0;
+              const _tTitle = m.title || m.event_title || "";
+              // Pick player full name: yes_sub_title is exact; fall back to the title's subject.
+              let _tPick = (m.yes_sub_title || "").trim();
+              if (!_tPick) { const _mm = _tTitle.match(/^Will\s+(.+?)\s+win the\b/i); if (_mm) _tPick = _mm[1].trim(); }
+              if (!_tPick) continue;
+              // Opponent last name + matchup label from "... win the <A> vs <B>: <round> match?".
+              let _tOpp = null, _tMatchup = null;
+              const _mvs = _tTitle.match(/win the\s+(.+?)\s+vs\s+([^:]+?)\s*:/i);
+              if (_mvs) {
+                const _a = _mvs[1].trim(), _b = _mvs[2].trim();
+                _tMatchup = `${_a} vs ${_b}`;
+                _tOpp = _tPick.toLowerCase().includes(_a.toLowerCase()) ? _b : _a;
+              }
+              // gameDate from event_ticker date segment (e.g. KXATPMATCH-26JUN14HIJGIR → 2026-06-14).
+              const _tDateSeg = (m.event_ticker || "").split("-")[1] || "";
+              let _tGameDate = null;
+              if (_tDateSeg.length >= 7) {
+                const _KMONT = { JAN: "01", FEB: "02", MAR: "03", APR: "04", MAY: "05", JUN: "06", JUL: "07", AUG: "08", SEP: "09", OCT: "10", NOV: "11", DEC: "12" };
+                const _tMo = _KMONT[_tDateSeg.slice(2, 5).toUpperCase()];
+                if (_tMo) _tGameDate = `20${_tDateSeg.slice(0, 2)}-${_tMo}-${_tDateSeg.slice(5, 7)}`;
+              }
+              const _tAO = _tPct >= 50 ? Math.round(-(_tPct / (100 - _tPct)) * 100) : Math.round((100 - _tPct) / _tPct * 100);
+              tennisMatchMarkets.push({ gameType: "tennisMatch", sport, tour: cfg.tour, eventTicker: m.event_ticker, player: _tPick, opponentRaw: _tOpp, matchup: _tMatchup, kalshiPct: _tPct, americanOdds: _tAO, kalshiVolume: _tVol, gameDate: _tGameDate, _ticker: m.ticker, _yesAsk: _tYesAsk, _depth: m._depth });
+              continue;
+            }
             const strike = parseFloat(m.floor_strike);
             if (isNaN(strike)) continue;
             const threshold = Math.round(strike + 0.5);
@@ -1441,6 +1480,14 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           mlbBothTeamsConfirmed: _mlbBothTeamsConfirmed,
           reattrMlbGameDate: _reattrMlbGameDate,
         });
+        // ── Tennis match-winner (ATP/WTA) — Phase 1, shadow-only ─────────────────────────
+        // Emits into a separate tennisPlays array (NOT `plays`) so tennis rows bypass the prop
+        // dedup, gameTime filter, and frontend card builder. Merged into shadow:staging only.
+        const tennisPlays = [];
+        await emitTennisMatchPlays({
+          tennisMatchMarkets, tennisPlays, dropped, isDebug, cutoffStr,
+          cache: CACHE2, isBustCache,
+        });
         // Drop plays whose scheduled gameTime has already passed — pre-game market is closed,
         // and our model truePct is built on pre-game inputs so it's no longer valid in-game.
         // Plays without gameTime are kept (we already gate by gameDate earlier).
@@ -1551,7 +1598,9 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             const _n = Object.keys(_gs).filter(k => k.split("|")[1] === _todayPT).length;
             if (_n > 0) _schedCounts[_sp] = _n;
           }
-          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays, dropped, schedule: _schedCounts, writtenAt: Date.now() }), { expirationTtl: 21600 }).catch(() => {});
+          // Tennis plays live in their own array (kept out of `plays` to bypass dedup/frontend);
+          // merge them into the staging `plays` so shadow-snapshot logs them like any other play.
+          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays: [...plays, ...tennisPlays], dropped, schedule: _schedCounts, writtenAt: Date.now() }), { expirationTtl: 21600 }).catch(() => {});
         }
         if (isDebug) {
           const nbaGlLabels = Object.fromEntries(Object.entries(playerGamelogs).filter(([k]) => k.startsWith("nba|")).map(([k, gl]) => [k, gl?.ul ?? null]));
@@ -1565,7 +1614,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             meta: kalshiSnapMeta,
             ageMs: kalshiSnapMeta?.lastRunAt ? Date.now() - kalshiSnapMeta.lastRunAt : null,
           };
-          return jsonResponse({ plays: debugPlays, dropped: debugDropped, preDropped: debugPreDropped, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
+          return jsonResponse({ plays: debugPlays, dropped: debugDropped, preDropped: debugPreDropped, tennisPlays, tennisMarketCount: tennisMatchMarkets.length, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
         }
         // Build mlbMeta: pitchers, ML odds, umpires, weather — keyed by team abbr or "home|away"
         // Pitcher entries: { name, id, era, wins, losses }. MLB Stats API (pitcherInfoByTeam) preferred

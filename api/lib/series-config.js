@@ -21,6 +21,11 @@ export const SERIES_CONFIG = {
   KXNFLRUYDS:  { sport: "nfl",  league: "nfl",  stat: "rushingYards",   col: "YDS" },
   KXNFLREYDS:  { sport: "nfl",  league: "nfl",  stat: "receivingYards", col: "YDS" },
   KXNFLTDS:    { sport: "nfl",  league: "nfl",  stat: "touchdowns",     col: "TD"  },
+  // Tennis match-winner (ATP + WTA) — binary, player-vs-player. The `tennisMatch` gameType
+  // routes these to the dedicated tennis emit path (api/lib/tonight/tennis-match.js) instead
+  // of parseGameTeams. Shadow-only: `tennis|match` is intentionally NOT in the category gate.
+  KXATPMATCH:  { sport: "tennis", league: "atp", tour: "atp", stat: "match", col: "ML", gameType: "tennisMatch" },
+  KXWTAMATCH:  { sport: "tennis", league: "wta", tour: "wta", stat: "match", col: "ML", gameType: "tennisMatch" },
   // Game totals
   KXMLBTOTAL:     { sport: "mlb",  league: "mlb",  stat: "totalRuns",   col: "R",   gameType: "total"     },
   KXNBATOTAL:     { sport: "nba",  league: "nba",  stat: "totalPoints", col: "PTS", gameType: "total"     },

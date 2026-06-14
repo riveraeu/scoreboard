@@ -155,6 +155,7 @@ export const STAT_LABEL = {
   goals:"G", shotsOnGoal:"SOG",
   hits:"H", hrr:"HRR", strikeouts:"K",
   passingYards:"PASS YDS", rushingYards:"RUSH YDS", receivingYards:"REC YDS", touchdowns:"TD",
+  match:"WIN", // tennis match-winner (shadow-only)
 };
 
 export const SPORT_KEY = { nba:"basketball/nba", wnba:"basketball/wnba", nfl:"football/nfl", nhl:"hockey/nhl", mlb:"baseball/mlb" };

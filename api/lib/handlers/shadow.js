@@ -6,6 +6,7 @@
 import { neonQuery, neonBatchUpsert, neonBatchResolve, neonBatchPrePriceUpdate, neonExec } from "../neon.js";
 import { errorResponse, jsonResponse } from "../utils.js";
 import { verifyJWT } from "../auth-utils.js";
+import { fetchCompletedMatches } from "../tennis.js";
 
 const SHADOW_TABLE = "shadow_plays";
 const COLUMNS = [
@@ -383,11 +384,16 @@ async function handleShadowResolver({ path, request, env }) {
     return jsonResponse({ ok: true, resolved: 0, skipped: 0, noData: 0, durationMs: Date.now() - t0 });
   }
 
+  // Tennis match-winner rows resolve via the ESPN tennis scoreboard (player-vs-player, no
+  // home/away team key), so split them out of the team-based /api/live path below.
+  const tennisRows = rows.filter(r => r.sport === "tennis");
+  const teamRows = rows.filter(r => r.sport !== "tennis");
+
   // Build unique game keys per date. Key: sport:away:home[@gameTime] — matches /api/live format.
   const keysByDate = new Map(); // game_date → Set<rawKey>
   const rowToKey = new Map();   // row.id → rawKey
 
-  for (const row of rows) {
+  for (const row of teamRows) {
     const { sport, home_team, away_team, game_time } = row;
     // Prefer game_date when set. When null (Kalshi ticker date unparseable), extract the
     // PT calendar date from game_time (ISO string like 2026-06-03T23:00:00Z) — that gives
@@ -410,7 +416,7 @@ async function handleShadowResolver({ path, request, env }) {
   // totalBases rows need the statsapi TB merge in /api/live (?tb=1 — ESPN box has no TB).
   // Request it only when the batch actually contains such rows so regular runs keep the
   // cheap ESPN-only path and its unsuffixed cache slots.
-  const tbParam = rows.some(r => r.stat === "totalBases") ? "&tb=1" : "";
+  const tbParam = teamRows.some(r => r.stat === "totalBases") ? "&tb=1" : "";
 
   const origin = new URL(request.url).origin;
   await Promise.all([...keysByDate.entries()].map(async ([game_date, keys]) => {
@@ -464,7 +470,7 @@ async function handleShadowResolver({ path, request, env }) {
   // which may be a day early when the game is actually the next day (Kalshi markets open before
   // the ESPN schedule publishes for the following day). Retry with snapshot_date+1 and +2 for
   // these rows when the primary lookup is still unknown.
-  const nullDateRows = rows.filter(r => !r.game_date && !r.game_time);
+  const nullDateRows = teamRows.filter(r => !r.game_date && !r.game_time);
   if (nullDateRows.length > 0) {
     const offsetByDate = new Map(); // offsetDate → Set<baseKey>
     for (const row of nullDateRows) {
@@ -506,7 +512,7 @@ async function handleShadowResolver({ path, request, env }) {
   let skipped = 0;
   let noData = 0;
 
-  for (const row of rows) {
+  for (const row of teamRows) {
     const { rawKey, effectiveDate } = rowToKey.get(row.id);
     let game = liveByKey.get(`${rawKey}|${effectiveDate}`);
     // If primary lookup was unknown (wrong stored game_time), try base key fallback.
@@ -534,6 +540,42 @@ async function handleShadowResolver({ path, request, env }) {
     const result = _resolveRow(row, game);
     if (result === null) { skipped++; continue; }
     updates.push({ id: row.id, won: result.won, actualValue: result.actualValue });
+  }
+
+  // ── Tennis resolution ── grade match-winner rows off the ESPN tennis scoreboard. We fetch
+  // completed matches once per (date, tour) and match the pick player by fuzzy name. won =
+  // (the pick player is the match winner). actualValue is null (binary outcome).
+  if (tennisRows.length) {
+    const tourOf = (r) => {
+      try { const f = typeof r.features === "string" ? JSON.parse(r.features) : r.features; return f?.tour || "atp"; }
+      catch { return "atp"; }
+    };
+    const dateOf = (r) => r.game_date
+      || (r.game_time ? new Date(r.game_time).toISOString().slice(0, 10) : null)
+      || (r.snapshot_date ? new Date(r.snapshot_date).toISOString().slice(0, 10) : null);
+    const byKey = new Map(); // `${date}|${tour}` → rows
+    for (const r of tennisRows) {
+      const date = dateOf(r);
+      if (!date) { noData++; continue; }
+      const key = `${date}|${tourOf(r)}`;
+      if (!byKey.has(key)) byKey.set(key, []);
+      byKey.get(key).push(r);
+    }
+    const matchesByKey = new Map();
+    await Promise.all([...byKey.keys()].map(async (key) => {
+      const [date, tour] = key.split("|");
+      matchesByKey.set(key, await fetchCompletedMatches(tour, date.replace(/-/g, "")));
+    }));
+    for (const [key, rws] of byKey) {
+      const matches = matchesByKey.get(key) || [];
+      for (const r of rws) {
+        const pick = _fuzzyName(r.player_name || r.pick_team || "");
+        const sameName = (a, b) => a === b || (a.length >= 8 && _editDist(a, b) <= 2);
+        const found = matches.find(mt => mt.players.some(p => sameName(_fuzzyName(p), pick)));
+        if (!found || !found.winner) { noData++; continue; } // match not final / pick not found yet
+        updates.push({ id: r.id, won: sameName(_fuzzyName(found.winner), pick), actualValue: null });
+      }
+    }
   }
 
   if (updates.length) await neonBatchResolve(updates, env);
