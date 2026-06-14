@@ -1,5 +1,6 @@
 import React from 'react';
-import { WORKER } from '../lib/constants.js';
+import { WORKER, passesCategoryGate } from '../lib/constants.js';
+import { C, tint } from '../lib/styles.js';
 
 function useDebounce(val, ms) {
   const [dv, setDv] = React.useState(val);
@@ -290,6 +291,17 @@ function AddPickModal({ onClose, onAdd, initialOdds = "-110" }) {
     : pickType === "total" ? (form.sport === "mlb" ? "8.5" : form.sport === "nhl" ? "6.5" : form.sport === "wnba" ? "165.5" : "225.5")
     : (form.sport === "mlb" ? "4.5" : "115.5");
 
+  // Category-gate preview — the SAME passesCategoryGate the Lineups cards / Place All apply. The
+  // order modal is the one placement surface with no gate (you can search and add anything), so
+  // surface the signal here. Judge on the over-framed truePct (matches the saved play's frame —
+  // handleSubmit converts UNDER → 100−bet at line 145). For game picks the gate key resolves to
+  // `sport|<pickType>` (e.g. mlb|spread), none of which are gated → always flags, which is correct.
+  const _tpv = parseFloat(form.truePct);
+  const _overTrue = isNaN(_tpv) ? null : (form.direction === "under" ? 100 - _tpv : _tpv);
+  const _gateStat = pickType === "player" ? form.stat : pickType; // total|teamTotal|ml|spread
+  const _offGate = _overTrue != null &&
+    !passesCategoryGate({ sport: form.sport, stat: _gateStat, truePct: _overTrue });
+
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
@@ -508,6 +520,13 @@ function AddPickModal({ onClose, onAdd, initialOdds = "-110" }) {
               </div>
             </div>
           </div>
+          {_offGate && (
+            <div style={{marginTop:12,padding:"8px 10px",borderRadius:6,fontSize:11.5,lineHeight:1.45,
+              color:C.yellow,background:tint(C.yellow,0.1),border:`1px solid ${tint(C.yellow,0.25)}`}}>
+              ⚠ Not in the confirmed-positive category gate — this category/band is shadow-only
+              (hidden on Lineups cards, excluded from Place All). Bet on judgment, not the model.
+            </div>
+          )}
           <button type="submit" style={{marginTop:20,width:"100%",padding:"10px",borderRadius:8,
             background:"#238636",border:"none",color:"#fff",fontSize:14,fontWeight:600,cursor:"pointer"}}>
             Add Pick
