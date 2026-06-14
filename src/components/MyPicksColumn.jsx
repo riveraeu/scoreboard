@@ -1,12 +1,13 @@
 import React from 'react';
 import { SPORT_BADGE_COLOR, STAT_LABEL } from '../lib/constants.js';
 import DayBar from './DayBar.jsx';
-import AddPickModal from './AddPickModal.jsx';
 import { buildLiveGameKey, buildLiveProgress, resolveTotalGameScore } from '../lib/liveStats.js';
 import { useIsMobile } from '../lib/hooks.js';
 
 function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToTeam, navigateToPlay, bankroll, setBankroll, kalshiBalance, setPickUnits, chartMonth, setChartMonth, openPickMonths, setOpenPickMonths, openPickWeeks, setOpenPickWeeks, openPickDays, setOpenPickDays, editPickId, setEditPickId, setPlayResult, setShowAddPick, oddsToProfit, liveStats = {}, mlbGameScores = {}, nbaGameScores = {}, nhlGameScores = {} }) {
   const isMobile = useIsMobile();
+  // Stats + chart scope: "month" (per-day bars, default) or "year" (per-month bars).
+  const [viewMode, setViewMode] = React.useState('month');
   // Bump tap targets on mobile so the small ↺ ✎ buttons + stake input meet ~32px touch guidelines.
   const rowBtnPad = isMobile ? "6px 10px" : "2px 6px";
   const rowBtnFs = isMobile ? 13 : 11;
@@ -15,10 +16,12 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
         {(() => {
         if (trackedPlays.length === 0) return null;
         const allSettled = trackedPlays.filter(p => p.result && p.result !== "dnp");
-        // Stats and chart are scoped to the currently-selected month so they line up.
+        // Stats and chart are scoped to the selected period so they line up: the whole
+        // selected month ("YYYY-MM") in month view, or the whole year ("YYYY") in year view.
+        const periodPrefix = viewMode === 'year' ? (chartMonth || "").slice(0, 4) : (chartMonth || "");
         const settled = allSettled.filter(p => {
           const dk = p.gameDate || new Date(p.trackedAt).toISOString().slice(0,10);
-          return dk.startsWith(chartMonth || "");
+          return dk.startsWith(periodPrefix);
         });
         const wons = settled.filter(p => p.result === "won").length;
 
@@ -45,56 +48,22 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
 
         return (
           <div>
-            {/* Sub-header row: active/finished counts + Add button + Bankroll */}
+            {/* Sub-header row: Month/Year view tabs + Bankroll */}
             <div style={{display:"flex",alignItems:"center",marginBottom:12,gap:8,flexWrap:"wrap"}}>
-              {(() => {
-                const activeCount = trackedPlays.filter(p => !p.result).length;
-                const finishedCount = trackedPlays.filter(p => p.result && p.result !== "dnp").length;
-                const allWons = allSettled.filter(p => p.result === "won").length;
-                const allLosses = allSettled.length - allWons;
-                const winPct = allSettled.length > 0 ? Math.round((allWons / allSettled.length) * 100) : null;
-                // All-time P&L + ROI for the header alongside record
-                let _allStaked = 0, _allPL = 0;
-                allSettled.forEach(p => {
-                  const stake = p.units != null ? p.units : Math.abs(p.americanOdds || 0) / 10;
-                  _allStaked += stake;
-                  if (p.result === "won") _allPL += stake * oddsToProfit(p.americanOdds);
-                  else _allPL -= stake;
-                });
-                const _allRoi = _allStaked > 0 ? (_allPL / _allStaked) * 100 : null;
-                const _allPLColor = _allPL > 0 ? "#3fb950" : _allPL < 0 ? "#f78166" : "#8b949e";
-                const _fmtPL = n => (n >= 0 ? "+" : "") + "$" + Math.abs(n).toFixed(2);
-                return (
-                  <span style={{fontSize:11,color:"#484f58"}}>
-                    <span style={{color:"#3fb950"}}>{activeCount} active</span>
-                    {" · "}
-                    <span style={{color:"#8b949e"}}>{finishedCount} finished</span>
-                    {allSettled.length > 0 && (
-                      <>
-                        {" · "}
-                        <span style={{color:"#3fb950",fontWeight:600}}>{allWons}W</span>
-                        <span style={{color:"#484f58"}}>–</span>
-                        <span style={{color:"#f78166",fontWeight:600}}>{allLosses}L</span>
-                        {winPct != null && <span style={{color:"#484f58",marginLeft:4}}>({winPct}%)</span>}
-                        {" · "}
-                        <span style={{color:_allPLColor,fontWeight:600}}>{_fmtPL(_allPL)}</span>
-                        {_allRoi != null && (
-                          <>
-                            {" · "}
-                            <span style={{color:_allPLColor,fontWeight:600}}>{_allRoi >= 0 ? "+" : ""}{_allRoi.toFixed(1)}%</span>
-                            <span style={{color:"#484f58",marginLeft:2}}>ROI</span>
-                          </>
-                        )}
-                      </>
-                    )}
-                  </span>
-                );
-              })()}
-              <button onClick={() => setShowAddPick(true)}
-                style={{fontSize:11,padding:"2px 10px",borderRadius:6,cursor:"pointer",
-                  border:"1px solid #238636",background:"rgba(35,134,54,0.15)",color:"#3fb950",fontWeight:600}}>
-                + Add
-              </button>
+              <div style={{display:"flex",gap:6}}>
+                {[["month","Month"],["year","Year"]].map(([v,l]) => {
+                  const active = viewMode === v;
+                  return (
+                    <button key={v} onClick={() => setViewMode(v)}
+                      style={{fontSize:11,padding:"3px 12px",borderRadius:6,cursor:"pointer",fontWeight:600,
+                        background: active ? "rgba(88,166,255,0.15)" : "transparent",
+                        border:`1px solid ${active ? "#58a6ff" : "#30363d"}`,
+                        color: active ? "#58a6ff" : "#8b949e"}}>
+                      {l}
+                    </button>
+                  );
+                })}
+              </div>
               {/* Bankroll — live Kalshi balance (read-only) or manual input */}
               <div style={{display:"flex",alignItems:"center",gap:6,marginLeft:"auto"}}>
                 <span style={{color:"#484f58",fontSize:11}}>{kalshiBalance != null ? "Kalshi" : "Bankroll"}</span>
@@ -172,12 +141,14 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                       background:"#0d1117", border:"1px solid #30363d", borderRadius:4 };
                     return (
                       <div style={{marginLeft:"auto",display:"flex",gap:8}}>
+                        {viewMode !== 'year' && (
                         <div>
                           <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Month</div>
                           <select value={selMo} onChange={e => setChartMonth(`${selYr}-${String(e.target.value).padStart(2,"0")}`)} style={sel}>
                             {monthNames.map((n, i) => <option key={i+1} value={i+1}>{n}</option>)}
                           </select>
                         </div>
+                        )}
                         <div>
                           <div style={{color:"#484f58",fontSize:10,marginBottom:3}}>Year</div>
                           <select value={selYr} onChange={e => setChartMonth(`${e.target.value}-${String(selMo).padStart(2,"0")}`)} style={sel}>
@@ -190,18 +161,16 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                 </div>
                 {/* P&L calendar bar chart — one bar per day in selected month */}
                 {(() => {
+                  const isYearView = viewMode === 'year';
                   const [selY, selM] = (chartMonth || "").split("-").map(Number);
-                  if (!selY || !selM) return null;
-                  // Always render the full month so the x-axis scale is consistent across months;
-                  // future days are rendered as empty bars. This makes April vs May visually comparable.
-                  const lastDayShown = new Date(selY, selM, 0).getDate(); // last day of month
-                  // Picks settled within the selected month, with computed P&L per pick
-                  const monthPrefix = `${selY}-${String(selM).padStart(2,"0")}`;
+                  if (!selY || (!isYearView && !selM)) return null;
+                  // Picks settled within the selected period (whole year in year view, else the
+                  // selected month), with computed P&L + a label per pick for the bar tooltips.
                   const playsWithPL = [...trackedPlays]
                     .filter(p => p.result && p.result !== "dnp")
                     .filter(p => {
                       const dk = p.gameDate || new Date(p.trackedAt).toISOString().slice(0,10);
-                      return dk.startsWith(monthPrefix);
+                      return dk.startsWith(isYearView ? String(selY) : `${selY}-${String(selM).padStart(2,"0")}`);
                     })
                     .map(p => {
                       const s = p.units != null ? p.units : Math.abs(p.americanOdds || 0) / 10;
@@ -219,24 +188,51 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                             : p.gameType === "spread"
                               ? `${p.pickTeam} ${_spreadStr}`
                               : `${p.playerName} ${p.threshold}+ ${p.stat?.toUpperCase?.() || ""}`.trim();
-                      return { pl, dateKey, barLabel };
+                      return { pl, dateKey, won: p.result === "won", barLabel };
                     });
-                  // Build calendar: day 1 → lastDayShown, every day gets a bucket (empty days = zero bar)
-                  const dayBuckets = {};
-                  for (let d = 1; d <= lastDayShown; d++) {
-                    const key = `${monthPrefix}-${String(d).padStart(2,"0")}`;
-                    const dateLabel = new Date(selY, selM-1, d).toLocaleDateString("en-US", { month: "short", day: "numeric", weekday: "short" });
-                    dayBuckets[key] = { key, label: String(d), dateLabel, pl: 0, wins: 0, losses: 0, plays: [] };
+                  let days;
+                  if (isYearView) {
+                    // Year view: one bucket per month (Jan–Dec). Tooltip summarizes the month's
+                    // W–L record + net rather than listing every pick.
+                    const monthAbbr = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+                    const monthBuckets = {};
+                    for (let m = 1; m <= 12; m++) {
+                      const key = `${selY}-${String(m).padStart(2,"0")}`;
+                      monthBuckets[key] = { key, label: monthAbbr[m-1], dateLabel: `${new Date(selY, m-1, 1).toLocaleDateString("en-US",{month:"long",year:"numeric"})}`, pl: 0, wins: 0, losses: 0, plays: [], _w: 0, _l: 0 };
+                    }
+                    playsWithPL.forEach(p => {
+                      const b = monthBuckets[p.dateKey.slice(0,7)];
+                      if (!b) return;
+                      b.pl += p.pl;
+                      if (p.pl > 0) b.wins += p.pl;
+                      else if (p.pl < 0) b.losses += Math.abs(p.pl);
+                      if (p.won) b._w++; else b._l++;
+                    });
+                    Object.values(monthBuckets).forEach(b => {
+                      if (b._w + b._l > 0) b.plays = [{ barLabel: `${b._w}W–${b._l}L`, pl: b.pl }];
+                    });
+                    days = Object.values(monthBuckets);
+                  } else {
+                    // Month view: one bucket per day (empty days = zero bar) so the x-axis scale
+                    // stays consistent across months and April vs May are visually comparable.
+                    const monthPrefix = `${selY}-${String(selM).padStart(2,"0")}`;
+                    const lastDayShown = new Date(selY, selM, 0).getDate();
+                    const dayBuckets = {};
+                    for (let d = 1; d <= lastDayShown; d++) {
+                      const key = `${monthPrefix}-${String(d).padStart(2,"0")}`;
+                      const dateLabel = new Date(selY, selM-1, d).toLocaleDateString("en-US", { month: "short", day: "numeric", weekday: "short" });
+                      dayBuckets[key] = { key, label: String(d), dateLabel, pl: 0, wins: 0, losses: 0, plays: [] };
+                    }
+                    playsWithPL.forEach(p => {
+                      const b = dayBuckets[p.dateKey];
+                      if (!b) return;
+                      b.pl += p.pl;
+                      if (p.pl > 0) b.wins += p.pl;
+                      else if (p.pl < 0) b.losses += Math.abs(p.pl);
+                      b.plays.push(p);
+                    });
+                    days = Object.values(dayBuckets);
                   }
-                  playsWithPL.forEach(p => {
-                    const b = dayBuckets[p.dateKey];
-                    if (!b) return;
-                    b.pl += p.pl;
-                    if (p.pl > 0) b.wins += p.pl;
-                    else if (p.pl < 0) b.losses += Math.abs(p.pl);
-                    b.plays.push(p);
-                  });
-                  const days = Object.values(dayBuckets);
                   const maxAbs = Math.max(...days.map(d => Math.max(d.wins, d.losses)), 0.01);
                   const HALF = 60;
                   const yMax = maxAbs;

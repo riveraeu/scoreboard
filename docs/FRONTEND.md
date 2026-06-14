@@ -92,6 +92,14 @@ Renders the qualification-summary box (Kalshi gate · edge gate · DC gate · ed
 
 **AddPickModal supports three pick types** via a top-level toggle: Player Prop, Game Total, Team Total. Game-total form collects `homeTeam`/`awayTeam` (canonical abbrs) and submits `gameType: "total"`. Team-total form collects `scoringTeam`/`oppTeam` and submits `gameType: "teamTotal"`. **Line semantics**: for player props the input IS the threshold (20.5 stored as 20.5); for totals the input is the half-integer line shown on the sportsbook (7.5) and `threshold = Math.round(line + 0.5)` (matches API convention so `buildLiveProgress` renders `(threshold - 0.5).toFixed(1)`). Game-total sport options: NBA/WNBA/MLB/NHL/NFL. Team-total sport options: NBA/MLB only (no Kalshi team-total series for the others). Stat is derived from sport per `TOTAL_STAT`/`TEAM_TOTAL_STAT` maps.
 
+**Note (2026-06-14):** AddPickModal is still rendered in `App.jsx` (`showAddPick`) but no longer has a trigger — the **+ Add** button was removed from the tracking drawer (`MyPicksColumn`). Manual ad-hoc entry is effectively retired from the UI; the modal/code stays in place in case the entry point is reinstated.
+
+## Tracking drawer (`MyPicksColumn`) header
+- Top of the drawer is a **Month / Year** view toggle (local `viewMode` state, Month default) — it replaced the old all-time `N active · N finished · W–L · P&L · ROI` summary line (lifetime totals no longer shown). Bankroll/Kalshi-balance block stays on the right.
+- Stats cards (Record / Net P&L / ROI / Avg odds) and the calendar bar chart both scope to a shared `periodPrefix`: `YYYY` in year view, `YYYY-MM` in month view — switching tabs re-derives both together.
+- Chart granularity follows the tab: **month** = one bar per day of the selected month (empty days = zero bar, consistent x-scale); **year** = 12 bars Jan–Dec, each month's tooltip summarized as `{W}W–{L}L` + net (labeled e.g. "June 2026") rather than listing every pick. Both reuse `DayBar` unchanged.
+- Dropdowns: the **Month** `<select>` is hidden on the Year tab; the **Year** `<select>` drives the year chart/stats. Both write back to `chartMonth` (`YYYY-MM`).
+
 ---
 
 ## Color tiers (utility)

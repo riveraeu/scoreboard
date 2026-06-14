@@ -439,7 +439,7 @@ export default function LineupsPage({
 
   const actionButtonsEl = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6, ...(isMobile ? { justifyContent: 'flex-end', flexWrap: 'wrap' } : { flex: 1, justifyContent: 'flex-end' }) }}>
-      {pushSupported() && pushState && pushState !== 'denied' && (
+      {pushSupported() && pushState && pushState !== 'denied' && pushState !== 'subscribed' && (
         <button
           title={pushState === 'subscribed' ? 'Background alerts on — tap to turn off' : 'Get play alerts on this device (even when the app is closed)'}
           onClick={togglePush}
