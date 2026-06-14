@@ -722,7 +722,7 @@ async function handleShadowPregameSnap({ path, request, env, cache }) {
 // GET /api/shadow-report
 // Cron: 30 16 * * * (9:30am PT) — after shadow-snapshot (8:05am PT) has run.
 // Auth: CRON_SECRET (generate + cache) or ADMIN_KEY / JWT (read).
-// Queries 5 parallel Neon aggregations and caches the result in KV (25h TTL).
+// Queries 6 parallel Neon aggregations and caches the result in KV (25h TTL).
 // ?bust=1 forces regeneration even when a cached report exists.
 
 const REPORT_CACHE_KEY_PREFIX = "shadow:report:";
@@ -779,10 +779,14 @@ async function handleShadowReport({ path, request, env, cache }) {
   const t0 = Date.now();
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
     .toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+  // Yesterday in PT — the recap scopes to yesterday's snapshot. Report runs 9:30am PT,
+  // well clear of the midnight boundary, so a flat 24h subtraction is safe.
+  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000)
+    .toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
 
-  let catRows, bandRows, clvRows, volRows, picksRows;
+  let catRows, bandRows, clvRows, volRows, picksRows, recapRows;
   try {
-    [catRows, bandRows, clvRows, volRows, picksRows] = await Promise.all([
+    [catRows, bandRows, clvRows, volRows, picksRows, recapRows] = await Promise.all([
       // Q1: Category overview — one row per player/game (threshold_rank=1 dedup).
       neonQuery(`
         SELECT sport, COALESCE(stat, game_type) AS category,
@@ -882,6 +886,26 @@ async function handleShadowReport({ path, request, env, cache }) {
           AND ${_CATEGORY_GATE_SQL}
         ORDER BY edge DESC LIMIT 5
       `, [reportDate], env),
+
+      // Q6: Yesterday's recap — the same gated set as today's top picks (Q5), one PT day
+      // back, with outcomes. No `won IS NOT NULL` filter so still-pending rows are kept and
+      // separated in JS (pending count). Mirrors how the UI's actionable set actually resolved.
+      neonQuery(`
+        SELECT sport, COALESCE(stat, game_type) AS category, stat, game_type,
+          player_name, home_team, away_team, pick_team,
+          direction, threshold, pick_line,
+          ROUND(model_true_pct, 1) AS model_true_pct,
+          ROUND(CASE WHEN direction='under' THEN no_kalshi_pct ELSE kalshi_pct END, 1) AS market_pct,
+          ROUND(edge, 2) AS edge,
+          game_time, won, resolved
+        FROM shadow_plays
+        WHERE snapshot_date = $1
+          AND dc_qualified = TRUE
+          AND edge >= 5
+          AND is_best_edge = TRUE
+          AND ${_CATEGORY_GATE_SQL}
+        ORDER BY edge DESC LIMIT 30
+      `, [yesterday], env),
     ]);
   } catch (e) {
     console.error("[shadow-report] query failed:", e?.message);
@@ -979,6 +1003,41 @@ async function handleShadowReport({ path, request, env, cache }) {
     gameTime: r.game_time ?? null,
   }));
 
+  // Process yesterday's recap — settled rows drive the day record; null `won` = still pending.
+  const recapPicks = recapRows.map(r => ({
+    sport: r.sport,
+    category: r.category,
+    playerName: r.player_name ?? null,
+    homeTeam: r.home_team ?? null,
+    awayTeam: r.away_team ?? null,
+    pickTeam: r.pick_team ?? null,
+    direction: r.direction ?? null,
+    threshold: r.threshold != null ? parseFloat(Number(r.threshold).toFixed(1)) : null,
+    pickLine: r.pick_line != null ? parseFloat(Number(r.pick_line).toFixed(1)) : null,
+    modelTruePct: r.model_true_pct != null ? parseFloat(Number(r.model_true_pct).toFixed(1)) : null,
+    marketPct: r.market_pct != null ? parseFloat(Number(r.market_pct).toFixed(1)) : null,
+    edge: r.edge != null ? parseFloat(Number(r.edge).toFixed(2)) : null,
+    gameTime: r.game_time ?? null,
+    won: r.won == null ? null : !!r.won, // null = unresolved/pending
+  }));
+  const _settled = recapPicks.filter(p => p.won != null);
+  const _rWins = _settled.filter(p => p.won).length;
+  const _rN = _settled.length;
+  const _rAvgMkt = _rN > 0 ? _settled.reduce((s, p) => s + (p.marketPct ?? 0), 0) / _rN : null;
+  const _rHitRate = _rN > 0 ? parseFloat((_rWins / _rN * 100).toFixed(1)) : null;
+  const yesterdayRecap = {
+    date: yesterday,
+    n: _rN,
+    wins: _rWins,
+    losses: _rN - _rWins,
+    pending: recapPicks.length - _rN,
+    hitRatePct: _rHitRate,
+    avgMarketPct: _rAvgMkt != null ? parseFloat(_rAvgMkt.toFixed(1)) : null,
+    roi: _rHitRate != null && _rAvgMkt != null
+      ? parseFloat((_rHitRate / 100 - _rAvgMkt / 100).toFixed(4)) : null,
+    picks: recapPicks,
+  };
+
   // Newly-listed Kalshi markets we don't consume yet (status='new' in kalshi_series_seen,
   // populated by the /api/kalshi-series-scan cron). Separate try/catch — the table may not
   // exist yet on first deploy, and a discovery miss must never break the briefing.
@@ -1007,6 +1066,7 @@ async function handleShadowReport({ path, request, env, cache }) {
     generatedAt: new Date().toISOString(),
     since,
     topPicks,
+    yesterdayRecap,
     categories,
     topBands,
     clv,
