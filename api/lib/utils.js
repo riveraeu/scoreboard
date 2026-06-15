@@ -14,6 +14,7 @@ export function jsonResponse(data, opts = false) {
   const headers = { "Content-Type": "application/json", ...corsHeaders() };
   if (opts === true) headers["Cache-Control"] = "no-store";
   else if (typeof opts === "number" && opts > 0) headers["Cache-Control"] = `public, max-age=${opts}`;
+  else if (typeof opts === "string" && opts) headers["Cache-Control"] = opts;
   return new Response(JSON.stringify(data), { headers });
 }
 

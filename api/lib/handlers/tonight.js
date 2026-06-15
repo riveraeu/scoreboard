@@ -1950,5 +1950,12 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           await CACHE2.put(`plays:daily:${summary.date}`, JSON.stringify(summary), { expirationTtl: 7776e3 }).catch(() => {
           });
         }
-        return jsonResponse(playsResult, true);
+        // Edge SWR: the snap-first assembly is ~7s, and the underlying snap cron + client poll
+        // both run on a 2-min cadence, so serving a CDN-cached copy fresh for 2 min (then stale
+        // for 10 more while it revalidates in the background) removes the synchronous 7s wait from
+        // essentially every load without making the displayed set any staler than the 2-min poll
+        // already allowed. Display-price staleness is harmless since the order modal walks the live
+        // book at placement (2026-06-15). `?bust=1` (manual ↻) and debug stay no-store so neither
+        // serves nor populates the shared cache.
+        return jsonResponse(playsResult, isBustCache ? true : "public, s-maxage=120, stale-while-revalidate=600");
 }
