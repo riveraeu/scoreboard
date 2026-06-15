@@ -1,15 +1,7 @@
 import React from 'react';
 import { WORKER, passesCategoryGate } from '../lib/constants.js';
 import { C, tint } from '../lib/styles.js';
-
-function useDebounce(val, ms) {
-  const [dv, setDv] = React.useState(val);
-  React.useEffect(() => {
-    const t = setTimeout(() => setDv(val), ms);
-    return () => clearTimeout(t);
-  }, [val, ms]);
-  return dv;
-}
+import { useDebounce } from '../lib/hooks.js';
 
 
 // Sports that have Kalshi game-total series + sports that have team-total series.
@@ -542,5 +534,4 @@ function AddPickModal({ onClose, onAdd, initialOdds = "-110" }) {
 // key maps to perGame row fields (or 'rest' for computed rest-days).
 // ─── Model Explanation Page ────────────────────────────────────────────────
 
-export { useDebounce };
 export default AddPickModal;

@@ -8,7 +8,16 @@ export default defineConfig(({ mode }) => {
   const apiTarget = env.VITE_API_TARGET || 'https://scoreboard-ivory-xi.vercel.app';
   return {
     plugins: [react()],
-    build: { outDir: 'dist' },
+    build: {
+      outDir: 'dist',
+      rollupOptions: {
+        output: {
+          // Split react/react-dom into a stable vendor chunk so it stays cached across
+          // deploys — app code changes every push, the runtime rarely does (2026-06-15).
+          manualChunks: { vendor: ['react', 'react-dom', 'react-dom/client'] },
+        },
+      },
+    },
     server: {
       proxy: { '/api': apiTarget },
     },

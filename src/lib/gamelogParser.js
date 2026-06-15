@@ -1,4 +1,4 @@
-import { STAT_CONFIGS } from '../components/TeamPage.jsx';
+import { STAT_CONFIGS } from './statConfigs.js';
 
 // ESPN gamelog parser — transforms a raw `{labels, events}` payload into:
 //   - aggregated: { [statKey]: number[] }  per-stat arrays for the player-card bars

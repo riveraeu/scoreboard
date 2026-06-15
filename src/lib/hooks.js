@@ -18,3 +18,15 @@ export function useIsMobile(threshold = 600) {
   }, [threshold]);
   return isMobile;
 }
+
+// Debounce a fast-changing value (search input, etc.) — returns `val` only after it has
+// settled for `ms`. Lives here (not in AddPickModal) so importers like usePlayerSearch don't
+// statically pull the lazy-loaded modal into the main bundle.
+export function useDebounce(val, ms) {
+  const [dv, setDv] = React.useState(val);
+  React.useEffect(() => {
+    const t = setTimeout(() => setDv(val), ms);
+    return () => clearTimeout(t);
+  }, [val, ms]);
+  return dv;
+}

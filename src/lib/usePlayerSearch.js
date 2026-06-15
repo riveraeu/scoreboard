@@ -1,6 +1,6 @@
 import React from 'react';
 import { WORKER, TEAM_DB } from './constants.js';
-import { useDebounce } from '../components/AddPickModal.jsx';
+import { useDebounce } from './hooks.js';
 
 // Top-of-page search box, extracted from App.jsx (E-8). Owns the query/suggestions/dropdown
 // state, the debounced ESPN `/athletes` fetch, the instant client-side team match, and the

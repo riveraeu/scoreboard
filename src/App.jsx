@@ -21,17 +21,21 @@ import { usePlayerCardState } from './lib/usePlayerCardState.js';
 import InputList from './components/InputList.jsx';
 import { buildLambdaInputs, buildModelOutput } from './lib/lambdaInputs.js';
 import { tierColor } from './lib/colors.js';
-import TotalsBarChart from './components/TotalsBarChart.jsx';
-import TeamPage, { STAT_CONFIGS } from './components/TeamPage.jsx';
+import { STAT_CONFIGS } from './lib/statConfigs.js';
 import DayBar from './components/DayBar.jsx';
-import AddPickModal from './components/AddPickModal.jsx';
-import ReportPage from './components/ReportPage.jsx';
 import MyPicksColumn from './components/MyPicksColumn.jsx';
 import LineupsPage from './components/LineupsPage.jsx';
 import { qualifiesForDisplay, trackIdFor } from './lib/qualify.js';
 import SimBadge from './components/SimBadge.jsx';
 
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_CLIENT as EDGE_GATE } from "../api/lib/config.js";
+
+// Route/interaction-gated heavy components are code-split (2026-06-15): none are needed for
+// the default LineupsPage first paint, so they load on demand in their own chunks, shrinking
+// the initial bundle. TotalsBarChart rides along inside the TeamPage chunk (its only user).
+const TeamPage = React.lazy(() => import('./components/TeamPage.jsx'));
+const ReportPage = React.lazy(() => import('./components/ReportPage.jsx'));
+const AddPickModal = React.lazy(() => import('./components/AddPickModal.jsx'));
 
 // Pairwise same-game phi correlation table from 30-day shadow analysis (2026-06-04).
 // Negative-phi pairs (hedges) are intentionally absent → default 0 = no reduction.
@@ -683,11 +687,13 @@ function App() {
 
       {/* Add Pick modal */}
       {showAddPick && (
-        <AddPickModal
-          onClose={() => setShowAddPick(false)}
-          onAdd={play => trackPlay(play)}
-          initialOdds="-110"
-        />
+        <React.Suspense fallback={null}>
+          <AddPickModal
+            onClose={() => setShowAddPick(false)}
+            onAdd={play => trackPlay(play)}
+            initialOdds="-110"
+          />
+        </React.Suspense>
       )}
 
       {/* Confirm pick modal */}
@@ -1188,6 +1194,7 @@ function App() {
 
       {/* Research page — Market Report + calibration Results, per (sport, play type) */}
       {modelPage && !player && !teamPage && (
+        <React.Suspense fallback={<div style={{textAlign:'center',padding:52,color:'#8b949e',fontSize:13}}>Loading…</div>}>
         <ReportPage
           onBack={goBack}
           reportSort={reportSort}
@@ -1215,10 +1222,12 @@ function App() {
           initialTab={modelEntryOpts.tab}
           initialSport={modelEntryOpts.sport}
         />
+        </React.Suspense>
       )}
 
       {/* Team page */}
       {teamPage && !modelPage && (
+        <React.Suspense fallback={<div style={{textAlign:'center',padding:52,color:'#8b949e',fontSize:13}}>Loading…</div>}>
         <TeamPage
           abbr={teamPage.abbr} sport={teamPage.sport}
           teamPageData={teamPageData}
@@ -1232,6 +1241,7 @@ function App() {
           trackPlay={trackPlay}
           untrackPlay={untrackPlay}
         />
+        </React.Suspense>
       )}
 
       {/* Player loading state — when accessed via direct URL, tonightPlays is null while the
