@@ -70,7 +70,7 @@ Single Vercel Edge Function. `api/[...path].js` is a thin router: handles CORS p
 - `api/lib/handlers/player.js` — `/api/player`, `/api/gamelog`, `/api/headshot`
 - `api/lib/handlers/sports.js` — `/api/team`, `/api/live`
 - `api/lib/handlers/dvp.js` — `/api/dvp`, `/api/nba-depth`, `/api/dvp/debug-dc`
-- `api/lib/handlers/kalshi.js` — `/api/kalshi`, `/api/kalshi-snapshot`, `/api/kalshi-series-scan`, `/api/keepalive`, `/api/kalshi-order`, `/api/kalshi-balance`, `/api/kalshi-fills`
+- `api/lib/handlers/kalshi.js` — `/api/kalshi`, `/api/kalshi-orderbook`, `/api/kalshi-snapshot`, `/api/kalshi-series-scan`, `/api/keepalive`, `/api/kalshi-order`, `/api/kalshi-balance`, `/api/kalshi-fills`
 - `api/lib/handlers/tonight.js` — `/api/tonight` (~1857 lines after Phase B6). Owns Kalshi parse loop, byteam hydration, data-prep, emit calls, response assembly.
 - `api/lib/handlers/shadow.js` — `/api/shadow-snapshot`, `/api/shadow-resolver`, `/api/shadow-pregame-snap`
 - `api/lib/handlers/push.js` — `/api/push/{vapid,subscribe,unsubscribe,notify,test}` (Web Push / PWA background notifications; web-push is the only Node-only dep, dynamic-imported in the send path)
@@ -118,6 +118,7 @@ See `docs/INFRA.md` for full request/response contracts, auth patterns, cron det
 |---|---|---|
 | `/api/tonight` | `handlers/tonight.js` | Main play gen. `?debug=1` adds drops/debug. `?bust=1` bypasses caches. |
 | `/api/kalshi` | `handlers/kalshi.js` | Raw Kalshi market data |
+| `/api/kalshi-orderbook` | `handlers/kalshi.js` | GET `?ticker=` — live FULL resting book for one ticker (`{levels:{n,y}, yesAsk, noAsk, spread, volume}`). Order modals walk it for the suggested size to measure real VWAP slippage (cached `_depth` is top-3-only + often absent on 0-vol markets). Public, no auth, uncached. |
 | `/api/kalshi-snapshot` | `handlers/kalshi.js` | Cron (`*/2 * * * *`) — pre-warms `kalshi:snap:{ticker}` (two-phase write) |
 | `/api/kalshi-series-scan` | `handlers/kalshi.js` | Cron (`15 16 * * *`, 9:15am PT) — discovers new Kalshi Sports series. Diffs the catalog against `SERIES_CONFIG`∪`CRON_ONLY_TICKERS`; records unknowns in Neon `kalshi_series_seen`. First run baseline-seeds (~2200 series) silently; only later additions surface as `status='new'` in the morning report. `?dry=1` no-write; `?dismiss=KX..`/`?undismiss=KX..` (admin) triage noise. |
 | `/api/kalshi-order` | `handlers/kalshi.js` | POST — place a Kalshi order (RSA-PSS signed); includes Place All batch |
@@ -192,6 +193,8 @@ Add new scoreboard mismatches to the `espnScore` field in `api/lib/teams.js` (CA
 **`gameScores` today + tomorrow merge**: Each scoreboard fetch that produces `gameScores` fetches today AND tomorrow in parallel and merges into `parseGameScores`. Key shape: `${hA}|${gameDate}|${event.date}` — prevents today's Final from being wiped after midnight UTC, and prevents DH game 2 from overwriting game 1. The inline duplicate in `api/lib/mlb.js` (~line 952) must mirror the same key shape. Frontend `LineupsPage.buildGames` keys by `${sortedPair}|${gameDate}|${gameTime}` for the same reason.
 
 **Kalshi UNDER pricing — use `no_ask_dollars`, not `1 - yes_ask_dollars`**: YES and NO order books are independent — typical spread is 3–7 cents. Synthesizing UNDER price as `1 - yes_ask` inflates measured edge by 3–7%. Fix landed 2026-05-15: parse loop reads `m.no_ask_dollars` and propagates `noKalshiPct` + `noKalshiAO`. Filter UNDER calibration by `trackedAt ≥ 2026-05-15`.
+
+**Traded volume ≠ resting liquidity — order-modal live walk (2026-06-15)**: A Kalshi market with `volume_fp:0` (no *trades*) can still have a deep two-sided *resting* book (market-maker quotes). The old Place All warning fired purely on `kalshiVolume===0` ("no market volume — price untested…") and auto-unchecked the play, overstating risk on actively-quoted markets. It also couldn't be saved by the cached depth-blend: `_depth` (from the snapshot cron) is **top-3-only and frequently absent for fresh 0-vol markets**, so `blendMarketPrice` returns null → `kalshiPct===rawKalshiPct` → reported slippage is a **false 0** (never measured, not "no slip"). Fix: order modals fetch the live FULL book (`/api/kalshi-orderbook`) and walk it for the suggested `count` (`src/lib/orderbook.js` `walkFill`). `validateCandidate(play, sizing, liveFill?)` then decides from real fill: clean (slip < 3¢, fills) → no warning, stays checked, faint `✓ fills N @ ~X¢ … verified live` note even at 0 trades; slip ≥ 3¢ → soft warn w/ real VWAP; book can't fill `count` → risk (auto-uncheck) "only M of N available". `liveFill` absent (loading/fetch-fail) → conservative cached fallback (spread-aware reworded msgs), never less safe. Place All walks **only cached-untrusted tickers** (3/700ms throttle) and the default-selection init waits for `placeAllLiqStatus==='done'`. `isMarketUntrusted()` is unchanged → the **push-notify gate stays on cached data** (no live fetch in the cron).
 
 **Kalshi snap-first read chain (`/api/tonight`)**:
 1. **`kalshi:snap:{ticker}`** — written every 2 min by cron. All-or-nothing: all fresh (`writtenAt` within 180s) → skip Kalshi REST entirely.

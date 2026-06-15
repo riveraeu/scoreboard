@@ -6,7 +6,8 @@ import { useTonight } from './lib/useTonight.js';
 import { useSavePicks } from './lib/useSavePicks.js';
 import { useLiveStats } from './lib/useLiveStats.js';
 import { usePicks, UNIT_DOLLARS, STAKE_CAP } from './lib/usePicks.js';
-import { validateCandidate } from './lib/placeValidation.js';
+import { validateCandidate, isMarketUntrusted } from './lib/placeValidation.js';
+import { fetchOrderbook, walkFill } from './lib/orderbook.js';
 import { useAuth } from './lib/useAuth.js';
 import { useAuthPickSync } from './lib/useAuthPickSync.js';
 import { useRouting } from './lib/useRouting.js';
@@ -91,6 +92,16 @@ function App() {
   const [placeAllStatus, setPlaceAllStatus] = React.useState(null); // null | { running, rows: {id->{state,msg}} }
   const [placeAllSelected, setPlaceAllSelected] = React.useState(new Set()); // IDs of individually checked bets
   const placeAllInitedRef = React.useRef(false); // first-open default-selection guard (reset on close)
+  // Live-orderbook liquidity walk for the order modals. Single-pick confirm modal: obFill is the
+  // walk for the pending play. Place All: placeAllBooks maps ticker → raw resting levels for the
+  // candidates the cached check flagged untrusted (others don't need a fetch); the per-candidate
+  // fill is walked from the book in the candidates memo (over/under can share a ticker but differ
+  // by side/count). placeAllLiqStatus gates the default-selection init so verified-clean plays land
+  // checked. See src/lib/orderbook.js.
+  const [obFill, setObFill] = React.useState(null);     // { vwapCents, filledCount, exhausted, slipCents } | null
+  const [obLoading, setObLoading] = React.useState(false);
+  const [placeAllBooks, setPlaceAllBooks] = React.useState({}); // ticker → { n:[[c,q]], y:[[c,q]] }
+  const [placeAllLiqStatus, setPlaceAllLiqStatus] = React.useState('idle'); // 'idle' | 'loading' | 'done'
   const [activeDayTab, setActiveDayTab] = React.useState(() =>
     new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
   );
@@ -263,6 +274,31 @@ function App() {
     const cost = parseFloat((count * price / 100).toFixed(2));
     return { price, count, cost, side: play.kalshiSide, ao };
   }, [bankroll, _centsToAmericanB]);
+  // Single-pick confirm modal: walk the live orderbook for the pending play's suggested size so the
+  // warning/placeability reflect a real fill rather than the cached traded-volume flag. Re-fetched
+  // each time the modal opens (books move); cleared on close. On fetch failure obFill stays null →
+  // validateCandidate falls back to the cached heuristic (no less safe than before).
+  React.useEffect(() => {
+    setObFill(null);
+    const play = pendingTrackPlay;
+    if (!play?.kalshiTicker) { setObLoading(false); return; }
+    const sizing = _placeAllSizing(play);
+    if (!sizing || sizing.count < 1) { setObLoading(false); return; }
+    let cancelled = false;
+    setObLoading(true);
+    fetchOrderbook(play.kalshiTicker).then(ob => {
+      if (cancelled) return;
+      setObLoading(false);
+      if (!ob.ok) return;
+      const side = play.kalshiSide;
+      const topRaw = side === 'no'
+        ? (play.rawNoKalshiPct ?? play.noKalshiPct ?? play.kalshiPct)
+        : (play.rawKalshiPct ?? play.kalshiPct);
+      setObFill(walkFill({ levels: ob.levels, side, count: sizing.count,
+        topAskCents: topRaw != null ? Math.round(topRaw) : null }));
+    });
+    return () => { cancelled = true; };
+  }, [pendingTrackPlay, _placeAllSizing]);
   // Candidate set: qualified (tonightPlays) + placeable (has Kalshi ticker + non-zero Kelly) +
   // untracked + game not yet started. Kelly=0 and no-ticker plays are excluded — they are not
   // actionable and would inflate the count vs what the modal can actually order.
@@ -293,7 +329,19 @@ function App() {
       if (p.gameTime && new Date(p.gameTime).getTime() <= nowMs) continue; // game started
       const sizing = _placeAllSizing(p);
       if (!sizing) continue;                                   // no ticker or Kelly rounds to 0
-      const validation = validateCandidate(p, sizing);
+      // Live-orderbook fill: walk the cached-untrusted ticker's book (fetched by the liquidity
+      // effect) for THIS candidate's side+count. Deep-volume markets have no book here → null →
+      // validateCandidate uses its (clean) cached path.
+      const book = p.kalshiTicker ? placeAllBooks[p.kalshiTicker] : null;
+      let liveFill = null;
+      if (book) {
+        const topRaw = p.kalshiSide === 'no'
+          ? (p.rawNoKalshiPct ?? p.noKalshiPct ?? p.kalshiPct)
+          : (p.rawKalshiPct ?? p.kalshiPct);
+        liveFill = walkFill({ levels: book, side: p.kalshiSide, count: sizing.count,
+          topAskCents: topRaw != null ? Math.round(topRaw) : null });
+      }
+      const validation = validateCandidate(p, sizing, liveFill);
       out.push({ play: p, ...sizing, validation });
     }
     // Prop dedup: same player + stat → keep highest-edge only (multi-threshold plays
@@ -322,13 +370,52 @@ function App() {
       ...propBest.values(),
       ...spreadBest.values(),
     ];
-  }, [authEmail, tonightPlays, trackedPlays, _placeAllSizing]);
+  }, [authEmail, tonightPlays, trackedPlays, _placeAllSizing, placeAllBooks]);
   // Placeable subset — candidates that cleared every HARD pre-flight check. runPlaceAll only
   // orders these. The toolbar ⚡ badge shows TODAY's placeable count (placeAllCountByDay,
   // matching the today-only modal since 2026-06-12); the modal header shows "N ready · M blocked".
   const placeAllPlaceable = React.useMemo(
     () => placeAllCandidates.filter(c => c.validation.hard.length === 0),
     [placeAllCandidates]);
+  // Place All liquidity pass: when the modal opens, fetch live orderbooks ONLY for tickers the
+  // cached check flags untrusted (vol 0 / low / thin) — deep-volume plays don't need a walk. The
+  // default-selection init below waits for placeAllLiqStatus==='done' so a verified-clean play
+  // lands checked. Throttled 3-at-a-time / 700ms to mirror the snapshot cron and dodge 429s.
+  // Derives targets straight from tonightPlays (NOT placeAllCandidates) to avoid a fetch→memo→fetch
+  // loop. On close, state resets so the next open re-walks fresh books.
+  React.useEffect(() => {
+    if (!showPlaceAll) { setPlaceAllBooks({}); setPlaceAllLiqStatus('idle'); return; }
+    if (!authEmail) { setPlaceAllLiqStatus('done'); return; }
+    const nowMs = Date.now();
+    const seen = new Set(), targets = [];
+    for (const p of (tonightPlays || [])) {
+      if (!p.kalshiTicker || seen.has(p.kalshiTicker)) continue;
+      if (p.gameTime && new Date(p.gameTime).getTime() <= nowMs) continue;
+      if (!isMarketUntrusted(p)) continue;
+      const sizing = _placeAllSizing(p);
+      if (!sizing || sizing.count < 1) continue;
+      seen.add(p.kalshiTicker);
+      targets.push(p.kalshiTicker);
+    }
+    if (targets.length === 0) { setPlaceAllLiqStatus('done'); return; }
+    let cancelled = false;
+    setPlaceAllLiqStatus('loading');
+    (async () => {
+      const books = {};
+      const BATCH = 3, DELAY = 700;
+      for (let i = 0; i < targets.length && !cancelled; i += BATCH) {
+        await Promise.all(targets.slice(i, i + BATCH).map(async ticker => {
+          const ob = await fetchOrderbook(ticker);
+          if (ob.ok && ob.levels) books[ticker] = ob.levels;
+        }));
+        if (i + BATCH < targets.length) await new Promise(r => setTimeout(r, DELAY));
+      }
+      if (cancelled) return;
+      setPlaceAllBooks(books);
+      setPlaceAllLiqStatus('done');
+    })();
+    return () => { cancelled = true; };
+  }, [showPlaceAll, authEmail, tonightPlays, _placeAllSizing]);
 
   // Per-day count + trackId Set for placeAllPlaceable — drives tab badge, card badge, and
   // playsForGame filter so all three surfaces show the same number.
@@ -616,7 +703,7 @@ function App() {
         const _kalshiCount = _sizing?.count ?? 0;
         const _kalshiCost = _sizing?.cost ?? 0;
         const _canPlace = !!_sizing && !!authEmail;
-        const _validation = _sizing ? validateCandidate(play, _sizing) : { hard: [], soft: [] };
+        const _validation = _sizing ? validateCandidate(play, _sizing, obFill) : { hard: [], soft: [], risk: [], info: [] };
         const _isBlocked = _validation.hard.length > 0;
         // A Kalshi contract pays $1 on win — convert cents price to American odds for the ledger.
         const _centsToAmerican = (cents) => {
@@ -734,10 +821,28 @@ function App() {
                   ✗ {msg}
                 </div>
               ))}
+              {(_validation.risk ?? []).map((msg, i) => (
+                <div key={`r${i}`} style={{marginBottom:6,fontSize:11,padding:"5px 8px",borderRadius:6,fontWeight:600,
+                  background:"rgba(247,129,102,0.08)",color:"#f78166",border:"1px solid rgba(247,129,102,0.3)"}}>
+                  ⚠ {msg}
+                </div>
+              ))}
               {_validation.soft.map((msg, i) => (
                 <div key={i} style={{marginBottom:6,fontSize:11,padding:"5px 8px",borderRadius:6,
                   background:"rgba(227,179,65,0.08)",color:"#e3b341",border:"1px solid rgba(227,179,65,0.3)"}}>
                   ⚠ {msg}
+                </div>
+              ))}
+              {obLoading && (
+                <div style={{marginBottom:6,fontSize:11,padding:"5px 8px",borderRadius:6,
+                  background:"rgba(136,176,253,0.06)",color:"#8b949e",border:"1px solid #30363d"}}>
+                  checking liquidity…
+                </div>
+              )}
+              {!obLoading && (_validation.info ?? []).map((msg, i) => (
+                <div key={`i${i}`} style={{marginBottom:6,fontSize:11,padding:"5px 8px",borderRadius:6,
+                  background:"rgba(63,185,80,0.06)",color:"#8b949e",border:"1px solid #30363d"}}>
+                  ✓ {msg}
                 </div>
               ))}
               {kalshiOrderResult && (
@@ -800,7 +905,10 @@ function App() {
         const safeIds = allPlaceable
           .filter(c => (c.validation.risk?.length ?? 0) === 0)
           .map(c => c.play.id ?? trackIdFor(c.play));
-        if (!placeAllInitedRef.current && allIds.length > 0 && !placeAllStatus) {
+        // Wait for the live liquidity pass before the one-shot init so a 0-volume-but-deep market
+        // (verified clean by the orderbook walk) lands CHECKED rather than auto-unchecked on stale
+        // cached data. While 'loading', defer; once 'done', validation reflects the live books.
+        if (!placeAllInitedRef.current && allIds.length > 0 && !placeAllStatus && placeAllLiqStatus === 'done') {
           placeAllInitedRef.current = true;
           setPlaceAllSelected(new Set(safeIds));
           return null;
@@ -912,6 +1020,9 @@ function App() {
                 {!rs && c.validation.soft.map((msg, i) => (
                   <div key={i} style={{color:"#e3b341",fontSize:10,marginTop:2,lineHeight:1.3}}>⚠ {msg}</div>
                 ))}
+                {!rs && (c.validation.info ?? []).map((msg, i) => (
+                  <div key={`i${i}`} style={{color:"#8b949e",fontSize:10,marginTop:2,lineHeight:1.3}}>✓ {msg}</div>
+                ))}
               </div>
               {rs && (
                 <div style={{textAlign:"right",whiteSpace:"nowrap",fontSize:11,
@@ -936,6 +1047,7 @@ function App() {
               </div>
               <div style={{fontSize:11,color:"#8b949e",marginBottom:8}}>
                 {done ? "Real-money orders · ⅛-Kelly · correlation-adjusted"
+                  : placeAllLiqStatus === 'loading' ? <span style={{color:"#8b949e"}}>checking liquidity…</span>
                   : <>Today's slate · {readyCount} ready{flaggedCount > 0 ? <> · <span style={{color:"#e3b341"}}>{flaggedCount} flagged</span></> : null}{riskCount > 0 ? <> · <span style={{color:"#f78166"}}>{riskCount} risky (unchecked)</span></> : null}{blocked.length > 0 ? <> · <span style={{color:"#f78166"}}>{blocked.length} blocked</span></> : null}</>}
               </div>
               {!done && (

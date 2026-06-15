@@ -83,6 +83,50 @@ export async function handleKalshiRoutes(ctx) {
     return jsonResponse({ markets }, 900);
   }
 
+  // Live orderbook for a single ticker — used by the order modals to walk the FULL resting book
+  // for our actual suggested size and measure real VWAP slippage (the cached snapshot `_depth` is
+  // top-3-only and is often absent for fresh 0-volume markets, so reported slip reads a false 0).
+  // Returns integer-cent levels: `n` = NO-side resting bids, `y` = YES-side resting bids, each
+  // descending by price. To BUY YES you lift NO bids (yes_ask = 100 - no_bid); symmetric for NO.
+  if (path === "kalshi-orderbook" && method === "GET") {
+    const ticker = params.get("ticker") || "";
+    if (!ticker) return jsonResponse({ ok: false, error: "ticker required" }, 0);
+    const _levels = (rows) => (Array.isArray(rows) ? rows : [])
+      .map(([p, q]) => [Math.round(parseFloat(p) * 100), Math.round(parseFloat(q))])
+      .filter(([c, q]) => c > 0 && c < 100 && q > 0)
+      .sort((a, b) => b[0] - a[0]);   // highest bid first
+    try {
+      const [obRes, mRes] = await Promise.all([
+        fetch(`https://api.elections.kalshi.com/trade-api/v2/markets/${ticker}/orderbook`, {
+          headers: { "User-Agent": "Mozilla/5.0", Accept: "application/json" },
+        }),
+        fetch(`https://api.elections.kalshi.com/trade-api/v2/markets/${ticker}`, {
+          headers: { "User-Agent": "Mozilla/5.0", Accept: "application/json" },
+        }),
+      ]);
+      if (!obRes.ok) return jsonResponse({ ok: false, error: `orderbook ${obRes.status}` }, 0);
+      const ob = (await obRes.json())?.orderbook_fp || {};
+      const n = _levels(ob.no_dollars);
+      const y = _levels(ob.yes_dollars);
+      let yesAsk = null, noAsk = null, spread = null, volume = null;
+      if (mRes.ok) {
+        const m = (await mRes.json())?.market || {};
+        const ya = parseFloat(m.yes_ask_dollars), yb = parseFloat(m.yes_bid_dollars);
+        const na = parseFloat(m.no_ask_dollars);
+        if (!isNaN(ya)) yesAsk = Math.round(ya * 100);
+        if (!isNaN(na)) noAsk = Math.round(na * 100);
+        if (!isNaN(ya) && !isNaN(yb)) spread = Math.round((ya - yb) * 100);
+        volume = parseInt(m.volume_fp) || parseInt(m.volume) || 0;
+      }
+      // Derive asks from the book if the market fetch didn't supply them (ask = 100 - best opp bid).
+      if (yesAsk == null && n.length) yesAsk = 100 - n[0][0];
+      if (noAsk == null && y.length) noAsk = 100 - y[0][0];
+      return jsonResponse({ ok: true, ticker, yesAsk, noAsk, spread, volume, levels: { n, y } }, 0);
+    } catch (e) {
+      return jsonResponse({ ok: false, error: e?.message || "fetch failed" }, 0);
+    }
+  }
+
   if (path === "kalshi-totals") {
     // All alt-line Kalshi prices for a single matchup × gameType — used by TeamPage to fill
     // threshold tabs that fall OUTSIDE the universal [67, 91] /api/tonight gate (e.g. O4.5 at

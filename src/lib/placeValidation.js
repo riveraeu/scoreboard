@@ -11,11 +11,17 @@ export function isMarketUntrusted(play) {
 }
 
 // Validate one Place All candidate. `sizing` is the { price, count, cost, side, ao } object from
-// _placeAllSizing. Returns { hard: string[], soft: string[], risk: string[] }.
+// _placeAllSizing. `liveFill` (optional) is the result of walking the LIVE orderbook for the
+// suggested count — { vwapCents, filledCount, exhausted, slipCents } — used by the order modals to
+// replace the blunt traded-volume heuristic with a real fill-quality check (vol 0 ≠ illiquid: a
+// market can have zero trades yet a deep resting book). When absent (loading / fetch failed / no
+// ticker) we fall back to the conservative cached check, so we are never *less* safe than before.
+// Returns { hard: string[], soft: string[], risk: string[], info: string[] }.
 //   hard → not placeable (blocked).  soft → warn, stays checked.
 //   risk → placeable but auto-UNCHECKED in Place All so it can't be bet by accident.
-export function validateCandidate(play, sizing) {
-  const hard = [], soft = [], risk = [];
+//   info → neutral confirmation (e.g. live liquidity verified on a 0-trade market).
+export function validateCandidate(play, sizing, liveFill = null) {
+  const hard = [], soft = [], risk = [], info = [];
 
   // ── HARD: re-assert qualification against the freshest tonightPlays data (catches slate drift
   // since the modal opened — a pick can fall out of qualification between open and confirm). ──
@@ -47,14 +53,33 @@ export function validateCandidate(play, sizing) {
     soft.push('wide bid-ask — fill may slip');
   }
 
-  // ── RISK: illiquid / untested market — auto-unchecked in Place All. A large edge against an
-  // untraded price is usually a stale-quote artifact, not alpha, and the fill is uncertain.
-  // Independent of the slippage branch above so it fires for every play type, not just ML. ──
-  if (isMarketUntrusted(play)) {
+  // ── Liquidity / untested-market check. When a LIVE orderbook walk is available it decides from
+  // the real fill of our suggested size (volume 0 ≠ illiquid — the book can be deep). Otherwise we
+  // fall back to the cached traded-volume / spread heuristic (conservative; auto-unchecks). ──
+  const cnt = sizing?.count ?? 0;
+  if (liveFill) {
+    if (liveFill.exhausted) {
+      // Book can't fill the full size near the quote — partial fill / size-down. Auto-unchecked.
+      risk.push(`only ${liveFill.filledCount} of ${cnt} contracts available near quote — size down or expect a partial fill`);
+    } else if (liveFill.slipCents >= SLIPPAGE_WARN_CENTS) {
+      soft.push(`filling ${cnt} would avg ~${liveFill.vwapCents}¢ (${liveFill.slipCents}¢ over top-of-book)`);
+    } else if (play.kalshiVolume === 0) {
+      // Clean fill on a market with no trades yet — confirm we verified it, don't silently drop.
+      info.push(`fills ${cnt} @ ~${liveFill.vwapCents}¢ from resting book (0 trades — verified live)`);
+    }
+  } else if (isMarketUntrusted(play)) {
+    // No live walk — cached heuristic. A large edge against an untested price may be a stale quote.
+    const spr = play.kalshiSpread;
     if (play.kalshiVolume === 0) {
-      risk.push('no market volume — price untested; edge may be a stale-quote artifact and fill is uncertain');
+      if (spr != null && spr <= 2) {
+        risk.push(`no trades yet — actively quoted (${spr}¢ spread); likely fillable, but verify orderbook depth as quotes can be pulled`);
+      } else {
+        risk.push(`no trades${spr != null ? ` and ${spr}¢-wide quote` : ''} — likely illiquid; fill uncertain`);
+      }
+    } else if (play.lowVolume === true) {
+      risk.push(`thin market (only ${play.kalshiVolume} traded) — edge less reliable and fill may slip`);
     } else {
-      risk.push('thin market (low volume) — edge less reliable and fill may slip');
+      risk.push('thin market — edge less reliable and fill may slip');
     }
   }
 
@@ -63,5 +88,5 @@ export function validateCandidate(play, sizing) {
   // card is still pending, so this shouldn't bench the play on its own. ──
   if (play.playerName && play.lineupConfirmed === false) soft.push('lineup not confirmed yet');
 
-  return { hard, soft, risk };
+  return { hard, soft, risk, info };
 }
