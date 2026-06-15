@@ -1950,12 +1950,14 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           await CACHE2.put(`plays:daily:${summary.date}`, JSON.stringify(summary), { expirationTtl: 7776e3 }).catch(() => {
           });
         }
-        // Edge SWR: the snap-first assembly is ~7s, and the underlying snap cron + client poll
-        // both run on a 2-min cadence, so serving a CDN-cached copy fresh for 2 min (then stale
-        // for 10 more while it revalidates in the background) removes the synchronous 7s wait from
-        // essentially every load without making the displayed set any staler than the 2-min poll
-        // already allowed. Display-price staleness is harmless since the order modal walks the live
-        // book at placement (2026-06-15). `?bust=1` (manual ↻) and debug stay no-store so neither
-        // serves nor populates the shared cache.
-        return jsonResponse(playsResult, isBustCache ? true : "public, s-maxage=120, stale-while-revalidate=600");
+        // Edge SWR: the snap-first assembly is ~7s, so serve a CDN-cached copy fresh for 2 min
+        // (matching the snap cron + client poll cadence, so the displayed set is no staler than
+        // the 2-min poll already allowed), then serve the instant stale copy for up to 24h while
+        // revalidating in the background. The long SWR window matters for the solo-user cold-open
+        // case: opening the app after hours idle still gets an instant response (a possibly-stale
+        // play SET that self-heals on the next 2-min poll) instead of paying the 7s on a fully
+        // evicted edge cache. Display-price staleness is harmless since the order modal walks the
+        // live book at placement (2026-06-15). `?bust=1` (manual ↻) and debug stay no-store so
+        // neither serves nor populates the shared cache.
+        return jsonResponse(playsResult, isBustCache ? true : "public, s-maxage=120, stale-while-revalidate=86400");
 }
