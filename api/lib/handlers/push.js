@@ -19,6 +19,7 @@ import { verifyJWT } from "../auth-utils.js";
 import { neonQuery, neonExec } from "../neon.js";
 import { EDGE_GATE_CLIENT } from "../config.js";
 import { passesCategoryGate } from "../category-gate.js";
+import { fetchKalshiOrderbook, walkFill, SLIP_WARN_CENTS } from "../kalshi-book.js";
 
 const CREATE_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS push_subscriptions (
@@ -39,16 +40,40 @@ async function ensureTable(env, cache) {
   if (cache) cache.put(flagKey, "1", { expirationTtl: 86400 * 30 }).catch(() => {});
 }
 
-// Mirrors src/lib/qualify.js qualifiesForDisplay + placeValidation.isMarketUntrusted, so a push
-// fires only for plays the user would actually see AND auto-bet (Place All risk gate parity).
+// Model qualification — mirrors src/lib/qualify.js qualifiesForDisplay (dc + edge + category gate
+// + alt-line demotion). Everything EXCEPT market trust; trust is decided separately so a
+// 0-traded-volume-but-deep market can be promoted off the live resting book (see liveBookTrusts).
+function passesModelGate(p) {
+  if (p._altLineDemoted === true && !passesCategoryGate(p)) return false;
+  if (p.dcQualified !== true || (p.edge ?? 0) < EDGE_GATE_CLIENT) return false;
+  return passesCategoryGate(p);
+}
+
+// Cached market-trust heuristic — same flag the Place All risk gate uses (traded volume only).
 function _isMarketUntrusted(p) {
   return p.kalshiVolume === 0 || p.lowVolume === true || p.thinMarket === true;
 }
-function qualifiesForPush(p) {
-  if (p._altLineDemoted === true && !passesCategoryGate(p)) return false;
-  if (p.dcQualified !== true || (p.edge ?? 0) < EDGE_GATE_CLIENT) return false;
-  if (!passesCategoryGate(p)) return false;
-  return !_isMarketUntrusted(p);
+
+// Live-book trust override. The cached `_isMarketUntrusted` flags any 0-traded-volume market, but
+// the order modal (since 2026-06-15) bets such markets when the FULL resting book fills cleanly.
+// This walks that same live book for a reference stake so the push fires when the play is actually
+// fillable — i.e. when the user would bet — instead of hours later when traded volume shows up.
+// Failure-closed: missing ticker/side, fetch error, or thin book → false (stays untrusted, no push).
+const PUSH_REF_DOLLARS = 30;       // fallback stake floor — "is this actually bettable" reference size
+const MAX_LIVE_VERIFY = 25;        // cap live-book fetches per run (bounds cron I/O)
+const LIVE_VERIFY_CONCURRENCY = 3; // mirror Place All's 3-per-700ms throttle
+async function liveBookTrusts(p) {
+  const ticker = p.kalshiTicker, side = p.kalshiSide;
+  if (!ticker || !side) return false;
+  const askPct = side === "no"
+    ? (p.rawNoKalshiPct ?? p.noKalshiPct ?? p.kalshiPct)
+    : (p.rawKalshiPct ?? p.kalshiPct);
+  if (!(askPct > 0) || askPct >= 100) return false;
+  const count = Math.max(1, Math.round((PUSH_REF_DOLLARS * 100) / askPct)); // contracts ≈ $30 / price
+  const book = await fetchKalshiOrderbook(ticker);
+  if (!book.ok) return false;
+  const fill = walkFill({ levels: book.levels, side, count, topAskCents: Math.round(askPct) });
+  return !!fill && !fill.exhausted && fill.slipCents < SLIP_WARN_CENTS;
 }
 
 // Stable per-play key for cross-run dedup — mirrors trackIdFor (src/lib/qualify.js).
@@ -93,6 +118,48 @@ async function broadcast(env, payload) {
       sent++;
     } catch (e) {
       if (e?.statusCode === 404 || e?.statusCode === 410) { dead.push(r.endpoint); pruned++; }
+    }
+  }));
+  if (dead.length) {
+    await neonQuery("DELETE FROM push_subscriptions WHERE endpoint = ANY($1)", [dead], env, { write: true }).catch(() => {});
+  }
+  return { sent, pruned, subs: rows.length };
+}
+
+// Per-subscription send with logged-in ledger suppression: a play already in a user's tracked
+// picks is dropped from THAT user's payload (pushKey === pick.id, byte-identical). Anonymous subs
+// and logged-in users with no tracked picks get the full `fresh` list (unchanged behavior). The
+// summary-vs-individual split is computed per personal list so a user who already bet 2 of 4 fresh
+// plays gets the right 2, not a "4 new plays" summary.
+async function broadcastPersonalized(env, cache, fresh, date) {
+  const rows = await neonQuery("SELECT endpoint, p256dh, auth, user_id FROM push_subscriptions", [], env);
+  if (!rows.length) return { sent: 0, pruned: 0, subs: 0 };
+
+  const userIds = [...new Set(rows.map((r) => r.user_id).filter(Boolean))];
+  const suppress = new Map();
+  await Promise.all(userIds.map(async (uid) => {
+    const data = cache ? await cache.get(`picks:${uid}`, "json").catch(() => null) : null;
+    suppress.set(uid, new Set((data?.picks || []).map((p) => p.id).filter(Boolean)));
+  }));
+
+  const freshKeyed = fresh.map((p) => ({ p, key: pushKey(p) }));
+  const payloadsFor = (personal) => personal.length > 3
+    ? [{ title: `${personal.length} new plays`, body: `${playLabel(personal[0])} +${personal.length - 1} more`, url: "/", tag: `daily-${date}` }]
+    : personal.map((p) => ({ title: "New play", body: playLabel(p), url: "/", tag: pushKey(p) }));
+
+  const webpush = (await import("web-push")).default;
+  webpush.setVapidDetails(env.VAPID_SUBJECT, env.VAPID_PUBLIC_KEY, env.VAPID_PRIVATE_KEY);
+
+  let sent = 0, pruned = 0;
+  const dead = [];
+  await Promise.all(rows.map(async (r) => {
+    const sup = r.user_id ? suppress.get(r.user_id) : null;
+    const personal = (sup && sup.size) ? freshKeyed.filter((x) => !sup.has(x.key)).map((x) => x.p) : fresh;
+    if (!personal.length) return;
+    const sub = { endpoint: r.endpoint, keys: { p256dh: r.p256dh, auth: r.auth } };
+    for (const payload of payloadsFor(personal)) {
+      try { await webpush.sendNotification(sub, JSON.stringify(payload)); sent++; }
+      catch (e) { if (e?.statusCode === 404 || e?.statusCode === 410) { dead.push(r.endpoint); pruned++; } break; }
     }
   }));
   if (dead.length) {
@@ -160,37 +227,33 @@ export async function handlePushRoutes(ctx) {
     const staged = CACHE2 ? await CACHE2.get(`shadow:staging:${date}`, "json").catch(() => null) : null;
     if (!staged?.plays) return jsonResponse({ ok: true, reason: "no-staging", date });
 
-    const actionable = staged.plays.filter(qualifiesForPush);
+    // Model-qualified plays split by cached market trust. Cached-trusted are actionable as-is;
+    // the rest get a throttled LIVE-book check (deep resting book ⇒ promote) so a 0-traded-volume
+    // market we'd actually bet doesn't wait hours for traded volume to appear.
+    const modelOk = staged.plays.filter(passesModelGate);
+    const cachedTrusted = modelOk.filter((p) => !_isMarketUntrusted(p));
+    const needVerify = modelOk.filter((p) => _isMarketUntrusted(p)).slice(0, MAX_LIVE_VERIFY);
+    const liveVerified = [];
+    for (let i = 0; i < needVerify.length; i += LIVE_VERIFY_CONCURRENCY) {
+      const batch = needVerify.slice(i, i + LIVE_VERIFY_CONCURRENCY);
+      const oks = await Promise.all(batch.map((p) => liveBookTrusts(p).catch(() => false)));
+      oks.forEach((ok, j) => { if (ok) liveVerified.push(batch[j]); });
+      if (i + LIVE_VERIFY_CONCURRENCY < needVerify.length) await new Promise((r) => setTimeout(r, 700));
+    }
+    const actionable = [...cachedTrusted, ...liveVerified];
 
     // Cross-run dedup: a play notifies once per PT day across the 4 trailing crons.
     const notifKey = `push:notified:${date}`;
     const seen = (CACHE2 ? await CACHE2.get(notifKey, "json").catch(() => null) : null) || {};
     const fresh = actionable.filter((p) => !seen[pushKey(p)]);
-    if (!fresh.length) return jsonResponse({ ok: true, date, actionable: actionable.length, fresh: 0 });
+    if (!fresh.length) return jsonResponse({ ok: true, date, actionable: actionable.length, fresh: 0, liveVerified: liveVerified.length });
 
-    let result;
-    if (fresh.length > 3) {
-      result = await broadcast(env, {
-        title: `${fresh.length} new plays`,
-        body: `${playLabel(fresh[0])} +${fresh.length - 1} more`,
-        url: "/", tag: `daily-${date}`,
-      });
-    } else {
-      // ≤3: individual pushes so each is actionable. Aggregate the send stats.
-      const stats = { sent: 0, pruned: 0, subs: 0 };
-      for (const p of fresh) {
-        const r = await broadcast(env, {
-          title: "New play", body: playLabel(p), url: "/", tag: pushKey(p),
-        });
-        stats.sent += r.sent; stats.pruned += r.pruned; stats.subs = r.subs;
-      }
-      result = stats;
-    }
+    const result = await broadcastPersonalized(env, CACHE2, fresh, date);
 
     for (const p of fresh) seen[pushKey(p)] = 1;
     if (CACHE2) CACHE2.put(notifKey, seen, { expirationTtl: 108000 }).catch(() => {}); // 30h
 
-    return jsonResponse({ ok: true, date, actionable: actionable.length, fresh: fresh.length, ...result });
+    return jsonResponse({ ok: true, date, actionable: actionable.length, fresh: fresh.length, liveVerified: liveVerified.length, ...result });
   }
 
   // ---- POST /api/push/test  (admin) ----

@@ -12,6 +12,7 @@ import { jsonResponse, errorResponse } from "../utils.js";
 import { SERIES_CONFIG, CRON_ONLY_TICKERS } from "../series-config.js";
 import { verifyJWT } from "../auth-utils.js";
 import { neonQuery, neonExec } from "../neon.js";
+import { fetchKalshiOrderbook } from "../kalshi-book.js";
 
 const normName = (s) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
@@ -91,40 +92,9 @@ export async function handleKalshiRoutes(ctx) {
   if (path === "kalshi-orderbook" && method === "GET") {
     const ticker = params.get("ticker") || "";
     if (!ticker) return jsonResponse({ ok: false, error: "ticker required" }, 0);
-    const _levels = (rows) => (Array.isArray(rows) ? rows : [])
-      .map(([p, q]) => [Math.round(parseFloat(p) * 100), Math.round(parseFloat(q))])
-      .filter(([c, q]) => c > 0 && c < 100 && q > 0)
-      .sort((a, b) => b[0] - a[0]);   // highest bid first
-    try {
-      const [obRes, mRes] = await Promise.all([
-        fetch(`https://api.elections.kalshi.com/trade-api/v2/markets/${ticker}/orderbook`, {
-          headers: { "User-Agent": "Mozilla/5.0", Accept: "application/json" },
-        }),
-        fetch(`https://api.elections.kalshi.com/trade-api/v2/markets/${ticker}`, {
-          headers: { "User-Agent": "Mozilla/5.0", Accept: "application/json" },
-        }),
-      ]);
-      if (!obRes.ok) return jsonResponse({ ok: false, error: `orderbook ${obRes.status}` }, 0);
-      const ob = (await obRes.json())?.orderbook_fp || {};
-      const n = _levels(ob.no_dollars);
-      const y = _levels(ob.yes_dollars);
-      let yesAsk = null, noAsk = null, spread = null, volume = null;
-      if (mRes.ok) {
-        const m = (await mRes.json())?.market || {};
-        const ya = parseFloat(m.yes_ask_dollars), yb = parseFloat(m.yes_bid_dollars);
-        const na = parseFloat(m.no_ask_dollars);
-        if (!isNaN(ya)) yesAsk = Math.round(ya * 100);
-        if (!isNaN(na)) noAsk = Math.round(na * 100);
-        if (!isNaN(ya) && !isNaN(yb)) spread = Math.round((ya - yb) * 100);
-        volume = parseInt(m.volume_fp) || parseInt(m.volume) || 0;
-      }
-      // Derive asks from the book if the market fetch didn't supply them (ask = 100 - best opp bid).
-      if (yesAsk == null && n.length) yesAsk = 100 - n[0][0];
-      if (noAsk == null && y.length) noAsk = 100 - y[0][0];
-      return jsonResponse({ ok: true, ticker, yesAsk, noAsk, spread, volume, levels: { n, y } }, 0);
-    } catch (e) {
-      return jsonResponse({ ok: false, error: e?.message || "fetch failed" }, 0);
-    }
+    const book = await fetchKalshiOrderbook(ticker);
+    if (!book.ok) return jsonResponse({ ok: false, error: "fetch failed" }, 0);
+    return jsonResponse(book, 0);
   }
 
   if (path === "kalshi-totals") {
