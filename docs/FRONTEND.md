@@ -140,6 +140,17 @@ Shadow tab in ReportPage renders `ShadowCalibModule` — category summary (N ded
 
 ---
 
+## Place All same-game grouping + cap (2026-06-16)
+
+`placeAllGrouped` (App.jsx) buckets candidates by `gameKey` = `sport|sorted(teams)|gameDate`. **`gameKey` falls back to `playerTeam`/`opponent` for props** (their `homeTeam`/`awayTeam` are null) so same-game props group with each other *and* with the same-game spread/total under one header. Each candidate carries `_gameRank` (1 = highest edge in its game) + `_gameN`.
+
+- **Cap (`SAME_GAME_CAP = 2`)**: the first-open default selection (`safeIds`) excludes any pick with `_gameRank > 2` — the 3rd+ highest-edge pick of a game stays visible + selectable but **unchecked**. From shadow `capRoi` (Kalshi 67–91 window, n=144): within a multi-pick game the 1st/2nd picks run +5.5%/+3.1% ROI, the 3rd −11%. Rows render an amber "⚠ same-game pick #k of N" note.
+- **Sizing**: groups with a **measured** φ (`_SAME_GAME_PHI`, MLB only) shrink toward one Kelly slot as before. Groups at **φ=0** (e.g. all WNBA same-game) are **not** rescaled — full ⅛-Kelly on the kept picks; concentration is handled by the cap + visual flag, not by trimming stake. Header shows `φ≈X` when measured, else `⚠ same game`.
+
+To raise/lower the cap, edit `SAME_GAME_CAP`. Graduate WNBA from cap→φ-sizing only once `_SAME_GAME_PHI` gets WNBA pairs (shadow n≥200).
+
+---
+
 ## Spread alt-line dedup + category gate display logic (2026-06-05)
 
 `passesGate` (LineupsPage.jsx) and `_qualifiedFilter` (App.jsx) apply: `_altLineDemoted && !passesCategoryGate(p) → false`. Demoted plays that **pass** the category gate are shown. Opposite-side truePcts are complementary (~sum to 100%), so both sides of the same line can never show simultaneously (one side ≥80% forces the other ≤20%). Market Report symptom: bold play visible but absent from LineupsPage card → the dedup winner fails the category gate, allowing the demoted loser through.

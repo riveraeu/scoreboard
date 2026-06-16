@@ -40,6 +40,10 @@ const AddPickModal = React.lazy(() => import('./components/AddPickModal.jsx'));
 // Pairwise same-game phi correlation table from 30-day shadow analysis (2026-06-04).
 // Negative-phi pairs (hedges) are intentionally absent → default 0 = no reduction.
 // Update when shadow N per pair exceeds 200.
+// Same-game pick cap: default-select only the top-N highest-edge picks per game. Shadow capRoi
+// analysis (Kalshi 67–91 window, n=144): within a multi-pick game the 1st/2nd-best-edge picks
+// run +5.5%/+3.1% ROI, the 3rd −11%. So cap the default selection at 2; 3rd+ stay visible/unchecked.
+const SAME_GAME_CAP = 2;
 const _PHI_KEY = (a, b) => [a, b].sort().join('\x00');
 const _SAME_GAME_PHI = new Map([
   [_PHI_KEY('strikeouts|', 'teamRuns|under'),  0.84],
@@ -445,7 +449,11 @@ function App() {
   const placeAllGrouped = React.useMemo(() => {
     function gameKey(c) {
       const p = c.play;
-      const t1 = p.homeTeam ?? p.gameTeam1, t2 = p.awayTeam ?? p.gameTeam2;
+      // Props carry only playerTeam/opponent (homeTeam/awayTeam are null), so fall back to them
+      // — sorted, a prop's (playerTeam, opponent) yields the same key as the spread/total of the
+      // same game, grouping all same-game picks (props + game-level) under one game header.
+      const t1 = p.homeTeam ?? p.gameTeam1 ?? p.playerTeam;
+      const t2 = p.awayTeam ?? p.gameTeam2 ?? p.opponent;
       if (!t1 || !t2) return null;
       return `${p.sport}|${[t1, t2].sort().join('|')}|${p.gameDate ?? ''}`;
     }
@@ -467,9 +475,16 @@ function App() {
       const n = cands.length;
       const label = groupLabel(cands);
       if (n === 1) {
-        groups.push({ key, label, rescaled: cands, groupCost: cands[0].cost, avgPhi: 0, isCorrelated: false });
+        groups.push({ key, label, rescaled: cands.map(c => ({ ...c, _gameRank: 1, _gameN: 1 })),
+          groupCost: cands[0].cost, avgPhi: 0, isCorrelated: false });
         continue;
       }
+      // Within-game edge rank (1 = highest edge). Drives the same-game cap: the default
+      // selection checks only the top SAME_GAME_CAP by edge (shadow capRoi: the 3rd-best-edge
+      // pick in a game runs −11% ROI; the top 2 are +5.5%/+3.1%). Rank 3+ stay visible, unchecked.
+      const order = [...cands].sort((a, b) => (b.play.edge ?? 0) - (a.play.edge ?? 0));
+      const rankById = new Map(order.map((c, i) => [c.play.id ?? trackIdFor(c.play), i + 1]));
+      const withRank = arr => arr.map(c => ({ ...c, _gameRank: rankById.get(c.play.id ?? trackIdFor(c.play)), _gameN: n }));
       // Average positive pairwise phi across all pairs in the group.
       let phiSum = 0, pairs = 0;
       for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
@@ -477,15 +492,24 @@ function App() {
         pairs++;
       }
       const avgPhi = pairs > 0 ? phiSum / pairs : 0;
-      const effectivePlays = 1 + (n - 1) * (1 - avgPhi);
-      const anchorCost = Math.max(...cands.map(c => c.cost));
-      const totalOrig = cands.reduce((s, c) => s + c.cost, 0);
-      const scale = (anchorCost * effectivePlays / n) / totalOrig;
-      const rescaled = cands.map(c => {
-        const target = c.cost * scale;
-        const newCount = Math.max(1, Math.floor(target / (c.price / 100)));
-        return { ...c, count: newCount, cost: parseFloat((newCount * c.price / 100).toFixed(2)) };
-      });
+      let rescaled;
+      if (avgPhi > 0) {
+        // Measured correlation (MLB phi table) → shrink the group toward one Kelly slot.
+        const effectivePlays = 1 + (n - 1) * (1 - avgPhi);
+        const anchorCost = Math.max(...cands.map(c => c.cost));
+        const totalOrig = cands.reduce((s, c) => s + c.cost, 0);
+        const scale = (anchorCost * effectivePlays / n) / totalOrig;
+        rescaled = withRank(cands.map(c => {
+          const target = c.cost * scale;
+          const newCount = Math.max(1, Math.floor(target / (c.price / 100)));
+          return { ...c, count: newCount, cost: parseFloat((newCount * c.price / 100).toFixed(2)) };
+        }));
+      } else {
+        // No measured pair (e.g. WNBA same-game): don't trim stakes — full ⅛-Kelly on the kept
+        // picks. Same-game concentration is handled by the cap-2 default + the visual flag, not
+        // by shrinking size (shadow shows cap-2 at full size is the higher-volume +ROI policy).
+        rescaled = withRank(cands);
+      }
       const groupCost = parseFloat(rescaled.reduce((s, c) => s + c.cost, 0).toFixed(2));
       groups.push({ key, label, rescaled, groupCost, avgPhi: parseFloat(avgPhi.toFixed(2)), isCorrelated: true });
     }
@@ -908,8 +932,10 @@ function App() {
         // Default-check only SAFE candidates (no risk flags) so thin/untested-market plays aren't
         // bet by accident; they stay selectable. Ref-guarded (not size===0) so an all-risky slate
         // — safeIds empty — can't loop re-initialising, and a user "deselect all" stays empty.
+        // Same-game cap: exclude the 3rd+ highest-edge pick of any game from the default selection
+        // (it stays visible + selectable). Shadow capRoi shows the 3rd same-game pick runs −11% ROI.
         const safeIds = allPlaceable
-          .filter(c => (c.validation.risk?.length ?? 0) === 0)
+          .filter(c => (c.validation.risk?.length ?? 0) === 0 && !((c._gameRank ?? 1) > SAME_GAME_CAP))
           .map(c => c.play.id ?? trackIdFor(c.play));
         // Wait for the live liquidity pass before the one-shot init so a 0-volume-but-deep market
         // (verified clean by the orderbook walk) lands CHECKED rather than auto-unchecked on stale
@@ -1023,6 +1049,12 @@ function App() {
                     {!isChecked && <div style={{color:"#8b949e",fontSize:9,marginTop:1,fontStyle:"italic"}}>unchecked — tick to override</div>}
                   </>
                 )}
+                {!rs && (c.validation.risk?.length ?? 0) === 0 && (c._gameRank ?? 1) > SAME_GAME_CAP && (
+                  <>
+                    <div style={{color:"#e3b341",fontSize:10,marginTop:2,lineHeight:1.3,fontWeight:600}}>⚠ same-game pick #{c._gameRank} of {c._gameN} — correlated risk</div>
+                    {!isChecked && <div style={{color:"#8b949e",fontSize:9,marginTop:1,fontStyle:"italic"}}>unchecked — top {SAME_GAME_CAP} by edge staked; tick to override</div>}
+                  </>
+                )}
                 {!rs && c.validation.soft.map((msg, i) => (
                   <div key={i} style={{color:"#e3b341",fontSize:10,marginTop:2,lineHeight:1.3}}>⚠ {msg}</div>
                 ))}
@@ -1073,7 +1105,7 @@ function App() {
                         padding:"5px 0 3px",fontSize:10,color:"#6e7681",borderBottom:"1px solid #30363d"}}>
                         <span style={{fontWeight:600}}>{g.label} · {g.rescaled.length} bets</span>
                         <span style={{color: g.avgPhi >= 0.6 ? "#f78166" : "#e3b341"}}>
-                          φ≈{g.avgPhi} · ${g.groupCost.toFixed(2)}
+                          {g.avgPhi > 0 ? `φ≈${g.avgPhi}` : "⚠ same game"} · ${g.groupCost.toFixed(2)}
                         </span>
                       </div>
                       {g.rescaled.map(c => renderRow(c, true))}
