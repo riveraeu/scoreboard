@@ -827,6 +827,9 @@ UNION ALL SELECT * FROM by_cat_band`;
     // all categories for sample size); capEdge sets the edge floor (default 5 = client gate).
     const capGate = params.get("capGate") !== "0";
     const capEdge = Number.isFinite(parseFloat(params.get("capEdge"))) ? parseFloat(params.get("capEdge")) : 5;
+    // capWindow=1: instead of the category gate, restrict to the Kalshi qualification window
+    // (bet-side price 67–91) — the representative bettable universe, excluding ~50/50 noise.
+    const capWindow = params.get("capWindow") === "1";
 
     // Q1: ROI and calibration by threshold_rank.
     // threshold_rank=1 is closest to 50% (most informative) for a given group.
@@ -1052,7 +1055,8 @@ UNION ALL SELECT * FROM by_cat_band`;
           AND threshold_rank = 1
           AND home_team IS NOT NULL AND away_team IS NOT NULL
           AND snapshot_date >= $1
-          ${capGate ? `AND (
+          ${capWindow ? `AND (CASE WHEN direction = 'under' THEN no_kalshi_pct ELSE kalshi_pct END) BETWEEN 67 AND 91` : ``}
+          ${(capGate && !capWindow) ? `AND (
                (sport = 'mlb'  AND stat = 'strikeouts' AND model_true_pct >= 80 AND model_true_pct < 90)
             OR (sport = 'wnba' AND stat = 'points'      AND model_true_pct >= 70 AND model_true_pct < 80)
             OR (sport = 'wnba' AND stat = 'rebounds'    AND model_true_pct >= 70 AND model_true_pct < 85)
