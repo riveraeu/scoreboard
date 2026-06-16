@@ -1027,13 +1027,61 @@ UNION ALL SELECT * FROM by_cat_band`;
       ORDER BY bucket_order
     `, [since], env);
 
-    let [thresholdRankRoi, intraGroupCorr, sameGamePairs, concentration, clvAnalysis, dailyVolumeRoi] = await Promise.all([q1, q2, q3, q4, q5, q6]).catch(e => {
+    // Q7: Same-game cap ROI — among the *gated bet set* (dc_qualified, edge≥5, passes the
+    // category-gate truePct bands), group picks by a prop-aware + order-normalised game key
+    // (props store team identity in home_team/away_team as playerTeam|opponent, games as the
+    // actual home|away — LEAST/GREATEST sorts both into one key so a prop and the spread/total
+    // of the same game collide), dedup alt-lines via threshold_rank=1, rank within each game by
+    // edge DESC, and report ROI per within-game rank. multi=false (rnk 0) is the solo-game
+    // baseline; multi=true rows reveal whether the 2nd/3rd-best-edge pick in a game adds or
+    // destroys ROI. Cumulative cap ROI is derived in JS from these disjoint rank buckets.
+    const q7 = neonQuery(`
+      WITH gated AS (
+        SELECT
+          edge,
+          won::int AS w,
+          CASE WHEN direction = 'under' THEN no_kalshi_pct ELSE kalshi_pct END AS bet_pct,
+          sport || '|' || LEAST(home_team, away_team) || '|' || GREATEST(home_team, away_team)
+            || '|' || COALESCE(game_date, snapshot_date::text) AS game_key
+        FROM shadow_plays
+        WHERE resolved AND won IS NOT NULL AND dc_qualified AND edge >= 5
+          AND threshold_rank = 1
+          AND home_team IS NOT NULL AND away_team IS NOT NULL
+          AND snapshot_date >= $1
+          AND (
+               (sport = 'mlb'  AND stat = 'strikeouts' AND model_true_pct >= 80 AND model_true_pct < 90)
+            OR (sport = 'wnba' AND stat = 'points'      AND model_true_pct >= 70 AND model_true_pct < 80)
+            OR (sport = 'wnba' AND stat = 'rebounds'    AND model_true_pct >= 70 AND model_true_pct < 85)
+            OR (sport = 'wnba' AND game_type = 'spread'
+                  AND (CASE WHEN direction = 'under' THEN 100 - model_true_pct ELSE model_true_pct END) >= 65
+                  AND (CASE WHEN direction = 'under' THEN 100 - model_true_pct ELSE model_true_pct END) <  85)
+          )
+      ),
+      ranked AS (
+        SELECT *,
+          ROW_NUMBER() OVER (PARTITION BY game_key ORDER BY edge DESC, bet_pct ASC) AS rnk,
+          COUNT(*)     OVER (PARTITION BY game_key) AS game_n
+        FROM gated
+      )
+      SELECT
+        (game_n > 1) AS multi,
+        CASE WHEN game_n > 1 THEN rnk ELSE 0 END AS rnk,
+        COUNT(*) AS n,
+        ROUND(100.0 * AVG(w), 1) AS hit_rate,
+        ROUND(AVG(bet_pct), 1) AS avg_price,
+        ROUND(100.0 * AVG(w) - AVG(bet_pct), 2) AS roi_pct
+      FROM ranked
+      GROUP BY 1, 2
+      ORDER BY 1, 2
+    `, [since], env);
+
+    let [thresholdRankRoi, intraGroupCorr, sameGamePairs, concentration, clvAnalysis, dailyVolumeRoi, capRoi] = await Promise.all([q1, q2, q3, q4, q5, q6, q7]).catch(e => {
       return [{ error: e.message }];
     });
 
     if (thresholdRankRoi?.error) return errorResponse(`Neon query failed: ${thresholdRankRoi.error}`, 500);
 
-    return jsonResponse({ since, thresholdRankRoi, intraGroupCorr, sameGamePairs, concentration, clvAnalysis, dailyVolumeRoi });
+    return jsonResponse({ since, thresholdRankRoi, intraGroupCorr, sameGamePairs, concentration, clvAnalysis, dailyVolumeRoi, capRoi });
   }
 
   return null;
