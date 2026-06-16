@@ -823,6 +823,10 @@ UNION ALL SELECT * FROM by_cat_band`;
     const sinceDefault = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
       .toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
     const since = params.get("since") || sinceDefault;
+    // capRoi knobs: capGate=0 drops the category gate (broaden to the dc+edge universe across
+    // all categories for sample size); capEdge sets the edge floor (default 5 = client gate).
+    const capGate = params.get("capGate") !== "0";
+    const capEdge = Number.isFinite(parseFloat(params.get("capEdge"))) ? parseFloat(params.get("capEdge")) : 5;
 
     // Q1: ROI and calibration by threshold_rank.
     // threshold_rank=1 is closest to 50% (most informative) for a given group.
@@ -1044,18 +1048,18 @@ UNION ALL SELECT * FROM by_cat_band`;
           sport || '|' || LEAST(home_team, away_team) || '|' || GREATEST(home_team, away_team)
             || '|' || COALESCE(game_date, snapshot_date::text) AS game_key
         FROM shadow_plays
-        WHERE resolved AND won IS NOT NULL AND dc_qualified AND edge >= 5
+        WHERE resolved AND won IS NOT NULL AND dc_qualified AND edge >= ${capEdge}
           AND threshold_rank = 1
           AND home_team IS NOT NULL AND away_team IS NOT NULL
           AND snapshot_date >= $1
-          AND (
+          ${capGate ? `AND (
                (sport = 'mlb'  AND stat = 'strikeouts' AND model_true_pct >= 80 AND model_true_pct < 90)
             OR (sport = 'wnba' AND stat = 'points'      AND model_true_pct >= 70 AND model_true_pct < 80)
             OR (sport = 'wnba' AND stat = 'rebounds'    AND model_true_pct >= 70 AND model_true_pct < 85)
             OR (sport = 'wnba' AND game_type = 'spread'
                   AND (CASE WHEN direction = 'under' THEN 100 - model_true_pct ELSE model_true_pct END) >= 65
                   AND (CASE WHEN direction = 'under' THEN 100 - model_true_pct ELSE model_true_pct END) <  85)
-          )
+          )` : ``}
       ),
       ranked AS (
         SELECT *,
