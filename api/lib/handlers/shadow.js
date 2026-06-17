@@ -7,7 +7,7 @@ import { neonQuery, neonBatchUpsert, neonBatchResolve, neonBatchPrePriceUpdate, 
 import { errorResponse, jsonResponse } from "../utils.js";
 import { verifyJWT } from "../auth-utils.js";
 import { fetchCompletedMatches } from "../tennis.js";
-import { KALSHI_GATE, KALSHI_CAP } from "../config.js";
+import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER } from "../config.js";
 
 const SHADOW_TABLE = "shadow_plays";
 const COLUMNS = [
@@ -1239,10 +1239,12 @@ async function handleShadowReport({ path, request, env, cache }) {
         GROUP BY 1, 2 ORDER BY 1, 2
       `, [since], env),
 
-      // Q8: Price-band profitability — fine 5¢ grid of BETTABLE plays (dc_qualified, edge≥5)
-      // across the FULL Kalshi price range. No 67–91 window and no truePct category gate are
-      // applied — those are the assumptions under test, so the data shows where the profitable
-      // window actually is. Formula-windowed + threshold_rank=1 deduped like the other model Qs.
+      // Q8: Price-band profitability — fine 5¢ grid of model-positive plays (dc_qualified,
+      // edge ≥ server gate) across the FULL Kalshi price range. No 67–91 window and no truePct
+      // category gate are applied — those are the assumptions under test, so the data shows where
+      // the profitable window actually is. The server edge gate (looser than the client 5) is
+      // the documented calibration bar and the loosest "model sees value" filter — maximizes
+      // usable signal. Formula-windowed + threshold_rank=1 deduped like the other model Qs.
       neonQuery(`
         WITH bp AS (
           SELECT sport, COALESCE(stat, game_type) AS category,
@@ -1251,7 +1253,7 @@ async function handleShadowReport({ path, request, env, cache }) {
           FROM shadow_plays
           WHERE resolved AND won IS NOT NULL
             AND snapshot_date >= ${_formulaFloorSql("$1")}
-            AND threshold_rank = 1 AND dc_qualified = TRUE AND edge >= 5
+            AND threshold_rank = 1 AND dc_qualified = TRUE AND edge >= ${EDGE_GATE_SERVER}
         )
         SELECT sport, category, (FLOOR(price/5)*5)::int AS price_lo,
           COUNT(*) AS n, SUM(w) AS wins, ROUND(AVG(price), 2) AS avg_price
