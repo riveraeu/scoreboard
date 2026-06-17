@@ -151,18 +151,19 @@ function CalibBandsTable({ bands }) {
   if (!bands?.length) return <div style={{ color:C.dim, fontSize:10, padding:"2px 0" }}>Not enough resolved plays yet — a truePct band needs ≥5 to score honesty.</div>;
   return (
     <table style={{ ...tableStyle, margin:"4px 0 8px" }}>
-      <thead><tr>{["truePct band","N","Model%","Actual%","Δ"].map(h => <th key={h} style={{ ...thB, fontSize:9 }}>{h}</th>)}</tr></thead>
+      <thead><tr>{["truePct band","N","Model%","Actual%","Δ",""].map(h => <th key={h} style={{ ...thB, fontSize:9 }}>{h}</th>)}</tr></thead>
       <tbody>
         {bands.map((b, i) => {
           const delta = b.delta ?? 0;
           const deltaC = delta <= -5 ? C.red : delta >= 5 ? C.green : C.amber;
           return (
-            <tr key={i}>
+            <tr key={i} style={{ background: b.active ? "rgba(63,185,80,0.08)" : "transparent" }}>
               <td style={{ ...tdB, color:C.text, textAlign:"left", fontSize:10 }}>{b.band}%</td>
               <td style={{ ...tdB, color:b.n>=200?C.text:b.n>=50?C.gray:C.dim, fontSize:10 }}>{b.n}</td>
               <td style={{ ...tdB, color:C.gray, fontSize:10 }}>{b.predicted != null ? `${b.predicted}%` : "—"}</td>
               <td style={{ ...tdB, color:C.gray, fontSize:10 }}>{b.actual != null ? `${b.actual}%` : "—"}</td>
               <td style={{ ...tdB, color:deltaC, fontWeight:600, fontSize:10 }}>{delta >= 0 ? `+${delta.toFixed(1)}` : delta.toFixed(1)}{b.coherent ? "▴" : ""}</td>
+              <td style={{ ...tdB, color:b.active?C.green:C.dim, fontSize:9, fontWeight:b.active?700:400 }}>{b.active ? "● betting" : ""}</td>
             </tr>
           );
         })}
@@ -215,7 +216,7 @@ function ModelBoard({ board }) {
             )}
             <div style={{ color:C.dim, fontSize:9, fontWeight:700, margin:"4px 0 1px" }}>PROFIT · ROI by market price (where the money is)</div>
             <PriceBands bands={r.priceBands} window={r.currentWindow} />
-            <div style={{ color:C.dim, fontSize:9, fontWeight:700, margin:"4px 0 1px" }}>HONESTY · model% vs actual (Δ&lt;0 = overconfident)</div>
+            <div style={{ color:C.dim, fontSize:9, fontWeight:700, margin:"4px 0 1px" }}>HONESTY · model% vs actual (Δ&lt;0 = overconfident) · <span style={{ color:C.green }}>green = currently-bet slice</span></div>
             <CalibBandsTable bands={r.calibBands} />
           </td></tr>
         )}

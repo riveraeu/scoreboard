@@ -8,6 +8,7 @@ import { errorResponse, jsonResponse } from "../utils.js";
 import { verifyJWT } from "../auth-utils.js";
 import { fetchCompletedMatches } from "../tennis.js";
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER } from "../config.js";
+import { passesCategoryGate } from "../category-gate.js";
 
 const SHADOW_TABLE = "shadow_plays";
 const COLUMNS = [
@@ -1473,8 +1474,12 @@ async function handleShadowReport({ path, request, env, cache }) {
 
     const calib = _calibByCat[key] ?? { status: "insufficient", direction: null, delta: null, band: null, n: null };
     const doThis = _deriveDoThis(verdict, gated, calib, hint);
+    // `active` = this truePct slice is in the live category gate right now. Bands are 5-wide and
+    // aligned to the gate's 5-boundaries, so the band midpoint membership-tests the gate exactly.
+    // Only gated categories produce any active bands (ungated → passesCategoryGate always false).
     const calibBands = (_bandsByCat[key] || []).map(b => ({
       band: b.band, n: b.n, predicted: b.predicted, actual: b.actual, delta: b.delta, verdict: b.verdict, coherent: b.coherent,
+      active: passesCategoryGate({ sport, stat: category, truePct: b.predicted }),
     }));
 
     return {
