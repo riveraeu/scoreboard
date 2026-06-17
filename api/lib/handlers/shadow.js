@@ -7,6 +7,7 @@ import { neonQuery, neonBatchUpsert, neonBatchResolve, neonBatchPrePriceUpdate, 
 import { errorResponse, jsonResponse } from "../utils.js";
 import { verifyJWT } from "../auth-utils.js";
 import { fetchCompletedMatches } from "../tennis.js";
+import { KALSHI_GATE, KALSHI_CAP } from "../config.js";
 
 const SHADOW_TABLE = "shadow_plays";
 const COLUMNS = [
@@ -818,6 +819,59 @@ function _markBandCoherence(bands) {
   }
 }
 
+// ── Price-band profitability (the Model board) ───────────────────────────────
+// Profit is realized against the PRICE paid, not the model's number: ROI = hitRate − price.
+// So the betting-window question ("is 67–91 right?") is a price-axis question. These helpers
+// work a per-category 5¢ price histogram of bettable plays (dc_qualified + edge≥5, NO price
+// window, NO truePct gate — those are the assumptions under test) so the data sets the bounds.
+const _MIN_N_WINDOW  = 30; // min n to trust a discovered price window
+const _MIN_N_PROMOTE = 50; // min n in the window to promote an ungated category
+
+// Adaptive-merge adjacent 5¢ cells until each display bin clears `target` n — bin WIDTHS come
+// from where the data actually is, not from fixed guesses. Trailing remainder folds left.
+function _priceWindowBins(cells, target = 15) {
+  const sorted = [...cells].sort((a, b) => a.lo - b.lo);
+  const out = [];
+  let cur = null;
+  for (const c of sorted) {
+    if (!cur) cur = { lo: c.lo, hi: c.lo + 5, n: 0, wins: 0, pSum: 0 };
+    cur.hi = c.lo + 5; cur.n += c.n; cur.wins += c.wins; cur.pSum += c.avgPrice * c.n;
+    if (cur.n >= target) { out.push(cur); cur = null; }
+  }
+  if (cur) {
+    if (out.length) { const l = out[out.length - 1]; l.hi = cur.hi; l.n += cur.n; l.wins += cur.wins; l.pSum += cur.pSum; }
+    else out.push(cur);
+  }
+  return out.map(b => {
+    const avgPrice = b.pSum / b.n;
+    return { lo: b.lo, hi: b.hi, n: b.n,
+      hitRate: parseFloat((100 * b.wins / b.n).toFixed(1)),
+      avgPrice: parseFloat(avgPrice.toFixed(1)),
+      roi: parseFloat((b.wins / b.n - avgPrice / 100).toFixed(4)) };
+  });
+}
+
+// Best contiguous price window by ROI, subject to n ≥ minN — the data-derived betting range.
+function _discoverPriceWindow(cells, minN = _MIN_N_WINDOW) {
+  const s = [...cells].sort((a, b) => a.lo - b.lo);
+  let best = null;
+  for (let i = 0; i < s.length; i++) {
+    let n = 0, wins = 0, pSum = 0;
+    for (let j = i; j < s.length; j++) {
+      n += s[j].n; wins += s[j].wins; pSum += s[j].avgPrice * s[j].n;
+      if (n < minN) continue;
+      const roi = wins / n - (pSum / n) / 100;
+      if (!best || roi > best.roi) best = { lo: s[i].lo, hi: s[j].lo + 5, n, wins, pSum, roi };
+    }
+  }
+  if (!best) return null;
+  const avgPrice = best.pSum / best.n;
+  return { lo: best.lo, hi: best.hi, n: best.n,
+    roi: parseFloat(best.roi.toFixed(4)),
+    hitRate: parseFloat((100 * best.wins / best.n).toFixed(1)),
+    avgPrice: parseFloat(avgPrice.toFixed(1)) };
+}
+
 function _extractReportToken(request) {
   const cookie = request.headers.get("Cookie") || "";
   const m = cookie.match(/(?:^|;\s*)sb_token=([^;]+)/);
@@ -1037,9 +1091,9 @@ async function handleShadowReport({ path, request, env, cache }) {
   const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000)
     .toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
 
-  let catRows, bandRows, clvRows, volRows, picksRows, healthRows, perGameRows;
+  let catRows, bandRows, clvRows, volRows, picksRows, healthRows, perGameRows, priceHistRows;
   try {
-    [catRows, bandRows, clvRows, volRows, picksRows, healthRows, perGameRows] = await Promise.all([
+    [catRows, bandRows, clvRows, volRows, picksRows, healthRows, perGameRows, priceHistRows] = await Promise.all([
       // Q1: Category overview — one row per player/game (threshold_rank=1 dedup).
       // Window floored per-category at the current-formula cutoff (no superseded-formula mixing).
       neonQuery(`
@@ -1184,6 +1238,27 @@ async function handleShadowReport({ path, request, env, cache }) {
         FROM ranked
         GROUP BY 1, 2 ORDER BY 1, 2
       `, [since], env),
+
+      // Q8: Price-band profitability — fine 5¢ grid of BETTABLE plays (dc_qualified, edge≥5)
+      // across the FULL Kalshi price range. No 67–91 window and no truePct category gate are
+      // applied — those are the assumptions under test, so the data shows where the profitable
+      // window actually is. Formula-windowed + threshold_rank=1 deduped like the other model Qs.
+      neonQuery(`
+        WITH bp AS (
+          SELECT sport, COALESCE(stat, game_type) AS category,
+            (CASE WHEN direction='under' THEN no_kalshi_pct ELSE kalshi_pct END) AS price,
+            won::int AS w
+          FROM shadow_plays
+          WHERE resolved AND won IS NOT NULL
+            AND snapshot_date >= ${_formulaFloorSql("$1")}
+            AND threshold_rank = 1 AND dc_qualified = TRUE AND edge >= 5
+        )
+        SELECT sport, category, (FLOOR(price/5)*5)::int AS price_lo,
+          COUNT(*) AS n, SUM(w) AS wins, ROUND(AVG(price), 2) AS avg_price
+        FROM bp WHERE price >= 1 AND price <= 99
+        GROUP BY sport, category, price_lo
+        ORDER BY sport, category, price_lo
+      `, [since], env),
     ]);
   } catch (e) {
     console.error("[shadow-report] query failed:", e?.message);
@@ -1241,6 +1316,64 @@ async function handleShadowReport({ path, request, env, cache }) {
   const topBands = allBands
     .sort((a, b) => b.n !== a.n ? b.n - a.n : Math.abs(b.delta ?? 0) - Math.abs(a.delta ?? 0))
     .slice(0, 15);
+
+  // Model board — per-category price-band profitability. This is the single gate-decision
+  // surface: it slices BETTABLE plays by market price (where ROI actually lives) across the
+  // full range, derives the profitable window from data, and compares it to the current 67–91.
+  // The truePct calibration (categories/topBands above) is the separate "is the model honest?"
+  // check — NOT a competing profitability axis (calibration ≠ profit, the totalRuns lesson).
+  const _catByKey = Object.fromEntries(categories.map(c => [c.key, c]));
+  const _histByCat = {};
+  for (const r of (priceHistRows || [])) {
+    const key = `${r.sport}|${r.category}`;
+    (_histByCat[key] ??= []).push({ lo: Number(r.price_lo), n: Number(r.n), wins: Number(r.wins), avgPrice: Number(r.avg_price) });
+  }
+  const modelBoard = Object.keys(_histByCat).map(key => {
+    const cells = _histByCat[key];
+    const [sport, category] = key.split("|");
+    const totalN = cells.reduce((s, c) => s + c.n, 0);
+    const bins = _priceWindowBins(cells);
+    const win = _discoverPriceWindow(cells);
+    const gated = _ACTIVE_CATS.has(key);
+    const cat = _catByKey[key];
+    // Sub-window opportunity: bettable plays priced BELOW the current 67¢ floor.
+    const sub = cells.filter(c => c.lo < KALSHI_GATE);
+    const subN = sub.reduce((s, c) => s + c.n, 0);
+    const subWins = sub.reduce((s, c) => s + c.wins, 0);
+    const subPSum = sub.reduce((s, c) => s + c.avgPrice * c.n, 0);
+    const subRoi = subN > 0 ? subWins / subN - (subPSum / subN) / 100 : null;
+    // Over-window: bettable plays priced ABOVE the current 91¢ cap.
+    const hi = cells.filter(c => c.lo >= KALSHI_CAP);
+    const hiN = hi.reduce((s, c) => s + c.n, 0);
+    const hiWins = hi.reduce((s, c) => s + c.wins, 0);
+    const hiPSum = hi.reduce((s, c) => s + c.avgPrice * c.n, 0);
+    const hiRoi = hiN > 0 ? hiWins / hiN - (hiPSum / hiN) / 100 : null;
+
+    let verdict, hint = null;
+    if (totalN < 20) { verdict = "BUILDING"; }
+    else if (!win || win.roi <= 0) { verdict = "NEGATIVE"; hint = "no profitable price window at n≥30"; }
+    else if (!gated && win.n >= _MIN_N_PROMOTE) {
+      verdict = "PROMOTE"; hint = `profitable window ${win.lo}–${win.hi}¢ (ROI ${(win.roi * 100).toFixed(1)}%, n=${win.n})`;
+    } else if (!gated) { verdict = "WATCH"; hint = `window ${win.lo}–${win.hi}¢ ROI ${(win.roi * 100).toFixed(1)}% but n=${win.n}<${_MIN_N_PROMOTE}`; }
+    else if (subN >= _MIN_N_WINDOW && (subRoi ?? -1) > 0.02) {
+      verdict = "WIDEN"; hint = `sub-${KALSHI_GATE}¢ plays profitable (ROI ${(subRoi * 100).toFixed(1)}%, n=${subN}) — floor may be too high`;
+    } else if (hiN >= _MIN_N_WINDOW && (hiRoi ?? 0) <= -0.02) {
+      verdict = "NARROW"; hint = `>${KALSHI_CAP}¢ plays losing (ROI ${(hiRoi * 100).toFixed(1)}%, n=${hiN}) — cap may be too high`;
+    } else { verdict = "HOLD"; }
+
+    return {
+      key, sport, category, gated, n: totalN,
+      currentWindow: [KALSHI_GATE, KALSHI_CAP],
+      discoveredWindow: win,
+      subWindow: subRoi != null ? { roi: parseFloat(subRoi.toFixed(4)), n: subN } : null,
+      overWindow: hiRoi != null ? { roi: parseFloat(hiRoi.toFixed(4)), n: hiN } : null,
+      priceBands: bins,
+      verdict, hint,
+      roi: cat?.roi ?? null,
+      formulaCutoff: cat?.formulaCutoff ?? null,
+      daysInWindow: cat?.daysInWindow ?? null,
+    };
+  }).sort((a, b) => b.n - a.n);
 
   // Process CLV analysis.
   const clv = clvRows.map(r => ({
@@ -1392,6 +1525,7 @@ async function handleShadowReport({ path, request, env, cache }) {
     topPicks,
     yesterdayRecap,
     disciplineFlags,
+    modelBoard,
     categories,
     topBands,
     clv,
