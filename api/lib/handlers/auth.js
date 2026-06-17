@@ -1066,7 +1066,7 @@ UNION ALL SELECT * FROM by_cat_band`;
           AND snapshot_date >= $1
           ${capWindow ? `AND (CASE WHEN direction = 'under' THEN no_kalshi_pct ELSE kalshi_pct END) BETWEEN 67 AND 91` : ``}
           ${(capGate && !capWindow) ? `AND (
-               (sport = 'mlb'  AND stat = 'strikeouts' AND model_true_pct >= 80 AND model_true_pct < 90)
+               (sport = 'mlb'  AND stat = 'strikeouts' AND model_true_pct >= 80 AND model_true_pct < 85)
             OR (sport = 'wnba' AND stat = 'points'      AND model_true_pct >= 70 AND model_true_pct < 80)
             OR (sport = 'wnba' AND stat = 'rebounds'    AND model_true_pct >= 70 AND model_true_pct < 85)
             OR (sport = 'wnba' AND game_type = 'spread'

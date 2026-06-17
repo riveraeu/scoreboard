@@ -52,7 +52,7 @@ UI display + the `push/notify` cron are restricted to categories with confirmed 
 **Promotion bar**: add a category only when `npm run tune:gate` shows ROI>0 at cumulative n≥50 (`MIN_N_PROMOTE`) **and** the per-band detail is coherent (no in-window band flipping negative). All current gates were promoted at per-band n of 10–56 — well under the once-stated "n≥200" (corrected 2026-06-13). Band coherence, not raw n, is the real guard against overconfidence.
 
 **Currently allowed**:
-- `mlb|strikeouts` 80–90% — shadow n=55/56 both bands positive (2026-06-08)
+- `mlb|strikeouts` 80–**85**% — capped 90→85 on 2026-06-17: precise in-gate bet audit (edge≥5, price 67–91, dc) showed the 85–90 band bled −35% (n=9 since 5/01, −54% n=4 post-6/13-retune) while 80–85 was ~breakeven (−4.5%, n=16). The K_FORM_SIGMA retune (6/13) targets this overconfidence but is far from its n≥200 re-eval; cap is interim risk control, reversible if the post-retune 85–90 turns. (Originally 80–90, shadow n=55/56 both bands positive 2026-06-08.)
 - `wnba|points` 70–80% — shadow n=10/16 both bands positive (2026-06-08)
 - `wnba|rebounds` 70–85% — 85–90% band n=17 ROI −8.6% capped (2026-06-09)
 - `wnba|spread` 65–85% — shadow n=39 in-window ~+11% weighted, 65–85 bands all positive, 85–90 −4.8% capped to match the WNBA high-band overconfidence pattern (2026-06-11)

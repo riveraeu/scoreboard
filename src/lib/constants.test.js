@@ -9,7 +9,7 @@ import { passesCategoryGate } from "./constants.js";
 
 const cases = [
   // [sport, statOrGameType-as-stat?, lo, hi]  — bands are [lo, hi)
-  { key: "mlb|strikeouts", p: { sport: "mlb", stat: "strikeouts" }, lo: 80, hi: 90 },
+  { key: "mlb|strikeouts", p: { sport: "mlb", stat: "strikeouts" }, lo: 80, hi: 85 }, // capped 90→85 2026-06-17
   { key: "wnba|points", p: { sport: "wnba", stat: "points" }, lo: 70, hi: 80 },
   { key: "wnba|rebounds", p: { sport: "wnba", stat: "rebounds" }, lo: 70, hi: 85 },
   { key: "wnba|spread", p: { sport: "wnba", gameType: "spread" }, lo: 65, hi: 85 },

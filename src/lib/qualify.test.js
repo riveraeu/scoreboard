@@ -5,8 +5,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { qualifiesForDisplay, trackIdFor } from "./qualify.js";
 
-// A play that passes everything: in-gate category (mlb|strikeouts 80–90), dc, edge.
-const base = { sport: "mlb", stat: "strikeouts", truePct: 85, dcQualified: true, edge: 6 };
+// A play that passes everything: in-gate category (mlb|strikeouts 80–85), dc, edge.
+const base = { sport: "mlb", stat: "strikeouts", truePct: 82, dcQualified: true, edge: 6 };
 
 test("qualifiesForDisplay: requires dcQualified, edge >= 5, and category gate", () => {
   assert.equal(qualifiesForDisplay({ ...base }), true);

@@ -6,7 +6,7 @@
 // Key format: `${sport}|${stat || gameType}` — matches what the calibration endpoint groups by.
 export function passesCategoryGate(p) {
   const key = `${p.sport}|${p.stat || p.gameType}`;
-  if (key === 'mlb|strikeouts') return (p.truePct ?? 0) >= 80 && (p.truePct ?? 0) < 90;
+  if (key === 'mlb|strikeouts') return (p.truePct ?? 0) >= 80 && (p.truePct ?? 0) < 85; // cap 90→85 2026-06-17: 85–90 band bled −35% in-gate (overconfidence); 80–85 ~breakeven
   if (key === 'wnba|points')    return (p.truePct ?? 0) >= 70 && (p.truePct ?? 0) < 80;
   if (key === 'wnba|rebounds')  return (p.truePct ?? 0) >= 70 && (p.truePct ?? 0) < 85;
   if (key === 'wnba|spread')    return (p.truePct ?? 0) >= 65 && (p.truePct ?? 0) < 85;

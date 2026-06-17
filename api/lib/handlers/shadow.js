@@ -738,7 +738,7 @@ const _ACTIVE_CATS = new Set(["mlb|strikeouts", "wnba|points", "wnba|rebounds", 
 // bet side, so for direction='under' rows truePct == 100 - model_true_pct (cover probs are
 // complementary). Hence the CASE — it reconstructs p.truePct to mirror the gate exactly.
 const _CATEGORY_GATE_SQL = `(
-  (sport='mlb'  AND stat='strikeouts' AND model_true_pct >= 80 AND model_true_pct < 90) OR
+  (sport='mlb'  AND stat='strikeouts' AND model_true_pct >= 80 AND model_true_pct < 85) OR
   (sport='wnba' AND stat='points'     AND model_true_pct >= 70 AND model_true_pct < 80) OR
   (sport='wnba' AND stat='rebounds'   AND model_true_pct >= 70 AND model_true_pct < 85) OR
   (sport='wnba' AND game_type='spread' AND

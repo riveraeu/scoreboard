@@ -27,7 +27,7 @@ const DEMOTE_ROI    = -0.05; // ROI < -5% to flag a demotion
 // Update this when you apply a recommendation so next run sees the new baseline.
 // max: upper-bound cap (exclusive), null = no cap.
 const CURRENT_GATE = {
-  "mlb|strikeouts": { min: 80, max: 90 },
+  "mlb|strikeouts": { min: 80, max: 85 },
   "wnba|points":    { min: 70, max: 80 },
   "wnba|rebounds":  { min: 70, max: 85 },
   "wnba|spread":    { min: 65, max: 85 },
