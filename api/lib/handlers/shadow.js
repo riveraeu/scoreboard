@@ -1402,15 +1402,15 @@ async function handleShadowReport({ path, request, env, cache }) {
     } else if (allReady) {
       verdict = "PROMOTE";
       action = `add ${category} @ ${win.lo}–${win.hi}¢ window`;
-      hint = `window ${win.lo}–${win.hi}¢ · ROI ${(win.roi * 100).toFixed(1)}% (CI≥${(q.roiLoCI * 100).toFixed(1)}%) · n=${win.n} · coherent`;
+      hint = `bet ${win.lo}–${win.hi}¢ · ROI ${(win.roi * 100).toFixed(1)}% (worst case still +${(q.roiLoCI * 100).toFixed(1)}%) · n=${win.n} · profitable across the range`;
     } else {
-      // Positive but not yet validated — name exactly what's missing.
+      // Positive but not yet validated — name exactly what's missing, in plain words.
       verdict = "STRENGTHENING";
       const missing = [];
-      if (!checklist.nOk) missing.push(`n ${win.n}/${_MIN_N_PROMOTE}`);
-      if (!checklist.ciOk) missing.push(`CI lo ${(q.roiLoCI * 100).toFixed(1)}%≤0`);
-      if (!checklist.coherentOk) missing.push("not coherent");
-      hint = `window ${win.lo}–${win.hi}¢ ROI ${(win.roi * 100).toFixed(1)}% — needs: ${missing.join(", ")}`;
+      if (!checklist.nOk) missing.push(`more bets (${win.n}/${_MIN_N_PROMOTE})`);
+      if (!checklist.ciOk) missing.push("edge not proven yet — could still be luck");
+      if (!checklist.coherentOk) missing.push("profit too concentrated in one price slice");
+      hint = `${win.lo}–${win.hi}¢ ROI ${(win.roi * 100).toFixed(1)}% — needs: ${missing.join("; ")}`;
     }
 
     return {

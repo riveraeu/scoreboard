@@ -39,10 +39,10 @@ function BoardBadge({ v }) {
   const [label, color] = _BOARD[v] || [v, C.dim];
   return <span style={{ color, fontSize:9, fontWeight:700, border:`1px solid ${color}55`, borderRadius:4, padding:"0 5px", whiteSpace:"nowrap" }}>{label}</span>;
 }
-// Tiny pass/fail chips for the promotion checklist (n / CI / coherence).
-function Check({ ok, label }) {
+// Tiny pass/fail chips for the promotion checklist (enough bets / real edge / broad).
+function Check({ ok, label, title }) {
   if (ok == null) return null;
-  return <span style={{ color: ok ? C.green : C.dim, fontSize:9, fontWeight:700, marginRight:5 }}>{ok ? "✓" : "✗"}{label}</span>;
+  return <span title={title} style={{ color: ok ? C.green : C.dim, fontSize:9, fontWeight:700, marginRight:5, cursor:"help" }}>{ok ? "✓" : "✗"}{label}</span>;
 }
 
 // Calibration (truePct→actual) verdict badge — the model-honesty check, NOT the bet decision.
@@ -163,7 +163,11 @@ function ModelBoard({ board, topBands }) {
           <td style={{ ...tdB, color:C.dim, fontSize:10 }}>{w && w.roiLoCI != null ? `[${(w.roiLoCI*100).toFixed(0)},${(w.roiHiCI*100).toFixed(0)}]` : "—"}</td>
           <td style={{ ...tdB, color:r.n>=50?C.text:r.n>=30?C.gray:C.dim }}>{r.n}</td>
           <td style={{ ...tdB, whiteSpace:"nowrap" }}>
-            {r.checklist ? <><Check ok={r.checklist.nOk} label="n" /><Check ok={r.checklist.ciOk} label="CI" /><Check ok={r.checklist.coherentOk} label="coh" /></> : <span style={{ color:C.dim, fontSize:9 }}>—</span>}
+            {r.checklist ? <>
+              <Check ok={r.checklist.nOk} label="bets" title="Enough settled bets (n ≥ 50)" />
+              <Check ok={r.checklist.ciOk} label="real" title="Edge is real, not small-sample luck — profitable even in the cautious 95%-confidence case" />
+              <Check ok={r.checklist.coherentOk} label="broad" title="Profitable across the whole price range, not one lucky slice" />
+            </> : <span style={{ color:C.dim, fontSize:9 }}>—</span>}
           </td>
         </tr>
         {open && (
@@ -182,7 +186,7 @@ function ModelBoard({ board, topBands }) {
         Profitable price window per category · bettable plays (edge≥3) by market price · current betting window 67–91¢
       </div>
       <table style={tableStyle}>
-        <thead><tr>{["Category","Verdict","Window","ROI","95% CI","N","Ready?"].map(h => <th key={h} style={thB}>{h}</th>)}</tr></thead>
+        <thead><tr>{["Category","Verdict","Window","ROI","ROI range","N","Ready?"].map(h => <th key={h} style={thB}>{h}</th>)}</tr></thead>
         <tbody>
           {actionable.map(r => <Row key={r.key} r={r} />)}
           {building.length > 0 && !showBuilding && (
@@ -193,8 +197,12 @@ function ModelBoard({ board, topBands }) {
           {showBuilding && building.map(r => <Row key={r.key} r={r} />)}
         </tbody>
       </table>
-      <div style={{ color:C.dim, fontSize:9.5, marginTop:3 }}>
-        PROMOTE requires all three: <b style={{ color:C.gray }}>n≥50</b>, ROI 95%-CI lower bound <b style={{ color:C.gray }}>&gt; 0</b>, and <b style={{ color:C.gray }}>coherent</b> window (both price-halves non-negative). Click a row for its price-band curve.
+      <div style={{ color:C.dim, fontSize:10, marginTop:5, lineHeight:1.55 }}>
+        A category is ready to bet (<b style={{ color:C.green }}>PROMOTE</b>) only when all three ticks pass:
+        <b style={{ color:C.gray }}> bets</b> = enough settled bets (n≥50) ·
+        <b style={{ color:C.gray }}>real</b> = the edge holds up even in the cautious case, so it's not small-sample luck ·
+        <b style={{ color:C.gray }}>broad</b> = profitable across the whole price range, not one lucky slice.
+        <span style={{ display:"block", marginTop:2 }}>“ROI range” is the plausible spread of the true ROI; it must sit fully above 0 for the edge to count. Click a row for its price-band breakdown.</span>
       </div>
 
       {/* Calibration (model honesty) — secondary, NOT the bet decision */}
