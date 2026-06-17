@@ -872,6 +872,34 @@ function _discoverPriceWindow(cells, minN = _MIN_N_WINDOW) {
     avgPrice: parseFloat(avgPrice.toFixed(1)) };
 }
 
+// Promotion validation for a discovered window: 95% CI on ROI (binomial SE on the hit rate,
+// since ROI = hitRate − ~fixed price) + a half-split coherence test (both price-halves of the
+// window non-negative — guards against a single lucky bin masquerading as a profitable regime,
+// the selection-bias hazard of maximizing ROI over candidate windows). `cells` are the window's
+// component 5¢ bins.
+function _windowQuality(cells, win) {
+  if (!win) return null;
+  const p = win.hitRate / 100;
+  const se = Math.sqrt(Math.max(0, p * (1 - p) / win.n));
+  const roiLoCI = parseFloat((win.roi - 1.96 * se).toFixed(4));
+  const roiHiCI = parseFloat((win.roi + 1.96 * se).toFixed(4));
+  const inWin = cells.filter(c => c.lo >= win.lo && c.lo < win.hi).sort((a, b) => a.lo - b.lo);
+  const _roiOf = arr => {
+    const N = arr.reduce((s, c) => s + c.n, 0); if (!N) return null;
+    const W = arr.reduce((s, c) => s + c.wins, 0);
+    const P = arr.reduce((s, c) => s + c.avgPrice * c.n, 0);
+    return W / N - (P / N) / 100;
+  };
+  let coherent = false;
+  if (inWin.length >= 2) {
+    const mid = win.lo + (win.hi - win.lo) / 2;
+    const lo = _roiOf(inWin.filter(c => c.lo < mid));
+    const up = _roiOf(inWin.filter(c => c.lo >= mid));
+    coherent = (lo == null || lo >= -0.02) && (up == null || up >= -0.02);
+  }
+  return { roiLoCI, roiHiCI, coherent };
+}
+
 function _extractReportToken(request) {
   const cookie = request.headers.get("Cookie") || "";
   const m = cookie.match(/(?:^|;\s*)sb_token=([^;]+)/);
@@ -1351,26 +1379,49 @@ async function handleShadowReport({ path, request, env, cache }) {
     const hiPSum = hi.reduce((s, c) => s + c.avgPrice * c.n, 0);
     const hiRoi = hiN > 0 ? hiWins / hiN - (hiPSum / hiN) / 100 : null;
 
-    let verdict, hint = null;
-    if (totalN < 20) { verdict = "BUILDING"; }
-    else if (!win || win.roi <= 0) { verdict = "NEGATIVE"; hint = "no profitable price window at n≥30"; }
-    else if (!gated && win.n >= _MIN_N_PROMOTE) {
-      verdict = "PROMOTE"; hint = `profitable window ${win.lo}–${win.hi}¢ (ROI ${(win.roi * 100).toFixed(1)}%, n=${win.n})`;
-    } else if (!gated) { verdict = "WATCH"; hint = `window ${win.lo}–${win.hi}¢ ROI ${(win.roi * 100).toFixed(1)}% but n=${win.n}<${_MIN_N_PROMOTE}`; }
-    else if (subN >= _MIN_N_WINDOW && (subRoi ?? -1) > 0.02) {
-      verdict = "WIDEN"; hint = `sub-${KALSHI_GATE}¢ plays profitable (ROI ${(subRoi * 100).toFixed(1)}%, n=${subN}) — floor may be too high`;
-    } else if (hiN >= _MIN_N_WINDOW && (hiRoi ?? 0) <= -0.02) {
-      verdict = "NARROW"; hint = `>${KALSHI_CAP}¢ plays losing (ROI ${(hiRoi * 100).toFixed(1)}%, n=${hiN}) — cap may be too high`;
-    } else { verdict = "HOLD"; }
+    // Validation ladder — three explicit promotion criteria so "act now" vs "still cooking" is
+    // unambiguous and selection-bias-proof (the discovered window is ROI-maximized over many
+    // candidate ranges, so the aggregate ROI is upward-biased; the CI + coherence gates are what
+    // make it trustworthy). PROMOTE only when ALL pass.
+    const q = win ? _windowQuality(cells, win) : null;
+    const checklist = win && q ? {
+      nOk: win.n >= _MIN_N_PROMOTE,          // enough bettable resolved plays
+      ciOk: q.roiLoCI > 0,                    // ROI 95%-CI lower bound clears 0 (beats noise + price)
+      coherentOk: q.coherent,                 // both price-halves non-negative (not a lucky slice)
+    } : null;
+    const allReady = checklist && checklist.nOk && checklist.ciOk && checklist.coherentOk;
+
+    let verdict, hint = null, action = null;
+    if (totalN < 20 || !win) {
+      verdict = "BUILDING"; hint = `n=${totalN} bettable — accruing`;
+    } else if (win.roi <= 0 || (q && q.roiHiCI < 0)) {
+      verdict = "NEGATIVE"; hint = "no profitable price window — stay out";
+    } else if (gated) {
+      // Already bet. Pull only on a SIGNIFICANTLY negative window (CI upper bound < 0).
+      verdict = (q && q.roiHiCI < 0) ? "DEMOTE" : "HOLD";
+    } else if (allReady) {
+      verdict = "PROMOTE";
+      action = `add ${category} @ ${win.lo}–${win.hi}¢ window`;
+      hint = `window ${win.lo}–${win.hi}¢ · ROI ${(win.roi * 100).toFixed(1)}% (CI≥${(q.roiLoCI * 100).toFixed(1)}%) · n=${win.n} · coherent`;
+    } else {
+      // Positive but not yet validated — name exactly what's missing.
+      verdict = "STRENGTHENING";
+      const missing = [];
+      if (!checklist.nOk) missing.push(`n ${win.n}/${_MIN_N_PROMOTE}`);
+      if (!checklist.ciOk) missing.push(`CI lo ${(q.roiLoCI * 100).toFixed(1)}%≤0`);
+      if (!checklist.coherentOk) missing.push("not coherent");
+      hint = `window ${win.lo}–${win.hi}¢ ROI ${(win.roi * 100).toFixed(1)}% — needs: ${missing.join(", ")}`;
+    }
 
     return {
       key, sport, category, gated, n: totalN,
       currentWindow: [KALSHI_GATE, KALSHI_CAP],
-      discoveredWindow: win,
+      discoveredWindow: win ? { ...win, roiLoCI: q?.roiLoCI ?? null, roiHiCI: q?.roiHiCI ?? null, coherent: q?.coherent ?? null } : null,
+      checklist,
       subWindow: subRoi != null ? { roi: parseFloat(subRoi.toFixed(4)), n: subN } : null,
       overWindow: hiRoi != null ? { roi: parseFloat(hiRoi.toFixed(4)), n: hiN } : null,
       priceBands: bins,
-      verdict, hint,
+      verdict, hint, action,
       roi: cat?.roi ?? null,
       formulaCutoff: cat?.formulaCutoff ?? null,
       daysInWindow: cat?.daysInWindow ?? null,
