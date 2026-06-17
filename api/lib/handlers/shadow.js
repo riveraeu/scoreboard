@@ -756,8 +756,9 @@ const FORMULA_CUTOFFS = {
   "mlb|hrr":        "2026-06-10", // OPS 0.4→0.25, knee 72→68
   "mlb|hits":       "2026-06-12", // ticker fix — data starts here
   "mlb|totalBases": "2026-06-12",
-  "mlb|total":      "2026-06-01", // totalRuns market-line anchor
-  "nhl|total":      "2026-05-29", // NHL NegBin + spread dampener
+  "mlb|totalRuns":  "2026-06-01", // totalRuns market-line anchor
+  "mlb|teamRuns":   "2026-05-27", // MLB teamTotal regime blend
+  "nhl|totalGoals": "2026-05-29", // NHL NegBin + spread dampener
   "nhl|spread":     "2026-05-29",
   "nhl|ml":         "2026-05-29",
   "tennis|match":   "2026-06-13",
@@ -899,6 +900,10 @@ async function buildDisciplineFlags(env, cache, userId, since, yesterday, bandLo
   }
 
   // (3) Negative-CLV entry — best-effort match to the pick's shadow row for the pre-game close.
+  // Normalize the join key: NUMERIC comes back as "6.0" from Neon (vs the pick's 6), and props
+  // carry direction null/undefined (vs shadow 'over') — both would otherwise miss every match.
+  const _ln = v => (v == null || v === "" || Number.isNaN(Number(v))) ? "" : String(Number(v));
+  const _dir = d => d === "under" ? "under" : "over";
   try {
     const rows = await neonQuery(`
       SELECT sport, player_name, pick_team, game_date, threshold, pick_line, direction,
@@ -908,14 +913,14 @@ async function buildDisciplineFlags(env, cache, userId, since, yesterday, bandLo
     `, [since], env);
     const idx = {};
     for (const r of rows) {
-      const ln = r.threshold ?? r.pick_line ?? "";
+      const ln = _ln(r.threshold ?? r.pick_line);
       const who = r.player_name ? _normName(r.player_name) : (r.pick_team || "").toUpperCase();
-      idx[`${r.sport}|${r.game_date}|${who}|${ln}|${r.direction}`] = r;
+      idx[`${r.sport}|${r.game_date}|${who}|${ln}|${_dir(r.direction)}`] = r;
     }
     for (const p of losses) {
-      const ln = lineOf(p) ?? "";
+      const ln = _ln(lineOf(p));
       const who = p.playerName ? _normName(p.playerName) : (p.pickTeam || "").toUpperCase();
-      const r = idx[`${p.sport}|${p.gameDate}|${who}|${ln}|${p.direction}`];
+      const r = idx[`${p.sport}|${p.gameDate}|${who}|${ln}|${_dir(p.direction)}`];
       if (!r) continue;
       const closePre = p.direction === "under" ? Number(r.kalshi_no_price_pre) : Number(r.kalshi_yes_price_pre);
       const entry = p.kalshiAvgCents != null ? Number(p.kalshiAvgCents) / 100 : null;
