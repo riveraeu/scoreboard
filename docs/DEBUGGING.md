@@ -1,5 +1,37 @@
 # Common Debugging
 
+## Token-efficient debug recipe (read first)
+`/api/tonight?debug=1` is ~1.5 MB (~365K tokens — `plays` ~165 items, `dropped` ~1000, each ~100 fields). **NEVER dump it raw into context.** Stage once, project always:
+
+```bash
+curl -s "https://scoreboard-ivory-xi.vercel.app/api/tonight?debug=1" > /tmp/tonight.json   # fetch ONCE
+wc -c /tmp/tonight.json                                                                      # sanity
+```
+
+Then re-query the file (no re-fetch) with ≤6-field projections — never `cat`/`head` the file:
+
+```bash
+# prove a change / slate health — counts only
+jq '{qualifying:.qualifyingCount, total:.totalMarketsCount, plays:(.plays|length), dropped:(.dropped|length)}' /tmp/tonight.json
+
+# did a player's play generate? (plays[] = qualified + qualified:false)
+jq '.plays[] | select(.playerName|test("Skubal";"i")) | {stat,threshold,truePct,kalshiPct,edge,dc:.dataConfidence,dcQualified,qualified}' /tmp/tonight.json
+
+# why was a player dropped? dropped[] keys by playerName (NO kalshiTicker); reason field is `reason`
+jq '.dropped[] | select(.playerName|test("Skubal";"i")) | {stat,threshold,reason,truePct,edge,dc:.dataConfidence}' /tmp/tonight.json
+
+# drop-reason histogram (reasons: edge_too_low, kalshi_out_of_window, low_confidence,
+#   under_no_price_too_low, low_lineup_spot, altLineDedup, no_opp, no_gamelog, insufficient_starts, no_rating)
+jq -r '.dropped[].reason' /tmp/tonight.json | sort | uniq -c | sort -rn
+
+# qualified counts by sport+stat
+jq -r '.plays[] | "\(.sport)|\(.stat)"' /tmp/tonight.json | sort | uniq -c | sort -rn
+```
+
+Same rule for `shadow-calibration` / `shadow-analysis`: pass `?since=&sport=` to shrink server-side, stage to `/tmp`, project. Even a single field out → pipe through `jq`, don't read the file.
+
+---
+
 ### "Player card explanation is blank / missing prose (stats present in market report)"
 A player visible in the market report has their play in `dropped[]` (debug-only), which means `tonightPlayerMap` has no entry for them → `tonightHitPlay` / `tonightTabPlay` is null → explanation renders blank.
 
