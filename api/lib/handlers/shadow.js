@@ -917,6 +917,7 @@ async function buildDisciplineFlags(env, cache, userId, since, yesterday, bandLo
       const who = r.player_name ? _normName(r.player_name) : (r.pick_team || "").toUpperCase();
       idx[`${r.sport}|${r.game_date}|${who}|${ln}|${_dir(r.direction)}`] = r;
     }
+    let _matched = 0, _worst = null;
     for (const p of losses) {
       const ln = _ln(lineOf(p));
       const who = p.playerName ? _normName(p.playerName) : (p.pickTeam || "").toUpperCase();
@@ -925,9 +926,12 @@ async function buildDisciplineFlags(env, cache, userId, since, yesterday, bandLo
       const closePre = p.direction === "under" ? Number(r.kalshi_no_price_pre) : Number(r.kalshi_yes_price_pre);
       const entry = p.kalshiAvgCents != null ? Number(p.kalshiAvgCents) / 100 : null;
       if (entry == null || !Number.isFinite(closePre)) continue;
+      _matched++;
       const clvCents = parseFloat(((closePre - entry) * 100).toFixed(1));
+      if (_worst == null || clvCents < _worst) _worst = clvCents;
       if (clvCents < -2) out.negativeClv.push({ label: labelOf(p), sport: p.sport, category: catOf(p), clvCents });
     }
+    out.clvMatched = _matched; out.clvWorst = _worst;
   } catch (e) { console.error("[shadow-report] disciplineFlags CLV skipped:", e?.message); }
 
   out.flaggedBandBets = out.flaggedBandBets.slice(0, 8);
