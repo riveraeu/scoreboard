@@ -849,6 +849,11 @@ function _calibSummaryByCat(allBands) {
 // to "tune up" unless there is actually a profitable window. Returns { action, tone, why }.
 function _deriveDoThis(verdict, gated, calib, hint) {
   const c = calib || { status: "insufficient", direction: null };
+  // Gated = already live via the truePct gate. The price-axis board is a re-analysis still accruing
+  // for these, so never tell the user to "Build" something they are actively betting. Only a
+  // negative price window moves a live category (NEGATIVE/DEMOTE branches below → Pull from gate).
+  if (gated && verdict !== "NEGATIVE" && verdict !== "DEMOTE")
+    return { action: "Keep betting", tone: "gray", why: "live via the truePct gate — price-axis analysis still accruing" };
   switch (verdict) {
     case "PROMOTE": return { action: "Add to gate", tone: "green", why: "validated profitable price window — start betting it" };
     case "HOLD":    return { action: "Keep betting", tone: "gray", why: "currently gated and still profitable" };
@@ -1204,7 +1209,7 @@ async function handleShadowReport({ path, request, env, cache }) {
           ROUND(AVG(bet_pct)/100.0, 4) AS avg_bet_pct
         FROM src WHERE bsp >= 55
         GROUP BY sport, category, band HAVING COUNT(*) >= 5
-        ORDER BY n DESC LIMIT 30
+        ORDER BY n DESC
       `, [since], env),
 
       // Q3: CLV — per-category avg line movement (3pm snapshot → 7pm pre-game stamp).

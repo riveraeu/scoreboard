@@ -148,7 +148,7 @@ function HonestyCell({ calib }) {
 }
 // Per-category calibration bands (model% vs actual) — shown in the expanded detail.
 function CalibBandsTable({ bands }) {
-  if (!bands?.length) return <div style={{ color:C.dim, fontSize:10, padding:"2px 0" }}>No calibration bands yet.</div>;
+  if (!bands?.length) return <div style={{ color:C.dim, fontSize:10, padding:"2px 0" }}>Not enough resolved plays yet — a truePct band needs ≥5 to score honesty.</div>;
   return (
     <table style={{ ...tableStyle, margin:"4px 0 8px" }}>
       <thead><tr>{["truePct band","N","Model%","Actual%","Δ"].map(h => <th key={h} style={{ ...thB, fontSize:9 }}>{h}</th>)}</tr></thead>
@@ -189,6 +189,7 @@ function ModelBoard({ board }) {
             style={{ cursor:"pointer", background:_BOARD[r.verdict]?.[2] || "transparent" }}>
           <td style={{ ...tdB, textAlign:"left", color:C.text, fontWeight:600 }}>
             <span style={{ color:C.dim, marginRight:4 }}>{open ? "▾" : "▸"}</span>{r.key}
+            {r.gated && <span title="Currently bet — in the live truePct gate" style={{ color:C.green, fontSize:9, fontWeight:700, marginLeft:6, whiteSpace:"nowrap" }}>● live</span>}
           </td>
           <td style={tdB}><DoThisBadge d={r.doThis} /></td>
           <td style={tdB}><BoardBadge v={r.verdict} /></td>
