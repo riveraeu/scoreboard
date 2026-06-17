@@ -45,14 +45,6 @@ function Check({ ok, label, title }) {
   return <span title={title} style={{ color: ok ? C.green : C.dim, fontSize:9, fontWeight:700, marginRight:5, cursor:"help" }}>{ok ? "✓" : "✗"}{label}</span>;
 }
 
-// Calibration (truePct→actual) verdict badge — the model-honesty check, NOT the bet decision.
-const _CALIB = { gate_ready:["gate-ready",C.green], building:["building",C.amber], actionable:["actionable",C.green], needs_n200:["need n≥200",C.dim], within_noise:["within noise",C.dim], too_few:["too few",C.dim] };
-function CalibBadge({ v }) {
-  if (!v) return null;
-  const [label, color] = _CALIB[v] || [v, C.dim];
-  return <span style={{ color, fontSize:9, fontWeight:700, border:`1px solid ${color}55`, borderRadius:4, padding:"0 4px", whiteSpace:"nowrap" }}>{label}</span>;
-}
-
 // ---- Data health gate -------------------------------------------------------------
 function DataHealth({ dh }) {
   if (!dh) return null;
@@ -136,9 +128,50 @@ function PriceBands({ bands, window }) {
   );
 }
 
-// ---- MODEL BOARD: the price-band validation ladder --------------------------------
+// ---- MODEL BOARD: one row per model — profit + honesty fused into a "Do this" action ----
 const _ORDER = { PROMOTE:0, DEMOTE:1, STRENGTHENING:2, HOLD:3, NEGATIVE:4, BUILDING:5 };
-function ModelBoard({ board, topBands }) {
+const _TONE = { green:C.green, gray:C.gray, red:C.red, blue:C.blue, amber:C.amber, dim:C.dim };
+function DoThisBadge({ d }) {
+  if (!d) return <span style={{ color:C.dim }}>—</span>;
+  const color = _TONE[d.tone] || C.dim;
+  return <span style={{ color, fontSize:10, fontWeight:700, border:`1px solid ${color}55`, borderRadius:4, padding:"1px 6px", whiteSpace:"nowrap" }}>{d.action}</span>;
+}
+// Honesty headline — is the model's % right? over/under-confident, honest, or too-few-to-judge.
+function HonestyCell({ calib }) {
+  if (!calib || calib.status === "insufficient") return <span style={{ color:C.dim, fontSize:10 }}>too few</span>;
+  if (calib.status === "honest") return <span style={{ color:C.gray, fontSize:10 }}>honest</span>;
+  const over = calib.direction === "over";
+  const d = calib.delta;
+  return <span title={`${calib.band}% band, n=${calib.n}`} style={{ color:over?C.red:C.amber, fontSize:10, fontWeight:600, cursor:"help" }}>
+    {d >= 0 ? `+${d}` : d} {over ? "overconf" : "underconf"}
+  </span>;
+}
+// Per-category calibration bands (model% vs actual) — shown in the expanded detail.
+function CalibBandsTable({ bands }) {
+  if (!bands?.length) return <div style={{ color:C.dim, fontSize:10, padding:"2px 0" }}>No calibration bands yet.</div>;
+  return (
+    <table style={{ ...tableStyle, margin:"4px 0 8px" }}>
+      <thead><tr>{["truePct band","N","Model%","Actual%","Δ"].map(h => <th key={h} style={{ ...thB, fontSize:9 }}>{h}</th>)}</tr></thead>
+      <tbody>
+        {bands.map((b, i) => {
+          const delta = b.delta ?? 0;
+          const deltaC = delta <= -5 ? C.red : delta >= 5 ? C.green : C.amber;
+          return (
+            <tr key={i}>
+              <td style={{ ...tdB, color:C.text, textAlign:"left", fontSize:10 }}>{b.band}%</td>
+              <td style={{ ...tdB, color:b.n>=200?C.text:b.n>=50?C.gray:C.dim, fontSize:10 }}>{b.n}</td>
+              <td style={{ ...tdB, color:C.gray, fontSize:10 }}>{b.predicted != null ? `${b.predicted}%` : "—"}</td>
+              <td style={{ ...tdB, color:C.gray, fontSize:10 }}>{b.actual != null ? `${b.actual}%` : "—"}</td>
+              <td style={{ ...tdB, color:deltaC, fontWeight:600, fontSize:10 }}>{delta >= 0 ? `+${delta.toFixed(1)}` : delta.toFixed(1)}{b.coherent ? "▴" : ""}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+function ModelBoard({ board }) {
   const [expanded, setExpanded] = React.useState({});
   const [showBuilding, setShowBuilding] = React.useState(false);
   if (!board?.length) return null;
@@ -157,23 +190,32 @@ function ModelBoard({ board, topBands }) {
           <td style={{ ...tdB, textAlign:"left", color:C.text, fontWeight:600 }}>
             <span style={{ color:C.dim, marginRight:4 }}>{open ? "▾" : "▸"}</span>{r.key}
           </td>
+          <td style={tdB}><DoThisBadge d={r.doThis} /></td>
           <td style={tdB}><BoardBadge v={r.verdict} /></td>
           <td style={{ ...tdB, color:C.gray }}>{w ? `${w.lo}–${w.hi}¢` : "—"}</td>
           <td style={{ ...tdB, color:_roiColorFrac(w?.roi), fontWeight:600 }}>{w ? _pct1(w.roi) : "—"}</td>
-          <td style={{ ...tdB, color:C.dim, fontSize:10 }}>{w && w.roiLoCI != null ? `[${(w.roiLoCI*100).toFixed(0)},${(w.roiHiCI*100).toFixed(0)}]` : "—"}</td>
           <td style={{ ...tdB, color:r.n>=50?C.text:r.n>=30?C.gray:C.dim }}>{r.n}</td>
-          <td style={{ ...tdB, whiteSpace:"nowrap" }}>
-            {r.checklist ? <>
-              <Check ok={r.checklist.nOk} label="bets" title="Enough settled bets (n ≥ 50)" />
-              <Check ok={r.checklist.ciOk} label="real" title="Edge is real, not small-sample luck — profitable even in the cautious 95%-confidence case" />
-              <Check ok={r.checklist.coherentOk} label="broad" title="Profitable across the whole price range, not one lucky slice" />
-            </> : <span style={{ color:C.dim, fontSize:9 }}>—</span>}
-          </td>
+          <td style={tdB}><HonestyCell calib={r.calib} /></td>
         </tr>
         {open && (
-          <tr><td colSpan={7} style={{ padding:"0 8px 4px 22px", background:"#0d1117" }}>
-            {r.hint && <div style={{ color:r.verdict==="PROMOTE"?C.green:C.gray, fontSize:11, margin:"4px 0" }}>{r.action ? `▶ ${r.action} · ` : ""}{r.hint}</div>}
+          <tr><td colSpan={7} style={{ padding:"0 8px 6px 22px", background:"#0d1117" }}>
+            {r.doThis?.why && (
+              <div style={{ color:_TONE[r.doThis.tone]||C.gray, fontSize:11, margin:"4px 0" }}>
+                ▶ <b>{r.doThis.action}</b>: <span style={{ color:C.text }}>{r.doThis.why}</span>
+              </div>
+            )}
+            {r.checklist && (
+              <div style={{ margin:"2px 0 6px", whiteSpace:"nowrap" }}>
+                <Check ok={r.checklist.nOk} label="bets" title="Enough settled bets (n ≥ 50)" />
+                <Check ok={r.checklist.ciOk} label="real" title="Edge is real, not small-sample luck — profitable even in the cautious 95%-confidence case" />
+                <Check ok={r.checklist.coherentOk} label="broad" title="Profitable across the whole price range, not one lucky slice" />
+                {w && w.roiLoCI != null && <span style={{ color:C.dim, fontSize:9, marginLeft:6 }}>ROI range [{(w.roiLoCI*100).toFixed(0)},{(w.roiHiCI*100).toFixed(0)}]</span>}
+              </div>
+            )}
+            <div style={{ color:C.dim, fontSize:9, fontWeight:700, margin:"4px 0 1px" }}>PROFIT · ROI by market price (where the money is)</div>
             <PriceBands bands={r.priceBands} window={r.currentWindow} />
+            <div style={{ color:C.dim, fontSize:9, fontWeight:700, margin:"4px 0 1px" }}>HONESTY · model% vs actual (Δ&lt;0 = overconfident)</div>
+            <CalibBandsTable bands={r.calibBands} />
           </td></tr>
         )}
       </>
@@ -183,10 +225,10 @@ function ModelBoard({ board, topBands }) {
   return (
     <div style={{ marginBottom:10 }}>
       <div style={sectionTitle}>
-        Profitable price window per category · bettable plays (edge≥3) by market price · current betting window 67–91¢
+        One row per model · "Do this" fuses profit (where the money is) + honesty (is the model% right) · current betting window 67–91¢
       </div>
       <table style={tableStyle}>
-        <thead><tr>{["Category","Verdict","Window","ROI","ROI range","N","Ready?"].map(h => <th key={h} style={thB}>{h}</th>)}</tr></thead>
+        <thead><tr>{["Category","Do this","Bet status","Window","ROI","N","Honesty"].map(h => <th key={h} style={thB}>{h}</th>)}</tr></thead>
         <tbody>
           {actionable.map(r => <Row key={r.key} r={r} />)}
           {building.length > 0 && !showBuilding && (
@@ -198,38 +240,13 @@ function ModelBoard({ board, topBands }) {
         </tbody>
       </table>
       <div style={{ color:C.dim, fontSize:10, marginTop:5, lineHeight:1.55 }}>
-        A category is ready to bet (<b style={{ color:C.green }}>PROMOTE</b>) only when all three ticks pass:
-        <b style={{ color:C.gray }}> bets</b> = enough settled bets (n≥50) ·
-        <b style={{ color:C.gray }}>real</b> = the edge holds up even in the cautious case, so it's not small-sample luck ·
-        <b style={{ color:C.gray }}>broad</b> = profitable across the whole price range, not one lucky slice.
-        <span style={{ display:"block", marginTop:2 }}>“ROI range” is the plausible spread of the true ROI; it must sit fully above 0 for the edge to count. Click a row for its price-band breakdown.</span>
+        <b style={{ color:C.text }}>Do this</b> turns two questions into one action — is there a profitable price window (PROFIT), and is the model% honest (HONESTY):
+        <b style={{ color:C.green }}> Add to gate</b> = validated, start betting ·
+        <b style={{ color:C.amber }}>Tune down</b> = model runs too hot and loses ·
+        <b style={{ color:C.gray }}>Stay out — don't tune</b> = underconfident but the market still wins, so de-shrinking would only bet more into a loss ·
+        <b style={{ color:C.blue }}>Build</b> = positive, just needs more bets.
+        <span style={{ display:"block", marginTop:2 }}>Click a row for its price-band (profit) + calibration (honesty) breakdown.</span>
       </div>
-
-      {/* Calibration (model honesty) — secondary, NOT the bet decision */}
-      {topBands?.length > 0 && (
-        <div style={{ marginTop:12 }}>
-          <div style={sectionTitle}>Model calibration check · truePct → actual · Δ&lt;0 = overconfident <span style={{ color:C.dim }}>(honesty check, not profitability)</span></div>
-          <table style={tableStyle}>
-            <thead><tr>{["Category","Band","N","Pred%","Actual%","Δ"].map(h => <th key={h} style={thB}>{h}</th>)}</tr></thead>
-            <tbody>
-              {topBands.slice(0, 10).map((b, i) => {
-                const delta = b.delta ?? 0;
-                const deltaC = delta <= -5 ? C.red : delta >= 5 ? C.green : C.amber;
-                return (
-                  <tr key={i}>
-                    <td style={{ ...tdB, color:C.text, textAlign:"left" }}>{b.sport}|{b.category}</td>
-                    <td style={{ ...tdB, color:C.gray }}>{b.band}%</td>
-                    <td style={{ ...tdB, color:b.n>=200?C.text:b.n>=50?C.gray:C.dim }}>{b.n}</td>
-                    <td style={{ ...tdB, color:C.gray }}>{b.predicted != null ? `${b.predicted}%` : "—"}</td>
-                    <td style={{ ...tdB, color:b.actual>=70?C.green:b.actual>=60?C.amber:C.red }}>{b.actual != null ? `${b.actual}%` : "—"}</td>
-                    <td style={{ ...tdB, color:deltaC, fontWeight:600 }}>{delta >= 0 ? `+${delta.toFixed(1)}` : delta.toFixed(1)}{b.coherent ? "▴" : ""}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
     </div>
   );
 }
@@ -400,7 +417,7 @@ function MorningBriefing({ shadowReportData, shadowReportLoading, fetchShadowRep
       <TodaySection d={d} />
 
       <div style={sectionHead}>Model board · the gate decision</div>
-      <ModelBoard board={d.modelBoard} topBands={d.topBands} />
+      <ModelBoard board={d.modelBoard} />
 
       <DisciplineSection d={d} />
       <OpsSection d={d} />

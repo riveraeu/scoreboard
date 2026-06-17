@@ -819,6 +819,53 @@ function _markBandCoherence(bands) {
   }
 }
 
+// Per-category calibration summary from the band rows (the model-honesty axis). Picks the most
+// significant ACTIONABLE band (proven over/under-confident) as the headline; falls back to a
+// status of "honest" (some band has n≥200 and is within noise) or "insufficient" (not enough
+// data to judge yet). direction: "over" = model too confident (Δ<0), "under" = too shy (Δ>0).
+function _calibSummaryByCat(allBands) {
+  const byCat = {};
+  for (const b of allBands) (byCat[`${b.sport}|${b.category}`] ??= []).push(b);
+  const out = {};
+  for (const [key, arr] of Object.entries(byCat)) {
+    const actionable = arr.filter(b => b.verdict === "actionable" && b.delta != null);
+    let summary;
+    if (actionable.length) {
+      const top = actionable.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))[0];
+      summary = { status: "actionable", direction: top.delta < 0 ? "over" : "under", delta: top.delta, band: top.band, n: top.n };
+    } else if (arr.some(b => b.n >= 200)) {
+      summary = { status: "honest", direction: null, delta: null, band: null, n: null };
+    } else {
+      summary = { status: "insufficient", direction: null, delta: null, band: null, n: null };
+    }
+    out[key] = summary;
+  }
+  return out;
+}
+
+// Fuse the profitability verdict + calibration signal + gate state into a single recommendation.
+// The trap this guards: a model can be provably under-confident (Δ>0) AND still unprofitable (the
+// market beats it) — de-shrinking would only bet more into a loss. So "underconfident" never maps
+// to "tune up" unless there is actually a profitable window. Returns { action, tone, why }.
+function _deriveDoThis(verdict, gated, calib, hint) {
+  const c = calib || { status: "insufficient", direction: null };
+  switch (verdict) {
+    case "PROMOTE": return { action: "Add to gate", tone: "green", why: "validated profitable price window — start betting it" };
+    case "HOLD":    return { action: "Keep betting", tone: "gray", why: "currently gated and still profitable" };
+    case "DEMOTE":  return { action: "Pull from gate", tone: "red", why: "window went significantly negative" };
+    case "STRENGTHENING": return { action: "Build", tone: "blue", why: hint || "positive but not yet proven — keep accruing bets" };
+    case "BUILDING":      return { action: "Build", tone: "dim", why: "too few bettable plays yet — accruing" };
+    case "NEGATIVE":
+      if (gated) return { action: "Pull from gate", tone: "red", why: "currently bet but no longer has a profitable window" };
+      if (c.status === "actionable" && c.direction === "over")
+        return { action: "Tune down", tone: "amber", why: `model overconfident (Δ${c.delta}) and losing — trim it so it stops betting these` };
+      if (c.direction === "under")
+        return { action: "Stay out — don't tune", tone: "dim", why: "underconfident but the market still beats it — de-shrinking would just bet more into a loss" };
+      return { action: "Stay out", tone: "dim", why: "no profitable window; calibration is fine — there's simply no edge" };
+    default: return { action: "—", tone: "dim", why: null };
+  }
+}
+
 // ── Price-band profitability (the Model board) ───────────────────────────────
 // Profit is realized against the PRICE paid, not the model's number: ROI = hitRate − price.
 // So the betting-window question ("is 67–91 right?") is a price-axis question. These helpers
@@ -1342,6 +1389,12 @@ async function handleShadowReport({ path, request, env, cache }) {
   _markBandCoherence(allBands);
   // A coherent run is actionable even below n200 (coherence pools n, per doctrine).
   for (const b of allBands) if (b.coherent && b.verdict === "needs_n200" && Math.abs(b.delta ?? 0) > (b.se ?? 99)) b.verdict = "actionable";
+  // Per-category calibration headline (model-honesty axis) + that category's own bands, for the
+  // consolidated model board (each row fuses profitability + honesty into one "Do this" action).
+  const _calibByCat = _calibSummaryByCat(allBands);
+  const _bandsByCat = {};
+  for (const b of allBands) (_bandsByCat[`${b.sport}|${b.category}`] ??= []).push(b);
+  for (const arr of Object.values(_bandsByCat)) arr.sort((a, b) => _BAND_ORDER.indexOf(a.band) - _BAND_ORDER.indexOf(b.band));
   // Sort: most data first; within same n, largest |delta| first.
   const topBands = allBands
     .sort((a, b) => b.n !== a.n ? b.n - a.n : Math.abs(b.delta ?? 0) - Math.abs(a.delta ?? 0))
@@ -1413,6 +1466,12 @@ async function handleShadowReport({ path, request, env, cache }) {
       hint = `${win.lo}–${win.hi}¢ ROI ${(win.roi * 100).toFixed(1)}% — needs: ${missing.join("; ")}`;
     }
 
+    const calib = _calibByCat[key] ?? { status: "insufficient", direction: null, delta: null, band: null, n: null };
+    const doThis = _deriveDoThis(verdict, gated, calib, hint);
+    const calibBands = (_bandsByCat[key] || []).map(b => ({
+      band: b.band, n: b.n, predicted: b.predicted, actual: b.actual, delta: b.delta, verdict: b.verdict, coherent: b.coherent,
+    }));
+
     return {
       key, sport, category, gated, n: totalN,
       currentWindow: [KALSHI_GATE, KALSHI_CAP],
@@ -1422,6 +1481,7 @@ async function handleShadowReport({ path, request, env, cache }) {
       overWindow: hiRoi != null ? { roi: parseFloat(hiRoi.toFixed(4)), n: hiN } : null,
       priceBands: bins,
       verdict, hint, action,
+      calib, doThis, calibBands,
       roi: cat?.roi ?? null,
       formulaCutoff: cat?.formulaCutoff ?? null,
       daysInWindow: cat?.daysInWindow ?? null,
