@@ -519,7 +519,16 @@ export async function handleAuthRoutes(ctx) {
       if (!isNaN(_minDc)) whereParts.push(`dc >= ${_p(_minDc)}`);
     }
     if (params.get("sport")) whereParts.push(`sport = ${_p(params.get("sport"))}`);
+    if (params.get("category")) whereParts.push(`COALESCE(stat, game_type) = ${_p(params.get("category"))}`);
     if (params.get("thresholdRank") === "1") whereParts.push("threshold_rank = 1");
+    // Optional bet-set filters — isolate the plays we'd ACTUALLY bet (edge gate + Kalshi
+    // price window), so a query can measure precise in-gate ROI rather than the diluted
+    // all-plays band. bet price is no_kalshi_pct for UNDERs, kalshi_pct for OVERs.
+    const _minEdgeStr = params.get("minEdge");
+    if (_minEdgeStr && !isNaN(parseFloat(_minEdgeStr))) whereParts.push(`edge >= ${_p(parseFloat(_minEdgeStr))}`);
+    const _pMin = params.get("priceMin"), _pMax = params.get("priceMax");
+    if (_pMin && !isNaN(parseFloat(_pMin))) whereParts.push(`(CASE WHEN direction='under' THEN no_kalshi_pct ELSE kalshi_pct END) >= ${_p(parseFloat(_pMin))}`);
+    if (_pMax && !isNaN(parseFloat(_pMax))) whereParts.push(`(CASE WHEN direction='under' THEN no_kalshi_pct ELSE kalshi_pct END) <= ${_p(parseFloat(_pMax))}`);
     const _stStr = params.get("seasonType");
     if (_stStr) {
       const _st = parseInt(_stStr, 10);
