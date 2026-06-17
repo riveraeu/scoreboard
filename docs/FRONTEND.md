@@ -35,8 +35,15 @@ Single full-page route at `/model` (stripped to the model report 2026-06-16 — 
 
 `ReportPage` is now a thin wrapper: header (`Report` / "Daily model report") + `MorningBriefing`. It auto-fetches `fetchShadowReport()` once on mount when logged in, and renders a "Log in to view the model report." fallback otherwise (the briefing payload is JWT-scoped). No sport pills, no play-type dropdown, no tab bar.
 
-### MorningBriefing
-Renders the `/api/shadow-report` payload (cron 9:30am PT, KV-cached 25h; `↻` button calls `fetchShadowReport(true)` to force `?bust=1` regen). Sections: today's top picks (passed category gate, sorted by edge), optimal picks/day, yesterday recap (W-L + units ROI + per-pick outcomes), category scoreboard, opportunity bands, and CLV. Self-contained — no shared ReportPage helpers. Data plumbing: `useReportData.js` now exposes only `shadowReportData / shadowReportLoading / fetchShadowReport`.
+### MorningBriefing (decision-grade, 2026-06-16)
+Renders the `/api/shadow-report` payload (cron 9:30am PT, KV-cached 25h; `↻ Refresh` forces `?bust=1` regen) as a briefing, top to bottom:
+1. **Data health** (`DataHealth`) — green/amber banner from `dataHealth` (yesterday resolution count, CLV-capture %, slate coverage). Renders first because it qualifies everything below; off-hours `?bust=1` reads will show "partial" because the resolver runs overnight.
+2. **Summary + Actions** — `buildBriefing(d, cap)` synthesizes a prose summary (yesterday's tracked result) and two rule-derived action lists: **MODEL** (promote/demote/retune, optimal picks-per-day & per-game) gated by significance verdict so noise never becomes an action, and **DISCIPLINE** (operational, from tracked losing picks). Tone dot: green/amber/red/gray.
+3. **Model signals** (all-shadow, formula-windowed) — category scoreboard (with `daysInWindow`/`*`-trim flag + `VerdictBadge`), calibration bands (Δ + coherence `▴` + verdict), picks-per-game (cap highlighted), picks-per-day, CLV.
+4. **Our discipline** — `disciplineFlags` table (flagged-band bets / over-cap / negative-CLV), labeled anecdotal, with the CLV best-effort match count.
+5. **New markets** — `newMarkets` tickers.
+
+Key doctrine baked in (see `docs/MODEL_IMPROVEMENT.md`): model corrections use the **all-shadow** set with per-category **formula-window** floors (`FORMULA_CUTOFFS`) and **significance verdicts** (gate n≥50 / formula n≥200 + |Δ|>2·SE + band coherence); discipline flags are **tracked-pick-only and never fed back** as a calibration correction. Self-contained component; `useReportData.js` exposes only `shadowReportData / shadowReportLoading / fetchShadowReport`.
 
 **Removed 2026-06-16**: `MarketGroupSection`, `CalibModule`, `ShadowCalibModule`, `PLAY_TYPES`/`TAB_CAT`/`buildSimTooltip` and their helpers, plus the `fetchReport`/`fetchCalib`/`fetchShadowCalib`/`fetchShadowAnalysis` fetchers and `modelEntryOpts` routing state. The Market Report's per-play debug table, the per-bucket calibration tables, and the shadow ROI scoreboard are no longer surfaced in the UI — calibration is now driven entirely from CLI (`npm run tune:gate`) + the model report's category scoreboard. ReportPage dropped 1657 → ~285 lines.
 
