@@ -745,6 +745,77 @@ const _CATEGORY_GATE_SQL = `(
      (CASE WHEN direction='under' THEN 100 - model_true_pct ELSE model_true_pct END) <  85)
 )`;
 const _BAND_MID = { "55-60":57.5,"60-65":62.5,"65-70":67.5,"70-75":72.5,"75-80":77.5,"80-85":82.5,"85-90":87.5,"90-95":92.5,"95+":97.5 };
+const _BAND_ORDER = Object.keys(_BAND_MID); // low → high, for adjacency/coherence
+
+// Per-category current-formula cutoffs — calibration before these dates was produced by a
+// SUPERSEDED formula and must not be mixed in (the #1 analysis trap, docs/MODEL_IMPROVEMENT.md).
+// Keyed by `${sport}|${COALESCE(stat,game_type)}`. Keep in sync with MEMORY.md "Model changes".
+// Only cutoffs within the trailing window actually trim; older ones are harmless.
+const FORMULA_CUTOFFS = {
+  "mlb|strikeouts": "2026-06-13", // K_FORM_SIGMA 0.22→0.26
+  "mlb|hrr":        "2026-06-10", // OPS 0.4→0.25, knee 72→68
+  "mlb|hits":       "2026-06-12", // ticker fix — data starts here
+  "mlb|totalBases": "2026-06-12",
+  "mlb|total":      "2026-06-01", // totalRuns market-line anchor
+  "nhl|total":      "2026-05-29", // NHL NegBin + spread dampener
+  "nhl|spread":     "2026-05-29",
+  "nhl|ml":         "2026-05-29",
+  "tennis|match":   "2026-06-13",
+  "wnba|points":    "2026-05-28", // injury OffRtg piecewise (last broad λ change)
+  "wnba|rebounds":  "2026-05-28",
+  "wnba|assists":   "2026-05-28",
+  "wnba|spread":    "2026-05-28",
+};
+
+// SQL: GREATEST(30d-floor, per-category formula cutoff) so each category's window is
+// current-formula only. Category key mirrors the queries' COALESCE(stat, game_type).
+function _formulaFloorSql(paramRef = "$1") {
+  const whens = Object.entries(FORMULA_CUTOFFS).map(([key, date]) => {
+    const [sport, cat] = key.split("|");
+    return `WHEN sport='${sport}' AND COALESCE(stat, game_type)='${cat}' THEN '${date}'`;
+  }).join("\n          ");
+  return `GREATEST(${paramRef}::date, (CASE\n          ${whens}\n          ELSE '2000-01-01' END)::date)`;
+}
+
+// Significance verdict from a hit rate + sample. SE on the proportion = √(p(1−p)/n).
+// kind='gate' → display-toggle bar (n≥50). kind='band' → formula bar (n≥200 + |Δ|>2·SE).
+function _calibSig({ n, hitRate, predicted, kind }) {
+  if (!n || hitRate == null) return { se: null, ci95: null, verdict: "too_few" };
+  const p = Math.max(0, Math.min(1, hitRate / 100));
+  const se = Math.sqrt(p * (1 - p) / n) * 100; // percentage points
+  const ci95 = [parseFloat((hitRate - 1.96 * se).toFixed(1)), parseFloat((hitRate + 1.96 * se).toFixed(1))];
+  let verdict;
+  if (kind === "gate") {
+    verdict = n >= 50 ? "gate_ready" : "building";
+  } else {
+    const delta = predicted != null ? hitRate - predicted : null;
+    if (n < 200) verdict = "needs_n200";
+    else if (delta != null && Math.abs(delta) > 2 * se) verdict = "actionable";
+    else verdict = "within_noise";
+  }
+  return { se: parseFloat(se.toFixed(2)), ci95, verdict };
+}
+
+// Coherence: a same-direction miss across ≥3 adjacent bands pools n and is trustworthy
+// sooner than one isolated band. Mutates each band row in-place, setting `coherent`.
+function _markBandCoherence(bands) {
+  const byCat = {};
+  for (const b of bands) (byCat[`${b.sport}|${b.category}`] ??= []).push(b);
+  for (const arr of Object.values(byCat)) {
+    arr.sort((a, b) => _BAND_ORDER.indexOf(a.band) - _BAND_ORDER.indexOf(b.band));
+    let runStart = 0;
+    for (let i = 1; i <= arr.length; i++) {
+      const adjacent = i < arr.length
+        && _BAND_ORDER.indexOf(arr[i].band) === _BAND_ORDER.indexOf(arr[i - 1].band) + 1
+        && Math.sign(arr[i].delta ?? 0) === Math.sign(arr[i - 1].delta ?? 0)
+        && (arr[i].delta ?? 0) !== 0;
+      if (!adjacent) {
+        if (i - runStart >= 3) for (let j = runStart; j < i; j++) arr[j].coherent = true;
+        runStart = i;
+      }
+    }
+  }
+}
 
 function _extractReportToken(request) {
   const cookie = request.headers.get("Cookie") || "";
@@ -753,39 +824,122 @@ function _extractReportToken(request) {
   return (request.headers.get("Authorization") || "").replace(/^Bearer\s+/, "");
 }
 
-// Build the yesterday recap from TRACKED account picks (Upstash `picks:{userId}`), not the model's
-// gated shadow set — so it reflects what was actually bet and how it resolved. When `userId` is set
-// (JWT read) scope to that account; otherwise pick the most-active picks:* key (solo app). ROI is
-// units-weighted from stored fields only: units = ⅛-Kelly $ stake, kalshiAvgCents = displayed entry
-// for the side taken, result = won|lost|push. Recommendation-based (fill slippage not captured).
+// Load TRACKED account picks from Upstash (`picks:{userId}`). When `userId` is set (JWT read)
+// scope to that account; otherwise pick the most-active picks:* key (solo app). Shared by the
+// yesterday recap and the discipline-flag builder.
+async function _loadTrackedPicks(env, cache, userId) {
+  const upUrl = env?.UPSTASH_REDIS_REST_URL;
+  if (!upUrl || !cache) return { picks: null, account: userId || null };
+  if (userId) {
+    const blob = await cache.get(`picks:${userId}`, "json").catch(() => null);
+    return { picks: blob?.picks || null, account: userId };
+  }
+  const keysRes = await fetch(upUrl, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${env?.UPSTASH_REDIS_REST_TOKEN}`, "Content-Type": "application/json" },
+    body: JSON.stringify(["KEYS", "picks:*"]),
+  });
+  const { result: keys } = await keysRes.json();
+  if (!keys?.length) return { picks: null, account: null };
+  const blobs = await Promise.all(keys.map(async k => ({
+    k, picks: (await cache.get(k, "json").catch(() => null))?.picks || [],
+  })));
+  const best = blobs.reduce((a, b) => (b.picks.length > a.picks.length ? b : a), { k: null, picks: [] });
+  return { picks: best.picks, account: best.k ? best.k.replace(/^picks:/, "") : null };
+}
+
+const _bandOf = (p) => {
+  if (p == null) return null;
+  if (p >= 95) return "95+"; if (p >= 90) return "90-95"; if (p >= 85) return "85-90"; if (p >= 80) return "80-85";
+  if (p >= 75) return "75-80"; if (p >= 70) return "70-75"; if (p >= 65) return "65-70"; if (p >= 60) return "60-65";
+  if (p >= 55) return "55-60"; return null;
+};
+
+// Discipline flags from TRACKED losing picks (small-n, operational — NOT a model correction).
+// Three signals about OUR betting decisions: bet into a band the model flags overconfident,
+// over-concentrated one game past the cap, or entered at a price worse than the pre-game close.
+async function buildDisciplineFlags(env, cache, userId, since, yesterday, bandLookup, cap) {
+  const out = { window: { since, until: yesterday }, nLosses: 0, flaggedBandBets: [], concentration: [], negativeClv: [] };
+  const { picks } = await _loadTrackedPicks(env, cache, userId);
+  if (!picks?.length) return out;
+  const inWin = picks.filter(p => p.gameDate && p.gameDate >= since && p.gameDate <= yesterday);
+  const losses = inWin.filter(p => p.result === "lost");
+  out.nLosses = losses.length;
+  if (!losses.length) return out;
+
+  const lineOf = p => p.threshold ?? p.pickLine ?? null;
+  const betTrueP = p => p.direction === "under" ? (p.noTruePct ?? p.truePct) : p.truePct;
+  const catOf = p => p.stat || p.gameType || null;
+  const labelOf = p => p.playerName || p.pickTeam || "—";
+
+  // (1) Bet a flagged-overconfident band.
+  for (const p of losses) {
+    const band = _bandOf(betTrueP(p));
+    if (!band) continue;
+    const bl = bandLookup[`${p.sport}|${catOf(p)}|${band}`];
+    if (bl && (bl.delta ?? 0) <= -5) {
+      out.flaggedBandBets.push({ label: labelOf(p), sport: p.sport, category: catOf(p), band, delta: bl.delta, n: bl.n });
+    }
+  }
+
+  // (2) Same-game over-concentration — rank window picks per game by edge; flag losing over-cap picks.
+  const gkey = p => {
+    const teams = p.playerName ? [p.playerTeam, p.opponent] : [p.homeTeam, p.awayTeam];
+    return `${p.sport}|${teams.filter(Boolean).sort().join("|")}|${p.gameDate}`;
+  };
+  const edgeOf = p => p.edge ?? ((betTrueP(p) ?? 0) - (p.kalshiAvgCents ?? 0));
+  const byGame = {};
+  for (const p of inWin) (byGame[gkey(p)] ??= []).push(p);
+  for (const arr of Object.values(byGame)) {
+    if (arr.length <= cap) continue;
+    arr.sort((a, b) => edgeOf(b) - edgeOf(a));
+    arr.forEach((p, i) => {
+      if (i >= cap && p.result === "lost") out.concentration.push({ label: labelOf(p), sport: p.sport, category: catOf(p), rank: i + 1, gameN: arr.length });
+    });
+  }
+
+  // (3) Negative-CLV entry — best-effort match to the pick's shadow row for the pre-game close.
+  try {
+    const rows = await neonQuery(`
+      SELECT sport, player_name, pick_team, game_date, threshold, pick_line, direction,
+        kalshi_yes_price_pre, kalshi_no_price_pre
+      FROM shadow_plays
+      WHERE snapshot_date >= $1 AND kalshi_yes_price_pre IS NOT NULL
+    `, [since], env);
+    const idx = {};
+    for (const r of rows) {
+      const ln = r.threshold ?? r.pick_line ?? "";
+      const who = r.player_name ? _normName(r.player_name) : (r.pick_team || "").toUpperCase();
+      idx[`${r.sport}|${r.game_date}|${who}|${ln}|${r.direction}`] = r;
+    }
+    for (const p of losses) {
+      const ln = lineOf(p) ?? "";
+      const who = p.playerName ? _normName(p.playerName) : (p.pickTeam || "").toUpperCase();
+      const r = idx[`${p.sport}|${p.gameDate}|${who}|${ln}|${p.direction}`];
+      if (!r) continue;
+      const closePre = p.direction === "under" ? Number(r.kalshi_no_price_pre) : Number(r.kalshi_yes_price_pre);
+      const entry = p.kalshiAvgCents != null ? Number(p.kalshiAvgCents) / 100 : null;
+      if (entry == null || !Number.isFinite(closePre)) continue;
+      const clvCents = parseFloat(((closePre - entry) * 100).toFixed(1));
+      if (clvCents < -2) out.negativeClv.push({ label: labelOf(p), sport: p.sport, category: catOf(p), clvCents });
+    }
+  } catch (e) { console.error("[shadow-report] disciplineFlags CLV skipped:", e?.message); }
+
+  out.flaggedBandBets = out.flaggedBandBets.slice(0, 8);
+  out.concentration = out.concentration.slice(0, 8);
+  out.negativeClv = out.negativeClv.sort((a, b) => a.clvCents - b.clvCents).slice(0, 8);
+  return out;
+}
+
+// Build the yesterday recap from TRACKED account picks (not the model's gated shadow set), so it
+// reflects what was actually bet and how it resolved. ROI is units-weighted from stored fields:
+// units = ⅛-Kelly $ stake, kalshiAvgCents = displayed entry for the side taken, result = won|lost|push.
 async function buildYesterdayRecap(env, cache, userId, date) {
   const empty = { date, account: null, n: 0, wins: 0, losses: 0, pushes: 0, pending: 0,
     hitRatePct: null, staked: 0, profit: 0, roi: null, picks: [] };
-  const upUrl = env?.UPSTASH_REDIS_REST_URL;
-  if (!upUrl || !cache) return empty;
+  if (!env?.UPSTASH_REDIS_REST_URL || !cache) return empty;
 
-  // Resolve the target picks blob.
-  let picks = null, account = userId || null;
-  if (userId) {
-    const blob = await cache.get(`picks:${userId}`, "json").catch(() => null);
-    picks = blob?.picks || null;
-  } else {
-    const keysRes = await fetch(upUrl, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${env?.UPSTASH_REDIS_REST_TOKEN}`, "Content-Type": "application/json" },
-      body: JSON.stringify(["KEYS", "picks:*"]),
-    });
-    const { result: keys } = await keysRes.json();
-    if (keys?.length) {
-      const blobs = await Promise.all(keys.map(async k => ({
-        k, picks: (await cache.get(k, "json").catch(() => null))?.picks || [],
-      })));
-      // Most-active account = most picks (solo-app heuristic).
-      const best = blobs.reduce((a, b) => (b.picks.length > a.picks.length ? b : a), { k: null, picks: [] });
-      picks = best.picks;
-      account = best.k ? best.k.replace(/^picks:/, "") : null;
-    }
-  }
+  const { picks, account } = await _loadTrackedPicks(env, cache, userId);
   if (!picks?.length) return { ...empty, account };
 
   // Filter to games played on `date` (pick.gameDate is the game's PT date).
@@ -874,17 +1028,19 @@ async function handleShadowReport({ path, request, env, cache }) {
   const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000)
     .toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
 
-  let catRows, bandRows, clvRows, volRows, picksRows;
+  let catRows, bandRows, clvRows, volRows, picksRows, healthRows, perGameRows;
   try {
-    [catRows, bandRows, clvRows, volRows, picksRows] = await Promise.all([
+    [catRows, bandRows, clvRows, volRows, picksRows, healthRows, perGameRows] = await Promise.all([
       // Q1: Category overview — one row per player/game (threshold_rank=1 dedup).
+      // Window floored per-category at the current-formula cutoff (no superseded-formula mixing).
       neonQuery(`
         SELECT sport, COALESCE(stat, game_type) AS category,
           COUNT(*) AS n, SUM(won::int) AS wins,
           ROUND(AVG(CASE WHEN direction='under' THEN no_kalshi_pct ELSE kalshi_pct END)/100.0, 4) AS avg_bet_pct,
-          ROUND(AVG(edge), 2) AS avg_edge
+          ROUND(AVG(edge), 2) AS avg_edge,
+          MIN(snapshot_date) AS first_date
         FROM shadow_plays
-        WHERE resolved AND won IS NOT NULL AND snapshot_date >= $1 AND threshold_rank = 1
+        WHERE resolved AND won IS NOT NULL AND snapshot_date >= ${_formulaFloorSql("$1")} AND threshold_rank = 1
         GROUP BY sport, COALESCE(stat, game_type)
         ORDER BY n DESC LIMIT 20
       `, [since], env),
@@ -897,7 +1053,7 @@ async function handleShadowReport({ path, request, env, cache }) {
             won::int AS w,
             CASE WHEN direction='under' THEN no_kalshi_pct ELSE kalshi_pct END AS bet_pct
           FROM shadow_plays
-          WHERE resolved AND won IS NOT NULL AND snapshot_date >= $1 AND threshold_rank = 1
+          WHERE resolved AND won IS NOT NULL AND snapshot_date >= ${_formulaFloorSql("$1")} AND threshold_rank = 1
         )
         SELECT sport, category,
           CASE
@@ -976,13 +1132,58 @@ async function handleShadowReport({ path, request, env, cache }) {
           AND ${_CATEGORY_GATE_SQL}
         ORDER BY edge DESC LIMIT 5
       `, [reportDate], env),
+
+      // Q6: Data health — yesterday's resolution + CLV capture (garbage-in guard).
+      neonQuery(`
+        SELECT
+          COUNT(*) AS total,
+          SUM(resolved::int) AS resolved,
+          SUM((won IS NOT NULL)::int) AS scored,
+          SUM((kalshi_yes_price_pre IS NOT NULL)::int) AS clv_captured
+        FROM shadow_plays
+        WHERE game_date = $1
+      `, [yesterday], env),
+
+      // Q7: Picks-per-game calibration — among the gated bet set (dc_qualified, edge≥5,
+      // Kalshi 67–91), rank picks within a game by edge and report ROI per within-game rank.
+      // rnk=0 is the solo-game baseline; multi rows reveal whether the 2nd/3rd pick adds ROI.
+      neonQuery(`
+        WITH gated AS (
+          SELECT edge, won::int AS w,
+            CASE WHEN direction='under' THEN no_kalshi_pct ELSE kalshi_pct END AS bet_pct,
+            sport || '|' || LEAST(home_team, away_team) || '|' || GREATEST(home_team, away_team)
+              || '|' || COALESCE(game_date, snapshot_date::text) AS game_key
+          FROM shadow_plays
+          WHERE resolved AND won IS NOT NULL AND dc_qualified AND edge >= 5
+            AND threshold_rank = 1 AND home_team IS NOT NULL AND away_team IS NOT NULL
+            AND snapshot_date >= $1
+            AND (CASE WHEN direction='under' THEN no_kalshi_pct ELSE kalshi_pct END) BETWEEN 67 AND 91
+        ),
+        ranked AS (
+          SELECT *,
+            ROW_NUMBER() OVER (PARTITION BY game_key ORDER BY edge DESC, bet_pct ASC) AS rnk,
+            COUNT(*)     OVER (PARTITION BY game_key) AS game_n
+          FROM gated
+        )
+        SELECT
+          (game_n > 1) AS multi,
+          CASE WHEN game_n > 1 THEN rnk ELSE 0 END AS rnk,
+          COUNT(*) AS n,
+          ROUND(100.0 * AVG(w), 1) AS hit_rate,
+          ROUND(AVG(bet_pct), 1) AS avg_price,
+          ROUND(100.0 * AVG(w) - AVG(bet_pct), 2) AS roi_pct
+        FROM ranked
+        GROUP BY 1, 2 ORDER BY 1, 2
+      `, [since], env),
     ]);
   } catch (e) {
     console.error("[shadow-report] query failed:", e?.message);
     return errorResponse(`query failed: ${e?.message}`, 500);
   }
 
-  // Process category overview.
+  // Process category overview. Window is current-formula only (Q1 floor); annotate the cutoff,
+  // how many days the sample spans, and a significance verdict (gate-sample readiness).
+  const _MS_DAY = 86400 * 1000;
   const categories = catRows.map(r => {
     const n = Number(r.n ?? 0);
     const wins = Number(r.wins ?? 0);
@@ -994,14 +1195,22 @@ async function handleShadowReport({ path, request, env, cache }) {
       : n >= 50 && (roi ?? -1) > 0 ? "building"
       : n >= 30 && (roi ?? 0) <= 0 ? "losing"
       : "too_few";
+    const formulaCutoff = FORMULA_CUTOFFS[key] ?? null;
+    const effFloor = formulaCutoff && formulaCutoff > since ? formulaCutoff : since;
+    const windowTrimmed = !!(formulaCutoff && formulaCutoff > since);
+    const daysInWindow = Math.max(1, Math.round((Date.parse(reportDate) - Date.parse(effFloor)) / _MS_DAY));
+    const sig = _calibSig({ n, hitRate, predicted: null, kind: "gate" });
     return {
       key, sport: r.sport, category: r.category, n, hitRate,
       roi, avgEdge: r.avg_edge != null ? parseFloat(Number(r.avg_edge).toFixed(2)) : null, status,
+      formulaCutoff, windowTrimmed, daysInWindow, ...sig,
     };
   });
 
-  // Process top opportunity bands — most data + biggest calibration gap.
-  const topBands = bandRows.map(r => {
+  // Process opportunity bands — calibration gap (actual vs predicted) with a formula-bar
+  // verdict. Coherence is marked across ALL bands per category before the display slice, so a
+  // 3+-adjacent-band same-direction miss is trusted even when individual bands are < n200.
+  const allBands = bandRows.map(r => {
     const n = Number(r.n ?? 0);
     const wins = Number(r.wins ?? 0);
     const actual = n > 0 ? parseFloat((wins / n * 100).toFixed(1)) : null;
@@ -1009,13 +1218,19 @@ async function handleShadowReport({ path, request, env, cache }) {
     const delta = actual != null && predicted != null ? parseFloat((actual - predicted).toFixed(1)) : null;
     const avgBetPct = r.avg_bet_pct != null ? parseFloat(Number(r.avg_bet_pct).toFixed(4)) : null;
     const roi = actual != null && avgBetPct != null ? parseFloat((actual / 100 - avgBetPct).toFixed(4)) : null;
+    const sig = _calibSig({ n, hitRate: actual, predicted, kind: "band" });
     return {
       key: `${r.sport}|${r.category}|${r.band}`,
       sport: r.sport, category: r.category, band: r.band,
-      n, actual, predicted, delta, roi,
+      n, actual, predicted, delta, roi, coherent: false, ...sig,
     };
+  });
+  _markBandCoherence(allBands);
+  // A coherent run is actionable even below n200 (coherence pools n, per doctrine).
+  for (const b of allBands) if (b.coherent && b.verdict === "needs_n200" && Math.abs(b.delta ?? 0) > (b.se ?? 99)) b.verdict = "actionable";
   // Sort: most data first; within same n, largest |delta| first.
-  }).sort((a, b) => b.n !== a.n ? b.n - a.n : Math.abs(b.delta ?? 0) - Math.abs(a.delta ?? 0))
+  const topBands = allBands
+    .sort((a, b) => b.n !== a.n ? b.n - a.n : Math.abs(b.delta ?? 0) - Math.abs(a.delta ?? 0))
     .slice(0, 15);
 
   // Process CLV analysis.
@@ -1028,6 +1243,48 @@ async function handleShadowReport({ path, request, env, cache }) {
     avgEdgeAtClose: r.avg_edge_at_close != null ? parseFloat(Number(r.avg_edge_at_close).toFixed(2)) : null,
     hitRatePct: r.hit_rate_pct != null ? parseFloat(Number(r.hit_rate_pct).toFixed(1)) : null,
   }));
+
+  // Process picks-per-game calibration + derive the optimal same-game cap.
+  const perGameRoi = (perGameRows || []).map(r => ({
+    multi: r.multi === true || r.multi === "t",
+    rnk: Number(r.rnk ?? 0),
+    n: Number(r.n ?? 0),
+    hitRate: r.hit_rate != null ? parseFloat(Number(r.hit_rate).toFixed(1)) : null,
+    avgPrice: r.avg_price != null ? parseFloat(Number(r.avg_price).toFixed(1)) : null,
+    roiPct: r.roi_pct != null ? parseFloat(Number(r.roi_pct).toFixed(2)) : null,
+  }));
+  // Cap = highest within-game rank where each rank 1..k still has positive ROI (n≥10 each).
+  let optimalPerGameCap = null;
+  const multiRanks = perGameRoi.filter(r => r.multi && r.rnk >= 1).sort((a, b) => a.rnk - b.rnk);
+  for (const r of multiRanks) {
+    if (r.n >= 10 && (r.roiPct ?? -1) > 0) optimalPerGameCap = r.rnk;
+    else break;
+  }
+
+  // Process data health — coverage (KV from snapshot cron) + yesterday's resolution/CLV capture.
+  let dataHealth = null;
+  try {
+    const covKV = cache ? await cache.get(`shadow:coverage:${yesterday}`, "json").catch(() => null) : null;
+    const h = healthRows?.[0] || {};
+    const total = Number(h.total ?? 0), resolved = Number(h.resolved ?? 0);
+    const scored = Number(h.scored ?? 0), clvCaptured = Number(h.clv_captured ?? 0);
+    const warnings = [];
+    if (covKV?.coverageWarning) {
+      const covStr = Object.entries(covKV.coverage || {}).map(([sp, c]) => `${sp} ${c.games}/${c.scheduled}`).join(", ");
+      warnings.push(`Slate under-logged yesterday (${covStr}) — model numbers may be incomplete.`);
+    }
+    if (total > 0 && resolved / total < 0.9) warnings.push(`Only ${resolved}/${total} of yesterday's plays resolved — ROI partial.`);
+    if (total > 0 && clvCaptured / total < 0.5) warnings.push(`CLV captured for only ${clvCaptured}/${total} of yesterday's plays.`);
+    dataHealth = {
+      coverage: covKV?.coverage ?? null,
+      coverageWarning: covKV?.coverageWarning ?? null,
+      resolution: { total, resolved, scored, pending: Math.max(0, total - resolved) },
+      clvCapture: { captured: clvCaptured, total, pct: total > 0 ? parseFloat((clvCaptured / total * 100).toFixed(0)) : null },
+      warnings,
+    };
+  } catch (e) {
+    console.error("[shadow-report] dataHealth skipped:", e?.message);
+  }
 
   // Process daily volume ROI + derive optimal picks/day recommendation.
   const dailyVolumeRoi = volRows.map(r => ({
@@ -1084,6 +1341,17 @@ async function handleShadowReport({ path, request, env, cache }) {
     console.error("[shadow-report] yesterdayRecap skipped:", e?.message);
   }
 
+  // Discipline flags — operational lessons from our losing tracked picks (small-n, NOT model
+  // correction). Uses the model's own band calibration (allBands) and the derived same-game cap.
+  let disciplineFlags = null;
+  try {
+    const _bandLookup = {};
+    for (const b of allBands) _bandLookup[b.key] = b;
+    disciplineFlags = await buildDisciplineFlags(env, cache, reqUserId, since, yesterday, _bandLookup, optimalPerGameCap ?? 2);
+  } catch (e) {
+    console.error("[shadow-report] disciplineFlags skipped:", e?.message);
+  }
+
   // Newly-listed Kalshi markets we don't consume yet (status='new' in kalshi_series_seen,
   // populated by the /api/kalshi-series-scan cron). Separate try/catch — the table may not
   // exist yet on first deploy, and a discovery miss must never break the briefing.
@@ -1111,11 +1379,15 @@ async function handleShadowReport({ path, request, env, cache }) {
     reportDate,
     generatedAt: new Date().toISOString(),
     since,
+    dataHealth,
     topPicks,
     yesterdayRecap,
+    disciplineFlags,
     categories,
     topBands,
     clv,
+    perGameRoi,
+    optimalPerGameCap,
     dailyVolumeRoi,
     optimalDailyPicks,
     newMarkets,
@@ -1275,6 +1547,9 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
       const _covStr = Object.entries(coverage).map(([sp, c]) => `${sp}=${c.games}/${c.scheduled}`).join(" ");
       if (coverageWarning) console.warn(`[shadow-snapshot] COVERAGE WARNING ${_covStr}`);
       else console.log(`[shadow-snapshot] coverage ${_covStr}`);
+      // Persist for the model report's data-health header (read by date the morning after).
+      if (cache) cache.put(`shadow:coverage:${snapshotDate}`, JSON.stringify({ coverage, coverageWarning, at: Date.now() }),
+        { expirationTtl: 86400 * 3 }).catch(() => {});
     }
 
     // Refresh schema flag so next cron run skips DDL (30-day TTL, renewed on each success).
