@@ -46,6 +46,24 @@ Per-sport modeling internals. CLAUDE.md has the architecture map and load-bearin
 
 ---
 
+## Category gate (display restriction, 2026-06-01)
+UI display + the `push/notify` cron are restricted to categories with confirmed positive shadow ROI. Gate: `passesCategoryGate()` in `api/lib/category-gate.js` (moved from `src/lib/constants.js` 2026-06-13, re-exported there for unchanged frontend imports), applied in `App._qualifiedFilter` / `LineupsPage.passesGate` (display) and the `push/notify` cron (alerts). Tracked picks bypass it so existing bets stay visible.
+
+**Promotion bar**: add a category only when `npm run tune:gate` shows ROI>0 at cumulative n≥50 (`MIN_N_PROMOTE`) **and** the per-band detail is coherent (no in-window band flipping negative). All current gates were promoted at per-band n of 10–56 — well under the once-stated "n≥200" (corrected 2026-06-13). Band coherence, not raw n, is the real guard against overconfidence.
+
+**Currently allowed**:
+- `mlb|strikeouts` 80–90% — shadow n=55/56 both bands positive (2026-06-08)
+- `wnba|points` 70–80% — shadow n=10/16 both bands positive (2026-06-08)
+- `wnba|rebounds` 70–85% — 85–90% band n=17 ROI −8.6% capped (2026-06-09)
+- `wnba|spread` 65–85% — shadow n=39 in-window ~+11% weighted, 65–85 bands all positive, 85–90 −4.8% capped to match the WNBA high-band overconfidence pattern (2026-06-11)
+
+**Shadow-only categories** (emit to `shadow_plays`, intentionally NOT in the gate):
+- `mlb|hits` — re-added 2026-06-11; shipped with wrong series ticker `KXMLBHITS`, real ticker `KXMLBHIT` (fixed 2026-06-12, so shadow data starts 6/12); check `tune:gate` ~mid July.
+- `mlb|totalBases` — added 2026-06-12, `KXMLBTB`; `tbTailPct` compound-binomial extension of the hits model; **the only UNDER-direction player prop** (Kalshi lists 2+..6+ only so the YES side never reaches [67,91] — plays bet the NO side, stored over-framed with `direction:"under"` per the totals convention); resolves via statsapi merge `/api/live?tb=1` because ESPN's box score has no TB; check `tune:gate` ~late July.
+- `tennis|match` — ATP+WTA match-winner, added 2026-06-13, `KXATPMATCH`/`KXWTAMATCH`; Phase-1 ESPN-rankings logistic model; resolves off the ESPN tennis scoreboard, NOT `/api/live`; coverage limited to players in ESPN's ~top-150 rankings (unranked either side → abstain, the main argument for Phase 2 surface Elo); tennis books fill near match time so live capture is sparse; check `tune:gate` once volume accrues.
+
+---
+
 ## MLB Strikeouts
 **True%**: `simulateKsDist(orderedKPcts, pitcherKPct, parkFactor, nSim, totalPA, earlyExitProb, stdBF)` → `kDistPct(dist, threshold)`. Shared distribution per pitcher (key `team|hand`) guarantees monotonicity. nSim 10k if simScore ≥ 8 else 5k.
 

@@ -35,17 +35,15 @@ Single full-page route at `/model` (stripped to the model report 2026-06-16 — 
 
 `ReportPage` is now a thin wrapper: header (`Report` / "Daily model report") + `MorningBriefing`. It auto-fetches `fetchShadowReport()` once on mount when logged in, and renders a "Log in to view the model report." fallback otherwise (the briefing payload is JWT-scoped). No sport pills, no play-type dropdown, no tab bar.
 
-### MorningBriefing (decision-grade, 2026-06-16)
-Renders the `/api/shadow-report` payload (cron 9:30am PT, KV-cached 25h; `↻ Refresh` forces `?bust=1` regen) as a briefing, top to bottom:
-1. **Data health** (`DataHealth`) — green/amber banner from `dataHealth` (yesterday resolution count, CLV-capture %, slate coverage). Renders first because it qualifies everything below; off-hours `?bust=1` reads will show "partial" because the resolver runs overnight.
-2. **Summary + Actions** — `buildBriefing(d, cap)` synthesizes a prose summary (yesterday's tracked result) and two rule-derived action lists: **MODEL** (promote/demote/retune, optimal picks-per-day & per-game) gated by significance verdict so noise never becomes an action, and **DISCIPLINE** (operational, from tracked losing picks). Tone dot: green/amber/red/gray.
-3. **Model signals** (all-shadow, formula-windowed) — category scoreboard (with `daysInWindow`/`*`-trim flag + `VerdictBadge`), calibration bands (Δ + coherence `▴` + verdict), picks-per-game (cap highlighted), picks-per-day, CLV.
-4. **Our discipline** — `disciplineFlags` table (flagged-band bets / over-cap / negative-CLV), labeled anecdotal, with the CLV best-effort match count.
-5. **New markets** — `newMarkets` tickers.
+### MorningBriefing (rewritten 2026-06-17 — four priority-ordered sections)
+Renders the `/api/shadow-report` payload (cron 9:30am PT, KV-cached 25h; `↻ Refresh` forces `?bust=1` regen). The prose `buildBriefing` blob and the truePct category-scoreboard table are gone; structure is now, top to bottom:
+1. **Data health** (`DataHealth`) — green/amber banner; renders first because it qualifies everything below.
+2. **TODAY** (`TodaySection`) — what to bet: `topPicks` (gate-passed, sorted by edge). Empty before the morning snapshot runs (~9am PT) → shows a "Refresh later" note, not an error.
+3. **MODEL BOARD** (`ModelBoard`) — the gate-decision surface, driven by `modelBoard`. Per-category **price-band validation ladder**: verdict (`PROMOTE`/`STRENGTHENING`/`HOLD`/`DEMOTE`/`NEGATIVE`/`BUILDING`), discovered window, ROI + 95% CI, n, and a `{n / CI / coh}` checklist (✓/✗). Rows sort by verdict priority; BUILDING rows collapse behind a "show" toggle; clicking a row expands its adaptive `priceBands` curve (in-window bins shaded). Below it, a **calibration check** strip (`topBands` truePct→actual Δ) labeled *honesty check, not profitability* — the separate axis, never the bet decision.
+4. **DISCIPLINE** (`DisciplineSection`) — yesterday's tracked recap one-liner (W-L, ROI) + `disciplineFlags` table (flagged-band / over-cap / neg-CLV), labeled operational, never fed back as a correction.
+5. **OPS** (`OpsSection`, collapsed) — picks-per-game (cap), picks-per-day, CLV, new markets.
 
-Key doctrine baked in (see `docs/MODEL_IMPROVEMENT.md`): model corrections use the **all-shadow** set with per-category **formula-window** floors (`FORMULA_CUTOFFS`) and **significance verdicts** (gate n≥50 / formula n≥200 + |Δ|>2·SE + band coherence); discipline flags are **tracked-pick-only and never fed back** as a calibration correction. Self-contained component; `useReportData.js` exposes only `shadowReportData / shadowReportLoading / fetchShadowReport`.
-
-**Removed 2026-06-16**: `MarketGroupSection`, `CalibModule`, `ShadowCalibModule`, `PLAY_TYPES`/`TAB_CAT`/`buildSimTooltip` and their helpers, plus the `fetchReport`/`fetchCalib`/`fetchShadowCalib`/`fetchShadowAnalysis` fetchers and `modelEntryOpts` routing state. The Market Report's per-play debug table, the per-bucket calibration tables, and the shadow ROI scoreboard are no longer surfaced in the UI — calibration is now driven entirely from CLI (`npm run tune:gate`) + the model report's category scoreboard. ReportPage dropped 1657 → ~285 lines.
+Key doctrine baked in (see `docs/MODEL_IMPROVEMENT.md`): the board's profitability is on the **price axis** (ROI = hitRate − price); PROMOTE requires all three of n≥50, ROI-CI-lo>0, coherence (selection-bias-proof, since the window is ROI-maximized over candidates). truePct calibration is a separate model-honesty check. The current truePct `passesCategoryGate` is still fed by `npm run tune:gate`; acting on a discovered *price* window needs per-category price windows (Phase 2, parked behind the first PROMOTE). Self-contained component; `useReportData.js` exposes only `shadowReportData / shadowReportLoading / fetchShadowReport`.
 
 ---
 
