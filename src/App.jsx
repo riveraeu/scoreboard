@@ -149,18 +149,9 @@ function App() {
     teamPage, setTeamPage,
     teamPageData,
     modelPage,
-    modelEntryOpts,
     navigateToTeam, navigateToPlayer, goBack, navigateToModel,
   } = useRouting({ setPlayer, setQuery, selectPlayerRef });
   const {
-    reportSort, setReportSort,
-    reportDataBySport,
-    reportLoadingSport,
-    reportSport, setReportSport,
-    calibData, calibLoading,
-    fetchReport, fetchCalib,
-    shadowCalibData, shadowCalibLoading, fetchShadowCalib,
-    shadowAnalysisData, shadowAnalysisLoading, fetchShadowAnalysis,
     shadowReportData, shadowReportLoading, fetchShadowReport,
   } = useReportData();
 
@@ -1224,35 +1215,15 @@ function App() {
       </div>
       </div>{/* end top row */}
 
-      {/* Research page — Market Report + calibration Results, per (sport, play type) */}
+      {/* Report page — daily model report (MorningBriefing) */}
       {modelPage && !player && !teamPage && (
         <React.Suspense fallback={<div style={{textAlign:'center',padding:52,color:'#8b949e',fontSize:13}}>Loading…</div>}>
         <ReportPage
           onBack={goBack}
-          reportSort={reportSort}
-          setReportSort={setReportSort}
-          reportDataBySport={reportDataBySport}
-          reportLoadingSport={reportLoadingSport}
-          reportSport={reportSport}
-          setReportSport={setReportSport}
-          fetchReport={fetchReport}
-          calibData={calibData}
-          calibLoading={calibLoading}
-          fetchCalib={fetchCalib}
-          shadowCalibData={shadowCalibData}
-          shadowCalibLoading={shadowCalibLoading}
-          fetchShadowCalib={fetchShadowCalib}
-          shadowAnalysisData={shadowAnalysisData}
-          shadowAnalysisLoading={shadowAnalysisLoading}
-          fetchShadowAnalysis={fetchShadowAnalysis}
           shadowReportData={shadowReportData}
           shadowReportLoading={shadowReportLoading}
           fetchShadowReport={fetchShadowReport}
           isLoggedIn={!!authEmail}
-          navigateToPlayer={navigateToPlayer}
-          navigateToTeam={navigateToTeam}
-          initialTab={modelEntryOpts.tab}
-          initialSport={modelEntryOpts.sport}
         />
         </React.Suspense>
       )}

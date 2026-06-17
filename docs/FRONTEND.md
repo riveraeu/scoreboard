@@ -1,6 +1,6 @@
 # Scoreboard — Frontend Reference
 
-Routing, state shape, Market Report, live tracking mechanics, sizing, color doctrine.
+Routing, state shape, the Report page, live tracking mechanics, sizing, color doctrine.
 
 > **Adding new UI?** Read `docs/STYLEGUIDE.md` first (palette, typography, spacing, component patterns). Design tokens + shared style recipes: `src/lib/styles.js` — use in new code instead of hard-coded hex values.
 
@@ -11,7 +11,7 @@ History.pushState + popstate. Routes:
 - `/:ABBR` → team page (uppercase, e.g. `/LAD`, `/GSW`)
 - `/:ABBR?sport=nhl` → disambiguate multi-sport abbrs (`_multiSportAbbrs` Set)
 - `/:SlugName` → player page (CamelCase via `slugify`)
-- `/model` → Research page (Market Report + calibration Results tabs)
+- `/model` → Report page (daily model report / MorningBriefing)
 
 `vercel.json` `/:slug` rewrite serves `index.html` for cold loads. `resolveSlug` checks `"model"` first, then `TEAM_DB`, else stores `pendingSlug` for async ESPN athlete search.
 
@@ -26,33 +26,19 @@ History.pushState + popstate. Routes:
 - `mlbMetaTomorrow` — same shape from tomorrow's MLB API schedule. Pitchers only (era null); gameOdds/weather always empty.
 - `nbaMeta` — `{ gameOdds, gameScores, topPlayers }`. `gameScores` from `parseGameScores`, includes `seriesSummary` in playoffs. `injuries` removed 2026-06-10 with the matchup-card injury badge (injury maps stay server-side for lambda/dc use).
 - `nhlMeta` — `{ gameScores, gameOdds }`. Same shape.
-- `reportData` — full debug response for ReportPage
 - `player`, `teamPage`, `teamPageData`, `pendingSlug`, `trackedPlays`
 
 ---
 
-## ReportPage (Market Report + Results)
-Single full-page route at `/model` (merged 2026-05-29; Model Reference prose dropped 2026-05-29 — see below). Homepage entry point: the **Research** button — lands on the Market Report tab with MLB pre-seeded. Direct `/model` URL visits (paste, back/forward) default to the Results tab. Entry passes through `useRouting.navigateToModel(opts)` which writes `modelEntryOpts = {tab, sport}` so `ReportPage` can seed its initial selection.
+## ReportPage (daily model report)
+Single full-page route at `/model` (stripped to the model report 2026-06-16 — the Market Report, calibration Results, and Shadow Calibration tabs were all removed). Homepage entry point: the **Report** button (`LineupsPage.jsx`) → `useRouting.navigateToModel()` (no opts). Direct `/model` URL visits (paste, back/forward) resolve the same single view.
 
-**Selectors** (top of the page): a 4-button sport pill row (MLB / NBA / WNBA / NHL) and a play-type dropdown filtered by sport. The play-type catalog lives in `PLAY_TYPES` in `ReportPage.jsx` — each entry has `{ id, label, statKeys }`. `id` is the calibration category key (e.g. `mlb-k`, `nba-1htotal`); `statKeys` is the array of `m.stat` values that belong to this play type. NBA "Props" rolls four stats (`points/rebounds/assists/threePointers`) into a single entry to mirror calibration's merged bucket.
+`ReportPage` is now a thin wrapper: header (`Report` / "Daily model report") + `MorningBriefing`. It auto-fetches `fetchShadowReport()` once on mount when logged in, and renders a "Log in to view the model report." fallback otherwise (the briefing payload is JWT-scoped). No sport pills, no play-type dropdown, no tab bar.
 
-**Tab bar** (under the selectors): two tabs — Market Report and Results. The selected (sport, play type) drives both.
+### MorningBriefing
+Renders the `/api/shadow-report` payload (cron 9:30am PT, KV-cached 25h; `↻` button calls `fetchShadowReport(true)` to force `?bust=1` regen). Sections: today's top picks (passed category gate, sorted by edge), optimal picks/day, yesterday recap (W-L + units ROI + per-pick outcomes), category scoreboard, opportunity bands, and CLV. Self-contained — no shared ReportPage helpers. Data plumbing: `useReportData.js` now exposes only `shadowReportData / shadowReportLoading / fetchShadowReport`.
 
-### Market Report tab
-Filters the `/tonight?debug=1&sport=X` payload down to plays whose `m.sport === sport && playType.statKeys.includes(m.stat)`. Totals/teamTotals further split into Over and Under sub-groups within the same play type. `MarketGroupSection` renders one group: header + sortable table. Columns vary by sport/stat via the `xcols` array; `COL_TIPS` dictionary supplies hover tooltips. The `xcell` switch in `MarketGroupSection` is authoritative for column color tiers — match SimScore tiers (yellow = middle tier, gray = abstain or lowest, red = 0pts).
-
-`fetchReport(sport)` (in `useReportData.js`) memoizes the debug response per-sport in `reportDataBySport`, so switching play types within a sport never refetches.
-
-**SimScore tooltip** (hover any `X/10` badge): `buildSimTooltip(m)` is the canonical helper for all play types. Per-component breakdown with actual values.
-
-**Sort defaults**: team totals = Score desc. HRR table: threshold=1 only (others filtered client-side).
-
-**Score>7 highlight**: MLB rows show white+bold name only when `finalSimScore ?? hitterFinalSimScore > 7` (Alpha tier). Other rows use `m.qualified`.
-
-### Results tab
-Renders the qualification-summary box (Kalshi gate · edge gate · DC gate · edge calc) followed by `CalibModule` — the per-bucket truePct calibration table for the selected play type. `TAB_CAT` maps each tab id to the calibration category keys it covers; multi-key entries (e.g. `nba`) merge buckets via `mergeBuckets`. The MLB-K tab additionally shows per-feature breakdown tables (by SimScore, by K% tier, by K-Trend, by stdBF).
-
-**Why no prose Model Reference**: prior versions hand-wrote True%/SimScore explanations for ~9 of the 32 play types and they kept drifting out of sync with the rapidly-evolving model (`MODEL_CONTENT` const, dropped 2026-05-29). Authoritative model spec lives in `docs/MODEL.md` and `CLAUDE.md`. The in-app tab is now reserved for calibration-driven outcomes, which stay fresh automatically.
+**Removed 2026-06-16**: `MarketGroupSection`, `CalibModule`, `ShadowCalibModule`, `PLAY_TYPES`/`TAB_CAT`/`buildSimTooltip` and their helpers, plus the `fetchReport`/`fetchCalib`/`fetchShadowCalib`/`fetchShadowAnalysis` fetchers and `modelEntryOpts` routing state. The Market Report's per-play debug table, the per-bucket calibration tables, and the shadow ROI scoreboard are no longer surfaced in the UI — calibration is now driven entirely from CLI (`npm run tune:gate`) + the model report's category scoreboard. ReportPage dropped 1657 → ~285 lines.
 
 ---
 
@@ -105,7 +91,7 @@ Renders the qualification-summary box (Kalshi gate · edge gate · DC gate · ed
 ## Color tiers (utility)
 ```
 tierColor(pct): ≥70 → #3fb950 green, ≥60 → #e3b341 yellow, <60 → #f78166 red.
-Single source of truth in src/lib/colors.js. Drives True% bars in App player card, PlaysColumn (truePct + season + soft bars), TotalsBarChart, TeamPage. NOT applied to ReportPage Market-tab SimScore-component cells (Ssn HR%, H2H HR%, Hit Rate %, K H2H Hand, etc.) — those map to the points actually awarded (2/1/0 → green/yellow/red), and per-component % thresholds vary by stat (e.g. NBA Ssn HR ≥90→2 vs MLB HRR Ssn HR ≥80→2), so a universal ladder would visually misrepresent SimScore.
+Single source of truth in src/lib/colors.js. Drives True% bars in App player card, PlaysColumn (truePct + season + soft bars), TotalsBarChart, TeamPage. (Historically also excluded the ReportPage Market-tab SimScore-component cells, which mapped to the points actually awarded (2/1/0 → green/yellow/red) rather than a universal ladder — that tab was removed 2026-06-16.)
 ```
 
 ---
@@ -130,13 +116,9 @@ If you add a new metric to the explanation text, ask: is this stat directly assi
 
 ---
 
-## Shadow Calibration Tab
+## Shadow calibration (UI removed 2026-06-16)
 
-Shadow tab in ReportPage renders `ShadowCalibModule` — category summary (N deduped/N raw / Hit% / ROI / Status) with click-to-expand band detail (55–60 through 95+). Since filter (30d/60d/All) re-fetches `/api/auth/shadow-calibration?bestThreshold=true` (always deduped: one prediction per player/matchup per group). Sport pills filter categories.
-
-`ACTIVE_CATS` Set inside `ShadowCalibModule` mirrors `passesCategoryGate()` in `src/lib/constants.js` — **keep in sync when promoting a category**. Status labels: Active (in gate) / Building (n≥50 ROI>0) / Losing (n≥30 ROI≤0) / Too few.
-
-**Correlation analysis** (expandable, lazy-load): same-game pairwise φ table + alt-line unanimity table from `/api/auth/shadow-analysis`; auto-fetches when shadow tab opens.
+The in-app Shadow Calibration tab (`ShadowCalibModule`) and the correlation-analysis panel were removed with the ReportPage strip-down. The underlying endpoints still exist (`/api/auth/shadow-calibration?bestThreshold=true`, `/api/auth/shadow-analysis`) and the data is now consumed via CLI: `npm run tune:gate` for the gate recommender, and the model report's category scoreboard for the at-a-glance view. `ACTIVE_CATS` is gone from the frontend; `passesCategoryGate()` in `api/lib/category-gate.js` (re-exported by `src/lib/constants.js`) is the single source of truth for active categories.
 
 ---
 
@@ -153,7 +135,7 @@ To raise/lower the cap, edit `SAME_GAME_CAP`. Graduate WNBA from cap→φ-sizing
 
 ## Spread alt-line dedup + category gate display logic (2026-06-05)
 
-`passesGate` (LineupsPage.jsx) and `_qualifiedFilter` (App.jsx) apply: `_altLineDemoted && !passesCategoryGate(p) → false`. Demoted plays that **pass** the category gate are shown. Opposite-side truePcts are complementary (~sum to 100%), so both sides of the same line can never show simultaneously (one side ≥80% forces the other ≤20%). Market Report symptom: bold play visible but absent from LineupsPage card → the dedup winner fails the category gate, allowing the demoted loser through.
+`passesGate` (LineupsPage.jsx) and `_qualifiedFilter` (App.jsx) apply: `_altLineDemoted && !passesCategoryGate(p) → false`. Demoted plays that **pass** the category gate are shown. Opposite-side truePcts are complementary (~sum to 100%), so both sides of the same line can never show simultaneously (one side ≥80% forces the other ≤20%). Symptom: a demoted loser surfaces on the LineupsPage card → the dedup winner fails the category gate, allowing the demoted loser through.
 
 ---
 

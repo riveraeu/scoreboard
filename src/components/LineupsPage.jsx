@@ -480,10 +480,10 @@ export default function LineupsPage({
           </span>
         )}
       </button>
-      <button onClick={() => navigateToModel({ tab: 'market', sport: 'mlb' })}
+      <button onClick={() => navigateToModel()}
         style={{ ...btnSize, borderRadius: 6, cursor: 'pointer',
           border: '1px solid #30363d', background: 'transparent', color: '#484f58', fontWeight: 600 }}>
-        Research
+        Report
       </button>
       {authEmail ? (
         <button onClick={logout}
