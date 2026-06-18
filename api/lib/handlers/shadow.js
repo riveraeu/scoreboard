@@ -325,6 +325,34 @@ function _resolveRow(row, game) {
   return null; // unknown type — skip
 }
 
+// Fetch final boxscores from /api/live for one game_date into liveByKey.
+// On the early-morning resolver crons (2am/3:05am PT) the function is COLD, so the first
+// internal fetch to /api/live (itself a cold function + ESPN round-trip) can blow past the
+// timeout and abort. That abort used to be swallowed by an empty `catch {}`, leaving every
+// row noData (resolved≈0) until something warmed the stack hours later. So: a generous
+// timeout, one retry on abort/non-OK (the failed first call warms /api/live → the retry
+// lands), and errors are logged, never swallowed.
+async function fetchLiveInto(liveByKey, origin, game_date, gamesParam, tbParam, timeoutMs) {
+  const url = `${origin}/api/live?games=${encodeURIComponent(gamesParam)}&date=${game_date}${tbParam}`;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(url, {
+        headers: { "User-Agent": "shadow-resolver/1.0" },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!res.ok) {
+        console.error(`[shadow-resolver] live fetch ${res.status} (attempt ${attempt + 1}, date ${game_date})`);
+        continue; // retry once on non-OK
+      }
+      const data = await res.json();
+      for (const [k, v] of Object.entries(data)) liveByKey.set(`${k}|${game_date}`, v);
+      return;
+    } catch (e) {
+      console.error(`[shadow-resolver] live fetch failed (attempt ${attempt + 1}, date ${game_date}): ${e?.message}`);
+    }
+  }
+}
+
 async function handleShadowResolver({ path, request, env }) {
   if (path !== "shadow-resolver") return null;
 
@@ -421,20 +449,9 @@ async function handleShadowResolver({ path, request, env }) {
   const tbParam = teamRows.some(r => r.stat === "totalBases") ? "&tb=1" : "";
 
   const origin = new URL(request.url).origin;
-  await Promise.all([...keysByDate.entries()].map(async ([game_date, keys]) => {
-    const gamesParam = [...keys].join(",");
-    try {
-      const res = await fetch(`${origin}/api/live?games=${encodeURIComponent(gamesParam)}&date=${game_date}${tbParam}`, {
-        headers: { "User-Agent": "shadow-resolver/1.0" },
-        signal: AbortSignal.timeout(10_000),
-      });
-      if (!res.ok) return;
-      const data = await res.json();
-      for (const [k, v] of Object.entries(data)) {
-        liveByKey.set(`${k}|${game_date}`, v);
-      }
-    } catch {}
-  }));
+  await Promise.all([...keysByDate.entries()].map(([game_date, keys]) =>
+    fetchLiveInto(liveByKey, origin, game_date, [...keys].join(","), tbParam, 30_000)
+  ));
 
   // Second pass: rows whose primary lookup returned state:"unknown" (event not found, likely
   // because a wrong game_time was stored when gameDate was null on the Kalshi ticker) get a
@@ -452,20 +469,9 @@ async function handleShadowResolver({ path, request, env }) {
     retryByDate.get(effectiveDate).add(baseKey);
   }
   if (retryByDate.size > 0) {
-    await Promise.all([...retryByDate.entries()].map(async ([game_date, keys]) => {
-      const gamesParam = [...keys].join(",");
-      try {
-        const res = await fetch(`${origin}/api/live?games=${encodeURIComponent(gamesParam)}&date=${game_date}${tbParam}`, {
-          headers: { "User-Agent": "shadow-resolver/1.0" },
-          signal: AbortSignal.timeout(5_000),
-        });
-        if (!res.ok) return;
-        const data = await res.json();
-        for (const [k, v] of Object.entries(data)) {
-          liveByKey.set(`${k}|${game_date}`, v);
-        }
-      } catch {}
-    }));
+    await Promise.all([...retryByDate.entries()].map(([game_date, keys]) =>
+      fetchLiveInto(liveByKey, origin, game_date, [...keys].join(","), tbParam, 15_000)
+    ));
   }
 
   // Third pass: rows where game_date AND game_time were both null get effectiveDate=snapshot_date,
@@ -492,20 +498,9 @@ async function handleShadowResolver({ path, request, env }) {
       }
     }
     if (offsetByDate.size > 0) {
-      await Promise.all([...offsetByDate.entries()].map(async ([game_date, keys]) => {
-        const gamesParam = [...keys].join(",");
-        try {
-          const res = await fetch(`${origin}/api/live?games=${encodeURIComponent(gamesParam)}&date=${game_date}${tbParam}`, {
-            headers: { "User-Agent": "shadow-resolver/1.0" },
-            signal: AbortSignal.timeout(4_000),
-          });
-          if (!res.ok) return;
-          const data = await res.json();
-          for (const [k, v] of Object.entries(data)) {
-            liveByKey.set(`${k}|${game_date}`, v);
-          }
-        } catch {}
-      }));
+      await Promise.all([...offsetByDate.entries()].map(([game_date, keys]) =>
+        fetchLiveInto(liveByKey, origin, game_date, [...keys].join(","), tbParam, 12_000)
+      ));
     }
   }
 
