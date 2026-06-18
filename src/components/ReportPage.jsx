@@ -1,9 +1,9 @@
 import React from 'react';
 
 // --- Report page (daily model briefing) -----------------------------------------
-// Four priority-ordered sections: TODAY (what to bet) · MODEL BOARD (the price-band
-// validation ladder — the single gate-decision surface) · DISCIPLINE (our tracked
-// betting, operational only) · OPS (collapsed supporting tables).
+// Priority-ordered sections: DATA HEALTH (qualifier banner) · OPS (a four-line daily
+// playbook + collapsed supporting tables) · MODEL BOARD (the price-band validation
+// ladder — the single gate-decision surface, led by a one-line GATE digest).
 //
 // The MODEL BOARD slices BETTABLE plays by market price (where ROI actually lives —
 // ROI = hitRate − price) and runs a promotion ladder: PROMOTE only when n≥50 AND the
@@ -223,14 +223,67 @@ function ModelBoard({ board }) {
   );
 }
 
-// ---- OPS: collapsed supporting tables ---------------------------------------------
+// ---- OPS SUMMARY: one plain-language sentence per operating question ---------------
+// Four scannable lines from the report payload: picks per game, picks per day, when to
+// bet (CLV sign = is the early price better than close?), and new Kalshi markets to
+// scout. CLV is the only timing signal we have (a single 3pm→7pm window), so +CLV ⇒ the
+// line drifts our way ⇒ bet early; −CLV ⇒ no rush.
+function OpsSummary({ d }) {
+  const cap = d.optimalPerGameCap ?? 2;
+  const daily = d.optimalDailyPicks;
+  const clv = (d.clv || []).filter(r => r.avgClvPct != null && r.n >= 5);
+  const early = clv.filter(r => r.avgClvPct >= 1).sort((a, b) => b.avgClvPct - a.avgClvPct).slice(0, 3);
+  const late  = clv.filter(r => r.avgClvPct <= -1).sort((a, b) => a.avgClvPct - b.avgClvPct).slice(0, 2);
+  const nm = d.newMarkets || [];
+  const b = (txt, color = C.green) => <b style={{ color }}>{txt}</b>;
+  const names = arr => arr.map(r => `${r.sport} ${r.category}`).join(", ");
+
+  const gameLine = <>Bet at most {b(cap)} pick{cap === 1 ? "" : "s"} from any one game.</>;
+
+  const dayLine = daily
+    ? <>Aim for about {b(daily.bucket)} picks/day ({daily.confidence} confidence{daily.stopAt ? <>; ROI turns negative past {b(daily.stopAt, C.red)}</> : null}).</>
+    : <>Play as many qualifying picks/day as you find — no volume ceiling in the data yet.</>;
+
+  let timeLine;
+  if (early.length) {
+    timeLine = <>Bet {b(names(early), C.green)} early at lineup-confirm — the line drifts our way by close (+{early[0].avgClvPct.toFixed(1)}¢){late.length ? <>; {b(names(late), C.amber)} can wait until nearer tip-off</> : null}.</>;
+  } else if (late.length) {
+    timeLine = <>No early-fill edge — {b(names(late), C.amber)} prices improve nearer tip-off, so there's no rush.</>;
+  } else {
+    timeLine = <>Timing is a wash so far, so bet whenever the lineup confirms.</>;
+  }
+
+  const nmLine = nm.length
+    ? <>Scout {b(nm.length, C.blue)} new Kalshi market{nm.length === 1 ? "" : "s"}: {nm.slice(0, 6).map(m => m.ticker).join(", ")}{nm.length > 6 ? "…" : ""}.</>
+    : <>No new Kalshi markets to scout.</>;
+
+  const li = (label, body) => (
+    <div style={{ display:"flex", gap:8, marginBottom:4 }}>
+      <span style={{ color:C.gray, fontSize:10.5, fontWeight:700, minWidth:84, flexShrink:0, textTransform:"uppercase", letterSpacing:0.3, paddingTop:1 }}>{label}</span>
+      <span style={{ color:C.text, fontSize:12.5, lineHeight:1.45 }}>{body}</span>
+    </div>
+  );
+
+  return (
+    <div style={{ marginBottom:8 }}>
+      {li("Per game", gameLine)}
+      {li("Per day", dayLine)}
+      {li("When", timeLine)}
+      {li("New mkts", nmLine)}
+    </div>
+  );
+}
+
+// ---- OPS: one-line playbook + collapsed supporting tables --------------------------
 function OpsSection({ d }) {
   const [open, setOpen] = React.useState(false);
   const cap = d.optimalPerGameCap ?? 2;
   return (
     <div>
-      <div style={sectionHead} onClick={() => setOpen(o => !o)} role="button">
-        <span style={{ cursor:"pointer" }}>{open ? "▾" : "▸"} Ops · volume, CLV, new markets</span>
+      <div style={sectionHead}>Ops · daily playbook</div>
+      <OpsSummary d={d} />
+      <div onClick={() => setOpen(o => !o)} role="button" style={{ cursor:"pointer", color:C.dim, fontSize:10.5, marginBottom:8 }}>
+        {open ? "▾ hide" : "▸ show"} detail tables (picks/game, picks/day, CLV, new markets)
       </div>
       {open && (
         <div>
@@ -317,6 +370,37 @@ function OpsSection({ d }) {
   );
 }
 
+// ---- GATE DIGEST: one line above the board — what (if anything) to change today ----
+// Digests the board's per-category `doThis.action`: counts only the three CHANGE actions
+// (add / pull / tune) and ignores steady-state ones (keep betting / build / stay out), so
+// the common "nothing moved" day reads as a single reassuring line.
+function GateDigest({ board }) {
+  if (!board?.length) return null;
+  const act = a => board.filter(e => e.doThis?.action === a);
+  const promotes = act("Add to gate"), pulls = act("Pull from gate"), tunes = act("Tune down");
+  const liveCount = board.filter(e => e.gated).length;
+  const names = arr => arr.map(e => `${e.sport} ${e.category}`).join(", ");
+  const b = (txt, color) => <b style={{ color }}>{txt}</b>;
+
+  let body;
+  if (!promotes.length && !pulls.length && !tunes.length) {
+    body = <>No changes today — keep betting the {b(liveCount, C.green)} live categor{liveCount === 1 ? "y" : "ies"}.</>;
+  } else {
+    const parts = [];
+    if (promotes.length) parts.push(<>add {b(names(promotes), C.green)}</>);
+    if (pulls.length)    parts.push(<>pull {b(names(pulls), C.red)}</>);
+    if (tunes.length)    parts.push(<>tune down {b(names(tunes), C.amber)}</>);
+    body = <>Act today: {parts.map((p, i) => <React.Fragment key={i}>{i ? "; " : ""}{p}</React.Fragment>)}.</>;
+  }
+
+  return (
+    <div style={{ display:"flex", gap:8, marginBottom:8 }}>
+      <span style={{ color:C.gray, fontSize:10.5, fontWeight:700, minWidth:40, flexShrink:0, textTransform:"uppercase", letterSpacing:0.3, paddingTop:1 }}>Gate</span>
+      <span style={{ color:C.text, fontSize:12.5, lineHeight:1.45 }}>{body}</span>
+    </div>
+  );
+}
+
 function MorningBriefing({ shadowReportData, shadowReportLoading, fetchShadowReport, isLoggedIn }) {
   if (!isLoggedIn) return null;
   const d = shadowReportData;
@@ -346,10 +430,11 @@ function MorningBriefing({ shadowReportData, shadowReportLoading, fetchShadowRep
 
       <DataHealth dh={d.dataHealth} />
 
-      <div style={sectionHead}>Model board · the gate decision</div>
-      <ModelBoard board={d.modelBoard} />
-
       <OpsSection d={d} />
+
+      <div style={sectionHead}>Model board · the gate decision</div>
+      <GateDigest board={d.modelBoard} />
+      <ModelBoard board={d.modelBoard} />
     </div>
   );
 }
