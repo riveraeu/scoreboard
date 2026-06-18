@@ -129,7 +129,6 @@ function PriceBands({ bands, window }) {
 }
 
 // ---- MODEL BOARD: one row per model — profit + honesty fused into a "Do this" action ----
-const _ORDER = { PROMOTE:0, DEMOTE:1, STRENGTHENING:2, HOLD:3, NEGATIVE:4, BUILDING:5 };
 const _TONE = { green:C.green, gray:C.gray, red:C.red, blue:C.blue, amber:C.amber, dim:C.dim };
 function DoThisBadge({ d }) {
   if (!d) return <span style={{ color:C.dim }}>—</span>;
@@ -177,9 +176,13 @@ function ModelBoard({ board }) {
   const [showBuilding, setShowBuilding] = React.useState(false);
   if (!board?.length) return null;
 
-  const sorted = [...board].sort((a, b) => (_ORDER[a.verdict] ?? 9) - (_ORDER[b.verdict] ?? 9) || b.n - a.n);
-  const actionable = sorted.filter(r => r.verdict !== "BUILDING");
-  const building = sorted.filter(r => r.verdict === "BUILDING");
+  // Live (gated) categories pin to the top — they're what we're actually betting — then by N.
+  // Everything else sorts by N too; thin non-live rows (n<20) collapse behind a toggle.
+  const byN = (a, b) => b.n - a.n;
+  const live = board.filter(r => r.gated).sort(byN);
+  const rest = board.filter(r => !r.gated).sort(byN);
+  const actionable = rest.filter(r => r.n >= 20);
+  const building = rest.filter(r => r.n < 20);
 
   const Row = ({ r }) => {
     const w = r.discoveredWindow;
@@ -232,10 +235,11 @@ function ModelBoard({ board }) {
       <table style={tableStyle}>
         <thead><tr>{["Category","Do this","Bet status","Window","ROI","N","Honesty"].map(h => <th key={h} style={thB}>{h}</th>)}</tr></thead>
         <tbody>
+          {live.map(r => <Row key={r.key} r={r} />)}
           {actionable.map(r => <Row key={r.key} r={r} />)}
           {building.length > 0 && !showBuilding && (
             <tr><td colSpan={7} style={{ ...tdB, textAlign:"left", color:C.dim, cursor:"pointer" }} onClick={() => setShowBuilding(true)}>
-              ▸ {building.length} more building (n &lt; 20 bettable) — show
+              ▸ {building.length} more thin (n &lt; 20 bettable) — show
             </td></tr>
           )}
           {showBuilding && building.map(r => <Row key={r.key} r={r} />)}
