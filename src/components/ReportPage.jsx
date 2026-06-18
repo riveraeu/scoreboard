@@ -223,6 +223,96 @@ function ModelBoard({ board }) {
   );
 }
 
+// ---- MODEL NEXT: curated build roadmap, alt-line-first -----------------------------
+// Static editorial roadmap (NOT report data) — the markets we plan to model next, in
+// priority order. Alt-line markets (totals / spreads / rounds: multiple thresholds +
+// two-sided yes/no pricing) rank ABOVE single-line markets (1X2 result, outrights, H2H)
+// because more lines = more chances to find edge than a one-shot ML — and one per-team
+// rate estimate feeds totals, team totals, spread AND result off a shared joint sim
+// (the MLB pipeline pattern). Each sport names its "first knob": the single input the
+// v1 (shadow-only) model ships with, per the minimum-viable-input doctrine in
+// docs/MODEL_IMPROVEMENT.md. Frontend constant → edit here, deploys instantly.
+const MODEL_NEXT = [
+  {
+    sport: "Soccer", rank: 1,
+    note: "Richest alt-line surface; one goal-rate estimate covers totals + team totals + spread + 1X2.",
+    knob: "team goal rate (attack/defense, home/away, form-shrunk) → bivariate-Poisson joint",
+    markets: [
+      { t: "alt", ticker: "KXEPLTOTAL", title: "Total Goals — EPL / La Liga / Serie A / Bundesliga / Ligue 1 / MLS / UCL" },
+      { t: "alt", ticker: "KXEPLSPREAD", title: "Spread (Asian handicap) — all majors" },
+      { t: "alt", ticker: "KXEPLTEAMTOTAL", title: "Team Total" },
+      { t: "alt", ticker: "KXEPL1HTOTAL", title: "1st-Half Total / Spread" },
+      { t: "single", ticker: "KXEPLGAME", title: "Game result (1X2)" },
+      { t: "single", ticker: "KXEPLBTTS", title: "Both Teams To Score" },
+    ],
+  },
+  {
+    sport: "Fighting", rank: 2,
+    note: "One clean alt-line market (rounds O/U); winner/method are single-line.",
+    knob: "weight-class base finish rate → fight-duration dist (rounds); fighter rating diff → winner",
+    markets: [
+      { t: "alt", ticker: "KXUFCROUNDS", title: "UFC Total Rounds (+ KXBOXINGROUNDS)" },
+      { t: "single", ticker: "KXUFCFIGHT", title: "UFC Fight winner" },
+      { t: "single", ticker: "KXUFCMOV", title: "UFC Method of Victory" },
+      { t: "single", ticker: "KXUFCDISTANCE", title: "UFC To Go The Distance" },
+      { t: "single", ticker: "KXBOXINGFIGHT", title: "Boxing Fight winner" },
+    ],
+  },
+  {
+    sport: "Golf", rank: 3,
+    note: "Thinnest on alt lines — mostly single-threshold outrights / H2H, so ranked last.",
+    knob: "strokes-gained per-player scoring mean + variance; field size for outrights",
+    markets: [
+      { t: "alt", ticker: "KXPGACUTLINE", title: "PGA Cut Line (what number)" },
+      { t: "alt", ticker: "KXPGAWINMARGIN", title: "PGA Win Margin" },
+      { t: "single", ticker: "KXPGAH2H", title: "PGA Head-to-Head (+ KXLIVH2H)" },
+      { t: "single", ticker: "KXPGAMAKECUT", title: "PGA To Make Cut (+ DP World Tour)" },
+      { t: "single", ticker: "KXPGAWIN", title: "Golfer To Win (outright)" },
+    ],
+  },
+];
+
+function ModelNext() {
+  const [open, setOpen] = React.useState(true);
+  return (
+    <div style={{ marginBottom:12, border:`1px solid ${C.border}`, borderRadius:8, background:C.card, padding:"10px 12px" }}>
+      <div onClick={() => setOpen(o => !o)} style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", flexWrap:"wrap" }}>
+        <span style={{ color:C.blue, fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:0.4 }}>Model next · build roadmap</span>
+        <span style={{ color:C.dim, fontSize:10 }}>alt-line markets first — more thresholds + yes/no = more chances at edge than a single-line ML</span>
+        <span style={{ marginLeft:"auto", color:C.gray, fontSize:11 }}>{open ? "▾" : "▸"}</span>
+      </div>
+      {open && (
+        <div style={{ marginTop:10 }}>
+          {MODEL_NEXT.map(s => (
+            <div key={s.sport} style={{ marginBottom:12 }}>
+              <div style={{ display:"flex", alignItems:"baseline", gap:6, flexWrap:"wrap" }}>
+                <span style={{ color:C.text, fontSize:12.5, fontWeight:700 }}>{s.rank} · {s.sport}</span>
+                <span style={{ color:C.gray, fontSize:11 }}>{s.note}</span>
+              </div>
+              <div style={{ color:C.dim, fontSize:10.5, margin:"3px 0 5px" }}>First knob: <span style={{ color:C.gray }}>{s.knob}</span></div>
+              <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
+                {s.markets.map(m => (
+                  <div key={m.ticker} style={{ display:"flex", alignItems:"center", gap:7, fontSize:11 }}>
+                    <span style={{
+                      fontSize:8.5, fontWeight:700, padding:"1px 5px", borderRadius:3, letterSpacing:0.3,
+                      color: m.t === "alt" ? C.green : C.dim,
+                      background: m.t === "alt" ? "rgba(63,185,80,0.12)" : "transparent",
+                      border: `1px solid ${m.t === "alt" ? "rgba(63,185,80,0.30)" : C.border}`,
+                      minWidth:42, textAlign:"center", flexShrink:0,
+                    }}>{m.t === "alt" ? "ALT" : "1-LINE"}</span>
+                    <span style={{ color:C.text }}>{m.title}</span>
+                    <span style={{ color:C.dim, fontSize:9.5, fontFamily:"monospace" }}>{m.ticker}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---- OPS SUMMARY: one plain-language sentence per operating question ---------------
 // Four scannable lines from the report payload: picks per game, picks per day, when to
 // bet (CLV sign = is the early price better than close?), and new Kalshi markets to
@@ -253,8 +343,9 @@ function OpsSummary({ d }) {
     timeLine = <>Timing is a wash so far, so bet whenever the lineup confirms.</>;
   }
 
+  const nmName = m => m.title || m.sampleSubtitle || m.ticker;
   const nmLine = nm.length
-    ? <>Scout {b(nm.length, C.blue)} new Kalshi market{nm.length === 1 ? "" : "s"}: {nm.slice(0, 6).map(m => m.ticker).join(", ")}{nm.length > 6 ? "…" : ""}.</>
+    ? <>Scout {b(nm.length, C.blue)} new Kalshi market{nm.length === 1 ? "" : "s"}: {nm.slice(0, 6).map(nmName).join(", ")}{nm.length > 6 ? "…" : ""}.</>
     : <>No new Kalshi markets to scout.</>;
 
   const li = (label, body) => (
@@ -357,11 +448,20 @@ function OpsSection({ d }) {
               </table>
             </div>
           )}
-          {/* New markets */}
+          {/* New markets — actual Kalshi titles, ticker as dim secondary */}
           {d.newMarkets?.length > 0 && (
             <div style={{ marginTop:8 }}>
               <div style={sectionTitle}>New Kalshi markets (not yet consumed) · {d.newMarkets.length}</div>
-              <div style={{ color:C.gray, fontSize:11 }}>{d.newMarkets.slice(0, 10).map(m => m.ticker).join(", ")}{d.newMarkets.length > 10 ? "…" : ""}</div>
+              <div style={{ display:"flex", flexDirection:"column", gap:2 }}>
+                {d.newMarkets.slice(0, 12).map(m => (
+                  <div key={m.ticker} style={{ fontSize:11, display:"flex", alignItems:"center", gap:6 }}>
+                    <span style={{ color:C.text }}>{m.title || m.sampleSubtitle || m.ticker}</span>
+                    <span style={{ color:C.dim, fontSize:9.5, fontFamily:"monospace" }}>{m.ticker}</span>
+                    {m.firstSeen && <span style={{ color:C.dim, fontSize:9.5 }}>· {m.firstSeen}</span>}
+                  </div>
+                ))}
+                {d.newMarkets.length > 12 && <div style={{ color:C.dim, fontSize:10 }}>+{d.newMarkets.length - 12} more…</div>}
+              </div>
             </div>
           )}
         </div>
@@ -429,6 +529,8 @@ function MorningBriefing({ shadowReportData, shadowReportLoading, fetchShadowRep
       </div>
 
       <DataHealth dh={d.dataHealth} />
+
+      <ModelNext />
 
       <OpsSection d={d} />
 
