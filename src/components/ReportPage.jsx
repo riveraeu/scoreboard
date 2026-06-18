@@ -221,7 +221,7 @@ function ModelBoard({ board }) {
                 {w && w.roiLoCI != null && <span style={{ color:C.dim, fontSize:9, marginLeft:6 }}>ROI range [{(w.roiLoCI*100).toFixed(0)},{(w.roiHiCI*100).toFixed(0)}]</span>}
               </div>
             )}
-            <div style={{ color:C.dim, fontSize:9, fontWeight:700, margin:"4px 0 1px" }}>PROFIT · ROI by market price · <span style={{ color:C.gray, fontWeight:400 }}>{profitN} bettable plays (dc + edge gated — this is the row's N)</span></div>
+            <div style={{ color:C.dim, fontSize:9, fontWeight:700, margin:"4px 0 1px" }}>PROFIT · full price range, no window/truePct gate · <span style={{ color:C.gray, fontWeight:400 }}>{profitN} plays where the model sees value (edge≥3; dc≥7 drops stale-price / player-out) — this is the row's N</span></div>
             <PriceBands bands={r.priceBands} window={r.currentWindow} />
             <div style={{ color:C.dim, fontSize:9, fontWeight:700, margin:"4px 0 1px" }}>HONESTY · model% vs actual (Δ&lt;0 = overconfident) · <span style={{ color:C.gray, fontWeight:400 }}>{honestyN} resolved plays, no edge/dc gate — sums above the row N by design</span> · <span style={{ color:C.green }}>green = currently-bet slice</span></div>
             <CalibBandsTable bands={r.calibBands} />
@@ -237,7 +237,7 @@ function ModelBoard({ board }) {
         One row per model · "Do this" fuses profit (where the money is) + honesty (is the model% right) · current betting window 67–91¢
       </div>
       <table style={tableStyle}>
-        <thead><tr>{["Category","Do this","Bet status","Window","ROI","N","Honesty"].map(h => <th key={h} style={{ ...thB, cursor:h==="N"?"help":undefined }} title={h==="N"?"Bettable plays only (dc-qualified + edge≥3). The expanded HONESTY table uses a broader all-resolved population, so its band counts sum higher.":undefined}>{h}</th>)}</tr></thead>
+        <thead><tr>{["Category","Do this","Bet status","Window","ROI","N","Honesty"].map(h => <th key={h} style={{ ...thB, cursor:h==="N"?"help":undefined }} title={h==="N"?"Plays where the model sees value (edge≥3, dc≥7) across the full price range — no 67–91 / truePct gate. The expanded HONESTY table uses a broader all-resolved population, so its band counts sum higher.":undefined}>{h}</th>)}</tr></thead>
         <tbody>
           {live.map(r => <Row key={r.key} r={r} />)}
           {actionable.map(r => <Row key={r.key} r={r} />)}
