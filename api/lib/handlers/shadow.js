@@ -724,7 +724,7 @@ async function handleShadowPregameSnap({ path, request, env, cache }) {
 // GET /api/shadow-report
 // Cron: 30 16 * * * (9:30am PT) — after shadow-snapshot (8:05am PT) has run.
 // Auth: CRON_SECRET (generate + cache) or ADMIN_KEY / JWT (read).
-// Queries 5 parallel Neon aggregations (+ yesterdayRecap from tracked picks) and caches in KV (25h).
+// Queries 5 parallel Neon aggregations and caches in KV (25h).
 // ?bust=1 forces regeneration even when a cached report exists.
 
 const REPORT_CACHE_KEY_PREFIX = "shadow:report:";
@@ -960,178 +960,6 @@ function _extractReportToken(request) {
   return (request.headers.get("Authorization") || "").replace(/^Bearer\s+/, "");
 }
 
-// Load TRACKED account picks from Upstash (`picks:{userId}`). When `userId` is set (JWT read)
-// scope to that account; otherwise pick the most-active picks:* key (solo app). Shared by the
-// yesterday recap and the discipline-flag builder.
-async function _loadTrackedPicks(env, cache, userId) {
-  const upUrl = env?.UPSTASH_REDIS_REST_URL;
-  if (!upUrl || !cache) return { picks: null, account: userId || null };
-  if (userId) {
-    const blob = await cache.get(`picks:${userId}`, "json").catch(() => null);
-    return { picks: blob?.picks || null, account: userId };
-  }
-  const keysRes = await fetch(upUrl, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${env?.UPSTASH_REDIS_REST_TOKEN}`, "Content-Type": "application/json" },
-    body: JSON.stringify(["KEYS", "picks:*"]),
-  });
-  const { result: keys } = await keysRes.json();
-  if (!keys?.length) return { picks: null, account: null };
-  const blobs = await Promise.all(keys.map(async k => ({
-    k, picks: (await cache.get(k, "json").catch(() => null))?.picks || [],
-  })));
-  const best = blobs.reduce((a, b) => (b.picks.length > a.picks.length ? b : a), { k: null, picks: [] });
-  return { picks: best.picks, account: best.k ? best.k.replace(/^picks:/, "") : null };
-}
-
-const _bandOf = (p) => {
-  if (p == null) return null;
-  if (p >= 95) return "95+"; if (p >= 90) return "90-95"; if (p >= 85) return "85-90"; if (p >= 80) return "80-85";
-  if (p >= 75) return "75-80"; if (p >= 70) return "70-75"; if (p >= 65) return "65-70"; if (p >= 60) return "60-65";
-  if (p >= 55) return "55-60"; return null;
-};
-
-// Discipline flags from TRACKED losing picks (small-n, operational — NOT a model correction).
-// Three signals about OUR betting decisions: bet into a band the model flags overconfident,
-// over-concentrated one game past the cap, or entered at a price worse than the pre-game close.
-async function buildDisciplineFlags(env, cache, userId, since, yesterday, bandLookup, cap) {
-  const out = { window: { since, until: yesterday }, nLosses: 0, flaggedBandBets: [], concentration: [], negativeClv: [] };
-  const { picks } = await _loadTrackedPicks(env, cache, userId);
-  if (!picks?.length) return out;
-  const inWin = picks.filter(p => p.gameDate && p.gameDate >= since && p.gameDate <= yesterday);
-  const losses = inWin.filter(p => p.result === "lost");
-  out.nLosses = losses.length;
-  if (!losses.length) return out;
-
-  const lineOf = p => p.threshold ?? p.pickLine ?? null;
-  const betTrueP = p => p.direction === "under" ? (p.noTruePct ?? p.truePct) : p.truePct;
-  const catOf = p => p.stat || p.gameType || null;
-  const labelOf = p => p.playerName || p.pickTeam || "—";
-
-  // (1) Bet a flagged-overconfident band.
-  for (const p of losses) {
-    const band = _bandOf(betTrueP(p));
-    if (!band) continue;
-    const bl = bandLookup[`${p.sport}|${catOf(p)}|${band}`];
-    if (bl && (bl.delta ?? 0) <= -5) {
-      out.flaggedBandBets.push({ label: labelOf(p), sport: p.sport, category: catOf(p), band, delta: bl.delta, n: bl.n });
-    }
-  }
-
-  // (2) Same-game over-concentration — rank window picks per game by edge; flag losing over-cap picks.
-  const gkey = p => {
-    const teams = p.playerName ? [p.playerTeam, p.opponent] : [p.homeTeam, p.awayTeam];
-    return `${p.sport}|${teams.filter(Boolean).sort().join("|")}|${p.gameDate}`;
-  };
-  const edgeOf = p => p.edge ?? ((betTrueP(p) ?? 0) - (p.kalshiAvgCents ?? 0));
-  const byGame = {};
-  for (const p of inWin) (byGame[gkey(p)] ??= []).push(p);
-  for (const arr of Object.values(byGame)) {
-    if (arr.length <= cap) continue;
-    arr.sort((a, b) => edgeOf(b) - edgeOf(a));
-    arr.forEach((p, i) => {
-      if (i >= cap && p.result === "lost") out.concentration.push({ label: labelOf(p), sport: p.sport, category: catOf(p), rank: i + 1, gameN: arr.length });
-    });
-  }
-
-  // (3) Negative-CLV entry — best-effort match to the pick's shadow row for the pre-game close.
-  // Normalize the join key: NUMERIC comes back as "6.0" from Neon (vs the pick's 6), and props
-  // carry direction null/undefined (vs shadow 'over') — both would otherwise miss every match.
-  const _ln = v => (v == null || v === "" || Number.isNaN(Number(v))) ? "" : String(Number(v));
-  const _dir = d => d === "under" ? "under" : "over";
-  try {
-    const rows = await neonQuery(`
-      SELECT sport, player_name, pick_team, game_date, threshold, pick_line, direction,
-        kalshi_yes_price_pre, kalshi_no_price_pre
-      FROM shadow_plays
-      WHERE snapshot_date >= $1 AND kalshi_yes_price_pre IS NOT NULL
-    `, [since], env);
-    const idx = {};
-    for (const r of rows) {
-      const ln = _ln(r.threshold ?? r.pick_line);
-      const who = r.player_name ? _normName(r.player_name) : (r.pick_team || "").toUpperCase();
-      idx[`${r.sport}|${r.game_date}|${who}|${ln}|${_dir(r.direction)}`] = r;
-    }
-    let _matched = 0, _worst = null;
-    for (const p of losses) {
-      const ln = _ln(lineOf(p));
-      const who = p.playerName ? _normName(p.playerName) : (p.pickTeam || "").toUpperCase();
-      const r = idx[`${p.sport}|${p.gameDate}|${who}|${ln}|${_dir(p.direction)}`];
-      if (!r) continue;
-      const closePre = p.direction === "under" ? Number(r.kalshi_no_price_pre) : Number(r.kalshi_yes_price_pre);
-      const entry = p.kalshiAvgCents != null ? Number(p.kalshiAvgCents) / 100 : null;
-      if (entry == null || !Number.isFinite(closePre)) continue;
-      _matched++;
-      const clvCents = parseFloat(((closePre - entry) * 100).toFixed(1));
-      if (_worst == null || clvCents < _worst) _worst = clvCents;
-      if (clvCents < -2) out.negativeClv.push({ label: labelOf(p), sport: p.sport, category: catOf(p), clvCents });
-    }
-    out.clvMatched = _matched; out.clvWorst = _worst;
-  } catch (e) { console.error("[shadow-report] disciplineFlags CLV skipped:", e?.message); }
-
-  out.flaggedBandBets = out.flaggedBandBets.slice(0, 8);
-  out.concentration = out.concentration.slice(0, 8);
-  out.negativeClv = out.negativeClv.sort((a, b) => a.clvCents - b.clvCents).slice(0, 8);
-  return out;
-}
-
-// Build the yesterday recap from TRACKED account picks (not the model's gated shadow set), so it
-// reflects what was actually bet and how it resolved. ROI is units-weighted from stored fields:
-// units = ⅛-Kelly $ stake, kalshiAvgCents = displayed entry for the side taken, result = won|lost|push.
-async function buildYesterdayRecap(env, cache, userId, date) {
-  const empty = { date, account: null, n: 0, wins: 0, losses: 0, pushes: 0, pending: 0,
-    hitRatePct: null, staked: 0, profit: 0, roi: null, picks: [] };
-  if (!env?.UPSTASH_REDIS_REST_URL || !cache) return empty;
-
-  const { picks, account } = await _loadTrackedPicks(env, cache, userId);
-  if (!picks?.length) return { ...empty, account };
-
-  // Filter to games played on `date` (pick.gameDate is the game's PT date).
-  const dayPicks = picks.filter(p => p.gameDate === date);
-
-  let wins = 0, losses = 0, pushes = 0, pending = 0, staked = 0, profit = 0;
-  const out = dayPicks.map(p => {
-    const units = Number(p.units) || 0;
-    // Entry price for the side taken: kalshiAvgCents is the displayed avg (already side-aware);
-    // fall back to the side's quoted price.
-    const entryCents = p.kalshiAvgCents != null ? Number(p.kalshiAvgCents)
-      : (p.kalshiSide === "no" && p.noKalshiPct != null) ? Number(p.noKalshiPct)
-      : p.kalshiPct != null ? Number(p.kalshiPct) : null;
-    const pPrice = entryCents != null && entryCents > 0 && entryCents < 100 ? entryCents / 100 : null;
-    let pl = null;
-    if (p.result === "won")       { wins++;   pl = pPrice != null ? units * (1 - pPrice) / pPrice : null; staked += units; }
-    else if (p.result === "lost") { losses++; pl = -units; staked += units; }
-    else if (p.result === "push") { pushes++; pl = 0; }
-    else                          { pending++; }
-    if (pl != null) profit += pl;
-    const trueBet = p.direction === "under" ? (p.noTruePct ?? p.truePct) : p.truePct;
-    return {
-      sport: p.sport ?? null,
-      category: p.stat || p.gameType || null,
-      label: p.playerName || p.pickTeam || null,
-      line: p.threshold ?? p.pickLine ?? null,
-      side: p.direction || p.kalshiSide || null,
-      truePct: trueBet != null ? parseFloat(Number(trueBet).toFixed(1)) : null,
-      entryPct: entryCents != null ? parseFloat(Number(entryCents).toFixed(1)) : null,
-      units: parseFloat(units.toFixed(2)),
-      result: p.result || "pending",
-      pl: pl != null ? parseFloat(pl.toFixed(2)) : null,
-    };
-  }).sort((a, b) => b.units - a.units);
-
-  const settled = wins + losses;
-  return {
-    date,
-    account,
-    n: settled,
-    wins, losses, pushes, pending,
-    hitRatePct: settled > 0 ? parseFloat((wins / settled * 100).toFixed(1)) : null,
-    staked: parseFloat(staked.toFixed(2)),
-    profit: parseFloat(profit.toFixed(2)),
-    roi: staked > 0 ? parseFloat((profit / staked).toFixed(4)) : null,
-    picks: out,
-  };
-}
 
 async function handleShadowReport({ path, request, env, cache }) {
   if (path !== "shadow-report") return null;
@@ -1141,12 +969,10 @@ async function handleShadowReport({ path, request, env, cache }) {
   const isAdmin = env?.ADMIN_KEY && bearer === env.ADMIN_KEY;
 
   let isUser = false;
-  let reqUserId = null; // when read with a JWT, scope yesterdayRecap to this user's picks
   if (!isCron && !isAdmin && env?.JWT_SECRET) {
     const token = _extractReportToken(request);
     const payload = token ? await verifyJWT(token, env.JWT_SECRET) : null;
     isUser = !!payload;
-    reqUserId = payload?.userId ?? null;
   }
 
   if (!isCron && !isAdmin && !isUser) return errorResponse("Forbidden", 403);
@@ -1595,28 +1421,6 @@ async function handleShadowReport({ path, request, env, cache }) {
     gameTime: r.game_time ?? null,
   }));
 
-  // Yesterday's recap — sourced from the user's TRACKED account picks (not the model's gated
-  // shadow set), so it reflects what was actually bet and resolved. ROI is units-weighted from
-  // stored fields: units = ⅛-Kelly $ stake, kalshiAvgCents = displayed entry price for the side
-  // taken, result = won|lost|push. Recommendation-based (slippage from actual fills not captured).
-  let yesterdayRecap = null;
-  try {
-    yesterdayRecap = await buildYesterdayRecap(env, cache, reqUserId, yesterday);
-  } catch (e) {
-    console.error("[shadow-report] yesterdayRecap skipped:", e?.message);
-  }
-
-  // Discipline flags — operational lessons from our losing tracked picks (small-n, NOT model
-  // correction). Uses the model's own band calibration (allBands) and the derived same-game cap.
-  let disciplineFlags = null;
-  try {
-    const _bandLookup = {};
-    for (const b of allBands) _bandLookup[b.key] = b;
-    disciplineFlags = await buildDisciplineFlags(env, cache, reqUserId, since, yesterday, _bandLookup, optimalPerGameCap ?? 2);
-  } catch (e) {
-    console.error("[shadow-report] disciplineFlags skipped:", e?.message);
-  }
-
   // Newly-listed Kalshi markets we don't consume yet (status='new' in kalshi_series_seen,
   // populated by the /api/kalshi-series-scan cron). Separate try/catch — the table may not
   // exist yet on first deploy, and a discovery miss must never break the briefing.
@@ -1646,8 +1450,6 @@ async function handleShadowReport({ path, request, env, cache }) {
     since,
     dataHealth,
     topPicks,
-    yesterdayRecap,
-    disciplineFlags,
     modelBoard,
     categories,
     topBands,

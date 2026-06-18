@@ -64,44 +64,6 @@ function DataHealth({ dh }) {
   );
 }
 
-// ---- TODAY: what to bet -----------------------------------------------------------
-function TodaySection({ d }) {
-  const picks = d.topPicks || [];
-  return (
-    <div style={{ marginBottom:6 }}>
-      <div style={{ color:C.green, fontSize:13, fontWeight:700, marginBottom:8 }}>Today — plays to bet <span style={{ color:C.dim, fontSize:10, fontWeight:400 }}>· passed gate · sorted by edge</span></div>
-      {picks.length === 0 ? (
-        <div style={{ color:C.dim, fontSize:12, padding:"8px 0" }}>No picks pass the gate today{d.reportDate ? ` (${d.reportDate})` : ""}. If it's before ~9am PT, the morning snapshot may not have run yet — Refresh later.</div>
-      ) : (
-        <table style={tableStyle}>
-          <thead><tr>{["Pick","Dir","Model%","Market%","Edge","Game"].map(h => <th key={h} style={thB}>{h}</th>)}</tr></thead>
-          <tbody>
-            {picks.map((p, i) => {
-              const edge = p.edge ?? 0;
-              const edgeC = edge >= 10 ? C.green : edge >= 7 ? C.amber : C.text;
-              const label = p.playerName
-                ? `${p.playerName} ${p.threshold != null ? `O${p.threshold}` : ""} ${p.category}`
-                : `${p.pickTeam ?? p.homeTeam} ${p.direction === "under" ? "U" : "O"}${p.pickLine ?? p.threshold ?? ""} ${p.category}`;
-              const gameLabel = p.homeTeam && p.awayTeam ? `${p.awayTeam}@${p.homeTeam}` : (p.homeTeam ?? "");
-              const gameTime = p.gameTime ? new Date(p.gameTime).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",timeZone:"America/Los_Angeles"}) : "—";
-              return (
-                <tr key={i}>
-                  <td style={{ ...tdB, color:C.text, textAlign:"left", fontWeight:600 }}>{label}</td>
-                  <td style={{ ...tdB, color:p.direction==="under"?"#79c0ff":C.green }}>{p.direction ?? "—"}</td>
-                  <td style={{ ...tdB, color:C.text }}>{p.modelTruePct != null ? `${p.modelTruePct}%` : "—"}</td>
-                  <td style={{ ...tdB, color:C.gray }}>{p.marketPct != null ? `${p.marketPct}%` : "—"}</td>
-                  <td style={{ ...tdB, color:edgeC, fontWeight:700 }}>{edge >= 0 ? `+${edge.toFixed(1)}` : edge.toFixed(1)}%</td>
-                  <td style={{ ...tdB, color:C.dim }}>{gameLabel} {gameTime}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
-    </div>
-  );
-}
-
 // ---- Price-band curve (expanded under a board row) --------------------------------
 function PriceBands({ bands, window }) {
   if (!bands?.length) return <div style={{ color:C.dim, fontSize:10, padding:"4px 0" }}>No bettable plays binned yet.</div>;
@@ -261,47 +223,6 @@ function ModelBoard({ board }) {
   );
 }
 
-// ---- DISCIPLINE: our tracked betting (operational only) ---------------------------
-function DisciplineSection({ d }) {
-  const yr = d.yesterdayRecap;
-  const df = d.disciplineFlags;
-  const rows = [];
-  if (df) {
-    for (const f of (df.flaggedBandBets || [])) rows.push({ tone:C.red, kind:"Flagged band", text:`${f.label} — ${f.sport}|${f.category} ${f.band}% (Δ${f.delta}, n=${f.n})` });
-    for (const f of (df.concentration || [])) rows.push({ tone:C.amber, kind:"Over cap", text:`${f.label} — ${f.sport}|${f.category}, #${f.rank} of ${f.gameN} in its game` });
-    for (const f of (df.negativeClv || [])) rows.push({ tone:C.amber, kind:"Neg CLV", text:`${f.label} — ${f.sport}|${f.category}, ${f.clvCents}¢` });
-  }
-  return (
-    <div>
-      <div style={sectionHead}>Discipline · our tracked picks <span style={{ color:C.dim, fontWeight:400, textTransform:"none" }}>· operational, not a model correction</span></div>
-      {yr && yr.n > 0 ? (
-        <div style={{ color:C.text, fontSize:12, marginBottom:8 }}>
-          Yesterday: <b>{yr.wins}-{yr.losses}</b>{yr.pushes ? ` (${yr.pushes}P)` : ""}{yr.pending ? `, ${yr.pending} pending` : ""}, ROI <span style={{ color:_roiColorFrac(yr.roi), fontWeight:700 }}>{_roiFromFrac(yr.roi)}</span> on ${yr.staked?.toFixed(0) ?? 0} staked.
-        </div>
-      ) : <div style={{ color:C.dim, fontSize:12, marginBottom:8 }}>No tracked picks settled yesterday.</div>}
-
-      {rows.length === 0 ? (
-        <div style={{ color:C.green, fontSize:12 }}>No discipline issues{df?.nLosses ? ` across ${df.nLosses} loss(es)` : ""} — losses look like variance.</div>
-      ) : (
-        <table style={tableStyle}>
-          <thead><tr>{["Issue","Pick"].map(h => <th key={h} style={{ ...thB, textAlign:"left" }}>{h}</th>)}</tr></thead>
-          <tbody>
-            {rows.map((r, i) => (
-              <tr key={i}>
-                <td style={{ ...tdB, textAlign:"left", color:r.tone, fontWeight:700, whiteSpace:"nowrap" }}>{r.kind}</td>
-                <td style={{ ...tdB, textAlign:"left", color:C.text }}>{r.text}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-      {df?.clvMatched != null && (
-        <div style={{ color:C.dim, fontSize:9.5, marginTop:3 }}>CLV checked on {df.clvMatched} of {df.nLosses} losses (worst {df.clvWorst ?? "—"}¢).</div>
-      )}
-    </div>
-  );
-}
-
 // ---- OPS: collapsed supporting tables ---------------------------------------------
 function OpsSection({ d }) {
   const [open, setOpen] = React.useState(false);
@@ -424,12 +345,10 @@ function MorningBriefing({ shadowReportData, shadowReportLoading, fetchShadowRep
       </div>
 
       <DataHealth dh={d.dataHealth} />
-      <TodaySection d={d} />
 
       <div style={sectionHead}>Model board · the gate decision</div>
       <ModelBoard board={d.modelBoard} />
 
-      <DisciplineSection d={d} />
       <OpsSection d={d} />
     </div>
   );
