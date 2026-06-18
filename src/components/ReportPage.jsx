@@ -230,7 +230,6 @@ function ModelBoard({ board }) {
 // line drifts our way ⇒ bet early; −CLV ⇒ no rush.
 function OpsSummary({ d }) {
   const cap = d.optimalPerGameCap ?? 2;
-  const daily = d.optimalDailyPicks;
   const clv = (d.clv || []).filter(r => r.avgClvPct != null && r.n >= 5);
   const early = clv.filter(r => r.avgClvPct >= 1).sort((a, b) => b.avgClvPct - a.avgClvPct).slice(0, 3);
   const late  = clv.filter(r => r.avgClvPct <= -1).sort((a, b) => a.avgClvPct - b.avgClvPct).slice(0, 2);
@@ -240,9 +239,10 @@ function OpsSummary({ d }) {
 
   const gameLine = <>Bet at most {b(cap)} pick{cap === 1 ? "" : "s"} from any one game.</>;
 
-  const dayLine = daily
-    ? <>Aim for about {b(daily.bucket)} picks/day ({daily.confidence} confidence{daily.stopAt ? <>; ROI turns negative past {b(daily.stopAt, C.red)}</> : null}).</>
-    : <>Play as many qualifying picks/day as you find — no volume ceiling in the data yet.</>;
+  // Each qualified pick is independently +EV, so volume only adds expected profit and
+  // diversifies variance — there is no count at which betting more lowers per-bet ROI.
+  // The only real ceiling is total simultaneous bankroll exposure (⅛-Kelly per pick).
+  const dayLine = <>Bet {b("every qualified pick", C.green)} — each is independently +EV, so more only helps; the one real ceiling is total bankroll exposure (⅛-Kelly per pick).</>;
 
   let timeLine;
   if (early.length) {

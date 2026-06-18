@@ -1092,13 +1092,63 @@ UNION ALL SELECT * FROM by_cat_band`;
       ORDER BY 1, 2
     `, [since], env);
 
-    let [thresholdRankRoi, intraGroupCorr, sameGamePairs, concentration, clvAnalysis, dailyVolumeRoi, capRoi] = await Promise.all([q1, q2, q3, q4, q5, q6, q7]).catch(e => {
+    // Q8: ROI by EDGE band — does higher model edge actually predict higher realised ROI,
+    // and where does it cross zero? Over the bettable universe (dc_qualified, threshold_rank=1,
+    // bet-side price inside the 67–91 qualification window, all categories for sample size),
+    // bucket by edge incl. negative bands so the full gradient shows. This is the rigorous
+    // answer to "should we bet every qualified pick": if ROI stays positive down to the edge
+    // gate, volume is fine and there's no daily cap; if it crosses zero ABOVE the gate, the
+    // gate is too loose — a calibration cutoff, NOT a daily-count limit. (capWindow/capGate
+    // knobs ignored here — Q8 fixes its own representative universe so the gradient is stable.)
+    const q8 = neonQuery(`
+      WITH bettable AS (
+        SELECT edge, won::int AS w,
+          CASE WHEN direction = 'under' THEN no_kalshi_pct ELSE kalshi_pct END AS bet_pct
+        FROM shadow_plays
+        WHERE resolved AND won IS NOT NULL AND dc_qualified AND threshold_rank = 1
+          AND snapshot_date >= $1
+          AND (CASE WHEN direction = 'under' THEN no_kalshi_pct ELSE kalshi_pct END) BETWEEN 67 AND 91
+      )
+      SELECT
+        CASE
+          WHEN edge < 0  THEN '<0'   WHEN edge < 3  THEN '0-3'   WHEN edge < 5  THEN '3-5'
+          WHEN edge < 7  THEN '5-7'  WHEN edge < 10 THEN '7-10'  WHEN edge < 15 THEN '10-15'
+          WHEN edge < 20 THEN '15-20' ELSE '20+'
+        END AS edge_band,
+        CASE
+          WHEN edge < 0 THEN 0 WHEN edge < 3 THEN 1 WHEN edge < 5 THEN 2 WHEN edge < 7 THEN 3
+          WHEN edge < 10 THEN 4 WHEN edge < 15 THEN 5 WHEN edge < 20 THEN 6 ELSE 7
+        END AS band_order,
+        COUNT(*) AS n,
+        ROUND(100.0 * AVG(w), 1) AS hit_rate_pct,
+        ROUND(AVG(bet_pct), 1) AS avg_price_pct,
+        ROUND(100.0 * AVG(w) - AVG(bet_pct), 2) AS roi_pct
+      FROM bettable
+      GROUP BY edge_band, band_order
+      ORDER BY band_order
+    `, [since], env);
+
+    let [thresholdRankRoi, intraGroupCorr, sameGamePairs, concentration, clvAnalysis, dailyVolumeRoi, capRoi, edgeBucketRoiRaw] = await Promise.all([q1, q2, q3, q4, q5, q6, q7, q8]).catch(e => {
       return [{ error: e.message }];
     });
 
     if (thresholdRankRoi?.error) return errorResponse(`Neon query failed: ${thresholdRankRoi.error}`, 500);
 
-    return jsonResponse({ since, thresholdRankRoi, intraGroupCorr, sameGamePairs, concentration, clvAnalysis, dailyVolumeRoi, capRoi });
+    // Attach a 95% CI on each edge band's ROI (normal approx on the hit rate) — a band's ROI
+    // is only trustworthy when its CI clears 0, the read we need to find where edge stops paying.
+    const edgeBucketRoi = Array.isArray(edgeBucketRoiRaw) ? edgeBucketRoiRaw.map(r => {
+      const n = Number(r.n || 0);
+      const hit = Number(r.hit_rate_pct || 0) / 100;
+      const roi = r.roi_pct != null ? Number(r.roi_pct) : null;
+      const se = n > 0 ? Math.sqrt(hit * (1 - hit) / n) * 100 : null;
+      return {
+        ...r, n,
+        roiLoCI: (roi != null && se != null) ? parseFloat((roi - 1.96 * se).toFixed(2)) : null,
+        roiHiCI: (roi != null && se != null) ? parseFloat((roi + 1.96 * se).toFixed(2)) : null,
+      };
+    }) : edgeBucketRoiRaw;
+
+    return jsonResponse({ since, thresholdRankRoi, intraGroupCorr, sameGamePairs, concentration, clvAnalysis, dailyVolumeRoi, capRoi, edgeBucketRoi });
   }
 
   return null;
