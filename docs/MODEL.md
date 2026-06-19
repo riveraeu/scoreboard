@@ -53,7 +53,7 @@ UI display + the `push/notify` cron are restricted to categories with confirmed 
 
 **Currently allowed**:
 - `mlb|strikeouts` 80–**85**% — capped 90→85 on 2026-06-17: precise in-gate bet audit (edge≥5, price 67–91, dc) showed the 85–90 band bled −35% (n=9 since 5/01, −54% n=4 post-6/13-retune) while 80–85 was ~breakeven (−4.5%, n=16). The K_FORM_SIGMA retune (6/13) targets this overconfidence but is far from its n≥200 re-eval; cap is interim risk control, reversible if the post-retune 85–90 turns. (Originally 80–90, shadow n=55/56 both bands positive 2026-06-08.)
-- `wnba|points` 70–80% — shadow n=10/16 both bands positive (2026-06-08)
+- `wnba|points` — **PAUSED 2026-06-19.** Formula-clean validation (since 5/28: dcQual + edge≥5 + rank1) found the [70,80) gate mis-placed: the in-gate band caught only n=3 (33% hit, −36% ROI) while the model's profitable plays sit at [80,85) (n=10, 90% hit, +14%) ABOVE the cap and were being excluded — the model is underconfident (board +17.5), so its high-truePct picks over-deliver. Also negative Brier skill (−0.003 @ n=132) → market sharper. Re-enable only after `tune:gate` confirms the right band (likely [80,85)) at n≥50 + coherence. (Was 70–80%, promoted on n=10/16 both bands positive 2026-06-08 — that promotion was pre-5/28-formula and on thin n.)
 - `wnba|rebounds` 70–85% — 85–90% band n=17 ROI −8.6% capped (2026-06-09)
 - `wnba|spread` 65–85% — shadow n=39 in-window ~+11% weighted, 65–85 bands all positive, 85–90 −4.8% capped to match the WNBA high-band overconfidence pattern (2026-06-11)
 
