@@ -730,7 +730,17 @@ const REPORT_TTL = 60 * 60 * 25; // 25 hours
 const INCOMPLETE_REPORT_TTL = 60 * 15; // 15 minutes
 
 // Mirror passesCategoryGate() from api/lib/category-gate.js — kept in sync manually.
-const _ACTIVE_CATS = new Set(["mlb|strikeouts", "wnba|points", "wnba|rebounds", "wnba|spread"]);
+// Whether a category key (`sport|stat-or-gameType`) is currently in the live truePct gate.
+// Derived from passesCategoryGate (the single source of truth in category-gate.js) by probing the
+// truePct axis — NOT a hardcoded list, which drifted out of sync when gates were paused/demoted
+// 2026-06-19 (the report kept showing demoted cats as live). Returns true if ANY truePct is gated.
+function _isGatedCategory(key) {
+  const [sport, cat] = key.split("|");
+  for (let tp = 50; tp < 100; tp++) {
+    if (passesCategoryGate({ sport, stat: cat, truePct: tp })) return true;
+  }
+  return false;
+}
 // SQL fragment that mirrors passesCategoryGate() for use in the top-picks query.
 // passesCategoryGate() keys on p.truePct (always the YES/over-side probability), NOT the
 // bet side. For props (OVER-only) truePct == model_true_pct. For spread, both sides of a
@@ -1183,7 +1193,7 @@ async function handleShadowReport({ path, request, env, cache }) {
     const avgBetPct = r.avg_bet_pct != null ? parseFloat(Number(r.avg_bet_pct).toFixed(4)) : null;
     const roi = hitRate != null && avgBetPct != null ? parseFloat((hitRate / 100 - avgBetPct).toFixed(4)) : null;
     const key = `${r.sport}|${r.category}`;
-    const status = _ACTIVE_CATS.has(key) ? "active"
+    const status = _isGatedCategory(key) ? "active"
       : n >= 50 && (roi ?? -1) > 0 ? "building"
       : n >= 30 && (roi ?? 0) <= 0 ? "losing"
       : "too_few";
@@ -1248,7 +1258,7 @@ async function handleShadowReport({ path, request, env, cache }) {
     const totalN = cells.reduce((s, c) => s + c.n, 0);
     const bins = _priceWindowBins(cells);
     const win = _discoverPriceWindow(cells);
-    const gated = _ACTIVE_CATS.has(key);
+    const gated = _isGatedCategory(key);
     const cat = _catByKey[key];
     // Sub-window opportunity: bettable plays priced BELOW the current 67¢ floor.
     const sub = cells.filter(c => c.lo < KALSHI_GATE);

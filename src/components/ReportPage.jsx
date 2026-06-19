@@ -483,7 +483,11 @@ function GateDigest({ board }) {
   const b = (txt, color) => <b style={{ color }}>{txt}</b>;
 
   let body;
-  if (!promotes.length && !pulls.length && !tunes.length) {
+  if (liveCount === 0 && !promotes.length) {
+    // Empty-gate posture (2026-06-19): all categories failed formula-clean validation and were
+    // pulled. Document the deliberate full-stop rather than reading "keep betting 0 categories".
+    body = <><b style={{ color:C.red }}>Gate is empty — sitting out.</b> No category currently beats the market on formula-clean data (Brier + in-gate ROI). Re-enable one only when it clears {b("n≥50 + band coherence + non-negative Brier", C.amber)}.</>;
+  } else if (!promotes.length && !pulls.length && !tunes.length) {
     body = <>No changes today — keep betting the {b(liveCount, C.green)} live categor{liveCount === 1 ? "y" : "ies"}.</>;
   } else {
     const parts = [];
