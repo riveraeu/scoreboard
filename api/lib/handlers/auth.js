@@ -708,6 +708,49 @@ UNION ALL SELECT * FROM by_cat_band`;
       ])
     );
 
+    // ── Proper-score head-to-head: model-Brier vs market-Brier per category ──────────────
+    // The recalibration decision (docs/MODEL_IMPROVEMENT.md): a calibration miss only warrants
+    // a formula change if the MODEL beats the MARKET on a proper score (else de-shrinking just
+    // bets more into a market that wins — the totalRuns trap). `skill = marketBrier - modelBrier`:
+    // POSITIVE = model is sharper than the market (real edge — de-shrink legit); NEGATIVE = market
+    // wins (don't tune). Both probs on 0–1. model_true_pct is stored BET-SIDE (write at
+    // shadow.js:1571) so it predicts `won` directly (no under-flip); market bet price is
+    // no_kalshi_pct for unders / kalshi_pct for overs. avg_* fields are scale self-checks
+    // (should be ~0.x, not ~xx). Gated behind ?brier=1; reuses the same whereClause + params.
+    let brier = null;
+    if (params.get("brier") === "1") {
+      const brierSql = `
+SELECT sport, COALESCE(stat, game_type) AS category,
+  COUNT(*) AS n,
+  AVG(POWER(model_true_pct/100.0 - (won)::int, 2)) AS model_brier,
+  AVG(POWER((CASE WHEN direction='under' THEN no_kalshi_pct ELSE kalshi_pct END)/100.0 - (won)::int, 2)) AS market_brier,
+  AVG(model_true_pct)/100.0 AS avg_model,
+  AVG(CASE WHEN direction='under' THEN no_kalshi_pct ELSE kalshi_pct END)/100.0 AS avg_market,
+  AVG((won)::int) AS avg_won
+FROM shadow_plays
+WHERE ${whereClause}
+GROUP BY sport, COALESCE(stat, game_type)
+ORDER BY COUNT(*) DESC`;
+      try {
+        const brierRows = await neonQuery(brierSql, qp, env);
+        brier = Object.fromEntries(brierRows.map(r => {
+          const mb = r.model_brier != null ? parseFloat(Number(r.model_brier).toFixed(4)) : null;
+          const kb = r.market_brier != null ? parseFloat(Number(r.market_brier).toFixed(4)) : null;
+          return [`${r.sport}|${r.category}`, {
+            n: Number(r.n ?? 0),
+            modelBrier: mb,
+            marketBrier: kb,
+            skill: mb != null && kb != null ? parseFloat((kb - mb).toFixed(4)) : null, // >0 model sharper
+            avgModel: r.avg_model != null ? parseFloat(Number(r.avg_model).toFixed(3)) : null,
+            avgMarket: r.avg_market != null ? parseFloat(Number(r.avg_market).toFixed(3)) : null,
+            avgWon: r.avg_won != null ? parseFloat(Number(r.avg_won).toFixed(3)) : null,
+          }];
+        }));
+      } catch (e) {
+        brier = { error: e.message };
+      }
+    }
+
     return jsonResponse({
       n: scTotalN,
       filters: {
@@ -722,6 +765,7 @@ UNION ALL SELECT * FROM by_cat_band`;
       overall: scOverall,
       byCategory: scByCategory,
       byCategoryDetail: scByCategoryDetail,
+      ...(brier !== null ? { brier } : {}),
     });
   }
 
