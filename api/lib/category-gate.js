@@ -13,7 +13,11 @@ export function passesCategoryGate(p) {
   // its high-truePct picks over-deliver. Do NOT re-enable until tune:gate confirms the right band at
   // n≥50 + coherence (likely [80,85)). See memory [[project-live-gate-validation-2026-06-19]].
   // if (key === 'wnba|points')    return (p.truePct ?? 0) >= 70 && (p.truePct ?? 0) < 80;
-  if (key === 'wnba|rebounds')  return (p.truePct ?? 0) >= 70 && (p.truePct ?? 0) < 85;
+  // wnba|rebounds PAUSED 2026-06-19: formula-clean validation (since 5/28) — gate mis-placed + weak.
+  // The [70,85) band caught only n=1; the actual bet plays land at 85-90 (n=13, ABOVE the cap) and
+  // are only ~breakeven (ROI −0.003), with Brier skill −0.028 @ n=96 (market sharper). No coherent
+  // +ROI band exists. Re-enable only after tune:gate confirms a band at n≥50 + coherence.
+  // if (key === 'wnba|rebounds')  return (p.truePct ?? 0) >= 70 && (p.truePct ?? 0) < 85;
   // wnba|spread PAUSED 2026-06-19: formula-clean validation (since 5/28) — bet set n=15 hit 20% / ROI
   // −15.5% while the model claimed +13.8% avg edge (severe overconfidence), and unfiltered Brier
   // skill −0.032 @ n=237 confirms the market is much sharper on the FULL distribution (not small-n).
