@@ -724,6 +724,10 @@ async function handleShadowPregameSnap({ path, request, env, cache }) {
 
 const REPORT_CACHE_KEY_PREFIX = "shadow:report:";
 const REPORT_TTL = 60 * 60 * 25; // 25 hours
+// Short TTL when yesterday's resolution is meaningfully incomplete (<90% resolved).
+// Without this, a pre-7am-resolver refresh freezes a partial "3/487 resolved" snapshot
+// into the full-day cache; the 0.9 threshold ignores a few permanently-stuck noData rows.
+const INCOMPLETE_REPORT_TTL = 60 * 15; // 15 minutes
 
 // Mirror passesCategoryGate() from api/lib/category-gate.js — kept in sync manually.
 const _ACTIVE_CATS = new Set(["mlb|strikeouts", "wnba|points", "wnba|rebounds", "wnba|spread"]);
@@ -1457,7 +1461,10 @@ async function handleShadowReport({ path, request, env, cache }) {
     durationMs: Date.now() - t0,
   };
 
-  if (cache) cache.put(cacheKey, JSON.stringify(report), { expirationTtl: REPORT_TTL }).catch(() => {});
+  const res = dataHealth?.resolution;
+  const incomplete = res && res.total > 0 && (res.resolved / res.total) < 0.9;
+  const ttl = incomplete ? INCOMPLETE_REPORT_TTL : REPORT_TTL;
+  if (cache) cache.put(cacheKey, JSON.stringify(report), { expirationTtl: ttl }).catch(() => {});
   return jsonResponse(report);
 }
 
