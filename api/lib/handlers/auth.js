@@ -534,6 +534,13 @@ export async function handleAuthRoutes(ctx) {
       const _st = parseInt(_stStr, 10);
       if (!isNaN(_st)) whereParts.push(`season_type = ${_p(_st)}`);
     }
+    // Liquidity slice: kalshiVolume lives in the features JSONB (not a dedicated column).
+    // Rows lacking the key are excluded by the numeric comparison — intended (unknown liquidity).
+    // Lets the Brier head-to-head test "does the model beat the THIN markets?" (where stale
+    // prices live) vs the liquid ones (which are razor-sharp). Used with ?brier=1.
+    const _volMaxStr = params.get("volumeMax"), _volMinStr = params.get("volumeMin");
+    if (_volMaxStr && !isNaN(parseFloat(_volMaxStr))) whereParts.push(`(features->>'kalshiVolume')::numeric <= ${_p(parseFloat(_volMaxStr))}`);
+    if (_volMinStr && !isNaN(parseFloat(_volMinStr))) whereParts.push(`(features->>'kalshiVolume')::numeric >= ${_p(parseFloat(_volMinStr))}`);
     const bestThreshold = params.get("bestThreshold") === "true";
 
     const whereClause = whereParts.join(" AND ");
@@ -761,6 +768,8 @@ ORDER BY COUNT(*) DESC`;
         thresholdRank: params.get("thresholdRank") === "1" ? 1 : null,
         bestThreshold: bestThreshold || null,
         seasonType: _stStr ? parseInt(_stStr, 10) : null,
+        volumeMax: _volMaxStr ? parseFloat(_volMaxStr) : null,
+        volumeMin: _volMinStr ? parseFloat(_volMinStr) : null,
       },
       overall: scOverall,
       byCategory: scByCategory,
