@@ -12,7 +12,7 @@ const cases = [
   { key: "mlb|strikeouts", p: { sport: "mlb", stat: "strikeouts" }, lo: 80, hi: 85 }, // capped 90→85 2026-06-17
   // wnba|points PAUSED 2026-06-19 (mis-placed gate; see category-gate.js) — no band case while paused.
   { key: "wnba|rebounds", p: { sport: "wnba", stat: "rebounds" }, lo: 70, hi: 85 },
-  { key: "wnba|spread", p: { sport: "wnba", gameType: "spread" }, lo: 65, hi: 85 },
+  // wnba|spread PAUSED 2026-06-19 (overconfident/losing; see category-gate.js) — no band case while paused.
 ];
 
 for (const { key, p, lo, hi } of cases) {
@@ -24,20 +24,21 @@ for (const { key, p, lo, hi } of cases) {
   });
 }
 
-test("passesCategoryGate: key falls back to gameType when stat is absent", () => {
-  // wnba|spread has no stat — gameType supplies the category key.
-  assert.equal(passesCategoryGate({ sport: "wnba", gameType: "spread", truePct: 75 }), true);
-  // A stat, when present, takes precedence over gameType: this resolves to wnba|points (PAUSED →
-  // false), NOT wnba|spread (which would pass at 75). False here proves stat wins over gameType.
-  assert.equal(passesCategoryGate({ sport: "wnba", stat: "points", gameType: "spread", truePct: 75 }), false);
-  assert.equal(passesCategoryGate({ sport: "wnba", stat: "assists", gameType: "spread", truePct: 75 }), false);
+test("passesCategoryGate: stat takes precedence over gameType; gameType is the fallback", () => {
+  // No stat → gameType supplies the key. Use a live gate (wnba|rebounds) so a pass is observable.
+  assert.equal(passesCategoryGate({ sport: "wnba", gameType: "rebounds", truePct: 75 }), true);
+  // stat present wins over gameType: stat=assists (not gated) beats gameType=rebounds (gated) → fails.
+  assert.equal(passesCategoryGate({ sport: "wnba", stat: "assists", gameType: "rebounds", truePct: 75 }), false);
+  // and stat=rebounds (gated) wins over gameType=spread (paused) → passes.
+  assert.equal(passesCategoryGate({ sport: "wnba", stat: "rebounds", gameType: "spread", truePct: 75 }), true);
 });
 
-test("passesCategoryGate: wnba|points is PAUSED 2026-06-19 (fails everywhere)", () => {
-  // Mis-placed gate — re-enable only after tune:gate confirms the band at n≥50. Changing this
-  // assertion should be a deliberate act that accompanies re-adding the gate line.
+test("passesCategoryGate: wnba|points and wnba|spread are PAUSED 2026-06-19 (fail everywhere)", () => {
+  // Re-enable only after tune:gate confirms a coherent +ROI band at n≥50. Changing these assertions
+  // should be a deliberate act that accompanies re-adding the gate line in category-gate.js.
   for (const tp of [72, 75, 78, 82, 90]) {
     assert.equal(passesCategoryGate({ sport: "wnba", stat: "points", truePct: tp }), false, `points ${tp} should fail while paused`);
+    assert.equal(passesCategoryGate({ sport: "wnba", gameType: "spread", truePct: tp }), false, `spread ${tp} should fail while paused`);
   }
 });
 
