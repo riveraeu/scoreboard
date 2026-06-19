@@ -1018,7 +1018,7 @@ async function handleShadowReport({ path, request, env, cache }) {
       neonQuery(`
         WITH src AS (
           SELECT sport, COALESCE(stat, game_type) AS category,
-            CASE WHEN direction='under' THEN (1 - model_true_pct) ELSE model_true_pct END AS bsp,
+            model_true_pct AS bsp, -- bet-side 0–100 (shadow.js:1571); no under-flip (fixed 2026-06-19)
             won::int AS w,
             CASE WHEN direction='under' THEN no_kalshi_pct ELSE kalshi_pct END AS bet_pct
           FROM shadow_plays

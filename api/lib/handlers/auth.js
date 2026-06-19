@@ -546,7 +546,11 @@ export async function handleAuthRoutes(ctx) {
     const whereClause = whereParts.join(" AND ");
 
     // bet_side_pct (bsp): P(bet wins) from model's perspective.
-    // model_true_pct is always OVER-side. For UNDERs: P(under wins) = 1 - model_true_pct.
+    // model_true_pct is stored BET-SIDE on a 0–100 scale (shadow.js:1571 stores noTruePct /
+    // 100−truePct for UNDERs), so it already equals P(bet wins) — use it directly, no flip.
+    // (Pre-2026-06-19 this applied `1 - model_true_pct` to UNDERs, which on the 0–100 column
+    // went negative and dumped every UNDER row into the 0-5 band — silently dropping them from
+    // the bands via the bsp≥55 filter. Over-only categories were unaffected.)
     // bet_pct: the market price paid for the bet (no_kalshi_pct for UNDERs, kalshi_pct for OVERs).
     // ROI per $1 wagered = hitRate/100 - avg(bet_pct).
     // bestThreshold=true: keep only the highest-bsp row per (sport, category, group_id) — one
@@ -557,7 +561,7 @@ WITH base AS (
     sport,
     COALESCE(stat, game_type) AS category,
     group_id,
-    CASE WHEN direction = 'under' THEN (1 - model_true_pct) ELSE model_true_pct END AS bsp,
+    model_true_pct AS bsp, -- stored bet-side (0–100); = P(bet wins), no under-flip needed
     (won)::int AS w,
     CASE WHEN direction = 'under' THEN no_kalshi_pct ELSE kalshi_pct END AS bet_pct,
     edge
