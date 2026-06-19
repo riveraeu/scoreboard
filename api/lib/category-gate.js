@@ -6,7 +6,13 @@
 // Key format: `${sport}|${stat || gameType}` — matches what the calibration endpoint groups by.
 export function passesCategoryGate(p) {
   const key = `${p.sport}|${p.stat || p.gameType}`;
-  if (key === 'mlb|strikeouts') return (p.truePct ?? 0) >= 80 && (p.truePct ?? 0) < 85; // cap 90→85 2026-06-17: 85–90 band bled −35% in-gate (overconfidence); 80–85 ~breakeven
+  // mlb|strikeouts DEMOTED 2026-06-19: formula-clean in-gate [80,85) bet set (since 6/13) was n=5,
+  // ROI −13%, overconfident (pred 82.5 → won 60); Brier skill −0.007 (market sharper). With the 3 wnba
+  // gates also paused, the gate is now EMPTY — nothing currently beats the market on formula-clean data.
+  // NOTE: this is a GATE change, not a formula change — the K_FORM_SIGMA freeze (don't touch the K
+  // formula until ~6/26, see [[project-strikeouts-formula-freeze]]) still holds; shadow data keeps
+  // accruing. Re-enable only after tune:gate confirms a coherent +ROI band at n≥50 + non-neg Brier.
+  // if (key === 'mlb|strikeouts') return (p.truePct ?? 0) >= 80 && (p.truePct ?? 0) < 85;
   // wnba|points PAUSED 2026-06-19: formula-clean validation (since 5/28) found the gate is mis-placed —
   // the [70,80) band caught only n=3 (33% hit, −36% ROI) while the profitable plays sit at [80,85)
   // (n=10, 90% hit, +14%) ABOVE the cap and were being EXCLUDED. Model is underconfident (+17.5), so

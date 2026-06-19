@@ -7,11 +7,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { passesCategoryGate } from "./constants.js";
 
+// The gate is EMPTY as of 2026-06-19 — all four formerly-live categories were paused/demoted after
+// formula-clean validation (mlb|strikeouts demoted, wnba|points/rebounds/spread paused; see
+// category-gate.js + memory project-live-gate-validation-2026-06-19). So there is currently no
+// observable PASS. When a category re-earns the gate via tune:gate, re-add its band-boundary case
+// here (lo inclusive / hi exclusive) in the SAME commit that re-adds the gate line.
 const cases = [
-  // [sport, statOrGameType-as-stat?, lo, hi]  — bands are [lo, hi)
-  { key: "mlb|strikeouts", p: { sport: "mlb", stat: "strikeouts" }, lo: 80, hi: 85 }, // capped 90→85 2026-06-17
-  // PAUSED 2026-06-19 (see category-gate.js): wnba|points (mis-placed), wnba|rebounds (mis-placed/weak),
-  // wnba|spread (overconfident/losing) — no band cases while paused. mlb|strikeouts is the only live gate.
+  // { key: "mlb|strikeouts", p: { sport: "mlb", stat: "strikeouts" }, lo: 80, hi: 85 },
 ];
 
 for (const { key, p, lo, hi } of cases) {
@@ -23,22 +25,31 @@ for (const { key, p, lo, hi } of cases) {
   });
 }
 
-test("passesCategoryGate: stat takes precedence over gameType; gameType is the fallback", () => {
-  // No stat → gameType supplies the key. mlb|strikeouts is the only live gate, so use it.
-  assert.equal(passesCategoryGate({ sport: "mlb", gameType: "strikeouts", truePct: 82 }), true);
-  // stat present wins over gameType: stat=hits (not gated) beats gameType=strikeouts (gated) → fails.
-  assert.equal(passesCategoryGate({ sport: "mlb", stat: "hits", gameType: "strikeouts", truePct: 82 }), false);
-  // and stat=strikeouts (gated) wins over gameType=spread → passes.
-  assert.equal(passesCategoryGate({ sport: "mlb", stat: "strikeouts", gameType: "spread", truePct: 82 }), true);
+test("passesCategoryGate: stat||gameType key resolution (gameType is the fallback when stat absent)", () => {
+  // With the gate empty there is no observable PASS, but key resolution is still verifiable: stat and
+  // gameType build the SAME key, so both resolve to the same (paused) entry → identical result.
+  // Re-add a precedence-PASS case (stat wins over gameType) when a gate returns.
+  assert.equal(
+    passesCategoryGate({ sport: "mlb", stat: "strikeouts", truePct: 82 }),
+    passesCategoryGate({ sport: "mlb", gameType: "strikeouts", truePct: 82 }),
+  );
 });
 
-test("passesCategoryGate: all wnba gates PAUSED 2026-06-19 (points/rebounds/spread fail everywhere)", () => {
-  // Re-enable only after tune:gate confirms a coherent +ROI band at n≥50. Changing these assertions
-  // should be a deliberate act that accompanies re-adding the gate line in category-gate.js.
-  for (const tp of [72, 75, 78, 82, 90]) {
-    assert.equal(passesCategoryGate({ sport: "wnba", stat: "points", truePct: tp }), false, `points ${tp} should fail while paused`);
-    assert.equal(passesCategoryGate({ sport: "wnba", stat: "rebounds", truePct: tp }), false, `rebounds ${tp} should fail while paused`);
-    assert.equal(passesCategoryGate({ sport: "wnba", gameType: "spread", truePct: tp }), false, `spread ${tp} should fail while paused`);
+test("passesCategoryGate: gate is EMPTY 2026-06-19 (every former category fails everywhere)", () => {
+  // mlb|strikeouts demoted; wnba|points/rebounds/spread paused. Re-enable a category only after
+  // tune:gate confirms a coherent +ROI band at n≥50 + non-negative Brier — changing these assertions
+  // must accompany re-adding the gate line in category-gate.js.
+  const former = [
+    { sport: "mlb", stat: "strikeouts" },
+    { sport: "wnba", stat: "points" },
+    { sport: "wnba", stat: "rebounds" },
+    { sport: "wnba", gameType: "spread" },
+  ];
+  for (const p of former) {
+    for (const tp of [62, 72, 75, 78, 82, 90]) {
+      assert.equal(passesCategoryGate({ ...p, truePct: tp }), false,
+        `${p.sport}|${p.stat || p.gameType} ${tp} should fail (gate empty)`);
+    }
   }
 });
 
