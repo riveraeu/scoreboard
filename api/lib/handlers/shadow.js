@@ -860,7 +860,7 @@ function _calibSummaryByCat(allBands) {
 // The trap this guards: a model can be provably under-confident (Δ>0) AND still unprofitable (the
 // market beats it) — de-shrinking would only bet more into a loss. So "underconfident" never maps
 // to "tune up" unless there is actually a profitable window. Returns { action, tone, why }.
-function _deriveDoThis(verdict, gated, calib, hint, skill = null, skillN = 0) {
+function _deriveDoThis(verdict, gated, calib, hint, skill = null, skillN = 0, skillLoCI = null) {
   const c = calib || { status: "insufficient", direction: null };
   // Trust skill only with enough resolved plays; below the bar it's shown but never moves the verdict.
   const skillReady = skill != null && skillN >= BRIER_MIN_N;
@@ -886,10 +886,13 @@ function _deriveDoThis(verdict, gated, calib, hint, skill = null, skillN = 0) {
         return { action: "Tune down", tone: "amber", why: `overconfident (Δ${c.delta})${skillReady ? ` with model-vs-market headroom (skill ${skill})` : ""} — trim it so it stops betting these (or fix in chat)` };
       if (c.direction === "under")
         return { action: "Stay out — don't tune", tone: "dim", why: "underconfident but the market still beats it — de-shrinking would just bet more into a loss" };
-      // Negative, no clear overconfidence signature, model not provably worse → needs diagnosis.
-      if (skillReady)
-        return { action: "Look deeper", tone: "blue", why: "negative but cause unclear — model isn't provably worse than the market; needs residual analysis (Phase 2)" };
-      return { action: "Stay out", tone: "dim", why: "no profitable window; calibration is fine — there's simply no edge" };
+      // Negative, no clear overconfidence signature. Only send to residual analysis when the model
+      // is PROVABLY at least even with the price (skill CI lower bound > 0): being sharper than the
+      // market yet losing the bettable window IS a real selection/sizing puzzle. A Brier tie
+      // (skill ≈ 0, CI straddles 0) is not headroom — it's the price with noise → just stay out.
+      if (skillReady && skillLoCI != null && skillLoCI > 0)
+        return { action: "Look deeper", tone: "blue", why: `negative window but the model is provably sharper than the price (skill ${skill}, CI lo +${skillLoCI}) — selection/sizing puzzle; needs residual analysis (Phase 2)` };
+      return { action: "Stay out", tone: "dim", why: "no profitable window and no edge over the market (Brier tie) — there's simply no edge" };
     default: return { action: "—", tone: "dim", why: null };
   }
 }
@@ -902,9 +905,11 @@ function _deriveDoThis(verdict, gated, calib, hint, skill = null, skillN = 0) {
 const _MIN_N_WINDOW  = 30; // min n to trust a discovered price window
 const _MIN_N_PROMOTE = 50; // min n in the window to promote an ungated category
 // Brier skill (= marketBrier − modelBrier; >0 = model sharper than the price). Drives the
-// NEGATIVE verdict fork: market-sharper → Stay out (no headroom); model-at-least-even +
-// overconfident → Tune down. Only trusted above BRIER_MIN_N resolved plays (Brier is a mean
-// of squared errors → lower variance than a tail hit-rate, but still noisy at small n).
+// NEGATIVE verdict fork: market-sharper (skill < FLOOR) → Stay out (no headroom); model-at-least-even
+// + overconfident → Tune down; provably-sharper-yet-losing (skill CI lo > 0) → Look deeper; a Brier
+// TIE (skill ≈ 0, CI straddles 0) → Stay out / no edge (not a residual-analysis puzzle — just noise).
+// Only trusted above BRIER_MIN_N resolved plays (Brier is a mean of squared errors → lower variance
+// than a tail hit-rate, but still noisy at small n).
 const BRIER_SKILL_FLOOR = -0.005; // skill below this = market is clearly the sharper estimator
 const BRIER_MIN_N       = 100;    // min resolved n before skill can move the verdict
 
@@ -1206,7 +1211,13 @@ async function handleShadowReport({ path, request, env, cache }) {
         SELECT sport, COALESCE(stat, game_type) AS category,
           COUNT(*) AS n,
           AVG(POWER(model_true_pct/100.0 - (won)::int, 2)) AS model_brier,
-          AVG(POWER((CASE WHEN direction='under' THEN no_kalshi_pct ELSE kalshi_pct END)/100.0 - (won)::int, 2)) AS market_brier
+          AVG(POWER((CASE WHEN direction='under' THEN no_kalshi_pct ELSE kalshi_pct END)/100.0 - (won)::int, 2)) AS market_brier,
+          -- Paired per-play skill difference (market_se − model_se); its mean IS the skill, its
+          -- stddev gives the SE for a CI lower bound. >0 per play = model sharper on that play.
+          STDDEV_SAMP(
+            POWER((CASE WHEN direction='under' THEN no_kalshi_pct ELSE kalshi_pct END)/100.0 - (won)::int, 2)
+            - POWER(model_true_pct/100.0 - (won)::int, 2)
+          ) AS skill_sd
         FROM shadow_plays
         WHERE resolved AND won IS NOT NULL AND snapshot_date >= ${_formulaFloorSql("$1")} AND threshold_rank = 1
         GROUP BY sport, COALESCE(stat, game_type)
@@ -1287,10 +1298,14 @@ async function handleShadowReport({ path, request, env, cache }) {
   for (const r of (brierRows || [])) {
     const mb = r.model_brier != null ? parseFloat(Number(r.model_brier).toFixed(4)) : null;
     const kb = r.market_brier != null ? parseFloat(Number(r.market_brier).toFixed(4)) : null;
-    _brierByCat[`${r.sport}|${r.category}`] = {
-      n: Number(r.n ?? 0), modelBrier: mb, marketBrier: kb,
-      skill: mb != null && kb != null ? parseFloat((kb - mb).toFixed(4)) : null,
-    };
+    const n = Number(r.n ?? 0);
+    const skill = mb != null && kb != null ? parseFloat((kb - mb).toFixed(4)) : null;
+    // 95% CI lower bound on skill (paired t, normal approx). >0 = model PROVABLY sharper than
+    // the price, not just a Brier tie. Gates the "Look deeper" verdict so a tie reads "no edge".
+    const sd = r.skill_sd != null ? Number(r.skill_sd) : null;
+    const skillSe = sd != null && n > 1 ? sd / Math.sqrt(n) : null;
+    const skillLoCI = skill != null && skillSe != null ? parseFloat((skill - 1.96 * skillSe).toFixed(4)) : null;
+    _brierByCat[`${r.sport}|${r.category}`] = { n, modelBrier: mb, marketBrier: kb, skill, skillLoCI };
   }
   const _histByCat = {};
   for (const r of (priceHistRows || [])) {
@@ -1354,7 +1369,7 @@ async function handleShadowReport({ path, request, env, cache }) {
 
     const calib = _calibByCat[key] ?? { status: "insufficient", direction: null, delta: null, band: null, n: null };
     const brier = _brierByCat[key] ?? { n: 0, modelBrier: null, marketBrier: null, skill: null };
-    const doThis = _deriveDoThis(verdict, gated, calib, hint, brier.skill, brier.n);
+    const doThis = _deriveDoThis(verdict, gated, calib, hint, brier.skill, brier.n, brier.skillLoCI);
     // `active` = this truePct slice is in the live category gate right now. Bands are 5-wide and
     // aligned to the gate's 5-boundaries, so the band midpoint membership-tests the gate exactly.
     // Only gated categories produce any active bands (ungated → passesCategoryGate always false).
@@ -1373,7 +1388,7 @@ async function handleShadowReport({ path, request, env, cache }) {
       priceBands: bins,
       verdict, hint, action,
       calib, doThis, calibBands,
-      skill: brier.skill, modelBrier: brier.modelBrier, marketBrier: brier.marketBrier, skillN: brier.n,
+      skill: brier.skill, skillLoCI: brier.skillLoCI, modelBrier: brier.modelBrier, marketBrier: brier.marketBrier, skillN: brier.n,
       roi: cat?.roi ?? null,
       formulaCutoff: cat?.formulaCutoff ?? null,
       daysInWindow: cat?.daysInWindow ?? null,
