@@ -326,10 +326,19 @@ function ModelNext() {
       </div>
       {open && (
         <div style={{ marginTop:10 }}>
-          {MODEL_NEXT.map(s => (
-            <div key={s.sport} style={{ marginBottom:12 }}>
+          {MODEL_NEXT.map(s => {
+            // SHIPPED tag derives from the same SERIES_CONFIG source as the banner, so the card
+            // header reflects completion automatically (no hand-flipped flag). infra rows aren't
+            // markets, so they never read "shipped".
+            const shipped = !s.infra && _isShippedRoadmapEntry(s);
+            return (
+            <div key={s.sport} style={{ marginBottom:12, opacity: shipped ? 0.72 : 1 }}>
               <div style={{ display:"flex", alignItems:"baseline", gap:6, flexWrap:"wrap" }}>
                 <span style={{ color:C.text, fontSize:12.5, fontWeight:700 }}>{s.rank} · {s.sport}</span>
+                {shipped && (
+                  <span style={{ fontSize:8.5, fontWeight:700, letterSpacing:0.3, padding:"1px 5px", borderRadius:3,
+                    color:C.green, background:"rgba(63,185,80,0.12)", border:"1px solid rgba(63,185,80,0.30)" }}>✓ SHIPPED</span>
+                )}
                 <span style={{ color:C.gray, fontSize:11 }}>{s.note}</span>
               </div>
               <div style={{ color:C.dim, fontSize:10.5, margin:"3px 0 5px" }}>First knob: <span style={{ color:C.gray }}>{s.knob}</span></div>
@@ -357,7 +366,7 @@ function ModelNext() {
                 })}
               </div>
             </div>
-          ))}
+          );})}
         </div>
       )}
     </div>
