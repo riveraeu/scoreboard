@@ -1,8 +1,10 @@
 import React from 'react';
 
 // --- Report page (daily model briefing) -----------------------------------------
-// Priority-ordered sections: DATA HEALTH (qualifier banner) · OPS (a four-line daily
-// playbook + collapsed supporting tables) · MODEL BOARD (the price-band validation
+// Leads with DO THIS (a single top-priority action across the whole page, picked by a
+// fall-through ladder: data health → model changes → build next market → Polymarket),
+// then the priority-ordered sections: DATA HEALTH (qualifier banner) · OPS (a four-line
+// daily playbook + collapsed supporting tables) · MODEL BOARD (the price-band validation
 // ladder — the single gate-decision surface, led by a one-line GATE digest).
 //
 // The MODEL BOARD slices BETTABLE plays by market price (where ROI actually lives —
@@ -540,6 +542,69 @@ function GateDigest({ board }) {
   );
 }
 
+// ---- DO THIS: the single top-priority action for the morning, across the whole page ----
+// A fall-through priority ladder — pick the first tier that has something actionable as the
+// PRIMARY "do this", render the rest as a dimmed queued "then →" ladder so the next moves are
+// visible at a glance. Tiers: (1) data health — bad data poisons everything below, so a cron /
+// coverage / resolution / CLV warning trumps all; (2) model changes pending on the board (gate
+// promote/demote, tune-down, or an input/residual investigation); (3) build the next market on
+// the MODEL_NEXT roadmap; (4) expand the platform (Polymarket). 3 and 4 are always "available",
+// so on a quiet, healthy day the primary becomes "build next market" with Polymarket queued.
+const _CHANGE_ACTIONS = {
+  "Add to gate":    { tone:"green", verb:"Promote" },
+  "Pull from gate": { tone:"red",   verb:"Pull from gate" },
+  "Tune down":      { tone:"amber", verb:"Tune down" },
+  "Look deeper":    { tone:"blue",  verb:"Investigate" },
+};
+function _doThisCandidates(d) {
+  const out = [];
+  // 1 — data health (cron failures / under-logged slate / partial resolution / low CLV capture).
+  const warns = d?.dataHealth?.warnings || [];
+  if (warns.length) {
+    out.push({ tier:1, tone:"red", label:"Fix data health", why: warns.join(" · "), short:"Fix data health" });
+  }
+  // 2 — model changes pending on the board (promotion / demotion / tuning / input investigation).
+  const changes = (d?.modelBoard || []).filter(e => _CHANGE_ACTIONS[e?.doThis?.action]);
+  if (changes.length) {
+    const byAction = {};
+    for (const e of changes) (byAction[e.doThis.action] ||= []).push(`${e.sport} ${e.category}`);
+    const parts = Object.entries(byAction).map(([a, names]) => `${_CHANGE_ACTIONS[a].verb} ${names.join(", ")}`);
+    const lead = changes[0];
+    out.push({ tier:2, tone:_CHANGE_ACTIONS[lead.doThis.action].tone,
+      label: parts.join("; "),
+      why: lead.doThis.why || "model change pending on the board",
+      short:`${changes.length} model change${changes.length>1?"s":""}` });
+  }
+  // 3 — build the next market on the roadmap (lowest rank wins; for the infra row, name its NEXT item).
+  const next = [...MODEL_NEXT].sort((a,b) => a.rank - b.rank)[0];
+  if (next) {
+    const nextItem = next.markets?.find(m => m.badge === "NEXT");
+    const label = next.infra && nextItem ? `Build ${nextItem.ticker}` : `Build ${next.sport}`;
+    out.push({ tier:3, tone:"blue", label, why: nextItem?.title || next.note, short: label });
+  }
+  // 4 — expand to a new platform (strategic backlog floor; primary only when nothing above is actionable).
+  out.push({ tier:4, tone:"gray", label:"Expand to Polymarket",
+    why:"new platform (US, no-crypto) — widen the surface beyond Kalshi", short:"Polymarket" });
+  return out;
+}
+function DoThisBanner({ d }) {
+  if (!d || d.notYet || d.error) return null;
+  const cands = _doThisCandidates(d);
+  if (!cands.length) return null;
+  const [primary, ...rest] = cands;
+  const color = _TONE[primary.tone] || C.blue;
+  return (
+    <div style={{ background:`${color}14`, border:`1px solid ${color}66`, borderRadius:8, padding:"10px 14px", marginBottom:14 }}>
+      <div style={{ color:C.gray, fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:5 }}>Do this today</div>
+      <div style={{ color, fontSize:15, fontWeight:700 }}>▶ {primary.label}</div>
+      {primary.why && <div style={{ color:C.text, fontSize:12, marginTop:3, lineHeight:1.4 }}>{primary.why}</div>}
+      {rest.length > 0 && (
+        <div style={{ color:C.dim, fontSize:11, marginTop:6 }}>then → {rest.map(r => r.short).join(" · ")}</div>
+      )}
+    </div>
+  );
+}
+
 function MorningBriefing({ shadowReportData, shadowReportLoading, fetchShadowReport, isLoggedIn }) {
   if (!isLoggedIn) return null;
   const d = shadowReportData;
@@ -559,6 +624,8 @@ function MorningBriefing({ shadowReportData, shadowReportLoading, fetchShadowRep
 
   return (
     <div>
+      <DoThisBanner d={d} />
+
       {/* Title row */}
       <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
         <span style={{ color:C.blue, fontSize:13, fontWeight:700 }}>Model Report</span>
