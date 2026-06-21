@@ -616,11 +616,17 @@ function DoThisBanner({ d }) {
     <div style={{ background:`${color}14`, border:`1px solid ${color}66`, borderRadius:8, padding:"10px 14px", marginBottom:14 }}>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, marginBottom:5 }}>
         <span style={{ color:C.gray, fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5 }}>Do this today</span>
-        <button onClick={onCopy} title="Copy as next-prompt input" style={{
-          cursor:"pointer", fontSize:9.5, fontWeight:700, letterSpacing:0.3, textTransform:"uppercase",
+        <button onClick={onCopy} title={copied ? "Copied" : "Copy as next-prompt input"} aria-label="Copy as next-prompt input" style={{
+          cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
           color: copied ? C.green : color, background:"transparent",
-          border:`1px solid ${copied ? C.green : color}66`, borderRadius:4, padding:"2px 7px",
-        }}>{copied ? "✓ Copied" : "Copy"}</button>
+          border:`1px solid ${copied ? C.green : color}66`, borderRadius:4, padding:"3px",
+        }}>
+          {copied ? (
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          ) : (
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          )}
+        </button>
       </div>
       <div style={{ color, fontSize:15, fontWeight:700 }}>▶ {primary.label}</div>
       {primary.why && <div style={{ color:C.text, fontSize:12, marginTop:3, lineHeight:1.4 }}>{primary.why}</div>}
