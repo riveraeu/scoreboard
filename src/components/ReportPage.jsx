@@ -1,4 +1,13 @@
 import React from 'react';
+import { SERIES_CONFIG } from '../../api/lib/series-config.js';
+
+// A build-roadmap entry counts as SHIPPED once any of its Kalshi tickers exists in
+// SERIES_CONFIG — which we ALWAYS edit when a market ships. Deriving "shipped" from that
+// single source of truth (instead of a hand-maintained flag) is what keeps the "Do this
+// today" banner from advertising a market we already built: it self-advances the moment a
+// new series lands in the config. (Phase-2/placeholder tickers absent from the config —
+// e.g. KXEPLTOTAL, KXUFCROUNDS — correctly read as not-yet-shipped.)
+const _isShippedRoadmapEntry = (s) => !!s?.markets?.some(m => SERIES_CONFIG[m.ticker]);
 
 // --- Report page (daily model briefing) -----------------------------------------
 // Leads with DO THIS (a single top-priority action across the whole page, picked by a
@@ -270,9 +279,9 @@ const MODEL_NEXT = [
   {
     // Soccer Phase 1 (World Cup) SHIPPED 2026-06-21 — shadow-only, one Elo-derived Dixon–Coles
     // Poisson matrix per game feeds all 5 families (1X2/total/teamTotal/spread/BTTS). Kept on the
-    // roadmap as a SHIPPED/Phase-2 entry so the club-league extension stays visible; `shipped`
-    // takes it out of the banner's "build next" selection (the next unbuilt market wins instead).
-    sport: "Soccer", rank: 1, shipped: true,
+    // roadmap so the club-league Phase-2 extension stays visible; it's auto-detected as shipped
+    // (KXWCGAME is in SERIES_CONFIG) → the banner skips it and advances to the next unbuilt market.
+    sport: "Soccer", rank: 1,
     note: "Phase 1 (World Cup) shipped — shadow-only. One Elo goal-rate → score matrix covers totals + team totals + spread + 1X2 + BTTS.",
     knob: "national-team Elo → goal supremacy → DC-Poisson matrix (μ=2.7, C=160, ρ=−0.13); Phase 2 = attack/defence ratings + host bump + club leagues",
     markets: [
@@ -326,8 +335,12 @@ function ModelNext() {
               <div style={{ color:C.dim, fontSize:10.5, margin:"3px 0 5px" }}>First knob: <span style={{ color:C.gray }}>{s.knob}</span></div>
               <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
                 {s.markets.map(m => {
-                  const green = m.t === "alt" || m.badge === "LIVE";
-                  const label = m.badge ?? (m.t === "alt" ? "ALT" : "1-LINE");
+                  // A market with its ticker live in SERIES_CONFIG is shipped → force the LIVE
+                  // badge so the card body self-updates alongside the banner (no manual badge edit
+                  // needed when a market ships). Explicit badges (infra LATER/LIVE) win otherwise.
+                  const badge = SERIES_CONFIG[m.ticker] ? "LIVE" : m.badge;
+                  const green = m.t === "alt" || badge === "LIVE";
+                  const label = badge ?? (m.t === "alt" ? "ALT" : "1-LINE");
                   return (
                   <div key={m.ticker} style={{ display:"flex", alignItems:"center", gap:7, fontSize:11 }}>
                     <span style={{
@@ -581,7 +594,7 @@ function _doThisCandidates(d) {
   // quiet-day action falls through to the next thing actually buildable now.
   const next = [...MODEL_NEXT]
     .sort((a,b) => a.rank - b.rank)
-    .find(s => (!s.infra && !s.shipped) || s.markets?.some(m => m.badge === "NEXT"));
+    .find(s => (!s.infra && !_isShippedRoadmapEntry(s)) || s.markets?.some(m => m.badge === "NEXT"));
   if (next) {
     const nextItem = next.markets?.find(m => m.badge === "NEXT");
     const label = next.infra && nextItem ? `Build ${nextItem.ticker}` : `Build ${next.sport}`;
