@@ -593,14 +593,35 @@ function _doThisCandidates(d) {
   return out;
 }
 function DoThisBanner({ d }) {
+  const [copied, setCopied] = React.useState(false);
   if (!d || d.notYet || d.error) return null;
   const cands = _doThisCandidates(d);
   if (!cands.length) return null;
   const [primary, ...rest] = cands;
   const color = _TONE[primary.tone] || C.blue;
+  // Plain-text digest for pasting straight into a chat session as the next prompt.
+  const copyText = [
+    `Do this today: ${primary.label}`,
+    primary.why,
+    rest.length ? `Then: ${rest.map(r => r.short).join(" · ")}` : null,
+  ].filter(Boolean).join("\n");
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(copyText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch { /* clipboard blocked (insecure context / denied) — no-op */ }
+  };
   return (
     <div style={{ background:`${color}14`, border:`1px solid ${color}66`, borderRadius:8, padding:"10px 14px", marginBottom:14 }}>
-      <div style={{ color:C.gray, fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:5 }}>Do this today</div>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, marginBottom:5 }}>
+        <span style={{ color:C.gray, fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5 }}>Do this today</span>
+        <button onClick={onCopy} title="Copy as next-prompt input" style={{
+          cursor:"pointer", fontSize:9.5, fontWeight:700, letterSpacing:0.3, textTransform:"uppercase",
+          color: copied ? C.green : color, background:"transparent",
+          border:`1px solid ${copied ? C.green : color}66`, borderRadius:4, padding:"2px 7px",
+        }}>{copied ? "✓ Copied" : "Copy"}</button>
+      </div>
       <div style={{ color, fontSize:15, fontWeight:700 }}>▶ {primary.label}</div>
       {primary.why && <div style={{ color:C.text, fontSize:12, marginTop:3, lineHeight:1.4 }}>{primary.why}</div>}
       {rest.length > 0 && (
