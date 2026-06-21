@@ -268,16 +268,16 @@ const MODEL_NEXT = [
     ],
   },
   {
-    sport: "Soccer", rank: 1,
-    note: "Richest alt-line surface; one goal-rate estimate covers totals + team totals + spread + 1X2.",
-    knob: "team goal rate (attack/defense, home/away, form-shrunk) → bivariate-Poisson joint",
+    // Soccer Phase 1 (World Cup) SHIPPED 2026-06-21 — shadow-only, one Elo-derived Dixon–Coles
+    // Poisson matrix per game feeds all 5 families (1X2/total/teamTotal/spread/BTTS). Kept on the
+    // roadmap as a SHIPPED/Phase-2 entry so the club-league extension stays visible; `shipped`
+    // takes it out of the banner's "build next" selection (the next unbuilt market wins instead).
+    sport: "Soccer", rank: 1, shipped: true,
+    note: "Phase 1 (World Cup) shipped — shadow-only. One Elo goal-rate → score matrix covers totals + team totals + spread + 1X2 + BTTS.",
+    knob: "national-team Elo → goal supremacy → DC-Poisson matrix (μ=2.7, C=160, ρ=−0.13); Phase 2 = attack/defence ratings + host bump + club leagues",
     markets: [
-      { t: "alt", ticker: "KXEPLTOTAL", title: "Total Goals — EPL / La Liga / Serie A / Bundesliga / Ligue 1 / MLS / UCL" },
-      { t: "alt", ticker: "KXEPLSPREAD", title: "Spread (Asian handicap) — all majors" },
-      { t: "alt", ticker: "KXEPLTEAMTOTAL", title: "Team Total" },
-      { t: "alt", ticker: "KXEPL1HTOTAL", title: "1st-Half Total / Spread" },
-      { t: "single", ticker: "KXEPLGAME", title: "Game result (1X2)" },
-      { t: "single", ticker: "KXEPLBTTS", title: "Both Teams To Score" },
+      { t: "single", badge: "LIVE", ticker: "KXWCGAME", title: "World Cup — 1X2 / total / team total / spread / BTTS (all 5 live in shadow)" },
+      { t: "alt", badge: "LATER", ticker: "KXEPLTOTAL", title: "Club leagues (EPL / La Liga / Serie A / Bundesliga / MLS / UCL) — Phase 2, offseason now; needs club Elo" },
     ],
   },
   {
@@ -577,11 +577,11 @@ function _doThisCandidates(d) {
       short:`${changes.length} model change${changes.length>1?"s":""}` });
   }
   // 3 — build the next market on the roadmap (lowest rank wins; for the infra row, name its NEXT
-  // item). Skip an infra row whose work is all shipped or data-gated (no NEXT badge) so the
+  // item). Skip an infra/shipped row whose work is all done or data-gated (no NEXT badge) so the
   // quiet-day action falls through to the next thing actually buildable now.
   const next = [...MODEL_NEXT]
     .sort((a,b) => a.rank - b.rank)
-    .find(s => !s.infra || s.markets?.some(m => m.badge === "NEXT"));
+    .find(s => (!s.infra && !s.shipped) || s.markets?.some(m => m.badge === "NEXT"));
   if (next) {
     const nextItem = next.markets?.find(m => m.badge === "NEXT");
     const label = next.infra && nextItem ? `Build ${nextItem.ticker}` : `Build ${next.sport}`;
