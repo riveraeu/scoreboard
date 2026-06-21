@@ -70,7 +70,7 @@ export const WC_TEAMS = {
   POR: { name: "Portugal",               elo: "PT" },
   QAT: { name: "Qatar",                  elo: "QA" },
   RSA: { name: "South Africa",           elo: "ZA" },
-  SCO: { name: "Scotland",               elo: "SC" },
+  SCO: { name: "Scotland",               elo: "SQ" }, // eloratings uses SQ — "SC" is Seychelles (ISO-2)
   SEN: { name: "Senegal",                elo: "SN" },
   SUI: { name: "Switzerland",            elo: "CH" },
   SWE: { name: "Sweden",                 elo: "SE" },

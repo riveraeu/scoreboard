@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import {
   lambdasFromElo, buildScoreMatrix, prob1x2, probTotalOver, probTeamOver,
   probSpreadCover, probBtts, parseEloTsv, eloForTeam, espnToCanonical,
-  SOCCER_MU_TOTAL,
+  SOCCER_MU_TOTAL, WC_TEAMS,
 } from "./soccer.js";
 
 const sum = (M) => M.reduce((s, row) => s + row.reduce((a, b) => a + b, 0), 0);
@@ -89,6 +89,16 @@ test("parseEloTsv + eloForTeam: pull a rating by canonical code", () => {
   assert.equal(eloForTeam(idx, "ESP"), 2129); // ESP → elo code ES
   assert.equal(eloForTeam(idx, "IRI"), 1756); // IRI → IR
   assert.equal(eloForTeam(idx, "USA"), null);  // not in this TSV
+});
+
+test("WC_TEAMS elo codes are distinct and pin the non-ISO home-nation codes", () => {
+  // Guard against the SC=Seychelles trap: an elo code can EXIST in the TSV yet be the wrong
+  // nation. England/Scotland use eloratings-specific codes, not ISO-3166 alpha-2.
+  assert.equal(WC_TEAMS.ENG.elo, "EN");
+  assert.equal(WC_TEAMS.SCO.elo, "SQ"); // NOT "SC" (Seychelles)
+  const elos = Object.values(WC_TEAMS).map((t) => t.elo);
+  assert.equal(new Set(elos).size, elos.length, "elo codes must be unique (no two teams share one)");
+  assert.equal(Object.keys(WC_TEAMS).length, 48);
 });
 
 test("espnToCanonical: abbr passthrough, overrides, and name fallback", () => {
