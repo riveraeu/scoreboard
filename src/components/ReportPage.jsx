@@ -515,7 +515,7 @@ function MorningBriefing({ shadowReportData, shadowReportLoading, fetchShadowRep
     return (
       <div style={{ padding:12, display:"flex", gap:10, alignItems:"center" }}>
         <span style={{ color:C.dim, fontSize:12 }}>
-          {d?.error ? `Error: ${d.error}` : "Report not yet generated — cron runs at 9:30am PT. Click Refresh to generate now."}
+          {d?.error ? `Error: ${d.error}` : "Report not yet generated — cron runs at 6am PT. Click Refresh to generate now."}
         </span>
         <button onClick={() => fetchShadowReport(true)} style={{ background:"transparent", border:`1px solid ${C.border}`, borderRadius:4, color:C.gray, fontSize:11, padding:"2px 8px", cursor:"pointer" }}>Refresh</button>
       </div>

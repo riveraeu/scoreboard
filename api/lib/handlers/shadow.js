@@ -717,7 +717,9 @@ async function handleShadowPregameSnap({ path, request, env, cache }) {
 
 // ── Shadow Morning Report ─────────────────────────────────────────────────────
 // GET /api/shadow-report
-// Cron: 30 16 * * * (9:30am PT) — after shadow-snapshot (8:05am PT) has run.
+// Cron: 0 13 * * * (6:00am PT, moved from 9:30am on 2026-06-21) — after shadow-snapshot
+// (8:05am PT) but BEFORE the 7am-PT resolver, so the auto-gen often shows yesterday
+// <90% resolved → INCOMPLETE_REPORT_TTL (15min) self-heals once the 7am resolver finishes.
 // Auth: CRON_SECRET (generate + cache) or ADMIN_KEY / JWT (read).
 // Queries 5 parallel Neon aggregations and caches in KV (25h).
 // ?bust=1 forces regeneration even when a cached report exists.
@@ -1003,7 +1005,7 @@ async function handleShadowReport({ path, request, env, cache }) {
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
     .toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
   // Yesterday in PT — the recap scopes to games played yesterday (pick.gameDate). Report runs
-  // 9:30am PT, well clear of the midnight boundary, so a flat 24h subtraction is safe.
+  // 6am PT, well clear of the midnight boundary, so a flat 24h subtraction is safe.
   const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000)
     .toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
 
