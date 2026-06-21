@@ -26,6 +26,14 @@ export const SERIES_CONFIG = {
   // of parseGameTeams. Shadow-only: `tennis|match` is intentionally NOT in the category gate.
   KXATPMATCH:  { sport: "tennis", league: "atp", tour: "atp", stat: "match", col: "ML", gameType: "tennisMatch" },
   KXWTAMATCH:  { sport: "tennis", league: "wta", tour: "wta", stat: "match", col: "ML", gameType: "tennisMatch" },
+  // Soccer — FIFA World Cup. One Elo-derived score matrix per game feeds all five families
+  // (api/lib/tonight/soccer.js). The `soccer` gameType routes these to the dedicated soccer
+  // emit path (not parseGameTeams). Shadow-only: `soccer|*` is intentionally NOT in the gate.
+  KXWCGAME:      { sport: "soccer", league: "wc", stat: "game",      col: "ML",  gameType: "soccer", subtype: "game"      },
+  KXWCTOTAL:     { sport: "soccer", league: "wc", stat: "total",     col: "G",   gameType: "soccer", subtype: "total"     },
+  KXWCSPREAD:    { sport: "soccer", league: "wc", stat: "spread",    col: "G",   gameType: "soccer", subtype: "spread"    },
+  KXWCTEAMTOTAL: { sport: "soccer", league: "wc", stat: "teamTotal", col: "G",   gameType: "soccer", subtype: "teamTotal" },
+  KXWCBTTS:      { sport: "soccer", league: "wc", stat: "btts",      col: "G",   gameType: "soccer", subtype: "btts"      },
   // Game totals
   KXMLBTOTAL:     { sport: "mlb",  league: "mlb",  stat: "totalRuns",   col: "R",   gameType: "total"     },
   KXNBATOTAL:     { sport: "nba",  league: "nba",  stat: "totalPoints", col: "PTS", gameType: "total"     },

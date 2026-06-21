@@ -7,6 +7,7 @@ import { neonQuery, neonBatchUpsert, neonBatchResolve, neonBatchPrePriceUpdate, 
 import { errorResponse, jsonResponse } from "../utils.js";
 import { verifyJWT } from "../auth-utils.js";
 import { fetchCompletedMatches } from "../tennis.js";
+import { fetchWcFinals } from "../soccer.js";
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER } from "../config.js";
 import { passesCategoryGate } from "../category-gate.js";
 
@@ -414,10 +415,12 @@ async function handleShadowResolver({ path, request, env }) {
     return jsonResponse({ ok: true, resolved: 0, skipped: 0, noData: 0, durationMs: Date.now() - t0 });
   }
 
-  // Tennis match-winner rows resolve via the ESPN tennis scoreboard (player-vs-player, no
-  // home/away team key), so split them out of the team-based /api/live path below.
+  // Tennis match-winner + soccer rows resolve via their own ESPN scoreboards (not the team-based
+  // /api/live path, which doesn't know tennis players or soccer's 5 market families + draws), so
+  // split them out of teamRows below.
   const tennisRows = rows.filter(r => r.sport === "tennis");
-  const teamRows = rows.filter(r => r.sport !== "tennis");
+  const soccerRows = rows.filter(r => r.sport === "soccer");
+  const teamRows = rows.filter(r => r.sport !== "tennis" && r.sport !== "soccer");
 
   // Build unique game keys per date. Key: sport:away:home[@gameTime] — matches /api/live format.
   const keysByDate = new Map(); // game_date → Set<rawKey>
@@ -571,6 +574,63 @@ async function handleShadowResolver({ path, request, env }) {
         const found = matches.find(mt => mt.players.some(p => sameName(_fuzzyName(p), pick)));
         if (!found || !found.winner) { noData++; continue; } // match not final / pick not found yet
         updates.push({ id: r.id, won: sameName(_fuzzyName(found.winner), pick), actualValue: null });
+      }
+    }
+  }
+
+  // ── Soccer (World Cup) resolution ── grade all 5 families off the ESPN fifa.world scoreboard
+  // at the 90'+stoppage final (matches Kalshi settlement — excludes ET/penalties). We read the
+  // goal map per game (canonical FIFA code → goals) and resolve alignment-independently: totals,
+  // team totals, spreads, BTTS, and the 3-way 1X2 (a draw is a real settled outcome).
+  if (soccerRows.length) {
+    const dateOf = (r) => r.game_date
+      || (r.game_time ? new Date(r.game_time).toISOString().slice(0, 10) : null)
+      || (r.snapshot_date ? new Date(r.snapshot_date).toISOString().slice(0, 10) : null);
+    const byDate = new Map(); // date → rows
+    for (const r of soccerRows) {
+      const date = dateOf(r);
+      if (!date) { noData++; continue; }
+      if (!byDate.has(date)) byDate.set(date, []);
+      byDate.get(date).push(r);
+    }
+    const finalsByDate = new Map();
+    await Promise.all([...byDate.keys()].map(async (date) => {
+      finalsByDate.set(date, await fetchWcFinals(date.replace(/-/g, "")));
+    }));
+    for (const [date, rws] of byDate) {
+      const finals = finalsByDate.get(date) || [];
+      for (const r of rws) {
+        // Find the game by the unordered {home,away} pair, then read goals per canonical code.
+        const game = finals.find(g => g.codes[r.home_team] != null && g.codes[r.away_team] != null);
+        if (!game || !game.final) { noData++; continue; } // not played / not final yet
+        const gh = game.codes[r.home_team], ga = game.codes[r.away_team];
+        const th = parseFloat(r.threshold);
+        const isUnder = r.direction === "under";
+        let won = null, actual = null;
+        if (r.stat === "game") {
+          // 1X2 — pick_team is a FIFA code or "TIE". Settles on the 90' result.
+          if (r.pick_team === "TIE") won = gh === ga;
+          else won = game.codes[r.pick_team] != null && game.codes[r.pick_team] > (r.pick_team === r.home_team ? ga : gh);
+        } else if (r.stat === "total") {
+          actual = gh + ga;
+          won = isUnder ? actual < th : actual >= th;
+        } else if (r.stat === "teamTotal") {
+          actual = game.codes[r.scoring_team];
+          if (actual == null) { noData++; continue; }
+          won = isUnder ? actual < th : actual >= th;
+        } else if (r.stat === "spread") {
+          // "favored team wins by more than `threshold` goals" — over = covers, under = doesn't.
+          const fav = r.pick_team;
+          if (game.codes[fav] == null) { noData++; continue; }
+          const margin = game.codes[fav] - (fav === r.home_team ? ga : gh);
+          actual = margin;
+          const covered = margin > th;
+          won = isUnder ? !covered : covered;
+        } else if (r.stat === "btts") {
+          const btts = gh >= 1 && ga >= 1;
+          won = isUnder ? !btts : btts;
+        } else { noData++; continue; }
+        updates.push({ id: r.id, won, actualValue: actual });
       }
     }
   }
@@ -776,6 +836,11 @@ const FORMULA_CUTOFFS = {
   "nhl|spread":     "2026-05-29",
   "nhl|ml":         "2026-05-29",
   "tennis|match":   "2026-06-13",
+  "soccer|game":      "2026-06-21", // WC Phase 1 — Elo→λ→DC-Poisson matrix, data starts here
+  "soccer|total":     "2026-06-21",
+  "soccer|teamTotal": "2026-06-21",
+  "soccer|spread":    "2026-06-21",
+  "soccer|btts":      "2026-06-21",
   "wnba|points":    "2026-05-28", // injury OffRtg piecewise (last broad λ change)
   "wnba|rebounds":  "2026-05-28",
   "wnba|assists":   "2026-05-28",

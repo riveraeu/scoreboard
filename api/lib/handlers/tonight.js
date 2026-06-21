@@ -23,6 +23,8 @@ import { emitAllMlAndSpread } from "../tonight/ml-spread.js";
 import { emitGameTotalPlays } from "../tonight/game-totals.js";
 import { emitPropPlays } from "../tonight/props.js";
 import { emitTennisMatchPlays } from "../tonight/tennis-match.js";
+import { emitSoccerPlays } from "../tonight/soccer.js";
+import { WC_TEAMS } from "../soccer.js";
 
 const __defProp = Object.defineProperty;
 const __name = (target, value) => __defProp(target, "name", { value, configurable: true });
@@ -217,6 +219,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
         const teamTotalMarkets = []; // single-team score markets (KXMLBTEAMTOTAL, KXNBATEAMTOTAL)
         const spreadMarkets = []; // MLB run-line / spread markets (KXMLBSPREAD) — line = strike, marginTeam = win-by side
         const tennisMatchMarkets = []; // ATP/WTA match-winner — every priced side (favorite + dog), grouped by event in emit
+        const soccerMarkets = []; // WC — every priced side across all 5 families, grouped by event in emit
         const globalSeen = /* @__PURE__ */ new Set();
         for (let i = 0; i < seriesTickers.length; i++) {
           const ticker = seriesTickers[i];
@@ -259,6 +262,58 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               }
               const _tAO = _tPct >= 50 ? Math.round(-(_tPct / (100 - _tPct)) * 100) : Math.round((100 - _tPct) / _tPct * 100);
               tennisMatchMarkets.push({ gameType: "tennisMatch", sport, tour: cfg.tour, eventTicker: m.event_ticker, player: _tPick, opponentRaw: _tOpp, matchup: _tMatchup, kalshiPct: _tPct, americanOdds: _tAO, kalshiVolume: _tVol, gameDate: _tGameDate, _ticker: m.ticker, _yesAsk: _tYesAsk, _depth: m._depth });
+              continue;
+            }
+            // ── Soccer (World Cup) branch ── 5 market families, all keyed by event_ticker. The
+            // event segment encodes date + the two FIFA codes (3+3), e.g. KXWCTOTAL-26JUN21BELIRI
+            // → 2026-06-21, home BEL / away IRI (Kalshi lists home first). game/btts are binary
+            // (no floor_strike); total/teamTotal/spread carry floor_strike. Collect every priced
+            // side; emitSoccerPlays groups by event and projects all families off one matrix.
+            if (cfg.gameType === "soccer") {
+              const _scSub = cfg.subtype;
+              const _scYesAsk = parseFloat(m.yes_ask_dollars) || 0;
+              const _scNoAsk = parseFloat(m.no_ask_dollars) || 0;
+              const _scLast = parseFloat(m.last_price_dollars) || 0;
+              const _scYesBid = parseFloat(m.yes_bid_dollars) || 0;
+              const _scPrice = (_scYesAsk >= 0.98 && _scYesBid === 0 && _scLast > 0) ? _scLast : (_scYesAsk > 0 ? _scYesAsk : _scLast);
+              if (_scPrice === 0) continue; // no live book — skip (books fill near kickoff)
+              const _scYesPct = Math.round(_scPrice * 100);
+              const _scNoPct = _scNoAsk > 0 ? Math.round(_scNoAsk * 100) : (100 - _scYesPct);
+              const _scVol = parseInt(m.volume_fp) || parseInt(m.volume) || 0;
+              // event segment → date + teams (3+3). Home = first code (Kalshi "A vs B" order).
+              const _scSeg = (m.event_ticker || "").split("-")[1] || "";
+              const _scDateSeg = _scSeg.slice(0, 7);
+              const _scTeamsSeg = _scSeg.slice(7);
+              let _scGameDate = null;
+              if (_scDateSeg.length >= 7) {
+                const _KMONT = { JAN: "01", FEB: "02", MAR: "03", APR: "04", MAY: "05", JUN: "06", JUL: "07", AUG: "08", SEP: "09", OCT: "10", NOV: "11", DEC: "12" };
+                const _scMo = _KMONT[_scDateSeg.slice(2, 5).toUpperCase()];
+                if (_scMo) _scGameDate = `20${_scDateSeg.slice(0, 2)}-${_scMo}-${_scDateSeg.slice(5, 7)}`;
+              }
+              const _scHome = _scTeamsSeg.slice(0, 3), _scAway = _scTeamsSeg.slice(3, 6);
+              if (!WC_TEAMS[_scHome] || !WC_TEAMS[_scAway]) continue; // unknown teams → drop
+              const _scAO = (pct) => pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
+              const _scSuffix = (m.ticker || "").split("-").pop();
+              const _scCommon = { subtype: _scSub, sport, eventTicker: m.event_ticker, homeCode: _scHome, awayCode: _scAway, gameDate: _scGameDate, kalshiVolume: _scVol, _ticker: m.ticker, _depth: m._depth };
+              if (_scSub === "game") {
+                let _side, _sideCode;
+                if (_scSuffix === "TIE") { _side = "tie"; _sideCode = "TIE"; }
+                else if (_scSuffix === _scHome) { _side = "home"; _sideCode = _scHome; }
+                else if (_scSuffix === _scAway) { _side = "away"; _sideCode = _scAway; }
+                else continue;
+                soccerMarkets.push({ ..._scCommon, side: _side, sideCode: _sideCode, kalshiPct: _scYesPct, noKalshiPct: _scNoPct, americanOdds: _scAO(_scYesPct) });
+              } else if (_scSub === "btts") {
+                soccerMarkets.push({ ..._scCommon, yesPct: _scYesPct, noPct: _scNoPct, yesAO: _scAO(_scYesPct), noAO: _scAO(_scNoPct) });
+              } else {
+                const _scFloor = parseFloat(m.floor_strike);
+                if (isNaN(_scFloor)) continue;
+                let _scTeam = null;
+                if (_scSub === "teamTotal" || _scSub === "spread") {
+                  _scTeam = _scSuffix.replace(/\d+$/, "");
+                  if (!WC_TEAMS[_scTeam]) continue;
+                }
+                soccerMarkets.push({ ..._scCommon, line: _scFloor, teamCode: _scTeam, yesPct: _scYesPct, noPct: _scNoPct, yesAO: _scAO(_scYesPct), noAO: _scAO(_scNoPct) });
+              }
               continue;
             }
             const strike = parseFloat(m.floor_strike);
@@ -1488,6 +1543,14 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           tennisMatchMarkets, tennisPlays, dropped, isDebug, cutoffStr,
           cache: CACHE2, isBustCache,
         });
+        // ── Soccer (World Cup) — Phase 1, shadow-only. Like tennis, emits into its own array
+        // (NOT `plays`) so soccer bypasses dedup/gameTime-filter/card-builder; merged into
+        // shadow:staging only. All 5 families project off one Elo-derived matrix per game.
+        const soccerPlays = [];
+        await emitSoccerPlays({
+          soccerMarkets, soccerPlays, dropped, isDebug, cutoffStr,
+          cache: CACHE2, isBustCache,
+        });
         // Drop plays whose scheduled gameTime has already passed — pre-game market is closed,
         // and our model truePct is built on pre-game inputs so it's no longer valid in-game.
         // Plays without gameTime are kept (we already gate by gameDate earlier).
@@ -1600,7 +1663,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           }
           // Tennis plays live in their own array (kept out of `plays` to bypass dedup/frontend);
           // merge them into the staging `plays` so shadow-snapshot logs them like any other play.
-          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays: [...plays, ...tennisPlays], dropped, schedule: _schedCounts, writtenAt: Date.now() }), { expirationTtl: 21600 }).catch(() => {});
+          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays: [...plays, ...tennisPlays, ...soccerPlays], dropped, schedule: _schedCounts, writtenAt: Date.now() }), { expirationTtl: 21600 }).catch(() => {});
         }
         if (isDebug) {
           const nbaGlLabels = Object.fromEntries(Object.entries(playerGamelogs).filter(([k]) => k.startsWith("nba|")).map(([k, gl]) => [k, gl?.ul ?? null]));
@@ -1614,7 +1677,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             meta: kalshiSnapMeta,
             ageMs: kalshiSnapMeta?.lastRunAt ? Date.now() - kalshiSnapMeta.lastRunAt : null,
           };
-          return jsonResponse({ plays: debugPlays, dropped: debugDropped, preDropped: debugPreDropped, tennisPlays, tennisMarketCount: tennisMatchMarkets.length, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
+          return jsonResponse({ plays: debugPlays, dropped: debugDropped, preDropped: debugPreDropped, tennisPlays, tennisMarketCount: tennisMatchMarkets.length, soccerPlays, soccerMarketCount: soccerMarkets.length, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
         }
         // Build mlbMeta: pitchers, ML odds, umpires, weather — keyed by team abbr or "home|away"
         // Pitcher entries: { name, id, era, wins, losses }. MLB Stats API (pitcherInfoByTeam) preferred

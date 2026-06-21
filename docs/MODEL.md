@@ -61,6 +61,27 @@ UI display + the `push/notify` cron are restricted to categories with confirmed 
 - `mlb|hits` — re-added 2026-06-11; shipped with wrong series ticker `KXMLBHITS`, real ticker `KXMLBHIT` (fixed 2026-06-12, so shadow data starts 6/12); check `tune:gate` ~mid July.
 - `mlb|totalBases` — added 2026-06-12, `KXMLBTB`; `tbTailPct` compound-binomial extension of the hits model; **the only UNDER-direction player prop** (Kalshi lists 2+..6+ only so the YES side never reaches [67,91] — plays bet the NO side, stored over-framed with `direction:"under"` per the totals convention); resolves via statsapi merge `/api/live?tb=1` because ESPN's box score has no TB; check `tune:gate` ~late July.
 - `tennis|match` — ATP+WTA match-winner, added 2026-06-13, `KXATPMATCH`/`KXWTAMATCH`; Phase-1 ESPN-rankings logistic model; resolves off the ESPN tennis scoreboard, NOT `/api/live`; coverage limited to players in ESPN's ~top-150 rankings (unranked either side → abstain, the main argument for Phase 2 surface Elo); tennis books fill near match time so live capture is sparse; check `tune:gate` once volume accrues.
+- `soccer|{game,total,teamTotal,spread,btts}` — FIFA World Cup, added 2026-06-21, `KXWC{GAME,TOTAL,SPREAD,TEAMTOTAL,BTTS}`; Phase-1 one-matrix model (see § Soccer below); resolves off the ESPN `fifa.world` scoreboard, NOT `/api/live`; coverage limited to the 48 WC nations (Elo-rated); check `tune:gate` per category once volume accrues.
+
+---
+
+## Soccer (World Cup) — Phase 1, shadow-only (2026-06-21)
+
+`api/lib/soccer.js` + `api/lib/tonight/soccer.js`. The whole thesis: **one per-game goal-rate pair → one score matrix → every market.** Mirrors tennis Phase 1 (minimal model, a few provisional knobs the first shadow week calibrates, richer Phase 2).
+
+**λ from Elo.** National-team World Football Elo (`eloratings.net/World.tsv`, 12h KV cache). `supremacy = (eloHome − eloAway + homeAdv) / SOCCER_ELO_DIV`; `λ_home = (μ + supremacy)/2`, `λ_away = (μ − supremacy)/2`, each floored at 0.15. Constants `SOCCER_MU_TOTAL=2.7` (WC group-stage baseline total), `SOCCER_ELO_DIV=160`, `homeAdv=0` (WC 2026 neutral fields; host bump deferred). **C=160 was anchored to reproduce the standard Elo win-expectancy curve `1/(10^(-Δ/400)+1)` — NOT fit to Kalshi prices** (fitting to market would launder the market's edge into the model). Model `We = P(home)+0.5·P(draw)` tracks the Elo curve to within ~0.01 over Δ∈[0,300].
+
+**Score matrix.** `buildScoreMatrix(λ_home, λ_away, ρ)` — independent Poisson(λ_home)×Poisson(λ_away) over goals 0..10, with a **Dixon–Coles** low-score correction (`SOCCER_DC_RHO=-0.13`) on the four cells {0-0,0-1,1-0,1-1} so draw/low-score mass is right; then normalized. `ρ` is the one extra knob beyond λ.
+
+**Five projections off the one matrix:** `prob1x2` (lower-tri/diag/upper-tri → home/draw/away), `probTotalOver(line)`, `probTeamOver(line,isHome)`, `probSpreadCover(line,favIsHome)` ("wins by more than line"), `probBtts`.
+
+**Emit (`emitSoccerPlays`).** Groups priced sides by `event_ticker`, builds the matrix once, emits every side priced in [67,91] into a dedicated `soccerPlays` array (bypasses dedup/gameTime-filter/card-builder; merged into `shadow:staging` only). The 1X2 is a 3-way pick (`direction:null`, one row per in-window side incl. a real draw side); total/teamTotal/spread/btts follow game-totals' OVER/UNDER convention (`truePct` always the OVER prob, UNDER row adds `noTruePct`).
+
+**Parse (tonight.js soccer branch).** Event segment encodes date + the two FIFA codes (3+3), e.g. `KXWCTOTAL-26JUN21BELIRI` → 2026-06-21, home `BEL` / away `IRI` (Kalshi lists home first). game/btts are binary (side / yes-no); total/teamTotal/spread carry `floor_strike`; teamTotal/spread team comes from the ticker suffix (`BEL2` → `BEL`).
+
+**Settlement & resolution.** Verified against Kalshi `rules_primary`: **all WC markets settle on 90 minutes + stoppage, excluding ET/penalties** — so the regulation score matrix IS the settlement object, and a knockout 1X2 settles as a draw if level at 90'. The resolver (`fetchWcFinals` → ESPN `fifa.world` 90' final, `STATUS_FULL_TIME`) reads a `{canonicalCode: goals}` map per game and resolves alignment-independently. `espnToCanonical` maps ESPN abbrs (overrides ALG→DZA, HAI→HTI, IRN→IRI; name fallback for the rest). Knockout caveat (~Jul 4+): confirm ESPN's FT field is the 90' score, not a post-ET aggregate.
+
+**Phase 2** (parked): per-team attack/defence ratings (vs a single national Elo), host/home advantage, surface for club leagues via club Elo (`clubelo.com`), and the offseason club series (EPL/LaLiga/SerieA/Bundesliga/MLS — listed but offseason now).
 
 ---
 
