@@ -889,6 +889,58 @@ ORDER BY COUNT(*) DESC`;
     const sinceDefault = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
       .toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
     const since = params.get("since") || sinceDefault;
+
+    // Residual-by-dimension raw-row export (Phase 2 model triage). When ?residual=<sport|stat>
+    // is set, return the raw resolved rows for ONE category (formula-floored via the caller's
+    // `since`) so scripts/tune/residual-by-dimension.js can compute per-play residuals and slice
+    // by every stored dimension (native cols + features JSONB) in JS — the dimension set varies
+    // per category, so the flexible bucketing lives in the CLI, not SQL. Honesty population by
+    // default: dc_qualified + threshold_rank=1. Knobs: dcQualified=0, thresholdRank=any|<n>,
+    // priceMin/priceMax (bet-side).
+    if (params.get("residual")) {
+      const rCat = params.get("residual");
+      const [rSport, rStat] = rCat.split("|");
+      if (!rSport || !rStat) return errorResponse("residual requires category as 'sport|stat'", 400);
+      const rDcQual = params.get("dcQualified") !== "0";
+      const rRankRaw = params.get("thresholdRank"); // default '1'; 'any' to disable
+      const rPriceMin = parseFloat(params.get("priceMin"));
+      const rPriceMax = parseFloat(params.get("priceMax"));
+      const betPctExpr = "CASE WHEN direction = 'under' THEN no_kalshi_pct ELSE kalshi_pct END";
+
+      const rWhere = [
+        "resolved AND won IS NOT NULL",
+        "snapshot_date >= $1",
+        "sport = $2",
+        "COALESCE(stat, game_type) = $3",
+      ];
+      const rParams = [since, rSport, rStat];
+      if (rDcQual) rWhere.push("dc_qualified");
+      const rankVal = rRankRaw == null ? 1 : (rRankRaw === "any" ? null : parseInt(rRankRaw, 10));
+      if (rankVal != null && Number.isFinite(rankVal)) {
+        rParams.push(rankVal);
+        rWhere.push(`threshold_rank = $${rParams.length}`);
+      }
+      if (Number.isFinite(rPriceMin)) { rParams.push(rPriceMin); rWhere.push(`(${betPctExpr}) >= $${rParams.length}`); }
+      if (Number.isFinite(rPriceMax)) { rParams.push(rPriceMax); rWhere.push(`(${betPctExpr}) <= $${rParams.length}`); }
+
+      const rSql = `
+        SELECT model_true_pct, won, direction, kalshi_pct, no_kalshi_pct, edge, threshold,
+               home_team, away_team, pick_team, scoring_team, game_date, features
+        FROM shadow_plays
+        WHERE ${rWhere.join(" AND ")}
+        ORDER BY snapshot_date`;
+      let rRows;
+      try { rRows = await neonQuery(rSql, rParams, env); }
+      catch (e) { return errorResponse(`Neon query failed: ${e.message}`, 500); }
+      const rOut = (rRows || []).map(r => ({
+        ...r,
+        features: typeof r.features === "string"
+          ? (() => { try { return JSON.parse(r.features); } catch { return null; } })()
+          : (r.features || null),
+      }));
+      return jsonResponse({ category: rCat, since, n: rOut.length, rows: rOut });
+    }
+
     // capRoi knobs: capGate=0 drops the category gate (broaden to the dc+edge universe across
     // all categories for sample size); capEdge sets the edge floor (default 5 = client gate).
     const capGate = params.get("capGate") !== "0";

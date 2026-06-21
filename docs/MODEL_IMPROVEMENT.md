@@ -179,13 +179,24 @@ under-weighted input**, and the sign tells you over- vs. under-modeled. The same
 distinguishes **L2** (dimension is in the formula but mis-weighted) from **L0** (dimension
 is absent entirely).
 
-> This residual-by-dimension slice is **not built yet** (deferred 2026-06-13 — no current
-> category has a post-cutoff miss surviving L1–L5 that would justify it). When one does,
-> build `scripts/tune/residual-by-dimension.js` as a `tune:gate` sibling: pull resolved
-> rows, rank stored dimensions by |mean residual gradient| with per-bucket n, trustworthy
-> per-dimension at the same n≥200 bar. Limitation it can't escape: it only tests
-> dimensions already in the data — a genuinely novel signal (e.g. Statcast pitch-shape)
-> still needs a domain hypothesis **and** new sourcing.
+> This residual-by-dimension slice is **built** (2026-06-21): `npm run tune:residual --
+> --category <sport|stat>` (`scripts/tune/residual-by-dimension.js`, a `tune:gate` sibling).
+> It pulls resolved rows for one category (formula-floored via the category's
+> `FORMULA_CUTOFFS` date; `--since` overrides) from `/api/auth/shadow-analysis?residual=<cat>`,
+> computes per-play residual `r = won − model%`, and slices by every stored dimension —
+> native columns (bet-side price, edge, threshold, pick side, day-of-week) **and**
+> auto-discovered `features` JSONB keys (numeric → quartiles, low-card categorical → grouped).
+> Dimensions are ranked by |mean residual gradient| (the spread of mean residual across
+> buckets clearing the per-bucket floor), trustworthy at total n≥200 **and** ≥2 buckets each
+> n≥30. Each bucket also reports **Brier skill (market − model)** so you act only where the
+> model is sharper than the price — a residual the market also prices is not edge. The sign
+> of a bucket's residual tells over- (`<0`) vs under-modeled (`>0`); whether the fix is **L2**
+> (dimension is already an input → reweight) or **L0** (absent → add it) is the analyst's call
+> from the ranked output. Knobs: `--min-n`, `--bucket-n`, `--rank any`, `--dc 0`, `--top`.
+> Limitation it can't escape: it only tests dimensions already in the data — a genuinely novel
+> signal (e.g. Statcast pitch-shape) still needs a domain hypothesis **and** new sourcing.
+> (As of build day no category has a post-cutoff miss surviving L1–L5, so this is the tool you
+> reach for when one appears, validated end-to-end but not yet against a live actionable miss.)
 
 **WIRING a new input (the 4-step ritual,** worked example: barrel% added 2026-05-25):
 1. **Build** a fetcher → per-entity map (`buildBarrelPct()` in `mlb-hitters.js`). Hard
