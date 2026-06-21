@@ -717,9 +717,10 @@ async function handleShadowPregameSnap({ path, request, env, cache }) {
 
 // ── Shadow Morning Report ─────────────────────────────────────────────────────
 // GET /api/shadow-report
-// Cron: 0 13 * * * (6:00am PT, moved from 9:30am on 2026-06-21) — after shadow-snapshot
-// (8:05am PT) but BEFORE the 7am-PT resolver, so the auto-gen often shows yesterday
-// <90% resolved → INCOMPLETE_REPORT_TTL (15min) self-heals once the 7am resolver finishes.
+// Cron: 0 13 * * * (6:00am PT, moved from 9:30am on 2026-06-21). The final shadow-resolver
+// pass was pulled to 5:50am PT (50 12 UTC) the same day so resolution completes ~10 min
+// before this report → it's born complete. INCOMPLETE_REPORT_TTL (15min) still guards an
+// early ?bust=1/Refresh that lands before resolution is ≥90%.
 // Auth: CRON_SECRET (generate + cache) or ADMIN_KEY / JWT (read).
 // Queries 5 parallel Neon aggregations and caches in KV (25h).
 // ?bust=1 forces regeneration even when a cached report exists.
