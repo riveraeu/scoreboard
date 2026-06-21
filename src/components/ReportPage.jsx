@@ -107,6 +107,15 @@ function HonestyCell({ calib }) {
     {d >= 0 ? `+${d}` : d} {over ? "overconf" : "underconf"}
   </span>;
 }
+// Skill = market-Brier − model-Brier. >0 = the model's probabilities beat the price (headroom);
+// <0 = the market is the sharper estimator (no headroom — the totalRuns/HRR trap). Dim until n≥100.
+function SkillCell({ skill, skillN, modelBrier, marketBrier }) {
+  if (skill == null) return <span style={{ color:C.dim, fontSize:10 }}>—</span>;
+  const ready = (skillN || 0) >= 100;
+  const color = !ready ? C.dim : skill > 0 ? C.green : skill < -0.005 ? C.red : C.gray;
+  return <span title={`model-Brier ${modelBrier ?? "—"} vs market-Brier ${marketBrier ?? "—"} (n=${skillN}). >0 = model sharper than the price.${ready ? "" : " · n<100, not yet trusted"}`}
+    style={{ color, fontSize:10, fontWeight:600, cursor:"help" }}>{skill >= 0 ? "+" : ""}{skill.toFixed(3)}</span>;
+}
 // Per-category calibration bands (model% vs actual) — shown in the expanded detail.
 function CalibBandsTable({ bands }) {
   if (!bands?.length) return <div style={{ color:C.dim, fontSize:10, padding:"2px 0" }}>Not enough resolved plays yet — a truePct band needs ≥5 to score honesty.</div>;
@@ -166,13 +175,20 @@ function ModelBoard({ board }) {
           <td style={{ ...tdB, color:C.gray }}>{w ? `${w.lo}–${w.hi}¢` : "—"}</td>
           <td style={{ ...tdB, color:_roiColorFrac(w?.roi), fontWeight:600 }}>{w ? _pct1(w.roi) : "—"}</td>
           <td style={{ ...tdB, color:r.n>=50?C.text:r.n>=30?C.gray:C.dim }}>{r.n}</td>
+          <td style={tdB}><SkillCell skill={r.skill} skillN={r.skillN} modelBrier={r.modelBrier} marketBrier={r.marketBrier} /></td>
           <td style={tdB}><HonestyCell calib={r.calib} /></td>
         </tr>
         {open && (
-          <tr><td colSpan={7} style={{ padding:"0 8px 6px 22px", background:"#0d1117" }}>
+          <tr><td colSpan={8} style={{ padding:"0 8px 6px 22px", background:"#0d1117" }}>
             {r.doThis?.why && (
               <div style={{ color:_TONE[r.doThis.tone]||C.gray, fontSize:11, margin:"4px 0" }}>
                 ▶ <b>{r.doThis.action}</b>: <span style={{ color:C.text }}>{r.doThis.why}</span>
+              </div>
+            )}
+            {r.skill != null && (
+              <div style={{ color:C.dim, fontSize:10, margin:"2px 0 4px" }}>
+                Brier skill <b style={{ color: (r.skillN>=100) ? (r.skill>0?C.green:r.skill<-0.005?C.red:C.gray) : C.dim }}>{r.skill>=0?"+":""}{r.skill.toFixed(3)}</b>
+                {" "}— model {r.modelBrier ?? "—"} vs market {r.marketBrier ?? "—"} (n={r.skillN}) · {r.skill>0?"model sharper than the price":"market sharper than the model"}{r.skillN<100?" · n<100, not yet trusted":""}
               </div>
             )}
             {r.checklist && (
@@ -199,12 +215,17 @@ function ModelBoard({ board }) {
         One row per model · "Do this" fuses profit (where the money is) + honesty (is the model% right) · current betting window 67–91¢
       </div>
       <table style={tableStyle}>
-        <thead><tr>{["Category","Do this","Bet status","Window","ROI","N","Honesty"].map(h => <th key={h} style={{ ...thB, cursor:h==="N"?"help":undefined }} title={h==="N"?"Plays where the model sees value (edge≥3, dc≥7) across the full price range — no 67–91 / truePct gate. The expanded HONESTY table uses a broader all-resolved population, so its band counts sum higher.":undefined}>{h}</th>)}</tr></thead>
+        <thead><tr>{["Category","Do this","Bet status","Window","ROI","N","Skill","Honesty"].map(h => {
+          const tip = h==="N" ? "Plays where the model sees value (edge≥3, dc≥7) across the full price range — no 67–91 / truePct gate. The expanded HONESTY table uses a broader all-resolved population, so its band counts sum higher."
+            : h==="Skill" ? "Brier head-to-head: market-Brier − model-Brier over all resolved plays. >0 (green) = model sharper than the price (headroom to bet); <0 (red) = market is the sharper estimator (no headroom — don't tune). Dim until n≥100."
+            : undefined;
+          return <th key={h} style={{ ...thB, cursor:tip?"help":undefined }} title={tip}>{h}</th>;
+        })}</tr></thead>
         <tbody>
           {live.map(r => <Row key={r.key} r={r} />)}
           {actionable.map(r => <Row key={r.key} r={r} />)}
           {building.length > 0 && !showBuilding && (
-            <tr><td colSpan={7} style={{ ...tdB, textAlign:"left", color:C.dim, cursor:"pointer" }} onClick={() => setShowBuilding(true)}>
+            <tr><td colSpan={8} style={{ ...tdB, textAlign:"left", color:C.dim, cursor:"pointer" }} onClick={() => setShowBuilding(true)}>
               ▸ {building.length} more thin (n &lt; 20 bettable) — show
             </td></tr>
           )}
@@ -212,12 +233,13 @@ function ModelBoard({ board }) {
         </tbody>
       </table>
       <div style={{ color:C.dim, fontSize:10, marginTop:5, lineHeight:1.55 }}>
-        <b style={{ color:C.text }}>Do this</b> turns two questions into one action — is there a profitable price window (PROFIT), and is the model% honest (HONESTY):
+        <b style={{ color:C.text }}>Do this</b> fuses three reads — is there a profitable price window (PROFIT), is the model% honest (HONESTY), and does the model beat the price (<b style={{ color:C.text }}>Skill</b>):
         <b style={{ color:C.green }}> Add to gate</b> = validated, start betting ·
-        <b style={{ color:C.amber }}>Tune down</b> = model runs too hot and loses ·
-        <b style={{ color:C.gray }}>Stay out — don't tune</b> = underconfident but the market still wins, so de-shrinking would only bet more into a loss ·
+        <b style={{ color:C.amber }}>Tune down</b> = overconfident <i>and</i> has headroom (skill≥0) — trim it ·
+        <b style={{ color:C.gray }}>Stay out</b> = market is the sharper estimator (skill&lt;0) — no headroom, don't tune ·
+        <b style={{ color:C.blue }}>Look deeper</b> = negative but cause unclear — needs residual analysis ·
         <b style={{ color:C.blue }}>Build</b> = positive, just needs more bets.
-        <span style={{ display:"block", marginTop:2 }}>Click a row for its price-band (profit) + calibration (honesty) breakdown.</span>
+        <span style={{ display:"block", marginTop:2 }}><b style={{ color:C.text }}>Skill</b> = market-Brier − model-Brier (&gt;0 model sharper, dim until n≥100). Click a row for its price-band (profit) + calibration (honesty) + Brier breakdown.</span>
       </div>
     </div>
   );
@@ -233,6 +255,15 @@ function ModelBoard({ board }) {
 // v1 (shadow-only) model ships with, per the minimum-viable-input doctrine in
 // docs/MODEL_IMPROVEMENT.md. Frontend constant → edit here, deploys instantly.
 const MODEL_NEXT = [
+  {
+    sport: "Model triage", rank: 0, infra: true,
+    note: "Infra, not a market — sharpen the diagnosis before widening the surface: make /model say which fix each losing category needs, so chat sessions go straight to the right move.",
+    knob: "market-Brier skill per category → forks the NEGATIVE verdict (Stay out vs Tune down vs Look deeper)",
+    markets: [
+      { t: "infra", badge: "LIVE", ticker: "Skill column", title: "Brier skill on the board — does the model beat the price? (market-Brier − model-Brier)" },
+      { t: "infra", badge: "NEXT", ticker: "residual-by-dimension", title: "Phase 2 — slice residuals by stored dims (features JSONB) → upgrade Look deeper into Reweight (L2) / Add input: ⟨dim⟩ (L0)" },
+    ],
+  },
   {
     sport: "Soccer", rank: 1,
     note: "Richest alt-line surface; one goal-rate estimate covers totals + team totals + spread + 1X2.",
@@ -291,19 +322,23 @@ function ModelNext() {
               </div>
               <div style={{ color:C.dim, fontSize:10.5, margin:"3px 0 5px" }}>First knob: <span style={{ color:C.gray }}>{s.knob}</span></div>
               <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
-                {s.markets.map(m => (
+                {s.markets.map(m => {
+                  const green = m.t === "alt" || m.badge === "LIVE";
+                  const label = m.badge ?? (m.t === "alt" ? "ALT" : "1-LINE");
+                  return (
                   <div key={m.ticker} style={{ display:"flex", alignItems:"center", gap:7, fontSize:11 }}>
                     <span style={{
                       fontSize:8.5, fontWeight:700, padding:"1px 5px", borderRadius:3, letterSpacing:0.3,
-                      color: m.t === "alt" ? C.green : C.dim,
-                      background: m.t === "alt" ? "rgba(63,185,80,0.12)" : "transparent",
-                      border: `1px solid ${m.t === "alt" ? "rgba(63,185,80,0.30)" : C.border}`,
+                      color: green ? C.green : C.dim,
+                      background: green ? "rgba(63,185,80,0.12)" : "transparent",
+                      border: `1px solid ${green ? "rgba(63,185,80,0.30)" : C.border}`,
                       minWidth:42, textAlign:"center", flexShrink:0,
-                    }}>{m.t === "alt" ? "ALT" : "1-LINE"}</span>
+                    }}>{label}</span>
                     <span style={{ color:C.text }}>{m.title}</span>
                     <span style={{ color:C.dim, fontSize:9.5, fontFamily:"monospace" }}>{m.ticker}</span>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           ))}

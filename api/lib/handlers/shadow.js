@@ -860,8 +860,10 @@ function _calibSummaryByCat(allBands) {
 // The trap this guards: a model can be provably under-confident (Δ>0) AND still unprofitable (the
 // market beats it) — de-shrinking would only bet more into a loss. So "underconfident" never maps
 // to "tune up" unless there is actually a profitable window. Returns { action, tone, why }.
-function _deriveDoThis(verdict, gated, calib, hint) {
+function _deriveDoThis(verdict, gated, calib, hint, skill = null, skillN = 0) {
   const c = calib || { status: "insufficient", direction: null };
+  // Trust skill only with enough resolved plays; below the bar it's shown but never moves the verdict.
+  const skillReady = skill != null && skillN >= BRIER_MIN_N;
   // Gated = already live via the truePct gate. The price-axis board is a re-analysis still accruing
   // for these, so never tell the user to "Build" something they are actively betting. Only a
   // negative price window moves a live category (NEGATIVE/DEMOTE branches below → Pull from gate).
@@ -875,10 +877,18 @@ function _deriveDoThis(verdict, gated, calib, hint) {
     case "BUILDING":      return { action: "Build", tone: "dim", why: "too few bettable plays yet — accruing" };
     case "NEGATIVE":
       if (gated) return { action: "Pull from gate", tone: "red", why: "currently bet but no longer has a profitable window" };
+      // Skill-aware fork (only when we have a trustworthy Brier read). The market beating the
+      // model on its own probabilities means there is no headroom — tuning down is just hygiene,
+      // not edge recovery (the totalRuns/HRR trap, now detected rather than guessed).
+      if (skillReady && skill < BRIER_SKILL_FLOOR)
+        return { action: "Stay out", tone: "dim", why: `market is the sharper estimator (Brier skill ${skill}) — no headroom; don't tune` };
       if (c.status === "actionable" && c.direction === "over")
-        return { action: "Tune down", tone: "amber", why: `model overconfident (Δ${c.delta}) and losing — trim it so it stops betting these` };
+        return { action: "Tune down", tone: "amber", why: `overconfident (Δ${c.delta})${skillReady ? ` with model-vs-market headroom (skill ${skill})` : ""} — trim it so it stops betting these (or fix in chat)` };
       if (c.direction === "under")
         return { action: "Stay out — don't tune", tone: "dim", why: "underconfident but the market still beats it — de-shrinking would just bet more into a loss" };
+      // Negative, no clear overconfidence signature, model not provably worse → needs diagnosis.
+      if (skillReady)
+        return { action: "Look deeper", tone: "blue", why: "negative but cause unclear — model isn't provably worse than the market; needs residual analysis (Phase 2)" };
       return { action: "Stay out", tone: "dim", why: "no profitable window; calibration is fine — there's simply no edge" };
     default: return { action: "—", tone: "dim", why: null };
   }
@@ -891,6 +901,12 @@ function _deriveDoThis(verdict, gated, calib, hint) {
 // window, NO truePct gate — those are the assumptions under test) so the data sets the bounds.
 const _MIN_N_WINDOW  = 30; // min n to trust a discovered price window
 const _MIN_N_PROMOTE = 50; // min n in the window to promote an ungated category
+// Brier skill (= marketBrier − modelBrier; >0 = model sharper than the price). Drives the
+// NEGATIVE verdict fork: market-sharper → Stay out (no headroom); model-at-least-even +
+// overconfident → Tune down. Only trusted above BRIER_MIN_N resolved plays (Brier is a mean
+// of squared errors → lower variance than a tail hit-rate, but still noisy at small n).
+const BRIER_SKILL_FLOOR = -0.005; // skill below this = market is clearly the sharper estimator
+const BRIER_MIN_N       = 100;    // min resolved n before skill can move the verdict
 
 // Adaptive-merge adjacent 5¢ cells until each display bin clears `target` n — bin WIDTHS come
 // from where the data actually is, not from fixed guesses. Trailing remainder folds left.
@@ -1010,9 +1026,9 @@ async function handleShadowReport({ path, request, env, cache }) {
   const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000)
     .toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
 
-  let catRows, bandRows, clvRows, volRows, picksRows, healthRows, perGameRows, priceHistRows;
+  let catRows, bandRows, clvRows, volRows, picksRows, healthRows, perGameRows, priceHistRows, brierRows;
   try {
-    [catRows, bandRows, clvRows, volRows, picksRows, healthRows, perGameRows, priceHistRows] = await Promise.all([
+    [catRows, bandRows, clvRows, volRows, picksRows, healthRows, perGameRows, priceHistRows, brierRows] = await Promise.all([
       // Q1: Category overview — one row per player/game (threshold_rank=1 dedup).
       // Window floored per-category at the current-formula cutoff (no superseded-formula mixing).
       neonQuery(`
@@ -1180,6 +1196,21 @@ async function handleShadowReport({ path, request, env, cache }) {
         GROUP BY sport, category, price_lo
         ORDER BY sport, category, price_lo
       `, [since], env),
+
+      // Q9: Proper-score head-to-head — model-Brier vs market-Brier per category over the
+      // honesty population (all resolved formula-clean rows, threshold_rank=1; no edge/price
+      // gate). `model_true_pct` is bet-side so it predicts `won` directly; the market bet-side
+      // price is the no-side for UNDERs. skill = market − model (>0 = model sharper than price).
+      // Same math as /api/auth/shadow-calibration?brier=1, surfaced live on the model board.
+      neonQuery(`
+        SELECT sport, COALESCE(stat, game_type) AS category,
+          COUNT(*) AS n,
+          AVG(POWER(model_true_pct/100.0 - (won)::int, 2)) AS model_brier,
+          AVG(POWER((CASE WHEN direction='under' THEN no_kalshi_pct ELSE kalshi_pct END)/100.0 - (won)::int, 2)) AS market_brier
+        FROM shadow_plays
+        WHERE resolved AND won IS NOT NULL AND snapshot_date >= ${_formulaFloorSql("$1")} AND threshold_rank = 1
+        GROUP BY sport, COALESCE(stat, game_type)
+      `, [since], env),
     ]);
   } catch (e) {
     console.error("[shadow-report] query failed:", e?.message);
@@ -1250,6 +1281,17 @@ async function handleShadowReport({ path, request, env, cache }) {
   // The truePct calibration (categories/topBands above) is the separate "is the model honest?"
   // check — NOT a competing profitability axis (calibration ≠ profit, the totalRuns lesson).
   const _catByKey = Object.fromEntries(categories.map(c => [c.key, c]));
+  // Brier head-to-head per category (Q9) — model-vs-market probability quality. skill>0 = model
+  // sharper than the price; the NEGATIVE verdict forks on it (market-sharper → Stay out).
+  const _brierByCat = {};
+  for (const r of (brierRows || [])) {
+    const mb = r.model_brier != null ? parseFloat(Number(r.model_brier).toFixed(4)) : null;
+    const kb = r.market_brier != null ? parseFloat(Number(r.market_brier).toFixed(4)) : null;
+    _brierByCat[`${r.sport}|${r.category}`] = {
+      n: Number(r.n ?? 0), modelBrier: mb, marketBrier: kb,
+      skill: mb != null && kb != null ? parseFloat((kb - mb).toFixed(4)) : null,
+    };
+  }
   const _histByCat = {};
   for (const r of (priceHistRows || [])) {
     const key = `${r.sport}|${r.category}`;
@@ -1311,7 +1353,8 @@ async function handleShadowReport({ path, request, env, cache }) {
     }
 
     const calib = _calibByCat[key] ?? { status: "insufficient", direction: null, delta: null, band: null, n: null };
-    const doThis = _deriveDoThis(verdict, gated, calib, hint);
+    const brier = _brierByCat[key] ?? { n: 0, modelBrier: null, marketBrier: null, skill: null };
+    const doThis = _deriveDoThis(verdict, gated, calib, hint, brier.skill, brier.n);
     // `active` = this truePct slice is in the live category gate right now. Bands are 5-wide and
     // aligned to the gate's 5-boundaries, so the band midpoint membership-tests the gate exactly.
     // Only gated categories produce any active bands (ungated → passesCategoryGate always false).
@@ -1330,6 +1373,7 @@ async function handleShadowReport({ path, request, env, cache }) {
       priceBands: bins,
       verdict, hint, action,
       calib, doThis, calibBands,
+      skill: brier.skill, modelBrier: brier.modelBrier, marketBrier: brier.marketBrier, skillN: brier.n,
       roi: cat?.roi ?? null,
       formulaCutoff: cat?.formulaCutoff ?? null,
       daysInWindow: cat?.daysInWindow ?? null,

@@ -27,6 +27,13 @@ necessary (a miscalibrated model can't have reliable edge) but not sufficient.
     roughly calibrated yet sits **below** the market — the market is the better estimator,
     so HRR has no YES edge despite positive raw band ROI. Calibration looked fine; the
     edge was negative. This is the failure mode this principle exists to catch.
+  - *Now surfaced live (2026-06-21):* the `/model` board carries a **Skill** column
+    (`skill = marketBrier − modelBrier`, per-category, n≥100 to trust) and the NEGATIVE
+    `doThis` verdict forks on it — `skill < −0.005` → **Stay out** (market sharper, no
+    headroom; don't tune), vs **Tune down** only when overconfident *with* headroom. This
+    automates the *display* of the head-to-head; the act-on decision (which layer to fix)
+    is still manual via the ladder below. Phase 2 (`residual-by-dimension`) will upgrade
+    the residual case (**Look deeper**) into L2-reweight vs L0-add-input.
 - **Don't ignore the market as an input.** `_propBlend` shrinks toward season rate, not
   toward the market price. Where the market beats the model, a model⊕market blend is a
   free accuracy gain (standard ensembling). Consider it before adding new raw features.
