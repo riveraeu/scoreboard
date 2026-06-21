@@ -263,7 +263,8 @@ const MODEL_NEXT = [
     knob: "market-Brier skill per category → forks the NEGATIVE verdict (Stay out vs Tune down vs Look deeper)",
     markets: [
       { t: "infra", badge: "LIVE", ticker: "Skill column", title: "Brier skill on the board — does the model beat the price? (market-Brier − model-Brier)" },
-      { t: "infra", badge: "NEXT", ticker: "residual-by-dimension", title: "Phase 2 — slice residuals by stored dims (features JSONB) → upgrade Look deeper into Reweight (L2) / Add input: ⟨dim⟩ (L0)" },
+      { t: "infra", badge: "LIVE", ticker: "tune:residual", title: "Phase 2 CLI — slice residuals by stored dims (features JSONB), ranked by gradient + per-bucket Brier skill (npm run tune:residual)" },
+      { t: "infra", badge: "LATER", ticker: "residual board column", title: "Surface the slice on /model — upgrade Look deeper → Reweight (L2) / Add input: ⟨dim⟩ (L0); gated until a category has a live surviving miss" },
     ],
   },
   {
@@ -575,8 +576,12 @@ function _doThisCandidates(d) {
       why: lead.doThis.why || "model change pending on the board",
       short:`${changes.length} model change${changes.length>1?"s":""}` });
   }
-  // 3 — build the next market on the roadmap (lowest rank wins; for the infra row, name its NEXT item).
-  const next = [...MODEL_NEXT].sort((a,b) => a.rank - b.rank)[0];
+  // 3 — build the next market on the roadmap (lowest rank wins; for the infra row, name its NEXT
+  // item). Skip an infra row whose work is all shipped or data-gated (no NEXT badge) so the
+  // quiet-day action falls through to the next thing actually buildable now.
+  const next = [...MODEL_NEXT]
+    .sort((a,b) => a.rank - b.rank)
+    .find(s => !s.infra || s.markets?.some(m => m.badge === "NEXT"));
   if (next) {
     const nextItem = next.markets?.find(m => m.badge === "NEXT");
     const label = next.infra && nextItem ? `Build ${nextItem.ticker}` : `Build ${next.sport}`;
