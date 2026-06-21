@@ -8,6 +8,7 @@ import { errorResponse, jsonResponse } from "../utils.js";
 import { verifyJWT } from "../auth-utils.js";
 import { fetchCompletedMatches } from "../tennis.js";
 import { fetchWcFinals } from "../soccer.js";
+import { fetchFightResults, matchFightByCodes, normFighterName } from "../mma.js";
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER } from "../config.js";
 import { passesCategoryGate } from "../category-gate.js";
 
@@ -420,7 +421,8 @@ async function handleShadowResolver({ path, request, env }) {
   // split them out of teamRows below.
   const tennisRows = rows.filter(r => r.sport === "tennis");
   const soccerRows = rows.filter(r => r.sport === "soccer");
-  const teamRows = rows.filter(r => r.sport !== "tennis" && r.sport !== "soccer");
+  const fightRows = rows.filter(r => r.sport === "fight");
+  const teamRows = rows.filter(r => r.sport !== "tennis" && r.sport !== "soccer" && r.sport !== "fight");
 
   // Build unique game keys per date. Key: sport:away:home[@gameTime] — matches /api/live format.
   const keysByDate = new Map(); // game_date → Set<rawKey>
@@ -635,6 +637,49 @@ async function handleShadowResolver({ path, request, env }) {
     }
   }
 
+  // ── Fighting (UFC rounds O/U) resolution ── grade "ends before round N" rows off the ESPN MMA
+  // scoreboard. We fetch each date's card once and match the bout by the stored fighter last
+  // names (home_team/away_team), falling back to the event code segment in features. A finish in
+  // round k sets status.period=k; a decision leaves period=scheduled. "ends before round N" wins
+  // iff the bout finished before round N (period < N) — which also handles decisions, since no
+  // threshold exceeds scheduled rounds. direction "under" (reaches round N) is the complement.
+  if (fightRows.length) {
+    const dateOf = (r) => r.game_date
+      || (r.game_time ? new Date(r.game_time).toISOString().slice(0, 10) : null)
+      || (r.snapshot_date ? new Date(r.snapshot_date).toISOString().slice(0, 10) : null);
+    const byDate = new Map(); // date → rows
+    for (const r of fightRows) {
+      const date = dateOf(r);
+      if (!date) { noData++; continue; }
+      if (!byDate.has(date)) byDate.set(date, []);
+      byDate.get(date).push(r);
+    }
+    const cardByDate = new Map();
+    await Promise.all([...byDate.keys()].map(async (date) => {
+      cardByDate.set(date, await fetchFightResults(date.replace(/-/g, "")));
+    }));
+    for (const [date, rws] of byDate) {
+      const fights = cardByDate.get(date) || [];
+      for (const r of rws) {
+        const a = normFighterName(r.home_team), b = normFighterName(r.away_team);
+        let fight = fights.find(f => {
+          const set = (f.lastNames || []).map(normFighterName);
+          return set.includes(a) && set.includes(b);
+        });
+        if (!fight) {
+          let codeSeg = null;
+          try { const ff = typeof r.features === "string" ? JSON.parse(r.features) : r.features; codeSeg = ff?.eventCodes || null; } catch {}
+          if (codeSeg) fight = matchFightByCodes(codeSeg, fights);
+        }
+        if (!fight || !fight.final || fight.finishRound == null) { noData++; continue; } // not fought / not final yet
+        const n = parseFloat(r.threshold);
+        const endsBefore = fight.finishRound < n;
+        const won = r.direction === "under" ? !endsBefore : endsBefore;
+        updates.push({ id: r.id, won, actualValue: fight.finishRound });
+      }
+    }
+  }
+
   if (updates.length) await neonBatchResolve(updates, env);
 
   console.log(`[shadow-resolver] resolved=${updates.length} skipped=${skipped} noData=${noData} games=${liveByKey.size} durationMs=${Date.now() - t0}`);
@@ -841,6 +886,7 @@ const FORMULA_CUTOFFS = {
   "soccer|teamTotal": "2026-06-21",
   "soccer|spread":    "2026-06-21",
   "soccer|btts":      "2026-06-21",
+  "fight|rounds":   "2026-06-21", // UFC Phase 1 — weight-class finish-rate → duration CDF
   "wnba|points":    "2026-05-28", // injury OffRtg piecewise (last broad λ change)
   "wnba|rebounds":  "2026-05-28",
   "wnba|assists":   "2026-05-28",

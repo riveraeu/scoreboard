@@ -34,6 +34,10 @@ export const SERIES_CONFIG = {
   KXWCSPREAD:    { sport: "soccer", league: "wc", stat: "spread",    col: "G",   gameType: "soccer", subtype: "spread"    },
   KXWCTEAMTOTAL: { sport: "soccer", league: "wc", stat: "teamTotal", col: "G",   gameType: "soccer", subtype: "teamTotal" },
   KXWCBTTS:      { sport: "soccer", league: "wc", stat: "btts",      col: "G",   gameType: "soccer", subtype: "btts"      },
+  // Fighting — UFC rounds O/U ("Will the fight end before round N?"). The `fight` gameType
+  // routes these to the dedicated fight emit path (api/lib/tonight/fight.js): one weight-class
+  // finish-rate → fight-duration CDF per bout. Shadow-only: `fight|rounds` is NOT in the gate.
+  KXUFCROUNDS:   { sport: "fight", league: "ufc", stat: "rounds", col: "RD", gameType: "fight" },
   // Game totals
   KXMLBTOTAL:     { sport: "mlb",  league: "mlb",  stat: "totalRuns",   col: "R",   gameType: "total"     },
   KXNBATOTAL:     { sport: "nba",  league: "nba",  stat: "totalPoints", col: "PTS", gameType: "total"     },

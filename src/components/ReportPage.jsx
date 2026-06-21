@@ -290,15 +290,17 @@ const MODEL_NEXT = [
     ],
   },
   {
+    // Fighting Phase 1 (UFC rounds O/U) SHIPPED 2026-06-21 — shadow-only. Pure fight-duration
+    // model: one weight-class finish-rate → constant per-round hazard → "ends before round N" CDF,
+    // independent of who wins (sidesteps the thin MMA rating data). Auto-detected as shipped
+    // (KXUFCROUNDS is in SERIES_CONFIG) → the banner advances to the next unbuilt market.
     sport: "Fighting", rank: 2,
-    note: "One clean alt-line market (rounds O/U); winner/method are single-line.",
-    knob: "weight-class base finish rate → fight-duration dist (rounds); fighter rating diff → winner",
+    note: "Phase 1 (UFC rounds O/U) shipped — shadow-only. Winner deferred (no independent fighter rating; sportsbook odds would launder the market); method-of-victory doesn't exist on Kalshi.",
+    knob: "weight-class finish rate → per-round hazard → fight-duration CDF; Phase 2 = per-round hazard vector + fighter durability, then winner off a real fighter Elo",
     markets: [
-      { t: "alt", ticker: "KXUFCROUNDS", title: "UFC Total Rounds (+ KXBOXINGROUNDS)" },
-      { t: "single", ticker: "KXUFCFIGHT", title: "UFC Fight winner" },
-      { t: "single", ticker: "KXUFCMOV", title: "UFC Method of Victory" },
-      { t: "single", ticker: "KXUFCDISTANCE", title: "UFC To Go The Distance" },
-      { t: "single", ticker: "KXBOXINGFIGHT", title: "Boxing Fight winner" },
+      { t: "alt", badge: "LIVE", ticker: "KXUFCROUNDS", title: "UFC rounds O/U — \"ends before round N\" (live in shadow)" },
+      { t: "single", badge: "LATER", ticker: "KXUFCFIGHT", title: "UFC Fight winner — Phase 1b, needs a fighter Elo" },
+      { t: "single", badge: "LATER", ticker: "KXBOXINGFIGHT", title: "Boxing Fight winner — Phase 2" },
     ],
   },
   {

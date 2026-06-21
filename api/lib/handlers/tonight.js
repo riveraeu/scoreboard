@@ -25,6 +25,7 @@ import { emitPropPlays } from "../tonight/props.js";
 import { emitTennisMatchPlays } from "../tonight/tennis-match.js";
 import { emitSoccerPlays } from "../tonight/soccer.js";
 import { WC_TEAMS } from "../soccer.js";
+import { emitFightPlays } from "../tonight/fight.js";
 
 const __defProp = Object.defineProperty;
 const __name = (target, value) => __defProp(target, "name", { value, configurable: true });
@@ -220,6 +221,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
         const spreadMarkets = []; // MLB run-line / spread markets (KXMLBSPREAD) — line = strike, marginTeam = win-by side
         const tennisMatchMarkets = []; // ATP/WTA match-winner — every priced side (favorite + dog), grouped by event in emit
         const soccerMarkets = []; // WC — every priced side across all 5 families, grouped by event in emit
+        const fightMarkets = []; // UFC rounds O/U — every priced threshold, grouped by event in emit
         const globalSeen = /* @__PURE__ */ new Set();
         for (let i = 0; i < seriesTickers.length; i++) {
           const ticker = seriesTickers[i];
@@ -314,6 +316,37 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
                 }
                 soccerMarkets.push({ ..._scCommon, line: _scFloor, teamCode: _scTeam, yesPct: _scYesPct, noPct: _scNoPct, yesAO: _scAO(_scYesPct), noAO: _scAO(_scNoPct) });
               }
+              continue;
+            }
+            // ── Fighting (UFC rounds O/U) branch ── binary "ends before round N" markets, grouped
+            // by event_ticker. The threshold N is the ticker suffix (-2..-5); the event segment
+            // encodes date + a fighter-code segment (last-name-based, e.g. 26JUN20COLTAN). Collect
+            // every priced threshold; emitFightPlays matches codes→ESPN weight class and projects
+            // the fight-duration CDF off it.
+            if (cfg.gameType === "fight") {
+              const _fN = parseInt((m.ticker || "").split("-").pop());
+              if (!(_fN >= 2)) continue; // not a round threshold
+              const _fYesAsk = parseFloat(m.yes_ask_dollars) || 0;
+              const _fNoAsk = parseFloat(m.no_ask_dollars) || 0;
+              const _fLast = parseFloat(m.last_price_dollars) || 0;
+              const _fYesBid = parseFloat(m.yes_bid_dollars) || 0;
+              const _fPrice = (_fYesAsk >= 0.98 && _fYesBid === 0 && _fLast > 0) ? _fLast : (_fYesAsk > 0 ? _fYesAsk : _fLast);
+              if (_fPrice === 0) continue; // no live book — skip (books fill near the event)
+              const _fYesPct = Math.round(_fPrice * 100);
+              const _fNoPct = _fNoAsk > 0 ? Math.round(_fNoAsk * 100) : (100 - _fYesPct);
+              const _fVol = parseInt(m.volume_fp) || parseInt(m.volume) || 0;
+              const _fSeg = (m.event_ticker || "").split("-")[1] || "";
+              const _fDateSeg = _fSeg.slice(0, 7);
+              let _fGameDate = null;
+              if (_fDateSeg.length >= 7) {
+                const _KMONT = { JAN: "01", FEB: "02", MAR: "03", APR: "04", MAY: "05", JUN: "06", JUL: "07", AUG: "08", SEP: "09", OCT: "10", NOV: "11", DEC: "12" };
+                const _fMo = _KMONT[_fDateSeg.slice(2, 5).toUpperCase()];
+                if (_fMo) _fGameDate = `20${_fDateSeg.slice(0, 2)}-${_fMo}-${_fDateSeg.slice(5, 7)}`;
+              }
+              const _fCodeSeg = _fSeg.slice(7); // fighter codes (last-name based, usually 3+3)
+              if (!_fCodeSeg) continue;
+              const _fAO = (pct) => pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
+              fightMarkets.push({ eventTicker: m.event_ticker, codeSegment: _fCodeSeg, gameDate: _fGameDate, threshold: _fN, yesPct: _fYesPct, noPct: _fNoPct, yesAO: _fAO(_fYesPct), noAO: _fAO(_fNoPct), kalshiVolume: _fVol, _ticker: m.ticker, _depth: m._depth });
               continue;
             }
             const strike = parseFloat(m.floor_strike);
@@ -1551,6 +1584,14 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           soccerMarkets, soccerPlays, dropped, isDebug, cutoffStr,
           cache: CACHE2, isBustCache,
         });
+        // ── Fighting (UFC rounds O/U) — Phase 1, shadow-only. Like tennis/soccer, emits into its
+        // own array (NOT `plays`) so fight rows bypass dedup/gameTime-filter/card-builder; merged
+        // into shadow:staging only. One weight-class finish-rate CDF per bout feeds all thresholds.
+        const fightPlays = [];
+        await emitFightPlays({
+          fightMarkets, fightPlays, dropped, isDebug, cutoffStr,
+          cache: CACHE2, isBustCache,
+        });
         // Drop plays whose scheduled gameTime has already passed — pre-game market is closed,
         // and our model truePct is built on pre-game inputs so it's no longer valid in-game.
         // Plays without gameTime are kept (we already gate by gameDate earlier).
@@ -1663,7 +1704,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           }
           // Tennis plays live in their own array (kept out of `plays` to bypass dedup/frontend);
           // merge them into the staging `plays` so shadow-snapshot logs them like any other play.
-          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays: [...plays, ...tennisPlays, ...soccerPlays], dropped, schedule: _schedCounts, writtenAt: Date.now() }), { expirationTtl: 21600 }).catch(() => {});
+          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays: [...plays, ...tennisPlays, ...soccerPlays, ...fightPlays], dropped, schedule: _schedCounts, writtenAt: Date.now() }), { expirationTtl: 21600 }).catch(() => {});
         }
         if (isDebug) {
           const nbaGlLabels = Object.fromEntries(Object.entries(playerGamelogs).filter(([k]) => k.startsWith("nba|")).map(([k, gl]) => [k, gl?.ul ?? null]));
@@ -1677,7 +1718,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             meta: kalshiSnapMeta,
             ageMs: kalshiSnapMeta?.lastRunAt ? Date.now() - kalshiSnapMeta.lastRunAt : null,
           };
-          return jsonResponse({ plays: debugPlays, dropped: debugDropped, preDropped: debugPreDropped, tennisPlays, tennisMarketCount: tennisMatchMarkets.length, soccerPlays, soccerMarketCount: soccerMarkets.length, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
+          return jsonResponse({ plays: debugPlays, dropped: debugDropped, preDropped: debugPreDropped, tennisPlays, tennisMarketCount: tennisMatchMarkets.length, soccerPlays, soccerMarketCount: soccerMarkets.length, fightPlays, fightMarketCount: fightMarkets.length, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
         }
         // Build mlbMeta: pitchers, ML odds, umpires, weather — keyed by team abbr or "home|away"
         // Pitcher entries: { name, id, era, wins, losses }. MLB Stats API (pitcherInfoByTeam) preferred
