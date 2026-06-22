@@ -26,6 +26,7 @@ import { emitTennisMatchPlays } from "../tonight/tennis-match.js";
 import { emitSoccerPlays } from "../tonight/soccer.js";
 import { WC_TEAMS } from "../soccer.js";
 import { emitFightPlays } from "../tonight/fight.js";
+import { emitGolfH2hPlays } from "../tonight/golf-h2h.js";
 
 const __defProp = Object.defineProperty;
 const __name = (target, value) => __defProp(target, "name", { value, configurable: true });
@@ -222,6 +223,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
         const tennisMatchMarkets = []; // ATP/WTA match-winner — every priced side (favorite + dog), grouped by event in emit
         const soccerMarkets = []; // WC — every priced side across all 5 families, grouped by event in emit
         const fightMarkets = []; // UFC rounds O/U — every priced threshold, grouped by event in emit
+        const golfH2hMarkets = []; // PGA single-round head-to-head — each priced side carries its own matchup
         const globalSeen = /* @__PURE__ */ new Set();
         for (let i = 0; i < seriesTickers.length; i++) {
           const ticker = seriesTickers[i];
@@ -347,6 +349,30 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               if (!_fCodeSeg) continue;
               const _fAO = (pct) => pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
               fightMarkets.push({ eventTicker: m.event_ticker, codeSegment: _fCodeSeg, gameDate: _fGameDate, threshold: _fN, yesPct: _fYesPct, noPct: _fNoPct, yesAO: _fAO(_fYesPct), noAO: _fAO(_fNoPct), kalshiVolume: _fVol, _ticker: m.ticker, _depth: m._depth });
+              continue;
+            }
+            // ── Golf (PGA single-round head-to-head) branch ── binary "A beats B in round N"
+            // markets. yes_sub_title carries the matchup + round; the event segment encodes the
+            // tournament + round + player codes (KXPGAH2H-USO26R4SSCHWCLA). Each side is its own
+            // candidate (favorite side emitted by emitGolfH2hPlays). gameDate = the round date,
+            // taken from close_time (expiration_time is a generic +2wk settlement deadline).
+            if (cfg.gameType === "golfH2h") {
+              const _gm = (m.yes_sub_title || "").match(/^(.+?) beats (.+?) in the (\d+)(?:st|nd|rd|th) round/i);
+              if (!_gm) continue;
+              const _gPlayer = _gm[1].trim(), _gOpp = _gm[2].trim(), _gRound = parseInt(_gm[3]);
+              if (!(_gRound >= 1)) continue;
+              const _gYesAsk = parseFloat(m.yes_ask_dollars) || 0;
+              const _gLast = parseFloat(m.last_price_dollars) || 0;
+              const _gYesBid = parseFloat(m.yes_bid_dollars) || 0;
+              const _gPrice = (_gYesAsk >= 0.98 && _gYesBid === 0 && _gLast > 0) ? _gLast : (_gYesAsk > 0 ? _gYesAsk : _gLast);
+              if (_gPrice === 0) continue; // no live book — skip (books fill near tee-off)
+              const _gPct = Math.round(_gPrice * 100);
+              const _gVol = parseInt(m.volume_fp) || parseInt(m.volume) || 0;
+              const _gDate = (m.close_time || "").slice(0, 10) || null;
+              const _gSeg = (m.event_ticker || "").split("-")[1] || "";
+              const _gTourn = (_gSeg.match(/^([A-Z0-9]+?)R\d/) || [])[1] || _gSeg.slice(0, 5);
+              const _gAO = (pct) => pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
+              golfH2hMarkets.push({ eventTicker: m.event_ticker, player: _gPlayer, opponent: _gOpp, round: _gRound, tournament: _gTourn, gameDate: _gDate, kalshiPct: _gPct, americanOdds: _gAO(_gPct), kalshiVolume: _gVol, _ticker: m.ticker, _depth: m._depth });
               continue;
             }
             const strike = parseFloat(m.floor_strike);
@@ -1592,6 +1618,14 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           fightMarkets, fightPlays, dropped, isDebug, cutoffStr,
           cache: CACHE2, isBustCache,
         });
+        // ── Golf (PGA single-round head-to-head) — Phase 1, shadow-only. Like tennis/fight, emits
+        // into its own array (NOT `plays`) so golf rows bypass dedup/gameTime-filter/card-builder;
+        // merged into shadow:staging only. OWGR rating → one-round score differential, favorite side.
+        const golfH2hPlays = [];
+        await emitGolfH2hPlays({
+          golfH2hMarkets, golfH2hPlays, dropped, isDebug, cutoffStr,
+          cache: CACHE2, isBustCache,
+        });
         // Drop plays whose scheduled gameTime has already passed — pre-game market is closed,
         // and our model truePct is built on pre-game inputs so it's no longer valid in-game.
         // Plays without gameTime are kept (we already gate by gameDate earlier).
@@ -1704,7 +1738,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           }
           // Tennis plays live in their own array (kept out of `plays` to bypass dedup/frontend);
           // merge them into the staging `plays` so shadow-snapshot logs them like any other play.
-          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays: [...plays, ...tennisPlays, ...soccerPlays, ...fightPlays], dropped, schedule: _schedCounts, writtenAt: Date.now() }), { expirationTtl: 21600 }).catch(() => {});
+          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays: [...plays, ...tennisPlays, ...soccerPlays, ...fightPlays, ...golfH2hPlays], dropped, schedule: _schedCounts, writtenAt: Date.now() }), { expirationTtl: 21600 }).catch(() => {});
         }
         if (isDebug) {
           const nbaGlLabels = Object.fromEntries(Object.entries(playerGamelogs).filter(([k]) => k.startsWith("nba|")).map(([k, gl]) => [k, gl?.ul ?? null]));
@@ -1718,7 +1752,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             meta: kalshiSnapMeta,
             ageMs: kalshiSnapMeta?.lastRunAt ? Date.now() - kalshiSnapMeta.lastRunAt : null,
           };
-          return jsonResponse({ plays: debugPlays, dropped: debugDropped, preDropped: debugPreDropped, tennisPlays, tennisMarketCount: tennisMatchMarkets.length, soccerPlays, soccerMarketCount: soccerMarkets.length, fightPlays, fightMarketCount: fightMarkets.length, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
+          return jsonResponse({ plays: debugPlays, dropped: debugDropped, preDropped: debugPreDropped, tennisPlays, tennisMarketCount: tennisMatchMarkets.length, soccerPlays, soccerMarketCount: soccerMarkets.length, fightPlays, fightMarketCount: fightMarkets.length, golfH2hPlays, golfH2hMarketCount: golfH2hMarkets.length, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
         }
         // Build mlbMeta: pitchers, ML odds, umpires, weather — keyed by team abbr or "home|away"
         // Pitcher entries: { name, id, era, wins, losses }. MLB Stats API (pitcherInfoByTeam) preferred

@@ -9,6 +9,7 @@ import { verifyJWT } from "../auth-utils.js";
 import { fetchCompletedMatches } from "../tennis.js";
 import { fetchWcFinals } from "../soccer.js";
 import { fetchFightResults, matchFightByCodes, normFighterName } from "../mma.js";
+import { fetchRoundScores, normGolfName } from "../golf.js";
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER } from "../config.js";
 import { passesCategoryGate } from "../category-gate.js";
 
@@ -422,7 +423,8 @@ async function handleShadowResolver({ path, request, env }) {
   const tennisRows = rows.filter(r => r.sport === "tennis");
   const soccerRows = rows.filter(r => r.sport === "soccer");
   const fightRows = rows.filter(r => r.sport === "fight");
-  const teamRows = rows.filter(r => r.sport !== "tennis" && r.sport !== "soccer" && r.sport !== "fight");
+  const golfRows = rows.filter(r => r.sport === "golf");
+  const teamRows = rows.filter(r => r.sport !== "tennis" && r.sport !== "soccer" && r.sport !== "fight" && r.sport !== "golf");
 
   // Build unique game keys per date. Key: sport:away:home[@gameTime] — matches /api/live format.
   const keysByDate = new Map(); // game_date → Set<rawKey>
@@ -680,6 +682,56 @@ async function handleShadowResolver({ path, request, env }) {
     }
   }
 
+  // ── Golf (PGA single-round head-to-head) resolution ── grade off the ESPN PGA leaderboard for
+  // the round's date. We read each player's per-round scores and compare the bet round: the pick
+  // wins iff their round-N strokes are strictly lower than the opponent's (a tie resolves NO,
+  // matching Kalshi's "beats" settlement). Round comes from features; both names from home/away.
+  if (golfRows.length) {
+    const dateOf = (r) => r.game_date
+      || (r.game_time ? new Date(r.game_time).toISOString().slice(0, 10) : null)
+      || (r.snapshot_date ? new Date(r.snapshot_date).toISOString().slice(0, 10) : null);
+    const roundOf = (r) => {
+      try { const f = typeof r.features === "string" ? JSON.parse(r.features) : r.features; return parseInt(f?.round) || null; }
+      catch { return null; }
+    };
+    const byDate = new Map(); // date → rows
+    for (const r of golfRows) {
+      const date = dateOf(r);
+      if (!date) { noData++; continue; }
+      if (!byDate.has(date)) byDate.set(date, []);
+      byDate.get(date).push(r);
+    }
+    const scoresByDate = new Map();
+    await Promise.all([...byDate.keys()].map(async (date) => {
+      scoresByDate.set(date, await fetchRoundScores(date.replace(/-/g, "")));
+    }));
+    for (const [date, rws] of byDate) {
+      const scores = scoresByDate.get(date) || {};
+      // Match a player to a scores key: exact normGolfName, then fuzzy/edit-distance fallback.
+      const findScores = (name) => {
+        const key = normGolfName(name || "");
+        if (scores[key]) return scores[key];
+        const fz = _fuzzyName(name || "");
+        for (const k in scores) { if (_fuzzyName(k) === fz) return scores[k]; }
+        if (fz.length >= 8) {
+          let best = null, bd = 3;
+          for (const k in scores) { const fk = _fuzzyName(k); if (Math.abs(fk.length - fz.length) > 2) continue; const d = _editDist(fz, fk); if (d < bd) { bd = d; best = k; } }
+          if (best) return scores[best];
+        }
+        return null;
+      };
+      for (const r of rws) {
+        const n = roundOf(r);
+        if (!n) { noData++; continue; }
+        const ps = findScores(r.player_name || r.home_team);
+        const os = findScores(r.away_team);
+        const pa = ps && ps[n - 1], ob = os && os[n - 1];
+        if (pa == null || ob == null) { noData++; continue; } // round not complete / player not found
+        updates.push({ id: r.id, won: pa < ob, actualValue: pa }); // strictly lower wins; tie → NO
+      }
+    }
+  }
+
   if (updates.length) await neonBatchResolve(updates, env);
 
   console.log(`[shadow-resolver] resolved=${updates.length} skipped=${skipped} noData=${noData} games=${liveByKey.size} durationMs=${Date.now() - t0}`);
@@ -887,6 +939,7 @@ const FORMULA_CUTOFFS = {
   "soccer|spread":    "2026-06-21",
   "soccer|btts":      "2026-06-21",
   "fight|rounds":   "2026-06-21", // UFC Phase 1 — weight-class finish-rate → duration CDF
+  "golf|h2h":       "2026-06-21", // PGA Phase 1 — OWGR rating → one-round score differential
   "wnba|points":    "2026-05-28", // injury OffRtg piecewise (last broad λ change)
   "wnba|rebounds":  "2026-05-28",
   "wnba|assists":   "2026-05-28",

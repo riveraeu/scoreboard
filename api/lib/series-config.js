@@ -38,6 +38,10 @@ export const SERIES_CONFIG = {
   // routes these to the dedicated fight emit path (api/lib/tonight/fight.js): one weight-class
   // finish-rate → fight-duration CDF per bout. Shadow-only: `fight|rounds` is NOT in the gate.
   KXUFCROUNDS:   { sport: "fight", league: "ufc", stat: "rounds", col: "RD", gameType: "fight" },
+  // Golf — PGA single-round head-to-head ("Will A beat B in round N?"). The `golfH2h` gameType
+  // routes these to the dedicated golf emit path (api/lib/tonight/golf-h2h.js): OWGR rating →
+  // one-round score differential. Binary favorite side. Shadow-only: `golf|h2h` NOT in the gate.
+  KXPGAH2H:      { sport: "golf", league: "pga", stat: "h2h", col: "ML", gameType: "golfH2h" },
   // Game totals
   KXMLBTOTAL:     { sport: "mlb",  league: "mlb",  stat: "totalRuns",   col: "R",   gameType: "total"     },
   KXNBATOTAL:     { sport: "nba",  league: "nba",  stat: "totalPoints", col: "PTS", gameType: "total"     },

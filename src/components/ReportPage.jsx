@@ -304,15 +304,17 @@ const MODEL_NEXT = [
     ],
   },
   {
+    // Golf Phase 1 (PGA single-round head-to-head) SHIPPED 2026-06-21 — shadow-only. OWGR rating
+    // → one-round score differential (field-independent, like tennis). Auto-detected as shipped
+    // (KXPGAH2H is in SERIES_CONFIG) → the banner advances to the next unbuilt market.
     sport: "Golf", rank: 3,
-    note: "Thinnest on alt lines — mostly single-threshold outrights / H2H, so ranked last.",
-    knob: "strokes-gained per-player scoring mean + variance; field size for outrights",
+    note: "Phase 1 (PGA H2H) shipped — shadow-only. OWGR rating → one-round score differential. Coverage is thin (single-round variance keeps most matchups <67%). Phase 2 = field sim → make-cut + cut-line (the alt-line families).",
+    knob: "OWGR avg-points → strokes-vs-field skill → Normal one-round differential (scale 1.7, σ 2.8); Phase 2 = strokes-gained rating + 36-hole field simulation",
     markets: [
-      { t: "alt", ticker: "KXPGACUTLINE", title: "PGA Cut Line (what number)" },
-      { t: "alt", ticker: "KXPGAWINMARGIN", title: "PGA Win Margin" },
-      { t: "single", ticker: "KXPGAH2H", title: "PGA Head-to-Head (+ KXLIVH2H)" },
-      { t: "single", ticker: "KXPGAMAKECUT", title: "PGA To Make Cut (+ DP World Tour)" },
-      { t: "single", ticker: "KXPGAWIN", title: "Golfer To Win (outright)" },
+      { t: "single", badge: "LIVE", ticker: "KXPGAH2H", title: "PGA single-round head-to-head (live in shadow)" },
+      { t: "single", badge: "LATER", ticker: "KXPGAMAKECUT", title: "PGA make-cut — Phase 2, needs field sim" },
+      { t: "alt", badge: "LATER", ticker: "KXPGACUTLINE", title: "PGA cut line (alt) — Phase 2, falls out of the field sim" },
+      { t: "single", badge: "LATER", ticker: "KXPGAWIN", title: "Outright winner — sub-window longshot" },
     ],
   },
 ];
