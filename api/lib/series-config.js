@@ -115,4 +115,6 @@ export const CRON_ONLY_TICKERS = [
 // Add the ticker here when a vet concludes DISMISS; note why inline.
 export const DISMISSED_SERIES = [
   "KXWC1HSCORE", // 6/22 vet: exact half-scoreline longshots, no in-window edge (1H signal already covered by the soccer half score-matrix)
+  "KXWTAROE", // 6/22 vet: WTA round-of-elimination = draw-progression distribution; our tennis is single-match winner only (tennisMatchProb), no bracket sim. No Phase-1 path.
+  "KXWC3RDPLACEQUAL", // 6/22 vet: needs full group-table + cross-group 3rd-place ranking sim; our Dixon–Coles matrix models one match, not group standings. window_fit false-positive (12 mkts). Defer to a tournament-sim phase.
 ];
