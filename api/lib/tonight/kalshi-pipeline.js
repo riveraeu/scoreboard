@@ -1,13 +1,19 @@
-// Kalshi market-fetch pipeline. 3-tier read chain:
-//   1. Snap-first read (single Upstash MGET, all-or-nothing freshness check) — preferred
-//   2. Bundle cache (kalshi:bundle:{date}, 600s TTL, all series in one Redis key)
-//   3. REST with throttled batches (3 parallel / 700ms delay, shuffled) + per-ticker stale fallback
+// Kalshi market-fetch pipeline. 2-tier read chain:
+//   1. Snap-first read (single Upstash MGET, all-or-nothing freshness check) — preferred.
+//      The snapshot cron writes kalshi:snap:{ticker} every 2 min; this is the hot path.
+//   2. REST fallback with throttled batches (3 parallel / 700ms delay, shuffled) + per-ticker
+//      stale fallback (kalshi:stale:{ticker}). Genuinely-fresh fetches are written back to the
+//      snap keys (chunked at 7MB) so the next request takes Tier 1 again. The old monolithic
+//      kalshi:bundle key was retired 2026-06-22 — a single SET of the whole slate silently 413'd
+//      once it grew past the Upstash 10MB request cap (see api/lib/kv-pipeline.js).
 //
 // Stale markets are marked with `_kalshiStale: true` so downstream consumers can flag them in
 // the dataConfidence penalty table.
 //
 // Returns: { kalshiResults: [{markets:[]}, ...], staleKalshiSeries: string[], kalshiSnapMeta,
 //   kalshiUsedSnaps: boolean }
+
+import { pipeWriteChunked } from "../kv-pipeline.js";
 
 const SNAP_FRESHNESS_MS = 180_000;  // 1.5× the 2-min cron cycle
 const KALSHI_BATCH = 3;
@@ -47,8 +53,6 @@ async function fetchKalshiSeries(ticker, cache) {
 }
 
 export async function fetchKalshiMarkets({ seriesTickers, cache, env, isBustCache }) {
-  const KALSHI_BUNDLE_KEY = `kalshi:bundle:${new Date().toISOString().slice(0, 10).replace(/-/g, "")}`;
-
   // Tier 1: snap-first read (Upstash MGET; all-or-nothing freshness)
   let kalshiResults;
   let kalshiSnapMeta = null;
@@ -85,27 +89,15 @@ export async function fetchKalshiMarkets({ seriesTickers, cache, env, isBustCach
     } catch {}
   }
 
-  // Tier 2: bundle cache
-  const bundleCached = !kalshiUsedSnaps && !isBustCache && cache
-    ? await cache.get(KALSHI_BUNDLE_KEY, "json").catch(() => null)
-    : null;
-
   if (kalshiUsedSnaps) {
     // already populated from snaps
-  } else if (bundleCached) {
-    kalshiResults = seriesTickers.map(t => bundleCached[t] || { markets: [] });
   } else {
-    // Tier 3: throttled REST. Shuffle so no series is deterministically last-in-line.
+    // Tier 2: throttled REST. Shuffle so no series is deterministically last-in-line.
     const _shuffled = [...seriesTickers];
     for (let _si = _shuffled.length - 1; _si > 0; _si--) {
       const _sj = Math.floor(Math.random() * (_si + 1));
       [_shuffled[_si], _shuffled[_sj]] = [_shuffled[_sj], _shuffled[_si]];
     }
-    // Read the previous bundle once so we can preserve entries for any series that came
-    // back rate-limited / empty this cycle. Without this, a successful first fetch fills
-    // the bundle, then a follow-up `?bust=1` racing into Kalshi rate limits would write
-    // an empty entry over the good one and starve subsequent non-bust requests.
-    const priorBundle = cache ? await cache.get(KALSHI_BUNDLE_KEY, "json").catch(() => null) : null;
     const resultMap = {};
     const fetchMeta = {};
     for (let off = 0; off < _shuffled.length; off += KALSHI_BATCH) {
@@ -119,26 +111,32 @@ export async function fetchKalshiMarkets({ seriesTickers, cache, env, isBustCach
         await new Promise(res => setTimeout(res, KALSHI_BATCH_DELAY_MS));
       }
     }
-    // Partial-outage protection: fall back to prior bundle entry for any rate-limited/failed series.
-    if (priorBundle) {
+    kalshiResults = seriesTickers.map(t => resultMap[t] || { markets: [] });
+    // Refresh the per-ticker snap cache with the genuinely-fresh fetches so the next request
+    // takes the Tier-1 snap path instead of re-hitting Kalshi REST. Chunked at 7MB to stay under
+    // the Upstash 10MB cap (the retired kalshi:bundle key was one un-chunked SET of the whole
+    // slate). Only write rows that came back fresh + non-empty: stale/rate-limited/failed series
+    // keep their own kalshi:stale:{ticker} fallback (set in fetchKalshiSeries) and must NOT be
+    // re-stamped with a fresh writtenAt. A bust=1 refetch may briefly overwrite the cron's
+    // depth-enriched snaps with depthless ones; the next 2-min cron re-attaches depth.
+    if (cache && env?.UPSTASH_REDIS_REST_URL && env?.UPSTASH_REDIS_REST_TOKEN) {
+      const _now = Date.now();
+      const _cmds = [];
       for (const t of seriesTickers) {
-        const cur = resultMap[t]?.markets || [];
-        const prior = priorBundle[t]?.markets || [];
         const meta = fetchMeta[t] || {};
-        if (cur.length === 0 && prior.length > 0 && (meta.rateLimited || meta.failed)) {
-          for (const m of prior) m._kalshiStale = true;
-          resultMap[t] = priorBundle[t];
+        const markets = resultMap[t]?.markets || [];
+        if (markets.length > 0 && !meta.stale && !meta.rateLimited && !meta.failed) {
+          _cmds.push(["SET", `kalshi:snap:${t}`, JSON.stringify({ markets, writtenAt: _now }), "EX", 300]);
         }
       }
-    }
-    kalshiResults = seriesTickers.map(t => resultMap[t] || { markets: [] });
-    if (cache && kalshiResults.some(d => (d.markets || []).length > 0)) {
-      await cache.put(KALSHI_BUNDLE_KEY, JSON.stringify(resultMap), { expirationTtl: 600 }).catch(() => {});
+      if (_cmds.length) {
+        await pipeWriteChunked({ url: env.UPSTASH_REDIS_REST_URL, token: env.UPSTASH_REDIS_REST_TOKEN, cmds: _cmds, label: "kalshi-snap-refresh" });
+      }
     }
   }
 
-  // Series that came from per-ticker stale fallback OR prior-bundle preservation this request.
-  // Surfaced at the top of the response so we can spot when prices have drifted past one bundle
+  // Series that came from the per-ticker stale fallback (kalshi:stale:{ticker}) this request.
+  // Surfaced at the top of the response so we can spot when prices have drifted past a snap
   // cycle, and used to mark per-play `_kalshiStale: true`.
   const staleKalshiSeries = [];
   for (let i = 0; i < seriesTickers.length; i++) {

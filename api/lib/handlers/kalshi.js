@@ -13,6 +13,7 @@ import { SERIES_CONFIG, CRON_ONLY_TICKERS, DISMISSED_SERIES } from "../series-co
 import { verifyJWT } from "../auth-utils.js";
 import { neonQuery, neonExec } from "../neon.js";
 import { fetchKalshiOrderbook } from "../kalshi-book.js";
+import { pipeWriteChunked } from "../kv-pipeline.js";
 
 const normName = (s) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
@@ -235,50 +236,11 @@ export async function handleKalshiRoutes(ctx) {
     // the read side judges freshness from it (180s gate).
     const writtenAt = Date.now();
     const successCount = Object.keys(_snapResults).length;
-    // Pipelined Upstash write, chunked by serialized size. Upstash rejects any HTTP request
-    // over 10MB ("Max Request Size") — the single-request version started failing 2026-06-12
-    // when KXMLBTB + the KXMLBHIT ticker fix pushed the full-slate body to ~11MB, and the bare
-    // fetch (no res.ok check) swallowed the 413s silently. Chunks stay well under the cap
-    // (largest single snap ≈ 2.5MB, so every command fits a chunk). Upstash bills per command,
-    // not per request, so chunking costs nothing extra. Never throws; returns
-    // { sent, failed, errors } so callers can surface failures into meta/response.
-    const PIPE_CHUNK_MAX_BYTES = 7 * 1024 * 1024;
-    const _pipeWrite = async (cmds) => {
-      const out = { sent: 0, failed: 0, errors: [] };
-      if (!cmds.length) return out;
-      const chunks = [];
-      let cur = [], curBytes = 2; // "[]"
-      for (const c of cmds) {
-        const n = JSON.stringify(c).length + 1; // +1 comma separator
-        if (cur.length && curBytes + n > PIPE_CHUNK_MAX_BYTES) { chunks.push(cur); cur = []; curBytes = 2; }
-        cur.push(c); curBytes += n;
-      }
-      if (cur.length) chunks.push(cur);
-      for (const chunk of chunks) {
-        try {
-          const r = await fetch(`${env.UPSTASH_REDIS_REST_URL}/pipeline`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${env.UPSTASH_REDIS_REST_TOKEN}`, "Content-Type": "application/json" },
-            body: JSON.stringify(chunk),
-          });
-          if (!r.ok) {
-            out.failed += chunk.length;
-            out.errors.push(`HTTP ${r.status}`);
-            continue;
-          }
-          const body = await r.json().catch(() => null);
-          const errs = Array.isArray(body) ? body.filter(x => x?.error) : [];
-          out.sent += chunk.length - errs.length;
-          out.failed += errs.length;
-          if (errs.length) out.errors.push(String(errs[0].error));
-        } catch (e) {
-          out.failed += chunk.length;
-          out.errors.push(String(e?.message || e));
-        }
-      }
-      if (out.errors.length) console.error("[kalshi-snapshot] pipeline write failed:", out.failed, "cmds —", out.errors[0]);
-      return out;
-    };
+    // Pipelined Upstash write, chunked at 7MB to stay under the Upstash 10MB request cap
+    // (shared with the read-path snap refresh — see api/lib/kv-pipeline.js).
+    const _pipeWrite = (cmds) => pipeWriteChunked({
+      url: env.UPSTASH_REDIS_REST_URL, token: env.UPSTASH_REDIS_REST_TOKEN, cmds, label: "kalshi-snapshot",
+    });
     const _metaCmd = (extra) => ["SET", "kalshi:snap:_meta", JSON.stringify({
       lastRunAt: writtenAt,
       successCount,
