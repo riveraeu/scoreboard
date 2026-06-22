@@ -170,6 +170,7 @@ See `docs/MODEL.md` for all formula details, SimScore tiers, lambda formulas, ga
 | NBA/WNBA ML | `simulateNBAJoint` Normal (σ=13/11) | piecewise injury OffRtg shrink |
 | NBA/WNBA Spread | `spreadPctFromJoint` | shared `_nbaJointCache` with ML |
 | NBA/WNBA Halves | λ × 0.5, Normal (σ=9.2/7.8) | 1H/2H independent draws, `_halfJointCache` |
+| WNBA Quarters (total · spread · ml) | λ × 0.25, Normal (σ≈5.5) — **shadow-only since 2026-06-21** | 1Q–4Q off `simulateNBAJoint`, even-split λ (v1); 3-way TIE winner; same machinery as halves. `wnba|q{1-4}{total,spread,ml}` NOT in gate. Resolves off per-quarter ESPN linescores. Series `KXWNBA{1-4}Q{TOTAL,SPREAD}` (SERIES_CONFIG, `segment:"Nq"`) + `KXWNBA{1-4}QWINNER` (CRON_ONLY). Phase 2: per-quarter scoring curve |
 | NHL ML/Spread | `simulateMLBJoint` NegBin (r from residuals) | spread dampener 0.80×sim+0.20×65 while calibrating |
 | MLB F5 | same machinery as full-game | no TTO, no bullpen share, no regime blend; `λ_F5 = teamRPG × 5/9 × …` |
 | Tennis match (ATP/WTA) | Phase-1 ESPN-rankings logistic (`tennisMatchProb`) — **shadow-only since 2026-06-13** | `rating = 400·log10(ranking points)` → points-ratio win prob; Phase 2 = surface Elo. Binary YES-side, no UNDER-framing |

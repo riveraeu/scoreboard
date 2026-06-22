@@ -68,6 +68,16 @@ export const SERIES_CONFIG = {
   KXWNBA1HSPREAD: { sport: "wnba", league: "wnba", stat: "h1spread", col: "PTS", gameType: "spread", segment: "1h" },
   KXWNBA2HTOTAL:  { sport: "wnba", league: "wnba", stat: "h2total",  col: "PTS", gameType: "total",  segment: "2h" },
   KXWNBA2HSPREAD: { sport: "wnba", league: "wnba", stat: "h2spread", col: "PTS", gameType: "spread", segment: "2h" },
+  // WNBA quarters (shadow-only) — same machinery as halves, λ×0.25 / σ×0.5, emitted by the
+  // dedicated quarters block in ml-spread.js. Winner series live in CRON_ONLY_TICKERS below.
+  KXWNBA1QTOTAL:  { sport: "wnba", league: "wnba", stat: "q1total",  col: "PTS", gameType: "total",  segment: "1q" },
+  KXWNBA1QSPREAD: { sport: "wnba", league: "wnba", stat: "q1spread", col: "PTS", gameType: "spread", segment: "1q" },
+  KXWNBA2QTOTAL:  { sport: "wnba", league: "wnba", stat: "q2total",  col: "PTS", gameType: "total",  segment: "2q" },
+  KXWNBA2QSPREAD: { sport: "wnba", league: "wnba", stat: "q2spread", col: "PTS", gameType: "spread", segment: "2q" },
+  KXWNBA3QTOTAL:  { sport: "wnba", league: "wnba", stat: "q3total",  col: "PTS", gameType: "total",  segment: "3q" },
+  KXWNBA3QSPREAD: { sport: "wnba", league: "wnba", stat: "q3spread", col: "PTS", gameType: "spread", segment: "3q" },
+  KXWNBA4QTOTAL:  { sport: "wnba", league: "wnba", stat: "q4total",  col: "PTS", gameType: "total",  segment: "4q" },
+  KXWNBA4QSPREAD: { sport: "wnba", league: "wnba", stat: "q4spread", col: "PTS", gameType: "spread", segment: "4q" },
 };
 
 // Tickers fetched by the snapshot cron but not part of the play pipeline:
@@ -77,4 +87,5 @@ export const CRON_ONLY_TICKERS = [
   "KXMLBF5",
   "KXNBA1HWINNER", "KXNBA2HWINNER",
   "KXWNBA1HWINNER", "KXWNBA2HWINNER",
+  "KXWNBA1QWINNER", "KXWNBA2QWINNER", "KXWNBA3QWINNER", "KXWNBA4QWINNER",
 ];

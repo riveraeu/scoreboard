@@ -150,6 +150,7 @@ export async function handleSportsRoutes(ctx) {
         // but !h1Complete (game called before halftime — extremely rare in NBA/WNBA).
         let h1HomeScore = null, h1AwayScore = null, h1Complete = false;
         let h2HomeScore = null, h2AwayScore = null, h2Complete = false;
+        const qScores = {}; // { "1": {home, away}, ... } — populated for completed quarters
         if (sport === "nba" || sport === "wnba") {
           const hLs = homeComp?.linescores || [];
           const aLs = awayComp?.linescores || [];
@@ -162,6 +163,12 @@ export async function handleSportsRoutes(ctx) {
             h2HomeScore = homeScore - h1HomeScore;
             h2AwayScore = awayScore - h1AwayScore;
             h2Complete = true;
+          }
+          // Per-quarter scores: linescores[n-1].value = points in quarter n. A quarter is final
+          // once a later period has an entry (or the game is over). OT (index 4+) is not a quarter.
+          for (let n = 1; n <= 4; n++) {
+            const done = hLs.length >= n && aLs.length >= n && (state === "post" || hLs.length > n);
+            if (done) qScores[n] = { home: parseFloat(hLs[n - 1]?.value) || 0, away: parseFloat(aLs[n - 1]?.value) || 0 };
           }
         }
 
@@ -320,6 +327,11 @@ export async function handleSportsRoutes(ctx) {
             gameData.h2HomeScore = h2HomeScore;
             gameData.h2AwayScore = h2AwayScore;
             gameData.h2Complete = true;
+          }
+          for (const n of Object.keys(qScores)) {
+            gameData[`q${n}HomeScore`] = qScores[n].home;
+            gameData[`q${n}AwayScore`] = qScores[n].away;
+            gameData[`q${n}Complete`] = true;
           }
         }
         liveResult[key] = gameData;

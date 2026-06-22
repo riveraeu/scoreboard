@@ -243,8 +243,9 @@ function _resolveRow(row, game) {
     } catch {}
   }
 
-  // Segment plays (F5 / NBA halves) — must come before full-game branches.
-  if (segment === "f5" || segment === "1h" || segment === "2h") {
+  // Segment plays (F5 / NBA-WNBA halves / WNBA quarters) — must come before full-game branches.
+  const _isQtr = /^[1-4]q$/.test(segment || "");
+  if (segment === "f5" || segment === "1h" || segment === "2h" || _isQtr) {
     let segDone, segHome, segAway;
     if (segment === "f5") {
       segDone = game.f5Complete === true;
@@ -254,10 +255,15 @@ function _resolveRow(row, game) {
       segDone = game.h1Complete === true;
       segHome = game.h1HomeScore ?? 0;
       segAway = game.h1AwayScore ?? 0;
-    } else {
+    } else if (segment === "2h") {
       segDone = game.h2Complete === true;
       segHome = game.h2HomeScore ?? 0;
       segAway = game.h2AwayScore ?? 0;
+    } else {
+      const n = segment[0]; // "1".."4" — quarter
+      segDone = game[`q${n}Complete`] === true;
+      segHome = game[`q${n}HomeScore`] ?? 0;
+      segAway = game[`q${n}AwayScore`] ?? 0;
     }
     if (!segDone) return { won: null, actualValue: null }; // game ended before segment completed → void
     if (game_type === "total") {

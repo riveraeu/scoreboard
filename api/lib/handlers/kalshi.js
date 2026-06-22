@@ -738,7 +738,7 @@ export async function handleKalshiRoutes(ctx) {
     const knownArr = [...known];
     const knownPh = knownArr.map((_, i) => `$${i + 1}`).join(", ");
     await neonQuery(
-      `UPDATE kalshi_series_seen SET status='adopted' WHERE status='new' AND ticker IN (${knownPh})`,
+      `UPDATE kalshi_series_seen SET status='adopted' WHERE status IN ('new','shortlisted') AND ticker IN (${knownPh})`,
       knownArr, env, { write: true }
     );
 

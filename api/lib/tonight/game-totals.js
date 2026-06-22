@@ -756,7 +756,11 @@ export async function emitGameTotalPlays({
             // Half lambdas (v1) — 50/50 split of full-game λ. WNBA = 4 quarters of 10 min.
             const _h1Home = parseFloat((_wHomeExpRaw * 0.5).toFixed(2));
             const _h1Away = parseFloat((_wAwayExpRaw * 0.5).toFixed(2));
-            _wnbaMlContext[_mlCtxKey] = { homeTeam, awayTeam, gameDate, homeLambda: parseFloat(_wHomeExpRaw.toFixed(2)), awayLambda: parseFloat(_wAwayExpRaw.toFixed(2)), h1HomeLambda: _h1Home, h1AwayLambda: _h1Away, h2HomeLambda: _h1Home, h2AwayLambda: _h1Away, kalshiVolume, kalshiSpread, lowVolume, _simData: { ..._simData } };
+            // Quarter lambdas (v1) — even 25% split of full-game λ (mirrors the naive half split;
+            // a per-quarter scoring curve is Phase 2). Consumed by the WNBA quarters emit block.
+            const _qHome = parseFloat((_wHomeExpRaw * 0.25).toFixed(2));
+            const _qAway = parseFloat((_wAwayExpRaw * 0.25).toFixed(2));
+            _wnbaMlContext[_mlCtxKey] = { homeTeam, awayTeam, gameDate, homeLambda: parseFloat(_wHomeExpRaw.toFixed(2)), awayLambda: parseFloat(_wAwayExpRaw.toFixed(2)), h1HomeLambda: _h1Home, h1AwayLambda: _h1Away, h2HomeLambda: _h1Home, h2AwayLambda: _h1Away, q1HomeLambda: _qHome, q1AwayLambda: _qAway, q2HomeLambda: _qHome, q2AwayLambda: _qAway, q3HomeLambda: _qHome, q3AwayLambda: _qAway, q4HomeLambda: _qHome, q4AwayLambda: _qAway, kalshiVolume, kalshiSpread, lowVolume, _simData: { ..._simData } };
           }
         }
         // Pre-sim mean blend (same pattern as NBA). Total std = sqrt(11^2 + 11^2) ≈ 15.6.

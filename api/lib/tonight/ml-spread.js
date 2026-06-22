@@ -1093,6 +1093,214 @@ export async function emitAllMlAndSpread({
       }
     }
   }
+  // ── WNBA quarters emission (1Q–4Q × total / spread / ml) ─────────────────────────────
+  // Mirror of the halves block above, WNBA-only, four 10-minute quarters. Lambdas pre-computed
+  // in the game-total loop (q{N}HomeLambda/q{N}AwayLambda on _wnbaMlContext, all = full λ × 0.25
+  // in v1). Joint sim Normal with σ scaled by sqrt(0.25) = 0.5 → ≈5.5. Winner markets 3-way
+  // (TIE more common over a single quarter). Shadow-only (wnba|q* not in the category gate).
+  const _qtrJointCache = {};
+  const _qtrTotalDistCache = {};
+  const _qtrWinnerMarkets = {}; // keyed by `wnba|${homeTeam}|${awayTeam}|${gameDate}|${seg}`
+  for (const [_segQ, _seriesQ] of [
+    ["1q", "KXWNBA1QWINNER"], ["2q", "KXWNBA2QWINNER"], ["3q", "KXWNBA3QWINNER"], ["4q", "KXWNBA4QWINNER"],
+  ]) {
+    try {
+      const _impP = (m) => {
+        const a = parseFloat(m.yes_ask_dollars) || 0;
+        const l = parseFloat(m.last_price_dollars) || 0;
+        const b = parseFloat(m.yes_bid_dollars) || 0;
+        return (a >= 0.98 && b === 0 && l > 0) ? l : (a > 0 ? a : l);
+      };
+      const _gd = (m) => m?.expected_expiration_time ? PT_FMT.format(new Date(m.expected_expiration_time)) : null;
+      const _snapKey = `kalshi:snap:${_seriesQ}`;
+      const _legKey = `kalshi:${_seriesQ}`;
+      let _data = null;
+      if (CACHE2 && !isBustCache) {
+        const _snap = await CACHE2.get(_snapKey, 'json').catch(() => null);
+        if (_snap && Array.isArray(_snap.markets) && _snap.markets.length > 0 &&
+            (Date.now() - (_snap.writtenAt || 0) <= 180_000)) {
+          _data = { markets: _snap.markets };
+        }
+      }
+      if (!_data && CACHE2 && !isBustCache) _data = await CACHE2.get(_legKey, 'json').catch(() => null);
+      if (!_data) {
+        const r = await fetch(`https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=${_seriesQ}&limit=1000&status=open`, {
+          headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }
+        }).catch(() => null);
+        if (r?.ok) {
+          _data = await r.json().catch(() => null);
+          if (_data && CACHE2) CACHE2.put(_legKey, JSON.stringify(_data), { expirationTtl: 600 }).catch(() => {});
+        }
+      }
+      const _raw = _data?.markets || [];
+      const _byEv = {};
+      for (const m of _raw) {
+        const tk = m.ticker || '';
+        const lastDash = tk.lastIndexOf('-');
+        if (lastDash < 0) continue;
+        const sfx = tk.slice(lastDash + 1);
+        const key = sfx === "TIE" ? "TIE" : normTeam("wnba", sfx);
+        const eventT = m.event_ticker;
+        if (!eventT || !key) continue;
+        const p = _impP(m);
+        if (!p || p <= 0 || p >= 1) continue;
+        if (!_byEv[eventT]) _byEv[eventT] = { probs: {}, tickers: {}, gameDate: _gd(m) };
+        _byEv[eventT].probs[key] = p;
+        _byEv[eventT].tickers[key] = tk;
+      }
+      for (const info of Object.values(_byEv)) {
+        const keys = Object.keys(info.probs);
+        if (keys.length !== 3 || !info.gameDate || !keys.includes("TIE")) continue;
+        const [t1, t2] = keys.filter(k => k !== "TIE");
+        const payload = { probs: { ...info.probs }, tickersByKey: { ...info.tickers } };
+        _qtrWinnerMarkets[`wnba|${t1}|${t2}|${info.gameDate}|${_segQ}`] = payload;
+        _qtrWinnerMarkets[`wnba|${t2}|${t1}|${info.gameDate}|${_segQ}`] = payload;
+      }
+    } catch { /* non-fatal */ }
+  }
+  for (const _segQ of ["1q", "2q", "3q", "4q"]) {
+    const _qn = _segQ[0]; // "1".."4"
+    const _ctxMap = _wnbaMlContext;
+    const _qtrSigma = parseFloat((11 * Math.sqrt(0.25)).toFixed(2)); // ≈5.5
+    const _getQLambdas = (ctx) => ({ hλ: ctx[`q${_qn}HomeLambda`], aλ: ctx[`q${_qn}AwayLambda`] });
+    const _statTotal = `q${_qn}total`, _statSpread = `q${_qn}spread`, _statMl = `q${_qn}ml`;
+    const _qtrJointFor = (homeTeam, awayTeam, hλ, aλ) => {
+      const _qk = `wnba|${homeTeam}|${awayTeam}|${_segQ}`;
+      if (!_qtrJointCache[_qk]) _qtrJointCache[_qk] = simulateNBAJoint(hλ, aλ, _qtrSigma, _qtrSigma, 10000);
+      return { joint: _qtrJointCache[_qk], _qk };
+    };
+    const _qTime = (homeTeam, awayTeam, gameDate) => gameTimes[`wnba:${homeTeam}:${gameDate}`] ?? gameTimes[`wnba:${awayTeam}:${gameDate}`] ?? gameTimes[`wnba:${homeTeam}`] ?? gameTimes[`wnba:${awayTeam}`] ?? null;
+    const _qOu = (sd) => sd?.gameOuLine != null ? parseFloat((sd.gameOuLine * 0.25).toFixed(1)) : null;
+    // Totals
+    for (const tm of totalMarkets) {
+      if (tm.sport !== "wnba" || tm.segment !== _segQ) continue;
+      if (tm.gameDate && tm.gameDate < cutoffStr) continue;
+      const { threshold, kalshiPct, americanOdds, noKalshiPct: _tmNoPct, noKalshiAO: _tmNoAO, gameTeam1, gameTeam2, gameDate, kalshiSpread, kalshiVolume } = tm;
+      const ctx = _ctxMap[`${gameTeam1}|${gameTeam2}|${gameDate}`] ?? _ctxMap[`${gameTeam2}|${gameTeam1}|${gameDate}`];
+      if (!ctx) continue;
+      const { homeTeam, awayTeam, _simData } = ctx;
+      const { hλ, aλ } = _getQLambdas(ctx);
+      if (hλ == null || aλ == null) continue;
+      const { joint, _qk } = _qtrJointFor(homeTeam, awayTeam, hλ, aλ);
+      if (!joint) continue;
+      if (!_qtrTotalDistCache[_qk]) {
+        const _dist = new Int16Array(joint.home.length);
+        for (let i = 0; i < joint.home.length; i++) _dist[i] = joint.home[i] + joint.away[i];
+        _qtrTotalDistCache[_qk] = _dist;
+      }
+      const truePct = totalDistPct(_qtrTotalDistCache[_qk], threshold);
+      if (truePct == null) continue;
+      const noTruePct = parseFloat((100 - truePct).toFixed(1));
+      const _base = {
+        gameType: "total", sport: "wnba", stat: _statTotal, segment: _segQ,
+        homeTeam, awayTeam, gameDate, threshold,
+        totalSimScore: 0, qualified: false,
+        kalshiVolume, kalshiSpread, lowVolume: ctx.lowVolume,
+        gameTime: _qTime(homeTeam, awayTeam, gameDate),
+        ..._simData, homeLambda: hλ, awayLambda: aλ, homeExpected: hλ, awayExpected: aλ,
+        expectedTotal: parseFloat((hλ + aλ).toFixed(2)), gameOuLine: _qOu(_simData),
+      };
+      {
+        const edge = parseFloat((truePct - kalshiPct).toFixed(1));
+        const inWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
+        if (edge >= EDGE_GATE && inWindow) plays.push({ ..._base, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge, kalshiTicker: tm._ticker ?? null, kalshiSide: "yes" });
+        else dropped.push({ ..._base, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge, reason: !inWindow ? "kalshi_out_of_window" : "edge_too_low" });
+      }
+      {
+        const edge = parseFloat((noTruePct - _tmNoPct).toFixed(1));
+        const inWindow = _tmNoPct >= KALSHI_GATE && _tmNoPct <= KALSHI_CAP;
+        if (edge >= EDGE_GATE && inWindow) plays.push({ ..._base, direction: "under", kalshiPct, noKalshiPct: _tmNoPct, americanOdds: _tmNoAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, edge, kalshiTicker: tm._ticker ?? null, kalshiSide: "no" });
+        else dropped.push({ ..._base, direction: "under", kalshiPct, noKalshiPct: _tmNoPct, americanOdds: _tmNoAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, edge, reason: !inWindow ? (_tmNoPct > KALSHI_CAP ? "kalshi_pct_too_high" : "under_no_price_too_low") : "edge_too_low" });
+      }
+    }
+    // Spreads
+    for (const m of spreadMarkets) {
+      if (m.sport !== "wnba" || m.segment !== _segQ) continue;
+      if (m.gameDate && m.gameDate < cutoffStr) continue;
+      const { gameTeam1, gameTeam2, gameDate, marginTeam, line, kalshiPct: yesKalshi, americanOdds: yesAO, noKalshiPct: noKalshi, noKalshiAO: noAO, kalshiVolume, kalshiSpread } = m;
+      const ctx = _ctxMap[`${gameTeam1}|${gameTeam2}|${gameDate}`] ?? _ctxMap[`${gameTeam2}|${gameTeam1}|${gameDate}`];
+      if (!ctx) continue;
+      const { homeTeam, awayTeam, _simData } = ctx;
+      const { hλ, aλ } = _getQLambdas(ctx);
+      if (hλ == null || aλ == null) continue;
+      if (marginTeam !== homeTeam && marginTeam !== awayTeam) continue;
+      const { joint } = _qtrJointFor(homeTeam, awayTeam, hλ, aλ);
+      if (!joint) continue;
+      const marginSide = marginTeam === homeTeam ? "home" : "away";
+      const yesTruePct = spreadPctFromJoint(joint.home, joint.away, line, marginSide);
+      if (yesTruePct == null) continue;
+      const noTruePct = parseFloat((100 - yesTruePct).toFixed(1));
+      const _gameTime = _qTime(homeTeam, awayTeam, gameDate);
+      const _ou = _qOu(_simData), _et = parseFloat((hλ + aλ).toFixed(2));
+      for (const dir of ["yes", "no"]) {
+        const pickTeam = dir === "yes" ? marginTeam : (marginTeam === homeTeam ? awayTeam : homeTeam);
+        const oppTeam = dir === "yes" ? (marginTeam === homeTeam ? awayTeam : homeTeam) : marginTeam;
+        const pickSide = pickTeam === homeTeam ? "home" : "away";
+        const truePct = dir === "yes" ? yesTruePct : noTruePct;
+        const kalshiPct = dir === "yes" ? yesKalshi : noKalshi;
+        const americanOdds = dir === "yes" ? yesAO : noAO;
+        const pickLine = dir === "yes" ? -line : line;
+        const edge = parseFloat((truePct - kalshiPct).toFixed(1));
+        const inWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
+        const _base = {
+          gameType: "spread", sport: "wnba", stat: _statSpread, segment: _segQ,
+          homeTeam, awayTeam, pickTeam, oppTeam, side: pickSide, gameDate,
+          line, pickLine, marginTeam,
+          kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), edge,
+          totalSimScore: 0, qualified: false,
+          kalshiVolume, kalshiSpread, lowVolume: ctx.lowVolume,
+          gameTime: _gameTime, kalshiTicker: m._ticker ?? null, kalshiSide: dir === "yes" ? "yes" : "no",
+          ..._simData, homeLambda: hλ, awayLambda: aλ, homeExpected: hλ, awayExpected: aλ,
+          expectedTotal: _et, gameOuLine: _ou,
+        };
+        if (edge >= EDGE_GATE && inWindow) plays.push(_base);
+        else dropped.push({ ..._base, reason: !inWindow ? "kalshi_out_of_window" : "edge_too_low" });
+      }
+    }
+    // ML 3-way (home/away/tie)
+    for (const ctx of Object.values(_ctxMap)) {
+      const { homeTeam, awayTeam, gameDate, kalshiVolume, kalshiSpread, lowVolume, _simData } = ctx;
+      if (gameDate && gameDate < cutoffStr) continue;
+      const { hλ, aλ } = _getQLambdas(ctx);
+      if (hλ == null || aλ == null) continue;
+      const wMarket = _qtrWinnerMarkets[`wnba|${homeTeam}|${awayTeam}|${gameDate}|${_segQ}`];
+      if (!wMarket?.probs) continue;
+      const homeYes = wMarket.probs[homeTeam], awayYes = wMarket.probs[awayTeam], tieYes = wMarket.probs["TIE"];
+      if (homeYes == null || awayYes == null || tieYes == null) continue;
+      const { joint } = _qtrJointFor(homeTeam, awayTeam, hλ, aλ);
+      if (!joint) continue;
+      const homeTruePct = joint3WayPct(joint.home, joint.away, "home");
+      const awayTruePct = joint3WayPct(joint.home, joint.away, "away");
+      const tieTruePct = joint3WayPct(joint.home, joint.away, "tie");
+      if (homeTruePct == null || awayTruePct == null || tieTruePct == null) continue;
+      const _gameTime = _qTime(homeTeam, awayTeam, gameDate);
+      const _toAO = (p) => p == null ? null : p >= 50 ? Math.round(-(p / (100 - p)) * 100) : Math.round((100 - p) / p * 100);
+      const _ou = _qOu(_simData), _et = parseFloat((hλ + aλ).toFixed(2));
+      const _sides = [
+        { side: "home", pickTeam: homeTeam, oppTeam: awayTeam, yesAsk: homeYes, truePct: homeTruePct },
+        { side: "away", pickTeam: awayTeam, oppTeam: homeTeam, yesAsk: awayYes, truePct: awayTruePct },
+        { side: "tie", pickTeam: "TIE", oppTeam: null, yesAsk: tieYes, truePct: tieTruePct },
+      ];
+      for (const s of _sides) {
+        const kalshiPct = parseFloat((s.yesAsk * 100).toFixed(1));
+        const edge = parseFloat((s.truePct - kalshiPct).toFixed(1));
+        const americanOdds = _toAO(kalshiPct);
+        const inWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
+        const _base = {
+          gameType: "ml", sport: "wnba", stat: _statMl, segment: _segQ,
+          homeTeam, awayTeam, pickTeam: s.pickTeam, oppTeam: s.oppTeam, side: s.side, gameDate,
+          kalshiPct, americanOdds, truePct: parseFloat(s.truePct.toFixed(1)), edge,
+          totalSimScore: 0, qualified: false,
+          kalshiVolume, kalshiSpread, lowVolume,
+          gameTime: _gameTime, kalshiTicker: wMarket.tickersByKey?.[s.pickTeam] ?? null, kalshiSide: "yes",
+          ..._simData, homeLambda: hλ, awayLambda: aλ, homeExpected: hλ, awayExpected: aλ,
+          expectedTotal: _et, gameOuLine: _ou,
+        };
+        if (edge >= EDGE_GATE && inWindow) plays.push(_base);
+        else dropped.push({ ..._base, reason: !inWindow ? "kalshi_out_of_window" : "edge_too_low" });
+      }
+    }
+  }
   // ── NHL ML plays (KXNHLGAME) ──────────────────────────────────────────────────────────
   // Per-team Poisson joint sim — same engine as MLB (goals and runs are both independent
   // count distributions). `simulateMLBJoint` is sport-agnostic; reusing it directly here
