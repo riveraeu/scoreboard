@@ -11,7 +11,8 @@ const _isShippedRoadmapEntry = (s) => !!s?.markets?.some(m => SERIES_CONFIG[m.ti
 
 // --- Report page (daily model briefing) -----------------------------------------
 // Leads with DO THIS (a single top-priority action across the whole page, picked by a
-// fall-through ladder: data health → model changes → build next market → Polymarket),
+// fall-through ladder: data health → model changes → validate ripe shadow models → build next
+// market → triage detected markets → Polymarket),
 // then the priority-ordered sections: DATA HEALTH (qualifier banner) · OPS (a four-line
 // daily playbook + collapsed supporting tables) · MODEL BOARD (the price-band validation
 // ladder — the single gate-decision surface, led by a one-line GATE digest).
@@ -587,9 +588,11 @@ function GateDigest({ board }) {
 // PRIMARY "do this", render the rest as a dimmed queued "then →" ladder so the next moves are
 // visible at a glance. Tiers: (1) data health — bad data poisons everything below, so a cron /
 // coverage / resolution / CLV warning trumps all; (2) model changes pending on the board (gate
-// promote/demote, tune-down, or an input/residual investigation); (3) build the next market on
-// the MODEL_NEXT roadmap; (4) expand the platform (Polymarket). 3 and 4 are always "available",
-// so on a quiet, healthy day the primary becomes "build next market" with Polymarket queued.
+// promote/demote, tune-down, or an input/residual investigation); (2.5) validate ripe shadow
+// models — ungated + n≥50 + STRENGTHENING, the build→gate half of the funnel (run tune:gate +
+// Brier); (3) build the next market on the MODEL_NEXT roadmap; (3.5) triage detected new markets
+// (the funnel's first step); (4) expand the platform (Polymarket). 3 and 4 are always "available",
+// so on a quiet, healthy day the primary becomes "build next market" with triage/Polymarket queued.
 const _CHANGE_ACTIONS = {
   "Add to gate":    { tone:"green", verb:"Promote" },
   "Pull from gate": { tone:"red",   verb:"Pull from gate" },
@@ -615,6 +618,19 @@ function _doThisCandidates(d) {
       why: lead.doThis.why || "model change pending on the board",
       short:`${changes.length} model change${changes.length>1?"s":""}` });
   }
+  // 2.5 — validate ripe shadow models: ungated categories with enough settled bets (n≥50) that are
+  // trending positive but not yet gate-clean (verdict STRENGTHENING) — go run the manual tune:gate
+  // + ?brier=1 to decide on gating. This is the build→gate half of the funnel: upstream of building
+  // a NEW market, downstream of an actual board change (a clean PROMOTE already surfaces in tier 2).
+  const ripe = (d?.modelBoard || []).filter(e =>
+    !e.gated && e.verdict === "STRENGTHENING" && e.checklist?.nOk && !_CHANGE_ACTIONS[e?.doThis?.action]);
+  if (ripe.length) {
+    const names = ripe.map(e => `${e.sport}|${e.category}`);
+    out.push({ tier:2.5, tone:"blue",
+      label: `Validate ${names.slice(0,3).join(", ")}${names.length>3?` +${names.length-3}`:""}`,
+      why: "n≥50 and trending +ROI but not yet gate-clean — run tune:gate + ?brier=1 to decide on gating",
+      short: `Validate ${ripe.length}` });
+  }
   // 3 — build the next market on the roadmap (lowest rank wins; for the infra row, name its NEXT
   // item). Skip an infra/shipped row whose work is all done or data-gated (no NEXT badge) so the
   // quiet-day action falls through to the next thing actually buildable now.
@@ -625,6 +641,18 @@ function _doThisCandidates(d) {
     const nextItem = next.markets?.find(m => m.badge === "NEXT");
     const label = next.infra && nextItem ? `Build ${nextItem.ticker}` : `Build ${next.sport}`;
     out.push({ tier:3, tone:"blue", label, why: nextItem?.title || next.note, short: label });
+  }
+  // 3.5 — triage detected new markets (kalshi-series-scan → `newMarkets`, already in the payload;
+  // the funnel's first step). Below "build next" (a vetted roadmap market outranks raw detections)
+  // but above the Polymarket floor, so an un-triaged queue becomes the quiet-day prompt instead of
+  // jumping straight to platform expansion.
+  const nm = d?.newMarkets || [];
+  if (nm.length) {
+    const titles = nm.slice(0, 3).map(m => m.title || m.sampleSubtitle || m.ticker).join(", ");
+    out.push({ tier:3.5, tone:"blue",
+      label: `Triage ${nm.length} detected market${nm.length > 1 ? "s" : ""}`,
+      why: `${titles}${nm.length > 3 ? " …" : ""} — dismiss noise, promote real candidates`,
+      short: `Triage ${nm.length} detected` });
   }
   // 4 — expand to a new platform (strategic backlog floor; primary only when nothing above is actionable).
   out.push({ tier:4, tone:"gray", label:"Expand to Polymarket",
