@@ -1659,25 +1659,36 @@ async function handleShadowReport({ path, request, env, cache }) {
   // Newly-listed Kalshi markets we don't consume yet (status='new' in kalshi_series_seen,
   // populated by the /api/kalshi-series-scan cron). Separate try/catch — the table may not
   // exist yet on first deploy, and a discovery miss must never break the briefing.
-  let newMarkets = [];
-  try {
-    const nmRows = await neonQuery(`
-      SELECT ticker, title, tags, frequency, sample_market, sample_subtitle, first_seen
-      FROM kalshi_series_seen WHERE status = 'new'
-      ORDER BY first_seen DESC, ticker LIMIT 25
-    `, [], env);
-    newMarkets = nmRows.map(r => ({
-      ticker: r.ticker,
-      title: r.title ?? null,
-      tags: r.tags ?? null,
-      frequency: r.frequency ?? null,
-      sampleMarket: r.sample_market ?? null,
-      sampleSubtitle: r.sample_subtitle ?? null,
-      firstSeen: r.first_seen ? new Date(r.first_seen).toISOString().slice(0, 10) : null,
-    }));
-  } catch (e) {
-    console.error("[shadow-report] newMarkets query skipped:", e?.message);
-  }
+  // `new` = detected (un-triaged); `shortlisted` = promoted, being vetted. Both carry the
+  // triage-hint columns (live_market_count + window_fit) the series-scan cron refreshes daily.
+  const queryDiscovered = async (status) => {
+    try {
+      const rows = await neonQuery(`
+        SELECT ticker, title, tags, frequency, sample_market, sample_subtitle,
+               live_market_count, window_fit, first_seen
+        FROM kalshi_series_seen WHERE status = $1
+        ORDER BY first_seen DESC, ticker LIMIT 25
+      `, [status], env);
+      return rows.map(r => ({
+        ticker: r.ticker,
+        title: r.title ?? null,
+        tags: r.tags ?? null,
+        frequency: r.frequency ?? null,
+        sampleMarket: r.sample_market ?? null,
+        sampleSubtitle: r.sample_subtitle ?? null,
+        liveMarketCount: r.live_market_count ?? null,
+        windowFit: r.window_fit ?? null,
+        firstSeen: r.first_seen ? new Date(r.first_seen).toISOString().slice(0, 10) : null,
+      }));
+    } catch (e) {
+      console.error(`[shadow-report] ${status} markets query skipped:`, e?.message);
+      return [];
+    }
+  };
+  const [newMarkets, shortlistedMarkets] = await Promise.all([
+    queryDiscovered("new"),
+    queryDiscovered("shortlisted"),
+  ]);
 
   const report = {
     reportDate,
@@ -1694,6 +1705,7 @@ async function handleShadowReport({ path, request, env, cache }) {
     dailyVolumeRoi,
     optimalDailyPicks,
     newMarkets,
+    shortlistedMarkets,
     durationMs: Date.now() - t0,
   };
 

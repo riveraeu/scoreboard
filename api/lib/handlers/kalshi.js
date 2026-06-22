@@ -591,15 +591,51 @@ export async function handleKalshiRoutes(ctx) {
         last_seen       DATE NOT NULL
       )
     `, env);
+    // Additive triage-hint columns (live liquidity + window fit). Safe on re-run.
+    await neonExec(`
+      ALTER TABLE kalshi_series_seen ADD COLUMN IF NOT EXISTS live_market_count INT;
+      ALTER TABLE kalshi_series_seen ADD COLUMN IF NOT EXISTS window_fit BOOLEAN
+    `, env);
 
-    // Admin triage shortcuts.
+    // Enrich one series with a sample market + live liquidity + window-fit (any side priced in the
+    // [67,91] qualification band — a rough "favorites priced in our band" hint, not a gate).
+    // Best-effort; returns null on fetch failure.
+    const _WIN_LO = 0.67, _WIN_HI = 0.91;
+    const enrichSeries = async (ticker) => {
+      try {
+        const r = await fetch(`https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=${ticker}&limit=100&status=open`, {
+          headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" },
+        });
+        if (!r.ok) return null;
+        const markets = (await r.json())?.markets || [];
+        let windowFit = false;
+        for (const m of markets) {
+          const ya = parseFloat(m.yes_ask_dollars), na = parseFloat(m.no_ask_dollars);
+          if ((ya >= _WIN_LO && ya <= _WIN_HI) || (na >= _WIN_LO && na <= _WIN_HI)) { windowFit = true; break; }
+        }
+        const m0 = markets[0];
+        return {
+          sample_market: m0?.ticker ?? null,
+          sample_subtitle: m0?.subtitle ?? m0?.yes_sub_title ?? m0?.title ?? null,
+          live_market_count: markets.length,
+          window_fit: windowFit,
+        };
+      } catch { return null; }
+    };
+
+    // Admin triage shortcuts: dismiss (→dismissed), undismiss (→new), promote (→shortlisted),
+    // unpromote (shortlisted→new). Curl-only (admin gate) — no on-page write surface.
     const dismiss = url.searchParams.get("dismiss");
     const undismiss = url.searchParams.get("undismiss");
-    if (dismiss || undismiss) {
+    const promote = url.searchParams.get("promote");
+    const unpromote = url.searchParams.get("unpromote");
+    if (dismiss || undismiss || promote || unpromote) {
       if (!isAdmin) return errorResponse("Admin only", 403);
       if (dismiss) await neonQuery(`UPDATE kalshi_series_seen SET status='dismissed' WHERE ticker = $1`, [dismiss], env, { write: true });
       if (undismiss) await neonQuery(`UPDATE kalshi_series_seen SET status='new' WHERE ticker = $1 AND status='dismissed'`, [undismiss], env, { write: true });
-      return jsonResponse({ ok: true, dismissed: dismiss || null, undismissed: undismiss || null });
+      if (promote) await neonQuery(`UPDATE kalshi_series_seen SET status='shortlisted' WHERE ticker = $1 AND status IN ('new','dismissed')`, [promote], env, { write: true });
+      if (unpromote) await neonQuery(`UPDATE kalshi_series_seen SET status='new' WHERE ticker = $1 AND status='shortlisted'`, [unpromote], env, { write: true });
+      return jsonResponse({ ok: true, dismissed: dismiss || null, undismissed: undismiss || null, promoted: promote || null, unpromoted: unpromote || null });
     }
 
     // 1. Fetch the Sports-category series catalog (single call; no pagination as of 2026-06).
@@ -621,7 +657,7 @@ export async function handleKalshiRoutes(ctx) {
 
     // 3. Tickers already recorded. {write:true} → pooled primary for read-after-create
     //    consistency (unpooled replica can serve a stale-empty read on cold wake).
-    const existingRows = await neonQuery(`SELECT ticker FROM kalshi_series_seen`, [], env, { write: true });
+    const existingRows = await neonQuery(`SELECT ticker, status FROM kalshi_series_seen`, [], env, { write: true });
     const existing = new Set(existingRows.map(r => r.ticker));
     const isFirstRun = existing.size === 0;
 
@@ -642,6 +678,8 @@ export async function handleKalshiRoutes(ctx) {
         frequency: s.frequency ?? null,
         sample_market: null,
         sample_subtitle: null,
+        live_market_count: null,
+        window_fit: null,
         status,
         first_seen: today,
         last_seen: today,
@@ -650,22 +688,12 @@ export async function handleKalshiRoutes(ctx) {
       if (status === "new") enrichTargets.push(row);
     }
 
-    // 5. Enrich genuinely-new rows with one sample market each (best-effort, capped).
+    // 5. Enrich genuinely-new rows with sample market + live count + window-fit (capped, parallel).
     const ENRICH_CAP = 25;
-    for (const row of enrichTargets.slice(0, ENRICH_CAP)) {
-      try {
-        const r = await fetch(`https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=${row.ticker}&limit=1`, {
-          headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" },
-        });
-        if (r.ok) {
-          const m = ((await r.json())?.markets || [])[0];
-          if (m) {
-            row.sample_market = m.ticker ?? null;
-            row.sample_subtitle = m.subtitle ?? m.yes_sub_title ?? m.title ?? null;
-          }
-        }
-      } catch { /* enrichment is best-effort */ }
-    }
+    await Promise.all(enrichTargets.slice(0, ENRICH_CAP).map(async (row) => {
+      const e = await enrichSeries(row.ticker);
+      if (e) Object.assign(row, e);
+    }));
 
     const newTickers = enrichTargets.map(r => r.ticker);
 
@@ -679,7 +707,7 @@ export async function handleKalshiRoutes(ctx) {
     }
 
     // 6a. Batch-insert new-to-table rows.
-    const COLS = ["ticker","title","category","tags","frequency","sample_market","sample_subtitle","status","first_seen","last_seen"];
+    const COLS = ["ticker","title","category","tags","frequency","sample_market","sample_subtitle","live_market_count","window_fit","status","first_seen","last_seen"];
     for (let i = 0; i < toInsert.length; i += 100) {
       const chunk = toInsert.slice(i, i + 100);
       const placeholders = chunk.map((_, ri) =>
@@ -700,10 +728,23 @@ export async function handleKalshiRoutes(ctx) {
       knownArr, env, { write: true }
     );
 
+    // 6c. Refresh enrichment for existing new/shortlisted rows so triage hints track current
+    // liquidity, not first-seen. Capped + parallel + best-effort. (Newly-inserted rows were just
+    // enriched in step 5, so we only refresh ones that pre-existed this run.)
+    const REFRESH_CAP = 40;
+    const refreshTargets = existingRows.filter(r => r.status === "new" || r.status === "shortlisted").slice(0, REFRESH_CAP);
+    await Promise.all(refreshTargets.map(async (r) => {
+      const e = await enrichSeries(r.ticker);
+      if (e) await neonQuery(
+        `UPDATE kalshi_series_seen SET sample_market=$2, sample_subtitle=$3, live_market_count=$4, window_fit=$5 WHERE ticker = $1`,
+        [r.ticker, e.sample_market, e.sample_subtitle, e.live_market_count, e.window_fit], env, { write: true }
+      );
+    }));
+
     return jsonResponse({
       ok: true, isFirstRun,
       catalogCount: catalog.length, knownCount: known.size,
-      inserted: toInsert.length, newCount: newTickers.length, newTickers,
+      inserted: toInsert.length, newCount: newTickers.length, refreshed: refreshTargets.length, newTickers,
     });
   }
 

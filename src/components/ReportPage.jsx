@@ -12,7 +12,7 @@ const _isShippedRoadmapEntry = (s) => !!s?.markets?.some(m => SERIES_CONFIG[m.ti
 // --- Report page (daily model briefing) -----------------------------------------
 // Leads with DO THIS (a single top-priority action across the whole page, picked by a
 // fall-through ladder: data health → model changes → validate ripe shadow models → build next
-// market → triage detected markets → Polymarket),
+// market → vet shortlisted → triage detected markets → Polymarket),
 // then the priority-ordered sections: DATA HEALTH (qualifier banner) · OPS (a four-line
 // daily playbook + collapsed supporting tables) · MODEL BOARD (the price-band validation
 // ladder — the single gate-decision surface, led by a one-line GATE digest).
@@ -320,13 +320,36 @@ const MODEL_NEXT = [
   },
 ];
 
-function ModelNext({ newMarkets = [] }) {
+// One discovered-series row (detected or shortlisted), with triage hints from the series-scan
+// cron: live market count (0 = a shell, not a real market) + window-fit (a side priced in the
+// 67–91 band — a rough "favorites in our band" hint, not a gate).
+function DiscoveredMarketRow({ m, label, labelColor }) {
+  const n = m.liveMarketCount;
+  return (
+    <div style={{ display:"flex", alignItems:"center", gap:7, fontSize:11, flexWrap:"wrap" }}>
+      <span style={{
+        fontSize:8.5, fontWeight:700, padding:"1px 5px", borderRadius:3, letterSpacing:0.3,
+        color:labelColor, background:"transparent", border:`1px solid ${C.border}`,
+        minWidth:54, textAlign:"center", flexShrink:0,
+      }}>{label}</span>
+      <span style={{ color:C.text }}>{m.title || m.sampleSubtitle || m.ticker}</span>
+      <span style={{ color:C.dim, fontSize:9.5, fontFamily:"monospace" }}>{m.ticker}</span>
+      {n != null && <span title="Active markets in the series (0 = a shell, not tradeable)" style={{ color: n > 0 ? C.dim : C.amber, fontSize:9.5 }}>· {n > 0 ? `${n} live` : "no live mkts"}</span>}
+      {m.windowFit != null && n > 0 && <span title="A market side is priced in the 67–91 qualification band" style={{ color: m.windowFit ? C.green : C.dim, fontSize:9.5 }}>· {m.windowFit ? "✓ in band" : "⚠ none in band"}</span>}
+      {m.firstSeen && <span style={{ color:C.dim, fontSize:9.5 }}>· {m.firstSeen}</span>}
+    </div>
+  );
+}
+
+function ModelNext({ newMarkets = [], shortlisted = [] }) {
   const [open, setOpen] = React.useState(true);
-  // Auto-discovered Kalshi series (from the kalshi-series-scan cron → report `newMarkets`), minus
-  // anything already shipped (live in SERIES_CONFIG) or already named on the curated roadmap above.
-  // So this surfaces only genuinely-new build candidates to triage, right alongside the plan.
+  // Auto-discovered Kalshi series (from the kalshi-series-scan cron), minus anything already
+  // shipped (live in SERIES_CONFIG) or already named on the curated roadmap above. `shortlisted`
+  // = promoted + being vetted; `detected` = raw, un-triaged. Both surface as build candidates.
   const roadmapTickers = new Set(MODEL_NEXT.flatMap(s => (s.markets || []).map(m => m.ticker)));
-  const detected = (newMarkets || []).filter(m => !SERIES_CONFIG[m.ticker] && !roadmapTickers.has(m.ticker));
+  const dedupe = (arr) => (arr || []).filter(m => !SERIES_CONFIG[m.ticker] && !roadmapTickers.has(m.ticker));
+  const shortlistedRows = dedupe(shortlisted);
+  const detected = dedupe(newMarkets);
   // Show only unbuilt work: drop entries already shipped (primary ticker live in SERIES_CONFIG).
   // Infra rows (Model triage) are never "shipped" and always stay. Display filter only — the
   // MODEL_NEXT constant keeps shipped entries + their Phase-2 notes intact in source.
@@ -373,8 +396,24 @@ function ModelNext({ newMarkets = [] }) {
               </div>
             </div>
           );})}
-          {/* Detected — auto-discovered series fed in from the series-scan cron, deduped against
-              shipped + roadmapped tickers. Build candidates to vet for window fit + alt lines. */}
+          {/* Shortlisted — promoted (curl `?promote=`), being vetted. Sits between the curated
+              roadmap and raw detections. */}
+          {shortlistedRows.length > 0 && (
+            <div style={{ marginTop:6, paddingTop:8, borderTop:`1px solid ${C.border}` }}>
+              <div style={{ display:"flex", alignItems:"baseline", gap:6, flexWrap:"wrap", marginBottom:5 }}>
+                <span style={{ color:C.text, fontSize:12.5, fontWeight:700 }}>Shortlisted · vetting</span>
+                <span style={{ fontSize:8.5, fontWeight:700, letterSpacing:0.3, padding:"1px 5px", borderRadius:3,
+                  color:C.green, background:"transparent", border:`1px solid ${C.green}` }}>{shortlistedRows.length}</span>
+                <span style={{ color:C.gray, fontSize:11 }}>promoted — confirm data on both ends + the first knob, then author the roadmap entry</span>
+              </div>
+              <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
+                {shortlistedRows.slice(0, 10).map(m => <DiscoveredMarketRow key={m.ticker} m={m} label="VET" labelColor={C.green} />)}
+                {shortlistedRows.length > 10 && <div style={{ color:C.dim, fontSize:10 }}>+{shortlistedRows.length - 10} more…</div>}
+              </div>
+            </div>
+          )}
+          {/* Detected — auto-discovered series from the series-scan cron, deduped against shipped +
+              roadmapped tickers. Triage via curl `?promote=` / `?dismiss=`. */}
           {detected.length > 0 && (
             <div style={{ marginTop:6, paddingTop:8, borderTop:`1px solid ${C.border}` }}>
               <div style={{ display:"flex", alignItems:"baseline", gap:6, flexWrap:"wrap", marginBottom:5 }}>
@@ -384,18 +423,7 @@ function ModelNext({ newMarkets = [] }) {
                 <span style={{ color:C.gray, fontSize:11 }}>auto-discovered Kalshi series not yet on the roadmap — vet for window fit + alt lines</span>
               </div>
               <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
-                {detected.slice(0, 10).map(m => (
-                  <div key={m.ticker} style={{ display:"flex", alignItems:"center", gap:7, fontSize:11 }}>
-                    <span style={{
-                      fontSize:8.5, fontWeight:700, padding:"1px 5px", borderRadius:3, letterSpacing:0.3,
-                      color:C.blue, background:"transparent", border:`1px solid ${C.border}`,
-                      minWidth:42, textAlign:"center", flexShrink:0,
-                    }}>NEW</span>
-                    <span style={{ color:C.text }}>{m.title || m.sampleSubtitle || m.ticker}</span>
-                    <span style={{ color:C.dim, fontSize:9.5, fontFamily:"monospace" }}>{m.ticker}</span>
-                    {m.firstSeen && <span style={{ color:C.dim, fontSize:9.5 }}>· {m.firstSeen}</span>}
-                  </div>
-                ))}
+                {detected.slice(0, 10).map(m => <DiscoveredMarketRow key={m.ticker} m={m} label="NEW" labelColor={C.blue} />)}
                 {detected.length > 10 && <div style={{ color:C.dim, fontSize:10 }}>+{detected.length - 10} more…</div>}
               </div>
             </div>
@@ -590,9 +618,10 @@ function GateDigest({ board }) {
 // coverage / resolution / CLV warning trumps all; (2) model changes pending on the board (gate
 // promote/demote, tune-down, or an input/residual investigation); (2.5) validate ripe shadow
 // models — ungated + n≥50 + STRENGTHENING, the build→gate half of the funnel (run tune:gate +
-// Brier); (3) build the next market on the MODEL_NEXT roadmap; (3.5) triage detected new markets
-// (the funnel's first step); (4) expand the platform (Polymarket). 3 and 4 are always "available",
-// so on a quiet, healthy day the primary becomes "build next market" with triage/Polymarket queued.
+// Brier); (3) build the next market on the MODEL_NEXT roadmap; (3.25) vet shortlisted markets
+// (promoted detections, mid-funnel); (3.5) triage detected new markets (the funnel's first step);
+// (4) expand the platform (Polymarket). 3 and 4 are always "available", so on a quiet, healthy day
+// the primary becomes "build next market" with vet/triage/Polymarket queued.
 const _CHANGE_ACTIONS = {
   "Add to gate":    { tone:"green", verb:"Promote" },
   "Pull from gate": { tone:"red",   verb:"Pull from gate" },
@@ -641,6 +670,17 @@ function _doThisCandidates(d) {
     const nextItem = next.markets?.find(m => m.badge === "NEXT");
     const label = next.infra && nextItem ? `Build ${nextItem.ticker}` : `Build ${next.sport}`;
     out.push({ tier:3, tone:"blue", label, why: nextItem?.title || next.note, short: label });
+  }
+  // 3.25 — vet shortlisted markets (promoted detections, mid-funnel). Below build-next (a vetted
+  // roadmap market is further along), above triage (raw detections). Confirm data on both ends +
+  // the first knob, then author the roadmap entry.
+  const shortlisted = d?.shortlistedMarkets || [];
+  if (shortlisted.length) {
+    const titles = shortlisted.slice(0, 3).map(m => m.title || m.sampleSubtitle || m.ticker).join(", ");
+    out.push({ tier:3.25, tone:"blue",
+      label: `Vet ${shortlisted.length} shortlisted market${shortlisted.length > 1 ? "s" : ""}`,
+      why: `${titles}${shortlisted.length > 3 ? " …" : ""} — confirm data on both ends + the first knob, then author the roadmap entry`,
+      short: `Vet ${shortlisted.length} shortlisted` });
   }
   // 3.5 — triage detected new markets (kalshi-series-scan → `newMarkets`, already in the payload;
   // the funnel's first step). Below "build next" (a vetted roadmap market outranks raw detections)
@@ -735,7 +775,7 @@ function MorningBriefing({ shadowReportData, shadowReportLoading, fetchShadowRep
 
       <DataHealth dh={d.dataHealth} />
 
-      <ModelNext newMarkets={d.newMarkets} />
+      <ModelNext newMarkets={d.newMarkets} shortlisted={d.shortlistedMarkets} />
 
       <OpsSection d={d} />
 
