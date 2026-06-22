@@ -608,27 +608,33 @@ export async function handleKalshiRoutes(ctx) {
       const worker = async () => { while (i < items.length) { const idx = i++; await fn(items[idx]); } };
       await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
     };
+    // One retry on failure — Kalshi 429s under the parallel scan even at low concurrency, so a
+    // single backoff recovers transient rate-limits (verified: series returning 200/28 markets to
+    // a sequential curl were coming back null from the burst).
     const enrichSeries = async (ticker) => {
-      try {
-        const r = await fetch(`https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=${ticker}&limit=100&status=open`, {
-          headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" },
-          signal: AbortSignal.timeout(8000),
-        });
-        if (!r.ok) return null;
-        const markets = (await r.json())?.markets || [];
-        let windowFit = false;
-        for (const m of markets) {
-          const ya = parseFloat(m.yes_ask_dollars), na = parseFloat(m.no_ask_dollars);
-          if ((ya >= _WIN_LO && ya <= _WIN_HI) || (na >= _WIN_LO && na <= _WIN_HI)) { windowFit = true; break; }
-        }
-        const m0 = markets[0];
-        return {
-          sample_market: m0?.ticker ?? null,
-          sample_subtitle: m0?.subtitle ?? m0?.yes_sub_title ?? m0?.title ?? null,
-          live_market_count: markets.length,
-          window_fit: windowFit,
-        };
-      } catch { return null; }
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const r = await fetch(`https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=${ticker}&limit=100&status=open`, {
+            headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" },
+            signal: AbortSignal.timeout(8000),
+          });
+          if (!r.ok) { if (attempt === 0) { await new Promise(res => setTimeout(res, 500)); continue; } return null; }
+          const markets = (await r.json())?.markets || [];
+          let windowFit = false;
+          for (const m of markets) {
+            const ya = parseFloat(m.yes_ask_dollars), na = parseFloat(m.no_ask_dollars);
+            if ((ya >= _WIN_LO && ya <= _WIN_HI) || (na >= _WIN_LO && na <= _WIN_HI)) { windowFit = true; break; }
+          }
+          const m0 = markets[0];
+          return {
+            sample_market: m0?.ticker ?? null,
+            sample_subtitle: m0?.subtitle ?? m0?.yes_sub_title ?? m0?.title ?? null,
+            live_market_count: markets.length,
+            window_fit: windowFit,
+          };
+        } catch { if (attempt === 0) { await new Promise(res => setTimeout(res, 500)); continue; } return null; }
+      }
+      return null;
     };
 
     // Admin triage shortcuts: dismiss (→dismissed), undismiss (→new), promote (→shortlisted),
@@ -698,7 +704,7 @@ export async function handleKalshiRoutes(ctx) {
 
     // 5. Enrich genuinely-new rows with sample market + live count + window-fit (capped, parallel).
     const ENRICH_CAP = 25;
-    await mapPool(enrichTargets.slice(0, ENRICH_CAP), 5, async (row) => {
+    await mapPool(enrichTargets.slice(0, ENRICH_CAP), 3, async (row) => {
       const e = await enrichSeries(row.ticker);
       if (e) Object.assign(row, e);
     });
@@ -746,7 +752,7 @@ export async function handleKalshiRoutes(ctx) {
        ORDER BY first_seen DESC, ticker LIMIT ${REFRESH_CAP}`,
       [], env, { write: true }
     );
-    await mapPool(refreshRows, 5, async (r) => {
+    await mapPool(refreshRows, 3, async (r) => {
       const e = await enrichSeries(r.ticker);
       if (e) await neonQuery(
         `UPDATE kalshi_series_seen SET sample_market=$2, sample_subtitle=$3, live_market_count=$4, window_fit=$5 WHERE ticker = $1`,
