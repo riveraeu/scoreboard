@@ -657,7 +657,7 @@ export async function handleKalshiRoutes(ctx) {
 
     // 3. Tickers already recorded. {write:true} → pooled primary for read-after-create
     //    consistency (unpooled replica can serve a stale-empty read on cold wake).
-    const existingRows = await neonQuery(`SELECT ticker, status FROM kalshi_series_seen`, [], env, { write: true });
+    const existingRows = await neonQuery(`SELECT ticker FROM kalshi_series_seen`, [], env, { write: true });
     const existing = new Set(existingRows.map(r => r.ticker));
     const isFirstRun = existing.size === 0;
 
@@ -729,11 +729,16 @@ export async function handleKalshiRoutes(ctx) {
     );
 
     // 6c. Refresh enrichment for existing new/shortlisted rows so triage hints track current
-    // liquidity, not first-seen. Capped + parallel + best-effort. (Newly-inserted rows were just
-    // enriched in step 5, so we only refresh ones that pre-existed this run.)
-    const REFRESH_CAP = 40;
-    const refreshTargets = existingRows.filter(r => r.status === "new" || r.status === "shortlisted").slice(0, REFRESH_CAP);
-    await Promise.all(refreshTargets.map(async (r) => {
+    // liquidity, not first-seen. Ordered first_seen DESC to MATCH the report's display order
+    // (newMarkets/shortlistedMarkets each LIMIT 25 first_seen DESC) so the rows users actually see
+    // get enriched. Capped + parallel + best-effort.
+    const REFRESH_CAP = 60;
+    const refreshRows = await neonQuery(
+      `SELECT ticker FROM kalshi_series_seen WHERE status IN ('new','shortlisted')
+       ORDER BY first_seen DESC, ticker LIMIT ${REFRESH_CAP}`,
+      [], env, { write: true }
+    );
+    await Promise.all(refreshRows.map(async (r) => {
       const e = await enrichSeries(r.ticker);
       if (e) await neonQuery(
         `UPDATE kalshi_series_seen SET sample_market=$2, sample_subtitle=$3, live_market_count=$4, window_fit=$5 WHERE ticker = $1`,
@@ -744,7 +749,7 @@ export async function handleKalshiRoutes(ctx) {
     return jsonResponse({
       ok: true, isFirstRun,
       catalogCount: catalog.length, knownCount: known.size,
-      inserted: toInsert.length, newCount: newTickers.length, refreshed: refreshTargets.length, newTickers,
+      inserted: toInsert.length, newCount: newTickers.length, refreshed: refreshRows.length, newTickers,
     });
   }
 
