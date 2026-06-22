@@ -673,8 +673,11 @@ function _doThisCandidates(d) {
   }
   // 3.25 — vet shortlisted markets (promoted detections, mid-funnel). Below build-next (a vetted
   // roadmap market is further along), above triage (raw detections). Confirm data on both ends +
-  // the first knob, then author the roadmap entry.
-  const shortlisted = d?.shortlistedMarkets || [];
+  // the first knob, then author the roadmap entry. Drop any ticker already live in SERIES_CONFIG
+  // (shipped) — same filter the ModelNext "Shortlisted" card uses (line ~350) — so the banner
+  // self-advances the instant a market ships, without waiting for the scan's adopt reconcile + the
+  // next report regen to flip its DB status.
+  const shortlisted = (d?.shortlistedMarkets || []).filter(m => !SERIES_CONFIG[m.ticker]);
   if (shortlisted.length) {
     const titles = shortlisted.slice(0, 3).map(m => m.title || m.sampleSubtitle || m.ticker).join(", ");
     out.push({ tier:3.25, tone:"blue",
@@ -686,7 +689,7 @@ function _doThisCandidates(d) {
   // the funnel's first step). Below "build next" (a vetted roadmap market outranks raw detections)
   // but above the Polymarket floor, so an un-triaged queue becomes the quiet-day prompt instead of
   // jumping straight to platform expansion.
-  const nm = d?.newMarkets || [];
+  const nm = (d?.newMarkets || []).filter(m => !SERIES_CONFIG[m.ticker]);
   if (nm.length) {
     const titles = nm.slice(0, 3).map(m => m.title || m.sampleSubtitle || m.ticker).join(", ");
     out.push({ tier:3.5, tone:"blue",
