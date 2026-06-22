@@ -319,8 +319,13 @@ const MODEL_NEXT = [
   },
 ];
 
-function ModelNext() {
+function ModelNext({ newMarkets = [] }) {
   const [open, setOpen] = React.useState(true);
+  // Auto-discovered Kalshi series (from the kalshi-series-scan cron → report `newMarkets`), minus
+  // anything already shipped (live in SERIES_CONFIG) or already named on the curated roadmap above.
+  // So this surfaces only genuinely-new build candidates to triage, right alongside the plan.
+  const roadmapTickers = new Set(MODEL_NEXT.flatMap(s => (s.markets || []).map(m => m.ticker)));
+  const detected = (newMarkets || []).filter(m => !SERIES_CONFIG[m.ticker] && !roadmapTickers.has(m.ticker));
   return (
     <div style={{ marginBottom:12, border:`1px solid ${C.border}`, borderRadius:8, background:C.card, padding:"10px 12px" }}>
       <div onClick={() => setOpen(o => !o)} style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", flexWrap:"wrap" }}>
@@ -371,6 +376,33 @@ function ModelNext() {
               </div>
             </div>
           );})}
+          {/* Detected — auto-discovered series fed in from the series-scan cron, deduped against
+              shipped + roadmapped tickers. Build candidates to vet for window fit + alt lines. */}
+          {detected.length > 0 && (
+            <div style={{ marginTop:6, paddingTop:8, borderTop:`1px solid ${C.border}` }}>
+              <div style={{ display:"flex", alignItems:"baseline", gap:6, flexWrap:"wrap", marginBottom:5 }}>
+                <span style={{ color:C.text, fontSize:12.5, fontWeight:700 }}>Detected · triage</span>
+                <span style={{ fontSize:8.5, fontWeight:700, letterSpacing:0.3, padding:"1px 5px", borderRadius:3,
+                  color:C.blue, background:"transparent", border:`1px solid ${C.blue}` }}>{detected.length} NEW</span>
+                <span style={{ color:C.gray, fontSize:11 }}>auto-discovered Kalshi series not yet on the roadmap — vet for window fit + alt lines</span>
+              </div>
+              <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
+                {detected.slice(0, 10).map(m => (
+                  <div key={m.ticker} style={{ display:"flex", alignItems:"center", gap:7, fontSize:11 }}>
+                    <span style={{
+                      fontSize:8.5, fontWeight:700, padding:"1px 5px", borderRadius:3, letterSpacing:0.3,
+                      color:C.blue, background:"transparent", border:`1px solid ${C.border}`,
+                      minWidth:42, textAlign:"center", flexShrink:0,
+                    }}>NEW</span>
+                    <span style={{ color:C.text }}>{m.title || m.sampleSubtitle || m.ticker}</span>
+                    <span style={{ color:C.dim, fontSize:9.5, fontFamily:"monospace" }}>{m.ticker}</span>
+                    {m.firstSeen && <span style={{ color:C.dim, fontSize:9.5 }}>· {m.firstSeen}</span>}
+                  </div>
+                ))}
+                {detected.length > 10 && <div style={{ color:C.dim, fontSize:10 }}>+{detected.length - 10} more…</div>}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -438,7 +470,7 @@ function OpsSection({ d }) {
       <div style={sectionHead}>Ops · daily playbook</div>
       <OpsSummary d={d} />
       <div onClick={() => setOpen(o => !o)} role="button" style={{ cursor:"pointer", color:C.dim, fontSize:10.5, marginBottom:8 }}>
-        {open ? "▾ hide" : "▸ show"} detail tables (picks/game, picks/day, CLV, new markets)
+        {open ? "▾ hide" : "▸ show"} detail tables (picks/game, picks/day, CLV)
       </div>
       {open && (
         <div>
@@ -512,22 +544,7 @@ function OpsSection({ d }) {
               </table>
             </div>
           )}
-          {/* New markets — actual Kalshi titles, ticker as dim secondary */}
-          {d.newMarkets?.length > 0 && (
-            <div style={{ marginTop:8 }}>
-              <div style={sectionTitle}>New Kalshi markets (not yet consumed) · {d.newMarkets.length}</div>
-              <div style={{ display:"flex", flexDirection:"column", gap:2 }}>
-                {d.newMarkets.slice(0, 12).map(m => (
-                  <div key={m.ticker} style={{ fontSize:11, display:"flex", alignItems:"center", gap:6 }}>
-                    <span style={{ color:C.text }}>{m.title || m.sampleSubtitle || m.ticker}</span>
-                    <span style={{ color:C.dim, fontSize:9.5, fontFamily:"monospace" }}>{m.ticker}</span>
-                    {m.firstSeen && <span style={{ color:C.dim, fontSize:9.5 }}>· {m.firstSeen}</span>}
-                  </div>
-                ))}
-                {d.newMarkets.length > 12 && <div style={{ color:C.dim, fontSize:10 }}>+{d.newMarkets.length - 12} more…</div>}
-              </div>
-            </div>
-          )}
+          {/* New Kalshi markets now feed the Model-next roadmap's "Detected · triage" section. */}
         </div>
       )}
     </div>
@@ -694,7 +711,7 @@ function MorningBriefing({ shadowReportData, shadowReportLoading, fetchShadowRep
 
       <DataHealth dh={d.dataHealth} />
 
-      <ModelNext />
+      <ModelNext newMarkets={d.newMarkets} />
 
       <OpsSection d={d} />
 
