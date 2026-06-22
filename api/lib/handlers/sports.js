@@ -60,14 +60,31 @@ export async function handleSportsRoutes(ctx) {
       }
       if (!uncached.length) return;
 
+      // ESPN scoreboard fetch. A timeout/non-OK here used to be swallowed silently
+      // (catch {}), leaving sbEvents=[] so every game fell to state:"unknown" — which
+      // returns early BEFORE the KV cache put, so it never caches and every retry
+      // re-fails. That silently zeroed out whole resolver passes on cold start (the
+      // 5s budget is easily blown when the function is cold or ESPN is briefly slow).
+      // So: 8s timeout, one retry on abort/non-OK (the failed first call warms the
+      // connection → the retry lands), and the failure is logged, never swallowed.
+      // A genuine 200-with-empty-events (no games that date) is NOT retried/logged.
       let sbEvents = [];
-      try {
-        const sbRes = await fetch(
-          `https://site.api.espn.com/apis/site/v2/sports/${sportPath}/scoreboard?dates=${ptDateStr}`,
-          { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(5000) }
-        );
-        if (sbRes.ok) sbEvents = (await sbRes.json()).events || [];
-      } catch {}
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const sbRes = await fetch(
+            `https://site.api.espn.com/apis/site/v2/sports/${sportPath}/scoreboard?dates=${ptDateStr}`,
+            { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(8000) }
+          );
+          if (!sbRes.ok) {
+            console.error(`[live] scoreboard ${sbRes.status} (${sport} ${ptDateStr}, attempt ${attempt + 1})`);
+            continue; // retry once on non-OK
+          }
+          sbEvents = (await sbRes.json()).events || [];
+          break;
+        } catch (e) {
+          console.error(`[live] scoreboard fetch failed (${sport} ${ptDateStr}, attempt ${attempt + 1}): ${e?.message}`);
+        }
+      }
 
       // ESPN scoreboard returns different abbrs from our canonical for some teams.
       // Translate inputs → ESPN when matching events; translate ESPN's response → canonical
@@ -87,12 +104,16 @@ export async function handleSportsRoutes(ctx) {
       let _tbSchedPromise = null;
       const getStatsapiSchedule = () => {
         if (!_tbSchedPromise) {
-          _tbSchedPromise = fetch(
+          const fetchSched = (attempt) => fetch(
             `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${ptDate}`,
-            { signal: AbortSignal.timeout(5000) }
-          ).then(r => r.ok ? r.json() : null)
+            { signal: AbortSignal.timeout(8000) }
+          ).then(r => r.ok ? r.json() : Promise.reject(new Error(`status ${r.status}`)))
             .then(j => j?.dates?.[0]?.games || [])
-            .catch(() => []);
+            .catch((e) => {
+              console.error(`[live] statsapi schedule failed (${ptDate}, attempt ${attempt}): ${e?.message}`);
+              return attempt < 2 ? fetchSched(attempt + 1) : [];
+            });
+          _tbSchedPromise = fetchSched(1);
         }
         return _tbSchedPromise;
       };
