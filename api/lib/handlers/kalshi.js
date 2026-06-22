@@ -601,10 +601,18 @@ export async function handleKalshiRoutes(ctx) {
     // [67,91] qualification band — a rough "favorites priced in our band" hint, not a gate).
     // Best-effort; returns null on fetch failure.
     const _WIN_LO = 0.67, _WIN_HI = 0.91;
+    // Bounded-concurrency map — Kalshi rate-limits a wide parallel burst (a 42-wide Promise.all
+    // 429'd most requests), so cap in-flight enrichment fetches.
+    const mapPool = async (items, concurrency, fn) => {
+      let i = 0;
+      const worker = async () => { while (i < items.length) { const idx = i++; await fn(items[idx]); } };
+      await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
+    };
     const enrichSeries = async (ticker) => {
       try {
         const r = await fetch(`https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=${ticker}&limit=100&status=open`, {
           headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" },
+          signal: AbortSignal.timeout(8000),
         });
         if (!r.ok) return null;
         const markets = (await r.json())?.markets || [];
@@ -690,10 +698,10 @@ export async function handleKalshiRoutes(ctx) {
 
     // 5. Enrich genuinely-new rows with sample market + live count + window-fit (capped, parallel).
     const ENRICH_CAP = 25;
-    await Promise.all(enrichTargets.slice(0, ENRICH_CAP).map(async (row) => {
+    await mapPool(enrichTargets.slice(0, ENRICH_CAP), 5, async (row) => {
       const e = await enrichSeries(row.ticker);
       if (e) Object.assign(row, e);
-    }));
+    });
 
     const newTickers = enrichTargets.map(r => r.ticker);
 
@@ -738,13 +746,13 @@ export async function handleKalshiRoutes(ctx) {
        ORDER BY first_seen DESC, ticker LIMIT ${REFRESH_CAP}`,
       [], env, { write: true }
     );
-    await Promise.all(refreshRows.map(async (r) => {
+    await mapPool(refreshRows, 5, async (r) => {
       const e = await enrichSeries(r.ticker);
       if (e) await neonQuery(
         `UPDATE kalshi_series_seen SET sample_market=$2, sample_subtitle=$3, live_market_count=$4, window_fit=$5 WHERE ticker = $1`,
         [r.ticker, e.sample_market, e.sample_subtitle, e.live_market_count, e.window_fit], env, { write: true }
       );
-    }));
+    });
 
     return jsonResponse({
       ok: true, isFirstRun,
