@@ -647,7 +647,7 @@ export async function handleKalshiRoutes(ctx) {
       if (!isAdmin) return errorResponse("Admin only", 403);
       if (dismiss) await neonQuery(`UPDATE kalshi_series_seen SET status='dismissed' WHERE ticker = $1`, [dismiss], env, { write: true });
       if (undismiss) await neonQuery(`UPDATE kalshi_series_seen SET status='new' WHERE ticker = $1 AND status='dismissed'`, [undismiss], env, { write: true });
-      if (promote) await neonQuery(`UPDATE kalshi_series_seen SET status='shortlisted' WHERE ticker = $1 AND status IN ('new','dismissed')`, [promote], env, { write: true });
+      if (promote) await neonQuery(`UPDATE kalshi_series_seen SET status='shortlisted' WHERE ticker = $1 AND status IN ('new','dismissed','baseline')`, [promote], env, { write: true });
       if (unpromote) await neonQuery(`UPDATE kalshi_series_seen SET status='new' WHERE ticker = $1 AND status='shortlisted'`, [unpromote], env, { write: true });
       return jsonResponse({ ok: true, dismissed: dismiss || null, undismissed: undismiss || null, promoted: promote || null, unpromoted: unpromote || null });
     }
