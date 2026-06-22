@@ -27,6 +27,7 @@ import { emitSoccerPlays } from "../tonight/soccer.js";
 import { WC_TEAMS } from "../soccer.js";
 import { emitFightPlays } from "../tonight/fight.js";
 import { emitGolfH2hPlays } from "../tonight/golf-h2h.js";
+import { emitNascarPlays } from "../tonight/nascar.js";
 
 const __defProp = Object.defineProperty;
 const __name = (target, value) => __defProp(target, "name", { value, configurable: true });
@@ -224,6 +225,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
         const soccerMarkets = []; // WC — every priced side across all 5 families, grouped by event in emit
         const fightMarkets = []; // UFC rounds O/U — every priced threshold, grouped by event in emit
         const golfH2hMarkets = []; // PGA single-round head-to-head — each priced side carries its own matchup
+        const nascarMarkets = []; // NASCAR Cup H2H + Top-10 — each priced side carries its own driver(s)
         const globalSeen = /* @__PURE__ */ new Set();
         for (let i = 0; i < seriesTickers.length; i++) {
           const ticker = seriesTickers[i];
@@ -373,6 +375,34 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               const _gTourn = (_gSeg.match(/^([A-Z0-9]+?)R\d/) || [])[1] || _gSeg.slice(0, 5);
               const _gAO = (pct) => pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
               golfH2hMarkets.push({ eventTicker: m.event_ticker, player: _gPlayer, opponent: _gOpp, round: _gRound, tournament: _gTourn, gameDate: _gDate, kalshiPct: _gPct, americanOdds: _gAO(_gPct), kalshiVolume: _gVol, _ticker: m.ticker, _depth: m._depth });
+              continue;
+            }
+            // ── NASCAR (Cup head-to-head + Top-10) branch ── binary markets. H2H yes_sub_title =
+            // "<A> beats <B>"; Top-10 yes_sub_title = "<driver>". The event segment is the race
+            // code (H2H also appends the two driver codes); emitNascarPlays groups nothing — each
+            // priced side is its own candidate (favorite side in [67,91]). gameDate from close_time
+            // (the race start ≈ close; the resolver tolerates a ±1-day UTC roll on night races).
+            if (cfg.gameType === "nascar") {
+              const _nYesAsk = parseFloat(m.yes_ask_dollars) || 0;
+              const _nLast = parseFloat(m.last_price_dollars) || 0;
+              const _nYesBid = parseFloat(m.yes_bid_dollars) || 0;
+              const _nPrice = (_nYesAsk >= 0.98 && _nYesBid === 0 && _nLast > 0) ? _nLast : (_nYesAsk > 0 ? _nYesAsk : _nLast);
+              if (_nPrice === 0) continue; // no live book — skip (books fill near the green flag)
+              const _nPct = Math.round(_nPrice * 100);
+              const _nVol = parseInt(m.volume_fp) || parseInt(m.volume) || 0;
+              const _nDate = (m.close_time || "").slice(0, 10) || null;
+              const _nRace = (m.event_ticker || "").split("-")[1] || "";
+              const _nAO = (pct) => pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
+              let _nPlayer = null, _nOpp = null;
+              if (cfg.subtype === "h2h") {
+                const _nm = (m.yes_sub_title || "").match(/^(.+?)\s+beats\s+(.+?)\s*$/i);
+                if (!_nm) continue;
+                _nPlayer = _nm[1].trim(); _nOpp = _nm[2].trim();
+              } else { // top10
+                _nPlayer = (m.yes_sub_title || "").trim();
+                if (!_nPlayer) continue;
+              }
+              nascarMarkets.push({ subtype: cfg.subtype, eventTicker: m.event_ticker, raceCode: _nRace, player: _nPlayer, opponent: _nOpp, gameDate: _nDate, kalshiPct: _nPct, americanOdds: _nAO(_nPct), kalshiVolume: _nVol, _ticker: m.ticker, _depth: m._depth });
               continue;
             }
             const strike = parseFloat(m.floor_strike);
@@ -1626,6 +1656,14 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           golfH2hMarkets, golfH2hPlays, dropped, isDebug, cutoffStr,
           cache: CACHE2, isBustCache,
         });
+        // ── NASCAR (Cup H2H + Top-10) — Phase 1, shadow-only. Like tennis/golf, emits into its own
+        // array (NOT `plays`) so NASCAR rows bypass dedup/gameTime-filter/card-builder; merged into
+        // shadow:staging only. Recent-form finishing-position model, favorite side. Cup-only.
+        const nascarPlays = [];
+        await emitNascarPlays({
+          nascarMarkets, nascarPlays, dropped, isDebug, cutoffStr,
+          cache: CACHE2, isBustCache,
+        });
         // Drop plays whose scheduled gameTime has already passed — pre-game market is closed,
         // and our model truePct is built on pre-game inputs so it's no longer valid in-game.
         // Plays without gameTime are kept (we already gate by gameDate earlier).
@@ -1738,7 +1776,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           }
           // Tennis plays live in their own array (kept out of `plays` to bypass dedup/frontend);
           // merge them into the staging `plays` so shadow-snapshot logs them like any other play.
-          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays: [...plays, ...tennisPlays, ...soccerPlays, ...fightPlays, ...golfH2hPlays], dropped, schedule: _schedCounts, writtenAt: Date.now() }), { expirationTtl: 21600 }).catch(() => {});
+          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays: [...plays, ...tennisPlays, ...soccerPlays, ...fightPlays, ...golfH2hPlays, ...nascarPlays], dropped, schedule: _schedCounts, writtenAt: Date.now() }), { expirationTtl: 21600 }).catch(() => {});
         }
         if (isDebug) {
           const nbaGlLabels = Object.fromEntries(Object.entries(playerGamelogs).filter(([k]) => k.startsWith("nba|")).map(([k, gl]) => [k, gl?.ul ?? null]));
@@ -1752,7 +1790,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             meta: kalshiSnapMeta,
             ageMs: kalshiSnapMeta?.lastRunAt ? Date.now() - kalshiSnapMeta.lastRunAt : null,
           };
-          return jsonResponse({ plays: debugPlays, dropped: debugDropped, preDropped: debugPreDropped, tennisPlays, tennisMarketCount: tennisMatchMarkets.length, soccerPlays, soccerMarketCount: soccerMarkets.length, fightPlays, fightMarketCount: fightMarkets.length, golfH2hPlays, golfH2hMarketCount: golfH2hMarkets.length, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
+          return jsonResponse({ plays: debugPlays, dropped: debugDropped, preDropped: debugPreDropped, tennisPlays, tennisMarketCount: tennisMatchMarkets.length, soccerPlays, soccerMarketCount: soccerMarkets.length, fightPlays, fightMarketCount: fightMarkets.length, golfH2hPlays, golfH2hMarketCount: golfH2hMarkets.length, nascarPlays, nascarMarketCount: nascarMarkets.length, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
         }
         // Build mlbMeta: pitchers, ML odds, umpires, weather — keyed by team abbr or "home|away"
         // Pitcher entries: { name, id, era, wins, losses }. MLB Stats API (pitcherInfoByTeam) preferred

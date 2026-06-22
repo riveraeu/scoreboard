@@ -10,6 +10,7 @@ import { fetchCompletedMatches } from "../tennis.js";
 import { fetchWcFinals, fetchWcHalfFinals } from "../soccer.js";
 import { fetchFightResults, matchFightByCodes, normFighterName } from "../mma.js";
 import { fetchRoundScores, normGolfName } from "../golf.js";
+import { fetchRaceResults } from "../nascar.js";
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER } from "../config.js";
 import { passesCategoryGate } from "../category-gate.js";
 
@@ -432,7 +433,8 @@ async function handleShadowResolver({ path, request, env }) {
   const soccerHalfRows = rows.filter(r => r.sport === "soccer" && _isSoccerHalf(r));
   const fightRows = rows.filter(r => r.sport === "fight");
   const golfRows = rows.filter(r => r.sport === "golf");
-  const teamRows = rows.filter(r => r.sport !== "tennis" && r.sport !== "soccer" && r.sport !== "fight" && r.sport !== "golf");
+  const nascarRows = rows.filter(r => r.sport === "nascar");
+  const teamRows = rows.filter(r => r.sport !== "tennis" && r.sport !== "soccer" && r.sport !== "fight" && r.sport !== "golf" && r.sport !== "nascar");
 
   // Build unique game keys per date. Key: sport:away:home[@gameTime] — matches /api/live format.
   const keysByDate = new Map(); // game_date → Set<rawKey>
@@ -793,6 +795,44 @@ async function handleShadowResolver({ path, request, env }) {
     }
   }
 
+  // ── NASCAR (Cup H2H + Top-10) resolution ── grade off the ESPN core-API race results for the
+  // race's date. Each play stores the pick (and, for H2H, opponent) ESPN athlete id in features,
+  // so we match by id off the competitor list — no name matching. H2H: pick wins iff its finishing
+  // order is strictly lower than the opponent's. Top-10: pick wins iff order ≤ 10.
+  if (nascarRows.length) {
+    const dateOf = (r) => r.game_date
+      || (r.game_time ? new Date(r.game_time).toISOString().slice(0, 10) : null)
+      || (r.snapshot_date ? new Date(r.snapshot_date).toISOString().slice(0, 10) : null);
+    const featOf = (r) => { try { return typeof r.features === "string" ? JSON.parse(r.features) : (r.features || {}); } catch { return {}; } };
+    const byDate = new Map();
+    for (const r of nascarRows) {
+      const date = dateOf(r);
+      if (!date) { noData++; continue; }
+      if (!byDate.has(date)) byDate.set(date, []);
+      byDate.get(date).push(r);
+    }
+    const resultsByDate = new Map();
+    await Promise.all([...byDate.keys()].map(async (date) => {
+      resultsByDate.set(date, await fetchRaceResults(date.replace(/-/g, "")));
+    }));
+    for (const [date, rws] of byDate) {
+      const results = resultsByDate.get(date) || {};
+      if (!Object.keys(results).length) { noData += rws.length; continue; } // race not run / not found yet
+      for (const r of rws) {
+        const f = featOf(r);
+        const pickOrder = f.pickId != null ? results[String(f.pickId)] : null;
+        if (pickOrder == null) { noData++; continue; }
+        if (r.stat === "top10") {
+          updates.push({ id: r.id, won: pickOrder <= (r.threshold || 10), actualValue: pickOrder });
+        } else { // h2h
+          const oppOrder = f.oppId != null ? results[String(f.oppId)] : null;
+          if (oppOrder == null) { noData++; continue; }
+          updates.push({ id: r.id, won: pickOrder < oppOrder, actualValue: pickOrder }); // strictly lower wins
+        }
+      }
+    }
+  }
+
   if (updates.length) await neonBatchResolve(updates, env);
 
   console.log(`[shadow-resolver] resolved=${updates.length} skipped=${skipped} noData=${noData} games=${liveByKey.size} durationMs=${Date.now() - t0}`);
@@ -1009,6 +1049,8 @@ const FORMULA_CUTOFFS = {
   "soccer|2hbtts":  "2026-06-21",
   "fight|rounds":   "2026-06-21", // UFC Phase 1 — weight-class finish-rate → duration CDF
   "golf|h2h":       "2026-06-21", // PGA Phase 1 — OWGR rating → one-round score differential
+  "nascar|h2h":     "2026-06-22", // NASCAR Cup Phase 1 — recent-form finishing-position model
+  "nascar|top10":   "2026-06-22",
   "wnba|points":    "2026-05-28", // injury OffRtg piecewise (last broad λ change)
   "wnba|rebounds":  "2026-05-28",
   "wnba|assists":   "2026-05-28",

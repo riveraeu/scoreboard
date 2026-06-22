@@ -53,6 +53,12 @@ export const SERIES_CONFIG = {
   // routes these to the dedicated golf emit path (api/lib/tonight/golf-h2h.js): OWGR rating →
   // one-round score differential. Binary favorite side. Shadow-only: `golf|h2h` NOT in the gate.
   KXPGAH2H:      { sport: "golf", league: "pga", stat: "h2h", col: "ML", gameType: "golfH2h" },
+  // NASCAR — Cup head-to-head ("Will A beat B?") + Top-10 finish ("Will <driver> finish top 10?").
+  // The `nascar` gameType routes both to the dedicated emit path (api/lib/tonight/nascar.js):
+  // recent-form finishing-position model. Binary favorite side. Cup-only by construction (the
+  // rating index is built from the Cup schedule). Shadow-only: `nascar|h2h`/`nascar|top10` NOT gated.
+  KXNASCARH2H:   { sport: "nascar", league: "nascar", stat: "h2h",   col: "ML", gameType: "nascar", subtype: "h2h"   },
+  KXNASCARTOP10: { sport: "nascar", league: "nascar", stat: "top10", col: "ML", gameType: "nascar", subtype: "top10" },
   // Game totals
   KXMLBTOTAL:     { sport: "mlb",  league: "mlb",  stat: "totalRuns",   col: "R",   gameType: "total"     },
   KXNBATOTAL:     { sport: "nba",  league: "nba",  stat: "totalPoints", col: "PTS", gameType: "total"     },
