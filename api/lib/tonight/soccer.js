@@ -56,6 +56,7 @@ export async function emitSoccerPlays(ctx) {
     }
     const { lambdaHome, lambdaAway } = lambdasFromElo(eloHome, eloAway);
     const M = buildScoreMatrix(lambdaHome, lambdaAway);
+    const Mh = buildScoreMatrix(lambdaHome * 0.5, lambdaAway * 0.5); // half matrix (even ×0.5 split, v1) — feeds both 1H + 2H families
 
     // Shared feature context stamped on every play from this event (→ features JSON).
     const base = {
@@ -67,18 +68,25 @@ export async function emitSoccerPlays(ctx) {
     };
 
     const p1x2 = prob1x2(M);
+    const p1x2h = prob1x2(Mh);
 
     for (const s of ev.sides) {
       const vol = s.kalshiVolume ?? null;
+      // Half markets (s.half "1h"/"2h") project off the half-scaled matrix and prefix the stat
+      // (1htotal, 2hgame, …); full-game markets use the full matrix + bare family stat.
+      const _isHalf = s.half === "1h" || s.half === "2h";
+      const _Mx = _isHalf ? Mh : M;
+      const _p1x2x = _isHalf ? p1x2h : p1x2;
+      const _statOf = (fam) => _isHalf ? `${s.half}${fam}` : fam;
       if (s.subtype === "game") {
         // 1X2 — each binary side (home/away/tie) is its own market. Emit any side priced in
         // window with the model's probability for that outcome. direction:null (3-way pick).
-        const pSide = s.side === "home" ? p1x2.home : s.side === "away" ? p1x2.away : p1x2.draw;
+        const pSide = s.side === "home" ? _p1x2x.home : s.side === "away" ? _p1x2x.away : _p1x2x.draw;
         const truePct = round1(pSide * 100);
         if (!inWindow(s.kalshiPct)) continue;
         const edge = round1(truePct - s.kalshiPct);
         soccerPlays.push({
-          ...base, stat: "game", gameType: "game", side: s.side,
+          ...base, stat: _statOf("game"), gameType: "game", side: s.side,
           pickTeam: s.side === "tie" ? "TIE" : s.sideCode,
           threshold: null, direction: null,
           truePct, kalshiPct: s.kalshiPct, noKalshiPct: s.noKalshiPct ?? null,
@@ -90,24 +98,24 @@ export async function emitSoccerPlays(ctx) {
       // Two-sided markets — compute the YES/OVER model prob, emit the in-window side(s).
       let pOver, overSubtype = s.subtype, extra = {};
       if (s.subtype === "total") {
-        pOver = probTotalOver(M, s.line);
+        pOver = probTotalOver(_Mx, s.line);
         extra = { threshold: s.line + 0.5, line: s.line };
       } else if (s.subtype === "teamTotal") {
         const isHome = s.teamCode === ev.homeCode;
-        pOver = probTeamOver(M, s.line, isHome);
+        pOver = probTeamOver(_Mx, s.line, isHome);
         extra = { threshold: s.line + 0.5, line: s.line, scoringTeam: s.teamCode };
       } else if (s.subtype === "spread") {
         const favIsHome = s.teamCode === ev.homeCode;
-        pOver = probSpreadCover(M, s.line, favIsHome);
+        pOver = probSpreadCover(_Mx, s.line, favIsHome);
         extra = { threshold: s.line, line: s.line, pickTeam: s.teamCode };
       } else if (s.subtype === "btts") {
-        pOver = probBtts(M);
+        pOver = probBtts(_Mx);
         extra = { threshold: null };
       } else {
         continue;
       }
       const overPct = round1(pOver * 100);
-      const sideBase = { ...base, stat: overSubtype, gameType: overSubtype, kalshiVolume: vol, ...extra };
+      const sideBase = { ...base, stat: _statOf(overSubtype), gameType: overSubtype, kalshiVolume: vol, ...extra };
 
       // OVER / YES side — gated on the YES price.
       if (inWindow(s.yesPct)) {

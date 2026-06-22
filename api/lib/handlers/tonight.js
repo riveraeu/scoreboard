@@ -298,7 +298,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               if (!WC_TEAMS[_scHome] || !WC_TEAMS[_scAway]) continue; // unknown teams → drop
               const _scAO = (pct) => pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
               const _scSuffix = (m.ticker || "").split("-").pop();
-              const _scCommon = { subtype: _scSub, sport, eventTicker: m.event_ticker, homeCode: _scHome, awayCode: _scAway, gameDate: _scGameDate, kalshiVolume: _scVol, _ticker: m.ticker, _depth: m._depth };
+              const _scCommon = { subtype: _scSub, half: cfg.half || null, sport, eventTicker: m.event_ticker, homeCode: _scHome, awayCode: _scAway, gameDate: _scGameDate, kalshiVolume: _scVol, _ticker: m.ticker, _depth: m._depth };
               if (_scSub === "game") {
                 let _side, _sideCode;
                 if (_scSuffix === "TIE") { _side = "tie"; _sideCode = "TIE"; }

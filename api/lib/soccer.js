@@ -294,3 +294,46 @@ export async function fetchWcFinals(dateStr) {
   }
   return out;
 }
+
+// ── Half resolver source ── per-team per-half goals for a date (YYYYMMDD). The scoreboard has no
+// per-half breakdown (linescores:null), so for each FINAL game we fetch the event summary, whose
+// header competitors carry linescores [0]=1st-half goals, [1]=2nd-half goals (verified: FRA [0,3]
+// / SEN [0,1] = 3-1, all 2nd half). Returns [{ h1:{CANON:goals}, h2:{CANON:goals}, final }].
+// 2H is the 2nd-half segment only (matches Kalshi "2nd Half" settlement); ET periods (index 2+)
+// are ignored. ~4-8 summary fetches per WC day, run in parallel.
+export async function fetchWcHalfFinals(dateStr) {
+  let sb;
+  try {
+    const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard${dateStr ? `?dates=${dateStr}` : ""}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return [];
+    sb = await res.json();
+  } catch { return []; }
+  const events = sb?.events || [];
+  const out = await Promise.all(events.map(async (ev) => {
+    const comp = (ev?.competitions || [])[0];
+    const status = comp?.status?.type;
+    const final = status?.completed === true && status?.name === "STATUS_FULL_TIME";
+    if (!final || !ev?.id) return { h1: {}, h2: {}, final: false };
+    let sum;
+    try {
+      const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/summary?event=${ev.id}`, { signal: AbortSignal.timeout(8000) });
+      if (!r.ok) return { h1: {}, h2: {}, final: false };
+      sum = await r.json();
+    } catch { return { h1: {}, h2: {}, final: false }; }
+    const hdrComp = (sum?.header?.competitions || [])[0];
+    const h1 = {}, h2 = {};
+    let ok = true;
+    for (const c of (hdrComp?.competitors || [])) {
+      const t = c?.team || {};
+      const canon = espnToCanonical(t.abbreviation, t.displayName);
+      const ls = c?.linescores || [];
+      const g1 = parseInt(ls[0]?.displayValue ?? ls[0]?.value, 10);
+      const g2 = parseInt(ls[1]?.displayValue ?? ls[1]?.value, 10);
+      if (!canon || !Number.isFinite(g1) || !Number.isFinite(g2)) { ok = false; break; }
+      h1[canon] = g1; h2[canon] = g2;
+    }
+    return (ok && Object.keys(h1).length === 2) ? { h1, h2, final: true } : { h1: {}, h2: {}, final: false };
+  }));
+  return out;
+}

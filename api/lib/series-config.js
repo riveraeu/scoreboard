@@ -34,6 +34,17 @@ export const SERIES_CONFIG = {
   KXWCSPREAD:    { sport: "soccer", league: "wc", stat: "spread",    col: "G",   gameType: "soccer", subtype: "spread"    },
   KXWCTEAMTOTAL: { sport: "soccer", league: "wc", stat: "teamTotal", col: "G",   gameType: "soccer", subtype: "teamTotal" },
   KXWCBTTS:      { sport: "soccer", league: "wc", stat: "btts",      col: "G",   gameType: "soccer", subtype: "btts"      },
+  // World Cup half markets (shadow-only) — same Elo matrix, half λ (×0.5 even split). 1H + 2H ×
+  // winner/total/spread/BTTS, projected by emitSoccerPlays off a half-scaled matrix. The `half`
+  // tag routes them to the half matrix + prefixes the stat (soccer|1htotal, etc.).
+  KXWC1H:        { sport: "soccer", league: "wc", stat: "1hgame",   col: "ML",  gameType: "soccer", subtype: "game",   half: "1h" },
+  KXWC1HTOTAL:   { sport: "soccer", league: "wc", stat: "1htotal",  col: "G",   gameType: "soccer", subtype: "total",  half: "1h" },
+  KXWC1HSPREAD:  { sport: "soccer", league: "wc", stat: "1hspread", col: "G",   gameType: "soccer", subtype: "spread", half: "1h" },
+  KXWC1HBTTS:    { sport: "soccer", league: "wc", stat: "1hbtts",   col: "G",   gameType: "soccer", subtype: "btts",   half: "1h" },
+  KXWC2H:        { sport: "soccer", league: "wc", stat: "2hgame",   col: "ML",  gameType: "soccer", subtype: "game",   half: "2h" },
+  KXWC2HTOTAL:   { sport: "soccer", league: "wc", stat: "2htotal",  col: "G",   gameType: "soccer", subtype: "total",  half: "2h" },
+  KXWC2HSPREAD:  { sport: "soccer", league: "wc", stat: "2hspread", col: "G",   gameType: "soccer", subtype: "spread", half: "2h" },
+  KXWC2HBTTS:    { sport: "soccer", league: "wc", stat: "2hbtts",   col: "G",   gameType: "soccer", subtype: "btts",   half: "2h" },
   // Fighting — UFC rounds O/U ("Will the fight end before round N?"). The `fight` gameType
   // routes these to the dedicated fight emit path (api/lib/tonight/fight.js): one weight-class
   // finish-rate → fight-duration CDF per bout. Shadow-only: `fight|rounds` is NOT in the gate.

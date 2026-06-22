@@ -7,7 +7,7 @@ import { neonQuery, neonBatchUpsert, neonBatchResolve, neonBatchPrePriceUpdate, 
 import { errorResponse, jsonResponse } from "../utils.js";
 import { verifyJWT } from "../auth-utils.js";
 import { fetchCompletedMatches } from "../tennis.js";
-import { fetchWcFinals } from "../soccer.js";
+import { fetchWcFinals, fetchWcHalfFinals } from "../soccer.js";
 import { fetchFightResults, matchFightByCodes, normFighterName } from "../mma.js";
 import { fetchRoundScores, normGolfName } from "../golf.js";
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER } from "../config.js";
@@ -427,7 +427,9 @@ async function handleShadowResolver({ path, request, env }) {
   // /api/live path, which doesn't know tennis players or soccer's 5 market families + draws), so
   // split them out of teamRows below.
   const tennisRows = rows.filter(r => r.sport === "tennis");
-  const soccerRows = rows.filter(r => r.sport === "soccer");
+  const _isSoccerHalf = (r) => /^(1h|2h)(game|total|spread|btts)$/.test(r.stat || "");
+  const soccerRows = rows.filter(r => r.sport === "soccer" && !_isSoccerHalf(r));
+  const soccerHalfRows = rows.filter(r => r.sport === "soccer" && _isSoccerHalf(r));
   const fightRows = rows.filter(r => r.sport === "fight");
   const golfRows = rows.filter(r => r.sport === "golf");
   const teamRows = rows.filter(r => r.sport !== "tennis" && r.sport !== "soccer" && r.sport !== "fight" && r.sport !== "golf");
@@ -637,6 +639,59 @@ async function handleShadowResolver({ path, request, env }) {
           const covered = margin > th;
           won = isUnder ? !covered : covered;
         } else if (r.stat === "btts") {
+          const btts = gh >= 1 && ga >= 1;
+          won = isUnder ? !btts : btts;
+        } else { noData++; continue; }
+        updates.push({ id: r.id, won, actualValue: actual });
+      }
+    }
+  }
+
+  // ── Soccer half resolution (1H / 2H × game/total/spread/btts) ── grade off per-team per-half
+  // goals from the event summary (fetchWcHalfFinals). stat = "<half><family>" (e.g. "1htotal");
+  // family logic mirrors the full-game soccer block, applied to the chosen half's goal map.
+  if (soccerHalfRows.length) {
+    const dateOf = (r) => r.game_date
+      || (r.game_time ? new Date(r.game_time).toISOString().slice(0, 10) : null)
+      || (r.snapshot_date ? new Date(r.snapshot_date).toISOString().slice(0, 10) : null);
+    const byDate = new Map();
+    for (const r of soccerHalfRows) {
+      const date = dateOf(r);
+      if (!date) { noData++; continue; }
+      if (!byDate.has(date)) byDate.set(date, []);
+      byDate.get(date).push(r);
+    }
+    const finalsByDate = new Map();
+    await Promise.all([...byDate.keys()].map(async (date) => {
+      finalsByDate.set(date, await fetchWcHalfFinals(date.replace(/-/g, "")));
+    }));
+    for (const [date, rws] of byDate) {
+      const finals = finalsByDate.get(date) || [];
+      for (const r of rws) {
+        const half = (r.stat || "").slice(0, 2);  // "1h" | "2h"
+        const fam = (r.stat || "").slice(2);       // game | total | spread | btts
+        const game = finals.find(g => g.h1[r.home_team] != null && g.h1[r.away_team] != null);
+        if (!game || !game.final) { noData++; continue; }
+        const goals = half === "1h" ? game.h1 : game.h2;
+        const gh = goals[r.home_team], ga = goals[r.away_team];
+        if (gh == null || ga == null) { noData++; continue; }
+        const th = parseFloat(r.threshold);
+        const isUnder = r.direction === "under";
+        let won = null, actual = null;
+        if (fam === "game") {
+          if (r.pick_team === "TIE") won = gh === ga;
+          else won = goals[r.pick_team] != null && goals[r.pick_team] > (r.pick_team === r.home_team ? ga : gh);
+        } else if (fam === "total") {
+          actual = gh + ga;
+          won = isUnder ? actual < th : actual >= th;
+        } else if (fam === "spread") {
+          const fav = r.pick_team;
+          if (goals[fav] == null) { noData++; continue; }
+          const margin = goals[fav] - (fav === r.home_team ? ga : gh);
+          actual = margin;
+          const covered = margin > th;
+          won = isUnder ? !covered : covered;
+        } else if (fam === "btts") {
           const btts = gh >= 1 && ga >= 1;
           won = isUnder ? !btts : btts;
         } else { noData++; continue; }
@@ -944,6 +999,14 @@ const FORMULA_CUTOFFS = {
   "soccer|teamTotal": "2026-06-21",
   "soccer|spread":    "2026-06-21",
   "soccer|btts":      "2026-06-21",
+  "soccer|1hgame":  "2026-06-21", // WC half markets — half-scaled matrix, data starts here
+  "soccer|1htotal": "2026-06-21",
+  "soccer|1hspread":"2026-06-21",
+  "soccer|1hbtts":  "2026-06-21",
+  "soccer|2hgame":  "2026-06-21",
+  "soccer|2htotal": "2026-06-21",
+  "soccer|2hspread":"2026-06-21",
+  "soccer|2hbtts":  "2026-06-21",
   "fight|rounds":   "2026-06-21", // UFC Phase 1 — weight-class finish-rate → duration CDF
   "golf|h2h":       "2026-06-21", // PGA Phase 1 — OWGR rating → one-round score differential
   "wnba|points":    "2026-05-28", // injury OffRtg piecewise (last broad λ change)
