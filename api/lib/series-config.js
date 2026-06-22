@@ -106,3 +106,13 @@ export const CRON_ONLY_TICKERS = [
   "KXWNBA1HWINNER", "KXWNBA2HWINNER",
   "KXWNBA1QWINNER", "KXWNBA2QWINNER", "KXWNBA3QWINNER", "KXWNBA4QWINNER",
 ];
+
+// Series we've vetted and decided NOT to build (the dismiss half of the funnel).
+// The series-scan cron reconciles any 'new'/'shortlisted' row here → 'dismissed',
+// mirroring the adopt reconcile (SERIES_CONFIG∪CRON_ONLY → 'adopted'). This makes a
+// dismissal a code change the scan can detect, so the "Vet shortlisted" banner clears
+// itself when we complete the vet — no manual `?dismiss=` curl needed.
+// Add the ticker here when a vet concludes DISMISS; note why inline.
+export const DISMISSED_SERIES = [
+  "KXWC1HSCORE", // 6/22 vet: exact half-scoreline longshots, no in-window edge (1H signal already covered by the soccer half score-matrix)
+];

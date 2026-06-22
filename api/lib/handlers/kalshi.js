@@ -9,7 +9,7 @@
 // normName + jsonResponse/errorResponse imported directly (utils is stable).
 
 import { jsonResponse, errorResponse } from "../utils.js";
-import { SERIES_CONFIG, CRON_ONLY_TICKERS } from "../series-config.js";
+import { SERIES_CONFIG, CRON_ONLY_TICKERS, DISMISSED_SERIES } from "../series-config.js";
 import { verifyJWT } from "../auth-utils.js";
 import { neonQuery, neonExec } from "../neon.js";
 import { fetchKalshiOrderbook } from "../kalshi-book.js";
@@ -741,6 +741,17 @@ export async function handleKalshiRoutes(ctx) {
       `UPDATE kalshi_series_seen SET status='adopted' WHERE status IN ('new','shortlisted') AND ticker IN (${knownPh})`,
       knownArr, env, { write: true }
     );
+
+    // 6b-ii. Mirror reconcile: any 'new'/'shortlisted' ticker we've vetted-and-rejected
+    // (DISMISSED_SERIES) → dismissed, so the "Vet shortlisted" banner clears on the code
+    // change instead of needing a manual `?dismiss=` curl.
+    if (DISMISSED_SERIES.length) {
+      const dismPh = DISMISSED_SERIES.map((_, i) => `$${i + 1}`).join(", ");
+      await neonQuery(
+        `UPDATE kalshi_series_seen SET status='dismissed' WHERE status IN ('new','shortlisted') AND ticker IN (${dismPh})`,
+        [...DISMISSED_SERIES], env, { write: true }
+      );
+    }
 
     // 6c. Refresh enrichment for existing new/shortlisted rows so triage hints track current
     // liquidity, not first-seen. Ordered first_seen DESC to MATCH the report's display order
