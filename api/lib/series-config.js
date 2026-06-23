@@ -120,4 +120,8 @@ export const DISMISSED_SERIES = [
   "KXWCWINMARGIN", // 6/23 vet: exact-margin longshot trap (same shape as KXWC1HSCORE) — only longshot-NO sides reach [67,91] with no edge; the tractable margin signal is already emitted via soccer probSpreadCover + 1X2. DISMISS.
   "KXWNBAH2HPTS", // 6/23 vet: model end is BUILDABLE (buildNbaStatDist point Normals + golf-style h2hWinProb combine) but DEFERRED — listed only sporadically (0-open even on full evening slates) → too thin for useful shadow data; NASCAR was the better next build and shipped. Dismissing to clear the banner; revisit if higher-liquidity builds dry up.
   "KXWNBAH2HPRA", // 6/23 vet: same as KXWNBAH2HPTS, second in line (Points pipeline + one cross-stat ρ(P,R,A) variance-inflation knob). DEFERRED for the same thin-coverage reason. Revisit alongside H2HPTS.
+  "KXBILGAME", // 6/23 triage: "Ball is Life" grassroots/AAU streetball (individual amateur players) — no ESPN/ratings data source exists, unmodelable. window_fit false.
+  "KXNBANEWCHAMPION", // 6/23 triage: season-long futures novelty ("Nth straight different champion"), single market, no per-game model applies.
+  "KXWCDELAY", // 6/23 triage: World Cup delay novelty, 0 live markets, no sample subtitle — nothing to model.
+  "KXWCGOALSTREAK", // 6/23 triage: per-player consecutive-goal-streak longshot. window_fit=true is the longshot-NO false positive; soccer Phase 1 is national-team Elo only (no per-player goal model). DISMISS.
 ];
