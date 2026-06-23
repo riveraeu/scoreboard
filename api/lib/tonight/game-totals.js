@@ -9,9 +9,6 @@ import { _GT_IMPLIED_CAP, _TT_IMPLIED_CAP } from "./dc.js";
 import { normTeam } from "./parse-teams.js";
 import { PT_FMT, ptDateMinusOne } from "../pt.js";
 
-// Domed MLB stadiums — weather factor does not apply.
-const _MLB_DOMED = new Set(["TB", "TOR", "HOU", "MIA", "SEA", "ARI", "TEX", "MIL"]);
-
 // B2B lambda dampener constants (only used in game-total + team-total emission).
 // One-sided cut (tired team only) was wrong for TOTALS: a tired team scores less AND defends worse,
 // so the rested opponent compensates → the game TOTAL barely moves (empirical −0.37) while MARGIN
@@ -77,14 +74,13 @@ const _injuryOffRtgAdj = (team, injuryMap, usageMap, shortMap) => {
 const _injuryBlendDamp = (usageOut) => Math.max(0, Math.min(1, (42 - (usageOut || 0)) / 21));
 
 // Context: plays/dropped (mutated via push), isDebug, cutoffStr, gameTimes,
-//          CACHE2/isBustCache, PROD_SPORTS, totalMarkets/teamTotalMarkets, weatherByGame,
+//          CACHE2/isBustCache, PROD_SPORTS, totalMarkets/teamTotalMarkets,
 //          nba*/wnba* injury+usage maps, mlbBothTeamsConfirmed (closure), sportByteam.
 // Returns: { _mlbMlContext, _nbaMlContext, _wnbaMlContext, _nhlMlContext } for ml-spread.js.
 export async function emitGameTotalPlays({
   plays, dropped, isDebug, cutoffStr, gameTimes,
   CACHE2, isBustCache, PROD_SPORTS,
   totalMarkets, teamTotalMarkets,
-  weatherByGame,
   nbaInjuryMap, wnbaInjuryMap, nbaUsageMap, wnbaUsageMap,
   mlbBothTeamsConfirmed: _mlbBothTeamsConfirmed,
   sportByteam,
@@ -426,20 +422,20 @@ export async function emitGameTotalPlays({
           ? _platoonMap[homeTeam][_homePlatCode] : 1.0;
         const _awayPlatFactor = (_awayPlatCode && _platoonMap[awayTeam]?.[_awayPlatCode])
           ? _platoonMap[awayTeam][_awayPlatCode] : 1.0;
-        // Weather factor: wind out → more scoring, wind in → fewer runs; skip domed parks
-        const _wKey = `${homeTeam}|${awayTeam}`;
-        const _wData = weatherByGame[_wKey] ?? null;
-        const _weatherFactor = (_wData?.windOutMph != null && !_MLB_DOMED.has(homeTeam))
-          ? parseFloat((Math.max(0.85, Math.min(1.15, 1 + _wData.windOutMph * 0.013 + ((_wData.temp ?? 72) - 72) * 0.001))).toFixed(3))
-          : 1.0;
+        // Weather REMOVED from run totals 2026-06-23 (model-honesty fix). The historical
+        // pre-filter (scripts/backtest/weather-runs-study.js) found wind+temp ~flat on TOTAL
+        // runs (r≈0 — the HR signal dilutes ~8:1 in total scoring). Weather stays in HRR
+        // (props.js, validated on HR) but no longer moves the run/total/ML/spread/F5 lambdas.
+        // Open-Meteo weather can be reconstructed exactly from the backtest if totals ever need
+        // re-testing; `weatherByGame` (ESPN parse) still feeds the debug `mlbMeta`.
         // Umpire run factor (1/kFactor): loose-zone ump → more scoring; applied directly to lambdas
         const _umpKeyT = `${homeTeam}|${awayTeam}`;
         const _umpNameT = sportByteam.mlb?.umpireByGame?.[_umpKeyT] ?? null;
         const _normUT = n => n?.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
         const _umpKFT = _umpNameT ? (UMPIRE_KFACTOR[_normUT(_umpNameT)] ?? 1.0) : 1.0;
         const _umpRunFactor = parseFloat((1 / _umpKFT).toFixed(3));
-        let _hLam = homeRPG != null ? parseFloat((Math.max(1, Math.min(12, homeRPG * _awayMult * parkRF * _homePlatFactor * _weatherFactor * _umpRunFactor * homeLineupFactor))).toFixed(1)) : null;
-        let _aLam = awayRPG != null ? parseFloat((Math.max(1, Math.min(12, awayRPG * _homeMult * parkRF * _awayPlatFactor * _weatherFactor * _umpRunFactor * awayLineupFactor))).toFixed(1)) : null;
+        let _hLam = homeRPG != null ? parseFloat((Math.max(1, Math.min(12, homeRPG * _awayMult * parkRF * _homePlatFactor * _umpRunFactor * homeLineupFactor))).toFixed(1)) : null;
+        let _aLam = awayRPG != null ? parseFloat((Math.max(1, Math.min(12, awayRPG * _homeMult * parkRF * _awayPlatFactor * _umpRunFactor * awayLineupFactor))).toFixed(1)) : null;
         // Regime-aware blend — each team's recency-weighted recent-runs average folded
         // into the pitcher-matchup-derived lambda so it tracks current form. Mirrors the
         // 2026-05-21 NBA/WNBA/NHL change but with a 14-day half-life (MLB plays daily;
@@ -472,10 +468,10 @@ export async function emitGameTotalPlays({
           homeWhipEff != null ? homeWhipEff : homeWHIP
         );
         const _hLam_F5 = (homeRPG != null && _awayStarter_F5 != null)
-          ? parseFloat((Math.max(0.3, Math.min(8, homeRPG * _F5_FRAC * _awayStarter_F5 * parkRF * _homePlatFactor * _weatherFactor * _umpRunFactor * homeLineupFactor))).toFixed(2))
+          ? parseFloat((Math.max(0.3, Math.min(8, homeRPG * _F5_FRAC * _awayStarter_F5 * parkRF * _homePlatFactor * _umpRunFactor * homeLineupFactor))).toFixed(2))
           : null;
         const _aLam_F5 = (awayRPG != null && _homeStarter_F5 != null)
-          ? parseFloat((Math.max(0.3, Math.min(8, awayRPG * _F5_FRAC * _homeStarter_F5 * parkRF * _awayPlatFactor * _weatherFactor * _umpRunFactor * awayLineupFactor))).toFixed(2))
+          ? parseFloat((Math.max(0.3, Math.min(8, awayRPG * _F5_FRAC * _homeStarter_F5 * parkRF * _awayPlatFactor * _umpRunFactor * awayLineupFactor))).toFixed(2))
           : null;
         // H2H combined hit rate: how often (homeScore+awayScore) >= threshold in last 10 H2H meetings
         const _gtH2H = _gtH2HRate(homeTeam, awayTeam, threshold);
@@ -486,7 +482,7 @@ export async function emitGameTotalPlays({
         const _combinedRPGPts = _combinedRPG == null ? 1 : _combinedRPG >= 10.5 ? 2 : _combinedRPG >= 8.5 ? 1 : 0;
         const _homeWhipPts = homeWHIP == null ? 1 : homeWHIP > 1.35 ? 2 : homeWHIP > 1.20 ? 1 : 0;
         const _awayWhipPts = awayWHIP == null ? 1 : awayWHIP > 1.35 ? 2 : awayWHIP > 1.20 ? 1 : 0;
-        _simData = { homeRPG, awayRPG, homeERA, awayERA, homeFIP, awayFIP, homeWHIP, awayWHIP, ...(homeWHIPSource && { homeWHIPSource }), ...(awayWHIPSource && { awayWHIPSource }), homeBullpenERA: _homeRestERA, awayBullpenERA: _awayRestERA, ...(homeBullpenSource && { homeBullpenSource }), ...(awayBullpenSource && { awayBullpenSource }), parkFactor: parkRF, homeExpected: _hLam, awayExpected: _aLam, expectedTotal: (_hLam != null && _aLam != null) ? parseFloat((_hLam + _aLam).toFixed(1)) : null, gameOuLine, mlbOuPts: _mlbOuPts, homeWhipPts: _homeWhipPts, awayWhipPts: _awayWhipPts, combinedRpgPts: _combinedRPGPts, h2hTotalPts: _h2hTotalPts, combinedRPG: _combinedRPG, umpireRunFactor: _umpNameT != null ? _umpRunFactor : null, umpireName: _umpNameT, h2hTotalHitRate, h2hTotalGames, homeStarterHand: _homeStarterHand, awayStarterHand: _awayStarterHand, ...(_homePlatFactor !== 1.0 && { homePlatoonFactor: _homePlatFactor }), ...(_awayPlatFactor !== 1.0 && { awayPlatoonFactor: _awayPlatFactor }), ...(_weatherFactor !== 1.0 && { weatherFactor: _weatherFactor, windOutMph: _wData?.windOutMph }), ...(homeTopOut > 0 && { homeTopOut, homeLineupFactor }), ...(awayTopOut > 0 && { awayTopOut, awayLineupFactor }), ...(homePitcherOnIL && { homePitcherOnIL: true }), ...(awayPitcherOnIL && { awayPitcherOnIL: true }), ...(_homeTto !== 1.0 && { homeExpectedBF: _homeBF, homeTtoBump: parseFloat(_homeTto.toFixed(3)) }), ...(_awayTto !== 1.0 && { awayExpectedBF: _awayBF, awayTtoBump: parseFloat(_awayTto.toFixed(3)) }), ...(_homeRestBump !== 1.0 && { homeDaysRest: _homeDaysRest, homeRestBump: parseFloat(_homeRestBump.toFixed(3)) }), ...(_awayRestBump !== 1.0 && { awayDaysRest: _awayDaysRest, awayRestBump: parseFloat(_awayRestBump.toFixed(3)) }), ...(_mlbRegimeBlendW > 0 && { regimeBlendW: parseFloat(_mlbRegimeBlendW.toFixed(2)), homeRecentMean: parseFloat(_mlbHomeRecent.mean.toFixed(2)), awayRecentMean: parseFloat(_mlbAwayRecent.mean.toFixed(2)) }), ...(_homeMix.lFrac != null && { homeOppLFrac: _homeMix.lFrac, homeFipMod: _homeMix.fipMod, homeWhipMod: _homeMix.whipMod, homeFipEff, homeWhipEff }), ...(_awayMix.lFrac != null && { awayOppLFrac: _awayMix.lFrac, awayFipMod: _awayMix.fipMod, awayWhipMod: _awayMix.whipMod, awayFipEff, awayWhipEff }) };
+        _simData = { homeRPG, awayRPG, homeERA, awayERA, homeFIP, awayFIP, homeWHIP, awayWHIP, ...(homeWHIPSource && { homeWHIPSource }), ...(awayWHIPSource && { awayWHIPSource }), homeBullpenERA: _homeRestERA, awayBullpenERA: _awayRestERA, ...(homeBullpenSource && { homeBullpenSource }), ...(awayBullpenSource && { awayBullpenSource }), parkFactor: parkRF, homeExpected: _hLam, awayExpected: _aLam, expectedTotal: (_hLam != null && _aLam != null) ? parseFloat((_hLam + _aLam).toFixed(1)) : null, gameOuLine, mlbOuPts: _mlbOuPts, homeWhipPts: _homeWhipPts, awayWhipPts: _awayWhipPts, combinedRpgPts: _combinedRPGPts, h2hTotalPts: _h2hTotalPts, combinedRPG: _combinedRPG, umpireRunFactor: _umpNameT != null ? _umpRunFactor : null, umpireName: _umpNameT, h2hTotalHitRate, h2hTotalGames, homeStarterHand: _homeStarterHand, awayStarterHand: _awayStarterHand, ...(_homePlatFactor !== 1.0 && { homePlatoonFactor: _homePlatFactor }), ...(_awayPlatFactor !== 1.0 && { awayPlatoonFactor: _awayPlatFactor }), ...(homeTopOut > 0 && { homeTopOut, homeLineupFactor }), ...(awayTopOut > 0 && { awayTopOut, awayLineupFactor }), ...(homePitcherOnIL && { homePitcherOnIL: true }), ...(awayPitcherOnIL && { awayPitcherOnIL: true }), ...(_homeTto !== 1.0 && { homeExpectedBF: _homeBF, homeTtoBump: parseFloat(_homeTto.toFixed(3)) }), ...(_awayTto !== 1.0 && { awayExpectedBF: _awayBF, awayTtoBump: parseFloat(_awayTto.toFixed(3)) }), ...(_homeRestBump !== 1.0 && { homeDaysRest: _homeDaysRest, homeRestBump: parseFloat(_homeRestBump.toFixed(3)) }), ...(_awayRestBump !== 1.0 && { awayDaysRest: _awayDaysRest, awayRestBump: parseFloat(_awayRestBump.toFixed(3)) }), ...(_mlbRegimeBlendW > 0 && { regimeBlendW: parseFloat(_mlbRegimeBlendW.toFixed(2)), homeRecentMean: parseFloat(_mlbHomeRecent.mean.toFixed(2)), awayRecentMean: parseFloat(_mlbAwayRecent.mean.toFixed(2)) }), ...(_homeMix.lFrac != null && { homeOppLFrac: _homeMix.lFrac, homeFipMod: _homeMix.fipMod, homeWhipMod: _homeMix.whipMod, homeFipEff, homeWhipEff }), ...(_awayMix.lFrac != null && { awayOppLFrac: _awayMix.lFrac, awayFipMod: _awayMix.fipMod, awayWhipMod: _awayMix.whipMod, awayFipEff, awayWhipEff }) };
         // Plan C (2026-06-01 calibration): anchor the total's lambda toward the market O/U
         // line — the sharpest available prior on the game mean. totalRuns overs ran +17
         // overconfident (Δ −26.5 side-aware) because the regime blend + seasonHitRate blend
@@ -1141,10 +1137,8 @@ export async function emitGameTotalPlays({
         const _ttPlatCode = _ttOppStarterHand === 'L' ? 'vl' : _ttOppStarterHand === 'R' ? 'vr' : null;
         const _ttPlatFactor = (_ttPlatCode && _ttPlatoonMap[scoringTeam]?.[_ttPlatCode])
           ? _ttPlatoonMap[scoringTeam][_ttPlatCode] : 1.0;
-        const _ttWData = weatherByGame[`${homeTeam}|${awayTeam}`] ?? null;
-        const _ttWeatherFactor = (_ttWData?.windOutMph != null && !_MLB_DOMED.has(homeTeam))
-          ? parseFloat((Math.max(0.85, Math.min(1.15, 1 + _ttWData.windOutMph * 0.013 + ((_ttWData.temp ?? 72) - 72) * 0.001))).toFixed(3))
-          : 1.0;
+        // Weather REMOVED from team-run totals 2026-06-23 (model-honesty fix) — see the game-total
+        // block above; wind+temp are ~flat on run scoring, so they no longer move the team λ.
         // Umpire run factor (independent env signal — loose zone → more scoring); applied to lambda
         const _ttUmpKey = `${homeTeam}|${awayTeam}`;
         const _ttUmpName = sportByteam.mlb?.umpireByGame?.[_ttUmpKey] ?? null;
@@ -1153,7 +1147,7 @@ export async function emitGameTotalPlays({
         const _ttUmpRunFactor = parseFloat((1 / _ttUmpKF).toFixed(3));
         // Note: umpire factor adjusts the lambda (so it's reflected in truePct) but is
         // intentionally not a separate SimScore component to avoid double-counting.
-        let _lam = teamRPG != null ? parseFloat((Math.max(0.5, Math.min(12, teamRPG * _oppMult * parkRF * _ttPlatFactor * _ttWeatherFactor * _ttUmpRunFactor * lineupFactor))).toFixed(2)) : null;
+        let _lam = teamRPG != null ? parseFloat((Math.max(0.5, Math.min(12, teamRPG * _oppMult * parkRF * _ttPlatFactor * _ttUmpRunFactor * lineupFactor))).toFixed(2)) : null;
         // Regime-aware blend: shift λ toward recency-weighted recent runs.
         // Conservative cap (0.5 share / denom 12) — half of game-total cap because
         // single-team variance is larger than two-team-combined variance.

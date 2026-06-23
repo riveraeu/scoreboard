@@ -1604,7 +1604,6 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             plays, dropped, isDebug, cutoffStr, gameTimes,
             CACHE2, isBustCache, PROD_SPORTS,
             totalMarkets, teamTotalMarkets,
-            weatherByGame,
             nbaInjuryMap, wnbaInjuryMap, nbaUsageMap, wnbaUsageMap,
             mlbBothTeamsConfirmed: _mlbBothTeamsConfirmed,
             sportByteam,

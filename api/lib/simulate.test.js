@@ -308,7 +308,8 @@ test('earlyExitProb=1.0: all trials cap at BF <= 15, reducing P(K>=5) vs baselin
   assert.ok(pHook < pBase, `earlyExitProb=1.0: P(K>=5) hook=${pHook} should be < base=${pBase}`);
 });
 
-// ---- Inlined from api/[...path].js: _parseWind + weatherFactor ----
+// ---- Inlined from api/[...path].js: _parseWind (still used to populate the debug mlbMeta;
+//      the run-total weatherFactor it once fed was removed 2026-06-23 as a model-honesty fix) ----
 
 function parseWind(dv) {
   if (!dv) return { windSpeed: null, windOutMph: null };
@@ -320,12 +321,6 @@ function parseWind(dv) {
   const isOut = v.includes(' out to ') || v.includes(' out ') || v.endsWith(' out');
   const isIn  = v.includes(' in from ') || v.includes(' in to ') || (v.includes(' in ') && !isOut);
   return { windSpeed: spd, windOutMph: isOut ? spd : isIn ? -spd : 0 };
-}
-
-function calcWeatherFactor(windOutMph, tempF) {
-  if (windOutMph == null) return 1.0;
-  const raw = 1 + windOutMph * 0.013 + ((tempF ?? 72) - 72) * 0.001;
-  return Math.max(0.85, Math.min(1.15, raw));
 }
 
 // ---- parseWind tests ----
@@ -375,45 +370,6 @@ test('parseWind: temperature-only string (no mph) → both null', () => {
   const r = parseWind('72 °F');
   assert.equal(r.windSpeed, null);
   assert.equal(r.windOutMph, null);
-});
-
-// ---- weatherFactor tests ----
-
-test('weatherFactor: 10 mph out, 72F → 1 + 0.13 = 1.13', () => {
-  const f = calcWeatherFactor(10, 72);
-  assert.ok(Math.abs(f - 1.13) < 0.001, `expected ~1.130, got ${f}`);
-});
-
-test('weatherFactor: 8 mph in, 72F → 1 - 0.104 = 0.896', () => {
-  const f = calcWeatherFactor(-8, 72);
-  assert.ok(Math.abs(f - 0.896) < 0.001, `expected ~0.896, got ${f}`);
-});
-
-test('weatherFactor: warm day adds small boost (90F, calm → +0.018)', () => {
-  const f = calcWeatherFactor(0, 90);
-  assert.ok(Math.abs(f - 1.018) < 0.001, `expected ~1.018, got ${f}`);
-});
-
-test('weatherFactor: clamps to 1.15 for extreme wind-out + heat', () => {
-  assert.equal(calcWeatherFactor(20, 100), 1.15);
-});
-
-test('weatherFactor: clamps to 0.85 for extreme wind-in + cold', () => {
-  assert.equal(calcWeatherFactor(-20, 40), 0.85);
-});
-
-test('weatherFactor: null windOutMph → 1.0 (no adjustment)', () => {
-  assert.equal(calcWeatherFactor(null, 72), 1.0);
-});
-
-test('weatherFactor: 0 mph wind, 72F → exactly 1.0', () => {
-  assert.equal(calcWeatherFactor(0, 72), 1.0);
-});
-
-test('weatherFactor: null temp defaults to 72F (no temp contribution)', () => {
-  const f = calcWeatherFactor(5, null);
-  const expected = 1 + 5 * 0.013;
-  assert.ok(Math.abs(f - expected) < 0.001, `null temp = 72F baseline`);
 });
 
 // ---- binomTailPct tests (MLB hits prop model, 2026-06-11) ----

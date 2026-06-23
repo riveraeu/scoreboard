@@ -81,7 +81,7 @@ Sport/utility modules under `api/lib/`:
   - `api/lib/mlb-shared.js` — `MLB_ID_TO_ABBR`, `_fs`
   - `api/lib/mlb-hitters.js` — `buildLineupKPct`, `buildBarrelPct`
   - `api/lib/mlb-pitchers.js` — `buildPitcherKPct` (regression, splits, gamelog batch)
-  - `api/lib/mlb-weather.js` — `BALLPARKS` (per-park lat/lon + home→CF azimuth + dome) + `buildBallparkWeather(gameScores, todayPT)` → Open-Meteo (no key) game-time `{windOutMph, tempF}` per home park; hydrated as `byteam.weatherByTeam`, consumed in the HRR logit (shadow-only, 2026-06-22)
+  - `api/lib/mlb-weather.js` — `BALLPARKS` (per-park lat/lon + home→CF azimuth + dome) + `buildBallparkWeather(gameScores, todayPT)` → Open-Meteo (no key) game-time `{windOutMph, tempF}` per home park; hydrated as `byteam.weatherByTeam`, consumed **only** in the HRR logit (shadow-only, 2026-06-22). Weather is **HR-specific**: the older ESPN-`displayValue` `weatherFactor` on game/team/F5 **run** totals was **removed 2026-06-23** (model-honesty fix — `scripts/backtest/weather-runs-study.js` found wind+temp ~flat on total runs, r≈0; the HR signal dilutes ~8:1). `_parseWind` still feeds the debug `mlbMeta` only
 - `api/lib/nba.js` — DVP, depth chart, pace, usage, injury, player-pos
 - `api/lib/wnba.js` — pace, usage, injury, DVP; `WNBA_TEAM_IDS`; `WNBA_ESPN_TO_CANON`/`WNBA_CANON_TO_ESPN`
 - `api/lib/nhl.js` — `buildNhlGoalieData`, `buildNhlInjuryReport`, `NHL_ABBR_MAP`
