@@ -173,14 +173,14 @@ function AccuracyBoard({ board }) {
   if (!board?.length) return null;
   const honestyN = r => (r.calibBands || []).reduce((s, b) => s + (b.n || 0), 0);
 
-  // Sort by N desc; split off the n<100 "Accruing" pile (not yet judgeable) behind a toggle so the
-  // table shows only categories with enough data to act on. Off-season sports (NBA/NHL in summer)
-  // fall into Accruing automatically as their n drops — no season hardcoding, self-heals on return.
+  // Sort by N desc; split off the n<50 thin pile (not yet judgeable) behind a toggle so the table
+  // shows only categories with enough data to act on. Off-season sports (NBA/NHL in summer) fall
+  // into the thin pile automatically as their n drops — no season hardcoding, self-heals on return.
   // Gated/live categories always stay in the main view regardless of n.
   const byN = (a, b) => b.n - a.n;
   const gated = board.filter(r => r.gated).sort(byN);
-  const actionable = board.filter(r => !r.gated && r.n >= 100).sort(byN);
-  const accruing = board.filter(r => !r.gated && r.n < 100).sort(byN);
+  const actionable = board.filter(r => !r.gated && r.n >= 50).sort(byN);
+  const accruing = board.filter(r => !r.gated && r.n < 50).sort(byN);
 
   const Row = ({ r }) => {
     const open = expanded[r.key];
@@ -236,7 +236,7 @@ function AccuracyBoard({ board }) {
           {actionable.map(r => <Row key={r.key} r={r} />)}
           {accruing.length > 0 && !showAccruing && (
             <tr><td colSpan={6} style={{ ...tdB, textAlign:"left", color:C.dim, cursor:"pointer" }} onClick={() => setShowAccruing(true)}>
-              ▸ {accruing.length} more accruing (n &lt; 100, off-season + thin) — show
+              ▸ {accruing.length} more thin (n &lt; 50, off-season + low data) — show
             </td></tr>
           )}
           {showAccruing && accruing.map(r => <Row key={r.key} r={r} />)}
