@@ -117,4 +117,7 @@ export const DISMISSED_SERIES = [
   "KXWC1HSCORE", // 6/22 vet: exact half-scoreline longshots, no in-window edge (1H signal already covered by the soccer half score-matrix)
   "KXWTAROE", // 6/22 vet: WTA round-of-elimination = draw-progression distribution; our tennis is single-match winner only (tennisMatchProb), no bracket sim. No Phase-1 path.
   "KXWC3RDPLACEQUAL", // 6/22 vet: needs full group-table + cross-group 3rd-place ranking sim; our Dixon–Coles matrix models one match, not group standings. window_fit false-positive (12 mkts). Defer to a tournament-sim phase.
+  "KXWCWINMARGIN", // 6/23 vet: exact-margin longshot trap (same shape as KXWC1HSCORE) — only longshot-NO sides reach [67,91] with no edge; the tractable margin signal is already emitted via soccer probSpreadCover + 1X2. DISMISS.
+  "KXWNBAH2HPTS", // 6/23 vet: model end is BUILDABLE (buildNbaStatDist point Normals + golf-style h2hWinProb combine) but DEFERRED — listed only sporadically (0-open even on full evening slates) → too thin for useful shadow data; NASCAR was the better next build and shipped. Dismissing to clear the banner; revisit if higher-liquidity builds dry up.
+  "KXWNBAH2HPRA", // 6/23 vet: same as KXWNBAH2HPTS, second in line (Points pipeline + one cross-stat ρ(P,R,A) variance-inflation knob). DEFERRED for the same thin-coverage reason. Revisit alongside H2HPTS.
 ];
