@@ -264,6 +264,17 @@ export function normCDF(x, mean = 0, std = 1) {
   return 0.5 * (1 + erfZ);
 }
 
+// MLB pitcher outs-recorded tail (shadow-only, 2026-06-23): P(outs ≥ threshold) under a
+// Normal(mu, sigma) starter-workload model, with a 0.5 continuity correction (outs are integers).
+// Used by emitMlbOutsPlays — outs ≈ batters-faced × out-rate, dominated by the manager's leash,
+// so a smoother target than the K-count tail. v1 is a plain Normal; the early-hook left tail is a
+// known understatement deferred to a Phase-1.5 backtest of starter-IP distributions.
+export function outsTailPct(mu, sigma, threshold) {
+  if (mu == null || sigma == null || sigma <= 0) return null;
+  const p = 1 - normCDF(threshold - 0.5, mu, sigma);
+  return parseFloat((Math.max(0, Math.min(1, p)) * 100).toFixed(1));
+}
+
 // K% multiplier applied to BF 19+ (third time through the order).
 // League-average decline: ~10–15% drop in K% on 3rd pass due to batter familiarity.
 const TTO_DECAY_FACTOR = 0.88;

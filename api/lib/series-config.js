@@ -17,6 +17,11 @@ export const SERIES_CONFIG = {
   KXMLBHRR:    { sport: "mlb",  league: "mlb",  stat: "hrr",            col: "HRR" },
   KXMLBHIT:    { sport: "mlb",  league: "mlb",  stat: "hits",           col: "H"   },
   KXMLBTB:     { sport: "mlb",  league: "mlb",  stat: "totalBases",     col: "TB"  },
+  // Pitcher outs-recorded O/U ("Senga: 15+"). The `mlbOuts` gameType routes these to the dedicated
+  // emit path (api/lib/tonight/mlb-outs.js): Normal workload model off pitcherStatsByName (avgBF ×
+  // out-rate), favorite side. Prop-shaped rows reuse the player-prop resolver. Shadow-only: `mlb|outs`
+  // is intentionally NOT in the category gate.
+  KXMLBOUTS:   { sport: "mlb",  league: "mlb",  stat: "outs",           col: "OUTS", gameType: "mlbOuts" },
   KXNFLPAYDS:  { sport: "nfl",  league: "nfl",  stat: "passingYards",   col: "YDS" },
   KXNFLRUYDS:  { sport: "nfl",  league: "nfl",  stat: "rushingYards",   col: "YDS" },
   KXNFLREYDS:  { sport: "nfl",  league: "nfl",  stat: "receivingYards", col: "YDS" },

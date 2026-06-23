@@ -316,6 +316,17 @@ function _resolveRow(row, game) {
     let actual;
     switch (stat) {
       case "strikeouts":    actual = ps.strikeouts ?? 0; break;
+      // Pitcher outs recorded = IP×3 (MLB "5.2" = 5⅔ IP = 17 outs). ps.ip from /api/live pitching
+      // line. Absent or 0.0 ⇒ no pitching line yet / scratch → null (retry, never mis-resolve UNDER).
+      case "outs": {
+        if (ps.ip == null) return null;
+        const ipNum = parseFloat(ps.ip);
+        if (isNaN(ipNum) || ipNum <= 0) return null;
+        const whole = Math.trunc(ipNum);
+        const frac = Math.round((ipNum - whole) * 10); // .0/.1/.2 → 0/1/2 outs
+        actual = whole * 3 + frac;
+        break;
+      }
       case "hrr":           actual = ps.hrr ?? ((ps.hits ?? 0) + (ps.runs ?? 0) + (ps.rbi ?? 0)); break;
       case "hits":          actual = ps.hits ?? 0; break;
       // totalBases comes from the statsapi merge (/api/live?tb=1) — ESPN's box score has
@@ -1028,6 +1039,7 @@ const FORMULA_CUTOFFS = {
   "mlb|hrr":        "2026-06-22", // FIP-over-WHIP split + game-time weather (was 2026-06-10: OPS 0.4→0.25, knee 72→68)
   "mlb|hits":       "2026-06-12", // ticker fix — data starts here
   "mlb|totalBases": "2026-06-12",
+  "mlb|outs":       "2026-06-23", // pitcher outs-recorded O/U Phase 1 — data starts here
   "mlb|totalRuns":  "2026-06-01", // totalRuns market-line anchor
   "mlb|teamRuns":   "2026-05-27", // MLB teamTotal regime blend
   "nhl|totalGoals": "2026-05-29", // NHL NegBin + spread dampener

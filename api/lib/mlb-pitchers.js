@@ -480,6 +480,7 @@ export async function buildPitcherKPct(mlbSched) {
           avgPitches: pitcherAvgPitchesById[id] ?? pitcherAvgPitches[a] ?? null,
           avgBF: pitcherAvgBFById[id] ?? pitcherAvgBF[a] ?? null,
           stdBF: pitcherStdBFById[id] ?? pitcherStdBF[a] ?? null,
+          baa: pitcherBAA[a] ?? null,  // opp batting avg against → out-rate for the outs-recorded model
           gs26: pitcherGS26ById[id] ?? pitcherGS26[a] ?? null,
           hasAnchor: pitcherHasAnchorById[id] ?? pitcherHasAnchor[a] ?? null,
           recentKPct: pitcherRecentKPctById[id] ?? pitcherRecentKPct[a] ?? null,
@@ -515,6 +516,7 @@ export async function buildPitcherKPct(mlbSched) {
           avgPitches: pitcherAvgPitchesById[id] ?? null,
           avgBF: pitcherAvgBFById[id] ?? null,
           stdBF: pitcherStdBFById[id] ?? 0,
+          baa: (s26?.baa ?? s25?.baa ?? null),  // out-rate input for the outs-recorded model
           gs26: (s26?.gs > 0 ? s26.gs : null),
           hasAnchor: gs25 >= 5 && bf25 >= 100,
           recentKPct: pitcherRecentKPctById[id] ?? null,     // A1

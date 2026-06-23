@@ -219,6 +219,21 @@ truePct = same blend + conservative cap branch as hits (capWeight 0.5, knee 80, 
 - `STAT_SOFT["mlb|totalBases"]` shares the hitter soft-teams map (opp starter ERA) with hits/hrr (handlers/tonight.js).
 - Shares the full hits/HRR scaffolding: Stage-1 lineup-spot 1–5 gate, simScore ≥5, `_mlbLineupConf`, hitter emit fields. HRR-λ softPct override stays hrr-only (would inflate the TB ref too).
 - **UNDER-side market — the only under-direction player prop** (2026-06-12): Kalshi lists TB thresholds 2+..6+ only (no 1+), and P(2+ TB) never prices ≥67, so the YES side can never reach the [67,91] window — all in-window prices are NO ("under 2 TB" ~70–85). The prop parse loop (handlers/tonight.js) admits totalBases when `noPct ∈ [67,91]` and stamps `direction:"under"` + `noKalshiPct`/`noKalshiAO` (both sides depth-blended). **Storage follows the totals convention**: `truePct`/`kalshiPct` stay over-framed on the play and in `shadow_plays`; only the bet-side values flip — props.js computes `edge = (100 − truePct) − noKalshiPct` and gates the window on the NO price; the shadow report SQL flips under rows at read time (`1 − model_true_pct`, `no_kalshi_pct`). `americanOdds` mirrors the bought side (noKalshiAO). All other prop series remain YES-only.
+
+## MLB Pitcher Outs Recorded
+**Added 2026-06-23, shadow-only** (`KXMLBOUTS`, `gameType:"mlbOuts"` → `api/lib/tonight/mlb-outs.js`, NOT props.js — props.js is K-coupled, treating any non-strikeouts MLB prop as a hitter). `mlb|outs` is NOT in `passesCategoryGate`. The thesis: outs recorded is a **smoother, more tractable target than the K-count tail** — it's dominated by the manager's batters-faced leash (pitch count / effectiveness), which we already hydrate, rather than a per-PA tail event.
+
+**True%**: a plain Normal workload model.
+```
+outRate = clamp(1 − (BAA + 0.06), 0.60, 0.74)     # outs per batter faced ≈ 1 − OBP-against
+                                                   # (0.685 league fallback when BAA missing)
+μ (eOuts) = avgBF × outRate                        # avgBF/stdBF/baa from pitcherStatsByName (name-keyed)
+σ         = max(stdBF × outRate, 3.5)              # 4.5 default when stdBF is 0/missing; min 3 GS to rate
+truePct("N+ outs") = outsTailPct(μ, σ, N) = (1 − Φ((N − 0.5 − μ)/σ)) × 100   # continuity-corrected
+```
+- **Emit**: each KXMLBOUTS market is a threshold YES = "N+ outs" (N from `floor_strike + 0.5`). Emits the FAVORITE side — over if YES ∈ [67,91], under (truePct = 100 − over) if NO ∈ [67,91]. Prop-shaped rows (`playerName`/`stat:"outs"`/`threshold`/`direction`) into a dedicated `outsPlays` array → `shadow:staging` only. Alt thresholds compete independently (suffix = threshold), same as spreads.
+- **Resolution**: reuses the player-prop path — `shadow.js` `case "outs"` reads `ps.ip` from `/api/live` and converts IP→outs (`"5.2"` = 5⅔ IP = 17 outs); `ps.ip` null/≤0 returns null (retry, never mis-resolve an UNDER as a win on a not-yet-pitched line).
+- **Knobs provisional** (anchored to workload intuition, not Kalshi). **v1 is a plain Normal — the early-hook / blowup LEFT tail (pulled in the 2nd) is understated**; deferred to a Phase-1.5 backtest of starter-IP distributions. Forward-validate before any gate: `tune:gate` +ROI at n≥50 AND non-negative Brier (modelBrier < marketBrier) at n≥200. First refinement candidate via `tune:residual`: pitcher-specific OBP + the left tail.
 - **Resolution — statsapi, not ESPN**: ESPN's box score has no TB/2B/3B. `/api/live?tb=1` (opt-in; cache slots suffixed `:tb`) fetches the statsapi schedule once + boxscore per matched MLB game (`MLB_ID_TO_ABBR` match, doubleheaders by closest start time) and merges `totalBases` per batter by diacritic-stripped name. Shadow resolver sends `tb=1` only when the batch has totalBases rows; `case "totalBases"` returns **null when `ps.totalBases` is absent** (merge failure ⇒ skip/retry, never mis-resolved as 0). Prop resolution is direction-aware: `won = isUnder ? actual < th : actual >= th`.
 - No frontend: not in AddPickModal/liveStats — add live tracking only if the category is ever promoted.
 

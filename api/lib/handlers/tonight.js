@@ -28,6 +28,7 @@ import { WC_TEAMS } from "../soccer.js";
 import { emitFightPlays } from "../tonight/fight.js";
 import { emitGolfH2hPlays } from "../tonight/golf-h2h.js";
 import { emitNascarPlays } from "../tonight/nascar.js";
+import { emitMlbOutsPlays } from "../tonight/mlb-outs.js";
 
 const __defProp = Object.defineProperty;
 const __name = (target, value) => __defProp(target, "name", { value, configurable: true });
@@ -226,6 +227,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
         const fightMarkets = []; // UFC rounds O/U — every priced threshold, grouped by event in emit
         const golfH2hMarkets = []; // PGA single-round head-to-head — each priced side carries its own matchup
         const nascarMarkets = []; // NASCAR Cup H2H + Top-10 — each priced side carries its own driver(s)
+        const outsMarkets = []; // MLB pitcher outs-recorded O/U (KXMLBOUTS) — each priced threshold carries its pitcher
         const globalSeen = /* @__PURE__ */ new Set();
         for (let i = 0; i < seriesTickers.length; i++) {
           const ticker = seriesTickers[i];
@@ -403,6 +405,44 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
                 if (!_nPlayer) continue;
               }
               nascarMarkets.push({ subtype: cfg.subtype, eventTicker: m.event_ticker, raceCode: _nRace, player: _nPlayer, opponent: _nOpp, gameDate: _nDate, kalshiPct: _nPct, americanOdds: _nAO(_nPct), kalshiVolume: _nVol, _ticker: m.ticker, _depth: m._depth });
+              continue;
+            }
+            // ── MLB pitcher outs-recorded branch ── threshold ladder per starter ("Senga: 15+").
+            // yes_sub_title = "<pitcher>: N+"; floor_strike = N−0.5. Both YES(over)/NO(under) priced;
+            // emitMlbOutsPlays picks the favorite side in [67,91]. Team-based (need home/away for the
+            // resolver's /api/live lookup), so parse teams here + resolve home via gameHomeTeams.
+            if (cfg.gameType === "mlbOuts") {
+              const _oStrike = parseFloat(m.floor_strike);
+              if (isNaN(_oStrike)) continue;
+              const _oThreshold = Math.round(_oStrike + 0.5); // "N+" over threshold
+              const _oYesAsk = parseFloat(m.yes_ask_dollars) || 0;
+              const _oNoAsk = parseFloat(m.no_ask_dollars) || 0;
+              const _oLast = parseFloat(m.last_price_dollars) || 0;
+              const _oYesBid = parseFloat(m.yes_bid_dollars) || 0;
+              const _oYesPrice = (_oYesAsk >= 0.98 && _oYesBid === 0 && _oLast > 0) ? _oLast : (_oYesAsk > 0 ? _oYesAsk : _oLast);
+              if (_oYesPrice === 0) continue; // no live book — skip (books fill near first pitch)
+              const _oYesPct = Math.round(_oYesPrice * 100);
+              const _oNoPct = _oNoAsk > 0 ? Math.round(_oNoAsk * 100) : (100 - _oYesPct);
+              const _oVol = parseInt(m.volume_fp) || parseInt(m.volume) || 0;
+              const _oName = (m.yes_sub_title || "").split(":")[0].trim();
+              if (!_oName) continue;
+              // gameDate from the YYMMMDD ticker segment (the ET game date; avoids the UTC roll that
+              // close_time has on night games). Fallback to close_time.
+              const _oEvSeg = (m.event_ticker || "").split("-")[1] || "";
+              const _oMd = _oEvSeg.match(/^(\d{2})([A-Z]{3})(\d{2})/);
+              const _oMonths = { JAN: "01", FEB: "02", MAR: "03", APR: "04", MAY: "05", JUN: "06", JUL: "07", AUG: "08", SEP: "09", OCT: "10", NOV: "11", DEC: "12" };
+              const _oDate = _oMd ? `20${_oMd[1]}-${_oMonths[_oMd[2]] || "01"}-${_oMd[3]}` : ((m.close_time || "").slice(0, 10) || null);
+              // Resolve home/away from the matchup (Kalshi ticker order ≠ ESPN home/away).
+              const [_oT1, _oT2] = parseGameTeams(m.event_ticker, "mlb");
+              let _oHome = _oT1, _oAway = _oT2;
+              if (sportByteam.mlb?.gameHomeTeams?.[_oT2]) { _oHome = _oT2; _oAway = _oT1; }
+              // Pitcher's team = leading abbr of the market-ticker suffix (after the event segment).
+              const _oMktSuffix = (m.ticker || "").slice((m.event_ticker || "").length + 1);
+              let _oPitTeam = null;
+              if (_oT1 && _oMktSuffix.startsWith(_oT1)) _oPitTeam = _oT1;
+              else if (_oT2 && _oMktSuffix.startsWith(_oT2)) _oPitTeam = _oT2;
+              const _oAO = (pct) => pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
+              outsMarkets.push({ player: _oName, threshold: _oThreshold, homeTeam: _oHome, awayTeam: _oAway, pitcherTeam: _oPitTeam, yesPct: _oYesPct, noPct: _oNoPct, yesAO: _oAO(_oYesPct), noAO: _oAO(_oNoPct), kalshiVolume: _oVol, gameDate: _oDate, _ticker: m.ticker, _depth: m._depth });
               continue;
             }
             const strike = parseFloat(m.floor_strike);
@@ -1663,6 +1703,11 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           nascarMarkets, nascarPlays, dropped, isDebug, cutoffStr,
           cache: CACHE2, isBustCache,
         });
+        // ── MLB pitcher outs-recorded (KXMLBOUTS) — Phase 1, shadow-only. Prop-shaped rows in a
+        // dedicated array (NOT `plays`) so they bypass dedup/gameTime-filter/card-builder; merged
+        // into shadow:staging only. Normal workload model off pitcherStatsByName, favorite side.
+        const outsPlays = [];
+        emitMlbOutsPlays({ outsMarkets, outsPlays, dropped, isDebug, cutoffStr, sportByteam });
         // Drop plays whose scheduled gameTime has already passed — pre-game market is closed,
         // and our model truePct is built on pre-game inputs so it's no longer valid in-game.
         // Plays without gameTime are kept (we already gate by gameDate earlier).
@@ -1775,7 +1820,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           }
           // Tennis plays live in their own array (kept out of `plays` to bypass dedup/frontend);
           // merge them into the staging `plays` so shadow-snapshot logs them like any other play.
-          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays: [...plays, ...tennisPlays, ...soccerPlays, ...fightPlays, ...golfH2hPlays, ...nascarPlays], dropped, schedule: _schedCounts, writtenAt: Date.now() }), { expirationTtl: 21600 }).catch(() => {});
+          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays: [...plays, ...tennisPlays, ...soccerPlays, ...fightPlays, ...golfH2hPlays, ...nascarPlays, ...outsPlays], dropped, schedule: _schedCounts, writtenAt: Date.now() }), { expirationTtl: 21600 }).catch(() => {});
         }
         if (isDebug) {
           const nbaGlLabels = Object.fromEntries(Object.entries(playerGamelogs).filter(([k]) => k.startsWith("nba|")).map(([k, gl]) => [k, gl?.ul ?? null]));
@@ -1789,7 +1834,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             meta: kalshiSnapMeta,
             ageMs: kalshiSnapMeta?.lastRunAt ? Date.now() - kalshiSnapMeta.lastRunAt : null,
           };
-          return jsonResponse({ plays: debugPlays, dropped: debugDropped, preDropped: debugPreDropped, tennisPlays, tennisMarketCount: tennisMatchMarkets.length, soccerPlays, soccerMarketCount: soccerMarkets.length, fightPlays, fightMarketCount: fightMarkets.length, golfH2hPlays, golfH2hMarketCount: golfH2hMarkets.length, nascarPlays, nascarMarketCount: nascarMarkets.length, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
+          return jsonResponse({ plays: debugPlays, dropped: debugDropped, preDropped: debugPreDropped, tennisPlays, tennisMarketCount: tennisMatchMarkets.length, soccerPlays, soccerMarketCount: soccerMarkets.length, fightPlays, fightMarketCount: fightMarkets.length, golfH2hPlays, golfH2hMarketCount: golfH2hMarkets.length, nascarPlays, nascarMarketCount: nascarMarkets.length, outsPlays, outsMarketCount: outsMarkets.length, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
         }
         // Build mlbMeta: pitchers, ML odds, umpires, weather — keyed by team abbr or "home|away"
         // Pitcher entries: { name, id, era, wins, losses }. MLB Stats API (pitcherInfoByTeam) preferred
