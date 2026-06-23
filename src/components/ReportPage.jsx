@@ -388,262 +388,6 @@ const MODEL_NEXT = [
   },
 ];
 
-// One discovered-series row (detected or shortlisted), with triage hints from the series-scan
-// cron: live market count (0 = a shell, not a real market) + window-fit (a side priced in the
-// 67–91 band — a rough "favorites in our band" hint, not a gate).
-function DiscoveredMarketRow({ m, label, labelColor }) {
-  const n = m.liveMarketCount;
-  return (
-    <div style={{ display:"flex", alignItems:"center", gap:7, fontSize:11, flexWrap:"wrap" }}>
-      <span style={{
-        fontSize:8.5, fontWeight:700, padding:"1px 5px", borderRadius:3, letterSpacing:0.3,
-        color:labelColor, background:"transparent", border:`1px solid ${C.border}`,
-        minWidth:54, textAlign:"center", flexShrink:0,
-      }}>{label}</span>
-      <span style={{ color:C.text }}>{m.title || m.sampleSubtitle || m.ticker}</span>
-      <span style={{ color:C.dim, fontSize:9.5, fontFamily:"monospace" }}>{m.ticker}</span>
-      {n != null && <span title="Active markets in the series (0 = a shell, not tradeable)" style={{ color: n > 0 ? C.dim : C.amber, fontSize:9.5 }}>· {n > 0 ? `${n} live` : "no live mkts"}</span>}
-      {m.windowFit != null && n > 0 && <span title="A market side is priced in the 67–91 qualification band" style={{ color: m.windowFit ? C.green : C.dim, fontSize:9.5 }}>· {m.windowFit ? "✓ in band" : "⚠ none in band"}</span>}
-      {m.firstSeen && <span style={{ color:C.dim, fontSize:9.5 }}>· {m.firstSeen}</span>}
-    </div>
-  );
-}
-
-function ModelNext({ newMarkets = [], shortlisted = [] }) {
-  const [open, setOpen] = React.useState(true);
-  // Auto-discovered Kalshi series (from the kalshi-series-scan cron), minus anything already
-  // shipped (live in SERIES_CONFIG) or already named on the curated roadmap above. `shortlisted`
-  // = promoted + being vetted; `detected` = raw, un-triaged. Both surface as build candidates.
-  const roadmapTickers = new Set(MODEL_NEXT.flatMap(s => (s.markets || []).map(m => m.ticker)));
-  const dedupe = (arr) => (arr || []).filter(m => !SERIES_CONFIG[m.ticker] && !roadmapTickers.has(m.ticker));
-  const shortlistedRows = dedupe(shortlisted);
-  const detected = dedupe(newMarkets);
-  // Show only unbuilt work: drop entries already shipped (primary ticker live in SERIES_CONFIG).
-  // Infra rows (Model triage) are never "shipped" and always stay. Display filter only — the
-  // MODEL_NEXT constant keeps shipped entries + their Phase-2 notes intact in source.
-  const entries = MODEL_NEXT.filter(s => s.infra || !_isShippedRoadmapEntry(s));
-  return (
-    <div style={{ marginBottom:12, border:`1px solid ${C.border}`, borderRadius:8, background:C.card, padding:"10px 12px" }}>
-      <div onClick={() => setOpen(o => !o)} style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", flexWrap:"wrap" }}>
-        <span style={{ color:C.blue, fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:0.4 }}>Model next · build roadmap</span>
-        <span style={{ color:C.dim, fontSize:10 }}>alt-line markets first — more thresholds + yes/no = more chances at edge than a single-line ML</span>
-        <span style={{ marginLeft:"auto", color:C.gray, fontSize:11 }}>{open ? "▾" : "▸"}</span>
-      </div>
-      {open && (
-        <div style={{ marginTop:10 }}>
-          {entries.map(s => {
-            return (
-            <div key={s.sport} style={{ marginBottom:12 }}>
-              <div style={{ display:"flex", alignItems:"baseline", gap:6, flexWrap:"wrap" }}>
-                <span style={{ color:C.text, fontSize:12.5, fontWeight:700 }}>{s.rank} · {s.sport}</span>
-                <span style={{ color:C.gray, fontSize:11 }}>{s.note}</span>
-              </div>
-              <div style={{ color:C.dim, fontSize:10.5, margin:"3px 0 5px" }}>First knob: <span style={{ color:C.gray }}>{s.knob}</span></div>
-              <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
-                {s.markets.map(m => {
-                  // A market with its ticker live in SERIES_CONFIG is shipped → force the LIVE
-                  // badge so the card body self-updates alongside the banner (no manual badge edit
-                  // needed when a market ships). Explicit badges (infra LATER/LIVE) win otherwise.
-                  const badge = SERIES_CONFIG[m.ticker] ? "LIVE" : m.badge;
-                  const green = m.t === "alt" || badge === "LIVE";
-                  const label = badge ?? (m.t === "alt" ? "ALT" : "1-LINE");
-                  return (
-                  <div key={m.ticker} style={{ display:"flex", alignItems:"center", gap:7, fontSize:11 }}>
-                    <span style={{
-                      fontSize:8.5, fontWeight:700, padding:"1px 5px", borderRadius:3, letterSpacing:0.3,
-                      color: green ? C.green : C.dim,
-                      background: green ? "rgba(63,185,80,0.12)" : "transparent",
-                      border: `1px solid ${green ? "rgba(63,185,80,0.30)" : C.border}`,
-                      minWidth:42, textAlign:"center", flexShrink:0,
-                    }}>{label}</span>
-                    <span style={{ color:C.text }}>{m.title}</span>
-                    <span style={{ color:C.dim, fontSize:9.5, fontFamily:"monospace" }}>{m.ticker}</span>
-                  </div>
-                  );
-                })}
-              </div>
-            </div>
-          );})}
-          {/* Shortlisted — promoted (curl `?promote=`), being vetted. Sits between the curated
-              roadmap and raw detections. */}
-          {shortlistedRows.length > 0 && (
-            <div style={{ marginTop:6, paddingTop:8, borderTop:`1px solid ${C.border}` }}>
-              <div style={{ display:"flex", alignItems:"baseline", gap:6, flexWrap:"wrap", marginBottom:5 }}>
-                <span style={{ color:C.text, fontSize:12.5, fontWeight:700 }}>Shortlisted · vetting</span>
-                <span style={{ fontSize:8.5, fontWeight:700, letterSpacing:0.3, padding:"1px 5px", borderRadius:3,
-                  color:C.green, background:"transparent", border:`1px solid ${C.green}` }}>{shortlistedRows.length}</span>
-                <span style={{ color:C.gray, fontSize:11 }}>promoted — confirm data on both ends + the first knob, then author the roadmap entry</span>
-              </div>
-              <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
-                {shortlistedRows.slice(0, 10).map(m => <DiscoveredMarketRow key={m.ticker} m={m} label="VET" labelColor={C.green} />)}
-                {shortlistedRows.length > 10 && <div style={{ color:C.dim, fontSize:10 }}>+{shortlistedRows.length - 10} more…</div>}
-              </div>
-            </div>
-          )}
-          {/* Detected — auto-discovered series from the series-scan cron, deduped against shipped +
-              roadmapped tickers. Triage via curl `?promote=` / `?dismiss=`. */}
-          {detected.length > 0 && (
-            <div style={{ marginTop:6, paddingTop:8, borderTop:`1px solid ${C.border}` }}>
-              <div style={{ display:"flex", alignItems:"baseline", gap:6, flexWrap:"wrap", marginBottom:5 }}>
-                <span style={{ color:C.text, fontSize:12.5, fontWeight:700 }}>Detected · triage</span>
-                <span style={{ fontSize:8.5, fontWeight:700, letterSpacing:0.3, padding:"1px 5px", borderRadius:3,
-                  color:C.blue, background:"transparent", border:`1px solid ${C.blue}` }}>{detected.length} NEW</span>
-                <span style={{ color:C.gray, fontSize:11 }}>auto-discovered Kalshi series not yet on the roadmap — vet for window fit + alt lines</span>
-              </div>
-              <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
-                {detected.slice(0, 10).map(m => <DiscoveredMarketRow key={m.ticker} m={m} label="NEW" labelColor={C.blue} />)}
-                {detected.length > 10 && <div style={{ color:C.dim, fontSize:10 }}>+{detected.length - 10} more…</div>}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ---- OPS SUMMARY: one plain-language sentence per operating question ---------------
-// Four scannable lines from the report payload: picks per game, picks per day, when to
-// bet (CLV sign = is the early price better than close?), and new Kalshi markets to
-// scout. CLV is the only timing signal we have (a single 3pm→7pm window), so +CLV ⇒ the
-// line drifts our way ⇒ bet early; −CLV ⇒ no rush.
-function OpsSummary({ d }) {
-  const cap = d.optimalPerGameCap ?? 2;
-  const clv = (d.clv || []).filter(r => r.avgClvPct != null && r.n >= 5);
-  const early = clv.filter(r => r.avgClvPct >= 1).sort((a, b) => b.avgClvPct - a.avgClvPct).slice(0, 3);
-  const late  = clv.filter(r => r.avgClvPct <= -1).sort((a, b) => a.avgClvPct - b.avgClvPct).slice(0, 2);
-  const nm = d.newMarkets || [];
-  const b = (txt, color = C.green) => <b style={{ color }}>{txt}</b>;
-  const names = arr => arr.map(r => `${r.sport} ${r.category}`).join(", ");
-
-  const gameLine = <>Bet at most {b(cap)} pick{cap === 1 ? "" : "s"} from any one game.</>;
-
-  // Each qualified pick is independently +EV, so volume only adds expected profit and
-  // diversifies variance — there is no count at which betting more lowers per-bet ROI.
-  // The only real ceiling is total simultaneous bankroll exposure (⅛-Kelly per pick).
-  const dayLine = <>Bet {b("every qualified pick", C.green)} — each is independently +EV, so more only helps; the one real ceiling is total bankroll exposure (⅛-Kelly per pick).</>;
-
-  let timeLine;
-  if (early.length) {
-    timeLine = <>Bet {b(names(early), C.green)} early at lineup-confirm — the line drifts our way by close (+{early[0].avgClvPct.toFixed(1)}¢){late.length ? <>; {b(names(late), C.amber)} can wait until nearer tip-off</> : null}.</>;
-  } else if (late.length) {
-    timeLine = <>No early-fill edge — {b(names(late), C.amber)} prices improve nearer tip-off, so there's no rush.</>;
-  } else {
-    timeLine = <>Timing is a wash so far, so bet whenever the lineup confirms.</>;
-  }
-
-  const nmName = m => m.title || m.sampleSubtitle || m.ticker;
-  const nmLine = nm.length
-    ? <>Scout {b(nm.length, C.blue)} new Kalshi market{nm.length === 1 ? "" : "s"}: {nm.slice(0, 6).map(nmName).join(", ")}{nm.length > 6 ? "…" : ""}.</>
-    : <>No new Kalshi markets to scout.</>;
-
-  const li = (label, body) => (
-    <div style={{ display:"flex", gap:8, marginBottom:4 }}>
-      <span style={{ color:C.gray, fontSize:10.5, fontWeight:700, minWidth:84, flexShrink:0, textTransform:"uppercase", letterSpacing:0.3, paddingTop:1 }}>{label}</span>
-      <span style={{ color:C.text, fontSize:12.5, lineHeight:1.45 }}>{body}</span>
-    </div>
-  );
-
-  return (
-    <div style={{ marginBottom:8 }}>
-      {li("Per game", gameLine)}
-      {li("Per day", dayLine)}
-      {li("When", timeLine)}
-      {li("New mkts", nmLine)}
-    </div>
-  );
-}
-
-// ---- OPS: one-line playbook + collapsed supporting tables --------------------------
-function OpsSection({ d }) {
-  const [open, setOpen] = React.useState(false);
-  const cap = d.optimalPerGameCap ?? 2;
-  return (
-    <div>
-      <div style={sectionHead}>Ops · daily playbook</div>
-      <OpsSummary d={d} />
-      <div onClick={() => setOpen(o => !o)} role="button" style={{ cursor:"pointer", color:C.dim, fontSize:10.5, marginBottom:8 }}>
-        {open ? "▾ hide" : "▸ show"} detail tables (picks/game, picks/day, CLV)
-      </div>
-      {open && (
-        <div>
-          {/* Picks per game */}
-          {d.perGameRoi?.length > 0 && (
-            <div style={{ marginBottom:10 }}>
-              <div style={sectionTitle}>Picks per game · cap = <span style={{ color:C.green, fontWeight:700 }}>{cap}</span></div>
-              <table style={tableStyle}>
-                <thead><tr>{["Within-game rank","N","Hit%","Avg price","ROI"].map(h => <th key={h} style={thB}>{h}</th>)}</tr></thead>
-                <tbody>
-                  {d.perGameRoi.map((r, i) => {
-                    const isCap = r.multi && r.rnk === cap, overCap = r.multi && r.rnk > cap;
-                    const label = !r.multi ? "solo game" : `#${r.rnk} in game`;
-                    return (
-                      <tr key={i} style={{ background:isCap?"rgba(63,185,80,0.08)":overCap?"rgba(247,129,102,0.06)":"transparent" }}>
-                        <td style={{ ...tdB, color:isCap?C.green:overCap?C.red:C.text, textAlign:"left", fontWeight:isCap?700:400 }}>{label}{isCap?" ← cap":""}</td>
-                        <td style={{ ...tdB, color:r.n>=10?C.text:C.dim }}>{r.n}</td>
-                        <td style={{ ...tdB, color:r.hitRate>=70?C.green:r.hitRate>=60?C.amber:C.red }}>{r.hitRate != null ? `${r.hitRate}%` : "—"}</td>
-                        <td style={{ ...tdB, color:C.gray }}>{r.avgPrice != null ? `${r.avgPrice}¢` : "—"}</td>
-                        <td style={{ ...tdB, color:_roiColorPct(r.roiPct), fontWeight:600 }}>{_roiFromPct(r.roiPct)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-          {/* Picks per day */}
-          {d.dailyVolumeRoi?.length > 0 && (
-            <div style={{ marginBottom:10 }}>
-              <div style={sectionTitle}>Picks per day{d.optimalDailyPicks ? <> · optimal <span style={{ color:C.green, fontWeight:700 }}>{d.optimalDailyPicks.bucket}</span> ({d.optimalDailyPicks.confidence})</> : null}</div>
-              <table style={tableStyle}>
-                <thead><tr>{["Picks/day","Days","Hit%","Avg price","ROI"].map(h => <th key={h} style={thB}>{h}</th>)}</tr></thead>
-                <tbody>
-                  {d.dailyVolumeRoi.map((r, i) => {
-                    const isBest = d.optimalDailyPicks && r.picksBucket === d.optimalDailyPicks.bucket;
-                    return (
-                      <tr key={i} style={{ background:isBest?"rgba(63,185,80,0.08)":"transparent" }}>
-                        <td style={{ ...tdB, color:isBest?C.green:C.text, textAlign:"left", fontWeight:isBest?700:400 }}>{r.picksBucket}</td>
-                        <td style={{ ...tdB, color:r.nDays>=10?C.text:r.nDays>=3?C.gray:C.dim }}>{r.nDays}</td>
-                        <td style={{ ...tdB, color:r.hitRatePct>=70?C.green:r.hitRatePct>=60?C.amber:C.red }}>{r.hitRatePct}%</td>
-                        <td style={{ ...tdB, color:C.gray }}>{r.avgPricePct}¢</td>
-                        <td style={{ ...tdB, color:_roiColorFrac(r.roi), fontWeight:600 }}>{_roiFromFrac(r.roi)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-          {/* CLV */}
-          {d.clv?.length > 0 && (
-            <div style={{ marginBottom:10 }}>
-              <div style={sectionTitle}>CLV / line movement · 3pm → 7pm PT · + = market confirmed model</div>
-              <table style={tableStyle}>
-                <thead><tr>{["Category","N","CLV","Hit%"].map(h => <th key={h} style={thB}>{h}</th>)}</tr></thead>
-                <tbody>
-                  {d.clv.map((r, i) => {
-                    const clvV = r.avgClvPct ?? 0;
-                    const clvC = clvV >= 1 ? C.green : clvV <= -1 ? C.red : C.amber;
-                    return (
-                      <tr key={i}>
-                        <td style={{ ...tdB, color:C.text, textAlign:"left" }}>{r.sport}|{r.category}</td>
-                        <td style={tdB}>{r.n}</td>
-                        <td style={{ ...tdB, color:clvC, fontWeight:600 }}>{clvV >= 0 ? `+${clvV.toFixed(1)}` : clvV.toFixed(1)}¢</td>
-                        <td style={{ ...tdB, color:(r.hitRatePct??0)>=70?C.green:(r.hitRatePct??0)>=60?C.amber:C.red, fontWeight:600 }}>{r.hitRatePct != null ? `${r.hitRatePct}%` : "—"}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-          {/* New Kalshi markets now feed the Model-next roadmap's "Detected · triage" section. */}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ---- GATE DIGEST: one line above the board — what (if anything) to change today ----
 // Digests the board's per-category `doThis.action`: counts only the three CHANGE actions
 // (add / pull / tune) and ignores steady-state ones (keep betting / build / stay out), so
@@ -681,8 +425,8 @@ function GateDigest({ board }) {
 
 // ---- DO THIS: the single top-priority action for the morning, across the whole page ----
 // A fall-through priority ladder — pick the first tier that has something actionable as the
-// PRIMARY "do this", render the rest as a dimmed queued "then →" ladder so the next moves are
-// visible at a glance. Tiers: (1) data health — bad data poisons everything below, so a cron /
+// PRIMARY "do this"; the queued rest is no longer shown in the banner (still in the copy text).
+// Tiers: (1) data health — bad data poisons everything below, so a cron /
 // coverage / resolution / CLV warning trumps all; (2) model changes pending on the board (gate
 // promote/demote, tune-down, or an input/residual investigation); (2.5) validate ripe shadow
 // models — ungated + n≥50 + STRENGTHENING, the build→gate half of the funnel (run tune:gate +
@@ -823,9 +567,6 @@ function DoThisBanner({ d }) {
       </div>
       <div style={{ color, fontSize:15, fontWeight:700 }}>▶ {primary.label}</div>
       {primary.why && <div style={{ color:C.text, fontSize:12, marginTop:3, lineHeight:1.4 }}>{primary.why}</div>}
-      {rest.length > 0 && (
-        <div style={{ color:C.dim, fontSize:11, marginTop:6 }}>then → {rest.map(r => r.short).join(" · ")}</div>
-      )}
     </div>
   );
 }
@@ -849,21 +590,9 @@ function MorningBriefing({ shadowReportData, shadowReportLoading, fetchShadowRep
 
   return (
     <div>
-      <DoThisBanner d={d} />
-
-      {/* Title row */}
-      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
-        <span style={{ color:C.blue, fontSize:13, fontWeight:700 }}>Model Report</span>
-        {d.reportDate && <span style={{ color:C.dim, fontSize:11 }}>{d.reportDate}</span>}
-        {d.generatedAt && <span style={{ color:C.dim, fontSize:10 }}>· generated {new Date(d.generatedAt).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",timeZone:"America/Los_Angeles"})} PT</span>}
-        <button onClick={() => fetchShadowReport(true)} style={{ marginLeft:"auto", background:"transparent", border:`1px solid ${C.border}`, borderRadius:4, color:C.gray, fontSize:10, padding:"2px 8px", cursor:"pointer" }}>↻ Refresh</button>
-      </div>
-
       <DataHealth dh={d.dataHealth} />
 
-      <ModelNext newMarkets={d.newMarkets} shortlisted={d.shortlistedMarkets} />
-
-      <OpsSection d={d} />
+      <DoThisBanner d={d} />
 
       <div style={sectionHead}>Model accuracy · do the models beat the price?</div>
       <AccuracyBoard board={d.accuracyBoard} />
@@ -886,8 +615,12 @@ function ReportPage({ onBack, shadowReportData, shadowReportLoading, fetchShadow
     <div style={{ maxWidth:1280, margin:"0 auto", padding:"16px 16px" }}>
       <div style={{ display:"flex", alignItems:"center", marginBottom:14, gap:12 }}>
         <button onClick={onBack} style={{ background:"transparent", border:`1px solid #30363d`, borderRadius:6, color:C.gray, fontSize:12, padding:"4px 10px", cursor:"pointer" }}>← Back</button>
-        <div style={{ color:C.text, fontSize:17, fontWeight:700 }}>Report</div>
-        <div style={{ color:C.dim, fontSize:11, marginLeft:"auto" }}>Daily model report</div>
+        <div style={{ color:C.text, fontSize:17, fontWeight:700 }}>Model Report</div>
+        {shadowReportData?.reportDate && <span style={{ color:C.dim, fontSize:11 }}>{shadowReportData.reportDate}</span>}
+        {shadowReportData?.generatedAt && <span style={{ color:C.dim, fontSize:10 }}>· generated {new Date(shadowReportData.generatedAt).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",timeZone:"America/Los_Angeles"})} PT</span>}
+        {isLoggedIn && shadowReportData && !shadowReportData.notYet && !shadowReportData.error && (
+          <button onClick={() => fetchShadowReport(true)} style={{ marginLeft:"auto", background:"transparent", border:`1px solid ${C.border}`, borderRadius:4, color:C.gray, fontSize:10, padding:"2px 8px", cursor:"pointer" }}>↻ Refresh</button>
+        )}
       </div>
 
       {isLoggedIn ? (
