@@ -198,6 +198,32 @@ is absent entirely).
 > (As of build day no category has a post-cutoff miss surviving L1–L5, so this is the tool you
 > reach for when one appears, validated end-to-end but not yet against a live actionable miss.)
 
+**PRE-FILTER a candidate input on history — no price data, no waiting (added 2026-06-22).**
+Before committing to a forward-shadow wait, ask the cheap question first: *does the candidate
+even predict the outcome, beyond what the model already sees?* This is an **accuracy** test, fully
+answerable on historical games — you need only reconstructable inputs + box-score outcomes, never
+prices. It is a **filter, not a verdict**: a flat result KILLS the input today; a positive result
+PROMOTES it to "worth the forward-shadow wait." It can't confirm a market edge (history has no
+prop prices → orthogonality-to-the-line still needs forward CLV) — but it converts "wait a month to
+learn it's dead" into "an afternoon to learn it's alive."
+- **Method:** pull historical games, attach the candidate dimension, **residualize out what the
+  model already has** (the analog of park-residualizing), and check the gradient + correlation of
+  the residual against the dimension. Steep + signed = real incremental signal; flat = collinear or
+  dead.
+- **Best for exogenous, exactly-reconstructable inputs** — weather, umpire, rest/B2B, travel,
+  altitude, day/night. Two alignments make this the sweet spot: those inputs (a) backtest **cleanly**
+  (no point-in-time leakage — the value is exact, not an as-of rolling estimate) and (b) are exactly
+  the ones the market is most likely to **underweight**. Endogenous rolling stats (recent form) are
+  leak-prone to reconstruct *and* already priced — little lost by not pre-filtering them.
+- **Worked example (weather → HRR, 2026-06-22):** `npm run backtest:weather`
+  (`scripts/backtest/weather-hr-study.js`) — MLB statsapi schedule+boxscores × Open-Meteo **archive**
+  (both no-key) → park-residualized HR/game by wind-out + temp. Result on 435 games: wind-in −0.45 →
+  wind-out +0.26 HR/g (r=+0.124), temp −0.39 → +0.49 (r=+0.114) — weather PASSES the accuracy filter,
+  so the forward-shadow watch is justified (it would have been killed today if flat). Reuses the live
+  `BALLPARKS` + `windOutComponent` transform so the study tests exactly what ships.
+- **Generalizes** to any model with reconstructable inputs + historical outcomes — it's the cheap
+  L0 candidate-generation engine feeding the accuracy board's `MARKET_SHARPER` categories.
+
 **WIRING a new input (the 4-step ritual,** worked example: barrel% added 2026-05-25):
 1. **Build** a fetcher → per-entity map (`buildBarrelPct()` in `mlb-hitters.js`). Hard
    constraint: the signal must be fetchable **at prediction time** from an available

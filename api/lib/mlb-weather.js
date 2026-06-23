@@ -17,6 +17,13 @@
 // Keyset mirrors PARK_HITFACTOR. Azimuths are APPROXIMATE (v1) — refine in Phase 2; the sign of the
 // crosswind projection is what matters for a provisional knob. ATH plays at Sutter Health Park
 // (West Sacramento) in 2026.
+// Signed out-to-CF wind component (mph): + = blowing out toward center (HR boost), − = in.
+// Wind direction is "from", so the velocity vector points toward (dir+180); project onto cfAz.
+// Shared by the live builder and the historical backtest so both use the identical transform.
+export function windOutComponent(windMph, windDir, cfAz) {
+  return parseFloat((-windMph * Math.cos((windDir - cfAz) * Math.PI / 180)).toFixed(1));
+}
+
 export const BALLPARKS = {
   ARI: { lat: 33.4455, lon: -112.0667, cfAz: 0,  dome: true  },
   ATL: { lat: 33.8907, lon: -84.4677,  cfAz: 28, dome: false },
@@ -98,9 +105,7 @@ export async function buildBallparkWeather(gameScores, todayPT) {
       const wMph = h.wind_speed_10m?.[idx];
       const wDir = h.wind_direction_10m?.[idx];
       if (tempF == null || wMph == null || wDir == null) continue;
-      // Wind direction is "from"; the velocity vector points toward (dir+180). Project onto the
-      // home→CF bearing: out-to-CF component = −windSpeed·cos(dir − cfAz). + = blowing out (HR boost).
-      const windOutMph = parseFloat((-wMph * Math.cos((wDir - p.bp.cfAz) * Math.PI / 180)).toFixed(1));
+      const windOutMph = windOutComponent(wMph, wDir, p.bp.cfAz);
       out[p.home] = { dome: false, windOutMph, tempF: Math.round(tempF), source: "open-meteo" };
     }
     return out;
