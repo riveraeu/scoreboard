@@ -1148,7 +1148,7 @@ export async function emitPropPlays({
       }
       nhlSimPctOut = nbaDistPct(nhlPlayerDistCache[_nhlDistKey], threshold);
     }
-    let _hrrBarrelAdj = null;
+    let _hrrBarrelAdj = null, _hrrFipAdj = null, _hrrWeatherAdj = null, _hrrWindOut = null, _hrrTempF = null;
     let _hrrPaFromSpot = null, _hrrTypicalPA = null, _hrrSeasonPctAdj = null, _hrrSoftPctAdj = null;
     // Sample-weighted seasonRate blend for prop truePct (added 2026-05-26). Same shape
     // as the game-total seasonHitRate blend: anchor pure-sim truePct toward the
@@ -1244,13 +1244,30 @@ export async function emitPropPlays({
         const _LG_BARREL = 8.5;
         const barrelAdj = hitterBarrelPct != null ? Math.max(0.92, Math.min(1.10, hitterBarrelPct / _LG_BARREL)) : 1.0;
         if (barrelAdj !== 1.0) _hrrBarrelAdj = parseFloat(barrelAdj.toFixed(3));
+        // FIP-over-WHIP split (2026-06-22): WHIP is a traffic stat — wrong for HRR's HR component.
+        // Split the pitcher term: keep WHIP (0.15) for contact/traffic, add FIP (0.18) for HR/run
+        // allowance (FIP = 13·HR + …). Weights drop WHIP 0.30→0.15 to avoid double-counting traffic.
+        const _LG_FIP_HRR = 4.20;
+        const fipAdj = pitcherFIP != null ? Math.max(0.92, Math.min(1.10, Math.pow(pitcherFIP / _LG_FIP_HRR, 0.5))) : 1.0;
+        if (fipAdj !== 1.0) _hrrFipAdj = parseFloat(fipAdj.toFixed(3));
+        // Game-time weather (2026-06-22, shadow-only): wind out to CF + warmth lift HR/run carry —
+        // signal the static park factor can't see. Coeffs provisional, anchored to published HR
+        // sensitivities (~1%/mph out, ~0.6%/°F), NOT market. Dome/retractable parks → neutral 1.0.
+        const _wx = sportByteam.mlb?.weatherByTeam?.[homeTeam];
+        const _W_WIND = 0.010, _W_TEMP = 0.006;
+        const weatherAdj = (_wx && !_wx.dome && _wx.windOutMph != null)
+          ? Math.max(0.93, Math.min(1.10, 1 + _wx.windOutMph * _W_WIND + (_wx.tempF - 70) * _W_TEMP))
+          : 1.0;
+        if (weatherAdj !== 1.0) { _hrrWeatherAdj = parseFloat(weatherAdj.toFixed(3)); _hrrWindOut = _wx.windOutMph; _hrrTempF = _wx.tempF; }
         const _p = Math.max(0.01, Math.min(0.99, rawMlbPct / 100));
         // OPS weight reduced 0.4→0.25 (2026-06-10): n=345 shadow showed dominant 70–75% band
         // hitting 68.4% actual vs 72.5% predicted (−4.1 delta, ROI −7%). Kalshi prices HRR at
         // 72–76% — market is efficient; the 0.4 OPS boost was stacking with WHIP/barrel to push
         // truePct above what the market already priced in. Smaller weight preserves the signal
         // direction without overclaiming edge.
-        const _logOddsAdj = Math.log(_p / (1 - _p)) + Math.log(parkFactor) + 0.25 * Math.log(opsAdj) + 0.3 * Math.log(whipAdj) + 0.25 * Math.log(barrelAdj);
+        const _logOddsAdj = Math.log(_p / (1 - _p)) + Math.log(parkFactor)
+          + 0.25 * Math.log(opsAdj) + 0.15 * Math.log(whipAdj) + 0.18 * Math.log(fipAdj)
+          + 0.25 * Math.log(barrelAdj) + 0.20 * Math.log(weatherAdj);
         const _hrrAdjusted = Math.min(99.9, parseFloat((100 / (1 + Math.exp(-_logOddsAdj))).toFixed(1)));
         // Gentle seasonRate anchor (capWeight=0.25, half the sim-based prop cap). HRR's
         // logit-sigmoid is rate-based at its core (base = rawMlbPct = (primaryPct + softPct)/2)
@@ -1388,6 +1405,8 @@ export async function emitPropPlays({
           hitterSimScore, hitterFinalSimScore,
           hitterLineupSpot, pitcherWHIP, pitcherFIP, hitterParkKF, hitterMoneyline, hitterBarrelPct,
           ...(_hrrBarrelAdj !== null && { hitterBarrelAdj: _hrrBarrelAdj }),
+          ...(_hrrFipAdj !== null && { hitterFipAdj: _hrrFipAdj }),
+          ...(_hrrWeatherAdj !== null && { hitterWeatherAdj: _hrrWeatherAdj, windOutMph: _hrrWindOut, tempF: _hrrTempF }),
           ...(_hrrPaFromSpot !== null && { hitterPaFromSpot: _hrrPaFromSpot, hitterTypicalPA: _hrrTypicalPA }),
           ...(_hrrSeasonPctAdj !== null && { seasonPctAdj: _hrrSeasonPctAdj }),
           ...(_hrrSoftPctAdj !== null && { softPctAdj: _hrrSoftPctAdj }),

@@ -5,9 +5,11 @@
 import { MLB_ID_TO_ABBR } from "./mlb-shared.js";
 import { buildLineupKPct } from "./mlb-hitters.js";
 import { buildPitcherKPct } from "./mlb-pitchers.js";
+import { buildBallparkWeather } from "./mlb-weather.js";
 // Re-export so existing `import { ... } from "../mlb.js"` call sites keep working.
 export { MLB_ID_TO_ABBR } from "./mlb-shared.js";
 export { buildLineupKPct, buildBarrelPct } from "./mlb-hitters.js";
+export { buildBallparkWeather } from "./mlb-weather.js";
 export { buildPitcherKPct } from "./mlb-pitchers.js";
 
 // Full MLB byteam hydration pipeline. Single call that fetches every MLB upstream we need for
@@ -188,7 +190,12 @@ export async function buildMlbByteam(cache) {
       seasonType: event.season?.type ?? null,
     };
   }
-  const [lineupResult, pitcherResult] = await Promise.all([buildLineupKPct(mlbSched), buildPitcherKPct(mlbSched)]);
+  // gameScores is ready above; weather fetches in parallel with the lineup/pitcher builds.
+  const _todayPT = PT_FMT.format(new Date());
+  const [lineupResult, pitcherResult, weatherByTeam] = await Promise.all([
+    buildLineupKPct(mlbSched), buildPitcherKPct(mlbSched),
+    buildBallparkWeather(gameScores, _todayPT).catch(() => ({})),
+  ]);
   const { lineupKPct, lineupBatterKPcts, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered, lineupBatterKPctsVROrdered, lineupBatterKPctsVLOrdered, lineupSpotByName, gameHomeTeams, projectedLineupTeams, batterSplitBA, hitterOpsMap, batterHandByName, batterHRRSplits, lineupHandByTeam, hitterTypicalPA } = lineupResult;
   const { pitcherKPct, pitcherKBBPct, pitcherCSWPct, pitcherAvgPitches, pitcherAvgBF, pitcherStdBF, pitcherGS26, pitcherHasAnchor, pitcherHand, pitcherEra: pitcherEraByTeam, pitcherWHIP: pitcherWHIPByTeam, pitcherFIP: pitcherFIPByTeam, pitcherBAA: pitcherBAAByTeam, pitcherWins: pitcherWinsByTeam, pitcherLosses: pitcherLossesByTeam, pitcherStatsByName, pitcherRecentKPct, pitcherLastStartDate, pitcherLastStartPC, umpireByGame, pitcherInfoByTeam, pitcherH2HStarts, pitcherIdByGame, pitcherEraById, pitcherWinsById, pitcherLossesById, pitcherNameById, pitcherSplitsByTeam, pitcherSplitsById } = pitcherResult;
   // barrelPctMap is NOT stored in byteam:mlb — it lives in mlb:barrelPct with its own 6h TTL.
@@ -297,7 +304,7 @@ export async function buildMlbByteam(cache) {
     pitcherIdByGame, pitcherEraById, pitcherWinsById, pitcherLossesById, pitcherNameById,
     pitcherSplitsByTeam, pitcherSplitsById, lineupHandByTeam, hitterTypicalPA,
     roadRPGMap, teamERAMap, teamWHIPMap, bullpenERAMap, bullpenWHIPMap,
-    teamPlatoonRPGMap, gameScores,
+    teamPlatoonRPGMap, gameScores, weatherByTeam,
   };
 
   // Use short TTL (60s) if key data is missing — lineup/probables not confirmed yet, or

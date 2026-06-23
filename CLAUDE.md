@@ -81,6 +81,7 @@ Sport/utility modules under `api/lib/`:
   - `api/lib/mlb-shared.js` — `MLB_ID_TO_ABBR`, `_fs`
   - `api/lib/mlb-hitters.js` — `buildLineupKPct`, `buildBarrelPct`
   - `api/lib/mlb-pitchers.js` — `buildPitcherKPct` (regression, splits, gamelog batch)
+  - `api/lib/mlb-weather.js` — `BALLPARKS` (per-park lat/lon + home→CF azimuth + dome) + `buildBallparkWeather(gameScores, todayPT)` → Open-Meteo (no key) game-time `{windOutMph, tempF}` per home park; hydrated as `byteam.weatherByTeam`, consumed in the HRR logit (shadow-only, 2026-06-22)
 - `api/lib/nba.js` — DVP, depth chart, pace, usage, injury, player-pos
 - `api/lib/wnba.js` — pace, usage, injury, DVP; `WNBA_TEAM_IDS`; `WNBA_ESPN_TO_CANON`/`WNBA_CANON_TO_ESPN`
 - `api/lib/nhl.js` — `buildNhlGoalieData`, `buildNhlInjuryReport`, `NHL_ABBR_MAP`
@@ -159,7 +160,7 @@ See `docs/MODEL.md` for all formula details, SimScore tiers, lambda formulas, ga
 | Model | Approach | Key inputs |
 |---|---|---|
 | MLB Strikeouts | `simulateKsDist` Monte Carlo (10k/5k) | K% regression, umpire, expectedBF, lineup oK%, TTO decay, between-game form variance `K_FORM_SIGMA=0.26` (retuned from 0.22 on 6/13; filter shadow `trackedAt < 2026-06-13`) |
-| MLB Hitters (HRR) | logit-sigmoid base-rate | park, OPS (w=0.25), WHIP (w=0.30), barrel% (w=0.25), PA-aware adjustment, BvP shrinkage, sigmoid cap knee=68 max=71 |
+| MLB Hitters (HRR) | logit-sigmoid base-rate | park, OPS (w=0.25), WHIP (w=0.15) + **FIP (w=0.18)** [split 2026-06-22], barrel% (w=0.25), **game-time weather (w=0.20, wind-out+temp, shadow-only 2026-06-22)**, PA-aware adjustment, BvP shrinkage, sigmoid cap knee=68 max=71. HRR FORMULA_CUTOFF → 2026-06-22 |
 | MLB Hitters (Hits) | `binomTailPct` exact binomial tail — **shadow-only since 2026-06-11** (not in category gate) | pHit = effBA × platoon × pitcherBAA ratio × park; nAB = own AB/G × lineup-spot PA scaling; seasonRate blend 0.5; cap knee=80 max≈85 |
 | MLB Hitters (Total Bases) | `tbTailPct` compound binomial (per-AB bases pmf) — **shadow-only since 2026-06-12** | same pHit/nAB as hits; per-hit [1B,2B,3B,HR] shares from gamelog, league-shrunk (40-hit prior); resolves via statsapi (`/api/live?tb=1`) |
 | NBA props | `buildNbaStatDist` Normal MC | paceFactor, recency-weighted mean, playoff Bayesian shrink, DVP |

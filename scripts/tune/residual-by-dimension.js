@@ -26,7 +26,7 @@ const PROD_BASE = "https://scoreboard-ivory-xi.vercel.app";
 // Mirrors FORMULA_CUTOFFS in api/lib/handlers/shadow.js; --since overrides.
 const FORMULA_CUTOFFS = {
   "mlb|strikeouts": "2026-06-13",
-  "mlb|hrr":        "2026-06-10",
+  "mlb|hrr":        "2026-06-22",
   "mlb|hits":       "2026-06-12",
   "mlb|totalBases": "2026-06-12",
   "mlb|totalRuns":  "2026-06-01",
