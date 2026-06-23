@@ -486,7 +486,7 @@ const _ACC_ACTIONS = {
 // banner. REMOVE a key the moment a NEW exogenous input HYPOTHESIS appears for it (something fresh to
 // pre-filter); a stale key is harmless (it only matters while the category is still market-sharper).
 const INPUT_SEARCH_EXHAUSTED = new Set([
-  "mlb|f5spread", "mlb|ml", "mlb|totalRuns", "mlb|strikeouts", "mlb|f5total", "mlb|spread",
+  "mlb|f5spread", "mlb|ml", "mlb|totalRuns", "mlb|strikeouts", "mlb|f5total", "mlb|spread", "mlb|hits",
   "wnba|points", "wnba|totalPoints", "wnba|rebounds",
 ]);
 function _doThisCandidates(d) {
