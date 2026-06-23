@@ -478,6 +478,17 @@ const _BET_ACTIONS = {
 const _ACC_ACTIONS = {
   "Improve inputs": { tone:"amber", verb:"Improve inputs for" },
 };
+// MARKET_SHARPER categories whose L0 input search is EXHAUSTED — tune:residual found no addable
+// in-data dimension and the historical pre-filters (weather→runs, WNBA travel) failed (2026-06-23;
+// see memories project-residual-sweep / project-weather-runs-study / project-wnba-travel-study).
+// The daily "Improve inputs" banner nag is suppressed for these so the digest falls through to a
+// genuinely-actionable item. They STILL appear on the accuracy board itself — this only quiets the
+// banner. REMOVE a key the moment a NEW exogenous input HYPOTHESIS appears for it (something fresh to
+// pre-filter); a stale key is harmless (it only matters while the category is still market-sharper).
+const INPUT_SEARCH_EXHAUSTED = new Set([
+  "mlb|f5spread", "mlb|ml", "mlb|totalRuns", "mlb|strikeouts", "mlb|f5total", "mlb|spread",
+  "wnba|points", "wnba|totalPoints", "wnba|rebounds",
+]);
 function _doThisCandidates(d) {
   const out = [];
   // 1 — data health (cron failures / under-logged slate / partial resolution / low CLV capture).
@@ -500,7 +511,10 @@ function _doThisCandidates(d) {
   // 2.2 — model ACCURACY changes: proven-miscalibrated categories (verdict "Improve inputs" = over/
   // underconfident) need a NEW input, not a reweight. This is the Layer-1 health signal — go run
   // tune:residual to find the missing dimension. Below a live gate change, above ripe-validate.
-  const accChanges = (d?.accuracyBoard || []).filter(e => _ACC_ACTIONS[e?.honest?.action]);
+  // Categories whose input search is already exhausted (INPUT_SEARCH_EXHAUSTED) are dropped so the
+  // banner doesn't nag a dead-end task daily.
+  const accChanges = (d?.accuracyBoard || []).filter(e =>
+    _ACC_ACTIONS[e?.honest?.action] && !INPUT_SEARCH_EXHAUSTED.has(`${e.sport}|${e.category}`));
   if (accChanges.length) {
     const names = accChanges.slice(0, 3).map(e => `${e.sport} ${e.category}`);
     out.push({ tier:2.2, tone:"amber",
