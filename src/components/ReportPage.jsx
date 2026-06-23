@@ -236,8 +236,11 @@ function AccuracyBoard({ board }) {
 }
 
 // ── LAYER 2 — BETTING board: what to bet (price/ROI), gated by Layer-1 eligibility ──
-// Ineligible categories (model doesn't beat the price) render greyed — the window is shown so a
-// tempting ROI visibly explains why it's still unbettable.
+// Only bettable rows appear: eligible models (model beats the price) + any currently-gated/live
+// category (shown regardless so a "Pull from gate" signal stays visible). Ineligible, ungated
+// categories are dropped entirely — when nothing qualifies the board renders an empty state, so a
+// tempting ROI on a model the market already beats never tempts from here. (The accuracy board
+// above is where every category, bettable or not, is judged.)
 function BettingBoard({ board }) {
   const [expanded, setExpanded] = React.useState({});
   const [showBuilding, setShowBuilding] = React.useState(false);
@@ -245,9 +248,10 @@ function BettingBoard({ board }) {
 
   const byN = (a, b) => b.n - a.n;
   const live = board.filter(r => r.gated).sort(byN);
-  const rest = board.filter(r => !r.gated).sort(byN);
+  const rest = board.filter(r => !r.gated && r.eligible).sort(byN);
   const actionable = rest.filter(r => r.n >= 20);
   const building = rest.filter(r => r.n < 20);
+  const isEmpty = live.length === 0 && rest.length === 0;
 
   const Row = ({ r }) => {
     const w = r.discoveredWindow;
@@ -291,10 +295,23 @@ function BettingBoard({ board }) {
     );
   };
 
+  if (isEmpty) {
+    return (
+      <div style={{ marginBottom:10 }}>
+        <div style={sectionTitle}>
+          What to bet · only Ship-eligible models (beat the price) appear here · current window 67–91¢
+        </div>
+        <div style={{ color:C.dim, fontSize:12, padding:"14px 8px", textAlign:"center", border:`1px dashed ${C.border}`, borderRadius:6 }}>
+          No bettable models — no category currently beats the price (see the accuracy board above). Nothing to bet.
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ marginBottom:10 }}>
       <div style={sectionTitle}>
-        What to bet · only Ship-eligible models (beat the price) are bettable — greyed rows are unbettable regardless of ROI · current window 67–91¢
+        What to bet · only Ship-eligible models (beat the price) appear here · current window 67–91¢
       </div>
       <table style={tableStyle}>
         <thead><tr>{["Category","Do this","Window status","Window","ROI","N","Eligible"].map(h => {
@@ -317,8 +334,7 @@ function BettingBoard({ board }) {
       <div style={{ color:C.dim, fontSize:10, marginTop:5, lineHeight:1.55 }}>
         <b style={{ color:C.green }}>Add to gate</b> = eligible + validated window, start betting ·
         <b style={{ color:C.red }}> Pull from gate</b> = gated but window went negative ·
-        <b style={{ color:C.blue }}> Look deeper</b> = beats the price but the window still loses (selection/sizing puzzle) ·
-        <b style={{ color:C.dim }}> Don't bet</b> = model doesn't beat the price. Click a row for its price-band breakdown.
+        <b style={{ color:C.blue }}> Look deeper</b> = beats the price but the window still loses (selection/sizing puzzle). Ineligible models (the market beats them) are hidden — see the accuracy board. Click a row for its price-band breakdown.
       </div>
     </div>
   );
