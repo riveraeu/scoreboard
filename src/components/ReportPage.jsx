@@ -169,8 +169,18 @@ function CalibBandsTable({ bands }) {
 // Scored only on Brier skill + truePct honesty. NO price, NO ROI. Best-calibrated first.
 function AccuracyBoard({ board }) {
   const [expanded, setExpanded] = React.useState({});
+  const [showAccruing, setShowAccruing] = React.useState(false);
   if (!board?.length) return null;
   const honestyN = r => (r.calibBands || []).reduce((s, b) => s + (b.n || 0), 0);
+
+  // Sort by N desc; split off the n<100 "Accruing" pile (not yet judgeable) behind a toggle so the
+  // table shows only categories with enough data to act on. Off-season sports (NBA/NHL in summer)
+  // fall into Accruing automatically as their n drops — no season hardcoding, self-heals on return.
+  // Gated/live categories always stay in the main view regardless of n.
+  const byN = (a, b) => b.n - a.n;
+  const gated = board.filter(r => r.gated).sort(byN);
+  const actionable = board.filter(r => !r.gated && r.n >= 100).sort(byN);
+  const accruing = board.filter(r => !r.gated && r.n < 100).sort(byN);
 
   const Row = ({ r }) => {
     const open = expanded[r.key];
@@ -185,13 +195,11 @@ function AccuracyBoard({ board }) {
           <td style={tdB}><DoThisBadge d={r.honest} /></td>
           <td style={tdB}><AccBadge v={r.verdict} /></td>
           <td style={tdB}><SkillCell skill={r.skill} skillN={r.n} modelBrier={r.modelBrier} marketBrier={r.marketBrier} /></td>
-          <td style={{ ...tdB, color:C.gray, fontSize:10 }}>{r.modelBrier ?? "—"}</td>
-          <td style={{ ...tdB, color:C.gray, fontSize:10 }}>{r.marketBrier ?? "—"}</td>
           <td style={{ ...tdB, color:r.n>=100?C.text:r.n>=50?C.gray:C.dim }}>{r.n}</td>
           <td style={tdB}><HonestyCell calib={r.calib} /></td>
         </tr>
         {open && (
-          <tr><td colSpan={8} style={{ padding:"0 8px 6px 22px", background:"#0d1117" }}>
+          <tr><td colSpan={6} style={{ padding:"0 8px 6px 22px", background:"#0d1117" }}>
             {r.honest?.why && (
               <div style={{ color:_TONE[r.honest.tone]||C.gray, fontSize:11, margin:"4px 0" }}>
                 ▶ <b>{r.honest.action}</b>: <span style={{ color:C.text }}>{r.honest.why}</span>
@@ -217,13 +225,22 @@ function AccuracyBoard({ board }) {
         Do the models beat the price? · scored only on Brier skill (market-Brier − model-Brier) + truePct honesty — no price, no ROI
       </div>
       <table style={tableStyle}>
-        <thead><tr>{["Category","Verdict","Accuracy","Skill","Model B","Market B","N","Honesty"].map(h => {
-          const tip = h==="Skill" ? "Brier head-to-head: market-Brier − model-Brier over all resolved plays. >0 (green) = model sharper than the price (eligible to bet); <0 (red) = market is the sharper estimator. Dim until n≥100."
+        <thead><tr>{["Category","Verdict","Accuracy","Skill","N","Honesty"].map(h => {
+          const tip = h==="Skill" ? "Brier head-to-head: market-Brier − model-Brier over all resolved plays. >0 (green) = model sharper than the price (eligible to bet); <0 (red) = market is the sharper estimator. Dim until n≥100. Expand a row for the raw model/market Brier values."
             : h==="Verdict" ? "What the model needs: Ship-eligible (beats the price, bettable) · No edge (Brier tie) · Improve inputs (market sharper — find a new input) · Accruing (n<100)."
             : undefined;
           return <th key={h} style={{ ...thB, cursor:tip?"help":undefined }} title={tip}>{h}</th>;
         })}</tr></thead>
-        <tbody>{board.map(r => <Row key={r.key} r={r} />)}</tbody>
+        <tbody>
+          {gated.map(r => <Row key={r.key} r={r} />)}
+          {actionable.map(r => <Row key={r.key} r={r} />)}
+          {accruing.length > 0 && !showAccruing && (
+            <tr><td colSpan={6} style={{ ...tdB, textAlign:"left", color:C.dim, cursor:"pointer" }} onClick={() => setShowAccruing(true)}>
+              ▸ {accruing.length} more accruing (n &lt; 100, off-season + thin) — show
+            </td></tr>
+          )}
+          {showAccruing && accruing.map(r => <Row key={r.key} r={r} />)}
+        </tbody>
       </table>
       <div style={{ color:C.dim, fontSize:10, marginTop:5, lineHeight:1.55 }}>
         <b style={{ color:C.green }}>Ship-eligible</b> = provably sharper than the price (skill CI lo &gt; 0) → bettable ·
