@@ -53,9 +53,9 @@ function BoardBadge({ v }) {
 }
 // Accuracy (Layer-1) verdict styling — Brier vs market, no price.
 const _ACC = {
-  BEATS_MARKET:   ["beats market",   C.green, "rgba(63,185,80,0.10)"],
-  TIE:            ["tie",            C.gray,  "transparent"],
-  MARKET_SHARPER: ["market sharper", C.amber, "transparent"],
+  CALIBRATED:     ["calibrated",     C.green, "rgba(63,185,80,0.10)"],
+  UNDERCONFIDENT: ["underconfident", C.amber, "transparent"],
+  OVERCONFIDENT:  ["overconfident",  C.red,   "transparent"],
   BUILDING:       ["building",       C.dim,   "transparent"],
 };
 function AccBadge({ v }) {
@@ -165,8 +165,9 @@ function CalibBandsTable({ bands }) {
   );
 }
 
-// ── LAYER 1 — Model ACCURACY board: do the models beat the price? (Brier vs market) ──
-// Scored only on Brier skill + truePct honesty. NO price, NO ROI. Best-calibrated first.
+// ── LAYER 1 — Model ACCURACY board: is the model accurate? (calibration vs reality) ──
+// Verdict scored on truePct calibration (model% vs actual hit%). NO price, NO ROI. The "vs Market"
+// column (Brier skill) is the secondary price comparison + the bridge to the betting board.
 function AccuracyBoard({ board }) {
   const [expanded, setExpanded] = React.useState({});
   const [showAccruing, setShowAccruing] = React.useState(false);
@@ -192,11 +193,11 @@ function AccuracyBoard({ board }) {
             <span style={{ color:C.dim, marginRight:4 }}>{open ? "▾" : "▸"}</span>{r.key}
             {r.gated && <span title="Currently bet — in the live truePct gate" style={{ color:C.green, fontSize:9, fontWeight:700, marginLeft:6, whiteSpace:"nowrap" }}>● live</span>}
           </td>
-          <td style={tdB}><DoThisBadge d={r.honest} /></td>
           <td style={tdB}><AccBadge v={r.verdict} /></td>
+          <td style={tdB}><HonestyCell calib={r.calib} /></td>
+          <td style={{ ...tdB, color:C.gray, fontSize:10 }}>{r.modelBrier ?? "—"}</td>
           <td style={tdB}><SkillCell skill={r.skill} skillN={r.n} modelBrier={r.modelBrier} marketBrier={r.marketBrier} /></td>
           <td style={{ ...tdB, color:r.n>=100?C.text:r.n>=50?C.gray:C.dim }}>{r.n}</td>
-          <td style={tdB}><HonestyCell calib={r.calib} /></td>
         </tr>
         {open && (
           <tr><td colSpan={6} style={{ padding:"0 8px 6px 22px", background:"#0d1117" }}>
@@ -222,12 +223,13 @@ function AccuracyBoard({ board }) {
   return (
     <div style={{ marginBottom:10 }}>
       <div style={sectionTitle}>
-        Do the models beat the price? · scored only on Brier skill (market-Brier − model-Brier) + truePct honesty — no price, no ROI
+        Is the model accurate? · verdict from truePct calibration (model% vs actual hit%) — no price, no ROI · "vs Market" is the secondary price comparison + the bridge to betting
       </div>
       <table style={tableStyle}>
-        <thead><tr>{["Category","Verdict","Accuracy","Skill","N","Honesty"].map(h => {
-          const tip = h==="Skill" ? "Brier head-to-head: market-Brier − model-Brier over all resolved plays. >0 (green) = model sharper than the price (eligible to bet); <0 (red) = market is the sharper estimator. Dim until n≥100. Expand a row for the raw model/market Brier values."
-            : h==="Verdict" ? "What the model needs: Ship-eligible (beats the price, bettable) · No edge (Brier tie) · Improve inputs (market sharper — find a new input) · Accruing (n<100)."
+        <thead><tr>{["Category","Verdict","Honesty","Model Brier","vs Market","N"].map(h => {
+          const tip = h==="vs Market" ? "Brier skill = market-Brier − model-Brier over all resolved plays. >0 (green) = model sharper than the price (this is what makes a category bettable); <0 (red) = market is the sharper estimator. Dim until n≥100. Not part of the accuracy verdict."
+            : h==="Verdict" ? "Calibration vs reality: Calibrated (model% matches actual within noise) · Overconfident / Underconfident (proven miscalibration, n≥200 → Improve inputs) · Building (not enough resolved plays to judge)."
+            : h==="Model Brier" ? "Mean squared error of the model's probability vs the actual outcome — pure accuracy, no price. Lower = better."
             : undefined;
           return <th key={h} style={{ ...thB, cursor:tip?"help":undefined }} title={tip}>{h}</th>;
         })}</tr></thead>
@@ -243,10 +245,9 @@ function AccuracyBoard({ board }) {
         </tbody>
       </table>
       <div style={{ color:C.dim, fontSize:10, marginTop:5, lineHeight:1.55 }}>
-        <b style={{ color:C.green }}>Ship-eligible</b> = provably sharper than the price (skill CI lo &gt; 0) → bettable ·
-        <b style={{ color:C.gray }}> No edge</b> = Brier tie, the price already knows it ·
-        <b style={{ color:C.amber }}> Improve inputs</b> = market is sharper → needs a NEW input (run tune:residual), not a reweight ·
-        <b style={{ color:C.dim }}> Accruing</b> = n&lt;100. Click a row for its calibration bands + Brier breakdown.
+        <b style={{ color:C.green }}>Calibrated</b> = model% matches actual outcomes within noise ·
+        <b style={{ color:C.red }}> Overconfident</b> / <b style={{ color:C.amber }}>Underconfident</b> = proven miscalibration (needs a NEW input, run tune:residual) ·
+        <b style={{ color:C.dim }}> Building</b> = not enough resolved plays to judge calibration yet. <b style={{ color:C.green }}>vs Market</b> &gt; 0 = the model also beats the price (→ bettable). Click a row for its calibration bands + Brier breakdown.
       </div>
     </div>
   );
@@ -316,7 +317,7 @@ function BettingBoard({ board }) {
     return (
       <div style={{ marginBottom:10 }}>
         <div style={sectionTitle}>
-          What to bet · only Ship-eligible models (beat the price) appear here · current window 67–91¢
+          What to bet · only models that beat the price appear here · current window 67–91¢
         </div>
         <div style={{ color:C.dim, fontSize:12, padding:"14px 8px", textAlign:"center", border:`1px dashed ${C.border}`, borderRadius:6 }}>
           No bettable models — no category currently beats the price (see the accuracy board above). Nothing to bet.
@@ -328,7 +329,7 @@ function BettingBoard({ board }) {
   return (
     <div style={{ marginBottom:10 }}>
       <div style={sectionTitle}>
-        What to bet · only Ship-eligible models (beat the price) appear here · current window 67–91¢
+        What to bet · only models that beat the price appear here · current window 67–91¢
       </div>
       <table style={tableStyle}>
         <thead><tr>{["Category","Do this","Window status","Window","ROI","N","Eligible"].map(h => {
@@ -496,15 +497,15 @@ function _doThisCandidates(d) {
       why: lead.doThis.why || "betting change pending on the board",
       short:`${changes.length} betting change${changes.length>1?"s":""}` });
   }
-  // 2.2 — model ACCURACY changes: categories the market out-predicts (verdict "Improve inputs") need
-  // a NEW input, not a reweight. This is the Layer-1 health signal — go run tune:residual to find the
-  // missing dimension. Below a live gate change, above ripe-validate.
+  // 2.2 — model ACCURACY changes: proven-miscalibrated categories (verdict "Improve inputs" = over/
+  // underconfident) need a NEW input, not a reweight. This is the Layer-1 health signal — go run
+  // tune:residual to find the missing dimension. Below a live gate change, above ripe-validate.
   const accChanges = (d?.accuracyBoard || []).filter(e => _ACC_ACTIONS[e?.honest?.action]);
   if (accChanges.length) {
     const names = accChanges.slice(0, 3).map(e => `${e.sport} ${e.category}`);
     out.push({ tier:2.2, tone:"amber",
       label: `Improve inputs for ${names.join(", ")}${accChanges.length>3?` +${accChanges.length-3}`:""}`,
-      why: "the market out-predicts these — find a new input via tune:residual (a reweight won't help)",
+      why: "these are miscalibrated (model% doesn't match outcomes) — find a new input via tune:residual (a reweight won't help)",
       short: `Improve ${accChanges.length}` });
   }
   // 2.5 — validate ripe shadow models: ungated categories with enough settled bets (n≥50) that are

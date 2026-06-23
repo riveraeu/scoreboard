@@ -1141,36 +1141,35 @@ function _calibSummaryByCat(allBands) {
 // The trap this guards: a model can be provably under-confident (Δ>0) AND still unprofitable (the
 // market beats it) — de-shrinking would only bet more into a loss. So "underconfident" never maps
 // to "tune up" unless there is actually a profitable window. Returns { action, tone, why }.
-// Two-board split (2026-06-22): model ACCURACY (Layer 1 — Brier vs market, no price) and BETTING
-// (Layer 2 — price/ROI, gated by accuracy). The old fused `_deriveDoThis` is split below so each
-// axis is judged on its own metric and the gate becomes one legible rule (eligible = BEATS_MARKET).
+// Two-board split (2026-06-22): model ACCURACY (Layer 1) and BETTING (Layer 2 — price/ROI, gated by
+// accuracy). Refocused 2026-06-23: Layer 1 now scores PURE accuracy vs reality (calibration: model%
+// vs actual hit%, no price), not "beats the price". The price comparison (Brier skill) is kept as a
+// secondary "vs market" signal and is what bridges to betting (eligible = skill CI lo > 0), computed
+// directly from the Brier row — NOT from the accuracy verdict anymore.
 
-// ── Layer 1: model ACCURACY (Brier vs market) — no price, no gate ─────────────
-// BRIER_MIN_N / BRIER_SKILL_FLOOR defined below with the price-window helpers.
-function _accuracyVerdict(brier) {
-  const { skill, skillLoCI, n } = brier || {};
-  if (skill == null || (n || 0) < BRIER_MIN_N) return "BUILDING";    // n<100: can't judge yet
-  if (skillLoCI != null && skillLoCI > 0)      return "BEATS_MARKET"; // provably sharper than price
-  if (skill < BRIER_SKILL_FLOOR)               return "MARKET_SHARPER";
-  return "TIE";                                                      // skill ≈ 0, CI straddles 0
+// ── Layer 1: model ACCURACY (calibration vs reality) — no price, no gate ──────
+// Scored on the truePct calibration summary (model% vs actual hit% per band). "actionable" already
+// requires n≥200 or a coherent multi-band run, so CALIBRATED/miscalibrated stay conservative.
+function _accuracyVerdict(calib) {
+  const c = calib || {};
+  if (c.status === "actionable") return c.direction === "over" ? "OVERCONFIDENT" : "UNDERCONFIDENT";
+  if (c.status === "honest")     return "CALIBRATED";   // some band hit n≥200 and lands within noise
+  return "BUILDING";                                    // insufficient — can't judge calibration yet
 }
 function _accuracyAction(verdict, calib) {
-  const c = calib || { status: "insufficient", direction: null };
+  const c = calib || { status: "insufficient" };
   switch (verdict) {
-    case "BEATS_MARKET":
-      return { action: "Ship-eligible", tone: "green",
-        why: "model is provably sharper than the price (skill CI lo > 0) — eligible to bet where price offers edge" };
-    case "TIE":
-      return { action: "No edge", tone: "dim",
-        why: "Brier tie — the price already prices this; nothing to bet" };
-    case "MARKET_SHARPER": {
-      const dir = c.direction === "over" ? "overconfident"
-                : c.direction === "under" ? "underconfident" : "miscalibrated";
+    case "CALIBRATED":
+      return { action: "Calibrated", tone: "green",
+        why: "model% matches actual outcomes within noise — well-calibrated to reality" };
+    case "OVERCONFIDENT":
       return { action: "Improve inputs", tone: "amber",
-        why: `market is the sharper estimator (${dir}) — needs a NEW input, not a reweight; run tune:residual` };
-    }
+        why: `model is overconfident — says ${c.delta != null ? `${Math.abs(c.delta)}pts ` : ""}more than it delivers in the ${c.band ?? ""}% band; needs a NEW input or recalibration, run tune:residual` };
+    case "UNDERCONFIDENT":
+      return { action: "Improve inputs", tone: "amber",
+        why: `model is underconfident — delivers ${c.delta != null ? `${Math.abs(c.delta)}pts ` : ""}more than it claims in the ${c.band ?? ""}% band; recalibrate, run tune:residual` };
     default:
-      return { action: "Accruing", tone: "dim", why: "n<100 — too few resolved plays to judge accuracy yet" };
+      return { action: "Accruing", tone: "dim", why: "not enough resolved plays to judge calibration yet" };
   }
 }
 
@@ -1201,14 +1200,12 @@ function _bettingAction(verdict, gated, eligible, hint) {
 // window, NO truePct gate — those are the assumptions under test) so the data sets the bounds.
 const _MIN_N_WINDOW  = 30; // min n to trust a discovered price window
 const _MIN_N_PROMOTE = 50; // min n in the window to promote an ungated category
-// Brier skill (= marketBrier − modelBrier; >0 = model sharper than the price). Drives the Layer-1
-// `_accuracyVerdict`: skill CI lo > 0 → BEATS_MARKET (bettable); skill < FLOOR → MARKET_SHARPER
-// (Improve inputs — needs a new input, not a reweight); a Brier TIE (skill ≈ 0, CI straddles 0) →
-// TIE (no edge); n < BRIER_MIN_N → BUILDING (can't judge yet). BEATS_MARKET is the betting board's
-// `eligible` gate. Only trusted above BRIER_MIN_N resolved plays (Brier is a mean of squared errors
-// → lower variance than a tail hit-rate, but still noisy at small n).
-const BRIER_SKILL_FLOOR = -0.005; // skill below this = market is clearly the sharper estimator
-const BRIER_MIN_N       = 100;    // min resolved n before skill can move the verdict
+// Brier skill (= marketBrier − modelBrier; >0 = model sharper than the price). No longer drives the
+// accuracy verdict (that's calibration-based now) — it's the secondary "vs market" signal and the
+// betting board's `eligible` gate: skill CI lo > 0 AND n ≥ BRIER_MIN_N. Only trusted above
+// BRIER_MIN_N resolved plays (Brier is a mean of squared errors → lower variance than a tail
+// hit-rate, but still noisy at small n, where the CI can read misleadingly positive).
+const BRIER_MIN_N = 100; // min resolved n before Brier skill can gate betting eligibility
 
 // Adaptive-merge adjacent 5¢ cells until each display bin clears `target` n — bin WIDTHS come
 // from where the data actually is, not from fixed guesses. Trailing remainder folds left.
@@ -1664,8 +1661,10 @@ async function handleShadowReport({ path, request, env, cache }) {
       hint = `${win.lo}–${win.hi}¢ ROI ${(win.roi * 100).toFixed(1)}% — needs: ${missing.join("; ")}`;
     }
 
-    // The bridge: a category is bettable only if Layer 1 says the model provably beats the price.
-    const eligible = _accuracyVerdict(_brierByCat[key]) === "BEATS_MARKET";
+    // The bridge: a category is bettable only if the model provably beats the price (Brier skill CI
+    // lo > 0). Computed straight from the Brier row — the accuracy verdict is now calibration-based.
+    const _b = _brierByCat[key];
+    const eligible = _b?.skillLoCI != null && _b.skillLoCI > 0 && (_b.n || 0) >= BRIER_MIN_N;
     const doThis = _bettingAction(verdict, gated, eligible, hint);
 
     return {
@@ -1683,15 +1682,16 @@ async function handleShadowReport({ path, request, env, cache }) {
     };
   }).sort((a, b) => b.n - a.n);
 
-  // ── Model ACCURACY board (Layer 1) — Brier vs market + truePct honesty, NO price ──
-  // Keyed on the UNION of the Brier and calibration populations (a category can have calib bands
-  // but no Brier row if Q9 filtered it, and vice-versa). Sorted best-calibrated (highest skill) first.
+  // ── Model ACCURACY board (Layer 1) — calibration vs reality, NO price ──
+  // Verdict scored on truePct calibration (model% vs actual hit%). Brier skill is carried as the
+  // secondary "vs market" signal + the betting bridge (eligible above). Keyed on the UNION of the
+  // Brier and calibration populations (a category can have calib bands but no Brier row, or vice-versa).
   const _accKeys = new Set([...Object.keys(_brierByCat), ...Object.keys(_bandsByCat)]);
   const accuracyBoard = [..._accKeys].map(key => {
     const [sport, category] = key.split("|");
     const brier = _brierByCat[key] ?? { n: 0, modelBrier: null, marketBrier: null, skill: null, skillLoCI: null };
     const calib = _calibByCat[key] ?? { status: "insufficient", direction: null, delta: null, band: null, n: null };
-    const verdict = _accuracyVerdict(brier);
+    const verdict = _accuracyVerdict(calib);
     const honest = _accuracyAction(verdict, calib);
     // `active` = this truePct slice is in the live category gate right now. Bands are 5-wide and
     // aligned to the gate's 5-boundaries, so the band midpoint membership-tests the gate exactly.
