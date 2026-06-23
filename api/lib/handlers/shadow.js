@@ -1135,40 +1135,56 @@ function _calibSummaryByCat(allBands) {
 // The trap this guards: a model can be provably under-confident (Δ>0) AND still unprofitable (the
 // market beats it) — de-shrinking would only bet more into a loss. So "underconfident" never maps
 // to "tune up" unless there is actually a profitable window. Returns { action, tone, why }.
-function _deriveDoThis(verdict, gated, calib, hint, skill = null, skillN = 0, skillLoCI = null) {
+// Two-board split (2026-06-22): model ACCURACY (Layer 1 — Brier vs market, no price) and BETTING
+// (Layer 2 — price/ROI, gated by accuracy). The old fused `_deriveDoThis` is split below so each
+// axis is judged on its own metric and the gate becomes one legible rule (eligible = BEATS_MARKET).
+
+// ── Layer 1: model ACCURACY (Brier vs market) — no price, no gate ─────────────
+// BRIER_MIN_N / BRIER_SKILL_FLOOR defined below with the price-window helpers.
+function _accuracyVerdict(brier) {
+  const { skill, skillLoCI, n } = brier || {};
+  if (skill == null || (n || 0) < BRIER_MIN_N) return "BUILDING";    // n<100: can't judge yet
+  if (skillLoCI != null && skillLoCI > 0)      return "BEATS_MARKET"; // provably sharper than price
+  if (skill < BRIER_SKILL_FLOOR)               return "MARKET_SHARPER";
+  return "TIE";                                                      // skill ≈ 0, CI straddles 0
+}
+function _accuracyAction(verdict, calib) {
   const c = calib || { status: "insufficient", direction: null };
-  // Trust skill only with enough resolved plays; below the bar it's shown but never moves the verdict.
-  const skillReady = skill != null && skillN >= BRIER_MIN_N;
-  // Gated = already live via the truePct gate. The price-axis board is a re-analysis still accruing
-  // for these, so never tell the user to "Build" something they are actively betting. Only a
-  // negative price window moves a live category (NEGATIVE/DEMOTE branches below → Pull from gate).
-  if (gated && verdict !== "NEGATIVE" && verdict !== "DEMOTE")
-    return { action: "Keep betting", tone: "gray", why: "live via the truePct gate — price-axis analysis still accruing" };
   switch (verdict) {
-    case "PROMOTE": return { action: "Add to gate", tone: "green", why: "validated profitable price window — start betting it" };
-    case "HOLD":    return { action: "Keep betting", tone: "gray", why: "currently gated and still profitable" };
-    case "DEMOTE":  return { action: "Pull from gate", tone: "red", why: "window went significantly negative" };
-    case "STRENGTHENING": return { action: "Build", tone: "blue", why: hint || "positive but not yet proven — keep accruing bets" };
-    case "BUILDING":      return { action: "Build", tone: "dim", why: "too few bettable plays yet — accruing" };
+    case "BEATS_MARKET":
+      return { action: "Ship-eligible", tone: "green",
+        why: "model is provably sharper than the price (skill CI lo > 0) — eligible to bet where price offers edge" };
+    case "TIE":
+      return { action: "No edge", tone: "dim",
+        why: "Brier tie — the price already prices this; nothing to bet" };
+    case "MARKET_SHARPER": {
+      const dir = c.direction === "over" ? "overconfident"
+                : c.direction === "under" ? "underconfident" : "miscalibrated";
+      return { action: "Improve inputs", tone: "amber",
+        why: `market is the sharper estimator (${dir}) — needs a NEW input, not a reweight; run tune:residual` };
+    }
+    default:
+      return { action: "Accruing", tone: "dim", why: "n<100 — too few resolved plays to judge accuracy yet" };
+  }
+}
+
+// ── Layer 2: BETTING action (price/ROI), gated by Layer-1 eligibility ─────────
+function _bettingAction(verdict, gated, eligible, hint) {
+  if (!eligible)
+    return { action: "Don't bet", tone: "dim",
+      why: "model doesn't beat the price — no edge to bet regardless of window" };
+  switch (verdict) {
+    case "PROMOTE":       return { action: "Add to gate", tone: "green", why: "eligible + validated profitable window — start betting" };
+    case "HOLD":          return { action: "Keep betting", tone: "gray", why: "gated and still profitable" };
+    case "DEMOTE":        return { action: "Pull from gate", tone: "red", why: "window went significantly negative" };
+    case "STRENGTHENING": return { action: "Build", tone: "blue", why: hint || "eligible + positive but window not yet validated — accruing" };
     case "NEGATIVE":
-      if (gated) return { action: "Pull from gate", tone: "red", why: "currently bet but no longer has a profitable window" };
-      // Skill-aware fork (only when we have a trustworthy Brier read). The market beating the
-      // model on its own probabilities means there is no headroom — tuning down is just hygiene,
-      // not edge recovery (the totalRuns/HRR trap, now detected rather than guessed).
-      if (skillReady && skill < BRIER_SKILL_FLOOR)
-        return { action: "Stay out", tone: "dim", why: `market is the sharper estimator (Brier skill ${skill}) — no headroom; don't tune` };
-      if (c.status === "actionable" && c.direction === "over")
-        return { action: "Tune down", tone: "amber", why: `overconfident (Δ${c.delta})${skillReady ? ` with model-vs-market headroom (skill ${skill})` : ""} — trim it so it stops betting these (or fix in chat)` };
-      if (c.direction === "under")
-        return { action: "Stay out — don't tune", tone: "dim", why: "underconfident but the market still beats it — de-shrinking would just bet more into a loss" };
-      // Negative, no clear overconfidence signature. Only send to residual analysis when the model
-      // is PROVABLY at least even with the price (skill CI lower bound > 0): being sharper than the
-      // market yet losing the bettable window IS a real selection/sizing puzzle. A Brier tie
-      // (skill ≈ 0, CI straddles 0) is not headroom — it's the price with noise → just stay out.
-      if (skillReady && skillLoCI != null && skillLoCI > 0)
-        return { action: "Look deeper", tone: "blue", why: `negative window but the model is provably sharper than the price (skill ${skill}, CI lo +${skillLoCI}) — selection/sizing puzzle; needs residual analysis (Phase 2)` };
-      return { action: "Stay out", tone: "dim", why: "no profitable window and no edge over the market (Brier tie) — there's simply no edge" };
-    default: return { action: "—", tone: "dim", why: null };
+      // eligible ⇒ skillLoCI>0 already, so the old "Look deeper" guard is satisfied by construction:
+      // a provably-sharper model that still loses the bettable window is a real selection/sizing puzzle.
+      return gated
+        ? { action: "Pull from gate", tone: "red", why: "eligible but no longer has a profitable window" }
+        : { action: "Look deeper", tone: "blue", why: "model beats the price but the bettable window still loses — selection/sizing puzzle (Phase 2 residual slicer)" };
+    default:              return { action: "Build", tone: "dim", why: "too few bettable plays yet — accruing" };
   }
 }
 
@@ -1179,12 +1195,12 @@ function _deriveDoThis(verdict, gated, calib, hint, skill = null, skillN = 0, sk
 // window, NO truePct gate — those are the assumptions under test) so the data sets the bounds.
 const _MIN_N_WINDOW  = 30; // min n to trust a discovered price window
 const _MIN_N_PROMOTE = 50; // min n in the window to promote an ungated category
-// Brier skill (= marketBrier − modelBrier; >0 = model sharper than the price). Drives the
-// NEGATIVE verdict fork: market-sharper (skill < FLOOR) → Stay out (no headroom); model-at-least-even
-// + overconfident → Tune down; provably-sharper-yet-losing (skill CI lo > 0) → Look deeper; a Brier
-// TIE (skill ≈ 0, CI straddles 0) → Stay out / no edge (not a residual-analysis puzzle — just noise).
-// Only trusted above BRIER_MIN_N resolved plays (Brier is a mean of squared errors → lower variance
-// than a tail hit-rate, but still noisy at small n).
+// Brier skill (= marketBrier − modelBrier; >0 = model sharper than the price). Drives the Layer-1
+// `_accuracyVerdict`: skill CI lo > 0 → BEATS_MARKET (bettable); skill < FLOOR → MARKET_SHARPER
+// (Improve inputs — needs a new input, not a reweight); a Brier TIE (skill ≈ 0, CI straddles 0) →
+// TIE (no edge); n < BRIER_MIN_N → BUILDING (can't judge yet). BEATS_MARKET is the betting board's
+// `eligible` gate. Only trusted above BRIER_MIN_N resolved plays (Brier is a mean of squared errors
+// → lower variance than a tail hit-rate, but still noisy at small n).
 const BRIER_SKILL_FLOOR = -0.005; // skill below this = market is clearly the sharper estimator
 const BRIER_MIN_N       = 100;    // min resolved n before skill can move the verdict
 
@@ -1587,7 +1603,7 @@ async function handleShadowReport({ path, request, env, cache }) {
     const key = `${r.sport}|${r.category}`;
     (_histByCat[key] ??= []).push({ lo: Number(r.price_lo), n: Number(r.n), wins: Number(r.wins), avgPrice: Number(r.avg_price) });
   }
-  const modelBoard = Object.keys(_histByCat).map(key => {
+  const bettingBoard = Object.keys(_histByCat).map(key => {
     const cells = _histByCat[key];
     const [sport, category] = key.split("|");
     const totalN = cells.reduce((s, c) => s + c.n, 0);
@@ -1642,33 +1658,48 @@ async function handleShadowReport({ path, request, env, cache }) {
       hint = `${win.lo}–${win.hi}¢ ROI ${(win.roi * 100).toFixed(1)}% — needs: ${missing.join("; ")}`;
     }
 
-    const calib = _calibByCat[key] ?? { status: "insufficient", direction: null, delta: null, band: null, n: null };
-    const brier = _brierByCat[key] ?? { n: 0, modelBrier: null, marketBrier: null, skill: null };
-    const doThis = _deriveDoThis(verdict, gated, calib, hint, brier.skill, brier.n, brier.skillLoCI);
-    // `active` = this truePct slice is in the live category gate right now. Bands are 5-wide and
-    // aligned to the gate's 5-boundaries, so the band midpoint membership-tests the gate exactly.
-    // Only gated categories produce any active bands (ungated → passesCategoryGate always false).
-    const calibBands = (_bandsByCat[key] || []).map(b => ({
-      band: b.band, n: b.n, predicted: b.predicted, actual: b.actual, delta: b.delta, verdict: b.verdict, coherent: b.coherent,
-      active: passesCategoryGate({ sport, stat: category, truePct: b.predicted }),
-    }));
+    // The bridge: a category is bettable only if Layer 1 says the model provably beats the price.
+    const eligible = _accuracyVerdict(_brierByCat[key]) === "BEATS_MARKET";
+    const doThis = _bettingAction(verdict, gated, eligible, hint);
 
     return {
-      key, sport, category, gated, n: totalN,
+      key, sport, category, gated, eligible, n: totalN,
       currentWindow: [KALSHI_GATE, KALSHI_CAP],
       discoveredWindow: win ? { ...win, roiLoCI: q?.roiLoCI ?? null, roiHiCI: q?.roiHiCI ?? null, coherent: q?.coherent ?? null } : null,
       checklist,
       subWindow: subRoi != null ? { roi: parseFloat(subRoi.toFixed(4)), n: subN } : null,
       overWindow: hiRoi != null ? { roi: parseFloat(hiRoi.toFixed(4)), n: hiN } : null,
       priceBands: bins,
-      verdict, hint, action,
-      calib, doThis, calibBands,
-      skill: brier.skill, skillLoCI: brier.skillLoCI, modelBrier: brier.modelBrier, marketBrier: brier.marketBrier, skillN: brier.n,
+      verdict, hint, action, doThis,
       roi: cat?.roi ?? null,
       formulaCutoff: cat?.formulaCutoff ?? null,
       daysInWindow: cat?.daysInWindow ?? null,
     };
   }).sort((a, b) => b.n - a.n);
+
+  // ── Model ACCURACY board (Layer 1) — Brier vs market + truePct honesty, NO price ──
+  // Keyed on the UNION of the Brier and calibration populations (a category can have calib bands
+  // but no Brier row if Q9 filtered it, and vice-versa). Sorted best-calibrated (highest skill) first.
+  const _accKeys = new Set([...Object.keys(_brierByCat), ...Object.keys(_bandsByCat)]);
+  const accuracyBoard = [..._accKeys].map(key => {
+    const [sport, category] = key.split("|");
+    const brier = _brierByCat[key] ?? { n: 0, modelBrier: null, marketBrier: null, skill: null, skillLoCI: null };
+    const calib = _calibByCat[key] ?? { status: "insufficient", direction: null, delta: null, band: null, n: null };
+    const verdict = _accuracyVerdict(brier);
+    const honest = _accuracyAction(verdict, calib);
+    // `active` = this truePct slice is in the live category gate right now. Bands are 5-wide and
+    // aligned to the gate's 5-boundaries, so the band midpoint membership-tests the gate exactly.
+    const calibBands = (_bandsByCat[key] || []).map(b => ({
+      band: b.band, n: b.n, predicted: b.predicted, actual: b.actual, delta: b.delta, verdict: b.verdict, coherent: b.coherent,
+      active: passesCategoryGate({ sport, stat: category, truePct: b.predicted }),
+    }));
+    return {
+      key, sport, category, gated: _isGatedCategory(key),
+      n: brier.n, skill: brier.skill, skillLoCI: brier.skillLoCI,
+      modelBrier: brier.modelBrier, marketBrier: brier.marketBrier,
+      verdict, honest, calib, calibBands,
+    };
+  }).sort((a, b) => (b.skill ?? -9) - (a.skill ?? -9));
 
   // Process CLV analysis.
   const clv = clvRows.map(r => ({
@@ -1807,7 +1838,8 @@ async function handleShadowReport({ path, request, env, cache }) {
     since,
     dataHealth,
     topPicks,
-    modelBoard,
+    accuracyBoard,
+    bettingBoard,
     categories,
     topBands,
     clv,

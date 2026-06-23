@@ -51,6 +51,17 @@ function BoardBadge({ v }) {
   const [label, color] = _BOARD[v] || [v, C.dim];
   return <span style={{ color, fontSize:9, fontWeight:700, border:`1px solid ${color}55`, borderRadius:4, padding:"0 5px", whiteSpace:"nowrap" }}>{label}</span>;
 }
+// Accuracy (Layer-1) verdict styling — Brier vs market, no price.
+const _ACC = {
+  BEATS_MARKET:   ["beats market",   C.green, "rgba(63,185,80,0.10)"],
+  TIE:            ["tie",            C.gray,  "transparent"],
+  MARKET_SHARPER: ["market sharper", C.amber, "transparent"],
+  BUILDING:       ["building",       C.dim,   "transparent"],
+};
+function AccBadge({ v }) {
+  const [label, color] = _ACC[v] || [v, C.dim];
+  return <span style={{ color, fontSize:9, fontWeight:700, border:`1px solid ${color}55`, borderRadius:4, padding:"0 5px", whiteSpace:"nowrap" }}>{label}</span>;
+}
 // Tiny pass/fail chips for the promotion checklist (enough bets / real edge / broad).
 function Check({ ok, label, title }) {
   if (ok == null) return null;
@@ -154,13 +165,84 @@ function CalibBandsTable({ bands }) {
   );
 }
 
-function ModelBoard({ board }) {
+// ── LAYER 1 — Model ACCURACY board: do the models beat the price? (Brier vs market) ──
+// Scored only on Brier skill + truePct honesty. NO price, NO ROI. Best-calibrated first.
+function AccuracyBoard({ board }) {
+  const [expanded, setExpanded] = React.useState({});
+  if (!board?.length) return null;
+  const honestyN = r => (r.calibBands || []).reduce((s, b) => s + (b.n || 0), 0);
+
+  const Row = ({ r }) => {
+    const open = expanded[r.key];
+    return (
+      <>
+        <tr onClick={() => setExpanded(e => ({ ...e, [r.key]: !e[r.key] }))}
+            style={{ cursor:"pointer", background:_ACC[r.verdict]?.[2] || "transparent" }}>
+          <td style={{ ...tdB, textAlign:"left", color:C.text, fontWeight:600 }}>
+            <span style={{ color:C.dim, marginRight:4 }}>{open ? "▾" : "▸"}</span>{r.key}
+            {r.gated && <span title="Currently bet — in the live truePct gate" style={{ color:C.green, fontSize:9, fontWeight:700, marginLeft:6, whiteSpace:"nowrap" }}>● live</span>}
+          </td>
+          <td style={tdB}><DoThisBadge d={r.honest} /></td>
+          <td style={tdB}><AccBadge v={r.verdict} /></td>
+          <td style={tdB}><SkillCell skill={r.skill} skillN={r.n} modelBrier={r.modelBrier} marketBrier={r.marketBrier} /></td>
+          <td style={{ ...tdB, color:C.gray, fontSize:10 }}>{r.modelBrier ?? "—"}</td>
+          <td style={{ ...tdB, color:C.gray, fontSize:10 }}>{r.marketBrier ?? "—"}</td>
+          <td style={{ ...tdB, color:r.n>=100?C.text:r.n>=50?C.gray:C.dim }}>{r.n}</td>
+          <td style={tdB}><HonestyCell calib={r.calib} /></td>
+        </tr>
+        {open && (
+          <tr><td colSpan={8} style={{ padding:"0 8px 6px 22px", background:"#0d1117" }}>
+            {r.honest?.why && (
+              <div style={{ color:_TONE[r.honest.tone]||C.gray, fontSize:11, margin:"4px 0" }}>
+                ▶ <b>{r.honest.action}</b>: <span style={{ color:C.text }}>{r.honest.why}</span>
+              </div>
+            )}
+            {r.skill != null && (
+              <div style={{ color:C.dim, fontSize:10, margin:"2px 0 4px" }}>
+                Brier skill <b style={{ color: (r.n>=100) ? (r.skill>0?C.green:r.skill<-0.005?C.red:C.gray) : C.dim }}>{r.skill>=0?"+":""}{r.skill.toFixed(3)}</b>
+                {" "}— model {r.modelBrier ?? "—"} vs market {r.marketBrier ?? "—"} (n={r.n}){r.skillLoCI!=null?` · CI lo ${r.skillLoCI>=0?"+":""}${r.skillLoCI}`:""} · {r.skill>0?"model sharper than the price":"market sharper than the model"}{r.n<100?" · n<100, not yet trusted":""}
+              </div>
+            )}
+            <div style={{ color:C.dim, fontSize:9, fontWeight:700, margin:"4px 0 1px" }}>HONESTY · model% vs actual (Δ&lt;0 = overconfident) · <span style={{ color:C.gray, fontWeight:400 }}>{honestyN(r)} resolved plays, no edge/dc gate</span> · <span style={{ color:C.green }}>green = currently-bet slice</span></div>
+            <CalibBandsTable bands={r.calibBands} />
+          </td></tr>
+        )}
+      </>
+    );
+  };
+
+  return (
+    <div style={{ marginBottom:10 }}>
+      <div style={sectionTitle}>
+        Do the models beat the price? · scored only on Brier skill (market-Brier − model-Brier) + truePct honesty — no price, no ROI
+      </div>
+      <table style={tableStyle}>
+        <thead><tr>{["Category","Verdict","Accuracy","Skill","Model B","Market B","N","Honesty"].map(h => {
+          const tip = h==="Skill" ? "Brier head-to-head: market-Brier − model-Brier over all resolved plays. >0 (green) = model sharper than the price (eligible to bet); <0 (red) = market is the sharper estimator. Dim until n≥100."
+            : h==="Verdict" ? "What the model needs: Ship-eligible (beats the price, bettable) · No edge (Brier tie) · Improve inputs (market sharper — find a new input) · Accruing (n<100)."
+            : undefined;
+          return <th key={h} style={{ ...thB, cursor:tip?"help":undefined }} title={tip}>{h}</th>;
+        })}</tr></thead>
+        <tbody>{board.map(r => <Row key={r.key} r={r} />)}</tbody>
+      </table>
+      <div style={{ color:C.dim, fontSize:10, marginTop:5, lineHeight:1.55 }}>
+        <b style={{ color:C.green }}>Ship-eligible</b> = provably sharper than the price (skill CI lo &gt; 0) → bettable ·
+        <b style={{ color:C.gray }}> No edge</b> = Brier tie, the price already knows it ·
+        <b style={{ color:C.amber }}> Improve inputs</b> = market is sharper → needs a NEW input (run tune:residual), not a reweight ·
+        <b style={{ color:C.dim }}> Accruing</b> = n&lt;100. Click a row for its calibration bands + Brier breakdown.
+      </div>
+    </div>
+  );
+}
+
+// ── LAYER 2 — BETTING board: what to bet (price/ROI), gated by Layer-1 eligibility ──
+// Ineligible categories (model doesn't beat the price) render greyed — the window is shown so a
+// tempting ROI visibly explains why it's still unbettable.
+function BettingBoard({ board }) {
   const [expanded, setExpanded] = React.useState({});
   const [showBuilding, setShowBuilding] = React.useState(false);
   if (!board?.length) return null;
 
-  // Live (gated) categories pin to the top — they're what we're actually betting — then by N.
-  // Everything else sorts by N too; thin non-live rows (n<20) collapse behind a toggle.
   const byN = (a, b) => b.n - a.n;
   const live = board.filter(r => r.gated).sort(byN);
   const rest = board.filter(r => !r.gated).sort(byN);
@@ -170,14 +252,11 @@ function ModelBoard({ board }) {
   const Row = ({ r }) => {
     const w = r.discoveredWindow;
     const open = expanded[r.key];
-    // Two different populations: PROFIT = bettable plays (= row N); HONESTY = all resolved plays
-    // (no edge/dc gate), so its bands sum higher. Label both counts so the mismatch reads as intent.
     const profitN = (r.priceBands || []).reduce((s, b) => s + (b.n || 0), 0);
-    const honestyN = (r.calibBands || []).reduce((s, b) => s + (b.n || 0), 0);
     return (
       <>
         <tr onClick={() => setExpanded(e => ({ ...e, [r.key]: !e[r.key] }))}
-            style={{ cursor:"pointer", background:_BOARD[r.verdict]?.[2] || "transparent" }}>
+            style={{ cursor:"pointer", opacity:r.eligible?1:0.5, background:_BOARD[r.verdict]?.[2] || "transparent" }}>
           <td style={{ ...tdB, textAlign:"left", color:C.text, fontWeight:600 }}>
             <span style={{ color:C.dim, marginRight:4 }}>{open ? "▾" : "▸"}</span>{r.key}
             {r.gated && <span title="Currently bet — in the live truePct gate" style={{ color:C.green, fontSize:9, fontWeight:700, marginLeft:6, whiteSpace:"nowrap" }}>● live</span>}
@@ -187,20 +266,13 @@ function ModelBoard({ board }) {
           <td style={{ ...tdB, color:C.gray }}>{w ? `${w.lo}–${w.hi}¢` : "—"}</td>
           <td style={{ ...tdB, color:_roiColorFrac(w?.roi), fontWeight:600 }}>{w ? _pct1(w.roi) : "—"}</td>
           <td style={{ ...tdB, color:r.n>=50?C.text:r.n>=30?C.gray:C.dim }}>{r.n}</td>
-          <td style={tdB}><SkillCell skill={r.skill} skillN={r.skillN} modelBrier={r.modelBrier} marketBrier={r.marketBrier} /></td>
-          <td style={tdB}><HonestyCell calib={r.calib} /></td>
+          <td style={{ ...tdB, color:r.eligible?C.green:C.dim, fontSize:9, fontWeight:700 }} title={r.eligible?"Model beats the price — bettable":"Model doesn't beat the price — unbettable"}>{r.eligible?"eligible":"—"}</td>
         </tr>
         {open && (
-          <tr><td colSpan={8} style={{ padding:"0 8px 6px 22px", background:"#0d1117" }}>
+          <tr><td colSpan={7} style={{ padding:"0 8px 6px 22px", background:"#0d1117" }}>
             {r.doThis?.why && (
               <div style={{ color:_TONE[r.doThis.tone]||C.gray, fontSize:11, margin:"4px 0" }}>
                 ▶ <b>{r.doThis.action}</b>: <span style={{ color:C.text }}>{r.doThis.why}</span>
-              </div>
-            )}
-            {r.skill != null && (
-              <div style={{ color:C.dim, fontSize:10, margin:"2px 0 4px" }}>
-                Brier skill <b style={{ color: (r.skillN>=100) ? (r.skill>0?C.green:r.skill<-0.005?C.red:C.gray) : C.dim }}>{r.skill>=0?"+":""}{r.skill.toFixed(3)}</b>
-                {" "}— model {r.modelBrier ?? "—"} vs market {r.marketBrier ?? "—"} (n={r.skillN}) · {r.skill>0?"model sharper than the price":"market sharper than the model"}{r.skillN<100?" · n<100, not yet trusted":""}
               </div>
             )}
             {r.checklist && (
@@ -213,8 +285,6 @@ function ModelBoard({ board }) {
             )}
             <div style={{ color:C.dim, fontSize:9, fontWeight:700, margin:"4px 0 1px" }}>PROFIT · full price range, no window/truePct gate · <span style={{ color:C.gray, fontWeight:400 }}>{profitN} plays where the model sees value (edge≥3; dc≥7 drops stale-price / player-out) — this is the row's N</span></div>
             <PriceBands bands={r.priceBands} window={r.currentWindow} />
-            <div style={{ color:C.dim, fontSize:9, fontWeight:700, margin:"4px 0 1px" }}>HONESTY · model% vs actual (Δ&lt;0 = overconfident) · <span style={{ color:C.gray, fontWeight:400 }}>{honestyN} resolved plays, no edge/dc gate — sums above the row N by design</span> · <span style={{ color:C.green }}>green = currently-bet slice</span></div>
-            <CalibBandsTable bands={r.calibBands} />
           </td></tr>
         )}
       </>
@@ -224,12 +294,12 @@ function ModelBoard({ board }) {
   return (
     <div style={{ marginBottom:10 }}>
       <div style={sectionTitle}>
-        One row per model · "Do this" fuses profit (where the money is) + honesty (is the model% right) · current betting window 67–91¢
+        What to bet · only Ship-eligible models (beat the price) are bettable — greyed rows are unbettable regardless of ROI · current window 67–91¢
       </div>
       <table style={tableStyle}>
-        <thead><tr>{["Category","Do this","Bet status","Window","ROI","N","Skill","Honesty"].map(h => {
-          const tip = h==="N" ? "Plays where the model sees value (edge≥3, dc≥7) across the full price range — no 67–91 / truePct gate. The expanded HONESTY table uses a broader all-resolved population, so its band counts sum higher."
-            : h==="Skill" ? "Brier head-to-head: market-Brier − model-Brier over all resolved plays. >0 (green) = model sharper than the price (headroom to bet); <0 (red) = market is the sharper estimator (no headroom — don't tune). Dim until n≥100."
+        <thead><tr>{["Category","Do this","Window status","Window","ROI","N","Eligible"].map(h => {
+          const tip = h==="N" ? "Bettable plays (edge≥3, dc≥7) across the full price range — no 67–91 / truePct gate."
+            : h==="Eligible" ? "Does the model beat the price (Layer-1 Brier skill CI lo > 0)? Only eligible categories are bettable; ineligible rows are greyed."
             : undefined;
           return <th key={h} style={{ ...thB, cursor:tip?"help":undefined }} title={tip}>{h}</th>;
         })}</tr></thead>
@@ -237,7 +307,7 @@ function ModelBoard({ board }) {
           {live.map(r => <Row key={r.key} r={r} />)}
           {actionable.map(r => <Row key={r.key} r={r} />)}
           {building.length > 0 && !showBuilding && (
-            <tr><td colSpan={8} style={{ ...tdB, textAlign:"left", color:C.dim, cursor:"pointer" }} onClick={() => setShowBuilding(true)}>
+            <tr><td colSpan={7} style={{ ...tdB, textAlign:"left", color:C.dim, cursor:"pointer" }} onClick={() => setShowBuilding(true)}>
               ▸ {building.length} more thin (n &lt; 20 bettable) — show
             </td></tr>
           )}
@@ -245,13 +315,10 @@ function ModelBoard({ board }) {
         </tbody>
       </table>
       <div style={{ color:C.dim, fontSize:10, marginTop:5, lineHeight:1.55 }}>
-        <b style={{ color:C.text }}>Do this</b> fuses three reads — is there a profitable price window (PROFIT), is the model% honest (HONESTY), and does the model beat the price (<b style={{ color:C.text }}>Skill</b>):
-        <b style={{ color:C.green }}> Add to gate</b> = validated, start betting ·
-        <b style={{ color:C.amber }}>Tune down</b> = overconfident <i>and</i> has headroom (skill≥0) — trim it ·
-        <b style={{ color:C.gray }}>Stay out</b> = market is the sharper estimator (skill&lt;0) — no headroom, don't tune ·
-        <b style={{ color:C.blue }}>Look deeper</b> = negative but cause unclear — needs residual analysis ·
-        <b style={{ color:C.blue }}>Build</b> = positive, just needs more bets.
-        <span style={{ display:"block", marginTop:2 }}><b style={{ color:C.text }}>Skill</b> = market-Brier − model-Brier (&gt;0 model sharper, dim until n≥100). Click a row for its price-band (profit) + calibration (honesty) + Brier breakdown.</span>
+        <b style={{ color:C.green }}>Add to gate</b> = eligible + validated window, start betting ·
+        <b style={{ color:C.red }}> Pull from gate</b> = gated but window went negative ·
+        <b style={{ color:C.blue }}> Look deeper</b> = beats the price but the window still loses (selection/sizing puzzle) ·
+        <b style={{ color:C.dim }}> Don't bet</b> = model doesn't beat the price. Click a row for its price-band breakdown.
       </div>
     </div>
   );
@@ -270,9 +337,10 @@ const MODEL_NEXT = [
   {
     sport: "Model triage", rank: 0, infra: true,
     note: "Infra, not a market — sharpen the diagnosis before widening the surface: make /model say which fix each losing category needs, so chat sessions go straight to the right move.",
-    knob: "market-Brier skill per category → forks the NEGATIVE verdict (Stay out vs Tune down vs Look deeper)",
+    knob: "two-board split: ACCURACY (Brier vs market, Layer 1) gates BETTING (price/ROI, Layer 2) — eligible = model provably beats the price",
     markets: [
-      { t: "infra", badge: "LIVE", ticker: "Skill column", title: "Brier skill on the board — does the model beat the price? (market-Brier − model-Brier)" },
+      { t: "infra", badge: "LIVE", ticker: "Two-board split", title: "Accuracy board (does the model beat the price?) gates the betting board (what to bet) — separates model quality from bet selection" },
+      { t: "infra", badge: "LIVE", ticker: "Skill column", title: "Brier skill on the accuracy board — does the model beat the price? (market-Brier − model-Brier)" },
       { t: "infra", badge: "LIVE", ticker: "tune:residual", title: "Phase 2 CLI — slice residuals by stored dims (features JSONB), ranked by gradient + per-bucket Brier skill (npm run tune:residual)" },
       { t: "infra", badge: "LATER", ticker: "residual board column", title: "Surface the slice on /model — upgrade Look deeper → Reweight (L2) / Add input: ⟨dim⟩ (L0); gated until a category has a live surviving miss" },
     ],
@@ -583,7 +651,7 @@ function OpsSection({ d }) {
 function GateDigest({ board }) {
   if (!board?.length) return null;
   const act = a => board.filter(e => e.doThis?.action === a);
-  const promotes = act("Add to gate"), pulls = act("Pull from gate"), tunes = act("Tune down");
+  const promotes = act("Add to gate"), pulls = act("Pull from gate"), looks = act("Look deeper");
   const liveCount = board.filter(e => e.gated).length;
   const names = arr => arr.map(e => `${e.sport} ${e.category}`).join(", ");
   const b = (txt, color) => <b style={{ color }}>{txt}</b>;
@@ -593,13 +661,13 @@ function GateDigest({ board }) {
     // Empty-gate posture (2026-06-19): all categories failed formula-clean validation and were
     // pulled. Document the deliberate full-stop rather than reading "keep betting 0 categories".
     body = <><b style={{ color:C.red }}>Gate is empty — sitting out.</b> No category currently beats the market on formula-clean data (Brier + in-gate ROI). Re-enable one only when it clears {b("n≥50 + band coherence + non-negative Brier", C.amber)}.</>;
-  } else if (!promotes.length && !pulls.length && !tunes.length) {
+  } else if (!promotes.length && !pulls.length && !looks.length) {
     body = <>No changes today — keep betting the {b(liveCount, C.green)} live categor{liveCount === 1 ? "y" : "ies"}.</>;
   } else {
     const parts = [];
     if (promotes.length) parts.push(<>add {b(names(promotes), C.green)}</>);
     if (pulls.length)    parts.push(<>pull {b(names(pulls), C.red)}</>);
-    if (tunes.length)    parts.push(<>tune down {b(names(tunes), C.amber)}</>);
+    if (looks.length)    parts.push(<>investigate {b(names(looks), C.blue)}</>);
     body = <>Act today: {parts.map((p, i) => <React.Fragment key={i}>{i ? "; " : ""}{p}</React.Fragment>)}.</>;
   }
 
@@ -622,11 +690,15 @@ function GateDigest({ board }) {
 // (promoted detections, mid-funnel); (3.5) triage detected new markets (the funnel's first step);
 // (4) expand the platform (Polymarket). 3 and 4 are always "available", so on a quiet, healthy day
 // the primary becomes "build next market" with vet/triage/Polymarket queued.
-const _CHANGE_ACTIONS = {
+// Betting-board (Layer 2) actions that count as a "model change pending".
+const _BET_ACTIONS = {
   "Add to gate":    { tone:"green", verb:"Promote" },
   "Pull from gate": { tone:"red",   verb:"Pull from gate" },
-  "Tune down":      { tone:"amber", verb:"Tune down" },
   "Look deeper":    { tone:"blue",  verb:"Investigate" },
+};
+// Accuracy-board (Layer 1) actions that warrant a model-improvement session.
+const _ACC_ACTIONS = {
+  "Improve inputs": { tone:"amber", verb:"Improve inputs for" },
 };
 function _doThisCandidates(d) {
   const out = [];
@@ -635,24 +707,35 @@ function _doThisCandidates(d) {
   if (warns.length) {
     out.push({ tier:1, tone:"red", label:"Fix data health", why: warns.join(" · "), short:"Fix data health" });
   }
-  // 2 — model changes pending on the board (promotion / demotion / tuning / input investigation).
-  const changes = (d?.modelBoard || []).filter(e => _CHANGE_ACTIONS[e?.doThis?.action]);
+  // 2 — betting changes pending on the betting board (promote / demote / investigate).
+  const changes = (d?.bettingBoard || []).filter(e => _BET_ACTIONS[e?.doThis?.action]);
   if (changes.length) {
     const byAction = {};
     for (const e of changes) (byAction[e.doThis.action] ||= []).push(`${e.sport} ${e.category}`);
-    const parts = Object.entries(byAction).map(([a, names]) => `${_CHANGE_ACTIONS[a].verb} ${names.join(", ")}`);
+    const parts = Object.entries(byAction).map(([a, names]) => `${_BET_ACTIONS[a].verb} ${names.join(", ")}`);
     const lead = changes[0];
-    out.push({ tier:2, tone:_CHANGE_ACTIONS[lead.doThis.action].tone,
+    out.push({ tier:2, tone:_BET_ACTIONS[lead.doThis.action].tone,
       label: parts.join("; "),
-      why: lead.doThis.why || "model change pending on the board",
-      short:`${changes.length} model change${changes.length>1?"s":""}` });
+      why: lead.doThis.why || "betting change pending on the board",
+      short:`${changes.length} betting change${changes.length>1?"s":""}` });
+  }
+  // 2.2 — model ACCURACY changes: categories the market out-predicts (verdict "Improve inputs") need
+  // a NEW input, not a reweight. This is the Layer-1 health signal — go run tune:residual to find the
+  // missing dimension. Below a live gate change, above ripe-validate.
+  const accChanges = (d?.accuracyBoard || []).filter(e => _ACC_ACTIONS[e?.honest?.action]);
+  if (accChanges.length) {
+    const names = accChanges.slice(0, 3).map(e => `${e.sport} ${e.category}`);
+    out.push({ tier:2.2, tone:"amber",
+      label: `Improve inputs for ${names.join(", ")}${accChanges.length>3?` +${accChanges.length-3}`:""}`,
+      why: "the market out-predicts these — find a new input via tune:residual (a reweight won't help)",
+      short: `Improve ${accChanges.length}` });
   }
   // 2.5 — validate ripe shadow models: ungated categories with enough settled bets (n≥50) that are
   // trending positive but not yet gate-clean (verdict STRENGTHENING) — go run the manual tune:gate
   // + ?brier=1 to decide on gating. This is the build→gate half of the funnel: upstream of building
   // a NEW market, downstream of an actual board change (a clean PROMOTE already surfaces in tier 2).
-  const ripe = (d?.modelBoard || []).filter(e =>
-    !e.gated && e.verdict === "STRENGTHENING" && e.checklist?.nOk && !_CHANGE_ACTIONS[e?.doThis?.action]);
+  const ripe = (d?.bettingBoard || []).filter(e =>
+    !e.gated && e.verdict === "STRENGTHENING" && e.checklist?.nOk && !_BET_ACTIONS[e?.doThis?.action]);
   if (ripe.length) {
     const names = ripe.map(e => `${e.sport}|${e.category}`);
     out.push({ tier:2.5, tone:"blue",
@@ -782,9 +865,12 @@ function MorningBriefing({ shadowReportData, shadowReportLoading, fetchShadowRep
 
       <OpsSection d={d} />
 
-      <div style={sectionHead}>Model board · the gate decision</div>
-      <GateDigest board={d.modelBoard} />
-      <ModelBoard board={d.modelBoard} />
+      <div style={sectionHead}>Model accuracy · do the models beat the price?</div>
+      <AccuracyBoard board={d.accuracyBoard} />
+
+      <div style={sectionHead}>Betting board · what to bet</div>
+      <GateDigest board={d.bettingBoard} />
+      <BettingBoard board={d.bettingBoard} />
     </div>
   );
 }
