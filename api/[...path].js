@@ -154,6 +154,7 @@ function _envFromProcess() {
     VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY,
     VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY,
     VAPID_SUBJECT: process.env.VAPID_SUBJECT,
+    ROUTINE_NOTE_TOKEN: process.env.ROUTINE_NOTE_TOKEN, // routine-note scratchpad write gate (handlers/shadow.js)
   };
 }
 

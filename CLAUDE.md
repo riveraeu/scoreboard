@@ -149,6 +149,7 @@ See `docs/INFRA.md` for full request/response contracts, auth patterns, cron det
 | `/api/push/notify` | `handlers/push.js` | Crons (each ~3–8 min after a `tonight` cron) — reads `shadow:staging:{date}`, model-gates (`passesModelGate`: `dcQualified && edge≥5 && passesCategoryGate`), live-book-trusts untrusted markets (`liveBookTrusts`, $30 ref). Dedups against KV `push:notified:{date}` (30h). `broadcastPersonalized` per-subscription with logged-in ledger suppression; >3 fresh → summary push. Prunes 404/410 subs. Auth: CRON_SECRET/ADMIN_KEY. Detail → memories [push live-book suppression], [web push pwa]. |
 | `/api/push/test` | `handlers/push.js` | POST (ADMIN_KEY) — send a test push to all subscriptions (delivery smoke test) |
 | `/api/keepalive` | `handlers/kalshi.js` | Daily cron — keeps Upstash alive |
+| `/api/routine-note` | `handlers/shadow.js` | KV scratchpad bridging **cloud routines → the Netskope dev box** (which can reach this prod API but NOT Kalshi/Neon directly). `POST {slug,text}` writes `routine:note:{slug}`={text,writtenAt} (TTL 14d), gated by a dedicated low-privilege **`ROUTINE_NOTE_TOKEN`** Bearer (so a routine's prompt config never carries ADMIN_KEY). `GET ?slug=` reads it back, gated by ADMIN_KEY/JWT. Every claude.ai code routine ends with a one-line `curl POST` of its summary to a known slug; the dev reads it via `?slug=`. |
 
 ---
 
@@ -234,6 +235,7 @@ const env = {
   VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY,      // Web Push (handlers/push.js)
   VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY,
   VAPID_SUBJECT: process.env.VAPID_SUBJECT,            // mailto: or https URL
+  ROUTINE_NOTE_TOKEN: process.env.ROUTINE_NOTE_TOKEN,  // routine-note scratchpad write gate (handlers/shadow.js)
 };
 ```
 Symptom of missing wire-up: `env?.VAR` is `undefined` even though Vercel dashboard shows it set.
