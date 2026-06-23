@@ -432,17 +432,16 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               const _oMd = _oEvSeg.match(/^(\d{2})([A-Z]{3})(\d{2})/);
               const _oMonths = { JAN: "01", FEB: "02", MAR: "03", APR: "04", MAY: "05", JUN: "06", JUL: "07", AUG: "08", SEP: "09", OCT: "10", NOV: "11", DEC: "12" };
               const _oDate = _oMd ? `20${_oMd[1]}-${_oMonths[_oMd[2]] || "01"}-${_oMd[3]}` : ((m.close_time || "").slice(0, 10) || null);
-              // Resolve home/away from the matchup (Kalshi ticker order ≠ ESPN home/away).
+              // Parse teams in ticker order; the home/away swap (needs gameHomeTeams) is deferred to
+              // emitMlbOutsPlays — sportByteam isn't initialized yet here (TDZ in the parse loop).
               const [_oT1, _oT2] = parseGameTeams(m.event_ticker, "mlb");
-              let _oHome = _oT1, _oAway = _oT2;
-              if (sportByteam.mlb?.gameHomeTeams?.[_oT2]) { _oHome = _oT2; _oAway = _oT1; }
               // Pitcher's team = leading abbr of the market-ticker suffix (after the event segment).
               const _oMktSuffix = (m.ticker || "").slice((m.event_ticker || "").length + 1);
               let _oPitTeam = null;
               if (_oT1 && _oMktSuffix.startsWith(_oT1)) _oPitTeam = _oT1;
               else if (_oT2 && _oMktSuffix.startsWith(_oT2)) _oPitTeam = _oT2;
               const _oAO = (pct) => pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
-              outsMarkets.push({ player: _oName, threshold: _oThreshold, homeTeam: _oHome, awayTeam: _oAway, pitcherTeam: _oPitTeam, yesPct: _oYesPct, noPct: _oNoPct, yesAO: _oAO(_oYesPct), noAO: _oAO(_oNoPct), kalshiVolume: _oVol, gameDate: _oDate, _ticker: m.ticker, _depth: m._depth });
+              outsMarkets.push({ player: _oName, threshold: _oThreshold, gameTeam1: _oT1, gameTeam2: _oT2, pitcherTeam: _oPitTeam, yesPct: _oYesPct, noPct: _oNoPct, yesAO: _oAO(_oYesPct), noAO: _oAO(_oNoPct), kalshiVolume: _oVol, gameDate: _oDate, _ticker: m.ticker, _depth: m._depth });
               continue;
             }
             const strike = parseFloat(m.floor_strike);

@@ -53,12 +53,12 @@ test("emitMlbOutsPlays: emits favorite over side with bet-side truePct", () => {
   const outsPlays = [], dropped = [];
   const ctx = {
     outsMarkets: [{
-      player: "Kodai Senga", threshold: 15, homeTeam: "NYM", awayTeam: "CHC",
+      player: "Kodai Senga", threshold: 15, gameTeam1: "CHC", gameTeam2: "NYM",
       pitcherTeam: "NYM", yesPct: 72, noPct: 30, yesAO: -257, noAO: 233,
       kalshiVolume: 50, gameDate: "2026-06-23",
     }],
     outsPlays, dropped, isDebug: true, cutoffStr: "2026-06-22",
-    sportByteam: { mlb: { pitcherStatsByName: { "kodai senga": { avgBF: 25, stdBF: 5, baa: 0.230, gs26: 14 } } } },
+    sportByteam: { mlb: { gameHomeTeams: { NYM: "NYM" }, pitcherStatsByName: { "kodai senga": { avgBF: 25, stdBF: 5, baa: 0.230, gs26: 14 } } } },
   };
   emitMlbOutsPlays(ctx);
   assert.strictEqual(outsPlays.length, 1);
@@ -66,7 +66,8 @@ test("emitMlbOutsPlays: emits favorite over side with bet-side truePct", () => {
   assert.strictEqual(pl.stat, "outs");
   assert.strictEqual(pl.direction, "over");
   assert.strictEqual(pl.kalshiPct, 72);
-  assert.strictEqual(pl.homeTeam, "NYM");
+  assert.strictEqual(pl.homeTeam, "NYM"); // swapped from ticker order via gameHomeTeams
+  assert.strictEqual(pl.awayTeam, "CHC");
   assert.ok(pl.truePct > 0 && pl.truePct <= 100);
   assert.strictEqual(pl.edge, parseFloat((pl.truePct - 72).toFixed(1)));
 });
@@ -75,7 +76,7 @@ test("emitMlbOutsPlays: under favorite → direction under, complement truePct",
   const outsPlays = [], dropped = [];
   emitMlbOutsPlays({
     outsMarkets: [{
-      player: "Some Pitcher", threshold: 21, homeTeam: "LAD", awayTeam: "SD",
+      player: "Some Pitcher", threshold: 21, gameTeam1: "SD", gameTeam2: "LAD",
       pitcherTeam: "LAD", yesPct: 18, noPct: 80, yesAO: 455, noAO: -400,
       kalshiVolume: 10, gameDate: "2026-06-23",
     }],
@@ -91,8 +92,8 @@ test("emitMlbOutsPlays: skips when neither side in [67,91] + drops unknown pitch
   const outsPlays = [], dropped = [];
   emitMlbOutsPlays({
     outsMarkets: [
-      { player: "Mid Market", threshold: 17, homeTeam: "BOS", awayTeam: "NYY", yesPct: 55, noPct: 47, gameDate: "2026-06-23" },
-      { player: "Unknown Guy", threshold: 15, homeTeam: "BOS", awayTeam: "NYY", yesPct: 75, noPct: 27, gameDate: "2026-06-23" },
+      { player: "Mid Market", threshold: 17, gameTeam1: "NYY", gameTeam2: "BOS", yesPct: 55, noPct: 47, gameDate: "2026-06-23" },
+      { player: "Unknown Guy", threshold: 15, gameTeam1: "NYY", gameTeam2: "BOS", yesPct: 75, noPct: 27, gameDate: "2026-06-23" },
     ],
     outsPlays, dropped, isDebug: true, cutoffStr: "2026-06-22",
     sportByteam: { mlb: { pitcherStatsByName: {} } },

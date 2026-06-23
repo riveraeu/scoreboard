@@ -88,10 +88,14 @@ export function emitMlbOutsPlays(ctx) {
     const americanOdds = overFav ? m.yesAO : m.noAO;
     const edge = parseFloat((truePct - kalshiPct).toFixed(1));
 
+    // Resolve home/away (Kalshi ticker order ≠ ESPN home/away) via gameHomeTeams.
+    let homeTeam = m.gameTeam1, awayTeam = m.gameTeam2;
+    if (sportByteam?.mlb?.gameHomeTeams?.[m.gameTeam2]) { homeTeam = m.gameTeam2; awayTeam = m.gameTeam1; }
+
     outsPlays.push({
       sport: "mlb", stat: "outs",
       playerName: m.player,
-      homeTeam: m.homeTeam, awayTeam: m.awayTeam, pickTeam: m.pitcherTeam || null,
+      homeTeam, awayTeam, pickTeam: m.pitcherTeam || null,
       threshold: m.threshold, direction,
       truePct, kalshiPct, noKalshiPct: m.noPct,
       americanOdds: americanOdds ?? null,
