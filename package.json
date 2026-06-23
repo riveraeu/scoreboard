@@ -10,7 +10,8 @@
     "tune:gate": "node scripts/tune/gate-recommender.js",
     "tune:residual": "node scripts/tune/residual-by-dimension.js",
     "backtest:weather": "node scripts/backtest/weather-hr-study.js",
-    "backtest:umpire": "node scripts/backtest/umpire-k-study.js"
+    "backtest:umpire": "node scripts/backtest/umpire-k-study.js",
+    "backtest:nbarest": "node scripts/backtest/nba-rest-study.js"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
