@@ -39,6 +39,10 @@ const FORMULA_CUTOFFS = {
   "wnba|rebounds":  "2026-05-28",
   "wnba|assists":   "2026-05-28",
   "wnba|spread":    "2026-05-28",
+  "nba|total":      "2026-06-22", // B2B one-sided→transfer (total axis only)
+  "nba|teamTotal":  "2026-06-22",
+  "wnba|total":     "2026-06-22",
+  "wnba|teamTotal": "2026-06-22",
 };
 const DEFAULT_SINCE = "2026-05-01";
 

@@ -1055,6 +1055,12 @@ const FORMULA_CUTOFFS = {
   "wnba|rebounds":  "2026-05-28",
   "wnba|assists":   "2026-05-28",
   "wnba|spread":    "2026-05-28",
+  // B2B one-sided→transfer (2026-06-22): only the TOTAL axis changed (margin preserved → ML/spread
+  // un-cutoff). NBA is offseason (forward-only Oct); WNBA accrues now.
+  "nba|total":      "2026-06-22",
+  "nba|teamTotal":  "2026-06-22",
+  "wnba|total":     "2026-06-22",
+  "wnba|teamTotal": "2026-06-22",
 };
 
 // SQL: GREATEST(30d-floor, per-category formula cutoff) so each category's window is

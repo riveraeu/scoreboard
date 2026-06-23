@@ -167,8 +167,8 @@ See `docs/MODEL.md` for all formula details, SimScore tiers, lambda formulas, ga
 | WNBA props | same as NBA | retuned tiers (USG 27/22, O/U 168/158), 2025 anchor |
 | NHL props | same as NBA | TOI, GAA rank, playoff-aware shrink |
 | NFL props | hit-rate | opp in soft teams gate |
-| Game Totals | NegBin (MLB), Poisson (NHL), Normal (NBA/WNBA) | regime blend, starter λ, seasonHitRate blend |
-| Team Totals | NegBin (MLB), Normal (NBA) | regime blend (conservative cap for MLB), seasonHitRate blend |
+| Game Totals | NegBin (MLB), Poisson (NHL), Normal (NBA/WNBA) | regime blend, starter λ, seasonHitRate blend. NBA/WNBA B2B = **transfer** (tired team λ↓ + opp λ↑, 0.988/1.012) since 2026-06-22 — margin shifts, total nets ~0 ([[project-b2b-transfer-fix]]) |
+| Team Totals | NegBin (MLB), Normal (NBA) | regime blend (conservative cap for MLB), seasonHitRate blend. NBA B2B transfer (self+opp) since 2026-06-22 |
 | MLB ML | `simulateMLBJoint`, ties dropped | same per-team λ as game totals |
 | MLB Spread | `spreadPctFromJoint`, all alt lines | shared `_mlJointCache` with ML |
 | NBA/WNBA ML | `simulateNBAJoint` Normal (σ=13/11) | piecewise injury OffRtg shrink |

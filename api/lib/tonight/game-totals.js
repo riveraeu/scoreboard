@@ -13,9 +13,16 @@ import { PT_FMT, ptDateMinusOne } from "../pt.js";
 const _MLB_DOMED = new Set(["TB", "TOR", "HOU", "MIA", "SEA", "ARI", "TEX", "MIL"]);
 
 // B2B lambda dampener constants (only used in game-total + team-total emission).
-const B2B_NBA  = 0.975;
-const B2B_WNBA = 0.975;
-const B2B_NHL  = 1.05;
+// One-sided cut (tired team only) was wrong for TOTALS: a tired team scores less AND defends worse,
+// so the rested opponent compensates → the game TOTAL barely moves (empirical −0.37) while MARGIN
+// drops ~3 (−3.12 ± 0.75). Modeled as a TRANSFER: dampen the tired team's OffRtg (SELF) AND boost
+// the opponent's by a matching amount (OPP) → margin preserved (~−2.7), total nets ≈ 0. Magnitude
+// 0.988/1.012 ≈ ±1.4 pts each side, preserving the prior ~2.8 margin (within the 3.12±0.75 CI).
+// (scripts/backtest/nba-rest-study.js, 2024-25; 2026-06-22. WNBA inherits the NBA magnitude — the
+// transfer STRUCTURE is sport-agnostic basketball physics, but the WNBA magnitude is unvalidated.)
+const B2B_NBA_SELF  = 0.988; const B2B_NBA_OPP  = 1.012;
+const B2B_WNBA_SELF = 0.988; const B2B_WNBA_OPP = 1.012;
+const B2B_NHL  = 1.05; // unchanged — NHL is a different (total-boost) model, not studied here
 
 // True when the team played yesterday relative to `gameDate` (back-to-back detection).
 const _isB2B = (scheduleMap, sport, team, gameDate) => {
@@ -558,8 +565,9 @@ export async function emitGameTotalPlays({
         // B2B dampener: own offense -2.5% if the team played yesterday in PT.
         const _homeB2B = _isB2B(_gtScheduleMap, "nba", homeTeam, gameDate);
         const _awayB2B = _isB2B(_gtScheduleMap, "nba", awayTeam, gameDate);
-        const _homeB2BFactor = _homeB2B ? B2B_NBA : 1.0;
-        const _awayB2BFactor = _awayB2B ? B2B_NBA : 1.0;
+        // Transfer: tired team's OffRtg ↓ (SELF), opponent's ↑ (OPP) — margin preserved, total ≈ 0.
+        const _homeB2BFactor = (_homeB2B ? B2B_NBA_SELF : 1.0) * (_awayB2B ? B2B_NBA_OPP : 1.0);
+        const _awayB2BFactor = (_awayB2B ? B2B_NBA_SELF : 1.0) * (_homeB2B ? B2B_NBA_OPP : 1.0);
         const _hOffRtgAdj = _hOffRtg != null ? parseFloat((_hOffRtg * _homeInjAdj.adj * _homeB2BFactor).toFixed(1)) : null;
         const _aOffRtgAdj = _aOffRtg != null ? parseFloat((_aOffRtg * _awayInjAdj.adj * _awayB2BFactor).toFixed(1)) : null;
         let _homeExpRaw = null, _awayExpRaw = null, _projPace = null;
@@ -675,8 +683,8 @@ export async function emitGameTotalPlays({
         const _wAwayInjAdj = _injuryOffRtgAdj(awayTeam, wnbaInjuryMap, wnbaUsageMap);
         const _wHomeB2B = _isB2B(_gtScheduleMap, "wnba", homeTeam, gameDate);
         const _wAwayB2B = _isB2B(_gtScheduleMap, "wnba", awayTeam, gameDate);
-        const _wHomeB2BFactor = _wHomeB2B ? B2B_WNBA : 1.0;
-        const _wAwayB2BFactor = _wAwayB2B ? B2B_WNBA : 1.0;
+        const _wHomeB2BFactor = (_wHomeB2B ? B2B_WNBA_SELF : 1.0) * (_wAwayB2B ? B2B_WNBA_OPP : 1.0);
+        const _wAwayB2BFactor = (_wAwayB2B ? B2B_WNBA_SELF : 1.0) * (_wHomeB2B ? B2B_WNBA_OPP : 1.0);
         const _whOffRtgAdj = _whOffRtg != null ? parseFloat((_whOffRtg * _wHomeInjAdj.adj * _wHomeB2BFactor).toFixed(1)) : null;
         const _waOffRtgAdj = _waOffRtg != null ? parseFloat((_waOffRtg * _wAwayInjAdj.adj * _wAwayB2BFactor).toFixed(1)) : null;
         let _wHomeExpRaw = null, _wAwayExpRaw = null, _wProjPace = null;
@@ -1252,7 +1260,9 @@ export async function emitGameTotalPlays({
         // Injury adjustment for scoring team's OffRtg (mirrors NBA game total).
         const _ttScoringInjAdj = _injuryOffRtgAdj(scoringTeam, nbaInjuryMap, nbaUsageMap, _NBAshortNorm);
         const _ttScoringB2B = _isB2B(_ttScheduleMap, "nba", scoringTeam, gameDate);
-        const _ttScoringB2BFactor = _ttScoringB2B ? B2B_NBA : 1.0;
+        const _ttOppB2B = _isB2B(_ttScheduleMap, "nba", oppTeam, gameDate);
+        // Transfer: scoring team tired → scores ~1.4 less (SELF); opp tired → scores ~1.4 more (OPP).
+        const _ttScoringB2BFactor = (_ttScoringB2B ? B2B_NBA_SELF : 1.0) * (_ttOppB2B ? B2B_NBA_OPP : 1.0);
         const _teamOffRtgAdj = teamOffRtg != null ? parseFloat((teamOffRtg * _ttScoringInjAdj.adj * _ttScoringB2BFactor).toFixed(1)) : null;
         // Simulation: OffRtg-based projection when available, fall back to PPG
         const _teamPaceNba = nbaPaceData?.teamPace?.[scoringTeam] ?? null;
