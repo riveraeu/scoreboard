@@ -4,13 +4,13 @@ import assert from "node:assert";
 import { projectOuts, emitMlbOutsPlays } from "./mlb-outs.js";
 import { outsTailPct } from "../simulate.js";
 
-test("projectOuts: μ = avgBF × out-rate, out-rate from BAA", () => {
-  // BAA .245 → OBP ≈ .305 → outRate ≈ .695; avgBF 24 → eOuts ≈ 16.7
-  const p = projectOuts({ avgBF: 24, stdBF: 5, baa: 0.245, gs26: 12 });
+test("projectOuts: μ = avgBF × out-rate, out-rate from BAA; σ = 0.90 × stdBF × out-rate", () => {
+  // BAA .245 → OBP ≈ .305 → outRate ≈ .695; avgBF 24 → eOuts ≈ 16.7; stdBF 6 (above floor) → σ scaled
+  const p = projectOuts({ avgBF: 24, stdBF: 6, baa: 0.245, gs26: 12 });
   assert.ok(p, "should project");
   assert.ok(Math.abs(p.outRate - 0.695) < 0.01, `outRate ${p.outRate}`);
   assert.ok(Math.abs(p.eOuts - 24 * p.outRate) < 0.05, `eOuts ${p.eOuts}`);
-  assert.ok(Math.abs(p.sigma - 5 * p.outRate) < 0.05, `sigma ${p.sigma}`);
+  assert.ok(Math.abs(p.sigma - 0.90 * 6 * p.outRate) < 0.05, `sigma ${p.sigma}`);
 });
 
 test("projectOuts: falls back to league out-rate when BAA missing", () => {
@@ -25,11 +25,11 @@ test("projectOuts: out-rate clamped to [0.60, 0.74]", () => {
   assert.strictEqual(lo.outRate, 0.60);
 });
 
-test("projectOuts: σ floor + default when stdBF thin/missing", () => {
-  const floored = projectOuts({ avgBF: 24, stdBF: 1, baa: 0.245, gs26: 12 }); // 1×.695 < 3.5 floor
-  assert.strictEqual(floored.sigma, 3.5);
-  const dflt = projectOuts({ avgBF: 24, stdBF: 0, baa: 0.245, gs26: 12 });
-  assert.strictEqual(dflt.sigma, 4.5);
+test("projectOuts: σ floor + default (×0.90 scale) when stdBF thin/missing", () => {
+  const floored = projectOuts({ avgBF: 24, stdBF: 1, baa: 0.245, gs26: 12 }); // 1×.695 < 3.5 floor → 0.90×3.5
+  assert.strictEqual(floored.sigma, 3.15);
+  const dflt = projectOuts({ avgBF: 24, stdBF: 0, baa: 0.245, gs26: 12 }); // 0.90×4.5
+  assert.strictEqual(dflt.sigma, 4.05);
 });
 
 test("projectOuts: null when no workload anchor or too few starts", () => {

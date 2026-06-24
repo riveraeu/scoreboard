@@ -13,7 +13,8 @@
     "backtest:umpire": "node scripts/backtest/umpire-k-study.js",
     "backtest:nbarest": "node scripts/backtest/nba-rest-study.js",
     "backtest:weatherruns": "node scripts/backtest/weather-runs-study.js",
-    "backtest:wnbatravel": "node scripts/backtest/wnba-travel-study.js"
+    "backtest:wnbatravel": "node scripts/backtest/wnba-travel-study.js",
+    "backtest:outs": "node scripts/backtest/outs-tail-study.js"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

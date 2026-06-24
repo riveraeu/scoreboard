@@ -34,6 +34,10 @@ const OUT_RATE_MIN    = 0.60;   // clamp: even a shelled start converts ≥60% o
 const OUT_RATE_MAX    = 0.74;   // clamp: an ace's out-rate ceiling
 const SIGMA_FLOOR     = 3.5;    // ≈1.2 IP — never let a thin BF sample claim near-certainty
 const SIGMA_DEFAULT   = 4.5;    // ≈1.5 IP — when stdBF is missing/zero
+// stdBF×outRate over-states the actual start-to-start outs spread by ~11% (scripts/backtest/
+// outs-tail-study.js: pooled std(z)=0.897 over 2257 starts → favorites under-predicted in the
+// [67,91] window). Scale the whole σ (floor/default included — the backtest floored σ too) down.
+const SIGMA_SCALE     = 0.90;
 const MIN_GS          = 3;      // need ≥3 starts to trust the workload mean
 
 const _nn = (s) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
@@ -46,7 +50,8 @@ export function projectOuts({ avgBF, stdBF, baa, gs26 }) {
     ? Math.max(OUT_RATE_MIN, Math.min(OUT_RATE_MAX, 1 - (baa + WALK_HBP_RATE)))
     : LEAGUE_OUT_RATE;
   const eOuts = avgBF * outRate;
-  const sigma = (stdBF != null && stdBF > 0) ? Math.max(stdBF * outRate, SIGMA_FLOOR) : SIGMA_DEFAULT;
+  const rawSigma = (stdBF != null && stdBF > 0) ? Math.max(stdBF * outRate, SIGMA_FLOOR) : SIGMA_DEFAULT;
+  const sigma = SIGMA_SCALE * rawSigma;
   return {
     eOuts: parseFloat(eOuts.toFixed(2)),
     sigma: parseFloat(sigma.toFixed(2)),
