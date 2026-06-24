@@ -1810,7 +1810,10 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
         const polymarketDeltas = [];
         let polymarketDeltaSummary = null;
         try {
-          const _polyGames = await fetchPolymarketGames({ cache: CACHE2, isBustCache });
+          // Don't bust the poly cache — `?bust=1` is for refreshing Kalshi/model data, and a cold
+          // poly fetch under heavy bust load is flaky (starved → empty). The 120s cache is fine for
+          // a shadow observatory; decoupling keeps deltas reliable on bust runs + the cron.
+          const _polyGames = await fetchPolymarketGames({ cache: CACHE2 });
           polymarketDeltaSummary = emitPolymarketDeltas({ polyGames: _polyGames, plays, dropped, deltas: polymarketDeltas });
           // Sharpen the kill-gate: walk the Poly CLOB book for the bettable [67,91] sides so the
           // delta is EXECUTABLE (real VWAP after slippage), not just mid-price. Bounded + failure-
