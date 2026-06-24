@@ -2194,7 +2194,11 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
             poly_slip_cents: d.polySlipCents ?? null,
             exec_delta_cents: d.execDeltaCents ?? null,
           }));
-        await neonBatchUpsert(POLY_DELTAS_TABLE, POLY_DELTAS_COLUMNS, _pRows, env);
+        // DO UPDATE (latest snapshot wins) so a later book-walk backfills exec onto an earlier row.
+        await neonBatchUpsert(POLY_DELTAS_TABLE, POLY_DELTAS_COLUMNS, _pRows, env, 100, [
+          "kalshi_pct", "poly_pct", "delta_cents", "model_true_pct",
+          "poly_vwap_pct", "poly_slip_cents", "exec_delta_cents",
+        ]);
         polymarketLogged = _pRows.length;
         console.log(`[shadow-snapshot] polymarket deltas upserted ${polymarketLogged}`);
       } catch (e) { console.error("[shadow-snapshot] polymarket deltas failed:", e?.message); }

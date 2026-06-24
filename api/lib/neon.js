@@ -103,12 +103,19 @@ export async function neonBatchPrePriceUpdate(updates, env, chunkSize = 100) {
 }
 
 // Batch-insert helper. Builds a single parameterized INSERT for up to `chunkSize` rows.
-// Uses ON CONFLICT DO NOTHING for idempotent re-runs.
-export async function neonBatchUpsert(table, columns, rows, env, chunkSize = 100) {
+// ON CONFLICT (id) DO NOTHING for idempotent re-runs. Pass `updateOnConflict` (an array of column
+// names) to instead DO UPDATE SET those = EXCLUDED — for tables where a later write should refresh
+// an existing row (e.g. polymarket_deltas backfilling book-walked exec columns onto an earlier
+// snapshot of the same day). shadow_plays keeps the default DO NOTHING (resolution is separate).
+export async function neonBatchUpsert(table, columns, rows, env, chunkSize = 100, updateOnConflict = null) {
   if (!rows.length) return;
   const connStr = _getWriteConnStr(env);
   if (!connStr) throw new Error("No Neon write connection string available");
   const sql = _neon(connStr);
+
+  const onConflict = (Array.isArray(updateOnConflict) && updateOnConflict.length)
+    ? `ON CONFLICT (id) DO UPDATE SET ${updateOnConflict.map(c => `${c} = EXCLUDED.${c}`).join(", ")}`
+    : "ON CONFLICT (id) DO NOTHING";
 
   const chunks = [];
   for (let i = 0; i < rows.length; i += chunkSize) chunks.push(rows.slice(i, i + chunkSize));
@@ -118,7 +125,7 @@ export async function neonBatchUpsert(table, columns, rows, env, chunkSize = 100
       `(${columns.map((_, ci) => `$${ri * columns.length + ci + 1}`).join(", ")})`
     ).join(", ");
     const values = chunk.flatMap(row => columns.map(col => row[col] ?? null));
-    const insertSql = `INSERT INTO ${table} (${columns.join(", ")}) VALUES ${placeholders} ON CONFLICT (id) DO NOTHING`;
+    const insertSql = `INSERT INTO ${table} (${columns.join(", ")}) VALUES ${placeholders} ${onConflict}`;
     await sql.query(insertSql, values);
   }
 }
