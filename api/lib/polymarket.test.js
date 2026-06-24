@@ -73,8 +73,9 @@ test("emitPolymarketDeltas: signed cents, ml + totals, ±1-day match, summary", 
   ];
   const dropped = [
     { gameType: "ml", stat: "ml", sport: "mlb", awayTeam: "MIL", homeTeam: "STL", side: "home", kalshiPct: 42.5, truePct: 41, gameDate: "2026-05-05" },
-    { gameType: "total", stat: "totalRuns", sport: "mlb", awayTeam: "MIL", homeTeam: "STL", threshold: 7.5, direction: "over", kalshiPct: 54.9, truePct: 56, gameDate: "2026-05-05" },
-    { gameType: "total", stat: "totalRuns", sport: "mlb", awayTeam: "MIL", homeTeam: "STL", threshold: 7.5, direction: "under", kalshiPct: 54.9, noKalshiPct: 45.1, gameDate: "2026-05-05" },
+    // Kalshi totals are integer "N+" thresholds; Poly Over 7.5 ⇔ ≥8 = Kalshi threshold 8.
+    { gameType: "total", stat: "totalRuns", sport: "mlb", awayTeam: "MIL", homeTeam: "STL", threshold: 8, direction: "over", kalshiPct: 54.9, truePct: 56, gameDate: "2026-05-05" },
+    { gameType: "total", stat: "totalRuns", sport: "mlb", awayTeam: "MIL", homeTeam: "STL", threshold: 8, direction: "under", kalshiPct: 54.9, noKalshiPct: 45.1, gameDate: "2026-05-05" },
   ];
   const deltas = [];
   const summary = emitPolymarketDeltas({ polyGames, plays, dropped, deltas });

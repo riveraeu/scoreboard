@@ -80,9 +80,13 @@ export function emitPolymarketDeltas({ polyGames, plays = [], dropped = [], delt
       }
     }
 
-    // Totals (per shared line)
+    // Totals. Polymarket uses half-point O/U lines (7.5); Kalshi MLB/NBA/NHL totals are INTEGER
+    // "N+" thresholds. Over L.5 ⇔ total ≥ ceil(L.5) = Kalshi threshold ceil(L); Poly under ⇔ the
+    // Kalshi NO side at that threshold. Try the exact line first (in case a venue ever lists .5),
+    // then the ceil mapping for fractional lines.
     for (const t of (g.totals || [])) {
-      const tKey = cands.map((d) => `${sport}|${away}|${home}|${d}|${t.line}`).find((k) => idx.totals[k]);
+      const thr = [t.line, Number.isInteger(t.line) ? null : Math.ceil(t.line)].filter((x) => x != null);
+      const tKey = cands.flatMap((d) => thr.map((n) => `${sport}|${away}|${home}|${d}|${n}`)).find((k) => idx.totals[k]);
       if (!tKey) continue;
       const te = idx.totals[tKey];
       const td = tKey.split("|")[3];
