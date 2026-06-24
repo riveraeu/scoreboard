@@ -375,7 +375,8 @@ const MODEL_NEXT = [
     markets: [
       { t: "infra", badge: "LIVE", ticker: "Two-board split", title: "Accuracy board (does the model beat the price?) gates the betting board (what to bet) — separates model quality from bet selection" },
       { t: "infra", badge: "LIVE", ticker: "Skill column", title: "Brier skill on the accuracy board — does the model beat the price? (market-Brier − model-Brier)" },
-      { t: "infra", badge: "LIVE", ticker: "tune:residual", title: "Phase 2 CLI — slice residuals by stored dims (features JSONB), ranked by gradient + per-bucket Brier skill (npm run tune:residual)" },
+      { t: "infra", badge: "LIVE", ticker: "tune:residual", title: "Phase 2 CLI — slice residuals by stored dims (features JSONB), ranked by gradient + per-bucket Brier skill (npm run tune:residual). Exercised against its first LIVE miss 2026-06-24 (mlb|totalBases): n=140 too thin to rank any dimension, no L0 candidate — re-run at n≥200." },
+      { t: "infra", badge: "NEXT", ticker: "fix underconfident+sharp routing", title: "_accuracyAction misroutes \"underconfident + model already beats the price\" (e.g. mlb|totalBases: skill +0.033, 60-65% band +14.8pp) to Improve inputs / \"a reweight won't help\" — but that case IS a calibration de-shrink (L2), not a missing input (L0). Split the action so model-sharper underconfidence reads Reweight, not Add input." },
       { t: "infra", badge: "LATER", ticker: "residual board column", title: "Surface the slice on /model — upgrade Look deeper → Reweight (L2) / Add input: ⟨dim⟩ (L0); gated until a category has a live surviving miss" },
     ],
   },
