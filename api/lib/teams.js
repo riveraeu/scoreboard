@@ -10,6 +10,9 @@
 //   kalshi       — Kalshi ticker abbreviation(s) → canonical (TEAM_NORM). Identity
 //                  aliases (e.g. mlb KC→KC) are FUNCTIONAL: TEAM_NORM membership marks
 //                  2-char prefixes for parseGameTeams' 2+3 split path. Don't prune them.
+//   polymarket   — Polymarket Gamma game-ticker abbr(s) when ≠ canonical-lowercased
+//                  (POLY_TO_CANON). Only listed where Poly's form differs from our canonical
+//                  (mlb oak→ATH; wnba gsv→GS / las→LV / nyl→NY). Identity match is automatic.
 //   espnScore    — ESPN *scoreboard* abbr when ≠ canonical (/api/live translation).
 //   espnStats    — ESPN stats/injuries endpoint form (WNBA only; CONNECTICU, DALLAS…).
 //   espnStatsAlt — extra inbound stats-surface forms that normalize to canonical.
@@ -53,12 +56,12 @@ export const TEAMS = {
     { abbr: "CHI", espnId: 19 },
     { abbr: "CONN", kalshi: ["CONNECTICU", "CON"], espnScore: "CON", espnStats: "CONNECTICU", espnId: 18 },
     { abbr: "DAL", kalshi: ["DALLAS"], espnStats: "DALLAS", espnId: 3 },
-    { abbr: "GS", kalshi: ["GSV"], espnStatsAlt: ["GSV"], espnId: 129689 },
+    { abbr: "GS", kalshi: ["GSV"], polymarket: ["gsv"], espnStatsAlt: ["GSV"], espnId: 129689 },
     { abbr: "IND", espnId: 5 },
-    { abbr: "LV", espnId: 17 },
+    { abbr: "LV", polymarket: ["las"], espnId: 17 },
     { abbr: "LA", kalshi: ["LAS"], espnStats: "LAS", espnId: 6 },
     { abbr: "MIN", espnId: 8 },
-    { abbr: "NY", espnId: 9 },
+    { abbr: "NY", polymarket: ["nyl"], espnId: 9 },
     { abbr: "PHX", espnId: 11 },
     { abbr: "POR", espnId: 132052 },
     { abbr: "SEA", espnId: 14 },
@@ -102,7 +105,7 @@ export const TEAMS = {
   mlb: [
     { abbr: "ARI", kalshi: ["AZ"], mlbId: 109 },
     { abbr: "ATL", mlbId: 144 },
-    { abbr: "ATH", kalshi: ["OAK"], mlbId: 133 },
+    { abbr: "ATH", kalshi: ["OAK"], polymarket: ["oak"], mlbId: 133 },
     { abbr: "BAL", mlbId: 110 },
     { abbr: "BOS", mlbId: 111 },
     { abbr: "CHC", mlbId: 112 },
@@ -159,6 +162,20 @@ export const TEAM_NORM = Object.fromEntries(
 // Canonical abbr sets, per sport (legacy home: tonight/parse-teams.js).
 export const _VALID_TEAMS = Object.fromEntries(
   Object.entries(TEAMS).map(([sport, teams]) => [sport, new Set(teams.map(t => t.abbr))])
+);
+
+// Polymarket Gamma game-ticker abbr (lowercased) → canonical, per sport. Identity = canonical
+// lowercased; `polymarket` aliases override where Poly's form differs. Consumers do
+// `POLY_TO_CANON[sport]?.[abbr.toLowerCase()]`. New 2026-06-23 for the cross-venue observatory.
+export const POLY_TO_CANON = Object.fromEntries(
+  Object.entries(TEAMS).map(([sport, teams]) => {
+    const m = {};
+    for (const t of teams) {
+      m[t.abbr.toLowerCase()] = t.abbr;
+      for (const a of t.polymarket || []) m[a.toLowerCase()] = t.abbr;
+    }
+    return [sport, m];
+  })
 );
 
 // Canonical → ESPN scoreboard abbr, per sport (legacy home: inline in handlers/sports.js).
