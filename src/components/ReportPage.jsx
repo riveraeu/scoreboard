@@ -228,7 +228,7 @@ function AccuracyBoard({ board }) {
       <table style={tableStyle}>
         <thead><tr>{["Category","Verdict","Honesty","Model Brier","vs Market","N"].map(h => {
           const tip = h==="vs Market" ? "Brier skill = market-Brier − model-Brier over all resolved plays. >0 (green) = model sharper than the price (this is what makes a category bettable); <0 (red) = market is the sharper estimator. Dim until n≥100. Not part of the accuracy verdict."
-            : h==="Verdict" ? "Calibration vs reality: Calibrated (model% matches actual within noise) · Overconfident / Underconfident (proven miscalibration, n≥200 → Improve inputs) · Building (not enough resolved plays to judge)."
+            : h==="Verdict" ? "Calibration vs reality: Calibrated (model% matches actual within noise) · Overconfident / Underconfident (proven miscalibration, n≥200 → Recalibrate if the model still beats the price, else Improve inputs) · Building (not enough resolved plays to judge)."
             : h==="Model Brier" ? "Mean squared error of the model's probability vs the actual outcome — pure accuracy, no price. Lower = better."
             : undefined;
           return <th key={h} style={{ ...thB, cursor:tip?"help":undefined }} title={tip}>{h}</th>;
@@ -246,7 +246,7 @@ function AccuracyBoard({ board }) {
       </table>
       <div style={{ color:C.dim, fontSize:10, marginTop:5, lineHeight:1.55 }}>
         <b style={{ color:C.green }}>Calibrated</b> = model% matches actual outcomes within noise ·
-        <b style={{ color:C.red }}> Overconfident</b> / <b style={{ color:C.amber }}>Underconfident</b> = proven miscalibration (needs a NEW input, run tune:residual) ·
+        <b style={{ color:C.red }}> Overconfident</b> / <b style={{ color:C.amber }}>Underconfident</b> = proven miscalibration → <b style={{ color:C.amber }}>Recalibrate</b> (L2 de-shrink) when the model still beats the price, else <b style={{ color:C.amber }}>Improve inputs</b> (L0 new input) — run tune:residual ·
         <b style={{ color:C.dim }}> Building</b> = not enough resolved plays to judge calibration yet. <b style={{ color:C.green }}>vs Market</b> &gt; 0 = the model also beats the price (→ bettable). Click a row for its calibration bands + Brier breakdown.
       </div>
     </div>
@@ -376,7 +376,7 @@ const MODEL_NEXT = [
       { t: "infra", badge: "LIVE", ticker: "Two-board split", title: "Accuracy board (does the model beat the price?) gates the betting board (what to bet) — separates model quality from bet selection" },
       { t: "infra", badge: "LIVE", ticker: "Skill column", title: "Brier skill on the accuracy board — does the model beat the price? (market-Brier − model-Brier)" },
       { t: "infra", badge: "LIVE", ticker: "tune:residual", title: "Phase 2 CLI — slice residuals by stored dims (features JSONB), ranked by gradient + per-bucket Brier skill (npm run tune:residual). Exercised against its first LIVE miss 2026-06-24 (mlb|totalBases): n=140 too thin to rank any dimension, no L0 candidate — re-run at n≥200." },
-      { t: "infra", badge: "NEXT", ticker: "fix underconfident+sharp routing", title: "_accuracyAction misroutes \"underconfident + model already beats the price\" (e.g. mlb|totalBases: skill +0.033, 60-65% band +14.8pp) to Improve inputs / \"a reweight won't help\" — but that case IS a calibration de-shrink (L2), not a missing input (L0). Split the action so model-sharper underconfidence reads Reweight, not Add input." },
+      { t: "infra", badge: "LIVE", ticker: "Recalibrate vs Improve-inputs fork", title: "_accuracyAction forks miscalibrated categories on Brier skill (2026-06-24): model beats the price → Recalibrate (L2 de-shrink), market sharper → Improve inputs (L0 new input). Fixed mlb|totalBases/hits being told to find a new input when a reweight is the fix." },
       { t: "infra", badge: "LATER", ticker: "residual board column", title: "Surface the slice on /model — upgrade Look deeper → Reweight (L2) / Add input: ⟨dim⟩ (L0); gated until a category has a live surviving miss" },
     ],
   },
@@ -515,7 +515,8 @@ const _BET_ACTIONS = {
 };
 // Accuracy-board (Layer 1) actions that warrant a model-improvement session.
 const _ACC_ACTIONS = {
-  "Improve inputs": { tone:"amber", verb:"Improve inputs for" },
+  "Improve inputs": { tone:"amber", verb:"Improve inputs for" },   // market sharper → L0 new input
+  "Recalibrate":    { tone:"amber", verb:"Recalibrate" },          // model beats price but miscalibrated → L2 de-shrink
 };
 // MARKET_SHARPER categories whose L0 input search is EXHAUSTED — tune:residual found no addable
 // in-data dimension and the historical pre-filters (weather→runs, WNBA travel) failed (2026-06-23;
@@ -547,19 +548,24 @@ function _doThisCandidates(d) {
       why: lead.doThis.why || "betting change pending on the board",
       short:`${changes.length} betting change${changes.length>1?"s":""}` });
   }
-  // 2.2 — model ACCURACY changes: proven-miscalibrated categories (verdict "Improve inputs" = over/
-  // underconfident) need a NEW input, not a reweight. This is the Layer-1 health signal — go run
-  // tune:residual to find the missing dimension. Below a live gate change, above ripe-validate.
-  // Categories whose input search is already exhausted (INPUT_SEARCH_EXHAUSTED) are dropped so the
-  // banner doesn't nag a dead-end task daily.
+  // 2.2 — model ACCURACY changes: proven-miscalibrated categories. The fix forks on Brier skill
+  // (set server-side in honest.action): "Recalibrate" (model beats the price → L2 de-shrink, NOT a
+  // new input) vs "Improve inputs" (market out-predicts → L0 new input, run tune:residual). Below a
+  // live gate change, above ripe-validate. INPUT_SEARCH_EXHAUSTED suppresses ONLY the new-input nag
+  // (a dead-end L0 search); a Recalibrate task is always actionable so it's never suppressed.
   const accChanges = (d?.accuracyBoard || []).filter(e =>
-    _ACC_ACTIONS[e?.honest?.action] && !INPUT_SEARCH_EXHAUSTED.has(`${e.sport}|${e.category}`));
+    _ACC_ACTIONS[e?.honest?.action] &&
+    !(e.honest.action === "Improve inputs" && INPUT_SEARCH_EXHAUSTED.has(`${e.sport}|${e.category}`)));
   if (accChanges.length) {
-    const names = accChanges.slice(0, 3).map(e => `${e.sport} ${e.category}`);
+    const byAction = {};
+    for (const e of accChanges) (byAction[e.honest.action] ||= []).push(`${e.sport} ${e.category}`);
+    const parts = Object.entries(byAction).map(([a, names]) =>
+      `${_ACC_ACTIONS[a].verb} ${names.slice(0,3).join(", ")}${names.length>3?` +${names.length-3}`:""}`);
+    const lead = accChanges[0]; // accuracyBoard is skill-desc, so the sharpest miss leads
     out.push({ tier:2.2, tone:"amber",
-      label: `Improve inputs for ${names.join(", ")}${accChanges.length>3?` +${accChanges.length-3}`:""}`,
-      why: "these are miscalibrated (model% doesn't match outcomes) — find a new input via tune:residual (a reweight won't help)",
-      short: `Improve ${accChanges.length}` });
+      label: parts.join("; "),
+      why: lead.honest?.why || "model calibration needs attention — see the accuracy board",
+      short: `Accuracy ${accChanges.length}` });
   }
   // 2.5 — validate ripe shadow models: ungated categories with enough settled bets (n≥50) that are
   // trending positive but not yet gate-clean (verdict STRENGTHENING) — go run the manual tune:gate

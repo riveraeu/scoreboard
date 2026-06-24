@@ -1209,18 +1209,34 @@ function _accuracyVerdict(calib) {
   if (c.status === "honest")     return "CALIBRATED";   // some band hit n≥200 and lands within noise
   return "BUILDING";                                    // insufficient — can't judge calibration yet
 }
-function _accuracyAction(verdict, calib) {
+// `skill`/`skillN` = Brier skill (market−model) over the honesty population + its n. They fork the
+// PRESCRIPTION for a miscalibrated category (not the verdict, which stays calibration-based):
+//   • model already beats the price (skill>0 at n≥BRIER_MIN_N) → the miss is pure SCALING, the model
+//     is the sharper estimator stating its edge at the wrong confidence → RECALIBRATE (L2 de-shrink).
+//   • market out-predicts the model (skill≤0 / untrusted) → the model is missing a signal the market
+//     prices → IMPROVE INPUTS (L0 new input). (2026-06-24: fixes mlb|totalBases/hits — underconfident
+//     AND beating the price — being told "find a new input, a reweight won't help" when a reweight is
+//     exactly the fix. See [[project-accuracy-recalibrate-fork]].)
+function _accuracyAction(verdict, calib, skill, skillN) {
   const c = calib || { status: "insufficient" };
+  const beatsPrice = skill != null && skill > 0 && (skillN || 0) >= BRIER_MIN_N;
+  const deltaTxt = c.delta != null ? `${Math.abs(c.delta)}pts ` : "";
   switch (verdict) {
     case "CALIBRATED":
       return { action: "Calibrated", tone: "green",
         why: "model% matches actual outcomes within noise — well-calibrated to reality" };
     case "OVERCONFIDENT":
-      return { action: "Improve inputs", tone: "amber",
-        why: `model is overconfident — says ${c.delta != null ? `${Math.abs(c.delta)}pts ` : ""}more than it delivers in the ${c.band ?? ""}% band; needs a NEW input or recalibration, run tune:residual` };
+      return beatsPrice
+        ? { action: "Recalibrate", tone: "amber",
+            why: `model beats the price but over-claims (${deltaTxt}too high in the ${c.band ?? ""}% band) — scale down / de-shrink (L2 reweight), NOT a new input` }
+        : { action: "Improve inputs", tone: "amber",
+            why: `model is overconfident AND the market out-predicts it — says ${deltaTxt}more than it delivers in the ${c.band ?? ""}% band; needs a NEW input, run tune:residual` };
     case "UNDERCONFIDENT":
-      return { action: "Improve inputs", tone: "amber",
-        why: `model is underconfident — delivers ${c.delta != null ? `${Math.abs(c.delta)}pts ` : ""}more than it claims in the ${c.band ?? ""}% band; recalibrate, run tune:residual` };
+      return beatsPrice
+        ? { action: "Recalibrate", tone: "amber",
+            why: `model beats the price but under-claims (+${deltaTxt}in the ${c.band ?? ""}% band) — de-shrink / scale up (L2 reweight), NOT a new input` }
+        : { action: "Improve inputs", tone: "amber",
+            why: `model is underconfident AND the market out-predicts it — delivers ${deltaTxt}more than it claims in the ${c.band ?? ""}% band; needs a NEW input, run tune:residual` };
     default:
       return { action: "Accruing", tone: "dim", why: "not enough resolved plays to judge calibration yet" };
   }
@@ -1745,7 +1761,7 @@ async function handleShadowReport({ path, request, env, cache }) {
     const brier = _brierByCat[key] ?? { n: 0, modelBrier: null, marketBrier: null, skill: null, skillLoCI: null };
     const calib = _calibByCat[key] ?? { status: "insufficient", direction: null, delta: null, band: null, n: null };
     const verdict = _accuracyVerdict(calib);
-    const honest = _accuracyAction(verdict, calib);
+    const honest = _accuracyAction(verdict, calib, brier.skill, brier.n);
     // `active` = this truePct slice is in the live category gate right now. Bands are 5-wide and
     // aligned to the gate's 5-boundaries, so the band midpoint membership-tests the gate exactly.
     const calibBands = (_bandsByCat[key] || []).map(b => ({
