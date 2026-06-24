@@ -69,7 +69,10 @@ export async function enrichDeltasWithExec({ deltas, tokensByGame, refUsd = 30, 
     const book = await fetchPolyOrderbook(tok);
     if (!book) return;
     const targetShares = refUsd / (d.polyPct / 100); // ≈ notional / price
-    const fill = walkPolyFill({ asks: book.asks, targetShares, bestAskCents: d.polyPct });
+    // No bestAskCents → slip is measured against the book's OWN best ask (true depth slippage of
+    // the sweep), NOT against the possibly-stale mid. The mid-vs-executable gap is already captured
+    // by execDeltaCents vs the row's mid deltaCents.
+    const fill = walkPolyFill({ asks: book.asks, targetShares });
     if (!fill) return;
     d.polyVwapPct = fill.vwapPct;
     d.polySlipCents = fill.slipCents;
