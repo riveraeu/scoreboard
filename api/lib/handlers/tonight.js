@@ -1821,7 +1821,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           const _tokensByGame = {};
           for (const g of _polyGames) if (g.mlTokens) _tokensByGame[`${g.sport}|${g.away}@${g.home}`] = g.mlTokens;
           await enrichDeltasWithExec({ deltas: polymarketDeltas, tokensByGame: _tokensByGame });
-        } catch (e) { if (isDebug) console.error("polymarket deltas failed", e); }
+        } catch (e) { console.error("polymarket deltas failed", e?.message, e?.stack); }
         // Stage plays for shadow-snapshot — eliminates the 55s internal re-fetch.
         // `schedule` = today's ESPN game count per sport, so shadow-snapshot can compare
         // distinct games in the logged rows against the actual slate (coverage check).
