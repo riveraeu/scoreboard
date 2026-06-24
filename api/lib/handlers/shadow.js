@@ -2194,12 +2194,21 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
             poly_slip_cents: d.polySlipCents ?? null,
             exec_delta_cents: d.execDeltaCents ?? null,
           }));
+        // Dedup by id WITHIN the batch — a matchup listed under two Poly ticker-dates collapses to
+        // the same id, and ON CONFLICT DO UPDATE errors ("cannot affect row a second time") if one
+        // INSERT carries the same conflict key twice. Prefer the row that carries exec (book-walked).
+        const _byId = new Map();
+        for (const r of _pRows) {
+          const prev = _byId.get(r.id);
+          if (!prev || (r.exec_delta_cents != null && prev.exec_delta_cents == null)) _byId.set(r.id, r);
+        }
+        const _pDedup = [..._byId.values()];
         // DO UPDATE (latest snapshot wins) so a later book-walk backfills exec onto an earlier row.
-        await neonBatchUpsert(POLY_DELTAS_TABLE, POLY_DELTAS_COLUMNS, _pRows, env, 100, [
+        await neonBatchUpsert(POLY_DELTAS_TABLE, POLY_DELTAS_COLUMNS, _pDedup, env, 100, [
           "kalshi_pct", "poly_pct", "delta_cents", "model_true_pct",
           "poly_vwap_pct", "poly_slip_cents", "exec_delta_cents",
         ]);
-        polymarketLogged = _pRows.length;
+        polymarketLogged = _pDedup.length;
         console.log(`[shadow-snapshot] polymarket deltas upserted ${polymarketLogged}`);
       } catch (e) { console.error("[shadow-snapshot] polymarket deltas failed:", e?.message); }
     }
