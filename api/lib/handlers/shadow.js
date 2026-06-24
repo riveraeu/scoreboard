@@ -80,6 +80,35 @@ ALTER TABLE shadow_plays ADD COLUMN IF NOT EXISTS kalshi_no_price_pre NUMERIC;
 ALTER TABLE shadow_plays ADD COLUMN IF NOT EXISTS price_pre_at TIMESTAMPTZ
 `;
 
+// Polymarket cross-venue ML deltas (Phase 1a observatory). Its own table so the 4-daily snapshots
+// accumulate into a multi-day Kalshi-vs-Polymarket divergence distribution (the kill-gate read).
+// One row per game-side per day: id = `${date}|${sport}|${game}|${market}|${side}`, ON CONFLICT
+// DO NOTHING keeps the first snapshot of the day. No resolution — this measures price divergence,
+// not outcomes (ESPN scores are venue-independent; the model honesty lives in shadow_plays).
+const POLY_DELTAS_TABLE = "polymarket_deltas";
+const POLY_DELTAS_COLUMNS = [
+  "id", "snapshot_date", "sport", "game", "game_date", "market", "side",
+  "kalshi_pct", "poly_pct", "delta_cents", "model_true_pct",
+];
+const CREATE_POLY_DELTAS_SQL = `
+CREATE TABLE IF NOT EXISTS ${POLY_DELTAS_TABLE} (
+  id TEXT PRIMARY KEY,
+  snapshot_date DATE NOT NULL,
+  sport TEXT NOT NULL,
+  game TEXT NOT NULL,
+  game_date TEXT,
+  market TEXT NOT NULL,
+  side TEXT NOT NULL,
+  kalshi_pct NUMERIC,
+  poly_pct NUMERIC,
+  delta_cents NUMERIC,
+  model_true_pct NUMERIC,
+  captured_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS polymarket_deltas_date_idx ON ${POLY_DELTAS_TABLE} (snapshot_date);
+CREATE INDEX IF NOT EXISTS polymarket_deltas_sport_idx ON ${POLY_DELTAS_TABLE} (sport);
+`;
+
 // Stable deterministic ID for a play — unique per player/teams + stat/line + date.
 // fallbackDate (the PT snapshot date) scopes plays whose gameDate is null: without it,
 // date-less ids collide across days — a next-day Kalshi pre-listing logged yesterday
@@ -1916,7 +1945,71 @@ async function handleRoutineNote({ path, request, env, cache }) {
   return jsonResponse({ ok: true, slug, found: true, ...note });
 }
 
+// GET /api/polymarket-deltas — multi-day Kalshi-vs-Polymarket ML divergence distribution (Phase 1a
+// observatory read). The kill-gate surface: does the gap persist + cluster, or is it noise? Auth:
+// ADMIN_KEY or valid JWT. Params: ?days=N (default 30) ?sport=. Returns overall + in-window [67,91]
+// + per-sport + a daily series. delta_cents = poly − kalshi (mean_signed = systematic venue bias).
+async function handlePolymarketDeltas({ path, request, env }) {
+  if (path !== "polymarket-deltas") return null;
+  const bearer = (request.headers.get("authorization") || "").replace(/^Bearer\s+/, "");
+  const isAdmin = env?.ADMIN_KEY && bearer === env.ADMIN_KEY;
+  let isUser = false;
+  if (!isAdmin && bearer) { try { isUser = !!(await verifyJWT(bearer, env?.JWT_SECRET)); } catch {} }
+  if (!isAdmin && !isUser) return errorResponse("Forbidden", 403);
+  if (!env?.POSTGRES_URL && !env?.NEON_DATABASE_URL) return errorResponse("POSTGRES_URL not set", 500);
+
+  const url = new URL(request.url);
+  const days = Math.min(Math.max(parseInt(url.searchParams.get("days") || "30", 10) || 30, 1), 365);
+  const sport = url.searchParams.get("sport");
+  const sportFilter = sport ? " AND sport = $2" : "";
+  const params = sport ? [days, sport] : [days];
+  const num = (x) => x == null ? null : Number(Number(x).toFixed(3));
+
+  const aggSql = (extra) => `
+    SELECT count(*)::int AS n, count(distinct snapshot_date)::int AS days,
+      percentile_cont(0.5) WITHIN GROUP (ORDER BY abs(delta_cents)) AS median_abs,
+      percentile_cont(0.9) WITHIN GROUP (ORDER BY abs(delta_cents)) AS p90_abs,
+      max(abs(delta_cents)) AS max_abs, avg(delta_cents) AS mean_signed,
+      avg(CASE WHEN abs(delta_cents) >= 5 THEN 1.0 ELSE 0 END) AS frac_ge5,
+      avg(CASE WHEN abs(delta_cents) >= 3 THEN 1.0 ELSE 0 END) AS frac_ge3
+    FROM ${POLY_DELTAS_TABLE}
+    WHERE snapshot_date >= CURRENT_DATE - $1::int${sportFilter}${extra}`;
+  const fmtAgg = (r) => r ? {
+    n: r.n, days: r.days, medianAbs: num(r.median_abs), p90Abs: num(r.p90_abs), maxAbs: num(r.max_abs),
+    meanSigned: num(r.mean_signed), fracGe5c: num(r.frac_ge5), fracGe3c: num(r.frac_ge3),
+  } : null;
+
+  try {
+    const [overall] = await neonQuery(aggSql(""), params, env, { write: true });
+    const [inWindow] = await neonQuery(aggSql(" AND kalshi_pct >= 67 AND kalshi_pct <= 91"), params, env, { write: true });
+    const bySport = await neonQuery(`
+      SELECT sport, count(*)::int AS n,
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY abs(delta_cents)) AS median_abs,
+        max(abs(delta_cents)) AS max_abs, avg(delta_cents) AS mean_signed
+      FROM ${POLY_DELTAS_TABLE} WHERE snapshot_date >= CURRENT_DATE - $1::int${sportFilter}
+      GROUP BY sport ORDER BY n DESC`, params, env, { write: true });
+    const daily = await neonQuery(`
+      SELECT snapshot_date, count(*)::int AS n,
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY abs(delta_cents)) AS median_abs
+      FROM ${POLY_DELTAS_TABLE} WHERE snapshot_date >= CURRENT_DATE - $1::int${sportFilter}
+      GROUP BY snapshot_date ORDER BY snapshot_date DESC LIMIT 30`, params, env, { write: true });
+
+    return jsonResponse({
+      ok: true, days, sport: sport || "all",
+      overall: fmtAgg(overall),
+      inWindow6791: fmtAgg(inWindow),
+      bySport: bySport.map(r => ({ sport: r.sport, n: r.n, medianAbs: num(r.median_abs), maxAbs: num(r.max_abs), meanSigned: num(r.mean_signed) })),
+      daily: daily.map(r => ({ date: new Date(r.snapshot_date).toISOString().slice(0, 10), n: r.n, medianAbs: num(r.median_abs) })),
+    });
+  } catch (e) {
+    return errorResponse(`polymarket-deltas query failed: ${e?.message}`, 500);
+  }
+}
+
 export async function handleShadowRoutes({ path, request, env, cache }) {
+  const polyDeltaResp = await handlePolymarketDeltas({ path, request, env });
+  if (polyDeltaResp) return polyDeltaResp;
+
   const noteResp = await handleRoutineNote({ path, request, env, cache });
   if (noteResp) return noteResp;
 
@@ -1945,11 +2038,12 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
   try {
     // DDL is skipped after first successful run (flag cached in Upstash for 30 days).
     // Avoids 4 cold-Neon round-trips that push the Edge Function past its timeout.
-    const _schemaKey = "shadow:schema:v4";
+    const _schemaKey = "shadow:schema:v5";
     const _schemaOk = cache ? await cache.get(_schemaKey).catch(() => null) : null;
     if (!_schemaOk) {
       console.log("[shadow-snapshot] starting neonExec DDL");
       await neonExec(CREATE_TABLE_SQL, env);
+      await neonExec(CREATE_POLY_DELTAS_SQL, env);
       console.log(`[shadow-snapshot] DDL done ${Date.now() - t0}ms`);
     }
 
@@ -1957,12 +2051,14 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
     let rawPlays = null;
     let _qualifiedCount = 0, _droppedCount = 0;
     let _schedule = null; // per-sport ESPN game counts stamped by tonight (coverage check)
+    let _polyDeltas = null; // Polymarket cross-venue ML deltas (Phase 1a observatory)
     if (cache) {
       const _staged = await cache.get(`shadow:staging:${snapshotDate}`, "json").catch(() => null);
       if (_staged?.plays) {
         _qualifiedCount = _staged.plays.length;
         _droppedCount = _staged.dropped?.length ?? 0;
         _schedule = _staged.schedule || null;
+        _polyDeltas = _staged.polymarketDeltas || null;
         console.log(`[shadow-snapshot] KV staging hit plays=${_qualifiedCount} dropped=${_droppedCount} ${Date.now() - t0}ms`);
         rawPlays = [..._staged.plays, ...(_staged.dropped || [])];
       }
@@ -1985,6 +2081,7 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
       const tonight = await tonightResp.json();
       _qualifiedCount = tonight.plays?.length ?? 0;
       _droppedCount = tonight.dropped?.length ?? 0;
+      _polyDeltas = tonight.polymarketDeltas || null;
       console.log(`[shadow-snapshot] tonight parsed plays=${_qualifiedCount} dropped=${_droppedCount} ${Date.now() - t0}ms`);
       rawPlays = [...(tonight.plays || []), ...(tonight.dropped || [])];
     }
@@ -2046,6 +2143,32 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
     await neonBatchUpsert(SHADOW_TABLE, COLUMNS, rows, env);
     console.log(`[shadow-snapshot] upsert done ${Date.now() - t0}ms`);
 
+    // Persist Polymarket cross-venue ML deltas into their own table (own try/catch — a poly
+    // failure must never break the shadow_plays snapshot). One row per game-side per day.
+    let polymarketLogged = 0;
+    if (Array.isArray(_polyDeltas) && _polyDeltas.length) {
+      try {
+        const _pRows = _polyDeltas
+          .filter(d => d && d.sport && d.game && d.side && d.market)
+          .map(d => ({
+            id: `${snapshotDate}|${d.sport}|${d.game}|${d.market}|${d.side}`,
+            snapshot_date: snapshotDate,
+            sport: d.sport,
+            game: d.game,
+            game_date: d.gameDate || null,
+            market: d.market,
+            side: d.side,
+            kalshi_pct: d.kalshiPct ?? null,
+            poly_pct: d.polyPct ?? null,
+            delta_cents: d.deltaCents ?? null,
+            model_true_pct: d.modelTruePct ?? null,
+          }));
+        await neonBatchUpsert(POLY_DELTAS_TABLE, POLY_DELTAS_COLUMNS, _pRows, env);
+        polymarketLogged = _pRows.length;
+        console.log(`[shadow-snapshot] polymarket deltas upserted ${polymarketLogged}`);
+      } catch (e) { console.error("[shadow-snapshot] polymarket deltas failed:", e?.message); }
+    }
+
     // Coverage check: distinct games per sport in the logged rows vs the ESPN slate stamped
     // into staging by tonight. Warn-only at <80% — not every ESPN game has Kalshi markets,
     // and doubleheaders collapse to one game on the rows side (sorted-pair|date keying).
@@ -2074,12 +2197,13 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
     }
 
     // Refresh schema flag so next cron run skips DDL (30-day TTL, renewed on each success).
-    if (cache) cache.put("shadow:schema:v4", "1", { expirationTtl: 86400 * 30 }).catch(() => {});
+    if (cache) cache.put("shadow:schema:v5", "1", { expirationTtl: 86400 * 30 }).catch(() => {});
 
     return jsonResponse({
       ok: true,
       snapshotDate,
       logged: rows.length,
+      polymarketLogged,
       qualified: _qualifiedCount,
       dropped: _droppedCount,
       coverage,
