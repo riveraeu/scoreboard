@@ -450,11 +450,11 @@ const MODEL_NEXT = [
     // is data-gated, not a market to author). The Phase-1b trading decision waits on ~2 weeks of
     // EXECUTABLE divergence (exec.fracEdgeGe3c from /api/polymarket-deltas).
     sport: "Polymarket", rank: 9, infra: true,
-    note: "Phase 1a cross-venue price observatory shipped — moneyline Kalshi-vs-Polymarket deltas logging to polymarket_deltas (shadow-only, no trading). The Phase-1b trading decision is data-gated on ~2 weeks of EXECUTABLE divergence, not mid-price gaps.",
+    note: "Phase 1a cross-venue price observatory shipped — moneyline Kalshi-vs-Polymarket deltas logging to polymarket_deltas (shadow-only, no trading). The Phase-1b trading decision is data-gated on ~2 weeks of EXECUTABLE divergence, not mid-price gaps. Accumulating — day-2 baseline read 2026-06-24, re-check ~2026-07-07.",
     knob: "Gamma public API → normalize game ML → match our Kalshi rows → CLOB book-walk for executable VWAP; exec.fracEdgeGe3c (% of bettable sides still ≥3¢ cheaper to BUY after slippage) is the go/no-go",
     markets: [
-      { t: "infra", badge: "LIVE", ticker: "ML observatory", title: "Cross-venue moneyline deltas — mid + book-walked executable VWAP → /api/polymarket-deltas (accumulating)" },
-      { t: "infra", badge: "LATER", ticker: "Phase 1b trading", title: "Emit bettable Poly plays + place orders — gated on exec.fracEdgeGe3c >0 over ~2 wks, else kill" },
+      { t: "infra", badge: "LIVE", ticker: "ML observatory", title: "Cross-venue moneyline deltas — mid + book-walked executable VWAP → /api/polymarket-deltas. Day-2 baseline (6/24): mid median |Δ| 0.5¢ (venues barely diverge), exec n=7 fracEdgeGe3c 0.286 — direction >0 but pure noise at this n." },
+      { t: "infra", badge: "LATER", ticker: "Phase 1b trading", title: "Emit bettable Poly plays + place orders — gated on exec.fracEdgeGe3c holding >0 with REAL n. Re-check ~2026-07-07; exec accrues ~3-4/day (~50 by then) so EXTEND the window if marginal rather than build off ~50 rows." },
       { t: "infra", badge: "LATER", ticker: "Totals (1a.1)", title: "Re-add totals once game-totals.js emits volume on dropped rows so illiquid alt-lines can be liquidity-gated" },
     ],
   },
