@@ -518,6 +518,12 @@ const _ACC_ACTIONS = {
   "Improve inputs": { tone:"amber", verb:"Improve inputs for" },   // market sharper → L0 new input
   "Recalibrate":    { tone:"amber", verb:"Recalibrate" },          // model beats price but miscalibrated → L2 de-shrink
 };
+// A Recalibrate task isn't safe to act on until the formula-grade bar (n≥200): below it the
+// calibration curve is noisy and often non-monotonic (e.g. 2026-06-24 mlb|totalBases under at
+// 60-65 but OVER at 75-90 — a uniform de-shrink would worsen the high bands), so a reweight would
+// chase a single thin band. Below RECAL_MIN_N the row stays on the accuracy board but is held OUT
+// of the daily Do This banner so it doesn't nag an un-ripe task; it resurfaces at n≥200.
+const RECAL_MIN_N = 200;
 // MARKET_SHARPER categories whose L0 input search is EXHAUSTED — tune:residual found no addable
 // in-data dimension and the historical pre-filters (weather→runs, WNBA travel) failed (2026-06-23;
 // see memories project-residual-sweep / project-weather-runs-study / project-wnba-travel-study).
@@ -555,7 +561,8 @@ function _doThisCandidates(d) {
   // (a dead-end L0 search); a Recalibrate task is always actionable so it's never suppressed.
   const accChanges = (d?.accuracyBoard || []).filter(e =>
     _ACC_ACTIONS[e?.honest?.action] &&
-    !(e.honest.action === "Improve inputs" && INPUT_SEARCH_EXHAUSTED.has(`${e.sport}|${e.category}`)));
+    !(e.honest.action === "Improve inputs" && INPUT_SEARCH_EXHAUSTED.has(`${e.sport}|${e.category}`)) &&
+    !(e.honest.action === "Recalibrate" && (e.n || 0) < RECAL_MIN_N));
   if (accChanges.length) {
     const byAction = {};
     for (const e of accChanges) (byAction[e.honest.action] ||= []).push(`${e.sport} ${e.category}`);
