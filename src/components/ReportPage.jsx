@@ -443,6 +443,20 @@ const MODEL_NEXT = [
       { t: "alt", badge: "LIVE", ticker: "KXMLBOUTS", title: "Pitcher outs recorded O/U — alt-line ladder per starter (live in shadow)" },
     ],
   },
+  {
+    // Polymarket platform expansion. Phase 1a (cross-venue ML price observatory) SHIPPED 2026-06-23
+    // — shadow-only, no trading. infra:true so the "build next" prompt never picks it (its next step
+    // is data-gated, not a market to author). The Phase-1b trading decision waits on ~2 weeks of
+    // EXECUTABLE divergence (exec.fracEdgeGe3c from /api/polymarket-deltas).
+    sport: "Polymarket", rank: 9, infra: true,
+    note: "Phase 1a cross-venue price observatory shipped — moneyline Kalshi-vs-Polymarket deltas logging to polymarket_deltas (shadow-only, no trading). The Phase-1b trading decision is data-gated on ~2 weeks of EXECUTABLE divergence, not mid-price gaps.",
+    knob: "Gamma public API → normalize game ML → match our Kalshi rows → CLOB book-walk for executable VWAP; exec.fracEdgeGe3c (% of bettable sides still ≥3¢ cheaper to BUY after slippage) is the go/no-go",
+    markets: [
+      { t: "infra", badge: "LIVE", ticker: "ML observatory", title: "Cross-venue moneyline deltas — mid + book-walked executable VWAP → /api/polymarket-deltas (accumulating)" },
+      { t: "infra", badge: "LATER", ticker: "Phase 1b trading", title: "Emit bettable Poly plays + place orders — gated on exec.fracEdgeGe3c >0 over ~2 wks, else kill" },
+      { t: "infra", badge: "LATER", ticker: "Totals (1a.1)", title: "Re-add totals once game-totals.js emits volume on dropped rows so illiquid alt-lines can be liquidity-gated" },
+    ],
+  },
 ];
 
 // ---- GATE DIGEST: one line above the board — what (if anything) to change today ----
@@ -489,8 +503,9 @@ function GateDigest({ board }) {
 // models — ungated + n≥50 + STRENGTHENING, the build→gate half of the funnel (run tune:gate +
 // Brier); (3) build the next market on the MODEL_NEXT roadmap; (3.25) vet shortlisted markets
 // (promoted detections, mid-funnel); (3.5) triage detected new markets (the funnel's first step);
-// (4) expand the platform (Polymarket). 3 and 4 are always "available", so on a quiet, healthy day
-// the primary becomes "build next market" with vet/triage/Polymarket queued.
+// (4) check Polymarket divergence (Phase 1a observatory shipped 2026-06-23 + accumulating; the 1b
+// trading call is data-gated, so the floor is "watch," not "build"). 3 and 4 are always "available",
+// so on a quiet, healthy day the primary becomes "build next market" with vet/triage/Polymarket queued.
 // Betting-board (Layer 2) actions that count as a "model change pending".
 const _BET_ACTIONS = {
   "Add to gate":    { tone:"green", verb:"Promote" },
@@ -595,9 +610,11 @@ function _doThisCandidates(d) {
       why: `${titles}${nm.length > 3 ? " …" : ""} — dismiss noise, promote real candidates`,
       short: `Triage ${nm.length} detected` });
   }
-  // 4 — expand to a new platform (strategic backlog floor; primary only when nothing above is actionable).
-  out.push({ tier:4, tone:"gray", label:"Expand to Polymarket",
-    why:"new platform (US, no-crypto) — widen the surface beyond Kalshi", short:"Polymarket" });
+  // 4 — Polymarket (strategic backlog floor; primary only when nothing above is actionable). Phase 1a
+  // observatory shipped 2026-06-23 and is accumulating cross-venue deltas, so the floor prompt is now
+  // "watch the divergence accumulate," not "go build it" — the Phase-1b trading call is data-gated.
+  out.push({ tier:4, tone:"gray", label:"Check Polymarket divergence",
+    why:"Phase 1a observatory live — cross-venue ML deltas logging. Read /api/polymarket-deltas?days=30; build 1b trading only if exec.fracEdgeGe3c stays >0 over ~2 wks", short:"Polymarket 1b gate" });
   return out;
 }
 function DoThisBanner({ d }) {
