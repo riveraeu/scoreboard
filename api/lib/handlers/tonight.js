@@ -31,6 +31,7 @@ import { emitNascarPlays } from "../tonight/nascar.js";
 import { emitMlbOutsPlays } from "../tonight/mlb-outs.js";
 import { fetchPolymarketGames } from "../polymarket.js";
 import { emitPolymarketDeltas } from "../tonight/polymarket-deltas.js";
+import { enrichDeltasWithExec } from "../polymarket-book.js";
 
 const __defProp = Object.defineProperty;
 const __name = (target, value) => __defProp(target, "name", { value, configurable: true });
@@ -1811,6 +1812,12 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
         try {
           const _polyGames = await fetchPolymarketGames({ cache: CACHE2, isBustCache });
           polymarketDeltaSummary = emitPolymarketDeltas({ polyGames: _polyGames, plays, dropped, deltas: polymarketDeltas });
+          // Sharpen the kill-gate: walk the Poly CLOB book for the bettable [67,91] sides so the
+          // delta is EXECUTABLE (real VWAP after slippage), not just mid-price. Bounded + failure-
+          // closed — leaves the mid delta intact on any book miss.
+          const _tokensByGame = {};
+          for (const g of _polyGames) if (g.mlTokens) _tokensByGame[`${g.sport}|${g.away}@${g.home}`] = g.mlTokens;
+          await enrichDeltasWithExec({ deltas: polymarketDeltas, tokensByGame: _tokensByGame });
         } catch (e) { if (isDebug) console.error("polymarket deltas failed", e); }
         // Stage plays for shadow-snapshot — eliminates the 55s internal re-fetch.
         // `schedule` = today's ESPN game count per sport, so shadow-snapshot can compare

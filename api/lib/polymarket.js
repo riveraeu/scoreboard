@@ -66,14 +66,19 @@ export function normalizeEvent(event) {
   if (!away || !home) return null;
 
   let ml = null;
+  let mlTokens = null;
   const totalsByLine = {};
   for (const mkt of (event?.markets || [])) {
     if (mkt?.closed || mkt?.active === false || !_liquid(mkt)) continue;
     const type = mkt.sportsMarketType;
     const prices = _parseArr(mkt.outcomePrices).map(Number);
     if (type === "moneyline") {
-      // outcomes/prices are [away, home] per the away-first ordering.
-      if (prices.length === 2 && prices.every(isFinite)) ml = { away: prices[0], home: prices[1] };
+      // outcomes/prices/tokens are [away, home] per the away-first ordering.
+      if (prices.length === 2 && prices.every(isFinite)) {
+        ml = { away: prices[0], home: prices[1] };
+        const toks = _parseArr(mkt.clobTokenIds).map(String);
+        if (toks.length === 2) mlTokens = { away: toks[0], home: toks[1] };
+      }
     } else if (type === "totals") {
       const outcomes = _parseArr(mkt.outcomes).map(String);
       const line = Number(mkt.line);
@@ -83,7 +88,7 @@ export function normalizeEvent(event) {
     }
   }
   if (!ml) return null; // no live moneyline → nothing to compare; skip the game
-  return { sport: tk.sport, away, home, gameDate: tk.dateStr, ml, totals: Object.values(totalsByLine) };
+  return { sport: tk.sport, away, home, gameDate: tk.dateStr, ml, mlTokens, totals: Object.values(totalsByLine) };
 }
 
 async function _fetchSeriesEvents(series) {

@@ -9,6 +9,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseGameTicker, normPolyTeam, normalizeEvent } from "./polymarket.js";
 import { emitPolymarketDeltas } from "./tonight/polymarket-deltas.js";
+import { walkPolyFill } from "./polymarket-book.js";
 
 test("parseGameTicker: main game ticker parses; suffixed/non-game reject", () => {
   assert.deepEqual(parseGameTicker("mlb-mil-stl-2026-05-05"),
@@ -91,6 +92,36 @@ test("emitPolymarketDeltas: signed cents, both ML sides, ±1-day match, summary"
   assert.equal(summary.market, "ml");
   assert.equal(summary.matchedGames, 1);
   assert.equal(summary.bySport.mlb, 2);
+});
+
+test("walkPolyFill: single level fully fills → vwap = level price, no slip", () => {
+  const f = walkPolyFill({ asks: [{ price: "0.75", size: "100" }], targetShares: 40 });
+  assert.equal(f.vwapPct, 75);
+  assert.equal(f.filledShares, 40);
+  assert.equal(f.exhausted, false);
+  assert.equal(f.slipCents, 0);
+});
+
+test("walkPolyFill: sweeps cheapest-first across unsorted levels, slip vs best ask", () => {
+  // Unsorted on purpose; cheapest (0.70) should be consumed first.
+  const f = walkPolyFill({ asks: [{ price: "0.72", size: "50" }, { price: "0.70", size: "50" }], targetShares: 100 });
+  // 50@70 + 50@72 → vwap 71
+  assert.equal(f.vwapPct, 71);
+  assert.equal(f.slipCents, 1); // 71 − bestAsk(70)
+  assert.equal(f.exhausted, false);
+});
+
+test("walkPolyFill: not enough depth → exhausted, fills what exists", () => {
+  const f = walkPolyFill({ asks: [{ price: "0.80", size: "10" }], targetShares: 40 });
+  assert.equal(f.filledShares, 10);
+  assert.equal(f.exhausted, true);
+  assert.equal(f.vwapPct, 80);
+});
+
+test("walkPolyFill: empty/degenerate book → null", () => {
+  assert.equal(walkPolyFill({ asks: [], targetShares: 40 }), null);
+  assert.equal(walkPolyFill({ asks: [{ price: "0", size: "0" }], targetShares: 40 }), null);
+  assert.equal(walkPolyFill({ asks: [{ price: "0.75", size: "100" }], targetShares: 0 }), null);
 });
 
 test("emitPolymarketDeltas: no Kalshi match → no rows", () => {

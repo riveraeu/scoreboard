@@ -89,6 +89,9 @@ const POLY_DELTAS_TABLE = "polymarket_deltas";
 const POLY_DELTAS_COLUMNS = [
   "id", "snapshot_date", "sport", "game", "game_date", "market", "side",
   "kalshi_pct", "poly_pct", "delta_cents", "model_true_pct",
+  // Phase 1b: executable Poly buy price (book-walked at a $30 ref) — only the bettable [67,91]
+  // sides carry these; exec_delta_cents = poly_vwap_pct − kalshi_pct (negative = surviving edge).
+  "poly_vwap_pct", "poly_slip_cents", "exec_delta_cents",
 ];
 const CREATE_POLY_DELTAS_SQL = `
 CREATE TABLE IF NOT EXISTS ${POLY_DELTAS_TABLE} (
@@ -103,10 +106,19 @@ CREATE TABLE IF NOT EXISTS ${POLY_DELTAS_TABLE} (
   poly_pct NUMERIC,
   delta_cents NUMERIC,
   model_true_pct NUMERIC,
+  poly_vwap_pct NUMERIC,
+  poly_slip_cents NUMERIC,
+  exec_delta_cents NUMERIC,
   captured_at TIMESTAMPTZ DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS polymarket_deltas_date_idx ON ${POLY_DELTAS_TABLE} (snapshot_date);
 CREATE INDEX IF NOT EXISTS polymarket_deltas_sport_idx ON ${POLY_DELTAS_TABLE} (sport);
+`;
+// Executable-price columns added 2026-06-23 (Phase 1b) — ALTER for the table created earlier today.
+const ADD_POLY_EXEC_COLS_SQL = `
+ALTER TABLE ${POLY_DELTAS_TABLE} ADD COLUMN IF NOT EXISTS poly_vwap_pct NUMERIC;
+ALTER TABLE ${POLY_DELTAS_TABLE} ADD COLUMN IF NOT EXISTS poly_slip_cents NUMERIC;
+ALTER TABLE ${POLY_DELTAS_TABLE} ADD COLUMN IF NOT EXISTS exec_delta_cents NUMERIC
 `;
 
 // Stable deterministic ID for a play — unique per player/teams + stat/line + date.
@@ -1993,11 +2005,26 @@ async function handlePolymarketDeltas({ path, request, env }) {
         percentile_cont(0.5) WITHIN GROUP (ORDER BY abs(delta_cents)) AS median_abs
       FROM ${POLY_DELTAS_TABLE} WHERE snapshot_date >= CURRENT_DATE - $1::int${sportFilter}
       GROUP BY snapshot_date ORDER BY snapshot_date DESC LIMIT 30`, params, env, { write: true });
+    // Executable read (book-walked bettable sides). exec_delta = poly_vwap − kalshi; ≤−3 means
+    // Polymarket is still ≥3¢ cheaper to BUY after slippage = surviving edge. THIS is the kill-gate.
+    const [exec] = await neonQuery(`
+      SELECT count(*)::int AS n,
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY abs(exec_delta_cents)) AS median_abs,
+        avg(exec_delta_cents) AS mean_signed,
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY poly_slip_cents) AS median_slip,
+        avg(CASE WHEN exec_delta_cents <= -3 THEN 1.0 ELSE 0 END) AS frac_edge3,
+        avg(CASE WHEN exec_delta_cents <= -5 THEN 1.0 ELSE 0 END) AS frac_edge5
+      FROM ${POLY_DELTAS_TABLE}
+      WHERE snapshot_date >= CURRENT_DATE - $1::int${sportFilter} AND exec_delta_cents IS NOT NULL`, params, env, { write: true });
 
     return jsonResponse({
       ok: true, days, sport: sport || "all",
       overall: fmtAgg(overall),
       inWindow6791: fmtAgg(inWindow),
+      exec: exec ? {
+        n: exec.n, medianAbs: num(exec.median_abs), meanSigned: num(exec.mean_signed),
+        medianSlipCents: num(exec.median_slip), fracEdgeGe3c: num(exec.frac_edge3), fracEdgeGe5c: num(exec.frac_edge5),
+      } : null,
       bySport: bySport.map(r => ({ sport: r.sport, n: r.n, medianAbs: num(r.median_abs), maxAbs: num(r.max_abs), meanSigned: num(r.mean_signed) })),
       daily: daily.map(r => ({ date: new Date(r.snapshot_date).toISOString().slice(0, 10), n: r.n, medianAbs: num(r.median_abs) })),
     });
@@ -2038,12 +2065,13 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
   try {
     // DDL is skipped after first successful run (flag cached in Upstash for 30 days).
     // Avoids 4 cold-Neon round-trips that push the Edge Function past its timeout.
-    const _schemaKey = "shadow:schema:v5";
+    const _schemaKey = "shadow:schema:v6";
     const _schemaOk = cache ? await cache.get(_schemaKey).catch(() => null) : null;
     if (!_schemaOk) {
       console.log("[shadow-snapshot] starting neonExec DDL");
       await neonExec(CREATE_TABLE_SQL, env);
       await neonExec(CREATE_POLY_DELTAS_SQL, env);
+      await neonExec(ADD_POLY_EXEC_COLS_SQL, env);
       console.log(`[shadow-snapshot] DDL done ${Date.now() - t0}ms`);
     }
 
@@ -2162,6 +2190,9 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
             poly_pct: d.polyPct ?? null,
             delta_cents: d.deltaCents ?? null,
             model_true_pct: d.modelTruePct ?? null,
+            poly_vwap_pct: d.polyVwapPct ?? null,
+            poly_slip_cents: d.polySlipCents ?? null,
+            exec_delta_cents: d.execDeltaCents ?? null,
           }));
         await neonBatchUpsert(POLY_DELTAS_TABLE, POLY_DELTAS_COLUMNS, _pRows, env);
         polymarketLogged = _pRows.length;
@@ -2197,7 +2228,7 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
     }
 
     // Refresh schema flag so next cron run skips DDL (30-day TTL, renewed on each success).
-    if (cache) cache.put("shadow:schema:v5", "1", { expirationTtl: 86400 * 30 }).catch(() => {});
+    if (cache) cache.put("shadow:schema:v6", "1", { expirationTtl: 86400 * 30 }).catch(() => {});
 
     return jsonResponse({
       ok: true,
