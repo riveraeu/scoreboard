@@ -524,6 +524,11 @@ const _ACC_ACTIONS = {
 // chase a single thin band. Below RECAL_MIN_N the row stays on the accuracy board but is held OUT
 // of the daily Do This banner so it doesn't nag an un-ripe task; it resurfaces at n≥200.
 const RECAL_MIN_N = 200;
+// Polymarket Phase-1b is a DATED ~2-week kill-gate wait (exec.fracEdgeGe3c over ~14 days), not a
+// daily decision — so its banner floor is suppressed until the re-check date and resurfaces then.
+// Bump this each time the window is extended (e.g. if ~50 exec rows give a marginal read). The
+// roadmap entry stays visible regardless; this only quiets the daily Do This nag. [[project-polymarket-phase1a]]
+const POLY_RECHECK = "2026-07-07";
 // MARKET_SHARPER categories whose L0 input search is EXHAUSTED — tune:residual found no addable
 // in-data dimension and the historical pre-filters (weather→runs, WNBA travel) failed (2026-06-23;
 // see memories project-residual-sweep / project-weather-runs-study / project-wnba-travel-study).
@@ -625,10 +630,20 @@ function _doThisCandidates(d) {
       short: `Triage ${nm.length} detected` });
   }
   // 4 — Polymarket (strategic backlog floor; primary only when nothing above is actionable). Phase 1a
-  // observatory shipped 2026-06-23 and is accumulating cross-venue deltas, so the floor prompt is now
-  // "watch the divergence accumulate," not "go build it" — the Phase-1b trading call is data-gated.
-  out.push({ tier:4, tone:"gray", label:"Check Polymarket divergence",
-    why:"Phase 1a observatory live — cross-venue ML deltas logging. Read /api/polymarket-deltas?days=30; build 1b trading only if exec.fracEdgeGe3c stays >0 over ~2 wks", short:"Polymarket 1b gate" });
+  // observatory shipped 2026-06-23 and is accumulating cross-venue deltas. The Phase-1b call is a
+  // DATED ~2-week kill-gate wait, so this floor is held until POLY_RECHECK rather than nagging the same
+  // "come back in two weeks" task daily — until then the banner falls through (empty = nothing to do).
+  const todayPT = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+  if (todayPT >= POLY_RECHECK) {
+    out.push({ tier:4, tone:"gray", label:"Check Polymarket divergence",
+      why:`Phase 1a observatory live — cross-venue ML deltas logging. Read /api/polymarket-deltas?days=30; build 1b trading only if exec.fracEdgeGe3c holds >0 with real n (re-check window open since ${POLY_RECHECK})`, short:"Polymarket 1b gate" });
+  }
+  // 5 — quiet-day floor: nothing above is actionable and the Polymarket re-check isn't due yet. Show a
+  // calm "caught up" state naming the next scheduled checkpoint instead of an empty/absent banner.
+  if (!out.length) {
+    out.push({ tier:5, tone:"gray", label:"Nothing to act on today",
+      why:`Gate empty, models accruing, no new markets to triage. Next scheduled checkpoint: Polymarket Phase-1b kill-gate re-check ~${POLY_RECHECK}.`, short:"All clear" });
+  }
   return out;
 }
 function DoThisBanner({ d }) {
