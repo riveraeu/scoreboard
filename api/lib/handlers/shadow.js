@@ -1393,7 +1393,7 @@ async function handleShadowReport({ path, request, env, cache }) {
         WHERE resolved AND won IS NOT NULL AND snapshot_date >= ${_formulaFloorSql("$1")} AND threshold_rank = 1
         GROUP BY sport, COALESCE(stat, game_type)
         ORDER BY n DESC LIMIT 20
-      `, [since], env),
+      `, [since], env, { write: true }),
 
       // Q2: Band distribution (55–100%, n≥5) — where is there most data + biggest gap?
       neonQuery(`
@@ -1417,7 +1417,7 @@ async function handleShadowReport({ path, request, env, cache }) {
         FROM src WHERE bsp >= 55
         GROUP BY sport, category, band HAVING COUNT(*) >= 5
         ORDER BY n DESC
-      `, [since], env),
+      `, [since], env, { write: true }),
 
       // Q3: CLV — per-category avg line movement (3pm snapshot → 7pm pre-game stamp).
       neonQuery(`
@@ -1438,7 +1438,7 @@ async function handleShadowReport({ path, request, env, cache }) {
           AND threshold_rank = 1 AND kalshi_yes_price_pre IS NOT NULL
         GROUP BY sport, COALESCE(stat, game_type) HAVING COUNT(*) >= 5
         ORDER BY n DESC
-      `, [since], env),
+      `, [since], env, { write: true }),
 
       // Q4: Daily volume ROI — plays/day bucket vs realized ROI.
       neonQuery(`
@@ -1462,7 +1462,7 @@ async function handleShadowReport({ path, request, env, cache }) {
           ROUND((SUM(wins)::numeric / SUM(n_plays)) - AVG(avg_price), 4) AS roi
         FROM daily
         GROUP BY picks_bucket, bucket_order ORDER BY bucket_order
-      `, [since], env),
+      `, [since], env, { write: true }),
 
       // Q5: Today's top picks — qualified plays from this morning's snapshot.
       // Category gate is replicated from passesCategoryGate() in src/lib/constants.js.
@@ -1481,7 +1481,7 @@ async function handleShadowReport({ path, request, env, cache }) {
           AND is_best_edge = TRUE
           AND ${_CATEGORY_GATE_SQL}
         ORDER BY edge DESC LIMIT 5
-      `, [reportDate], env),
+      `, [reportDate], env, { write: true }),
 
       // Q6: Data health — yesterday's resolution + CLV capture (garbage-in guard).
       neonQuery(`
@@ -1492,7 +1492,7 @@ async function handleShadowReport({ path, request, env, cache }) {
           SUM((kalshi_yes_price_pre IS NOT NULL)::int) AS clv_captured
         FROM shadow_plays
         WHERE game_date = $1
-      `, [yesterday], env),
+      `, [yesterday], env, { write: true }),
 
       // Q7: Picks-per-game calibration — among the gated bet set (dc_qualified, edge≥5,
       // Kalshi 67–91), rank picks within a game by edge and report ROI per within-game rank.
@@ -1524,7 +1524,7 @@ async function handleShadowReport({ path, request, env, cache }) {
           ROUND(100.0 * AVG(w) - AVG(bet_pct), 2) AS roi_pct
         FROM ranked
         GROUP BY 1, 2 ORDER BY 1, 2
-      `, [since], env),
+      `, [since], env, { write: true }),
 
       // Q8: Price-band profitability — fine 5¢ grid of model-positive plays (dc_qualified,
       // edge ≥ server gate) across the FULL Kalshi price range. No 67–91 window and no truePct
@@ -1547,7 +1547,7 @@ async function handleShadowReport({ path, request, env, cache }) {
         FROM bp WHERE price >= 1 AND price <= 99
         GROUP BY sport, category, price_lo
         ORDER BY sport, category, price_lo
-      `, [since], env),
+      `, [since], env, { write: true }),
 
       // Q9: Proper-score head-to-head — model-Brier vs market-Brier per category over the
       // honesty population (all resolved formula-clean rows, threshold_rank=1; no edge/price
@@ -1568,7 +1568,7 @@ async function handleShadowReport({ path, request, env, cache }) {
         FROM shadow_plays
         WHERE resolved AND won IS NOT NULL AND snapshot_date >= ${_formulaFloorSql("$1")} AND threshold_rank = 1
         GROUP BY sport, COALESCE(stat, game_type)
-      `, [since], env),
+      `, [since], env, { write: true }),
     ]);
   } catch (e) {
     console.error("[shadow-report] query failed:", e?.message);
@@ -1869,7 +1869,7 @@ async function handleShadowReport({ path, request, env, cache }) {
                live_market_count, window_fit, first_seen
         FROM kalshi_series_seen WHERE status = $1
         ORDER BY first_seen DESC, ticker LIMIT 25
-      `, [status], env);
+      `, [status], env, { write: true });
       return rows.map(r => ({
         ticker: r.ticker,
         title: r.title ?? null,
