@@ -1210,33 +1210,49 @@ function _accuracyVerdict(calib) {
   return "BUILDING";                                    // insufficient — can't judge calibration yet
 }
 // `skill`/`skillN` = Brier skill (market−model) over the honesty population + its n. They fork the
-// PRESCRIPTION for a miscalibrated category (not the verdict, which stays calibration-based):
-//   • model already beats the price (skill>0 at n≥BRIER_MIN_N) → the miss is pure SCALING, the model
-//     is the sharper estimator stating its edge at the wrong confidence → RECALIBRATE (L2 de-shrink).
-//   • market out-predicts the model (skill≤0 / untrusted) → the model is missing a signal the market
-//     prices → IMPROVE INPUTS (L0 new input). (2026-06-24: fixes mlb|totalBases/hits — underconfident
-//     AND beating the price — being told "find a new input, a reweight won't help" when a reweight is
-//     exactly the fix. See [[project-accuracy-recalibrate-fork]].)
+// PRESCRIPTION for a miscalibrated category (not the verdict, which stays calibration-based) into THREE
+// states, because "market out-predicts you" (the only justification for an L0 input hunt) requires the
+// market's Brier to be TRUSTABLY better — a non-negative skill is the opposite of that:
+//   • model sharper by sign (skill>0, any n) → the miss is pure SCALING → RECALIBRATE (L2 de-shrink).
+//     A thin (skillN<BRIER_MIN_N) +skill is provisional — labeled so, and held off the daily banner
+//     frontend-side until the n≥200 ripe-recalibrate bar (RECAL_MIN_N).
+//   • market TRUSTABLY sharper (skill<0 AND skillN≥BRIER_MIN_N) → the model is missing a signal the
+//     market prices → IMPROVE INPUTS (L0 new input, the only state that nags "run tune:residual").
+//   • undecided (skill≈0, null, or a too-thin skill<0) → ACCRUING — don't claim the market is sharper
+//     off a noisy Brier; no banner nag either way.
+// (2026-06-24: the Recalibrate fork fixed mlb|totalBases/hits — underconfident AND beating the price —
+// being told "find a new input." 2026-06-25: split out the thin/undecided cases so a model-sharper-but-
+// thin category like wnba|threePointers (skill +0.045, n≈33) stops being mislabeled "needs a NEW input"
+// just because its Brier n is below 100. See [[project-accuracy-recalibrate-fork]].)
 function _accuracyAction(verdict, calib, skill, skillN) {
   const c = calib || { status: "insufficient" };
-  const beatsPrice = skill != null && skill > 0 && (skillN || 0) >= BRIER_MIN_N;
+  const trusted       = (skillN || 0) >= BRIER_MIN_N;          // Brier reliable
+  const beatsPrice    = skill != null && skill > 0;            // model sharper by SIGN (any n)
+  const marketSharper = skill != null && skill < 0 && trusted; // market TRUSTABLY sharper
+  const provNote      = trusted ? "" : ` (provisional, n<${BRIER_MIN_N})`;
   const deltaTxt = c.delta != null ? `${Math.abs(c.delta)}pts ` : "";
   switch (verdict) {
     case "CALIBRATED":
       return { action: "Calibrated", tone: "green",
         why: "model% matches actual outcomes within noise — well-calibrated to reality" };
     case "OVERCONFIDENT":
-      return beatsPrice
-        ? { action: "Recalibrate", tone: "amber",
-            why: `model beats the price but over-claims (${deltaTxt}too high in the ${c.band ?? ""}% band) — scale down / de-shrink (L2 reweight), NOT a new input` }
-        : { action: "Improve inputs", tone: "amber",
-            why: `model is overconfident AND the market out-predicts it — says ${deltaTxt}more than it delivers in the ${c.band ?? ""}% band; needs a NEW input, run tune:residual` };
+      if (marketSharper)
+        return { action: "Improve inputs", tone: "amber",
+          why: `model is overconfident AND the market out-predicts it — says ${deltaTxt}more than it delivers in the ${c.band ?? ""}% band; needs a NEW input, run tune:residual` };
+      if (beatsPrice)
+        return { action: "Recalibrate", tone: "amber",
+          why: `model beats the price${provNote} but over-claims (${deltaTxt}too high in the ${c.band ?? ""}% band) — scale down / de-shrink (L2 reweight), NOT a new input` };
+      return { action: "Accruing", tone: "dim",
+        why: `model over-claims (${deltaTxt}too high in the ${c.band ?? ""}% band) but model-vs-market is undecided at n<${BRIER_MIN_N} — accruing, not a new-input case yet` };
     case "UNDERCONFIDENT":
-      return beatsPrice
-        ? { action: "Recalibrate", tone: "amber",
-            why: `model beats the price but under-claims (+${deltaTxt}in the ${c.band ?? ""}% band) — de-shrink / scale up (L2 reweight), NOT a new input` }
-        : { action: "Improve inputs", tone: "amber",
-            why: `model is underconfident AND the market out-predicts it — delivers ${deltaTxt}more than it claims in the ${c.band ?? ""}% band; needs a NEW input, run tune:residual` };
+      if (marketSharper)
+        return { action: "Improve inputs", tone: "amber",
+          why: `model is underconfident AND the market out-predicts it — delivers ${deltaTxt}more than it claims in the ${c.band ?? ""}% band; needs a NEW input, run tune:residual` };
+      if (beatsPrice)
+        return { action: "Recalibrate", tone: "amber",
+          why: `model beats the price${provNote} but under-claims (+${deltaTxt}in the ${c.band ?? ""}% band) — de-shrink / scale up (L2 reweight), NOT a new input` };
+      return { action: "Accruing", tone: "dim",
+        why: `model under-claims (+${deltaTxt}in the ${c.band ?? ""}% band) but model-vs-market is undecided at n<${BRIER_MIN_N} — accruing, not a new-input case yet` };
     default:
       return { action: "Accruing", tone: "dim", why: "not enough resolved plays to judge calibration yet" };
   }

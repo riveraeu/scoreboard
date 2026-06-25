@@ -243,7 +243,7 @@ function AccuracyBoard({ board }) {
       <table style={tableStyle}>
         <thead><tr>{["Category","Verdict","Honesty","Model Brier","vs Market","Learning","N"].map(h => {
           const tip = h==="vs Market" ? "Brier skill = market-Brier − model-Brier over all resolved plays. >0 (green) = model sharper than the price (this is what makes a category bettable); <0 (red) = market is the sharper estimator. Dim until n≥100. Not part of the accuracy verdict."
-            : h==="Verdict" ? "Calibration vs reality: Calibrated (model% matches actual within noise) · Overconfident / Underconfident (proven miscalibration, n≥200 → Recalibrate if the model still beats the price, else Improve inputs) · Building (not enough resolved plays to judge)."
+            : h==="Verdict" ? "Calibration vs reality: Calibrated (model% matches actual within noise) · Overconfident / Underconfident (proven miscalibration → Recalibrate if the model beats the price, Improve inputs only if the market is TRUSTABLY sharper at n≥100, else Accruing while model-vs-market is undecided) · Building (not enough resolved plays to judge)."
             : h==="Model Brier" ? "Mean squared error of the model's probability vs the actual outcome — pure accuracy, no price. Lower = better."
             : h==="Learning" ? "Is the model still learning? Recent-half minus early-half Brier skill (current-formula window). ↗ green = skill rising as data accrues (keep accruing). → flat = saturated (reweighting tapped out). Dim until each half n≥100. Fine-grained curve + β* step size: npm run tune:learncurve."
             : undefined;
@@ -262,7 +262,7 @@ function AccuracyBoard({ board }) {
       </table>
       <div style={{ color:C.dim, fontSize:10, marginTop:5, lineHeight:1.55 }}>
         <b style={{ color:C.green }}>Calibrated</b> = model% matches actual outcomes within noise ·
-        <b style={{ color:C.red }}> Overconfident</b> / <b style={{ color:C.amber }}>Underconfident</b> = proven miscalibration → <b style={{ color:C.amber }}>Recalibrate</b> (L2 de-shrink) when the model still beats the price, else <b style={{ color:C.amber }}>Improve inputs</b> (L0 new input) — run tune:residual ·
+        <b style={{ color:C.red }}> Overconfident</b> / <b style={{ color:C.amber }}>Underconfident</b> = proven miscalibration → <b style={{ color:C.amber }}>Recalibrate</b> (L2 de-shrink) when the model beats the price, <b style={{ color:C.amber }}>Improve inputs</b> (L0 new input — run tune:residual) only when the market is trustably sharper (n≥100), else <b style={{ color:C.dim }}>Accruing</b> while undecided ·
         <b style={{ color:C.dim }}> Building</b> = not enough resolved plays to judge calibration yet. <b style={{ color:C.green }}>vs Market</b> &gt; 0 = the model also beats the price (→ bettable). Click a row for its calibration bands + Brier breakdown.
       </div>
     </div>
@@ -392,7 +392,7 @@ const MODEL_NEXT = [
       { t: "infra", badge: "LIVE", ticker: "Two-board split", title: "Accuracy board (does the model beat the price?) gates the betting board (what to bet) — separates model quality from bet selection" },
       { t: "infra", badge: "LIVE", ticker: "Skill column", title: "Brier skill on the accuracy board — does the model beat the price? (market-Brier − model-Brier)" },
       { t: "infra", badge: "LIVE", ticker: "tune:residual", title: "Phase 2 CLI — slice residuals by stored dims (features JSONB), ranked by gradient + per-bucket Brier skill (npm run tune:residual). Exercised against its first LIVE miss 2026-06-24 (mlb|totalBases): n=140 too thin to rank any dimension, no L0 candidate — re-run at n≥200." },
-      { t: "infra", badge: "LIVE", ticker: "Recalibrate vs Improve-inputs fork", title: "_accuracyAction forks miscalibrated categories on Brier skill (2026-06-24): model beats the price → Recalibrate (L2 de-shrink), market sharper → Improve inputs (L0 new input). Fixed mlb|totalBases/hits being told to find a new input when a reweight is the fix." },
+      { t: "infra", badge: "LIVE", ticker: "Recalibrate vs Improve-inputs fork", title: "_accuracyAction forks miscalibrated categories on Brier skill into 3 states (2026-06-24 → split 2026-06-25): model sharper by sign → Recalibrate (L2; thin +skill tagged provisional, banner-gated to n≥200), market TRUSTABLY sharper (skill<0 @ n≥100) → Improve inputs (L0 new input — the only state that nags), else Accruing. Fixed both mlb|totalBases/hits (told to find a new input when a reweight is the fix) AND model-sharper-but-thin cats like wnba|threePointers (skill +0.045/n=33 mislabeled 'needs a NEW input')." },
       { t: "infra", badge: "LATER", ticker: "residual board column", title: "Surface the slice on /model — upgrade Look deeper → Reweight (L2) / Add input: ⟨dim⟩ (L0); gated until a category has a live surviving miss" },
     ],
   },
