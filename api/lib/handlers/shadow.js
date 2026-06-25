@@ -1394,9 +1394,9 @@ async function handleShadowReport({ path, request, env, cache }) {
   const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000)
     .toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
 
-  let catRows, bandRows, clvRows, volRows, picksRows, healthRows, perGameRows, priceHistRows, brierRows;
+  let catRows, bandRows, clvRows, volRows, picksRows, healthRows, perGameRows, priceHistRows, brierRows, learnRows;
   try {
-    [catRows, bandRows, clvRows, volRows, picksRows, healthRows, perGameRows, priceHistRows, brierRows] = await Promise.all([
+    [catRows, bandRows, clvRows, volRows, picksRows, healthRows, perGameRows, priceHistRows, brierRows, learnRows] = await Promise.all([
       // Q1: Category overview — one row per player/game (threshold_rank=1 dedup).
       // Window floored per-category at the current-formula cutoff (no superseded-formula mixing).
       neonQuery(`
@@ -1585,6 +1585,30 @@ async function handleShadowReport({ path, request, env, cache }) {
         WHERE resolved AND won IS NOT NULL AND snapshot_date >= ${_formulaFloorSql("$1")} AND threshold_rank = 1
         GROUP BY sport, COALESCE(stat, game_type)
       `, [since], env, { write: true }),
+
+      // Q10: Learning curve (coarse) — is the model still LEARNING, or saturated? Splits each
+      // category's current-formula population at its median snapshot_date (NTILE(2) chronological)
+      // and computes paired Brier skill (market − model) in each half. skillTrend = recent − early:
+      // >0 = skill rising as data accrues (still extracting signal → keep accruing), ≈0 = saturated
+      // (reweighting tapped out; flat+below-price ⇒ needs a new input). Fine-grained per-checkpoint
+      // curve + the β* step size live in `npm run tune:learncurve`; this is the board headline.
+      neonQuery(`
+        WITH halved AS (
+          SELECT sport, COALESCE(stat, game_type) AS category,
+            NTILE(2) OVER (PARTITION BY sport, COALESCE(stat, game_type) ORDER BY snapshot_date) AS half,
+            POWER((CASE WHEN direction='under' THEN no_kalshi_pct ELSE kalshi_pct END)/100.0 - (won)::int, 2)
+              - POWER(model_true_pct/100.0 - (won)::int, 2) AS skill_i
+          FROM shadow_plays
+          WHERE resolved AND won IS NOT NULL AND snapshot_date >= ${_formulaFloorSql("$1")} AND threshold_rank = 1
+        )
+        SELECT sport, category,
+          COUNT(*) FILTER (WHERE half = 1) AS n_early,
+          COUNT(*) FILTER (WHERE half = 2) AS n_recent,
+          AVG(skill_i) FILTER (WHERE half = 1) AS skill_early,
+          AVG(skill_i) FILTER (WHERE half = 2) AS skill_recent
+        FROM halved
+        GROUP BY sport, category
+      `, [since], env, { write: true }),
     ]);
   } catch (e) {
     console.error("[shadow-report] query failed:", e?.message);
@@ -1669,6 +1693,23 @@ async function handleShadowReport({ path, request, env, cache }) {
     const skillSe = sd != null && n > 1 ? sd / Math.sqrt(n) : null;
     const skillLoCI = skill != null && skillSe != null ? parseFloat((skill - 1.96 * skillSe).toFixed(4)) : null;
     _brierByCat[`${r.sport}|${r.category}`] = { n, modelBrier: mb, marketBrier: kb, skill, skillLoCI };
+  }
+  // Learning trend (Q10) — recent-half minus early-half paired Brier skill. >0 = still learning,
+  // ≈0 = saturated. `reliable` once each half clears BRIER_MIN_N (Brier is noisy below that). β* is
+  // the credibility weight on the calibration gap = the honest L2 de-shrink step (200 = formula-n).
+  const _LEARN_K = 200;
+  const _learnByCat = {};
+  for (const r of (learnRows || [])) {
+    const nE = Number(r.n_early ?? 0), nR = Number(r.n_recent ?? 0);
+    const sE = r.skill_early != null ? Number(r.skill_early) : null;
+    const sR = r.skill_recent != null ? Number(r.skill_recent) : null;
+    const trend = sE != null && sR != null ? parseFloat((sR - sE).toFixed(4)) : null;
+    const total = nE + nR;
+    _learnByCat[`${r.sport}|${r.category}`] = {
+      skillTrend: trend,
+      betaStar: total > 0 ? parseFloat((total / (total + _LEARN_K)).toFixed(3)) : null,
+      reliable: Math.min(nE, nR) >= BRIER_MIN_N,
+    };
   }
   const _histByCat = {};
   for (const r of (priceHistRows || [])) {
@@ -1772,6 +1813,7 @@ async function handleShadowReport({ path, request, env, cache }) {
       key, sport, category, gated: _isGatedCategory(key),
       n: brier.n, skill: brier.skill, skillLoCI: brier.skillLoCI,
       modelBrier: brier.modelBrier, marketBrier: brier.marketBrier,
+      learning: _learnByCat[key] ?? null,
       verdict, honest, calib, calibBands,
     };
   }).sort((a, b) => (b.skill ?? -9) - (a.skill ?? -9));

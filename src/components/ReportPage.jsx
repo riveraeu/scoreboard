@@ -139,6 +139,20 @@ function SkillCell({ skill, skillN, modelBrier, marketBrier }) {
   return <span title={`model-Brier ${modelBrier ?? "—"} vs market-Brier ${marketBrier ?? "—"} (n=${skillN}). >0 = model sharper than the price.${ready ? "" : " · n<100, not yet trusted"}`}
     style={{ color, fontSize:10, fontWeight:600, cursor:"help" }}>{skill >= 0 ? "+" : ""}{skill.toFixed(3)}</span>;
 }
+// Learning trend — is Brier skill still rising as data accrues (still learning), or flat (saturated)?
+// recent-half minus early-half paired skill. Arrow + value; dim until each half clears n≥100.
+const _LEARN_FLAT = 0.003; // |trend| below this reads "flat" (saturated)
+function LearnCell({ learning }) {
+  if (!learning || learning.skillTrend == null) return <span style={{ color:C.dim, fontSize:10 }}>—</span>;
+  const { skillTrend: t, reliable, betaStar } = learning;
+  const arrow = t > _LEARN_FLAT ? "↗" : t < -_LEARN_FLAT ? "↘" : "→";
+  const color = !reliable ? C.dim : t > _LEARN_FLAT ? C.green : t < -_LEARN_FLAT ? C.red : C.gray;
+  const meaning = t > _LEARN_FLAT ? "still learning — skill rising as data accrues"
+    : t < -_LEARN_FLAT ? "degrading — skill falling (check for a formula regression)"
+    : "saturated — reweighting tapped out; flat+below-price ⇒ needs a new input";
+  return <span title={`learning trend (recent-half − early-half Brier skill) = ${t>=0?"+":""}${t}. ${meaning}.${betaStar!=null?` Suggested L2 step β*=${betaStar} (move truePct by β*·gap).`:""}${reliable?"":" · each half n<100, not yet trusted"} Fine-grained curve: npm run tune:learncurve`}
+    style={{ color, fontSize:11, fontWeight:600, cursor:"help" }}>{arrow}{reliable ? ` ${t>=0?"+":""}${t.toFixed(3)}` : ""}</span>;
+}
 // Per-category calibration bands (model% vs actual) — shown in the expanded detail.
 function CalibBandsTable({ bands }) {
   if (!bands?.length) return <div style={{ color:C.dim, fontSize:10, padding:"2px 0" }}>Not enough resolved plays yet — a truePct band needs ≥5 to score honesty.</div>;
@@ -197,10 +211,11 @@ function AccuracyBoard({ board }) {
           <td style={tdB}><HonestyCell calib={r.calib} /></td>
           <td style={{ ...tdB, color:C.gray, fontSize:10 }}>{r.modelBrier ?? "—"}</td>
           <td style={tdB}><SkillCell skill={r.skill} skillN={r.n} modelBrier={r.modelBrier} marketBrier={r.marketBrier} /></td>
+          <td style={tdB}><LearnCell learning={r.learning} /></td>
           <td style={{ ...tdB, color:r.n>=100?C.text:r.n>=50?C.gray:C.dim }}>{r.n}</td>
         </tr>
         {open && (
-          <tr><td colSpan={6} style={{ padding:"0 8px 6px 22px", background:"#0d1117" }}>
+          <tr><td colSpan={7} style={{ padding:"0 8px 6px 22px", background:"#0d1117" }}>
             {r.honest?.why && (
               <div style={{ color:_TONE[r.honest.tone]||C.gray, fontSize:11, margin:"4px 0" }}>
                 ▶ <b>{r.honest.action}</b>: <span style={{ color:C.text }}>{r.honest.why}</span>
@@ -226,10 +241,11 @@ function AccuracyBoard({ board }) {
         Is the model accurate? · verdict from truePct calibration (model% vs actual hit%) — no price, no ROI · "vs Market" is the secondary price comparison + the bridge to betting
       </div>
       <table style={tableStyle}>
-        <thead><tr>{["Category","Verdict","Honesty","Model Brier","vs Market","N"].map(h => {
+        <thead><tr>{["Category","Verdict","Honesty","Model Brier","vs Market","Learning","N"].map(h => {
           const tip = h==="vs Market" ? "Brier skill = market-Brier − model-Brier over all resolved plays. >0 (green) = model sharper than the price (this is what makes a category bettable); <0 (red) = market is the sharper estimator. Dim until n≥100. Not part of the accuracy verdict."
             : h==="Verdict" ? "Calibration vs reality: Calibrated (model% matches actual within noise) · Overconfident / Underconfident (proven miscalibration, n≥200 → Recalibrate if the model still beats the price, else Improve inputs) · Building (not enough resolved plays to judge)."
             : h==="Model Brier" ? "Mean squared error of the model's probability vs the actual outcome — pure accuracy, no price. Lower = better."
+            : h==="Learning" ? "Is the model still learning? Recent-half minus early-half Brier skill (current-formula window). ↗ green = skill rising as data accrues (keep accruing). → flat = saturated (reweighting tapped out). Dim until each half n≥100. Fine-grained curve + β* step size: npm run tune:learncurve."
             : undefined;
           return <th key={h} style={{ ...thB, cursor:tip?"help":undefined }} title={tip}>{h}</th>;
         })}</tr></thead>
@@ -237,7 +253,7 @@ function AccuracyBoard({ board }) {
           {gated.map(r => <Row key={r.key} r={r} />)}
           {actionable.map(r => <Row key={r.key} r={r} />)}
           {accruing.length > 0 && !showAccruing && (
-            <tr><td colSpan={6} style={{ ...tdB, textAlign:"left", color:C.dim, cursor:"pointer" }} onClick={() => setShowAccruing(true)}>
+            <tr><td colSpan={7} style={{ ...tdB, textAlign:"left", color:C.dim, cursor:"pointer" }} onClick={() => setShowAccruing(true)}>
               ▸ {accruing.length} more thin (n &lt; 50, off-season + low data) — show
             </td></tr>
           )}
