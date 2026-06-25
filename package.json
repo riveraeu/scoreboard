@@ -9,6 +9,7 @@
     "backtest": "node scripts/backtest/run.js",
     "tune:gate": "node scripts/tune/gate-recommender.js",
     "tune:residual": "node scripts/tune/residual-by-dimension.js",
+    "tune:learncurve": "node scripts/tune/learning-curve.js",
     "backtest:weather": "node scripts/backtest/weather-hr-study.js",
     "backtest:umpire": "node scripts/backtest/umpire-k-study.js",
     "backtest:nbarest": "node scripts/backtest/nba-rest-study.js",

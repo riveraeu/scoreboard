@@ -925,7 +925,7 @@ ORDER BY COUNT(*) DESC`;
 
       const rSql = `
         SELECT model_true_pct, won, direction, kalshi_pct, no_kalshi_pct, edge, threshold,
-               home_team, away_team, pick_team, scoring_team, game_date, features
+               home_team, away_team, pick_team, scoring_team, game_date, snapshot_date, features
         FROM shadow_plays
         WHERE ${rWhere.join(" AND ")}
         ORDER BY snapshot_date`;
