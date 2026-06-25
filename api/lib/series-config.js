@@ -50,6 +50,11 @@ export const SERIES_CONFIG = {
   KXWC2HTOTAL:   { sport: "soccer", league: "wc", stat: "2htotal",  col: "G",   gameType: "soccer", subtype: "total",  half: "2h" },
   KXWC2HSPREAD:  { sport: "soccer", league: "wc", stat: "2hspread", col: "G",   gameType: "soccer", subtype: "spread", half: "2h" },
   KXWC2HBTTS:    { sport: "soccer", league: "wc", stat: "2hbtts",   col: "G",   gameType: "soccer", subtype: "btts",   half: "2h" },
+  // World Cup knockout "to advance" (shadow-only) — a per-tie binary that settles on who advances
+  // (ET/penalties outcome, not the 90' score). The `soccerAdvance` gameType routes these to the
+  // dedicated emit path (api/lib/tonight/soccer-advance.js): the same Elo matrix as the 5 families,
+  // with the 90'-draw mass folded into a "to advance" prob. Shadow-only: `soccer|advance` NOT gated.
+  KXWCADVANCE:   { sport: "soccer", league: "wc", stat: "advance",   col: "ML",  gameType: "soccerAdvance" },
   // Fighting — UFC rounds O/U ("Will the fight end before round N?"). The `fight` gameType
   // routes these to the dedicated fight emit path (api/lib/tonight/fight.js): one weight-class
   // finish-rate → fight-duration CDF per bout. Shadow-only: `fight|rounds` is NOT in the gate.

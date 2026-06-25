@@ -7,7 +7,7 @@ import { neonQuery, neonBatchUpsert, neonBatchResolve, neonBatchPrePriceUpdate, 
 import { errorResponse, jsonResponse } from "../utils.js";
 import { verifyJWT } from "../auth-utils.js";
 import { fetchCompletedMatches } from "../tennis.js";
-import { fetchWcFinals, fetchWcHalfFinals } from "../soccer.js";
+import { fetchWcFinals, fetchWcHalfFinals, fetchWcAdvance } from "../soccer.js";
 import { fetchFightResults, matchFightByCodes, normFighterName } from "../mma.js";
 import { fetchRoundScores, normGolfName } from "../golf.js";
 import { fetchRaceResults } from "../nascar.js";
@@ -481,8 +481,9 @@ async function handleShadowResolver({ path, request, env }) {
   // split them out of teamRows below.
   const tennisRows = rows.filter(r => r.sport === "tennis");
   const _isSoccerHalf = (r) => /^(1h|2h)(game|total|spread|btts)$/.test(r.stat || "");
-  const soccerRows = rows.filter(r => r.sport === "soccer" && !_isSoccerHalf(r));
+  const soccerRows = rows.filter(r => r.sport === "soccer" && r.stat !== "advance" && !_isSoccerHalf(r));
   const soccerHalfRows = rows.filter(r => r.sport === "soccer" && _isSoccerHalf(r));
+  const soccerAdvanceRows = rows.filter(r => r.sport === "soccer" && r.stat === "advance");
   const fightRows = rows.filter(r => r.sport === "fight");
   const golfRows = rows.filter(r => r.sport === "golf");
   const nascarRows = rows.filter(r => r.sport === "nascar");
@@ -750,6 +751,35 @@ async function handleShadowResolver({ path, request, env }) {
           won = isUnder ? !btts : btts;
         } else { noData++; continue; }
         updates.push({ id: r.id, won, actualValue: actual });
+      }
+    }
+  }
+
+  // ── Soccer knockout "to advance" resolution ── grade the per-tie binary off who advanced
+  // (the ET/penalties outcome via fetchWcAdvance, NOT the 90' score). Find the tie by the unordered
+  // {home,away} pair; the row wins iff the advancing side equals pick_team. A tie that's completed
+  // but not yet flagged (advancer null) records noData rather than a wrong grade.
+  if (soccerAdvanceRows.length) {
+    const dateOf = (r) => r.game_date
+      || (r.game_time ? new Date(r.game_time).toISOString().slice(0, 10) : null)
+      || (r.snapshot_date ? new Date(r.snapshot_date).toISOString().slice(0, 10) : null);
+    const byDate = new Map(); // date → rows
+    for (const r of soccerAdvanceRows) {
+      const date = dateOf(r);
+      if (!date) { noData++; continue; }
+      if (!byDate.has(date)) byDate.set(date, []);
+      byDate.get(date).push(r);
+    }
+    const advByDate = new Map();
+    await Promise.all([...byDate.keys()].map(async (date) => {
+      advByDate.set(date, await fetchWcAdvance(date.replace(/-/g, "")));
+    }));
+    for (const [date, rws] of byDate) {
+      const ties = advByDate.get(date) || [];
+      for (const r of rws) {
+        const game = ties.find(g => g.codes[r.home_team] != null && g.codes[r.away_team] != null);
+        if (!game || !game.final || !game.advancer) { noData++; continue; } // not played / not settled yet
+        updates.push({ id: r.id, won: game.advancer === r.pick_team, actualValue: null });
       }
     }
   }
@@ -1100,6 +1130,7 @@ const FORMULA_CUTOFFS = {
   "soccer|2htotal": "2026-06-21",
   "soccer|2hspread":"2026-06-21",
   "soccer|2hbtts":  "2026-06-21",
+  "soccer|advance": "2026-06-25", // WC knockout to-advance — Elo matrix + ET/pens draw allocation
   "fight|rounds":   "2026-06-21", // UFC Phase 1 — weight-class finish-rate → duration CDF
   "golf|h2h":       "2026-06-21", // PGA Phase 1 — OWGR rating → one-round score differential
   "nascar|h2h":     "2026-06-22", // NASCAR Cup Phase 1 — recent-form finishing-position model

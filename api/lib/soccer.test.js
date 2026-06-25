@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import {
   lambdasFromElo, buildScoreMatrix, prob1x2, probTotalOver, probTeamOver,
   probSpreadCover, probBtts, parseEloTsv, eloForTeam, espnToCanonical,
-  SOCCER_MU_TOTAL, WC_TEAMS,
+  advanceProb, SOCCER_MU_TOTAL, WC_ADVANCE_ET_SHRINK, WC_TEAMS,
 } from "./soccer.js";
 
 const sum = (M) => M.reduce((s, row) => s + row.reduce((a, b) => a + b, 0), 0);
@@ -99,6 +99,33 @@ test("WC_TEAMS elo codes are distinct and pin the non-ISO home-nation codes", ()
   const elos = Object.values(WC_TEAMS).map((t) => t.elo);
   assert.equal(new Set(elos).size, elos.length, "elo codes must be unique (no two teams share one)");
   assert.equal(Object.keys(WC_TEAMS).length, 48);
+});
+
+test("advanceProb: even tie + shutout-draw fallback both resolve to 0.5", () => {
+  // Symmetric regulation odds → exactly a coin flip regardless of k.
+  assert.ok(Math.abs(advanceProb(0.3, 0.4, 0.3) - 0.5) < 1e-12);
+  // Both teams scoreless in regulation → winShare falls back to 0.5 → coin flip.
+  assert.ok(Math.abs(advanceProb(0, 1, 0) - 0.5) < 1e-12);
+});
+
+test("advanceProb: favorite gets a shrunk share of the draw mass, bounded by win90 and pWin+pDraw", () => {
+  const pWin = 0.5, pDraw = 0.3, pLoss = 0.2;
+  const adv = advanceProb(pWin, pDraw, pLoss);
+  // Advancing prob exceeds the 90' win prob (draw mass tilts the favorite's way)…
+  assert.ok(adv > pWin);
+  // …but never claims the whole draw mass (k<1 shrinks toward a coin flip).
+  assert.ok(adv < pWin + pDraw);
+  // Closed form: winShare=.5/.7, w=.5+.5·(winShare−.5), adv=pWin+pDraw·w.
+  const winShare = pWin / (pWin + pLoss);
+  const w = 0.5 + WC_ADVANCE_ET_SHRINK * (winShare - 0.5);
+  assert.ok(Math.abs(adv - (pWin + pDraw * w)) < 1e-12);
+});
+
+test("advanceProb: k=1 hands the full draw split by win-share; k=0 splits it evenly", () => {
+  const pWin = 0.5, pDraw = 0.3, pLoss = 0.2;
+  const winShare = pWin / (pWin + pLoss);
+  assert.ok(Math.abs(advanceProb(pWin, pDraw, pLoss, 1) - (pWin + pDraw * winShare)) < 1e-12);
+  assert.ok(Math.abs(advanceProb(pWin, pDraw, pLoss, 0) - (pWin + pDraw * 0.5)) < 1e-12);
 });
 
 test("espnToCanonical: abbr passthrough, overrides, and name fallback", () => {

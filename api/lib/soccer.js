@@ -24,6 +24,13 @@
 export const SOCCER_MU_TOTAL = 2.7;  // baseline expected total goals (WC group-stage average)
 export const SOCCER_ELO_DIV  = 160;  // Elo diff → goal-supremacy scale: supremacy = Δelo / 160
 export const SOCCER_DC_RHO   = -0.13; // Dixon–Coles low-score dependence (draw/low-score mass)
+// Knockout "to advance": a tie that's level after 90' goes to extra time + penalties. Penalty
+// shootouts regress hard to ~50/50 regardless of favorite, while ET goals only mildly favor the
+// better side — so the 90'-draw mass is split toward the regulation-stronger team but shrunk
+// toward a coin flip. w = 0.5 + k·(winShare−0.5); k=0.5 anchors halfway between a pure coin flip
+// (k=0) and full regulation dominance (k=1). Provisional, anchored to shootout intuition NOT the
+// market — shadow-calibrated, same doctrine as μ/C/ρ.
+export const WC_ADVANCE_ET_SHRINK = 0.5;
 const MATRIX_N = 11;                  // goals 0..10 per team — captures >99.99% of WC mass
 
 // ── Team registry ── canonical = Kalshi FIFA 3-letter code. `elo` = the 2-letter code used in
@@ -224,6 +231,17 @@ export function prob1x2(M) {
   return { home, draw, away };
 }
 
+// Knockout "to advance" probability for the side with (pWin, pLoss) in regulation and a shared
+// draw mass pDraw: P(advance) = pWin + pDraw·w, where w = P(win ET/penalties | 90' draw). The
+// draw mass is allocated by the regulation win-share, shrunk toward a coin flip by k (see
+// WC_ADVANCE_ET_SHRINK). winShare falls back to 0.5 when both teams are shut out in regulation.
+export function advanceProb(pWin, pDraw, pLoss, k = WC_ADVANCE_ET_SHRINK) {
+  const nonDraw = pWin + pLoss;
+  const winShare = nonDraw > 0 ? pWin / nonDraw : 0.5;
+  const w = 0.5 + k * (winShare - 0.5);
+  return pWin + pDraw * w;
+}
+
 // Game total OVER: P(home + away > line). `line` is the X.5 floor_strike.
 export function probTotalOver(M, line) {
   let p = 0;
@@ -291,6 +309,42 @@ export async function fetchWcFinals(dateStr) {
       codes[canon] = goals;
     }
     if (ok && Object.keys(codes).length === 2) out.push({ codes, final });
+  }
+  return out;
+}
+
+// ── Knockout-advance resolver source ── who advanced past a knockout tie (the ET/penalties
+// outcome, NOT the 90' score). ESPN flags the advancing competitor with `advance:true`; for ties
+// decided inside 90' that field can be absent, so fall back to `winner:true`. A match counts as
+// resolvable only when completed AND exactly one side is flagged. Returns
+// [{ codes:{CANON:bool}, advancer:CANON|null, final }] — mirrors fetchWcFinals' shape so the
+// resolver can find a tie by the unordered {home,away} pair.
+export async function fetchWcAdvance(dateStr) {
+  let json;
+  try {
+    const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard${dateStr ? `?dates=${dateStr}` : ""}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return [];
+    json = await res.json();
+  } catch { return []; }
+  const out = [];
+  for (const ev of (json?.events || [])) {
+    const comp = (ev?.competitions || [])[0];
+    if (!comp) continue;
+    const final = comp?.status?.type?.completed === true;
+    const codes = {};
+    let advancer = null, advCount = 0, ok = true;
+    for (const c of (comp?.competitors || [])) {
+      const t = c?.team || {};
+      const canon = espnToCanonical(t.abbreviation, t.displayName);
+      if (!canon) { ok = false; break; }
+      const adv = c?.advance === true || (c?.advance == null && c?.winner === true);
+      codes[canon] = adv;
+      if (adv) { advancer = canon; advCount++; }
+    }
+    // Exactly one advancer — a knockout tie can't end level, so two-flagged/none-flagged means the
+    // data isn't settled yet (treat as not-final so the resolver records noData, not a wrong grade).
+    if (ok && Object.keys(codes).length === 2) out.push({ codes, advancer: advCount === 1 ? advancer : null, final });
   }
   return out;
 }
