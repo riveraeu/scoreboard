@@ -1356,6 +1356,61 @@ function _extractReportToken(request) {
   return (request.headers.get("Authorization") || "").replace(/^Bearer\s+/, "");
 }
 
+// Cold-wake guard for the resolution-completeness read. The 6am report cron spins up a fresh
+// function instance whose first Neon read can hit a just-woken read replica that lags the overnight
+// resolver writes — returning a low resolved count (caught live: 105/935 then 935/935 two minutes
+// later with ZERO rows resolved in between). That false-incomplete read trips the 15-min
+// INCOMPLETE_REPORT_TTL, so the report expires minutes after 6am and the user sees "not yet
+// generated" at 7am. The staleness is NOT pinned to one endpoint ({write:true}/POSTGRES_URL was the
+// stale one on 2026-06-25 while the default conn was fresh), so we read BOTH and (if still <90%)
+// retry once after a short settle. resolved/scored/clv are MONOTONIC (resolutions only ever ADD), so
+// a stale read can only under-count — taking the MAX across reads is always the truth.
+const _RESOLUTION_SQL = `
+  SELECT COUNT(*) AS total, SUM(resolved::int) AS resolved,
+    SUM((won IS NOT NULL)::int) AS scored,
+    SUM((kalshi_yes_price_pre IS NOT NULL)::int) AS clv_captured
+  FROM shadow_plays WHERE game_date = $1`;
+
+function _parseResolutionRow(row) {
+  if (!row) return null;
+  return {
+    total: Number(row.total ?? 0),
+    resolved: Number(row.resolved ?? 0),
+    scored: Number(row.scored ?? 0),
+    clvCaptured: Number(row.clv_captured ?? 0),
+  };
+}
+
+function _mergeResolution(a, b) {
+  if (!a) return b;
+  if (!b) return a;
+  return {
+    total: Math.max(a.total, b.total),
+    resolved: Math.max(a.resolved, b.resolved),
+    scored: Math.max(a.scored, b.scored),
+    clvCaptured: Math.max(a.clvCaptured, b.clvCaptured),
+  };
+}
+
+async function _readResolutionRobust(yesterday, env, seedRow) {
+  const read = async (write) => {
+    try {
+      const r = await neonQuery(_RESOLUTION_SQL, [yesterday], env, write ? { write: true } : {});
+      return _parseResolutionRow(r?.[0]);
+    } catch { return null; }
+  };
+  // Seed with Q6's already-run {write:true} read; cross-check against the default conn (the endpoint
+  // that was fresh on 2026-06-25). On the happy path this is a single extra COUNT query.
+  let best = _mergeResolution(_parseResolutionRow(seedRow), await read(false));
+  // Still incomplete? Give a lagging just-woken replica time to catch up, then re-read both + max.
+  if (best && best.total > 0 && best.resolved / best.total < 0.9) {
+    await new Promise(r => setTimeout(r, 1500));
+    const [w, d] = await Promise.all([read(true), read(false)]);
+    best = _mergeResolution(best, _mergeResolution(w, d));
+  }
+  return best || { total: 0, resolved: 0, scored: 0, clvCaptured: 0 };
+}
+
 
 async function handleShadowReport({ path, request, env, cache }) {
   if (path !== "shadow-report") return null;
@@ -1850,9 +1905,11 @@ async function handleShadowReport({ path, request, env, cache }) {
   let dataHealth = null;
   try {
     const covKV = cache ? await cache.get(`shadow:coverage:${yesterday}`, "json").catch(() => null) : null;
-    const h = healthRows?.[0] || {};
-    const total = Number(h.total ?? 0), resolved = Number(h.resolved ?? 0);
-    const scored = Number(h.scored ?? 0), clvCaptured = Number(h.clv_captured ?? 0);
+    // Robust resolution read — seeded with Q6 (healthRows), cross-checked + retried against cold-wake
+    // replica lag so a stale-low count can't false-flag the report incomplete (→ 15-min TTL → vanish).
+    const rr = await _readResolutionRobust(yesterday, env, healthRows?.[0]);
+    const total = rr.total, resolved = rr.resolved;
+    const scored = rr.scored, clvCaptured = rr.clvCaptured;
     const warnings = [];
     if (covKV?.coverageWarning) {
       const covStr = Object.entries(covKV.coverage || {}).map(([sp, c]) => `${sp} ${c.games}/${c.scheduled}`).join(", ");
