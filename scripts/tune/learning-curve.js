@@ -6,9 +6,10 @@
 // window, recomputing cumulative Brier SKILL (market − model, paired) at each checkpoint. The
 // SLOPE of that curve answers the only question that matters before you spend a correction step:
 //
-//   slope > 0  & skill → +   →  still learning — keep accruing, the model is converging on edge
-//   slope ≈ 0  & skill < 0    →  saturated + market-sharper — no step helps; only a NEW INPUT (L0)
-//   slope ≈ 0  & skill > 0    →  converged WITH edge — set the L2 de-shrink step to β*·Δ
+//   slope > 0  & skill → +        →  still learning — keep accruing, the model is converging on edge
+//   slope ≈ 0  & |skill| < 0.005  →  converged to PARITY — a tie within noise; no edge, no step (the wnba|points case)
+//   slope ≈ 0  & skill < 0        →  saturated + market-sharper — no step helps; only a NEW INPUT (L0)
+//   slope ≈ 0  & skill > 0.005    →  converged WITH edge — set the L2 de-shrink step to β*·Δ
 //
 // We trend SKILL, not raw model-Brier: the market baseline drifts game-to-game, so only the
 // paired per-play difference is comparable across time. The window is current-formula only
@@ -193,7 +194,8 @@ async function main() {
   console.log(`slope: ${slope100 == null ? "n/a" : `${slope100 >= 0 ? "+" : ""}${slope100.toFixed(4)} skill per +100 plays`}`);
   console.log(`β*:    ${betaStar.toFixed(3)}   (= n/(n+${CRED_K}) — credibility on the calibration gap; the L2 step is β*·Δ)\n`);
 
-  const FLAT = 0.002; // |slope per 100| below this = saturated
+  const FLAT = 0.002;   // |slope per 100| below this = saturated
+  const PARITY = 0.005; // |final skill| below this = a tie within noise (mirrors BRIER_SKILL_FLOOR); the sign is noise, NOT edge
   let verdict, advice;
   if (slope100 == null) { verdict = "—"; advice = "too few checkpoints to fit a slope."; }
   else if (slope100 > FLAT && final.skill >= 0) {
@@ -202,6 +204,10 @@ async function main() {
   } else if (slope100 > FLAT && final.skill < 0) {
     verdict = "STILL LEARNING (below price)";
     advice = "skill is climbing but still under the price — accrue more before judging; don't kill yet.";
+  } else if (Math.abs(final.skill) < PARITY) {
+    // Flat AND within noise of the price — a tie, regardless of the sign of a sub-0.005 gap.
+    verdict = "CONVERGED · NO EDGE";
+    advice = "flat and tied with the price (skill within noise) — no edge to harvest and no step to take. Keep shadow-only; don't de-shrink toward a market you've converged to.";
   } else if (final.skill < 0) {
     verdict = "SATURATED · MARKET-SHARPER";
     advice = "flat and below the price — no step helps. Only a NEW INPUT (L0) can move it; run tune:residual.";
