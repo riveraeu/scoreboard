@@ -135,4 +135,6 @@ export const DISMISSED_SERIES = [
   "KXWCDELAY", // 6/23 triage: World Cup delay novelty, 0 live markets, no sample subtitle — nothing to model.
   "KXWCGOALSTREAK", // 6/23 triage: per-player consecutive-goal-streak longshot. window_fit=true is the longshot-NO false positive; soccer Phase 1 is national-team Elo only (no per-player goal model). DISMISS.
   "KXWCAWARDCOMBO", // 6/23 triage: award-combo parlay futures (e.g. "Messi wins Golden Boot + Golden Ball") — no per-player/award soccer model (Phase 1 is national-team Elo score-matrix only); exact-combo longshot, 1 mkt, window_fit false. Same class as KXWCGOALSTREAK. DISMISS.
+  "KXNCAALAX", // 6/26 triage: College Lacrosse National Championship — 48-team title FUTURES (KXNCAALAX-27-YAL etc.), no college-lacrosse model or off-the-shelf rating source. window_fit false (longshots). Same class as the NFL/NCAAF futures dismissed 6/25. DISMISS.
+  "KXWCCONCEDE1ST", // 6/26 triage: "Which Team will Concede a Goal First?" — single tournament-wide novelty outright (1 event KXWCCONCEDE1ST-26, 4 arbitrary teams, closes at the 7/27 final, zero prices). A real-time concede race across the whole tournament, NOT a per-match market — our Elo→λ first-goal closed form needs a defined match pair, which this has none. window_fit false. DISMISS.
 ];
