@@ -415,7 +415,7 @@ async function fetchLiveInto(liveByKey, origin, game_date, gamesParam, tbParam, 
   }
 }
 
-async function handleShadowResolver({ path, request, env }) {
+async function handleShadowResolver({ path, request, env, cache }) {
   if (path !== "shadow-resolver") return null;
 
   if (!env?.CRON_SECRET) return errorResponse("CRON_SECRET not set", 500);
@@ -916,6 +916,20 @@ async function handleShadowResolver({ path, request, env }) {
   }
 
   if (updates.length) await neonBatchResolve(updates, env);
+
+  // Replica-proof resolution floor for the morning report. This pass's own writes are read-after-
+  // write consistent on the pooled primary, and max-merge across the overnight passes (2am/3am/
+  // 5:50am) locks in yesterday's true resolved count in KV — which the 6am report reads instead of
+  // trusting a cold-instance SQL read that lags the replica (the recurring "not yet generated" miss).
+  try {
+    const yesterday = new Date(new Date(today).getTime() - 86400_000).toISOString().slice(0, 10);
+    const yRow = _parseResolutionRow(
+      (await neonQuery(_RESOLUTION_SQL, [yesterday], env, { write: true }).catch(() => null))?.[0]
+    );
+    if (yRow) await _stampResolutionFloor(yesterday, yRow, cache);
+  } catch (e) {
+    console.error(`[shadow-resolver] resolution floor stamp failed: ${e?.message}`);
+  }
 
   console.log(`[shadow-resolver] resolved=${updates.length} skipped=${skipped} noData=${noData} games=${liveByKey.size} durationMs=${Date.now() - t0}`);
   return jsonResponse({ ok: true, resolved: updates.length, skipped, noData, durationMs: Date.now() - t0 });
@@ -1439,7 +1453,27 @@ function _mergeResolution(a, b) {
   };
 }
 
-async function _readResolutionRobust(yesterday, env, seedRow) {
+// KV-backed resolution high-water mark. Upstash is read-after-write consistent and immune to the
+// Postgres read-replica lag that makes a cold-instance SQL read under-count (resolved=101/718 →
+// falsely "incomplete" → 15-min TTL → report vanishes by 6:15am). total/resolved/scored/clv are
+// MONOTONIC (resolutions only ADD; rows never un-resolve or get deleted), so we max-merge the SQL
+// read with the KV stamp and write the floor back — whichever caller (overnight resolver pass, 6am
+// report cron, or a warm user bust) reads the true count locks it in for everyone after.
+const _RESOLUTION_KV_PREFIX = "shadow:resolution:";
+const _RESOLUTION_KV_TTL = 30 * 3600; // 30h — survives overnight resolver → 6am report → daytime reads
+
+async function _stampResolutionFloor(date, row, cache) {
+  if (!cache) return row;
+  const key = `${_RESOLUTION_KV_PREFIX}${date}`;
+  const prev = await cache.get(key, "json").catch(() => null); // {total,resolved,scored,clvCaptured}
+  const merged = _mergeResolution(row, prev);
+  if (merged && merged.total > 0) {
+    cache.put(key, JSON.stringify(merged), { expirationTtl: _RESOLUTION_KV_TTL }).catch(() => {});
+  }
+  return merged || row;
+}
+
+async function _readResolutionRobust(yesterday, env, seedRow, cache) {
   const read = async (write) => {
     try {
       const r = await neonQuery(_RESOLUTION_SQL, [yesterday], env, write ? { write: true } : {});
@@ -1449,12 +1483,21 @@ async function _readResolutionRobust(yesterday, env, seedRow) {
   // Seed with Q6's already-run {write:true} read; cross-check against the default conn (the endpoint
   // that was fresh on 2026-06-25). On the happy path this is a single extra COUNT query.
   let best = _mergeResolution(_parseResolutionRow(seedRow), await read(false));
+  // Authoritative replica-proof floor: the resolver stamps yesterday's true count to KV. Merging it
+  // means a cold instance whose every SQL read is replica-stale still sees the real resolved count
+  // (the 2026-06-26 miss: all in-instance SQL reads returned 101/718 for >1min; KV held 717).
+  if (cache) {
+    const kv = await cache.get(`${_RESOLUTION_KV_PREFIX}${yesterday}`, "json").catch(() => null);
+    best = _mergeResolution(best, kv);
+  }
   // Still incomplete? Give a lagging just-woken replica time to catch up, then re-read both + max.
   if (best && best.total > 0 && best.resolved / best.total < 0.9) {
     await new Promise(r => setTimeout(r, 1500));
     const [w, d] = await Promise.all([read(true), read(false)]);
     best = _mergeResolution(best, _mergeResolution(w, d));
   }
+  // Persist the merged high-water mark so a warm read raises the floor for every later read.
+  if (cache && best && best.total > 0) await _stampResolutionFloor(yesterday, best, cache);
   return best || { total: 0, resolved: 0, scored: 0, clvCaptured: 0 };
 }
 
@@ -1484,8 +1527,23 @@ async function handleShadowReport({ path, request, env, cache }) {
   if (!isCron && !bust) {
     const cached = cache ? await cache.get(cacheKey, "json").catch(() => null) : null;
     if (cached) return jsonResponse(cached);
-    // No cached report yet — return a stub so the UI can show a friendly message.
-    return jsonResponse({ notYet: true, reportDate });
+    // No cached report. Past the 6am cron hour, an empty cache almost always means a cold-replica
+    // read flagged the cron's report "incomplete" → 15-min TTL → it expired (the recurring 6:35am
+    // miss). Rather than show the dead "not yet generated" state, regenerate once on this read — by
+    // now the instance is warm so the resolution read is fresh. A short KV lock avoids a stampede;
+    // before the cron hour there genuinely is no report yet, so keep the friendly stub.
+    const ptHour = Number(new Date().toLocaleString("en-US", {
+      timeZone: "America/Los_Angeles", hour: "2-digit", hour12: false,
+    })) % 24;
+    if (cache && ptHour >= 6) {
+      const lockKey = `shadow:report:lock:${reportDate}`;
+      const locked = await cache.get(lockKey).catch(() => null);
+      if (locked) return jsonResponse({ notYet: true, reportDate, regenerating: true });
+      cache.put(lockKey, "1", { expirationTtl: 60 }).catch(() => {});
+      // fall through to regenerate
+    } else {
+      return jsonResponse({ notYet: true, reportDate });
+    }
   }
 
   const t0 = Date.now();
@@ -1954,7 +2012,7 @@ async function handleShadowReport({ path, request, env, cache }) {
     const covKV = cache ? await cache.get(`shadow:coverage:${yesterday}`, "json").catch(() => null) : null;
     // Robust resolution read — seeded with Q6 (healthRows), cross-checked + retried against cold-wake
     // replica lag so a stale-low count can't false-flag the report incomplete (→ 15-min TTL → vanish).
-    const rr = await _readResolutionRobust(yesterday, env, healthRows?.[0]);
+    const rr = await _readResolutionRobust(yesterday, env, healthRows?.[0], cache);
     const total = rr.total, resolved = rr.resolved;
     const scored = rr.scored, clvCaptured = rr.clvCaptured;
     const warnings = [];
@@ -2205,7 +2263,7 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
   const reportResp = await handleShadowReport({ path, request, env, cache });
   if (reportResp) return reportResp;
 
-  const shadowResolverResp = await handleShadowResolver({ path, request, env });
+  const shadowResolverResp = await handleShadowResolver({ path, request, env, cache });
   if (shadowResolverResp) return shadowResolverResp;
 
   const pregameResp = await handleShadowPregameSnap({ path, request, env, cache });
