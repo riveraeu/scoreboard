@@ -190,8 +190,30 @@ const DEDICATED = new Set([
   "gameDate", "gameTime", "modelVersion", "seasonType",
 ]);
 
+// Standardized exogenous-signal namespace. The catch-all below logs whatever each emit
+// path happened to hang on the play (rich for props, sparse for game/new-sport markets),
+// so coverage is by-accident and naming drifts (props "lineupConfirmed" vs game markets
+// "lineupsConfirmed" — same signal, two keys, never aggregated). This folds the raw,
+// EXOGENOUS dimensions a market-mispricing signal is most likely to live in onto ONE
+// uniform x* set, present across EVERY category. tune:residual ranks these first (they're
+// market-independent, so slicing model-residual on them isn't circular, unlike the model
+// intermediates the catch-all also logs). Pure capture — no formula consumes it.
+function exogenousSignals(p) {
+  const x = {};
+  const set = (k, v) => { if (v != null) x[k] = v; };
+  set("xVolume", p.kalshiVolume);   // Kalshi traded/resting volume — liquidity proxy
+  set("xSpread", p.kalshiSpread);   // yes/no spread (¢) — thinness proxy
+  set("xLineMove", p.lineMove);     // price drift since open — latency signal (props today)
+  const lc = p.lineupConfirmed ?? p.lineupsConfirmed; // unify the two historical keys
+  if (lc != null) x.xLineupConfirmed = lc;
+  set("xRestDays", p.pitcherDaysRest); // MLB pitcher days rest
+  set("xWindOutMph", p.windOutMph);    // signed out-to-CF wind (MLB, when hydrated)
+  set("xTempF", p.tempF);
+  return x;
+}
+
 function extractFeatures(p) {
-  const features = {};
+  const features = { ...exogenousSignals(p) };
   for (const [k, v] of Object.entries(p)) {
     if (!DEDICATED.has(k) && !k.startsWith("_") && v !== undefined && v !== null) {
       features[k] = v;

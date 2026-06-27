@@ -81,6 +81,10 @@ function parseArgs() {
     rank:    get("--rank"),     // "any" or a number; default endpoint = 1
     dcQual:  get("--dc") !== "0",
     top:     parseInt(get("--top") || "12", 10),
+    // Default view = native + standardized exogenous (f:x*) dims only. The catch-all also
+    // logs ~150 model INTERMEDIATES (props), which are collinear with model% → slicing the
+    // model residual on them is circular. --all-features opts those back in for inspection.
+    allFeatures: process.argv.includes("--all-features"),
   };
 }
 
@@ -208,7 +212,7 @@ function featureDimensions(rows) {
 
 // ── Main ───────────────────────────────────────────────────────────────────────
 async function main() {
-  const { category, since, minN, bucketN, rank, dcQual, top } = parseArgs();
+  const { category, since, minN, bucketN, rank, dcQual, top, allFeatures } = parseArgs();
   if (!category || !category.includes("|")) {
     console.error("Error: --category <sport|stat> required, e.g. --category mlb|strikeouts");
     process.exit(1);
@@ -268,15 +272,25 @@ async function main() {
   }
   console.log("=".repeat(74));
 
-  // Slice every dimension, rank by |gradient|.
-  const dims = { ...nativeDimensions(rows), ...featureDimensions(rows) };
+  // Slice every dimension, rank by |gradient|. A dim is EXOGENOUS if it's native or a
+  // standardized f:x* signal — these are market-independent (non-circular to rank). By
+  // default we drop the catch-all model intermediates (f:* that aren't f:x*).
+  const nativeDims = nativeDimensions(rows);
+  const featDims = featureDimensions(rows);
+  const isExo = (name) => name in nativeDims || name.startsWith("f:x");
+  const dims = { ...nativeDims, ...featDims };
   const results = [];
   for (const [name, fn] of Object.entries(dims)) {
+    if (!allFeatures && !isExo(name)) continue;
     const buckets = sliceDimension(rows, fn).sort((a, b) => a.meanR - b.meanR);
     const { grad, qualBuckets } = gradient(buckets, bucketN);
-    results.push({ name, buckets, grad, qualBuckets });
+    results.push({ name, buckets, grad, qualBuckets, exo: isExo(name) });
   }
-  results.sort((a, b) => (Math.abs(b.grad ?? -1)) - (Math.abs(a.grad ?? -1)));
+  // Exogenous dims first (the non-circular signal set), then by |gradient| within each tier.
+  results.sort((a, b) =>
+    (a.exo === b.exo ? 0 : a.exo ? -1 : 1) ||
+    (Math.abs(b.grad ?? -1)) - (Math.abs(a.grad ?? -1)));
+  if (!allFeatures) console.log("(native + exogenous x* dims only — pass --all-features for model intermediates)\n");
 
   for (const res of results.slice(0, top)) {
     const trust = res.grad != null && N >= minN && res.qualBuckets >= 2;
