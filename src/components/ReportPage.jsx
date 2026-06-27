@@ -555,6 +555,10 @@ const POLY_RECHECK = "2026-07-07";
 // genuinely-actionable item. They STILL appear on the accuracy board itself — this only quiets the
 // banner. REMOVE a key the moment a NEW exogenous input HYPOTHESIS appears for it (something fresh to
 // pre-filter); a stale key is harmless (it only matters while the category is still market-sharper).
+// TODO ~2026-07-10: once the x* exogenous dims (xVolume/xSpread, shipped 2026-06-26) have ~2wk of
+// rows, DROP the run-market keys (mlb|totalRuns / mlb|f5total / mlb|f5spread / mlb|spread / mlb|ml)
+// here — liquidity is a fresh, now-sliceable hypothesis for them → let the banner re-fire Improve
+// inputs → run tune:residual. Premature before then (x* has zero rows). [[project-exogenous-feature-stamp]]
 const INPUT_SEARCH_EXHAUSTED = new Set([
   "mlb|f5spread", "mlb|ml", "mlb|totalRuns", "mlb|strikeouts", "mlb|f5total", "mlb|spread", "mlb|hits",
   "wnba|points", "wnba|totalPoints", "wnba|rebounds",
