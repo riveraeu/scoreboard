@@ -150,4 +150,9 @@ export const DISMISSED_SERIES = [
   "KXNFLTEAMPTS", // 6/28 triage: NFL season most/least-points FUTURES — our NFL model is game-level hit-rate props only, not season leaders. No model. DISMISS.
   "KXNFLWINS-ANY", // 6/28 triage: NFL season-wins-any-team FUTURES — same, no season-level model. DISMISS.
   "KXWCFINALMATCHUP", // 6/28 triage: exact World Cup final-PAIR longshot — no bracket-pair model (Dixon–Coles matrix prices one match, not a two-team-reach-final combinatorial); tiny probabilities, window_fit false. Same shape as the prior WC exact-cell dismissals. DISMISS. (KXWCPLAY left 'new' — a single play-in match could fit existing soccer Elo, but it's 0-live so structure is unverifiable; revisit when it lists markets.)
+  // 6/28 triage (3 Nathan's Hot Dog novelties): competitive-eating event — no model and no data source (ESPN/MLB/etc. expose nothing on hot-dog counts). Pure novelty, same class as the prior NBA/WC novelty dismissals. DISMISS.
+  "KXNATHANSHDOU",      // Nathan's Hot Dog over/unders (hot dogs eaten O/U)
+  "KXNATHANSHDRECORD",  // Nathan's Hot Dog — will the record be broken
+  "KXNATHANSWINNERWO",  // Nathan's Hot Dog contest winner (field without the favorite)
+  // KXWCMATCHUP + KXWCPLAY left 'new' — both 0-live, structure unverifiable. "Matchup" could be a per-match market that fits the existing soccer Elo (vs FINALMATCHUP's exact-pair longshot), so don't pre-dismiss; revisit when they list markets.
 ];
