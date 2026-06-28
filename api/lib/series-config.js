@@ -137,4 +137,17 @@ export const DISMISSED_SERIES = [
   "KXWCAWARDCOMBO", // 6/23 triage: award-combo parlay futures (e.g. "Messi wins Golden Boot + Golden Ball") — no per-player/award soccer model (Phase 1 is national-team Elo score-matrix only); exact-combo longshot, 1 mkt, window_fit false. Same class as KXWCGOALSTREAK. DISMISS.
   "KXNCAALAX", // 6/26 triage: College Lacrosse National Championship — 48-team title FUTURES (KXNCAALAX-27-YAL etc.), no college-lacrosse model or off-the-shelf rating source. window_fit false (longshots). Same class as the NFL/NCAAF futures dismissed 6/25. DISMISS.
   "KXWCCONCEDE1ST", // 6/26 triage: "Which Team will Concede a Goal First?" — single tournament-wide novelty outright (1 event KXWCCONCEDE1ST-26, 4 arbitrary teams, closes at the 7/27 final, zero prices). A real-time concede race across the whole tournament, NOT a per-match market — our Elo→λ first-goal closed form needs a defined match pair, which this has none. window_fit false. DISMISS.
+  // 6/28 triage (9 CFB qualifier futures): conference-championship QUALIFIER futures — no college-football model exists. Same class as the NFL/NCAAF futures dismissed 6/25. window_fit=true on AAC/B10/B12/PAC12 is the outright-favorite false-positive (a strong qualifier's YES in [67,91] is not edge). DISMISS.
+  "KXNCAAFAACQUAL",
+  "KXNCAAFACCQUAL",
+  "KXNCAAFB10QUAL",
+  "KXNCAAFB12QUAL",
+  "KXNCAAFCUSAQUAL",
+  "KXNCAAFMACQUAL",
+  "KXNCAAFMWCQUAL",
+  "KXNCAAFPAC12QUAL",
+  "KXNCAAFSBELTQUAL",
+  "KXNFLTEAMPTS", // 6/28 triage: NFL season most/least-points FUTURES — our NFL model is game-level hit-rate props only, not season leaders. No model. DISMISS.
+  "KXNFLWINS-ANY", // 6/28 triage: NFL season-wins-any-team FUTURES — same, no season-level model. DISMISS.
+  "KXWCFINALMATCHUP", // 6/28 triage: exact World Cup final-PAIR longshot — no bracket-pair model (Dixon–Coles matrix prices one match, not a two-team-reach-final combinatorial); tiny probabilities, window_fit false. Same shape as the prior WC exact-cell dismissals. DISMISS. (KXWCPLAY left 'new' — a single play-in match could fit existing soccer Elo, but it's 0-live so structure is unverifiable; revisit when it lists markets.)
 ];
