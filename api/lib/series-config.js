@@ -149,10 +149,12 @@ export const DISMISSED_SERIES = [
   "KXNCAAFSBELTQUAL",
   "KXNFLTEAMPTS", // 6/28 triage: NFL season most/least-points FUTURES — our NFL model is game-level hit-rate props only, not season leaders. No model. DISMISS.
   "KXNFLWINS-ANY", // 6/28 triage: NFL season-wins-any-team FUTURES — same, no season-level model. DISMISS.
-  "KXWCFINALMATCHUP", // 6/28 triage: exact World Cup final-PAIR longshot — no bracket-pair model (Dixon–Coles matrix prices one match, not a two-team-reach-final combinatorial); tiny probabilities, window_fit false. Same shape as the prior WC exact-cell dismissals. DISMISS. (KXWCPLAY left 'new' — a single play-in match could fit existing soccer Elo, but it's 0-live so structure is unverifiable; revisit when it lists markets.)
+  "KXWCFINALMATCHUP", // 6/28 triage: exact World Cup final-PAIR longshot — no bracket-pair model (Dixon–Coles matrix prices one match, not a two-team-reach-final combinatorial); tiny probabilities, window_fit false. Same shape as the prior WC exact-cell dismissals. DISMISS.
   // 6/28 triage (3 Nathan's Hot Dog novelties): competitive-eating event — no model and no data source (ESPN/MLB/etc. expose nothing on hot-dog counts). Pure novelty, same class as the prior NBA/WC novelty dismissals. DISMISS.
   "KXNATHANSHDOU",      // Nathan's Hot Dog over/unders (hot dogs eaten O/U)
   "KXNATHANSHDRECORD",  // Nathan's Hot Dog — will the record be broken
   "KXNATHANSWINNERWO",  // Nathan's Hot Dog contest winner (field without the favorite)
-  // KXWCMATCHUP + KXWCPLAY left 'new' — both 0-live, structure unverifiable. "Matchup" could be a per-match market that fits the existing soccer Elo (vs FINALMATCHUP's exact-pair longshot), so don't pre-dismiss; revisit when they list markets.
+  // 6/28 triage (2 held WC markets, resolved against the live Kalshi markets API — both 0-live last pass, now verifiable):
+  "KXWCPLAY",       // "World Cup Play in Game" is NOT a play-in match (my earlier guess) — it's a per-PLAYER appearance novelty ("Lionel Messi enters the game", "Erling Haaland enters the game"). No soccer player-availability/lineup model (Phase 1 = national-team Elo score-matrix only) and no pre-game data source for who plays. Novelty, same class as the other WC player-prop dismissals. DISMISS.
+  "KXWCMATCHUP",    // never listed a single market (0 in EVERY status, not even finalized) — a dead/empty series. Name parallels the dismissed KXWCFINALMATCHUP (exact-pairing longshot) and WC per-game is already covered by KXWCGAME → nothing to build against. DISMISS.
 ];
