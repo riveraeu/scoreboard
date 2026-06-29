@@ -923,6 +923,50 @@ ORDER BY COUNT(*) DESC`;
       });
     }
 
+    // CLV-capture forensics for ONE snapshot_date (?clvDay=YYYY-MM-DD). price_pre_at is set to
+    // NOW() on each stamp, so its hour distribution shows WHICH of the 3 daily pregame-snap runs
+    // (17:00 / 22:10 / 03:00 UTC) actually fired + how much each captured — a day with stamps in
+    // only 1 bucket means 2 runs failed. The per-sport eligible/captured split shows WHICH
+    // categories miss (late-listed shadow markets vs a whole-run failure).
+    if (params.get("clvDay")) {
+      const cd = params.get("clvDay");
+      let byHour, bySport, tot;
+      try {
+        [byHour, bySport, tot] = await Promise.all([
+          neonQuery(`
+            SELECT to_char(date_trunc('hour', price_pre_at AT TIME ZONE 'UTC'), 'HH24') AS hr_utc,
+                   COUNT(*) AS captured
+            FROM shadow_plays WHERE snapshot_date = $1 AND price_pre_at IS NOT NULL
+            GROUP BY 1 ORDER BY 1`, [cd], env),
+          neonQuery(`
+            SELECT sport,
+                   COUNT(*) AS eligible,
+                   SUM((kalshi_yes_price_pre IS NOT NULL)::int) AS captured
+            FROM shadow_plays WHERE snapshot_date = $1
+            GROUP BY sport ORDER BY eligible DESC`, [cd], env),
+          neonQuery(`
+            SELECT COUNT(*) AS eligible,
+                   SUM((kalshi_yes_price_pre IS NOT NULL)::int) AS captured,
+                   MIN(price_pre_at) AS first_stamp, MAX(price_pre_at) AS last_stamp
+            FROM shadow_plays WHERE snapshot_date = $1`, [cd], env),
+        ]);
+      } catch (e) { return errorResponse(`Neon query failed: ${e.message}`, 500); }
+      const t = tot?.[0] || {};
+      const elig = Number(t.eligible ?? 0), cap = Number(t.captured ?? 0);
+      return jsonResponse({
+        day: cd,
+        eligible: elig, captured: cap,
+        pct: elig > 0 ? parseFloat((cap / elig * 100).toFixed(1)) : null,
+        firstStamp: t.first_stamp ? new Date(t.first_stamp).toISOString() : null,
+        lastStamp: t.last_stamp ? new Date(t.last_stamp).toISOString() : null,
+        byHourUtc: (byHour || []).map(r => ({ hourUtc: r.hr_utc, captured: Number(r.captured) })),
+        bySport: (bySport || []).map(r => {
+          const e = Number(r.eligible), c = Number(r.captured ?? 0);
+          return { sport: r.sport, eligible: e, captured: c, pct: e > 0 ? parseFloat((c / e * 100).toFixed(1)) : null };
+        }),
+      });
+    }
+
     // Residual-by-dimension raw-row export (Phase 2 model triage). When ?residual=<sport|stat>
     // is set, return the raw resolved rows for ONE category (formula-floored via the caller's
     // `since`) so scripts/tune/residual-by-dimension.js can compute per-play residuals and slice
