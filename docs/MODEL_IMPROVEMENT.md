@@ -37,6 +37,20 @@ necessary (a miscalibrated model can't have reliable edge) but not sufficient.
 - **Don't ignore the market as an input.** `_propBlend` shrinks toward season rate, not
   toward the market price. Where the market beats the model, a model⊕market blend is a
   free accuracy gain (standard ensembling). Consider it before adding new raw features.
+- **Edge is endogenous — only trust it where the model is sharp.** "Edge"
+  (`truePct − price`) is the model's *own* claim of mispricing, so it's only as good as the
+  model. `edgeBucketRoi` (2026-06-29, bettable universe) shows ROI **flat-negative across
+  every edge band** — bigger claimed edge does *not* predict higher ROI, because no category
+  currently beats the market. The edge gate (`EDGE_GATE` 3/5) is therefore a **hand-set
+  assumption subordinate to skill**: it selects real bets only inside a category with proven
+  positive Brier skill (`bettingBoard.eligible`); applied where skill ≤ 0 it bets model
+  error. Edge can't *replace* skill or vice-versa — edge is per-play (bet-time), skill is
+  per-category retrospective (so it can gate a category, never select a play). The fix is to
+  make skill-eligibility the **primary** gate and the edge threshold **per-category
+  data-derived** (slice each eligible category's own edge×Brier gradient via `tune:residual`)
+  — fold into the bet-selection-from-calibration work, not a standalone retune. (Untestable
+  inside a sharp category until one exists; contrast price, which is exogenous and always
+  real — that's why the edge gate is *more* suspect than the [67,91] window was.)
 
 Everything below optimizes calibration because it's the tractable, decomposable target —
 but a calibration win that doesn't move model-vs-market Brier (or CLV) is not a real win.
