@@ -543,13 +543,14 @@ const _ACC_ACTIONS = {
 // chase a single thin band. Below RECAL_MIN_N the row stays on the accuracy board but is held OUT
 // of the daily Do This banner so it doesn't nag an un-ripe task; it resurfaces at n≥200.
 const RECAL_MIN_N = 200;
-// n≥200 is necessary but NOT sufficient: a category can clear it yet still be CLIMBING (Brier skill
-// rising as data accrues — learning.skillTrend > _LEARN_FLAT, reliable), in which case the calibration
-// gap (and the β* de-shrink step) isn't stable yet, so locking an L2 reweight now chases a moving
-// target. A STILL-LEARNING Recalibrate is therefore ALSO held off the banner (the board row + its ↗
-// Learning arrow keep showing it); it resurfaces once the trend flattens (converged). (2026-06-28:
-// mlb|totalBases n=251 but skillTrend +0.163 — STILL LEARNING; tune:learncurve says keep accruing,
-// not lock the step. mlb|hits is the same shape. See [[project-totalbases-recalibrate-hold]].)
+// n≥200 is necessary but NOT sufficient: a category can clear it yet still have a MOVING Brier-skill
+// trend (reliable |learning.skillTrend| > _LEARN_FLAT) — rising as data accrues (still learning) OR
+// falling (decaying toward a market tie, the wnba|points signature). EITHER direction means the
+// calibration gap (and the β* de-shrink step) isn't settled, so locking an L2 reweight now chases a
+// moving target. An un-flat-trend Recalibrate is therefore ALSO held off the banner (the board row +
+// its ↗/↘ Learning arrow keep showing it); it resurfaces only once the trend flattens (converged).
+// (2026-06-28: mlb|totalBases n=251 but skillTrend +0.163 — STILL LEARNING; tune:learncurve says keep
+// accruing, not lock the step. mlb|hits is the same shape. See [[project-totalbases-recalibrate-hold]].)
 // Polymarket Phase-1b is a DATED ~2-week kill-gate wait (exec.fracEdgeGe3c over ~14 days), not a
 // daily decision — so its banner floor is suppressed until the re-check date and resurfaces then.
 // Bump this each time the window is extended (e.g. if ~50 exec rows give a marginal read). The
@@ -594,12 +595,14 @@ function _doThisCandidates(d) {
   // new input) vs "Improve inputs" (market out-predicts → L0 new input, run tune:residual). Below a
   // live gate change, above ripe-validate. INPUT_SEARCH_EXHAUSTED suppresses ONLY the new-input nag
   // (a dead-end L0 search); a Recalibrate task is suppressed only while UN-RIPE — below RECAL_MIN_N
-  // (n<200) or STILL LEARNING (reliable skillTrend rising) — since its de-shrink step isn't stable yet.
+  // (n<200) or its Brier-skill trend is still MOVING (reliable |skillTrend| > _LEARN_FLAT, rising OR
+  // falling) — since its de-shrink step isn't settled yet.
   const accChanges = (d?.accuracyBoard || []).filter(e =>
     _ACC_ACTIONS[e?.honest?.action] &&
     !(e.honest.action === "Improve inputs" && INPUT_SEARCH_EXHAUSTED.has(`${e.sport}|${e.category}`)) &&
-    !(e.honest.action === "Recalibrate" && (e.n || 0) < RECAL_MIN_N) &&
-    !(e.honest.action === "Recalibrate" && e.learning?.reliable && e.learning.skillTrend > _LEARN_FLAT));
+    !(e.honest.action === "Recalibrate" && (
+      (e.n || 0) < RECAL_MIN_N ||
+      (e.learning?.reliable && Math.abs(e.learning.skillTrend) > _LEARN_FLAT))));
   if (accChanges.length) {
     const byAction = {};
     for (const e of accChanges) (byAction[e.honest.action] ||= []).push(`${e.sport} ${e.category}`);
