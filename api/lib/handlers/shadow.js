@@ -1309,11 +1309,28 @@ function _calibSummaryByCat(allBands) {
 // ── Layer 1: model ACCURACY (calibration vs reality) — no price, no gate ──────
 // Scored on the truePct calibration summary (model% vs actual hit% per band). "actionable" already
 // requires n≥200 or a coherent multi-band run, so CALIBRATED/miscalibrated stay conservative.
-function _accuracyVerdict(calib) {
+// |skillTrend| below this reads "flat"/saturated — mirror of the frontend _LEARN_FLAT.
+const _LEARN_FLAT = 0.003;
+function _accuracyVerdict(calib, brier, learning) {
   const c = calib || {};
   if (c.status === "actionable") return c.direction === "over" ? "OVERCONFIDENT" : "UNDERCONFIDENT";
   if (c.status === "honest")     return "CALIBRATED";   // some band hit n≥200 and lands within noise
-  return "BUILDING";                                    // insufficient — can't judge calibration yet
+  // Calibration insufficient — but "can't judge calibration yet" is NOT "no verdict possible". Two
+  // Brier-skill outcomes are already TERMINAL and shouldn't hide behind a hopeful "BUILDING":
+  //   • market TRUSTABLY sharper (skill<0 at n≥BRIER_MIN_N) AND not recovering (trend reliable + flat
+  //     or falling) → MARKET_SHARPER: a settled negative — filling calibration bands can't rescue a
+  //     model the price out-predicts; stop accruing. (A negative skill that's still RISING stays
+  //     BUILDING — it may cross.)
+  //   • model already beats the price (skill>0 at n≥BRIER_MIN_N) → PROMISING: near-eligible, just thin
+  //     calibration — accrue toward eligibility, not "accruing from zero".
+  // Everything else (skillN<BRIER_MIN_N, or skill≈0) is genuinely undecided → BUILDING.
+  const skill = brier?.skill, skillN = brier?.n || 0;
+  if (skill != null && skillN >= BRIER_MIN_N) {
+    if (skill < 0 && learning?.reliable && learning.skillTrend != null && learning.skillTrend <= _LEARN_FLAT)
+      return "MARKET_SHARPER";
+    if (skill > 0) return "PROMISING";
+  }
+  return "BUILDING";
 }
 // `skill`/`skillN` = Brier skill (market−model) over the honesty population + its n. They fork the
 // PRESCRIPTION for a miscalibrated category (not the verdict, which stays calibration-based) into THREE
@@ -1341,6 +1358,12 @@ function _accuracyAction(verdict, calib, skill, skillN) {
     case "CALIBRATED":
       return { action: "Calibrated", tone: "green",
         why: "model% matches actual outcomes within noise — well-calibrated to reality" };
+    case "MARKET_SHARPER":
+      return { action: "Stop — market sharper", tone: "red",
+        why: `the market out-predicts the model (negative Brier skill at n≥${BRIER_MIN_N}) and the trend isn't recovering — calibration won't rescue it; stop accruing here` };
+    case "PROMISING":
+      return { action: "Promising — accrue", tone: "green",
+        why: `model already beats the price (positive Brier skill at n≥${BRIER_MIN_N}) but calibration bands are still thin — accrue toward eligibility, not an input change` };
     case "OVERCONFIDENT":
       if (marketSharper)
         return { action: "Improve inputs", tone: "amber",
@@ -2022,7 +2045,7 @@ async function handleShadowReport({ path, request, env, cache }) {
     const [sport, category] = key.split("|");
     const brier = _brierByCat[key] ?? { n: 0, modelBrier: null, marketBrier: null, skill: null, skillLoCI: null };
     const calib = _calibByCat[key] ?? { status: "insufficient", direction: null, delta: null, band: null, n: null };
-    const verdict = _accuracyVerdict(calib);
+    const verdict = _accuracyVerdict(calib, brier, _learnByCat[key]);
     const honest = _accuracyAction(verdict, calib, brier.skill, brier.n);
     // `active` = this truePct slice is in the live category gate right now. Bands are 5-wide and
     // aligned to the gate's 5-boundaries, so the band midpoint membership-tests the gate exactly.

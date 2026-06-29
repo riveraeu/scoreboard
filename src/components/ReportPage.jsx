@@ -54,8 +54,10 @@ function BoardBadge({ v }) {
 // Accuracy (Layer-1) verdict styling — Brier vs market, no price.
 const _ACC = {
   CALIBRATED:     ["calibrated",     C.green, "rgba(63,185,80,0.10)"],
+  PROMISING:      ["promising",      C.green, "rgba(63,185,80,0.10)"],   // beats price, calibration still thin
   UNDERCONFIDENT: ["underconfident", C.amber, "transparent"],
   OVERCONFIDENT:  ["overconfident",  C.red,   "transparent"],
+  MARKET_SHARPER: ["market sharper", C.red,   "rgba(248,81,73,0.08)"],   // terminal: market out-predicts, trend flat/falling
   BUILDING:       ["building",       C.dim,   "transparent"],
 };
 function AccBadge({ v }) {
