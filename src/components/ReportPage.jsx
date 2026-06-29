@@ -573,9 +573,13 @@ const INPUT_SEARCH_EXHAUSTED = new Set([
 ]);
 function _doThisCandidates(d) {
   const out = [];
-  // 1 — data health (cron failures / under-logged slate / partial resolution / low CLV capture).
+  // 1 — data health, but ONLY when actionable. `dataHealth.actionable` (server) is true only for
+  // partial resolution (re-runnable). Coverage under-log + CLV dips are about a now-closed yesterday
+  // and unrecoverable — they stay in the ⚠ caution strip (DataHealth) but must NOT claim the day's
+  // primary to-do (else the banner nags "Fix data health" for something with no fix). On a quiet
+  // healthy day this falls through to the real next action.
   const warns = d?.dataHealth?.warnings || [];
-  if (warns.length) {
+  if (warns.length && d?.dataHealth?.actionable) {
     out.push({ tier:1, tone:"red", label:"Fix data health", why: warns.join(" · "), short:"Fix data health" });
   }
   // 2 — betting changes pending on the betting board (promote / demote / investigate).

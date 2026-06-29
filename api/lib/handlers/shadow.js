@@ -2097,14 +2097,21 @@ async function handleShadowReport({ path, request, env, cache }) {
       const covStr = Object.entries(covKV.coverage || {}).map(([sp, c]) => `${sp} ${c.games}/${c.scheduled}`).join(", ");
       warnings.push(`Slate under-logged yesterday (${covStr}) — model numbers may be incomplete.`);
     }
-    if (total > 0 && resolved / total < 0.9) warnings.push(`Only ${resolved}/${total} of yesterday's plays resolved — ROI partial.`);
+    const resolutionPartial = total > 0 && resolved / total < 0.9;
+    if (resolutionPartial) warnings.push(`Only ${resolved}/${total} of yesterday's plays resolved — ROI partial.`);
     if (clvEligible > 0 && clvCaptured / clvEligible < 0.5) warnings.push(`CLV captured for only ${clvCaptured}/${clvEligible} of yesterday's snapshotted plays.`);
+    // `actionable` = is there a data-health issue you can DO something about today? Only partial
+    // resolution qualifies — you can re-run the resolver. Coverage under-log + CLV dips are about a
+    // now-closed yesterday and are unrecoverable, so they're caution-only (the ⚠ strip), NOT a
+    // "Do this today" action. The frontend's tier-1 banner fires only when this is true so it never
+    // promotes an unfixable past caution into the day's primary to-do.
     dataHealth = {
       coverage: covKV?.coverage ?? null,
       coverageWarning: covKV?.coverageWarning ?? null,
       resolution: { total, resolved, scored, pending: Math.max(0, total - resolved) },
       clvCapture: { captured: clvCaptured, eligible: clvEligible, pct: clvEligible > 0 ? parseFloat((clvCaptured / clvEligible * 100).toFixed(0)) : null },
       warnings,
+      actionable: resolutionPartial,
     };
   } catch (e) {
     console.error("[shadow-report] dataHealth skipped:", e?.message);
