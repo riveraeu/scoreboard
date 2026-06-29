@@ -971,6 +971,24 @@ async function handleShadowResolver({ path, request, env, cache }) {
 
 const PREGAME_STAGING_MAX_AGE_MS = 15 * 60_000;
 
+// Per-run breadcrumb so an intermittent CLV-capture dip is root-cause-visible without log
+// archaeology (the 2026-06-28 Mode-A failure: the 10am run got a degraded staging priceMap and
+// captured 63 vs the ~1000 a healthy run gets — but we couldn't see WHY a day later). Appends
+// {ranAt, source, stagingAgeMs, priceMapSize, unstampedRows, captured} to shadow:pregame:{date};
+// a run with priceMapSize≪unstampedRows = degraded staging, a low captured with full priceMap =
+// late-listing/already-settled markets. Read back via GET ?runs=1[&date=]. Best-effort.
+const _PREGAME_BREADCRUMB_TTL = 30 * 3600;
+async function _recordPregameRun(cache, date, rec) {
+  if (!cache) return;
+  const key = `shadow:pregame:${date}`;
+  try {
+    const prev = await cache.get(key, "json").catch(() => null);
+    const list = Array.isArray(prev) ? prev : [];
+    list.push(rec);
+    await cache.put(key, JSON.stringify(list.slice(-12)), { expirationTtl: _PREGAME_BREADCRUMB_TTL });
+  } catch { /* breadcrumb is best-effort — never block a capture on it */ }
+}
+
 async function handleShadowPregameSnap({ path, request, env, cache }) {
   if (path !== "shadow-pregame-snap") return null;
 
@@ -979,11 +997,20 @@ async function handleShadowPregameSnap({ path, request, env, cache }) {
   const isCron  = env?.CRON_SECRET && cronAuth === env.CRON_SECRET;
   if (!isAdmin && !isCron) return errorResponse("Forbidden", 403);
 
+  const _params = new URL(request.url).searchParams;
+  const snapshotDate = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+
+  // Read-only breadcrumb inspector — which runs fired today + how each did.
+  if (_params.get("runs") === "1") {
+    const rd = _params.get("date") || snapshotDate;
+    const runs = cache ? await cache.get(`shadow:pregame:${rd}`, "json").catch(() => null) : null;
+    return jsonResponse({ date: rd, runs: Array.isArray(runs) ? runs : [] });
+  }
+
   if (!env?.POSTGRES_URL && !env?.NEON_DATABASE_URL) return errorResponse("POSTGRES_URL not set", 500);
 
   const t0 = Date.now();
-  const isDry = new URL(request.url).searchParams.get("dry") === "1";
-  const snapshotDate = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+  const isDry = _params.get("dry") === "1";
 
   const _preSchemaKey = "shadow:pregame-schema:v1";
   const _preSchemaOk = cache ? await cache.get(_preSchemaKey).catch(() => null) : null;
@@ -1040,7 +1067,10 @@ async function handleShadowPregameSnap({ path, request, env, cache }) {
   }
 
   if (priceMap.size === 0) {
-    return jsonResponse({ ok: true, dry: isDry, source, stagingAgeMs, updated: 0, skipped: 0, durationMs: Date.now() - t0 });
+    if (!isDry) await _recordPregameRun(cache, snapshotDate, {
+      ranAt: new Date().toISOString(), source, stagingAgeMs, priceMapSize: 0, unstampedRows: null, captured: 0,
+    });
+    return jsonResponse({ ok: true, dry: isDry, source, stagingAgeMs, priceMapSize: 0, updated: 0, skipped: 0, durationMs: Date.now() - t0 });
   }
 
   // Fetch today's rows that haven't been stamped yet.
@@ -1072,6 +1102,8 @@ async function handleShadowPregameSnap({ path, request, env, cache }) {
       snapshotDate,
       source,
       stagingAgeMs,
+      priceMapSize: priceMap.size,
+      unstampedRows: rows.length,
       wouldUpdate: updates.length,
       skipped,
       durationMs: Date.now() - t0,
@@ -1080,11 +1112,18 @@ async function handleShadowPregameSnap({ path, request, env, cache }) {
 
   await neonBatchPrePriceUpdate(updates, env);
 
+  await _recordPregameRun(cache, snapshotDate, {
+    ranAt: new Date().toISOString(), source, stagingAgeMs,
+    priceMapSize: priceMap.size, unstampedRows: rows.length, captured: updates.length,
+  });
+
   return jsonResponse({
     ok: true,
     snapshotDate,
     source,
     stagingAgeMs,
+    priceMapSize: priceMap.size,
+    unstampedRows: rows.length,
     updated: updates.length,
     skipped,
     durationMs: Date.now() - t0,
