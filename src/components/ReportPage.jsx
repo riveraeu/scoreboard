@@ -275,7 +275,9 @@ function AccuracyBoard({ board }) {
       <div style={{ color:C.dim, fontSize:10, marginTop:5, lineHeight:1.55 }}>
         <b style={{ color:C.green }}>Calibrated</b> = model% matches actual outcomes within noise ·
         <b style={{ color:C.red }}> Overconfident</b> / <b style={{ color:C.amber }}>Underconfident</b> = proven miscalibration → <b style={{ color:C.amber }}>Recalibrate</b> (L2 de-shrink) when the model beats the price, <b style={{ color:C.amber }}>Improve inputs</b> (L0 new input — run tune:residual) only when the market is trustably sharper (n≥100), else <b style={{ color:C.dim }}>Accruing</b> while undecided ·
-        <b style={{ color:C.dim }}> Building</b> = not enough resolved plays to judge calibration yet. <b style={{ color:C.green }}>vs Market</b> &gt; 0 = the model also beats the price (→ bettable). Click a row for its calibration bands + Brier breakdown.
+        <b style={{ color:C.dim }}> Building</b> = not enough resolved plays to judge calibration yet ·
+        <b style={{ color:C.green }}> Promising</b> = beats the price already (skill&gt;0, n≥100) but calibration still thin → accrue toward eligibility ·
+        <b style={{ color:C.red }}> Market sharper</b> = market out-predicts the model (skill&lt;0, n≥100) and the trend isn't recovering → <b style={{ color:C.red }}>Diagnose then stop</b> (run tune:residual ONCE for a sub-slice / L0, then park if empty). <b style={{ color:C.green }}>vs Market</b> &gt; 0 = the model also beats the price (→ bettable). Click a row for its calibration bands + Brier breakdown.
       </div>
     </div>
   );
