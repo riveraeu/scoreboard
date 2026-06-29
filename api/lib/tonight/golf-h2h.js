@@ -12,7 +12,9 @@
 // golfH2hPlays into the shadow:staging payload only — shadow logs them, the client never sees
 // them. `golf|h2h` is not in the category gate, so they're shadow-only.
 
-import { KALSHI_GATE, KALSHI_CAP } from "../config.js";
+// Shadow-only: the window is purely a capture selector (no dropped fallback), so use the wide
+// CAPTURE band so calibration sees the full favorite curve. Betting is gated later (category gate).
+import { CAPTURE_GATE, CAPTURE_CAP } from "../config.js";
 import { getRatingIndex, lookupRating, h2hWinProb } from "../golf.js";
 
 export async function emitGolfH2hPlays(ctx) {
@@ -27,8 +29,8 @@ export async function emitGolfH2hPlays(ctx) {
 
   for (const m of golfH2hMarkets) {
     if (m.gameDate && cutoffStr && m.gameDate < cutoffStr) continue; // round already past cutoff day
-    // Only the favorite side (Kalshi YES price in window) is a candidate play.
-    if (m.kalshiPct < KALSHI_GATE || m.kalshiPct > KALSHI_CAP) continue;
+    // Only the favorite side (Kalshi YES price in the capture band) is logged.
+    if (m.kalshiPct < CAPTURE_GATE || m.kalshiPct > CAPTURE_CAP) continue;
     if (!m.player || !m.opponent) {
       if (isDebug) dropped.push({ sport: "golf", stat: "h2h", reason: "no_matchup", eventTicker: m.eventTicker });
       continue;

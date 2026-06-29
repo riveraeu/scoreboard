@@ -14,7 +14,9 @@
 // tonight.js merges tennisPlays into the shadow:staging payload only — shadow logs them, the
 // client never sees them. `tennis|match` is not in the category gate, so they're shadow-only.
 
-import { KALSHI_GATE, KALSHI_CAP } from "../config.js";
+// Shadow-only: the window is purely a capture selector (no dropped fallback), so use the wide
+// CAPTURE band so calibration sees the full favorite curve. Betting is gated later (category gate).
+import { CAPTURE_GATE, CAPTURE_CAP } from "../config.js";
 import { getRatingIndex, lookupRating, tennisMatchProb, normTennisName } from "../tennis.js";
 
 export async function emitTennisMatchPlays(ctx) {
@@ -43,8 +45,8 @@ export async function emitTennisMatchPlays(ctx) {
       continue;
     }
     for (const side of ev.sides) {
-      // Only the favorite side (Kalshi YES price in window) is a candidate play.
-      if (side.kalshiPct < KALSHI_GATE || side.kalshiPct > KALSHI_CAP) continue;
+      // Only the favorite side (Kalshi YES price in the capture band) is logged.
+      if (side.kalshiPct < CAPTURE_GATE || side.kalshiPct > CAPTURE_CAP) continue;
       // Opponent: the other side's full name if priced; else the last name parsed from the title.
       const other = ev.sides.find((s) => s !== side);
       const opponent = other?.player || side.opponentRaw || null;

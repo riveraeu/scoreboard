@@ -17,13 +17,15 @@
 // (here P(ends before round N) — the early-finish side), and the UNDER/NO row (reaches round N)
 // adds noTruePct — the shadow insert flips model_true_pct to 100−truePct for direction:"under".
 
-import { KALSHI_GATE, KALSHI_CAP } from "../config.js";
+// Shadow-only: the window is purely a capture selector (no dropped fallback), so use the wide
+// CAPTURE band so calibration sees the full favorite curve. Betting is gated later (category gate).
+import { CAPTURE_GATE, CAPTURE_CAP } from "../config.js";
 import {
   getFightCardIndex, matchFightByCodes, finishRateFor, roundHazard, pEndBeforeRound,
   normFighterName,
 } from "../mma.js";
 
-const inWindow = (pct) => pct >= KALSHI_GATE && pct <= KALSHI_CAP;
+const inWindow = (pct) => pct >= CAPTURE_GATE && pct <= CAPTURE_CAP;
 const round1 = (x) => parseFloat(x.toFixed(1));
 
 export async function emitFightPlays(ctx) {

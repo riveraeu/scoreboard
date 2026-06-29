@@ -17,7 +17,9 @@
 // land in home_team/away_team (Top-10 uses "FIELD" as the away sentinel) so the resolver's NOT-NULL
 // filter selects the rows.
 
-import { KALSHI_GATE, KALSHI_CAP } from "../config.js";
+// Shadow-only: the window is purely a capture selector (no dropped fallback), so use the wide
+// CAPTURE band so calibration sees the full favorite curve. Betting is gated later (category gate).
+import { CAPTURE_GATE, CAPTURE_CAP } from "../config.js";
 import { getDriverIndex, lookupDriver, pBeats, pTopN } from "../nascar.js";
 
 export async function emitNascarPlays(ctx) {
@@ -32,7 +34,7 @@ export async function emitNascarPlays(ctx) {
 
   for (const m of nascarMarkets) {
     if (m.gameDate && cutoffStr && m.gameDate < cutoffStr) continue; // race already past the cutoff day
-    if (m.kalshiPct < KALSHI_GATE || m.kalshiPct > KALSHI_CAP) continue; // only the favorite side
+    if (m.kalshiPct < CAPTURE_GATE || m.kalshiPct > CAPTURE_CAP) continue; // capture the favorite curve
 
     if (m.subtype === "h2h") {
       if (!m.player || !m.opponent) {

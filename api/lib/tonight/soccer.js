@@ -18,13 +18,15 @@
 // noTruePct — the shadow insert flips model_true_pct to 100−truePct for direction:"under".
 // The 1X2 (game) market is a 3-way pick (direction:null), one row per in-window side.
 
-import { KALSHI_GATE, KALSHI_CAP } from "../config.js";
+// Shadow-only: the window is purely a capture selector (no dropped fallback), so use the wide
+// CAPTURE band so calibration sees the full favorite curve. Betting is gated later (category gate).
+import { CAPTURE_GATE, CAPTURE_CAP } from "../config.js";
 import {
   getEloIndex, eloForTeam, lambdasFromElo, buildScoreMatrix,
   prob1x2, probTotalOver, probTeamOver, probSpreadCover, probBtts, WC_TEAMS,
 } from "../soccer.js";
 
-const inWindow = (pct) => pct >= KALSHI_GATE && pct <= KALSHI_CAP;
+const inWindow = (pct) => pct >= CAPTURE_GATE && pct <= CAPTURE_CAP;
 const round1 = (x) => parseFloat(x.toFixed(1));
 
 export async function emitSoccerPlays(ctx) {

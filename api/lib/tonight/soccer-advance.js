@@ -13,12 +13,14 @@
 // merges soccerAdvancePlays into the shadow:staging payload only — shadow logs them, the client
 // never sees them. `soccer|advance` is not in the category gate, so they're shadow-only.
 
-import { KALSHI_GATE, KALSHI_CAP } from "../config.js";
+// Shadow-only: the window is purely a capture selector (no dropped fallback), so use the wide
+// CAPTURE band so calibration sees the full favorite curve. Betting is gated later (category gate).
+import { CAPTURE_GATE, CAPTURE_CAP } from "../config.js";
 import {
   getEloIndex, eloForTeam, lambdasFromElo, buildScoreMatrix, prob1x2, advanceProb, WC_TEAMS,
 } from "../soccer.js";
 
-const inWindow = (pct) => pct >= KALSHI_GATE && pct <= KALSHI_CAP;
+const inWindow = (pct) => pct >= CAPTURE_GATE && pct <= CAPTURE_CAP;
 const round1 = (x) => parseFloat(x.toFixed(1));
 
 export async function emitSoccerAdvancePlays(ctx) {

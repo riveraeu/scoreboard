@@ -24,7 +24,9 @@
 // in the category gate, so it's shadow-only. Rows are PROP-SHAPED (player_name + stat:"outs" +
 // threshold + direction) so the existing player-prop resolver grades them off /api/live (ps.ip → outs).
 
-import { KALSHI_GATE, KALSHI_CAP } from "../config.js";
+// Shadow-only: the window is purely a capture selector (no dropped fallback), so use the wide
+// CAPTURE band so calibration sees the full favorite curve. Betting is gated later (category gate).
+import { CAPTURE_GATE, CAPTURE_CAP } from "../config.js";
 import { outsTailPct } from "../simulate.js";
 
 // Provisional knobs — anchored to pitcher-workload intuition, not Kalshi. Shadow-calibrated.
@@ -68,9 +70,9 @@ export function emitMlbOutsPlays(ctx) {
   for (const m of outsMarkets) {
     if (m.gameDate && cutoffStr && m.gameDate < cutoffStr) continue; // game already past the cutoff day
 
-    // Favorite side: only one of YES(over)/NO(under) can sit in [67,91] (complementary prices).
-    const overFav = m.yesPct >= KALSHI_GATE && m.yesPct <= KALSHI_CAP;
-    const underFav = m.noPct >= KALSHI_GATE && m.noPct <= KALSHI_CAP;
+    // Favorite side: only one of YES(over)/NO(under) can sit in the capture band (complementary prices).
+    const overFav = m.yesPct >= CAPTURE_GATE && m.yesPct <= CAPTURE_CAP;
+    const underFav = m.noPct >= CAPTURE_GATE && m.noPct <= CAPTURE_CAP;
     if (!overFav && !underFav) continue;
 
     const ps = byName[_nn(m.player)];

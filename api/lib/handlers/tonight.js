@@ -16,7 +16,7 @@ import { computeDataConfidence, DC_GATE, _GT_IMPLIED_CAP, _TT_IMPLIED_CAP } from
 import { applyClosingSnapshot } from "../tonight/closing-odds.js";
 import { fetchKalshiMarkets } from "../tonight/kalshi-pipeline.js";
 import { blendMarketPrice } from "../tonight/blend-fill.js";
-import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER as EDGE_GATE } from "../config.js";
+import { KALSHI_GATE, KALSHI_CAP, CAPTURE_GATE, CAPTURE_CAP, EDGE_GATE_SERVER as EDGE_GATE } from "../config.js";
 import { TEAM_NORM, normTeam, parseGameTeams } from "../tonight/parse-teams.js";
 import { dedupAltLines } from "../tonight/dedup.js";
 import { emitAllMlAndSpread } from "../tonight/ml-spread.js";
@@ -502,11 +502,13 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
 
             // ── Game total branch (wider pct filter; team-based, not player-based) ──
             if (cfg.gameType === "total") {
-              // Keep markets where EITHER side (YES/OVER or NO/UNDER) sits in our [67,91]
-              // qualification window. The OVER push gates on YES (yesAsk), the UNDER push
-              // gates on NO (noAsk = real ask, not synthetic 1-yesAsk), so we don't bet
-              // OVERs against an UNDER-favored line and vice versa.
-              if ((pct < KALSHI_GATE || pct > KALSHI_CAP) && (noPct < KALSHI_GATE || noPct > KALSHI_CAP)) continue;
+              // Capture markets where EITHER side (YES/OVER or NO/UNDER) sits in the wide
+              // [CAPTURE_GATE, CAPTURE_CAP] favorite curve — wider than the [67,91] bet window so
+              // calibration sees the full curve (2026-06-29 de-blinding). The `qualified` bet flag
+              // is re-applied downstream at [67,91]. The OVER push gates on YES (yesAsk), the UNDER
+              // push gates on NO (noAsk = real ask, not synthetic 1-yesAsk), so we don't bet OVERs
+              // against an UNDER-favored line and vice versa.
+              if ((pct < CAPTURE_GATE || pct > CAPTURE_CAP) && (noPct < CAPTURE_GATE || noPct > CAPTURE_CAP)) continue;
               const [gameTeam1, gameTeam2] = parseGameTeams(m.event_ticker, sport);
               if (!gameTeam1 || !gameTeam2) continue;
               const dedupeKey = `total|${sport}|${segment}|${gameTeam1}|${gameTeam2}|${threshold}`;
@@ -531,10 +533,11 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
 
             // ── Team total branch (single team's score vs opposing defense) ──
             if (cfg.gameType === "teamTotal") {
-              // Same broadened gate as game totals — accept either OVER-side or UNDER-side
-              // alt lines; the OVER/UNDER push paths apply their own kalshiPct/noKalshiPct gate.
+              // Same wide capture gate as game totals — accept either OVER-side or UNDER-side alt
+              // lines across the [CAPTURE_GATE, CAPTURE_CAP] favorite curve; the OVER/UNDER push
+              // paths apply their own [67,91] kalshiPct/noKalshiPct bet gate downstream.
               // UNDER side uses real noAsk (not 1-yesAsk) since YES/NO books are independent.
-              if ((pct < KALSHI_GATE || pct > KALSHI_CAP) && (noPct < KALSHI_GATE || noPct > KALSHI_CAP)) continue;
+              if ((pct < CAPTURE_GATE || pct > CAPTURE_CAP) && (noPct < CAPTURE_GATE || noPct > CAPTURE_CAP)) continue;
               const [gameTeam1, gameTeam2] = parseGameTeams(m.event_ticker, sport);
               if (!gameTeam1 || !gameTeam2) continue;
               // Extract scoring team from ticker suffix (e.g. "LAD8" → "LAD", "PHI97" → "PHI")
@@ -565,9 +568,10 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             // ── Spread branch (MLB run-line: "Team X wins by over Y runs?") ──
             // Suffix `{team}{N}` where line = strike (== N - 0.5). YES = the margin side; NO = the
             // cover side (handled identically to totals UNDER via real no_ask, not 1 - yes_ask).
-            // Same broad gate as totals: keep if either side sits in [67,91]; emission re-gates.
+            // Same wide capture gate as totals: keep if either side sits in the favorite curve
+            // [CAPTURE_GATE, CAPTURE_CAP]; emission re-gates `qualified` at [67,91].
             if (cfg.gameType === "spread") {
-              if ((pct < KALSHI_GATE || pct > KALSHI_CAP) && (noPct < KALSHI_GATE || noPct > KALSHI_CAP)) continue;
+              if ((pct < CAPTURE_GATE || pct > CAPTURE_CAP) && (noPct < CAPTURE_GATE || noPct > CAPTURE_CAP)) continue;
               const [gameTeam1, gameTeam2] = parseGameTeams(m.event_ticker, sport);
               if (!gameTeam1 || !gameTeam2) continue;
               const _spSuffix = (m.ticker || "").split("-").pop() || "";
@@ -598,16 +602,20 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
 
             // Player props are YES-side by default. Total bases is the exception (2026-06-12):
             // Kalshi lists TB thresholds 2+ and up only, and P(2+ TB) never prices ≥67, so the
-            // YES side can't reach the window — the tradeable side in [67,91] is the NO
-            // ("under 2 TB" ~70-85). Push those as under-direction props priced at no_ask.
-            // Scoped to totalBases; every other prop series keeps YES-only behavior.
+            // YES side can't reach the window — the tradeable side is the NO ("under 2 TB" ~70-85).
+            // Push those as under-direction props priced at no_ask. Scoped to totalBases; every
+            // other prop series keeps YES-only behavior.
+            // Capture band is the wide [CAPTURE_GATE, CAPTURE_CAP] favorite curve, NOT the [67,91]
+            // bet window — so calibration sees the favorite tail above 91¢ (the 2026-06-29 finding:
+            // totalBases' Brier edge lives above the cap, but we were capping capture at it). The
+            // `qualified` bet flag is still applied at [67,91] downstream in props.js.
             let propDirection = null; // null = YES/over (legacy field shape on all other props)
-            if (stat === "totalBases" && (pct < KALSHI_GATE || pct > KALSHI_CAP)
-                && noPct >= KALSHI_GATE && noPct <= KALSHI_CAP) {
+            if (stat === "totalBases" && (pct < CAPTURE_GATE || pct > CAPTURE_CAP)
+                && noPct >= CAPTURE_GATE && noPct <= CAPTURE_CAP) {
               propDirection = "under";
             } else {
-              if (pct < KALSHI_GATE) continue;
-              if (pct > KALSHI_CAP) continue;
+              if (pct < CAPTURE_GATE) continue;
+              if (pct > CAPTURE_CAP) continue;
             }
             // HRR is YES/over-side only at EVERY threshold (unlike totalBases, which lists no 1+
             // line and is bet as a NO/under). The 1+ over is the bread-and-butter play; 2+/3+ overs
