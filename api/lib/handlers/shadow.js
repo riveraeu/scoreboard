@@ -1359,8 +1359,13 @@ function _accuracyAction(verdict, calib, skill, skillN) {
       return { action: "Calibrated", tone: "green",
         why: "model% matches actual outcomes within noise — well-calibrated to reality" };
     case "MARKET_SHARPER":
-      return { action: "Stop — market sharper", tone: "red",
-        why: `the market out-predicts the model (negative Brier skill at n≥${BRIER_MIN_N}) and the trend isn't recovering — calibration won't rescue it; stop accruing here` };
+      // The market out-predicts the model and calibration won't rescue it — but "stop" isn't the
+      // FIRST move: a globally-negative skill can still hide a sharp sub-slice (the totalBases
+      // above-91¢ shape) or an unmodeled exogenous L0 input. So the next step is a ONE-TIME
+      // diagnostic, not a blind stop. The frontend collapses this to "Stop — search exhausted" once
+      // the category is in INPUT_SEARCH_EXHAUSTED (diagnostic already run, came up empty).
+      return { action: "Diagnose then stop", tone: "red",
+        why: `market out-predicts the model (negative Brier skill at n≥${BRIER_MIN_N}, trend not recovering) — calibration can't rescue it. Next: run tune:residual ONCE for a sharp sub-slice (price×threshold) or an unmodeled L0 input; if empty, park it and redirect effort to a less-efficient market` };
     case "PROMISING":
       return { action: "Promising — accrue", tone: "green",
         why: `model already beats the price (positive Brier skill at n≥${BRIER_MIN_N}) but calibration bands are still thin — accrue toward eligibility, not an input change` };

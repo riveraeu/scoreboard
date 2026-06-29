@@ -218,11 +218,21 @@ function AccuracyBoard({ board }) {
         </tr>
         {open && (
           <tr><td colSpan={7} style={{ padding:"0 8px 6px 22px", background:"#0d1117" }}>
-            {r.honest?.why && (
-              <div style={{ color:_TONE[r.honest.tone]||C.gray, fontSize:11, margin:"4px 0" }}>
-                ▶ <b>{r.honest.action}</b>: <span style={{ color:C.text }}>{r.honest.why}</span>
-              </div>
-            )}
+            {(() => {
+              // MARKET_SHARPER's server action is "Diagnose then stop" (run tune:residual once).
+              // Collapse it to a true stop once the L0 search is exhausted (diagnostic already ran empty).
+              const exhausted = r.verdict === "MARKET_SHARPER" && INPUT_SEARCH_EXHAUSTED.has(r.key);
+              const act = exhausted ? "Stop — search exhausted" : r.honest?.action;
+              const why = exhausted
+                ? "market sharper AND the L0 input search is exhausted (no addable in-data dimension; historical pre-filters failed) — park it, redirect effort to a less-efficient market"
+                : r.honest?.why;
+              if (!act || !why) return null;
+              return (
+                <div style={{ color: exhausted ? C.dim : (_TONE[r.honest?.tone]||C.gray), fontSize:11, margin:"4px 0" }}>
+                  ▶ <b>{act}</b>: <span style={{ color:C.text }}>{why}</span>
+                </div>
+              );
+            })()}
             {r.skill != null && (
               <div style={{ color:C.dim, fontSize:10, margin:"2px 0 4px" }}>
                 Brier skill <b style={{ color: (r.n>=100) ? (r.skill>0?C.green:r.skill<-0.005?C.red:C.gray) : C.dim }}>{r.skill>=0?"+":""}{r.skill.toFixed(3)}</b>
@@ -538,8 +548,9 @@ const _BET_ACTIONS = {
 };
 // Accuracy-board (Layer 1) actions that warrant a model-improvement session.
 const _ACC_ACTIONS = {
-  "Improve inputs": { tone:"amber", verb:"Improve inputs for" },   // market sharper → L0 new input
-  "Recalibrate":    { tone:"amber", verb:"Recalibrate" },          // model beats price but miscalibrated → L2 de-shrink
+  "Improve inputs":     { tone:"amber", verb:"Improve inputs for" },     // OVER/UNDER + market sharper → L0 new input
+  "Recalibrate":        { tone:"amber", verb:"Recalibrate" },            // model beats price but miscalibrated → L2 de-shrink
+  "Diagnose then stop": { tone:"red",   verb:"Diagnose (tune:residual)" }, // MARKET_SHARPER → one-time sub-slice/L0 check, then park
 };
 // A Recalibrate task isn't safe to act on until the formula-grade bar (n≥200): below it the
 // calibration curve is noisy and often non-monotonic (e.g. 2026-06-24 mlb|totalBases under at
@@ -607,7 +618,10 @@ function _doThisCandidates(d) {
   // falling) — since its de-shrink step isn't settled yet.
   const accChanges = (d?.accuracyBoard || []).filter(e =>
     _ACC_ACTIONS[e?.honest?.action] &&
-    !(e.honest.action === "Improve inputs" && INPUT_SEARCH_EXHAUSTED.has(`${e.sport}|${e.category}`)) &&
+    // Both the L0-input nag ("Improve inputs") and the MARKET_SHARPER one-time diagnostic
+    // ("Diagnose then stop") point at tune:residual; suppress either once the L0 search is exhausted.
+    !((e.honest.action === "Improve inputs" || e.honest.action === "Diagnose then stop")
+        && INPUT_SEARCH_EXHAUSTED.has(`${e.sport}|${e.category}`)) &&
     !(e.honest.action === "Recalibrate" && (
       (e.n || 0) < RECAL_MIN_N ||
       (e.learning?.reliable && Math.abs(e.learning.skillTrend) > _LEARN_FLAT))));
