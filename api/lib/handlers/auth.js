@@ -890,6 +890,39 @@ ORDER BY COUNT(*) DESC`;
       .toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
     const since = params.get("since") || sinceDefault;
 
+    // CLV-capture rate per snapshot_date (the cohort pregame-snap actually targets — see
+    // shadow.js dataHealth). Diagnostic for "is ~30% daily capture chronic or a dip?" — if it's
+    // flat across days the warn threshold (not the pipeline) is what's miscalibrated.
+    if (params.get("clvCaptureHistory")) {
+      let chRows;
+      try {
+        chRows = await neonQuery(`
+          SELECT snapshot_date,
+                 COUNT(*) AS eligible,
+                 SUM((kalshi_yes_price_pre IS NOT NULL)::int) AS captured
+          FROM shadow_plays
+          WHERE snapshot_date >= $1
+          GROUP BY snapshot_date
+          ORDER BY snapshot_date DESC`, [since], env);
+      } catch (e) { return errorResponse(`Neon query failed: ${e.message}`, 500); }
+      const days = (chRows || []).map(r => {
+        const eligible = Number(r.eligible ?? 0);
+        const captured = Number(r.captured ?? 0);
+        return {
+          date: new Date(r.snapshot_date).toISOString().slice(0, 10),
+          eligible, captured,
+          pct: eligible > 0 ? parseFloat((captured / eligible * 100).toFixed(1)) : null,
+        };
+      });
+      const totElig = days.reduce((a, d) => a + d.eligible, 0);
+      const totCap = days.reduce((a, d) => a + d.captured, 0);
+      return jsonResponse({
+        since, nDays: days.length,
+        overallPct: totElig > 0 ? parseFloat((totCap / totElig * 100).toFixed(1)) : null,
+        days,
+      });
+    }
+
     // Residual-by-dimension raw-row export (Phase 2 model triage). When ?residual=<sport|stat>
     // is set, return the raw resolved rows for ONE category (formula-floored via the caller's
     // `since`) so scripts/tune/residual-by-dimension.js can compute per-play residuals and slice
