@@ -2035,20 +2035,36 @@ async function handleShadowReport({ path, request, env, cache }) {
     // Robust resolution read — seeded with Q6 (healthRows), cross-checked + retried against cold-wake
     // replica lag so a stale-low count can't false-flag the report incomplete (→ 15-min TTL → vanish).
     const rr = await _readResolutionRobust(yesterday, env, healthRows?.[0], cache);
-    const total = rr.total, resolved = rr.resolved;
-    const scored = rr.scored, clvCaptured = rr.clvCaptured;
+    const total = rr.total, resolved = rr.resolved, scored = rr.scored;
+    // CLV capture is a per-snapshot_date operation: pregame-snap stamps kalshi_yes_price_pre on the
+    // rows it processed THAT day (matched against that day's live staging). Measuring it over
+    // game_date=yesterday is the wrong cohort — it mixes in rows snapshotted on OTHER days (whose CLV
+    // was attempted by those days' pipelines) and counts markets that never had a live pre-game window,
+    // dragging the rate misleadingly low. Scope to snapshot_date=yesterday = exactly the plays
+    // yesterday's pregame-snap targeted (complete by report time — the last pregame cron for game_date
+    // T runs 03:00 UTC = 8pm PT on day T). Failure-closed → no CLV warning rather than a false one.
+    let clvCaptured = 0, clvEligible = 0;
+    try {
+      const cr = await neonQuery(
+        `SELECT COUNT(*) AS eligible, SUM((kalshi_yes_price_pre IS NOT NULL)::int) AS captured
+           FROM shadow_plays WHERE snapshot_date = $1`,
+        [yesterday], env, { write: true }
+      );
+      clvEligible = Number(cr?.[0]?.eligible ?? 0);
+      clvCaptured = Number(cr?.[0]?.captured ?? 0);
+    } catch (e) { console.error("[shadow-report] CLV cohort read failed:", e?.message); }
     const warnings = [];
     if (covKV?.coverageWarning) {
       const covStr = Object.entries(covKV.coverage || {}).map(([sp, c]) => `${sp} ${c.games}/${c.scheduled}`).join(", ");
       warnings.push(`Slate under-logged yesterday (${covStr}) — model numbers may be incomplete.`);
     }
     if (total > 0 && resolved / total < 0.9) warnings.push(`Only ${resolved}/${total} of yesterday's plays resolved — ROI partial.`);
-    if (total > 0 && clvCaptured / total < 0.5) warnings.push(`CLV captured for only ${clvCaptured}/${total} of yesterday's plays.`);
+    if (clvEligible > 0 && clvCaptured / clvEligible < 0.5) warnings.push(`CLV captured for only ${clvCaptured}/${clvEligible} of yesterday's snapshotted plays.`);
     dataHealth = {
       coverage: covKV?.coverage ?? null,
       coverageWarning: covKV?.coverageWarning ?? null,
       resolution: { total, resolved, scored, pending: Math.max(0, total - resolved) },
-      clvCapture: { captured: clvCaptured, total, pct: total > 0 ? parseFloat((clvCaptured / total * 100).toFixed(0)) : null },
+      clvCapture: { captured: clvCaptured, eligible: clvEligible, pct: clvEligible > 0 ? parseFloat((clvCaptured / clvEligible * 100).toFixed(0)) : null },
       warnings,
     };
   } catch (e) {
