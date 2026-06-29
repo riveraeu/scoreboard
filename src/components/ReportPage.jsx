@@ -581,13 +581,18 @@ const POLY_RECHECK = "2026-07-07";
 // banner. REMOVE a key the moment a NEW exogenous input HYPOTHESIS appears for it (something fresh to
 // pre-filter); a stale key is harmless (it only matters while the category is still market-sharper).
 // TODO ~2026-07-10: once the x* exogenous dims (xVolume/xSpread, shipped 2026-06-26) have ~2wk of
-// rows, DROP the run-market keys (mlb|totalRuns / mlb|f5total / mlb|f5spread / mlb|spread / mlb|ml)
-// here — liquidity is a fresh, now-sliceable hypothesis for them → let the banner re-fire Improve
-// inputs → run tune:residual. Premature before then (x* has zero rows). [[project-exogenous-feature-stamp]]
+// rows, DROP the run-market keys (mlb|totalRuns / mlb|teamRuns / mlb|f5total / mlb|f5spread /
+// mlb|spread / mlb|ml) here — liquidity is a fresh, now-sliceable hypothesis for them → let the
+// banner re-fire → run tune:residual. Premature before then (x* too thin). [[project-exogenous-feature-stamp]]
 const INPUT_SEARCH_EXHAUSTED = new Set([
-  "mlb|f5spread", "mlb|ml", "mlb|totalRuns", "mlb|strikeouts", "mlb|f5total", "mlb|spread", "mlb|hits",
+  "mlb|f5spread", "mlb|ml", "mlb|totalRuns", "mlb|teamRuns", "mlb|strikeouts", "mlb|f5total", "mlb|spread", "mlb|hits",
   "wnba|points", "wnba|totalPoints", "wnba|rebounds",
 ]);
+// mlb|teamRuns added 2026-06-29 after the MARKET_SHARPER banner prompted its tune:residual run:
+// overall skill −0.002 (market sharper near-tie, n≈261); NO sub-trust sub-slice (faint +skill only at
+// 70-80¢, n=32-69, below the n≥100 Brier floor; the 80-95¢ tail where totalBases shines is empty),
+// and NO addable L0 input (edge anti-predictive, dayOfWeek noise, x* dims too thin to read yet).
+// Same run-market posture as the others → re-check on the ~07-10 liquidity (x*) sweep below.
 function _doThisCandidates(d) {
   const out = [];
   // 1 — data health, but ONLY when actionable. `dataHealth.actionable` (server) is true only for
