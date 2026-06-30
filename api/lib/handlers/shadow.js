@@ -2179,21 +2179,53 @@ async function handleShadowReport({ path, request, env, cache }) {
       const covStr = Object.entries(covKV.coverage || {}).map(([sp, c]) => `${sp} ${c.games}/${c.scheduled}`).join(", ");
       warnings.push(`Slate under-logged yesterday (${covStr}) — model numbers may be incomplete.`);
     }
-    const resolutionPartial = total > 0 && resolved / total < 0.9;
-    if (resolutionPartial) warnings.push(`Only ${resolved}/${total} of yesterday's plays resolved — ROI partial.`);
+    // Re-runnable gate (2026-06-30). Every normal day leaves a STRUCTURAL noData floor that re-running
+    // the resolver can't recover: shadow-only soccer/tennis that resolve late or fail name-lookup, and
+    // totals whose games aged out of the resolver's today+tomorrow live window. So a perpetual ~87%
+    // isn't a to-do — flagging `actionable` on a flat `<0.9` made "Fix data health" nag every morning
+    // with nothing to fix. The genuinely re-runnable failure (cron swallowed / cold-start abort, e.g.
+    // the 6/18 7/889) shows as a resolved fraction ANOMALOUSLY below the trailing structural floor.
+    // Gate on that anomaly; keep `<0.9` only as a sanity floor + the no-history fallback.
+    const todayRate = total > 0 ? resolved / total : 1;
+    let resolutionAnomalous = total > 0 && todayRate < 0.9; // fallback: too little history → plain rule
+    let resolutionBaseline = null;
+    try {
+      const histStart = new Date(new Date(yesterday).getTime() - 14 * 86400_000).toISOString().slice(0, 10);
+      const histRows = await neonQuery(
+        `SELECT game_date, COUNT(*) AS total, SUM(resolved::int) AS resolved
+           FROM shadow_plays
+          WHERE game_date >= $1 AND game_date < $2 AND game_date IS NOT NULL
+          GROUP BY game_date HAVING COUNT(*) >= 50`,
+        [histStart, yesterday], env, { write: true }
+      );
+      const rates = (histRows || [])
+        .map(r => Number(r.resolved) / Math.max(1, Number(r.total)))
+        .sort((a, b) => a - b);
+      if (rates.length >= 5) {
+        resolutionBaseline = rates[Math.floor(rates.length / 2)]; // median structural floor
+        // Anomalous = both below the absolute sanity floor AND ≥10pts under the structural norm.
+        resolutionAnomalous = total > 0 && todayRate < 0.9 && todayRate < resolutionBaseline - 0.10;
+      }
+    } catch (e) { console.error("[shadow-report] resolution baseline read failed:", e?.message); }
+    // Caution strip warns only on a real anomaly now (a normal structural-floor day is not "ROI partial").
+    if (resolutionAnomalous) warnings.push(`Only ${resolved}/${total} of yesterday's plays resolved — ROI partial.`);
     if (clvEligible > 0 && clvCaptured / clvEligible < 0.5) warnings.push(`CLV captured for only ${clvCaptured}/${clvEligible} of yesterday's snapshotted plays.`);
-    // `actionable` = is there a data-health issue you can DO something about today? Only partial
-    // resolution qualifies — you can re-run the resolver. Coverage under-log + CLV dips are about a
-    // now-closed yesterday and are unrecoverable, so they're caution-only (the ⚠ strip), NOT a
-    // "Do this today" action. The frontend's tier-1 banner fires only when this is true so it never
-    // promotes an unfixable past caution into the day's primary to-do.
+    // `actionable` = is there a data-health issue you can DO something about today? Only an ANOMALOUS
+    // resolution shortfall qualifies — re-running the resolver recovers it. The structural noData floor,
+    // coverage under-log, and CLV dips are about a now-closed yesterday and are unrecoverable, so they're
+    // caution-only (the ⚠ strip), NOT a "Do this today" action. The frontend's tier-1 banner fires only
+    // when this is true so it never promotes an unfixable past caution into the day's primary to-do.
     dataHealth = {
       coverage: covKV?.coverage ?? null,
       coverageWarning: covKV?.coverageWarning ?? null,
-      resolution: { total, resolved, scored, pending: Math.max(0, total - resolved) },
+      resolution: {
+        total, resolved, scored, pending: Math.max(0, total - resolved),
+        baselinePct: resolutionBaseline != null ? parseFloat((resolutionBaseline * 100).toFixed(0)) : null,
+        anomalous: resolutionAnomalous,
+      },
       clvCapture: { captured: clvCaptured, eligible: clvEligible, pct: clvEligible > 0 ? parseFloat((clvCaptured / clvEligible * 100).toFixed(0)) : null },
       warnings,
-      actionable: resolutionPartial,
+      actionable: resolutionAnomalous,
     };
   } catch (e) {
     console.error("[shadow-report] dataHealth skipped:", e?.message);
