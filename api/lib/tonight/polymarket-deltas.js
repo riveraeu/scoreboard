@@ -50,7 +50,15 @@ export function buildKalshiMlIndex(rows) {
     // 2026-06-29: CIN@MIL book 93.5% vs the wrong Kalshi 62¢ row → fake 31.5¢ gap). 2¢ tolerance
     // ignores trivial cross-emit-path jitter.
     if (slot[r.side] && Math.abs(slot[r.side].pct - r.kalshiPct) > 2) slot._ambiguous = true;
-    slot[r.side] = { pct: r.kalshiPct, truePct: r.truePct ?? null };
+    // Keep the MOST-TRADED row for the side — when a game has several Kalshi ML rows (a stale 0-vol
+    // quote alongside a traded line, or two series snapshots), the traded price is the reliable one
+    // to compare against. `vol` travels with the slot so a consumer can liquidity-gate (the
+    // sportsbook matcher does; the poly matcher leaves it for back-compat). Defaults to 0 when the
+    // emit path omits volume (poly fixtures, older rows) → back-compatible last-wins-by-default.
+    const vol = Number(r.kalshiVolume) || 0;
+    if (!slot[r.side] || vol > (slot[r.side].vol || 0)) {
+      slot[r.side] = { pct: r.kalshiPct, truePct: r.truePct ?? null, vol };
+    }
   }
   return ml;
 }

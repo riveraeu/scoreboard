@@ -15,6 +15,12 @@
 
 import { buildKalshiMlIndex } from "./polymarket-deltas.js";
 
+// Liquidity gate: only compare against a TRADED Kalshi line. A 0-volume side is an untraded resting
+// quote — too likely stale/wide to trust for divergence measurement (it's what produced the noisy
+// ~15¢ tail in the first live read: book vs a vol=0 coinflip row). Start permissive (drop only pure
+// zero); raise if the gated tail still looks stale. The cross-sectional median is robust either way.
+const MIN_KALSHI_VOL = 1;
+
 // YYYY-MM-DD shifted by n days (UTC-safe string math) — book commence_time is UTC, our gameDate PT.
 function _shiftDate(d, n) {
   const t = Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10)) + n * 86400000;
@@ -34,6 +40,7 @@ function _median(xs) {
 export function emitSportsbookDeltas({ bookGames, plays = [], dropped = [], deltas = [] }) {
   const ml = buildKalshiMlIndex([...plays, ...dropped]);
   let matchedGames = 0;
+  let illiquidSkipped = 0; // sides dropped by the volume gate (untraded Kalshi line)
   const _usedKeys = new Set(); // a Kalshi game matched once — a 2nd book game on the same key is a DH/dup
 
   for (const g of (bookGames || [])) {
@@ -49,6 +56,8 @@ export function emitSportsbookDeltas({ bookGames, plays = [], dropped = [], delt
     let matchedThisGame = false;
     for (const side of ["away", "home"]) {
       if (g.ml[side] == null || !ke[side]) continue;
+      // Liquidity gate — skip an untraded Kalshi side (stale quote → unreliable for divergence).
+      if (!((ke[side].vol || 0) >= MIN_KALSHI_VOL)) { illiquidSkipped++; continue; }
       const bookFairPct = +(g.ml[side] * 100).toFixed(1);
       const kalshiPct = ke[side].pct;
       deltas.push({
@@ -70,6 +79,7 @@ export function emitSportsbookDeltas({ bookGames, plays = [], dropped = [], delt
     market: "ml",
     bookGames: (bookGames || []).length,
     matchedGames,
+    illiquidSkipped,
     medianAbsDeltaCents: _median(abs),
     maxAbsDeltaCents: abs.length ? Math.max(...abs) : null,
     meanSignedCents: signed.length ? +(signed.reduce((a, b) => a + b, 0) / signed.length).toFixed(2) : null,
