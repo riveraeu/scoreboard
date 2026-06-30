@@ -605,7 +605,15 @@ function _doThisCandidates(d) {
     out.push({ tier:1, tone:"red", label:"Fix data health", why: warns.join(" · "), short:"Fix data health" });
   }
   // 2 — betting changes pending on the betting board (promote / demote / investigate).
-  const changes = (d?.bettingBoard || []).filter(e => _BET_ACTIONS[e?.doThis?.action]);
+  // "Look deeper" is the Phase-2 residual-slicer nag (eligible-but-window-loses). It's only
+  // actionable once a coherent price window has been DISCOVERED to slice against — with
+  // discoveredWindow=null the category is still accruing (the wider [55,97] capture data
+  // hasn't filled the band yet), so an immediate slice has nothing to bite on and the to-do
+  // is unfixable today. Hold it out of the daily banner until a window exists (the board row +
+  // its "Look deeper" verdict still show). Promote/Pull are live gate changes — never window-gated.
+  const changes = (d?.bettingBoard || []).filter(e =>
+    _BET_ACTIONS[e?.doThis?.action] &&
+    !(e.doThis.action === "Look deeper" && e.discoveredWindow == null));
   if (changes.length) {
     const byAction = {};
     for (const e of changes) (byAction[e.doThis.action] ||= []).push(`${e.sport} ${e.category}`);
