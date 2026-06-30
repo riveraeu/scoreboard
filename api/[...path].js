@@ -9,6 +9,13 @@ import { handleKalshiRoutes } from "./lib/handlers/kalshi.js";
 import { handleTonightRoute } from "./lib/handlers/tonight.js";
 import { handleShadowRoutes } from "./lib/handlers/shadow.js";
 import { handlePushRoutes } from "./lib/handlers/push.js";
+import { gzipToString, gunzipFromString, GZ_PREFIX } from "./lib/kv-compress.js";
+
+// Transparently gzip any KV value larger than this so a single SET never approaches Upstash's
+// 10MB request cap. Small values (the vast majority) are stored raw — compression only kicks in
+// for the few consolidated blobs (shadow:staging, byteam:*, big kalshi:stale:*). Reads
+// auto-detect the gz: marker and decompress, so callers are unaffected. See api/lib/kv-compress.js.
+const KV_COMPRESS_THRESHOLD = 256 * 1024;
 
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
@@ -36,17 +43,25 @@ function makeCache(env) {
       async get(key, type) {
         const { result } = await cmd("GET", key);
         if (result == null) return null;
+        let s = result;
+        if (typeof s === "string" && s.startsWith(GZ_PREFIX)) {
+          try { s = await gunzipFromString(s); } catch { return null; }
+        }
         if (type === "json") {
           try {
-            return JSON.parse(result);
+            return JSON.parse(s);
           } catch {
             return null;
           }
         }
-        return result;
+        return s;
       },
       async put(key, value, opts = {}) {
-        const v = typeof value === "string" ? value : JSON.stringify(value);
+        let v = typeof value === "string" ? value : JSON.stringify(value);
+        if (v.length > KV_COMPRESS_THRESHOLD) {
+          try { v = await gzipToString(v); }
+          catch (e) { console.error("[upstash] compress failed, storing raw:", key, String(e?.message || e)); }
+        }
         const args = ["SET", key, v];
         if (opts.expirationTtl) args.push("EX", opts.expirationTtl);
         await cmd(...args);
