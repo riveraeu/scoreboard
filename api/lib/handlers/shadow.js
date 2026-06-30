@@ -972,12 +972,37 @@ async function handleShadowResolver({ path, request, env, cache }) {
   // write consistent on the pooled primary, and max-merge across the overnight passes (2am/3am/
   // 5:50am) locks in yesterday's true resolved count in KV — which the 6am report reads instead of
   // trusting a cold-instance SQL read that lags the replica (the recurring "not yet generated" miss).
+  //
+  // 2026-06-30 hardening: the SQL re-COUNT below is ITSELF subject to read-your-own-write replica
+  // lag on a cold instance (the >1min instance-pinned lag from the 6/26 miss) — so the decisive late
+  // pass that resolves the bulk of yesterday's games can stamp a stale-LOW floor (90 while 990 truly
+  // resolved), and since earlier passes legitimately resolved fewer, the max-merge never captures the
+  // truth before the 6am report. Defense: derive a lag-IMMUNE lower bound from this pass's own ground
+  // truth — prevKvFloor.resolved (Upstash, read-after-write consistent) + the rows we KNOW we just
+  // resolved for yesterday (in-memory) — and floor `resolved` at it. Only `resolved` needs this (the
+  // just-written, lag-prone field that drives the report's incomplete/TTL gate); `total` is settled
+  // (rows inserted hours ago) and clv is written by a different path.
   try {
     const yesterday = new Date(new Date(today).getTime() - 86400_000).toISOString().slice(0, 10);
+    const _y10 = (g) => { try { return new Date(g).toISOString().slice(0, 10); } catch { return null; } };
+    const yesterdayIds = new Set(
+      rows.filter(r => r.game_date && _y10(r.game_date) === yesterday).map(r => r.id)
+    );
+    const newResolvedYesterday = updates.reduce((n, u) => n + (yesterdayIds.has(u.id) ? 1 : 0), 0);
+    const prevFloor = cache
+      ? await cache.get(`${_RESOLUTION_KV_PREFIX}${yesterday}`, "json").catch(() => null)
+      : null;
     const yRow = _parseResolutionRow(
       (await neonQuery(_RESOLUTION_SQL, [yesterday], env, { write: true }).catch(() => null))?.[0]
     );
-    if (yRow) await _stampResolutionFloor(yesterday, yRow, cache);
+    if (yRow) {
+      // Lag-immune lower bound; max so the SQL read still self-corrects total/abandons upward.
+      const sqlResolved = yRow.resolved;
+      const bound = (Number(prevFloor?.resolved) || 0) + newResolvedYesterday;
+      yRow.resolved = Math.max(sqlResolved, bound);
+      const stamped = await _stampResolutionFloor(yesterday, yRow, cache);
+      console.log(`[shadow-resolver] floor ${yesterday} stamped resolved=${stamped?.resolved}/${stamped?.total} (sql=${sqlResolved} bound=${bound} newY=${newResolvedYesterday})`);
+    }
   } catch (e) {
     console.error(`[shadow-resolver] resolution floor stamp failed: ${e?.message}`);
   }
