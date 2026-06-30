@@ -693,6 +693,17 @@ function _doThisCandidates(d) {
       why: `${titles}${nm.length > 3 ? " …" : ""} — dismiss noise, promote real candidates`,
       short: `Triage ${nm.length} detected` });
   }
+  // 3.6 — sportsbook cross-venue kill-gate: a CONFIRMED systematic Kalshi-lags-the-book gap is an
+  // actionable build (the Phase-1b correction-latency logger). Live verdict from the report's
+  // sportsbookValidation (in-window bettable band). Only GAP is actionable here; TIGHT/ACCRUING sit
+  // at the floor below so the banner still reflects the accruing observatory on a quiet day.
+  const sbv = d?.sportsbookValidation;
+  if (sbv?.verdict === "GAP") {
+    out.push({ tier:3.6, tone:"green",
+      label:"Build sportsbook correction-latency logger",
+      why:`Kalshi lags the sharp book by ${sbv.meanSigned>=0?"+":""}${sbv.meanSigned}¢ in-window (${Math.round((sbv.fracGe3c||0)*100)}% of sides ≥3¢, n=${sbv.n}/${sbv.days}d) — a real, persistent gap. Build the intraday delta logger to measure how long it lasts before correcting (Phase 1b).`,
+      short:"Sportsbook gap → build logger" });
+  }
   // 4 — Polymarket (strategic backlog floor; primary only when nothing above is actionable). Phase 1a
   // observatory shipped 2026-06-23 and is accumulating cross-venue deltas. The Phase-1b call is a
   // DATED ~2-week kill-gate wait, so this floor is held until POLY_RECHECK rather than nagging the same
@@ -702,6 +713,20 @@ function _doThisCandidates(d) {
     out.push({ tier:4, tone:"gray", label:"Check Polymarket divergence",
       why:`Phase 1a observatory live — cross-venue ML deltas logging. Read /api/polymarket-deltas?days=30; build 1b trading only if exec.fracEdgeGe3c holds >0 with real n (re-check window open since ${POLY_RECHECK})`, short:"Polymarket 1b gate" });
   }
+  // 4.6 — sportsbook cross-venue floor (below Polymarket, above the quiet-day floor): when nothing
+  // above is actionable, surface the LIVE kill-gate status so the banner reflects the accruing
+  // observatory instead of a blank "all clear". TIGHT = the likely no-edge outcome → redirect cue.
+  if (sbv && (sbv.verdict === "ACCRUING" || sbv.verdict === "TIGHT")) {
+    if (sbv.verdict === "ACCRUING") {
+      out.push({ tier:4.6, tone:"gray", label:"Sportsbook divergence accruing",
+        why:`Cross-venue observatory live — Kalshi-vs-sharp-book ML deltas logging (n=${sbv.n}/${sbv.days}d in-window${sbv.medianAbs!=null?`, median ${sbv.medianAbs}¢`:""}). Re-read /api/sportsbook-deltas once n≥30 over ≥3 days to call the kill-gate.`,
+        short:"Sportsbook accruing" });
+    } else {
+      out.push({ tier:4.6, tone:"gray", label:"Sportsbook: Kalshi tracks the book",
+        why:`Cross-venue kill-gate read: median ${sbv.medianAbs}¢, mean ${sbv.meanSigned>=0?"+":""}${sbv.meanSigned}¢ in-window (n=${sbv.n}/${sbv.days}d) — no systematic liquid-ML lag edge. Spend effort on thin/new markets + the totalBases conversion, not liquid timing.`,
+        short:"Sportsbook tracks tight" });
+    }
+  }
   // 5 — quiet-day floor: nothing above is actionable and the Polymarket re-check isn't due yet. Show a
   // calm "caught up" state naming the next scheduled checkpoint instead of an empty/absent banner.
   if (!out.length) {
@@ -709,6 +734,30 @@ function _doThisCandidates(d) {
       why:`Gate empty, models accruing, no new markets to triage. Next scheduled checkpoint: Polymarket Phase-1b kill-gate re-check ~${POLY_RECHECK}.`, short:"All clear" });
   }
   return out;
+}
+// Cross-venue kill-gate readout — the live sportsbook-reference validation (does Kalshi lag the
+// de-vigged sharp book?). Mirrors the report's sportsbookValidation verdict; null until the feed
+// is activated (THE_ODDS_API_KEY) + the table has rows.
+function CrossVenueValidation({ sbv }) {
+  if (!sbv) return null;
+  const map = {
+    GAP:      ["Kalshi LAGS the sharp book → build the correction-latency logger", C.green],
+    TIGHT:    ["Kalshi tracks the sharp book — no liquid lag edge", C.gray],
+    ACCRUING: ["accruing — not enough to call the kill-gate yet", C.dim],
+  };
+  const [label, color] = map[sbv.verdict] || [sbv.verdict, C.dim];
+  return (
+    <div style={{ marginTop:10, fontSize:11 }}>
+      <span style={{ color:C.dim, fontWeight:700, fontSize:9, letterSpacing:0.4 }}>CROSS-VENUE · SPORTSBOOK REFERENCE </span>
+      <span style={{ color, fontWeight:600 }}>{label}</span>
+      <span style={{ color:C.gray }}>
+        {" · "}in-window n={sbv.n}/{sbv.days}d
+        {sbv.medianAbs!=null ? ` · median ${sbv.medianAbs}¢` : ""}
+        {sbv.meanSigned!=null ? ` · mean ${sbv.meanSigned>=0?"+":""}${sbv.meanSigned}¢ (book−kalshi)` : ""}
+        {sbv.fracGe3c!=null ? ` · ${Math.round(sbv.fracGe3c*100)}% ≥3¢` : ""}
+      </span>
+    </div>
+  );
 }
 function DoThisBanner({ d }) {
   const [copied, setCopied] = React.useState(false);
@@ -781,6 +830,8 @@ function MorningBriefing({ shadowReportData, shadowReportLoading, fetchShadowRep
       <div style={sectionHead}>Betting board · what to bet</div>
       <GateDigest board={d.bettingBoard} />
       <BettingBoard board={d.bettingBoard} />
+
+      <CrossVenueValidation sbv={d.sportsbookValidation} />
     </div>
   );
 }

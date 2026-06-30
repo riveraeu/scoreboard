@@ -2252,6 +2252,37 @@ async function handleShadowReport({ path, request, env, cache }) {
     queryDiscovered("shortlisted"),
   ]);
 
+  // Cross-venue kill-gate (sportsbook reference): does Kalshi systematically LAG the de-vigged sharp
+  // book? Live read of the sportsbook_deltas accrual over the bettable in-window [67,91] band, so
+  // /model + the Do-This banner reflect the actual answer (not a static date reminder). delta_cents =
+  // bookFair − kalshi, so mean_signed > 0 = Kalshi cheap vs the book = the lag edge. Failure-closed.
+  let sportsbookValidation = null;
+  try {
+    const _SB_DAYS = 7;
+    const [agg] = await neonQuery(`
+      SELECT count(*)::int AS n, count(distinct snapshot_date)::int AS days,
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY abs(delta_cents)) AS median_abs,
+        avg(delta_cents) AS mean_signed,
+        avg(CASE WHEN abs(delta_cents) >= 3 THEN 1.0 ELSE 0 END) AS frac_ge3
+      FROM ${SB_DELTAS_TABLE}
+      WHERE snapshot_date >= CURRENT_DATE - $1::int AND kalshi_pct >= 67 AND kalshi_pct <= 91`,
+      [_SB_DAYS], env, { write: true });
+    const n = Number(agg?.n || 0), days = Number(agg?.days || 0);
+    const medianAbs = agg?.median_abs != null ? parseFloat(Number(agg.median_abs).toFixed(2)) : null;
+    const meanSigned = agg?.mean_signed != null ? parseFloat(Number(agg.mean_signed).toFixed(2)) : null;
+    const fracGe3c = agg?.frac_ge3 != null ? parseFloat(Number(agg.frac_ge3).toFixed(3)) : null;
+    // Verdict ladder (provisional, in-window bettable band):
+    //   ACCRUING — too little to read (n<30 or <3 days).
+    //   GAP      — Kalshi systematically lags (meanSigned≥1.5¢) AND actionable-sized often
+    //              (fracGe3c≥0.15) → build the correction-latency logger (Phase 1b).
+    //   TIGHT    — venues track (likely) → no liquid lag edge; redirect to thin markets.
+    let verdict;
+    if (n < 30 || days < 3) verdict = "ACCRUING";
+    else if ((meanSigned ?? 0) >= 1.5 && (fracGe3c ?? 0) >= 0.15) verdict = "GAP";
+    else verdict = "TIGHT";
+    sportsbookValidation = { n, days, windowDays: _SB_DAYS, medianAbs, meanSigned, fracGe3c, verdict };
+  } catch (e) { console.error("[shadow-report] sportsbook validation skipped:", e?.message); }
+
   const report = {
     reportDate,
     generatedAt: new Date().toISOString(),
@@ -2269,6 +2300,7 @@ async function handleShadowReport({ path, request, env, cache }) {
     optimalDailyPicks,
     newMarkets,
     shortlistedMarkets,
+    sportsbookValidation,
     durationMs: Date.now() - t0,
   };
 
