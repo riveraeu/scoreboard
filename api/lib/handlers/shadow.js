@@ -2179,53 +2179,39 @@ async function handleShadowReport({ path, request, env, cache }) {
       const covStr = Object.entries(covKV.coverage || {}).map(([sp, c]) => `${sp} ${c.games}/${c.scheduled}`).join(", ");
       warnings.push(`Slate under-logged yesterday (${covStr}) — model numbers may be incomplete.`);
     }
-    // Re-runnable gate (2026-06-30). Every normal day leaves a STRUCTURAL noData floor that re-running
-    // the resolver can't recover: shadow-only soccer/tennis that resolve late or fail name-lookup, and
-    // totals whose games aged out of the resolver's today+tomorrow live window. So a perpetual ~87%
-    // isn't a to-do — flagging `actionable` on a flat `<0.9` made "Fix data health" nag every morning
-    // with nothing to fix. The genuinely re-runnable failure (cron swallowed / cold-start abort, e.g.
-    // the 6/18 7/889) shows as a resolved fraction ANOMALOUSLY below the trailing structural floor.
-    // Gate on that anomaly; keep `<0.9` only as a sanity floor + the no-history fallback.
+    // Re-runnable gate (2026-06-30). A day-1 report ALWAYS shows a resolution shortfall that re-running
+    // the resolver right now can't close: shadow-only soccer/tennis resolve late (event-summary / name-
+    // lookup) and totals age out of the today+tomorrow live window — those rows self-heal over the next
+    // 1-2 days of scheduled passes (prior days mature to ~100%), and an immediate re-run resolves ~0 of
+    // them (confirmed live: trigger → resolved 0-2). So flagging `actionable` on a flat `<0.9` nagged
+    // "Fix data health" every morning with nothing to DO. (A trailing-baseline anomaly check is wrong
+    // too — it compares today at 1-day maturity against prior days at full maturity, so it over-flags.)
+    // The ONLY case re-running now recovers is a catastrophic pass failure — a cron swallow / cold-start
+    // abort (the 6/18 7/889 ≈ 0.8%) where games ARE final but the pass processed ~nothing. That lands an
+    // order of magnitude below the normal ~87% day-1 floor, so a low ABSOLUTE threshold separates them
+    // cleanly with wide margin. `pending` stays exposed; the warning + actionable both gate on it.
     const todayRate = total > 0 ? resolved / total : 1;
-    let resolutionAnomalous = total > 0 && todayRate < 0.9; // fallback: too little history → plain rule
-    let resolutionBaseline = null;
-    try {
-      const histStart = new Date(new Date(yesterday).getTime() - 14 * 86400_000).toISOString().slice(0, 10);
-      const histRows = await neonQuery(
-        `SELECT game_date, COUNT(*) AS total, SUM(resolved::int) AS resolved
-           FROM shadow_plays
-          WHERE game_date >= $1 AND game_date < $2 AND game_date IS NOT NULL
-          GROUP BY game_date HAVING COUNT(*) >= 50`,
-        [histStart, yesterday], env, { write: true }
-      );
-      const rates = (histRows || [])
-        .map(r => Number(r.resolved) / Math.max(1, Number(r.total)))
-        .sort((a, b) => a - b);
-      if (rates.length >= 5) {
-        resolutionBaseline = rates[Math.floor(rates.length / 2)]; // median structural floor
-        // Anomalous = both below the absolute sanity floor AND ≥10pts under the structural norm.
-        resolutionAnomalous = total > 0 && todayRate < 0.9 && todayRate < resolutionBaseline - 0.10;
-      }
-    } catch (e) { console.error("[shadow-report] resolution baseline read failed:", e?.message); }
-    // Caution strip warns only on a real anomaly now (a normal structural-floor day is not "ROI partial").
-    if (resolutionAnomalous) warnings.push(`Only ${resolved}/${total} of yesterday's plays resolved — ROI partial.`);
+    const ACTIONABLE_RESOLVE_FLOOR = 0.5; // < this = catastrophic pass failure, not normal day-1 lag
+    const resolutionFailed = total > 0 && todayRate < ACTIONABLE_RESOLVE_FLOOR;
+    // Caution strip warns only on a real failure now (a normal day-1 floor is not "ROI partial").
+    if (resolutionFailed) warnings.push(`Only ${resolved}/${total} of yesterday's plays resolved — re-run the resolver (ROI partial).`);
     if (clvEligible > 0 && clvCaptured / clvEligible < 0.5) warnings.push(`CLV captured for only ${clvCaptured}/${clvEligible} of yesterday's snapshotted plays.`);
-    // `actionable` = is there a data-health issue you can DO something about today? Only an ANOMALOUS
-    // resolution shortfall qualifies — re-running the resolver recovers it. The structural noData floor,
-    // coverage under-log, and CLV dips are about a now-closed yesterday and are unrecoverable, so they're
+    // `actionable` = is there a data-health issue you can DO something about today? Only a catastrophic
+    // resolution failure qualifies — a warm re-run recovers it. Normal day-1 self-healing lag, coverage
+    // under-log, and CLV dips are about a now-closed yesterday and unrecoverable-by-action, so they're
     // caution-only (the ⚠ strip), NOT a "Do this today" action. The frontend's tier-1 banner fires only
-    // when this is true so it never promotes an unfixable past caution into the day's primary to-do.
+    // when this is true so it never promotes an unfixable/self-healing caution into the day's primary to-do.
     dataHealth = {
       coverage: covKV?.coverage ?? null,
       coverageWarning: covKV?.coverageWarning ?? null,
       resolution: {
         total, resolved, scored, pending: Math.max(0, total - resolved),
-        baselinePct: resolutionBaseline != null ? parseFloat((resolutionBaseline * 100).toFixed(0)) : null,
-        anomalous: resolutionAnomalous,
+        ratePct: total > 0 ? parseFloat((todayRate * 100).toFixed(0)) : null,
+        failed: resolutionFailed,
       },
       clvCapture: { captured: clvCaptured, eligible: clvEligible, pct: clvEligible > 0 ? parseFloat((clvCaptured / clvEligible * 100).toFixed(0)) : null },
       warnings,
-      actionable: resolutionAnomalous,
+      actionable: resolutionFailed,
     };
   } catch (e) {
     console.error("[shadow-report] dataHealth skipped:", e?.message);
