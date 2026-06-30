@@ -701,7 +701,7 @@ function _doThisCandidates(d) {
   if (sbv?.verdict === "GAP") {
     out.push({ tier:3.6, tone:"green",
       label:"Build sportsbook correction-latency logger",
-      why:`Kalshi lags the sharp book by ${sbv.meanSigned>=0?"+":""}${sbv.meanSigned}¢ in-window (${Math.round((sbv.fracGe3c||0)*100)}% of sides ≥3¢, n=${sbv.n}/${sbv.days}d) — a real, persistent gap. Build the intraday delta logger to measure how long it lasts before correcting (Phase 1b).`,
+      why:`Kalshi is cheap vs the sharp book ≥3¢ on ${Math.round((sbv.fracBuyEdge3||0)*100)}% of traded sides (n=${sbv.n}/${sbv.days}d) — persistent buy edges. Build the intraday delta logger to measure how long they last before correcting (Phase 1b).`,
       short:"Sportsbook gap → build logger" });
   }
   // 4 — Polymarket (strategic backlog floor; primary only when nothing above is actionable). Phase 1a
@@ -723,7 +723,7 @@ function _doThisCandidates(d) {
         short:"Sportsbook accruing" });
     } else {
       out.push({ tier:4.6, tone:"gray", label:"Sportsbook: Kalshi tracks the book",
-        why:`Cross-venue kill-gate read: median ${sbv.medianAbs}¢, mean ${sbv.meanSigned>=0?"+":""}${sbv.meanSigned}¢ in-window (n=${sbv.n}/${sbv.days}d) — no systematic liquid-ML lag edge. Spend effort on thin/new markets + the totalBases conversion, not liquid timing.`,
+        why:`Cross-venue kill-gate read: only ${Math.round((sbv.fracBuyEdge3||0)*100)}% of traded sides are ≥3¢ cheap vs the sharp book (median |Δ| ${sbv.medianAbs}¢, n=${sbv.n}/${sbv.days}d) — no systematic liquid-ML lag edge. Spend effort on thin/new markets + the totalBases conversion, not liquid timing.`,
         short:"Sportsbook tracks tight" });
     }
   }
@@ -751,10 +751,9 @@ function CrossVenueValidation({ sbv }) {
       <span style={{ color:C.dim, fontWeight:700, fontSize:9, letterSpacing:0.4 }}>CROSS-VENUE · SPORTSBOOK REFERENCE </span>
       <span style={{ color, fontWeight:600 }}>{label}</span>
       <span style={{ color:C.gray }}>
-        {" · "}in-window n={sbv.n}/{sbv.days}d
-        {sbv.medianAbs!=null ? ` · median ${sbv.medianAbs}¢` : ""}
-        {sbv.meanSigned!=null ? ` · mean ${sbv.meanSigned>=0?"+":""}${sbv.meanSigned}¢ (book−kalshi)` : ""}
-        {sbv.fracGe3c!=null ? ` · ${Math.round(sbv.fracGe3c*100)}% ≥3¢` : ""}
+        {" · "}n={sbv.n}/{sbv.days}d
+        {sbv.medianAbs!=null ? ` · median |Δ| ${sbv.medianAbs}¢` : ""}
+        {sbv.fracBuyEdge3!=null ? ` · ${Math.round(sbv.fracBuyEdge3*100)}% of sides ≥3¢ cheap vs book` : ""}
       </span>
     </div>
   );

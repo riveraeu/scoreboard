@@ -2259,28 +2259,33 @@ async function handleShadowReport({ path, request, env, cache }) {
   let sportsbookValidation = null;
   try {
     const _SB_DAYS = 7;
+    // The kill-gate metric is the BUY-EDGE FREQUENCY: how often a Kalshi side is CHEAP vs the
+    // de-vigged sharp book (delta_cents = bookFair − kalshi ≥ +3 = a ≥3¢ buy). NOT mean(delta): both
+    // sides of a game are mirror images, so mean(delta) ≈ −(Kalshi overround), not lag. NOT |delta|:
+    // that counts the expensive side you'd never buy. No [67,91] restriction — the cross-venue edge
+    // is "buy the cheap side", not bounded by the prop model window. All rows are liquidity-gated at
+    // emit, so this is the traded-line population.
     const [agg] = await neonQuery(`
       SELECT count(*)::int AS n, count(distinct snapshot_date)::int AS days,
         percentile_cont(0.5) WITHIN GROUP (ORDER BY abs(delta_cents)) AS median_abs,
-        avg(delta_cents) AS mean_signed,
-        avg(CASE WHEN abs(delta_cents) >= 3 THEN 1.0 ELSE 0 END) AS frac_ge3
+        avg(CASE WHEN delta_cents >= 3 THEN 1.0 ELSE 0 END) AS frac_buy3,
+        avg(CASE WHEN delta_cents >= 5 THEN 1.0 ELSE 0 END) AS frac_buy5
       FROM ${SB_DELTAS_TABLE}
-      WHERE snapshot_date >= CURRENT_DATE - $1::int AND kalshi_pct >= 67 AND kalshi_pct <= 91`,
-      [_SB_DAYS], env, { write: true });
+      WHERE snapshot_date >= CURRENT_DATE - $1::int`, [_SB_DAYS], env, { write: true });
     const n = Number(agg?.n || 0), days = Number(agg?.days || 0);
     const medianAbs = agg?.median_abs != null ? parseFloat(Number(agg.median_abs).toFixed(2)) : null;
-    const meanSigned = agg?.mean_signed != null ? parseFloat(Number(agg.mean_signed).toFixed(2)) : null;
-    const fracGe3c = agg?.frac_ge3 != null ? parseFloat(Number(agg.frac_ge3).toFixed(3)) : null;
-    // Verdict ladder (provisional, in-window bettable band):
-    //   ACCRUING — too little to read (n<30 or <3 days).
-    //   GAP      — Kalshi systematically lags (meanSigned≥1.5¢) AND actionable-sized often
-    //              (fracGe3c≥0.15) → build the correction-latency logger (Phase 1b).
+    const fracBuyEdge3 = agg?.frac_buy3 != null ? parseFloat(Number(agg.frac_buy3).toFixed(3)) : null;
+    const fracBuyEdge5 = agg?.frac_buy5 != null ? parseFloat(Number(agg.frac_buy5).toFixed(3)) : null;
+    // Verdict ladder (provisional — re-calibrate once real n exists; ACCRUING buys that time):
+    //   ACCRUING — too little to read (n<60 sides ≈ <30 games, or <3 days).
+    //   GAP      — Kalshi is cheap vs the book ≥3¢ on ≥10% of traded sides → persistent buy edges →
+    //              build the correction-latency logger (Phase 1b) to see if they last long enough.
     //   TIGHT    — venues track (likely) → no liquid lag edge; redirect to thin markets.
     let verdict;
-    if (n < 30 || days < 3) verdict = "ACCRUING";
-    else if ((meanSigned ?? 0) >= 1.5 && (fracGe3c ?? 0) >= 0.15) verdict = "GAP";
+    if (n < 60 || days < 3) verdict = "ACCRUING";
+    else if ((fracBuyEdge3 ?? 0) >= 0.10) verdict = "GAP";
     else verdict = "TIGHT";
-    sportsbookValidation = { n, days, windowDays: _SB_DAYS, medianAbs, meanSigned, fracGe3c, verdict };
+    sportsbookValidation = { n, days, windowDays: _SB_DAYS, medianAbs, fracBuyEdge3, fracBuyEdge5, verdict };
   } catch (e) { console.error("[shadow-report] sportsbook validation skipped:", e?.message); }
 
   const report = {
