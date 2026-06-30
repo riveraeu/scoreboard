@@ -22,6 +22,33 @@ export { buildPitcherKPct } from "./mlb-pitchers.js";
 //   parseGameOdds — utils helper (passed in to avoid cross-lib cycles)
 import { parseGameOdds as _parseGameOdds } from "./utils.js";
 import { PT_FMT } from "./pt.js";
+import { gzipToString, gunzipFromString } from "./kv-compress.js";
+
+// byteam:mlb is the largest single KV value (~40 maps incl. historical per-team H2H/splits) and
+// grew past Upstash's 10MB request cap, so its un-chunked SET was failing silently. Compress it
+// at this chokepoint (used by buildMlbByteam + the /api/dvp MLB fallback). gzip gives ~6-10×
+// headroom; failure-closed — a compress error just skips the write (the in-memory object is the
+// source of truth for the current request).
+export async function putMlbByteam(cache, byteam, ttlSec) {
+  if (!cache) return;
+  try {
+    const packed = await gzipToString(JSON.stringify(byteam));
+    await cache.put("byteam:mlb", packed, { expirationTtl: ttlSec });
+  } catch (e) {
+    console.error("[byteam:mlb] cache write skipped:", String(e?.message || e));
+  }
+}
+
+export async function getMlbByteam(cache) {
+  if (!cache) return null;
+  try {
+    const raw = await cache.get("byteam:mlb"); // raw string: may be gz:-prefixed or legacy JSON
+    if (!raw) return null;
+    return JSON.parse(await gunzipFromString(raw));
+  } catch {
+    return null;
+  }
+}
 
 // ESPN MLB injury report. Returns Map<teamAbbr, [{name, id, status}]> for Out / GTD players.
 // Mirrors buildNhlInjuryReport / buildNbaInjuryReport — ESPN omits athlete.id but embeds it in
@@ -315,7 +342,7 @@ export async function buildMlbByteam(cache) {
     && Object.keys(pitcherAvgPitches || {}).length > 0
     && Object.keys(hitterOpsMap || {}).length > 0
     && Object.keys(pitcherH2HStarts || {}).length > 0;
-  if (cache) await cache.put("byteam:mlb", JSON.stringify(byteam), { expirationTtl: _mlbDataReady ? 600 : 60 });
+  await putMlbByteam(cache, byteam, _mlbDataReady ? 600 : 60);
 
   return byteam;
 }

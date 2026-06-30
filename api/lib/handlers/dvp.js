@@ -12,7 +12,7 @@ import {
 import { WNBA_ESPN_TO_CANON } from "../wnba.js";
 import { buildSoftTeamAbbrs, buildHardTeamAbbrs, buildTeamRankMap, parseGameOdds } from "../utils.js";
 import { PARK_KFACTOR, log5K } from "../simulate.js";
-import { buildLineupKPct, buildPitcherKPct } from "../mlb.js";
+import { buildLineupKPct, buildPitcherKPct, getMlbByteam, putMlbByteam } from "../mlb.js";
 
 export async function handleDvpRoutes(ctx) {
   const { path, params, CACHE2, runtimeCtx, ESPN_CORE, jsonResponse, errorResponse } = ctx;
@@ -287,7 +287,7 @@ export async function handleDvpRoutes(ctx) {
     }
     if (sport === "baseball/mlb") {
       const playerTeam = params.get("team") || null;
-      let mlbByteam = CACHE2 ? await CACHE2.get("byteam:mlb", "json").catch(() => null) : null;
+      let mlbByteam = await getMlbByteam(CACHE2);
       if (!mlbByteam) {
         const _hd0 = new Date(Date.now() - 7 * 3600 * 1000); const _hd1 = new Date(_hd0); _hd1.setDate(_hd1.getDate() + 1);
         const _hfmt = (d) => d.toISOString().slice(0, 10);
@@ -336,7 +336,7 @@ export async function handleDvpRoutes(ctx) {
         const { lineupKPct: lineupKPct2, lineupBatterKPcts: lineupBatterKPcts2, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered: lineupBatterKPctsOrdered2, lineupBatterKPctsVROrdered: lineupBatterKPctsVROrdered2, lineupBatterKPctsVLOrdered: lineupBatterKPctsVLOrdered2, lineupSpotByName: lineupSpotByName2, gameHomeTeams: gameHomeTeams2, projectedLineupTeams: projectedLineupTeams2 } = lineupResult;
         const { pitcherKPct: pitcherKPct2, pitcherKBBPct: pitcherKBBPct2, pitcherHand, pitcherEra: pitcherEraByTeam2, pitcherCSWPct: pitcherCSWPct2, pitcherAvgPitches: pitcherAvgPitches2, pitcherGS26: pitcherGS262, pitcherHasAnchor: pitcherHasAnchor2 } = pitcherResult;
         mlbByteam = { pitching: pitchRes, batting: batRes, probables: probables2, lineupKPct: lineupKPct2, lineupBatterKPcts: lineupBatterKPcts2, lineupKPctVR, lineupKPctVL, lineupBatterKPctsOrdered: lineupBatterKPctsOrdered2, lineupBatterKPctsVROrdered: lineupBatterKPctsVROrdered2, lineupBatterKPctsVLOrdered: lineupBatterKPctsVLOrdered2, lineupSpotByName: lineupSpotByName2, gameHomeTeams: gameHomeTeams2, pitcherKPct: pitcherKPct2, pitcherKBBPct: pitcherKBBPct2, pitcherCSWPct: pitcherCSWPct2, pitcherAvgPitches: pitcherAvgPitches2, pitcherGS26: pitcherGS262, pitcherHasAnchor: pitcherHasAnchor2, pitcherHand, pitcherEra: pitcherEraByTeam2, projectedLineupTeams: projectedLineupTeams2, gameOdds };
-        if (CACHE2) await CACHE2.put("byteam:mlb", JSON.stringify(mlbByteam), { expirationTtl: 600 });
+        await putMlbByteam(CACHE2, mlbByteam, 600);
       }
       const probables = mlbByteam.probables || {};
       const playerEntry = playerTeam ? probables[playerTeam] : null;

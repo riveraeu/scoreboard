@@ -23,10 +23,15 @@ function makeCache(env) {
       method: "POST",
       headers: { Authorization: auth, "Content-Type": "application/json" },
       body: JSON.stringify(args)
-    }).then((r) => r.json()).then((body) => {
+    }).then(async (r) => {
+      // Surface failures instead of swallowing them. A >10MB request (e.g. an oversized SET)
+      // comes back as a non-OK status with a non-JSON body, which the old `.then(r=>r.json())`
+      // path turned into a silent {result:null} — that hid byteam:mlb's 413 for weeks.
+      if (!r.ok) { console.error("[upstash] HTTP", r.status, args[0]); return { result: null, error: `HTTP ${r.status}` }; }
+      const body = await r.json().catch(() => null);
       if (body?.error) console.error("[upstash]", args[0], body.error);
-      return body;
-    }).catch(() => ({ result: null })), "cmd");
+      return body ?? { result: null };
+    }).catch((e) => { console.error("[upstash] fetch failed", args[0], String(e?.message || e)); return { result: null }; }), "cmd");
     return {
       async get(key, type) {
         const { result } = await cmd("GET", key);
@@ -155,6 +160,7 @@ function _envFromProcess() {
     VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY,
     VAPID_SUBJECT: process.env.VAPID_SUBJECT,
     ROUTINE_NOTE_TOKEN: process.env.ROUTINE_NOTE_TOKEN, // routine-note scratchpad write gate (handlers/shadow.js)
+    THE_ODDS_API_KEY: process.env.THE_ODDS_API_KEY,     // sharp-book reference feed (api/lib/sportsbook.js)
   };
 }
 

@@ -35,7 +35,7 @@ function _median(xs) {
 // Build the Kalshi moneyline index from the emitted rows. ML rows carry gameDate on both the plays
 // and dropped pushes, so the key is date-specific. `${sport}|${away}|${home}|${date}` →
 // { home:{pct,truePct}, away:{pct,truePct} }.
-function buildKalshiMlIndex(rows) {
+export function buildKalshiMlIndex(rows) {
   const ml = {};
   for (const r of rows) {
     if (!r || r.gameType !== "ml" || r.stat !== "ml") continue;

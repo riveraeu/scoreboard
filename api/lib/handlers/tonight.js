@@ -33,6 +33,8 @@ import { emitMlbOutsPlays } from "../tonight/mlb-outs.js";
 import { fetchPolymarketGames } from "../polymarket.js";
 import { emitPolymarketDeltas } from "../tonight/polymarket-deltas.js";
 import { enrichDeltasWithExec } from "../polymarket-book.js";
+import { fetchSportsbookGames } from "../sportsbook.js";
+import { emitSportsbookDeltas } from "../tonight/sportsbook-deltas.js";
 
 const __defProp = Object.defineProperty;
 const __name = (target, value) => __defProp(target, "name", { value, configurable: true });
@@ -1871,6 +1873,20 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           for (const g of _polyGames) if (g.mlTokens) _tokensByGame[`${g.sport}|${g.away}@${g.home}`] = g.mlTokens;
           await enrichDeltasWithExec({ deltas: polymarketDeltas, tokensByGame: _tokensByGame });
         } catch (e) { console.error("[tonight] polymarket deltas failed:", e?.message); }
+
+        // ── Sportsbook-reference deltas — Phase 1a observatory (shadow-only). De-vigs the sharp
+        // book (Pinnacle via The Odds API) and compares its fair ML prob to our Kalshi price. The
+        // kill-gate: does Kalshi LAG the sharp book (a timeable edge)? deltaCents = bookFairPct −
+        // kalshiPct (+ = Kalshi cheap = edge to BUY). Fetches ONLY the sports present in tonight's
+        // Kalshi ML set (credit-conserving). Merged into shadow:staging + ?debug only; never the
+        // client. Failure-closed: no key / book outage → []. Requires env.THE_ODDS_API_KEY.
+        const sportsbookDeltas = [];
+        let sportsbookDeltaSummary = null;
+        try {
+          const _bookSports = [...new Set([...plays, ...dropped].filter(r => r?.gameType === "ml" && r?.sport).map(r => r.sport))];
+          const _bookGames = await fetchSportsbookGames({ cache: CACHE2, apiKey: env?.THE_ODDS_API_KEY, sports: _bookSports });
+          sportsbookDeltaSummary = emitSportsbookDeltas({ bookGames: _bookGames, plays, dropped, deltas: sportsbookDeltas });
+        } catch (e) { console.error("[tonight] sportsbook deltas failed:", e?.message); }
         // Stage plays for shadow-snapshot — eliminates the 55s internal re-fetch.
         // `schedule` = today's ESPN game count per sport, so shadow-snapshot can compare
         // distinct games in the logged rows against the actual slate (coverage check).
@@ -1891,7 +1907,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           }
           // Tennis plays live in their own array (kept out of `plays` to bypass dedup/frontend);
           // merge them into the staging `plays` so shadow-snapshot logs them like any other play.
-          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays: [...plays, ...tennisPlays, ...soccerPlays, ...soccerAdvancePlays, ...fightPlays, ...golfH2hPlays, ...nascarPlays, ...outsPlays], dropped, schedule: _schedCounts, polymarketDeltas, polymarketDeltaSummary, writtenAt: Date.now() }), { expirationTtl: 21600 }).catch(() => {});
+          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays: [...plays, ...tennisPlays, ...soccerPlays, ...soccerAdvancePlays, ...fightPlays, ...golfH2hPlays, ...nascarPlays, ...outsPlays], dropped, schedule: _schedCounts, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, writtenAt: Date.now() }), { expirationTtl: 21600 }).catch(() => {});
         }
         if (isDebug) {
           const nbaGlLabels = Object.fromEntries(Object.entries(playerGamelogs).filter(([k]) => k.startsWith("nba|")).map(([k, gl]) => [k, gl?.ul ?? null]));
@@ -1905,7 +1921,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             meta: kalshiSnapMeta,
             ageMs: kalshiSnapMeta?.lastRunAt ? Date.now() - kalshiSnapMeta.lastRunAt : null,
           };
-          return jsonResponse({ plays: debugPlays, dropped: debugDropped, preDropped: debugPreDropped, tennisPlays, tennisMarketCount: tennisMatchMarkets.length, soccerPlays, soccerMarketCount: soccerMarkets.length, soccerAdvancePlays, soccerAdvanceMarketCount: soccerAdvanceMarkets.length, fightPlays, fightMarketCount: fightMarkets.length, golfH2hPlays, golfH2hMarketCount: golfH2hMarkets.length, nascarPlays, nascarMarketCount: nascarMarkets.length, outsPlays, outsMarketCount: outsMarkets.length, polymarketDeltas, polymarketDeltaSummary, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
+          return jsonResponse({ plays: debugPlays, dropped: debugDropped, preDropped: debugPreDropped, tennisPlays, tennisMarketCount: tennisMatchMarkets.length, soccerPlays, soccerMarketCount: soccerMarkets.length, soccerAdvancePlays, soccerAdvanceMarketCount: soccerAdvanceMarkets.length, fightPlays, fightMarketCount: fightMarkets.length, golfH2hPlays, golfH2hMarketCount: golfH2hMarkets.length, nascarPlays, nascarMarketCount: nascarMarkets.length, outsPlays, outsMarketCount: outsMarkets.length, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
         }
         // Build mlbMeta: pitchers, ML odds, umpires, weather — keyed by team abbr or "home|away"
         // Pitcher entries: { name, id, era, wins, losses }. MLB Stats API (pitcherInfoByTeam) preferred
