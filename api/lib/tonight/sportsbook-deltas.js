@@ -34,6 +34,7 @@ function _median(xs) {
 export function emitSportsbookDeltas({ bookGames, plays = [], dropped = [], deltas = [] }) {
   const ml = buildKalshiMlIndex([...plays, ...dropped]);
   let matchedGames = 0;
+  const _usedKeys = new Set(); // a Kalshi game matched once — a 2nd book game on the same key is a DH/dup
 
   for (const g of (bookGames || [])) {
     const { sport, away, home, gameDate } = g;
@@ -42,6 +43,8 @@ export function emitSportsbookDeltas({ bookGames, plays = [], dropped = [], delt
     const mlKey = cands.map((d) => `${sport}|${away}|${home}|${d}`).find((k) => ml[k]);
     if (!mlKey) continue;
     const ke = ml[mlKey];
+    if (ke._ambiguous || _usedKeys.has(mlKey)) continue; // doubleheader / duplicate — can't disambiguate
+    _usedKeys.add(mlKey);
     const md = mlKey.split("|")[3];
     let matchedThisGame = false;
     for (const side of ["away", "home"]) {

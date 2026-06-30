@@ -43,7 +43,14 @@ export function buildKalshiMlIndex(rows) {
     if (r.side !== "home" && r.side !== "away") continue;
     if (r.kalshiPct == null) continue;
     const k = `${r.sport}|${r.awayTeam}|${r.homeTeam}|${r.gameDate}`;
-    (ml[k] ||= {})[r.side] = { pct: r.kalshiPct, truePct: r.truePct ?? null };
+    const slot = (ml[k] ||= {});
+    // Conflicting price for the same side+pair+date = a DOUBLEHEADER (or duplicate market) we can't
+    // disambiguate without game-time — flag it so the matchers skip the whole key. Without this, a
+    // DH game-2 book line matches game-1's Kalshi row → a spurious double-digit "delta" (observed
+    // 2026-06-29: CIN@MIL book 93.5% vs the wrong Kalshi 62¢ row → fake 31.5¢ gap). 2¢ tolerance
+    // ignores trivial cross-emit-path jitter.
+    if (slot[r.side] && Math.abs(slot[r.side].pct - r.kalshiPct) > 2) slot._ambiguous = true;
+    slot[r.side] = { pct: r.kalshiPct, truePct: r.truePct ?? null };
   }
   return ml;
 }
@@ -53,6 +60,7 @@ export function buildKalshiMlIndex(rows) {
 export function emitPolymarketDeltas({ polyGames, plays = [], dropped = [], deltas = [] }) {
   const ml = buildKalshiMlIndex([...plays, ...dropped]);
   let matchedGames = 0;
+  const _usedKeys = new Set(); // a Kalshi game matched once — a 2nd venue game on the same key is a DH/dup
 
   for (const g of (polyGames || [])) {
     const { sport, away, home, gameDate } = g;
@@ -61,6 +69,8 @@ export function emitPolymarketDeltas({ polyGames, plays = [], dropped = [], delt
     const mlKey = cands.map((d) => `${sport}|${away}|${home}|${d}`).find((k) => ml[k]);
     if (!mlKey) continue;
     const ke = ml[mlKey];
+    if (ke._ambiguous || _usedKeys.has(mlKey)) continue; // doubleheader / duplicate — can't disambiguate
+    _usedKeys.add(mlKey);
     const md = mlKey.split("|")[3];
     let matchedThisGame = false;
     for (const side of ["away", "home"]) {
