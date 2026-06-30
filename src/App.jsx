@@ -178,6 +178,7 @@ function App() {
     tonightPlays, allTonightPlays, nbaDropped,
     tonightMeta, tonightLoading,
     mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta,
+    polyMlByGame,
     bustCache, bustLoading,
   } = useTonight(_qualifiedFilter, _trackedPlaysRef);
 
@@ -819,6 +820,22 @@ function App() {
                       <span>Edge (True% − implied)</span>
                       <span style={{color: play.edge >= EDGE_GATE ? "#3fb950" : play.edge >= 0 ? "#e3b341" : "#f78166", fontWeight:700}}>
                         {play.edge >= 0 ? "+" : ""}{play.edge}%
+                      </span>
+                    </div>
+                  )}
+                  {/* Cross-venue reference — Polymarket's price for this side (ML only; shadow obs.).
+                      Δ = poly − kalshi; <0 (green) = Poly cheaper to BUY this side, >0 (red) = pricier.
+                      Reference only — we bet Kalshi; the Poly feed isn't the US-tradable price. */}
+                  {play.polyPct != null && (
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:8,fontSize:11,color:"#484f58"}}>
+                      <span>Polymarket (ref)</span>
+                      <span style={{color:"#c9d1d9",fontWeight:700}}>
+                        <span style={{color:"#58a6ff"}}>{play.polyPct}%</span>
+                        {play.polyDeltaCents != null && (
+                          <span style={{color: play.polyDeltaCents < 0 ? "#3fb950" : play.polyDeltaCents > 0 ? "#f78166" : "#8b949e", fontWeight:600}}>
+                            {" "}(Δ {play.polyDeltaCents >= 0 ? "+" : ""}{play.polyDeltaCents})
+                          </span>
+                        )}
                       </span>
                     </div>
                   )}
@@ -1987,6 +2004,7 @@ function App() {
           nbaMeta={nbaMeta}
           wnbaMeta={wnbaMeta}
           nhlMeta={nhlMeta}
+          polyMlByGame={polyMlByGame}
           trackedPlays={trackedPlays}
           untrackPlay={untrackPlay}
           navigateToPlay={navigateToPlay}

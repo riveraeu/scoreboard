@@ -250,6 +250,19 @@ function PlaysColumn({ tonightPlays, allTonightPlays, tonightLoading, sportFilte
                         </div>
                       );
                     })()}
+                    {/* Polymarket cross-venue reference (ML only, shadow obs.). Δ = poly − kalshi;
+                        <0 (green) = Poly cheaper to BUY this side. Reference only — we bet Kalshi. */}
+                    {play.polyPct != null && (
+                      <div style={{display:"flex",justifyContent:"flex-end",alignItems:"baseline",gap:6,marginBottom:5,fontSize:10}}>
+                        <span style={{color:"#8b949e"}}>Polymarket</span>
+                        <span style={{color:"#58a6ff",fontWeight:600}}>{play.polyPct}%</span>
+                        {play.polyDeltaCents != null && (
+                          <span style={{color: play.polyDeltaCents < 0 ? "#3fb950" : play.polyDeltaCents > 0 ? "#f78166" : "#8b949e",fontWeight:600}}>
+                            (Δ {play.polyDeltaCents >= 0 ? "+" : ""}{play.polyDeltaCents})
+                          </span>
+                        )}
+                      </div>
+                    )}
                     <InputList inputs={buildLambdaInputs(play)} />
                   </div>
                 );

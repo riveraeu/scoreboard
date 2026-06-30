@@ -7,8 +7,11 @@
 // price we'd act on. Pure (no HTTP/KV) so it's unit-testable.
 //
 // The kill-gate question this exists to answer: do Kalshi and Polymarket diverge enough to matter?
-// The returned summary (median/max |delta|, counts) is the read. Shadow-only — never sent to the
-// client. deltaCents = polyPct − kalshiPct (signed; + = Polymarket implies a higher probability).
+// The returned summary (median/max |delta|, counts) is the read. The delta ROWS + summary stay
+// shadow-only (never sent to the client), but as of 2026-06-30 the matched Poly price is ALSO
+// stamped onto the Kalshi play row (`polyPct`/`polyDeltaCents`) so the client can show a per-bet
+// cross-venue comparison. deltaCents = polyPct − kalshiPct (signed; + = Polymarket implies a higher
+// probability ⇒ Poly is the pricier side to BUY; − = Poly cheaper to BUY).
 //
 // MONEYLINE-ONLY by design (Phase 1a). Totals were trialed and pulled: the integer↔half-point line
 // mapping is correct (Kalshi over@N = P(≥N), so Poly over L.5 ⇔ Kalshi threshold ceil(L)), but the
@@ -57,7 +60,9 @@ export function buildKalshiMlIndex(rows) {
     // emit path omits volume (poly fixtures, older rows) → back-compatible last-wins-by-default.
     const vol = Number(r.kalshiVolume) || 0;
     if (!slot[r.side] || vol > (slot[r.side].vol || 0)) {
-      slot[r.side] = { pct: r.kalshiPct, truePct: r.truePct ?? null, vol };
+      // `row` is kept so the poly matcher can stamp the cross-venue price back onto the play for
+      // client display (additive; the sportsbook matcher that shares this index ignores it).
+      slot[r.side] = { pct: r.kalshiPct, truePct: r.truePct ?? null, vol, row: r };
     }
   }
   return ml;
@@ -85,11 +90,16 @@ export function emitPolymarketDeltas({ polyGames, plays = [], dropped = [], delt
       if (g.ml[side] == null || !ke[side]) continue;
       const polyPct = +(g.ml[side] * 100).toFixed(1);
       const kalshiPct = ke[side].pct;
+      const deltaCents = +(polyPct - kalshiPct).toFixed(1);
       deltas.push({
         sport, game: `${away}@${home}`, gameDate: md, market: "ml", side,
-        kalshiPct, polyPct, deltaCents: +(polyPct - kalshiPct).toFixed(1),
+        kalshiPct, polyPct, deltaCents,
         modelTruePct: ke[side].truePct,
       });
+      // Stamp the matched Kalshi play row so the cross-venue price rides along to the client
+      // (tonight.js passes `plays` straight through). Display-only; the shadow delta row above is
+      // unchanged. Harmless if the row is a `dropped` row (those aren't sent to the client).
+      if (ke[side].row) { ke[side].row.polyPct = polyPct; ke[side].row.polyDeltaCents = deltaCents; }
       matchedThisGame = true;
     }
     if (matchedThisGame) matchedGames++;

@@ -92,6 +92,13 @@ test("emitPolymarketDeltas: signed cents, both ML sides, ±1-day match, summary"
   assert.equal(summary.market, "ml");
   assert.equal(summary.matchedGames, 1);
   assert.equal(summary.bySport.mlb, 2);
+
+  // The matched Poly price is stamped back onto the play/dropped rows for client display.
+  assert.equal(plays[0].polyPct, 60);
+  assert.equal(plays[0].polyDeltaCents, 2.5);
+  assert.equal(dropped[0].polyPct, 40);      // home ML row
+  assert.equal(dropped[0].polyDeltaCents, -2.5);
+  assert.equal(dropped[1].polyPct, undefined); // the total row is never touched
 });
 
 test("walkPolyFill: single level fully fills → vwap = level price, no slip", () => {

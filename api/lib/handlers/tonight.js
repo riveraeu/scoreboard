@@ -1874,6 +1874,18 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           await enrichDeltasWithExec({ deltas: polymarketDeltas, tokensByGame: _tokensByGame });
         } catch (e) { console.error("[tonight] polymarket deltas failed:", e?.message); }
 
+        // Display map for the matchup-card cross-venue strip: per-game Kalshi-vs-Poly ML, derived
+        // from the same deltas (single source). The shadow delta rows/summary stay shadow-only; this
+        // is the display-shaped subset (no modelTruePct/exec fields) the client strip needs. Empty
+        // when the poly fetch failed (failure-closed). Key: `${sport}|${away}@${home}|${gameDate}`.
+        // (Per-bet comparison rides on the play rows themselves via the polyPct/polyDeltaCents stamp.)
+        const polyMlByGame = {};
+        for (const _d of polymarketDeltas) {
+          if (_d.market !== "ml") continue;
+          ((polyMlByGame[`${_d.sport}|${_d.game}|${_d.gameDate}`] ||= {})[_d.side]) =
+            { kalshiPct: _d.kalshiPct, polyPct: _d.polyPct, deltaCents: _d.deltaCents };
+        }
+
         // ── Sportsbook-reference deltas — Phase 1a observatory (shadow-only). De-vigs the sharp
         // book (Pinnacle via The Odds API) and compares its fair ML prob to our Kalshi price. The
         // kill-gate: does Kalshi LAG the sharp book (a timeable edge)? deltaCents = bookFairPct −
@@ -2241,7 +2253,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           'nhlClosingOdds', sportByteam.nhlGameOdds, {},
           sportByteam.nhlGameScores, sportByteam.nhlTopPlayers
         );
-        const playsResult = { plays, nbaDropped, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta, staleKalshiSeries, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length };
+        const playsResult = { plays, nbaDropped, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta, polyMlByGame, staleKalshiSeries, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length };
         const sportsInPlays = new Set(plays.map((p) => p.sport));
         if (CACHE2 && sportsInPlays.size >= 2) {
           const summary = {
