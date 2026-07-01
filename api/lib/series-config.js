@@ -181,4 +181,9 @@ export const DISMISSED_SERIES = [
   // off-the-shelf Summer League team rating to build a Phase-1 model from. window_fit=true is the
   // favorite false-positive. Same class as prior no-model dismissals. Revisit only if a draft-
   // capital / player-aggregate SL rating ever gets built. DISMISS.
+  "KXDPWTH2H", // 7/01 triage: golf FULL-TOURNAMENT H2H ("A beats B in the full tournament"). NOT a
+  // drop-in for our golfH2h path — golf.js is single-round, field-independent ("A beats B in round
+  // N", one-round Normal σ=√2·GOLF_ROUND_SIGMA). A 72-hole cumulative matchup (with cut effects)
+  // needs the golf Phase-2 36-hole field sim (make-cut/cut-line), which doesn't exist. Also dead
+  // liquidity (1 matchup, 2 mkts, 0 vol, no book). Revisit when golf Phase-2 lands AND it trades.
 ];
