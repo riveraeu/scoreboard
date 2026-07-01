@@ -164,4 +164,15 @@ export const DISMISSED_SERIES = [
   "KXCHAMPTOURR1LEAD", // Champions (senior) Tour round-1 leader — wide-field outright longshot (exact-cell trap; window_fit false-positive on favorite NO). No field-sim; senior-tour OWGR coverage thin. Same class as prior golf-leader dismissals. DISMISS.
   "KXNELKHOLEINONE",   // NELK hole-in-one — novelty/entertainment event; hole-in-one is near-pure luck, unmodelable. Same class as the Nathan's/streetball novelties. DISMISS.
   "KXBDSHOLEINONE",    // Bob Does Sports hole-in-one — same novelty pure-luck class as KXNELKHOLEINONE. DISMISS.
+  // 7/01 vet (shortlisted 6/30): model end is GREEN — cheapest baseball-ML build we have. statsapi
+  // sportId 23 / leagueId 125 ("Mexican League") gives 20 name-exact teams (2 alias fixes: Tecos/
+  // Tecolotes, Acereros del Norte/Monclova), schedule (gamePk+status) for hydrate+resolve, and
+  // standings (W/L/RS/RA) for a Pythag/run-diff λ → simulateMLBJoint favorite-side P(win). BUT the
+  // Kalshi end is DEAD: dense daily slate (96 active ML pairs) yet 0 volume / 0 OI / no MM book —
+  // live orderbook is 1¢ placeholder bids both sides (~98¢ spread), even on the already-settled
+  // Jun-30 game. yes_ask null/99¢ fails both CAPTURE_CAP 97 and CAPTURE_MAX_SPREAD 15¢ → captures
+  // ZERO shadow rows. Same failure mode as KXWNBAH2H (buildable model, market too thin) except LMB
+  // is dense-daily not sporadic → the ONLY blocker is Kalshi hasn't seeded liquidity. DISMISS to
+  // clear the banner; revisit (build the λ→joint emit) the moment yes_ask populates on this series.
+  "KXLMBGAME",
 ];
