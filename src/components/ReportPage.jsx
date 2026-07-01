@@ -600,6 +600,18 @@ const INPUT_SEARCH_EXHAUSTED = new Set([
 // edge anti-predictive, xVolume/dayOfWeek no +skill slice, pickSide degenerate (all "home"). NO
 // sliceable in-data input: the gap is intrinsic to a rankings-only model (no surface/form/H2H/fatigue),
 // which is the Phase-2 surface-Elo BUILD on the tennis roadmap, not an L0 pre-filter. [[project-tennis-phase1]]
+
+// Per-category bet-window derivation nudge (tier 3.15). WINDOW_RECOMMEND_N = enough settled bets to
+// trust a tune:window read (mirrors the CLI's --min-n default + MODEL_IMPROVEMENT.md's window-grade
+// floor). WINDOW_SEARCH_EXHAUSTED = categories already run to a TERMINAL no-go (the discovered window
+// doesn't hold out-of-sample), so the banner stops nagging — mirrors INPUT_SEARCH_EXHAUSTED. Remove a
+// key if fresh data could change the verdict (e.g. a FORMULA_CUTOFF reset re-accrues the category clean).
+const WINDOW_RECOMMEND_N = 200;
+const WINDOW_SEARCH_EXHAUSTED = new Set([
+  "mlb|hits", // 2026-07-01 tune:window: Brier-eligible (skill +0.053) but the discovered [60,70]
+  //            window fails in-sample CI (−7%) AND out-of-sample (−4.3%) — model skill ≠ a profitable
+  //            price window. Re-check only if mlb|hits gets a new FORMULA_CUTOFF. [[project_bet_window_derivation]]
+]);
 function _doThisCandidates(d) {
   const out = [];
   // 1 — data health, but ONLY when actionable. `dataHealth.actionable` (server) is true only for
@@ -681,6 +693,28 @@ function _doThisCandidates(d) {
     const nextItem = next.markets?.find(m => m.badge === "NEXT");
     const label = next.infra && nextItem ? `Build ${nextItem.ticker}` : `Build ${next.sport}`;
     out.push({ tier:3, tone:"blue", label, why: nextItem?.title || next.note, short: label });
+  }
+  // 3.15 — derive a per-category bet window: an ungated category has accrued enough settled bets
+  // (n≥WINDOW_RECOMMEND_N) AND provably beats the price (eligible = Brier skill CI-lo>0 @ n≥100) AND
+  // shows +ROI OUTSIDE the current [67,91] window (over/sub-window) — i.e. its edge may live in a band
+  // the global window misses (the mlb|totalBases-above-91¢ case capture de-blinding was built for).
+  // Harvest of already-accrued data (near-term ROI, one script + a one-line config edit) → above
+  // build/vet/triage of NEW markets, below the roadmap's flagged NEXT build. WINDOW_SEARCH_EXHAUSTED
+  // suppresses categories already run to a terminal NO-GO, mirroring INPUT_SEARCH_EXHAUSTED.
+  // Gate on the ACCURACY-board n (the Brier population tune:window actually reads), NOT the betting
+  // board's own `n` — the latter is the narrow edge≥5 bettable histogram (~10) and would never clear
+  // 200, while the tool operates on the full dc-qualified resolved set (~235). Join by key.
+  const _accN = Object.fromEntries((d?.accuracyBoard || []).map(a => [a.key, a.n || 0]));
+  const winnable = (d?.bettingBoard || []).filter(e =>
+    !e.gated && e.eligible === true && (_accN[e.key] || 0) >= WINDOW_RECOMMEND_N &&
+    ((e.overWindow?.roi > 0) || (e.subWindow?.roi > 0)) &&
+    !WINDOW_SEARCH_EXHAUSTED.has(e.key));
+  if (winnable.length) {
+    const names = winnable.map(e => e.key);
+    out.push({ tier:3.15, tone:"green",
+      label: `Derive bet window: ${names.slice(0,3).join(", ")}${names.length>3?` +${names.length-3}`:""}`,
+      why: `n≥${WINDOW_RECOMMEND_N}, model beats the price, and +ROI sits OUTSIDE [67,91] — run \`npm run tune:window -- --category ${names[0]}\` to derive + OOS/Brier-validate a window, then set CATEGORY_BET_WINDOWS.`,
+      short: `Derive window ${winnable.length}` });
   }
   // 3.25 — vet shortlisted markets (promoted detections, mid-funnel). Below build-next (a vetted
   // roadmap market is further along), above triage (raw detections). Confirm data on both ends +
