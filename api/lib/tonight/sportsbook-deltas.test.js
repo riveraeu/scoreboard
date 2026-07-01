@@ -38,6 +38,17 @@ test("prefers the most-traded row when a side has several (no false ambiguity wi
   assert.equal(deltas.find(d => d.side === "home").kalshiPct, 42); // the traded line, not the stale 40
 });
 
+test("exact PT-date match only — tonight's book game must NOT match tomorrow's Kalshi market", () => {
+  // Same-series next-day Kalshi listing (7/01) with tonight's (6/30) book odds. The old ±1-day
+  // fuzz matched these and logged a fake 30¢ delta (2026-07-01 tail audit); now: no match at all.
+  const plays = [mlRow("home", 62, 500, { gameDate: "2026-07-01" }), mlRow("away", 39, 500, { gameDate: "2026-07-01" })];
+  const bookGames = [{ sport: "mlb", away: "BOS", home: "NYY", gameDate: "2026-06-30", ml: { home: 0.935, away: 0.065 }, book: "pinnacle" }];
+  const deltas = [];
+  const s = emitSportsbookDeltas({ bookGames, plays, deltas });
+  assert.equal(s.n, 0);
+  assert.equal(deltas.length, 0);
+});
+
 test("skips doubleheaders (conflicting same-side prices >2¢)", () => {
   const plays = [mlRow("home", 62, 500), mlRow("home", 52, 500), mlRow("away", 39, 500), mlRow("away", 36, 500)];
   const bookGames = [{ sport: "mlb", away: "BOS", home: "NYY", gameDate: "2026-06-30", ml: { home: 0.935, away: 0.065 }, book: "pinnacle" }];

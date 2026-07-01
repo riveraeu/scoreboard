@@ -22,6 +22,8 @@
 // on purpose (a 105-team registry refactor isn't worth it for an unvalidated hypothesis; fold it in
 // IF the Phase-1b kill-gate proves the edge).
 
+import { PT_FMT } from "./pt.js";
+
 const ODDS_BASE = "https://api.the-odds-api.com/v4";
 
 // Our sport key → The Odds API sport key. Only in-season leagues are fetched (caller passes the
@@ -75,12 +77,15 @@ export function devigTwoWay(oddsA, oddsB) {
   return { a: ia / s, b: ib / s };
 }
 
-const _ymd = (d) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
-
 // Pure normalize: one Odds API event → { sport, away, home, gameDate, ml:{away,home} fair probs,
 // book } or null. Requires a Pinnacle (or sole returned book) h2h market with both teams
 // canon-resolvable. `sport` is OUR key (mlb/wnba/…). Exported for tests (no HTTP).
-export function normalizeOddsEvent(sport, event) {
+// gameDate is the PT calendar date of commence_time (our whole pipeline keys games by PT date; the
+// old UTC date put every evening game on tomorrow, which — combined with the matcher's ±1-day fuzz —
+// paired tonight's book odds with tomorrow's Kalshi market during MLB series). Already-commenced
+// events are dropped: The Odds API keeps returning in-play events whose odds are LIVE, not a
+// pre-game reference (a near-decided game de-vigs to ~94% and fakes a 30¢ "divergence").
+export function normalizeOddsEvent(sport, event, nowMs = Date.now()) {
   if (!event) return null;
   const away = normSportsbookTeam(sport, event.away_team);
   const home = normSportsbookTeam(sport, event.home_team);
@@ -99,8 +104,10 @@ export function normalizeOddsEvent(sport, event) {
   if (oddsHome == null || oddsAway == null) return null;
   const fair = devigTwoWay(oddsAway, oddsHome);
   if (!fair) return null;
-  const gameDate = event.commence_time ? _ymd(new Date(event.commence_time)) : null;
-  if (!gameDate) return null;
+  const ct = event.commence_time ? new Date(event.commence_time) : null;
+  if (!ct || Number.isNaN(+ct)) return null;
+  if (+ct <= nowMs) return null; // in-play or completed — live odds, not a pre-game reference
+  const gameDate = PT_FMT.format(ct);
   return { sport, away, home, gameDate, ml: { away: fair.a, home: fair.b }, book: bk.key || "pinnacle" };
 }
 

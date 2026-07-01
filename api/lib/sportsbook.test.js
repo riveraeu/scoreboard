@@ -27,16 +27,18 @@ test("normSportsbookTeam maps full names → canonical, unknown → null", () =>
   assert.equal(normSportsbookTeam("nba", "Boston Celtics"), null); // NBA map TODO → null
 });
 
+const _ev = (commence) => ({
+  home_team: "New York Yankees", away_team: "Boston Red Sox",
+  commence_time: commence,
+  bookmakers: [{ key: "pinnacle", markets: [{ key: "h2h", outcomes: [
+    { name: "New York Yankees", price: 1.65 },
+    { name: "Boston Red Sox", price: 2.40 },
+  ] }] }],
+});
+const NOW = Date.parse("2026-06-30T18:00:00Z"); // 6/30 11am PT
+
 test("normalizeOddsEvent de-vigs a Pinnacle h2h event to canonical sides", () => {
-  const ev = {
-    home_team: "New York Yankees", away_team: "Boston Red Sox",
-    commence_time: "2026-06-30T23:05:00Z",
-    bookmakers: [{ key: "pinnacle", markets: [{ key: "h2h", outcomes: [
-      { name: "New York Yankees", price: 1.65 },
-      { name: "Boston Red Sox", price: 2.40 },
-    ] }] }],
-  };
-  const g = normalizeOddsEvent("mlb", ev);
+  const g = normalizeOddsEvent("mlb", _ev("2026-06-30T23:05:00Z"), NOW);
   assert.equal(g.sport, "mlb");
   assert.equal(g.home, "NYY");
   assert.equal(g.away, "BOS");
@@ -44,6 +46,17 @@ test("normalizeOddsEvent de-vigs a Pinnacle h2h event to canonical sides", () =>
   assert.equal(g.book, "pinnacle");
   assert.ok(Math.abs(g.ml.home + g.ml.away - 1) < 1e-9);
   assert.ok(g.ml.home > g.ml.away); // Yankees favored (1.65 < 2.40)
+});
+
+test("normalizeOddsEvent gameDate is the PT date, not UTC", () => {
+  // 7:10pm PT on 6/30 = 02:10Z on 7/01 — UTC date would say tomorrow, PT date must say 6/30.
+  const g = normalizeOddsEvent("mlb", _ev("2026-07-01T02:10:00Z"), NOW);
+  assert.equal(g.gameDate, "2026-06-30");
+});
+
+test("normalizeOddsEvent drops in-play/completed events (live odds ≠ pre-game reference)", () => {
+  assert.equal(normalizeOddsEvent("mlb", _ev("2026-06-30T17:59:00Z"), NOW), null); // commenced 1 min ago
+  assert.equal(normalizeOddsEvent("mlb", _ev("2026-06-29T23:05:00Z"), NOW), null); // yesterday's game
 });
 
 test("normalizeOddsEvent rejects unknown teams / missing h2h", () => {

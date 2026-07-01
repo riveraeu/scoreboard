@@ -21,13 +21,6 @@ import { buildKalshiMlIndex } from "./polymarket-deltas.js";
 // zero); raise if the gated tail still looks stale. The cross-sectional median is robust either way.
 const MIN_KALSHI_VOL = 1;
 
-// YYYY-MM-DD shifted by n days (UTC-safe string math) — book commence_time is UTC, our gameDate PT.
-function _shiftDate(d, n) {
-  const t = Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10)) + n * 86400000;
-  const x = new Date(t);
-  return `${x.getUTCFullYear()}-${String(x.getUTCMonth() + 1).padStart(2, "0")}-${String(x.getUTCDate()).padStart(2, "0")}`;
-}
-
 function _median(xs) {
   if (!xs.length) return null;
   const s = [...xs].sort((a, b) => a - b);
@@ -45,14 +38,15 @@ export function emitSportsbookDeltas({ bookGames, plays = [], dropped = [], delt
 
   for (const g of (bookGames || [])) {
     const { sport, away, home, gameDate } = g;
-    // Book date is UTC; our gameDate is PT — try ±1 day so the UTC rollover lines up.
-    const cands = [gameDate, _shiftDate(gameDate, -1), _shiftDate(gameDate, 1)];
-    const mlKey = cands.map((d) => `${sport}|${away}|${home}|${d}`).find((k) => ml[k]);
-    if (!mlKey) continue;
+    // Exact PT-date match ONLY. Book gameDate is now PT (sportsbook.js). The old ±1-day fuzz +
+    // UTC dates paired tonight's (sometimes live) book odds with tomorrow's Kalshi market whenever
+    // the same teams played consecutive days — the entire fake ≥5¢ delta tail (2026-07-01 audit).
+    const mlKey = `${sport}|${away}|${home}|${gameDate}`;
     const ke = ml[mlKey];
+    if (!ke) continue;
     if (ke._ambiguous || _usedKeys.has(mlKey)) continue; // doubleheader / duplicate — can't disambiguate
     _usedKeys.add(mlKey);
-    const md = mlKey.split("|")[3];
+    const md = gameDate;
     let matchedThisGame = false;
     for (const side of ["away", "home"]) {
       if (g.ml[side] == null || !ke[side]) continue;

@@ -2417,6 +2417,7 @@ async function handlePolymarketDeltas({ path, request, env }) {
 // (a timeable edge), or track it (no edge)? Auth: ADMIN_KEY or JWT. Params: ?days=N (default 30)
 // ?sport=. ?minAbs=N adds a `rows` tail dump (|delta| ≥ N¢, biggest first, LIMIT 200) for auditing
 // outliers — a huge delta on a liquid ML is either a game-matching bug or a real thin-market signal.
+// ?purge=all (ADMIN only) wipes the table for a clean re-baseline after a data-quality fix.
 // delta_cents = book_fair − kalshi; mean_signed > 0 = Kalshi systematically cheap vs the
 // book (the directional edge); frac_ge3c/5c = how often the gap is actionable-sized.
 async function handleSportsbookDeltas({ path, request, env }) {
@@ -2429,6 +2430,17 @@ async function handleSportsbookDeltas({ path, request, env }) {
   if (!env?.POSTGRES_URL && !env?.NEON_DATABASE_URL) return errorResponse("POSTGRES_URL not set", 500);
 
   const url = new URL(request.url);
+
+  // ?purge=all — wipe the observatory table for a clean re-baseline (ADMIN key only, not JWT).
+  // Used 2026-07-01: the first 3 days were contaminated by the UTC-date/±1-day series mismatch.
+  if (url.searchParams.get("purge") === "all") {
+    if (!isAdmin) return errorResponse("Forbidden", 403);
+    try {
+      await neonQuery(`DELETE FROM ${SB_DELTAS_TABLE}`, [], env, { write: true });
+      return jsonResponse({ ok: true, purged: true });
+    } catch (e) { return errorResponse(`purge failed: ${e?.message}`, 500); }
+  }
+
   const days = Math.min(Math.max(parseInt(url.searchParams.get("days") || "30", 10) || 30, 1), 365);
   const sport = url.searchParams.get("sport");
   const sportFilter = sport ? " AND sport = $2" : "";
