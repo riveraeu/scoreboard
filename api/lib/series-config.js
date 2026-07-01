@@ -175,4 +175,10 @@ export const DISMISSED_SERIES = [
   // is dense-daily not sporadic → the ONLY blocker is Kalshi hasn't seeded liquidity. DISMISS to
   // clear the banner; revisit (build the λ→joint emit) the moment yes_ask populates on this series.
   "KXLMBGAME",
+  "KXNBASUMMERGAME", // 7/01 triage: NBA Summer League game-winner (20 live mkts, window_fit=true). No
+  // rating source — SL "teams" are NBA franchises with rookie/two-way/G-League rosters, so nba.js
+  // ratings (OffRtg/pace/regime λ/usage, all regular-season) don't transfer, and there's no
+  // off-the-shelf Summer League team rating to build a Phase-1 model from. window_fit=true is the
+  // favorite false-positive. Same class as prior no-model dismissals. Revisit only if a draft-
+  // capital / player-aggregate SL rating ever gets built. DISMISS.
 ];
