@@ -36,7 +36,7 @@ const FORMULA_CUTOFFS = {
   "mlb|strikeouts": "2026-06-13",
   "mlb|hrr":        "2026-06-22",
   "mlb|hits":       "2026-06-12",
-  "mlb|totalBases": "2026-06-12",
+  "mlb|totalBases": "2026-06-30", // capture liquidity gate — pre-fix rows contaminated by 94¢ artifacts
   "mlb|totalRuns":  "2026-06-01",
   "mlb|teamRuns":   "2026-05-27",
   "nhl|totalGoals": "2026-05-29",

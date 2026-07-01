@@ -1238,7 +1238,7 @@ const FORMULA_CUTOFFS = {
   "mlb|strikeouts": "2026-06-13", // K_FORM_SIGMA 0.22→0.26
   "mlb|hrr":        "2026-06-22", // FIP-over-WHIP split + game-time weather (was 2026-06-10: OPS 0.4→0.25, knee 72→68)
   "mlb|hits":       "2026-06-12", // ticker fix — data starts here
-  "mlb|totalBases": "2026-06-12",
+  "mlb|totalBases": "2026-06-30", // capture liquidity gate (2b67064) — pre-fix rows contaminated by lone-quote 94¢ artifacts (was 2026-06-12)
   "mlb|outs":       "2026-06-23", // pitcher outs-recorded O/U Phase 1 — data starts here
   "mlb|totalRuns":  "2026-06-01", // totalRuns market-line anchor
   "mlb|teamRuns":   "2026-05-27", // MLB teamTotal regime blend
