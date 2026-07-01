@@ -587,12 +587,19 @@ const POLY_RECHECK = "2026-07-07";
 const INPUT_SEARCH_EXHAUSTED = new Set([
   "mlb|f5spread", "mlb|ml", "mlb|totalRuns", "mlb|teamRuns", "mlb|strikeouts", "mlb|f5total", "mlb|spread", "mlb|hits",
   "wnba|points", "wnba|totalPoints", "wnba|rebounds",
+  "tennis|match",
 ]);
 // mlb|teamRuns added 2026-06-29 after the MARKET_SHARPER banner prompted its tune:residual run:
 // overall skill −0.002 (market sharper near-tie, n≈261); NO sub-trust sub-slice (faint +skill only at
 // 70-80¢, n=32-69, below the n≥100 Brier floor; the 80-95¢ tail where totalBases shines is empty),
 // and NO addable L0 input (edge anti-predictive, dayOfWeek noise, x* dims too thin to read yet).
 // Same run-market posture as the others → re-check on the ~07-10 liquidity (x*) sweep below.
+// tennis|match added 2026-07-01 after the Accuracy banner prompted its tune:residual run: overall
+// skill −0.068 (market sharper, n=133); underconfident on favorites (betPrice 70-95¢ resid +12→+41pp)
+// but every real-n bucket has NEGATIVE skill (the market prices those favorites sharper — not edge),
+// edge anti-predictive, xVolume/dayOfWeek no +skill slice, pickSide degenerate (all "home"). NO
+// sliceable in-data input: the gap is intrinsic to a rankings-only model (no surface/form/H2H/fatigue),
+// which is the Phase-2 surface-Elo BUILD on the tennis roadmap, not an L0 pre-filter. [[project-tennis-phase1]]
 function _doThisCandidates(d) {
   const out = [];
   // 1 — data health, but ONLY when actionable. `dataHealth.actionable` (server) is true only for
