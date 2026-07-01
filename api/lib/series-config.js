@@ -108,10 +108,10 @@ export const SERIES_CONFIG = {
 };
 
 // Tickers fetched by the snapshot cron but not part of the play pipeline:
-// per-sport moneyline series, winner markets, and the 3-way F5 ML series.
+// per-sport moneyline series, winner markets, and the 3-way F3/F5/F7 inning-winner series.
 export const CRON_ONLY_TICKERS = [
   "KXMLBGAME", "KXNBAGAME", "KXWNBAGAME", "KXNHLGAME",
-  "KXMLBF5",
+  "KXMLBF3", "KXMLBF5", "KXMLBF7",
   "KXNBA1HWINNER", "KXNBA2HWINNER",
   "KXWNBA1HWINNER", "KXWNBA2HWINNER",
   "KXWNBA1QWINNER", "KXWNBA2QWINNER", "KXWNBA3QWINNER", "KXWNBA4QWINNER",

@@ -473,6 +473,22 @@ export async function emitGameTotalPlays({
         const _aLam_F5 = (awayRPG != null && _homeStarter_F5 != null)
           ? parseFloat((Math.max(0.3, Math.min(8, awayRPG * _F5_FRAC * _homeStarter_F5 * parkRF * _awayPlatFactor * _umpRunFactor * awayLineupFactor))).toFixed(2))
           : null;
+        // F3 (First 3 Innings) lambdas — pure starter, first time through the order (no TTO,
+        // no bullpen), so reuse the same starter-only multiplier as F5 at the 3/9 fraction.
+        // The F5 starter-only rationale applies even more cleanly to F3.
+        const _F3_FRAC = 3 / 9;
+        const _hLam_F3 = (homeRPG != null && _awayStarter_F5 != null)
+          ? parseFloat((Math.max(0.2, Math.min(6, homeRPG * _F3_FRAC * _awayStarter_F5 * parkRF * _homePlatFactor * _umpRunFactor * homeLineupFactor))).toFixed(2))
+          : null;
+        const _aLam_F3 = (awayRPG != null && _homeStarter_F5 != null)
+          ? parseFloat((Math.max(0.2, Math.min(6, awayRPG * _F3_FRAC * _homeStarter_F5 * parkRF * _awayPlatFactor * _umpRunFactor * awayLineupFactor))).toFixed(2))
+          : null;
+        // F7 (First 7 Innings) lambdas — by inning 7 the starter has taken the 3rd-time-order
+        // (TTO) penalty and the bullpen has appeared; the FULL-GAME lambda already carries both,
+        // so scale it (not the starter-only mult) to 7/9. Starter-only would bias F7 low.
+        const _F7_FRAC = 7 / 9;
+        const _hLam_F7 = _hLam != null ? parseFloat((Math.max(0.4, Math.min(9, _hLam * _F7_FRAC))).toFixed(2)) : null;
+        const _aLam_F7 = _aLam != null ? parseFloat((Math.max(0.4, Math.min(9, _aLam * _F7_FRAC))).toFixed(2)) : null;
         // H2H combined hit rate: how often (homeScore+awayScore) >= threshold in last 10 H2H meetings
         const _gtH2H = _gtH2HRate(homeTeam, awayTeam, threshold);
         const h2hTotalHitRate = _gtH2H?.rate ?? null;
@@ -508,7 +524,7 @@ export async function emitGameTotalPlays({
           truePct = totalDistPct(totalDistCache[_dk], threshold);
           const _mlCtxKey = `${homeTeam}|${awayTeam}|${gameDate}`;
           if (!_mlbMlContext[_mlCtxKey]) {
-            _mlbMlContext[_mlCtxKey] = { homeTeam, awayTeam, gameDate, homeLambda: _hLam, awayLambda: _aLam, f5HomeLambda: _hLam_F5, f5AwayLambda: _aLam_F5, dispR: _mlbDispR, kalshiVolume, kalshiSpread, lowVolume, _simData: { ..._simData } };
+            _mlbMlContext[_mlCtxKey] = { homeTeam, awayTeam, gameDate, homeLambda: _hLam, awayLambda: _aLam, f3HomeLambda: _hLam_F3, f3AwayLambda: _aLam_F3, f5HomeLambda: _hLam_F5, f5AwayLambda: _aLam_F5, f7HomeLambda: _hLam_F7, f7AwayLambda: _aLam_F7, dispR: _mlbDispR, kalshiVolume, kalshiSpread, lowVolume, _simData: { ..._simData } };
           }
         }
         // Pre-sim lambda blend: solve for the NegBin mean that would produce the observed

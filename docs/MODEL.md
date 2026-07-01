@@ -489,9 +489,9 @@ Kalshi series `KXMLBGAME` (same series that powers the MLB game-odds fallback). 
 
 ---
 
-## MLB First-5-Innings v1 (2026-05-28)
+## MLB First-N-Innings — F5 (2026-05-28), F3/F7 (2026-06-30)
 
-**Series**: `KXMLBF5TOTAL`, `KXMLBF5SPREAD`. (`KXMLBF5` 3-way ML deferred — different shape.) Same ticker date+team segment as full-game; same `parseGameTeams` handles them.
+**Series**: `KXMLBF5TOTAL`, `KXMLBF5SPREAD` (total/spread) and `KXMLBF5` (3-way ML w/ tie). Added 2026-06-30: `KXMLBF3` and `KXMLBF7` — **ML-only** (Kalshi lists no F3/F7 total/spread; those series return 0 markets). All share the full-game ticker date+team segment; same `parseGameTeams` handles them. The 3-way inning-winner series (`KXMLBF3/F5/F7`) live in `CRON_ONLY_TICKERS` so the snap cron warms them.
 
 **Lambda**: per-side F5 lambda computed alongside full-game λ in the MLB total loop and stashed in `_mlbMlContext` as `f5HomeLambda` / `f5AwayLambda`:
 
@@ -527,6 +527,18 @@ where `oppStarterMult_F5 = _starterMult(fipEff × restBump, era × restBump, whi
 - F5 ML tie: `f5Home === f5Away` → won
 
 **Rainout / called-game**: if `state === "post"` and `f5Complete !== true`, the game ended before the 5th was complete. Kalshi voids these markets (per their rules), so the resolver returns `result: "void"`.
+
+### F3 / F7 3-way ML (2026-06-30, shadow-only)
+
+`KXMLBF3` ("wins first 3 innings") and `KXMLBF7` ("first 7 innings") reuse the F5 ML stack via one parameterized emitter, `_emitMlbSegmentMl({segment, seriesTicker, statName, lamHomeKey, lamAwayKey, ouFrac, jointCache})` in `ml-spread.js` (F3/F5/F7 all route through it; F5 output is unchanged because it still shares `_mlbF5JointCache` with F5 total/spread). Categories `mlb|f3ml` / `mlb|f7ml`, shadow-only (not in the category gate). No F3/F7 total or spread — those Kalshi series don't exist.
+
+**Lambdas** (stashed on `_mlbMlContext` beside `f5*`, computed in the MLB total loop):
+- **F3** = starter-only × **3/9** — reuses the same `oppStarterMult_F5` (first 3 innings = pure starter, first time through the order; the F5 no-TTO/no-bullpen rationale applies *more* cleanly). Clamp `[0.2, 6]`.
+- **F7** = **full-game** λ (`_hLam`/`_aLam`) × **7/9** — *not* starter-only. By inning 7 the starter has taken the 3rd-time-order (TTO) penalty and the bullpen has appeared; the full-game λ already carries both, so scale it rather than the starter mult. Clamp `[0.4, 9]`. (Starter-only×7/9 would bias F7 low; documented v1 tradeoff.)
+
+**Tie rate is the sanity check**: fewer innings → more ties, so `P(tie)` should grade F3 (highest, ~25-30%) > F5 (~15-17%) > F7 (lowest, ~10%), all off the same `joint3WayPct` on the scaled lambdas.
+
+**Live resolution**: `/api/live` emits `f3{Home,Away}Score/f3Complete` (linescores[0:3], both ≥3) and `f7*` (both ≥7), mirroring the f5 block; the resolver's segment branch grades `f3`/`f7` off those. ML grading is segment-generic (`segHome > segAway → winner`, equal → tie).
 
 **Live cache window**: `/api/live` caches in-progress games for 60s, post-state for 300s. F5 fields populate as soon as ESPN's scoreboard reflects 5 completed half-innings — typically 30-60s after the bottom of 5 ends, depending on ESPN's update cadence. After 5 min post-game, the cache expires; F5 picks tracked but never auto-resolved would need a manual re-trigger.
 

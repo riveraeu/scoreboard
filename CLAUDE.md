@@ -153,7 +153,7 @@ Formula details, SimScore tiers, lambda formulas, gates, dedup, calibration cuto
 | NBA/WNBA ML/Spread/Halves | `simulateNBAJoint` Normal, shared joint caches | piecewise injury OffRtg shrink |
 | WNBA Quarters | λ×0.25 Normal — shadow-only | 1Q–4Q, 3-way TIE; resolves off per-quarter linescores |
 | NHL ML/Spread | NegBin (r from residuals) | spread dampener while calibrating |
-| MLB F5 | full-game machinery, `λ_F5 = teamRPG × 5/9 …` | no TTO/bullpen/regime blend |
+| MLB F3/F5/F7 | full-game machinery; inning-segment ML (3-way w/ tie) + F5 total/spread. F3/F5 = starter-only×(3\|5)/9, F7 = full-game λ×7/9 | F3/F5 drop TTO/bullpen; F7 keeps them (starter tires past inning 5) |
 | Tennis / Soccer / Fight / Golf / NASCAR | Phase-1 models — shadow-only | see the `api/lib/*.js` module notes above |
 
 ## Key Gotchas

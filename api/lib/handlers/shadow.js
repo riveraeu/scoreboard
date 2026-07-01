@@ -338,12 +338,20 @@ function _resolveRow(row, game) {
 
   // Segment plays (F5 / NBA-WNBA halves / WNBA quarters) — must come before full-game branches.
   const _isQtr = /^[1-4]q$/.test(segment || "");
-  if (segment === "f5" || segment === "1h" || segment === "2h" || _isQtr) {
+  if (segment === "f3" || segment === "f5" || segment === "f7" || segment === "1h" || segment === "2h" || _isQtr) {
     let segDone, segHome, segAway;
-    if (segment === "f5") {
+    if (segment === "f3") {
+      segDone = game.f3Complete === true;
+      segHome = game.f3HomeScore ?? 0;
+      segAway = game.f3AwayScore ?? 0;
+    } else if (segment === "f5") {
       segDone = game.f5Complete === true;
       segHome = game.f5HomeScore ?? 0;
       segAway = game.f5AwayScore ?? 0;
+    } else if (segment === "f7") {
+      segDone = game.f7Complete === true;
+      segHome = game.f7HomeScore ?? 0;
+      segAway = game.f7AwayScore ?? 0;
     } else if (segment === "1h") {
       segDone = game.h1Complete === true;
       segHome = game.h1HomeScore ?? 0;

@@ -17,11 +17,14 @@ test("dedupKey: plays with neither gameType nor player identity are excluded", (
   assert.equal(dedupKey({ sport: "mlb", playerName: "Cole", gameDate: D }), null); // no stat
 });
 
-test("dedupKey: F5 and full-game segments never share a key", () => {
+test("dedupKey: inning-segment (F3/F5/F7) and full-game segments never share a key", () => {
   const base = { gameType: "total", sport: "mlb", homeTeam: "NYY", awayTeam: "BOS", gameDate: D, direction: "over" };
   const full = dedupKey({ ...base });
+  const f3 = dedupKey({ ...base, segment: "f3" });
   const f5 = dedupKey({ ...base, segment: "f5" });
-  assert.notEqual(full, f5);
+  const f7 = dedupKey({ ...base, segment: "f7" });
+  // Every segment is distinct from full-game and from each other.
+  assert.equal(new Set([full, f3, f5, f7]).size, 4);
   // Absent segment defaults to "full" — explicit "full" must collide with absent.
   assert.equal(full, dedupKey({ ...base, segment: "full" }));
 });

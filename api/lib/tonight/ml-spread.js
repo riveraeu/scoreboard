@@ -359,92 +359,96 @@ export async function emitAllMlAndSpread({
         }
       }
     }
-    // F5 ML 3-way (KXMLBF5) — home/away/tie. Unlike full-game ML (where ties are dropped
-    // since extras resolve them), F5 ties are a real Kalshi outcome (priced 15-17% in
-    // typical samples). Same joint draws as F5 total/spread (reuses _mlbF5JointCache).
-    // Series fetched inline via snap → 600s cache → REST (same pattern as KXMLBGAME).
-    const _mlbF5MlMarkets = {};
-    try {
-      const _kImpliedProbF5Ml = (m) => {
-        const a = parseFloat(m.yes_ask_dollars) || 0;
-        const l = parseFloat(m.last_price_dollars) || 0;
-        const b = parseFloat(m.yes_bid_dollars) || 0;
-        return (a >= 0.98 && b === 0 && l > 0) ? l : (a > 0 ? a : l);
-      };
-      const _kGameDateF5Ml = (m) => m?.expected_expiration_time ? PT_FMT.format(new Date(m.expected_expiration_time)) : null;
-      let _f5MlRaw = [];
-      {
-        const _snapKey = 'kalshi:snap:KXMLBF5';
-        const _legKey = 'kalshi:KXMLBF5';
-        let _data = null;
-        if (CACHE2 && !isBustCache) {
-          const _snap = await CACHE2.get(_snapKey, 'json').catch(() => null);
-          if (_snap && Array.isArray(_snap.markets) && _snap.markets.length > 0 &&
-              (Date.now() - (_snap.writtenAt || 0) <= 180_000)) {
-            _data = { markets: _snap.markets };
+    // Segment ML 3-way (KXMLBF3 / KXMLBF5 / KXMLBF7) — home/away/tie. Unlike full-game ML
+    // (where ties are dropped since extras resolve them), an inning-segment tie is a real
+    // Kalshi settlement outcome (F5 priced ~15-17%; F3 higher, F7 lower — fewer innings = more
+    // ties). Each segment reuses the joint draws from its own per-matchup cache; F5 shares the
+    // cache already populated by F5 total/spread so its output is unchanged. Series fetched
+    // inline via snap → 600s cache → REST (same pattern as KXMLBGAME). One parameterized
+    // emitter drives all three segments off the per-game lambdas stashed on _mlbMlContext.
+    const _emitMlbSegmentMl = async ({ segment, seriesTicker, statName, lamHomeKey, lamAwayKey, ouFrac, jointCache }) => {
+      const _mlMarkets = {};
+      try {
+        const _kImpliedProb = (m) => {
+          const a = parseFloat(m.yes_ask_dollars) || 0;
+          const l = parseFloat(m.last_price_dollars) || 0;
+          const b = parseFloat(m.yes_bid_dollars) || 0;
+          return (a >= 0.98 && b === 0 && l > 0) ? l : (a > 0 ? a : l);
+        };
+        const _kGameDate = (m) => m?.expected_expiration_time ? PT_FMT.format(new Date(m.expected_expiration_time)) : null;
+        let _raw = [];
+        {
+          const _snapKey = `kalshi:snap:${seriesTicker}`;
+          const _legKey = `kalshi:${seriesTicker}`;
+          let _data = null;
+          if (CACHE2 && !isBustCache) {
+            const _snap = await CACHE2.get(_snapKey, 'json').catch(() => null);
+            if (_snap && Array.isArray(_snap.markets) && _snap.markets.length > 0 &&
+                (Date.now() - (_snap.writtenAt || 0) <= 180_000)) {
+              _data = { markets: _snap.markets };
+            }
           }
-        }
-        if (!_data && CACHE2 && !isBustCache) {
-          _data = await CACHE2.get(_legKey, 'json').catch(() => null);
-        }
-        if (!_data) {
-          const r = await fetch('https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=KXMLBF5&limit=1000&status=open', {
-            headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }
-          }).catch(() => null);
-          if (r?.ok) {
-            _data = await r.json().catch(() => null);
-            if (_data && CACHE2) CACHE2.put(_legKey, JSON.stringify(_data), { expirationTtl: 600 }).catch(() => {});
+          if (!_data && CACHE2 && !isBustCache) {
+            _data = await CACHE2.get(_legKey, 'json').catch(() => null);
           }
+          if (!_data) {
+            const r = await fetch(`https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=${seriesTicker}&limit=1000&status=open`, {
+              headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }
+            }).catch(() => null);
+            if (r?.ok) {
+              _data = await r.json().catch(() => null);
+              if (_data && CACHE2) CACHE2.put(_legKey, JSON.stringify(_data), { expirationTtl: 600 }).catch(() => {});
+            }
+          }
+          _raw = _data?.markets || [];
         }
-        _f5MlRaw = _data?.markets || [];
-      }
-      // Group by event_ticker. Allow TIE as a 3rd key alongside the two team abbrs.
-      const _byEventF5 = {};
-      for (const m of _f5MlRaw) {
-        const tk = m.ticker || '';
-        const lastDash = tk.lastIndexOf('-');
-        if (lastDash < 0) continue;
-        const sfx = tk.slice(lastDash + 1);
-        const key = sfx === "TIE" ? "TIE" : normTeam('mlb', sfx);
-        const eventT = m.event_ticker;
-        if (!eventT || !key) continue;
-        const p = _kImpliedProbF5Ml(m);
-        if (!p || p <= 0 || p >= 1) continue;
-        if (!_byEventF5[eventT]) _byEventF5[eventT] = { probs: {}, tickers: {}, gameDate: _kGameDateF5Ml(m) };
-        _byEventF5[eventT].probs[key] = p;
-        _byEventF5[eventT].tickers[key] = tk;
-      }
-      for (const info of Object.values(_byEventF5)) {
-        const keys = Object.keys(info.probs);
-        if (keys.length !== 3 || !info.gameDate) continue;
-        if (!keys.includes("TIE")) continue;
-        const teams = keys.filter(k => k !== "TIE");
-        const [t1, t2] = teams;
-        // Postponed-ticker reattribution — same `_reattrMlbGameDate` used by full-game ML.
-        const _resolved = Math.min(...keys.map(k => info.probs[k])) <= 0.02
-                        || Math.max(...keys.map(k => info.probs[k])) >= 0.99;
-        const _attrDate = _reattrMlbGameDate(info.gameDate, t1, t2, _resolved);
-        const payload = { probs: { ...info.probs }, tickersByKey: { ...info.tickers } };
-        _mlbF5MlMarkets[`${t1}|${t2}|${_attrDate}`] = payload;
-        _mlbF5MlMarkets[`${t2}|${t1}|${_attrDate}`] = payload;
-      }
-    } catch { /* non-fatal — no F5 ML plays if fetch/parse blows up */ }
-    // Emit F5 ML picks. Reuses _mlbF5JointCache built above (or builds on demand).
-    {
+        // Group by event_ticker. Allow TIE as a 3rd key alongside the two team abbrs.
+        const _byEvent = {};
+        for (const m of _raw) {
+          const tk = m.ticker || '';
+          const lastDash = tk.lastIndexOf('-');
+          if (lastDash < 0) continue;
+          const sfx = tk.slice(lastDash + 1);
+          const key = sfx === "TIE" ? "TIE" : normTeam('mlb', sfx);
+          const eventT = m.event_ticker;
+          if (!eventT || !key) continue;
+          const p = _kImpliedProb(m);
+          if (!p || p <= 0 || p >= 1) continue;
+          if (!_byEvent[eventT]) _byEvent[eventT] = { probs: {}, tickers: {}, gameDate: _kGameDate(m) };
+          _byEvent[eventT].probs[key] = p;
+          _byEvent[eventT].tickers[key] = tk;
+        }
+        for (const info of Object.values(_byEvent)) {
+          const keys = Object.keys(info.probs);
+          if (keys.length !== 3 || !info.gameDate) continue;
+          if (!keys.includes("TIE")) continue;
+          const teams = keys.filter(k => k !== "TIE");
+          const [t1, t2] = teams;
+          // Postponed-ticker reattribution — same `_reattrMlbGameDate` used by full-game ML.
+          const _resolved = Math.min(...keys.map(k => info.probs[k])) <= 0.02
+                          || Math.max(...keys.map(k => info.probs[k])) >= 0.99;
+          const _attrDate = _reattrMlbGameDate(info.gameDate, t1, t2, _resolved);
+          const payload = { probs: { ...info.probs }, tickersByKey: { ...info.tickers } };
+          _mlMarkets[`${t1}|${t2}|${_attrDate}`] = payload;
+          _mlMarkets[`${t2}|${t1}|${_attrDate}`] = payload;
+        }
+      } catch { /* non-fatal — no segment ML plays if fetch/parse blows up */ }
+      // Emit picks. Reuses the segment's joint cache (or builds on demand).
       for (const ctx of Object.values(_mlbMlContext)) {
-        const { homeTeam, awayTeam, gameDate, f5HomeLambda, f5AwayLambda, dispR, kalshiVolume, kalshiSpread, lowVolume, _simData } = ctx;
+        const { homeTeam, awayTeam, gameDate, dispR, kalshiVolume, kalshiSpread, lowVolume, _simData } = ctx;
+        const lamHome = ctx[lamHomeKey], lamAway = ctx[lamAwayKey];
         if (gameDate && gameDate < cutoffStr) continue;
-        if (f5HomeLambda == null || f5AwayLambda == null) continue;
-        const f5MlMarket = _mlbF5MlMarkets[`${homeTeam}|${awayTeam}|${gameDate}`]
-                        ?? (gameDate == null ? (_mlbF5MlMarkets[`${homeTeam}|${awayTeam}|${_todayPT}`] ?? _mlbF5MlMarkets[`${awayTeam}|${homeTeam}|${_todayPT}`]) : null);
-        if (!f5MlMarket?.probs) continue;
-        const homeYes = f5MlMarket.probs[homeTeam];
-        const awayYes = f5MlMarket.probs[awayTeam];
-        const tieYes = f5MlMarket.probs["TIE"];
+        if (lamHome == null || lamAway == null) continue;
+        const mlMarket = _mlMarkets[`${homeTeam}|${awayTeam}|${gameDate}`]
+                      ?? (gameDate == null ? (_mlMarkets[`${homeTeam}|${awayTeam}|${_todayPT}`] ?? _mlMarkets[`${awayTeam}|${homeTeam}|${_todayPT}`]) : null);
+        if (!mlMarket?.probs) continue;
+        const homeYes = mlMarket.probs[homeTeam];
+        const awayYes = mlMarket.probs[awayTeam];
+        const tieYes = mlMarket.probs["TIE"];
         if (homeYes == null || awayYes == null || tieYes == null) continue;
-        const _f5k = `${homeTeam}|${awayTeam}`;
-        if (!_mlbF5JointCache[_f5k]) _mlbF5JointCache[_f5k] = simulateMLBJoint(f5HomeLambda, f5AwayLambda, dispR, 10000);
-        const joint = _mlbF5JointCache[_f5k];
+        const _jk = `${homeTeam}|${awayTeam}`;
+        if (!jointCache[_jk]) jointCache[_jk] = simulateMLBJoint(lamHome, lamAway, dispR, 10000);
+        const joint = jointCache[_jk];
         if (!joint) continue;
         const homeTruePct = joint3WayPct(joint.home, joint.away, "home");
         const awayTruePct = joint3WayPct(joint.home, joint.away, "away");
@@ -454,8 +458,8 @@ export async function emitAllMlAndSpread({
         const _lineupsConfirmed = _mlbBothTeamsConfirmed(homeTeam, awayTeam, gameDate ?? _todayPT);
         const _toAO = (p) => p == null ? null : p >= 50 ? Math.round(-(p / (100 - p)) * 100) : Math.round((100 - p) / p * 100);
         const _fullGameOu = _simData?.gameOuLine ?? null;
-        const _f5GameOuLine = _fullGameOu != null ? parseFloat((_fullGameOu * 5 / 9).toFixed(1)) : null;
-        const _f5ExpectedTotal = parseFloat((f5HomeLambda + f5AwayLambda).toFixed(2));
+        const _segGameOuLine = _fullGameOu != null ? parseFloat((_fullGameOu * ouFrac).toFixed(1)) : null;
+        const _segExpectedTotal = parseFloat((lamHome + lamAway).toFixed(2));
         const _sides = [
           { side: "home", pickTeam: homeTeam, oppTeam: awayTeam, yesAsk: homeYes, truePct: homeTruePct },
           { side: "away", pickTeam: awayTeam, oppTeam: homeTeam, yesAsk: awayYes, truePct: awayTruePct },
@@ -467,19 +471,19 @@ export async function emitAllMlAndSpread({
           const americanOdds = _toAO(kalshiPct);
           const inWindow = kalshiPct >= KALSHI_GATE && kalshiPct <= KALSHI_CAP;
           const _base = {
-            gameType: "ml", sport: "mlb", stat: "f5ml", segment: "f5",
+            gameType: "ml", sport: "mlb", stat: statName, segment,
             homeTeam, awayTeam, pickTeam: s.pickTeam, oppTeam: s.oppTeam, side: s.side, gameDate,
             kalshiPct, americanOdds, truePct: parseFloat(s.truePct.toFixed(1)), edge,
             totalSimScore: 0, qualified: false,
             kalshiVolume, kalshiSpread, lowVolume,
             gameTime: _gameTime, lineupsConfirmed: _lineupsConfirmed,
-            kalshiTicker: f5MlMarket.tickersByKey?.[s.pickTeam] ?? null, kalshiSide: "yes",
+            kalshiTicker: mlMarket.tickersByKey?.[s.pickTeam] ?? null, kalshiSide: "yes",
             ..._simData,
-            // F5-specific overrides (must follow _simData spread to win)
-            homeLambda: f5HomeLambda, awayLambda: f5AwayLambda,
-            homeExpected: f5HomeLambda, awayExpected: f5AwayLambda,
-            expectedTotal: _f5ExpectedTotal,
-            gameOuLine: _f5GameOuLine,
+            // Segment-specific overrides (must follow _simData spread to win)
+            homeLambda: lamHome, awayLambda: lamAway,
+            homeExpected: lamHome, awayExpected: lamAway,
+            expectedTotal: _segExpectedTotal,
+            gameOuLine: _segGameOuLine,
             h2hTotalHitRate: null, h2hTotalGames: null, h2hTotalPts: 1,
           };
           if (edge >= EDGE_GATE && inWindow) {
@@ -489,7 +493,12 @@ export async function emitAllMlAndSpread({
           }
         }
       }
-    }
+    };
+    const _mlbF3JointCache = {};
+    const _mlbF7JointCache = {};
+    await _emitMlbSegmentMl({ segment: "f3", seriesTicker: "KXMLBF3", statName: "f3ml", lamHomeKey: "f3HomeLambda", lamAwayKey: "f3AwayLambda", ouFrac: 3 / 9, jointCache: _mlbF3JointCache });
+    await _emitMlbSegmentMl({ segment: "f5", seriesTicker: "KXMLBF5", statName: "f5ml", lamHomeKey: "f5HomeLambda", lamAwayKey: "f5AwayLambda", ouFrac: 5 / 9, jointCache: _mlbF5JointCache });
+    await _emitMlbSegmentMl({ segment: "f7", seriesTicker: "KXMLBF7", statName: "f7ml", lamHomeKey: "f7HomeLambda", lamAwayKey: "f7AwayLambda", ouFrac: 7 / 9, jointCache: _mlbF7JointCache });
   }
   // ── NBA ML plays (KXNBAGAME) ──────────────────────────────────────────────────────────
   // Per-team Normal joint sim from the same lambdas as NBA game totals. Each ML side is

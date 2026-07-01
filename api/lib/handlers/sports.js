@@ -147,22 +147,22 @@ export async function handleSportsRoutes(ctx) {
         const homeScore = parseInt(homeComp?.score) || 0;
         const awayScore = parseInt(awayComp?.score) || 0;
 
-        // MLB First-5-Innings breakdown — used by F5 picks to resolve mid-game once the
-        // bottom of the 5th completes (instead of waiting on state==="post"). ESPN's
-        // linescores array appends an entry per half-inning played; both teams reaching
-        // length≥5 means each has batted 5 full innings (top-of-5 + bottom-of-5 complete).
-        // Home team always bats in bottom of 5 even when leading after top of 5, so this
-        // criterion is symmetric. F5 picks void client-side if state==="post" but
-        // !f5Complete (rainout / called game before 5).
+        // MLB First-N-Innings breakdowns (F3/F5/F7) — used by segment ML picks to resolve
+        // mid-game once the bottom of inning N completes (instead of waiting on state==="post").
+        // ESPN's linescores array appends an entry per half-inning played; both teams reaching
+        // length≥N means each has batted N full innings (top+bottom of N complete). Home always
+        // bats in the bottom even when leading, so the criterion is symmetric. Segment picks
+        // void client-side if state==="post" but !fNComplete (rainout / called game before N).
+        let f3HomeScore = null, f3AwayScore = null, f3Complete = false;
         let f5HomeScore = null, f5AwayScore = null, f5Complete = false;
+        let f7HomeScore = null, f7AwayScore = null, f7Complete = false;
         if (sport === "mlb") {
           const hLs = homeComp?.linescores || [];
           const aLs = awayComp?.linescores || [];
-          if (hLs.length >= 5 && aLs.length >= 5) {
-            f5HomeScore = hLs.slice(0, 5).reduce((s, x) => s + (parseFloat(x?.value) || 0), 0);
-            f5AwayScore = aLs.slice(0, 5).reduce((s, x) => s + (parseFloat(x?.value) || 0), 0);
-            f5Complete = true;
-          }
+          const _segRuns = (ls, n) => ls.slice(0, n).reduce((s, x) => s + (parseFloat(x?.value) || 0), 0);
+          if (hLs.length >= 3 && aLs.length >= 3) { f3HomeScore = _segRuns(hLs, 3); f3AwayScore = _segRuns(aLs, 3); f3Complete = true; }
+          if (hLs.length >= 5 && aLs.length >= 5) { f5HomeScore = _segRuns(hLs, 5); f5AwayScore = _segRuns(aLs, 5); f5Complete = true; }
+          if (hLs.length >= 7 && aLs.length >= 7) { f7HomeScore = _segRuns(hLs, 7); f7AwayScore = _segRuns(aLs, 7); f7Complete = true; }
         }
         // NBA / WNBA half breakdown — linescores array has one entry per played quarter.
         // 1H = Q1+Q2 (linescores indices 0,1); 2H = Q3+Q4+OT (indices 2..N) = total - 1H.
@@ -335,10 +335,20 @@ export async function handleSportsRoutes(ctx) {
         }
 
         const gameData = { state, detail, players, homeTeam, awayTeam, homeScore, awayScore };
+        if (sport === "mlb" && f3Complete) {
+          gameData.f3HomeScore = f3HomeScore;
+          gameData.f3AwayScore = f3AwayScore;
+          gameData.f3Complete = true;
+        }
         if (sport === "mlb" && f5Complete) {
           gameData.f5HomeScore = f5HomeScore;
           gameData.f5AwayScore = f5AwayScore;
           gameData.f5Complete = true;
+        }
+        if (sport === "mlb" && f7Complete) {
+          gameData.f7HomeScore = f7HomeScore;
+          gameData.f7AwayScore = f7AwayScore;
+          gameData.f7Complete = true;
         }
         if ((sport === "nba" || sport === "wnba") && h1Complete) {
           gameData.h1HomeScore = h1HomeScore;
