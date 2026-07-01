@@ -4,7 +4,7 @@
 // Returns { plays, dropped, nbaDropped } for use by the rest of the pipeline.
 
 import { log5K, log5HitRate, PARK_KFACTOR, PARK_HITFACTOR, UMPIRE_KFACTOR, poissonCDF, simulateKsDist, kDistPct, buildNbaStatDist, nbaDistPct, binomTailPct, tbTailPct } from "../simulate.js";
-import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER as EDGE_GATE } from "../config.js";
+import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER as EDGE_GATE, betWindowFor } from "../config.js";
 import { ptDateMinusOne } from "../pt.js";
 
 const PROD_SPORTS = new Set(["mlb", "nba", "nhl", "wnba"]);
@@ -1367,12 +1367,15 @@ export async function emitPropPlays({
     if (sport === "nhl" && nhlPreSimScore !== null) {
       nhlSimScore = nhlPreSimScore;
     }
-    if (_betKalshiPct < KALSHI_GATE || _betKalshiPct > KALSHI_CAP || edge < EDGE_GATE) {
+    // Per-category bet window: the derived [lo,hi] override if one is set in CATEGORY_BET_WINDOWS
+    // (populated only after a tune:window GO at n≥200), else the global [KALSHI_GATE, KALSHI_CAP].
+    const [_betLo, _betHi] = betWindowFor(sport, stat);
+    if (_betKalshiPct < _betLo || _betKalshiPct > _betHi || edge < EDGE_GATE) {
       const _dropObj = {
         ..._dropBase,
         truePct: parseFloat(truePct.toFixed(1)), rawTruePct: parseFloat(rawTruePct.toFixed(1)),
         edge: parseFloat(edge.toFixed(1)),
-        reason: edge < EDGE_GATE ? "edge_too_low" : _betKalshiPct > KALSHI_CAP ? "kalshi_pct_too_high" : "kalshi_pct_too_low",
+        reason: edge < EDGE_GATE ? "edge_too_low" : _betKalshiPct > _betHi ? "kalshi_pct_too_high" : "kalshi_pct_too_low",
         opponent: tonightOpp, seasonPct: parseFloat((primaryPct).toFixed(1)),
         seasonGames: allVals.length,
         softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,

@@ -3,7 +3,7 @@
 // full favorite curve so the bet window can be derived from calibration instead of assumed.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { KALSHI_GATE, KALSHI_CAP, CAPTURE_GATE, CAPTURE_CAP, CAPTURE_MAX_SPREAD, capturableSpread } from "./config.js";
+import { KALSHI_GATE, KALSHI_CAP, CAPTURE_GATE, CAPTURE_CAP, CAPTURE_MAX_SPREAD, capturableSpread, CATEGORY_BET_WINDOWS, betWindowFor } from "./config.js";
 
 test("capture band is strictly wider than the bet window on both ends", () => {
   assert.ok(CAPTURE_GATE < KALSHI_GATE, `CAPTURE_GATE (${CAPTURE_GATE}) must be below KALSHI_GATE (${KALSHI_GATE})`);
@@ -34,4 +34,34 @@ test("capturableSpread keeps real two-sided books, rejects lone-quote artifacts"
   // No ask on the side → sentinel 999 → never capture.
   assert.equal(capturableSpread(999), false);
   assert.equal(capturableSpread(null), false);
+});
+
+test("betWindowFor defaults to the global [KALSHI_GATE, KALSHI_CAP] for any unset category", () => {
+  assert.deepEqual(betWindowFor("mlb", "totalBases"), [KALSHI_GATE, KALSHI_CAP]);
+  assert.deepEqual(betWindowFor("nba", "points"), [KALSHI_GATE, KALSHI_CAP]);
+  assert.deepEqual(betWindowFor("anything", "unknown"), [KALSHI_GATE, KALSHI_CAP]);
+});
+
+test("CATEGORY_BET_WINDOWS ships EMPTY — no live per-category override (zero behavior change)", () => {
+  assert.equal(Object.keys(CATEGORY_BET_WINDOWS).length, 0,
+    "a window here is a live bet-behavior change — must land only after a tune:window GO, not by default");
+});
+
+test("betWindowFor honors a set window but only within [CAPTURE_GATE, CAPTURE_CAP], else falls back", () => {
+  // Simulate a validated override (mutate a copy of the semantics via a temporary key).
+  const probe = (sport, stat, w) => {
+    CATEGORY_BET_WINDOWS[`${sport}|${stat}`] = w;
+    try { return betWindowFor(sport, stat); } finally { delete CATEGORY_BET_WINDOWS[`${sport}|${stat}`]; }
+  };
+  // Valid, inside capture bounds → respected.
+  assert.deepEqual(probe("mlb", "totalBases", [88, 97]), [88, 97]);
+  assert.deepEqual(probe("mlb", "totalBases", [CAPTURE_GATE, CAPTURE_CAP]), [CAPTURE_GATE, CAPTURE_CAP]);
+  // Out of capture bounds → rejected, falls back to global.
+  assert.deepEqual(probe("mlb", "totalBases", [40, 97]), [KALSHI_GATE, KALSHI_CAP]);   // lo below CAPTURE_GATE
+  assert.deepEqual(probe("mlb", "totalBases", [88, 99]), [KALSHI_GATE, KALSHI_CAP]);   // hi above CAPTURE_CAP
+  // Malformed → falls back.
+  assert.deepEqual(probe("mlb", "totalBases", [90, 90]), [KALSHI_GATE, KALSHI_CAP]);   // lo !< hi
+  assert.deepEqual(probe("mlb", "totalBases", [97, 88]), [KALSHI_GATE, KALSHI_CAP]);   // inverted
+  assert.deepEqual(probe("mlb", "totalBases", [88]), [KALSHI_GATE, KALSHI_CAP]);       // wrong length
+  assert.deepEqual(probe("mlb", "totalBases", "88-97"), [KALSHI_GATE, KALSHI_CAP]);    // not an array
 });

@@ -94,8 +94,22 @@ Calibration noise on an observed hit rate is `SE = √(p(1−p)/n)`. Read deltas
 | Decision | Bar | Rationale |
 |---|---|---|
 | **Gate a category on/off** (display toggle, reversible) | `n≥50` cumulative + band coherence | cheap to be wrong; `tune:gate` `MIN_N_PROMOTE` |
+| **Override a category's bet window** (`CATEGORY_BET_WINDOWS`, forward-only) | **`n≥200` + in-sample checklist + out-of-sample ROI CI-lo>0 + Brier-eligible** | `tune:window` GO — the OOS split is the guard vs the report's upward-biased in-sample discoveredWindow |
 | **Change a model formula** (sticky, affects every future prediction) | **`n≥200` per band + \|Δ\| > 2·SE + coherent across adjacent bands** | at n=200, ±6pt CI on p≈0.75; below that a single-band miss is usually noise |
 | **Small deltas (2–3pt)** | `n≥500+` | CI too wide below that |
+
+**Deriving a per-category bet window** (`npm run tune:window -- --category <sport|stat>`,
+`scripts/tune/window-recommender.js`). Capture de-blinding logs the full `[55,97]` favorite curve,
+so a category whose edge sits outside the global `[67,91]` (tune:residual flagged `mlb|totalBases`
+above the 91¢ cap) can have its window MEASURED. The tool reads the captured band, discovers the
+best ROI window (shared `api/lib/price-window.js`, same math as the report's `discoveredWindow`),
+and — crucially — **validates it out-of-sample** (discover on the earlier rows, realize on the
+held-out later rows) because the in-sample discovered ROI is maximized over candidate ranges and
+therefore upward-biased. GO requires n≥200 AND the in-sample checklist AND OOS ROI CI-lo>0 AND
+Brier-eligibility (skill CI-lo>0 @ n≥100 — a profitable window on a model the market out-predicts
+is a price artifact, not edge). On GO, paste the one-line `[lo,hi]` into `CATEGORY_BET_WINDOWS` in
+`api/lib/config.js` (applied at the prop emit chokepoint). Recommends, never auto-applies — same
+human-in-the-loop discipline as `tune:gate` + `FORMULA_CUTOFFS`.
 
 **Coherence pools n.** A same-direction miss across 3+ adjacent bands is trustworthy
 sooner than one isolated band, because adjacency rules out luck. This is how HRR

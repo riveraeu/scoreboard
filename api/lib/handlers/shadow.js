@@ -13,6 +13,13 @@ import { fetchRoundScores, normGolfName } from "../golf.js";
 import { fetchRaceResults } from "../nascar.js";
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER } from "../config.js";
 import { passesCategoryGate } from "../category-gate.js";
+import {
+  MIN_N_WINDOW as _MIN_N_WINDOW,
+  MIN_N_PROMOTE as _MIN_N_PROMOTE,
+  priceWindowBins as _priceWindowBins,
+  discoverPriceWindow as _discoverPriceWindow,
+  windowQuality as _windowQuality,
+} from "../price-window.js";
 
 const SHADOW_TABLE = "shadow_plays";
 const COLUMNS = [
@@ -1475,91 +1482,14 @@ function _bettingAction(verdict, gated, eligible, hint) {
 }
 
 // ── Price-band profitability (the Model board) ───────────────────────────────
-// Profit is realized against the PRICE paid, not the model's number: ROI = hitRate − price.
-// So the betting-window question ("is 67–91 right?") is a price-axis question. These helpers
-// work a per-category 5¢ price histogram of bettable plays (dc_qualified + edge≥5, NO price
-// window, NO truePct gate — those are the assumptions under test) so the data sets the bounds.
-const _MIN_N_WINDOW  = 30; // min n to trust a discovered price window
-const _MIN_N_PROMOTE = 50; // min n in the window to promote an ungated category
+// Price-window math (MIN_N_WINDOW/MIN_N_PROMOTE, priceWindowBins, discoverPriceWindow,
+// windowQuality) lives in ../price-window.js — imported above, shared with the tune:window CLI.
 // Brier skill (= marketBrier − modelBrier; >0 = model sharper than the price). No longer drives the
 // accuracy verdict (that's calibration-based now) — it's the secondary "vs market" signal and the
 // betting board's `eligible` gate: skill CI lo > 0 AND n ≥ BRIER_MIN_N. Only trusted above
 // BRIER_MIN_N resolved plays (Brier is a mean of squared errors → lower variance than a tail
 // hit-rate, but still noisy at small n, where the CI can read misleadingly positive).
 const BRIER_MIN_N = 100; // min resolved n before Brier skill can gate betting eligibility
-
-// Adaptive-merge adjacent 5¢ cells until each display bin clears `target` n — bin WIDTHS come
-// from where the data actually is, not from fixed guesses. Trailing remainder folds left.
-function _priceWindowBins(cells, target = 15) {
-  const sorted = [...cells].sort((a, b) => a.lo - b.lo);
-  const out = [];
-  let cur = null;
-  for (const c of sorted) {
-    if (!cur) cur = { lo: c.lo, hi: c.lo + 5, n: 0, wins: 0, pSum: 0 };
-    cur.hi = c.lo + 5; cur.n += c.n; cur.wins += c.wins; cur.pSum += c.avgPrice * c.n;
-    if (cur.n >= target) { out.push(cur); cur = null; }
-  }
-  if (cur) {
-    if (out.length) { const l = out[out.length - 1]; l.hi = cur.hi; l.n += cur.n; l.wins += cur.wins; l.pSum += cur.pSum; }
-    else out.push(cur);
-  }
-  return out.map(b => {
-    const avgPrice = b.pSum / b.n;
-    return { lo: b.lo, hi: b.hi, n: b.n,
-      hitRate: parseFloat((100 * b.wins / b.n).toFixed(1)),
-      avgPrice: parseFloat(avgPrice.toFixed(1)),
-      roi: parseFloat((b.wins / b.n - avgPrice / 100).toFixed(4)) };
-  });
-}
-
-// Best contiguous price window by ROI, subject to n ≥ minN — the data-derived betting range.
-function _discoverPriceWindow(cells, minN = _MIN_N_WINDOW) {
-  const s = [...cells].sort((a, b) => a.lo - b.lo);
-  let best = null;
-  for (let i = 0; i < s.length; i++) {
-    let n = 0, wins = 0, pSum = 0;
-    for (let j = i; j < s.length; j++) {
-      n += s[j].n; wins += s[j].wins; pSum += s[j].avgPrice * s[j].n;
-      if (n < minN) continue;
-      const roi = wins / n - (pSum / n) / 100;
-      if (!best || roi > best.roi) best = { lo: s[i].lo, hi: s[j].lo + 5, n, wins, pSum, roi };
-    }
-  }
-  if (!best) return null;
-  const avgPrice = best.pSum / best.n;
-  return { lo: best.lo, hi: best.hi, n: best.n,
-    roi: parseFloat(best.roi.toFixed(4)),
-    hitRate: parseFloat((100 * best.wins / best.n).toFixed(1)),
-    avgPrice: parseFloat(avgPrice.toFixed(1)) };
-}
-
-// Promotion validation for a discovered window: 95% CI on ROI (binomial SE on the hit rate,
-// since ROI = hitRate − ~fixed price) + a half-split coherence test (both price-halves of the
-// window non-negative — guards against a single lucky bin masquerading as a profitable regime,
-// the selection-bias hazard of maximizing ROI over candidate windows). `cells` are the window's
-// component 5¢ bins.
-function _windowQuality(cells, win) {
-  if (!win) return null;
-  const p = win.hitRate / 100;
-  const se = Math.sqrt(Math.max(0, p * (1 - p) / win.n));
-  const roiLoCI = parseFloat((win.roi - 1.96 * se).toFixed(4));
-  const roiHiCI = parseFloat((win.roi + 1.96 * se).toFixed(4));
-  const inWin = cells.filter(c => c.lo >= win.lo && c.lo < win.hi).sort((a, b) => a.lo - b.lo);
-  const _roiOf = arr => {
-    const N = arr.reduce((s, c) => s + c.n, 0); if (!N) return null;
-    const W = arr.reduce((s, c) => s + c.wins, 0);
-    const P = arr.reduce((s, c) => s + c.avgPrice * c.n, 0);
-    return W / N - (P / N) / 100;
-  };
-  let coherent = false;
-  if (inWin.length >= 2) {
-    const mid = win.lo + (win.hi - win.lo) / 2;
-    const lo = _roiOf(inWin.filter(c => c.lo < mid));
-    const up = _roiOf(inWin.filter(c => c.lo >= mid));
-    coherent = (lo == null || lo >= -0.02) && (up == null || up >= -0.02);
-  }
-  return { roiLoCI, roiHiCI, coherent };
-}
 
 function _extractReportToken(request) {
   const cookie = request.headers.get("Cookie") || "";
