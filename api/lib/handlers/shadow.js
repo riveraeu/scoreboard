@@ -2415,7 +2415,9 @@ async function handlePolymarketDeltas({ path, request, env }) {
 // GET /api/sportsbook-deltas — multi-day Kalshi-vs-sharp-book ML divergence distribution (Phase 1a
 // observatory read). THE kill-gate surface: does Kalshi systematically LAG the de-vigged sharp book
 // (a timeable edge), or track it (no edge)? Auth: ADMIN_KEY or JWT. Params: ?days=N (default 30)
-// ?sport=. delta_cents = book_fair − kalshi; mean_signed > 0 = Kalshi systematically cheap vs the
+// ?sport=. ?minAbs=N adds a `rows` tail dump (|delta| ≥ N¢, biggest first, LIMIT 200) for auditing
+// outliers — a huge delta on a liquid ML is either a game-matching bug or a real thin-market signal.
+// delta_cents = book_fair − kalshi; mean_signed > 0 = Kalshi systematically cheap vs the
 // book (the directional edge); frac_ge3c/5c = how often the gap is actionable-sized.
 async function handleSportsbookDeltas({ path, request, env }) {
   if (path !== "sportsbook-deltas") return null;
@@ -2442,6 +2444,8 @@ async function handleSportsbookDeltas({ path, request, env }) {
       avg(CASE WHEN abs(delta_cents) >= 3 THEN 1.0 ELSE 0 END) AS frac_ge3
     FROM ${SB_DELTAS_TABLE}
     WHERE snapshot_date >= CURRENT_DATE - $1::int${sportFilter}${extra}`;
+  const minAbsRaw = parseFloat(url.searchParams.get("minAbs"));
+  const minAbs = Number.isFinite(minAbsRaw) && minAbsRaw >= 0 ? minAbsRaw : null;
   const fmtAgg = (r) => r ? {
     n: r.n, days: r.days, medianAbs: num(r.median_abs), p90Abs: num(r.p90_abs), maxAbs: num(r.max_abs),
     meanSigned: num(r.mean_signed), fracGe5c: num(r.frac_ge5), fracGe3c: num(r.frac_ge3),
@@ -2462,6 +2466,12 @@ async function handleSportsbookDeltas({ path, request, env }) {
         avg(delta_cents) AS mean_signed
       FROM ${SB_DELTAS_TABLE} WHERE snapshot_date >= CURRENT_DATE - $1::int${sportFilter}
       GROUP BY snapshot_date ORDER BY snapshot_date DESC LIMIT 30`, params, env, { write: true });
+    const tailRows = minAbs == null ? null : await neonQuery(`
+      SELECT snapshot_date, sport, game, game_date, market, side,
+        kalshi_pct, book_fair_pct, delta_cents, book, model_true_pct
+      FROM ${SB_DELTAS_TABLE} WHERE snapshot_date >= CURRENT_DATE - $1::int${sportFilter}
+        AND abs(delta_cents) >= $${params.length + 1}
+      ORDER BY abs(delta_cents) DESC LIMIT 200`, [...params, minAbs], env, { write: true });
 
     return jsonResponse({
       ok: true, days, sport: sport || "all",
@@ -2469,6 +2479,12 @@ async function handleSportsbookDeltas({ path, request, env }) {
       inWindow6791: fmtAgg(inWindow),
       bySport: bySport.map(r => ({ sport: r.sport, n: r.n, medianAbs: num(r.median_abs), maxAbs: num(r.max_abs), meanSigned: num(r.mean_signed) })),
       daily: daily.map(r => ({ date: new Date(r.snapshot_date).toISOString().slice(0, 10), n: r.n, medianAbs: num(r.median_abs), meanSigned: num(r.mean_signed) })),
+      ...(tailRows ? { minAbs, rows: tailRows.map(r => ({
+        date: new Date(r.snapshot_date).toISOString().slice(0, 10), sport: r.sport, game: r.game,
+        gameDate: r.game_date, market: r.market, side: r.side, kalshiPct: num(r.kalshi_pct),
+        bookFairPct: num(r.book_fair_pct), deltaCents: num(r.delta_cents), book: r.book,
+        modelTruePct: num(r.model_true_pct),
+      })) } : {}),
     });
   } catch (e) {
     return errorResponse(`sportsbook-deltas query failed: ${e?.message}`, 500);
