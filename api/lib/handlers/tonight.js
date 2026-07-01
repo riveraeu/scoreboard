@@ -16,7 +16,7 @@ import { computeDataConfidence, DC_GATE, _GT_IMPLIED_CAP, _TT_IMPLIED_CAP } from
 import { applyClosingSnapshot } from "../tonight/closing-odds.js";
 import { fetchKalshiMarkets } from "../tonight/kalshi-pipeline.js";
 import { blendMarketPrice } from "../tonight/blend-fill.js";
-import { KALSHI_GATE, KALSHI_CAP, CAPTURE_GATE, CAPTURE_CAP, EDGE_GATE_SERVER as EDGE_GATE } from "../config.js";
+import { KALSHI_GATE, KALSHI_CAP, CAPTURE_GATE, CAPTURE_CAP, CAPTURE_MAX_SPREAD, capturableSpread, EDGE_GATE_SERVER as EDGE_GATE } from "../config.js";
 import { TEAM_NORM, normTeam, parseGameTeams } from "../tonight/parse-teams.js";
 import { dedupAltLines } from "../tonight/dedup.js";
 import { emitAllMlAndSpread } from "../tonight/ml-spread.js";
@@ -491,8 +491,15 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             const last = parseFloat(m.last_price_dollars) || 0;
             const volume = parseInt(m.volume_fp) || parseInt(m.volume) || 0;
             const yesBidEarly = parseFloat(m.yes_bid_dollars) || 0;
+            const noBidEarly = parseFloat(m.no_bid_dollars) || 0;
+            // Bet-side bid-ask spread (cents) — the CAPTURE_MAX_SPREAD gate below rejects a rung
+            // whose captured side is a lone-quote artifact (no real two-sided book). No ask on a
+            // side → 999 so that side can never be captured. See config.js CAPTURE_MAX_SPREAD.
+            const yesSpreadC = yesAsk > 0 ? Math.round((yesAsk - yesBidEarly) * 100) : 999;
+            const noSpreadC  = noAsk  > 0 ? Math.round((noAsk  - noBidEarly)  * 100) : 999;
             // Stale ask: market maker maxed ask at 99¢ with no bid — use last traded price instead
-            const price = (yesAsk >= 0.98 && yesBidEarly === 0 && last > 0) ? last : (yesAsk > 0 ? yesAsk : last);
+            const _staleAskPath = yesAsk >= 0.98 && yesBidEarly === 0 && last > 0;
+            const price = _staleAskPath ? last : (yesAsk > 0 ? yesAsk : last);
             const pct = Math.round(price * 100);
             // Real NO-side ask (cost to actually buy the UNDER). Kalshi's YES and NO books are
             // independent — `1 - yes_ask` is the *fair* synthetic NO price, but the real fill
@@ -611,13 +618,24 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             // bet window — so calibration sees the favorite tail above 91¢ (the 2026-06-29 finding:
             // totalBases' Brier edge lives above the cap, but we were capping capture at it). The
             // `qualified` bet flag is still applied at [67,91] downstream in props.js.
+            // Liquidity gate (2026-06-30): a rung whose captured side is a lone-quote artifact
+            // (no real two-sided book) reports a bet-side ask that isn't tradeable — e.g. a lone
+            // NO bid at ~6¢ implies yes_ask=94¢, so high-threshold totalBases longshots masquerade
+            // as 94¢ favorites and poison calibration. Reject when the captured side's bid-ask
+            // spread exceeds CAPTURE_MAX_SPREAD. Under captures on NO, over on YES — gate the side
+            // we'd actually buy. Real favorites are ≤7¢; artifacts ~94¢. See config.js.
             let propDirection = null; // null = YES/over (legacy field shape on all other props)
             if (stat === "totalBases" && (pct < CAPTURE_GATE || pct > CAPTURE_CAP)
                 && noPct >= CAPTURE_GATE && noPct <= CAPTURE_CAP) {
+              if (!capturableSpread(noSpreadC)) continue;
               propDirection = "under";
             } else {
               if (pct < CAPTURE_GATE) continue;
               if (pct > CAPTURE_CAP) continue;
+              // Exempt the stale-ask path (priced off a real `last` trade, not the maxed ask) —
+              // its wide book is expected and it deliberately captures the near-cert tail. The 94¢
+              // artifacts sit below 0.98 so take the normal path and are still rejected here.
+              if (!_staleAskPath && !capturableSpread(yesSpreadC)) continue;
             }
             // HRR is YES/over-side only at EVERY threshold (unlike totalBases, which lists no 1+
             // line and is bet as a NO/under). The 1+ over is the bread-and-butter play; 2+/3+ overs
