@@ -22,6 +22,7 @@
 //     Untraded placeholder markets show ["0.5","0.5"] with bestBid≤0.02/bestAsk≥0.98 — skipped.
 
 import { POLY_TO_CANON } from "./teams.js";
+import { PT_FMT } from "./pt.js";
 
 const GAMMA = "https://gamma-api.polymarket.com";
 
@@ -55,15 +56,31 @@ export function normPolyTeam(sport, abbr) {
   return POLY_TO_CANON[sport]?.[String(abbr || "").toLowerCase()] ?? null;
 }
 
+// Gamma `gameStartTime` ("2026-07-01 23:40:00+00" or ISO) → epoch ms, or null. The event-level
+// `startDate` is market CREATION time — useless as a game clock; the real one rides on markets[].
+function _gameStartMs(event) {
+  const gst = (event?.markets || []).find((m) => m?.gameStartTime)?.gameStartTime;
+  if (!gst) return null;
+  const t = Date.parse(String(gst).replace(" ", "T").replace(/\+00$/, "Z"));
+  return Number.isFinite(t) ? t : null;
+}
+
 // Pure normalize: raw Gamma event → { sport, away, home, gameDate, ml:{away,home}, totals:[{line,
 // over,under}] } or null. Requires a parseable game ticker, both teams canon-resolvable, and a
 // LIVE moneyline market. Exported for tests (no HTTP).
-export function normalizeEvent(event) {
+// gameDate: PT date of markets[].gameStartTime when present (also fixes POSTPONED games, whose
+// ticker keeps the original date); already-commenced games are dropped — Poly trades in-play, and
+// a live price is not a pre-game reference (same artifact class as sportsbook-deltas, 2026-07-01).
+// No gameStartTime → fall back to the ticker date (observed = the local game date, NOT UTC).
+export function normalizeEvent(event, nowMs = Date.now()) {
   const tk = parseGameTicker(event?.ticker);
   if (!tk) return null;
   const away = normPolyTeam(tk.sport, tk.awayPoly);
   const home = normPolyTeam(tk.sport, tk.homePoly);
   if (!away || !home) return null;
+  const startMs = _gameStartMs(event);
+  if (startMs != null && startMs <= nowMs) return null; // in-play or finished — live odds, skip
+  const gameDate = startMs != null ? PT_FMT.format(new Date(startMs)) : tk.dateStr;
 
   let ml = null;
   let mlTokens = null;
@@ -88,7 +105,7 @@ export function normalizeEvent(event) {
     }
   }
   if (!ml) return null; // no live moneyline → nothing to compare; skip the game
-  return { sport: tk.sport, away, home, gameDate: tk.dateStr, ml, mlTokens, totals: Object.values(totalsByLine) };
+  return { sport: tk.sport, away, home, gameDate, ml, mlTokens, totals: Object.values(totalsByLine) };
 }
 
 async function _fetchSeriesEvents(series) {
@@ -124,7 +141,7 @@ export async function fetchPolymarketGames({ cache, isBustCache, now = new Date(
   const games = [];
   for (const list of lists) {
     for (const ev of list) {
-      const g = normalizeEvent(ev);
+      const g = normalizeEvent(ev, now.getTime());
       if (g && inWindow(g.gameDate)) games.push(g);
     }
   }

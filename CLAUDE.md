@@ -76,7 +76,7 @@ Sport/utility modules (`api/lib/`):
 - `mma.js` — UFC rounds O/U (shadow-only). Weight-class finish-rate → per-round hazard → `pEndBeforeRound` (winner-independent). ESPN MMA scoreboard for hydration; `fetchFightResults` resolver
 - `golf.js` — PGA single-round H2H (shadow-only). OWGR rating → `h2hWinProb` one-round Normal differential. OWGR API rating source; `fetchRoundScores` resolver
 - `nascar.js` — NASCAR Cup H2H + Top-10 (shadow-only). Recent-form finishing-position model (`pBeats`/`pTopN`). ESPN core-API season schedule; `fetchRaceResults` resolver, grades by athlete id. Cup-only by construction
-- `polymarket.js` — Polymarket price feed (Gamma API, shadow-only). `fetchPolymarketGames` normalizes game events; `POLY_TO_CANON` from teams.js. Failure-closed
+- `polymarket.js` — Polymarket price feed (Gamma API, shadow-only). `fetchPolymarketGames` normalizes game events (gameDate = **PT** date of `markets[].gameStartTime`, ticker-date fallback; already-commenced games dropped — Poly trades in-play); `POLY_TO_CANON` from teams.js. Failure-closed
 - `polymarket-book.js` — Polymarket CLOB book walk. `fetchPolyOrderbook` + `walkPolyFill` + `enrichDeltasWithExec` (attaches exec deltas after slippage)
 - `sportsbook.js` — sharp-book reference feed (The Odds API / Pinnacle, shadow-only). `fetchSportsbookGames` (no key → clean `[]` no-op), `devigTwoWay`, `normalizeOddsEvent` (gameDate = **PT** date of commence_time; already-commenced events dropped — live odds ≠ pre-game reference)
 - `utils.js` — CORS, `parseGameOdds`, `parseGameScores`, team rank helpers
@@ -87,7 +87,7 @@ Sport/utility modules (`api/lib/`):
 - `tonight/game-totals.js` — `emitGameTotalPlays(ctx)`; returns `_*MlContext` maps
 - `tonight/ml-spread.js` — `emitAllMlAndSpread(ctx)`
 - `tonight/{tennis-match,soccer,soccer-advance,golf-h2h,mlb-outs,nascar,fight}.js` — the Phase-1 emit modules. Each groups its Kalshi series, emits the favorite side (Kalshi YES in window), and pushes into a **dedicated array** (e.g. `tennisPlays`, `soccerPlays`) merged into `shadow:staging` ONLY — never the client response. They bypass prop dedup / gameTime filter / card builder
-- `tonight/polymarket-deltas.js` — `emitPolymarketDeltas`: ML-only cross-venue divergence. Builds a Kalshi ML index off emitted `plays`/`dropped`, matches Poly games (±1 day), pushes delta rows (`deltaCents = polyPct − kalshiPct`). **Also stamps `polyPct`/`polyDeltaCents` onto matched Kalshi play rows** and tonight.js builds `polyMlByGame` for the **client** (renders a Polymarket line on ML cards; reference-only, ML-only). Shadow rows stay in `shadow:staging` + `?debug=1` only
+- `tonight/polymarket-deltas.js` — `emitPolymarketDeltas`: ML-only cross-venue divergence. Builds a Kalshi ML index off emitted `plays`/`dropped`, matches Poly games (exact PT date), pushes delta rows (`deltaCents = polyPct − kalshiPct`). **Also stamps `polyPct`/`polyDeltaCents` onto matched Kalshi play rows** and tonight.js builds `polyMlByGame` for the **client** (renders a Polymarket line on ML cards; reference-only, ML-only). Shadow rows stay in `shadow:staging` + `?debug=1` only
 - `tonight/sportsbook-deltas.js` — `emitSportsbookDeltas`: de-vigged sharp-book ML vs Kalshi (`deltaCents = bookFairPct − kalshiPct`, + = Kalshi cheap = lagging). Liquidity-gated (drops untraded sides); **exact PT-date match only** (a ±1-day fuzz paired tonight's live odds with tomorrow's same-series Kalshi market — the fake ≥5¢ tail, purged 7/01). Shadow + `?debug=1` only
 
 ### Frontend: Vite + React (`src/`)

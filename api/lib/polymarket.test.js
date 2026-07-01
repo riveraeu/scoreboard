@@ -2,8 +2,8 @@
 // Tests for the Phase-1a Polymarket cross-venue observatory. Pins the pure layer (no HTTP):
 // game-ticker parsing (rejects props/first-five/futures suffixes), Poly→canonical abbr mapping
 // (oak→ATH, gsv→GS, identity, unknown→null), event normalization (live moneyline/totals kept,
-// untraded 0.5/0.5 placeholders + unknown teams dropped), and the delta emit (signed cents,
-// UTC/PT ±1-day matching, summary medians).
+// untraded 0.5/0.5 placeholders + unknown teams + in-play games dropped; gameStartTime → PT date),
+// and the delta emit (signed cents, exact PT-date matching, summary medians).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -62,9 +62,33 @@ test("normalizeEvent: unknown team → null (no false match)", () => {
   assert.equal(normalizeEvent(ev), null);
 });
 
-test("emitPolymarketDeltas: signed cents, both ML sides, ±1-day match, summary", () => {
+test("normalizeEvent: gameDate = PT date of gameStartTime (Gamma space+'+00' format)", () => {
+  const NOW = Date.parse("2026-06-30T18:00:00Z"); // 6/30 11am PT
+  const ev = {
+    ticker: "mlb-mil-stl-2026-06-30",
+    markets: [_liveMkt({
+      sportsMarketType: "moneyline", gameStartTime: "2026-07-01 02:10:00+00", // 6/30 7:10pm PT
+      outcomes: '["Milwaukee Brewers","St. Louis Cardinals"]', outcomePrices: '["0.575","0.425"]', line: null,
+    })],
+  };
+  assert.equal(normalizeEvent(ev, NOW).gameDate, "2026-06-30"); // PT, not the 7/01 UTC date
+});
+
+test("normalizeEvent: already-commenced game → null (live odds ≠ pre-game reference)", () => {
+  const NOW = Date.parse("2026-07-01T03:00:00Z"); // mid-game
+  const ev = {
+    ticker: "mlb-mil-stl-2026-06-30",
+    markets: [_liveMkt({
+      sportsMarketType: "moneyline", gameStartTime: "2026-07-01 02:10:00+00",
+      outcomes: '["Milwaukee Brewers","St. Louis Cardinals"]', outcomePrices: '["0.93","0.07"]', line: null,
+    })],
+  };
+  assert.equal(normalizeEvent(ev, NOW), null);
+});
+
+test("emitPolymarketDeltas: signed cents, both ML sides, exact PT-date match, summary", () => {
   const polyGames = [{
-    sport: "mlb", away: "MIL", home: "STL", gameDate: "2026-05-06", // Poly UTC = our PT + 1
+    sport: "mlb", away: "MIL", home: "STL", gameDate: "2026-05-05", // PT date on both venues
     ml: { away: 0.60, home: 0.40 },
     totals: [{ line: 7.5, over: 0.55, under: 0.45 }], // ignored — ML-only observatory
   }];
@@ -85,7 +109,7 @@ test("emitPolymarketDeltas: signed cents, both ML sides, ±1-day match, summary"
   assert.equal(mlAway.kalshiPct, 57.5);
   assert.equal(mlAway.deltaCents, 2.5);
   assert.equal(mlAway.modelTruePct, 59);
-  assert.equal(mlAway.gameDate, "2026-05-05"); // matched on the −1-day candidate
+  assert.equal(mlAway.gameDate, "2026-05-05");
 
   assert.ok(deltas.every((d) => d.market === "ml"), "only ML rows are produced");
   assert.equal(summary.n, 2);
@@ -136,6 +160,19 @@ test("emitPolymarketDeltas: no Kalshi match → no rows", () => {
   const s = emitPolymarketDeltas({
     polyGames: [{ sport: "mlb", away: "MIL", home: "STL", gameDate: "2026-05-06", ml: { away: 0.6, home: 0.4 }, totals: [] }],
     plays: [], dropped: [], deltas,
+  });
+  assert.equal(deltas.length, 0);
+  assert.equal(s.matchedGames, 0);
+});
+
+test("emitPolymarketDeltas: exact date only — a next-day same-series Kalshi market must NOT match", () => {
+  // The old ±1-day fuzz matched yesterday's still-open Poly game (live prices) to TODAY's
+  // same-series Kalshi market — the fake delta tail class (2026-07-01 audit). Now: no match.
+  const deltas = [];
+  const s = emitPolymarketDeltas({
+    polyGames: [{ sport: "mlb", away: "MIL", home: "STL", gameDate: "2026-05-05", ml: { away: 0.93, home: 0.07 }, totals: [] }],
+    plays: [{ gameType: "ml", stat: "ml", sport: "mlb", awayTeam: "MIL", homeTeam: "STL", side: "away", kalshiPct: 60, truePct: 58, gameDate: "2026-05-06" }],
+    dropped: [], deltas,
   });
   assert.equal(deltas.length, 0);
   assert.equal(s.matchedGames, 0);

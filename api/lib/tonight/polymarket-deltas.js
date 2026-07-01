@@ -21,13 +21,6 @@
 // market — unambiguous and clean (~0.5¢ median). Totals return in Phase 1a.1 once game-totals.js
 // emits volume on dropped rows so we can gate to the liquid main line on both venues.
 
-// YYYY-MM-DD shifted by n days (UTC-safe string math).
-function _shiftDate(d, n) {
-  const t = Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10)) + n * 86400000;
-  const x = new Date(t);
-  return `${x.getUTCFullYear()}-${String(x.getUTCMonth() + 1).padStart(2, "0")}-${String(x.getUTCDate()).padStart(2, "0")}`;
-}
-
 function _median(xs) {
   if (!xs.length) return null;
   const s = [...xs].sort((a, b) => a - b);
@@ -77,14 +70,15 @@ export function emitPolymarketDeltas({ polyGames, plays = [], dropped = [], delt
 
   for (const g of (polyGames || [])) {
     const { sport, away, home, gameDate } = g;
-    // Poly ticker date is UTC; our gameDate is PT — try ±1 day so the UTC rollover lines up.
-    const cands = [gameDate, _shiftDate(gameDate, -1), _shiftDate(gameDate, 1)];
-    const mlKey = cands.map((d) => `${sport}|${away}|${home}|${d}`).find((k) => ml[k]);
-    if (!mlKey) continue;
+    // Exact PT-date match ONLY. Poly gameDate is now PT (polymarket.js normalizeEvent). The old
+    // ±1-day fuzz let a still-open yesterday game (live prices) match TODAY's same-series Kalshi
+    // market — the fake delta tail class found in the 2026-07-01 sportsbook-deltas audit.
+    const mlKey = `${sport}|${away}|${home}|${gameDate}`;
     const ke = ml[mlKey];
+    if (!ke) continue;
     if (ke._ambiguous || _usedKeys.has(mlKey)) continue; // doubleheader / duplicate — can't disambiguate
     _usedKeys.add(mlKey);
-    const md = mlKey.split("|")[3];
+    const md = gameDate;
     let matchedThisGame = false;
     for (const side of ["away", "home"]) {
       if (g.ml[side] == null || !ke[side]) continue;
