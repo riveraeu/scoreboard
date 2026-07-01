@@ -157,4 +157,11 @@ export const DISMISSED_SERIES = [
   // 6/28 triage (2 held WC markets, resolved against the live Kalshi markets API — both 0-live last pass, now verifiable):
   "KXWCPLAY",       // "World Cup Play in Game" is NOT a play-in match (my earlier guess) — it's a per-PLAYER appearance novelty ("Lionel Messi enters the game", "Erling Haaland enters the game"). No soccer player-availability/lineup model (Phase 1 = national-team Elo score-matrix only) and no pre-game data source for who plays. Novelty, same class as the other WC player-prop dismissals. DISMISS.
   "KXWCMATCHUP",    // never listed a single market (0 in EVERY status, not even finalized) — a dead/empty series. Name parallels the dismissed KXWCFINALMATCHUP (exact-pairing longshot) and WC per-game is already covered by KXWCGAME → nothing to build against. DISMISS.
+  // 6/30 triage (6 of 7 detected; KXLMBGAME shortlisted separately — statsapi sportId 23/league 125 gives our MLB stack a real data path):
+  "KXATPTIEBREAK",     // "Tiebreak to occur in Match" — derived set-competitiveness prop needing a set-score distribution we don't model; our tennis is match-winner only AND already market-sharper (AUC 0.51 vs 0.72). No path. DISMISS.
+  "KXNCAAWBAPRANK",    // Women's CBB AP Poll ranking — poll/opinion outcome, not a game result; no NCAAW model. Futures-like. DISMISS.
+  "KXWCSTART",         // "World Cup Starters" — lineup/team-news market (coach decision); our WC model is national-team Elo score-matrix, not lineup prediction. No pre-game starter data source. DISMISS.
+  "KXCHAMPTOURR1LEAD", // Champions (senior) Tour round-1 leader — wide-field outright longshot (exact-cell trap; window_fit false-positive on favorite NO). No field-sim; senior-tour OWGR coverage thin. Same class as prior golf-leader dismissals. DISMISS.
+  "KXNELKHOLEINONE",   // NELK hole-in-one — novelty/entertainment event; hole-in-one is near-pure luck, unmodelable. Same class as the Nathan's/streetball novelties. DISMISS.
+  "KXBDSHOLEINONE",    // Bob Does Sports hole-in-one — same novelty pure-luck class as KXNELKHOLEINONE. DISMISS.
 ];
