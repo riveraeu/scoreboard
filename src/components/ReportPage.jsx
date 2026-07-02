@@ -898,7 +898,32 @@ function DoThisBanner({ d }) {
   );
 }
 
+// ---- DAILY BRIEF: server-generated prose summary of model state + pricing findings ----
+// Deterministic sentences templated server-side from the same numbers the boards render (see
+// _buildDailyBrief in api/lib/handlers/shadow.js) — the readable replacement for scanning the
+// accuracy grid. `changes` is null when yesterday's report wasn't in KV (first run / late regen).
+function DailyBrief({ brief }) {
+  if (!brief) return null;
+  const Block = ({ title, items }) => !items?.length ? null : (
+    <div style={{ marginTop:8 }}>
+      <div style={{ color:C.dim, fontSize:9, fontWeight:700, letterSpacing:0.4, textTransform:"uppercase", marginBottom:2 }}>{title}</div>
+      {items.map((s, i) => <div key={i} style={{ color:C.text, fontSize:12, lineHeight:1.55 }}>• {s}</div>)}
+    </div>
+  );
+  return (
+    <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:8, padding:"10px 14px", marginBottom:10 }}>
+      <div style={{ color:C.text, fontSize:13, fontWeight:600, lineHeight:1.5 }}>{brief.headline}</div>
+      <Block title="Model state" items={brief.model} />
+      <Block title="Pricing · cross-venue" items={brief.pricing} />
+      <Block title="Changed since yesterday" items={brief.changes} />
+    </div>
+  );
+}
+
 function MorningBriefing({ shadowReportData, shadowReportLoading, fetchShadowReport, isLoggedIn }) {
+  // Accuracy grid is drill-down now (calibration bands for tune:residual work) — collapsed by
+  // default behind a toggle whenever the brief exists. Hook must sit above the early returns.
+  const [showAccuracy, setShowAccuracy] = React.useState(false);
   if (!isLoggedIn) return null;
   const d = shadowReportData;
   const noReport = !d || d.notYet || d.error;
@@ -921,14 +946,30 @@ function MorningBriefing({ shadowReportData, shadowReportLoading, fetchShadowRep
 
       <DoThisBanner d={d} />
 
-      <div style={sectionHead}>Model accuracy · do the models beat the price?</div>
-      <AccuracyBoard board={d.accuracyBoard} />
+      {d.brief ? (
+        <>
+          <div style={sectionHead}>Daily brief · model state + pricing findings</div>
+          <DailyBrief brief={d.brief} />
+          <div onClick={() => setShowAccuracy(v => !v)}
+               style={{ color:C.dim, fontSize:11, cursor:"pointer", margin:"0 0 10px", userSelect:"none" }}>
+            {showAccuracy ? "▾" : "▸"} Accuracy board — full grid (calibration bands, Brier detail)
+          </div>
+          {showAccuracy && <AccuracyBoard board={d.accuracyBoard} />}
+        </>
+      ) : (
+        // Stale report without `brief` (pre-deploy KV) — fall back to the full grid until regen.
+        <>
+          <div style={sectionHead}>Model accuracy · do the models beat the price?</div>
+          <AccuracyBoard board={d.accuracyBoard} />
+        </>
+      )}
 
       <div style={sectionHead}>Betting board · what to bet</div>
       <GateDigest board={d.bettingBoard} />
       <BettingBoard board={d.bettingBoard} />
 
-      <CrossVenueValidation sbv={d.sportsbookValidation} />
+      {/* Raw cross-venue readout only when the brief (which covers both venues) is absent. */}
+      {!d.brief && <CrossVenueValidation sbv={d.sportsbookValidation} />}
     </div>
   );
 }

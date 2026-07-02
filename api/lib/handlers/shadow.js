@@ -1583,6 +1583,100 @@ async function _readResolutionRobust(yesterday, env, seedRow, cache) {
 }
 
 
+// ── Daily brief — deterministic prose over the assembled report ───────────────
+// The readable replacement for scanning the accuracy grid: every sentence is templated straight
+// from numbers the report already computed (no free text, no model call), so the brief can never
+// drift from the boards it summarizes. Sections: headline · model state (notable categories only,
+// the rest collapsed to a count) · pricing findings (both cross-venue observatories) · what changed
+// vs yesterday's cached report (null when no prior exists — first run or a post-expiry mid-day regen).
+const _briefSkill = s => s == null ? "—" : `${s >= 0 ? "+" : ""}${Number(s).toFixed(3)}`;
+const _briefVerdict = v => String(v || "").toLowerCase().replace(/_/g, " ");
+function _buildDailyBrief(r, prior) {
+  const acc = r.accuracyBoard || [];
+  const bet = r.bettingBoard || [];
+  const name = k => String(k || "").replace("|", " ");
+
+  // Headline — the one-sentence answer to "can we bet anything yet?".
+  const eligibleRows = bet.filter(b => b.eligible);
+  const gatedN = bet.filter(b => b.gated).length;
+  const trusted = acc.filter(a => a.skill != null && (a.n || 0) >= BRIER_MIN_N);
+  const best = trusted.slice().sort((a, b) => b.skill - a.skill)[0] || null;
+  const headline = eligibleRows.length
+    ? `${eligibleRows.length} categor${eligibleRows.length === 1 ? "y" : "ies"} provably beat${eligibleRows.length === 1 ? "s" : ""} the market (${eligibleRows.map(b => name(b.key)).join(", ")}); ${gatedN ? `${gatedN} in the live gate` : "the live gate is empty"}.`
+    : `No category beats the market with confidence yet; the gate is ${gatedN ? `running ${gatedN}` : "empty"}.` +
+      (best ? ` Closest: ${name(best.key)} at skill ${_briefSkill(best.skill)} (n=${best.n}).` : "");
+
+  // Model state — one sentence per NOTABLE category (verdict beyond BUILDING); prescriptive
+  // actions lead, then by data weight. Everything else collapses to a single count line.
+  const model = [];
+  const _actRank = { "Diagnose then stop": 0, "Improve inputs": 1, "Recalibrate": 2 };
+  const notable = acc.filter(a => a.verdict && a.verdict !== "BUILDING")
+    .sort((a, b) => (_actRank[a.honest?.action] ?? 9) - (_actRank[b.honest?.action] ?? 9) || (b.n || 0) - (a.n || 0));
+  for (const a of notable.slice(0, 6)) {
+    const skillTxt = `skill ${_briefSkill(a.skill)} vs market, n=${a.n}`;
+    const c = a.calib || {};
+    const dTxt = c.delta != null ? `${Math.abs(c.delta)}pts` : "";
+    switch (a.verdict) {
+      case "CALIBRATED":     model.push(`${name(a.key)} is calibrated — model% matches outcomes within noise (${skillTxt}).`); break;
+      case "PROMISING":      model.push(`${name(a.key)} beats the market (${skillTxt}) but calibration bands are still thin — closest to betting-eligible.`); break;
+      case "MARKET_SHARPER": model.push(`${name(a.key)}: the market out-predicts the model and the trend isn't recovering (${skillTxt}) — ${a.honest?.action || "park it"}.`); break;
+      case "OVERCONFIDENT":  model.push(`${name(a.key)} is overconfident — claims ${dTxt} more than it delivers in the ${c.band ?? "?"}% band (${skillTxt}) — ${a.honest?.action || "review"}.`); break;
+      case "UNDERCONFIDENT": model.push(`${name(a.key)} is underconfident — delivers ${dTxt} more than it claims in the ${c.band ?? "?"}% band (${skillTxt}) — ${a.honest?.action || "review"}.`); break;
+      default:               model.push(`${name(a.key)}: ${_briefVerdict(a.verdict)} (${skillTxt}).`);
+    }
+  }
+  const buildingN = acc.length - notable.length;
+  if (buildingN > 0) model.push(`${buildingN} other categor${buildingN === 1 ? "y is" : "ies are"} still accruing data — nothing to act on there.`);
+  // Gate-level betting changes are rare and important enough to always name.
+  for (const b of bet) {
+    if (b.verdict === "PROMOTE")            model.push(`Betting: ${name(b.key)} is ready to gate — ${b.hint || "validated profitable window"}.`);
+    else if (b.verdict === "DEMOTE")        model.push(`Betting: pull ${name(b.key)} from the gate — its window went significantly negative.`);
+    else if (b.gated && b.verdict === "HOLD") model.push(`Betting: ${name(b.key)} stays in the gate — still profitable.`);
+  }
+
+  // Pricing findings — one sentence per cross-venue observatory, verdict in plain words.
+  const pricing = [];
+  const venue = (v, label, extra) => {
+    if (!v) return;
+    if (v.verdict === "ACCRUING")  pricing.push(`${label}: still accruing (n=${v.n} sides over ${v.days}d) — too thin to call the kill-gate.`);
+    else if (v.verdict === "GAP")  pricing.push(`${label}: Kalshi lags — ${Math.round((v.fracBuyEdge3 || 0) * 100)}% of traded sides are ≥3¢ cheap vs the reference (median |Δ| ${v.medianAbs}¢, n=${v.n}/${v.days}d)${extra || ""} — persistent buy edges, worth the Phase-1b build.`);
+    else if (v.verdict === "TIGHT") pricing.push(`${label}: venues track — only ${Math.round((v.fracBuyEdge3 || 0) * 100)}% of sides ≥3¢ cheap (median |Δ| ${v.medianAbs}¢, n=${v.n}/${v.days}d) — no liquid lag edge.`);
+  };
+  venue(r.sportsbookValidation, "Sharp book (de-vigged)");
+  const pm = r.polymarketValidation;
+  venue(pm, "Polymarket", pm?.execN ? `; after walking the Poly book, ${Math.round((pm.execFracEdge3 || 0) * 100)}% of bettable sides stay ≥3¢ cheaper (exec n=${pm.execN})` : "");
+  if (!pricing.length) pricing.push("No cross-venue pricing data captured yet (observatory feeds not populated).");
+
+  // What changed vs yesterday's report — verdict flips, trusted-skill moves, n crossings,
+  // eligibility flips, freshly-detected series. Omitted entirely (null) when no prior exists.
+  let changes = null;
+  if (prior?.accuracyBoard) {
+    changes = [];
+    const pAcc = Object.fromEntries((prior.accuracyBoard || []).map(a => [a.key, a]));
+    for (const a of acc) {
+      const p = pAcc[a.key];
+      if (!p) continue;
+      if (p.verdict !== a.verdict) changes.push(`${name(a.key)}: ${_briefVerdict(p.verdict)} → ${_briefVerdict(a.verdict)}.`);
+      if (p.skill != null && a.skill != null && (a.n || 0) >= BRIER_MIN_N && Math.abs(a.skill - p.skill) >= 0.01)
+        changes.push(`${name(a.key)} skill moved ${_briefSkill(p.skill)} → ${_briefSkill(a.skill)} (n=${a.n}).`);
+      if ((p.n || 0) < BRIER_MIN_N && (a.n || 0) >= BRIER_MIN_N)
+        changes.push(`${name(a.key)} crossed n=${BRIER_MIN_N} — its vs-market skill is now trusted.`);
+    }
+    const pBet = Object.fromEntries((prior.bettingBoard || []).map(b => [b.key, b]));
+    for (const b of bet) {
+      const p = pBet[b.key];
+      if (p && !!p.eligible !== !!b.eligible)
+        changes.push(`${name(b.key)} ${b.eligible ? "became betting-eligible" : "lost betting eligibility"}.`);
+    }
+    const pNew = new Set((prior.newMarkets || []).map(m => m.ticker));
+    const fresh = (r.newMarkets || []).filter(m => !pNew.has(m.ticker));
+    if (fresh.length) changes.push(`${fresh.length} new Kalshi series detected: ${fresh.map(m => m.ticker).join(", ")}.`);
+    if (!changes.length) changes.push("No material change since yesterday's report.");
+  }
+
+  return { headline, model, pricing, changes };
+}
+
 async function handleShadowReport({ path, request, env, cache }) {
   if (path !== "shadow-report") return null;
 
@@ -2300,6 +2394,37 @@ async function handleShadowReport({ path, request, env, cache }) {
     sportsbookValidation = { n, days, windowDays: _SB_DAYS, medianAbs, fracBuyEdge3, fracBuyEdge5, verdict };
   } catch (e) { console.error("[shadow-report] sportsbook validation skipped:", e?.message); }
 
+  // Cross-venue kill-gate (Polymarket): same read over polymarket_deltas, so the daily brief covers
+  // BOTH observatories (before this the report only carried the sportsbook one — the Poly answer
+  // lived solely in /api/polymarket-deltas). Adds the Phase-1b executable read: exec_delta_cents =
+  // polyVWAP − kalshi, so ≤−3 = still ≥3¢ cheaper to BUY on Poly after walking the book = the
+  // surviving edge. Verdict ladder mirrors the sportsbook one. Failure-closed.
+  let polymarketValidation = null;
+  try {
+    const _PM_DAYS = 7;
+    const [agg] = await neonQuery(`
+      SELECT count(*)::int AS n, count(distinct snapshot_date)::int AS days,
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY abs(delta_cents)) AS median_abs,
+        avg(CASE WHEN delta_cents >= 3 THEN 1.0 ELSE 0 END) AS frac_buy3,
+        avg(CASE WHEN delta_cents >= 5 THEN 1.0 ELSE 0 END) AS frac_buy5,
+        count(exec_delta_cents)::int AS exec_n,
+        avg(CASE WHEN exec_delta_cents <= -3 THEN 1.0 ELSE 0 END)
+          FILTER (WHERE exec_delta_cents IS NOT NULL) AS exec_frac3
+      FROM ${POLY_DELTAS_TABLE}
+      WHERE snapshot_date >= CURRENT_DATE - $1::int`, [_PM_DAYS], env, { write: true });
+    const n = Number(agg?.n || 0), days = Number(agg?.days || 0);
+    const medianAbs = agg?.median_abs != null ? parseFloat(Number(agg.median_abs).toFixed(2)) : null;
+    const fracBuyEdge3 = agg?.frac_buy3 != null ? parseFloat(Number(agg.frac_buy3).toFixed(3)) : null;
+    const fracBuyEdge5 = agg?.frac_buy5 != null ? parseFloat(Number(agg.frac_buy5).toFixed(3)) : null;
+    const execN = Number(agg?.exec_n || 0);
+    const execFracEdge3 = agg?.exec_frac3 != null ? parseFloat(Number(agg.exec_frac3).toFixed(3)) : null;
+    let verdict;
+    if (n < 60 || days < 3) verdict = "ACCRUING";
+    else if ((fracBuyEdge3 ?? 0) >= 0.10) verdict = "GAP";
+    else verdict = "TIGHT";
+    polymarketValidation = { n, days, windowDays: _PM_DAYS, medianAbs, fracBuyEdge3, fracBuyEdge5, execN, execFracEdge3, verdict };
+  } catch (e) { console.error("[shadow-report] polymarket validation skipped:", e?.message); }
+
   const report = {
     reportDate,
     generatedAt: new Date().toISOString(),
@@ -2318,8 +2443,18 @@ async function handleShadowReport({ path, request, env, cache }) {
     newMarkets,
     shortlistedMarkets,
     sportsbookValidation,
+    polymarketValidation,
     durationMs: Date.now() - t0,
   };
+
+  // Daily brief — deterministic prose synthesis of the boards + both cross-venue observatories,
+  // diffed against yesterday's cached report (still alive at cron time: 25h TTL, cron 6am). Additive
+  // + failure-closed: any error → brief stays null and the page falls back to the raw boards.
+  report.brief = null;
+  try {
+    const prior = cache ? await cache.get(`${REPORT_CACHE_KEY_PREFIX}${yesterday}`, "json").catch(() => null) : null;
+    report.brief = _buildDailyBrief(report, prior);
+  } catch (e) { console.error("[shadow-report] brief skipped:", e?.message); }
 
   const res = dataHealth?.resolution;
   const incomplete = res && res.total > 0 && (res.resolved / res.total) < 0.9;
