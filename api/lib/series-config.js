@@ -186,4 +186,15 @@ export const DISMISSED_SERIES = [
   // N", one-round Normal σ=√2·GOLF_ROUND_SIGMA). A 72-hole cumulative matchup (with cut effects)
   // needs the golf Phase-2 36-hole field sim (make-cut/cut-line), which doesn't exist. Also dead
   // liquidity (1 matchup, 2 mkts, 0 vol, no book). Revisit when golf Phase-2 lands AND it trades.
+  // 7/02 triage (3 detected):
+  "KXMANAGEROUTDATE", // soccer manager departure-DATE futures ("Tuchel out before Jun 1, 2028", 8 mkts).
+  // Managerial job security is news/insider-driven — no data model exists or is buildable from our
+  // sources. Same novelty-futures class as KXNBANEWCHAMPION. window_fit false. DISMISS.
+  "KXNEXTMANAGER", // next-manager-APPOINTMENT novelty ("Robin van Persie next NLD manager", 17 mkts).
+  // Pure insider-news outright over an open candidate field; no model, no data source. DISMISS.
+  "KXNBACUPQUAL", // NBA Cup qualifier/finalist FUTURES — 30 teams × {26KO qualify-for-knockout,
+  // 26FIN reach-final}, close Feb 2027. Season-long tournament futures: nba.js is a per-game joint
+  // sim, no group-stage/season sim exists (same class as the NCAAF conference-qual dismissals 6/28).
+  // Book is completely dead: 0 of 60 markets have ANY bid (yes 0/99¢ placeholders, no volume/OI).
+  // Revisit only if a season-sim phase ever lands AND the book seeds. DISMISS.
 ];
