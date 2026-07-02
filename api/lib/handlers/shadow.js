@@ -1606,12 +1606,16 @@ function _buildDailyBrief(r, prior) {
     : `No category beats the market with confidence yet; the gate is ${gatedN ? `running ${gatedN}` : "empty"}.` +
       (best ? ` Closest: ${name(best.key)} at skill ${_briefSkill(best.skill)} (n=${best.n}).` : "");
 
-  // Model state — one sentence per NOTABLE category (verdict beyond BUILDING); prescriptive
-  // actions lead, then by data weight. Everything else collapses to a single count line.
+  // Model state — one sentence per NOTABLE category (verdict beyond BUILDING); the categories
+  // closest to bettable lead (PROMISING/CALIBRATED — the rows the headline names must appear here,
+  // not get crowded out by the amber pile), then prescriptive actions, then by data weight.
+  // Everything else collapses to a single count line.
   const model = [];
-  const _actRank = { "Diagnose then stop": 0, "Improve inputs": 1, "Recalibrate": 2 };
+  const _verdictRank = { PROMISING: 0, CALIBRATED: 0 };
+  const _actRank = { "Diagnose then stop": 1, "Improve inputs": 2, "Recalibrate": 3 };
+  const _rank = a => _verdictRank[a.verdict] ?? _actRank[a.honest?.action] ?? 9;
   const notable = acc.filter(a => a.verdict && a.verdict !== "BUILDING")
-    .sort((a, b) => (_actRank[a.honest?.action] ?? 9) - (_actRank[b.honest?.action] ?? 9) || (b.n || 0) - (a.n || 0));
+    .sort((a, b) => _rank(a) - _rank(b) || (b.n || 0) - (a.n || 0));
   for (const a of notable.slice(0, 6)) {
     const skillTxt = `skill ${_briefSkill(a.skill)} vs market, n=${a.n}`;
     const c = a.calib || {};
@@ -1636,15 +1640,17 @@ function _buildDailyBrief(r, prior) {
 
   // Pricing findings — one sentence per cross-venue observatory, verdict in plain words.
   const pricing = [];
+  // `extra` (the executable book-walk read — the real go/no-go) rides on EVERY verdict: a TIGHT
+  // mid-price read with a surviving exec edge is exactly the finding the brief must not bury.
   const venue = (v, label, extra) => {
     if (!v) return;
-    if (v.verdict === "ACCRUING")  pricing.push(`${label}: still accruing (n=${v.n} sides over ${v.days}d) — too thin to call the kill-gate.`);
-    else if (v.verdict === "GAP")  pricing.push(`${label}: Kalshi lags — ${Math.round((v.fracBuyEdge3 || 0) * 100)}% of traded sides are ≥3¢ cheap vs the reference (median |Δ| ${v.medianAbs}¢, n=${v.n}/${v.days}d)${extra || ""} — persistent buy edges, worth the Phase-1b build.`);
-    else if (v.verdict === "TIGHT") pricing.push(`${label}: venues track — only ${Math.round((v.fracBuyEdge3 || 0) * 100)}% of sides ≥3¢ cheap (median |Δ| ${v.medianAbs}¢, n=${v.n}/${v.days}d) — no liquid lag edge.`);
+    if (v.verdict === "ACCRUING")  pricing.push(`${label}: still accruing (n=${v.n} sides over ${v.days}d) — too thin to call the kill-gate.${extra || ""}`);
+    else if (v.verdict === "GAP")  pricing.push(`${label}: Kalshi lags — ${Math.round((v.fracBuyEdge3 || 0) * 100)}% of traded sides are ≥3¢ cheap vs the reference (median |Δ| ${v.medianAbs}¢, n=${v.n}/${v.days}d) — persistent buy edges, worth the Phase-1b build.${extra || ""}`);
+    else if (v.verdict === "TIGHT") pricing.push(`${label}: venues track — only ${Math.round((v.fracBuyEdge3 || 0) * 100)}% of sides ≥3¢ cheap (median |Δ| ${v.medianAbs}¢, n=${v.n}/${v.days}d) — no liquid lag edge.${extra || ""}`);
   };
   venue(r.sportsbookValidation, "Sharp book (de-vigged)");
   const pm = r.polymarketValidation;
-  venue(pm, "Polymarket", pm?.execN ? `; after walking the Poly book, ${Math.round((pm.execFracEdge3 || 0) * 100)}% of bettable sides stay ≥3¢ cheaper (exec n=${pm.execN})` : "");
+  venue(pm, "Polymarket", pm?.execN ? ` Executable read: after walking the Poly book, ${Math.round((pm.execFracEdge3 || 0) * 100)}% of bettable sides stay ≥3¢ cheaper (exec n=${pm.execN}) — this, not the mid-price, is the Phase-1b go/no-go.` : "");
   if (!pricing.length) pricing.push("No cross-venue pricing data captured yet (observatory feeds not populated).");
 
   // What changed vs yesterday's report — verdict flips, trusted-skill moves, n crossings,
