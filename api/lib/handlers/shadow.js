@@ -4,7 +4,7 @@
 // Cron: 0 22 * * * (3pm PT — after most lineup confirmations, before first pitch).
 
 import { neonQuery, neonBatchUpsert, neonBatchResolve, neonBatchPrePriceUpdate, neonExec } from "../neon.js";
-import { errorResponse, jsonResponse } from "../utils.js";
+import { errorResponse, jsonResponse, selfOrigin } from "../utils.js";
 import { verifyJWT } from "../auth-utils.js";
 import { fetchCompletedMatches } from "../tennis.js";
 import { fetchWcFinals, fetchWcHalfFinals, fetchWcAdvance } from "../soccer.js";
@@ -473,6 +473,13 @@ async function fetchLiveInto(liveByKey, origin, game_date, gamesParam, tbParam, 
         console.error(`[shadow-resolver] live fetch ${res.status} (attempt ${attempt + 1}, date ${game_date})`);
         continue; // retry once on non-OK
       }
+      // Non-JSON = we were served an interstitial (Vercel SSO / challenge page), not /api/live.
+      // Name the host so the misroute is obvious in logs instead of a JSON parse error.
+      const ctype = res.headers.get("content-type") || "";
+      if (!ctype.includes("json")) {
+        console.error(`[shadow-resolver] live fetch non-JSON (${ctype || "no content-type"}) from ${new URL(url).host} (attempt ${attempt + 1}, date ${game_date})`);
+        continue;
+      }
       const data = await res.json();
       for (const [k, v] of Object.entries(data)) liveByKey.set(`${k}|${game_date}`, v);
       return;
@@ -585,7 +592,7 @@ async function handleShadowResolver({ path, request, env, cache }) {
   // cheap ESPN-only path and its unsuffixed cache slots.
   const tbParam = teamRows.some(r => r.stat === "totalBases") ? "&tb=1" : "";
 
-  const origin = new URL(request.url).origin;
+  const origin = selfOrigin(request);
   await Promise.all([...keysByDate.entries()].map(([game_date, keys]) =>
     fetchLiveInto(liveByKey, origin, game_date, [...keys].join(","), tbParam, 30_000)
   ));
@@ -1110,7 +1117,7 @@ async function handleShadowPregameSnap({ path, request, env, cache }) {
 
   if (!rawPlays) {
     source = "http";
-    const origin = new URL(request.url).origin;
+    const origin = selfOrigin(request);
     let tonightResp;
     try {
       tonightResp = await fetch(`${origin}/api/tonight`, {
@@ -2749,7 +2756,7 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
       }
     }
     if (!rawPlays) {
-      const origin = new URL(request.url).origin;
+      const origin = selfOrigin(request);
       console.log(`[shadow-snapshot] fetching ${origin}/api/tonight`);
       let tonightResp;
       try {

@@ -9,7 +9,7 @@
 //
 // /api/auth/calibration is here too — needs verifyJWT and shares the user-data scoping.
 
-import { errorResponse, jsonResponse, cookieResponse } from "../utils.js";
+import { errorResponse, jsonResponse, cookieResponse, selfOrigin } from "../utils.js";
 import { pbkdf2Hash, makeJWT, verifyJWT } from "../auth-utils.js";
 import { neonQuery } from "../neon.js";
 
@@ -790,7 +790,7 @@ ORDER BY COUNT(*) DESC`;
     // Optional: ?trigger=1 runs the shadow-snapshot cron inline before returning stats.
     let triggerResult = null;
     if (params.get("trigger") === "1" && env?.CRON_SECRET) {
-      const origin = new URL(request.url).origin;
+      const origin = selfOrigin(request);
       try {
         const tr = await fetch(`${origin}/api/shadow-snapshot`, {
           method: "GET",
@@ -805,7 +805,7 @@ ORDER BY COUNT(*) DESC`;
     // Optional: ?resolvetrigger=1 runs the shadow-resolver cron inline.
     let resolveResult = null;
     if (params.get("resolvetrigger") === "1" && env?.CRON_SECRET) {
-      const origin = new URL(request.url).origin;
+      const origin = selfOrigin(request);
       try {
         const tr = await fetch(`${origin}/api/shadow-resolver`, {
           method: "GET",

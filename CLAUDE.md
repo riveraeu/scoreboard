@@ -182,6 +182,8 @@ These bite during *any* change. Sport/model cutoffs → MODEL.md; data-pipeline 
 
 `KXMLBGAME` has the same chain. Diagnosing `usedSnaps:false`: check `kalshiSnap.meta` in `?debug=1` — `null` meta = no cron in 10 min (cron-side failure); non-zero `meta.snapWriteFailed` = Upstash rejected chunks.
 
+**Server self-fetches: `selfOrigin(request)`, never `new URL(request.url).origin`**: cron invocations arrive on the deployment-generated URL, which Deployment Protection 302s to the SSO HTML page — the overnight resolver's `/api/live` self-fetch died every night with `Unexpected token '<'` (found 7/02). `selfOrigin` (`api/lib/utils.js`) pins `PROD_ORIGIN` except on localhost; used by resolver, shadow-snapshot/pregame-snap HTTP fallbacks, and shadow-stats `?trigger`/`?resolvetrigger`. Symptom: `noData≈all, games=0` on cron runs but a manual daytime trigger works.
+
 **Upstash 10MB request cap**: any single HTTP request to Upstash >10MB 413s. Two mechanisms: (1) multi-key writes go through `pipeWriteChunked` (`api/lib/kv-pipeline.js`), size-chunked at 7MB; (2) single `cache.put` (SET) values are transparently gzipped above `KV_COMPRESS_THRESHOLD` (256KB) via `api/lib/kv-compress.js` (`gz:`-prefixed, auto-decompressed on get — zero caller changes). `kalshi:snap:*` bypass `makeCache` (raw MGET, already chunked). `cmd()` logs `[upstash] HTTP <status>` on non-OK so an oversize surfaces.
 
 **API handler env-var wiring**: handlers receive `env`, never read `process.env`. ALL env vars must be wired into the explicit `env` object at the bottom of `api/[...path].js`. Add new ones here too:

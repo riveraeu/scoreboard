@@ -25,6 +25,18 @@ export function errorResponse(msg, status = 400) {
   });
 }
 
+// Origin for server-side self-fetches (/api/live, /api/tonight from cron handlers).
+// Cron invocations arrive on the deployment-generated URL (scoreboard-<hash>-…vercel.app),
+// which sits behind Vercel Deployment Protection — a fetch to that origin 302s to the SSO
+// HTML page, never JSON. Only the pinned production alias is public, so self-fetches must
+// use it regardless of the incoming request's host. Localhost stays local (`vercel dev`).
+export const PROD_ORIGIN = "https://scoreboard-ivory-xi.vercel.app";
+
+export function selfOrigin(request) {
+  const origin = new URL(request.url).origin;
+  return /^https?:\/\/(localhost|127\.0\.0\.1)(:|$)/.test(origin) ? origin : PROD_ORIGIN;
+}
+
 // Fetch with named error logging. Returns {} on any failure so callers get graceful
 // degradation without silently swallowing the root cause.
 export function fetchSafe(label, url, opts) {
