@@ -1,6 +1,9 @@
 import React from 'react';
 import { SERIES_CONFIG } from '../../api/lib/series-config.js';
 import { CATEGORY_BET_WINDOWS } from '../../api/lib/config.js';
+// Dated diagnose/window HOLD maps — shared with the shadow-report daily brief so the brief and
+// the Do-this banner agree on what's already been diagnosed and parked.
+import { INPUT_SEARCH_EXHAUSTED, WINDOW_SEARCH_EXHAUSTED, stillExhausted as _stillExhausted } from '../../api/lib/model-holds.js';
 
 // A build-roadmap entry counts as SHIPPED once any of its Kalshi tickers exists in
 // SERIES_CONFIG — which we ALWAYS edit when a market ships. Deriving "shipped" from that
@@ -596,40 +599,8 @@ const SCHEDULED_CHECKPOINTS = [
   { date: "2026-07-15", tone: "gray", label: "Re-check KXLMBGAME liquidity", short: "KXLMBGAME recheck",
     why: "Dismissed 7/01 for dead Kalshi books (0 vol/OI, no MM) with the model side green — if yes_ask now populates, un-dismiss and ship the Pythag-λ model" },
 ];
-// MARKET_SHARPER categories whose L0 input search is EXHAUSTED — tune:residual found no addable
-// in-data dimension and the historical pre-filters (weather→runs, WNBA travel) failed (see memories
-// project-residual-sweep / project-weather-runs-study / project-wnba-travel-study). The daily
-// "Improve inputs" banner nag is suppressed for these so the digest falls through to a genuinely-
-// actionable item. They STILL appear on the accuracy board itself — this only quiets the banner.
-// Value = the date the search was exhausted. A category auto-UN-suppresses when its FORMULA_CUTOFF
-// (carried on the betting-board row) moves past that date — a formula change re-accrues clean data,
-// which re-opens the search with zero manual bookkeeping. Still REMOVE a key by hand the moment a
-// NEW exogenous input HYPOTHESIS appears for it (something fresh to pre-filter, e.g. the dated x*
-// re-open checkpoint above); a stale key is harmless (it only matters while still market-sharper).
-const INPUT_SEARCH_EXHAUSTED = {
-  "mlb|f5spread": "2026-06-23", "mlb|ml": "2026-06-23", "mlb|totalRuns": "2026-06-23",
-  "mlb|strikeouts": "2026-06-23", "mlb|f5total": "2026-06-23", "mlb|spread": "2026-06-23",
-  "mlb|hits": "2026-06-23",
-  "wnba|points": "2026-06-23", "wnba|totalPoints": "2026-06-23", "wnba|rebounds": "2026-06-23",
-  "mlb|teamRuns": "2026-06-29",
-  "tennis|match": "2026-07-01",
-};
-// Exhausted-until-formula-reset test shared by both exhaustion maps: suppressed while the key is
-// present AND no FORMULA_CUTOFF newer than the exhaustion date exists (dates are YYYY-MM-DD strings,
-// so lexicographic > is date >). No cutoff known (null/undefined) = nothing changed = stay suppressed.
-const _stillExhausted = (map, key, formulaCutoff) =>
-  map[key] != null && !(formulaCutoff && formulaCutoff > map[key]);
-// mlb|teamRuns added 2026-06-29 after the MARKET_SHARPER banner prompted its tune:residual run:
-// overall skill −0.002 (market sharper near-tie, n≈261); NO sub-trust sub-slice (faint +skill only at
-// 70-80¢, n=32-69, below the n≥100 Brier floor; the 80-95¢ tail where totalBases shines is empty),
-// and NO addable L0 input (edge anti-predictive, dayOfWeek noise, x* dims too thin to read yet).
-// Same run-market posture as the others → re-check on the ~07-10 liquidity (x*) sweep below.
-// tennis|match added 2026-07-01 after the Accuracy banner prompted its tune:residual run: overall
-// skill −0.068 (market sharper, n=133); underconfident on favorites (betPrice 70-95¢ resid +12→+41pp)
-// but every real-n bucket has NEGATIVE skill (the market prices those favorites sharper — not edge),
-// edge anti-predictive, xVolume/dayOfWeek no +skill slice, pickSide degenerate (all "home"). NO
-// sliceable in-data input: the gap is intrinsic to a rankings-only model (no surface/form/H2H/fatigue),
-// which is the Phase-2 surface-Elo BUILD on the tennis roadmap, not an L0 pre-filter. [[project-tennis-phase1]]
+// INPUT_SEARCH_EXHAUSTED + _stillExhausted moved to api/lib/model-holds.js (2026-07-01, imported
+// above) — shared with the shadow-report daily brief so both surfaces agree on parked diagnostics.
 
 // Per-category bet-window derivation nudge (tier 3.15). WINDOW_RECOMMEND_N = enough settled bets to
 // trust a tune:window read (mirrors the CLI's --min-n default + MODEL_IMPROVEMENT.md's window-grade
@@ -640,11 +611,7 @@ const _stillExhausted = (map, key, formulaCutoff) =>
 // NOT belong here — give it a dated SCHEDULED_CHECKPOINTS entry to re-run once OOS n accrues instead
 // of either nagging daily or being forgotten.
 const WINDOW_RECOMMEND_N = 200;
-const WINDOW_SEARCH_EXHAUSTED = {
-  "mlb|hits": "2026-07-01", // tune:window: Brier-eligible (skill +0.053) but the discovered [60,70]
-  //            window fails in-sample CI (−7%) AND out-of-sample (−4.3%) — model skill ≠ a profitable
-  //            price window. Auto-re-opens on a new mlb|hits FORMULA_CUTOFF. [[project_bet_window_derivation]]
-};
+// WINDOW_SEARCH_EXHAUSTED also lives in api/lib/model-holds.js now (imported above).
 function _doThisCandidates(d) {
   const out = [];
   // 1 — data health, but ONLY when actionable. `dataHealth.actionable` (server) is true only for

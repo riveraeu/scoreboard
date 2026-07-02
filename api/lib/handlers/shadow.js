@@ -13,6 +13,7 @@ import { fetchRoundScores, normGolfName } from "../golf.js";
 import { fetchRaceResults } from "../nascar.js";
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER } from "../config.js";
 import { passesCategoryGate } from "../category-gate.js";
+import { INPUT_SEARCH_EXHAUSTED, stillExhausted } from "../model-holds.js";
 import {
   MIN_N_WINDOW as _MIN_N_WINDOW,
   MIN_N_PROMOTE as _MIN_N_PROMOTE,
@@ -1611,21 +1612,29 @@ function _buildDailyBrief(r, prior) {
   // not get crowded out by the amber pile), then prescriptive actions, then by data weight.
   // Everything else collapses to a single count line.
   const model = [];
+  // A row whose tune:residual diagnostic already ran empty (dated INPUT_SEARCH_EXHAUSTED, shared
+  // with the Do-this banner via model-holds.js) must read as PARKED, not re-nag the diagnostic —
+  // the brief and the banner have to agree on what's already been done. Auto-un-parks when a
+  // FORMULA_CUTOFF postdates the exhaustion (stillExhausted), same as the banner.
+  const _parked = a => (a.honest?.action === "Improve inputs" || a.honest?.action === "Diagnose then stop")
+    && stillExhausted(INPUT_SEARCH_EXHAUSTED, a.key, a.formulaCutoff);
+  const _parkedTxt = a => `parked — input search exhausted ${INPUT_SEARCH_EXHAUSTED[a.key]} (tune:residual found nothing addable); re-opens on a formula reset or its scheduled checkpoint`;
   const _verdictRank = { PROMISING: 0, CALIBRATED: 0 };
   const _actRank = { "Diagnose then stop": 1, "Improve inputs": 2, "Recalibrate": 3 };
-  const _rank = a => _verdictRank[a.verdict] ?? _actRank[a.honest?.action] ?? 9;
+  const _rank = a => _verdictRank[a.verdict] ?? (_parked(a) ? 8 : (_actRank[a.honest?.action] ?? 9));
   const notable = acc.filter(a => a.verdict && a.verdict !== "BUILDING")
     .sort((a, b) => _rank(a) - _rank(b) || (b.n || 0) - (a.n || 0));
   for (const a of notable.slice(0, 6)) {
     const skillTxt = `skill ${_briefSkill(a.skill)} vs market, n=${a.n}`;
     const c = a.calib || {};
     const dTxt = c.delta != null ? `${Math.abs(c.delta)}pts` : "";
+    const act = _parked(a) ? _parkedTxt(a) : (a.honest?.action || "review");
     switch (a.verdict) {
       case "CALIBRATED":     model.push(`${name(a.key)} is calibrated — model% matches outcomes within noise (${skillTxt}).`); break;
       case "PROMISING":      model.push(`${name(a.key)} beats the market (${skillTxt}) but calibration bands are still thin — closest to betting-eligible.`); break;
-      case "MARKET_SHARPER": model.push(`${name(a.key)}: the market out-predicts the model and the trend isn't recovering (${skillTxt}) — ${a.honest?.action || "park it"}.`); break;
-      case "OVERCONFIDENT":  model.push(`${name(a.key)} is overconfident — claims ${dTxt} more than it delivers in the ${c.band ?? "?"}% band (${skillTxt}) — ${a.honest?.action || "review"}.`); break;
-      case "UNDERCONFIDENT": model.push(`${name(a.key)} is underconfident — delivers ${dTxt} more than it claims in the ${c.band ?? "?"}% band (${skillTxt}) — ${a.honest?.action || "review"}.`); break;
+      case "MARKET_SHARPER": model.push(`${name(a.key)}: the market out-predicts the model and the trend isn't recovering (${skillTxt}) — ${act}.`); break;
+      case "OVERCONFIDENT":  model.push(`${name(a.key)} is overconfident — claims ${dTxt} more than it delivers in the ${c.band ?? "?"}% band (${skillTxt}) — ${act}.`); break;
+      case "UNDERCONFIDENT": model.push(`${name(a.key)} is underconfident — delivers ${dTxt} more than it claims in the ${c.band ?? "?"}% band (${skillTxt}) — ${act}.`); break;
       default:               model.push(`${name(a.key)}: ${_briefVerdict(a.verdict)} (${skillTxt}).`);
     }
   }
