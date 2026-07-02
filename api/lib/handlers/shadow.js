@@ -2052,6 +2052,9 @@ async function handleShadowReport({ path, request, env, cache }) {
     }));
     return {
       key, sport, category, gated: _isGatedCategory(key),
+      // Stamped so the frontend's exhaustion maps (INPUT_SEARCH_EXHAUSTED et al.) can auto-un-suppress
+      // a category whose formula reset AFTER its search was exhausted (clean data re-opens the search).
+      formulaCutoff: FORMULA_CUTOFFS[key] ?? null,
       n: brier.n, skill: brier.skill, skillLoCI: brier.skillLoCI,
       modelBrier: brier.modelBrier, marketBrier: brier.marketBrier,
       learning: _learnByCat[key] ?? null,
@@ -2113,7 +2116,8 @@ async function handleShadowReport({ path, request, env, cache }) {
       clvCaptured = Number(cr?.[0]?.captured ?? 0);
     } catch (e) { console.error("[shadow-report] CLV cohort read failed:", e?.message); }
     const warnings = [];
-    if (covKV?.coverageWarning) {
+    const covWarned = !!covKV?.coverageWarning;
+    if (covWarned) {
       const covStr = Object.entries(covKV.coverage || {}).map(([sp, c]) => `${sp} ${c.games}/${c.scheduled}`).join(", ");
       warnings.push(`Slate under-logged yesterday (${covStr}) — model numbers may be incomplete.`);
     }
@@ -2133,10 +2137,36 @@ async function handleShadowReport({ path, request, env, cache }) {
     const resolutionFailed = total > 0 && todayRate < ACTIONABLE_RESOLVE_FLOOR;
     // Caution strip warns only on a real failure now (a normal day-1 floor is not "ROI partial").
     if (resolutionFailed) warnings.push(`Only ${resolved}/${total} of yesterday's plays resolved — re-run the resolver (ROI partial).`);
-    if (clvEligible > 0 && clvCaptured / clvEligible < 0.5) warnings.push(`CLV captured for only ${clvCaptured}/${clvEligible} of yesterday's snapshotted plays.`);
-    // `actionable` = is there a data-health issue you can DO something about today? Only a catastrophic
-    // resolution failure qualifies — a warm re-run recovers it. Normal day-1 self-healing lag, coverage
-    // under-log, and CLV dips are about a now-closed yesterday and unrecoverable-by-action, so they're
+    const clvWarned = clvEligible > 0 && clvCaptured / clvEligible < 0.5;
+    if (clvWarned) warnings.push(`CLV captured for only ${clvCaptured}/${clvEligible} of yesterday's snapshotted plays.`);
+    // Streak escalation (2026-07-01): ONE day's coverage under-log / CLV dip is caution-only — that
+    // yesterday is closed and unrecoverable, nothing to do (the rationale above). But the SAME warning
+    // ≥2 days running is a different animal: a live pipeline bug (the 6/10 pregame-snap-502 shape)
+    // that a fix TODAY stops from eating tonight's slate — so a streak flips `actionable`. Counter is
+    // a per-report-date KV breadcrumb: read the prior day's counts, extend or reset, write under
+    // today's key only when warned (a missing day-key naturally reads as a reset). Keying by report
+    // date makes ?bust=1 regens idempotent. Failure-closed: a KV error just skips escalation.
+    let healthStreak = null;
+    try {
+      if (cache) {
+        const dayBefore = new Date(Date.parse(`${yesterday}T12:00:00Z`) - 86400_000).toISOString().slice(0, 10);
+        const prev = await cache.get(`shadow:healthstreak:${dayBefore}`, "json").catch(() => null);
+        healthStreak = {
+          coverage: covWarned ? 1 + Number(prev?.coverage || 0) : 0,
+          clv: clvWarned ? 1 + Number(prev?.clv || 0) : 0,
+        };
+        if (covWarned || clvWarned)
+          await cache.put(`shadow:healthstreak:${yesterday}`, JSON.stringify(healthStreak), { expirationTtl: 86400 * 4 }).catch(() => {});
+      }
+    } catch (e) { console.error("[shadow-report] health-streak read skipped:", e?.message); }
+    const streakParts = [];
+    if ((healthStreak?.coverage || 0) >= 2) streakParts.push(`coverage under-log ${healthStreak.coverage} days running`);
+    if ((healthStreak?.clv || 0) >= 2) streakParts.push(`CLV capture failing ${healthStreak.clv} days running`);
+    if (streakParts.length) warnings.push(`Repeated data-health failure (${streakParts.join("; ")}) — a live pipeline bug, not one-day noise. Investigate the ${(healthStreak?.coverage || 0) >= 2 ? "snapshot/coverage" : "pregame-snap"} path today.`);
+    // `actionable` = is there a data-health issue you can DO something about today? A catastrophic
+    // resolution failure qualifies (a warm re-run recovers it), and so does a ≥2-day coverage/CLV
+    // streak (a live bug a fix today stops from repeating). A single day-1 self-healing lag, coverage
+    // under-log, or CLV dip is about a now-closed yesterday and unrecoverable-by-action, so it stays
     // caution-only (the ⚠ strip), NOT a "Do this today" action. The frontend's tier-1 banner fires only
     // when this is true so it never promotes an unfixable/self-healing caution into the day's primary to-do.
     dataHealth = {
@@ -2148,8 +2178,9 @@ async function handleShadowReport({ path, request, env, cache }) {
         failed: resolutionFailed,
       },
       clvCapture: { captured: clvCaptured, eligible: clvEligible, pct: clvEligible > 0 ? parseFloat((clvCaptured / clvEligible * 100).toFixed(0)) : null },
+      streak: healthStreak,
       warnings,
-      actionable: resolutionFailed,
+      actionable: resolutionFailed || streakParts.length > 0,
     };
   } catch (e) {
     console.error("[shadow-report] dataHealth skipped:", e?.message);

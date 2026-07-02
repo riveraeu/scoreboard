@@ -1,5 +1,6 @@
 import React from 'react';
 import { SERIES_CONFIG } from '../../api/lib/series-config.js';
+import { CATEGORY_BET_WINDOWS } from '../../api/lib/config.js';
 
 // A build-roadmap entry counts as SHIPPED once any of its Kalshi tickers exists in
 // SERIES_CONFIG — which we ALWAYS edit when a market ships. Deriving "shipped" from that
@@ -220,8 +221,9 @@ function AccuracyBoard({ board }) {
           <tr><td colSpan={7} style={{ padding:"0 8px 6px 22px", background:"#0d1117" }}>
             {(() => {
               // MARKET_SHARPER's server action is "Diagnose then stop" (run tune:residual once).
-              // Collapse it to a true stop once the L0 search is exhausted (diagnostic already ran empty).
-              const exhausted = r.verdict === "MARKET_SHARPER" && INPUT_SEARCH_EXHAUSTED.has(r.key);
+              // Collapse it to a true stop once the L0 search is exhausted (diagnostic already ran
+              // empty) — un-collapses automatically if a formula reset re-accrues clean data.
+              const exhausted = r.verdict === "MARKET_SHARPER" && _stillExhausted(INPUT_SEARCH_EXHAUSTED, r.key, r.formulaCutoff);
               const act = exhausted ? "Stop — search exhausted" : r.honest?.action;
               const why = exhausted
                 ? "market sharper AND the L0 input search is exhausted (no addable in-data dimension; historical pre-filters failed) — park it, redirect effort to a less-efficient market"
@@ -533,15 +535,19 @@ function GateDigest({ board }) {
 // ---- DO THIS: the single top-priority action for the morning, across the whole page ----
 // A fall-through priority ladder — pick the first tier that has something actionable as the
 // PRIMARY "do this"; the queued rest is no longer shown in the banner (still in the copy text).
-// Tiers: (1) data health — bad data poisons everything below, so a cron /
-// coverage / resolution / CLV warning trumps all; (2) model changes pending on the board (gate
-// promote/demote, tune-down, or an input/residual investigation); (2.5) validate ripe shadow
-// models — ungated + n≥50 + STRENGTHENING, the build→gate half of the funnel (run tune:gate +
-// Brier); (3) build the next market on the MODEL_NEXT roadmap; (3.25) vet shortlisted markets
-// (promoted detections, mid-funnel); (3.5) triage detected new markets (the funnel's first step);
-// (4) check Polymarket divergence (Phase 1a observatory shipped 2026-06-23 + accumulating; the 1b
-// trading call is data-gated, so the floor is "watch," not "build"). 3 and 4 are always "available",
-// so on a quiet, healthy day the primary becomes "build next market" with vet/triage/Polymarket queued.
+// Tiers: (1) data health — bad data poisons everything below, so an ACTIONABLE warning (catastrophic
+// resolution, or the same coverage/CLV failure ≥2 days running = live pipeline bug) trumps all;
+// (2) betting changes pending on the board (gate promote/demote/investigate); (2.2) accuracy changes
+// (Recalibrate / Improve inputs / Diagnose, with ripeness + exhaustion suppression); (2.5) validate
+// ripe shadow models — ungated + eligible + n≥50 + STRENGTHENING, the build→gate half of the funnel
+// (run tune:gate + Brier); (3) build a NEXT-flagged roadmap market (an explicit "this first"
+// override); (3.15) derive a per-category bet window (harvest of already-accrued data — ranks above
+// authoring new markets); (3.2) build the next merely-unshipped roadmap market; (3.25) vet
+// shortlisted markets (promoted detections, mid-funnel); (3.5) triage detected new markets (the
+// funnel's first step); (3.6) sportsbook kill-gate GAP build; (4) SCHEDULED_CHECKPOINTS — dated
+// follow-ups (Polymarket 1b, x* re-open, …) that surface on their date and persist until handled;
+// (4.6) sportsbook observatory floor; (5) quiet-day floor naming the next upcoming checkpoint.
+// Candidates are pushed per-tier then SORTED by tier (push order ≠ priority order since 3.2).
 // Betting-board (Layer 2) actions that count as a "model change pending".
 const _BET_ACTIONS = {
   "Add to gate":    { tone:"green", verb:"Promote" },
@@ -568,27 +574,51 @@ const RECAL_MIN_N = 200;
 // its ↗/↘ Learning arrow keep showing it); it resurfaces only once the trend flattens (converged).
 // (2026-06-28: mlb|totalBases n=251 but skillTrend +0.163 — STILL LEARNING; tune:learncurve says keep
 // accruing, not lock the step. mlb|hits is the same shape. See [[project-totalbases-recalibrate-hold]].)
-// Polymarket Phase-1b is a DATED ~2-week kill-gate wait (exec.fracEdgeGe3c over ~14 days), not a
-// daily decision — so its banner floor is suppressed until the re-check date and resurfaces then.
-// Bump this each time the window is extended (e.g. if ~50 exec rows give a marginal read). The
-// roadmap entry stays visible regardless; this only quiets the daily Do This nag. [[project-polymarket-phase1a]]
-const POLY_RECHECK = "2026-07-07";
+// ---- SCHEDULED CHECKPOINTS: dated follow-ups the ladder must not forget --------------
+// Every "come back in ~2 weeks" wait lives HERE (one list, one tier), not in code comments or
+// roadmap badges — a comment TODO never fires. Each entry surfaces as a tier-4 banner candidate
+// once todayPT >= date and keeps surfacing until handled; REMOVE (or re-date, if the window is
+// extended) its entry when the check is done. The quiet-day floor (tier 5) names the NEXT
+// upcoming entry so a calm day still shows when the ladder wakes up next.
+const SCHEDULED_CHECKPOINTS = [
+  // Polymarket Phase-1b is a DATED ~2-week kill-gate wait (exec.fracEdgeGe3c over ~14 days), not a
+  // daily decision. Bump the date if ~50 exec rows give a marginal read. [[project-polymarket-phase1a]]
+  { date: "2026-07-07", tone: "gray", label: "Check Polymarket divergence", short: "Polymarket 1b gate",
+    why: "Phase 1a observatory live — cross-venue ML deltas logging. Read /api/polymarket-deltas?days=30; build 1b trading only if exec.fracEdgeGe3c holds >0 with real n" },
+  // x* exogenous dims (xVolume/xSpread, shipped 2026-06-26) have ~2wk of rows by here: DROP the
+  // run-market keys (mlb|totalRuns/teamRuns/f5total/f5spread/spread/ml) from INPUT_SEARCH_EXHAUSTED
+  // → the Improve-inputs nag re-fires → run tune:residual against the fresh liquidity hypothesis.
+  // Premature before then (x* too thin). [[project-exogenous-feature-stamp]]
+  { date: "2026-07-10", tone: "blue", label: "Re-open exhausted run markets (x* sweep)", short: "x* residual sweep",
+    why: "xVolume/xSpread dims now have ~2wk of rows — drop the run-market keys from INPUT_SEARCH_EXHAUSTED and run tune:residual against the liquidity hypothesis (the fresh, previously-unsliceable dimension)" },
+  // KXLMBGAME (Mexican League ML) dismissed 2026-07-01 on dead Kalshi liquidity (model side was
+  // green) — re-check whether yes_ask/volume populated. [[project-lmbgame-vet]]
+  { date: "2026-07-15", tone: "gray", label: "Re-check KXLMBGAME liquidity", short: "KXLMBGAME recheck",
+    why: "Dismissed 7/01 for dead Kalshi books (0 vol/OI, no MM) with the model side green — if yes_ask now populates, un-dismiss and ship the Pythag-λ model" },
+];
 // MARKET_SHARPER categories whose L0 input search is EXHAUSTED — tune:residual found no addable
-// in-data dimension and the historical pre-filters (weather→runs, WNBA travel) failed (2026-06-23;
-// see memories project-residual-sweep / project-weather-runs-study / project-wnba-travel-study).
-// The daily "Improve inputs" banner nag is suppressed for these so the digest falls through to a
-// genuinely-actionable item. They STILL appear on the accuracy board itself — this only quiets the
-// banner. REMOVE a key the moment a NEW exogenous input HYPOTHESIS appears for it (something fresh to
-// pre-filter); a stale key is harmless (it only matters while the category is still market-sharper).
-// TODO ~2026-07-10: once the x* exogenous dims (xVolume/xSpread, shipped 2026-06-26) have ~2wk of
-// rows, DROP the run-market keys (mlb|totalRuns / mlb|teamRuns / mlb|f5total / mlb|f5spread /
-// mlb|spread / mlb|ml) here — liquidity is a fresh, now-sliceable hypothesis for them → let the
-// banner re-fire → run tune:residual. Premature before then (x* too thin). [[project-exogenous-feature-stamp]]
-const INPUT_SEARCH_EXHAUSTED = new Set([
-  "mlb|f5spread", "mlb|ml", "mlb|totalRuns", "mlb|teamRuns", "mlb|strikeouts", "mlb|f5total", "mlb|spread", "mlb|hits",
-  "wnba|points", "wnba|totalPoints", "wnba|rebounds",
-  "tennis|match",
-]);
+// in-data dimension and the historical pre-filters (weather→runs, WNBA travel) failed (see memories
+// project-residual-sweep / project-weather-runs-study / project-wnba-travel-study). The daily
+// "Improve inputs" banner nag is suppressed for these so the digest falls through to a genuinely-
+// actionable item. They STILL appear on the accuracy board itself — this only quiets the banner.
+// Value = the date the search was exhausted. A category auto-UN-suppresses when its FORMULA_CUTOFF
+// (carried on the betting-board row) moves past that date — a formula change re-accrues clean data,
+// which re-opens the search with zero manual bookkeeping. Still REMOVE a key by hand the moment a
+// NEW exogenous input HYPOTHESIS appears for it (something fresh to pre-filter, e.g. the dated x*
+// re-open checkpoint above); a stale key is harmless (it only matters while still market-sharper).
+const INPUT_SEARCH_EXHAUSTED = {
+  "mlb|f5spread": "2026-06-23", "mlb|ml": "2026-06-23", "mlb|totalRuns": "2026-06-23",
+  "mlb|strikeouts": "2026-06-23", "mlb|f5total": "2026-06-23", "mlb|spread": "2026-06-23",
+  "mlb|hits": "2026-06-23",
+  "wnba|points": "2026-06-23", "wnba|totalPoints": "2026-06-23", "wnba|rebounds": "2026-06-23",
+  "mlb|teamRuns": "2026-06-29",
+  "tennis|match": "2026-07-01",
+};
+// Exhausted-until-formula-reset test shared by both exhaustion maps: suppressed while the key is
+// present AND no FORMULA_CUTOFF newer than the exhaustion date exists (dates are YYYY-MM-DD strings,
+// so lexicographic > is date >). No cutoff known (null/undefined) = nothing changed = stay suppressed.
+const _stillExhausted = (map, key, formulaCutoff) =>
+  map[key] != null && !(formulaCutoff && formulaCutoff > map[key]);
 // mlb|teamRuns added 2026-06-29 after the MARKET_SHARPER banner prompted its tune:residual run:
 // overall skill −0.002 (market sharper near-tie, n≈261); NO sub-trust sub-slice (faint +skill only at
 // 70-80¢, n=32-69, below the n≥100 Brier floor; the 80-95¢ tail where totalBases shines is empty),
@@ -604,14 +634,17 @@ const INPUT_SEARCH_EXHAUSTED = new Set([
 // Per-category bet-window derivation nudge (tier 3.15). WINDOW_RECOMMEND_N = enough settled bets to
 // trust a tune:window read (mirrors the CLI's --min-n default + MODEL_IMPROVEMENT.md's window-grade
 // floor). WINDOW_SEARCH_EXHAUSTED = categories already run to a TERMINAL no-go (the discovered window
-// doesn't hold out-of-sample), so the banner stops nagging — mirrors INPUT_SEARCH_EXHAUSTED. Remove a
-// key if fresh data could change the verdict (e.g. a FORMULA_CUTOFF reset re-accrues the category clean).
+// doesn't hold out-of-sample), so the banner stops nagging — mirrors INPUT_SEARCH_EXHAUSTED, including
+// the auto-UN-suppress: a FORMULA_CUTOFF newer than the exhaustion date re-accrues the category clean
+// and re-opens the search (via _stillExhausted). A NON-terminal no-go (OOS split merely too thin) does
+// NOT belong here — give it a dated SCHEDULED_CHECKPOINTS entry to re-run once OOS n accrues instead
+// of either nagging daily or being forgotten.
 const WINDOW_RECOMMEND_N = 200;
-const WINDOW_SEARCH_EXHAUSTED = new Set([
-  "mlb|hits", // 2026-07-01 tune:window: Brier-eligible (skill +0.053) but the discovered [60,70]
+const WINDOW_SEARCH_EXHAUSTED = {
+  "mlb|hits": "2026-07-01", // tune:window: Brier-eligible (skill +0.053) but the discovered [60,70]
   //            window fails in-sample CI (−7%) AND out-of-sample (−4.3%) — model skill ≠ a profitable
-  //            price window. Re-check only if mlb|hits gets a new FORMULA_CUTOFF. [[project_bet_window_derivation]]
-]);
+  //            price window. Auto-re-opens on a new mlb|hits FORMULA_CUTOFF. [[project_bet_window_derivation]]
+};
 function _doThisCandidates(d) {
   const out = [];
   // 1 — data health, but ONLY when actionable. `dataHealth.actionable` (server) is true only for
@@ -653,9 +686,10 @@ function _doThisCandidates(d) {
   const accChanges = (d?.accuracyBoard || []).filter(e =>
     _ACC_ACTIONS[e?.honest?.action] &&
     // Both the L0-input nag ("Improve inputs") and the MARKET_SHARPER one-time diagnostic
-    // ("Diagnose then stop") point at tune:residual; suppress either once the L0 search is exhausted.
+    // ("Diagnose then stop") point at tune:residual; suppress either once the L0 search is exhausted
+    // — until a FORMULA_CUTOFF newer than the exhaustion date re-accrues the category clean.
     !((e.honest.action === "Improve inputs" || e.honest.action === "Diagnose then stop")
-        && INPUT_SEARCH_EXHAUSTED.has(`${e.sport}|${e.category}`)) &&
+        && _stillExhausted(INPUT_SEARCH_EXHAUSTED, e.key || `${e.sport}|${e.category}`, e.formulaCutoff)) &&
     !(e.honest.action === "Recalibrate" && (
       (e.n || 0) < RECAL_MIN_N ||
       (e.learning?.reliable && Math.abs(e.learning.skillTrend) > _LEARN_FLAT))));
@@ -665,7 +699,7 @@ function _doThisCandidates(d) {
     const parts = Object.entries(byAction).map(([a, names]) =>
       `${_ACC_ACTIONS[a].verb} ${names.slice(0,3).join(", ")}${names.length>3?` +${names.length-3}`:""}`);
     const lead = accChanges[0]; // accuracyBoard is skill-desc, so the sharpest miss leads
-    out.push({ tier:2.2, tone:"amber",
+    out.push({ tier:2.2, tone:_ACC_ACTIONS[lead.honest.action].tone,
       label: parts.join("; "),
       why: lead.honest?.why || "model calibration needs attention — see the accuracy board",
       short: `Accuracy ${accChanges.length}` });
@@ -674,8 +708,10 @@ function _doThisCandidates(d) {
   // trending positive but not yet gate-clean (verdict STRENGTHENING) — go run the manual tune:gate
   // + ?brier=1 to decide on gating. This is the build→gate half of the funnel: upstream of building
   // a NEW market, downstream of an actual board change (a clean PROMOTE already surfaces in tier 2).
+  // `eligible` is required: the two-board hard gate refuses an ineligible category no matter what
+  // tune:gate says, so nagging a validation run for one is wasted work — it stays a board row only.
   const ripe = (d?.bettingBoard || []).filter(e =>
-    !e.gated && e.verdict === "STRENGTHENING" && e.checklist?.nOk && !_BET_ACTIONS[e?.doThis?.action]);
+    !e.gated && e.eligible === true && e.verdict === "STRENGTHENING" && e.checklist?.nOk && !_BET_ACTIONS[e?.doThis?.action]);
   if (ripe.length) {
     const names = ripe.map(e => `${e.sport}|${e.category}`);
     out.push({ tier:2.5, tone:"blue",
@@ -683,16 +719,19 @@ function _doThisCandidates(d) {
       why: "n≥50 and trending +ROI but not yet gate-clean — run tune:gate + ?brier=1 to decide on gating",
       short: `Validate ${ripe.length}` });
   }
-  // 3 — build the next market on the roadmap (lowest rank wins; for the infra row, name its NEXT
-  // item). Skip an infra/shipped row whose work is all done or data-gated (no NEXT badge) so the
-  // quiet-day action falls through to the next thing actually buildable now.
+  // 3 / 3.2 — build the next market on the roadmap (lowest rank wins; for the infra row, name its
+  // NEXT item). Skip an infra/shipped row whose work is all done or data-gated (no NEXT badge) so the
+  // quiet-day action falls through to the next thing actually buildable now. Priority forks on the
+  // NEXT badge: an explicitly-flagged NEXT build is tier 3 (above the tier-3.15 window harvest — a
+  // deliberate "this first" override), but a merely-unshipped roadmap entry is tier 3.2 (below it) —
+  // harvesting already-accrued data beats authoring a NEW market unless the roadmap says otherwise.
   const next = [...MODEL_NEXT]
     .sort((a,b) => a.rank - b.rank)
     .find(s => (!s.infra && !_isShippedRoadmapEntry(s)) || s.markets?.some(m => m.badge === "NEXT"));
   if (next) {
     const nextItem = next.markets?.find(m => m.badge === "NEXT");
     const label = next.infra && nextItem ? `Build ${nextItem.ticker}` : `Build ${next.sport}`;
-    out.push({ tier:3, tone:"blue", label, why: nextItem?.title || next.note, short: label });
+    out.push({ tier: nextItem ? 3 : 3.2, tone:"blue", label, why: nextItem?.title || next.note, short: label });
   }
   // 3.15 — derive a per-category bet window: an ungated category has accrued enough settled bets
   // (n≥WINDOW_RECOMMEND_N) AND provably beats the price (eligible = Brier skill CI-lo>0 @ n≥100) AND
@@ -704,11 +743,16 @@ function _doThisCandidates(d) {
   // Gate on the ACCURACY-board n (the Brier population tune:window actually reads), NOT the betting
   // board's own `n` — the latter is the narrow edge≥5 bettable histogram (~10) and would never clear
   // 200, while the tool operates on the full dc-qualified resolved set (~235). Join by key.
+  // A key already in CATEGORY_BET_WINDOWS is DONE — its window was derived and applied, and since the
+  // board's sub/over-window splits keep measuring against the GLOBAL [67,91] (not the override), the
+  // trigger condition would otherwise hold forever. Same self-advancing source-of-truth pattern as
+  // tier 3's SERIES_CONFIG shipped-detection: finishing the task silences the nag, no manual list edit.
   const _accN = Object.fromEntries((d?.accuracyBoard || []).map(a => [a.key, a.n || 0]));
   const winnable = (d?.bettingBoard || []).filter(e =>
     !e.gated && e.eligible === true && (_accN[e.key] || 0) >= WINDOW_RECOMMEND_N &&
     ((e.overWindow?.roi > 0) || (e.subWindow?.roi > 0)) &&
-    !WINDOW_SEARCH_EXHAUSTED.has(e.key));
+    !CATEGORY_BET_WINDOWS[e.key] &&
+    !_stillExhausted(WINDOW_SEARCH_EXHAUSTED, e.key, e.formulaCutoff));
   if (winnable.length) {
     const names = winnable.map(e => e.key);
     out.push({ tier:3.15, tone:"green",
@@ -753,14 +797,16 @@ function _doThisCandidates(d) {
       why:`Kalshi is cheap vs the sharp book ≥3¢ on ${Math.round((sbv.fracBuyEdge3||0)*100)}% of traded sides (n=${sbv.n}/${sbv.days}d) — persistent buy edges. Build the intraday delta logger to measure how long they last before correcting (Phase 1b).`,
       short:"Sportsbook gap → build logger" });
   }
-  // 4 — Polymarket (strategic backlog floor; primary only when nothing above is actionable). Phase 1a
-  // observatory shipped 2026-06-23 and is accumulating cross-venue deltas. The Phase-1b call is a
-  // DATED ~2-week kill-gate wait, so this floor is held until POLY_RECHECK rather than nagging the same
-  // "come back in two weeks" task daily — until then the banner falls through (empty = nothing to do).
+  // 4 — scheduled checkpoints (dated follow-ups; primary only when nothing above is actionable).
+  // Each SCHEDULED_CHECKPOINTS entry stays quiet until its date, then surfaces daily until its
+  // entry is removed/re-dated — so a "come back in two weeks" wait neither nags early nor gets
+  // forgotten. Multiple due checkpoints surface oldest-first.
   const todayPT = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
-  if (todayPT >= POLY_RECHECK) {
-    out.push({ tier:4, tone:"gray", label:"Check Polymarket divergence",
-      why:`Phase 1a observatory live — cross-venue ML deltas logging. Read /api/polymarket-deltas?days=30; build 1b trading only if exec.fracEdgeGe3c holds >0 with real n (re-check window open since ${POLY_RECHECK})`, short:"Polymarket 1b gate" });
+  for (const cp of [...SCHEDULED_CHECKPOINTS].sort((a, b) => a.date.localeCompare(b.date))) {
+    if (todayPT < cp.date) continue;
+    out.push({ tier:4, tone: cp.tone || "gray", label: cp.label,
+      why: `${cp.why} (checkpoint due ${cp.date} — remove or re-date its SCHEDULED_CHECKPOINTS entry once handled)`,
+      short: cp.short || cp.label });
   }
   // 4.6 — sportsbook cross-venue floor (below Polymarket, above the quiet-day floor): when nothing
   // above is actionable, surface the LIVE kill-gate status so the banner reflects the accruing
@@ -776,13 +822,16 @@ function _doThisCandidates(d) {
         short:"Sportsbook tracks tight" });
     }
   }
-  // 5 — quiet-day floor: nothing above is actionable and the Polymarket re-check isn't due yet. Show a
-  // calm "caught up" state naming the next scheduled checkpoint instead of an empty/absent banner.
+  // 5 — quiet-day floor: nothing above is actionable and no checkpoint is due yet. Show a calm
+  // "caught up" state naming the NEXT upcoming checkpoint instead of an empty/absent banner.
   if (!out.length) {
+    const upcoming = [...SCHEDULED_CHECKPOINTS].filter(c => c.date > todayPT).sort((a, b) => a.date.localeCompare(b.date))[0];
     out.push({ tier:5, tone:"gray", label:"Nothing to act on today",
-      why:`Gate empty, models accruing, no new markets to triage. Next scheduled checkpoint: Polymarket Phase-1b kill-gate re-check ~${POLY_RECHECK}.`, short:"All clear" });
+      why:`Gate empty, models accruing, no new markets to triage.${upcoming ? ` Next scheduled checkpoint: ${upcoming.short || upcoming.label} ~${upcoming.date}.` : ""}`, short:"All clear" });
   }
-  return out;
+  // Push order ≠ priority order anymore (tier 3.2 is pushed before 3.15) — sort by tier; ties keep
+  // insertion order (stable sort), so multiple due checkpoints stay oldest-first.
+  return out.sort((a, b) => a.tier - b.tier);
 }
 // Cross-venue kill-gate readout — the live sportsbook-reference validation (does Kalshi lag the
 // de-vigged sharp book?). Mirrors the report's sportsbookValidation verdict; null until the feed
