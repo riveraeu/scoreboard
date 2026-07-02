@@ -197,4 +197,7 @@ export const DISMISSED_SERIES = [
   // sim, no group-stage/season sim exists (same class as the NCAAF conference-qual dismissals 6/28).
   // Book is completely dead: 0 of 60 markets have ANY bid (yes 0/99¢ placeholders, no volume/OI).
   // Revisit only if a season-sim phase ever lands AND the book seeds. DISMISS.
+  "KXTFWORLDRECORD", // 7/02 triage: Track & Field outdoor world-record novelty — record-breaking
+  // events are unmodelable from our sources (no athletics model/data path), 0 live markets, no
+  // sample. Same novelty class as the Nathan's/hole-in-one dismissals. DISMISS.
 ];
