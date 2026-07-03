@@ -200,4 +200,18 @@ export const DISMISSED_SERIES = [
   "KXTFWORLDRECORD", // 7/02 triage: Track & Field outdoor world-record novelty — record-breaking
   // events are unmodelable from our sources (no athletics model/data path), 0 live markets, no
   // sample. Same novelty class as the Nathan's/hole-in-one dismissals. DISMISS.
+  // 7/03 triage (4 detected):
+  "KXCYCLINGSTAGE", // Cycling stage winner — wide-field outright over a 150+ rider peloton; no
+  // cycling model or rating source (ESPN/our stack expose nothing). 0 live markets, no sample.
+  // Same field-outright exact-cell class as the golf-leader dismissals. DISMISS.
+  "KXMLBFASTPITCH", // "Fastest Pitch of season" — season-long record-extreme novelty (max of ~700k
+  // pitches); tail-of-tails, unmodelable even though Statcast velo data exists. 0 live markets.
+  // Same record-novelty class as KXTFWORLDRECORD. DISMISS.
+  "KXNASCARCUPSEASON", // NASCAR Cup REGULAR-SEASON CHAMPION futures (38 driver outrights, annual).
+  // nascar.js is per-race H2H/Top-10 recent-form — no season-points sim exists. Same season-futures
+  // class as the NFL/NBA-Cup dismissals. window_fit false (longshot outrights). DISMISS.
+  "KXWCHOSTWIN", // "Any host nation to win the World Cup" — single novelty binary (1 mkt, closes at
+  // the final). Pricing it needs a full-tournament WINNER sim (soccer advanceProb is per-round
+  // knockout only). window_fit=true is the longshot-NO false positive (no_ask 93¢ on an 11¢-spread,
+  // 0-volume book). One market total → no calibration sample even if built. DISMISS.
 ];
