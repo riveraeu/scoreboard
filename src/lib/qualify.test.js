@@ -39,6 +39,18 @@ test("qualifiesForDisplay: negative paths (dc, edge, unlisted category, empty ga
   assert.equal(qualifiesForDisplay({ ...p, sport: "nba", stat: "points" }), false);
 });
 
+test("qualifiesForDisplay: prop rows honor the server bet-window verdict (qualified:false hides)", () => {
+  // Full-curve capture (2026-07-03): props log at ANY price, so props.js's qualified flag is
+  // the only bet-window enforcement left before display. Prop-shaped rows (no gameType) with
+  // an explicit qualified:false must never display, regardless of dc/edge.
+  const prop = { sport: "mlb", stat: "strikeouts", truePct: 82, dcQualified: true, edge: 20 };
+  assert.equal(qualifiesForDisplay({ ...prop, qualified: false }), false);
+  // Game rows are exempt — ML pushes qualified:false by convention and window-gates at emit.
+  // Contract: an ML row with qualified:false behaves identically to one without the flag.
+  const ml = { sport: "mlb", stat: "ml", gameType: "ml", truePct: 60, dcQualified: true, edge: 8 };
+  assert.equal(qualifiesForDisplay({ ...ml, qualified: false }), qualifiesForDisplay(ml));
+});
+
 test("qualifiesForDisplay: requires dcQualified, edge >= 5, and category gate", { skip: skipNoGate }, () => {
   const base = { ...gated, dcQualified: true, edge: 6 };
   assert.equal(qualifiesForDisplay({ ...base }), true);

@@ -53,12 +53,14 @@ test("betWindowFor honors a set window but only within [CAPTURE_GATE, CAPTURE_CA
     CATEGORY_BET_WINDOWS[`${sport}|${stat}`] = w;
     try { return betWindowFor(sport, stat); } finally { delete CATEGORY_BET_WINDOWS[`${sport}|${stat}`]; }
   };
-  // Valid, inside capture bounds → respected.
+  // Valid, inside capture bounds → respected. [40, 55] is the f5ml-shaped case the old
+  // [55,97] capture floor made unshippable (full-curve capture 2026-07-03 unblocked it).
   assert.deepEqual(probe("mlb", "totalBases", [88, 97]), [88, 97]);
+  assert.deepEqual(probe("mlb", "f5ml", [40, 55]), [40, 55]);
   assert.deepEqual(probe("mlb", "totalBases", [CAPTURE_GATE, CAPTURE_CAP]), [CAPTURE_GATE, CAPTURE_CAP]);
   // Out of capture bounds → rejected, falls back to global.
-  assert.deepEqual(probe("mlb", "totalBases", [40, 97]), [KALSHI_GATE, KALSHI_CAP]);   // lo below CAPTURE_GATE
-  assert.deepEqual(probe("mlb", "totalBases", [88, 99]), [KALSHI_GATE, KALSHI_CAP]);   // hi above CAPTURE_CAP
+  assert.deepEqual(probe("mlb", "totalBases", [0, 97]), [KALSHI_GATE, KALSHI_CAP]);    // lo below CAPTURE_GATE
+  assert.deepEqual(probe("mlb", "totalBases", [88, 100]), [KALSHI_GATE, KALSHI_CAP]);  // hi above CAPTURE_CAP
   // Malformed → falls back.
   assert.deepEqual(probe("mlb", "totalBases", [90, 90]), [KALSHI_GATE, KALSHI_CAP]);   // lo !< hi
   assert.deepEqual(probe("mlb", "totalBases", [97, 88]), [KALSHI_GATE, KALSHI_CAP]);   // inverted

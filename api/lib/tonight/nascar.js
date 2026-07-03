@@ -34,7 +34,7 @@ export async function emitNascarPlays(ctx) {
 
   for (const m of nascarMarkets) {
     if (m.gameDate && cutoffStr && m.gameDate < cutoffStr) continue; // race already past the cutoff day
-    if (m.kalshiPct < CAPTURE_GATE || m.kalshiPct > CAPTURE_CAP) continue; // capture the favorite curve
+    if (m.kalshiPct < CAPTURE_GATE || m.kalshiPct > CAPTURE_CAP) continue; // quote-sanity only (full-curve capture 2026-07-03)
 
     if (m.subtype === "h2h") {
       if (!m.player || !m.opponent) {

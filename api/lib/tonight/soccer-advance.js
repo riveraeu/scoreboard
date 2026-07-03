@@ -53,7 +53,7 @@ export async function emitSoccerAdvancePlays(ctx) {
 
   for (const m of soccerAdvanceMarkets) {
     if (m.gameDate && cutoffStr && m.gameDate < cutoffStr) continue; // tie already past cutoff day
-    if (!inWindow(m.kalshiPct)) continue; // only the favorite side is a candidate
+    if (!inWindow(m.kalshiPct)) continue; // quote-sanity only (full-curve capture 2026-07-03) — both mirror sides log
     const ev = getEvent(m);
     if (!ev) continue;
     // This side's regulation win / loss against the shared draw mass.

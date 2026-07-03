@@ -15,6 +15,13 @@ import { passesCategoryGate } from './constants.js';
 // dcQualified (dc≥7 — only kalshiStale/playerOut fail since 2026-06-04), edge ≥ 5,
 // and the shadow-calibration category gate.
 export function qualifiesForDisplay(p) {
+  // Prop rows carry an explicit bet-window verdict from props.js (`qualified:false` = out of
+  // betWindowFor window, or a non-winning dedup threshold kept for the player card). Under
+  // full-curve capture (2026-07-03) the server logs props at ANY price, so display must honor
+  // the flag or sub-window longshots with big nominal edge would surface once a category is
+  // gated. Scoped to prop-shaped rows (no gameType): game rows use `qualified` differently
+  // (ML pushes qualified:false by convention and window-gates at emit).
+  if (p.qualified === false && !p.gameType) return false;
   // Demoted by server-side alt-line dedup in favor of a higher-edge alt. Allow through when
   // the winner itself fails the category gate — demotion is spurious if the winner can't
   // qualify (see CLAUDE.md "Spread alt-line dedup + category gate interaction").

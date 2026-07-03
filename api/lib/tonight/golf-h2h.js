@@ -29,7 +29,8 @@ export async function emitGolfH2hPlays(ctx) {
 
   for (const m of golfH2hMarkets) {
     if (m.gameDate && cutoffStr && m.gameDate < cutoffStr) continue; // round already past cutoff day
-    // Only the favorite side (Kalshi YES price in the capture band) is logged.
+    // Every quoted side is logged (full-curve capture 2026-07-03) — mirror sides land as
+    // separate rows, same idiom as ML home/away. The band check is quote-sanity only now.
     if (m.kalshiPct < CAPTURE_GATE || m.kalshiPct > CAPTURE_CAP) continue;
     if (!m.player || !m.opponent) {
       if (isDebug) dropped.push({ sport: "golf", stat: "h2h", reason: "no_matchup", eventTicker: m.eventTicker });

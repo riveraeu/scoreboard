@@ -625,7 +625,11 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             // spread exceeds CAPTURE_MAX_SPREAD. Under captures on NO, over on YES — gate the side
             // we'd actually buy. Real favorites are ≤7¢; artifacts ~94¢. See config.js.
             let propDirection = null; // null = YES/over (legacy field shape on all other props)
-            if (stat === "totalBases" && (pct < CAPTURE_GATE || pct > CAPTURE_CAP)
+            // Full-curve capture (2026-07-03): the flip used to trigger on "YES out of the
+            // favorite band, NO in it"; with the band now quote-sanity-wide that condition is
+            // dead, so flip on the equivalent semantics directly — NO is the favorite side.
+            // Preserves row continuity: every rung that logged as an under keeps logging as one.
+            if (stat === "totalBases" && noPct > pct
                 && noPct >= CAPTURE_GATE && noPct <= CAPTURE_CAP) {
               if (!capturableSpread(noSpreadC)) continue;
               propDirection = "under";

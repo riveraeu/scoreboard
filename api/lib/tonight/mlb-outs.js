@@ -70,9 +70,12 @@ export function emitMlbOutsPlays(ctx) {
   for (const m of outsMarkets) {
     if (m.gameDate && cutoffStr && m.gameDate < cutoffStr) continue; // game already past the cutoff day
 
-    // Favorite side: only one of YES(over)/NO(under) can sit in the capture band (complementary prices).
-    const overFav = m.yesPct >= CAPTURE_GATE && m.yesPct <= CAPTURE_CAP;
-    const underFav = m.noPct >= CAPTURE_GATE && m.noPct <= CAPTURE_CAP;
+    // Canonical side = the favorite (higher-priced side). Under full-curve capture (2026-07-03)
+    // the band is quote-sanity-wide, so BOTH sides can sit in it — pick one row per rung by
+    // price, not band membership (the old "only one side fits [55,97]" disambiguation is gone).
+    const overFav = (m.yesPct ?? 0) >= CAPTURE_GATE && m.yesPct <= CAPTURE_CAP
+                 && (m.yesPct ?? 0) >= (m.noPct ?? 0);
+    const underFav = !overFav && (m.noPct ?? 0) >= CAPTURE_GATE && m.noPct <= CAPTURE_CAP;
     if (!overFav && !underFav) continue;
 
     const ps = byName[_nn(m.player)];
