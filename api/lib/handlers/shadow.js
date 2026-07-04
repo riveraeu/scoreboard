@@ -1656,17 +1656,20 @@ function _buildDailyBrief(r, prior) {
 
   // Pricing findings — one sentence per cross-venue observatory, verdict in plain words.
   const pricing = [];
-  // `extra` (the executable book-walk read — the real go/no-go) rides on EVERY verdict: a TIGHT
-  // mid-price read with a surviving exec edge is exactly the finding the brief must not bury.
+  // BOTH kill-gates CLOSED 2026-07-04 (Polymarket + sportsbook: zero surviving executable edge on
+  // clean post-date-fix data; Phase-1b builds killed). The observatories stay as reference/tripwire
+  // feeds, so the template reads accordingly: GAP = regime change vs the closed gate (or an
+  // artifact — both prior ≥5¢ tails were fake, audit first), never a build prompt; the exec clause
+  // still rides on every Poly verdict but as tripwire context, not a go/no-go.
   const venue = (v, label, extra) => {
     if (!v) return;
-    if (v.verdict === "ACCRUING")  pricing.push(`${label}: still accruing (n=${v.n} sides over ${v.days}d) — too thin to call the kill-gate.${extra || ""}`);
-    else if (v.verdict === "GAP")  pricing.push(`${label}: Kalshi lags — ${Math.round((v.fracBuyEdge3 || 0) * 100)}% of traded sides are ≥3¢ cheap vs the reference (median |Δ| ${v.medianAbs}¢, n=${v.n}/${v.days}d) — persistent buy edges, worth the Phase-1b build.${extra || ""}`);
-    else if (v.verdict === "TIGHT") pricing.push(`${label}: venues track — only ${Math.round((v.fracBuyEdge3 || 0) * 100)}% of sides ≥3¢ cheap (median |Δ| ${v.medianAbs}¢, n=${v.n}/${v.days}d) — no liquid lag edge.${extra || ""}`);
+    if (v.verdict === "ACCRUING")  pricing.push(`${label}: thin window (n=${v.n} sides over ${v.days}d).${extra || ""}`);
+    else if (v.verdict === "GAP")  pricing.push(`${label}: Kalshi shows cheap — ${Math.round((v.fracBuyEdge3 || 0) * 100)}% of traded sides ≥3¢ under the reference (median |Δ| ${v.medianAbs}¢, n=${v.n}/${v.days}d) — regime change vs the closed 7/04 kill-gate or an artifact: audit the ?minAbs=3 tail before acting.${extra || ""}`);
+    else if (v.verdict === "TIGHT") pricing.push(`${label}: venues track — only ${Math.round((v.fracBuyEdge3 || 0) * 100)}% of sides ≥3¢ cheap (median |Δ| ${v.medianAbs}¢, n=${v.n}/${v.days}d) — no liquid lag edge (kill-gate closed 7/04).${extra || ""}`);
   };
   venue(r.sportsbookValidation, "Sharp book (de-vigged)");
   const pm = r.polymarketValidation;
-  venue(pm, "Polymarket", pm?.execN ? ` Executable read: after walking the Poly book, ${Math.round((pm.execFracEdge3 || 0) * 100)}% of bettable sides stay ≥3¢ cheaper (exec n=${pm.execN}) — this, not the mid-price, is the Phase-1b go/no-go.` : "");
+  venue(pm, "Polymarket", pm?.execN ? ` Executable read: ${Math.round((pm.execFracEdge3 || 0) * 100)}% of bettable sides stay ≥3¢ cheaper after walking the Poly book (exec n=${pm.execN}) — tripwire only; the Phase-1b build was killed at the 7/04 gate.` : "");
   if (!pricing.length) pricing.push("No cross-venue pricing data captured yet (observatory feeds not populated).");
 
   // What changed vs yesterday's report — verdict flips, trusted-skill moves, n crossings,
@@ -2404,11 +2407,13 @@ async function handleShadowReport({ path, request, env, cache }) {
     const medianAbs = agg?.median_abs != null ? parseFloat(Number(agg.median_abs).toFixed(2)) : null;
     const fracBuyEdge3 = agg?.frac_buy3 != null ? parseFloat(Number(agg.frac_buy3).toFixed(3)) : null;
     const fracBuyEdge5 = agg?.frac_buy5 != null ? parseFloat(Number(agg.frac_buy5).toFixed(3)) : null;
-    // Verdict ladder (provisional — re-calibrate once real n exists; ACCRUING buys that time):
+    // Verdict ladder (kill-gate CLOSED 2026-07-04 — TIGHT confirmed on clean data, Phase 1b
+    // killed; the ladder now feeds the tripwire readouts, not a build decision):
     //   ACCRUING — too little to read (n<60 sides ≈ <30 games, or <3 days).
-    //   GAP      — Kalshi is cheap vs the book ≥3¢ on ≥10% of traded sides → persistent buy edges →
-    //              build the correction-latency logger (Phase 1b) to see if they last long enough.
-    //   TIGHT    — venues track (likely) → no liquid lag edge; redirect to thin markets.
+    //   GAP      — Kalshi is cheap vs the book ≥3¢ on ≥10% of traded sides → post-kill this means
+    //              regime change OR artifact — audit the ?minAbs=3 tail first (both prior fat
+    //              tails were fake), don't resurrect Phase 1b off one window.
+    //   TIGHT    — venues track → no liquid lag edge (the confirmed steady state).
     let verdict;
     if (n < 60 || days < 3) verdict = "ACCRUING";
     else if ((fracBuyEdge3 ?? 0) >= 0.10) verdict = "GAP";
