@@ -857,7 +857,10 @@ function DoThisBanner({ d }) {
 // ---- DAILY BRIEF: server-generated prose summary of model state + pricing findings ----
 // Deterministic sentences templated server-side from the same numbers the boards render (see
 // _buildDailyBrief in api/lib/handlers/shadow.js) — the readable replacement for scanning the
-// accuracy grid. `changes` is null when yesterday's report wasn't in KV (first run / late regen).
+// accuracy grid. Reader order (2026-07-04 format): health → headline → changes → model → betting
+// clocks → pricing → takeaway. `changes` is null when yesterday's report wasn't in KV (first run /
+// late regen); `health`/`betting`/`takeaway` are absent on pre-format cached briefs — render
+// degrades to the old shape.
 function DailyBrief({ brief }) {
   if (!brief) return null;
   const Block = ({ title, items }) => !items?.length ? null : (
@@ -866,12 +869,22 @@ function DailyBrief({ brief }) {
       {items.map((s, i) => <div key={i} style={{ color:C.text, fontSize:12, lineHeight:1.55 }}>• {s}</div>)}
     </div>
   );
+  const healthColor = { clean:C.green, caution:C.amber, action:C.red }[brief.health?.tone] || C.gray;
   return (
     <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:8, padding:"10px 14px", marginBottom:10 }}>
+      {brief.health && (
+        <div style={{ color:C.gray, fontSize:11, lineHeight:1.5, marginBottom:6 }}>
+          <span style={{ color:healthColor }}>●</span> {brief.health.text}
+        </div>
+      )}
       <div style={{ color:C.text, fontSize:13, fontWeight:600, lineHeight:1.5 }}>{brief.headline}</div>
-      <Block title="Model state" items={brief.model} />
-      <Block title="Pricing · cross-venue" items={brief.pricing} />
       <Block title="Changed since yesterday" items={brief.changes} />
+      <Block title="Model state" items={brief.model} />
+      <Block title="Betting · accrual clocks" items={brief.betting} />
+      <Block title="Pricing · cross-venue" items={brief.pricing} />
+      {brief.takeaway && (
+        <div style={{ color:C.text, fontSize:12, fontWeight:600, lineHeight:1.55, marginTop:8, paddingTop:6, borderTop:`1px solid ${C.border}` }}>{brief.takeaway}</div>
+      )}
     </div>
   );
 }

@@ -1594,15 +1594,36 @@ async function _readResolutionRobust(yesterday, env, seedRow, cache) {
 // ── Daily brief — deterministic prose over the assembled report ───────────────
 // The readable replacement for scanning the accuracy grid: every sentence is templated straight
 // from numbers the report already computed (no free text, no model call), so the brief can never
-// drift from the boards it summarizes. Sections: headline · model state (notable categories only,
-// the rest collapsed to a count) · pricing findings (both cross-venue observatories) · what changed
-// vs yesterday's cached report (null when no prior exists — first run or a post-expiry mid-day regen).
+// drift from the boards it summarizes. Sections (reader order, 2026-07-04 format): health (is the
+// data trustworthy?) · headline · what changed vs yesterday (null when no prior exists — first run
+// or a post-expiry mid-day regen) · model state (notable categories only, the rest collapsed to a
+// count) · betting accrual clocks (eligible rows: in-window read + discovered window vs the promote
+// bar) · pricing findings (both cross-venue observatories) · takeaway (the one-line "so what").
 const _briefSkill = s => s == null ? "—" : `${s >= 0 ? "+" : ""}${Number(s).toFixed(3)}`;
+const _briefRoi = v => v == null ? "—" : `${v >= 0 ? "+" : ""}${(Number(v) * 100).toFixed(1)}%`;
 const _briefVerdict = v => String(v || "").toLowerCase().replace(/_/g, " ");
 function _buildDailyBrief(r, prior) {
   const acc = r.accuracyBoard || [];
   const bet = r.bettingBoard || [];
   const name = k => String(k || "").replace("|", " ");
+
+  // Health — one sentence answering "can I trust the numbers below?" before showing any of them.
+  // Mirrors dataHealth exactly: clean → the trust line; warned → the warnings verbatim (they're
+  // already sentences); tone carries clean/caution/action so the client can color without re-deriving.
+  const dh = r.dataHealth;
+  let health = null;
+  if (dh?.resolution?.total > 0) {
+    if (dh.warnings?.length) {
+      health = { tone: dh.actionable ? "action" : "caution", text: dh.warnings.join(" ") };
+    } else {
+      const res = dh.resolution;
+      const clvTxt = dh.clvCapture?.pct != null ? `, ${dh.clvCapture.pct}% CLV capture` : "";
+      health = {
+        tone: "clean",
+        text: `Pipeline health clean — ${res.ratePct}% of yesterday's plays resolved (${res.pending} pending, mostly next-day pre-listings)${clvTxt}, no coverage warning — the readings below are trustworthy.`,
+      };
+    }
+  }
 
   // Headline — the one-sentence answer to "can we bet anything yet?".
   const eligibleRows = bet.filter(b => b.eligible);
@@ -1636,9 +1657,14 @@ function _buildDailyBrief(r, prior) {
     const c = a.calib || {};
     const dTxt = c.delta != null ? `${Math.abs(c.delta)}pts` : "";
     const act = _parked(a) ? _parkedTxt(a) : (a.honest?.action || "review");
+    // Decay caution — a positive-skill category whose reliable learning trend is materially
+    // negative is real-but-eroding (the market is closing the gap); say so on its own bullet so
+    // the green verdict doesn't read as static. Threshold −0.05 ≈ well past trend noise.
+    const decayTxt = (a.skill > 0 && a.learning?.reliable && (a.learning?.skillTrend ?? 0) <= -0.05)
+      ? ` One caution: its skill trend is ${_briefSkill(a.learning.skillTrend)} — the edge is real but the market is closing the gap.` : "";
     switch (a.verdict) {
-      case "CALIBRATED":     model.push(`${name(a.key)} is calibrated — model% matches outcomes within noise (${skillTxt}).`); break;
-      case "PROMISING":      model.push(`${name(a.key)} beats the market (${skillTxt}) but calibration bands are still thin — closest to betting-eligible.`); break;
+      case "CALIBRATED":     model.push(`${name(a.key)} is calibrated — model% matches outcomes within noise (${skillTxt}).${decayTxt}`); break;
+      case "PROMISING":      model.push(`${name(a.key)} beats the market (${skillTxt}) but calibration bands are still thin — closest to betting-eligible.${decayTxt}`); break;
       case "MARKET_SHARPER": model.push(`${name(a.key)}: the market out-predicts the model and the trend isn't recovering (${skillTxt}) — ${act}.`); break;
       case "OVERCONFIDENT":  model.push(`${name(a.key)} is overconfident — claims ${dTxt} more than it delivers in the ${c.band ?? "?"}% band (${skillTxt}) — ${act}.`); break;
       case "UNDERCONFIDENT": model.push(`${name(a.key)} is underconfident — delivers ${dTxt} more than it claims in the ${c.band ?? "?"}% band (${skillTxt}) — ${act}.`); break;
@@ -1647,11 +1673,25 @@ function _buildDailyBrief(r, prior) {
   }
   const buildingN = acc.length - notable.length;
   if (buildingN > 0) model.push(`${buildingN} other categor${buildingN === 1 ? "y is" : "ies are"} still accruing data — nothing to act on there.`);
-  // Gate-level betting changes are rare and important enough to always name.
+
+  // Betting accrual clocks — one bullet per eligible category: the in-window read (flagged when
+  // too thin to mean anything), and the discovered window's distance from the n≥MIN_N_PROMOTE
+  // promote bar. Gate-level changes (rare, important) lead the section.
+  const betting = [];
   for (const b of bet) {
-    if (b.verdict === "PROMOTE")            model.push(`Betting: ${name(b.key)} is ready to gate — ${b.hint || "validated profitable window"}.`);
-    else if (b.verdict === "DEMOTE")        model.push(`Betting: pull ${name(b.key)} from the gate — its window went significantly negative.`);
-    else if (b.gated && b.verdict === "HOLD") model.push(`Betting: ${name(b.key)} stays in the gate — still profitable.`);
+    if (b.verdict === "PROMOTE")            betting.push(`${name(b.key)} is ready to gate — ${b.hint || "validated profitable window"}.`);
+    else if (b.verdict === "DEMOTE")        betting.push(`Pull ${name(b.key)} from the gate — its window went significantly negative.`);
+    else if (b.gated && b.verdict === "HOLD") betting.push(`${name(b.key)} stays in the gate — still profitable.`);
+  }
+  for (const b of bet) {
+    if (!b.eligible || b.verdict === "PROMOTE" || b.verdict === "DEMOTE") continue;
+    const parts = [];
+    const sw = b.subWindow;
+    if (sw?.n) parts.push(`in the current ${b.currentWindow?.[0]}–${b.currentWindow?.[1]}¢ window ROI ${_briefRoi(sw.roi)} (n=${sw.n}${sw.n < 30 ? " — too thin to read yet" : ""})`);
+    const dw = b.discoveredWindow;
+    if (dw?.lo != null)
+      parts.push(`discovered ${dw.lo}–${dw.hi}¢ window ROI ${_briefRoi(dw.roi)} (CI-lo ${_briefRoi(dw.roiLoCI)}, n=${dw.n}/${_MIN_N_PROMOTE} toward the promote bar${dw.coherent === false ? ", bands not coherent" : ""})`);
+    if (parts.length) betting.push(`${name(b.key)}: ${parts.join("; ")}.`);
   }
 
   // Pricing findings — one sentence per cross-venue observatory, verdict in plain words.
@@ -1699,7 +1739,31 @@ function _buildDailyBrief(r, prior) {
     if (!changes.length) changes.push("No material change since yesterday's report.");
   }
 
-  return { headline, model, pricing, changes };
+  // Takeaway — the one-line "so what": actions if any exist (data-health fix, gate moves),
+  // otherwise name the accrual clocks that matter (discovered windows short of the promote bar,
+  // eligible categories whose in-window sample is still too thin). Capped at 3 clocks.
+  const actions = [];
+  if (dh?.actionable) actions.push("fix data health (see the health line)");
+  for (const b of bet) {
+    if (b.verdict === "PROMOTE") actions.push(`add ${name(b.key)} to the gate`);
+    else if (b.verdict === "DEMOTE") actions.push(`pull ${name(b.key)} from the gate`);
+  }
+  let takeaway;
+  if (actions.length) {
+    takeaway = `Action needed today: ${actions.join("; ")}.`;
+  } else {
+    const clocks = [];
+    for (const b of bet.filter(x => x.eligible)) {
+      const dw = b.discoveredWindow;
+      if (dw?.lo != null && (dw.n || 0) < _MIN_N_PROMOTE) clocks.push(`${name(b.key)}'s ${dw.lo}–${dw.hi}¢ window (n ${dw.n}/${_MIN_N_PROMOTE})`);
+      else if ((b.subWindow?.n || 0) < 30) clocks.push(`${name(b.key)}'s calibration bands`);
+    }
+    takeaway = clocks.length
+      ? `Nothing needs action today — the clocks that matter are ${clocks.slice(0, 3).join(", ")}.`
+      : "Nothing needs action today.";
+  }
+
+  return { health, headline, changes, model, betting, pricing, takeaway };
 }
 
 async function handleShadowReport({ path, request, env, cache }) {
