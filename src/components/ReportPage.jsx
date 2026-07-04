@@ -547,9 +547,10 @@ function GateDigest({ board }) {
 // override); (3.15) derive a per-category bet window (harvest of already-accrued data — ranks above
 // authoring new markets); (3.2) build the next merely-unshipped roadmap market; (3.25) vet
 // shortlisted markets (promoted detections, mid-funnel); (3.5) triage detected new markets (the
-// funnel's first step); (3.6) sportsbook kill-gate GAP build; (4) SCHEDULED_CHECKPOINTS — dated
-// follow-ups (Polymarket 1b, x* re-open, …) that surface on their date and persist until handled;
-// (4.6) sportsbook observatory floor; (5) quiet-day floor naming the next upcoming checkpoint.
+// funnel's first step); (3.6) sportsbook regime-change tripwire (kill-gate CLOSED 2026-07-04 —
+// GAP now means "investigate", not "build 1b"); (4) SCHEDULED_CHECKPOINTS — dated follow-ups
+// (x* re-open, …) that surface on their date and persist until handled; (5) quiet-day floor
+// naming the next upcoming checkpoint.
 // Candidates are pushed per-tier then SORTED by tier (push order ≠ priority order since 3.2).
 // Betting-board (Layer 2) actions that count as a "model change pending".
 const _BET_ACTIONS = {
@@ -751,16 +752,17 @@ function _doThisCandidates(d) {
       why: `${titles}${nm.length > 3 ? " …" : ""} — dismiss noise, promote real candidates`,
       short: `Triage ${nm.length} detected` });
   }
-  // 3.6 — sportsbook cross-venue kill-gate: a CONFIRMED systematic Kalshi-lags-the-book gap is an
-  // actionable build (the Phase-1b correction-latency logger). Live verdict from the report's
-  // sportsbookValidation (in-window bettable band). Only GAP is actionable here; TIGHT/ACCRUING sit
-  // at the floor below so the banner still reflects the accruing observatory on a quiet day.
+  // 3.6 — sportsbook regime-change tripwire. Kill-gate CLOSED 2026-07-04: clean post-purge read
+  // (0/68 sides ≥3¢ over 3d, max |Δ| 2¢, meanSigned −0.6¢ = Kalshi slightly EXPENSIVE) rejected
+  // the ≥10% GAP bar at p≈0.001 — Phase 1b (latency logger) KILLED, liquid-ML lag thesis dead.
+  // The feed stays as the truth anchor, so a GAP verdict NOW means the regime CHANGED (or a data
+  // artifact — audit the tail first, per the 7/01 lesson), not "build 1b".
   const sbv = d?.sportsbookValidation;
   if (sbv?.verdict === "GAP") {
-    out.push({ tier:3.6, tone:"green",
-      label:"Build sportsbook correction-latency logger",
-      why:`Kalshi is cheap vs the sharp book ≥3¢ on ${Math.round((sbv.fracBuyEdge3||0)*100)}% of traded sides (n=${sbv.n}/${sbv.days}d) — persistent buy edges. Build the intraday delta logger to measure how long they last before correcting (Phase 1b).`,
-      short:"Sportsbook gap → build logger" });
+    out.push({ tier:3.6, tone:"blue",
+      label:"Sportsbook GAP after closed kill-gate — investigate",
+      why:`Kalshi is cheap vs the sharp book ≥3¢ on ${Math.round((sbv.fracBuyEdge3||0)*100)}% of traded sides (n=${sbv.n}/${sbv.days}d). The 7/04 kill-gate read was TIGHT (0/68 ≥3¢), so this is either a regime change or an artifact — audit /api/sportsbook-deltas?minAbs=3 rows BEFORE acting (fake-tail lesson, 7/01).`,
+      short:"Sportsbook GAP → audit" });
   }
   // 4 — scheduled checkpoints (dated follow-ups; primary only when nothing above is actionable).
   // Each SCHEDULED_CHECKPOINTS entry stays quiet until its date, then surfaces daily until its
@@ -773,20 +775,9 @@ function _doThisCandidates(d) {
       why: `${cp.why} (checkpoint due ${cp.date} — remove or re-date its SCHEDULED_CHECKPOINTS entry once handled)`,
       short: cp.short || cp.label });
   }
-  // 4.6 — sportsbook cross-venue floor (below Polymarket, above the quiet-day floor): when nothing
-  // above is actionable, surface the LIVE kill-gate status so the banner reflects the accruing
-  // observatory instead of a blank "all clear". TIGHT = the likely no-edge outcome → redirect cue.
-  if (sbv && (sbv.verdict === "ACCRUING" || sbv.verdict === "TIGHT")) {
-    if (sbv.verdict === "ACCRUING") {
-      out.push({ tier:4.6, tone:"gray", label:"Sportsbook divergence accruing",
-        why:`Cross-venue observatory live — Kalshi-vs-sharp-book ML deltas logging (n=${sbv.n}/${sbv.days}d in-window${sbv.medianAbs!=null?`, median ${sbv.medianAbs}¢`:""}). Re-read /api/sportsbook-deltas once n≥30 over ≥3 days to call the kill-gate.`,
-        short:"Sportsbook accruing" });
-    } else {
-      out.push({ tier:4.6, tone:"gray", label:"Sportsbook: Kalshi tracks the book",
-        why:`Cross-venue kill-gate read: only ${Math.round((sbv.fracBuyEdge3||0)*100)}% of traded sides are ≥3¢ cheap vs the sharp book (median |Δ| ${sbv.medianAbs}¢, n=${sbv.n}/${sbv.days}d) — no systematic liquid-ML lag edge. Spend effort on thin/new markets + the totalBases conversion, not liquid timing.`,
-        short:"Sportsbook tracks tight" });
-    }
-  }
+  // (4.6 sportsbook observatory floor REMOVED 2026-07-04 — the kill-gate is CLOSED, so TIGHT/
+  // ACCRUING are no longer a pending wait worth a daily banner slot; the CrossVenueValidation
+  // readout under the betting board still shows the live status, and tier 3.6 fires on GAP.)
   // 5 — quiet-day floor: nothing above is actionable and no checkpoint is due yet. Show a calm
   // "caught up" state naming the NEXT upcoming checkpoint instead of an empty/absent banner.
   if (!out.length) {
@@ -798,15 +789,15 @@ function _doThisCandidates(d) {
   // insertion order (stable sort), so multiple due checkpoints stay oldest-first.
   return out.sort((a, b) => a.tier - b.tier);
 }
-// Cross-venue kill-gate readout — the live sportsbook-reference validation (does Kalshi lag the
-// de-vigged sharp book?). Mirrors the report's sportsbookValidation verdict; null until the feed
-// is activated (THE_ODDS_API_KEY) + the table has rows.
+// Cross-venue readout — the live sportsbook-reference validation (does Kalshi lag the de-vigged
+// sharp book?). Kill-gate CLOSED 2026-07-04 (TIGHT, Phase 1b killed); the readout stays as the
+// regime tripwire. Null until the feed is active (THE_ODDS_API_KEY) + the table has rows.
 function CrossVenueValidation({ sbv }) {
   if (!sbv) return null;
   const map = {
-    GAP:      ["Kalshi LAGS the sharp book → build the correction-latency logger", C.green],
-    TIGHT:    ["Kalshi tracks the sharp book — no liquid lag edge", C.gray],
-    ACCRUING: ["accruing — not enough to call the kill-gate yet", C.dim],
+    GAP:      ["Kalshi LAGS the sharp book — regime change vs the closed 7/04 kill-gate; audit the tail", C.green],
+    TIGHT:    ["Kalshi tracks the sharp book — no liquid lag edge (kill-gate closed 7/04)", C.gray],
+    ACCRUING: ["accruing — thin window", C.dim],
   };
   const [label, color] = map[sbv.verdict] || [sbv.verdict, C.dim];
   return (
