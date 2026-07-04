@@ -485,17 +485,17 @@ const MODEL_NEXT = [
     ],
   },
   {
-    // Polymarket platform expansion. Phase 1a (cross-venue ML price observatory) SHIPPED 2026-06-23
-    // — shadow-only, no trading. infra:true so the "build next" prompt never picks it (its next step
-    // is data-gated, not a market to author). The Phase-1b trading decision waits on ~2 weeks of
-    // EXECUTABLE divergence (exec.fracEdgeGe3c from /api/polymarket-deltas).
+    // Polymarket platform expansion. Phase 1a (cross-venue ML price observatory) SHIPPED 2026-06-23;
+    // kill-gate CLOSED 2026-07-04 → Phase 1b trading KILLED (no executable cross-venue edge).
+    // infra:true so the "build next" prompt never picks it. The observatory stays live: zero
+    // marginal cost, feeds the client Poly reference price on ML cards, and its daily medians
+    // would surface a future regime change (e.g. US volume migrating to QCX decoupling prices).
     sport: "Polymarket", rank: 9, infra: true,
-    note: "Phase 1a cross-venue price observatory shipped — moneyline Kalshi-vs-Polymarket deltas logging to polymarket_deltas (shadow-only, no trading). The Phase-1b trading decision is data-gated on ~2 weeks of EXECUTABLE divergence, not mid-price gaps. Accumulating — day-2 baseline read 2026-06-24, re-check ~2026-07-07.",
-    knob: "Gamma public API → normalize game ML → match our Kalshi rows → CLOB book-walk for executable VWAP; exec.fracEdgeGe3c (% of bettable sides still ≥3¢ cheaper to BUY after slippage) is the go/no-go",
+    note: "Kill-gate CLOSED 2026-07-04: on post-date-fix data (7/01→) exec.fracEdgeGe3c = 0 — Poly mid sits ~0.5¢ below Kalshi but the walkable ask lands at/above Kalshi every time (mid gap not buyable; meanSigned exec +1¢). 11 days / 402 matched sides: mid median |Δ| 0.5¢ every single day, clean-window fracGe5c = 0. Phase 1b trading + QCX pursuit + totals (1a.1) KILLED; observatory stays as reference feed. Don't re-open unless daily medians move.",
+    knob: "Gamma public API → normalize game ML → match our Kalshi rows → CLOB book-walk for executable VWAP; exec.fracEdgeGe3c (% of bettable sides still ≥3¢ cheaper to BUY after slippage) was the go/no-go — it read 0",
     markets: [
-      { t: "infra", badge: "LIVE", ticker: "ML observatory", title: "Cross-venue moneyline deltas — mid + book-walked executable VWAP → /api/polymarket-deltas. Day-2 baseline (6/24): mid median |Δ| 0.5¢ (venues barely diverge), exec n=7 fracEdgeGe3c 0.286 — direction >0 but pure noise at this n." },
-      { t: "infra", badge: "LATER", ticker: "Phase 1b trading", title: "Emit bettable Poly plays + place orders — gated on exec.fracEdgeGe3c holding >0 with REAL n. Re-check ~2026-07-07; exec accrues ~3-4/day (~50 by then) so EXTEND the window if marginal rather than build off ~50 rows." },
-      { t: "infra", badge: "LATER", ticker: "Totals (1a.1)", title: "Re-add totals once game-totals.js emits volume on dropped rows so illiquid alt-lines can be liquidity-gated" },
+      { t: "infra", badge: "LIVE", ticker: "ML observatory", title: "Cross-venue moneyline deltas — mid + book-walked executable VWAP → /api/polymarket-deltas. Kept post-kill as the client Poly reference price + regime-change tripwire (venues track within ~0.5¢; the 14d exec 0.289 was pre-7/01 date-fuzz artifact, rolls clean ~7/09)." },
+      { t: "infra", badge: "KILLED", ticker: "Phase 1b trading", title: "KILLED 2026-07-04 at the designed kill-gate: zero surviving post-slippage edge on clean data (exec.fracEdgeGe3c = 0, n=9; mid population n=402 shows no ≥3¢ gaps to walk). Cheap-kill doctrine outcome — observatory built to answer exactly this." },
     ],
   },
 ];
@@ -584,10 +584,8 @@ const RECAL_MIN_N = 200;
 // extended) its entry when the check is done. The quiet-day floor (tier 5) names the NEXT
 // upcoming entry so a calm day still shows when the ladder wakes up next.
 const SCHEDULED_CHECKPOINTS = [
-  // Polymarket Phase-1b is a DATED ~2-week kill-gate wait (exec.fracEdgeGe3c over ~14 days), not a
-  // daily decision. Bump the date if ~50 exec rows give a marginal read. [[project-polymarket-phase1a]]
-  { date: "2026-07-07", tone: "gray", label: "Check Polymarket divergence", short: "Polymarket 1b gate",
-    why: "Phase 1a observatory live — cross-venue ML deltas logging. Read /api/polymarket-deltas?days=30; build 1b trading only if exec.fracEdgeGe3c holds >0 with real n" },
+  // (Polymarket 1b kill-gate checkpoint REMOVED 2026-07-04 — reviewed 3 days early on unambiguous
+  // clean data: exec.fracEdgeGe3c = 0 post-date-fix, Phase 1b KILLED. [[project-polymarket-phase1a]])
   // x* exogenous dims (xVolume/xSpread, shipped 2026-06-26) have ~2wk of rows by here: DROP the
   // run-market keys (mlb|totalRuns/teamRuns/f5total/f5spread/spread/ml) from INPUT_SEARCH_EXHAUSTED
   // → the Improve-inputs nag re-fires → run tune:residual against the fresh liquidity hypothesis.
