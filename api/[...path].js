@@ -38,7 +38,7 @@ function makeCache(env) {
       const body = await r.json().catch(() => null);
       if (body?.error) console.error("[upstash]", args[0], body.error);
       return body ?? { result: null };
-    }).catch((e) => { console.error("[upstash] fetch failed", args[0], String(e?.message || e), String(e?.cause?.code || e?.cause?.message || e?.cause || "")); return { result: null }; }), "cmd");
+    }).catch((e) => { console.error("[upstash] fetch failed", args[0], String(args[1] || "").slice(0, 60), String(e?.message || e), String(e?.cause?.code || e?.cause?.message || e?.cause || "")); return { result: null }; }), "cmd");
     return {
       async get(key, type) {
         const { result } = await cmd("GET", key);
