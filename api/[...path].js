@@ -1,3 +1,4 @@
+import "./lib/fetch-limit.js"; // global fetch concurrency gate — MUST be first (fd-exhaustion guard)
 import { waitUntil } from "@vercel/functions";
 import { ALLOWED_ORIGIN, corsHeaders, jsonResponse, errorResponse } from "./lib/utils.js";
 import { warmPlayerInfoCache } from "./lib/nba.js";
