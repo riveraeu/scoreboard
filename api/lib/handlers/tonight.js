@@ -162,7 +162,25 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
         // active libuv resource types at run start + response time. Debug-only, failure-closed.
         const _fdProbe = async () => {
           const out = {};
-          try { const fs = await import("node:fs"); out.fds = fs.readdirSync("/proc/self/fd").length; } catch { out.fds = null; }
+          try {
+            const fs = await import("node:fs");
+            const names = fs.readdirSync("/proc/self/fd");
+            out.fds = names.length;
+            // Classify each fd by its readlink target: socket:/pipe:/anon_inode:<type>/file path.
+            const byKind = {};
+            for (const n of names) {
+              let kind = "?";
+              try {
+                const t = fs.readlinkSync(`/proc/self/fd/${n}`);
+                kind = t.startsWith("socket:") ? "socket"
+                  : t.startsWith("pipe:") ? "pipe"
+                  : t.startsWith("anon_inode:") ? t.slice(0, 24)
+                  : t.slice(0, 24);
+              } catch { /* raced a close */ }
+              byKind[kind] = (byKind[kind] || 0) + 1;
+            }
+            out.byKind = Object.fromEntries(Object.entries(byKind).sort((a, b) => b[1] - a[1]).slice(0, 8));
+          } catch (e) { out.fds = null; out.fdErr = String(e?.code || e?.message || e).slice(0, 60); }
           try {
             const res = typeof process?.getActiveResourcesInfo === "function" ? process.getActiveResourcesInfo() : [];
             const byType = {};
@@ -171,7 +189,9 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           } catch { out.resources = null; }
           return out;
         };
-        const _fdAtStart = isDebugMode ? await _fdProbe() : null;
+        const _fdMilestones = [];
+        const _fdMark = async (label) => { if (isDebugMode) { try { _fdMilestones.push({ label, ...(await _fdProbe()) }); } catch { /* probe never breaks the run */ } } };
+        await _fdMark("start");
         const isBustCache = params.get("bust") === "1";
         const reportSportFilter = params.get("sport") || null;
         // NBA totals: regular-season aggregate OffRtg/DefRtg systematically under-projects playoff
@@ -231,6 +251,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
         // 3-tier Kalshi read chain (snap → bundle → REST + stale). See lib/tonight/kalshi-pipeline.js.
         const { kalshiResults, staleKalshiSeries, kalshiSnapMeta, kalshiUsedSnaps } =
           await fetchKalshiMarkets({ seriesTickers, cache: CACHE2, env, isBustCache });
+        await _fdMark("afterKalshi");
         const _staleKalshiSet = new Set(staleKalshiSeries);
         const _findKalshiTicker = (sport, stat, gameType) => {
           for (const [ticker, cfg] of Object.entries(SERIES_CONFIG)) {
@@ -862,6 +883,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             })
           ].filter(Boolean));
         }
+        await _fdMark("afterByteam");
         // Kalshi MLB postponed-ticker reattribution: when a game is rained out, Kalshi
         // keeps the original ticker (date segment + expected_expiration_time both stale)
         // and reuses it for the makeup game. The market parse loop above stamps gameDate
@@ -1190,6 +1212,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             if (sportByteam.nhlGameOdds[_team].total == null) sportByteam.nhlGameOdds[_team].total = _ouLine;
           }
         }
+        await _fdMark("afterScoreboards");
         const STAT_SOFT = {};
         if (sportByteam.nba) {
           for (const st of ["points", "rebounds", "assists", "threePointers"]) {
@@ -1538,7 +1561,9 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
         // Fetch all uncached gamelogs through the shared concurrency gate — full parallel
         // (pre-2026-07-05) hit the FD ceiling on big slates; fixed delay batching (pre-2026-05)
         // added ~26s for 60 players. pLimit keeps the pipe full without the burst.
+        await _fdMark("beforeGamelogs");
         await Promise.all(keysNeedingGamelog.map((k) => _netLimit(() => fetchGamelog(k, null, _pitchPlayerKeys.has(k)))));
+        await _fdMark("afterGamelogs");
         const pitcherGamelogs = {};
         // Merge probables (ESPN source) with pitcherInfoByTeam (MLB Stats API source).
         // pitcherInfoByTeam is more reliable for early-day requests before ESPN announces probables.
@@ -1986,7 +2011,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             meta: kalshiSnapMeta,
             ageMs: kalshiSnapMeta?.lastRunAt ? Date.now() - kalshiSnapMeta.lastRunAt : null,
           };
-          return jsonResponse({ fdProbe: { atStart: _fdAtStart, atEnd: await _fdProbe() }, plays: debugPlays, dropped: debugDropped, preDropped: debugPreDropped, tennisPlays, tennisMarketCount: tennisMatchMarkets.length, soccerPlays, soccerMarketCount: soccerMarkets.length, soccerAdvancePlays, soccerAdvanceMarketCount: soccerAdvanceMarkets.length, fightPlays, fightMarketCount: fightMarkets.length, golfH2hPlays, golfH2hMarketCount: golfH2hMarkets.length, nascarPlays, nascarMarketCount: nascarMarkets.length, outsPlays, outsMarketCount: outsMarkets.length, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
+          return jsonResponse({ fdProbe: { milestones: _fdMilestones, atEnd: await _fdProbe() }, plays: debugPlays, dropped: debugDropped, preDropped: debugPreDropped, tennisPlays, tennisMarketCount: tennisMatchMarkets.length, soccerPlays, soccerMarketCount: soccerMarkets.length, soccerAdvancePlays, soccerAdvanceMarketCount: soccerAdvanceMarkets.length, fightPlays, fightMarketCount: fightMarkets.length, golfH2hPlays, golfH2hMarketCount: golfH2hMarkets.length, nascarPlays, nascarMarketCount: nascarMarkets.length, outsPlays, outsMarketCount: outsMarkets.length, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
         }
         // Build mlbMeta: pitchers, ML odds, umpires, weather — keyed by team abbr or "home|away"
         // Pitcher entries: { name, id, era, wins, losses }. MLB Stats API (pitcherInfoByTeam) preferred
