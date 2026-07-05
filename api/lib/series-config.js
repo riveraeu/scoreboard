@@ -214,4 +214,7 @@ export const DISMISSED_SERIES = [
   // the final). Pricing it needs a full-tournament WINNER sim (soccer advanceProb is per-round
   // knockout only). window_fit=true is the longshot-NO false positive (no_ask 93¢ on an 11¢-spread,
   // 0-volume book). One market total → no calibration sample even if built. DISMISS.
+  "KXNBACONF", // 7/05 triage: East vs West conference to win the NBA Finals — season-long futures
+  // binary (one market/year, resolves next June). No repeatable daily flow to calibrate; same
+  // season-futures class as KXNBANEWCHAMPION/KXNBACUPQUAL. DISMISS.
 ];
