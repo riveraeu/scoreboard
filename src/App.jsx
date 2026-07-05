@@ -178,7 +178,6 @@ function App() {
     tonightPlays, allTonightPlays, nbaDropped,
     tonightMeta, tonightLoading,
     mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta,
-    polyMlByGame,
     bustCache, bustLoading,
   } = useTonight(_qualifiedFilter, _trackedPlaysRef);
 
@@ -2004,7 +2003,6 @@ function App() {
           nbaMeta={nbaMeta}
           wnbaMeta={wnbaMeta}
           nhlMeta={nhlMeta}
-          polyMlByGame={polyMlByGame}
           trackedPlays={trackedPlays}
           untrackPlay={untrackPlay}
           navigateToPlay={navigateToPlay}

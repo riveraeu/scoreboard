@@ -52,7 +52,6 @@ export function useTonight(qualifiedFilter, trackedPlaysRef) {
   const [nbaMeta, setNbaMeta] = React.useState(null);
   const [wnbaMeta, setWnbaMeta] = React.useState(null);
   const [nhlMeta, setNhlMeta] = React.useState(null);
-  const [polyMlByGame, setPolyMlByGame] = React.useState(null);
   const [bustLoading, setBustLoading] = React.useState(false);
 
   // Stash latest filter in a ref so the long-lived polling closure picks up changes
@@ -76,9 +75,6 @@ export function useTonight(qualifiedFilter, trackedPlaysRef) {
     if (data.nbaMeta) setNbaMeta(data.nbaMeta);
     if (data.wnbaMeta) setWnbaMeta(data.wnbaMeta);
     if (data.nhlMeta) setNhlMeta(data.nhlMeta);
-    // Cross-venue ML map for the matchup-card strip (shadow-only data, surfaced for comparison).
-    // Always assign (even {}) so a poly outage clears a stale prior map rather than freezing it.
-    setPolyMlByGame(data.polyMlByGame || {});
 
     if (seenIdsRef.current === null) {
       // Seed on first load — don't notify plays that were already qualified. Risky-market plays
@@ -168,7 +164,6 @@ export function useTonight(qualifiedFilter, trackedPlaysRef) {
     tonightPlays, allTonightPlays, nbaDropped,
     tonightMeta, tonightLoading,
     mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta,
-    polyMlByGame,
     bustCache, bustLoading,
   };
 }

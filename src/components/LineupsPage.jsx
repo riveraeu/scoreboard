@@ -242,7 +242,6 @@ export default function LineupsPage({
   nbaMeta,
   wnbaMeta,
   nhlMeta,
-  polyMlByGame,
   trackedPlays,
   untrackPlay,
   navigateToPlay,
@@ -584,7 +583,6 @@ export default function LineupsPage({
                     nbaMeta={nbaMeta}
                     wnbaMeta={wnbaMeta}
                     nhlMeta={nhlMeta}
-                    polyMl={polyMlByGame?.[`${sport}|${game.awayTeam}@${game.homeTeam}|${game.gameDate}`] || null}
                     navigateToPlayer={navigateToPlayer}
                     navigateToTeam={navigateToTeam}
                     gamePlays={gPlays}

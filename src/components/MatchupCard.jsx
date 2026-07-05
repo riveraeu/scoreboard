@@ -15,7 +15,7 @@ function fmtSeries(summary) {
 }
 
 function MatchupCard({
-  game, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta, polyMl, navigateToPlayer, navigateToTeam,
+  game, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta, navigateToPlayer, navigateToTeam,
   gamePlays, gamePlaysTrackedCount = 0,
   allTonightPlays, trackedPlays, trackPlay, untrackPlay,
   navigateToPlay, navigateToModel, expandedPlays, setExpandedPlays, openPicksDrawer,
@@ -248,37 +248,6 @@ function MatchupCard({
               )}
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Cross-venue ML reference strip — Kalshi vs Polymarket per side (ML only, shadow obs.).
-          Reference only (we bet Kalshi); the Poly feed isn't the US-tradable price. Renders only
-          when the poly matcher found this game (game ML — Poly has no props / pulled totals). */}
-      {polyMl && (polyMl.away || polyMl.home) && (
-        <div style={{ borderTop: '1px solid #21262d', padding: '6px 16px', display: 'flex',
-          alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 14, fontSize: 10 }}>
-          <span style={{ fontWeight: 700, color: '#484f58', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-            ML <span style={{ color: '#6e40c9' }}>Kalshi</span> / <span style={{ color: '#58a6ff' }}>Poly</span>
-          </span>
-          {['away', 'home'].map(side => {
-            const d = polyMl[side];
-            if (!d) return null;
-            const team = side === 'away' ? awayTeam : homeTeam;
-            const dc = d.deltaCents;
-            return (
-              <span key={side} style={{ color: '#8b949e' }}>
-                {team}{' '}
-                <span style={{ color: '#6e40c9', fontWeight: 600 }}>{d.kalshiPct}</span>
-                <span style={{ color: '#484f58' }}> / </span>
-                <span style={{ color: '#58a6ff', fontWeight: 600 }}>{d.polyPct}</span>
-                {dc != null && (
-                  <span style={{ color: dc < 0 ? '#3fb950' : dc > 0 ? '#f78166' : '#8b949e', fontWeight: 600 }}>
-                    {' '}({dc >= 0 ? '+' : ''}{dc})
-                  </span>
-                )}
-              </span>
-            );
-          })}
         </div>
       )}
 
