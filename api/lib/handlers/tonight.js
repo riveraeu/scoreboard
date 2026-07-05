@@ -1372,7 +1372,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             playerInfoMap[key] = info;
             if (CACHE2) CACHE2.put(`pinfo:${key}`, JSON.stringify(info), { expirationTtl: 604800 }).catch(() => {});
           } catch (e) {
-            pInfoErrors.push({ key, reason: "exception", error: String(e) });
+            pInfoErrors.push({ key, reason: "exception", error: String(e), cause: String(e?.cause?.code || e?.cause?.message || e?.cause || "") || undefined });
           }
         }));
         const isDebug = isDebugMode || params.get("debug") === "true";
@@ -1449,7 +1449,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             }
             return events.length ? { ul, events } : null;
           } catch (e) {
-            if (isDebug) gamelogErrors.push({ key: debugKey, err: String(e) });
+            if (isDebug) gamelogErrors.push({ key: debugKey, err: String(e), cause: String(e?.cause?.code || e?.cause?.message || e?.cause || "") || undefined });
             return null;
           }
         }
