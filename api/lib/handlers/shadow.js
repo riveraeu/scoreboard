@@ -14,6 +14,7 @@ import { fetchRaceResults } from "../nascar.js";
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER } from "../config.js";
 import { passesCategoryGate } from "../category-gate.js";
 import { INPUT_SEARCH_EXHAUSTED, stillExhausted } from "../model-holds.js";
+import { POLY_SERIES, POLY_DISMISSED_SPORTS, fetchPolySportsCatalog, fetchPolySeriesEvents } from "../polymarket.js";
 import {
   MIN_N_WINDOW as _MIN_N_WINDOW,
   MIN_N_PROMOTE as _MIN_N_PROMOTE,
@@ -2442,10 +2443,43 @@ async function handleShadowReport({ path, request, env, cache }) {
       return [];
     }
   };
-  const [newMarkets, shortlistedMarkets] = await Promise.all([
+  // Polymarket league funnel (polymarket_sports_seen, populated by /api/polymarket-scan) merges
+  // into the SAME newMarkets/shortlistedMarkets arrays: `ticker` = Gamma sport slug (can't collide
+  // with KX* series tickers or SERIES_CONFIG), venue:"polymarket". One display chokepoint — the
+  // ReportPage triage/shortlist banners and the brief's fresh-detection diff (both keyed on
+  // m.ticker / m.title) pick these up with no frontend change.
+  const queryPolyDiscovered = async (status) => {
+    try {
+      const rows = await neonQuery(`
+        SELECT sport, series_id, sample_event, live_event_count, market_types, first_seen
+        FROM polymarket_sports_seen WHERE status = $1
+        ORDER BY first_seen DESC, sport LIMIT 25
+      `, [status], env, { write: true });
+      return rows.map(r => ({
+        venue: "polymarket",
+        ticker: r.sport,
+        title: `Polymarket league: ${r.sport}`,
+        tags: r.market_types ?? null,
+        frequency: null,
+        sampleMarket: r.series_id != null ? `series ${r.series_id}` : null,
+        sampleSubtitle: r.sample_event ?? null,
+        liveMarketCount: r.live_event_count ?? null,
+        windowFit: null,
+        firstSeen: r.first_seen ? new Date(r.first_seen).toISOString().slice(0, 10) : null,
+      }));
+    } catch (e) {
+      console.error(`[shadow-report] poly ${status} markets query skipped:`, e?.message);
+      return [];
+    }
+  };
+  const [kNewMarkets, kShortlistedMarkets, pNewMarkets, pShortlistedMarkets] = await Promise.all([
     queryDiscovered("new"),
     queryDiscovered("shortlisted"),
+    queryPolyDiscovered("new"),
+    queryPolyDiscovered("shortlisted"),
   ]);
+  const newMarkets = [...kNewMarkets, ...pNewMarkets];
+  const shortlistedMarkets = [...kShortlistedMarkets, ...pShortlistedMarkets];
 
   // Cross-venue kill-gate (sportsbook reference): does Kalshi systematically LAG the de-vigged sharp
   // book? Live read of the sportsbook_deltas accrual over the bettable in-window [67,91] band, so
@@ -2591,6 +2625,179 @@ async function handleRoutineNote({ path, request, env, cache }) {
   const note = await cache.get(`routine:note:${slug}`, "json").catch(() => null);
   if (!note) return jsonResponse({ ok: true, slug, found: false, text: null });
   return jsonResponse({ ok: true, slug, found: true, ...note });
+}
+
+// ── /api/polymarket-scan ─────────────────────────────────────────────────────
+// Daily cron. Diffs Polymarket's Gamma league catalog (GET /sports, ~300 rows) against the
+// leagues the observatory consumes (POLY_SERIES) and records unknown ones in Neon
+// (polymarket_sports_seen) — the Polymarket mirror of /api/kalshi-series-scan, same status
+// funnel (baseline → new → shortlisted → adopted/dismissed). The FIRST run baseline-seeds every
+// currently-listed league (silently acknowledged); only leagues Gamma adds AFTER today surface
+// as 'new'. Per-league enrichment records the distinct sportsMarketType families seen in live
+// events — that's where a new market family (e.g. total-corners) shows up, not a new funnel.
+// Auth: CRON_SECRET (cron) or ADMIN_KEY (manual). ?dry=1 skips all DB writes.
+// ?dismiss= / ?undismiss= / ?promote= / ?unpromote= (admin) triage by Gamma sport slug.
+const POLY_SPORTS_TABLE = "polymarket_sports_seen";
+async function handlePolymarketScan({ path, request, env }) {
+  if (path !== "polymarket-scan") return null;
+  const bearer = (request.headers.get("authorization") || "").replace(/^Bearer\s+/, "");
+  const isCron  = env?.CRON_SECRET && bearer === env.CRON_SECRET;
+  const isAdmin = env?.ADMIN_KEY  && bearer === env.ADMIN_KEY;
+  if (!isCron && !isAdmin) return errorResponse("Forbidden", 403);
+  if (!env?.POSTGRES_URL && !env?.NEON_DATABASE_URL) return errorResponse("POSTGRES_URL not set", 500);
+  const url = new URL(request.url);
+  const dry = url.searchParams.get("dry") === "1";
+
+  await neonExec(`
+    CREATE TABLE IF NOT EXISTS ${POLY_SPORTS_TABLE} (
+      sport            TEXT PRIMARY KEY,
+      series_id        TEXT,
+      tags             TEXT,
+      sample_event     TEXT,
+      live_event_count INT,
+      market_types     TEXT,
+      status           TEXT NOT NULL DEFAULT 'new',
+      first_seen       DATE NOT NULL,
+      last_seen        DATE NOT NULL
+    )
+  `, env);
+
+  // Admin triage shortcuts (mirror of kalshi-series-scan; keyed by Gamma sport slug).
+  const dismiss = url.searchParams.get("dismiss");
+  const undismiss = url.searchParams.get("undismiss");
+  const promote = url.searchParams.get("promote");
+  const unpromote = url.searchParams.get("unpromote");
+  if (dismiss || undismiss || promote || unpromote) {
+    if (!isAdmin) return errorResponse("Admin only", 403);
+    if (dismiss) await neonQuery(`UPDATE ${POLY_SPORTS_TABLE} SET status='dismissed' WHERE sport = $1`, [dismiss], env, { write: true });
+    if (undismiss) await neonQuery(`UPDATE ${POLY_SPORTS_TABLE} SET status='new' WHERE sport = $1 AND status='dismissed'`, [undismiss], env, { write: true });
+    if (promote) await neonQuery(`UPDATE ${POLY_SPORTS_TABLE} SET status='shortlisted' WHERE sport = $1 AND status IN ('new','dismissed','baseline')`, [promote], env, { write: true });
+    if (unpromote) await neonQuery(`UPDATE ${POLY_SPORTS_TABLE} SET status='new' WHERE sport = $1 AND status='shortlisted'`, [unpromote], env, { write: true });
+    return jsonResponse({ ok: true, dismissed: dismiss || null, undismissed: undismiss || null, promoted: promote || null, unpromoted: unpromote || null });
+  }
+
+  // 1. League catalog (single call; module is failure-closed to []).
+  const catalog = await fetchPolySportsCatalog();
+  if (!catalog.length) return errorResponse("Empty Gamma sports catalog", 502);
+
+  // 2. Leagues the observatory consumes (slug or Gamma series id — both count as known).
+  const knownSlugs = new Set(Object.keys(POLY_SERIES));
+  const knownSeriesIds = new Set(Object.values(POLY_SERIES).map(String));
+
+  // 3. Slugs already recorded. {write:true} → pooled primary for read-after-create consistency.
+  const existingRows = await neonQuery(`SELECT sport FROM ${POLY_SPORTS_TABLE}`, [], env, { write: true });
+  const existing = new Set(existingRows.map(r => r.sport));
+  const isFirstRun = existing.size === 0;
+
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+
+  // 4. Classify slugs new to the table (the catalog can repeat a slug — first row wins).
+  const seen = new Set();
+  const toInsert = [];
+  const enrichTargets = [];
+  for (const s of catalog) {
+    const slug = String(s.sport || "").toLowerCase();
+    if (!slug || seen.has(slug) || existing.has(slug)) continue;
+    seen.add(slug);
+    const isKnown = knownSlugs.has(slug) || knownSeriesIds.has(String(s.series ?? ""));
+    const status = isKnown ? "adopted" : (isFirstRun ? "baseline" : "new");
+    const row = {
+      sport: slug,
+      series_id: s.series != null ? String(s.series) : null,
+      tags: s.tags != null ? String(s.tags) : null,
+      sample_event: null, live_event_count: null, market_types: null,
+      status, first_seen: today, last_seen: today,
+    };
+    toInsert.push(row);
+    if (status === "new") enrichTargets.push(row);
+  }
+
+  // Enrich one league: sample event + live event count + distinct market families. Best-effort;
+  // null on fetch failure (never overwrites a prior read with a fake zero).
+  const enrichPolySport = async (seriesId) => {
+    if (!seriesId) return null;
+    const events = await fetchPolySeriesEvents(seriesId, 25);
+    if (!events) return null;
+    const types = new Set();
+    for (const ev of events) for (const m of (ev?.markets || [])) if (m?.sportsMarketType) types.add(m.sportsMarketType);
+    return {
+      sample_event: events[0]?.title ?? null,
+      live_event_count: events.length,
+      market_types: types.size ? [...types].sort().join(",") : null,
+    };
+  };
+  const mapPool = async (items, concurrency, fn) => {
+    let i = 0;
+    const worker = async () => { while (i < items.length) { const idx = i++; await fn(items[idx]); } };
+    await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
+  };
+
+  // 5. Enrich genuinely-new rows (capped, parallel, best-effort).
+  const ENRICH_CAP = 25;
+  await mapPool(enrichTargets.slice(0, ENRICH_CAP), 3, async (row) => {
+    const e = await enrichPolySport(row.series_id);
+    if (e) Object.assign(row, e);
+  });
+
+  if (dry) {
+    return jsonResponse({
+      ok: true, dry: true, isFirstRun,
+      catalogCount: catalog.length, existingCount: existing.size,
+      toInsertCount: toInsert.length, newCount: enrichTargets.length,
+      newMarkets: enrichTargets.slice(0, ENRICH_CAP).map(r => ({ sport: r.sport, sampleEvent: r.sample_event, marketTypes: r.market_types })),
+    });
+  }
+
+  // 6a. Batch-insert new-to-table rows.
+  const COLS = ["sport","series_id","tags","sample_event","live_event_count","market_types","status","first_seen","last_seen"];
+  for (let i = 0; i < toInsert.length; i += 100) {
+    const chunk = toInsert.slice(i, i + 100);
+    const placeholders = chunk.map((_, ri) =>
+      `(${COLS.map((_, ci) => `$${ri * COLS.length + ci + 1}`).join(", ")})`
+    ).join(", ");
+    const values = chunk.flatMap(row => COLS.map(c => row[c] ?? null));
+    await neonQuery(
+      `INSERT INTO ${POLY_SPORTS_TABLE} (${COLS.join(", ")}) VALUES ${placeholders} ON CONFLICT (sport) DO NOTHING`,
+      values, env, { write: true }
+    );
+  }
+
+  // 6b. Reconcile: slug since added to POLY_SERIES → adopted; vetted-and-rejected in code
+  // (POLY_DISMISSED_SPORTS) → dismissed. Same self-clearing funnel as the Kalshi scan.
+  const knownArr = [...knownSlugs];
+  const knownPh = knownArr.map((_, i) => `$${i + 1}`).join(", ");
+  await neonQuery(
+    `UPDATE ${POLY_SPORTS_TABLE} SET status='adopted' WHERE status IN ('new','shortlisted') AND sport IN (${knownPh})`,
+    knownArr, env, { write: true }
+  );
+  if (POLY_DISMISSED_SPORTS.length) {
+    const dismPh = POLY_DISMISSED_SPORTS.map((_, i) => `$${i + 1}`).join(", ");
+    await neonQuery(
+      `UPDATE ${POLY_SPORTS_TABLE} SET status='dismissed' WHERE status IN ('new','shortlisted') AND sport IN (${dismPh})`,
+      [...POLY_DISMISSED_SPORTS], env, { write: true }
+    );
+  }
+
+  // 6c. Refresh enrichment for existing new/shortlisted rows so triage hints track current
+  // liquidity, not first-seen (first_seen DESC matches the report's display order). Best-effort.
+  const refreshRows = await neonQuery(
+    `SELECT sport, series_id FROM ${POLY_SPORTS_TABLE} WHERE status IN ('new','shortlisted')
+     ORDER BY first_seen DESC, sport LIMIT 60`,
+    [], env, { write: true }
+  );
+  await mapPool(refreshRows, 3, async (r) => {
+    const e = await enrichPolySport(r.series_id);
+    if (e) await neonQuery(
+      `UPDATE ${POLY_SPORTS_TABLE} SET sample_event=$2, live_event_count=$3, market_types=$4 WHERE sport = $1`,
+      [r.sport, e.sample_event, e.live_event_count, e.market_types], env, { write: true }
+    );
+  });
+
+  return jsonResponse({
+    ok: true, isFirstRun, catalogCount: catalog.length,
+    inserted: toInsert.length, newCount: enrichTargets.length, refreshed: refreshRows.length,
+    newSports: enrichTargets.map(r => r.sport),
+  });
 }
 
 // GET /api/polymarket-deltas — multi-day Kalshi-vs-Polymarket ML divergence distribution (Phase 1a
@@ -2791,6 +2998,9 @@ async function handleSportsbookDeltas({ path, request, env }) {
 }
 
 export async function handleShadowRoutes({ path, request, env, cache }) {
+  const polyScanResp = await handlePolymarketScan({ path, request, env });
+  if (polyScanResp) return polyScanResp;
+
   const polyDeltaResp = await handlePolymarketDeltas({ path, request, env });
   if (polyDeltaResp) return polyDeltaResp;
 

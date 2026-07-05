@@ -30,6 +30,25 @@ const GAMMA = "https://gamma-api.polymarket.com";
 // four leagues; only the in-season ones produce events, so off-season leagues are free no-ops.
 export const POLY_SERIES = { mlb: "3", nba: "10345", nhl: "10346", wnba: "10105" };
 
+// Gamma sport slugs vetted-and-rejected for the observatory. The polymarket-scan cron reconciles
+// these to status='dismissed' in polymarket_sports_seen, so triaged noise clears on a code change
+// instead of a manual ?dismiss= curl (mirror of series-config.js DISMISSED_SERIES).
+export const POLY_DISMISSED_SPORTS = [];
+
+// Gamma league catalog (GET /sports): ~300 rows of { sport: slug, series: id, tags, ... }. The
+// discovery unit for /api/polymarket-scan — a new row = Polymarket added a league. Failure-closed.
+export async function fetchPolySportsCatalog() {
+  try {
+    const res = await fetch(`${GAMMA}/sports`, {
+      headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0" },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return [];
+    const j = await res.json();
+    return Array.isArray(j) ? j.filter((s) => s && s.sport) : [];
+  } catch { return []; }
+}
+
 // A real two-sided market (not an untraded 0.5/0.5 placeholder). bestBid/bestAsk describe the
 // first outcome's token; degenerate book = no price discovery yet.
 function _liquid(m) {
@@ -108,16 +127,18 @@ export function normalizeEvent(event, nowMs = Date.now()) {
   return { sport: tk.sport, away, home, gameDate, ml, mlTokens, totals: Object.values(totalsByLine) };
 }
 
-async function _fetchSeriesEvents(series) {
+// Raw open events for one Gamma series id. Returns null on fetch failure (vs [] for a live-but-
+// empty league) so the scan's enrichment can skip the write instead of stamping a fake zero.
+export async function fetchPolySeriesEvents(series, limit = 100) {
   try {
-    const res = await fetch(`${GAMMA}/events?series_id=${series}&closed=false&limit=100`, {
+    const res = await fetch(`${GAMMA}/events?series_id=${series}&closed=false&limit=${limit}`, {
       headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0" },
       signal: AbortSignal.timeout(10000),
     });
-    if (!res.ok) return [];
+    if (!res.ok) return null;
     const j = await res.json();
-    return Array.isArray(j) ? j : [];
-  } catch { return []; }
+    return Array.isArray(j) ? j : null;
+  } catch { return null; }
 }
 
 const _ymd = (d) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
@@ -137,10 +158,10 @@ export async function fetchPolymarketGames({ cache, isBustCache, now = new Date(
   const inWindow = (d) => d >= lo && d <= hi;
 
   const leagues = Object.entries(POLY_SERIES);
-  const lists = await Promise.all(leagues.map(([, series]) => _fetchSeriesEvents(series)));
+  const lists = await Promise.all(leagues.map(([, series]) => fetchPolySeriesEvents(series)));
   const games = [];
   for (const list of lists) {
-    for (const ev of list) {
+    for (const ev of (list || [])) {
       const g = normalizeEvent(ev, now.getTime());
       if (g && inWindow(g.gameDate)) games.push(g);
     }
