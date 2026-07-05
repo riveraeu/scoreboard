@@ -3,6 +3,7 @@
 // umpire-by-game, H2H starts, per-game pitcher IDs. The dense pitcher lambda-input math.
 // Split out of mlb.js Phase C (2026-05-29). Zero behavior change.
 import { MLB_ID_TO_ABBR } from "./mlb-shared.js";
+import { pLimit } from "./utils.js";
 
 export async function buildPitcherKPct(mlbSched) {
   try {
@@ -257,20 +258,23 @@ export async function buildPitcherKPct(mlbSched) {
       }
     }
     // Step 1: fetch game logs (2026 for avgP/avgBF/stdBF/recentK; also 2025 for H2H hand component)
+    // Concurrency-capped: ~30 probables × 2 seasons fired at once fed the run-wide FD
+    // exhaustion (EMFILE/EBUSY 2026-07-05) — see pLimit in utils.js.
+    const _pitchLimit = pLimit(16);
     let glFetch = [], glFetch25 = [];
     try {
       const settle = arr => Promise.allSettled(arr).then(rs => rs.map((r, i) => r.status === 'fulfilled' ? r.value : { id: allIds[i], splits: [] }));
       [glFetch, glFetch25] = await Promise.all([
-        settle(allIds.map(id =>
+        settle(allIds.map(id => _pitchLimit(() =>
           fetch(`https://statsapi.mlb.com/api/v1/people/${id}/stats?stats=gameLog&group=pitching&season=2026&gameType=R`, { headers: { "User-Agent": "Mozilla/5.0" } })
             .then(r => r.ok ? r.json() : {}).catch(() => ({}))
             .then(d => ({ id, splits: d.stats?.[0]?.splits || [] }))
-        )),
-        settle(allIds.map(id =>
+        ))),
+        settle(allIds.map(id => _pitchLimit(() =>
           fetch(`https://statsapi.mlb.com/api/v1/people/${id}/stats?stats=gameLog&group=pitching&season=2025&gameType=R`, { headers: { "User-Agent": "Mozilla/5.0" } })
             .then(r => r.ok ? r.json() : {}).catch(() => ({}))
             .then(d => ({ id, splits: d.stats?.[0]?.splits || [] }))
-        ))
+        )))
       ]);
     } catch (err) { console.error("[buildPitcherKPct] gamelog fetch failed:", err?.message || err); }
     // Avg pitches per start from 2026 game logs (starts-only — accurate for pitchers with mixed starter/reliever roles)
@@ -400,13 +404,17 @@ export async function buildPitcherKPct(mlbSched) {
       }
       const PBP_FIELDS = "allPlays,matchup,pitcher,id,playEvents,isPitch,details,code";
       const _pbpAc = new AbortController();
-      const _pbpTimer = setTimeout(() => _pbpAc.abort(), 5000);
+      // 5s → 8s when the fan-out became concurrency-capped: ~150 fetches now run in ~10
+      // waves of 16 instead of all at once, so the whole-phase abort needs more headroom.
+      const _pbpTimer = setTimeout(() => _pbpAc.abort(), 8000);
+      // Concurrency-capped: this was the widest burst in the run (~30 pitchers × 5 games
+      // = up to 150 simultaneous play-by-play connections).
       const pbpFetch = await Promise.all(
-        [...allGamePks].map(gk =>
+        [...allGamePks].map(gk => _pitchLimit(() =>
           fetch(`https://statsapi.mlb.com/api/v1/game/${gk}/playByPlay?fields=${PBP_FIELDS}`, { headers: { "User-Agent": "Mozilla/5.0" }, signal: _pbpAc.signal })
             .then(r => r.ok ? r.json() : {}).catch(() => ({}))
             .then(d => ({ gk, plays: d.allPlays || [] }))
-        )
+        ))
       );
       clearTimeout(_pbpTimer);
       const playsByGk = Object.fromEntries(pbpFetch.map(({ gk, plays }) => [gk, plays]));

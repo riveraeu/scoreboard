@@ -45,6 +45,32 @@ export function fetchSafe(label, url, opts) {
     .catch(e => { console.error(`[${label}]`, e?.message ?? String(e), url.slice(0, 120)); return {}; });
 }
 
+// Bounded-concurrency gate: pLimit(n) returns a wrapper that runs at most n tasks at
+// once, queueing the rest. Unbounded Promise.all fetch fan-outs (player hydration,
+// pitcher gamelogs/play-by-play) exhausted the function instance's file descriptors on
+// big slates (EMFILE/EBUSY, 2026-07-05) — once exhausted, EVERY outbound fetch in the
+// run (ESPN and Upstash alike) failed with "TypeError: fetch failed". Wrap the task,
+// keep the Promise.all: `await Promise.all(keys.map(k => limit(() => work(k))))`.
+export function pLimit(concurrency) {
+  let active = 0;
+  const queue = [];
+  const next = () => {
+    active--;
+    if (queue.length) queue.shift()();
+  };
+  return (fn) => new Promise((resolve, reject) => {
+    const run = () => {
+      active++;
+      Promise.resolve().then(fn).then(
+        (v) => { resolve(v); next(); },
+        (e) => { reject(e); next(); },
+      );
+    };
+    if (active < concurrency) run();
+    else queue.push(run);
+  });
+}
+
 // JSON response that also sets an HttpOnly cookie (used by auth login/register/logout).
 export function cookieResponse(data, cookie) {
   return new Response(JSON.stringify(data), {

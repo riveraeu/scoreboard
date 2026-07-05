@@ -3,7 +3,7 @@
 // imports + helpers needed only by the tonight pipeline moved with the block. The
 // outer indentation level (8 spaces) is preserved from the original nesting; future
 // phases will reformat.
-import { ALLOWED_ORIGIN, corsHeaders, jsonResponse, errorResponse, fetchSafe, parseGameOdds, parseGameScores, parseTopPlayers, buildSoftTeamAbbrs, buildHardTeamAbbrs, buildTeamRankMap } from "../utils.js";
+import { ALLOWED_ORIGIN, corsHeaders, jsonResponse, errorResponse, fetchSafe, parseGameOdds, parseGameScores, parseTopPlayers, buildSoftTeamAbbrs, buildHardTeamAbbrs, buildTeamRankMap, pLimit } from "../utils.js";
 import { PARK_KFACTOR, PARK_HITFACTOR, PARK_RUNFACTOR, UMPIRE_KFACTOR, log5K, poissonCDF, log5HitRate, simulateKsDist, kDistPct, buildNbaStatDist, nbaDistPct, simulateMLBTotalDist, simulateMLBJoint, simulateNBAJoint, mlPctFromJoint, joint3WayPct, spreadPctFromJoint, simulateNBATotalDist, simulateNHLTotalDist, totalDistPct, simulateTeamTotalDist, simulateTeamPtsDist, lambdaForPoissonTail, muForNegBinTail, negBinCDF, meanForNormalTail, normCDF } from "../simulate.js";
 import { buildLineupKPct, buildBarrelPct, buildPitcherKPct, MLB_ID_TO_ABBR, buildMlbByteam, buildMlbInjuryReport } from "../mlb.js";
 import { buildNbaDepthChartPos, buildNbaDvpFromBettingPros, buildNbaPaceData, buildNbaPlayerPosFromSleeper, buildNbaUsageRate, buildNbaInjuryReport, buildNbaByteam } from "../nba.js";
@@ -1326,9 +1326,17 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
         const uniquePlayerKeys = [...new Map(loopMarkets.map((m) => [`${m.sport}|${m.playerName}`, m])).keys()];
         const playerInfoMap = {};
         const keysNeedingInfo = [];
+        // Shared network-concurrency gate for the player-hydration fan-outs below. Unbounded
+        // Promise.all over 100+ players exhausted the instance's file descriptors on big
+        // slates (EMFILE/EBUSY 2026-07-05) and took down every subsequent fetch in the run.
+        const _netLimit = pLimit(20);
         if (CACHE2) {
-          // Parallel cache reads — serial await per-key was seconds of dead time for large slates
-          const pinfoVals = await Promise.all(uniquePlayerKeys.map(k => CACHE2.get(`pinfo:${k}`, "json").catch(() => null)));
+          // Batched cache reads — one MGET pipeline instead of N parallel GET connections
+          // (getMany falls back to parallel GETs only on non-Upstash cache bindings).
+          const _pinfoKeys = uniquePlayerKeys.map(k => `pinfo:${k}`);
+          const pinfoVals = CACHE2.getMany
+            ? await CACHE2.getMany(_pinfoKeys, "json")
+            : await Promise.all(_pinfoKeys.map(k => CACHE2.get(k, "json").catch(() => null)));
           for (let i = 0; i < uniquePlayerKeys.length; i++) {
             const key = uniquePlayerKeys[i], cached = pinfoVals[i];
             if (cached) {
@@ -1348,8 +1356,8 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
         };
         const MAX_PINFO_FETCHES = 150;
         const pInfoErrors = [];
-        // Parallel ESPN player-info fetches (pinfo cached 7 days so this is rare on warm caches)
-        await Promise.all(keysNeedingInfo.slice(0, MAX_PINFO_FETCHES).map(async key => {
+        // ESPN player-info fetches, concurrency-capped (pinfo cached 7 days so this is rare on warm caches)
+        await Promise.all(keysNeedingInfo.slice(0, MAX_PINFO_FETCHES).map(key => _netLimit(async () => {
           const [sport, ...nameParts] = key.split("|");
           const playerName = nameParts.join("|");
           try {
@@ -1374,7 +1382,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           } catch (e) {
             pInfoErrors.push({ key, reason: "exception", error: String(e), cause: String(e?.cause?.code || e?.cause?.message || e?.cause || "") || undefined });
           }
-        }));
+        })));
         const isDebug = isDebugMode || params.get("debug") === "true";
         const GAMELOG_API = {
           nba: /* @__PURE__ */ __name((id) => `https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/${id}/gamelog?season=2026`, "nba"),
@@ -1394,8 +1402,11 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
         const _pitchPlayerKeys = new Set(loopMarkets.filter(m => m.stat === "strikeouts" && m.sport === "mlb").map(m => `mlb|${m.playerName}`));
         const _pitchGlCacheKey = (k) => glCacheKey(k).replace("242526v2", "242526pv1");
         if (CACHE2) {
-          // Parallel cache lookups — serial await per-key was ~100ms × N players = seconds of dead time
-          const cachedVals = await Promise.all(keysForGamelog.map(k => CACHE2.get(_pitchPlayerKeys.has(k) ? _pitchGlCacheKey(k) : glCacheKey(k), "json").catch(() => null)));
+          // Batched cache lookups — one MGET pipeline instead of N parallel GET connections
+          const _glKeys = keysForGamelog.map(k => _pitchPlayerKeys.has(k) ? _pitchGlCacheKey(k) : glCacheKey(k));
+          const cachedVals = CACHE2.getMany
+            ? await CACHE2.getMany(_glKeys, "json")
+            : await Promise.all(_glKeys.map(k => CACHE2.get(k, "json").catch(() => null)));
           for (let i = 0; i < keysForGamelog.length; i++) {
             if (cachedVals[i]) playerGamelogs[keysForGamelog[i]] = keysForGamelog[i].startsWith("mlb|") ? _normGlOpp(cachedVals[i]) : cachedVals[i];
             else keysNeedingGamelog.push(keysForGamelog[i]);
@@ -1510,9 +1521,10 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           }
         }
         __name(fetchGamelog, "fetchGamelog");
-        // Fetch all uncached gamelogs in parallel — batching with delays was adding ~26s for 60 players
-        const GL_BATCH = 5; // kept for pitcher loop below
-        await Promise.all(keysNeedingGamelog.map((k) => fetchGamelog(k, null, _pitchPlayerKeys.has(k))));
+        // Fetch all uncached gamelogs through the shared concurrency gate — full parallel
+        // (pre-2026-07-05) hit the FD ceiling on big slates; fixed delay batching (pre-2026-05)
+        // added ~26s for 60 players. pLimit keeps the pipe full without the burst.
+        await Promise.all(keysNeedingGamelog.map((k) => _netLimit(() => fetchGamelog(k, null, _pitchPlayerKeys.has(k)))));
         const pitcherGamelogs = {};
         // Merge probables (ESPN source) with pitcherInfoByTeam (MLB Stats API source).
         // pitcherInfoByTeam is more reliable for early-day requests before ESPN announces probables.
@@ -1526,18 +1538,23 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
         }
         const pitcherEntriesToLoad = [..._allPitcherEntries.entries()];
         if (pitcherEntriesToLoad.length > 0) {
-          await Promise.all(pitcherEntriesToLoad.map(async ([teamAbbr, { name }]) => {
-            const pitcherKey = `mlb|${name}`;
-            const cached = CACHE2 ? await CACHE2.get(_pitchGlCacheKey(pitcherKey), "json").catch(() => null) : null;
-            if (cached) pitcherGamelogs[teamAbbr] = { name, gl: _normGlOpp(cached) };
-          }));
+          if (CACHE2) {
+            const _pKeys = pitcherEntriesToLoad.map(([, { name }]) => _pitchGlCacheKey(`mlb|${name}`));
+            const _pVals = CACHE2.getMany
+              ? await CACHE2.getMany(_pKeys, "json")
+              : await Promise.all(_pKeys.map(k => CACHE2.get(k, "json").catch(() => null)));
+            for (let i = 0; i < pitcherEntriesToLoad.length; i++) {
+              const [teamAbbr, { name }] = pitcherEntriesToLoad[i];
+              if (_pVals[i]) pitcherGamelogs[teamAbbr] = { name, gl: _normGlOpp(_pVals[i]) };
+            }
+          }
           const uncachedPitchers = pitcherEntriesToLoad.filter(([teamAbbr]) => !pitcherGamelogs[teamAbbr]);
-          await Promise.all(uncachedPitchers.map(async ([teamAbbr, { name, id }]) => {
+          await Promise.all(uncachedPitchers.map(([teamAbbr, { name, id }]) => _netLimit(async () => {
             const pitcherKey = `mlb|${name}`;
             await fetchGamelog(pitcherKey, id, true);
             const gl = playerGamelogs[pitcherKey] || null;
             if (gl) pitcherGamelogs[teamAbbr] = { name, gl };
-          }));
+          })));
         }
         const leagueAvgCache = {};
         for (const key of ["nba|points", "nba|rebounds", "nba|assists", "nba|threePointers", "wnba|points", "wnba|rebounds", "wnba|assists", "wnba|threePointers", "nhl|points"]) {

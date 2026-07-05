@@ -56,6 +56,35 @@ function makeCache(env) {
         }
         return s;
       },
+      // Batched read: one MGET per chunk instead of N parallel GETs. The per-player cache
+      // reads in the tonight pipeline (100+ keys) each opened their own Upstash connection,
+      // feeding the FD-exhaustion cascade (see pLimit in lib/utils.js). Chunked at 20 keys
+      // so a batch of large raw values (gamelogs run 50-200KB) can't approach the 10MB cap.
+      // Never throws: failed chunks yield nulls, matching the .catch(() => null) callers used.
+      async getMany(keys, type) {
+        const out = new Array(keys.length).fill(null);
+        const CHUNK = 20;
+        const chunks = [];
+        for (let i = 0; i < keys.length; i += CHUNK) chunks.push(i);
+        await Promise.all(chunks.map(async (start) => {
+          const slice = keys.slice(start, start + CHUNK);
+          const { result } = await cmd("MGET", ...slice);
+          if (!Array.isArray(result)) return;
+          for (let j = 0; j < slice.length; j++) {
+            let s = result[j];
+            if (s == null) continue;
+            if (typeof s === "string" && s.startsWith(GZ_PREFIX)) {
+              try { s = await gunzipFromString(s); } catch { continue; }
+            }
+            if (type === "json") {
+              try { out[start + j] = JSON.parse(s); } catch { /* leave null */ }
+            } else {
+              out[start + j] = s;
+            }
+          }
+        }));
+        return out;
+      },
       async put(key, value, opts = {}) {
         let v = typeof value === "string" ? value : JSON.stringify(value);
         if (v.length > KV_COMPRESS_THRESHOLD) {
