@@ -30,6 +30,7 @@
 //   npm run tune:kblend                       # rank-1 rungs, since the 6/13 K cutoff
 //   npm run tune:kblend -- --rank any         # all threshold rungs (sensitivity)
 //   npm run tune:kblend -- --since 2026-06-13 --train-frac 0.7 --boot 2000
+//   npm run tune:kblend -- --since 2026-05-26 --until 2026-06-13 --baseline-cap 0.5   # era-isolated, old formula
 //
 // GO rule (pre-committed): held-out Brier improvement over baseline with the 95%
 // bootstrap CI excluding zero. A GO justifies a forward-only L2 proposal (separate
@@ -62,6 +63,7 @@ function parseArgs() {
   const get = (flag) => { const i = args.indexOf(flag); return i >= 0 ? args[i + 1] : null; };
   return {
     since:     get("--since") || K_CUTOFF,
+    until:     get("--until"), // exclusive snapshot_date ceiling (client-side) — for era-isolated runs
     rank:      get("--rank"), // "any" or a number; default endpoint = 1
     trainFrac: parseFloat(get("--train-frac") || "0.7"),
     boot:      parseInt(get("--boot") || "2000", 10),
@@ -138,7 +140,7 @@ const fmtD = (x) => `${x >= 0 ? "+" : ""}${(x * 1000).toFixed(2)}`; // ΔBrier i
 
 // ── Main ───────────────────────────────────────────────────────────────────────
 async function main() {
-  const { since, rank, trainFrac, boot, seed, baselineCap } = parseArgs();
+  const { since, until, rank, trainFrac, boot, seed, baselineCap } = parseArgs();
   const BASELINE_CAP = baselineCap;
   const adminKey = process.env.ADMIN_KEY;
   if (!adminKey) {
@@ -150,7 +152,7 @@ async function main() {
   const qs = new URLSearchParams({ residual: "mlb|strikeouts", since });
   if (rank) qs.set("thresholdRank", rank);
   const url = `${PROD_BASE}/api/auth/shadow-analysis?${qs}`;
-  console.log(`\nK blend counterfactual — mlb|strikeouts  (since=${since}, rank=${rank || "1"})\n`);
+  console.log(`\nK blend counterfactual — mlb|strikeouts  (since=${since}${until ? `, until<${until}` : ""}, rank=${rank || "1"}, baselineCap=${BASELINE_CAP})\n`);
 
   let data;
   try {
@@ -168,6 +170,7 @@ async function main() {
   let lockTouched = 0, invariants = 0;
   const rows = [];
   for (const r of data.rows || []) {
+    if (until && String(r.snapshot_date).slice(0, 10) >= until) continue; // era-isolated runs
     if (r.direction === "under") { drops.underSide++; continue; } // over-framed math only; none exist today
     const f = r.features || {};
     const rawTruePct = num(f.rawTruePct);
