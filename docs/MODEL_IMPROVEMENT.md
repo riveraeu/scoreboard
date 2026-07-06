@@ -164,6 +164,23 @@ Two roads, picked by whether the lever is **historically reconstructable**.
   e.g. the live **HRR** uses empirical gamelog rates while the backtest uses a logit
   path): no shortcut. Ship against shadow, set the cutoff, and wait for post-cutoff
   `n≥200`. Slower; this is the common case for prop models.
+- **Third road — counterfactual re-scoring on resolved shadow rows (added 2026-07-05):**
+  when the lever is a *closed-form stage* of the live formula whose inputs are stamped
+  into `features` (blend weights, multiplicative adjusters — anything algebraically
+  invertible from stored intermediates), you don't need the backtest OR a forward wait:
+  invert the stage from the stored row (`rawTruePct`, components), re-score every
+  resolved play under a parameter grid, and select on Brier with the same discipline as
+  above — snapshot_date-ordered train/test split, winner picked on train only, clustered
+  bootstrap CI (cluster = the correlated unit, e.g. pitcher-start for K threshold rungs)
+  on the held-out ΔBrier. Include a round-trip check (baseline params must reproduce the
+  stored prediction; abort on >10% failure) so inversion bugs can't masquerade as signal.
+  Worked example: `npm run tune:kblend` (`scripts/tune/k-blend-counterfactual.js`) —
+  tests the K seasonRate-blend `capWeight` (axis A) against a global shrink-to-base-rate
+  (axis B) so "this input is over-weighted" is distinguished from "the whole spread is
+  too wide"; 2026-07-05 result: A GO at cap 0.5→0.4 (held-out ΔBrier +2.24m, CI-lo>0,
+  stable across the 7/03 capture seam), B fails OOS — the hit-rate anchor, not global
+  overdispersion, was the noise carrier. This is also the tool for the *removal* question
+  ("is an existing input noise?"): removal is the grid's zero point.
 
 To sweep a module-level const on the backtest, temporarily make it env-overridable
 (`Number(process.env.X_OVERRIDE) || <default>`), sweep, **then revert the shim** — don't

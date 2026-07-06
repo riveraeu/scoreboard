@@ -11,6 +11,7 @@
     "tune:residual": "node scripts/tune/residual-by-dimension.js",
     "tune:learncurve": "node scripts/tune/learning-curve.js",
     "tune:window": "node scripts/tune/window-recommender.js",
+    "tune:kblend": "node scripts/tune/k-blend-counterfactual.js",
     "backtest:weather": "node scripts/backtest/weather-hr-study.js",
     "backtest:umpire": "node scripts/backtest/umpire-k-study.js",
     "backtest:nbarest": "node scripts/backtest/nba-rest-study.js",
