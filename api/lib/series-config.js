@@ -217,4 +217,16 @@ export const DISMISSED_SERIES = [
   "KXNBACONF", // 7/05 triage: East vs West conference to win the NBA Finals — season-long futures
   // binary (one market/year, resolves next June). No repeatable daily flow to calibrate; same
   // season-futures class as KXNBANEWCHAMPION/KXNBACUPQUAL. DISMISS.
+  // 7/06 triage (3 detected):
+  "KXHKANEKNIGHT", // "Harry Kane Knighted in 2026" — UK honours novelty (tagged Soccer but it's a
+  // royal-honours announcement, news/insider-driven). No model surface; 1 mkt/year. window_fit=true
+  // is the longshot-side false positive. Same award/news-futures class as KXSUPERBALLONDOR and the
+  // manager-departure dismissals. DISMISS.
+  "KXNBASUMMER", // NBA Summer League CHAMPION futures — tournament-winner outright on top of the
+  // no-rating-source problem that already killed KXNBASUMMERGAME (7/01): SL rosters are
+  // rookie/two-way/G-League, nba.js regular-season ratings don't transfer, and a champion market
+  // additionally needs a tournament sim. 0 live mkts. DISMISS.
+  "KXBALOGUNPLAY", // "Will Balogun Play Today" — per-player appearance/team-news market (coach
+  // decision), same class as KXWCPLAY and KXWCSTART. No player-availability model or pre-game
+  // lineup data source for soccer. DISMISS.
 ];
