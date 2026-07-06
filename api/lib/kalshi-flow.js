@@ -37,8 +37,11 @@ export function computeFlowFeatures(trades) {
 // Fetch the last `sinceHours` of trades for each ticker → Map<ticker, flowFeatures>.
 // Single page of 1000 per ticker (no cursor walk): our markets trade well under
 // 1000/day, and on the rare liquid-ML overflow the most-recent-1000 share is still a
-// valid flow read. First 429 aborts the remainder — return what we have, never retry-storm.
-export async function fetchTradeFlow(tickers, { sinceHours = 24, concurrency = 6 } = {}) {
+// valid flow read. Kalshi's public read tier is ~10 req/s — pace like the
+// kalshi-snapshot cron (few parallel + per-slot sleep, ~7 req/s here); an unpaced
+// pLimit(6) burst 429'd after ~90 tickers on first deploy. First 429 still aborts the
+// remainder — return what we have (`out.rateLimited` marks it), never retry-storm.
+export async function fetchTradeFlow(tickers, { sinceHours = 24, concurrency = 3, pauseMs = 400 } = {}) {
   const out = new Map();
   const list = [...new Set((tickers || []).filter(Boolean))];
   if (!list.length) return out;
@@ -53,10 +56,13 @@ export async function fetchTradeFlow(tickers, { sinceHours = 24, concurrency = 6
         { headers: { accept: "application/json" }, signal: AbortSignal.timeout(8000) },
       );
       if (r.status === 429) { rateLimited = true; return; }
-      if (!r.ok) return;
-      const j = await r.json();
-      out.set(ticker, computeFlowFeatures(j?.trades));
+      if (r.ok) {
+        const j = await r.json();
+        out.set(ticker, computeFlowFeatures(j?.trades));
+      }
     } catch { /* failure-closed: no stamp for this ticker */ }
+    await new Promise(res => setTimeout(res, pauseMs)); // hold the slot: caps at concurrency/pauseMs req/s
   })));
+  out.rateLimited = rateLimited;
   return out;
 }

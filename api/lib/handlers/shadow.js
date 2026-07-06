@@ -3119,8 +3119,8 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
         const f = flowMap.get(_tickerOf(p));
         if (f) { p._flow = f; stamped++; }
       }
-      flowMeta = { tickers: flowTickers.length, stamped, ms: Date.now() - _ft };
-      console.log(`[shadow-snapshot] flow stamp tickers=${flowMeta.tickers} stamped=${stamped} ${flowMeta.ms}ms`);
+      flowMeta = { tickers: flowTickers.length, stamped, rateLimited: flowMap.rateLimited === true, ms: Date.now() - _ft };
+      console.log(`[shadow-snapshot] flow stamp tickers=${flowMeta.tickers} stamped=${stamped} rateLimited=${flowMeta.rateLimited} ${flowMeta.ms}ms`);
     } catch (e) {
       console.log(`[shadow-snapshot] flow stamp failed: ${e?.message ?? e}`);
     }
