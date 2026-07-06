@@ -1259,7 +1259,7 @@ const _BAND_ORDER = Object.keys(_BAND_MID); // low → high, for adjacency/coher
 // Keyed by `${sport}|${COALESCE(stat,game_type)}`. Keep in sync with MEMORY.md "Model changes".
 // Only cutoffs within the trailing window actually trim; older ones are harmless.
 const FORMULA_CUTOFFS = {
-  "mlb|strikeouts": "2026-06-13", // K_FORM_SIGMA 0.22→0.26
+  "mlb|strikeouts": "2026-07-06", // blend capWeight 0.5→0.4 (tune:kblend); prior: K_FORM_SIGMA 0.26 @ 2026-06-13
   "mlb|hrr":        "2026-06-22", // FIP-over-WHIP split + game-time weather (was 2026-06-10: OPS 0.4→0.25, knee 72→68)
   "mlb|hits":       "2026-06-12", // ticker fix — data starts here
   "mlb|totalBases": "2026-06-30", // capture liquidity gate (2b67064) — pre-fix rows contaminated by lone-quote 94¢ artifacts (was 2026-06-12)

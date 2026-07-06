@@ -1155,7 +1155,10 @@ export async function emitPropPlays({
     // empirical threshold hit rate from the player's own gamelog. The reference rate
     // matches each sport's existing no-sim fallback formula so the blend is a smooth
     // transition. capWeight is the max anchor strength at 20+ games:
-    //   - 0.50 for sim-based props (NBA/WNBA/NHL/MLB-K) — pure-sim drift correction
+    //   - 0.50 for sim-based props (NBA/WNBA/NHL) — pure-sim drift correction
+    //   - 0.40 for MLB strikeouts (lowered 0.5→0.4 2026-07-06) — tune:kblend
+    //     counterfactual: the hit-rate anchor was the residual sweep's noise carrier
+    //     (held-out ΔBrier +2.24m at 0.4, CI-lo>0; global shrink failed OOS).
     //   - 0.25 for MLB HRR (added later same day) — already rate-based at the logit
     //     core, so the blend is a sanity check against multiplicative stacking
     //     (park × ops × whip × barrel), not a real damper.
@@ -1167,7 +1170,7 @@ export async function emitPropPlays({
     const rawTruePct = (() => {
       if (sport === "mlb" && stat === "strikeouts") {
         const _kRef = softPct !== null ? (primaryPct + softPct) / 2 : primaryPct;
-        if (simPctOut !== null) return _propBlend(simPctOut, _kRef, allVals.length);
+        if (simPctOut !== null) return _propBlend(simPctOut, _kRef, allVals.length, 0.4);
         // Fallback: average of season rate + soft matchup rate
         const parts = [primaryPct, ...softPct !== null ? [softPct] : []];
         return parts.reduce((a, b) => a + b, 0) / parts.length;

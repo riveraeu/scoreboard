@@ -5,15 +5,16 @@
 // l10HitRate/blendedHitRate) shows the over-weighted signature at trusted n — high
 // hit-rate buckets run ~-9pp overconfident, low buckets ~+12pp underconfident — and
 // rawTruePct is overdispersed. Two rival explanations with different fixes:
-//   A) the empirical hit-rate anchor in _propBlend (capWeight 0.5, props.js) is
-//      over-weighted  → fix = lower capWeight for K only
+//   A) the empirical hit-rate anchor in _propBlend (props.js) is over-weighted
+//      → fix = lower capWeight for K only (RESULT: GO — 0.5→0.4 shipped 2026-07-06)
 //   B) global overdispersion — the whole prediction spread is too wide
 //      → fix = calibration shrink / sigma, NOT the blend
 // This script re-scores every resolved K row under both counterfactual axes and picks
 // on out-of-sample Brier. It is analysis-only: no production code paths change.
 //
 // Reconstruction (exactly inverts props.js): rawTruePct = (1-w)·simPct + w·kRef with
-// kRef = (seasonPct+softPct)/2 (or seasonPct alone) and w = min(1, seasonGames/20)·0.5.
+// kRef = (seasonPct+softPct)/2 (or seasonPct alone) and w = min(1, seasonGames/20)·cap,
+// where cap = the production capWeight that generated the rows (--baseline-cap).
 // simPct is recovered by inversion (stored features.simPct is integer-rounded → used as
 // the round-trip validator, tolerance 1.5pp). Post-blend adjustments (fatigue multiplier,
 // monotonicity locks) are preserved as the multiplicative ratio model_true_pct/rawTruePct
@@ -39,7 +40,7 @@
 import { readFileSync } from "fs";
 
 const PROD_BASE = "https://scoreboard-ivory-xi.vercel.app";
-const K_CUTOFF = "2026-06-13"; // K_FORM_SIGMA 0.26 retune — earlier rows are a superseded formula
+const K_CUTOFF = "2026-07-06"; // capWeight 0.5→0.4 shipped (this study's GO) — earlier rows are a superseded formula
 const CAPTURE_SEAM = "2026-07-03"; // capture-all doctrine shipped — row mix changes here
 
 // ── Env loading (mirrors residual-by-dimension.js) ─────────────────────────────
@@ -65,13 +66,17 @@ function parseArgs() {
     trainFrac: parseFloat(get("--train-frac") || "0.7"),
     boot:      parseInt(get("--boot") || "2000", 10),
     seed:      parseInt(get("--seed") || "20260705", 10),
+    baselineCap: parseFloat(get("--baseline-cap") || String(DEFAULT_BASELINE_CAP)),
   };
 }
 
 // ── Grids ──────────────────────────────────────────────────────────────────────
 const CAP_GRID = [1.0, 0.75, 0.5, 0.4, 0.3, 0.25, 0.2, 0.1, 0];
 const SHRINK_GRID = [1.0, 0.95, 0.9, 0.85, 0.8, 0.7, 0.6];
-const BASELINE_CAP = 0.5; // current production capWeight for K (props.js _propBlend)
+// Production capWeight for the analyzed window — MUST match what generated the rows or the
+// inversion is wrong (the round-trip check aborts loudly on mismatch). 0.4 since 2026-07-06;
+// pass --baseline-cap 0.5 with --since before that to re-analyze the old-formula era.
+const DEFAULT_BASELINE_CAP = 0.4;
 
 // ── Small utils ────────────────────────────────────────────────────────────────
 const num = (v) => (v == null ? null : Number(v));
@@ -133,7 +138,8 @@ const fmtD = (x) => `${x >= 0 ? "+" : ""}${(x * 1000).toFixed(2)}`; // ΔBrier i
 
 // ── Main ───────────────────────────────────────────────────────────────────────
 async function main() {
-  const { since, rank, trainFrac, boot, seed } = parseArgs();
+  const { since, rank, trainFrac, boot, seed, baselineCap } = parseArgs();
+  const BASELINE_CAP = baselineCap;
   const adminKey = process.env.ADMIN_KEY;
   if (!adminKey) {
     console.error("Error: ADMIN_KEY not set.");
@@ -224,7 +230,7 @@ async function main() {
   const baseP = pAt(BASELINE_CAP, 1.0);
 
   // ── Axis A: capWeight grid (s=1) ───────────────────────────────────────────
-  console.log("Axis A — capWeight (hit-rate anchor weight; production = 0.5)");
+  console.log(`Axis A — capWeight (hit-rate anchor weight; baseline = ${BASELINE_CAP})`);
   console.log("   cap    trainBrier  testBrier");
   let bestCap = BASELINE_CAP, bestCapTrain = Infinity;
   for (const c of CAP_GRID) {
@@ -257,7 +263,7 @@ async function main() {
   const mktTest = mktRows.length ? brier(mktRows, (r) => r.marketP) : null;
 
   console.log(`\nHeld-out test set (n=${test.length}, ${new Set(test.map((r) => r.cluster)).size} pitcher-starts) — winners picked on train only`);
-  console.log(`  baseline (cap 0.5)              Brier ${fmtB(baseTest)}`);
+  console.log(`  baseline (cap ${BASELINE_CAP})              Brier ${fmtB(baseTest)}`);
   if (mktTest != null) console.log(`  market                          Brier ${fmtB(mktTest)}   (reference)`);
 
   const candidates = [

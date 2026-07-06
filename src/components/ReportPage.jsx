@@ -597,6 +597,11 @@ const SCHEDULED_CHECKPOINTS = [
   // green) — re-check whether yes_ask/volume populated. [[project-lmbgame-vet]]
   { date: "2026-07-15", tone: "gray", label: "Re-check KXLMBGAME liquidity", short: "KXLMBGAME recheck",
     why: "Dismissed 7/01 for dead Kalshi books (0 vol/OI, no MM) with the model side green — if yes_ask now populates, un-dismiss and ship the Pythag-λ model" },
+  // K blend capWeight 0.5→0.4 shipped 2026-07-06 (tune:kblend GO); the held-out curve kept
+  // improving below 0.4 but 0.4 was the train-picked winner — re-run on fresh post-cutoff rows
+  // (~10 rank-1/day → n≈200 by here) before walking it lower. [[project_k_blend_counterfactual]]
+  { date: "2026-07-27", tone: "blue", label: "Re-run tune:kblend (walk K capWeight below 0.4?)", short: "tune:kblend recheck",
+    why: "capWeight 0.5→0.4 shipped 7/06 off the counterfactual GO; held-out Brier kept improving toward cap=0 but selecting below the train-picked 0.4 would have been test-peeking — re-run tune:kblend on post-7/06 rows (baseline now 0.4) at n≥200" },
 ];
 // INPUT_SEARCH_EXHAUSTED + _stillExhausted moved to api/lib/model-holds.js (2026-07-01, imported
 // above) — shared with the shadow-report daily brief so both surfaces agree on parked diagnostics.

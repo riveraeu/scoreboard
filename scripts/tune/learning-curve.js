@@ -33,7 +33,7 @@ const PROD_BASE = "https://scoreboard-ivory-xi.vercel.app";
 
 // Per-category formula cutoff — mirrors FORMULA_CUTOFFS in api/lib/handlers/shadow.js; --since overrides.
 const FORMULA_CUTOFFS = {
-  "mlb|strikeouts": "2026-06-13",
+  "mlb|strikeouts": "2026-07-06", // blend capWeight 0.5→0.4
   "mlb|hrr":        "2026-06-22",
   "mlb|hits":       "2026-06-12",
   "mlb|totalBases": "2026-06-30", // capture liquidity gate — pre-fix rows contaminated by 94¢ artifacts

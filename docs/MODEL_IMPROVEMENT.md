@@ -179,7 +179,9 @@ Two roads, picked by whether the lever is **historically reconstructable**.
   (axis B) so "this input is over-weighted" is distinguished from "the whole spread is
   too wide"; 2026-07-05 result: A GO at cap 0.5→0.4 (held-out ΔBrier +2.24m, CI-lo>0,
   stable across the 7/03 capture seam), B fails OOS — the hit-rate anchor, not global
-  overdispersion, was the noise carrier. This is also the tool for the *removal* question
+  overdispersion, was the noise carrier. Shipped 2026-07-06 (K `FORMULA_CUTOFFS`
+  restamped; the held-out curve suggested <0.4 but 0.4 was the train-picked winner —
+  re-run at post-cutoff n≥200 before walking lower). This is also the tool for the *removal* question
   ("is an existing input noise?"): removal is the grid's zero point.
 
 To sweep a module-level const on the backtest, temporarily make it env-overridable
