@@ -602,6 +602,16 @@ const SCHEDULED_CHECKPOINTS = [
   // (~10 rank-1/day → n≈200 by here) before walking it lower. [[project_k_blend_counterfactual]]
   { date: "2026-07-27", tone: "blue", label: "Re-run tune:kblend (walk K capWeight below 0.4?)", short: "tune:kblend recheck",
     why: "capWeight 0.5→0.4 shipped 7/06 off the counterfactual GO; held-out Brier kept improving toward cap=0 but selecting below the train-picked 0.4 would have been test-peeking — re-run tune:kblend on post-7/06 rows (baseline now 0.4) at n≥200" },
+  // 7/05 cross-category sweep: hits showed the K-shaped lower-cap curve but NO-GO (+1.13m, CI
+  // straddles) AND the effect flipped sign across the 7/03 capture-all seam — the post-seam row
+  // mix (full-curve longshots) may change the answer. ~26 rank-any rows/day → ~950 post-seam
+  // rows by here; run post-seam-only. [[project_k_blend_counterfactual]]
+  { date: "2026-08-10", tone: "blue", label: "Re-run tune:kblend --category mlb|hits (post-seam only)", short: "kblend hits recheck",
+    why: "7/05 sweep: K-shaped curve but NO-GO and seam-unstable (pre +2.97m / post −0.99m) — re-run with --since 2026-07-03 so the capture-all row mix answers for itself (~950 post-seam rank-any rows by now)" },
+  // wnba|points showed the same K-shaped curve, underpowered (+2.01m, CI ±5m at test n=119);
+  // ~10 rank-any rows/day. Same sitting as the hits recheck. [[project_k_blend_counterfactual]]
+  { date: "2026-08-10", tone: "blue", label: "Re-run tune:kblend --category wnba|points", short: "kblend wnba recheck",
+    why: "7/05 sweep: K-shaped lower-cap curve, NO-GO on power only (train pick 0.3, +2.01m, CI [−3.13,+7.46]) — re-run at ~750 total rows; if CI-lo>0, propose the WNBA capWeight cut same as K" },
 ];
 // INPUT_SEARCH_EXHAUSTED + _stillExhausted moved to api/lib/model-holds.js (2026-07-01, imported
 // above) — shared with the shadow-report daily brief so both surfaces agree on parked diagnostics.
