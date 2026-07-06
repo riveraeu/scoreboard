@@ -237,7 +237,7 @@ const DEDICATED = new Set([
 // uniform x* set, present across EVERY category. tune:residual ranks these first (they're
 // market-independent, so slicing model-residual on them isn't circular, unlike the model
 // intermediates the catch-all also logs). Pure capture — no formula consumes it.
-function exogenousSignals(p) {
+export function exogenousSignals(p) { // exported for unit tests only
   const x = {};
   const set = (k, v) => { if (v != null) x[k] = v; };
   set("xVolume", p.kalshiVolume);   // Kalshi traded/resting volume — liquidity proxy

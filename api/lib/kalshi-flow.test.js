@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { computeFlowFeatures } from "./kalshi-flow.js";
+import { exogenousSignals } from "./handlers/shadow.js";
 
 test("empty tape stamps zero counts and no ratio fields", () => {
   const f = computeFlowFeatures([]);
@@ -55,4 +56,20 @@ test("malformed rows (missing/NaN count, missing taker_side) don't poison totals
 test("all-no flow gives 0% taker yes", () => {
   const f = computeFlowFeatures([{ count_fp: "10.00", taker_side: "no" }]);
   assert.equal(f.xFlowTakerYesPct, 0);
+});
+
+test("exogenousSignals folds p._flow into the x* namespace", () => {
+  const x = exogenousSignals({
+    kalshiVolume: 0,
+    _flow: { xFlowTrades: 2, xFlowContracts: 4, xFlowTakerYesPct: 100 },
+  });
+  assert.equal(x.xFlowTrades, 2);
+  assert.equal(x.xFlowContracts, 4);
+  assert.equal(x.xFlowTakerYesPct, 100);
+  assert.equal(x.xVolume, 0); // 0-volume preservation doctrine intact
+});
+
+test("exogenousSignals without _flow stamps no xFlow keys", () => {
+  const x = exogenousSignals({ kalshiVolume: 5 });
+  assert.equal(Object.keys(x).some(k => k.startsWith("xFlow")), false);
 });
