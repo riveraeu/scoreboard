@@ -4,6 +4,7 @@
 // Cron: 0 22 * * * (3pm PT — after most lineup confirmations, before first pitch).
 
 import { neonQuery, neonBatchUpsert, neonBatchResolve, neonBatchPrePriceUpdate, neonExec } from "../neon.js";
+import { fetchTradeFlow } from "../kalshi-flow.js";
 import { errorResponse, jsonResponse, selfOrigin } from "../utils.js";
 import { verifyJWT } from "../auth-utils.js";
 import { fetchCompletedMatches } from "../tennis.js";
@@ -247,6 +248,10 @@ function exogenousSignals(p) {
   set("xRestDays", p.pitcherDaysRest); // MLB pitcher days rest
   set("xWindOutMph", p.windOutMph);    // signed out-to-CF wind (MLB, when hydrated)
   set("xTempF", p.tempF);
+  // Kalshi taker-flow features (xFlow*) — stamped as p._flow by the snapshot handler
+  // from the public trade tape (kalshi-flow.js). Underscore-prefixed so the catch-all
+  // below never double-logs it; folding here keeps xFlow* inside the uniform x* set.
+  if (p._flow) for (const [k, v] of Object.entries(p._flow)) set(k, v);
   return x;
 }
 
@@ -3100,6 +3105,26 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
 
     annotateGroups(plays, snapshotDate);
 
+    // Taker-flow stamp (xFlow* via p._flow → exogenousSignals): one public trades fetch
+    // per distinct ticker. Failure-closed — any error logs and the snapshot proceeds
+    // unstamped; this block must never break the shadow_plays write.
+    let flowMeta = { tickers: 0, stamped: 0, ms: 0 };
+    try {
+      const _ft = Date.now();
+      const _tickerOf = (p) => p.kalshiTicker ?? p._ticker ?? null;
+      const flowTickers = [...new Set(plays.map(_tickerOf).filter(Boolean))];
+      const flowMap = await fetchTradeFlow(flowTickers);
+      let stamped = 0;
+      for (const p of plays) {
+        const f = flowMap.get(_tickerOf(p));
+        if (f) { p._flow = f; stamped++; }
+      }
+      flowMeta = { tickers: flowTickers.length, stamped, ms: Date.now() - _ft };
+      console.log(`[shadow-snapshot] flow stamp tickers=${flowMeta.tickers} stamped=${stamped} ${flowMeta.ms}ms`);
+    } catch (e) {
+      console.log(`[shadow-snapshot] flow stamp failed: ${e?.message ?? e}`);
+    }
+
     const rows = plays.map(p => ({
       id: shadowId(p, snapshotDate),
       snapshot_date: snapshotDate,
@@ -3259,6 +3284,7 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
       sportsbookLogged,
       qualified: _qualifiedCount,
       dropped: _droppedCount,
+      flow: flowMeta,
       coverage,
       coverageWarning,
       durationMs: Date.now() - t0,
