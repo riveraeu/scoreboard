@@ -174,7 +174,10 @@ Two roads, picked by whether the lever is **historically reconstructable**.
   bootstrap CI (cluster = the correlated unit, e.g. pitcher-start for K threshold rungs)
   on the held-out ΔBrier. Include a round-trip check (baseline params must reproduce the
   stored prediction; abort on >10% failure) so inversion bugs can't masquerade as signal.
-  Worked example: `npm run tune:kblend` (`scripts/tune/k-blend-counterfactual.js`) —
+  Worked example: `npm run tune:kblend` (`scripts/tune/k-blend-counterfactual.js`;
+  generalized 2026-07-05 to every `_propBlend` category via `--category` + a per-category
+  config — hits/TB add a sigmoid-cap inversion and an under-side flip; only K rows store
+  `simPct`, so non-K categories validate on implied-sim bounds only) —
   tests the K seasonRate-blend `capWeight` (axis A) against a global shrink-to-base-rate
   (axis B) so "this input is over-weighted" is distinguished from "the whole spread is
   too wide"; 2026-07-05 result: A GO at cap 0.5→0.4 (held-out ΔBrier +2.24m, CI-lo>0,
