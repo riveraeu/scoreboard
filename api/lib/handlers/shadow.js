@@ -255,6 +255,25 @@ export function exogenousSignals(p) { // exported for unit tests only
   return x;
 }
 
+// Coverage KV merge: within a day the distinct-game count is monotonic in the same sense
+// as the resolution count — a later run seeing FEWER games means staging decayed (games
+// started/settled out, next-day pre-listings dominate), not that capture un-happened. So
+// per-sport games/scheduled max-merge over the union of sports, and the warning recomputes
+// from the merged numbers. Keeps a manual evening snapshot run (deploy verification) from
+// clobbering the healthy cron stamp — the 2026-07-06 false "slate under-logged" banner.
+export function mergeCoverage(prev, curr) { // exported for unit tests only
+  const merged = {};
+  for (const src of [prev, curr]) {
+    for (const [sp, c] of Object.entries(src || {})) {
+      const m = merged[sp] ??= { games: 0, scheduled: 0 };
+      m.games = Math.max(m.games, Number(c?.games) || 0);
+      m.scheduled = Math.max(m.scheduled, Number(c?.scheduled) || 0);
+    }
+  }
+  const warning = Object.values(merged).some(c => c.scheduled > 0 && c.games / c.scheduled < 0.8);
+  return { coverage: merged, coverageWarning: warning };
+}
+
 function extractFeatures(p) {
   const features = { ...exogenousSignals(p) };
   for (const [k, v] of Object.entries(p)) {
@@ -3248,23 +3267,28 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
 
     // Coverage check: distinct games per sport in the logged rows vs the ESPN slate stamped
     // into staging by tonight. Warn-only at <80% — not every ESPN game has Kalshi markets,
-    // and doubleheaders collapse to one game on the rows side (sorted-pair|date keying).
+    // and doubleheaders collapse to one game on the rows side (sorted-pair keying).
     // Catches whole-game gaps: parse bugs, Kalshi outages, emit-path regressions.
+    // Only rows dated to the snapshot day count — null game_date rows are next-day
+    // pre-listings or dateless module rows, not evidence today's game was captured.
     let coverage = null;
     let coverageWarning = false;
     if (_schedule) {
       const _gamesBySport = {};
       for (const r of rows) {
-        if (!r.sport || !r.home_team || !r.away_team) continue;
+        if (!r.sport || !r.home_team || !r.away_team || r.game_date !== snapshotDate) continue;
         const pair = [r.home_team, r.away_team].sort().join(":");
-        (_gamesBySport[r.sport] ??= new Set()).add(`${pair}|${r.game_date || snapshotDate}`);
+        (_gamesBySport[r.sport] ??= new Set()).add(pair);
       }
-      coverage = {};
+      const _runCov = {};
       for (const [sp, scheduled] of Object.entries(_schedule)) {
-        const games = _gamesBySport[sp]?.size ?? 0;
-        coverage[sp] = { games, scheduled };
-        if (scheduled > 0 && games / scheduled < 0.8) coverageWarning = true;
+        _runCov[sp] = { games: _gamesBySport[sp]?.size ?? 0, scheduled };
       }
+      // Max-merge with the day's existing stamp (see mergeCoverage) so late/manual runs
+      // over decayed staging can only add coverage, never erase it. Read failure → merge
+      // with nothing, i.e. today's run stands alone (previous behavior).
+      const _prevCov = cache ? await cache.get(`shadow:coverage:${snapshotDate}`, "json").catch(() => null) : null;
+      ({ coverage, coverageWarning } = mergeCoverage(_prevCov?.coverage, _runCov));
       const _covStr = Object.entries(coverage).map(([sp, c]) => `${sp}=${c.games}/${c.scheduled}`).join(" ");
       if (coverageWarning) console.warn(`[shadow-snapshot] COVERAGE WARNING ${_covStr}`);
       else console.log(`[shadow-snapshot] coverage ${_covStr}`);
