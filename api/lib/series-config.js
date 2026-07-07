@@ -229,4 +229,21 @@ export const DISMISSED_SERIES = [
   "KXBALOGUNPLAY", // "Will Balogun Play Today" — per-player appearance/team-news market (coach
   // decision), same class as KXWCPLAY and KXWCSTART. No player-availability model or pre-game
   // lineup data source for soccer. DISMISS.
+  // 7/07 triage (6 detected):
+  "KXCYCLINGJERSEY", // Tour de France jersey classification winner (polka dot/green/white) — tournament
+  // futures over 150+ rider field; no cycling model or rating source. Same wide-field-outright class
+  // as KXCYCLINGSTAGE. window_fit false. DISMISS.
+  "KXGOLFTOURN", // Golf tournament outright winner — full-field futures (90 mkts / Zach LaVine-type
+  // outrights); KXGOLFH2H is our golf path (one-round Normal H2H). Tournament winner needs 72-hole
+  // field sim + cut model (golf Phase-2, not built). Same class as KXDPWTH2H. window_fit false. DISMISS.
+  "KXNBARULE", // "Pro Basketball to implement the one free throw rule" — governance/policy novelty
+  // (1 mkt). Not a game result; no model surface. Same novelty class as KXNBANEWCHAMPION. DISMISS.
+  "KXNBATEAMANNOUNCE", // "Pro Basketball New Team Announce" (LeBron James signing rumours, 14 mkts) —
+  // news/announcement futures; no player-signing model or data source. window_fit=true is the
+  // outright-favorite false-positive on binary announcement markets. Same class as KXNEXTMANAGER. DISMISS.
+  "KXPPLMATCH", // Padel match winner (PPL league) — racket sport, niche, no rating data or model;
+  // our tennis path (tennisMatchProb) is ATP/WTA OWGR-derived and doesn't transfer. 20 mkts,
+  // window_fit false. Same class as other no-data-source dismissals. DISMISS.
+  "KXWCPREPACK", // "World Cup Prepack" — 0 live markets, null sample; likely a bundled/parlay
+  // wrapper series, not individual game outcomes. Nothing to model or price. DISMISS.
 ];
