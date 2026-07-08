@@ -14,6 +14,7 @@ import { verifyJWT } from "../auth-utils.js";
 import { neonQuery, neonExec } from "../neon.js";
 import { fetchKalshiOrderbook } from "../kalshi-book.js";
 import { pipeWriteChunked } from "../kv-pipeline.js";
+import { gzipToString } from "../kv-compress.js";
 
 const normName = (s) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
@@ -252,7 +253,10 @@ export async function handleKalshiRoutes(ctx) {
     if (successCount > 0) {
       const _snapCmds = [];
       for (const [ticker, data] of Object.entries(_snapResults)) {
-        _snapCmds.push(["SET", `kalshi:snap:${ticker}`, JSON.stringify({ markets: data.markets || [], writtenAt }), "EX", 300]);
+        const raw = JSON.stringify({ markets: data.markets || [], writtenAt });
+        let v = raw;
+        try { v = await gzipToString(raw); } catch {}
+        _snapCmds.push(["SET", `kalshi:snap:${ticker}`, v, "EX", 300]);
       }
       _w1 = await _pipeWrite(_snapCmds);
       // Meta goes in its own (tiny) request AFTER the snap chunks, so a fresh meta means the
@@ -329,7 +333,10 @@ export async function handleKalshiRoutes(ctx) {
       for (const series of _touchedSeries) {
         const data = _snapResults[series];
         if (!data) continue;
-        _depthCmds.push(["SET", `kalshi:snap:${series}`, JSON.stringify({ markets: data.markets || [], writtenAt }), "EX", 300]);
+        const raw = JSON.stringify({ markets: data.markets || [], writtenAt });
+        let v = raw;
+        try { v = await gzipToString(raw); } catch {}
+        _depthCmds.push(["SET", `kalshi:snap:${series}`, v, "EX", 300]);
       }
       _w2 = await _pipeWrite(_depthCmds); // failure non-fatal: write #1's snaps already landed; depth is additive
       const _wFailed = _w1.failed + _w2.failed;

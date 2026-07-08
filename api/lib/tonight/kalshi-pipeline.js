@@ -14,6 +14,7 @@
 //   kalshiUsedSnaps: boolean }
 
 import { pipeWriteChunked } from "../kv-pipeline.js";
+import { gzipToString, gunzipFromString } from "../kv-compress.js";
 
 const SNAP_FRESHNESS_MS = 180_000;  // 1.5× the 2-min cron cycle
 const KALSHI_BATCH = 3;
@@ -73,7 +74,10 @@ export async function fetchKalshiMarkets({ seriesTickers, cache, env, isBustCach
       const _metaRaw = _pipeRes?.[1]?.result;
       try { kalshiSnapMeta = _metaRaw ? JSON.parse(_metaRaw) : null; } catch {}
       if (Array.isArray(_mget) && _mget.length === seriesTickers.length) {
-        const _parsed = _mget.map(s => { try { return s ? JSON.parse(s) : null; } catch { return null; } });
+        const _parsed = await Promise.all(_mget.map(async s => {
+          if (!s) return null;
+          try { return JSON.parse(await gunzipFromString(s)); } catch { return null; }
+        }));
         const _now = Date.now();
         // Empty markets is a valid snap (off-season / no-game-tonight series). Require
         // only that the snap exists and is fresh; downstream loops yield zero plays naturally.
@@ -126,7 +130,10 @@ export async function fetchKalshiMarkets({ seriesTickers, cache, env, isBustCach
         const meta = fetchMeta[t] || {};
         const markets = resultMap[t]?.markets || [];
         if (markets.length > 0 && !meta.stale && !meta.rateLimited && !meta.failed) {
-          _cmds.push(["SET", `kalshi:snap:${t}`, JSON.stringify({ markets, writtenAt: _now }), "EX", 300]);
+          const raw = JSON.stringify({ markets, writtenAt: _now });
+          let v = raw;
+          try { v = await gzipToString(raw); } catch {}
+          _cmds.push(["SET", `kalshi:snap:${t}`, v, "EX", 300]);
         }
       }
       if (_cmds.length) {
