@@ -887,10 +887,14 @@ function Tile({ label, value, color, sub }) {
   );
 }
 
-// ---- MODEL SUMMARY: tiles + changes + compact accuracy table ----------------------
+// ---- MODEL SUMMARY: tiles + changes + expandable category rows --------------------
+// Each row expands to show accuracy detail (Brier, calib bands) and betting detail
+// (doThis, checklist, price bands) side by side — replaces the separate board toggles.
 function ModelSummary({ d }) {
+  const [expanded, setExpanded] = React.useState({});
   const [showThin, setShowThin] = React.useState(false);
   const acc = d?.accuracyBoard || [];
+  const betByKey = Object.fromEntries((d?.bettingBoard || []).map(r => [r.key, r]));
 
   // Tile counts
   const beatsMarket = acc.filter(r => (r.n || 0) >= 100 && (r.skill || 0) > 0).length;
@@ -904,14 +908,106 @@ function ModelSummary({ d }) {
     ? new Date(nextCp.date + "T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})
     : "none";
 
-  // Summary table — n≥50 rows, sorted by action priority
+  // n≥50 rows (gated always included), sorted by action priority
   const PRIORITY = { MARKET_SHARPER:0, OVERCONFIDENT:1, UNDERCONFIDENT:2, PROMISING:3, CALIBRATED:4, BUILDING:5 };
-  const notable = acc.filter(r => (r.n || 0) >= 50)
+  const notable = acc
+    .filter(r => r.gated || (r.n || 0) >= 50)
     .sort((a, b) => (PRIORITY[a.verdict] ?? 9) - (PRIORITY[b.verdict] ?? 9) || b.n - a.n);
-  const thin = acc.filter(r => (r.n || 0) > 0 && (r.n || 0) < 50)
+  const thin = acc
+    .filter(r => !r.gated && (r.n || 0) > 0 && (r.n || 0) < 50)
     .sort((a, b) => b.n - a.n);
 
-  const changes = d?.brief?.changes;
+  const toggle = key => setExpanded(e => ({ ...e, [key]: !e[key] }));
+
+  const Row = ({ r }) => {
+    const open = expanded[r.key];
+    const bet = betByKey[r.key];
+    const exhausted = r.verdict === "MARKET_SHARPER" && _stillExhausted(INPUT_SEARCH_EXHAUSTED, r.key, r.formulaCutoff);
+    const accAction = exhausted ? "Stop — search exhausted" : r.honest?.action;
+    const accWhy    = exhausted ? "market sharper AND the L0 input search is exhausted — park it" : r.honest?.why;
+    const accColor  = exhausted ? C.dim : (_TONE[r.honest?.tone] || C.gray);
+    const honestyN  = (r.calibBands || []).reduce((s, b) => s + (b.n || 0), 0);
+    const profitN   = (bet?.priceBands || []).reduce((s, b) => s + (b.n || 0), 0);
+    return (
+      <>
+        <tr onClick={() => toggle(r.key)} style={{ cursor:"pointer", background:_ACC[r.verdict]?.[2] || "transparent" }}>
+          <td style={{ ...tdB, textAlign:"left", color:C.text, fontWeight:600 }}>
+            <span style={{ color:C.dim, marginRight:4 }}>{open ? "▾" : "▸"}</span>{r.key}
+            {r.gated && <span style={{ color:C.green, fontSize:9, fontWeight:700, marginLeft:6 }}>● live</span>}
+          </td>
+          <td style={tdB}><AccBadge v={r.verdict} /></td>
+          <td style={tdB}><SkillCell skill={r.skill} skillN={r.n} modelBrier={r.modelBrier} marketBrier={r.marketBrier} /></td>
+          <td style={tdB}>{bet ? <DoThisBadge d={bet.doThis} /> : <span style={{ color:C.dim, fontSize:10 }}>—</span>}</td>
+          <td style={{ ...tdB, color:r.n >= 100 ? C.text : C.gray }}>{r.n}</td>
+        </tr>
+        {open && (
+          <tr>
+            <td colSpan={5} style={{ padding:"0 8px 10px 24px", background:"#0d1117" }}>
+              <div style={{ display:"flex", gap:20, alignItems:"flex-start", flexWrap:"wrap" }}>
+
+                {/* Left — accuracy */}
+                <div style={{ flex:"1 1 260px", minWidth:0 }}>
+                  {accAction && accWhy && (
+                    <div style={{ color:accColor, fontSize:11, margin:"6px 0 4px" }}>
+                      ▶ <b>{accAction}</b>: <span style={{ color:C.text }}>{accWhy}</span>
+                    </div>
+                  )}
+                  {r.skill != null && (
+                    <div style={{ color:C.dim, fontSize:10, margin:"2px 0 4px" }}>
+                      Brier skill{" "}
+                      <b style={{ color:(r.n>=100)?(r.skill>0?C.green:r.skill<-0.005?C.red:C.gray):C.dim }}>
+                        {r.skill>=0?"+":""}{r.skill.toFixed(3)}
+                      </b>
+                      {" "}— model {r.modelBrier ?? "—"} vs market {r.marketBrier ?? "—"} (n={r.n})
+                      {r.skillLoCI!=null ? ` · CI lo ${r.skillLoCI>=0?"+":""}${r.skillLoCI}` : ""}
+                      {r.n<100?" · n<100":""}
+                    </div>
+                  )}
+                  {r.learning && (
+                    <div style={{ color:C.dim, fontSize:10, margin:"2px 0 6px", display:"flex", alignItems:"center", gap:6 }}>
+                      Learning: <LearnCell learning={r.learning} />
+                    </div>
+                  )}
+                  <div style={{ color:C.dim, fontSize:9, fontWeight:700, margin:"4px 0 1px" }}>
+                    HONESTY · model% vs actual · <span style={{ fontWeight:400 }}>{honestyN} resolved plays</span>
+                  </div>
+                  <CalibBandsTable bands={r.calibBands} />
+                </div>
+
+                {/* Right — betting (only when this category appears on the betting board) */}
+                {bet && (
+                  <div style={{ flex:"1 1 260px", minWidth:0 }}>
+                    {bet.doThis?.why && (
+                      <div style={{ color:_TONE[bet.doThis.tone]||C.gray, fontSize:11, margin:"6px 0 4px" }}>
+                        ▶ <b>{bet.doThis.action}</b>: <span style={{ color:C.text }}>{bet.doThis.why}</span>
+                      </div>
+                    )}
+                    {bet.checklist && (
+                      <div style={{ margin:"2px 0 6px", whiteSpace:"nowrap" }}>
+                        <Check ok={bet.checklist.nOk}        label="bets"  title="Enough settled bets (n ≥ 50)" />
+                        <Check ok={bet.checklist.ciOk}        label="real"  title="Edge is real — profitable in the cautious 95%-CI case" />
+                        <Check ok={bet.checklist.coherentOk}  label="broad" title="Profitable across the whole price range" />
+                        {bet.discoveredWindow?.roiLoCI != null && (
+                          <span style={{ color:C.dim, fontSize:9, marginLeft:6 }}>
+                            ROI range [{(bet.discoveredWindow.roiLoCI*100).toFixed(0)},{(bet.discoveredWindow.roiHiCI*100).toFixed(0)}]
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    <div style={{ color:C.dim, fontSize:9, fontWeight:700, margin:"4px 0 1px" }}>
+                      PROFIT · full price range · <span style={{ fontWeight:400 }}>{profitN} bettable plays</span>
+                    </div>
+                    <PriceBands bands={bet.priceBands} window={bet.currentWindow} />
+                  </div>
+                )}
+
+              </div>
+            </td>
+          </tr>
+        )}
+      </>
+    );
+  };
 
   return (
     <div style={{ marginBottom:12 }}>
@@ -922,52 +1018,31 @@ function ModelSummary({ d }) {
         <Tile label="next clock"   value={nextCpLabel}  color={C.dim} sub={nextCp?.short} />
       </div>
 
-      {changes?.length > 0 && (
+      {d?.brief?.changes?.length > 0 && (
         <div style={{ fontSize:11, color:C.dim, marginBottom:8, lineHeight:1.5 }}>
-          <span style={{ fontWeight:700, color:C.gray }}>Changed · </span>{changes.join(" · ")}
+          <span style={{ fontWeight:700, color:C.gray }}>Changed · </span>{d.brief.changes.join(" · ")}
         </div>
       )}
 
-      {notable.length > 0 && (
-        <table style={tableStyle}>
-          <thead><tr>
-            {["Category","Verdict","vs Market","N"].map(h => <th key={h} style={thB}>{h}</th>)}
-          </tr></thead>
-          <tbody>
-            {notable.map(r => (
-              <tr key={r.key} style={{ background:_ACC[r.verdict]?.[2] || "transparent" }}>
-                <td style={{ ...tdB, textAlign:"left", color:C.text, fontWeight:600 }}>
-                  {r.key}
-                  {r.gated && <span style={{ color:C.green, fontSize:9, fontWeight:700, marginLeft:6 }}>● live</span>}
-                </td>
-                <td style={tdB}><AccBadge v={r.verdict} /></td>
-                <td style={tdB}><SkillCell skill={r.skill} skillN={r.n} modelBrier={r.modelBrier} marketBrier={r.marketBrier} /></td>
-                <td style={{ ...tdB, color:r.n >= 100 ? C.text : C.gray }}>{r.n}</td>
-              </tr>
-            ))}
-            {thin.length > 0 && !showThin && (
-              <tr onClick={() => setShowThin(true)} style={{ cursor:"pointer" }}>
-                <td colSpan={4} style={{ ...tdB, textAlign:"left", color:C.dim }}>▸ {thin.length} accruing (n &lt; 50) — show</td>
-              </tr>
-            )}
-            {showThin && thin.map(r => (
-              <tr key={r.key} style={{ opacity:0.55 }}>
-                <td style={{ ...tdB, textAlign:"left", color:C.text }}>{r.key}</td>
-                <td style={tdB}><AccBadge v={r.verdict} /></td>
-                <td style={tdB}><SkillCell skill={r.skill} skillN={r.n} modelBrier={r.modelBrier} marketBrier={r.marketBrier} /></td>
-                <td style={{ ...tdB, color:C.dim }}>{r.n}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <table style={tableStyle}>
+        <thead><tr>
+          {["Category","Accuracy","vs Market","Bet","N"].map(h => <th key={h} style={thB}>{h}</th>)}
+        </tr></thead>
+        <tbody>
+          {notable.map(r => <Row key={r.key} r={r} />)}
+          {thin.length > 0 && !showThin && (
+            <tr onClick={() => setShowThin(true)} style={{ cursor:"pointer" }}>
+              <td colSpan={5} style={{ ...tdB, textAlign:"left", color:C.dim }}>▸ {thin.length} accruing (n &lt; 50) — show</td>
+            </tr>
+          )}
+          {showThin && thin.map(r => <Row key={r.key} r={r} />)}
+        </tbody>
+      </table>
     </div>
   );
 }
 
 function MorningBriefing({ shadowReportData, shadowReportLoading, fetchShadowReport, isLoggedIn }) {
-  const [showAccuracy, setShowAccuracy] = React.useState(false);
-  const [showBetting, setShowBetting] = React.useState(false);
   if (!isLoggedIn) return null;
   const d = shadowReportData;
   const noReport = !d || d.notYet || d.error;
@@ -984,29 +1059,12 @@ function MorningBriefing({ shadowReportData, shadowReportLoading, fetchShadowRep
     );
   }
 
-  const drillToggle = { color:C.dim, fontSize:11, cursor:"pointer", margin:"8px 0 4px", userSelect:"none" };
-
   return (
     <div>
       <StatusStrip dh={d.dataHealth} reportData={shadowReportData} fetchShadowReport={fetchShadowReport} />
       <DataHealth dh={d.dataHealth} />
       <DoThisBanner d={d} />
       <ModelSummary d={d} />
-
-      <div onClick={() => setShowAccuracy(v => !v)} style={drillToggle}>
-        {showAccuracy ? "▾" : "▸"} Accuracy board — calibration bands, Brier detail
-      </div>
-      {showAccuracy && <AccuracyBoard board={d.accuracyBoard} />}
-
-      <div onClick={() => setShowBetting(v => !v)} style={drillToggle}>
-        {showBetting ? "▾" : "▸"} Betting board — window validation, gate decisions
-      </div>
-      {showBetting && (
-        <>
-          <GateDigest board={d.bettingBoard} />
-          <BettingBoard board={d.bettingBoard} />
-        </>
-      )}
     </div>
   );
 }
