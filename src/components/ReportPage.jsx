@@ -594,12 +594,10 @@ const RECAL_MIN_N = 200;
 const SCHEDULED_CHECKPOINTS = [
   // (Polymarket 1b kill-gate checkpoint REMOVED 2026-07-04 — reviewed 3 days early on unambiguous
   // clean data: exec.fracEdgeGe3c = 0 post-date-fix, Phase 1b KILLED. [[project-polymarket-phase1a]])
-  // x* exogenous dims (xVolume/xSpread, shipped 2026-06-26) have ~2wk of rows by here: DROP the
-  // run-market keys (mlb|totalRuns/teamRuns/f5total/f5spread/spread/ml) from INPUT_SEARCH_EXHAUSTED
-  // → the Improve-inputs nag re-fires → run tune:residual against the fresh liquidity hypothesis.
-  // Premature before then (x* too thin). [[project-exogenous-feature-stamp]]
-  { date: "2026-07-10", tone: "blue", label: "Re-open exhausted run markets (x* sweep)", short: "x* residual sweep",
-    why: "xVolume/xSpread dims now have ~2wk of rows — drop the run-market keys from INPUT_SEARCH_EXHAUSTED and run tune:residual against the liquidity hypothesis (the fresh, previously-unsliceable dimension)" },
+  // (x* run-market sweep REMOVED 2026-07-08 — decision: ACCEPT market-sharper status on run markets.
+  // Market beats us because it has more information (sharp flow, real-time news), not because our
+  // inputs are wrong. Removing/adding inputs won't create edge that isn't in public data. Categories
+  // stay parked in INPUT_SEARCH_EXHAUSTED indefinitely. [[project-exogenous-feature-stamp]])
   // KXLMBGAME (Mexican League ML) dismissed 2026-07-01 on dead Kalshi liquidity (model side was
   // green) — re-check whether yes_ask/volume populated. [[project-lmbgame-vet]]
   { date: "2026-07-15", tone: "gray", label: "Re-check KXLMBGAME liquidity", short: "KXLMBGAME recheck",
