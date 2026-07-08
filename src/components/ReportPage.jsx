@@ -74,21 +74,28 @@ function Check({ ok, label, title }) {
   return <span title={title} style={{ color: ok ? C.green : C.dim, fontSize:9, fontWeight:700, marginRight:5, cursor:"help" }}>{ok ? "✓" : "✗"}{label}</span>;
 }
 
-// ---- Data health gate -------------------------------------------------------------
-function DataHealth({ dh }) {
-  if (!dh) return null;
-  const warn = dh.warnings?.length > 0;
-  const res = dh.resolution || {};
-  const clv = dh.clvCapture || {};
+// ---- Status strip (always visible) + Data health warnings (only when degraded) ----
+function StatusStrip({ dh, reportData, fetchShadowReport }) {
+  const res = dh?.resolution || {};
+  const clv = dh?.clvCapture || {};
+  const warn = dh?.warnings?.length > 0;
   return (
-    <div style={{ background: warn ? "rgba(247,129,102,0.08)" : "rgba(63,185,80,0.06)", border:`1px solid ${warn ? "#f7816644" : "#3fb95033"}`, borderRadius:6, padding:"6px 10px", marginBottom:12 }}>
-      <div style={{ color: warn ? C.red : C.green, fontSize:11, fontWeight:700, marginBottom: warn ? 3 : 0 }}>
-        {warn ? "⚠ Data health — interpret with caution" : "✓ Data healthy"}
-        <span style={{ color:C.dim, fontWeight:400, marginLeft:8 }}>
-          yesterday {res.resolved ?? 0}/{res.total ?? 0} resolved · CLV {clv.pct ?? 0}%{dh.coverageWarning ? " · slate under-logged" : ""}
-        </span>
-      </div>
-      {warn && dh.warnings.map((w, i) => <div key={i} style={{ color:C.text, fontSize:11 }}>• {w}</div>)}
+    <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10, fontSize:11, color:C.dim, borderBottom:`1px solid ${C.border}`, paddingBottom:8 }}>
+      <span style={{ color: warn ? C.amber : C.green, fontWeight:700, fontSize:10 }}>{warn ? "⚠" : "✓"}</span>
+      <span>{res.resolved ?? 0}/{res.total ?? 0} resolved · CLV {clv.pct ?? 0}%{dh?.coverageWarning ? " · under-logged" : ""}</span>
+      {reportData?.generatedAt && (
+        <span>· {new Date(reportData.generatedAt).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",timeZone:"America/Los_Angeles"})} PT</span>
+      )}
+      <button onClick={() => fetchShadowReport(true)} style={{ marginLeft:"auto", background:"transparent", border:`1px solid ${C.border}`, borderRadius:4, color:C.dim, fontSize:10, padding:"2px 7px", cursor:"pointer" }}>↻ Refresh</button>
+    </div>
+  );
+}
+function DataHealth({ dh }) {
+  if (!dh?.warnings?.length) return null;
+  return (
+    <div style={{ background:"rgba(247,129,102,0.08)", border:`1px solid #f7816644`, borderRadius:6, padding:"6px 10px", marginBottom:10 }}>
+      <div style={{ color:C.red, fontSize:11, fontWeight:700, marginBottom:3 }}>⚠ Data health — interpret with caution</div>
+      {dh.warnings.map((w, i) => <div key={i} style={{ color:C.text, fontSize:11 }}>• {w}</div>)}
     </div>
   );
 }
@@ -869,45 +876,98 @@ function DoThisBanner({ d }) {
   );
 }
 
-// ---- DAILY BRIEF: server-generated prose summary of model state + pricing findings ----
-// Deterministic sentences templated server-side from the same numbers the boards render (see
-// _buildDailyBrief in api/lib/handlers/shadow.js) — the readable replacement for scanning the
-// accuracy grid. Reader order (2026-07-04 format): health → headline → changes → model → betting
-// clocks → pricing → takeaway. `changes` is null when yesterday's report wasn't in KV (first run /
-// late regen); `health`/`betting`/`takeaway` are absent on pre-format cached briefs — render
-// degrades to the old shape.
-function DailyBrief({ brief }) {
-  if (!brief) return null;
-  const Block = ({ title, items }) => !items?.length ? null : (
-    <div style={{ marginTop:8 }}>
-      <div style={{ color:C.dim, fontSize:9, fontWeight:700, letterSpacing:0.4, textTransform:"uppercase", marginBottom:2 }}>{title}</div>
-      {items.map((s, i) => <div key={i} style={{ color:C.text, fontSize:12, lineHeight:1.55 }}>• {s}</div>)}
+// ---- STAT TILE -------------------------------------------------------------------
+function Tile({ label, value, color, sub }) {
+  return (
+    <div style={{ flex:1, background:C.card, border:`1px solid ${C.border}`, borderRadius:6, padding:"8px 10px", minWidth:0 }}>
+      <div style={{ color, fontSize:22, fontWeight:700, lineHeight:1, fontVariantNumeric:"tabular-nums" }}>{value}</div>
+      <div style={{ color:C.dim, fontSize:9, fontWeight:700, textTransform:"uppercase", letterSpacing:0.4, marginTop:3 }}>{label}</div>
+      {sub && <div style={{ color:C.dim, fontSize:9, marginTop:2, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{sub}</div>}
     </div>
   );
-  const healthColor = { clean:C.green, caution:C.amber, action:C.red }[brief.health?.tone] || C.gray;
+}
+
+// ---- MODEL SUMMARY: tiles + changes + compact accuracy table ----------------------
+function ModelSummary({ d }) {
+  const [showThin, setShowThin] = React.useState(false);
+  const acc = d?.accuracyBoard || [];
+
+  // Tile counts
+  const beatsMarket = acc.filter(r => (r.n || 0) >= 100 && (r.skill || 0) > 0).length;
+  const mktSharper  = acc.filter(r => (r.n || 0) >= 100 && (r.skill || 0) < -0.005).length;
+  const accruing    = acc.filter(r => (r.n || 0) < 100).length;
+  const todayPT = new Date().toLocaleDateString("en-CA", { timeZone:"America/Los_Angeles" });
+  const nextCp = [...SCHEDULED_CHECKPOINTS]
+    .filter(c => c.date > todayPT)
+    .sort((a, b) => a.date.localeCompare(b.date))[0];
+  const nextCpLabel = nextCp
+    ? new Date(nextCp.date + "T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})
+    : "none";
+
+  // Summary table — n≥50 rows, sorted by action priority
+  const PRIORITY = { MARKET_SHARPER:0, OVERCONFIDENT:1, UNDERCONFIDENT:2, PROMISING:3, CALIBRATED:4, BUILDING:5 };
+  const notable = acc.filter(r => (r.n || 0) >= 50)
+    .sort((a, b) => (PRIORITY[a.verdict] ?? 9) - (PRIORITY[b.verdict] ?? 9) || b.n - a.n);
+  const thin = acc.filter(r => (r.n || 0) > 0 && (r.n || 0) < 50)
+    .sort((a, b) => b.n - a.n);
+
+  const changes = d?.brief?.changes;
+
   return (
-    <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:8, padding:"10px 14px", marginBottom:10 }}>
-      {brief.health && (
-        <div style={{ color:C.gray, fontSize:11, lineHeight:1.5, marginBottom:6 }}>
-          <span style={{ color:healthColor }}>●</span> {brief.health.text}
+    <div style={{ marginBottom:12 }}>
+      <div style={{ display:"flex", gap:8, marginBottom:10 }}>
+        <Tile label="beats market" value={beatsMarket} color={beatsMarket > 0 ? C.green : C.dim} />
+        <Tile label="mkt sharper"  value={mktSharper}  color={mktSharper  > 0 ? C.red  : C.dim} />
+        <Tile label="accruing"     value={accruing}     color={C.dim} />
+        <Tile label="next clock"   value={nextCpLabel}  color={C.dim} sub={nextCp?.short} />
+      </div>
+
+      {changes?.length > 0 && (
+        <div style={{ fontSize:11, color:C.dim, marginBottom:8, lineHeight:1.5 }}>
+          <span style={{ fontWeight:700, color:C.gray }}>Changed · </span>{changes.join(" · ")}
         </div>
       )}
-      <div style={{ color:C.text, fontSize:13, fontWeight:600, lineHeight:1.5 }}>{brief.headline}</div>
-      <Block title="Changed since yesterday" items={brief.changes} />
-      <Block title="Model state" items={brief.model} />
-      <Block title="Betting · accrual clocks" items={brief.betting} />
-      <Block title="Pricing · cross-venue" items={brief.pricing} />
-      {brief.takeaway && (
-        <div style={{ color:C.text, fontSize:12, fontWeight:600, lineHeight:1.55, marginTop:8, paddingTop:6, borderTop:`1px solid ${C.border}` }}>{brief.takeaway}</div>
+
+      {notable.length > 0 && (
+        <table style={tableStyle}>
+          <thead><tr>
+            {["Category","Verdict","vs Market","N"].map(h => <th key={h} style={thB}>{h}</th>)}
+          </tr></thead>
+          <tbody>
+            {notable.map(r => (
+              <tr key={r.key} style={{ background:_ACC[r.verdict]?.[2] || "transparent" }}>
+                <td style={{ ...tdB, textAlign:"left", color:C.text, fontWeight:600 }}>
+                  {r.key}
+                  {r.gated && <span style={{ color:C.green, fontSize:9, fontWeight:700, marginLeft:6 }}>● live</span>}
+                </td>
+                <td style={tdB}><AccBadge v={r.verdict} /></td>
+                <td style={tdB}><SkillCell skill={r.skill} skillN={r.n} modelBrier={r.modelBrier} marketBrier={r.marketBrier} /></td>
+                <td style={{ ...tdB, color:r.n >= 100 ? C.text : C.gray }}>{r.n}</td>
+              </tr>
+            ))}
+            {thin.length > 0 && !showThin && (
+              <tr onClick={() => setShowThin(true)} style={{ cursor:"pointer" }}>
+                <td colSpan={4} style={{ ...tdB, textAlign:"left", color:C.dim }}>▸ {thin.length} accruing (n &lt; 50) — show</td>
+              </tr>
+            )}
+            {showThin && thin.map(r => (
+              <tr key={r.key} style={{ opacity:0.55 }}>
+                <td style={{ ...tdB, textAlign:"left", color:C.text }}>{r.key}</td>
+                <td style={tdB}><AccBadge v={r.verdict} /></td>
+                <td style={tdB}><SkillCell skill={r.skill} skillN={r.n} modelBrier={r.modelBrier} marketBrier={r.marketBrier} /></td>
+                <td style={{ ...tdB, color:C.dim }}>{r.n}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
     </div>
   );
 }
 
 function MorningBriefing({ shadowReportData, shadowReportLoading, fetchShadowReport, isLoggedIn }) {
-  // Accuracy grid is drill-down now (calibration bands for tune:residual work) — collapsed by
-  // default behind a toggle whenever the brief exists. Hook must sit above the early returns.
   const [showAccuracy, setShowAccuracy] = React.useState(false);
+  const [showBetting, setShowBetting] = React.useState(false);
   if (!isLoggedIn) return null;
   const d = shadowReportData;
   const noReport = !d || d.notYet || d.error;
@@ -924,36 +984,29 @@ function MorningBriefing({ shadowReportData, shadowReportLoading, fetchShadowRep
     );
   }
 
+  const drillToggle = { color:C.dim, fontSize:11, cursor:"pointer", margin:"8px 0 4px", userSelect:"none" };
+
   return (
     <div>
+      <StatusStrip dh={d.dataHealth} reportData={shadowReportData} fetchShadowReport={fetchShadowReport} />
       <DataHealth dh={d.dataHealth} />
-
       <DoThisBanner d={d} />
+      <ModelSummary d={d} />
 
-      {d.brief ? (
+      <div onClick={() => setShowAccuracy(v => !v)} style={drillToggle}>
+        {showAccuracy ? "▾" : "▸"} Accuracy board — calibration bands, Brier detail
+      </div>
+      {showAccuracy && <AccuracyBoard board={d.accuracyBoard} />}
+
+      <div onClick={() => setShowBetting(v => !v)} style={drillToggle}>
+        {showBetting ? "▾" : "▸"} Betting board — window validation, gate decisions
+      </div>
+      {showBetting && (
         <>
-          <div style={sectionHead}>Daily brief · model state + pricing findings</div>
-          <DailyBrief brief={d.brief} />
-          <div onClick={() => setShowAccuracy(v => !v)}
-               style={{ color:C.dim, fontSize:11, cursor:"pointer", margin:"0 0 10px", userSelect:"none" }}>
-            {showAccuracy ? "▾" : "▸"} Accuracy board — full grid (calibration bands, Brier detail)
-          </div>
-          {showAccuracy && <AccuracyBoard board={d.accuracyBoard} />}
-        </>
-      ) : (
-        // Stale report without `brief` (pre-deploy KV) — fall back to the full grid until regen.
-        <>
-          <div style={sectionHead}>Model accuracy · do the models beat the price?</div>
-          <AccuracyBoard board={d.accuracyBoard} />
+          <GateDigest board={d.bettingBoard} />
+          <BettingBoard board={d.bettingBoard} />
         </>
       )}
-
-      <div style={sectionHead}>Betting board · what to bet</div>
-      <GateDigest board={d.bettingBoard} />
-      <BettingBoard board={d.bettingBoard} />
-
-      {/* Raw cross-venue readout only when the brief (which covers both venues) is absent. */}
-      {!d.brief && <CrossVenueValidation sbv={d.sportsbookValidation} />}
     </div>
   );
 }
@@ -972,9 +1025,6 @@ function ReportPage({ onBack, shadowReportData, shadowReportLoading, fetchShadow
         <div style={{ color:C.text, fontSize:17, fontWeight:700 }}>Model Report</div>
         {shadowReportData?.reportDate && <span style={{ color:C.dim, fontSize:11 }}>{shadowReportData.reportDate}</span>}
         {shadowReportData?.generatedAt && <span style={{ color:C.dim, fontSize:10 }}>· generated {new Date(shadowReportData.generatedAt).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",timeZone:"America/Los_Angeles"})} PT</span>}
-        {isLoggedIn && shadowReportData && !shadowReportData.notYet && !shadowReportData.error && (
-          <button onClick={() => fetchShadowReport(true)} style={{ marginLeft:"auto", background:"transparent", border:`1px solid ${C.border}`, borderRadius:4, color:C.gray, fontSize:10, padding:"2px 8px", cursor:"pointer" }}>↻ Refresh</button>
-        )}
       </div>
 
       {isLoggedIn ? (
