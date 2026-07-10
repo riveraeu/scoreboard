@@ -246,4 +246,14 @@ export const DISMISSED_SERIES = [
   // window_fit false. Same class as other no-data-source dismissals. DISMISS.
   "KXWCPREPACK", // "World Cup Prepack" — 0 live markets, null sample; likely a bundled/parlay
   // wrapper series, not individual game outcomes. Nothing to model or price. DISMISS.
+  // 7/10 triage (1 detected):
+  "KXNCAAFH2HWINS", // College Football Head-to-Head Regular Season Wins — season-long futures binary
+  // ("will Team A finish with more regular-season wins than Team B?"). Two blockers: (1) book is DEAD:
+  // yesAsk=98¢, noAsk=99¢, spread=97¢, volume=0 → fails CAPTURE_MAX_SPREAD 15¢ by 6.5× (same blocker
+  // as KXLMBGAME 7/01 — buildable data end, Kalshi hasn't seeded liquidity). (2) Season-long futures
+  // class: resolves December, no repeatable daily flow — same class as the 9 NCAAF qualifier futures
+  // dismissed 6/28. window_fit=true is the outright-favorite false-positive (strong team's YES in
+  // [67,91] on a season-total comparison, same as qualifier series). ESPN FPI projects team wins and
+  // would be the model end (site.api.espn.com/apis/site/v2/sports/football/college-football/teams),
+  // but zero captures until Kalshi seeds the book. DISMISS; revisit if yes_ask < 91¢ appears.
 ];
