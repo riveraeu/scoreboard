@@ -63,7 +63,7 @@ export const TEAMS = {
     { abbr: "MIN", espnId: 8 },
     { abbr: "NY", polymarket: ["nyl"], espnId: 9 },
     { abbr: "PHX", espnId: 11 },
-    { abbr: "POR", espnId: 132052 },
+    { abbr: "POR", kalshi: ["PDX"], espnId: 132052 },
     { abbr: "SEA", espnId: 14 },
     { abbr: "TOR", espnId: 131935 },
     { abbr: "WSH", kalshi: ["WAS"], espnStats: "WAS", espnId: 16 },
