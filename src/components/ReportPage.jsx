@@ -617,6 +617,14 @@ const SCHEDULED_CHECKPOINTS = [
   // ~10 rank-any rows/day. Same sitting as the hits recheck. [[project_k_blend_counterfactual]]
   { date: "2026-08-10", tone: "blue", label: "Re-run tune:kblend --category wnba|points", short: "kblend wnba recheck",
     why: "7/05 sweep: K-shaped lower-cap curve, NO-GO on power only (train pick 0.3, +2.01m, CI [−3.13,+7.46]) — re-run at ~750 total rows; if CI-lo>0, propose the WNBA capWeight cut same as K" },
+  // mlb|f5ml is the only game market that's Brier-sharper than the price (7/11: skill +0.0124 n=109,
+  // trend rising) with a coherent discovered [40,55]¢ window (ROI +24.2%, CI-lo +8.1%) — blocked only
+  // on power (32/50 in-window bets; ~1.1/day + All-Star break ~7/13–16). NOT in the 7/04 sub-55
+  // NO-GO sweep. If GO: shipping needs the non-prop build step too — the F5 ML emit path uses the
+  // global [67,91] inline, so route it through betWindowFor before a CATEGORY_BET_WINDOWS entry can
+  // take effect (config.js comment; the [40,55] shape is already pinned in config.test.js).
+  { date: "2026-08-08", tone: "blue", label: "Run tune:window --category mlb|f5ml (window [40,55] candidate)", short: "f5ml window check",
+    why: "7/11: STRENGTHENING + Brier-eligible, discovered [40,55]¢ ROI +24.2% CI-lo>0 coherent, short only 32/50 in-window bets — re-run at n≥200 resolved (~Aug 8 after the All-Star break); a GO also needs the F5 ML emit routed through betWindowFor (non-prop paths are inline-global today)" },
 ];
 // INPUT_SEARCH_EXHAUSTED + _stillExhausted moved to api/lib/model-holds.js (2026-07-01, imported
 // above) — shared with the shadow-report daily brief so both surfaces agree on parked diagnostics.
