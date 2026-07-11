@@ -553,6 +553,12 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               // push gates on NO (noAsk = real ask, not synthetic 1-yesAsk), so we don't bet OVERs
               // against an UNDER-favored line and vice versa.
               if ((pct < CAPTURE_GATE || pct > CAPTURE_CAP) && (noPct < CAPTURE_GATE || noPct > CAPTURE_CAP)) continue;
+              // Liquidity gate (2026-07-11, game rows — same doctrine as the prop gate below):
+              // Kalshi's book is unified (NO ask ≡ YES bid), so bid-ask spread ≈ overround and
+              // both sides share it when both asks exist; min() lets a real one-sided book carry
+              // the market when the other ask is absent (999). In-play-only segments (WNBA Q2-Q4,
+              // halves) captured pre-game list ~95¢ asks on BOTH sides — quotes, not prices.
+              if (!_staleAskPath && !capturableSpread(Math.min(yesSpreadC, noSpreadC))) continue;
               const [gameTeam1, gameTeam2] = parseGameTeams(m.event_ticker, sport);
               if (!gameTeam1 || !gameTeam2) continue;
               const dedupeKey = `total|${sport}|${segment}|${gameTeam1}|${gameTeam2}|${threshold}`;
@@ -582,6 +588,8 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               // paths apply their own [67,91] kalshiPct/noKalshiPct bet gate downstream.
               // UNDER side uses real noAsk (not 1-yesAsk) since YES/NO books are independent.
               if ((pct < CAPTURE_GATE || pct > CAPTURE_CAP) && (noPct < CAPTURE_GATE || noPct > CAPTURE_CAP)) continue;
+              // Liquidity gate — see the game-total branch above (2026-07-11).
+              if (!_staleAskPath && !capturableSpread(Math.min(yesSpreadC, noSpreadC))) continue;
               const [gameTeam1, gameTeam2] = parseGameTeams(m.event_ticker, sport);
               if (!gameTeam1 || !gameTeam2) continue;
               // Extract scoring team from ticker suffix (e.g. "LAD8" → "LAD", "PHI97" → "PHI")
@@ -616,6 +624,8 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             // [CAPTURE_GATE, CAPTURE_CAP]; emission re-gates `qualified` at [67,91].
             if (cfg.gameType === "spread") {
               if ((pct < CAPTURE_GATE || pct > CAPTURE_CAP) && (noPct < CAPTURE_GATE || noPct > CAPTURE_CAP)) continue;
+              // Liquidity gate — see the game-total branch above (2026-07-11).
+              if (!_staleAskPath && !capturableSpread(Math.min(yesSpreadC, noSpreadC))) continue;
               const [gameTeam1, gameTeam2] = parseGameTeams(m.event_ticker, sport);
               if (!gameTeam1 || !gameTeam2) continue;
               const _spSuffix = (m.ticker || "").split("-").pop() || "";

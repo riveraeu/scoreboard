@@ -44,6 +44,17 @@ const FORMULA_CUTOFFS = {
   "nba|teamTotal":  "2026-06-22",
   "wnba|total":     "2026-06-22",
   "wnba|teamTotal": "2026-06-22",
+  // Game-row capture liquidity gate (2026-07-11) — pre-fix segment rows are dead-book garbage
+  "mlb|f3ml":       "2026-07-11",
+  "mlb|f7ml":       "2026-07-11",
+  "wnba|q1total":   "2026-07-11", "wnba|q1spread": "2026-07-11", "wnba|q1ml": "2026-07-11",
+  "wnba|q2total":   "2026-07-11", "wnba|q2spread": "2026-07-11", "wnba|q2ml": "2026-07-11",
+  "wnba|q3total":   "2026-07-11", "wnba|q3spread": "2026-07-11", "wnba|q3ml": "2026-07-11",
+  "wnba|q4total":   "2026-07-11", "wnba|q4spread": "2026-07-11", "wnba|q4ml": "2026-07-11",
+  "wnba|h1total":   "2026-07-11", "wnba|h1spread": "2026-07-11", "wnba|h1ml": "2026-07-11",
+  "wnba|h2total":   "2026-07-11", "wnba|h2spread": "2026-07-11", "wnba|h2ml": "2026-07-11",
+  "nba|h1total":    "2026-07-11", "nba|h1spread":  "2026-07-11", "nba|h1ml":  "2026-07-11",
+  "nba|h2total":    "2026-07-11", "nba|h2spread":  "2026-07-11", "nba|h2ml":  "2026-07-11",
 };
 const DEFAULT_SINCE = "2026-05-01";
 

@@ -4,9 +4,28 @@
 // Called once near the end of handleTonightRoute after game-total + team-total loops.
 
 import { simulateMLBJoint, simulateNBAJoint, mlPctFromJoint, joint3WayPct, spreadPctFromJoint, totalDistPct } from "../simulate.js";
-import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER as EDGE_GATE } from "../config.js";
+import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER as EDGE_GATE, capturableSpread } from "../config.js";
 import { PT_FMT } from "../pt.js";
 import { normTeam } from "./parse-teams.js";
+
+// Implied YES prob for one ML leg, or null when the leg has no real two-sided book.
+// One shared helper for every ML parse block below (each leg is its own binary market).
+// Liquidity gate (2026-07-11) — same CAPTURE_MAX_SPREAD doctrine as the prop/game-row
+// gates: dead segment books (F3/F7 inning winners, WNBA quarter/half winners) list ~95¢
+// asks on every leg pre-game, which logged as fake favorites and poisoned calibration
+// (Brier "skill" up to +0.39 vs quote-garbage). A rejected leg fails the event's 2-way/
+// 3-way completeness check downstream, dropping the whole event — one dead leg means no
+// real event book. Stale-ask path (ask maxed ≥98¢, no bid, real `last`) stays exempt and
+// prices off `last`, unchanged. A leg with no ask at all still falls back to `last`
+// (pre-existing behavior, not part of the inflated-ask artifact).
+const _kMlLegProb = (m) => {
+  const a = parseFloat(m.yes_ask_dollars) || 0;
+  const l = parseFloat(m.last_price_dollars) || 0;
+  const b = parseFloat(m.yes_bid_dollars) || 0;
+  if (a >= 0.98 && b === 0 && l > 0) return l; // stale-ask path
+  if (a > 0 && !capturableSpread(Math.round((a - b) * 100))) return null; // dead book
+  return a > 0 ? a : l;
+};
 
 // Context: plays/dropped (mutated), isDebug, cutoffStr, gameTimes, _todayPT,
 //          CACHE2/isBustCache, _*MlContext maps, spreadMarkets, totalMarkets,
@@ -31,12 +50,7 @@ export async function emitAllMlAndSpread({
   // emission orderable independently of the mlbMeta build.
   const _mlbMlMarkets = {};
   try {
-    const _kImpliedProbMl = (m) => {
-      const a = parseFloat(m.yes_ask_dollars) || 0;
-      const l = parseFloat(m.last_price_dollars) || 0;
-      const b = parseFloat(m.yes_bid_dollars) || 0;
-      return (a >= 0.98 && b === 0 && l > 0) ? l : (a > 0 ? a : l);
-    };
+    const _kImpliedProbMl = _kMlLegProb; // shared liquidity-gated leg prob (module top)
     const _kGameDateMl = (m) => m?.expected_expiration_time ? PT_FMT.format(new Date(m.expected_expiration_time)) : null;
     let _gMarketsMl = [];
     {
@@ -372,12 +386,7 @@ export async function emitAllMlAndSpread({
     const _emitMlbSegmentMl = async ({ segment, seriesTicker, statName, lamHomeKey, lamAwayKey, ouFrac, jointCache }) => {
       const _mlMarkets = {};
       try {
-        const _kImpliedProb = (m) => {
-          const a = parseFloat(m.yes_ask_dollars) || 0;
-          const l = parseFloat(m.last_price_dollars) || 0;
-          const b = parseFloat(m.yes_bid_dollars) || 0;
-          return (a >= 0.98 && b === 0 && l > 0) ? l : (a > 0 ? a : l);
-        };
+        const _kImpliedProb = _kMlLegProb; // shared liquidity-gated leg prob (module top)
         const _kGameDate = (m) => m?.expected_expiration_time ? PT_FMT.format(new Date(m.expected_expiration_time)) : null;
         let _raw = [];
         {
@@ -510,12 +519,7 @@ export async function emitAllMlAndSpread({
   // reality, and rounded-Normal sim ties are <0.5% so the approximation is harmless.
   const _nbaMlMarkets = {};
   try {
-    const _kImpliedProbMlN = (m) => {
-      const a = parseFloat(m.yes_ask_dollars) || 0;
-      const l = parseFloat(m.last_price_dollars) || 0;
-      const b = parseFloat(m.yes_bid_dollars) || 0;
-      return (a >= 0.98 && b === 0 && l > 0) ? l : (a > 0 ? a : l);
-    };
+    const _kImpliedProbMlN = _kMlLegProb; // shared liquidity-gated leg prob (module top)
     const _kGameDateMlN = (m) => m?.expected_expiration_time ? PT_FMT.format(new Date(m.expected_expiration_time)) : null;
     let _gMarketsMlN = [];
     {
@@ -690,12 +694,7 @@ export async function emitAllMlAndSpread({
   // regulation tied in reality (OT resolves), and rounded-Normal ties are <0.5% of sims.
   const _wnbaMlMarkets = {};
   try {
-    const _kImpliedProbMlW = (m) => {
-      const a = parseFloat(m.yes_ask_dollars) || 0;
-      const l = parseFloat(m.last_price_dollars) || 0;
-      const b = parseFloat(m.yes_bid_dollars) || 0;
-      return (a >= 0.98 && b === 0 && l > 0) ? l : (a > 0 ? a : l);
-    };
+    const _kImpliedProbMlW = _kMlLegProb; // shared liquidity-gated leg prob (module top)
     const _kGameDateMlW = (m) => m?.expected_expiration_time ? PT_FMT.format(new Date(m.expected_expiration_time)) : null;
     let _gMarketsMlW = [];
     {
@@ -878,12 +877,7 @@ export async function emitAllMlAndSpread({
     ["wnba", "2h", "KXWNBA2HWINNER"],
   ]) {
     try {
-      const _impP = (m) => {
-        const a = parseFloat(m.yes_ask_dollars) || 0;
-        const l = parseFloat(m.last_price_dollars) || 0;
-        const b = parseFloat(m.yes_bid_dollars) || 0;
-        return (a >= 0.98 && b === 0 && l > 0) ? l : (a > 0 ? a : l);
-      };
+      const _impP = _kMlLegProb; // shared liquidity-gated leg prob (module top)
       const _gd = (m) => m?.expected_expiration_time ? PT_FMT.format(new Date(m.expected_expiration_time)) : null;
       let _raw = [];
       const _snapKey = `kalshi:snap:${_seriesH}`;
@@ -1124,12 +1118,7 @@ export async function emitAllMlAndSpread({
     ["1q", "KXWNBA1QWINNER"], ["2q", "KXWNBA2QWINNER"], ["3q", "KXWNBA3QWINNER"], ["4q", "KXWNBA4QWINNER"],
   ]) {
     try {
-      const _impP = (m) => {
-        const a = parseFloat(m.yes_ask_dollars) || 0;
-        const l = parseFloat(m.last_price_dollars) || 0;
-        const b = parseFloat(m.yes_bid_dollars) || 0;
-        return (a >= 0.98 && b === 0 && l > 0) ? l : (a > 0 ? a : l);
-      };
+      const _impP = _kMlLegProb; // shared liquidity-gated leg prob (module top)
       const _gd = (m) => m?.expected_expiration_time ? PT_FMT.format(new Date(m.expected_expiration_time)) : null;
       const _snapKey = `kalshi:snap:${_seriesQ}`;
       const _legKey = `kalshi:${_seriesQ}`;
@@ -1328,12 +1317,7 @@ export async function emitAllMlAndSpread({
   // favorite slightly since OT/SO winners are weighted toward the favored team in reality).
   const _nhlMlMarkets = {};
   try {
-    const _kImpliedProbMlH = (m) => {
-      const a = parseFloat(m.yes_ask_dollars) || 0;
-      const l = parseFloat(m.last_price_dollars) || 0;
-      const b = parseFloat(m.yes_bid_dollars) || 0;
-      return (a >= 0.98 && b === 0 && l > 0) ? l : (a > 0 ? a : l);
-    };
+    const _kImpliedProbMlH = _kMlLegProb; // shared liquidity-gated leg prob (module top)
     const _kGameDateMlH = (m) => m?.expected_expiration_time ? PT_FMT.format(new Date(m.expected_expiration_time)) : null;
     let _gMarketsMlH = [];
     {
