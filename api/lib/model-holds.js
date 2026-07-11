@@ -22,6 +22,7 @@ export const INPUT_SEARCH_EXHAUSTED = {
   "wnba|points": "2026-06-23", "wnba|totalPoints": "2026-06-23", "wnba|rebounds": "2026-06-23",
   "mlb|teamRuns": "2026-06-29",
   "tennis|match": "2026-07-01",
+  "mlb|outs": "2026-07-11",
 };
 // mlb|teamRuns added 2026-06-29 after the MARKET_SHARPER banner prompted its tune:residual run:
 // overall skill −0.002 (market sharper near-tie, n≈261); NO sub-trust sub-slice (faint +skill only at
@@ -34,6 +35,13 @@ export const INPUT_SEARCH_EXHAUSTED = {
 // edge anti-predictive, xVolume/dayOfWeek no +skill slice, pickSide degenerate (all "home"). NO
 // sliceable in-data input: the gap is intrinsic to a rankings-only model (no surface/form/H2H/fatigue),
 // which is the Phase-2 surface-Elo BUILD on the tennis roadmap, not an L0 pre-filter. [[project-tennis-phase1]]
+// mlb|outs added 2026-07-11 after the MARKET_SHARPER banner prompted its tune:residual run: overall
+// skill −0.041 (market sharper, n=217, mean resid +15.8pp — underconfident on favorites, steepest at
+// rungs 17–19, resid +22→+32pp) but every real-n bucket with the miss has NEGATIVE skill — the market
+// already prices the deep-rung favorites. Near-parity pockets only (threshold=16 +0.006 n=51,
+// xVolume>906 +0.004 n=52); betPrice +skill buckets all n≤6; dayOfWeek noise. No addable in-data L0
+// input — the missing information (manager leash / pitch-count news, pitcher-specific OBP-against)
+// isn't in the logged dims. Same market-has-more-information posture as the run markets.
 
 // Categories already run through tune:window to a TERMINAL no-go (the discovered window doesn't
 // hold out-of-sample), so the tier-3.15 derive-a-window nag stops — mirrors INPUT_SEARCH_EXHAUSTED,

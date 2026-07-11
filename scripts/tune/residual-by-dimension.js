@@ -29,6 +29,7 @@ const FORMULA_CUTOFFS = {
   "mlb|hrr":        "2026-06-22",
   "mlb|hits":       "2026-06-12",
   "mlb|totalBases": "2026-06-30", // capture liquidity gate — pre-fix rows contaminated by 94¢ artifacts
+  "mlb|outs":       "2026-06-23", // pitcher outs-recorded O/U Phase 1 — data starts here
   "mlb|totalRuns":  "2026-06-01",
   "mlb|teamRuns":   "2026-05-27",
   "nhl|totalGoals": "2026-05-29",
