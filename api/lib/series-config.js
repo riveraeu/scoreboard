@@ -256,4 +256,25 @@ export const DISMISSED_SERIES = [
   // [67,91] on a season-total comparison, same as qualifier series). ESPN FPI projects team wins and
   // would be the model end (site.api.espn.com/apis/site/v2/sports/football/college-football/teams),
   // but zero captures until Kalshi seeds the book. DISMISS; revisit if yes_ask < 91¢ appears.
+  // 7/11 triage (12 detected — 6 soccer confederation tournaments + 6 MLB Home Run Derby):
+  // Soccer: all 6 are national-team confederation tournaments. Our soccer model is WC national-team
+  // Elo only (WC_TEAMS registry + Dixon–Coles matrix); no Elo ratings exist for AFC/CONCACAF/COPA/
+  // UEFA clubs or their qualifying pools. All 0 live markets (future tournament registrations).
+  // No model surface, no calibration path. DISMISS all.
+  "KXAFCA",        // AFC Asian Cup — Asian confederation tournament, WC_TEAMS Elo doesn't cover.
+  "KXCONCACAFGC",  // CONCACAF Gold Cup — CONCACAF tournament, no Elo for CONCACAF non-WC teams.
+  "KXCONCACAFNL",  // CONCACAF Nations League — multi-round confederation league, same blocker.
+  "KXCOPAAMERICA", // Copa America — next edition 2028+; WC_TEAMS includes CONMEBOL but no active mkts.
+  "KXUEFAEURO",    // UEFA European Championship — next UEFA Euro 2028; 0 live mkts.
+  "KXUEFANL",      // UEFA Nations League — 2026/27 edition; 0 live mkts; different format (no WC_TEAMS).
+  // Home Run Derby: timed batting competition, completely orthogonal to our MLB K/HRR/stat models.
+  // No pitch stats, no pitcher, no PA-based distributions — needs a separate HRD power/bracket model
+  // we don't have. window_fit=true on the matchup/semifinal series is the outright-favorite false-
+  // positive (strong batter's YES in [67,91] on H2H bracket markets). DISMISS all 6.
+  "KXMLBHRDERBY500",      // 500+ Foot HRs at the HRD — per-round aggregate HR distance, no model.
+  "KXMLBHRDERBYDISTANCE", // Longest single HR distance — HRD physics model, not our MLB stack.
+  "KXMLBHRDERBYLONGEST",  // Player to Hit the Longest HR — player outright; needs HRD field sim.
+  "KXMLBHRDERBYMATCHUP",  // Final Matchup (28 live mkts) — bracket prediction; window_fit=true is false-positive.
+  "KXMLBHRDERBYOU",       // O/U Home Runs per player/round — HRD-specific distribution, 0 live mkts.
+  "KXMLBHRDERBYSEMI",     // Semifinals Qualifiers — bracket advancement; window_fit=true is false-positive.
 ];
