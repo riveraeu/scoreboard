@@ -42,9 +42,18 @@ test("betWindowFor defaults to the global [KALSHI_GATE, KALSHI_CAP] for any unse
   assert.deepEqual(betWindowFor("anything", "unknown"), [KALSHI_GATE, KALSHI_CAP]);
 });
 
-test("CATEGORY_BET_WINDOWS ships EMPTY — no live per-category override (zero behavior change)", () => {
-  assert.equal(Object.keys(CATEGORY_BET_WINDOWS).length, 0,
-    "a window here is a live bet-behavior change — must land only after a tune:window GO, not by default");
+test("CATEGORY_BET_WINDOWS active entries are all valid [lo, hi] windows within capture bounds", () => {
+  // 2026-07-11: mlb|hrr added as provisional NO-side window [24,33] — not empty any more.
+  // Each entry must be a valid shape (lo < hi, both within [CAPTURE_GATE, CAPTURE_CAP]).
+  for (const [key, w] of Object.entries(CATEGORY_BET_WINDOWS)) {
+    assert.ok(Array.isArray(w) && w.length === 2, `${key}: window must be [lo, hi]`);
+    assert.ok(Number.isFinite(w[0]) && Number.isFinite(w[1]), `${key}: bounds must be finite`);
+    assert.ok(w[0] < w[1], `${key}: lo must be < hi`);
+    assert.ok(w[0] >= CAPTURE_GATE, `${key}: lo must be >= CAPTURE_GATE`);
+    assert.ok(w[1] <= CAPTURE_CAP, `${key}: hi must be <= CAPTURE_CAP`);
+  }
+  // mlb|hrr NO-side window (2026-07-11) is the current live entry.
+  assert.deepEqual(CATEGORY_BET_WINDOWS["mlb|hrr"], [24, 33]);
 });
 
 test("betWindowFor honors a set window but only within [CAPTURE_GATE, CAPTURE_CAP], else falls back", () => {

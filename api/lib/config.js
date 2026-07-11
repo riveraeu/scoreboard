@@ -55,6 +55,11 @@ export const capturableSpread = (spreadCents, cap = CAPTURE_MAX_SPREAD) =>
 // betWindowFor validates shape but does not know a category's emit path.
 export const CATEGORY_BET_WINDOWS = {
   // "mlb|totalBases": [88, 97],  // example — DO NOT enable without a tune:window GO
+  // mlb|hrr NO-side window (2026-07-11): emit flip redirects HRR to bet NO when NO edge > YES edge.
+  // Market overprices hits by ~7¢ avg; sigmoid cap (71%) blocks YES edge. NO ask for YES-priced
+  // [67,76]¢ markets lands ~24–33¢. 65–70 YES band: actual=67.9%, market=73.5¢, NO ROI ≈ +8.8% (n=187).
+  // Pre-tune:window provisional starter; recheck tune:window at n≥200 OOS post-2026-07-11.
+  "mlb|hrr": [24, 33],
 };
 
 // The bet window for a category: its derived override if set, else the global [67,91]. One

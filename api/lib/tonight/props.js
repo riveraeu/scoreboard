@@ -1341,8 +1341,18 @@ export async function emitPropPlays({
     // truePct/kalshiPct stay over-framed everywhere (emit, shadow rows, debug fields); only
     // the bet-side values below flip — P(<t) vs the NO ask — so edge prices the side we'd
     // actually buy. The shadow report SQL flips under rows the same way at read time.
-    const _betTruePct = direction === "under" ? 100 - truePct : truePct;
-    const _betKalshiPct = direction === "under" ? (noKalshiPct ?? 100 - kalshiPct) : kalshiPct;
+    //
+    // HRR NO-side flip (2026-07-11): market systematically overprices hits by ~7¢. The sigmoid
+    // cap (71%) prevents the model from ever clearing market prices (~74¢ avg), so YES bets can't
+    // generate edge. Edge lives on NO. When NO edge > YES edge and noKalshiPct is available,
+    // redirect to the NO side — same over-framed storage convention as totalBases "under".
+    let _effectiveDirection = direction;
+    if (stat === "hrr" && noKalshiPct != null) {
+      const _noEdge = (100 - truePct) - noKalshiPct;
+      if (_noEdge > truePct - kalshiPct) _effectiveDirection = "under";
+    }
+    const _betTruePct = _effectiveDirection === "under" ? 100 - truePct : truePct;
+    const _betKalshiPct = _effectiveDirection === "under" ? (noKalshiPct ?? 100 - kalshiPct) : kalshiPct;
     const rawEdge = _betTruePct - _betKalshiPct;
     const spreadAdj = kalshiSpread != null ? kalshiSpread / 2 : 0;
     // kalshiPct is already the fill price (yes_ask or blended orderbook); no additional
@@ -1460,11 +1470,12 @@ export async function emitPropPlays({
       // explanation renders even when the play fails edge or other gates.
       const _qualFalseBase = {
         ..._dropObj,
+        ...(_effectiveDirection ? { direction: _effectiveDirection, noKalshiPct, noKalshiAO } : {}),
         qualified: false,
         playerName: playerNameDisplay || playerName,
         playerId: info.id,
         sport, playerTeam, stat, threshold, kalshiPct,
-        americanOdds: direction === "under" ? noKalshiAO : americanOdds,
+        americanOdds: _effectiveDirection === "under" ? noKalshiAO : americanOdds,
         kalshiTicker: _propKalshiTicker ?? null,
         truePct: parseFloat(truePct.toFixed(1)),
         log5Pct: simPctOut ?? log5PctOut,
@@ -1517,7 +1528,7 @@ export async function emitPropPlays({
     plays.push({
       qualified: true,
       // Under props: totals convention — over-framed truePct/kalshiPct + NO side fields.
-      ...(direction ? { direction, noKalshiPct, noKalshiAO } : {}),
+      ...(_effectiveDirection ? { direction: _effectiveDirection, noKalshiPct, noKalshiAO } : {}),
       playerName: playerNameDisplay || playerName,
       playerId: info.id,
       sport,
@@ -1544,7 +1555,7 @@ export async function emitPropPlays({
       threshold,
       kalshiPct,
       // Under props bet the NO side — americanOdds mirrors the bought side (totals convention).
-      americanOdds: direction === "under" ? noKalshiAO : americanOdds,
+      americanOdds: _effectiveDirection === "under" ? noKalshiAO : americanOdds,
       seasonPct: parseFloat((primaryPct).toFixed(1)),
       seasonGames: allVals.length,
       blendGames: blendVals.length,

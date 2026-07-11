@@ -30,5 +30,10 @@ export function passesCategoryGate(p) {
   // Unlike points there's no profitable band to move to. The 6/11 promotion (~+11% @ n=39) was on
   // pre-formula-clean data. Re-enable only after tune:gate shows a coherent +ROI band at n≥50.
   // if (key === 'wnba|spread')    return (p.truePct ?? 0) >= 65 && (p.truePct ?? 0) < 85;
+  // mlb|hrr NO-side (2026-07-11): emit flip bets NO when market overprices YES by >7¢. Gate on
+  // the over-framed YES truePct [63,73) covering the YES 65–70 band where NO ROI ≈ +8.8% (n=187).
+  // direction='under' guard prevents any residual YES plays in this truePct range from qualifying.
+  // Provisional pre-tune:gate; recheck tune:gate at n≥50 on NO-side captures post-2026-07-11.
+  if (key === "mlb|hrr") return p.direction === "under" && (p.truePct ?? 0) >= 63 && (p.truePct ?? 0) < 73;
   return false;
 }
