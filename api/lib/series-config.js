@@ -270,11 +270,13 @@ export const DISMISSED_SERIES = [
   // Home Run Derby: timed batting competition, completely orthogonal to our MLB K/HRR/stat models.
   // No pitch stats, no pitcher, no PA-based distributions — needs a separate HRD power/bracket model
   // we don't have. window_fit=true on the matchup/semifinal series is the outright-favorite false-
-  // positive (strong batter's YES in [67,91] on H2H bracket markets). DISMISS all 6.
+  // positive (strong batter's YES in [67,91] on H2H bracket markets). DISMISS all 8 (2 more 7/12).
   "KXMLBHRDERBY500",      // 500+ Foot HRs at the HRD — per-round aggregate HR distance, no model.
   "KXMLBHRDERBYDISTANCE", // Longest single HR distance — HRD physics model, not our MLB stack.
   "KXMLBHRDERBYLONGEST",  // Player to Hit the Longest HR — player outright; needs HRD field sim.
   "KXMLBHRDERBYMATCHUP",  // Final Matchup (28 live mkts) — bracket prediction; window_fit=true is false-positive.
   "KXMLBHRDERBYOU",       // O/U Home Runs per player/round — HRD-specific distribution, 0 live mkts.
   "KXMLBHRDERBYSEMI",     // Semifinals Qualifiers — bracket advancement; window_fit=true is false-positive.
+  "KXMLBHRDERBYFIN",      // Finals Qualifiers — bracket advancement, same class as SEMI (8 live mkts).
+  "KXMLBHRDERBYR1LEAD",   // Round 1 Leader — 8-player field outright per round, needs HRD field sim.
 ];
