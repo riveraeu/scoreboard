@@ -282,4 +282,9 @@ export const DISMISSED_SERIES = [
   "KXMLBHRDERBYSEMI",     // Semifinals Qualifiers — bracket advancement; window_fit=true is false-positive.
   "KXMLBHRDERBYFIN",      // Finals Qualifiers — bracket advancement, same class as SEMI (8 live mkts).
   "KXMLBHRDERBYR1LEAD",   // Round 1 Leader — 8-player field outright per round, needs HRD field sim.
+  // 7/13 triage (2 detected):
+  "KXMLBASGMVP", // All-Star Game MVP — award outright over a 30-player exhibition field (1 mkt/year
+  // resolving on voters, not stats). Same award-futures class as KXMLBGG/KXNBASUMMERMVP. DISMISS.
+  "KXUFCFIGHTOCCUR", // "Fighter to compete in a fight by <date>" (McGregor, 1 mkt) — appearance/news
+  // novelty, insider-driven; same class as KXBALOGUNPLAY/KXWCPLAY. No model surface. DISMISS.
 ];
