@@ -187,8 +187,8 @@ function shadowId(p, fallbackDate = "") {
 // Team rows key stat-first to mirror the analyses' COALESCE(stat, game_type): gameType-first
 // merged the whole ML family (ml/f3ml/f5ml/f7ml all carry gameType "ml") into ONE rank group,
 // making threshold_rank=1 a cross-category lottery — f5ml's rank-1 population starved when
-// f3/f7 capture started 2026-07-01. Forward-only: ranks stored before 2026-07-13 were
-// computed under the merged grouping.
+// f3/f7 capture started 2026-07-01. Historical rows were re-ranked under this key on
+// 2026-07-13 (?rerankgroups=1 backfill below), so stored ranks are uniform stat-first.
 function groupId(p, fallbackDate = "") {
   if (p.playerName) {
     return `pp|${p.sport}|${p.playerId || p.playerName}|${p.gameDate || fallbackDate || ""}`;
