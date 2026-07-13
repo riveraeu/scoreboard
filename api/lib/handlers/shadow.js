@@ -3105,6 +3105,54 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
 
   if (!env?.POSTGRES_URL && !env?.NEON_DATABASE_URL) return errorResponse("POSTGRES_URL not set", 500);
 
+  // ?rerankgroups=1 (ADMIN only) — one-shot backfill: recompute group_id/threshold_rank/
+  // group_size/is_best_edge for ALL team rows under the stat-first key (2026-07-13 groupId fix).
+  // Legit to backfill because ranks are pure annotation over stored values — no superseded
+  // formula output is mixed (unlike FORMULA_CUTOFFS). Player rows (pp| groups) untouched.
+  // model_true_pct is bet-side while annotateGroups ranks yes-side truePct, but distance from
+  // 50 is symmetric under complement, so the ranks are identical. ?dry=1 = report only.
+  if (new URL(request.url).searchParams.get("rerankgroups") === "1") {
+    if (!isAdmin) return errorResponse("Forbidden", 403);
+    const dry = new URL(request.url).searchParams.get("dry") === "1";
+    const partition = `PARTITION BY sport, COALESCE(stat, game_type), home_team, away_team, COALESCE(game_date, snapshot_date::varchar)`;
+    const rankedCte = `
+      SELECT id, sport, COALESCE(stat, game_type) AS category, threshold_rank AS old_rank,
+        'tm|' || sport || '|' || COALESCE(stat, game_type, '') || '|' || COALESCE(home_team,'') || '|' || COALESCE(away_team,'') || '|' || COALESCE(game_date, snapshot_date::varchar, '') AS gid,
+        ROW_NUMBER() OVER (${partition} ORDER BY ABS(COALESCE(model_true_pct, 50) - 50), id) AS new_rank,
+        (COUNT(*) OVER (${partition}))::int AS gs,
+        (ROW_NUMBER() OVER (${partition} ORDER BY COALESCE(edge, 0) DESC, id) = 1) AS best
+      FROM ${SHADOW_TABLE}
+      WHERE player_name IS NULL`;
+    try {
+      let summary;
+      if (dry) {
+        summary = await neonQuery(`
+          WITH ranked AS (${rankedCte})
+          SELECT sport, category, COUNT(*)::int AS n,
+            SUM((old_rank = 1)::int)::int AS rank1_old,
+            SUM((new_rank = 1)::int)::int AS rank1_new,
+            SUM((old_rank IS DISTINCT FROM new_rank)::int)::int AS changed
+          FROM ranked GROUP BY 1, 2 ORDER BY changed DESC`, [], env, { write: true });
+      } else {
+        summary = await neonQuery(`
+          WITH ranked AS (${rankedCte}),
+          upd AS (
+            UPDATE ${SHADOW_TABLE} sp
+            SET group_id = r.gid, threshold_rank = r.new_rank, group_size = r.gs, is_best_edge = r.best
+            FROM ranked r
+            WHERE sp.id = r.id
+              AND (sp.threshold_rank IS DISTINCT FROM r.new_rank OR sp.group_size IS DISTINCT FROM r.gs
+                   OR sp.group_id IS DISTINCT FROM r.gid OR sp.is_best_edge IS DISTINCT FROM r.best)
+            RETURNING sp.sport, COALESCE(sp.stat, sp.game_type) AS category, (r.new_rank = 1) AS is_rank1
+          )
+          SELECT sport, category, COUNT(*)::int AS changed, SUM(is_rank1::int)::int AS rank1_after
+          FROM upd GROUP BY 1, 2 ORDER BY changed DESC`, [], env, { write: true });
+        console.log(`[shadow-snapshot] rerankgroups applied: ${summary.reduce((s, r) => s + r.changed, 0)} rows changed`);
+      }
+      return jsonResponse({ ok: true, dry, byCategory: summary });
+    } catch (e) { return errorResponse(`rerankgroups failed: ${e?.message}`, 500); }
+  }
+
   const snapshotDate = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
   const t0 = Date.now();
 
