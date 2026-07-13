@@ -902,8 +902,9 @@ function ModelSummary({ d }) {
   const acc = d?.accuracyBoard || [];
   const betByKey = Object.fromEntries((d?.bettingBoard || []).map(r => [r.key, r]));
 
-  // Tile counts
-  const beatsMarket = acc.filter(r => (r.n || 0) >= 100 && (r.skill || 0) > 0).length;
+  // Tile counts — beatsMarket matches the brief/eligible bar (skill CI-lo > 0, not the
+  // point estimate, which counted skill +0.000 categories as beating the market)
+  const beatsMarket = acc.filter(r => (r.n || 0) >= 100 && (r.skillLoCI || 0) > 0).length;
   const mktSharper  = acc.filter(r => (r.n || 0) >= 100 && (r.skill || 0) < -0.005).length;
   const accruing    = acc.filter(r => (r.n || 0) < 100).length;
   const todayPT = new Date().toLocaleDateString("en-CA", { timeZone:"America/Los_Angeles" });

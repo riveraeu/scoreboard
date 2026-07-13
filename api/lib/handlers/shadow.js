@@ -1293,24 +1293,23 @@ const INCOMPLETE_REPORT_TTL = 60 * 15; // 15 minutes
 // 2026-06-19 (the report kept showing demoted cats as live). Returns true if ANY truePct is gated.
 function _isGatedCategory(key) {
   const [sport, cat] = key.split("|");
-  for (let tp = 50; tp < 100; tp++) {
+  // Probe with and without direction:'under' — direction-conditional gates (mlb|hrr NO-side,
+  // 2026-07-11) never match a direction-less probe, which read the live gate as empty.
+  for (let tp = 1; tp < 100; tp++) {
     if (passesCategoryGate({ sport, stat: cat, truePct: tp })) return true;
+    if (passesCategoryGate({ sport, stat: cat, truePct: tp, direction: "under" })) return true;
   }
   return false;
 }
-// SQL fragment that mirrors passesCategoryGate() for use in the top-picks query.
-// passesCategoryGate() keys on p.truePct (always the YES/over-side probability), NOT the
-// bet side. For props (OVER-only) truePct == model_true_pct. For spread, both sides of a
-// line carry the same truePct (the favorite-cover prob); the stored model_true_pct is the
-// bet side, so for direction='under' rows truePct == 100 - model_true_pct (cover probs are
-// complementary). Hence the CASE — it reconstructs p.truePct to mirror the gate exactly.
+// SQL fragment that mirrors passesCategoryGate() for use in the top-picks query — kept in
+// sync manually; update BOTH when the gate changes (this list drifted 6/19→7/13, surfacing
+// demoted categories and missing hrr). passesCategoryGate() keys on p.truePct (always the
+// YES/over-side probability), NOT the bet side; the stored model_true_pct IS the bet side,
+// so direction='under' rows reconstruct truePct as 100 - model_true_pct (hrr NO-side flips
+// a YES-framed prob; spread cover probs are complementary — same arithmetic either way).
 const _CATEGORY_GATE_SQL = `(
-  (sport='mlb'  AND stat='strikeouts' AND model_true_pct >= 80 AND model_true_pct < 85) OR
-  (sport='wnba' AND stat='points'     AND model_true_pct >= 70 AND model_true_pct < 80) OR
-  (sport='wnba' AND stat='rebounds'   AND model_true_pct >= 70 AND model_true_pct < 85) OR
-  (sport='wnba' AND game_type='spread' AND
-     (CASE WHEN direction='under' THEN 100 - model_true_pct ELSE model_true_pct END) >= 65 AND
-     (CASE WHEN direction='under' THEN 100 - model_true_pct ELSE model_true_pct END) <  85)
+  (sport='mlb' AND stat='hrr' AND direction='under' AND
+     (100 - model_true_pct) >= 63 AND (100 - model_true_pct) < 73)
 )`;
 const _BAND_MID = { "55-60":57.5,"60-65":62.5,"65-70":67.5,"70-75":72.5,"75-80":77.5,"80-85":82.5,"85-90":87.5,"90-95":92.5,"95+":97.5 };
 const _BAND_ORDER = Object.keys(_BAND_MID); // low → high, for adjacency/coherence
