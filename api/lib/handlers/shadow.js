@@ -184,11 +184,16 @@ function shadowId(p, fallbackDate = "") {
 // group_id links all threshold variants for the same player/matchup on the same game.
 // Same fallbackDate scoping as shadowId — date-less group_ids would merge different
 // days' alt-line groups in the DB-side analyses (intraGroupCorr, threshold_rank ROI).
+// Team rows key stat-first to mirror the analyses' COALESCE(stat, game_type): gameType-first
+// merged the whole ML family (ml/f3ml/f5ml/f7ml all carry gameType "ml") into ONE rank group,
+// making threshold_rank=1 a cross-category lottery — f5ml's rank-1 population starved when
+// f3/f7 capture started 2026-07-01. Forward-only: ranks stored before 2026-07-13 were
+// computed under the merged grouping.
 function groupId(p, fallbackDate = "") {
   if (p.playerName) {
     return `pp|${p.sport}|${p.playerId || p.playerName}|${p.gameDate || fallbackDate || ""}`;
   }
-  return `tm|${p.sport}|${p.gameType || p.stat}|${p.homeTeam}|${p.awayTeam}|${p.gameDate || fallbackDate || ""}`;
+  return `tm|${p.sport}|${p.stat || p.gameType}|${p.homeTeam}|${p.awayTeam}|${p.gameDate || fallbackDate || ""}`;
 }
 
 // Annotate each play with threshold_rank (1 = closest to 50% — most information) and
