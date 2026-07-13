@@ -29,6 +29,7 @@ import { WC_TEAMS } from "../soccer.js";
 import { emitFightPlays } from "../tonight/fight.js";
 import { emitGolfH2hPlays } from "../tonight/golf-h2h.js";
 import { emitNascarPlays } from "../tonight/nascar.js";
+import { emitNbaSummerPlays } from "../tonight/nba-summer.js";
 import { emitMlbOutsPlays } from "../tonight/mlb-outs.js";
 import { fetchPolymarketGames } from "../polymarket.js";
 import { emitPolymarketDeltas } from "../tonight/polymarket-deltas.js";
@@ -269,6 +270,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
         const fightMarkets = []; // UFC rounds O/U — every priced threshold, grouped by event in emit
         const golfH2hMarkets = []; // PGA single-round head-to-head — each priced side carries its own matchup
         const nascarMarkets = []; // NASCAR Cup H2H + Top-10 — each priced side carries its own driver(s)
+        const nbaSummerMarkets = []; // NBA Summer League game winner — each priced side carries its own pick + opponent
         const outsMarkets = []; // MLB pitcher outs-recorded O/U (KXMLBOUTS) — each priced threshold carries its pitcher
         const globalSeen = /* @__PURE__ */ new Set();
         for (let i = 0; i < seriesTickers.length; i++) {
@@ -479,6 +481,41 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
                 if (!_nPlayer) continue;
               }
               nascarMarkets.push({ subtype: cfg.subtype, eventTicker: m.event_ticker, raceCode: _nRace, player: _nPlayer, opponent: _nOpp, gameDate: _nDate, kalshiPct: _nPct, americanOdds: _nAO(_nPct), kalshiVolume: _nVol, _ticker: m.ticker, _depth: m._depth });
+              continue;
+            }
+            // ── NBA Summer League game-winner branch ── binary, two markets per event (one per
+            // team). Event segment = date + team abbrs (KXNBASUMMERGAME-26JUL13DETNYK), parsed
+            // with the regular NBA registry; the ticker suffix is the pick team's Kalshi abbr.
+            // Liquidity-gated at parse (same doctrine as game rows 2026-07-11): SL books seed
+            // only near game day — far-out listings quote ~70¢+ spreads on both sides.
+            if (cfg.gameType === "nbaSummer") {
+              const _slYesAsk = parseFloat(m.yes_ask_dollars) || 0;
+              const _slNoAsk = parseFloat(m.no_ask_dollars) || 0;
+              const _slLast = parseFloat(m.last_price_dollars) || 0;
+              const _slYesBid = parseFloat(m.yes_bid_dollars) || 0;
+              const _slNoBid = parseFloat(m.no_bid_dollars) || 0;
+              const _slStale = _slYesAsk >= 0.98 && _slYesBid === 0 && _slLast > 0;
+              const _slPrice = _slStale ? _slLast : (_slYesAsk > 0 ? _slYesAsk : _slLast);
+              if (_slPrice === 0) continue; // no live book — skip (books fill near tip-off)
+              const _slYesSpreadC = _slYesAsk > 0 ? Math.round((_slYesAsk - _slYesBid) * 100) : 999;
+              const _slNoSpreadC = _slNoAsk > 0 ? Math.round((_slNoAsk - _slNoBid) * 100) : 999;
+              if (!_slStale && !capturableSpread(Math.min(_slYesSpreadC, _slNoSpreadC))) continue;
+              const _slPct = Math.round(_slPrice * 100);
+              const _slVol = parseInt(m.volume_fp) || parseInt(m.volume) || 0;
+              // SL tickers use the regular NBA Kalshi abbrs (validated 2+3/3+3 split).
+              const [_slT1, _slT2] = parseGameTeams(m.event_ticker, "nba");
+              if (!_slT1 || !_slT2) continue;
+              const _slPick = normTeam("nba", (m.ticker || "").split("-").pop() || "");
+              if (_slPick !== _slT1 && _slPick !== _slT2) continue;
+              const _slDateSeg = (m.event_ticker || "").split("-")[1] || "";
+              let _slGameDate = null;
+              if (_slDateSeg.length >= 7) {
+                const _KMONS = { JAN: "01", FEB: "02", MAR: "03", APR: "04", MAY: "05", JUN: "06", JUL: "07", AUG: "08", SEP: "09", OCT: "10", NOV: "11", DEC: "12" };
+                const _slMo = _KMONS[_slDateSeg.slice(2, 5).toUpperCase()];
+                if (_slMo) _slGameDate = `20${_slDateSeg.slice(0, 2)}-${_slMo}-${_slDateSeg.slice(5, 7)}`;
+              }
+              const _slAO = _slPct >= 50 ? Math.round(-(_slPct / (100 - _slPct)) * 100) : Math.round((100 - _slPct) / _slPct * 100);
+              nbaSummerMarkets.push({ eventTicker: m.event_ticker, gameTeam1: _slT1, gameTeam2: _slT2, pickTeam: _slPick, opponent: _slPick === _slT1 ? _slT2 : _slT1, gameDate: _slGameDate, kalshiPct: _slPct, americanOdds: _slAO, kalshiVolume: _slVol, _ticker: m.ticker, _depth: m._depth });
               continue;
             }
             // ── MLB pitcher outs-recorded branch ── threshold ladder per starter ("Senga: 15+").
@@ -1844,6 +1881,13 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           nascarMarkets, nascarPlays, dropped, isDebug, cutoffStr,
           cache: CACHE2, isBustCache,
         });
+        // ── NBA Summer League game winner — Phase 1, shadow-only. Same dedicated-array idiom;
+        // merged into shadow:staging only. Within-tournament Elo (parity start), both sides.
+        const nbaSummerPlays = [];
+        await emitNbaSummerPlays({
+          nbaSummerMarkets, nbaSummerPlays, cutoffStr,
+          cache: CACHE2, isBustCache,
+        });
         // ── MLB pitcher outs-recorded (KXMLBOUTS) — Phase 1, shadow-only. Prop-shaped rows in a
         // dedicated array (NOT `plays`) so they bypass dedup/gameTime-filter/card-builder; merged
         // into shadow:staging only. Normal workload model off pitcherStatsByName, favorite side.
@@ -2007,7 +2051,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           }
           // Tennis plays live in their own array (kept out of `plays` to bypass dedup/frontend);
           // merge them into the staging `plays` so shadow-snapshot logs them like any other play.
-          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays: [...plays, ...tennisPlays, ...soccerPlays, ...soccerAdvancePlays, ...fightPlays, ...golfH2hPlays, ...nascarPlays, ...outsPlays], dropped, schedule: _schedCounts, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, writtenAt: Date.now() }), { expirationTtl: 21600 }).catch(() => {});
+          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays: [...plays, ...tennisPlays, ...soccerPlays, ...soccerAdvancePlays, ...fightPlays, ...golfH2hPlays, ...nascarPlays, ...nbaSummerPlays, ...outsPlays], dropped, schedule: _schedCounts, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, writtenAt: Date.now() }), { expirationTtl: 21600 }).catch(() => {});
         }
         if (isDebug) {
           const nbaGlLabels = Object.fromEntries(Object.entries(playerGamelogs).filter(([k]) => k.startsWith("nba|")).map(([k, gl]) => [k, gl?.ul ?? null]));
@@ -2021,7 +2065,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             meta: kalshiSnapMeta,
             ageMs: kalshiSnapMeta?.lastRunAt ? Date.now() - kalshiSnapMeta.lastRunAt : null,
           };
-          return jsonResponse({ fdProbe: { milestones: _fdMilestones, atEnd: await _fdProbe() }, plays: debugPlays, dropped: debugDropped, preDropped: debugPreDropped, tennisPlays, tennisMarketCount: tennisMatchMarkets.length, soccerPlays, soccerMarketCount: soccerMarkets.length, soccerAdvancePlays, soccerAdvanceMarketCount: soccerAdvanceMarkets.length, fightPlays, fightMarketCount: fightMarkets.length, golfH2hPlays, golfH2hMarketCount: golfH2hMarkets.length, nascarPlays, nascarMarketCount: nascarMarkets.length, outsPlays, outsMarketCount: outsMarkets.length, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
+          return jsonResponse({ fdProbe: { milestones: _fdMilestones, atEnd: await _fdProbe() }, plays: debugPlays, dropped: debugDropped, preDropped: debugPreDropped, tennisPlays, tennisMarketCount: tennisMatchMarkets.length, soccerPlays, soccerMarketCount: soccerMarkets.length, soccerAdvancePlays, soccerAdvanceMarketCount: soccerAdvanceMarkets.length, fightPlays, fightMarketCount: fightMarkets.length, golfH2hPlays, golfH2hMarketCount: golfH2hMarkets.length, nascarPlays, nascarMarketCount: nascarMarkets.length, nbaSummerPlays, nbaSummerMarketCount: nbaSummerMarkets.length, outsPlays, outsMarketCount: outsMarkets.length, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
         }
         // Build mlbMeta: pitchers, ML odds, umpires, weather — keyed by team abbr or "home|away"
         // Pitcher entries: { name, id, era, wins, losses }. MLB Stats API (pitcherInfoByTeam) preferred

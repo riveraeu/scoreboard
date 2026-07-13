@@ -69,6 +69,13 @@ export const SERIES_CONFIG = {
   // rating index is built from the Cup schedule). Shadow-only: `nascar|h2h`/`nascar|top10` NOT gated.
   KXNASCARH2H:   { sport: "nascar", league: "nascar", stat: "h2h",   col: "ML", gameType: "nascar", subtype: "h2h"   },
   KXNASCARTOP10: { sport: "nascar", league: "nascar", stat: "top10", col: "ML", gameType: "nascar", subtype: "top10" },
+  // NBA Summer League (Vegas) game winner — binary team ML. The `nbaSummer` gameType routes
+  // these to the dedicated emit path (api/lib/tonight/nba-summer.js): within-tournament Elo,
+  // parity start (no transferable NBA rating — see api/lib/nba-summer.js). Adopted 2026-07-13,
+  // reversing the 7/01 dismissal: the books proved REAL (1-2¢ spreads, 5-6 figure volume on
+  // game-day markets), and the ~130 both-side rows per July accrue toward calibration across
+  // years. Shadow-only: `nbasl|ml` is intentionally NOT in the category gate.
+  KXNBASUMMERGAME: { sport: "nbasl", league: "nbasl", stat: "ml", col: "ML", gameType: "nbaSummer" },
   // Game totals
   KXMLBTOTAL:     { sport: "mlb",  league: "mlb",  stat: "totalRuns",   col: "R",   gameType: "total"     },
   KXNBATOTAL:     { sport: "nba",  league: "nba",  stat: "totalPoints", col: "PTS", gameType: "total"     },
@@ -175,12 +182,8 @@ export const DISMISSED_SERIES = [
   // is dense-daily not sporadic → the ONLY blocker is Kalshi hasn't seeded liquidity. DISMISS to
   // clear the banner; revisit (build the λ→joint emit) the moment yes_ask populates on this series.
   "KXLMBGAME",
-  "KXNBASUMMERGAME", // 7/01 triage: NBA Summer League game-winner (20 live mkts, window_fit=true). No
-  // rating source — SL "teams" are NBA franchises with rookie/two-way/G-League rosters, so nba.js
-  // ratings (OffRtg/pace/regime λ/usage, all regular-season) don't transfer, and there's no
-  // off-the-shelf Summer League team rating to build a Phase-1 model from. window_fit=true is the
-  // favorite false-positive. Same class as prior no-model dismissals. Revisit only if a draft-
-  // capital / player-aggregate SL rating ever gets built. DISMISS.
+  // (KXNBASUMMERGAME was dismissed here 7/01 for the no-rating problem; ADOPTED 2026-07-13 with a
+  // within-tournament parity-start Elo instead — see SERIES_CONFIG above.)
   "KXDPWTH2H", // 7/01 triage: golf FULL-TOURNAMENT H2H ("A beats B in the full tournament"). NOT a
   // drop-in for our golfH2h path — golf.js is single-round, field-independent ("A beats B in round
   // N", one-round Normal σ=√2·GOLF_ROUND_SIGMA). A 72-hole cumulative matchup (with cut effects)
@@ -222,10 +225,10 @@ export const DISMISSED_SERIES = [
   // royal-honours announcement, news/insider-driven). No model surface; 1 mkt/year. window_fit=true
   // is the longshot-side false positive. Same award/news-futures class as KXSUPERBALLONDOR and the
   // manager-departure dismissals. DISMISS.
-  "KXNBASUMMER", // NBA Summer League CHAMPION futures — tournament-winner outright on top of the
-  // no-rating-source problem that already killed KXNBASUMMERGAME (7/01): SL rosters are
-  // rookie/two-way/G-League, nba.js regular-season ratings don't transfer, and a champion market
-  // additionally needs a tournament sim. 0 live mkts. DISMISS.
+  "KXNBASUMMER", // NBA Summer League CHAMPION futures — tournament-winner outright; needs a
+  // tournament sim on top of a team rating. (KXNBASUMMERGAME was adopted 7/13 with a within-
+  // tournament Elo, but a champion market still has ~1 resolution/year — no calibration flow.)
+  // 0 live mkts. DISMISS.
   "KXBALOGUNPLAY", // "Will Balogun Play Today" — per-player appearance/team-news market (coach
   // decision), same class as KXWCPLAY and KXWCSTART. No player-availability model or pre-game
   // lineup data source for soccer. DISMISS.
