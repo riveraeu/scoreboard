@@ -23,6 +23,7 @@ export const INPUT_SEARCH_EXHAUSTED = {
   "mlb|teamRuns": "2026-06-29",
   "tennis|match": "2026-07-01",
   "mlb|outs": "2026-07-11",
+  "mlb|f5ml": "2026-07-14",
 };
 // mlb|teamRuns added 2026-06-29 after the MARKET_SHARPER banner prompted its tune:residual run:
 // overall skill −0.002 (market sharper near-tie, n≈261); NO sub-trust sub-slice (faint +skill only at
@@ -42,6 +43,15 @@ export const INPUT_SEARCH_EXHAUSTED = {
 // xVolume>906 +0.004 n=52); betPrice +skill buckets all n≤6; dayOfWeek noise. No addable in-data L0
 // input — the missing information (manager leash / pitch-count news, pitcher-specific OBP-against)
 // isn't in the logged dims. Same market-has-more-information posture as the run markets.
+// mlb|f5ml added 2026-07-14 after the MARKET_SHARPER banner prompted its tune:residual run on the
+// de-biased rank-1 population (post rank-group backfill, n=339): overall skill −0.0002 (near-parity,
+// market sharper). The only +skill pocket at real n is betPrice 50-55¢ (+0.0241, n=74) — the SAME
+// pocket the 7/13 tune:window NO-GO adjudicated as a price artifact (adjacent bands flip negative,
+// n<100 Brier floor). Edge 15+ overconfidence (resid −14.3pp) is market-priced (skill −0.0278);
+// xVolume≤214 / pickSide=home / lineup-unconfirmed misses all carry negative skill; dayOfWeek noise;
+// xWindOutMph pockets below the n≥30 bucket floor (weather→runs pre-filter failed 6/23 anyway). No
+// addable in-data L0 input. The 2026-08-08 SCHEDULED_CHECKPOINTS tune:window re-check stays —
+// window derivation on clean accrual is a separate question from the input search.
 
 // Categories already run through tune:window to a TERMINAL no-go (the discovered window doesn't
 // hold out-of-sample), so the tier-3.15 derive-a-window nag stops — mirrors INPUT_SEARCH_EXHAUSTED,
