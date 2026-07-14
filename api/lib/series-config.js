@@ -287,4 +287,38 @@ export const DISMISSED_SERIES = [
   // resolving on voters, not stats). Same award-futures class as KXMLBGG/KXNBASUMMERMVP. DISMISS.
   "KXUFCFIGHTOCCUR", // "Fighter to compete in a fight by <date>" (McGregor, 1 mkt) — appearance/news
   // novelty, insider-driven; same class as KXBALOGUNPLAY/KXWCPLAY. No model surface. DISMISS.
+  // 7/14 triage (17 detected — the All-Star-break novelty flood; every one maps to an
+  // already-established dismissal class):
+  "KXATPCOMPETE", // "ATP Player to Compete" — per-player appearance/news novelty (1 mkt), same
+  // class as KXUFCFIGHTOCCUR/KXBALOGUNPLAY. DISMISS.
+  // All-Star Game props (4): one-day EXHIBITION — rotating wholesale lineups, 1-inning pitcher
+  // stints, no projected-AB/starter structure, so the K/hits/HRR machinery doesn't apply; 1 game/yr
+  // = no calibration flow. Same class as the KXMLBASGMVP dismissal 7/13. window_fit=true on
+  // HIT/HR/ALLSTARHR is the longshot/favorite false-positive on prop rungs. DISMISS all.
+  "KXMLBALLSTARHR", // ASG total home runs (7 live mkts).
+  "KXMLBASGHIT",    // ASG player hits (59 live mkts).
+  "KXMLBASGHR",     // ASG player home runs (42 live mkts).
+  "KXMLBASGKS",     // ASG strikeouts (0 live mkts).
+  // Home Run Derby stragglers (3): same HRD class as the 10 dismissed 7/11–7/12. DISMISS all.
+  "KXMLBHRDERBYFORECAST", // Finals forecast — bracket prediction variant.
+  "KXMLBHRDERBYTOT",      // HRD total home runs — HRD-specific distribution.
+  "KXMLBHRDERBYVELO",     // Highest exit velocity — record-extreme novelty, same class as KXMLBFASTPITCH.
+  // "Next Team" (4): player signing/trade DESTINATION futures — news/insider-driven, open candidate
+  // field; same class as KXNBATEAMANNOUNCE/KXNEXTMANAGER. No model surface. DISMISS all.
+  "KXMLBNEXTTEAM",
+  "KXNBANEXTTEAM",
+  "KXNFLNEXTTEAM",
+  "KXNHLNEXTTEAM",
+  // Summer League 1st-half markets (3): nbasl|ml (adopted 7/12) is a within-tournament WIN-PROB Elo
+  // only — no scoring-rate/λ model exists for SL, so half spread/total/winner have no model surface;
+  // 0 live mkts, tournament ends ~7/19, and segment markets are the dead-book trap class (7/11
+  // overround artifact). Revisit only if nbasl|ml proves out AND an SL scoring model ever exists.
+  "KXNBASUMMER1HSPREAD",
+  "KXNBASUMMER1HTOTAL",
+  "KXNBASUMMER1HWINNER",
+  "KXWCFINISHINGORDER", // World Cup finishing ORDER (16 live) — combinatorial bracket/ordering
+  // futures; advanceProb is per-round only, no full-tournament winner/order sim. window_fit=true is
+  // the longshot false-positive. Same class as KXWCFINALMATCHUP/KXWCHOSTWIN. DISMISS.
+  "KXWMARMADSEED", // Women's CBB tournament SEEDS — committee-decision futures, no NCAAW model;
+  // same class as KXNCAAWBAPRANK/KXNCAAWBWINS. DISMISS.
 ];
