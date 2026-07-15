@@ -598,10 +598,10 @@ const SCHEDULED_CHECKPOINTS = [
   // Market beats us because it has more information (sharp flow, real-time news), not because our
   // inputs are wrong. Removing/adding inputs won't create edge that isn't in public data. Categories
   // stay parked in INPUT_SEARCH_EXHAUSTED indefinitely. [[project-exogenous-feature-stamp]])
-  // KXLMBGAME (Mexican League ML) dismissed 2026-07-01 on dead Kalshi liquidity (model side was
-  // green) — re-check whether yes_ask/volume populated. [[project-lmbgame-vet]]
-  { date: "2026-07-15", tone: "gray", label: "Re-check KXLMBGAME liquidity", short: "KXLMBGAME recheck",
-    why: "Dismissed 7/01 for dead Kalshi books (0 vol/OI, no MM) with the model side green — if yes_ask now populates, un-dismiss and ship the Pythag-λ model" },
+  // (KXLMBGAME liquidity recheck REMOVED 2026-07-15 — checked on its date: game-day books now
+  // REAL (~600-contract volume, multi-level depth, 1–18¢ spreads) → un-dismissed and SHIPPED
+  // the Pythag-λ model (api/lib/lmb.js + tonight/lmb-ml.js, `lmb|ml` shadow-only).
+  // [[project-lmbgame-vet]])
   // K blend capWeight 0.5→0.4 shipped 2026-07-06 (tune:kblend GO); the held-out curve kept
   // improving below 0.4 but 0.4 was the train-picked winner — re-run on fresh post-cutoff rows
   // (~10 rank-1/day → n≈200 by here) before walking it lower. [[project_k_blend_counterfactual]]

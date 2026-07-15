@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import {
   TEAMS, TEAM_NORM, _VALID_TEAMS, CANONICAL_TO_ESPN,
   WNBA_CANON_TO_ESPN, WNBA_ESPN_TO_CANON, WNBA_TEAM_IDS,
-  NHL_ABBR_MAP, MLB_ID_TO_ABBR,
+  NHL_ABBR_MAP, MLB_ID_TO_ABBR, LMB_ID_TO_ABBR,
 } from "./teams.js";
 
 // ── Fixtures: exact pre-registry literals ────────────────────────────────────────
@@ -21,6 +21,7 @@ const LEGACY_TEAM_NORM = {
   nhl: { NJ: "NJD", TB: "TBL", LA: "LAK", SJ: "SJS", VGK: "VGK" },
   mlb: { KCR: "KC", SFG: "SF", SDP: "SD", TBR: "TB", CHW: "CWS", AZ: "ARI", KC: "KC", SD: "SD", SF: "SF", TB: "TB", OAK: "ATH", WSN: "WSH", WAS: "WSH" },
   nfl: { LA: "LAR" },
+  lmb: {}, // canonical = Kalshi abbrs, no aliases
 };
 
 const LEGACY_VALID_TEAMS = {
@@ -29,6 +30,7 @@ const LEGACY_VALID_TEAMS = {
   nhl: ["ANA","BOS","BUF","CGY","CAR","CHI","COL","CBJ","DAL","DET","EDM","FLA","LAK","MIN","MTL","NSH","NJD","NYI","NYR","OTT","PHI","PIT","STL","SJS","SEA","TBL","TOR","UTA","VAN","VGK","WSH","WPG"],
   mlb: ["ARI","ATL","ATH","BAL","BOS","CHC","CIN","CLE","COL","CWS","DET","HOU","KC","LAA","LAD","MIA","MIL","MIN","NYM","NYY","PHI","PIT","SD","SEA","SF","STL","TB","TEX","TOR","WSH"],
   nfl: ["ARI","ATL","BAL","BUF","CAR","CHI","CIN","CLE","DAL","DEN","DET","GB","HOU","IND","JAX","KC","LAC","LAR","LV","MIA","MIN","NE","NO","NYG","NYJ","PHI","PIT","SEA","SF","TB","TEN","WSH"],
+  lmb: ["ADM","AGU","ALG","BLE","CAL","CDJ","CON","DIA","DOR","GUE","LDY","ODT","PDC","PDP","RDA","SDM","SDS","TDQ","TDT","TEL"],
 };
 
 const LEGACY_CANONICAL_TO_ESPN = {
@@ -90,6 +92,17 @@ test("MLB_ID_TO_ABBR matches pre-registry literal", () => {
   assert.deepEqual(MLB_ID_TO_ABBR, LEGACY_MLB_ID_TO_ABBR);
 });
 
+// LMB (KXLMBGAME, adopted 2026-07-15): statsapi sportId 23 / leagueId 125 team ids,
+// verified against the live teams endpoint + Kalshi yes_sub_title names at adoption.
+test("LMB_ID_TO_ABBR pins the statsapi id → Kalshi abbr mapping", () => {
+  assert.deepEqual(LMB_ID_TO_ABBR, {
+    560: "ADM", 5567: "AGU", 447: "ALG", 434: "BLE", 4444: "CAL",
+    6304: "CDJ", 6303: "CON", 532: "DIA", 575: "DOR", 579: "GUE",
+    496: "LDY", 442: "ODT", 523: "PDC", 520: "PDP", 528: "RDA",
+    562: "SDM", 502: "SDS", 569: "TDQ", 5010: "TDT", 536: "TEL",
+  });
+});
+
 // ── Registry invariants ──────────────────────────────────────────────────────────
 
 test("registry: no duplicate canonical abbrs within a sport", () => {
@@ -112,7 +125,7 @@ test("registry: kalshi aliases never collide across teams within a sport", () =>
 });
 
 test("registry: numeric ids unique per sport", () => {
-  for (const [sport, key] of [["nhl", "nhlId"], ["mlb", "mlbId"], ["wnba", "espnId"]]) {
+  for (const [sport, key] of [["nhl", "nhlId"], ["mlb", "mlbId"], ["wnba", "espnId"], ["lmb", "mlbId"]]) {
     const ids = TEAMS[sport].map(t => t[key]).filter(v => v != null);
     assert.equal(new Set(ids).size, ids.length, sport);
     assert.equal(ids.length, TEAMS[sport].length, `${sport}: every team has a ${key}`);

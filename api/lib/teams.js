@@ -146,6 +146,33 @@ export const TEAMS = {
     { abbr: "PIT" }, { abbr: "SEA" }, { abbr: "SF" }, { abbr: "TB" },
     { abbr: "TEN" }, { abbr: "WSH" },
   ],
+  // Liga Mexicana de Béisbol (KXLMBGAME, adopted 2026-07-15). Canonical = Kalshi's 3-char
+  // ticker abbrs (all exactly 3 chars → parseGameTeams' validated 3+3 split works untouched).
+  // mlbId = MLB statsapi team id (sportId 23 / leagueId 125) — keying by id sidesteps the
+  // statsapi↔Kalshi name drift entirely (statsapi "Acereros del Norte" = Kalshi "Acereros de
+  // Monclova" ADM; statsapi "Tecos de los Dos Laredos" = Kalshi "Tecolotes…" TEL).
+  lmb: [
+    { abbr: "ADM", mlbId: 560 },  // Acereros de Monclova (statsapi: Acereros del Norte)
+    { abbr: "AGU", mlbId: 5567 }, // El Aguila de Veracruz
+    { abbr: "ALG", mlbId: 447 },  // Algodoneros de Union Laguna
+    { abbr: "BLE", mlbId: 434 },  // Bravos de Leon
+    { abbr: "CAL", mlbId: 4444 }, // Caliente de Durango
+    { abbr: "CDJ", mlbId: 6304 }, // Charros de Jalisco
+    { abbr: "CON", mlbId: 6303 }, // Conspiradores de Queretaro
+    { abbr: "DIA", mlbId: 532 },  // Diablos Rojos del Mexico
+    { abbr: "DOR", mlbId: 575 },  // Dorados de Chihuahua
+    { abbr: "GUE", mlbId: 579 },  // Guerreros de Oaxaca
+    { abbr: "LDY", mlbId: 496 },  // Leones de Yucatan
+    { abbr: "ODT", mlbId: 442 },  // Olmecas de Tabasco
+    { abbr: "PDC", mlbId: 523 },  // Piratas de Campeche
+    { abbr: "PDP", mlbId: 520 },  // Pericos de Puebla
+    { abbr: "RDA", mlbId: 528 },  // Rieleros de Aguascalientes
+    { abbr: "SDM", mlbId: 562 },  // Sultanes de Monterrey
+    { abbr: "SDS", mlbId: 502 },  // Saraperos de Saltillo
+    { abbr: "TDQ", mlbId: 569 },  // Tigres de Quintana Roo
+    { abbr: "TDT", mlbId: 5010 }, // Toros de Tijuana
+    { abbr: "TEL", mlbId: 536 },  // Tecolotes de Los Dos Laredos (statsapi: Tecos de los Dos Laredos)
+  ],
 };
 
 // ── Derived maps (legacy shapes, re-exported from their historical modules) ──────
@@ -214,4 +241,9 @@ export const NHL_ABBR_MAP = Object.fromEntries(
 // MLB Stats API teamId → canonical (legacy home: mlb-shared.js).
 export const MLB_ID_TO_ABBR = Object.fromEntries(
   TEAMS.mlb.map(t => [t.mlbId, t.abbr])
+);
+
+// LMB Stats API teamId → canonical Kalshi abbr (same statsapi id space as MLB, sportId 23).
+export const LMB_ID_TO_ABBR = Object.fromEntries(
+  TEAMS.lmb.map(t => [t.mlbId, t.abbr])
 );

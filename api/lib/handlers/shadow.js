@@ -13,6 +13,7 @@ import { fetchFightResults, matchFightByCodes, normFighterName } from "../mma.js
 import { fetchRoundScores, normGolfName } from "../golf.js";
 import { fetchRaceResults } from "../nascar.js";
 import { fetchSlResults } from "../nba-summer.js";
+import { fetchLmbResults } from "../lmb.js";
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER } from "../config.js";
 import { passesCategoryGate } from "../category-gate.js";
 import { INPUT_SEARCH_EXHAUSTED, stillExhausted } from "../model-holds.js";
@@ -593,7 +594,8 @@ async function handleShadowResolver({ path, request, env, cache }) {
   const golfRows = rows.filter(r => r.sport === "golf");
   const nascarRows = rows.filter(r => r.sport === "nascar");
   const nbaslRows = rows.filter(r => r.sport === "nbasl");
-  const teamRows = rows.filter(r => r.sport !== "tennis" && r.sport !== "soccer" && r.sport !== "fight" && r.sport !== "golf" && r.sport !== "nascar" && r.sport !== "nbasl");
+  const lmbRows = rows.filter(r => r.sport === "lmb");
+  const teamRows = rows.filter(r => r.sport !== "tennis" && r.sport !== "soccer" && r.sport !== "fight" && r.sport !== "golf" && r.sport !== "nascar" && r.sport !== "nbasl" && r.sport !== "lmb");
 
   // Build unique game keys per date. Key: sport:away:home[@gameTime] — matches /api/live format.
   const keysByDate = new Map(); // game_date → Set<rawKey>
@@ -1051,6 +1053,38 @@ async function handleShadowResolver({ path, request, env, cache }) {
     }
   }
 
+  // ── LMB resolution ── grade game-winner rows off the statsapi schedule (sportId 23).
+  // Games are matched on the sorted canonical team pair (Kalshi ticker order ≠ statsapi
+  // home/away). Split doubleheaders (different winners) come back unkeyed from
+  // fetchLmbResults, so those rows stay unresolved (failure-closed).
+  if (lmbRows.length) {
+    const dateOf = (r) => r.game_date
+      ? new Date(r.game_date).toISOString().slice(0, 10)
+      : (r.snapshot_date ? new Date(r.snapshot_date).toISOString().slice(0, 10) : null);
+    const byDate = new Map();
+    for (const r of lmbRows) {
+      const date = dateOf(r);
+      if (!date) { noData++; continue; }
+      if (!byDate.has(date)) byDate.set(date, []);
+      byDate.get(date).push(r);
+    }
+    const resultsByDate = new Map();
+    await Promise.all([...byDate.keys()].map(async (date) => {
+      resultsByDate.set(date, await fetchLmbResults(date.replace(/-/g, "")));
+    }));
+    for (const [date, rws] of byDate) {
+      const results = resultsByDate.get(date) || {};
+      for (const r of rws) {
+        const g = results[[r.home_team, r.away_team].sort().join("|")];
+        if (!g) { noData++; continue; } // game not final yet / split DH (unresolvable by pair)
+        const pickScore = g.home === r.pick_team ? g.homeScore : (g.away === r.pick_team ? g.awayScore : null);
+        const oppScore = g.home === r.pick_team ? g.awayScore : g.homeScore;
+        if (pickScore == null) { noData++; continue; }
+        updates.push({ id: r.id, won: g.winner === r.pick_team, actualValue: pickScore - oppScore });
+      }
+    }
+  }
+
   if (updates.length) await neonBatchResolve(updates, env);
 
   // Replica-proof resolution floor for the morning report. This pass's own writes are read-after-
@@ -1349,6 +1383,7 @@ const FORMULA_CUTOFFS = {
   "nascar|h2h":     "2026-06-22", // NASCAR Cup Phase 1 — recent-form finishing-position model
   "nascar|top10":   "2026-06-22",
   "nbasl|ml":       "2026-07-13", // NBA Summer League Phase 1 — within-tournament Elo, data starts here
+  "lmb|ml":         "2026-07-15", // LMB Phase 1 — standings run-rate λ → NegBin joint, data starts here
   "wnba|points":    "2026-05-28", // injury OffRtg piecewise (last broad λ change)
   "wnba|rebounds":  "2026-05-28",
   "wnba|assists":   "2026-05-28",
