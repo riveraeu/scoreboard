@@ -389,4 +389,20 @@ export const DISMISSED_SERIES = [
   "KXWFIBAGAME", "KXWIBPLGAME",
   "KXSOWBBALLGAME", // Summer Olympics Women's Basketball — national-team hoops, no ratings
   // source, next edition 2028. DISMISS.
+  // 7/15 vet (shortlisted same day): model end GREEN — the LMB playbook generalizes directly.
+  // statsapi covers all 4 full-season levels (sportId 11 AAA: IL 117 + PCL 112; 12 AA: Eastern
+  // 113 + Southern 111 + Texas 109; 13 High-A: SAL 116 + Midwest 118 + NW 126; 14 Single-A:
+  // Carolina 122 + FSL 123 + California 110) — 120 teams, ~62 games/day on regular days,
+  // standings carry id-keyed W/L/RS/RA (91-game samples), schedule Final+scores identical to
+  // the lmb.js resolver shape. First knob = the SAME standings run-rate λ → simulateMLBJoint
+  // (parameterize lmb.js by sportId/leagueIds + a new registry). BUT the Kalshi end is a pure
+  // SHELL: series registered ("MILB Game"), ZERO markets in ANY status ever — more premature
+  // than KXLMBGAME 7/01 (which at least listed dead-book pairs). No tickers/sub_titles → the
+  // team registry can't even be authored yet, and there's nothing to vet for liquidity.
+  // DISMISS to clear the funnel; the 7/29 SCHEDULED_CHECKPOINTS entry (ReportPage) re-checks
+  // for listings — if markets appear with real game-day books (asks + spread ≤15¢), un-dismiss
+  // and build. Build notes: MiLB doubleheaders are COMMON and 7-INNING — the split-DH guard is
+  // load-bearing; roster churn makes team run-rates noisier than MLB (acceptable for Phase 1);
+  // which levels Kalshi lists is unknown until markets exist.
+  "KXMILBGAME",
 ];

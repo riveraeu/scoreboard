@@ -492,6 +492,24 @@ const MODEL_NEXT = [
     ],
   },
   {
+    // MiLB game winner — vetted 2026-07-15 (shortlisted from the 7/15 rollout flood, dismissed
+    // same day with a recheck). Model end GREEN: statsapi covers all 4 full-season levels
+    // (sportIds 11-14 → 10 leagueIds, 120 teams, ~62 games/day), standings carry id-keyed
+    // RS/RA, and the resolver shape is identical to lmb.js — the whole build is "parameterize
+    // lmb.js + author the registry". Kalshi end: a registered SHELL with zero markets ever
+    // listed, so the registry (Kalshi abbrs ↔ statsapi ids) is unauthorable and there is no
+    // book to vet. infra:true is NOT semantic here — it's the blocked-on-Kalshi flag (Polymarket
+    // precedent) so the build-next banner can't nag for an unbuildable market; the 7/29
+    // SCHEDULED_CHECKPOINTS entry owns the wait. FLIP to non-infra (or just build) when
+    // markets list with real books.
+    sport: "MiLB", rank: 6, infra: true,
+    note: "Minor League Baseball game winner (KXMILBGAME) — LMB playbook at ~6x the volume (~62 games/day across AAA/AA/High-A/A vs LMB's ~10) IF Kalshi ever seeds it. Vetted 7/15: data end green, Kalshi end an empty shell — blocked until markets list.",
+    knob: "per-team season RS/G + opp RA/G → λ pair → simulateMLBJoint (identical to lmb.js — parameterize sportId/leagueIds, add the registry once Kalshi tickers exist); resolver = statsapi schedule Finals, split-DH guard mandatory (MiLB DHs are common and 7-inning)",
+    markets: [
+      { t: "single", badge: "BLOCKED", ticker: "KXMILBGAME", title: "MiLB game winner — Kalshi series is a zero-market shell; 7/29 checkpoint re-checks for listings + real books (asks populated, game-day spread ≤15¢), then un-dismiss and build" },
+    ],
+  },
+  {
     // Polymarket platform expansion. Phase 1a (cross-venue ML price observatory) SHIPPED 2026-06-23;
     // kill-gate CLOSED 2026-07-04 → Phase 1b trading KILLED (no executable cross-venue edge).
     // infra:true so the "build next" prompt never picks it. The observatory stays live: zero
@@ -602,6 +620,11 @@ const SCHEDULED_CHECKPOINTS = [
   // REAL (~600-contract volume, multi-level depth, 1–18¢ spreads) → un-dismissed and SHIPPED
   // the Pythag-λ model (api/lib/lmb.js + tonight/lmb-ml.js, `lmb|ml` shadow-only).
   // [[project-lmbgame-vet]])
+  // KXMILBGAME vetted + dismissed-with-recheck 2026-07-15: model end green (statsapi sportIds
+  // 11-14, LMB playbook at ~6x volume), Kalshi end a ZERO-market shell — nothing to vet or
+  // build against. Same wait shape as the LMB recheck (which converted on its date).
+  { date: "2026-07-29", tone: "gray", label: "Re-check KXMILBGAME listings", short: "KXMILBGAME recheck",
+    why: "Dismissed 7/15 as a zero-market shell with the model side green (statsapi covers all 4 levels, ~62 games/day) — if markets now list with real game-day books (asks populated, spread ≤15¢), un-dismiss and build the LMB-playbook λ model (parameterize lmb.js + author the registry from the live tickers)" },
   // K blend capWeight 0.5→0.4 shipped 2026-07-06 (tune:kblend GO); the held-out curve kept
   // improving below 0.4 but 0.4 was the train-picked winner — re-run on fresh post-cutoff rows
   // (~10 rank-1/day → n≈200 by here) before walking it lower. [[project_k_blend_counterfactual]]
