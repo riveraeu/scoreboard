@@ -371,4 +371,22 @@ export const DISMISSED_SERIES = [
   // same class as KXWMARMADSEED. DISMISS.
   "KXNBANEXTTEAMCONF", // "Next Team CONFERENCE" variant of KXNBANEXTTEAM (dismissed 7/14) —
   // signing-destination news futures; window_fit=true is the announcement false-positive. DISMISS.
+  // 7/15 third + fourth waves (25 + 4 — the rollout's alphabet tail, P→W; all 0 live).
+  // Club-soccer derivative families (25): same no-club-Elo blocker. Note the UEFA cups (UCL/UEL/
+  // UECL) are in here — biggest club competitions in the world, still blocked on club Elo; if
+  // soccer Phase 2 (club Elo) ever lands, these plus the Brasileirão/LigaMX/MLS families above
+  // are the market surface waiting for it.
+  "KXPERLIGA1BBTTS", "KXPERLIGA1SPREAD", "KXPERLIGA1TOTAL", // Peru Liga 1
+  "KXUCLFTTS", "KXUCLSCORE", // UEFA Champions League first-to-score + correct score
+  "KXUECL1HBTTS", "KXUECL1HSPREAD", "KXUECL1HTOTAL", "KXUECLFTTS", "KXUECLSCORE", // Conference League
+  "KXUEL1HBTTS", "KXUEL1HSPREAD", "KXUEL1HTOTAL", "KXUELFTTS", "KXUELSCORE", // Europa League
+  "KXURYPDBBTTS", "KXURYPDSPREAD", "KXURYPDTOTAL", // Uruguay Primera División
+  "KXUSL1H", "KXUSL1HBTTS", "KXUSL1HSPREAD", "KXUSL1HTOTAL", "KXUSLBTTS", "KXUSLSPREAD", "KXUSLTOTAL", // USL
+  "KXWCWOMEN", // Women's World Cup (2027) — our WC Elo is men's national teams (WC_TEAMS); no
+  // women's Elo source in stack, 0 live, resolves 2027. Same class as the confederation dismissals.
+  // Women's international/league basketball (3): no ratings/data source, same class as
+  // KXEUROBASKETGAME/KXIBPLGAME.
+  "KXWFIBAGAME", "KXWIBPLGAME",
+  "KXSOWBBALLGAME", // Summer Olympics Women's Basketball — national-team hoops, no ratings
+  // source, next edition 2028. DISMISS.
 ];
