@@ -350,4 +350,25 @@ export const DISMISSED_SERIES = [
   // source → no λ, no resolver. Revisit ONLY if a clean NPB stats API surfaces AND books seed.
   "KXNPBRFI",
   "KXNPBTOTAL",
+  // 7/15 second wave (25 more landed via the cron scan the same day — Kalshi is mid-rollout on
+  // international/derivative families). 24 dismissed, 1 promoted (KXMILBGAME → shortlisted:
+  // MiLB IS in MLB statsapi (sportIds 11-14 AAA→A), so the LMB machinery generalizes directly —
+  // vet its books when markets go live; 0 live at detection).
+  // Club-soccer derivative families (17): same no-club-Elo blocker as the morning batch. All 0 live.
+  "KXCHNSLSPREAD", "KXCHNSLTOTAL", // Chinese Super League (completes the CHNSL family)
+  "KXELITESERIENBTTS", "KXELITESERIENSPREAD", "KXELITESERIENTOTAL", // Eliteserien (Norway)
+  "KXLIGAMX1H", "KXLIGAMX1HBTTS", "KXLIGAMX1HSPREAD", "KXLIGAMX1HTOTAL", // Liga MX halves
+  "KXLIGAMXFTTS", "KXLIGAMXSCORE", // Liga MX first-to-score + correct score (exact-cell trap)
+  "KXMLS1H", "KXMLS1HBTTS", "KXMLS1HSPREAD", "KXMLS1HTOTAL", // MLS halves
+  "KXMLSFTTS", "KXMLSSCORE", // MLS first-to-score + correct score
+  // International basketball games (4): no rating/data source in our stack for any of them
+  // (FIBA/EuroBasket national teams, German DBB Supercup, Iceland Premier League, Philippine
+  // PBA). Same no-data-source class as KXBNXTGAME/KXPPLMATCH. All 0 live. DISMISS.
+  "KXDBBSUPERGAME", "KXEUROBASKETGAME", "KXIBPLGAME", "KXPBAGAME",
+  "KXLPL", // Lanka Premier League CHAMPION (cricket, despite the esports-looking ticker) —
+  // tournament futures + no cricket model. DISMISS.
+  "KXCOPAAMERICAHOST", // Copa America HOST selection (3 live) — committee/news decision futures,
+  // same class as KXWMARMADSEED. DISMISS.
+  "KXNBANEXTTEAMCONF", // "Next Team CONFERENCE" variant of KXNBANEXTTEAM (dismissed 7/14) —
+  // signing-destination news futures; window_fit=true is the announcement false-positive. DISMISS.
 ];
