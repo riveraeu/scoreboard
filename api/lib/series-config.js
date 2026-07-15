@@ -322,4 +322,32 @@ export const DISMISSED_SERIES = [
   // the longshot false-positive. Same class as KXWCFINALMATCHUP/KXWCHOSTWIN. DISMISS.
   "KXWMARMADSEED", // Women's CBB tournament SEEDS — committee-decision futures, no NCAAW model;
   // same class as KXNCAAWBAPRANK/KXNCAAWBWINS. DISMISS.
+  // 7/15 triage (31: the 25-row club-soccer derivative flood + 6 fresh detections).
+  // Club-soccer market families (25): Kalshi rolled out BTTS/spread/total/1H/correct-score
+  // families for club leagues whose BASE game series we already dismissed (KXBRASILEIRO{B,C}GAME
+  // 6/25) or never modeled — our soccer model is WC NATIONAL-TEAM Elo only (WC_TEAMS + Dixon–
+  // Coles); no club Elo exists (that's soccer Phase 2). Every row 0 live mkts, window_fit=false
+  // (pre-registration shells). Derivative families inherit the base-league blocker — if a club
+  // Elo ever lands, the full market surface is waiting (revisit then, not before).
+  "KXALLSVENSKANBTTS", "KXALLSVENSKANSPREAD", "KXALLSVENSKANTOTAL", // Allsvenskan (Sweden)
+  "KXBRASILEIRO1H", "KXBRASILEIRO1HBTTS", "KXBRASILEIRO1HSPREAD", "KXBRASILEIRO1HTOTAL", // Brasileirão A halves
+  "KXBRASILEIROBTTS", "KXBRASILEIROFTTS", // Brasileirão A BTTS + First Team to Score (no scoring-order model)
+  "KXBRASILEIROSCORE", // Brasileirão A CORRECT SCORE — exact-cell trap class on top of the club blocker
+  "KXBRASILEIROB1H", "KXBRASILEIROB1HBTTS", "KXBRASILEIROB1HSPREAD", "KXBRASILEIROB1HTOTAL", // Série B halves
+  "KXBRASILEIROBBTTS", "KXBRASILEIROBSPREAD", "KXBRASILEIROBTOTAL", // Série B full-game families
+  "KXBRASILEIROCBTTS", "KXBRASILEIROCSPREAD", "KXBRASILEIROCTOTAL", // Série C full-game families
+  "KXCANPLBTTS", "KXCANPLSPREAD", "KXCANPLTOTAL", // Canadian Premier League
+  "KXCHNSLBTTS", // Chinese Super League
+  "KXBNXTGAME", // BNXT Supercup (Belgian-Dutch basketball) — one-off supercup game, no BNXT
+  // rating/data source, 0 live mkts. Same no-data-source class as KXPPLMATCH. DISMISS.
+  // NCAAMB conference regular-season futures (4): season-long champion/top-finisher outrights,
+  // resolve March 2027; no NCAAMB game model. Same class as the NCAAF conference-qual (6/28) and
+  // KXNCAAWBWINS dismissals. DISMISS all.
+  "KXNCAAMBSECREG", "KXNCAAMBSECREGTOP", "KXNCAAMBBIGEASTREG", "KXNCAAMBBIGEASTREGTOP",
+  // NPB (Japanese baseball) first-inning-run + game totals (2): dense daily league (LMB-class
+  // cadence) BUT no data path in our stack — NPB is NOT in MLB statsapi (LMB was adoptable only
+  // because sportId 23 covered it) and ESPN doesn't carry NPB stats/scores. No standings/run-rate
+  // source → no λ, no resolver. Revisit ONLY if a clean NPB stats API surfaces AND books seed.
+  "KXNPBRFI",
+  "KXNPBTOTAL",
 ];
