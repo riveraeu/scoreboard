@@ -405,4 +405,24 @@ export const DISMISSED_SERIES = [
   // load-bearing; roster churn makes team run-rates noisier than MLB (acceptable for Phase 1);
   // which levels Kalshi lists is unknown until markets exist.
   "KXMILBGAME",
+  // 7/16 triage (25 detected — wave 5 of the A→W international/derivative rollout; all 0 live
+  // markets, pre-registration shells for tournaments that are months out).
+  // AFC Asian Cup derivative families (11): the BASE series KXAFCA was dismissed 7/11 (national-
+  // team confederation tournament — WC_TEAMS Elo doesn't cover it, next edition Jan 2027).
+  // Derivatives inherit the base blocker; MOV/SCORE/FTTS additionally have no model surface even
+  // for the WC (KXWCMOV class). If the national-team Elo registry ever extends past WC_TEAMS,
+  // this surface (plus AFCON below) is waiting — revisit near the Jan 2027 Asian Cup, not before.
+  "KXAFCAC1H", "KXAFCAC1HBTTS", "KXAFCAC1HSPREAD", "KXAFCAC1HTOTAL",
+  "KXAFCACADVANCE", "KXAFCACBTTS", "KXAFCACFTTS", "KXAFCACMOV",
+  "KXAFCACSCORE", "KXAFCACSPREAD", "KXAFCACTOTAL",
+  // AFC Champions League derivative families (11): CLUB soccer — same no-club-Elo blocker as the
+  // UCL/UEL/UECL families dismissed 7/15; season resumes September. If soccer Phase 2 club Elo
+  // lands, this joins that waiting surface.
+  "KXAFCCL1H", "KXAFCCL1HBTTS", "KXAFCCL1HSPREAD", "KXAFCCL1HTOTAL",
+  "KXAFCCLADVANCE", "KXAFCCLBTTS", "KXAFCCLFTTS", "KXAFCCLMOV",
+  "KXAFCCLSCORE", "KXAFCCLSPREAD", "KXAFCCLTOTAL",
+  // Africa Cup of Nations derivative families (first 3 — expect the rest of the family in the
+  // next cron waves): national-team confederation tournament, same KXAFCA/KXUEFAEURO class
+  // (no Elo coverage beyond WC_TEAMS, next edition Dec 2027).
+  "KXAFCON1H", "KXAFCON1HBTTS", "KXAFCON1HSPREAD",
 ];
