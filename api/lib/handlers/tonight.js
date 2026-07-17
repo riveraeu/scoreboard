@@ -807,7 +807,15 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             const kalshiSpread = propDirection === "under"
               ? (noAsk > 0 && noBid > 0 ? Math.round((noAsk - noBid) * 100) : null)
               : (yesAsk > 0 && yesBid > 0 ? Math.round((yesAsk - yesBid) * 100) : null);
-            qualifyingMarkets.push({ playerName, playerNameDisplay, sport, stat, col, threshold, kalshiPct: pct, americanOdds, kalshiVolume: volume, gameTeam1, gameTeam2, kalshiPlayerTeam, gameDate, kalshiSpread, ...(propDirection ? { direction: propDirection, noKalshiPct: noPct, noKalshiAO } : {}), _ticker: m.ticker, _yesAsk: yesAsk, _yesBid: yesBid, _yesAskSize: yesAskSize, _depth: m._depth });
+            // HRR: attach the NO quote (no direction — the row stays YES-framed) so the props.js
+            // NO-side flip (2026-07-11) can evaluate it. Only when the NO book is real: noAsk
+            // absent → noPct is the synthetic 100-pct fallback (never a fill price), and a
+            // one-sided NO book (spread > CAPTURE_MAX_SPREAD, incl. stale-ask books via noBid=0)
+            // would redirect the bet to an untradeable artifact price. Absent field = flip can't
+            // fire, failure-closed.
+            const _hrrNoQuote = stat === "hrr" && noAsk > 0 && capturableSpread(noSpreadC)
+              ? { noKalshiPct: noPct, noKalshiAO } : {};
+            qualifyingMarkets.push({ playerName, playerNameDisplay, sport, stat, col, threshold, kalshiPct: pct, americanOdds, kalshiVolume: volume, gameTeam1, gameTeam2, kalshiPlayerTeam, gameDate, kalshiSpread, ...(propDirection ? { direction: propDirection, noKalshiPct: noPct, noKalshiAO } : _hrrNoQuote), _ticker: m.ticker, _yesAsk: yesAsk, _yesBid: yesBid, _yesAskSize: yesAskSize, _depth: m._depth });
           }
         }
         if (qualifyingMarkets.length === 0 && totalMarkets.length === 0) {
@@ -866,8 +874,10 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           const blended = blendMarketPrice(m._depth, "yes", m.kalshiPct);
           if (blended) { m.kalshiPct = blended.pct; m.americanOdds = blended.americanOdds; }
           // Under props (totalBases) actually buy the NO side — re-price it from the NO book
-          // too, mirroring the totals/spreads loop below.
-          if (m.direction === "under" && m.noKalshiPct != null) {
+          // too, mirroring the totals/spreads loop below. HRR rows carry noKalshiPct without a
+          // direction (props.js decides the flip) — their NO price needs the same re-price so
+          // the flip compares blended fills on both sides.
+          if (m.noKalshiPct != null) {
             m.rawNoKalshiPct = m.noKalshiPct;
             const nb = blendMarketPrice(m._depth, "no", m.noKalshiPct);
             if (nb) { m.noKalshiPct = nb.pct; m.noKalshiAO = nb.americanOdds; }
