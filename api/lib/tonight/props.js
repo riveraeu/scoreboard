@@ -1706,7 +1706,9 @@ export async function emitPropPlays({
       lineMove: lineMove ?? null,
       thinMarket: thinMarket ?? false,
       marketConfidence: marketConfidence ?? "thin",
-      kalshiTicker: _propKalshiTicker ?? null, kalshiSide: "yes",
+      // Side must follow the flip: under-direction props are a NO buy — the whole client order
+      // chain (sizing, book walk, order POST) keys off kalshiSide, same as the totals under emits.
+      kalshiTicker: _propKalshiTicker ?? null, kalshiSide: _effectiveDirection === "under" ? "no" : "yes",
     });
   }
   // Save all MLB strikeout plays before dedup so we can re-add non-winning thresholds as
