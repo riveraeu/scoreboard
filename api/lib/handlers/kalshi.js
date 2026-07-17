@@ -383,13 +383,22 @@ export async function handleKalshiRoutes(ctx) {
     if (!Number.isInteger(count) || count < 1 || count > 9999) return errorResponse("count must be integer 1–9999", 400);
     if (!Number.isInteger(price) || price < 1 || price > 99) return errorResponse("price must be integer 1–99 (cents)", 400);
     if (!env?.KALSHI_API_KEY_ID || !env?.KALSHI_PRIVATE_KEY) return errorResponse("Kalshi API not configured", 500);
-    // Build order payload
-    const kalshiPath = "/trade-api/v2/portfolio/orders";
+    // Build order payload — Kalshi V2 event-order API (2026-07: the legacy /portfolio/orders
+    // POST returns "Please switch to the V2 endpoints"). V2 is a single book quoted in YES
+    // terms: bid = buy YES, ask = sell YES — and selling YES you don't hold IS the NO buy
+    // (ask at (100−p)¢ costs p¢/contract). Client contract unchanged (side yes/no + integer
+    // cents); this handler is the translation chokepoint both directions — the response is
+    // normalized back to the legacy taker_fill_* shape below so App.jsx needs no changes.
+    const kalshiPath = "/trade-api/v2/portfolio/events/orders";
     const timestamp = String(Date.now()); // milliseconds, as Kalshi SDK uses
     const orderPayload = {
-      ticker, side, action: "buy", type: "limit", count,
-      ...(side === "yes" ? { yes_price: price } : { no_price: price }),
-      ...(clientOrderId ? { client_order_id: clientOrderId } : {}),
+      ticker,
+      client_order_id: clientOrderId || crypto.randomUUID(), // required by V2 (idempotency)
+      side: side === "yes" ? "bid" : "ask",
+      count: String(count), // fixed-point string
+      price: (side === "yes" ? price / 100 : (100 - price) / 100).toFixed(4), // YES-terms dollars
+      time_in_force: "good_till_canceled", // preserves legacy rest-if-unfilled behavior
+      self_trade_prevention_type: "taker_at_cross",
     };
     const payloadStr = JSON.stringify(orderPayload);
     // Sign: timestamp + method + path only (no body) using RSA-PSS SHA-256 with DIGEST_LENGTH salt (32)
@@ -402,7 +411,7 @@ export async function handleKalshiRoutes(ctx) {
     } catch (e) {
       return errorResponse(`Signing failed: ${e?.message || e}`, 500);
     }
-    const resp = await fetch(`https://api.elections.kalshi.com${kalshiPath}`, {
+    const resp = await fetch(`https://external-api.kalshi.com${kalshiPath}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -415,7 +424,23 @@ export async function handleKalshiRoutes(ctx) {
     if (!resp) return errorResponse("Kalshi unreachable", 502);
     const respBody = await resp.json().catch(() => ({}));
     if (!resp.ok) return errorResponse(respBody?.error?.message || `Kalshi error ${resp.status}`, resp.status);
-    return jsonResponse({ ok: true, order: respBody.order ?? respBody });
+    // Normalize the V2 response ({order_id, fill_count, remaining_count, average_fill_price
+    // — fixed-point strings, YES-terms dollars}) to the legacy shape the client parses.
+    // average_fill_price is a YES price: a NO buy's per-contract cost is its complement.
+    const _filled = Math.round(parseFloat(respBody.fill_count ?? "0")) || 0;
+    const _remaining = Math.round(parseFloat(respBody.remaining_count ?? "0")) || 0;
+    const _avgYesCents = respBody.average_fill_price != null ? Math.round(parseFloat(respBody.average_fill_price) * 100) : null;
+    const _perContractCents = _avgYesCents == null ? null : (side === "yes" ? _avgYesCents : 100 - _avgYesCents);
+    const order = {
+      order_id: respBody.order_id,
+      client_order_id: respBody.client_order_id ?? orderPayload.client_order_id,
+      taker_fill_count: _filled,
+      taker_fill_cost: _perContractCents != null ? _filled * _perContractCents : 0,
+      remaining_count: _remaining,
+      average_fill_price: respBody.average_fill_price ?? null,
+      average_fee_paid: respBody.average_fee_paid ?? null,
+    };
+    return jsonResponse({ ok: true, order, v2: respBody });
   }
 
   if (path === "kalshi-balance" && method === "GET") {
