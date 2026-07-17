@@ -1591,13 +1591,16 @@ function App() {
                       }
                     } }
                   return displayRates.map(({t, count: countOver, pct: pctOver}) => {
-                    const isUnder = direction === "under";
+                    // Use exact threshold's tonight play — never cross-contaminate softPct from a different threshold
+                    const tonightPlay = tonightPlayerMap[`${safeTab}|${t}`];
+                    // A server-flipped under play (hrr NO-side, totalBases) renders as an under row
+                    // regardless of the card's over/under browse toggle — the bet side IS under.
+                    const _tpUnder = tonightPlay?.direction === "under";
+                    const isUnder = direction === "under" || _tpUnder;
                     // Flip all hit-rate values for "under" direction
                     const count = isUnder ? (totalGames - countOver) : countOver;
                     const pct   = isUnder ? 100 - pctOver : pctOver;
                     const dvp = dvpMap[t];
-                    // Use exact threshold's tonight play — never cross-contaminate softPct from a different threshold
-                    const tonightPlay = tonightPlayerMap[`${safeTab}|${t}`];
                     // MLB: always use dvpMap h2h rate for consistency across all thresholds
                     // Non-MLB: prefer tonight play's pre-computed soft rate, fall back to dvpMap
                     const softPctRaw = isMLB
@@ -1624,17 +1627,28 @@ function App() {
                     const softPct = isUnder ? (softPctRaw !== null ? 100 - softPctRaw : null) : softPctRaw;
                     // truePct = avg(seasonPct, matchupPct) — use monotonicity-enforced pre-computed value
                     const truePct = (() => {
+                      // Server-flipped rows: the model's under-side true% (noTruePct, else complement).
+                      if (isUnder && _tpUnder && tonightPlay.truePct != null)
+                        return tonightPlay.noTruePct ?? parseFloat((100 - tonightPlay.truePct).toFixed(1));
                       if (!isUnder && _rawTruePctMap[t] != null) return _rawTruePctMap[t];
                       return softPct !== null ? (pct + softPct) / 2 : null;
                     })();
-                    // Prefer tonight endpoint's Kalshi data when available; fall back to live fetch
+                    // Prefer tonight endpoint's Kalshi data when its framing matches the row.
+                    // Flipped rows carry the REAL NO book (noKalshiPct + NO-side americanOdds) —
+                    // use it directly; the synthetic 100−yes complement is a browse-only fallback
+                    // (YES/NO books are independent, complement ≠ fill price — see CLAUDE.md).
                     const kRawLocal = kalshiOdds[t];
-                    const kTonightRaw = (tonightPlay && !isUnder) ? { pct: tonightPlay.kalshiPct, americanOdds: tonightPlay.americanOdds } : null;
+                    const kTonightRaw = tonightPlay && (isUnder === _tpUnder)
+                      ? (_tpUnder
+                          ? { pct: Math.round(tonightPlay.noKalshiPct ?? (100 - tonightPlay.kalshiPct)), americanOdds: tonightPlay.americanOdds }
+                          : { pct: tonightPlay.kalshiPct, americanOdds: tonightPlay.americanOdds })
+                      : null;
                     const kRaw = kTonightRaw || kRawLocal;
-                    const k = (kRaw && isUnder) ? { ...kRaw, pct: 100 - kRaw.pct, americanOdds: kRaw.pct >= 50 ? Math.round(((kRaw.pct) / (100 - kRaw.pct)) * 100) : -Math.round(((100 - kRaw.pct) / kRaw.pct) * 100) } : kRaw;
+                    const k = (kRaw && isUnder && !kTonightRaw) ? { ...kRaw, pct: 100 - kRaw.pct, americanOdds: kRaw.pct >= 50 ? Math.round(((kRaw.pct) / (100 - kRaw.pct)) * 100) : -Math.round(((100 - kRaw.pct) / kRaw.pct) * 100) } : kRaw;
                     const oddsStr = k ? (k.americanOdds >= 0 ? `+${k.americanOdds}` : `${k.americanOdds}`) : null;
-                    // Use API net edge (includes spreadAdj) when available; fallback recomputes raw edge
-                    const edge = (tonightPlay?.edge != null && !isUnder) ? tonightPlay.edge : (truePct !== null && k) ? truePct - k.pct : null;
+                    // Use API net edge when its framing matches the row (flipped rows' edge is
+                    // already bet-side); fallback recomputes raw edge from the row's own framing
+                    const edge = (tonightPlay?.edge != null && isUnder === _tpUnder) ? tonightPlay.edge : (truePct !== null && k) ? truePct - k.pct : null;
                     const edgeColor = edge === null ? null : edge >= EDGE_GATE ? "#3fb950" : edge >= 0 ? "#e3b341" : "#f78166";
                     const edgeStr = edge === null ? null : (edge >= 0 ? `+${edge.toFixed(1)}%` : `${edge.toFixed(1)}%`);
 
@@ -1663,7 +1677,14 @@ function App() {
                           americanOdds: k.americanOdds,
                           seasonPct: parseFloat(pct.toFixed(1)),
                           softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
-                          truePct: truePct !== null ? parseFloat(truePct.toFixed(1)) : null,
+                          // Pick storage convention: truePct stays over-framed; under picks carry
+                          // direction + noTruePct/noKalshiPct (same shape Place All tracks).
+                          truePct: _tpUnder ? tonightPlay.truePct : (truePct !== null ? parseFloat(truePct.toFixed(1)) : null),
+                          ...(_tpUnder ? {
+                            direction: "under",
+                            noTruePct: tonightPlay.noTruePct ?? (tonightPlay.truePct != null ? parseFloat((100 - tonightPlay.truePct).toFixed(1)) : null),
+                            noKalshiPct: tonightPlay.noKalshiPct ?? null,
+                          } : {}),
                           edge: parseFloat(edge.toFixed(1)),
                           gameDate: tonightPlay?.gameDate || "",
                         });

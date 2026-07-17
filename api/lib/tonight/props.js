@@ -1470,7 +1470,7 @@ export async function emitPropPlays({
       // explanation renders even when the play fails edge or other gates.
       const _qualFalseBase = {
         ..._dropObj,
-        ...(_effectiveDirection ? { direction: _effectiveDirection, noKalshiPct, noKalshiAO } : {}),
+        ...(_effectiveDirection ? { direction: _effectiveDirection, noKalshiPct, noKalshiAO, noTruePct: parseFloat((100 - truePct).toFixed(1)) } : {}),
         qualified: false,
         playerName: playerNameDisplay || playerName,
         playerId: info.id,
@@ -1528,7 +1528,7 @@ export async function emitPropPlays({
     plays.push({
       qualified: true,
       // Under props: totals convention — over-framed truePct/kalshiPct + NO side fields.
-      ...(_effectiveDirection ? { direction: _effectiveDirection, noKalshiPct, noKalshiAO } : {}),
+      ...(_effectiveDirection ? { direction: _effectiveDirection, noKalshiPct, noKalshiAO, noTruePct: parseFloat((100 - truePct).toFixed(1)) } : {}),
       playerName: playerNameDisplay || playerName,
       playerId: info.id,
       sport,

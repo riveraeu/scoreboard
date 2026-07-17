@@ -564,7 +564,7 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                             <div style={{minWidth:0,display:"flex",alignItems:"center",lineHeight:1.4,gap:4,whiteSpace:"nowrap"}}>
                               <span style={{color:"#a855f7",fontSize:10}}>{oddsStr}</span>
                               <span style={{color:"#484f58",fontSize:10}}>·</span>
-                              <span style={{color:"#e3b341",fontSize:10}}>{pick.direction === "under" ? (pick.noTruePct ?? pick.truePct) : pick.truePct}%</span>
+                              <span style={{color:"#e3b341",fontSize:10}}>{pick.direction === "under" ? (pick.noTruePct ?? (pick.truePct != null ? +(100 - pick.truePct).toFixed(1) : null)) : pick.truePct}%</span>
                               <span style={{display:"inline-flex",alignItems:"center",marginLeft:"auto"}}>
                                 <span style={{color:"#484f58",fontSize:10}}>$</span>
                                 <input type="number" min="0" step="0.1" value={units}
@@ -583,7 +583,7 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                         <div style={{minWidth:0,display:"flex",alignItems:"center",lineHeight:1.4,gap:8,whiteSpace:"nowrap",overflow:"hidden"}}>
                           {subtitleEl}
                           <span style={{color:"#a855f7",fontSize:10}}>{oddsStr}</span>
-                          <span style={{color:"#e3b341",fontSize:10}}>{pick.direction === "under" ? (pick.noTruePct ?? pick.truePct) : pick.truePct}%</span>
+                          <span style={{color:"#e3b341",fontSize:10}}>{pick.direction === "under" ? (pick.noTruePct ?? (pick.truePct != null ? +(100 - pick.truePct).toFixed(1) : null)) : pick.truePct}%</span>
                           <span style={{display:"inline-flex",alignItems:"center"}}>
                             <span style={{color:"#484f58",fontSize:10}}>$</span>
                             <input type="number" min="0" step="0.1" value={units}
@@ -792,7 +792,7 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                                   const implied = parseFloat((v < 0 ? Math.abs(v)/(Math.abs(v)+100)*100 : 100/(v+100)*100).toFixed(1));
                                   setTrackedPlays(prev => prev.map(p => {
                                     if (p.id !== pick.id) return p;
-                                    const tp = p.direction === "under" ? (p.noTruePct ?? p.truePct) : p.truePct;
+                                    const tp = p.direction === "under" ? (p.noTruePct ?? (p.truePct != null ? +(100 - p.truePct).toFixed(1) : null)) : p.truePct;
                                     const edge = tp != null ? parseFloat((tp - implied).toFixed(1)) : p.edge;
                                     return { ...p, americanOdds: v, kalshiPct: implied, edge };
                                   }));

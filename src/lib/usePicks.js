@@ -72,7 +72,11 @@ export function usePicks({ mlbMeta, nbaMeta, wnbaMeta, nhlMeta }) {
       ? Math.abs(savedOdds) / (Math.abs(savedOdds) + 100) * 100
       : 100 / (savedOdds + 100) * 100;
     const newKalshiPct = parseFloat(impliedFromOdds.toFixed(1));
-    const truePct = play.direction === "under" ? (play.noTruePct ?? play.truePct) : play.truePct;
+    // Under picks price off the NO-side true%; older under props lack noTruePct — derive the
+    // complement, never fall back to the over-framed truePct (that inflates edge by ~2× the gap).
+    const truePct = play.direction === "under"
+      ? (play.noTruePct ?? (play.truePct != null ? parseFloat((100 - play.truePct).toFixed(1)) : null))
+      : play.truePct;
     const newEdge = truePct != null ? parseFloat((truePct - newKalshiPct).toFixed(1)) : (play.edge ?? null);
     // Stamp modelVersion:"v2" so /api/auth/calibration can split historical (pre-v2-drop)
     // vs current outcomes. Without the stamp, post-drop picks would be treated as v1.
