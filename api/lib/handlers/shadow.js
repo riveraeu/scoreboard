@@ -1341,10 +1341,11 @@ function _isGatedCategory(key) {
 // YES/over-side probability), NOT the bet side; the stored model_true_pct IS the bet side,
 // so direction='under' rows reconstruct truePct as 100 - model_true_pct (hrr NO-side flips
 // a YES-framed prob; spread cover probs are complementary — same arithmetic either way).
-const _CATEGORY_GATE_SQL = `(
-  (sport='mlb' AND stat='hrr' AND direction='under' AND
-     (100 - model_true_pct) >= 63 AND (100 - model_true_pct) < 73)
-)`;
+const _CATEGORY_GATE_SQL = `(FALSE)`; // gate EMPTY 2026-07-18 (mlb|hrr NO-side pulled — zero
+// real NO-quote captures behind the 7/11 provisional band; see category-gate.js). When a
+// category is re-gated, restore its clause here, e.g. hrr NO-side was:
+//   (sport='mlb' AND stat='hrr' AND direction='under' AND
+//      (100 - model_true_pct) >= 63 AND (100 - model_true_pct) < 73)
 const _BAND_MID = { "55-60":57.5,"60-65":62.5,"65-70":67.5,"70-75":72.5,"75-80":77.5,"80-85":82.5,"85-90":87.5,"90-95":92.5,"95+":97.5 };
 const _BAND_ORDER = Object.keys(_BAND_MID); // low → high, for adjacency/coherence
 

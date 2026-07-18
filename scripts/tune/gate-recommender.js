@@ -27,10 +27,13 @@ const DEMOTE_ROI    = -0.05; // ROI < -5% to flag a demotion
 // Update this when you apply a recommendation so next run sees the new baseline.
 // max: upper-bound cap (exclusive), null = no cap.
 const CURRENT_GATE = {
-  "mlb|strikeouts": { min: 80, max: 85 },
-  "wnba|points":    { min: 70, max: 80 },
-  "wnba|rebounds":  { min: 70, max: 85 },
-  "wnba|spread":    { min: 65, max: 85 },
+  // EMPTY 2026-07-18 — synced to passesCategoryGate (this copy had drifted since the 6/19
+  // demotions and never picked up the 7/11 hrr provisional, pulled 7/18 anyway). Entries
+  // pre-6/19, for reference when a category re-earns its band:
+  //   "mlb|strikeouts": { min: 80, max: 85 },
+  //   "wnba|points":    { min: 70, max: 80 },
+  //   "wnba|rebounds":  { min: 70, max: 85 },
+  //   "wnba|spread":    { min: 65, max: 85 },
 };
 
 // ── Env loading ───────────────────────────────────────────────────────────────

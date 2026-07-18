@@ -35,20 +35,25 @@ test("passesCategoryGate: stat||gameType key resolution (gameType is the fallbac
   );
 });
 
-test("passesCategoryGate: gate is EMPTY 2026-06-19 (every former category fails everywhere)", () => {
-  // mlb|strikeouts demoted; wnba|points/rebounds/spread paused. Re-enable a category only after
-  // tune:gate confirms a coherent +ROI band at n≥50 + non-negative Brier — changing these assertions
-  // must accompany re-adding the gate line in category-gate.js.
+test("passesCategoryGate: gate is EMPTY 2026-07-18 (every former category fails everywhere)", () => {
+  // mlb|strikeouts demoted + wnba|points/rebounds/spread paused 6/19; mlb|hrr NO-side provisional
+  // (7/11) pulled 7/18 — zero real NO-quote captures behind it. Re-enable a category only after
+  // tune:gate confirms a coherent +ROI band at n≥50 — changing these assertions must accompany
+  // re-adding the gate line in category-gate.js. Probes run with AND without direction:'under'
+  // because direction-conditional gates (hrr) never match a direction-less probe.
   const former = [
     { sport: "mlb", stat: "strikeouts" },
     { sport: "wnba", stat: "points" },
     { sport: "wnba", stat: "rebounds" },
     { sport: "wnba", gameType: "spread" },
+    { sport: "mlb", stat: "hrr" },
   ];
   for (const p of former) {
-    for (const tp of [62, 72, 75, 78, 82, 90]) {
+    for (const tp of [62, 65, 72, 75, 78, 82, 90]) {
       assert.equal(passesCategoryGate({ ...p, truePct: tp }), false,
         `${p.sport}|${p.stat || p.gameType} ${tp} should fail (gate empty)`);
+      assert.equal(passesCategoryGate({ ...p, truePct: tp, direction: "under" }), false,
+        `${p.sport}|${p.stat || p.gameType} ${tp} under should fail (gate empty)`);
     }
   }
 });
