@@ -545,4 +545,17 @@ export const DISMISSED_SERIES = [
   // conference season futures. DISMISS.
   "KXWCBRACE", // WC player to score a brace (2 goals) — per-player goal novelty; soccer Phase 1 is
   // national-team Elo only (no per-player goal model). Same class as KXWCGOALSTREAK/KXWCGBOOTGOALS. DISMISS.
+  // 7/18 wave — cricket match winners + NFL/CFB season futures:
+  "KXCPLMATCH", // Caribbean Premier League T20 match winner — no cricket model or data path (KXLPL
+  "KXLPLMATCH", // class, 7/15). LPL has live match rows but the books are dead shells (2/98¢, 96¢
+  // spread, 0 vol — fails CAPTURE_MAX_SPREAD 6.4×), CPL 0 markets. Revisit only if books seed AND a
+  // clean cricket stats API path is vetted. DISMISS.
+  "KXNCAAFACCREGTOP", "KXNCAAFB12REGTOP", "KXNCAAFBIGTENREGTOP", "KXNCAAFSECREGTOP",
+  // ^ CFB conference regular-season top-finisher futures — no CFB model; season futures class
+  // (KXNCAAFH2HWINS 7/10, NCAAF qualifier futures 6/28). DISMISS.
+  "KXNFLMATCHUP", // zero markets ever in any status (bare shell, KXWC/KXMILBGAME class) — structure
+  // unvettable; no NFL game model exists regardless. DISMISS.
+  "KXNFLSTAGEOFELIM", // per-team playoff elimination-stage futures — NFL season futures class. DISMISS.
+  "KXNFLTIES", // "≥N ties in the 2026-27 season" novelty futures; windowFit=true was the longshot
+  // rung false positive (KXMLBFASTPITCH record-novelty class). DISMISS.
 ];
