@@ -648,6 +648,11 @@ const SCHEDULED_CHECKPOINTS = [
   // take effect (config.js comment; the [40,55] shape is already pinned in config.test.js).
   { date: "2026-08-08", tone: "blue", label: "Run tune:window --category mlb|f5ml (window [40,55] candidate)", short: "f5ml window check",
     why: "7/11: STRENGTHENING + Brier-eligible, discovered [40,55]¢ ROI +24.2% CI-lo>0 coherent, short only 32/50 in-window bets — re-run at n≥200 resolved (~Aug 8 after the All-Star break); a GO also needs the F5 ML emit routed through betWindowFor (non-prop paths are inline-global today)" },
+  // mlb|hrr NO-side gate PULLED 2026-07-18: the 7/11 provisional band [63,73) was derived on
+  // synthesized YES-complement NO prices (feed dead 7/11–7/17, zero real captures). Shadow
+  // capture continues; ~10–15 in-band rows/day → n≥50 ~7/25. [[project_hrr_no_side_flip]]
+  { date: "2026-07-25", tone: "blue", label: "Re-run tune:gate on mlb|hrr NO-side (real post-7/17 captures)", short: "hrr NO re-gate check",
+    why: "Gate pulled 7/18 — the 7/11 provisional +8.8% ROI band rested on synthesized complements with zero real NO-quote rows; re-gate only if tune:gate shows +ROI at n≥50 on post-7/17 captures with band coherence (window [24,33] still capturing throughout)" },
 ];
 // INPUT_SEARCH_EXHAUSTED + _stillExhausted moved to api/lib/model-holds.js (2026-07-01, imported
 // above) — shared with the shadow-report daily brief so both surfaces agree on parked diagnostics.
