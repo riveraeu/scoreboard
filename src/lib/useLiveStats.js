@@ -143,9 +143,12 @@ export function useLiveStats({ trackedPlays, setTrackedPlays, mlbMeta, nbaMeta, 
 
           const playerStats = findLivePlayer(liveGame.players, pick.playerName);
           const current = getPickCurrentStat(pick, playerStats);
+          const isUnder = pick.direction === "under";
 
+          // Counting stats are monotonic — once the threshold is crossed mid-game,
+          // OVER is locked won and UNDER is locked lost; neither can recover.
           if (current !== null && current >= pick.threshold) {
-            return { ...pick, ...backfill, result: "won" };
+            return { ...pick, ...backfill, result: isUnder ? "lost" : "won" };
           }
           // Mid-game DNP: player not in boxscore + game has passed the midpoint = coach's
           // decision / IL. Resolve "dnp" without waiting for game end. Conservative — only
@@ -161,13 +164,15 @@ export function useLiveStats({ trackedPlays, setTrackedPlays, mlbMeta, nbaMeta, 
           if (pick.sport === "mlb" && pick.stat === "strikeouts"
               && liveGame.state === "in"
               && pitcherIsOut(playerStats)) {
-            return { ...pick, ...backfill, result: "lost" };
+            // Count is final below threshold (the cross-check above already returned):
+            // over is lost, under is won.
+            return { ...pick, ...backfill, result: isUnder ? "won" : "lost" };
           }
           if (liveGame.state === "post") {
             if (playerStats === undefined && pick.stat !== "strikeouts") {
               return { ...pick, ...backfill, result: "dnp" }; // player not in boxscore after game ended
             }
-            return { ...pick, ...backfill, result: "lost" };
+            return { ...pick, ...backfill, result: isUnder ? "won" : "lost" };
           }
           return hasBackfill ? { ...pick, ...backfill } : pick;
         });

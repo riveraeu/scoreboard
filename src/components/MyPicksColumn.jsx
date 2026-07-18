@@ -187,7 +187,7 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                             ? `${p.pickTeam} ML`
                             : p.gameType === "spread"
                               ? `${p.pickTeam} ${_spreadStr}`
-                              : `${p.playerName} ${p.threshold}+ ${p.stat?.toUpperCase?.() || ""}`.trim();
+                              : `${p.playerName} ${p.direction === "under" ? `<${p.threshold}` : `${p.threshold}+`} ${p.stat?.toUpperCase?.() || ""}`.trim();
                       return { pl, dateKey, won: p.result === "won", barLabel };
                     });
                   let days;
@@ -550,7 +550,7 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                               ? `Moneyline`
                               : pick.gameType === "spread"
                               ? `${pick.pickLine > 0 ? "+" : ""}${pick.pickLine} Spread`
-                              : `${pick.threshold}+ ${STAT_LABEL[pick.stat] || pick.stat}`}
+                              : `${pick.direction === "under" ? `<${pick.threshold}` : `${pick.threshold}+`} ${STAT_LABEL[pick.stat] || pick.stat}`}
                           </span>
                         </>
                       );
