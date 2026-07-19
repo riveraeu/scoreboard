@@ -24,6 +24,7 @@ export const INPUT_SEARCH_EXHAUSTED = {
   "tennis|match": "2026-07-01",
   "mlb|outs": "2026-07-11",
   "mlb|f5ml": "2026-07-14",
+  "mlb|hrr": "2026-07-19",
 };
 // mlb|teamRuns added 2026-06-29 after the MARKET_SHARPER banner prompted its tune:residual run:
 // overall skill −0.002 (market sharper near-tie, n≈261); NO sub-trust sub-slice (faint +skill only at
@@ -52,6 +53,16 @@ export const INPUT_SEARCH_EXHAUSTED = {
 // xWindOutMph pockets below the n≥30 bucket floor (weather→runs pre-filter failed 6/23 anyway). No
 // addable in-data L0 input. The 2026-08-08 SCHEDULED_CHECKPOINTS tune:window re-check stays —
 // window derivation on clean accrual is a separate question from the input search.
+// mlb|hrr added 2026-07-19, same day its FORMULA_CUTOFF moved to 2026-06-30 (pre-liquidity-gate
+// dead-book YES≥80¢ rows had faked the entire +0.05 Brier skill — see memory
+// project_hrr_hits_skill_artifact): tune:residual on the clean since-6/30 window (n=251) reports
+// skill −0.0078 (market sharper near-tie) and NO addable input — every steep-gradient miss bucket
+// (xWindOutMph>6.2, xTempF, dayOfWeek, edge≥3 overconfidence) carries NEGATIVE skill (market-priced);
+// no +skill pocket at real n. The NO-side flip validation (tune:gate n≥50 on post-7/17 real NO
+// quotes) is a separate market-mispricing question and proceeds regardless. NOTE: the same 6/30
+// cutoff intentionally auto-UN-suppresses mlb|hits' 2026-06-23 entry above (artifact-clean data
+// re-opens its input search once it clears the n≥100 Brier floor); its WINDOW_SEARCH_EXHAUSTED
+// entry (2026-07-01) postdates the cutoff and stays suppressed.
 
 // Categories already run through tune:window to a TERMINAL no-go (the discovered window doesn't
 // hold out-of-sample), so the tier-3.15 derive-a-window nag stops — mirrors INPUT_SEARCH_EXHAUSTED,
