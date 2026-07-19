@@ -54,7 +54,7 @@ const CAPTURE_SEAM = "2026-07-03"; // capture-all doctrine shipped — row mix c
 // adjustments) with no stored intermediate to validate an inversion against.
 const CATEGORY_CONFIG = {
   "mlb|strikeouts": { since: "2026-07-06", cap: 0.4, simStored: true }, // 0.5→0.4 shipped 7/06 (this study's GO); pre-cutoff rows need --baseline-cap 0.5
-  "mlb|hits":       { since: "2026-06-12", cap: 0.5, sigmoid80: true },
+  "mlb|hits":       { since: "2026-06-30", cap: 0.5, sigmoid80: true },
   "mlb|totalBases": { since: "2026-06-30", cap: 0.5, sigmoid80: true },
   "wnba|points":    { since: "2026-05-28", cap: 0.5 },
   "wnba|rebounds":  { since: "2026-05-28", cap: 0.5 },

@@ -1355,8 +1355,8 @@ const _BAND_ORDER = Object.keys(_BAND_MID); // low → high, for adjacency/coher
 // Only cutoffs within the trailing window actually trim; older ones are harmless.
 const FORMULA_CUTOFFS = {
   "mlb|strikeouts": "2026-07-06", // blend capWeight 0.5→0.4 (tune:kblend); prior: K_FORM_SIGMA 0.26 @ 2026-06-13
-  "mlb|hrr":        "2026-06-22", // FIP-over-WHIP split + game-time weather (was 2026-06-10: OPS 0.4→0.25, knee 72→68)
-  "mlb|hits":       "2026-06-12", // ticker fix — data starts here
+  "mlb|hrr":        "2026-06-30", // capture liquidity gate — pre-gate dead-book YES≥80 rows faked all Brier skill (was 2026-06-22: FIP-over-WHIP split + weather)
+  "mlb|hits":       "2026-06-30", // capture liquidity gate — same artifact class as hrr/totalBases (was 2026-06-12: ticker fix)
   "mlb|totalBases": "2026-06-30", // capture liquidity gate (2b67064) — pre-fix rows contaminated by lone-quote 94¢ artifacts (was 2026-06-12)
   "mlb|outs":       "2026-06-23", // pitcher outs-recorded O/U Phase 1 — data starts here
   "mlb|totalRuns":  "2026-06-01", // totalRuns market-line anchor
