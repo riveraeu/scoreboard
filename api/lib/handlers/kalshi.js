@@ -15,6 +15,7 @@ import { neonQuery, neonExec } from "../neon.js";
 import { fetchKalshiOrderbook } from "../kalshi-book.js";
 import { pipeWriteChunked } from "../kv-pipeline.js";
 import { gzipToString } from "../kv-compress.js";
+import { updateMakerQuotes } from "../maker.js";
 
 const normName = (s) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
@@ -347,6 +348,29 @@ export async function handleKalshiRoutes(ctx) {
       })]);
     }
 
+    // ── Shadow maker quote pass (api/lib/maker.js, 2026-07-19) ── simulated favorite-ask
+    // quotes computed from the books just fetched (zero extra Kalshi calls) + today's
+    // shadow:staging index. Best-effort and LAST: snaps + depth + meta have already landed,
+    // so a maker failure costs nothing but this cycle's quote segments. Skips cleanly when
+    // staging hasn't been written yet (before the first /api/tonight run of the day).
+    let _makerMeta = null;
+    try {
+      const _mkT = Date.now();
+      const _mkToday = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+      const _staging = await CACHE2.get(`shadow:staging:${_mkToday}`, "json");
+      if (_staging && successCount > 0) {
+        _makerMeta = await updateMakerQuotes({
+          snapResults: _snapResults, staging: _staging, snapshotDate: _mkToday, env,
+        });
+        _makerMeta.ms = Date.now() - _mkT;
+      } else {
+        _makerMeta = { skipped: !_staging ? "no_staging" : "no_snaps" };
+      }
+    } catch (e) {
+      _makerMeta = { error: String(e?.message || e) };
+      console.error(`[kalshi-snapshot] maker quote pass failed: ${_makerMeta.error}`);
+    }
+
     return jsonResponse({
       ok: successCount > 0 && _w1.failed === 0,
       successCount,
@@ -362,6 +386,7 @@ export async function handleKalshiRoutes(ctx) {
       depthTargets: _depthTargets.length,
       depthBudgeted: _depthBudgeted.length,
       touchedSeries: _touchedSeries.size,
+      maker: _makerMeta,
     });
   }
 

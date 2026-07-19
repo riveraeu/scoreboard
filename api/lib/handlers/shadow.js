@@ -13,6 +13,10 @@ import { fetchFightResults, matchFightByCodes, normFighterName } from "../mma.js
 import { fetchRoundScores, normGolfName } from "../golf.js";
 import { fetchRaceResults } from "../nascar.js";
 import { fetchSlResults } from "../nba-summer.js";
+import { detectAndGradeMakerFills } from "../maker.js";
+// shadowId moved to api/lib/shadow-id.js (2026-07-19) so the maker engine stamps the same
+// row identity on quote segments without a handler→handler import cycle.
+import { shadowId } from "../shadow-id.js";
 import { fetchLmbResults } from "../lmb.js";
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER } from "../config.js";
 import { passesCategoryGate } from "../category-gate.js";
@@ -168,19 +172,7 @@ CREATE INDEX IF NOT EXISTS sportsbook_deltas_sport_idx ON ${SB_DELTAS_TABLE} (sp
 // permanently blocked today's row via ON CONFLICT DO NOTHING, and a rematch weeks later
 // with the same threshold could never log at all (found via 17 noData rows, 2026-06-11).
 // Same-day re-snapshots (8:05am vs 3:05pm) still dedup since fallbackDate is equal.
-function shadowId(p, fallbackDate = "") {
-  return [
-    p.sport || "",
-    p.gameDate || fallbackDate || "",
-    p.homeTeam || "",
-    p.awayTeam || "",
-    p.playerName || "",
-    p.stat || p.gameType || "",
-    String(p.threshold ?? p.pickLine ?? ""),
-    p.direction || "",
-    p.pickTeam || "",
-  ].join("|");
-}
+// (Definition lives in api/lib/shadow-id.js — see import above.)
 
 // group_id links all threshold variants for the same player/matchup on the same game.
 // Same fallbackDate scoping as shadowId — date-less group_ids would merge different
@@ -1143,6 +1135,17 @@ async function handleShadowResolver({ path, request, env, cache }) {
 
   if (updates.length) await neonBatchResolve(updates, env);
 
+  // ── Shadow maker: detect fills from yesterday's trade tape + grade against the rows this
+  // pass just resolved (api/lib/maker.js). Failure-closed — must never break resolution.
+  let makerMeta = null;
+  try {
+    const _yd = new Date(new Date(today).getTime() - 86400_000).toISOString().slice(0, 10);
+    makerMeta = await detectAndGradeMakerFills({ env, dayPT: _yd });
+    console.log(`[shadow-resolver] maker fills tickers=${makerMeta.tickers} new=${makerMeta.newFills} graded=${makerMeta.graded} tapeFails=${makerMeta.tapeFails} rateLimited=${makerMeta.rateLimited}`);
+  } catch (e) {
+    console.error(`[shadow-resolver] maker fill pass failed: ${e?.message}`);
+  }
+
   // Replica-proof resolution floor for the morning report. This pass's own writes are read-after-
   // write consistent on the pooled primary, and max-merge across the overnight passes (2am/3am/
   // 5:50am) locks in yesterday's true resolved count in KV — which the 6am report reads instead of
@@ -1183,7 +1186,7 @@ async function handleShadowResolver({ path, request, env, cache }) {
   }
 
   console.log(`[shadow-resolver] resolved=${updates.length} skipped=${skipped} noData=${noData} games=${liveByKey.size} durationMs=${Date.now() - t0}`);
-  return jsonResponse({ ok: true, resolved: updates.length, skipped, noData, durationMs: Date.now() - t0 });
+  return jsonResponse({ ok: true, resolved: updates.length, skipped, noData, maker: makerMeta, durationMs: Date.now() - t0 });
 }
 
 // ── Dispatch ──────────────────────────────────────────────────────────────────
@@ -2717,6 +2720,60 @@ async function handleShadowReport({ path, request, env, cache }) {
     polymarketValidation = { n, days, windowDays: _PM_DAYS, medianAbs, fracBuyEdge3, fracBuyEdge5, execN, execFracEdge3, verdict };
   } catch (e) { console.error("[shadow-report] polymarket validation skipped:", e?.message); }
 
+  // Shadow maker board (api/lib/maker.js, 2026-07-19) — simulated favorite-ask quoting.
+  // Three reads: quote volume, fill economics (the arm decision input), and the adverse-
+  // selection check (sold-side win rate on FILLED quotes vs on ALL quoted markets — if fills
+  // lose much more often than quotes overall, the margin is selection, not edge).
+  // Arm criterion: fill PnL CI-lo > 0 at n≥200 fills. Failure-closed.
+  let makerBoard = null;
+  try {
+    const _yesWonExpr = `(CASE WHEN q.quote_side = 'yes'
+        THEN (CASE WHEN s.direction = 'under' THEN NOT s.won ELSE s.won END)
+        ELSE NOT (CASE WHEN s.direction = 'under' THEN NOT s.won ELSE s.won END) END)`;
+    const [[mq], [mf], [qo]] = await Promise.all([
+      neonQuery(`
+        SELECT COUNT(*)::int AS segments, COUNT(DISTINCT ticker)::int AS tickers,
+          COUNT(DISTINCT game_date)::int AS days, ROUND(AVG(quote_ask), 1) AS avg_ask
+        FROM maker_quotes WHERE game_date >= $1`, [since], env, { write: true }),
+      neonQuery(`
+        SELECT COUNT(*)::int AS fills, COALESCE(SUM(f.contracts), 0) AS contracts,
+          COUNT(*) FILTER (WHERE f.graded_at IS NOT NULL)::int AS graded,
+          ROUND(AVG(f.pnl_cents) FILTER (WHERE f.graded_at IS NOT NULL), 2) AS avg_pnl,
+          ROUND(STDDEV_SAMP(f.pnl_cents) FILTER (WHERE f.graded_at IS NOT NULL), 2) AS sd_pnl,
+          ROUND(AVG((f.side_won)::int::numeric) FILTER (WHERE f.graded_at IS NOT NULL), 4) AS side_won_rate,
+          ROUND(AVG(f.fill_ask), 1) AS avg_fill_ask
+        FROM maker_fills f JOIN maker_quotes q ON q.id = f.quote_id
+        WHERE q.game_date >= $1`, [since], env, { write: true }),
+      neonQuery(`
+        SELECT COUNT(*)::int AS n,
+          ROUND(AVG((${_yesWonExpr})::int::numeric), 4) AS side_won_rate,
+          ROUND(AVG(q.quote_ask), 1) AS avg_ask
+        FROM (
+          SELECT DISTINCT ON (ticker, game_date) ticker, game_date, quote_side, quote_ask, shadow_row_id
+          FROM maker_quotes WHERE game_date >= $1
+          ORDER BY ticker, game_date, valid_from DESC
+        ) q JOIN shadow_plays s ON s.id = q.shadow_row_id
+        WHERE s.resolved AND s.won IS NOT NULL`, [since], env, { write: true }),
+    ]);
+    const graded = Number(mf?.graded || 0);
+    const avgPnl = mf?.avg_pnl != null ? Number(mf.avg_pnl) : null;
+    const sd = mf?.sd_pnl != null ? Number(mf.sd_pnl) : null;
+    const pnlLoCI = avgPnl != null && sd != null && graded > 1
+      ? parseFloat((avgPnl - 1.96 * sd / Math.sqrt(graded)).toFixed(2)) : null;
+    makerBoard = {
+      quotes: { segments: Number(mq?.segments || 0), tickers: Number(mq?.tickers || 0),
+        days: Number(mq?.days || 0), avgAsk: mq?.avg_ask != null ? Number(mq.avg_ask) : null },
+      fills: { n: Number(mf?.fills || 0), contracts: Number(mf?.contracts || 0), graded,
+        avgPnlCents: avgPnl, pnlLoCI, sideWonRate: mf?.side_won_rate != null ? Number(mf.side_won_rate) : null,
+        avgFillAsk: mf?.avg_fill_ask != null ? Number(mf.avg_fill_ask) : null },
+      quotedOutcomes: { n: Number(qo?.n || 0),
+        sideWonRate: qo?.side_won_rate != null ? Number(qo.side_won_rate) : null,
+        avgAsk: qo?.avg_ask != null ? Number(qo.avg_ask) : null },
+      armCriterion: { minFills: 200, need: "pnlLoCI > 0" },
+      armed: false,
+    };
+  } catch (e) { console.error("[shadow-report] maker board skipped:", e?.message); }
+
   const report = {
     reportDate,
     generatedAt: new Date().toISOString(),
@@ -2736,6 +2793,7 @@ async function handleShadowReport({ path, request, env, cache }) {
     shortlistedMarkets,
     sportsbookValidation,
     polymarketValidation,
+    makerBoard,
     durationMs: Date.now() - t0,
   };
 

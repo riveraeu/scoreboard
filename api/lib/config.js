@@ -35,6 +35,16 @@ export const CAPTURE_MAX_SPREAD = 15; // cents — max bet-side bid-ask spread t
 export const capturableSpread = (spreadCents, cap = CAPTURE_MAX_SPREAD) =>
   spreadCents != null && spreadCents <= cap;
 
+// Shadow maker engine (2026-07-19, api/lib/maker.js). The pooled market-calibration scan
+// (n=44.5k) found the venue's vig sits on the FAVORITE ask (2-8¢ above realized frequency,
+// monotone in price) while longshot asks are ~fair — so the structural play is QUOTING the
+// favorite side (selling the rich ask as a maker), not taking. V1 simulates: quote 1¢ inside
+// the prevailing favorite ask on maker-fee-free series, detect fills from the public trade
+// tape, grade at settlement. Arm real orders only at fill-PnL CI-lo>0, n≥200 fills.
+export const MAKER_BAND = [80, 97];   // favorite-ask band to quote inside (≥98 = stale-ask regime)
+export const MAKER_INSIDE_C = 1;      // quote this many cents inside the prevailing ask
+export const MAKER_SIZE = 10;         // simulated contracts per quote segment
+
 // Per-category DATA-DERIVED bet windows. The `qualified` bet flag defaults to the global
 // [KALSHI_GATE, KALSHI_CAP]; an entry here OVERRIDES it for one "sport|stat" category with a
 // [lo, hi] cents band. This is the payoff of capture de-blinding: tune:residual showed some

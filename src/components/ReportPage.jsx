@@ -1077,6 +1077,36 @@ function ModelSummary({ d }) {
   );
 }
 
+// Shadow maker board (2026-07-19) — simulated favorite-ask quoting (api/lib/maker.js).
+// Reads the report's makerBoard: quote volume, fill economics, and the adverse-selection
+// check (sold-side win rate on FILLED quotes vs on all quoted markets). Arm criterion:
+// fill PnL CI-lo > 0 at n≥200 fills — until then this is measurement, not money.
+function MakerBoardCard({ mb }) {
+  if (!mb || !mb.quotes?.segments) return null;
+  const f = mb.fills || {}, qo = mb.quotedOutcomes || {};
+  const armReady = (f.graded || 0) >= (mb.armCriterion?.minFills || 200) && (f.pnlLoCI ?? -1) > 0;
+  const pnlColor = f.avgPnlCents == null ? C.dim : f.avgPnlCents > 0 ? C.green : C.red;
+  // Adverse selection: how much worse the sold side does on fills vs all quotes (pp).
+  const advSel = f.sideWonRate != null && qo.sideWonRate != null
+    ? Math.round((f.sideWonRate - qo.sideWonRate) * 1000) / 10 : null;
+  return (
+    <div style={{ border:`1px solid ${C.border}`, borderRadius:8, padding:"10px 14px", marginTop:14 }}>
+      <div style={{ color:C.dim, fontWeight:700, fontSize:9, letterSpacing:0.4, marginBottom:6 }}>
+        SHADOW MAKER · SIMULATED FAVORITE-ASK QUOTING
+        <span style={{ color: armReady ? C.green : C.dim, marginLeft:8 }}>
+          {armReady ? "ARM CRITERION MET — review for V2" : `paper only · arm at n≥${mb.armCriterion?.minFills ?? 200} fills, PnL CI-lo>0`}
+        </span>
+      </div>
+      <div style={{ fontSize:11, color:C.gray, display:"flex", flexWrap:"wrap", gap:"4px 16px" }}>
+        <span>quotes <b style={{ color:C.text }}>{mb.quotes.segments}</b> segs · {mb.quotes.tickers} mkts · {mb.quotes.days}d · avg ask {mb.quotes.avgAsk ?? "—"}¢</span>
+        <span>fills <b style={{ color:C.text }}>{f.n ?? 0}</b> ({f.contracts ?? 0} contracts, {f.graded ?? 0} graded)</span>
+        <span>PnL/contract <b style={{ color:pnlColor }}>{f.avgPnlCents != null ? `${f.avgPnlCents > 0 ? "+" : ""}${f.avgPnlCents}¢` : "—"}</b>{f.pnlLoCI != null ? ` (CI-lo ${f.pnlLoCI}¢)` : ""}</span>
+        {advSel != null && <span>adverse selection <b style={{ color: advSel > 0 ? C.red : C.green }}>{advSel > 0 ? "+" : ""}{advSel}pp</b> (filled vs quoted side-won)</span>}
+      </div>
+    </div>
+  );
+}
+
 function MorningBriefing({ shadowReportData, shadowReportLoading, fetchShadowReport, isLoggedIn }) {
   if (!isLoggedIn) return null;
   const d = shadowReportData;
@@ -1100,6 +1130,7 @@ function MorningBriefing({ shadowReportData, shadowReportLoading, fetchShadowRep
       <DataHealth dh={d.dataHealth} />
       <DoThisBanner d={d} />
       <ModelSummary d={d} />
+      <MakerBoardCard mb={d.makerBoard} />
     </div>
   );
 }
