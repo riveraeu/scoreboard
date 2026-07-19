@@ -806,8 +806,12 @@ ORDER BY COUNT(*) DESC`;
     let resolveResult = null;
     if (params.get("resolvetrigger") === "1" && env?.CRON_SECRET) {
       const origin = selfOrigin(request);
+      // Forward the resolver's maintenance params (tennis regrade backfill) so admin-triggered
+      // runs work without CRON_SECRET (sensitive — not pullable via `vercel env pull`).
+      const fwd = new URLSearchParams();
+      for (const k of ["regradetennis", "dry"]) if (params.get(k)) fwd.set(k, params.get(k));
       try {
-        const tr = await fetch(`${origin}/api/shadow-resolver`, {
+        const tr = await fetch(`${origin}/api/shadow-resolver${fwd.size ? `?${fwd}` : ""}`, {
           method: "GET",
           headers: { "Authorization": `Bearer ${env.CRON_SECRET}` },
         });
