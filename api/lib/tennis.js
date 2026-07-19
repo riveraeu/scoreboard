@@ -98,8 +98,13 @@ export async function getRatingIndex(tour, { cache, isBustCache } = {}) {
 }
 
 // Fetch completed matches for a tour on a given date (YYYYMMDD). Returns
-// [{ players: [rawName, rawName], winner: rawName|null }]. Names are raw ESPN displayNames;
-// the resolver normalizes both sides with its own fuzzy matcher.
+// [{ players: [rawName, rawName], winner: rawName|null, date: "YYYYMMDD"|"" }]. Names are raw
+// ESPN displayNames; the resolver normalizes both sides with its own fuzzy matcher.
+// CAUTION (2026-07-19): ESPN tennis "events" are TOURNAMENTS — `?dates=` selects which
+// tournaments are live, and groupings[].competitions[] contains EVERY completed match of the
+// tournament to date (singles + doubles + qualifying), not one day's slate. Callers must
+// disambiguate (the resolver requires both row players in one match + the per-competition
+// `date` carried here); a single-name lookup grades picks off the wrong match.
 export async function fetchCompletedMatches(tour, dateStr) {
   let json;
   try {
@@ -117,7 +122,8 @@ export async function fetchCompletedMatches(tour, dateStr) {
         const players = comps.map((cm) => (cm?.athlete || {}).displayName).filter(Boolean);
         const win = comps.find((cm) => cm?.winner === true);
         const winner = win ? (win.athlete || {}).displayName || null : null;
-        if (players.length >= 2) out.push({ players, winner });
+        const date = (c?.date || "").slice(0, 10).replace(/-/g, "");
+        if (players.length >= 2) out.push({ players, winner, date });
       }
     }
   }

@@ -521,12 +521,97 @@ async function fetchLiveInto(liveByKey, origin, game_date, gamesParam, tbParam, 
   }
 }
 
+// Shared tennis grader — groups rows by (date, tour), fetches that day's completed matches,
+// and grades each row against the match containing BOTH players. 2026-07-19: the ESPN tennis
+// scoreboard returns the WHOLE TOURNAMENT's completed matches for a date query (478 on 7/04),
+// so the old single-name `find` graded picks off the wrong match — both sides of a head-to-head
+// could "win" (61/84 both-side pairs were bothWon). With both names required, any remaining
+// ambiguity (rematch / doubles echo) settles by exact competition date; still ambiguous → skip
+// (failure-closed, stays unresolved). Used by the nightly pass AND the ?regradetennis backfill.
+async function _gradeTennisRows(tennisRows) {
+  const tourOf = (r) => {
+    try { const f = typeof r.features === "string" ? JSON.parse(r.features) : r.features; return f?.tour || "atp"; }
+    catch { return "atp"; }
+  };
+  const dateOf = (r) => r.game_date
+    || (r.game_time ? new Date(r.game_time).toISOString().slice(0, 10) : null)
+    || (r.snapshot_date ? new Date(r.snapshot_date).toISOString().slice(0, 10) : null);
+  const updates = [];
+  let noData = 0;
+  const byKey = new Map(); // `${date}|${tour}` → rows
+  for (const r of tennisRows) {
+    const date = dateOf(r);
+    if (!date) { noData++; continue; }
+    const key = `${date}|${tourOf(r)}`;
+    if (!byKey.has(key)) byKey.set(key, []);
+    byKey.get(key).push(r);
+  }
+  const matchesByKey = new Map();
+  await Promise.all([...byKey.keys()].map(async (key) => {
+    const [date, tour] = key.split("|");
+    matchesByKey.set(key, await fetchCompletedMatches(tour, date.replace(/-/g, "")));
+  }));
+  const sameName = (a, b) => a === b || (a.length >= 8 && _editDist(a, b) <= 2);
+  for (const [key, rws] of byKey) {
+    const matches = matchesByKey.get(key) || [];
+    const dateKey = key.split("|")[0].replace(/-/g, "");
+    for (const r of rws) {
+      const pick = _fuzzyName(r.player_name || r.pick_team || "");
+      const nmH = _fuzzyName(r.home_team || ""), nmA = _fuzzyName(r.away_team || "");
+      if (!pick || !nmH || !nmA) { noData++; continue; }
+      const has = (mt, nm) => mt.players.some(p => sameName(_fuzzyName(p), nm));
+      const cands = matches.filter(mt => has(mt, nmH) && has(mt, nmA));
+      // One head-to-head → trust it even if its UTC date drifted a day; several → exact date only.
+      const found = cands.length === 1 ? cands[0] : cands.find(mt => mt.date === dateKey);
+      if (!found || !found.winner) { noData++; continue; } // not final / not found / ambiguous
+      updates.push({ id: r.id, won: sameName(_fuzzyName(found.winner), pick), actualValue: null });
+    }
+  }
+  return { updates, noData };
+}
+
 async function handleShadowResolver({ path, request, env, cache }) {
   if (path !== "shadow-resolver") return null;
 
   if (!env?.CRON_SECRET) return errorResponse("CRON_SECRET not set", 500);
   const auth = (request.headers.get("authorization") || "").replace(/^Bearer\s+/, "");
   if (auth !== env.CRON_SECRET) return errorResponse("Forbidden", 403);
+
+  // ── One-shot tennis regrade backfill (2026-07-19, wide-window bug) ── re-grades every
+  // already-resolved tennis row with the fixed both-names matcher. Idempotent; ?dry=1 diffs
+  // without writing. Rows the fixed matcher can no longer grade (ambiguous/absent) get
+  // won=NULL (stays resolved — the abandon idiom — so calibration drops them cleanly).
+  const _rq = new URL(request.url).searchParams;
+  if (_rq.get("regradetennis") === "1") {
+    const dry = _rq.get("dry") === "1";
+    const rows = await neonQuery(
+      `SELECT id, player_name, pick_team, home_team, away_team, game_date, game_time,
+              snapshot_date, features, won
+       FROM shadow_plays
+       WHERE sport = 'tennis' AND resolved = TRUE
+       ORDER BY snapshot_date`,
+      [], env, { write: true }
+    );
+    const { updates: graded, noData: ungradable } = await _gradeTennisRows(rows);
+    const byId = new Map(graded.map(u => [u.id, u]));
+    const changes = [], nulls = [];
+    let unchanged = 0;
+    for (const r of rows) {
+      const g = byId.get(r.id);
+      if (!g) {
+        if (r.won !== null) nulls.push({ id: r.id, won: null, actualValue: null });
+        else unchanged++;
+        continue;
+      }
+      if (r.won === g.won) unchanged++;
+      else changes.push(g);
+    }
+    if (!dry && changes.length) await neonBatchResolve(changes, env);
+    if (!dry && nulls.length) await neonBatchResolve(nulls, env);
+    console.log(`[shadow-resolver] regradetennis dry=${dry} checked=${rows.length} changed=${changes.length} nulled=${nulls.length} unchanged=${unchanged} ungradable=${ungradable}`);
+    return jsonResponse({ ok: true, dry, checked: rows.length, changed: changes.length,
+      nulled: nulls.length, unchanged, ungradable });
+  }
 
   if (!env?.POSTGRES_URL && !env?.NEON_DATABASE_URL) return errorResponse("POSTGRES_URL not set", 500);
 
@@ -717,40 +802,11 @@ async function handleShadowResolver({ path, request, env, cache }) {
     updates.push({ id: row.id, won: result.won, actualValue: result.actualValue });
   }
 
-  // ── Tennis resolution ── grade match-winner rows off the ESPN tennis scoreboard. We fetch
-  // completed matches once per (date, tour) and match the pick player by fuzzy name. won =
-  // (the pick player is the match winner). actualValue is null (binary outcome).
+  // ── Tennis resolution ── shared grader (also used by the ?regradetennis backfill).
   if (tennisRows.length) {
-    const tourOf = (r) => {
-      try { const f = typeof r.features === "string" ? JSON.parse(r.features) : r.features; return f?.tour || "atp"; }
-      catch { return "atp"; }
-    };
-    const dateOf = (r) => r.game_date
-      || (r.game_time ? new Date(r.game_time).toISOString().slice(0, 10) : null)
-      || (r.snapshot_date ? new Date(r.snapshot_date).toISOString().slice(0, 10) : null);
-    const byKey = new Map(); // `${date}|${tour}` → rows
-    for (const r of tennisRows) {
-      const date = dateOf(r);
-      if (!date) { noData++; continue; }
-      const key = `${date}|${tourOf(r)}`;
-      if (!byKey.has(key)) byKey.set(key, []);
-      byKey.get(key).push(r);
-    }
-    const matchesByKey = new Map();
-    await Promise.all([...byKey.keys()].map(async (key) => {
-      const [date, tour] = key.split("|");
-      matchesByKey.set(key, await fetchCompletedMatches(tour, date.replace(/-/g, "")));
-    }));
-    for (const [key, rws] of byKey) {
-      const matches = matchesByKey.get(key) || [];
-      for (const r of rws) {
-        const pick = _fuzzyName(r.player_name || r.pick_team || "");
-        const sameName = (a, b) => a === b || (a.length >= 8 && _editDist(a, b) <= 2);
-        const found = matches.find(mt => mt.players.some(p => sameName(_fuzzyName(p), pick)));
-        if (!found || !found.winner) { noData++; continue; } // match not final / pick not found yet
-        updates.push({ id: r.id, won: sameName(_fuzzyName(found.winner), pick), actualValue: null });
-      }
-    }
+    const t = await _gradeTennisRows(tennisRows);
+    updates.push(...t.updates);
+    noData += t.noData;
   }
 
   // ── Soccer (World Cup) resolution ── grade all 5 families off the ESPN fifa.world scoreboard
