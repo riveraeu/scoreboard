@@ -558,4 +558,9 @@ export const DISMISSED_SERIES = [
   "KXNFLSTAGEOFELIM", // per-team playoff elimination-stage futures — NFL season futures class. DISMISS.
   "KXNFLTIES", // "≥N ties in the 2026-27 season" novelty futures; windowFit=true was the longshot
   // rung false positive (KXMLBFASTPITCH record-novelty class). DISMISS.
+  // 7/20 triage (1 detected):
+  "KXWCSCOREET", // "Correct Score after Extra Time" — exact-cell trap class (KXWC1HSCORE/
+  // KXBRASILEIROSCORE/KXUCLSCORE/etc., all dismissed) PLUS an ET-specific blocker: soccer.js's
+  // Dixon–Coles matrix prices the 90' score only, no extra-time additional-goals sub-model exists.
+  // 0 live markets (ET is conditional on a knockout draw after 90'), window_fit false. DISMISS.
 ];

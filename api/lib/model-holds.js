@@ -17,7 +17,7 @@
 // a stale key is harmless (it only matters while still market-sharper).
 export const INPUT_SEARCH_EXHAUSTED = {
   "mlb|f5spread": "2026-06-23", "mlb|ml": "2026-06-23", "mlb|totalRuns": "2026-06-23",
-  "mlb|strikeouts": "2026-06-23", "mlb|f5total": "2026-06-23", "mlb|spread": "2026-06-23",
+  "mlb|strikeouts": "2026-07-20", "mlb|f5total": "2026-06-23", "mlb|spread": "2026-06-23",
   "mlb|hits": "2026-06-23",
   "wnba|points": "2026-06-23", "wnba|totalPoints": "2026-06-23", "wnba|rebounds": "2026-06-23",
   "mlb|teamRuns": "2026-06-29",
@@ -68,6 +68,22 @@ export const INPUT_SEARCH_EXHAUSTED = {
 // cutoff intentionally auto-UN-suppresses mlb|hits' 2026-06-23 entry above (artifact-clean data
 // re-opens its input search once it clears the n≥100 Brier floor); its WINDOW_SEARCH_EXHAUSTED
 // entry (2026-07-01) postdates the cutoff and stays suppressed.
+
+// mlb|strikeouts RE-DATED 2026-07-20: the 7/06 K-blend capWeight ship (0.5→0.4) moved its
+// FORMULA_CUTOFF past the old 6/23 exhaustion date, auto-re-opening the search on clean
+// post-ship data. tune:residual re-run (since=7/06, n=218): overall skill −0.0229 (model
+// Brier 0.2468 vs market 0.2239 — market sharper), mean residual +4.7pp (underconfident
+// overall). Ran --all-features to also screen the xFlow* taker-flow candidates: steep
+// gradients on xFlowAvgSize (32.5pp), xFlowLargeShare (20.4pp), xFlowContracts (18.5pp),
+// xFlowTrades (16.5pp) — but EVERY bucket across ALL four flow dims carries NEGATIVE skill,
+// so the residual they explain is one the market already prices (unsurprising: taker flow
+// is itself market-derived). betPrice/edge/threshold/dayOfWeek/xLineupConfirmed all show the
+// same pattern — real gradients, no positive-skill bucket at trustworthy n (the only two
+// near-zero positives, betPrice 40-45¢ +0.0001 and edge 0-3 +0.0009, are both noise-floor,
+// not real skill; one is even below the n≥30 bucket floor). No addable in-data L0 input.
+// Same "market has more information" posture as mlb|outs/tennis|match — whatever closes this
+// gap (live scratches, umpire zone tendencies intraday, bullpen usage news) isn't in the
+// logged dims. Don't re-run without a fresh exogenous hypothesis or another formula ship.
 
 // Categories already run through tune:window to a TERMINAL no-go (the discovered window doesn't
 // hold out-of-sample), so the tier-3.15 derive-a-window nag stops — mirrors INPUT_SEARCH_EXHAUSTED,
