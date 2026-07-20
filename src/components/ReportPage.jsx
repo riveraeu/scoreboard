@@ -30,49 +30,11 @@ const _isShippedRoadmapEntry = (s) => !!s?.markets?.some(m => SERIES_CONFIG[m.ti
 
 const C = { green:"#3fb950", amber:"#e3b341", red:"#f78166", blue:"#58a6ff", gray:"#8b949e", dim:"#484f58", text:"#c9d1d9", bg:"#0d1117", card:"#161b22", border:"#21262d" };
 
-const _roiFromFrac = f => f == null ? "—" : `${f >= 0 ? "+" : ""}${(f * 100).toFixed(1)}%`;
 const _roiFromPct  = p => p == null ? "—" : `${p >= 0 ? "+" : ""}${p.toFixed(1)}%`;
-const _roiColorFrac = f => f == null ? C.gray : f >= 0.02 ? C.green : f <= -0.02 ? C.red : C.amber;
 const _roiColorPct  = p => p == null ? C.gray : p >= 2 ? C.green : p <= -2 ? C.red : C.amber;
-const _pct1 = v => v == null ? "—" : `${v >= 0 ? "+" : ""}${(v * 100).toFixed(1)}%`;
 
-const thB = { padding:"4px 8px", fontSize:10, fontWeight:700, color:C.gray, textAlign:"center", borderBottom:`1px solid ${C.border}`, background:C.bg };
-const tdB = { padding:"4px 8px", fontSize:11, textAlign:"center", borderBottom:"1px solid #161b22" };
-const tableStyle = { width:"100%", borderCollapse:"collapse", background:C.bg, borderRadius:8, overflow:"hidden", border:`1px solid ${C.border}` };
-const sectionTitle = { color:C.gray, fontSize:11, fontWeight:600, marginBottom:4, marginTop:4 };
 const sectionHead = { color:C.blue, fontSize:11, fontWeight:700, margin:"14px 0 8px", borderTop:`1px solid ${C.border}`, paddingTop:12, textTransform:"uppercase", letterSpacing:0.4 };
 
-// ---- Model board verdict styling --------------------------------------------------
-const _BOARD = {
-  PROMOTE:       ["PROMOTE",       C.green, "rgba(63,185,80,0.10)"],
-  STRENGTHENING: ["strengthening", C.blue,  "transparent"],
-  DEMOTE:        ["DEMOTE",        C.red,   "rgba(247,129,102,0.10)"],
-  HOLD:          ["hold",          C.gray,  "transparent"],
-  NEGATIVE:      ["negative",      C.dim,   "transparent"],
-  BUILDING:      ["building",      C.dim,   "transparent"],
-};
-function BoardBadge({ v }) {
-  const [label, color] = _BOARD[v] || [v, C.dim];
-  return <span style={{ color, fontSize:9, fontWeight:700, border:`1px solid ${color}55`, borderRadius:4, padding:"0 5px", whiteSpace:"nowrap" }}>{label}</span>;
-}
-// Accuracy (Layer-1) verdict styling — Brier vs market, no price.
-const _ACC = {
-  CALIBRATED:     ["calibrated",     C.green, "rgba(63,185,80,0.10)"],
-  PROMISING:      ["promising",      C.green, "rgba(63,185,80,0.10)"],   // beats price, calibration still thin
-  UNDERCONFIDENT: ["underconfident", C.amber, "transparent"],
-  OVERCONFIDENT:  ["overconfident",  C.red,   "transparent"],
-  MARKET_SHARPER: ["market sharper", C.red,   "rgba(248,81,73,0.08)"],   // terminal: market out-predicts, trend flat/falling
-  BUILDING:       ["building",       C.dim,   "transparent"],
-};
-function AccBadge({ v }) {
-  const [label, color] = _ACC[v] || [v, C.dim];
-  return <span style={{ color, fontSize:9, fontWeight:700, border:`1px solid ${color}55`, borderRadius:4, padding:"0 5px", whiteSpace:"nowrap" }}>{label}</span>;
-}
-// Tiny pass/fail chips for the promotion checklist (enough bets / real edge / broad).
-function Check({ ok, label, title }) {
-  if (ok == null) return null;
-  return <span title={title} style={{ color: ok ? C.green : C.dim, fontSize:9, fontWeight:700, marginRight:5, cursor:"help" }}>{ok ? "✓" : "✗"}{label}</span>;
-}
 
 // ---- Status strip (always visible) + Data health warnings (only when degraded) ----
 function StatusStrip({ dh, reportData, fetchShadowReport }) {
@@ -100,305 +62,14 @@ function DataHealth({ dh }) {
   );
 }
 
-// ---- Price-band curve (expanded under a board row) --------------------------------
-function PriceBands({ bands, window }) {
-  if (!bands?.length) return <div style={{ color:C.dim, fontSize:10, padding:"4px 0" }}>No bettable plays binned yet.</div>;
-  const [lo, hi] = window || [67, 91];
-  return (
-    <table style={{ ...tableStyle, margin:"4px 0 8px" }}>
-      <thead><tr>{["Price band","N","Hit%","ROI",""].map(h => <th key={h} style={{ ...thB, fontSize:9 }}>{h}</th>)}</tr></thead>
-      <tbody>
-        {bands.map((b, i) => {
-          const inWin = b.lo >= lo && b.hi <= hi + 0.001;
-          const overlapsWin = b.hi > lo && b.lo < hi;
-          return (
-            <tr key={i} style={{ background: inWin ? "rgba(88,166,255,0.06)" : "transparent" }}>
-              <td style={{ ...tdB, color:C.text, textAlign:"left", fontSize:10 }}>{b.lo}–{b.hi}¢</td>
-              <td style={{ ...tdB, color:b.n>=15?C.text:C.dim, fontSize:10 }}>{b.n}</td>
-              <td style={{ ...tdB, color:C.gray, fontSize:10 }}>{b.hitRate}%</td>
-              <td style={{ ...tdB, color:_roiColorFrac(b.roi), fontWeight:600, fontSize:10 }}>{_pct1(b.roi)}</td>
-              <td style={{ ...tdB, color:C.dim, fontSize:9 }}>{inWin ? "in 67–91" : overlapsWin ? "" : "outside"}</td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
-  );
-}
 
 // ---- MODEL BOARD: one row per model — profit + honesty fused into a "Do this" action ----
 const _TONE = { green:C.green, gray:C.gray, red:C.red, blue:C.blue, amber:C.amber, dim:C.dim };
-function DoThisBadge({ d }) {
-  if (!d) return <span style={{ color:C.dim }}>—</span>;
-  const color = _TONE[d.tone] || C.dim;
-  return <span style={{ color, fontSize:10, fontWeight:700, border:`1px solid ${color}55`, borderRadius:4, padding:"1px 6px", whiteSpace:"nowrap" }}>{d.action}</span>;
-}
-// Honesty headline — is the model's % right? over/under-confident, honest, or too-few-to-judge.
-function HonestyCell({ calib }) {
-  if (!calib || calib.status === "insufficient") return <span style={{ color:C.dim, fontSize:10 }}>too few</span>;
-  if (calib.status === "honest") return <span style={{ color:C.gray, fontSize:10 }}>honest</span>;
-  const over = calib.direction === "over";
-  const d = calib.delta;
-  return <span title={`${calib.band}% band, n=${calib.n}`} style={{ color:over?C.red:C.amber, fontSize:10, fontWeight:600, cursor:"help" }}>
-    {d >= 0 ? `+${d}` : d} {over ? "overconf" : "underconf"}
-  </span>;
-}
-// Skill = market-Brier − model-Brier. >0 = the model's probabilities beat the price (headroom);
-// <0 = the market is the sharper estimator (no headroom — the totalRuns/HRR trap). Dim until n≥100.
-function SkillCell({ skill, skillN, modelBrier, marketBrier }) {
-  if (skill == null) return <span style={{ color:C.dim, fontSize:10 }}>—</span>;
-  const ready = (skillN || 0) >= 100;
-  const color = !ready ? C.dim : skill > 0 ? C.green : skill < -0.005 ? C.red : C.gray;
-  return <span title={`model-Brier ${modelBrier ?? "—"} vs market-Brier ${marketBrier ?? "—"} (n=${skillN}). >0 = model sharper than the price.${ready ? "" : " · n<100, not yet trusted"}`}
-    style={{ color, fontSize:10, fontWeight:600, cursor:"help" }}>{skill >= 0 ? "+" : ""}{skill.toFixed(3)}</span>;
-}
 // Learning trend — is Brier skill still rising as data accrues (still learning), or flat (saturated)?
 // recent-half minus early-half paired skill. Arrow + value; dim until each half clears n≥100.
 const _LEARN_FLAT = 0.003; // |trend| below this reads "flat" (saturated)
-function LearnCell({ learning }) {
-  if (!learning || learning.skillTrend == null) return <span style={{ color:C.dim, fontSize:10 }}>—</span>;
-  const { skillTrend: t, reliable, betaStar } = learning;
-  const arrow = t > _LEARN_FLAT ? "↗" : t < -_LEARN_FLAT ? "↘" : "→";
-  const color = !reliable ? C.dim : t > _LEARN_FLAT ? C.green : t < -_LEARN_FLAT ? C.red : C.gray;
-  const meaning = t > _LEARN_FLAT ? "still learning — skill rising as data accrues"
-    : t < -_LEARN_FLAT ? "degrading — skill falling (check for a formula regression)"
-    : "saturated — reweighting tapped out; flat+below-price ⇒ needs a new input";
-  return <span title={`learning trend (recent-half − early-half Brier skill) = ${t>=0?"+":""}${t}. ${meaning}.${betaStar!=null?` Suggested L2 step β*=${betaStar} (move truePct by β*·gap).`:""}${reliable?"":" · each half n<100, not yet trusted"} Fine-grained curve: npm run tune:learncurve`}
-    style={{ color, fontSize:11, fontWeight:600, cursor:"help" }}>{arrow}{reliable ? ` ${t>=0?"+":""}${t.toFixed(3)}` : ""}</span>;
-}
-// Per-category calibration bands (model% vs actual) — shown in the expanded detail.
-function CalibBandsTable({ bands }) {
-  if (!bands?.length) return <div style={{ color:C.dim, fontSize:10, padding:"2px 0" }}>Not enough resolved plays yet — a truePct band needs ≥5 to score honesty.</div>;
-  return (
-    <table style={{ ...tableStyle, margin:"4px 0 8px" }}>
-      <thead><tr>{["truePct band","N","Model%","Actual%","Δ",""].map(h => <th key={h} style={{ ...thB, fontSize:9 }}>{h}</th>)}</tr></thead>
-      <tbody>
-        {bands.map((b, i) => {
-          const delta = b.delta ?? 0;
-          const deltaC = delta <= -5 ? C.red : delta >= 5 ? C.green : C.amber;
-          return (
-            <tr key={i} style={{ background: b.active ? "rgba(63,185,80,0.08)" : "transparent" }}>
-              <td style={{ ...tdB, color:C.text, textAlign:"left", fontSize:10 }}>{b.band}%</td>
-              <td style={{ ...tdB, color:b.n>=200?C.text:b.n>=50?C.gray:C.dim, fontSize:10 }}>{b.n}</td>
-              <td style={{ ...tdB, color:C.gray, fontSize:10 }}>{b.predicted != null ? `${b.predicted}%` : "—"}</td>
-              <td style={{ ...tdB, color:C.gray, fontSize:10 }}>{b.actual != null ? `${b.actual}%` : "—"}</td>
-              <td style={{ ...tdB, color:deltaC, fontWeight:600, fontSize:10 }}>{delta >= 0 ? `+${delta.toFixed(1)}` : delta.toFixed(1)}{b.coherent ? "▴" : ""}</td>
-              <td style={{ ...tdB, color:b.active?C.green:C.dim, fontSize:9, fontWeight:b.active?700:400 }}>{b.active ? "● betting" : ""}</td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
-  );
-}
 
-// ── LAYER 1 — Model ACCURACY board: is the model accurate? (calibration vs reality) ──
-// Verdict scored on truePct calibration (model% vs actual hit%). NO price, NO ROI. The "vs Market"
-// column (Brier skill) is the secondary price comparison + the bridge to the betting board.
-function AccuracyBoard({ board }) {
-  const [expanded, setExpanded] = React.useState({});
-  const [showAccruing, setShowAccruing] = React.useState(false);
-  if (!board?.length) return null;
-  const honestyN = r => (r.calibBands || []).reduce((s, b) => s + (b.n || 0), 0);
 
-  // Sort by N desc; split off the n<50 thin pile (not yet judgeable) behind a toggle so the table
-  // shows only categories with enough data to act on. Off-season sports (NBA/NHL in summer) fall
-  // into the thin pile automatically as their n drops — no season hardcoding, self-heals on return.
-  // Gated/live categories always stay in the main view regardless of n.
-  const byN = (a, b) => b.n - a.n;
-  const gated = board.filter(r => r.gated).sort(byN);
-  const actionable = board.filter(r => !r.gated && r.n >= 50).sort(byN);
-  const accruing = board.filter(r => !r.gated && r.n < 50).sort(byN);
-
-  const Row = ({ r }) => {
-    const open = expanded[r.key];
-    return (
-      <>
-        <tr onClick={() => setExpanded(e => ({ ...e, [r.key]: !e[r.key] }))}
-            style={{ cursor:"pointer", background:_ACC[r.verdict]?.[2] || "transparent" }}>
-          <td style={{ ...tdB, textAlign:"left", color:C.text, fontWeight:600 }}>
-            <span style={{ color:C.dim, marginRight:4 }}>{open ? "▾" : "▸"}</span>{r.key}
-            {r.gated && <span title="Currently bet — in the live truePct gate" style={{ color:C.green, fontSize:9, fontWeight:700, marginLeft:6, whiteSpace:"nowrap" }}>● live</span>}
-          </td>
-          <td style={tdB}><AccBadge v={r.verdict} /></td>
-          <td style={tdB}><HonestyCell calib={r.calib} /></td>
-          <td style={{ ...tdB, color:C.gray, fontSize:10 }}>{r.modelBrier ?? "—"}</td>
-          <td style={tdB}><SkillCell skill={r.skill} skillN={r.n} modelBrier={r.modelBrier} marketBrier={r.marketBrier} /></td>
-          <td style={tdB}><LearnCell learning={r.learning} /></td>
-          <td style={{ ...tdB, color:r.n>=100?C.text:r.n>=50?C.gray:C.dim }}>{r.n}</td>
-        </tr>
-        {open && (
-          <tr><td colSpan={7} style={{ padding:"0 8px 6px 22px", background:"#0d1117" }}>
-            {(() => {
-              // MARKET_SHARPER's server action is "Diagnose then stop" (run tune:residual once).
-              // Collapse it to a true stop once the L0 search is exhausted (diagnostic already ran
-              // empty) — un-collapses automatically if a formula reset re-accrues clean data.
-              const exhausted = r.verdict === "MARKET_SHARPER" && _stillExhausted(INPUT_SEARCH_EXHAUSTED, r.key, r.formulaCutoff);
-              const act = exhausted ? "Stop — search exhausted" : r.honest?.action;
-              const why = exhausted
-                ? "market sharper AND the L0 input search is exhausted (no addable in-data dimension; historical pre-filters failed) — park it, redirect effort to a less-efficient market"
-                : r.honest?.why;
-              if (!act || !why) return null;
-              return (
-                <div style={{ color: exhausted ? C.dim : (_TONE[r.honest?.tone]||C.gray), fontSize:11, margin:"4px 0" }}>
-                  ▶ <b>{act}</b>: <span style={{ color:C.text }}>{why}</span>
-                </div>
-              );
-            })()}
-            {r.skill != null && (
-              <div style={{ color:C.dim, fontSize:10, margin:"2px 0 4px" }}>
-                Brier skill <b style={{ color: (r.n>=100) ? (r.skill>0?C.green:r.skill<-0.005?C.red:C.gray) : C.dim }}>{r.skill>=0?"+":""}{r.skill.toFixed(3)}</b>
-                {" "}— model {r.modelBrier ?? "—"} vs market {r.marketBrier ?? "—"} (n={r.n}){r.skillLoCI!=null?` · CI lo ${r.skillLoCI>=0?"+":""}${r.skillLoCI}`:""} · {r.skill>0?"model sharper than the price":"market sharper than the model"}{r.n<100?" · n<100, not yet trusted":""}
-              </div>
-            )}
-            <div style={{ color:C.dim, fontSize:9, fontWeight:700, margin:"4px 0 1px" }}>HONESTY · model% vs actual (Δ&lt;0 = overconfident) · <span style={{ color:C.gray, fontWeight:400 }}>{honestyN(r)} resolved plays, no edge/dc gate</span> · <span style={{ color:C.green }}>green = currently-bet slice</span></div>
-            <CalibBandsTable bands={r.calibBands} />
-          </td></tr>
-        )}
-      </>
-    );
-  };
-
-  return (
-    <div style={{ marginBottom:10 }}>
-      <div style={sectionTitle}>
-        Is the model accurate? · verdict from truePct calibration (model% vs actual hit%) — no price, no ROI · "vs Market" is the secondary price comparison + the bridge to betting
-      </div>
-      <table style={tableStyle}>
-        <thead><tr>{["Category","Verdict","Honesty","Model Brier","vs Market","Learning","N"].map(h => {
-          const tip = h==="vs Market" ? "Brier skill = market-Brier − model-Brier over all resolved plays. >0 (green) = model sharper than the price (this is what makes a category bettable); <0 (red) = market is the sharper estimator. Dim until n≥100. Not part of the accuracy verdict."
-            : h==="Verdict" ? "Calibration vs reality: Calibrated (model% matches actual within noise) · Overconfident / Underconfident (proven miscalibration → Recalibrate if the model beats the price, Improve inputs only if the market is TRUSTABLY sharper at n≥100, else Accruing while model-vs-market is undecided) · Building (not enough resolved plays to judge)."
-            : h==="Model Brier" ? "Mean squared error of the model's probability vs the actual outcome — pure accuracy, no price. Lower = better."
-            : h==="Learning" ? "Is the model still learning? Recent-half minus early-half Brier skill (current-formula window). ↗ green = skill rising as data accrues (keep accruing). → flat = saturated (reweighting tapped out). Dim until each half n≥100. Fine-grained curve + β* step size: npm run tune:learncurve."
-            : undefined;
-          return <th key={h} style={{ ...thB, cursor:tip?"help":undefined }} title={tip}>{h}</th>;
-        })}</tr></thead>
-        <tbody>
-          {gated.map(r => <Row key={r.key} r={r} />)}
-          {actionable.map(r => <Row key={r.key} r={r} />)}
-          {accruing.length > 0 && !showAccruing && (
-            <tr><td colSpan={7} style={{ ...tdB, textAlign:"left", color:C.dim, cursor:"pointer" }} onClick={() => setShowAccruing(true)}>
-              ▸ {accruing.length} more thin (n &lt; 50, off-season + low data) — show
-            </td></tr>
-          )}
-          {showAccruing && accruing.map(r => <Row key={r.key} r={r} />)}
-        </tbody>
-      </table>
-      <div style={{ color:C.dim, fontSize:10, marginTop:5, lineHeight:1.55 }}>
-        <b style={{ color:C.green }}>Calibrated</b> = model% matches actual outcomes within noise ·
-        <b style={{ color:C.red }}> Overconfident</b> / <b style={{ color:C.amber }}>Underconfident</b> = proven miscalibration → <b style={{ color:C.amber }}>Recalibrate</b> (L2 de-shrink) when the model beats the price, <b style={{ color:C.amber }}>Improve inputs</b> (L0 new input — run tune:residual) only when the market is trustably sharper (n≥100), else <b style={{ color:C.dim }}>Accruing</b> while undecided ·
-        <b style={{ color:C.dim }}> Building</b> = not enough resolved plays to judge calibration yet ·
-        <b style={{ color:C.green }}> Promising</b> = beats the price already (skill&gt;0, n≥100) but calibration still thin → accrue toward eligibility ·
-        <b style={{ color:C.red }}> Market sharper</b> = market out-predicts the model (skill&lt;0, n≥100) and the trend isn't recovering → <b style={{ color:C.red }}>Diagnose then stop</b> (run tune:residual ONCE for a sub-slice / L0, then park if empty). <b style={{ color:C.green }}>vs Market</b> &gt; 0 = the model also beats the price (→ bettable). Click a row for its calibration bands + Brier breakdown.
-      </div>
-    </div>
-  );
-}
-
-// ── LAYER 2 — BETTING board: what to bet (price/ROI), gated by Layer-1 eligibility ──
-// Only bettable rows appear: eligible models (model beats the price) + any currently-gated/live
-// category (shown regardless so a "Pull from gate" signal stays visible). Ineligible, ungated
-// categories are dropped entirely — when nothing qualifies the board renders an empty state, so a
-// tempting ROI on a model the market already beats never tempts from here. (The accuracy board
-// above is where every category, bettable or not, is judged.)
-function BettingBoard({ board }) {
-  const [expanded, setExpanded] = React.useState({});
-  const [showBuilding, setShowBuilding] = React.useState(false);
-  if (!board?.length) return null;
-
-  const byN = (a, b) => b.n - a.n;
-  const live = board.filter(r => r.gated).sort(byN);
-  const rest = board.filter(r => !r.gated && r.eligible).sort(byN);
-  const actionable = rest.filter(r => r.n >= 20);
-  const building = rest.filter(r => r.n < 20);
-  const isEmpty = live.length === 0 && rest.length === 0;
-
-  const Row = ({ r }) => {
-    const w = r.discoveredWindow;
-    const open = expanded[r.key];
-    const profitN = (r.priceBands || []).reduce((s, b) => s + (b.n || 0), 0);
-    return (
-      <>
-        <tr onClick={() => setExpanded(e => ({ ...e, [r.key]: !e[r.key] }))}
-            style={{ cursor:"pointer", opacity:r.eligible?1:0.5, background:_BOARD[r.verdict]?.[2] || "transparent" }}>
-          <td style={{ ...tdB, textAlign:"left", color:C.text, fontWeight:600 }}>
-            <span style={{ color:C.dim, marginRight:4 }}>{open ? "▾" : "▸"}</span>{r.key}
-            {r.gated && <span title="Currently bet — in the live truePct gate" style={{ color:C.green, fontSize:9, fontWeight:700, marginLeft:6, whiteSpace:"nowrap" }}>● live</span>}
-          </td>
-          <td style={tdB}><DoThisBadge d={r.doThis} /></td>
-          <td style={tdB}><BoardBadge v={r.verdict} /></td>
-          <td style={{ ...tdB, color:C.gray }}>{w ? `${w.lo}–${w.hi}¢` : "—"}</td>
-          <td style={{ ...tdB, color:_roiColorFrac(w?.roi), fontWeight:600 }}>{w ? _pct1(w.roi) : "—"}</td>
-          <td style={{ ...tdB, color:r.n>=50?C.text:r.n>=30?C.gray:C.dim }}>{r.n}</td>
-          <td style={{ ...tdB, color:r.eligible?C.green:C.dim, fontSize:9, fontWeight:700 }} title={r.eligible?"Model beats the price — bettable":"Model doesn't beat the price — unbettable"}>{r.eligible?"eligible":"—"}</td>
-        </tr>
-        {open && (
-          <tr><td colSpan={7} style={{ padding:"0 8px 6px 22px", background:"#0d1117" }}>
-            {r.doThis?.why && (
-              <div style={{ color:_TONE[r.doThis.tone]||C.gray, fontSize:11, margin:"4px 0" }}>
-                ▶ <b>{r.doThis.action}</b>: <span style={{ color:C.text }}>{r.doThis.why}</span>
-              </div>
-            )}
-            {r.checklist && (
-              <div style={{ margin:"2px 0 6px", whiteSpace:"nowrap" }}>
-                <Check ok={r.checklist.nOk} label="bets" title="Enough settled bets (n ≥ 50)" />
-                <Check ok={r.checklist.ciOk} label="real" title="Edge is real, not small-sample luck — profitable even in the cautious 95%-confidence case" />
-                <Check ok={r.checklist.coherentOk} label="broad" title="Profitable across the whole price range, not one lucky slice" />
-                {w && w.roiLoCI != null && <span style={{ color:C.dim, fontSize:9, marginLeft:6 }}>ROI range [{(w.roiLoCI*100).toFixed(0)},{(w.roiHiCI*100).toFixed(0)}]</span>}
-              </div>
-            )}
-            <div style={{ color:C.dim, fontSize:9, fontWeight:700, margin:"4px 0 1px" }}>PROFIT · full price range, no window/truePct gate · <span style={{ color:C.gray, fontWeight:400 }}>{profitN} plays where the model sees value (edge≥3; dc≥7 drops stale-price / player-out) — this is the row's N</span></div>
-            <PriceBands bands={r.priceBands} window={r.currentWindow} />
-          </td></tr>
-        )}
-      </>
-    );
-  };
-
-  if (isEmpty) {
-    return (
-      <div style={{ marginBottom:10 }}>
-        <div style={sectionTitle}>
-          What to bet · only models that beat the price appear here · current window 67–91¢
-        </div>
-        <div style={{ color:C.dim, fontSize:12, padding:"14px 8px", textAlign:"center", border:`1px dashed ${C.border}`, borderRadius:6 }}>
-          No bettable models — no category currently beats the price (see the accuracy board above). Nothing to bet.
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ marginBottom:10 }}>
-      <div style={sectionTitle}>
-        What to bet · only models that beat the price appear here · current window 67–91¢
-      </div>
-      <table style={tableStyle}>
-        <thead><tr>{["Category","Do this","Window status","Window","ROI","N","Eligible"].map(h => {
-          const tip = h==="N" ? "Bettable plays (edge≥3, dc≥7) across the full price range — no 67–91 / truePct gate."
-            : h==="Eligible" ? "Does the model beat the price (Layer-1 Brier skill CI lo > 0)? Only eligible categories are bettable; ineligible rows are greyed."
-            : undefined;
-          return <th key={h} style={{ ...thB, cursor:tip?"help":undefined }} title={tip}>{h}</th>;
-        })}</tr></thead>
-        <tbody>
-          {live.map(r => <Row key={r.key} r={r} />)}
-          {actionable.map(r => <Row key={r.key} r={r} />)}
-          {building.length > 0 && !showBuilding && (
-            <tr><td colSpan={7} style={{ ...tdB, textAlign:"left", color:C.dim, cursor:"pointer" }} onClick={() => setShowBuilding(true)}>
-              ▸ {building.length} more thin (n &lt; 20 bettable) — show
-            </td></tr>
-          )}
-          {showBuilding && building.map(r => <Row key={r.key} r={r} />)}
-        </tbody>
-      </table>
-      <div style={{ color:C.dim, fontSize:10, marginTop:5, lineHeight:1.55 }}>
-        <b style={{ color:C.green }}>Add to gate</b> = eligible + validated window, start betting ·
-        <b style={{ color:C.red }}> Pull from gate</b> = gated but window went negative ·
-        <b style={{ color:C.blue }}> Look deeper</b> = beats the price but the window still loses (selection/sizing puzzle). Ineligible models (the market beats them) are hidden — see the accuracy board. Click a row for its price-band breakdown.
-      </div>
-    </div>
-  );
-}
 
 // ---- MODEL NEXT: curated build roadmap, alt-line-first -----------------------------
 // Static editorial roadmap (NOT report data) — the markets we plan to model next, in
@@ -525,40 +196,6 @@ const MODEL_NEXT = [
   },
 ];
 
-// ---- GATE DIGEST: one line above the board — what (if anything) to change today ----
-// Digests the board's per-category `doThis.action`: counts only the three CHANGE actions
-// (add / pull / tune) and ignores steady-state ones (keep betting / build / stay out), so
-// the common "nothing moved" day reads as a single reassuring line.
-function GateDigest({ board }) {
-  if (!board?.length) return null;
-  const act = a => board.filter(e => e.doThis?.action === a);
-  const promotes = act("Add to gate"), pulls = act("Pull from gate"), looks = act("Look deeper");
-  const liveCount = board.filter(e => e.gated).length;
-  const names = arr => arr.map(e => `${e.sport} ${e.category}`).join(", ");
-  const b = (txt, color) => <b style={{ color }}>{txt}</b>;
-
-  let body;
-  if (liveCount === 0 && !promotes.length) {
-    // Empty-gate posture (2026-06-19): all categories failed formula-clean validation and were
-    // pulled. Document the deliberate full-stop rather than reading "keep betting 0 categories".
-    body = <><b style={{ color:C.red }}>Gate is empty — sitting out.</b> No category currently beats the market on formula-clean data (Brier + in-gate ROI). Re-enable one only when it clears {b("n≥50 + band coherence + non-negative Brier", C.amber)}.</>;
-  } else if (!promotes.length && !pulls.length && !looks.length) {
-    body = <>No changes today — keep betting the {b(liveCount, C.green)} live categor{liveCount === 1 ? "y" : "ies"}.</>;
-  } else {
-    const parts = [];
-    if (promotes.length) parts.push(<>add {b(names(promotes), C.green)}</>);
-    if (pulls.length)    parts.push(<>pull {b(names(pulls), C.red)}</>);
-    if (looks.length)    parts.push(<>investigate {b(names(looks), C.blue)}</>);
-    body = <>Act today: {parts.map((p, i) => <React.Fragment key={i}>{i ? "; " : ""}{p}</React.Fragment>)}.</>;
-  }
-
-  return (
-    <div style={{ display:"flex", gap:8, marginBottom:8 }}>
-      <span style={{ color:C.gray, fontSize:10.5, fontWeight:700, minWidth:40, flexShrink:0, textTransform:"uppercase", letterSpacing:0.3, paddingTop:1 }}>Gate</span>
-      <span style={{ color:C.text, fontSize:12.5, lineHeight:1.45 }}>{body}</span>
-    </div>
-  );
-}
 
 // ---- DO THIS: the single top-priority action for the morning, across the whole page ----
 // A fall-through priority ladder — pick the first tier that has something actionable as the
@@ -677,6 +314,29 @@ function _doThisCandidates(d) {
   const warns = d?.dataHealth?.warnings || [];
   if (warns.length && d?.dataHealth?.actionable) {
     out.push({ tier:1, tone:"red", label:"Fix data health", why: warns.join(" · "), short:"Fix data health" });
+  }
+  // 1.6 — maker adverse-selection red flag (2026-07-19): the ONE failure mode that kills the
+  // maker strategy. Fires once graded fills are readable (n≥30) and either fills' sold sides
+  // win ≥8pp more often than quoted markets overall (the margin is selection, not edge) or
+  // fill PnL is decisively negative (CI-hi < 0 via avg + CI-lo symmetry).
+  const mb = d?.makerBoard;
+  if ((mb?.fills?.graded || 0) >= 30) {
+    const _adv = mb.fills.sideWonRate != null && mb.quotedOutcomes?.sideWonRate != null
+      ? (mb.fills.sideWonRate - mb.quotedOutcomes.sideWonRate) * 100 : null;
+    const _pnlHiCI = mb.fills.avgPnlCents != null && mb.fills.pnlLoCI != null
+      ? mb.fills.avgPnlCents + (mb.fills.avgPnlCents - mb.fills.pnlLoCI) : null;
+    if ((_adv != null && _adv >= 8) || (_pnlHiCI != null && _pnlHiCI < 0)) {
+      out.push({ tier:1.6, tone:"red", label:"Maker fills are adversely selected — margin is selection, not edge",
+        why:`filled quotes' sold side wins ${_adv != null ? `${_adv.toFixed(1)}pp more often` : "far more often"} than quoted markets overall (n=${mb.fills.graded} graded)${_pnlHiCI != null && _pnlHiCI < 0 ? `; fill PnL CI entirely negative (${mb.fills.pnlLoCI}..${_pnlHiCI.toFixed(1)}¢)` : ""} — diagnose which categories/bands drive it before more accrual`,
+        short:"Maker adverse selection" });
+    }
+  }
+  // 2.05 — arm decision ready: the shadow maker cleared its criterion. Human decision, never
+  // auto-armed — V2 (real resting orders, reprice/cancel, pull-on-news, caps, kill switch).
+  if ((mb?.fills?.graded || 0) >= (mb?.armCriterion?.minFills ?? 200) && (mb?.fills?.pnlLoCI ?? -1) > 0) {
+    out.push({ tier:2.05, tone:"green", label:"ARM DECISION — shadow maker cleared its criterion, review V2",
+      why:`${mb.fills.graded} graded fills at ${mb.fills.avgPnlCents > 0 ? "+" : ""}${mb.fills.avgPnlCents}¢/contract (CI-lo ${mb.fills.pnlLoCI > 0 ? "+" : ""}${mb.fills.pnlLoCI}¢) — margin survives adverse selection. Decide V2 scope from the band ladder.`,
+      short:"Review maker V2 arm" });
   }
   // 2 — betting changes pending on the betting board (promote / demote / investigate).
   // "Look deeper" is the Phase-2 residual-slicer nag (eligible-but-window-loses). It's only
@@ -838,35 +498,13 @@ function _doThisCandidates(d) {
   // "caught up" state naming the NEXT upcoming checkpoint instead of an empty/absent banner.
   if (!out.length) {
     const upcoming = [...SCHEDULED_CHECKPOINTS].filter(c => c.date > todayPT).sort((a, b) => a.date.localeCompare(b.date))[0];
+    const _mbFills = d?.makerBoard?.fills;
     out.push({ tier:5, tone:"gray", label:"Nothing to act on today",
-      why:`Gate empty, models accruing, no new markets to triage.${upcoming ? ` Next scheduled checkpoint: ${upcoming.short || upcoming.label} ~${upcoming.date}.` : ""}`, short:"All clear" });
+      why:`Maker shadow accruing (${_mbFills?.graded ?? 0}/${d?.makerBoard?.armCriterion?.minFills ?? 200} graded fills), gate empty, no new markets to triage.${upcoming ? ` Next scheduled checkpoint: ${upcoming.short || upcoming.label} ~${upcoming.date}.` : ""}`, short:"All clear" });
   }
   // Push order ≠ priority order anymore (tier 3.2 is pushed before 3.15) — sort by tier; ties keep
   // insertion order (stable sort), so multiple due checkpoints stay oldest-first.
   return out.sort((a, b) => a.tier - b.tier);
-}
-// Cross-venue readout — the live sportsbook-reference validation (does Kalshi lag the de-vigged
-// sharp book?). Kill-gate CLOSED 2026-07-04 (TIGHT, Phase 1b killed); the readout stays as the
-// regime tripwire. Null until the feed is active (THE_ODDS_API_KEY) + the table has rows.
-function CrossVenueValidation({ sbv }) {
-  if (!sbv) return null;
-  const map = {
-    GAP:      ["Kalshi LAGS the sharp book — regime change vs the closed 7/04 kill-gate; audit the tail", C.green],
-    TIGHT:    ["Kalshi tracks the sharp book — no liquid lag edge (kill-gate closed 7/04)", C.gray],
-    ACCRUING: ["accruing — thin window", C.dim],
-  };
-  const [label, color] = map[sbv.verdict] || [sbv.verdict, C.dim];
-  return (
-    <div style={{ marginTop:10, fontSize:11 }}>
-      <span style={{ color:C.dim, fontWeight:700, fontSize:9, letterSpacing:0.4 }}>CROSS-VENUE · SPORTSBOOK REFERENCE </span>
-      <span style={{ color, fontWeight:600 }}>{label}</span>
-      <span style={{ color:C.gray }}>
-        {" · "}n={sbv.n}/{sbv.days}d
-        {sbv.medianAbs!=null ? ` · median |Δ| ${sbv.medianAbs}¢` : ""}
-        {sbv.fracBuyEdge3!=null ? ` · ${Math.round(sbv.fracBuyEdge3*100)}% of sides ≥3¢ cheap vs book` : ""}
-      </span>
-    </div>
-  );
 }
 function DoThisBanner({ d }) {
   const [copied, setCopied] = React.useState(false);
@@ -921,188 +559,134 @@ function Tile({ label, value, color, sub }) {
   );
 }
 
-// ---- MODEL SUMMARY: tiles + changes + expandable category rows --------------------
-// Each row expands to show accuracy detail (Brier, calib bands) and betting detail
-// (doThis, checklist, price bands) side by side — replaces the separate board toggles.
-function ModelSummary({ d }) {
-  const [expanded, setExpanded] = React.useState({});
-  const [showThin, setShowThin] = React.useState(false);
-  const acc = d?.accuracyBoard || [];
-  const betByKey = Object.fromEntries((d?.bettingBoard || []).map(r => [r.key, r]));
 
-  // Tile counts — beatsMarket matches the brief/eligible bar (skill CI-lo > 0, not the
-  // point estimate, which counted skill +0.000 categories as beating the market)
-  const beatsMarket = acc.filter(r => (r.n || 0) >= 100 && (r.skillLoCI || 0) > 0).length;
-  const mktSharper  = acc.filter(r => (r.n || 0) >= 100 && (r.skill || 0) < -0.005).length;
-  const accruing    = acc.filter(r => (r.n || 0) < 100).length;
-  const todayPT = new Date().toLocaleDateString("en-CA", { timeZone:"America/Los_Angeles" });
-  const nextCp = [...SCHEDULED_CHECKPOINTS]
-    .filter(c => c.date > todayPT)
-    .sort((a, b) => a.date.localeCompare(b.date))[0];
-  const nextCpLabel = nextCp
-    ? new Date(nextCp.date + "T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})
-    : "none";
-
-  // n≥50 rows (gated always included), sorted by action priority
-  const PRIORITY = { MARKET_SHARPER:0, OVERCONFIDENT:1, UNDERCONFIDENT:2, PROMISING:3, CALIBRATED:4, BUILDING:5 };
-  const notable = acc
-    .filter(r => r.gated || (r.n || 0) >= 50)
-    .sort((a, b) => (PRIORITY[a.verdict] ?? 9) - (PRIORITY[b.verdict] ?? 9) || b.n - a.n);
-  const thin = acc
-    .filter(r => !r.gated && (r.n || 0) > 0 && (r.n || 0) < 50)
-    .sort((a, b) => b.n - a.n);
-
-  const toggle = key => setExpanded(e => ({ ...e, [key]: !e[key] }));
-
-  const Row = ({ r }) => {
-    const open = expanded[r.key];
-    const bet = betByKey[r.key];
-    const exhausted = r.verdict === "MARKET_SHARPER" && _stillExhausted(INPUT_SEARCH_EXHAUSTED, r.key, r.formulaCutoff);
-    const accAction = exhausted ? "Stop — search exhausted" : r.honest?.action;
-    const accWhy    = exhausted ? "market sharper AND the L0 input search is exhausted — park it" : r.honest?.why;
-    const accColor  = exhausted ? C.dim : (_TONE[r.honest?.tone] || C.gray);
-    const honestyN  = (r.calibBands || []).reduce((s, b) => s + (b.n || 0), 0);
-    const profitN   = (bet?.priceBands || []).reduce((s, b) => s + (b.n || 0), 0);
-    return (
-      <>
-        <tr onClick={() => toggle(r.key)} style={{ cursor:"pointer", background:_ACC[r.verdict]?.[2] || "transparent" }}>
-          <td style={{ ...tdB, textAlign:"left", color:C.text, fontWeight:600 }}>
-            <span style={{ color:C.dim, marginRight:4 }}>{open ? "▾" : "▸"}</span>{r.key}
-            {r.gated && <span style={{ color:C.green, fontSize:9, fontWeight:700, marginLeft:6 }}>● live</span>}
-          </td>
-          <td style={tdB}><AccBadge v={r.verdict} /></td>
-          <td style={tdB}><SkillCell skill={r.skill} skillN={r.n} modelBrier={r.modelBrier} marketBrier={r.marketBrier} /></td>
-          <td style={tdB}>{bet ? <DoThisBadge d={bet.doThis} /> : <span style={{ color:C.dim, fontSize:10 }}>—</span>}</td>
-          <td style={{ ...tdB, color:r.n >= 100 ? C.text : C.gray }}>{r.n}</td>
-        </tr>
-        {open && (
-          <tr>
-            <td colSpan={5} style={{ padding:"0 8px 10px 24px", background:"#0d1117" }}>
-              <div style={{ display:"flex", gap:20, alignItems:"flex-start", flexWrap:"wrap" }}>
-
-                {/* Left — accuracy */}
-                <div style={{ flex:"1 1 260px", minWidth:0 }}>
-                  {accAction && accWhy && (
-                    <div style={{ color:accColor, fontSize:11, margin:"6px 0 4px" }}>
-                      ▶ <b>{accAction}</b>: <span style={{ color:C.text }}>{accWhy}</span>
-                    </div>
-                  )}
-                  {r.skill != null && (
-                    <div style={{ color:C.dim, fontSize:10, margin:"2px 0 4px" }}>
-                      Brier skill{" "}
-                      <b style={{ color:(r.n>=100)?(r.skill>0?C.green:r.skill<-0.005?C.red:C.gray):C.dim }}>
-                        {r.skill>=0?"+":""}{r.skill.toFixed(3)}
-                      </b>
-                      {" "}— model {r.modelBrier ?? "—"} vs market {r.marketBrier ?? "—"} (n={r.n})
-                      {r.skillLoCI!=null ? ` · CI lo ${r.skillLoCI>=0?"+":""}${r.skillLoCI}` : ""}
-                      {r.n<100?" · n<100":""}
-                    </div>
-                  )}
-                  {r.learning && (
-                    <div style={{ color:C.dim, fontSize:10, margin:"2px 0 6px", display:"flex", alignItems:"center", gap:6 }}>
-                      Learning: <LearnCell learning={r.learning} />
-                    </div>
-                  )}
-                  <div style={{ color:C.dim, fontSize:9, fontWeight:700, margin:"4px 0 1px" }}>
-                    HONESTY · model% vs actual · <span style={{ fontWeight:400 }}>{honestyN} resolved plays</span>
-                  </div>
-                  <CalibBandsTable bands={r.calibBands} />
-                </div>
-
-                {/* Right — betting (only when this category appears on the betting board) */}
-                {bet && (
-                  <div style={{ flex:"1 1 260px", minWidth:0 }}>
-                    {bet.doThis?.why && (
-                      <div style={{ color:_TONE[bet.doThis.tone]||C.gray, fontSize:11, margin:"6px 0 4px" }}>
-                        ▶ <b>{bet.doThis.action}</b>: <span style={{ color:C.text }}>{bet.doThis.why}</span>
-                      </div>
-                    )}
-                    {bet.checklist && (
-                      <div style={{ margin:"2px 0 6px", whiteSpace:"nowrap" }}>
-                        <Check ok={bet.checklist.nOk}        label="bets"  title="Enough settled bets (n ≥ 50)" />
-                        <Check ok={bet.checklist.ciOk}        label="real"  title="Edge is real — profitable in the cautious 95%-CI case" />
-                        <Check ok={bet.checklist.coherentOk}  label="broad" title="Profitable across the whole price range" />
-                        {bet.discoveredWindow?.roiLoCI != null && (
-                          <span style={{ color:C.dim, fontSize:9, marginLeft:6 }}>
-                            ROI range [{(bet.discoveredWindow.roiLoCI*100).toFixed(0)},{(bet.discoveredWindow.roiHiCI*100).toFixed(0)}]
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    <div style={{ color:C.dim, fontSize:9, fontWeight:700, margin:"4px 0 1px" }}>
-                      PROFIT · full price range · <span style={{ fontWeight:400 }}>{profitN} bettable plays</span>
-                    </div>
-                    <PriceBands bands={bet.priceBands} window={bet.currentWindow} />
-                  </div>
-                )}
-
-              </div>
-            </td>
-          </tr>
-        )}
-      </>
-    );
-  };
-
+// ---- MAKER PROGRESS: the new-strategy progress module (2026-07-19) ------------------
+// Replaces the legacy accuracy/betting board table. The strategy question changed from
+// "which model beats the market?" (answered 7/19: none — taker edge is structurally
+// negative venue-wide) to "is the maker margin surviving adverse selection, and how close
+// are we to arming?" Forms follow the data's job: arm progress = stat tile + meter;
+// margin trajectory = single-hue cumulative line; band economics = single-hue bar ladder.
+// Color doctrine: NO categorical series palette — one hue (C.blue) for magnitude marks;
+// green/red appear only on SIGNED values (the +/− prefix is the non-color channel).
+function ArmTile({ mb }) {
+  const f = mb?.fills || {};
+  const min = mb?.armCriterion?.minFills ?? 200;
+  const graded = f.graded || 0;
+  const pct = Math.min(100, graded / min * 100);
+  const [color, phase] = graded < 10 || f.pnlLoCI == null ? [C.dim, "accruing"]
+    : f.pnlLoCI > 0 ? [C.green, "on track"]
+    : (f.avgPnlCents ?? 0) > 0 ? [C.amber, "CI straddles 0"]
+    : [C.red, "negative"];
+  const armed = graded >= min && (f.pnlLoCI ?? -1) > 0;
   return (
-    <div style={{ marginBottom:12 }}>
-      <div style={{ display:"flex", gap:8, marginBottom:10 }}>
-        <Tile label="beats market" value={beatsMarket} color={beatsMarket > 0 ? C.green : C.dim} />
-        <Tile label="mkt sharper"  value={mktSharper}  color={mktSharper  > 0 ? C.red  : C.dim} />
-        <Tile label="accruing"     value={accruing}     color={C.dim} />
-        <Tile label="next clock"   value={nextCpLabel}  color={C.dim} sub={nextCp?.short} />
+    <div style={{ flex:"1.6 1 0", background:C.card, border:`1px solid ${armed ? C.green : C.border}`, borderRadius:6, padding:"8px 10px", minWidth:150 }}>
+      <div style={{ color, fontSize:22, fontWeight:700, lineHeight:1, fontVariantNumeric:"tabular-nums" }}>
+        {f.avgPnlCents != null ? `${f.avgPnlCents > 0 ? "+" : ""}${f.avgPnlCents}¢` : "—"}
+        <span style={{ fontSize:11, fontWeight:400, color:C.gray, marginLeft:6 }}>
+          /contract{f.pnlLoCI != null ? ` · CI-lo ${f.pnlLoCI > 0 ? "+" : ""}${f.pnlLoCI}` : ""}
+        </span>
       </div>
-
-      {d?.brief?.changes?.length > 0 && (
-        <div style={{ fontSize:11, color:C.dim, marginBottom:8, lineHeight:1.5 }}>
-          <span style={{ fontWeight:700, color:C.gray }}>Changed · </span>{d.brief.changes.join(" · ")}
-        </div>
-      )}
-
-      <table style={tableStyle}>
-        <thead><tr>
-          {["Category","Accuracy","vs Market","Bet","N"].map(h => <th key={h} style={thB}>{h}</th>)}
-        </tr></thead>
-        <tbody>
-          {notable.map(r => <Row key={r.key} r={r} />)}
-          {thin.length > 0 && !showThin && (
-            <tr onClick={() => setShowThin(true)} style={{ cursor:"pointer" }}>
-              <td colSpan={5} style={{ ...tdB, textAlign:"left", color:C.dim }}>▸ {thin.length} accruing (n &lt; 50) — show</td>
-            </tr>
-          )}
-          {showThin && thin.map(r => <Row key={r.key} r={r} />)}
-        </tbody>
-      </table>
+      <div style={{ color: armed ? C.green : C.dim, fontSize:9, fontWeight:700, textTransform:"uppercase", letterSpacing:0.4, margin:"4px 0 5px" }}>
+        {armed ? "ARM CRITERION MET — review V2" : `maker pnl · ${phase} · ${graded}/${min} graded fills`}
+      </div>
+      <div style={{ height:4, background:C.border, borderRadius:2, overflow:"hidden" }} title={`${graded}/${min} graded fills toward the arm decision`}>
+        <div style={{ width:`${pct}%`, height:"100%", background:color }} />
+      </div>
     </div>
   );
 }
 
-// Shadow maker board (2026-07-19) — simulated favorite-ask quoting (api/lib/maker.js).
-// Reads the report's makerBoard: quote volume, fill economics, and the adverse-selection
-// check (sold-side win rate on FILLED quotes vs on all quoted markets). Arm criterion:
-// fill PnL CI-lo > 0 at n≥200 fills — until then this is measurement, not money.
-function MakerBoardCard({ mb }) {
-  if (!mb || !mb.quotes?.segments) return null;
-  const f = mb.fills || {}, qo = mb.quotedOutcomes || {};
-  const armReady = (f.graded || 0) >= (mb.armCriterion?.minFills || 200) && (f.pnlLoCI ?? -1) > 0;
-  const pnlColor = f.avgPnlCents == null ? C.dim : f.avgPnlCents > 0 ? C.green : C.red;
-  // Adverse selection: how much worse the sold side does on fills vs all quotes (pp).
+// Cumulative graded paper PnL by day. Single series → one hue, no legend; the section
+// title names it. Zero baseline; per-point tooltip; the current value is the one direct label.
+function EquityCurve({ daily }) {
+  const pts = [];
+  let cum = 0;
+  for (const d of daily || []) {
+    if (!(d.graded > 0) && !pts.length) continue; // skip leading no-fill days
+    cum += d.pnlTotal || 0;
+    pts.push({ day: d.day, cum: parseFloat(cum.toFixed(1)) });
+  }
+  if (pts.length < 2) {
+    return <div style={{ color:C.dim, fontSize:10, padding:"10px 0" }}>
+      Paper equity curve appears once graded fills span two days{pts.length === 1 ? ` — day 1: ${pts[0].cum > 0 ? "+" : ""}${pts[0].cum}¢` : ""}.
+    </div>;
+  }
+  const W = 560, H = 90, P = 8;
+  const xs = i => P + i * (W - 2 * P) / (pts.length - 1);
+  const vals = pts.map(p => p.cum);
+  const lo = Math.min(0, ...vals), hi = Math.max(0, ...vals);
+  const ys = v => hi === lo ? H / 2 : P + (hi - v) * (H - 2 * P) / (hi - lo);
+  const path = pts.map((p, i) => `${i ? "L" : "M"}${xs(i).toFixed(1)},${ys(p.cum).toFixed(1)}`).join(" ");
+  const last = pts[pts.length - 1];
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width:"100%", maxWidth:560, display:"block" }} role="img" aria-label="Cumulative paper maker PnL by day">
+      <line x1={P} x2={W - P} y1={ys(0)} y2={ys(0)} stroke={C.border} strokeWidth="1" />
+      <path d={path} fill="none" stroke={C.blue} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      {pts.map((p, i) => (
+        <circle key={p.day} cx={xs(i)} cy={ys(p.cum)} r="3.5" fill={C.blue} stroke={C.bg} strokeWidth="2">
+          <title>{`${p.day}: ${p.cum > 0 ? "+" : ""}${p.cum}¢ cumulative`}</title>
+        </circle>
+      ))}
+      <text x={Math.min(xs(pts.length - 1), W - P - 4)} y={Math.max(12, ys(last.cum) - 8)}
+        textAnchor="end" fill={C.text} fontSize="11" fontWeight="700">
+        {last.cum > 0 ? "+" : ""}{last.cum}¢
+      </text>
+    </svg>
+  );
+}
+
+// Per-ask-band ladder: bar length = fills (magnitude, single hue); margin is a signed,
+// colored figure per row (small fixed row count → direct labels are correct here).
+function BandLadder({ bands }) {
+  const bs = (bands || []).filter(b => b.segments || b.fills);
+  if (!bs.length) return <div style={{ color:C.dim, fontSize:10, padding:"6px 0" }}>Band economics appear with the first quotes.</div>;
+  const max = Math.max(1, ...bs.map(b => b.fills));
+  return (
+    <div style={{ marginTop:4, maxWidth:560 }}>
+      {bs.map(b => (
+        <div key={b.band} style={{ display:"flex", alignItems:"center", gap:8, margin:"3px 0", fontSize:10 }}
+          title={`${b.band}¢ ask band: ${b.segments} quote segments, ${b.fills} fills (${b.graded} graded)${b.avgPnl != null ? `, ${b.avgPnl > 0 ? "+" : ""}${b.avgPnl}¢/contract` : ""}`}>
+          <span style={{ color:C.gray, width:42, fontVariantNumeric:"tabular-nums" }}>{b.band}¢</span>
+          <div style={{ flex:1, height:10, background:C.card, borderRadius:3, overflow:"hidden" }}>
+            <div style={{ width:`${Math.max(b.fills / max * 100, b.fills ? 3 : 0)}%`, height:"100%", background:C.blue, borderRadius:3 }} />
+          </div>
+          <span style={{ color:C.dim, width:118, whiteSpace:"nowrap" }}>{b.segments} quotes · {b.fills} fills</span>
+          <span style={{ width:66, textAlign:"right", fontWeight:700, fontVariantNumeric:"tabular-nums",
+            color: b.avgPnl == null ? C.dim : b.avgPnl > 0 ? C.green : C.red }}>
+            {b.avgPnl != null ? `${b.avgPnl > 0 ? "+" : ""}${b.avgPnl}¢/ct` : "—"}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MakerProgress({ mb }) {
+  const todayPT = new Date().toLocaleDateString("en-CA", { timeZone:"America/Los_Angeles" });
+  const nextCp = [...SCHEDULED_CHECKPOINTS].filter(c => c.date > todayPT).sort((a, b) => a.date.localeCompare(b.date))[0];
+  if (!mb) {
+    return <div style={{ color:C.dim, fontSize:11, padding:8 }}>Maker board not in this report yet — Refresh regenerates it.</div>;
+  }
+  const f = mb.fills || {}, q = mb.quotes || {}, qo = mb.quotedOutcomes || {};
+  const fillRate = q.segments ? Math.round((f.n || 0) / q.segments * 1000) / 10 : null;
   const advSel = f.sideWonRate != null && qo.sideWonRate != null
     ? Math.round((f.sideWonRate - qo.sideWonRate) * 1000) / 10 : null;
   return (
-    <div style={{ border:`1px solid ${C.border}`, borderRadius:8, padding:"10px 14px", marginTop:14 }}>
-      <div style={{ color:C.dim, fontWeight:700, fontSize:9, letterSpacing:0.4, marginBottom:6 }}>
-        SHADOW MAKER · SIMULATED FAVORITE-ASK QUOTING
-        <span style={{ color: armReady ? C.green : C.dim, marginLeft:8 }}>
-          {armReady ? "ARM CRITERION MET — review for V2" : `paper only · arm at n≥${mb.armCriterion?.minFills ?? 200} fills, PnL CI-lo>0`}
-        </span>
+    <div style={{ marginBottom:12 }}>
+      <div style={{ ...sectionHead, borderTop:"none", paddingTop:0, marginTop:8 }}>Shadow maker · simulated favorite-ask quoting</div>
+      <div style={{ display:"flex", gap:8, marginBottom:10, flexWrap:"wrap" }}>
+        <ArmTile mb={mb} />
+        <Tile label="fill rate" value={fillRate != null ? `${fillRate}%` : "—"} color={C.text}
+          sub={`${f.n ?? 0} fills / ${q.segments ?? 0} quotes · ${q.tickers ?? 0} mkts · avg ask ${q.avgAsk ?? "—"}¢`} />
+        <Tile label="adverse selection" value={advSel != null ? `${advSel > 0 ? "+" : ""}${advSel}pp` : "—"}
+          color={advSel == null ? C.dim : advSel >= 5 ? C.red : C.green} sub="filled vs quoted side-won" />
+        <Tile label="next clock" value={nextCp ? new Date(nextCp.date + "T12:00:00").toLocaleDateString("en-US", { month:"short", day:"numeric" }) : "none"}
+          color={C.dim} sub={nextCp?.short} />
       </div>
-      <div style={{ fontSize:11, color:C.gray, display:"flex", flexWrap:"wrap", gap:"4px 16px" }}>
-        <span>quotes <b style={{ color:C.text }}>{mb.quotes.segments}</b> segs · {mb.quotes.tickers} mkts · {mb.quotes.days}d · avg ask {mb.quotes.avgAsk ?? "—"}¢</span>
-        <span>fills <b style={{ color:C.text }}>{f.n ?? 0}</b> ({f.contracts ?? 0} contracts, {f.graded ?? 0} graded)</span>
-        <span>PnL/contract <b style={{ color:pnlColor }}>{f.avgPnlCents != null ? `${f.avgPnlCents > 0 ? "+" : ""}${f.avgPnlCents}¢` : "—"}</b>{f.pnlLoCI != null ? ` (CI-lo ${f.pnlLoCI}¢)` : ""}</span>
-        {advSel != null && <span>adverse selection <b style={{ color: advSel > 0 ? C.red : C.green }}>{advSel > 0 ? "+" : ""}{advSel}pp</b> (filled vs quoted side-won)</span>}
-      </div>
+      <div style={{ color:C.dim, fontSize:9, fontWeight:700, margin:"6px 0 2px" }}>PAPER EQUITY · CUMULATIVE GRADED PNL</div>
+      <EquityCurve daily={mb.daily} />
+      <div style={{ color:C.dim, fontSize:9, fontWeight:700, margin:"10px 0 2px" }}>BAND LADDER · WHERE FILLS + MARGIN CONCENTRATE (V2 TARGETING)</div>
+      <BandLadder bands={mb.bands} />
     </div>
   );
 }
@@ -1129,8 +713,7 @@ function MorningBriefing({ shadowReportData, shadowReportLoading, fetchShadowRep
       <StatusStrip dh={d.dataHealth} reportData={shadowReportData} fetchShadowReport={fetchShadowReport} />
       <DataHealth dh={d.dataHealth} />
       <DoThisBanner d={d} />
-      <ModelSummary d={d} />
-      <MakerBoardCard mb={d.makerBoard} />
+      <MakerProgress mb={d.makerBoard} />
     </div>
   );
 }

@@ -2730,7 +2730,7 @@ async function handleShadowReport({ path, request, env, cache }) {
     const _yesWonExpr = `(CASE WHEN q.quote_side = 'yes'
         THEN (CASE WHEN s.direction = 'under' THEN NOT s.won ELSE s.won END)
         ELSE NOT (CASE WHEN s.direction = 'under' THEN NOT s.won ELSE s.won END) END)`;
-    const [[mq], [mf], [qo]] = await Promise.all([
+    const [[mq], [mf], [qo], _mDaily, _mBands] = await Promise.all([
       neonQuery(`
         SELECT COUNT(*)::int AS segments, COUNT(DISTINCT ticker)::int AS tickers,
           COUNT(DISTINCT game_date)::int AS days, ROUND(AVG(quote_ask), 1) AS avg_ask
@@ -2754,6 +2754,33 @@ async function handleShadowReport({ path, request, env, cache }) {
           ORDER BY ticker, game_date, valid_from DESC
         ) q JOIN shadow_plays s ON s.id = q.shadow_row_id
         WHERE s.resolved AND s.won IS NOT NULL`, [since], env, { write: true }),
+      // Daily fill series — feeds the /model paper equity curve (frontend cumsums pnl_total).
+      neonQuery(`
+        SELECT q.game_date AS day, COUNT(*)::int AS fills,
+          COALESCE(SUM(f.contracts), 0) AS contracts,
+          COUNT(*) FILTER (WHERE f.graded_at IS NOT NULL)::int AS graded,
+          COALESCE(SUM(f.pnl_cents * f.contracts) FILTER (WHERE f.graded_at IS NOT NULL), 0) AS pnl_total
+        FROM maker_fills f JOIN maker_quotes q ON q.id = f.quote_id
+        WHERE q.game_date >= $1
+        GROUP BY q.game_date ORDER BY q.game_date`, [since], env, { write: true }),
+      // Per-ask-band quote/fill economics — feeds the /model band ladder (V2 targeting view).
+      neonQuery(`
+        WITH qb AS (
+          SELECT CASE WHEN quote_ask < 85 THEN '80-84' WHEN quote_ask < 90 THEN '85-89' ELSE '90-96' END AS band,
+            COUNT(*)::int AS segments
+          FROM maker_quotes WHERE game_date >= $1 GROUP BY 1),
+        fb AS (
+          SELECT CASE WHEN f.fill_ask < 85 THEN '80-84' WHEN f.fill_ask < 90 THEN '85-89' ELSE '90-96' END AS band,
+            COUNT(*)::int AS fills,
+            COUNT(*) FILTER (WHERE f.graded_at IS NOT NULL)::int AS graded,
+            ROUND(AVG(f.pnl_cents) FILTER (WHERE f.graded_at IS NOT NULL), 2) AS avg_pnl,
+            ROUND(AVG((f.side_won)::int::numeric) FILTER (WHERE f.graded_at IS NOT NULL), 4) AS filled_side_won
+          FROM maker_fills f JOIN maker_quotes q ON q.id = f.quote_id
+          WHERE q.game_date >= $1 GROUP BY 1)
+        SELECT COALESCE(qb.band, fb.band) AS band, COALESCE(qb.segments, 0) AS segments,
+          COALESCE(fb.fills, 0) AS fills, COALESCE(fb.graded, 0) AS graded,
+          fb.avg_pnl, fb.filled_side_won
+        FROM qb FULL OUTER JOIN fb ON fb.band = qb.band ORDER BY 1`, [since], env, { write: true }),
     ]);
     const graded = Number(mf?.graded || 0);
     const avgPnl = mf?.avg_pnl != null ? Number(mf.avg_pnl) : null;
@@ -2771,6 +2798,17 @@ async function handleShadowReport({ path, request, env, cache }) {
         avgAsk: qo?.avg_ask != null ? Number(qo.avg_ask) : null },
       armCriterion: { minFills: 200, need: "pnlLoCI > 0" },
       armed: false,
+      daily: (_mDaily || []).map(r => ({
+        day: String(r.day).slice(0, 10), fills: Number(r.fills || 0),
+        contracts: Number(r.contracts || 0), graded: Number(r.graded || 0),
+        pnlTotal: parseFloat(Number(r.pnl_total || 0).toFixed(1)),
+      })),
+      bands: (_mBands || []).map(r => ({
+        band: r.band, segments: Number(r.segments || 0), fills: Number(r.fills || 0),
+        graded: Number(r.graded || 0),
+        avgPnl: r.avg_pnl != null ? Number(r.avg_pnl) : null,
+        filledSideWon: r.filled_side_won != null ? Number(r.filled_side_won) : null,
+      })),
     };
   } catch (e) { console.error("[shadow-report] maker board skipped:", e?.message); }
 
