@@ -583,7 +583,9 @@ function ArmTile({ mb }) {
       <div style={{ color, fontSize:22, fontWeight:700, lineHeight:1, fontVariantNumeric:"tabular-nums" }}>
         {f.avgPnlCents != null ? `${f.avgPnlCents > 0 ? "+" : ""}${f.avgPnlCents}¢` : "—"}
         <span style={{ fontSize:11, fontWeight:400, color:C.gray, marginLeft:6 }}>
-          /contract{f.pnlLoCI != null ? ` · CI-lo ${f.pnlLoCI > 0 ? "+" : ""}${f.pnlLoCI}` : ""}
+          {f.avgPnlCents != null
+            ? `/contract${f.pnlLoCI != null ? ` · CI-lo ${f.pnlLoCI > 0 ? "+" : ""}${f.pnlLoCI}` : ""}`
+            : "awaiting first graded fills"}
         </span>
       </div>
       <div style={{ color: armed ? C.green : C.dim, fontSize:9, fontWeight:700, textTransform:"uppercase", letterSpacing:0.4, margin:"4px 0 5px" }}>
@@ -647,8 +649,11 @@ function BandLadder({ bands }) {
         <div key={b.band} style={{ display:"flex", alignItems:"center", gap:8, margin:"3px 0", fontSize:10 }}
           title={`${b.band}¢ ask band: ${b.segments} quote segments, ${b.fills} fills (${b.graded} graded)${b.avgPnl != null ? `, ${b.avgPnl > 0 ? "+" : ""}${b.avgPnl}¢/contract` : ""}`}>
           <span style={{ color:C.gray, width:42, fontVariantNumeric:"tabular-nums" }}>{b.band}¢</span>
-          <div style={{ flex:1, height:10, background:C.card, borderRadius:3, overflow:"hidden" }}>
-            <div style={{ width:`${Math.max(b.fills / max * 100, b.fills ? 3 : 0)}%`, height:"100%", background:C.blue, borderRadius:3 }} />
+          {/* Empty track must be quieter than a real bar — hairline outline until fills exist,
+              so a zero-fill band can never be misread as a full one. */}
+          <div style={{ flex:1, height:10, background: b.fills ? C.card : "transparent",
+            border:`1px solid ${C.border}`, borderRadius:3, overflow:"hidden", boxSizing:"border-box" }}>
+            <div style={{ width:`${Math.max(b.fills / max * 100, b.fills ? 3 : 0)}%`, height:"100%", background:C.blue, borderRadius:2 }} />
           </div>
           <span style={{ color:C.dim, width:118, whiteSpace:"nowrap" }}>{b.segments} quotes · {b.fills} fills</span>
           <span style={{ width:66, textAlign:"right", fontWeight:700, fontVariantNumeric:"tabular-nums",
