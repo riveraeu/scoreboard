@@ -33,7 +33,14 @@ export const POLY_SERIES = { mlb: "3", nba: "10345", nhl: "10346", wnba: "10105"
 // Gamma sport slugs vetted-and-rejected for the observatory. The polymarket-scan cron reconciles
 // these to status='dismissed' in polymarket_sports_seen, so triaged noise clears on a code change
 // instead of a manual ?dismiss= curl (mirror of series-config.js DISMISSED_SERIES).
-export const POLY_DISMISSED_SPORTS = [];
+export const POLY_DISMISSED_SPORTS = [
+  // 7/21 triage (13 detected, all 0 live except ttelite=1): niche low-signal leagues (Czech/
+  // Moldova/Ukraine "Setka Cup" table-tennis family, USL Championship, a handful of unclear thin
+  // slugs) — none overlap sports/leagues we model, and Polymarket has been observatory-only since
+  // the 7/04 kill (no active build target). DISMISS all.
+  "chfa", "czechligapro", "pol", "sclc", "setkamecz", "setkamemd", "setkameua", "setkawoua",
+  "sui", "ttchallenger", "ttcup", "ttelite", "uslc",
+];
 
 // Gamma league catalog (GET /sports): ~300 rows of { sport: slug, series: id, tags, ... }. The
 // discovery unit for /api/polymarket-scan — a new row = Polymarket added a league. Failure-closed.

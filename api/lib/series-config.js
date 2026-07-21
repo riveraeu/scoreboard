@@ -563,4 +563,27 @@ export const DISMISSED_SERIES = [
   // KXBRASILEIROSCORE/KXUCLSCORE/etc., all dismissed) PLUS an ET-specific blocker: soccer.js's
   // Dixon–Coles matrix prices the 90' score only, no extra-time additional-goals sub-model exists.
   // 0 live markets (ET is conditional on a knockout draw after 90'), window_fit false. DISMISS.
+  // 7/21 triage (10 detected):
+  "KXARGNACBGAME", // Argentine Nacional B (2nd div club soccer) — no club Elo, 0 live. DISMISS.
+  "KXASEANGAME",   // ASEAN regional soccer — teams outside the WC_TEAMS Elo registry, 0 live. DISMISS.
+  "KXCLUBFGAME",   // Club Friendlies — arbitrary worldwide pairings, no Elo coverage, no
+  // competitive-incentive model (lineup effort varies), 0 live. DISMISS.
+  "KXLIGAEXPGAME", // Liga de Expansión MX (Mexican 2nd div) — no club Elo, 0 live. DISMISS.
+  "KXSCOCUPGAME",  // Scottish Cup — same no-club-Elo class as the EFL/Scottish league dismissals
+  // (7/15-7/17 rollout), 0 live. DISMISS.
+  "KXINTLPLAYAGAIN", // Player-appearance novelty ("Ronaldo plays for Portugal") — KXWCPLAY/
+  // KXBALOGUNPLAY/KXUFCFIGHTOCCUR class; windowFit=true is the usual favorite-appearance false
+  // positive. 2 live. DISMISS.
+  "KXWCCAREERGOALS", // Career goal-threshold novelty (e.g. "Mbappé 40+ WC goals") — record/threshold
+  // class, same shape as KXWCGOALSTREAK. windowFit=true false positive. 3 live. DISMISS.
+  "KXWCTEAMS",     // World Cup field-size format vote (governance novelty, not a match outcome).
+  // 1 live. DISMISS.
+  "KXWNBAASGMVP",  // WNBA All-Star Game MVP award futures — exhibition/award class (KXMLBASGMVP/
+  // KXNBASUMMERMVP). 23 live. DISMISS.
+  "KXWCQUAL",      // World Cup QUALIFICATION futures (per-team, e.g. "Wales qualifies") — needs a
+  // full qualifying-bracket Monte Carlo across every confederation's remaining fixtures; a much
+  // bigger build than KXWCADVANCE's knockout sim (which only runs once teams are already IN the
+  // tournament). 76 live markets — real depth, revisit as a Phase-2 candidate if a future build
+  // cycle needs a target — but no model surface today. windowFit=true is the outright-favorite
+  // false positive. DISMISS.
 ];
