@@ -8,12 +8,16 @@ Routing, state shape, the Report page, live tracking mechanics, sizing, color do
 
 ## URL Routing
 History.pushState + popstate. Routes:
+- `/` (default) → **MakerBoardPage** — shadow maker monitoring (arm progress, live orders, sport utilization). Promoted to the landing page 2026-07-21.
+- `/picks` → LineupsPage — the taker-picks matchup-card flow (demoted from default 2026-07-21; see below)
 - `/:ABBR` → team page (uppercase, e.g. `/LAD`, `/GSW`)
 - `/:ABBR?sport=nhl` → disambiguate multi-sport abbrs (`_multiSportAbbrs` Set)
 - `/:SlugName` → player page (CamelCase via `slugify`)
 - `/model` → Report page (daily model report / MorningBriefing)
 
-`vercel.json` `/:slug` rewrite serves `index.html` for cold loads. `resolveSlug` checks `"model"` first, then `TEAM_DB`, else stores `pendingSlug` for async ESPN athlete search.
+`vercel.json` `/:slug` rewrite serves `index.html` for cold loads. `resolveSlug` (`useRouting.js`) checks `"model"`, then `"picks"`, then `TEAM_DB`, else stores `pendingSlug` for async ESPN athlete search.
+
+**Landing page flip (2026-07-21)**: the category gate has been empty since 7/18 and the pooled market-calibration scan (7/19) found taker edge structurally negative venue-wide, while shadow maker V2 has a concrete verified result (`[80,84]¢`, +11.17¢/contract) with real capital armed — see `project_taker_ui_demotion_2026_07_21` memory. `MakerBoardPage` (new, eager import — it's now the default) replaces `LineupsPage` (now `React.lazy`, moved behind `/picks` via `navigateToPicks()`) as what renders when `!player && !teamPage && !modelPage && !picksPage`. `goBack()` (resets to `/`) now lands on the maker board, not LineupsPage — LineupsPage's own "← Maker" button calls it to return. Nothing was deleted; a scheduled reminder exists to revisit removing the taker UI once the V2 trial resolves (n≥50 graded, CI-lo>0 — see `MAKER_V2_TRIAL_N` in `ReportPage.jsx`'s `_doThisCandidates`).
 
 `navigateToPlayer` accepts player objects without `id`; `loadPlayer` resolves ESPN athlete ID via `/athletes?q={name}` when missing.
 
@@ -30,10 +34,20 @@ History.pushState + popstate. Routes:
 
 ---
 
-## ReportPage (daily model report)
-Single full-page route at `/model` (stripped to the model report 2026-06-16 — the Market Report, calibration Results, and Shadow Calibration tabs were all removed). Homepage entry point: the **Report** button (`LineupsPage.jsx`) → `useRouting.navigateToModel()` (no opts). Direct `/model` URL visits (paste, back/forward) resolve the same single view.
+## MakerBoardPage (the landing page, `src/components/MakerBoardPage.jsx`)
+New 2026-07-21, the app's default view. Three parts, top to bottom:
+- **MakerProgress** (+ `ArmTile`/`EquityCurve`/`BandLadder`/`Tile` helpers) — moved verbatim out of `ReportPage.jsx` (same `shadowReportData.makerBoard` field, same `fetchShadowReport`/`isLoggedIn` plumbing). Shadow V1's arm-progress meter, cumulative paper-PnL curve, and per-band ladder.
+- **MakerLiveOrders** — a monitoring table (not a picks list) of individual `maker_orders_v2` rows: sport, ticker/category, side, price, size, status badge, PnL once graded. Resting-first sort. Status colors: resting=blue, executed graded=signed by `sideWon` (green=we kept the premium, red=we paid out), canceled/expired=dim.
+- **MakerUtilization** — per-sport eligible-vs-resting bars (reuses `BandLadder`'s visual pattern), flags when eligible tickers exceed the `MAKER_V2_MAX_CONCURRENT` cap (a real situation: 73 eligible vs. 20 slots on a typical MLB+WNBA night).
 
-`ReportPage` is now a thin wrapper: header (`Report` / "Daily model report") + `MorningBriefing`. It auto-fetches `fetchShadowReport()` once on mount when logged in, and renders a "Log in to view the model report." fallback otherwise (the briefing payload is JWT-scoped). No sport pills, no play-type dropdown, no tab bar.
+Backed by `GET /api/maker-v2-board` (`useMakerBoardData` hook in the same file) — a separate, near-real-time fetch, NOT the 25h-cached `shadow-report`. `eligibleBySport` is computed live via `computeWantedMakerQuotes` (`api/lib/maker-live.js`), the same eligibility function the real order-placement cron uses — one source of truth for "what's eligible," not a second hand-rolled band check.
+
+`C`/`sectionHead` and `SCHEDULED_CHECKPOINTS` are intentionally NOT imported from `ReportPage.jsx` — that file is `React.lazy` and this page is meant to load eagerly, so pulling from it would drag ReportPage's bundle into the eager path. `C`/`sectionHead` are duplicated (tiny); `SCHEDULED_CHECKPOINTS` moved to a real shared module, `src/lib/scheduledCheckpoints.js`, imported by both files.
+
+## ReportPage (daily model report)
+Single full-page route at `/model` (stripped to the model report 2026-06-16 — the Market Report, calibration Results, and Shadow Calibration tabs were all removed). Reached via the **Model →** button on `MakerBoardPage` (was `LineupsPage.jsx`'s **Report** button pre-7/21). `useRouting.navigateToModel()` (no opts). Direct `/model` URL visits (paste, back/forward) resolve the same single view.
+
+`ReportPage` is now a thin wrapper: header (`Report` / "Daily model report") + `MorningBriefing`. It auto-fetches `fetchShadowReport()` once on mount when logged in, and renders a "Log in to view the model report." fallback otherwise (the briefing payload is JWT-scoped). No sport pills, no play-type dropdown, no tab bar. As of 2026-07-21 it no longer renders `MakerProgress` (moved to `MakerBoardPage`) — just `StatusStrip`/`DataHealth`/`DoThisBanner`.
 
 ### MorningBriefing (rebuilt 2026-07-19 — maker-strategy layout)
 Renders the `/api/shadow-report` payload (cron 6:00am PT, KV-cached 25h; `↻ Refresh` forces `?bust=1` regen). Render tree, top to bottom:

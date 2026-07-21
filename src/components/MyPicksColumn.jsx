@@ -4,7 +4,7 @@ import DayBar from './DayBar.jsx';
 import { buildLiveGameKey, buildLiveProgress, resolveTotalGameScore } from '../lib/liveStats.js';
 import { useIsMobile } from '../lib/hooks.js';
 
-function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToTeam, navigateToPlay, bankroll, setBankroll, kalshiBalance, setPickUnits, chartMonth, setChartMonth, openPickMonths, setOpenPickMonths, openPickWeeks, setOpenPickWeeks, openPickDays, setOpenPickDays, editPickId, setEditPickId, setPlayResult, setShowAddPick, oddsToProfit, liveStats = {}, mlbGameScores = {}, nbaGameScores = {}, nhlGameScores = {} }) {
+function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToTeam, navigateToPlay, bankroll, setBankroll, kalshiBalance, makerCommitted = 0, setPickUnits, chartMonth, setChartMonth, openPickMonths, setOpenPickMonths, openPickWeeks, setOpenPickWeeks, openPickDays, setOpenPickDays, editPickId, setEditPickId, setPlayResult, setShowAddPick, oddsToProfit, liveStats = {}, mlbGameScores = {}, nbaGameScores = {}, nhlGameScores = {} }) {
   const isMobile = useIsMobile();
   // Stats + chart scope: "month" (per-day bars, default) or "year" (per-month bars).
   const [viewMode, setViewMode] = React.useState('month');
@@ -81,6 +81,18 @@ function MyPicksColumn({ trackedPlays, setTrackedPlays, untrackPlay, navigateToT
                       onChange={e => setBankroll(e.target.value)}
                       style={{background:"transparent",border:"none",outline:"none",color:"#c9d1d9",
                         fontSize:12,width:70,padding:"3px 6px 3px 0"}}/>
+                  </div>
+                )}
+                {/* Maker V2 committed capital — real margin tied up in resting maker orders on
+                    this same funded Kalshi account. Only shown when nonzero so it never clutters
+                    the common (disarmed/no resting orders) case. */}
+                {makerCommitted > 0 && (
+                  <div title="Capital committed to resting shadow-maker V2 orders" style={{display:"flex",alignItems:"center",background:"#0d1117",border:"1px solid #30363d",borderRadius:6,padding:"3px 8px",gap:4}}>
+                    <span style={{color:"#484f58",fontSize:11}}>Maker</span>
+                    <span style={{color:"#8b949e",fontSize:12}}>$</span>
+                    <span style={{color:"#c9d1d9",fontSize:12,fontVariantNumeric:"tabular-nums"}}>
+                      {makerCommitted.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}
+                    </span>
                   </div>
                 )}
               </div>

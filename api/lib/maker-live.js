@@ -82,12 +82,11 @@ export async function ensureMakerLiveTables(env) {
   _ddlDone = true;
 }
 
-// Quote pass — runs in the kalshi-snapshot cron tail, right after V1's updateMakerQuotes, with
-// the same just-fetched books + staging index (zero extra Kalshi reads for eligibility).
-export async function updateLiveMakerOrders({ snapResults, staging, snapshotDate, env, cache, nowMs = Date.now() }) {
-  if (!(await isArmed(env, cache))) return { skipped: "disarmed" };
-  await ensureMakerLiveTables(env);
-
+// Pure eligibility computation — shared by the quote pass below AND the read-only
+// /api/maker-v2-board endpoint (so "what's eligible" has exactly one definition; the endpoint
+// re-derives it live from the same KV sources rather than trusting a stale cron-tick snapshot).
+// Returns a Map: ticker → { q, row, series }.
+export function computeWantedMakerQuotes({ snapResults, staging, nowMs = Date.now() }) {
   const idx = new Map();
   for (const p of [...(staging?.plays || []), ...(staging?.dropped || [])]) {
     const t = p.kalshiTicker ?? p._ticker;
@@ -106,6 +105,16 @@ export async function updateLiveMakerOrders({ snapResults, staging, snapshotDate
       if (q) want.set(m.ticker, { q, row, series });
     }
   }
+  return want;
+}
+
+// Quote pass — runs in the kalshi-snapshot cron tail, right after V1's updateMakerQuotes, with
+// the same just-fetched books + staging index (zero extra Kalshi reads for eligibility).
+export async function updateLiveMakerOrders({ snapResults, staging, snapshotDate, env, cache, nowMs = Date.now() }) {
+  if (!(await isArmed(env, cache))) return { skipped: "disarmed" };
+  await ensureMakerLiveTables(env);
+
+  const want = computeWantedMakerQuotes({ snapResults, staging, nowMs });
 
   const resting = await neonQuery(
     `SELECT * FROM maker_orders_v2 WHERE status = 'resting'`, [], env, { write: true });

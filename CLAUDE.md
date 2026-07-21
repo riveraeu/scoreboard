@@ -106,7 +106,8 @@ Entry: `index.html` → `src/main.jsx` → `src/App.jsx`. Vercel runs `npm run b
 - `lib/liveStats.js` — live pick tracking helpers
 - `lib/hooks.js` — `useIsMobile(threshold=600)`
 - `lib/useReportData.js` — report/calib/shadow state + fetchers for ReportPage
-- `components/` — `LineupsPage`, `MatchupCard`, `PlaysColumn`, `MyPicksColumn`, `ReportPage`, `TeamPage`, `TotalsBarChart`, `DayBar`, `AddPickModal`
+- `lib/scheduledCheckpoints.js` — `SCHEDULED_CHECKPOINTS` dated re-check list, shared by ReportPage's `DoThisBanner` and MakerBoardPage's `MakerProgress` "next clock" tile
+- `components/` — `MakerBoardPage` (**landing page**, 2026-07-21 — arm progress + live maker orders + sport utilization), `LineupsPage` (taker picks, demoted to `/picks`, now lazy), `MatchupCard`, `PlaysColumn`, `MyPicksColumn`, `ReportPage`, `TeamPage`, `TotalsBarChart`, `DayBar`, `AddPickModal`
 
 **Dev proxy**: `vite.config.js` proxies `/api` to production so `npm run dev` works without a local backend.
 

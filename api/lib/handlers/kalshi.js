@@ -17,7 +17,10 @@ import { pipeWriteChunked } from "../kv-pipeline.js";
 import { gzipToString } from "../kv-compress.js";
 import { updateMakerQuotes } from "../maker.js";
 import { importKalshiKey as _importKalshiKey, placeKalshiOrder, cancelKalshiOrder } from "../kalshi-order-client.js";
-import { updateLiveMakerOrders, emergencyKillLive, setArmed } from "../maker-live.js";
+import { updateLiveMakerOrders, emergencyKillLive, setArmed, computeWantedMakerQuotes,
+  isArmed as isMakerV2Armed, ensureMakerLiveTables } from "../maker-live.js";
+import { fetchKalshiMarkets } from "../tonight/kalshi-pipeline.js";
+import { MAKER_V2_MAX_CONCURRENT, MAKER_V2_SAME_GAME_CAP } from "../config.js";
 
 const normName = (s) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
@@ -445,6 +448,68 @@ export async function handleKalshiRoutes(ctx) {
     return jsonResponse({ ok: true, placed, canceled });
   }
 
+  // ── /api/maker-v2-board ──────────────────────────────────────────────────────
+  // Near-real-time read for the MakerBoardPage frontend — NOT folded into the 25h-cached
+  // shadow-report, since order status needs fresher reads than that. Re-derives "what's
+  // eligible right now" via computeWantedMakerQuotes (the exact same logic
+  // updateLiveMakerOrders uses — one source of truth) off the snap-first Kalshi read
+  // (fetchKalshiMarkets, same hot path /api/tonight uses) + today's shadow:staging. Auth:
+  // ADMIN_KEY or user JWT (same level as kalshi-balance/kalshi-fills).
+  if (path === "maker-v2-board" && method === "GET") {
+    const _cookie = request.headers.get("Cookie") || "";
+    const _cookieM = _cookie.match(/(?:^|;\s*)sb_token=([^;]+)/);
+    const _bearer = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/, "");
+    const _jwt = _cookieM?.[1] || _bearer;
+    const _jwtOk = (_jwt && JWT_SECRET) ? await verifyJWT(_jwt, JWT_SECRET) : null;
+    const _adminOk = env?.ADMIN_KEY && _bearer === env.ADMIN_KEY;
+    if (!_jwtOk && !_adminOk) return errorResponse("Unauthorized", 401);
+
+    const todayPT = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+    const yesterdayPT = new Date(Date.now() - 86400_000).toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+
+    let eligibleBySport = {}, armed = false;
+    try {
+      const seriesTickers = Object.keys(SERIES_CONFIG);
+      const { kalshiResults } = await fetchKalshiMarkets({ seriesTickers, cache: CACHE2, env, isBustCache: false });
+      const snapResults = {};
+      seriesTickers.forEach((s, i) => { snapResults[s] = kalshiResults[i]; });
+      const staging = await CACHE2.get(`shadow:staging:${todayPT}`, "json");
+      const want = computeWantedMakerQuotes({ snapResults, staging });
+      for (const { row } of want.values()) {
+        const sport = row?.sport || "unknown";
+        eligibleBySport[sport] = (eligibleBySport[sport] || 0) + 1;
+      }
+      armed = await isMakerV2Armed(env, CACHE2);
+    } catch (e) {
+      console.error(`[maker-v2-board] eligibility computation failed: ${e?.message}`);
+    }
+
+    let orders = [];
+    try {
+      await ensureMakerLiveTables(env);
+      const rows = await neonQuery(
+        `SELECT ticker, series, sport, category, game_date, game_key, side, price, size,
+           filled_count, status, side_won, pnl_cents, placed_at, expires_at, canceled_at, graded_at
+         FROM maker_orders_v2 WHERE game_date >= $1
+         ORDER BY (status = 'resting') DESC, placed_at DESC LIMIT 300`,
+        [yesterdayPT], env, { write: true });
+      orders = rows.map(r => ({
+        ticker: r.ticker, series: r.series, sport: r.sport, category: r.category,
+        gameDate: r.game_date, gameKey: r.game_key, side: r.side, price: Number(r.price),
+        size: Number(r.size), filledCount: Number(r.filled_count), status: r.status,
+        sideWon: r.side_won, pnlCents: r.pnl_cents != null ? Number(r.pnl_cents) : null,
+        placedAt: r.placed_at, expiresAt: r.expires_at, canceledAt: r.canceled_at, gradedAt: r.graded_at,
+      }));
+    } catch (e) {
+      console.error(`[maker-v2-board] order read failed: ${e?.message}`);
+    }
+
+    return jsonResponse({
+      ok: true, armed, orders, eligibleBySport,
+      caps: { maxConcurrent: MAKER_V2_MAX_CONCURRENT, sameGameCap: MAKER_V2_SAME_GAME_CAP },
+    });
+  }
+
   if (path === "kalshi-order" && method === "POST") {
     // Verify user JWT — cookie first, then Authorization: Bearer fallback
     if (!JWT_SECRET) return errorResponse("Auth not configured", 500);
@@ -546,7 +611,21 @@ export async function handleKalshiRoutes(ctx) {
       }
     } catch { /* leave positionsCents = 0 — bankroll falls back to cash only */ }
     const balanceCents = cashCents + positionsCents;
-    return jsonResponse({ cashCents, positionsCents, balanceCents, balanceDollars: balanceCents / 100 });
+    // Maker V2 capital committed — margin/collateral tied up in currently-resting real orders
+    // (max-loss basis: size * (100-price)¢ per contract, since a sold favorite's worst case is
+    // owing the full dollar). Surfaced so manual pick sizing accounts for capital the automated
+    // engine already has committed on this same funded account. Degrades to 0 on any failure —
+    // never blocks the balance the user actually needs to see.
+    let makerCommittedCents = 0;
+    try {
+      await ensureMakerLiveTables(env);
+      const [row] = await neonQuery(
+        `SELECT COALESCE(SUM(size * (100 - price)), 0) AS committed_cents
+         FROM maker_orders_v2 WHERE status = 'resting'`, [], env, { write: true });
+      makerCommittedCents = Math.round(Number(row?.committed_cents || 0));
+    } catch { /* leave makerCommittedCents = 0 */ }
+    return jsonResponse({ cashCents, positionsCents, balanceCents, balanceDollars: balanceCents / 100,
+      makerCommittedCents, makerCommittedDollars: makerCommittedCents / 100 });
   }
 
   if (path === "kalshi-fills" && method === "GET") {

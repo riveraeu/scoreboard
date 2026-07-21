@@ -24,18 +24,21 @@ import { tierColor } from './lib/colors.js';
 import { STAT_CONFIGS } from './lib/statConfigs.js';
 import DayBar from './components/DayBar.jsx';
 import MyPicksColumn from './components/MyPicksColumn.jsx';
-import LineupsPage from './components/LineupsPage.jsx';
+import MakerBoardPage from './components/MakerBoardPage.jsx';
 import { qualifiesForDisplay, trackIdFor } from './lib/qualify.js';
 import SimBadge from './components/SimBadge.jsx';
 
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_CLIENT as EDGE_GATE } from "../api/lib/config.js";
 
-// Route/interaction-gated heavy components are code-split (2026-06-15): none are needed for
-// the default LineupsPage first paint, so they load on demand in their own chunks, shrinking
-// the initial bundle. TotalsBarChart rides along inside the TeamPage chunk (its only user).
+// Route/interaction-gated heavy components are code-split: none are needed for the default
+// first paint, so they load on demand in their own chunks, shrinking the initial bundle.
+// TotalsBarChart rides along inside the TeamPage chunk (its only user). MakerBoardPage is now
+// the default landing view (2026-07-21 — taker picks demoted, maker promoted), so it's the one
+// eager import; LineupsPage flipped to lazy since it moved behind the /picks route.
 const TeamPage = React.lazy(() => import('./components/TeamPage.jsx'));
 const ReportPage = React.lazy(() => import('./components/ReportPage.jsx'));
 const AddPickModal = React.lazy(() => import('./components/AddPickModal.jsx'));
+const LineupsPage = React.lazy(() => import('./components/LineupsPage.jsx'));
 
 // Pairwise same-game phi correlation table from 30-day shadow analysis (2026-06-04).
 // Negative-phi pairs (hedges) are intentionally absent → default 0 = no reduction.
@@ -96,6 +99,7 @@ function App() {
   const [placeOnKalshi, setPlaceOnKalshi] = React.useState(true);
   const [kalshiOrderResult, setKalshiOrderResult] = React.useState(null); // null | {ok, msg}
   const [kalshiBalance, setKalshiBalance] = React.useState(null); // dollars, null = not fetched
+  const [makerCommitted, setMakerCommitted] = React.useState(0); // dollars tied up in resting maker V2 orders
   const [showPlaceAll, setShowPlaceAll] = React.useState(false); // batch-place modal open
   const [placeAllStatus, setPlaceAllStatus] = React.useState(null); // null | { running, rows: {id->{state,msg}} }
   const [placeAllSelected, setPlaceAllSelected] = React.useState(new Set()); // IDs of individually checked bets
@@ -149,7 +153,8 @@ function App() {
     teamPage, setTeamPage,
     teamPageData,
     modelPage,
-    navigateToTeam, navigateToPlayer, goBack, navigateToModel,
+    picksPage,
+    navigateToTeam, navigateToPlayer, goBack, navigateToModel, navigateToPicks,
   } = useRouting({ setPlayer, setQuery, selectPlayerRef });
   const {
     shadowReportData, shadowReportLoading, fetchShadowReport,
@@ -226,6 +231,7 @@ function App() {
         setKalshiBalance(data.balanceDollars);
         setBankrollState(data.balanceDollars);
       }
+      if (data.makerCommittedDollars != null) setMakerCommitted(data.makerCommittedDollars);
     } catch {}
   }, [authEmail, setBankrollState]);
 
@@ -2007,7 +2013,21 @@ function App() {
 
       </div>{/* end constrained search/player section */}
 
-      {!player && !teamPage && !modelPage && (
+      {/* Maker board — the new default landing page (2026-07-21). Taker picks (LineupsPage)
+          demoted to the /picks route below. See project_taker_ui_demotion_2026_07_21 memory. */}
+      {!player && !teamPage && !modelPage && !picksPage && (
+        <MakerBoardPage
+          shadowReportData={shadowReportData}
+          shadowReportLoading={shadowReportLoading}
+          fetchShadowReport={fetchShadowReport}
+          isLoggedIn={!!authEmail}
+          navigateToPicks={navigateToPicks}
+          navigateToModel={navigateToModel}
+        />
+      )}
+
+      {picksPage && !player && !teamPage && !modelPage && (
+        <React.Suspense fallback={<div style={{textAlign:'center',padding:52,color:'#8b949e',fontSize:13}}>Loading…</div>}>
         <LineupsPage
           allTonightPlays={allTonightPlays || []}
           tonightPlays={tonightPlays || []}
@@ -2015,6 +2035,7 @@ function App() {
           navigateToPlayer={navigateToPlayer}
           navigateToTeam={navigateToTeam}
           navigateToModel={navigateToModel}
+          goBack={goBack}
           authEmail={authEmail}
           logout={logout}
           syncStatus={syncStatus}
@@ -2038,6 +2059,7 @@ function App() {
           placeAllPlaceableIds={placeAllPlaceableIds}
           onPlaceAll={() => { setPlaceAllStatus(null); setShowPlaceAll(true); }}
         />
+        </React.Suspense>
       )}
 
       <div style={{color:"#484f58",fontSize:11,marginTop:12,textAlign:"center"}}>
@@ -2125,6 +2147,7 @@ function App() {
             bankroll={bankroll}
             setBankroll={setBankroll}
             kalshiBalance={kalshiBalance}
+            makerCommitted={makerCommitted}
             setPickUnits={setPickUnits}
             chartMonth={chartMonth}
             setChartMonth={setChartMonth}
