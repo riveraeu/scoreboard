@@ -64,14 +64,7 @@ console.log(`  max exposure if filled: $${((price * count) / 100).toFixed(2)}`);
 if (price <= 5) console.log("  (price this low should rest unfilled on any real two-sided book — that's the point.)");
 console.log("Then it will immediately cancel that order and print both raw responses.\n");
 
-const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-rl.question('Type "yes" to proceed: ', async (answer) => {
-  rl.close();
-  if (answer.trim().toLowerCase() !== "yes") {
-    console.log("Aborted — nothing was placed.");
-    process.exit(0);
-  }
-
+async function run() {
   console.log("\n--- Placing order ---");
   const placed = await placeKalshiOrder({ ticker, side, price, count }, env);
   console.log(JSON.stringify(placed, null, 2));
@@ -96,4 +89,22 @@ rl.question('Type "yes" to proceed: ', async (answer) => {
   console.log(canceled.ok
     ? "Cancel call reported success — if that matches what you see in your portfolio, the schema in kalshi-order-client.js is verified."
     : "Cancel call FAILED — this confirms the schema guess in kalshi-order-client.js needs fixing before maker-live.js is ever armed. Paste this output back so it can be corrected.");
-});
+}
+
+// --yes on the command line skips the interactive prompt — for terminal integrations that don't
+// forward stdin (each paste re-invokes the process rather than continuing an open prompt).
+// Still requires a conscious, explicit flag typed by the human running it, same principle as the
+// interactive "yes".
+if (args.yes === true) {
+  run();
+} else {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  rl.question('Type "yes" to proceed: ', (answer) => {
+    rl.close();
+    if (answer.trim().toLowerCase() !== "yes") {
+      console.log("Aborted — nothing was placed.");
+      process.exit(0);
+    }
+    run();
+  });
+}
