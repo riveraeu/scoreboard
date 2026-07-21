@@ -5,13 +5,12 @@
 // of the legacy /portfolio/orders POST — api/lib/handlers/kalshi.js `_importKalshiKey`/PKCS1→8
 // history is preserved here verbatim).
 //
-// CANCEL SCHEMA IS UNVERIFIED AGAINST A LIVE CALL. It targets
+// CANCEL SCHEMA VERIFIED 2026-07-21 against a live call (via /api/maker-v2-verify-cancel):
 // `DELETE /trade-api/v2/portfolio/events/orders/{order_id}` — the singular sibling of the
-// documented batch-cancel endpoint (`DELETE .../events/orders/batched`), matching the same
-// `events/orders` V2 family our create-order call already uses (the legacy non-events
-// `/portfolio/orders/*` family is what got sunset 7/17). Before maker-live.js is ever armed
-// with real capital, place one harmless test order + cancel it through this function and
-// confirm the response shape — do not trust this comment as verification.
+// documented batch-cancel endpoint (`DELETE .../events/orders/batched`), same `events/orders`
+// V2 family our create-order call already uses (the legacy non-events `/portfolio/orders/*`
+// family is what got sunset 7/17). Confirmed response shape: `{order_id, reduced_by, ts_ms}` —
+// `reduced_by` is the fixed-point-string contract count removed from the resting order.
 
 function _pkcs1ToPkcs8(pkcs1Der) {
   const _encLen = (len) => len < 128 ? [len] : len < 256 ? [0x81, len] : [0x82, (len >> 8) & 0xff, len & 0xff];
@@ -136,5 +135,9 @@ export async function cancelKalshiOrder({ orderId }, env) {
   if (!resp) return { ok: false, error: "Kalshi unreachable" };
   const respBody = await resp.json().catch(() => ({}));
   if (!resp.ok) return { ok: false, error: respBody?.error?.message || `Kalshi error ${resp.status}`, status: resp.status };
-  return { ok: true, raw: respBody };
+  // reduced_by = contracts actually removed from the resting order. If it's less than what the
+  // caller expected still resting, the difference filled in the gap between their last check
+  // and this cancel call — callers should reconcile that, not assume "canceled" == "no fill".
+  const reducedBy = Math.round(parseFloat(respBody.reduced_by ?? "0")) || 0;
+  return { ok: true, reducedBy, raw: respBody };
 }

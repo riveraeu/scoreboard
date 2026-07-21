@@ -132,24 +132,48 @@ export async function updateLiveMakerOrders({ snapResults, staging, snapshotDate
     if (!restingByTicker.has(ticker)) toPlace.push({ ticker, ...w });
   }
 
-  // Cancels first (frees slots + avoids double-resting on a reprice).
+  // Cancels first (frees slots + avoids double-resting on a reprice). reducedBy tells us how
+  // many contracts actually came off the resting order — if it's less than the row's own size,
+  // the gap filled between our last check and this cancel call, so it's 'executed' with that
+  // partial fill recorded, not silently 'canceled' as if nothing happened. A FAILED cancel must
+  // NOT be marked canceled — the order may still be genuinely resting on Kalshi's side, so
+  // marking it gone here would let us place a second order on the same ticker (the exact
+  // double-exposure this cancel-before-reprice design exists to prevent). Instead we leave its
+  // status alone and skip placing its replacement this cycle — retried next tick, with the
+  // self-expiring safety net as the ultimate backstop.
   let canceledCount = 0;
+  const failedCancelTickers = new Set();
   for (const r of toCancel) {
     const res = await cancelKalshiOrder({ orderId: r.kalshi_order_id }, env).catch(e => ({ ok: false, error: String(e?.message || e) }));
-    await neonQuery(
-      `UPDATE maker_orders_v2 SET status = 'canceled', canceled_at = NOW() WHERE id = $1`,
-      [r.id], env, { write: true });
-    if (res.ok) canceledCount++;
+    if (res.ok) {
+      const filledGap = Math.max(0, Number(r.size) - (res.reducedBy || 0));
+      if (filledGap > 0) {
+        await neonQuery(
+          `UPDATE maker_orders_v2 SET status = 'executed', filled_count = $2 WHERE id = $1`,
+          [r.id, filledGap], env, { write: true });
+      } else {
+        await neonQuery(
+          `UPDATE maker_orders_v2 SET status = 'canceled', canceled_at = NOW() WHERE id = $1`,
+          [r.id], env, { write: true });
+      }
+      canceledCount++;
+    } else {
+      console.error(`[maker-live] cancel ${r.ticker} (order ${r.kalshi_order_id}) failed: ${res.error} — leaving status as 'resting', skipping replacement this cycle`);
+      failedCancelTickers.add(r.ticker);
+    }
   }
   if (toExpireLocally.length) {
     await neonQuery(
       `UPDATE maker_orders_v2 SET status = 'expired' WHERE id = ANY($1::int[])`,
       [toExpireLocally.map(r => Number(r.id))], env, { write: true });
   }
+  const toPlaceFiltered = toPlace.filter(({ ticker }) => !failedCancelTickers.has(ticker));
 
   // Cap bookkeeping — start from what will still be resting after the cancels/expiries above.
+  // A row whose cancel FAILED stays counted as resting (it may genuinely still be).
   const stillResting = resting.filter(r =>
-    !toCancel.some(c => c.id === r.id) && !toExpireLocally.some(c => c.id === r.id));
+    !(toCancel.some(c => c.id === r.id) && !failedCancelTickers.has(r.ticker))
+    && !toExpireLocally.some(c => c.id === r.id));
   let globalCount = stillResting.length;
   const gameCounts = new Map();
   for (const r of stillResting) {
@@ -158,7 +182,7 @@ export async function updateLiveMakerOrders({ snapResults, staging, snapshotDate
   }
 
   let opened = 0, capped = 0, errors = 0;
-  for (const { ticker, q, row, series } of toPlace) {
+  for (const { ticker, q, row, series } of toPlaceFiltered) {
     const gk = _gameKey(row);
     const gameCount = gameCounts.get(gk) || 0;
     if (globalCount >= MAKER_V2_MAX_CONCURRENT || gameCount >= MAKER_V2_SAME_GAME_CAP) { capped++; continue; }
@@ -183,7 +207,8 @@ export async function updateLiveMakerOrders({ snapResults, staging, snapshotDate
     gameCounts.set(gk, gameCount + 1);
   }
 
-  return { eligible: want.size, canceled: canceledCount, expiredLocally: toExpireLocally.length, opened, capped, errors };
+  return { eligible: want.size, canceled: canceledCount, failedCancels: failedCancelTickers.size,
+    expiredLocally: toExpireLocally.length, opened, capped, errors };
 }
 
 // Reconcile pass — nightly, right after V1's detectAndGradeMakerFills. Catches real fills that
@@ -249,13 +274,26 @@ export async function emergencyKillLive({ env, cache }) {
   await ensureMakerLiveTables(env);
   await setArmed(cache, false);
   const resting = await neonQuery(
-    `SELECT id, kalshi_order_id FROM maker_orders_v2 WHERE status = 'resting'`, [], env, { write: true });
+    `SELECT id, kalshi_order_id, size FROM maker_orders_v2 WHERE status = 'resting'`, [], env, { write: true });
   let canceled = 0, errors = 0;
   for (const r of resting) {
     const res = await cancelKalshiOrder({ orderId: r.kalshi_order_id }, env).catch(e => ({ ok: false, error: String(e?.message || e) }));
-    await neonQuery(`UPDATE maker_orders_v2 SET status = 'canceled', canceled_at = NOW() WHERE id = $1`,
-      [r.id], env, { write: true });
-    if (res.ok) canceled++; else errors++;
+    if (res.ok) {
+      const filledGap = Math.max(0, Number(r.size) - (res.reducedBy || 0));
+      if (filledGap > 0) {
+        await neonQuery(`UPDATE maker_orders_v2 SET status = 'executed', filled_count = $2 WHERE id = $1`,
+          [r.id, filledGap], env, { write: true });
+      } else {
+        await neonQuery(`UPDATE maker_orders_v2 SET status = 'canceled', canceled_at = NOW() WHERE id = $1`,
+          [r.id], env, { write: true });
+      }
+      canceled++;
+    } else {
+      // Cancel failed — the order may still genuinely be resting on Kalshi's side, so don't
+      // mark it canceled here. It stays 'resting' locally; the disarm itself already stops new
+      // placements, and the self-expiring safety net is the backstop for this specific order.
+      errors++;
+    }
   }
   return { disarmed: true, resting: resting.length, canceled, errors };
 }
