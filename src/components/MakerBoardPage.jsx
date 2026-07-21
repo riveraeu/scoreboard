@@ -185,7 +185,7 @@ function MakerLiveOrders({ orders }) {
     <div style={{ maxWidth:720 }}>
       <div style={{ display:"flex", gap:8, fontSize:9, color:C.dim, fontWeight:700, textTransform:"uppercase", padding:"0 2px", marginBottom:2 }}>
         <span style={{ width:70 }}>Sport</span>
-        <span style={{ flex:1 }}>Ticker</span>
+        <span style={{ flex:1 }}>Market</span>
         <span style={{ width:36 }}>Side</span>
         <span style={{ width:40, textAlign:"right" }}>Price</span>
         <span style={{ width:32, textAlign:"right" }}>Size</span>
