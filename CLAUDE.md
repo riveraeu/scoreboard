@@ -60,7 +60,7 @@ Route handlers (`api/lib/handlers/`):
 - `player.js` — `/api/player`, `/api/gamelog`, `/api/headshot`
 - `sports.js` — `/api/team`, `/api/live`
 - `dvp.js` — `/api/dvp`, `/api/nba-depth`, `/api/dvp/debug-dc`
-- `kalshi.js` — `/api/kalshi`, `/api/kalshi-orderbook`, `/api/kalshi-snapshot`, `/api/kalshi-series-scan`, `/api/keepalive`, `/api/kalshi-order`, `/api/kalshi-balance`, `/api/kalshi-fills`, `/api/maker-v2-arm`, `/api/maker-v2-kill`
+- `kalshi.js` — `/api/kalshi`, `/api/kalshi-orderbook`, `/api/kalshi-snapshot`, `/api/kalshi-series-scan`, `/api/keepalive`, `/api/kalshi-order`, `/api/kalshi-balance`, `/api/kalshi-fills`, `/api/maker-v2-arm`, `/api/maker-v2-kill`, `/api/maker-v2-verify-cancel`
 - `tonight.js` — `/api/tonight`. Owns the Kalshi parse loop, byteam hydration, data-prep, emit calls, response assembly.
 - `shadow.js` — `/api/shadow-snapshot`, `/api/shadow-resolver`, `/api/shadow-pregame-snap`, `/api/shadow-report`, `/api/{polymarket,sportsbook}-deltas`, `/api/polymarket-scan`, `/api/routine-note`
 - `push.js` — `/api/push/{vapid,subscribe,unsubscribe,notify,test}` (Web Push / PWA; web-push is the only Node-only dep, dynamic-imported in the send path)
@@ -125,6 +125,7 @@ Full request/response contracts, auth patterns, cron schedules, and Place All me
 | `/api/kalshi-balance` | `kalshi.js` | GET — cash + open-position cost basis |
 | `/api/kalshi-fills` | `kalshi.js` | GET — filled orders (pick recovery) |
 | `/api/maker-v2-arm`, `/api/maker-v2-kill` | `kalshi.js` | POST (ADMIN_KEY) — shadow maker V2 real-order kill switch. Arm sets only the KV half (env.MAKER_V2_ARMED must ALSO be "true"); kill disarms + cancels every resting order immediately |
+| `/api/maker-v2-verify-cancel` | `kalshi.js` | POST (ADMIN_KEY) — one-time cancel-schema verification: places ONE real order (caller-specified ticker/side/price/count) then immediately cancels it, returns both raw responses. Runs server-side because KALSHI_API_KEY_ID/KALSHI_PRIVATE_KEY are Vercel "sensitive" env vars (write-only, never retrievable via `vercel env pull` — only the running function gets them injected) |
 | `/api/player`, `/api/gamelog`, `/api/headshot` | `player.js` | ESPN player info + gamelogs |
 | `/api/team` | `sports.js` | Team page data (gameLog, lineup, season stats) |
 | `/api/live` | `sports.js` | In-game boxscore for pick tracking |
