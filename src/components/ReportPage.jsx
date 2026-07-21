@@ -232,6 +232,10 @@ const _ACC_ACTIONS = {
 // chase a single thin band. Below RECAL_MIN_N the row stays on the accuracy board but is held OUT
 // of the daily Do This banner so it doesn't nag an un-ripe task; it resurfaces at n≥200.
 const RECAL_MIN_N = 200;
+// V2 (real resting orders, api/lib/maker-live.js) trial size — smaller than the V1 arm
+// criterion's n≥200 (that established statistical edge; this just validates mechanics —
+// place/reprice/fill/settle/grade — with real but small capital before a scale decision).
+const MAKER_V2_TRIAL_N = 50;
 // n≥200 is necessary but NOT sufficient: a category can clear it yet still have a MOVING Brier-skill
 // trend (reliable |learning.skillTrend| > _LEARN_FLAT) — rising as data accrues (still learning) OR
 // falling (decaying toward a market tie, the wnba|points signature). EITHER direction means the
@@ -331,9 +335,33 @@ function _doThisCandidates(d) {
         short:"Maker adverse selection" });
     }
   }
-  // 2.05 — arm decision ready: the shadow maker cleared its criterion. Human decision, never
-  // auto-armed — V2 (real resting orders, reprice/cancel, pull-on-news, caps, kill switch).
-  if ((mb?.fills?.graded || 0) >= (mb?.armCriterion?.minFills ?? 200) && (mb?.fills?.pnlLoCI ?? -1) > 0) {
+  // 2.05 — shadow maker V2 status. The V1 aggregate crossing its criterion was a ONE-TIME signal
+  // that already fired and was acted on (ARM review 2026-07-21: decision made to scope V2 to the
+  // 80-84¢ band, not the full [55,97] — see docs/INFRA.md § Shadow maker engine). Re-showing
+  // "review V2" every day off the same stale V1 aggregate would nag a decision that's already
+  // made, so once makerBoard.live exists (V2 built, api/lib/maker-live.js) this tier tracks V2's
+  // OWN lifecycle instead: verify-then-arm → trial running → trial resolved (scale or investigate).
+  const live = mb?.live;
+  if (live) {
+    if (!live.armed && (live.orders || 0) === 0) {
+      out.push({ tier:2.05, tone:"blue", label:"Shadow maker V2 built, not armed — verify cancel endpoint, then arm for a small trial",
+        why:"V2 (real resting orders, scoped to the 80-84¢ band) shipped 2026-07-21 but has never been armed — MAKER_V2_ARMED is unset. The cancel-endpoint wire format is unverified against a live call (documented in kalshi-order-client.js); place one harmless test order + cancel before arming with real size.",
+        short:"V2: verify + arm" });
+    } else if (live.armed && (live.graded || 0) < MAKER_V2_TRIAL_N) {
+      out.push({ tier:2.05, tone:"blue", label:`Shadow maker V2 trial running — ${live.graded || 0}/${MAKER_V2_TRIAL_N} graded fills`,
+        why:`Live resting orders are armed and accruing (${live.resting || 0} resting, ${live.executed || 0} executed). Let the trial run to ${MAKER_V2_TRIAL_N} graded fills before deciding on sizing.`,
+        short:"V2 trial running" });
+    } else if (live.armed && (live.graded || 0) >= MAKER_V2_TRIAL_N) {
+      const ok = (live.pnlLoCI ?? -1) > 0;
+      out.push({ tier:2.05, tone: ok ? "green" : "red",
+        label: ok
+          ? `Shadow maker V2 trial cleared — ${live.graded} graded, CI-lo +${live.pnlLoCI}¢ — decide on scaling size`
+          : `Shadow maker V2 trial underperforming — ${live.graded} graded, CI-lo ${live.pnlLoCI}¢ — investigate or kill`,
+        why:`Live avg ${live.avgPnlCents > 0 ? "+" : ""}${live.avgPnlCents}¢/contract, CI-lo ${live.pnlLoCI > 0 ? "+" : ""}${live.pnlLoCI}¢ at n=${live.graded}. Compare against V1 shadow expectations before touching MAKER_V2_SIZE.`,
+        short: ok ? "V2 trial: scale?" : "V2 trial: investigate" });
+    }
+  } else if ((mb?.fills?.graded || 0) >= (mb?.armCriterion?.minFills ?? 200) && (mb?.fills?.pnlLoCI ?? -1) > 0) {
+    // Fallback only for a report generated before makerBoard.live existed.
     out.push({ tier:2.05, tone:"green", label:"ARM DECISION — shadow maker cleared its criterion, review V2",
       why:`${mb.fills.graded} graded fills at ${mb.fills.avgPnlCents > 0 ? "+" : ""}${mb.fills.avgPnlCents}¢/contract (CI-lo ${mb.fills.pnlLoCI > 0 ? "+" : ""}${mb.fills.pnlLoCI}¢) — margin survives adverse selection. Decide V2 scope from the band ladder.`,
       short:"Review maker V2 arm" });
