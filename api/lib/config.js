@@ -50,6 +50,17 @@ export const MAKER_BAND = [55, 97];   // favorite-ask band to quote inside (≥9
 export const MAKER_INSIDE_C = 1;      // quote this many cents inside the prevailing ask
 export const MAKER_SIZE = 10;         // simulated contracts per quote segment
 
+// Shadow maker V2 (2026-07-21, api/lib/maker-live.js) — REAL resting orders, scoped tight to
+// the one sub-band the 7/21 ARM review found a real, non-borderline edge in (n=295,
+// CI-lo≈+6¢); 85-97 stays V1-shadow-only. Defaults are deliberately conservative for the debut
+// — scale up only as a human decision once mechanics (place/reprice/fill/settle/grade) are
+// confirmed against real fills. See docs/INFRA.md § Shadow maker engine.
+export const MAKER_V2_BAND = [80, 84];       // real-order eligibility band (narrower than MAKER_BAND)
+export const MAKER_V2_SIZE = 5;              // contracts per resting order
+export const MAKER_V2_MAX_CONCURRENT = 20;   // total resting orders across all tickers
+export const MAKER_V2_SAME_GAME_CAP = 2;     // max concurrent resting orders per game (correlation guard)
+export const MAKER_V2_EXPIRATION_SEC = 150;  // self-expiring safety net — outlives one ~2min cron cycle
+
 // Per-category DATA-DERIVED bet windows. The `qualified` bet flag defaults to the global
 // [KALSHI_GATE, KALSHI_CAP]; an entry here OVERRIDES it for one "sport|stat" category with a
 // [lo, hi] cents band. This is the payoff of capture de-blinding: tune:residual showed some

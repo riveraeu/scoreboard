@@ -206,6 +206,7 @@ function _envFromProcess() {
     VAPID_SUBJECT: process.env.VAPID_SUBJECT,
     ROUTINE_NOTE_TOKEN: process.env.ROUTINE_NOTE_TOKEN, // routine-note scratchpad write gate (handlers/shadow.js)
     THE_ODDS_API_KEY: process.env.THE_ODDS_API_KEY,     // sharp-book reference feed (api/lib/sportsbook.js)
+    MAKER_V2_ARMED: process.env.MAKER_V2_ARMED,         // shadow maker V2 kill-switch half (api/lib/maker-live.js) — must be "true" AND the KV flag for any real order to place
   };
 }
 

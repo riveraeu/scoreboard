@@ -1,0 +1,261 @@
+// Shadow maker V2 — REAL resting orders on the one sub-band the 7/21 ARM review found a real,
+// non-borderline edge in (mlb-style favorite-ask quoting, [80,84]¢ — see MAKER_V2_BAND in
+// config.js). Mirrors maker.js's shape (quote pass in the snapshot cron, reconcile pass in the
+// nightly resolver) but places real orders via kalshi-order-client.js instead of simulating.
+//
+// FAIL-CLOSED KILL SWITCH: nothing places unless BOTH env.MAKER_V2_ARMED === "true" AND the KV
+// flag `maker:v2:armed` are true. Either being false stops everything — see isArmed()/setArmed().
+// No auto-scaling: MAKER_V2_SIZE and the caps below only change on an explicit human edit.
+//
+// ORDER LIFECYCLE (no aggressive per-tick churn): each resting order self-expires via
+// `expiration_time` (MAKER_V2_EXPIRATION_SEC past placement) — Kalshi cancels it automatically
+// with no further call. Every quote pass (kalshi-snapshot cron, ~2min cadence):
+//   - price/eligibility UNCHANGED and not nearing expiry → no-op (order keeps resting).
+//   - nearing expiry (same price) → place a fresh replacement; let the old one lapse on its own
+//     (no cancel call needed — Kalshi already will).
+//   - price CHANGED → explicit cancel of the old order, THEN place the new one (never both
+//     resting on the same ticker at once — avoids doubled exposure).
+//   - no longer eligible → do nothing; the existing order lapses within MAKER_V2_EXPIRATION_SEC.
+//   - newly eligible → place a new order, subject to MAKER_V2_MAX_CONCURRENT and
+//     MAKER_V2_SAME_GAME_CAP (correlation guard, mirrors Place All's SAME_GAME_CAP concept).
+//
+// Failure-closed throughout: every exported IO entry point catches internally — a V2 failure
+// must never break the snapshot cron or the resolver (same contract as maker.js V1).
+
+import { MAKER_V2_BAND, MAKER_V2_SIZE, MAKER_V2_MAX_CONCURRENT, MAKER_V2_SAME_GAME_CAP,
+  MAKER_V2_EXPIRATION_SEC } from "./config.js";
+import { computeMakerQuote, MAKER_FEE_SERIES } from "./maker.js";
+import { shadowId } from "./shadow-id.js";
+import { neonQuery, neonExec } from "./neon.js";
+import { placeKalshiOrder, cancelKalshiOrder, fetchKalshiFills } from "./kalshi-order-client.js";
+
+const ARMED_KV_KEY = "maker:v2:armed";
+
+// Both gates must be true — fail-closed on either being unset/false.
+export async function isArmed(env, cache) {
+  if (env?.MAKER_V2_ARMED !== "true") return false;
+  if (!cache) return false;
+  const kv = await cache.get(ARMED_KV_KEY, "json").catch(() => null);
+  return kv?.armed === true;
+}
+export async function setArmed(cache, armed) {
+  await cache.put(ARMED_KV_KEY, { armed: !!armed, at: new Date().toISOString() });
+}
+
+// Same-game correlation key (sport|date|sorted-team-pair) — order-independent so ticker home/
+// away order (which CLAUDE.md notes never matches ESPN) can't split one game into two buckets.
+export const gameKeyFor = (row) =>
+  [row?.sport || "", row?.gameDate || "", [row?.homeTeam, row?.awayTeam].filter(Boolean).sort().join("-")].join("|");
+const _gameKey = gameKeyFor;
+
+let _ddlDone = false;
+export async function ensureMakerLiveTables(env) {
+  if (_ddlDone) return;
+  await neonExec(`
+    CREATE TABLE IF NOT EXISTS maker_orders_v2 (
+      id SERIAL PRIMARY KEY,
+      ticker TEXT NOT NULL,
+      kalshi_order_id TEXT,
+      client_order_id TEXT,
+      series TEXT,
+      sport TEXT,
+      category TEXT,
+      game_date TEXT,
+      game_key TEXT,
+      shadow_row_id TEXT,
+      row_direction TEXT,
+      side TEXT NOT NULL,
+      price INT NOT NULL,
+      size INT NOT NULL,
+      filled_count INT NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'resting',
+      side_won BOOLEAN,
+      pnl_cents NUMERIC,
+      graded_at TIMESTAMPTZ,
+      placed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      expires_at TIMESTAMPTZ,
+      canceled_at TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS maker_orders_v2_resting_idx ON maker_orders_v2 (ticker) WHERE status = 'resting';
+    CREATE INDEX IF NOT EXISTS maker_orders_v2_day_idx ON maker_orders_v2 (game_date)
+  `, env);
+  _ddlDone = true;
+}
+
+// Quote pass — runs in the kalshi-snapshot cron tail, right after V1's updateMakerQuotes, with
+// the same just-fetched books + staging index (zero extra Kalshi reads for eligibility).
+export async function updateLiveMakerOrders({ snapResults, staging, snapshotDate, env, cache, nowMs = Date.now() }) {
+  if (!(await isArmed(env, cache))) return { skipped: "disarmed" };
+  await ensureMakerLiveTables(env);
+
+  const idx = new Map();
+  for (const p of [...(staging?.plays || []), ...(staging?.dropped || [])]) {
+    const t = p.kalshiTicker ?? p._ticker;
+    if (!t) continue;
+    const prev = idx.get(t);
+    if (!prev || (prev.direction === "under" && p.direction !== "under")) idx.set(t, p);
+  }
+
+  const want = new Map(); // ticker → { q, row, series }
+  for (const [series, data] of Object.entries(snapResults || {})) {
+    if (MAKER_FEE_SERIES.has(series)) continue;
+    for (const m of (data?.markets || [])) {
+      const row = idx.get(m?.ticker);
+      if (!row) continue;
+      const q = computeMakerQuote(m, row, nowMs, MAKER_V2_BAND);
+      if (q) want.set(m.ticker, { q, row, series });
+    }
+  }
+
+  const resting = await neonQuery(
+    `SELECT * FROM maker_orders_v2 WHERE status = 'resting'`, [], env, { write: true });
+  const restingByTicker = new Map(resting.map(r => [r.ticker, r]));
+
+  const RENEW_WINDOW_MS = 30_000; // renew if within 30s of expiry
+  const toCancel = [];   // rows needing an explicit cancel (price changed)
+  const toExpireLocally = []; // rows we stop tracking as resting without a cancel call (lapsed/no-longer-desired)
+  const toPlace = [];    // tickers to place a fresh order for
+
+  for (const [ticker, r] of restingByTicker) {
+    const w = want.get(ticker);
+    const expiresAt = r.expires_at ? Date.parse(r.expires_at) : 0;
+    if (!w) continue; // no longer desired — let it lapse naturally, nothing to do this tick
+    if (w.q.side !== r.side || w.q.ask !== Number(r.price)) {
+      toCancel.push(r);
+      toPlace.push({ ticker, ...w });
+    } else if (nowMs >= expiresAt - RENEW_WINDOW_MS) {
+      toExpireLocally.push(r);
+      toPlace.push({ ticker, ...w });
+    }
+  }
+  for (const [ticker, w] of want) {
+    if (!restingByTicker.has(ticker)) toPlace.push({ ticker, ...w });
+  }
+
+  // Cancels first (frees slots + avoids double-resting on a reprice).
+  let canceledCount = 0;
+  for (const r of toCancel) {
+    const res = await cancelKalshiOrder({ orderId: r.kalshi_order_id }, env).catch(e => ({ ok: false, error: String(e?.message || e) }));
+    await neonQuery(
+      `UPDATE maker_orders_v2 SET status = 'canceled', canceled_at = NOW() WHERE id = $1`,
+      [r.id], env, { write: true });
+    if (res.ok) canceledCount++;
+  }
+  if (toExpireLocally.length) {
+    await neonQuery(
+      `UPDATE maker_orders_v2 SET status = 'expired' WHERE id = ANY($1::int[])`,
+      [toExpireLocally.map(r => Number(r.id))], env, { write: true });
+  }
+
+  // Cap bookkeeping — start from what will still be resting after the cancels/expiries above.
+  const stillResting = resting.filter(r =>
+    !toCancel.some(c => c.id === r.id) && !toExpireLocally.some(c => c.id === r.id));
+  let globalCount = stillResting.length;
+  const gameCounts = new Map();
+  for (const r of stillResting) {
+    const gk = r.game_key || "";
+    gameCounts.set(gk, (gameCounts.get(gk) || 0) + 1);
+  }
+
+  let opened = 0, capped = 0, errors = 0;
+  for (const { ticker, q, row, series } of toPlace) {
+    const gk = _gameKey(row);
+    const gameCount = gameCounts.get(gk) || 0;
+    if (globalCount >= MAKER_V2_MAX_CONCURRENT || gameCount >= MAKER_V2_SAME_GAME_CAP) { capped++; continue; }
+    const expirationTime = Math.floor(nowMs / 1000) + MAKER_V2_EXPIRATION_SEC;
+    const res = await placeKalshiOrder(
+      { ticker, side: q.side, price: q.ask, count: MAKER_V2_SIZE, expirationTime }, env
+    ).catch(e => ({ ok: false, error: String(e?.message || e) }));
+    if (!res.ok) { errors++; console.error(`[maker-live] place ${ticker} failed: ${res.error}`); continue; }
+    const filled = res.fillCount || 0;
+    const status = res.remainingCount === 0 && filled > 0 ? "executed" : "resting";
+    await neonQuery(
+      `INSERT INTO maker_orders_v2
+        (ticker, kalshi_order_id, client_order_id, series, sport, category, game_date, game_key,
+         shadow_row_id, row_direction, side, price, size, filled_count, status, expires_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15, to_timestamp($16))`,
+      [ticker, res.orderId, res.clientOrderId, series, row.sport ?? null, row.stat ?? row.gameType ?? null,
+       row.gameDate ?? snapshotDate ?? null, gk, shadowId(row, snapshotDate), row.direction ?? null,
+       q.side, q.ask, MAKER_V2_SIZE, filled, status, expirationTime],
+      env, { write: true });
+    opened++;
+    globalCount++;
+    gameCounts.set(gk, gameCount + 1);
+  }
+
+  return { eligible: want.size, canceled: canceledCount, expiredLocally: toExpireLocally.length, opened, capped, errors };
+}
+
+// Reconcile pass — nightly, right after V1's detectAndGradeMakerFills. Catches real fills that
+// happened between cron ticks (the common case for a resting order), marks lapsed rows past
+// their expires_at that the quote pass didn't already clean up (belt-and-suspenders if a cron
+// cycle was skipped/delayed), and grades PnL once the underlying shadow_plays row resolves.
+export async function reconcileLiveMakerFills({ env, dayPT }) {
+  await ensureMakerLiveTables(env);
+
+  // Belt-and-suspenders: anything still 'resting' well past its expiry either filled (caught
+  // below via the fills poll) or lapsed — flip to 'expired' here so it stops counting toward caps.
+  await neonQuery(
+    `UPDATE maker_orders_v2 SET status = 'expired'
+     WHERE status = 'resting' AND expires_at IS NOT NULL AND expires_at < NOW() - INTERVAL '10 minutes'`,
+    [], env, { write: true });
+
+  const minTs = Math.floor((Date.parse(`${dayPT}T00:00:00-07:00`) - 6 * 3600_000) / 1000);
+  const fillsRes = await fetchKalshiFills({ minTs }, env);
+  let matched = 0;
+  if (fillsRes.ok && fillsRes.fills.length) {
+    const tracked = await neonQuery(
+      `SELECT id, kalshi_order_id, size FROM maker_orders_v2
+       WHERE game_date = $1 AND status IN ('resting', 'expired') AND kalshi_order_id IS NOT NULL`,
+      [dayPT], env, { write: true });
+    const byOrderId = new Map(tracked.map(t => [t.kalshi_order_id, t]));
+    for (const f of fillsRes.fills) {
+      const t = byOrderId.get(f.order_id);
+      if (!t) continue;
+      const filledCount = Math.round(parseFloat(f.count ?? f.count_fp ?? "0")) || 0;
+      if (!filledCount) continue;
+      await neonQuery(
+        `UPDATE maker_orders_v2 SET filled_count = $2, status = 'executed' WHERE id = $1`,
+        [t.id, filledCount], env, { write: true });
+      matched++;
+    }
+  }
+
+  const graded = await neonQuery(`
+    UPDATE maker_orders_v2 mo SET
+      side_won = outc.side_won,
+      pnl_cents = mo.price - CASE WHEN outc.side_won THEN 100 ELSE 0 END,
+      graded_at = NOW()
+    FROM (
+      SELECT o.id AS oid,
+        CASE WHEN o.side = 'yes'
+          THEN (CASE WHEN s.direction = 'under' THEN NOT s.won ELSE s.won END)
+          ELSE NOT (CASE WHEN s.direction = 'under' THEN NOT s.won ELSE s.won END)
+        END AS side_won
+      FROM maker_orders_v2 o JOIN shadow_plays s ON s.id = o.shadow_row_id
+      WHERE s.resolved AND s.won IS NOT NULL AND o.status = 'executed'
+    ) outc
+    WHERE mo.id = outc.oid AND mo.graded_at IS NULL
+    RETURNING mo.id`,
+    [], env, { write: true });
+
+  return { fillsFetched: fillsRes.ok ? fillsRes.fills.length : 0, fillsMatched: matched,
+    fillsError: fillsRes.ok ? null : fillsRes.error, graded: graded.length };
+}
+
+// Emergency stop — used by /api/maker-v2-kill. Disarms (KV flag) AND cancels every currently
+// resting order immediately, rather than waiting out their natural expiration.
+export async function emergencyKillLive({ env, cache }) {
+  await ensureMakerLiveTables(env);
+  await setArmed(cache, false);
+  const resting = await neonQuery(
+    `SELECT id, kalshi_order_id FROM maker_orders_v2 WHERE status = 'resting'`, [], env, { write: true });
+  let canceled = 0, errors = 0;
+  for (const r of resting) {
+    const res = await cancelKalshiOrder({ orderId: r.kalshi_order_id }, env).catch(e => ({ ok: false, error: String(e?.message || e) }));
+    await neonQuery(`UPDATE maker_orders_v2 SET status = 'canceled', canceled_at = NOW() WHERE id = $1`,
+      [r.id], env, { write: true });
+    if (res.ok) canceled++; else errors++;
+  }
+  return { disarmed: true, resting: resting.length, canceled, errors };
+}

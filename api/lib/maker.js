@@ -39,8 +39,10 @@ const _c = (dollars, cents) => {
 };
 
 // Pure eligibility + quote computation for one Kalshi market object + its staging row.
+// `band` defaults to MAKER_BAND (V1 shadow); maker-live.js passes MAKER_V2_BAND to reuse the
+// exact same eligibility logic for the narrower real-order scope instead of forking it.
 // Returns { side, ask, yesAsk, yesBid, noAsk, noBid, spread } or null.
-export function computeMakerQuote(m, stagingRow, nowMs) {
+export function computeMakerQuote(m, stagingRow, nowMs, band = MAKER_BAND) {
   const yesAsk = _c(m?.yes_ask_dollars, m?.yes_ask), yesBid = _c(m?.yes_bid_dollars, m?.yes_bid);
   const noAsk = _c(m?.no_ask_dollars, m?.no_ask), noBid = _c(m?.no_bid_dollars, m?.no_bid);
   // Real two-sided book only: all four quotes present (0 = absent quote, not a price).
@@ -55,8 +57,8 @@ export function computeMakerQuote(m, stagingRow, nowMs) {
   if (!(gt > nowMs)) return null;
   // Favorite side in band (both sides ≥80 is impossible on a real book — sum ≤ 100+spread).
   let side = null, ask = null;
-  if (yesAsk >= MAKER_BAND[0] && yesAsk <= MAKER_BAND[1]) { side = "yes"; ask = yesAsk - MAKER_INSIDE_C; }
-  else if (noAsk >= MAKER_BAND[0] && noAsk <= MAKER_BAND[1]) { side = "no"; ask = noAsk - MAKER_INSIDE_C; }
+  if (yesAsk >= band[0] && yesAsk <= band[1]) { side = "yes"; ask = yesAsk - MAKER_INSIDE_C; }
+  else if (noAsk >= band[0] && noAsk <= band[1]) { side = "no"; ask = noAsk - MAKER_INSIDE_C; }
   if (!side) return null;
   return { side, ask, yesAsk, yesBid, noAsk, noBid, spread };
 }

@@ -14,6 +14,7 @@ import { fetchRoundScores, normGolfName } from "../golf.js";
 import { fetchRaceResults } from "../nascar.js";
 import { fetchSlResults } from "../nba-summer.js";
 import { detectAndGradeMakerFills } from "../maker.js";
+import { reconcileLiveMakerFills, isArmed as isMakerV2Armed } from "../maker-live.js";
 // shadowId moved to api/lib/shadow-id.js (2026-07-19) so the maker engine stamps the same
 // row identity on quote segments without a handler→handler import cycle.
 import { shadowId } from "../shadow-id.js";
@@ -1146,6 +1147,17 @@ async function handleShadowResolver({ path, request, env, cache }) {
     console.error(`[shadow-resolver] maker fill pass failed: ${e?.message}`);
   }
 
+  // ── Shadow maker V2 reconcile (api/lib/maker-live.js, 2026-07-21) ── real fills poll +
+  // grading. No-op cheaply if V2 has never been armed (maker_orders_v2 stays empty).
+  let makerLiveMeta = null;
+  try {
+    const _yd2 = new Date(new Date(today).getTime() - 86400_000).toISOString().slice(0, 10);
+    makerLiveMeta = await reconcileLiveMakerFills({ env, dayPT: _yd2 });
+    console.log(`[shadow-resolver] maker-live fillsFetched=${makerLiveMeta.fillsFetched} matched=${makerLiveMeta.fillsMatched} graded=${makerLiveMeta.graded}`);
+  } catch (e) {
+    console.error(`[shadow-resolver] maker-live reconcile pass failed: ${e?.message}`);
+  }
+
   // Replica-proof resolution floor for the morning report. This pass's own writes are read-after-
   // write consistent on the pooled primary, and max-merge across the overnight passes (2am/3am/
   // 5:50am) locks in yesterday's true resolved count in KV — which the 6am report reads instead of
@@ -1186,7 +1198,7 @@ async function handleShadowResolver({ path, request, env, cache }) {
   }
 
   console.log(`[shadow-resolver] resolved=${updates.length} skipped=${skipped} noData=${noData} games=${liveByKey.size} durationMs=${Date.now() - t0}`);
-  return jsonResponse({ ok: true, resolved: updates.length, skipped, noData, maker: makerMeta, durationMs: Date.now() - t0 });
+  return jsonResponse({ ok: true, resolved: updates.length, skipped, noData, maker: makerMeta, makerLive: makerLiveMeta, durationMs: Date.now() - t0 });
 }
 
 // ── Dispatch ──────────────────────────────────────────────────────────────────
@@ -2817,6 +2829,36 @@ async function handleShadowReport({ path, request, env, cache }) {
       })),
     };
   } catch (e) { console.error("[shadow-report] maker board skipped:", e?.message); }
+
+  // Shadow maker V2 live board (api/lib/maker-live.js, 2026-07-21) — real resting orders,
+  // separate try/catch so a maker_orders_v2-not-yet-created error (V2 never armed) never takes
+  // down the V1 makerBoard above. Empty/zeroed until armed.
+  if (makerBoard) {
+    makerBoard.live = { orders: 0, resting: 0, executed: 0, graded: 0, avgPnlCents: null, pnlLoCI: null, armed: false };
+    try {
+      const [[lo], armedNow] = await Promise.all([
+        neonQuery(`
+          SELECT COUNT(*)::int AS orders,
+            COUNT(*) FILTER (WHERE status = 'resting')::int AS resting,
+            COUNT(*) FILTER (WHERE status = 'executed')::int AS executed,
+            COUNT(*) FILTER (WHERE graded_at IS NOT NULL)::int AS graded,
+            ROUND(AVG(pnl_cents) FILTER (WHERE graded_at IS NOT NULL), 2) AS avg_pnl,
+            ROUND(STDDEV_SAMP(pnl_cents) FILTER (WHERE graded_at IS NOT NULL), 2) AS sd_pnl
+          FROM maker_orders_v2 WHERE game_date >= $1`, [since], env, { write: true }),
+        isMakerV2Armed(env, cache).catch(() => false),
+      ]);
+      const gradedV2 = Number(lo?.graded || 0);
+      const avgPnlV2 = lo?.avg_pnl != null ? Number(lo.avg_pnl) : null;
+      const sdV2 = lo?.sd_pnl != null ? Number(lo.sd_pnl) : null;
+      const pnlLoCIV2 = avgPnlV2 != null && sdV2 != null && gradedV2 > 1
+        ? parseFloat((avgPnlV2 - 1.96 * sdV2 / Math.sqrt(gradedV2)).toFixed(2)) : null;
+      makerBoard.live = {
+        orders: Number(lo?.orders || 0), resting: Number(lo?.resting || 0),
+        executed: Number(lo?.executed || 0), graded: gradedV2,
+        avgPnlCents: avgPnlV2, pnlLoCI: pnlLoCIV2, armed: !!armedNow,
+      };
+    } catch (e) { console.error("[shadow-report] maker live board skipped (likely never armed):", e?.message); }
+  }
 
   const report = {
     reportDate,

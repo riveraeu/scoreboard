@@ -16,27 +16,10 @@ import { fetchKalshiOrderbook } from "../kalshi-book.js";
 import { pipeWriteChunked } from "../kv-pipeline.js";
 import { gzipToString } from "../kv-compress.js";
 import { updateMakerQuotes } from "../maker.js";
+import { importKalshiKey as _importKalshiKey, placeKalshiOrder } from "../kalshi-order-client.js";
+import { updateLiveMakerOrders, emergencyKillLive, setArmed } from "../maker-live.js";
 
 const normName = (s) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-
-// Wrap PKCS#1 RSA private key DER bytes in a PKCS#8 container for Web Crypto importKey.
-function _pkcs1ToPkcs8(pkcs1Der) {
-  const _encLen = (len) => len < 128 ? [len] : len < 256 ? [0x81, len] : [0x82, (len >> 8) & 0xff, len & 0xff];
-  const _seq = (c) => [0x30, ..._encLen(c.length), ...c];
-  // AlgorithmIdentifier: SEQUENCE { OID rsaEncryption, NULL }
-  const algId = _seq([0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01, 0x05, 0x00]);
-  const version = [0x02, 0x01, 0x00];
-  const octetStr = [0x04, ..._encLen(pkcs1Der.length), ...pkcs1Der];
-  return new Uint8Array(_seq([...version, ...algId, ...octetStr]));
-}
-
-async function _importKalshiKey(pemString) {
-  const pem = pemString.replace(/\\n/g, '\n').trim();
-  const pemBody = pem.replace(/-----[^-]+-----/g, '').replace(/\s/g, '');
-  const der = Uint8Array.from(atob(pemBody), c => c.charCodeAt(0));
-  const pkcs8Der = pem.includes('BEGIN RSA PRIVATE KEY') ? _pkcs1ToPkcs8(der) : der;
-  return crypto.subtle.importKey('pkcs8', pkcs8Der.buffer, { name: 'RSA-PSS', hash: 'SHA-256' }, false, ['sign']);
-}
 
 export async function handleKalshiRoutes(ctx) {
   const { path, request, params, env, CACHE2, method, JWT_SECRET } = ctx;
@@ -371,6 +354,28 @@ export async function handleKalshiRoutes(ctx) {
       console.error(`[kalshi-snapshot] maker quote pass failed: ${_makerMeta.error}`);
     }
 
+    // ── Shadow maker V2 (api/lib/maker-live.js, 2026-07-21) ── REAL resting orders, scoped to
+    // MAKER_V2_BAND [80,84]. Fail-closed: no-ops immediately unless BOTH env.MAKER_V2_ARMED and
+    // the KV armed-flag are true — see isArmed(). Runs last, after V1's simulated pass, off the
+    // same just-fetched books + staging index.
+    let _makerLiveMeta = null;
+    try {
+      const _mlT = Date.now();
+      const _mkToday = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+      const _staging = await CACHE2.get(`shadow:staging:${_mkToday}`, "json");
+      if (_staging && successCount > 0) {
+        _makerLiveMeta = await updateLiveMakerOrders({
+          snapResults: _snapResults, staging: _staging, snapshotDate: _mkToday, env, cache: CACHE2,
+        });
+        _makerLiveMeta.ms = Date.now() - _mlT;
+      } else {
+        _makerLiveMeta = { skipped: !_staging ? "no_staging" : "no_snaps" };
+      }
+    } catch (e) {
+      _makerLiveMeta = { error: String(e?.message || e) };
+      console.error(`[kalshi-snapshot] maker-live order pass failed: ${_makerLiveMeta.error}`);
+    }
+
     return jsonResponse({
       ok: successCount > 0 && _w1.failed === 0,
       successCount,
@@ -387,7 +392,30 @@ export async function handleKalshiRoutes(ctx) {
       depthBudgeted: _depthBudgeted.length,
       touchedSeries: _touchedSeries.size,
       maker: _makerMeta,
+      makerLive: _makerLiveMeta,
     });
+  }
+
+  // ── /api/maker-v2-arm, /api/maker-v2-kill ───────────────────────────────────
+  // Admin-only (ADMIN_KEY) manual gates for the shadow-maker V2 real-order engine. Arming here
+  // sets only the KV half of the fail-closed AND — env.MAKER_V2_ARMED must ALSO be "true" for
+  // any real order to ever place (see maker-live.js isArmed()). Kill always works regardless of
+  // the env var, and cancels every currently resting order immediately (doesn't wait for the
+  // self-expiring safety net).
+  if (path === "maker-v2-arm" && method === "POST") {
+    const bearer = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/, "");
+    if (!env?.ADMIN_KEY || bearer !== env.ADMIN_KEY) return errorResponse("Forbidden", 403);
+    if (!CACHE2) return errorResponse("No KV", 500);
+    await setArmed(CACHE2, true);
+    return jsonResponse({ ok: true, armed: true, note: env?.MAKER_V2_ARMED === "true"
+      ? "KV flag set — engine is now live-armed" : "KV flag set, but env.MAKER_V2_ARMED is not \"true\" — still disarmed" });
+  }
+  if (path === "maker-v2-kill" && method === "POST") {
+    const bearer = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/, "");
+    if (!env?.ADMIN_KEY || bearer !== env.ADMIN_KEY) return errorResponse("Forbidden", 403);
+    if (!CACHE2) return errorResponse("No KV", 500);
+    const result = await emergencyKillLive({ env, cache: CACHE2 });
+    return jsonResponse({ ok: true, ...result });
   }
 
   if (path === "kalshi-order" && method === "POST") {
@@ -407,65 +435,27 @@ export async function handleKalshiRoutes(ctx) {
     if (side !== "yes" && side !== "no") return errorResponse("side must be 'yes' or 'no'", 400);
     if (!Number.isInteger(count) || count < 1 || count > 9999) return errorResponse("count must be integer 1–9999", 400);
     if (!Number.isInteger(price) || price < 1 || price > 99) return errorResponse("price must be integer 1–99 (cents)", 400);
-    if (!env?.KALSHI_API_KEY_ID || !env?.KALSHI_PRIVATE_KEY) return errorResponse("Kalshi API not configured", 500);
-    // Build order payload — Kalshi V2 event-order API (2026-07: the legacy /portfolio/orders
-    // POST returns "Please switch to the V2 endpoints"). V2 is a single book quoted in YES
-    // terms: bid = buy YES, ask = sell YES — and selling YES you don't hold IS the NO buy
-    // (ask at (100−p)¢ costs p¢/contract). Client contract unchanged (side yes/no + integer
-    // cents); this handler is the translation chokepoint both directions — the response is
-    // normalized back to the legacy taker_fill_* shape below so App.jsx needs no changes.
-    const kalshiPath = "/trade-api/v2/portfolio/events/orders";
-    const timestamp = String(Date.now()); // milliseconds, as Kalshi SDK uses
-    const orderPayload = {
-      ticker,
-      client_order_id: clientOrderId || crypto.randomUUID(), // required by V2 (idempotency)
-      side: side === "yes" ? "bid" : "ask",
-      count: String(count), // fixed-point string
-      price: (side === "yes" ? price / 100 : (100 - price) / 100).toFixed(4), // YES-terms dollars
-      time_in_force: "good_till_canceled", // preserves legacy rest-if-unfilled behavior
-      self_trade_prevention_type: "taker_at_cross",
-    };
-    const payloadStr = JSON.stringify(orderPayload);
-    // Sign: timestamp + method + path only (no body) using RSA-PSS SHA-256 with DIGEST_LENGTH salt (32)
-    let signature;
-    try {
-      const key = await _importKalshiKey(env.KALSHI_PRIVATE_KEY);
-      const msgBuf = new TextEncoder().encode(timestamp + "POST" + kalshiPath);
-      const sigBuf = await crypto.subtle.sign({ name: "RSA-PSS", saltLength: 32 }, key, msgBuf);
-      signature = btoa(String.fromCharCode(...new Uint8Array(sigBuf)));
-    } catch (e) {
-      return errorResponse(`Signing failed: ${e?.message || e}`, 500);
-    }
-    const resp = await fetch(`https://external-api.kalshi.com${kalshiPath}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "KALSHI-ACCESS-KEY": env.KALSHI_API_KEY_ID,
-        "KALSHI-ACCESS-TIMESTAMP": timestamp,
-        "KALSHI-ACCESS-SIGNATURE": signature,
-      },
-      body: payloadStr,
-    }).catch(() => null);
-    if (!resp) return errorResponse("Kalshi unreachable", 502);
-    const respBody = await resp.json().catch(() => ({}));
-    if (!resp.ok) return errorResponse(respBody?.error?.message || `Kalshi error ${resp.status}`, resp.status);
-    // Normalize the V2 response ({order_id, fill_count, remaining_count, average_fill_price
-    // — fixed-point strings, YES-terms dollars}) to the legacy shape the client parses.
-    // average_fill_price is a YES price: a NO buy's per-contract cost is its complement.
-    const _filled = Math.round(parseFloat(respBody.fill_count ?? "0")) || 0;
-    const _remaining = Math.round(parseFloat(respBody.remaining_count ?? "0")) || 0;
-    const _avgYesCents = respBody.average_fill_price != null ? Math.round(parseFloat(respBody.average_fill_price) * 100) : null;
-    const _perContractCents = _avgYesCents == null ? null : (side === "yes" ? _avgYesCents : 100 - _avgYesCents);
+    // Kalshi V2 event-order API (2026-07: the legacy /portfolio/orders POST returns "Please
+    // switch to the V2 endpoints"). V2 is a single book quoted in YES terms: bid = buy YES,
+    // ask = sell YES — and selling YES you don't hold IS the NO buy (ask at (100−p)¢ costs
+    // p¢/contract). Client contract unchanged (side yes/no + integer cents); placeKalshiOrder
+    // (kalshi-order-client.js) is the translation chokepoint both directions, shared with the
+    // automated maker-live.js V2 engine — the response is normalized back to the legacy
+    // taker_fill_* shape below so App.jsx needs no changes.
+    const r = await placeKalshiOrder({ ticker, side, price, count, clientOrderId }, env);
+    if (!r.ok) return errorResponse(r.error, r.status || 500);
+    // average_fill_price is a YES price: a NO buy's per-contract cost is its complement
+    // (already normalized to per-contract cents in avgFillPriceCents).
     const order = {
-      order_id: respBody.order_id,
-      client_order_id: respBody.client_order_id ?? orderPayload.client_order_id,
-      taker_fill_count: _filled,
-      taker_fill_cost: _perContractCents != null ? _filled * _perContractCents : 0,
-      remaining_count: _remaining,
-      average_fill_price: respBody.average_fill_price ?? null,
-      average_fee_paid: respBody.average_fee_paid ?? null,
+      order_id: r.orderId,
+      client_order_id: r.clientOrderId,
+      taker_fill_count: r.fillCount,
+      taker_fill_cost: r.avgFillPriceCents != null ? r.fillCount * r.avgFillPriceCents : 0,
+      remaining_count: r.remainingCount,
+      average_fill_price: r.raw.average_fill_price ?? null,
+      average_fee_paid: r.raw.average_fee_paid ?? null,
     };
-    return jsonResponse({ ok: true, order, v2: respBody });
+    return jsonResponse({ ok: true, order, v2: r.raw });
   }
 
   if (path === "kalshi-balance" && method === "GET") {

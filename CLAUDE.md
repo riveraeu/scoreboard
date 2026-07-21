@@ -60,7 +60,7 @@ Route handlers (`api/lib/handlers/`):
 - `player.js` — `/api/player`, `/api/gamelog`, `/api/headshot`
 - `sports.js` — `/api/team`, `/api/live`
 - `dvp.js` — `/api/dvp`, `/api/nba-depth`, `/api/dvp/debug-dc`
-- `kalshi.js` — `/api/kalshi`, `/api/kalshi-orderbook`, `/api/kalshi-snapshot`, `/api/kalshi-series-scan`, `/api/keepalive`, `/api/kalshi-order`, `/api/kalshi-balance`, `/api/kalshi-fills`
+- `kalshi.js` — `/api/kalshi`, `/api/kalshi-orderbook`, `/api/kalshi-snapshot`, `/api/kalshi-series-scan`, `/api/keepalive`, `/api/kalshi-order`, `/api/kalshi-balance`, `/api/kalshi-fills`, `/api/maker-v2-arm`, `/api/maker-v2-kill`
 - `tonight.js` — `/api/tonight`. Owns the Kalshi parse loop, byteam hydration, data-prep, emit calls, response assembly.
 - `shadow.js` — `/api/shadow-snapshot`, `/api/shadow-resolver`, `/api/shadow-pregame-snap`, `/api/shadow-report`, `/api/{polymarket,sportsbook}-deltas`, `/api/polymarket-scan`, `/api/routine-note`
 - `push.js` — `/api/push/{vapid,subscribe,unsubscribe,notify,test}` (Web Push / PWA; web-push is the only Node-only dep, dynamic-imported in the send path)
@@ -82,7 +82,8 @@ Sport/utility modules (`api/lib/`):
 - `polymarket-book.js` — Polymarket CLOB book walk. `fetchPolyOrderbook` + `walkPolyFill` + `enrichDeltasWithExec` (attaches exec deltas after slippage)
 - `sportsbook.js` — sharp-book reference feed (The Odds API / Pinnacle, shadow-only). `fetchSportsbookGames` (no key → clean `[]` no-op), `devigTwoWay`, `normalizeOddsEvent` (gameDate = **PT** date of commence_time; already-commenced events dropped — live odds ≠ pre-game reference)
 - `kalshi-flow.js` — Kalshi public trade-tape taker-flow features (`xFlow*`: taker-yes share, trade count/size texture, large-print share; trades carry `count_fp` decimal strings, not `count`). Stamped per distinct ticker at shadow-snapshot time (`p._flow` → `exogenousSignals`) — a price-error/flow candidate for `tune:residual`, never a model input. Failure-closed; first 429 aborts the remainder
-- `maker.js` — **shadow maker engine** (2026-07-19, V1 = simulated quotes ONLY, no real orders). Quotes 1¢ inside the favorite ask (80–97¢, fee-free series, real books, pre-game) at the tail of the kalshi-snapshot cron → Neon `maker_quotes` segments; nightly resolver replays the public trade tape into `maker_fills` + grades vs `shadow_plays` via `shadow_row_id`. `makerBoard` in shadow-report; arm V2 (real orders) only at fill-PnL CI-lo>0, n≥200 fills. Details → `docs/INFRA.md` § Shadow maker engine
+- `maker.js` — **shadow maker engine V1** (2026-07-19, simulated quotes ONLY, no real orders). Quotes 1¢ inside the favorite ask (`MAKER_BAND` [55,97] — floor dropped from 80 on 7/21 to explore the unstudied mid-favorite range; the real edge lives in 80–84 per the 7/21 ARM review), fee-free series, real books, pre-game, at the tail of the kalshi-snapshot cron → Neon `maker_quotes` segments; nightly resolver replays the public trade tape into `maker_fills` + grades vs `shadow_plays` via `shadow_row_id`. `makerBoard` in shadow-report.
+- `maker-live.js` — **shadow maker V2** (2026-07-21, REAL resting orders, `armed=false` by default). Scoped tight to `MAKER_V2_BAND` [80,84] via `kalshi-order-client.js` (shared signing/payload with the manual `/api/kalshi-order` handler). Fail-closed kill switch: `env.MAKER_V2_ARMED==="true"` AND a KV flag both required (`isArmed`/`setArmed`); `/api/maker-v2-arm` and `/api/maker-v2-kill` (ADMIN_KEY) toggle it. Self-expiring orders (`expiration_time`) avoid per-tick churn; explicit cancel only on reprice or kill. `makerBoard.live` in shadow-report. Details → `docs/INFRA.md` § Shadow maker engine / § Shadow maker V2
 - `shadow-id.js` — `shadowId(p, fallbackDate)`, THE deterministic shadow_plays row identity (moved out of handlers/shadow.js so maker.js shares it). Never re-key casually — historical rows keep their ids
 - `utils.js` — CORS, `parseGameOdds`, `parseGameScores`, team rank helpers
 - `teams.js` — **team identity registry**. Per-sport records (canonical abbr + per-surface aliases: kalshi / polymarket / espnScore / espnStats / numeric ids). Derives `TEAM_NORM`, `_VALID_TEAMS`, `CANONICAL_TO_ESPN`, `POLY_TO_CANON`, `WNBA_*`, `NHL_ABBR_MAP`, `MLB_ID_TO_ABBR`, all re-exported from their historical modules (import paths unchanged). **Team rebrands/aliases: edit the registry ONLY**; `teams.test.js` pins derived values
@@ -123,6 +124,7 @@ Full request/response contracts, auth patterns, cron schedules, and Place All me
 | `/api/kalshi-order` | `kalshi.js` | POST — place a Kalshi order (RSA-PSS signed); includes Place All batch |
 | `/api/kalshi-balance` | `kalshi.js` | GET — cash + open-position cost basis |
 | `/api/kalshi-fills` | `kalshi.js` | GET — filled orders (pick recovery) |
+| `/api/maker-v2-arm`, `/api/maker-v2-kill` | `kalshi.js` | POST (ADMIN_KEY) — shadow maker V2 real-order kill switch. Arm sets only the KV half (env.MAKER_V2_ARMED must ALSO be "true"); kill disarms + cancels every resting order immediately |
 | `/api/player`, `/api/gamelog`, `/api/headshot` | `player.js` | ESPN player info + gamelogs |
 | `/api/team` | `sports.js` | Team page data (gameLog, lineup, season stats) |
 | `/api/live` | `sports.js` | In-game boxscore for pick tracking |
