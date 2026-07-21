@@ -41,7 +41,12 @@ export const capturableSpread = (spreadCents, cap = CAPTURE_MAX_SPREAD) =>
 // favorite side (selling the rich ask as a maker), not taking. V1 simulates: quote 1¢ inside
 // the prevailing favorite ask on maker-fee-free series, detect fills from the public trade
 // tape, grade at settlement. Arm real orders only at fill-PnL CI-lo>0, n≥200 fills.
-export const MAKER_BAND = [80, 97];   // favorite-ask band to quote inside (≥98 = stale-ask regime)
+export const MAKER_BAND = [55, 97];   // favorite-ask band to quote inside (≥98 = stale-ask regime).
+// Floor dropped 80→55 on 2026-07-21: the 7/21 ARM review found the real (shadow-fill) edge lives
+// only in 80-84 of the original [80,97] band — 85-97 is flat/negative. 55-79 is measurement-only
+// exploration of the pooled-calibration gap between "longshot asks are ~fair" (≤35¢, already
+// answered) and the studied 70-97 favorite zone; V2 scope stays [80,84] until this range proves
+// itself. See docs/INFRA.md § Shadow maker engine.
 export const MAKER_INSIDE_C = 1;      // quote this many cents inside the prevailing ask
 export const MAKER_SIZE = 10;         // simulated contracts per quote segment
 

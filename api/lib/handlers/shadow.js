@@ -2766,11 +2766,17 @@ async function handleShadowReport({ path, request, env, cache }) {
       // Per-ask-band quote/fill economics — feeds the /model band ladder (V2 targeting view).
       neonQuery(`
         WITH qb AS (
-          SELECT CASE WHEN quote_ask < 85 THEN '80-84' WHEN quote_ask < 90 THEN '85-89' ELSE '90-96' END AS band,
+          SELECT CASE WHEN quote_ask < 60 THEN '55-59' WHEN quote_ask < 65 THEN '60-64'
+            WHEN quote_ask < 70 THEN '65-69' WHEN quote_ask < 75 THEN '70-74'
+            WHEN quote_ask < 80 THEN '75-79' WHEN quote_ask < 85 THEN '80-84'
+            WHEN quote_ask < 90 THEN '85-89' ELSE '90-96' END AS band,
             COUNT(*)::int AS segments
           FROM maker_quotes WHERE game_date >= $1 GROUP BY 1),
         fb AS (
-          SELECT CASE WHEN f.fill_ask < 85 THEN '80-84' WHEN f.fill_ask < 90 THEN '85-89' ELSE '90-96' END AS band,
+          SELECT CASE WHEN f.fill_ask < 60 THEN '55-59' WHEN f.fill_ask < 65 THEN '60-64'
+            WHEN f.fill_ask < 70 THEN '65-69' WHEN f.fill_ask < 75 THEN '70-74'
+            WHEN f.fill_ask < 80 THEN '75-79' WHEN f.fill_ask < 85 THEN '80-84'
+            WHEN f.fill_ask < 90 THEN '85-89' ELSE '90-96' END AS band,
             COUNT(*)::int AS fills,
             COUNT(*) FILTER (WHERE f.graded_at IS NOT NULL)::int AS graded,
             ROUND(AVG(f.pnl_cents) FILTER (WHERE f.graded_at IS NOT NULL), 2) AS avg_pnl,

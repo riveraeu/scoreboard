@@ -51,15 +51,15 @@ test("rejects: in-play or unknown game time", () => {
   assert.equal(computeMakerQuote(favYes, { gameTime: null }, NOW), null);
 });
 
-test("band edges: 80 quotes, 97 quotes, 79 and 98 do not", () => {
+test("band edges: MAKER_BAND[0] quotes, MAKER_BAND[1] quotes, one below/above do not", () => {
   const mk = (ask) => ({
     yes_ask_dollars: (ask / 100).toFixed(2), yes_bid_dollars: ((ask - 4) / 100).toFixed(2),
     no_ask_dollars: ((100 - ask + 4) / 100).toFixed(2), no_bid_dollars: ((100 - ask) / 100).toFixed(2),
   });
   assert.equal(computeMakerQuote(mk(MAKER_BAND[0]), futureRow, NOW)?.side, "yes");
   assert.equal(computeMakerQuote(mk(MAKER_BAND[1]), futureRow, NOW)?.side, "yes");
-  assert.equal(computeMakerQuote(mk(79), futureRow, NOW), null);
-  assert.equal(computeMakerQuote(mk(98), futureRow, NOW), null);
+  assert.equal(computeMakerQuote(mk(MAKER_BAND[0] - 1), futureRow, NOW), null);
+  assert.equal(computeMakerQuote(mk(MAKER_BAND[1] + 1), futureRow, NOW), null);
 });
 
 test("maker-fee series set is exactly the four majors", () => {
