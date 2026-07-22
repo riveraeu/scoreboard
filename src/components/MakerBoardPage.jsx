@@ -698,13 +698,81 @@ function statusColor(o) {
   return C.dim; // canceled / expired
 }
 
+// Summary line above the table — the current resting book at a glance, no row-reading required.
+function OrdersSummaryLine({ orders }) {
+  const resting = (orders || []).filter(o => o.status === "resting");
+  if (!resting.length) return null;
+  const prices = resting.map(o => o.price);
+  const lo = Math.min(...prices), hi = Math.max(...prices);
+  const avgSize = resting.reduce((s, o) => s + Number(o.size || 0), 0) / resting.length;
+  return (
+    <div style={{ color:C.dim, fontSize:10, marginBottom:6 }}>
+      {resting.length} resting · {lo === hi ? `${lo}¢` : `${lo}–${hi}¢`} range · avg size {Number.isInteger(avgSize) ? avgSize : avgSize.toFixed(1)}
+    </div>
+  );
+}
+
+const MAKER_ORDER_RECENT_MS = 3 * 3600_000; // "just happened" window for the sort bump below
+
+function groupKey(o) {
+  return `${o.sport}|${o.category || o.series}|${o.side}|${o.price}`;
+}
+
 function MakerLiveOrders({ orders }) {
+  const [expanded, setExpanded] = React.useState(() => new Set());
   if (!orders?.length) {
     return <div style={{ color:C.dim, fontSize:10, padding:"6px 0" }}>No live orders yet — appears once V2 is armed and a quote fills or rests.</div>;
   }
-  const shown = orders.slice(0, 100);
+
+  // Rank "something just happened" (a fill just graded, an order just got repriced/canceled)
+  // above plain still-resting rows, which in turn rank above older inert history — so a quiet
+  // stretch still shows resting first (the old behavior), but a fresh grade/cancel doesn't get
+  // buried under a wall of identical resting rows.
+  const now = Date.now();
+  const isRecent = ts => ts && (now - new Date(ts).getTime()) < MAKER_ORDER_RECENT_MS;
+  const scored = orders.map(o => {
+    const score = isRecent(o.gradedAt) ? 0 : isRecent(o.canceledAt) ? 1 : o.status === "resting" ? 2 : 3;
+    const tieT = new Date(o.gradedAt || o.canceledAt || o.placedAt).getTime();
+    return { o, score, tieT };
+  }).sort((a, b) => a.score - b.score || b.tieT - a.tieT);
+
+  // Collapse resting rows that are visually identical (same sport/market/side/price, different
+  // ticker/game underneath) — that's the repetition that makes the table read as noise. Anything
+  // non-resting (a graded or canceled row) stays its own line; each is a distinct past event.
+  const rows = [];
+  const groups = new Map();
+  for (const { o } of scored) {
+    if (o.status !== "resting") { rows.push({ type:"single", o }); continue; }
+    const key = groupKey(o);
+    const g = groups.get(key);
+    if (g) g.items.push(o);
+    else { const ng = { type:"group", key, o, items:[o] }; groups.set(key, ng); rows.push(ng); }
+  }
+
+  const shown = rows.slice(0, 80);
+  const toggle = key => setExpanded(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+
+  const Row = ({ o, indent }) => (
+    <div style={{ display:"flex", gap:8, alignItems:"center", fontSize:10, padding:"3px 2px", paddingLeft: indent ? 16 : 2,
+      borderTop:`1px solid ${C.border}` }} title={o.ticker}>
+      <span style={{ width:70, color:C.gray, textTransform:"uppercase" }}>{o.sport || "—"}</span>
+      <span style={{ flex:1, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+        {o.category || o.series || o.ticker}
+      </span>
+      <span style={{ width:36, color:C.gray, textTransform:"uppercase" }}>{o.side}</span>
+      <span style={{ width:40, textAlign:"right", color:C.text, fontVariantNumeric:"tabular-nums" }}>{o.price}¢</span>
+      <span style={{ width:32, textAlign:"right", color:C.text, fontVariantNumeric:"tabular-nums" }}>{o.size}</span>
+      <span style={{ width:80, color:statusColor(o), fontWeight:700, textTransform:"uppercase", fontSize:9 }}>{o.status}</span>
+      <span style={{ width:56, textAlign:"right", fontWeight:700, fontVariantNumeric:"tabular-nums",
+        color: o.pnlCents == null ? C.dim : o.pnlCents > 0 ? C.green : C.red }}>
+        {o.pnlCents != null ? `${o.pnlCents > 0 ? "+" : ""}${o.pnlCents}¢` : "—"}
+      </span>
+    </div>
+  );
+
   return (
     <div style={{ maxWidth:720 }}>
+      <OrdersSummaryLine orders={orders} />
       <div style={{ display:"flex", gap:8, fontSize:9, color:C.dim, fontWeight:700, textTransform:"uppercase", padding:"0 2px", marginBottom:2 }}>
         <span style={{ width:70 }}>Sport</span>
         <span style={{ flex:1 }}>Market</span>
@@ -715,26 +783,32 @@ function MakerLiveOrders({ orders }) {
         <span style={{ width:56, textAlign:"right" }}>PnL</span>
       </div>
       <div style={{ maxHeight:280, overflowY:"auto" }}>
-        {shown.map((o, i) => (
-          <div key={`${o.ticker}-${o.placedAt}-${i}`} style={{ display:"flex", gap:8, alignItems:"center", fontSize:10, padding:"3px 2px",
-            borderTop:`1px solid ${C.border}` }} title={o.ticker}>
-            <span style={{ width:70, color:C.gray, textTransform:"uppercase" }}>{o.sport || "—"}</span>
-            <span style={{ flex:1, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-              {o.category || o.series || o.ticker}
-            </span>
-            <span style={{ width:36, color:C.gray, textTransform:"uppercase" }}>{o.side}</span>
-            <span style={{ width:40, textAlign:"right", color:C.text, fontVariantNumeric:"tabular-nums" }}>{o.price}¢</span>
-            <span style={{ width:32, textAlign:"right", color:C.text, fontVariantNumeric:"tabular-nums" }}>{o.size}</span>
-            <span style={{ width:80, color:statusColor(o), fontWeight:700, textTransform:"uppercase", fontSize:9 }}>{o.status}</span>
-            <span style={{ width:56, textAlign:"right", fontWeight:700, fontVariantNumeric:"tabular-nums",
-              color: o.pnlCents == null ? C.dim : o.pnlCents > 0 ? C.green : C.red }}>
-              {o.pnlCents != null ? `${o.pnlCents > 0 ? "+" : ""}${o.pnlCents}¢` : "—"}
-            </span>
-          </div>
+        {shown.map(r => r.type === "single" ? (
+          <Row key={`${r.o.ticker}-${r.o.placedAt}`} o={r.o} />
+        ) : (
+          <React.Fragment key={r.key}>
+            <div onClick={() => toggle(r.key)} style={{ display:"flex", gap:8, alignItems:"center", fontSize:10, padding:"3px 2px",
+              borderTop:`1px solid ${C.border}`, cursor: r.items.length > 1 ? "pointer" : "default" }}
+              title={r.items.length > 1 ? `${r.items.length} tickers — click to expand` : r.o.ticker}>
+              <span style={{ width:70, color:C.gray, textTransform:"uppercase" }}>{r.o.sport || "—"}</span>
+              <span style={{ flex:1, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                {r.items.length > 1 ? `${expanded.has(r.key) ? "▾" : "▸"} ` : ""}{r.o.category || r.o.series || r.o.ticker}
+                {r.items.length > 1 && <span style={{ color:C.dim }}> ×{r.items.length}</span>}
+              </span>
+              <span style={{ width:36, color:C.gray, textTransform:"uppercase" }}>{r.o.side}</span>
+              <span style={{ width:40, textAlign:"right", color:C.text, fontVariantNumeric:"tabular-nums" }}>{r.o.price}¢</span>
+              <span style={{ width:32, textAlign:"right", color:C.text, fontVariantNumeric:"tabular-nums" }}>
+                {r.items.length > 1 ? `${r.o.size}×${r.items.length}` : r.o.size}
+              </span>
+              <span style={{ width:80, color:statusColor(r.o), fontWeight:700, textTransform:"uppercase", fontSize:9 }}>{r.o.status}</span>
+              <span style={{ width:56, textAlign:"right", color:C.dim, fontWeight:700 }}>—</span>
+            </div>
+            {expanded.has(r.key) && r.items.map(o => <Row key={`${o.ticker}-${o.placedAt}`} o={o} indent />)}
+          </React.Fragment>
         ))}
       </div>
-      {orders.length > shown.length && (
-        <div style={{ color:C.dim, fontSize:9, marginTop:4 }}>+{orders.length - shown.length} more (today+yesterday)</div>
+      {rows.length > shown.length && (
+        <div style={{ color:C.dim, fontSize:9, marginTop:4 }}>+{rows.length - shown.length} more rows (today+yesterday)</div>
       )}
     </div>
   );
