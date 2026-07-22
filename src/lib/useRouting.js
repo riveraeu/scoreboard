@@ -2,12 +2,13 @@ import React from 'react';
 import { WORKER, TEAM_DB } from './constants.js';
 import { slugify, teamUrl } from './utils.js';
 
-// URL routing extracted from App.jsx (E-7). Owns teamPage / teamPageData / modelPage /
-// picksPage / pendingSlug state, the mount + popstate listeners, the team-page loader, and the
-// navigation callbacks (navigateToTeam / navigateToPlayer / goBack / navigateToModel /
-// navigateToPicks). picksPage was added 2026-07-21 when the taker-picks flow (LineupsPage) was
-// demoted from the default landing view to a secondary /picks route (maker's live-order board
-// became the new default) — same demotion pattern /model already used, just inverted.
+// URL routing extracted from App.jsx (E-7). Owns teamPage / teamPageData / picksPage /
+// pendingSlug state, the mount + popstate listeners, the team-page loader, and the
+// navigation callbacks (navigateToTeam / navigateToPlayer / goBack / navigateToPicks).
+// picksPage was added 2026-07-21 when the taker-picks flow (LineupsPage) was demoted from the
+// default landing view to a secondary /picks route (maker's live-order board became the new
+// default). /model (modelPage/navigateToModel) was removed 2026-07-22 when the ReportPage route
+// was deprecated — see project_do_this_banner memory.
 //
 // Player state still lives in App.jsx (entangled with player card, gamelog parsing, and
 // Kalshi-odds effects), so the hook takes setPlayer + setQuery setters for the bits it
@@ -20,7 +21,6 @@ export function useRouting({ setPlayer, setQuery, selectPlayerRef }) {
   const [teamPage, setTeamPage] = React.useState(null);
   const [teamPageData, setTeamPageData] = React.useState(null);
   const [pendingSlug, setPendingSlug] = React.useState(null);
-  const [modelPage, setModelPage] = React.useState(false);
   const [picksPage, setPicksPage] = React.useState(false);
 
   const loadTeamPage = React.useCallback(async (abbr, sport) => {
@@ -38,14 +38,10 @@ export function useRouting({ setPlayer, setQuery, selectPlayerRef }) {
   }, [setPlayer]);
 
   const resolveSlug = React.useCallback((slug, sportOverride) => {
-    if (!slug) { setPlayer(null); setTeamPage(null); setModelPage(false); setPicksPage(false); return; }
-    if (slug === "model") {
-      setPlayer(null); setTeamPage(null); setModelPage(true); setPicksPage(false); return;
-    }
+    if (!slug) { setPlayer(null); setTeamPage(null); setPicksPage(false); return; }
     if (slug === "picks") {
-      setPlayer(null); setTeamPage(null); setModelPage(false); setPicksPage(true); return;
+      setPlayer(null); setTeamPage(null); setPicksPage(true); return;
     }
-    setModelPage(false);
     setPicksPage(false);
     const upper = slug.toUpperCase();
     const spPriority = sportOverride ? [sportOverride] : ["mlb","nba","wnba","nhl"];
@@ -113,25 +109,14 @@ export function useRouting({ setPlayer, setQuery, selectPlayerRef }) {
     history.pushState({}, "", "/");
     setPlayer(null);
     setTeamPage(null);
-    setModelPage(false);
     setPicksPage(false);
     setQuery("");
   }, [setPlayer, setQuery]);
-
-  const navigateToModel = React.useCallback(() => {
-    history.pushState({}, "", "/model");
-    setPlayer(null);
-    setTeamPage(null);
-    setModelPage(true);
-    setPicksPage(false);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }, [setPlayer]);
 
   const navigateToPicks = React.useCallback(() => {
     history.pushState({}, "", "/picks");
     setPlayer(null);
     setTeamPage(null);
-    setModelPage(false);
     setPicksPage(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [setPlayer]);
@@ -139,8 +124,7 @@ export function useRouting({ setPlayer, setQuery, selectPlayerRef }) {
   return {
     teamPage, setTeamPage,
     teamPageData,
-    modelPage,
     picksPage,
-    navigateToTeam, navigateToPlayer, goBack, navigateToModel, navigateToPicks,
+    navigateToTeam, navigateToPlayer, goBack, navigateToPicks,
   };
 }

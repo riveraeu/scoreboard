@@ -1,8 +1,9 @@
-// Model-improvement HOLDS — the dated "already diagnosed, parked" maps shared by the /model
-// page's Do-this banner (src/components/ReportPage.jsx) AND the shadow-report daily brief
-// (api/lib/handlers/shadow.js), so the brief can never re-nag a diagnostic the banner knows is
-// done. Same sanctioned frontend←api/lib import pattern as config.js / series-config.js /
-// category-gate.js. Keep this module dependency-free (imported by the Vite bundle).
+// Model-improvement HOLDS — the dated "already diagnosed, parked" maps shared by the Do-this
+// banner (src/components/MakerBoardPage.jsx, moved off the deprecated /model page 2026-07-22)
+// AND the shadow-report daily brief (api/lib/handlers/shadow.js), so the brief can never re-nag
+// a diagnostic the banner knows is done. Same sanctioned frontend←api/lib import pattern as
+// config.js / series-config.js / category-gate.js. Keep this module dependency-free (imported by
+// the Vite bundle).
 //
 // MARKET_SHARPER / miscalibrated categories whose L0 input search is EXHAUSTED — tune:residual
 // found no addable in-data dimension and the historical pre-filters (weather→runs, WNBA travel)

@@ -18,7 +18,7 @@ function MatchupCard({
   game, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta, navigateToPlayer, navigateToTeam,
   gamePlays, gamePlaysTrackedCount = 0,
   allTonightPlays, trackedPlays, trackPlay, untrackPlay,
-  navigateToPlay, navigateToModel, expandedPlays, setExpandedPlays, openPicksDrawer,
+  navigateToPlay, expandedPlays, setExpandedPlays, openPicksDrawer,
 }) {
   const { sport, homeTeam, awayTeam, gameDate, gameTime, gameState, gameDetail, homeScore, awayScore, seriesSummary, homeRecord, awayRecord } = game;
   const [playsOpen, setPlaysOpen] = React.useState(false);
@@ -271,7 +271,6 @@ function MatchupCard({
               untrackPlay={untrackPlay}
               navigateToPlay={navigateToPlay}
               navigateToTeam={navigateToTeam}
-              navigateToModel={navigateToModel}
               expandedPlays={expandedPlays}
               setExpandedPlays={setExpandedPlays}
               hideHeader={true}

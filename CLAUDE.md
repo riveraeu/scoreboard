@@ -45,7 +45,7 @@ Sports prop betting dashboard: pulls Kalshi prediction-market prices, computes a
 | Per-sport modeling internals (SimScore tiers, lambdas, gates, calibration cutoffs) | `docs/MODEL.md` |
 | How to improve the model from calibration data (correction ladder L0–L5, n thresholds, ship checklist) | `docs/MODEL_IMPROVEMENT.md` |
 | Cache keys/TTLs, Upstash, env vars, deployment, testing, route contracts, cron table + DST re-pin | `docs/INFRA.md` |
-| URL routing, App.jsx state, ReportPage, live tracking, sizing, color doctrine | `docs/FRONTEND.md` |
+| URL routing, App.jsx state, MakerBoardPage/DoThisBanner, live tracking, sizing, color doctrine | `docs/FRONTEND.md` |
 | Design system: palette, typography, spacing, component patterns | `docs/STYLEGUIDE.md` (tokens: `src/lib/styles.js`) |
 | Common debugging recipes | `docs/DEBUGGING.md` |
 
@@ -105,9 +105,9 @@ Entry: `index.html` → `src/main.jsx` → `src/App.jsx`. Vercel runs `npm run b
 - `lib/utils.js` — `slugify`, `teamUrl`, `logoUrl(sport, abbr)`
 - `lib/liveStats.js` — live pick tracking helpers
 - `lib/hooks.js` — `useIsMobile(threshold=600)`
-- `lib/useReportData.js` — report/calib/shadow state + fetchers for ReportPage
-- `lib/scheduledCheckpoints.js` — `SCHEDULED_CHECKPOINTS` dated re-check list, shared by ReportPage's `DoThisBanner` and MakerBoardPage's `MakerProgress` "next clock" tile
-- `components/` — `MakerBoardPage` (**landing page**, 2026-07-21 — arm progress + live maker orders + sport utilization), `LineupsPage` (taker picks, demoted to `/picks`, now lazy), `MatchupCard`, `PlaysColumn`, `MyPicksColumn`, `ReportPage`, `TeamPage`, `TotalsBarChart`, `DayBar`, `AddPickModal`
+- `lib/useReportData.js` — shadow-report state + fetchers; MakerBoardPage's only consumer since `/model`/ReportPage was deprecated 2026-07-22
+- `lib/scheduledCheckpoints.js` — `SCHEDULED_CHECKPOINTS` dated re-check list, used by MakerBoardPage's `DoThisBanner` (moved in 2026-07-22) and `MakerProgress` "next clock" tile
+- `components/` — `MakerBoardPage` (**landing page**, 2026-07-21 — arm progress + live maker orders + sport utilization + `DoThisBanner`), `LineupsPage` (taker picks, demoted to `/picks`, now lazy), `MatchupCard`, `PlaysColumn`, `MyPicksColumn`, `TeamPage`, `TotalsBarChart`, `DayBar`, `AddPickModal`
 
 **Dev proxy**: `vite.config.js` proxies `/api` to production so `npm run dev` works without a local backend.
 

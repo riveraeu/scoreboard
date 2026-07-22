@@ -1,11 +1,12 @@
 import React from 'react';
 import { WORKER } from './constants.js';
 
-// ReportPage data fetching, extracted from App.jsx (E-9).
+// Shadow-report data fetching, extracted from App.jsx (E-9). Originally scoped to the /model
+// ReportPage; that page was deprecated 2026-07-22 (DoThisBanner moved into MakerBoardPage,
+// which is this hook's only consumer now — see project_do_this_banner memory).
 //
-// Now scoped to the daily model report only (MorningBriefing). fetchShadowReport hits
-// `/shadow-report` (bearer-optional — uses the user's cookie session when present so
-// yesterdayRecap is scoped to their tracked picks). `bust=1` forces a fresh regen.
+// fetchShadowReport hits `/shadow-report` (bearer-optional — uses the user's cookie session
+// when present so yesterdayRecap is scoped to their tracked picks). `bust=1` forces a fresh regen.
 export function useReportData() {
   const [shadowReportData, setShadowReportData] = React.useState(null);
   const [shadowReportLoading, setShadowReportLoading] = React.useState(false);

@@ -1,7 +1,8 @@
-// Dated re-check list — shared between ReportPage.jsx (DoThisBanner's tier-4 candidate + the
-// quiet-day "next clock" floor) and MakerBoardPage.jsx (MakerProgress's "next clock" tile).
-// Extracted 2026-07-21 when MakerProgress moved out of ReportPage.jsx to its own page, so both
-// files reference the exact same list instead of drifting copies.
+// Dated re-check list — used by MakerBoardPage.jsx for both DoThisBanner's tier-4 candidate +
+// quiet-day "next clock" floor, and MakerProgress's "next clock" tile. Originally extracted
+// 2026-07-21 when MakerProgress moved out of ReportPage.jsx to its own page (both referenced the
+// same list); DoThisBanner itself moved into MakerBoardPage.jsx 2026-07-22 when ReportPage/the
+// /model route was deprecated.
 //
 // Each entry surfaces as a tier-4 banner candidate once todayPT >= date and keeps surfacing
 // until handled; REMOVE (or re-date, if the window is extended) its entry when the check is

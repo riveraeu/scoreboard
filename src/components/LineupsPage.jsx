@@ -232,7 +232,6 @@ export default function LineupsPage({
   tonightLoading,
   navigateToPlayer,
   navigateToTeam,
-  navigateToModel,
   goBack,
   authEmail,
   logout,
@@ -486,11 +485,6 @@ export default function LineupsPage({
           border: '1px solid #30363d', background: 'transparent', color: '#484f58', fontWeight: 600 }}>
         ← Maker
       </button>
-      <button onClick={() => navigateToModel()}
-        style={{ ...btnSize, borderRadius: 6, cursor: 'pointer',
-          border: '1px solid #30363d', background: 'transparent', color: '#484f58', fontWeight: 600 }}>
-        Report
-      </button>
       {authEmail ? (
         <button onClick={logout}
           style={{ ...btnSize, borderRadius: 6, cursor: 'pointer',
@@ -598,7 +592,6 @@ export default function LineupsPage({
                     trackPlay={trackPlay}
                     untrackPlay={untrackPlay}
                     navigateToPlay={navigateToPlay}
-                    navigateToModel={navigateToModel}
                     expandedPlays={expandedPlays}
                     setExpandedPlays={setExpandedPlays}
                     openPicksDrawer={openPicksDrawer}

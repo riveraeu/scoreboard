@@ -36,7 +36,6 @@ import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_CLIENT as EDGE_GATE } from "../api/l
 // the default landing view (2026-07-21 — taker picks demoted, maker promoted), so it's the one
 // eager import; LineupsPage flipped to lazy since it moved behind the /picks route.
 const TeamPage = React.lazy(() => import('./components/TeamPage.jsx'));
-const ReportPage = React.lazy(() => import('./components/ReportPage.jsx'));
 const AddPickModal = React.lazy(() => import('./components/AddPickModal.jsx'));
 const LineupsPage = React.lazy(() => import('./components/LineupsPage.jsx'));
 
@@ -69,7 +68,7 @@ function App() {
   // expandedPlays / chartMonth live in usePlayerCardState() below.
   // kalshiOdds + kalshiCache live in useKalshiOdds() below (called after safeTab is derived).
   // tonight fetch/poll/visibility state lives in useTonight() — called below after _qualifiedFilter is defined.
-  // teamPage / teamPageData / modelPage / pendingSlug live in useRouting() below.
+  // teamPage / teamPageData / pendingSlug live in useRouting() below.
   // report* + calib* state lives in useReportData() below.
   const {
     activeTab, setActiveTab,
@@ -152,9 +151,8 @@ function App() {
   const {
     teamPage, setTeamPage,
     teamPageData,
-    modelPage,
     picksPage,
-    navigateToTeam, navigateToPlayer, goBack, navigateToModel, navigateToPicks,
+    navigateToTeam, navigateToPlayer, goBack, navigateToPicks,
   } = useRouting({ setPlayer, setQuery, selectPlayerRef });
   const {
     shadowReportData, shadowReportLoading, fetchShadowReport,
@@ -1237,21 +1235,8 @@ function App() {
       </div>
       </div>{/* end top row */}
 
-      {/* Report page — daily model report (MorningBriefing) */}
-      {modelPage && !player && !teamPage && (
-        <React.Suspense fallback={<div style={{textAlign:'center',padding:52,color:'#8b949e',fontSize:13}}>Loading…</div>}>
-        <ReportPage
-          onBack={goBack}
-          shadowReportData={shadowReportData}
-          shadowReportLoading={shadowReportLoading}
-          fetchShadowReport={fetchShadowReport}
-          isLoggedIn={!!authEmail}
-        />
-        </React.Suspense>
-      )}
-
       {/* Team page */}
-      {teamPage && !modelPage && (
+      {teamPage && (
         <React.Suspense fallback={<div style={{textAlign:'center',padding:52,color:'#8b949e',fontSize:13}}>Loading…</div>}>
         <TeamPage
           abbr={teamPage.abbr} sport={teamPage.sport}
@@ -2015,18 +2000,17 @@ function App() {
 
       {/* Maker board — the new default landing page (2026-07-21). Taker picks (LineupsPage)
           demoted to the /picks route below. See project_taker_ui_demotion_2026_07_21 memory. */}
-      {!player && !teamPage && !modelPage && !picksPage && (
+      {!player && !teamPage && !picksPage && (
         <MakerBoardPage
           shadowReportData={shadowReportData}
           shadowReportLoading={shadowReportLoading}
           fetchShadowReport={fetchShadowReport}
           isLoggedIn={!!authEmail}
           navigateToPicks={navigateToPicks}
-          navigateToModel={navigateToModel}
         />
       )}
 
-      {picksPage && !player && !teamPage && !modelPage && (
+      {picksPage && !player && !teamPage && (
         <React.Suspense fallback={<div style={{textAlign:'center',padding:52,color:'#8b949e',fontSize:13}}>Loading…</div>}>
         <LineupsPage
           allTonightPlays={allTonightPlays || []}
@@ -2034,7 +2018,6 @@ function App() {
           tonightLoading={tonightLoading}
           navigateToPlayer={navigateToPlayer}
           navigateToTeam={navigateToTeam}
-          navigateToModel={navigateToModel}
           goBack={goBack}
           authEmail={authEmail}
           logout={logout}
