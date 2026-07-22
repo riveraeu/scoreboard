@@ -586,4 +586,19 @@ export const DISMISSED_SERIES = [
   // tournament). 76 live markets — real depth, revisit as a Phase-2 candidate if a future build
   // cycle needs a target — but no model surface today. windowFit=true is the outright-favorite
   // false positive. DISMISS.
+  // 7/22 triage (26 detected, 2 not listed below — see NOTE): sibling market-type tickers
+  // (BTTS/spread/total/advance/1H-*) for leagues whose GAME (moneyline) ticker was already
+  // dismissed 7/21 — same root cause (no club Elo coverage) applies regardless of market type.
+  "KXARGNACBADVANCE", "KXARGNACBBTTS", "KXARGNACBSPREAD", "KXARGNACBTOTAL", // see KXARGNACBGAME.
+  "KXASEANADVANCE", "KXASEANBTTS", "KXASEANSPREAD", "KXASEANTOTAL", // see KXASEANGAME.
+  "KXCLUBFBTTS", "KXCLUBFSPREAD", "KXCLUBFTOTAL", // see KXCLUBFGAME.
+  "KXLIGAEXP1H", "KXLIGAEXP1HBTTS", "KXLIGAEXP1HSPREAD", "KXLIGAEXP1HTOTAL",
+  "KXLIGAEXPADVANCE", "KXLIGAEXPBTTS", "KXLIGAEXPSPREAD", "KXLIGAEXPTEAMTOTAL", "KXLIGAEXPTOTAL", // see KXLIGAEXPGAME.
+  "KXSCOCUPADVANCE", "KXSCOCUPBTTS", // see KXSCOCUPGAME.
+  "KXNBANEXTCONTRACT", "KXNBANEXTTEAMOUTLET", // contract-value / news-outlet futures — same
+  // news/insider-driven, no-model-surface class as KXNBANEXTTEAM. DISMISS.
+  // NOTE: KXNFLTSPEC (single-game TD-threshold prop, e.g. "3+ TDs") NOT dismissed — maps onto the
+  // already-adopted KXNFLTDS touchdowns stat, just a higher threshold rung. Shortlisted instead,
+  // pending a SERIES_CONFIG wiring decision (does the existing hit-rate model extend to 3+ cleanly,
+  // or does it need its own calibration track).
 ];

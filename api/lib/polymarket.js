@@ -40,6 +40,11 @@ export const POLY_DISMISSED_SPORTS = [
   // the 7/04 kill (no active build target). DISMISS all.
   "chfa", "czechligapro", "pol", "sclc", "setkamecz", "setkamemd", "setkameua", "setkawoua",
   "sui", "ttchallenger", "ttcup", "ttelite", "uslc",
+  // 7/22 triage (3 detected): cricket (The Hundred, men's + women's) and cycling (Tour de France
+  // margin of victory) — no rating/model source in our stack (same class as the Kalshi-side
+  // KXCLUBFGAME/cycling dismissals), and Polymarket is observatory-only since the 7/04 kill
+  // regardless. DISMISS all.
+  "crichundred", "crichundredw", "cycling",
 ];
 
 // Gamma league catalog (GET /sports): ~300 rows of { sport: slug, series: id, tags, ... }. The
