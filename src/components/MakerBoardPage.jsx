@@ -534,6 +534,41 @@ function ArmTile({ mb }) {
   );
 }
 
+// V2 (real capital) equivalent of ArmTile — same shape/color doctrine, sourced from
+// makerBoard.live (mb.live) instead of mb.fills. Trial target is MAKER_V2_TRIAL_N graded
+// fills (see the DoThisBanner tier 1.8/1.9 logic above, which this mirrors so the two
+// surfaces never disagree on "cleared" vs "underperforming").
+function LiveArmTile({ mb }) {
+  const live = mb?.live || {};
+  const graded = live.graded || 0;
+  const pct = Math.min(100, graded / MAKER_V2_TRIAL_N * 100);
+  const trialDone = graded >= MAKER_V2_TRIAL_N;
+  const ok = (live.pnlLoCI ?? -1) > 0;
+  const [color, phase] = graded < 5 || live.pnlLoCI == null ? [C.dim, "accruing"]
+    : ok ? [C.green, "on track"]
+    : (live.avgPnlCents ?? 0) > 0 ? [C.amber, "CI straddles 0"]
+    : [C.red, "negative"];
+  const armed = trialDone && ok;
+  return (
+    <div style={{ flex:"1.6 1 0", background:C.card, border:`1px solid ${armed ? C.green : trialDone ? C.red : C.border}`, borderRadius:6, padding:"8px 10px", minWidth:150 }}>
+      <div style={{ color, fontSize:22, fontWeight:700, lineHeight:1, fontVariantNumeric:"tabular-nums" }}>
+        {live.avgPnlCents != null ? `${live.avgPnlCents > 0 ? "+" : ""}${live.avgPnlCents}¢` : "—"}
+        <span style={{ fontSize:11, fontWeight:400, color:C.gray, marginLeft:6 }}>
+          {live.avgPnlCents != null
+            ? `/contract${live.pnlLoCI != null ? ` · CI-lo ${live.pnlLoCI > 0 ? "+" : ""}${live.pnlLoCI}` : ""}`
+            : "awaiting first graded fills"}
+        </span>
+      </div>
+      <div style={{ color: armed ? C.green : trialDone ? C.red : C.dim, fontSize:9, fontWeight:700, textTransform:"uppercase", letterSpacing:0.4, margin:"4px 0 5px" }}>
+        {trialDone ? (ok ? "ARM CRITERION MET (V2 trial)" : "TRIAL UNDERPERFORMING") : `real capital · ${phase} · ${graded}/${MAKER_V2_TRIAL_N} graded fills`}
+      </div>
+      <div style={{ height:4, background:C.border, borderRadius:2, overflow:"hidden" }} title={`${graded}/${MAKER_V2_TRIAL_N} graded fills toward the sizing decision`}>
+        <div style={{ width:`${pct}%`, height:"100%", background:color }} />
+      </div>
+    </div>
+  );
+}
+
 // Cumulative graded paper PnL by day. Single series → one hue, no legend; the section
 // title names it. Zero baseline; per-point tooltip; the current value is the one direct label.
 function EquityCurve({ daily }) {
@@ -614,7 +649,7 @@ function MakerProgress({ mb }) {
     ? Math.round((f.sideWonRate - qo.sideWonRate) * 1000) / 10 : null;
   return (
     <div style={{ marginBottom:12 }}>
-      <div style={{ ...sectionHead, borderTop:"none", paddingTop:0, marginTop:8 }}>Shadow maker V1 · simulated favorite-ask quoting</div>
+      <div style={sectionHead}>Shadow maker V1 · simulated favorite-ask quoting</div>
       <div style={{ display:"flex", gap:8, marginBottom:10, flexWrap:"wrap" }}>
         <ArmTile mb={mb} />
         <Tile label="fill rate" value={fillRate != null ? `${fillRate}%` : "—"} color={C.text}
@@ -778,17 +813,19 @@ export default function MakerBoardPage({ shadowReportData, shadowReportLoading, 
           {shadowReportLoading && !shadowReportData ? (
             <div style={{ color:C.dim, fontSize:12, padding:12 }}>Generating report…</div>
           ) : (
-            <>
-              <DoThisBanner d={shadowReportData} />
-              <MakerProgress mb={shadowReportData?.makerBoard} />
-            </>
+            <DoThisBanner d={shadowReportData} />
           )}
 
-          <div style={sectionHead}>Live orders (V2 · real capital) {boardData?.armed
+          <div style={{ ...sectionHead, borderTop:"none", paddingTop:0, marginTop:8 }}>Live orders (V2 · real capital) {boardData?.armed
             ? <span style={{ color:C.green }}>· ARMED</span>
             : <span style={{ color:C.dim }}>· disarmed</span>}
           </div>
+          <div style={{ display:"flex", gap:8, marginBottom:10, flexWrap:"wrap" }}>
+            <LiveArmTile mb={shadowReportData?.makerBoard} />
+          </div>
           <MakerLiveOrders orders={boardData?.orders} />
+
+          {!(shadowReportLoading && !shadowReportData) && <MakerProgress mb={shadowReportData?.makerBoard} />}
 
           <div style={sectionHead}>Utilization by sport</div>
           <MakerUtilization eligibleBySport={boardData?.eligibleBySport} orders={boardData?.orders} caps={boardData?.caps} />
