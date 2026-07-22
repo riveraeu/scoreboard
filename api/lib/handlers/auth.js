@@ -1022,6 +1022,24 @@ ORDER BY COUNT(*) DESC`;
       });
     }
 
+    // Coverage by (sport, category) — segments quoted vs fills landed vs graded, ungated by n.
+    // Answers "does this category even generate maker-eligible volume at all" (e.g. moneylines,
+    // to assess a Polymarket port whose only comparable coverage is ML).
+    if (params.get("makerCategoryCoverage")) {
+      let rows;
+      try {
+        rows = await neonQuery(`
+          SELECT q.sport, q.category, COUNT(DISTINCT q.id) AS segments,
+            COUNT(mf.id) AS fills, COUNT(mf.graded_at) AS graded
+          FROM maker_quotes q LEFT JOIN maker_fills mf ON mf.quote_id = q.id
+          GROUP BY q.sport, q.category ORDER BY segments DESC`, [], env);
+      } catch (e) { return errorResponse(`Neon query failed: ${e.message}`, 500); }
+      return jsonResponse({
+        rows: (rows || []).map(r => ({ sport: r.sport, category: r.category,
+          segments: Number(r.segments), fills: Number(r.fills), graded: Number(r.graded) })),
+      });
+    }
+
     // CLV-capture rate per snapshot_date (the cohort pregame-snap actually targets — see
     // shadow.js dataHealth). Diagnostic for "is ~30% daily capture chronic or a dip?" — if it's
     // flat across days the warn threshold (not the pipeline) is what's miscalibrated.
