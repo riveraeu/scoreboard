@@ -894,6 +894,47 @@ ORDER BY COUNT(*) DESC`;
       .toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
     const since = params.get("since") || sinceDefault;
 
+    // Repeat-fill diagnostic (2026-07-21): the maker engines (V1 sim + V2 real) re-quote a ticker
+    // every cycle as long as it stays eligible, with no cap on CUMULATIVE fills on one ticker
+    // within a session (MAKER_V2_SAME_GAME_CAP only bounds concurrently-resting orders). Ordering
+    // V1's graded maker_fills by traded_at within (ticker, game_date) and bucketing by visit
+    // number answers whether repeat fills on the same market carry the same edge as the first, or
+    // decay/reverse (adverse selection as the market's information state moves).
+    if (params.get("makerStacking")) {
+      let seqRows, topStacks;
+      try {
+        seqRows = await neonQuery(`
+          WITH f AS (
+            SELECT mf.id, mf.pnl_cents, mf.side_won,
+                   ROW_NUMBER() OVER (PARTITION BY mf.ticker, q.game_date ORDER BY mf.traded_at) AS seq
+            FROM maker_fills mf JOIN maker_quotes q ON q.id = mf.quote_id
+            WHERE mf.graded_at IS NOT NULL
+          )
+          SELECT CASE WHEN seq = 1 THEN '1st' WHEN seq = 2 THEN '2nd' WHEN seq = 3 THEN '3rd' ELSE '4th+' END AS bucket,
+                 MIN(seq) AS seq_min, COUNT(*) AS n,
+                 ROUND(AVG(pnl_cents)::numeric, 2) AS avg_pnl_cents,
+                 ROUND(AVG(CASE WHEN side_won THEN 1.0 ELSE 0.0 END)::numeric, 4) AS win_rate
+          FROM f GROUP BY bucket ORDER BY seq_min`, [], env);
+        topStacks = await neonQuery(`
+          SELECT q.ticker, q.game_date, q.sport, q.category, COUNT(*) AS n_fills,
+                 ROUND(AVG(mf.pnl_cents)::numeric, 2) AS avg_pnl, SUM(mf.pnl_cents) AS total_pnl_cents
+          FROM maker_fills mf JOIN maker_quotes q ON q.id = mf.quote_id
+          WHERE mf.graded_at IS NOT NULL
+          GROUP BY q.ticker, q.game_date, q.sport, q.category
+          HAVING COUNT(*) >= 3
+          ORDER BY n_fills DESC LIMIT 20`, [], env);
+      } catch (e) { return errorResponse(`Neon query failed: ${e.message}`, 500); }
+      return jsonResponse({
+        note: "bucket = visit number of a graded fill on the same (ticker, game_date); n_fills>=3 tickers are the stacking cases",
+        bySequence: (seqRows || []).map(r => ({ bucket: r.bucket, n: Number(r.n),
+          avgPnlCents: r.avg_pnl_cents != null ? Number(r.avg_pnl_cents) : null,
+          winRate: r.win_rate != null ? Number(r.win_rate) : null })),
+        topStackedTickers: (topStacks || []).map(r => ({ ticker: r.ticker,
+          gameDate: new Date(r.game_date).toISOString().slice(0, 10), sport: r.sport, category: r.category,
+          nFills: Number(r.n_fills), avgPnlCents: Number(r.avg_pnl), totalPnlCents: Number(r.total_pnl_cents) })),
+      });
+    }
+
     // CLV-capture rate per snapshot_date (the cohort pregame-snap actually targets — see
     // shadow.js dataHealth). Diagnostic for "is ~30% daily capture chronic or a dip?" — if it's
     // flat across days the warn threshold (not the pipeline) is what's miscalibrated.
