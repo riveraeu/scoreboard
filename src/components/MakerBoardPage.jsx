@@ -569,6 +569,17 @@ function LiveArmTile({ mb }) {
   );
 }
 
+// V2 equivalent of V1's "fill rate" tile: what fraction of placed real orders actually
+// filled (vs resting/canceled/expired), out of everything ever placed since `since`.
+function LiveFillRateTile({ mb }) {
+  const live = mb?.live || {};
+  const rate = live.orders ? Math.round(live.executed / live.orders * 1000) / 10 : null;
+  return (
+    <Tile label="fill rate" value={rate != null ? `${rate}%` : "—"} color={C.text}
+      sub={`${live.executed ?? 0} executed / ${live.orders ?? 0} placed · ${live.resting ?? 0} resting`} />
+  );
+}
+
 // Cumulative graded paper PnL by day. Single series → one hue, no legend; the section
 // title names it. Zero baseline; per-point tooltip; the current value is the one direct label.
 function EquityCurve({ daily }) {
@@ -822,7 +833,10 @@ export default function MakerBoardPage({ shadowReportData, shadowReportLoading, 
           </div>
           <div style={{ display:"flex", gap:8, marginBottom:10, flexWrap:"wrap" }}>
             <LiveArmTile mb={shadowReportData?.makerBoard} />
+            <LiveFillRateTile mb={shadowReportData?.makerBoard} />
           </div>
+          <div style={{ color:C.dim, fontSize:9, fontWeight:700, margin:"6px 0 2px" }}>REAL EQUITY · CUMULATIVE GRADED PNL</div>
+          <EquityCurve daily={shadowReportData?.makerBoard?.live?.daily} />
           <MakerLiveOrders orders={boardData?.orders} />
 
           {!(shadowReportLoading && !shadowReportData) && <MakerProgress mb={shadowReportData?.makerBoard} />}

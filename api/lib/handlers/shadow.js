@@ -2834,9 +2834,9 @@ async function handleShadowReport({ path, request, env, cache }) {
   // separate try/catch so a maker_orders_v2-not-yet-created error (V2 never armed) never takes
   // down the V1 makerBoard above. Empty/zeroed until armed.
   if (makerBoard) {
-    makerBoard.live = { orders: 0, resting: 0, executed: 0, graded: 0, avgPnlCents: null, pnlLoCI: null, armed: false };
+    makerBoard.live = { orders: 0, resting: 0, executed: 0, graded: 0, avgPnlCents: null, pnlLoCI: null, armed: false, daily: [] };
     try {
-      const [[lo], armedNow] = await Promise.all([
+      const [[lo], armedNow, _mLiveDaily] = await Promise.all([
         neonQuery(`
           SELECT COUNT(*)::int AS orders,
             COUNT(*) FILTER (WHERE status = 'resting')::int AS resting,
@@ -2846,6 +2846,15 @@ async function handleShadowReport({ path, request, env, cache }) {
             ROUND(STDDEV_SAMP(pnl_cents) FILTER (WHERE graded_at IS NOT NULL), 2) AS sd_pnl
           FROM maker_orders_v2 WHERE game_date >= $1`, [since], env, { write: true }),
         isMakerV2Armed(env, cache).catch(() => false),
+        // Real-capital equity curve — mirrors V1's daily fill series, keyed the same way
+        // (game_date, not placed_at, so a late-night PT fill lands on the game's own day).
+        neonQuery(`
+          SELECT game_date AS day, COUNT(*)::int AS fills,
+            COALESCE(SUM(size), 0) AS contracts,
+            COUNT(*) FILTER (WHERE graded_at IS NOT NULL)::int AS graded,
+            COALESCE(SUM(pnl_cents * size) FILTER (WHERE graded_at IS NOT NULL), 0) AS pnl_total
+          FROM maker_orders_v2 WHERE game_date >= $1 AND status = 'executed'
+          GROUP BY game_date ORDER BY game_date`, [since], env, { write: true }),
       ]);
       const gradedV2 = Number(lo?.graded || 0);
       const avgPnlV2 = lo?.avg_pnl != null ? Number(lo.avg_pnl) : null;
@@ -2856,6 +2865,11 @@ async function handleShadowReport({ path, request, env, cache }) {
         orders: Number(lo?.orders || 0), resting: Number(lo?.resting || 0),
         executed: Number(lo?.executed || 0), graded: gradedV2,
         avgPnlCents: avgPnlV2, pnlLoCI: pnlLoCIV2, armed: !!armedNow,
+        daily: (_mLiveDaily || []).map(r => ({
+          day: String(r.day).slice(0, 10), fills: Number(r.fills || 0),
+          contracts: Number(r.contracts || 0), graded: Number(r.graded || 0),
+          pnlTotal: parseFloat(Number(r.pnl_total || 0).toFixed(1)),
+        })),
       };
     } catch (e) { console.error("[shadow-report] maker live board skipped (likely never armed):", e?.message); }
   }
