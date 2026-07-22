@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { isArmed, setArmed, gameKeyFor } from "./maker-live.js";
+import { isArmed, setArmed, gameKeyFor, sellAsBuy } from "./maker-live.js";
 
 // Fake KV — just enough of the { get, put } contract used by isArmed/setArmed.
 function fakeCache(initial = null) {
@@ -58,4 +58,23 @@ test("gameKeyFor: different games produce different keys", () => {
 test("gameKeyFor: missing team fields don't throw", () => {
   assert.doesNotThrow(() => gameKeyFor({}));
   assert.doesNotThrow(() => gameKeyFor(null));
+});
+
+test("sellAsBuy: flips side and complements price", () => {
+  assert.deepEqual(sellAsBuy("yes", 83), { side: "no", price: 17 });
+  assert.deepEqual(sellAsBuy("no", 80), { side: "yes", price: 20 });
+});
+
+test("sellAsBuy: settlement-equivalent to actually selling `side` at `askCents` (2026-07-21 bug — V2 was buying the side computeMakerQuote meant to sell)", () => {
+  for (const [side, ask] of [["yes", 83], ["no", 80], ["yes", 97], ["no", 55]]) {
+    const buy = sellAsBuy(side, ask);
+    // Sell `side`@ask: side wins -> ask-100 (owe the payout), side loses -> +ask (keep premium).
+    const sellPnlIfSideWon = ask - 100;
+    const sellPnlIfSideLost = ask;
+    // Buy buy.side@buy.price: wins (buy.side happens, i.e. `side` LOST) -> 100-price, loses -> -price.
+    const buyPnlIfBuySideWon = 100 - buy.price;
+    const buyPnlIfBuySideLost = -buy.price;
+    assert.equal(buyPnlIfBuySideWon, sellPnlIfSideLost, `${side}@${ask}: side loses <-> complementary buy wins`);
+    assert.equal(buyPnlIfBuySideLost, sellPnlIfSideWon, `${side}@${ask}: side wins <-> complementary buy loses`);
+  }
 });

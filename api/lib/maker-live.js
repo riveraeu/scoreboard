@@ -42,6 +42,16 @@ export async function setArmed(cache, armed) {
   await cache.put(ARMED_KV_KEY, { armed: !!armed, at: new Date().toISOString() });
 }
 
+// computeMakerQuote (shared with V1) returns "sell `side` at `askCents`" — the validated
+// favorite-fade strategy (maker.js: "A maker SELLING the favorite side... captures that
+// richness"). Kalshi has no sell-to-open order type (V2's own comment in handlers/kalshi.js:
+// "bid = buy YES, ask = sell YES — and selling YES you don't hold IS the NO buy"), so
+// placeKalshiOrder is buy-only. This expresses the sell as a buy of the complementary contract
+// at the complementary price — settlement-equivalent (sell yes@P === buy no@(100-P)). Only the
+// real order call goes through this; q.side/q.ask stay the sold side/price everywhere else
+// (DB storage, grading, cancel/reprice diffing).
+export const sellAsBuy = (side, askCents) => ({ side: side === "yes" ? "no" : "yes", price: 100 - askCents });
+
 // Same-game correlation key (sport|date|sorted-team-pair) — order-independent so ticker home/
 // away order (which CLAUDE.md notes never matches ESPN) can't split one game into two buckets.
 export const gameKeyFor = (row) =>
@@ -196,8 +206,9 @@ export async function updateLiveMakerOrders({ snapResults, staging, snapshotDate
     const gameCount = gameCounts.get(gk) || 0;
     if (globalCount >= MAKER_V2_MAX_CONCURRENT || gameCount >= MAKER_V2_SAME_GAME_CAP) { capped++; continue; }
     const expirationTime = Math.floor(nowMs / 1000) + MAKER_V2_EXPIRATION_SEC;
+    const buyOrder = sellAsBuy(q.side, q.ask);
     const res = await placeKalshiOrder(
-      { ticker, side: q.side, price: q.ask, count: MAKER_V2_SIZE, expirationTime }, env
+      { ticker, side: buyOrder.side, price: buyOrder.price, count: MAKER_V2_SIZE, expirationTime }, env
     ).catch(e => ({ ok: false, error: String(e?.message || e) }));
     if (!res.ok) { errors++; console.error(`[maker-live] place ${ticker} failed: ${res.error}`); continue; }
     const filled = res.fillCount || 0;
