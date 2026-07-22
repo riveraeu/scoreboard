@@ -935,6 +935,93 @@ ORDER BY COUNT(*) DESC`;
       });
     }
 
+    // Untouched-market discovery (2026-07-21): lists live open markets for ONE Kalshi series,
+    // flagging which tickers the maker engines have NEVER quoted (today or any prior day, across
+    // both maker_quotes/V1 and maker_orders_v2/V2) — so book-depth checks can sample native,
+    // uncontaminated order books instead of ones our own resting orders have already shaped.
+    // Runs server-side because Kalshi's API is unreachable from some dev networks directly.
+    if (params.get("makerUntouched")) {
+      const seriesTicker = params.get("makerUntouched");
+      let kMarkets;
+      try {
+        const r = await fetch(
+          `https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=${encodeURIComponent(seriesTicker)}&limit=1000&status=open`,
+          { headers: { "User-Agent": "Mozilla/5.0", Accept: "application/json" }, signal: AbortSignal.timeout(8000) });
+        if (!r.ok) return errorResponse(`Kalshi error ${r.status}`, 502);
+        kMarkets = (await r.json())?.markets || [];
+      } catch (e) { return errorResponse(`Kalshi fetch failed: ${e?.message || e}`, 502); }
+
+      let touched;
+      try {
+        const [q1, q2] = await Promise.all([
+          neonQuery(`SELECT DISTINCT ticker FROM maker_quotes WHERE ticker = ANY($1::text[])`,
+            [kMarkets.map(m => m.ticker)], env),
+          neonQuery(`SELECT DISTINCT ticker FROM maker_orders_v2 WHERE ticker = ANY($1::text[])`,
+            [kMarkets.map(m => m.ticker)], env).catch(() => []),
+        ]);
+        touched = new Set([...q1, ...q2].map(r => r.ticker));
+      } catch (e) { return errorResponse(`Neon query failed: ${e.message}`, 500); }
+
+      const untouched = kMarkets
+        .filter(m => !touched.has(m.ticker))
+        .map(m => ({
+          ticker: m.ticker,
+          yesAsk: Math.round((parseFloat(m.yes_ask_dollars) || 0) * 100),
+          yesBid: Math.round((parseFloat(m.yes_bid_dollars) || 0) * 100),
+          noAsk: Math.round((parseFloat(m.no_ask_dollars) || 0) * 100),
+          noBid: Math.round((parseFloat(m.no_bid_dollars) || 0) * 100),
+          volume: parseInt(m.volume_fp) || parseInt(m.volume) || 0,
+          closeTime: m.close_time,
+        }));
+      return jsonResponse({ seriesTicker, totalOpen: kMarkets.length, touchedCount: touched.size,
+        untouchedCount: untouched.length, untouched });
+    }
+
+    // Fill PnL by (sport, category, 5c price band) — richer cut than the pooled bands in
+    // shadow-report's makerBoard (which pool ALL categories together). Answers "is there a best
+    // price to quote at, per market type" using realized V1 fills rather than raw CLV drift.
+    if (params.get("makerPriceByCategory")) {
+      let rows;
+      try {
+        rows = await neonQuery(`
+          SELECT q.sport, q.category,
+            (FLOOR(mf.fill_ask / 5) * 5)::int AS price_band,
+            COUNT(*) AS n,
+            ROUND(AVG(mf.pnl_cents)::numeric, 2) AS avg_pnl_cents,
+            ROUND(AVG(CASE WHEN mf.side_won THEN 1.0 ELSE 0.0 END)::numeric, 4) AS win_rate
+          FROM maker_fills mf JOIN maker_quotes q ON q.id = mf.quote_id
+          WHERE mf.graded_at IS NOT NULL
+          GROUP BY q.sport, q.category, price_band
+          HAVING COUNT(*) >= 5
+          ORDER BY q.sport, q.category, price_band`, [], env);
+      } catch (e) { return errorResponse(`Neon query failed: ${e.message}`, 500); }
+      return jsonResponse({
+        note: "price_band = floor(fill_ask/5)*5; n>=5 only",
+        rows: (rows || []).map(r => ({ sport: r.sport, category: r.category, priceBand: r.price_band,
+          n: Number(r.n), avgPnlCents: Number(r.avg_pnl_cents), winRate: Number(r.win_rate) })),
+      });
+    }
+
+    // Intraday quote-price path for ONE ticker — every maker_quotes segment (V1) ordered by
+    // valid_from, showing how the resting price we'd post tracked the underlying Kalshi ask
+    // across the day (repriced whenever the favorite-side ask moved, per updateMakerQuotes).
+    if (params.get("makerPricePath")) {
+      const ticker = params.get("makerPricePath");
+      let rows;
+      try {
+        rows = await neonQuery(`
+          SELECT quote_side, quote_ask, book_yes_ask, book_yes_bid, book_no_ask, book_no_bid,
+                 valid_from, valid_to
+          FROM maker_quotes WHERE ticker = $1 ORDER BY valid_from`, [ticker], env);
+      } catch (e) { return errorResponse(`Neon query failed: ${e.message}`, 500); }
+      return jsonResponse({
+        ticker, nSegments: (rows || []).length,
+        path: (rows || []).map(r => ({ side: r.quote_side, ask: Number(r.quote_ask),
+          bookYesAsk: r.book_yes_ask, bookYesBid: r.book_yes_bid, bookNoAsk: r.book_no_ask, bookNoBid: r.book_no_bid,
+          validFrom: r.valid_from, validTo: r.valid_to })),
+      });
+    }
+
     // CLV-capture rate per snapshot_date (the cohort pregame-snap actually targets — see
     // shadow.js dataHealth). Diagnostic for "is ~30% daily capture chronic or a dip?" — if it's
     // flat across days the warn threshold (not the pipeline) is what's miscalibrated.
