@@ -262,7 +262,7 @@ function _doThisCandidates(d) {
         short:"V2: verify + arm" });
     } else if (live.armed && (live.graded || 0) < MAKER_V2_TRIAL_N) {
       out.push({ tier:1.8, tone:"blue", label:`Shadow maker V2 trial running — ${live.graded || 0}/${MAKER_V2_TRIAL_N} graded fills`,
-        why:`Live resting orders are armed and accruing (${live.resting || 0} resting, ${live.executed || 0} executed). Let the trial run to ${MAKER_V2_TRIAL_N} graded fills before deciding on sizing.`,
+        why:`Let the trial run to ${MAKER_V2_TRIAL_N} graded fills before deciding on sizing — resting/executed counts and live PnL are in the tiles below.`,
         short:"V2 trial running" });
     } else if (live.armed && (live.graded || 0) >= MAKER_V2_TRIAL_N) {
       const ok = (live.pnlLoCI ?? -1) > 0;
@@ -270,7 +270,7 @@ function _doThisCandidates(d) {
         label: ok
           ? `Shadow maker V2 trial cleared — ${live.graded} graded, CI-lo +${live.pnlLoCI}¢ — decide on scaling size`
           : `Shadow maker V2 trial underperforming — ${live.graded} graded, CI-lo ${live.pnlLoCI}¢ — investigate or kill`,
-        why:`Live avg ${live.avgPnlCents > 0 ? "+" : ""}${live.avgPnlCents}¢/contract, CI-lo ${live.pnlLoCI > 0 ? "+" : ""}${live.pnlLoCI}¢ at n=${live.graded}. Compare against V1 shadow expectations before touching MAKER_V2_SIZE.`,
+        why:"Compare against V1 shadow expectations before touching MAKER_V2_SIZE — per-contract PnL/CI detail is in the tile below.",
         short: ok ? "V2 trial: scale?" : "V2 trial: investigate" });
     }
   } else if ((mb?.fills?.graded || 0) >= (mb?.armCriterion?.minFills ?? 200) && (mb?.fills?.pnlLoCI ?? -1) > 0) {
