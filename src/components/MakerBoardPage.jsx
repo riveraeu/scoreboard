@@ -724,14 +724,16 @@ function MakerLiveOrders({ orders }) {
     return <div style={{ color:C.dim, fontSize:10, padding:"6px 0" }}>No live orders yet — appears once V2 is armed and a quote fills or rests.</div>;
   }
 
-  // Rank "something just happened" (a fill just graded, an order just got repriced/canceled)
-  // above plain still-resting rows, which in turn rank above older inert history — so a quiet
-  // stretch still shows resting first (the old behavior), but a fresh grade/cancel doesn't get
-  // buried under a wall of identical resting rows.
+  // Rank a just-graded fill (a real resolved win/loss) above plain still-resting rows, which
+  // in turn rank above everything else — so a quiet stretch looks like the old behavior
+  // (resting first), but a fresh grade doesn't get buried. Canceled/expired do NOT get a
+  // recency bump: V2 cancels resting orders routinely as part of ordinary repricing, so
+  // "recently canceled" is high-volume noise, not a notable event — bumping it (as an earlier
+  // version of this did) buried the actual resting book under a wall of cancel rows.
   const now = Date.now();
   const isRecent = ts => ts && (now - new Date(ts).getTime()) < MAKER_ORDER_RECENT_MS;
   const scored = orders.map(o => {
-    const score = isRecent(o.gradedAt) ? 0 : isRecent(o.canceledAt) ? 1 : o.status === "resting" ? 2 : 3;
+    const score = isRecent(o.gradedAt) ? 0 : o.status === "resting" ? 1 : 2;
     const tieT = new Date(o.gradedAt || o.canceledAt || o.placedAt).getTime();
     return { o, score, tieT };
   }).sort((a, b) => a.score - b.score || b.tieT - a.tieT);
