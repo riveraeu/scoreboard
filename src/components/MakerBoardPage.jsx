@@ -582,6 +582,11 @@ function LiveFillRateTile({ mb }) {
 
 // Cumulative graded paper PnL by day. Single series → one hue, no legend; the section
 // title names it. Zero baseline; per-point tooltip; the current value is the one direct label.
+// Cumulative totals display in dollars (matches the $-formatting idiom used for pick P/L
+// elsewhere — MyPicksColumn/DayBar); per-contract rates stay in cents everywhere else, since
+// cents is the native Kalshi quoting unit and a running total in cents gets unreadable fast.
+const fmtUsdFromCents = c => `${c >= 0 ? "+" : ""}$${Math.abs(c / 100).toFixed(2)}`;
+
 function EquityCurve({ daily }) {
   const pts = [];
   let cum = 0;
@@ -592,7 +597,7 @@ function EquityCurve({ daily }) {
   }
   if (pts.length < 2) {
     return <div style={{ color:C.dim, fontSize:10, padding:"10px 0" }}>
-      Paper equity curve appears once graded fills span two days{pts.length === 1 ? ` — day 1: ${pts[0].cum > 0 ? "+" : ""}${pts[0].cum}¢` : ""}.
+      Paper equity curve appears once graded fills span two days{pts.length === 1 ? ` — day 1: ${fmtUsdFromCents(pts[0].cum)}` : ""}.
     </div>;
   }
   const W = 560, H = 90, P = 8;
@@ -608,12 +613,12 @@ function EquityCurve({ daily }) {
       <path d={path} fill="none" stroke={C.blue} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
       {pts.map((p, i) => (
         <circle key={p.day} cx={xs(i)} cy={ys(p.cum)} r="3.5" fill={C.blue} stroke={C.bg} strokeWidth="2">
-          <title>{`${p.day}: ${p.cum > 0 ? "+" : ""}${p.cum}¢ cumulative`}</title>
+          <title>{`${p.day}: ${fmtUsdFromCents(p.cum)} cumulative`}</title>
         </circle>
       ))}
       <text x={Math.min(xs(pts.length - 1), W - P - 4)} y={Math.max(12, ys(last.cum) - 8)}
         textAnchor="end" fill={C.text} fontSize="11" fontWeight="700">
-        {last.cum > 0 ? "+" : ""}{last.cum}¢
+        {fmtUsdFromCents(last.cum)}
       </text>
     </svg>
   );
