@@ -64,6 +64,11 @@ export const SCHEDULED_CHECKPOINTS = [
   // gap as MLS though: no shadow-snapshot cron pass has run since ship. [[project_brasileirao_build_2026_07_23]]
   { date: "2026-07-25", tone: "blue", label: "Confirm Brasileirão rows land in shadow_plays", short: "Brasileirão DB-write check",
     why: "Shipped 7/23, live-verified at the KV-staging level (36/36 rows, real gameTime/kalshiTicker, correct home/away/tie parsing) but no shadow-snapshot cron pass has run yet — check shadow_plays WHERE sport='brasileirao' (via /api/auth/shadow-stats) after the next 1-2 days of games resolve" },
+  // NWSL (KXNWSLGAME) shipped 2026-07-23 as the 3rd model-free maker market — live-verified via
+  // /api/tonight?debug=1 (21/21 rows, real gameTime, correct parsing including KC's 2-char abbr)
+  // same day. Same DB-write gap as MLS/Brasileirão. [[project_nwsl_build_2026_07_23]]
+  { date: "2026-07-25", tone: "blue", label: "Confirm NWSL rows land in shadow_plays", short: "NWSL DB-write check",
+    why: "Shipped 7/23, live-verified at the KV-staging level (21/21 rows, real gameTime/kalshiTicker, correct home/away/tie parsing) but no shadow-snapshot cron pass has run yet — check shadow_plays WHERE sport='nwsl' (via /api/auth/shadow-stats) after the next 1-2 days of games resolve. Also: Angel City FC/Racing Louisville aren't in the registry yet (no live Kalshi ticker seen as of ship date) — add their Kalshi abbr once one appears" },
   // Kalshi-settlement-based grading built as a DRY-RUN comparison pass 2026-07-23 (new
   // kalshi_ticker/kalshi_side columns, api/lib/kalshi-settlement.js) — logs agreement against the
   // existing ESPN resolvers but writes nothing. kalshi_ticker only populates on rows written after
