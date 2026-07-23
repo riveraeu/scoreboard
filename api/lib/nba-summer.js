@@ -138,3 +138,53 @@ export async function fetchSlResults(dateStr) {
   }
   return out;
 }
+
+// ── Schedule (any status, for a real gameTime) ───────────────────────────────
+// Every event on the scoreboard (played or not) → [{ date (PT), gameTime (ISO tip-off), home,
+// away }] canonical abbrs — unlike parseSlEvents above (which requires `completed` for the Elo
+// build/resolver), this keeps not-yet-played games since the emit path needs an upcoming
+// tip-off time before the result exists. Found 2026-07-23: computeMakerQuote (maker.js)
+// requires a real future stagingRow.gameTime, but this module was hardcoding gameTime:null
+// despite ev.date carrying exactly that on the same scoreboard fetch used for the Elo build.
+export function parseSlSchedule(events) {
+  const out = [];
+  for (const ev of (events || [])) {
+    const comp = ev?.competitions?.[0];
+    const home = comp?.competitors?.find((c) => c.homeAway === "home");
+    const away = comp?.competitors?.find((c) => c.homeAway === "away");
+    const hAbbr = slCanonTeam(home?.team?.abbreviation || "");
+    const aAbbr = slCanonTeam(away?.team?.abbreviation || "");
+    if (!hAbbr || !aAbbr) continue;
+    out.push({ date: _ptDate(ev.date), gameTime: ev.date || null, home: hAbbr, away: aAbbr });
+  }
+  return out;
+}
+
+// Same 2-day-window idiom as fetchSlResults, keyed the same way, but keeps every game.
+export async function fetchSlSchedule(dateStr) {
+  if (!dateStr || dateStr.length !== 8) return {};
+  const target = `${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`;
+  const next = new Date(Date.UTC(+dateStr.slice(0, 4), +dateStr.slice(4, 6) - 1, +dateStr.slice(6, 8) + 1));
+  const nextYmd = `${next.getUTCFullYear()}${String(next.getUTCMonth() + 1).padStart(2, "0")}${String(next.getUTCDate()).padStart(2, "0")}`;
+  const games = parseSlSchedule(await _slScoreboard(`${dateStr}-${nextYmd}`));
+  const out = {};
+  for (const g of games) {
+    if (g.date !== target) continue;
+    out[[g.home, g.away].sort().join("|")] = g;
+  }
+  return out;
+}
+
+// Fetch + KV-cache one date's schedule (30min TTL — same idiom as mls.js's getMlsSchedule).
+export async function getSlSchedule({ dateStr, cache, isBustCache } = {}) {
+  if (!dateStr) return {};
+  const key = `nbasl:schedule:${dateStr}`;
+  if (cache && !isBustCache) {
+    try { const hit = await cache.get(key); if (hit) return typeof hit === "string" ? JSON.parse(hit) : hit; } catch {}
+  }
+  const schedule = await fetchSlSchedule(dateStr);
+  if (cache && schedule) {
+    try { await cache.put(key, JSON.stringify(schedule), { expirationTtl: 1800 }); } catch {}
+  }
+  return schedule;
+}

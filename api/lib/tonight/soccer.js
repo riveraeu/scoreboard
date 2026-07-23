@@ -24,6 +24,7 @@ import { CAPTURE_GATE, CAPTURE_CAP } from "../config.js";
 import {
   getEloIndex, eloForTeam, lambdasFromElo, buildScoreMatrix,
   prob1x2, probTotalOver, probTeamOver, probSpreadCover, probBtts, WC_TEAMS,
+  getWcSchedule,
 } from "../soccer.js";
 
 const inWindow = (pct) => pct >= CAPTURE_GATE && pct <= CAPTURE_CAP;
@@ -48,6 +49,15 @@ export async function emitSoccerPlays(ctx) {
     events.get(m.eventTicker).sides.push(m);
   }
 
+  // Real gameTime for computeMakerQuote's pre-game gate (found 2026-07-23 — this module was
+  // hardcoding gameTime:null despite ESPN's own ev.date being one field away). Fetch each
+  // distinct date's schedule once, not once per event.
+  const dateStrs = [...new Set([...events.values()].map(ev => (ev.gameDate || "").replace(/-/g, "")).filter(Boolean))];
+  const schedulesByDate = new Map();
+  await Promise.all(dateStrs.map(async (dateStr) => {
+    schedulesByDate.set(dateStr, await getWcSchedule({ dateStr, cache, isBustCache }));
+  }));
+
   for (const [eventTicker, ev] of events) {
     if (ev.gameDate && cutoffStr && ev.gameDate < cutoffStr) continue; // game already past cutoff day
     const eloHome = eloForTeam(eloIndex, ev.homeCode);
@@ -60,9 +70,12 @@ export async function emitSoccerPlays(ctx) {
     const M = buildScoreMatrix(lambdaHome, lambdaAway);
     const Mh = buildScoreMatrix(lambdaHome * 0.5, lambdaAway * 0.5); // half matrix (even ×0.5 split, v1) — feeds both 1H + 2H families
 
+    const dateStr = (ev.gameDate || "").replace(/-/g, "");
+    const schedGame = dateStr ? schedulesByDate.get(dateStr)?.[[ev.homeCode, ev.awayCode].sort().join("|")] : null;
+
     // Shared feature context stamped on every play from this event (→ features JSON).
     const base = {
-      sport: "soccer", gameDate: ev.gameDate, gameTime: null, modelVersion: "soccer-v1",
+      sport: "soccer", gameDate: ev.gameDate, gameTime: schedGame?.gameTime ?? null, modelVersion: "soccer-v1",
       homeTeam: ev.homeCode, awayTeam: ev.awayCode,
       homeName: WC_TEAMS[ev.homeCode]?.name ?? null, awayName: WC_TEAMS[ev.awayCode]?.name ?? null,
       eloHome, eloAway, lambdaHome: round1(lambdaHome), lambdaAway: round1(lambdaAway),

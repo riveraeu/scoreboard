@@ -185,6 +185,45 @@ export async function getDriverIndex({ cache, isBustCache } = {}) {
   return index;
 }
 
+// ── Real green-flag time (for gameTime) ───────────────────────────────────────
+// _seasonEvents only derives `date` from the event id's YYYYMMDD prefix (no time-of-day) — the
+// list endpoint doesn't carry it, but the per-event resource does. Found 2026-07-23:
+// computeMakerQuote (maker.js) requires a real future stagingRow.gameTime, but this module was
+// hardcoding gameTime:null; ~1 Cup race per weekend keeps this to one extra targeted fetch per
+// run, not a full-schedule fetch. Mirrors fetchRaceResults' nearest-event-within-±1-day matching
+// so it finds the same race the ticker's gameDate refers to.
+async function _eventDate(eventId) {
+  const json = await _getJson(`${CORE}/events/${eventId}`);
+  return json?.date || null;
+}
+
+export async function fetchRaceGameTime(dateStr) {
+  if (!dateStr || dateStr.length !== 8) return null;
+  const events = await _seasonEvents(dateStr.slice(0, 4));
+  if (!events.length) return null;
+  let best = null, bestDiff = 2;
+  for (const e of events) {
+    const diff = Math.abs(_dateDiffDays(e.date, dateStr));
+    if (diff <= 1 && diff < bestDiff) { best = e; bestDiff = diff; }
+  }
+  return best ? _eventDate(best.id) : null;
+}
+
+// Fetch + KV-cache one date's race green-flag time (6h TTL — race schedules are set well in
+// advance and don't change intra-day).
+export async function getRaceGameTime(dateStr, { cache, isBustCache } = {}) {
+  if (!dateStr) return null;
+  const key = `nascar:gametime:${dateStr}`;
+  if (cache && !isBustCache) {
+    try { const hit = await cache.get(key); if (hit) return typeof hit === "string" ? JSON.parse(hit) : hit; } catch {}
+  }
+  const gameTime = await fetchRaceGameTime(dateStr);
+  if (cache && gameTime) {
+    try { await cache.put(key, JSON.stringify(gameTime), { expirationTtl: 21600 }); } catch {}
+  }
+  return gameTime;
+}
+
 // ── Resolution ──────────────────────────────────────────────────────────────
 // A race's finishing order as { athleteId: order }. Matches the Cup event whose date is closest
 // to dateStr (YYYYMMDD) within ±1 day — a night race rolls the close_time UTC date one day past

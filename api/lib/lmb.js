@@ -130,3 +130,53 @@ export async function fetchLmbResults(dateStr) {
     return parseLmbSchedule(games, target);
   } catch { return {}; }
 }
+
+// ── Schedule (any status, for a real gameTime) ───────────────────────────────
+// statsapi's own `gameDate` is a real ISO UTC timestamp on EVERY game, scheduled or final —
+// unlike fetchLmbResults/parseLmbSchedule above, which only keeps `Final` games for grading.
+// Found 2026-07-23: computeMakerQuote (maker.js) requires a real future stagingRow.gameTime,
+// but the emit path was hardcoding gameTime:null despite this data being one field away.
+// Doubleheader simplification: first game found for a pair wins (same "unresolvable by pair"
+// class as the resolver's DH handling above) — good enough for a pre-game eligibility gate,
+// not exact-precision; if the market is actually game 2, the gate still correctly reads "pre-game."
+export function parseLmbScheduleAny(games, target) {
+  const out = {};
+  for (const g of games || []) {
+    const homeId = g?.teams?.home?.team?.id, awayId = g?.teams?.away?.team?.id;
+    const home = LMB_ID_TO_ABBR[homeId], away = LMB_ID_TO_ABBR[awayId];
+    if (!home || !away) continue;
+    const key = [home, away].sort().join("|");
+    if (out[key]) continue; // doubleheader: first game's time stands
+    out[key] = { date: target, home, away, gameTime: g?.gameDate || null };
+  }
+  return out;
+}
+
+export async function fetchLmbSchedule(dateStr) {
+  if (!dateStr || dateStr.length !== 8) return {};
+  const target = `${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`;
+  try {
+    const res = await fetch(`${STATSAPI}/schedule?sportId=${LMB_SPORT_ID}&date=${target}`, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return {};
+    const data = await res.json();
+    const games = (data?.dates || []).flatMap(d => d?.games || []);
+    return parseLmbScheduleAny(games, target);
+  } catch { return {}; }
+}
+
+// Fetch + KV-cache one date's schedule (30min TTL — same idiom as mls.js's getMlsSchedule).
+export async function getLmbSchedule({ dateStr, cache, isBustCache } = {}) {
+  if (!dateStr) return {};
+  const key = `lmb:schedule:${dateStr}`;
+  if (cache && !isBustCache) {
+    try { const hit = await cache.get(key); if (hit) return typeof hit === "string" ? JSON.parse(hit) : hit; } catch {}
+  }
+  const schedule = await fetchLmbSchedule(dateStr);
+  if (cache && schedule) {
+    try { await cache.put(key, JSON.stringify(schedule), { expirationTtl: 1800 }); } catch {}
+  }
+  return schedule;
+}

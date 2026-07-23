@@ -15,7 +15,7 @@
 // Shadow-only: the window is purely a capture selector (no dropped fallback), so use the wide
 // CAPTURE band so calibration sees the full favorite curve. Betting is gated later (category gate).
 import { CAPTURE_GATE, CAPTURE_CAP } from "../config.js";
-import { getSlEloIndex, lookupSlElo, slWinProb } from "../nba-summer.js";
+import { getSlEloIndex, lookupSlElo, slWinProb, getSlSchedule } from "../nba-summer.js";
 
 export async function emitNbaSummerPlays(ctx) {
   const { nbaSummerMarkets, nbaSummerPlays, cutoffStr, cache, isBustCache } = ctx;
@@ -23,6 +23,15 @@ export async function emitNbaSummerPlays(ctx) {
 
   const index = await getSlEloIndex({ cache, isBustCache });
   const ratings = index?.ratings || {};
+
+  // Real gameTime for computeMakerQuote's pre-game gate (found 2026-07-23 — this module was
+  // hardcoding gameTime:null despite ESPN's own ev.date being one field away). Fetch each
+  // distinct date's schedule once, not once per market.
+  const dateStrs = [...new Set(nbaSummerMarkets.map(m => (m.gameDate || "").replace(/-/g, "")).filter(Boolean))];
+  const schedulesByDate = new Map();
+  await Promise.all(dateStrs.map(async (dateStr) => {
+    schedulesByDate.set(dateStr, await getSlSchedule({ dateStr, cache, isBustCache }));
+  }));
 
   for (const m of nbaSummerMarkets) {
     if (m.gameDate && cutoffStr && m.gameDate < cutoffStr) continue; // game already past cutoff day
@@ -34,6 +43,8 @@ export async function emitNbaSummerPlays(ctx) {
     const rOpp = lookupSlElo(ratings, m.opponent);
     const truePct = parseFloat((slWinProb(rPick.rating, rOpp.rating) * 100).toFixed(1));
     const edge = parseFloat((truePct - m.kalshiPct).toFixed(1));
+    const dateStr = (m.gameDate || "").replace(/-/g, "");
+    const schedGame = dateStr ? schedulesByDate.get(dateStr)?.[[m.gameTeam1, m.gameTeam2].sort().join("|")] : null;
     nbaSummerPlays.push({
       sport: "nbasl", stat: "ml",
       // Ticker-order teams land in homeTeam/awayTeam so the resolver's NOT NULL filter selects
@@ -43,7 +54,7 @@ export async function emitNbaSummerPlays(ctx) {
       threshold: null, direction: null,
       truePct, kalshiPct: m.kalshiPct, americanOdds: m.americanOdds ?? null,
       edge, dataConfidence: 10, dcQualified: true, qualified: true,
-      gameDate: m.gameDate, gameTime: null, modelVersion: "nbasl-v1",
+      gameDate: m.gameDate, gameTime: schedGame?.gameTime ?? null, modelVersion: "nbasl-v1",
       // feature fields (→ features JSON via extractFeatures): Elo state at capture time aids
       // later analysis (parity-start rows are separable via pickGames/oppGames = 0).
       opponent: m.opponent, pickElo: rPick.rating, oppElo: rOpp.rating,

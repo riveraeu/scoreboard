@@ -129,3 +129,47 @@ export async function fetchCompletedMatches(tour, dateStr) {
   }
   return out;
 }
+
+// ── Schedule (any status, for a real gameTime) ───────────────────────────────
+// Every match on the tour's scoreboard for a tournament window (played or not) → keyed by
+// sorted normalized player-pair "a|b", { gameTime (ISO) }. Unlike fetchCompletedMatches above
+// (which requires `completed`), this keeps not-yet-played matches since the emit path needs an
+// upcoming start time before the result exists. Found 2026-07-23: computeMakerQuote (maker.js)
+// requires a real future stagingRow.gameTime, but the tennis emit path was hardcoding
+// gameTime:null despite c.date carrying exactly that on the same scoreboard fetch.
+export async function fetchTennisSchedule(tour, dateStr) {
+  let json;
+  try {
+    const url = `${ESPN_BASE}/${tour}/scoreboard${dateStr ? `?dates=${dateStr}` : ""}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return {};
+    json = await res.json();
+  } catch { return {}; }
+  const out = {};
+  for (const ev of (json?.events || [])) {
+    for (const grp of (ev?.groupings || [])) {
+      for (const c of (grp?.competitions || [])) {
+        const comps = c?.competitors || [];
+        const players = comps.map((cm) => normTennisName((cm?.athlete || {}).displayName || "")).filter(Boolean);
+        if (players.length !== 2) continue;
+        const key = [...players].sort().join("|");
+        if (!out[key]) out[key] = { gameTime: c?.date || null };
+      }
+    }
+  }
+  return out;
+}
+
+// Fetch + KV-cache one (tour, date)'s schedule (30min TTL — same idiom as mls.js's getMlsSchedule).
+export async function getTennisSchedule(tour, dateStr, { cache, isBustCache } = {}) {
+  if (!dateStr) return {};
+  const key = `tennis:schedule:${tour}:${dateStr}`;
+  if (cache && !isBustCache) {
+    try { const hit = await cache.get(key); if (hit) return typeof hit === "string" ? JSON.parse(hit) : hit; } catch {}
+  }
+  const schedule = await fetchTennisSchedule(tour, dateStr);
+  if (cache && schedule) {
+    try { await cache.put(key, JSON.stringify(schedule), { expirationTtl: 1800 }); } catch {}
+  }
+  return schedule;
+}

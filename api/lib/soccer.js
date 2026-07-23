@@ -313,6 +313,54 @@ export async function fetchWcFinals(dateStr) {
   return out;
 }
 
+// ── Schedule (any status, for a real gameTime) ───────────────────────────────
+// Every event on the scoreboard (played or not) → keyed by sorted canonical pair "A|B",
+// { gameTime (ISO kickoff) }. Unlike fetchWcFinals above (which requires both scores to be
+// parseable, so future games silently fall out), this keeps not-yet-played games since the
+// emit path needs an upcoming kickoff time before the result exists. Found 2026-07-23:
+// computeMakerQuote (maker.js) requires a real future stagingRow.gameTime, but the soccer emit
+// path was hardcoding gameTime:null despite ev.date carrying exactly that on the same fetch.
+export async function fetchWcSchedule(dateStr) {
+  let json;
+  try {
+    const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard${dateStr ? `?dates=${dateStr}` : ""}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return {};
+    json = await res.json();
+  } catch { return {}; }
+  const out = {};
+  for (const ev of (json?.events || [])) {
+    const comp = (ev?.competitions || [])[0];
+    if (!comp) continue;
+    const codes = [];
+    let ok = true;
+    for (const c of (comp?.competitors || [])) {
+      const t = c?.team || {};
+      const canon = espnToCanonical(t.abbreviation, t.displayName);
+      if (!canon) { ok = false; break; }
+      codes.push(canon);
+    }
+    if (!ok || codes.length !== 2) continue;
+    const key = [...codes].sort().join("|");
+    if (!out[key]) out[key] = { gameTime: ev.date || null };
+  }
+  return out;
+}
+
+// Fetch + KV-cache one date's schedule (30min TTL — same idiom as mls.js's getMlsSchedule).
+export async function getWcSchedule({ dateStr, cache, isBustCache } = {}) {
+  if (!dateStr) return {};
+  const key = `soccer:schedule:${dateStr}`;
+  if (cache && !isBustCache) {
+    try { const hit = await cache.get(key); if (hit) return typeof hit === "string" ? JSON.parse(hit) : hit; } catch {}
+  }
+  const schedule = await fetchWcSchedule(dateStr);
+  if (cache && schedule) {
+    try { await cache.put(key, JSON.stringify(schedule), { expirationTtl: 1800 }); } catch {}
+  }
+  return schedule;
+}
+
 // ── Knockout-advance resolver source ── who advanced past a knockout tie (the ET/penalties
 // outcome, NOT the 90' score). ESPN flags the advancing competitor with `advance:true`; for ties
 // decided inside 90' that field can be absent, so fall back to `winner:true`. A match counts as

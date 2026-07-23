@@ -15,7 +15,7 @@
 // Shadow-only: the window is purely a capture selector (no dropped fallback), so use the wide
 // CAPTURE band so calibration sees the full favorite curve. Betting is gated later (category gate).
 import { CAPTURE_GATE, CAPTURE_CAP } from "../config.js";
-import { getLmbRatesIndex, lmbLambdas } from "../lmb.js";
+import { getLmbRatesIndex, lmbLambdas, getLmbSchedule } from "../lmb.js";
 import { simulateMLBJoint, mlPctFromJoint } from "../simulate.js";
 
 export async function emitLmbPlays(ctx) {
@@ -24,6 +24,15 @@ export async function emitLmbPlays(ctx) {
 
   const rates = await getLmbRatesIndex({ cache, isBustCache });
   if (!rates) return; // standings unavailable — failure-closed, no LMB rows this run
+
+  // Real gameTime for computeMakerQuote's pre-game gate (found 2026-07-23 — this module was
+  // hardcoding gameTime:null despite statsapi's own gameDate being one field away). Fetch each
+  // distinct date's schedule once, not once per market.
+  const dateStrs = [...new Set(lmbMarkets.map(m => (m.gameDate || "").replace(/-/g, "")).filter(Boolean))];
+  const schedulesByDate = new Map();
+  await Promise.all(dateStrs.map(async (dateStr) => {
+    schedulesByDate.set(dateStr, await getLmbSchedule({ dateStr, cache, isBustCache }));
+  }));
 
   // One joint sim per matchup (both sides share it; the mirror side is the complement since
   // mlPctFromJoint drops ties and LMB games can't tie).
@@ -51,6 +60,8 @@ export async function emitLmbPlays(ctx) {
     const truePct = parseFloat((pickIsFirst ? firstSortedPct : 100 - firstSortedPct).toFixed(1));
     const edge = parseFloat((truePct - m.kalshiPct).toFixed(1));
     const pickR = rates[m.pickTeam], oppR = rates[m.opponent];
+    const dateStr = (m.gameDate || "").replace(/-/g, "");
+    const schedGame = dateStr ? schedulesByDate.get(dateStr)?.[[m.gameTeam1, m.gameTeam2].sort().join("|")] : null;
     lmbPlays.push({
       sport: "lmb", stat: "ml",
       // Ticker-order teams land in homeTeam/awayTeam so the resolver's NOT NULL filter selects
@@ -60,7 +71,7 @@ export async function emitLmbPlays(ctx) {
       threshold: null, direction: null,
       truePct, kalshiPct: m.kalshiPct, americanOdds: m.americanOdds ?? null,
       edge, dataConfidence: 10, dcQualified: true, qualified: true,
-      gameDate: m.gameDate, gameTime: null, modelVersion: "lmb-v1",
+      gameDate: m.gameDate, gameTime: schedGame?.gameTime ?? null, modelVersion: "lmb-v1",
       // feature fields (→ features JSON via extractFeatures): season run-rate state at capture
       // time aids later tune:residual analysis.
       opponent: m.opponent,

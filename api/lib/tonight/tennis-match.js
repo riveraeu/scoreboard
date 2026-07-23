@@ -17,7 +17,7 @@
 // Shadow-only: the window is purely a capture selector (no dropped fallback), so use the wide
 // CAPTURE band so calibration sees the full favorite curve. Betting is gated later (category gate).
 import { CAPTURE_GATE, CAPTURE_CAP } from "../config.js";
-import { getRatingIndex, lookupRating, tennisMatchProb, normTennisName } from "../tennis.js";
+import { getRatingIndex, lookupRating, tennisMatchProb, normTennisName, getTennisSchedule } from "../tennis.js";
 
 export async function emitTennisMatchPlays(ctx) {
   const { tennisMatchMarkets, tennisPlays, dropped, isDebug, cutoffStr, cache, isBustCache } = ctx;
@@ -36,6 +36,17 @@ export async function emitTennisMatchPlays(ctx) {
     }
     events.get(m.eventTicker).sides.push(m);
   }
+
+  // Real gameTime for computeMakerQuote's pre-game gate (found 2026-07-23 — this module was
+  // hardcoding gameTime:null despite ESPN's own c.date being one field away). Fetch each
+  // distinct (tour, date) schedule once, not once per event.
+  const tourDates = [...new Set([...events.values()].map(ev => `${ev.tour}|${(ev.gameDate || "").replace(/-/g, "")}`))]
+    .filter(td => td.split("|")[1]);
+  const schedulesByTourDate = new Map();
+  await Promise.all(tourDates.map(async (td) => {
+    const [tour, dateStr] = td.split("|");
+    schedulesByTourDate.set(td, await getTennisSchedule(tour, dateStr, { cache, isBustCache }));
+  }));
 
   for (const [eventTicker, ev] of events) {
     if (ev.gameDate && cutoffStr && ev.gameDate < cutoffStr) continue; // stale (game already past cutoff day)
@@ -63,6 +74,9 @@ export async function emitTennisMatchPlays(ctx) {
       }
       const truePct = parseFloat((tennisMatchProb(rPick.rating, rOpp.rating) * 100).toFixed(1));
       const edge = parseFloat((truePct - side.kalshiPct).toFixed(1));
+      const tourDateKey = `${ev.tour}|${(ev.gameDate || "").replace(/-/g, "")}`;
+      const pairKey = [normTennisName(side.player), normTennisName(opponent)].sort().join("|");
+      const schedGame = schedulesByTourDate.get(tourDateKey)?.[pairKey];
       tennisPlays.push({
         sport: "tennis", stat: "match",
         playerName: side.player,
@@ -72,7 +86,7 @@ export async function emitTennisMatchPlays(ctx) {
         threshold: null, direction: null,
         truePct, kalshiPct: side.kalshiPct, americanOdds: side.americanOdds ?? null,
         edge, dataConfidence: 10, dcQualified: true, qualified: true,
-        gameDate: ev.gameDate, gameTime: null, modelVersion: "tennis-v1",
+        gameDate: ev.gameDate, gameTime: schedGame?.gameTime ?? null, modelVersion: "tennis-v1",
         // feature fields (→ features JSON via extractFeatures): tour drives resolver scoreboard
         // selection; ranks/opponent/volume aid later analysis.
         tour: ev.tour, opponent, pickRank: rPick.rank, oppRank: rOpp.rank,

@@ -20,7 +20,7 @@
 // Shadow-only: the window is purely a capture selector (no dropped fallback), so use the wide
 // CAPTURE band so calibration sees the full favorite curve. Betting is gated later (category gate).
 import { CAPTURE_GATE, CAPTURE_CAP } from "../config.js";
-import { getDriverIndex, lookupDriver, pBeats, pTopN } from "../nascar.js";
+import { getDriverIndex, lookupDriver, pBeats, pTopN, getRaceGameTime } from "../nascar.js";
 
 export async function emitNascarPlays(ctx) {
   const { nascarMarkets, nascarPlays, dropped, isDebug, cutoffStr, cache, isBustCache } = ctx;
@@ -32,9 +32,19 @@ export async function emitNascarPlays(ctx) {
     return;
   }
 
+  // Real green-flag time for computeMakerQuote's pre-game gate (found 2026-07-23 — this module
+  // was hardcoding gameTime:null). ~1 Cup race per weekend, so this is at most a couple of
+  // distinct dates per run, not once per market.
+  const dateStrs = [...new Set(nascarMarkets.map(m => (m.gameDate || "").replace(/-/g, "")).filter(Boolean))];
+  const gameTimesByDate = new Map();
+  await Promise.all(dateStrs.map(async (dateStr) => {
+    gameTimesByDate.set(dateStr, await getRaceGameTime(dateStr, { cache, isBustCache }));
+  }));
+
   for (const m of nascarMarkets) {
     if (m.gameDate && cutoffStr && m.gameDate < cutoffStr) continue; // race already past the cutoff day
     if (m.kalshiPct < CAPTURE_GATE || m.kalshiPct > CAPTURE_CAP) continue; // quote-sanity only (full-curve capture 2026-07-03)
+    const gameTime = gameTimesByDate.get((m.gameDate || "").replace(/-/g, "")) ?? null;
 
     if (m.subtype === "h2h") {
       if (!m.player || !m.opponent) {
@@ -57,7 +67,7 @@ export async function emitNascarPlays(ctx) {
         threshold: null, direction: null,
         truePct, kalshiPct: m.kalshiPct, americanOdds: m.americanOdds ?? null,
         edge, dataConfidence: 10, dcQualified: true, qualified: true,
-        gameDate: m.gameDate, gameTime: null, modelVersion: "nascar-v1",
+        gameDate: m.gameDate, gameTime, modelVersion: "nascar-v1",
         // feature fields (→ features JSON): pick/opp ids drive id-based resolution; the rest analyze.
         race: m.raceCode, opponent: m.opponent,
         pickId: rPick.id, oppId: rOpp.id,
@@ -84,7 +94,7 @@ export async function emitNascarPlays(ctx) {
         threshold: 10, direction: null,
         truePct, kalshiPct: m.kalshiPct, americanOdds: m.americanOdds ?? null,
         edge, dataConfidence: 10, dcQualified: true, qualified: true,
-        gameDate: m.gameDate, gameTime: null, modelVersion: "nascar-v1",
+        gameDate: m.gameDate, gameTime, modelVersion: "nascar-v1",
         race: m.raceCode,
         pickId: rPick.id,
         pickAvgFinish: rPick.avgFinish, pickRaces: rPick.nRaces,

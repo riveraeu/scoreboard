@@ -73,7 +73,10 @@ export async function emitFightPlays(ctx) {
       // Both fighters' last names land in homeTeam/awayTeam so the resolver's NOT NULL filter
       // selects these rows and can re-match the bout by name.
       homeTeam: lastA, awayTeam: lastB, pickTeam: null,
-      gameDate: ev.gameDate, gameTime: null,
+      // Card start time (found 2026-07-23 — computeMakerQuote needs a real future gameTime;
+      // getFightCardIndex already fetches future cards, this was just never captured). Coarse:
+      // all bouts on a card share it (ESPN doesn't expose per-bout walkout times), but real.
+      gameDate: ev.gameDate, gameTime: fight.eventDate ?? null,
       dataConfidence: 10, dcQualified: true, qualified: true,
       // feature fields (→ features JSON): weight class + scheduled rounds drive the model;
       // fighter names aid later analysis / resolution sanity.

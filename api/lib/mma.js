@@ -103,6 +103,11 @@ function parseCard(json) {
         finishRound: c?.status?.period ?? null,
         final: c?.status?.type?.completed === true,
         winner: (comps.find((cm) => cm?.winner === true)?.athlete || {}).displayName || null,
+        // Card start time (ISO) — not the individual bout's exact walkout time (ESPN doesn't
+        // expose per-bout start), so all bouts on one card share it. Coarse but real; enough for
+        // computeMakerQuote's pre-game gate (found 2026-07-23 — this was never captured despite
+        // getFightCardIndex already fetching future cards, just not this field).
+        eventDate: ev?.date || c?.date || null,
       });
     }
   }
