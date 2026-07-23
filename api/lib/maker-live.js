@@ -320,16 +320,18 @@ export async function gradeResolvedMakerPositions({ env }) {
     const settlement = byTicker.get(ticker);
     const totalContracts = rows.reduce((s, r) => s + Number(r.filled_count || 0), 0);
     if (!totalContracts) continue;
-    // `revenue` is GROSS settlement payout (0 or 100¢/contract), NOT net of what we paid — our
-    // real position is a long in the complement side (sellAsBuy: real order buys 100−price),
-    // so net pnl = grossPayoutPerContract − our own cost basis (100−price), computed per row
-    // since renewals can have filled at slightly different prices on the same ticker. Verified
-    // against a live case (2026-07-22): revenueCents/contracts came back as a clean 100,
-    // matching "all contracts' held side won" — using that as pnl_cents directly (skipping the
-    // cost subtraction) overstated the gain by exactly the cost basis of the winning position.
+    // `revenue` is GROSS settlement payout (0 or 100¢/contract), NOT net of what we paid or fees
+    // — our real position is a long in the complement side (sellAsBuy: real order buys
+    // 100−price), so net pnl = grossPayoutPerContract − our own cost basis (100−price) − our
+    // share of the fee, computed per row since renewals can have filled at slightly different
+    // prices on the same ticker. Verified against a live case (2026-07-22): revenueCents/
+    // contracts came back as a clean 100, matching "all contracts' held side won" — using that
+    // as pnl_cents directly (skipping the cost subtraction) overstated the gain by exactly the
+    // cost basis of the winning position.
     const grossPayoutPerContract = Math.round(settlement.revenueCents / totalContracts);
+    const feePerContract = Math.round((settlement.feeCents || 0) / totalContracts);
     for (const r of rows) {
-      const pnlCents = grossPayoutPerContract - (100 - Number(r.price));
+      const pnlCents = grossPayoutPerContract - (100 - Number(r.price)) - feePerContract;
       toGrade.push({ oid: r.id, sideWon: settlement.marketResult === r.side, pnlCents });
     }
   }

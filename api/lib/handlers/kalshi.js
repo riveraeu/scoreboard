@@ -552,6 +552,24 @@ export async function handleKalshiRoutes(ctx) {
     return jsonResponse({ ok: true, ticker, reverted: reverted.length });
   }
 
+  // ── /api/maker-v2-revert-all-graded ──────────────────────────────────────────
+  // One-off correction (2026-07-22, ADMIN_KEY only, POST): a from-scratch cross-check of every
+  // currently-graded row against Kalshi's own settlements feed found the OLD ESPN-derived
+  // side_won formula disagreed with Kalshi's real settlement result on several spread/team-total
+  // markets — real sign errors, not rounding — plus the old formula never accounted for fees at
+  // all. Reverts graded_at/side_won/pnl_cents to NULL for EVERY currently-graded row so the
+  // settlements-based gradeResolvedMakerPositions re-grades all of them against Kalshi's own
+  // ground truth. Real-money-affecting; intentionally requires an explicit call, not automatic.
+  if (path === "maker-v2-revert-all-graded" && method === "POST") {
+    const bearer = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/, "");
+    if (!env?.ADMIN_KEY || bearer !== env.ADMIN_KEY) return errorResponse("Forbidden", 403);
+    const reverted = await neonQuery(
+      `UPDATE maker_orders_v2 SET graded_at = NULL, side_won = NULL, pnl_cents = NULL
+       WHERE graded_at IS NOT NULL RETURNING id`,
+      [], env, { write: true });
+    return jsonResponse({ ok: true, reverted: reverted.length });
+  }
+
   // ── /api/maker-v2-revert-unsettled ───────────────────────────────────────────
   // One-time correction (2026-07-22, ADMIN_KEY only) — gradeResolvedMakerPositions now checks
   // Kalshi's real settlement status before grading, but that check didn't exist yet for rows

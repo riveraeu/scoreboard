@@ -143,14 +143,16 @@ export async function fetchKalshiFills({ minTs, limit = 1000 } = {}, env) {
   return { ok: true, fills: respBody.fills ?? [] };
 }
 
-// Reads the account's actual settlements — Kalshi's own computed, authoritative net PnL per
-// settled market (`revenue`, integer cents, already nets cost vs payout — this IS what a
-// settled position actually credited to the account). Replaces the earlier ESPN-derived
-// pnl_cents math + fetchUnsettledTickers gate in gradeResolvedMakerPositions (maker-live.js,
-// 2026-07-22): re-deriving win/loss from box scores was verified correct, but a market only
-// APPEARS here once Kalshi has actually settled it, so this single call is both the accuracy
-// and the timing signal in one — no separate "is it settled yet" check needed. Single page
-// (limit≤1000, no cursor) — V2's daily volume is nowhere near that in any few-day lookback.
+// Reads the account's actual settlements — Kalshi's own authoritative record of what a settled
+// market credited. `revenue` is GROSS payout (0 or 100¢/contract), NOT net of our cost or fees —
+// callers must subtract both themselves (see gradeResolvedMakerPositions). Replaces the earlier
+// ESPN-derived pnl_cents math + fetchUnsettledTickers gate: a from-scratch cross-check against
+// this feed (2026-07-22) found the OLD ESPN-derived side_won formula disagreed with Kalshi's own
+// settlement on several spread/team-total markets — sign errors worth real dollars, not just
+// rounding — so this is now the sole source of truth, not a supplement. A market only APPEARS
+// here once Kalshi has actually settled it, so this single call is both the accuracy and the
+// timing signal in one — no separate "is it settled yet" check needed. Single page (limit≤1000,
+// no cursor) — V2's daily volume is nowhere near that in any few-day lookback.
 export async function fetchKalshiSettlements({ minTs, limit = 1000 } = {}, env) {
   if (!env?.KALSHI_API_KEY_ID || !env?.KALSHI_PRIVATE_KEY) return { ok: false, error: "Kalshi API not configured" };
   const kalshiPath = "/trade-api/v2/portfolio/settlements";
@@ -171,6 +173,7 @@ export async function fetchKalshiSettlements({ minTs, limit = 1000 } = {}, env) 
     ticker: s.ticker,
     marketResult: s.market_result,
     revenueCents: Math.round(Number(s.revenue) || 0),
+    feeCents: Math.round((parseFloat(s.fee_cost_dollars ?? s.fee_cost) || 0) * 100),
     settledTime: s.settled_time,
   }));
   return { ok: true, settlements };
