@@ -389,7 +389,7 @@ export async function handleKalshiRoutes(ctx) {
     try {
       const _resolveRes = await resolveOpenMakerPositions({ env, request });
       const _gradeRes = await gradeResolvedMakerPositions({ env });
-      _makerResolveMeta = { ..._resolveRes, graded: _gradeRes.graded };
+      _makerResolveMeta = { ..._resolveRes, graded: _gradeRes.graded, gradeHeld: _gradeRes.held, gradeError: _gradeRes.error };
     } catch (e) {
       _makerResolveMeta = { error: String(e?.message || e) };
       console.error(`[kalshi-snapshot] maker-live resolve/grade pass failed: ${_makerResolveMeta.error}`);

@@ -95,6 +95,32 @@ export async function placeKalshiOrder({ ticker, side, price, count, clientOrder
   };
 }
 
+// Reads the account's currently-UNSETTLED real positions (ticker set only). Used by
+// gradeResolvedMakerPositions (maker-live.js) to distinguish "we independently know the true
+// outcome via ESPN" from "Kalshi has actually settled/credited this market" — those are NOT the
+// same moment (2026-07-22 finding: same-day grading exposed real positions still open on
+// Kalshi's own books hours after ESPN called the game final). A ticker not confirmed settled
+// stays counted as an open position (status='executed', graded_at still NULL) even once its
+// true outcome is known, rather than moving into realized PnL ahead of the real cash movement.
+export async function fetchUnsettledTickers(env) {
+  if (!env?.KALSHI_API_KEY_ID || !env?.KALSHI_PRIVATE_KEY) return { ok: false, error: "Kalshi API not configured" };
+  const kalshiPath = "/trade-api/v2/portfolio/positions";
+  let timestamp, signature;
+  try {
+    ({ timestamp, signature } = await _sign({ method: "GET", path: kalshiPath, env }));
+  } catch (e) {
+    return { ok: false, error: `Signing failed: ${e?.message || e}` };
+  }
+  const resp = await fetch(`https://api.elections.kalshi.com${kalshiPath}?settlement_status=unsettled&limit=1000`, {
+    headers: _authHeaders(env, timestamp, signature),
+  }).catch(() => null);
+  if (!resp) return { ok: false, error: "Kalshi unreachable" };
+  const respBody = await resp.json().catch(() => ({}));
+  if (!resp.ok) return { ok: false, error: respBody?.error?.message || `Kalshi error ${resp.status}`, status: resp.status };
+  const tickers = new Set((respBody.market_positions || []).map(p => p.ticker).filter(Boolean));
+  return { ok: true, tickers };
+}
+
 // Reads the account's real fills (legacy read path — NOT part of the 7/17 V2 sunset, same
 // endpoint /api/kalshi-fills already uses). Used by maker-live.js's nightly reconcile pass to
 // detect which resting V2 orders got filled, matched by kalshi_order_id.

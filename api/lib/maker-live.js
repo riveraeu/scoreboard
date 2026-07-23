@@ -30,7 +30,7 @@ import { MAKER_V2_BAND, MAKER_V2_SIZE, MAKER_V2_MAX_CONCURRENT, MAKER_V2_SAME_GA
 import { computeMakerQuote, MAKER_FEE_SERIES } from "./maker.js";
 import { shadowId } from "./shadow-id.js";
 import { neonQuery, neonExec } from "./neon.js";
-import { placeKalshiOrder, cancelKalshiOrder, fetchKalshiFills } from "./kalshi-order-client.js";
+import { placeKalshiOrder, cancelKalshiOrder, fetchKalshiFills, fetchUnsettledTickers } from "./kalshi-order-client.js";
 
 const ARMED_KV_KEY = "maker:v2:armed";
 
@@ -274,24 +274,48 @@ export async function updateLiveMakerOrders({ snapResults, staging, snapshotDate
 // way — settlement math is `pnl_cents = price − 100·side_won`, same formula V1 uses.
 export async function gradeResolvedMakerPositions({ env }) {
   await ensureMakerLiveTables(env);
-  const graded = await neonQuery(`
-    UPDATE maker_orders_v2 mo SET
-      side_won = outc.side_won,
-      pnl_cents = mo.price - CASE WHEN outc.side_won THEN 100 ELSE 0 END,
-      graded_at = NOW()
-    FROM (
-      SELECT o.id AS oid,
-        CASE WHEN o.side = 'yes'
-          THEN (CASE WHEN s.direction = 'under' THEN NOT s.won ELSE s.won END)
-          ELSE NOT (CASE WHEN s.direction = 'under' THEN NOT s.won ELSE s.won END)
-        END AS side_won
-      FROM maker_orders_v2 o JOIN shadow_plays s ON s.id = o.shadow_row_id
-      WHERE s.resolved AND s.won IS NOT NULL AND o.status = 'executed'
-    ) outc
-    WHERE mo.id = outc.oid AND mo.graded_at IS NULL
-    RETURNING mo.id`,
+
+  // Candidates: outcome already known (shadow_plays resolved) but not yet graded.
+  const candidates = await neonQuery(
+    `SELECT o.id AS oid, o.ticker,
+       CASE WHEN o.side = 'yes'
+         THEN (CASE WHEN s.direction = 'under' THEN NOT s.won ELSE s.won END)
+         ELSE NOT (CASE WHEN s.direction = 'under' THEN NOT s.won ELSE s.won END)
+       END AS side_won
+     FROM maker_orders_v2 o JOIN shadow_plays s ON s.id = o.shadow_row_id
+     WHERE s.resolved AND s.won IS NOT NULL AND o.status = 'executed' AND o.graded_at IS NULL`,
     [], env, { write: true });
-  return { graded: graded.length };
+  if (!candidates.length) return { graded: 0, held: 0 };
+
+  // Don't move a position into realized PnL ahead of Kalshi's own settlement — the true outcome
+  // can be known (via ESPN) well before Kalshi finishes settling/crediting the account for that
+  // specific market (2026-07-22 finding: same-day grading exposed real positions still open on
+  // Kalshi's books hours after the game ended). Fail-closed: if settlement status can't be
+  // confirmed, skip grading entirely this pass rather than guess — retried next tick.
+  const unsettledRes = await fetchUnsettledTickers(env);
+  if (!unsettledRes.ok) return { graded: 0, held: candidates.length, error: unsettledRes.error };
+
+  const toGrade = candidates.filter(c => !unsettledRes.tickers.has(c.ticker));
+  if (!toGrade.length) return { graded: 0, held: candidates.length };
+
+  let gradedCount = 0;
+  const chunkSize = 100;
+  for (let i = 0; i < toGrade.length; i += chunkSize) {
+    const chunk = toGrade.slice(i, i + chunkSize);
+    const placeholders = chunk.map((_, ri) => `($${ri * 2 + 1}::int, $${ri * 2 + 2}::boolean)`).join(", ");
+    const values = chunk.flatMap(c => [c.oid, c.side_won]);
+    const graded = await neonQuery(
+      `UPDATE maker_orders_v2 mo SET
+         side_won = v.side_won,
+         pnl_cents = mo.price - CASE WHEN v.side_won THEN 100 ELSE 0 END,
+         graded_at = NOW()
+       FROM (VALUES ${placeholders}) AS v(oid, side_won)
+       WHERE mo.id = v.oid AND mo.graded_at IS NULL
+       RETURNING mo.id`,
+      values, env, { write: true });
+    gradedCount += graded.length;
+  }
+  return { graded: gradedCount, held: candidates.length - gradedCount };
 }
 
 // Reconcile pass — nightly, right after V1's detectAndGradeMakerFills. Catches real fills that
