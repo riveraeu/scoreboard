@@ -166,6 +166,34 @@ export const CRON_ONLY_TICKERS = [
 // (correct-score, N-way outcomes) are a poor MAKER fit too — maker needs a genuine favorite-priced
 // side, which a market with 15-30 near-equally-unlikely outcomes doesn't have — so those stay
 // dismissed under both tracks, not just one.
+//
+// HISTORICAL SWEEP (2026-07-23, via the new /api/kalshi-check standing diagnostic — see
+// project_maker_viability_doctrine_2026_07_23 memory): checked ~40 of the ~45 "no club Elo"
+// leagues' BASE game markets directly against Kalshi (not via kalshi_series_seen — see the blind
+// spot below). ~14 came back REAL, live, two-sided books TODAY (all confirmed with an actual
+// favorite-priced side, i.e. not just a shell): KXBRASILEIROGAME (Brazil, 36 mkts), KXPREMIERLEAGUE
+// (England top flight — NOT "KXEPL", a different ticker than its own dismissed derivative family's
+// prefix), KXLALIGA (Spain, 20 mkts), KXSERIEA (Italy, 20 mkts), KXBUNDESLIGA (Germany, 18 mkts),
+// KXLIGUE1 (France, 18 mkts), KXUCL (Champions League, 29 mkts), KXKLEAGUE (Korea, 12 mkts),
+// KXCONMEBOLLIB (Copa Libertadores, 16 mkts), KXUSL (USA lower div, 25 mkts), KXNWSL (US women's,
+// 16 mkts), KXCHNSL (Chinese Super League, 16 mkts, real books but no favorite currently in-window),
+// KXECULP (Ecuador, 16 mkts), KXPERLIGA1 (Peru, 18 mkts — real prices but no market showed a fully
+// two-sided book, lower confidence than the others). The rest (EFL Championship/L1/Cup, Eredivisie,
+// Scottish Prem, Eliteserien, J-League, Liga Portugal, Conmebol Sudamericana, Copa del Rey, Coppa
+// Italia, Coupe de France, DFB-Pokal, FA Cup, US Open Cup, Belgian PL, Egyptian PL, Saudi PL, Thai
+// League 1, UAE PL, Swiss league, Dimayor, A-League, Bundesliga 2, Ekstraklasa, Allsvenskan, Danish
+// Superliga, Czech league, HNL, Süper Lig) came back 0 live — MOST OF EUROPE IS JULY OFF-SEASON, so
+// this is NOT confirmation they're permanently dead; recheck once each league's season is underway.
+//
+// DISCOVERY BLIND SPOT FOUND: none of the 14 confirmed-real leagues above exist ANYWHERE in
+// `kalshi_series_seen` (verified via `?promote=` — the UPDATE matched zero rows for all of them),
+// even though they have real, live markets today. kalshi-series-scan only diffs Kalshi's
+// `/v2/series?category=Sports` catalog — these series apparently never appear in that catalog
+// listing at all (miscategorized, or some other series-metadata quirk), even though their MARKETS
+// are directly queryable and real. This means the discovery pipeline can silently miss real,
+// tradeable series indefinitely — not just for these 14, there could be others in ANY sport. These
+// 14 aren't trackable via the normal shortlist funnel (`?promote=` has nothing to update); they're
+// documented here directly as maker-build candidates instead. NOT built, no SERIES_CONFIG entries.
 export const DISMISSED_SERIES = [
   "KXWC1HSCORE", // 6/22 vet: exact half-scoreline longshots, no in-window edge (1H signal already covered by the soccer half score-matrix)
   "KXWTAROE", // 6/22 vet: WTA round-of-elimination = draw-progression distribution; our tennis is single-match winner only (tennisMatchProb), no bracket sim. No Phase-1 path.
