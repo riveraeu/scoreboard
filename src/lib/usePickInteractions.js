@@ -3,7 +3,7 @@ import React from 'react';
 // Pick-tracking UI orchestration, extracted from App.jsx (E-10). Three loosely-related
 // subsystems bundled into one hook because they're all UI state for the picks flow:
 //
-//   1. Add-Pick modal entry (pendingTrackPlay / pendingOdds) — `initiateTrack` opens it
+//   1. Confirm-pick modal entry (pendingTrackPlay / pendingOdds) — `initiateTrack` opens it
 //      from a star click on a play card, capturing the star's screen position for the
 //      fly animation.
 //
@@ -24,7 +24,6 @@ export function usePickInteractions() {
     return new Set([mon.toLocaleDateString("en-CA")]);
   });
   const [openPickMonths, setOpenPickMonths] = React.useState(() => new Set([new Date().toLocaleDateString("en-CA").slice(0, 7)]));
-  const [showAddPick, setShowAddPick] = React.useState(false);
   const [showPicksDrawer, setShowPicksDrawer] = React.useState(false);
   const [flyingPick, setFlyingPick] = React.useState(null);
   const [starClickOrigin, setStarClickOrigin] = React.useState(null);
@@ -73,7 +72,6 @@ export function usePickInteractions() {
     openPickDays, setOpenPickDays,
     openPickWeeks, setOpenPickWeeks,
     openPickMonths, setOpenPickMonths,
-    showAddPick, setShowAddPick,
     showPicksDrawer, setShowPicksDrawer,
     flyingPick, setFlyingPick,
     fabRef,

@@ -131,10 +131,10 @@ pattern — fixed position, clamped to viewport, closes on outside tap/scroll); 
 | Score badge | `SimBadge.jsx` | inset bg `#161b22`, radius 4, 10px 700, tap-to-pin tooltip |
 | Percent bar | PlaysColumn truePct bars | track `#21262d` radius 4, fill = `tierColor(pct)` or `C.kalshi`, `transition: width 0.5s ease`, `minWidth: 2–3` when >0 |
 | Tooltip | `tooltipStyle` / SimBadge portal | `#1c2128`, 11px, `whiteSpace:"pre"` for multiline |
-| Modal | `modalStyle` / AddPickModal | radius 12–14, padding 20–28 |
+| Modal | `modalStyle` / App.jsx confirm-pick modal | radius 12–14, padding 20–28 |
 | Input | `inputStyle` | page-bg `#0d1117` on card bg — inputs are *darker* than their container |
 | Primary button | `btnPrimary` | solid `#238636`, white text. Blue `#58a6ff` bg + `#0d1117` text for auth submit |
-| Order-state colors | AddPickModal `stateColor` | filled green · resting yellow · error red · placing blue · pending muted |
+| Order-state colors | App.jsx confirm-pick modal `stateColor` | filled green · resting yellow · error red · placing blue · pending muted |
 
 ---
 

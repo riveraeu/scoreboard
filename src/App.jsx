@@ -36,7 +36,6 @@ import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_CLIENT as EDGE_GATE } from "../api/l
 // the default landing view (2026-07-21 — taker picks demoted, maker promoted), so it's the one
 // eager import; LineupsPage flipped to lazy since it moved behind the /picks route.
 const TeamPage = React.lazy(() => import('./components/TeamPage.jsx'));
-const AddPickModal = React.lazy(() => import('./components/AddPickModal.jsx'));
 const LineupsPage = React.lazy(() => import('./components/LineupsPage.jsx'));
 
 // Pairwise same-game phi correlation table from 30-day shadow analysis (2026-06-04).
@@ -80,7 +79,7 @@ function App() {
     expandedPlays, setExpandedPlays,
     chartMonth, setChartMonth,
   } = usePlayerCardState();
-  // pendingTrackPlay / pendingOdds / openPickDays/Weeks/Months / showAddPick /
+  // pendingTrackPlay / pendingOdds / openPickDays/Weeks/Months /
   // showPicksDrawer / flyingPick / starClickOrigin / fabRef + initiateTrack /
   // triggerFlyAnimation / openPickDate all live in usePickInteractions() below.
   const {
@@ -89,7 +88,6 @@ function App() {
     openPickDays, setOpenPickDays,
     openPickWeeks, setOpenPickWeeks,
     openPickMonths, setOpenPickMonths,
-    showAddPick, setShowAddPick,
     showPicksDrawer, setShowPicksDrawer,
     flyingPick, setFlyingPick,
     fabRef,
@@ -704,17 +702,6 @@ function App() {
             </form>
           </div>
         </div>
-      )}
-
-      {/* Add Pick modal */}
-      {showAddPick && (
-        <React.Suspense fallback={null}>
-          <AddPickModal
-            onClose={() => setShowAddPick(false)}
-            onAdd={play => trackPlay(play)}
-            initialOdds="-110"
-          />
-        </React.Suspense>
       )}
 
       {/* Confirm pick modal */}
@@ -1645,15 +1632,22 @@ function App() {
                     const edgeColor = edge === null ? null : edge >= EDGE_GATE ? "#3fb950" : edge >= 0 ? "#e3b341" : "#f78166";
                     const edgeStr = edge === null ? null : (edge >= 0 ? `+${edge.toFixed(1)}%` : `${edge.toFixed(1)}%`);
 
-                    // Show track button only when the play+threshold qualifies:
-                    // kalshi within [KALSHI_GATE, KALSHI_CAP] and edge >= EDGE_GATE.
                     const qualifyingPct = truePct !== null ? truePct : pct;
-                    const qualifies = k && k.pct >= KALSHI_GATE && k.pct <= KALSHI_CAP && edge >= EDGE_GATE && tonightPlay;
                     const sportSlug = sport.split("/")[1];
                     const trackId = `${sportSlug}|${player.name}|${safeTab}|${t}|${tonightPlay?.gameDate || ""}`;
                     const _today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
                     const existingPick = trackedPlays.find(p => { const [ps,pn,pst,pt,pd] = p.id.split("|"); return ps===sportSlug && pn===player.name && pst===safeTab && String(pt)===String(t) && (!pd || pd >= _today); });
                     const isTracked = !!existingPick;
+                    // Show track button when the play+threshold qualifies: kalshi within
+                    // [KALSHI_GATE, KALSHI_CAP], edge >= EDGE_GATE, AND the shadow-calibration
+                    // category gate (found 2026-07-23: this was the one real-order surface that
+                    // never checked it — dcQualified/passesCategoryGate/the qualified-flag were
+                    // all silently skipped, so a real order could be placed on a category the
+                    // gate has explicitly disabled for negative ROI). Already-tracked picks
+                    // always keep the button regardless (it's also the untrack affordance —
+                    // stale/out picks must stay removable even if the gate later closed on them,
+                    // same bypass doctrine as LineupsPage's matchup cards; see qualify.js).
+                    const qualifies = isTracked || (k && k.pct >= KALSHI_GATE && k.pct <= KALSHI_CAP && edge >= EDGE_GATE && tonightPlay && qualifiesForDisplay(tonightPlay));
                     const trackBtn = qualifies ? (
                       <button onClick={() => {
                         if (isTracked) { untrackPlay(existingPick.id); return; }
@@ -2147,7 +2141,6 @@ function App() {
             editPickId={editPickId}
             setEditPickId={setEditPickId}
             setPlayResult={setPlayResult}
-            setShowAddPick={setShowAddPick}
             oddsToProfit={oddsToProfit}
             liveStats={liveStats}
             mlbGameScores={mlbMeta?.gameScores || {}}
