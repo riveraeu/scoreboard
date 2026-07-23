@@ -286,25 +286,18 @@ export async function detectAndGradeMakerFills({ env, dayPT }) {
       values, env, { write: true });
   }
 
-  // Grade everything ungraded whose shadow row resolved.
-  //
-  // Bet-side won → yes-outcome via the row's stored direction; sold-side won flips again for
-  // NO quotes. This direction-based translation is safe for total/teamTotal rows because
-  // Kalshi's yes/no there is ticker-invariant (yes ALWAYS means "over", regardless of which
-  // direction had the better model edge at capture time).
-  //
-  // SPREAD is different (bug found + fixed 2026-07-22): `tonight/ml-spread.js` generates TWO
-  // candidate rows per physical ticker — one per team (whichever direction has better edge wins
-  // the dedup and gets logged) — but Kalshi's own yes/no for a spread ticker is TEAM-SPECIFIC
-  // (yes = the ticker's own "margin team", parseable from its suffix, e.g. "...-TB3" → "TB"),
-  // not a fixed convention. `direction` is null for spread rows, so the old formula had no way
-  // to know whether the row's own `pick_team` actually matches the ticker being graded — it
-  // just assumed quote_side='yes' always means "pick_team's own bet," which breaks whenever the
-  // row was captured for the OTHER team's perspective. Confirmed via direct trace: a row with
-  // pick_team="TOR" graded against a "-TB3" ticker (margin team "TB") produced the wrong sign.
-  // Fix: for spread rows specifically, check whether pick_team matches the ticker's own margin
-  // team before deciding whether to flip `won` — same idea `direction` already handles for
-  // totals, just keyed on team identity instead of over/under.
+  const gradedCount = await gradeMakerFills({ env });
+
+  return { tickers: tickers.length, newFills: fills.length, graded: gradedCount,
+    tapeFails, rateLimited };
+}
+
+// Grades everything ungraded whose shadow row has resolved, using computeSideWon (see its own
+// doc comment for the spread-vs-total sign logic). Split out from detectAndGradeMakerFills
+// (2026-07-22) so a fix to computeSideWon can be applied to ALREADY-INSERTED maker_fills rows
+// (clear graded_at back to NULL, then call this) without needing to re-replay the trade tape.
+export async function gradeMakerFills({ env }) {
+  await ensureMakerTables(env);
   const candidates = await neonQuery(
     `SELECT q.id AS quote_id, q.ticker, q.quote_side, s.game_type, s.pick_team, s.direction, s.won
      FROM maker_quotes q JOIN shadow_plays s ON s.id = q.shadow_row_id
@@ -339,6 +332,5 @@ export async function detectAndGradeMakerFills({ env, dayPT }) {
     gradedCount += graded.length;
   }
 
-  return { tickers: tickers.length, newFills: fills.length, graded: gradedCount,
-    tapeFails, rateLimited };
+  return gradedCount;
 }

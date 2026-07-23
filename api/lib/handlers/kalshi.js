@@ -15,7 +15,7 @@ import { neonQuery, neonExec } from "../neon.js";
 import { fetchKalshiOrderbook } from "../kalshi-book.js";
 import { pipeWriteChunked } from "../kv-pipeline.js";
 import { gzipToString } from "../kv-compress.js";
-import { updateMakerQuotes } from "../maker.js";
+import { updateMakerQuotes, gradeMakerFills } from "../maker.js";
 import { importKalshiKey as _importKalshiKey, placeKalshiOrder, cancelKalshiOrder, fetchUnsettledTickers, fetchKalshiSettlements } from "../kalshi-order-client.js";
 import { resolveOpenMakerPositions } from "./shadow.js";
 import { updateLiveMakerOrders, emergencyKillLive, setArmed, computeWantedMakerQuotes,
@@ -568,6 +568,25 @@ export async function handleKalshiRoutes(ctx) {
        WHERE graded_at IS NOT NULL RETURNING id`,
       [], env, { write: true });
     return jsonResponse({ ok: true, reverted: reverted.length });
+  }
+
+  // ── /api/maker-v1-regrade ─────────────────────────────────────────────────────
+  // One-time correction (2026-07-22, ADMIN_KEY only, POST): applies the computeSideWon fix to
+  // ALL existing maker_fills rows, not just future grading. Clears graded_at/side_won/pnl_cents
+  // back to NULL for every currently-graded fill, then calls gradeMakerFills (maker.js) to
+  // re-grade everything with the fixed spread-vs-total logic. total/teamTotal/ml rows recompute
+  // to the IDENTICAL values (their logic didn't change); only spread rows can come out
+  // different. No real money involved (V1 is paper-only) — lower stakes than the V2 mass
+  // revert, but the same idea.
+  if (path === "maker-v1-regrade" && method === "POST") {
+    const bearer = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/, "");
+    if (!env?.ADMIN_KEY || bearer !== env.ADMIN_KEY) return errorResponse("Forbidden", 403);
+    const reverted = await neonQuery(
+      `UPDATE maker_fills SET graded_at = NULL, side_won = NULL, pnl_cents = NULL
+       WHERE graded_at IS NOT NULL RETURNING id`,
+      [], env, { write: true });
+    const regraded = await gradeMakerFills({ env });
+    return jsonResponse({ ok: true, reverted: reverted.length, regraded });
   }
 
   // ── /api/maker-v1-clean-aggregate ─────────────────────────────────────────────
