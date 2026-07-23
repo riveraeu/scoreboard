@@ -62,10 +62,16 @@ export function projectOuts({ avgBF, stdBF, baa, gs26 }) {
 }
 
 export function emitMlbOutsPlays(ctx) {
-  const { outsMarkets, outsPlays, dropped, isDebug, cutoffStr, sportByteam } = ctx;
+  const { outsMarkets, outsPlays, dropped, isDebug, cutoffStr, sportByteam, gameTimes } = ctx;
   if (!outsMarkets || outsMarkets.length === 0) return;
 
   const byName = sportByteam?.mlb?.pitcherStatsByName || {};
+  // Real gameTime for computeMakerQuote's pre-game gate (found 2026-07-23 — this module was
+  // hardcoding gameTime:null despite the same gameTimes map props.js already reads being in
+  // scope here too). Same lookup idiom as props.js: keyed off the pitcher's own team (this is a
+  // prop-shaped row, same as any other player prop), with a tomorrow-date fallback for the
+  // pre-midnight-PT / post-midnight-UTC listing gap.
+  const _tomorrowISOStr = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
 
   for (const m of outsMarkets) {
     if (m.gameDate && cutoffStr && m.gameDate < cutoffStr) continue; // game already past the cutoff day
@@ -102,6 +108,13 @@ export function emitMlbOutsPlays(ctx) {
     let homeTeam = m.gameTeam1, awayTeam = m.gameTeam2;
     if (sportByteam?.mlb?.gameHomeTeams?.[m.gameTeam2]) { homeTeam = m.gameTeam2; awayTeam = m.gameTeam1; }
 
+    const gameTime = gameTimes?.[`mlb:${m.pitcherTeam}:${m.gameDate}`]
+      ?? gameTimes?.[`mlb:${m.pitcherTeam}:${_tomorrowISOStr}`]
+      ?? gameTimes?.[`mlb:${m.pitcherTeam}`]
+      ?? gameTimes?.[`mlb:${homeTeam}:${m.gameDate}`]
+      ?? gameTimes?.[`mlb:${awayTeam}:${m.gameDate}`]
+      ?? null;
+
     outsPlays.push({
       sport: "mlb", stat: "outs",
       playerName: m.player,
@@ -110,7 +123,7 @@ export function emitMlbOutsPlays(ctx) {
       truePct, kalshiPct, noKalshiPct: m.noPct,
       americanOdds: americanOdds ?? null,
       edge, dataConfidence: 10, dcQualified: true, qualified: true,
-      gameDate: m.gameDate, gameTime: null, modelVersion: "mlb-outs-v1",
+      gameDate: m.gameDate, gameTime, modelVersion: "mlb-outs-v1",
       // feature fields (→ features JSON) for future tune:residual slicing
       eOuts: proj.eOuts, sigmaOuts: proj.sigma, outRate: proj.outRate,
       avgBF: ps.avgBF, stdBF: ps.stdBF, baa: ps.baa ?? null, gs26: ps.gs26 ?? null,

@@ -1998,7 +1998,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
         // dedicated array (NOT `plays`) so they bypass dedup/gameTime-filter/card-builder; merged
         // into shadow:staging only. Normal workload model off pitcherStatsByName, favorite side.
         const outsPlays = [];
-        emitMlbOutsPlays({ outsMarkets, outsPlays, dropped, isDebug, cutoffStr, sportByteam });
+        emitMlbOutsPlays({ outsMarkets, outsPlays, dropped, isDebug, cutoffStr, sportByteam, gameTimes });
         // Drop plays whose scheduled gameTime has already passed — pre-game market is closed,
         // and our model truePct is built on pre-game inputs so it's no longer valid in-game.
         // Plays without gameTime are kept (we already gate by gameDate earlier).

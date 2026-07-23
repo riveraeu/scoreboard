@@ -88,6 +88,51 @@ test("emitMlbOutsPlays: under favorite → direction under, complement truePct",
   assert.strictEqual(outsPlays[0].kalshiPct, 80);
 });
 
+test("emitMlbOutsPlays: real gameTime from the pitcher's team, found 2026-07-23 (was hardcoded null)", () => {
+  const outsPlays = [], dropped = [];
+  emitMlbOutsPlays({
+    outsMarkets: [{
+      player: "Kodai Senga", threshold: 15, gameTeam1: "CHC", gameTeam2: "NYM",
+      pitcherTeam: "NYM", yesPct: 72, noPct: 30, yesAO: -257, noAO: 233,
+      kalshiVolume: 50, gameDate: "2026-06-23",
+    }],
+    outsPlays, dropped, isDebug: true, cutoffStr: "2026-06-22",
+    sportByteam: { mlb: { gameHomeTeams: { NYM: "NYM" }, pitcherStatsByName: { "kodai senga": { avgBF: 25, stdBF: 5, baa: 0.230, gs26: 14 } } } },
+    gameTimes: { "mlb:NYM:2026-06-23": "2026-06-23T23:10:00Z" },
+  });
+  assert.strictEqual(outsPlays[0].gameTime, "2026-06-23T23:10:00Z");
+});
+
+test("emitMlbOutsPlays: gameTime falls back to home/away team lookup when the pitcher's own key is missing", () => {
+  const outsPlays = [], dropped = [];
+  emitMlbOutsPlays({
+    outsMarkets: [{
+      player: "Kodai Senga", threshold: 15, gameTeam1: "CHC", gameTeam2: "NYM",
+      pitcherTeam: "NYM", yesPct: 72, noPct: 30, yesAO: -257, noAO: 233,
+      kalshiVolume: 50, gameDate: "2026-06-23",
+    }],
+    outsPlays, dropped, isDebug: true, cutoffStr: "2026-06-22",
+    sportByteam: { mlb: { gameHomeTeams: { NYM: "NYM" }, pitcherStatsByName: { "kodai senga": { avgBF: 25, stdBF: 5, baa: 0.230, gs26: 14 } } } },
+    gameTimes: { "mlb:CHC:2026-06-23": "2026-06-23T23:10:00Z" }, // only the away team's key present
+  });
+  assert.strictEqual(outsPlays[0].gameTime, "2026-06-23T23:10:00Z");
+});
+
+test("emitMlbOutsPlays: gameTime stays null (not a crash) when gameTimes has no match", () => {
+  const outsPlays = [], dropped = [];
+  emitMlbOutsPlays({
+    outsMarkets: [{
+      player: "Kodai Senga", threshold: 15, gameTeam1: "CHC", gameTeam2: "NYM",
+      pitcherTeam: "NYM", yesPct: 72, noPct: 30, yesAO: -257, noAO: 233,
+      kalshiVolume: 50, gameDate: "2026-06-23",
+    }],
+    outsPlays, dropped, isDebug: true, cutoffStr: "2026-06-22",
+    sportByteam: { mlb: { gameHomeTeams: { NYM: "NYM" }, pitcherStatsByName: { "kodai senga": { avgBF: 25, stdBF: 5, baa: 0.230, gs26: 14 } } } },
+    gameTimes: {},
+  });
+  assert.strictEqual(outsPlays[0].gameTime, null);
+});
+
 test("emitMlbOutsPlays: skips when neither side in [67,91] + drops unknown pitcher", () => {
   const outsPlays = [], dropped = [];
   emitMlbOutsPlays({
