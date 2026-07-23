@@ -956,8 +956,9 @@ export async function handleKalshiRoutes(ctx) {
   // already sitting in kalshi_series_seen. Series vetting recurs constantly in this codebase
   // (see the triage log memory) — this is a reusable tool, not a one-off, same precedent as
   // `/api/maker-v1-category-breakdown`. ADMIN_KEY only; GET, no DB writes.
-  // ?sampleSize= (default 20, capped 100) — full-ladder pulls (e.g. categorizing every distinct
-  // stat-type suffix in a bundled series like KXNFLTSPEC) need more than the default sample.
+  // ?sampleSize= (default 20, capped 500) / ?limit= (default 100, capped 500, the raw Kalshi
+  // fetch page size) — full-ladder pulls (e.g. categorizing every distinct stat-type suffix in a
+  // bundled series like KXNFLTSPEC) need more than the default 100-market/20-sample fetch.
   // ?meta=1 — also fetches series-level metadata (category/tags/frequency) via a DIFFERENT
   // Kalshi endpoint (GET /v2/series/{ticker}, not the market list) — added to diagnose why
   // kalshi-series-scan's category=Sports catalog diff misses some real, liquid series entirely.
@@ -967,10 +968,12 @@ export async function handleKalshiRoutes(ctx) {
     const ticker = params.get("ticker");
     if (!ticker) return errorResponse("ticker required", 400);
     const sampleSizeParam = parseInt(params.get("sampleSize"), 10);
-    const sampleSize = Number.isFinite(sampleSizeParam) ? Math.max(1, Math.min(100, sampleSizeParam)) : 20;
+    const sampleSize = Number.isFinite(sampleSizeParam) ? Math.max(1, Math.min(500, sampleSizeParam)) : 20;
+    const limitParam = parseInt(params.get("limit"), 10);
+    const limit = Number.isFinite(limitParam) ? Math.max(1, Math.min(500, limitParam)) : 100;
     const wantMeta = params.get("meta") === "1";
     const [result, meta] = await Promise.all([
-      checkSeriesLiquidity(ticker, { sampleSize }),
+      checkSeriesLiquidity(ticker, { sampleSize, limit }),
       wantMeta ? fetchSeriesMeta(ticker) : Promise.resolve(null),
     ]);
     if (result == null) return jsonResponse({ ok: false, ticker, reason: "fetch failed or no markets" });

@@ -72,8 +72,8 @@ export async function fetchSeriesMeta(ticker) {
 // a count), so a human/agent can judge liquidity quality, not just presence. Used by
 // /api/kalshi-check. Returns null on total fetch failure (series doesn't exist or Kalshi
 // unreachable) — never throws.
-export async function checkSeriesLiquidity(ticker, { sampleSize = 20 } = {}) {
-  const markets = await fetchSeriesMarkets(ticker);
+export async function checkSeriesLiquidity(ticker, { sampleSize = 20, limit = 100 } = {}) {
+  const markets = await fetchSeriesMarkets(ticker, { limit });
   if (markets == null) return null;
   const sample = markets.slice(0, sampleSize).map(m => ({
     ticker: m.ticker,
