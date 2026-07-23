@@ -790,12 +790,22 @@ export default function MakerBoardPage({ shadowReportData, shadowReportLoading, 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoggedIn]);
 
+  // Refresh must reload BOTH data sources: boardData (orders/positions — always live, no cache)
+  // and shadowReportData (bankroll/positions/V2-PnL tiles + DoThisBanner + MakerProgress — cached
+  // up to 25h server-side). Before this, Refresh only re-fetched boardData, so a real change to
+  // realized PnL (e.g. new grades landing) stayed invisible until a full page reload picked up a
+  // fresh shadowReportData on mount — confusing when the underlying numbers had genuinely changed.
+  const refreshAll = React.useCallback(() => {
+    fetchBoard();
+    fetchShadowReport(true);
+  }, [fetchBoard, fetchShadowReport]);
+
   return (
     <div style={{ maxWidth:1280, margin:"0 auto", padding:"16px 16px" }}>
       <div style={{ display:"flex", alignItems:"center", marginBottom:14, gap:12 }}>
         <h1 style={{ color:"#fff", fontSize:18, fontWeight:700, margin:0, flex:1 }}>Shadow Maker</h1>
-        <button onClick={fetchBoard} style={{ background:"transparent", border:`1px solid ${C.border}`, borderRadius:4, color:C.gray, fontSize:11, padding:"4px 10px", cursor:"pointer" }}>
-          {boardLoading ? "Refreshing…" : "Refresh"}
+        <button onClick={refreshAll} style={{ background:"transparent", border:`1px solid ${C.border}`, borderRadius:4, color:C.gray, fontSize:11, padding:"4px 10px", cursor:"pointer" }}>
+          {boardLoading || shadowReportLoading ? "Refreshing…" : "Refresh"}
         </button>
         <button onClick={navigateToPicks} style={{ background:"transparent", border:`1px solid ${C.border}`, borderRadius:4, color:C.gray, fontSize:11, padding:"4px 10px", cursor:"pointer" }}>
           Picks →
