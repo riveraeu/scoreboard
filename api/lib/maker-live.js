@@ -30,7 +30,7 @@ import { MAKER_V2_BAND, MAKER_V2_SIZE, MAKER_V2_MAX_CONCURRENT, MAKER_V2_SAME_GA
 import { computeMakerQuote, MAKER_FEE_SERIES } from "./maker.js";
 import { shadowId } from "./shadow-id.js";
 import { neonQuery, neonExec } from "./neon.js";
-import { placeKalshiOrder, cancelKalshiOrder, fetchKalshiFills, fetchUnsettledTickers } from "./kalshi-order-client.js";
+import { placeKalshiOrder, cancelKalshiOrder, fetchKalshiFills, fetchKalshiSettlements } from "./kalshi-order-client.js";
 
 const ARMED_KV_KEY = "maker:v2:armed";
 
@@ -272,44 +272,69 @@ export async function updateLiveMakerOrders({ snapResults, staging, snapshotDate
 // resolves TODAY's already-finished games, which the main shadow-resolver won't touch until
 // T+1) as well as inside the nightly reconcileLiveMakerFills below. One source of truth either
 // way — settlement math is `pnl_cents = price − 100·side_won`, same formula V1 uses.
+// Grades open V2 positions directly off Kalshi's own settlements feed (2026-07-22 rewrite) —
+// `revenue` (kalshi-order-client.js's fetchKalshiSettlements) is Kalshi's own computed net PnL
+// for the account's position on that ticker, already netting cost vs payout. Replaces the
+// earlier approach (re-derive win/loss from ESPN via shadow_plays, then separately check a
+// fetchUnsettledTickers gate before trusting it): row-by-row audit confirmed the ESPN math was
+// numerically correct, but it exposed a real timing gap — a market only appears in `settlements`
+// once Kalshi has ACTUALLY settled it, so this one call is both the accuracy and the timing
+// signal, eliminating the two-step guess. shadow_plays resolution (resolveOpenMakerPositions)
+// still runs for the broader calibration pipeline; V2's own PnL no longer depends on it.
+//
+// One settlement record covers ALL of the account's contracts on a ticker, but we can have
+// multiple maker_orders_v2 rows per ticker (renewed resting orders each filling separately) —
+// revenue is split evenly per contract across our own rows for that ticker (a uniform-price
+// approximation when entry prices differed slightly across renewals; the per-ticker TOTAL is
+// always exactly right even if an individual row's share is a cents-level approximation).
 export async function gradeResolvedMakerPositions({ env }) {
   await ensureMakerLiveTables(env);
 
-  // Candidates: outcome already known (shadow_plays resolved) but not yet graded.
   const candidates = await neonQuery(
-    `SELECT o.id AS oid, o.ticker,
-       CASE WHEN o.side = 'yes'
-         THEN (CASE WHEN s.direction = 'under' THEN NOT s.won ELSE s.won END)
-         ELSE NOT (CASE WHEN s.direction = 'under' THEN NOT s.won ELSE s.won END)
-       END AS side_won
-     FROM maker_orders_v2 o JOIN shadow_plays s ON s.id = o.shadow_row_id
-     WHERE s.resolved AND s.won IS NOT NULL AND o.status = 'executed' AND o.graded_at IS NULL`,
+    `SELECT id, ticker, side, filled_count FROM maker_orders_v2
+     WHERE status = 'executed' AND graded_at IS NULL`,
     [], env, { write: true });
   if (!candidates.length) return { graded: 0, held: 0 };
 
-  // Don't move a position into realized PnL ahead of Kalshi's own settlement — the true outcome
-  // can be known (via ESPN) well before Kalshi finishes settling/crediting the account for that
-  // specific market (2026-07-22 finding: same-day grading exposed real positions still open on
-  // Kalshi's books hours after the game ended). Fail-closed: if settlement status can't be
-  // confirmed, skip grading entirely this pass rather than guess — retried next tick.
-  const unsettledRes = await fetchUnsettledTickers(env);
-  if (!unsettledRes.ok) return { graded: 0, held: candidates.length, error: unsettledRes.error };
+  // Fail-closed: if settlements can't be fetched, skip grading entirely this pass — retried
+  // next tick — rather than guess. 4-day lookback comfortably covers same-day placement.
+  const minTs = Math.floor((Date.now() - 4 * 86400_000) / 1000);
+  const settlementsRes = await fetchKalshiSettlements({ minTs }, env);
+  if (!settlementsRes.ok) return { graded: 0, held: candidates.length, error: settlementsRes.error };
 
-  const toGrade = candidates.filter(c => !unsettledRes.tickers.has(c.ticker));
+  const byTicker = new Map(settlementsRes.settlements.map(s => [s.ticker, s]));
+  const byTickerCandidates = new Map();
+  for (const c of candidates) {
+    if (!byTicker.has(c.ticker)) continue;
+    if (!byTickerCandidates.has(c.ticker)) byTickerCandidates.set(c.ticker, []);
+    byTickerCandidates.get(c.ticker).push(c);
+  }
+  if (!byTickerCandidates.size) return { graded: 0, held: candidates.length };
+
+  const toGrade = [];
+  for (const [ticker, rows] of byTickerCandidates) {
+    const settlement = byTicker.get(ticker);
+    const totalContracts = rows.reduce((s, r) => s + Number(r.filled_count || 0), 0);
+    if (!totalContracts) continue;
+    const perContractCents = Math.round(settlement.revenueCents / totalContracts);
+    for (const r of rows) {
+      toGrade.push({ oid: r.id, sideWon: settlement.marketResult === r.side, pnlCents: perContractCents });
+    }
+  }
   if (!toGrade.length) return { graded: 0, held: candidates.length };
 
   let gradedCount = 0;
   const chunkSize = 100;
   for (let i = 0; i < toGrade.length; i += chunkSize) {
     const chunk = toGrade.slice(i, i + chunkSize);
-    const placeholders = chunk.map((_, ri) => `($${ri * 2 + 1}::int, $${ri * 2 + 2}::boolean)`).join(", ");
-    const values = chunk.flatMap(c => [c.oid, c.side_won]);
+    const placeholders = chunk.map((_, ri) => `($${ri * 3 + 1}::int, $${ri * 3 + 2}::boolean, $${ri * 3 + 3}::int)`).join(", ");
+    const values = chunk.flatMap(c => [c.oid, c.sideWon, c.pnlCents]);
     const graded = await neonQuery(
       `UPDATE maker_orders_v2 mo SET
          side_won = v.side_won,
-         pnl_cents = mo.price - CASE WHEN v.side_won THEN 100 ELSE 0 END,
+         pnl_cents = v.pnl_cents,
          graded_at = NOW()
-       FROM (VALUES ${placeholders}) AS v(oid, side_won)
+       FROM (VALUES ${placeholders}) AS v(oid, side_won, pnl_cents)
        WHERE mo.id = v.oid AND mo.graded_at IS NULL
        RETURNING mo.id`,
       values, env, { write: true });

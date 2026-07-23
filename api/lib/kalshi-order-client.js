@@ -143,6 +143,39 @@ export async function fetchKalshiFills({ minTs, limit = 1000 } = {}, env) {
   return { ok: true, fills: respBody.fills ?? [] };
 }
 
+// Reads the account's actual settlements — Kalshi's own computed, authoritative net PnL per
+// settled market (`revenue`, integer cents, already nets cost vs payout — this IS what a
+// settled position actually credited to the account). Replaces the earlier ESPN-derived
+// pnl_cents math + fetchUnsettledTickers gate in gradeResolvedMakerPositions (maker-live.js,
+// 2026-07-22): re-deriving win/loss from box scores was verified correct, but a market only
+// APPEARS here once Kalshi has actually settled it, so this single call is both the accuracy
+// and the timing signal in one — no separate "is it settled yet" check needed. Single page
+// (limit≤1000, no cursor) — V2's daily volume is nowhere near that in any few-day lookback.
+export async function fetchKalshiSettlements({ minTs, limit = 1000 } = {}, env) {
+  if (!env?.KALSHI_API_KEY_ID || !env?.KALSHI_PRIVATE_KEY) return { ok: false, error: "Kalshi API not configured" };
+  const kalshiPath = "/trade-api/v2/portfolio/settlements";
+  const qs = `?limit=${limit}${minTs ? `&min_ts=${encodeURIComponent(minTs)}` : ""}`;
+  let timestamp, signature;
+  try {
+    ({ timestamp, signature } = await _sign({ method: "GET", path: kalshiPath, env }));
+  } catch (e) {
+    return { ok: false, error: `Signing failed: ${e?.message || e}` };
+  }
+  const resp = await fetch(`https://api.elections.kalshi.com${kalshiPath}${qs}`, {
+    headers: _authHeaders(env, timestamp, signature),
+  }).catch(() => null);
+  if (!resp) return { ok: false, error: "Kalshi unreachable" };
+  const respBody = await resp.json().catch(() => ({}));
+  if (!resp.ok) return { ok: false, error: respBody?.error?.message || `Kalshi error ${resp.status}`, status: resp.status };
+  const settlements = (respBody.settlements || []).map(s => ({
+    ticker: s.ticker,
+    marketResult: s.market_result,
+    revenueCents: Math.round(Number(s.revenue) || 0),
+    settledTime: s.settled_time,
+  }));
+  return { ok: true, settlements };
+}
+
 // Cancels a single resting order. See the CANCEL SCHEMA note at the top of this file — verify
 // against a live test call before this is ever invoked with armed=true.
 export async function cancelKalshiOrder({ orderId }, env) {
