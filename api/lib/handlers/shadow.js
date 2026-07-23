@@ -36,7 +36,7 @@ const COLUMNS = [
   "id", "snapshot_date", "sport", "stat", "game_type",
   "player_name", "player_id", "home_team", "away_team",
   "scoring_team", "pick_team", "pick_line", "threshold", "direction",
-  "model_true_pct", "kalshi_pct", "no_kalshi_pct", "edge",
+  "model_true_pct", "model_free", "kalshi_pct", "no_kalshi_pct", "edge",
   "dc", "dc_qualified", "game_date", "game_time",
   "group_id", "group_size", "threshold_rank", "is_best_edge",
   "snapshot_model_version", "season_type", "features",
@@ -59,7 +59,8 @@ CREATE TABLE IF NOT EXISTS ${SHADOW_TABLE} (
   pick_line NUMERIC,
   threshold NUMERIC,
   direction TEXT,
-  model_true_pct NUMERIC NOT NULL,
+  model_true_pct NUMERIC,
+  model_free BOOLEAN NOT NULL DEFAULT FALSE,
   kalshi_pct NUMERIC,
   no_kalshi_pct NUMERIC,
   edge NUMERIC,
@@ -95,6 +96,17 @@ const ADD_PRE_PRICE_COLS_SQL = `
 ALTER TABLE shadow_plays ADD COLUMN IF NOT EXISTS kalshi_yes_price_pre NUMERIC;
 ALTER TABLE shadow_plays ADD COLUMN IF NOT EXISTS kalshi_no_price_pre NUMERIC;
 ALTER TABLE shadow_plays ADD COLUMN IF NOT EXISTS price_pre_at TIMESTAMPTZ
+`;
+
+// Model-free maker markets (2026-07-23): a market can be maker-quoted purely off Kalshi's own
+// favorite-ask mispricing, with no probability model behind it (see project_maker_modelfree_
+// clubsoccer_2026_07_23 memory). model_true_pct was NOT NULL, which silently blocked any such
+// row from ever reaching shadow_plays — gradeMakerFills needs the row here to grade a fill.
+// model_free flags these rows so Brier/calibration queries (which assume every row has a real
+// truePct) can explicitly exclude them instead of corrupting n-vs-average counts.
+const ADD_MODEL_FREE_COLS_SQL = `
+ALTER TABLE shadow_plays ALTER COLUMN model_true_pct DROP NOT NULL;
+ALTER TABLE shadow_plays ADD COLUMN IF NOT EXISTS model_free BOOLEAN NOT NULL DEFAULT FALSE
 `;
 
 // Polymarket cross-venue ML deltas (Phase 1a observatory). Its own table so the 4-daily snapshots
@@ -2128,6 +2140,7 @@ async function handleShadowReport({ path, request, env, cache }) {
         FROM shadow_plays
         WHERE resolved AND won IS NOT NULL AND snapshot_date >= $1
           AND threshold_rank = 1 AND kalshi_yes_price_pre IS NOT NULL
+          AND model_true_pct IS NOT NULL
         GROUP BY sport, COALESCE(stat, game_type) HAVING COUNT(*) >= 5
         ORDER BY n DESC
       `, [since], env, { write: true }),
@@ -2259,6 +2272,7 @@ async function handleShadowReport({ path, request, env, cache }) {
           ) AS skill_sd
         FROM shadow_plays
         WHERE resolved AND won IS NOT NULL AND snapshot_date >= ${_formulaFloorSql("$1")} AND threshold_rank = 1
+          AND model_true_pct IS NOT NULL
         GROUP BY sport, COALESCE(stat, game_type)
       `, [since], env, { write: true }),
 
@@ -2276,6 +2290,7 @@ async function handleShadowReport({ path, request, env, cache }) {
               - POWER(model_true_pct/100.0 - (won)::int, 2) AS skill_i
           FROM shadow_plays
           WHERE resolved AND won IS NOT NULL AND snapshot_date >= ${_formulaFloorSql("$1")} AND threshold_rank = 1
+            AND model_true_pct IS NOT NULL
         )
         SELECT sport, category,
           COUNT(*) FILTER (WHERE half = 1) AS n_early,
@@ -3495,6 +3510,12 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
       await neonExec(CREATE_SB_DELTAS_SQL, env);
       console.log(`[shadow-snapshot] DDL done ${Date.now() - t0}ms`);
     }
+    const _modelFreeSchemaKey = "shadow:schema:modelfree:v1";
+    const _modelFreeSchemaOk = cache ? await cache.get(_modelFreeSchemaKey).catch(() => null) : null;
+    if (!_modelFreeSchemaOk) {
+      await neonExec(ADD_MODEL_FREE_COLS_SQL, env);
+      if (cache) cache.put(_modelFreeSchemaKey, "1", { expirationTtl: 86400 * 30 }).catch(() => {});
+    }
 
     // Try KV staging written by tonight cron — avoids the 55s re-fetch that hits the 60s wall-clock.
     let rawPlays = null;
@@ -3538,9 +3559,11 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
       rawPlays = [...(tonight.plays || []), ...(tonight.dropped || [])];
     }
 
-    // Filter: must have a computed truePct, and game must be on today's PT date.
+    // Filter: must have a computed truePct (OR be an explicit model-free maker candidate —
+    // see project_maker_modelfree_clubsoccer_2026_07_23 memory), and game must be on today's
+    // PT date.
     const plays = rawPlays.filter(p =>
-      typeof p.truePct === "number" && !isNaN(p.truePct) &&
+      (p.modelFree === true || (typeof p.truePct === "number" && !isNaN(p.truePct))) &&
       (p.gameDate === snapshotDate || !p.gameDate)
     );
 
@@ -3588,7 +3611,9 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
       pick_line: p.pickLine ?? null,
       threshold: p.threshold ?? null,
       direction: p.direction || null,
-      model_true_pct: p.direction === "under" ? (p.noTruePct ?? parseFloat((100 - p.truePct).toFixed(1))) : p.truePct,
+      model_true_pct: p.modelFree ? null
+        : (p.direction === "under" ? (p.noTruePct ?? parseFloat((100 - p.truePct).toFixed(1))) : p.truePct),
+      model_free: p.modelFree === true,
       kalshi_pct: p.kalshiPct ?? null,
       no_kalshi_pct: p.noKalshiPct ?? null,
       edge: p.edge ?? null,

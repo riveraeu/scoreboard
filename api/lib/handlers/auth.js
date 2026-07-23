@@ -502,7 +502,11 @@ export async function handleAuthRoutes(ctx) {
     }
 
     // Build dynamic WHERE clauses — safe parameterized approach.
-    const whereParts = ["resolved = TRUE", "won IS NOT NULL"];
+    // model_true_pct IS NOT NULL excludes model-free maker rows (see project_maker_modelfree_
+    // clubsoccer_2026_07_23 memory) — this endpoint measures model calibration/Brier skill,
+    // which is undefined for a row with no probability model behind it. Without this, a
+    // model-free row's NULL bsp falls through every band CASE below into '0-5' by accident.
+    const whereParts = ["resolved = TRUE", "won IS NOT NULL", "model_true_pct IS NOT NULL"];
     const qp = [];
     const _p = (val) => { qp.push(val); return `$${qp.length}`; };
 
@@ -1334,6 +1338,7 @@ ORDER BY COUNT(*) DESC`;
         AND snapshot_date >= $1
         AND threshold_rank = 1
         AND kalshi_yes_price_pre IS NOT NULL
+        AND model_true_pct IS NOT NULL
       GROUP BY sport, COALESCE(stat, game_type)
       HAVING COUNT(*) >= 5
       ORDER BY n DESC
