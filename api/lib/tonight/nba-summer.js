@@ -59,7 +59,7 @@ export async function emitNbaSummerPlays(ctx) {
       // later analysis (parity-start rows are separable via pickGames/oppGames = 0).
       opponent: m.opponent, pickElo: rPick.rating, oppElo: rOpp.rating,
       pickGames: rPick.games, oppGames: rOpp.games, eloGamesUsed: index?.gamesUsed ?? 0,
-      kalshiVolume: m.kalshiVolume ?? null,
+      kalshiVolume: m.kalshiVolume ?? null, kalshiTicker: m._ticker ?? null,
     });
   }
 }

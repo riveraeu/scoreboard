@@ -79,7 +79,7 @@ export async function emitSoccerAdvancePlays(ctx) {
       eloHome: ev.eloHome, eloAway: ev.eloAway,
       lambdaHome: round1(ev.lambdaHome), lambdaAway: round1(ev.lambdaAway),
       pWin90: round1(pWin * 100), pDraw90: round1(pDraw * 100),
-      kalshiVolume: m.kalshiVolume ?? null,
+      kalshiVolume: m.kalshiVolume ?? null, kalshiTicker: m._ticker ?? null,
     });
   }
 }

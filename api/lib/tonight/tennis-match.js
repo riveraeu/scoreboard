@@ -90,7 +90,7 @@ export async function emitTennisMatchPlays(ctx) {
         // feature fields (→ features JSON via extractFeatures): tour drives resolver scoreboard
         // selection; ranks/opponent/volume aid later analysis.
         tour: ev.tour, opponent, pickRank: rPick.rank, oppRank: rOpp.rank,
-        kalshiVolume: side.kalshiVolume ?? null,
+        kalshiVolume: side.kalshiVolume ?? null, kalshiTicker: side._ticker ?? null,
       });
     }
   }

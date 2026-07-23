@@ -77,7 +77,7 @@ export async function emitLmbPlays(ctx) {
       opponent: m.opponent,
       pickRsPg: pickR?.rsPg ?? null, pickRaPg: pickR?.raPg ?? null, pickGames: pickR?.games ?? null,
       oppRsPg: oppR?.rsPg ?? null, oppRaPg: oppR?.raPg ?? null, oppGames: oppR?.games ?? null,
-      kalshiVolume: m.kalshiVolume ?? null,
+      kalshiVolume: m.kalshiVolume ?? null, kalshiTicker: m._ticker ?? null,
     });
   }
 }

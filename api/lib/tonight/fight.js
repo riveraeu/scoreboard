@@ -91,7 +91,7 @@ export async function emitFightPlays(ctx) {
       if (!(n >= 2)) continue;
       const pOver = pEndBeforeRound(h, n); // P(ends before round N) — the YES side
       const overPct = round1(pOver * 100);
-      const sideBase = { ...base, threshold: n, kalshiVolume: s.kalshiVolume ?? null };
+      const sideBase = { ...base, threshold: n, kalshiVolume: s.kalshiVolume ?? null, kalshiTicker: s._ticker ?? null };
 
       // YES / "ends before round N" — gated on the YES price.
       if (inWindow(s.yesPct)) {

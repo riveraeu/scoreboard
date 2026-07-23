@@ -73,7 +73,7 @@ export async function emitNascarPlays(ctx) {
         pickId: rPick.id, oppId: rOpp.id,
         pickAvgFinish: rPick.avgFinish, oppAvgFinish: rOpp.avgFinish,
         pickRaces: rPick.nRaces, oppRaces: rOpp.nRaces,
-        kalshiVolume: m.kalshiVolume ?? null,
+        kalshiVolume: m.kalshiVolume ?? null, kalshiTicker: m._ticker ?? null,
       });
     } else if (m.subtype === "top10") {
       if (!m.player) {
@@ -98,7 +98,7 @@ export async function emitNascarPlays(ctx) {
         race: m.raceCode,
         pickId: rPick.id,
         pickAvgFinish: rPick.avgFinish, pickRaces: rPick.nRaces,
-        kalshiVolume: m.kalshiVolume ?? null,
+        kalshiVolume: m.kalshiVolume ?? null, kalshiTicker: m._ticker ?? null,
       });
     }
   }

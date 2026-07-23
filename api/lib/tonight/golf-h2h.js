@@ -58,7 +58,7 @@ export async function emitGolfH2hPlays(ctx) {
       // aid later analysis.
       round: m.round, tournament: m.tournament, opponent: m.opponent,
       pickRank: rPick.rank, oppRank: rOpp.rank, pickPts: rPick.points, oppPts: rOpp.points,
-      kalshiVolume: m.kalshiVolume ?? null,
+      kalshiVolume: m.kalshiVolume ?? null, kalshiTicker: m._ticker ?? null,
     });
   }
 }

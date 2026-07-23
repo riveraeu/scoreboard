@@ -115,7 +115,7 @@ export function emitMlbOutsPlays(ctx) {
       eOuts: proj.eOuts, sigmaOuts: proj.sigma, outRate: proj.outRate,
       avgBF: ps.avgBF, stdBF: ps.stdBF, baa: ps.baa ?? null, gs26: ps.gs26 ?? null,
       pitcherTeam: m.pitcherTeam || null,
-      kalshiVolume: m.kalshiVolume ?? null,
+      kalshiVolume: m.kalshiVolume ?? null, kalshiTicker: m._ticker ?? null,
     });
   }
 }
