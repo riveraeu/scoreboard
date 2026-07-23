@@ -465,6 +465,30 @@ export async function handleKalshiRoutes(ctx) {
     return jsonResponse({ ok: true, placed, canceled });
   }
 
+  // ── /api/maker-v2-graded-audit ───────────────────────────────────────────────
+  // One-off diagnostic (2026-07-22) — dump every graded maker_orders_v2 row for a date, joined
+  // to its shadow_plays resolution, so a suspicious PnL total can be spot-checked row-by-row
+  // against real game outcomes. Same auth as maker-v2-board. ?date=YYYY-MM-DD, default today PT.
+  if (path === "maker-v2-graded-audit" && method === "GET") {
+    const _bearer = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/, "");
+    const _jwtOk = (_bearer && JWT_SECRET) ? await verifyJWT(_bearer, JWT_SECRET) : null;
+    const _adminOk = env?.ADMIN_KEY && _bearer === env.ADMIN_KEY;
+    if (!_jwtOk && !_adminOk) return errorResponse("Unauthorized", 401);
+    const date = new URL(request.url).searchParams.get("date")
+      || new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+    const rows = await neonQuery(
+      `SELECT mo.id, mo.ticker, mo.series, mo.sport, mo.category, mo.game_date, mo.game_key,
+              mo.side, mo.price, mo.size, mo.filled_count, mo.side_won, mo.pnl_cents, mo.graded_at,
+              s.id AS shadow_id, s.stat, s.game_type, s.direction, s.pick_team, s.home_team,
+              s.away_team, s.threshold, s.pick_line, s.won, s.actual_value, s.resolved_at
+       FROM maker_orders_v2 mo JOIN shadow_plays s ON s.id = mo.shadow_row_id
+       WHERE mo.graded_at IS NOT NULL AND mo.game_date = $1
+       ORDER BY mo.graded_at DESC LIMIT 300`,
+      [date], env, { write: true }
+    );
+    return jsonResponse({ ok: true, date, count: rows.length, rows });
+  }
+
   // ── /api/maker-v2-board ──────────────────────────────────────────────────────
   // Near-real-time read for the MakerBoardPage frontend — NOT folded into the 25h-cached
   // shadow-report, since order status needs fresher reads than that. Re-derives "what's
