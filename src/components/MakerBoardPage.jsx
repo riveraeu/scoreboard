@@ -861,6 +861,62 @@ function MakerUtilization({ eligibleBySport, orders, caps }) {
   );
 }
 
+// Matchup label from the DB game_key (sport|gameDate|team1-team2, sorted teams — see
+// gameKeyFor in api/lib/maker-live.js). Falls back to the ticker if the key is malformed.
+function matchupLabel(o) {
+  const parts = (o.gameKey || "").split("|");
+  const teams = parts[2];
+  return teams ? teams.replace("-", " vs ") : o.ticker;
+}
+
+// V2 sells the favorite (a short: real order is a buy of the complement — see sellAsBuy in
+// maker-live.js), so a held position's economics don't map onto Kalshi's own "cost/cash-out/max
+// payout" (long-position) framing. Collected = premium taken in at sale; Buy-back now = current
+// ask on the same side, i.e. what it'd cost to close today; Unrealized = the difference (positive
+// = favorite got cheaper = winning); Max risk = 100 − collected, the worst case at resolution.
+function MakerLivePositions({ positions }) {
+  if (!positions?.length) {
+    return <div style={{ color:C.dim, fontSize:10, padding:"6px 0" }}>No open positions — appears once a resting V2 order fills.</div>;
+  }
+  const sorted = [...positions].sort((a, b) => new Date(b.placedAt) - new Date(a.placedAt));
+  return (
+    <div style={{ maxWidth:820 }}>
+      <div style={{ display:"flex", gap:8, fontSize:9, color:C.dim, fontWeight:700, textTransform:"uppercase", padding:"0 2px", marginBottom:2 }}>
+        <span style={{ width:70 }}>Sport</span>
+        <span style={{ flex:1 }}>Market</span>
+        <span style={{ width:36 }}>Side</span>
+        <span style={{ width:64, textAlign:"right" }}>Collected</span>
+        <span style={{ width:80, textAlign:"right" }}>Buy-back now</span>
+        <span style={{ width:70, textAlign:"right" }}>Unrealized</span>
+        <span style={{ width:64, textAlign:"right" }}>Max risk</span>
+      </div>
+      <div style={{ maxHeight:280, overflowY:"auto" }}>
+        {sorted.slice(0, 80).map(o => (
+          <div key={`${o.ticker}-${o.placedAt}`} style={{ display:"flex", gap:8, alignItems:"center", fontSize:10, padding:"3px 2px",
+            borderTop:`1px solid ${C.border}` }} title={o.ticker}>
+            <span style={{ width:70, color:C.gray, textTransform:"uppercase" }}>{o.sport || "—"}</span>
+            <span style={{ flex:1, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+              {matchupLabel(o)} <span style={{ color:C.dim }}>· {o.category || o.series}</span>
+            </span>
+            <span style={{ width:36, color:C.gray, textTransform:"uppercase" }}>{o.side}</span>
+            <span style={{ width:64, textAlign:"right", color:C.text, fontVariantNumeric:"tabular-nums" }}>{o.price}¢×{o.filledCount}</span>
+            <span style={{ width:80, textAlign:"right", color:C.text, fontVariantNumeric:"tabular-nums" }}>
+              {o.currentAskCents != null ? `${o.currentAskCents}¢` : "—"}
+            </span>
+            <span style={{ width:70, textAlign:"right", fontWeight:700, fontVariantNumeric:"tabular-nums",
+              color: o.unrealizedCents == null ? C.dim : o.unrealizedCents > 0 ? C.green : o.unrealizedCents < 0 ? C.red : C.gray }}>
+              {o.unrealizedDollars != null
+                ? `${o.unrealizedDollars > 0 ? "+" : ""}$${o.unrealizedDollars.toFixed(2)} ${o.unrealizedCents > 0 ? "▲" : o.unrealizedCents < 0 ? "▼" : ""}`
+                : "—"}
+            </span>
+            <span style={{ width:64, textAlign:"right", color:C.dim, fontVariantNumeric:"tabular-nums" }}>{o.maxRiskCents}¢×{o.filledCount}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function useMakerBoardData() {
   const [data, setData] = React.useState(null);
   const [loading, setLoading] = React.useState(false);
@@ -919,6 +975,9 @@ export default function MakerBoardPage({ shadowReportData, shadowReportLoading, 
           <div style={{ color:C.dim, fontSize:9, fontWeight:700, margin:"6px 0 2px" }}>REAL EQUITY · CUMULATIVE GRADED PNL</div>
           <EquityCurve daily={shadowReportData?.makerBoard?.live?.daily} />
           <MakerLiveOrders orders={boardData?.orders} />
+
+          <div style={sectionHead}>Open positions (V2 · real capital)</div>
+          <MakerLivePositions positions={boardData?.positions} />
 
           {!(shadowReportLoading && !shadowReportData) && <MakerProgress mb={shadowReportData?.makerBoard} />}
 

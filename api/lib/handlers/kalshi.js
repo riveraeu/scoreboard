@@ -8,7 +8,7 @@
 //
 // normName + jsonResponse/errorResponse imported directly (utils is stable).
 
-import { jsonResponse, errorResponse } from "../utils.js";
+import { jsonResponse, errorResponse, pLimit } from "../utils.js";
 import { SERIES_CONFIG, CRON_ONLY_TICKERS, DISMISSED_SERIES } from "../series-config.js";
 import { verifyJWT } from "../auth-utils.js";
 import { neonQuery, neonExec } from "../neon.js";
@@ -504,8 +504,35 @@ export async function handleKalshiRoutes(ctx) {
       console.error(`[maker-v2-board] order read failed: ${e?.message}`);
     }
 
+    // Live positions — currently-held, ungraded fills (status='executed' with graded_at IS NULL,
+    // same subset `reconcileLiveMakerFills` targets). We SOLD `side` at `price`¢ (real order sent
+    // is a buy of the complement, per sellAsBuy — see maker-live.js), so this is a short: current
+    // mark-to-market needs the CURRENT ask on that same `side`, not the complement. Top-of-book
+    // only (one market-summary fetch per distinct ticker, no full book walk) — read-only display,
+    // failure-closed per position (a failed book fetch just omits the live fields for that row).
+    const positions = [];
+    const heldRows = orders.filter(o => o.status === "executed" && o.gradedAt == null);
+    if (heldRows.length) {
+      const bookLimit = pLimit(8);
+      const books = await Promise.all(
+        heldRows.map(o => bookLimit(() => fetchKalshiOrderbook(o.ticker).catch(() => ({ ok: false }))))
+      );
+      heldRows.forEach((o, i) => {
+        const book = books[i];
+        const currentAskCents = book?.ok ? (o.side === "yes" ? book.yesAsk : book.noAsk) : null;
+        const unrealizedCents = currentAskCents != null ? o.price - currentAskCents : null;
+        positions.push({
+          ...o,
+          currentAskCents,
+          unrealizedCents,
+          unrealizedDollars: unrealizedCents != null ? (unrealizedCents * o.filledCount) / 100 : null,
+          maxRiskCents: 100 - o.price,
+        });
+      });
+    }
+
     return jsonResponse({
-      ok: true, armed, orders, eligibleBySport,
+      ok: true, armed, orders, positions, eligibleBySport,
       caps: { maxConcurrent: MAKER_V2_MAX_CONCURRENT, sameGameCap: MAKER_V2_SAME_GAME_CAP },
     });
   }

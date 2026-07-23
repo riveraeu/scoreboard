@@ -60,7 +60,7 @@ Route handlers (`api/lib/handlers/`):
 - `player.js` — `/api/player`, `/api/gamelog`, `/api/headshot`
 - `sports.js` — `/api/team`, `/api/live`
 - `dvp.js` — `/api/dvp`, `/api/nba-depth`, `/api/dvp/debug-dc`
-- `kalshi.js` — `/api/kalshi`, `/api/kalshi-orderbook`, `/api/kalshi-snapshot`, `/api/kalshi-series-scan`, `/api/keepalive`, `/api/kalshi-order`, `/api/kalshi-balance`, `/api/kalshi-fills`, `/api/maker-v2-arm`, `/api/maker-v2-kill`, `/api/maker-v2-verify-cancel`
+- `kalshi.js` — `/api/kalshi`, `/api/kalshi-orderbook`, `/api/kalshi-snapshot`, `/api/kalshi-series-scan`, `/api/keepalive`, `/api/kalshi-order`, `/api/kalshi-balance`, `/api/kalshi-fills`, `/api/maker-v2-arm`, `/api/maker-v2-kill`, `/api/maker-v2-verify-cancel`, `/api/maker-v2-board`
 - `tonight.js` — `/api/tonight`. Owns the Kalshi parse loop, byteam hydration, data-prep, emit calls, response assembly.
 - `shadow.js` — `/api/shadow-snapshot`, `/api/shadow-resolver`, `/api/shadow-pregame-snap`, `/api/shadow-report`, `/api/{polymarket,sportsbook}-deltas`, `/api/polymarket-scan`, `/api/routine-note`
 - `push.js` — `/api/push/{vapid,subscribe,unsubscribe,notify,test}` (Web Push / PWA; web-push is the only Node-only dep, dynamic-imported in the send path)
@@ -107,7 +107,7 @@ Entry: `index.html` → `src/main.jsx` → `src/App.jsx`. Vercel runs `npm run b
 - `lib/hooks.js` — `useIsMobile(threshold=600)`
 - `lib/useReportData.js` — shadow-report state + fetchers; MakerBoardPage's only consumer since `/model`/ReportPage was deprecated 2026-07-22
 - `lib/scheduledCheckpoints.js` — `SCHEDULED_CHECKPOINTS` dated re-check list, used by MakerBoardPage's `DoThisBanner` (moved in 2026-07-22) and `MakerProgress` "next clock" tile
-- `components/` — `MakerBoardPage` (**landing page**, 2026-07-21 — arm progress + live maker orders + sport utilization + `DoThisBanner`), `LineupsPage` (taker picks, demoted to `/picks`, now lazy), `MatchupCard`, `PlaysColumn`, `MyPicksColumn`, `TeamPage`, `TotalsBarChart`, `DayBar`, `AddPickModal`
+- `components/` — `MakerBoardPage` (**landing page**, 2026-07-21 — arm progress + live maker orders + open positions (2026-07-22) + sport utilization + `DoThisBanner`), `LineupsPage` (taker picks, demoted to `/picks`, now lazy), `MatchupCard`, `PlaysColumn`, `MyPicksColumn`, `TeamPage`, `TotalsBarChart`, `DayBar`, `AddPickModal`
 
 **Dev proxy**: `vite.config.js` proxies `/api` to production so `npm run dev` works without a local backend.
 
@@ -127,6 +127,7 @@ Full request/response contracts, auth patterns, cron schedules, and Place All me
 | `/api/kalshi-fills` | `kalshi.js` | GET — filled orders (pick recovery) |
 | `/api/maker-v2-arm`, `/api/maker-v2-kill` | `kalshi.js` | POST (ADMIN_KEY) — shadow maker V2 real-order kill switch. Arm sets only the KV half (env.MAKER_V2_ARMED must ALSO be "true"); kill disarms + cancels every resting order immediately |
 | `/api/maker-v2-verify-cancel` | `kalshi.js` | POST (ADMIN_KEY) — one-time cancel-schema verification: places ONE real order (caller-specified ticker/side/price/count) then immediately cancels it, returns both raw responses. Runs server-side because KALSHI_API_KEY_ID/KALSHI_PRIVATE_KEY are Vercel "sensitive" env vars (write-only, never retrievable via `vercel env pull` — only the running function gets them injected) |
+| `/api/maker-v2-board` | `kalshi.js` | GET (ADMIN_KEY or JWT) — MakerBoardPage's near-real-time read: `orders` (last 300 `maker_orders_v2` rows), `positions` (currently-held ungraded fills + live top-of-book mark-to-market, added 2026-07-22), `eligibleBySport`, `armed`, `caps`. Not folded into the 25h-cached shadow-report — order/position status needs fresher reads |
 | `/api/player`, `/api/gamelog`, `/api/headshot` | `player.js` | ESPN player info + gamelogs |
 | `/api/team` | `sports.js` | Team page data (gameLog, lineup, season stats) |
 | `/api/live` | `sports.js` | In-game boxscore for pick tracking |
