@@ -13,7 +13,7 @@ import { fetchFightResults, matchFightByCodes, normFighterName } from "../mma.js
 import { fetchRoundScores, normGolfName } from "../golf.js";
 import { fetchRaceResults } from "../nascar.js";
 import { fetchSlResults } from "../nba-summer.js";
-import { detectAndGradeMakerFills } from "../maker.js";
+import { detectAndGradeMakerFills, computeSideWon } from "../maker.js";
 import { reconcileLiveMakerFills, isArmed as isMakerV2Armed } from "../maker-live.js";
 // shadowId moved to api/lib/shadow-id.js (2026-07-19) so the maker engine stamps the same
 // row identity on quote segments without a handler→handler import cycle.
@@ -2808,10 +2808,7 @@ async function handleShadowReport({ path, request, env, cache }) {
   // Arm criterion: fill PnL CI-lo > 0 at n≥200 fills. Failure-closed.
   let makerBoard = null;
   try {
-    const _yesWonExpr = `(CASE WHEN q.quote_side = 'yes'
-        THEN (CASE WHEN s.direction = 'under' THEN NOT s.won ELSE s.won END)
-        ELSE NOT (CASE WHEN s.direction = 'under' THEN NOT s.won ELSE s.won END) END)`;
-    const [[mq], [mf], [qo], _mDaily, _mBands] = await Promise.all([
+    const [[mq], [mf], _qoRows, _mDaily, _mBands] = await Promise.all([
       neonQuery(`
         SELECT COUNT(*)::int AS segments, COUNT(DISTINCT ticker)::int AS tickers,
           COUNT(DISTINCT game_date)::int AS days, ROUND(AVG(quote_ask), 1) AS avg_ask
@@ -2825,10 +2822,12 @@ async function handleShadowReport({ path, request, env, cache }) {
           ROUND(AVG(f.fill_ask), 1) AS avg_fill_ask
         FROM maker_fills f JOIN maker_quotes q ON q.id = f.quote_id
         WHERE q.game_date >= $1`, [since], env, { write: true }),
+      // Raw rows, not aggregated in SQL — side_won needs computeSideWon (maker.js), the same
+      // spread-aware logic detectAndGradeMakerFills uses, not a duplicated SQL CASE-WHEN that
+      // can drift out of sync with it (2026-07-22: the old duplicated copy here had the exact
+      // same spread sign bug found and fixed in detectAndGradeMakerFills).
       neonQuery(`
-        SELECT COUNT(*)::int AS n,
-          ROUND(AVG((${_yesWonExpr})::int::numeric), 4) AS side_won_rate,
-          ROUND(AVG(q.quote_ask), 1) AS avg_ask
+        SELECT q.ticker, q.quote_side, q.quote_ask, s.game_type, s.pick_team, s.direction, s.won
         FROM (
           SELECT DISTINCT ON (ticker, game_date) ticker, game_date, quote_side, quote_ask, shadow_row_id
           FROM maker_quotes WHERE game_date >= $1
@@ -2874,6 +2873,15 @@ async function handleShadowReport({ path, request, env, cache }) {
     const sd = mf?.sd_pnl != null ? Number(mf.sd_pnl) : null;
     const pnlLoCI = avgPnl != null && sd != null && graded > 1
       ? parseFloat((avgPnl - 1.96 * sd / Math.sqrt(graded)).toFixed(2)) : null;
+    const qoWins = _qoRows.map(r => computeSideWon({
+      gameType: r.game_type, ticker: r.ticker, pickTeam: r.pick_team,
+      direction: r.direction, won: r.won, quoteSide: r.quote_side,
+    }));
+    const qo = {
+      n: _qoRows.length,
+      side_won_rate: _qoRows.length ? parseFloat((qoWins.filter(Boolean).length / _qoRows.length).toFixed(4)) : null,
+      avg_ask: _qoRows.length ? parseFloat((_qoRows.reduce((s, r) => s + Number(r.quote_ask || 0), 0) / _qoRows.length).toFixed(1)) : null,
+    };
     makerBoard = {
       quotes: { segments: Number(mq?.segments || 0), tickers: Number(mq?.tickers || 0),
         days: Number(mq?.days || 0), avgAsk: mq?.avg_ask != null ? Number(mq.avg_ask) : null },
