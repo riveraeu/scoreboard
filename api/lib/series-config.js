@@ -185,15 +185,25 @@ export const CRON_ONLY_TICKERS = [
 // Superliga, Czech league, HNL, Süper Lig) came back 0 live — MOST OF EUROPE IS JULY OFF-SEASON, so
 // this is NOT confirmation they're permanently dead; recheck once each league's season is underway.
 //
-// DISCOVERY BLIND SPOT FOUND: none of the 14 confirmed-real leagues above exist ANYWHERE in
-// `kalshi_series_seen` (verified via `?promote=` — the UPDATE matched zero rows for all of them),
-// even though they have real, live markets today. kalshi-series-scan only diffs Kalshi's
-// `/v2/series?category=Sports` catalog — these series apparently never appear in that catalog
-// listing at all (miscategorized, or some other series-metadata quirk), even though their MARKETS
-// are directly queryable and real. This means the discovery pipeline can silently miss real,
-// tradeable series indefinitely — not just for these 14, there could be others in ANY sport. These
-// 14 aren't trackable via the normal shortlist funnel (`?promote=` has nothing to update); they're
-// documented here directly as maker-build candidates instead. NOT built, no SERIES_CONFIG entries.
+// DISCOVERY BLIND SPOT — CORRECTED 2026-07-23 (later the same day): the original theory here was
+// WRONG. `/api/kalshi-check?ticker=X&meta=1` (GET /v2/series/{ticker}) confirms all 14 leagues
+// above carry `category:"Sports"` — they're NOT miscategorized, and `?search=` against the live
+// catalog fetch confirms every one of them IS present in `/v2/series?category=Sports` (found:true,
+// catalogCount 3002). The catalog-fetch step is fine. The real bug is one step downstream: every
+// one of these tickers was ALREADY in `kalshi_series_seen`, first_seen 2026-06-13 (the very first
+// scan run), sitting at `status:'baseline'` — the code path that bulk-labels every ticker already
+// listed on day one as "silently acknowledged," permanently excluded from the new/shortlisted
+// triage queue the reports/banners surface. The two-track maker viability doctrine (above) didn't
+// exist until TODAY, so every 'baseline' row was rubber-stamped "ignore" before either the taker OR
+// maker test was ever applied to it. `?statuscounts=1` (kalshi-series-scan diagnostic) shows the
+// real scale: 2141 rows at status='baseline' vs only 66 adopted / 28 shortlisted / 766 dismissed —
+// a ~2100-series backlog that has NEVER been vetted under any doctrine, across every sport, not
+// just soccer. The 14 leagues here are a promotable sample of that backlog (`?promote=TICKER`
+// moves a 'baseline' row straight to 'shortlisted' — already handled, no code change needed there),
+// not a demonstration of a catalog blind spot. Sweeping the full 'baseline' backlog for maker/taker
+// viability is a large, separate follow-up (2100 rows, most surely genuine no-model/no-liquidity
+// futures/novelty noise — same character as the DISMISSED_SERIES entries below — but unknown how
+// many more real leagues like these 14 are hiding in it). NOT built, no SERIES_CONFIG entries yet.
 export const DISMISSED_SERIES = [
   "KXWC1HSCORE", // 6/22 vet: exact half-scoreline longshots, no in-window edge (1H signal already covered by the soccer half score-matrix)
   "KXWTAROE", // 6/22 vet: WTA round-of-elimination = draw-progression distribution; our tennis is single-match winner only (tennisMatchProb), no bracket sim. No Phase-1 path.
@@ -670,9 +680,21 @@ export const DISMISSED_SERIES = [
   "KXNBANEXTCONTRACT", "KXNBANEXTTEAMOUTLET", // contract-value / news-outlet futures — same
   // news/insider-driven, no-model-surface class as KXNBANEXTTEAM. DISMISS.
   // NOTE: KXNFLTSPEC ("NFL Team Specials") NOT dismissed — still shortlisted (no SERIES_CONFIG
-  // entry, not built). 2026-07-23 vet found it's NOT the single-stat TD-threshold series the 7/22
-  // promotion assumed — it bundles multiple distinct stat families (at least team-defense counting
-  // stats like sacks, alongside the originally-assumed player TD threshold) under one ticker.
+  // entry, not built). Full 305-market ladder pulled 2026-07-23 via /api/kalshi-check?limit=500
+  // (blocked earlier same day by a connectivity issue, now resolved). Confirmed a genuine multi-
+  // stat-family bundle, ~14 distinct families across TEAM and PLAYER levels, by live market count:
+  // PLAYER receiving yards (67, largest single family, 16 real-book), TEAM sacks (32, opponent-flip
+  // gotcha applies — see below), TEAM passing yards (32), TEAM shutout/points-allowed (32), PLAYER
+  // passing TDs (29), PLAYER rush+rec-yards combo (29), PLAYER any-TDs (23), PLAYER rushing yards
+  // (21), PLAYER rushing TDs (13), PLAYER sacks — individual defenders (11), PLAYER interceptions
+  // (7), PLAYER season-long passing yards — no "in a single game" qualifier, different target than
+  // the single-game family above (6), PLAYER pass+rush-TD combo (2), PLAYER tackles (1, too thin to
+  // model alone). None of these map cleanly onto the originally-assumed "just a higher KXNFLTDS
+  // rung" — TDs is one family of ~14, not the whole series. TEAM sacks keeps the same opponent-flip
+  // gotcha found 2026-07-23 (a team's own boxscore stat is sacks ALLOWED, not recorded — must read
+  // the opponent's row). Building this would mean ≥3-4 separate models (team-level Poisson count
+  // for sacks/points-allowed, a team-total-yards Normal, a player-yardage/TD hit-rate stack reusing
+  // the existing NFL prop hit-rate approach) — a multi-model NFL build, not a single-rung addition.
   // See project_nfltspec_vet_2026_07_23 memory for the full vet + why it's not built yet.
   // 7/23 triage (36 detected — 11 Kalshi + 25 Polymarket):
   "KXSOCCERRETIRE", "KXSOCCERINTLRETIRE", // player retirement announcements — a retirement
