@@ -16,7 +16,7 @@ import { fetchKalshiOrderbook } from "../kalshi-book.js";
 import { pipeWriteChunked } from "../kv-pipeline.js";
 import { gzipToString } from "../kv-compress.js";
 import { updateMakerQuotes } from "../maker.js";
-import { importKalshiKey as _importKalshiKey, placeKalshiOrder, cancelKalshiOrder } from "../kalshi-order-client.js";
+import { importKalshiKey as _importKalshiKey, placeKalshiOrder, cancelKalshiOrder, fetchUnsettledTickers } from "../kalshi-order-client.js";
 import { resolveOpenMakerPositions } from "./shadow.js";
 import { updateLiveMakerOrders, emergencyKillLive, setArmed, computeWantedMakerQuotes,
   gradeResolvedMakerPositions,
@@ -488,6 +488,30 @@ export async function handleKalshiRoutes(ctx) {
       [date], env, { write: true }
     );
     return jsonResponse({ ok: true, date, count: rows.length, rows });
+  }
+
+  // ── /api/maker-v2-revert-unsettled ───────────────────────────────────────────
+  // One-time correction (2026-07-22, ADMIN_KEY only) — gradeResolvedMakerPositions now checks
+  // Kalshi's real settlement status before grading, but that check didn't exist yet for rows
+  // already graded before this deploy. Reverts any currently-graded row whose ticker Kalshi
+  // still shows as unsettled: clears graded_at/side_won/pnl_cents back to NULL so it re-enters
+  // Open Positions and gets correctly re-graded once actually settled. Idempotent — safe to
+  // call more than once (a already-reverted or already-settled row just won't match).
+  if (path === "maker-v2-revert-unsettled" && method === "POST") {
+    const bearer = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/, "");
+    if (!env?.ADMIN_KEY || bearer !== env.ADMIN_KEY) return errorResponse("Forbidden", 403);
+    const unsettledRes = await fetchUnsettledTickers(env);
+    if (!unsettledRes.ok) return errorResponse(`Kalshi unsettled fetch failed: ${unsettledRes.error}`, 502);
+    const graded = await neonQuery(
+      `SELECT id, ticker FROM maker_orders_v2 WHERE graded_at IS NOT NULL`, [], env, { write: true });
+    const toRevert = graded.filter(r => unsettledRes.tickers.has(r.ticker));
+    if (toRevert.length) {
+      await neonQuery(
+        `UPDATE maker_orders_v2 SET graded_at = NULL, side_won = NULL, pnl_cents = NULL WHERE id = ANY($1::int[])`,
+        [toRevert.map(r => r.id)], env, { write: true });
+    }
+    return jsonResponse({ ok: true, checked: graded.length, reverted: toRevert.length,
+      revertedTickers: [...new Set(toRevert.map(r => r.ticker))] });
   }
 
   // ── /api/maker-v2-board ──────────────────────────────────────────────────────
