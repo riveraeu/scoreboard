@@ -99,6 +99,7 @@ function App() {
   const [kalshiOrderResult, setKalshiOrderResult] = React.useState(null); // null | {ok, msg}
   const [kalshiBalance, setKalshiBalance] = React.useState(null); // dollars, null = not fetched
   const [makerCommitted, setMakerCommitted] = React.useState(0); // dollars tied up in resting maker V2 orders
+  const [kalshiPositions, setKalshiPositions] = React.useState(null); // dollars, ALL open real positions' cost basis (V2 + manual) — not mark-to-market
   const [showPlaceAll, setShowPlaceAll] = React.useState(false); // batch-place modal open
   const [placeAllStatus, setPlaceAllStatus] = React.useState(null); // null | { running, rows: {id->{state,msg}} }
   const [placeAllSelected, setPlaceAllSelected] = React.useState(new Set()); // IDs of individually checked bets
@@ -230,6 +231,7 @@ function App() {
         setBankrollState(data.balanceDollars);
       }
       if (data.makerCommittedDollars != null) setMakerCommitted(data.makerCommittedDollars);
+      if (data.positionsCents != null) setKalshiPositions(data.positionsCents / 100);
     } catch {}
   }, [authEmail, setBankrollState]);
 
@@ -2007,6 +2009,8 @@ function App() {
           fetchShadowReport={fetchShadowReport}
           isLoggedIn={!!authEmail}
           navigateToPicks={navigateToPicks}
+          kalshiBalance={kalshiBalance}
+          kalshiPositions={kalshiPositions}
         />
       )}
 

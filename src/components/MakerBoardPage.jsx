@@ -683,139 +683,6 @@ function MakerProgress({ mb }) {
   );
 }
 
-// ---- MAKER LIVE ORDERS: V2 real-order monitoring (2026-07-21) ----------------------
-// A monitoring table, not a picks list — each row is something the automated engine already
-// did, not a decision for the user to make. Resting orders sort first (most actionable to
-// glance at), then recent executed/graded, then canceled/expired. Status badge color: resting
-// = blue (in progress), executed = signed by sideWon once graded (green=lost/we keep premium,
-// red=won/we pay out — see maker-live.js's PnL formula), canceled/expired = dim (inert).
-function statusColor(o) {
-  if (o.status === "resting") return C.blue;
-  if (o.status === "executed") {
-    if (o.gradedAt == null) return C.gray; // filled, not yet resolved
-    return o.sideWon ? C.red : C.green; // sold side WON = we pay out (red); LOST = we keep premium (green)
-  }
-  return C.dim; // canceled / expired
-}
-
-// Summary line above the table — the current resting book at a glance, no row-reading required.
-function OrdersSummaryLine({ orders }) {
-  const resting = (orders || []).filter(o => o.status === "resting");
-  if (!resting.length) return null;
-  const prices = resting.map(o => o.price);
-  const lo = Math.min(...prices), hi = Math.max(...prices);
-  const avgSize = resting.reduce((s, o) => s + Number(o.size || 0), 0) / resting.length;
-  return (
-    <div style={{ color:C.dim, fontSize:10, marginBottom:6 }}>
-      {resting.length} resting · {lo === hi ? `${lo}¢` : `${lo}–${hi}¢`} range · avg size {Number.isInteger(avgSize) ? avgSize : avgSize.toFixed(1)}
-    </div>
-  );
-}
-
-const MAKER_ORDER_RECENT_MS = 3 * 3600_000; // "just happened" window for the sort bump below
-
-function groupKey(o) {
-  return `${o.sport}|${o.category || o.series}|${o.side}|${o.price}`;
-}
-
-function MakerLiveOrders({ orders }) {
-  const [expanded, setExpanded] = React.useState(() => new Set());
-  if (!orders?.length) {
-    return <div style={{ color:C.dim, fontSize:10, padding:"6px 0" }}>No live orders yet — appears once V2 is armed and a quote fills or rests.</div>;
-  }
-
-  // Rank a just-graded fill (a real resolved win/loss) above plain still-resting rows, which
-  // in turn rank above everything else — so a quiet stretch looks like the old behavior
-  // (resting first), but a fresh grade doesn't get buried. Canceled/expired do NOT get a
-  // recency bump: V2 cancels resting orders routinely as part of ordinary repricing, so
-  // "recently canceled" is high-volume noise, not a notable event — bumping it (as an earlier
-  // version of this did) buried the actual resting book under a wall of cancel rows.
-  const now = Date.now();
-  const isRecent = ts => ts && (now - new Date(ts).getTime()) < MAKER_ORDER_RECENT_MS;
-  const scored = orders.map(o => {
-    const score = isRecent(o.gradedAt) ? 0 : o.status === "resting" ? 1 : 2;
-    const tieT = new Date(o.gradedAt || o.canceledAt || o.placedAt).getTime();
-    return { o, score, tieT };
-  }).sort((a, b) => a.score - b.score || b.tieT - a.tieT);
-
-  // Collapse resting rows that are visually identical (same sport/market/side/price, different
-  // ticker/game underneath) — that's the repetition that makes the table read as noise. Anything
-  // non-resting (a graded or canceled row) stays its own line; each is a distinct past event.
-  const rows = [];
-  const groups = new Map();
-  for (const { o } of scored) {
-    if (o.status !== "resting") { rows.push({ type:"single", o }); continue; }
-    const key = groupKey(o);
-    const g = groups.get(key);
-    if (g) g.items.push(o);
-    else { const ng = { type:"group", key, o, items:[o] }; groups.set(key, ng); rows.push(ng); }
-  }
-
-  const shown = rows.slice(0, 80);
-  const toggle = key => setExpanded(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
-
-  const Row = ({ o, indent }) => (
-    <div style={{ display:"flex", gap:8, alignItems:"center", fontSize:10, padding:"3px 2px", paddingLeft: indent ? 16 : 2,
-      borderTop:`1px solid ${C.border}` }} title={o.ticker}>
-      <span style={{ width:70, color:C.gray, textTransform:"uppercase" }}>{o.sport || "—"}</span>
-      <span style={{ flex:1, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-        {o.category || o.series || o.ticker}
-      </span>
-      <span style={{ width:36, color:C.gray, textTransform:"uppercase" }}>{o.side}</span>
-      <span style={{ width:40, textAlign:"right", color:C.text, fontVariantNumeric:"tabular-nums" }}>{o.price}¢</span>
-      <span style={{ width:32, textAlign:"right", color:C.text, fontVariantNumeric:"tabular-nums" }}>{o.size}</span>
-      <span style={{ width:80, color:statusColor(o), fontWeight:700, textTransform:"uppercase", fontSize:9 }}>{o.status}</span>
-      <span style={{ width:56, textAlign:"right", fontWeight:700, fontVariantNumeric:"tabular-nums",
-        color: o.pnlCents == null ? C.dim : o.pnlCents > 0 ? C.green : C.red }}>
-        {o.pnlCents != null ? `${o.pnlCents > 0 ? "+" : ""}${o.pnlCents}¢` : "—"}
-      </span>
-    </div>
-  );
-
-  return (
-    <div style={{ maxWidth:720 }}>
-      <OrdersSummaryLine orders={orders} />
-      <div style={{ display:"flex", gap:8, fontSize:9, color:C.dim, fontWeight:700, textTransform:"uppercase", padding:"0 2px", marginBottom:2 }}>
-        <span style={{ width:70 }}>Sport</span>
-        <span style={{ flex:1 }}>Market</span>
-        <span style={{ width:36 }}>Side</span>
-        <span style={{ width:40, textAlign:"right" }}>Price</span>
-        <span style={{ width:32, textAlign:"right" }}>Size</span>
-        <span style={{ width:80 }}>Status</span>
-        <span style={{ width:56, textAlign:"right" }}>PnL</span>
-      </div>
-      <div style={{ maxHeight:280, overflowY:"auto" }}>
-        {shown.map(r => r.type === "single" ? (
-          <Row key={`${r.o.ticker}-${r.o.placedAt}`} o={r.o} />
-        ) : (
-          <React.Fragment key={r.key}>
-            <div onClick={() => toggle(r.key)} style={{ display:"flex", gap:8, alignItems:"center", fontSize:10, padding:"3px 2px",
-              borderTop:`1px solid ${C.border}`, cursor: r.items.length > 1 ? "pointer" : "default" }}
-              title={r.items.length > 1 ? `${r.items.length} tickers — click to expand` : r.o.ticker}>
-              <span style={{ width:70, color:C.gray, textTransform:"uppercase" }}>{r.o.sport || "—"}</span>
-              <span style={{ flex:1, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                {r.items.length > 1 ? `${expanded.has(r.key) ? "▾" : "▸"} ` : ""}{r.o.category || r.o.series || r.o.ticker}
-                {r.items.length > 1 && <span style={{ color:C.dim }}> ×{r.items.length}</span>}
-              </span>
-              <span style={{ width:36, color:C.gray, textTransform:"uppercase" }}>{r.o.side}</span>
-              <span style={{ width:40, textAlign:"right", color:C.text, fontVariantNumeric:"tabular-nums" }}>{r.o.price}¢</span>
-              <span style={{ width:32, textAlign:"right", color:C.text, fontVariantNumeric:"tabular-nums" }}>
-                {r.items.length > 1 ? `${r.o.size}×${r.items.length}` : r.o.size}
-              </span>
-              <span style={{ width:80, color:statusColor(r.o), fontWeight:700, textTransform:"uppercase", fontSize:9 }}>{r.o.status}</span>
-              <span style={{ width:56, textAlign:"right", color:C.dim, fontWeight:700 }}>—</span>
-            </div>
-            {expanded.has(r.key) && r.items.map(o => <Row key={`${o.ticker}-${o.placedAt}`} o={o} indent />)}
-          </React.Fragment>
-        ))}
-      </div>
-      {rows.length > shown.length && (
-        <div style={{ color:C.dim, fontSize:9, marginTop:4 }}>+{rows.length - shown.length} more rows (today+yesterday)</div>
-      )}
-    </div>
-  );
-}
-
 // ---- MAKER UTILIZATION: eligible-vs-resting per sport (2026-07-21) -----------------
 // Reuses BandLadder's bar-row visual pattern. Surfaces cap pressure — e.g. 73 eligible vs a
 // 20-slot MAKER_V2_MAX_CONCURRENT cap means most eligible tickers never get a resting order,
@@ -932,9 +799,33 @@ export function useMakerBoardData() {
   return { boardData: data, boardLoading: loading, fetchBoard };
 }
 
+// Portfolio summary strip — mirrors Kalshi's own app header (Portfolio/Positions/Cash), scoped
+// to what we actually track: Bankroll + Positions come from the real Kalshi account
+// (/api/kalshi-balance — Positions is cost basis across ALL open real positions, V2 + any
+// manually-placed orders, NOT mark-to-market). Recent PnL is V2-only (the last graded day from
+// the equity-curve series) since there's no whole-account daily PnL ledger — manual orders are
+// never logged anywhere but the KV picks blob, so "recent" can't be reconstructed for them.
+function PortfolioTiles({ kalshiBalance, kalshiPositions, dailyV2 }) {
+  const lastDay = (dailyV2 || []).filter(d => d.graded > 0).slice(-1)[0] || null;
+  const recentCents = lastDay?.pnlTotal ?? null;
+  const recentColor = recentCents == null ? C.dim : recentCents > 0 ? C.green : recentCents < 0 ? C.red : C.gray;
+  const recentLabel = recentCents == null ? "—"
+    : `${recentCents < 0 ? "-" : "+"}$${Math.abs(recentCents / 100).toFixed(2)}`;
+  return (
+    <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap" }}>
+      <Tile label="bankroll" color={C.text} value={kalshiBalance != null ? `$${kalshiBalance.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}` : "—"}
+        sub="Kalshi account · cash + positions" />
+      <Tile label="positions" color={C.text} value={kalshiPositions != null ? `$${kalshiPositions.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}` : "—"}
+        sub="cost basis · V2 + manual, not mark-to-market" />
+      <Tile label="recent PnL" color={recentColor} value={recentLabel}
+        sub={lastDay ? `V2 · ${lastDay.day} · ${lastDay.graded} graded` : "V2 · awaiting a graded day"} />
+    </div>
+  );
+}
+
 // ---- MAKER BOARD PAGE (the new default landing page, 2026-07-21) ------------------
 export default function MakerBoardPage({ shadowReportData, shadowReportLoading, fetchShadowReport,
-  isLoggedIn, navigateToPicks }) {
+  isLoggedIn, navigateToPicks, kalshiBalance, kalshiPositions }) {
   const { boardData, boardLoading, fetchBoard } = useMakerBoardData();
 
   React.useEffect(() => {
@@ -964,7 +855,10 @@ export default function MakerBoardPage({ shadowReportData, shadowReportLoading, 
             <DoThisBanner d={shadowReportData} />
           )}
 
-          <div style={{ ...sectionHead, borderTop:"none", paddingTop:0, marginTop:8 }}>Live orders (V2 · real capital) {boardData?.armed
+          <PortfolioTiles kalshiBalance={kalshiBalance} kalshiPositions={kalshiPositions}
+            dailyV2={shadowReportData?.makerBoard?.live?.daily} />
+
+          <div style={{ ...sectionHead, borderTop:"none", paddingTop:0, marginTop:8 }}>Open positions (V2 · real capital) {boardData?.armed
             ? <span style={{ color:C.green }}>· ARMED</span>
             : <span style={{ color:C.dim }}>· disarmed</span>}
           </div>
@@ -974,9 +868,6 @@ export default function MakerBoardPage({ shadowReportData, shadowReportLoading, 
           </div>
           <div style={{ color:C.dim, fontSize:9, fontWeight:700, margin:"6px 0 2px" }}>REAL EQUITY · CUMULATIVE GRADED PNL</div>
           <EquityCurve daily={shadowReportData?.makerBoard?.live?.daily} />
-          <MakerLiveOrders orders={boardData?.orders} />
-
-          <div style={sectionHead}>Open positions (V2 · real capital)</div>
           <MakerLivePositions positions={boardData?.positions} />
 
           {!(shadowReportLoading && !shadowReportData) && <MakerProgress mb={shadowReportData?.makerBoard} />}
