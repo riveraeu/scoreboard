@@ -743,12 +743,26 @@ export async function handleKalshiRoutes(ctx) {
     if (!settlementsRes.ok) return errorResponse(`Kalshi settlements fetch failed: ${settlementsRes.error}`, 502);
     const byTicker = new Map(settlementsRes.settlements.map(s => [s.ticker, s]));
 
+    // Only compare against tickers where EVERY real V2 order was placed after the 2026-07-21
+    // order-side bug fix (18:21:44 PT / 2026-07-22T01:21:44Z) — before that, V2 was executing
+    // the opposite trade (buying instead of selling), so its real settlement doesn't represent
+    // what a correctly-executed quote's economics would be. Filtering on settled_time or V1's own
+    // timestamps doesn't work (settlement always lags placement by hours regardless); this must
+    // filter on the REAL order's own placed_at.
+    const _fixCutoff = _qp.get("placedAfter") || "2026-07-22T01:21:44Z";
+    const cleanTickers = await neonQuery(
+      `SELECT ticker FROM maker_orders_v2 WHERE ticker = ANY($1::text[])
+       GROUP BY ticker HAVING MIN(placed_at) > $2::timestamptz`,
+      [[...byTicker.keys()], _fixCutoff], env, { write: true }
+    );
+    const cleanTickerSet = new Set(cleanTickers.map(r => r.ticker));
+
     const fills = await neonQuery(
       `SELECT mf.id, mf.ticker, mf.contracts, mf.fill_ask, mf.side_won, mf.pnl_cents,
               q.quote_side, q.sport, q.category, q.game_date
        FROM maker_fills mf JOIN maker_quotes q ON q.id = mf.quote_id
        WHERE mf.graded_at IS NOT NULL AND mf.ticker = ANY($1::text[])`,
-      [[...byTicker.keys()]], env, { write: true }
+      [[...cleanTickerSet]], env, { write: true }
     );
 
     const rows = fills.map(f => {
@@ -774,7 +788,10 @@ export async function handleKalshiRoutes(ctx) {
       byCategory[k] = (byCategory[k] || 0) + 1;
     }
     return jsonResponse({
-      ok: true, minTs, checked: rows.length, agree: rows.length - disagreeing.length,
+      ok: true, minTs, fixCutoff: _fixCutoff,
+      tickersConsidered: byTicker.size, cleanTickers: cleanTickerSet.size,
+      excludedPreFixTickers: byTicker.size - cleanTickerSet.size,
+      checked: rows.length, agree: rows.length - disagreeing.length,
       disagree: disagreeing.length, disagreeByCategory: byCategory, disagreeingRows: disagreeing,
     });
   }
