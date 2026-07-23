@@ -20,6 +20,7 @@ import { reconcileLiveMakerFills, isArmed as isMakerV2Armed } from "../maker-liv
 import { shadowId } from "../shadow-id.js";
 import { fetchLmbResults } from "../lmb.js";
 import { fetchMlsResults } from "../mls.js";
+import { deriveKalshiSide, fetchKalshiSettlements, resolveRowViaKalshi } from "../kalshi-settlement.js";
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER } from "../config.js";
 import { passesCategoryGate } from "../category-gate.js";
 import { INPUT_SEARCH_EXHAUSTED, stillExhausted } from "../model-holds.js";
@@ -38,7 +39,7 @@ const COLUMNS = [
   "player_name", "player_id", "home_team", "away_team",
   "scoring_team", "pick_team", "pick_line", "threshold", "direction",
   "model_true_pct", "model_free", "kalshi_pct", "no_kalshi_pct", "edge",
-  "dc", "dc_qualified", "game_date", "game_time",
+  "dc", "dc_qualified", "game_date", "game_time", "kalshi_ticker", "kalshi_side",
   "group_id", "group_size", "threshold_rank", "is_best_edge",
   "snapshot_model_version", "season_type", "features",
   "kalshi_yes_price", "kalshi_no_price",
@@ -69,6 +70,8 @@ CREATE TABLE IF NOT EXISTS ${SHADOW_TABLE} (
   dc_qualified BOOLEAN,
   game_date TEXT,
   game_time TEXT,
+  kalshi_ticker TEXT,
+  kalshi_side TEXT,
   group_id TEXT,
   group_size INTEGER,
   threshold_rank INTEGER,
@@ -108,6 +111,15 @@ ALTER TABLE shadow_plays ADD COLUMN IF NOT EXISTS price_pre_at TIMESTAMPTZ
 const ADD_MODEL_FREE_COLS_SQL = `
 ALTER TABLE shadow_plays ALTER COLUMN model_true_pct DROP NOT NULL;
 ALTER TABLE shadow_plays ADD COLUMN IF NOT EXISTS model_free BOOLEAN NOT NULL DEFAULT FALSE
+`;
+
+// Kalshi-settlement-based grading (2026-07-23, DRY-RUN ONLY — see kalshi-settlement.js and
+// project_kalshi_settlement_grading_2026_07_23 memory). kalshi_ticker is the row's own market;
+// kalshi_side ("yes"/"no") is which side of that ticker counts as a win for this row, derived
+// once at write time (deriveKalshiSide) from fields already on the in-memory play object.
+const ADD_KALSHI_SETTLEMENT_COLS_SQL = `
+ALTER TABLE shadow_plays ADD COLUMN IF NOT EXISTS kalshi_ticker TEXT;
+ALTER TABLE shadow_plays ADD COLUMN IF NOT EXISTS kalshi_side TEXT
 `;
 
 // Polymarket cross-venue ML deltas (Phase 1a observatory). Its own table so the 4-daily snapshots
@@ -723,7 +735,7 @@ async function handleShadowResolver({ path, request, env, cache }) {
   const rows = await neonQuery(
     `SELECT id, sport, stat, game_type, player_name, home_team, away_team,
             scoring_team, pick_team, pick_line, threshold, direction,
-            game_date, game_time, features, snapshot_date
+            game_date, game_time, features, snapshot_date, kalshi_ticker, kalshi_side
      FROM shadow_plays
      WHERE resolved = FALSE
        AND COALESCE(game_date, snapshot_date::varchar) < $1
@@ -740,6 +752,29 @@ async function handleShadowResolver({ path, request, env, cache }) {
 
   if (!rows.length) {
     return jsonResponse({ ok: true, resolved: 0, skipped: 0, noData: 0, durationMs: Date.now() - t0 });
+  }
+
+  // ── Kalshi-settlement grading — DRY-RUN ONLY (2026-07-23, see kalshi-settlement.js and
+  // project_kalshi_settlement_grading_2026_07_23 memory). Computes what Kalshi's own settlement
+  // WOULD grade for every row with a kalshi_ticker, purely to compare against the existing
+  // ESPN-based resolvers below — never touches `updates`, never writes anything. Most rows won't
+  // have kalshi_ticker yet (the column is new; only rows written by shadow-snapshot after this
+  // deployed carry it), so a thin comparison for the first day or two is expected, not a bug.
+  let kalshiDryRun = { checked: 0, wouldResolve: 0, byId: new Map() };
+  try {
+    const tickeredRows = rows.filter(r => r.kalshi_ticker);
+    if (tickeredRows.length) {
+      const settlements = await fetchKalshiSettlements(tickeredRows.map(r => r.kalshi_ticker));
+      const byId = new Map();
+      let wouldResolve = 0;
+      for (const r of tickeredRows) {
+        const won = resolveRowViaKalshi(r, settlements);
+        if (won !== null) { byId.set(r.id, won); wouldResolve++; }
+      }
+      kalshiDryRun = { checked: tickeredRows.length, wouldResolve, byId };
+    }
+  } catch (e) {
+    console.error(`[shadow-resolver] kalshi dry-run fetch failed: ${e?.message}`);
   }
 
   // Tennis match-winner + soccer rows resolve via their own ESPN scoreboards (not the team-based
@@ -1319,8 +1354,28 @@ async function handleShadowResolver({ path, request, env, cache }) {
     console.error(`[shadow-resolver] resolution floor stamp failed: ${e?.message}`);
   }
 
+  // Kalshi-settlement dry-run comparison — agreement check only, never overwrites `updates`.
+  // Only meaningful once ESPN resolved the SAME row this same pass (fair apples-to-apples); a row
+  // Kalshi could grade but ESPN didn't reach yet just isn't in `finalById` and is skipped, not
+  // counted as a disagreement.
+  let kalshiDryRunSummary = null;
+  if (kalshiDryRun.byId.size) {
+    const finalById = new Map(updates.map(u => [u.id, u.won]));
+    let agree = 0, disagree = 0;
+    const disagreements = [];
+    for (const [id, kalshiWon] of kalshiDryRun.byId) {
+      if (!finalById.has(id)) continue;
+      const espnWon = finalById.get(id);
+      if (espnWon === null || espnWon === undefined) continue; // ESPN path abandoned/nulled it — not a real comparison
+      if (espnWon === kalshiWon) agree++;
+      else { disagree++; if (disagreements.length < 10) disagreements.push({ id, espnWon, kalshiWon }); }
+    }
+    kalshiDryRunSummary = { checked: kalshiDryRun.checked, wouldResolve: kalshiDryRun.wouldResolve, comparedAgainstEspn: agree + disagree, agree, disagree };
+    console.log(`[shadow-resolver] kalshi dry-run checked=${kalshiDryRun.checked} wouldResolve=${kalshiDryRun.wouldResolve} comparedAgainstEspn=${agree + disagree} agree=${agree} disagree=${disagree}${disagree ? ` sample=${JSON.stringify(disagreements)}` : ""}`);
+  }
+
   console.log(`[shadow-resolver] resolved=${updates.length} skipped=${skipped} noData=${noData} games=${liveByKey.size} durationMs=${Date.now() - t0}`);
-  return jsonResponse({ ok: true, resolved: updates.length, skipped, noData, maker: makerMeta, makerLive: makerLiveMeta, durationMs: Date.now() - t0 });
+  return jsonResponse({ ok: true, resolved: updates.length, skipped, noData, maker: makerMeta, makerLive: makerLiveMeta, kalshiDryRun: kalshiDryRunSummary, durationMs: Date.now() - t0 });
 }
 
 // ── Dispatch ──────────────────────────────────────────────────────────────────
@@ -3557,6 +3612,12 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
       await neonExec(ADD_MODEL_FREE_COLS_SQL, env);
       if (cache) cache.put(_modelFreeSchemaKey, "1", { expirationTtl: 86400 * 30 }).catch(() => {});
     }
+    const _kalshiSettlementSchemaKey = "shadow:schema:kalshisettlement:v1";
+    const _kalshiSettlementSchemaOk = cache ? await cache.get(_kalshiSettlementSchemaKey).catch(() => null) : null;
+    if (!_kalshiSettlementSchemaOk) {
+      await neonExec(ADD_KALSHI_SETTLEMENT_COLS_SQL, env);
+      if (cache) cache.put(_kalshiSettlementSchemaKey, "1", { expirationTtl: 86400 * 30 }).catch(() => {});
+    }
 
     // Try KV staging written by tonight cron — avoids the 55s re-fetch that hits the 60s wall-clock.
     let rawPlays = null;
@@ -3666,6 +3727,8 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
       // causing the resolver's /api/live time-prefix match to fail. Without a stored
       // game_time the resolver does a time-agnostic team lookup instead.
       game_time: (p.gameDate || !p.gameType) ? (p.gameTime || null) : null,
+      kalshi_ticker: p.kalshiTicker ?? p._ticker ?? null,
+      kalshi_side: deriveKalshiSide(p),
       group_id: p._gid,
       group_size: p._groupSize,
       threshold_rank: p._rank,
