@@ -93,6 +93,7 @@ export async function emitSoccerPlays(ctx) {
           threshold: null, direction: null,
           truePct, kalshiPct: s.kalshiPct, noKalshiPct: s.noKalshiPct ?? null,
           americanOdds: s.americanOdds ?? null, edge, kalshiVolume: vol,
+          kalshiTicker: s._ticker ?? null,
         });
         continue;
       }
@@ -117,7 +118,8 @@ export async function emitSoccerPlays(ctx) {
         continue;
       }
       const overPct = round1(pOver * 100);
-      const sideBase = { ...base, stat: _statOf(overSubtype), gameType: overSubtype, kalshiVolume: vol, ...extra };
+      const sideBase = { ...base, stat: _statOf(overSubtype), gameType: overSubtype, kalshiVolume: vol,
+        kalshiTicker: s._ticker ?? null, ...extra };
 
       // OVER / YES side — gated on the YES price.
       if (inWindow(s.yesPct)) {
