@@ -65,4 +65,27 @@ export const SCHEDULED_CHECKPOINTS = [
   // cron passes to accumulate a real cross-sport sample. [[project_kalshi_settlement_grading_2026_07_23]]
   { date: "2026-07-30", tone: "blue", label: "Check kalshiDryRun agreement before considering Kalshi-settlement grading authoritative", short: "Kalshi-settlement dry-run check",
     why: "Dry-run pass shipped 7/23 (/api/shadow-resolver's kalshiDryRun: {checked, wouldResolve, comparedAgainstEspn, agree, disagree}) — needs near-100% agreement on a real cross-sport sample before any part of it can replace the existing ESPN-based resolvers; any disagreement needs investigating first" },
+  // Found during the 7/23 kalshiTicker audit: soccer-advance.js shares soccer.js's WC Elo model
+  // but is its own file/market, and the gameTime batch fix's "8 modules" list didn't include it —
+  // still hardcodes gameTime:null, so its rows have never been maker-quotable. Ready to fix now
+  // (dated today, not waiting on anything). [[project_kalshiticker_audit_fix_2026_07_23]]
+  { date: "2026-07-23", tone: "gray", label: "Fix soccer-advance.js gameTime:null", short: "soccer-advance gameTime fix",
+    why: "Missed by the 7/23 gameTime batch fix (that sweep's '8 modules' list didn't include this file) — still hardcodes gameTime:null, so World Cup knockout-advance rows are never maker-quotable. Same fix shape as the other 7: soccer.js's existing WC schedule fetch already carries the real timestamp, soccer-advance.js just needs to read it" },
+  // KXNFLTSPEC vet (7/22 promote, 7/23 vet) found the series bundles multiple stat families (a
+  // team-sacks sample contradicted the 7/22 single-stat-TD assumption) but the full breakdown was
+  // blocked by a Kalshi connectivity issue in-session. /api/kalshi-check (built later the same
+  // session) removes that blocker. [[project_nfltspec_vet_2026_07_23]]
+  { date: "2026-07-23", tone: "blue", label: "Pull full KXNFLTSPEC ladder via /api/kalshi-check", short: "KXNFLTSPEC ladder pull",
+    why: "7/23 vet found KXNFLTSPEC bundles multiple stat families (a team-sacks sample, not just the 7/22 player-TD assumption) but a full breakdown was blocked by a Kalshi API connectivity issue in-session — /api/kalshi-check now gives a standing way to list a series' markets without that dependency; pull ?series_ticker=KXNFLTSPEC&status=open and categorize every stat-type suffix before deciding what to build" },
+  // The 7/23 historical no-club-Elo sweep found 14 real, tradeable leagues that don't exist
+  // anywhere in kalshi_series_seen — a discovery-pipeline blind spot, not just a soccer curiosity.
+  // [[project_maker_viability_doctrine_2026_07_23]]
+  { date: "2026-07-23", tone: "blue", label: "Investigate why 14 real leagues never surfaced in kalshi_series_seen", short: "discovery blind-spot investigation",
+    why: "kalshi-series-scan only diffs the /v2/series?category=Sports catalog, and 14 confirmed-real leagues (Premier League/La Liga/Serie A/Bundesliga/Ligue1/UCL/Brasileirão/etc) never appear there despite real live books — check whether a different Kalshi catalog endpoint/category would list them; the same blind spot could affect other sports too, not just soccer" },
+  // The 7/23 two-track viability doctrine reclassified 24 tickers as maker-viable-not-taker-viable
+  // and the historical sweep found 14 more real leagues never tracked at all — all model-free
+  // build candidates (same MLS/mls.js playbook), nothing built yet.
+  // [[project_maker_viability_doctrine_2026_07_23]]
+  { date: "2026-07-23", tone: "gray", label: "Decide which maker-candidate league to build first (24 reclassified + 14 newly-discovered)", short: "maker-candidate build decision",
+    why: "7/23 reclassified 24 tickers (Scottish Cup, MLS/Liga MX/UEL/UECL derivatives, KXTBTGAME) as maker-viable, and the historical sweep found 14 more real leagues never tracked at all — all model-free candidates (real gameTime + resolvable outcome, no probability model needed, same playbook as mls.js). Needs a prioritization pass (liquidity depth, resolution simplicity) before picking the next build" },
 ];
