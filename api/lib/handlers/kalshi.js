@@ -844,7 +844,11 @@ export async function handleKalshiRoutes(ctx) {
     if (search) {
       if (!isAdmin) return errorResponse("Admin only", 403);
       const hit = catalog.find(s => (s.ticker || s.series_ticker) === search);
-      return jsonResponse({ ok: true, search, catalogCount: catalog.length, found: !!hit, entry: hit ?? null });
+      const dbRows = await neonQuery(
+        `SELECT ticker, status, category, first_seen, last_seen FROM kalshi_series_seen WHERE ticker = $1`,
+        [search], env, { write: true }
+      );
+      return jsonResponse({ ok: true, search, catalogCount: catalog.length, found: !!hit, entry: hit ?? null, dbRow: dbRows[0] ?? null });
     }
 
     // 2. The set of tickers we actually consume (same source the snapshot cron uses).
