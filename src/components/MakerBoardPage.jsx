@@ -534,52 +534,6 @@ function ArmTile({ mb }) {
   );
 }
 
-// V2 (real capital) equivalent of ArmTile — same shape/color doctrine, sourced from
-// makerBoard.live (mb.live) instead of mb.fills. Trial target is MAKER_V2_TRIAL_N graded
-// fills (see the DoThisBanner tier 1.8/1.9 logic above, which this mirrors so the two
-// surfaces never disagree on "cleared" vs "underperforming").
-function LiveArmTile({ mb }) {
-  const live = mb?.live || {};
-  const graded = live.graded || 0;
-  const pct = Math.min(100, graded / MAKER_V2_TRIAL_N * 100);
-  const trialDone = graded >= MAKER_V2_TRIAL_N;
-  const ok = (live.pnlLoCI ?? -1) > 0;
-  const [color, phase] = graded < 5 || live.pnlLoCI == null ? [C.dim, "accruing"]
-    : ok ? [C.green, "on track"]
-    : (live.avgPnlCents ?? 0) > 0 ? [C.amber, "CI straddles 0"]
-    : [C.red, "negative"];
-  const armed = trialDone && ok;
-  return (
-    <div style={{ flex:"1.6 1 0", background:C.card, border:`1px solid ${armed ? C.green : trialDone ? C.red : C.border}`, borderRadius:6, padding:"8px 10px", minWidth:150 }}>
-      <div style={{ color, fontSize:22, fontWeight:700, lineHeight:1, fontVariantNumeric:"tabular-nums" }}>
-        {live.avgPnlCents != null ? `${live.avgPnlCents > 0 ? "+" : ""}${live.avgPnlCents}¢` : "—"}
-        <span style={{ fontSize:11, fontWeight:400, color:C.gray, marginLeft:6 }}>
-          {live.avgPnlCents != null
-            ? `/contract${live.pnlLoCI != null ? ` · CI-lo ${live.pnlLoCI > 0 ? "+" : ""}${live.pnlLoCI}` : ""}`
-            : "awaiting first graded fills"}
-        </span>
-      </div>
-      <div style={{ color: armed ? C.green : trialDone ? C.red : C.dim, fontSize:9, fontWeight:700, textTransform:"uppercase", letterSpacing:0.4, margin:"4px 0 5px" }}>
-        {trialDone ? (ok ? "ARM CRITERION MET (V2 trial)" : "TRIAL UNDERPERFORMING") : `real capital · ${phase} · ${graded}/${MAKER_V2_TRIAL_N} graded fills`}
-      </div>
-      <div style={{ height:4, background:C.border, borderRadius:2, overflow:"hidden" }} title={`${graded}/${MAKER_V2_TRIAL_N} graded fills toward the sizing decision`}>
-        <div style={{ width:`${pct}%`, height:"100%", background:color }} />
-      </div>
-    </div>
-  );
-}
-
-// V2 equivalent of V1's "fill rate" tile: what fraction of placed real orders actually
-// filled (vs resting/canceled/expired), out of everything ever placed since `since`.
-function LiveFillRateTile({ mb }) {
-  const live = mb?.live || {};
-  const rate = live.orders ? Math.round(live.executed / live.orders * 1000) / 10 : null;
-  return (
-    <Tile label="fill rate" value={rate != null ? `${rate}%` : "—"} color={C.text}
-      sub={`${live.executed ?? 0} executed / ${live.orders ?? 0} placed · ${live.resting ?? 0} resting`} />
-  );
-}
-
 // Cumulative graded paper PnL by day. Single series → one hue, no legend; the section
 // title names it. Zero baseline; per-point tooltip; the current value is the one direct label.
 // Cumulative totals display in dollars (matches the $-formatting idiom used for pick P/L
@@ -799,26 +753,29 @@ export function useMakerBoardData() {
   return { boardData: data, boardLoading: loading, fetchBoard };
 }
 
-// Portfolio summary strip — mirrors Kalshi's own app header (Portfolio/Positions/Cash), scoped
-// to what we actually track: Bankroll + Positions come from the real Kalshi account
+// Portfolio summary strip — mirrors Kalshi's own app header (Portfolio total + a green/red
+// "+$X.XX (+Y.YY%)" delta line). Bankroll + Positions come from the real Kalshi account
 // (/api/kalshi-balance — Positions is cost basis across ALL open real positions, V2 + any
-// manually-placed orders, NOT mark-to-market). Recent PnL is V2-only (the last graded day from
-// the equity-curve series) since there's no whole-account daily PnL ledger — manual orders are
-// never logged anywhere but the KV picks blob, so "recent" can't be reconstructed for them.
+// manually-placed orders, NOT mark-to-market). The PnL delta is V2-only — cumulative graded
+// PnL summed across every day in the equity-curve series (all-time since V2 started, same
+// total the old line chart ended on), shown as % of the current bankroll — since there's no
+// whole-account PnL ledger; manually-placed real orders are never logged anywhere but the KV
+// picks blob, which has no PnL rollup at all.
 function PortfolioTiles({ kalshiBalance, kalshiPositions, dailyV2 }) {
-  const lastDay = (dailyV2 || []).filter(d => d.graded > 0).slice(-1)[0] || null;
-  const recentCents = lastDay?.pnlTotal ?? null;
-  const recentColor = recentCents == null ? C.dim : recentCents > 0 ? C.green : recentCents < 0 ? C.red : C.gray;
-  const recentLabel = recentCents == null ? "—"
-    : `${recentCents < 0 ? "-" : "+"}$${Math.abs(recentCents / 100).toFixed(2)}`;
+  const graded = (dailyV2 || []).filter(d => d.graded > 0);
+  const cumCents = graded.length ? graded.reduce((s, d) => s + (d.pnlTotal || 0), 0) : null;
+  const pnlColor = cumCents == null ? C.dim : cumCents > 0 ? C.green : cumCents < 0 ? C.red : C.gray;
+  const pct = cumCents != null && kalshiBalance ? (cumCents / 100 / kalshiBalance) * 100 : null;
+  const pnlLabel = cumCents == null ? "—"
+    : `${cumCents < 0 ? "-" : "+"}$${Math.abs(cumCents / 100).toFixed(2)}${pct != null ? ` (${pct < 0 ? "-" : "+"}${Math.abs(pct).toFixed(2)}%)` : ""}`;
   return (
     <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap" }}>
       <Tile label="bankroll" color={C.text} value={kalshiBalance != null ? `$${kalshiBalance.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}` : "—"}
         sub="Kalshi account · cash + positions" />
       <Tile label="positions" color={C.text} value={kalshiPositions != null ? `$${kalshiPositions.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}` : "—"}
         sub="cost basis · V2 + manual, not mark-to-market" />
-      <Tile label="recent PnL" color={recentColor} value={recentLabel}
-        sub={lastDay ? `V2 · ${lastDay.day} · ${lastDay.graded} graded` : "V2 · awaiting a graded day"} />
+      <Tile label="V2 PnL" color={pnlColor} value={pnlLabel}
+        sub={graded.length ? `all-time · ${graded.reduce((s, d) => s + d.graded, 0)} graded fills` : "awaiting first graded fill"} />
     </div>
   );
 }
@@ -862,12 +819,6 @@ export default function MakerBoardPage({ shadowReportData, shadowReportLoading, 
             ? <span style={{ color:C.green }}>· ARMED</span>
             : <span style={{ color:C.dim }}>· disarmed</span>}
           </div>
-          <div style={{ display:"flex", gap:8, marginBottom:10, flexWrap:"wrap" }}>
-            <LiveArmTile mb={shadowReportData?.makerBoard} />
-            <LiveFillRateTile mb={shadowReportData?.makerBoard} />
-          </div>
-          <div style={{ color:C.dim, fontSize:9, fontWeight:700, margin:"6px 0 2px" }}>REAL EQUITY · CUMULATIVE GRADED PNL</div>
-          <EquityCurve daily={shadowReportData?.makerBoard?.live?.daily} />
           <MakerLivePositions positions={boardData?.positions} />
 
           {!(shadowReportLoading && !shadowReportData) && <MakerProgress mb={shadowReportData?.makerBoard} />}
