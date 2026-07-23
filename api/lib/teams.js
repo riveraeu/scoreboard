@@ -196,6 +196,29 @@ export const TEAMS = {
     { abbr: "SJ" },   // San Jose Earthquakes
     { abbr: "SKC" }, { abbr: "STL" }, { abbr: "TOR" }, { abbr: "VAN" },
   ],
+  // Brasileirão Série A (KXBRASILEIROGAME, adopted 2026-07-23 — model-free maker candidate,
+  // same playbook as mls above, see project_maker_modelfree_clubsoccer_2026_07_23 memory).
+  // Canonical = Kalshi's own ticker abbrs (verified live via /api/kalshi-check 2026-07-23: all
+  // 20 Série A teams, 3-char except Remo's 2-char "CR" — the one team requiring the "try every
+  // split" parseGameTeams branch, same class of problem as MLS's NE/SD/SJ). espnScore only
+  // where ESPN's bra.1 scoreboard abbr differs (verified live 2026-07-23): ATL→CAM (Atlético
+  // Mineiro), GPA→GRE (Grêmio), RBB→BRA (Red Bull Bragantino), CR→REMO (Remo), SPA→SAO (São
+  // Paulo), VDG→VAS (Vasco da Gama).
+  brasileirao: [
+    { abbr: "BAH" }, { abbr: "BOT" },
+    { abbr: "RBB", espnScore: "BRA" },  // Red Bull Bragantino
+    { abbr: "CAP" },
+    { abbr: "ATL", espnScore: "CAM" },  // Atlético Mineiro
+    { abbr: "CFC" },                    // Coritiba
+    { abbr: "CHA" }, { abbr: "COR" }, { abbr: "CRU" }, { abbr: "FLA" }, { abbr: "FLU" },
+    { abbr: "GPA", espnScore: "GRE" },  // Grêmio
+    { abbr: "INT" }, { abbr: "MIR" }, { abbr: "PAL" },
+    { abbr: "CR", espnScore: "REMO" },  // Remo
+    { abbr: "SAN" },
+    { abbr: "SPA", espnScore: "SAO" },  // São Paulo
+    { abbr: "VDG", espnScore: "VAS" },  // Vasco da Gama
+    { abbr: "VIT" },
+  ],
 };
 
 // ── Derived maps (legacy shapes, re-exported from their historical modules) ──────

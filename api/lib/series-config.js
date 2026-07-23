@@ -97,6 +97,13 @@ export const SERIES_CONFIG = {
   // real 1¢-spread books, volume in the hundreds-to-thousands per market. `mls|game` is NOT in
   // the category gate (shadow-only, maker-only).
   KXMLSGAME: { sport: "mls", league: "mls", stat: "game", col: "ML", gameType: "clubSoccerMl" },
+  // Brasileirão Série A (Brazil) game winner — same model-free playbook one league later
+  // (adopted 2026-07-23, see project_maker_modelfree_clubsoccer_2026_07_23 memory + the
+  // 2026-07-23 build-decision review: picked as the highest-liquidity confirmed-real league
+  // from the historical two-track sweep, 36/36 markets with real two-sided books, volumes up
+  // to ~30k contracts). Dedicated gameType (not clubSoccerMl) since it needs its own parse
+  // branch/array — resolves off a different ESPN league endpoint (bra.1, not usa.1) per row.
+  KXBRASILEIROGAME: { sport: "brasileirao", league: "brasileirao", stat: "game", col: "ML", gameType: "brasileiraoMl" },
   // Game totals
   KXMLBTOTAL:     { sport: "mlb",  league: "mlb",  stat: "totalRuns",   col: "R",   gameType: "total"     },
   KXNBATOTAL:     { sport: "nba",  league: "nba",  stat: "totalPoints", col: "PTS", gameType: "total"     },
@@ -203,7 +210,9 @@ export const CRON_ONLY_TICKERS = [
 // not a demonstration of a catalog blind spot. Sweeping the full 'baseline' backlog for maker/taker
 // viability is a large, separate follow-up (2100 rows, most surely genuine no-model/no-liquidity
 // futures/novelty noise — same character as the DISMISSED_SERIES entries below — but unknown how
-// many more real leagues like these 14 are hiding in it). NOT built, no SERIES_CONFIG entries yet.
+// many more real leagues like these 14 are hiding in it). KXBRASILEIROGAME BUILT 2026-07-23 (see
+// its SERIES_CONFIG entry above — picked as the highest-liquidity confirmed-real candidate, 36/36
+// real two-sided books). The other 13 + the 24 reclassified tickers above stay NOT built.
 export const DISMISSED_SERIES = [
   "KXWC1HSCORE", // 6/22 vet: exact half-scoreline longshots, no in-window edge (1H signal already covered by the soccer half score-matrix)
   "KXWTAROE", // 6/22 vet: WTA round-of-elimination = draw-progression distribution; our tennis is single-match winner only (tennisMatchProb), no bracket sim. No Phase-1 path.

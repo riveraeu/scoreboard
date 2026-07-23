@@ -22,10 +22,11 @@ export function parseGameTeams(eventTicker, sport) {
   if (rest.length < 4) return [null, null];
   const valid = _VALID_TEAMS[sport];
   // Sports with 2/3/4-char canonical abbrs mixed in one registry (WNBA: LV/NY/GS/LA +
-  // ATL/IND/DAL + CONN; MLS: NE/SD/SJ + most 3-char + LAFC/NYRB). Try every (i, len-i)
-  // split and accept the first one where both halves validate. Prefer longer left-side
-  // first so e.g. CONNIN parses as CONN+IND (not CO+NNIN), NYRBCLT as NYRB+CLT (not NY+RBCLT).
-  if ((sport === "wnba" || sport === "mls") && valid) {
+  // ATL/IND/DAL + CONN; MLS: NE/SD/SJ + most 3-char + LAFC/NYRB; brasileirao: Remo's 2-char
+  // "CR" + everything else 3-char). Try every (i, len-i) split and accept the first one where
+  // both halves validate. Prefer longer left-side first so e.g. CONNIN parses as CONN+IND
+  // (not CO+NNIN), NYRBCLT as NYRB+CLT (not NY+RBCLT).
+  if ((sport === "wnba" || sport === "mls" || sport === "brasileirao") && valid) {
     for (let i = Math.min(4, rest.length - 2); i >= 2; i--) {
       const a = normTeam(sport, rest.slice(0, i));
       for (let j = Math.min(4, rest.length - i); j >= 2; j--) {
