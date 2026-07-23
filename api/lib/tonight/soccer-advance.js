@@ -18,6 +18,7 @@
 import { CAPTURE_GATE, CAPTURE_CAP } from "../config.js";
 import {
   getEloIndex, eloForTeam, lambdasFromElo, buildScoreMatrix, prob1x2, advanceProb, WC_TEAMS,
+  getWcSchedule,
 } from "../soccer.js";
 
 const inWindow = (pct) => pct >= CAPTURE_GATE && pct <= CAPTURE_CAP;
@@ -32,6 +33,15 @@ export async function emitSoccerAdvancePlays(ctx) {
     if (isDebug) dropped.push({ sport: "soccer", stat: "advance", reason: "no_elo_index" });
     return;
   }
+
+  // Real gameTime for computeMakerQuote's pre-game gate (missed by the 2026-07-23 batch fix
+  // that covered the other 7 Phase-1 modules — found later the same day). Same idiom as
+  // soccer.js's emitSoccerPlays: fetch each distinct date's schedule once, not once per tie.
+  const dateStrs = [...new Set(soccerAdvanceMarkets.map(m => (m.gameDate || "").replace(/-/g, "")).filter(Boolean))];
+  const schedulesByDate = new Map();
+  await Promise.all(dateStrs.map(async (dateStr) => {
+    schedulesByDate.set(dateStr, await getWcSchedule({ dateStr, cache, isBustCache }));
+  }));
 
   // One matrix per event serves both sides of the tie.
   const matrixCache = new Map(); // eventTicker → { p1x2, homeCode, awayCode } | null
@@ -63,6 +73,8 @@ export async function emitSoccerAdvancePlays(ctx) {
     const pDraw = ev.p1x2.draw;
     const truePct = round1(advanceProb(pWin, pDraw, pLoss) * 100);
     const edge = round1(truePct - m.kalshiPct);
+    const dateStr = (m.gameDate || "").replace(/-/g, "");
+    const schedGame = dateStr ? schedulesByDate.get(dateStr)?.[[m.homeCode, m.awayCode].sort().join("|")] : null;
     soccerAdvancePlays.push({
       sport: "soccer", stat: "advance",
       // Both codes land in homeTeam/awayTeam so the resolver's NOT NULL filter selects these rows;
@@ -74,7 +86,7 @@ export async function emitSoccerAdvancePlays(ctx) {
       truePct, kalshiPct: m.kalshiPct, noKalshiPct: m.noKalshiPct ?? null,
       americanOdds: m.americanOdds ?? null, edge,
       dataConfidence: 10, dcQualified: true, qualified: true,
-      gameDate: m.gameDate, gameTime: null, modelVersion: "soccer-adv-v1",
+      gameDate: m.gameDate, gameTime: schedGame?.gameTime ?? null, modelVersion: "soccer-adv-v1",
       // feature fields (→ features JSON) for later analysis.
       eloHome: ev.eloHome, eloAway: ev.eloAway,
       lambdaHome: round1(ev.lambdaHome), lambdaAway: round1(ev.lambdaAway),

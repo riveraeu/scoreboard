@@ -18,7 +18,7 @@ import { gzipToString } from "../kv-compress.js";
 import { updateMakerQuotes } from "../maker.js";
 import { importKalshiKey as _importKalshiKey, placeKalshiOrder, cancelKalshiOrder } from "../kalshi-order-client.js";
 import { resolveOpenMakerPositions } from "./shadow.js";
-import { enrichSeries, checkSeriesLiquidity } from "../kalshi-series-check.js";
+import { enrichSeries, checkSeriesLiquidity, fetchSeriesMeta } from "../kalshi-series-check.js";
 import { updateLiveMakerOrders, emergencyKillLive, setArmed, computeWantedMakerQuotes,
   gradeResolvedMakerPositions,
   isArmed as isMakerV2Armed, ensureMakerLiveTables } from "../maker-live.js";
@@ -956,14 +956,25 @@ export async function handleKalshiRoutes(ctx) {
   // already sitting in kalshi_series_seen. Series vetting recurs constantly in this codebase
   // (see the triage log memory) — this is a reusable tool, not a one-off, same precedent as
   // `/api/maker-v1-category-breakdown`. ADMIN_KEY only; GET, no DB writes.
+  // ?sampleSize= (default 20, capped 100) — full-ladder pulls (e.g. categorizing every distinct
+  // stat-type suffix in a bundled series like KXNFLTSPEC) need more than the default sample.
+  // ?meta=1 — also fetches series-level metadata (category/tags/frequency) via a DIFFERENT
+  // Kalshi endpoint (GET /v2/series/{ticker}, not the market list) — added to diagnose why
+  // kalshi-series-scan's category=Sports catalog diff misses some real, liquid series entirely.
   if (path === "kalshi-check") {
     const bearer = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/, "");
     if (!env?.ADMIN_KEY || bearer !== env.ADMIN_KEY) return errorResponse("Forbidden", 403);
     const ticker = params.get("ticker");
     if (!ticker) return errorResponse("ticker required", 400);
-    const result = await checkSeriesLiquidity(ticker);
+    const sampleSizeParam = parseInt(params.get("sampleSize"), 10);
+    const sampleSize = Number.isFinite(sampleSizeParam) ? Math.max(1, Math.min(100, sampleSizeParam)) : 20;
+    const wantMeta = params.get("meta") === "1";
+    const [result, meta] = await Promise.all([
+      checkSeriesLiquidity(ticker, { sampleSize }),
+      wantMeta ? fetchSeriesMeta(ticker) : Promise.resolve(null),
+    ]);
     if (result == null) return jsonResponse({ ok: false, ticker, reason: "fetch failed or no markets" });
-    return jsonResponse({ ok: true, ...result });
+    return jsonResponse({ ok: true, ...result, ...(wantMeta ? { meta } : {}) });
   }
 
   return null;

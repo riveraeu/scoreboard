@@ -42,6 +42,32 @@ export async function enrichSeries(ticker) {
   };
 }
 
+// Series-level metadata (category/tags/frequency/title) — a DIFFERENT Kalshi endpoint than
+// fetchSeriesMarkets (which lists that series' individual markets). Added 2026-07-23 to diagnose
+// the kalshi-series-scan discovery blind spot: 14 real, liquid leagues (Premier League, La Liga,
+// etc.) never surfaced in kalshi_series_seen because the scan only diffs the `category=Sports`
+// series catalog — this lets us check what category/tags Kalshi actually assigns a series that
+// we already know is real (found via checkSeriesLiquidity) but that the catalog diff missed.
+export async function fetchSeriesMeta(ticker) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const r = await fetch(`https://api.elections.kalshi.com/trade-api/v2/series/${ticker}`, {
+        headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!r.ok) { if (attempt === 0) { await new Promise(res => setTimeout(res, 500)); continue; } return null; }
+      const data = await r.json();
+      const s = data?.series;
+      if (!s) return null;
+      return {
+        ticker: s.ticker ?? null, title: s.title ?? null, category: s.category ?? null,
+        tags: s.tags ?? null, frequency: s.frequency ?? null,
+      };
+    } catch { if (attempt === 0) { await new Promise(res => setTimeout(res, 500)); continue; } return null; }
+  }
+  return null;
+}
+
 // Full-detail single-series check for manual vetting — real bid/ask/volume per market (not just
 // a count), so a human/agent can judge liquidity quality, not just presence. Used by
 // /api/kalshi-check. Returns null on total fetch failure (series doesn't exist or Kalshi
