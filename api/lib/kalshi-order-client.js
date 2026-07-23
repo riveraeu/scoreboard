@@ -173,7 +173,16 @@ export async function fetchKalshiSettlements({ minTs, limit = 1000 } = {}, env) 
     ticker: s.ticker,
     marketResult: s.market_result,
     revenueCents: Math.round(Number(s.revenue) || 0),
+    // Cost basis straight from Kalshi (yes_total_cost + no_total_cost) — only one side is ever
+    // nonzero for a directional position, and using Kalshi's own reported cost means grading
+    // never has to re-derive "what we paid" from our own stored side/price at all.
+    costCents: Math.round((parseFloat(s.yes_total_cost_dollars ?? s.yes_total_cost) || 0) * 100)
+      + Math.round((parseFloat(s.no_total_cost_dollars ?? s.no_total_cost) || 0) * 100),
     feeCents: Math.round((parseFloat(s.fee_cost_dollars ?? s.fee_cost) || 0) * 100),
+    // Real contract count actually held on this ticker (whichever side is nonzero) — needed to
+    // get a true per-contract rate from the total settlement, since our own recorded contract
+    // counts (V1 simulated size, V2 filled_count) can differ from what Kalshi actually settled.
+    contracts: (parseFloat(s.yes_count_fp ?? s.yes_count) || 0) + (parseFloat(s.no_count_fp ?? s.no_count) || 0),
     settledTime: s.settled_time,
   }));
   return { ok: true, settlements };

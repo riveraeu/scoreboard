@@ -16,7 +16,7 @@ import { fetchKalshiOrderbook } from "../kalshi-book.js";
 import { pipeWriteChunked } from "../kv-pipeline.js";
 import { gzipToString } from "../kv-compress.js";
 import { updateMakerQuotes } from "../maker.js";
-import { importKalshiKey as _importKalshiKey, placeKalshiOrder, cancelKalshiOrder, fetchUnsettledTickers } from "../kalshi-order-client.js";
+import { importKalshiKey as _importKalshiKey, placeKalshiOrder, cancelKalshiOrder, fetchUnsettledTickers, fetchKalshiSettlements } from "../kalshi-order-client.js";
 import { resolveOpenMakerPositions } from "./shadow.js";
 import { updateLiveMakerOrders, emergencyKillLive, setArmed, computeWantedMakerQuotes,
   gradeResolvedMakerPositions,
@@ -568,6 +568,62 @@ export async function handleKalshiRoutes(ctx) {
        WHERE graded_at IS NOT NULL RETURNING id`,
       [], env, { write: true });
     return jsonResponse({ ok: true, reverted: reverted.length });
+  }
+
+  // ── /api/maker-v1-validate ────────────────────────────────────────────────────
+  // Diagnostic (2026-07-22, ADMIN/JWT) — V1 (maker.js) grades its own paper fills with the
+  // SAME shadow_plays-derived CASE-WHEN side_won formula that V2 originally used and was found
+  // to disagree with Kalshi's real settlements on several spread/team-total markets. V1 never
+  // places real orders, so most of its fills have no corresponding Kalshi settlement to check
+  // against — but wherever a V1-quoted ticker ALSO has a real settlement (chiefly the overlap
+  // with V2's real [80,84] band), we can compare V1's derived side_won/pnl_cents against
+  // Kalshi's actual result on the exact same market, independent of whether V1 itself traded it
+  // for real. ?minTs= (unix seconds, default 4 days back).
+  if (path === "maker-v1-validate" && method === "GET") {
+    const _bearer = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/, "");
+    const _jwtOk = (_bearer && JWT_SECRET) ? await verifyJWT(_bearer, JWT_SECRET) : null;
+    const _adminOk = env?.ADMIN_KEY && _bearer === env.ADMIN_KEY;
+    if (!_jwtOk && !_adminOk) return errorResponse("Unauthorized", 401);
+    const _qp = new URL(request.url).searchParams;
+    const minTs = _qp.get("minTs") ? Number(_qp.get("minTs")) : Math.floor((Date.now() - 4 * 86400_000) / 1000);
+    const settlementsRes = await fetchKalshiSettlements({ minTs }, env);
+    if (!settlementsRes.ok) return errorResponse(`Kalshi settlements fetch failed: ${settlementsRes.error}`, 502);
+    const byTicker = new Map(settlementsRes.settlements.map(s => [s.ticker, s]));
+
+    const fills = await neonQuery(
+      `SELECT mf.id, mf.ticker, mf.contracts, mf.fill_ask, mf.side_won, mf.pnl_cents,
+              q.quote_side, q.sport, q.category, q.game_date
+       FROM maker_fills mf JOIN maker_quotes q ON q.id = mf.quote_id
+       WHERE mf.graded_at IS NOT NULL AND mf.ticker = ANY($1::text[])`,
+      [[...byTicker.keys()]], env, { write: true }
+    );
+
+    const rows = fills.map(f => {
+      const s = byTicker.get(f.ticker);
+      const realNetTotal = s.revenueCents - s.costCents - (s.feeCents || 0);
+      // Per-contract rate derived from Kalshi's OWN contract count on that ticker (real trades
+      // by our account, whatever those were — not V1's simulated fill size, which is a
+      // different, unrelated quantity), then compared against V1's own fill_ask-derived
+      // pnl_cents for the same market.
+      const realPerContract = s.contracts ? Math.round(realNetTotal / s.contracts) : null;
+      const ourPerContract = f.pnl_cents != null ? Number(f.pnl_cents) : null;
+      const agree = realPerContract != null && ourPerContract != null && Math.abs(realPerContract - ourPerContract) <= 3;
+      return {
+        ticker: f.ticker, sport: f.sport, category: f.category, gameDate: f.game_date,
+        quoteSide: f.quote_side, sideWonOurs: f.side_won, marketResultKalshi: s.marketResult,
+        ourPnlCents: ourPerContract, realPnlCentsApprox: realPerContract, agree,
+      };
+    });
+    const disagreeing = rows.filter(r => !r.agree);
+    const byCategory = {};
+    for (const r of disagreeing) {
+      const k = `${r.sport}|${r.category}`;
+      byCategory[k] = (byCategory[k] || 0) + 1;
+    }
+    return jsonResponse({
+      ok: true, minTs, checked: rows.length, agree: rows.length - disagreeing.length,
+      disagree: disagreeing.length, disagreeByCategory: byCategory, disagreeingRows: disagreeing,
+    });
   }
 
   // ── /api/maker-v2-revert-unsettled ───────────────────────────────────────────
