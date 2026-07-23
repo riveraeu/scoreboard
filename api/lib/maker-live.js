@@ -9,7 +9,9 @@
 //
 // ORDER LIFECYCLE (no aggressive per-tick churn): each resting order self-expires via
 // `expiration_time` (MAKER_V2_EXPIRATION_SEC past placement) — Kalshi cancels it automatically
-// with no further call. Every quote pass (kalshi-snapshot cron, ~2min cadence):
+// with no further call. Every quote pass (kalshi-snapshot cron, ~2min cadence) first polls real
+// fills (15min lookback) so a filled order flips to 'executed' within one tick instead of
+// waiting for the nightly reconcile; then, for anything still resting:
 //   - price/eligibility UNCHANGED and not nearing expiry → no-op (order keeps resting).
 //   - nearing expiry (same price) → place a fresh replacement; let the old one lapse on its own
 //     (no cancel call needed — Kalshi already will).
@@ -130,6 +132,30 @@ export async function updateLiveMakerOrders({ snapResults, staging, snapshotDate
     `SELECT * FROM maker_orders_v2 WHERE status = 'resting'`, [], env, { write: true });
   const restingByTicker = new Map(resting.map(r => [r.ticker, r]));
 
+  // Poll real fills every tick, not just in the nightly reconcile — previously a resting order
+  // that filled between ticks stayed 'resting' in the DB for up to ~10 hours (until the next
+  // shadow-resolver run), which read as a stuck STATUS column even though Refresh was genuinely
+  // re-querying Neon. 15min lookback tolerates a few missed ticks without re-scanning the day.
+  const executedIds = new Set();
+  if (resting.length) {
+    const fillsRes = await fetchKalshiFills({ minTs: Math.floor((nowMs - 15 * 60_000) / 1000) }, env)
+      .catch(e => ({ ok: false, error: String(e?.message || e) }));
+    if (fillsRes.ok && fillsRes.fills.length) {
+      const byOrderId = new Map(resting.filter(r => r.kalshi_order_id).map(r => [r.kalshi_order_id, r]));
+      for (const f of fillsRes.fills) {
+        const r = byOrderId.get(f.order_id);
+        if (!r) continue;
+        const filledCount = Math.round(parseFloat(f.count ?? f.count_fp ?? "0")) || 0;
+        if (!filledCount) continue;
+        await neonQuery(
+          `UPDATE maker_orders_v2 SET filled_count = $2, status = 'executed' WHERE id = $1`,
+          [r.id, filledCount], env, { write: true });
+        executedIds.add(r.id);
+        restingByTicker.delete(r.ticker);
+      }
+    }
+  }
+
   const RENEW_WINDOW_MS = 30_000; // renew if within 30s of expiry
   const toCancel = [];   // rows needing an explicit cancel (price changed)
   const toExpireLocally = []; // rows we stop tracking as resting without a cancel call (lapsed/no-longer-desired)
@@ -188,10 +214,11 @@ export async function updateLiveMakerOrders({ snapResults, staging, snapshotDate
   }
   const toPlaceFiltered = toPlace.filter(({ ticker }) => !failedCancelTickers.has(ticker));
 
-  // Cap bookkeeping — start from what will still be resting after the cancels/expiries above.
+  // Cap bookkeeping — start from what will still be resting after the cancels/expiries/fills above.
   // A row whose cancel FAILED stays counted as resting (it may genuinely still be).
   const stillResting = resting.filter(r =>
-    !(toCancel.some(c => c.id === r.id) && !failedCancelTickers.has(r.ticker))
+    !executedIds.has(r.id)
+    && !(toCancel.some(c => c.id === r.id) && !failedCancelTickers.has(r.ticker))
     && !toExpireLocally.some(c => c.id === r.id));
   let globalCount = stillResting.length;
   const gameCounts = new Map();
