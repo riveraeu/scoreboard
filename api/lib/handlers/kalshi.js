@@ -18,6 +18,7 @@ import { gzipToString } from "../kv-compress.js";
 import { updateMakerQuotes } from "../maker.js";
 import { importKalshiKey as _importKalshiKey, placeKalshiOrder, cancelKalshiOrder } from "../kalshi-order-client.js";
 import { resolveOpenMakerPositions } from "./shadow.js";
+import { enrichSeries, checkSeriesLiquidity } from "../kalshi-series-check.js";
 import { updateLiveMakerOrders, emergencyKillLive, setArmed, computeWantedMakerQuotes,
   gradeResolvedMakerPositions,
   isArmed as isMakerV2Armed, ensureMakerLiveTables } from "../maker-live.js";
@@ -796,44 +797,14 @@ export async function handleKalshiRoutes(ctx) {
       ALTER TABLE kalshi_series_seen ADD COLUMN IF NOT EXISTS window_fit BOOLEAN
     `, env);
 
-    // Enrich one series with a sample market + live liquidity + window-fit (any side priced in the
-    // [67,91] qualification band — a rough "favorites priced in our band" hint, not a gate).
-    // Best-effort; returns null on fetch failure.
-    const _WIN_LO = 0.67, _WIN_HI = 0.91;
+    // enrichSeries (sample market + live liquidity + window-fit hint) now lives in the shared
+    // api/lib/kalshi-series-check.js — also used by the standing /api/kalshi-check diagnostic.
     // Bounded-concurrency map — Kalshi rate-limits a wide parallel burst (a 42-wide Promise.all
     // 429'd most requests), so cap in-flight enrichment fetches.
     const mapPool = async (items, concurrency, fn) => {
       let i = 0;
       const worker = async () => { while (i < items.length) { const idx = i++; await fn(items[idx]); } };
       await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
-    };
-    // One retry on failure — Kalshi 429s under the parallel scan even at low concurrency, so a
-    // single backoff recovers transient rate-limits (verified: series returning 200/28 markets to
-    // a sequential curl were coming back null from the burst).
-    const enrichSeries = async (ticker) => {
-      for (let attempt = 0; attempt < 2; attempt++) {
-        try {
-          const r = await fetch(`https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=${ticker}&limit=100&status=open`, {
-            headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" },
-            signal: AbortSignal.timeout(8000),
-          });
-          if (!r.ok) { if (attempt === 0) { await new Promise(res => setTimeout(res, 500)); continue; } return null; }
-          const markets = (await r.json())?.markets || [];
-          let windowFit = false;
-          for (const m of markets) {
-            const ya = parseFloat(m.yes_ask_dollars), na = parseFloat(m.no_ask_dollars);
-            if ((ya >= _WIN_LO && ya <= _WIN_HI) || (na >= _WIN_LO && na <= _WIN_HI)) { windowFit = true; break; }
-          }
-          const m0 = markets[0];
-          return {
-            sample_market: m0?.ticker ?? null,
-            sample_subtitle: m0?.subtitle ?? m0?.yes_sub_title ?? m0?.title ?? null,
-            live_market_count: markets.length,
-            window_fit: windowFit,
-          };
-        } catch { if (attempt === 0) { await new Promise(res => setTimeout(res, 500)); continue; } return null; }
-      }
-      return null;
     };
 
     // Admin triage shortcuts: dismiss (→dismissed), undismiss (→new), promote (→shortlisted),
@@ -975,6 +946,24 @@ export async function handleKalshiRoutes(ctx) {
       catalogCount: catalog.length, knownCount: known.size,
       inserted: toInsert.length, newCount: newTickers.length, refreshed: refreshRows.length, newTickers,
     });
+  }
+
+  // ── /api/kalshi-check ─────────────────────────────────────────────────────
+  // Standing read-only diagnostic (added 2026-07-23): checks ONE series ticker's live liquidity
+  // directly against Kalshi, full detail (per-market bid/ask/volume, not just a count) — for
+  // vetting a candidate series (e.g. "does KXEPLGAME even exist / have a real book") without
+  // waiting on the kalshi-series-scan's discovery/enrichment cycle, which only touches tickers
+  // already sitting in kalshi_series_seen. Series vetting recurs constantly in this codebase
+  // (see the triage log memory) — this is a reusable tool, not a one-off, same precedent as
+  // `/api/maker-v1-category-breakdown`. ADMIN_KEY only; GET, no DB writes.
+  if (path === "kalshi-check") {
+    const bearer = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/, "");
+    if (!env?.ADMIN_KEY || bearer !== env.ADMIN_KEY) return errorResponse("Forbidden", 403);
+    const ticker = params.get("ticker");
+    if (!ticker) return errorResponse("ticker required", 400);
+    const result = await checkSeriesLiquidity(ticker);
+    if (result == null) return jsonResponse({ ok: false, ticker, reason: "fetch failed or no markets" });
+    return jsonResponse({ ok: true, ...result });
   }
 
   return null;
