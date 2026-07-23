@@ -465,6 +465,46 @@ export async function handleKalshiRoutes(ctx) {
     return jsonResponse({ ok: true, placed, canceled });
   }
 
+  // ── /api/maker-v1-category-breakdown ──────────────────────────────────────────
+  // Diagnostic (2026-07-23, ADMIN/JWT, GET-only, no writes) — per-category n/avgPnl/CI-lo for
+  // V1's graded fills, reading the already-fixed, already-retroactively-re-graded data (see
+  // project_maker_pnl_bugs_2026_07_23 memory). Re-added post-cleanup specifically to check
+  // whether categories have accrued n≥200 (the ARM CRITERION threshold) yet under the corrected
+  // formula — the earlier version of this endpoint was removed once the investigation itself
+  // was done, but the underlying "has enough clean data accrued" question recurs, so keeping
+  // this one as a standing read-only tool rather than one-off.
+  if (path === "maker-v1-category-breakdown" && method === "GET") {
+    const _bearer = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/, "");
+    const _jwtOk = (_bearer && JWT_SECRET) ? await verifyJWT(_bearer, JWT_SECRET) : null;
+    const _adminOk = env?.ADMIN_KEY && _bearer === env.ADMIN_KEY;
+    if (!_jwtOk && !_adminOk) return errorResponse("Unauthorized", 401);
+
+    const rows = await neonQuery(
+      `SELECT q.sport, q.category, COUNT(*)::int AS n,
+              ROUND(AVG(mf.pnl_cents), 3) AS avg_pnl, ROUND(STDDEV_SAMP(mf.pnl_cents), 3) AS sd_pnl
+       FROM maker_fills mf JOIN maker_quotes q ON q.id = mf.quote_id
+       WHERE mf.graded_at IS NOT NULL
+         -- team-total excluded: the shadowId fix is forward-only, so historical rows still join
+         -- to a possibly-collided shadow_plays row (re-grading re-applies correct sign LOGIC but
+         -- can't undo a collision baked into the joined row's own won/scoring_team) — see
+         -- project_maker_pnl_bugs_2026_07_23 memory.
+         AND q.series NOT IN ('KXMLBTEAMTOTAL', 'KXNBATEAMTOTAL')
+       GROUP BY q.sport, q.category
+       ORDER BY q.sport, q.category`,
+      [], env, { write: true }
+    );
+
+    const byCategory = rows.map(r => {
+      const n = Number(r.n);
+      const avg = r.avg_pnl != null ? Number(r.avg_pnl) : null;
+      const sd = r.sd_pnl != null ? Number(r.sd_pnl) : null;
+      const loCI = avg != null && sd != null && n > 1 ? parseFloat((avg - 1.96 * sd / Math.sqrt(n)).toFixed(2)) : null;
+      return { sport: r.sport, category: r.category, n, avgPnlCents: avg, pnlLoCI: loCI, armEligible: n >= 200 };
+    }).sort((a, b) => b.n - a.n);
+
+    return jsonResponse({ ok: true, byCategory });
+  }
+
   // ── /api/maker-v2-board ──────────────────────────────────────────────────────
   // Near-real-time read for the MakerBoardPage frontend — NOT folded into the 25h-cached
   // shadow-report, since order status needs fresher reads than that. Re-derives "what's
