@@ -95,32 +95,6 @@ export async function placeKalshiOrder({ ticker, side, price, count, clientOrder
   };
 }
 
-// Reads the account's currently-UNSETTLED real positions (ticker set only). Used by
-// gradeResolvedMakerPositions (maker-live.js) to distinguish "we independently know the true
-// outcome via ESPN" from "Kalshi has actually settled/credited this market" — those are NOT the
-// same moment (2026-07-22 finding: same-day grading exposed real positions still open on
-// Kalshi's own books hours after ESPN called the game final). A ticker not confirmed settled
-// stays counted as an open position (status='executed', graded_at still NULL) even once its
-// true outcome is known, rather than moving into realized PnL ahead of the real cash movement.
-export async function fetchUnsettledTickers(env) {
-  if (!env?.KALSHI_API_KEY_ID || !env?.KALSHI_PRIVATE_KEY) return { ok: false, error: "Kalshi API not configured" };
-  const kalshiPath = "/trade-api/v2/portfolio/positions";
-  let timestamp, signature;
-  try {
-    ({ timestamp, signature } = await _sign({ method: "GET", path: kalshiPath, env }));
-  } catch (e) {
-    return { ok: false, error: `Signing failed: ${e?.message || e}` };
-  }
-  const resp = await fetch(`https://api.elections.kalshi.com${kalshiPath}?settlement_status=unsettled&limit=1000`, {
-    headers: _authHeaders(env, timestamp, signature),
-  }).catch(() => null);
-  if (!resp) return { ok: false, error: "Kalshi unreachable" };
-  const respBody = await resp.json().catch(() => ({}));
-  if (!resp.ok) return { ok: false, error: respBody?.error?.message || `Kalshi error ${resp.status}`, status: resp.status };
-  const tickers = new Set((respBody.market_positions || []).map(p => p.ticker).filter(Boolean));
-  return { ok: true, tickers };
-}
-
 // Reads the account's real fills (legacy read path — NOT part of the 7/17 V2 sunset, same
 // endpoint /api/kalshi-fills already uses). Used by maker-live.js's nightly reconcile pass to
 // detect which resting V2 orders got filled, matched by kalshi_order_id.
@@ -146,11 +120,12 @@ export async function fetchKalshiFills({ minTs, limit = 1000 } = {}, env) {
 // Reads the account's actual settlements — Kalshi's own authoritative record of what a settled
 // market credited. `revenue` is GROSS payout (0 or 100¢/contract), NOT net of our cost or fees —
 // callers must subtract both themselves (see gradeResolvedMakerPositions). Replaces the earlier
-// ESPN-derived pnl_cents math + fetchUnsettledTickers gate: a from-scratch cross-check against
-// this feed (2026-07-22) found the OLD ESPN-derived side_won formula disagreed with Kalshi's own
-// settlement on several spread/team-total markets — sign errors worth real dollars, not just
-// rounding — so this is now the sole source of truth, not a supplement. A market only APPEARS
-// here once Kalshi has actually settled it, so this single call is both the accuracy and the
+// ESPN-derived pnl_cents math (and a brief intermediate `fetchUnsettledTickers`-gated version,
+// since removed): a from-scratch cross-check against this feed (2026-07-22) found the OLD
+// ESPN-derived side_won formula disagreed with Kalshi's own settlement on several spread/team-
+// total markets — sign errors worth real dollars, not just rounding — so this is now the sole
+// source of truth, not a supplement. A market only APPEARS here once Kalshi has actually
+// settled it, so this single call is both the accuracy and the
 // timing signal in one — no separate "is it settled yet" check needed. Single page (limit≤1000,
 // no cursor) — V2's daily volume is nowhere near that in any few-day lookback.
 export async function fetchKalshiSettlements({ minTs, limit = 1000 } = {}, env) {
