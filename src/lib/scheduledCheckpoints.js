@@ -52,4 +52,17 @@ export const SCHEDULED_CHECKPOINTS = [
   // capture continues; ~10–15 in-band rows/day → n≥50 ~7/25. [[project_hrr_no_side_flip]]
   { date: "2026-07-25", tone: "blue", label: "Re-run tune:gate on mlb|hrr NO-side (real post-7/17 captures)", short: "hrr NO re-gate check",
     why: "Gate pulled 7/18 — the 7/11 provisional +8.8% ROI band rested on synthesized complements with zero real NO-quote rows; re-gate only if tune:gate shows +ROI at n≥50 on post-7/17 captures with band coherence (window [24,33] still capturing throughout)" },
+  // MLS (KXMLSGAME) shipped 2026-07-23 as the first model-free maker market — live-verified via
+  // /api/tonight?debug=1 (45 rows, real gameTime, correct team parsing) but the day it shipped had
+  // no MLS games, so the actual shadow_plays DB write was never confirmed end-to-end. Next MLS
+  // slate is 7/25. [[project_maker_modelfree_clubsoccer_2026_07_23]]
+  { date: "2026-07-25", tone: "blue", label: "Confirm MLS rows land in shadow_plays", short: "MLS DB-write check",
+    why: "Shipped 7/23, live-verified at the KV-staging level (clubSoccerPlays: 45, real gameTime) but no MLS game fell on ship day so the DB write was never confirmed — check shadow_plays WHERE sport='mls' (via /api/auth/shadow-stats) after the 7/25 slate resolves" },
+  // Kalshi-settlement-based grading built as a DRY-RUN comparison pass 2026-07-23 (new
+  // kalshi_ticker/kalshi_side columns, api/lib/kalshi-settlement.js) — logs agreement against the
+  // existing ESPN resolvers but writes nothing. kalshi_ticker only populates on rows written after
+  // deploy, so there's an inherent one-day lag before any row qualifies; needs about a week of
+  // cron passes to accumulate a real cross-sport sample. [[project_kalshi_settlement_grading_2026_07_23]]
+  { date: "2026-07-30", tone: "blue", label: "Check kalshiDryRun agreement before considering Kalshi-settlement grading authoritative", short: "Kalshi-settlement dry-run check",
+    why: "Dry-run pass shipped 7/23 (/api/shadow-resolver's kalshiDryRun: {checked, wouldResolve, comparedAgainstEspn, agree, disagree}) — needs near-100% agreement on a real cross-sport sample before any part of it can replace the existing ESPN-based resolvers; any disagreement needs investigating first" },
 ];
