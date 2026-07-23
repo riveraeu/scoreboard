@@ -490,6 +490,48 @@ export async function handleKalshiRoutes(ctx) {
     return jsonResponse({ ok: true, date, count: rows.length, rows });
   }
 
+  // ── /api/maker-v2-settlements-raw ─────────────────────────────────────────────
+  // One-off diagnostic (2026-07-22) — dumps Kalshi's settlements feed RAW and UNFILTERED (every
+  // field, every settlement in the window), completely independent of our own maker_orders_v2
+  // rows. Used to cross-check whether our DB-scoped PnL sum is missing anything (a fill that
+  // never got a DB row) or mishandling fees, by computing net PnL straight from Kalshi's own
+  // revenue/cost/fee fields with zero involvement from our own tracking. ?minTs= (unix seconds,
+  // default = start of today PT).
+  if (path === "maker-v2-settlements-raw" && method === "GET") {
+    const _bearer = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/, "");
+    const _jwtOk = (_bearer && JWT_SECRET) ? await verifyJWT(_bearer, JWT_SECRET) : null;
+    const _adminOk = env?.ADMIN_KEY && _bearer === env.ADMIN_KEY;
+    if (!_jwtOk && !_adminOk) return errorResponse("Unauthorized", 401);
+    if (!env?.KALSHI_API_KEY_ID || !env?.KALSHI_PRIVATE_KEY) return errorResponse("Kalshi API not configured", 500);
+    const _qp = new URL(request.url).searchParams;
+    const todayPT = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+    const minTs = _qp.get("minTs") ? Number(_qp.get("minTs"))
+      : Math.floor(Date.parse(`${todayPT}T00:00:00-07:00`) / 1000);
+    const kalshiPath = "/trade-api/v2/portfolio/settlements";
+    const timestamp = String(Date.now());
+    const key = await _importKalshiKey(env.KALSHI_PRIVATE_KEY);
+    const sigBuf = await crypto.subtle.sign({ name: "RSA-PSS", saltLength: 32 }, key,
+      new TextEncoder().encode(timestamp + "GET" + kalshiPath));
+    const signature = btoa(String.fromCharCode(...new Uint8Array(sigBuf)));
+    const resp = await fetch(`https://api.elections.kalshi.com${kalshiPath}?limit=1000&min_ts=${minTs}`, {
+      headers: { "KALSHI-ACCESS-KEY": env.KALSHI_API_KEY_ID, "KALSHI-ACCESS-TIMESTAMP": timestamp, "KALSHI-ACCESS-SIGNATURE": signature },
+    }).catch(() => null);
+    if (!resp) return errorResponse("Kalshi unreachable", 502);
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) return errorResponse(body?.error?.message || `Kalshi error ${resp.status}`, resp.status);
+    const settlements = body.settlements || [];
+    const sumRevenue = settlements.reduce((s, r) => s + (Number(r.revenue) || 0), 0);
+    const sumYesCost = settlements.reduce((s, r) => s + Math.round((parseFloat(r.yes_total_cost_dollars ?? r.yes_total_cost) || 0) * 100), 0);
+    const sumNoCost = settlements.reduce((s, r) => s + Math.round((parseFloat(r.no_total_cost_dollars ?? r.no_total_cost) || 0) * 100), 0);
+    const sumFees = settlements.reduce((s, r) => s + Math.round((parseFloat(r.fee_cost_dollars ?? r.fee_cost) || 0) * 100), 0);
+    return jsonResponse({
+      ok: true, minTs, count: settlements.length,
+      sumRevenueCents: sumRevenue, sumCostCents: sumYesCost + sumNoCost, sumFeesCents: sumFees,
+      netPnlCents: sumRevenue - sumYesCost - sumNoCost - sumFees,
+      settlements,
+    });
+  }
+
   // ── /api/maker-v2-revert-ticker ───────────────────────────────────────────────
   // One-off correction (2026-07-22, ADMIN_KEY only, POST ?ticker=): the first settlements-feed
   // deploy used `revenue` as if it were already net of cost (it's GROSS payout — see the
