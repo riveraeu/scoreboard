@@ -570,6 +570,66 @@ export async function handleKalshiRoutes(ctx) {
     return jsonResponse({ ok: true, reverted: reverted.length });
   }
 
+  // ── /api/maker-v1-shadowid-audit ──────────────────────────────────────────────
+  // Diagnostic (2026-07-22, ADMIN/JWT) — quantifies how much of V1's history was affected by
+  // the shadowId() team-total collision (fixed in shadow-id.js same day). maker_quotes.
+  // shadow_row_id is literally the OLD (pre-fix) shadowId string, stored verbatim at quote time
+  // — since scoringTeam wasn't part of that key, two different teams' team-total quotes on the
+  // same game+threshold can share one shadow_row_id. Detected directly: group maker_quotes by
+  // shadow_row_id, recover each row's real scoringTeam from its own ticker's suffix (same regex
+  // tonight.js uses), and flag any group where more than one distinct scoringTeam appears — that
+  // group's rows share an identity that shouldn't be shared. Scoped to KXMLBTEAMTOTAL/
+  // KXNBATEAMTOTAL (the only `gameType:"teamTotal"` series — the only shape missing pickTeam).
+  if (path === "maker-v1-shadowid-audit" && method === "GET") {
+    const _bearer = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/, "");
+    const _jwtOk = (_bearer && JWT_SECRET) ? await verifyJWT(_bearer, JWT_SECRET) : null;
+    const _adminOk = env?.ADMIN_KEY && _bearer === env.ADMIN_KEY;
+    if (!_jwtOk && !_adminOk) return errorResponse("Unauthorized", 401);
+
+    const quotes = await neonQuery(
+      `SELECT q.id AS quote_id, q.ticker, q.series, q.sport, q.category, q.game_date,
+              q.shadow_row_id, q.quote_side, q.quote_ask,
+              (SELECT COUNT(*) FROM maker_fills mf WHERE mf.quote_id = q.id AND mf.graded_at IS NOT NULL) AS graded_fills
+       FROM maker_quotes q
+       WHERE q.series IN ('KXMLBTEAMTOTAL', 'KXNBATEAMTOTAL') AND q.shadow_row_id IS NOT NULL`,
+      [], env, { write: true }
+    );
+
+    const scoringTeamOf = (ticker) => {
+      const suffix = (ticker || "").split("-").pop() || "";
+      const m = suffix.match(/^([A-Z]+)/);
+      return m ? m[1] : null;
+    };
+
+    const groups = new Map(); // shadow_row_id -> { teams: Set, rows: [] }
+    for (const q of quotes) {
+      const team = scoringTeamOf(q.ticker);
+      if (!team) continue;
+      if (!groups.has(q.shadow_row_id)) groups.set(q.shadow_row_id, { teams: new Set(), rows: [] });
+      const g = groups.get(q.shadow_row_id);
+      g.teams.add(team);
+      g.rows.push({ quoteId: q.quote_id, ticker: q.ticker, team, gradedFills: Number(q.graded_fills) });
+    }
+
+    const collided = [...groups.entries()].filter(([, g]) => g.teams.size > 1);
+    const collidedQuotes = collided.reduce((s, [, g]) => s + g.rows.length, 0);
+    const collidedGradedFills = collided.reduce((s, [, g]) => s + g.rows.reduce((s2, r) => s2 + r.gradedFills, 0), 0);
+    const totalGradedFills = quotes.reduce((s, q) => s + Number(q.graded_fills), 0);
+
+    return jsonResponse({
+      ok: true,
+      totalTeamTotalQuotes: quotes.length,
+      totalGroups: groups.size,
+      collidedGroups: collided.length,
+      collidedQuotes,
+      totalGradedFills,
+      collidedGradedFills,
+      collidedGroupSamples: collided.slice(0, 20).map(([shadowRowId, g]) => ({
+        shadowRowId, teams: [...g.teams], rows: g.rows,
+      })),
+    });
+  }
+
   // ── /api/maker-v1-validate ────────────────────────────────────────────────────
   // Diagnostic (2026-07-22, ADMIN/JWT) — V1 (maker.js) grades its own paper fills with the
   // SAME shadow_plays-derived CASE-WHEN side_won formula that V2 originally used and was found
