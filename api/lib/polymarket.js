@@ -45,6 +45,15 @@ export const POLY_DISMISSED_SPORTS = [
   // KXCLUBFGAME/cycling dismissals), and Polymarket is observatory-only since the 7/04 kill
   // regardless. DISMISS all.
   "crichundred", "crichundredw", "cycling",
+  // 7/23 triage (25 detected): a mix of lower-division/regional soccer leagues (afcl, argcopa,
+  // bel1, bel2, cafcl, ecs, frtc, gre1, ned2, par1, ptsc, qat1) and niche cricket T10/T20/domestic
+  // leagues (cricecsch, cricecseng, cricfalcons, cricgermant10, cricgsl, cricinterprov, cricjclt10,
+  // crickerala, cricmaharani, cricmukono, cricodc, cricodcl2w, cricppl) — none overlap sports/
+  // leagues we model (no club Elo for the soccer leagues, no cricket model at all), and Polymarket
+  // stays observatory-only since the 7/04 kill regardless of individual league quality. DISMISS all.
+  "afcl", "argcopa", "bel1", "bel2", "cafcl", "ecs", "frtc", "gre1", "ned2", "par1", "ptsc", "qat1",
+  "cricecsch", "cricecseng", "cricfalcons", "cricgermant10", "cricgsl", "cricinterprov",
+  "cricjclt10", "crickerala", "cricmaharani", "cricmukono", "cricodc", "cricodcl2w", "cricppl",
 ];
 
 // Gamma league catalog (GET /sports): ~300 rows of { sport: slug, series: id, tags, ... }. The

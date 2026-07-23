@@ -609,8 +609,30 @@ export const DISMISSED_SERIES = [
   "KXSCOCUPADVANCE", "KXSCOCUPBTTS", // see KXSCOCUPGAME.
   "KXNBANEXTCONTRACT", "KXNBANEXTTEAMOUTLET", // contract-value / news-outlet futures — same
   // news/insider-driven, no-model-surface class as KXNBANEXTTEAM. DISMISS.
-  // NOTE: KXNFLTSPEC (single-game TD-threshold prop, e.g. "3+ TDs") NOT dismissed — maps onto the
-  // already-adopted KXNFLTDS touchdowns stat, just a higher threshold rung. Shortlisted instead,
-  // pending a SERIES_CONFIG wiring decision (does the existing hit-rate model extend to 3+ cleanly,
-  // or does it need its own calibration track).
+  // NOTE: KXNFLTSPEC ("NFL Team Specials") NOT dismissed — still shortlisted (no SERIES_CONFIG
+  // entry, not built). 2026-07-23 vet found it's NOT the single-stat TD-threshold series the 7/22
+  // promotion assumed — it bundles multiple distinct stat families (at least team-defense counting
+  // stats like sacks, alongside the originally-assumed player TD threshold) under one ticker.
+  // See project_nfltspec_vet_2026_07_23 memory for the full vet + why it's not built yet.
+  // 7/23 triage (36 detected — 11 Kalshi + 25 Polymarket):
+  "KXSOCCERRETIRE", "KXSOCCERINTLRETIRE", // player retirement announcements — a retirement
+  // decision isn't a competitive sporting outcome, no model surface exists or ever will (same
+  // non-outcome class as KXWCTEAMS governance votes). 13 / 0 live. DISMISS.
+  "KXT20CANADA", "KXT20CANADAMATCH", // Global T20 Canada (champion futures + match winner) —
+  // cricket, same no-model/no-data-path class as KXCPLMATCH/KXLPLMATCH (7/18). 0 live (shell). DISMISS.
+  "KXTBTGAME", // The Basketball Tournament — single-elim streetball with rotating alumni/pickup
+  // rosters that don't persist year to year (unlike NBA Summer League's within-tournament Elo,
+  // which at least has one consistent roster per tournament) — no ratings source exists or can
+  // exist, same class as KXBILGAME. windowFit=true is the usual favorite false positive. 6 live. DISMISS.
+  "KXWNBA3PTCONTEST", "KXWNBA3PTCONTESTOU", "KXWNBA3PTROUND", // WNBA All-Star 3-point contest
+  // (winner futures / threes-made O/U / round-qualifier) — one-day-a-year exhibition novelty,
+  // same class as KXWNBAASGMVP. windowFit=true on two of three is the usual favorite/exhibition
+  // false positive. 6 / 0 / 6 live. DISMISS.
+  "KXSCOCUPSPREAD", "KXSCOCUPTOTAL", // Scottish Cup spread/total — sibling market-type tickers for
+  // a GAME series already dismissed (KXSCOCUPGAME, no-club-Elo class) — same root cause applies
+  // regardless of market type, same idiom as the 7/22 club-league derivative batch. 64 / 96 live
+  // (real books — doesn't change the no-model verdict). DISMISS.
+  "KXWWEFIGHTOCCUR", // WWE wrestler crossing over into a real (non-scripted) fight — a booking/
+  // business decision about WHETHER a crossover event happens at all, not a competitive outcome to
+  // model. Bare shell (enrichment fetch found 0 live markets). DISMISS.
 ];
