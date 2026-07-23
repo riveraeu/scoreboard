@@ -104,6 +104,13 @@ export const SERIES_CONFIG = {
   // to ~30k contracts). Dedicated gameType (not clubSoccerMl) since it needs its own parse
   // branch/array — resolves off a different ESPN league endpoint (bra.1, not usa.1) per row.
   KXBRASILEIROGAME: { sport: "brasileirao", league: "brasileirao", stat: "game", col: "ML", gameType: "brasileiraoMl" },
+  // NWSL (National Women's Soccer League) game winner — 3rd model-free maker league, same
+  // playbook (adopted 2026-07-23, see project_maker_modelfree_clubsoccer_2026_07_23 memory).
+  // Picked over KXUSLGAME (also 36/36 real books) because USL has a genuine ESPN-side team-
+  // abbreviation collision (Louisville City FC and Loudoun United FC both "LOU") — NWSL had
+  // zero such collisions across its confirmed roster. Dedicated gameType (own parse branch/
+  // array, resolves off usa.nwsl not usa.1/bra.1).
+  KXNWSLGAME: { sport: "nwsl", league: "nwsl", stat: "game", col: "ML", gameType: "nwslMl" },
   // Game totals
   KXMLBTOTAL:     { sport: "mlb",  league: "mlb",  stat: "totalRuns",   col: "R",   gameType: "total"     },
   KXNBATOTAL:     { sport: "nba",  league: "nba",  stat: "totalPoints", col: "PTS", gameType: "total"     },

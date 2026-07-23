@@ -58,6 +58,12 @@ export const SCHEDULED_CHECKPOINTS = [
   // slate is 7/25. [[project_maker_modelfree_clubsoccer_2026_07_23]]
   { date: "2026-07-25", tone: "blue", label: "Confirm MLS rows land in shadow_plays", short: "MLS DB-write check",
     why: "Shipped 7/23, live-verified at the KV-staging level (clubSoccerPlays: 45, real gameTime) but no MLS game fell on ship day so the DB write was never confirmed — check shadow_plays WHERE sport='mls' (via /api/auth/shadow-stats) after the 7/25 slate resolves" },
+  // Brasileirão (KXBRASILEIROGAME) shipped 2026-07-23 as the second model-free maker market —
+  // live-verified via /api/tonight?debug=1 (36/36 rows, real gameTime, correct parsing including
+  // Remo's 2-char abbr) same day, unlike MLS this had live games to check against. Same DB-write
+  // gap as MLS though: no shadow-snapshot cron pass has run since ship. [[project_brasileirao_build_2026_07_23]]
+  { date: "2026-07-25", tone: "blue", label: "Confirm Brasileirão rows land in shadow_plays", short: "Brasileirão DB-write check",
+    why: "Shipped 7/23, live-verified at the KV-staging level (36/36 rows, real gameTime/kalshiTicker, correct home/away/tie parsing) but no shadow-snapshot cron pass has run yet — check shadow_plays WHERE sport='brasileirao' (via /api/auth/shadow-stats) after the next 1-2 days of games resolve" },
   // Kalshi-settlement-based grading built as a DRY-RUN comparison pass 2026-07-23 (new
   // kalshi_ticker/kalshi_side columns, api/lib/kalshi-settlement.js) — logs agreement against the
   // existing ESPN resolvers but writes nothing. kalshi_ticker only populates on rows written after

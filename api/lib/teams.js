@@ -219,6 +219,33 @@ export const TEAMS = {
     { abbr: "VDG", espnScore: "VAS" },  // Vasco da Gama
     { abbr: "VIT" },
   ],
+  // NWSL (KXNWSLGAME, adopted 2026-07-23 — 3rd model-free maker league, same playbook, see
+  // project_maker_modelfree_clubsoccer_2026_07_23 memory). Canonical = Kalshi's own ticker
+  // abbrs, verified live via /api/kalshi-check 2026-07-23 — 14 of 16 teams confirmed (only 7
+  // games were listed that day; Angel City FC and Racing Louisville hadn't appeared in a
+  // ticker yet, so their Kalshi abbr is NOT guessed here — add when first seen, per this
+  // session's "verify live, don't guess" discipline). Mostly 3-char except KC's 2-char code,
+  // the one team requiring the "try every split" parseGameTeams branch (same class of problem
+  // as MLS/brasileirao). espnScore only where ESPN's usa.nwsl scoreboard abbr differs (verified
+  // live 2026-07-23): WSP→WAS (Washington Spirit), SAN→SD (San Diego Wave), REI→SEA (Seattle
+  // Reign), URO→UTA (Utah Royals), NCC→NC (North Carolina Courage), PTH→POR (Portland Thorns),
+  // GOT→GFC (Gotham FC), OPR→ORL (Orlando Pride), HDA→HOU (Houston Dash).
+  nwsl: [
+    { abbr: "WSP", espnScore: "WAS" },  // Washington Spirit
+    { abbr: "DEN" },                    // Denver Summit FC
+    { abbr: "SAN", espnScore: "SD" },   // San Diego Wave
+    { abbr: "REI", espnScore: "SEA" },  // Seattle Reign
+    { abbr: "URO", espnScore: "UTA" },  // Utah Royals
+    { abbr: "NCC", espnScore: "NC" },   // North Carolina Courage
+    { abbr: "KC" },                     // Kansas City Current
+    { abbr: "BOS" },                    // Boston Legacy FC
+    { abbr: "PTH", espnScore: "POR" },  // Portland Thorns
+    { abbr: "GOT", espnScore: "GFC" },  // Gotham FC
+    { abbr: "OPR", espnScore: "ORL" },  // Orlando Pride
+    { abbr: "CHI" },                    // Chicago Stars FC
+    { abbr: "HDA", espnScore: "HOU" },  // Houston Dash
+    { abbr: "BAY" },                    // Bay FC
+  ],
 };
 
 // ── Derived maps (legacy shapes, re-exported from their historical modules) ──────
