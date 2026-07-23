@@ -273,25 +273,29 @@ export async function updateLiveMakerOrders({ snapResults, staging, snapshotDate
 // T+1) as well as inside the nightly reconcileLiveMakerFills below. One source of truth either
 // way — settlement math is `pnl_cents = price − 100·side_won`, same formula V1 uses.
 // Grades open V2 positions directly off Kalshi's own settlements feed (2026-07-22 rewrite) —
-// `revenue` (kalshi-order-client.js's fetchKalshiSettlements) is Kalshi's own computed net PnL
-// for the account's position on that ticker, already netting cost vs payout. Replaces the
-// earlier approach (re-derive win/loss from ESPN via shadow_plays, then separately check a
-// fetchUnsettledTickers gate before trusting it): row-by-row audit confirmed the ESPN math was
-// numerically correct, but it exposed a real timing gap — a market only appears in `settlements`
-// once Kalshi has ACTUALLY settled it, so this one call is both the accuracy and the timing
-// signal, eliminating the two-step guess. shadow_plays resolution (resolveOpenMakerPositions)
-// still runs for the broader calibration pipeline; V2's own PnL no longer depends on it.
+// `revenue` (kalshi-order-client.js's fetchKalshiSettlements) is Kalshi's own computed
+// settlement payout for the account's position on that ticker. Replaces the earlier approach
+// (re-derive win/loss from ESPN via shadow_plays, then separately check a fetchUnsettledTickers
+// gate before trusting it): row-by-row audit confirmed the ESPN math was numerically correct,
+// but it exposed a real timing gap — a market only appears in `settlements` once Kalshi has
+// ACTUALLY settled it, so this one call is both the accuracy and the timing signal, eliminating
+// the two-step guess. shadow_plays resolution (resolveOpenMakerPositions) still runs for the
+// broader calibration pipeline; V2's own PnL no longer depends on it.
 //
-// One settlement record covers ALL of the account's contracts on a ticker, but we can have
-// multiple maker_orders_v2 rows per ticker (renewed resting orders each filling separately) —
-// revenue is split evenly per contract across our own rows for that ticker (a uniform-price
-// approximation when entry prices differed slightly across renewals; the per-ticker TOTAL is
-// always exactly right even if an individual row's share is a cents-level approximation).
+// IMPORTANT: `revenue` is GROSS payout (0 or 100¢/contract), NOT net of what we paid — verified
+// empirically 2026-07-22 (a live case came back as a clean 100¢/contract on a position sold at
+// 81¢, which is only possible if it's gross; net would have to be ≤81¢, the max a seller can
+// ever keep). Our real Kalshi position is a LONG in the complement side (sellAsBuy: the real
+// order buys the complement at 100−price), so per-row net pnl = grossPayoutPerContract −
+// (100−price), using each row's OWN price since renewals can fill at slightly different prices
+// on the same ticker. One settlement record covers ALL of the account's contracts on a ticker,
+// so grossPayoutPerContract itself (revenue / total contracts) is shared across our rows for
+// that ticker — only the cost-basis subtraction varies per row.
 export async function gradeResolvedMakerPositions({ env }) {
   await ensureMakerLiveTables(env);
 
   const candidates = await neonQuery(
-    `SELECT id, ticker, side, filled_count FROM maker_orders_v2
+    `SELECT id, ticker, side, price, filled_count FROM maker_orders_v2
      WHERE status = 'executed' AND graded_at IS NULL`,
     [], env, { write: true });
   if (!candidates.length) return { graded: 0, held: 0 };
@@ -316,9 +320,17 @@ export async function gradeResolvedMakerPositions({ env }) {
     const settlement = byTicker.get(ticker);
     const totalContracts = rows.reduce((s, r) => s + Number(r.filled_count || 0), 0);
     if (!totalContracts) continue;
-    const perContractCents = Math.round(settlement.revenueCents / totalContracts);
+    // `revenue` is GROSS settlement payout (0 or 100¢/contract), NOT net of what we paid — our
+    // real position is a long in the complement side (sellAsBuy: real order buys 100−price),
+    // so net pnl = grossPayoutPerContract − our own cost basis (100−price), computed per row
+    // since renewals can have filled at slightly different prices on the same ticker. Verified
+    // against a live case (2026-07-22): revenueCents/contracts came back as a clean 100,
+    // matching "all contracts' held side won" — using that as pnl_cents directly (skipping the
+    // cost subtraction) overstated the gain by exactly the cost basis of the winning position.
+    const grossPayoutPerContract = Math.round(settlement.revenueCents / totalContracts);
     for (const r of rows) {
-      toGrade.push({ oid: r.id, sideWon: settlement.marketResult === r.side, pnlCents: perContractCents });
+      const pnlCents = grossPayoutPerContract - (100 - Number(r.price));
+      toGrade.push({ oid: r.id, sideWon: settlement.marketResult === r.side, pnlCents });
     }
   }
   if (!toGrade.length) return { graded: 0, held: candidates.length };

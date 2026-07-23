@@ -490,6 +490,26 @@ export async function handleKalshiRoutes(ctx) {
     return jsonResponse({ ok: true, date, count: rows.length, rows });
   }
 
+  // ── /api/maker-v2-revert-ticker ───────────────────────────────────────────────
+  // One-off correction (2026-07-22, ADMIN_KEY only, POST ?ticker=): the first settlements-feed
+  // deploy used `revenue` as if it were already net of cost (it's GROSS payout — see the
+  // gradeResolvedMakerPositions comment) before that was caught, mis-grading whatever settled in
+  // that brief window. Unconditionally reverts graded_at/side_won/pnl_cents to NULL for a
+  // specific ticker so it re-enters Open Positions and gets correctly re-graded by the fixed
+  // formula next cron tick. Deliberately ticker-scoped (not a blanket revert) — most already-
+  // graded rows were fine.
+  if (path === "maker-v2-revert-ticker" && method === "POST") {
+    const bearer = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/, "");
+    if (!env?.ADMIN_KEY || bearer !== env.ADMIN_KEY) return errorResponse("Forbidden", 403);
+    const ticker = new URL(request.url).searchParams.get("ticker");
+    if (!ticker) return errorResponse("?ticker= required", 400);
+    const reverted = await neonQuery(
+      `UPDATE maker_orders_v2 SET graded_at = NULL, side_won = NULL, pnl_cents = NULL
+       WHERE ticker = $1 AND graded_at IS NOT NULL RETURNING id`,
+      [ticker], env, { write: true });
+    return jsonResponse({ ok: true, ticker, reverted: reverted.length });
+  }
+
   // ── /api/maker-v2-revert-unsettled ───────────────────────────────────────────
   // One-time correction (2026-07-22, ADMIN_KEY only) — gradeResolvedMakerPositions now checks
   // Kalshi's real settlement status before grading, but that check didn't exist yet for rows
