@@ -836,6 +836,17 @@ export async function handleKalshiRoutes(ctx) {
     }
     if (!catalog.length) return errorResponse("Empty catalog", 502);
 
+    // ?search=TICKER (admin, read-only, no DB writes) — one-off diagnostic (2026-07-23): checks whether a given
+    // ticker is actually present in the fetched category=Sports catalog, no DB writes. Added to
+    // investigate why 14 confirmed-real, category="Sports"-tagged leagues (verified via
+    // /api/kalshi-check?meta=1) never surfaced in kalshi_series_seen at all.
+    const search = url.searchParams.get("search");
+    if (search) {
+      if (!isAdmin) return errorResponse("Admin only", 403);
+      const hit = catalog.find(s => (s.ticker || s.series_ticker) === search);
+      return jsonResponse({ ok: true, search, catalogCount: catalog.length, found: !!hit, entry: hit ?? null });
+    }
+
     // 2. The set of tickers we actually consume (same source the snapshot cron uses).
     const known = new Set([...Object.keys(SERIES_CONFIG), ...CRON_ONLY_TICKERS]);
 
