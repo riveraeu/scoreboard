@@ -570,6 +570,38 @@ export async function handleKalshiRoutes(ctx) {
     return jsonResponse({ ok: true, reverted: reverted.length });
   }
 
+  // ── /api/maker-v1-clean-aggregate ─────────────────────────────────────────────
+  // Diagnostic (2026-07-22, ADMIN/JWT) — recomputes V1's headline avg-pnl/CI aggregate WITH vs
+  // WITHOUT the team-total category (KXMLBTEAMTOTAL/KXNBATEAMTOTAL), given the shadowId-collision
+  // audit found ~94% of team-total's graded fills share an identity with a different team's
+  // market. Answers: does the "ARM CRITERION MET" claim survive once the confirmed-corrupted
+  // category is excluded?
+  if (path === "maker-v1-clean-aggregate" && method === "GET") {
+    const _bearer = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/, "");
+    const _jwtOk = (_bearer && JWT_SECRET) ? await verifyJWT(_bearer, JWT_SECRET) : null;
+    const _adminOk = env?.ADMIN_KEY && _bearer === env.ADMIN_KEY;
+    if (!_jwtOk && !_adminOk) return errorResponse("Unauthorized", 401);
+
+    const _aggQuery = async (excludeTeamTotal) => {
+      const [row] = await neonQuery(
+        `SELECT COUNT(*)::int AS n, ROUND(AVG(mf.pnl_cents), 3) AS avg_pnl, ROUND(STDDEV_SAMP(mf.pnl_cents), 3) AS sd_pnl
+         FROM maker_fills mf JOIN maker_quotes q ON q.id = mf.quote_id
+         WHERE mf.graded_at IS NOT NULL
+         ${excludeTeamTotal ? "AND q.series NOT IN ('KXMLBTEAMTOTAL', 'KXNBATEAMTOTAL')" : ""}`,
+        [], env, { write: true }
+      );
+      const n = Number(row?.n || 0);
+      const avg = row?.avg_pnl != null ? Number(row.avg_pnl) : null;
+      const sd = row?.sd_pnl != null ? Number(row.sd_pnl) : null;
+      const loCI = avg != null && sd != null && n > 1 ? parseFloat((avg - 1.96 * sd / Math.sqrt(n)).toFixed(2)) : null;
+      return { n, avgPnlCents: avg, pnlLoCI: loCI };
+    };
+
+    const withAll = await _aggQuery(false);
+    const excludingTeamTotal = await _aggQuery(true);
+    return jsonResponse({ ok: true, withAll, excludingTeamTotal });
+  }
+
   // ── /api/maker-v1-shadowid-audit ──────────────────────────────────────────────
   // Diagnostic (2026-07-22, ADMIN/JWT) — quantifies how much of V1's history was affected by
   // the shadowId() team-total collision (fixed in shadow-id.js same day). maker_quotes.
