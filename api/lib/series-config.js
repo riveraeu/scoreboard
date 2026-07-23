@@ -85,6 +85,18 @@ export const SERIES_CONFIG = {
   // which the parse-time spread gate skips). Dense daily slate (~8-10 games/day) = the highest
   // capture-per-effort baseball build. Shadow-only: `lmb|ml` is NOT in the category gate.
   KXLMBGAME: { sport: "lmb", league: "lmb", stat: "ml", col: "ML", gameType: "lmbGame" },
+  // MLS (Major League Soccer) game winner — 3-way (home/away/tie), model-free: no probability
+  // model at all (the maker strategy only needs a real gameTime + a way to resolve the result,
+  // see project_maker_modelfree_clubsoccer_2026_07_23 memory). The `clubSoccerMl` gameType
+  // routes these to the dedicated emit path (api/lib/tonight/club-soccer-ml.js): parseGameTeams
+  // for the variable-length MLS abbrs, real gameTime fetched from ESPN's usa.1 scoreboard
+  // (api/lib/mls.js) — unlike every other Phase-1 shadow-only module, which hardcodes
+  // gameTime:null and is therefore silently NEVER maker-quotable (found 2026-07-23; fixed here
+  // for MLS only, the other 8 modules are a tracked follow-up, not yet fixed). Adopted
+  // 2026-07-23 after a live liquidity recheck (corrected an earlier wrong-field-name read):
+  // real 1¢-spread books, volume in the hundreds-to-thousands per market. `mls|game` is NOT in
+  // the category gate (shadow-only, maker-only).
+  KXMLSGAME: { sport: "mls", league: "mls", stat: "game", col: "ML", gameType: "clubSoccerMl" },
   // Game totals
   KXMLBTOTAL:     { sport: "mlb",  league: "mlb",  stat: "totalRuns",   col: "R",   gameType: "total"     },
   KXNBATOTAL:     { sport: "nba",  league: "nba",  stat: "totalPoints", col: "PTS", gameType: "total"     },

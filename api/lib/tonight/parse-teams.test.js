@@ -43,6 +43,22 @@ test("parseGameTeams: WNBA variable-length splits", () => {
   assert.deepEqual(parseGameTeams(ticker("WASMIN"), "wnba"), ["WSH", "MIN"]);
 });
 
+test("parseGameTeams: MLS variable-length splits (2/3/4-char mix, like WNBA)", () => {
+  // 4+3: longer-left preference — NYRBCLT must parse NYRB+CLT, not NY+RBCLT.
+  assert.deepEqual(parseGameTeams(ticker("NYRBCLT"), "mls"), ["NYRB", "CLT"]);
+  // 4+4: both sides 4-char.
+  assert.deepEqual(parseGameTeams(ticker("LAFCNYRB"), "mls"), ["LAFC", "NYRB"]);
+  // 2+3: 2-char left side (SJ, SD, NE all 2-char canonical MLS abbrs).
+  assert.deepEqual(parseGameTeams(ticker("SJLAG"), "mls"), ["SJ", "LAG"]);
+  assert.deepEqual(parseGameTeams(ticker("SDDAL"), "mls"), ["SD", "DAL"]);
+  assert.deepEqual(parseGameTeams(ticker("NEATL"), "mls"), ["NE", "ATL"]);
+  // 3+4: right side 4-char.
+  assert.deepEqual(parseGameTeams(ticker("SKCLAFC"), "mls"), ["SKC", "LAFC"]);
+  // 3+3: the common case.
+  assert.deepEqual(parseGameTeams(ticker("DCUTOR"), "mls"), ["DCU", "TOR"]);
+  assert.deepEqual(parseGameTeams(ticker("PHISEA"), "mls"), ["PHI", "SEA"]);
+});
+
 test("parseGameTeams: MLB normalization inside split", () => {
   assert.deepEqual(parseGameTeams(ticker("CHWDET"), "mlb"), ["CWS", "DET"]);
   assert.deepEqual(parseGameTeams(ticker("OAKSEA"), "mlb"), ["ATH", "SEA"]);

@@ -19,6 +19,7 @@ import { reconcileLiveMakerFills, isArmed as isMakerV2Armed } from "../maker-liv
 // row identity on quote segments without a handler→handler import cycle.
 import { shadowId } from "../shadow-id.js";
 import { fetchLmbResults } from "../lmb.js";
+import { fetchMlsResults } from "../mls.js";
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER } from "../config.js";
 import { passesCategoryGate } from "../category-gate.js";
 import { INPUT_SEARCH_EXHAUSTED, stillExhausted } from "../model-holds.js";
@@ -754,7 +755,8 @@ async function handleShadowResolver({ path, request, env, cache }) {
   const nascarRows = rows.filter(r => r.sport === "nascar");
   const nbaslRows = rows.filter(r => r.sport === "nbasl");
   const lmbRows = rows.filter(r => r.sport === "lmb");
-  const teamRows = rows.filter(r => r.sport !== "tennis" && r.sport !== "soccer" && r.sport !== "fight" && r.sport !== "golf" && r.sport !== "nascar" && r.sport !== "nbasl" && r.sport !== "lmb");
+  const mlsRows = rows.filter(r => r.sport === "mls");
+  const teamRows = rows.filter(r => r.sport !== "tennis" && r.sport !== "soccer" && r.sport !== "fight" && r.sport !== "golf" && r.sport !== "nascar" && r.sport !== "nbasl" && r.sport !== "lmb" && r.sport !== "mls");
 
   // Build unique game keys per date. Key: sport:away:home[@gameTime] — matches /api/live format.
   const keysByDate = new Map(); // game_date → Set<rawKey>
@@ -1211,6 +1213,45 @@ async function handleShadowResolver({ path, request, env, cache }) {
         const oppScore = g.home === r.pick_team ? g.awayScore : g.homeScore;
         if (pickScore == null) { noData++; continue; }
         updates.push({ id: r.id, won: g.winner === r.pick_team, actualValue: pickScore - oppScore });
+      }
+    }
+  }
+
+  // ── MLS resolution ── grade the 3-way (home/away/tie) game-winner rows off the ESPN usa.1
+  // scoreboard. Games are matched on the sorted canonical team pair (Kalshi ticker order ≠ ESPN
+  // home/away). pick_team is a canonical MLS abbr or "TIE" (mirrors WC soccer's 1X2 grading —
+  // see the soccerRows block above): a draw settles the TIE row, a scoreline settles whichever
+  // team's row it is. Model-free rows (model_true_pct NULL) resolve exactly like any other row.
+  if (mlsRows.length) {
+    const dateOf = (r) => r.game_date
+      ? new Date(r.game_date).toISOString().slice(0, 10)
+      : (r.snapshot_date ? new Date(r.snapshot_date).toISOString().slice(0, 10) : null);
+    const byDate = new Map();
+    for (const r of mlsRows) {
+      const date = dateOf(r);
+      if (!date) { noData++; continue; }
+      if (!byDate.has(date)) byDate.set(date, []);
+      byDate.get(date).push(r);
+    }
+    const resultsByDate = new Map();
+    await Promise.all([...byDate.keys()].map(async (date) => {
+      resultsByDate.set(date, await fetchMlsResults(date.replace(/-/g, "")));
+    }));
+    for (const [date, rws] of byDate) {
+      const results = resultsByDate.get(date) || {};
+      for (const r of rws) {
+        const g = results[[r.home_team, r.away_team].sort().join("|")];
+        if (!g) { noData++; continue; } // game not played / not final yet
+        let won;
+        if (r.pick_team === "TIE") {
+          won = g.homeScore === g.awayScore;
+        } else {
+          const pickScore = g.home === r.pick_team ? g.homeScore : (g.away === r.pick_team ? g.awayScore : null);
+          const oppScore = g.home === r.pick_team ? g.awayScore : g.homeScore;
+          if (pickScore == null) { noData++; continue; }
+          won = pickScore > oppScore;
+        }
+        updates.push({ id: r.id, won, actualValue: null });
       }
     }
   }

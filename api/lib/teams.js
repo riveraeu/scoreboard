@@ -173,6 +173,29 @@ export const TEAMS = {
     { abbr: "TDT", mlbId: 5010 }, // Toros de Tijuana
     { abbr: "TEL", mlbId: 536 },  // Tecolotes de Los Dos Laredos (statsapi: Tecos de los Dos Laredos)
   ],
+  // MLS (KXMLSGAME, adopted 2026-07-23 — model-free maker candidate, see project_maker_
+  // modelfree_clubsoccer_2026_07_23 memory). Canonical = Kalshi's own ticker abbrs (same
+  // precedent as lmb) — variable length (2/3/4 char), same class of parse problem as WNBA,
+  // so parseGameTeams' "try every split" branch covers both. espnScore only where ESPN's
+  // scoreboard abbr differs (verified live against site.api.espn.com .../soccer/usa.1/scoreboard,
+  // 2026-07-23): DCU→DC, LAG→LA, NYRB→RBNY.
+  mls: [
+    { abbr: "ATL" }, { abbr: "ATX" }, { abbr: "CHI" }, { abbr: "CIN" }, { abbr: "CLB" },
+    { abbr: "CLT" }, { abbr: "COL" }, { abbr: "DAL" },
+    { abbr: "DCU", espnScore: "DC" },   // D.C. United
+    { abbr: "HOU" },
+    { abbr: "LAFC" },
+    { abbr: "LAG", espnScore: "LA" },   // LA Galaxy
+    { abbr: "MIA" }, { abbr: "MIN" }, { abbr: "MTL" },
+    { abbr: "NE" },   // New England Revolution
+    { abbr: "NSH" }, { abbr: "NYC" },
+    { abbr: "NYRB", espnScore: "RBNY" }, // New York Red Bulls
+    { abbr: "ORL" }, { abbr: "PHI" }, { abbr: "POR" }, { abbr: "RSL" },
+    { abbr: "SD" },   // San Diego FC
+    { abbr: "SEA" },
+    { abbr: "SJ" },   // San Jose Earthquakes
+    { abbr: "SKC" }, { abbr: "STL" }, { abbr: "TOR" }, { abbr: "VAN" },
+  ],
 };
 
 // ── Derived maps (legacy shapes, re-exported from their historical modules) ──────

@@ -12,6 +12,7 @@ import {
   WNBA_CANON_TO_ESPN, WNBA_ESPN_TO_CANON, WNBA_TEAM_IDS,
   NHL_ABBR_MAP, MLB_ID_TO_ABBR, LMB_ID_TO_ABBR,
 } from "./teams.js";
+import { mlsCanonTeam } from "./mls.js";
 
 // ── Fixtures: exact pre-registry literals ────────────────────────────────────────
 
@@ -22,6 +23,7 @@ const LEGACY_TEAM_NORM = {
   mlb: { KCR: "KC", SFG: "SF", SDP: "SD", TBR: "TB", CHW: "CWS", AZ: "ARI", KC: "KC", SD: "SD", SF: "SF", TB: "TB", OAK: "ATH", WSN: "WSH", WAS: "WSH" },
   nfl: { LA: "LAR" },
   lmb: {}, // canonical = Kalshi abbrs, no aliases
+  mls: {}, // canonical = Kalshi abbrs, no aliases (like lmb)
 };
 
 const LEGACY_VALID_TEAMS = {
@@ -31,6 +33,7 @@ const LEGACY_VALID_TEAMS = {
   mlb: ["ARI","ATL","ATH","BAL","BOS","CHC","CIN","CLE","COL","CWS","DET","HOU","KC","LAA","LAD","MIA","MIL","MIN","NYM","NYY","PHI","PIT","SD","SEA","SF","STL","TB","TEX","TOR","WSH"],
   nfl: ["ARI","ATL","BAL","BUF","CAR","CHI","CIN","CLE","DAL","DEN","DET","GB","HOU","IND","JAX","KC","LAC","LAR","LV","MIA","MIN","NE","NO","NYG","NYJ","PHI","PIT","SEA","SF","TB","TEN","WSH"],
   lmb: ["ADM","AGU","ALG","BLE","CAL","CDJ","CON","DIA","DOR","GUE","LDY","ODT","PDC","PDP","RDA","SDM","SDS","TDQ","TDT","TEL"],
+  mls: ["ATL","ATX","CHI","CIN","CLB","CLT","COL","DAL","DCU","HOU","LAFC","LAG","MIA","MIN","MTL","NE","NSH","NYC","NYRB","ORL","PHI","POR","RSL","SD","SEA","SJ","SKC","STL","TOR","VAN"],
 };
 
 const LEGACY_CANONICAL_TO_ESPN = {
@@ -38,6 +41,7 @@ const LEGACY_CANONICAL_TO_ESPN = {
   nba: { GSW: "GS", SAS: "SA", NYK: "NY", NOP: "NO", UTA: "UTAH", WAS: "WSH" },
   wnba: { CONN: "CON" },
   nhl: { TBL: "TB", NJD: "NJ", LAK: "LA", SJS: "SJ" },
+  mls: { DCU: "DC", LAG: "LA", NYRB: "RBNY" },
 };
 
 const LEGACY_WNBA_TEAM_IDS = {
@@ -101,6 +105,17 @@ test("LMB_ID_TO_ABBR pins the statsapi id → Kalshi abbr mapping", () => {
     496: "LDY", 442: "ODT", 523: "PDC", 520: "PDP", 528: "RDA",
     562: "SDM", 502: "SDS", 569: "TDQ", 5010: "TDT", 536: "TEL",
   });
+});
+
+// MLS (KXMLSGAME, adopted 2026-07-23): canonical = Kalshi abbrs, verified live via
+// api.elections.kalshi.com ticker suffixes; espnScore aliases verified live via
+// site.api.espn.com/.../soccer/usa.1/scoreboard at adoption.
+test("mlsCanonTeam maps ESPN's 3 mismatched abbrs, identity passthrough otherwise", () => {
+  assert.equal(mlsCanonTeam("DC"), "DCU");
+  assert.equal(mlsCanonTeam("LA"), "LAG");
+  assert.equal(mlsCanonTeam("RBNY"), "NYRB");
+  assert.equal(mlsCanonTeam("ATL"), "ATL");
+  assert.equal(mlsCanonTeam("LAFC"), "LAFC");
 });
 
 // ── Registry invariants ──────────────────────────────────────────────────────────
