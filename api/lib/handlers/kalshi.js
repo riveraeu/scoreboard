@@ -480,11 +480,11 @@ export async function handleKalshiRoutes(ctx) {
       `SELECT mo.id, mo.ticker, mo.series, mo.sport, mo.category, mo.game_date, mo.game_key,
               mo.side, mo.price, mo.size, mo.filled_count, mo.side_won, mo.pnl_cents, mo.graded_at,
               mo.kalshi_order_id, mo.client_order_id, mo.placed_at, mo.status,
-              s.id AS shadow_id, s.stat, s.game_type, s.direction, s.pick_team, s.home_team,
-              s.away_team, s.threshold, s.pick_line, s.won, s.actual_value, s.resolved_at
+              s.id AS shadow_id, s.stat, s.game_type, s.direction, s.pick_team, s.scoring_team,
+              s.home_team, s.away_team, s.game_time, s.threshold, s.pick_line, s.won, s.actual_value, s.resolved_at
        FROM maker_orders_v2 mo JOIN shadow_plays s ON s.id = mo.shadow_row_id
-       WHERE mo.graded_at IS NOT NULL AND mo.game_date = $1
-       ORDER BY mo.graded_at DESC LIMIT 300`,
+       WHERE mo.status = 'executed' AND mo.game_date = $1
+       ORDER BY mo.placed_at DESC LIMIT 300`,
       [date], env, { write: true }
     );
     return jsonResponse({ ok: true, date, count: rows.length, rows });
