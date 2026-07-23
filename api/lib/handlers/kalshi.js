@@ -17,7 +17,9 @@ import { pipeWriteChunked } from "../kv-pipeline.js";
 import { gzipToString } from "../kv-compress.js";
 import { updateMakerQuotes } from "../maker.js";
 import { importKalshiKey as _importKalshiKey, placeKalshiOrder, cancelKalshiOrder } from "../kalshi-order-client.js";
+import { resolveOpenMakerPositions } from "./shadow.js";
 import { updateLiveMakerOrders, emergencyKillLive, setArmed, computeWantedMakerQuotes,
+  gradeResolvedMakerPositions,
   isArmed as isMakerV2Armed, ensureMakerLiveTables } from "../maker-live.js";
 import { fetchKalshiMarkets } from "../tonight/kalshi-pipeline.js";
 import { MAKER_V2_MAX_CONCURRENT, MAKER_V2_SAME_GAME_CAP } from "../config.js";
@@ -379,6 +381,20 @@ export async function handleKalshiRoutes(ctx) {
       console.error(`[kalshi-snapshot] maker-live order pass failed: ${_makerLiveMeta.error}`);
     }
 
+    // ── V2 real-money grading fast path (2026-07-22) ── the main shadow-resolver only resolves
+    // PRIOR days, so a V2 position whose game finished TODAY would otherwise sit ungraded (and
+    // the PnL tile wrong) until the next 2am/3:05am/5:50am PT run. Independent of the staging
+    // gate above — this only touches already-placed maker_orders_v2 rows, no staging needed.
+    let _makerResolveMeta = null;
+    try {
+      const _resolveRes = await resolveOpenMakerPositions({ env, request });
+      const _gradeRes = await gradeResolvedMakerPositions({ env });
+      _makerResolveMeta = { ..._resolveRes, graded: _gradeRes.graded };
+    } catch (e) {
+      _makerResolveMeta = { error: String(e?.message || e) };
+      console.error(`[kalshi-snapshot] maker-live resolve/grade pass failed: ${_makerResolveMeta.error}`);
+    }
+
     return jsonResponse({
       ok: successCount > 0 && _w1.failed === 0,
       successCount,
@@ -396,6 +412,7 @@ export async function handleKalshiRoutes(ctx) {
       touchedSeries: _touchedSeries.size,
       maker: _makerMeta,
       makerLive: _makerLiveMeta,
+      makerResolve: _makerResolveMeta,
     });
   }
 

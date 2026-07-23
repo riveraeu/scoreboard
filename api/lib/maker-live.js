@@ -266,6 +266,34 @@ export async function updateLiveMakerOrders({ snapResults, staging, snapshotDate
     expiredLocally: toExpireLocally.length, opened, capped, errors };
 }
 
+// PnL grading — date-agnostic (grades ANY executed+ungraded position the instant its
+// shadow_plays row resolves, whatever day it's dated). Split out so it can run standalone on
+// the 2min cron tick (via resolveOpenMakerPositions, api/lib/handlers/shadow.js — that pass
+// resolves TODAY's already-finished games, which the main shadow-resolver won't touch until
+// T+1) as well as inside the nightly reconcileLiveMakerFills below. One source of truth either
+// way — settlement math is `pnl_cents = price − 100·side_won`, same formula V1 uses.
+export async function gradeResolvedMakerPositions({ env }) {
+  await ensureMakerLiveTables(env);
+  const graded = await neonQuery(`
+    UPDATE maker_orders_v2 mo SET
+      side_won = outc.side_won,
+      pnl_cents = mo.price - CASE WHEN outc.side_won THEN 100 ELSE 0 END,
+      graded_at = NOW()
+    FROM (
+      SELECT o.id AS oid,
+        CASE WHEN o.side = 'yes'
+          THEN (CASE WHEN s.direction = 'under' THEN NOT s.won ELSE s.won END)
+          ELSE NOT (CASE WHEN s.direction = 'under' THEN NOT s.won ELSE s.won END)
+        END AS side_won
+      FROM maker_orders_v2 o JOIN shadow_plays s ON s.id = o.shadow_row_id
+      WHERE s.resolved AND s.won IS NOT NULL AND o.status = 'executed'
+    ) outc
+    WHERE mo.id = outc.oid AND mo.graded_at IS NULL
+    RETURNING mo.id`,
+    [], env, { write: true });
+  return { graded: graded.length };
+}
+
 // Reconcile pass — nightly, right after V1's detectAndGradeMakerFills. Catches real fills that
 // happened between cron ticks (the common case for a resting order), marks lapsed rows past
 // their expires_at that the quote pass didn't already clean up (belt-and-suspenders if a cron
@@ -301,26 +329,10 @@ export async function reconcileLiveMakerFills({ env, dayPT }) {
     }
   }
 
-  const graded = await neonQuery(`
-    UPDATE maker_orders_v2 mo SET
-      side_won = outc.side_won,
-      pnl_cents = mo.price - CASE WHEN outc.side_won THEN 100 ELSE 0 END,
-      graded_at = NOW()
-    FROM (
-      SELECT o.id AS oid,
-        CASE WHEN o.side = 'yes'
-          THEN (CASE WHEN s.direction = 'under' THEN NOT s.won ELSE s.won END)
-          ELSE NOT (CASE WHEN s.direction = 'under' THEN NOT s.won ELSE s.won END)
-        END AS side_won
-      FROM maker_orders_v2 o JOIN shadow_plays s ON s.id = o.shadow_row_id
-      WHERE s.resolved AND s.won IS NOT NULL AND o.status = 'executed'
-    ) outc
-    WHERE mo.id = outc.oid AND mo.graded_at IS NULL
-    RETURNING mo.id`,
-    [], env, { write: true });
+  const { graded } = await gradeResolvedMakerPositions({ env });
 
   return { fillsFetched: fillsRes.ok ? fillsRes.fills.length : 0, fillsMatched: matched,
-    fillsError: fillsRes.ok ? null : fillsRes.error, graded: graded.length };
+    fillsError: fillsRes.ok ? null : fillsRes.error, graded };
 }
 
 // Emergency stop — used by /api/maker-v2-kill. Disarms (KV flag) AND cancels every currently

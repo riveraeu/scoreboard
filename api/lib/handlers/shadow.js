@@ -514,6 +514,75 @@ async function fetchLiveInto(liveByKey, origin, game_date, gamesParam, tbParam, 
   }
 }
 
+// Real-money V2 fast path (2026-07-22) — the main resolver below deliberately only resolves
+// rows from PRIOR days (`game_date < today`, since today's games may still be in progress), so
+// a V2 position whose game already finished TODAY sits ungraded until the next scheduled
+// shadow-resolver run (2am/3:05am/5:50am PT) — real Kalshi money is already settled hours
+// before our own PnL tile reflects it. Rather than touch that shared date filter (it drives
+// resolution for every sport/market, not just V2), this is a narrow, V2-scoped path: find
+// shadow_plays rows backing currently-open, ungraded V2 positions and resolve them the moment
+// their game goes final, using the exact same /api/live + _resolveRow machinery as the main
+// resolver — a still-in-progress game safely no-ops via _resolveRow's own `state !== "post"`
+// gate, so this carries no more resolution risk than the main path already does. Scoped to
+// team-row-shaped markets only (props/totals/spreads via /api/live) — everything V2 currently
+// quotes (its eligible universe is entirely MLB/WNBA team-shaped markets); tennis/soccer/etc.
+// use different feeds and aren't in MAKER_V2_BAND's universe, so they're out of scope here.
+// Called from the 2min kalshi-snapshot cron tick, right after updateLiveMakerOrders.
+export async function resolveOpenMakerPositions({ env, request }) {
+  const rows = await neonQuery(
+    `SELECT s.id, s.sport, s.stat, s.game_type, s.player_name, s.home_team, s.away_team,
+            s.scoring_team, s.pick_team, s.pick_line, s.threshold, s.direction,
+            s.game_date, s.game_time, s.features, s.snapshot_date
+     FROM shadow_plays s
+     JOIN maker_orders_v2 mo ON mo.shadow_row_id = s.id
+     WHERE mo.status = 'executed' AND mo.graded_at IS NULL AND s.resolved = FALSE
+       AND s.home_team IS NOT NULL AND s.away_team IS NOT NULL`,
+    [], env, { write: true }
+  );
+  if (!rows.length) return { checked: 0, resolved: 0, skipped: 0, noData: 0 };
+
+  const keysByDate = new Map(); // effectiveDate → Set<rawKey>
+  const rowToKey = new Map();   // row.id → { rawKey, effectiveDate }
+  for (const row of rows) {
+    const { sport, home_team, away_team, game_time } = row;
+    const effectiveDate = row.game_date
+      || (row.game_time ? new Date(row.game_time).toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" }) : null)
+      || (row.snapshot_date ? new Date(row.snapshot_date).toISOString().slice(0, 10) : null);
+    let rawKey = `${sport}:${away_team}:${home_team}`;
+    if (game_time) rawKey += `@${game_time}`;
+    rowToKey.set(row.id, { rawKey, effectiveDate });
+    if (!keysByDate.has(effectiveDate)) keysByDate.set(effectiveDate, new Set());
+    keysByDate.get(effectiveDate).add(rawKey);
+  }
+
+  const liveByKey = new Map();
+  const origin = selfOrigin(request);
+  const tbParam = rows.some(r => r.stat === "totalBases") ? "&tb=1" : "";
+  await Promise.all([...keysByDate.entries()].map(([game_date, keys]) =>
+    fetchLiveInto(liveByKey, origin, game_date, [...keys].join(","), tbParam, 12_000)
+  ));
+
+  const updates = [];
+  let noData = 0, skipped = 0;
+  for (const row of rows) {
+    const { rawKey, effectiveDate } = rowToKey.get(row.id);
+    let game = liveByKey.get(`${rawKey}|${effectiveDate}`);
+    if (game?.state === "unknown") {
+      const atIdx = rawKey.indexOf("@");
+      if (atIdx !== -1) {
+        const baseKey = rawKey.slice(0, atIdx);
+        game = liveByKey.get(`${baseKey}|${effectiveDate}`) ?? game;
+      }
+    }
+    if (!game || game.state === "unknown") { noData++; continue; }
+    const result = _resolveRow(row, game);
+    if (result === null) { skipped++; continue; } // not final yet (or void) — safe no-op
+    updates.push({ id: row.id, won: result.won, actualValue: result.actualValue });
+  }
+  if (updates.length) await neonBatchResolve(updates, env);
+  return { checked: rows.length, resolved: updates.length, skipped, noData };
+}
+
 // Shared tennis grader — groups rows by (date, tour), fetches that day's completed matches,
 // and grades each row against the match containing BOTH players. 2026-07-19: the ESPN tennis
 // scoreboard returns the WHOLE TOURNAMENT's completed matches for a date query (478 on 7/04),
