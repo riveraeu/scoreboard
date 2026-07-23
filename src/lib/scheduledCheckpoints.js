@@ -69,6 +69,13 @@ export const SCHEDULED_CHECKPOINTS = [
   // same day. Same DB-write gap as MLS/Brasileirão. [[project_nwsl_build_2026_07_23]]
   { date: "2026-07-25", tone: "blue", label: "Confirm NWSL rows land in shadow_plays", short: "NWSL DB-write check",
     why: "Shipped 7/23, live-verified at the KV-staging level (21/21 rows, real gameTime/kalshiTicker, correct home/away/tie parsing) but no shadow-snapshot cron pass has run yet — check shadow_plays WHERE sport='nwsl' (via /api/auth/shadow-stats) after the next 1-2 days of games resolve. Also: Angel City FC/Racing Louisville aren't in the registry yet (no live Kalshi ticker seen as of ship date) — add their Kalshi abbr once one appears" },
+  // Chinese Super League (KXCHNSLGAME) shipped 2026-07-23 as the 4th model-free maker market,
+  // built on the new shared soccer-modelfree.js engine — live-verified via /api/tonight?debug=1
+  // (24/25 rows, one dropped by the [1,99] quote-sanity filter as expected; the tricky
+  // Shenzhen/Shanghai team-abbr collision confirmed resolving correctly). Same DB-write gap as
+  // every prior league. [[project_chnsl_build_and_soccer_refactor_2026_07_23]]
+  { date: "2026-07-25", tone: "blue", label: "Confirm Chinese Super League rows land in shadow_plays", short: "CHNSL DB-write check",
+    why: "Shipped 7/23, live-verified at the KV-staging level (24/25 rows, real gameTime/kalshiTicker, correct home/away/tie parsing including the Shenzhen/Shanghai Shenhua collision-safe mapping) but no shadow-snapshot cron pass has run yet — check shadow_plays WHERE sport='chnsl' (via /api/auth/shadow-stats) after the next 1-2 days of games resolve" },
   // Kalshi-settlement-based grading built as a DRY-RUN comparison pass 2026-07-23 (new
   // kalshi_ticker/kalshi_side columns, api/lib/kalshi-settlement.js) — logs agreement against the
   // existing ESPN resolvers but writes nothing. kalshi_ticker only populates on rows written after
