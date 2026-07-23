@@ -809,6 +809,24 @@ export async function handleKalshiRoutes(ctx) {
 
     // Admin triage shortcuts: dismiss (→dismissed), undismiss (→new), promote (→shortlisted),
     // unpromote (shortlisted→new). Curl-only (admin gate) — no on-page write surface.
+    // ?statuscounts=1 (admin, read-only) — one-off diagnostic (2026-07-23): counts kalshi_series_seen
+    // rows by status. Added after finding that 12+ confirmed-real, tradeable soccer leagues weren't
+    // actually a catalog-discovery blind spot at all — they were correctly captured on 2026-06-13
+    // (the very first scan run) as status='baseline', which the code silently treats as "already
+    // acknowledged" and permanently excludes from the new/shortlisted triage queue. Since the
+    // two-track maker viability doctrine didn't exist until today, EVERY 'baseline' row was bulk-
+    // labeled "ignore" on day one without ever being vetted under any doctrine — this measures how
+    // large that never-vetted backlog actually is.
+    const statuscounts = url.searchParams.get("statuscounts") === "1";
+    if (statuscounts) {
+      if (!isAdmin) return errorResponse("Admin only", 403);
+      const rows = await neonQuery(
+        `SELECT status, COUNT(*)::int AS n FROM kalshi_series_seen GROUP BY status ORDER BY n DESC`,
+        [], env, { write: true }
+      );
+      return jsonResponse({ ok: true, counts: rows });
+    }
+
     const dismiss = url.searchParams.get("dismiss");
     const undismiss = url.searchParams.get("undismiss");
     const promote = url.searchParams.get("promote");
