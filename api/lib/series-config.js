@@ -117,6 +117,11 @@ export const SERIES_CONFIG = {
   // NWSL were refactored onto it in the same session once this 4th league made the duplication
   // worth generalizing. Dedicated gameType (own parse branch/array, resolves off chn.1).
   KXCHNSLGAME: { sport: "chnsl", league: "chnsl", stat: "game", col: "ML", gameType: "chnslMl" },
+  // Liga MX (Mexico) game winner — 5th model-free maker league, same playbook (adopted
+  // 2026-07-23, see project_maker_modelfree_clubsoccer_2026_07_23 memory). Built on the shared
+  // ESPN-fetch engine (api/lib/soccer-modelfree.js). Dedicated gameType (own parse branch/
+  // array, resolves off mex.1).
+  KXLIGAMXGAME: { sport: "ligamx", league: "ligamx", stat: "game", col: "ML", gameType: "ligamxMl" },
   // Game totals
   KXMLBTOTAL:     { sport: "mlb",  league: "mlb",  stat: "totalRuns",   col: "R",   gameType: "total"     },
   KXNBATOTAL:     { sport: "nba",  league: "nba",  stat: "totalPoints", col: "PTS", gameType: "total"     },

@@ -23,6 +23,7 @@ import { fetchMlsResults } from "../mls.js";
 import { fetchBrasileiraoResults } from "../brasileirao.js";
 import { fetchNwslResults } from "../nwsl.js";
 import { fetchChnslResults } from "../chnsl.js";
+import { fetchLigaMxResults } from "../ligamx.js";
 import { deriveKalshiSide, fetchKalshiSettlements, resolveRowViaKalshi } from "../kalshi-settlement.js";
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER } from "../config.js";
 import { passesCategoryGate } from "../category-gate.js";
@@ -797,7 +798,8 @@ async function handleShadowResolver({ path, request, env, cache }) {
   const brasileiraoRows = rows.filter(r => r.sport === "brasileirao");
   const nwslRows = rows.filter(r => r.sport === "nwsl");
   const chnslRows = rows.filter(r => r.sport === "chnsl");
-  const teamRows = rows.filter(r => r.sport !== "tennis" && r.sport !== "soccer" && r.sport !== "fight" && r.sport !== "golf" && r.sport !== "nascar" && r.sport !== "nbasl" && r.sport !== "lmb" && r.sport !== "mls" && r.sport !== "brasileirao" && r.sport !== "nwsl" && r.sport !== "chnsl");
+  const ligamxRows = rows.filter(r => r.sport === "ligamx");
+  const teamRows = rows.filter(r => r.sport !== "tennis" && r.sport !== "soccer" && r.sport !== "fight" && r.sport !== "golf" && r.sport !== "nascar" && r.sport !== "nbasl" && r.sport !== "lmb" && r.sport !== "mls" && r.sport !== "brasileirao" && r.sport !== "nwsl" && r.sport !== "chnsl" && r.sport !== "ligamx");
 
   // Build unique game keys per date. Key: sport:away:home[@gameTime] — matches /api/live format.
   const keysByDate = new Map(); // game_date → Set<rawKey>
@@ -1385,6 +1387,42 @@ async function handleShadowResolver({ path, request, env, cache }) {
     const resultsByDate = new Map();
     await Promise.all([...byDate.keys()].map(async (date) => {
       resultsByDate.set(date, await fetchChnslResults(date.replace(/-/g, "")));
+    }));
+    for (const [date, rws] of byDate) {
+      const results = resultsByDate.get(date) || {};
+      for (const r of rws) {
+        const g = results[[r.home_team, r.away_team].sort().join("|")];
+        if (!g) { noData++; continue; } // game not played / not final yet
+        let won;
+        if (r.pick_team === "TIE") {
+          won = g.homeScore === g.awayScore;
+        } else {
+          const pickScore = g.home === r.pick_team ? g.homeScore : (g.away === r.pick_team ? g.awayScore : null);
+          const oppScore = g.home === r.pick_team ? g.awayScore : g.homeScore;
+          if (pickScore == null) { noData++; continue; }
+          won = pickScore > oppScore;
+        }
+        updates.push({ id: r.id, won, actualValue: null });
+      }
+    }
+  }
+
+  // ── Liga MX resolution ── same 3-way grading, 5th model-free league, off the ESPN mex.1
+  // scoreboard (api/lib/ligamx.js).
+  if (ligamxRows.length) {
+    const dateOf = (r) => r.game_date
+      ? new Date(r.game_date).toISOString().slice(0, 10)
+      : (r.snapshot_date ? new Date(r.snapshot_date).toISOString().slice(0, 10) : null);
+    const byDate = new Map();
+    for (const r of ligamxRows) {
+      const date = dateOf(r);
+      if (!date) { noData++; continue; }
+      if (!byDate.has(date)) byDate.set(date, []);
+      byDate.get(date).push(r);
+    }
+    const resultsByDate = new Map();
+    await Promise.all([...byDate.keys()].map(async (date) => {
+      resultsByDate.set(date, await fetchLigaMxResults(date.replace(/-/g, "")));
     }));
     for (const [date, rws] of byDate) {
       const results = resultsByDate.get(date) || {};

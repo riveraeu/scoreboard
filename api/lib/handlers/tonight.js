@@ -35,6 +35,7 @@ import { emitClubSoccerMlPlays } from "../tonight/club-soccer-ml.js";
 import { emitBrasileiraoMlPlays } from "../tonight/brasileirao-ml.js";
 import { emitNwslMlPlays } from "../tonight/nwsl-ml.js";
 import { emitChnslMlPlays } from "../tonight/chnsl-ml.js";
+import { emitLigaMxMlPlays } from "../tonight/ligamx-ml.js";
 import { emitMlbOutsPlays } from "../tonight/mlb-outs.js";
 import { fetchPolymarketGames } from "../polymarket.js";
 import { emitPolymarketDeltas } from "../tonight/polymarket-deltas.js";
@@ -281,6 +282,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
         const brasileiraoMarkets = []; // Brasileirão Série A game winner (model-free) — same shape as clubSoccerMarkets, separate array (different ESPN league endpoint)
         const nwslMarkets = []; // NWSL game winner (model-free) — same shape, separate array (different ESPN league endpoint)
         const chnslMarkets = []; // Chinese Super League game winner (model-free) — same shape, separate array (different ESPN league endpoint)
+        const ligamxMarkets = []; // Liga MX game winner (model-free) — same shape, separate array (different ESPN league endpoint)
         const outsMarkets = []; // MLB pitcher outs-recorded O/U (KXMLBOUTS) — each priced threshold carries its pitcher
         const globalSeen = /* @__PURE__ */ new Set();
         for (let i = 0; i < seriesTickers.length; i++) {
@@ -724,6 +726,45 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               }
               const _cnAO = (pct) => pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
               chnslMarkets.push({ eventTicker: m.event_ticker, homeTeam: _cnHome, awayTeam: _cnAway, side: _cnSide, sideCode: _cnSideCode, gameDate: _cnGameDate, kalshiPct: _cnYesPct, noKalshiPct: _cnNoPct, americanOdds: _cnAO(_cnYesPct), kalshiVolume: _cnVol, _ticker: m.ticker, _depth: m._depth });
+              continue;
+            }
+            // ── Liga MX game-winner branch ── same shape as the CHNSL branch above, 5th
+            // model-free league (see project_maker_modelfree_clubsoccer_2026_07_23 memory). Own
+            // dedicated array (different ESPN league endpoint, mex.1). Event segment = date +
+            // team abbrs (KXLIGAMXGAME-26JUL24ALAAME); all ligamx abbrs are uniform 3-char, no
+            // mixed-length parseGameTeams special-case needed.
+            if (cfg.gameType === "ligamxMl") {
+              const _lgYesAsk = parseFloat(m.yes_ask_dollars) || 0;
+              const _lgNoAsk = parseFloat(m.no_ask_dollars) || 0;
+              const _lgLast = parseFloat(m.last_price_dollars) || 0;
+              const _lgYesBid = parseFloat(m.yes_bid_dollars) || 0;
+              const _lgNoBid = parseFloat(m.no_bid_dollars) || 0;
+              const _lgStale = _lgYesAsk >= 0.98 && _lgYesBid === 0 && _lgLast > 0;
+              const _lgPrice = _lgStale ? _lgLast : (_lgYesAsk > 0 ? _lgYesAsk : _lgLast);
+              if (_lgPrice === 0) continue; // no live book — skip (books fill near kickoff)
+              const _lgYesSpreadC = _lgYesAsk > 0 ? Math.round((_lgYesAsk - _lgYesBid) * 100) : 999;
+              const _lgNoSpreadC = _lgNoAsk > 0 ? Math.round((_lgNoAsk - _lgNoBid) * 100) : 999;
+              if (!_lgStale && !capturableSpread(Math.min(_lgYesSpreadC, _lgNoSpreadC))) continue;
+              const _lgYesPct = Math.round(_lgPrice * 100);
+              const _lgNoPct = _lgNoAsk > 0 ? Math.round(_lgNoAsk * 100) : (100 - _lgYesPct);
+              const _lgVol = parseInt(m.volume_fp) || parseInt(m.volume) || 0;
+              const [_lgHome, _lgAway] = parseGameTeams(m.event_ticker, cfg.league);
+              if (!_lgHome || !_lgAway) continue;
+              const _lgSuffix = (m.ticker || "").split("-").pop();
+              let _lgSide, _lgSideCode;
+              if (_lgSuffix === "TIE") { _lgSide = "tie"; _lgSideCode = "TIE"; }
+              else if (_lgSuffix === _lgHome) { _lgSide = "home"; _lgSideCode = _lgHome; }
+              else if (_lgSuffix === _lgAway) { _lgSide = "away"; _lgSideCode = _lgAway; }
+              else continue;
+              const _lgDateSeg = (m.event_ticker || "").split("-")[1] || "";
+              let _lgGameDate = null;
+              if (_lgDateSeg.length >= 7) {
+                const _KMONT = { JAN: "01", FEB: "02", MAR: "03", APR: "04", MAY: "05", JUN: "06", JUL: "07", AUG: "08", SEP: "09", OCT: "10", NOV: "11", DEC: "12" };
+                const _lgMo = _KMONT[_lgDateSeg.slice(2, 5).toUpperCase()];
+                if (_lgMo) _lgGameDate = `20${_lgDateSeg.slice(0, 2)}-${_lgMo}-${_lgDateSeg.slice(5, 7)}`;
+              }
+              const _lgAO = (pct) => pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
+              ligamxMarkets.push({ eventTicker: m.event_ticker, homeTeam: _lgHome, awayTeam: _lgAway, side: _lgSide, sideCode: _lgSideCode, gameDate: _lgGameDate, kalshiPct: _lgYesPct, noKalshiPct: _lgNoPct, americanOdds: _lgAO(_lgYesPct), kalshiVolume: _lgVol, _ticker: m.ticker, _depth: m._depth });
               continue;
             }
             // ── MLB pitcher outs-recorded branch ── threshold ladder per starter ("Senga: 15+").
@@ -2145,6 +2186,14 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           chnslMarkets, chnslPlays, cutoffStr,
           cache: CACHE2, isBustCache,
         });
+        // ── Liga MX game winner — Phase 1, model-free. 5th model-free maker league, same idiom
+        // (see project_maker_modelfree_clubsoccer_2026_07_23 memory). Real gameTime fetched
+        // from ESPN (api/lib/ligamx.js).
+        const ligamxPlays = [];
+        await emitLigaMxMlPlays({
+          ligamxMarkets, ligamxPlays, cutoffStr,
+          cache: CACHE2, isBustCache,
+        });
         // ── MLB pitcher outs-recorded (KXMLBOUTS) — Phase 1, shadow-only. Prop-shaped rows in a
         // dedicated array (NOT `plays`) so they bypass dedup/gameTime-filter/card-builder; merged
         // into shadow:staging only. Normal workload model off pitcherStatsByName, favorite side.
@@ -2308,7 +2357,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           }
           // Tennis plays live in their own array (kept out of `plays` to bypass dedup/frontend);
           // merge them into the staging `plays` so shadow-snapshot logs them like any other play.
-          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays: [...plays, ...tennisPlays, ...soccerPlays, ...soccerAdvancePlays, ...fightPlays, ...golfH2hPlays, ...nascarPlays, ...nbaSummerPlays, ...lmbPlays, ...clubSoccerPlays, ...brasileiraoPlays, ...nwslPlays, ...chnslPlays, ...outsPlays], dropped, schedule: _schedCounts, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, writtenAt: Date.now() }), { expirationTtl: 21600 }).catch(() => {});
+          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays: [...plays, ...tennisPlays, ...soccerPlays, ...soccerAdvancePlays, ...fightPlays, ...golfH2hPlays, ...nascarPlays, ...nbaSummerPlays, ...lmbPlays, ...clubSoccerPlays, ...brasileiraoPlays, ...nwslPlays, ...chnslPlays, ...ligamxPlays, ...outsPlays], dropped, schedule: _schedCounts, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, writtenAt: Date.now() }), { expirationTtl: 21600 }).catch(() => {});
         }
         if (isDebug) {
           const nbaGlLabels = Object.fromEntries(Object.entries(playerGamelogs).filter(([k]) => k.startsWith("nba|")).map(([k, gl]) => [k, gl?.ul ?? null]));
@@ -2322,7 +2371,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             meta: kalshiSnapMeta,
             ageMs: kalshiSnapMeta?.lastRunAt ? Date.now() - kalshiSnapMeta.lastRunAt : null,
           };
-          return jsonResponse({ fdProbe: { milestones: _fdMilestones, atEnd: await _fdProbe() }, plays: debugPlays, dropped: debugDropped, preDropped: debugPreDropped, tennisPlays, tennisMarketCount: tennisMatchMarkets.length, soccerPlays, soccerMarketCount: soccerMarkets.length, soccerAdvancePlays, soccerAdvanceMarketCount: soccerAdvanceMarkets.length, fightPlays, fightMarketCount: fightMarkets.length, golfH2hPlays, golfH2hMarketCount: golfH2hMarkets.length, nascarPlays, nascarMarketCount: nascarMarkets.length, nbaSummerPlays, nbaSummerMarketCount: nbaSummerMarkets.length, lmbPlays, lmbMarketCount: lmbMarkets.length, clubSoccerPlays, clubSoccerMarketCount: clubSoccerMarkets.length, brasileiraoPlays, brasileiraoMarketCount: brasileiraoMarkets.length, nwslPlays, nwslMarketCount: nwslMarkets.length, chnslPlays, chnslMarketCount: chnslMarkets.length, outsPlays, outsMarketCount: outsMarkets.length, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
+          return jsonResponse({ fdProbe: { milestones: _fdMilestones, atEnd: await _fdProbe() }, plays: debugPlays, dropped: debugDropped, preDropped: debugPreDropped, tennisPlays, tennisMarketCount: tennisMatchMarkets.length, soccerPlays, soccerMarketCount: soccerMarkets.length, soccerAdvancePlays, soccerAdvanceMarketCount: soccerAdvanceMarkets.length, fightPlays, fightMarketCount: fightMarkets.length, golfH2hPlays, golfH2hMarketCount: golfH2hMarkets.length, nascarPlays, nascarMarketCount: nascarMarkets.length, nbaSummerPlays, nbaSummerMarketCount: nbaSummerMarkets.length, lmbPlays, lmbMarketCount: lmbMarkets.length, clubSoccerPlays, clubSoccerMarketCount: clubSoccerMarkets.length, brasileiraoPlays, brasileiraoMarketCount: brasileiraoMarkets.length, nwslPlays, nwslMarketCount: nwslMarkets.length, chnslPlays, chnslMarketCount: chnslMarkets.length, ligamxPlays, ligamxMarketCount: ligamxMarkets.length, outsPlays, outsMarketCount: outsMarkets.length, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
         }
         // Build mlbMeta: pitchers, ML odds, umpires, weather — keyed by team abbr or "home|away"
         // Pitcher entries: { name, id, era, wins, losses }. MLB Stats API (pitcherInfoByTeam) preferred

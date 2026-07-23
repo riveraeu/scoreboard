@@ -272,6 +272,32 @@ export const TEAMS = {
     { abbr: "SHS", espnScore: "SHE" },  // Shanghai Shenhua — see collision note above
     { abbr: "TTT", espnScore: "TIG" },  // Tianjin Jinmen Tiger
   ],
+  // Liga MX (KXLIGAMXGAME, adopted 2026-07-23 — 5th model-free maker league, same playbook,
+  // see project_maker_modelfree_clubsoccer_2026_07_23 memory). Canonical = Kalshi's own ticker
+  // abbrs, all 3-char (no mixed-length parseGameTeams special-case needed). Registry has 14 of
+  // ~18 teams — Cruz Azul, Pumas UNAM, Toluca, and Mazatlán hadn't appeared in a live Kalshi
+  // ticker as of ship date, so their Kalshi abbr wasn't guessed (add when first seen).
+  // COLLISION GOTCHA (verified live via ESPN mex.1 scoreboard, NOT guessed): Kalshi's "ATL" is
+  // Atlas, but ESPN's OWN "ATL" abbr is a DIFFERENT club, Atlante (id 226) — Kalshi separately
+  // lists Atlante as "ALA". Kalshi ATL→ESPN ATS (Atlas's real ESPN abbr), Kalshi ALA→ESPN ATL
+  // (Atlante's ESPN abbr, which collides textually with Kalshi's own ATL for Atlas). Get this
+  // backwards and Atlas's games silently resolve as Atlante's.
+  ligamx: [
+    { abbr: "ALA", espnScore: "ATL" },  // Atlante — see collision note above
+    { abbr: "AME" },                    // América
+    { abbr: "ASL" },                    // Atlético San Luis
+    { abbr: "ATL", espnScore: "ATS" },  // Atlas — see collision note above
+    { abbr: "CDG", espnScore: "GDL" },  // Guadalajara (Chivas)
+    { abbr: "JUA" },                    // FC Juárez
+    { abbr: "LEO" },                    // León
+    { abbr: "MON", espnScore: "MTY" },  // Monterrey
+    { abbr: "NCX" },                    // Necaxa
+    { abbr: "PAC" },                    // Pachuca
+    { abbr: "QUE", espnScore: "QRO" },  // Querétaro
+    { abbr: "SLA", espnScore: "SAN" },  // Santos Laguna
+    { abbr: "TIG", espnScore: "UANL" }, // Tigres UANL
+    { abbr: "TIJ" },                    // Tijuana
+  ],
 };
 
 // ── Derived maps (legacy shapes, re-exported from their historical modules) ──────
