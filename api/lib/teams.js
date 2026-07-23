@@ -246,6 +246,32 @@ export const TEAMS = {
     { abbr: "HDA", espnScore: "HOU" },  // Houston Dash
     { abbr: "BAY" },                    // Bay FC
   ],
+  // Chinese Super League (KXCHNSLGAME, adopted 2026-07-23 — 4th model-free maker league, same
+  // playbook, see project_maker_modelfree_clubsoccer_2026_07_23 memory). Canonical = Kalshi's
+  // own ticker abbrs, all 3-char (no mixed-length parseGameTeams special-case needed, unlike
+  // mls/brasileirao/nwsl). espnScore mappings verified live via /api/kalshi-check 2026-07-23.
+  // COLLISION GOTCHA: Kalshi's "SHE" is Shenzhen Peng City, which would collide with ESPN's
+  // OWN "SHE" abbr for a DIFFERENT club (Shanghai Shenhua, id 977) — Kalshi's SHE maps to
+  // ESPN's SHX (Shenzhen's real ESPN abbr), and Kalshi's SHS (Shanghai Shenhua) maps to ESPN's
+  // SHE. Get this backwards and Shenzhen's games silently resolve as Shanghai Shenhua's.
+  chnsl: [
+    { abbr: "ZHP", espnScore: "ZHE" },  // Zhejiang Professional
+    { abbr: "DAL", espnScore: "DYI" },  // Dalian Yingbo
+    { abbr: "CHR", espnScore: "CHE" },  // Chengdu Rongcheng
+    { abbr: "BJG", espnScore: "BG" },   // Beijing Guoan
+    { abbr: "SHT" },                    // Shandong Taishan
+    { abbr: "HEN" },                    // Henan
+    { abbr: "YUN" },                    // Yunnan Yukun
+    { abbr: "SHE", espnScore: "SHX" },  // Shenzhen Peng City — see collision note above
+    { abbr: "WUH", espnScore: "WTT" },  // Wuhan Three Towns
+    { abbr: "CHO" },                    // Chongqing Tonglianglong
+    { abbr: "LIT", espnScore: "LIA" },  // Liaoning Tieren
+    { abbr: "QIN" },                    // Qingdao Hainiu
+    { abbr: "QWC" },                    // Qingdao West Coast
+    { abbr: "SHP", espnScore: "SIPG" }, // Shanghai Port
+    { abbr: "SHS", espnScore: "SHE" },  // Shanghai Shenhua — see collision note above
+    { abbr: "TTT", espnScore: "TIG" },  // Tianjin Jinmen Tiger
+  ],
 };
 
 // ── Derived maps (legacy shapes, re-exported from their historical modules) ──────

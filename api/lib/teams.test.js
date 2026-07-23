@@ -26,6 +26,7 @@ const LEGACY_TEAM_NORM = {
   mls: {}, // canonical = Kalshi abbrs, no aliases (like lmb)
   brasileirao: {}, // canonical = Kalshi abbrs, no aliases (like mls/lmb)
   nwsl: {}, // canonical = Kalshi abbrs, no aliases (like mls/lmb/brasileirao)
+  chnsl: {}, // canonical = Kalshi abbrs, no aliases (like mls/lmb/brasileirao/nwsl)
 };
 
 const LEGACY_VALID_TEAMS = {
@@ -38,6 +39,7 @@ const LEGACY_VALID_TEAMS = {
   mls: ["ATL","ATX","CHI","CIN","CLB","CLT","COL","DAL","DCU","HOU","LAFC","LAG","MIA","MIN","MTL","NE","NSH","NYC","NYRB","ORL","PHI","POR","RSL","SD","SEA","SJ","SKC","STL","TOR","VAN"],
   brasileirao: ["BAH","BOT","RBB","CAP","ATL","CFC","CHA","COR","CRU","FLA","FLU","GPA","INT","MIR","PAL","CR","SAN","SPA","VDG","VIT"],
   nwsl: ["WSP","DEN","SAN","REI","URO","NCC","KC","BOS","PTH","GOT","OPR","CHI","HDA","BAY"],
+  chnsl: ["ZHP","DAL","CHR","BJG","SHT","HEN","YUN","SHE","WUH","CHO","LIT","QIN","QWC","SHP","SHS","TTT"],
 };
 
 const LEGACY_CANONICAL_TO_ESPN = {
@@ -48,6 +50,7 @@ const LEGACY_CANONICAL_TO_ESPN = {
   mls: { DCU: "DC", LAG: "LA", NYRB: "RBNY" },
   brasileirao: { RBB: "BRA", ATL: "CAM", GPA: "GRE", CR: "REMO", SPA: "SAO", VDG: "VAS" },
   nwsl: { WSP: "WAS", SAN: "SD", REI: "SEA", URO: "UTA", NCC: "NC", PTH: "POR", GOT: "GFC", OPR: "ORL", HDA: "HOU" },
+  chnsl: { ZHP: "ZHE", DAL: "DYI", CHR: "CHE", BJG: "BG", SHE: "SHX", WUH: "WTT", LIT: "LIA", SHP: "SIPG", SHS: "SHE", TTT: "TIG" },
 };
 
 const LEGACY_WNBA_TEAM_IDS = {

@@ -111,6 +111,12 @@ export const SERIES_CONFIG = {
   // zero such collisions across its confirmed roster. Dedicated gameType (own parse branch/
   // array, resolves off usa.nwsl not usa.1/bra.1).
   KXNWSLGAME: { sport: "nwsl", league: "nwsl", stat: "game", col: "ML", gameType: "nwslMl" },
+  // Chinese Super League game winner — 4th model-free maker league, same playbook (adopted
+  // 2026-07-23, see project_maker_modelfree_clubsoccer_2026_07_23 memory). First league built
+  // directly onto the shared ESPN-fetch engine (api/lib/soccer-modelfree.js) — MLS/Brasileirão/
+  // NWSL were refactored onto it in the same session once this 4th league made the duplication
+  // worth generalizing. Dedicated gameType (own parse branch/array, resolves off chn.1).
+  KXCHNSLGAME: { sport: "chnsl", league: "chnsl", stat: "game", col: "ML", gameType: "chnslMl" },
   // Game totals
   KXMLBTOTAL:     { sport: "mlb",  league: "mlb",  stat: "totalRuns",   col: "R",   gameType: "total"     },
   KXNBATOTAL:     { sport: "nba",  league: "nba",  stat: "totalPoints", col: "PTS", gameType: "total"     },
