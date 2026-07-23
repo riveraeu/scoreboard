@@ -124,7 +124,7 @@ Full request/response contracts, auth patterns, cron schedules, and Place All me
 | `/api/kalshi` | `kalshi.js` | Raw Kalshi market data |
 | `/api/kalshi-orderbook` | `kalshi.js` | GET `?ticker=` — live full resting book for one ticker (walked for real VWAP slippage). Public, uncached |
 | `/api/kalshi-snapshot` | `kalshi.js` | Cron — pre-warms `kalshi:snap:{ticker}` (two-phase write) |
-| `/api/kalshi-series-scan` | `kalshi.js` | Cron — discovers new Kalshi Sports series; diffs catalog vs `SERIES_CONFIG`∪`CRON_ONLY_TICKERS`; records unknowns in Neon `kalshi_series_seen`. Status funnel `new`→`shortlisted`→`adopted`/`dismissed`; auto-reconciles against `SERIES_CONFIG` and `DISMISSED_SERIES`. `?dry=1`, `?dismiss=`/`?promote=` triage |
+| `/api/kalshi-series-scan` | `kalshi.js` | Cron — discovers new Kalshi Sports series; diffs catalog vs `SERIES_CONFIG`∪`CRON_ONLY_TICKERS`; records unknowns in Neon `kalshi_series_seen`. Status funnel `new`→`shortlisted`→`adopted`/`dismissed`; auto-reconciles against `SERIES_CONFIG` and `DISMISSED_SERIES`. `?dry=1`, `?dismiss=`/`?promote=` triage. **Two-track viability doctrine (2026-07-23, see the note atop `DISMISSED_SERIES` in `series-config.js`)**: vet TAKER (model+data) and MAKER (liquidity+gameTime+resolution, no model needed) separately before dismissing — a series can fail taker and still be a maker candidate |
 | `/api/kalshi-order` | `kalshi.js` | POST — place a Kalshi order (RSA-PSS signed); includes Place All batch |
 | `/api/kalshi-balance` | `kalshi.js` | GET — cash + open-position cost basis |
 | `/api/kalshi-fills` | `kalshi.js` | GET — filled orders (pick recovery) |

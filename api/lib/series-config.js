@@ -151,6 +151,21 @@ export const CRON_ONLY_TICKERS = [
 // dismissal a code change the scan can detect, so the "Vet shortlisted" banner clears
 // itself when we complete the vet — no manual `?dismiss=` curl needed.
 // Add the ticker here when a vet concludes DISMISS; note why inline.
+//
+// TWO-TRACK VIABILITY DOCTRINE (added 2026-07-23, see project_maker_viability_doctrine_2026_07_23
+// memory): every dismissal below this point (and most above it) was reasoned under a SINGLE test —
+// "does a probability model + data source exist for this series?" That test is the right one for
+// TAKER viability, but it's the WRONG lens for MAKER viability. The maker strategy (api/lib/maker.js)
+// captures Kalshi's own favorite-ask mispricing directly and needs NO probability model at all —
+// only (1) real liquidity (a genuine two-sided book, not a 0-volume shell), (2) a real gameTime
+// (for computeMakerQuote's pre-game gate), and (3) a resolvable outcome (via ESPN/statsapi OR,
+// as of 2026-07-23, via Kalshi's own settlement result directly — see kalshi-settlement.js).
+// "No club Elo" / "no ratings source" / "no cricket model" block TAKER, not MAKER. From now on,
+// vet BOTH tracks before dismissing: a series that fails the taker test can still be promoted to
+// 'shortlisted' as a MAKER candidate if it has real liquidity. Exception: exact-cell markets
+// (correct-score, N-way outcomes) are a poor MAKER fit too — maker needs a genuine favorite-priced
+// side, which a market with 15-30 near-equally-unlikely outcomes doesn't have — so those stay
+// dismissed under both tracks, not just one.
 export const DISMISSED_SERIES = [
   "KXWC1HSCORE", // 6/22 vet: exact half-scoreline longshots, no in-window edge (1H signal already covered by the soccer half score-matrix)
   "KXWTAROE", // 6/22 vet: WTA round-of-elimination = draw-progression distribution; our tennis is single-match winner only (tennisMatchProb), no bracket sim. No Phase-1 path.
@@ -369,10 +384,15 @@ export const DISMISSED_SERIES = [
   // Club-soccer derivative families (17): same no-club-Elo blocker as the morning batch. All 0 live.
   "KXCHNSLSPREAD", "KXCHNSLTOTAL", // Chinese Super League (completes the CHNSL family)
   "KXELITESERIENBTTS", "KXELITESERIENSPREAD", "KXELITESERIENTOTAL", // Eliteserien (Norway)
-  "KXLIGAMX1H", "KXLIGAMX1HBTTS", "KXLIGAMX1HSPREAD", "KXLIGAMX1HTOTAL", // Liga MX halves
-  "KXLIGAMXFTTS", "KXLIGAMXSCORE", // Liga MX first-to-score + correct score (exact-cell trap)
-  "KXMLS1H", "KXMLS1HBTTS", "KXMLS1HSPREAD", "KXMLS1HTOTAL", // MLS halves
-  "KXMLSFTTS", "KXMLSSCORE", // MLS first-to-score + correct score
+  // KXLIGAMX1H/1HBTTS/1HSPREAD/1HTOTAL + KXMLS1H/1HBTTS/1HSPREAD/1HTOTAL RECLASSIFIED 2026-07-23 —
+  // see the two-track maker-viability doctrine note near the top of this list. Liga MX/MLS base
+  // game markets confirmed real+liquid same day (club-soccer maker vet); these halves derivatives
+  // share the same underlying games. Removed from DISMISSED_SERIES, promoted to shortlisted
+  // (maker-candidate, still taker-dismissed — no club Elo). NOT built.
+  "KXLIGAMXFTTS", "KXLIGAMXSCORE", // Liga MX first-to-score + correct score — STAYS dismissed:
+  // exact-cell trap (many near-equally-unlikely outcomes) is a poor maker fit too, not just a
+  // taker one — maker needs a genuine favorite-priced side, which N-way correct-score markets don't have.
+  "KXMLSFTTS", "KXMLSSCORE", // MLS first-to-score + correct score — same exact-cell reasoning, STAYS dismissed.
   // International basketball games (4): no rating/data source in our stack for any of them
   // (FIBA/EuroBasket national teams, German DBB Supercup, Iceland Premier League, Philippine
   // PBA). Same no-data-source class as KXBNXTGAME/KXPPLMATCH. All 0 live. DISMISS.
@@ -390,8 +410,12 @@ export const DISMISSED_SERIES = [
   // are the market surface waiting for it.
   "KXPERLIGA1BBTTS", "KXPERLIGA1SPREAD", "KXPERLIGA1TOTAL", // Peru Liga 1
   "KXUCLFTTS", "KXUCLSCORE", // UEFA Champions League first-to-score + correct score
-  "KXUECL1HBTTS", "KXUECL1HSPREAD", "KXUECL1HTOTAL", "KXUECLFTTS", "KXUECLSCORE", // Conference League
-  "KXUEL1HBTTS", "KXUEL1HSPREAD", "KXUEL1HTOTAL", "KXUELFTTS", "KXUELSCORE", // Europa League
+  // KXUECL1HBTTS/1HSPREAD/1HTOTAL + KXUEL1HBTTS/1HSPREAD/1HTOTAL RECLASSIFIED 2026-07-23 (same
+  // reasoning as the Liga MX/MLS halves above — UEL/UECL base game markets confirmed real same
+  // day). Removed from DISMISSED_SERIES, promoted to shortlisted. NOT built.
+  "KXUECLFTTS", "KXUECLSCORE", // Conference League first-to-score + correct score — STAYS
+  // dismissed, exact-cell trap (poor maker fit too, see the Liga MX/MLS note above).
+  "KXUELFTTS", "KXUELSCORE", // Europa League first-to-score + correct score — same, STAYS dismissed.
   "KXURYPDBBTTS", "KXURYPDSPREAD", "KXURYPDTOTAL", // Uruguay Primera División
   "KXUSL1H", "KXUSL1HBTTS", "KXUSL1HSPREAD", "KXUSL1HTOTAL", "KXUSLBTTS", "KXUSLSPREAD", "KXUSLTOTAL", // USL
   "KXWCWOMEN", // Women's World Cup (2027) — our WC Elo is men's national teams (WC_TEAMS); no
@@ -542,11 +566,14 @@ export const DISMISSED_SERIES = [
   "KXEFLL1TEAMTOTAL", "KXEREDIVISIETEAMTOTAL", "KXESPSUPERCUPMOF", "KXESPSUPERCUPTEAMTOTAL",
   "KXFACUPMOF", "KXFACUPMOV", "KXFACUPTEAMTOTAL", "KXFINALISSIMATEAMTOTAL", "KXFRASUPERCUPMOF",
   "KXFRASUPERCUPTEAMTOTAL", "KXINTLFRIENDLYTEAMTOTAL", "KXITASUPERCUPMOF", "KXITASUPERCUPTEAMTOTAL",
-  "KXJLEAGUETEAMTOTAL", "KXKLEAGUETEAMTOTAL", "KXLALIGATEAMTOTAL", "KXLIGAMXTEAMTOTAL",
-  "KXLIGAPORTUGALTEAMTOTAL", "KXLIGUE1TEAMTOTAL", "KXMLSTEAMTOTAL", "KXPERLIGA1BTTS",
+  "KXJLEAGUETEAMTOTAL", "KXKLEAGUETEAMTOTAL", "KXLALIGATEAMTOTAL",
+  "KXLIGAPORTUGALTEAMTOTAL", "KXLIGUE1TEAMTOTAL", "KXPERLIGA1BTTS",
   "KXSAUDIPLTEAMTOTAL", "KXSCOTTISHPREMTEAMTOTAL", "KXSERIEATEAMTOTAL", "KXTACAPORTTEAMTOTAL",
-  "KXUECLMOF", "KXUECLTEAMTOTAL", "KXUEFANLTEAMTOTAL", "KXUELMOF", "KXUELTEAMTOTAL", "KXURYPDBTTS",
+  "KXUECLMOF", "KXUEFANLTEAMTOTAL", "KXUELMOF", "KXURYPDBTTS",
   "KXUSLCUPTEAMTOTAL", "KXUSLTEAMTOTAL", "KXUSOPENCUPMOF", "KXUSOPENCUPTEAMTOTAL",
+  // KXLIGAMXTEAMTOTAL, KXMLSTEAMTOTAL, KXUECLTEAMTOTAL, KXUELTEAMTOTAL RECLASSIFIED 2026-07-23 —
+  // removed from this list, same reasoning as the halves reclassification above (base game
+  // markets for these 4 leagues confirmed real+liquid the same day). Promoted to shortlisted. NOT built.
   // 7/17 non-soccer stragglers in the same wave:
   "KXLNBPGAME", // LNBP (Mexican pro basketball) game winner — same class as the 7/15 international-
   // basketball dismissals (BNXT/PBA/etc.): no ratings/stats data source (ESPN doesn't cover LNBP;
@@ -581,8 +608,12 @@ export const DISMISSED_SERIES = [
   "KXCLUBFGAME",   // Club Friendlies — arbitrary worldwide pairings, no Elo coverage, no
   // competitive-incentive model (lineup effort varies), 0 live. DISMISS.
   "KXLIGAEXPGAME", // Liga de Expansión MX (Mexican 2nd div) — no club Elo, 0 live. DISMISS.
-  "KXSCOCUPGAME",  // Scottish Cup — same no-club-Elo class as the EFL/Scottish league dismissals
-  // (7/15-7/17 rollout), 0 live. DISMISS.
+  // KXSCOCUPGAME RECLASSIFIED 2026-07-23 — originally dismissed 7/21 at 0 live markets; its
+  // SPREAD/TOTAL siblings showed 64/96 live markets on 2026-07-23 (see the two-track doctrine
+  // note near the top of this list), meaning liquidity genuinely changed, not just a stale
+  // no-model assumption. Removed from DISMISSED_SERIES, promoted to shortlisted (maker-candidate
+  // — the GAME market itself wasn't independently re-checked today, inferred from its siblings).
+  // NOT built.
   "KXINTLPLAYAGAIN", // Player-appearance novelty ("Ronaldo plays for Portugal") — KXWCPLAY/
   // KXBALOGUNPLAY/KXUFCFIGHTOCCUR class; windowFit=true is the usual favorite-appearance false
   // positive. 2 live. DISMISS.
@@ -606,7 +637,8 @@ export const DISMISSED_SERIES = [
   "KXCLUBFBTTS", "KXCLUBFSPREAD", "KXCLUBFTOTAL", // see KXCLUBFGAME.
   "KXLIGAEXP1H", "KXLIGAEXP1HBTTS", "KXLIGAEXP1HSPREAD", "KXLIGAEXP1HTOTAL",
   "KXLIGAEXPADVANCE", "KXLIGAEXPBTTS", "KXLIGAEXPSPREAD", "KXLIGAEXPTEAMTOTAL", "KXLIGAEXPTOTAL", // see KXLIGAEXPGAME.
-  "KXSCOCUPADVANCE", "KXSCOCUPBTTS", // see KXSCOCUPGAME.
+  // KXSCOCUPADVANCE, KXSCOCUPBTTS RECLASSIFIED 2026-07-23 — see KXSCOCUPGAME above. Promoted to
+  // shortlisted. NOT built.
   "KXNBANEXTCONTRACT", "KXNBANEXTTEAMOUTLET", // contract-value / news-outlet futures — same
   // news/insider-driven, no-model-surface class as KXNBANEXTTEAM. DISMISS.
   // NOTE: KXNFLTSPEC ("NFL Team Specials") NOT dismissed — still shortlisted (no SERIES_CONFIG
@@ -620,18 +652,20 @@ export const DISMISSED_SERIES = [
   // non-outcome class as KXWCTEAMS governance votes). 13 / 0 live. DISMISS.
   "KXT20CANADA", "KXT20CANADAMATCH", // Global T20 Canada (champion futures + match winner) —
   // cricket, same no-model/no-data-path class as KXCPLMATCH/KXLPLMATCH (7/18). 0 live (shell). DISMISS.
-  "KXTBTGAME", // The Basketball Tournament — single-elim streetball with rotating alumni/pickup
-  // rosters that don't persist year to year (unlike NBA Summer League's within-tournament Elo,
-  // which at least has one consistent roster per tournament) — no ratings source exists or can
-  // exist, same class as KXBILGAME. windowFit=true is the usual favorite false positive. 6 live. DISMISS.
+  // KXTBTGAME RECLASSIFIED 2026-07-23 — dismissed same-day for "no ratings source" (true, single-
+  // elim streetball with rotating alumni/pickup rosters that don't persist year to year, unlike
+  // NBA Summer League's within-tournament Elo), but that's a TAKER blocker only, not a MAKER one
+  // (see the two-track doctrine note at the top of this list) — 6 live markets is real liquidity.
+  // Removed from DISMISSED_SERIES, promoted to shortlisted (maker-candidate). NOT built.
   "KXWNBA3PTCONTEST", "KXWNBA3PTCONTESTOU", "KXWNBA3PTROUND", // WNBA All-Star 3-point contest
-  // (winner futures / threes-made O/U / round-qualifier) — one-day-a-year exhibition novelty,
-  // same class as KXWNBAASGMVP. windowFit=true on two of three is the usual favorite/exhibition
-  // false positive. 6 / 0 / 6 live. DISMISS.
-  "KXSCOCUPSPREAD", "KXSCOCUPTOTAL", // Scottish Cup spread/total — sibling market-type tickers for
-  // a GAME series already dismissed (KXSCOCUPGAME, no-club-Elo class) — same root cause applies
-  // regardless of market type, same idiom as the 7/22 club-league derivative batch. 64 / 96 live
-  // (real books — doesn't change the no-model verdict). DISMISS.
+  // (winner futures / threes-made O/U / round-qualifier) — re-checked against the two-track
+  // doctrine too: it's a real competitive event (unlike KXWNBAASGMVP-style award futures), so in
+  // PRINCIPLE it's maker-viable, but one-day-a-year + only 6 live markets is too thin to be worth
+  // a special-case build (same "too thin for useful data" reasoning as the WNBA H2H points/PRA
+  // deferral). STAYS dismissed on practical grounds, not the stale no-model reasoning.
+  // KXSCOCUPSPREAD, KXSCOCUPTOTAL RECLASSIFIED 2026-07-23 — 64/96 live markets, real books; the
+  // no-club-Elo blocker is TAKER-only (see the two-track doctrine note above). Removed from
+  // DISMISSED_SERIES, promoted to shortlisted. NOT built.
   "KXWWEFIGHTOCCUR", // WWE wrestler crossing over into a real (non-scripted) fight — a booking/
   // business decision about WHETHER a crossover event happens at all, not a competitive outcome to
   // model. Bare shell (enrichment fetch found 0 live markets). DISMISS.
