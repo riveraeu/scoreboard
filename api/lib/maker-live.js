@@ -17,7 +17,8 @@
 //     (no cancel call needed — Kalshi already will).
 //   - price CHANGED → explicit cancel of the old order, THEN place the new one (never both
 //     resting on the same ticker at once — avoids doubled exposure).
-//   - no longer eligible → do nothing; the existing order lapses within MAKER_V2_EXPIRATION_SEC.
+//   - no longer eligible → no cancel call (Kalshi's own expiration_time handles that), but once
+//     past expires_at, mark it locally 'expired' same-tick so STATUS doesn't sit stale.
 //   - newly eligible → place a new order, subject to MAKER_V2_MAX_CONCURRENT and
 //     MAKER_V2_SAME_GAME_CAP (correlation guard, mirrors Place All's SAME_GAME_CAP concept).
 //
@@ -164,7 +165,14 @@ export async function updateLiveMakerOrders({ snapResults, staging, snapshotDate
   for (const [ticker, r] of restingByTicker) {
     const w = want.get(ticker);
     const expiresAt = r.expires_at ? Date.parse(r.expires_at) : 0;
-    if (!w) continue; // no longer desired — let it lapse naturally, nothing to do this tick
+    if (!w) {
+      // No longer desired (game started, price left the band, etc). Kalshi already auto-cancels
+      // this order at its own expires_at via `expiration_time` — nothing to cancel on our end —
+      // but once that's passed, mark it locally too so STATUS reflects reality within one tick
+      // instead of sitting 'resting' until the nightly reconcile's belt-and-suspenders sweep.
+      if (expiresAt && nowMs >= expiresAt) toExpireLocally.push(r);
+      continue;
+    }
     if (w.q.side !== r.side || w.q.ask !== Number(r.price)) {
       toCancel.push(r);
       toPlace.push({ ticker, ...w });
