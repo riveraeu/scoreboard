@@ -602,6 +602,38 @@ export async function handleKalshiRoutes(ctx) {
     return jsonResponse({ ok: true, withAll, excludingTeamTotal });
   }
 
+  // ── /api/maker-v1-category-breakdown ──────────────────────────────────────────
+  // Diagnostic (2026-07-22, ADMIN/JWT) — per-category breakdown of V1's graded fills, team-total
+  // (KXMLBTEAMTOTAL/KXNBATEAMTOTAL) EXCLUDED entirely (confirmed ~94% collided — see
+  // maker-v1-shadowid-audit). Answers: with the known-corrupted category removed, where (if
+  // anywhere) does V1's edge actually hold up? Sorted by CI-lo descending.
+  if (path === "maker-v1-category-breakdown" && method === "GET") {
+    const _bearer = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/, "");
+    const _jwtOk = (_bearer && JWT_SECRET) ? await verifyJWT(_bearer, JWT_SECRET) : null;
+    const _adminOk = env?.ADMIN_KEY && _bearer === env.ADMIN_KEY;
+    if (!_jwtOk && !_adminOk) return errorResponse("Unauthorized", 401);
+
+    const rows = await neonQuery(
+      `SELECT q.sport, q.category, COUNT(*)::int AS n,
+              ROUND(AVG(mf.pnl_cents), 3) AS avg_pnl, ROUND(STDDEV_SAMP(mf.pnl_cents), 3) AS sd_pnl
+       FROM maker_fills mf JOIN maker_quotes q ON q.id = mf.quote_id
+       WHERE mf.graded_at IS NOT NULL AND q.series NOT IN ('KXMLBTEAMTOTAL', 'KXNBATEAMTOTAL')
+       GROUP BY q.sport, q.category
+       ORDER BY q.sport, q.category`,
+      [], env, { write: true }
+    );
+
+    const byCategory = rows.map(r => {
+      const n = Number(r.n);
+      const avg = r.avg_pnl != null ? Number(r.avg_pnl) : null;
+      const sd = r.sd_pnl != null ? Number(r.sd_pnl) : null;
+      const loCI = avg != null && sd != null && n > 1 ? parseFloat((avg - 1.96 * sd / Math.sqrt(n)).toFixed(2)) : null;
+      return { sport: r.sport, category: r.category, n, avgPnlCents: avg, pnlLoCI: loCI };
+    }).sort((a, b) => (b.pnlLoCI ?? -999) - (a.pnlLoCI ?? -999));
+
+    return jsonResponse({ ok: true, byCategory });
+  }
+
   // ── /api/maker-v1-shadowid-audit ──────────────────────────────────────────────
   // Diagnostic (2026-07-22, ADMIN/JWT) — quantifies how much of V1's history was affected by
   // the shadowId() team-total collision (fixed in shadow-id.js same day). maker_quotes.
