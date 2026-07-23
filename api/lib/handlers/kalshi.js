@@ -602,6 +602,35 @@ export async function handleKalshiRoutes(ctx) {
     return jsonResponse({ ok: true, withAll, excludingTeamTotal });
   }
 
+  // ── /api/maker-v1-ticker-trace ────────────────────────────────────────────────
+  // Diagnostic (2026-07-22, ADMIN/JWT, ?ticker=) — full maker_quotes + shadow_plays join for one
+  // ticker, to trace exactly why the CASE-WHEN side_won formula produces a wrong sign for
+  // spread-type quotes (found via maker-v1-validate). Need pick_team/direction/pick_line/
+  // threshold alongside quote_side to see whether the row's own pick_team-relative `won` value
+  // actually corresponds to the SAME team the specific quoted ticker is framed around.
+  if (path === "maker-v1-ticker-trace" && method === "GET") {
+    const _bearer = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/, "");
+    const _jwtOk = (_bearer && JWT_SECRET) ? await verifyJWT(_bearer, JWT_SECRET) : null;
+    const _adminOk = env?.ADMIN_KEY && _bearer === env.ADMIN_KEY;
+    if (!_jwtOk && !_adminOk) return errorResponse("Unauthorized", 401);
+    const ticker = new URL(request.url).searchParams.get("ticker");
+    if (!ticker) return errorResponse("?ticker= required", 400);
+    const rows = await neonQuery(
+      `SELECT q.id AS quote_id, q.ticker, q.quote_side, q.quote_ask, q.row_direction,
+              q.valid_from, q.valid_to,
+              s.id AS shadow_id, s.home_team, s.away_team, s.pick_team, s.direction,
+              s.pick_line, s.threshold, s.won, s.actual_value, s.resolved_at,
+              mf.id AS fill_id, mf.fill_ask, mf.side_won, mf.pnl_cents, mf.graded_at
+       FROM maker_quotes q
+       LEFT JOIN shadow_plays s ON s.id = q.shadow_row_id
+       LEFT JOIN maker_fills mf ON mf.quote_id = q.id
+       WHERE q.ticker = $1
+       ORDER BY q.valid_from`,
+      [ticker], env, { write: true }
+    );
+    return jsonResponse({ ok: true, ticker, count: rows.length, rows });
+  }
+
   // ── /api/maker-v1-category-breakdown ──────────────────────────────────────────
   // Diagnostic (2026-07-22, ADMIN/JWT) — per-category breakdown of V1's graded fills, team-total
   // (KXMLBTEAMTOTAL/KXNBATEAMTOTAL) EXCLUDED entirely (confirmed ~94% collided — see
