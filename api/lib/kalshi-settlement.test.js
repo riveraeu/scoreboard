@@ -4,7 +4,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { deriveKalshiSide, wonFromKalshiResult, resolveRowViaKalshi } from "./kalshi-settlement.js";
+import { deriveKalshiSide, wonFromKalshiResult, resolveRowViaKalshi, resolveTickerSideViaKalshi } from "./kalshi-settlement.js";
 
 test("deriveKalshiSide: explicit kalshiSide wins regardless of direction", () => {
   assert.equal(deriveKalshiSide({ kalshiSide: "yes", direction: "under" }), "yes");
@@ -64,4 +64,43 @@ test("resolveRowViaKalshi: real yes/no settlement grades correctly against kalsh
   assert.equal(resolveRowViaKalshi({ kalshi_ticker: "KXFOO-1", kalshi_side: "yes" }, settlements), true);
   assert.equal(resolveRowViaKalshi({ kalshi_ticker: "KXFOO-2", kalshi_side: "yes" }, settlements), false);
   assert.equal(resolveRowViaKalshi({ kalshi_ticker: "KXFOO-2", kalshi_side: "no" }, settlements), true);
+});
+
+// resolveTickerSideViaKalshi — the ticker+side primitive resolveRowViaKalshi wraps. Used
+// directly by maker.js's V1 grading (maker_quotes/maker_fills have no shadow_plays row to
+// pull kalshi_ticker/kalshi_side from — they carry ticker/quote_side natively instead).
+test("resolveTickerSideViaKalshi: null when ticker is falsy", () => {
+  const settlements = new Map([["KXFOO-1", { status: "finalized", result: "yes" }]]);
+  assert.equal(resolveTickerSideViaKalshi(null, "yes", settlements), null);
+  assert.equal(resolveTickerSideViaKalshi(undefined, "yes", settlements), null);
+});
+
+test("resolveTickerSideViaKalshi: null when not finalized or missing from the map", () => {
+  const settlements = new Map([["KXFOO-1", { status: "open", result: null }]]);
+  assert.equal(resolveTickerSideViaKalshi("KXFOO-1", "yes", settlements), null);
+  assert.equal(resolveTickerSideViaKalshi("KXFOO-2", "yes", settlements), null);
+});
+
+test("resolveTickerSideViaKalshi: null on a void (scalar) settlement", () => {
+  const settlements = new Map([["KXFOO-1", { status: "finalized", result: "scalar" }]]);
+  assert.equal(resolveTickerSideViaKalshi("KXFOO-1", "yes", settlements), null);
+});
+
+test("resolveTickerSideViaKalshi: grades the given side directly, no row object needed", () => {
+  const settlements = new Map([
+    ["KXFOO-1", { status: "finalized", result: "yes" }],
+    ["KXFOO-2", { status: "finalized", result: "no" }],
+  ]);
+  assert.equal(resolveTickerSideViaKalshi("KXFOO-1", "yes", settlements), true);
+  assert.equal(resolveTickerSideViaKalshi("KXFOO-1", "no", settlements), false);
+  assert.equal(resolveTickerSideViaKalshi("KXFOO-2", "no", settlements), true);
+});
+
+test("resolveTickerSideViaKalshi and resolveRowViaKalshi agree (the latter is a thin wrapper)", () => {
+  const settlements = new Map([["KXFOO-1", { status: "finalized", result: "yes" }]]);
+  const row = { kalshi_ticker: "KXFOO-1", kalshi_side: "no" };
+  assert.equal(
+    resolveRowViaKalshi(row, settlements),
+    resolveTickerSideViaKalshi(row.kalshi_ticker, row.kalshi_side, settlements)
+  );
 });

@@ -12,7 +12,8 @@
 //   • FILL (nightly resolver): replay the public trade tape — a taker trade on our side at
 //     a price ≥ our ask while a segment was open would have hit us first (we quote strictly
 //     inside the book, so price priority is ours). Fills cap at MAKER_SIZE (maker_fills).
-//   • GRADE: join segments to their shadow_plays row (shadow_row_id) once resolved.
+//   • GRADE (2026-07-24 rewrite): look up each ticker's own settlement directly from Kalshi's
+//     public /markets endpoint (kalshi-settlement.js) — no shadow_plays join, no ESPN dependency.
 //     pnl_cents = fill_ask − 100·(sold side won).
 // Measurement bias, stated: the 2-min quote lag means stale quotes get hit when price moves
 // against them → shadow PnL UNDER-states a live engine with pull-on-news (conservative for
@@ -27,39 +28,7 @@
 import { capturableSpread, MAKER_BAND, MAKER_INSIDE_C, MAKER_SIZE } from "./config.js";
 import { shadowId } from "./shadow-id.js";
 import { neonQuery, neonExec } from "./neon.js";
-
-// Ticker's own team suffix (e.g. "...-TB3" → "TB"). Same regex as team-total's scoringTeam
-// parse in tonight.js — reused here for spread's "margin team" (the team the ticker's own
-// yes/no is framed around).
-export const marginTeamOf = (ticker) => {
-  const suffix = (ticker || "").split("-").pop() || "";
-  const m = suffix.match(/^([A-Z]+)/);
-  return m ? m[1] : null;
-};
-
-// Did `quoteSide` ('yes'|'no') actually win, given the row's own captured `won`/`direction`/
-// `pickTeam`? Shared by detectAndGradeMakerFills (writes maker_fills.side_won/pnl_cents) and
-// shadow-report's quotedOutcomes diagnostic (handlers/shadow.js) — one source of truth so the
-// two numbers can't drift apart the way the pre-2026-07-22 duplicated formula did.
-//
-// total/teamTotal: `direction` ('over'/'under') safely translates `won` into "does yes win"
-// because Kalshi's yes/no there is ticker-invariant (yes ALWAYS means "over").
-//
-// spread: `direction` is null — the row's `pickTeam` can belong to EITHER team (tonight/
-// ml-spread.js logs whichever direction had the better model edge, independent of which team
-// the specific ticker's own yes/no is framed around, parseable via marginTeamOf). Bug found
-// 2026-07-22: the old formula assumed pickTeam always matches the ticker's margin team, which
-// breaks whenever the row was captured for the OTHER team's perspective.
-export function computeSideWon({ gameType, ticker, pickTeam, direction, won, quoteSide }) {
-  let effectiveWonForYes;
-  if (gameType === "spread") {
-    const marginTeam = marginTeamOf(ticker);
-    effectiveWonForYes = (marginTeam && pickTeam === marginTeam) ? won : !won;
-  } else {
-    effectiveWonForYes = direction === "under" ? !won : won;
-  }
-  return quoteSide === "yes" ? effectiveWonForYes : !effectiveWonForYes;
-}
+import { fetchKalshiSettlements, resolveTickerSideViaKalshi } from "./kalshi-settlement.js";
 
 // The only configured series with maker fees (fee_type "quadratic_with_maker_fees",
 // verified 2026-07-19 across all 691 series). Everything else is plain "quadratic" = zero
@@ -292,27 +261,38 @@ export async function detectAndGradeMakerFills({ env, dayPT }) {
     tapeFails, rateLimited };
 }
 
-// Grades everything ungraded whose shadow row has resolved, using computeSideWon (see its own
-// doc comment for the spread-vs-total sign logic). Split out from detectAndGradeMakerFills
-// (2026-07-22) so a fix to computeSideWon can be applied to ALREADY-INSERTED maker_fills rows
-// (clear graded_at back to NULL, then call this) without needing to re-replay the trade tape.
+// Grades everything ungraded directly off Kalshi's own public settlement for the ticker (2026-07-
+// 24 rewrite, same move V2 made 2026-07-22 — see project_maker_v1_settlement_grading memory).
+// V1 never holds a real position, so it can't use the authenticated /portfolio/settlements
+// endpoint V2 reads; it uses the public /markets endpoint instead (kalshi-settlement.js), which
+// works for any ticker regardless of whether we ever traded it. This needs only `ticker` +
+// `quote_side` — both native to maker_quotes — so grading no longer joins shadow_plays at all,
+// which removes two known bug classes at the root: the shadowId team-total collision and the
+// spread pickTeam/marginTeam sign mismatch (both were only reachable via that join).
+// Split from detectAndGradeMakerFills so a formula fix can be re-applied to ALREADY-INSERTED
+// maker_fills rows (clear graded_at back to NULL, then call this) without re-replaying the tape.
 export async function gradeMakerFills({ env }) {
   await ensureMakerTables(env);
   const candidates = await neonQuery(
-    `SELECT q.id AS quote_id, q.ticker, q.quote_side, s.game_type, s.pick_team, s.direction, s.won
-     FROM maker_quotes q JOIN shadow_plays s ON s.id = q.shadow_row_id
-     WHERE s.resolved AND s.won IS NOT NULL
-       AND EXISTS (SELECT 1 FROM maker_fills mf2 WHERE mf2.quote_id = q.id AND mf2.graded_at IS NULL)`,
+    `SELECT q.id AS quote_id, q.ticker, q.quote_side
+     FROM maker_quotes q
+     WHERE EXISTS (SELECT 1 FROM maker_fills mf2 WHERE mf2.quote_id = q.id AND mf2.graded_at IS NULL)`,
     [], env, { write: true }
   );
+  if (!candidates.length) return 0;
 
-  const toGrade = candidates.map(c => ({
-    quoteId: c.quote_id,
-    sideWon: computeSideWon({
-      gameType: c.game_type, ticker: c.ticker, pickTeam: c.pick_team,
-      direction: c.direction, won: c.won, quoteSide: c.quote_side,
-    }),
-  }));
+  // Fail-closed: if settlements can't be fetched, skip grading entirely this pass — retried
+  // next tick via the same `graded_at IS NULL` gate, rather than guess.
+  const tickers = [...new Set(candidates.map(c => c.ticker))];
+  const settlements = await fetchKalshiSettlements(tickers);
+
+  const toGrade = [];
+  for (const c of candidates) {
+    const sideWon = resolveTickerSideViaKalshi(c.ticker, c.quote_side, settlements);
+    if (sideWon === null) continue; // not finalized yet, or a void/scalar result — retry next pass
+    toGrade.push({ quoteId: c.quote_id, sideWon });
+  }
+  if (!toGrade.length) return 0;
 
   let gradedCount = 0;
   const chunkSize = 100;

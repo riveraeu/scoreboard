@@ -18,7 +18,7 @@ import { fetchFightResults, matchFightByCodes, normFighterName } from "../mma.js
 import { fetchRoundScores, normGolfName } from "../golf.js";
 import { fetchRaceResults } from "../nascar.js";
 import { fetchSlResults } from "../nba-summer.js";
-import { detectAndGradeMakerFills, computeSideWon } from "../maker.js";
+import { detectAndGradeMakerFills } from "../maker.js";
 import { reconcileLiveMakerFills, isArmed as isMakerV2Armed } from "../maker-live.js";
 // shadowId moved to api/lib/shadow-id.js (2026-07-19) so the maker engine stamps the same
 // row identity on quote segments without a handler→handler import cycle.
@@ -31,7 +31,7 @@ import { fetchChnslResults } from "../chnsl.js";
 import { fetchLigaMxResults, fetchLigaMxHalfResults } from "../ligamx.js";
 import { fetchArgPremResults } from "../argprem.js";
 import { fetchScoCupResults } from "../scocup.js";
-import { deriveKalshiSide, fetchKalshiSettlements, resolveRowViaKalshi } from "../kalshi-settlement.js";
+import { deriveKalshiSide, fetchKalshiSettlements, resolveRowViaKalshi, resolveTickerSideViaKalshi } from "../kalshi-settlement.js";
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER } from "../config.js";
 import { passesCategoryGate } from "../category-gate.js";
 import { INPUT_SEARCH_EXHAUSTED, stillExhausted } from "../model-holds.js";
@@ -3352,18 +3352,15 @@ async function handleShadowReport({ path, request, env, cache }) {
           ROUND(AVG(f.fill_ask), 1) AS avg_fill_ask
         FROM maker_fills f JOIN maker_quotes q ON q.id = f.quote_id
         WHERE q.game_date >= $1`, [since], env, { write: true }),
-      // Raw rows, not aggregated in SQL — side_won needs computeSideWon (maker.js), the same
-      // spread-aware logic detectAndGradeMakerFills uses, not a duplicated SQL CASE-WHEN that
-      // can drift out of sync with it (2026-07-22: the old duplicated copy here had the exact
-      // same spread sign bug found and fixed in detectAndGradeMakerFills).
+      // Raw rows, not aggregated in SQL — side_won is resolved directly off Kalshi's own
+      // settlement (resolveTickerSideViaKalshi, kalshi-settlement.js) after this query returns,
+      // same source detectAndGradeMakerFills's gradeMakerFills uses (2026-07-24 rewrite) — no
+      // shadow_plays join, so this can't drift out of sync with it the way the pre-2026-07-22
+      // duplicated CASE-WHEN copy did.
       neonQuery(`
-        SELECT q.ticker, q.quote_side, q.quote_ask, s.game_type, s.pick_team, s.direction, s.won
-        FROM (
-          SELECT DISTINCT ON (ticker, game_date) ticker, game_date, quote_side, quote_ask, shadow_row_id
-          FROM maker_quotes WHERE game_date >= $1
-          ORDER BY ticker, game_date, valid_from DESC
-        ) q JOIN shadow_plays s ON s.id = q.shadow_row_id
-        WHERE s.resolved AND s.won IS NOT NULL`, [since], env, { write: true }),
+        SELECT DISTINCT ON (ticker, game_date) ticker, quote_side, quote_ask
+        FROM maker_quotes WHERE game_date >= $1
+        ORDER BY ticker, game_date, valid_from DESC`, [since], env, { write: true }),
       // Daily fill series — feeds the /model paper equity curve (frontend cumsums pnl_total).
       neonQuery(`
         SELECT q.game_date AS day, COUNT(*)::int AS fills,
@@ -3403,14 +3400,18 @@ async function handleShadowReport({ path, request, env, cache }) {
     const sd = mf?.sd_pnl != null ? Number(mf.sd_pnl) : null;
     const pnlLoCI = avgPnl != null && sd != null && graded > 1
       ? parseFloat((avgPnl - 1.96 * sd / Math.sqrt(graded)).toFixed(2)) : null;
-    const qoWins = _qoRows.map(r => computeSideWon({
-      gameType: r.game_type, ticker: r.ticker, pickTeam: r.pick_team,
-      direction: r.direction, won: r.won, quoteSide: r.quote_side,
-    }));
+    // Not every quoted ticker is Kalshi-finalized yet (e.g. today's still-live games) —
+    // resolveTickerSideViaKalshi returns null for those; excluded from both n and the rate,
+    // same "not resolvable this pass" semantics as the dry-run comparison and V1 grading.
+    const _qoTickers = [...new Set(_qoRows.map(r => r.ticker))];
+    const _qoSettlements = _qoTickers.length ? await fetchKalshiSettlements(_qoTickers) : new Map();
+    const _qoResolved = _qoRows
+      .map(r => ({ r, sideWon: resolveTickerSideViaKalshi(r.ticker, r.quote_side, _qoSettlements) }))
+      .filter(x => x.sideWon !== null);
     const qo = {
-      n: _qoRows.length,
-      side_won_rate: _qoRows.length ? parseFloat((qoWins.filter(Boolean).length / _qoRows.length).toFixed(4)) : null,
-      avg_ask: _qoRows.length ? parseFloat((_qoRows.reduce((s, r) => s + Number(r.quote_ask || 0), 0) / _qoRows.length).toFixed(1)) : null,
+      n: _qoResolved.length,
+      side_won_rate: _qoResolved.length ? parseFloat((_qoResolved.filter(x => x.sideWon).length / _qoResolved.length).toFixed(4)) : null,
+      avg_ask: _qoResolved.length ? parseFloat((_qoResolved.reduce((s, x) => s + Number(x.r.quote_ask || 0), 0) / _qoResolved.length).toFixed(1)) : null,
     };
     makerBoard = {
       quotes: { segments: Number(mq?.segments || 0), tickers: Number(mq?.tickers || 0),

@@ -61,13 +61,21 @@ export async function fetchKalshiSettlements(tickers) {
   return out;
 }
 
+// Pure: given a specific ticker + which side ("yes"/"no") we care about, what would Kalshi's
+// settlement say? Returns null when not resolvable this pass (not finalized yet, or void).
+// Shared by resolveRowViaKalshi (shadow_plays taker rows, which carry kalshi_ticker/kalshi_side)
+// and maker.js's V1 grading (maker_quotes/maker_fills rows, which use ticker/quote_side directly
+// and have no shadow_plays row to read from — see project_maker_v1_settlement_grading memory).
+export function resolveTickerSideViaKalshi(ticker, side, settlements) {
+  if (!ticker) return null;
+  const m = settlements.get(ticker);
+  if (!m || m.status !== "finalized") return null;
+  return wonFromKalshiResult(m.result, side);
+}
+
 // Pure: given a row (with kalshi_ticker/kalshi_side already on it) and the settlements map,
 // what WOULD Kalshi-based grading conclude? Returns null when not resolvable this pass (not yet
 // settled, or void) — same meaning as wonFromKalshiResult's null.
 export function resolveRowViaKalshi(row, settlements) {
-  const ticker = row?.kalshi_ticker;
-  if (!ticker) return null;
-  const m = settlements.get(ticker);
-  if (!m || m.status !== "finalized") return null;
-  return wonFromKalshiResult(m.result, row.kalshi_side);
+  return resolveTickerSideViaKalshi(row?.kalshi_ticker, row?.kalshi_side, settlements);
 }
