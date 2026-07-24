@@ -18,7 +18,7 @@ import { fetchFightResults, matchFightByCodes, normFighterName } from "../mma.js
 import { fetchRoundScores, normGolfName } from "../golf.js";
 import { fetchRaceResults } from "../nascar.js";
 import { fetchSlResults } from "../nba-summer.js";
-import { detectAndGradeMakerFills, gradeMakerFills } from "../maker.js";
+import { detectAndGradeMakerFills } from "../maker.js";
 import { reconcileLiveMakerFills, isArmed as isMakerV2Armed } from "../maker-live.js";
 // shadowId moved to api/lib/shadow-id.js (2026-07-19) so the maker engine stamps the same
 // row identity on quote segments without a handler→handler import cycle.
@@ -770,37 +770,6 @@ async function handleKalshiDryrunCheck({ path, request, env }) {
     bySport: Object.fromEntries(bySport),
     disagreements,
   });
-}
-
-// ── /api/maker-v1-regrade ─────────────────────────────────────────────────────
-// ONE-OFF, temporary (2026-07-24): clears graded_at on every already-graded maker_fills row and
-// re-runs gradeMakerFills once, so V1's full history moves onto the new Kalshi-settlement-based
-// grading (see the maker.js rewrite, same commit) instead of leaving old rows graded via the
-// retired shadow_plays-join formula. Safe — V1 has no real capital — same pattern as the
-// 2026-07-23 PnL bug fixes (project_maker_pnl_bugs_2026_07_23 memory). ADMIN_KEY only.
-// Remove this route once run — it's a one-time correction, not a standing diagnostic.
-async function handleMakerV1Regrade({ path, request, env }) {
-  if (path !== "maker-v1-regrade") return null;
-
-  const bearer = (request.headers.get("authorization") || "").replace(/^Bearer\s+/, "");
-  if (!env?.ADMIN_KEY || bearer !== env.ADMIN_KEY) return errorResponse("Forbidden", 403);
-
-  const dry = new URL(request.url).searchParams.get("dry") === "1";
-  const [before] = await neonQuery(
-    `SELECT COUNT(*)::int AS graded, ROUND(AVG(pnl_cents), 2) AS avg_pnl,
-       ROUND(AVG((side_won)::int::numeric), 4) AS side_won_rate
-     FROM maker_fills WHERE graded_at IS NOT NULL`, [], env, { write: true });
-  if (dry) return jsonResponse({ ok: true, dry: true, before });
-
-  await neonQuery(
-    `UPDATE maker_fills SET graded_at = NULL, side_won = NULL, pnl_cents = NULL WHERE graded_at IS NOT NULL`,
-    [], env, { write: true });
-  const regraded = await gradeMakerFills({ env });
-  const [after] = await neonQuery(
-    `SELECT COUNT(*)::int AS graded, ROUND(AVG(pnl_cents), 2) AS avg_pnl,
-       ROUND(AVG((side_won)::int::numeric), 4) AS side_won_rate
-     FROM maker_fills WHERE graded_at IS NOT NULL`, [], env, { write: true });
-  return jsonResponse({ ok: true, cleared: before.graded, regraded, before, after });
 }
 
 async function handleShadowResolver({ path, request, env, cache }) {
@@ -3982,9 +3951,6 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
 
   const kalshiDryrunResp = await handleKalshiDryrunCheck({ path, request, env });
   if (kalshiDryrunResp) return kalshiDryrunResp;
-
-  const makerV1RegradeResp = await handleMakerV1Regrade({ path, request, env });
-  if (makerV1RegradeResp) return makerV1RegradeResp;
 
   const pregameResp = await handleShadowPregameSnap({ path, request, env, cache });
   if (pregameResp) return pregameResp;
