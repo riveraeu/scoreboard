@@ -827,6 +827,29 @@ export async function handleKalshiRoutes(ctx) {
       return jsonResponse({ ok: true, counts: rows });
     }
 
+    // ?liststatus=STATUS&limit=&offset= (admin, read-only) — dumps kalshi_series_seen rows for a
+    // given status (ticker/title/category/live_market_count/window_fit/first_seen), paginated.
+    // Added 2026-07-24 to sweep the 2141-row 'baseline' backlog (see
+    // project_baseline_backlog_discovery_2026_07_23 memory) — statuscounts only gave totals, not
+    // the actual rows. NOTE: live_market_count/window_fit are FROZEN at whatever they were on
+    // first_seen (the scan skips any ticker already in the table — see the `existing.has(ticker)
+    // continue` below), so treat them as a historical hint only, never current liquidity.
+    const liststatus = url.searchParams.get("liststatus");
+    if (liststatus) {
+      if (!isAdmin) return errorResponse("Admin only", 403);
+      const limit = Math.min(parseInt(url.searchParams.get("limit")) || 200, 500);
+      const offset = parseInt(url.searchParams.get("offset")) || 0;
+      const rows = await neonQuery(
+        `SELECT ticker, title, category, live_market_count, window_fit, first_seen
+         FROM kalshi_series_seen WHERE status = $1
+         ORDER BY live_market_count DESC NULLS LAST, ticker ASC
+         LIMIT $2 OFFSET $3`,
+        [liststatus, limit, offset], env, { write: true }
+      );
+      const totalRows = await neonQuery(`SELECT COUNT(*)::int AS n FROM kalshi_series_seen WHERE status = $1`, [liststatus], env, { write: true });
+      return jsonResponse({ ok: true, status: liststatus, total: totalRows[0]?.n ?? 0, limit, offset, rows });
+    }
+
     const dismiss = url.searchParams.get("dismiss");
     const undismiss = url.searchParams.get("undismiss");
     const promote = url.searchParams.get("promote");
