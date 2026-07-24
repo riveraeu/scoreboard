@@ -50,8 +50,11 @@ export async function emitClubSoccerMlPlays(ctx) {
     for (const s of ev.sides) {
       // Full-curve capture (2026-07-03 doctrine) — quote-sanity band only, no model to gate on.
       if (s.kalshiPct < CAPTURE_GATE || s.kalshiPct > CAPTURE_CAP) continue;
+      // half is set for KXMLS1H (adopted 2026-07-23, same ticker/suffix shape as KXMLSGAME —
+      // see SERIES_CONFIG) — stat/half distinguish it so shadow.js's resolver knows to grade
+      // off half-time scores (fetchMlsHalfResults) instead of the full-game result.
       clubSoccerPlays.push({
-        sport: "mls", stat: "game", gameType: "game", modelVersion: "mls-modelfree-v1",
+        sport: "mls", stat: s.half ? `${s.half}game` : "game", gameType: "game", half: s.half || null, modelVersion: "mls-modelfree-v1",
         homeTeam: ev.homeTeam, awayTeam: ev.awayTeam,
         pickTeam: s.side === "tie" ? "TIE" : s.sideCode,
         threshold: null, direction: null,

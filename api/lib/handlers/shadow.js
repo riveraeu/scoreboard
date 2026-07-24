@@ -19,11 +19,11 @@ import { reconcileLiveMakerFills, isArmed as isMakerV2Armed } from "../maker-liv
 // row identity on quote segments without a handler→handler import cycle.
 import { shadowId } from "../shadow-id.js";
 import { fetchLmbResults } from "../lmb.js";
-import { fetchMlsResults } from "../mls.js";
+import { fetchMlsResults, fetchMlsHalfResults } from "../mls.js";
 import { fetchBrasileiraoResults } from "../brasileirao.js";
 import { fetchNwslResults } from "../nwsl.js";
 import { fetchChnslResults } from "../chnsl.js";
-import { fetchLigaMxResults } from "../ligamx.js";
+import { fetchLigaMxResults, fetchLigaMxHalfResults } from "../ligamx.js";
 import { fetchScoCupResults } from "../scocup.js";
 import { deriveKalshiSide, fetchKalshiSettlements, resolveRowViaKalshi } from "../kalshi-settlement.js";
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER } from "../config.js";
@@ -1262,11 +1262,55 @@ async function handleShadowResolver({ path, request, env, cache }) {
     }
   }
 
-  // ── MLS resolution ── grade the 3-way (home/away/tie) game-winner rows off the ESPN usa.1
-  // scoreboard. Games are matched on the sorted canonical team pair (Kalshi ticker order ≠ ESPN
-  // home/away). pick_team is a canonical MLS abbr or "TIE" (mirrors WC soccer's 1X2 grading —
-  // see the soccerRows block above): a draw settles the TIE row, a scoreline settles whichever
-  // team's row it is. Model-free rows (model_true_pct NULL) resolve exactly like any other row.
+  // ── Shared graders for MLS/Liga MX club-soccer rows (base 3-way ML + the 2026-07-23 threshold
+  // derivatives: 1H game/spread/total/BTTS + full-game team-total). `game` shape: { home, away,
+  // homeScore, awayScore } (fetchXResults) or additionally h1HomeScore/h1AwayScore
+  // (fetchXHalfResults) — `isHalf` picks which pair to grade off. 3-way pick_team is a canonical
+  // abbr or "TIE"; threshold stats mirror the WC soccer/scocup resolver convention (direction
+  // "under" flips the comparison).
+  const _grade3Way = (r, g, isHalf) => {
+    const [hs, as] = isHalf ? [g.h1HomeScore, g.h1AwayScore] : [g.homeScore, g.awayScore];
+    if (r.pick_team === "TIE") return { won: hs === as, actual: null };
+    const pickScore = g.home === r.pick_team ? hs : (g.away === r.pick_team ? as : null);
+    const oppScore = g.home === r.pick_team ? as : hs;
+    if (pickScore == null) return null;
+    return { won: pickScore > oppScore, actual: null };
+  };
+  const _gradeThreshold = (r, g) => {
+    const th = parseFloat(r.threshold);
+    const isUnder = r.direction === "under";
+    if (r.stat === "1htotal") {
+      const actual = g.h1HomeScore + g.h1AwayScore;
+      return { won: isUnder ? actual < th : actual >= th, actual };
+    }
+    if (r.stat === "1hspread") {
+      const favScore = g.home === r.pick_team ? g.h1HomeScore : (g.away === r.pick_team ? g.h1AwayScore : null);
+      if (favScore == null) return null;
+      const oppScore = r.pick_team === g.home ? g.h1AwayScore : g.h1HomeScore;
+      const actual = favScore - oppScore;
+      const covered = actual > th;
+      return { won: isUnder ? !covered : covered, actual };
+    }
+    if (r.stat === "1hbtts") {
+      const btts = g.h1HomeScore >= 1 && g.h1AwayScore >= 1;
+      return { won: isUnder ? !btts : btts, actual: null };
+    }
+    if (r.stat === "teamTotal") {
+      const actual = g.home === r.pick_team ? g.homeScore : (g.away === r.pick_team ? g.awayScore : null);
+      if (actual == null) return null;
+      return { won: isUnder ? actual < th : actual >= th, actual };
+    }
+    return null;
+  };
+
+  // ── MLS resolution ── grade the 3-way (home/away/tie) game-winner rows + the 1H spread/total/
+  // BTTS + full-game team-total derivatives (adopted 2026-07-23) off the ESPN usa.1 scoreboard.
+  // Games are matched on the sorted canonical team pair (Kalshi ticker order ≠ ESPN home/away).
+  // pick_team is a canonical MLS abbr or "TIE" (mirrors WC soccer's 1X2 grading — see the
+  // soccerRows block above): a draw settles the TIE row, a scoreline settles whichever team's
+  // row it is. Model-free rows (model_true_pct NULL) resolve exactly like any other row. "game"
+  // grades off the full-game fetch (unchanged); every other stat needs half-time scores, so it
+  // grades off fetchMlsHalfResults (also carries a derived full-game score for teamTotal).
   if (mlsRows.length) {
     const dateOf = (r) => r.game_date
       ? new Date(r.game_date).toISOString().slice(0, 10)
@@ -1279,24 +1323,30 @@ async function handleShadowResolver({ path, request, env, cache }) {
       byDate.get(date).push(r);
     }
     const resultsByDate = new Map();
+    const halfResultsByDate = new Map();
     await Promise.all([...byDate.keys()].map(async (date) => {
-      resultsByDate.set(date, await fetchMlsResults(date.replace(/-/g, "")));
+      const ds = date.replace(/-/g, "");
+      resultsByDate.set(date, await fetchMlsResults(ds));
+      halfResultsByDate.set(date, await fetchMlsHalfResults(ds));
     }));
     for (const [date, rws] of byDate) {
       const results = resultsByDate.get(date) || {};
+      const halfResults = halfResultsByDate.get(date) || {};
       for (const r of rws) {
-        const g = results[[r.home_team, r.away_team].sort().join("|")];
-        if (!g) { noData++; continue; } // game not played / not final yet
-        let won;
-        if (r.pick_team === "TIE") {
-          won = g.homeScore === g.awayScore;
-        } else {
-          const pickScore = g.home === r.pick_team ? g.homeScore : (g.away === r.pick_team ? g.awayScore : null);
-          const oppScore = g.home === r.pick_team ? g.awayScore : g.homeScore;
-          if (pickScore == null) { noData++; continue; }
-          won = pickScore > oppScore;
+        const key = [r.home_team, r.away_team].sort().join("|");
+        if (r.stat === "game") {
+          const g = results[key];
+          if (!g) { noData++; continue; }
+          const graded = _grade3Way(r, g, false);
+          if (!graded) { noData++; continue; }
+          updates.push({ id: r.id, won: graded.won, actualValue: graded.actual });
+          continue;
         }
-        updates.push({ id: r.id, won, actualValue: null });
+        const g = halfResults[key];
+        if (!g) { noData++; continue; } // game not played / not final yet
+        const graded = r.stat === "1hgame" ? _grade3Way(r, g, true) : _gradeThreshold(r, g);
+        if (!graded) { noData++; continue; }
+        updates.push({ id: r.id, won: graded.won, actualValue: graded.actual });
       }
     }
   }
@@ -1409,8 +1459,10 @@ async function handleShadowResolver({ path, request, env, cache }) {
     }
   }
 
-  // ── Liga MX resolution ── same 3-way grading, 5th model-free league, off the ESPN mex.1
-  // scoreboard (api/lib/ligamx.js).
+  // ── Liga MX resolution ── same 3-way grading (+ 1H/team-total derivatives, adopted
+  // 2026-07-23), 5th model-free league, off the ESPN mex.1 scoreboard (api/lib/ligamx.js). Same
+  // split as the MLS block above: "game" grades off the full-game fetch, everything else off
+  // fetchLigaMxHalfResults.
   if (ligamxRows.length) {
     const dateOf = (r) => r.game_date
       ? new Date(r.game_date).toISOString().slice(0, 10)
@@ -1423,24 +1475,30 @@ async function handleShadowResolver({ path, request, env, cache }) {
       byDate.get(date).push(r);
     }
     const resultsByDate = new Map();
+    const halfResultsByDate = new Map();
     await Promise.all([...byDate.keys()].map(async (date) => {
-      resultsByDate.set(date, await fetchLigaMxResults(date.replace(/-/g, "")));
+      const ds = date.replace(/-/g, "");
+      resultsByDate.set(date, await fetchLigaMxResults(ds));
+      halfResultsByDate.set(date, await fetchLigaMxHalfResults(ds));
     }));
     for (const [date, rws] of byDate) {
       const results = resultsByDate.get(date) || {};
+      const halfResults = halfResultsByDate.get(date) || {};
       for (const r of rws) {
-        const g = results[[r.home_team, r.away_team].sort().join("|")];
-        if (!g) { noData++; continue; } // game not played / not final yet
-        let won;
-        if (r.pick_team === "TIE") {
-          won = g.homeScore === g.awayScore;
-        } else {
-          const pickScore = g.home === r.pick_team ? g.homeScore : (g.away === r.pick_team ? g.awayScore : null);
-          const oppScore = g.home === r.pick_team ? g.awayScore : g.homeScore;
-          if (pickScore == null) { noData++; continue; }
-          won = pickScore > oppScore;
+        const key = [r.home_team, r.away_team].sort().join("|");
+        if (r.stat === "game") {
+          const g = results[key];
+          if (!g) { noData++; continue; }
+          const graded = _grade3Way(r, g, false);
+          if (!graded) { noData++; continue; }
+          updates.push({ id: r.id, won: graded.won, actualValue: graded.actual });
+          continue;
         }
-        updates.push({ id: r.id, won, actualValue: null });
+        const g = halfResults[key];
+        if (!g) { noData++; continue; } // game not played / not final yet
+        const graded = r.stat === "1hgame" ? _grade3Way(r, g, true) : _gradeThreshold(r, g);
+        if (!graded) { noData++; continue; }
+        updates.push({ id: r.id, won: graded.won, actualValue: graded.actual });
       }
     }
   }

@@ -36,3 +36,4 @@ export const parseLigaMxEvents = _src.parseEvents;
 export const fetchLigaMxSchedule = _src.fetchSchedule;
 export const getLigaMxSchedule = _src.getSchedule;
 export const fetchLigaMxResults = _src.fetchResults;
+export const fetchLigaMxHalfResults = _src.fetchHalfResults;

@@ -34,3 +34,4 @@ export const parseMlsEvents = _src.parseEvents;
 export const fetchMlsSchedule = _src.fetchSchedule;
 export const getMlsSchedule = _src.getSchedule;
 export const fetchMlsResults = _src.fetchResults;
+export const fetchMlsHalfResults = _src.fetchHalfResults;

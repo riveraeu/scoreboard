@@ -122,6 +122,21 @@ export const SERIES_CONFIG = {
   // ESPN-fetch engine (api/lib/soccer-modelfree.js). Dedicated gameType (own parse branch/
   // array, resolves off mex.1).
   KXLIGAMXGAME: { sport: "ligamx", league: "ligamx", stat: "game", col: "ML", gameType: "ligamxMl" },
+  // MLS + Liga MX 1H spread/total/BTTS + full-game team-total — maker-viable derivatives of the
+  // base ML markets above (adopted 2026-07-23, see project_mls_ligamx_threshold_2026_07_23
+  // memory). 1H family reuses the clubSoccerMl/ligamxMl gameType + emit path (same ticker/
+  // suffix shape as the base GAME market, tagged `half:"1h"`); spread/total/BTTS/teamTotal route
+  // through the shared `clubSoccerThreshold` gameType (api/lib/tonight/club-soccer-threshold.js).
+  KXMLS1H:         { sport: "mls",    league: "mls",    stat: "1hgame", col: "ML", gameType: "clubSoccerMl", half: "1h" },
+  KXMLS1HBTTS:     { sport: "mls",    league: "mls",    stat: "1hbtts", col: "G",  gameType: "clubSoccerThreshold", subtype: "btts",      half: "1h" },
+  KXMLS1HSPREAD:   { sport: "mls",    league: "mls",    stat: "1hspread", col: "G", gameType: "clubSoccerThreshold", subtype: "spread",  half: "1h" },
+  KXMLS1HTOTAL:    { sport: "mls",    league: "mls",    stat: "1htotal", col: "G", gameType: "clubSoccerThreshold", subtype: "total",    half: "1h" },
+  KXMLSTEAMTOTAL:  { sport: "mls",    league: "mls",    stat: "teamTotal", col: "G", gameType: "clubSoccerThreshold", subtype: "teamTotal" },
+  KXLIGAMX1H:      { sport: "ligamx", league: "ligamx", stat: "1hgame", col: "ML", gameType: "ligamxMl", half: "1h" },
+  KXLIGAMX1HBTTS:  { sport: "ligamx", league: "ligamx", stat: "1hbtts", col: "G",  gameType: "clubSoccerThreshold", subtype: "btts",      half: "1h" },
+  KXLIGAMX1HSPREAD:{ sport: "ligamx", league: "ligamx", stat: "1hspread", col: "G", gameType: "clubSoccerThreshold", subtype: "spread",  half: "1h" },
+  KXLIGAMX1HTOTAL: { sport: "ligamx", league: "ligamx", stat: "1htotal", col: "G", gameType: "clubSoccerThreshold", subtype: "total",    half: "1h" },
+  KXLIGAMXTEAMTOTAL:{ sport: "ligamx", league: "ligamx", stat: "teamTotal", col: "G", gameType: "clubSoccerThreshold", subtype: "teamTotal" },
   // Scottish League Cup spread + total — maker-viable, model-free (adopted 2026-07-23, see
   // project_scocup_spread_total_2026_07_23 memory). First model-free THRESHOLD market (the 5
   // leagues above are all 3-way ML) — dedicated emit path (api/lib/tonight/scocup.js) pushes
@@ -460,11 +475,12 @@ export const DISMISSED_SERIES = [
   // Club-soccer derivative families (17): same no-club-Elo blocker as the morning batch. All 0 live.
   "KXCHNSLSPREAD", "KXCHNSLTOTAL", // Chinese Super League (completes the CHNSL family)
   "KXELITESERIENBTTS", "KXELITESERIENSPREAD", "KXELITESERIENTOTAL", // Eliteserien (Norway)
-  // KXLIGAMX1H/1HBTTS/1HSPREAD/1HTOTAL + KXMLS1H/1HBTTS/1HSPREAD/1HTOTAL RECLASSIFIED 2026-07-23 —
-  // see the two-track maker-viability doctrine note near the top of this list. Liga MX/MLS base
-  // game markets confirmed real+liquid same day (club-soccer maker vet); these halves derivatives
-  // share the same underlying games. Removed from DISMISSED_SERIES, promoted to shortlisted
-  // (maker-candidate, still taker-dismissed — no club Elo). NOT built.
+  // KXLIGAMX1H/1HBTTS/1HSPREAD/1HTOTAL + KXMLS1H/1HBTTS/1HSPREAD/1HTOTAL RECLASSIFIED + BUILT
+  // 2026-07-23 — see the two-track maker-viability doctrine note near the top of this list. Liga
+  // MX/MLS base game markets confirmed real+liquid same day (club-soccer maker vet); these
+  // halves derivatives share the same underlying games. Removed from DISMISSED_SERIES; now in
+  // SERIES_CONFIG above (still taker-dismissed — no club Elo; maker-only, model-free, see
+  // project_mls_ligamx_threshold_2026_07_23 memory).
   "KXLIGAMXFTTS", "KXLIGAMXSCORE", // Liga MX first-to-score + correct score — STAYS dismissed:
   // exact-cell trap (many near-equally-unlikely outcomes) is a poor maker fit too, not just a
   // taker one — maker needs a genuine favorite-priced side, which N-way correct-score markets don't have.
@@ -647,9 +663,11 @@ export const DISMISSED_SERIES = [
   "KXSAUDIPLTEAMTOTAL", "KXSCOTTISHPREMTEAMTOTAL", "KXSERIEATEAMTOTAL", "KXTACAPORTTEAMTOTAL",
   "KXUECLMOF", "KXUEFANLTEAMTOTAL", "KXUELMOF", "KXURYPDBTTS",
   "KXUSLCUPTEAMTOTAL", "KXUSLTEAMTOTAL", "KXUSOPENCUPMOF", "KXUSOPENCUPTEAMTOTAL",
-  // KXLIGAMXTEAMTOTAL, KXMLSTEAMTOTAL, KXUECLTEAMTOTAL, KXUELTEAMTOTAL RECLASSIFIED 2026-07-23 —
-  // removed from this list, same reasoning as the halves reclassification above (base game
-  // markets for these 4 leagues confirmed real+liquid the same day). Promoted to shortlisted. NOT built.
+  // KXLIGAMXTEAMTOTAL, KXMLSTEAMTOTAL RECLASSIFIED + BUILT 2026-07-23 — removed from this list,
+  // same reasoning as the halves reclassification above (base game markets confirmed real+liquid
+  // the same day); now in SERIES_CONFIG above. KXUECLTEAMTOTAL/KXUELTEAMTOTAL stay OUT of
+  // SERIES_CONFIG — their base game markets are 0 live (UEL/UECL off-season until ~September,
+  // see project_maker_league_roadmap_2026_07_23 memory), so still shortlisted only, not built.
   // 7/17 non-soccer stragglers in the same wave:
   "KXLNBPGAME", // LNBP (Mexican pro basketball) game winner — same class as the 7/15 international-
   // basketball dismissals (BNXT/PBA/etc.): no ratings/stats data source (ESPN doesn't cover LNBP;

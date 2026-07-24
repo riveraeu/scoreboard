@@ -104,5 +104,53 @@ export function makeSoccerModelFreeSource({ espnSlug, canonTeam, cacheKeyPrefix 
     return out;
   }
 
-  return { parseEvents: boundParseEvents, fetchSchedule, getSchedule, fetchResults };
+  // Half-time scores for finished games on a PT date (dateStr YYYYMMDD), sorted-pair keyed —
+  // same idiom as fetchWcHalfFinals (soccer.js): the scoreboard endpoint carries no per-half
+  // breakdown, so each finished game needs a second `summary?event={id}` fetch, whose header
+  // competitors carry `linescores[0]`=1st-half goals, `[1]`=2nd-half goals. Returns
+  // { home, away, h1HomeScore, h1AwayScore, homeScore, awayScore (derived h1+h2), completed }
+  // per game — the derived full-game score means callers needing BOTH half and full data (e.g.
+  // a full-game team-total resolver sharing this fetch with a 1H-family resolver) don't need a
+  // second call to fetchResults above.
+  async function fetchHalfResults(dateStr) {
+    if (!dateStr || dateStr.length !== 8) return {};
+    const events = await _scoreboard(dateStr);
+    const out = {};
+    await Promise.all(events.map(async (ev) => {
+      const comp = ev?.competitions?.[0];
+      if (comp?.status?.type?.completed !== true || !ev?.id) return;
+      let sum;
+      try {
+        const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${espnSlug}/summary?event=${ev.id}`, {
+          headers: { "User-Agent": "Mozilla/5.0", Accept: "application/json" },
+          signal: AbortSignal.timeout(8000),
+        });
+        if (!r.ok) return;
+        sum = await r.json();
+      } catch { return; }
+      const hdrComp = (sum?.header?.competitions || [])[0];
+      const h1 = {}, h2 = {};
+      let home = null, away = null;
+      for (const c of (hdrComp?.competitors || [])) {
+        const canon = canonTeam(c?.team?.abbreviation || "");
+        if (!canon) return;
+        const ls = c?.linescores || [];
+        const g1 = parseInt(ls[0]?.displayValue ?? ls[0]?.value, 10);
+        const g2 = parseInt(ls[1]?.displayValue ?? ls[1]?.value, 10);
+        if (!Number.isFinite(g1) || !Number.isFinite(g2)) return;
+        h1[canon] = g1; h2[canon] = g2;
+        if (c.homeAway === "home") home = canon; else if (c.homeAway === "away") away = canon;
+      }
+      if (!home || !away || Object.keys(h1).length !== 2) return;
+      out[[home, away].sort().join("|")] = {
+        home, away,
+        h1HomeScore: h1[home], h1AwayScore: h1[away],
+        homeScore: h1[home] + h2[home], awayScore: h1[away] + h2[away],
+        completed: true,
+      };
+    }));
+    return out;
+  }
+
+  return { parseEvents: boundParseEvents, fetchSchedule, getSchedule, fetchResults, fetchHalfResults };
 }

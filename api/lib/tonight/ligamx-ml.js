@@ -48,8 +48,11 @@ export async function emitLigaMxMlPlays(ctx) {
     for (const s of ev.sides) {
       // Full-curve capture (2026-07-03 doctrine) — quote-sanity band only, no model to gate on.
       if (s.kalshiPct < CAPTURE_GATE || s.kalshiPct > CAPTURE_CAP) continue;
+      // half is set for KXLIGAMX1H (adopted 2026-07-23, same ticker/suffix shape as
+      // KXLIGAMXGAME — see SERIES_CONFIG) — stat/half distinguish it so shadow.js's resolver
+      // knows to grade off half-time scores (fetchLigaMxHalfResults) instead of the full game.
       ligamxPlays.push({
-        sport: "ligamx", stat: "game", gameType: "game", modelVersion: "ligamx-modelfree-v1",
+        sport: "ligamx", stat: s.half ? `${s.half}game` : "game", gameType: "game", half: s.half || null, modelVersion: "ligamx-modelfree-v1",
         homeTeam: ev.homeTeam, awayTeam: ev.awayTeam,
         pickTeam: s.side === "tie" ? "TIE" : s.sideCode,
         threshold: null, direction: null,
