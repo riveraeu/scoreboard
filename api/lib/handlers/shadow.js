@@ -663,6 +663,69 @@ async function _gradeTennisRows(tennisRows) {
   return { updates, noData };
 }
 
+// ── /api/kalshi-dryrun-check ─────────────────────────────────────────────────
+// Standing read-only diagnostic (added 2026-07-24): recomputes the Kalshi-settlement dry-run
+// agreement check (see kalshi-settlement.js and project_kalshi_settlement_grading_2026_07_23
+// memory) on demand against every already-ESPN-graded row that carries a kalshi_ticker, instead
+// of depending on catching a resolver cron's console.log output within Vercel's log retention
+// window. ADMIN_KEY only; GET, no DB writes — mirrors /api/kalshi-check's idiom. Same functions
+// the resolver's own dry-run pass uses (fetchKalshiSettlements/resolveRowViaKalshi), just called
+// standalone. `won` on shadow_plays is ESPN's verdict (existing resolvers); this endpoint never
+// writes it, purely a comparison surface.
+async function handleKalshiDryrunCheck({ path, request, env }) {
+  if (path !== "kalshi-dryrun-check") return null;
+
+  const bearer = (request.headers.get("authorization") || "").replace(/^Bearer\s+/, "");
+  if (!env?.ADMIN_KEY || bearer !== env.ADMIN_KEY) return errorResponse("Forbidden", 403);
+
+  if (!env?.POSTGRES_URL && !env?.NEON_DATABASE_URL) return errorResponse("POSTGRES_URL not set", 500);
+
+  const rows = await neonQuery(
+    `SELECT id, sport, stat, kalshi_ticker, kalshi_side, won, game_date
+     FROM ${SHADOW_TABLE}
+     WHERE kalshi_ticker IS NOT NULL AND won IS NOT NULL
+     ORDER BY game_date DESC`,
+    [], env
+  );
+
+  if (!rows.length) {
+    return jsonResponse({ ok: true, checked: 0, wouldResolve: 0, comparedAgainstEspn: 0, agree: 0, disagree: 0, bySport: {}, disagreements: [] });
+  }
+
+  const tickers = [...new Set(rows.map(r => r.kalshi_ticker))];
+  const settlements = await fetchKalshiSettlements(tickers);
+
+  let wouldResolve = 0, agree = 0, disagree = 0;
+  const bySport = new Map();
+  const disagreements = [];
+  for (const r of rows) {
+    const kalshiWon = resolveRowViaKalshi(r, settlements);
+    if (kalshiWon === null) continue;
+    wouldResolve++;
+    const rec = bySport.get(r.sport) || { agree: 0, disagree: 0 };
+    if (r.won === kalshiWon) { agree++; rec.agree++; }
+    else {
+      disagree++; rec.disagree++;
+      if (disagreements.length < 20) {
+        disagreements.push({ id: r.id, sport: r.sport, stat: r.stat, ticker: r.kalshi_ticker, side: r.kalshi_side, espnWon: r.won, kalshiWon, gameDate: r.game_date ? new Date(r.game_date).toISOString().slice(0, 10) : null });
+      }
+    }
+    bySport.set(r.sport, rec);
+  }
+
+  return jsonResponse({
+    ok: true,
+    checked: rows.length,
+    settlementsFound: settlements.size,
+    wouldResolve,
+    comparedAgainstEspn: agree + disagree,
+    agree,
+    disagree,
+    bySport: Object.fromEntries(bySport),
+    disagreements,
+  });
+}
+
 async function handleShadowResolver({ path, request, env, cache }) {
   if (path !== "shadow-resolver") return null;
 
@@ -3838,6 +3901,9 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
 
   const shadowResolverResp = await handleShadowResolver({ path, request, env, cache });
   if (shadowResolverResp) return shadowResolverResp;
+
+  const kalshiDryrunResp = await handleKalshiDryrunCheck({ path, request, env });
+  if (kalshiDryrunResp) return kalshiDryrunResp;
 
   const pregameResp = await handleShadowPregameSnap({ path, request, env, cache });
   if (pregameResp) return pregameResp;
