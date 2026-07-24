@@ -671,7 +671,9 @@ async function _gradeTennisRows(tennisRows) {
 // window. ADMIN_KEY only; GET, no DB writes — mirrors /api/kalshi-check's idiom. Same functions
 // the resolver's own dry-run pass uses (fetchKalshiSettlements/resolveRowViaKalshi), just called
 // standalone. `won` on shadow_plays is ESPN's verdict (existing resolvers); this endpoint never
-// writes it, purely a comparison surface.
+// writes it, purely a comparison surface. `?funnel=1` breaks the two WHERE conditions
+// (kalshi_ticker capture vs ESPN resolution) apart instead of just their intersection, plus a
+// per-game_date and per-sport(last 7d) ticker-coverage breakdown — explains a low `checked` count.
 async function handleKalshiDryrunCheck({ path, request, env }) {
   if (path !== "kalshi-dryrun-check") return null;
 
@@ -679,6 +681,35 @@ async function handleKalshiDryrunCheck({ path, request, env }) {
   if (!env?.ADMIN_KEY || bearer !== env.ADMIN_KEY) return errorResponse("Forbidden", 403);
 
   if (!env?.POSTGRES_URL && !env?.NEON_DATABASE_URL) return errorResponse("POSTGRES_URL not set", 500);
+
+  // ?funnel=1 — explains a low `checked` count: breaks the WHERE clause's two conditions apart
+  // (kalshi_ticker capture vs ESPN resolution) instead of just reporting their intersection.
+  if (new URL(request.url).searchParams.get("funnel") === "1") {
+    const [overall, byDate, byGate] = await Promise.all([
+      neonQuery(`
+        SELECT COUNT(*)::int AS total,
+          COUNT(*) FILTER (WHERE kalshi_ticker IS NOT NULL)::int AS has_ticker,
+          COUNT(*) FILTER (WHERE resolved)::int AS resolved,
+          COUNT(*) FILTER (WHERE won IS NOT NULL)::int AS has_won,
+          COUNT(*) FILTER (WHERE resolved AND won IS NULL)::int AS resolved_but_void,
+          COUNT(*) FILTER (WHERE kalshi_ticker IS NOT NULL AND won IS NOT NULL)::int AS both
+        FROM ${SHADOW_TABLE}`, [], env),
+      neonQuery(`
+        SELECT game_date,
+          COUNT(*)::int AS total,
+          COUNT(*) FILTER (WHERE kalshi_ticker IS NOT NULL)::int AS has_ticker
+        FROM ${SHADOW_TABLE}
+        GROUP BY game_date ORDER BY game_date DESC LIMIT 10`, [], env),
+      neonQuery(`
+        SELECT sport,
+          COUNT(*)::int AS total,
+          COUNT(*) FILTER (WHERE kalshi_ticker IS NOT NULL)::int AS has_ticker
+        FROM ${SHADOW_TABLE}
+        WHERE game_date >= to_char(CURRENT_DATE - 7, 'YYYY-MM-DD')
+        GROUP BY sport ORDER BY total DESC`, [], env),
+    ]);
+    return jsonResponse({ ok: true, overall: overall[0], byDate, last7dBySport: byGate });
+  }
 
   const rows = await neonQuery(
     `SELECT id, sport, stat, kalshi_ticker, kalshi_side, won, game_date
