@@ -30,6 +30,8 @@ const LEGACY_TEAM_NORM = {
   ligamx: {}, // canonical = Kalshi abbrs, no aliases (like mls/lmb/brasileirao/nwsl/chnsl)
   scocup: {}, // canonical = ESPN abbrs (not Kalshi's — see teams.js scocup comment for the
   // "DUN" collision); team identity resolved from subtitle text, not TEAM_NORM/parseGameTeams.
+  argprem: {}, // canonical = Kalshi abbrs, no aliases (like mls/lmb/brasileirao/nwsl/chnsl/
+  // ligamx) — RIV/IRM resolved via displayName in argprem.js's canonTeam, not TEAM_NORM.
 };
 
 const LEGACY_VALID_TEAMS = {
@@ -44,6 +46,7 @@ const LEGACY_VALID_TEAMS = {
   nwsl: ["WSP","DEN","SAN","REI","URO","NCC","KC","BOS","PTH","GOT","OPR","CHI","HDA","BAY"],
   chnsl: ["ZHP","DAL","CHR","BJG","SHT","HEN","YUN","SHE","WUH","CHO","LIT","QIN","QWC","SHP","SHS","TTT"],
   ligamx: ["ALA","AME","ASL","ATL","CDG","JUA","LEO","MON","NCX","PAC","QUE","SLA","TIG","TIJ"],
+  argprem: ["BAN","BAR","BOC","CAA","CAI","CAT","CC","DYJ","ELP","GEM","GLP","HUR","IACC","IRM","LAN","NOB","PLA","RAC","RCU","RIE","RIV","SLA","TIG","TUC","UNI","VEL"],
 };
 
 const LEGACY_CANONICAL_TO_ESPN = {
@@ -56,6 +59,7 @@ const LEGACY_CANONICAL_TO_ESPN = {
   nwsl: { WSP: "WAS", SAN: "SD", REI: "SEA", URO: "UTA", NCC: "NC", PTH: "POR", GOT: "GFC", OPR: "ORL", HDA: "HOU" },
   chnsl: { ZHP: "ZHE", DAL: "DYI", CHR: "CHE", BJG: "BG", SHE: "SHX", WUH: "WTT", LIT: "LIA", SHP: "SIPG", SHS: "SHE", TTT: "TIG" },
   ligamx: { ALA: "ATL", ATL: "ATS", CDG: "GDL", MON: "MTY", QUE: "QRO", SLA: "SAN", TIG: "UANL" },
+  argprem: { BOC: "CABJ", CAA: "ALDO", CAI: "IND", CAT: "TALL", CC: "CTR", ELP: "EST", GEM: "GMZ", RCU: "AAE", SLA: "SLO", TUC: "CAT", UNI: "USF" },
 };
 
 const LEGACY_WNBA_TEAM_IDS = {

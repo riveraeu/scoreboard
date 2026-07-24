@@ -18,14 +18,20 @@
 // Every event on the scoreboard (played or not) → [{ date (PT), gameTime (ISO kickoff), home,
 // away, homeScore, awayScore, completed }] canonical abbrs. Ties are kept (soccer allows draws)
 // and incomplete games are kept too (the emit path needs an upcoming kickoff time).
+//
+// canonTeam(abbr, displayName) — displayName added 2026-07-24 for leagues where ESPN's OWN
+// abbreviation isn't unique (Argentina Liga Profesional reuses "RIV" for both River Plate AND
+// Independiente Rivadavia — confirmed via ESPN's own /teams endpoint, not a Kalshi-side issue).
+// Every other league's canonTeam ignores the 2nd arg — backward compatible, no other wrapper
+// needed to change.
 function parseEvents(events, canonTeam) {
   const out = [];
   for (const ev of (events || [])) {
     const comp = ev?.competitions?.[0];
     const home = comp?.competitors?.find((c) => c.homeAway === "home");
     const away = comp?.competitors?.find((c) => c.homeAway === "away");
-    const hAbbr = canonTeam(home?.team?.abbreviation || "");
-    const aAbbr = canonTeam(away?.team?.abbreviation || "");
+    const hAbbr = canonTeam(home?.team?.abbreviation || "", home?.team?.displayName || "");
+    const aAbbr = canonTeam(away?.team?.abbreviation || "", away?.team?.displayName || "");
     if (!hAbbr || !aAbbr) continue;
     const completed = !!comp?.status?.type?.completed;
     const hs = Number(home?.score), as = Number(away?.score);
@@ -132,7 +138,7 @@ export function makeSoccerModelFreeSource({ espnSlug, canonTeam, cacheKeyPrefix 
       const h1 = {}, h2 = {};
       let home = null, away = null;
       for (const c of (hdrComp?.competitors || [])) {
-        const canon = canonTeam(c?.team?.abbreviation || "");
+        const canon = canonTeam(c?.team?.abbreviation || "", c?.team?.displayName || "");
         if (!canon) return;
         const ls = c?.linescores || [];
         const g1 = parseInt(ls[0]?.displayValue ?? ls[0]?.value, 10);

@@ -349,6 +349,50 @@ export const TEAMS = {
     { abbr: "STM", kalshiName: "St. Mirren" },
     { abbr: "STR", kalshiName: "Stranraer" },
   ],
+  // Argentina Liga Profesional de Fútbol ("Argentina Premier Division" on Kalshi) — game winner
+  // + spread/total/BTTS (KXARGPREMDIVGAME/SPREAD/TOTAL/BTTS, adopted 2026-07-24 — found via the
+  // 2141-row kalshi_series_seen baseline backlog sweep, see project_baseline_backlog_2026_07_24
+  // memory). Canonical = Kalshi's own abbr (standard pattern, unlike scocup — Kalshi's OWN side
+  // has only one real collision here, not a systemic one). Two landmines:
+  // (1) COLLISION — Kalshi's "CAT" is Talleres Córdoba, which textually collides with ESPN's OWN
+  //     "CAT" (a DIFFERENT club, Atlético Tucumán) — same class as CHNSL "SHE"/LigaMX "ATL".
+  //     Kalshi's code for Tucumán is "TUC", mapped to ESPN's real "CAT" below.
+  // (2) ESPN-OWN COLLISION (new class, not Kalshi's fault) — ESPN's OWN /teams endpoint reuses
+  //     abbreviation "RIV" for TWO different real clubs: River Plate and Independiente
+  //     Rivadavia (Kalshi correctly distinguishes them as "RIV" and "IRM"). A flat espnScore
+  //     entry can't represent "two canonical codes map to the same ESPN abbr" — resolved instead
+  //     in api/lib/argprem.js's canonTeam via the displayName soccer-modelfree.js now threads
+  //     through (see its 2026-07-24 header comment): "RIV" abbr + displayName containing
+  //     "Rivadavia" → canonical "IRM", else → canonical "RIV". No espnScore entry for RIV/IRM
+  //     here — the logic lives in code, not the registry, since it needs the displayName.
+  argprem: [
+    { abbr: "BAN" },                    // Banfield
+    { abbr: "BAR" },                    // Barracas Central
+    { abbr: "BOC", espnScore: "CABJ" }, // Boca Juniors
+    { abbr: "CAA", espnScore: "ALDO" }, // Aldosivi
+    { abbr: "CAI", espnScore: "IND" },  // Independiente (Avellaneda)
+    { abbr: "CAT", espnScore: "TALL" }, // Talleres (Córdoba) — see collision note above
+    { abbr: "CC", espnScore: "CTR" },   // Central Córdoba (Santiago del Estero)
+    { abbr: "DYJ" },                    // Defensa y Justicia
+    { abbr: "ELP", espnScore: "EST" },  // Estudiantes de La Plata
+    { abbr: "GEM", espnScore: "GMZ" },  // Gimnasia (Mendoza)
+    { abbr: "GLP" },                    // Gimnasia La Plata
+    { abbr: "HUR" },                    // Huracán
+    { abbr: "IACC" },                   // Instituto (Córdoba)
+    { abbr: "IRM" },                    // Independiente Rivadavia — see ESPN-own-collision note above
+    { abbr: "LAN" },                    // Lanús
+    { abbr: "NOB" },                    // Newell's Old Boys
+    { abbr: "PLA" },                    // Platense
+    { abbr: "RAC" },                    // Racing Club (Avellaneda)
+    { abbr: "RCU", espnScore: "AAE" },  // Estudiantes de Río Cuarto
+    { abbr: "RIE" },                    // Deportivo Riestra
+    { abbr: "RIV" },                    // River Plate — see ESPN-own-collision note above
+    { abbr: "SLA", espnScore: "SLO" },  // San Lorenzo de Almagro
+    { abbr: "TIG" },                    // Tigre
+    { abbr: "TUC", espnScore: "CAT" },  // Atlético Tucumán — see collision note above
+    { abbr: "UNI", espnScore: "USF" },  // Unión (Santa Fe)
+    { abbr: "VEL" },                    // Vélez Sarsfield
+  ],
 };
 
 // ── Derived maps (legacy shapes, re-exported from their historical modules) ──────

@@ -1,25 +1,29 @@
 // api/lib/tonight/club-soccer-threshold.js
-// emitClubSoccerThresholdPlays — MLS + Liga MX 1H spread/total/BTTS + full-game team-total,
-// Phase 1, model-free (adopted 2026-07-23, see project_mls_ligamx_threshold_2026_07_23 memory).
-// One shared array + module for both leagues (sport-tagged per row) — unlike the per-league
-// GAME-winner modules (club-soccer-ml.js/ligamx-ml.js), team identity here needs no
-// subtitle-based disambiguation (MLS/LigaMX have no abbr collision, see scocup.js for the
-// league that does), so there was no forcing reason to keep the leagues in separate files.
+// emitClubSoccerThresholdPlays — MLS + Liga MX 1H spread/total/BTTS + full-game team-total
+// (adopted 2026-07-23), plus Argentina Liga Profesional's full-game spread/total/BTTS (added
+// 2026-07-24, no `half` tag — see project_baseline_backlog_2026_07_24 memory). Phase 1,
+// model-free. One shared array + module across all three leagues (sport-tagged per row) —
+// unlike the per-league GAME-winner modules (club-soccer-ml.js/ligamx-ml.js/argprem-ml.js),
+// team identity here needs no subtitle-based disambiguation (none of MLS/LigaMX/Argentina have
+// scocup's kind of Kalshi-abbr collision), so there's no forcing reason to keep them in
+// separate files. `half` is null for Argentina's full-game markets, same as the existing
+// full-game `teamTotal` entries.
 //
 // Follows soccer.js's WC OVER/UNDER row convention: kalshiPct always the YES/OVER ask,
 // noKalshiPct always the NO/UNDER ask; truePct/edge stay null (no model). dcQualified/qualified
 // are false — maker-only, never taker-bettable, same as every model-free module.
 //
 // Output goes into a dedicated `clubSoccerThresholdPlays` array (NOT the shared `plays` array),
-// merged into shadow:staging only. `mls|*`/`ligamx|*` threshold stats are not in the category
-// gate (same as the base ML families).
+// merged into shadow:staging only. `mls|*`/`ligamx|*`/`argprem|*` threshold stats are not in the
+// category gate (same as the base ML families).
 
 import { CAPTURE_GATE, CAPTURE_CAP } from "../config.js";
 import { getMlsSchedule } from "../mls.js";
 import { getLigaMxSchedule } from "../ligamx.js";
+import { getArgPremSchedule } from "../argprem.js";
 
 const inWindow = (pct) => pct >= CAPTURE_GATE && pct <= CAPTURE_CAP;
-const SCHEDULE_BY_SPORT = { mls: getMlsSchedule, ligamx: getLigaMxSchedule };
+const SCHEDULE_BY_SPORT = { mls: getMlsSchedule, ligamx: getLigaMxSchedule, argprem: getArgPremSchedule };
 
 export async function emitClubSoccerThresholdPlays(ctx) {
   const { clubSoccerThresholdMarkets, clubSoccerThresholdPlays, cutoffStr, cache, isBustCache } = ctx;

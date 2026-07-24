@@ -24,6 +24,7 @@ import { fetchBrasileiraoResults } from "../brasileirao.js";
 import { fetchNwslResults } from "../nwsl.js";
 import { fetchChnslResults } from "../chnsl.js";
 import { fetchLigaMxResults, fetchLigaMxHalfResults } from "../ligamx.js";
+import { fetchArgPremResults } from "../argprem.js";
 import { fetchScoCupResults } from "../scocup.js";
 import { deriveKalshiSide, fetchKalshiSettlements, resolveRowViaKalshi } from "../kalshi-settlement.js";
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER } from "../config.js";
@@ -801,7 +802,8 @@ async function handleShadowResolver({ path, request, env, cache }) {
   const chnslRows = rows.filter(r => r.sport === "chnsl");
   const ligamxRows = rows.filter(r => r.sport === "ligamx");
   const scocupRows = rows.filter(r => r.sport === "scocup");
-  const teamRows = rows.filter(r => r.sport !== "tennis" && r.sport !== "soccer" && r.sport !== "fight" && r.sport !== "golf" && r.sport !== "nascar" && r.sport !== "nbasl" && r.sport !== "lmb" && r.sport !== "mls" && r.sport !== "brasileirao" && r.sport !== "nwsl" && r.sport !== "chnsl" && r.sport !== "ligamx" && r.sport !== "scocup");
+  const argPremRows = rows.filter(r => r.sport === "argprem");
+  const teamRows = rows.filter(r => r.sport !== "tennis" && r.sport !== "soccer" && r.sport !== "fight" && r.sport !== "golf" && r.sport !== "nascar" && r.sport !== "nbasl" && r.sport !== "lmb" && r.sport !== "mls" && r.sport !== "brasileirao" && r.sport !== "nwsl" && r.sport !== "chnsl" && r.sport !== "ligamx" && r.sport !== "scocup" && r.sport !== "argprem");
 
   // Build unique game keys per date. Key: sport:away:home[@gameTime] — matches /api/live format.
   const keysByDate = new Map(); // game_date → Set<rawKey>
@@ -1300,6 +1302,25 @@ async function handleShadowResolver({ path, request, env, cache }) {
       if (actual == null) return null;
       return { won: isUnder ? actual < th : actual >= th, actual };
     }
+    // Full-game spread/total/BTTS (Argentina Liga Profesional, adopted 2026-07-24 — no half
+    // family, so `g` is fetchResults' plain shape: homeScore/awayScore only, no h1-prefixed
+    // fields). Same math as the 1h branches above, off the full-game score instead.
+    if (r.stat === "total") {
+      const actual = g.homeScore + g.awayScore;
+      return { won: isUnder ? actual < th : actual >= th, actual };
+    }
+    if (r.stat === "spread") {
+      const favScore = g.home === r.pick_team ? g.homeScore : (g.away === r.pick_team ? g.awayScore : null);
+      if (favScore == null) return null;
+      const oppScore = r.pick_team === g.home ? g.awayScore : g.homeScore;
+      const actual = favScore - oppScore;
+      const covered = actual > th;
+      return { won: isUnder ? !covered : covered, actual };
+    }
+    if (r.stat === "btts") {
+      const btts = g.homeScore >= 1 && g.awayScore >= 1;
+      return { won: isUnder ? !btts : btts, actual: null };
+    }
     return null;
   };
 
@@ -1497,6 +1518,39 @@ async function handleShadowResolver({ path, request, env, cache }) {
         const g = halfResults[key];
         if (!g) { noData++; continue; } // game not played / not final yet
         const graded = r.stat === "1hgame" ? _grade3Way(r, g, true) : _gradeThreshold(r, g);
+        if (!graded) { noData++; continue; }
+        updates.push({ id: r.id, won: graded.won, actualValue: graded.actual });
+      }
+    }
+  }
+
+  // ── Argentina Liga Profesional resolution ── 3-way game winner + full-game spread/total/BTTS,
+  // model-free (found via the 2141-row kalshi_series_seen baseline backlog sweep, adopted
+  // 2026-07-24, see project_baseline_backlog_2026_07_24 memory). Off the ESPN arg.1 scoreboard
+  // (api/lib/argprem.js) — no half family here, so every stat grades off the same plain
+  // fetchArgPremResults() (homeScore/awayScore only), sharing the `_grade3Way`/`_gradeThreshold`
+  // helpers defined above.
+  if (argPremRows.length) {
+    const dateOf = (r) => r.game_date
+      ? new Date(r.game_date).toISOString().slice(0, 10)
+      : (r.snapshot_date ? new Date(r.snapshot_date).toISOString().slice(0, 10) : null);
+    const byDate = new Map();
+    for (const r of argPremRows) {
+      const date = dateOf(r);
+      if (!date) { noData++; continue; }
+      if (!byDate.has(date)) byDate.set(date, []);
+      byDate.get(date).push(r);
+    }
+    const resultsByDate = new Map();
+    await Promise.all([...byDate.keys()].map(async (date) => {
+      resultsByDate.set(date, await fetchArgPremResults(date.replace(/-/g, "")));
+    }));
+    for (const [date, rws] of byDate) {
+      const results = resultsByDate.get(date) || {};
+      for (const r of rws) {
+        const g = results[[r.home_team, r.away_team].sort().join("|")];
+        if (!g) { noData++; continue; } // game not played / not final yet
+        const graded = r.stat === "game" ? _grade3Way(r, g, false) : _gradeThreshold(r, g);
         if (!graded) { noData++; continue; }
         updates.push({ id: r.id, won: graded.won, actualValue: graded.actual });
       }

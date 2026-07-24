@@ -137,6 +137,18 @@ export const SERIES_CONFIG = {
   KXLIGAMX1HSPREAD:{ sport: "ligamx", league: "ligamx", stat: "1hspread", col: "G", gameType: "clubSoccerThreshold", subtype: "spread",  half: "1h" },
   KXLIGAMX1HTOTAL: { sport: "ligamx", league: "ligamx", stat: "1htotal", col: "G", gameType: "clubSoccerThreshold", subtype: "total",    half: "1h" },
   KXLIGAMXTEAMTOTAL:{ sport: "ligamx", league: "ligamx", stat: "teamTotal", col: "G", gameType: "clubSoccerThreshold", subtype: "teamTotal" },
+  // Argentina Liga Profesional de Fútbol game winner + full-game spread/total/BTTS — model-free,
+  // found via the 2141-row kalshi_series_seen baseline backlog sweep (adopted 2026-07-24, see
+  // project_baseline_backlog_2026_07_24 memory). GAME reuses the clubSoccerMl-style dedicated
+  // module (api/lib/tonight/argprem-ml.js); spread/total/BTTS route through the shared
+  // clubSoccerThreshold gameType (no half tag — full game). Two team-mapping landmines: Kalshi's
+  // "CAT" (Talleres Córdoba) collides with ESPN's OWN "CAT" (Atlético Tucumán); ESPN's OWN
+  // /teams endpoint reuses "RIV" for both River Plate and Independiente Rivadavia — see the
+  // argprem registry comment in teams.js.
+  KXARGPREMDIVGAME:   { sport: "argprem", league: "argprem", stat: "game",     col: "ML", gameType: "argPremMl" },
+  KXARGPREMDIVSPREAD: { sport: "argprem", league: "argprem", stat: "spread",   col: "G",  gameType: "clubSoccerThreshold", subtype: "spread" },
+  KXARGPREMDIVTOTAL:  { sport: "argprem", league: "argprem", stat: "total",    col: "G",  gameType: "clubSoccerThreshold", subtype: "total" },
+  KXARGPREMDIVBTTS:   { sport: "argprem", league: "argprem", stat: "btts",     col: "G",  gameType: "clubSoccerThreshold", subtype: "btts" },
   // Scottish League Cup spread + total — maker-viable, model-free (adopted 2026-07-23, see
   // project_scocup_spread_total_2026_07_23 memory). First model-free THRESHOLD market (the 5
   // leagues above are all 3-way ML) — dedicated emit path (api/lib/tonight/scocup.js) pushes
