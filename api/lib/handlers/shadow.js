@@ -1,7 +1,12 @@
-// /api/shadow-snapshot — daily cron that logs ALL model predictions to Neon for
+// /api/shadow-snapshot — cron that logs ALL model predictions to Neon for
 // unbiased shadow calibration. No edge gate, no dc gate — captures the full distribution.
 // Auth: CRON_SECRET (same pattern as kalshi-snapshot).
-// Cron: 0 22 * * * (3pm PT — after most lineup confirmations, before first pitch).
+// Cron: 4 runs/day — 5 15,10 15,5 22,35 22 * * * UTC (8:05am, 8:10am, 3:05pm, 3:35pm PT). Rows
+// upsert with ON CONFLICT (id) DO NOTHING (neonBatchUpsert default) — the FIRST run of the day to
+// see a given shadowId locks in whatever it captured (incl. any newly-added column that's null
+// because a same-day deploy landed after that run); later runs that day can't backfill it. Found
+// 2026-07-24 explaining a one-day gap in kalshi_ticker coverage right after the column shipped —
+// see project_kalshi_dryrun_check_endpoint_2026_07_24 memory, not a capture-code bug.
 
 import { neonQuery, neonBatchUpsert, neonBatchResolve, neonBatchPrePriceUpdate, neonExec } from "../neon.js";
 import { fetchTradeFlow } from "../kalshi-flow.js";
