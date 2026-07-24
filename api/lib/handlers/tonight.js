@@ -36,6 +36,7 @@ import { emitBrasileiraoMlPlays } from "../tonight/brasileirao-ml.js";
 import { emitNwslMlPlays } from "../tonight/nwsl-ml.js";
 import { emitChnslMlPlays } from "../tonight/chnsl-ml.js";
 import { emitLigaMxMlPlays } from "../tonight/ligamx-ml.js";
+import { emitScoCupPlays } from "../tonight/scocup.js";
 import { emitMlbOutsPlays } from "../tonight/mlb-outs.js";
 import { fetchPolymarketGames } from "../polymarket.js";
 import { emitPolymarketDeltas } from "../tonight/polymarket-deltas.js";
@@ -283,6 +284,8 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
         const nwslMarkets = []; // NWSL game winner (model-free) — same shape, separate array (different ESPN league endpoint)
         const chnslMarkets = []; // Chinese Super League game winner (model-free) — same shape, separate array (different ESPN league endpoint)
         const ligamxMarkets = []; // Liga MX game winner (model-free) — same shape, separate array (different ESPN league endpoint)
+        const scocupSpreadMarkets = []; // Scottish League Cup spread (model-free, threshold shape) — each priced threshold carries its team's subtitle name
+        const scocupTotalMarkets = []; // Scottish League Cup total (model-free, threshold shape) — no team identity, joined to spread siblings by event segment
         const outsMarkets = []; // MLB pitcher outs-recorded O/U (KXMLBOUTS) — each priced threshold carries its pitcher
         const globalSeen = /* @__PURE__ */ new Set();
         for (let i = 0; i < seriesTickers.length; i++) {
@@ -765,6 +768,86 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               }
               const _lgAO = (pct) => pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
               ligamxMarkets.push({ eventTicker: m.event_ticker, homeTeam: _lgHome, awayTeam: _lgAway, side: _lgSide, sideCode: _lgSideCode, gameDate: _lgGameDate, kalshiPct: _lgYesPct, noKalshiPct: _lgNoPct, americanOdds: _lgAO(_lgYesPct), kalshiVolume: _lgVol, _ticker: m.ticker, _depth: m._depth });
+              continue;
+            }
+            // ── Scottish League Cup spread branch ── threshold market ("<team> wins by more
+            // than N.5 goals"), model-free (see tonight/scocup.js). Team identity comes from the
+            // market's subtitle text, NOT the 3-char ticker code — Kalshi reuses "DUN" for two
+            // different clubs across events (see the scocup registry comment in teams.js), so
+            // resolving from the human-readable subtitle sidesteps the collision entirely. The
+            // segment (date + team-code pair, e.g. "26JUL26MIRDUN") is shared with the sibling
+            // KXSCOCUPTOTAL series and used to join them in the emit path.
+            if (cfg.gameType === "scocupSpread") {
+              // Threshold parsed from the subtitle text ("<team> wins by more than 2.5 goals"),
+              // not floor_strike — the raw/displayed-value offset convention for this series
+              // wasn't independently verifiable (Kalshi's public API isn't reachable from every
+              // environment this runs in), and the subtitle states the number directly.
+              const _scsSub = m.subtitle || m.yes_sub_title || "";
+              const _scsMatch = _scsSub.match(/wins by more than\s+([\d.]+)\s+goals/i);
+              if (!_scsMatch) continue;
+              const _scsStrike = parseFloat(_scsMatch[1]);
+              if (isNaN(_scsStrike)) continue;
+              const _scsYesAsk = parseFloat(m.yes_ask_dollars) || 0;
+              const _scsNoAsk = parseFloat(m.no_ask_dollars) || 0;
+              const _scsLast = parseFloat(m.last_price_dollars) || 0;
+              const _scsYesBid = parseFloat(m.yes_bid_dollars) || 0;
+              const _scsNoBid = parseFloat(m.no_bid_dollars) || 0;
+              const _scsStale = _scsYesAsk >= 0.98 && _scsYesBid === 0 && _scsLast > 0;
+              const _scsPrice = _scsStale ? _scsLast : (_scsYesAsk > 0 ? _scsYesAsk : _scsLast);
+              if (_scsPrice === 0) continue; // no live book — skip (books fill near kickoff)
+              const _scsYesSpreadC = _scsYesAsk > 0 ? Math.round((_scsYesAsk - _scsYesBid) * 100) : 999;
+              const _scsNoSpreadC = _scsNoAsk > 0 ? Math.round((_scsNoAsk - _scsNoBid) * 100) : 999;
+              if (!_scsStale && !capturableSpread(Math.min(_scsYesSpreadC, _scsNoSpreadC))) continue;
+              const _scsYesPct = Math.round(_scsPrice * 100);
+              const _scsNoPct = _scsNoAsk > 0 ? Math.round(_scsNoAsk * 100) : (100 - _scsYesPct);
+              const _scsVol = parseInt(m.volume_fp) || parseInt(m.volume) || 0;
+              const _scsTeamName = _scsSub.split(" wins by")[0].trim();
+              if (!_scsTeamName) continue;
+              const _scsSegment = (m.event_ticker || "").split("-")[1] || "";
+              let _scsGameDate = null;
+              if (_scsSegment.length >= 7) {
+                const _KMONT = { JAN: "01", FEB: "02", MAR: "03", APR: "04", MAY: "05", JUN: "06", JUL: "07", AUG: "08", SEP: "09", OCT: "10", NOV: "11", DEC: "12" };
+                const _scsMo = _KMONT[_scsSegment.slice(2, 5).toUpperCase()];
+                if (_scsMo) _scsGameDate = `20${_scsSegment.slice(0, 2)}-${_scsMo}-${_scsSegment.slice(5, 7)}`;
+              }
+              const _scsAO = (pct) => pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
+              scocupSpreadMarkets.push({ segment: _scsSegment, gameDate: _scsGameDate, teamName: _scsTeamName, threshold: _scsStrike, line: _scsStrike, kalshiPct: _scsYesPct, noKalshiPct: _scsNoPct, americanOdds: _scsAO(_scsYesPct), noAmericanOdds: _scsAO(_scsNoPct), kalshiVolume: _scsVol, eventTicker: m.event_ticker, _ticker: m.ticker, _depth: m._depth });
+              continue;
+            }
+            // ── Scottish League Cup total branch ── threshold market ("Over N.5 goals scored"),
+            // model-free, same doctrine as the spread branch above. No team subtitle — joined to
+            // its spread siblings by the shared event segment in the emit path.
+            if (cfg.gameType === "scocupTotal") {
+              // Threshold parsed from the subtitle text ("Over 2.5 goals scored") — same
+              // rationale as the spread branch above (floor_strike offset unverified).
+              const _sctSub = m.subtitle || m.yes_sub_title || "";
+              const _sctMatch = _sctSub.match(/Over\s+([\d.]+)\s+goals\s+scored/i);
+              if (!_sctMatch) continue;
+              const _sctStrike = parseFloat(_sctMatch[1]);
+              if (isNaN(_sctStrike)) continue;
+              const _sctYesAsk = parseFloat(m.yes_ask_dollars) || 0;
+              const _sctNoAsk = parseFloat(m.no_ask_dollars) || 0;
+              const _sctLast = parseFloat(m.last_price_dollars) || 0;
+              const _sctYesBid = parseFloat(m.yes_bid_dollars) || 0;
+              const _sctNoBid = parseFloat(m.no_bid_dollars) || 0;
+              const _sctStale = _sctYesAsk >= 0.98 && _sctYesBid === 0 && _sctLast > 0;
+              const _sctPrice = _sctStale ? _sctLast : (_sctYesAsk > 0 ? _sctYesAsk : _sctLast);
+              if (_sctPrice === 0) continue; // no live book — skip (books fill near kickoff)
+              const _sctYesSpreadC = _sctYesAsk > 0 ? Math.round((_sctYesAsk - _sctYesBid) * 100) : 999;
+              const _sctNoSpreadC = _sctNoAsk > 0 ? Math.round((_sctNoAsk - _sctNoBid) * 100) : 999;
+              if (!_sctStale && !capturableSpread(Math.min(_sctYesSpreadC, _sctNoSpreadC))) continue;
+              const _sctYesPct = Math.round(_sctPrice * 100);
+              const _sctNoPct = _sctNoAsk > 0 ? Math.round(_sctNoAsk * 100) : (100 - _sctYesPct);
+              const _sctVol = parseInt(m.volume_fp) || parseInt(m.volume) || 0;
+              const _sctSegment = (m.event_ticker || "").split("-")[1] || "";
+              let _sctGameDate = null;
+              if (_sctSegment.length >= 7) {
+                const _KMONT = { JAN: "01", FEB: "02", MAR: "03", APR: "04", MAY: "05", JUN: "06", JUL: "07", AUG: "08", SEP: "09", OCT: "10", NOV: "11", DEC: "12" };
+                const _sctMo = _KMONT[_sctSegment.slice(2, 5).toUpperCase()];
+                if (_sctMo) _sctGameDate = `20${_sctSegment.slice(0, 2)}-${_sctMo}-${_sctSegment.slice(5, 7)}`;
+              }
+              const _sctAO = (pct) => pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
+              scocupTotalMarkets.push({ segment: _sctSegment, gameDate: _sctGameDate, threshold: _sctStrike, line: _sctStrike, kalshiPct: _sctYesPct, noKalshiPct: _sctNoPct, americanOdds: _sctAO(_sctYesPct), noAmericanOdds: _sctAO(_sctNoPct), kalshiVolume: _sctVol, eventTicker: m.event_ticker, _ticker: m.ticker, _depth: m._depth });
               continue;
             }
             // ── MLB pitcher outs-recorded branch ── threshold ladder per starter ("Senga: 15+").
@@ -2194,6 +2277,16 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           ligamxMarkets, ligamxPlays, cutoffStr,
           cache: CACHE2, isBustCache,
         });
+        // ── Scottish League Cup spread + total — Phase 1, model-free, threshold shape (first
+        // maker module of this shape — see project_scocup_spread_total_2026_07_23 memory). Same
+        // dedicated-array idiom; merged into shadow:staging only. Real gameTime fetched from
+        // ESPN sco.cis (api/lib/scocup.js) — despite the "SCOCUP" ticker prefix, the real
+        // competition is the Scottish LEAGUE Cup, not the Scottish Cup proper (verified live).
+        const scocupPlays = [];
+        await emitScoCupPlays({
+          scocupSpreadMarkets, scocupTotalMarkets, scocupPlays, dropped, isDebug, cutoffStr,
+          cache: CACHE2, isBustCache,
+        });
         // ── MLB pitcher outs-recorded (KXMLBOUTS) — Phase 1, shadow-only. Prop-shaped rows in a
         // dedicated array (NOT `plays`) so they bypass dedup/gameTime-filter/card-builder; merged
         // into shadow:staging only. Normal workload model off pitcherStatsByName, favorite side.
@@ -2357,7 +2450,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           }
           // Tennis plays live in their own array (kept out of `plays` to bypass dedup/frontend);
           // merge them into the staging `plays` so shadow-snapshot logs them like any other play.
-          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays: [...plays, ...tennisPlays, ...soccerPlays, ...soccerAdvancePlays, ...fightPlays, ...golfH2hPlays, ...nascarPlays, ...nbaSummerPlays, ...lmbPlays, ...clubSoccerPlays, ...brasileiraoPlays, ...nwslPlays, ...chnslPlays, ...ligamxPlays, ...outsPlays], dropped, schedule: _schedCounts, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, writtenAt: Date.now() }), { expirationTtl: 21600 }).catch(() => {});
+          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays: [...plays, ...tennisPlays, ...soccerPlays, ...soccerAdvancePlays, ...fightPlays, ...golfH2hPlays, ...nascarPlays, ...nbaSummerPlays, ...lmbPlays, ...clubSoccerPlays, ...brasileiraoPlays, ...nwslPlays, ...chnslPlays, ...ligamxPlays, ...scocupPlays, ...outsPlays], dropped, schedule: _schedCounts, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, writtenAt: Date.now() }), { expirationTtl: 21600 }).catch(() => {});
         }
         if (isDebug) {
           const nbaGlLabels = Object.fromEntries(Object.entries(playerGamelogs).filter(([k]) => k.startsWith("nba|")).map(([k, gl]) => [k, gl?.ul ?? null]));
@@ -2371,7 +2464,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             meta: kalshiSnapMeta,
             ageMs: kalshiSnapMeta?.lastRunAt ? Date.now() - kalshiSnapMeta.lastRunAt : null,
           };
-          return jsonResponse({ fdProbe: { milestones: _fdMilestones, atEnd: await _fdProbe() }, plays: debugPlays, dropped: debugDropped, preDropped: debugPreDropped, tennisPlays, tennisMarketCount: tennisMatchMarkets.length, soccerPlays, soccerMarketCount: soccerMarkets.length, soccerAdvancePlays, soccerAdvanceMarketCount: soccerAdvanceMarkets.length, fightPlays, fightMarketCount: fightMarkets.length, golfH2hPlays, golfH2hMarketCount: golfH2hMarkets.length, nascarPlays, nascarMarketCount: nascarMarkets.length, nbaSummerPlays, nbaSummerMarketCount: nbaSummerMarkets.length, lmbPlays, lmbMarketCount: lmbMarkets.length, clubSoccerPlays, clubSoccerMarketCount: clubSoccerMarkets.length, brasileiraoPlays, brasileiraoMarketCount: brasileiraoMarkets.length, nwslPlays, nwslMarketCount: nwslMarkets.length, chnslPlays, chnslMarketCount: chnslMarkets.length, ligamxPlays, ligamxMarketCount: ligamxMarkets.length, outsPlays, outsMarketCount: outsMarkets.length, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
+          return jsonResponse({ fdProbe: { milestones: _fdMilestones, atEnd: await _fdProbe() }, plays: debugPlays, dropped: debugDropped, preDropped: debugPreDropped, tennisPlays, tennisMarketCount: tennisMatchMarkets.length, soccerPlays, soccerMarketCount: soccerMarkets.length, soccerAdvancePlays, soccerAdvanceMarketCount: soccerAdvanceMarkets.length, fightPlays, fightMarketCount: fightMarkets.length, golfH2hPlays, golfH2hMarketCount: golfH2hMarkets.length, nascarPlays, nascarMarketCount: nascarMarkets.length, nbaSummerPlays, nbaSummerMarketCount: nbaSummerMarkets.length, lmbPlays, lmbMarketCount: lmbMarkets.length, clubSoccerPlays, clubSoccerMarketCount: clubSoccerMarkets.length, brasileiraoPlays, brasileiraoMarketCount: brasileiraoMarkets.length, nwslPlays, nwslMarketCount: nwslMarkets.length, chnslPlays, chnslMarketCount: chnslMarkets.length, ligamxPlays, ligamxMarketCount: ligamxMarkets.length, scocupPlays, scocupSpreadMarketCount: scocupSpreadMarkets.length, scocupTotalMarketCount: scocupTotalMarkets.length, outsPlays, outsMarketCount: outsMarkets.length, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
         }
         // Build mlbMeta: pitchers, ML odds, umpires, weather — keyed by team abbr or "home|away"
         // Pitcher entries: { name, id, era, wins, losses }. MLB Stats API (pitcherInfoByTeam) preferred

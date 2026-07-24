@@ -28,6 +28,8 @@ const LEGACY_TEAM_NORM = {
   nwsl: {}, // canonical = Kalshi abbrs, no aliases (like mls/lmb/brasileirao)
   chnsl: {}, // canonical = Kalshi abbrs, no aliases (like mls/lmb/brasileirao/nwsl)
   ligamx: {}, // canonical = Kalshi abbrs, no aliases (like mls/lmb/brasileirao/nwsl/chnsl)
+  scocup: {}, // canonical = ESPN abbrs (not Kalshi's — see teams.js scocup comment for the
+  // "DUN" collision); team identity resolved from subtitle text, not TEAM_NORM/parseGameTeams.
 };
 
 const LEGACY_VALID_TEAMS = {

@@ -122,6 +122,17 @@ export const SERIES_CONFIG = {
   // ESPN-fetch engine (api/lib/soccer-modelfree.js). Dedicated gameType (own parse branch/
   // array, resolves off mex.1).
   KXLIGAMXGAME: { sport: "ligamx", league: "ligamx", stat: "game", col: "ML", gameType: "ligamxMl" },
+  // Scottish League Cup spread + total — maker-viable, model-free (adopted 2026-07-23, see
+  // project_scocup_spread_total_2026_07_23 memory). First model-free THRESHOLD market (the 5
+  // leagues above are all 3-way ML) — dedicated emit path (api/lib/tonight/scocup.js) pushes
+  // over/under rows per threshold, no probability model. TICKER-NAME TRAP: despite the "SCOCUP"
+  // prefix this is the Scottish LEAGUE Cup (ESPN sco.cis), NOT the Scottish Cup proper
+  // (sco.tennents, dormant until ~September) — verified live, sco.tennents matched 0 of the 16
+  // live events, sco.cis matched 16/16. Team identity resolved from each market's subtitle text,
+  // not the 3-char ticker code — see the scocup registry comment in teams.js for the "DUN" abbr
+  // collision (Dundee FC vs Dunfermline) that makes an abbr-keyed map unsafe here.
+  KXSCOCUPSPREAD: { sport: "scocup", league: "scocup", stat: "spread", col: "G", gameType: "scocupSpread" },
+  KXSCOCUPTOTAL:  { sport: "scocup", league: "scocup", stat: "total",  col: "G", gameType: "scocupTotal"  },
   // Game totals
   KXMLBTOTAL:     { sport: "mlb",  league: "mlb",  stat: "totalRuns",   col: "R",   gameType: "total"     },
   KXNBATOTAL:     { sport: "nba",  league: "nba",  stat: "totalPoints", col: "PTS", gameType: "total"     },
@@ -677,8 +688,9 @@ export const DISMISSED_SERIES = [
   // SPREAD/TOTAL siblings showed 64/96 live markets on 2026-07-23 (see the two-track doctrine
   // note near the top of this list), meaning liquidity genuinely changed, not just a stale
   // no-model assumption. Removed from DISMISSED_SERIES, promoted to shortlisted (maker-candidate
-  // — the GAME market itself wasn't independently re-checked today, inferred from its siblings).
-  // NOT built.
+  // — the GAME market itself still wasn't independently re-checked, inferred from its siblings).
+  // SPREAD/TOTAL were built same-day (see SERIES_CONFIG above); GAME itself remains NOT built —
+  // pull a live sample before adding it, don't assume it's still 0.
   "KXINTLPLAYAGAIN", // Player-appearance novelty ("Ronaldo plays for Portugal") — KXWCPLAY/
   // KXBALOGUNPLAY/KXUFCFIGHTOCCUR class; windowFit=true is the usual favorite-appearance false
   // positive. 2 live. DISMISS.
@@ -740,9 +752,12 @@ export const DISMISSED_SERIES = [
   // PRINCIPLE it's maker-viable, but one-day-a-year + only 6 live markets is too thin to be worth
   // a special-case build (same "too thin for useful data" reasoning as the WNBA H2H points/PRA
   // deferral). STAYS dismissed on practical grounds, not the stale no-model reasoning.
-  // KXSCOCUPSPREAD, KXSCOCUPTOTAL RECLASSIFIED 2026-07-23 — 64/96 live markets, real books; the
-  // no-club-Elo blocker is TAKER-only (see the two-track doctrine note above). Removed from
-  // DISMISSED_SERIES, promoted to shortlisted. NOT built.
+  // KXSCOCUPSPREAD, KXSCOCUPTOTAL RECLASSIFIED + BUILT 2026-07-23 — 64/96 live markets, real
+  // books; the no-club-Elo blocker is TAKER-only (see the two-track doctrine note above).
+  // Removed from DISMISSED_SERIES; now in SERIES_CONFIG above (gameType scocupSpread/
+  // scocupTotal, model-free — see project_scocup_spread_total_2026_07_23 memory). Also surfaced
+  // that the ticker's "SCOCUP" prefix is a naming trap: the real competition is the Scottish
+  // LEAGUE Cup (ESPN sco.cis), not the Scottish Cup proper (sco.tennents, dormant in July).
   "KXWWEFIGHTOCCUR", // WWE wrestler crossing over into a real (non-scripted) fight — a booking/
   // business decision about WHETHER a crossover event happens at all, not a competitive outcome to
   // model. Bare shell (enrichment fetch found 0 live markets). DISMISS.

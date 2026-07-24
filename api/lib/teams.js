@@ -298,6 +298,57 @@ export const TEAMS = {
     { abbr: "TIG", espnScore: "UANL" }, // Tigres UANL
     { abbr: "TIJ" },                    // Tijuana
   ],
+  // Scottish League Cup spread/total (KXSCOCUPSPREAD/KXSCOCUPTOTAL, adopted 2026-07-23 —
+  // maker-viable per the two-track doctrine, model-free like the 5 GAME-winner leagues above,
+  // but a THRESHOLD market shape, not 3-way ML — see project_scocup_spread_total_2026_07_23
+  // memory). Canonical = ESPN's OWN sco.cis abbr, NOT Kalshi's — a deliberate deviation from
+  // every other league in this file. Reason: Kalshi reuses its own 3-char code "DUN" for TWO
+  // different clubs across different events (Dundee FC in one game, Dunfermline in another,
+  // confirmed live via /api/kalshi-check subtitles) — a flat abbr→canonical map is unsafe even
+  // before touching ESPN, so a Kalshi-abbr-keyed registry (the pattern every other league here
+  // uses) cannot represent this competition correctly. `kalshiName` instead records the exact
+  // human-readable name Kalshi prints in each market's subtitle ("Dunfermline wins by more than
+  // 2.5 goals") — unambiguous even where the 3-char code collides — and tonight/scocup.js
+  // resolves team identity from that text, never from the abbr. TICKER-NAME TRAP: despite the
+  // "SCOCUP" prefix this is the Scottish LEAGUE Cup (ESPN slug sco.cis), NOT the Scottish Cup
+  // proper (sco.tennents, FA-Cup equivalent) — the latter is dormant in July (next round starts
+  // ~September) and returns zero events for these tickers' dates. Verified by cross-referencing
+  // all 16 live event dates/teams against ESPN 2026-07-23; sco.tennents matched 0, sco.cis
+  // matched 16/16.
+  scocup: [
+    { abbr: "ABE", kalshiName: "Aberdeen" },
+    { abbr: "AIR", kalshiName: "Airdrieonians" },
+    { abbr: "ALL", kalshiName: "Alloa" },
+    { abbr: "ARB", kalshiName: "Arbroath" },
+    { abbr: "AYR", kalshiName: "Ayr" },
+    { abbr: "BRC", kalshiName: "Brechin" },
+    { abbr: "CLY", kalshiName: "Clyde" },
+    { abbr: "COVE", kalshiName: "Cove" },
+    { abbr: "DFA", kalshiName: "Dunfermline" },     // Dunfermline — see collision note above
+    { abbr: "DUM", kalshiName: "Dumbarton" },
+    { abbr: "DUN", kalshiName: "Dundee FC" },        // Dundee FC — see collision note above
+    { abbr: "EFIF", kalshiName: "East Fife" },
+    { abbr: "ELG", kalshiName: "Elgin City" },
+    { abbr: "FALK", kalshiName: "Falkirk" },
+    { abbr: "FOR", kalshiName: "Forfar" },
+    { abbr: "HAM", kalshiName: "Hamilton" },
+    { abbr: "ICT", kalshiName: "Inverness" },
+    { abbr: "KEL", kalshiName: "Kelty" },
+    { abbr: "KIL", kalshiName: "Kilmarnock" },
+    { abbr: "LIV", kalshiName: "Livingston" },
+    { abbr: "MON", kalshiName: "Montrose" },
+    { abbr: "MORT", kalshiName: "Greenock" },
+    { abbr: "PET", kalshiName: "Peterhead" },
+    { abbr: "QOS", kalshiName: "Queen of the South" },
+    { abbr: "QUE", kalshiName: "Queen's Park" },
+    { abbr: "ROSS", kalshiName: "Ross County" },
+    { abbr: "SFC", kalshiName: "Spartans" },
+    { abbr: "STE", kalshiName: "Stenhousemuir" },
+    { abbr: "STI", kalshiName: "Stirling" },
+    { abbr: "STJ", kalshiName: "St. Johnstone" },
+    { abbr: "STM", kalshiName: "St. Mirren" },
+    { abbr: "STR", kalshiName: "Stranraer" },
+  ],
 };
 
 // ── Derived maps (legacy shapes, re-exported from their historical modules) ──────
@@ -328,6 +379,13 @@ export const POLY_TO_CANON = Object.fromEntries(
     }
     return [sport, m];
   })
+);
+
+// Kalshi subtitle team name → canonical (ESPN) abbr, scocup only. Name-keyed instead of
+// abbr-keyed because Kalshi's own 3-char codes collide for this competition (see the scocup
+// registry comment above) — exact match on Kalshi's printed name sidesteps that entirely.
+export const SCOCUP_NAME_TO_ESPN = Object.fromEntries(
+  (TEAMS.scocup || []).filter(t => t.kalshiName).map(t => [t.kalshiName, t.abbr])
 );
 
 // Canonical → ESPN scoreboard abbr, per sport (legacy home: inline in handlers/sports.js).

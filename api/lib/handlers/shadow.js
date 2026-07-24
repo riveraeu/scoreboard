@@ -24,6 +24,7 @@ import { fetchBrasileiraoResults } from "../brasileirao.js";
 import { fetchNwslResults } from "../nwsl.js";
 import { fetchChnslResults } from "../chnsl.js";
 import { fetchLigaMxResults } from "../ligamx.js";
+import { fetchScoCupResults } from "../scocup.js";
 import { deriveKalshiSide, fetchKalshiSettlements, resolveRowViaKalshi } from "../kalshi-settlement.js";
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER } from "../config.js";
 import { passesCategoryGate } from "../category-gate.js";
@@ -799,7 +800,8 @@ async function handleShadowResolver({ path, request, env, cache }) {
   const nwslRows = rows.filter(r => r.sport === "nwsl");
   const chnslRows = rows.filter(r => r.sport === "chnsl");
   const ligamxRows = rows.filter(r => r.sport === "ligamx");
-  const teamRows = rows.filter(r => r.sport !== "tennis" && r.sport !== "soccer" && r.sport !== "fight" && r.sport !== "golf" && r.sport !== "nascar" && r.sport !== "nbasl" && r.sport !== "lmb" && r.sport !== "mls" && r.sport !== "brasileirao" && r.sport !== "nwsl" && r.sport !== "chnsl" && r.sport !== "ligamx");
+  const scocupRows = rows.filter(r => r.sport === "scocup");
+  const teamRows = rows.filter(r => r.sport !== "tennis" && r.sport !== "soccer" && r.sport !== "fight" && r.sport !== "golf" && r.sport !== "nascar" && r.sport !== "nbasl" && r.sport !== "lmb" && r.sport !== "mls" && r.sport !== "brasileirao" && r.sport !== "nwsl" && r.sport !== "chnsl" && r.sport !== "ligamx" && r.sport !== "scocup");
 
   // Build unique game keys per date. Key: sport:away:home[@gameTime] — matches /api/live format.
   const keysByDate = new Map(); // game_date → Set<rawKey>
@@ -1439,6 +1441,50 @@ async function handleShadowResolver({ path, request, env, cache }) {
           won = pickScore > oppScore;
         }
         updates.push({ id: r.id, won, actualValue: null });
+      }
+    }
+  }
+
+  // ── Scottish League Cup resolution ── spread + total, off the ESPN sco.cis scoreboard
+  // (api/lib/scocup.js). First model-free THRESHOLD resolver (the leagues above are all 3-way
+  // ML) — margin/total comparison mirrors the WC spread/total block above, but reads
+  // homeScore/awayScore directly (soccer-modelfree.js's result shape) instead of a codes map.
+  if (scocupRows.length) {
+    const dateOf = (r) => r.game_date
+      ? new Date(r.game_date).toISOString().slice(0, 10)
+      : (r.snapshot_date ? new Date(r.snapshot_date).toISOString().slice(0, 10) : null);
+    const byDate = new Map();
+    for (const r of scocupRows) {
+      const date = dateOf(r);
+      if (!date) { noData++; continue; }
+      if (!byDate.has(date)) byDate.set(date, []);
+      byDate.get(date).push(r);
+    }
+    const resultsByDate = new Map();
+    await Promise.all([...byDate.keys()].map(async (date) => {
+      resultsByDate.set(date, await fetchScoCupResults(date.replace(/-/g, "")));
+    }));
+    for (const [date, rws] of byDate) {
+      const results = resultsByDate.get(date) || {};
+      for (const r of rws) {
+        const g = results[[r.home_team, r.away_team].sort().join("|")];
+        if (!g) { noData++; continue; } // game not played / not final yet
+        const goalsFor = (code) => code === g.home ? g.homeScore : (code === g.away ? g.awayScore : null);
+        const th = parseFloat(r.threshold);
+        const isUnder = r.direction === "under";
+        let won, actual;
+        if (r.stat === "total") {
+          actual = g.homeScore + g.awayScore;
+          won = isUnder ? actual < th : actual >= th;
+        } else if (r.stat === "spread") {
+          const favScore = goalsFor(r.pick_team);
+          const oppScore = r.pick_team === g.home ? g.awayScore : g.homeScore;
+          if (favScore == null) { noData++; continue; }
+          actual = favScore - oppScore;
+          const covered = actual > th;
+          won = isUnder ? !covered : covered;
+        } else { noData++; continue; }
+        updates.push({ id: r.id, won, actualValue: actual });
       }
     }
   }
