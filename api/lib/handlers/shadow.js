@@ -708,7 +708,17 @@ async function handleKalshiDryrunCheck({ path, request, env }) {
         WHERE game_date >= to_char(CURRENT_DATE - 7, 'YYYY-MM-DD')
         GROUP BY sport ORDER BY total DESC`, [], env),
     ]);
-    return jsonResponse({ ok: true, overall: overall[0], byDate, last7dBySport: byGate });
+    // Granular (sport, game_type, stat) breakdown for the one date that actually has ANY ticket
+    // capture — distinguishes "whole sport missing entirely" from "rows exist but kalshi_ticker
+    // is null on all of them" (the latter is a real code gap, not a capture-frequency problem).
+    const byCategory = await neonQuery(`
+      SELECT sport, game_type, stat,
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE kalshi_ticker IS NOT NULL)::int AS has_ticker
+      FROM ${SHADOW_TABLE}
+      WHERE game_date = (SELECT MAX(game_date) FROM ${SHADOW_TABLE} WHERE kalshi_ticker IS NOT NULL)
+      GROUP BY sport, game_type, stat ORDER BY total DESC`, [], env);
+    return jsonResponse({ ok: true, overall: overall[0], byDate, last7dBySport: byGate, byCategoryOnLastTickeredDate: byCategory });
   }
 
   const rows = await neonQuery(
