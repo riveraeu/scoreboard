@@ -38,7 +38,12 @@ export async function emitClubSoccerThresholdPlays(ctx) {
     events.get(key).rows.push(m);
   }
 
-  const datesBySport = { mls: new Set(), ligamx: new Set() };
+  // Derived from SCHEDULE_BY_SPORT's own keys (not hardcoded) — a hardcoded copy here silently
+  // dropped every date for a new sport added only to SCHEDULE_BY_SPORT (found live 2026-07-24:
+  // argprem was added to SCHEDULE_BY_SPORT but this object still only had mls/ligamx, so 100% of
+  // argprem's threshold rows lost gameTime — datesBySport[ev.sport] was undefined, so the `if`
+  // guard below silently skipped every argprem date instead of throwing).
+  const datesBySport = Object.fromEntries(Object.keys(SCHEDULE_BY_SPORT).map(sport => [sport, new Set()]));
   for (const ev of events.values()) {
     const d = (ev.gameDate || "").replace(/-/g, "");
     if (d && datesBySport[ev.sport]) datesBySport[ev.sport].add(d);
