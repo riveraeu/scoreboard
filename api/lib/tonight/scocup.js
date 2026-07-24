@@ -20,7 +20,7 @@
 // shadow:staging only — same idiom as every other Phase-1 module. `scocup|*` is not in the
 // category gate.
 
-import { CAPTURE_GATE, CAPTURE_CAP } from "../config.js";
+import { CAPTURE_GATE, CAPTURE_CAP, capturableSpread } from "../config.js";
 import { SCOCUP_NAME_TO_ESPN } from "../teams.js";
 import { getScoCupSchedule } from "../scocup.js";
 
@@ -63,6 +63,13 @@ export async function emitScoCupPlays(ctx) {
     if (!resolved) { if (isDebug) dropped.push({ sport: "scocup", stat: "spread", reason: "unresolved_teams", segment: m.segment, teamName: m.teamName }); continue; }
     const pickTeam = SCOCUP_NAME_TO_ESPN[m.teamName];
     if (!pickTeam) continue;
+    // Liquidity gate applied HERE, not at parse time — team identity above is derived from
+    // every subtitled market regardless of its own liquidity (see the module header comment for
+    // why); this row's own two-sided book still has to be real to be worth capturing.
+    if (!m._stale && !capturableSpread(Math.min(m._yesSpreadC ?? 999, m._noSpreadC ?? 999))) {
+      if (isDebug) dropped.push({ sport: "scocup", stat: "spread", reason: "illiquid", segment: m.segment, teamName: m.teamName });
+      continue;
+    }
     const base = {
       sport: "scocup", stat: "spread", gameType: "spread", modelVersion: "scocup-modelfree-v1",
       homeTeam: resolved.homeTeam, awayTeam: resolved.awayTeam, pickTeam,

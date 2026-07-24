@@ -795,9 +795,14 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               const _scsStale = _scsYesAsk >= 0.98 && _scsYesBid === 0 && _scsLast > 0;
               const _scsPrice = _scsStale ? _scsLast : (_scsYesAsk > 0 ? _scsYesAsk : _scsLast);
               if (_scsPrice === 0) continue; // no live book — skip (books fill near kickoff)
+              // Liquidity gating happens in the emit path (tonight/scocup.js), NOT here — team
+              // identity for an event is derived from every subtitled market seen, regardless of
+              // that specific line's own liquidity. Gating here caused a real bug (found live
+              // 2026-07-23): when only the favorite's lines had a real book, the underdog's name
+              // never made it into scocupSpreadMarkets, so the event's team pair could never
+              // resolve to 2 names and EVERY row silently dropped as "unresolved_teams".
               const _scsYesSpreadC = _scsYesAsk > 0 ? Math.round((_scsYesAsk - _scsYesBid) * 100) : 999;
               const _scsNoSpreadC = _scsNoAsk > 0 ? Math.round((_scsNoAsk - _scsNoBid) * 100) : 999;
-              if (!_scsStale && !capturableSpread(Math.min(_scsYesSpreadC, _scsNoSpreadC))) continue;
               const _scsYesPct = Math.round(_scsPrice * 100);
               const _scsNoPct = _scsNoAsk > 0 ? Math.round(_scsNoAsk * 100) : (100 - _scsYesPct);
               const _scsVol = parseInt(m.volume_fp) || parseInt(m.volume) || 0;
@@ -811,7 +816,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
                 if (_scsMo) _scsGameDate = `20${_scsSegment.slice(0, 2)}-${_scsMo}-${_scsSegment.slice(5, 7)}`;
               }
               const _scsAO = (pct) => pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
-              scocupSpreadMarkets.push({ segment: _scsSegment, gameDate: _scsGameDate, teamName: _scsTeamName, threshold: _scsStrike, line: _scsStrike, kalshiPct: _scsYesPct, noKalshiPct: _scsNoPct, americanOdds: _scsAO(_scsYesPct), noAmericanOdds: _scsAO(_scsNoPct), kalshiVolume: _scsVol, eventTicker: m.event_ticker, _ticker: m.ticker, _depth: m._depth });
+              scocupSpreadMarkets.push({ segment: _scsSegment, gameDate: _scsGameDate, teamName: _scsTeamName, threshold: _scsStrike, line: _scsStrike, kalshiPct: _scsYesPct, noKalshiPct: _scsNoPct, americanOdds: _scsAO(_scsYesPct), noAmericanOdds: _scsAO(_scsNoPct), kalshiVolume: _scsVol, eventTicker: m.event_ticker, _ticker: m.ticker, _depth: m._depth, _stale: _scsStale, _yesSpreadC: _scsYesSpreadC, _noSpreadC: _scsNoSpreadC });
               continue;
             }
             // ── Scottish League Cup total branch ── threshold market ("Over N.5 goals scored"),
