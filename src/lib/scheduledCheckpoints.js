@@ -87,8 +87,17 @@ export const SCHEDULED_CHECKPOINTS = [
   // existing ESPN resolvers but writes nothing. kalshi_ticker only populates on rows written after
   // deploy, so there's an inherent one-day lag before any row qualifies; needs about a week of
   // cron passes to accumulate a real cross-sport sample. [[project_kalshi_settlement_grading_2026_07_23]]
-  { date: "2026-07-30", tone: "blue", label: "Check kalshiDryRun agreement before considering Kalshi-settlement grading authoritative", short: "Kalshi-settlement dry-run check",
-    why: "Dry-run pass shipped 7/23 (/api/shadow-resolver's kalshiDryRun: {checked, wouldResolve, comparedAgainstEspn, agree, disagree}) — needs near-100% agreement on a real cross-sport sample before any part of it can replace the existing ESPN-based resolvers; any disagreement needs investigating first" },
+  // (7/30 dry-run agreement check REMOVED 2026-07-25 — done 5 days early: the gate cleared at
+  // 99.92% (agree 2558 / disagree 2, n=2560, 7 families) and Phase A shipped, making settlement
+  // AUTHORITATIVE for the 14 shadow-only sports. Both disagreements were one market Kalshi itself
+  // settled wrong. [[project_kalshi_missettlement_watch_2026_07_25]])
+  //
+  // Phase A (2026-07-25) left all 15 per-sport ESPN resolver blocks in place because kalshi_ticker
+  // only exists on rows written after 2026-07-23 — tickerless rows can't be settlement-graded. The
+  // 14-day abandonment rule means no tickerless row can still be in the resolver's scan after
+  // 2026-08-07, which is what makes the ESPN blocks safely deletable on this date and not before.
+  { date: "2026-08-08", tone: "blue", label: "Phase B: delete the 15 per-sport ESPN resolver blocks (~800 lines)", short: "Phase B ESPN block deletion",
+    why: "Gate: /api/shadow-resolver's kalshiGrading.disagreed still ~0 across the 14 authoritative sports (and /api/kalshi-dryrun-check's non-circular agree% still >99%). Then delete the 15 blocks + _grade3Way/_gradeThreshold + _gradeTennisRows + ?regradetennis + ~15 imports from handlers/shadow.js (4298 → ~3500). KEEP every fetchXResults export — tonight/* still needs those modules for gameTime hydration. Also unlocks the ESPN-uncovered league class (KBO/NPB/CFL), which has no resolver path at all today" },
   // 3 of the original 4 loose-end checkpoints from 7/23 are DONE (soccer-advance gameTime fix
   // shipped; full KXNFLTSPEC ladder pulled + categorized into ~14 stat families; discovery-blind-
   // spot investigated — see project_scheduled_checkpoints_2026_07_23_backlog memory). The 4th

@@ -61,16 +61,38 @@ export async function fetchKalshiSettlements(tickers) {
   return out;
 }
 
+// Pure: three-state classification of one ticker+side against the settlements map.
+//   { state: "pending" }  — not finalized yet (or fetch missed it). Retry next pass.
+//   { state: "void", result } — finalized, but the result isn't a clean yes/no ("scalar").
+//   { state: "graded", won } — finalized binary; `won` is whether OUR side took it.
+//
+// Why this exists alongside the two null-returning helpers below: they collapse "pending" and
+// "void" into one `null`, which is exactly right for maker PnL grading (both mean "don't book
+// anything yet") but wrong for shadow_plays resolution. A void is TERMINAL — the market will never
+// settle yes/no, so the row should be marked resolved with won=NULL immediately (the abandon
+// idiom) rather than being retried for 14 days until the abandonment sweep catches it. Callers
+// that need to tell those apart use this; callers that don't keep using the wrappers.
+export function classifyTickerSide(ticker, side, settlements) {
+  if (!ticker) return { state: "pending" };
+  const m = settlements.get(ticker);
+  if (!m || m.status !== "finalized") return { state: "pending" };
+  const won = wonFromKalshiResult(m.result, side);
+  if (won === null) return { state: "void", result: m.result };
+  return { state: "graded", won };
+}
+
+// Pure: same as classifyTickerSide but for a shadow_plays row carrying kalshi_ticker/kalshi_side.
+export function classifyRowViaKalshi(row, settlements) {
+  return classifyTickerSide(row?.kalshi_ticker, row?.kalshi_side, settlements);
+}
+
 // Pure: given a specific ticker + which side ("yes"/"no") we care about, what would Kalshi's
 // settlement say? Returns null when not resolvable this pass (not finalized yet, or void).
 // Shared by resolveRowViaKalshi (shadow_plays taker rows, which carry kalshi_ticker/kalshi_side)
 // and maker.js's V1 grading (maker_quotes/maker_fills rows, which use ticker/quote_side directly
 // and have no shadow_plays row to read from — see project_maker_v1_settlement_grading memory).
 export function resolveTickerSideViaKalshi(ticker, side, settlements) {
-  if (!ticker) return null;
-  const m = settlements.get(ticker);
-  if (!m || m.status !== "finalized") return null;
-  return wonFromKalshiResult(m.result, side);
+  return classifyTickerSide(ticker, side, settlements).won ?? null;
 }
 
 // Pure: given a row (with kalshi_ticker/kalshi_side already on it) and the settlements map,

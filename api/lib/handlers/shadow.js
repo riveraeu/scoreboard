@@ -31,7 +31,8 @@ import { fetchChnslResults } from "../chnsl.js";
 import { fetchLigaMxResults, fetchLigaMxHalfResults } from "../ligamx.js";
 import { fetchArgPremResults } from "../argprem.js";
 import { fetchScoCupResults } from "../scocup.js";
-import { deriveKalshiSide, fetchKalshiSettlements, resolveRowViaKalshi, resolveTickerSideViaKalshi } from "../kalshi-settlement.js";
+import { deriveKalshiSide, fetchKalshiSettlements, resolveRowViaKalshi, resolveTickerSideViaKalshi, classifyRowViaKalshi } from "../kalshi-settlement.js";
+import { reconcileGrades, isSettlementAuthoritative, SETTLEMENT_AUTHORITATIVE_SPORTS, SETTLEMENT_CUTOVER_DATE } from "../settlement-reconcile.js";
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER } from "../config.js";
 import { passesCategoryGate } from "../category-gate.js";
 import { INPUT_SEARCH_EXHAUSTED, stillExhausted } from "../model-holds.js";
@@ -727,7 +728,7 @@ async function handleKalshiDryrunCheck({ path, request, env }) {
   }
 
   const rows = await neonQuery(
-    `SELECT id, sport, stat, kalshi_ticker, kalshi_side, won, game_date
+    `SELECT id, sport, stat, kalshi_ticker, kalshi_side, won, game_date, resolved_at
      FROM ${SHADOW_TABLE}
      WHERE kalshi_ticker IS NOT NULL AND won IS NOT NULL
      ORDER BY game_date DESC`,
@@ -741,13 +742,31 @@ async function handleKalshiDryrunCheck({ path, request, env }) {
   const tickers = [...new Set(rows.map(r => r.kalshi_ticker))];
   const settlements = await fetchKalshiSettlements(tickers);
 
-  let wouldResolve = 0, agree = 0, disagree = 0;
+  // ── Circularity guard (2026-07-25) ── this endpoint compares each row's STORED `won` against
+  // Kalshi's settlement. For a SETTLEMENT_AUTHORITATIVE_SPORTS row resolved on/after the cutover,
+  // `won` was written BY that same settlement — so it agrees by construction and would silently
+  // inflate the headline agreement rate with a tautology. Those rows are counted separately under
+  // `circular` and excluded from the real comparison. Pre-cutover rows of the same sports still
+  // carry genuine ESPN grades, so they stay in.
+  const isCircular = (r) => {
+    if (!isSettlementAuthoritative(r.sport)) return false;
+    if (!r.resolved_at) return false;
+    return new Date(r.resolved_at).toISOString().slice(0, 10) >= SETTLEMENT_CUTOVER_DATE;
+  };
+
+  let wouldResolve = 0, agree = 0, disagree = 0, circular = 0;
   const bySport = new Map();
+  const circularBySport = new Map();
   const disagreements = [];
   for (const r of rows) {
     const kalshiWon = resolveRowViaKalshi(r, settlements);
     if (kalshiWon === null) continue;
     wouldResolve++;
+    if (isCircular(r)) {
+      circular++;
+      circularBySport.set(r.sport, (circularBySport.get(r.sport) || 0) + 1);
+      continue;
+    }
     const rec = bySport.get(r.sport) || { agree: 0, disagree: 0 };
     if (r.won === kalshiWon) { agree++; rec.agree++; }
     else {
@@ -769,6 +788,14 @@ async function handleKalshiDryrunCheck({ path, request, env }) {
     disagree,
     bySport: Object.fromEntries(bySport),
     disagreements,
+    // Rows whose `won` the settlement grader itself wrote — agreement is tautological, so they are
+    // excluded from the numbers above. Growth here is expected post-cutover, not a problem.
+    circular: {
+      excluded: circular,
+      bySport: Object.fromEntries(circularBySport),
+      cutoverDate: SETTLEMENT_CUTOVER_DATE,
+      authoritativeSports: [...SETTLEMENT_AUTHORITATIVE_SPORTS],
+    },
   });
 }
 
@@ -869,27 +896,45 @@ async function handleShadowResolver({ path, request, env, cache }) {
     return jsonResponse({ ok: true, resolved: 0, skipped: 0, noData: 0, durationMs: Date.now() - t0 });
   }
 
-  // ── Kalshi-settlement grading — DRY-RUN ONLY (2026-07-23, see kalshi-settlement.js and
-  // project_kalshi_settlement_grading_2026_07_23 memory). Computes what Kalshi's own settlement
-  // WOULD grade for every row with a kalshi_ticker, purely to compare against the existing
-  // ESPN-based resolvers below — never touches `updates`, never writes anything. Most rows won't
-  // have kalshi_ticker yet (the column is new; only rows written by shadow-snapshot after this
-  // deployed carry it), so a thin comparison for the first day or two is expected, not a bug.
+  // ── Kalshi-settlement grading (2026-07-23 dry-run → 2026-07-25 AUTHORITATIVE for the
+  // shadow-only families in SETTLEMENT_AUTHORITATIVE_SPORTS; see kalshi-settlement.js,
+  // settlement-reconcile.js, and project_kalshi_missettlement_watch_2026_07_25 memory).
+  //
+  // One pass classifies every row carrying a kalshi_ticker, then splits three ways:
+  //   • authoritative sport + finalized binary  → `settlementGraded`, wins over ESPN at the
+  //     reconcile chokepoint below (ESPN still runs on these rows, so disagreements stay visible).
+  //   • authoritative sport + void ("scalar")   → `settlementVoided`, resolved with won=NULL.
+  //   • everything else (the calibrated teamRows families) → `dryRunById`, comparison ONLY, exactly
+  //     as it behaved before. Those stay ESPN-graded: model accuracy wants physical reality, not
+  //     what the market paid. See the doctrine note atop settlement-reconcile.js.
+  //
+  // Failure-closed: any throw leaves all three maps empty and every row falls through to ESPN
+  // precisely as it did before this existed.
+  let settlementGraded = new Map();   // id → { won, sport } (authoritative sports only)
+  let settlementVoided = new Map();   // id → { sport, result }
   let kalshiDryRun = { checked: 0, wouldResolve: 0, byId: new Map() };
   try {
     const tickeredRows = rows.filter(r => r.kalshi_ticker);
     if (tickeredRows.length) {
       const settlements = await fetchKalshiSettlements(tickeredRows.map(r => r.kalshi_ticker));
-      const byId = new Map();
+      const dryRunById = new Map();
       let wouldResolve = 0;
       for (const r of tickeredRows) {
-        const won = resolveRowViaKalshi(r, settlements);
-        if (won !== null) { byId.set(r.id, won); wouldResolve++; }
+        const c = classifyRowViaKalshi(r, settlements);
+        if (c.state === "graded") wouldResolve++;
+        if (isSettlementAuthoritative(r.sport)) {
+          if (c.state === "graded") settlementGraded.set(r.id, { won: c.won, sport: r.sport });
+          else if (c.state === "void") settlementVoided.set(r.id, { sport: r.sport, result: c.result });
+        } else if (c.state === "graded") {
+          dryRunById.set(r.id, c.won);
+        }
       }
-      kalshiDryRun = { checked: tickeredRows.length, wouldResolve, byId };
+      kalshiDryRun = { checked: tickeredRows.length, wouldResolve, byId: dryRunById };
     }
   } catch (e) {
-    console.error(`[shadow-resolver] kalshi dry-run fetch failed: ${e?.message}`);
+    console.error(`[shadow-resolver] kalshi settlement fetch failed: ${e?.message}`);
+    settlementGraded = new Map();
+    settlementVoided = new Map();
   }
 
   // Tennis match-winner + soccer rows resolve via their own ESPN scoreboards (not the team-based
@@ -1710,7 +1755,17 @@ async function handleShadowResolver({ path, request, env, cache }) {
     }
   }
 
-  if (updates.length) await neonBatchResolve(updates, env);
+  // ── Reconcile chokepoint ── settlement grades win over ESPN for the authoritative sports; every
+  // other row passes through untouched. Deliberately ONE site, after all 15 per-sport ESPN blocks
+  // have pushed, so none of them needed editing (and Phase B can delete them wholesale without
+  // touching this). `finalUpdates` is what gets written and what every downstream count reads.
+  const rec = reconcileGrades({ settlementGraded, settlementVoided, espnUpdates: updates });
+  const finalUpdates = rec.updates;
+  if (settlementGraded.size || settlementVoided.size) {
+    console.log(`[shadow-resolver] kalshi authoritative graded=${settlementGraded.size} voided=${rec.voided} (overrodeEspnGrade=${rec.voidedOverridingEspn}) agreedWithEspn=${rec.agreed} disagreed=${rec.disagreed} espnCouldNotGrade=${rec.settlementOnly} (nulled=${rec.espnNulled} absent=${rec.espnAbsent}) bySport=${JSON.stringify(rec.bySport)}${rec.disagreed ? ` sample=${JSON.stringify(rec.disagreements)}` : ""}`);
+  }
+
+  if (finalUpdates.length) await neonBatchResolve(finalUpdates, env);
 
   // ── Shadow maker: detect fills from yesterday's trade tape + grade against the rows this
   // pass just resolved (api/lib/maker.js). Failure-closed — must never break resolution.
@@ -1754,7 +1809,7 @@ async function handleShadowResolver({ path, request, env, cache }) {
     const yesterdayIds = new Set(
       rows.filter(r => r.game_date && _y10(r.game_date) === yesterday).map(r => r.id)
     );
-    const newResolvedYesterday = updates.reduce((n, u) => n + (yesterdayIds.has(u.id) ? 1 : 0), 0);
+    const newResolvedYesterday = finalUpdates.reduce((n, u) => n + (yesterdayIds.has(u.id) ? 1 : 0), 0);
     const prevFloor = cache
       ? await cache.get(`${_RESOLUTION_KV_PREFIX}${yesterday}`, "json").catch(() => null)
       : null;
@@ -1773,13 +1828,14 @@ async function handleShadowResolver({ path, request, env, cache }) {
     console.error(`[shadow-resolver] resolution floor stamp failed: ${e?.message}`);
   }
 
-  // Kalshi-settlement dry-run comparison — agreement check only, never overwrites `updates`.
-  // Only meaningful once ESPN resolved the SAME row this same pass (fair apples-to-apples); a row
-  // Kalshi could grade but ESPN didn't reach yet just isn't in `finalById` and is skipped, not
-  // counted as a disagreement.
+  // Kalshi-settlement dry-run comparison — agreement check only, never overwrites a grade. Scoped
+  // to the NON-authoritative (calibrated teamRows) families now that the shadow-only sports grade
+  // off settlement for real above; those report through `rec` instead. Only meaningful once ESPN
+  // resolved the SAME row this same pass (fair apples-to-apples); a row Kalshi could grade but ESPN
+  // didn't reach yet just isn't in `finalById` and is skipped, not counted as a disagreement.
   let kalshiDryRunSummary = null;
   if (kalshiDryRun.byId.size) {
-    const finalById = new Map(updates.map(u => [u.id, u.won]));
+    const finalById = new Map(finalUpdates.map(u => [u.id, u.won]));
     let agree = 0, disagree = 0;
     const disagreements = [];
     for (const [id, kalshiWon] of kalshiDryRun.byId) {
@@ -1793,8 +1849,35 @@ async function handleShadowResolver({ path, request, env, cache }) {
     console.log(`[shadow-resolver] kalshi dry-run checked=${kalshiDryRun.checked} wouldResolve=${kalshiDryRun.wouldResolve} comparedAgainstEspn=${agree + disagree} agree=${agree} disagree=${disagree}${disagree ? ` sample=${JSON.stringify(disagreements)}` : ""}`);
   }
 
-  console.log(`[shadow-resolver] resolved=${updates.length} skipped=${skipped} noData=${noData} games=${liveByKey.size} durationMs=${Date.now() - t0}`);
-  return jsonResponse({ ok: true, resolved: updates.length, skipped, noData, maker: makerMeta, makerLive: makerLiveMeta, kalshiDryRun: kalshiDryRunSummary, durationMs: Date.now() - t0 });
+  // `noData`/`skipped` are ESPN-feed metrics — they still count rows that settlement went on to
+  // resolve, so `noData` alone overstates what was actually left behind. The explicit
+  // `noDataNetOfSettlement` is the real "still unresolved" number.
+  const noDataNetOfSettlement = Math.max(0, noData - rec.espnAbsent);
+  console.log(`[shadow-resolver] resolved=${finalUpdates.length} skipped=${skipped} noData=${noData} (netOfSettlement=${noDataNetOfSettlement}) games=${liveByKey.size} durationMs=${Date.now() - t0}`);
+  return jsonResponse({
+    ok: true,
+    resolved: finalUpdates.length,
+    skipped,
+    noData,
+    noDataNetOfSettlement,
+    maker: makerMeta,
+    makerLive: makerLiveMeta,
+    // Authoritative settlement grading for the shadow-only sports (2026-07-25). `disagreed` is the
+    // live tripwire on both feeds — a sustained non-zero means one of them drifted.
+    kalshiGrading: (settlementGraded.size || settlementVoided.size) ? {
+      graded: settlementGraded.size,
+      voided: rec.voided,
+      voidedOverridingEspn: rec.voidedOverridingEspn,
+      agreedWithEspn: rec.agreed,
+      disagreed: rec.disagreed,
+      espnCouldNotGrade: rec.settlementOnly,
+      bySport: rec.bySport,
+      disagreements: rec.disagreements,
+    } : null,
+    // Comparison-only, calibrated teamRows families (still ESPN-authoritative).
+    kalshiDryRun: kalshiDryRunSummary,
+    durationMs: Date.now() - t0,
+  });
 }
 
 // ── Dispatch ──────────────────────────────────────────────────────────────────
