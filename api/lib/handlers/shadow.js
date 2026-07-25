@@ -33,6 +33,7 @@ import { fetchArgPremResults } from "../argprem.js";
 import { fetchScoCupResults } from "../scocup.js";
 import { deriveKalshiSide, fetchKalshiSettlements, resolveRowViaKalshi, resolveTickerSideViaKalshi, classifyRowViaKalshi } from "../kalshi-settlement.js";
 import { reconcileGrades, isSettlementAuthoritative, SETTLEMENT_AUTHORITATIVE_SPORTS, SETTLEMENT_CUTOVER_DATE } from "../settlement-reconcile.js";
+import { weightedPnlSumsSql, weightedPnlFromRow } from "../maker-stats.js";
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER } from "../config.js";
 import { passesCategoryGate } from "../category-gate.js";
 import { INPUT_SEARCH_EXHAUSTED, stillExhausted } from "../model-holds.js";
@@ -3432,7 +3433,8 @@ async function handleShadowReport({ path, request, env, cache }) {
           ROUND(AVG(f.pnl_cents) FILTER (WHERE f.graded_at IS NOT NULL), 2) AS avg_pnl,
           ROUND(STDDEV_SAMP(f.pnl_cents) FILTER (WHERE f.graded_at IS NOT NULL), 2) AS sd_pnl,
           ROUND(AVG((f.side_won)::int::numeric) FILTER (WHERE f.graded_at IS NOT NULL), 4) AS side_won_rate,
-          ROUND(AVG(f.fill_ask), 1) AS avg_fill_ask
+          ROUND(AVG(f.fill_ask), 1) AS avg_fill_ask,
+          ${weightedPnlSumsSql({ pnlCol: "f.pnl_cents", contractsCol: "f.contracts", filter: "f.graded_at IS NOT NULL" })}
         FROM maker_fills f JOIN maker_quotes q ON q.id = f.quote_id
         WHERE q.game_date >= $1`, [since], env, { write: true }),
       // Raw rows, not aggregated in SQL — side_won is resolved directly off Kalshi's own
@@ -3483,6 +3485,7 @@ async function handleShadowReport({ path, request, env, cache }) {
     const sd = mf?.sd_pnl != null ? Number(mf.sd_pnl) : null;
     const pnlLoCI = avgPnl != null && sd != null && graded > 1
       ? parseFloat((avgPnl - 1.96 * sd / Math.sqrt(graded)).toFixed(2)) : null;
+    const weightedV1 = weightedPnlFromRow(mf);
     // Not every quoted ticker is Kalshi-finalized yet (e.g. today's still-live games) —
     // resolveTickerSideViaKalshi returns null for those; excluded from both n and the rate,
     // same "not resolvable this pass" semantics as the dry-run comparison and V1 grading.
@@ -3501,7 +3504,13 @@ async function handleShadowReport({ path, request, env, cache }) {
         days: Number(mq?.days || 0), avgAsk: mq?.avg_ask != null ? Number(mq.avg_ask) : null },
       fills: { n: Number(mf?.fills || 0), contracts: Number(mf?.contracts || 0), graded,
         avgPnlCents: avgPnl, pnlLoCI, sideWonRate: mf?.side_won_rate != null ? Number(mf.side_won_rate) : null,
-        avgFillAsk: mf?.avg_fill_ask != null ? Number(mf.avg_fill_ask) : null },
+        avgFillAsk: mf?.avg_fill_ask != null ? Number(mf.avg_fill_ask) : null,
+        // Contract-weighted mean + CI (2026-07-25) — what capital actually earns. `avgPnlCents`
+        // above is per-FILL and unweighted, so it counts a 1-contract and a 500-contract fill
+        // equally; kept because armCriterion was written against it. The CI here treats the FILL as
+        // the independent unit (ratio estimator, see maker-stats.js) — NOT the contract, which
+        // would understate it ~2.6x on this book and could arm real money on noise.
+        weighted: weightedV1 },
       quotedOutcomes: { n: Number(qo?.n || 0),
         sideWonRate: qo?.side_won_rate != null ? Number(qo.side_won_rate) : null,
         avgAsk: qo?.avg_ask != null ? Number(qo.avg_ask) : null },
@@ -3525,7 +3534,8 @@ async function handleShadowReport({ path, request, env, cache }) {
   // separate try/catch so a maker_orders_v2-not-yet-created error (V2 never armed) never takes
   // down the V1 makerBoard above. Empty/zeroed until armed.
   if (makerBoard) {
-    makerBoard.live = { orders: 0, resting: 0, executed: 0, graded: 0, avgPnlCents: null, pnlLoCI: null, armed: false, daily: [] };
+    makerBoard.live = { orders: 0, resting: 0, executed: 0, graded: 0, avgPnlCents: null, pnlLoCI: null,
+      weighted: weightedPnlFromRow(null), armed: false, daily: [] };
     try {
       const [[lo], armedNow, _mLiveDaily] = await Promise.all([
         neonQuery(`
@@ -3534,7 +3544,8 @@ async function handleShadowReport({ path, request, env, cache }) {
             COUNT(*) FILTER (WHERE status = 'executed')::int AS executed,
             COUNT(*) FILTER (WHERE graded_at IS NOT NULL)::int AS graded,
             ROUND(AVG(pnl_cents) FILTER (WHERE graded_at IS NOT NULL), 2) AS avg_pnl,
-            ROUND(STDDEV_SAMP(pnl_cents) FILTER (WHERE graded_at IS NOT NULL), 2) AS sd_pnl
+            ROUND(STDDEV_SAMP(pnl_cents) FILTER (WHERE graded_at IS NOT NULL), 2) AS sd_pnl,
+            ${weightedPnlSumsSql({ pnlCol: "pnl_cents", contractsCol: "size", filter: "graded_at IS NOT NULL" })}
           FROM maker_orders_v2 WHERE game_date >= $1`, [since], env, { write: true }),
         isMakerV2Armed(env, cache).catch(() => false),
         // Real-capital equity curve — mirrors V1's daily fill series, keyed the same way
@@ -3556,6 +3567,9 @@ async function handleShadowReport({ path, request, env, cache }) {
         orders: Number(lo?.orders || 0), resting: Number(lo?.resting || 0),
         executed: Number(lo?.executed || 0), graded: gradedV2,
         avgPnlCents: avgPnlV2, pnlLoCI: pnlLoCIV2, armed: !!armedNow,
+        // Same contract-weighted view as V1's fills.weighted — this is the real-capital board, so
+        // it is the number an arm/disarm call should actually be read off.
+        weighted: weightedPnlFromRow(lo),
         daily: (_mLiveDaily || []).map(r => ({
           day: String(r.day).slice(0, 10), fills: Number(r.fills || 0),
           contracts: Number(r.contracts || 0), graded: Number(r.graded || 0),
