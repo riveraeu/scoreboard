@@ -5,7 +5,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { deriveKalshiSide, wonFromKalshiResult, resolveRowViaKalshi, resolveTickerSideViaKalshi, classifyTickerSide, classifyRowViaKalshi } from "./kalshi-settlement.js";
+import { deriveKalshiSide, wonFromKalshiResult, resolveRowViaKalshi, resolveTickerSideViaKalshi, classifyTickerSide, classifyRowViaKalshi, fetchKalshiSettlements, fetchKalshiSettlementsWithMeta } from "./kalshi-settlement.js";
 
 test("deriveKalshiSide: explicit kalshiSide wins regardless of direction", () => {
   assert.equal(deriveKalshiSide({ kalshiSide: "yes", direction: "under" }), "yes");
@@ -155,4 +155,114 @@ test("the null-returning wrappers still collapse pending AND void to null (maker
   assert.equal(resolveTickerSideViaKalshi("T-YES", "no", s), false);
   assert.equal(resolveTickerSideViaKalshi("T-YES", "yes", s), true);
   assert.equal(resolveRowViaKalshi({ kalshi_ticker: "T-YES", kalshi_side: "no" }, s), false);
+});
+
+// ── fetchKalshiSettlementsWithMeta: retry + failure accounting (2026-07-26) ────────────────────
+// Pins the fix for the silent-chunk-drop bug: a single dropped 200-ticker chunk used to vanish
+// without a trace, and one /api/kalshi-dryrun-check run consequently reported disagree=0 only
+// because the chunk holding the one known bad settlement was never fetched. The contract these
+// tests defend is "a pass that didn't look at everything must SAY so".
+
+const _mkTickers = (n) => Array.from({ length: n }, (_, i) => `T${i}`);
+const _tickersOf = (url) => new URL(url).searchParams.get("tickers").split(",");
+const _okBody = (tickers) => ({
+  ok: true, status: 200,
+  json: async () => ({ markets: tickers.map(t => ({ ticker: t, status: "finalized", result: "yes" })) }),
+});
+
+// Swap globalThis.fetch for the duration of one call, always restoring it.
+async function _withFetch(impl, fn) {
+  const orig = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, opts) => { calls.push(_tickersOf(url)); return impl(url, opts, calls.length); };
+  try { return { result: await fn(), calls }; }
+  finally { globalThis.fetch = orig; }
+}
+
+test("fetchKalshiSettlementsWithMeta: clean run reports zero failures and zero retries", async () => {
+  const { result, calls } = await _withFetch(
+    (url) => _okBody(_tickersOf(url)),
+    () => fetchKalshiSettlementsWithMeta(_mkTickers(450)) // 200-ticker chunks → 3 chunks
+  );
+  const { settlements, meta } = result;
+  assert.equal(calls.length, 3);
+  assert.equal(meta.chunksTotal, 3);
+  assert.equal(meta.chunksFailed, 0);
+  assert.equal(meta.chunksRetried, 0);
+  assert.equal(meta.tickersRequested, 450);
+  assert.equal(meta.tickersFound, 450);
+  assert.equal(settlements.size, 450);
+});
+
+test("fetchKalshiSettlementsWithMeta: a transient throw is recovered by retry, nothing lost", async () => {
+  let n = 0;
+  const { result } = await _withFetch(
+    (url) => { if (++n === 1) throw new Error("boom"); return _okBody(_tickersOf(url)); },
+    () => fetchKalshiSettlementsWithMeta(_mkTickers(400))
+  );
+  assert.equal(result.meta.chunksFailed, 0, "retry recovered the chunk");
+  assert.equal(result.meta.chunksRetried, 1);
+  assert.equal(result.settlements.size, 400, "no ticker lost to a transient error");
+});
+
+test("fetchKalshiSettlementsWithMeta: a persistently failing chunk is COUNTED, never silent", async () => {
+  // The whole point: the surviving chunk still returns, but the caller can tell it's incomplete.
+  const { result, calls } = await _withFetch(
+    (url) => {
+      const t = _tickersOf(url);
+      return t[0] === "T0" ? { ok: false, status: 429, json: async () => ({}) } : _okBody(t);
+    },
+    () => fetchKalshiSettlementsWithMeta(_mkTickers(400))
+  );
+  const { settlements, meta } = result;
+  assert.equal(meta.chunksFailed, 1);
+  assert.equal(meta.chunksTotal, 2);
+  assert.deepEqual(meta.failures[0], { chunkIndex: 0, size: 200, reason: "HTTP 429" });
+  assert.equal(settlements.size, 200, "the healthy chunk is still usable");
+  assert.equal(calls.length, 4, "3 attempts on the bad chunk + 1 on the good one");
+});
+
+test("fetchKalshiSettlementsWithMeta: timeouts are labelled distinctly", async () => {
+  const { result } = await _withFetch(
+    () => { const e = new Error("aborted due to timeout"); e.name = "TimeoutError"; throw e; },
+    () => fetchKalshiSettlementsWithMeta(_mkTickers(10))
+  );
+  assert.equal(result.meta.chunksFailed, 1);
+  assert.equal(result.meta.failures[0].reason, "timeout");
+  assert.equal(result.meta.tickersFound, 0);
+});
+
+test("fetchKalshiSettlementsWithMeta: failures sample is capped but the count stays exact", async () => {
+  const { result } = await _withFetch(
+    () => { throw new Error("nope"); },
+    () => fetchKalshiSettlementsWithMeta(_mkTickers(1400)) // 7 chunks
+  );
+  assert.equal(result.meta.chunksTotal, 7);
+  assert.equal(result.meta.chunksFailed, 7, "count is the truth");
+  assert.equal(result.meta.failures.length, 5, "sample is bounded");
+});
+
+test("fetchKalshiSettlementsWithMeta: dedups, drops nullish, tolerates empty/null input", async () => {
+  const { result } = await _withFetch(
+    (url) => _okBody(_tickersOf(url)),
+    () => fetchKalshiSettlementsWithMeta(["A", "A", "B", null, undefined, ""])
+  );
+  assert.equal(result.meta.tickersRequested, 2);
+
+  for (const input of [[], null, undefined]) {
+    const { result: r } = await _withFetch(() => _okBody([]), () => fetchKalshiSettlementsWithMeta(input));
+    assert.equal(r.meta.chunksTotal, 0);
+    assert.equal(r.meta.chunksFailed, 0);
+    assert.equal(r.meta.tickersRequested, 0);
+  }
+});
+
+test("fetchKalshiSettlements: back-compat wrapper still returns a bare Map (maker.js contract)", async () => {
+  const { result } = await _withFetch(
+    (url) => _okBody(_tickersOf(url)),
+    () => fetchKalshiSettlements(_mkTickers(5))
+  );
+  assert.ok(result instanceof Map);
+  assert.equal(result.size, 5);
+  assert.deepEqual(result.get("T0"), { status: "finalized", result: "yes" });
 });

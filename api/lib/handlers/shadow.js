@@ -31,7 +31,7 @@ import { fetchChnslResults } from "../chnsl.js";
 import { fetchLigaMxResults, fetchLigaMxHalfResults } from "../ligamx.js";
 import { fetchArgPremResults } from "../argprem.js";
 import { fetchScoCupResults } from "../scocup.js";
-import { deriveKalshiSide, fetchKalshiSettlements, resolveRowViaKalshi, resolveTickerSideViaKalshi, classifyRowViaKalshi } from "../kalshi-settlement.js";
+import { deriveKalshiSide, fetchKalshiSettlements, fetchKalshiSettlementsWithMeta, resolveRowViaKalshi, resolveTickerSideViaKalshi, classifyRowViaKalshi } from "../kalshi-settlement.js";
 import { reconcileGrades, isSettlementAuthoritative, SETTLEMENT_AUTHORITATIVE_SPORTS, SETTLEMENT_CUTOVER_DATE } from "../settlement-reconcile.js";
 import { weightedPnlSumsSql, weightedPnlFromRow } from "../maker-stats.js";
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER } from "../config.js";
@@ -737,11 +737,11 @@ async function handleKalshiDryrunCheck({ path, request, env }) {
   );
 
   if (!rows.length) {
-    return jsonResponse({ ok: true, checked: 0, wouldResolve: 0, comparedAgainstEspn: 0, agree: 0, disagree: 0, bySport: {}, disagreements: [] });
+    return jsonResponse({ ok: true, checked: 0, incomplete: false, wouldResolve: 0, comparedAgainstEspn: 0, agree: 0, disagree: 0, bySport: {}, disagreements: [] });
   }
 
   const tickers = [...new Set(rows.map(r => r.kalshi_ticker))];
-  const settlements = await fetchKalshiSettlements(tickers);
+  const { settlements, meta: settlementFetch } = await fetchKalshiSettlementsWithMeta(tickers);
 
   // ── Circularity guard (2026-07-25) ── this endpoint compares each row's STORED `won` against
   // Kalshi's settlement. For a SETTLEMENT_AUTHORITATIVE_SPORTS row resolved on/after the cutover,
@@ -783,6 +783,12 @@ async function handleKalshiDryrunCheck({ path, request, env }) {
     ok: true,
     checked: rows.length,
     settlementsFound: settlements.size,
+    // Fetch health (2026-07-26). Before this existed, a silently-dropped 200-ticker chunk shrank
+    // the denominators at random and could hide a real disagreement — one run reported disagree=0
+    // purely because the chunk holding the known bad settlement was never fetched. Treat
+    // `incomplete: true` as "this run didn't look at everything", not as a clean bill of health.
+    settlementFetch,
+    incomplete: settlementFetch.chunksFailed > 0,
     wouldResolve,
     comparedAgainstEspn: agree + disagree,
     agree,
@@ -914,10 +920,14 @@ async function handleShadowResolver({ path, request, env, cache }) {
   let settlementGraded = new Map();   // id → { won, sport } (authoritative sports only)
   let settlementVoided = new Map();   // id → { sport, result }
   let kalshiDryRun = { checked: 0, wouldResolve: 0, byId: new Map() };
+  // Settlement-fetch health for this pass. chunksFailed > 0 means some tickers were never looked
+  // up at all, so `graded`/`disagreed` below undercount — the pass was incomplete, not clean.
+  let settlementFetchMeta = null;
   try {
     const tickeredRows = rows.filter(r => r.kalshi_ticker);
     if (tickeredRows.length) {
-      const settlements = await fetchKalshiSettlements(tickeredRows.map(r => r.kalshi_ticker));
+      const { settlements, meta: fetchMeta } = await fetchKalshiSettlementsWithMeta(tickeredRows.map(r => r.kalshi_ticker));
+      settlementFetchMeta = fetchMeta;
       const dryRunById = new Map();
       let wouldResolve = 0;
       for (const r of tickeredRows) {
@@ -1874,6 +1884,10 @@ async function handleShadowResolver({ path, request, env, cache }) {
       espnCouldNotGrade: rec.settlementOnly,
       bySport: rec.bySport,
       disagreements: rec.disagreements,
+      // Non-null chunksFailed means this pass didn't see every ticker — read the counts above as
+      // a floor, and don't read disagreed=0 as "no disagreements exist".
+      settlementFetch: settlementFetchMeta,
+      incomplete: (settlementFetchMeta?.chunksFailed || 0) > 0,
     } : null,
     // Comparison-only, calibrated teamRows families (still ESPN-authoritative).
     kalshiDryRun: kalshiDryRunSummary,

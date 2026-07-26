@@ -40,25 +40,86 @@ export function wonFromKalshiResult(result, side) {
 
 // Batch-fetch settlement status for a list of tickers. Sequential chunks (not parallel) —
 // Kalshi rate-limits wide parallel bursts (same caution as kalshi-flow.js). Returns
-// Map(ticker -> { status, result }). Failure-closed: a failed chunk just leaves those tickers
-// absent from the map (caller treats missing as "not resolvable this pass").
-export async function fetchKalshiSettlements(tickers) {
-  const out = new Map();
+// { settlements: Map(ticker -> { status, result }), meta }. Failure-closed: a chunk that fails
+// all its attempts just leaves those tickers absent from the map (caller treats missing as
+// "not resolvable this pass").
+//
+// Why the retries and the meta (2026-07-26): the original single-attempt version dropped a whole
+// 200-ticker chunk on any non-ok/throw with NO signal that it had done so. Four back-to-back runs
+// of /api/kalshi-dryrun-check over an identical 5510-row input returned settlementsFound of
+// 2200/2000/2600/2600 — whole chunks vanishing at random — and the 2200 run reported a clean
+// `disagree: 0` purely because the chunk holding the one known bad settlement
+// (KXMLBTEAMTOTAL-26JUL242215LAASF-SF8, see project_kalshi_missettlement_watch_2026_07_25) had
+// been silently skipped. A tripwire that reports "all clear" when it simply failed to look is
+// worse than no tripwire. Grading itself was never wrong — a missing ticker classifies as
+// "pending" and retries next pass — but the resolver under-grades invisibly, so `chunksFailed`
+// now travels with the data and callers surface it.
+//
+// Kalshi's endpoint probes healthy from outside (200s in 0.1-0.4s, no 429 even at 14-parallel,
+// and no hidden limit=100 truncation on a 200-ticker request), so the likeliest mechanism is the
+// AbortSignal being constructed before the 64-slot global gate in fetch-limit.js admits the
+// request — the timeout can burn down entirely while queued. Hence a fresh signal per attempt
+// (a retry gets a full budget, not the remains of the first one) rather than one shared signal.
+const SETTLEMENT_FETCH_ATTEMPTS = 3;
+const SETTLEMENT_FETCH_TIMEOUT_MS = 10_000;
+const SETTLEMENT_RETRY_BACKOFF_MS = [250, 750];
+
+export async function fetchKalshiSettlementsWithMeta(tickers) {
+  const settlements = new Map();
   const unique = [...new Set((tickers || []).filter(Boolean))];
+  const meta = {
+    tickersRequested: unique.length,
+    tickersFound: 0,
+    chunksTotal: Math.ceil(unique.length / TICKER_BATCH_SIZE),
+    chunksFailed: 0,
+    chunksRetried: 0,
+    failures: [], // up to 5 {chunkIndex, size, reason} — enough to name the failure mode
+  };
+
   for (let i = 0; i < unique.length; i += TICKER_BATCH_SIZE) {
     const chunk = unique.slice(i, i + TICKER_BATCH_SIZE);
-    try {
-      const res = await fetch(`${KALSHI_MARKETS}?tickers=${chunk.join(",")}`, {
-        signal: AbortSignal.timeout(10_000),
-      });
-      if (!res.ok) continue;
-      const data = await res.json();
-      for (const m of (data?.markets || [])) {
-        if (m?.ticker) out.set(m.ticker, { status: m.status, result: m.result });
+    const chunkIndex = i / TICKER_BATCH_SIZE;
+    let reason = null;
+
+    for (let attempt = 0; attempt < SETTLEMENT_FETCH_ATTEMPTS; attempt++) {
+      if (attempt > 0) {
+        meta.chunksRetried++;
+        const backoff = SETTLEMENT_RETRY_BACKOFF_MS[attempt - 1] ?? 750;
+        await new Promise(r => setTimeout(r, backoff));
       }
-    } catch { /* this chunk's tickers stay absent — failure-closed */ }
+      try {
+        const res = await fetch(`${KALSHI_MARKETS}?tickers=${chunk.join(",")}`, {
+          signal: AbortSignal.timeout(SETTLEMENT_FETCH_TIMEOUT_MS),
+        });
+        if (!res.ok) { reason = `HTTP ${res.status}`; continue; }
+        const data = await res.json();
+        for (const m of (data?.markets || [])) {
+          if (m?.ticker) settlements.set(m.ticker, { status: m.status, result: m.result });
+        }
+        reason = null;
+        break;
+      } catch (e) {
+        reason = e?.name === "TimeoutError" ? "timeout" : (e?.message || "fetch failed");
+      }
+    }
+
+    if (reason) {
+      meta.chunksFailed++;
+      if (meta.failures.length < 5) meta.failures.push({ chunkIndex, size: chunk.length, reason });
+    }
   }
-  return out;
+
+  meta.tickersFound = settlements.size;
+  if (meta.chunksFailed) {
+    console.warn(`[kalshi-settlement] ${meta.chunksFailed}/${meta.chunksTotal} chunks failed after ${SETTLEMENT_FETCH_ATTEMPTS} attempts — ${meta.tickersFound}/${meta.tickersRequested} tickers resolved; sample=${JSON.stringify(meta.failures)}`);
+  }
+  return { settlements, meta };
+}
+
+// Back-compat wrapper — callers that don't surface fetch health (maker.js V1 grading,
+// shadow-report's quotedOutcomes) keep getting the plain Map.
+export async function fetchKalshiSettlements(tickers) {
+  return (await fetchKalshiSettlementsWithMeta(tickers)).settlements;
 }
 
 // Pure: three-state classification of one ticker+side against the settlements map.
