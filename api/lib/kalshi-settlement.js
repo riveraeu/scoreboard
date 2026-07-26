@@ -55,30 +55,56 @@ export function wonFromKalshiResult(result, side) {
 // "pending" and retries next pass — but the resolver under-grades invisibly, so `chunksFailed`
 // now travels with the data and callers surface it.
 //
-// Kalshi's endpoint probes healthy from outside (200s in 0.1-0.4s, no 429 even at 14-parallel,
-// and no hidden limit=100 truncation on a 200-ticker request), so the likeliest mechanism is the
-// AbortSignal being constructed before the 64-slot global gate in fetch-limit.js admits the
-// request — the timeout can burn down entirely while queued. Hence a fresh signal per attempt
-// (a retry gets a full budget, not the remains of the first one) rather than one shared signal.
+// The cause turned out to be HTTP 414 (URI Too Long) on over-long chunks — see
+// MAX_TICKER_QUERY_CHARS below, which is the real fix. The retries stay because the telemetry also
+// showed genuinely transient failures recovering on attempt 2 (chunksRetried was 9/18 on the first
+// live run); each attempt gets a fresh AbortSignal so a retry has a full budget rather than the
+// remains of the first one's.
 const SETTLEMENT_FETCH_ATTEMPTS = 3;
 const SETTLEMENT_FETCH_TIMEOUT_MS = 10_000;
 const SETTLEMENT_RETRY_BACKOFF_MS = [250, 750];
+// Cap the `tickers=` query string well under the ~8KB URL ceiling. THE ACTUAL CAUSE of the silent
+// drops (named by this module's own telemetry on the first deploy, 2026-07-26): a 200-ticker chunk
+// is ~7.5KB of query string at ~37 chars/ticker, so any chunk holding longer-than-average tickers
+// tipped over and came back HTTP 414. Deterministic per chunk — but WHICH tickers land in a given
+// chunk shifts as the row set grows, which is exactly why it presented as random flakiness across
+// runs. Chunk by URL length, not by count, and TICKER_BATCH_SIZE becomes just an upper bound.
+const MAX_TICKER_QUERY_CHARS = 6000;
+
+// 414 is a property of the request, not a transient condition — retrying one is pure latency.
+// Same for the other 4xx except 429 (rate limit, genuinely worth a retry).
+const isRetryableStatus = (status) => status === 429 || status >= 500;
+
+// Split tickers into chunks bounded by BOTH count and encoded query length.
+function chunkTickers(unique) {
+  const chunks = [];
+  let cur = [], curLen = 0;
+  for (const t of unique) {
+    const addLen = encodeURIComponent(t).length + 1; // +1 for the joining comma
+    if (cur.length && (cur.length >= TICKER_BATCH_SIZE || curLen + addLen > MAX_TICKER_QUERY_CHARS)) {
+      chunks.push(cur); cur = []; curLen = 0;
+    }
+    cur.push(t); curLen += addLen;
+  }
+  if (cur.length) chunks.push(cur);
+  return chunks;
+}
 
 export async function fetchKalshiSettlementsWithMeta(tickers) {
   const settlements = new Map();
   const unique = [...new Set((tickers || []).filter(Boolean))];
+  const chunks = chunkTickers(unique);
   const meta = {
     tickersRequested: unique.length,
     tickersFound: 0,
-    chunksTotal: Math.ceil(unique.length / TICKER_BATCH_SIZE),
+    chunksTotal: chunks.length,
     chunksFailed: 0,
     chunksRetried: 0,
     failures: [], // up to 5 {chunkIndex, size, reason} — enough to name the failure mode
   };
 
-  for (let i = 0; i < unique.length; i += TICKER_BATCH_SIZE) {
-    const chunk = unique.slice(i, i + TICKER_BATCH_SIZE);
-    const chunkIndex = i / TICKER_BATCH_SIZE;
+  for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+    const chunk = chunks[chunkIndex];
     let reason = null;
 
     for (let attempt = 0; attempt < SETTLEMENT_FETCH_ATTEMPTS; attempt++) {
@@ -91,7 +117,11 @@ export async function fetchKalshiSettlementsWithMeta(tickers) {
         const res = await fetch(`${KALSHI_MARKETS}?tickers=${chunk.join(",")}`, {
           signal: AbortSignal.timeout(SETTLEMENT_FETCH_TIMEOUT_MS),
         });
-        if (!res.ok) { reason = `HTTP ${res.status}`; continue; }
+        if (!res.ok) {
+          reason = `HTTP ${res.status}`;
+          if (!isRetryableStatus(res.status)) break; // deterministic (e.g. 414) — retrying is futile
+          continue;
+        }
         const data = await res.json();
         for (const m of (data?.markets || [])) {
           if (m?.ticker) settlements.set(m.ticker, { status: m.status, result: m.result });

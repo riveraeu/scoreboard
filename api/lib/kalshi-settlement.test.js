@@ -266,3 +266,57 @@ test("fetchKalshiSettlements: back-compat wrapper still returns a bare Map (make
   assert.equal(result.size, 5);
   assert.deepEqual(result.get("T0"), { status: "finalized", result: "yes" });
 });
+
+// ── URL-length chunking + non-retryable statuses (2026-07-26, second pass) ─────────────────────
+// The telemetry added above named the actual cause on its first live run: HTTP 414 on chunks whose
+// `tickers=` query string crossed the ~8KB URL ceiling (200 real tickers ≈ 7.5KB). Chunking by
+// count alone was the bug; these pin chunking by encoded length.
+
+test("chunking is bounded by URL length, not just ticker count", async () => {
+  // 60 tickers × ~200 chars each ≫ the 6000-char budget, so this must split well below 200/chunk.
+  const long = Array.from({ length: 60 }, (_, i) => `KX${"L".repeat(196)}${String(i).padStart(2, "0")}`);
+  const { result, calls } = await _withFetch(
+    (url) => _okBody(_tickersOf(url)),
+    () => fetchKalshiSettlementsWithMeta(long)
+  );
+  assert.ok(calls.length > 1, "long tickers must produce multiple chunks");
+  for (const c of calls) {
+    const qlen = c.map(encodeURIComponent).join(",").length;
+    assert.ok(qlen <= 6000, `chunk query length ${qlen} must stay under the cap`);
+  }
+  assert.equal(result.meta.chunksTotal, calls.length);
+  assert.equal(result.settlements.size, 60, "every ticker still fetched");
+  assert.equal(result.meta.chunksFailed, 0);
+});
+
+test("chunking still respects the 200-ticker count cap for short tickers", async () => {
+  const { result, calls } = await _withFetch(
+    (url) => _okBody(_tickersOf(url)),
+    () => fetchKalshiSettlementsWithMeta(_mkTickers(450))
+  );
+  assert.equal(calls.length, 3, "short tickers pack to the count bound");
+  assert.ok(calls.every(c => c.length <= 200));
+  assert.equal(result.settlements.size, 450);
+});
+
+test("a non-retryable status (414) fails fast instead of burning 3 attempts", async () => {
+  const { result, calls } = await _withFetch(
+    () => ({ ok: false, status: 414, json: async () => ({}) }),
+    () => fetchKalshiSettlementsWithMeta(_mkTickers(10))
+  );
+  assert.equal(calls.length, 1, "414 is deterministic — one attempt only");
+  assert.equal(result.meta.chunksRetried, 0);
+  assert.equal(result.meta.chunksFailed, 1);
+  assert.equal(result.meta.failures[0].reason, "HTTP 414");
+});
+
+test("a retryable status (429/500) still gets the full attempt budget", async () => {
+  for (const status of [429, 503]) {
+    const { result, calls } = await _withFetch(
+      () => ({ ok: false, status, json: async () => ({}) }),
+      () => fetchKalshiSettlementsWithMeta(_mkTickers(10))
+    );
+    assert.equal(calls.length, 3, `${status} should be retried`);
+    assert.equal(result.meta.failures[0].reason, `HTTP ${status}`);
+  }
+});
