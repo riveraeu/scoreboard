@@ -33,7 +33,7 @@ import { fetchArgPremResults } from "../argprem.js";
 import { fetchScoCupResults } from "../scocup.js";
 import { deriveKalshiSide, fetchKalshiSettlements, fetchKalshiSettlementsWithMeta, resolveRowViaKalshi, resolveTickerSideViaKalshi, classifyRowViaKalshi } from "../kalshi-settlement.js";
 import { reconcileGrades, isSettlementAuthoritative, SETTLEMENT_AUTHORITATIVE_SPORTS, SETTLEMENT_CUTOVER_DATE } from "../settlement-reconcile.js";
-import { weightedPnlSumsSql, weightedPnlFromRow } from "../maker-stats.js";
+import { weightedPnlSumsSql, weightedPnlFromRow, dayClusteredPnl } from "../maker-stats.js";
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER } from "../config.js";
 import { passesCategoryGate } from "../category-gate.js";
 import { INPUT_SEARCH_EXHAUSTED, stillExhausted } from "../model-holds.js";
@@ -3460,10 +3460,14 @@ async function handleShadowReport({ path, request, env, cache }) {
         SELECT DISTINCT ON (ticker, game_date) ticker, quote_side, quote_ask
         FROM maker_quotes WHERE game_date >= $1
         ORDER BY ticker, game_date, valid_from DESC`, [since], env, { write: true }),
-      // Daily fill series — feeds the /model paper equity curve (frontend cumsums pnl_total).
+      // Daily fill series — feeds the /model paper equity curve (frontend cumsums pnl_total) and
+      // the day-clustered CI. `contracts_graded` is deliberately separate from `contracts`: the
+      // latter counts ungraded fills too, and pairing it with a graded-only `pnl_total` would bias
+      // the clustered ratio estimator's denominator.
       neonQuery(`
         SELECT q.game_date AS day, COUNT(*)::int AS fills,
           COALESCE(SUM(f.contracts), 0) AS contracts,
+          COALESCE(SUM(f.contracts) FILTER (WHERE f.graded_at IS NOT NULL), 0) AS contracts_graded,
           COUNT(*) FILTER (WHERE f.graded_at IS NOT NULL)::int AS graded,
           COALESCE(SUM(f.pnl_cents * f.contracts) FILTER (WHERE f.graded_at IS NOT NULL), 0) AS pnl_total
         FROM maker_fills f JOIN maker_quotes q ON q.id = f.quote_id
@@ -3500,6 +3504,18 @@ async function handleShadowReport({ path, request, env, cache }) {
     const pnlLoCI = avgPnl != null && sd != null && graded > 1
       ? parseFloat((avgPnl - 1.96 * sd / Math.sqrt(graded)).toFixed(2)) : null;
     const weightedV1 = weightedPnlFromRow(mf);
+    const _v1Daily = (_mDaily || []).map(r => ({
+      day: String(r.day).slice(0, 10), fills: Number(r.fills || 0),
+      contracts: Number(r.contracts || 0), graded: Number(r.graded || 0),
+      contractsGraded: Number(r.contracts_graded || 0),
+      pnlTotal: parseFloat(Number(r.pnl_total || 0).toFixed(1)),
+    }));
+    // Day-clustered CI (2026-07-26) — the honest interval. `weighted` above treats each FILL as
+    // independent; fills sharing a day share game outcomes and one common favorites-covered factor,
+    // so the real sample size is days, not fills. Read THIS before any arm decision.
+    const dayClusteredV1 = dayClusteredPnl({
+      days: _v1Daily.map(d => ({ pnl: d.pnlTotal, contracts: d.contractsGraded })),
+    });
     // Not every quoted ticker is Kalshi-finalized yet (e.g. today's still-live games) —
     // resolveTickerSideViaKalshi returns null for those; excluded from both n and the rate,
     // same "not resolvable this pass" semantics as the dry-run comparison and V1 grading.
@@ -3524,17 +3540,28 @@ async function handleShadowReport({ path, request, env, cache }) {
         // equally; kept because armCriterion was written against it. The CI here treats the FILL as
         // the independent unit (ratio estimator, see maker-stats.js) — NOT the contract, which
         // would understate it ~2.6x on this book and could arm real money on noise.
-        weighted: weightedV1 },
+        weighted: weightedV1,
+        // Day-clustered version of the same contract-weighted mean. Wider by construction; the gap
+        // between this and `weighted` IS the correlation the fill-level CI ignores.
+        dayClustered: dayClusteredV1 },
       quotedOutcomes: { n: Number(qo?.n || 0),
         sideWonRate: qo?.side_won_rate != null ? Number(qo.side_won_rate) : null,
         avgAsk: qo?.avg_ask != null ? Number(qo.avg_ask) : null },
-      armCriterion: { minFills: 200, need: "pnlLoCI > 0" },
+      // `need` is the ORIGINAL criterion and reads the fill-level `pnlLoCI`, kept for continuity.
+      // It is not sufficient on its own: on 2026-07-26 it was satisfied (loCI +0.49) by a book whose
+      // entire positive result came from two of seven days, because a fill-level CI credits ~9,400
+      // independent observations to what is really ~7. `needClustered` is the gate to act on.
+      // `minDays` is a sanity floor so the clustered interval is estimable at all — necessary, not
+      // sufficient; clearing `needClustered` is the actual bar.
+      armCriterion: {
+        minFills: 200, need: "pnlLoCI > 0",
+        minDays: 14, needClustered: "dayClustered.loCI > 0",
+        met: graded >= 200
+          && (dayClusteredV1?.days || 0) >= 14
+          && dayClusteredV1?.loCI != null && dayClusteredV1.loCI > 0,
+      },
       armed: false,
-      daily: (_mDaily || []).map(r => ({
-        day: String(r.day).slice(0, 10), fills: Number(r.fills || 0),
-        contracts: Number(r.contracts || 0), graded: Number(r.graded || 0),
-        pnlTotal: parseFloat(Number(r.pnl_total || 0).toFixed(1)),
-      })),
+      daily: _v1Daily,
       bands: (_mBands || []).map(r => ({
         band: r.band, segments: Number(r.segments || 0), fills: Number(r.fills || 0),
         graded: Number(r.graded || 0),
@@ -3567,6 +3594,7 @@ async function handleShadowReport({ path, request, env, cache }) {
         neonQuery(`
           SELECT game_date AS day, COUNT(*)::int AS fills,
             COALESCE(SUM(size), 0) AS contracts,
+            COALESCE(SUM(size) FILTER (WHERE graded_at IS NOT NULL), 0) AS contracts_graded,
             COUNT(*) FILTER (WHERE graded_at IS NOT NULL)::int AS graded,
             COALESCE(SUM(pnl_cents * size) FILTER (WHERE graded_at IS NOT NULL), 0) AS pnl_total
           FROM maker_orders_v2 WHERE game_date >= $1 AND status = 'executed'
@@ -3577,6 +3605,16 @@ async function handleShadowReport({ path, request, env, cache }) {
       const sdV2 = lo?.sd_pnl != null ? Number(lo.sd_pnl) : null;
       const pnlLoCIV2 = avgPnlV2 != null && sdV2 != null && gradedV2 > 1
         ? parseFloat((avgPnlV2 - 1.96 * sdV2 / Math.sqrt(gradedV2)).toFixed(2)) : null;
+      const _v2Daily = (_mLiveDaily || []).map(r => ({
+        day: String(r.day).slice(0, 10), fills: Number(r.fills || 0),
+        contracts: Number(r.contracts || 0), graded: Number(r.graded || 0),
+        contractsGraded: Number(r.contracts_graded || 0),
+        pnlTotal: parseFloat(Number(r.pnl_total || 0).toFixed(1)),
+      }));
+      // Real-capital board, so this is THE interval an arm/disarm call reads.
+      const _v2DayClustered = dayClusteredPnl({
+        days: _v2Daily.map(d => ({ pnl: d.pnlTotal, contracts: d.contractsGraded })),
+      });
       makerBoard.live = {
         orders: Number(lo?.orders || 0), resting: Number(lo?.resting || 0),
         executed: Number(lo?.executed || 0), graded: gradedV2,
@@ -3584,11 +3622,8 @@ async function handleShadowReport({ path, request, env, cache }) {
         // Same contract-weighted view as V1's fills.weighted — this is the real-capital board, so
         // it is the number an arm/disarm call should actually be read off.
         weighted: weightedPnlFromRow(lo),
-        daily: (_mLiveDaily || []).map(r => ({
-          day: String(r.day).slice(0, 10), fills: Number(r.fills || 0),
-          contracts: Number(r.contracts || 0), graded: Number(r.graded || 0),
-          pnlTotal: parseFloat(Number(r.pnl_total || 0).toFixed(1)),
-        })),
+        dayClustered: _v2DayClustered,
+        daily: _v2Daily,
       };
     } catch (e) { console.error("[shadow-report] maker live board skipped (likely never armed):", e?.message); }
   }

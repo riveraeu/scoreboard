@@ -1,7 +1,7 @@
 // node --test api/lib/maker-stats.test.js
 import test from "node:test";
 import assert from "node:assert/strict";
-import { contractWeightedPnl, weightedPnlSumsSql, weightedPnlFromRow } from "./maker-stats.js";
+import { contractWeightedPnl, weightedPnlSumsSql, weightedPnlFromRow, dayClusteredPnl } from "./maker-stats.js";
 
 // Build the six sums from explicit [contracts, pnl] fills, so each test states its data plainly
 // instead of hand-computing sums.
@@ -145,4 +145,97 @@ test("weightedPnlFromRow maps DB column names (incl. numeric-as-string) correctl
     w_sum_c2: String(s.sumC2), w_sum_c2p: String(s.sumC2P), w_sum_c2p2: String(s.sumC2P2),
   };
   assert.deepEqual(weightedPnlFromRow(row), contractWeightedPnl(s));
+});
+
+// ── dayClusteredPnl (2026-07-26) ──────────────────────────────────────────────────────────────
+// Correlation ACROSS fills sharing a day, one level up from the within-fill correlation
+// contractWeightedPnl handles. V1 sells favorites, so a day is essentially one bet on whether
+// favorites underperformed — the day is the independent unit, not the fill.
+
+test("dayClusteredPnl: collapses to the ordinary SE of the mean at one 1-contract fill per day", () => {
+  // Same sanity property contractWeightedPnl has at unit weights: with c=1 every day, the ratio
+  // estimator's variance must reduce exactly to s^2/m.
+  const pnls = [4, -2, 7, 1, -5, 3];
+  const days = pnls.map(p => ({ pnl: p, contracts: 1 }));
+  const got = dayClusteredPnl({ days });
+
+  const m = pnls.length;
+  const mean = pnls.reduce((a, b) => a + b, 0) / m;
+  const s2 = pnls.reduce((a, p) => a + (p - mean) ** 2, 0) / (m - 1);
+  const se = Math.sqrt(s2 / m);
+
+  assert.equal(got.days, m);
+  assert.equal(got.mean, parseFloat(mean.toFixed(2)));
+  assert.equal(got.se, parseFloat(se.toFixed(2)));
+});
+
+test("dayClusteredPnl: mean is the contract-weighted ratio, identical to the fill-level mean", () => {
+  // Clustering must change ONLY the interval, never the point estimate.
+  const days = [
+    { pnl: 1000, contracts: 500 },   // +2.0c/contract
+    { pnl: -300, contracts: 200 },   // -1.5c/contract
+    { pnl: 450, contracts: 300 },    // +1.5c/contract
+  ];
+  const got = dayClusteredPnl({ days });
+  assert.equal(got.contracts, 1000);
+  assert.equal(got.mean, 1.15); // (1000 - 300 + 450) / 1000
+});
+
+test("dayClusteredPnl: a lumpy book straddles zero where the fill-level CI would not", () => {
+  // The 2026-07-26 V1 shape: two hugely positive days against five negative ones. This is the
+  // whole reason the estimator exists — it must NOT report a positive lower bound here.
+  const days = [
+    { pnl: 256, contracts: 223.39 },
+    { pnl: 8929.6, contracts: 3699.93 },
+    { pnl: -10571.6, contracts: 10624.16 },
+    { pnl: -58714.1, contracts: 11687.75 },
+    { pnl: -19852.2, contracts: 9465.91 },
+    { pnl: 100513.8, contracts: 8852.25 },
+    { pnl: 85995.1, contracts: 16868.74 },
+  ];
+  const got = dayClusteredPnl({ days });
+  assert.equal(got.days, 7);
+  assert.ok(got.mean > 1.5 && got.mean < 2.0, `mean ${got.mean} should match the ~+1.76c headline`);
+  assert.ok(got.loCI < 0, `loCI ${got.loCI} must straddle zero on a two-day-driven book`);
+  assert.ok(got.hiCI > 0);
+  assert.ok(got.se > 2, `se ${got.se} should be far wider than the ~0.54 fill-level se`);
+});
+
+test("dayClusteredPnl: days with no graded contracts are dropped, not counted as clusters", () => {
+  const withEmpties = dayClusteredPnl({ days: [
+    { pnl: 100, contracts: 50 }, { pnl: 0, contracts: 0 },
+    { pnl: -40, contracts: 50 }, { pnl: 0, contracts: 0 },
+  ] });
+  const without = dayClusteredPnl({ days: [{ pnl: 100, contracts: 50 }, { pnl: -40, contracts: 50 }] });
+  assert.equal(withEmpties.days, 2, "zero-contract days must not inflate the cluster count");
+  assert.deepEqual(withEmpties, without);
+});
+
+test("dayClusteredPnl: fewer than 2 days yields a mean but no interval", () => {
+  const one = dayClusteredPnl({ days: [{ pnl: 100, contracts: 50 }] });
+  assert.equal(one.days, 1);
+  assert.equal(one.mean, 2);
+  assert.equal(one.se, null);
+  assert.equal(one.loCI, null);
+  assert.equal(one.hiCI, null);
+});
+
+test("dayClusteredPnl: empty / null / all-zero-contract input is null-safe", () => {
+  for (const days of [[], null, undefined, [{ pnl: 5, contracts: 0 }]]) {
+    const got = dayClusteredPnl({ days });
+    assert.equal(got.mean, null);
+    assert.equal(got.loCI, null);
+    assert.equal(got.hiCI, null);
+  }
+  assert.equal(dayClusteredPnl().mean, null);
+});
+
+test("dayClusteredPnl: identical per-day ratios give zero spread, not NaN", () => {
+  const got = dayClusteredPnl({ days: [
+    { pnl: 100, contracts: 50 }, { pnl: 200, contracts: 100 }, { pnl: 40, contracts: 20 },
+  ] });
+  assert.equal(got.mean, 2);
+  assert.equal(got.se, 0);
+  assert.equal(got.loCI, 2);
+  assert.equal(got.hiCI, 2);
 });
