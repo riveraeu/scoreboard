@@ -110,12 +110,12 @@ export async function emitPropPlays({
     const info = playerInfoMap[key];
     const gl = playerGamelogs[key];
     if (!info || !gl) {
-      if (isDebug) dropped.push({ playerName: playerNameDisplay || playerName, sport, stat, threshold, kalshiPct, reason: !info ? "no_espn_info" : "no_gamelog", gameTeam1, gameTeam2, kalshiPlayerTeam, gameDate });
+      if (isDebug) dropped.push({ playerName: playerNameDisplay || playerName, sport, stat, threshold, kalshiPct, reason: !info ? "no_espn_info" : "no_gamelog", gameTeam1, gameTeam2, kalshiPlayerTeam, gameDate, kalshiTicker: _propKalshiTicker ?? null });
       continue;
     }
     const softData = STAT_SOFT[`${sport}|${stat}`];
     if (!softData) {
-      if (isDebug) dropped.push({ playerName: playerNameDisplay || playerName, sport, stat, threshold, kalshiPct, reason: "no_soft_data", gameDate });
+      if (isDebug) dropped.push({ playerName: playerNameDisplay || playerName, sport, stat, threshold, kalshiPct, reason: "no_soft_data", gameDate, kalshiTicker: _propKalshiTicker ?? null });
       continue;
     }
     const { softTeams, rankMap } = softData;
@@ -139,7 +139,7 @@ export async function emitPropPlays({
       else if (gameTeam2 === playerTeam) tonightOpp = gameTeam1;
     }
     if (!tonightOpp) {
-      if (isDebug) dropped.push({ playerName: playerNameDisplay || playerName, sport, stat, threshold, kalshiPct, reason: "no_opp", playerTeam, gameTeam1, gameTeam2 });
+      if (isDebug) dropped.push({ playerName: playerNameDisplay || playerName, sport, stat, threshold, kalshiPct, reason: "no_opp", playerTeam, gameTeam1, gameTeam2, gameDate, kalshiTicker: _propKalshiTicker ?? null });
       continue;
     }
     // For MLB strikeouts, the player IS the pitcher — name-based lookup is immune to all
@@ -173,7 +173,16 @@ export async function emitPropPlays({
     })();
     // Base fields included on every drop in this loop. direction + noKalshi* ("under",
     // totalBases only) ride along so shadow rows + debug drops carry the NO side they price.
-    const _dropBase = { playerName: playerNameDisplay || playerName, sport, stat, threshold, kalshiPct, playerTeam, ...(direction ? { direction, noKalshiPct, noKalshiAO } : {}) };
+    //
+    // gameDate/gameTime/kalshiTicker are here because early-dropped prop rows ARE logged to
+    // shadow_plays (see the COALESCE(game_date, snapshot_date) note in handlers/shadow.js) —
+    // without them a drop lands with a NULL game_date and no ticker, which makes it both
+    // mis-gradable (the resolver falls back to the snapshot date) and unrecoverable (the
+    // ?backfillgamedate=1 repair keys off the ticker). Added 2026-07-27 alongside the same
+    // omission in game-totals.js/ml-spread.js. The qualifying push below re-states these with
+    // identical values; keeping them on the base is what stops the two from drifting again.
+    const _propGameTime = gameTimes[`${sport}:${playerTeam}:${gameDate}`] ?? gameTimes[`${sport}:${playerTeam}:${_tomorrowISOStr}`] ?? gameTimes[`${sport}:${playerTeam}`] ?? null;
+    const _dropBase = { playerName: playerNameDisplay || playerName, sport, stat, threshold, kalshiPct, playerTeam, gameDate, gameTime: _propGameTime, kalshiTicker: _propKalshiTicker ?? null, ...(direction ? { direction, noKalshiPct, noKalshiAO } : {}) };
     // Manual position overrides for known depth-chart misclassifications
     const NBA_POS_OVERRIDES = { "4871144": "C" }; // Alperen Sengun listed as PF in depth chart
     const nbaPos = sport === "nba" ? (NBA_POS_OVERRIDES[String(info.id)] || nbaDepthChartPos?.[String(info.id)] || (info.position ? NBA_POS_MAP[info.position] || null : null)) : null;
