@@ -1502,21 +1502,37 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               ];
           const yesterdayDateStr = new Date(Date.now() - 86400000).toISOString().slice(0, 10).replace(/-/g, "");
           const tomorrowDateStr = new Date(Date.now() + 86400000).toISOString().slice(0, 10).replace(/-/g, "");
+          // +2 days (2026-07-27). Kalshi lists markets further out than ESPN's old today+tomorrow
+          // window, so rows for D+2 games were captured with gameTime:null — which silently blocks
+          // maker quoting. 98 WNBA rows/day sat in that gap.
+          const dayAfterDateStr = new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10).replace(/-/g, "");
           const sbResults = await Promise.all(sportsToFetch.map(async s => {
             try {
               const H2 = { "User-Agent": "Mozilla/5.0" };
               const base = `https://site.api.espn.com/apis/site/v2/sports/${SPORT_SB_PATH[s]}/scoreboard`;
-              const [r1, r2, r3] = await Promise.all([
+              const [r1, r2, r3, r4] = await Promise.all([
                 fetch(`${base}?dates=${yesterdayDateStr}`, { headers: H2 }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
                 fetch(`${base}?dates=${todayDateStr}`, { headers: H2 }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
                 fetch(`${base}?dates=${tomorrowDateStr}`, { headers: H2 }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+                fetch(`${base}?dates=${dayAfterDateStr}`, { headers: H2 }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
               ]);
-              return { sport: s, events: [...(r1.events || []), ...(r2.events || []), ...(r3.events || [])] };
-            } catch { return { sport: s, events: [] }; }
+              // The D+2 events are deliberately kept OUT of `events` and exposed separately.
+              // Every `events` consumer below (parseGameOdds, parseGameScores, _extractMlbWeather,
+              // parseTopPlayers) is keyed by TEAM with last-event-wins, so folding D+2 in would let
+              // a further-out game overwrite a nearer game's odds. Only the gameTimes map — which
+              // keys by `sport:team:ptDate` and so cannot collide across dates — reads this.
+              return {
+                sport: s,
+                events: [...(r1.events || []), ...(r2.events || []), ...(r3.events || [])],
+                eventsDayAfter: [...(r4.events || [])],
+              };
+            } catch { return { sport: s, events: [], eventsDayAfter: [] }; }
           }));
           if (needGameTimes) {
-            for (const { sport, events } of sbResults) {
-              for (const ev of events) {
+            for (const { sport, events, eventsDayAfter } of sbResults) {
+              // D+2 events appended LAST so the bare `gameTimes[key]` fallback (first-seen-wins)
+              // still prefers the nearest game; the dated keys can't collide across days anyway.
+              for (const ev of [...events, ...(eventsDayAfter || [])]) {
                 const abbrs = (ev.competitions?.[0]?.competitors || []).map(c => c.team?.abbreviation).filter(Boolean);
                 if (ev.date && abbrs.length === 2) {
                   const ptDate = PT_FMT.format(new Date(ev.date));
