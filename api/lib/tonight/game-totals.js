@@ -981,8 +981,13 @@ export async function emitGameTotalPlays({
         underSimScore = _uHomeGpgPts + _uAwayGpgPts + _uHomeGaaPts + _uAwayGaaPts + _uNhlOuPts;
         _underComponents = { homeGpgPts: _uHomeGpgPts, awayGpgPts: _uAwayGpgPts, homeGaaPts: _uHomeGaaPts, awayGaaPts: _uAwayGaaPts, nhlOuPts: _uNhlOuPts };
       }
+      // Hoisted above the no_simulation_data drop (2026-07-27) so even a pre-model drop carries a
+      // real gameTime — it used to be computed further down, after this `continue`. Only bites for
+      // teams with no season stats (2026 WNBA expansion sides TOR/POR), but the invariant that
+      // every dropped row has full identity is the whole point.
+      const _gameTime = gameTimes[`${sport}:${homeTeam}:${gameDate}`] ?? gameTimes[`${sport}:${awayTeam}:${gameDate}`] ?? gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null;
       if (truePct == null) {
-        if (isDebug) dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, totalSimScore, underSimScore, gameDate, reason: "no_simulation_data", ..._simData });
+        if (isDebug) dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, totalSimScore, underSimScore, gameDate, gameTime: _gameTime, reason: "no_simulation_data", ..._simData });
         continue;
       }
       const rawEdge = kalshiPct != null ? parseFloat((truePct - kalshiPct).toFixed(1)) : null;
@@ -1000,7 +1005,6 @@ export async function emitGameTotalPlays({
       const overEdge = rawEdge ?? 0;
       const underEdge = _rawUnderEdge;
       const noKalshiAO = _tmNoAO ?? (noKalshiPct >= 50 ? Math.round(-(noKalshiPct/(100-noKalshiPct))*100) : Math.round((100-noKalshiPct)/noKalshiPct*100));
-      const _gameTime = gameTimes[`${sport}:${homeTeam}:${gameDate}`] ?? gameTimes[`${sport}:${awayTeam}:${gameDate}`] ?? gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null;
       // MLB-only: both lineups confirmed = both teams have a posted lineup (in lineupSpotByName)
       // AND neither is in the projected-fallback set. Undefined for non-MLB so the badge hides.
       const _lineupsConfirmed = sport === "mlb"
