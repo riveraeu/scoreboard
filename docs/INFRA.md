@@ -187,6 +187,22 @@ Built same day as the ARM review above, scoped tight to `MAKER_V2_BAND` `[80,84]
 
 **Open positions view (`GET /api/maker-v2-board`, 2026-07-22)**: `positions` = the `orders` rows filtered to `status='executed' AND graded_at IS NULL` (currently-held, ungraded — same subset `reconcileLiveMakerFills` grades once resolved), each enriched with a live top-of-book read (`fetchKalshiOrderbook` from `kalshi-book.js`, `pLimit(8)`-bounded, one call per distinct ticker — no full book walk, this is a display estimate not an execution price). Framed as a **short**, matching what V2 actually does (`sellAsBuy` — the real order is a buy of the complement side): `collected` = `price` (premium taken at sale), `currentAskCents` = live ask on the SAME sold side (what it'd cost to close now), `unrealizedCents = price − currentAskCents` (positive = favorite got cheaper = winning), `maxRiskCents = 100 − price`. Failure-closed per row — a failed book fetch just omits the live fields, cost basis still renders. Read-only (no cash-out/buy-more actions wired — Kalshi has no sell-to-close endpoint; a real "cash out" would need the same buy-the-complement trick `sellAsBuy` uses, deliberately out of scope for this display-only pass). Rendered by `MakerLivePositions` in `MakerBoardPage.jsx` — this is now the ONLY orders/positions table on the page (the older raw `MakerLiveOrders` monitoring table, which listed every status including resting/canceled/expired, was removed same day in favor of this positions-only view; per-status counts are still visible via `LiveFillRateTile`'s "N executed / N placed · N resting" line, so nothing needs the old table to know what's resting).
 
+### Adverse selection, measured within band (2026-07-26)
+
+`makerBoard.adverseSelection` + `quotedOutcomes.byBand`. **The old diagnostic was confounded and could invert.** `quotedOutcomes` used `DISTINCT ON (ticker, game_date) … ORDER BY valid_from DESC` — one row per ticker-day, the FINAL quote — so the "quoted" population had avgAsk **75.3¢ vs 73.2¢ across all segments**, while fills come from any of ~10 segments/ticker-day (avgFillAsk 71.0¢). It then compared raw sold-side win *rates* across those mismatched price distributions, and a lower win rate is exactly what a lower price should produce. Symptom: on 2026-07-26 filled edge (+1.42¢) came out ABOVE quoted (+0.57¢) — mechanically backwards for a resting maker, i.e. the metric was measuring mix. (It had also been running through the 414-broken settlement fetch: 2,241 → 7,765 resolved tickers after that fix.)
+
+Now: population is **every segment**, grouped `(band, ticker, quote_side)` and segment-weighted; compared **within band** (band `avgPnl` IS the filled seller edge, `AVG(ask − 100·won)`); headline `gapCents` = quoted edge − filled edge re-weighted onto the quoted price distribution. Sanity check that the population is now representative: `quotedOutcomes.avgAsk` 73.3¢ vs `quotes.avgAsk` 73.2¢.
+
+```
+quoted +1.53c | filled raw +1.38c | filled mix-adjusted +1.01c | gap +0.51c
+55-59 -1.29  60-64 -2.25  65-69 +1.09  70-74 -2.62
+75-79 +8.61  80-84 -1.87  85-89 +0.04  90-96 +2.66      (gap = quoted − filled)
+```
+
+**5 of 8 bands are negative** (fills *better* than quotes); the positive aggregate is almost entirely the 75-79 band. Same band-incoherence that retired the 7/21 "edge only in 80-84" claim. **So adverse selection is not currently demonstrated at the ~1.4¢ once believed** — it remains the right prior for a resting maker, but this book doesn't show it, and "more data won't fix V1 because fills select against the quote edge" should not be repeated as established. The DO-NOT-ARM verdict rests on the day-clustered CI below, not on this. The quote-side vig itself does hold up (+1.53¢ over 81.8k segments, consistent with § pooled market calibration).
+
+⚠ `quotedOutcomes.n` is now **segments**, not ticker-days — use `.tickers` for a market count. Band `CASE` lives in one `_makerBandCase()` helper; both sides must bucket identically or the comparison is void again. Banner tier 1.6 + the MakerProgress tile read `gapCents` (fire at ≥2¢), replacing the old ≥8pp win-rate trigger.
+
 ### Day-clustered CI — the honest interval (2026-07-26)
 
 `makerBoard.fills.dayClustered` and `makerBoard.live.dayClustered` (`dayClusteredPnl`, `api/lib/maker-stats.js`). Same contract-weighted ratio estimator as `weighted`, but with the **DAY as the cluster** instead of the fill:
