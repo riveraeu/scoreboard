@@ -2384,8 +2384,21 @@ function _bettingAction(verdict, gated, eligible, hint) {
     return { action: "Don't bet", tone: "dim",
       why: "model doesn't beat the price — no edge to bet regardless of window" };
   switch (verdict) {
-    case "PROMOTE":       return { action: "Add to gate", tone: "green", why: "eligible + validated profitable window — start betting" };
+    // NOT "Add to gate" (2026-07-27). Two distinct mechanisms were being conflated: this ladder
+    // discovers a PRICE WINDOW (CATEGORY_BET_WINDOWS, owned by `tune:window`), whereas "the gate"
+    // is passesCategoryGate (a truePct threshold, owned by `tune:gate`) — different bar, different
+    // file. Worse, PROMOTE only clears an IN-SAMPLE screen at n≥MIN_N_PROMOTE (50); shipping a
+    // window needs `tune:window` GO at n≥200 with an OUT-OF-SAMPLE CI-lo>0, precisely because the
+    // discovered window is ROI-maximized over many candidate ranges and so is upward-biased.
+    // Live example the same day: mlb|f3ml read PROMOTE here (in-sample 30–50¢, ROI +24.7%, CI-lo
+    // +11.8%, n=52) while tune:window returned NO-GO — OOS CI-lo −1.8% and the window slid to
+    // 45–60¢. So this verdict is a LEAD to verify, never an instruction to bet.
+    case "PROMOTE":       return { action: "Verify with tune:window", tone: "green", why: "in-sample window screen passed (n≥50) — confirm out-of-sample before shipping a window; this is not the category gate" };
     case "HOLD":          return { action: "Keep betting", tone: "gray", why: "gated and still profitable" };
+    // DEMOTE deliberately KEEPS gate language while PROMOTE lost it — the asymmetry is the point.
+    // DEMOTE only fires when the category is already gated (real money on it), and pulling it from
+    // passesCategoryGate is exactly how you stop betting. Acting on a weaker in-sample signal is
+    // correct in the stop-risk direction and wrong in the take-risk one. Don't "fix" for symmetry.
     case "DEMOTE":        return { action: "Pull from gate", tone: "red", why: "window went significantly negative" };
     case "STRENGTHENING": return { action: "Build", tone: "blue", why: hint || "eligible + positive but window not yet validated — accruing" };
     case "NEGATIVE":
@@ -2588,7 +2601,9 @@ function _buildDailyBrief(r, prior) {
   // promote bar. Gate-level changes (rare, important) lead the section.
   const betting = [];
   for (const b of bet) {
-    if (b.verdict === "PROMOTE")            betting.push(`${name(b.key)} is ready to gate — ${b.hint || "validated profitable window"}.`);
+    // "candidate", not "ready to gate" (2026-07-27) — this is a bet-WINDOW screen, and an
+    // in-sample one; the category gate is a different mechanism entirely. See _bettingAction.
+    if (b.verdict === "PROMOTE")            betting.push(`${name(b.key)} is a bet-window candidate — ${b.hint || "in-sample window passed"} — confirm with tune:window before shipping.`);
     else if (b.verdict === "DEMOTE")        betting.push(`Pull ${name(b.key)} from the gate — its window went significantly negative.`);
     else if (b.gated && b.verdict === "HOLD") betting.push(`${name(b.key)} stays in the gate — still profitable.`);
   }
@@ -2654,7 +2669,9 @@ function _buildDailyBrief(r, prior) {
   const actions = [];
   if (dh?.actionable) actions.push("fix data health (see the health line)");
   for (const b of bet) {
-    if (b.verdict === "PROMOTE") actions.push(`add ${name(b.key)} to the gate`);
+    // Was `add ... to the gate` (2026-07-27) — wrong mechanism AND premature. PROMOTE is an
+    // in-sample bet-WINDOW screen; the decision belongs to tune:window's out-of-sample split.
+    if (b.verdict === "PROMOTE") actions.push(`run tune:window on ${name(b.key)} (in-sample window candidate)`);
     else if (b.verdict === "DEMOTE") actions.push(`pull ${name(b.key)} from the gate`);
   }
   let takeaway;
@@ -3095,8 +3112,10 @@ async function handleShadowReport({ path, request, env, cache }) {
       verdict = (q && q.roiHiCI < 0) ? "DEMOTE" : "HOLD";
     } else if (allReady) {
       verdict = "PROMOTE";
-      action = `add ${category} @ ${win.lo}–${win.hi}¢ window`;
-      hint = `bet ${win.lo}–${win.hi}¢ · ROI ${(win.roi * 100).toFixed(1)}% (worst case still +${(q.roiLoCI * 100).toFixed(1)}%) · n=${win.n} · profitable across the range`;
+      // Emit the exact command that makes the real decision, not an imperative to bet — the
+      // checklist above is in-sample only (see _bettingAction's PROMOTE note).
+      action = `verify ${key} @ ${win.lo}–${win.hi}¢ — npm run tune:window -- --category "${key}"`;
+      hint = `in-sample ${win.lo}–${win.hi}¢ · ROI ${(win.roi * 100).toFixed(1)}% (CI-lo +${(q.roiLoCI * 100).toFixed(1)}%) · n=${win.n} · coherent — needs out-of-sample confirmation`;
     } else {
       // Positive but not yet validated — name exactly what's missing, in plain words.
       verdict = "STRENGTHENING";
