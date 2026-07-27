@@ -16,7 +16,7 @@ import { fetchKalshiOrderbook } from "../kalshi-book.js";
 import { pipeWriteChunked } from "../kv-pipeline.js";
 import { gzipToString } from "../kv-compress.js";
 import { updateMakerQuotes } from "../maker.js";
-import { importKalshiKey as _importKalshiKey, placeKalshiOrder, cancelKalshiOrder } from "../kalshi-order-client.js";
+import { importKalshiKey as _importKalshiKey, placeKalshiOrder } from "../kalshi-order-client.js";
 import { resolveOpenMakerPositions } from "./shadow.js";
 import { enrichSeries, checkSeriesLiquidity, fetchSeriesMeta } from "../kalshi-series-check.js";
 import { updateLiveMakerOrders, emergencyKillLive, setArmed, computeWantedMakerQuotes,
@@ -437,33 +437,6 @@ export async function handleKalshiRoutes(ctx) {
     if (!CACHE2) return errorResponse("No KV", 500);
     const result = await emergencyKillLive({ env, cache: CACHE2 });
     return jsonResponse({ ok: true, ...result });
-  }
-
-  // ── /api/maker-v2-verify-cancel ──────────────────────────────────────────────
-  // One-time verification for the cancel schema in kalshi-order-client.js (unverified against a
-  // live call — see its top-of-file note). Runs server-side because KALSHI_API_KEY_ID/
-  // KALSHI_PRIVATE_KEY are Vercel "sensitive" env vars (write-only — `vercel env pull` can never
-  // retrieve them, only the running function gets them injected), so this can't be a local
-  // script. Places ONE real order (caller-specified ticker/side/price/count, no silent defaults
-  // given the stakes) then immediately cancels it, returning both raw Kalshi responses. ADMIN_KEY
-  // only — this is a real trade when invoked, so it must be YOU running the curl, not an agent.
-  if (path === "maker-v2-verify-cancel" && method === "POST") {
-    const bearer = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/, "");
-    if (!env?.ADMIN_KEY || bearer !== env.ADMIN_KEY) return errorResponse("Forbidden", 403);
-    let body;
-    try { body = await request.json(); } catch { return errorResponse("Invalid JSON", 400); }
-    const { ticker, side, price, count } = body || {};
-    if (!ticker || !side || price == null || count == null) return errorResponse("Missing required fields: ticker, side, price, count", 400);
-    if (side !== "yes" && side !== "no") return errorResponse("side must be 'yes' or 'no'", 400);
-    if (!Number.isInteger(count) || count < 1 || count > 9999) return errorResponse("count must be integer 1–9999", 400);
-    if (!Number.isInteger(price) || price < 1 || price > 99) return errorResponse("price must be integer 1–99 (cents)", 400);
-    const placed = await placeKalshiOrder({ ticker, side, price, count }, env);
-    if (!placed.ok || (placed.remainingCount || 0) === 0) {
-      return jsonResponse({ ok: placed.ok, placed, canceled: null,
-        note: !placed.ok ? "placement failed" : "nothing left resting (fully filled or gone) — nothing to cancel" });
-    }
-    const canceled = await cancelKalshiOrder({ orderId: placed.orderId }, env);
-    return jsonResponse({ ok: true, placed, canceled });
   }
 
   // ── /api/maker-v1-category-breakdown ──────────────────────────────────────────

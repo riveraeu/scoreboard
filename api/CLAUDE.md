@@ -11,7 +11,7 @@ Route handlers (`api/lib/handlers/`):
 - `player.js` — `/api/player`, `/api/gamelog`, `/api/headshot`
 - `sports.js` — `/api/team`, `/api/live`
 - `dvp.js` — `/api/dvp`, `/api/nba-depth`, `/api/dvp/debug-dc`
-- `kalshi.js` — `/api/kalshi`, `/api/kalshi-orderbook`, `/api/kalshi-snapshot`, `/api/kalshi-series-scan`, `/api/kalshi-check`, `/api/keepalive`, `/api/kalshi-order`, `/api/kalshi-balance`, `/api/kalshi-fills`, `/api/maker-v2-arm`, `/api/maker-v2-kill`, `/api/maker-v2-verify-cancel`, `/api/maker-v2-board`
+- `kalshi.js` — `/api/kalshi`, `/api/kalshi-orderbook`, `/api/kalshi-snapshot`, `/api/kalshi-series-scan`, `/api/kalshi-check`, `/api/keepalive`, `/api/kalshi-order`, `/api/kalshi-balance`, `/api/kalshi-fills`, `/api/maker-v2-arm`, `/api/maker-v2-kill`, `/api/maker-v2-board`
 - `tonight.js` — `/api/tonight`. Owns the Kalshi parse loop, byteam hydration, data-prep, emit calls, response assembly.
 - `shadow.js` — `/api/shadow-snapshot`, `/api/shadow-resolver`, `/api/shadow-pregame-snap`, `/api/shadow-report`, `/api/{polymarket,sportsbook}-deltas`, `/api/polymarket-scan`, `/api/routine-note`, `/api/kalshi-dryrun-check`
 - `push.js` — `/api/push/{vapid,subscribe,unsubscribe,notify,test}` (Web Push / PWA; web-push is the only Node-only dep, dynamic-imported in the send path)
