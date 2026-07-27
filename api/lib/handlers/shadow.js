@@ -33,6 +33,7 @@ import { fetchArgPremResults } from "../argprem.js";
 import { fetchScoCupResults } from "../scocup.js";
 import { deriveKalshiSide, fetchKalshiSettlements, fetchKalshiSettlementsWithMeta, resolveRowViaKalshi, resolveTickerSideViaKalshi, classifyRowViaKalshi } from "../kalshi-settlement.js";
 import { reconcileGrades, isSettlementAuthoritative, SETTLEMENT_AUTHORITATIVE_SPORTS, SETTLEMENT_CUTOVER_DATE } from "../settlement-reconcile.js";
+import { kalshiTickerDate } from "../kalshi-ticker.js";
 import { weightedPnlSumsSql, weightedPnlFromRow, dayClusteredPnl, quotedOutcomesByBand, adverseSelectionWithinBand } from "../maker-stats.js";
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER } from "../config.js";
 import { passesCategoryGate } from "../category-gate.js";
@@ -983,17 +984,34 @@ async function handleShadowResolver({ path, request, env, cache }) {
   // Build unique game keys per date. Key: sport:away:home[@gameTime] — matches /api/live format.
   const keysByDate = new Map(); // game_date → Set<rawKey>
   const rowToKey = new Map();   // row.id → rawKey
+  // Rows graded against a guessed (snapshot_date) date — no game_date, no ticker, no game_time.
+  // Surfaced on the response so this can't silently regrow the way the null-game_date population did.
+  let _guessedDateRows = 0;
 
   for (const row of teamRows) {
     const { sport, home_team, away_team, game_time } = row;
-    // Prefer game_date when set. When null (Kalshi ticker date unparseable), extract the
-    // PT calendar date from game_time (ISO string like 2026-06-03T23:00:00Z) — that gives
-    // the correct date even when the snapshot was taken the day before the game. Only fall
-    // back to snapshot_date when neither is available (early-dropped rows without game_time).
+    // Prefer game_date when set — for MLB it may have been deliberately re-attributed forward to
+    // a postponed game's makeup date, which the ticker (frozen at the original date) would not
+    // reflect, so it has to stay first.
+    //
+    // Then the Kalshi ticker's own date segment (2026-07-27). The ticker is the venue's identifier
+    // for the event and is exactly what settlement grades against, so it beats anything derived
+    // from our own snapshot timing. This rung is what stops the cross-day mis-grade: a row logged
+    // on day D for a day-D+1 market used to fall through to snapshot_date and match the SAME
+    // matchup played on D — routine in MLB, where 3-4 game series are the norm. The +1-day retry
+    // pass below could not save it, because that pass only fires when the primary lookup finds
+    // NOTHING, and here it wrongly finds yesterday's game.
+    //
+    // Then the PT calendar date from game_time (ISO string like 2026-06-03T23:00:00Z). Only fall
+    // back to snapshot_date when none of the above is available — that rung is a GUESS, and now
+    // only reachable for pre-2026-07-23 rows, which predate the kalshi_ticker column.
     // snapshot_date is a DATE column; Neon may return JS Date or ISO string — both safe via toISOString().
+    const _tickerDate = kalshiTickerDate(row.kalshi_ticker);
     const effectiveDate = row.game_date
+      || _tickerDate
       || (row.game_time ? new Date(row.game_time).toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" }) : null)
       || (row.snapshot_date ? new Date(row.snapshot_date).toISOString().slice(0, 10) : null);
+    if (!row.game_date && !_tickerDate && !row.game_time) _guessedDateRows++;
     let rawKey = `${sport}:${away_team}:${home_team}`;
     if (game_time) rawKey += `@${game_time}`;
     rowToKey.set(row.id, { rawKey, effectiveDate });
@@ -1881,6 +1899,10 @@ async function handleShadowResolver({ path, request, env, cache }) {
     skipped,
     noData,
     noDataNetOfSettlement,
+    // Rows graded against a GUESSED date (snapshot_date — no game_date, no ticker, no game_time).
+    // Should be 0 for anything logged after the kalshi_ticker column landed 2026-07-23; a non-zero
+    // on fresh rows means a capture path is dropping identity again (see game-totals.js 2026-07-27).
+    guessedDateRows: _guessedDateRows,
     maker: makerMeta,
     makerLive: makerLiveMeta,
     // Authoritative settlement grading for the shadow-only sports (2026-07-25). `disagreed` is the
@@ -4178,6 +4200,105 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
       }
       return jsonResponse({ ok: true, dry, byCategory: summary });
     } catch (e) { return errorResponse(`rerankgroups failed: ${e?.message}`, 500); }
+  }
+
+  // ?backfillgamedate=1 (ADMIN only, ?dry=1 to report) — repair for the 2026-07-27 null-game_date
+  // bug: game-totals.js's dropped-row push omitted gameDate/gameTime, so 23.5% of shadow_plays
+  // landed with a NULL game_date. Those rows fell through the resolver's date ladder to
+  // snapshot_date and, for a next-day pre-listing, graded against the SAME matchup played the
+  // previous day (MLB series make that routine). Idempotent: re-running changes nothing once clean.
+  //
+  // Two phases, both keyed off the Kalshi ticker's own date segment (the venue's identifier for
+  // the event, so it is authoritative for WHICH game the row is about):
+  //   A. REGRADE — rows already graded off a wrong date. Suspect = resolved, game_time also NULL
+  //      (so the ladder really did fall through to snapshot_date), and tickerDate != snapshot_date.
+  //      Those labels are a wrong GAME, not a wrong reading of the right game, so they are
+  //      re-graded from Kalshi settlement. NOTE: this deliberately uses settlement on calibrated
+  //      teamRows families, which settlement-reconcile.js normally keeps ESPN-graded — justified
+  //      only because the incumbent label is known-wrong, and scoped to exactly those rows.
+  //   B. BACKFILL — write game_date = tickerDate for every NULL-game_date row that has a parseable
+  //      ticker. Unresolved ones then grade correctly on the next normal pass.
+  // Rows without a ticker (pre-2026-07-23) are unrecoverable and left alone.
+  if (new URL(request.url).searchParams.get("backfillgamedate") === "1") {
+    if (!isAdmin) return errorResponse("Forbidden", 403);
+    const dry = new URL(request.url).searchParams.get("dry") === "1";
+    try {
+      const nullRows = await neonQuery(
+        `SELECT id, sport, stat, game_type, kalshi_ticker, kalshi_side, won, game_time,
+                snapshot_date, resolved
+           FROM ${SHADOW_TABLE}
+          WHERE game_date IS NULL AND kalshi_ticker IS NOT NULL`, [], env, { write: true });
+
+      const snapDate = (v) => (v ? new Date(v).toISOString().slice(0, 10) : null);
+      const withDate = [];
+      for (const r of nullRows) {
+        const td = kalshiTickerDate(r.kalshi_ticker);
+        if (td) withDate.push({ ...r, tickerDate: td, snap: snapDate(r.snapshot_date) });
+      }
+      // Graded off a date the ladder guessed, and the guess disagrees with the ticker.
+      const suspects = withDate.filter(r => r.won !== null && !r.game_time && r.tickerDate !== r.snap);
+
+      // Phase A — settlement grades for the suspects.
+      let regraded = 0, voided = 0, pending = 0, flipped = 0, fetchMeta = null;
+      const flips = [];
+      if (suspects.length) {
+        const { settlements, meta } = await fetchKalshiSettlementsWithMeta(suspects.map(r => r.kalshi_ticker));
+        fetchMeta = meta;
+        const regradeUpdates = [];
+        for (const r of suspects) {
+          const c = classifyRowViaKalshi(r, settlements);
+          if (c.state === "pending") { pending++; continue; }
+          if (c.state === "void") { voided++; regradeUpdates.push({ id: r.id, won: null }); continue; }
+          regraded++;
+          if (c.won !== r.won) {
+            flipped++;
+            if (flips.length < 20) flips.push({ id: r.id, sport: r.sport, stat: r.stat || r.game_type,
+              ticker: r.kalshi_ticker, was: r.won, now: c.won, snap: r.snap, tickerDate: r.tickerDate });
+          }
+          regradeUpdates.push({ id: r.id, won: c.won });
+        }
+        // Chunked VALUES update — same idiom as neonBatchResolve. A per-row loop here would be
+        // ~2k sequential Neon HTTP round-trips and would not finish inside maxDuration.
+        if (!dry && regradeUpdates.length) {
+          for (let i = 0; i < regradeUpdates.length; i += 100) {
+            const chunk = regradeUpdates.slice(i, i + 100);
+            await neonQuery(
+              `UPDATE ${SHADOW_TABLE} AS t SET won = v.won
+                 FROM (VALUES ${chunk.map((_, ri) => `($${ri * 2 + 1}, $${ri * 2 + 2}::boolean)`).join(", ")}) AS v(id, won)
+                WHERE t.id = v.id`,
+              chunk.flatMap(u => [u.id, u.won]), env, { write: true });
+          }
+        }
+      }
+
+      // Phase B — write the real game_date everywhere it is recoverable. The IS NULL guard keeps
+      // this idempotent and stops it from ever overwriting a real (or re-attributed) date.
+      let dated = 0;
+      if (!dry && withDate.length) {
+        for (let i = 0; i < withDate.length; i += 100) {
+          const chunk = withDate.slice(i, i + 100);
+          await neonQuery(
+            `UPDATE ${SHADOW_TABLE} AS t SET game_date = v.gd
+               FROM (VALUES ${chunk.map((_, ri) => `($${ri * 2 + 1}, $${ri * 2 + 2}::text)`).join(", ")}) AS v(id, gd)
+              WHERE t.id = v.id AND t.game_date IS NULL`,
+            chunk.flatMap(r => [r.id, r.tickerDate]), env, { write: true });
+          dated += chunk.length;
+        }
+      } else { dated = withDate.length; }
+
+      console.log(`[shadow-snapshot] backfillgamedate dry=${dry} nullRows=${nullRows.length} datable=${withDate.length} suspects=${suspects.length} regraded=${regraded} flipped=${flipped}`);
+      return jsonResponse({
+        ok: true, dry,
+        nullGameDateWithTicker: nullRows.length,
+        datable: withDate.length,
+        unparseableTicker: nullRows.length - withDate.length,
+        backfilled: dated,
+        regrade: { suspects: suspects.length, regraded, flipped, voided, pending, settlementFetch: fetchMeta },
+        // Non-zero chunksFailed means some suspects were never looked up — re-run before trusting.
+        incomplete: !!(fetchMeta && fetchMeta.chunksFailed > 0),
+        flips,
+      });
+    } catch (e) { return errorResponse(`backfillgamedate failed: ${e?.message}`, 500); }
   }
 
   const snapshotDate = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });

@@ -982,7 +982,7 @@ export async function emitGameTotalPlays({
         _underComponents = { homeGpgPts: _uHomeGpgPts, awayGpgPts: _uAwayGpgPts, homeGaaPts: _uHomeGaaPts, awayGaaPts: _uAwayGaaPts, nhlOuPts: _uNhlOuPts };
       }
       if (truePct == null) {
-        if (isDebug) dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, totalSimScore, underSimScore, reason: "no_simulation_data", ..._simData });
+        if (isDebug) dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, totalSimScore, underSimScore, gameDate, reason: "no_simulation_data", ..._simData });
         continue;
       }
       const rawEdge = kalshiPct != null ? parseFloat((truePct - kalshiPct).toFixed(1)) : null;
@@ -1013,7 +1013,13 @@ export async function emitGameTotalPlays({
       if (overEdge >= EDGE_GATE && _overInWindow) {
         totalPlays.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge: overEdge, totalSimScore, qualified: true, kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _gameTime, lineupsConfirmed: _lineupsConfirmed, kalshiTicker: tm._ticker ?? null, kalshiSide: "yes", ..._simData });
       } else {
-        dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge: overEdge, totalSimScore, lineupsConfirmed: _lineupsConfirmed, kalshiTicker: tm._ticker ?? null, reason: !_overInWindow ? "kalshi_out_of_window" : "edge_too_low", ..._simData });
+        // gameDate/gameTime MUST be carried here, not just on the emitted play above (2026-07-27):
+        // dropped rows are logged to shadow_plays under the capture-ALL doctrine, and a null
+        // game_date makes shadowId fall back to the snapshot date AND leaves the resolver with no
+        // date anchor — it then grades a next-day pre-listing against the SAME matchup played the
+        // previous day (routine in MLB, where 3-4 game series are the norm). This omission put
+        // 23.5% of shadow_plays on a null game_date. gameTime additionally gates maker quoting.
+        dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "over", kalshiPct, americanOdds, truePct: parseFloat(truePct.toFixed(1)), rawEdge, edge: overEdge, totalSimScore, gameDate, gameTime: _gameTime, lineupsConfirmed: _lineupsConfirmed, kalshiTicker: tm._ticker ?? null, reason: !_overInWindow ? "kalshi_out_of_window" : "edge_too_low", ..._simData });
       }
       // UNDER play — mirror the OVER filter: require noKalshiPct >= 70 (YES <= 30)
       // so we only bet UNDERs the market also considers likely (same gate as OVERs).
@@ -1022,7 +1028,7 @@ export async function emitGameTotalPlays({
       if (underEdge >= EDGE_GATE && noKalshiPct >= KALSHI_GATE && noKalshiPct <= KALSHI_CAP) {
         totalPlays.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "under", kalshiPct, noKalshiPct, americanOdds: noKalshiAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, rawEdge, edge: underEdge, totalSimScore: underSimScore, qualified: true, kalshiVolume, kalshiSpread, lowVolume, gameDate, gameTime: _gameTime, lineupsConfirmed: _lineupsConfirmed, kalshiTicker: tm._ticker ?? null, kalshiSide: "no", ..._simData, ..._underComponents });
       } else {
-        dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "under", kalshiPct, noKalshiPct, americanOdds: noKalshiAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, rawEdge, edge: underEdge, totalSimScore: underSimScore, lineupsConfirmed: _lineupsConfirmed, kalshiTicker: tm._ticker ?? null, reason: noKalshiPct < KALSHI_GATE ? "under_no_price_too_low" : "edge_too_low", ..._simData, ..._underComponents });
+        dropped.push({ gameType: "total", sport, stat, homeTeam, awayTeam, threshold, direction: "under", kalshiPct, noKalshiPct, americanOdds: noKalshiAO, truePct: parseFloat(truePct.toFixed(1)), noTruePct, rawEdge, edge: underEdge, totalSimScore: underSimScore, gameDate, gameTime: _gameTime, lineupsConfirmed: _lineupsConfirmed, kalshiTicker: tm._ticker ?? null, reason: noKalshiPct < KALSHI_GATE ? "under_no_price_too_low" : "edge_too_low", ..._simData, ..._underComponents });
       }
     }
   }
@@ -1234,7 +1240,7 @@ export async function emitGameTotalPlays({
         const h2hHitRatePts = h2hHitRate == null ? 1 : h2hHitRate >= 80 ? 2 : h2hHitRate >= 60 ? 1 : 0;
         const ttOuPts = gameOuLine == null ? 1 : gameOuLine >= 9.5 ? 2 : gameOuLine >= 7.5 ? 1 : 0;
         teamTotalSimScore += ttSeasonHitRatePts + ttWhipPts + ttL10Pts + h2hHitRatePts + ttOuPts;
-        if (truePct == null) { if (isDebug) dropped.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, teamTotalSimScore, teamRPG, oppERA, oppFIP, oppWHIP, ...(oppWHIPSource && { oppWHIPSource }), oppBullpenERA: _oppRestERA, ...(oppBullpenSource && { oppBullpenSource }), oppRPG, parkFactor: parkRF, gameOuLine, h2hHitRate, h2hGames, h2hHitRatePts, teamL10RPG, ttL10Pts, ttWhipPts, ttOuPts, ttSeasonHitRate, ttSeasonHitRatePts, umpireName: _ttUmpName, reason: "no_simulation_data" }); continue; }
+        if (truePct == null) { if (isDebug) dropped.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, teamTotalSimScore, gameDate, teamRPG, oppERA, oppFIP, oppWHIP, ...(oppWHIPSource && { oppWHIPSource }), oppBullpenERA: _oppRestERA, ...(oppBullpenSource && { oppBullpenSource }), oppRPG, parkFactor: parkRF, gameOuLine, h2hHitRate, h2hGames, h2hHitRatePts, teamL10RPG, ttL10Pts, ttWhipPts, ttOuPts, ttSeasonHitRate, ttSeasonHitRatePts, umpireName: _ttUmpName, reason: "no_simulation_data" }); continue; }
         const _ttGameTime = gameTimes[`${sport}:${homeTeam}:${gameDate}`] ?? gameTimes[`${sport}:${awayTeam}:${gameDate}`] ?? gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null;
         // Both lineups confirmed (MLB only): scoringTeam + oppTeam each have a posted lineup, neither projected.
         const _ttLineupsConfirmed = _mlbBothTeamsConfirmed(scoringTeam, oppTeam, gameDate);
@@ -1344,7 +1350,7 @@ export async function emitGameTotalPlays({
         const ttDefRtgPts = oppDefRtg == null ? 1 : oppDefRtg >= 118 ? 2 : oppDefRtg >= 113 ? 1 : 0;
         const ttNbaOuPts = _nbaOuLine == null ? 1 : _nbaOuLine >= 225 ? 2 : _nbaOuLine >= 215 ? 1 : 0;
         teamTotalSimScore += ttOffRtgPts + ttDefRtgPts + ttNbaSeasonHitRatePts + h2hHitRatePts + ttNbaOuPts;
-        if (truePct == null) { if (isDebug) dropped.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, teamTotalSimScore, teamOffRtg, oppDefRtg, ttOffRtgPts, ttDefRtgPts, ttNbaOuPts, gameOuLine: _nbaOuLine, h2hHitRate, h2hGames, h2hHitRatePts, ttNbaSeasonHitRate, ttNbaSeasonHitRatePts, reason: "no_simulation_data" }); continue; }
+        if (truePct == null) { if (isDebug) dropped.push({ gameType: "teamTotal", sport, stat, scoringTeam, oppTeam, homeTeam, awayTeam, threshold, kalshiPct, americanOdds, teamTotalSimScore, gameDate, teamOffRtg, oppDefRtg, ttOffRtgPts, ttDefRtgPts, ttNbaOuPts, gameOuLine: _nbaOuLine, h2hHitRate, h2hGames, h2hHitRatePts, ttNbaSeasonHitRate, ttNbaSeasonHitRatePts, reason: "no_simulation_data" }); continue; }
         const _nttGameTime = gameTimes[`${sport}:${homeTeam}:${gameDate}`] ?? gameTimes[`${sport}:${awayTeam}:${gameDate}`] ?? gameTimes[`${sport}:${homeTeam}`] ?? gameTimes[`${sport}:${awayTeam}`] ?? null;
         // Pace + injury surfacing for the lambda inputs panel. Pace is the projected joint
         // pace minus league average (matches the game-total convention). Injuries reported
