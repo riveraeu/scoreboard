@@ -47,6 +47,16 @@ import {
 } from "../price-window.js";
 
 const SHADOW_TABLE = "shadow_plays";
+
+// Maker ask-price band buckets, as a SQL CASE over any ask column. ONE definition (2026-07-26) —
+// previously copy-pasted per query, and the quoted-vs-filled comparison is only meaningful if both
+// sides bucket identically, so a third copy was the wrong way to add one. `col` is a trusted
+// identifier from call sites in this file, never user input.
+const _makerBandCase = (col) => `CASE
+  WHEN ${col} < 60 THEN '55-59' WHEN ${col} < 65 THEN '60-64'
+  WHEN ${col} < 70 THEN '65-69' WHEN ${col} < 75 THEN '70-74'
+  WHEN ${col} < 80 THEN '75-79' WHEN ${col} < 85 THEN '80-84'
+  WHEN ${col} < 90 THEN '85-89' ELSE '90-96' END`;
 const COLUMNS = [
   "id", "snapshot_date", "sport", "stat", "game_type",
   "player_name", "player_id", "home_team", "away_team",
@@ -3431,9 +3441,10 @@ async function handleShadowReport({ path, request, env, cache }) {
 
   // Shadow maker board (api/lib/maker.js, 2026-07-19) — simulated favorite-ask quoting.
   // Three reads: quote volume, fill economics (the arm decision input), and the adverse-
-  // selection check (sold-side win rate on FILLED quotes vs on ALL quoted markets — if fills
-  // lose much more often than quotes overall, the margin is selection, not edge).
-  // Arm criterion: fill PnL CI-lo > 0 at n≥200 fills. Failure-closed.
+  // selection check (see `adverseSelection` below — compared WITHIN price band since 2026-07-26,
+  // because the filled and quoted populations sit at very different prices).
+  // Arm criterion: see `armCriterion` — n≥200 fills AND ≥14 days AND dayClustered.loCI>0.
+  // Failure-closed.
   let makerBoard = null;
   try {
     const [[mq], [mf], _qoRows, _mDaily, _mBands] = await Promise.all([
@@ -3451,15 +3462,25 @@ async function handleShadowReport({ path, request, env, cache }) {
           ${weightedPnlSumsSql({ pnlCol: "f.pnl_cents", contractsCol: "f.contracts", filter: "f.graded_at IS NOT NULL" })}
         FROM maker_fills f JOIN maker_quotes q ON q.id = f.quote_id
         WHERE q.game_date >= $1`, [since], env, { write: true }),
-      // Raw rows, not aggregated in SQL — side_won is resolved directly off Kalshi's own
-      // settlement (resolveTickerSideViaKalshi, kalshi-settlement.js) after this query returns,
-      // same source detectAndGradeMakerFills's gradeMakerFills uses (2026-07-24 rewrite) — no
-      // shadow_plays join, so this can't drift out of sync with it the way the pre-2026-07-22
-      // duplicated CASE-WHEN copy did.
+      // Quoted-outcome counterfactual, aggregated per (band, ticker, side) — side_won is resolved
+      // directly off Kalshi's own settlement (resolveTickerSideViaKalshi, kalshi-settlement.js)
+      // after this query returns, same source gradeMakerFills uses (2026-07-24 rewrite), so it
+      // can't drift out of sync the way the pre-2026-07-22 duplicated CASE-WHEN copy did.
+      //
+      // **Rewritten 2026-07-26 — was `DISTINCT ON (ticker, game_date) … ORDER BY valid_from DESC`,
+      // i.e. ONE row per ticker-day, the FINAL quote.** That made the "quoted" population sit ~2.1¢
+      // higher in price than the quoting activity it was meant to represent (last-quote avgAsk 75.3
+      // vs 73.2 across all segments), while fills are drawn from any of ~10 segments per ticker-day.
+      // Since measured edge swings hard by price band, the old aggregate compared two different
+      // price distributions and the adverse-selection number was confounded — it read +1.45¢ on
+      // 7/25 and NEGATIVE (fills better than quotes, mechanically backwards) on 7/26. Now every
+      // segment counts, bucketed by its own band, so quoted-vs-filled is a within-band comparison.
+      // Grouping keeps the row count ~ tickers × bands-visited (~15k) rather than one row/segment.
       neonQuery(`
-        SELECT DISTINCT ON (ticker, game_date) ticker, quote_side, quote_ask
+        SELECT ${_makerBandCase("quote_ask")} AS band, ticker, quote_side,
+          COUNT(*)::int AS segments, COALESCE(SUM(quote_ask), 0)::numeric AS sum_ask
         FROM maker_quotes WHERE game_date >= $1
-        ORDER BY ticker, game_date, valid_from DESC`, [since], env, { write: true }),
+        GROUP BY 1, ticker, quote_side`, [since], env, { write: true }),
       // Daily fill series — feeds the /model paper equity curve (frontend cumsums pnl_total) and
       // the day-clustered CI. `contracts_graded` is deliberately separate from `contracts`: the
       // latter counts ungraded fills too, and pairing it with a graded-only `pnl_total` would bias
@@ -3476,17 +3497,11 @@ async function handleShadowReport({ path, request, env, cache }) {
       // Per-ask-band quote/fill economics — feeds the /model band ladder (V2 targeting view).
       neonQuery(`
         WITH qb AS (
-          SELECT CASE WHEN quote_ask < 60 THEN '55-59' WHEN quote_ask < 65 THEN '60-64'
-            WHEN quote_ask < 70 THEN '65-69' WHEN quote_ask < 75 THEN '70-74'
-            WHEN quote_ask < 80 THEN '75-79' WHEN quote_ask < 85 THEN '80-84'
-            WHEN quote_ask < 90 THEN '85-89' ELSE '90-96' END AS band,
+          SELECT ${_makerBandCase("quote_ask")} AS band,
             COUNT(*)::int AS segments
           FROM maker_quotes WHERE game_date >= $1 GROUP BY 1),
         fb AS (
-          SELECT CASE WHEN f.fill_ask < 60 THEN '55-59' WHEN f.fill_ask < 65 THEN '60-64'
-            WHEN f.fill_ask < 70 THEN '65-69' WHEN f.fill_ask < 75 THEN '70-74'
-            WHEN f.fill_ask < 80 THEN '75-79' WHEN f.fill_ask < 85 THEN '80-84'
-            WHEN f.fill_ask < 90 THEN '85-89' ELSE '90-96' END AS band,
+          SELECT ${_makerBandCase("f.fill_ask")} AS band,
             COUNT(*)::int AS fills,
             COUNT(*) FILTER (WHERE f.graded_at IS NOT NULL)::int AS graded,
             ROUND(AVG(f.pnl_cents) FILTER (WHERE f.graded_at IS NOT NULL), 2) AS avg_pnl,
@@ -3521,13 +3536,69 @@ async function handleShadowReport({ path, request, env, cache }) {
     // same "not resolvable this pass" semantics as the dry-run comparison and V1 grading.
     const _qoTickers = [...new Set(_qoRows.map(r => r.ticker))];
     const _qoSettlements = _qoTickers.length ? await fetchKalshiSettlements(_qoTickers) : new Map();
-    const _qoResolved = _qoRows
-      .map(r => ({ r, sideWon: resolveTickerSideViaKalshi(r.ticker, r.quote_side, _qoSettlements) }))
-      .filter(x => x.sideWon !== null);
+    // Roll the (band, ticker, side) groups up per band, weighting each group by its SEGMENT count
+    // so the quoted population matches the price distribution we actually rested at.
+    const _qoBand = new Map(); // band → { segments, sumAsk, wonSegments, tickers:Set }
+    const _qoSeenTickers = new Set();
+    let _qoSeg = 0, _qoAsk = 0, _qoWon = 0;
+    for (const r of _qoRows) {
+      const sideWon = resolveTickerSideViaKalshi(r.ticker, r.quote_side, _qoSettlements);
+      if (sideWon === null) continue; // not finalized/void — same "not resolvable this pass" rule
+      const seg = Number(r.segments || 0), ask = Number(r.sum_ask || 0);
+      const b = _qoBand.get(r.band) || { segments: 0, sumAsk: 0, wonSegments: 0, tickers: new Set() };
+      b.segments += seg; b.sumAsk += ask; if (sideWon) b.wonSegments += seg;
+      b.tickers.add(r.ticker);
+      _qoBand.set(r.band, b);
+      _qoSeenTickers.add(r.ticker);
+      _qoSeg += seg; _qoAsk += ask; if (sideWon) _qoWon += seg;
+    }
+    // Seller edge, in cents/contract: pnl = ask − 100·side_won, so edge = avgAsk − 100·sideWonRate.
+    // Positive = the sold side wins less often than its price implies = the seller is paid.
+    const _edgeOf = (sumAsk, segments, wonSegments) =>
+      segments > 0 ? (sumAsk / segments) - 100 * (wonSegments / segments) : null;
     const qo = {
-      n: _qoResolved.length,
-      side_won_rate: _qoResolved.length ? parseFloat((_qoResolved.filter(x => x.sideWon).length / _qoResolved.length).toFixed(4)) : null,
-      avg_ask: _qoResolved.length ? parseFloat((_qoResolved.reduce((s, x) => s + Number(x.r.quote_ask || 0), 0) / _qoResolved.length).toFixed(1)) : null,
+      n: _qoSeg,
+      tickers: _qoSeenTickers.size,
+      side_won_rate: _qoSeg > 0 ? parseFloat((_qoWon / _qoSeg).toFixed(4)) : null,
+      avg_ask: _qoSeg > 0 ? parseFloat((_qoAsk / _qoSeg).toFixed(1)) : null,
+      edge_cents: _qoSeg > 0 ? parseFloat(_edgeOf(_qoAsk, _qoSeg, _qoWon).toFixed(2)) : null,
+    };
+    const _qoByBand = [..._qoBand.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([band, b]) => ({
+      band, segments: b.segments, tickers: b.tickers.size,
+      avgAsk: parseFloat((b.sumAsk / b.segments).toFixed(1)),
+      sideWonRate: parseFloat((b.wonSegments / b.segments).toFixed(4)),
+      edgeCents: parseFloat(_edgeOf(b.sumAsk, b.segments, b.wonSegments).toFixed(2)),
+    }));
+    // ── Adverse selection, measured WITHIN band (2026-07-26) ──────────────────────────────────
+    // Band `avgPnl` IS the filled seller edge (AVG(ask − 100·won) = avgAsk − 100·sideWonRate), so
+    // the two sides are directly comparable once bucketed. The headline is the filled edge
+    // re-weighted onto the QUOTED segment distribution: that strips the price-mix difference
+    // (fills concentrate in 55-64, quotes spread across the ladder) which was the whole reason the
+    // old aggregate comparison inverted. `gapCents` > 0 = fills do worse than quotes at the same
+    // price = genuine adverse selection.
+    const _bandFilledEdge = new Map((_mBands || [])
+      .filter(r => r.avg_pnl != null && Number(r.graded || 0) > 0)
+      .map(r => [r.band, Number(r.avg_pnl)]));
+    let _mixW = 0, _mixEdge = 0, _qW = 0, _qEdge = 0;
+    const _advByBand = _qoByBand.map(q => {
+      const filledEdge = _bandFilledEdge.has(q.band) ? _bandFilledEdge.get(q.band) : null;
+      if (filledEdge != null) { // only bands present on BOTH sides can be compared or reweighted
+        _mixW += q.segments; _mixEdge += q.segments * filledEdge;
+        _qW += q.segments; _qEdge += q.segments * q.edgeCents;
+      }
+      return { band: q.band, quotedEdgeCents: q.edgeCents, filledEdgeCents: filledEdge,
+        gapCents: filledEdge != null ? parseFloat((q.edgeCents - filledEdge).toFixed(2)) : null };
+    });
+    const _mixAdjFilled = _mixW > 0 ? _mixEdge / _mixW : null;
+    const _quotedMatched = _qW > 0 ? _qEdge / _qW : null;
+    const adverseSelection = {
+      basis: "within-band, quoted population = all segments, weighted by segments",
+      quotedEdgeCents: _quotedMatched != null ? parseFloat(_quotedMatched.toFixed(2)) : null,
+      filledEdgeRawCents: avgPnl,
+      filledEdgeMixAdjustedCents: _mixAdjFilled != null ? parseFloat(_mixAdjFilled.toFixed(2)) : null,
+      gapCents: (_quotedMatched != null && _mixAdjFilled != null)
+        ? parseFloat((_quotedMatched - _mixAdjFilled).toFixed(2)) : null,
+      byBand: _advByBand,
     };
     makerBoard = {
       quotes: { segments: Number(mq?.segments || 0), tickers: Number(mq?.tickers || 0),
@@ -3544,9 +3615,16 @@ async function handleShadowReport({ path, request, env, cache }) {
         // Day-clustered version of the same contract-weighted mean. Wider by construction; the gap
         // between this and `weighted` IS the correlation the fill-level CI ignores.
         dayClustered: dayClusteredV1 },
-      quotedOutcomes: { n: Number(qo?.n || 0),
+      // NOTE (2026-07-26): `n` is now SEGMENTS (quote-ticks), not ticker-days — the population
+      // changed from last-quote-only to every segment. `tickers` is the distinct-market count if
+      // that's what you wanted. Rates are segment-weighted throughout.
+      quotedOutcomes: { n: Number(qo?.n || 0), tickers: Number(qo?.tickers || 0),
+        basis: "segments",
         sideWonRate: qo?.side_won_rate != null ? Number(qo.side_won_rate) : null,
-        avgAsk: qo?.avg_ask != null ? Number(qo.avg_ask) : null },
+        avgAsk: qo?.avg_ask != null ? Number(qo.avg_ask) : null,
+        edgeCents: qo?.edge_cents != null ? Number(qo.edge_cents) : null,
+        byBand: _qoByBand },
+      adverseSelection,
       // `need` is the ORIGINAL criterion and reads the fill-level `pnlLoCI`, kept for continuity.
       // It is not sufficient on its own: on 2026-07-26 it was satisfied (loCI +0.49) by a book whose
       // entire positive result came from two of seven days, because a fill-level CI credits ~9,400

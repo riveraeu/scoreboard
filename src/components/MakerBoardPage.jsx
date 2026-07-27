@@ -229,18 +229,23 @@ function _doThisCandidates(d) {
     out.push({ tier:1, tone:"red", label:"Fix data health", why: warns.join(" · "), short:"Fix data health" });
   }
   // 1.6 — maker adverse-selection red flag (2026-07-19): the ONE failure mode that kills the
-  // maker strategy. Fires once graded fills are readable (n≥30) and either fills' sold sides
-  // win ≥8pp more often than quoted markets overall (the margin is selection, not edge) or
-  // fill PnL is decisively negative (CI-hi < 0 via avg + CI-lo symmetry).
+  // maker strategy. Fires once graded fills are readable (n≥30) and either fills give up ≥2¢/contract
+  // vs quotes at the SAME price band, or fill PnL is decisively negative (CI-hi < 0 via avg + CI-lo
+  // symmetry).
+  //
+  // Rewritten 2026-07-26: this used to compare raw sold-side win RATES (fills vs quoted overall) and
+  // fire at ≥8pp. That comparison was confounded — fills sit ~4¢ lower in price than quotes, and a
+  // lower win rate is exactly what a lower price should produce, so the pp gap measured price mix as
+  // much as selection. It read −5.15pp (fills "better") on 2026-07-26 while genuine selection was
+  // unmeasurable. Now reads `adverseSelection.gapCents`, which is computed within band and mix-adjusted.
   const mb = d?.makerBoard;
   if ((mb?.fills?.graded || 0) >= 30) {
-    const _adv = mb.fills.sideWonRate != null && mb.quotedOutcomes?.sideWonRate != null
-      ? (mb.fills.sideWonRate - mb.quotedOutcomes.sideWonRate) * 100 : null;
+    const _gap = mb.adverseSelection?.gapCents ?? null;
     const _pnlHiCI = mb.fills.avgPnlCents != null && mb.fills.pnlLoCI != null
       ? mb.fills.avgPnlCents + (mb.fills.avgPnlCents - mb.fills.pnlLoCI) : null;
-    if ((_adv != null && _adv >= 8) || (_pnlHiCI != null && _pnlHiCI < 0)) {
+    if ((_gap != null && _gap >= 2) || (_pnlHiCI != null && _pnlHiCI < 0)) {
       out.push({ tier:1.6, tone:"red", label:"Maker fills are adversely selected — margin is selection, not edge",
-        why:`filled quotes' sold side wins ${_adv != null ? `${_adv.toFixed(1)}pp more often` : "far more often"} than quoted markets overall (n=${mb.fills.graded} graded)${_pnlHiCI != null && _pnlHiCI < 0 ? `; fill PnL CI entirely negative (${mb.fills.pnlLoCI}..${_pnlHiCI.toFixed(1)}¢)` : ""} — diagnose which categories/bands drive it before more accrual`,
+        why:`at equal price bands, fills earn ${_gap != null ? `${_gap.toFixed(2)}¢/contract less` : "materially less"} than quotes (quoted ${mb.adverseSelection?.quotedEdgeCents}¢ vs mix-adjusted filled ${mb.adverseSelection?.filledEdgeMixAdjustedCents}¢, n=${mb.fills.graded} graded)${_pnlHiCI != null && _pnlHiCI < 0 ? `; fill PnL CI entirely negative (${mb.fills.pnlLoCI}..${_pnlHiCI.toFixed(1)}¢)` : ""} — diagnose which categories/bands drive it before more accrual`,
         short:"Maker adverse selection" });
     }
   }
@@ -613,10 +618,11 @@ function MakerProgress({ mb }) {
   if (!mb) {
     return <div style={{ color:C.dim, fontSize:11, padding:8 }}>Maker board not in this report yet — Refresh regenerates it.</div>;
   }
-  const f = mb.fills || {}, q = mb.quotes || {}, qo = mb.quotedOutcomes || {};
+  const f = mb.fills || {}, q = mb.quotes || {};
   const fillRate = q.segments ? Math.round((f.n || 0) / q.segments * 1000) / 10 : null;
-  const advSel = f.sideWonRate != null && qo.sideWonRate != null
-    ? Math.round((f.sideWonRate - qo.sideWonRate) * 1000) / 10 : null;
+  // Within-band, mix-adjusted (2026-07-26) — the old raw side-won pp gap compared two different
+  // price distributions. Positive cents = fills give up edge vs quotes at the same price = bad.
+  const advSel = mb.adverseSelection?.gapCents ?? null;
   return (
     <div style={{ marginBottom:12 }}>
       <div style={sectionHead}>Shadow maker V1 · simulated favorite-ask quoting</div>
@@ -624,8 +630,8 @@ function MakerProgress({ mb }) {
         <ArmTile mb={mb} />
         <Tile label="fill rate" value={fillRate != null ? `${fillRate}%` : "—"} color={C.text}
           sub={`${f.n ?? 0} fills / ${q.segments ?? 0} quotes · ${q.tickers ?? 0} mkts · avg ask ${q.avgAsk ?? "—"}¢`} />
-        <Tile label="adverse selection" value={advSel != null ? `${advSel > 0 ? "+" : ""}${advSel}pp` : "—"}
-          color={advSel == null ? C.dim : advSel >= 5 ? C.red : C.green} sub="filled vs quoted side-won" />
+        <Tile label="adverse selection" value={advSel != null ? `${advSel > 0 ? "+" : ""}${advSel}¢` : "—"}
+          color={advSel == null ? C.dim : advSel >= 2 ? C.red : C.green} sub="quoted − filled edge, within band" />
         <Tile label="next clock" value={nextCp ? new Date(nextCp.date + "T12:00:00").toLocaleDateString("en-US", { month:"short", day:"numeric" }) : "none"}
           color={C.dim} sub={nextCp?.short} />
       </div>
