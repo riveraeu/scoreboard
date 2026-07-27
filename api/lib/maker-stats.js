@@ -95,6 +95,94 @@ function round2(x) {
  * @param z     critical value (default two-sided 95%)
  * @returns { days, contracts, mean, se, loCI, hiCI } — null-safe; CI is null with fewer than 2 days.
  */
+// ── Quoted-outcome roll-up + within-band adverse selection (2026-07-26) ───────────────────────
+// Extracted from handlers/shadow.js because this diagnostic has now been wrong twice, in two
+// different ways, and both times it was inline SQL+JS with no test:
+//   1. (pre-2026-07-22) a hand-duplicated CASE-WHEN that drifted from gradeMakerFills.
+//   2. (fixed 2026-07-26) a last-quote-only population sitting 2.1c higher in price than actual
+//      quoting activity, compared as raw win RATES across mismatched price distributions — which
+//      made the metric invert (filled edge above quoted, backwards for a resting maker).
+// Pure functions over plain rows; the caller does the settlement resolution and passes `sideWon`.
+
+// Seller edge in cents/contract. pnl = ask − 100·side_won, so edge = avgAsk − 100·sideWonRate.
+// Positive = the sold side wins LESS often than its price implies = the seller is paid.
+const sellerEdge = (sumAsk, segments, wonSegments) =>
+  segments > 0 ? (sumAsk / segments) - 100 * (wonSegments / segments) : null;
+
+/**
+ * Roll (band, ticker, side) quote groups up per band, weighting by SEGMENT count so the quoted
+ * population matches the price distribution actually rested at.
+ * @param rows [{ band, ticker, segments, sumAsk, sideWon }] — `sideWon` null (unsettled/void) drops
+ *             the row entirely, same "not resolvable this pass" rule as grading.
+ */
+export function quotedOutcomesByBand(rows) {
+  const byBand = new Map();
+  const tickers = new Set();
+  let seg = 0, ask = 0, won = 0;
+  for (const r of (Array.isArray(rows) ? rows : [])) {
+    if (r?.sideWon !== true && r?.sideWon !== false) continue;
+    const s = Number(r.segments || 0), a = Number(r.sumAsk || 0);
+    if (!(s > 0)) continue;
+    const b = byBand.get(r.band) || { segments: 0, sumAsk: 0, wonSegments: 0, tickers: new Set() };
+    b.segments += s; b.sumAsk += a; if (r.sideWon) b.wonSegments += s;
+    b.tickers.add(r.ticker);
+    byBand.set(r.band, b);
+    tickers.add(r.ticker);
+    seg += s; ask += a; if (r.sideWon) won += s;
+  }
+  return {
+    n: seg, tickers: tickers.size, basis: "segments",
+    sideWonRate: seg > 0 ? round4(won / seg) : null,
+    avgAsk: seg > 0 ? round1(ask / seg) : null,
+    edgeCents: seg > 0 ? round2(sellerEdge(ask, seg, won)) : null,
+    byBand: [...byBand.entries()].sort((a2, b2) => a2[0].localeCompare(b2[0])).map(([band, b]) => ({
+      band, segments: b.segments, tickers: b.tickers.size,
+      avgAsk: round1(b.sumAsk / b.segments),
+      sideWonRate: round4(b.wonSegments / b.segments),
+      edgeCents: round2(sellerEdge(b.sumAsk, b.segments, b.wonSegments)),
+    })),
+  };
+}
+
+/**
+ * Compare quoted vs filled edge WITHIN band, then collapse to one mix-free number.
+ * The headline re-weights the FILLED band edges onto the QUOTED segment distribution, which is what
+ * strips the price-mix difference (fills concentrate low on the ladder, quotes spread across it).
+ * `gapCents` > 0 = fills do worse than quotes at the same price = genuine adverse selection.
+ * @param quotedByBand   `quotedOutcomesByBand(...).byBand`
+ * @param filledBands    [{ band, avgPnl, graded }] — band `avgPnl` IS the filled seller edge
+ *                       (AVG(ask − 100·won)), so the two sides are directly comparable.
+ * @param filledEdgeRawCents  the unadjusted headline, carried through for contrast
+ */
+export function adverseSelectionWithinBand({ quotedByBand, filledBands, filledEdgeRawCents = null } = {}) {
+  const filledEdge = new Map((Array.isArray(filledBands) ? filledBands : [])
+    .filter(r => r?.avgPnl != null && Number(r.graded || 0) > 0)
+    .map(r => [r.band, Number(r.avgPnl)]));
+
+  let mixW = 0, mixEdge = 0, qEdge = 0;
+  const byBand = (Array.isArray(quotedByBand) ? quotedByBand : []).map(q => {
+    const fe = filledEdge.has(q.band) ? filledEdge.get(q.band) : null;
+    // Only bands present on BOTH sides can be compared, or reweighted onto each other.
+    if (fe != null) { mixW += q.segments; mixEdge += q.segments * fe; qEdge += q.segments * q.edgeCents; }
+    return { band: q.band, quotedEdgeCents: q.edgeCents, filledEdgeCents: fe,
+      gapCents: fe != null ? round2(q.edgeCents - fe) : null };
+  });
+
+  const mixAdj = mixW > 0 ? mixEdge / mixW : null;
+  const quotedMatched = mixW > 0 ? qEdge / mixW : null;
+  return {
+    basis: "within-band, quoted population = all segments, weighted by segments",
+    quotedEdgeCents: round2(quotedMatched),
+    filledEdgeRawCents,
+    filledEdgeMixAdjustedCents: round2(mixAdj),
+    gapCents: (quotedMatched != null && mixAdj != null) ? round2(quotedMatched - mixAdj) : null,
+    byBand,
+  };
+}
+
+function round1(x) { return Number.isFinite(x) ? parseFloat(x.toFixed(1)) : null; }
+function round4(x) { return Number.isFinite(x) ? parseFloat(x.toFixed(4)) : null; }
+
 export function dayClusteredPnl({ days, z = Z_95 } = {}) {
   const rows = (Array.isArray(days) ? days : []).filter(d => Number(d?.contracts) > 0);
   const m = rows.length;

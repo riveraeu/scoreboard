@@ -33,7 +33,7 @@ import { fetchArgPremResults } from "../argprem.js";
 import { fetchScoCupResults } from "../scocup.js";
 import { deriveKalshiSide, fetchKalshiSettlements, fetchKalshiSettlementsWithMeta, resolveRowViaKalshi, resolveTickerSideViaKalshi, classifyRowViaKalshi } from "../kalshi-settlement.js";
 import { reconcileGrades, isSettlementAuthoritative, SETTLEMENT_AUTHORITATIVE_SPORTS, SETTLEMENT_CUTOVER_DATE } from "../settlement-reconcile.js";
-import { weightedPnlSumsSql, weightedPnlFromRow, dayClusteredPnl } from "../maker-stats.js";
+import { weightedPnlSumsSql, weightedPnlFromRow, dayClusteredPnl, quotedOutcomesByBand, adverseSelectionWithinBand } from "../maker-stats.js";
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER } from "../config.js";
 import { passesCategoryGate } from "../category-gate.js";
 import { INPUT_SEARCH_EXHAUSTED, stillExhausted } from "../model-holds.js";
@@ -3536,70 +3536,18 @@ async function handleShadowReport({ path, request, env, cache }) {
     // same "not resolvable this pass" semantics as the dry-run comparison and V1 grading.
     const _qoTickers = [...new Set(_qoRows.map(r => r.ticker))];
     const _qoSettlements = _qoTickers.length ? await fetchKalshiSettlements(_qoTickers) : new Map();
-    // Roll the (band, ticker, side) groups up per band, weighting each group by its SEGMENT count
-    // so the quoted population matches the price distribution we actually rested at.
-    const _qoBand = new Map(); // band → { segments, sumAsk, wonSegments, tickers:Set }
-    const _qoSeenTickers = new Set();
-    let _qoSeg = 0, _qoAsk = 0, _qoWon = 0;
-    for (const r of _qoRows) {
-      const sideWon = resolveTickerSideViaKalshi(r.ticker, r.quote_side, _qoSettlements);
-      if (sideWon === null) continue; // not finalized/void — same "not resolvable this pass" rule
-      const seg = Number(r.segments || 0), ask = Number(r.sum_ask || 0);
-      const b = _qoBand.get(r.band) || { segments: 0, sumAsk: 0, wonSegments: 0, tickers: new Set() };
-      b.segments += seg; b.sumAsk += ask; if (sideWon) b.wonSegments += seg;
-      b.tickers.add(r.ticker);
-      _qoBand.set(r.band, b);
-      _qoSeenTickers.add(r.ticker);
-      _qoSeg += seg; _qoAsk += ask; if (sideWon) _qoWon += seg;
-    }
-    // Seller edge, in cents/contract: pnl = ask − 100·side_won, so edge = avgAsk − 100·sideWonRate.
-    // Positive = the sold side wins less often than its price implies = the seller is paid.
-    const _edgeOf = (sumAsk, segments, wonSegments) =>
-      segments > 0 ? (sumAsk / segments) - 100 * (wonSegments / segments) : null;
-    const qo = {
-      n: _qoSeg,
-      tickers: _qoSeenTickers.size,
-      side_won_rate: _qoSeg > 0 ? parseFloat((_qoWon / _qoSeg).toFixed(4)) : null,
-      avg_ask: _qoSeg > 0 ? parseFloat((_qoAsk / _qoSeg).toFixed(1)) : null,
-      edge_cents: _qoSeg > 0 ? parseFloat(_edgeOf(_qoAsk, _qoSeg, _qoWon).toFixed(2)) : null,
-    };
-    const _qoByBand = [..._qoBand.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([band, b]) => ({
-      band, segments: b.segments, tickers: b.tickers.size,
-      avgAsk: parseFloat((b.sumAsk / b.segments).toFixed(1)),
-      sideWonRate: parseFloat((b.wonSegments / b.segments).toFixed(4)),
-      edgeCents: parseFloat(_edgeOf(b.sumAsk, b.segments, b.wonSegments).toFixed(2)),
-    }));
-    // ── Adverse selection, measured WITHIN band (2026-07-26) ──────────────────────────────────
-    // Band `avgPnl` IS the filled seller edge (AVG(ask − 100·won) = avgAsk − 100·sideWonRate), so
-    // the two sides are directly comparable once bucketed. The headline is the filled edge
-    // re-weighted onto the QUOTED segment distribution: that strips the price-mix difference
-    // (fills concentrate in 55-64, quotes spread across the ladder) which was the whole reason the
-    // old aggregate comparison inverted. `gapCents` > 0 = fills do worse than quotes at the same
-    // price = genuine adverse selection.
-    const _bandFilledEdge = new Map((_mBands || [])
-      .filter(r => r.avg_pnl != null && Number(r.graded || 0) > 0)
-      .map(r => [r.band, Number(r.avg_pnl)]));
-    let _mixW = 0, _mixEdge = 0, _qW = 0, _qEdge = 0;
-    const _advByBand = _qoByBand.map(q => {
-      const filledEdge = _bandFilledEdge.has(q.band) ? _bandFilledEdge.get(q.band) : null;
-      if (filledEdge != null) { // only bands present on BOTH sides can be compared or reweighted
-        _mixW += q.segments; _mixEdge += q.segments * filledEdge;
-        _qW += q.segments; _qEdge += q.segments * q.edgeCents;
-      }
-      return { band: q.band, quotedEdgeCents: q.edgeCents, filledEdgeCents: filledEdge,
-        gapCents: filledEdge != null ? parseFloat((q.edgeCents - filledEdge).toFixed(2)) : null };
-    });
-    const _mixAdjFilled = _mixW > 0 ? _mixEdge / _mixW : null;
-    const _quotedMatched = _qW > 0 ? _qEdge / _qW : null;
-    const adverseSelection = {
-      basis: "within-band, quoted population = all segments, weighted by segments",
-      quotedEdgeCents: _quotedMatched != null ? parseFloat(_quotedMatched.toFixed(2)) : null,
+    // Roll-up + within-band adverse selection live in maker-stats.js as pure functions (extracted
+    // 2026-07-26 — this diagnostic had been wrong twice while it was untested inline code). The
+    // settlement resolution stays here; the math is unit-tested over plain rows.
+    const qo = quotedOutcomesByBand(_qoRows.map(r => ({
+      band: r.band, ticker: r.ticker, segments: r.segments, sumAsk: r.sum_ask,
+      sideWon: resolveTickerSideViaKalshi(r.ticker, r.quote_side, _qoSettlements),
+    })));
+    const adverseSelection = adverseSelectionWithinBand({
+      quotedByBand: qo.byBand,
+      filledBands: (_mBands || []).map(r => ({ band: r.band, avgPnl: r.avg_pnl, graded: r.graded })),
       filledEdgeRawCents: avgPnl,
-      filledEdgeMixAdjustedCents: _mixAdjFilled != null ? parseFloat(_mixAdjFilled.toFixed(2)) : null,
-      gapCents: (_quotedMatched != null && _mixAdjFilled != null)
-        ? parseFloat((_quotedMatched - _mixAdjFilled).toFixed(2)) : null,
-      byBand: _advByBand,
-    };
+    });
     makerBoard = {
       quotes: { segments: Number(mq?.segments || 0), tickers: Number(mq?.tickers || 0),
         days: Number(mq?.days || 0), avgAsk: mq?.avg_ask != null ? Number(mq.avg_ask) : null },
@@ -3618,12 +3566,7 @@ async function handleShadowReport({ path, request, env, cache }) {
       // NOTE (2026-07-26): `n` is now SEGMENTS (quote-ticks), not ticker-days — the population
       // changed from last-quote-only to every segment. `tickers` is the distinct-market count if
       // that's what you wanted. Rates are segment-weighted throughout.
-      quotedOutcomes: { n: Number(qo?.n || 0), tickers: Number(qo?.tickers || 0),
-        basis: "segments",
-        sideWonRate: qo?.side_won_rate != null ? Number(qo.side_won_rate) : null,
-        avgAsk: qo?.avg_ask != null ? Number(qo.avg_ask) : null,
-        edgeCents: qo?.edge_cents != null ? Number(qo.edge_cents) : null,
-        byBand: _qoByBand },
+      quotedOutcomes: qo,
       adverseSelection,
       // `need` is the ORIGINAL criterion and reads the fill-level `pnlLoCI`, kept for continuity.
       // It is not sufficient on its own: on 2026-07-26 it was satisfied (loCI +0.49) by a book whose

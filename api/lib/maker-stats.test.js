@@ -1,7 +1,7 @@
 // node --test api/lib/maker-stats.test.js
 import test from "node:test";
 import assert from "node:assert/strict";
-import { contractWeightedPnl, weightedPnlSumsSql, weightedPnlFromRow, dayClusteredPnl } from "./maker-stats.js";
+import { contractWeightedPnl, weightedPnlSumsSql, weightedPnlFromRow, dayClusteredPnl, quotedOutcomesByBand, adverseSelectionWithinBand } from "./maker-stats.js";
 
 // Build the six sums from explicit [contracts, pnl] fills, so each test states its data plainly
 // instead of hand-computing sums.
@@ -238,4 +238,146 @@ test("dayClusteredPnl: identical per-day ratios give zero spread, not NaN", () =
   assert.equal(got.se, 0);
   assert.equal(got.loCI, 2);
   assert.equal(got.hiCI, 2);
+});
+
+// ── quotedOutcomesByBand / adverseSelectionWithinBand (2026-07-26) ────────────────────────────
+// This diagnostic has been wrong twice while it lived untested inside handlers/shadow.js: once a
+// duplicated CASE-WHEN that drifted from grading, once a last-quote-only population that made the
+// metric INVERT (filled edge above quoted — backwards for a resting maker). These pin the contract.
+
+test("quotedOutcomesByBand: weights by SEGMENTS, not by row", () => {
+  // Two groups in one band: 90 segments won, 10 lost. Row-weighting would give 50%.
+  const got = quotedOutcomesByBand([
+    { band: "70-74", ticker: "A", segments: 90, sumAsk: 90 * 72, sideWon: true },
+    { band: "70-74", ticker: "B", segments: 10, sumAsk: 10 * 72, sideWon: false },
+  ]);
+  assert.equal(got.n, 100);
+  assert.equal(got.sideWonRate, 0.9, "segment-weighted, not row-weighted");
+  assert.equal(got.avgAsk, 72);
+  assert.equal(got.edgeCents, -18); // 72 - 100*0.9
+});
+
+test("quotedOutcomesByBand: unresolved rows (sideWon null) drop out entirely", () => {
+  const got = quotedOutcomesByBand([
+    { band: "80-84", ticker: "A", segments: 50, sumAsk: 50 * 82, sideWon: true },
+    { band: "80-84", ticker: "B", segments: 999, sumAsk: 999 * 82, sideWon: null },
+    { band: "80-84", ticker: "C", segments: 50, sumAsk: 50 * 82, sideWon: false },
+  ]);
+  assert.equal(got.n, 100, "the null row contributes no segments");
+  assert.equal(got.tickers, 2);
+  assert.equal(got.sideWonRate, 0.5);
+});
+
+test("quotedOutcomesByBand: a ticker spanning bands is counted in each, deduped overall", () => {
+  const got = quotedOutcomesByBand([
+    { band: "70-74", ticker: "A", segments: 10, sumAsk: 10 * 72, sideWon: true },
+    { band: "75-79", ticker: "A", segments: 10, sumAsk: 10 * 77, sideWon: true },
+  ]);
+  assert.equal(got.tickers, 1, "same market, deduped at top level");
+  assert.equal(got.byBand.length, 2);
+  assert.equal(got.byBand[0].band, "70-74");
+  assert.equal(got.byBand[1].band, "75-79");
+  assert.deepEqual(got.byBand.map(b => b.tickers), [1, 1]);
+});
+
+test("quotedOutcomesByBand: null-safe on empty / malformed input", () => {
+  for (const input of [[], null, undefined]) {
+    const got = quotedOutcomesByBand(input);
+    assert.equal(got.n, 0);
+    assert.equal(got.sideWonRate, null);
+    assert.equal(got.edgeCents, null);
+    assert.deepEqual(got.byBand, []);
+  }
+  assert.equal(quotedOutcomesByBand([{ band: "x", ticker: "A", segments: 0, sumAsk: 0, sideWon: true }]).n, 0);
+});
+
+test("adverseSelectionWithinBand: mix adjustment strips a pure composition difference", () => {
+  // Same per-band edges on both sides => the TRUE gap is zero, but the raw filled average differs
+  // from the quoted one purely because fills concentrate in the cheap band. Mix adjustment must
+  // return exactly 0 — this is the confound that made the old metric invert.
+  const quotedByBand = [
+    { band: "55-59", segments: 1000, edgeCents: 4 },
+    { band: "85-89", segments: 1000, edgeCents: -2 },
+  ];
+  const filledBands = [
+    { band: "55-59", avgPnl: 4, graded: 900 },   // fills pile into the cheap band...
+    { band: "85-89", avgPnl: -2, graded: 100 },  // ...but per-band edges are IDENTICAL to quoted
+  ];
+  const got = adverseSelectionWithinBand({ quotedByBand, filledBands, filledEdgeRawCents: 3.4 });
+  assert.equal(got.quotedEdgeCents, 1);              // (4 - 2) / 2
+  assert.equal(got.filledEdgeMixAdjustedCents, 1);   // reweighted onto quoted distribution
+  assert.equal(got.gapCents, 0, "no gap once mix is removed");
+  assert.equal(got.filledEdgeRawCents, 3.4, "raw headline carried through for contrast");
+});
+
+test("adverseSelectionWithinBand: genuine within-band selection survives the adjustment", () => {
+  const got = adverseSelectionWithinBand({
+    quotedByBand: [{ band: "55-59", segments: 1000, edgeCents: 4 }, { band: "85-89", segments: 1000, edgeCents: 0 }],
+    filledBands: [{ band: "55-59", avgPnl: 1, graded: 500 }, { band: "85-89", avgPnl: -3, graded: 500 }],
+  });
+  assert.equal(got.quotedEdgeCents, 2);
+  assert.equal(got.filledEdgeMixAdjustedCents, -1);
+  assert.equal(got.gapCents, 3, "fills give up 3c/contract at equal prices");
+  assert.deepEqual(got.byBand.map(b => b.gapCents), [3, 3]);
+});
+
+test("adverseSelectionWithinBand: bands missing on either side are excluded from the headline", () => {
+  const got = adverseSelectionWithinBand({
+    quotedByBand: [
+      { band: "55-59", segments: 1000, edgeCents: 4 },
+      { band: "90-96", segments: 9000, edgeCents: -50 }, // quoted only — never filled
+    ],
+    filledBands: [
+      { band: "55-59", avgPnl: 1, graded: 500 },
+      { band: "60-64", avgPnl: 99, graded: 500 },        // filled only — never quoted
+    ],
+  });
+  // Only 55-59 is comparable; the huge quoted-only band must not drag the headline.
+  assert.equal(got.quotedEdgeCents, 4);
+  assert.equal(got.filledEdgeMixAdjustedCents, 1);
+  assert.equal(got.gapCents, 3);
+  assert.equal(got.byBand.find(b => b.band === "90-96").gapCents, null);
+  assert.equal(got.byBand.find(b => b.band === "90-96").filledEdgeCents, null);
+});
+
+test("adverseSelectionWithinBand: an ungraded band (graded=0) is treated as absent", () => {
+  const got = adverseSelectionWithinBand({
+    quotedByBand: [{ band: "55-59", segments: 100, edgeCents: 4 }],
+    filledBands: [{ band: "55-59", avgPnl: 12, graded: 0 }],
+  });
+  assert.equal(got.gapCents, null, "no graded fills means nothing to compare");
+  assert.equal(got.byBand[0].filledEdgeCents, null);
+});
+
+test("adverseSelectionWithinBand: null-safe on empty input", () => {
+  const got = adverseSelectionWithinBand({});
+  assert.equal(got.quotedEdgeCents, null);
+  assert.equal(got.gapCents, null);
+  assert.deepEqual(got.byBand, []);
+});
+
+test("the two compose to reproduce the live 2026-07-26 production numbers", () => {
+  // Real band ladder off /api/shadow-report. Guards the whole pipeline against a silent regression
+  // in either function: quoted +1.53c, filled mix-adjusted +1.01c, gap +0.51c, 5 of 8 bands negative.
+  // RESOLVED segments off quotedOutcomes.byBand — deliberately NOT the bands-query `segments`
+  // (86,865), which include tickers Kalshi hasn't settled yet. Weighting by the wrong one shifts
+  // the headline by 0.01c, which is exactly the kind of quiet drift this test exists to catch.
+  const segs = { "55-59":13427, "60-64":11202, "65-69":9036, "70-74":8914,
+                 "75-79":10909, "80-84":9756, "85-89":10297, "90-96":8290 };
+  const quotedEdge = { "55-59":3.05, "60-64":1.51, "65-69":-4.98, "70-74":-0.56,
+                       "75-79":7.05, "80-84":1.57, "85-89":-0.28, "90-96":3.34 };
+  const filled = { "55-59":4.34, "60-64":3.76, "65-69":-6.07, "70-74":2.06,
+                   "75-79":-1.56, "80-84":3.44, "85-89":-0.32, "90-96":0.68 };
+
+  const got = adverseSelectionWithinBand({
+    quotedByBand: Object.keys(segs).map(b => ({ band: b, segments: segs[b], edgeCents: quotedEdge[b] })),
+    filledBands: Object.keys(filled).map(b => ({ band: b, avgPnl: filled[b], graded: 100 })),
+    filledEdgeRawCents: 1.38,
+  });
+
+  assert.equal(got.quotedEdgeCents, 1.53);
+  assert.equal(got.filledEdgeMixAdjustedCents, 1.01);
+  assert.equal(got.gapCents, 0.51);
+  assert.equal(got.byBand.filter(b => b.gapCents < 0).length, 4, "4 of 8 bands: fills BETTER than quotes");
+  assert.equal(got.byBand.find(b => b.band === "75-79").gapCents, 8.61, "the one band carrying the aggregate");
 });
