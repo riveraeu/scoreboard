@@ -36,7 +36,8 @@ import { deriveKalshiSide, fetchKalshiSettlements, fetchKalshiSettlementsWithMet
 import { reconcileGrades, isSettlementAuthoritative, SETTLEMENT_AUTHORITATIVE_SPORTS, SETTLEMENT_CUTOVER_DATE } from "../settlement-reconcile.js";
 import { kalshiTickerDate } from "../kalshi-ticker.js";
 import { weightedPnlSumsSql, weightedPnlFromRow, dayClusteredPnl, quotedOutcomesByBand, adverseSelectionWithinBand,
-  leadTimeBuckets, spearmanEdgeVsLead, mixAdjustedNearFarByDay, dayLevelDiffCI, leadTimeVerdict } from "../maker-stats.js";
+  leadTimeBuckets, spearmanEdgeVsLead, mixAdjustedNearFarByDay, dayLevelDiffCI, leadTimeVerdict,
+  exitCounterfactual } from "../maker-stats.js";
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER } from "../config.js";
 import { passesCategoryGate } from "../category-gate.js";
 import { INPUT_SEARCH_EXHAUSTED, stillExhausted } from "../model-holds.js";
@@ -2718,6 +2719,63 @@ async function handleShadowReport({ path, request, env, cache }) {
 
   if (!isCron && !isAdmin && !isUser) return errorResponse("Forbidden", 403);
   if (!env?.POSTGRES_URL && !env?.NEON_DATABASE_URL) return errorResponse("No Neon connection", 500);
+
+  // ── ?makerExitCheck=1 — early-exit counterfactual (2026-07-28) ──────────
+  // "Would selling back before settlement, while in profit, have helped?" Never examined before —
+  // both V1 and V2 model every position as hold-to-settlement (`pnl_cents = fill_ask − 100·won`),
+  // and there is no exit price anywhere in the schema.
+  //
+  // The price path comes from the SEGMENTS themselves: a ticker's later `maker_quotes` rows record
+  // the book each time the favorite-side ask moved, which is exactly a change-log of the price. No
+  // candlestick fetch needed.
+  //
+  // HARD LIMIT, stated up front: quoting is pre-game only, so segments stop at first pitch. This
+  // therefore tests the PRE-GAME take-profit rule only. Any in-play exit is invisible here and
+  // would need the candlestick path (api/lib/maker-backfill.js proved that is available).
+  if (new URL(request.url).searchParams.get("makerExitCheck") === "1") {
+    try {
+      const rows = await neonQuery(`
+        WITH f AS (
+          SELECT mf.id, mf.contracts, mf.pnl_cents, mf.fill_ask, mf.traded_at,
+                 q.ticker, q.game_date, q.quote_side,
+                 (q.book_yes_ask - q.book_yes_bid) AS entry_spread
+            FROM maker_fills mf
+            JOIN maker_quotes q ON q.id = mf.quote_id
+           WHERE q.source = 'live' AND mf.graded_at IS NOT NULL AND mf.traded_at IS NOT NULL
+        )
+        SELECT f.id, f.contracts, f.pnl_cents, f.fill_ask, f.entry_spread,
+               -- Cheapest price the SOLD side could have been bought back at, after the fill.
+               MIN(CASE WHEN f.quote_side = 'yes' THEN q2.book_yes_ask ELSE q2.book_no_ask END)
+                 AS min_ask_after
+          FROM f
+          LEFT JOIN maker_quotes q2
+            ON q2.ticker = f.ticker AND q2.game_date = f.game_date
+           AND q2.source = 'live' AND q2.valid_from > f.traded_at
+         GROUP BY f.id, f.contracts, f.pnl_cents, f.fill_ask, f.entry_spread`,
+        [], env, { write: true });
+
+      const fills = rows.map((r) => ({
+        pnlCents: r.pnl_cents == null ? null : Number(r.pnl_cents),
+        contracts: Number(r.contracts),
+        // Short at fill_ask; buying back costs min_ask_after. Positive = a profitable exit existed.
+        excursionCents: r.min_ask_after == null ? null : Number(r.fill_ask) - Number(r.min_ask_after),
+      }));
+      const result = exitCounterfactual({ fills });
+
+      const spreads = rows.map((r) => (r.entry_spread == null ? null : Number(r.entry_spread)))
+        .filter((v) => v != null).sort((a, b) => a - b);
+      const sp = (p) => (spreads.length ? spreads[Math.floor((p / 100) * spreads.length)] : null);
+
+      console.log(`[shadow-report] makerExitCheck hold=${result.holdPnlPerContract} `
+        + `bestDelta=${Math.max(...result.byThreshold.map((t) => t.deltaVsHold ?? -99))}`);
+      return jsonResponse({
+        ok: true,
+        scope: "PRE-GAME exits only — quoting stops at first pitch, so in-play paths are invisible",
+        entrySpreadCents: { p25: sp(25), median: sp(50), p75: sp(75), p90: sp(90), n: spreads.length },
+        ...result,
+      });
+    } catch (e) { return errorResponse(`makerExitCheck failed: ${e?.message}`, 500); }
+  }
 
   // ── ?makerLeadTime=1 — the pre-registered lead-time test (2026-07-28) ──────────
   // Decision rule fixed in docs/MAKER_LEADTIME_PREREG.md BEFORE this code was written. H1: a

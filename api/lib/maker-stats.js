@@ -246,6 +246,69 @@ export function weightedPnlFromRow(row) {
 // of diagnostic has been wrong twice on this board while it was untested inline SQL+JS, and a
 // pre-registered test whose estimator is unverified is worth nothing.
 
+// ── Early-exit counterfactual (2026-07-28) ───────────────────────────────────────────────────
+// "Would selling the position back before settlement, while it is in profit, have helped?"
+//
+// The position: V1 sells side S at A, so it is SHORT S. Closing early means BUYING S back as a
+// taker, paying the prevailing ask. P&L on a close at time t is therefore `A − ask_t(S)` — which
+// already has the cost of crossing the spread baked in, since ask_t(S) is what you actually pay.
+// The excursion passed in here is `A − min_t ask_t(S)`: the best exit the price path ever offered.
+//
+// Why a threshold rule and not "exit at the max": you cannot see the max in advance. A take-profit
+// rule exits the FIRST time the mark reaches +X, so the realized P&L is exactly +X, never the peak.
+// Crediting the peak is the standard way this kind of backtest lies to itself.
+//
+// The prior this is testing against: a prediction-market price is a martingale, so by optional
+// stopping NO path-based exit rule changes the expectation — it only reshapes the distribution into
+// "win small often, lose big occasionally". A high win rate here is expected and means nothing. The
+// number that matters is contract-weighted P&L per contract versus holding.
+/**
+ * @param fills [{ pnlCents, contracts, excursionCents }] — excursionCents null when the path was
+ *              never observed again after the fill (no later segment), which counts as "held".
+ * @param thresholds exit triggers in cents
+ */
+export function exitCounterfactual({ fills, thresholds = [1, 2, 3, 5, 8, 12] } = {}) {
+  const rows = (fills || []).filter((f) => Number(f.contracts) > 0 && f.pnlCents != null);
+  const totalC = rows.reduce((s, f) => s + Number(f.contracts), 0);
+  if (!totalC) return { fills: 0, contracts: 0, holdPnlPerContract: null, byThreshold: [], excursion: null };
+
+  const hold = rows.reduce((s, f) => s + Number(f.pnlCents) * Number(f.contracts), 0) / totalC;
+
+  const exc = rows.map((f) => f.excursionCents).filter((v) => v != null).map(Number).sort((a, b) => a - b);
+  const pct = (p) => (exc.length ? exc[Math.min(exc.length - 1, Math.floor((p / 100) * exc.length))] : null);
+  const observed = exc.length;
+
+  const byThreshold = thresholds.map((t) => {
+    let pnl = 0, exited = 0, exitedC = 0;
+    for (const f of rows) {
+      const c = Number(f.contracts);
+      const e = f.excursionCents == null ? null : Number(f.excursionCents);
+      if (e != null && e >= t) { pnl += t * c; exited++; exitedC += c; }
+      else pnl += Number(f.pnlCents) * c;
+    }
+    return {
+      thresholdCents: t,
+      exitedFills: exited,
+      exitedPctOfContracts: r2((exitedC / totalC) * 100),
+      pnlPerContract: r2(pnl / totalC),
+      deltaVsHold: r2(pnl / totalC - hold),
+    };
+  });
+
+  return {
+    fills: rows.length,
+    contracts: r2(totalC),
+    holdPnlPerContract: r2(hold),
+    excursion: {
+      observedFills: observed,
+      unobservedFills: rows.length - observed,
+      everProfitablePct: observed ? r2((exc.filter((v) => v > 0).length / observed) * 100) : null,
+      p25: pct(25), median: pct(50), p75: pct(75), p90: pct(90), max: exc.length ? exc[exc.length - 1] : null,
+    },
+    byThreshold,
+  };
+}
+
 export const LEAD_BUCKETS = ["0-1h", "1-3h", "3-6h", "6-12h", "12h+"];
 const NEAR = new Set(["0-1h", "1-3h"]);
 const FAR = new Set(["6-12h", "12h+"]);

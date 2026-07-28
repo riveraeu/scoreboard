@@ -94,3 +94,56 @@ test("fewer than 6 usable days is INCONCLUSIVE, not a pass", () => {
   const days = Array.from({ length: 5 }, () => ({ diffCents: 1 }));
   assert.equal(leadTimeVerdict({ ci: { loCI: 0.5 }, days, spearman: -0.9 }).verdict, "INCONCLUSIVE");
 });
+
+// ── exitCounterfactual (2026-07-28) ──────────────────────────────────────────────────────────
+import { exitCounterfactual } from "/Users/erivera/scoreboard/api/lib/maker-stats.js";
+
+test("exit rule credits the THRESHOLD, never the peak excursion", () => {
+  // You cannot see the max in advance: a take-profit rule fires the first time the mark hits +X.
+  // Crediting the peak is the standard way this backtest lies to itself.
+  const fills = [{ pnlCents: -100, contracts: 1, excursionCents: 40 }];
+  const r = exitCounterfactual({ fills, thresholds: [5] });
+  assert.equal(r.byThreshold[0].pnlPerContract, 5);
+});
+
+test("a fill whose path was never observed again is held, not exited", () => {
+  const fills = [{ pnlCents: 70, contracts: 1, excursionCents: null }];
+  const r = exitCounterfactual({ fills, thresholds: [1] });
+  assert.equal(r.byThreshold[0].exitedFills, 0);
+  assert.equal(r.byThreshold[0].pnlPerContract, 70);
+});
+
+test("exit only fires when the excursion reaches the threshold", () => {
+  const fills = [
+    { pnlCents: -100, contracts: 1, excursionCents: 2 },  // 2 < 5 -> held, settles at -100
+    { pnlCents: 80, contracts: 1, excursionCents: 6 },    // 6 >= 5 -> exits at +5
+  ];
+  const r = exitCounterfactual({ fills, thresholds: [5] });
+  assert.equal(r.byThreshold[0].exitedFills, 1);
+  assert.equal(r.byThreshold[0].pnlPerContract, (-100 + 5) / 2);
+});
+
+test("everything is contract-weighted, not per-fill", () => {
+  const fills = [
+    { pnlCents: 0, contracts: 99, excursionCents: null },
+    { pnlCents: 100, contracts: 1, excursionCents: null },
+  ];
+  const r = exitCounterfactual({ fills, thresholds: [1] });
+  assert.equal(r.holdPnlPerContract, 1); // 100/100, not the 50 a per-fill mean would give
+});
+
+test("a martingale price path yields deltaVsHold ~ 0 -- the null this tests against", () => {
+  // Symmetric fake book: half the positions drift favourably then settle to a win, half drift
+  // against and settle to a loss. Take-profit should not manufacture edge out of that.
+  const fills = [];
+  for (let i = 0; i < 500; i++) {
+    fills.push({ pnlCents: 74, contracts: 1, excursionCents: 8 });    // won, offered an exit
+    fills.push({ pnlCents: -26, contracts: 1, excursionCents: -8 });  // lost, never in profit
+  }
+  const r = exitCounterfactual({ fills, thresholds: [8] });
+  // Holding: (74-26)/2 = +24. Exiting the winners at +8 instead: (8-26)/2 = -9. Take-profit
+  // CAPS the winners while leaving the losers untouched -- strictly worse on this shape.
+  assert.equal(r.holdPnlPerContract, 24);
+  assert.equal(r.byThreshold[0].pnlPerContract, -9);
+  assert.ok(r.byThreshold[0].deltaVsHold < 0);
+});
