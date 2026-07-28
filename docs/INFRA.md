@@ -229,8 +229,16 @@ revert stays one line, and `maker-live.test.js` pins the shelved state as a trip
 
 **Not deleted.** `maker-live.js` and `kalshi-order-client.js` stay — the latter is shared with the
 manual `/api/kalshi-order` path, so removing V2 would be a much larger change than shelving
-warrants. V1 shadow quoting also keeps running; it is nearly free (books already in hand at the
-snapshot cron) and preserves the option.
+warrants.
+
+**What still runs, and what doesn't (2026-07-28):**
+
+| half | state | why |
+|---|---|---|
+| V1 **quoting** (snapshot cron) | **ON** | Free — the cron already holds the books. The quote-side vig is the one finding that has replicated every time, so `maker_quotes` stays a live measurement of the one real effect. `quotedOutcomes`/`adverseSelection` read segments + settlements, not fills. |
+| V1 **tape replay** (nightly) | **OFF** — `TAPE_REPLAY_ENABLED = false` in `maker.js` | The expensive half: ~600 Kalshi trade fetches/night plus fill inserts, answering a question that is now answered. |
+| V1 **grading** (nightly) | **ON, self-limiting** | 622 fills were ungraded at switch-off; stopping mid-flight would leave the book permanently half-finished, which is exactly what makes a future revisit untrustworthy. `gradeMakerFills` early-returns on an empty candidate set, so once drained it is one cheap Neon query a night. No follow-up chore. |
+| `?makerBackfill=` | unaffected | Runs its own tape fetch and its own grading; still functional if the question is ever re-opened. |
 
 **Do not re-open by re-slicing.** Slicing is 0-for-6. A new bucket boundary, a different near/far
 cut, or a new dimension on the same days is exactly the behaviour the pre-registration existed to

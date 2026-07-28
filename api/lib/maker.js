@@ -204,12 +204,36 @@ export async function updateMakerQuotes({ snapResults, staging, snapshotDate, en
   return { eligible: want.size, opened: toOpen.length, closed: toClose.length, kept: keep.size };
 }
 
-// Fill detection + grading — runs in the nightly resolver. Replays the public trade tape for
-// every ticker quoted on `dayPT`, inserts fills idempotently (UNIQUE quote_id+trade_id), then
-// grades ALL ungraded fills whose shadow row has resolved. Single tape page per ticker
+// ── Tape replay DISABLED 2026-07-28 ──────────────────────────────────────────────────────────
+// V2 is shelved (no demonstrated fillable edge — see maker-live.js's SHELVED note and
+// docs/MAKER_LEADTIME_PREREG.md), so nightly fill detection has no consumer. It was the expensive
+// half of the maker engine: one Kalshi trades fetch per quoted ticker (~600/night) plus the fill
+// inserts, against a question that is now answered.
+//
+// QUOTING deliberately keeps running. It costs nothing extra — the snapshot cron already has the
+// books in hand — and the quote-side vig is the one maker finding that has replicated every single
+// time (+1.5-1.6¢ across 100k+ segments), so `maker_quotes` remains a live measurement of the one
+// real effect. `quotedOutcomes`/`adverseSelection` read segments and settlements, not fills.
+//
+// GRADING deliberately keeps running too. 622 fills were ungraded when this was switched off, and
+// stopping mid-flight would leave the historical book permanently half-finished — precisely the
+// state that makes a future revisit untrustworthy. `gradeMakerFills` early-returns on an empty
+// candidate set, so once the backlog drains this costs one cheap Neon query a night and nothing
+// more. Self-limiting, no follow-up chore required.
+const TAPE_REPLAY_ENABLED = false;
+
+// Fill detection + grading — runs in the nightly resolver. When enabled, replays the public trade
+// tape for every ticker quoted on `dayPT` and inserts fills idempotently (UNIQUE quote_id+trade_id).
+// Always grades ALL ungraded fills whose ticker has settled. Single tape page per ticker
 // (limit 1000 — these markets trade well under that in a day; same call the flow stamp uses).
 export async function detectAndGradeMakerFills({ env, dayPT }) {
   await ensureMakerTables(env);
+
+  if (!TAPE_REPLAY_ENABLED) {
+    const graded = await gradeMakerFills({ env });
+    return { tickers: 0, newFills: 0, graded, tapeFails: 0, rateLimited: false,
+      skipped: "tape_replay_disabled" };
+  }
   // source='live' only: backfilled segments (api/lib/maker-backfill.js) replay their own tape in
   // their own batch pass, and re-replaying them here would double the work every night for the
   // overlap days without changing a row (fills are UNIQUE on quote_id+trade_id).

@@ -1813,13 +1813,16 @@ async function handleShadowResolver({ path, request, env, cache }) {
 
   if (finalUpdates.length) await neonBatchResolve(finalUpdates, env);
 
-  // ── Shadow maker: detect fills from yesterday's trade tape + grade against the rows this
-  // pass just resolved (api/lib/maker.js). Failure-closed — must never break resolution.
+  // ── Shadow maker: grade any still-ungraded fills (api/lib/maker.js). The tape REPLAY half is
+  // disabled as of 2026-07-28 (V2 shelved — see TAPE_REPLAY_ENABLED in maker.js), so this now only
+  // drains the ungraded backlog and then becomes a no-op. Failure-closed — must never break
+  // resolution.
   let makerMeta = null;
   try {
     const _yd = new Date(new Date(today).getTime() - 86400_000).toISOString().slice(0, 10);
     makerMeta = await detectAndGradeMakerFills({ env, dayPT: _yd });
-    console.log(`[shadow-resolver] maker fills tickers=${makerMeta.tickers} new=${makerMeta.newFills} graded=${makerMeta.graded} tapeFails=${makerMeta.tapeFails} rateLimited=${makerMeta.rateLimited}`);
+    console.log(`[shadow-resolver] maker graded=${makerMeta.graded}`
+      + (makerMeta.skipped ? ` skipped=${makerMeta.skipped}` : ` tickers=${makerMeta.tickers} new=${makerMeta.newFills} tapeFails=${makerMeta.tapeFails} rateLimited=${makerMeta.rateLimited}`));
   } catch (e) {
     console.error(`[shadow-resolver] maker fill pass failed: ${e?.message}`);
   }
