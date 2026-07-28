@@ -35,7 +35,8 @@ import { fetchScoCupResults } from "../scocup.js";
 import { deriveKalshiSide, fetchKalshiSettlements, fetchKalshiSettlementsWithMeta, resolveRowViaKalshi, resolveTickerSideViaKalshi, classifyRowViaKalshi } from "../kalshi-settlement.js";
 import { reconcileGrades, isSettlementAuthoritative, SETTLEMENT_AUTHORITATIVE_SPORTS, SETTLEMENT_CUTOVER_DATE } from "../settlement-reconcile.js";
 import { kalshiTickerDate } from "../kalshi-ticker.js";
-import { weightedPnlSumsSql, weightedPnlFromRow, dayClusteredPnl, quotedOutcomesByBand, adverseSelectionWithinBand } from "../maker-stats.js";
+import { weightedPnlSumsSql, weightedPnlFromRow, dayClusteredPnl, quotedOutcomesByBand, adverseSelectionWithinBand,
+  leadTimeBuckets, spearmanEdgeVsLead, mixAdjustedNearFarByDay, dayLevelDiffCI, leadTimeVerdict } from "../maker-stats.js";
 import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER } from "../config.js";
 import { passesCategoryGate } from "../category-gate.js";
 import { INPUT_SEARCH_EXHAUSTED, stillExhausted } from "../model-holds.js";
@@ -2714,6 +2715,76 @@ async function handleShadowReport({ path, request, env, cache }) {
 
   if (!isCron && !isAdmin && !isUser) return errorResponse("Forbidden", 403);
   if (!env?.POSTGRES_URL && !env?.NEON_DATABASE_URL) return errorResponse("No Neon connection", 500);
+
+  // ── ?makerLeadTime=1 — the pre-registered lead-time test (2026-07-28) ──────────
+  // Decision rule fixed in docs/MAKER_LEADTIME_PREREG.md BEFORE this code was written. H1: a
+  // resting quote is adversely selected in proportion to its time at risk, so seller edge should
+  // decline as lead time grows. Estimators live in maker-stats.js (pure + tested) — a
+  // pre-registered test computed by unverified inline SQL would be worth nothing, and this exact
+  // class of diagnostic has already been wrong twice on this board while it was inline.
+  //
+  // source='live' only: the replayed segments failed their own validation and are excluded.
+  // Returns before the report cache read, same reasoning as ?makerDay below.
+  if (new URL(request.url).searchParams.get("makerLeadTime") === "1") {
+    try {
+      const rows = await neonQuery(`
+        SELECT q.game_date AS day,
+               ${_makerBandCase("f.fill_ask")} AS band,
+               CASE
+                 WHEN lead_h < 1  THEN '0-1h'
+                 WHEN lead_h < 3  THEN '1-3h'
+                 WHEN lead_h < 6  THEN '3-6h'
+                 WHEN lead_h < 12 THEN '6-12h'
+                 ELSE '12h+' END AS bucket,
+               COUNT(*)::int AS fills,
+               COALESCE(SUM(f.contracts), 0) AS contracts,
+               COALESCE(SUM(f.fill_ask * f.contracts), 0) AS sum_ask_ctr,
+               COALESCE(SUM((f.side_won)::int::numeric * f.contracts), 0) AS sum_won_ctr
+          FROM maker_fills f
+          JOIN maker_quotes q ON q.id = f.quote_id
+          CROSS JOIN LATERAL (
+            SELECT EXTRACT(EPOCH FROM (q.game_time - f.traded_at)) / 3600 AS lead_h) l
+         WHERE q.source = 'live'
+           AND f.graded_at IS NOT NULL
+           AND q.game_time IS NOT NULL
+           AND f.traded_at IS NOT NULL
+           AND lead_h >= 0
+         GROUP BY 1, 2, 3`, [], env, { write: true });
+
+      const buckets = leadTimeBuckets(rows);
+      const spearman = spearmanEdgeVsLead(buckets);
+      const { days, weights } = mixAdjustedNearFarByDay(rows);
+      const ci = dayLevelDiffCI(days);
+      const verdict = leadTimeVerdict({ ci, days, spearman });
+
+      // Unadjusted near-vs-far, reported for transparency and explicitly NOT the test — if it
+      // disagrees with the mix-adjusted figure, the disagreement IS price mix.
+      const armEdge = (pred) => {
+        let c = 0, ask = 0, won = 0;
+        for (const r of rows) {
+          if (!pred(r.bucket)) continue;
+          c += Number(r.contracts); ask += Number(r.sum_ask_ctr); won += Number(r.sum_won_ctr);
+        }
+        return c > 0 ? Math.round(((ask - 100 * won) / c) * 100) / 100 : null;
+      };
+      const near = armEdge((b) => b === "0-1h" || b === "1-3h");
+      const far = armEdge((b) => b === "6-12h" || b === "12h+");
+
+      console.log(`[shadow-report] makerLeadTime verdict=${verdict.verdict} ci=[${ci.loCI},${ci.hiCI}] `
+        + `rho=${spearman} signs=${verdict.signPositive}/${verdict.totalDays}`);
+      return jsonResponse({
+        ok: true,
+        preregistration: "docs/MAKER_LEADTIME_PREREG.md",
+        buckets,
+        spearman,
+        dailyDiff: days,
+        bandWeights: weights,
+        dayClusteredDiff: ci,
+        unadjusted: { nearEdgeCents: near, farEdgeCents: far, diffCents: near != null && far != null ? Math.round((near - far) * 100) / 100 : null },
+        verdict,
+      });
+    } catch (e) { return errorResponse(`makerLeadTime failed: ${e?.message}`, 500); }
+  }
 
   // ── ?makerDay=YYYY-MM-DD — single-day V1 maker drilldown (2026-07-28) ──────────
   // Attribution for ONE day's maker PnL, which `makerBoard` can't give: its `daily` series

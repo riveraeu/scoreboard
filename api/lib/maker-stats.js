@@ -234,3 +234,177 @@ export function weightedPnlFromRow(row) {
     sumC2: row?.w_sum_c2, sumC2P: row?.w_sum_c2p, sumC2P2: row?.w_sum_c2p2,
   });
 }
+
+// ── Lead-time hypothesis (2026-07-28) ────────────────────────────────────────────────────────
+// Pre-registered in docs/MAKER_LEADTIME_PREREG.md BEFORE this code existed. H1: a resting maker
+// quote is adversely selected in proportion to its time at risk, so seller edge should DECLINE as
+// lead time (game_time − traded_at) increases. Decision rule fixed in advance: day-clustered CI on
+// the mix-adjusted near−far difference entirely above zero, AND positive sign in ≥7 of 9 days, AND
+// Spearman ρ ≤ −0.5 across the five buckets. Any one failing kills it.
+//
+// Pure and tested by design, for the same reason `quotedOutcomesByBand` was extracted: this class
+// of diagnostic has been wrong twice on this board while it was untested inline SQL+JS, and a
+// pre-registered test whose estimator is unverified is worth nothing.
+
+export const LEAD_BUCKETS = ["0-1h", "1-3h", "3-6h", "6-12h", "12h+"];
+const NEAR = new Set(["0-1h", "1-3h"]);
+const FAR = new Set(["6-12h", "12h+"]);
+
+// Seller edge in cents/contract from contract-weighted sums. pnl = ask − 100·won, so the
+// contract-weighted mean is (Σ ask·c − 100·Σ won·c) / Σ c.
+const edgeOf = (sumAskC, sumWonC, contracts) =>
+  contracts > 0 ? (Number(sumAskC) - 100 * Number(sumWonC)) / Number(contracts) : null;
+
+const r2 = (v) => (v == null || !Number.isFinite(v) ? null : Math.round(v * 100) / 100);
+
+/**
+ * Roll (day, band, bucket) groups up per BUCKET, pooled across days and bands.
+ * @param rows [{ day, band, bucket, contracts, sum_ask_ctr, sum_won_ctr, fills }]
+ * @returns [{ bucket, fills, contracts, avgAsk, sideWonRate, edgeCents }] in LEAD_BUCKETS order
+ */
+export function leadTimeBuckets(rows) {
+  const acc = new Map(LEAD_BUCKETS.map((b) => [b, { fills: 0, c: 0, ask: 0, won: 0 }]));
+  for (const r of rows || []) {
+    const a = acc.get(r.bucket);
+    if (!a) continue;
+    a.fills += Number(r.fills || 0);
+    a.c += Number(r.contracts || 0);
+    a.ask += Number(r.sum_ask_ctr || 0);
+    a.won += Number(r.sum_won_ctr || 0);
+  }
+  return LEAD_BUCKETS.map((bucket) => {
+    const a = acc.get(bucket);
+    return {
+      bucket, fills: a.fills, contracts: r2(a.c),
+      avgAsk: a.c > 0 ? r2(a.ask / a.c) : null,
+      sideWonRate: a.c > 0 ? r2((a.won / a.c) * 100) / 100 : null,
+      edgeCents: r2(edgeOf(a.ask, a.won, a.c)),
+    };
+  });
+}
+
+/**
+ * Spearman rank correlation between bucket ORDER (increasing lead time) and bucket edge. Buckets
+ * with no data drop out and ranks are assigned over what remains. Null below 3 usable points.
+ */
+export function spearmanEdgeVsLead(buckets) {
+  const pts = (buckets || []).map((b, i) => ({ i, e: b.edgeCents })).filter((p) => p.e != null);
+  const n = pts.length;
+  if (n < 3) return null;
+  const sorted = [...pts].sort((a, b) => a.e - b.e);
+  const rank = new Map();
+  for (let i = 0; i < sorted.length;) {  // average ranks across ties
+    let j = i;
+    while (j + 1 < sorted.length && sorted[j + 1].e === sorted[i].e) j++;
+    const avg = (i + j) / 2 + 1;
+    for (let k = i; k <= j; k++) rank.set(sorted[k].i, avg);
+    i = j + 1;
+  }
+  // Lead order is already ascending over the surviving points, so its ranks are their positions.
+  const xs = pts.map((_, idx) => idx + 1);
+  const ys = pts.map((p) => rank.get(p.i));
+  const mx = xs.reduce((s, v) => s + v, 0) / n;
+  const my = ys.reduce((s, v) => s + v, 0) / n;
+  let num = 0, dx = 0, dy = 0;
+  for (let i = 0; i < n; i++) {
+    num += (xs[i] - mx) * (ys[i] - my);
+    dx += (xs[i] - mx) ** 2;
+    dy += (ys[i] - my) ** 2;
+  }
+  return dx > 0 && dy > 0 ? r2(num / Math.sqrt(dx * dy)) : null;
+}
+
+/**
+ * Mix-adjusted near−far difference PER DAY.
+ *
+ * The mix adjustment is the whole reason this is not a two-line query: seller edge swings ±7¢
+ * across price bands, so an unadjusted near-vs-far comparison measures the price mix of the two
+ * windows as much as the windows themselves. That Simpson's-paradox shape has bitten this board
+ * three times. The difference is therefore computed WITHIN band and re-weighted onto one pooled
+ * contract distribution; bands where a day lacks either arm contribute nothing to that day.
+ *
+ * @returns { days: [{ day, diffCents, bands, contracts }], weights }
+ */
+export function mixAdjustedNearFarByDay(rows) {
+  // Pooled band weights over rows that can participate at all.
+  const bandPool = new Map();
+  for (const r of rows || []) {
+    if (!NEAR.has(r.bucket) && !FAR.has(r.bucket)) continue;
+    bandPool.set(r.band, (bandPool.get(r.band) || 0) + Number(r.contracts || 0));
+  }
+
+  const byDayBand = new Map(); // (day, band) -> { near, far }
+  for (const r of rows || []) {
+    const arm = NEAR.has(r.bucket) ? "near" : FAR.has(r.bucket) ? "far" : null;
+    if (!arm) continue;
+    const key = `${r.day} ${r.band}`;
+    if (!byDayBand.has(key)) byDayBand.set(key, { day: r.day, band: r.band, near: null, far: null });
+    const slot = byDayBand.get(key);
+    if (!slot[arm]) slot[arm] = { c: 0, ask: 0, won: 0 };
+    slot[arm].c += Number(r.contracts || 0);
+    slot[arm].ask += Number(r.sum_ask_ctr || 0);
+    slot[arm].won += Number(r.sum_won_ctr || 0);
+  }
+
+  const perDay = new Map();
+  for (const slot of byDayBand.values()) {
+    if (!slot.near || !slot.far || !(slot.near.c > 0) || !(slot.far.c > 0)) continue;
+    const w = bandPool.get(slot.band) || 0;
+    if (!(w > 0)) continue;
+    const d = edgeOf(slot.near.ask, slot.near.won, slot.near.c)
+            - edgeOf(slot.far.ask, slot.far.won, slot.far.c);
+    if (!perDay.has(slot.day)) perDay.set(slot.day, { wsum: 0, acc: 0, bands: 0, contracts: 0 });
+    const p = perDay.get(slot.day);
+    p.wsum += w;
+    p.acc += w * d;
+    p.bands += 1;
+    p.contracts += slot.near.c + slot.far.c;
+  }
+
+  const days = [...perDay.entries()]
+    .filter(([, p]) => p.wsum > 0)
+    .map(([day, p]) => ({ day, diffCents: r2(p.acc / p.wsum), bands: p.bands, contracts: r2(p.contracts) }))
+    .sort((a, b) => (a.day < b.day ? -1 : 1));
+
+  return { days, weights: Object.fromEntries([...bandPool].map(([b, c]) => [b, r2(c)])) };
+}
+
+/**
+ * Day-level mean and 95% CI over the per-day differences. The DAY is the unit for the same reason
+ * it is in `armCriterion`: fills inside a day resolve off one correlated slate, so treating fills
+ * as independent would shrink this interval by the same ~4.5x that produced a false ARM-MET
+ * reading on 2026-07-26.
+ */
+export function dayLevelDiffCI(days, z = Z_95) {
+  const xs = (days || []).map((d) => d.diffCents).filter((v) => v != null && Number.isFinite(v));
+  const m = xs.length;
+  if (m < 2) return { days: m, mean: m === 1 ? r2(xs[0]) : null, se: null, loCI: null, hiCI: null };
+  const mean = xs.reduce((s, v) => s + v, 0) / m;
+  const varr = xs.reduce((s, v) => s + (v - mean) ** 2, 0) / (m - 1);
+  const se = Math.sqrt(varr / m);
+  return { days: m, mean: r2(mean), se: r2(se), loCI: r2(mean - z * se), hiCI: r2(mean + z * se) };
+}
+
+/**
+ * Apply the pre-registered decision rule. Deliberately mechanical, thresholds inline, so the
+ * verdict cannot drift from docs/MAKER_LEADTIME_PREREG.md by reinterpretation after the fact.
+ */
+export function leadTimeVerdict({ ci, days, spearman } = {}) {
+  const list = days || [];
+  const signPositive = list.filter((d) => d.diffCents > 0).length;
+  const primary = ci?.loCI != null && ci.loCI > 0;
+  const coherence = signPositive >= 7;
+  const monotonic = spearman != null && spearman <= -0.5;
+  const inconclusive = list.length < 6;
+  return {
+    primary, coherence, monotonic, inconclusive,
+    signPositive, totalDays: list.length,
+    criteria: {
+      primary: "dayClustered CI on mix-adjusted (near - far) entirely > 0",
+      coherence: "positive daily sign in >= 7 of 9 days",
+      monotonic: "Spearman rho(edge vs lead order) <= -0.5",
+    },
+    verdict: inconclusive ? "INCONCLUSIVE"
+      : (primary && coherence && monotonic) ? "H1 SUPPORTED" : "H1 REJECTED",
+  };
+}
