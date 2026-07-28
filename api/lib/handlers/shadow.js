@@ -18,7 +18,8 @@ import { fetchFightResults, matchFightByCodes, normFighterName } from "../mma.js
 import { fetchRoundScores, normGolfName } from "../golf.js";
 import { fetchRaceResults } from "../nascar.js";
 import { fetchSlResults } from "../nba-summer.js";
-import { detectAndGradeMakerFills } from "../maker.js";
+import { detectAndGradeMakerFills, gradeMakerFills } from "../maker.js";
+import { backfillMakerDay, listDayMarkets, compareSourcesForDay, dayHasLiveSegments } from "../maker-backfill.js";
 import { reconcileLiveMakerFills, isArmed as isMakerV2Armed } from "../maker-live.js";
 // shadowId moved to api/lib/shadow-id.js (2026-07-19) so the maker engine stamps the same
 // row identity on quote segments without a handler→handler import cycle.
@@ -4339,6 +4340,85 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
       }
       return jsonResponse({ ok: true, dry, byCategory: summary });
     } catch (e) { return errorResponse(`rerankgroups failed: ${e?.message}`, 500); }
+  }
+
+  // ?makerBackfill=YYYY-MM-DD (ADMIN only) — replay V1 maker quoting over a historical day from
+  // Kalshi's own candlestick + trade history (api/lib/maker-backfill.js). Exists because the V1 arm
+  // gate is day-clustered and DAYS are the binding constraint: at the 2026-07-28 reading (mean
+  // +1.55¢, se 2.18 on 9 days) the CI needs ~69 days to clear zero, i.e. two months of waiting for
+  // data Kalshi already serves.
+  //
+  //   &offset=N     resume point — 2,610 MLB prop markets/day is more than one invocation can walk,
+  //                 so the response carries `nextOffset` and the caller loops until it is null.
+  //   &validate=1   write source='validate' restricted to tickers the LIVE cron also quoted, and
+  //                 return the live-vs-replay comparison. This is the gate on the whole approach:
+  //                 a replayed day must reproduce the live day before any backfilled day is read.
+  //   &compare=1    just the comparison for a day already validated (no fetching).
+  //   &purge=1      drop this day's source='validate' rows once the comparison is banked.
+  //
+  // Refuses to write source='backfill' into a day that already holds live segments — one day is
+  // either live or replayed, never both, or the day-clustered estimator double-counts it.
+  if (new URL(request.url).searchParams.get("makerBackfill")) {
+    if (!isAdmin) return errorResponse("Forbidden", 403);
+    const qs = new URL(request.url).searchParams;
+    const dayPT = qs.get("makerBackfill");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dayPT)) return errorResponse("makerBackfill must be YYYY-MM-DD", 400);
+    const validate = qs.get("validate") === "1";
+    const source = validate ? "validate" : "backfill";
+    try {
+      if (qs.get("compare") === "1") {
+        return jsonResponse({ ok: true, comparison: await compareSourcesForDay({ env, dayPT, source }) });
+      }
+      if (qs.get("purge") === "1") {
+        await neonQuery(`DELETE FROM maker_fills WHERE quote_id IN (
+                           SELECT id FROM maker_quotes WHERE game_date = $1 AND source = 'validate')`,
+          [dayPT], env, { write: true });
+        const gone = await neonQuery(
+          `DELETE FROM maker_quotes WHERE game_date = $1 AND source = 'validate' RETURNING id`,
+          [dayPT], env, { write: true });
+        return jsonResponse({ ok: true, purged: gone.length, day: dayPT });
+      }
+      if (!validate && await dayHasLiveSegments({ env, dayPT })) {
+        return errorResponse(`${dayPT} already has live maker segments — use &validate=1 to compare instead`, 409);
+      }
+
+      // The day's ticker universe is stable, so it is enumerated once and cached for the resume
+      // loop rather than re-walked (5 series × pagination) on every chunk.
+      const tkKey = `maker:bf:tickers:${dayPT}`;
+      let tickers = cache ? await cache.get(tkKey, "json").catch(() => null) : null;
+      if (!Array.isArray(tickers) || !tickers.length) {
+        tickers = await listDayMarkets(dayPT);
+        if (cache) cache.put(tkKey, JSON.stringify(tickers), { expirationTtl: 21600 }).catch(() => {});
+      }
+
+      // Validation compares like with like: only tickers the live cron actually quoted.
+      let restrictTo = null;
+      if (validate) {
+        const live = await neonQuery(
+          `SELECT DISTINCT ticker FROM maker_quotes WHERE game_date = $1 AND source = 'live'`,
+          [dayPT], env, { write: true });
+        restrictTo = new Set(live.map((r) => r.ticker));
+        if (!restrictTo.size) return errorResponse(`${dayPT} has no live segments to validate against`, 400);
+      }
+
+      const offset = Math.max(0, parseInt(qs.get("offset") || "0", 10) || 0);
+      const result = await backfillMakerDay({
+        env, dayPT, tickers, offset, source, restrictTo,
+        limit: Math.min(2000, parseInt(qs.get("limit") || "400", 10) || 400),
+        deadlineMs: Date.now() + 200_000,
+      });
+      // Grade once the day is fully walked, not per chunk: gradeMakerFills scans every ungraded
+      // fill in the table, so calling it 7× a day × 52 days would be the same work 7× over.
+      const graded = result.nextOffset === null ? await gradeMakerFills({ env }) : 0;
+      console.log(`[shadow-snapshot] makerBackfill day=${dayPT} src=${source} off=${offset} `
+        + `quoted=${result.quoted} segs=${result.segments} fills=${result.fills} graded=${graded} `
+        + `next=${result.nextOffset} rl=${result.rateLimited}`);
+      return jsonResponse({
+        ok: true, ...result, graded, totalTickers: tickers.length,
+        comparison: validate && result.nextOffset === null
+          ? await compareSourcesForDay({ env, dayPT, source }) : undefined,
+      });
+    } catch (e) { return errorResponse(`makerBackfill failed: ${e?.message}`, 500); }
   }
 
   // ?backfillgamedate=1 (ADMIN only, ?dry=1 to report) — repair for the 2026-07-27 null-game_date

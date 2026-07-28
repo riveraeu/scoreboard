@@ -116,6 +116,12 @@ export async function ensureMakerTables(env) {
     );
     CREATE INDEX IF NOT EXISTS maker_quotes_open_idx ON maker_quotes (ticker) WHERE valid_to IS NULL;
     CREATE INDEX IF NOT EXISTS maker_quotes_day_idx ON maker_quotes (game_date);
+    -- Where a segment came from: 'live' (the 2-min quoting cron) or 'backfill'/'validate' (the
+    -- 2026-07-28 tape replay, api/lib/maker-backfill.js). Defaulted so every pre-existing row is
+    -- correctly labelled 'live' without a data migration. The board must never mix two sources for
+    -- one day — the backfill endpoint refuses a day that already holds live segments.
+    ALTER TABLE maker_quotes ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'live';
+    CREATE INDEX IF NOT EXISTS maker_quotes_day_src_idx ON maker_quotes (game_date, source);
     CREATE TABLE IF NOT EXISTS maker_fills (
       id SERIAL PRIMARY KEY,
       quote_id INT NOT NULL,
@@ -204,9 +210,12 @@ export async function updateMakerQuotes({ snapResults, staging, snapshotDate, en
 // (limit 1000 — these markets trade well under that in a day; same call the flow stamp uses).
 export async function detectAndGradeMakerFills({ env, dayPT }) {
   await ensureMakerTables(env);
+  // source='live' only: backfilled segments (api/lib/maker-backfill.js) replay their own tape in
+  // their own batch pass, and re-replaying them here would double the work every night for the
+  // overlap days without changing a row (fills are UNIQUE on quote_id+trade_id).
   const segs = await neonQuery(
     `SELECT id, ticker, quote_side, quote_ask, valid_from, valid_to
-     FROM maker_quotes WHERE game_date = $1`,
+     FROM maker_quotes WHERE game_date = $1 AND source = 'live'`,
     [dayPT], env, { write: true });
 
   const byTicker = new Map();

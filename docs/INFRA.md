@@ -176,6 +176,32 @@ Report: `makerBoard` in `/api/shadow-report` (quote volume, fill economics incl.
 
 **Floor dropped 80→55 same day (measurement-only)**: the pooled market-calibration scan (`project_pooled_market_calibration`) already showed ask-richness at 70–75 (−1.9¢) and 75–80 (−2.5¢) comparable to or exceeding the 80–85 slice that turned out to be the one real edge — so the edge boundary was never validated to sit at 80, that was just where V1 happened to start quoting. `≤35¢` longshot asks are separately established as ~fair (no vig), so that end isn't worth re-testing. `MAKER_BAND[0]` dropped to 55 to cover the unstudied 55–79 gap; the report's band ladder (`handlers/shadow.js` maker-board query) was widened to 5¢ buckets (`55-59` … `75-79`) alongside the existing `80-84`/`85-89`/`90-96`. Still shadow-only — zero capital risk — this only feeds more data into the V2-scope decision, doesn't change it.
 
+### Maker tape backfill (`api/lib/maker-backfill.js`, 2026-07-28) — replaying days instead of waiting for them
+**The arm gate's binding constraint is DAYS, not fills.** At the 7/28 reading V1 had 14,974 fills but only 9 days: `weighted` +1.55¢ CI [+0.70, +2.41] (looks armed) vs `dayClustered` +1.55¢ **se 2.18, CI [−2.71, +5.82]**. Clearing `loCI > 0` needs se ≤ 1.55/1.96 = 0.79, and se falls as 1/√m, so m ≈ 9·(2.18/0.79)² ≈ **69 days** — ~60 more calendar days, and only if a noise-driven point estimate happens to hold. Days needed scales as **(sd/mean)²**, so more fills per day buys nothing.
+
+Kalshi serves enough history to replay those days now (all verified live 7/28):
+- `GET /series/{s}/markets/{t}/candlesticks?period_interval=1` → `yes_bid`/`yes_ask` OHLC per minute, retained ≥8 weeks (checked on a 6/02 market).
+- `GET /markets/trades?ticker&min_ts&max_ts&cursor` → the same public tape the live path replays.
+- `GET /markets?series_ticker&min_close_ts&max_close_ts` → the day's market universe.
+
+The engine spec has been frozen since 7/19, so replaying it over earlier days is **out-of-sample in time**, not a refit.
+
+**Reuse is the whole design.** Eligibility (`computeMakerQuote`) and fill detection (`replayFills`) are imported from `maker.js` untouched. The module adds only `buildSamples` (sparse candles → 2-min poll-cadence series, carrying the last close across gaps) and `segmentsFromSamples` (series → segments). Reimplementing either would make the live-vs-backfill comparison measure the drift instead of the data.
+
+**The NO side** comes from `no_bid = 100 − yes_ask`, `no_ask = 100 − yes_bid` — verified exactly across live books. This is NOT the synthesis CLAUDE.md warns against: that warning is against `100 − yes_ASK`, which lands on the bid side and understates the NO ask by the whole spread. Taking the NO ask off the YES BID is the identity `computeMakerQuote` already assumes when it derives one shared `spread`.
+
+**Scope: the five MLB prop series** (`KXMLBKS/HRR/HIT/TB/OUTS`). They encode `HHMM` in the event ticker, so `kalshiTickerGameTime()` (new in `kalshi-ticker.js`, DST-correct via `Intl` offset resolution) supplies the pre-game gate's `gameTime` with no `shadow_plays` join — which matters because `kalshi_ticker` only exists from 7/23, so a shadow-joined backfill would reach back zero useful days. Date-only series (WNBA props, tennis, UFC, NBASL) and dateless ones (golf, NASCAR) are out of scope rather than guessed at. None carries maker fees.
+
+**Endpoint**: `/api/shadow-snapshot?makerBackfill=YYYY-MM-DD` (ADMIN_KEY). 2,610 MLB prop markets closed on 7/27, more than one 300s invocation walks, so it is `&offset=`-resumable via `nextOffset` (ticker list cached in KV 6h for a stable slice). `&validate=1` replays an overlap day restricted to tickers the live cron also quoted and returns the live-vs-replay comparison; `&compare=1` re-reads it; `&purge=1` drops the validate rows. Idempotent per chunk (delete-then-insert on the chunk's tickers), so partial, repeated, and out-of-order runs all converge.
+
+**One day is either live or replayed, never both** — `maker_quotes.source` (`'live'` default, so every pre-existing row is correctly labelled without a migration) and the endpoint 409s on a day that already holds live segments. `detectAndGradeMakerFills` filters to `source='live'` so the nightly pass never re-walks backfilled segments; `gradeMakerFills` is source-agnostic and grades both.
+
+**Validation is the gate on the whole approach** — a replayed 7/24 must reproduce the live day's PnL before any backfilled day is read. `compareSourcesForDay` returns segments/tickers/avgAsk/fills/contracts/pnlPerContract per source plus `bookNoAskMismatches`, the direct check on the complement identity against stored live values (must be 0). The one assumption it exists to test: candle gaps are carried forward as "unchanged". That cannot invent a fill (a trade IS activity and would emit its own candle, so a gap is provably trade-free) but it does affect segment duration.
+
+**Off-by-one caught by replaying real data, worth remembering**: the final open segment closes at last-sample + one poll interval, and the 2-min grid rarely lands on first pitch — unclamped it ran to 23:46 on a 23:45 game, and a trade in that overshoot is an *in-play* trade producing a fill V1 never makes. Now clamped to game time. Pinned by a test using an odd-minute grid offset, since an even one hides it.
+
+Known deliberate difference: the live tape read is one 1000-trade page per ticker, the backfill paginates. A pre-game prop window carries single-digit trades in practice (6 on the market this was verified against), so they agree everywhere it matters; the validation quantifies the gap rather than assuming it away.
+
 ### Shadow maker V2 (`api/lib/maker-live.js`, 2026-07-21) — REAL resting orders, `armed=false` by default
 Built same day as the ARM review above, scoped tight to `MAKER_V2_BAND` `[80,84]` (config.js) — the one sub-band with a real, non-borderline edge; `[85,97]` stays V1-shadow-only. Places actual limit orders on the account's existing funded Kalshi credentials (`KALSHI_API_KEY_ID`/`KALSHI_PRIVATE_KEY` — the same ones manual Place-All/single-order placement already use), via a new shared client, **`api/lib/kalshi-order-client.js`** (`placeKalshiOrder`/`cancelKalshiOrder`/`fetchKalshiFills`), extracted from the `/api/kalshi-order` handler so the manual and automated paths never drift on the V2 payload/signing (zero behavior change to the manual route — same `_importKalshiKey`/PKCS1→8 logic, now shared).
 

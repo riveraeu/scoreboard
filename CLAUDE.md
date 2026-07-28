@@ -18,6 +18,7 @@ curl -s "https://scoreboard-ivory-xi.vercel.app/api/tonight?debug=1" | jq '.play
 curl -s "https://scoreboard-ivory-xi.vercel.app/api/shadow-snapshot" -H "Authorization: Bearer $ADMIN_KEY" | jq '{ok, snapshotDate, logged, durationMs}'
 curl -s "https://scoreboard-ivory-xi.vercel.app/api/auth/shadow-stats?resolvetrigger=1" -H "Authorization: Bearer $ADMIN_KEY" | jq '{resolved, skipped}'
 curl -s "https://scoreboard-ivory-xi.vercel.app/api/shadow-report?makerDay=2026-07-27" -H "Authorization: Bearer $ADMIN_KEY" | jq '{totals, byBand}'   # single-day V1 maker attribution
+curl -s "https://scoreboard-ivory-xi.vercel.app/api/shadow-snapshot?makerBackfill=2026-06-15&offset=0" -H "Authorization: Bearer $ADMIN_KEY" | jq '{quoted, segments, fills, nextOffset}'   # replay one historical maker day; loop on nextOffset
 ```
 
 ## Workflow for New Features and Debugging
