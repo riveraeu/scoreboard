@@ -510,6 +510,30 @@ export async function compareSourcesForDay({ env, dayPT, source = "validate" }) 
       WHERE l.game_date = $1 AND l.source = 'live'`,
     [dayPT, source], env, { write: true });
 
+  // Per-ticker COVERAGE, the diagnostic that explains a segment/fill count mismatch. The live cron
+  // only quotes a market while it is in shadow staging, so its window per ticker is whatever the
+  // day's tonight runs happened to cover; the replay's is BACKFILL_LOOKBACK_MS. If those differ,
+  // the two books are quoting different amounts of time on the same markets and no PnL comparison
+  // between them means anything — which is exactly what the first 2026-07-24 validation found.
+  const coverage = await neonQuery(
+    `SELECT source,
+            COUNT(*)::int AS tickers,
+            AVG(lead_h)   AS avg_lead_hours,
+            MAX(lead_h)   AS max_lead_hours,
+            AVG(cov_min)  AS avg_covered_min,
+            AVG(segs)     AS avg_segments
+       FROM (
+         SELECT q.source, q.ticker,
+                EXTRACT(EPOCH FROM (MAX(q.game_time) - MIN(q.valid_from))) / 3600 AS lead_h,
+                SUM(EXTRACT(EPOCH FROM (q.valid_to - q.valid_from))) / 60        AS cov_min,
+                COUNT(*)                                                          AS segs
+           FROM maker_quotes q
+          WHERE ${scope} AND q.valid_to IS NOT NULL
+          GROUP BY q.source, q.ticker
+       ) t
+      GROUP BY source`,
+    [dayPT, source], env, { write: true });
+
   const num = (v) => (v == null ? null : Number(v));
   const perContract = (pnl, c) => (c > 0 ? Math.round((Number(pnl) / Number(c)) * 100) / 100 : null);
   return {
@@ -528,6 +552,13 @@ export async function compareSourcesForDay({ env, dayPT, source = "validate" }) 
     },
     bookNoAskCompared: num(noAsk?.n),
     bookNoAskMismatches: num(noAsk?.mismatches),
+    coverage: Object.fromEntries(coverage.map((r) => [r.source, {
+      tickers: num(r.tickers),
+      avgLeadHours: r.avg_lead_hours == null ? null : Math.round(Number(r.avg_lead_hours) * 100) / 100,
+      maxLeadHours: r.max_lead_hours == null ? null : Math.round(Number(r.max_lead_hours) * 100) / 100,
+      avgCoveredMin: r.avg_covered_min == null ? null : Math.round(Number(r.avg_covered_min)),
+      avgSegments: r.avg_segments == null ? null : Math.round(Number(r.avg_segments) * 10) / 10,
+    }])),
   };
 }
 
