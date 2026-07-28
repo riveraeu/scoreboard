@@ -34,8 +34,27 @@ import { placeKalshiOrder, cancelKalshiOrder, fetchKalshiFills, fetchKalshiSettl
 
 const ARMED_KV_KEY = "maker:v2:armed";
 
-// Both gates must be true — fail-closed on either being unset/false.
+// ── SHELVED 2026-07-28 — third gate, and the one that actually holds ──────────────────────────
+// The maker measurement program concluded that there is no demonstrated fillable edge. Six
+// hypotheses, six dissolutions: ARM-MET 7/21 (grading bugs), "edge only in 80-84" (post-fix bands
+// alternate sign), adverse selection ~1.4¢ (→ +0.51¢, band-incoherent, and it inverted), the
+// aggregate fill CI (day-clustering widened it back across zero), 7/24's +8.05¢ (a tape replay of
+// the same markets gives −0.01¢), and the pre-registered lead-time test (rejected on all three
+// criteria — docs/MAKER_LEADTIME_PREREG.md). The one thing that HAS replicated every time is the
+// vig on the QUOTE (+1.5-1.6¢ across 100k+ segments); it has never been shown to survive to a fill.
+//
+// Why this is a code constant rather than an env/KV change: `MAKER_V2_ARMED` was still "true" in
+// production from the 7/21 arming, so the entire shelving rested on one KV flag that a single POST
+// to /api/maker-v2-arm would flip back. A shelved system should not be one request from live. Here
+// the decision is in git, reviewable, and un-shelving is a deliberate one-line revert with the
+// verdict in front of whoever does it.
+//
+// The env+KV mechanism below is deliberately left intact so that revert is genuinely one line.
+const SHELVED = true;
+
+// All gates must be true — fail-closed on any being unset/false.
 export async function isArmed(env, cache) {
+  if (SHELVED) return false;
   if (env?.MAKER_V2_ARMED !== "true") return false;
   if (!cache) return false;
   const kv = await cache.get(ARMED_KV_KEY, "json").catch(() => null);

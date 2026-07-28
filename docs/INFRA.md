@@ -202,6 +202,41 @@ The engine spec has been frozen since 7/19, so replaying it over earlier days is
 
 Known deliberate difference: the live tape read is one 1000-trade page per ticker, the backfill paginates. A pre-game prop window carries single-digit trades in practice (6 on the market this was verified against), so they agree everywhere it matters; the validation quantifies the gap rather than assuming it away.
 
+### Maker V2 — **SHELVED 2026-07-28**
+The measurement program concluded: **there is no demonstrated fillable edge.** Six hypotheses, six
+dissolutions, all on the same ~9 days:
+
+| finding | what killed it |
+|---|---|
+| ARM-MET 7/21, "edge only in 80-84" | grading bugs; post-fix bands alternate sign with no structure |
+| adverse selection ~1.4¢ | broken settlement fetch + mix-confounded population → +0.51¢, band-incoherent, and it inverted |
+| aggregate fill CI-lo +0.70 | day-clustering widened it 4.5× back across zero |
+| 7/24 at +8.05¢ | tape replay of the same markets: −0.01¢ |
+| lead-time hypothesis | pre-registered, rejected on all three criteria (`docs/MAKER_LEADTIME_PREREG.md`) |
+
+**What HAS replicated every time: the vig on the QUOTE** — +1.64¢ over 108k segments, +1.53¢ on the
+7/26 rebuild, and the original pooled calibration at n=44.5k. The vig is real. It has never been
+shown to survive to a *fill*. The cleanest summary remains the 7/25 one-liner: at a 71.9¢ average
+fill the sold side won 71.86% — efficient to 0.04pp — reproduced independently by the replay at
+74.3% on a 74.3¢ ask.
+
+**Enforced in code, not config.** `SHELVED = true` in `maker-live.js` short-circuits `isArmed()`
+ahead of both existing gates, and `/api/maker-v2-arm` 409s with the reason. This is deliberate:
+`MAKER_V2_ARMED` was still `"true"` in production from the 7/21 arming, so shelving would otherwise
+have rested on a single KV flag that one POST would flip back. Un-shelving is a one-line code
+change with the verdict in front of whoever makes it. The env+KV mechanism is left intact so that
+revert stays one line, and `maker-live.test.js` pins the shelved state as a tripwire.
+
+**Not deleted.** `maker-live.js` and `kalshi-order-client.js` stay — the latter is shared with the
+manual `/api/kalshi-order` path, so removing V2 would be a much larger change than shelving
+warrants. V1 shadow quoting also keeps running; it is nearly free (books already in hand at the
+snapshot cron) and preserves the option.
+
+**Do not re-open by re-slicing.** Slicing is 0-for-6. A new bucket boundary, a different near/far
+cut, or a new dimension on the same days is exactly the behaviour the pre-registration existed to
+prevent. What would justify re-opening: genuinely new data, or a mechanism specified in advance —
+not another pass over this book.
+
 ### Shadow maker V2 (`api/lib/maker-live.js`, 2026-07-21) — REAL resting orders, `armed=false` by default
 Built same day as the ARM review above, scoped tight to `MAKER_V2_BAND` `[80,84]` (config.js) — the one sub-band with a real, non-borderline edge; `[85,97]` stays V1-shadow-only. Places actual limit orders on the account's existing funded Kalshi credentials (`KALSHI_API_KEY_ID`/`KALSHI_PRIVATE_KEY` — the same ones manual Place-All/single-order placement already use), via a new shared client, **`api/lib/kalshi-order-client.js`** (`placeKalshiOrder`/`cancelKalshiOrder`/`fetchKalshiFills`), extracted from the `/api/kalshi-order` handler so the manual and automated paths never drift on the V2 payload/signing (zero behavior change to the manual route — same `_importKalshiKey`/PKCS1→8 logic, now shared).
 

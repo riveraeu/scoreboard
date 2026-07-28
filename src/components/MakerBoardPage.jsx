@@ -198,10 +198,7 @@ const _ACC_ACTIONS = {
 // chase a single thin band. Below RECAL_MIN_N the row stays on the accuracy board but is held OUT
 // of the daily Do This banner so it doesn't nag an un-ripe task; it resurfaces at n≥200.
 const RECAL_MIN_N = 200;
-// V2 (real resting orders, api/lib/maker-live.js) trial size — smaller than the V1 arm
-// criterion's n≥200 (that established statistical edge; this just validates mechanics —
-// place/reprice/fill/settle/grade — with real but small capital before a scale decision).
-const MAKER_V2_TRIAL_N = 50;
+// (MAKER_V2_TRIAL_N removed 2026-07-28 — V2 is shelved, so there is no trial to size.)
 // n≥200 is necessary but NOT sufficient: a category can clear it yet still have a MOVING Brier-skill
 // trend (reliable |learning.skillTrend| > _LEARN_FLAT) — rising as data accrues (still learning) OR
 // falling (decaying toward a market tie, the wnba|points signature). EITHER direction means the
@@ -259,30 +256,15 @@ function _doThisCandidates(d) {
   // the same stale V1 aggregate would nag a decision that's already made, so once makerBoard.live
   // exists (V2 built, api/lib/maker-live.js) this tier tracks V2's OWN lifecycle instead: verify-
   // then-arm → trial running → trial resolved (scale or investigate).
-  const live = mb?.live;
-  if (live) {
-    if (!live.armed && (live.orders || 0) === 0) {
-      out.push({ tier:1.8, tone:"blue", label:"Shadow maker V2 built, not armed — verify cancel endpoint, then arm for a small trial",
-        why:"V2 (real resting orders, scoped to the 80-84¢ band) shipped 2026-07-21 but has never been armed — MAKER_V2_ARMED is unset. The cancel-endpoint wire format is unverified against a live call (documented in kalshi-order-client.js); place one harmless test order + cancel before arming with real size.",
-        short:"V2: verify + arm" });
-    } else if (live.armed && (live.graded || 0) < MAKER_V2_TRIAL_N) {
-      out.push({ tier:1.8, tone:"blue", label:`Shadow maker V2 trial running — ${live.graded || 0}/${MAKER_V2_TRIAL_N} graded fills`,
-        why:`Let the trial run to ${MAKER_V2_TRIAL_N} graded fills before deciding on sizing — resting/executed counts and live PnL are in the tiles below.`,
-        short:"V2 trial running" });
-    } else if (live.armed && (live.graded || 0) >= MAKER_V2_TRIAL_N) {
-      const ok = (live.pnlLoCI ?? -1) > 0;
-      out.push({ tier:1.8, tone: ok ? "green" : "red",
-        label: ok
-          ? `Shadow maker V2 trial cleared — ${live.graded} graded, CI-lo +${live.pnlLoCI}¢ — decide on scaling size`
-          : `Shadow maker V2 trial underperforming — ${live.graded} graded, CI-lo ${live.pnlLoCI}¢ — investigate or kill`,
-        why:"Compare against V1 shadow expectations before touching MAKER_V2_SIZE — per-contract PnL/CI detail is in the tile below.",
-        short: ok ? "V2 trial: scale?" : "V2 trial: investigate" });
-    }
-  } else if ((mb?.fills?.graded || 0) >= (mb?.armCriterion?.minFills ?? 200) && (mb?.fills?.pnlLoCI ?? -1) > 0) {
-    // Fallback only for a report generated before makerBoard.live existed.
-    out.push({ tier:1.8, tone:"green", label:"ARM DECISION — shadow maker cleared its criterion, review V2",
-      why:`${mb.fills.graded} graded fills at ${mb.fills.avgPnlCents > 0 ? "+" : ""}${mb.fills.avgPnlCents}¢/contract (CI-lo ${mb.fills.pnlLoCI > 0 ? "+" : ""}${mb.fills.pnlLoCI}¢) — margin survives adverse selection. Decide V2 scope from the band ladder.`,
-      short:"Review maker V2 arm" });
+  // SHELVED 2026-07-28. This tier used to be an arming ladder (verify → arm → trial → scale), and
+  // the whole point of removing it is that the banner should stop pointing at a decision that has
+  // been made. One terminal notice, no call to action. The old `pnlLoCI`-based fallback below it is
+  // gone too: it fired on the fill-level CI, which day-clustering superseded on 2026-07-26 — it
+  // could still have shown "ARM DECISION — cleared its criterion" off a criterion known to be wrong.
+  if (mb) {
+    out.push({ tier:1.8, tone:"dim", label:"Shadow maker V2 SHELVED — no demonstrated fillable edge",
+      why:"Six measurements, six dissolutions: ARM-MET 7/21 (grading bugs), \"edge only in 80-84\" (post-fix bands alternate sign), adverse selection ~1.4¢ (→ +0.51¢, band-incoherent), the aggregate fill CI (day-clustering widened it back across zero), 7/24's +8.05¢ (tape replay of the same markets gives −0.01¢), and the pre-registered lead-time test (rejected on all three criteria). The vig on the QUOTE is real and has replicated every time (+1.5-1.6¢ over 100k+ segments) — it has never been shown to survive to a fill. Un-shelving is a code change: SHELVED in api/lib/maker-live.js.",
+      short:"V2 shelved" });
   }
   // 2 — betting changes pending on the betting board (promote / demote / investigate).
   // "Look deeper" is the Phase-2 residual-slicer nag (eligible-but-window-loses). It's only

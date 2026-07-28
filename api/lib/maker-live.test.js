@@ -27,18 +27,24 @@ test("isArmed: fail-closed when no cache client at all", async () => {
   assert.equal(await isArmed({ MAKER_V2_ARMED: "true" }, null), false);
 });
 
-test("isArmed: true only when BOTH env var and KV flag are true", async () => {
+// SHELVED 2026-07-28 (no demonstrated fillable edge; see docs/MAKER_LEADTIME_PREREG.md). The two
+// tests below were "isArmed is true when both gates are true" and "setArmed round-trips" — both now
+// assert FALSE, because the SHELVED constant in maker-live.js short-circuits ahead of both gates.
+// Deliberately kept as inverted assertions rather than deleted: they are the tripwire that fails
+// loudly if anyone flips SHELVED without also making that an explicit, reviewed decision.
+test("isArmed: SHELVED overrides both gates being true", async () => {
   const env = { MAKER_V2_ARMED: "true" };
   const cache = fakeCache({ armed: true });
-  assert.equal(await isArmed(env, cache), true);
+  assert.equal(await isArmed(env, cache), false,
+    "V2 is shelved — if this fails, SHELVED was flipped in maker-live.js; that must be a deliberate, reviewed change");
 });
 
-test("setArmed round-trips through isArmed", async () => {
+test("setArmed cannot re-arm a shelved engine", async () => {
   const env = { MAKER_V2_ARMED: "true" };
   const cache = fakeCache(null);
   assert.equal(await isArmed(env, cache), false);
   await setArmed(cache, true);
-  assert.equal(await isArmed(env, cache), true);
+  assert.equal(await isArmed(env, cache), false, "KV round-trip still cannot arm while shelved");
   await setArmed(cache, false);
   assert.equal(await isArmed(env, cache), false);
 });
