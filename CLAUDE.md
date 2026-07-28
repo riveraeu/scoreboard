@@ -52,6 +52,7 @@ Sports prop betting dashboard: pulls Kalshi prediction-market prices, computes a
 | URL routing, App.jsx state, MakerBoardPage/DoThisBanner, live tracking, sizing, color doctrine | `docs/FRONTEND.md` |
 | Design system: palette, typography, spacing, component patterns | `docs/STYLEGUIDE.md` (tokens: `src/lib/styles.js`) |
 | Common debugging recipes | `docs/DEBUGGING.md` |
+| **What would justify betting again** (all 5 strategy families closed 2026-07-28; re-entry conditions + required method) | **`docs/REENTRY.md` — read this BEFORE any work premised on a new edge** |
 
 ## Architecture
 

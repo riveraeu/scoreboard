@@ -39,12 +39,7 @@
     { "path": "/api/shadow-resolver", "schedule": "0 9 * * *" },
     { "path": "/api/shadow-resolver", "schedule": "5 10 * * *" },
     { "path": "/api/shadow-resolver", "schedule": "50 12 * * *" },
-    { "path": "/api/polymarket-scan", "schedule": "40 12 * * *" },
     { "path": "/api/kalshi-series-scan", "schedule": "45 12 * * *" },
-    { "path": "/api/shadow-report", "schedule": "0 13 * * *" },
-    { "path": "/api/push/notify", "schedule": "8 15 * * *" },
-    { "path": "/api/push/notify", "schedule": "8 22 * * *" },
-    { "path": "/api/push/notify", "schedule": "3 17 * * *" },
-    { "path": "/api/push/notify", "schedule": "3 3 * * *" }
+    { "path": "/api/shadow-report", "schedule": "0 13 * * *" }
   ]
 }
