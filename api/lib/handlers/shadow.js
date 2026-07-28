@@ -54,6 +54,11 @@ const SHADOW_TABLE = "shadow_plays";
 // previously copy-pasted per query, and the quoted-vs-filled comparison is only meaningful if both
 // sides bucket identically, so a third copy was the wrong way to add one. `col` is a trusted
 // identifier from call sites in this file, never user input.
+// EVERY maker board query filters `source = 'live'` (2026-07-28). `maker_quotes` now also holds
+// replayed segments (api/lib/maker-backfill.js), and the board's day-clustered CI is the arm gate —
+// letting an unvalidated replay leak into it would arm real money on reconstructed data. Found the
+// hard way: the first 2026-07-24 validation run put 9,299 replayed segments and 2,073 fills into a
+// board that had no source filter at all. Phase 2 widens this deliberately, per day, or not at all.
 const _makerBandCase = (col) => `CASE
   WHEN ${col} < 60 THEN '55-59' WHEN ${col} < 65 THEN '60-64'
   WHEN ${col} < 70 THEN '65-69' WHEN ${col} < 75 THEN '70-74'
@@ -2741,7 +2746,7 @@ async function handleShadowReport({ path, request, env, cache }) {
           ROUND(AVG(f.fill_ask), 1) AS avg_fill_ask,
           ROUND(AVG((f.side_won)::int::numeric), 4) AS side_won_rate
         FROM maker_fills f JOIN maker_quotes q ON q.id = f.quote_id
-        WHERE q.game_date = $1 AND f.graded_at IS NOT NULL
+        WHERE q.game_date = $1 AND q.source = 'live' AND f.graded_at IS NOT NULL
         ${groupBy} ${orderBy} ${limit}`;
       const [[mdTotals], mdSport, mdBand, mdTickers, mdCatBand, mdUngraded] = await Promise.all([
         neonQuery(`
@@ -2755,7 +2760,7 @@ async function handleShadowReport({ path, request, env, cache }) {
             COALESCE(SUM(f.fill_ask * f.contracts) FILTER (WHERE f.graded_at IS NOT NULL), 0) AS sum_ask_ctr,
             COALESCE(SUM((f.side_won)::int::numeric * f.contracts) FILTER (WHERE f.graded_at IS NOT NULL), 0) AS sum_won_ctr
           FROM maker_fills f JOIN maker_quotes q ON q.id = f.quote_id
-          WHERE q.game_date = $1`, [makerDay], env, { write: true }),
+          WHERE q.game_date = $1 AND q.source = 'live'`, [makerDay], env, { write: true }),
         neonQuery(_dayAgg("q.sport, q.category,", "GROUP BY 1, 2", "ORDER BY pnl_total DESC", ""),
           [makerDay], env, { write: true }),
         // Same `_makerBandCase` helper the cumulative board uses — a hand-copied second CASE is
@@ -2779,7 +2784,7 @@ async function handleShadowReport({ path, request, env, cache }) {
           SELECT q.sport, COUNT(*)::int AS fills, COALESCE(SUM(f.contracts), 0) AS contracts,
             ROUND(AVG(f.fill_ask), 1) AS avg_fill_ask
           FROM maker_fills f JOIN maker_quotes q ON q.id = f.quote_id
-          WHERE q.game_date = $1 AND f.graded_at IS NULL
+          WHERE q.game_date = $1 AND q.source = 'live' AND f.graded_at IS NULL
           GROUP BY 1 ORDER BY contracts DESC`, [makerDay], env, { write: true }),
       ]);
       const _num = (v) => (v == null ? null : Number(v));
@@ -3613,7 +3618,7 @@ async function handleShadowReport({ path, request, env, cache }) {
       neonQuery(`
         SELECT COUNT(*)::int AS segments, COUNT(DISTINCT ticker)::int AS tickers,
           COUNT(DISTINCT game_date)::int AS days, ROUND(AVG(quote_ask), 1) AS avg_ask
-        FROM maker_quotes WHERE game_date >= $1`, [since], env, { write: true }),
+        FROM maker_quotes WHERE game_date >= $1 AND source = 'live'`, [since], env, { write: true }),
       neonQuery(`
         SELECT COUNT(*)::int AS fills, COALESCE(SUM(f.contracts), 0) AS contracts,
           COUNT(*) FILTER (WHERE f.graded_at IS NOT NULL)::int AS graded,
@@ -3623,7 +3628,7 @@ async function handleShadowReport({ path, request, env, cache }) {
           ROUND(AVG(f.fill_ask), 1) AS avg_fill_ask,
           ${weightedPnlSumsSql({ pnlCol: "f.pnl_cents", contractsCol: "f.contracts", filter: "f.graded_at IS NOT NULL" })}
         FROM maker_fills f JOIN maker_quotes q ON q.id = f.quote_id
-        WHERE q.game_date >= $1`, [since], env, { write: true }),
+        WHERE q.game_date >= $1 AND q.source = 'live'`, [since], env, { write: true }),
       // Quoted-outcome counterfactual, aggregated per (band, ticker, side) — side_won is resolved
       // directly off Kalshi's own settlement (resolveTickerSideViaKalshi, kalshi-settlement.js)
       // after this query returns, same source gradeMakerFills uses (2026-07-24 rewrite), so it
@@ -3641,7 +3646,7 @@ async function handleShadowReport({ path, request, env, cache }) {
       neonQuery(`
         SELECT ${_makerBandCase("quote_ask")} AS band, ticker, quote_side,
           COUNT(*)::int AS segments, COALESCE(SUM(quote_ask), 0)::numeric AS sum_ask
-        FROM maker_quotes WHERE game_date >= $1
+        FROM maker_quotes WHERE game_date >= $1 AND source = 'live'
         GROUP BY 1, ticker, quote_side`, [since], env, { write: true }),
       // Daily fill series — feeds the /model paper equity curve (frontend cumsums pnl_total) and
       // the day-clustered CI. `contracts_graded` is deliberately separate from `contracts`: the
@@ -3654,14 +3659,14 @@ async function handleShadowReport({ path, request, env, cache }) {
           COUNT(*) FILTER (WHERE f.graded_at IS NOT NULL)::int AS graded,
           COALESCE(SUM(f.pnl_cents * f.contracts) FILTER (WHERE f.graded_at IS NOT NULL), 0) AS pnl_total
         FROM maker_fills f JOIN maker_quotes q ON q.id = f.quote_id
-        WHERE q.game_date >= $1
+        WHERE q.game_date >= $1 AND q.source = 'live'
         GROUP BY q.game_date ORDER BY q.game_date`, [since], env, { write: true }),
       // Per-ask-band quote/fill economics — feeds the /model band ladder (V2 targeting view).
       neonQuery(`
         WITH qb AS (
           SELECT ${_makerBandCase("quote_ask")} AS band,
             COUNT(*)::int AS segments
-          FROM maker_quotes WHERE game_date >= $1 GROUP BY 1),
+          FROM maker_quotes WHERE game_date >= $1 AND source = 'live' GROUP BY 1),
         fb AS (
           SELECT ${_makerBandCase("f.fill_ask")} AS band,
             COUNT(*)::int AS fills,
@@ -3669,7 +3674,7 @@ async function handleShadowReport({ path, request, env, cache }) {
             ROUND(AVG(f.pnl_cents) FILTER (WHERE f.graded_at IS NOT NULL), 2) AS avg_pnl,
             ROUND(AVG((f.side_won)::int::numeric) FILTER (WHERE f.graded_at IS NOT NULL), 4) AS filled_side_won
           FROM maker_fills f JOIN maker_quotes q ON q.id = f.quote_id
-          WHERE q.game_date >= $1 GROUP BY 1)
+          WHERE q.game_date >= $1 AND q.source = 'live' GROUP BY 1)
         SELECT COALESCE(qb.band, fb.band) AS band, COALESCE(qb.segments, 0) AS segments,
           COALESCE(fb.fills, 0) AS fills, COALESCE(fb.graded, 0) AS graded,
           fb.avg_pnl, fb.filled_side_won
