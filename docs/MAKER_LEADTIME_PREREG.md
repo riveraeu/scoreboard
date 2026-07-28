@@ -78,3 +78,55 @@ already in hand.
 
 It is a strategy change, not an arm signal: restrict V2 quoting to the near window. That would need
 its own validation before any capital, since the arm gate is unchanged by this test.
+
+---
+
+# RESULT — 2026-07-28: **H1 REJECTED** (all three criteria failed)
+
+Run against 14,161 graded live fills across 8 usable days (7/19 drops: 33 fills, no band with both
+arms). `/api/shadow-report?makerLeadTime=1`.
+
+## Seller edge by lead time
+
+| bucket | fills | contracts | avgAsk | sideWon | **edge** |
+|---|---|---|---|---|---|
+| 0-1h | 3,564 | 24,311 | 69.26 | 0.680 | **+1.30¢** |
+| 1-3h | 3,352 | 22,717 | 69.33 | 0.674 | **+1.93¢** |
+| 3-6h | 3,207 | 19,830 | 70.46 | 0.688 | **+1.66¢** |
+| 6-12h | 2,591 | 15,422 | 68.49 | 0.685 | **0.00¢** |
+| 12h+ | 1,447 | 9,249 | 68.64 | 0.643 | **+4.35¢** |
+
+## Criteria
+
+| | required | actual | |
+|---|---|---|---|
+| PRIMARY | day-clustered CI > 0 | mean +1.93, se 1.54, **CI [−1.08, +4.95]** | ✗ |
+| COHERENCE | ≥7 of 9 days positive | **4 of 8** | ✗ |
+| MONOTONICITY | Spearman ρ ≤ −0.5 | **ρ = +0.30** | ✗ |
+
+Unadjusted near−far: **−0.03¢** (near +1.60, far +1.63).
+
+## Reading
+
+**There is no lead-time effect.** The unadjusted contrast is −0.03¢ — not a small effect, an absent
+one. Spearman is +0.30, the wrong sign: if anything the farthest bucket is the best, which is the
+direct opposite of the mechanism H1 proposed.
+
+**The test was not confounded.** avgAsk across the five buckets spans 68.49–70.46 — under 2¢. The
+mix adjustment mattered little here, which is what makes the null trustworthy rather than
+ambiguous: this is not a Simpson's artifact hiding a real effect.
+
+**The mix-adjusted mean of +1.93¢ is a two-day artifact.** Daily: −2.34, −0.76, −0.35, **+6.04**,
+**+10.48**, +2.98, −0.93, +0.34. Strip 7/23 and 7/24 and it is flat-to-negative. That is the same
+two-days-carry-everything signature that has now appeared in the aggregate PnL, the band ladder,
+and the adverse-selection metric. 7/24 is also the day whose live +8.05¢ did not reproduce under
+the tape replay.
+
+**It also retires the finding that motivated the test.** The replay's indicative arithmetic (early
+fills winning ~79.3%, so ~−5¢) is not visible in the live book's own lead-time structure. That
+inference was an artifact of the replay's coverage mismatch, not evidence of a lead-time effect.
+
+## Consequence, per the rule written above
+
+No partial credit and no re-slicing on different boundaries. **The maker measurement program is
+finished.** The decision is shelve-vs-arm-small on the evidence already in hand.
