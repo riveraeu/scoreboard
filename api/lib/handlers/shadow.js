@@ -3815,7 +3815,13 @@ async function handleShadowReport({ path, request, env, cache }) {
     const graded = Number(mf?.graded || 0);
     const avgPnl = mf?.avg_pnl != null ? Number(mf.avg_pnl) : null;
     const sd = mf?.sd_pnl != null ? Number(mf.sd_pnl) : null;
-    const pnlLoCI = avgPnl != null && sd != null && graded > 1
+    // FILL-LEVEL CI — superseded 2026-07-26, renamed 2026-07-28. Treats every fill as an
+    // independent observation; fills sharing a day share one slate, so this understates the spread
+    // ~5x. It has produced a false green on this board FOUR times, including the 2026-07-21 reading
+    // that put real money at risk. Emitted as `pnlLoCI_fillLevel_SUPERSEDED` precisely so it cannot
+    // be picked up by autocomplete or a casual grep for "pnlLoCI" and mistaken for the arm gate.
+    // The gate is `armCriterion.met` (which reads `dayClustered.loCI`).
+    const _fillLevelPnlLoCI = avgPnl != null && sd != null && graded > 1
       ? parseFloat((avgPnl - 1.96 * sd / Math.sqrt(graded)).toFixed(2)) : null;
     const weightedV1 = weightedPnlFromRow(mf);
     const _v1Daily = (_mDaily || []).map(r => ({
@@ -3851,7 +3857,7 @@ async function handleShadowReport({ path, request, env, cache }) {
       quotes: { segments: Number(mq?.segments || 0), tickers: Number(mq?.tickers || 0),
         days: Number(mq?.days || 0), avgAsk: mq?.avg_ask != null ? Number(mq.avg_ask) : null },
       fills: { n: Number(mf?.fills || 0), contracts: Number(mf?.contracts || 0), graded,
-        avgPnlCents: avgPnl, pnlLoCI, sideWonRate: mf?.side_won_rate != null ? Number(mf.side_won_rate) : null,
+        avgPnlCents: avgPnl, pnlLoCI_fillLevel_SUPERSEDED: _fillLevelPnlLoCI, sideWonRate: mf?.side_won_rate != null ? Number(mf.side_won_rate) : null,
         avgFillAsk: mf?.avg_fill_ask != null ? Number(mf.avg_fill_ask) : null,
         // Contract-weighted mean + CI (2026-07-25) — what capital actually earns. `avgPnlCents`
         // above is per-FILL and unweighted, so it counts a 1-contract and a 500-contract fill
@@ -3874,7 +3880,7 @@ async function handleShadowReport({ path, request, env, cache }) {
       // `minDays` is a sanity floor so the clustered interval is estimable at all — necessary, not
       // sufficient; clearing `needClustered` is the actual bar.
       armCriterion: {
-        minFills: 200, need: "pnlLoCI > 0",
+        minFills: 200, need: "pnlLoCI_fillLevel_SUPERSEDED > 0 (historical, NOT sufficient)",
         minDays: 14, needClustered: "dayClustered.loCI > 0",
         met: graded >= 200
           && (dayClusteredV1?.days || 0) >= 14
@@ -3895,7 +3901,8 @@ async function handleShadowReport({ path, request, env, cache }) {
   // separate try/catch so a maker_orders_v2-not-yet-created error (V2 never armed) never takes
   // down the V1 makerBoard above. Empty/zeroed until armed.
   if (makerBoard) {
-    makerBoard.live = { orders: 0, resting: 0, executed: 0, graded: 0, avgPnlCents: null, pnlLoCI: null,
+    makerBoard.live = { orders: 0, resting: 0, executed: 0, graded: 0, avgPnlCents: null,
+      pnlLoCI_fillLevel_SUPERSEDED: null,
       weighted: weightedPnlFromRow(null), armed: false, daily: [] };
     try {
       const [[lo], armedNow, _mLiveDaily] = await Promise.all([
@@ -3923,7 +3930,8 @@ async function handleShadowReport({ path, request, env, cache }) {
       const gradedV2 = Number(lo?.graded || 0);
       const avgPnlV2 = lo?.avg_pnl != null ? Number(lo.avg_pnl) : null;
       const sdV2 = lo?.sd_pnl != null ? Number(lo.sd_pnl) : null;
-      const pnlLoCIV2 = avgPnlV2 != null && sdV2 != null && gradedV2 > 1
+      // Same fill-level hazard as V1 above — and worse here, because this board is real capital.
+      const _fillLevelPnlLoCIV2 = avgPnlV2 != null && sdV2 != null && gradedV2 > 1
         ? parseFloat((avgPnlV2 - 1.96 * sdV2 / Math.sqrt(gradedV2)).toFixed(2)) : null;
       const _v2Daily = (_mLiveDaily || []).map(r => ({
         day: String(r.day).slice(0, 10), fills: Number(r.fills || 0),
@@ -3938,7 +3946,7 @@ async function handleShadowReport({ path, request, env, cache }) {
       makerBoard.live = {
         orders: Number(lo?.orders || 0), resting: Number(lo?.resting || 0),
         executed: Number(lo?.executed || 0), graded: gradedV2,
-        avgPnlCents: avgPnlV2, pnlLoCI: pnlLoCIV2, armed: !!armedNow,
+        avgPnlCents: avgPnlV2, pnlLoCI_fillLevel_SUPERSEDED: _fillLevelPnlLoCIV2, armed: !!armedNow,
         // Same contract-weighted view as V1's fills.weighted — this is the real-capital board, so
         // it is the number an arm/disarm call should actually be read off.
         weighted: weightedPnlFromRow(lo),

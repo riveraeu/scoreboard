@@ -478,7 +478,9 @@ export async function handleKalshiRoutes(ctx) {
       const avg = r.avg_pnl != null ? Number(r.avg_pnl) : null;
       const sd = r.sd_pnl != null ? Number(r.sd_pnl) : null;
       const loCI = avg != null && sd != null && n > 1 ? parseFloat((avg - 1.96 * sd / Math.sqrt(n)).toFixed(2)) : null;
-      return { sport: r.sport, category: r.category, n, avgPnlCents: avg, pnlLoCI: loCI, armEligible: n >= 200 };
+      // pnlLoCI_fillLevel_SUPERSEDED: fill-level CI, NOT the arm gate (see handlers/shadow.js).
+      // Per-category n here is small, so it is even more overconfident than the book-wide one.
+      return { sport: r.sport, category: r.category, n, avgPnlCents: avg, pnlLoCI_fillLevel_SUPERSEDED: loCI, armEligible: n >= 200 };
     }).sort((a, b) => b.n - a.n);
 
     return jsonResponse({ ok: true, byCategory });

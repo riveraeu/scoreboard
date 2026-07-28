@@ -244,11 +244,15 @@ function _doThisCandidates(d) {
   const mb = d?.makerBoard;
   if ((mb?.fills?.graded || 0) >= 30) {
     const _gap = mb.adverseSelection?.gapCents ?? null;
-    const _pnlHiCI = mb.fills.avgPnlCents != null && mb.fills.pnlLoCI != null
-      ? mb.fills.avgPnlCents + (mb.fills.avgPnlCents - mb.fills.pnlLoCI) : null;
+    // Fill-level CI, renamed server-side 2026-07-28 so it cannot be grabbed by accident. Legitimate
+    // HERE only because this clause fires when the interval is entirely NEGATIVE — a too-narrow CI
+    // makes it warn more readily, and over-warning is the safe direction. It must never gate an ARM.
+    const _fillLoCI = mb.fills.pnlLoCI_fillLevel_SUPERSEDED;
+    const _pnlHiCI = mb.fills.avgPnlCents != null && _fillLoCI != null
+      ? mb.fills.avgPnlCents + (mb.fills.avgPnlCents - _fillLoCI) : null;
     if ((_gap != null && _gap >= 2) || (_pnlHiCI != null && _pnlHiCI < 0)) {
       out.push({ tier:1.6, tone:"red", label:"Maker fills are adversely selected — margin is selection, not edge",
-        why:`at equal price bands, fills earn ${_gap != null ? `${_gap.toFixed(2)}¢/contract less` : "materially less"} than quotes (quoted ${mb.adverseSelection?.quotedEdgeCents}¢ vs mix-adjusted filled ${mb.adverseSelection?.filledEdgeMixAdjustedCents}¢, n=${mb.fills.graded} graded)${_pnlHiCI != null && _pnlHiCI < 0 ? `; fill-level PnL CI entirely negative (${mb.fills.pnlLoCI}..${_pnlHiCI.toFixed(1)}¢ — NOT the day-clustered arm interval)` : ""} — diagnose which categories/bands drive it before more accrual`,
+        why:`at equal price bands, fills earn ${_gap != null ? `${_gap.toFixed(2)}¢/contract less` : "materially less"} than quotes (quoted ${mb.adverseSelection?.quotedEdgeCents}¢ vs mix-adjusted filled ${mb.adverseSelection?.filledEdgeMixAdjustedCents}¢, n=${mb.fills.graded} graded)${_pnlHiCI != null && _pnlHiCI < 0 ? `; fill-level PnL CI entirely negative (${_fillLoCI}..${_pnlHiCI.toFixed(1)}¢ — NOT the day-clustered arm interval)` : ""} — diagnose which categories/bands drive it before more accrual`,
         short:"Maker adverse selection" });
     }
   }
