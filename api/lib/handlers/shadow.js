@@ -2742,7 +2742,7 @@ async function handleShadowReport({ path, request, env, cache }) {
         FROM maker_fills f JOIN maker_quotes q ON q.id = f.quote_id
         WHERE q.game_date = $1 AND f.graded_at IS NOT NULL
         ${groupBy} ${orderBy} ${limit}`;
-      const [[mdTotals], mdSport, mdBand, mdTickers, mdUngraded] = await Promise.all([
+      const [[mdTotals], mdSport, mdBand, mdTickers, mdCatBand, mdUngraded] = await Promise.all([
         neonQuery(`
           SELECT COUNT(*)::int AS fills,
             COALESCE(SUM(f.contracts), 0) AS contracts,
@@ -2764,6 +2764,15 @@ async function handleShadowReport({ path, request, env, cache }) {
         // ABS() so a day carried by one huge LOSER is as visible as one carried by a winner.
         neonQuery(_dayAgg("f.ticker, q.sport,", "GROUP BY 1, 2", "ORDER BY ABS(SUM(f.pnl_cents * f.contracts)) DESC", "LIMIT 20"),
           [makerDay], env, { write: true }),
+        // Category × band cross-tab (2026-07-28). `bySport` and `byBand` are MARGINALS, and a
+        // day-demeaned residual analysis over 7 days found two overlapping hits — `mlb|f5ml`
+        // (t −3.30) and band 65-69 (t −3.37) — that the marginals cannot separate, because f5ml's
+        // 65.8¢ average ask sits inside that band while the band's largest constituents by volume
+        // (teamRuns, f5total) are different categories entirely. Same `_makerBandCase` as `byBand`
+        // above so a cell always sums into its own marginal. ~15 categories × 8 bands, so the row
+        // count is bounded and no LIMIT is needed.
+        neonQuery(_dayAgg(`q.sport, q.category, ${_makerBandCase("f.fill_ask")} AS band,`,
+          "GROUP BY 1, 2, 3", "ORDER BY 1, 2, 3", ""), [makerDay], env, { write: true }),
         // Ungraded tail — how much of the day is still unsettled, i.e. how far the number can move.
         neonQuery(`
           SELECT q.sport, COUNT(*)::int AS fills, COALESCE(SUM(f.contracts), 0) AS contracts,
@@ -2802,6 +2811,9 @@ async function handleShadowReport({ path, request, env, cache }) {
         bySport: (mdSport || []).map(r => ({ sport: r.sport, category: r.category, ..._row(r) })),
         byBand: (mdBand || []).map(r => ({ band: r.band, ..._row(r) })),
         topTickers: (mdTickers || []).map(r => ({ ticker: r.ticker, sport: r.sport, ..._row(r) })),
+        byCategoryBand: (mdCatBand || []).map(r => ({
+          sport: r.sport, category: r.category, band: r.band, ..._row(r),
+        })),
         ungraded: {
           fills: (mdUngraded || []).reduce((a, r) => a + Number(r.fills || 0), 0),
           contracts: _r((mdUngraded || []).reduce((a, r) => a + Number(r.contracts || 0), 0), 1),
