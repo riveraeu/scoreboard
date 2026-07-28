@@ -71,7 +71,7 @@ export const SAMPLE_STEP_MIN = 2;
 export const BACKFILL_LOOKBACK_MS = 24 * 3600_000;
 
 const FETCH_TIMEOUT_MS = 10_000;
-const FETCH_CONCURRENCY = 6;   // ≈ the live tape path's 4-per-250ms, without fixed sleeps
+const FETCH_CONCURRENCY = 4;   // paced further by MIN_REQ_INTERVAL_MS below
 // The live path (detectAndGradeMakerFills) reads ONE 1000-trade page per ticker; this paginates.
 // A deliberate, documented difference: a pre-game prop window carries single-digit trades in
 // practice (6 on the 2026-07-27 market this was verified against), so the two agree everywhere it
@@ -178,11 +178,48 @@ export function segmentsFromSamples(samples, stagingRow, band = MAKER_BAND) {
 }
 
 // ── IO ───────────────────────────────────────────────────────────────────────────────────────
-async function kalshiJson(url) {
-  const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
-  if (res.status === 429) { const e = new Error("rate_limited"); e.rateLimited = true; throw e; }
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+// Kalshi rate-limits this walk harder than the live tape path's 4-per-250ms suggested — the first
+// live run 429'd on every chunk with only ~8 candlestick fetches in flight, so the candlesticks
+// endpoint is metered well below the trades endpoint. Two mechanisms, because either alone is
+// insufficient: a shared pacer that spaces ALL requests from this module (concurrency alone lets a
+// burst through whenever responses land together), and per-request backoff so a 429 costs one retry
+// instead of aborting the pass. Module-scoped for the same reason fetch-limit.js's gate is global —
+// the limit is per-account, not per-call-site.
+const MIN_REQ_INTERVAL_MS = 90; // ~11 req/s
+const RATE_LIMIT_BACKOFF_MS = [400, 1200, 3000];
+let _nextSlotMs = 0;
+
+async function pace() {
+  const now = Date.now();
+  const slot = Math.max(now, _nextSlotMs);
+  _nextSlotMs = slot + MIN_REQ_INTERVAL_MS;
+  if (slot > now) await new Promise((r) => setTimeout(r, slot - now));
+}
+
+async function kalshiJson(url, stats = null) {
+  for (let attempt = 0; ; attempt++) {
+    await pace();
+    let res;
+    try {
+      res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    } catch (e) {
+      if (attempt >= RATE_LIMIT_BACKOFF_MS.length) throw e;
+      await new Promise((r) => setTimeout(r, RATE_LIMIT_BACKOFF_MS[attempt]));
+      continue;
+    }
+    if (res.status === 429) {
+      if (stats) stats.rateLimitHits = (stats.rateLimitHits || 0) + 1;
+      if (attempt >= RATE_LIMIT_BACKOFF_MS.length) {
+        const e = new Error("rate_limited"); e.rateLimited = true; throw e;
+      }
+      // Push every other in-flight request out too — a 429 means the account is over its budget,
+      // not just this one call.
+      _nextSlotMs = Math.max(_nextSlotMs, Date.now() + RATE_LIMIT_BACKOFF_MS[attempt]);
+      continue;
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  }
 }
 
 /**
@@ -220,21 +257,21 @@ export async function listDayMarkets(dayPT) {
   return out;
 }
 
-async function fetchCandles(series, ticker, startSec, endSec) {
+async function fetchCandles(series, ticker, startSec, endSec, stats) {
   const url = `${KALSHI_BASE}/series/${series}/markets/${encodeURIComponent(ticker)}/candlesticks`
     + `?start_ts=${startSec}&end_ts=${endSec}&period_interval=1`;
-  const j = await kalshiJson(url);
+  const j = await kalshiJson(url, stats);
   return j?.candlesticks || [];
 }
 
-async function fetchTrades(ticker, startSec, endSec) {
+async function fetchTrades(ticker, startSec, endSec, stats) {
   const trades = [];
   let cursor = "";
   for (let page = 0; page < MAX_TRADE_PAGES; page++) {
     const url = `${KALSHI_BASE}/markets/trades?ticker=${encodeURIComponent(ticker)}`
       + `&limit=${TRADE_PAGE_LIMIT}&min_ts=${startSec}&max_ts=${endSec}`
       + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : "");
-    const j = await kalshiJson(url);
+    const j = await kalshiJson(url, stats);
     const batch = j?.trades || [];
     for (const t of batch) {
       trades.push({
@@ -276,7 +313,7 @@ export async function backfillMakerDay({
   const stats = {
     day: dayPT, source, offset, examined: slice.length,
     quoted: 0, segments: 0, fills: 0, noCandles: 0, noGameTime: 0,
-    fetchFails: 0, rateLimited: false, stoppedEarly: false,
+    fetchFails: 0, rateLimited: false, rateLimitHits: 0, rateLimitedPhase: null, stoppedEarly: false,
   };
   if (!slice.length) return { ...stats, nextOffset: null };
 
@@ -294,13 +331,14 @@ export async function backfillMakerDay({
     const startSec = Math.floor((gameMs - BACKFILL_LOOKBACK_MS) / 1000);
     const endSec = Math.ceil(gameMs / 1000);
     try {
-      const candles = await fetchCandles(series, ticker, startSec, endSec);
+      const candles = await fetchCandles(series, ticker, startSec, endSec, stats);
       if (!candles.length) { stats.noCandles++; return; }
       const samples = buildSamples(candles, { untilMs: gameMs });
       const segments = segmentsFromSamples(samples, { gameTime: gameTimeIso }, band);
       if (segments.length) perTicker.set(ticker, { series, gameTimeIso, segments });
     } catch (e) {
-      if (e?.rateLimited) stats.rateLimited = true; else stats.fetchFails++;
+      if (e?.rateLimited) { stats.rateLimited = true; stats.rateLimitedPhase = "candles"; }
+      else stats.fetchFails++;
     }
   })));
 
@@ -317,19 +355,24 @@ export async function backfillMakerDay({
 
   // Pass 2 — trade tape, only for tickers that actually rested a quote.
   const fills = [];
-  if (!stats.rateLimited) {
+  {
+    // Deliberately NOT gated on stats.rateLimited: a candles-phase limit means the ticker set came
+    // back short, not that the fills for the tickers we DID get are unknowable. Gating it here is
+    // what made the first live validation run return 0 fills on all 8 chunks.
+    let tradeGaveUp = false;
     await Promise.all([...perTicker.entries()].map(([ticker, v]) => lim(async () => {
-      if (stats.rateLimited) return;
+      if (tradeGaveUp) return;
       if (deadlineMs && Date.now() > deadlineMs) { stats.stoppedEarly = true; return; }
       const segs = quoteIds.get(ticker) || [];
       if (!segs.length) return;
       const startSec = Math.floor(Date.parse(segs[0].valid_from) / 1000);
       const endSec = Math.ceil(Date.parse(v.gameTimeIso) / 1000);
       try {
-        const trades = await fetchTrades(ticker, startSec, endSec);
+        const trades = await fetchTrades(ticker, startSec, endSec, stats);
         fills.push(...replayFills(segs, trades, MAKER_SIZE));
       } catch (e) {
-        if (e?.rateLimited) stats.rateLimited = true; else stats.fetchFails++;
+        if (e?.rateLimited) { stats.rateLimited = true; stats.rateLimitedPhase = "trades"; tradeGaveUp = true; }
+        else stats.fetchFails++;
       }
     })));
   }
