@@ -423,6 +423,14 @@ async function insertFills({ env, fills }) {
  * `bookNoAskMismatches` is the direct check on the NO-side complement identity — it must be 0.
  */
 export async function compareSourcesForDay({ env, dayPT, source = "validate" }) {
+  // Both sides MUST be scoped to the tickers the replay actually covers. The live cron quotes every
+  // configured series while the backfill is MLB props only, so an unscoped day-level comparison
+  // would put ~5× the segments on the live side and read as a catastrophic mismatch that is really
+  // just the two populations being different. Same avgAsk-mix discipline the maker board has now
+  // needed three times.
+  const scope = `q.game_date = $1 AND q.ticker IN (
+    SELECT ticker FROM maker_quotes WHERE game_date = $1 AND source = $2)`;
+
   const [agg] = await neonQuery(
     `SELECT
        COUNT(*) FILTER (WHERE q.source = 'live')      AS live_segments,
@@ -431,7 +439,7 @@ export async function compareSourcesForDay({ env, dayPT, source = "validate" }) 
        COUNT(DISTINCT q.ticker) FILTER (WHERE q.source = $2)     AS bf_tickers,
        AVG(q.quote_ask) FILTER (WHERE q.source = 'live')  AS live_avg_ask,
        AVG(q.quote_ask) FILTER (WHERE q.source = $2)      AS bf_avg_ask
-     FROM maker_quotes q WHERE q.game_date = $1`,
+     FROM maker_quotes q WHERE ${scope}`,
     [dayPT, source], env, { write: true });
 
   const [fillAgg] = await neonQuery(
@@ -445,7 +453,7 @@ export async function compareSourcesForDay({ env, dayPT, source = "validate" }) 
        SUM(f.contracts) FILTER (WHERE q.source = 'live' AND f.graded_at IS NOT NULL) AS live_graded_contracts,
        SUM(f.contracts) FILTER (WHERE q.source = $2 AND f.graded_at IS NOT NULL)     AS bf_graded_contracts
      FROM maker_fills f JOIN maker_quotes q ON q.id = f.quote_id
-     WHERE q.game_date = $1`,
+     WHERE ${scope}`,
     [dayPT, source], env, { write: true });
 
   // The complement identity, checked against what the live cron actually stored. Joined on the
