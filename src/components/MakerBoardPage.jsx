@@ -9,7 +9,13 @@ import { INPUT_SEARCH_EXHAUSTED, WINDOW_SEARCH_EXHAUSTED, stillExhausted as _sti
 // when taker picks (LineupsPage) were demoted to a secondary /picks route. See
 // project_taker_ui_demotion_2026_07_21 memory for the reasoning (category gate empty since
 // 7/18, taker edge structurally negative venue-wide per the 7/19 pooled calibration scan, while
-// maker V2 has a concrete verified result in the 80-84 band with real capital now armed).
+// maker V2 looked at the time like it had a verified result in the 80-84 band).
+//
+// SUPERSEDED 2026-07-28: that 80-84 result was retired (post-fix bands alternate sign) and V2 is
+// now SHELVED - no demonstrated fillable edge across six measurements, the last of them
+// pre-registered and rejected on all three criteria. See docs/REENTRY.md. This page is therefore a
+// monitoring surface for a strategy that is off; it must not render anything that reads as a call
+// to arm.
 //
 // DoThisBanner + its full dependency chain (2026-07-22) ported here verbatim from the now-
 // deleted ReportPage.jsx when /model was deprecated — see project_do_this_banner memory. This
@@ -242,7 +248,7 @@ function _doThisCandidates(d) {
       ? mb.fills.avgPnlCents + (mb.fills.avgPnlCents - mb.fills.pnlLoCI) : null;
     if ((_gap != null && _gap >= 2) || (_pnlHiCI != null && _pnlHiCI < 0)) {
       out.push({ tier:1.6, tone:"red", label:"Maker fills are adversely selected — margin is selection, not edge",
-        why:`at equal price bands, fills earn ${_gap != null ? `${_gap.toFixed(2)}¢/contract less` : "materially less"} than quotes (quoted ${mb.adverseSelection?.quotedEdgeCents}¢ vs mix-adjusted filled ${mb.adverseSelection?.filledEdgeMixAdjustedCents}¢, n=${mb.fills.graded} graded)${_pnlHiCI != null && _pnlHiCI < 0 ? `; fill PnL CI entirely negative (${mb.fills.pnlLoCI}..${_pnlHiCI.toFixed(1)}¢)` : ""} — diagnose which categories/bands drive it before more accrual`,
+        why:`at equal price bands, fills earn ${_gap != null ? `${_gap.toFixed(2)}¢/contract less` : "materially less"} than quotes (quoted ${mb.adverseSelection?.quotedEdgeCents}¢ vs mix-adjusted filled ${mb.adverseSelection?.filledEdgeMixAdjustedCents}¢, n=${mb.fills.graded} graded)${_pnlHiCI != null && _pnlHiCI < 0 ? `; fill-level PnL CI entirely negative (${mb.fills.pnlLoCI}..${_pnlHiCI.toFixed(1)}¢ — NOT the day-clustered arm interval)` : ""} — diagnose which categories/bands drive it before more accrual`,
         short:"Maker adverse selection" });
     }
   }
@@ -491,30 +497,54 @@ function Tile({ label, value, color, sub }) {
 // margin trajectory = single-hue cumulative line; band economics = single-hue bar ladder.
 // Color doctrine: NO categorical series palette — one hue (C.blue) for magnitude marks;
 // green/red appear only on SIGNED values (the +/− prefix is the non-color channel).
+// Reads the DAY-CLUSTERED interval and the server's own `armCriterion.met` — never the fill-level
+// `pnlLoCI` (2026-07-28 fix).
+//
+// This tile used to colour green on `pnlLoCI > 0` and compute its own `armed` locally. Both were
+// wrong in the way that matters: `pnlLoCI` treats every fill as an independent observation, but V1
+// sells favourites across a whole slate, so a day's result is essentially ONE bet on whether
+// favourites underperformed. On identical data the fill-level CI reads [+0.70, +2.41] while the
+// day-clustered CI reads [−2.71, +5.82] — same point estimate, ~5× wider, and crossing zero.
+//
+// With 14,352 graded fills and `pnlLoCI` 0.61, this tile was rendering GREEN / "ARM CRITERION MET"
+// on the morning V2 was shelved. That statistic has now produced a false green on this board four
+// times, including the 7/21 reading that put real money at risk. The banner's copy of it was
+// removed earlier the same day; this one was missed.
+//
+// `armCriterion.met` is computed server-side (n≥200 fills AND ≥14 days AND dayClustered.loCI>0) —
+// the standing rule is read `met`, never `need`, and never re-derive it in the client.
 function ArmTile({ mb }) {
   const f = mb?.fills || {};
+  const dc = f.dayClustered || {};
   const min = mb?.armCriterion?.minFills ?? 200;
+  const minDays = mb?.armCriterion?.minDays ?? 14;
   const graded = f.graded || 0;
-  const pct = Math.min(100, graded / min * 100);
-  const [color, phase] = graded < 10 || f.pnlLoCI == null ? [C.dim, "accruing"]
-    : f.pnlLoCI > 0 ? [C.green, "on track"]
-    : (f.avgPnlCents ?? 0) > 0 ? [C.amber, "CI straddles 0"]
+  const days = dc.days || 0;
+  // Progress is against whichever bar is further away — days are the binding constraint here
+  // (14,352 fills vs 9 days), and showing only the fill bar reads as "almost there" when it isn't.
+  const pct = Math.min(100, Math.min(graded / min, days / minDays) * 100);
+  const met = mb?.armCriterion?.met === true;
+  const [color, phase] = dc.loCI == null ? [C.dim, "accruing"]
+    : dc.loCI > 0 ? [C.green, "day-clustered CI clears 0"]
+    : (dc.mean ?? 0) > 0 ? [C.amber, "CI straddles 0"]
     : [C.red, "negative"];
-  const armed = graded >= min && (f.pnlLoCI ?? -1) > 0;
+  const ci = dc.loCI != null && dc.hiCI != null
+    ? `${dc.loCI > 0 ? "+" : ""}${dc.loCI} … ${dc.hiCI > 0 ? "+" : ""}${dc.hiCI}` : null;
   return (
-    <div style={{ flex:"1.6 1 0", background:C.card, border:`1px solid ${armed ? C.green : C.border}`, borderRadius:6, padding:"8px 10px", minWidth:150 }}>
+    <div style={{ flex:"1.6 1 0", background:C.card, border:`1px solid ${met ? C.green : C.border}`, borderRadius:6, padding:"8px 10px", minWidth:150 }}
+         title={ci ? `Day-clustered 95% CI ${ci}¢/contract over ${days} days. The DAY is the independent unit: fills within a day share one slate, so a fill-level interval understates the spread ~5x.` : undefined}>
       <div style={{ color, fontSize:22, fontWeight:700, lineHeight:1, fontVariantNumeric:"tabular-nums" }}>
-        {f.avgPnlCents != null ? `${f.avgPnlCents > 0 ? "+" : ""}${f.avgPnlCents}¢` : "—"}
+        {dc.mean != null ? `${dc.mean > 0 ? "+" : ""}${dc.mean}¢` : "—"}
         <span style={{ fontSize:11, fontWeight:400, color:C.gray, marginLeft:6 }}>
-          {f.avgPnlCents != null
-            ? `/contract${f.pnlLoCI != null ? ` · CI-lo ${f.pnlLoCI > 0 ? "+" : ""}${f.pnlLoCI}` : ""}`
+          {dc.mean != null
+            ? `/contract${ci ? ` · day-clustered CI ${ci}` : ""}`
             : "awaiting first graded fills"}
         </span>
       </div>
-      <div style={{ color: armed ? C.green : C.dim, fontSize:9, fontWeight:700, textTransform:"uppercase", letterSpacing:0.4, margin:"4px 0 5px" }}>
-        {armed ? "ARM CRITERION MET (V1 aggregate)" : `maker pnl · ${phase} · ${graded}/${min} graded fills`}
+      <div style={{ color: met ? C.green : C.dim, fontSize:9, fontWeight:700, textTransform:"uppercase", letterSpacing:0.4, margin:"4px 0 5px" }}>
+        {met ? "ARM CRITERION MET" : `maker pnl · ${phase} · ${days}/${minDays} days · ${graded}/${min} fills`}
       </div>
-      <div style={{ height:4, background:C.border, borderRadius:2, overflow:"hidden" }} title={`${graded}/${min} graded fills toward the arm decision`}>
+      <div style={{ height:4, background:C.border, borderRadius:2, overflow:"hidden" }} title={`${days}/${minDays} days and ${graded}/${min} graded fills toward the arm criterion`}>
         <div style={{ width:`${pct}%`, height:"100%", background:color }} />
       </div>
     </div>
