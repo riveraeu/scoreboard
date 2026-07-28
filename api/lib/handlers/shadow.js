@@ -2709,6 +2709,114 @@ async function handleShadowReport({ path, request, env, cache }) {
   if (!isCron && !isAdmin && !isUser) return errorResponse("Forbidden", 403);
   if (!env?.POSTGRES_URL && !env?.NEON_DATABASE_URL) return errorResponse("No Neon connection", 500);
 
+  // ── ?makerDay=YYYY-MM-DD — single-day V1 maker drilldown (2026-07-28) ──────────
+  // Attribution for ONE day's maker PnL, which `makerBoard` can't give: its `daily` series
+  // carries only fills/contracts/pnl, and `bands` is cumulative over the 30-day window. Built
+  // after a +$1,111 day (2026-07-27) could only be explained by inference off the book-wide
+  // average ask.
+  //
+  // Deliberately returns BEFORE the report cache read below. The report is a 25h-cached, 40s+
+  // payload; if this branch sat after that gate it would either serve the cached full report and
+  // silently ignore the flag, or trigger a full regeneration to answer a one-day question. Here it
+  // never reads, writes, or invalidates `shadow:report:{date}`, so it also can't perturb the 6am
+  // cron. Failure-closed: any error is a 500, never a partial board.
+  const makerDay = new URL(request.url).searchParams.get("makerDay");
+  if (makerDay) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(makerDay)) {
+      return errorResponse("Invalid makerDay — expected YYYY-MM-DD", 400);
+    }
+    try {
+      // Every aggregate is graded-only. `avgFillAsk` and `sideWonRate` MUST come from the same
+      // population for the seller's identity `pnl = fill_ask − 100·side_won` to reconcile — the
+      // cumulative board's `avgFillAsk` deliberately spans ungraded fills too, so don't compare
+      // the two numbers directly. The contract-weighted pair below reconstructs `pnlPerContract`
+      // exactly (weightedAsk − 100·weightedSideWon), which is the actual decomposition of a day:
+      // a price the book sold at, versus the rate the favorites it sold actually won.
+      const _dayAgg = (extraSelect, groupBy, orderBy, limit) => `
+        SELECT ${extraSelect}
+          COUNT(*)::int AS fills,
+          COALESCE(SUM(f.contracts), 0) AS contracts,
+          COALESCE(SUM(f.pnl_cents * f.contracts), 0) AS pnl_total,
+          ROUND(AVG(f.fill_ask), 1) AS avg_fill_ask,
+          ROUND(AVG((f.side_won)::int::numeric), 4) AS side_won_rate
+        FROM maker_fills f JOIN maker_quotes q ON q.id = f.quote_id
+        WHERE q.game_date = $1 AND f.graded_at IS NOT NULL
+        ${groupBy} ${orderBy} ${limit}`;
+      const [[mdTotals], mdSport, mdBand, mdTickers, mdUngraded] = await Promise.all([
+        neonQuery(`
+          SELECT COUNT(*)::int AS fills,
+            COALESCE(SUM(f.contracts), 0) AS contracts,
+            COUNT(*) FILTER (WHERE f.graded_at IS NOT NULL)::int AS graded,
+            COALESCE(SUM(f.contracts) FILTER (WHERE f.graded_at IS NOT NULL), 0) AS contracts_graded,
+            COALESCE(SUM(f.pnl_cents * f.contracts) FILTER (WHERE f.graded_at IS NOT NULL), 0) AS pnl_total,
+            ROUND(AVG(f.fill_ask) FILTER (WHERE f.graded_at IS NOT NULL), 1) AS avg_fill_ask,
+            ROUND(AVG((f.side_won)::int::numeric) FILTER (WHERE f.graded_at IS NOT NULL), 4) AS side_won_rate,
+            COALESCE(SUM(f.fill_ask * f.contracts) FILTER (WHERE f.graded_at IS NOT NULL), 0) AS sum_ask_ctr,
+            COALESCE(SUM((f.side_won)::int::numeric * f.contracts) FILTER (WHERE f.graded_at IS NOT NULL), 0) AS sum_won_ctr
+          FROM maker_fills f JOIN maker_quotes q ON q.id = f.quote_id
+          WHERE q.game_date = $1`, [makerDay], env, { write: true }),
+        neonQuery(_dayAgg("q.sport, q.category,", "GROUP BY 1, 2", "ORDER BY pnl_total DESC", ""),
+          [makerDay], env, { write: true }),
+        // Same `_makerBandCase` helper the cumulative board uses — a hand-copied second CASE is
+        // exactly how `quotedOutcomes` drifted out of sync before the 2026-07-26 rebuild.
+        neonQuery(_dayAgg(`${_makerBandCase("f.fill_ask")} AS band,`, "GROUP BY 1", "ORDER BY 1", ""),
+          [makerDay], env, { write: true }),
+        // ABS() so a day carried by one huge LOSER is as visible as one carried by a winner.
+        neonQuery(_dayAgg("f.ticker, q.sport,", "GROUP BY 1, 2", "ORDER BY ABS(SUM(f.pnl_cents * f.contracts)) DESC", "LIMIT 20"),
+          [makerDay], env, { write: true }),
+        // Ungraded tail — how much of the day is still unsettled, i.e. how far the number can move.
+        neonQuery(`
+          SELECT q.sport, COUNT(*)::int AS fills, COALESCE(SUM(f.contracts), 0) AS contracts,
+            ROUND(AVG(f.fill_ask), 1) AS avg_fill_ask
+          FROM maker_fills f JOIN maker_quotes q ON q.id = f.quote_id
+          WHERE q.game_date = $1 AND f.graded_at IS NULL
+          GROUP BY 1 ORDER BY contracts DESC`, [makerDay], env, { write: true }),
+      ]);
+      const _num = (v) => (v == null ? null : Number(v));
+      const _r = (v, d = 2) => (v == null ? null : parseFloat(Number(v).toFixed(d)));
+      const _ctrGraded = Number(mdTotals?.contracts_graded || 0);
+      const _pnl = Number(mdTotals?.pnl_total || 0);
+      const _row = (r) => ({
+        fills: Number(r.fills || 0),
+        contracts: _r(r.contracts, 1),
+        pnlTotalCents: _r(r.pnl_total, 1),
+        pnlPerContract: Number(r.contracts) > 0 ? _r(Number(r.pnl_total) / Number(r.contracts)) : null,
+        avgFillAsk: _num(r.avg_fill_ask),
+        sideWonRate: _num(r.side_won_rate),
+      });
+      return jsonResponse({
+        day: makerDay,
+        totals: {
+          fills: Number(mdTotals?.fills || 0),
+          contracts: _r(mdTotals?.contracts, 1),
+          graded: Number(mdTotals?.graded || 0),
+          contractsGraded: _r(_ctrGraded, 1),
+          pnlTotalCents: _r(_pnl, 1),
+          pnlPerContract: _ctrGraded > 0 ? _r(_pnl / _ctrGraded) : null,
+          avgFillAsk: _num(mdTotals?.avg_fill_ask),
+          sideWonRate: _num(mdTotals?.side_won_rate),
+          // Contract-weighted pair — these two ARE the day: pnlPerContract = weightedAsk − 100·weightedSideWon.
+          weightedAsk: _ctrGraded > 0 ? _r(Number(mdTotals.sum_ask_ctr) / _ctrGraded) : null,
+          weightedSideWon: _ctrGraded > 0 ? _r(Number(mdTotals.sum_won_ctr) / _ctrGraded, 4) : null,
+        },
+        bySport: (mdSport || []).map(r => ({ sport: r.sport, category: r.category, ..._row(r) })),
+        byBand: (mdBand || []).map(r => ({ band: r.band, ..._row(r) })),
+        topTickers: (mdTickers || []).map(r => ({ ticker: r.ticker, sport: r.sport, ..._row(r) })),
+        ungraded: {
+          fills: (mdUngraded || []).reduce((a, r) => a + Number(r.fills || 0), 0),
+          contracts: _r((mdUngraded || []).reduce((a, r) => a + Number(r.contracts || 0), 0), 1),
+          bySport: (mdUngraded || []).map(r => ({
+            sport: r.sport, fills: Number(r.fills || 0),
+            contracts: _r(r.contracts, 1), avgFillAsk: _num(r.avg_fill_ask),
+          })),
+        },
+      });
+    } catch (e) {
+      console.error(`[shadow-report] makerDay ${makerDay} failed:`, e?.message);
+      return errorResponse("maker day query failed", 500);
+    }
+  }
+
   const reportDate = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
   const cacheKey = `${REPORT_CACHE_KEY_PREFIX}${reportDate}`;
   const bust = new URL(request.url).searchParams.get("bust") === "1";

@@ -17,6 +17,7 @@ Admin/debug one-liners (pull ADMIN_KEY via `vercel env pull`):
 curl -s "https://scoreboard-ivory-xi.vercel.app/api/tonight?debug=1" | jq '.plays | length'
 curl -s "https://scoreboard-ivory-xi.vercel.app/api/shadow-snapshot" -H "Authorization: Bearer $ADMIN_KEY" | jq '{ok, snapshotDate, logged, durationMs}'
 curl -s "https://scoreboard-ivory-xi.vercel.app/api/auth/shadow-stats?resolvetrigger=1" -H "Authorization: Bearer $ADMIN_KEY" | jq '{resolved, skipped}'
+curl -s "https://scoreboard-ivory-xi.vercel.app/api/shadow-report?makerDay=2026-07-27" -H "Authorization: Bearer $ADMIN_KEY" | jq '{totals, byBand}'   # single-day V1 maker attribution
 ```
 
 ## Workflow for New Features and Debugging
