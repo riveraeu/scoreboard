@@ -277,11 +277,16 @@ function _doThisCandidates(d) {
   // been made. One terminal notice, no call to action. The old `pnlLoCI`-based fallback below it is
   // gone too: it fired on the fill-level CI, which day-clustering superseded on 2026-07-26 — it
   // could still have shown "ARM DECISION — cleared its criterion" off a criterion known to be wrong.
-  if (mb) {
-    out.push({ tier:1.8, tone:"dim", label:"Shadow maker V2 SHELVED — no demonstrated fillable edge",
-      why:"Six measurements, six dissolutions: ARM-MET 7/21 (grading bugs), \"edge only in 80-84\" (post-fix bands alternate sign), adverse selection ~1.4¢ (→ +0.51¢, band-incoherent), the aggregate fill CI (day-clustering widened it back across zero), 7/24's +8.05¢ (tape replay of the same markets gives −0.01¢), and the pre-registered lead-time test (rejected on all three criteria). The vig on the QUOTE is real and has replicated every time (+1.5-1.6¢ over 100k+ segments) — it has never been shown to survive to a fill. Un-shelving is a code change: SHELVED in api/lib/maker-live.js.",
-      short:"V2 shelved" });
-  }
+  //
+  // TIER REMOVED 2026-07-28 (same day, second pass). Replacing the ladder with a terminal notice
+  // still left `if (mb) out.push(...)` — and `mb` is ALWAYS present, so the notice became the
+  // primary candidate every single day, permanently. Since the banner renders only `primary`,
+  // tiers 2 → 5 became structurally unreachable: on the day this was found it was burying 1
+  // accuracy action, 16 shortlisted markets, 15 detected markets, and **8 overdue checkpoints**
+  // (oldest 5 days). A status is not an action and must not hold an action slot — the shelved
+  // fact now renders next to the arm state in the Open-positions section head, off `board.shelved`
+  // (server-side `MAKER_V2_SHELVED`), where a reader already looks for whether the engine is live.
+  // If a future tier needs this slot, give it a real firing CONDITION.
   // 2 — betting changes pending on the betting board (promote / demote / investigate).
   // "Look deeper" is the Phase-2 residual-slicer nag (eligible-but-window-loses). It's only
   // actionable once a coherent price window has been DISCOVERED to slice against — with
@@ -503,6 +508,17 @@ function DoThisBanner({ d }) {
           )}
         </>
       )}
+      {/* The queued rest. Restored to the DOM 2026-07-28: it had been copy-text-only, which meant
+          the entire ladder below `primary` was visible only to someone who clicked the copy icon
+          and pasted it somewhere. Combined with an unconditional tier that always won the primary
+          slot, that hid 8 overdue checkpoints. Every remaining item shows — truncating this list is
+          how work goes missing, and `short` is a few words each. */}
+      {rest.length > 0 && (
+        <div style={{ color:C.gray, fontSize:11, marginTop:7, lineHeight:1.5 }}>
+          <span style={{ color:C.dim, fontWeight:700 }}>Then · </span>
+          {rest.map(r => r.short).join(" · ")}
+        </div>
+      )}
     </div>
   );
 }
@@ -688,7 +704,15 @@ function BandLadder({ bands }) {
 
 function MakerProgress({ mb }) {
   const todayPT = new Date().toLocaleDateString("en-CA", { timeZone:"America/Los_Angeles" });
+  // Overdue checkpoints outrank the next future one. This tile used to filter `c.date > todayPT`
+  // ONLY, so it structurally skipped everything already due: on 2026-07-28 it displayed
+  // "next clock · Jul 29" while EIGHT checkpoints were overdue (oldest 2026-07-23). Since the
+  // banner was simultaneously burying its own checkpoint tier, the page's two independent
+  // checkpoint surfaces agreed that nothing was due — the failure mode a dated-follow-up
+  // mechanism exists to prevent. A checkpoint that isn't due yet is FYI; one that is due is work.
+  const dueCps = [...SCHEDULED_CHECKPOINTS].filter(c => c.date <= todayPT).sort((a, b) => a.date.localeCompare(b.date));
   const nextCp = [...SCHEDULED_CHECKPOINTS].filter(c => c.date > todayPT).sort((a, b) => a.date.localeCompare(b.date))[0];
+  const fmtCpDate = (d) => new Date(d + "T12:00:00").toLocaleDateString("en-US", { month:"short", day:"numeric" });
   if (!mb) {
     return <div style={{ color:C.dim, fontSize:11, padding:8 }}>Maker board not in this report yet — Refresh regenerates it.</div>;
   }
@@ -717,8 +741,13 @@ function MakerProgress({ mb }) {
           sub={`${f.n ?? 0} fills / ${q.segments ?? 0} quotes · ${q.tickers ?? 0} mkts · avg ask ${q.avgAsk ?? "—"}¢`} />
         <Tile label="adverse selection" value={advSel != null ? `${advSel > 0 ? "+" : ""}${advSel}¢` : "—"}
           color={advSel == null ? C.dim : advSel >= 2 ? C.red : C.green} sub="quoted − filled edge, within band" />
-        <Tile label="next clock" value={nextCp ? new Date(nextCp.date + "T12:00:00").toLocaleDateString("en-US", { month:"short", day:"numeric" }) : "none"}
-          color={C.dim} sub={nextCp?.short} />
+        {dueCps.length ? (
+          <Tile label={`checkpoints due · ${dueCps.length}`} value={fmtCpDate(dueCps[0].date)} color={C.amber}
+            sub={`oldest of ${dueCps.length} · ${dueCps[0].short || dueCps[0].label}`} />
+        ) : (
+          <Tile label="next clock" value={nextCp ? fmtCpDate(nextCp.date) : "none"}
+            color={C.dim} sub={nextCp?.short} />
+        )}
       </div>
       {/* Curve and ladder side-by-side. Both were maxWidth:560 stacked inside a 1280 container, so
           the entire right half of the page below the tile rows was empty while the two figures each
@@ -942,10 +971,24 @@ export default function MakerBoardPage({ shadowReportData, shadowReportLoading, 
           <PortfolioTiles kalshiBalance={kalshiBalance} kalshiPositions={kalshiPositions}
             dailyV2={shadowReportData?.makerBoard?.live?.daily} />
 
+          {/* Arm state, and — since 2026-07-28 — the shelved fact, moved here out of the DoThisBanner
+              tier that was permanently occupying the day's primary action slot with it. This is
+              where a reader already looks to find out whether the engine is live, and a status
+              costs nothing here whereas in the banner it cost the entire ladder below it.
+              `shelved` comes from the server's own MAKER_V2_SHELVED, so the one-line un-shelve
+              revert clears this line too. */}
           <div style={{ ...sectionHead, borderTop:"none", paddingTop:0, marginTop:8 }}>Open positions (V2 · real capital) {boardData?.armed
             ? <span style={{ color:C.green }}>· ARMED</span>
-            : <span style={{ color:C.dim }}>· disarmed</span>}
+            : <span style={{ color:C.dim }}>· {boardData?.shelved ? "SHELVED" : "disarmed"}</span>}
           </div>
+          {boardData?.shelved && (
+            <div style={{ color:C.dim, fontSize:10, lineHeight:1.45, margin:"-4px 0 8px", maxWidth:720 }}>
+              No demonstrated fillable edge — six measurements, six dissolutions, the last of them pre-registered
+              and rejected on all three criteria. Only the quote-side vig has ever replicated (+1.5-1.6¢ over 100k+
+              segments); it has never been shown to survive to a fill. Un-shelving is a code change
+              (<code>SHELVED</code> in <code>api/lib/maker-live.js</code>) — see <code>docs/REENTRY.md</code>.
+            </div>
+          )}
           <MakerLivePositions positions={boardData?.positions} />
 
           {!(shadowReportLoading && !shadowReportData) && <MakerProgress mb={shadowReportData?.makerBoard} />}

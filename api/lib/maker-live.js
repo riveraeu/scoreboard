@@ -50,7 +50,11 @@ const ARMED_KV_KEY = "maker:v2:armed";
 // verdict in front of whoever does it.
 //
 // The env+KV mechanism below is deliberately left intact so that revert is genuinely one line.
-const SHELVED = true;
+// Exported so the board endpoint (and through it the UI) reports the shelved state from THIS
+// constant rather than restating it in a second place. The landing page renders the fact next to
+// the arm status; a hardcoded frontend copy would keep claiming SHELVED through the one-line revert.
+export const MAKER_V2_SHELVED = true;
+const SHELVED = MAKER_V2_SHELVED;
 
 // All gates must be true — fail-closed on any being unset/false.
 export async function isArmed(env, cache) {

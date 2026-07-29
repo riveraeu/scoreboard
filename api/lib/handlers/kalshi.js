@@ -21,7 +21,7 @@ import { resolveOpenMakerPositions } from "./shadow.js";
 import { enrichSeries, checkSeriesLiquidity, fetchSeriesMeta } from "../kalshi-series-check.js";
 import { updateLiveMakerOrders, emergencyKillLive, setArmed, computeWantedMakerQuotes,
   gradeResolvedMakerPositions,
-  isArmed as isMakerV2Armed, ensureMakerLiveTables } from "../maker-live.js";
+  isArmed as isMakerV2Armed, ensureMakerLiveTables, MAKER_V2_SHELVED } from "../maker-live.js";
 import { fetchKalshiMarkets } from "../tonight/kalshi-pipeline.js";
 import { MAKER_V2_MAX_CONCURRENT, MAKER_V2_SAME_GAME_CAP } from "../config.js";
 
@@ -570,7 +570,7 @@ export async function handleKalshiRoutes(ctx) {
     }
 
     return jsonResponse({
-      ok: true, armed, orders, positions, eligibleBySport,
+      ok: true, armed, shelved: MAKER_V2_SHELVED, orders, positions, eligibleBySport,
       caps: { maxConcurrent: MAKER_V2_MAX_CONCURRENT, sameGameCap: MAKER_V2_SAME_GAME_CAP },
     });
   }
