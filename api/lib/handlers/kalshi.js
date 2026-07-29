@@ -1000,11 +1000,19 @@ export async function handleKalshiRoutes(ctx) {
       );
     }
 
-    // 6b. Reconcile: any lingering 'new' ticker we've since added to the allowlist → adopted.
+    // 6b. Reconcile: any lingering ticker we've since added to the allowlist → adopted.
+    // **'baseline' included since 2026-07-28.** It was omitted, so a series that entered the table
+    // in the first bulk insert and was LATER built stayed marked 'baseline' forever — invisible to
+    // this reconcile and to every triage view. Harmless while baseline rows were ignored wholesale;
+    // the moment the 6f sweep started screening them it began reporting already-shipped markets as
+    // fresh finds (KXARGPREMDIVGAME, built 7/24, was in the first sweep's REAL_BOOK list). Anything
+    // we actually consume is adopted regardless of how its row got here.
     const knownArr = [...known];
     const knownPh = knownArr.map((_, i) => `$${i + 1}`).join(", ");
-    await neonQuery(
-      `UPDATE kalshi_series_seen SET status='adopted' WHERE status IN ('new','shortlisted') AND ticker IN (${knownPh})`,
+    const adoptedFixed = await neonQuery(
+      `UPDATE kalshi_series_seen SET status='adopted'
+         WHERE status IN ('new','shortlisted','baseline') AND ticker IN (${knownPh})
+         RETURNING ticker`,
       knownArr, env, { write: true }
     );
 
@@ -1165,7 +1173,7 @@ export async function handleKalshiRoutes(ctx) {
       inserted: toInsert.length, newCount: newTickers.length, refreshed: refreshRows.length, newTickers,
       autoDismissed: autoDismissed.map(r => ({ ticker: r.ticker, screen: r.screen,
         markets: r.live_market_count, medianSpreadC: r.median_spread_c })),
-      rescreened: rescreenRows.length, revived,
+      rescreened: rescreenRows.length, revived, adoptedReconciled: adoptedFixed.length,
       sweep: { swept: sweptCount, dismissed: sweptDismissed, realBook: sweptReal.length,
         baselineRemaining: remaining, sampleRealBook: sweptReal.slice(0, 10) },
       screenCounts: Object.fromEntries(screenCounts.map(r => [r.screen, r.n])),
