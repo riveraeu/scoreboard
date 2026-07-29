@@ -56,11 +56,20 @@ const SHADOW_TABLE = "shadow_plays";
 // letting an unvalidated replay leak into it would arm real money on reconstructed data. Found the
 // hard way: the first 2026-07-24 validation run put 9,299 replayed segments and 2,073 fills into a
 // board that had no source filter at all. Phase 2 widens this deliberately, per day, or not at all.
+// 5¢ buckets across the FULL price range. Extended below 55 on 2026-07-29 when the V1 paper
+// engine began quoting the underdog side too (MAKER_FULL_BAND) — before that, favorite-only
+// quoting meant nothing landed under ~50, so the sub-55 buckets were dead. `< 5` is the floor
+// (a 1¢ book side quotes at 0 and is dropped, so 0-4 mostly holds the low single-digit asks).
 const _makerBandCase = (col) => `CASE
-  WHEN ${col} < 60 THEN '55-59' WHEN ${col} < 65 THEN '60-64'
-  WHEN ${col} < 70 THEN '65-69' WHEN ${col} < 75 THEN '70-74'
-  WHEN ${col} < 80 THEN '75-79' WHEN ${col} < 85 THEN '80-84'
-  WHEN ${col} < 90 THEN '85-89' ELSE '90-96' END`;
+  WHEN ${col} < 5 THEN '0-4' WHEN ${col} < 10 THEN '5-9'
+  WHEN ${col} < 15 THEN '10-14' WHEN ${col} < 20 THEN '15-19'
+  WHEN ${col} < 25 THEN '20-24' WHEN ${col} < 30 THEN '25-29'
+  WHEN ${col} < 35 THEN '30-34' WHEN ${col} < 40 THEN '35-39'
+  WHEN ${col} < 45 THEN '40-44' WHEN ${col} < 50 THEN '45-49'
+  WHEN ${col} < 55 THEN '50-54' WHEN ${col} < 60 THEN '55-59'
+  WHEN ${col} < 65 THEN '60-64' WHEN ${col} < 70 THEN '65-69'
+  WHEN ${col} < 75 THEN '70-74' WHEN ${col} < 80 THEN '75-79'
+  WHEN ${col} < 85 THEN '80-84' WHEN ${col} < 90 THEN '85-89' ELSE '90-96' END`;
 const COLUMNS = [
   "id", "snapshot_date", "sport", "stat", "game_type",
   "player_name", "player_id", "home_team", "away_team",

@@ -83,6 +83,15 @@ export const MAKER_BAND = [55, 97];   // favorite-ask band to quote inside (≥9
 // itself. See docs/INFRA.md § Shadow maker engine.
 export const MAKER_INSIDE_C = 1;      // quote this many cents inside the prevailing ask
 export const MAKER_SIZE = 10;         // simulated contracts per quote segment
+// Full-range measurement band for the V1 (paper) quote pass, added 2026-07-29. MAKER_BAND above
+// is the FAVORITE band — its ≥55 floor means the paper engine only ever measured favorite-sells,
+// so the fill-price map had no data below ~50 (a favorite ask is ≥50 by definition). Quoting BOTH
+// sides across [1,97] completes the picture: the underdog side of every market (asks ~1-50) now
+// gets a paper segment too. Measurement only — V2 real orders stay locked to MAKER_V2_BAND. The
+// prior (n=44.5k pooled scan: longshot asks are ~fair) says expect ~0 edge down there, but the
+// maker side was never measured and quoting is free. Used ONLY by updateMakerQuotes with
+// bothSides=true; V2 and the backfill keep MAKER_BAND / MAKER_V2_BAND single-side (favorite).
+export const MAKER_FULL_BAND = [1, 97];
 
 // Shadow maker V2 (2026-07-21, api/lib/maker-live.js) — REAL resting orders, scoped tight to
 // the one sub-band the 7/21 ARM review found a real, non-borderline edge in (n=295,

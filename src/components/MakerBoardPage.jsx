@@ -748,7 +748,8 @@ function CrossCheckStrip({ mb }) {
 // the flag that would have caught the wrong-side bug) and a caution dot when >50% of a cell's PnL
 // came from ONE day (the selection tell that debunked both 55-64 and 90-96). Rows sorted by
 // volume, capped so the page stays a screen; the tail is low-volume noise.
-const _BANDS = ["55-59", "60-64", "65-69", "70-74", "75-79", "80-84", "85-89", "90-96"];
+const _BANDS = ["0-4", "5-9", "10-14", "15-19", "20-24", "25-29", "30-34", "35-39", "40-44",
+  "45-49", "50-54", "55-59", "60-64", "65-69", "70-74", "75-79", "80-84", "85-89", "90-96"];
 // Color encodes RELIABILITY, not magnitude. Coloring the biggest mean brightest is best-of-N
 // selection with a paint job — it aims the eye at whichever of ~100 noisy cells caught the
 // luckiest slate. So a cell whose day-clustered CI straddles zero (i.e. not distinguishable from

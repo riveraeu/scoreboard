@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert";
 import { computeMakerQuote, replayFills, MAKER_FEE_SERIES } from "./maker.js";
-import { MAKER_BAND, MAKER_INSIDE_C, MAKER_SIZE } from "./config.js";
+import { MAKER_BAND, MAKER_FULL_BAND, MAKER_INSIDE_C, MAKER_SIZE } from "./config.js";
 
 const NOW = Date.parse("2026-07-19T18:00:00Z");
 const futureRow = { gameTime: "2026-07-19T23:00:00Z" };
@@ -147,4 +147,44 @@ test("NO-side segment prices off no_price, and fills against YES-taker trades", 
 test("fractional count_fp contracts pass through", () => {
   const fills = replayFills([seg()], [tr({ count: 2.5 })]);
   assert.equal(fills[0].contracts, 2.5);
+});
+
+// ── bothSides / full-range quoting (2026-07-29) ──────────────────────────────────────────────
+test("bothSides=true returns BOTH the favorite and the underdog side across MAKER_FULL_BAND", () => {
+  // favYes: yes 88 (favorite), no 16 (underdog). Under the favorite band only yes qualified;
+  // full-range both-sides must now also quote the underdog no@15.
+  const qs = computeMakerQuote(favYes, futureRow, NOW, MAKER_FULL_BAND, true);
+  assert.ok(Array.isArray(qs));
+  assert.equal(qs.length, 2);
+  const yes = qs.find(q => q.side === "yes"), no = qs.find(q => q.side === "no");
+  assert.equal(yes.ask, 88 - MAKER_INSIDE_C);
+  assert.equal(no.ask, 16 - MAKER_INSIDE_C);
+});
+
+test("bothSides quotes a coin-flip market (both sides in full band) — the old floor rejected it", () => {
+  const m = { yes_ask_dollars: "0.52", yes_bid_dollars: "0.48", no_ask_dollars: "0.52", no_bid_dollars: "0.48" };
+  const qs = computeMakerQuote(m, futureRow, NOW, MAKER_FULL_BAND, true);
+  assert.equal(qs.length, 2);
+  // ...and the single-side default still rejects it (neither side in the [55,97] favorite band).
+  assert.equal(computeMakerQuote(m, futureRow, NOW), null);
+});
+
+test("bothSides never quotes 0¢/negative on a very low underdog ask", () => {
+  // yes 1 (would quote 0 → dropped), no 96 (favorite, quotes 95).
+  const m = { yes_ask_dollars: "0.01", yes_bid_dollars: "0.01", no_ask_dollars: "0.96", no_bid_dollars: "0.94" };
+  const qs = computeMakerQuote(m, futureRow, NOW, MAKER_FULL_BAND, true);
+  assert.deepEqual(qs.map(q => q.side), ["no"]);
+  assert.equal(qs[0].ask, 95);
+});
+
+test("bothSides still honors the shared gates (stale-ask, spread, pre-game) with []", () => {
+  const stale = { yes_ask_dollars: "0.99", yes_bid_dollars: "0.90", no_ask_dollars: "0.05", no_bid_dollars: "0.01" };
+  assert.deepEqual(computeMakerQuote(stale, futureRow, NOW, MAKER_FULL_BAND, true), []);
+  assert.deepEqual(computeMakerQuote(favYes, pastRow, NOW, MAKER_FULL_BAND, true), []);
+});
+
+test("single-side default is unchanged — returns the favorite, never an array", () => {
+  const q = computeMakerQuote(favYes, futureRow, NOW);
+  assert.ok(!Array.isArray(q));
+  assert.equal(q.side, "yes");
 });

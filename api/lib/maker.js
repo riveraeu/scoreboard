@@ -36,7 +36,7 @@
 // Failure-closed: every exported IO entry point catches internally or is wrapped by its
 // caller; a maker failure must never break the snapshot cron or the resolver.
 
-import { capturableSpread, MAKER_BAND, MAKER_INSIDE_C, MAKER_SIZE } from "./config.js";
+import { capturableSpread, MAKER_BAND, MAKER_FULL_BAND, MAKER_INSIDE_C, MAKER_SIZE } from "./config.js";
 import { shadowId } from "./shadow-id.js";
 import { neonQuery, neonExec } from "./neon.js";
 import { fetchKalshiSettlements, resolveTickerSideViaKalshi } from "./kalshi-settlement.js";
@@ -52,28 +52,46 @@ const _c = (dollars, cents) => {
 };
 
 // Pure eligibility + quote computation for one Kalshi market object + its staging row.
-// `band` defaults to MAKER_BAND (V1 shadow); maker-live.js passes MAKER_V2_BAND to reuse the
-// exact same eligibility logic for the narrower real-order scope instead of forking it.
-// Returns { side, ask, yesAsk, yesBid, noAsk, noBid, spread } or null.
-export function computeMakerQuote(m, stagingRow, nowMs, band = MAKER_BAND) {
+// `band` defaults to MAKER_BAND (V1 favorite shadow); maker-live.js passes MAKER_V2_BAND for the
+// narrower real-order scope, so the same eligibility logic isn't forked.
+//
+// `bothSides` (2026-07-29): the V1 measurement pass sets it true and passes MAKER_FULL_BAND to
+// quote BOTH sides of every market — the favorite (ask ~50-97) AND the underdog (ask ~1-50) — so
+// the fill-price map covers the full range instead of just the favorite half. It then returns an
+// ARRAY of quotes (one per in-band side), possibly empty. Default false → the historical single
+// return: the FAVORITE (higher ask) or null, so V2 and the backfill are byte-for-byte unchanged.
+// Returns {side, ask, yesAsk, yesBid, noAsk, noBid, spread}, or an array of those, or null/[].
+export function computeMakerQuote(m, stagingRow, nowMs, band = MAKER_BAND, bothSides = false) {
+  const fail = bothSides ? [] : null;
   const yesAsk = _c(m?.yes_ask_dollars, m?.yes_ask), yesBid = _c(m?.yes_bid_dollars, m?.yes_bid);
   const noAsk = _c(m?.no_ask_dollars, m?.no_ask), noBid = _c(m?.no_bid_dollars, m?.no_bid);
   // Real two-sided book only: all four quotes present (0 = absent quote, not a price).
-  if (!yesAsk || !yesBid || !noAsk || !noBid) return null;
+  if (!yesAsk || !yesBid || !noAsk || !noBid) return fail;
   // ≥98 on either side = the stale-ask regime (priced off `last`) — skip the market entirely.
-  if (yesAsk >= 98 || noAsk >= 98) return null;
+  if (yesAsk >= 98 || noAsk >= 98) return fail;
   // Unified book: both sides share one spread when both asks exist.
   const spread = yesAsk - yesBid;
-  if (!capturableSpread(spread)) return null;
+  if (!capturableSpread(spread)) return fail;
   // Pre-game with a KNOWN future start — no in-play quoting, no unknown-start quoting.
   const gt = stagingRow?.gameTime ? Date.parse(stagingRow.gameTime) : NaN;
-  if (!(gt > nowMs)) return null;
-  // Favorite side in band (both sides ≥80 is impossible on a real book — sum ≤ 100+spread).
-  let side = null, ask = null;
-  if (yesAsk >= band[0] && yesAsk <= band[1]) { side = "yes"; ask = yesAsk - MAKER_INSIDE_C; }
-  else if (noAsk >= band[0] && noAsk <= band[1]) { side = "no"; ask = noAsk - MAKER_INSIDE_C; }
-  if (!side) return null;
-  return { side, ask, yesAsk, yesBid, noAsk, noBid, spread };
+  if (!(gt > nowMs)) return fail;
+  const book = { yesAsk, yesBid, noAsk, noBid, spread };
+  const sides = [];
+  const _add = (side, prevailingAsk) => {
+    if (prevailingAsk < band[0] || prevailingAsk > band[1]) return;
+    const ask = prevailingAsk - MAKER_INSIDE_C;
+    if (ask < 1) return; // never quote 0¢/negative (very low underdog asks after the inside step)
+    sides.push({ side, ask, ...book });
+  };
+  _add("yes", yesAsk);
+  _add("no", noAsk);
+  if (!sides.length) return fail;
+  if (bothSides) return sides;
+  // Single-side: the FAVORITE = the higher ask. Under the [55,97] favorite band only one side is
+  // ever in-band; under a lower floor both can be, so pick the favorite explicitly to preserve the
+  // historical "sell the favorite" semantics for V2 / backfill.
+  sides.sort((a, b) => b.ask - a.ask);
+  return sides[0];
 }
 
 // Pure fill replay for ONE ticker: segments (its quote history) × that day's trade tape.
@@ -182,30 +200,34 @@ export async function updateMakerQuotes({ snapResults, staging, snapshotDate, en
     if (!prev || (prev.direction === "under" && p.direction !== "under")) idx.set(t, p);
   }
 
-  // Desired quotes this cycle.
-  const want = new Map(); // ticker → { q, row, series }
+  // Desired quotes this cycle. Keyed by ticker+side (2026-07-29): the V1 pass now quotes BOTH
+  // sides of a market (MAKER_FULL_BAND, bothSides=true), so one ticker can carry two open
+  // segments — the favorite AND the underdog. A ticker-only key would let them clobber each other.
+  const want = new Map(); // "ticker|side" → { q, row, series, ticker }
   for (const [series, data] of Object.entries(snapResults || {})) {
     if (MAKER_FEE_SERIES.has(series)) continue;
     for (const m of (data?.markets || [])) {
       const row = idx.get(m?.ticker);
       if (!row) continue;
-      const q = computeMakerQuote(m, row, nowMs);
-      if (q) want.set(m.ticker, { q, row, series });
+      for (const q of computeMakerQuote(m, row, nowMs, MAKER_FULL_BAND, true)) {
+        want.set(`${m.ticker}|${q.side}`, { q, row, series, ticker: m.ticker });
+      }
     }
   }
 
-  // Diff against open segments.
+  // Diff against open segments, matched on ticker+side.
   const open = await neonQuery(
     `SELECT id, ticker, quote_side, quote_ask FROM maker_quotes WHERE valid_to IS NULL`,
     [], env, { write: true });
   const keep = new Set();
   const toClose = [];
   for (const o of open) {
-    const w = want.get(o.ticker);
-    if (w && w.q.side === o.quote_side && w.q.ask === Number(o.quote_ask)) keep.add(o.ticker);
+    const key = `${o.ticker}|${o.quote_side}`;
+    const w = want.get(key);
+    if (w && w.q.ask === Number(o.quote_ask)) keep.add(key);
     else toClose.push(Number(o.id));
   }
-  const toOpen = [...want.entries()].filter(([t]) => !keep.has(t));
+  const toOpen = [...want.entries()].filter(([key]) => !keep.has(key));
 
   if (toClose.length) {
     await neonQuery(`UPDATE maker_quotes SET valid_to = NOW() WHERE id = ANY($1::int[])`,
@@ -216,7 +238,7 @@ export async function updateMakerQuotes({ snapResults, staging, snapshotDate, en
       "shadow_row_id", "row_direction", "quote_side", "quote_ask", "size",
       "book_yes_ask", "book_yes_bid", "book_no_ask", "book_no_bid"];
     const values = [];
-    const tuples = toOpen.map(([ticker, { q, row, series }], i) => {
+    const tuples = toOpen.map(([, { q, row, series, ticker }], i) => {
       values.push(ticker, series, row.sport ?? null, row.stat ?? row.gameType ?? null,
         row.gameDate ?? snapshotDate ?? null, row.gameTime ?? null,
         shadowId(row, snapshotDate), row.direction ?? null,
