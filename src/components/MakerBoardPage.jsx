@@ -586,6 +586,13 @@ function ArmTile({ mb }) {
 // elsewhere — MyPicksColumn/DayBar); per-contract rates stay in cents everywhere else, since
 // cents is the native Kalshi quoting unit and a running total in cents gets unreadable fast.
 const fmtUsdFromCents = c => `${c >= 0 ? "+" : ""}$${Math.abs(c / 100).toFixed(2)}`;
+// `day` arrives as an ISO date string (`makerBoard.daily[].day`, `String(q.game_date).slice(0,10)`
+// server-side — verified against live payload, not assumed). Anything else renders raw rather than
+// guessing: a mis-parsed axis label is worse than an ugly one.
+const fmtAxisDay = (day) => {
+  const m = /^\d{4}-(\d{2})-(\d{2})$/.exec(day || "");
+  return m ? `${+m[1]}/${+m[2]}` : (day || "");
+};
 
 function EquityCurve({ daily }) {
   const pts = [];
@@ -600,15 +607,28 @@ function EquityCurve({ daily }) {
       Paper equity curve appears once graded fills span two days{pts.length === 1 ? ` — day 1: ${fmtUsdFromCents(pts[0].cum)} paper` : ""}.
     </div>;
   }
-  const W = 560, H = 90, P = 8;
+  // PH = plot height; AXIS = the band below it that holds the date labels. ys() maps into the PLOT
+  // area only, so adding the axis grew the svg rather than compressing the series.
+  const W = 560, PH = 90, AXIS = 15, H = PH + AXIS, P = 8;
   const xs = i => P + i * (W - 2 * P) / (pts.length - 1);
   const vals = pts.map(p => p.cum);
   const lo = Math.min(0, ...vals), hi = Math.max(0, ...vals);
-  const ys = v => hi === lo ? H / 2 : P + (hi - v) * (H - 2 * P) / (hi - lo);
+  const ys = v => hi === lo ? PH / 2 : P + (hi - v) * (PH - 2 * P) / (hi - lo);
+  // Thin the labels so they can never collide: LABEL_W is one label's footprint in viewBox units at
+  // fontSize 9. Today's 9 days all fit (~68 units apart); this only starts dropping labels once the
+  // series is long enough that it has to, and the LAST day is always kept — it's the one the
+  // endpoint value belongs to.
+  const LABEL_W = 34;
+  const step = Math.max(1, Math.ceil(pts.length / Math.max(2, Math.floor((W - 2 * P) / LABEL_W))));
+  const ticks = pts.map((_, i) => i).filter(i => i % step === 0 || i === pts.length - 1);
+  if (ticks.length > 2 && xs(ticks[ticks.length - 1]) - xs(ticks[ticks.length - 2]) < LABEL_W) {
+    ticks.splice(ticks.length - 2, 1);
+  }
   const path = pts.map((p, i) => `${i ? "L" : "M"}${xs(i).toFixed(1)},${ys(p.cum).toFixed(1)}`).join(" ");
   const last = pts[pts.length - 1];
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} style={{ width:"100%", display:"block" }} role="img" aria-label="Cumulative paper maker PnL by day">
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width:"100%", display:"block" }} role="img"
+      aria-label={`Cumulative paper maker PnL by day, ${pts[0].day} to ${last.day}, ending ${fmtUsdFromCents(last.cum)} simulated`}>
       <line x1={P} x2={W - P} y1={ys(0)} y2={ys(0)} stroke={C.border} strokeWidth="1" />
       <path d={path} fill="none" stroke={C.blue} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
       {pts.map((p, i) => (
@@ -624,6 +644,15 @@ function EquityCurve({ daily }) {
         textAnchor="end" fill={C.gray} fontSize="11" fontWeight="700">
         {fmtUsdFromCents(last.cum)}<tspan fill={C.dim} fontWeight="400"> paper</tspan>
       </text>
+      {/* Date axis. No rule and no tick marks — the dots already mark the x positions and the zero
+          line is the only reference the series needs; a second horizontal rule 8 units under the
+          first would read as a second baseline. End labels anchor inward so they can't clip. */}
+      {ticks.map(i => (
+        <text key={pts[i].day} x={xs(i)} y={PH + 10} fontSize="9" fill={C.dim}
+          textAnchor={i === 0 ? "start" : i === pts.length - 1 ? "end" : "middle"}>
+          {fmtAxisDay(pts[i].day)}
+        </text>
+      ))}
     </svg>
   );
 }
