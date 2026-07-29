@@ -4031,7 +4031,7 @@ async function handleShadowReport({ path, request, env, cache }) {
   // Failure-closed.
   let makerBoard = null;
   try {
-    const [[mq], [mf], _qoRows, _mDaily, _mBands] = await Promise.all([
+    const [[mq], [mf], _qoRows, _mDaily, _mBands, _mCatBandDay] = await Promise.all([
       neonQuery(`
         SELECT COUNT(*)::int AS segments, COUNT(DISTINCT ticker)::int AS tickers,
           COUNT(DISTINCT game_date)::int AS days, ROUND(AVG(quote_ask), 1) AS avg_ask
@@ -4096,6 +4096,23 @@ async function handleShadowReport({ path, request, env, cache }) {
           COALESCE(fb.fills, 0) AS fills, COALESCE(fb.graded, 0) AS graded,
           fb.avg_pnl, fb.filled_side_won
         FROM qb FULL OUTER JOIN fb ON fb.band = qb.band ORDER BY 1`, [since], env, { write: true }),
+      // Category × band × DAY graded economics — the diagnostic grain (2026-07-29). This is the
+      // slice that LOCALIZES anomalies band/total pooling hides: the 55-64 "edge" that kicked off
+      // the wrong-side-fill investigation was one category (ligamx|teamTotal at +52¢, an impossible
+      // value) buried inside a price band that averaged 16 categories. Day is carried so the
+      // frontend can compute top-day concentration per cell (the anti-selection check) and flag a
+      // cell whose whole result is one slate. Graded fills only.
+      neonQuery(`
+        SELECT COALESCE(q.sport,'?') AS sport, COALESCE(q.category, q.sport, '?') AS category,
+          ${_makerBandCase("f.fill_ask")} AS band, q.game_date AS day,
+          COUNT(*)::int AS fills,
+          COALESCE(SUM(f.contracts), 0)::numeric AS contracts,
+          COALESCE(SUM(f.pnl_cents * f.contracts), 0)::numeric AS pnl_total,
+          COALESCE(SUM((f.side_won)::int::numeric * f.contracts), 0)::numeric AS won_contracts,
+          ROUND(AVG(f.fill_ask), 1) AS avg_fill_ask
+        FROM maker_fills f JOIN maker_quotes q ON q.id = f.quote_id
+        WHERE q.game_date >= $1 AND q.source = 'live' AND f.graded_at IS NOT NULL
+        GROUP BY 1, 2, 3, 4`, [since], env, { write: true }),
     ]);
     const graded = Number(mf?.graded || 0);
     const avgPnl = mf?.avg_pnl != null ? Number(mf.avg_pnl) : null;
@@ -4138,6 +4155,42 @@ async function handleShadowReport({ path, request, env, cache }) {
       filledBands: (_mBands || []).map(r => ({ band: r.band, avgPnl: r.avg_pnl, graded: r.graded })),
       filledEdgeRawCents: avgPnl,
     });
+    // Category × band diagnostic grain (2026-07-29). Roll the per-day rows up to one cell per
+    // (category, band): contract-weighted ¢/ct, side-won, graded n, and the two things a bare mean
+    // hides — top-day concentration (what share of the cell's |PnL| came from its single biggest
+    // day; high = one slate, not an edge) and an anomaly flag. `sideWon` pinned at 0 or 1 across
+    // real volume is the impossible value that first exposed the wrong-side-fill bug
+    // (ligamx|teamTotal read +52¢ at sideWon 0), so it is flagged explicitly rather than left for
+    // the eye. `perContract` is pnl/contracts; the arithmetic bound for a seller is [ask-100, ask],
+    // so a cell hugging it is degenerate.
+    const _cbCells = new Map(); // key "sport|category|band" -> {..., byDay:Map(day->{c,p,w})}
+    for (const r of (_mCatBandDay || [])) {
+      const key = `${r.sport}|${r.category}|${r.band}`;
+      let cell = _cbCells.get(key);
+      if (!cell) { cell = { sport: r.sport, category: r.category, band: r.band,
+        fills: 0, contracts: 0, pnl: 0, won: 0, byDay: new Map() }; _cbCells.set(key, cell); }
+      const c = Number(r.contracts || 0), p = Number(r.pnl_total || 0), w = Number(r.won_contracts || 0);
+      cell.fills += Number(r.fills || 0); cell.contracts += c; cell.pnl += p; cell.won += w;
+      cell.byDay.set(String(r.day).slice(0, 10), (cell.byDay.get(String(r.day).slice(0, 10)) || 0) + p);
+    }
+    const _categoryBands = [..._cbCells.values()].map(cell => {
+      const perContract = cell.contracts ? cell.pnl / cell.contracts : null;
+      const sideWon = cell.contracts ? cell.won / cell.contracts : null;
+      const dayPnls = [...cell.byDay.values()];
+      const absTot = dayPnls.reduce((a, v) => a + Math.abs(v), 0);
+      const topDayShare = absTot ? Math.max(...dayPnls.map(Math.abs)) / absTot : null;
+      // Anomaly: a degenerate outcome distribution over real volume. sideWon exactly 0/1 (fills>=20)
+      // means every graded fill in the cell resolved the same way — a grading/side artifact, not a
+      // price. This is the flag that would have caught the wrong-side bug months earlier.
+      const anomaly = cell.fills >= 20 && (sideWon === 0 || sideWon === 1);
+      return { sport: cell.sport, category: cell.category, band: cell.band,
+        fills: cell.fills, contracts: parseFloat(cell.contracts.toFixed(1)),
+        perContract: perContract != null ? parseFloat(perContract.toFixed(2)) : null,
+        sideWon: sideWon != null ? parseFloat(sideWon.toFixed(4)) : null,
+        days: cell.byDay.size,
+        topDayShare: topDayShare != null ? parseFloat(topDayShare.toFixed(2)) : null,
+        anomaly };
+    }).sort((a, b) => b.contracts - a.contracts);
     makerBoard = {
       quotes: { segments: Number(mq?.segments || 0), tickers: Number(mq?.tickers || 0),
         days: Number(mq?.days || 0), avgAsk: mq?.avg_ask != null ? Number(mq.avg_ask) : null },
@@ -4179,6 +4232,7 @@ async function handleShadowReport({ path, request, env, cache }) {
         avgPnl: r.avg_pnl != null ? Number(r.avg_pnl) : null,
         filledSideWon: r.filled_side_won != null ? Number(r.filled_side_won) : null,
       })),
+      categoryBands: _categoryBands,
     };
   } catch (e) { console.error("[shadow-report] maker board skipped:", e?.message); }
 
@@ -4239,6 +4293,47 @@ async function handleShadowReport({ path, request, env, cache }) {
         daily: _v2Daily,
       };
     } catch (e) { console.error("[shadow-report] maker live board skipped (likely never armed):", e?.message); }
+
+    // Cross-checks (2026-07-29): two independent measurements of the same quantity, rendered as a
+    // DIFF with the disagreement as the headline. This is the class of view that actually catches
+    // instrument bugs — a prettier slice of one data stream never does. The wrong-side fill bug was
+    // visible for days as V1-paper (+1.5¢) vs V2-real (~0) disagreeing on the SAME [80,84] band, and
+    // it got rationalized as "different populations". A diff panel makes that impossible to wave off.
+    // Both pairs are computed from data already in hand — no extra fetch. `flagCents`/`flag` mark a
+    // material disagreement so the strip draws attention to itself rather than needing to be read.
+    const _band8084 = (makerBoard.bands || []).find(b => b.band === "80-84");
+    const _v1_8084 = _band8084?.avgPnl ?? null;                 // V1 paper, same band V2 rests in
+    const _v2Mean = makerBoard.live?.weighted?.mean ?? null;    // V2 real, all [80,84] by config
+    const _bestAcc = (accuracyBoard || [])
+      .filter(a => a.skill != null && (a.n || 0) >= BRIER_MIN_N)
+      .sort((a, b) => b.skill - a.skill)[0] || null;
+    const _beatMarket = (accuracyBoard || [])
+      .filter(a => a.skill != null && (a.n || 0) >= BRIER_MIN_N && a.skill > 0).length;
+    const _trustedAcc = (accuracyBoard || []).filter(a => a.skill != null && (a.n || 0) >= BRIER_MIN_N).length;
+    makerBoard.crossChecks = [
+      {
+        key: "v1v2",
+        label: "V1 paper vs V2 real · same [80,84] band",
+        a: { name: "V1 sim", cents: _v1_8084 },
+        b: { name: "V2 real", cents: _v2Mean },
+        deltaCents: (_v1_8084 != null && _v2Mean != null) ? parseFloat((_v1_8084 - _v2Mean).toFixed(2)) : null,
+        // On the same band the simulator and real orders should agree; a persistent gap is an
+        // instrument bug, not two populations. 3¢ is well outside sampling noise at these n.
+        flagCents: 3,
+        flag: (_v1_8084 != null && _v2Mean != null) && Math.abs(_v1_8084 - _v2Mean) >= 3,
+        note: "should agree on the shared band; a gap is an instrument bug, not two populations",
+      },
+      {
+        key: "model_market",
+        label: "Model vs market · Brier skill",
+        a: { name: "best category", skill: _bestAcc?.skill ?? null, cat: _bestAcc?.key ?? null, n: _bestAcc?.n ?? null },
+        b: { name: "market (baseline)", skill: 0 },
+        beats: _beatMarket, trusted: _trustedAcc,
+        // Not a cents diff — the headline is "how many categories beat the market with confidence".
+        flag: false,
+        note: `${_beatMarket}/${_trustedAcc} trusted categories beat the market`,
+      },
+    ];
   }
 
   const report = {
