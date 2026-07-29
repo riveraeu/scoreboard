@@ -2663,6 +2663,103 @@ async function handleShadowReport({ path, request, env, cache }) {
   if (!isCron && !isAdmin && !isUser) return errorResponse("Forbidden", 403);
   if (!env?.POSTGRES_URL && !env?.NEON_DATABASE_URL) return errorResponse("No Neon connection", 500);
 
+  // ── ?makerQueueCheck=1 — V1-vs-V2 fill agreement, the queue-priority calibration (2026-07-29) ──
+  // V1 is a COUNTERFACTUAL simulator: it never places an order, then asserts a fill whenever a
+  // taker traded at `px >= our ask` inside a segment window (`replayFills`). That assertion rests
+  // on "we quote 1¢ inside, so price priority is ours" — true at the instant of quoting, and
+  // unverifiable afterwards, because V1 records only top-of-book and samples every 2 minutes. A
+  // competitor can improve, absorb the flow and revert between ticks, and V1 would still credit us.
+  //
+  // V2's 3 live days are the only ground truth that exists: real resting orders, same engine, same
+  // eligibility logic (`computeMakerQuote` with MAKER_V2_BAND). Joining them gives a 2x2 —
+  // per V2 order, did V1 predict a fill over the same ticker/side/window?
+  //
+  //   both filled           → V1 agrees with reality
+  //   V2 filled, V1 did not → V1 is CONSERVATIVE (under-counts fills)
+  //   V1 filled, V2 did not → V1 is OPTIMISTIC — the queue-priority assumption failing, and the
+  //                           single number this endpoint exists to produce
+  //   neither               → agrees
+  //
+  // Read-only; no writes anywhere. Scoped by the orders table, so it is inherently limited to the
+  // V2 band/days — that is the point, not a defect: it is the only place the two overlap.
+  //
+  // Caveats to carry into any conclusion. (1) A V2 order and a V1 segment are not the same unit:
+  // V2 orders self-expire on MAKER_V2_EXPIRATION_SEC and get re-placed, V1 segments close when the
+  // quote changes — so `v1Segments` per order is usually >1 and the comparison is "did EITHER
+  // predict a fill in this window". (2) V2 capped at MAKER_V2_MAX_CONCURRENT, so absolute volumes
+  // are not comparable between the two — only per-order RATES are. (3) n is 3 days.
+  if (new URL(request.url).searchParams.get("makerQueueCheck") === "1") {
+    try {
+      const rows = await neonQuery(`
+        SELECT o.id, o.ticker, o.side, o.price, o.size, o.filled_count, o.status, o.game_date,
+               COUNT(q.id)::int                          AS v1_segments,
+               COALESCE(MAX(q.quote_ask), 0)::int        AS v1_ask,
+               COALESCE(SUM(fq.c), 0)::numeric           AS v1_contracts
+          FROM maker_orders_v2 o
+          LEFT JOIN maker_quotes q
+            ON q.ticker = o.ticker
+           AND q.source = 'live'
+           AND q.quote_side = o.side
+           AND q.valid_from < COALESCE(o.canceled_at, o.expires_at, NOW())
+           AND COALESCE(q.valid_to, NOW()) > o.placed_at
+          LEFT JOIN LATERAL (
+            SELECT COALESCE(SUM(f.contracts), 0) AS c
+              FROM maker_fills f
+             WHERE f.quote_id = q.id
+               AND f.traded_at >= o.placed_at
+               AND f.traded_at <  COALESCE(o.canceled_at, o.expires_at, NOW())
+          ) fq ON TRUE
+         GROUP BY o.id, o.ticker, o.side, o.price, o.size, o.filled_count, o.status, o.game_date`,
+        [], env, { write: true });
+
+      const cell = { bothFilled: 0, v2Only: 0, v1Only: 0, neither: 0 };
+      let noSegment = 0, priceMatch = 0, priceRows = 0, sumPriceDiff = 0;
+      const byDay = new Map();
+      const v1OnlySamples = [];
+      for (const r of rows) {
+        const v2f = Number(r.filled_count) > 0;
+        const v1f = Number(r.v1_contracts) > 0;
+        if (!r.v1_segments) noSegment++;
+        const k = v2f && v1f ? "bothFilled" : v2f ? "v2Only" : v1f ? "v1Only" : "neither";
+        cell[k]++;
+        if (k === "v1Only" && v1OnlySamples.length < 10) {
+          v1OnlySamples.push({ ticker: r.ticker, side: r.side, v2Price: r.price,
+            v1Ask: r.v1_ask, v1Contracts: Number(r.v1_contracts), segments: r.v1_segments });
+        }
+        if (r.v1_segments && r.v1_ask) {
+          priceRows++; sumPriceDiff += Math.abs(Number(r.price) - Number(r.v1_ask));
+          if (Number(r.price) === Number(r.v1_ask)) priceMatch++;
+        }
+        const d = r.game_date || "?";
+        const day = byDay.get(d) || { orders: 0, v2Filled: 0, v1Filled: 0 };
+        day.orders++; if (v2f) day.v2Filled++; if (v1f) day.v1Filled++;
+        byDay.set(d, day);
+      }
+      const n = rows.length;
+      const rate = (x) => (n ? +(x / n * 100).toFixed(1) : null);
+      return jsonResponse({
+        ok: true, orders: n,
+        // The headline: how often each engine says "filled", on the SAME orders.
+        v2FillRatePct: rate(cell.bothFilled + cell.v2Only),
+        v1FillRatePct: rate(cell.bothFilled + cell.v1Only),
+        matrix: cell,
+        agreementPct: rate(cell.bothFilled + cell.neither),
+        // >0 means V1 claimed fills reality did not deliver — the queue-priority assumption failing.
+        v1OptimismPct: rate(cell.v1Only),
+        v1ConservatismPct: rate(cell.v2Only),
+        // Orders V1 never quoted at all (eligibility or timing divergence) — these are NOT a
+        // queue-priority signal, and they sit inside `neither`/`v2Only`, so read them separately.
+        ordersWithNoV1Segment: noSegment,
+        priceAgreement: priceRows
+          ? { rows: priceRows, exactMatchPct: +(priceMatch / priceRows * 100).toFixed(1),
+              meanAbsDiffC: +(sumPriceDiff / priceRows).toFixed(2) }
+          : null,
+        byDay: [...byDay.entries()].sort().map(([day, v]) => ({ day, ...v })),
+        v1OnlySamples,
+      });
+    } catch (e) { return errorResponse(`makerQueueCheck failed: ${e?.message}`, 500); }
+  }
+
   // ── ?makerExitCheck=1 — early-exit counterfactual (2026-07-28) ──────────
   // "Would selling back before settlement, while in profit, have helped?" Never examined before —
   // both V1 and V2 model every position as hold-to-settlement (`pnl_cents = fill_ask − 100·won`),
