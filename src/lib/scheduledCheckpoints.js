@@ -24,34 +24,24 @@ export const SCHEDULED_CHECKPOINTS = [
   // build against. Same wait shape as the LMB recheck (which converted on its date).
   { date: "2026-07-29", tone: "gray", label: "Re-check KXMILBGAME listings", short: "KXMILBGAME recheck",
     why: "Dismissed 7/15 as a zero-market shell with the model side green (statsapi covers all 4 levels, ~62 games/day) — if markets now list with real game-day books (asks populated, spread ≤15¢), un-dismiss and build the LMB-playbook λ model (parameterize lmb.js + author the registry from the live tickers)" },
-  // K blend capWeight 0.5→0.4 shipped 2026-07-06 (tune:kblend GO); the held-out curve kept
-  // improving below 0.4 but 0.4 was the train-picked winner — re-run on fresh post-cutoff rows
-  // (~10 rank-1/day → n≈200 by here) before walking it lower. [[project_k_blend_counterfactual]]
-  { date: "2026-07-27", tone: "blue", label: "Re-run tune:kblend (walk K capWeight below 0.4?)", short: "tune:kblend recheck",
-    why: "capWeight 0.5→0.4 shipped 7/06 off the counterfactual GO; held-out Brier kept improving toward cap=0 but selecting below the train-picked 0.4 would have been test-peeking — re-run tune:kblend on post-7/06 rows (baseline now 0.4) at n≥200" },
-  // 7/05 cross-category sweep: hits showed the K-shaped lower-cap curve but NO-GO (+1.13m, CI
-  // straddles) AND the effect flipped sign across the 7/03 capture-all seam — the post-seam row
-  // mix (full-curve longshots) may change the answer. ~26 rank-any rows/day → ~950 post-seam
-  // rows by here; run post-seam-only. [[project_k_blend_counterfactual]]
-  { date: "2026-08-10", tone: "blue", label: "Re-run tune:kblend --category mlb|hits (post-seam only)", short: "kblend hits recheck",
-    why: "7/05 sweep: K-shaped curve but NO-GO and seam-unstable (pre +2.97m / post −0.99m) — re-run with --since 2026-07-03 so the capture-all row mix answers for itself (~950 post-seam rank-any rows by now)" },
-  // wnba|points showed the same K-shaped curve, underpowered (+2.01m, CI ±5m at test n=119);
-  // ~10 rank-any rows/day. Same sitting as the hits recheck. [[project_k_blend_counterfactual]]
-  { date: "2026-08-10", tone: "blue", label: "Re-run tune:kblend --category wnba|points", short: "kblend wnba recheck",
-    why: "7/05 sweep: K-shaped lower-cap curve, NO-GO on power only (train pick 0.3, +2.01m, CI [−3.13,+7.46]) — re-run at ~750 total rows; if CI-lo>0, propose the WNBA capWeight cut same as K" },
-  // mlb|f5ml is the only game market that's Brier-sharper than the price (7/11: skill +0.0124 n=109,
-  // trend rising) with a coherent discovered [40,55]¢ window (ROI +24.2%, CI-lo +8.1%) — blocked only
-  // on power (32/50 in-window bets; ~1.1/day + All-Star break ~7/13–16). NOT in the 7/04 sub-55
-  // NO-GO sweep. If GO: shipping needs the non-prop build step too — the F5 ML emit path uses the
-  // global [67,91] inline, so route it through betWindowFor before a CATEGORY_BET_WINDOWS entry can
-  // take effect (config.js comment; the [40,55] shape is already pinned in config.test.js).
-  { date: "2026-08-08", tone: "blue", label: "Run tune:window --category mlb|f5ml (window [40,55] candidate)", short: "f5ml window check",
-    why: "7/11: STRENGTHENING + Brier-eligible, discovered [40,55]¢ ROI +24.2% CI-lo>0 coherent, short only 32/50 in-window bets — re-run at n≥200 resolved (~Aug 8 after the All-Star break); a GO also needs the F5 ML emit routed through betWindowFor (non-prop paths are inline-global today)" },
-  // mlb|hrr NO-side gate PULLED 2026-07-18: the 7/11 provisional band [63,73) was derived on
-  // synthesized YES-complement NO prices (feed dead 7/11–7/17, zero real captures). Shadow
-  // capture continues; ~10–15 in-band rows/day → n≥50 ~7/25. [[project_hrr_no_side_flip]]
-  { date: "2026-07-25", tone: "blue", label: "Re-run tune:gate on mlb|hrr NO-side (real post-7/17 captures)", short: "hrr NO re-gate check",
-    why: "Gate pulled 7/18 — the 7/11 provisional +8.8% ROI band rested on synthesized complements with zero real NO-quote rows; re-gate only if tune:gate shows +ROI at n≥50 on post-7/17 captures with band coherence (window [24,33] still capturing throughout)" },
+  // ── FIVE TAKER-TUNING CHECKPOINTS REMOVED 2026-07-28 ────────────────────────────────────────
+  // (1) "tune:kblend recheck" 7/27 — walk K capWeight below 0.4; (2) "kblend hits recheck" 8/10;
+  // (3) "kblend wnba recheck" 8/10; (4) "f5ml window check" 8/08 — tune:window on the [40,55]
+  // candidate; (5) "hrr NO re-gate check" 7/25 — tune:gate on post-7/17 NO-side captures.
+  //
+  // All five were taker-model work, and the taker family is closed: 0 of 57 categories reach Brier
+  // skill CI-lo > 0 at n≥100, the gate has been empty since 7/18 (docs/REENTRY.md). Each is also a
+  // shape the doc names as DISQUALIFYING rather than merely unproductive — the three kblend re-runs
+  // and the hrr re-gate are corrections discovered by searching the same days (§"a per-category or
+  // per-sport breakout … slicing is 0-for-6"), and the f5ml entry is literally "a different price
+  // band", the first-listed non-justification. Their banner tiers (2, 2.2, 3.15) are suppressed by
+  // STRATEGY_CLOSED in MakerBoardPage.jsx, so leaving the entries here would have nagged daily for
+  // work the ladder above them refuses to surface.
+  //
+  // Deleted rather than re-dated on purpose: a later date implies the work becomes valid with more
+  // rows, and "more data will fix it" is itself on the doc's non-justification list. Re-entry needs
+  // NEW DATA (a new market class) or a mechanism stated in advance — not a re-run of these.
+  // [[project_k_blend_counterfactual]] [[project_f5ml_window_candidate]] [[project_bet_window_derivation]]
   // MLS (KXMLSGAME) shipped 2026-07-23 as the first model-free maker market — live-verified via
   // /api/tonight?debug=1 (45 rows, real gameTime, correct team parsing) but the day it shipped had
   // no MLS games, so the actual shadow_plays DB write was never confirmed end-to-end. Next MLS
