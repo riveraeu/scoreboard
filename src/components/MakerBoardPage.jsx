@@ -579,75 +579,15 @@ function Tile({ label, value, color, sub }) {
 // "which model beats the market?" (answered 7/19: none — taker edge is structurally
 // negative venue-wide) to "is the maker margin surviving adverse selection, and how close
 // are we to arming?" Forms follow the data's job: arm progress = stat tile + meter;
-// margin trajectory = single-hue cumulative line; band economics = single-hue bar ladder.
-// Color doctrine: NO categorical series palette — one hue (C.blue) for magnitude marks;
-// green/red appear only on SIGNED values (the +/− prefix is the non-color channel).
-// Reads the DAY-CLUSTERED interval and the server's own `armCriterion.met` — never the fill-level
-// `pnlLoCI` (2026-07-28 fix).
+// margin trajectory = single-hue cumulative line; category×band economics = a diverging heatmap.
+// Color doctrine: NO categorical series palette — magnitude via one channel (alpha), green/red
+// only on SIGNED values (the +/− prefix is the non-color channel).
 //
-// This tile used to colour green on `pnlLoCI > 0` and compute its own `armed` locally. Both were
-// wrong in the way that matters: `pnlLoCI` treats every fill as an independent observation, but V1
-// sells favourites across a whole slate, so a day's result is essentially ONE bet on whether
-// favourites underperformed. On identical data the fill-level CI reads [+0.70, +2.41] while the
-// day-clustered CI reads [−2.71, +5.82] — same point estimate, ~5× wider, and crossing zero.
-//
-// With 14,352 graded fills and `pnlLoCI` 0.61, this tile was rendering GREEN / "ARM CRITERION MET"
-// on the morning V2 was shelved. That statistic has now produced a false green on this board four
-// times, including the 7/21 reading that put real money at risk. The banner's copy of it was
-// removed earlier the same day; this one was missed.
-//
-// `armCriterion.met` is computed server-side (n≥200 fills AND ≥14 days AND dayClustered.loCI>0) —
-// the standing rule is read `met`, never `need`, and never re-derive it in the client.
-function ArmTile({ mb }) {
-  const f = mb?.fills || {};
-  const dc = f.dayClustered || {};
-  const min = mb?.armCriterion?.minFills ?? 200;
-  const minDays = mb?.armCriterion?.minDays ?? 14;
-  const graded = f.graded || 0;
-  const days = dc.days || 0;
-  // Progress is against whichever bar is further away — days are the binding constraint here
-  // (14,352 fills vs 9 days), and showing only the fill bar reads as "almost there" when it isn't.
-  const pct = Math.min(100, Math.min(graded / min, days / minDays) * 100);
-  const met = mb?.armCriterion?.met === true;
-  // AWAITING_VALIDATED_EDGE (2026-07-29): show the SAMPLE, not progress toward arming. The
-  // "N/14 days · N/200 fills" subtitle and its bar read as a countdown to going live, which is
-  // wrong twice over — V2 is shelved, and this page has already produced four false greens off arm
-  // statistics. The mean and the day-clustered CI stay exactly as they are: those are the
-  // measurement, and the measurement is the whole point of continuing to collect. Only the
-  // progress framing goes. DoThisBanner's tier-5 copy was rewritten for this same reason on
-  // 2026-07-28; this tile was missed in that pass.
-  const showArmProgress = !AWAITING_VALIDATED_EDGE;
-  const sample = `${days} day${days === 1 ? "" : "s"} · ${graded.toLocaleString()} graded fills`;
-  const [color, phase] = dc.loCI == null ? [C.dim, "accruing"]
-    : dc.loCI > 0 ? [C.green, "day-clustered CI clears 0"]
-    : (dc.mean ?? 0) > 0 ? [C.amber, "CI straddles 0"]
-    : [C.red, "negative"];
-  const ci = dc.loCI != null && dc.hiCI != null
-    ? `${dc.loCI > 0 ? "+" : ""}${dc.loCI} … ${dc.hiCI > 0 ? "+" : ""}${dc.hiCI}` : null;
-  return (
-    <div style={{ flex:"1.6 1 0", background:C.card, border:`1px solid ${met ? C.green : C.border}`, borderRadius:6, padding:"8px 10px", minWidth:150 }}
-         title={ci ? `Day-clustered 95% CI ${ci}¢/contract over ${days} days. The DAY is the independent unit: fills within a day share one slate, so a fill-level interval understates the spread ~5x.` : undefined}>
-      <div style={{ color, fontSize:22, fontWeight:700, lineHeight:1, fontVariantNumeric:"tabular-nums" }}>
-        {dc.mean != null ? `${dc.mean > 0 ? "+" : ""}${dc.mean}¢` : "—"}
-        <span style={{ fontSize:11, fontWeight:400, color:C.gray, marginLeft:6 }}>
-          {dc.mean != null
-            ? `/contract${ci ? ` · day-clustered CI ${ci}` : ""}`
-            : "awaiting first graded fills"}
-        </span>
-      </div>
-      <div style={{ color: met && showArmProgress ? C.green : C.dim, fontSize:9, fontWeight:700, textTransform:"uppercase", letterSpacing:0.4, margin:"4px 0 5px" }}>
-        {showArmProgress
-          ? (met ? "ARM CRITERION MET" : `maker pnl · ${phase} · ${days}/${minDays} days · ${graded}/${min} fills`)
-          : `maker pnl · ${phase} · ${sample}`}
-      </div>
-      {showArmProgress && (
-        <div style={{ height:4, background:C.border, borderRadius:2, overflow:"hidden" }} title={`${days}/${minDays} days and ${graded}/${min} graded fills toward the arm criterion`}>
-          <div style={{ width:`${pct}%`, height:"100%", background:color }} />
-        </div>
-      )}
-    </div>
-  );
-}
+// ArmTile was REMOVED 2026-07-29. It rendered progress toward arming (N/14 days · N/200 fills +
+// a meter), which read as a countdown to going live — wrong twice over (V2 is shelved, and the
+// board is negative) and the source of four false greens off the fill-level CI. Its one honest
+// element, the day-clustered mean + CI, moved into CrossCheckStrip's "Book" cell. The arm gate is
+// `armCriterion.met` server-side; the client never re-derives it.
 
 // Cumulative graded paper PnL by day. Single series → one hue, no legend; the section
 // title names it. Zero baseline; per-point tooltip; the current value is the one direct label.
@@ -728,29 +668,152 @@ function EquityCurve({ daily }) {
 
 // Per-ask-band ladder: bar length = fills (magnitude, single hue); margin is a signed,
 // colored figure per row (small fixed row count → direct labels are correct here).
-function BandLadder({ bands }) {
-  const bs = (bands || []).filter(b => b.segments || b.fills);
-  if (!bs.length) return <div style={{ color:C.dim, fontSize:10, padding:"6px 0" }}>Band economics appear with the first quotes.</div>;
-  const max = Math.max(1, ...bs.map(b => b.fills));
+// ---- CROSS-CHECK STRIP (2026-07-29) --------------------------------------------------------
+// Two independent measurements of the same quantity, shown as a DIFF with the disagreement as the
+// headline — the class of view that catches instrument bugs (a prettier slice of one stream never
+// does). Replaces the loose "fill rate / adverse selection / checkpoints" tile row, whose numbers
+// were all single-stream aggregates. The V1↔V2 cell is the one that would have surfaced the
+// wrong-side-fill bug months earlier: on the SAME [80,84] band the simulator and real orders must
+// agree, and for the engine's whole life they didn't — a gap rationalised as "different
+// populations". Plus a Book cell carrying the day-clustered interval (the honest one), folding in
+// what ArmTile used to say.
+function _centsColor(v) { return v == null ? C.dim : v > 0 ? C.green : v < 0 ? C.red : C.gray; }
+function _fmtCents(v) { return v == null ? "—" : `${v > 0 ? "+" : ""}${v}¢`; }
+
+function CrossCheckCell({ children, flag }) {
   return (
-    <div style={{ marginTop:4 }}>
-      {bs.map(b => (
-        <div key={b.band} style={{ display:"flex", alignItems:"center", gap:8, margin:"3px 0", fontSize:10 }}
-          title={`${b.band}¢ ask band: ${b.segments} quote segments, ${b.fills} fills (${b.graded} graded)${b.avgPnl != null ? `, ${b.avgPnl > 0 ? "+" : ""}${b.avgPnl}¢/contract` : ""}`}>
-          <span style={{ color:C.gray, width:42, fontVariantNumeric:"tabular-nums" }}>{b.band}¢</span>
-          {/* Empty track must be quieter than a real bar — hairline outline until fills exist,
-              so a zero-fill band can never be misread as a full one. */}
-          <div style={{ flex:1, height:10, background: b.fills ? C.card : "transparent",
-            border:`1px solid ${C.border}`, borderRadius:3, overflow:"hidden", boxSizing:"border-box" }}>
-            <div style={{ width:`${Math.max(b.fills / max * 100, b.fills ? 3 : 0)}%`, height:"100%", background:C.blue, borderRadius:2 }} />
+    <div style={{ flex:1, minWidth:180, background:C.card, borderRadius:6, padding:"8px 10px",
+      border:`1px solid ${flag ? C.red : C.border}` }}>{children}</div>
+  );
+}
+
+function CrossCheckStrip({ mb }) {
+  const cc = mb?.crossChecks || [];
+  const v1v2 = cc.find(c => c.key === "v1v2");
+  const mm = cc.find(c => c.key === "model_market");
+  const dc = mb?.fills?.dayClustered || {};
+  const ci = dc.loCI != null && dc.hiCI != null
+    ? `${dc.loCI > 0 ? "+" : ""}${dc.loCI} … ${dc.hiCI > 0 ? "+" : ""}${dc.hiCI}` : null;
+  const headStyle = { color:C.dim, fontSize:9, fontWeight:700, textTransform:"uppercase", letterSpacing:0.4, marginBottom:5 };
+  return (
+    <div style={{ display:"flex", gap:8, marginBottom:10, flexWrap:"wrap" }}>
+      {/* 1 — the bug-catcher: two independent measurements of the SAME band */}
+      {v1v2 && (
+        <CrossCheckCell flag={v1v2.flag}>
+          <div style={headStyle}>Cross-check · sim vs real</div>
+          <div style={{ display:"flex", alignItems:"baseline", gap:6, fontVariantNumeric:"tabular-nums" }}>
+            <span style={{ color:_centsColor(v1v2.a.cents), fontSize:16, fontWeight:700 }}>{_fmtCents(v1v2.a.cents)}</span>
+            <span style={{ color:C.dim, fontSize:11 }}>sim</span>
+            <span style={{ color:C.dim, fontSize:11 }}>vs</span>
+            <span style={{ color:_centsColor(v1v2.b.cents), fontSize:16, fontWeight:700 }}>{_fmtCents(v1v2.b.cents)}</span>
+            <span style={{ color:C.dim, fontSize:11 }}>real</span>
           </div>
-          <span style={{ color:C.dim, width:118, whiteSpace:"nowrap" }}>{b.segments} quotes · {b.fills} fills</span>
-          <span style={{ width:66, textAlign:"right", fontWeight:700, fontVariantNumeric:"tabular-nums",
-            color: b.avgPnl == null ? C.dim : b.avgPnl > 0 ? C.green : C.red }}>
-            {b.avgPnl != null ? `${b.avgPnl > 0 ? "+" : ""}${b.avgPnl}¢/ct` : "—"}
-          </span>
+          <div style={{ color: v1v2.flag ? C.red : C.dim, fontSize:9, marginTop:3 }}>
+            Δ {v1v2.deltaCents != null ? `${v1v2.deltaCents > 0 ? "+" : ""}${v1v2.deltaCents}¢` : "—"} on [80,84] · {v1v2.flag ? "DISAGREE — instrument bug" : "agree (same band)"}
+          </div>
+        </CrossCheckCell>
+      )}
+      {/* 2 — model vs market: headline is how many categories beat the market with confidence */}
+      {mm && (
+        <CrossCheckCell flag={mm.flag}>
+          <div style={headStyle}>Cross-check · model vs market</div>
+          <div style={{ fontVariantNumeric:"tabular-nums" }}>
+            <span style={{ color: mm.beats > 0 ? C.green : C.gray, fontSize:16, fontWeight:700 }}>{mm.beats}/{mm.trusted}</span>
+            <span style={{ color:C.dim, fontSize:11, marginLeft:6 }}>beat market (Brier, n≥100)</span>
+          </div>
+          <div style={{ color:C.dim, fontSize:9, marginTop:3 }}>
+            best {mm.a.cat ? mm.a.cat.replace("|", " ") : "—"} skill {mm.a.skill != null ? `${mm.a.skill > 0 ? "+" : ""}${mm.a.skill.toFixed(3)}` : "—"}
+          </div>
+        </CrossCheckCell>
+      )}
+      {/* 3 — the honest book total: day-clustered, never the fill-level CI */}
+      <CrossCheckCell flag={false}>
+        <div style={headStyle}>Book · day-clustered</div>
+        <div style={{ fontVariantNumeric:"tabular-nums" }}>
+          <span style={{ color:_centsColor(dc.mean), fontSize:16, fontWeight:700 }}>{dc.mean != null ? _fmtCents(dc.mean) : "—"}</span>
+          <span style={{ color:C.dim, fontSize:11, marginLeft:6 }}>/ct · {dc.days ?? 0} days</span>
         </div>
-      ))}
+        <div style={{ color:C.dim, fontSize:9, marginTop:3 }}>{ci ? `95% CI ${ci}` : "accruing"} · {(mb?.fills?.graded ?? 0).toLocaleString("en-US")} graded fills</div>
+      </CrossCheckCell>
+    </div>
+  );
+}
+
+// ---- CATEGORY × BAND HEATMAP (2026-07-29, replaces BandLadder) ------------------------------
+// The band ladder pooled every category into one price bar, which is exactly how the 55-64
+// "edge" (really one category, ligamx|teamTotal, at an impossible +52¢) hid long enough to send
+// us chasing a phantom. This grain LOCALISES: category rows × band columns, cell = ¢/contract,
+// green/red on sign only (color doctrine — magnitude via alpha, never hue). Two marks the pooled
+// view could not carry: a red ring on an ANOMALY (sideWon pinned 0/1 = grading/side artifact,
+// the flag that would have caught the wrong-side bug) and a caution dot when >50% of a cell's PnL
+// came from ONE day (the selection tell that debunked both 55-64 and 90-96). Rows sorted by
+// volume, capped so the page stays a screen; the tail is low-volume noise.
+const _BANDS = ["55-59", "60-64", "65-69", "70-74", "75-79", "80-84", "85-89", "90-96"];
+function _cellBg(v, scale) {
+  if (v == null) return "transparent";
+  const a = Math.min(0.85, 0.12 + Math.abs(v) / scale * 0.6);
+  return v > 0 ? `rgba(63,185,80,${a})` : v < 0 ? `rgba(247,129,102,${a})` : C.card;
+}
+function CategoryBandHeatmap({ cells, maxRows = 14 }) {
+  const rows = React.useMemo(() => {
+    const cs = cells || [];
+    if (!cs.length) return [];
+    const byCat = new Map();
+    for (const c of cs) {
+      const k = `${c.sport}|${c.category}`;
+      let row = byCat.get(k);
+      if (!row) { row = { key: k, label: `${c.sport} ${c.category}`, contracts: 0, pnl: 0, cells: {} }; byCat.set(k, row); }
+      row.cells[c.band] = c;
+      row.contracts += c.contracts;
+      row.pnl += (c.perContract ?? 0) * c.contracts;
+    }
+    return [...byCat.values()].sort((a, b) => b.contracts - a.contracts);
+  }, [cells]);
+  if (!rows.length) return <div style={{ color:C.dim, fontSize:10, padding:"6px 0" }}>Category economics appear with the first graded fills.</div>;
+  const scale = Math.max(4, ...rows.flatMap(r => Object.values(r.cells).map(c => Math.abs(c.perContract ?? 0))));
+  const shown = rows.slice(0, maxRows);
+  const colW = 46;
+  return (
+    <div style={{ overflowX:"auto" }}>
+      <div style={{ minWidth: 150 + _BANDS.length * colW }}>
+        {/* header: band price columns */}
+        <div style={{ display:"flex", fontSize:9, color:C.dim, fontWeight:700, marginBottom:2 }}>
+          <span style={{ width:150 }} />
+          {_BANDS.map(b => <span key={b} style={{ width:colW, textAlign:"center" }}>{b}</span>)}
+          <span style={{ width:56, textAlign:"right" }}>¢/ct</span>
+        </div>
+        {shown.map(r => {
+          const rowPer = r.contracts ? r.pnl / r.contracts : null;
+          return (
+            <div key={r.key} style={{ display:"flex", alignItems:"stretch", marginBottom:2, fontSize:10 }}>
+              <span style={{ width:150, color:C.text, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", alignSelf:"center" }}>{r.label}</span>
+              {_BANDS.map(b => {
+                const c = r.cells[b];
+                if (!c) return <span key={b} style={{ width:colW, height:22, border:`1px solid ${C.border}`, boxSizing:"border-box", marginRight:1 }} />;
+                const oneDay = (c.topDayShare ?? 0) >= 0.5;
+                return (
+                  <span key={b} title={`${r.label} ${b}¢: ${c.perContract > 0 ? "+" : ""}${c.perContract}¢/ct · ${c.fills} fills · sideWon ${c.sideWon} · ${c.days}d · top day ${Math.round((c.topDayShare ?? 0) * 100)}% of |PnL|${c.anomaly ? " · ANOMALY: sideWon pinned" : ""}`}
+                    style={{ position:"relative", width:colW, height:22, marginRight:1, boxSizing:"border-box",
+                      display:"flex", alignItems:"center", justifyContent:"center",
+                      fontVariantNumeric:"tabular-nums", color:C.text,
+                      background:_cellBg(c.perContract, scale),
+                      border: c.anomaly ? `1.5px solid ${C.red}` : `1px solid ${C.border}` }}>
+                    {c.perContract != null ? `${c.perContract > 0 ? "+" : ""}${c.perContract}` : ""}
+                    {oneDay && <span style={{ position:"absolute", top:1, right:2, width:4, height:4, borderRadius:2, background:C.amber }} />}
+                  </span>
+                );
+              })}
+              <span style={{ width:56, textAlign:"right", alignSelf:"center", fontWeight:700, fontVariantNumeric:"tabular-nums", color:_centsColor(rowPer && parseFloat(rowPer.toFixed(2))) }}>
+                {rowPer != null ? `${rowPer > 0 ? "+" : ""}${rowPer.toFixed(1)}` : "—"}
+              </span>
+            </div>
+          );
+        })}
+        <div style={{ color:C.dim, fontSize:9, marginTop:5, lineHeight:1.5 }}>
+          ¢/contract, graded fills · <span style={{ color:C.amber }}>●</span> &gt;50% of PnL from one day (selection risk) · <span style={{ color:C.red }}>▢</span> anomaly: sideWon pinned 0/1
+          {rows.length > shown.length ? ` · +${rows.length - shown.length} lower-volume categories hidden` : ""}
+        </div>
+      </div>
     </div>
   );
 }
@@ -769,52 +832,39 @@ function MakerProgress({ mb }) {
   if (!mb) {
     return <div style={{ color:C.dim, fontSize:11, padding:8 }}>Maker board not in this report yet — Refresh regenerates it.</div>;
   }
-  const f = mb.fills || {}, q = mb.quotes || {};
-  const fillRate = q.segments ? Math.round((f.n || 0) / q.segments * 1000) / 10 : null;
-  // Within-band, mix-adjusted (2026-07-26) — the old raw side-won pp gap compared two different
-  // price distributions. Positive cents = fills give up edge vs quotes at the same price = bad.
-  const advSel = mb.adverseSelection?.gapCents ?? null;
-  // V1 (simulated) and V2 (real) grade different populations — V1 quotes every eligible ticker on
-  // every cron tick, V2 only ever rested orders on a capped subset — so their cumulative dollar
-  // totals differ by orders of magnitude for reasons that have nothing to do with performance.
-  // Both totals are on this page, ~250px apart. Name the relationship rather than leaving the
-  // reader to infer it from two 9px labels.
-  const v2Graded = (mb.live?.daily || []).reduce((s, d) => s + (d.graded || 0), 0);
+  const f = mb.fills || {};
+  const cbAnomalies = (mb.categoryBands || []).filter(c => c.anomaly).length;
   return (
     <div style={{ marginBottom:12 }}>
       <div style={sectionHead}>Shadow maker V1 · simulated favorite-ask quoting</div>
-      <div style={{ color:C.dim, fontSize:10, lineHeight:1.45, margin:"-4px 0 9px", maxWidth:720 }}>
-        Paper only — V1 quotes every eligible ticker ({(f.graded ?? 0).toLocaleString("en-US")} graded fills),
-        so its cumulative total is not comparable to the real-money V2 figure above
-        ({v2Graded.toLocaleString("en-US")} graded fills on a capped subset). Different populations, not different performance.
+      <div style={{ color:C.dim, fontSize:10, lineHeight:1.45, margin:"-4px 0 9px", maxWidth:760 }}>
+        Paper — V1 quotes every eligible ticker ({(f.graded ?? 0).toLocaleString("en-US")} graded fills). Read the
+        cross-checks first: they compare two independent measurements of the same thing, which is what catches an
+        instrument bug — a bad slice of one stream never does. {cbAnomalies > 0
+          ? <span style={{ color:C.red }}>{cbAnomalies} category×band cell{cbAnomalies > 1 ? "s" : ""} flagged (sideWon pinned) — investigate before trusting the rest.</span>
+          : "No cell anomalies flagged."}
       </div>
-      <div style={{ display:"flex", gap:8, marginBottom:10, flexWrap:"wrap" }}>
-        <ArmTile mb={mb} />
-        <Tile label="fill rate" value={fillRate != null ? `${fillRate}%` : "—"} color={C.text}
-          sub={`${f.n ?? 0} fills / ${q.segments ?? 0} quotes · ${q.tickers ?? 0} mkts · avg ask ${q.avgAsk ?? "—"}¢`} />
-        <Tile label="adverse selection" value={advSel != null ? `${advSel > 0 ? "+" : ""}${advSel}¢` : "—"}
-          color={advSel == null ? C.dim : advSel >= 2 ? C.red : C.green} sub="quoted − filled edge, within band" />
-        {dueCps.length ? (
-          <Tile label={`checkpoints due · ${dueCps.length}`} value={fmtCpDate(dueCps[0].date)} color={C.amber}
-            sub={`oldest of ${dueCps.length} · ${dueCps[0].short || dueCps[0].label}`} />
-        ) : (
-          <Tile label="next clock" value={nextCp ? fmtCpDate(nextCp.date) : "none"}
-            color={C.dim} sub={nextCp?.short} />
-        )}
-      </div>
-      {/* Curve and ladder side-by-side. Both were maxWidth:560 stacked inside a 1280 container, so
-          the entire right half of the page below the tile rows was empty while the two figures each
-          rendered at less than half the width available to them. auto-fit/minmax re-stacks them into
-          one column under ~800px, so the narrow/mobile layout is unchanged. */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(380px, 1fr))", gap:18, alignItems:"start", marginTop:6 }}>
-        <div style={{ minWidth:0 }}>
-          <div style={microHead}>PAPER EQUITY · CUMULATIVE GRADED PNL</div>
-          <EquityCurve daily={mb.daily} />
+
+      {/* Cross-check strip replaces the old loose tile row (fill-rate / adverse-selection /
+          checkpoints — all single-stream aggregates). The checkpoint clock moved to the DoThisBanner,
+          which already owns dated follow-ups, so it is not duplicated here. */}
+      <CrossCheckStrip mb={mb} />
+      {dueCps.length ? (
+        <div style={{ color:C.amber, fontSize:10, margin:"-2px 0 8px" }}>
+          {dueCps.length} checkpoint{dueCps.length > 1 ? "s" : ""} due — oldest {fmtCpDate(dueCps[0].date)}: {dueCps[0].short || dueCps[0].label}
         </div>
-        <div style={{ minWidth:0 }}>
-          <div style={microHead}>BAND LADDER · WHERE FILLS + MARGIN CONCENTRATE (V2 TARGETING)</div>
-          <BandLadder bands={mb.bands} />
-        </div>
+      ) : nextCp ? (
+        <div style={{ color:C.dim, fontSize:10, margin:"-2px 0 8px" }}>next checkpoint {fmtCpDate(nextCp.date)} · {nextCp.short}</div>
+      ) : null}
+
+      {/* Category × band heatmap (localiser) full-width; equity curve (trajectory) kept but
+          secondary, below it. The old side-by-side curve+ladder is gone: the ladder was the
+          band-picking anti-pattern, and the heatmap needs the width. */}
+      <div style={microHead}>CATEGORY × BAND · ¢/CONTRACT (GRADED) — WHERE PnL ACTUALLY COMES FROM</div>
+      <CategoryBandHeatmap cells={mb.categoryBands} />
+      <div style={{ marginTop:12, maxWidth:560 }}>
+        <div style={microHead}>PAPER EQUITY · CUMULATIVE GRADED PnL (TRAJECTORY)</div>
+        <EquityCurve daily={mb.daily} />
       </div>
     </div>
   );
@@ -1036,10 +1086,11 @@ export default function MakerBoardPage({ shadowReportData, shadowReportLoading, 
           </div>
           {boardData?.shelved && (
             <div style={{ color:C.dim, fontSize:10, lineHeight:1.45, margin:"-4px 0 8px", maxWidth:720 }}>
-              No demonstrated fillable edge — six measurements, six dissolutions, the last of them pre-registered
-              and rejected on all three criteria. Only the quote-side vig has ever replicated (+1.5-1.6¢ over 100k+
-              segments); it has never been shown to survive to a fill. Un-shelving is a code change
-              (<code>SHELVED</code> in <code>api/lib/maker-live.js</code>) — see <code>docs/REENTRY.md</code>.
+              No demonstrated fillable edge. The apparent quote-side vig (+1.5-1.6¢) that once looked like the one
+              replicating effect turned out to be an instrument bug — <code>replayFills</code> matched the wrong taker
+              side for the engine's whole life; corrected and rebuilt, the book is <span style={{ color:C.red }}>−1.0¢/contract</span>.
+              V2 real money (+$6.65 / 361 fills, graded off settlement) always agreed with ~zero, not the paper +1.5¢.
+              Un-shelving is a code change (<code>SHELVED</code> in <code>api/lib/maker-live.js</code>) — see <code>docs/REENTRY.md</code>.
             </div>
           )}
           <MakerLivePositions positions={boardData?.positions} />
