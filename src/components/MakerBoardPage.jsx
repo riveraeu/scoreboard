@@ -597,7 +597,7 @@ function EquityCurve({ daily }) {
   }
   if (pts.length < 2) {
     return <div style={{ color:C.dim, fontSize:10, padding:"10px 0" }}>
-      Paper equity curve appears once graded fills span two days{pts.length === 1 ? ` — day 1: ${fmtUsdFromCents(pts[0].cum)}` : ""}.
+      Paper equity curve appears once graded fills span two days{pts.length === 1 ? ` — day 1: ${fmtUsdFromCents(pts[0].cum)} paper` : ""}.
     </div>;
   }
   const W = 560, H = 90, P = 8;
@@ -613,12 +613,16 @@ function EquityCurve({ daily }) {
       <path d={path} fill="none" stroke={C.blue} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
       {pts.map((p, i) => (
         <circle key={p.day} cx={xs(i)} cy={ys(p.cum)} r="3.5" fill={C.blue} stroke={C.bg} strokeWidth="2">
-          <title>{`${p.day}: ${fmtUsdFromCents(p.cum)} cumulative`}</title>
+          <title>{`${p.day}: ${fmtUsdFromCents(p.cum)} cumulative — simulated, not account money`}</title>
         </circle>
       ))}
+      {/* The endpoint label carries the word "paper" INLINE. This figure sits ~250px from the real
+          V2 PnL tile and is ~230x larger; whatever the section head says, the two things actually
+          read at a glance are these two dollar amounts, so the disclaimer has to live on the number
+          itself. Subordinated to C.gray for the same reason — real money is the brighter figure. */}
       <text x={Math.min(xs(pts.length - 1), W - P - 4)} y={Math.max(12, ys(last.cum) - 8)}
-        textAnchor="end" fill={C.text} fontSize="11" fontWeight="700">
-        {fmtUsdFromCents(last.cum)}
+        textAnchor="end" fill={C.gray} fontSize="11" fontWeight="700">
+        {fmtUsdFromCents(last.cum)}<tspan fill={C.dim} fontWeight="400"> paper</tspan>
       </text>
     </svg>
   );
@@ -664,9 +668,20 @@ function MakerProgress({ mb }) {
   // Within-band, mix-adjusted (2026-07-26) — the old raw side-won pp gap compared two different
   // price distributions. Positive cents = fills give up edge vs quotes at the same price = bad.
   const advSel = mb.adverseSelection?.gapCents ?? null;
+  // V1 (simulated) and V2 (real) grade different populations — V1 quotes every eligible ticker on
+  // every cron tick, V2 only ever rested orders on a capped subset — so their cumulative dollar
+  // totals differ by orders of magnitude for reasons that have nothing to do with performance.
+  // Both totals are on this page, ~250px apart. Name the relationship rather than leaving the
+  // reader to infer it from two 9px labels.
+  const v2Graded = (mb.live?.daily || []).reduce((s, d) => s + (d.graded || 0), 0);
   return (
     <div style={{ marginBottom:12 }}>
       <div style={sectionHead}>Shadow maker V1 · simulated favorite-ask quoting</div>
+      <div style={{ color:C.dim, fontSize:10, lineHeight:1.45, margin:"-4px 0 9px", maxWidth:720 }}>
+        Paper only — V1 quotes every eligible ticker ({(f.graded ?? 0).toLocaleString("en-US")} graded fills),
+        so its cumulative total is not comparable to the real-money V2 figure above
+        ({v2Graded.toLocaleString("en-US")} graded fills on a capped subset). Different populations, not different performance.
+      </div>
       <div style={{ display:"flex", gap:8, marginBottom:10, flexWrap:"wrap" }}>
         <ArmTile mb={mb} />
         <Tile label="fill rate" value={fillRate != null ? `${fillRate}%` : "—"} color={C.text}
@@ -844,8 +859,11 @@ function PortfolioTiles({ kalshiBalance, kalshiPositions, dailyV2 }) {
         sub="Kalshi account · cash + positions" />
       <Tile label="positions" color={C.text} value={kalshiPositions != null ? `$${kalshiPositions.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}` : "—"}
         sub="cost basis · V2 + manual, not mark-to-market" />
-      <Tile label="V2 PnL" color={pnlColor} value={pnlLabel}
-        sub={graded.length ? `all-time · ${graded.reduce((s, d) => s + d.graded, 0)} graded fills` : "awaiting first graded fill"} />
+      {/* "real" is in the LABEL, not just the sub-line: the V1 paper equity total further down the
+          page is ~230x this number, and a reader scanning two dollar figures needs the real/paper
+          split before they read either value. */}
+      <Tile label="V2 PnL · real money" color={pnlColor} value={pnlLabel}
+        sub={graded.length ? `real capital · all-time · ${graded.reduce((s, d) => s + d.graded, 0)} graded fills` : "awaiting first graded fill"} />
     </div>
   );
 }
