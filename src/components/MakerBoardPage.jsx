@@ -23,6 +23,12 @@ import { INPUT_SEARCH_EXHAUSTED, WINDOW_SEARCH_EXHAUSTED, stillExhausted as _sti
 // MODEL_NEXT + _doThisCandidates are now part of the landing page's eager bundle.
 const C = { green:"#3fb950", amber:"#e3b341", red:"#f78166", blue:"#58a6ff", gray:"#8b949e", dim:"#484f58", text:"#c9d1d9", bg:"#0d1117", card:"#161b22", border:"#21262d" };
 const sectionHead = { color:C.blue, fontSize:11, fontWeight:700, margin:"14px 0 8px", borderTop:`1px solid ${C.border}`, paddingTop:12, textTransform:"uppercase", letterSpacing:0.4 };
+// Sub-section label inside a section (chart titles). Same weight/casing as sectionHead but no rule
+// and no accent color — it names a figure, it doesn't open a section.
+const microHead = { color:C.dim, fontSize:9, fontWeight:700, margin:"0 0 3px" };
+// Inline text toggle (expand/collapse). Not a real button visually — these disclose detail that is
+// deliberately hidden by default, so they must not compete with Refresh/Picks in the header.
+const linkBtn = { background:"transparent", border:"none", padding:0, marginTop:5, cursor:"pointer", color:C.blue, fontSize:10, fontWeight:700 };
 
 // A build-roadmap entry counts as SHIPPED once any of its Kalshi tickers exists in
 // SERIES_CONFIG — which we ALWAYS edit when a market ships. Deriving "shipped" from that
@@ -442,11 +448,16 @@ function _doThisCandidates(d) {
 }
 function DoThisBanner({ d }) {
   const [copied, setCopied] = React.useState(false);
+  const [expanded, setExpanded] = React.useState(false);
   if (!d || d.notYet || d.error) return null;
   const cands = _doThisCandidates(d);
   if (!cands.length) return null;
   const [primary, ...rest] = cands;
   const color = _TONE[primary.tone] || C.blue;
+  // A terminal/no-action tier (dim, gray) still has to be READABLE. What makes it quiet is the
+  // absence of an accent color on the frame and of anything to click — not low contrast on the
+  // headline itself, which just made the longest text block on the page the hardest to read.
+  const labelColor = (primary.tone === "dim" || primary.tone === "gray") ? C.text : color;
   // Plain-text digest for pasting straight into a chat session as the next prompt.
   const copyText = [
     `Do this today: ${primary.label}`,
@@ -476,8 +487,22 @@ function DoThisBanner({ d }) {
           )}
         </button>
       </div>
-      <div style={{ color, fontSize:15, fontWeight:700 }}>▶ {primary.label}</div>
-      {primary.why && <div style={{ color:C.text, fontSize:12, marginTop:3, lineHeight:1.4 }}>{primary.why}</div>}
+      <div style={{ color:labelColor, fontSize:15, fontWeight:700 }}>▶ {primary.label}</div>
+      {/* `why` runs to a full paragraph on the terminal tiers (the shelve notice is ~600 chars).
+          Clamp to two lines so the headline stays the thing you read first; the full text is one
+          click away and always intact in the copy-to-prompt digest above. */}
+      {primary.why && (
+        <>
+          <div style={{ color:C.text, fontSize:12, marginTop:3, lineHeight:1.45,
+            ...(expanded ? {} : { display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical", overflow:"hidden" }) }}>
+            {primary.why}
+          </div>
+          {primary.why.length > 180 && (
+            <button onClick={() => setExpanded(v => !v)} style={linkBtn}
+              aria-expanded={expanded}>{expanded ? "Less ▲" : "Why ▼"}</button>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -583,7 +608,7 @@ function EquityCurve({ daily }) {
   const path = pts.map((p, i) => `${i ? "L" : "M"}${xs(i).toFixed(1)},${ys(p.cum).toFixed(1)}`).join(" ");
   const last = pts[pts.length - 1];
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} style={{ width:"100%", maxWidth:560, display:"block" }} role="img" aria-label="Cumulative paper maker PnL by day">
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width:"100%", display:"block" }} role="img" aria-label="Cumulative paper maker PnL by day">
       <line x1={P} x2={W - P} y1={ys(0)} y2={ys(0)} stroke={C.border} strokeWidth="1" />
       <path d={path} fill="none" stroke={C.blue} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
       {pts.map((p, i) => (
@@ -606,7 +631,7 @@ function BandLadder({ bands }) {
   if (!bs.length) return <div style={{ color:C.dim, fontSize:10, padding:"6px 0" }}>Band economics appear with the first quotes.</div>;
   const max = Math.max(1, ...bs.map(b => b.fills));
   return (
-    <div style={{ marginTop:4, maxWidth:560 }}>
+    <div style={{ marginTop:4 }}>
       {bs.map(b => (
         <div key={b.band} style={{ display:"flex", alignItems:"center", gap:8, margin:"3px 0", fontSize:10 }}
           title={`${b.band}¢ ask band: ${b.segments} quote segments, ${b.fills} fills (${b.graded} graded)${b.avgPnl != null ? `, ${b.avgPnl > 0 ? "+" : ""}${b.avgPnl}¢/contract` : ""}`}>
@@ -651,10 +676,20 @@ function MakerProgress({ mb }) {
         <Tile label="next clock" value={nextCp ? new Date(nextCp.date + "T12:00:00").toLocaleDateString("en-US", { month:"short", day:"numeric" }) : "none"}
           color={C.dim} sub={nextCp?.short} />
       </div>
-      <div style={{ color:C.dim, fontSize:9, fontWeight:700, margin:"6px 0 2px" }}>PAPER EQUITY · CUMULATIVE GRADED PNL</div>
-      <EquityCurve daily={mb.daily} />
-      <div style={{ color:C.dim, fontSize:9, fontWeight:700, margin:"10px 0 2px" }}>BAND LADDER · WHERE FILLS + MARGIN CONCENTRATE (V2 TARGETING)</div>
-      <BandLadder bands={mb.bands} />
+      {/* Curve and ladder side-by-side. Both were maxWidth:560 stacked inside a 1280 container, so
+          the entire right half of the page below the tile rows was empty while the two figures each
+          rendered at less than half the width available to them. auto-fit/minmax re-stacks them into
+          one column under ~800px, so the narrow/mobile layout is unchanged. */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(380px, 1fr))", gap:18, alignItems:"start", marginTop:6 }}>
+        <div style={{ minWidth:0 }}>
+          <div style={microHead}>PAPER EQUITY · CUMULATIVE GRADED PNL</div>
+          <EquityCurve daily={mb.daily} />
+        </div>
+        <div style={{ minWidth:0 }}>
+          <div style={microHead}>BAND LADDER · WHERE FILLS + MARGIN CONCENTRATE (V2 TARGETING)</div>
+          <BandLadder bands={mb.bands} />
+        </div>
+      </div>
     </div>
   );
 }
@@ -663,7 +698,13 @@ function MakerProgress({ mb }) {
 // Reuses BandLadder's bar-row visual pattern. Surfaces cap pressure — e.g. 73 eligible vs a
 // 20-slot MAKER_V2_MAX_CONCURRENT cap means most eligible tickers never get a resting order,
 // which is useful context for whether the cap should move, not just an FYI.
-function MakerUtilization({ eligibleBySport, orders, caps }) {
+// Collapsed while DISARMED (2026-07-28): with no engine resting orders every per-sport row is a
+// full-width empty track reading `0/N resting`, so the block became the largest thing on the page
+// while carrying one bit ("nothing is resting"). That bit belongs in the summary line. The rows
+// stay one click away, and come back expanded-by-default the moment the engine is armed — that is
+// when eligible-vs-resting per sport is the cap-pressure diagnostic it was built to be.
+function MakerUtilization({ eligibleBySport, orders, caps, armed }) {
+  const [expanded, setExpanded] = React.useState(false);
   const restingBySport = {};
   for (const o of orders || []) {
     if (o.status !== "resting") continue;
@@ -677,6 +718,7 @@ function MakerUtilization({ eligibleBySport, orders, caps }) {
   const totalEligible = sports.reduce((s, k) => s + (eligibleBySport[k] || 0), 0);
   const totalResting = Object.values(restingBySport).reduce((a, b) => a + b, 0);
   const max = Math.max(1, ...sports.map(s => eligibleBySport[s] || 0));
+  const showRows = armed || expanded;
   return (
     <div style={{ maxWidth:560 }}>
       <div style={{ color:C.dim, fontSize:10, marginBottom:6 }}>
@@ -685,7 +727,13 @@ function MakerUtilization({ eligibleBySport, orders, caps }) {
           <span style={{ color:C.amber, fontWeight:700 }}> · cap-bound tonight</span>
         )}
       </div>
-      {sports.map(s => {
+      {!armed && (
+        <button onClick={() => setExpanded(v => !v)} style={{ ...linkBtn, marginTop:0, marginBottom:expanded ? 4 : 0 }}
+          aria-expanded={expanded}>
+          {expanded ? "Hide per-sport ▲" : `Show per-sport (${sports.length} sports, none resting while disarmed) ▼`}
+        </button>
+      )}
+      {showRows && sports.map(s => {
         const eligible = eligibleBySport[s] || 0;
         const resting = restingBySport[s] || 0;
         return (
@@ -856,7 +904,8 @@ export default function MakerBoardPage({ shadowReportData, shadowReportLoading, 
           {!(shadowReportLoading && !shadowReportData) && <MakerProgress mb={shadowReportData?.makerBoard} />}
 
           <div style={sectionHead}>Utilization by sport</div>
-          <MakerUtilization eligibleBySport={boardData?.eligibleBySport} orders={boardData?.orders} caps={boardData?.caps} />
+          <MakerUtilization eligibleBySport={boardData?.eligibleBySport} orders={boardData?.orders} caps={boardData?.caps}
+            armed={boardData?.armed} />
         </>
       )}
     </div>
