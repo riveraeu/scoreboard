@@ -250,12 +250,21 @@ const TAPE_REPLAY_ENABLED = true;
 // (/api/shadow-snapshot?makerDetectDay=). The flag governs the nightly CRON, not the tool — so a
 // gap can always be repaired without first flipping a global and redeploying, which is what made
 // the 7/28 hole awkward to close. Inserts are idempotent, so a forced re-run is safe by design.
-export async function detectAndGradeMakerFills({ env, dayPT, force = false }) {
+//
+// `offset` makes a rate-limited day recoverable to COMPLETION (added 2026-07-29 for the wrong-side
+// rebuild). The loop restarts at ticker 0 every call and stops at the first 429, so on an
+// 18k-segment day it could never reach the tail no matter how many passes ran — every pass walked
+// the same rate-limited prefix. Now it starts at `offset`, tickers are sorted for a stable order,
+// and it returns `nextOffset` (the index it reached, or null when the day is fully walked). The
+// caller loops on nextOffset with a cooldown, exactly like ?makerBackfill=. The nightly cron omits
+// offset → offset 0, one pass, unchanged. Grading runs only on the final chunk (nextOffset===null),
+// since gradeMakerFills scans the whole ungraded set and is wasteful to call mid-walk.
+export async function detectAndGradeMakerFills({ env, dayPT, force = false, offset = 0 }) {
   await ensureMakerTables(env);
 
   if (!TAPE_REPLAY_ENABLED && !force) {
     const graded = await gradeMakerFills({ env });
-    return { tickers: 0, newFills: 0, graded, tapeFails: 0, rateLimited: false,
+    return { tickers: 0, newFills: 0, graded, tapeFails: 0, rateLimited: false, nextOffset: null,
       skipped: "tape_replay_disabled" };
   }
   // source='live' only: backfilled segments (api/lib/maker-backfill.js) replay their own tape in
@@ -275,9 +284,12 @@ export async function detectAndGradeMakerFills({ env, dayPT, force = false }) {
   const fills = [];
   let tapeFails = 0, rateLimited = false;
   const minTs = Math.floor((Date.parse(`${dayPT}T00:00:00-07:00`) - 6 * 3600_000) / 1000);
-  const tickers = [...byTicker.keys()];
+  // Sorted so `offset` refers to the same ticker across passes — Map key order is insertion order
+  // and stable within a query, but sorting makes resume robust to any query-plan change.
+  const tickers = [...byTicker.keys()].sort();
   const BATCH = 4, DELAY = 250;
-  for (let off = 0; off < tickers.length && !rateLimited; off += BATCH) {
+  let off = offset;
+  for (off = offset; off < tickers.length && !rateLimited; off += BATCH) {
     const batch = tickers.slice(off, off + BATCH);
     await Promise.all(batch.map(async (ticker) => {
       try {
@@ -312,10 +324,18 @@ export async function detectAndGradeMakerFills({ env, dayPT, force = false }) {
       values, env, { write: true });
   }
 
-  const gradedCount = await gradeMakerFills({ env });
+  // nextOffset: where to resume. If we stopped on a 429 mid-walk, resume at the batch we reached;
+  // if we walked off the end, the day is complete → null. The nightly cron (offset 0, one pass)
+  // gets null unless it 429'd, in which case a later run resumes rather than restarting the prefix.
+  const reachedEnd = off >= tickers.length;
+  const nextOffset = reachedEnd ? null : off;
+
+  // Grade only when the day is fully walked — gradeMakerFills scans the entire ungraded set, so
+  // calling it on every chunk of a resumed day repeats the same work N times for no new rows.
+  const gradedCount = reachedEnd ? await gradeMakerFills({ env }) : 0;
 
   return { tickers: tickers.length, newFills: fills.length, graded: gradedCount,
-    tapeFails, rateLimited };
+    tapeFails, rateLimited, nextOffset };
 }
 
 // Grades everything ungraded directly off Kalshi's own public settlement for the ticker (2026-07-

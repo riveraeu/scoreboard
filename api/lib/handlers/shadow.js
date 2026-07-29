@@ -4800,9 +4800,12 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
       if (!segN) return jsonResponse({ ok: true, day: dayPT, liveSegments: 0, skipped: "no_live_segments",
         hint: "quoting did not run that day — ?makerBackfill= reconstructs segments from candlesticks instead" });
 
-      const res = await detectAndGradeMakerFills({ env, dayPT, force: true });
-      console.log(`[shadow-snapshot] makerDetectDay ${dayPT} segs=${segN} tickers=${res.tickers} `
-        + `newFills=${res.newFills} graded=${res.graded} tapeFails=${res.tapeFails} rl=${res.rateLimited}`);
+      // &offset=N resumes a rate-limited walk; the caller loops on `nextOffset` until it is null,
+      // exactly like ?makerBackfill=. Omitted → offset 0.
+      const offset = Math.max(0, parseInt(new URL(request.url).searchParams.get("offset") || "0", 10) || 0);
+      const res = await detectAndGradeMakerFills({ env, dayPT, force: true, offset });
+      console.log(`[shadow-snapshot] makerDetectDay ${dayPT} segs=${segN} off=${offset} tickers=${res.tickers} `
+        + `newFills=${res.newFills} graded=${res.graded} tapeFails=${res.tapeFails} rl=${res.rateLimited} next=${res.nextOffset}`);
       return jsonResponse({
         ok: true, day: dayPT, liveSegments: segN, ...res,
         // newFills 0 with tickers > 0 and no tape failures is the signal that Kalshi no longer
