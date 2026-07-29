@@ -2820,6 +2820,88 @@ async function handleShadowReport({ path, request, env, cache }) {
     } catch (e) { return errorResponse(`makerTapeProbe failed: ${e?.message}`, 500); }
   }
 
+  // ── ?makerFillForensic=YYYY-MM-DD — WHY did V1 miss a fill reality delivered? ────────────────
+  // ?makerQueueCheck=1 left one thing unexplained: V1's per-segment fill rate in the V2 band is
+  // 9.1%, but inside V2's actual order windows it is 0.7%. Those should be comparable — both are
+  // per unit of resting exposure — so an order-of-magnitude gap means either `replayFills` has a
+  // matching bug, or V1's exposure model differs from a real resting order. Different fixes.
+  //
+  // This takes cases where a real V2 order FILLED and V1 recorded nothing, then replays V1's own
+  // match conditions trade by trade and reports WHICH one rejected each trade:
+  //   outsideWindow  — trade fell outside every overlapping segment's [valid_from, valid_to)
+  //   sideMismatch   — t.taker_side !== segment.quote_side
+  //   priceBelowAsk  — px < our quoted ask
+  //   noPrice        — the side's price came back null
+  //   wouldMatch     — passes every condition, so V1 SHOULD have booked it (a real bug)
+  //
+  // `wouldMatch > 0` means the detector is broken. All rejections in `sideMismatch` means our
+  // taker_side convention is inverted. All in `outsideWindow` means the segment bookkeeping, not
+  // the matcher, is what diverges from a live order.
+  if (new URL(request.url).searchParams.get("makerFillForensic")) {
+    const dayPT = new URL(request.url).searchParams.get("makerFillForensic");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dayPT)) return errorResponse("makerFillForensic must be YYYY-MM-DD", 400);
+    try {
+      const cases = await neonQuery(
+        `SELECT o.id, o.ticker, o.side, o.price, o.size, o.filled_count,
+                o.placed_at, COALESCE(o.canceled_at, o.expires_at) AS ended_at
+           FROM maker_orders_v2 o
+          WHERE o.game_date = $1 AND o.filled_count > 0
+            AND NOT EXISTS (
+              SELECT 1 FROM maker_quotes q
+                JOIN maker_fills f ON f.quote_id = q.id
+               WHERE q.ticker = o.ticker AND q.source = 'live' AND q.quote_side = o.side
+                 AND f.traded_at >= o.placed_at
+                 AND f.traded_at <  COALESCE(o.canceled_at, o.expires_at, NOW()))
+          ORDER BY o.filled_count DESC LIMIT 3`, [dayPT], env, { write: true });
+      if (!cases.length) return jsonResponse({ ok: true, day: dayPT, cases: [], note: "no V2-filled/V1-missed orders that day" });
+
+      const minTs = Math.floor((Date.parse(`${dayPT}T00:00:00-07:00`) - 6 * 3600_000) / 1000);
+      const out = [];
+      for (const c of cases) {
+        const segs = await neonQuery(
+          `SELECT id, quote_side, quote_ask, size, valid_from, valid_to
+             FROM maker_quotes
+            WHERE ticker = $1 AND source = 'live' AND quote_side = $2
+              AND valid_from < $4 AND COALESCE(valid_to, NOW()) > $3
+            ORDER BY valid_from`, [c.ticker, c.side, c.placed_at, c.ended_at], env, { write: true });
+        let trades = [];
+        try {
+          const r = await fetch(
+            `https://api.elections.kalshi.com/trade-api/v2/markets/trades?ticker=${encodeURIComponent(c.ticker)}&limit=1000&min_ts=${minTs}`,
+            { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8000) });
+          if (r.ok) trades = (await r.json())?.trades || [];
+        } catch {}
+        const from = Date.parse(c.placed_at), to = Date.parse(c.ended_at);
+        const inWin = trades.filter(t => { const ts = Date.parse(t.created_time); return ts >= from && ts < to; });
+        const reasons = { outsideWindow: 0, sideMismatch: 0, priceBelowAsk: 0, noPrice: 0, wouldMatch: 0 };
+        const samples = [];
+        for (const t of inWin) {
+          const ts = Date.parse(t.created_time);
+          const seg = segs.find(s => ts >= Date.parse(s.valid_from) && ts < (s.valid_to ? Date.parse(s.valid_to) : Infinity));
+          if (!seg) { reasons.outsideWindow++; continue; }
+          const px = seg.quote_side === "yes"
+            ? (t.yes_price_dollars != null ? Math.round(parseFloat(t.yes_price_dollars) * 100) : null)
+            : (t.no_price_dollars  != null ? Math.round(parseFloat(t.no_price_dollars)  * 100) : null);
+          let why;
+          if (t.taker_side !== seg.quote_side) { reasons.sideMismatch++; why = "sideMismatch"; }
+          else if (px == null) { reasons.noPrice++; why = "noPrice"; }
+          else if (px < Number(seg.quote_ask)) { reasons.priceBelowAsk++; why = "priceBelowAsk"; }
+          else { reasons.wouldMatch++; why = "wouldMatch"; }
+          if (samples.length < 6) samples.push({ why, takerSide: t.taker_side, quoteSide: seg.quote_side,
+            px, quoteAsk: Number(seg.quote_ask), count: t.count_fp ?? t.count, at: t.created_time });
+        }
+        out.push({
+          ticker: c.ticker, v2Side: c.side, v2Price: c.price, v2FilledCount: c.filled_count,
+          window: { from: c.placed_at, to: c.ended_at },
+          v1Segments: segs.map(s => ({ side: s.quote_side, ask: Number(s.quote_ask), size: s.size,
+            from: s.valid_from, to: s.valid_to })),
+          tradesTotal: trades.length, tradesInWindow: inWin.length, reasons, samples,
+        });
+      }
+      return jsonResponse({ ok: true, day: dayPT, cases: out });
+    } catch (e) { return errorResponse(`makerFillForensic failed: ${e?.message}`, 500); }
+  }
+
   // ── ?makerExitCheck=1 — early-exit counterfactual (2026-07-28) ──────────
   // "Would selling back before settlement, while in profit, have helped?" Never examined before —
   // both V1 and V2 model every position as hold-to-settlement (`pnl_cents = fill_ask − 100·won`),
