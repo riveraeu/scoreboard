@@ -140,6 +140,14 @@ export async function handleSportsRoutes(ctx) {
         const comp = event.competitions?.[0];
         const state = comp?.status?.type?.state ?? "pre";
         const detail = comp?.status?.type?.shortDetail || comp?.status?.type?.detail || "";
+        // ESPN reports a POSTPONED / CANCELED / SUSPENDED game as state:"post" with
+        // completed:false and 0-0 scores — a terminal-looking payload that is NOT a final.
+        // Passed through so consumers can tell "the game ended" from "the game never happened":
+        // the shadow resolver's `_resolveRow` guards on it (a postponed MLB game used to grade as
+        // a 0-0 final, flipping every under to a win and every over to a loss — 10 such rows on
+        // the 2026-07-27 CLE@CIN postponement). Undefined on older cached payloads, so every
+        // consumer must test `=== false`, never falsiness.
+        const completed = comp?.status?.type?.completed;
         const homeComp = (comp?.competitors || []).find(c => c.homeAway === "home");
         const awayComp = (comp?.competitors || []).find(c => c.homeAway === "away");
         const homeTeam = toCanonical(homeComp?.team?.abbreviation?.toUpperCase()) || null;
@@ -334,7 +342,7 @@ export async function handleSportsRoutes(ctx) {
           } catch {}
         }
 
-        const gameData = { state, detail, players, homeTeam, awayTeam, homeScore, awayScore };
+        const gameData = { state, detail, completed, players, homeTeam, awayTeam, homeScore, awayScore };
         if (sport === "mlb" && f3Complete) {
           gameData.f3HomeScore = f3HomeScore;
           gameData.f3AwayScore = f3AwayScore;

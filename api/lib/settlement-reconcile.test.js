@@ -4,6 +4,8 @@ import assert from "node:assert";
 import {
   reconcileGrades,
   isSettlementAuthoritative,
+  isMakeupReattributed,
+  isNonFinalTerminal,
   SETTLEMENT_AUTHORITATIVE_SPORTS,
   SETTLEMENT_CUTOVER_DATE,
 } from "./settlement-reconcile.js";
@@ -181,4 +183,92 @@ test("espnAbsent vs espnNulled split — keeps the resolver's noData log line ho
   // 1 row ESPN saw but explicitly abandoned.
   assert.strictEqual(res.espnNulled, 1);
   assert.strictEqual(res.settlementOnly, 3, "settlementOnly covers graded rows only, not voids");
+});
+
+// ── Postponed games + makeup doubleheaders (2026-07-29) ──────────────────────────────────────
+// Regression cover for the 65 mis-graded CLE@CIN rows. Both predicates decide whether the ESPN
+// path is allowed to write a grade at all, so a false NEGATIVE re-opens the bug and a false
+// POSITIVE silently stops grading a healthy population — both directions are pinned.
+
+test("isMakeupReattributed: game_date FORWARD of the ticker date is a makeup re-attribution", () => {
+  // The real row: ticker says 2026-07-27, the makeup was played (and re-attributed) on 07-28.
+  assert.ok(isMakeupReattributed({
+    kalshi_ticker: "KXMLBF3-26JUL271910CLECIN-CIN",
+    game_date: "2026-07-28",
+  }));
+});
+
+test("isMakeupReattributed: a game_date BEHIND the ticker date is a PT/ET artifact, not a makeup", () => {
+  // game_date is derived in PT, ticker dates are ET, so a late game can legitimately sit one day
+  // behind its ticker. Flagging that would stop grading healthy west-coast rows.
+  assert.strictEqual(isMakeupReattributed({
+    kalshi_ticker: "KXMLBGAME-26JUL28LADSF-LAD",
+    game_date: "2026-07-27",
+  }), false);
+});
+
+test("isMakeupReattributed: matching dates are the normal case", () => {
+  assert.strictEqual(isMakeupReattributed({
+    kalshi_ticker: "KXMLBF3-26JUL271910CLECIN-CIN",
+    game_date: "2026-07-27",
+  }), false);
+});
+
+test("isMakeupReattributed: accepts a Neon DATE (JS Date object), not just an ISO string", () => {
+  // Neon returns DATE columns as Date objects — String(d).slice(0,10) would yield "Mon Jul 2".
+  assert.ok(isMakeupReattributed({
+    kalshi_ticker: "KXMLBF3-26JUL271910CLECIN-CIN",
+    game_date: new Date("2026-07-28T00:00:00.000Z"),
+  }));
+});
+
+test("isMakeupReattributed: failure-closed on missing/unparseable inputs", () => {
+  for (const row of [
+    {},
+    { kalshi_ticker: null, game_date: "2026-07-28" },
+    { kalshi_ticker: "KXMLBF3-NOTADATE-CIN", game_date: "2026-07-28" },   // pre-2026-07-23 rows
+    { kalshi_ticker: "KXMLBF3-26JUL271910CLECIN-CIN", game_date: null },
+    { kalshi_ticker: "KXMLBF3-26JUL271910CLECIN-CIN", game_date: "not-a-date" },
+  ]) {
+    assert.strictEqual(isMakeupReattributed(row), false, JSON.stringify(row));
+  }
+});
+
+test("isNonFinalTerminal: ESPN reports POSTPONED as state:post + completed:false", () => {
+  // The exact payload shape that graded the 7/27 CLE@CIN rows as a 0-0 final.
+  assert.ok(isNonFinalTerminal({ state: "post", completed: false, homeScore: 0, awayScore: 0 }));
+});
+
+test("isNonFinalTerminal: a real final is not terminal-non-final", () => {
+  assert.strictEqual(isNonFinalTerminal({ state: "post", completed: true, homeScore: 6, awayScore: 5 }), false);
+});
+
+test("isNonFinalTerminal: absent `completed` (payload cached pre-2026-07-29) grades as before", () => {
+  // Must be `=== false`, never falsiness — relaxing this would make every cached payload
+  // un-gradeable at once, which is a far bigger outage than the bug being fixed.
+  assert.strictEqual(isNonFinalTerminal({ state: "post", homeScore: 6, awayScore: 5 }), false);
+  assert.strictEqual(isNonFinalTerminal({ state: "post", completed: undefined }), false);
+});
+
+test("isNonFinalTerminal: non-post states and missing games are never terminal", () => {
+  assert.strictEqual(isNonFinalTerminal({ state: "in", completed: false }), false);
+  assert.strictEqual(isNonFinalTerminal({ state: "pre", completed: false }), false);
+  assert.strictEqual(isNonFinalTerminal({ state: "unknown" }), false);
+  assert.strictEqual(isNonFinalTerminal(null), false);
+  assert.strictEqual(isNonFinalTerminal(undefined), false);
+});
+
+test("promoted postponed rows carry no actualValue from the wrong game", () => {
+  // The forward path keeps these rows out of `espnUpdates` entirely, so reconcile has no ESPN
+  // entry to inherit an actualValue from. Pins that the promotion path writes a clean row rather
+  // than a corrected label over a stale value read off the wrong physical game.
+  const res = reconcileGrades({
+    settlementGraded: graded([["postponed1", true, "mlb"]]),
+    espnUpdates: [],
+  });
+  const u = byId(res).get("postponed1");
+  assert.strictEqual(u.won, true);
+  assert.strictEqual(u.actualValue, null);
+  assert.strictEqual(res.espnAbsent, 1, "counted as ESPN-absent, not as a disagreement");
+  assert.strictEqual(res.disagreed, 0);
 });

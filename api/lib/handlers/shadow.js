@@ -28,7 +28,7 @@ import { fetchLmbResults } from "../lmb.js";
 import { MODEL_FREE_LEAGUE_KEYS, leagueSource } from "../model-free-leagues.js";
 import { fetchScoCupResults } from "../scocup.js";
 import { deriveKalshiSide, fetchKalshiSettlements, fetchKalshiSettlementsWithMeta, resolveRowViaKalshi, resolveTickerSideViaKalshi, classifyRowViaKalshi } from "../kalshi-settlement.js";
-import { reconcileGrades, isSettlementAuthoritative, SETTLEMENT_AUTHORITATIVE_SPORTS, SETTLEMENT_CUTOVER_DATE } from "../settlement-reconcile.js";
+import { reconcileGrades, isSettlementAuthoritative, isMakeupReattributed, isNonFinalTerminal, SETTLEMENT_AUTHORITATIVE_SPORTS, SETTLEMENT_CUTOVER_DATE } from "../settlement-reconcile.js";
 import { kalshiTickerDate } from "../kalshi-ticker.js";
 import { weightedPnlSumsSql, weightedPnlFromRow, dayClusteredPnl, quotedOutcomesByBand, adverseSelectionWithinBand,
   leadTimeBuckets, spearmanEdgeVsLead, mixAdjustedNearFarByDay, dayLevelDiffCI, leadTimeVerdict,
@@ -406,7 +406,12 @@ function _findPlayer(players, name) {
 // Returns { won: boolean|null, actualValue: number|null }, or null to skip (game not final).
 // won=null means DNP or void (excluded from calibration; resolved=TRUE, won=NULL).
 function _resolveRow(row, game) {
-  if (!game || game.state !== "post") return null;
+  // `state === "post"` alone is NOT "the game finished" — ESPN reports POSTPONED / CANCELED /
+  // SUSPENDED with state:"post", completed:false and 0-0 scores. Grading that as a final is
+  // silently catastrophic on totals (every under wins, every over loses) and was exactly what
+  // happened to the 2026-07-27 CLE@CIN rows. `isNonFinalTerminal` owns the `=== false` test so
+  // the cached-payload rule lives in one place.
+  if (!game || game.state !== "post" || isNonFinalTerminal(game)) return null;
 
   const { game_type, stat, direction, threshold, player_name, home_team, scoring_team, pick_team, features } = row;
   const th = parseFloat(threshold);
@@ -934,6 +939,14 @@ async function handleShadowResolver({ path, request, env, cache }) {
   let settlementGraded = new Map();   // id → { won, sport } (authoritative sports only)
   let settlementVoided = new Map();   // id → { sport, result }
   let kalshiDryRun = { checked: 0, wouldResolve: 0, byId: new Map() };
+  // Settlement verdicts for NON-authoritative (calibrated) rows, kept in the {won, sport} /
+  // {sport, result} shapes `settlementGraded`/`settlementVoided` take. These are comparison-only
+  // by default; the postponed/makeup escape below promotes individual rows out of here when the
+  // ESPN path proves structurally unable to identify the event. Separate from
+  // `kalshiDryRun.byId` (id → won) rather than reshaping it, because that map has its own
+  // consumers downstream and its contract is not this feature's to change.
+  const dryRunGraded = new Map();     // id → { won, sport }
+  const dryRunVoided = new Map();     // id → { sport, result }
   // Settlement-fetch health for this pass. chunksFailed > 0 means some tickers were never looked
   // up at all, so `graded`/`disagreed` below undercount — the pass was incomplete, not clean.
   let settlementFetchMeta = null;
@@ -952,6 +965,9 @@ async function handleShadowResolver({ path, request, env, cache }) {
           else if (c.state === "void") settlementVoided.set(r.id, { sport: r.sport, result: c.result });
         } else if (c.state === "graded") {
           dryRunById.set(r.id, c.won);
+          dryRunGraded.set(r.id, { won: c.won, sport: r.sport });
+        } else if (c.state === "void") {
+          dryRunVoided.set(r.id, { sport: r.sport, result: c.result });
         }
       }
       kalshiDryRun = { checked: tickeredRows.length, wouldResolve, byId: dryRunById };
@@ -960,6 +976,24 @@ async function handleShadowResolver({ path, request, env, cache }) {
     console.error(`[shadow-resolver] kalshi settlement fetch failed: ${e?.message}`);
     settlementGraded = new Map();
     settlementVoided = new Map();
+    dryRunGraded.clear();
+    dryRunVoided.clear();
+  }
+
+  // ── Postponed / makeup escape, pass 1 of 2 (2026-07-29) ────────────────────────────────────
+  // Rows whose game_date sits FORWARD of their ticker's date: a postponed game re-attributed to a
+  // later slate, where `gameTimes`' last-event-wins keying hands a makeup market the wrong game of
+  // that day's doubleheader. Pure row data, so it is decided here, before any ESPN work.
+  //
+  // The second pass (rows whose matched ESPN event came back postponed) can only run after the
+  // ESPN lookup and folds into the same sets further down, just before reconcileGrades.
+  const espnUnidentifiable = new Set();   // row ids ESPN must not grade
+  let makeupDeferred = 0, postponedSkipped = 0;
+  for (const r of rows) {
+    if (isSettlementAuthoritative(r.sport)) continue;   // already settlement-first
+    if (!isMakeupReattributed(r)) continue;
+    espnUnidentifiable.add(r.id);
+    makeupDeferred++;
   }
 
   // Tennis match-winner + soccer rows resolve via their own ESPN scoreboards (not the team-based
@@ -1087,6 +1121,11 @@ async function handleShadowResolver({ path, request, env, cache }) {
   let noData = 0;
 
   for (const row of teamRows) {
+    // Pass 1 already ruled this row unidentifiable (makeup re-attribution). Not `skipped` and not
+    // `noData` — ESPN could well produce a confident verdict here, and that verdict would be about
+    // the wrong physical game. Leaving it out of `updates` entirely is what keeps `actualValue`
+    // from being written off that wrong game at the reconcile chokepoint.
+    if (espnUnidentifiable.has(row.id)) continue;
     const { rawKey, effectiveDate } = rowToKey.get(row.id);
     let game = liveByKey.get(`${rawKey}|${effectiveDate}`);
     // If primary lookup was unknown (wrong stored game_time), try base key fallback.
@@ -1111,6 +1150,11 @@ async function handleShadowResolver({ path, request, env, cache }) {
       }
     }
     if (!game || game.state === "unknown") { noData++; continue; } // game not found in ESPN — leave unresolved
+    // Pass 2 of the postponed/makeup escape: the event ESPN matched never actually finished
+    // (POSTPONED / CANCELED / SUSPENDED — state:"post", completed:false, 0-0). `_resolveRow` also
+    // refuses these, but catching it here separates them from the ordinary `skipped` population
+    // and marks the row for the settlement promotion below.
+    if (isNonFinalTerminal(game)) { espnUnidentifiable.add(row.id); postponedSkipped++; continue; }
     const result = _resolveRow(row, game);
     if (result === null) { skipped++; continue; }
     updates.push({ id: row.id, won: result.won, actualValue: result.actualValue });
@@ -1624,6 +1668,32 @@ async function handleShadowResolver({ path, request, env, cache }) {
     }
   }
 
+  // ── Postponed / makeup escape, promotion step ──────────────────────────────────────────────
+  // Both passes have run, so `espnUnidentifiable` is complete. For those rows only, settlement is
+  // promoted from comparison-only to authoritative — NOT because settlement is preferred for a
+  // calibrated family (it isn't; those want physical reality), but because ESPN has no answer to
+  // prefer. A wrong grade corrupts calibration far worse than a settlement grade does, and the
+  // alternative for these rows is not "an ESPN grade" but "no grade at all".
+  //
+  // Runs before reconcileGrades and simply seeds its existing maps, so the reconcile chokepoint,
+  // its counters, and neonBatchResolve stay exactly as they were.
+  let makeupPromoted = 0, makeupVoided = 0, makeupUngraded = 0;
+  for (const id of espnUnidentifiable) {
+    if (settlementGraded.has(id) || settlementVoided.has(id)) continue;
+    const g = dryRunGraded.get(id);
+    if (g) { settlementGraded.set(id, g); makeupPromoted++; continue; }
+    const v = dryRunVoided.get(id);
+    // A postponement Kalshi voids outright (game never made up) resolves to won=NULL now rather
+    // than waiting out the 14-day abandonment sweep, and drops cleanly from calibration.
+    if (v) { settlementVoided.set(id, v); makeupVoided++; continue; }
+    // Settlement hasn't finalized yet (makeup not played, or market still open). Leave the row
+    // unresolved so a later pass picks it up — the one correct outcome, and the failure-closed one.
+    makeupUngraded++;
+  }
+  if (espnUnidentifiable.size) {
+    console.log(`[shadow-resolver] postponed/makeup escape: makeupReattributed=${makeupDeferred} postponedEvent=${postponedSkipped} → settlementGraded=${makeupPromoted} voided=${makeupVoided} stillUngraded=${makeupUngraded}`);
+  }
+
   // ── Reconcile chokepoint ── settlement grades win over ESPN for the authoritative sports; every
   // other row passes through untouched. Deliberately ONE site, after all 15 per-sport ESPN blocks
   // have pushed, so none of them needed editing (and Phase B can delete them wholesale without
@@ -1736,6 +1806,18 @@ async function handleShadowResolver({ path, request, env, cache }) {
     // Should be 0 for anything logged after the kalshi_ticker column landed 2026-07-23; a non-zero
     // on fresh rows means a capture path is dropping identity again (see game-totals.js 2026-07-27).
     guessedDateRows: _guessedDateRows,
+    // Postponed games + their makeups (2026-07-29). These rows leave the ESPN-vs-settlement
+    // disagreement tripwire by construction, so they need their own visibility or the fix would
+    // trade a wrong grade for a blind spot — the failure mode the 414 silent-drop incident
+    // (2026-07-26) turned on. `stillUngraded` is the only one expected to be transient: it should
+    // drain to 0 once the makeup is played and Kalshi settles.
+    postponedMakeup: espnUnidentifiable.size ? {
+      makeupReattributed: makeupDeferred,
+      postponedEvent: postponedSkipped,
+      settlementGraded: makeupPromoted,
+      voided: makeupVoided,
+      stillUngraded: makeupUngraded,
+    } : null,
     maker: makerMeta,
     makerLive: makerLiveMeta,
     // Authoritative settlement grading for the shadow-only sports (2026-07-25). `disagreed` is the
@@ -4485,6 +4567,105 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
         flips,
       });
     } catch (e) { return errorResponse(`backfillgamedate failed: ${e?.message}`, 500); }
+  }
+
+  // ?regradepostponed=1 (ADMIN only, ?dry=1 to report, ?days=N window, default 30) — repair for the
+  // 2026-07-29 postponed/makeup bug. The forward fix (settlement-reconcile.js + _resolveRow) stops
+  // NEW rows from being graded against an unidentifiable event; this re-grades the ones already
+  // written. Idempotent — re-running changes nothing once clean.
+  //
+  // The signature is structural, not "disagrees with settlement". That distinction is the whole
+  // design: regrading every calibrated row that merely disagrees would hand settlement authority
+  // over the calibrated families wholesale, which settlement-reconcile.js's doctrine forbids and
+  // which would quietly convert a repair into a policy change. So the population is:
+  //
+  //   a matchup (sport + team pair + ticker date) where SOME row was re-attributed FORWARD of its
+  //   ticker date → that matchup was postponed → every row for it, on the original date AND the
+  //   makeup date, was graded against an event ESPN could not identify.
+  //
+  // That catches both halves of the CLE@CIN row set in one pass: the makeup-date rows (graded
+  // against the wrong game of the doubleheader) and the original-date rows (graded against a
+  // POSTPONED 0-0 "final"). The self-join is done in JS because tickerDate is derived, not a column.
+  //
+  // actual_value is nulled alongside `won` for the whole population — it was read off the wrong
+  // physical game, so keeping it would leave a corrupt column behind a corrected label. This
+  // matches the forward path, where these rows never enter `updates` and so carry no actualValue.
+  if (new URL(request.url).searchParams.get("regradepostponed") === "1") {
+    if (!isAdmin) return errorResponse("Forbidden", 403);
+    const _qs = new URL(request.url).searchParams;
+    const dry = _qs.get("dry") === "1";
+    const days = Math.min(365, Math.max(1, parseInt(_qs.get("days") || "30", 10) || 30));
+    try {
+      const cand = await neonQuery(
+        `SELECT id, sport, stat, game_type, kalshi_ticker, kalshi_side, won,
+                home_team, away_team, game_date
+           FROM ${SHADOW_TABLE}
+          WHERE kalshi_ticker IS NOT NULL
+            AND game_date IS NOT NULL
+            AND resolved = TRUE
+            AND game_date >= CURRENT_DATE - $1::int`, [days], env, { write: true });
+
+      const ymd = (v) => (v ? new Date(v).toISOString().slice(0, 10) : null);
+      const rowsWithTd = [];
+      for (const r of cand) {
+        const td = kalshiTickerDate(r.kalshi_ticker);
+        const gd = ymd(r.game_date);
+        if (td && gd) rowsWithTd.push({ ...r, tickerDate: td, gameDate: gd });
+      }
+      // A matchup is keyed by its TICKER date, not its game_date — that is what stays constant
+      // across a postponement, and it is what makes the original-date and makeup-date rows for the
+      // same postponed game land in the same bucket.
+      const matchupKey = (r) => `${r.sport}|${[r.home_team, r.away_team].sort().join("|")}|${r.tickerDate}`;
+      const postponedMatchups = new Set();
+      for (const r of rowsWithTd) if (r.gameDate > r.tickerDate) postponedMatchups.add(matchupKey(r));
+      const affected = rowsWithTd.filter(r => postponedMatchups.has(matchupKey(r)));
+
+      let regraded = 0, voided = 0, pending = 0, flipped = 0, fetchMeta = null;
+      const flips = [];
+      const updates = [];
+      if (affected.length) {
+        const { settlements, meta } = await fetchKalshiSettlementsWithMeta(affected.map(r => r.kalshi_ticker));
+        fetchMeta = meta;
+        for (const r of affected) {
+          const c = classifyRowViaKalshi(r, settlements);
+          if (c.state === "pending") { pending++; continue; }
+          if (c.state === "void") { voided++; updates.push({ id: r.id, won: null }); continue; }
+          regraded++;
+          if (c.won !== r.won) {
+            flipped++;
+            if (flips.length < 20) flips.push({ id: r.id, sport: r.sport, stat: r.stat || r.game_type,
+              ticker: r.kalshi_ticker, was: r.won, now: c.won, gameDate: r.gameDate, tickerDate: r.tickerDate });
+          }
+          updates.push({ id: r.id, won: c.won });
+        }
+        // Chunked VALUES update — same idiom as neonBatchResolve / backfillgamedate above.
+        if (!dry && updates.length) {
+          for (let i = 0; i < updates.length; i += 100) {
+            const chunk = updates.slice(i, i + 100);
+            await neonQuery(
+              `UPDATE ${SHADOW_TABLE} AS t SET won = v.won, actual_value = NULL
+                 FROM (VALUES ${chunk.map((_, ri) => `($${ri * 2 + 1}, $${ri * 2 + 2}::boolean)`).join(", ")}) AS v(id, won)
+                WHERE t.id = v.id`,
+              chunk.flatMap(u => [u.id, u.won]), env, { write: true });
+          }
+        }
+      }
+
+      console.log(`[shadow-snapshot] regradepostponed dry=${dry} days=${days} scanned=${cand.length} `
+        + `postponedMatchups=${postponedMatchups.size} affected=${affected.length} regraded=${regraded} flipped=${flipped} voided=${voided} pending=${pending}`);
+      return jsonResponse({
+        ok: true, dry, days,
+        scanned: cand.length,
+        postponedMatchups: postponedMatchups.size,
+        affected: affected.length,
+        regraded, flipped, voided, pending,
+        settlementFetch: fetchMeta,
+        // Non-zero chunksFailed means some affected rows were never looked up — re-run before
+        // trusting any count here (2026-07-26 414 lesson).
+        incomplete: !!(fetchMeta && fetchMeta.chunksFailed > 0),
+        flips,
+      });
+    } catch (e) { return errorResponse(`regradepostponed failed: ${e?.message}`, 500); }
   }
 
   const snapshotDate = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });

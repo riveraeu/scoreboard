@@ -3,6 +3,8 @@
 // /api/shadow-resolver pass. Pure — no I/O, no DB, no env — so the precedence rules below are
 // unit-testable without standing up a resolver run.
 //
+import { kalshiTickerDate } from "./kalshi-ticker.js";
+//
 // ── Doctrine (2026-07-25, see project_kalshi_missettlement_watch_2026_07_25 memory) ──
 // For the shadow-only / model-free families, Kalshi's own settlement IS ground truth, because the
 // only thing that data measures is ROI — and settlement is definitionally what a position would
@@ -38,6 +40,68 @@ export function isSettlementAuthoritative(sport) {
 // report a tautological 100%. Rows resolved before it carry a genuine ESPN grade and stay a real
 // comparison. Bump this only if the cutover is ever re-run from scratch.
 export const SETTLEMENT_CUTOVER_DATE = "2026-07-25";
+
+// ── Row-level settlement authority: postponed games and their makeups (2026-07-29) ──────────
+//
+// The two predicates below name the cases where the ESPN path is STRUCTURALLY unable to identify
+// which physical event a row's market refers to. They do not express a preference for settlement —
+// they express that ESPN has no answer, so its answer must not be written.
+//
+// Found on the 2026-07-27 CLE@CIN postponement (65 mis-graded rows, /api/kalshi-dryrun-check):
+// the game was postponed and made up as a 7/28 doubleheader, and BOTH halves of the row set broke,
+// each in its own way. See docs/DEBUGGING.md § Postponed games and makeup doubleheaders.
+//
+// The trap worth knowing before touching this: **the ticker cannot identify the makeup game.**
+// Ticker `KXMLBF3-26JUL271910CLECIN` encodes 19:10 ET, and makeup game 2 also started 23:10Z —
+// the same wall clock one day later — while the market actually settled against game 1 (17:40Z).
+// So matching on ticker time picks game 2 (wrong) and matching on ticker date picks 7/27 (also
+// wrong, the game did not happen then). MLB's "the makeup is game 1" convention is a habit, not a
+// rule. There is no ESPN-side mapping from a postponed market to its specific makeup game; only
+// Kalshi's settlement knows which one it paid against. Anything that guesses here re-creates this
+// bug in a new shape, which is exactly the failure pattern the 2026-07-27 cross-day mis-grade
+// memo already warns about. Hence: detect, refuse to guess, defer.
+
+// Normalize a Neon DATE (JS Date object) or an ISO-ish string to "YYYY-MM-DD".
+// Neon returns DATE columns as JS Date objects — `String(d).slice(0,10)` yields "Mon Jul 2"
+// (see the Neon gotchas in CLAUDE.md), so both shapes go through Date.
+function _ymd(v) {
+  if (!v) return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+}
+
+/**
+ * True when a row's game_date was re-attributed FORWARD of the date its Kalshi ticker encodes —
+ * the signature of a postponed game whose makeup we hydrated from a later slate.
+ *
+ * Strictly forward (`>`), and that asymmetry is load-bearing rather than stylistic: `game_date` is
+ * derived in PT while ticker dates are ET, so a late game can legitimately sit one day BEHIND its
+ * ticker. Only a forward gap means re-attribution; a backward one is a timezone artifact and must
+ * not be flagged. Requires no extra fetch — both values are on the row.
+ *
+ * Sport-agnostic on purpose: NBA/NHL/WNBA postponements have the identical shape.
+ * Failure-closed — no ticker, no game_date, or an unparseable either → false (grade as before).
+ */
+export function isMakeupReattributed(row) {
+  const tickerDate = kalshiTickerDate(row?.kalshi_ticker);
+  if (!tickerDate) return false;
+  const gameDate = _ymd(row?.game_date);
+  if (!gameDate) return false;
+  return gameDate > tickerDate;
+}
+
+/**
+ * True when /api/live returned a terminal-LOOKING event that never actually finished — ESPN reports
+ * POSTPONED / CANCELED / SUSPENDED as state:"post" with completed:false and 0-0 scores.
+ *
+ * The `=== false` test is the whole point and must not be relaxed to falsiness: `completed` is
+ * absent from /api/live payloads cached before 2026-07-29, and those must keep behaving exactly as
+ * they did rather than becoming un-gradeable en masse. The fix therefore phases in as the `live:*`
+ * KV entries expire, which is the safe direction.
+ */
+export function isNonFinalTerminal(game) {
+  return !!game && game.state === "post" && game.completed === false;
+}
 
 /**
  * Merge settlement grades over ESPN grades for one resolver pass.
