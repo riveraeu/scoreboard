@@ -22,56 +22,43 @@ export const SCHEDULED_CHECKPOINTS = [
   // KXMILBGAME vetted + dismissed-with-recheck 2026-07-15: model end green (statsapi sportIds
   // 11-14, LMB playbook at ~6x volume), Kalshi end a ZERO-market shell — nothing to vet or
   // build against. Same wait shape as the LMB recheck (which converted on its date).
-  { date: "2026-07-29", tone: "gray", label: "Re-check KXMILBGAME listings", short: "KXMILBGAME recheck",
+  // Re-checked 2026-07-29 on its date: still an EMPTY_SHELL — /api/kalshi-check reports
+  // liveMarketCount 0, volumeTotal 0. Nothing listed to vet, so re-dated two weeks rather than
+  // removed: the model end stays green (statsapi covers all 4 levels, ~62 games/day), so this is
+  // waiting on Kalshi to list, which is exactly the wait the LMB recheck converted on.
+  { date: "2026-08-12", tone: "gray", label: "Re-check KXMILBGAME listings", short: "KXMILBGAME recheck",
     why: "Dismissed 7/15 as a zero-market shell with the model side green (statsapi covers all 4 levels, ~62 games/day) — if markets now list with real game-day books (asks populated, spread ≤15¢), un-dismiss and build the LMB-playbook λ model (parameterize lmb.js + author the registry from the live tickers)" },
   // ── FIVE TAKER-TUNING CHECKPOINTS REMOVED 2026-07-28 ────────────────────────────────────────
   // (1) "tune:kblend recheck" 7/27 — walk K capWeight below 0.4; (2) "kblend hits recheck" 8/10;
   // (3) "kblend wnba recheck" 8/10; (4) "f5ml window check" 8/08 — tune:window on the [40,55]
   // candidate; (5) "hrr NO re-gate check" 7/25 — tune:gate on post-7/17 NO-side captures.
   //
-  // All five were taker-model work, and the taker family is closed: 0 of 57 categories reach Brier
-  // skill CI-lo > 0 at n≥100, the gate has been empty since 7/18 (docs/REENTRY.md). Each is also a
-  // shape the doc names as DISQUALIFYING rather than merely unproductive — the three kblend re-runs
-  // and the hrr re-gate are corrections discovered by searching the same days (§"a per-category or
-  // per-sport breakout … slicing is 0-for-6"), and the f5ml entry is literally "a different price
-  // band", the first-listed non-justification. Their banner tiers (2, 2.2, 3.15) are suppressed by
-  // STRATEGY_CLOSED in MakerBoardPage.jsx, so leaving the entries here would have nagged daily for
-  // work the ladder above them refuses to surface.
+  // All five were taker-model work, and no taker pattern has been validated: 0 of 57 categories
+  // reach Brier skill CI-lo > 0 at n≥100, and the gate has been empty since 7/18 (docs/REENTRY.md).
+  // Each is also a shape the doc names as DISQUALIFYING rather than merely unproductive — the three
+  // kblend re-runs and the hrr re-gate are corrections discovered by searching the same days
+  // (§"a per-category or per-sport breakout … slicing is 0-for-6"), and the f5ml entry is literally
+  // "a different price band", the first-listed non-justification. Their banner tiers (2, 2.2, 3.15)
+  // are suppressed by AWAITING_VALIDATED_EDGE (api/lib/config.js), so leaving the entries here would
+  // have prompted daily for work the ladder above them refuses to surface.
   //
   // Deleted rather than re-dated on purpose: a later date implies the work becomes valid with more
-  // rows, and "more data will fix it" is itself on the doc's non-justification list. Re-entry needs
-  // NEW DATA (a new market class) or a mechanism stated in advance — not a re-run of these.
+  // rows of the SAME kind, and "more data will fix it" is itself on the doc's non-justification
+  // list. What would count is a signal in NEW data (a new market class) or a mechanism stated in
+  // advance and then tested — not a re-run of these.
   // [[project_k_blend_counterfactual]] [[project_f5ml_window_candidate]] [[project_bet_window_derivation]]
-  // MLS (KXMLSGAME) shipped 2026-07-23 as the first model-free maker market — live-verified via
-  // /api/tonight?debug=1 (45 rows, real gameTime, correct team parsing) but the day it shipped had
-  // no MLS games, so the actual shadow_plays DB write was never confirmed end-to-end. Next MLS
-  // slate is 7/25. [[project_maker_modelfree_clubsoccer_2026_07_23]]
-  { date: "2026-07-25", tone: "blue", label: "Confirm MLS rows land in shadow_plays", short: "MLS DB-write check",
-    why: "Shipped 7/23, live-verified at the KV-staging level (clubSoccerPlays: 45, real gameTime) but no MLS game fell on ship day so the DB write was never confirmed — check shadow_plays WHERE sport='mls' (via /api/auth/shadow-stats) after the 7/25 slate resolves" },
-  // Brasileirão (KXBRASILEIROGAME) shipped 2026-07-23 as the second model-free maker market —
-  // live-verified via /api/tonight?debug=1 (36/36 rows, real gameTime, correct parsing including
-  // Remo's 2-char abbr) same day, unlike MLS this had live games to check against. Same DB-write
-  // gap as MLS though: no shadow-snapshot cron pass has run since ship. [[project_brasileirao_build_2026_07_23]]
-  { date: "2026-07-25", tone: "blue", label: "Confirm Brasileirão rows land in shadow_plays", short: "Brasileirão DB-write check",
-    why: "Shipped 7/23, live-verified at the KV-staging level (36/36 rows, real gameTime/kalshiTicker, correct home/away/tie parsing) but no shadow-snapshot cron pass has run yet — check shadow_plays WHERE sport='brasileirao' (via /api/auth/shadow-stats) after the next 1-2 days of games resolve" },
-  // NWSL (KXNWSLGAME) shipped 2026-07-23 as the 3rd model-free maker market — live-verified via
-  // /api/tonight?debug=1 (21/21 rows, real gameTime, correct parsing including KC's 2-char abbr)
-  // same day. Same DB-write gap as MLS/Brasileirão. [[project_nwsl_build_2026_07_23]]
-  { date: "2026-07-25", tone: "blue", label: "Confirm NWSL rows land in shadow_plays", short: "NWSL DB-write check",
-    why: "Shipped 7/23, live-verified at the KV-staging level (21/21 rows, real gameTime/kalshiTicker, correct home/away/tie parsing) but no shadow-snapshot cron pass has run yet — check shadow_plays WHERE sport='nwsl' (via /api/auth/shadow-stats) after the next 1-2 days of games resolve. Also: Angel City FC/Racing Louisville aren't in the registry yet (no live Kalshi ticker seen as of ship date) — add their Kalshi abbr once one appears" },
-  // Chinese Super League (KXCHNSLGAME) shipped 2026-07-23 as the 4th model-free maker market,
-  // built on the new shared soccer-modelfree.js engine — live-verified via /api/tonight?debug=1
-  // (24/25 rows, one dropped by the [1,99] quote-sanity filter as expected; the tricky
-  // Shenzhen/Shanghai team-abbr collision confirmed resolving correctly). Same DB-write gap as
-  // every prior league. [[project_chnsl_build_and_soccer_refactor_2026_07_23]]
-  { date: "2026-07-25", tone: "blue", label: "Confirm Chinese Super League rows land in shadow_plays", short: "CHNSL DB-write check",
-    why: "Shipped 7/23, live-verified at the KV-staging level (24/25 rows, real gameTime/kalshiTicker, correct home/away/tie parsing including the Shenzhen/Shanghai Shenhua collision-safe mapping) but no shadow-snapshot cron pass has run yet — check shadow_plays WHERE sport='chnsl' (via /api/auth/shadow-stats) after the next 1-2 days of games resolve" },
-  // Liga MX (KXLIGAMXGAME) shipped 2026-07-23 as the 5th model-free maker market, built
-  // directly on the shared soccer-modelfree.js engine — live-verified via /api/tonight?debug=1
-  // (21/21 rows; the Atlas/Atlante collision confirmed resolving correctly). Same DB-write gap
-  // as every prior league. [[project_ligamx_build_2026_07_23]]
-  { date: "2026-07-25", tone: "blue", label: "Confirm Liga MX rows land in shadow_plays", short: "Liga MX DB-write check",
-    why: "Shipped 7/23, live-verified at the KV-staging level (21/21 rows, real gameTime/kalshiTicker, correct home/away/tie parsing including the Atlas/Atlante collision-safe mapping) but no shadow-snapshot cron pass has run yet — check shadow_plays WHERE sport='ligamx' (via /api/auth/shadow-stats) after the next 1-2 days of games resolve. Also: Cruz Azul/Pumas UNAM/Toluca/Mazatlán aren't in the registry yet (no live Kalshi ticker seen as of ship date) — add their Kalshi abbr once one appears" },
+  // ── FIVE LEAGUE DB-WRITE CHECKPOINTS RESOLVED + REMOVED 2026-07-29 ─────────────────────────
+  // MLS / Brasileirao / NWSL / CHNSL / Liga MX, all dated 7/25, all asking the same question:
+  // did the shipped league's rows actually reach shadow_plays? Answered in one pass off
+  // /api/kalshi-dryrun-check's `circular.bySport`, which counts rows the settlement grader
+  // wrote: mls 449, argprem 322, scocup 284, ligamx 204, brasileirao 30 (+6 ESPN-compared),
+  // nwsl 21. CHNSL was absent there but confirmed a different way — `chnsl|game` appears in
+  // /api/shadow-report?makerDay= attribution on 7/25 and 7/26, the only two days CSL played
+  // after ship, so its rows exist and carry a real game_date.
+  //
+  // Worth keeping as method: shadow-calibration reports n=0 for every one of these leagues,
+  // which looks like 'no rows' and is not — it filters `model_true_pct IS NOT NULL`, and
+  // model-free rows have no truePct by construction. Don't use it to answer 'did rows land'.
   // Kalshi-settlement-based grading built as a DRY-RUN comparison pass 2026-07-23 (new
   // kalshi_ticker/kalshi_side columns, api/lib/kalshi-settlement.js) — logs agreement against the
   // existing ESPN resolvers but writes nothing. kalshi_ticker only populates on rows written after

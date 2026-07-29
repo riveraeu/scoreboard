@@ -33,7 +33,7 @@ import { kalshiTickerDate } from "../kalshi-ticker.js";
 import { weightedPnlSumsSql, weightedPnlFromRow, dayClusteredPnl, quotedOutcomesByBand, adverseSelectionWithinBand,
   leadTimeBuckets, spearmanEdgeVsLead, mixAdjustedNearFarByDay, dayLevelDiffCI, leadTimeVerdict,
   exitCounterfactual } from "../maker-stats.js";
-import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER, STRATEGY_CLOSED } from "../config.js";
+import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_SERVER, AWAITING_VALIDATED_EDGE } from "../config.js";
 import { passesCategoryGate } from "../category-gate.js";
 import { INPUT_SEARCH_EXHAUSTED, stillExhausted } from "../model-holds.js";
 import { POLY_SERIES, POLY_DISMISSED_SPORTS, fetchPolySportsCatalog, fetchPolySeriesEvents } from "../polymarket.js";
@@ -2505,11 +2505,11 @@ function _buildDailyBrief(r, prior) {
     const skillTxt = `skill ${_briefSkill(a.skill)} vs market, n=${a.n}`;
     const c = a.calib || {};
     const dTxt = c.delta != null ? `${Math.abs(c.delta)}pts` : "";
-    // `honest.action` is the taker correction-ladder verb ("Improve inputs" / "Recalibrate" /
-    // "Diagnose then stop") — the exact work DoThisBanner's tier 2.2 suppresses. Under
-    // STRATEGY_CLOSED the diagnosis stays (it's the measurement) and the verb goes.
+    // `honest.action` is the correction-ladder verb ("Improve inputs" / "Recalibrate" /
+    // "Diagnose then stop") — the exact work DoThisBanner's tier 2.2 suppresses. While no pattern
+    // is validated the diagnosis stays (it IS the measurement) and only the verb goes.
     const act = _parked(a) ? _parkedTxt(a)
-      : (STRATEGY_CLOSED ? "taker family closed 7/28 (docs/REENTRY.md) — measurement only"
+      : (AWAITING_VALIDATED_EDGE ? "tracking — no validated pattern here yet (docs/REENTRY.md)"
         : (a.honest?.action || "review"));
     // Decay caution — a positive-skill category whose reliable learning trend is materially
     // negative is real-but-eroding (the market is closing the gap); say so on its own bullet so
@@ -2535,11 +2535,11 @@ function _buildDailyBrief(r, prior) {
   for (const b of bet) {
     // "candidate", not "ready to gate" (2026-07-27) — this is a bet-WINDOW screen, and an
     // in-sample one; the category gate is a different mechanism entirely. See _bettingAction.
-    // The verdict itself is a measurement and stays visible under STRATEGY_CLOSED (instruments
+    // The verdict itself is a measurement and stays visible while nothing is validated (instruments
     // keep running); only the imperative tail changes, so this line can't contradict a takeaway
     // that just said there is nothing to act on.
-    if (b.verdict === "PROMOTE")            betting.push(`${name(b.key)} is a bet-window candidate — ${b.hint || "in-sample window passed"} — ${STRATEGY_CLOSED ? "screen only; the taker family is closed (docs/REENTRY.md) and a price-band re-slice is not a re-entry condition." : "confirm with tune:window before shipping."}`);
-    else if (b.verdict === "DEMOTE")        betting.push(STRATEGY_CLOSED ? `${name(b.key)}'s window went significantly negative (the gate is already empty).` : `Pull ${name(b.key)} from the gate — its window went significantly negative.`);
+    if (b.verdict === "PROMOTE")            betting.push(`${name(b.key)} is a bet-window candidate — ${b.hint || "in-sample window passed"} — ${AWAITING_VALIDATED_EDGE ? "in-sample screen only, not a validated pattern — a price-band re-slice has not held up out-of-sample before (docs/REENTRY.md)." : "confirm with tune:window before shipping."}`);
+    else if (b.verdict === "DEMOTE")        betting.push(AWAITING_VALIDATED_EDGE ? `${name(b.key)}'s window went significantly negative (the gate is already empty).` : `Pull ${name(b.key)} from the gate — its window went significantly negative.`);
     else if (b.gated && b.verdict === "HOLD") betting.push(`${name(b.key)} stays in the gate — still profitable.`);
   }
   for (const b of bet) {
@@ -2602,17 +2602,17 @@ function _buildDailyBrief(r, prior) {
   // otherwise name the accrual clocks that matter (discovered windows short of the promote bar,
   // eligible categories whose in-window sample is still too thin). Capped at 3 clocks.
   //
-  // STRATEGY_CLOSED (2026-07-29) suppresses the taker imperatives here, mirroring what the
-  // DoThisBanner's tiers 2/3.15 already did — the flag now lives in config.js precisely because
+  // AWAITING_VALIDATED_EDGE (2026-07-29) suppresses the prescriptive items here, mirroring what
+  // the DoThisBanner's tiers 2/3.15 already did — the flag lives in config.js precisely because
   // those two surfaces disagreed, and this one was the loud half: it emitted "Action needed today:
   // run tune:window on mlb f3ml" to every routine and report reading the JSON, for a category
   // tune:window had already returned NO-GO on. Data health is deliberately NOT gated (it is
   // pipeline integrity, not strategy — the banner keeps its tier 1 too, and the instruments are
-  // exactly what the closure keeps running).
+  // exactly what we keep running while looking for a pattern that holds).
   const actions = [];
   if (dh?.actionable) actions.push("fix data health (see the health line)");
   for (const b of bet) {
-    if (STRATEGY_CLOSED) break;
+    if (AWAITING_VALIDATED_EDGE) break;
     // Was `add ... to the gate` (2026-07-27) — wrong mechanism AND premature. PROMOTE is an
     // in-sample bet-WINDOW screen; the decision belongs to tune:window's out-of-sample split.
     if (b.verdict === "PROMOTE") actions.push(`run tune:window on ${name(b.key)} (in-sample window candidate)`);
@@ -2621,13 +2621,16 @@ function _buildDailyBrief(r, prior) {
   let takeaway;
   if (actions.length) {
     takeaway = `Action needed today: ${actions.join("; ")}.`;
-  } else if (STRATEGY_CLOSED) {
-    // The accrual clocks below count toward promote bars that no longer lead anywhere, so naming
-    // them would be the same nag one indirection out ("the clocks that matter are…" — they don't).
-    // The honest quiet-day state is the banner's tier-5 wording: the sensors run, nothing tripped.
-    takeaway = "Nothing to act on today — all five strategy families are closed (docs/REENTRY.md); "
-      + "shadow logging and the Kalshi series scan keep running as the instruments, and re-entry needs "
-      + "a new market class or a mechanism stated in advance, not another slice of these days.";
+  } else if (AWAITING_VALIDATED_EDGE) {
+    // The accrual clocks below count toward promote bars that no pattern has earned yet, so naming
+    // them would be the same prompt one indirection out ("the clocks that matter are…" — they
+    // aren't yet). The honest state is: the instruments are running and the data is accumulating.
+    takeaway = "No trade to place today — no pattern has cleared its validation bar yet. "
+      + "The instruments keep running: shadow logging, maker quoting and fill detection, and the "
+      + "Kalshi series scan are accumulating the data a reliable pattern would show up in. What "
+      + "counts as one: a signal in NEW data (a new market class) or a mechanism stated in advance "
+      + "and then tested — re-slicing days already in hand has produced six false positives "
+      + "(docs/REENTRY.md).";
   } else {
     const clocks = [];
     for (const b of bet.filter(x => x.eligible)) {

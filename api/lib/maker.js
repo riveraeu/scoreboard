@@ -210,7 +210,7 @@ export async function updateMakerQuotes({ snapResults, staging, snapshotDate, en
 // way, and the gap it opened (2026-07-28, one full day of fills) is what surfaced it:
 //
 // **Fill detection is an instrument, not an action.** The closure doctrine — in docs/REENTRY.md,
-// in maker-live.js's SHELVED note, and in STRATEGY_CLOSED (api/lib/config.js) — is "the
+// in maker-live.js's SHELVED note, and in AWAITING_VALIDATED_EDGE (api/lib/config.js) — is "the
 // instruments stay running, only the actions stop." Turning this off stopped an instrument. The
 // "no consumer" argument holds only while nothing new is being measured, but the named re-entry
 // catalyst is a NEW MARKET CLASS (NFL, September), and that is exactly when a warm fill record

@@ -6,27 +6,35 @@
 // tighter regime per feedback_totals_aggressive_corrections). See CLAUDE.md "Universal
 // qualification" for context.
 
-// ── Strategy closure (2026-07-28) ───────────────────────────────────────────────────────────
-// All five strategy families are closed — taker (0 of 57 categories with Brier skill CI-lo > 0 at
-// n≥100, gate empty since 7/18), maker (no fillable edge, six dissolutions), cross-venue and
-// lead-lag (killed 7/04), path (killed 7/28). `docs/REENTRY.md` is the authoritative gate.
+// ── No validated edge yet (2026-07-28, reframed 2026-07-29) ─────────────────────────────────
+// Posture, not an epitaph: **nothing has cleared its validation bar yet, so we accumulate rather
+// than act.** Every strategy family measured so far — taker, maker, cross-venue, lead-lag, path —
+// came back without a pattern that held up, and the instruments are still running to find one.
+// `docs/REENTRY.md` records what each measurement actually showed and what would count as a real
+// signal; read it before starting work premised on a new edge.
 //
-// Doctrine: **the instruments stay running, only the actions stop.** Every board, clock and
-// measurement keeps computing — what this flag suppresses is the IMPERATIVE mood: "run tune:window
-// on X", "pull X from the gate", "Improve inputs". Those point at a closed program, and re-entry
-// needs NEW DATA (a new market class) or a mechanism stated in advance, never a re-slice of the
-// same days — slicing is 0-for-6.
+// What this flag suppresses is the IMPERATIVE mood: "run tune:window on X", "pull X from the
+// gate", "Improve inputs". Those prescribe work on a pattern that has not been established, and
+// acting on them has produced six false positives so far — every one from re-slicing days already
+// in hand (a different price band, a per-category breakout, one more week of the same rows). What
+// it never suppresses is a MEASUREMENT: boards, CIs, calibration, quoting, fill detection and the
+// series scan all keep running and keep rendering, because the data they accumulate is the only
+// thing that can turn into a reliable pattern.
+//
+// So the bar for acting is: a pattern that shows up in NEW data (a new market class — NFL in
+// September is the nearest), or a mechanism stated in advance and then tested. Not a better slice
+// of the same days.
 //
 // Lives here rather than in a component because it has TWO consumers and they disagreed: the
 // DoThisBanner (src/components/MakerBoardPage.jsx) held it as a local const and went quiet, while
 // /api/shadow-report's `brief` had no equivalent and kept emitting "Action needed today: run
-// tune:window on mlb f3ml" — a category tune:window had ALREADY returned NO-GO on, and a
-// price-band re-slice, which is the first-listed non-justification in REENTRY.md. The UI looked
-// closed while every non-UI consumer (routines, reports, anything reading the JSON) was still
-// being told to work the closed program. Re-entry is a one-line revert here, once — read
-// docs/REENTRY.md first; it exists because "a number got interesting" has already happened six
-// times.
-export const STRATEGY_CLOSED = true;
+// tune:window on mlb f3ml" — a category tune:window had ALREADY returned NO-GO on. The UI looked
+// settled while every non-UI consumer (routines, reports, anything reading the JSON) was still
+// being told to work an unvalidated lead.
+//
+// Renamed from STRATEGY_CLOSED 2026-07-29: nothing here is dead, and a name that says otherwise
+// invites both the wrong conclusion and the wrong fix.
+export const AWAITING_VALIDATED_EDGE = true;
 
 export const KALSHI_GATE = 67;        // ~-200 American odds floor (66.67% rounded up)
 export const KALSHI_CAP  = 91;        // ~-1000 American odds cap (90.91% rounded up)

@@ -2,7 +2,7 @@ import React from 'react';
 import { WORKER } from '../lib/constants.js';
 import { SCHEDULED_CHECKPOINTS } from '../lib/scheduledCheckpoints.js';
 import { SERIES_CONFIG } from '../../api/lib/series-config.js';
-import { CATEGORY_BET_WINDOWS, STRATEGY_CLOSED } from '../../api/lib/config.js';
+import { CATEGORY_BET_WINDOWS, AWAITING_VALIDATED_EDGE } from '../../api/lib/config.js';
 import { INPUT_SEARCH_EXHAUSTED, WINDOW_SEARCH_EXHAUSTED, stillExhausted as _stillExhausted } from '../../api/lib/model-holds.js';
 
 // New primary landing page (2026-07-21) — promoted from ReportPage.jsx's MakerProgress module
@@ -257,9 +257,9 @@ const WINDOW_RECOMMEND_N = 200;
 // in front of whoever does it. **Do not flip this because a number got interesting** — read
 // docs/REENTRY.md first; it exists because that has already happened six times.
 //
-// Moved to api/lib/config.js 2026-07-29 — it was a local const here, so this banner went quiet
-// while /api/shadow-report's `brief` kept telling every non-UI consumer to run tune:window on a
-// closed program. One flag, two consumers, one source.
+// Moved to api/lib/config.js 2026-07-29 (and renamed there from STRATEGY_CLOSED) — it was a local
+// const here, so this banner went quiet while /api/shadow-report's `brief` kept telling every
+// non-UI consumer to run tune:window on an unvalidated lead. One flag, two consumers, one source.
 
 function _doThisCandidates(d) {
   const out = [];
@@ -283,7 +283,7 @@ function _doThisCandidates(d) {
   // much as selection. It read −5.15pp (fills "better") on 2026-07-26 while genuine selection was
   // unmeasurable. Now reads `adverseSelection.gapCents`, which is computed within band and mix-adjusted.
   const mb = d?.makerBoard;
-  if (!STRATEGY_CLOSED && (mb?.fills?.graded || 0) >= 30) {
+  if (!AWAITING_VALIDATED_EDGE && (mb?.fills?.graded || 0) >= 30) {
     const _gap = mb.adverseSelection?.gapCents ?? null;
     // Fill-level CI, renamed server-side 2026-07-28 so it cannot be grabbed by accident. Legitimate
     // HERE only because this clause fires when the interval is entirely NEGATIVE — a too-narrow CI
@@ -332,7 +332,7 @@ function _doThisCandidates(d) {
   const changes = (d?.bettingBoard || []).filter(e =>
     _BET_ACTIONS[e?.doThis?.action] &&
     !(e.doThis.action === "Look deeper" && e.discoveredWindow == null));
-  if (!STRATEGY_CLOSED && changes.length) {
+  if (!AWAITING_VALIDATED_EDGE && changes.length) {
     const byAction = {};
     for (const e of changes) (byAction[e.doThis.action] ||= []).push(`${e.sport} ${e.category}`);
     const parts = Object.entries(byAction).map(([a, names]) => `${_BET_ACTIONS[a].verb} ${names.join(", ")}`);
@@ -359,7 +359,7 @@ function _doThisCandidates(d) {
     !(e.honest.action === "Recalibrate" && (
       (e.n || 0) < RECAL_MIN_N ||
       (e.learning?.reliable && Math.abs(e.learning.skillTrend) > _LEARN_FLAT))));
-  if (!STRATEGY_CLOSED && accChanges.length) {
+  if (!AWAITING_VALIDATED_EDGE && accChanges.length) {
     const byAction = {};
     for (const e of accChanges) (byAction[e.honest.action] ||= []).push(`${e.sport} ${e.category}`);
     const parts = Object.entries(byAction).map(([a, names]) =>
@@ -378,7 +378,7 @@ function _doThisCandidates(d) {
   // tune:gate says, so nagging a validation run for one is wasted work — it stays a board row only.
   const ripe = (d?.bettingBoard || []).filter(e =>
     !e.gated && e.eligible === true && e.verdict === "STRENGTHENING" && e.checklist?.nOk && !_BET_ACTIONS[e?.doThis?.action]);
-  if (!STRATEGY_CLOSED && ripe.length) {
+  if (!AWAITING_VALIDATED_EDGE && ripe.length) {
     const names = ripe.map(e => `${e.sport}|${e.category}`);
     out.push({ tier:2.5, tone:"blue",
       label: `Validate ${names.slice(0,3).join(", ")}${names.length>3?` +${names.length-3}`:""}`,
@@ -419,7 +419,7 @@ function _doThisCandidates(d) {
     ((e.overWindow?.roi > 0) || (e.subWindow?.roi > 0)) &&
     !CATEGORY_BET_WINDOWS[e.key] &&
     !_stillExhausted(WINDOW_SEARCH_EXHAUSTED, e.key, e.formulaCutoff));
-  if (!STRATEGY_CLOSED && winnable.length) {
+  if (!AWAITING_VALIDATED_EDGE && winnable.length) {
     const names = winnable.map(e => e.key);
     out.push({ tier:3.15, tone:"green",
       label: `Derive bet window: ${names.slice(0,3).join(", ")}${names.length>3?` +${names.length-3}`:""}`,
@@ -477,16 +477,15 @@ function _doThisCandidates(d) {
   // 5 — quiet-day floor: nothing above is actionable and no checkpoint is due yet. Show a calm
   // "caught up" state naming the NEXT upcoming checkpoint instead of an empty/absent banner.
   //
-  // Copy rewritten 2026-07-28: it read "Maker shadow accruing (N/200 graded fills)" — progress
-  // toward an arm criterion that no longer exists, off the fill count that day-clustering retired
-  // (days, not fills, were the binding constraint, and the whole program is closed). A quiet day
-  // now means the sensors are running and nothing has tripped them, which is the honest state:
-  // shadow logging + the series scan are what REENTRY.md keeps alive, and the scan is the only
-  // thing pointed at the one condition that could re-open anything.
+  // Copy rewritten 2026-07-28, reframed 2026-07-29: it read "Maker shadow accruing (N/200 graded
+  // fills)" — progress toward an arm bar, off the fill count that day-clustering retired (days,
+  // not fills, are the binding constraint). A quiet day means the instruments are running and
+  // nothing has tripped them yet, which is the honest state: we are accumulating the data a
+  // reliable pattern would show up in, and the series scan is what watches for a new market class.
   if (!out.length) {
     const upcoming = [...SCHEDULED_CHECKPOINTS].filter(c => c.date > todayPT).sort((a, b) => a.date.localeCompare(b.date))[0];
-    out.push({ tier:5, tone:"gray", label:"Nothing to act on today",
-      why:`All five strategy families are closed (docs/REENTRY.md) — shadow logging and the Kalshi series scan keep running as the instruments, and neither has surfaced a new market class to vet.${upcoming ? ` Next scheduled checkpoint: ${upcoming.short || upcoming.label} ~${upcoming.date}.` : ""}`, short:"All clear" });
+    out.push({ tier:5, tone:"gray", label:"No trade to place today — keep collecting",
+      why:`No pattern has cleared its validation bar yet (docs/REENTRY.md). Shadow logging, maker quoting and fill detection, and the Kalshi series scan are all running and accumulating; the scan is what watches for a new market class worth vetting.${upcoming ? ` Next scheduled checkpoint: ${upcoming.short || upcoming.label} ~${upcoming.date}.` : ""}`, short:"Collecting" });
   }
   // Push order ≠ priority order anymore (tier 3.2 is pushed before 3.15) — sort by tier; ties keep
   // insertion order (stable sort), so multiple due checkpoints stay oldest-first.
@@ -610,6 +609,15 @@ function ArmTile({ mb }) {
   // (14,352 fills vs 9 days), and showing only the fill bar reads as "almost there" when it isn't.
   const pct = Math.min(100, Math.min(graded / min, days / minDays) * 100);
   const met = mb?.armCriterion?.met === true;
+  // AWAITING_VALIDATED_EDGE (2026-07-29): show the SAMPLE, not progress toward arming. The
+  // "N/14 days · N/200 fills" subtitle and its bar read as a countdown to going live, which is
+  // wrong twice over — V2 is shelved, and this page has already produced four false greens off arm
+  // statistics. The mean and the day-clustered CI stay exactly as they are: those are the
+  // measurement, and the measurement is the whole point of continuing to collect. Only the
+  // progress framing goes. DoThisBanner's tier-5 copy was rewritten for this same reason on
+  // 2026-07-28; this tile was missed in that pass.
+  const showArmProgress = !AWAITING_VALIDATED_EDGE;
+  const sample = `${days} day${days === 1 ? "" : "s"} · ${graded.toLocaleString()} graded fills`;
   const [color, phase] = dc.loCI == null ? [C.dim, "accruing"]
     : dc.loCI > 0 ? [C.green, "day-clustered CI clears 0"]
     : (dc.mean ?? 0) > 0 ? [C.amber, "CI straddles 0"]
@@ -627,12 +635,16 @@ function ArmTile({ mb }) {
             : "awaiting first graded fills"}
         </span>
       </div>
-      <div style={{ color: met ? C.green : C.dim, fontSize:9, fontWeight:700, textTransform:"uppercase", letterSpacing:0.4, margin:"4px 0 5px" }}>
-        {met ? "ARM CRITERION MET" : `maker pnl · ${phase} · ${days}/${minDays} days · ${graded}/${min} fills`}
+      <div style={{ color: met && showArmProgress ? C.green : C.dim, fontSize:9, fontWeight:700, textTransform:"uppercase", letterSpacing:0.4, margin:"4px 0 5px" }}>
+        {showArmProgress
+          ? (met ? "ARM CRITERION MET" : `maker pnl · ${phase} · ${days}/${minDays} days · ${graded}/${min} fills`)
+          : `maker pnl · ${phase} · ${sample}`}
       </div>
-      <div style={{ height:4, background:C.border, borderRadius:2, overflow:"hidden" }} title={`${days}/${minDays} days and ${graded}/${min} graded fills toward the arm criterion`}>
-        <div style={{ width:`${pct}%`, height:"100%", background:color }} />
-      </div>
+      {showArmProgress && (
+        <div style={{ height:4, background:C.border, borderRadius:2, overflow:"hidden" }} title={`${days}/${minDays} days and ${graded}/${min} graded fills toward the arm criterion`}>
+          <div style={{ width:`${pct}%`, height:"100%", background:color }} />
+        </div>
+      )}
     </div>
   );
 }
