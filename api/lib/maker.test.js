@@ -72,12 +72,18 @@ const seg = (over = {}) => ({
   id: 1, ticker: "T", quote_side: "yes", quote_ask: 87,
   valid_from: "2026-07-19T18:00:00Z", valid_to: "2026-07-19T20:00:00Z", ...over,
 });
+// `taker_side` is the OPPOSITE of the side we quote — see the evidence block in maker.js's
+// replayFills (makerSideAudit 2026-07-22: 136/137 real V2 fills opposite, symmetric across
+// sides). These two tests previously asserted the inverted convention, which is exactly why
+// they never caught the bug: the test encoded the same wrong theory as the code. A test that
+// restates the implementation's assumption cannot falsify it — this pair is now pinned to
+// measured behaviour instead.
 const tr = (over = {}) => ({
-  trade_id: "t1", created_time: "2026-07-19T19:00:00Z", taker_side: "yes",
+  trade_id: "t1", created_time: "2026-07-19T19:00:00Z", taker_side: "no",
   yes_price_c: 88, no_price_c: 12, count: 5, ...over,
 });
 
-test("fill: taker crosses at/above our ask inside the window", () => {
+test("fill: taker on the OPPOSITE side crosses at/above our ask inside the window", () => {
   const fills = replayFills([seg()], [tr()]);
   assert.equal(fills.length, 1);
   assert.equal(fills[0].fill_ask, 87);
@@ -88,8 +94,16 @@ test("no fill: taker price below our ask", () => {
   assert.equal(replayFills([seg()], [tr({ yes_price_c: 86 })]).length, 0);
 });
 
-test("no fill: wrong taker side", () => {
-  assert.equal(replayFills([seg()], [tr({ taker_side: "no" })]).length, 0);
+test("no fill: taker on the SAME side as our quote (did not hit us)", () => {
+  assert.equal(replayFills([seg()], [tr({ taker_side: "yes" })]).length, 0);
+});
+
+test("fill side convention holds for a NO-side quote too (not a YES-only rule)", () => {
+  const fills = replayFills(
+    [seg({ quote_side: "no", quote_ask: 82 })],
+    [tr({ taker_side: "yes", no_price_c: 82, yes_price_c: 18 })]);
+  assert.equal(fills.length, 1, "quote_side no is filled by taker_side yes");
+  assert.equal(fills[0].fill_ask, 82);
 });
 
 test("no fill: trade outside the segment window", () => {
@@ -116,11 +130,18 @@ test("size cap: contracts stop at MAKER_SIZE across trades, time-ordered", () =>
   assert.equal(fills[1].contracts, MAKER_SIZE - 7);
 });
 
-test("NO-side segment fills off no_price against no-taker trades", () => {
+test("NO-side segment prices off no_price, and fills against YES-taker trades", () => {
+  // Two separate assertions bundled here, and the side half was inverted before 2026-07-29:
+  // the PRICE we compare comes from our own side (no_price for a NO quote), while the TAKER
+  // is on the opposite side. Getting the price half right is what made the old convention
+  // look plausible.
   const s = seg({ quote_side: "no", quote_ask: 85 });
-  const fills = replayFills([s], [tr({ taker_side: "no", no_price_c: 86 })]);
-  assert.equal(fills.length, 1);
-  assert.equal(replayFills([s], [tr({ taker_side: "no", no_price_c: 84 })]).length, 0);
+  const fills = replayFills([s], [tr({ taker_side: "yes", no_price_c: 86, yes_price_c: 14 })]);
+  assert.equal(fills.length, 1, "opposite-side taker at/above our ask fills us");
+  assert.equal(replayFills([s], [tr({ taker_side: "yes", no_price_c: 84, yes_price_c: 16 })]).length, 0,
+    "below our ask is still no fill");
+  assert.equal(replayFills([s], [tr({ taker_side: "no", no_price_c: 86 })]).length, 0,
+    "same-side taker did not hit our resting offer");
 });
 
 test("fractional count_fp contracts pass through", () => {

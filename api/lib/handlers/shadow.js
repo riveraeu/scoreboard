@@ -2987,8 +2987,13 @@ async function handleShadowReport({ path, request, env, cache }) {
           ordersExamined: orders.length, matchedOrders, unmatchedOrders,
           mapping: map, takerSideSameAsQuoteSide: same, takerSideOppositeQuoteSide: opposite,
           // What replayFills should require. Stated as a verdict so the fix cites a number.
-          verdict: same === 0 && opposite > 0 ? "REQUIRE taker_side !== quote_side"
-                 : opposite === 0 && same > 0 ? "REQUIRE taker_side === quote_side (current code correct)"
+          // Dominance, not purity. The first run read 136 opposite / 1 same and returned "MIXED"
+          // on a `same === 0` test — too strict, because matching every same-priced trade in the
+          // window picks up the occasional unrelated one. 95% settles it; anything less genuinely
+          // is ambiguous and must not be acted on.
+          verdict: (same + opposite) < 20 ? "TOO FEW — need more matched orders"
+                 : opposite / (same + opposite) >= 0.95 ? "REQUIRE taker_side !== quote_side"
+                 : same / (same + opposite) >= 0.95 ? "REQUIRE taker_side === quote_side"
                  : "MIXED — do not flip; investigate before changing replayFills",
           samples,
         },

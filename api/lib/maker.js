@@ -80,7 +80,23 @@ export function replayFills(segments, trades, sizeCap = MAKER_SIZE) {
       if (remaining <= 0) break;
       const ts = Date.parse(t.created_time);
       if (!(ts >= from && ts < to)) continue;
-      if (t.taker_side !== s.quote_side) continue;
+      // The taker who fills our resting offer is on the OPPOSITE side of the tape's `taker_side`
+      // label. This was inverted (`!==`) from the engine's first commit until 2026-07-29, and it
+      // is the single reason V1 under-detected fills ~22x.
+      //
+      // Established empirically, NOT from a theory about Kalshi's book semantics — a theory is what
+      // produced the bug. `/api/shadow-report?makerSideAudit=2026-07-22` matched every V2 order
+      // that really executed against the trade that filled it (same ticker, same window, our side's
+      // price equal to our quoted price) and tabulated the pair:
+      //     quote_side no  -> taker_side yes : 68
+      //     quote_side yes -> taker_side no  : 68
+      //     quote_side yes -> taker_side yes : 1   (coincidental same-price trade in-window)
+      // 136 of 137 opposite, and symmetric across both sides, so this is not a NO-side quirk.
+      //
+      // Ground truth is V2's real resting orders — the only place the simulator can be checked
+      // against reality. Acceptance test for any future change here:
+      // `?makerQueueCheck=1` should report bothFilled ≈ V2's executed count and v2Only ≈ 0.
+      if (t.taker_side === s.quote_side) continue;
       const px = s.quote_side === "yes" ? t.yes_price_c : t.no_price_c;
       if (px == null || px < ask) continue;
       const take = Math.min(remaining, Number(t.count) || 0);
