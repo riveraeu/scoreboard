@@ -226,6 +226,38 @@ const RECAL_MIN_N = 200;
 // NOT belong here — give it a dated SCHEDULED_CHECKPOINTS entry to re-run once OOS n accrues instead
 // of either nagging daily or being forgotten.
 const WINDOW_RECOMMEND_N = 200;
+
+// ---- STRATEGY CLOSED (2026-07-28) — suppresses the tune-the-model tiers -------------------
+// All five strategy families are closed (`docs/REENTRY.md`): taker (0 of 57 categories with Brier
+// skill CI-lo > 0 at n≥100), maker (no fillable edge, six dissolutions), cross-venue, lead-lag, and
+// path. The banner's ladder was authored while taker-side model improvement was the daily program,
+// so five of its tiers nag actions that REENTRY.md now names as DISQUALIFYING rather than merely
+// unproductive:
+//
+//   1.6  maker adverse selection  — its remedy is "diagnose which categories/bands drive it",
+//                                   i.e. a band slice. Slicing is 0-for-6, and V2 is shelved so
+//                                   there is no capital to protect.
+//   2    promote/pull/investigate — the gate is empty and the bettingBoard PROMOTE verdict is
+//                                   "a screen, not a decision" (in-sample, no OOS split).
+//   2.2  Improve inputs / Recalibrate / Diagnose — all three are residual search. §2 of the doc
+//                                   admits a model change only with "a stated mechanism … NOT a
+//                                   correction discovered by searching residuals". `tune:residual`
+//                                   IS the residual searcher.
+//   2.5  validate via tune:gate   — gating a category is betting the closed taker family.
+//   3.15 derive a bet window      — "a different price band" is the first-listed non-justification.
+//
+// Left standing: 1 (data health — shadow logging is the instrument the doc keeps running), 3.25 and
+// 3.5 (vet/triage new markets — condition #1, the ONE thing that could justify re-entry, and
+// `kalshi-series-scan` is kept expressly as "the only sensor pointed at" it), 3.6 (regime-change
+// tripwire), 4 (dated checkpoints), 5 (quiet-day floor).
+//
+// A const rather than deleted code, matching `SHELVED` in maker-live.js and `TAPE_REPLAY_ENABLED`
+// in maker.js — the doc's own posture is that the instruments stay and only the actions stop
+// ("the instruments are all still here"). Re-entry is a one-line revert, with the conditions above
+// in front of whoever does it. **Do not flip this because a number got interesting** — read
+// docs/REENTRY.md first; it exists because that has already happened six times.
+const STRATEGY_CLOSED = true;
+
 function _doThisCandidates(d) {
   const out = [];
   // 1 — data health, but ONLY when actionable. `dataHealth.actionable` (server) is true only for
@@ -248,7 +280,7 @@ function _doThisCandidates(d) {
   // much as selection. It read −5.15pp (fills "better") on 2026-07-26 while genuine selection was
   // unmeasurable. Now reads `adverseSelection.gapCents`, which is computed within band and mix-adjusted.
   const mb = d?.makerBoard;
-  if ((mb?.fills?.graded || 0) >= 30) {
+  if (!STRATEGY_CLOSED && (mb?.fills?.graded || 0) >= 30) {
     const _gap = mb.adverseSelection?.gapCents ?? null;
     // Fill-level CI, renamed server-side 2026-07-28 so it cannot be grabbed by accident. Legitimate
     // HERE only because this clause fires when the interval is entirely NEGATIVE — a too-narrow CI
@@ -297,7 +329,7 @@ function _doThisCandidates(d) {
   const changes = (d?.bettingBoard || []).filter(e =>
     _BET_ACTIONS[e?.doThis?.action] &&
     !(e.doThis.action === "Look deeper" && e.discoveredWindow == null));
-  if (changes.length) {
+  if (!STRATEGY_CLOSED && changes.length) {
     const byAction = {};
     for (const e of changes) (byAction[e.doThis.action] ||= []).push(`${e.sport} ${e.category}`);
     const parts = Object.entries(byAction).map(([a, names]) => `${_BET_ACTIONS[a].verb} ${names.join(", ")}`);
@@ -324,7 +356,7 @@ function _doThisCandidates(d) {
     !(e.honest.action === "Recalibrate" && (
       (e.n || 0) < RECAL_MIN_N ||
       (e.learning?.reliable && Math.abs(e.learning.skillTrend) > _LEARN_FLAT))));
-  if (accChanges.length) {
+  if (!STRATEGY_CLOSED && accChanges.length) {
     const byAction = {};
     for (const e of accChanges) (byAction[e.honest.action] ||= []).push(`${e.sport} ${e.category}`);
     const parts = Object.entries(byAction).map(([a, names]) =>
@@ -343,7 +375,7 @@ function _doThisCandidates(d) {
   // tune:gate says, so nagging a validation run for one is wasted work — it stays a board row only.
   const ripe = (d?.bettingBoard || []).filter(e =>
     !e.gated && e.eligible === true && e.verdict === "STRENGTHENING" && e.checklist?.nOk && !_BET_ACTIONS[e?.doThis?.action]);
-  if (ripe.length) {
+  if (!STRATEGY_CLOSED && ripe.length) {
     const names = ripe.map(e => `${e.sport}|${e.category}`);
     out.push({ tier:2.5, tone:"blue",
       label: `Validate ${names.slice(0,3).join(", ")}${names.length>3?` +${names.length-3}`:""}`,
@@ -384,7 +416,7 @@ function _doThisCandidates(d) {
     ((e.overWindow?.roi > 0) || (e.subWindow?.roi > 0)) &&
     !CATEGORY_BET_WINDOWS[e.key] &&
     !_stillExhausted(WINDOW_SEARCH_EXHAUSTED, e.key, e.formulaCutoff));
-  if (winnable.length) {
+  if (!STRATEGY_CLOSED && winnable.length) {
     const names = winnable.map(e => e.key);
     out.push({ tier:3.15, tone:"green",
       label: `Derive bet window: ${names.slice(0,3).join(", ")}${names.length>3?` +${names.length-3}`:""}`,
@@ -441,11 +473,17 @@ function _doThisCandidates(d) {
   }
   // 5 — quiet-day floor: nothing above is actionable and no checkpoint is due yet. Show a calm
   // "caught up" state naming the NEXT upcoming checkpoint instead of an empty/absent banner.
+  //
+  // Copy rewritten 2026-07-28: it read "Maker shadow accruing (N/200 graded fills)" — progress
+  // toward an arm criterion that no longer exists, off the fill count that day-clustering retired
+  // (days, not fills, were the binding constraint, and the whole program is closed). A quiet day
+  // now means the sensors are running and nothing has tripped them, which is the honest state:
+  // shadow logging + the series scan are what REENTRY.md keeps alive, and the scan is the only
+  // thing pointed at the one condition that could re-open anything.
   if (!out.length) {
     const upcoming = [...SCHEDULED_CHECKPOINTS].filter(c => c.date > todayPT).sort((a, b) => a.date.localeCompare(b.date))[0];
-    const _mbFills = d?.makerBoard?.fills;
     out.push({ tier:5, tone:"gray", label:"Nothing to act on today",
-      why:`Maker shadow accruing (${_mbFills?.graded ?? 0}/${d?.makerBoard?.armCriterion?.minFills ?? 200} graded fills), gate empty, no new markets to triage.${upcoming ? ` Next scheduled checkpoint: ${upcoming.short || upcoming.label} ~${upcoming.date}.` : ""}`, short:"All clear" });
+      why:`All five strategy families are closed (docs/REENTRY.md) — shadow logging and the Kalshi series scan keep running as the instruments, and neither has surfaced a new market class to vet.${upcoming ? ` Next scheduled checkpoint: ${upcoming.short || upcoming.label} ~${upcoming.date}.` : ""}`, short:"All clear" });
   }
   // Push order ≠ priority order anymore (tier 3.2 is pushed before 3.15) — sort by tier; ties keep
   // insertion order (stable sort), so multiple due checkpoints stay oldest-first.
