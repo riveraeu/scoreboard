@@ -2883,7 +2883,11 @@ async function handleShadowReport({ path, request, env, cache }) {
             ? (t.yes_price_dollars != null ? Math.round(parseFloat(t.yes_price_dollars) * 100) : null)
             : (t.no_price_dollars  != null ? Math.round(parseFloat(t.no_price_dollars)  * 100) : null);
           let why;
-          if (t.taker_side !== seg.quote_side) { reasons.sideMismatch++; why = "sideMismatch"; }
+          // Same rule as replayFills: the taker fills us from the OPPOSITE side. This inline copy
+          // asserted the old inverted rule (`!==`) through the 2026-07-29 investigation and so
+          // reported stale "sideMismatch" on trades that DO fill us — corrected here to match the
+          // fixed matcher, or this endpoint keeps pointing at a bug that no longer exists.
+          if (t.taker_side === seg.quote_side) { reasons.sideMismatch++; why = "sameSideNoFill"; }
           else if (px == null) { reasons.noPrice++; why = "noPrice"; }
           else if (px < Number(seg.quote_ask)) { reasons.priceBelowAsk++; why = "priceBelowAsk"; }
           else { reasons.wouldMatch++; why = "wouldMatch"; }

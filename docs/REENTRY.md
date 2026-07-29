@@ -25,13 +25,26 @@ For a single-venue binary-contract dataset that taxonomy is close to exhaustive.
 some version of predict-better, capture-spread, arb-across-venues, exploit-lead-lag, or
 exploit-the-path.
 
-**The one finding that has replicated every time**: the vig sits on the favorite ask (+1.5-1.6¢
-across 100k+ segments, and in the original n=44.5k pooled calibration). It has **never** been shown
-to survive to a fill. Sold side wins within 0.04pp of the price sold at, reproduced independently by
-a tape replay.
+**The one finding that looked like it replicated every time — and was an artifact (corrected
+2026-07-29).** The "vig sits on the favorite ask, +1.5-1.6¢ across 100k+ segments" reading came from
+the shadow maker's simulated fills, and `replayFills` had matched taker trades to the WRONG side for
+the engine's entire life (`t.taker_side === s.quote_side`; the taker who fills a resting offer is on
+the OPPOSITE side). Corrected and rebuilt over all 10 days, the V1 book is **−1.02¢/contract**
+(fill-level CI [−1.78, −0.26], day-clustered [−2.38, +0.34]) — it flipped sign. The +1.5-1.6¢ was
+never a real maker edge. See [[maker-wrongside-fill-bug-2026-07-29]].
 
-**Conclusion**: Kalshi prices the sports we model at least as well as we do, and the spread takes
-what is left.
+What still stands: the n=44.5k **pooled calibration** (a taker-side price-vs-frequency measurement,
+independent of `replayFills`) did find the favorite ask sits above realized frequency — but that is
+the market's spread against a TAKER, and the maker rebuild shows capturing it does not survive
+adverse selection to a fill. And the one untainted money figure agrees: V2 real orders made **+$6.65
+on 361 fills** (~zero), graded straight off Kalshi settlement, never through the buggy matcher.
+
+**Conclusion**: Kalshi prices the sports we model at least as well as we do, the spread takes what is
+left on the taker side, and the maker side has no demonstrated edge either — the apparent one was a
+side-matching bug. **Lesson for this doc's own method:** the maker "edge" survived six dissolutions
+because every measurement of it ran through the same wrong-side simulator, and three unit tests
+asserted the same wrong convention. A cross-check that keeps disagreeing (V2 real ≈ 0 vs V1 paper
++1.5¢) is a bug report, not two populations.
 
 ---
 

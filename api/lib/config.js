@@ -67,10 +67,14 @@ export const capturableSpread = (spreadCents, cap = CAPTURE_MAX_SPREAD) =>
 
 // Shadow maker engine (2026-07-19, api/lib/maker.js). The pooled market-calibration scan
 // (n=44.5k) found the venue's vig sits on the FAVORITE ask (2-8¢ above realized frequency,
-// monotone in price) while longshot asks are ~fair — so the structural play is QUOTING the
-// favorite side (selling the rich ask as a maker), not taking. V1 simulates: quote 1¢ inside
-// the prevailing favorite ask on maker-fee-free series, detect fills from the public trade
-// tape, grade at settlement. Arm real orders only at fill-PnL CI-lo>0, n≥200 fills.
+// monotone in price) while longshot asks are ~fair — which suggested QUOTING the favorite side
+// (selling the rich ask as a maker) as the structural play. V1 simulates: quote 1¢ inside the
+// prevailing favorite ask on maker-fee-free series, detect fills from the public trade tape,
+// grade at settlement. **That premise did NOT survive to a fill (corrected 2026-07-29):**
+// replayFills matched the wrong taker side for the engine's whole life, and the corrected 10-day
+// rebuild is −1.02¢/contract, not +1.5¢. The pooled scan measures a TAKER's spread; capturing it
+// as a maker loses to adverse selection. Kept quoting as a live instrument, not a live edge —
+// see [[maker-wrongside-fill-bug-2026-07-29]] and docs/REENTRY.md.
 export const MAKER_BAND = [55, 97];   // favorite-ask band to quote inside (≥98 = stale-ask regime).
 // Floor dropped 80→55 on 2026-07-21: the 7/21 ARM review found the real (shadow-fill) edge lives
 // only in 80-84 of the original [80,97] band — 85-97 is flat/negative. 55-79 is measurement-only

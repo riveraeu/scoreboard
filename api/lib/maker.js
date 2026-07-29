@@ -1,24 +1,35 @@
 // Shadow maker engine — V1: simulated maker quotes, tape-replayed fills, settlement PnL.
 //
-// Thesis (pooled market-calibration scan 2026-07-19, n=44.5k): Kalshi's vig sits on the
-// FAVORITE ask — 2-8¢ above realized frequency at 80-97¢, monotone in price — while longshot
-// asks are ~fair. A maker selling the favorite side 1¢ inside the prevailing ask captures that
-// richness, and maker fees are ZERO on every configured series except the four major *GAME
-// series (fee_type sweep 2026-07-19). The unknown is adverse selection: fills arrive
+// VERDICT (2026-07-29): the engine's central thesis DID NOT HOLD, and for most of its life its
+// fill detector matched the wrong side of the tape (the FILL bullet below was the bug — see it).
+// Corrected and rebuilt over all 10 days, the book is −1.02¢/contract (CI [−1.78, −0.26]), not the
+// +1.5¢ the wrong-side version reported. Read this header as the ORIGINAL design plus its
+// correction, not as a live edge. [[maker-wrongside-fill-bug-2026-07-29]], docs/REENTRY.md.
+//
+// Thesis as designed (pooled market-calibration scan 2026-07-19, n=44.5k): Kalshi's vig sits on
+// the FAVORITE ask — 2-8¢ above realized frequency at 80-97¢, monotone in price — while longshot
+// asks are ~fair. A maker selling the favorite side 1¢ inside the prevailing ask was expected to
+// capture that richness, and maker fees are ZERO on every configured series except the four major
+// *GAME series (fee_type sweep 2026-07-19). The unknown was adverse selection: fills arrive
 // disproportionately when the quote is wrong. V1 measures exactly that with no capital:
 //   • QUOTE (kalshi-snapshot cron, every 2 min, books already in hand): for each eligible
 //     market, record a quote segment — sell {yes|no} at (prevailing ask − MAKER_INSIDE_C),
 //     size MAKER_SIZE. Segments open/close as price or eligibility changes (maker_quotes).
-//   • FILL (nightly resolver): replay the public trade tape — a taker trade on our side at
-//     a price ≥ our ask while a segment was open would have hit us first (we quote strictly
-//     inside the book, so price priority is ours). Fills cap at MAKER_SIZE (maker_fills).
+//   • FILL (nightly resolver): replay the public trade tape — a taker trade at a price ≥ our ask
+//     while a segment was open would have hit us first (we quote strictly inside the book, so
+//     price priority is ours). Fills cap at MAKER_SIZE (maker_fills). **The taker is on the
+//     OPPOSITE side of our quote** — this was inverted (`taker_side === quote_side`) from the
+//     first commit until 2026-07-29, and it is what made every measurement of the thesis
+//     meaningless. See the evidence block in replayFills.
 //   • GRADE (2026-07-24 rewrite): look up each ticker's own settlement directly from Kalshi's
 //     public /markets endpoint (kalshi-settlement.js) — no shadow_plays join, no ESPN dependency.
 //     pnl_cents = fill_ask − 100·(sold side won).
 // Measurement bias, stated: the 2-min quote lag means stale quotes get hit when price moves
-// against them → shadow PnL UNDER-states a live engine with pull-on-news (conservative for
-// the arm decision). Queue priority is ours by construction; self-effect on taker behavior is
-// the one unmeasurable optimism.
+// against them → shadow PnL UNDER-states a live engine with pull-on-news. Queue priority is ours
+// by construction. The self-effect on taker behavior was called "the one unmeasurable optimism" —
+// that framing was wrong: the far larger error was measurable all along (the wrong-side matcher),
+// and V2 real fills (+$6.65 on 361, graded off settlement not replayFills) were the check that
+// should have caught it sooner.
 // ARM CRITERION (V2, real orders): fill PnL CI-lo > 0 at n ≥ 200 fills. Forward-only,
 // human-applied, like the category gate.
 //
