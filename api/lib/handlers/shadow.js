@@ -1011,7 +1011,19 @@ async function handleShadowResolver({ path, request, env, cache }) {
   const lmbRows = rows.filter(r => r.sport === "lmb");
   // Model-free soccer rows are filtered per league inside the MODEL_FREE_LEAGUES loop below.
   const scocupRows = rows.filter(r => r.sport === "scocup");
-  const teamRows = rows.filter(r => r.sport !== "tennis" && r.sport !== "soccer" && r.sport !== "fight" && r.sport !== "golf" && r.sport !== "nascar" && r.sport !== "nbasl" && r.sport !== "lmb" && r.sport !== "mls" && r.sport !== "brasileirao" && r.sport !== "nwsl" && r.sport !== "chnsl" && r.sport !== "ligamx" && r.sport !== "scocup" && r.sport !== "argprem");
+  // Everything that resolves through its OWN scoreboard rather than the team-based /api/live path.
+  // The model-free leagues are spread from MODEL_FREE_LEAGUE_KEYS rather than listed by name: this
+  // was a hand-maintained `!==` chain and it had already drifted — `dimayor` (7th league, shipped
+  // 2026-07-28) was never added, so its rows fell into teamRows, got dropped by /api/live's
+  // SPORT_PATHS filter, and landed in `noData` every pass. Harmless only by luck (dimayor is
+  // settlement-authoritative, so it still graded correctly) but it inflated noData and padded the
+  // games param. Deriving it keeps the registry's contract honest — adding league #8 stays "one
+  // MODEL_FREE_LEAGUES entry + teams.js + a SERIES_CONFIG row", with no Nth place to forget.
+  const _ownResolverSports = new Set([
+    "tennis", "soccer", "fight", "golf", "nascar", "nbasl", "lmb", "scocup",
+    ...MODEL_FREE_LEAGUE_KEYS,
+  ]);
+  const teamRows = rows.filter(r => !_ownResolverSports.has(r.sport));
 
   // Build unique game keys per date. Key: sport:away:home[@gameTime] — matches /api/live format.
   const keysByDate = new Map(); // game_date → Set<rawKey>

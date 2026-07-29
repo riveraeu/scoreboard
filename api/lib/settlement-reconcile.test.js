@@ -9,6 +9,7 @@ import {
   SETTLEMENT_AUTHORITATIVE_SPORTS,
   SETTLEMENT_CUTOVER_DATE,
 } from "./settlement-reconcile.js";
+import { MODEL_FREE_LEAGUE_KEYS } from "./model-free-leagues.js";
 
 const graded = (entries) => new Map(entries.map(([id, won, sport = "lmb"]) => [id, { won, sport }]));
 const voided = (entries) => new Map(entries.map(([id, sport = "lmb", result = "scalar"]) => [id, { sport, result }]));
@@ -271,4 +272,16 @@ test("promoted postponed rows carry no actualValue from the wrong game", () => {
   assert.strictEqual(u.actualValue, null);
   assert.strictEqual(res.espnAbsent, 1, "counted as ESPN-absent, not as a disagreement");
   assert.strictEqual(res.disagreed, 0);
+});
+
+test("every model-free league is settlement-authoritative", () => {
+  // A model-free league has no truePct, so there is no calibration to protect and ESPN accuracy is
+  // beside the point — settlement IS its grading path. Adding league #8 to MODEL_FREE_LEAGUES while
+  // forgetting this set would leave it ESPN-graded with no model behind it, silently. The resolver's
+  // teamRows split now derives from the same registry, so this is the remaining hand-maintained
+  // half of that contract.
+  for (const league of MODEL_FREE_LEAGUE_KEYS) {
+    assert.ok(isSettlementAuthoritative(league),
+      `${league} is in MODEL_FREE_LEAGUES but not SETTLEMENT_AUTHORITATIVE_SPORTS`);
+  }
 });
