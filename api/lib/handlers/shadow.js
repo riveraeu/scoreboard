@@ -4427,6 +4427,50 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
     } catch (e) { return errorResponse(`rerankgroups failed: ${e?.message}`, 500); }
   }
 
+  // ?makerDetectDay=YYYY-MM-DD (ADMIN only) — run V1 fill detection + grading for ONE past day
+  // against the live quote segments already in maker_quotes. The nightly resolver only ever calls
+  // detectAndGradeMakerFills with yesterday, so a day missed for any reason (the 2026-07-28 hole
+  // left by the tape replay being off) had no way back short of flipping a global and waiting.
+  //
+  // NOT the same tool as ?makerBackfill= below, and the distinction matters: backfill RECONSTRUCTS
+  // quote segments for a day that has none, from Kalshi candlesticks, under source='backfill' — and
+  // it deliberately 409s on a day that already has live segments, to keep live and replayed days
+  // disjoint. This day HAS its live segments (quoting never stopped); only the fills are missing.
+  // So it replays the trade tape over the existing source='live' rows, which is precisely what the
+  // nightly pass does. Idempotent — fills are UNIQUE on (quote_id, trade_id).
+  //
+  // Passes force:true so it works regardless of TAPE_REPLAY_ENABLED: the flag governs the nightly
+  // cron, not the manual repair tool.
+  if (new URL(request.url).searchParams.get("makerDetectDay")) {
+    if (!isAdmin) return errorResponse("Forbidden", 403);
+    const dayPT = new URL(request.url).searchParams.get("makerDetectDay");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dayPT)) return errorResponse("makerDetectDay must be YYYY-MM-DD", 400);
+    const _todayPT = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+    // Today's games are still in progress, so its tape is incomplete and its quotes are still being
+    // written — a run now would bank a partial day that a later re-run could only add to, never
+    // correct. Refuse rather than silently produce a half day.
+    if (dayPT >= _todayPT) return errorResponse(`makerDetectDay must be a past PT day (today is ${_todayPT})`, 400);
+    try {
+      const [{ n: segN } = { n: 0 }] = await neonQuery(
+        `SELECT COUNT(*)::int AS n FROM maker_quotes WHERE game_date = $1 AND source = 'live'`,
+        [dayPT], env, { write: true });
+      // No live segments means nothing was quoted that day — replaying the tape would fetch for
+      // every ticker and match none. Say so instead of returning a confusing clean zero.
+      if (!segN) return jsonResponse({ ok: true, day: dayPT, liveSegments: 0, skipped: "no_live_segments",
+        hint: "quoting did not run that day — ?makerBackfill= reconstructs segments from candlesticks instead" });
+
+      const res = await detectAndGradeMakerFills({ env, dayPT, force: true });
+      console.log(`[shadow-snapshot] makerDetectDay ${dayPT} segs=${segN} tickers=${res.tickers} `
+        + `newFills=${res.newFills} graded=${res.graded} tapeFails=${res.tapeFails} rl=${res.rateLimited}`);
+      return jsonResponse({
+        ok: true, day: dayPT, liveSegments: segN, ...res,
+        // newFills 0 with tickers > 0 and no tape failures is the signal that Kalshi no longer
+        // serves trades that far back — i.e. the day is unrecoverable, not merely quiet.
+        tapeExhausted: res.tickers > 0 && res.newFills === 0 && res.tapeFails === 0,
+      });
+    } catch (e) { return errorResponse(`makerDetectDay failed: ${e?.message}`, 500); }
+  }
+
   // ?makerBackfill=YYYY-MM-DD (ADMIN only) — replay V1 maker quoting over a historical day from
   // Kalshi's own candlestick + trade history (api/lib/maker-backfill.js). Exists because the V1 arm
   // gate is day-clustered and DAYS are the binding constraint: at the 2026-07-28 reading (mean

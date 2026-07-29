@@ -204,32 +204,40 @@ export async function updateMakerQuotes({ snapResults, staging, snapshotDate, en
   return { eligible: want.size, opened: toOpen.length, closed: toClose.length, kept: keep.size };
 }
 
-// ── Tape replay DISABLED 2026-07-28 ──────────────────────────────────────────────────────────
-// V2 is shelved (no demonstrated fillable edge — see maker-live.js's SHELVED note and
-// docs/MAKER_LEADTIME_PREREG.md), so nightly fill detection has no consumer. It was the expensive
-// half of the maker engine: one Kalshi trades fetch per quoted ticker (~600/night) plus the fill
-// inserts, against a question that is now answered.
+// ── Tape replay: disabled 2026-07-28, RE-ENABLED 2026-07-29 ──────────────────────────────────
+// It was switched off the day V2 was shelved, on the reasoning that nightly fill detection had no
+// consumer and cost ~600 Kalshi trade fetches a night. That reasoning was wrong in one specific
+// way, and the gap it opened (2026-07-28, one full day of fills) is what surfaced it:
 //
-// QUOTING deliberately keeps running. It costs nothing extra — the snapshot cron already has the
-// books in hand — and the quote-side vig is the one maker finding that has replicated every single
-// time (+1.5-1.6¢ across 100k+ segments), so `maker_quotes` remains a live measurement of the one
-// real effect. `quotedOutcomes`/`adverseSelection` read segments and settlements, not fills.
+// **Fill detection is an instrument, not an action.** The closure doctrine — in docs/REENTRY.md,
+// in maker-live.js's SHELVED note, and in STRATEGY_CLOSED (api/lib/config.js) — is "the
+// instruments stay running, only the actions stop." Turning this off stopped an instrument. The
+// "no consumer" argument holds only while nothing new is being measured, but the named re-entry
+// catalyst is a NEW MARKET CLASS (NFL, September), and that is exactly when a warm fill record
+// with no hole in it matters. Restarting an instrument cold, at the moment you need it, is how
+// you end up unable to tell a real effect from a startup artifact.
 //
-// GRADING deliberately keeps running too. 622 fills were ungraded when this was switched off, and
-// stopping mid-flight would leave the historical book permanently half-finished — precisely the
-// state that makes a future revisit untrustworthy. `gradeMakerFills` early-returns on an empty
-// candidate set, so once the backlog drains this costs one cheap Neon query a night and nothing
-// more. Self-limiting, no follow-up chore required.
-const TAPE_REPLAY_ENABLED = false;
+// It is also worth naming that the switch-off commit was titled "disable the nightly tape replay",
+// which reads like dropping a redundant re-fetch. The tape replay IS fill detection — it is the
+// only thing that writes `maker_fills` rows. Same mechanism, very different-sounding name.
+//
+// The ~600 fetches/night are real but bounded, and they buy the one thing the day-clustered arm
+// gate is starved of: DAYS. Quoting and grading were always on and are unaffected.
+const TAPE_REPLAY_ENABLED = true;
 
 // Fill detection + grading — runs in the nightly resolver. When enabled, replays the public trade
 // tape for every ticker quoted on `dayPT` and inserts fills idempotently (UNIQUE quote_id+trade_id).
 // Always grades ALL ungraded fills whose ticker has settled. Single tape page per ticker
 // (limit 1000 — these markets trade well under that in a day; same call the flow stamp uses).
-export async function detectAndGradeMakerFills({ env, dayPT }) {
+//
+// `force` bypasses TAPE_REPLAY_ENABLED for the manual, one-day admin path
+// (/api/shadow-snapshot?makerDetectDay=). The flag governs the nightly CRON, not the tool — so a
+// gap can always be repaired without first flipping a global and redeploying, which is what made
+// the 7/28 hole awkward to close. Inserts are idempotent, so a forced re-run is safe by design.
+export async function detectAndGradeMakerFills({ env, dayPT, force = false }) {
   await ensureMakerTables(env);
 
-  if (!TAPE_REPLAY_ENABLED) {
+  if (!TAPE_REPLAY_ENABLED && !force) {
     const graded = await gradeMakerFills({ env });
     return { tickers: 0, newFills: 0, graded, tapeFails: 0, rateLimited: false,
       skipped: "tape_replay_disabled" };
