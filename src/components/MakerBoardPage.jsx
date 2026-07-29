@@ -810,7 +810,7 @@ function CategoryBandHeatmap({ cells, maxRows = 14 }) {
           );
         })}
         <div style={{ color:C.dim, fontSize:9, marginTop:5, lineHeight:1.5 }}>
-          ¢/contract, graded fills · <span style={{ color:C.amber }}>●</span> &gt;50% of PnL from one day (selection risk) · <span style={{ color:C.red }}>▢</span> anomaly: sideWon pinned 0/1
+          ¢/contract, graded fills · <span style={{ color:C.amber }}>●</span> &gt;50% of PnL from one day (selection risk) · <span style={{ color:C.red }}>▢</span> anomaly: outcome pinned against the price (P&lt;0.1%)
           {rows.length > shown.length ? ` · +${rows.length - shown.length} lower-volume categories hidden` : ""}
         </div>
       </div>

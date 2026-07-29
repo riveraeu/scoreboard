@@ -4179,10 +4179,23 @@ async function handleShadowReport({ path, request, env, cache }) {
       const dayPnls = [...cell.byDay.values()];
       const absTot = dayPnls.reduce((a, v) => a + Math.abs(v), 0);
       const topDayShare = absTot ? Math.max(...dayPnls.map(Math.abs)) / absTot : null;
-      // Anomaly: a degenerate outcome distribution over real volume. sideWon exactly 0/1 (fills>=20)
-      // means every graded fill in the cell resolved the same way — a grading/side artifact, not a
-      // price. This is the flag that would have caught the wrong-side bug months earlier.
-      const anomaly = cell.fills >= 20 && (sideWon === 0 || sideWon === 1);
+      // Anomaly: a pinned outcome (sideWon 0 or 1 over >=20 fills) that is IMPROBABLE given the
+      // band's own price. The first cut flagged any pin, which over-fired: an 85-89¢ favorite
+      // winning every time (sideWon=1) is expected, not an artifact, and flagging it trains the eye
+      // to ignore the tripwire. The real signature — the one the wrong-side bug showed at +52¢ on a
+      // club-soccer teamTotal — is a favorite that NEVER won (sideWon=0) at a price implying it
+      // usually should. So test the pin
+      // against the price-implied win rate p (band midpoint): P(all won)=p^n for sideWon=1,
+      // P(none won)=(1-p)^n for sideWon=0; flag only when that tail is < 0.1%. `fills` is the n
+      // (the independent unit; contracts within a fill are correlated), consistent with the
+      // day-clustering elsewhere. Cheap, principled, and it stops crying wolf on high favorites.
+      let anomaly = false;
+      if (cell.fills >= 20 && (sideWon === 0 || sideWon === 1)) {
+        const [_lo, _hi] = cell.band.split("-").map(Number);
+        const p = (_lo + _hi) / 2 / 100;
+        const tail = sideWon === 1 ? Math.pow(p, cell.fills) : Math.pow(1 - p, cell.fills);
+        anomaly = tail < 0.001;
+      }
       return { sport: cell.sport, category: cell.category, band: cell.band,
         fills: cell.fills, contracts: parseFloat(cell.contracts.toFixed(1)),
         perContract: perContract != null ? parseFloat(perContract.toFixed(2)) : null,
