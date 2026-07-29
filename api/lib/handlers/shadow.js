@@ -4171,14 +4171,26 @@ async function handleShadowReport({ path, request, env, cache }) {
         fills: 0, contracts: 0, pnl: 0, won: 0, byDay: new Map() }; _cbCells.set(key, cell); }
       const c = Number(r.contracts || 0), p = Number(r.pnl_total || 0), w = Number(r.won_contracts || 0);
       cell.fills += Number(r.fills || 0); cell.contracts += c; cell.pnl += p; cell.won += w;
-      cell.byDay.set(String(r.day).slice(0, 10), (cell.byDay.get(String(r.day).slice(0, 10)) || 0) + p);
+      const _d = String(r.day).slice(0, 10);
+      const dcur = cell.byDay.get(_d) || { pnl: 0, contracts: 0 };
+      dcur.pnl += p; dcur.contracts += c; cell.byDay.set(_d, dcur);
     }
     const _categoryBands = [..._cbCells.values()].map(cell => {
       const perContract = cell.contracts ? cell.pnl / cell.contracts : null;
       const sideWon = cell.contracts ? cell.won / cell.contracts : null;
-      const dayPnls = [...cell.byDay.values()];
-      const absTot = dayPnls.reduce((a, v) => a + Math.abs(v), 0);
-      const topDayShare = absTot ? Math.max(...dayPnls.map(Math.abs)) / absTot : null;
+      const dayVals = [...cell.byDay.values()];
+      const absTot = dayVals.reduce((a, v) => a + Math.abs(v.pnl), 0);
+      const topDayShare = absTot ? Math.max(...dayVals.map(v => Math.abs(v.pnl))) / absTot : null;
+      // Per-cell day-clustered CI — the reason the heatmap colors by RELIABILITY, not by the raw
+      // mean. Coloring the biggest number brightest is best-of-N selection wearing a heatmap: it
+      // points the eye at whichever of ~100 noisy cells drew the luckiest slate (mlb f5ml 70-74
+      // read +30.55¢ off ~40 fills, >50% from one day). The day is the independent unit here too,
+      // so a cell whose day-clustered interval straddles zero is not distinguishable from noise and
+      // the frontend mutes it. `reliable` requires >=3 days for the interval to be estimable at all.
+      const cellDC = dayClusteredPnl({ days: dayVals.map(v => ({ pnl: v.pnl, contracts: v.contracts })) });
+      const ciLo = cellDC?.loCI != null ? parseFloat(cellDC.loCI.toFixed(2)) : null;
+      const ciHi = cellDC?.hiCI != null ? parseFloat(cellDC.hiCI.toFixed(2)) : null;
+      const reliable = ciLo != null && ciHi != null && cell.byDay.size >= 3 && (ciLo > 0 || ciHi < 0);
       // Anomaly: a pinned outcome (sideWon 0 or 1 over >=20 fills) that is IMPROBABLE given the
       // band's own price. The first cut flagged any pin, which over-fired: an 85-89¢ favorite
       // winning every time (sideWon=1) is expected, not an artifact, and flagging it trains the eye
@@ -4200,7 +4212,7 @@ async function handleShadowReport({ path, request, env, cache }) {
         fills: cell.fills, contracts: parseFloat(cell.contracts.toFixed(1)),
         perContract: perContract != null ? parseFloat(perContract.toFixed(2)) : null,
         sideWon: sideWon != null ? parseFloat(sideWon.toFixed(4)) : null,
-        days: cell.byDay.size,
+        days: cell.byDay.size, ciLo, ciHi, reliable,
         topDayShare: topDayShare != null ? parseFloat(topDayShare.toFixed(2)) : null,
         anomaly };
     }).sort((a, b) => b.contracts - a.contracts);

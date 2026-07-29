@@ -749,9 +749,16 @@ function CrossCheckStrip({ mb }) {
 // came from ONE day (the selection tell that debunked both 55-64 and 90-96). Rows sorted by
 // volume, capped so the page stays a screen; the tail is low-volume noise.
 const _BANDS = ["55-59", "60-64", "65-69", "70-74", "75-79", "80-84", "85-89", "90-96"];
-function _cellBg(v, scale) {
+// Color encodes RELIABILITY, not magnitude. Coloring the biggest mean brightest is best-of-N
+// selection with a paint job — it aims the eye at whichever of ~100 noisy cells caught the
+// luckiest slate. So a cell whose day-clustered CI straddles zero (i.e. not distinguishable from
+// noise — which is currently every cell) is heavily MUTED regardless of how big its number is;
+// only a cell whose interval actually clears zero gets saturated. A big number in a pale cell is
+// the tell: that is noise, not a target.
+function _cellBg(v, scale, reliable) {
   if (v == null) return "transparent";
-  const a = Math.min(0.85, 0.12 + Math.abs(v) / scale * 0.6);
+  const base = Math.min(0.85, 0.12 + Math.abs(v) / scale * 0.6);
+  const a = reliable ? base : base * 0.28;   // unreliable → dim, on purpose
   return v > 0 ? `rgba(63,185,80,${a})` : v < 0 ? `rgba(247,129,102,${a})` : C.card;
 }
 function CategoryBandHeatmap({ cells, maxRows = 14 }) {
@@ -773,8 +780,17 @@ function CategoryBandHeatmap({ cells, maxRows = 14 }) {
   const scale = Math.max(4, ...rows.flatMap(r => Object.values(r.cells).map(c => Math.abs(c.perContract ?? 0))));
   const shown = rows.slice(0, maxRows);
   const colW = 46;
+  const total = (cells || []).length;
+  const reliableN = (cells || []).filter(c => c.reliable).length;
   return (
     <div style={{ overflowX:"auto" }}>
+      {/* Headline that answers "is any single cell bettable?" before the eye starts hunting the
+          brightest number. When 0 cells clear zero (the current, honest state), it says so. */}
+      <div style={{ fontSize:10, marginBottom:5, color: reliableN ? C.amber : C.dim }}>
+        {reliableN
+          ? `${reliableN} of ${total} cells clear zero (day-clustered) — still selection among ${total}; confirm forward before treating any as a target.`
+          : `0 of ${total} cells clear zero (day-clustered) — no single cell is distinguishable from noise. This view is for spotting anomalies and where PnL sits, not for picking bets.`}
+      </div>
       <div style={{ minWidth: 150 + _BANDS.length * colW }}>
         {/* header: band price columns */}
         <div style={{ display:"flex", fontSize:9, color:C.dim, fontWeight:700, marginBottom:2 }}>
@@ -791,12 +807,13 @@ function CategoryBandHeatmap({ cells, maxRows = 14 }) {
                 const c = r.cells[b];
                 if (!c) return <span key={b} style={{ width:colW, height:22, border:`1px solid ${C.border}`, boxSizing:"border-box", marginRight:1 }} />;
                 const oneDay = (c.topDayShare ?? 0) >= 0.5;
+                const ciTxt = c.ciLo != null ? `${c.ciLo > 0 ? "+" : ""}${c.ciLo}…${c.ciHi > 0 ? "+" : ""}${c.ciHi}` : "n/a";
                 return (
-                  <span key={b} title={`${r.label} ${b}¢: ${c.perContract > 0 ? "+" : ""}${c.perContract}¢/ct · ${c.fills} fills · sideWon ${c.sideWon} · ${c.days}d · top day ${Math.round((c.topDayShare ?? 0) * 100)}% of |PnL|${c.anomaly ? " · ANOMALY: sideWon pinned" : ""}`}
+                  <span key={b} title={`${r.label} ${b}¢: ${c.perContract > 0 ? "+" : ""}${c.perContract}¢/ct · ${c.fills} fills · sideWon ${c.sideWon} · ${c.days}d · day-clustered CI ${ciTxt} (${c.reliable ? "clears 0" : "straddles 0 — not distinguishable from noise"}) · top day ${Math.round((c.topDayShare ?? 0) * 100)}% of |PnL|${c.anomaly ? " · ANOMALY: outcome pinned against price" : ""}`}
                     style={{ position:"relative", width:colW, height:22, marginRight:1, boxSizing:"border-box",
                       display:"flex", alignItems:"center", justifyContent:"center",
-                      fontVariantNumeric:"tabular-nums", color:C.text,
-                      background:_cellBg(c.perContract, scale),
+                      fontVariantNumeric:"tabular-nums", color: c.reliable ? C.text : C.dim,
+                      background:_cellBg(c.perContract, scale, c.reliable),
                       border: c.anomaly ? `1.5px solid ${C.red}` : `1px solid ${C.border}` }}>
                     {c.perContract != null ? `${c.perContract > 0 ? "+" : ""}${c.perContract}` : ""}
                     {oneDay && <span style={{ position:"absolute", top:1, right:2, width:4, height:4, borderRadius:2, background:C.amber }} />}
@@ -810,7 +827,7 @@ function CategoryBandHeatmap({ cells, maxRows = 14 }) {
           );
         })}
         <div style={{ color:C.dim, fontSize:9, marginTop:5, lineHeight:1.5 }}>
-          ¢/contract, graded fills · <span style={{ color:C.amber }}>●</span> &gt;50% of PnL from one day (selection risk) · <span style={{ color:C.red }}>▢</span> anomaly: outcome pinned against the price (P&lt;0.1%)
+          ¢/contract, graded fills · <b>brightness = reliability</b> (day-clustered CI clear of zero), NOT size — a big number in a pale cell is noise · <span style={{ color:C.amber }}>●</span> &gt;50% of PnL from one day · <span style={{ color:C.red }}>▢</span> anomaly: outcome pinned against price (P&lt;0.1%)
           {rows.length > shown.length ? ` · +${rows.length - shown.length} lower-volume categories hidden` : ""}
         </div>
       </div>
