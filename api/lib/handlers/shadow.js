@@ -4188,9 +4188,22 @@ async function handleShadowReport({ path, request, env, cache }) {
       // so a cell whose day-clustered interval straddles zero is not distinguishable from noise and
       // the frontend mutes it. `reliable` requires >=3 days for the interval to be estimable at all.
       const cellDC = dayClusteredPnl({ days: dayVals.map(v => ({ pnl: v.pnl, contracts: v.contracts })) });
-      const ciLo = cellDC?.loCI != null ? parseFloat(cellDC.loCI.toFixed(2)) : null;
-      const ciHi = cellDC?.hiCI != null ? parseFloat(cellDC.hiCI.toFixed(2)) : null;
-      const reliable = ciLo != null && ciHi != null && cell.byDay.size >= 3 && (ciLo > 0 || ciHi < 0);
+      // dayClusteredPnl's own loCI/hiCI use a 1.96 (normal) multiplier, which badly understates the
+      // interval at the handful of days a single cell has — a 3-day cell has 2 df, where the right
+      // two-sided 95% multiplier is ~4.30, not 1.96. Using the normal number here over-declares
+      // "reliable" and would just replace the raw-magnitude pick-me trap with a false-CI one. So
+      // rebuild the interval with a Student-t multiplier on (days-1) df, and require a real sample
+      // (>=5 days AND >=50 fills) before a cell is allowed to count as distinguishable at all.
+      const _T95 = { 1: 12.71, 2: 4.30, 3: 3.18, 4: 2.78, 5: 2.57, 6: 2.45, 7: 2.36, 8: 2.31, 9: 2.26 };
+      const _tMult = (df) => df >= 10 ? 2.23 : (_T95[df] ?? 12.71);
+      const _days = cell.byDay.size;
+      let ciLo = null, ciHi = null, reliable = false;
+      if (cellDC?.mean != null && cellDC?.se != null && _days >= 2) {
+        const t = _tMult(_days - 1);
+        ciLo = parseFloat((cellDC.mean - t * cellDC.se).toFixed(2));
+        ciHi = parseFloat((cellDC.mean + t * cellDC.se).toFixed(2));
+        reliable = _days >= 5 && cell.fills >= 50 && (ciLo > 0 || ciHi < 0);
+      }
       // Anomaly: a pinned outcome (sideWon 0 or 1 over >=20 fills) that is IMPROBABLE given the
       // band's own price. The first cut flagged any pin, which over-fired: an 85-89¢ favorite
       // winning every time (sideWon=1) is expected, not an artifact, and flagging it trains the eye
