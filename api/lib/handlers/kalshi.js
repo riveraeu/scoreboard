@@ -857,6 +857,32 @@ export async function handleKalshiRoutes(ctx) {
       return jsonResponse({ ok: true, status: liststatus, total: totalRows[0]?.n ?? 0, limit, offset, rows });
     }
 
+    // ?baselinereal=1 (admin, read-only) — what the 6f backlog sweep found and left in place:
+    // baseline rows now screened REAL_BOOK, ranked by traded volume then book width. This is the
+    // sweep's whole output surface, because the sweep deliberately does NOT change the status of a
+    // live row (see 6f) — the human pulls with `?promote=`, the machine never pushes. Ranked by
+    // volume because among rows that all cleared the same spread gate, traded interest is what
+    // separates a market worth a modelling session from a technically-real but ignored one.
+    if (url.searchParams.get("baselinereal") === "1") {
+      if (!isAdmin) return errorResponse("Admin only", 403);
+      const rows = await neonQuery(
+        `SELECT ticker, title, live_market_count, real_book_count, median_spread_c, overround,
+                volume_total, sample_subtitle, screened_at
+           FROM kalshi_series_seen
+          WHERE status='baseline' AND screen='REAL_BOOK'
+          ORDER BY volume_total DESC NULLS LAST, median_spread_c ASC NULLS LAST
+          LIMIT ${Math.min(parseInt(url.searchParams.get("limit") || "50", 10) || 50, 200)}`,
+        [], env, { write: true }
+      );
+      const [{ swept, unswept } = {}] = await neonQuery(
+        `SELECT COUNT(*) FILTER (WHERE screened_at IS NOT NULL)::int AS swept,
+                COUNT(*) FILTER (WHERE screened_at IS NULL)::int AS unswept
+           FROM kalshi_series_seen WHERE status='baseline'`, [], env, { write: true }
+      );
+      return jsonResponse({ ok: true, baselineSwept: swept, baselineUnswept: unswept,
+        realBookCount: rows.length, rows });
+    }
+
     const dismiss = url.searchParams.get("dismiss");
     const undismiss = url.searchParams.get("undismiss");
     const promote = url.searchParams.get("promote");
@@ -1021,8 +1047,8 @@ export async function handleKalshiRoutes(ctx) {
     // the take-risk move and stays manual, the same asymmetry the shadow-report board already
     // encodes by keeping gate language for DEMOTE and screen language for PROMOTE. Constrained to
     // rows this run actually screened (`screened_at = today`) and to statuses that are still in
-    // triage — `adopted` is never touched, and `baseline` is excluded because the backlog sweep
-    // that screens those rows doesn't exist yet, so they carry no evidence to act on.
+    // triage — `adopted` is never touched, and `baseline` is handled by its own sweep (6f), which
+    // dismisses dead rows itself rather than routing them through this clause.
     // Reversible: `?undismiss=TICKER` restores to 'new', and the row keeps the `screen` verdict it
     // was dismissed on, so every automated dismissal stays inspectable after the fact.
     // `dismissed_by='screen'` is what makes this reversible BY THE MACHINE (6e below), so a
@@ -1069,6 +1095,63 @@ export async function handleKalshiRoutes(ctx) {
       if (backAlive) revived.push({ ticker: r.ticker, medianSpreadC: e.median_spread_c });
     });
 
+    // 6f. BASELINE BACKLOG SWEEP (2026-07-28). 2,141 rows were inserted by the very first scan run
+    // as status='baseline' — a bulk "already acknowledged" marker that permanently excludes them
+    // from the new/shortlisted triage queue. None was ever vetted under ANY doctrine (the two-track
+    // maker doctrine didn't exist yet), so this is the largest unexamined surface in the funnel and
+    // the only place a genuinely new market class could still be hiding. REENTRY.md names NFL in
+    // September as the natural catalyst, so the backlog has to be drained before then; by hand at
+    // 25/day it never would be.
+    //
+    // Status handling is deliberately asymmetric, and it is NOT the same as the new/shortlisted
+    // path above:
+    //   dead  → dismissed (+dismissed_by='screen', so 6e re-screens it if a season starts later)
+    //   alive → status UNCHANGED. It stays 'baseline' and simply carries its screen evidence.
+    // Promoting hundreds of live-but-unvetted rows into the human queue would just relocate the
+    // backlog instead of draining it, and promotion is the take-risk direction that stays manual
+    // everywhere else in this funnel. `?baselinereal=1` lists what the sweep found, ranked, and
+    // `?promote=` already accepts a baseline row — so the human pulls, the machine never pushes.
+    const sweepParam = parseInt(url.searchParams.get("sweep") || "", 10);
+    const SWEEP_CAP = Number.isFinite(sweepParam) ? Math.min(Math.max(sweepParam, 0), 600) : 150;
+    // Hard time budget: the sweep is the LOWEST-priority work in this handler, so it must never be
+    // the reason the cron blows maxDuration and loses the catalog diff / refresh / re-screen above
+    // it. mapPool has no early abort, so the deadline is checked per row — past it, rows drain
+    // unfetched and are simply picked up by the next run (screened_at stays NULL).
+    const SWEEP_DEADLINE_MS = 120_000;
+    const sweepStart = Date.now();
+    const sweepRows = SWEEP_CAP > 0 ? await neonQuery(
+      `SELECT ticker FROM kalshi_series_seen
+         WHERE status='baseline' AND screened_at IS NULL ORDER BY ticker LIMIT ${SWEEP_CAP}`,
+      [], env, { write: true }
+    ) : [];
+    let sweptCount = 0, sweptDismissed = 0;
+    const sweptReal = [];
+    await mapPool(sweepRows, 3, async (r) => {
+      if (Date.now() - sweepStart > SWEEP_DEADLINE_MS) return;
+      const e = await enrichSeries(r.ticker);
+      if (!e) return;  // fetch failed — leave screened_at NULL so the next run retries it
+      sweptCount++;
+      const dead = SCREEN_AUTO_DISMISS.includes(e.screen);
+      await neonQuery(
+        `UPDATE kalshi_series_seen SET sample_market=$2, sample_subtitle=$3, live_market_count=$4,
+           screen=$5, real_book_count=$6, real_book_frac=$7, median_spread_c=$8, overround=$9,
+           volume_total=$10, screened_at=$11,
+           status = CASE WHEN $12 THEN 'dismissed' ELSE status END,
+           dismissed_by = CASE WHEN $12 THEN 'screen' ELSE dismissed_by END
+         WHERE ticker = $1`,
+        [r.ticker, e.sample_market, e.sample_subtitle, e.live_market_count, e.screen,
+         e.real_book_count, e.real_book_frac, e.median_spread_c, e.overround, e.volume_total,
+         today, dead], env, { write: true }
+      );
+      if (dead) sweptDismissed++;
+      else if (e.screen === "REAL_BOOK") sweptReal.push({ ticker: r.ticker, markets: e.live_market_count,
+        medianSpreadC: e.median_spread_c, volume: e.volume_total });
+    });
+    const [{ remaining } = { remaining: null }] = await neonQuery(
+      `SELECT COUNT(*)::int AS remaining FROM kalshi_series_seen
+         WHERE status='baseline' AND screened_at IS NULL`, [], env, { write: true }
+    );
+
     // What survived, by verdict — the number that actually matters for the daily queue.
     const screenCounts = await neonQuery(
       `SELECT COALESCE(screen, 'unscreened') AS screen, COUNT(*)::int AS n
@@ -1083,6 +1166,8 @@ export async function handleKalshiRoutes(ctx) {
       autoDismissed: autoDismissed.map(r => ({ ticker: r.ticker, screen: r.screen,
         markets: r.live_market_count, medianSpreadC: r.median_spread_c })),
       rescreened: rescreenRows.length, revived,
+      sweep: { swept: sweptCount, dismissed: sweptDismissed, realBook: sweptReal.length,
+        baselineRemaining: remaining, sampleRealBook: sweptReal.slice(0, 10) },
       screenCounts: Object.fromEntries(screenCounts.map(r => [r.screen, r.n])),
     });
   }
