@@ -18,7 +18,7 @@ import { gzipToString } from "../kv-compress.js";
 import { updateMakerQuotes } from "../maker.js";
 import { importKalshiKey as _importKalshiKey, placeKalshiOrder } from "../kalshi-order-client.js";
 import { resolveOpenMakerPositions } from "./shadow.js";
-import { enrichSeries, checkSeriesLiquidity, fetchSeriesMeta } from "../kalshi-series-check.js";
+import { enrichSeries, checkSeriesLiquidity, fetchSeriesMeta, SCREEN_AUTO_DISMISS } from "../kalshi-series-check.js";
 import { updateLiveMakerOrders, emergencyKillLive, setArmed, computeWantedMakerQuotes,
   gradeResolvedMakerPositions,
   isArmed as isMakerV2Armed, ensureMakerLiveTables, MAKER_V2_SHELVED } from "../maker-live.js";
@@ -776,8 +776,21 @@ export async function handleKalshiRoutes(ctx) {
       ALTER TABLE kalshi_series_seen ADD COLUMN IF NOT EXISTS live_market_count INT;
       ALTER TABLE kalshi_series_seen ADD COLUMN IF NOT EXISTS window_fit BOOLEAN
     `, env);
+    // Screen columns (2026-07-28) — the REENTRY.md condition-#1 evidence, replacing `window_fit`
+    // as the triage signal. `window_fit` is left in place rather than dropped (additive doctrine:
+    // historical rows keep their values) but is no longer written. `screen` carries the verdict a
+    // row was auto-dismissed on, so a dismissal is always inspectable after the fact.
+    await neonExec(`
+      ALTER TABLE kalshi_series_seen ADD COLUMN IF NOT EXISTS screen TEXT;
+      ALTER TABLE kalshi_series_seen ADD COLUMN IF NOT EXISTS real_book_count INT;
+      ALTER TABLE kalshi_series_seen ADD COLUMN IF NOT EXISTS real_book_frac REAL;
+      ALTER TABLE kalshi_series_seen ADD COLUMN IF NOT EXISTS median_spread_c REAL;
+      ALTER TABLE kalshi_series_seen ADD COLUMN IF NOT EXISTS overround REAL;
+      ALTER TABLE kalshi_series_seen ADD COLUMN IF NOT EXISTS volume_total REAL;
+      ALTER TABLE kalshi_series_seen ADD COLUMN IF NOT EXISTS screened_at DATE
+    `, env);
 
-    // enrichSeries (sample market + live liquidity + window-fit hint) now lives in the shared
+    // enrichSeries (sample market + the REENTRY condition-#1 screen) now lives in the shared
     // api/lib/kalshi-series-check.js — also used by the standing /api/kalshi-check diagnostic.
     // Bounded-concurrency map — Kalshi rate-limits a wide parallel burst (a 42-wide Promise.all
     // 429'd most requests), so cap in-flight enrichment fetches.
@@ -900,6 +913,13 @@ export async function handleKalshiRoutes(ctx) {
         sample_subtitle: null,
         live_market_count: null,
         window_fit: null,
+        screen: null,
+        real_book_count: null,
+        real_book_frac: null,
+        median_spread_c: null,
+        overround: null,
+        volume_total: null,
+        screened_at: null,
         status,
         first_seen: today,
         last_seen: today,
@@ -912,7 +932,7 @@ export async function handleKalshiRoutes(ctx) {
     const ENRICH_CAP = 25;
     await mapPool(enrichTargets.slice(0, ENRICH_CAP), 3, async (row) => {
       const e = await enrichSeries(row.ticker);
-      if (e) Object.assign(row, e);
+      if (e) Object.assign(row, e, { screened_at: today });
     });
 
     const newTickers = enrichTargets.map(r => r.ticker);
@@ -927,7 +947,7 @@ export async function handleKalshiRoutes(ctx) {
     }
 
     // 6a. Batch-insert new-to-table rows.
-    const COLS = ["ticker","title","category","tags","frequency","sample_market","sample_subtitle","live_market_count","window_fit","status","first_seen","last_seen"];
+    const COLS = ["ticker","title","category","tags","frequency","sample_market","sample_subtitle","live_market_count","window_fit","screen","real_book_count","real_book_frac","median_spread_c","overround","volume_total","screened_at","status","first_seen","last_seen"];
     for (let i = 0; i < toInsert.length; i += 100) {
       const chunk = toInsert.slice(i, i + 100);
       const placeholders = chunk.map((_, ri) =>
@@ -972,15 +992,46 @@ export async function handleKalshiRoutes(ctx) {
     await mapPool(refreshRows, 3, async (r) => {
       const e = await enrichSeries(r.ticker);
       if (e) await neonQuery(
-        `UPDATE kalshi_series_seen SET sample_market=$2, sample_subtitle=$3, live_market_count=$4, window_fit=$5 WHERE ticker = $1`,
-        [r.ticker, e.sample_market, e.sample_subtitle, e.live_market_count, e.window_fit], env, { write: true }
+        `UPDATE kalshi_series_seen SET sample_market=$2, sample_subtitle=$3, live_market_count=$4,
+           screen=$5, real_book_count=$6, real_book_frac=$7, median_spread_c=$8, overround=$9,
+           volume_total=$10, screened_at=$11 WHERE ticker = $1`,
+        [r.ticker, e.sample_market, e.sample_subtitle, e.live_market_count, e.screen,
+         e.real_book_count, e.real_book_frac, e.median_spread_c, e.overround, e.volume_total, today],
+        env, { write: true }
       );
     });
+
+    // 6d. AUTO-TRIAGE — stop direction only (2026-07-28). A screened EMPTY_SHELL (zero live
+    // markets) or DEAD_BOOK (≥5 markets, none two-sided, or median spread beyond
+    // CAPTURE_MAX_SPREAD) is dismissed without a human. Deliberately one-directional: promotion is
+    // the take-risk move and stays manual, the same asymmetry the shadow-report board already
+    // encodes by keeping gate language for DEMOTE and screen language for PROMOTE. Constrained to
+    // rows this run actually screened (`screened_at = today`) and to statuses that are still in
+    // triage — `adopted` is never touched, and `baseline` is excluded because the backlog sweep
+    // that screens those rows doesn't exist yet, so they carry no evidence to act on.
+    // Reversible: `?undismiss=TICKER` restores to 'new', and the row keeps the `screen` verdict it
+    // was dismissed on, so every automated dismissal stays inspectable after the fact.
+    const autoDismissed = await neonQuery(
+      `UPDATE kalshi_series_seen SET status='dismissed'
+         WHERE status IN ('new','shortlisted') AND screened_at = $1 AND screen = ANY($2::text[])
+         RETURNING ticker, screen, live_market_count, median_spread_c`,
+      [today, SCREEN_AUTO_DISMISS], env, { write: true }
+    );
+
+    // What survived, by verdict — the number that actually matters for the daily queue.
+    const screenCounts = await neonQuery(
+      `SELECT COALESCE(screen, 'unscreened') AS screen, COUNT(*)::int AS n
+         FROM kalshi_series_seen WHERE status IN ('new','shortlisted') GROUP BY 1 ORDER BY 2 DESC`,
+      [], env, { write: true }
+    );
 
     return jsonResponse({
       ok: true, isFirstRun,
       catalogCount: catalog.length, knownCount: known.size,
       inserted: toInsert.length, newCount: newTickers.length, refreshed: refreshRows.length, newTickers,
+      autoDismissed: autoDismissed.map(r => ({ ticker: r.ticker, screen: r.screen,
+        markets: r.live_market_count, medianSpreadC: r.median_spread_c })),
+      screenCounts: Object.fromEntries(screenCounts.map(r => [r.screen, r.n])),
     });
   }
 
