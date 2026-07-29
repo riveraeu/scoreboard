@@ -2760,6 +2760,66 @@ async function handleShadowReport({ path, request, env, cache }) {
     } catch (e) { return errorResponse(`makerQueueCheck failed: ${e?.message}`, 500); }
   }
 
+  // ── ?makerTapeProbe=YYYY-MM-DD — is V1's single tape page actually covering the day? ──────────
+  // Follow-up to ?makerQueueCheck=1, which found V1 predicting a 0.7% fill rate on the very orders
+  // that really filled 15.6% of the time. That is V1 UNDER-detecting by ~22x, not over-claiming,
+  // and the prime suspect is in detectAndGradeMakerFills: one `/markets/trades` page per ticker,
+  // `limit=1000`, `min_ts` only — no pagination, no cursor. Its comment asserts "these markets
+  // trade well under that in a day", which is exactly the kind of assumption worth checking on the
+  // liquid *GAME series that make up V2's band.
+  //
+  // If the endpoint returns MOST-RECENT-first, then on a market with >1000 trades/day the page is
+  // all in-play trades and the PRE-GAME window — the only window V1 ever quotes in — is truncated
+  // off the end. That would make V1's fill sample systematically biased toward ILLIQUID tickers,
+  // which distorts every downstream V1 number, band analysis included.
+  //
+  // The probe: take tickers where a real V2 order filled, fetch each tape exactly as V1 does, and
+  // report how many trades came back and what time range they span. `hitLimit` with a `firstTrade`
+  // later than the order window is the smoking gun.
+  if (new URL(request.url).searchParams.get("makerTapeProbe")) {
+    const dayPT = new URL(request.url).searchParams.get("makerTapeProbe");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dayPT)) return errorResponse("makerTapeProbe must be YYYY-MM-DD", 400);
+    try {
+      const picks = await neonQuery(
+        `SELECT o.ticker, MIN(o.placed_at) AS first_order, MAX(COALESCE(o.canceled_at, o.expires_at)) AS last_order,
+                SUM(o.filled_count)::int AS filled
+           FROM maker_orders_v2 o
+          WHERE o.game_date = $1 AND o.filled_count > 0
+          GROUP BY o.ticker ORDER BY filled DESC LIMIT 8`, [dayPT], env, { write: true });
+      const minTs = Math.floor((Date.parse(`${dayPT}T00:00:00-07:00`) - 6 * 3600_000) / 1000);
+      const out = [];
+      for (const p of picks) {
+        try {
+          const r = await fetch(
+            `https://api.elections.kalshi.com/trade-api/v2/markets/trades?ticker=${encodeURIComponent(p.ticker)}&limit=1000&min_ts=${minTs}`,
+            { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8000) });
+          if (!r.ok) { out.push({ ticker: p.ticker, error: `HTTP ${r.status}` }); continue; }
+          const j = await r.json();
+          const tr = j?.trades || [];
+          const times = tr.map(t => t.created_time).filter(Boolean).sort();
+          out.push({
+            ticker: p.ticker, v2Filled: p.filled,
+            orderWindow: { from: p.first_order, to: p.last_order },
+            trades: tr.length,
+            hitLimit: tr.length >= 1000,
+            hasCursor: !!j?.cursor,
+            firstTrade: times[0] || null,
+            lastTrade: times[times.length - 1] || null,
+            // The decisive field: pre-game orders rested BEFORE firstTrade means the page
+            // never reached the window V1 quotes in.
+            windowCoveredByPage: times.length
+              ? Date.parse(times[0]) <= Date.parse(p.first_order) : null,
+          });
+        } catch (e) { out.push({ ticker: p.ticker, error: String(e?.message || e) }); }
+      }
+      const covered = out.filter(o => o.windowCoveredByPage === true).length;
+      const truncated = out.filter(o => o.windowCoveredByPage === false).length;
+      return jsonResponse({ ok: true, day: dayPT, probed: out.length,
+        windowCovered: covered, windowTruncated: truncated,
+        hitLimit: out.filter(o => o.hitLimit).length, tickers: out });
+    } catch (e) { return errorResponse(`makerTapeProbe failed: ${e?.message}`, 500); }
+  }
+
   // ── ?makerExitCheck=1 — early-exit counterfactual (2026-07-28) ──────────
   // "Would selling back before settlement, while in profit, have helped?" Never examined before —
   // both V1 and V2 model every position as hold-to-settlement (`pnl_cents = fill_ask − 100·won`),
