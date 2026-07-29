@@ -20,8 +20,16 @@
 //
 // TO ADD A LEAGUE: add one entry here + a `teams.js` registry + a SERIES_CONFIG row with
 // `gameType: "modelFreeMl"`. No new files, no parse branch, no resolver block.
-// Verify the ESPN slug against live data before trusting it — `can.1` returns an empty scoreboard
-// and `aus.1` is Australian *soccer*, not the Australian Football League that shares the name.
+// Verify the ESPN slug against live data before trusting it, and send `--compressed` — a gzipped
+// body silently parses as empty and looks exactly like "league not covered". Two live examples:
+// `aus.1` is Australian *soccer*, not the Australian Football League (KXAFLGAME) that shares the
+// name; and the Canadian Premier League (KXCANPLGAME, REAL_BOOK with ~$98k volume) has NO ESPN
+// slug at all — can.1 / can.cpl / can.nsl / can.canpl / can.2 / can.l1o all return zero teams
+// with decompression handled. **Do not re-probe those.** CANPL is therefore unbuildable on this
+// path: no ESPN feed means no gameTime and no resolution, and its ticker is date-only so
+// kalshiTickerGameTime can't fill the gap — rows would log with gameTime:null and never be
+// maker-quotable, the exact defect that left 9 Phase-1 modules silently useless. Same blocker as
+// K League.
 // And cross-check team abbrs on BOTH sides: collisions have hit ~1 per non-US league, in
 // Kalshi-vs-ESPN (chnsl "SHE", ligamx "ATL") and ESPN-internal (argprem "RIV") flavors.
 
