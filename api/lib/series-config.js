@@ -88,7 +88,7 @@ export const SERIES_CONFIG = {
   // MLS (Major League Soccer) game winner — 3-way (home/away/tie), model-free: no probability
   // model at all (the maker strategy only needs a real gameTime + a way to resolve the result,
   // see project_maker_modelfree_clubsoccer_2026_07_23 memory). The `clubSoccerMl` gameType
-  // routes these to the dedicated emit path (api/lib/tonight/club-soccer-ml.js): parseGameTeams
+  // routes these to the shared model-free emit path (api/lib/tonight/model-free-ml.js): parseGameTeams
   // for the variable-length MLS abbrs, real gameTime fetched from ESPN's usa.1 scoreboard
   // (api/lib/mls.js) — unlike every other Phase-1 shadow-only module, which hardcodes
   // gameTime:null and is therefore silently NEVER maker-quotable (found 2026-07-23; fixed here
@@ -96,43 +96,43 @@ export const SERIES_CONFIG = {
   // 2026-07-23 after a live liquidity recheck (corrected an earlier wrong-field-name read):
   // real 1¢-spread books, volume in the hundreds-to-thousands per market. `mls|game` is NOT in
   // the category gate (shadow-only, maker-only).
-  KXMLSGAME: { sport: "mls", league: "mls", stat: "game", col: "ML", gameType: "clubSoccerMl" },
+  KXMLSGAME: { sport: "mls", league: "mls", stat: "game", col: "ML", gameType: "modelFreeMl" },
   // Brasileirão Série A (Brazil) game winner — same model-free playbook one league later
   // (adopted 2026-07-23, see project_maker_modelfree_clubsoccer_2026_07_23 memory + the
   // 2026-07-23 build-decision review: picked as the highest-liquidity confirmed-real league
   // from the historical two-track sweep, 36/36 markets with real two-sided books, volumes up
   // to ~30k contracts). Dedicated gameType (not clubSoccerMl) since it needs its own parse
   // branch/array — resolves off a different ESPN league endpoint (bra.1, not usa.1) per row.
-  KXBRASILEIROGAME: { sport: "brasileirao", league: "brasileirao", stat: "game", col: "ML", gameType: "brasileiraoMl" },
+  KXBRASILEIROGAME: { sport: "brasileirao", league: "brasileirao", stat: "game", col: "ML", gameType: "modelFreeMl" },
   // NWSL (National Women's Soccer League) game winner — 3rd model-free maker league, same
   // playbook (adopted 2026-07-23, see project_maker_modelfree_clubsoccer_2026_07_23 memory).
   // Picked over KXUSLGAME (also 36/36 real books) because USL has a genuine ESPN-side team-
   // abbreviation collision (Louisville City FC and Loudoun United FC both "LOU") — NWSL had
   // zero such collisions across its confirmed roster. Dedicated gameType (own parse branch/
   // array, resolves off usa.nwsl not usa.1/bra.1).
-  KXNWSLGAME: { sport: "nwsl", league: "nwsl", stat: "game", col: "ML", gameType: "nwslMl" },
+  KXNWSLGAME: { sport: "nwsl", league: "nwsl", stat: "game", col: "ML", gameType: "modelFreeMl" },
   // Chinese Super League game winner — 4th model-free maker league, same playbook (adopted
   // 2026-07-23, see project_maker_modelfree_clubsoccer_2026_07_23 memory). First league built
   // directly onto the shared ESPN-fetch engine (api/lib/soccer-modelfree.js) — MLS/Brasileirão/
   // NWSL were refactored onto it in the same session once this 4th league made the duplication
   // worth generalizing. Dedicated gameType (own parse branch/array, resolves off chn.1).
-  KXCHNSLGAME: { sport: "chnsl", league: "chnsl", stat: "game", col: "ML", gameType: "chnslMl" },
+  KXCHNSLGAME: { sport: "chnsl", league: "chnsl", stat: "game", col: "ML", gameType: "modelFreeMl" },
   // Liga MX (Mexico) game winner — 5th model-free maker league, same playbook (adopted
   // 2026-07-23, see project_maker_modelfree_clubsoccer_2026_07_23 memory). Built on the shared
   // ESPN-fetch engine (api/lib/soccer-modelfree.js). Dedicated gameType (own parse branch/
   // array, resolves off mex.1).
-  KXLIGAMXGAME: { sport: "ligamx", league: "ligamx", stat: "game", col: "ML", gameType: "ligamxMl" },
+  KXLIGAMXGAME: { sport: "ligamx", league: "ligamx", stat: "game", col: "ML", gameType: "modelFreeMl" },
   // MLS + Liga MX 1H spread/total/BTTS + full-game team-total — maker-viable derivatives of the
   // base ML markets above (adopted 2026-07-23, see project_mls_ligamx_threshold_2026_07_23
   // memory). 1H family reuses the clubSoccerMl/ligamxMl gameType + emit path (same ticker/
   // suffix shape as the base GAME market, tagged `half:"1h"`); spread/total/BTTS/teamTotal route
   // through the shared `clubSoccerThreshold` gameType (api/lib/tonight/club-soccer-threshold.js).
-  KXMLS1H:         { sport: "mls",    league: "mls",    stat: "1hgame", col: "ML", gameType: "clubSoccerMl", half: "1h" },
+  KXMLS1H:         { sport: "mls",    league: "mls",    stat: "1hgame", col: "ML", gameType: "modelFreeMl", half: "1h" },
   KXMLS1HBTTS:     { sport: "mls",    league: "mls",    stat: "1hbtts", col: "G",  gameType: "clubSoccerThreshold", subtype: "btts",      half: "1h" },
   KXMLS1HSPREAD:   { sport: "mls",    league: "mls",    stat: "1hspread", col: "G", gameType: "clubSoccerThreshold", subtype: "spread",  half: "1h" },
   KXMLS1HTOTAL:    { sport: "mls",    league: "mls",    stat: "1htotal", col: "G", gameType: "clubSoccerThreshold", subtype: "total",    half: "1h" },
   KXMLSTEAMTOTAL:  { sport: "mls",    league: "mls",    stat: "teamTotal", col: "G", gameType: "clubSoccerThreshold", subtype: "teamTotal" },
-  KXLIGAMX1H:      { sport: "ligamx", league: "ligamx", stat: "1hgame", col: "ML", gameType: "ligamxMl", half: "1h" },
+  KXLIGAMX1H:      { sport: "ligamx", league: "ligamx", stat: "1hgame", col: "ML", gameType: "modelFreeMl", half: "1h" },
   KXLIGAMX1HBTTS:  { sport: "ligamx", league: "ligamx", stat: "1hbtts", col: "G",  gameType: "clubSoccerThreshold", subtype: "btts",      half: "1h" },
   KXLIGAMX1HSPREAD:{ sport: "ligamx", league: "ligamx", stat: "1hspread", col: "G", gameType: "clubSoccerThreshold", subtype: "spread",  half: "1h" },
   KXLIGAMX1HTOTAL: { sport: "ligamx", league: "ligamx", stat: "1htotal", col: "G", gameType: "clubSoccerThreshold", subtype: "total",    half: "1h" },
@@ -140,12 +140,12 @@ export const SERIES_CONFIG = {
   // Argentina Liga Profesional de Fútbol game winner + full-game spread/total/BTTS — model-free,
   // found via the 2141-row kalshi_series_seen baseline backlog sweep (adopted 2026-07-24, see
   // project_baseline_backlog_2026_07_24 memory). GAME reuses the clubSoccerMl-style dedicated
-  // module (api/lib/tonight/argprem-ml.js); spread/total/BTTS route through the shared
+  // module (api/lib/tonight/model-free-ml.js); spread/total/BTTS route through the shared
   // clubSoccerThreshold gameType (no half tag — full game). Two team-mapping landmines: Kalshi's
   // "CAT" (Talleres Córdoba) collides with ESPN's OWN "CAT" (Atlético Tucumán); ESPN's OWN
   // /teams endpoint reuses "RIV" for both River Plate and Independiente Rivadavia — see the
   // argprem registry comment in teams.js.
-  KXARGPREMDIVGAME:   { sport: "argprem", league: "argprem", stat: "game",     col: "ML", gameType: "argPremMl" },
+  KXARGPREMDIVGAME:   { sport: "argprem", league: "argprem", stat: "game",     col: "ML", gameType: "modelFreeMl" },
   KXARGPREMDIVSPREAD: { sport: "argprem", league: "argprem", stat: "spread",   col: "G",  gameType: "clubSoccerThreshold", subtype: "spread" },
   KXARGPREMDIVTOTAL:  { sport: "argprem", league: "argprem", stat: "total",    col: "G",  gameType: "clubSoccerThreshold", subtype: "total" },
   KXARGPREMDIVBTTS:   { sport: "argprem", league: "argprem", stat: "btts",     col: "G",  gameType: "clubSoccerThreshold", subtype: "btts" },

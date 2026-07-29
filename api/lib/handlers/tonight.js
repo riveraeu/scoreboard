@@ -31,12 +31,8 @@ import { emitGolfH2hPlays } from "../tonight/golf-h2h.js";
 import { emitNascarPlays } from "../tonight/nascar.js";
 import { emitNbaSummerPlays } from "../tonight/nba-summer.js";
 import { emitLmbPlays } from "../tonight/lmb-ml.js";
-import { emitClubSoccerMlPlays } from "../tonight/club-soccer-ml.js";
-import { emitBrasileiraoMlPlays } from "../tonight/brasileirao-ml.js";
-import { emitNwslMlPlays } from "../tonight/nwsl-ml.js";
-import { emitChnslMlPlays } from "../tonight/chnsl-ml.js";
-import { emitLigaMxMlPlays } from "../tonight/ligamx-ml.js";
-import { emitArgPremMlPlays } from "../tonight/argprem-ml.js";
+import { emitModelFreeMlPlays } from "../tonight/model-free-ml.js";
+import { MODEL_FREE_LEAGUE_KEYS } from "../model-free-leagues.js";
 import { emitClubSoccerThresholdPlays } from "../tonight/club-soccer-threshold.js";
 import { emitScoCupPlays } from "../tonight/scocup.js";
 import { emitMlbOutsPlays } from "../tonight/mlb-outs.js";
@@ -281,12 +277,11 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
         const nascarMarkets = []; // NASCAR Cup H2H + Top-10 — each priced side carries its own driver(s)
         const nbaSummerMarkets = []; // NBA Summer League game winner — each priced side carries its own pick + opponent
         const lmbMarkets = []; // LMB (Mexican League) game winner — each priced side carries its own pick + opponent
-        const clubSoccerMarkets = []; // MLS game winner (model-free) — each priced side (home/away/tie), grouped by event in emit
-        const brasileiraoMarkets = []; // Brasileirão Série A game winner (model-free) — same shape as clubSoccerMarkets, separate array (different ESPN league endpoint)
-        const nwslMarkets = []; // NWSL game winner (model-free) — same shape, separate array (different ESPN league endpoint)
-        const chnslMarkets = []; // Chinese Super League game winner (model-free) — same shape, separate array (different ESPN league endpoint)
-        const ligamxMarkets = []; // Liga MX game winner (model-free) — same shape, separate array (different ESPN league endpoint)
-        const argPremMarkets = []; // Argentina Liga Profesional game winner (model-free) — same shape, separate array (different ESPN league endpoint)
+        // Model-free soccer game winners, keyed by league (was six separate hand-declared arrays).
+        // Each priced side (home/away/tie) lands in its league's bucket and is grouped by event in
+        // the emit path; the buckets stay separate because each league resolves gameTime/results
+        // off a different ESPN league endpoint.
+        const modelFreeMarkets = {};
         const clubSoccerThresholdMarkets = []; // MLS/Liga MX/Argentina spread/total/BTTS + team-total (model-free, threshold shape) — one shared array, sport-tagged per row
         const scocupSpreadMarkets = []; // Scottish League Cup spread (model-free, threshold shape) — each priced threshold carries its team's subtitle name
         const scocupTotalMarkets = []; // Scottish League Cup total (model-free, threshold shape) — no team identity, joined to spread siblings by event segment
@@ -572,247 +567,51 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
               lmbMarkets.push({ eventTicker: m.event_ticker, gameTeam1: _lmT1, gameTeam2: _lmT2, pickTeam: _lmPick, opponent: _lmPick === _lmT1 ? _lmT2 : _lmT1, gameDate: _lmGameDate, kalshiPct: _lmPct, americanOdds: _lmAO, kalshiVolume: _lmVol, _ticker: m.ticker, _depth: m._depth });
               continue;
             }
-            // ── MLS (Major League Soccer) game-winner branch ── 3-way (home/away/tie), model-free
-            // (see project_maker_modelfree_clubsoccer_2026_07_23 memory — the maker strategy needs
-            // no probability, only a real gameTime, fetched from ESPN in the emit path). Event
-            // segment = date + team abbrs (KXMLSGAME-26JUL25SJLAG); parseGameTeams does the
-            // validated variable-length split against the mls registry (same "try every split"
-            // path as WNBA — NE/SD/SJ are 2-char, LAFC/NYRB are 4-char). Liquidity-gated at parse
-            // (same doctrine as game rows 2026-07-11): far-out listings quote placeholder-wide
-            // spreads until books seed near kickoff.
-            if (cfg.gameType === "clubSoccerMl") {
-              const _csYesAsk = parseFloat(m.yes_ask_dollars) || 0;
-              const _csNoAsk = parseFloat(m.no_ask_dollars) || 0;
-              const _csLast = parseFloat(m.last_price_dollars) || 0;
-              const _csYesBid = parseFloat(m.yes_bid_dollars) || 0;
-              const _csNoBid = parseFloat(m.no_bid_dollars) || 0;
-              const _csStale = _csYesAsk >= 0.98 && _csYesBid === 0 && _csLast > 0;
-              const _csPrice = _csStale ? _csLast : (_csYesAsk > 0 ? _csYesAsk : _csLast);
-              if (_csPrice === 0) continue; // no live book — skip (books fill near kickoff)
-              const _csYesSpreadC = _csYesAsk > 0 ? Math.round((_csYesAsk - _csYesBid) * 100) : 999;
-              const _csNoSpreadC = _csNoAsk > 0 ? Math.round((_csNoAsk - _csNoBid) * 100) : 999;
-              if (!_csStale && !capturableSpread(Math.min(_csYesSpreadC, _csNoSpreadC))) continue;
-              const _csYesPct = Math.round(_csPrice * 100);
-              const _csNoPct = _csNoAsk > 0 ? Math.round(_csNoAsk * 100) : (100 - _csYesPct);
-              const _csVol = parseInt(m.volume_fp) || parseInt(m.volume) || 0;
-              const [_csHome, _csAway] = parseGameTeams(m.event_ticker, cfg.league);
-              if (!_csHome || !_csAway) continue;
-              const _csSuffix = (m.ticker || "").split("-").pop();
-              let _csSide, _csSideCode;
-              if (_csSuffix === "TIE") { _csSide = "tie"; _csSideCode = "TIE"; }
-              else if (_csSuffix === _csHome) { _csSide = "home"; _csSideCode = _csHome; }
-              else if (_csSuffix === _csAway) { _csSide = "away"; _csSideCode = _csAway; }
+            // ── MODEL-FREE SOCCER game-winner branch (3-way home/away/tie) ────────────────────
+            // ONE branch for every league in MODEL_FREE_LEAGUES, replacing six copies of this
+            // same ~35 lines that differed only in their local variable prefix and target array
+            // (2026-07-28). Each league still needs its own bucket — the emit path resolves
+            // gameTime/results off a DIFFERENT ESPN league endpoint per league — but the bucket
+            // is now a key in `modelFreeMarkets`, not a separate hand-declared array.
+            //
+            // Event segment = date + team abbrs (KXMLSGAME-26JUL25SJLAG); `parseGameTeams` does
+            // the validated variable-length split against that league's registry, which is what
+            // handles the mixed 2-to-4-char abbrs (MLS NE/SD/SJ vs LAFC/NYRB, Brasileirão's CR).
+            // Liquidity-gated at parse (same doctrine as game rows 2026-07-11): far-out listings
+            // quote placeholder-wide spreads until books seed near kickoff.
+            // `cfg.half` ("1h" or unset) tags which score the emit path resolves against.
+            if (cfg.gameType === "modelFreeMl") {
+              const _mfYesAsk = parseFloat(m.yes_ask_dollars) || 0;
+              const _mfNoAsk = parseFloat(m.no_ask_dollars) || 0;
+              const _mfLast = parseFloat(m.last_price_dollars) || 0;
+              const _mfYesBid = parseFloat(m.yes_bid_dollars) || 0;
+              const _mfNoBid = parseFloat(m.no_bid_dollars) || 0;
+              const _mfStale = _mfYesAsk >= 0.98 && _mfYesBid === 0 && _mfLast > 0;
+              const _mfPrice = _mfStale ? _mfLast : (_mfYesAsk > 0 ? _mfYesAsk : _mfLast);
+              if (_mfPrice === 0) continue; // no live book — skip (books fill near kickoff)
+              const _mfYesSpreadC = _mfYesAsk > 0 ? Math.round((_mfYesAsk - _mfYesBid) * 100) : 999;
+              const _mfNoSpreadC = _mfNoAsk > 0 ? Math.round((_mfNoAsk - _mfNoBid) * 100) : 999;
+              if (!_mfStale && !capturableSpread(Math.min(_mfYesSpreadC, _mfNoSpreadC))) continue;
+              const _mfYesPct = Math.round(_mfPrice * 100);
+              const _mfNoPct = _mfNoAsk > 0 ? Math.round(_mfNoAsk * 100) : (100 - _mfYesPct);
+              const _mfVol = parseInt(m.volume_fp) || parseInt(m.volume) || 0;
+              const [_mfHome, _mfAway] = parseGameTeams(m.event_ticker, cfg.league);
+              if (!_mfHome || !_mfAway) continue;
+              const _mfSuffix = (m.ticker || "").split("-").pop();
+              let _mfSide, _mfSideCode;
+              if (_mfSuffix === "TIE") { _mfSide = "tie"; _mfSideCode = "TIE"; }
+              else if (_mfSuffix === _mfHome) { _mfSide = "home"; _mfSideCode = _mfHome; }
+              else if (_mfSuffix === _mfAway) { _mfSide = "away"; _mfSideCode = _mfAway; }
               else continue;
-              const _csDateSeg = (m.event_ticker || "").split("-")[1] || "";
-              let _csGameDate = null;
-              if (_csDateSeg.length >= 7) {
+              const _mfDateSeg = (m.event_ticker || "").split("-")[1] || "";
+              let _mfGameDate = null;
+              if (_mfDateSeg.length >= 7) {
                 const _KMONT = { JAN: "01", FEB: "02", MAR: "03", APR: "04", MAY: "05", JUN: "06", JUL: "07", AUG: "08", SEP: "09", OCT: "10", NOV: "11", DEC: "12" };
-                const _csMo = _KMONT[_csDateSeg.slice(2, 5).toUpperCase()];
-                if (_csMo) _csGameDate = `20${_csDateSeg.slice(0, 2)}-${_csMo}-${_csDateSeg.slice(5, 7)}`;
+                const _mfMo = _KMONT[_mfDateSeg.slice(2, 5).toUpperCase()];
+                if (_mfMo) _mfGameDate = `20${_mfDateSeg.slice(0, 2)}-${_mfMo}-${_mfDateSeg.slice(5, 7)}`;
               }
-              const _csAO = (pct) => pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
-              clubSoccerMarkets.push({ eventTicker: m.event_ticker, homeTeam: _csHome, awayTeam: _csAway, side: _csSide, sideCode: _csSideCode, gameDate: _csGameDate, kalshiPct: _csYesPct, noKalshiPct: _csNoPct, americanOdds: _csAO(_csYesPct), kalshiVolume: _csVol, _ticker: m.ticker, _depth: m._depth, half: cfg.half || null });
-              continue;
-            }
-            // ── Brasileirão (Brazilian Série A) game-winner branch ── same shape as the MLS
-            // branch above (3-way home/away/tie, model-free), but its OWN dedicated array —
-            // can't share clubSoccerMarkets since the emit path resolves gameTime/results off a
-            // DIFFERENT ESPN league endpoint (bra.1, not usa.1) per row, and these rows carry no
-            // per-row sport tag to disambiguate later. Event segment = date + team abbrs
-            // (KXBRASILEIROGAME-26JUL26CRVIT); parseGameTeams does the validated variable-length
-            // split against the brasileirao registry (Remo's 2-char "CR" is the one team needing
-            // the "try every split" path, same class of problem as MLS's NE/SD/SJ).
-            if (cfg.gameType === "brasileiraoMl") {
-              const _baYesAsk = parseFloat(m.yes_ask_dollars) || 0;
-              const _baNoAsk = parseFloat(m.no_ask_dollars) || 0;
-              const _baLast = parseFloat(m.last_price_dollars) || 0;
-              const _baYesBid = parseFloat(m.yes_bid_dollars) || 0;
-              const _baNoBid = parseFloat(m.no_bid_dollars) || 0;
-              const _baStale = _baYesAsk >= 0.98 && _baYesBid === 0 && _baLast > 0;
-              const _baPrice = _baStale ? _baLast : (_baYesAsk > 0 ? _baYesAsk : _baLast);
-              if (_baPrice === 0) continue; // no live book — skip (books fill near kickoff)
-              const _baYesSpreadC = _baYesAsk > 0 ? Math.round((_baYesAsk - _baYesBid) * 100) : 999;
-              const _baNoSpreadC = _baNoAsk > 0 ? Math.round((_baNoAsk - _baNoBid) * 100) : 999;
-              if (!_baStale && !capturableSpread(Math.min(_baYesSpreadC, _baNoSpreadC))) continue;
-              const _baYesPct = Math.round(_baPrice * 100);
-              const _baNoPct = _baNoAsk > 0 ? Math.round(_baNoAsk * 100) : (100 - _baYesPct);
-              const _baVol = parseInt(m.volume_fp) || parseInt(m.volume) || 0;
-              const [_baHome, _baAway] = parseGameTeams(m.event_ticker, cfg.league);
-              if (!_baHome || !_baAway) continue;
-              const _baSuffix = (m.ticker || "").split("-").pop();
-              let _baSide, _baSideCode;
-              if (_baSuffix === "TIE") { _baSide = "tie"; _baSideCode = "TIE"; }
-              else if (_baSuffix === _baHome) { _baSide = "home"; _baSideCode = _baHome; }
-              else if (_baSuffix === _baAway) { _baSide = "away"; _baSideCode = _baAway; }
-              else continue;
-              const _baDateSeg = (m.event_ticker || "").split("-")[1] || "";
-              let _baGameDate = null;
-              if (_baDateSeg.length >= 7) {
-                const _KMONT = { JAN: "01", FEB: "02", MAR: "03", APR: "04", MAY: "05", JUN: "06", JUL: "07", AUG: "08", SEP: "09", OCT: "10", NOV: "11", DEC: "12" };
-                const _baMo = _KMONT[_baDateSeg.slice(2, 5).toUpperCase()];
-                if (_baMo) _baGameDate = `20${_baDateSeg.slice(0, 2)}-${_baMo}-${_baDateSeg.slice(5, 7)}`;
-              }
-              const _baAO = (pct) => pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
-              brasileiraoMarkets.push({ eventTicker: m.event_ticker, homeTeam: _baHome, awayTeam: _baAway, side: _baSide, sideCode: _baSideCode, gameDate: _baGameDate, kalshiPct: _baYesPct, noKalshiPct: _baNoPct, americanOdds: _baAO(_baYesPct), kalshiVolume: _baVol, _ticker: m.ticker, _depth: m._depth });
-              continue;
-            }
-            // ── NWSL (National Women's Soccer League) game-winner branch ── same shape as the
-            // Brasileirão branch above, 3rd model-free league (see project_maker_modelfree_
-            // clubsoccer_2026_07_23 memory). Own dedicated array (different ESPN league endpoint,
-            // usa.nwsl not bra.1). Event segment = date + team abbrs (KXNWSLGAME-26JUL25BOSKC);
-            // parseGameTeams does the validated variable-length split against the nwsl registry
-            // (KC's 2-char code is the one team needing the "try every split" path).
-            if (cfg.gameType === "nwslMl") {
-              const _nwYesAsk = parseFloat(m.yes_ask_dollars) || 0;
-              const _nwNoAsk = parseFloat(m.no_ask_dollars) || 0;
-              const _nwLast = parseFloat(m.last_price_dollars) || 0;
-              const _nwYesBid = parseFloat(m.yes_bid_dollars) || 0;
-              const _nwNoBid = parseFloat(m.no_bid_dollars) || 0;
-              const _nwStale = _nwYesAsk >= 0.98 && _nwYesBid === 0 && _nwLast > 0;
-              const _nwPrice = _nwStale ? _nwLast : (_nwYesAsk > 0 ? _nwYesAsk : _nwLast);
-              if (_nwPrice === 0) continue; // no live book — skip (books fill near kickoff)
-              const _nwYesSpreadC = _nwYesAsk > 0 ? Math.round((_nwYesAsk - _nwYesBid) * 100) : 999;
-              const _nwNoSpreadC = _nwNoAsk > 0 ? Math.round((_nwNoAsk - _nwNoBid) * 100) : 999;
-              if (!_nwStale && !capturableSpread(Math.min(_nwYesSpreadC, _nwNoSpreadC))) continue;
-              const _nwYesPct = Math.round(_nwPrice * 100);
-              const _nwNoPct = _nwNoAsk > 0 ? Math.round(_nwNoAsk * 100) : (100 - _nwYesPct);
-              const _nwVol = parseInt(m.volume_fp) || parseInt(m.volume) || 0;
-              const [_nwHome, _nwAway] = parseGameTeams(m.event_ticker, cfg.league);
-              if (!_nwHome || !_nwAway) continue;
-              const _nwSuffix = (m.ticker || "").split("-").pop();
-              let _nwSide, _nwSideCode;
-              if (_nwSuffix === "TIE") { _nwSide = "tie"; _nwSideCode = "TIE"; }
-              else if (_nwSuffix === _nwHome) { _nwSide = "home"; _nwSideCode = _nwHome; }
-              else if (_nwSuffix === _nwAway) { _nwSide = "away"; _nwSideCode = _nwAway; }
-              else continue;
-              const _nwDateSeg = (m.event_ticker || "").split("-")[1] || "";
-              let _nwGameDate = null;
-              if (_nwDateSeg.length >= 7) {
-                const _KMONT = { JAN: "01", FEB: "02", MAR: "03", APR: "04", MAY: "05", JUN: "06", JUL: "07", AUG: "08", SEP: "09", OCT: "10", NOV: "11", DEC: "12" };
-                const _nwMo = _KMONT[_nwDateSeg.slice(2, 5).toUpperCase()];
-                if (_nwMo) _nwGameDate = `20${_nwDateSeg.slice(0, 2)}-${_nwMo}-${_nwDateSeg.slice(5, 7)}`;
-              }
-              const _nwAO = (pct) => pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
-              nwslMarkets.push({ eventTicker: m.event_ticker, homeTeam: _nwHome, awayTeam: _nwAway, side: _nwSide, sideCode: _nwSideCode, gameDate: _nwGameDate, kalshiPct: _nwYesPct, noKalshiPct: _nwNoPct, americanOdds: _nwAO(_nwYesPct), kalshiVolume: _nwVol, _ticker: m.ticker, _depth: m._depth });
-              continue;
-            }
-            // ── Chinese Super League game-winner branch ── same shape as the NWSL branch
-            // above, 4th model-free league (see project_maker_modelfree_clubsoccer_2026_07_23
-            // memory). Own dedicated array (different ESPN league endpoint, chn.1). Event
-            // segment = date + team abbrs (KXCHNSLGAME-26JUL25SHPSHS); all chnsl abbrs are
-            // uniform 3-char, no mixed-length parseGameTeams special-case needed.
-            if (cfg.gameType === "chnslMl") {
-              const _cnYesAsk = parseFloat(m.yes_ask_dollars) || 0;
-              const _cnNoAsk = parseFloat(m.no_ask_dollars) || 0;
-              const _cnLast = parseFloat(m.last_price_dollars) || 0;
-              const _cnYesBid = parseFloat(m.yes_bid_dollars) || 0;
-              const _cnNoBid = parseFloat(m.no_bid_dollars) || 0;
-              const _cnStale = _cnYesAsk >= 0.98 && _cnYesBid === 0 && _cnLast > 0;
-              const _cnPrice = _cnStale ? _cnLast : (_cnYesAsk > 0 ? _cnYesAsk : _cnLast);
-              if (_cnPrice === 0) continue; // no live book — skip (books fill near kickoff)
-              const _cnYesSpreadC = _cnYesAsk > 0 ? Math.round((_cnYesAsk - _cnYesBid) * 100) : 999;
-              const _cnNoSpreadC = _cnNoAsk > 0 ? Math.round((_cnNoAsk - _cnNoBid) * 100) : 999;
-              if (!_cnStale && !capturableSpread(Math.min(_cnYesSpreadC, _cnNoSpreadC))) continue;
-              const _cnYesPct = Math.round(_cnPrice * 100);
-              const _cnNoPct = _cnNoAsk > 0 ? Math.round(_cnNoAsk * 100) : (100 - _cnYesPct);
-              const _cnVol = parseInt(m.volume_fp) || parseInt(m.volume) || 0;
-              const [_cnHome, _cnAway] = parseGameTeams(m.event_ticker, cfg.league);
-              if (!_cnHome || !_cnAway) continue;
-              const _cnSuffix = (m.ticker || "").split("-").pop();
-              let _cnSide, _cnSideCode;
-              if (_cnSuffix === "TIE") { _cnSide = "tie"; _cnSideCode = "TIE"; }
-              else if (_cnSuffix === _cnHome) { _cnSide = "home"; _cnSideCode = _cnHome; }
-              else if (_cnSuffix === _cnAway) { _cnSide = "away"; _cnSideCode = _cnAway; }
-              else continue;
-              const _cnDateSeg = (m.event_ticker || "").split("-")[1] || "";
-              let _cnGameDate = null;
-              if (_cnDateSeg.length >= 7) {
-                const _KMONT = { JAN: "01", FEB: "02", MAR: "03", APR: "04", MAY: "05", JUN: "06", JUL: "07", AUG: "08", SEP: "09", OCT: "10", NOV: "11", DEC: "12" };
-                const _cnMo = _KMONT[_cnDateSeg.slice(2, 5).toUpperCase()];
-                if (_cnMo) _cnGameDate = `20${_cnDateSeg.slice(0, 2)}-${_cnMo}-${_cnDateSeg.slice(5, 7)}`;
-              }
-              const _cnAO = (pct) => pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
-              chnslMarkets.push({ eventTicker: m.event_ticker, homeTeam: _cnHome, awayTeam: _cnAway, side: _cnSide, sideCode: _cnSideCode, gameDate: _cnGameDate, kalshiPct: _cnYesPct, noKalshiPct: _cnNoPct, americanOdds: _cnAO(_cnYesPct), kalshiVolume: _cnVol, _ticker: m.ticker, _depth: m._depth });
-              continue;
-            }
-            // ── Liga MX game-winner branch ── same shape as the CHNSL branch above, 5th
-            // model-free league (see project_maker_modelfree_clubsoccer_2026_07_23 memory). Own
-            // dedicated array (different ESPN league endpoint, mex.1). Event segment = date +
-            // team abbrs (KXLIGAMXGAME-26JUL24ALAAME); all ligamx abbrs are uniform 3-char, no
-            // mixed-length parseGameTeams special-case needed.
-            if (cfg.gameType === "ligamxMl") {
-              const _lgYesAsk = parseFloat(m.yes_ask_dollars) || 0;
-              const _lgNoAsk = parseFloat(m.no_ask_dollars) || 0;
-              const _lgLast = parseFloat(m.last_price_dollars) || 0;
-              const _lgYesBid = parseFloat(m.yes_bid_dollars) || 0;
-              const _lgNoBid = parseFloat(m.no_bid_dollars) || 0;
-              const _lgStale = _lgYesAsk >= 0.98 && _lgYesBid === 0 && _lgLast > 0;
-              const _lgPrice = _lgStale ? _lgLast : (_lgYesAsk > 0 ? _lgYesAsk : _lgLast);
-              if (_lgPrice === 0) continue; // no live book — skip (books fill near kickoff)
-              const _lgYesSpreadC = _lgYesAsk > 0 ? Math.round((_lgYesAsk - _lgYesBid) * 100) : 999;
-              const _lgNoSpreadC = _lgNoAsk > 0 ? Math.round((_lgNoAsk - _lgNoBid) * 100) : 999;
-              if (!_lgStale && !capturableSpread(Math.min(_lgYesSpreadC, _lgNoSpreadC))) continue;
-              const _lgYesPct = Math.round(_lgPrice * 100);
-              const _lgNoPct = _lgNoAsk > 0 ? Math.round(_lgNoAsk * 100) : (100 - _lgYesPct);
-              const _lgVol = parseInt(m.volume_fp) || parseInt(m.volume) || 0;
-              const [_lgHome, _lgAway] = parseGameTeams(m.event_ticker, cfg.league);
-              if (!_lgHome || !_lgAway) continue;
-              const _lgSuffix = (m.ticker || "").split("-").pop();
-              let _lgSide, _lgSideCode;
-              if (_lgSuffix === "TIE") { _lgSide = "tie"; _lgSideCode = "TIE"; }
-              else if (_lgSuffix === _lgHome) { _lgSide = "home"; _lgSideCode = _lgHome; }
-              else if (_lgSuffix === _lgAway) { _lgSide = "away"; _lgSideCode = _lgAway; }
-              else continue;
-              const _lgDateSeg = (m.event_ticker || "").split("-")[1] || "";
-              let _lgGameDate = null;
-              if (_lgDateSeg.length >= 7) {
-                const _KMONT = { JAN: "01", FEB: "02", MAR: "03", APR: "04", MAY: "05", JUN: "06", JUL: "07", AUG: "08", SEP: "09", OCT: "10", NOV: "11", DEC: "12" };
-                const _lgMo = _KMONT[_lgDateSeg.slice(2, 5).toUpperCase()];
-                if (_lgMo) _lgGameDate = `20${_lgDateSeg.slice(0, 2)}-${_lgMo}-${_lgDateSeg.slice(5, 7)}`;
-              }
-              const _lgAO = (pct) => pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
-              ligamxMarkets.push({ eventTicker: m.event_ticker, homeTeam: _lgHome, awayTeam: _lgAway, side: _lgSide, sideCode: _lgSideCode, gameDate: _lgGameDate, kalshiPct: _lgYesPct, noKalshiPct: _lgNoPct, americanOdds: _lgAO(_lgYesPct), kalshiVolume: _lgVol, _ticker: m.ticker, _depth: m._depth, half: cfg.half || null });
-              continue;
-            }
-            // ── Argentina Liga Profesional game-winner branch ── same shape as the Liga MX
-            // branch above, model-free (found via the 2141-row kalshi_series_seen baseline
-            // backlog sweep, adopted 2026-07-24, see project_baseline_backlog_2026_07_24
-            // memory). Own dedicated array (different ESPN league endpoint, arg.1). Event
-            // segment = date + team abbrs (KXARGPREMDIVGAME-26JUL26RIEBOC); all argprem abbrs
-            // are uniform 2-4 char but not mixed within one team (parseGameTeams' "try every
-            // split" path handles it via the argprem registry, same as WNBA/MLS/brasileirao/nwsl).
-            if (cfg.gameType === "argPremMl") {
-              const _apYesAsk = parseFloat(m.yes_ask_dollars) || 0;
-              const _apNoAsk = parseFloat(m.no_ask_dollars) || 0;
-              const _apLast = parseFloat(m.last_price_dollars) || 0;
-              const _apYesBid = parseFloat(m.yes_bid_dollars) || 0;
-              const _apNoBid = parseFloat(m.no_bid_dollars) || 0;
-              const _apStale = _apYesAsk >= 0.98 && _apYesBid === 0 && _apLast > 0;
-              const _apPrice = _apStale ? _apLast : (_apYesAsk > 0 ? _apYesAsk : _apLast);
-              if (_apPrice === 0) continue; // no live book — skip (books fill near kickoff)
-              const _apYesSpreadC = _apYesAsk > 0 ? Math.round((_apYesAsk - _apYesBid) * 100) : 999;
-              const _apNoSpreadC = _apNoAsk > 0 ? Math.round((_apNoAsk - _apNoBid) * 100) : 999;
-              if (!_apStale && !capturableSpread(Math.min(_apYesSpreadC, _apNoSpreadC))) continue;
-              const _apYesPct = Math.round(_apPrice * 100);
-              const _apNoPct = _apNoAsk > 0 ? Math.round(_apNoAsk * 100) : (100 - _apYesPct);
-              const _apVol = parseInt(m.volume_fp) || parseInt(m.volume) || 0;
-              const [_apHome, _apAway] = parseGameTeams(m.event_ticker, cfg.league);
-              if (!_apHome || !_apAway) continue;
-              const _apSuffix = (m.ticker || "").split("-").pop();
-              let _apSide, _apSideCode;
-              if (_apSuffix === "TIE") { _apSide = "tie"; _apSideCode = "TIE"; }
-              else if (_apSuffix === _apHome) { _apSide = "home"; _apSideCode = _apHome; }
-              else if (_apSuffix === _apAway) { _apSide = "away"; _apSideCode = _apAway; }
-              else continue;
-              const _apDateSeg = (m.event_ticker || "").split("-")[1] || "";
-              let _apGameDate = null;
-              if (_apDateSeg.length >= 7) {
-                const _KMONT = { JAN: "01", FEB: "02", MAR: "03", APR: "04", MAY: "05", JUN: "06", JUL: "07", AUG: "08", SEP: "09", OCT: "10", NOV: "11", DEC: "12" };
-                const _apMo = _KMONT[_apDateSeg.slice(2, 5).toUpperCase()];
-                if (_apMo) _apGameDate = `20${_apDateSeg.slice(0, 2)}-${_apMo}-${_apDateSeg.slice(5, 7)}`;
-              }
-              const _apAO = (pct) => pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
-              argPremMarkets.push({ eventTicker: m.event_ticker, homeTeam: _apHome, awayTeam: _apAway, side: _apSide, sideCode: _apSideCode, gameDate: _apGameDate, kalshiPct: _apYesPct, noKalshiPct: _apNoPct, americanOdds: _apAO(_apYesPct), kalshiVolume: _apVol, _ticker: m.ticker, _depth: m._depth });
+              const _mfAO = (pct) => pct >= 50 ? Math.round(-(pct / (100 - pct)) * 100) : Math.round((100 - pct) / pct * 100);
+              (modelFreeMarkets[cfg.league] ||= []).push({ eventTicker: m.event_ticker, homeTeam: _mfHome, awayTeam: _mfAway, side: _mfSide, sideCode: _mfSideCode, gameDate: _mfGameDate, kalshiPct: _mfYesPct, noKalshiPct: _mfNoPct, americanOdds: _mfAO(_mfYesPct), kalshiVolume: _mfVol, _ticker: m.ticker, _depth: m._depth, half: cfg.half || null });
               continue;
             }
             // ── MLS/Liga MX threshold branch (1H spread/total/BTTS + full-game team-total) ──
@@ -2364,55 +2163,25 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           lmbMarkets, lmbPlays, cutoffStr,
           cache: CACHE2, isBustCache,
         });
-        // ── MLS game winner — Phase 1, model-free (no probability model at all; see
-        // project_maker_modelfree_clubsoccer_2026_07_23 memory). Same dedicated-array idiom;
-        // merged into shadow:staging only. Real gameTime fetched from ESPN (api/lib/mls.js).
-        const clubSoccerPlays = [];
-        await emitClubSoccerMlPlays({
-          clubSoccerMarkets, clubSoccerPlays, cutoffStr,
-          cache: CACHE2, isBustCache,
-        });
-        // ── Brasileirão Série A game winner — Phase 1, model-free. Same idiom as MLS above, one
-        // league later (see project_maker_modelfree_clubsoccer_2026_07_23 + the 2026-07-23
-        // build-decision memory). Real gameTime fetched from ESPN (api/lib/brasileirao.js).
-        const brasileiraoPlays = [];
-        await emitBrasileiraoMlPlays({
-          brasileiraoMarkets, brasileiraoPlays, cutoffStr,
-          cache: CACHE2, isBustCache,
-        });
-        // ── NWSL game winner — Phase 1, model-free. 3rd model-free maker league, same idiom
-        // (see project_maker_modelfree_clubsoccer_2026_07_23 memory). Real gameTime fetched from
-        // ESPN (api/lib/nwsl.js).
-        const nwslPlays = [];
-        await emitNwslMlPlays({
-          nwslMarkets, nwslPlays, cutoffStr,
-          cache: CACHE2, isBustCache,
-        });
-        // ── Chinese Super League game winner — Phase 1, model-free. 4th model-free maker
-        // league, same idiom (see project_maker_modelfree_clubsoccer_2026_07_23 memory). Real
-        // gameTime fetched from ESPN (api/lib/chnsl.js).
-        const chnslPlays = [];
-        await emitChnslMlPlays({
-          chnslMarkets, chnslPlays, cutoffStr,
-          cache: CACHE2, isBustCache,
-        });
-        // ── Liga MX game winner — Phase 1, model-free. 5th model-free maker league, same idiom
-        // (see project_maker_modelfree_clubsoccer_2026_07_23 memory). Real gameTime fetched
-        // from ESPN (api/lib/ligamx.js).
-        const ligamxPlays = [];
-        await emitLigaMxMlPlays({
-          ligamxMarkets, ligamxPlays, cutoffStr,
-          cache: CACHE2, isBustCache,
-        });
-        // ── Argentina Liga Profesional game winner — Phase 1, model-free (found via the
-        // 2141-row kalshi_series_seen baseline backlog sweep, see
-        // project_baseline_backlog_2026_07_24 memory). Same dedicated-array idiom; merged into
-        // shadow:staging only. Real gameTime fetched from ESPN (api/lib/argprem.js).
-        const argPremPlays = [];
-        await emitArgPremMlPlays({
-          argPremMarkets, argPremPlays, cutoffStr,
-          cache: CACHE2, isBustCache,
-        });
+        // ── Model-free soccer game winners (MLS, Brasileirão, NWSL, Chinese Super League,
+        // Liga MX, Argentina Liga Profesional) — Phase 1, no probability model at all; see
+        // project_maker_modelfree_clubsoccer_2026_07_23. One loop over MODEL_FREE_LEAGUES
+        // replaces six near-identical emit calls (2026-07-28). Per-league play buckets are kept
+        // (each league's rows carry their own sport tag and resolve off their own ESPN endpoint)
+        // and merged into shadow:staging only. Real gameTime fetched from ESPN per league.
+        const modelFreePlays = {};
+        for (const _lg of MODEL_FREE_LEAGUE_KEYS) {
+          const _mkts = modelFreeMarkets[_lg];
+          if (!_mkts || !_mkts.length) { modelFreePlays[_lg] = []; continue; }
+          const _out = [];
+          await emitModelFreeMlPlays({
+            league: _lg, markets: _mkts, plays: _out, cutoffStr,
+            cache: CACHE2, isBustCache,
+          });
+          modelFreePlays[_lg] = _out;
+        }
+        // Flat list for the staging merge; the per-league buckets stay addressable for ?debug=1.
+        const modelFreeAllPlays = MODEL_FREE_LEAGUE_KEYS.flatMap(k => modelFreePlays[k] || []);
         // ── MLS/Liga MX 1H spread/total/BTTS + full-game team-total — Phase 1, model-free,
         // threshold shape, one shared array+module for both leagues (see
         // project_mls_ligamx_threshold_2026_07_23 memory). Merged into shadow:staging only.
@@ -2594,7 +2363,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           }
           // Tennis plays live in their own array (kept out of `plays` to bypass dedup/frontend);
           // merge them into the staging `plays` so shadow-snapshot logs them like any other play.
-          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays: [...plays, ...tennisPlays, ...soccerPlays, ...soccerAdvancePlays, ...fightPlays, ...golfH2hPlays, ...nascarPlays, ...nbaSummerPlays, ...lmbPlays, ...clubSoccerPlays, ...brasileiraoPlays, ...nwslPlays, ...chnslPlays, ...ligamxPlays, ...argPremPlays, ...clubSoccerThresholdPlays, ...scocupPlays, ...outsPlays], dropped, schedule: _schedCounts, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, writtenAt: Date.now() }), { expirationTtl: 21600 }).catch(() => {});
+          CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays: [...plays, ...tennisPlays, ...soccerPlays, ...soccerAdvancePlays, ...fightPlays, ...golfH2hPlays, ...nascarPlays, ...nbaSummerPlays, ...lmbPlays, ...modelFreeAllPlays, ...clubSoccerThresholdPlays, ...scocupPlays, ...outsPlays], dropped, schedule: _schedCounts, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, writtenAt: Date.now() }), { expirationTtl: 21600 }).catch(() => {});
         }
         if (isDebug) {
           const nbaGlLabels = Object.fromEntries(Object.entries(playerGamelogs).filter(([k]) => k.startsWith("nba|")).map(([k, gl]) => [k, gl?.ul ?? null]));
@@ -2608,7 +2377,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
             meta: kalshiSnapMeta,
             ageMs: kalshiSnapMeta?.lastRunAt ? Date.now() - kalshiSnapMeta.lastRunAt : null,
           };
-          return jsonResponse({ fdProbe: { milestones: _fdMilestones, atEnd: await _fdProbe() }, plays: debugPlays, dropped: debugDropped, preDropped: debugPreDropped, tennisPlays, tennisMarketCount: tennisMatchMarkets.length, soccerPlays, soccerMarketCount: soccerMarkets.length, soccerAdvancePlays, soccerAdvanceMarketCount: soccerAdvanceMarkets.length, fightPlays, fightMarketCount: fightMarkets.length, golfH2hPlays, golfH2hMarketCount: golfH2hMarkets.length, nascarPlays, nascarMarketCount: nascarMarkets.length, nbaSummerPlays, nbaSummerMarketCount: nbaSummerMarkets.length, lmbPlays, lmbMarketCount: lmbMarkets.length, clubSoccerPlays, clubSoccerMarketCount: clubSoccerMarkets.length, brasileiraoPlays, brasileiraoMarketCount: brasileiraoMarkets.length, nwslPlays, nwslMarketCount: nwslMarkets.length, chnslPlays, chnslMarketCount: chnslMarkets.length, ligamxPlays, ligamxMarketCount: ligamxMarkets.length, argPremPlays, argPremMarketCount: argPremMarkets.length, clubSoccerThresholdPlays, clubSoccerThresholdMarketCount: clubSoccerThresholdMarkets.length, scocupPlays, scocupSpreadMarketCount: scocupSpreadMarkets.length, scocupTotalMarketCount: scocupTotalMarkets.length, outsPlays, outsMarketCount: outsMarkets.length, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
+          return jsonResponse({ fdProbe: { milestones: _fdMilestones, atEnd: await _fdProbe() }, plays: debugPlays, dropped: debugDropped, preDropped: debugPreDropped, tennisPlays, tennisMarketCount: tennisMatchMarkets.length, soccerPlays, soccerMarketCount: soccerMarkets.length, soccerAdvancePlays, soccerAdvanceMarketCount: soccerAdvanceMarkets.length, fightPlays, fightMarketCount: fightMarkets.length, golfH2hPlays, golfH2hMarketCount: golfH2hMarkets.length, nascarPlays, nascarMarketCount: nascarMarkets.length, nbaSummerPlays, nbaSummerMarketCount: nbaSummerMarkets.length, lmbPlays, lmbMarketCount: lmbMarkets.length, clubSoccerPlays: modelFreePlays.mls, clubSoccerMarketCount: (modelFreeMarkets.mls || []).length, brasileiraoPlays: modelFreePlays.brasileirao, brasileiraoMarketCount: (modelFreeMarkets.brasileirao || []).length, nwslPlays: modelFreePlays.nwsl, nwslMarketCount: (modelFreeMarkets.nwsl || []).length, chnslPlays: modelFreePlays.chnsl, chnslMarketCount: (modelFreeMarkets.chnsl || []).length, ligamxPlays: modelFreePlays.ligamx, ligamxMarketCount: (modelFreeMarkets.ligamx || []).length, argPremPlays: modelFreePlays.argprem, argPremMarketCount: (modelFreeMarkets.argprem || []).length, clubSoccerThresholdPlays, clubSoccerThresholdMarketCount: clubSoccerThresholdMarkets.length, scocupPlays, scocupSpreadMarketCount: scocupSpreadMarkets.length, scocupTotalMarketCount: scocupTotalMarkets.length, outsPlays, outsMarketCount: outsMarkets.length, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
         }
         // Build mlbMeta: pitchers, ML odds, umpires, weather — keyed by team abbr or "home|away"
         // Pitcher entries: { name, id, era, wins, losses }. MLB Stats API (pitcherInfoByTeam) preferred

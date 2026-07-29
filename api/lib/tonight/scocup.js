@@ -1,7 +1,7 @@
 // api/lib/tonight/scocup.js
 // emitScoCupPlays — Scottish League Cup spread + total, Phase 1, model-free (no probability
 // model at all — see project_scocup_spread_total_2026_07_23 memory). Unlike the 5 model-free
-// GAME-winner leagues (club-soccer-ml.js and siblings), this is a THRESHOLD market shape, so it
+// GAME-winner leagues (model-free-ml.js), this is a THRESHOLD market shape, so it
 // follows soccer.js's OVER/UNDER row convention instead: kalshiPct always carries the YES/OVER
 // ask, noKalshiPct always carries the NO/UNDER ask; truePct/noTruePct stay null (no model to
 // compute them) and edge stays null. dcQualified/qualified are false — maker-only, never

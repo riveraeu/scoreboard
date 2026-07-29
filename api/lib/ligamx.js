@@ -20,18 +20,18 @@
 // mapping in teams.js sends Kalshi ATL→ESPN ATS (Atlas's real ESPN abbr) and Kalshi ALA→ESPN
 // ATL (Atlante's ESPN abbr) — get this backwards and Atlas's games silently resolve as
 // Atlante's, the same collision class found in chnsl.js's Shenzhen/Shanghai Shenhua mapping.
+//
+// COLLAPSED TO A SHIM 2026-07-28: the ESPN slug and the team mapping now live in the one
+// `MODEL_FREE_LEAGUES` registry (api/lib/model-free-leagues.js) that six identical copies of this
+// file used to each restate. This file remains only to keep its existing export NAMES stable —
+// `club-soccer-threshold.js`, `handlers/shadow.js` and `teams.test.js` import them directly — so
+// the generalization changed no call site outside the ML emit path.
 
-import { CANONICAL_TO_ESPN } from "./teams.js";
-import { makeSoccerModelFreeSource } from "./soccer-modelfree.js";
+import { leagueSource } from "./model-free-leagues.js";
 
-// ESPN scoreboard abbr → canonical Liga MX abbr. Identity when unmapped.
-const _ESPN_TO_CANON = Object.fromEntries(
-  Object.entries(CANONICAL_TO_ESPN.ligamx || {}).map(([canon, espn]) => [espn, canon])
-);
-export const ligamxCanonTeam = (abbr) => _ESPN_TO_CANON[abbr] || abbr;
+const _src = leagueSource("ligamx");
 
-const _src = makeSoccerModelFreeSource({ espnSlug: "mex.1", canonTeam: ligamxCanonTeam, cacheKeyPrefix: "ligamx" });
-
+export const ligamxCanonTeam = _src.canonTeam;
 export const parseLigaMxEvents = _src.parseEvents;
 export const fetchLigaMxSchedule = _src.fetchSchedule;
 export const getLigaMxSchedule = _src.getSchedule;

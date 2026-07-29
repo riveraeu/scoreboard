@@ -13,19 +13,18 @@
 //
 // Thin wrapper (2026-07-23) over the shared ESPN-fetch engine in soccer-modelfree.js — see
 // mls.js's header comment for why. All exported names unchanged.
+//
+// COLLAPSED TO A SHIM 2026-07-28: the ESPN slug and the team mapping now live in the one
+// `MODEL_FREE_LEAGUES` registry (api/lib/model-free-leagues.js) that six identical copies of this
+// file used to each restate. This file remains only to keep its existing export NAMES stable —
+// `club-soccer-threshold.js`, `handlers/shadow.js` and `teams.test.js` import them directly — so
+// the generalization changed no call site outside the ML emit path.
 
-import { CANONICAL_TO_ESPN } from "./teams.js";
-import { makeSoccerModelFreeSource } from "./soccer-modelfree.js";
+import { leagueSource } from "./model-free-leagues.js";
 
-// ESPN scoreboard abbr → canonical NWSL abbr (WAS→WSP, SD→SAN, SEA→REI, UTA→URO, NC→NCC,
-// POR→PTH, GFC→GOT, ORL→OPR, HOU→HDA). Identity when unmapped.
-const _ESPN_TO_CANON = Object.fromEntries(
-  Object.entries(CANONICAL_TO_ESPN.nwsl || {}).map(([canon, espn]) => [espn, canon])
-);
-export const nwslCanonTeam = (abbr) => _ESPN_TO_CANON[abbr] || abbr;
+const _src = leagueSource("nwsl");
 
-const _src = makeSoccerModelFreeSource({ espnSlug: "usa.nwsl", canonTeam: nwslCanonTeam, cacheKeyPrefix: "nwsl" });
-
+export const nwslCanonTeam = _src.canonTeam;
 export const parseNwslEvents = _src.parseEvents;
 export const fetchNwslSchedule = _src.fetchSchedule;
 export const getNwslSchedule = _src.getSchedule;

@@ -158,5 +158,7 @@ export function makeSoccerModelFreeSource({ espnSlug, canonTeam, cacheKeyPrefix 
     return out;
   }
 
-  return { parseEvents: boundParseEvents, fetchSchedule, getSchedule, fetchResults, fetchHalfResults };
+  // `canonTeam` is echoed back (2026-07-28) so the per-league shims can re-export the exact mapper
+  // this source was built with, instead of each rebuilding an identical one from CANONICAL_TO_ESPN.
+  return { parseEvents: boundParseEvents, fetchSchedule, getSchedule, fetchResults, fetchHalfResults, canonTeam };
 }

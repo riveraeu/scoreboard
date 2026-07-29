@@ -25,12 +25,7 @@ import { reconcileLiveMakerFills, isArmed as isMakerV2Armed } from "../maker-liv
 // row identity on quote segments without a handler→handler import cycle.
 import { shadowId } from "../shadow-id.js";
 import { fetchLmbResults } from "../lmb.js";
-import { fetchMlsResults, fetchMlsHalfResults } from "../mls.js";
-import { fetchBrasileiraoResults } from "../brasileirao.js";
-import { fetchNwslResults } from "../nwsl.js";
-import { fetchChnslResults } from "../chnsl.js";
-import { fetchLigaMxResults, fetchLigaMxHalfResults } from "../ligamx.js";
-import { fetchArgPremResults } from "../argprem.js";
+import { MODEL_FREE_LEAGUE_KEYS, leagueSource } from "../model-free-leagues.js";
 import { fetchScoCupResults } from "../scocup.js";
 import { deriveKalshiSide, fetchKalshiSettlements, fetchKalshiSettlementsWithMeta, resolveRowViaKalshi, resolveTickerSideViaKalshi, classifyRowViaKalshi } from "../kalshi-settlement.js";
 import { reconcileGrades, isSettlementAuthoritative, SETTLEMENT_AUTHORITATIVE_SPORTS, SETTLEMENT_CUTOVER_DATE } from "../settlement-reconcile.js";
@@ -980,13 +975,8 @@ async function handleShadowResolver({ path, request, env, cache }) {
   const nascarRows = rows.filter(r => r.sport === "nascar");
   const nbaslRows = rows.filter(r => r.sport === "nbasl");
   const lmbRows = rows.filter(r => r.sport === "lmb");
-  const mlsRows = rows.filter(r => r.sport === "mls");
-  const brasileiraoRows = rows.filter(r => r.sport === "brasileirao");
-  const nwslRows = rows.filter(r => r.sport === "nwsl");
-  const chnslRows = rows.filter(r => r.sport === "chnsl");
-  const ligamxRows = rows.filter(r => r.sport === "ligamx");
+  // Model-free soccer rows are filtered per league inside the MODEL_FREE_LEAGUES loop below.
   const scocupRows = rows.filter(r => r.sport === "scocup");
-  const argPremRows = rows.filter(r => r.sport === "argprem");
   const teamRows = rows.filter(r => r.sport !== "tennis" && r.sport !== "soccer" && r.sport !== "fight" && r.sport !== "golf" && r.sport !== "nascar" && r.sport !== "nbasl" && r.sport !== "lmb" && r.sport !== "mls" && r.sport !== "brasileirao" && r.sport !== "nwsl" && r.sport !== "chnsl" && r.sport !== "ligamx" && r.sport !== "scocup" && r.sport !== "argprem");
 
   // Build unique game keys per date. Key: sport:away:home[@gameTime] — matches /api/live format.
@@ -1525,20 +1515,29 @@ async function handleShadowResolver({ path, request, env, cache }) {
     return null;
   };
 
-  // ── MLS resolution ── grade the 3-way (home/away/tie) game-winner rows + the 1H spread/total/
-  // BTTS + full-game team-total derivatives (adopted 2026-07-23) off the ESPN usa.1 scoreboard.
-  // Games are matched on the sorted canonical team pair (Kalshi ticker order ≠ ESPN home/away).
-  // pick_team is a canonical MLS abbr or "TIE" (mirrors WC soccer's 1X2 grading — see the
-  // soccerRows block above): a draw settles the TIE row, a scoreline settles whichever team's
-  // row it is. Model-free rows (model_true_pct NULL) resolve exactly like any other row. "game"
-  // grades off the full-game fetch (unchanged); every other stat needs half-time scores, so it
-  // grades off fetchMlsHalfResults (also carries a derived full-game score for teamTotal).
-  if (mlsRows.length) {
+  // ── MODEL-FREE SOCCER resolution ── one loop over MODEL_FREE_LEAGUES, replacing six
+  // near-identical per-league blocks (2026-07-28). Grades the 3-way (home/away/tie) game-winner
+  // rows plus, where a league has them, the 1H spread/total/BTTS + full-game team-total
+  // derivatives. Games match on the sorted canonical team pair (Kalshi ticker order ≠ ESPN
+  // home/away). pick_team is a canonical abbr or "TIE" (mirrors WC soccer's 1X2 grading): a draw
+  // settles the TIE row, a scoreline settles whichever team's row it is. Model-free rows
+  // (model_true_pct NULL) resolve exactly like any other row.
+  //
+  // "game" grades off the plain full-game fetch; any other stat needs half-time scores and grades
+  // off `fetchHalfResults` (which also carries a derived full-game score for teamTotal). That
+  // second fetch is issued ONLY for dates that actually have a non-"game" row — today only MLS and
+  // Liga MX have 1H series, and the four other leagues must not pay an extra ESPN round-trip per
+  // date for a family they don't list. That conditional is what keeps this loop behaviourally
+  // identical to the six blocks it replaces, rather than merely equivalent.
+  for (const _league of MODEL_FREE_LEAGUE_KEYS) {
+    const leagueRows = rows.filter(r => r.sport === _league);
+    if (!leagueRows.length) continue;
+    const { fetchResults, fetchHalfResults } = leagueSource(_league);
     const dateOf = (r) => r.game_date
       ? new Date(r.game_date).toISOString().slice(0, 10)
       : (r.snapshot_date ? new Date(r.snapshot_date).toISOString().slice(0, 10) : null);
     const byDate = new Map();
-    for (const r of mlsRows) {
+    for (const r of leagueRows) {
       const date = dateOf(r);
       if (!date) { noData++; continue; }
       if (!byDate.has(date)) byDate.set(date, []);
@@ -1546,10 +1545,15 @@ async function handleShadowResolver({ path, request, env, cache }) {
     }
     const resultsByDate = new Map();
     const halfResultsByDate = new Map();
-    await Promise.all([...byDate.keys()].map(async (date) => {
+    await Promise.all([...byDate.entries()].map(async ([date, rws]) => {
       const ds = date.replace(/-/g, "");
-      resultsByDate.set(date, await fetchMlsResults(ds));
-      halfResultsByDate.set(date, await fetchMlsHalfResults(ds));
+      const needsHalf = rws.some(r => r.stat !== "game");
+      const [full, half] = await Promise.all([
+        fetchResults(ds),
+        needsHalf ? fetchHalfResults(ds) : Promise.resolve(null),
+      ]);
+      resultsByDate.set(date, full);
+      if (half) halfResultsByDate.set(date, half);
     }));
     for (const [date, rws] of byDate) {
       const results = resultsByDate.get(date) || {};
@@ -1558,200 +1562,18 @@ async function handleShadowResolver({ path, request, env, cache }) {
         const key = [r.home_team, r.away_team].sort().join("|");
         if (r.stat === "game") {
           const g = results[key];
-          if (!g) { noData++; continue; }
+          if (!g) { noData++; continue; } // game not played / not final yet
           const graded = _grade3Way(r, g, false);
           if (!graded) { noData++; continue; }
           updates.push({ id: r.id, won: graded.won, actualValue: graded.actual });
           continue;
         }
-        const g = halfResults[key];
-        if (!g) { noData++; continue; } // game not played / not final yet
+        // Non-"game" stats: 1H families read half-time scores; a league without a half fetch
+        // (argprem's full-game spread/total/BTTS) falls back to the plain result, which is what
+        // its own block did.
+        const g = (halfResultsByDate.has(date) ? halfResults[key] : undefined) ?? results[key];
+        if (!g) { noData++; continue; }
         const graded = r.stat === "1hgame" ? _grade3Way(r, g, true) : _gradeThreshold(r, g);
-        if (!graded) { noData++; continue; }
-        updates.push({ id: r.id, won: graded.won, actualValue: graded.actual });
-      }
-    }
-  }
-
-  // ── Brasileirão resolution ── same 3-way grading as MLS above, one league later, off the
-  // ESPN bra.1 scoreboard (api/lib/brasileirao.js).
-  if (brasileiraoRows.length) {
-    const dateOf = (r) => r.game_date
-      ? new Date(r.game_date).toISOString().slice(0, 10)
-      : (r.snapshot_date ? new Date(r.snapshot_date).toISOString().slice(0, 10) : null);
-    const byDate = new Map();
-    for (const r of brasileiraoRows) {
-      const date = dateOf(r);
-      if (!date) { noData++; continue; }
-      if (!byDate.has(date)) byDate.set(date, []);
-      byDate.get(date).push(r);
-    }
-    const resultsByDate = new Map();
-    await Promise.all([...byDate.keys()].map(async (date) => {
-      resultsByDate.set(date, await fetchBrasileiraoResults(date.replace(/-/g, "")));
-    }));
-    for (const [date, rws] of byDate) {
-      const results = resultsByDate.get(date) || {};
-      for (const r of rws) {
-        const g = results[[r.home_team, r.away_team].sort().join("|")];
-        if (!g) { noData++; continue; } // game not played / not final yet
-        let won;
-        if (r.pick_team === "TIE") {
-          won = g.homeScore === g.awayScore;
-        } else {
-          const pickScore = g.home === r.pick_team ? g.homeScore : (g.away === r.pick_team ? g.awayScore : null);
-          const oppScore = g.home === r.pick_team ? g.awayScore : g.homeScore;
-          if (pickScore == null) { noData++; continue; }
-          won = pickScore > oppScore;
-        }
-        updates.push({ id: r.id, won, actualValue: null });
-      }
-    }
-  }
-
-  // ── NWSL resolution ── same 3-way grading, 3rd model-free league, off the ESPN usa.nwsl
-  // scoreboard (api/lib/nwsl.js).
-  if (nwslRows.length) {
-    const dateOf = (r) => r.game_date
-      ? new Date(r.game_date).toISOString().slice(0, 10)
-      : (r.snapshot_date ? new Date(r.snapshot_date).toISOString().slice(0, 10) : null);
-    const byDate = new Map();
-    for (const r of nwslRows) {
-      const date = dateOf(r);
-      if (!date) { noData++; continue; }
-      if (!byDate.has(date)) byDate.set(date, []);
-      byDate.get(date).push(r);
-    }
-    const resultsByDate = new Map();
-    await Promise.all([...byDate.keys()].map(async (date) => {
-      resultsByDate.set(date, await fetchNwslResults(date.replace(/-/g, "")));
-    }));
-    for (const [date, rws] of byDate) {
-      const results = resultsByDate.get(date) || {};
-      for (const r of rws) {
-        const g = results[[r.home_team, r.away_team].sort().join("|")];
-        if (!g) { noData++; continue; } // game not played / not final yet
-        let won;
-        if (r.pick_team === "TIE") {
-          won = g.homeScore === g.awayScore;
-        } else {
-          const pickScore = g.home === r.pick_team ? g.homeScore : (g.away === r.pick_team ? g.awayScore : null);
-          const oppScore = g.home === r.pick_team ? g.awayScore : g.homeScore;
-          if (pickScore == null) { noData++; continue; }
-          won = pickScore > oppScore;
-        }
-        updates.push({ id: r.id, won, actualValue: null });
-      }
-    }
-  }
-
-  // ── Chinese Super League resolution ── same 3-way grading, 4th model-free league, off the
-  // ESPN chn.1 scoreboard (api/lib/chnsl.js).
-  if (chnslRows.length) {
-    const dateOf = (r) => r.game_date
-      ? new Date(r.game_date).toISOString().slice(0, 10)
-      : (r.snapshot_date ? new Date(r.snapshot_date).toISOString().slice(0, 10) : null);
-    const byDate = new Map();
-    for (const r of chnslRows) {
-      const date = dateOf(r);
-      if (!date) { noData++; continue; }
-      if (!byDate.has(date)) byDate.set(date, []);
-      byDate.get(date).push(r);
-    }
-    const resultsByDate = new Map();
-    await Promise.all([...byDate.keys()].map(async (date) => {
-      resultsByDate.set(date, await fetchChnslResults(date.replace(/-/g, "")));
-    }));
-    for (const [date, rws] of byDate) {
-      const results = resultsByDate.get(date) || {};
-      for (const r of rws) {
-        const g = results[[r.home_team, r.away_team].sort().join("|")];
-        if (!g) { noData++; continue; } // game not played / not final yet
-        let won;
-        if (r.pick_team === "TIE") {
-          won = g.homeScore === g.awayScore;
-        } else {
-          const pickScore = g.home === r.pick_team ? g.homeScore : (g.away === r.pick_team ? g.awayScore : null);
-          const oppScore = g.home === r.pick_team ? g.awayScore : g.homeScore;
-          if (pickScore == null) { noData++; continue; }
-          won = pickScore > oppScore;
-        }
-        updates.push({ id: r.id, won, actualValue: null });
-      }
-    }
-  }
-
-  // ── Liga MX resolution ── same 3-way grading (+ 1H/team-total derivatives, adopted
-  // 2026-07-23), 5th model-free league, off the ESPN mex.1 scoreboard (api/lib/ligamx.js). Same
-  // split as the MLS block above: "game" grades off the full-game fetch, everything else off
-  // fetchLigaMxHalfResults.
-  if (ligamxRows.length) {
-    const dateOf = (r) => r.game_date
-      ? new Date(r.game_date).toISOString().slice(0, 10)
-      : (r.snapshot_date ? new Date(r.snapshot_date).toISOString().slice(0, 10) : null);
-    const byDate = new Map();
-    for (const r of ligamxRows) {
-      const date = dateOf(r);
-      if (!date) { noData++; continue; }
-      if (!byDate.has(date)) byDate.set(date, []);
-      byDate.get(date).push(r);
-    }
-    const resultsByDate = new Map();
-    const halfResultsByDate = new Map();
-    await Promise.all([...byDate.keys()].map(async (date) => {
-      const ds = date.replace(/-/g, "");
-      resultsByDate.set(date, await fetchLigaMxResults(ds));
-      halfResultsByDate.set(date, await fetchLigaMxHalfResults(ds));
-    }));
-    for (const [date, rws] of byDate) {
-      const results = resultsByDate.get(date) || {};
-      const halfResults = halfResultsByDate.get(date) || {};
-      for (const r of rws) {
-        const key = [r.home_team, r.away_team].sort().join("|");
-        if (r.stat === "game") {
-          const g = results[key];
-          if (!g) { noData++; continue; }
-          const graded = _grade3Way(r, g, false);
-          if (!graded) { noData++; continue; }
-          updates.push({ id: r.id, won: graded.won, actualValue: graded.actual });
-          continue;
-        }
-        const g = halfResults[key];
-        if (!g) { noData++; continue; } // game not played / not final yet
-        const graded = r.stat === "1hgame" ? _grade3Way(r, g, true) : _gradeThreshold(r, g);
-        if (!graded) { noData++; continue; }
-        updates.push({ id: r.id, won: graded.won, actualValue: graded.actual });
-      }
-    }
-  }
-
-  // ── Argentina Liga Profesional resolution ── 3-way game winner + full-game spread/total/BTTS,
-  // model-free (found via the 2141-row kalshi_series_seen baseline backlog sweep, adopted
-  // 2026-07-24, see project_baseline_backlog_2026_07_24 memory). Off the ESPN arg.1 scoreboard
-  // (api/lib/argprem.js) — no half family here, so every stat grades off the same plain
-  // fetchArgPremResults() (homeScore/awayScore only), sharing the `_grade3Way`/`_gradeThreshold`
-  // helpers defined above.
-  if (argPremRows.length) {
-    const dateOf = (r) => r.game_date
-      ? new Date(r.game_date).toISOString().slice(0, 10)
-      : (r.snapshot_date ? new Date(r.snapshot_date).toISOString().slice(0, 10) : null);
-    const byDate = new Map();
-    for (const r of argPremRows) {
-      const date = dateOf(r);
-      if (!date) { noData++; continue; }
-      if (!byDate.has(date)) byDate.set(date, []);
-      byDate.get(date).push(r);
-    }
-    const resultsByDate = new Map();
-    await Promise.all([...byDate.keys()].map(async (date) => {
-      resultsByDate.set(date, await fetchArgPremResults(date.replace(/-/g, "")));
-    }));
-    for (const [date, rws] of byDate) {
-      const results = resultsByDate.get(date) || {};
-      for (const r of rws) {
-        const g = results[[r.home_team, r.away_team].sort().join("|")];
-        if (!g) { noData++; continue; } // game not played / not final yet
-        const graded = r.stat === "game" ? _grade3Way(r, g, false) : _gradeThreshold(r, g);
         if (!graded) { noData++; continue; }
         updates.push({ id: r.id, won: graded.won, actualValue: graded.actual });
       }

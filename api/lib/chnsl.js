@@ -22,18 +22,18 @@
 // match ESPN's own SHE/SIPG scheme. The espnScore mapping below sends Kalshi SHE→ESPN SHX
 // (Shenzhen's actual ESPN abbr) and Kalshi SHS→ESPN SHE (Shanghai Shenhua's ESPN abbr) — get
 // this backwards and Shenzhen's games would silently resolve as Shanghai Shenhua's.
+//
+// COLLAPSED TO A SHIM 2026-07-28: the ESPN slug and the team mapping now live in the one
+// `MODEL_FREE_LEAGUES` registry (api/lib/model-free-leagues.js) that six identical copies of this
+// file used to each restate. This file remains only to keep its existing export NAMES stable —
+// `club-soccer-threshold.js`, `handlers/shadow.js` and `teams.test.js` import them directly — so
+// the generalization changed no call site outside the ML emit path.
 
-import { CANONICAL_TO_ESPN } from "./teams.js";
-import { makeSoccerModelFreeSource } from "./soccer-modelfree.js";
+import { leagueSource } from "./model-free-leagues.js";
 
-// ESPN scoreboard abbr → canonical CHNSL abbr. Identity when unmapped.
-const _ESPN_TO_CANON = Object.fromEntries(
-  Object.entries(CANONICAL_TO_ESPN.chnsl || {}).map(([canon, espn]) => [espn, canon])
-);
-export const chnslCanonTeam = (abbr) => _ESPN_TO_CANON[abbr] || abbr;
+const _src = leagueSource("chnsl");
 
-const _src = makeSoccerModelFreeSource({ espnSlug: "chn.1", canonTeam: chnslCanonTeam, cacheKeyPrefix: "chnsl" });
-
+export const chnslCanonTeam = _src.canonTeam;
 export const parseChnslEvents = _src.parseEvents;
 export const fetchChnslSchedule = _src.fetchSchedule;
 export const getChnslSchedule = _src.getSchedule;

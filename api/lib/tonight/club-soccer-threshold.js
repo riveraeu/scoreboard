@@ -3,7 +3,7 @@
 // (adopted 2026-07-23), plus Argentina Liga Profesional's full-game spread/total/BTTS (added
 // 2026-07-24, no `half` tag — see project_baseline_backlog_2026_07_24 memory). Phase 1,
 // model-free. One shared array + module across all three leagues (sport-tagged per row) —
-// unlike the per-league GAME-winner modules (club-soccer-ml.js/ligamx-ml.js/argprem-ml.js),
+// unlike the shared GAME-winner module (model-free-ml.js, one path for all six leagues),
 // team identity here needs no subtitle-based disambiguation (none of MLS/LigaMX/Argentina have
 // scocup's kind of Kalshi-abbr collision), so there's no forcing reason to keep them in
 // separate files. `half` is null for Argentina's full-game markets, same as the existing

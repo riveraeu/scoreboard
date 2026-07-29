@@ -18,18 +18,18 @@
 // model-free league (Chinese Super League) would have made this the 4th near-identical copy of
 // the fetch/parse/schedule/resolve logic. All exported names unchanged so tonight.js/shadow.js
 // imports don't need to change.
+//
+// COLLAPSED TO A SHIM 2026-07-28: the ESPN slug and the team mapping now live in the one
+// `MODEL_FREE_LEAGUES` registry (api/lib/model-free-leagues.js) that six identical copies of this
+// file used to each restate. This file remains only to keep its existing export NAMES stable —
+// `club-soccer-threshold.js`, `handlers/shadow.js` and `teams.test.js` import them directly — so
+// the generalization changed no call site outside the ML emit path.
 
-import { CANONICAL_TO_ESPN } from "./teams.js";
-import { makeSoccerModelFreeSource } from "./soccer-modelfree.js";
+import { leagueSource } from "./model-free-leagues.js";
 
-// ESPN scoreboard abbr → canonical MLS abbr (DC→DCU, LA→LAG, RBNY→NYRB). Identity when unmapped.
-const _ESPN_TO_CANON = Object.fromEntries(
-  Object.entries(CANONICAL_TO_ESPN.mls || {}).map(([canon, espn]) => [espn, canon])
-);
-export const mlsCanonTeam = (abbr) => _ESPN_TO_CANON[abbr] || abbr;
+const _src = leagueSource("mls");
 
-const _src = makeSoccerModelFreeSource({ espnSlug: "usa.1", canonTeam: mlsCanonTeam, cacheKeyPrefix: "mls" });
-
+export const mlsCanonTeam = _src.canonTeam;
 export const parseMlsEvents = _src.parseEvents;
 export const fetchMlsSchedule = _src.fetchSchedule;
 export const getMlsSchedule = _src.getSchedule;

@@ -18,7 +18,7 @@ const TICKER_BATCH_SIZE = 200; // comfortably under the empirically-confirmed-OK
 //   - direction "over"/"under" (soccer.js/fight.js/mlb-outs.js, which don't set kalshiSide) →
 //     "under" means we captured the NO price, "over" the YES price.
 //   - direction null (every one-ticker-per-outcome family: ml/game/advance/h2h/top10/tennis/
-//     nba-summer/lmb/soccer's game family/club-soccer-ml) → the captured ticker IS the outcome
+//     nba-summer/lmb/soccer's game family/model-free-ml) → the captured ticker IS the outcome
 //     we picked, so "yes" is trivially correct.
 export function deriveKalshiSide({ kalshiSide, direction } = {}) {
   if (kalshiSide === "yes" || kalshiSide === "no") return kalshiSide;

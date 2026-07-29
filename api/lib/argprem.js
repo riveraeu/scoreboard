@@ -18,21 +18,18 @@
 //      is resolved here via the team displayName soccer-modelfree.js threads through as
 //      canonTeam's 2nd arg (added 2026-07-24 specifically for this case): "RIV" + a displayName
 //      containing "Rivadavia" → canonical "IRM", everything else "RIV" → canonical "RIV".
+//
+// COLLAPSED TO A SHIM 2026-07-28: the ESPN slug and the team mapping now live in the one
+// `MODEL_FREE_LEAGUES` registry (api/lib/model-free-leagues.js) that six identical copies of this
+// file used to each restate. This file remains only to keep its existing export NAMES stable —
+// `club-soccer-threshold.js`, `handlers/shadow.js` and `teams.test.js` import them directly — so
+// the generalization changed no call site outside the ML emit path.
 
-import { CANONICAL_TO_ESPN } from "./teams.js";
-import { makeSoccerModelFreeSource } from "./soccer-modelfree.js";
+import { leagueSource } from "./model-free-leagues.js";
 
-// ESPN scoreboard abbr → canonical Argentina Liga Profesional abbr. Identity when unmapped.
-const _ESPN_TO_CANON = Object.fromEntries(
-  Object.entries(CANONICAL_TO_ESPN.argprem || {}).map(([canon, espn]) => [espn, canon])
-);
-export const argPremCanonTeam = (abbr, displayName) => {
-  if (abbr === "RIV") return (displayName || "").includes("Rivadavia") ? "IRM" : "RIV";
-  return _ESPN_TO_CANON[abbr] || abbr;
-};
+const _src = leagueSource("argprem");
 
-const _src = makeSoccerModelFreeSource({ espnSlug: "arg.1", canonTeam: argPremCanonTeam, cacheKeyPrefix: "argprem" });
-
+export const argPremCanonTeam = _src.canonTeam;
 export const parseArgPremEvents = _src.parseEvents;
 export const fetchArgPremSchedule = _src.fetchSchedule;
 export const getArgPremSchedule = _src.getSchedule;

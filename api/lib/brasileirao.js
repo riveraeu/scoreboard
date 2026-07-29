@@ -13,19 +13,18 @@
 //
 // Thin wrapper (2026-07-23) over the shared ESPN-fetch engine in soccer-modelfree.js — see
 // mls.js's header comment for why. All exported names unchanged.
+//
+// COLLAPSED TO A SHIM 2026-07-28: the ESPN slug and the team mapping now live in the one
+// `MODEL_FREE_LEAGUES` registry (api/lib/model-free-leagues.js) that six identical copies of this
+// file used to each restate. This file remains only to keep its existing export NAMES stable —
+// `club-soccer-threshold.js`, `handlers/shadow.js` and `teams.test.js` import them directly — so
+// the generalization changed no call site outside the ML emit path.
 
-import { CANONICAL_TO_ESPN } from "./teams.js";
-import { makeSoccerModelFreeSource } from "./soccer-modelfree.js";
+import { leagueSource } from "./model-free-leagues.js";
 
-// ESPN scoreboard abbr → canonical Brasileirão abbr (CAM→ATL, GRE→GPA, BRA→RBB, REMO→CR,
-// SAO→SPA, VAS→VDG). Identity when unmapped.
-const _ESPN_TO_CANON = Object.fromEntries(
-  Object.entries(CANONICAL_TO_ESPN.brasileirao || {}).map(([canon, espn]) => [espn, canon])
-);
-export const brasileiraoCanonTeam = (abbr) => _ESPN_TO_CANON[abbr] || abbr;
+const _src = leagueSource("brasileirao");
 
-const _src = makeSoccerModelFreeSource({ espnSlug: "bra.1", canonTeam: brasileiraoCanonTeam, cacheKeyPrefix: "brasileirao" });
-
+export const brasileiraoCanonTeam = _src.canonTeam;
 export const parseBrasileiraoEvents = _src.parseEvents;
 export const fetchBrasileiraoSchedule = _src.fetchSchedule;
 export const getBrasileiraoSchedule = _src.getSchedule;
