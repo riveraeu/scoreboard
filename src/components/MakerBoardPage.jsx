@@ -2,7 +2,7 @@ import React from 'react';
 import { WORKER } from '../lib/constants.js';
 import { SCHEDULED_CHECKPOINTS } from '../lib/scheduledCheckpoints.js';
 import { SERIES_CONFIG } from '../../api/lib/series-config.js';
-import { CATEGORY_BET_WINDOWS } from '../../api/lib/config.js';
+import { CATEGORY_BET_WINDOWS, STRATEGY_CLOSED } from '../../api/lib/config.js';
 import { INPUT_SEARCH_EXHAUSTED, WINDOW_SEARCH_EXHAUSTED, stillExhausted as _stillExhausted } from '../../api/lib/model-holds.js';
 
 // New primary landing page (2026-07-21) — promoted from ReportPage.jsx's MakerProgress module
@@ -256,7 +256,10 @@ const WINDOW_RECOMMEND_N = 200;
 // ("the instruments are all still here"). Re-entry is a one-line revert, with the conditions above
 // in front of whoever does it. **Do not flip this because a number got interesting** — read
 // docs/REENTRY.md first; it exists because that has already happened six times.
-const STRATEGY_CLOSED = true;
+//
+// Moved to api/lib/config.js 2026-07-29 — it was a local const here, so this banner went quiet
+// while /api/shadow-report's `brief` kept telling every non-UI consumer to run tune:window on a
+// closed program. One flag, two consumers, one source.
 
 function _doThisCandidates(d) {
   const out = [];

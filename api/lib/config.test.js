@@ -3,7 +3,8 @@
 // full favorite curve so the bet window can be derived from calibration instead of assumed.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { KALSHI_GATE, KALSHI_CAP, CAPTURE_GATE, CAPTURE_CAP, CAPTURE_MAX_SPREAD, capturableSpread, CATEGORY_BET_WINDOWS, betWindowFor } from "./config.js";
+import { readFileSync } from "node:fs";
+import { KALSHI_GATE, KALSHI_CAP, CAPTURE_GATE, CAPTURE_CAP, CAPTURE_MAX_SPREAD, capturableSpread, CATEGORY_BET_WINDOWS, betWindowFor, STRATEGY_CLOSED } from "./config.js";
 
 test("capture band is strictly wider than the bet window on both ends", () => {
   assert.ok(CAPTURE_GATE < KALSHI_GATE, `CAPTURE_GATE (${CAPTURE_GATE}) must be below KALSHI_GATE (${KALSHI_GATE})`);
@@ -75,4 +76,28 @@ test("betWindowFor honors a set window but only within [CAPTURE_GATE, CAPTURE_CA
   assert.deepEqual(probe("mlb", "totalBases", [97, 88]), [KALSHI_GATE, KALSHI_CAP]);   // inverted
   assert.deepEqual(probe("mlb", "totalBases", [88]), [KALSHI_GATE, KALSHI_CAP]);       // wrong length
   assert.deepEqual(probe("mlb", "totalBases", "88-97"), [KALSHI_GATE, KALSHI_CAP]);    // not an array
+});
+
+test("STRATEGY_CLOSED is a single shared flag, and it is ON", () => {
+  // Mirrors maker-live.test.js pinning SHELVED: the closure is a deliberate state, so a silent
+  // flip should fail a test rather than quietly re-open five closed programs.
+  assert.strictEqual(typeof STRATEGY_CLOSED, "boolean");
+  assert.strictEqual(STRATEGY_CLOSED, true,
+    "flipping this re-opens taker/maker prompting on BOTH surfaces — read docs/REENTRY.md first");
+});
+
+test("both STRATEGY_CLOSED consumers read the shared flag, never a local copy", () => {
+  // The bug this guards (2026-07-29): the flag was a local const in MakerBoardPage.jsx, so the UI
+  // went quiet while /api/shadow-report's `brief` kept emitting "Action needed today: run
+  // tune:window on mlb f3ml" to every routine and report reading the JSON. One flag, two consumers,
+  // and they disagreed for a day. A re-declaration in either file would restore that split
+  // silently, so it is cheaper to pin the shape than to re-discover the divergence.
+  const root = new URL("../../", import.meta.url);
+  for (const rel of ["src/components/MakerBoardPage.jsx", "api/lib/handlers/shadow.js"]) {
+    const src = readFileSync(new URL(rel, root), "utf8");
+    assert.ok(/import\s*\{[^}]*\bSTRATEGY_CLOSED\b[^}]*\}\s*from/.test(src),
+      `${rel} must IMPORT STRATEGY_CLOSED from config.js`);
+    assert.ok(!/^\s*(const|let|var)\s+STRATEGY_CLOSED\s*=/m.test(src),
+      `${rel} re-declares STRATEGY_CLOSED locally — that is exactly the split this fixes`);
+  }
 });

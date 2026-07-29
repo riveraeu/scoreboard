@@ -6,6 +6,28 @@
 // tighter regime per feedback_totals_aggressive_corrections). See CLAUDE.md "Universal
 // qualification" for context.
 
+// ── Strategy closure (2026-07-28) ───────────────────────────────────────────────────────────
+// All five strategy families are closed — taker (0 of 57 categories with Brier skill CI-lo > 0 at
+// n≥100, gate empty since 7/18), maker (no fillable edge, six dissolutions), cross-venue and
+// lead-lag (killed 7/04), path (killed 7/28). `docs/REENTRY.md` is the authoritative gate.
+//
+// Doctrine: **the instruments stay running, only the actions stop.** Every board, clock and
+// measurement keeps computing — what this flag suppresses is the IMPERATIVE mood: "run tune:window
+// on X", "pull X from the gate", "Improve inputs". Those point at a closed program, and re-entry
+// needs NEW DATA (a new market class) or a mechanism stated in advance, never a re-slice of the
+// same days — slicing is 0-for-6.
+//
+// Lives here rather than in a component because it has TWO consumers and they disagreed: the
+// DoThisBanner (src/components/MakerBoardPage.jsx) held it as a local const and went quiet, while
+// /api/shadow-report's `brief` had no equivalent and kept emitting "Action needed today: run
+// tune:window on mlb f3ml" — a category tune:window had ALREADY returned NO-GO on, and a
+// price-band re-slice, which is the first-listed non-justification in REENTRY.md. The UI looked
+// closed while every non-UI consumer (routines, reports, anything reading the JSON) was still
+// being told to work the closed program. Re-entry is a one-line revert here, once — read
+// docs/REENTRY.md first; it exists because "a number got interesting" has already happened six
+// times.
+export const STRATEGY_CLOSED = true;
+
 export const KALSHI_GATE = 67;        // ~-200 American odds floor (66.67% rounded up)
 export const KALSHI_CAP  = 91;        // ~-1000 American odds cap (90.91% rounded up)
 export const EDGE_GATE_SERVER = 3;    // server-side filter, preserved for calibration analysis
