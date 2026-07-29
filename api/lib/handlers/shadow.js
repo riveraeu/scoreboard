@@ -4990,6 +4990,48 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
     } catch (e) { return errorResponse(`backfillgamedate failed: ${e?.message}`, 500); }
   }
 
+  // ?makerFillsPurge=1&confirm=DELETE (ADMIN) — clear maker_fills ahead of the 2026-07-29 rebuild.
+  // Every row in that table was matched by the INVERTED side condition in replayFills (fixed the
+  // same day; see the evidence block there and ?makerSideAudit=). They are trades that never hit
+  // our quotes, so this is not a biased subset to patch — the population is wrong and has to be
+  // re-derived from the tape.
+  //
+  // The rows are COPIED to maker_fills_wrongside_20260729 before deletion, not dropped. They cost
+  // nothing to keep and they are the only record of what the engine believed for its first ten
+  // days — which is what any future audit of the shelving decision would need to read.
+  //
+  // Requires &confirm=DELETE. Refuses to run twice: if the backup table already holds rows the
+  // purge has happened, and a second pass would overwrite the archive with post-rebuild data.
+  if (new URL(request.url).searchParams.get("makerFillsPurge") === "1") {
+    if (!isAdmin) return errorResponse("Forbidden", 403);
+    if (new URL(request.url).searchParams.get("confirm") !== "DELETE") {
+      return errorResponse("makerFillsPurge requires &confirm=DELETE", 400);
+    }
+    try {
+      await neonExec(`CREATE TABLE IF NOT EXISTS maker_fills_wrongside_20260729 (LIKE maker_fills INCLUDING ALL)`, env);
+      const [{ n: already }] = await neonQuery(`SELECT COUNT(*)::int AS n FROM maker_fills_wrongside_20260729`, [], env, { write: true });
+      if (already > 0) {
+        return jsonResponse({ ok: false, skipped: "archive_already_populated", archivedRows: already,
+          hint: "the purge already ran; re-running would overwrite the archive with post-rebuild rows" });
+      }
+      const [{ n: before }] = await neonQuery(`SELECT COUNT(*)::int AS n FROM maker_fills`, [], env, { write: true });
+      await neonQuery(`INSERT INTO maker_fills_wrongside_20260729 SELECT * FROM maker_fills`, [], env, { write: true });
+      const [{ n: archived }] = await neonQuery(`SELECT COUNT(*)::int AS n FROM maker_fills_wrongside_20260729`, [], env, { write: true });
+      if (archived !== before) {
+        return errorResponse(`archive mismatch (${archived} vs ${before}) — refusing to delete`, 500);
+      }
+      await neonQuery(`DELETE FROM maker_fills`, [], env, { write: true });
+      const [{ n: after }] = await neonQuery(`SELECT COUNT(*)::int AS n FROM maker_fills`, [], env, { write: true });
+      // The days that need re-detection: every day with live quote segments.
+      const days = await neonQuery(
+        `SELECT game_date, COUNT(*)::int AS segments FROM maker_quotes
+          WHERE source = 'live' AND game_date IS NOT NULL GROUP BY 1 ORDER BY 1`, [], env, { write: true });
+      console.log(`[shadow-snapshot] makerFillsPurge archived=${archived} deleted=${before} remaining=${after}`);
+      return jsonResponse({ ok: true, archivedRows: archived, deletedRows: before, remaining: after,
+        rebuildDays: days.map(d => ({ day: d.game_date, segments: d.segments })) });
+    } catch (e) { return errorResponse(`makerFillsPurge failed: ${e?.message}`, 500); }
+  }
+
   // ?regradepostponed=1 (ADMIN only, ?dry=1 to report, ?days=N window, default 30) — repair for the
   // 2026-07-29 postponed/makeup bug. The forward fix (settlement-reconcile.js + _resolveRow) stops
   // NEW rows from being graded against an unidentifiable event; this re-grades the ones already
