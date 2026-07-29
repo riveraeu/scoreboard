@@ -2902,6 +2902,100 @@ async function handleShadowReport({ path, request, env, cache }) {
     } catch (e) { return errorResponse(`makerFillForensic failed: ${e?.message}`, 500); }
   }
 
+  // ── ?makerSideAudit=YYYY-MM-DD — establish the taker_side↔quote_side mapping from ground truth ─
+  // ?makerFillForensic= showed every missed fill rejected on `t.taker_side !== s.quote_side` alone,
+  // with price, size and timestamp all matching a real V2 fill exactly. Before flipping that
+  // condition, two things have to be known, because getting the convention backwards a SECOND time
+  // would re-break detection in the opposite direction and silently invalidate the rebuild:
+  //
+  //   A. How lopsided is the existing fill population by quote_side? If V1's 19k fills are nearly
+  //      all one side, the current data is a wrong-side artifact and has to be rebuilt, not patched.
+  //   B. What does the mapping actually look like on REAL fills? For every V2 order that executed,
+  //      find the trade that filled it and tabulate (our quote_side x observed taker_side).
+  //
+  // B is the oracle. The rule that comes out of it gets written into replayFills as an EMPIRICAL
+  // fact with this endpoint named, not as a theory about Kalshi's book semantics — the theory is
+  // exactly what produced the bug.
+  if (new URL(request.url).searchParams.get("makerSideAudit")) {
+    const dayPT = new URL(request.url).searchParams.get("makerSideAudit");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dayPT)) return errorResponse("makerSideAudit must be YYYY-MM-DD", 400);
+    try {
+      // ── A. existing V1 population, all-time, by side ──
+      const [segBySide, fillBySide] = await Promise.all([
+        neonQuery(`SELECT quote_side, COUNT(*)::int AS n FROM maker_quotes WHERE source='live' GROUP BY 1`, [], env, { write: true }),
+        neonQuery(`SELECT q.quote_side, COUNT(*)::int AS n, COALESCE(SUM(f.contracts),0)::numeric AS contracts
+                     FROM maker_fills f JOIN maker_quotes q ON q.id=f.quote_id
+                    WHERE q.source='live' GROUP BY 1`, [], env, { write: true }),
+      ]);
+      // ── B. ground-truth mapping from V2's executed orders ──
+      const orders = await neonQuery(
+        `SELECT ticker, side, price, filled_count, placed_at,
+                COALESCE(canceled_at, expires_at) AS ended_at
+           FROM maker_orders_v2
+          WHERE game_date = $1 AND filled_count > 0
+          ORDER BY ticker LIMIT 120`, [dayPT], env, { write: true });
+      const minTs = Math.floor((Date.parse(`${dayPT}T00:00:00-07:00`) - 6 * 3600_000) / 1000);
+      const tapeCache = new Map();
+      const getTape = async (ticker) => {
+        if (tapeCache.has(ticker)) return tapeCache.get(ticker);
+        let tr = [];
+        try {
+          const r = await fetch(
+            `https://api.elections.kalshi.com/trade-api/v2/markets/trades?ticker=${encodeURIComponent(ticker)}&limit=1000&min_ts=${minTs}`,
+            { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8000) });
+          if (r.ok) tr = (await r.json())?.trades || [];
+        } catch {}
+        tapeCache.set(ticker, tr);
+        return tr;
+      };
+      const map = {};                       // "quoteSide->takerSide" -> count
+      let matchedOrders = 0, unmatchedOrders = 0;
+      const samples = [];
+      for (const o of orders) {
+        const tape = await getTape(o.ticker);
+        const from = Date.parse(o.placed_at), to = Date.parse(o.ended_at);
+        // The trade that filled us: inside the window, and priced on OUR side at our exact price.
+        const hit = tape.filter(t => {
+          const ts = Date.parse(t.created_time);
+          if (!(ts >= from && ts < to)) return false;
+          const px = o.side === "yes"
+            ? (t.yes_price_dollars != null ? Math.round(parseFloat(t.yes_price_dollars) * 100) : null)
+            : (t.no_price_dollars  != null ? Math.round(parseFloat(t.no_price_dollars)  * 100) : null);
+          return px === Number(o.price);
+        });
+        if (!hit.length) { unmatchedOrders++; continue; }
+        matchedOrders++;
+        for (const t of hit) {
+          const k = `${o.side}->${t.taker_side}`;
+          map[k] = (map[k] || 0) + 1;
+          if (samples.length < 8) samples.push({ ticker: o.ticker, quoteSide: o.side,
+            takerSide: t.taker_side, price: o.price, count: t.count_fp ?? t.count, at: t.created_time });
+        }
+      }
+      // The rule the data supports: does taker_side EQUAL our side, or OPPOSE it?
+      const same = Object.entries(map).filter(([k]) => k.split("->")[0] === k.split("->")[1])
+        .reduce((a, [, v]) => a + v, 0);
+      const opposite = Object.entries(map).filter(([k]) => k.split("->")[0] !== k.split("->")[1])
+        .reduce((a, [, v]) => a + v, 0);
+      return jsonResponse({
+        ok: true, day: dayPT,
+        existingPopulation: {
+          segmentsBySide: Object.fromEntries(segBySide.map(r => [r.quote_side, r.n])),
+          fillsBySide: Object.fromEntries(fillBySide.map(r => [r.quote_side, { fills: r.n, contracts: Number(r.contracts) }])),
+        },
+        groundTruth: {
+          ordersExamined: orders.length, matchedOrders, unmatchedOrders,
+          mapping: map, takerSideSameAsQuoteSide: same, takerSideOppositeQuoteSide: opposite,
+          // What replayFills should require. Stated as a verdict so the fix cites a number.
+          verdict: same === 0 && opposite > 0 ? "REQUIRE taker_side !== quote_side"
+                 : opposite === 0 && same > 0 ? "REQUIRE taker_side === quote_side (current code correct)"
+                 : "MIXED — do not flip; investigate before changing replayFills",
+          samples,
+        },
+      });
+    } catch (e) { return errorResponse(`makerSideAudit failed: ${e?.message}`, 500); }
+  }
+
   // ── ?makerExitCheck=1 — early-exit counterfactual (2026-07-28) ──────────
   // "Would selling back before settlement, while in profit, have helped?" Never examined before —
   // both V1 and V2 model every position as hold-to-settlement (`pnl_cents = fill_ask − 100·won`),
