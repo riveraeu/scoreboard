@@ -25,7 +25,7 @@
 // sport falls straight back to ESPN with no other change.
 export const SETTLEMENT_AUTHORITATIVE_SPORTS = new Set([
   "tennis", "soccer", "fight", "golf", "nascar", "nbasl", "lmb",
-  "mls", "brasileirao", "nwsl", "chnsl", "ligamx", "scocup", "argprem",
+  "mls", "brasileirao", "nwsl", "chnsl", "ligamx", "scocup", "argprem", "dimayor",
 ]);
 
 export function isSettlementAuthoritative(sport) {

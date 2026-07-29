@@ -145,6 +145,10 @@ export const SERIES_CONFIG = {
   // "CAT" (Talleres Córdoba) collides with ESPN's OWN "CAT" (Atlético Tucumán); ESPN's OWN
   // /teams endpoint reuses "RIV" for both River Plate and Independiente Rivadavia — see the
   // argprem registry comment in teams.js.
+  // Colombian Primera A / Liga DIMAYOR game winner (adopted 2026-07-28) — 7th model-free
+  // league and the first to ship as pure config: one registry entry + this row, no new
+  // files. Found by the kalshi_series_seen baseline sweep (REAL_BOOK, 6¢ median spread).
+  KXDIMAYORGAME:      { sport: "dimayor", league: "dimayor", stat: "game",     col: "ML", gameType: "modelFreeMl" },
   KXARGPREMDIVGAME:   { sport: "argprem", league: "argprem", stat: "game",     col: "ML", gameType: "modelFreeMl" },
   KXARGPREMDIVSPREAD: { sport: "argprem", league: "argprem", stat: "spread",   col: "G",  gameType: "clubSoccerThreshold", subtype: "spread" },
   KXARGPREMDIVTOTAL:  { sport: "argprem", league: "argprem", stat: "total",    col: "G",  gameType: "clubSoccerThreshold", subtype: "total" },

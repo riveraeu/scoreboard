@@ -272,6 +272,36 @@ export const TEAMS = {
     { abbr: "SHS", espnScore: "SHE" },  // Shanghai Shenhua — see collision note above
     { abbr: "TTT", espnScore: "TIG" },  // Tianjin Jinmen Tiger
   ],
+  // Colombian Primera A / Liga DIMAYOR (KXDIMAYORGAME, adopted 2026-07-28 — 7th model-free maker
+  // league, the FIRST built on the generalized MODEL_FREE_LEAGUES path). Surfaced by the
+  // kalshi_series_seen baseline-backlog sweep (REAL_BOOK, 18 markets, 6¢ median spread, ~$39k
+  // volume). Canonical = Kalshi's own ticker abbrs, all 3-char. Registry has 12 of ESPN's 20
+  // teams — América de Cali, Int. de Bogotá, Jaguares de Córdoba, Cúcuta, Junior, Millonarios,
+  // Santa Fe and Once Caldas had no live Kalshi ticker on ship day, so their Kalshi abbr was NOT
+  // guessed (add when first seen; until then their tickers fail parseGameTeams and drop
+  // failure-closed).
+  // COLLISION GOTCHA (verified live by matching Kalshi event tickers to ESPN col.1 fixtures on
+  // the SAME date, NOT guessed): Kalshi's "CAL" is subtitled just "Cali" and is Deportivo Cali,
+  // whose real ESPN abbr is "DCI" — while ESPN's OWN "CAL" is Once Caldas, a different club from
+  // Manizales that isn't in Cali at all. Proof: Kalshi KXDIMAYORGAME-26AUG01DIMCAL matched ESPN's
+  // 2026-08-01 "Deportivo Cali at Independiente Medellín" (DIM vs DCI). Map CAL→CAL and every
+  // Deportivo Cali game silently grades against Once Caldas. Note there are THREE Cali-area clubs
+  // in this league (Deportivo Cali, América de Cali, and the unrelated Once Caldas abbr), which is
+  // why a bare "Cali" subtitle cannot be trusted on its own.
+  dimayor: [
+    { abbr: "ADR", espnScore: "AGD" }, // Águilas Doradas Rionegro
+    { abbr: "ALI", espnScore: "AFC" }, // Alianza FC Valledupar
+    { abbr: "BUC" },                   // Atlético Bucaramanga
+    { abbr: "CAL", espnScore: "DCI" }, // Deportivo Cali — see collision note above
+    { abbr: "CAN", espnScore: "NAL" }, // Atlético Nacional
+    { abbr: "CHI" },                   // Boyacá Chicó FC
+    { abbr: "DIM" },                   // Independiente Medellín
+    { abbr: "FOR" },                   // Fortaleza CEIF
+    { abbr: "LLA" },                   // Llaneros FC
+    { abbr: "PAS" },                   // Deportivo Pasto
+    { abbr: "PER" },                   // Deportivo Pereira
+    { abbr: "TOL" },                   // Deportes Tolima
+  ],
   // Liga MX (KXLIGAMXGAME, adopted 2026-07-23 — 5th model-free maker league, same playbook,
   // see project_maker_modelfree_clubsoccer_2026_07_23 memory). Canonical = Kalshi's own ticker
   // abbrs, all 3-char (no mixed-length parseGameTeams special-case needed). Registry has 14 of

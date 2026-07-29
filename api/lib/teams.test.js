@@ -32,6 +32,8 @@ const LEGACY_TEAM_NORM = {
   // "DUN" collision); team identity resolved from subtitle text, not TEAM_NORM/parseGameTeams.
   argprem: {}, // canonical = Kalshi abbrs, no aliases (like mls/lmb/brasileirao/nwsl/chnsl/
   // ligamx) — RIV/IRM resolved via displayName in argprem.js's canonTeam, not TEAM_NORM.
+  dimayor: {}, // canonical = Kalshi abbrs, no aliases — the CAL→DCI "Cali" collision is an
+  // ESPN-side mapping (espnScore), so it lives in CANONICAL_TO_ESPN, not TEAM_NORM.
 };
 
 const LEGACY_VALID_TEAMS = {
@@ -162,5 +164,24 @@ test("registry: numeric ids unique per sport", () => {
     const ids = TEAMS[sport].map(t => t[key]).filter(v => v != null);
     assert.equal(new Set(ids).size, ids.length, sport);
     assert.equal(ids.length, TEAMS[sport].length, `${sport}: every team has a ${key}`);
+  }
+});
+
+// The DIMAYOR "Cali" collision, pinned because getting it backwards is SILENT: Kalshi's "CAL" is
+// subtitled just "Cali" and is Deportivo Cali (ESPN "DCI"), while ESPN's OWN "CAL" is Once Caldas
+// — a different club, from Manizales, not in Cali at all. Verified 2026-07-28 by matching Kalshi
+// event ticker KXDIMAYORGAME-26AUG01DIMCAL to ESPN col.1's 2026-08-01 fixture "Deportivo Cali at
+// Independiente Medellín" (DIM vs DCI). If CAL ever maps to itself, every Deportivo Cali row
+// grades against Once Caldas and nothing throws.
+test("dimayor: Kalshi CAL is Deportivo Cali (ESPN DCI), never ESPN's own CAL (Once Caldas)", () => {
+  assert.strictEqual(CANONICAL_TO_ESPN.dimayor.CAL, "DCI");
+  assert.notStrictEqual(CANONICAL_TO_ESPN.dimayor.CAL, "CAL");
+  // The other three verified remaps, same fixture-matching method.
+  assert.strictEqual(CANONICAL_TO_ESPN.dimayor.ADR, "AGD");
+  assert.strictEqual(CANONICAL_TO_ESPN.dimayor.ALI, "AFC");
+  assert.strictEqual(CANONICAL_TO_ESPN.dimayor.CAN, "NAL");
+  // Identity teams must NOT carry an espnScore entry (an accidental one would be a silent remap).
+  for (const a of ["BUC", "CHI", "DIM", "FOR", "LLA", "PAS", "PER", "TOL"]) {
+    assert.ok(!(a in CANONICAL_TO_ESPN.dimayor), `${a} should map to itself, not be remapped`);
   }
 });

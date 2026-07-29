@@ -43,6 +43,9 @@ export const MODEL_FREE_LEAGUES = {
   nwsl:        { espnSlug: "usa.nwsl" },
   chnsl:       { espnSlug: "chn.1" },
   ligamx:      { espnSlug: "mex.1" },
+  // 7th league, adopted 2026-07-28 — the first added via this registry rather than a file set.
+  // ESPN slug verified live (col.1 → "Colombian Primera A", 20 teams) before anything was written.
+  dimayor:     { espnSlug: "col.1" },
   // The one league needing more than the default mapping. ESPN's OWN /teams endpoint reuses the
   // abbreviation "RIV" for two different clubs (River Plate and Independiente Rivadavia, which
   // Kalshi correctly distinguishes as RIV/IRM), and a flat espnScore entry cannot express "two
