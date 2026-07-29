@@ -4603,7 +4603,13 @@ export async function handleShadowRoutes({ path, request, env, cache }) {
           WHERE kalshi_ticker IS NOT NULL
             AND game_date IS NOT NULL
             AND resolved = TRUE
-            AND game_date >= CURRENT_DATE - $1::int`, [days], env, { write: true });
+            AND game_date >= ($1::date)::text`,
+        // `game_date` is TEXT, not DATE (schema line ~98) — comparing it to a date operand
+        // fails outright with "operator does not exist: text >= date". Casting the BOUND to text
+        // (rather than game_date to date) keeps the comparison lexicographic, which is exact for
+        // 'YYYY-MM-DD', and leaves any non-conforming legacy value from throwing the whole query.
+        // The bound is computed in JS so the cast has a plain date literal to work on.
+        [new Date(Date.now() - days * 86400_000).toISOString().slice(0, 10)], env, { write: true });
 
       const ymd = (v) => (v ? new Date(v).toISOString().slice(0, 10) : null);
       const rowsWithTd = [];
