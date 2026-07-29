@@ -787,8 +787,22 @@ export async function handleKalshiRoutes(ctx) {
       ALTER TABLE kalshi_series_seen ADD COLUMN IF NOT EXISTS median_spread_c REAL;
       ALTER TABLE kalshi_series_seen ADD COLUMN IF NOT EXISTS overround REAL;
       ALTER TABLE kalshi_series_seen ADD COLUMN IF NOT EXISTS volume_total REAL;
-      ALTER TABLE kalshi_series_seen ADD COLUMN IF NOT EXISTS screened_at DATE
+      ALTER TABLE kalshi_series_seen ADD COLUMN IF NOT EXISTS screened_at DATE;
+      ALTER TABLE kalshi_series_seen ADD COLUMN IF NOT EXISTS dismissed_by TEXT
     `, env);
+    // Repair (idempotent): the first live auto-dismiss run landed before `dismissed_by` existed, so
+    // its 24 rows would never be picked up by the re-screen pass — permanently buried, which is the
+    // exact failure that pass exists to prevent. A dismissed row carrying an auto-dismiss verdict
+    // AND a screen timestamp was necessarily dismissed by the machine; a hand-dismissed row from
+    // before the screen shipped has `screen IS NULL` and cannot match. Safe to leave running: any
+    // DISMISSED_SERIES entry that this ever revives is re-dismissed by the 6b-ii mirror reconcile
+    // on the same pass.
+    await neonQuery(
+      `UPDATE kalshi_series_seen SET dismissed_by='screen'
+         WHERE status='dismissed' AND dismissed_by IS NULL
+           AND screened_at IS NOT NULL AND screen = ANY($1::text[])`,
+      [SCREEN_AUTO_DISMISS], env, { write: true }
+    );
 
     // enrichSeries (sample market + the REENTRY condition-#1 screen) now lives in the shared
     // api/lib/kalshi-series-check.js — also used by the standing /api/kalshi-check diagnostic.
@@ -1011,12 +1025,49 @@ export async function handleKalshiRoutes(ctx) {
     // that screens those rows doesn't exist yet, so they carry no evidence to act on.
     // Reversible: `?undismiss=TICKER` restores to 'new', and the row keeps the `screen` verdict it
     // was dismissed on, so every automated dismissal stays inspectable after the fact.
+    // `dismissed_by='screen'` is what makes this reversible BY THE MACHINE (6e below), so a
+    // seasonal competition isn't buried forever. Manual `?dismiss=` and the DISMISSED_SERIES
+    // mirror both leave it NULL — a human/code decision must not be undone by a liquidity tick.
     const autoDismissed = await neonQuery(
-      `UPDATE kalshi_series_seen SET status='dismissed'
+      `UPDATE kalshi_series_seen SET status='dismissed', dismissed_by='screen'
          WHERE status IN ('new','shortlisted') AND screened_at = $1 AND screen = ANY($2::text[])
          RETURNING ticker, screen, live_market_count, median_spread_c`,
       [today, SCREEN_AUTO_DISMISS], env, { write: true }
     );
+
+    // 6e. RE-SCREEN previously auto-dismissed rows, oldest first, and restore any that now have a
+    // real book. Without this, auto-dismiss is a ONE-WAY DOOR — and the first live run walked
+    // straight into it: `KXLEAGUESCUPGAME` (Leagues Cup, a real MLS/Liga MX competition) scored
+    // DEAD_BOOK at a 92¢ spread purely because its games close 2026-08-07 and no maker had shown
+    // up yet. A pre-season book is indistinguishable from a dead one at a point in time; the only
+    // thing that separates them is looking again later. This repo already knows the shape — the
+    // top-5 European leagues and domestic cups sit off-season until ~August and are logged as the
+    // highest-value recheck — so burying exactly those would have been the worst possible bug.
+    // Restore only on REAL_BOOK: unambiguous evidence, symmetric with the unambiguous evidence
+    // required to dismiss. THIN leaves it dismissed and re-checkable on a later pass.
+    const RESCREEN_CAP = 40;
+    const rescreenRows = await neonQuery(
+      `SELECT ticker FROM kalshi_series_seen
+         WHERE status='dismissed' AND dismissed_by='screen'
+         ORDER BY screened_at ASC NULLS FIRST, ticker LIMIT ${RESCREEN_CAP}`,
+      [], env, { write: true }
+    );
+    const revived = [];
+    await mapPool(rescreenRows, 3, async (r) => {
+      const e = await enrichSeries(r.ticker);
+      if (!e) return;
+      const backAlive = e.screen === "REAL_BOOK";
+      await neonQuery(
+        `UPDATE kalshi_series_seen SET screen=$2, real_book_count=$3, real_book_frac=$4,
+           median_spread_c=$5, overround=$6, volume_total=$7, screened_at=$8,
+           status = CASE WHEN $9 THEN 'new' ELSE status END,
+           dismissed_by = CASE WHEN $9 THEN NULL ELSE dismissed_by END
+         WHERE ticker = $1`,
+        [r.ticker, e.screen, e.real_book_count, e.real_book_frac, e.median_spread_c,
+         e.overround, e.volume_total, today, backAlive], env, { write: true }
+      );
+      if (backAlive) revived.push({ ticker: r.ticker, medianSpreadC: e.median_spread_c });
+    });
 
     // What survived, by verdict — the number that actually matters for the daily queue.
     const screenCounts = await neonQuery(
@@ -1031,6 +1082,7 @@ export async function handleKalshiRoutes(ctx) {
       inserted: toInsert.length, newCount: newTickers.length, refreshed: refreshRows.length, newTickers,
       autoDismissed: autoDismissed.map(r => ({ ticker: r.ticker, screen: r.screen,
         markets: r.live_market_count, medianSpreadC: r.median_spread_c })),
+      rescreened: rescreenRows.length, revived,
       screenCounts: Object.fromEntries(screenCounts.map(r => [r.screen, r.n])),
     });
   }
