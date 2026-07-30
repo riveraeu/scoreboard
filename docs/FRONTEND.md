@@ -1,24 +1,23 @@
 # Scoreboard — Frontend Reference
 
-Routing, state shape, the Report page, live tracking mechanics, sizing, color doctrine.
+Routing, state shape, live tracking mechanics, sizing, color doctrine.
 
 > **Adding new UI?** Read `docs/STYLEGUIDE.md` first (palette, typography, spacing, component patterns). Design tokens + shared style recipes: `src/lib/styles.js` — use in new code instead of hard-coded hex values.
+
+> ⚠️ **TAKER UI REMOVED 2026-07-30 (Phase 1 of the taker-strategy teardown).** Everything below describing the **taker picks flow** — `LineupsPage`/`MatchupCard`/`PlaysColumn`, the `/picks` route, the tracked-pick drawer (`MyPicksColumn`/`DayBar`), the ★ track buttons, the Confirm-pick + Place All order modals, ⅛-Kelly sizing, live-stat auto-resolution, `qualify.js`/`placeValidation.js`/`orderbook.js`, and Web Push — **is historical; that code is deleted.** The surviving frontend is: the maker board (landing), the player card + team page (model dashboards, kept minus their ★ buttons), search, and auth. Sections kept for archaeology are marked *(HISTORICAL)*.
 
 ---
 
 ## URL Routing
 History.pushState + popstate. Routes:
-- `/` (default) → **MakerBoardPage** — shadow maker monitoring (arm progress, live orders, sport utilization). Promoted to the landing page 2026-07-21.
-- `/picks` → LineupsPage — the taker-picks matchup-card flow (demoted from default 2026-07-21; see below)
+- `/` (default) → **MakerBoardPage** — shadow maker monitoring + the pre-registered forward-test tracker. The only non-player/team landing.
 - `/:ABBR` → team page (uppercase, e.g. `/LAD`, `/GSW`)
 - `/:ABBR?sport=nhl` → disambiguate multi-sport abbrs (`_multiSportAbbrs` Set)
 - `/:SlugName` → player page (CamelCase via `slugify`)
 
-`/model` (ReportPage, the daily model report) was **deprecated and removed 2026-07-22** — `DoThisBanner` (the only piece still in daily use) moved into `MakerBoardPage`; `StatusStrip`/`DataHealth`/the rest of the page were not migrated. See `project_do_this_banner` memory.
+The taker `/picks` route (LineupsPage) was **removed 2026-07-30** with the taker strategy; `/model` (ReportPage) was deprecated 2026-07-22 (`DoThisBanner` moved into `MakerBoardPage`). `MakerBoardPage` renders when `!player && !teamPage`; `goBack()` resets to `/`. Login/logout + the read-only Kalshi-balance/committed-capital chip live in the MakerBoardPage header (relocated from the deleted taker drawer 2026-07-30).
 
-`vercel.json` `/:slug` rewrite serves `index.html` for cold loads. `resolveSlug` (`useRouting.js`) checks `"picks"`, then `TEAM_DB`, else stores `pendingSlug` for async ESPN athlete search.
-
-**Landing page flip (2026-07-21)**: the category gate has been empty since 7/18 and the pooled market-calibration scan (7/19) found taker edge structurally negative venue-wide, while shadow maker V2 has a concrete verified result (`[80,84]¢`, +11.17¢/contract) with real capital armed — see `project_taker_ui_demotion_2026_07_21` memory. `MakerBoardPage` (new, eager import — it's now the default) replaces `LineupsPage` (now `React.lazy`, moved behind `/picks` via `navigateToPicks()`) as what renders when `!player && !teamPage && !picksPage`. `goBack()` (resets to `/`) now lands on the maker board, not LineupsPage — LineupsPage's own "← Maker" button calls it to return. A scheduled reminder exists to revisit removing the taker UI once the V2 trial resolves (n≥50 graded, CI-lo>0 — see `MAKER_V2_TRIAL_N` in `MakerBoardPage.jsx`'s `_doThisCandidates`).
+`vercel.json` `/:slug` rewrite serves `index.html` for cold loads. `resolveSlug` (`useRouting.js`) checks `TEAM_DB`, else stores `pendingSlug` for async ESPN athlete search.
 
 `navigateToPlayer` accepts player objects without `id`; `loadPlayer` resolves ESPN athlete ID via `/athletes?q={name}` when missing.
 

@@ -42,7 +42,7 @@ function pickBestTabFn(allPlays, abbr, sport) {
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
-function TeamPage({ abbr, sport, teamPageData, tonightPlays, tonightLoading, allTonightPlays, onBack, navigateToTeam, navigateToPlayer, trackedPlays, trackPlay, untrackPlay }) {
+function TeamPage({ abbr, sport, teamPageData, tonightPlays, tonightLoading, allTonightPlays, onBack, navigateToTeam, navigateToPlayer }) {
   const [glSort, setGlSort] = React.useState({ col:'date', dir:'desc' });
   const [glExpanded, setGlExpanded] = React.useState(false);
   const [lambdaPlay, setLambdaPlay] = React.useState(null);
@@ -212,7 +212,6 @@ function TeamPage({ abbr, sport, teamPageData, tonightPlays, tonightLoading, all
               ? p.scoringTeam?.toUpperCase() === abbr
               : (p.homeTeam?.toUpperCase() === abbr || p.awayTeam?.toUpperCase() === abbr))
           )}
-          trackedPlays={trackedPlays} onTrack={trackPlay} onUntrack={untrackPlay}
           playType={_activeType} onPlayTypeChange={handleTabChange}
           onSelectPlay={setLambdaPlay}/>
 

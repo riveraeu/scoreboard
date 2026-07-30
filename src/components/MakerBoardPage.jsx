@@ -195,29 +195,44 @@ function CategoryBandHeatmap({ cells, maxRows = 40 }) {
   );
 }
 
-// Landing page — single element by design (see top-of-file note). Still accepts the full prop set
-// App.jsx passes; the ones the removed sections used (kalshiBalance/kalshiPositions/navigateToPicks)
-// are simply unused now, so App.jsx needs no change.
+// Landing page — single element by design (see top-of-file note). The read-only Kalshi balance +
+// committed-maker-capital chip (relocated here 2026-07-30 from the removed taker picks drawer)
+// rides in the header when logged in; `kalshiBalance`/`makerCommitted` come from /api/kalshi-balance.
 export default function MakerBoardPage({ shadowReportData, shadowReportLoading, fetchShadowReport,
-  isLoggedIn, navigateToPicks }) {
+  isLoggedIn, kalshiBalance, makerCommitted = 0, onLoginClick, onLogout }) {
   React.useEffect(() => {
     if (isLoggedIn && !shadowReportData && !shadowReportLoading) fetchShadowReport();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoggedIn]);
 
   const mb = shadowReportData?.makerBoard;
+  const _money = (n) => n.toLocaleString("en-US", { minimumFractionDigits:2, maximumFractionDigits:2 });
   return (
     <div style={{ maxWidth:1280, margin:"0 auto", padding:"16px 16px" }}>
       <div style={{ display:"flex", alignItems:"center", marginBottom:14, gap:12 }}>
         <h1 style={{ color:"#fff", fontSize:18, fontWeight:700, margin:0, flex:1 }}>Shadow Maker</h1>
-        <button onClick={() => fetchShadowReport(true)} style={{ background:"transparent", border:`1px solid ${C.border}`, borderRadius:4, color:C.gray, fontSize:11, padding:"4px 10px", cursor:"pointer" }}>
-          {shadowReportLoading ? "Refreshing…" : "Refresh"}
-        </button>
-        {navigateToPicks && (
-          <button onClick={navigateToPicks} style={{ background:"transparent", border:`1px solid ${C.border}`, borderRadius:4, color:C.gray, fontSize:11, padding:"4px 10px", cursor:"pointer" }}>
-            Picks →
+        {/* Read-only funded-account chips: Kalshi cash + capital tied up in resting maker V2
+            orders (shown only when nonzero, so the common disarmed case stays uncluttered). */}
+        {isLoggedIn && kalshiBalance != null && (
+          <div title="Kalshi account balance" style={{ display:"flex", alignItems:"center", gap:4, background:C.bg, border:`1px solid ${C.border}`, borderRadius:4, padding:"4px 8px" }}>
+            <span style={{ color:C.dim, fontSize:11 }}>Kalshi</span>
+            <span style={{ color:C.text, fontSize:12, fontVariantNumeric:"tabular-nums" }}>${_money(kalshiBalance)}</span>
+          </div>
+        )}
+        {isLoggedIn && makerCommitted > 0 && (
+          <div title="Capital committed to resting shadow-maker V2 orders" style={{ display:"flex", alignItems:"center", gap:4, background:C.bg, border:`1px solid ${C.border}`, borderRadius:4, padding:"4px 8px" }}>
+            <span style={{ color:C.dim, fontSize:11 }}>Maker</span>
+            <span style={{ color:C.text, fontSize:12, fontVariantNumeric:"tabular-nums" }}>${_money(makerCommitted)}</span>
+          </div>
+        )}
+        {isLoggedIn && (
+          <button onClick={() => fetchShadowReport(true)} style={{ background:"transparent", border:`1px solid ${C.border}`, borderRadius:4, color:C.gray, fontSize:11, padding:"4px 10px", cursor:"pointer" }}>
+            {shadowReportLoading ? "Refreshing…" : "Refresh"}
           </button>
         )}
+        <button onClick={() => (isLoggedIn ? onLogout?.() : onLoginClick?.())} style={{ background:"transparent", border:`1px solid ${C.border}`, borderRadius:4, color:C.gray, fontSize:11, padding:"4px 10px", cursor:"pointer" }}>
+          {isLoggedIn ? "Log out" : "Log in"}
+        </button>
       </div>
 
       {!isLoggedIn ? (

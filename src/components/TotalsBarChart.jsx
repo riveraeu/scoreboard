@@ -1,7 +1,6 @@
 import React from 'react';
-import { TOTAL_THRESHOLDS, TEAM_TOTAL_THRESHOLDS } from '../lib/constants.js';
+import { TOTAL_THRESHOLDS, TEAM_TOTAL_THRESHOLDS, EDGE_HIGHLIGHT } from '../lib/constants.js';
 import { tierColor } from '../lib/colors.js';
-import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_CLIENT as EDGE_GATE } from '../../api/lib/config.js';
 
 const TAB_LABELS = {
   game_over:  'Game Over',
@@ -10,7 +9,11 @@ const TAB_LABELS = {
   team_under: 'Team Under',
 };
 
-function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, extraAltMap, allMatchupPlays, trackedPlays, onTrack, onUntrack, playType, onPlayTypeChange, onSelectPlay }) {
+// Model-display totals chart for TeamPage. Shows season hit rate, the model's True%, and the
+// Kalshi market price + edge per threshold. The taker ★ track button + bet-window gating were
+// removed 2026-07-30; this is now purely an analytical view (edge = how far the model disagrees
+// with the market, colored via EDGE_HIGHLIGHT — a display cue, not a bet signal).
+function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, extraAltMap, allMatchupPlays, playType, onPlayTypeChange, onSelectPlay }) {
   const isTeamTotal = playType?.startsWith('team_') ?? false;
   const isUnder = playType?.includes('under') ?? false;
   const completed = (gameLog || []).filter(g => g.result);
@@ -36,17 +39,14 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, extraAlt
     return { t, count, pct };
   });
 
-  // Default-selected threshold: first qualified one (qualified=true && edge>=EDGE_GATE) else
-  // the first threshold in the data list. Re-derives when thresholds change (e.g. switching
-  // playType from game→team or vice versa).
+  // Default-selected threshold: the model's strongest line (edge >= EDGE_HIGHLIGHT) else the
+  // first threshold in the data list. Re-derives when thresholds change (e.g. switching playType).
   const defaultT = React.useMemo(() => {
-    const qual = thresholds.find(t => {
+    const strong = thresholds.find(t => {
       const tp = tonightTotalMap?.[t];
-      if (!tp || tp.qualified !== true) return false;
-      const e = tp.edge ?? 0;
-      return e >= EDGE_GATE;
+      return tp && (tp.edge ?? 0) >= EDGE_HIGHLIGHT;
     });
-    return qual ?? thresholds[0] ?? null;
+    return strong ?? thresholds[0] ?? null;
   }, [thresholds.join(','), tonightTotalMap, playType]);
   const [selectedT, setSelectedT] = React.useState(defaultT);
   // Reset selectedT when the threshold list shifts (playType change) or default changes
@@ -93,17 +93,15 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, extraAlt
 
       {/* Per-threshold tab strip — one tab per available threshold. Scrolls horizontally on
           narrow screens. Active tab = selectedT; clicking switches the rendered row + InputList.
-          Edge shown on EVERY tab (not just qualified): from tonight play when available,
-          falling back to (season hit rate − Kalshi price) — same metric the row body shows
-          implicitly. Green = qualified (model edge ≥ EDGE_GATE, tp.qualified true); yellow =
-          positive non-qualified; red = negative. Star tracks/untracks from the tab on qualified. */}
+          Edge shown on EVERY tab: from the tonight play when available, falling back to
+          (season hit rate − Kalshi price). Green = model edge ≥ EDGE_HIGHLIGHT, yellow =
+          positive-but-smaller, red = negative. */}
       {thresholds.length > 1 && (
         <div style={{ display: 'flex', gap: 4, marginBottom: 14, overflowX: 'auto', paddingBottom: 4 }}>
           {thresholds.map(t => {
             const tp = tonightTotalMap?.[t];
             const alt = extraAltMap?.[t];
             const tEdge = tp?.edge ?? null;
-            const tQualified = tp?.qualified === true && tEdge != null && tEdge >= EDGE_GATE;
             const active = t === selectedT;
             const label = isUnder ? `U${(t - 0.5).toFixed(1)}` : `O${(t - 0.5).toFixed(1)}`;
             // Fallback edge: season hit rate vs Kalshi price (extraAltMap). UNDER flips both.
@@ -115,27 +113,17 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, extraAlt
             const fallbackEdge = (tEdge == null && _seasonPct != null && _kalshiForEdge != null)
               ? parseFloat((_seasonPct - _kalshiForEdge).toFixed(1)) : null;
             const displayEdge = tEdge ?? fallbackEdge;
+            const strong = displayEdge != null && displayEdge >= EDGE_HIGHLIGHT;
             const edgeColor = displayEdge == null ? null
-              : tQualified ? '#3fb950'
-              : displayEdge >= EDGE_GATE ? '#3fb950'
+              : strong ? '#3fb950'
               : displayEdge >= 0 ? '#e3b341' : '#f78166';
-            // Per-threshold trackId — mirrors the row-level logic below for consistent pick-id.
-            let _trackId = null, _isTrackedTab = false;
-            if (tp && tQualified) {
-              const _gameType = tp.gameType ?? 'total';
-              const _isUnderPlay = tp.direction === 'under';
-              _trackId = _gameType === 'teamTotal'
-                ? `teamtotal|${tp.sport}|${tp.scoringTeam}|${tp.oppTeam}|${t}|${tp.gameDate||''}${_isUnderPlay?'|under':''}`
-                : `total|${tp.sport}|${tp.homeTeam}|${tp.awayTeam}|${t}|${tp.gameDate||''}${_isUnderPlay?'|under':''}`;
-              _isTrackedTab = (trackedPlays || []).some(p => p.id === _trackId);
-            }
             return (
               <div key={t} onClick={() => setSelectedT(t)}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 5, padding: '5px 8px', borderRadius: 6,
-                  border: `1px solid ${active ? '#58a6ff' : tQualified ? '#3fb950' : '#30363d'}`,
-                  background: active ? 'rgba(88,166,255,0.12)' : tQualified ? 'rgba(63,185,80,0.08)' : '#161b22',
-                  color: active ? '#58a6ff' : tQualified ? '#3fb950' : '#8b949e',
+                  border: `1px solid ${active ? '#58a6ff' : strong ? '#3fb950' : '#30363d'}`,
+                  background: active ? 'rgba(88,166,255,0.12)' : strong ? 'rgba(63,185,80,0.08)' : '#161b22',
+                  color: active ? '#58a6ff' : strong ? '#3fb950' : '#8b949e',
                   fontSize: 11, fontWeight: active ? 700 : 500, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
                 }}>
                 <span>{label}</span>
@@ -143,20 +131,6 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, extraAlt
                   <span style={{ fontSize: 10, fontWeight: 700, color: edgeColor }}>
                     {displayEdge >= 0 ? '+' : ''}{displayEdge}%
                   </span>
-                )}
-                {tQualified && (
-                  <button onClick={e => {
-                      e.stopPropagation();
-                      if (_isTrackedTab) onUntrack?.(_trackId);
-                      else onTrack?.({ ...tp, threshold: t });
-                    }}
-                    title={_isTrackedTab ? 'Remove pick' : 'Add to My Picks'}
-                    style={{
-                      background: _isTrackedTab ? 'rgba(227,179,65,0.18)' : 'transparent',
-                      border: `1px solid ${_isTrackedTab ? '#e3b341' : '#30363d'}`,
-                      borderRadius: 4, padding: '0 4px', cursor: 'pointer', lineHeight: 1,
-                      color: _isTrackedTab ? '#e3b341' : '#484f58', fontSize: 11,
-                    }}>{_isTrackedTab ? '★' : '☆'}</button>
                 )}
               </div>
             );
@@ -167,59 +141,20 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, extraAlt
       {data.filter(({ t }) => t === selectedT).map(({ t, count, pct }) => {
         const tp = tonightTotalMap?.[t] ?? null;
         const alt = extraAltMap?.[t] ?? null;
-        const lineLabel = `O${(t - 0.5).toFixed(1)}`;
 
-        // Kalshi price: tonight play preferred (has full edge/qualified data), else fall back
-        // to extraAltMap which carries the raw market price for thresholds outside the [67, 91]
-        // /api/tonight gate. UNDER side uses noPct from either source.
+        // Kalshi price: tonight play preferred (has full edge data), else fall back to extraAltMap
+        // which carries the raw market price for thresholds outside the [67, 91] /api/tonight gate.
+        // UNDER side uses noPct from either source.
         const rawKalshiPct = tp
           ? (isUnder ? (tp.noKalshiPct ?? tp.kalshiPct) : tp.kalshiPct)
           : (alt ? (isUnder ? alt.noPct : alt.pct) : null);
         const rawModelPct  = tp ? (isUnder ? (tp.noTruePct  ?? tp.truePct)  : tp.truePct)  : null;
         const kalshiPct = rawKalshiPct ?? null;
         const modelPct  = rawModelPct  ?? null;
-        const edge = tp?.edge ?? null;
-        const edgeColor = edge == null ? '#484f58' : edge >= EDGE_GATE ? '#3fb950' : edge >= 0 ? '#e3b341' : '#f78166';
-
-        // Track ID — handles game total vs team total, over vs under
-        const _gameType = tp?.gameType ?? 'total';
-        const _isUnderPlay = tp?.direction === 'under';
-        let trackId = null;
-        if (tp) {
-          trackId = _gameType === 'teamTotal'
-            ? `teamtotal|${tp.sport}|${tp.scoringTeam}|${tp.oppTeam}|${t}|${tp.gameDate||''}${_isUnderPlay?'|under':''}`
-            : `total|${tp.sport}|${tp.homeTeam}|${tp.awayTeam}|${t}|${tp.gameDate||''}${_isUnderPlay?'|under':''}`;
-        }
-
-        const _tAnchor = tp ?? tonightPlay;
-        const _localToday = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
-        const _existingPick = (_tAnchor && trackId) ? (trackedPlays || []).find(p => {
-          if (_gameType === 'teamTotal') {
-            const [pt,ps,psc,pOpp,pth,pd] = p.id.split('|');
-            return pt==='teamtotal' && ps===_tAnchor.sport && psc===_tAnchor.scoringTeam && pOpp===_tAnchor.oppTeam && String(pth)===String(t) && (!pd || pd >= _localToday);
-          }
-          const [pt,ps,ph,pa,pth,pd] = p.id.split('|');
-          return pt==='total' && ps===_tAnchor.sport && ph===_tAnchor.homeTeam && pa===_tAnchor.awayTeam && String(pth)===String(t) && (!pd || pd >= _localToday);
-        }) : null;
-        const isTracked = !!_existingPick || !!(trackId && (trackedPlays || []).some(p => p.id === trackId));
-        const _untrackId = _existingPick?.id ?? trackId;
-        const canTrack = tp?.qualified === true && (rawKalshiPct ?? 0) >= KALSHI_GATE && (rawKalshiPct ?? 0) <= KALSHI_CAP && edge != null && edge >= EDGE_GATE;
-        const trackBtn = canTrack ? (
-          <button
-            onClick={() => isTracked ? onUntrack(_untrackId) : onTrack({ ...tp, threshold: t })}
-            title={isTracked ? 'Remove pick' : 'Add to My Picks'}
-            style={{ background: isTracked ? 'rgba(63,185,80,0.15)' : 'transparent',
-              border: `1px solid ${isTracked ? '#3fb950' : '#30363d'}`,
-              borderRadius: 6, padding: '1px 6px', cursor: 'pointer',
-              color: isTracked ? '#3fb950' : '#484f58', fontSize: 13, lineHeight: 1, flexShrink: 0 }}>
-            {isTracked ? '★' : '☆'}
-          </button>
-        ) : null;
 
         const hasTonightData = modelPct != null;
         const primaryPct = hasTonightData ? modelPct : pct;
         const barColor = tierColor(primaryPct);
-        const labelColor = tp ? '#c9d1d9' : '#8b949e';
 
         return (
           <div key={t} style={{ marginBottom: 14 }}>
@@ -233,9 +168,8 @@ function TotalsBarChart({ gameLog, sport, tonightTotalMap, tonightPlay, extraAlt
                 <div style={{ color: barColor, fontSize: 13, fontWeight: 700, width: 42, textAlign: 'right', flexShrink: 0 }}>
                   {primaryPct.toFixed(1)}%
                 </div>
-                <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <div style={{ flexShrink: 0 }}>
                   <span style={{ color: '#484f58', fontSize: 10 }}>{count}/{completed.length}g</span>
-                  {trackBtn}
                 </div>
               </div>
               {/* Kalshi bar */}

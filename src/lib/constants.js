@@ -160,6 +160,12 @@ export const STAT_LABEL = {
 
 export const SPORT_KEY = { nba:"basketball/nba", wnba:"basketball/wnba", nfl:"football/nfl", nhl:"hockey/nhl", mlb:"baseball/mlb" };
 
+// Display-only edge threshold (percentage points): the player/team model dashboards color an
+// edge (model True% − market price) green at or above this, yellow if positive-but-smaller, red
+// if negative. Purely a display cue for how far the model disagrees with the market — NOT a bet
+// gate. (The taker edge gates that used to drive order placement were removed 2026-07-30.)
+export const EDGE_HIGHLIGHT = 5;
+
 
 
 export const SPORT_BADGE_COLOR = { nba:"#58a6ff", wnba:"#ff8fab", nhl:"#a5d8ff", mlb:"#3fb950", nfl:"#f78166" };

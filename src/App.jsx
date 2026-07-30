@@ -1,19 +1,11 @@
 import React from 'react';
-import { WORKER, SPORTS, STAT_FULL, MLB_TEAM, TOTAL_THRESHOLDS, STAT_LABEL, SPORT_KEY, SPORT_BADGE_COLOR, GAMELOG_COLS } from './lib/constants.js';
-import { ordinal, slugify, oddsToProfit, logoUrl } from './lib/utils.js';
+import { WORKER, SPORTS, GAMELOG_COLS, EDGE_HIGHLIGHT } from './lib/constants.js';
 import { useIsMobile } from './lib/hooks.js';
 import { useTonight } from './lib/useTonight.js';
-import { useSavePicks } from './lib/useSavePicks.js';
-import { useLiveStats } from './lib/useLiveStats.js';
-import { usePicks, UNIT_DOLLARS, STAKE_CAP } from './lib/usePicks.js';
-import { validateCandidate, isMarketUntrusted } from './lib/placeValidation.js';
-import { fetchOrderbook, walkFill } from './lib/orderbook.js';
 import { useAuth } from './lib/useAuth.js';
-import { useAuthPickSync } from './lib/useAuthPickSync.js';
 import { useRouting } from './lib/useRouting.js';
 import { usePlayerSearch } from './lib/usePlayerSearch.js';
 import { useReportData } from './lib/useReportData.js';
-import { usePickInteractions } from './lib/usePickInteractions.js';
 import { useAuthFlow } from './lib/useAuthFlow.js';
 import { usePlayerLoad } from './lib/usePlayerLoad.js';
 import { useKalshiOdds } from './lib/useKalshiOdds.js';
@@ -22,40 +14,12 @@ import InputList from './components/InputList.jsx';
 import { buildLambdaInputs, buildModelOutput } from './lib/lambdaInputs.js';
 import { tierColor } from './lib/colors.js';
 import { STAT_CONFIGS } from './lib/statConfigs.js';
-import DayBar from './components/DayBar.jsx';
-import MyPicksColumn from './components/MyPicksColumn.jsx';
 import MakerBoardPage from './components/MakerBoardPage.jsx';
-import { qualifiesForDisplay, trackIdFor } from './lib/qualify.js';
-import SimBadge from './components/SimBadge.jsx';
 
-import { KALSHI_GATE, KALSHI_CAP, EDGE_GATE_CLIENT as EDGE_GATE } from "../api/lib/config.js";
-
-// Route/interaction-gated heavy components are code-split: none are needed for the default
-// first paint, so they load on demand in their own chunks, shrinking the initial bundle.
-// TotalsBarChart rides along inside the TeamPage chunk (its only user). MakerBoardPage is now
-// the default landing view (2026-07-21 — taker picks demoted, maker promoted), so it's the one
-// eager import; LineupsPage flipped to lazy since it moved behind the /picks route.
+// MakerBoardPage is the default landing view and is eager-imported. TeamPage (and TotalsBarChart,
+// which rides in its chunk) is the one route-gated heavy component still code-split. The taker
+// LineupsPage / picks route was removed 2026-07-30.
 const TeamPage = React.lazy(() => import('./components/TeamPage.jsx'));
-const LineupsPage = React.lazy(() => import('./components/LineupsPage.jsx'));
-
-// Pairwise same-game phi correlation table from 30-day shadow analysis (2026-06-04).
-// Negative-phi pairs (hedges) are intentionally absent → default 0 = no reduction.
-// Update when shadow N per pair exceeds 200.
-// Same-game pick cap: default-select only the top-N highest-edge picks per game. Shadow capRoi
-// analysis (Kalshi 67–91 window, n=144): within a multi-pick game the 1st/2nd-best-edge picks
-// run +5.5%/+3.1% ROI, the 3rd −11%. So cap the default selection at 2; 3rd+ stay visible/unchecked.
-const SAME_GAME_CAP = 2;
-const _PHI_KEY = (a, b) => [a, b].sort().join('\x00');
-const _SAME_GAME_PHI = new Map([
-  [_PHI_KEY('strikeouts|', 'teamRuns|under'),  0.84],
-  [_PHI_KEY('ml|',          'strikeouts|'),     0.51],
-  [_PHI_KEY('teamRuns|over','totalRuns|over'),  0.50],
-  [_PHI_KEY('f5ml|',        'spread|'),         0.46],
-  [_PHI_KEY('hrr|',         'ml|'),             0.32],
-  [_PHI_KEY('hrr|',         'totalRuns|over'),  0.32],
-]);
-function _catDir(play) { return `${play.stat || play.gameType || ''}|${play.direction || ''}`; }
-function _pairPhi(p1, p2) { return _SAME_GAME_PHI.get(_PHI_KEY(_catDir(p1), _catDir(p2))) ?? 0; }
 
 function App() {
   const isMobile = useIsMobile();
@@ -63,69 +27,30 @@ function App() {
   // player / perGame / dvpData / mlbIsPitcher / logs / logs25 / loading / error
   // + loadPlayer live in usePlayerLoad() below.
   // query / suggestions / showDrop / activeIdx / searching live in usePlayerSearch() below.
-  // activeTab / selectedThreshold / showBreakdown / direction / editPickId / gamelogSort /
-  // expandedPlays / chartMonth live in usePlayerCardState() below.
+  // activeTab / selectedThreshold / showBreakdown / direction / gamelogSort live in
+  // usePlayerCardState() below.
   // kalshiOdds + kalshiCache live in useKalshiOdds() below (called after safeTab is derived).
-  // tonight fetch/poll/visibility state lives in useTonight() — called below after _qualifiedFilter is defined.
+  // tonight fetch/poll/visibility state lives in useTonight() below.
   // teamPage / teamPageData / pendingSlug live in useRouting() below.
-  // report* + calib* state lives in useReportData() below.
+  // report* state lives in useReportData() below.
   const {
     activeTab, setActiveTab,
     selectedThreshold, setSelectedThreshold,
     showBreakdown, setShowBreakdown,
     direction, setDirection,
-    editPickId, setEditPickId,
     gamelogSort, setGamelogSort,
-    expandedPlays, setExpandedPlays,
-    chartMonth, setChartMonth,
   } = usePlayerCardState();
-  // pendingTrackPlay / pendingOdds / openPickDays/Weeks/Months /
-  // showPicksDrawer / flyingPick / starClickOrigin / fabRef + initiateTrack /
-  // triggerFlyAnimation / openPickDate all live in usePickInteractions() below.
-  const {
-    pendingTrackPlay, setPendingTrackPlay,
-    pendingOdds, setPendingOdds,
-    openPickDays, setOpenPickDays,
-    openPickWeeks, setOpenPickWeeks,
-    openPickMonths, setOpenPickMonths,
-    showPicksDrawer, setShowPicksDrawer,
-    flyingPick, setFlyingPick,
-    fabRef,
-    initiateTrack, triggerFlyAnimation, openPickDate,
-  } = usePickInteractions();
-  const [placeOnKalshi, setPlaceOnKalshi] = React.useState(true);
-  const [kalshiOrderResult, setKalshiOrderResult] = React.useState(null); // null | {ok, msg}
+  // Kalshi balance + committed maker capital — read-only, shown on the maker board header chip.
   const [kalshiBalance, setKalshiBalance] = React.useState(null); // dollars, null = not fetched
   const [makerCommitted, setMakerCommitted] = React.useState(0); // dollars tied up in resting maker V2 orders
-  const [kalshiPositions, setKalshiPositions] = React.useState(null); // dollars, ALL open real positions' cost basis (V2 + manual) — not mark-to-market
-  const [showPlaceAll, setShowPlaceAll] = React.useState(false); // batch-place modal open
-  const [placeAllStatus, setPlaceAllStatus] = React.useState(null); // null | { running, rows: {id->{state,msg}} }
-  const [placeAllSelected, setPlaceAllSelected] = React.useState(new Set()); // IDs of individually checked bets
-  const placeAllInitedRef = React.useRef(false); // first-open default-selection guard (reset on close)
-  // Live-orderbook liquidity walk for the order modals. Single-pick confirm modal: obFill is the
-  // walk for the pending play. Place All: placeAllBooks maps ticker → raw resting levels for the
-  // candidates the cached check flagged untrusted (others don't need a fetch); the per-candidate
-  // fill is walked from the book in the candidates memo (over/under can share a ticker but differ
-  // by side/count). placeAllLiqStatus gates the default-selection init so verified-clean plays land
-  // checked. See src/lib/orderbook.js.
-  const [obFill, setObFill] = React.useState(null);     // { vwapCents, filledCount, exhausted, slipCents } | null
-  const [obLoading, setObLoading] = React.useState(false);
-  const [placeAllBooks, setPlaceAllBooks] = React.useState({}); // ticker → { n:[[c,q]], y:[[c,q]] }
-  const [placeAllLiqStatus, setPlaceAllLiqStatus] = React.useState('idle'); // 'idle' | 'loading' | 'done'
-  const [activeDayTab, setActiveDayTab] = React.useState(() =>
-    new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
-  );
-  const _prevResolvedCount = React.useRef(0);
   const {
     authEmail,
     authMode, setAuthMode,
     authForm, setAuthForm,
-    authError, authLoading,
-    authenticate, logout: authLogout, clearToken: authClearToken,
+    authError, setAuthError, authLoading,
+    authenticate, logout: authLogout,
   } = useAuth();
   // showAuthModal + authSubmit + logout live in useAuthFlow() below.
-  // live polling + auto-resolve state lives in useLiveStats() — called below after trackedPlays + meta.
-  // usePicks + useSavePicks + useAuthPickSync are called below after useTonight (they need meta + each other's refs).
 
   const selectPlayerRef = React.useRef(null);
   const {
@@ -150,440 +75,32 @@ function App() {
   const {
     teamPage, setTeamPage,
     teamPageData,
-    picksPage,
-    navigateToTeam, navigateToPlayer, goBack, navigateToPicks,
+    navigateToTeam, navigateToPlayer, goBack,
   } = useRouting({ setPlayer, setQuery, selectPlayerRef });
   const {
     shadowReportData, shadowReportLoading, fetchShadowReport,
   } = useReportData();
 
-  // Holds the current tracked pick IDs — populated by the useEffect below after usePicks.
-  // _qualifiedFilter reads this ref so tracked plays bypass the category gate even when their
-  // category is demoted, mirroring the passesGate bypass in LineupsPage. Ref (not state) so
-  // the stable _qualifiedFilter closure sees the latest value without a new function identity.
-  const _trackedIdsRef = React.useRef(new Set());
-  const _trackedPlaysRef = React.useRef([]);
-
-  // Qualified play filter: dcQualified=true AND edge >= 5% AND category gate.
-  // Tracked plays bypass the category gate so existing bets stay visible after a demotion.
-  // Mirrors passesGate in LineupsPage; keep these in sync.
-  const _qualifiedFilter = React.useCallback((p) => {
-    // Tracked picks bypass the category gate — visibility of an existing bet must survive
-    // a category demotion. Still enforce dcQualified + edge so stale/out picks drop.
-    // (Intentionally stricter than LineupsPage's bypass, which always shows tracked bets.)
-    if (_trackedIdsRef.current.has(trackIdFor(p))) {
-      return p.dcQualified === true && (p.edge ?? 0) >= EDGE_GATE;
-    }
-    return qualifiesForDisplay(p);
-  }, []);
-  const {
-    tonightPlays, allTonightPlays, nbaDropped,
-    tonightMeta, tonightLoading,
-    mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta,
-    bustCache, bustLoading,
-  } = useTonight(_qualifiedFilter, _trackedPlaysRef);
-
-  const {
-    trackedPlays, setTrackedPlays,
-    bankroll, setBankrollState, setBankroll,
-    unitsForPlay,
-    trackPlay, untrackPlay, setPlayResult, setPickUnits,
-    trackedPlaysRef, bankrollRef,
-  } = usePicks({ mlbMeta, nbaMeta, wnbaMeta, nhlMeta });
-
-  const { savePicks, syncStatus, setSyncStatus, primeSync, resetSync } = useSavePicks({
-    getCurrent: () => ({ picks: trackedPlaysRef.current, bankroll: bankrollRef.current }),
-  });
-
-  // Keep _trackedIdsRef and _trackedPlaysRef in sync.
-  React.useEffect(() => {
-    _trackedIdsRef.current = new Set((trackedPlays || []).map(p => p.id));
-    _trackedPlaysRef.current = trackedPlays || [];
-  }, [trackedPlays]);
-
-  const { liveStats } = useLiveStats({ trackedPlays, setTrackedPlays, mlbMeta, nbaMeta, wnbaMeta, nhlMeta });
+  const { tonightPlays, allTonightPlays, nbaDropped, tonightLoading } = useTonight();
 
   const { showAuthModal, setShowAuthModal, authSubmit, logout } = useAuthFlow({
     authenticate, authMode, authLogout,
-    savePicks, resetSync,
-    trackedPlays, bankroll,
-    setTrackedPlays, setBankrollState,
   });
 
-  useAuthPickSync({
-    authEmail,
-    trackedPlays, bankroll,
-    savePicks, primeSync, setSyncStatus,
-    setTrackedPlays, setBankrollState,
-    authClearToken,
-  });
-
+  // Read-only Kalshi balance + committed maker capital for the maker-board header chip.
   const fetchKalshiBalance = React.useCallback(async () => {
     if (!authEmail) return;
     try {
       const r = await fetch(`${WORKER}/kalshi-balance`, { credentials: "include" });
       if (!r.ok) return;
       const data = await r.json().catch(() => ({}));
-      if (data.balanceDollars != null) {
-        setKalshiBalance(data.balanceDollars);
-        setBankrollState(data.balanceDollars);
-      }
+      if (data.balanceDollars != null) setKalshiBalance(data.balanceDollars);
       if (data.makerCommittedDollars != null) setMakerCommitted(data.makerCommittedDollars);
-      if (data.positionsCents != null) setKalshiPositions(data.positionsCents / 100);
     } catch {}
-  }, [authEmail, setBankrollState]);
+  }, [authEmail]);
 
   // Fetch on login
   React.useEffect(() => { fetchKalshiBalance(); }, [fetchKalshiBalance]);
-
-  // Fetch after any pick resolves
-  React.useEffect(() => {
-    const resolved = trackedPlays.filter(p => p.result).length;
-    if (resolved > _prevResolvedCount.current) fetchKalshiBalance();
-    _prevResolvedCount.current = resolved;
-  }, [trackedPlays, fetchKalshiBalance]);
-
-  // ── Batch "Place All" ────────────────────────────────────────────────────
-  // cents → American odds, mirroring the single-bet flow (_centsToAmerican in the
-  // track-confirm modal). A Kalshi contract pays $1; buying at `cents` risks `cents`
-  // to win `(100 - cents)`.
-  const _centsToAmericanB = React.useCallback((cents) => {
-    if (!cents || cents <= 0 || cents >= 100) return null;
-    return cents >= 50 ? -Math.round((cents / (100 - cents)) * 100) : Math.round(((100 - cents) / cents) * 100);
-  }, []);
-  // Per-play Kalshi order sizing — mirrors the track-confirm modal's suggestedStake exactly:
-  // ⅛-Kelly on the side actually being bet (truePct + odds both from that side), $500 cap,
-  // $30 fallback → contract count at the side's ask price. Returns null if not placeable.
-  const _placeAllSizing = React.useCallback((play) => {
-    if (!play.kalshiTicker) return null;
-    const price = play.kalshiSide === "no"
-      ? Math.round(play.noKalshiPct ?? play.kalshiPct)
-      : Math.round(play.kalshiPct);
-    if (!price || price <= 0 || price >= 100) return null;
-    const ao = _centsToAmericanB(price);
-    const tp = play.direction === "under"
-      ? (play.noTruePct ?? (play.truePct != null ? 100 - play.truePct : null))
-      : play.truePct;
-    let stake = UNIT_DOLLARS;
-    if (tp != null && ao != null && ao !== 0) {
-      const b = ao > 0 ? ao / 100 : 100 / Math.abs(ao);
-      const p = tp / 100;
-      const f = Math.max(0, (b * p - (1 - p)) / b);
-      const s = bankroll * f * 0.125;
-      stake = s > 0 ? Math.round(Math.min(s, STAKE_CAP)) : UNIT_DOLLARS;
-    }
-    const count = Math.floor(stake / (price / 100));
-    if (count < 1) return null;
-    const cost = parseFloat((count * price / 100).toFixed(2));
-    return { price, count, cost, side: play.kalshiSide, ao };
-  }, [bankroll, _centsToAmericanB]);
-  // Single-pick confirm modal: walk the live orderbook for the pending play's suggested size so the
-  // warning/placeability reflect a real fill rather than the cached traded-volume flag. Re-fetched
-  // each time the modal opens (books move); cleared on close. On fetch failure obFill stays null →
-  // validateCandidate falls back to the cached heuristic (no less safe than before).
-  React.useEffect(() => {
-    setObFill(null);
-    const play = pendingTrackPlay;
-    if (!play?.kalshiTicker) { setObLoading(false); return; }
-    const sizing = _placeAllSizing(play);
-    if (!sizing || sizing.count < 1) { setObLoading(false); return; }
-    let cancelled = false;
-    setObLoading(true);
-    fetchOrderbook(play.kalshiTicker).then(ob => {
-      if (cancelled) return;
-      setObLoading(false);
-      if (!ob.ok) return;
-      const side = play.kalshiSide;
-      const topRaw = side === 'no'
-        ? (play.rawNoKalshiPct ?? play.noKalshiPct ?? play.kalshiPct)
-        : (play.rawKalshiPct ?? play.kalshiPct);
-      setObFill(walkFill({ levels: ob.levels, side, count: sizing.count,
-        topAskCents: topRaw != null ? Math.round(topRaw) : null }));
-    });
-    return () => { cancelled = true; };
-  }, [pendingTrackPlay, _placeAllSizing]);
-  // Candidate set: qualified (tonightPlays) + placeable (has Kalshi ticker + non-zero Kelly) +
-  // untracked + game not yet started. Kelly=0 and no-ticker plays are excluded — they are not
-  // actionable and would inflate the count vs what the modal can actually order.
-  const placeAllCandidates = React.useMemo(() => {
-    if (!authEmail) return [];
-    const trackedIds = new Set((trackedPlays || []).map(p => p.id).filter(Boolean));
-    // Spread team-matchup keys already covered by tracked picks — used below to suppress
-    // alt-line candidates (e.g. +3.5 when +2.5 is already tracked on the same team).
-    const trackedSpreadKeys = new Set(
-      (trackedPlays || [])
-        .filter(p => p.gameType === 'spread')
-        .map(p => `${p.sport}|${p.pickTeam}|${p.oppTeam}|${p.gameDate ?? ''}`)
-    );
-    // Prop player+stat+day keys already covered by ACTIVE tracked picks — suppresses
-    // lower-threshold alt candidates when a higher threshold is already tracked for the same
-    // game (e.g. 3+ K when 4+ K tracked). Day-scoped and settled-excluded: trackedPlays holds
-    // full pick history, and an unscoped key permanently hid every previously-bet player from
-    // Place All AND the Lineups page (2026-06-12 bug — Sasaki was the only visible play).
-    const trackedPropKeys = new Set(
-      (trackedPlays || [])
-        .filter(p => p.stat && p.playerName && !p.gameType && !p.result)
-        .map(p => `${p.playerId ?? p.playerName}|${p.sport}|${p.stat}|${p.gameDate ?? ''}`)
-    );
-    const nowMs = Date.now();
-    const out = [];
-    for (const p of (tonightPlays || [])) {
-      if (trackedIds.has(trackIdFor(p))) continue;             // already tracked — don't double-place
-      if (p.gameTime && new Date(p.gameTime).getTime() <= nowMs) continue; // game started
-      const sizing = _placeAllSizing(p);
-      if (!sizing) continue;                                   // no ticker or Kelly rounds to 0
-      // Live-orderbook fill: walk the cached-untrusted ticker's book (fetched by the liquidity
-      // effect) for THIS candidate's side+count. Deep-volume markets have no book here → null →
-      // validateCandidate uses its (clean) cached path.
-      const book = p.kalshiTicker ? placeAllBooks[p.kalshiTicker] : null;
-      let liveFill = null;
-      if (book) {
-        const topRaw = p.kalshiSide === 'no'
-          ? (p.rawNoKalshiPct ?? p.noKalshiPct ?? p.kalshiPct)
-          : (p.rawKalshiPct ?? p.kalshiPct);
-        liveFill = walkFill({ levels: book, side: p.kalshiSide, count: sizing.count,
-          topAskCents: topRaw != null ? Math.round(topRaw) : null });
-      }
-      const validation = validateCandidate(p, sizing, liveFill);
-      out.push({ play: p, ...sizing, validation });
-    }
-    // Prop dedup: same player + stat → keep highest-edge only (multi-threshold plays
-    // resolve unanimously 90% of the time; betting both is near-identical exposure).
-    // Must check playerName: game-type plays (spread/total/ml) also carry a stat field
-    // (e.g. stat:"spread") and would all collapse to one key without this guard.
-    const propBest = new Map();
-    for (const c of out) {
-      if (!c.play.stat || !c.play.playerName) continue;
-      const k = `${c.play.playerId ?? c.play.playerName}|${c.play.sport}|${c.play.stat}|${c.play.gameDate ?? ''}`;
-      if (trackedPropKeys.has(k)) continue;                       // player+stat already tracked at another threshold (same day)
-      if (!propBest.has(k) || (c.play.edge ?? 0) > (propBest.get(k).play.edge ?? 0)) propBest.set(k, c);
-    }
-    // Spread dedup: same pickTeam + matchup → keep highest-edge line only. Multiple qualifying
-    // alt lines (e.g. CWS +2.5 and CWS +3.5) are correlated bets; size only the best one.
-    // Also skip entirely when any line for this team+matchup is already tracked.
-    const spreadBest = new Map();
-    for (const c of out) {
-      if (c.play.gameType !== 'spread') continue;
-      const sk = `${c.play.sport}|${c.play.pickTeam}|${c.play.oppTeam}|${c.play.gameDate ?? ''}`;
-      if (trackedSpreadKeys.has(sk)) continue;
-      if (!spreadBest.has(sk) || (c.play.edge ?? 0) > (spreadBest.get(sk).play.edge ?? 0)) spreadBest.set(sk, c);
-    }
-    return [
-      ...out.filter(c => c.play.gameType !== 'spread' && (!c.play.stat || !c.play.playerName)),
-      ...propBest.values(),
-      ...spreadBest.values(),
-    ];
-  }, [authEmail, tonightPlays, trackedPlays, _placeAllSizing, placeAllBooks]);
-  // Placeable subset — candidates that cleared every HARD pre-flight check. runPlaceAll only
-  // orders these. The toolbar ⚡ badge shows TODAY's placeable count (placeAllCountByDay,
-  // matching the today-only modal since 2026-06-12); the modal header shows "N ready · M blocked".
-  const placeAllPlaceable = React.useMemo(
-    () => placeAllCandidates.filter(c => c.validation.hard.length === 0),
-    [placeAllCandidates]);
-  // Place All liquidity pass: when the modal opens, fetch live orderbooks ONLY for tickers the
-  // cached check flags untrusted (vol 0 / low / thin) — deep-volume plays don't need a walk. The
-  // default-selection init below waits for placeAllLiqStatus==='done' so a verified-clean play
-  // lands checked. Throttled 3-at-a-time / 700ms to mirror the snapshot cron and dodge 429s.
-  // Derives targets straight from tonightPlays (NOT placeAllCandidates) to avoid a fetch→memo→fetch
-  // loop. On close, state resets so the next open re-walks fresh books.
-  React.useEffect(() => {
-    if (!showPlaceAll) { setPlaceAllBooks({}); setPlaceAllLiqStatus('idle'); return; }
-    if (!authEmail) { setPlaceAllLiqStatus('done'); return; }
-    const nowMs = Date.now();
-    const seen = new Set(), targets = [];
-    for (const p of (tonightPlays || [])) {
-      if (!p.kalshiTicker || seen.has(p.kalshiTicker)) continue;
-      if (p.gameTime && new Date(p.gameTime).getTime() <= nowMs) continue;
-      if (!isMarketUntrusted(p)) continue;
-      const sizing = _placeAllSizing(p);
-      if (!sizing || sizing.count < 1) continue;
-      seen.add(p.kalshiTicker);
-      targets.push(p.kalshiTicker);
-    }
-    if (targets.length === 0) { setPlaceAllLiqStatus('done'); return; }
-    let cancelled = false;
-    setPlaceAllLiqStatus('loading');
-    (async () => {
-      const books = {};
-      const BATCH = 3, DELAY = 700;
-      for (let i = 0; i < targets.length && !cancelled; i += BATCH) {
-        await Promise.all(targets.slice(i, i + BATCH).map(async ticker => {
-          const ob = await fetchOrderbook(ticker);
-          if (ob.ok && ob.levels) books[ticker] = ob.levels;
-        }));
-        if (i + BATCH < targets.length) await new Promise(r => setTimeout(r, DELAY));
-      }
-      if (cancelled) return;
-      setPlaceAllBooks(books);
-      setPlaceAllLiqStatus('done');
-    })();
-    return () => { cancelled = true; };
-  }, [showPlaceAll, authEmail, tonightPlays, _placeAllSizing]);
-
-  // Per-day count + trackId Set for placeAllPlaceable — drives tab badge, card badge, and
-  // playsForGame filter so all three surfaces show the same number.
-  // null when not logged in so playsForGame shows all qualifying plays (empty Set is truthy
-  // and would hide everything).
-  const { placeAllCountByDay, placeAllPlaceableIds } = React.useMemo(() => {
-    if (!authEmail) return { placeAllCountByDay: {}, placeAllPlaceableIds: null };
-    const byDay = {};
-    const ids = new Set();
-    const ptDate = (ts) => new Date(ts).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
-    for (const c of placeAllPlaceable) {
-      const p = c.play;
-      const d = p.gameTime ? ptDate(p.gameTime) : p.gameDate;
-      if (d) byDay[d] = (byDay[d] || 0) + 1;
-      ids.add(trackIdFor(p));
-    }
-    return { placeAllCountByDay: byDay, placeAllPlaceableIds: ids };
-  }, [placeAllPlaceable]);
-
-  // Grouped view: same-game plays share one ⅛-Kelly slot scaled by avg pairwise phi.
-  // effectivePlays = 1 + (n−1)×(1−avgPosPhi) → group_total = anchor×effectivePlays/n.
-  // Negative-phi pairs (hedges) contribute 0 to avgPosPhi → no reduction.
-  const placeAllGrouped = React.useMemo(() => {
-    function gameKey(c) {
-      const p = c.play;
-      // Props carry only playerTeam/opponent (homeTeam/awayTeam are null), so fall back to them
-      // — sorted, a prop's (playerTeam, opponent) yields the same key as the spread/total of the
-      // same game, grouping all same-game picks (props + game-level) under one game header.
-      const t1 = p.homeTeam ?? p.gameTeam1 ?? p.playerTeam;
-      const t2 = p.awayTeam ?? p.gameTeam2 ?? p.opponent;
-      if (!t1 || !t2) return null;
-      return `${p.sport}|${[t1, t2].sort().join('|')}|${p.gameDate ?? ''}`;
-    }
-    function groupLabel(cands) {
-      const p = cands.find(c => c.play.homeTeam && c.play.awayTeam)?.play ?? cands[0].play;
-      const away = p.awayTeam ?? p.gameTeam1, home = p.homeTeam ?? p.gameTeam2;
-      if (away && home) return `${away} @ ${home}`;
-      const t1 = p.gameTeam1, t2 = p.gameTeam2;
-      return t1 && t2 ? `${t1} vs ${t2}` : (p.sport?.toUpperCase() ?? '');
-    }
-    const byGame = new Map();
-    for (const c of placeAllPlaceable) {
-      const k = gameKey(c) ?? `solo\x00${c.play.id ?? Math.random()}`;
-      if (!byGame.has(k)) byGame.set(k, []);
-      byGame.get(k).push(c);
-    }
-    const groups = [];
-    for (const [key, cands] of byGame) {
-      const n = cands.length;
-      const label = groupLabel(cands);
-      if (n === 1) {
-        groups.push({ key, label, rescaled: cands.map(c => ({ ...c, _gameRank: 1, _gameN: 1 })),
-          groupCost: cands[0].cost, avgPhi: 0, isCorrelated: false });
-        continue;
-      }
-      // Within-game edge rank (1 = highest edge). Drives the same-game cap: the default
-      // selection checks only the top SAME_GAME_CAP by edge (shadow capRoi: the 3rd-best-edge
-      // pick in a game runs −11% ROI; the top 2 are +5.5%/+3.1%). Rank 3+ stay visible, unchecked.
-      const order = [...cands].sort((a, b) => (b.play.edge ?? 0) - (a.play.edge ?? 0));
-      const rankById = new Map(order.map((c, i) => [c.play.id ?? trackIdFor(c.play), i + 1]));
-      const withRank = arr => arr.map(c => ({ ...c, _gameRank: rankById.get(c.play.id ?? trackIdFor(c.play)), _gameN: n }));
-      // Average positive pairwise phi across all pairs in the group.
-      let phiSum = 0, pairs = 0;
-      for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
-        phiSum += Math.max(0, _pairPhi(cands[i].play, cands[j].play));
-        pairs++;
-      }
-      const avgPhi = pairs > 0 ? phiSum / pairs : 0;
-      let rescaled;
-      if (avgPhi > 0) {
-        // Measured correlation (MLB phi table) → shrink the group toward one Kelly slot.
-        const effectivePlays = 1 + (n - 1) * (1 - avgPhi);
-        const anchorCost = Math.max(...cands.map(c => c.cost));
-        const totalOrig = cands.reduce((s, c) => s + c.cost, 0);
-        const scale = (anchorCost * effectivePlays / n) / totalOrig;
-        rescaled = withRank(cands.map(c => {
-          const target = c.cost * scale;
-          const newCount = Math.max(1, Math.floor(target / (c.price / 100)));
-          return { ...c, count: newCount, cost: parseFloat((newCount * c.price / 100).toFixed(2)) };
-        }));
-      } else {
-        // No measured pair (e.g. WNBA same-game): don't trim stakes — full ⅛-Kelly on the kept
-        // picks. Same-game concentration is handled by the cap-2 default + the visual flag, not
-        // by shrinking size (shadow shows cap-2 at full size is the higher-volume +ROI policy).
-        rescaled = withRank(cands);
-      }
-      const groupCost = parseFloat(rescaled.reduce((s, c) => s + c.cost, 0).toFixed(2));
-      groups.push({ key, label, rescaled, groupCost, avgPhi: parseFloat(avgPhi.toFixed(2)), isCorrelated: true });
-    }
-    return groups;
-  }, [placeAllPlaceable]);
-
-  // Place every candidate sequentially (await each — avoids Kalshi 429s), tracking each pick
-  // with its real fill. Mirrors the single-bet _doPlaceOrder + _doTrack reconciliation.
-  const runPlaceAll = React.useCallback(async (cands) => {
-    if (!cands || cands.length === 0) return;
-    const rows = {};
-    for (const c of cands) rows[c.play.id ?? trackIdFor(c.play)] = { state: "pending" };
-    setPlaceAllStatus({ running: true, rows: { ...rows } });
-    for (let i = 0; i < cands.length; i++) {
-      const c = cands[i];
-      if (i > 0) await new Promise(res => setTimeout(res, 1500));
-      const key = c.play.id ?? trackIdFor(c.play);
-      rows[key] = { state: "placing" };
-      setPlaceAllStatus({ running: true, rows: { ...rows } });
-      try {
-        const r = await fetch(`${WORKER}/kalshi-order`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ticker: c.play.kalshiTicker, side: c.side, price: c.price, count: c.count }),
-          credentials: "include",
-        });
-        const data = await r.json().catch(() => ({}));
-        if (!r.ok) {
-          rows[key] = { state: "error", msg: data.error || `Error ${r.status}` };
-          setPlaceAllStatus({ running: true, rows: { ...rows } });
-          continue;
-        }
-        const o = data.order || {};
-        const filledCount = o.taker_fill_count ?? 0;
-        const costCents = o.taker_fill_cost ?? 0;
-        const restingCount = o.remaining_count ?? Math.max(0, c.count - filledCount);
-        let fill, msg;
-        if (filledCount > 0) {
-          const costDollars = parseFloat((costCents / 100).toFixed(2));
-          const avgCents = Math.round(costCents / filledCount);
-          fill = { filledCount, costDollars, avgCents, restingCount };
-          msg = `${filledCount} @ ${avgCents}¢ = $${costDollars}${restingCount > 0 ? ` · ${restingCount} resting` : ""}`;
-        } else {
-          fill = { filledCount: 0, costDollars: c.cost, avgCents: c.price, restingCount: c.count };
-          msg = `resting — ${c.count} × ${c.price}¢`;
-        }
-        // Stamp the real fill onto the pick (same override shape as the single flow).
-        const ao = _centsToAmericanB(fill.avgCents);
-        const override = { ...c.play,
-          ...(ao != null ? { americanOdds: ao } : {}),
-          unitsOverride: fill.costDollars,
-          kalshiCount: fill.filledCount,
-          kalshiAvgCents: fill.avgCents,
-          ...(fill.restingCount > 0 ? { kalshiRestingCount: fill.restingCount } : {}),
-        };
-        trackPlay(override);
-        rows[key] = { state: filledCount > 0 ? "filled" : "resting", msg };
-        setPlaceAllStatus({ running: true, rows: { ...rows } });
-      } catch (e) {
-        rows[key] = { state: "error", msg: e?.message || "Network error" };
-        setPlaceAllStatus({ running: true, rows: { ...rows } });
-      }
-    }
-    setPlaceAllStatus({ running: false, rows: { ...rows } });
-    fetchKalshiBalance();
-  }, [trackPlay, _centsToAmericanB, fetchKalshiBalance]);
-
-  // Auto-close Place All modal and open tracking drawer when all orders finish
-  React.useEffect(() => {
-    if (placeAllStatus?.running !== false) return;
-    const t = setTimeout(() => {
-      setShowPlaceAll(false);
-      setPlaceAllStatus(null);
-      setPlaceAllSelected(new Set());
-      placeAllInitedRef.current = false;
-      setShowPicksDrawer(true);
-    }, 1200);
-    return () => clearTimeout(t);
-  }, [placeAllStatus]);
 
   const selectPlayer = (p, tab = null) => {
     const newSport = p.sportKey || sport;
@@ -596,31 +113,6 @@ function App() {
   // Bridge for useRouting — navigateToPlayer + pendingSlug resolution call through this ref
   // so the hook doesn't have to re-create callbacks each time selectPlayer's identity changes.
   selectPlayerRef.current = selectPlayer;
-
-  // Navigate to player card from a play/pick object — looks up ID by name if missing
-  const navigateToPlay = async (play) => {
-    if (play.gameType === "total" || play.gameType === "teamTotal" || play.gameType === "ml" || play.gameType === "spread") return; // totals/ML/spread don't have a player card
-    const sportFull = SPORT_KEY[play.sport] || play.sportKey || "basketball/nba";
-    let pid = play.playerId;
-    if (!pid) {
-      try {
-        const r = await fetch(`${WORKER}/athletes?q=${encodeURIComponent(play.playerName)}`);
-        const d = await r.json();
-        const items = d.items || [];
-        const m = items.find(a => a.name.toLowerCase() === play.playerName.toLowerCase()) || items[0];
-        if (m) pid = m.id;
-      } catch(e) {}
-    }
-    history.pushState({}, "", `/${slugify(play.playerName)}`);
-    selectPlayer({ id: pid, name: play.playerName, team: play.playerTeam, sportKey: sportFull,
-      opponent: play.opponent, oppRank: play.oppRank, oppMetricValue: play.oppMetricValue,
-      oppMetricLabel: play.oppMetricLabel, oppMetricUnit: play.oppMetricUnit,
-      playIsStrong: play.playIsStrong, projectedStat: play.projectedStat,
-      recentAvg: play.recentAvg, dvpFactor: play.dvpFactor,
-      playSoftPct: play.softPct, playSoftGames: play.softGames,
-      playSport: play.sport, playThreshold: play.threshold, playStat: play.stat }, play.stat);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
 
   const highlight = (name, q) => {
     const i = name.toLowerCase().indexOf(q.toLowerCase());
@@ -704,459 +196,6 @@ function App() {
         </div>
       )}
 
-      {/* Confirm pick modal */}
-      {pendingTrackPlay && (() => {
-        const play = pendingTrackPlay;
-        const name = play.playerName ?? (play.gameType === "total" ? `${play.awayTeam} @ ${play.homeTeam}` : play.gameType === "ml" ? `${play.pickTeam} ML` : play.gameType === "spread" ? `${play.pickTeam} ${play.pickLine > 0 ? "+" : ""}${play.pickLine}` : play.scoringTeam ?? "");
-        const statLabel = play.stat ? play.stat.toUpperCase() : play.sport ? play.sport.toUpperCase() : "";
-        const dirLabel = play.direction === "under" ? `Under ${play.threshold}` : `Over ${play.threshold}`;
-        const subtitle = play.playerName ? `${play.stat?.toUpperCase()} ${play.threshold}+` : dirLabel;
-        // Use the same ⅛-Kelly sizing as Place All (driven by the play's own Kalshi price)
-        const _sizing = play.kalshiTicker ? _placeAllSizing(play) : null;
-        const _kalshiPrice = _sizing?.price ?? null;
-        const _kalshiCount = _sizing?.count ?? 0;
-        const _kalshiCost = _sizing?.cost ?? 0;
-        const _canPlace = !!_sizing && !!authEmail;
-        const _validation = _sizing ? validateCandidate(play, _sizing, obFill) : { hard: [], soft: [], risk: [], info: [] };
-        const _isBlocked = _validation.hard.length > 0;
-        // A Kalshi contract pays $1 on win — convert cents price to American odds for the ledger.
-        const _centsToAmerican = (cents) => {
-          if (!cents || cents <= 0 || cents >= 100) return null;
-          return cents >= 50 ? -Math.round((cents / (100 - cents)) * 100) : Math.round(((100 - cents) / cents) * 100);
-        };
-        // `fill` is passed explicitly (not read from kalshiOrderResult state) because _doTrack
-        // runs via setTimeout after _doPlaceOrder — the closed-over state would be the pre-fill
-        // value from the click-time render, not the post-fill one.
-        const _doTrack = (fill = null) => {
-          let override = null;
-          if (fill && fill.costDollars > 0) {
-            const ao = _centsToAmerican(fill.avgCents);
-            override = { ...play,
-              ...(ao != null ? { americanOdds: ao } : {}),
-              unitsOverride: fill.costDollars,
-              kalshiCount: fill.filledCount,
-              kalshiAvgCents: fill.avgCents,
-              ...(fill.restingCount > 0 ? { kalshiRestingCount: fill.restingCount } : {}),
-            };
-          }
-          trackPlay(override || play);
-          setPendingTrackPlay(null);
-          openPickDate(play.gameDate);
-          triggerFlyAnimation();
-          setPlaceOnKalshi(true);
-          setKalshiOrderResult(null);
-        };
-        const _doPlaceOrder = async () => {
-          setKalshiOrderResult({ loading: true });
-          try {
-            const r = await fetch(`${WORKER}/kalshi-order`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ ticker: play.kalshiTicker, side: play.kalshiSide, price: _kalshiPrice, count: _kalshiCount }),
-              credentials: "include",
-            });
-            const data = await r.json().catch(() => ({}));
-            if (!r.ok) {
-              setKalshiOrderResult({ ok: false, msg: data.error || `Error ${r.status}` });
-            } else {
-              const o = data.order || {};
-              const filledCount = o.taker_fill_count ?? 0;
-              const costCents = o.taker_fill_cost ?? 0;
-              const restingCount = o.remaining_count ?? Math.max(0, _kalshiCount - filledCount);
-              let fill;
-              if (filledCount > 0) {
-                const costDollars = parseFloat((costCents / 100).toFixed(2));
-                const avgCents = Math.round(costCents / filledCount);
-                const restNote = restingCount > 0 ? ` · ${restingCount} resting` : "";
-                fill = { filledCount, costDollars, avgCents, restingCount };
-                setKalshiOrderResult({ ok: true, msg: `${filledCount} filled @ ${avgCents}¢ = $${costDollars}${restNote}`, fill });
-              } else {
-                fill = { filledCount: 0, costDollars: _kalshiCost, avgCents: _kalshiPrice, restingCount: _kalshiCount };
-                setKalshiOrderResult({ ok: true, msg: `Order resting — ${_kalshiCount} × ${_kalshiPrice}¢ not yet filled`, fill });
-              }
-              fetchKalshiBalance();
-              return fill;
-            }
-          } catch (e) {
-            setKalshiOrderResult({ ok: false, msg: e?.message || "Network error" });
-          }
-          return null;
-        };
-        return (
-          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:700,display:"flex",alignItems:"center",justifyContent:"center"}}
-            onClick={() => { setPendingTrackPlay(null); setPlaceOnKalshi(true); setKalshiOrderResult(null); }}>
-            <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:12,padding:"20px 22px",width:360}}
-              onClick={e => e.stopPropagation()}>
-              <div style={{fontSize:14,color:"#c9d1d9",fontWeight:700,marginBottom:2}}>
-                {_canPlace ? "Place 1 bet on Kalshi" : "Track pick"}
-              </div>
-              <div style={{fontSize:11,color:"#8b949e",marginBottom:14}}>
-                {_canPlace ? "Real-money order · ⅛-Kelly" : "Track without placing"}
-              </div>
-              <div style={{color:"#c9d1d9",fontWeight:600,fontSize:13,marginBottom:12}}>
-                {name} <span style={{color:"#8b949e",fontWeight:400,fontSize:12}}>{subtitle}</span>
-              </div>
-              {(() => {
-                const _ao = _kalshiPrice ? _centsToAmericanB(_kalshiPrice) : null;
-                const _aoStr = _ao != null ? (_ao >= 0 ? `+${_ao}` : `${_ao}`) : null;
-                const _estWin = _canPlace ? parseFloat((_kalshiCount * (100 - _kalshiPrice) / 100).toFixed(2)) : null;
-                return (<>
-                  {_aoStr && (
-                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:8,fontSize:11,color:"#484f58"}}>
-                      <span>Odds</span>
-                      <span style={{color:"#c9d1d9",fontWeight:700}}>{_aoStr}</span>
-                    </div>
-                  )}
-                  {play.edge != null && (
-                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:8,fontSize:11,color:"#484f58"}}>
-                      <span>Edge (True% − implied)</span>
-                      <span style={{color: play.edge >= EDGE_GATE ? "#3fb950" : play.edge >= 0 ? "#e3b341" : "#f78166", fontWeight:700}}>
-                        {play.edge >= 0 ? "+" : ""}{play.edge}%
-                      </span>
-                    </div>
-                  )}
-                  {/* Cross-venue reference — Polymarket's price for this side (ML only; shadow obs.).
-                      Δ = poly − kalshi; <0 (green) = Poly cheaper to BUY this side, >0 (red) = pricier.
-                      Reference only — we bet Kalshi; the Poly feed isn't the US-tradable price. */}
-                  {play.polyPct != null && (
-                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:8,fontSize:11,color:"#484f58"}}>
-                      <span>Polymarket (ref)</span>
-                      <span style={{color:"#c9d1d9",fontWeight:700}}>
-                        <span style={{color:"#58a6ff"}}>{play.polyPct}%</span>
-                        {play.polyDeltaCents != null && (
-                          <span style={{color: play.polyDeltaCents < 0 ? "#3fb950" : play.polyDeltaCents > 0 ? "#f78166" : "#8b949e", fontWeight:600}}>
-                            {" "}(Δ {play.polyDeltaCents >= 0 ? "+" : ""}{play.polyDeltaCents})
-                          </span>
-                        )}
-                      </span>
-                    </div>
-                  )}
-                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:14,fontSize:11,color:"#484f58"}}>
-                    <span>Suggested stake (⅛-Kelly)</span>
-                    <span style={{color:"#c9d1d9",fontWeight:700}}>
-                      {_canPlace ? `${_kalshiCount} × ${_kalshiPrice}¢ = $${_kalshiCost}` : `$${UNIT_DOLLARS}`}
-                    </span>
-                  </div>
-                  {_estWin != null && (
-                    <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:10}}>
-                      <span style={{color:"#8b949e"}}>Est. winnings</span>
-                      <span style={{color:"#3fb950",fontWeight:700}}>+${_estWin.toFixed(2)}</span>
-                    </div>
-                  )}
-                </>);
-              })()}
-              {_validation.hard.map((msg, i) => (
-                <div key={i} style={{marginBottom:6,fontSize:11,padding:"5px 8px",borderRadius:6,
-                  background:"rgba(247,129,102,0.08)",color:"#f78166",border:"1px solid rgba(247,129,102,0.3)"}}>
-                  ✗ {msg}
-                </div>
-              ))}
-              {(_validation.risk ?? []).map((msg, i) => (
-                <div key={`r${i}`} style={{marginBottom:6,fontSize:11,padding:"5px 8px",borderRadius:6,fontWeight:600,
-                  background:"rgba(247,129,102,0.08)",color:"#f78166",border:"1px solid rgba(247,129,102,0.3)"}}>
-                  ⚠ {msg}
-                </div>
-              ))}
-              {_validation.soft.map((msg, i) => (
-                <div key={i} style={{marginBottom:6,fontSize:11,padding:"5px 8px",borderRadius:6,
-                  background:"rgba(227,179,65,0.08)",color:"#e3b341",border:"1px solid rgba(227,179,65,0.3)"}}>
-                  ⚠ {msg}
-                </div>
-              ))}
-              {obLoading && (
-                <div style={{marginBottom:6,fontSize:11,padding:"5px 8px",borderRadius:6,
-                  background:"rgba(136,176,253,0.06)",color:"#8b949e",border:"1px solid #30363d"}}>
-                  checking liquidity…
-                </div>
-              )}
-              {!obLoading && (_validation.info ?? []).map((msg, i) => (
-                <div key={`i${i}`} style={{marginBottom:6,fontSize:11,padding:"5px 8px",borderRadius:6,
-                  background:"rgba(63,185,80,0.06)",color:"#8b949e",border:"1px solid #30363d"}}>
-                  ✓ {msg}
-                </div>
-              ))}
-              {kalshiOrderResult && (
-                <div style={{marginBottom:10,fontSize:11,padding:"5px 8px",borderRadius:6,
-                  background: kalshiOrderResult.loading ? "rgba(136,176,253,0.08)" : kalshiOrderResult.ok ? "rgba(63,185,80,0.12)" : "rgba(247,129,102,0.12)",
-                  color: kalshiOrderResult.loading ? "#8b949e" : kalshiOrderResult.ok ? "#3fb950" : "#f78166",
-                  border: `1px solid ${kalshiOrderResult.loading ? "#30363d" : kalshiOrderResult.ok ? "#3fb950" : "#f78166"}`,
-                }}>
-                  {kalshiOrderResult.loading ? "Placing order…" : kalshiOrderResult.msg}
-                </div>
-              )}
-              <div style={{display:"flex",gap:8,marginTop:4}}>
-                <button onClick={() => { setPendingTrackPlay(null); setPlaceOnKalshi(true); setKalshiOrderResult(null); }}
-                  style={{flex:1,padding:"8px 0",fontSize:12,borderRadius:7,border:"1px solid #30363d",
-                    background:"transparent",color:"#8b949e",cursor:"pointer"}}>
-                  Cancel
-                </button>
-                <button
-                  disabled={(_canPlace && _isBlocked) || !!kalshiOrderResult?.loading}
-                  onClick={async () => {
-                    if ((_canPlace && _isBlocked) || kalshiOrderResult?.loading) return;
-                    if (_canPlace) {
-                      const fill = await _doPlaceOrder();
-                      setTimeout(() => _doTrack(fill), 1200);
-                    } else {
-                      _doTrack();
-                    }
-                  }}
-                  style={{flex:1,padding:"8px 0",fontSize:12,borderRadius:7,
-                    border:`1px solid ${_canPlace && _isBlocked ? "#30363d" : "#3fb950"}`,
-                    background: _canPlace && _isBlocked ? "transparent" : "rgba(63,185,80,0.12)",
-                    color: _canPlace && _isBlocked ? "#484f58" : "#3fb950",
-                    cursor: (_canPlace && _isBlocked) || kalshiOrderResult?.loading ? "not-allowed" : "pointer",
-                    fontWeight:600,
-                    opacity: _canPlace && _isBlocked ? 0.6 : 1}}>
-                  {_canPlace ? `⚡ Place 1 bet ($${_kalshiCost})` : "Add Pick"}
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* Place All modal — batch-place every qualified, untracked, placeable Kalshi bet */}
-      {showPlaceAll && (() => {
-        // Modal is today-only (PT): tomorrow's pre-listings qualify on the page but aren't
-        // orderable until their slate day — betting happens at lineup confirm, same day.
-        const _ptDateStr = ts => new Date(ts).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
-        const _todayPt = _ptDateStr(Date.now());
-        const _isToday = c => {
-          const d = c.play.gameTime ? _ptDateStr(c.play.gameTime) : c.play.gameDate;
-          return d === _todayPt;
-        };
-        const allPlaceable = placeAllGrouped.flatMap(g => g.rescaled).filter(_isToday);
-        // Initialise selection to all placeable IDs on first render of the modal
-        const allIds = allPlaceable.map(c => c.play.id ?? trackIdFor(c.play));
-        // Default-check only SAFE candidates (no risk flags) so thin/untested-market plays aren't
-        // bet by accident; they stay selectable. Ref-guarded (not size===0) so an all-risky slate
-        // — safeIds empty — can't loop re-initialising, and a user "deselect all" stays empty.
-        // Same-game cap: exclude the 3rd+ highest-edge pick of any game from the default selection
-        // (it stays visible + selectable). Shadow capRoi shows the 3rd same-game pick runs −11% ROI.
-        const safeIds = allPlaceable
-          .filter(c => (c.validation.risk?.length ?? 0) === 0 && !((c._gameRank ?? 1) > SAME_GAME_CAP))
-          .map(c => c.play.id ?? trackIdFor(c.play));
-        // Wait for the live liquidity pass before the one-shot init so a 0-volume-but-deep market
-        // (verified clean by the orderbook walk) lands CHECKED rather than auto-unchecked on stale
-        // cached data. While 'loading', defer; once 'done', validation reflects the live books.
-        if (!placeAllInitedRef.current && allIds.length > 0 && !placeAllStatus && placeAllLiqStatus === 'done') {
-          placeAllInitedRef.current = true;
-          setPlaceAllSelected(new Set(safeIds));
-          return null;
-        }
-        const scopedGroups = placeAllGrouped
-          .map(g => ({ ...g, rescaled: g.rescaled.filter(_isToday) }))
-          .filter(g => g.rescaled.length > 0);
-        const placeable = allPlaceable.filter(c => placeAllSelected.has(c.play.id ?? trackIdFor(c.play)));
-        const blocked = placeAllCandidates.filter(c => c.validation.hard.length > 0 && _isToday(c));
-        const flaggedCount = placeable.filter(c => c.validation.soft.length > 0).length;
-        const readyCount = placeable.length - flaggedCount;
-        // Placeable-but-risky (default-unchecked) count — surfaced in the header so the lower
-        // default selection is explained. Drawn from allPlaceable since risky rows aren't selected.
-        const riskCount = allPlaceable.filter(c => (c.validation.risk?.length ?? 0) > 0).length;
-        const totalCost = parseFloat(placeable.reduce((s, c) => s + c.cost, 0).toFixed(2));
-        const totalEstWin = parseFloat(placeable.reduce((s, c) => s + c.count * (100 - c.price) / 100, 0).toFixed(2));
-        const cash = kalshiBalance;
-        const shortfall = cash != null && totalCost > cash ? parseFloat((totalCost - cash).toFixed(2)) : 0;
-        const status = placeAllStatus;
-        const running = status?.running === true;
-        const done = status != null && status.running === false;
-        const rowsState = status?.rows || {};
-        const allChecked = allIds.every(id => placeAllSelected.has(id));
-        const toggleAll = () => {
-          if (running) return;
-          setPlaceAllSelected(allChecked ? new Set() : new Set(allIds));
-        };
-        const toggleOne = (id) => {
-          if (running) return;
-          setPlaceAllSelected(prev => {
-            const next = new Set(prev);
-            next.has(id) ? next.delete(id) : next.add(id);
-            return next;
-          });
-        };
-        const nameFor = (p) => p.playerName
-          ?? (p.gameType === "total" ? `${p.awayTeam} @ ${p.homeTeam}`
-            : p.gameType === "teamTotal" ? `${p.scoringTeam} team`
-            : p.gameType === "ml" ? `${p.pickTeam} ML`
-            : p.gameType === "spread" ? `${p.pickTeam} ${p.pickLine > 0 ? "+" : ""}${p.pickLine}`
-            : "");
-        const subFor = (p) => p.playerName ? `${p.stat?.toUpperCase()} ${p.direction === "under" ? "U" : ""}${p.threshold}`
-          : p.gameType === "total" ? `${p.direction === "under" ? "U" : "O"}${p.threshold}`
-          : p.gameType === "teamTotal" ? `${p.direction === "under" ? "U" : "O"}${p.threshold}`
-          : "";
-        const imgFor = (p) => {
-          if (p.playerId) return `https://a.espncdn.com/i/headshots/${p.sport}/players/full/${p.playerId}.png`;
-          const teamAbbr = p.pickTeam ?? p.scoringTeam ?? p.homeTeam;
-          if (teamAbbr && p.sport) return logoUrl(p.sport, teamAbbr);
-          return null;
-        };
-        const close = () => { if (!running) { setShowPlaceAll(false); setPlaceAllStatus(null); setPlaceAllSelected(new Set()); placeAllInitedRef.current = false; } };
-        const stateColor = { filled: "#3fb950", resting: "#e3b341", error: "#f78166", placing: "#58a6ff", pending: "#484f58" };
-        const renderRow = (c, indent) => {
-          const key = c.play.id ?? trackIdFor(c.play);
-          const rs = rowsState[key];
-          const isBlocked = c.validation.hard.length > 0;
-          const isChecked = placeAllSelected.has(key);
-          const edge = c.play.edge;
-          const edgeColor = edge != null ? (edge >= EDGE_GATE ? "#3fb950" : edge >= 0 ? "#e3b341" : "#f78166") : "#484f58";
-          // Side-aware True% — mirrors _placeAllSizing (UNDER bets price off noTruePct).
-          const truePctVal = c.play.direction === "under"
-            ? (c.play.noTruePct ?? (c.play.truePct != null ? +(100 - c.play.truePct).toFixed(1) : null))
-            : c.play.truePct;
-          const estWin = parseFloat((c.count * (100 - c.price) / 100).toFixed(2));
-          const img = imgFor(c.play);
-          return (
-            <div key={key} style={{display:"flex",alignItems:"flex-start",gap:8,
-              padding:"6px 0",paddingLeft: indent ? 10 : 0,
-              borderBottom:"1px solid #21262d",fontSize:12,opacity:isBlocked ? 0.45 : 1}}>
-              {!done && !isBlocked && (
-                <input type="checkbox" checked={isChecked} disabled={running || isBlocked}
-                  onChange={() => toggleOne(key)}
-                  style={{marginTop:3,accentColor:"#3fb950",cursor:running || isBlocked ? "not-allowed" : "pointer",flexShrink:0}} />
-              )}
-              {img && (
-                <img src={img} alt="" onError={e => { e.target.style.display = "none"; }}
-                  style={{width:28,height:28,borderRadius:c.play.playerId ? "50%" : 4,
-                    objectFit:"contain",background:"#21262d",flexShrink:0}} />
-              )}
-              <div style={{minWidth:0,flex:1}}>
-                <div style={{color:"#c9d1d9",fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",marginBottom:3}}>
-                  {nameFor(c.play)} <span style={{color:"#8b949e",fontWeight:400}}>{subFor(c.play)}</span>
-                </div>
-                {!rs && (
-                  <div style={{fontSize:10,display:"flex",flexDirection:"column",gap:2}}>
-                    <div style={{display:"flex",gap:12}}>
-                      {truePctVal != null && <span style={{color:"#484f58"}}>True <span style={{color:"#c9d1d9",fontWeight:700}}>{truePctVal}%</span></span>}
-                      <span style={{color:"#484f58"}}>Mkt <span style={{color:"#c9d1d9",fontWeight:700}}>{c.price}%</span></span>
-                      {edge != null && <span style={{color:"#484f58"}}>Edge <span style={{color:edgeColor,fontWeight:700}}>{edge >= 0 ? "+" : ""}{edge}%</span></span>}
-                    </div>
-                    <div style={{display:"flex",gap:12}}>
-                      <span style={{color:"#484f58"}}>Stake <span style={{color:"#c9d1d9",fontWeight:700}}>{c.count} × {c.price}¢ = ${c.cost}</span></span>
-                      <span style={{color:"#484f58"}}>Win <span style={{color:"#3fb950",fontWeight:700}}>+${estWin.toFixed(2)}</span></span>
-                    </div>
-                  </div>
-                )}
-                {!rs && c.validation.hard.map((msg, i) => (
-                  <div key={i} style={{color:"#f78166",fontSize:10,marginTop:2,lineHeight:1.3}}>✗ {msg}</div>
-                ))}
-                {!rs && (c.validation.risk?.length ?? 0) > 0 && (
-                  <>
-                    {c.validation.risk.map((msg, i) => (
-                      <div key={i} style={{color:"#f78166",fontSize:10,marginTop:2,lineHeight:1.3,fontWeight:600}}>⚠ {msg}</div>
-                    ))}
-                    {!isChecked && <div style={{color:"#8b949e",fontSize:9,marginTop:1,fontStyle:"italic"}}>unchecked — tick to override</div>}
-                  </>
-                )}
-                {!rs && (c.validation.risk?.length ?? 0) === 0 && (c._gameRank ?? 1) > SAME_GAME_CAP && (
-                  <>
-                    <div style={{color:"#e3b341",fontSize:10,marginTop:2,lineHeight:1.3,fontWeight:600}}>⚠ same-game pick #{c._gameRank} of {c._gameN} — correlated risk</div>
-                    {!isChecked && <div style={{color:"#8b949e",fontSize:9,marginTop:1,fontStyle:"italic"}}>unchecked — top {SAME_GAME_CAP} by edge staked; tick to override</div>}
-                  </>
-                )}
-                {!rs && c.validation.soft.map((msg, i) => (
-                  <div key={i} style={{color:"#e3b341",fontSize:10,marginTop:2,lineHeight:1.3}}>⚠ {msg}</div>
-                ))}
-                {!rs && (c.validation.info ?? []).map((msg, i) => (
-                  <div key={`i${i}`} style={{color:"#8b949e",fontSize:10,marginTop:2,lineHeight:1.3}}>✓ {msg}</div>
-                ))}
-              </div>
-              {rs && (
-                <div style={{textAlign:"right",whiteSpace:"nowrap",fontSize:11,
-                  color:stateColor[rs.state],fontWeight:600,paddingTop:2,flexShrink:0}}>
-                  {rs.state === "placing" ? "placing…"
-                    : rs.state === "pending" ? "queued"
-                    : rs.state === "error" ? `✗ ${rs.msg}`
-                    : rs.state === "resting" ? `◔ ${rs.msg}`
-                    : `✓ ${rs.msg}`}
-                </div>
-              )}
-            </div>
-          );
-        };
-        return (
-          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:700,display:"flex",alignItems:"center",justifyContent:"center"}}
-            onClick={() => { close(); if (done) setShowPicksDrawer(true); }}>
-            <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:12,padding:"20px 22px",width:460,maxHeight:"82vh",display:"flex",flexDirection:"column"}}
-              onClick={e => e.stopPropagation()}>
-              <div style={{fontSize:14,color:"#c9d1d9",fontWeight:700,marginBottom:2}}>
-                {done ? "Orders placed" : `Place ${placeable.length} order${placeable.length === 1 ? "" : "s"} on Kalshi`}
-              </div>
-              <div style={{fontSize:11,color:"#8b949e",marginBottom:8}}>
-                {done ? "Real-money orders · ⅛-Kelly · correlation-adjusted"
-                  : placeAllLiqStatus === 'loading' ? <span style={{color:"#8b949e"}}>checking liquidity…</span>
-                  : <>Today's slate · {readyCount} ready{flaggedCount > 0 ? <> · <span style={{color:"#e3b341"}}>{flaggedCount} flagged</span></> : null}{riskCount > 0 ? <> · <span style={{color:"#f78166"}}>{riskCount} risky (unchecked)</span></> : null}{blocked.length > 0 ? <> · <span style={{color:"#f78166"}}>{blocked.length} blocked</span></> : null}</>}
-              </div>
-              {!done && (
-                <label style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:"#8b949e",marginBottom:12,cursor:running ? "not-allowed" : "pointer",userSelect:"none",borderBottom:"1px solid #21262d",paddingBottom:10}}>
-                  <input type="checkbox" checked={allChecked} disabled={running}
-                    onChange={toggleAll}
-                    style={{accentColor:"#3fb950",cursor:running ? "not-allowed" : "pointer"}} />
-                  Select all
-                  {!allChecked && placeAllSelected.size > 0 && <span style={{color:"#58a6ff",marginLeft:4}}>{placeAllSelected.size} selected</span>}
-                </label>
-              )}
-              <div style={{flex:1,overflowY:"auto",marginBottom:14,minHeight:0}}>
-                {scopedGroups.map(g => (
-                  g.isCorrelated ? (
-                    <div key={g.key}>
-                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",
-                        padding:"5px 0 3px",fontSize:10,color:"#6e7681",borderBottom:"1px solid #30363d"}}>
-                        <span style={{fontWeight:600}}>{g.label} · {g.rescaled.length} bets</span>
-                        <span style={{color: g.avgPhi >= 0.6 ? "#f78166" : "#e3b341"}}>
-                          {g.avgPhi > 0 ? `φ≈${g.avgPhi}` : "⚠ same game"} · ${g.groupCost.toFixed(2)}
-                        </span>
-                      </div>
-                      {g.rescaled.map(c => renderRow(c, true))}
-                    </div>
-                  ) : (
-                    g.rescaled.map(c => renderRow(c, false))
-                  )
-                ))}
-                {blocked.map(c => renderRow(c, false))}
-              </div>
-              <div style={{borderTop:"1px solid #21262d",paddingTop:10,marginBottom:4}}>
-                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}>
-                  <span style={{color:"#8b949e"}}>Total cost</span>
-                  <span style={{color:"#c9d1d9",fontWeight:700}}>${totalCost.toFixed(2)}</span>
-                </div>
-                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom: cash != null ? 4 : 10}}>
-                  <span style={{color:"#8b949e"}}>Est. total winnings</span>
-                  <span style={{color:"#3fb950",fontWeight:700}}>+${totalEstWin.toFixed(2)}</span>
-                </div>
-                {cash != null && (
-                  <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:shortfall > 0 ? 4 : 10}}>
-                    <span style={{color:"#8b949e"}}>Available (Kalshi)</span>
-                    <span style={{color:"#c9d1d9",fontWeight:700}}>${cash.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
-                  </div>
-                )}
-                {shortfall > 0 && (
-                  <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:4,color:"#f78166"}}>
-                    <span>Short by ${shortfall.toFixed(2)} — underfunded orders will be rejected</span>
-                  </div>
-                )}
-              </div>
-              <div style={{display:"flex",gap:8}}>
-                <button onClick={() => { close(); if (done) setShowPicksDrawer(true); }} disabled={running}
-                  style={{flex:1,padding:"8px 0",fontSize:12,borderRadius:7,border:"1px solid #30363d",
-                    background:"transparent",color:"#8b949e",cursor:running ? "not-allowed" : "pointer",opacity:running ? 0.6 : 1}}>
-                  {done ? "Done" : "Cancel"}
-                </button>
-                {!done && (
-                  <button onClick={() => runPlaceAll(placeable)} disabled={running || placeable.length === 0}
-                    style={{flex:2,padding:"8px 0",fontSize:12,borderRadius:7,fontWeight:600,
-                      border:"1px solid #3fb950",background:"rgba(63,185,80,0.12)",
-                      color:"#3fb950",cursor:running || placeable.length === 0 ? "not-allowed" : "pointer",opacity:running || placeable.length === 0 ? 0.7 : 1}}>
-                    {running ? "Ordering…" : `⚡ Place ${placeable.length} order${placeable.length === 1 ? "" : "s"} ($${totalCost.toFixed(2)})`}
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
       {/* Search + player card — constrained width */}
       <div style={{maxWidth:1280,margin:"0 auto"}}>
       {/* Full-width top row: search */}
@@ -1236,16 +275,12 @@ function App() {
           onBack={goBack}
           navigateToTeam={navigateToTeam}
           navigateToPlayer={navigateToPlayer}
-          trackedPlays={trackedPlays}
-          trackPlay={trackPlay}
-          untrackPlay={untrackPlay}
         />
         </React.Suspense>
       )}
 
       {/* Player loading state — when accessed via direct URL, tonightPlays is null while the
-          initial /api/tonight fetch is in-flight. Show a centered loader (matches LineupsPage
-          pattern) instead of rendering an empty page. */}
+          initial /api/tonight fetch is in-flight. Show a centered loader instead of an empty page. */}
       {player && !teamPage && tonightLoading && !tonightPlays && (
         <div style={{textAlign:'center',padding:52,color:'#8b949e',fontSize:13}}>Loading {player.name}…</div>
       )}
@@ -1468,7 +503,7 @@ function App() {
                   const _qm = {};
                   for (const {t} of _allRates) {
                     const tp = tonightPlayerMap[`${safeTab}|${t}`];
-                    _qm[t] = !!tp && (tp.edge ?? 0) >= EDGE_GATE;
+                    _qm[t] = !!tp && (tp.edge ?? 0) >= EDGE_HIGHLIGHT;
                   }
                   const _defaultT = _allRates.find(({t}) => _qm[t])?.t ?? _allRates[0]?.t ?? null;
                   const _activeT = selectedThreshold != null && _allRates.some(r => r.t === selectedThreshold)
@@ -1490,9 +525,9 @@ function App() {
                   </div>
                 )}
 
-                {/* Per-threshold tab strip — show one tab per available threshold (qualified ones
-                    marked with a green ★). Click to drill into that threshold's row + lambda inputs.
-                    Falls through to no-op when only one threshold is available. */}
+                {/* Per-threshold tab strip — show one tab per available threshold (ones where the
+                    model's edge ≥ EDGE_HIGHLIGHT get a green highlight). Click to drill into that
+                    threshold's row + lambda inputs. No-op when only one threshold is available. */}
                 {(() => {
                   const hasK = Object.keys(kalshiOdds).length > 0;
                   const tabRates = hasK ? rates.filter(({t}) => kalshiOdds[t]) : rates;
@@ -1500,7 +535,7 @@ function App() {
                   const qualMap = {};
                   for (const {t} of tabRates) {
                     const tp = tonightPlayerMap[`${safeTab}|${t}`];
-                    qualMap[t] = !!tp && (tp.edge ?? 0) >= EDGE_GATE;
+                    qualMap[t] = !!tp && (tp.edge ?? 0) >= EDGE_HIGHLIGHT;
                   }
                   const defaultT = tabRates.find(({t}) => qualMap[t])?.t ?? tabRates[0]?.t ?? null;
                   const activeT = selectedThreshold != null && tabRates.some(r => r.t === selectedThreshold)
@@ -1518,7 +553,7 @@ function App() {
                               background: active ? "rgba(88,166,255,0.12)" : q ? "rgba(63,185,80,0.08)" : "#161b22",
                               color: active ? "#58a6ff" : q ? "#3fb950" : "#8b949e",
                               fontSize:11,fontWeight: active ? 700 : 500,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>
-                            {label}{q && !active ? " ★" : ""}
+                            {label}
                           </button>
                         );
                       })}
@@ -1535,7 +570,7 @@ function App() {
                   const _qm = {};
                   for (const {t} of allRates) {
                     const tp = tonightPlayerMap[`${safeTab}|${t}`];
-                    _qm[t] = !!tp && (tp.edge ?? 0) >= EDGE_GATE;
+                    _qm[t] = !!tp && (tp.edge ?? 0) >= EDGE_HIGHLIGHT;
                   }
                   const _defaultT = allRates.find(({t}) => _qm[t])?.t ?? allRates[0]?.t ?? null;
                   const _activeT = selectedThreshold != null && allRates.some(r => r.t === selectedThreshold)
@@ -1629,62 +664,8 @@ function App() {
                     // Use API net edge when its framing matches the row (flipped rows' edge is
                     // already bet-side); fallback recomputes raw edge from the row's own framing
                     const edge = (tonightPlay?.edge != null && isUnder === _tpUnder) ? tonightPlay.edge : (truePct !== null && k) ? truePct - k.pct : null;
-                    const edgeColor = edge === null ? null : edge >= EDGE_GATE ? "#3fb950" : edge >= 0 ? "#e3b341" : "#f78166";
+                    const edgeColor = edge === null ? null : edge >= EDGE_HIGHLIGHT ? "#3fb950" : edge >= 0 ? "#e3b341" : "#f78166";
                     const edgeStr = edge === null ? null : (edge >= 0 ? `+${edge.toFixed(1)}%` : `${edge.toFixed(1)}%`);
-
-                    const qualifyingPct = truePct !== null ? truePct : pct;
-                    const sportSlug = sport.split("/")[1];
-                    const trackId = `${sportSlug}|${player.name}|${safeTab}|${t}|${tonightPlay?.gameDate || ""}`;
-                    const _today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
-                    const existingPick = trackedPlays.find(p => { const [ps,pn,pst,pt,pd] = p.id.split("|"); return ps===sportSlug && pn===player.name && pst===safeTab && String(pt)===String(t) && (!pd || pd >= _today); });
-                    const isTracked = !!existingPick;
-                    // Show track button when the play+threshold qualifies: kalshi within
-                    // [KALSHI_GATE, KALSHI_CAP], edge >= EDGE_GATE, AND the shadow-calibration
-                    // category gate (found 2026-07-23: this was the one real-order surface that
-                    // never checked it — dcQualified/passesCategoryGate/the qualified-flag were
-                    // all silently skipped, so a real order could be placed on a category the
-                    // gate has explicitly disabled for negative ROI). Already-tracked picks
-                    // always keep the button regardless (it's also the untrack affordance —
-                    // stale/out picks must stay removable even if the gate later closed on them,
-                    // same bypass doctrine as LineupsPage's matchup cards; see qualify.js).
-                    const qualifies = isTracked || (k && k.pct >= KALSHI_GATE && k.pct <= KALSHI_CAP && edge >= EDGE_GATE && tonightPlay && qualifiesForDisplay(tonightPlay));
-                    const trackBtn = qualifies ? (
-                      <button onClick={() => {
-                        if (isTracked) { untrackPlay(existingPick.id); return; }
-                        initiateTrack({
-                          sport: sportSlug,
-                          playerName: player.name,
-                          playerTeam: player.team || "",
-                          opponent: tonightPlay?.opponent || "",
-                          playerId: player.id,
-                          position: dvpData?.position || null,
-                          stat: safeTab,
-                          threshold: t,
-                          kalshiPct: k.pct,
-                          americanOdds: k.americanOdds,
-                          seasonPct: parseFloat(pct.toFixed(1)),
-                          softPct: softPct !== null ? parseFloat(softPct.toFixed(1)) : null,
-                          // Pick storage convention: truePct stays over-framed; under picks carry
-                          // direction + noTruePct/noKalshiPct (same shape Place All tracks).
-                          truePct: _tpUnder ? tonightPlay.truePct : (truePct !== null ? parseFloat(truePct.toFixed(1)) : null),
-                          ...(_tpUnder ? {
-                            direction: "under",
-                            noTruePct: tonightPlay.noTruePct ?? (tonightPlay.truePct != null ? parseFloat((100 - tonightPlay.truePct).toFixed(1)) : null),
-                            noKalshiPct: tonightPlay.noKalshiPct ?? null,
-                          } : {}),
-                          edge: parseFloat(edge.toFixed(1)),
-                          gameDate: tonightPlay?.gameDate || "",
-                        });
-                      }}
-                        title={isTracked ? "Remove from My Picks" : "Add to My Picks"}
-                        style={{background: isTracked ? "rgba(227,179,65,0.15)" : "transparent",
-                          border:`1px solid ${isTracked ? "#e3b341" : "#30363d"}`,
-                          borderRadius:6, padding:"1px 6px", cursor:"pointer",
-                          color: isTracked ? "#e3b341" : "#484f58", fontSize:13, lineHeight:1,
-                          flexShrink:0}}>
-                        {isTracked ? "★" : "☆"}
-                      </button>
-                    ) : null;
 
                     if (!showTriple) {
                       // Non-NBA / no DvP: season bar + optional Kalshi + matchup
@@ -1708,7 +689,6 @@ function App() {
                                 <div style={{color:tierColor(k.pct),fontSize:11,fontWeight:600,width:42,textAlign:"right",flexShrink:0}}>{k.pct}%</div>
                                 <div style={{flexShrink:0,width:80,display:"flex",alignItems:"center",gap:4}}>
                                   <div style={{color:"#6e40c9",fontSize:10,flex:1}}>({oddsStr})</div>
-                                  {trackBtn}
                                 </div>
                               </div>
                             )}
@@ -1754,7 +734,6 @@ function App() {
                                           {edgeStr}
                                         </span>
                                       )}
-                                      {trackBtn}
                                     </div>
                                   </div>
                                   {/* Odds bar */}
@@ -1994,161 +973,23 @@ function App() {
 
       </div>{/* end constrained search/player section */}
 
-      {/* Maker board — the new default landing page (2026-07-21). Taker picks (LineupsPage)
-          demoted to the /picks route below. See project_taker_ui_demotion_2026_07_21 memory. */}
-      {!player && !teamPage && !picksPage && (
+      {/* Maker board — the default landing page (2026-07-21). The taker /picks route + tracking
+          drawer were removed 2026-07-30 with the taker strategy. */}
+      {!player && !teamPage && (
         <MakerBoardPage
           shadowReportData={shadowReportData}
           shadowReportLoading={shadowReportLoading}
           fetchShadowReport={fetchShadowReport}
           isLoggedIn={!!authEmail}
-          navigateToPicks={navigateToPicks}
           kalshiBalance={kalshiBalance}
-          kalshiPositions={kalshiPositions}
-        />
-      )}
-
-      {picksPage && !player && !teamPage && (
-        <React.Suspense fallback={<div style={{textAlign:'center',padding:52,color:'#8b949e',fontSize:13}}>Loading…</div>}>
-        <LineupsPage
-          allTonightPlays={allTonightPlays || []}
-          tonightPlays={tonightPlays || []}
-          tonightLoading={tonightLoading}
-          navigateToPlayer={navigateToPlayer}
-          navigateToTeam={navigateToTeam}
-          goBack={goBack}
-          authEmail={authEmail}
-          logout={logout}
-          syncStatus={syncStatus}
+          makerCommitted={makerCommitted}
           onLoginClick={() => { setShowAuthModal(true); setAuthMode("login"); setAuthError(""); }}
-          mlbMeta={mlbMeta}
-          mlbMetaTomorrow={mlbMetaTomorrow}
-          nbaMeta={nbaMeta}
-          wnbaMeta={wnbaMeta}
-          nhlMeta={nhlMeta}
-          trackedPlays={trackedPlays}
-          untrackPlay={untrackPlay}
-          navigateToPlay={navigateToPlay}
-          trackPlay={initiateTrack}
-          openPicksDrawer={() => setShowPicksDrawer(d => !d)}
-          showPicksDrawer={showPicksDrawer}
-          picksButtonRef={fabRef}
-          activeDayTab={activeDayTab}
-          setActiveDayTab={setActiveDayTab}
-          placeAllCount={placeAllCountByDay[new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })] ?? 0}
-          placeAllCountByDay={placeAllCountByDay}
-          placeAllPlaceableIds={placeAllPlaceableIds}
-          onPlaceAll={() => { setPlaceAllStatus(null); setShowPlaceAll(true); }}
+          onLogout={logout}
         />
-        </React.Suspense>
       )}
 
       <div style={{color:"#484f58",fontSize:11,marginTop:12,textAlign:"center"}}>
         Powered by ESPN API · Vercel Edge
-      </div>
-
-
-      {/* Flying pick star animation */}
-      {flyingPick && (
-        <div
-          key={flyingPick.key}
-          style={{
-            position:"fixed",
-            left: flyingPick.x,
-            top: flyingPick.y,
-            "--fly-dx": `${flyingPick.destX - flyingPick.x}px`,
-            "--fly-dy": `${flyingPick.destY - flyingPick.y}px`,
-            width:24, height:24,
-            fontSize:18,
-            display:"flex", alignItems:"center", justifyContent:"center",
-            color:"#e3b341",
-            zIndex:9999,
-            pointerEvents:"none",
-            animation:"fly-to-fab 0.45s cubic-bezier(0.25,0.46,0.45,0.94) forwards",
-          }}
-          onAnimationEnd={() => setFlyingPick(null)}
-        >★</div>
-      )}
-
-      {/* Picks drawer backdrop */}
-      <div
-        onClick={() => setShowPicksDrawer(false)}
-        style={{
-          position:"fixed", inset:0,
-          background:"rgba(0,0,0,0.5)",
-          zIndex:597,
-          opacity: showPicksDrawer ? 1 : 0,
-          pointerEvents: showPicksDrawer ? "auto" : "none",
-          transition:"opacity 0.3s ease",
-        }}
-      />
-
-      {/* Picks drawer panel */}
-      <div style={{
-        position:"fixed", top:0, right:0, bottom:0,
-        width: isMobile ? "100vw" : "min(max(340px, 50vw), 680px)",
-        maxWidth: "100vw",
-        background:"#0d1117",
-        borderLeft: isMobile ? "none" : "1px solid #30363d",
-        zIndex:598,
-        display:"flex", flexDirection:"column",
-        transform: showPicksDrawer ? "translateX(0)" : "translateX(100%)",
-        transition:"transform 0.3s ease",
-        boxShadow:"-4px 0 32px rgba(0,0,0,0.6)",
-        // overflowX:hidden on the panel + inner content prevents wide child elements
-        // (cards with long names, week/day pickers, chart rows) from pushing horizontal
-        // scroll on mobile where the drawer is 100vw.
-        overflowX:"hidden",
-        boxSizing:"border-box",
-      }}>
-        {/* Drawer header */}
-        <div style={{
-          display:"flex", alignItems:"center", gap:8,
-          padding:"16px 20px 14px",
-          borderBottom:"1px solid #21262d",
-          flexShrink:0,
-        }}>
-          <span style={{color:"#c9d1d9", fontWeight:700, fontSize:15}}>Tracking</span>
-          <span style={{background:"#21262d", borderRadius:10, padding:"1px 8px", fontSize:11, color:"#8b949e"}}>
-            {trackedPlays.length}
-          </span>
-          <button onClick={() => setShowPicksDrawer(false)}
-            style={{marginLeft:"auto", background:"transparent", border:"none", color:"#8b949e", fontSize:20, cursor:"pointer", lineHeight:1, padding:"2px 4px"}}>
-            ×
-          </button>
-        </div>
-        {/* Drawer content */}
-        <div style={{flex:1, overflowY:"auto", overflowX:"hidden", padding:"12px 20px 24px", boxSizing:"border-box", minWidth:0}}>
-          <MyPicksColumn
-            trackedPlays={trackedPlays}
-            setTrackedPlays={setTrackedPlays}
-            untrackPlay={untrackPlay}
-            navigateToTeam={navigateToTeam}
-            navigateToPlay={navigateToPlay}
-            bankroll={bankroll}
-            setBankroll={setBankroll}
-            kalshiBalance={kalshiBalance}
-            makerCommitted={makerCommitted}
-            setPickUnits={setPickUnits}
-            chartMonth={chartMonth}
-            setChartMonth={setChartMonth}
-            openPickMonths={openPickMonths}
-            setOpenPickMonths={setOpenPickMonths}
-            openPickWeeks={openPickWeeks}
-            setOpenPickWeeks={setOpenPickWeeks}
-            openPickDays={openPickDays}
-            setOpenPickDays={setOpenPickDays}
-            editPickId={editPickId}
-            setEditPickId={setEditPickId}
-            setPlayResult={setPlayResult}
-            oddsToProfit={oddsToProfit}
-            liveStats={liveStats}
-            mlbGameScores={mlbMeta?.gameScores || {}}
-            nbaGameScores={nbaMeta?.gameScores || {}}
-            wnbaGameScores={wnbaMeta?.gameScores || {}}
-            nhlGameScores={nhlMeta?.gameScores || {}}
-          />
-        </div>
       </div>
 
     </div>

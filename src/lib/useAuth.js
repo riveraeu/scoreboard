@@ -8,10 +8,9 @@ import { WORKER } from './constants.js';
 // so the browser automatically sends it on every same-origin request. This means:
 //   - XSS cannot steal the token (HttpOnly = not readable by JS)
 //   - Page reloads preserve the session via cookie; authToken in state resets to null
-//     but useAuthPickSync uses authEmail (localStorage) as the "is logged in" signal
-//     and loads picks via the cookie on mount.
+//     but authEmail (localStorage) is the persistent "is logged in" signal.
 //
-// authLogout() calls POST /api/auth/logout to clear the server-side cookie, then
+// logout() calls POST /api/auth/logout to clear the server-side cookie, then
 // drops the local email so the UI shows the login prompt.
 export function useAuth() {
   const [authToken, setAuthToken] = React.useState(null); // memory only — not localStorage
@@ -57,18 +56,11 @@ export function useAuth() {
     setAuthEmail(null);
   }, []);
 
-  // Used by useAuthPickSync to drop local state when the server returns 401.
-  const clearToken = React.useCallback(() => {
-    localStorage.removeItem("sb_email");
-    setAuthToken(null);
-    setAuthEmail(null);
-  }, []);
-
   return {
     authToken, authEmail,
     authMode, setAuthMode,
     authForm, setAuthForm,
-    authError, authLoading,
-    authenticate, logout, clearToken,
+    authError, setAuthError, authLoading,
+    authenticate, logout,
   };
 }
