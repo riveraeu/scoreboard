@@ -4,7 +4,11 @@
 // What was removed (2026-07-30): the morning brief, model accuracy board, betting board,
 // polymarket/sportsbook validation, dataHealth, topPicks, categories, topBands, clv, perGameRoi.
 // None of those were consumed by the frontend after the MakerBoardPage strip (2026-07-29).
-// The response is now: { reportDate, generatedAt, since, makerBoard, durationMs }.
+// Response shape: { reportDate, generatedAt, since, makerBoard, preregistrations, dataFreshness,
+// discovery, durationMs }. `makerBoard` is the only field the UI reads; `preregistrations`,
+// `dataFreshness`, and `discovery` are consumed by the (non-UI) morning report that pulls this
+// endpoint — dataFreshness asserts the heatmap is current through last night, discovery is the
+// series-scan vet queue.
 //
 // Diagnostic branches still live (all return before the report cache and accept ADMIN_KEY):
 //   ?makerQueueCheck=1       V1-vs-V2 fill agreement (queue-priority calibration)
@@ -895,8 +899,83 @@ async function handleShadowReport({ path, request, env, cache }) {
     }));
   } catch (e) { console.error("[shadow-report] preregistrations skipped:", e?.message); }
 
+  // ── Data freshness — is the heatmap current through last night? ─────────────────────────────
+  // The morning report asserts the maker board reflects last night's resolved games. Grading
+  // (nightly tape replay → gradeMakerFills) can stall on Kalshi rate limits and only grades at the
+  // END of the ticker walk, so "fills detected but not graded" is a real failure mode — this is its
+  // tripwire, and it distinguishes that case from "nothing ran at all".
+  let dataFreshness = null;
+  try {
+    const expectedThrough = new Date(Date.parse(`${reportDate}T00:00:00Z`) - 86400000)
+      .toISOString().slice(0, 10); // yesterday, PT
+    const [[mf], [sp]] = await Promise.all([
+      neonQuery(`
+        SELECT MAX(q.game_date) FILTER (WHERE f.graded_at IS NOT NULL) AS latest_graded,
+               MAX(q.game_date) AS latest_fill,
+               COUNT(*) FILTER (WHERE f.graded_at IS NULL)::int AS ungraded
+        FROM maker_fills f JOIN maker_quotes q ON q.id = f.quote_id
+        WHERE q.source = 'live'`, [], env, { write: true }),
+      neonQuery(`SELECT MAX(snapshot_date) AS latest_resolved FROM shadow_plays WHERE won IS NOT NULL`,
+        [], env, { write: true }),
+    ]);
+    const _d = (v) => (v ? new Date(v).toISOString().slice(0, 10) : null);
+    const latestGraded = _d(mf?.latest_graded), latestFill = _d(mf?.latest_fill);
+    const current = latestGraded != null && latestGraded >= expectedThrough;
+    const daysBehind = latestGraded
+      ? Math.round((Date.parse(`${expectedThrough}T00:00:00Z`) - Date.parse(`${latestGraded}T00:00:00Z`)) / 86400000)
+      : null;
+    const diagnosis = current ? "current"
+      : (latestFill != null && latestFill >= expectedThrough)
+        ? "fills detected but NOT graded — grading stalled (Kalshi rate-limit; tape walk didn't reach end)"
+        : "no fills for last night — tape replay or quoting did not run";
+    dataFreshness = {
+      expectedThrough, latestGradedMakerDay: latestGraded, latestMakerFillDay: latestFill,
+      ungradedFills: Number(mf?.ungraded || 0), latestResolvedShadowDay: _d(sp?.latest_resolved),
+      makerTableCurrent: current, daysBehind, diagnosis,
+    };
+  } catch (e) { console.error("[shadow-report] dataFreshness skipped:", e?.message); }
+
+  // ── Discovery — series-scan pipeline state + candidates to VET ──────────────────────────────
+  // The morning report's forward-looking section. The nightly series scan runs 15 min before this
+  // report (crons 12:45 vs 13:00 UTC), so the state is same-morning fresh. Framed as candidates to
+  // VET, never build: the liquidity screen proves a real BOOK, not that a series is buildable — the
+  // GAME-suffix-vs-futures split, the ESPN slug, and the team-abbr cross-check are human vetting the
+  // screen can't do (the KXUCLGAME deferral is the cautionary case).
+  let discovery = null;
+  try {
+    const [counts, toVet, [act]] = await Promise.all([
+      neonQuery(`SELECT status, COUNT(*)::int AS n FROM kalshi_series_seen GROUP BY status`, [], env, { write: true }),
+      neonQuery(`
+        SELECT ticker, title, live_market_count, screen, median_spread_c, overround,
+               real_book_count, first_seen
+        FROM kalshi_series_seen
+        WHERE status IN ('new','shortlisted') AND screen = 'REAL_BOOK'
+        ORDER BY real_book_count DESC NULLS LAST, live_market_count DESC NULLS LAST
+        LIMIT 25`, [], env, { write: true }),
+      neonQuery(`SELECT COUNT(*)::int AS n FROM kalshi_series_seen
+                 WHERE dismissed_by = 'screen' AND screened_at = $1`, [reportDate], env, { write: true }),
+    ]);
+    // The bare-prefix trap: a per-game market carries a game/segment token; a bare league/tournament
+    // prefix is a season outright (futures), NOT a buildable per-game category.
+    const _perGame = (t) => /(GAME|MATCH|SPREAD|TOTAL|BTTS|MONEYLINE|\dH|\dQ|WINNER)/.test(t || "");
+    discovery = {
+      counts: Object.fromEntries(counts.map(r => [r.status, r.n])),
+      autoDismissedToday: Number(act?.n || 0),
+      toVet: toVet.map(r => ({
+        ticker: r.ticker, title: r.title,
+        markets: r.live_market_count != null ? Number(r.live_market_count) : null,
+        realBooks: r.real_book_count != null ? Number(r.real_book_count) : null,
+        medianSpreadC: r.median_spread_c != null ? Number(r.median_spread_c) : null,
+        overround: r.overround != null ? Number(r.overround) : null,
+        firstSeen: r.first_seen ? new Date(r.first_seen).toISOString().slice(0, 10) : null,
+        perGame: _perGame(r.ticker), // false ⇒ likely season futures, not a per-game category
+      })),
+      note: "screen=REAL_BOOK ⇒ real book, NOT buildable — vet GAME-suffix (perGame:false = futures), ESPN slug, team abbrs before building",
+    };
+  } catch (e) { console.error("[shadow-report] discovery skipped:", e?.message); }
+
   const report = { reportDate, generatedAt: new Date().toISOString(), since, makerBoard,
-    preregistrations, durationMs: Date.now() - t0 };
+    preregistrations, dataFreshness, discovery, durationMs: Date.now() - t0 };
 
   if (cache) cache.put(cacheKey, JSON.stringify(report), { expirationTtl: REPORT_TTL }).catch(() => {});
   return jsonResponse(report);
