@@ -38,7 +38,6 @@ import { passesCategoryGate } from "../category-gate.js";
 import { INPUT_SEARCH_EXHAUSTED, stillExhausted } from "../model-holds.js";
 import { POLY_SERIES, POLY_DISMISSED_SPORTS, fetchPolySportsCatalog, fetchPolySeriesEvents } from "../polymarket.js";
 import {
-  MIN_N_WINDOW as _MIN_N_WINDOW,
   MIN_N_PROMOTE as _MIN_N_PROMOTE,
   priceWindowBins as _priceWindowBins,
   discoverPriceWindow as _discoverPriceWindow,
@@ -123,12 +122,6 @@ CREATE TABLE IF NOT EXISTS ${SHADOW_TABLE} (
 CREATE INDEX IF NOT EXISTS shadow_plays_date_idx ON ${SHADOW_TABLE} (snapshot_date, resolved);
 CREATE INDEX IF NOT EXISTS shadow_plays_cat_idx ON ${SHADOW_TABLE} (sport, stat, game_type, model_true_pct);
 CREATE INDEX IF NOT EXISTS shadow_plays_group_idx ON ${SHADOW_TABLE} (group_id);
-`;
-
-// P0: add decimal price columns for clean ROI math. IF NOT EXISTS makes this idempotent.
-const ADD_KALSHI_PRICE_COLS_SQL = `
-ALTER TABLE shadow_plays ADD COLUMN IF NOT EXISTS kalshi_yes_price NUMERIC;
-ALTER TABLE shadow_plays ADD COLUMN IF NOT EXISTS kalshi_no_price NUMERIC
 `;
 
 // Pre-game price columns for CLV / line-movement tracking.
@@ -4759,35 +4752,6 @@ async function handlePolymarketDeltas({ path, request, env }) {
       FROM ${POLY_DELTAS_TABLE}
       WHERE snapshot_date >= CURRENT_DATE - $1::int${sportFilter} AND exec_delta_cents IS NOT NULL`, params, env, { write: true });
 
-    // ?execrows=1 (ADMIN) — raw exec-row tail + per-day walk coverage, for auditing the executable
-    // read (mirrors sportsbook-deltas' ?minAbs= row dump). inBandTargets counts the rows
-    // enrichDeltasWithExec would target ([67,91] on either venue) so cap/token/book losses show.
-    let execRows = null, execDaily = null;
-    if (url.searchParams.get("execrows") && isAdmin) {
-      execRows = (await neonQuery(`
-        SELECT snapshot_date, sport, game, side, kalshi_pct, poly_pct, delta_cents,
-               poly_vwap_pct, poly_slip_cents, exec_delta_cents
-        FROM ${POLY_DELTAS_TABLE}
-        WHERE snapshot_date >= CURRENT_DATE - $1::int${sportFilter} AND exec_delta_cents IS NOT NULL
-        ORDER BY exec_delta_cents ASC LIMIT 200`, params, env, { write: true }))
-        .map(r => ({
-          date: new Date(r.snapshot_date).toISOString().slice(0, 10), sport: r.sport, game: r.game,
-          side: r.side, kalshiPct: num(r.kalshi_pct), polyPct: num(r.poly_pct),
-          deltaCents: num(r.delta_cents), polyVwapPct: num(r.poly_vwap_pct),
-          polySlipCents: num(r.poly_slip_cents), execDeltaCents: num(r.exec_delta_cents),
-        }));
-      execDaily = (await neonQuery(`
-        SELECT snapshot_date, count(*)::int AS inband, count(exec_delta_cents)::int AS walked
-        FROM ${POLY_DELTAS_TABLE}
-        WHERE snapshot_date >= CURRENT_DATE - $1::int${sportFilter} AND market = 'ml'
-          AND ((kalshi_pct BETWEEN 67 AND 91) OR (poly_pct BETWEEN 67 AND 91)) AND poly_pct > 0
-        GROUP BY snapshot_date ORDER BY snapshot_date DESC`, params, env, { write: true }))
-        .map(r => ({
-          date: new Date(r.snapshot_date).toISOString().slice(0, 10),
-          inBandTargets: r.inband, walked: r.walked,
-        }));
-    }
-
     return jsonResponse({
       ok: true, days, sport: sport || "all",
       overall: fmtAgg(overall),
@@ -4798,7 +4762,6 @@ async function handlePolymarketDeltas({ path, request, env }) {
       } : null,
       bySport: bySport.map(r => ({ sport: r.sport, n: r.n, medianAbs: num(r.median_abs), maxAbs: num(r.max_abs), meanSigned: num(r.mean_signed) })),
       daily: daily.map(r => ({ date: new Date(r.snapshot_date).toISOString().slice(0, 10), n: r.n, medianAbs: num(r.median_abs) })),
-      ...(execRows ? { execRows, execDaily } : {}),
     });
   } catch (e) {
     return errorResponse(`polymarket-deltas query failed: ${e?.message}`, 500);

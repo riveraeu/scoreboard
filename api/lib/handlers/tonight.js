@@ -3,20 +3,18 @@
 // imports + helpers needed only by the tonight pipeline moved with the block. The
 // outer indentation level (8 spaces) is preserved from the original nesting; future
 // phases will reformat.
-import { ALLOWED_ORIGIN, corsHeaders, jsonResponse, errorResponse, fetchSafe, parseGameOdds, parseGameScores, parseTopPlayers, buildSoftTeamAbbrs, buildHardTeamAbbrs, buildTeamRankMap, pLimit } from "../utils.js";
-import { PARK_KFACTOR, PARK_HITFACTOR, PARK_RUNFACTOR, UMPIRE_KFACTOR, log5K, poissonCDF, log5HitRate, simulateKsDist, kDistPct, buildNbaStatDist, nbaDistPct, simulateMLBTotalDist, simulateMLBJoint, simulateNBAJoint, mlPctFromJoint, joint3WayPct, spreadPctFromJoint, simulateNBATotalDist, simulateNHLTotalDist, totalDistPct, simulateTeamTotalDist, simulateTeamPtsDist, lambdaForPoissonTail, muForNegBinTail, negBinCDF, meanForNormalTail, normCDF } from "../simulate.js";
-import { buildLineupKPct, buildBarrelPct, buildPitcherKPct, MLB_ID_TO_ABBR, buildMlbByteam, buildMlbInjuryReport } from "../mlb.js";
-import { buildNbaDepthChartPos, buildNbaDvpFromBettingPros, buildNbaPaceData, buildNbaPlayerPosFromSleeper, buildNbaUsageRate, buildNbaInjuryReport, buildNbaByteam } from "../nba.js";
-import { buildWnbaPaceData, buildWnbaUsageRate, buildWnbaInjuryReport, buildWnbaDvp, WNBA_TEAM_IDS, WNBA_ESPN_TO_CANON, WNBA_CANON_TO_ESPN, buildWnbaByteam } from "../wnba.js";
+import { jsonResponse, fetchSafe, parseGameOdds, parseGameScores, parseTopPlayers, buildSoftTeamAbbrs, buildTeamRankMap, pLimit } from "../utils.js";
+import { buildBarrelPct, MLB_ID_TO_ABBR, buildMlbByteam, buildMlbInjuryReport } from "../mlb.js";
+import { buildNbaDepthChartPos, buildNbaDvpFromBettingPros, buildNbaPaceData, buildNbaUsageRate, buildNbaInjuryReport, buildNbaByteam } from "../nba.js";
+import { buildWnbaPaceData, buildWnbaUsageRate, buildWnbaInjuryReport, buildWnbaDvp, buildWnbaByteam } from "../wnba.js";
 import { SERIES_CONFIG } from "../series-config.js";
 import { buildNhlGoalieData, buildNhlInjuryReport, buildNhlSpecialTeams, NHL_ABBR_MAP } from "../nhl.js";
-import { verifyJWT } from "../auth-utils.js";
 import { PT_FMT } from "../pt.js";
-import { computeDataConfidence, DC_GATE, _GT_IMPLIED_CAP, _TT_IMPLIED_CAP } from "../tonight/dc.js";
+import { computeDataConfidence } from "../tonight/dc.js";
 import { applyClosingSnapshot } from "../tonight/closing-odds.js";
 import { fetchKalshiMarkets } from "../tonight/kalshi-pipeline.js";
 import { blendMarketPrice } from "../tonight/blend-fill.js";
-import { KALSHI_GATE, KALSHI_CAP, CAPTURE_GATE, CAPTURE_CAP, CAPTURE_MAX_SPREAD, capturableSpread, EDGE_GATE_SERVER as EDGE_GATE } from "../config.js";
+import { CAPTURE_GATE, CAPTURE_CAP, capturableSpread } from "../config.js";
 import { TEAM_NORM, normTeam, parseGameTeams } from "../tonight/parse-teams.js";
 import { dedupAltLines } from "../tonight/dedup.js";
 import { emitAllMlAndSpread } from "../tonight/ml-spread.js";
@@ -50,7 +48,6 @@ const PROD_SPORTS = new Set(["mlb", "nba", "nhl", "wnba"]);
 // B2B_*, _isB2B, and injury helpers moved to api/lib/tonight/game-totals.js (Phase B5, 2026-05-29).
 const normName = /* @__PURE__ */ __name((s) => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase(), "normName");
 const ESPN_BASE = "https://site.web.api.espn.com/apis";
-const ESPN_CORE = "https://sports.core.api.espn.com/v2/sports";
 
 // ── Module-level pure helpers ─────────────────────────────────────────────────────────────────
 // Hoisted from handleTonightRoute body (Phase B, 2026-05-29). No closure deps — safe at module
@@ -157,10 +154,8 @@ const _extractMlbWeather = (events, byGame, nt) => {
 };
 
 
-export async function handleTonightRoute({ path, params, request, env, CACHE2, runtimeCtx }) {
+export async function handleTonightRoute({ path, params, request, env, CACHE2 }) {
   if (path !== "tonight") return null;
-  const ctx = runtimeCtx;
-  const JWT_SECRET = env?.JWT_SECRET;
         // nhlSoftTeams / mlbSoftTeams / glCacheKey / _parseWind / _extractMlbWeather
         // / injury helpers — moved to module level (Phase B, 2026-05-29).
         const isDebugMode = params.get("debug") === "1";
@@ -200,57 +195,6 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
         await _fdMark("start");
         const isBustCache = params.get("bust") === "1";
         const reportSportFilter = params.get("sport") || null;
-        // NBA totals: regular-season aggregate OffRtg/DefRtg systematically under-projects playoff
-        // scoring (LAL/OKC G3 = 232 vs model 199 vs market 210.5). Multiplier on home/away expected
-        // closes most of the gap to market without erasing genuine edge. Single tunable; calibrate
-        // after 2 weeks of playoff data. Applied via _isPlayoffNbaGame() against seriesSummary.
-        const _PLAYOFF_OFF_BOOST = 1.04;
-        if (params.get("mock") === "true") {
-          return jsonResponse({ plays: [
-            { playerName: "Shai Gilgeous-Alexander", playerId: "4278073", sport: "nba", playerTeam: "OKC", position: "PG", posGroup: "PG", opponent: "DAL", oppRank: 2, oppMetricValue: 119.8, oppMetricLabel: "PPG allowed", oppMetricUnit: "PPG", stat: "points", threshold: 30, kalshiPct: 74, americanOdds: -163, seasonPct: 78.4, softPct: 84.2, softGames: 11, truePct: 81.3, edge: 7.3, gameDate: "2026-04-08", gameTime: "2026-04-09T00:30:00Z" },
-            { playerName: "Nikola Jokic", playerId: "3112335", sport: "nba", playerTeam: "DEN", position: "C", posGroup: "C", opponent: "MEM", oppRank: 5, oppMetricValue: 46.1, oppMetricLabel: "REB allowed/game", oppMetricUnit: "REB", stat: "rebounds", threshold: 10, kalshiPct: 72, americanOdds: -138, seasonPct: 74.5, softPct: 77.3, softGames: 8, truePct: 75.9, edge: 3.9, gameDate: "2026-04-08", gameTime: "2026-04-09T02:00:00Z", playerStatus: "questionable" },
-            { playerName: "Connor McDavid", playerId: "3895074", sport: "nhl", playerTeam: "EDM", position: "C", opponent: "VGK", oppRank: 3, oppMetricValue: 3.4, oppMetricLabel: "Goals against/game", oppMetricUnit: "GAA", stat: "goals", threshold: 1, kalshiPct: 73, americanOdds: -122, seasonPct: 72.1, softPct: 74.5, softGames: 8, truePct: 73.3, edge: 0.3, gameDate: "2026-04-08", gameTime: "2026-04-09T02:00:00Z" },
-            {
-              playerName: "Dylan Cease",
-              playerId: "34943",
-              sport: "mlb",
-              playerTeam: "SD",
-              position: "SP",
-              opponent: "CLE",
-              oppRank: null,
-              oppMetricValue: null,
-              oppMetricLabel: "vs high-K lineups",
-              oppMetricUnit: "%",
-              stat: "strikeouts",
-              threshold: 6,
-              kalshiPct: 71,
-              americanOdds: -245,
-              seasonPct: 74,
-              softPct: 80,
-              softGames: 10,
-              truePct: 77,
-              edge: 6,
-              lineupKPct: 27.3,
-              pitcherKPct: 26.5,
-              pitcherKBBPct: 18.2,
-              log5Avg: 31.6,
-              log5Pct: 96.1,
-              expectedKs: 8.5,
-              parkFactor: 1,
-              isStrongMatchup: true,
-              pkpMeets: true,
-              lkpMeets: true,
-              gameLineMeets: true,
-              gameTotal: 7.5,
-              gameMoneyline: -145,
-              pitcherHand: "R",
-              gameDate: "2026-04-08",
-              gameTime: "2026-04-08T20:10:00Z",
-              lineupConfirmed: true
-            },
-            { playerName: "Shohei Ohtani", playerId: "39949", sport: "mlb", playerTeam: "LAD", position: "DH", opponent: "SD", oppRank: 4, oppMetricValue: 4.85, oppMetricLabel: "ERA allowed", oppMetricUnit: "ERA", stat: "hits", threshold: 1, kalshiPct: 72, americanOdds: -300, seasonPct: 73.8, softPct: 76.4, truePct: 76.1, edge: 4.1, hitterBa: 0.291, hitterBaTier: "good", hitterMoneyline: -175, gameDate: "2026-04-08", gameTime: "2026-04-09T02:10:00Z", lineupConfirmed: false }
-          ], mock: true }, true);
-        }
         // SERIES_CONFIG imported from api/lib/series-config.js; TEAM_NORM / normTeam / weather
         // helpers / injury helpers — module-level (Phase B, 2026-05-29).
         const seriesTickers = Object.keys(SERIES_CONFIG);
@@ -2318,18 +2262,6 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           await enrichDeltasWithExec({ deltas: polymarketDeltas, tokensByGame: _tokensByGame });
         } catch (e) { console.error("[tonight] polymarket deltas failed:", e?.message); }
 
-        // Display map for the matchup-card cross-venue strip: per-game Kalshi-vs-Poly ML, derived
-        // from the same deltas (single source). The shadow delta rows/summary stay shadow-only; this
-        // is the display-shaped subset (no modelTruePct/exec fields) the client strip needs. Empty
-        // when the poly fetch failed (failure-closed). Key: `${sport}|${away}@${home}|${gameDate}`.
-        // (Per-bet comparison rides on the play rows themselves via the polyPct/polyDeltaCents stamp.)
-        const polyMlByGame = {};
-        for (const _d of polymarketDeltas) {
-          if (_d.market !== "ml") continue;
-          ((polyMlByGame[`${_d.sport}|${_d.game}|${_d.gameDate}`] ||= {})[_d.side]) =
-            { kalshiPct: _d.kalshiPct, polyPct: _d.polyPct, deltaCents: _d.deltaCents };
-        }
-
         // ── Sportsbook-reference deltas — Phase 1a observatory (shadow-only). De-vigs the sharp
         // book (Pinnacle via The Odds API) and compares its fair ML prob to our Kalshi price. The
         // kill-gate: does Kalshi LAG the sharp book (a timeable edge)? deltaCents = bookFairPct −
@@ -2678,7 +2610,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           mlbMetaTomorrow = { pitchers: _tmrPitchers, pitchersByGame: _tmrPitchersByGame, gameOdds: _mlbGameOddsTomorrow, umpires: _tmrUmpires, weather: {}, homeTeams: _tmrHomeTeams, gameScores: {} };
         } catch { /* leave empty */ }
         // Sport meta builders — same shape, varying inputs. Injury maps are server-side only
-        // (emitPropPlays/emitGameTotalPlays read them via ctx); the client injury badge was
+        // (passed directly into emitPropPlays/emitGameTotalPlays); the client injury badge was
         // removed 2026-06-10, so injuries are no longer shipped in the response meta.
         const _buildSportMeta = async (snapKey, gameOddsRaw, normMap, scoresMap, topPlayers) => {
           const gameOdds = _buildOddsMap(gameOddsRaw, normMap);
@@ -2697,7 +2629,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2, r
           'nhlClosingOdds', sportByteam.nhlGameOdds, {},
           sportByteam.nhlGameScores, sportByteam.nhlTopPlayers
         );
-        const playsResult = { plays, nbaDropped, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta, polyMlByGame, staleKalshiSeries, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length };
+        const playsResult = { plays, nbaDropped, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta, staleKalshiSeries, qualifyingCount: qualifyingMarkets.length, preFilteredCount: preFilteredMarkets.length };
         const sportsInPlays = new Set(plays.map((p) => p.sport));
         if (CACHE2 && sportsInPlays.size >= 2) {
           const summary = {
