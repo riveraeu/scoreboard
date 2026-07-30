@@ -1,9 +1,10 @@
-// Shared Kalshi V2 order-placement/cancel client — the signing + payload chokepoint used by
-// BOTH the user-facing /api/kalshi-order handler (manual/Place-All orders) and the automated
-// shadow-maker V2 engine (api/lib/maker-live.js, real resting orders). Extracted 2026-07-21 so
-// the two callers never drift on the V2 payload shape or RSA-PSS signing (see the 7/17 sunset
-// of the legacy /portfolio/orders POST — api/lib/handlers/kalshi.js `_importKalshiKey`/PKCS1→8
-// history is preserved here verbatim).
+// Shared Kalshi V2 order-placement/cancel client — the signing + payload chokepoint for real
+// Kalshi orders. Its remaining caller is the automated shadow-maker V2 engine
+// (api/lib/maker-live.js, real resting orders); the user-facing /api/kalshi-order taker handler
+// that also used it was removed 2026-07-30 with the taker strategy (this client is kept for the
+// shelved-but-revivable maker V2). Extracted 2026-07-21 so callers never drift on the V2 payload
+// shape or RSA-PSS signing (see the 7/17 sunset of the legacy /portfolio/orders POST —
+// api/lib/handlers/kalshi.js `_importKalshiKey`/PKCS1→8 history is preserved here verbatim).
 //
 // CANCEL SCHEMA VERIFIED 2026-07-21 against a live call (via /api/maker-v2-verify-cancel):
 // `DELETE /trade-api/v2/portfolio/events/orders/{order_id}` — the singular sibling of the

@@ -9,7 +9,6 @@ import { handleDvpRoutes } from "./lib/handlers/dvp.js";
 import { handleKalshiRoutes } from "./lib/handlers/kalshi.js";
 import { handleTonightRoute } from "./lib/handlers/tonight.js";
 import { handleShadowRoutes } from "./lib/handlers/shadow.js";
-import { handlePushRoutes } from "./lib/handlers/push.js";
 import { gzipToString, gunzipFromString, GZ_PREFIX } from "./lib/kv-compress.js";
 
 // Transparently gzip any KV value larger than this so a single SET never approaches Upstash's
@@ -166,8 +165,6 @@ var worker_default = {
       if (_tonightResp) return _tonightResp;
       const _shadowResp = await handleShadowRoutes({ path, request, env, cache: CACHE2 });
       if (_shadowResp) return _shadowResp;
-      const _pushResp = await handlePushRoutes({ path, method, request, env, CACHE2, JWT_SECRET });
-      if (_pushResp) return _pushResp;
       return errorResponse("Unknown route: " + path, 404);
     } catch (e) {
       return errorResponse(e.message, 500);
@@ -201,9 +198,6 @@ function _envFromProcess() {
     NEON_DATABASE_URL: process.env.NEON_DATABASE_URL,
     DATABASE_URL_UNPOOLED: process.env.DATABASE_URL_UNPOOLED,
     POSTGRES_URL_NON_POOLING: process.env.POSTGRES_URL_NON_POOLING,
-    VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY,
-    VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY,
-    VAPID_SUBJECT: process.env.VAPID_SUBJECT,
     ROUTINE_NOTE_TOKEN: process.env.ROUTINE_NOTE_TOKEN, // routine-note scratchpad write gate (handlers/shadow.js)
     THE_ODDS_API_KEY: process.env.THE_ODDS_API_KEY,     // sharp-book reference feed (api/lib/sportsbook.js)
     MAKER_V2_ARMED: process.env.MAKER_V2_ARMED,         // shadow maker V2 kill-switch half (api/lib/maker-live.js) — must be "true" AND the KV flag for any real order to place

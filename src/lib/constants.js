@@ -238,8 +238,3 @@ export const GAMELOG_COLS = {
     { key:"receivingYards", label:"RecYds", tooltip:"Receiving yards"                 },
   ],
 };
-
-// Shadow-calibration category gate. Moved to api/lib/category-gate.js (2026-06-13) so the
-// server-side push-notify cron applies the identical gate; re-exported here to keep the
-// frontend import path (`import { passesCategoryGate } from './constants.js'`) unchanged.
-export { passesCategoryGate } from '../../api/lib/category-gate.js';

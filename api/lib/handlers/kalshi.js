@@ -16,7 +16,7 @@ import { fetchKalshiOrderbook } from "../kalshi-book.js";
 import { pipeWriteChunked } from "../kv-pipeline.js";
 import { gzipToString } from "../kv-compress.js";
 import { updateMakerQuotes } from "../maker.js";
-import { importKalshiKey as _importKalshiKey, placeKalshiOrder } from "../kalshi-order-client.js";
+import { importKalshiKey as _importKalshiKey } from "../kalshi-order-client.js";
 import { resolveOpenMakerPositions } from "./shadow.js";
 import { enrichSeries, checkSeriesLiquidity, fetchSeriesMeta, SCREEN_AUTO_DISMISS } from "../kalshi-series-check.js";
 import { updateLiveMakerOrders, emergencyKillLive, setArmed, computeWantedMakerQuotes,
@@ -573,46 +573,6 @@ export async function handleKalshiRoutes(ctx) {
       ok: true, armed, shelved: MAKER_V2_SHELVED, orders, positions, eligibleBySport,
       caps: { maxConcurrent: MAKER_V2_MAX_CONCURRENT, sameGameCap: MAKER_V2_SAME_GAME_CAP },
     });
-  }
-
-  if (path === "kalshi-order" && method === "POST") {
-    // Verify user JWT — cookie first, then Authorization: Bearer fallback
-    if (!JWT_SECRET) return errorResponse("Auth not configured", 500);
-    const _cookie = request.headers.get("Cookie") || "";
-    const _cookieM = _cookie.match(/(?:^|;\s*)sb_token=([^;]+)/);
-    const jwtToken = _cookieM?.[1] || (request.headers.get("Authorization") || "").replace("Bearer ", "").trim();
-    if (!jwtToken) return errorResponse("Unauthorized", 401);
-    const _jwtPayload = await verifyJWT(jwtToken, JWT_SECRET);
-    if (!_jwtPayload) return errorResponse("Unauthorized", 401);
-    // Parse + validate body
-    let body;
-    try { body = await request.json(); } catch { return errorResponse("Invalid JSON", 400); }
-    const { ticker, side, price, count, clientOrderId } = body || {};
-    if (!ticker || !side || price == null || count == null) return errorResponse("Missing required fields: ticker, side, price, count", 400);
-    if (side !== "yes" && side !== "no") return errorResponse("side must be 'yes' or 'no'", 400);
-    if (!Number.isInteger(count) || count < 1 || count > 9999) return errorResponse("count must be integer 1–9999", 400);
-    if (!Number.isInteger(price) || price < 1 || price > 99) return errorResponse("price must be integer 1–99 (cents)", 400);
-    // Kalshi V2 event-order API (2026-07: the legacy /portfolio/orders POST returns "Please
-    // switch to the V2 endpoints"). V2 is a single book quoted in YES terms: bid = buy YES,
-    // ask = sell YES — and selling YES you don't hold IS the NO buy (ask at (100−p)¢ costs
-    // p¢/contract). Client contract unchanged (side yes/no + integer cents); placeKalshiOrder
-    // (kalshi-order-client.js) is the translation chokepoint both directions, shared with the
-    // automated maker-live.js V2 engine — the response is normalized back to the legacy
-    // taker_fill_* shape below so App.jsx needs no changes.
-    const r = await placeKalshiOrder({ ticker, side, price, count, clientOrderId }, env);
-    if (!r.ok) return errorResponse(r.error, r.status || 500);
-    // average_fill_price is a YES price: a NO buy's per-contract cost is its complement
-    // (already normalized to per-contract cents in avgFillPriceCents).
-    const order = {
-      order_id: r.orderId,
-      client_order_id: r.clientOrderId,
-      taker_fill_count: r.fillCount,
-      taker_fill_cost: r.avgFillPriceCents != null ? r.fillCount * r.avgFillPriceCents : 0,
-      remaining_count: r.remainingCount,
-      average_fill_price: r.raw.average_fill_price ?? null,
-      average_fee_paid: r.raw.average_fee_paid ?? null,
-    };
-    return jsonResponse({ ok: true, order, v2: r.raw });
   }
 
   if (path === "kalshi-balance" && method === "GET") {
