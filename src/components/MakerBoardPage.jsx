@@ -165,16 +165,18 @@ function CategoryBandHeatmap({ cells, maxRows = 40 }) {
                   <span key={b} title={`${r.label} ${b}¢: ${c.perContract > 0 ? "+" : ""}${c.perContract}¢/ct · ${c.fills} fills · sideWon ${c.sideWon} · ${c.days}d · day-clustered CI ${ciTxt} (${c.reliable ? "clears 0" : "straddles 0 — not distinguishable from noise"}) · top day ${Math.round((c.topDayShare ?? 0) * 100)}% of |PnL|${c.anomaly ? " · ANOMALY: outcome pinned against price" : ""}`}
                     style={{ position:"relative", width:colW, height:22, marginRight:1, boxSizing:"border-box",
                       display:"flex", alignItems:"center", justifyContent:"center",
-                      fontVariantNumeric:"tabular-nums", color: c.reliable ? C.text : C.dim,
+                      fontVariantNumeric:"tabular-nums", color: c.reliable ? C.text : C.gray,
                       background:_cellBg(c.perContract, scale, c.reliable),
                       border: c.anomaly ? `1.5px solid ${C.red}` : `1px solid ${C.border}` }}>
                     {c.perContract != null ? `${c.perContract > 0 ? "+" : ""}${c.perContract}` : ""}
-                    {oneDay && <span style={{ position:"absolute", top:1, right:2, width:4, height:4, borderRadius:2, background:C.amber }} />}
-                    {/* Day count on the saturated (reliable) cells only — a day-clustered CI on 3
-                        days is barely an interval, so f5total's 9d and a 3d cell must not read the
-                        same at a glance. The only non-redundant signal vs the amber dot; shown here
-                        instead of a separate marker (see git history / the prereg discussion). */}
-                    {c.reliable && c.days != null && <span style={{ position:"absolute", bottom:0, left:2, fontSize:7, lineHeight:1, fontWeight:700, color:C.dim }}>{c.days}d</span>}
+                    {/* The one-slate dot and day count ride ONLY on reliable cells — the ~5 that
+                        clear zero and are therefore the only ones a reader would trust. On a muted
+                        (unreliable) cell both are redundant with the muting itself, and drawing them
+                        everywhere turned the grid into noise. A 3-day CI is barely an interval, so
+                        f5total's 9d and a 3d cell must not read the same at a glance (day count was
+                        otherwise tooltip-only). */}
+                    {c.reliable && oneDay && <span style={{ position:"absolute", top:1, right:2, width:4, height:4, borderRadius:2, background:C.amber }} />}
+                    {c.reliable && c.days != null && <span style={{ position:"absolute", bottom:0, left:2, fontSize:8, lineHeight:1, fontWeight:700, color:C.gray }}>{c.days}d</span>}
                   </span>
                 );
               })}
@@ -185,7 +187,7 @@ function CategoryBandHeatmap({ cells, maxRows = 40 }) {
           );
         })}
         <div style={{ color:C.dim, fontSize:9, marginTop:5, lineHeight:1.5 }}>
-          ¢/contract, graded fills · <b>brightness = reliability</b> (day-clustered CI clear of zero), NOT size — a big number in a pale cell is noise · <span style={{ color:C.amber }}>●</span> &gt;50% of PnL from one day · <span style={{ color:C.red }}>▢</span> anomaly: outcome pinned against price (P&lt;0.1%) · <span style={{ color:C.dim, fontWeight:700 }}>Nd</span> (reliable cells) = days behind the estimate — a 3-day CI is barely an interval
+          ¢/contract, graded fills · <b>brightness = reliability</b> (day-clustered CI clear of zero), NOT size — a big number in a pale cell is noise · <span style={{ color:C.red }}>▢</span> anomaly: outcome pinned against price (P&lt;0.1%) · on <b>reliable cells only</b>: <span style={{ color:C.amber }}>●</span> &gt;50% of PnL from one day · <span style={{ color:C.gray, fontWeight:700 }}>Nd</span> days behind the estimate (a 3-day CI is barely an interval)
           {rows.length > shown.length ? ` · +${rows.length - shown.length} lower-volume categories hidden` : ""}
         </div>
       </div>
