@@ -2854,11 +2854,18 @@ async function handleShadowReport({ path, request, env, cache }) {
   // multiplicity-corrected, so a single "clears zero" cell out of ~280 is expected under pure
   // noise — this exists to inspect such a cell, not to bless it.
   if (new URL(request.url).searchParams.get("makerCell")) {
-    const spec = new URL(request.url).searchParams.get("makerCell");
+    const _mcQs = new URL(request.url).searchParams;
+    const spec = _mcQs.get("makerCell");
     const [sport, category, band] = spec.split("|");
     if (!sport || !category || !band) return errorResponse("makerCell must be sport|category|band", 400);
+    // &since=YYYY-MM-DD restricts to game_date >= since — this is how the forward (out-of-sample)
+    // leg of a pre-registration is evaluated: pass the registration's forward-start date and the
+    // totals/CI below are computed on NEW days only (see docs/MAKER_F5TOTAL_PREREG.md).
+    const _mcSince = /^\d{4}-\d{2}-\d{2}$/.test(_mcQs.get("since") || "") ? _mcQs.get("since") : null;
     try {
       const _bandCase = _makerBandCase("f.fill_ask");
+      const _sinceSql = _mcSince ? ` AND q.game_date >= $4` : "";
+      const _args = _mcSince ? [sport, category, band, _mcSince] : [sport, category, band];
       const perDay = await neonQuery(
         `SELECT q.game_date AS day, COUNT(*)::int AS fills,
            COALESCE(SUM(f.contracts),0)::numeric AS contracts,
@@ -2867,8 +2874,8 @@ async function handleShadowReport({ path, request, env, cache }) {
            ROUND(AVG(f.fill_ask),1) AS avg_ask
          FROM maker_fills f JOIN maker_quotes q ON q.id=f.quote_id
          WHERE q.source='live' AND f.graded_at IS NOT NULL
-           AND q.sport=$1 AND COALESCE(q.category,q.sport)=$2 AND ${_bandCase}=$3
-         GROUP BY 1 ORDER BY 1`, [sport, category, band], env, { write: true });
+           AND q.sport=$1 AND COALESCE(q.category,q.sport)=$2 AND ${_bandCase}=$3${_sinceSql}
+         GROUP BY 1 ORDER BY 1`, _args, env, { write: true });
       const topTickers = await neonQuery(
         `SELECT q.ticker, q.quote_side AS side, COUNT(*)::int AS fills,
            COALESCE(SUM(f.contracts),0)::numeric AS contracts,
@@ -2876,8 +2883,8 @@ async function handleShadowReport({ path, request, env, cache }) {
            ROUND(AVG((f.side_won)::int::numeric),2) AS side_won
          FROM maker_fills f JOIN maker_quotes q ON q.id=f.quote_id
          WHERE q.source='live' AND f.graded_at IS NOT NULL
-           AND q.sport=$1 AND COALESCE(q.category,q.sport)=$2 AND ${_bandCase}=$3
-         GROUP BY q.ticker, q.quote_side ORDER BY contracts DESC LIMIT 15`, [sport, category, band], env, { write: true });
+           AND q.sport=$1 AND COALESCE(q.category,q.sport)=$2 AND ${_bandCase}=$3${_sinceSql}
+         GROUP BY q.ticker, q.quote_side ORDER BY contracts DESC LIMIT 15`, _args, env, { write: true });
       const days = perDay.map(r => ({
         day: String(r.day).slice(0, 10), fills: Number(r.fills),
         contracts: parseFloat(Number(r.contracts).toFixed(1)),
@@ -2887,7 +2894,7 @@ async function handleShadowReport({ path, request, env, cache }) {
       }));
       const dc = dayClusteredPnl({ days: perDay.map(r => ({ pnl: Number(r.pnl_total), contracts: Number(r.contracts) })) });
       return jsonResponse({
-        ok: true, cell: { sport, category, band },
+        ok: true, cell: { sport, category, band }, since: _mcSince,
         totals: {
           fills: days.reduce((a, d) => a + d.fills, 0),
           contracts: parseFloat(days.reduce((a, d) => a + d.contracts, 0).toFixed(1)),

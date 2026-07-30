@@ -9,6 +9,12 @@
 // done. The quiet-day floor names the NEXT upcoming entry so a calm day still shows when the
 // ladder wakes up next.
 export const SCHEDULED_CHECKPOINTS = [
+  // Pre-registered forward test of the one positive maker cell (mlb f5total 50-54¢), registered
+  // 2026-07-29. In-sample it read +16¢/ct (sideWon 0.38, CI [+2.24,+29.76], 6/8 days) but it is
+  // the best-of-280 cell, so the number can't be acted on — only a forward test on new days can.
+  // Criteria + green-light action are FIXED in docs/MAKER_F5TOTAL_PREREG.md; do not adjust them.
+  { date: "2026-08-13", tone: "blue", label: "Evaluate f5total 50-54 pre-registration (forward test)", short: "f5total 50-54 prereg",
+    why: "docs/MAKER_F5TOTAL_PREREG.md. Run /api/shadow-report?makerCell=mlb|f5total|50-54&since=2026-07-30 and check ALL green criteria (day-clustered CI-lo>0, mean ≥+5¢, ≥60% positive days, sideWon<0.45, ≥8 days & ≥50 fills, no anomaly). ALL pass → un-shelve V2 scoped to this cell, small ⅛-Kelly real-money trial. Any of 1-4/6 fail → KILL, no re-slice. Only sample-thin → extend once to 2026-08-27" },
   // (Polymarket 1b kill-gate checkpoint REMOVED 2026-07-04 — reviewed 3 days early on unambiguous
   // clean data: exec.fracEdgeGe3c = 0 post-date-fix, Phase 1b KILLED. [[project-polymarket-phase1a]])
   // (x* run-market sweep REMOVED 2026-07-08 — decision: ACCEPT market-sharper status on run markets.
