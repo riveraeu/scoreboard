@@ -86,18 +86,15 @@ test("AWAITING_VALIDATED_EDGE is a single shared flag, and it is ON", () => {
     "flipping this resumes prescriptive prompting on BOTH surfaces — read docs/REENTRY.md first");
 });
 
-test("both AWAITING_VALIDATED_EDGE consumers read the shared flag, never a local copy", () => {
-  // The bug this guards (2026-07-29): the flag was a local const in MakerBoardPage.jsx, so the UI
-  // went quiet while /api/shadow-report's `brief` kept emitting "Action needed today: run
-  // tune:window on mlb f3ml" to every routine and report reading the JSON. One flag, two consumers,
-  // and they disagreed for a day. A re-declaration in either file would restore that split
-  // silently, so it is cheaper to pin the shape than to re-discover the divergence.
+test("AWAITING_VALIDATED_EDGE is never re-declared locally in the codebase", () => {
+  // Guards against a past bug (2026-07-29) where a local re-declaration in MakerBoardPage.jsx
+  // caused the UI and the brief to disagree silently. The brief is now gone (2026-07-30) and
+  // MakerBoardPage no longer consumes the flag, but a future consumer should always import from
+  // config.js rather than re-declare.
   const root = new URL("../../", import.meta.url);
   for (const rel of ["src/components/MakerBoardPage.jsx", "api/lib/handlers/shadow.js"]) {
     const src = readFileSync(new URL(rel, root), "utf8");
-    assert.ok(/import\s*\{[^}]*\bAWAITING_VALIDATED_EDGE\b[^}]*\}\s*from/.test(src),
-      `${rel} must IMPORT AWAITING_VALIDATED_EDGE from config.js`);
     assert.ok(!/^\s*(const|let|var)\s+AWAITING_VALIDATED_EDGE\s*=/m.test(src),
-      `${rel} re-declares AWAITING_VALIDATED_EDGE locally — that is exactly the split this fixes`);
+      `${rel} re-declares AWAITING_VALIDATED_EDGE locally — import from config.js instead`);
   }
 });
