@@ -39,6 +39,75 @@ function _cellBg(v, scale, reliable) {
 const _BANDS = ["0-4", "5-9", "10-14", "15-19", "20-24", "25-29", "30-34", "35-39", "40-44",
   "45-49", "50-54", "55-59", "60-64", "65-69", "70-74", "75-79", "80-84", "85-89", "90-96"];
 
+// ---- PRE-REGISTERED FORWARD TESTS ------------------------------------------------------------
+// The ONE honest "when will we know" surface. A cell picked off the heatmap for being bright is
+// best-of-N selection, so a data-extrapolated "ETA to arm" would just put a countdown on noise
+// (and re-slice the same days the REENTRY doctrine has gone 0-for-6 on). What CAN resolve a cell is
+// a forward test whose bar was fixed before the window opened — a CALENDAR checkpoint, not an ETA.
+// Each card reads a `preregistrations[]` entry from the report; the server evaluates the fixed
+// criteria over game_date >= forwardStart (see api/lib/maker-prereg.js). Verdict verbs, not colors,
+// carry the state — COLLECTING (too early) / ON_TRACK / FAILING (provisional, pre-checkpoint) /
+// PASS / KILL (terminal, at checkpoint).
+const _VERDICT = {
+  COLLECTING: { color: C.blue,  text: "COLLECTING" },
+  ON_TRACK:   { color: C.green, text: "ON TRACK" },
+  FAILING:    { color: C.amber, text: "FAILING" },
+  PASS:       { color: C.green, text: "PASS" },
+  KILL:       { color: C.red,   text: "KILL" },
+};
+
+function _daysUntil(checkpoint) {
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+  return Math.round((Date.parse(`${checkpoint}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400000);
+}
+
+function PreregTracker({ preregs }) {
+  const list = preregs || [];
+  if (!list.length) return null;
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ color:C.dim, fontSize:9, fontWeight:700, textTransform:"uppercase", letterSpacing:0.4, marginBottom:6 }}>
+        Pre-registered forward tests — the only cell-level "arm target" (criteria fixed before the window opened)
+      </div>
+      <div style={{ display:"flex", flexWrap:"wrap", gap:10 }}>
+        {list.map((p) => {
+          const v = _VERDICT[p.verdict] || { color: C.gray, text: p.verdict };
+          const daysLeft = _daysUntil(p.checkpoint);
+          const r = p.result || {};
+          const meanTxt = r.mean != null ? `${r.mean > 0 ? "+" : ""}${r.mean}` : "—";
+          const ciTxt = r.ciLo != null ? `${r.ciLo > 0 ? "+" : ""}${r.ciLo}…${r.ciHi > 0 ? "+" : ""}${r.ciHi}` : "n/a";
+          return (
+            <div key={p.id} title={p.hypothesis} style={{ flex:"1 1 340px", minWidth:300, maxWidth:520,
+              background:C.card, border:`1px solid ${C.border}`, borderRadius:6, padding:"10px 12px" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
+                <span style={{ color:C.text, fontSize:12, fontWeight:700 }}>{p.label}</span>
+                <span style={{ color:C.dim, fontSize:10 }}>forward test</span>
+                <span style={{ marginLeft:"auto", color:v.color, fontSize:10, fontWeight:700,
+                  border:`1px solid ${v.color}`, borderRadius:4, padding:"1px 6px" }}>{v.text}</span>
+              </div>
+              <div style={{ color:C.gray, fontSize:10, marginBottom:8, fontVariantNumeric:"tabular-nums" }}>
+                OOS since {p.forwardStart} · {r.days ?? 0}d, {r.fills ?? 0} fills ·
+                {" "}mean {meanTxt}¢ · CI {ciTxt} ·
+                {" "}checkpoint {p.checkpoint} {daysLeft > 0 ? `(${daysLeft}d left)` : daysLeft === 0 ? "(today)" : "(reached)"}
+              </div>
+              {/* The 5 fixed GREEN criteria, each with its live actual. Cross = not yet met — the
+                  whole point is that ALL must hold on the forward window before this is a target. */}
+              <div style={{ display:"flex", flexWrap:"wrap", gap:"3px 10px" }}>
+                {(p.checks || []).map((c) => (
+                  <span key={c.key} style={{ fontSize:9.5, color: c.met ? C.green : C.dim, whiteSpace:"nowrap" }}>
+                    <span style={{ fontWeight:700 }}>{c.met ? "✓" : "✗"}</span> {c.label}
+                    {c.actual != null && <span style={{ color:C.gray }}> ({c.actual})</span>}
+                  </span>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ---- CATEGORY × BAND HEATMAP -----------------------------------------------------------------
 // Category rows × band columns, cell = ¢/contract (graded). The grain that LOCALISES what band- or
 // total-level pooling hides (the 55-64 "edge" that was really one category at an impossible +52¢).
@@ -150,6 +219,7 @@ export default function MakerBoardPage({ shadowReportData, shadowReportLoading, 
         <div style={{ color:C.dim, fontSize:12, padding:12 }}>Generating report…</div>
       ) : (
         <>
+          <PreregTracker preregs={shadowReportData?.preregistrations} />
           <div style={{ color:C.dim, fontSize:9, fontWeight:700, textTransform:"uppercase", letterSpacing:0.4, marginBottom:6 }}>
             Category × band · ¢/contract (graded) — where PnL actually comes from
           </div>

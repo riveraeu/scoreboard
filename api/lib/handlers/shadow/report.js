@@ -21,6 +21,7 @@ import { errorResponse, jsonResponse } from "../../utils.js";
 import { verifyJWT } from "../../auth-utils.js";
 import { isArmed as isMakerV2Armed } from "../../maker-live.js";
 import { fetchKalshiSettlements, resolveTickerSideViaKalshi } from "../../kalshi-settlement.js";
+import { PREREG_CELLS, evaluatePrereg } from "../../maker-prereg.js";
 import { weightedPnlSumsSql, weightedPnlFromRow, dayClusteredPnl, quotedOutcomesByBand,
   adverseSelectionWithinBand, leadTimeBuckets, spearmanEdgeVsLead, mixAdjustedNearFarByDay,
   dayLevelDiffCI, leadTimeVerdict, exitCounterfactual } from "../../maker-stats.js";
@@ -44,6 +45,26 @@ const _makerBandCase = (col) => `CASE
   WHEN ${col} < 65 THEN '60-64' WHEN ${col} < 70 THEN '65-69'
   WHEN ${col} < 75 THEN '70-74' WHEN ${col} < 80 THEN '75-79'
   WHEN ${col} < 85 THEN '80-84' WHEN ${col} < 90 THEN '85-89' ELSE '90-96' END`;
+
+// Per-day graded-fill aggregation for ONE category × band cell, optionally restricted to a forward
+// window (`since` → game_date >= since). One definition shared by the ?makerCell drill-down and the
+// pre-registration tracker, so both bucket bands identically (`_makerBandCase`) and a forward
+// evaluation matches its own ?makerCell&since= readout by construction. `sport`/`category`/`band`
+// are bound params; `since` is bound too when present.
+function _cellPerDaySince(env, sport, category, band, since) {
+  const sinceSql = since ? " AND q.game_date >= $4" : "";
+  const args = since ? [sport, category, band, since] : [sport, category, band];
+  return neonQuery(
+    `SELECT q.game_date AS day, COUNT(*)::int AS fills,
+       COALESCE(SUM(f.contracts),0)::numeric AS contracts,
+       COALESCE(SUM(f.pnl_cents*f.contracts),0)::numeric AS pnl_total,
+       COALESCE(SUM((f.side_won)::int::numeric*f.contracts),0)::numeric AS won_contracts,
+       ROUND(AVG(f.fill_ask),1) AS avg_ask
+     FROM maker_fills f JOIN maker_quotes q ON q.id=f.quote_id
+     WHERE q.source='live' AND f.graded_at IS NOT NULL
+       AND q.sport=$1 AND COALESCE(q.category,q.sport)=$2 AND ${_makerBandCase("f.fill_ask")}=$3${sinceSql}
+     GROUP BY 1 ORDER BY 1`, args, env, { write: true });
+}
 
 const REPORT_CACHE_KEY_PREFIX = "shadow:report:";
 const REPORT_TTL = 60 * 60 * 25; // 25 hours
@@ -458,16 +479,7 @@ async function handleShadowReport({ path, request, env, cache }) {
       const _bandCase = _makerBandCase("f.fill_ask");
       const _sinceSql = _mcSince ? ` AND q.game_date >= $4` : "";
       const _args = _mcSince ? [sport, category, band, _mcSince] : [sport, category, band];
-      const perDay = await neonQuery(
-        `SELECT q.game_date AS day, COUNT(*)::int AS fills,
-           COALESCE(SUM(f.contracts),0)::numeric AS contracts,
-           COALESCE(SUM(f.pnl_cents*f.contracts),0)::numeric AS pnl_total,
-           COALESCE(SUM((f.side_won)::int::numeric*f.contracts),0)::numeric AS won_contracts,
-           ROUND(AVG(f.fill_ask),1) AS avg_ask
-         FROM maker_fills f JOIN maker_quotes q ON q.id=f.quote_id
-         WHERE q.source='live' AND f.graded_at IS NOT NULL
-           AND q.sport=$1 AND COALESCE(q.category,q.sport)=$2 AND ${_bandCase}=$3${_sinceSql}
-         GROUP BY 1 ORDER BY 1`, _args, env, { write: true });
+      const perDay = await _cellPerDaySince(env, sport, category, band, _mcSince);
       const topTickers = await neonQuery(
         `SELECT q.ticker, q.quote_side AS side, COUNT(*)::int AS fills,
            COALESCE(SUM(f.contracts),0)::numeric AS contracts,
@@ -855,8 +867,36 @@ async function handleShadowReport({ path, request, env, cache }) {
     }];
   }
 
+  // ── Pre-registered forward tests ────────────────────────────────────────────────────────────
+  // The only doctrine-sanctioned "when will we know" surface: a calendar checkpoint on a cell whose
+  // bar was fixed before its forward window opened (see maker-prereg.js). Evaluated over the forward
+  // window (game_date >= forwardStart) with the SAME day-clustered interval the heatmap uses, so the
+  // result matches ?makerCell=<cell>&since=<forwardStart>. Separate try/catch — a prereg failure must
+  // not take down the report. One grouped query per registered cell (a handful at most).
+  let preregistrations = [];
+  try {
+    preregistrations = await Promise.all(PREREG_CELLS.map(async (spec) => {
+      const perDay = await _cellPerDaySince(env, spec.sport, spec.category, spec.band, spec.forwardStart);
+      const dayRows = perDay.map(r => ({ pnl: Number(r.pnl_total), contracts: Number(r.contracts) }));
+      const dc = dayClusteredPnl({ days: dayRows });
+      const totContracts = dayRows.reduce((a, d) => a + d.contracts, 0);
+      const totWon = perDay.reduce((a, r) => a + Number(r.won_contracts), 0);
+      const totFills = perDay.reduce((a, r) => a + Number(r.fills), 0);
+      const positiveDays = perDay.filter(r => Number(r.contracts) && Number(r.pnl_total) / Number(r.contracts) > 0).length;
+      const result = {
+        days: perDay.length, fills: totFills, contracts: parseFloat(totContracts.toFixed(1)),
+        mean: dc?.mean ?? null, ciLo: dc?.loCI ?? null, ciHi: dc?.hiCI ?? null,
+        positiveDays, sideWon: totContracts ? parseFloat((totWon / totContracts).toFixed(4)) : null,
+      };
+      const evaluated = evaluatePrereg(spec, result, reportDate);
+      return { id: spec.id, label: spec.label, sport: spec.sport, category: spec.category,
+        band: spec.band, doc: spec.doc, hypothesis: spec.hypothesis,
+        forwardStart: spec.forwardStart, checkpoint: spec.checkpoint, result, ...evaluated };
+    }));
+  } catch (e) { console.error("[shadow-report] preregistrations skipped:", e?.message); }
+
   const report = { reportDate, generatedAt: new Date().toISOString(), since, makerBoard,
-    durationMs: Date.now() - t0 };
+    preregistrations, durationMs: Date.now() - t0 };
 
   if (cache) cache.put(cacheKey, JSON.stringify(report), { expirationTtl: REPORT_TTL }).catch(() => {});
   return jsonResponse(report);
