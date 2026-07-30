@@ -2846,6 +2846,64 @@ async function handleShadowReport({ path, request, env, cache }) {
   // `wouldMatch > 0` means the detector is broken. All rejections in `sideMismatch` means our
   // taker_side convention is inverted. All in `outsideWindow` means the segment bookkeeping, not
   // the matcher, is what diverges from a live order.
+  // ── ?makerCell=sport|category|band — drill into ONE heatmap cell (2026-07-29) ────────────────
+  // The heatmap tooltip gives a cell's summary; this answers the question that separates a real
+  // mechanism from a lucky stretch: is the edge spread across the days, or is it two of them? Per
+  // day it returns fills/contracts/sideWon/¢-per-contract, plus the top tickers (which games), plus
+  // the day-clustered CI echoed. Graded, source='live'. Read-only. The reliability bar is NOT
+  // multiplicity-corrected, so a single "clears zero" cell out of ~280 is expected under pure
+  // noise — this exists to inspect such a cell, not to bless it.
+  if (new URL(request.url).searchParams.get("makerCell")) {
+    const spec = new URL(request.url).searchParams.get("makerCell");
+    const [sport, category, band] = spec.split("|");
+    if (!sport || !category || !band) return errorResponse("makerCell must be sport|category|band", 400);
+    try {
+      const _bandCase = _makerBandCase("f.fill_ask");
+      const perDay = await neonQuery(
+        `SELECT q.game_date AS day, COUNT(*)::int AS fills,
+           COALESCE(SUM(f.contracts),0)::numeric AS contracts,
+           COALESCE(SUM(f.pnl_cents*f.contracts),0)::numeric AS pnl_total,
+           COALESCE(SUM((f.side_won)::int::numeric*f.contracts),0)::numeric AS won_contracts,
+           ROUND(AVG(f.fill_ask),1) AS avg_ask
+         FROM maker_fills f JOIN maker_quotes q ON q.id=f.quote_id
+         WHERE q.source='live' AND f.graded_at IS NOT NULL
+           AND q.sport=$1 AND COALESCE(q.category,q.sport)=$2 AND ${_bandCase}=$3
+         GROUP BY 1 ORDER BY 1`, [sport, category, band], env, { write: true });
+      const topTickers = await neonQuery(
+        `SELECT q.ticker, q.quote_side AS side, COUNT(*)::int AS fills,
+           COALESCE(SUM(f.contracts),0)::numeric AS contracts,
+           ROUND(COALESCE(SUM(f.pnl_cents*f.contracts),0) / NULLIF(SUM(f.contracts),0), 1) AS pnl_per_ct,
+           ROUND(AVG((f.side_won)::int::numeric),2) AS side_won
+         FROM maker_fills f JOIN maker_quotes q ON q.id=f.quote_id
+         WHERE q.source='live' AND f.graded_at IS NOT NULL
+           AND q.sport=$1 AND COALESCE(q.category,q.sport)=$2 AND ${_bandCase}=$3
+         GROUP BY q.ticker, q.quote_side ORDER BY contracts DESC LIMIT 15`, [sport, category, band], env, { write: true });
+      const days = perDay.map(r => ({
+        day: String(r.day).slice(0, 10), fills: Number(r.fills),
+        contracts: parseFloat(Number(r.contracts).toFixed(1)),
+        perContract: Number(r.contracts) ? parseFloat((Number(r.pnl_total) / Number(r.contracts)).toFixed(2)) : null,
+        sideWon: Number(r.contracts) ? parseFloat((Number(r.won_contracts) / Number(r.contracts)).toFixed(3)) : null,
+        avgAsk: r.avg_ask != null ? Number(r.avg_ask) : null,
+      }));
+      const dc = dayClusteredPnl({ days: perDay.map(r => ({ pnl: Number(r.pnl_total), contracts: Number(r.contracts) })) });
+      return jsonResponse({
+        ok: true, cell: { sport, category, band },
+        totals: {
+          fills: days.reduce((a, d) => a + d.fills, 0),
+          contracts: parseFloat(days.reduce((a, d) => a + d.contracts, 0).toFixed(1)),
+          days: days.length,
+          perContract: dc?.mean ?? null, ciLo: dc?.loCI ?? null, ciHi: dc?.hiCI ?? null,
+          positiveDays: days.filter(d => (d.perContract ?? 0) > 0).length,
+        },
+        byDay: days,
+        topTickers: topTickers.map(r => ({ ticker: r.ticker, side: r.side, fills: Number(r.fills),
+          contracts: parseFloat(Number(r.contracts).toFixed(1)),
+          perContract: r.pnl_per_ct != null ? Number(r.pnl_per_ct) : null,
+          sideWon: r.side_won != null ? Number(r.side_won) : null })),
+      });
+    } catch (e) { return errorResponse(`makerCell failed: ${e?.message}`, 500); }
+  }
+
   if (new URL(request.url).searchParams.get("makerFillForensic")) {
     const dayPT = new URL(request.url).searchParams.get("makerFillForensic");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dayPT)) return errorResponse("makerFillForensic must be YYYY-MM-DD", 400);
