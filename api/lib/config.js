@@ -1,10 +1,17 @@
-// Shared universal-qualification tunables. Single source of truth — imported by both
-// the server (api/lib/handlers/tonight.js) and the client (src/App.jsx, LineupsPage.jsx).
+// Shared tunables for the tonight emit pipeline. Single source of truth — imported by the
+// server emit modules (api/lib/tonight/{props,ml-spread,game-totals}.js).
 //
-// Server and client use different EDGE gates intentionally: server stores every pick at
-// edge≥3 to preserve calibration data continuity, client filters display to ≥5 (the
-// tighter regime per feedback_totals_aggressive_corrections). See CLAUDE.md "Universal
-// qualification" for context.
+// ⚠️ POST-TAKER-TEARDOWN NOTE (2026-07-30). These were the taker "bet window" constants. The
+// taker STRATEGY is gone (Phases 1-2: no bet is decided, placed, displayed, or notified), and
+// no client imports this file anymore (the frontend gates were deleted with the taker UI). But
+// KALSHI_GATE / KALSHI_CAP / EDGE_GATE_SERVER / betWindowFor / CATEGORY_BET_WINDOWS were NOT
+// removed, because the shadow-capture instrument was silently repurposed onto them: the emit
+// modules use these boundaries to set the `qualified` marker, which drives the per-player-stat
+// dedup (props.js), the game/team-total cross-winner pick (game-totals.js), and therefore which
+// rows — and how many — reach `shadow_plays` (grouping, is_best_edge, features). Removing them
+// would HALVE captured rows + the player card, not delete dead code. They are retained as
+// instrument internals; only EDGE_GATE_CLIENT (the frontend-only display/track gate) was dead
+// and removed. Do not "finish the teardown" by ripping these out — that blinds the instrument.
 
 // ── No validated edge yet (2026-07-28, reframed 2026-07-29) ─────────────────────────────────
 // Posture, not an epitaph: **nothing has cleared its validation bar yet, so we accumulate rather
@@ -36,10 +43,13 @@
 // invites both the wrong conclusion and the wrong fix.
 export const AWAITING_VALIDATED_EDGE = true;
 
+// Capture-partition boundaries (formerly the taker bet window — see the post-teardown note above).
+// The emit modules use these to mark a row `qualified` and route it through dedup/grouping, which
+// determines what lands in shadow_plays. NOT a bet gate anymore; renaming is deferred (behavior-
+// preserving churn across ~40 emit sites) and the values must not change without a capture-diff.
 export const KALSHI_GATE = 67;        // ~-200 American odds floor (66.67% rounded up)
 export const KALSHI_CAP  = 91;        // ~-1000 American odds cap (90.91% rounded up)
-export const EDGE_GATE_SERVER = 3;    // server-side filter, preserved for calibration analysis
-export const EDGE_GATE_CLIENT = 5;    // client-side filter for display + tracking gate
+export const EDGE_GATE_SERVER = 3;    // edge floor for the `qualified` capture-grouping marker
 
 // Capture (shadow-logging) bounds — quote-sanity only. Full-curve capture (2026-07-03): the
 // goal was always to track ALL picks and let the data locate where the model performs best;
@@ -49,7 +59,7 @@ export const EDGE_GATE_CLIENT = 5;    // client-side filter for display + tracki
 // its floor made any sub-55 derived bet window (e.g. f5ml's discovered 40–55) unshippable via
 // betWindowFor's bounds check. Measured cost of de-gating: ~+19% rows/day, no plan-tier change.
 // 1/99 exclude only structurally dead quotes (ask of 0 = no ask; 100 = no real offer). These
-// gate ONLY what gets logged; the `qualified` bet flag still uses betWindowFor (global [67,91]).
+// gate ONLY what gets logged; the `qualified` capture-grouping marker uses betWindowFor ([67,91]).
 // The liquidity gate below (CAPTURE_MAX_SPREAD) stays — it rejects fake prices, not price levels.
 export const CAPTURE_GATE = 1;        // capture floor — a 0¢ ask is an absent quote, not a price
 export const CAPTURE_CAP  = 99;       // capture cap — a 100¢ ask is an absent offer, not a price
@@ -131,8 +141,9 @@ export const CATEGORY_BET_WINDOWS = {
   "mlb|hrr": [24, 33],
 };
 
-// The bet window for a category: its derived override if set, else the global [67,91]. One
-// chokepoint — imported by the server qualified flag (tonight.js) and the client core (qualify.js).
+// The window for a category: its derived override if set, else the global [67,91]. One chokepoint
+// — used by props.js to set the `qualified` capture-grouping marker (the client core that also
+// imported this was removed with the taker UI, 2026-07-30).
 export function betWindowFor(sport, stat) {
   const w = CATEGORY_BET_WINDOWS[`${sport}|${stat}`];
   if (Array.isArray(w) && w.length === 2 &&
