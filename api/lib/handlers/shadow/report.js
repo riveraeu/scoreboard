@@ -5,10 +5,12 @@
 // polymarket/sportsbook validation, dataHealth, topPicks, categories, topBands, clv, perGameRoi.
 // None of those were consumed by the frontend after the MakerBoardPage strip (2026-07-29).
 // Response shape: { reportDate, generatedAt, since, makerBoard, preregistrations, dataFreshness,
-// discovery, durationMs }. `makerBoard` is the only field the UI reads; `preregistrations`,
-// `dataFreshness`, and `discovery` are consumed by the (non-UI) morning report that pulls this
-// endpoint — dataFreshness asserts the heatmap is current through last night, discovery is the
-// series-scan vet queue.
+// discovery, uiHealth, durationMs }. `makerBoard` is the only field the UI reads; `preregistrations`,
+// `dataFreshness`, `discovery`, and `uiHealth` are consumed by the (non-UI) morning report that pulls
+// this endpoint — dataFreshness asserts the heatmap is current through last night, discovery is the
+// series-scan vet queue, uiHealth asserts the landing page's rendered payload is present + complete
+// (a "current" dataFreshness with an empty/degenerate categoryBands still renders a BLANK board —
+// only uiHealth catches that).
 //
 // Diagnostic branches still live (all return before the report cache and accept ADMIN_KEY):
 //   ?makerQueueCheck=1       V1-vs-V2 fill agreement (queue-priority calibration)
@@ -78,6 +80,58 @@ function _extractReportToken(request) {
   const m = cookie.match(/(?:^|;\s*)sb_token=([^;]+)/);
   if (m?.[1]) return m[1];
   return (request.headers.get("Authorization") || "").replace(/^Bearer\s+/, "");
+}
+
+// Mirrors CategoryBandHeatmap's maxRows default (src/components/MakerBoardPage.jsx) — kept here only
+// to report rowsShown/rowsHidden; if the component's default changes, update this too (the numbers
+// are advisory, not a gate, so drift is cosmetic).
+const _HEATMAP_MAX_ROWS = 40;
+
+// Pure UI-health check over the already-assembled report payload. Validates the two fields the
+// landing page renders against the exact keys the components read:
+//   CategoryBandHeatmap  → makerBoard.categoryBands[].{sport,category,band,contracts,perContract}
+//     (render-critical: a missing one draws a blank or NaN square; reliable/anomaly/fills/… are
+//      tooltip/style-only and degrade gracefully, so they are counted, not gated)
+//   PreregTracker        → preregistrations[].{id,verdict,checkpoint,forwardStart,label,checks[]}
+function computeUiHealth(makerBoard, preregistrations) {
+  const warnings = [];
+
+  const mbPresent = !!makerBoard;
+  const cells = Array.isArray(makerBoard?.categoryBands) ? makerBoard.categoryBands : [];
+  const CELL_RENDER_FIELDS = ["sport", "category", "band", "contracts", "perContract"];
+  const cellsMissingRenderField = cells.filter(c => CELL_RENDER_FIELDS.some(f => c?.[f] == null)).length;
+  const rows = new Set(cells.map(c => `${c?.sport}|${c?.category}`)).size;
+  const reliableCells = cells.filter(c => c?.reliable).length;
+  const anomalyCells = cells.filter(c => c?.anomaly).length;
+  const heatmapRendered = mbPresent && cells.length > 0;
+
+  if (!mbPresent) warnings.push("makerBoard is null — board shows the 'not in this report yet' fallback");
+  else if (!cells.length) warnings.push("categoryBands is empty — heatmap shows the 'appears with first graded fills' placeholder");
+  if (cellsMissingRenderField > 0)
+    warnings.push(`${cellsMissingRenderField} heatmap cell(s) missing a render-critical field (${CELL_RENDER_FIELDS.join("/")}) — would render blank/NaN`);
+
+  const pregs = Array.isArray(preregistrations) ? preregistrations : [];
+  const PREREG_RENDER_FIELDS = ["id", "verdict", "checkpoint", "forwardStart", "label"];
+  const preregMalformed = pregs.filter(p =>
+    PREREG_RENDER_FIELDS.some(f => p?.[f] == null) || !Array.isArray(p?.checks)).length;
+  if (preregMalformed > 0)
+    warnings.push(`${preregMalformed} prereg card(s) missing a render field — PreregTracker row breaks`);
+
+  return {
+    ok: heatmapRendered && cellsMissingRenderField === 0 && preregMalformed === 0,
+    heatmap: {
+      rendered: heatmapRendered,
+      cells: cells.length,
+      rows,
+      rowsShown: Math.min(rows, _HEATMAP_MAX_ROWS),
+      rowsHidden: Math.max(0, rows - _HEATMAP_MAX_ROWS),
+      reliableCells,
+      anomalyCells,
+      cellsMissingRenderField,
+    },
+    preregTracker: { rendered: pregs.length > 0, cards: pregs.length, malformed: preregMalformed },
+    warnings,
+  };
 }
 
 async function handleShadowReport({ path, request, env, cache }) {
@@ -974,8 +1028,18 @@ async function handleShadowReport({ path, request, env, cache }) {
     };
   } catch (e) { console.error("[shadow-report] discovery skipped:", e?.message); }
 
+  // ── UI health — the landing page's rendered payload is present + complete ────────────────────
+  // MakerBoardPage draws exactly two things: PreregTracker(preregistrations) and
+  // CategoryBandHeatmap(makerBoard.categoryBands). This asserts BOTH against the fields those
+  // components actually read. dataFreshness answers "is the data current?"; this answers "will the
+  // page render?" — orthogonal, because an on-time report can still ship an empty/degenerate
+  // categoryBands (blank board) or a cell missing a render field (blank/NaN square). Pure, computed
+  // from the in-memory payload above, so it can never disagree with what ships. Failure-closed by
+  // construction — every guard handles null.
+  const uiHealth = computeUiHealth(makerBoard, preregistrations);
+
   const report = { reportDate, generatedAt: new Date().toISOString(), since, makerBoard,
-    preregistrations, dataFreshness, discovery, durationMs: Date.now() - t0 };
+    preregistrations, dataFreshness, discovery, uiHealth, durationMs: Date.now() - t0 };
 
   if (cache) cache.put(cacheKey, JSON.stringify(report), { expirationTtl: REPORT_TTL }).catch(() => {});
   return jsonResponse(report);
