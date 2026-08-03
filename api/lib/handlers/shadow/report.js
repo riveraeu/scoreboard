@@ -5,12 +5,14 @@
 // polymarket/sportsbook validation, dataHealth, topPicks, categories, topBands, clv, perGameRoi.
 // None of those were consumed by the frontend after the MakerBoardPage strip (2026-07-29).
 // Response shape: { reportDate, generatedAt, since, makerBoard, preregistrations, dataFreshness,
-// discovery, uiHealth, durationMs }. `makerBoard` is the only field the UI reads; `preregistrations`,
-// `dataFreshness`, `discovery`, and `uiHealth` are consumed by the (non-UI) morning report that pulls
-// this endpoint — dataFreshness asserts the heatmap is current through last night, discovery is the
-// series-scan vet queue, uiHealth asserts the landing page's rendered payload is present + complete
-// (a "current" dataFreshness with an empty/degenerate categoryBands still renders a BLANK board —
-// only uiHealth catches that).
+// discovery, uiHealth, robustCandidates, durationMs }. `makerBoard` is the only field the UI reads;
+// `preregistrations`, `dataFreshness`, `discovery`, `uiHealth`, and `robustCandidates` are consumed by
+// the (non-UI) morning report that pulls this endpoint — dataFreshness asserts the heatmap is current
+// through last night, discovery is the series-scan vet queue, uiHealth asserts the landing page's
+// rendered payload is present + complete (a "current" dataFreshness with an empty/degenerate
+// categoryBands still renders a BLANK board — only uiHealth catches that), and robustCandidates is the
+// heatmap-robustness TRIPWIRE (expected NONE; a hit prompts a mechanism-first pre-registration, never
+// a bet — see computeRobustCandidates).
 //
 // Diagnostic branches still live (all return before the report cache and accept ADMIN_KEY):
 //   ?makerQueueCheck=1       V1-vs-V2 fill agreement (queue-priority calibration)
@@ -131,6 +133,43 @@ function computeUiHealth(makerBoard, preregistrations) {
     },
     preregTracker: { rendered: pregs.length > 0, cards: pregs.length, malformed: preregMalformed },
     warnings,
+  };
+}
+
+// ── Robust-candidate tripwire (morning-report only; NOT read by the frontend) ──────────────────────
+// The category × band heatmap is a map of noise: 555 cells, ~1/40 clear a 95% CI by chance with zero
+// real edge, so its bright cells are (mostly) selection artifacts. Eyeballing the greenest and
+// "advancing" it is the in-sample target-picker the REENTRY doctrine has gone 0-for-6 on. This is the
+// disciplined inverse: a strict structural bar that a cell must cross before it is even a PRE-
+// REGISTRATION candidate — the day-clustered CI already excludes zero (`reliable`), plus the sample
+// depth + spread the f5total pre-registration itself required: >= 8 days, >= 50 fills, and no single
+// slate carrying it (top-day share <= 0.35). It is a TRIPWIRE, not a shortlist: the expected output is
+// NONE (which is the honest state of the board), and a hit is a prompt to sit down and design a
+// mechanism-first pre-registration (a new docs/MAKER_*_PREREG.md), NEVER a cell to bet or rank.
+// Robustness is necessary, not sufficient — f5total was clean in-sample and still inverted forward.
+const ROBUST_BAR = { minDays: 8, minFills: 50, maxTopDayShare: 0.35 };
+function computeRobustCandidates(makerBoard) {
+  const cells = Array.isArray(makerBoard?.categoryBands) ? makerBoard.categoryBands : [];
+  // `reliable` already encodes day-clustered ciLo > 0 && days >= 3 — the positive-edge side only; a
+  // robustly NEGATIVE cell is an integrity/anomaly concern, not a prereg candidate, so it's excluded
+  // here by construction (it surfaces via the anomaly ring instead).
+  const candidates = cells
+    .filter(c => c?.reliable === true
+      && (c.days || 0) >= ROBUST_BAR.minDays
+      && (c.fills || 0) >= ROBUST_BAR.minFills
+      && c.topDayShare != null && c.topDayShare <= ROBUST_BAR.maxTopDayShare)
+    .map(c => ({ cell: `${c.sport}|${c.category}|${c.band}`, sport: c.sport, category: c.category,
+      band: c.band, fills: c.fills, days: c.days, perContract: c.perContract,
+      ciLo: c.ciLo, ciHi: c.ciHi, topDayShare: c.topDayShare }))
+    .sort((a, b) => (b.perContract ?? -Infinity) - (a.perContract ?? -Infinity));
+  return {
+    bar: ROBUST_BAR,
+    count: candidates.length,
+    candidates,
+    // The note travels with the payload so the morning report can never restate it as "top picks".
+    note: candidates.length === 0
+      ? "no cell has crossed the robustness bar — the board is still selection noise; nothing to pre-register"
+      : "NOT a bet list — each is a candidate for a mechanism-first pre-registration only (new docs/MAKER_*_PREREG.md); robustness ≠ edge (f5total was clean in-sample and failed forward)",
   };
 }
 
@@ -1038,11 +1077,16 @@ async function handleShadowReport({ path, request, env, cache }) {
   // construction — every guard handles null.
   const uiHealth = computeUiHealth(makerBoard, preregistrations);
 
+  // Robust-candidate tripwire (morning report only) — a strict structural bar over categoryBands,
+  // expected NONE. A hit is a prompt for a mechanism-first pre-registration, never a bet. Pure,
+  // computed from the in-memory payload so it can't disagree with the heatmap that shipped.
+  const robustCandidates = computeRobustCandidates(makerBoard);
+
   const report = { reportDate, generatedAt: new Date().toISOString(), since, makerBoard,
-    preregistrations, dataFreshness, discovery, uiHealth, durationMs: Date.now() - t0 };
+    preregistrations, dataFreshness, discovery, uiHealth, robustCandidates, durationMs: Date.now() - t0 };
 
   if (cache) cache.put(cacheKey, JSON.stringify(report), { expirationTtl: REPORT_TTL }).catch(() => {});
   return jsonResponse(report);
 }
 
-export { handleShadowReport };
+export { handleShadowReport, computeRobustCandidates, ROBUST_BAR };
