@@ -7,29 +7,14 @@
 // the REENTRY doctrine has gone 0-for-6 on. The only honest countdown is a CALENDAR checkpoint on a
 // cell whose bar was fixed BEFORE the forward window opened. Each entry here mirrors a committed
 // docs/MAKER_*_PREREG.md; changing any threshold voids that pre-registration, so maker-prereg.test.js
-// pins every value. Adding a second pre-registered cell is a new array entry + a new PREREG doc.
-
-export const PREREG_CELLS = [
-  {
-    id: "f5total-5054",
-    sport: "mlb", category: "f5total", band: "50-54",
-    doc: "docs/MAKER_F5TOTAL_PREREG.md",
-    label: "mlb f5total 50-54",
-    hypothesis: "market overprices the barely-favorite side of first-5 totals — the sold (favorite) "
-      + "side should win materially less than its ~52% price implies",
-    forwardStart: "2026-07-30", // OOS = game_date >= this (first day fully after the in-sample set)
-    checkpoint: "2026-08-13",   // ~2 weeks / ~14 MLB days
-    // GREEN criteria — ALL must hold on the forward window (fixed 2026-07-29, docs/MAKER_F5TOTAL_PREREG.md).
-    criteria: {
-      ciLoAbove: 0,          // 1. day-clustered CI lower bound > 0
-      meanFloorC: 5,         // 2. mean >= +5¢/contract (clears variance drag + fees + adverse selection)
-      positiveDayFrac: 0.60, // 3. positive on >= 60% of forward days (not one slate carrying it)
-      sideWonBelow: 0.45,    // 4. sold side wins < 45% (the mechanism must persist, not just PnL)
-      minDays: 8,            // 5a. sample floor — days
-      minFills: 50,          // 5b. sample floor — fills
-    },
-  },
-];
+// pins every value. Adding a pre-registered cell is a new array entry + a new PREREG doc.
+//
+// Currently EMPTY. The one entry, `f5total-5054` (docs/MAKER_F5TOTAL_PREREG.md), was KILLED EARLY on
+// 2026-08-03 — day 3 of 8, below the sample floor but failing every mechanism/PnL criterion (mean
+// −4.8¢, sideWon 0.565 vs the < 0.45 bar, day-clustered CI-lo −14.7). A discretionary stop-risk
+// kill, not a checkpoint verdict; per the KILL rule a failed forward test is the answer and the cell
+// is not re-sliced. The next forward test is a new id + a new doc, not a re-open of this one.
+export const PREREG_CELLS = [];
 
 // Pure evaluation of a forward result against a spec's fixed criteria. `result` carries exactly the
 // fields the report's makerCell aggregation produces for the forward window (so the verdict matches

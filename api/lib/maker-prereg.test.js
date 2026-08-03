@@ -4,24 +4,28 @@ import assert from "node:assert/strict";
 import { PREREG_CELLS, evaluatePrereg } from "./maker-prereg.js";
 
 // The registry mirrors committed docs/MAKER_*_PREREG.md files whose thresholds are FIXED before the
-// forward window opens — moving one post-hoc voids the pre-registration. These assertions are the
-// tripwire against a silent drift of exactly that kind. If a threshold legitimately changes, it's a
-// NEW pre-registration (new doc, new id), not an edit here.
-test("f5total-5054 pre-registration criteria are pinned to the committed doc", () => {
-  const spec = PREREG_CELLS.find((c) => c.id === "f5total-5054");
-  assert.ok(spec, "f5total-5054 must exist");
-  assert.equal(spec.sport, "mlb");
-  assert.equal(spec.category, "f5total");
-  assert.equal(spec.band, "50-54");
-  assert.equal(spec.forwardStart, "2026-07-30");
-  assert.equal(spec.checkpoint, "2026-08-13");
-  assert.deepEqual(spec.criteria, {
-    ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60,
-    sideWonBelow: 0.45, minDays: 8, minFills: 50,
-  });
+// forward window opens — moving one post-hoc voids the pre-registration. It is currently EMPTY
+// (f5total-5054 killed 2026-08-03). This structural contract stands whether the registry is empty or
+// not, and re-enforces the shape the moment a cell is added: every live entry must carry the fields
+// the report + PreregTracker render and a real committed PREREG doc. A NEW cell re-adds its own
+// exact-value pin here (per the "new id + new doc" rule) — this test never needs editing to add one.
+test("every PREREG_CELLS entry carries its render-critical + doc fields", () => {
+  for (const spec of PREREG_CELLS) {
+    for (const f of ["id", "sport", "category", "band", "doc", "label", "forwardStart", "checkpoint", "criteria"])
+      assert.ok(spec[f] != null, `${spec.id || "entry"} missing ${f}`);
+    assert.match(spec.doc, /^docs\/MAKER_.*_PREREG\.md$/, `${spec.id} doc must be a committed PREREG file`);
+    for (const k of ["ciLoAbove", "meanFloorC", "positiveDayFrac", "sideWonBelow", "minDays", "minFills"])
+      assert.equal(typeof spec.criteria[k], "number", `${spec.id} criteria.${k} must be a number`);
+  }
 });
 
-const SPEC = PREREG_CELLS.find((c) => c.id === "f5total-5054");
+// evaluatePrereg is pure; exercise it against a synthetic spec so these tests stand independent of
+// what is (or isn't) in PREREG_CELLS. checkpoint mirrors the killed f5total cell's so the dated
+// PASS/KILL cases below read naturally.
+const SPEC = {
+  id: "synthetic", checkpoint: "2026-08-13",
+  criteria: { ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.45, minDays: 8, minFills: 50 },
+};
 
 // A result that satisfies every GREEN criterion, used as the base for the negative cases below.
 const PASSING = { days: 10, fills: 120, mean: 8, ciLo: 2, positiveDays: 7, sideWon: 0.40 };

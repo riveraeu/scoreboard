@@ -1,5 +1,15 @@
 # Pre-registration — mlb f5total 50-54¢ maker cell (2026-07-29)
 
+> **OUTCOME — KILLED EARLY 2026-08-03 (day 3 of 8, before the 2026-08-13 checkpoint).**
+> A discretionary stop-risk kill, not a checkpoint verdict. The forward window never reached the
+> criterion-5 sample floor (3 days / 113 fills), but every *mechanism* and PnL criterion was failing
+> and moving the wrong way: forward mean **−4.8¢/ct** (bar +5), **sideWon 0.565** vs the < 0.45 bar
+> (the sold favorite was *winning* more than its price implied — the hypothesis inverted), day-
+> clustered CI-lo **−14.7** (bar > 0), 1 of 3 days positive. Per the KILL rule below, a failed
+> forward test is the answer — the cell is **not** re-sliced, widened, or extended. Removed from
+> `PREREG_CELLS` the same day. The criteria below are left unchanged as the historical record; a
+> future test on this cell would be a NEW id + a NEW doc, never an edit here.
+
 Written and committed **before** any forward day exists. The criteria below are fixed as of
 2026-07-29 and cannot be changed after seeing the forward result. Moving any threshold post-hoc
 voids the pre-registration.
