@@ -17,7 +17,6 @@ import { fetchKalshiMarkets } from "../tonight/kalshi-pipeline.js";
 import { blendMarketPrice } from "../tonight/blend-fill.js";
 import { CAPTURE_GATE, CAPTURE_CAP, capturableSpread } from "../config.js";
 import { TEAM_NORM, normTeam, parseGameTeams } from "../tonight/parse-teams.js";
-import { dedupAltLines } from "../tonight/dedup.js";
 import { emitAllMlAndSpread } from "../tonight/ml-spread.js";
 import { emitGameTotalPlays } from "../tonight/game-totals.js";
 import { emitPropPlays } from "../tonight/props.js";
@@ -1870,16 +1869,9 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
         const { _mlbMlContext, _nbaMlContext, _wnbaMlContext, _nhlMlContext } =
           await emitGameTotalPlays({
             plays, dropped, isDebug, cutoffStr, gameTimes,
-            CACHE2, isBustCache, PROD_SPORTS,
             totalMarkets, teamTotalMarkets,
-            nbaInjuryMap, wnbaInjuryMap, nbaUsageMap, wnbaUsageMap,
             mlbBothTeamsConfirmed: _mlbBothTeamsConfirmed,
             sportByteam,
-            leagueAvgCache,
-            mlbRPGMap, mlbRoadRPGMap, mlbTeamERAMap, mlbTeamWHIPMap, mlbBullpenERAMap,
-            nhlGPGMap, nhlGAAMap, nhlLeagueAvgGAA, nhlGoalieByTeam, nhlLeagueAvgSV,
-            nbaOffPPGMap, nbaLeagueAvgOffPPG,
-            nbaPaceData, wnbaPaceData, STAT_SOFT,
           });
         // ── ML / Spread / F5 / Halves emission — all sports ──────────────────────────────
         // Extracted to api/lib/tonight/ml-spread.js (Phase B, 2026-05-29).
@@ -1975,13 +1967,9 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
             return isNaN(t) || t > _nowMs;
           }));
         }
-        // Per-matchup alt-line dedup — key semantics + keep/demote pass extracted to
-        // api/lib/tonight/dedup.js (2026-06-11) so they're unit-testable.
-        {
-          const { kept: _kept, demoted: _demoted } = dedupAltLines(plays);
-          plays.splice(0, plays.length, ..._kept, ..._demoted);
-          if (isDebug) dropped.push(..._demoted);
-        }
+        // Alt-line dedup removed with the model teardown (2026-08-04): capture-all-sides means
+        // every alt threshold/line + both sides are their own model-free rows, so there is no
+        // "best edge" to keep or demote. (Was api/lib/tonight/dedup.js — deleted.)
         // Mark plays whose source kalshi series fell back to per-ticker stale (or prior-bundle
         // preservation) this request. Single pass keeps the per-play push sites untouched.
         if (_staleKalshiSet.size) {

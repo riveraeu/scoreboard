@@ -41,33 +41,22 @@ function groupId(p, fallbackDate = "") {
   return `tm|${p.sport}|${p.stat || p.gameType}|${p.homeTeam}|${p.awayTeam}|${p.gameDate || fallbackDate || ""}`;
 }
 
-// Annotate each play with threshold_rank (1 = closest to 50% — most information) and
-// is_best_edge within its group. Mutates the plays in-place.
+// Annotate each play with its group_id + group_size (alt-line grouping — still structurally
+// meaningful for intra-group analyses). threshold_rank and is_best_edge are the EDGE-RANKING
+// columns; with the model teardown (2026-08-04) every row is model-free (truePct/edge null), so
+// ranking is meaningless and would be misleading — both go NULL. Mutates the plays in-place.
 function annotateGroups(plays, fallbackDate = "") {
   const groups = new Map();
   for (const p of plays) {
     const gid = groupId(p, fallbackDate);
     p._gid = gid;
+    p._rank = null;         // edge ranking dropped (model-free)
+    p._isBestEdge = null;   // edge ranking dropped (model-free)
     if (!groups.has(gid)) groups.set(gid, []);
     groups.get(gid).push(p);
   }
-
   for (const [, group] of groups) {
-    // Sort by distance from 50% (ascending = rank 1 closest to 50%)
-    const sorted = [...group].sort((a, b) =>
-      Math.abs((a.truePct ?? 50) - 50) - Math.abs((b.truePct ?? 50) - 50)
-    );
-    const bestEdge = group.reduce((best, p) =>
-      (p.edge ?? 0) > (best.edge ?? 0) ? p : best
-    , group[0]);
-
-    for (let i = 0; i < sorted.length; i++) {
-      sorted[i]._rank = i + 1;
-    }
-    for (const p of group) {
-      p._groupSize = group.length;
-      p._isBestEdge = p === bestEdge;
-    }
+    for (const p of group) p._groupSize = group.length;
   }
 }
 
@@ -709,7 +698,7 @@ async function handleShadowSnapshot({ path, request, env, cache }) {
       group_id: p._gid,
       group_size: p._groupSize,
       threshold_rank: p._rank,
-      is_best_edge: p._isBestEdge ?? false,
+      is_best_edge: p._isBestEdge ?? null,
       snapshot_model_version: p.modelVersion || "v2",
       season_type: p.seasonType ?? null,
       features: extractFeatures(p),
