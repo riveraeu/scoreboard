@@ -59,6 +59,18 @@ test("parseGameTeams: MLS variable-length splits (2/3/4-char mix, like WNBA)", (
   assert.deepEqual(parseGameTeams(ticker("PHISEA"), "mls"), ["PHI", "SEA"]);
 });
 
+test("parseGameTeams: copadobrasil 2-char CR (Remo) split, no false 3+2 fallback", () => {
+  // The bug: copadobrasil was NOT in the variable-length split allowlist, so CRSAN (Remo+Santos)
+  // fell through to the unvalidated 3+2 fallback → ["CRS","AN"] (both invalid). CR has no TEAM_NORM
+  // alias (registry has no kalshi aliases), so the generic has2charPrefix path could not save it.
+  assert.deepEqual(parseGameTeams(ticker("CRSAN"), "copadobrasil"), ["CR", "SAN"]);
+  // Longer-left preference must still win: CRUCHA is CRU+CHA, not CR+UCHA.
+  assert.deepEqual(parseGameTeams(ticker("CRUCHA"), "copadobrasil"), ["CRU", "CHA"]);
+  // 3+3 common case + an espnScore-aliased code (ATL canonical here = Atlético Mineiro).
+  assert.deepEqual(parseGameTeams(ticker("JUVATL"), "copadobrasil"), ["JUV", "ATL"]);
+  assert.deepEqual(parseGameTeams(ticker("CORINT"), "copadobrasil"), ["COR", "INT"]);
+});
+
 test("parseGameTeams: MLB normalization inside split", () => {
   assert.deepEqual(parseGameTeams(ticker("CHWDET"), "mlb"), ["CWS", "DET"]);
   assert.deepEqual(parseGameTeams(ticker("OAKSEA"), "mlb"), ["ATH", "SEA"]);
