@@ -4,19 +4,11 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test api/lib/config.test.js api/lib/maker.test.js api/lib/maker-live.test.js api/lib/maker-backfill.test.js api/lib/price-window.test.js api/lib/kv-compress.test.js api/lib/kalshi-flow.test.js api/lib/kalshi-series-check.test.js api/lib/kalshi-settlement.test.js api/lib/kalshi-ticker.test.js api/lib/settlement-reconcile.test.js api/lib/maker-stats.test.js api/lib/maker-prereg.test.js api/lib/maker-leadtime.test.js api/lib/handlers/shadow-coverage.test.js api/lib/handlers/shadow/report.test.js api/lib/simulate.test.js api/lib/utils.test.js api/lib/teams.test.js api/lib/tennis-schedule.test.js api/lib/mma-card.test.js api/lib/lmb-schedule.test.js api/lib/polymarket.test.js api/lib/sportsbook.test.js api/lib/tonight/mlb-outs.test.js api/lib/tonight/sportsbook-deltas.test.js api/lib/tonight/parse-teams.test.js",
-    "test:jxa": "osascript -l JavaScript api/lib/simulate.test.jxa.js",
-    "backtest": "node scripts/backtest/run.js",
+    "test": "node --test api/lib/config.test.js api/lib/maker.test.js api/lib/maker-live.test.js api/lib/maker-backfill.test.js api/lib/price-window.test.js api/lib/kv-compress.test.js api/lib/kalshi-flow.test.js api/lib/kalshi-series-check.test.js api/lib/kalshi-settlement.test.js api/lib/kalshi-ticker.test.js api/lib/settlement-reconcile.test.js api/lib/maker-stats.test.js api/lib/maker-prereg.test.js api/lib/maker-leadtime.test.js api/lib/handlers/shadow-coverage.test.js api/lib/handlers/shadow/report.test.js api/lib/utils.test.js api/lib/teams.test.js api/lib/tennis-schedule.test.js api/lib/mma-card.test.js api/lib/lmb-schedule.test.js api/lib/polymarket.test.js api/lib/sportsbook.test.js api/lib/tonight/mlb-outs.test.js api/lib/tonight/sportsbook-deltas.test.js api/lib/tonight/parse-teams.test.js",
     "tune:residual": "node scripts/tune/residual-by-dimension.js",
     "tune:learncurve": "node scripts/tune/learning-curve.js",
     "tune:window": "node scripts/tune/window-recommender.js",
-    "tune:kblend": "node scripts/tune/k-blend-counterfactual.js",
-    "backtest:weather": "node scripts/backtest/weather-hr-study.js",
-    "backtest:umpire": "node scripts/backtest/umpire-k-study.js",
-    "backtest:nbarest": "node scripts/backtest/nba-rest-study.js",
-    "backtest:weatherruns": "node scripts/backtest/weather-runs-study.js",
-    "backtest:wnbatravel": "node scripts/backtest/wnba-travel-study.js",
-    "backtest:outs": "node scripts/backtest/outs-tail-study.js"
+    "tune:kblend": "node scripts/tune/k-blend-counterfactual.js"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

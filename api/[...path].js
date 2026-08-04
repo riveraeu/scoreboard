@@ -5,7 +5,6 @@ import { warmPlayerInfoCache } from "./lib/nba.js";
 import { handleAuthRoutes } from "./lib/handlers/auth.js";
 import { handlePlayerRoutes } from "./lib/handlers/player.js";
 import { handleSportsRoutes } from "./lib/handlers/sports.js";
-import { handleDvpRoutes } from "./lib/handlers/dvp.js";
 import { handleKalshiRoutes } from "./lib/handlers/kalshi.js";
 import { handleTonightRoute } from "./lib/handlers/tonight.js";
 import { handleShadowRoutes } from "./lib/handlers/shadow.js";
@@ -128,12 +127,8 @@ var VALID_SPORTS = [
 ];
 // pbkdf2Hash / makeJWT / verifyJWT live in ./lib/auth-utils.js (used by handlers/auth.js
 // and indirectly by handlers/tonight.js for the calibration JWT check).
-// NOTE: a Cloudflare-Workers-style `scheduled()` DvP staging handler lived here until
-// 2026-06-11 — it was dead code on Vercel (only the default-export fetch handler runs;
-// no vercel.json cron targeted it). NBA DvP is covered by the lazy build in
-// handlers/tonight.js, on-demand byteam builds in /api/dvp, and the manual
-// /api/dvp/rebuild-pos?stage=N endpoints. Before NBA season (Oct), consider adding real
-// vercel.json crons hitting /api/dvp/rebuild-pos to pre-warm instead of relying on lazy build.
+// The /api/dvp* handler (NBA/WNBA/MLB defense-vs-position model support) was deleted with the
+// model teardown (2026-08-04, slice 3) along with simulate.js and the backtest tree.
 var worker_default = {
   async fetch(request, env, ctx) {
     const CACHE2 = makeCache(env);
@@ -157,8 +152,6 @@ var worker_default = {
       if (_playerResp) return _playerResp;
       const _sportsResp = await handleSportsRoutes({ path, method, params, env, CACHE2, VALID_SPORTS });
       if (_sportsResp) return _sportsResp;
-      const _dvpResp = await handleDvpRoutes({ path, params, CACHE2, runtimeCtx: ctx, ESPN_CORE, jsonResponse, errorResponse });
-      if (_dvpResp) return _dvpResp;
       const _kalshiResp = await handleKalshiRoutes({ path, request, params, env, CACHE2, method, JWT_SECRET });
       if (_kalshiResp) return _kalshiResp;
       const _tonightResp = await handleTonightRoute({ path, params, request, env, CACHE2, runtimeCtx: ctx });
