@@ -1466,8 +1466,10 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
           if (!opp) { preDropped.push({ ...m, reason: "no_opp" }); continue; }
           preFilteredMarkets.push(m);
         }
-        // In debug mode, process ALL qualifying markets so every player gets a gamelog fetch and full stats
-        const loopMarkets = isDebugMode ? qualifyingMarkets : preFilteredMarkets;
+        // Model-free capture (2026-08-04): emit every captured prop market — the full curve, no
+        // player-data preFilter (there is no model to skip data-less markets for). preFilteredMarkets
+        // is still built above for the debug `preFilteredCount` + is removed with the model hydration.
+        const loopMarkets = qualifyingMarkets;
         const uniquePlayerKeys = [...new Map(loopMarkets.map((m) => [`${m.sport}|${m.playerName}`, m])).keys()];
         const playerInfoMap = {};
         const keysNeedingInfo = [];
@@ -1856,16 +1858,10 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
         // _OFFRTG_INJ_CAP / _injuryOffRtgFactor / _NBAshortNorm / _injuryOffRtgAdj — module level.
         // ── Player prop plays — all sports ──────────────────────────────────────────────
         // Extracted to api/lib/tonight/props.js (Phase B6, 2026-05-29).
-        const { plays, dropped, nbaDropped } = await emitPropPlays({
-          loopMarkets, playerInfoMap, playerGamelogs,
-          STAT_SOFT, sportByteam, gameTimes,
-          nbaInjuryMap, wnbaInjuryMap, nbaUsageMap, wnbaUsageMap,
-          allPositionsDvp, nbaDepthChartPos, wnbaDvpMap,
-          isDebug, _todayPT,
-          leagueAvgCache, nhlGPGMap, nhlGAAMap, nhlLeagueAvgGAA,
-          nbaPaceData, wnbaPaceData, nhlSaRankMap, nhlLeagueAvgSa,
-          pitcherGamelogs, nbaPlayerStatus,
-        });
+        // Model-free prop capture consumes only the parsed markets + gameTimes (2026-08-04 teardown).
+        // The model hydration (gamelogs, injury/usage/DVP/pace maps) is still built for game-totals /
+        // ml-spread below and is removed with them in the next teardown slice.
+        const { plays, dropped, nbaDropped } = await emitPropPlays({ loopMarkets, gameTimes, isDebug });
         // Filter out plays from old dates (yesterday cutoff handles UTC/local differences
         // for late games: a 9:40pm ET game = 1:40am UTC next day).
         const cutoffStr = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
