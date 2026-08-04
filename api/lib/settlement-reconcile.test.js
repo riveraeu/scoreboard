@@ -15,10 +15,11 @@ const graded = (entries) => new Map(entries.map(([id, won, sport = "lmb"]) => [i
 const voided = (entries) => new Map(entries.map(([id, sport = "lmb", result = "scalar"]) => [id, { sport, result }]));
 const byId = (res) => new Map(res.updates.map(u => [u.id, u]));
 
-test("authoritative set covers exactly the 15 shadow-only sports, and no calibrated family", () => {
-  assert.strictEqual(SETTLEMENT_AUTHORITATIVE_SPORTS.size, 15);
+test("authoritative set covers exactly the 16 shadow-only sports, and no calibrated family", () => {
+  assert.strictEqual(SETTLEMENT_AUTHORITATIVE_SPORTS.size, 16);
   for (const s of ["tennis", "soccer", "fight", "golf", "nascar", "nbasl", "lmb",
-                   "mls", "brasileirao", "nwsl", "chnsl", "ligamx", "scocup", "argprem", "dimayor"]) {
+                   "mls", "brasileirao", "nwsl", "chnsl", "ligamx", "scocup", "argprem", "dimayor",
+                   "copadobrasil"]) {
     assert.ok(isSettlementAuthoritative(s), `${s} should be authoritative`);
   }
   // The calibrated families must stay ESPN-graded — model accuracy needs physical reality.

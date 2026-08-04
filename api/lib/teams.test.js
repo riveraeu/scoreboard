@@ -34,6 +34,8 @@ const LEGACY_TEAM_NORM = {
   // ligamx) — RIV/IRM resolved via displayName in argprem.js's canonTeam, not TEAM_NORM.
   dimayor: {}, // canonical = Kalshi abbrs, no aliases — the CAL→DCI "Cali" collision is an
   // ESPN-side mapping (espnScore), so it lives in CANONICAL_TO_ESPN, not TEAM_NORM.
+  copadobrasil: {}, // canonical = Kalshi abbrs, no aliases (like brasileirao); the 4 espnScore
+  // aliases live in CANONICAL_TO_ESPN, not TEAM_NORM.
 };
 
 const LEGACY_VALID_TEAMS = {
@@ -45,6 +47,7 @@ const LEGACY_VALID_TEAMS = {
   lmb: ["ADM","AGU","ALG","BLE","CAL","CDJ","CON","DIA","DOR","GUE","LDY","ODT","PDC","PDP","RDA","SDM","SDS","TDQ","TDT","TEL"],
   mls: ["ATL","ATX","CHI","CIN","CLB","CLT","COL","DAL","DCU","HOU","LAFC","LAG","MIA","MIN","MTL","NE","NSH","NYC","NYRB","ORL","PHI","POR","RSL","SD","SEA","SJ","SKC","STL","TOR","VAN"],
   brasileirao: ["BAH","BOT","RBB","CAP","ATL","CFC","CHA","COR","CRU","FLA","FLU","GPA","INT","MIR","PAL","CR","SAN","SPA","VDG","VIT"],
+  copadobrasil: ["CAP","ATL","CHA","COR","CRU","FLU","FOR","GPA","INT","JUV","MIR","PAL","CR","SAN","VDG","VIT"],
   nwsl: ["WSP","DEN","SAN","REI","URO","NCC","KC","BOS","PTH","GOT","OPR","CHI","HDA","BAY"],
   chnsl: ["ZHP","DAL","CHR","BJG","SHT","HEN","YUN","SHE","WUH","CHO","LIT","QIN","QWC","SHP","SHS","TTT"],
   ligamx: ["ALA","AME","ASL","ATL","CDG","JUA","LEO","MON","NCX","PAC","QUE","SLA","TIG","TIJ"],
@@ -58,6 +61,7 @@ const LEGACY_CANONICAL_TO_ESPN = {
   nhl: { TBL: "TB", NJD: "NJ", LAK: "LA", SJS: "SJ" },
   mls: { DCU: "DC", LAG: "LA", NYRB: "RBNY" },
   brasileirao: { RBB: "BRA", ATL: "CAM", GPA: "GRE", CR: "REMO", SPA: "SAO", VDG: "VAS" },
+  copadobrasil: { ATL: "CAM", GPA: "GRE", CR: "REMO", VDG: "VAS" },
   nwsl: { WSP: "WAS", SAN: "SD", REI: "SEA", URO: "UTA", NCC: "NC", PTH: "POR", GOT: "GFC", OPR: "ORL", HDA: "HOU" },
   chnsl: { ZHP: "ZHE", DAL: "DYI", CHR: "CHE", BJG: "BG", SHE: "SHX", WUH: "WTT", LIT: "LIA", SHP: "SIPG", SHS: "SHE", TTT: "TIG" },
   ligamx: { ALA: "ATL", ATL: "ATS", CDG: "GDL", MON: "MTY", QUE: "QRO", SLA: "SAN", TIG: "UANL" },

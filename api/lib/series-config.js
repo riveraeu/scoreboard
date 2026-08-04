@@ -149,6 +149,10 @@ export const SERIES_CONFIG = {
   // league and the first to ship as pure config: one registry entry + this row, no new
   // files. Found by the kalshi_series_seen baseline sweep (REAL_BOOK, 6¢ median spread).
   KXDIMAYORGAME:      { sport: "dimayor", league: "dimayor", stat: "game",     col: "ML", gameType: "modelFreeMl" },
+  // Copa do Brasil game winner (adopted 2026-08-04) — 8th model-free league, pure config like
+  // DIMAYOR. Surfaced by the morning-report discovery vet queue (REAL_BOOK, 2¢ median spread,
+  // overround 1.02). ESPN slug bra.copa_do_brazil; registry shares brasileirao's espnScore aliases.
+  KXCOPADOBRASILGAME: { sport: "copadobrasil", league: "copadobrasil", stat: "game", col: "ML", gameType: "modelFreeMl" },
   KXARGPREMDIVGAME:   { sport: "argprem", league: "argprem", stat: "game",     col: "ML", gameType: "modelFreeMl" },
   KXARGPREMDIVSPREAD: { sport: "argprem", league: "argprem", stat: "spread",   col: "G",  gameType: "clubSoccerThreshold", subtype: "spread" },
   KXARGPREMDIVTOTAL:  { sport: "argprem", league: "argprem", stat: "total",    col: "G",  gameType: "clubSoccerThreshold", subtype: "total" },

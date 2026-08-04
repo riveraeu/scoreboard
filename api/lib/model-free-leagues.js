@@ -54,6 +54,10 @@ export const MODEL_FREE_LEAGUES = {
   // 7th league, adopted 2026-07-28 — the first added via this registry rather than a file set.
   // ESPN slug verified live (col.1 → "Colombian Primera A", 20 teams) before anything was written.
   dimayor:     { espnSlug: "col.1" },
+  // 8th league, adopted 2026-08-04 — Copa do Brasil (KXCOPADOBRASILGAME). Slug is bra.copa_do_brazil
+  // with a 'z': bra.copa_do_brasil (an 's') 400s. Verified live — 8 fixtures matched the Kalshi
+  // slate exactly on 2026-08-04. Default canonTeam suffices (no ESPN-internal abbr collision).
+  copadobrasil: { espnSlug: "bra.copa_do_brazil" },
   // The one league needing more than the default mapping. ESPN's OWN /teams endpoint reuses the
   // abbreviation "RIV" for two different clubs (River Plate and Independiente Rivadavia, which
   // Kalshi correctly distinguishes as RIV/IRM), and a flat espnScore entry cannot express "two

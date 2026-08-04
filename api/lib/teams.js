@@ -219,6 +219,32 @@ export const TEAMS = {
     { abbr: "VDG", espnScore: "VAS" },  // Vasco da Gama
     { abbr: "VIT" },
   ],
+  // Copa do Brasil (KXCOPADOBRASILGAME, adopted 2026-08-04 — 8th model-free maker league, same
+  // playbook, added through MODEL_FREE_LEAGUES with no new files). A cup, not a league, so its
+  // field is a subset of Brazilian clubs (mostly Série A) plus a few lower-division sides — every
+  // one of the 16 round-of-16 clubs was verified live in a KXCOPADOBRASILGAME ticker on 2026-08-04
+  // (nothing guessed). Canonical = Kalshi's own ticker abbrs; the four espnScore aliases (ATL→CAM,
+  // GPA→GRE, CR→REMO, VDG→VAS) are the SAME ones already live-verified for brasileirao above, and
+  // ESPN's own bra.copa_do_brazil scoreboard abbrs for all 16 are mutually distinct (no argprem-style
+  // ESPN-internal collision → no wrapCanonTeam needed). CR (Remo) is the 2-char code needing the
+  // "try every split" parseGameTeams branch: CRSAN→CR+SAN (2+3), CRUCHA→CRU+CHA (3+3-first, does NOT
+  // grab CR) — the exact "Brasileirão's CR" case. Registries are per-key, so Kalshi ATL=Atlético
+  // Mineiro here does not conflict with ligamx's ATL=Atlas. FORWARD WATCH: if Atlético Goianiense
+  // reaches a later round, verify its code before that fixture (three "Atlético" clubs exist; only
+  // Mineiro/ATL→CAM and Athletico-PR/CAP appear now, distinct on both sides).
+  copadobrasil: [
+    { abbr: "CAP" },                    // Athletico Paranaense
+    { abbr: "ATL", espnScore: "CAM" },  // Atlético Mineiro
+    { abbr: "CHA" },                    // Chapecoense
+    { abbr: "COR" }, { abbr: "CRU" }, { abbr: "FLU" }, { abbr: "FOR" },  // Fortaleza
+    { abbr: "GPA", espnScore: "GRE" },  // Grêmio
+    { abbr: "INT" }, { abbr: "JUV" },   // Juventude
+    { abbr: "MIR" }, { abbr: "PAL" },
+    { abbr: "CR", espnScore: "REMO" },  // Remo
+    { abbr: "SAN" },
+    { abbr: "VDG", espnScore: "VAS" },  // Vasco da Gama
+    { abbr: "VIT" },
+  ],
   // NWSL (KXNWSLGAME, adopted 2026-07-23 — 3rd model-free maker league, same playbook, see
   // project_maker_modelfree_clubsoccer_2026_07_23 memory). Canonical = Kalshi's own ticker
   // abbrs, verified live via /api/kalshi-check 2026-07-23 — 14 of 16 teams confirmed (only 7
