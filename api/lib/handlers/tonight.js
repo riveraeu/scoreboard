@@ -1407,7 +1407,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
         // YET an active filter — `dcQualified` is computed and emitted but the v1 frontend still
         // ignores it. The v2 model toggle (Phase B) is where this becomes the gate.
         //
-        // Spec details + full penalty table in docs/MODEL.md "dataConfidence". Must run AFTER the
+        // Spec + full penalty table live in api/lib/tonight/dc.js. Must run AFTER the
         // _kalshiStale propagation above and BEFORE the isDebug return below so debug-mode plays
         // carry the field too.
         // Pre-flight evidence for the client Place All validation (Flow A): homeAwayResolved

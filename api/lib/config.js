@@ -1,17 +1,13 @@
-// Shared tunables for the tonight emit pipeline. Single source of truth — imported by the
-// server emit modules (api/lib/tonight/{props,ml-spread,game-totals}.js).
+// Shared tunables for the tonight capture pipeline. Single source of truth — imported by the
+// server emit modules (api/lib/tonight/*.js).
 //
-// ⚠️ POST-TAKER-TEARDOWN NOTE (2026-07-30). These were the taker "bet window" constants. The
-// taker STRATEGY is gone (Phases 1-2: no bet is decided, placed, displayed, or notified), and
-// no client imports this file anymore (the frontend gates were deleted with the taker UI). But
-// KALSHI_GATE / KALSHI_CAP / EDGE_GATE_SERVER / betWindowFor / CATEGORY_BET_WINDOWS were NOT
-// removed, because the shadow-capture instrument was silently repurposed onto them: the emit
-// modules use these boundaries to set the `qualified` marker, which drives the per-player-stat
-// dedup (props.js), the game/team-total cross-winner pick (game-totals.js), and therefore which
-// rows — and how many — reach `shadow_plays` (grouping, is_best_edge, features). Removing them
-// would HALVE captured rows + the player card, not delete dead code. They are retained as
-// instrument internals; only EDGE_GATE_CLIENT (the frontend-only display/track gate) was dead
-// and removed. Do not "finish the teardown" by ripping these out — that blinds the instrument.
+// POST-TEARDOWN (2026-08-04). The taker "bet window" constants (KALSHI_GATE / KALSHI_CAP /
+// EDGE_GATE_SERVER / betWindowFor / CATEGORY_BET_WINDOWS) were deleted with the MODEL teardown:
+// they set the `qualified` marker that drove the per-player-stat dedup + game/total cross-winner
+// pick, and the model teardown replaced all of that with model-free capture-all (every quoted
+// side is its own row). They gate nothing now. What remains here: the two CAPTURE gates (band +
+// liquidity — quote-sanity, still applied at parse), the MAKER_* engine params, and the
+// AWAITING_VALIDATED_EDGE posture flag.
 
 // ── No validated edge yet (2026-07-28, reframed 2026-07-29) ─────────────────────────────────
 // Posture, not an epitaph: **nothing has cleared its validation bar yet, so we accumulate rather
@@ -43,24 +39,11 @@
 // invites both the wrong conclusion and the wrong fix.
 export const AWAITING_VALIDATED_EDGE = true;
 
-// Capture-partition boundaries (formerly the taker bet window — see the post-teardown note above).
-// The emit modules use these to mark a row `qualified` and route it through dedup/grouping, which
-// determines what lands in shadow_plays. NOT a bet gate anymore; renaming is deferred (behavior-
-// preserving churn across ~40 emit sites) and the values must not change without a capture-diff.
-export const KALSHI_GATE = 67;        // ~-200 American odds floor (66.67% rounded up)
-export const KALSHI_CAP  = 91;        // ~-1000 American odds cap (90.91% rounded up)
-export const EDGE_GATE_SERVER = 3;    // edge floor for the `qualified` capture-grouping marker
-
-// Capture (shadow-logging) bounds — quote-sanity only. Full-curve capture (2026-07-03): the
-// goal was always to track ALL picks and let the data locate where the model performs best;
-// price filtering belongs at analysis/bet-window time, never at collection. The prior
-// favorite-curve band [55,97] (2026-06-29 de-blinding) still blinded the coin-flip zone (both
-// sides <55 — WNBA half/quarter spreads were almost entirely unlogged) and the >97 tail, and
-// its floor made any sub-55 derived bet window (e.g. f5ml's discovered 40–55) unshippable via
-// betWindowFor's bounds check. Measured cost of de-gating: ~+19% rows/day, no plan-tier change.
-// 1/99 exclude only structurally dead quotes (ask of 0 = no ask; 100 = no real offer). These
-// gate ONLY what gets logged; the `qualified` capture-grouping marker uses betWindowFor ([67,91]).
-// The liquidity gate below (CAPTURE_MAX_SPREAD) stays — it rejects fake prices, not price levels.
+// Capture (shadow-logging) band — quote-sanity only, the sole price gate at collection. Capture-
+// all doctrine (2026-07-03): log every quoted side; any price filtering belongs at analysis time,
+// never at collection. 1/99 exclude only structurally dead quotes (ask of 0 = no ask; 100 = no
+// real offer). The liquidity gate below (CAPTURE_MAX_SPREAD) is the other capture gate — it
+// rejects fake prices (dead one-sided books), not price levels.
 export const CAPTURE_GATE = 1;        // capture floor — a 0¢ ask is an absent quote, not a price
 export const CAPTURE_CAP  = 99;       // capture cap — a 100¢ ask is an absent offer, not a price
 
@@ -70,7 +53,7 @@ export const CAPTURE_CAP  = 99;       // capture cap — a 100¢ ask is an absen
 // totalBases longshots got logged as 94¢ "favorites" (116 live on 6/30), inflating the accuracy
 // board's Brier skill to a fake +0.15 (clean = +0.004 parity). Real favorites have a tight
 // bet-side spread (France live: ≤7¢); artifacts are ~94¢. Reject at capture when the bet-side
-// bid-ask spread exceeds this. Capture-only — the [KALSHI_GATE, KALSHI_CAP] bet flag is untouched.
+// bid-ask spread exceeds this.
 export const CAPTURE_MAX_SPREAD = 15; // cents — max bet-side bid-ask spread to log a rung
 export const capturableSpread = (spreadCents, cap = CAPTURE_MAX_SPREAD) =>
   spreadCents != null && spreadCents <= cap;
@@ -113,43 +96,3 @@ export const MAKER_V2_SIZE = 5;              // contracts per resting order
 export const MAKER_V2_MAX_CONCURRENT = 20;   // total resting orders across all tickers
 export const MAKER_V2_SAME_GAME_CAP = 2;     // max concurrent resting orders per game (correlation guard)
 export const MAKER_V2_EXPIRATION_SEC = 150;  // self-expiring safety net — outlives one ~2min cron cycle
-
-// Per-category DATA-DERIVED bet windows. The `qualified` bet flag defaults to the global
-// [KALSHI_GATE, KALSHI_CAP]; an entry here OVERRIDES it for one "sport|stat" category with a
-// [lo, hi] cents band. This is the payoff of capture de-blinding: tune:residual showed some
-// categories' edge lives outside [67,91] (e.g. mlb|totalBases above the 91¢ cap), and the wider
-// [CAPTURE_GATE, CAPTURE_CAP] capture band lets that window be MEASURED. Populate a category here
-// ONLY after `npm run tune:window -- --category <sport|stat>` returns GO at n≥200 — i.e. the
-// discovered window's out-of-sample ROI CI-lo > 0 AND the model is Brier-eligible. This is a
-// forward-only, human-in-the-loop apply (like the category gate + FORMULA_CUTOFFS); we do NOT
-// auto-tune the live window from the report's in-sample discoveredWindow (that ROI is upward-biased
-// by construction — the out-of-sample split in tune:window is the guard). Windows must satisfy
-// CAPTURE_GATE ≤ lo < hi ≤ CAPTURE_CAP. Empty = every category bets [67,91] (no behavior change).
-//
-// COVERAGE: `betWindowFor` is applied at the PROP emit chokepoint (api/lib/tonight/props.js) — the
-// one site that governs every player-prop category, incl. the mlb|totalBases target. The game-total
-// / teamTotal / ML / spread emit paths (game-totals.js, ml-spread.js) still use the global window
-// inline at ~28 sites; extend those (route each through betWindowFor) only if/when a NON-prop
-// category earns a derived window. A window set here for a non-prop category is currently a no-op —
-// betWindowFor validates shape but does not know a category's emit path.
-export const CATEGORY_BET_WINDOWS = {
-  // "mlb|totalBases": [88, 97],  // example — DO NOT enable without a tune:window GO
-  // mlb|hrr NO-side window (2026-07-11): emit flip redirects HRR to bet NO when NO edge > YES edge.
-  // Market overprices hits by ~7¢ avg; sigmoid cap (71%) blocks YES edge. NO ask for YES-priced
-  // [67,76]¢ markets lands ~24–33¢. 65–70 YES band: actual=67.9%, market=73.5¢, NO ROI ≈ +8.8% (n=187).
-  // Pre-tune:window provisional starter; recheck tune:window at n≥200 OOS post-2026-07-11.
-  "mlb|hrr": [24, 33],
-};
-
-// The window for a category: its derived override if set, else the global [67,91]. One chokepoint
-// — used by props.js to set the `qualified` capture-grouping marker (the client core that also
-// imported this was removed with the taker UI, 2026-07-30).
-export function betWindowFor(sport, stat) {
-  const w = CATEGORY_BET_WINDOWS[`${sport}|${stat}`];
-  if (Array.isArray(w) && w.length === 2 &&
-      Number.isFinite(w[0]) && Number.isFinite(w[1]) &&
-      w[0] < w[1] && w[0] >= CAPTURE_GATE && w[1] <= CAPTURE_CAP) {
-    return w;
-  }
-  return [KALSHI_GATE, KALSHI_CAP];
-}

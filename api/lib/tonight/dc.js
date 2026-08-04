@@ -9,7 +9,8 @@
 // produce better-calibrated outputs than full-data paths. The category gate + edge gate
 // do the real qualification work; dc gate now only catches genuinely unusable plays.
 //
-// See docs/MODEL.md "dataConfidence" for background.
+// dataConfidence: a captured data-quality column (dc≥7 = dcQualified); only kalshiStale/playerOut
+// fail the gate, all other penalties are informational. The penalty logic below is the spec.
 
 export const DC_GATE = (_sport, _gameType) => 7;
 

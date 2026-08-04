@@ -57,7 +57,7 @@ This page is the app's only eager import (no more `React.lazy` ReportPage to def
 
 Legacy display note (historical, from when this content lived on `/model`): the fused accuracy/betting board table, `AccuracyBoard`, `BettingBoard`, `ModelNext` (as a rendered table), `GateDigest`, `CrossVenueValidation`, `PriceBands`, `CalibBandsTable` were removed from display 2026-07-19 (strategy pivot — no taker edge exists venue-wide) and the whole `/model` page they lived on was deleted 2026-07-22. The SERVER payload is untouched: `accuracyBoard`/`bettingBoard`/`brief` still generate (the banner tiers and tune CLIs read them). Category-level model drill-downs live in the CLIs (`tune:gate`, `tune:residual`, `?brier=1`).
 
-Key doctrine baked in (see `docs/MODEL_IMPROVEMENT.md`): the (server-side, no-longer-displayed) board's profitability is on the **price axis** (ROI = hitRate − price); PROMOTE requires all three of n≥50, ROI-CI-lo>0, coherence. truePct calibration is a separate model-honesty check, still fed by `npm run tune:gate`. `useReportData.js` exposes only `shadowReportData / shadowReportLoading / fetchShadowReport` — `MakerBoardPage` is its only consumer now.
+`useReportData.js` exposes only `shadowReportData / shadowReportLoading / fetchShadowReport` — `MakerBoardPage` is its only consumer. (The model-era board-profitability / truePct-calibration doctrine that used to be summarized here was removed with the model teardown, 2026-08-04.)
 
 ---
 
