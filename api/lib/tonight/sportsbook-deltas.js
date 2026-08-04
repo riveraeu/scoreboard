@@ -57,7 +57,7 @@ export function emitSportsbookDeltas({ bookGames, plays = [], dropped = [], delt
       deltas.push({
         sport, game: `${away}@${home}`, gameDate: md, market: "ml", side,
         kalshiPct, bookFairPct, deltaCents: +(bookFairPct - kalshiPct).toFixed(1),
-        book: g.book || "pinnacle", modelTruePct: ke[side].truePct,
+        book: g.book || "pinnacle",
       });
       matchedThisGame = true;
     }

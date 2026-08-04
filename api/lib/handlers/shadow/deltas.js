@@ -342,7 +342,6 @@ async function handleSportsbookDeltas({ path, request, env }) {
         date: new Date(r.snapshot_date).toISOString().slice(0, 10), sport: r.sport, game: r.game,
         gameDate: r.game_date, market: r.market, side: r.side, kalshiPct: num(r.kalshi_pct),
         bookFairPct: num(r.book_fair_pct), deltaCents: num(r.delta_cents), book: r.book,
-        modelTruePct: num(r.model_true_pct),
       })) } : {}),
     });
   } catch (e) {

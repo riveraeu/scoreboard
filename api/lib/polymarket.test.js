@@ -108,7 +108,6 @@ test("emitPolymarketDeltas: signed cents, both ML sides, exact PT-date match, su
   assert.equal(mlAway.polyPct, 60);
   assert.equal(mlAway.kalshiPct, 57.5);
   assert.equal(mlAway.deltaCents, 2.5);
-  assert.equal(mlAway.modelTruePct, 59);
   assert.equal(mlAway.gameDate, "2026-05-05");
 
   assert.ok(deltas.every((d) => d.market === "ml"), "only ML rows are produced");

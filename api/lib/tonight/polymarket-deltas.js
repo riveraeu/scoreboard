@@ -88,7 +88,6 @@ export function emitPolymarketDeltas({ polyGames, plays = [], dropped = [], delt
       deltas.push({
         sport, game: `${away}@${home}`, gameDate: md, market: "ml", side,
         kalshiPct, polyPct, deltaCents,
-        modelTruePct: ke[side].truePct,
       });
       // Stamp the matched Kalshi play row so the cross-venue price rides along to the client
       // (tonight.js passes `plays` straight through). Display-only; the shadow delta row above is
