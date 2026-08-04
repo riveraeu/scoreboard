@@ -8,7 +8,7 @@ import { buildPitcherKPct } from "./mlb-pitchers.js";
 import { buildBallparkWeather } from "./mlb-weather.js";
 // Re-export so existing `import { ... } from "../mlb.js"` call sites keep working.
 export { MLB_ID_TO_ABBR } from "./mlb-shared.js";
-export { buildLineupKPct, buildBarrelPct } from "./mlb-hitters.js";
+export { buildLineupKPct } from "./mlb-hitters.js";
 export { buildBallparkWeather } from "./mlb-weather.js";
 export { buildPitcherKPct } from "./mlb-pitchers.js";
 
@@ -26,81 +26,6 @@ import { PT_FMT } from "./pt.js";
 // byteam:mlb is a large consolidated blob (~40 maps incl. historical per-team H2H/splits). It is
 // transparently gzipped by makeCache.put (api/[...path].js) when it exceeds the size threshold, so
 // a single SET never approaches Upstash's 10MB request cap — no special wrapper needed here.
-
-// ESPN MLB injury report. Returns Map<teamAbbr, [{name, id, status}]> for Out / GTD players.
-// Mirrors buildNhlInjuryReport / buildNbaInjuryReport — ESPN omits athlete.id but embeds it in
-// playercard link href. ESPN uses CHW for Chicago White Sox; normalize to canonical CWS.
-// Cached at mlb:injuries:{date} for 1800s (30 min).
-export async function buildMlbInjuryReport(cache) {
-  try {
-    const date = new Date().toISOString().slice(0, 10);
-    const cacheKey = `mlb:injuries:v4:${date}`;
-    if (cache) {
-      const cached = await cache.get(cacheKey, "json").catch(() => null);
-      if (cached) {
-        const m = new Map();
-        for (const [k, v] of Object.entries(cached)) m.set(k, v);
-        return m;
-      }
-    }
-    const r = await fetch(
-      "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/injuries",
-      { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(6000) }
-    );
-    if (!r.ok) return new Map();
-    const d = await r.json().catch(() => ({}));
-    const injMap = {};
-    for (const teamEntry of d.injuries || []) {
-      const outPlayers = [];
-      let abbr = null;
-      for (const inj of teamEntry.injuries || []) {
-        const statusRaw = (inj.status || "").toLowerCase();
-        // Only count FRESH absences — players whose unavailability is not already absorbed into
-        // season RPG. EXCLUDES X-Day-IL stays (10-Day-IL / 15-Day-IL / 60-Day-IL): those players
-        // have been replaced on the roster for weeks/months, and the team's road RPG already
-        // reflects life without them.
-        const isIl = statusRaw.includes("-day-il") || statusRaw.includes("60-day") || statusRaw.includes("15-day") || statusRaw.includes("10-day");
-        if (isIl) continue;
-        const isOut = statusRaw === "out";
-        const isGtd = statusRaw === "day-to-day" || statusRaw === "questionable" || statusRaw === "doubtful" || statusRaw.includes("game-time");
-        if (!isOut && !isGtd) continue;
-        // SECOND filter: stale Day-To-Day. ESPN keeps backup IF/C guys on "Day-To-Day" for weeks
-        // with a far-out expectedReturn while the team plays a replacement. If returnDate is more
-        // than 3 days away, treat as long-term (already absorbed into team RPG, same as IL).
-        // 3-day cutoff: real day-of scratches return within 1-2 days; "DTD with 4+ day return"
-        // is effectively a soft IL stint.
-        const returnDate = inj.details?.returnDate || inj.details?.expectedReturn || null;
-        if (returnDate) {
-          const retMs = Date.parse(returnDate);
-          if (!isNaN(retMs) && (retMs - Date.now()) > 3 * 86400 * 1000) continue;
-        }
-        if (!abbr) abbr = inj.athlete?.team?.abbreviation || null;
-        const name = inj.athlete?.displayName || "";
-        let id = inj.athlete?.id ? String(inj.athlete.id) : null;
-        if (!id) {
-          for (const lk of (inj.athlete?.links || [])) {
-            const m = (lk.href || "").match(/\/id\/(\d+)\//);
-            if (m) { id = m[1]; break; }
-          }
-        }
-        const pos = inj.athlete?.position?.abbreviation || null;
-        if (name) outPlayers.push({ name, id, status: isOut ? "out" : "gtd", pos });
-      }
-      // ESPN MLB uses CHW for Chicago White Sox; canonical is CWS.
-      const NORM = { CHW: "CWS" };
-      const canon = abbr ? (NORM[abbr] || abbr) : null;
-      if (canon && outPlayers.length) injMap[canon] = outPlayers;
-    }
-    if (cache && Object.keys(injMap).length > 0) {
-      await cache.put(cacheKey, JSON.stringify(injMap), { expirationTtl: 1800 }).catch(() => {});
-    }
-    const m = new Map();
-    for (const [k, v] of Object.entries(injMap)) m.set(k, v);
-    return m;
-  } catch {
-    return new Map();
-  }
-}
 
 export async function buildMlbByteam(cache) {
   const [pitchData, batData, roadBatData, bullpenData, sbData, mlbSched] = await Promise.all([
