@@ -31,51 +31,27 @@ export const SERIES_CONFIG = {
   // of parseGameTeams. Shadow-only: `tennis|match` is intentionally NOT in the category gate.
   KXATPMATCH:  { sport: "tennis", league: "atp", tour: "atp", stat: "match", col: "ML", gameType: "tennisMatch" },
   KXWTAMATCH:  { sport: "tennis", league: "wta", tour: "wta", stat: "match", col: "ML", gameType: "tennisMatch" },
-  // Soccer — FIFA World Cup. One Elo-derived score matrix per game feeds all five families
-  // (api/lib/tonight/soccer.js). The `soccer` gameType routes these to the dedicated soccer
-  // emit path (not parseGameTeams). Shadow-only: `soccer|*` is intentionally NOT in the gate.
-  KXWCGAME:      { sport: "soccer", league: "wc", stat: "game",      col: "ML",  gameType: "soccer", subtype: "game"      },
-  KXWCTOTAL:     { sport: "soccer", league: "wc", stat: "total",     col: "G",   gameType: "soccer", subtype: "total"     },
-  KXWCSPREAD:    { sport: "soccer", league: "wc", stat: "spread",    col: "G",   gameType: "soccer", subtype: "spread"    },
-  KXWCTEAMTOTAL: { sport: "soccer", league: "wc", stat: "teamTotal", col: "G",   gameType: "soccer", subtype: "teamTotal" },
-  KXWCBTTS:      { sport: "soccer", league: "wc", stat: "btts",      col: "G",   gameType: "soccer", subtype: "btts"      },
-  // World Cup half markets (shadow-only) — same Elo matrix, half λ (×0.5 even split). 1H + 2H ×
-  // winner/total/spread/BTTS, projected by emitSoccerPlays off a half-scaled matrix. The `half`
-  // tag routes them to the half matrix + prefixes the stat (soccer|1htotal, etc.).
-  KXWC1H:        { sport: "soccer", league: "wc", stat: "1hgame",   col: "ML",  gameType: "soccer", subtype: "game",   half: "1h" },
-  KXWC1HTOTAL:   { sport: "soccer", league: "wc", stat: "1htotal",  col: "G",   gameType: "soccer", subtype: "total",  half: "1h" },
-  KXWC1HSPREAD:  { sport: "soccer", league: "wc", stat: "1hspread", col: "G",   gameType: "soccer", subtype: "spread", half: "1h" },
-  KXWC1HBTTS:    { sport: "soccer", league: "wc", stat: "1hbtts",   col: "G",   gameType: "soccer", subtype: "btts",   half: "1h" },
-  KXWC2H:        { sport: "soccer", league: "wc", stat: "2hgame",   col: "ML",  gameType: "soccer", subtype: "game",   half: "2h" },
-  KXWC2HTOTAL:   { sport: "soccer", league: "wc", stat: "2htotal",  col: "G",   gameType: "soccer", subtype: "total",  half: "2h" },
-  KXWC2HSPREAD:  { sport: "soccer", league: "wc", stat: "2hspread", col: "G",   gameType: "soccer", subtype: "spread", half: "2h" },
-  KXWC2HBTTS:    { sport: "soccer", league: "wc", stat: "2hbtts",   col: "G",   gameType: "soccer", subtype: "btts",   half: "2h" },
-  // World Cup knockout "to advance" (shadow-only) — a per-tie binary that settles on who advances
-  // (ET/penalties outcome, not the 90' score). The `soccerAdvance` gameType routes these to the
-  // dedicated emit path (api/lib/tonight/soccer-advance.js): the same Elo matrix as the 5 families,
-  // with the 90'-draw mass folded into a "to advance" prob. Shadow-only: `soccer|advance` NOT gated.
-  KXWCADVANCE:   { sport: "soccer", league: "wc", stat: "advance",   col: "ML",  gameType: "soccerAdvance" },
+  // World Cup soccer (KXWC* — `soccer` + `soccerAdvance` gameTypes) REMOVED 2026-08-04 with the
+  // model teardown: the Dixon–Coles model was deleted and the tournament is off-season (0 live
+  // markets). Historical `soccer|*` rows keep grading off Kalshi settlement (still in
+  // SETTLEMENT_AUTHORITATIVE_SPORTS + the resolver's own-sports set).
   // Fighting — UFC rounds O/U ("Will the fight end before round N?"). The `fight` gameType
   // routes these to the dedicated fight emit path (api/lib/tonight/fight.js): one weight-class
   // finish-rate → fight-duration CDF per bout. Shadow-only: `fight|rounds` is NOT in the gate.
   KXUFCROUNDS:   { sport: "fight", league: "ufc", stat: "rounds", col: "RD", gameType: "fight" },
-  // Golf — PGA single-round head-to-head ("Will A beat B in round N?"). The `golfH2h` gameType
-  // routes these to the dedicated golf emit path (api/lib/tonight/golf-h2h.js): OWGR rating →
-  // one-round score differential. Binary favorite side. Shadow-only: `golf|h2h` NOT in the gate.
-  KXPGAH2H:      { sport: "golf", league: "pga", stat: "h2h", col: "ML", gameType: "golfH2h" },
+  // Golf PGA H2H (KXPGAH2H — `golfH2h`) REMOVED 2026-08-04 with the model teardown: no
+  // per-matchup tee-time in the data source meant rows were always gameTime:null (never
+  // maker-quotable), so it had no maker value once the OWGR model was deleted. Historical
+  // `golf|h2h` rows keep grading off Kalshi settlement.
   // NASCAR — Cup head-to-head ("Will A beat B?") + Top-10 finish ("Will <driver> finish top 10?").
   // The `nascar` gameType routes both to the dedicated emit path (api/lib/tonight/nascar.js):
   // recent-form finishing-position model. Binary favorite side. Cup-only by construction (the
   // rating index is built from the Cup schedule). Shadow-only: `nascar|h2h`/`nascar|top10` NOT gated.
   KXNASCARH2H:   { sport: "nascar", league: "nascar", stat: "h2h",   col: "ML", gameType: "nascar", subtype: "h2h"   },
   KXNASCARTOP10: { sport: "nascar", league: "nascar", stat: "top10", col: "ML", gameType: "nascar", subtype: "top10" },
-  // NBA Summer League (Vegas) game winner — binary team ML. The `nbaSummer` gameType routes
-  // these to the dedicated emit path (api/lib/tonight/nba-summer.js): within-tournament Elo,
-  // parity start (no transferable NBA rating — see api/lib/nba-summer.js). Adopted 2026-07-13,
-  // reversing the 7/01 dismissal: the books proved REAL (1-2¢ spreads, 5-6 figure volume on
-  // game-day markets), and the ~130 both-side rows per July accrue toward calibration across
-  // years. Shadow-only: `nbasl|ml` is intentionally NOT in the category gate.
-  KXNBASUMMERGAME: { sport: "nbasl", league: "nbasl", stat: "ml", col: "ML", gameType: "nbaSummer" },
+  // NBA Summer League (KXNBASUMMERGAME — `nbaSummer`) REMOVED 2026-08-04 with the model teardown:
+  // the within-tournament Elo model was deleted and the ~11-day July tournament is over (0 live
+  // markets). Historical `nbasl|ml` rows keep grading off Kalshi settlement.
   // LMB (Liga Mexicana de Béisbol) game winner — binary team ML. The `lmbGame` gameType routes
   // these to the dedicated emit path (api/lib/tonight/lmb-ml.js): season standings run-rate λ
   // pair → existing simulateMLBJoint NegBin joint (api/lib/lmb.js; statsapi sportId 23 /
