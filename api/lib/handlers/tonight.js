@@ -4,11 +4,12 @@
 // outer indentation level (8 spaces) is preserved from the original nesting; future
 // phases will reformat.
 import { jsonResponse, fetchSafe, parseGameOdds, parseGameScores, parseTopPlayers, buildSoftTeamAbbrs, buildTeamRankMap, pLimit } from "../utils.js";
-import { buildBarrelPct, MLB_ID_TO_ABBR, buildMlbByteam, buildMlbInjuryReport } from "../mlb.js";
+import { buildBarrelPct, buildMlbByteam, buildMlbInjuryReport } from "../mlb.js";
+import { MLB_ID_TO_ABBR, NHL_ABBR_MAP } from "../teams.js";
 import { buildNbaDepthChartPos, buildNbaDvpFromBettingPros, buildNbaPaceData, buildNbaUsageRate, buildNbaInjuryReport, buildNbaByteam } from "../nba.js";
 import { buildWnbaPaceData, buildWnbaUsageRate, buildWnbaInjuryReport, buildWnbaDvp, buildWnbaByteam } from "../wnba.js";
 import { SERIES_CONFIG } from "../series-config.js";
-import { buildNhlGoalieData, buildNhlInjuryReport, buildNhlSpecialTeams, NHL_ABBR_MAP } from "../nhl.js";
+import { buildNhlGoalieData, buildNhlInjuryReport, buildNhlSpecialTeams } from "../nhl.js";
 import { PT_FMT } from "../pt.js";
 import { computeDataConfidence } from "../tonight/dc.js";
 import { applyClosingSnapshot } from "../tonight/closing-odds.js";
@@ -23,7 +24,7 @@ import { emitPropPlays } from "../tonight/props.js";
 import { emitTennisMatchPlays } from "../tonight/tennis-match.js";
 import { emitSoccerPlays } from "../tonight/soccer.js";
 import { emitSoccerAdvancePlays } from "../tonight/soccer-advance.js";
-import { WC_TEAMS } from "../soccer.js";
+import { WC_TEAMS } from "../soccer-wc-teams.js";
 import { emitFightPlays } from "../tonight/fight.js";
 import { emitGolfH2hPlays } from "../tonight/golf-h2h.js";
 import { emitNascarPlays } from "../tonight/nascar.js";

@@ -17,9 +17,10 @@
 // CAPTURE band so calibration sees the full favorite curve. Betting is gated later (category gate).
 import { CAPTURE_GATE, CAPTURE_CAP } from "../config.js";
 import {
-  getEloIndex, eloForTeam, lambdasFromElo, buildScoreMatrix, prob1x2, advanceProb, WC_TEAMS,
+  getEloIndex, eloForTeam, lambdasFromElo, buildScoreMatrix, prob1x2, advanceProb,
   getWcSchedule,
 } from "../soccer.js";
+import { WC_TEAMS } from "../soccer-wc-teams.js";
 
 const inWindow = (pct) => pct >= CAPTURE_GATE && pct <= CAPTURE_CAP;
 const round1 = (x) => parseFloat(x.toFixed(1));

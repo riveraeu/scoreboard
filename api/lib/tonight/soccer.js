@@ -23,9 +23,10 @@
 import { CAPTURE_GATE, CAPTURE_CAP } from "../config.js";
 import {
   getEloIndex, eloForTeam, lambdasFromElo, buildScoreMatrix,
-  prob1x2, probTotalOver, probTeamOver, probSpreadCover, probBtts, WC_TEAMS,
+  prob1x2, probTotalOver, probTeamOver, probSpreadCover, probBtts,
   getWcSchedule,
 } from "../soccer.js";
+import { WC_TEAMS } from "../soccer-wc-teams.js";
 
 const inWindow = (pct) => pct >= CAPTURE_GATE && pct <= CAPTURE_CAP;
 const round1 = (x) => parseFloat(x.toFixed(1));
