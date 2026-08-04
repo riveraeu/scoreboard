@@ -1,6 +1,6 @@
 # src/ — frontend map
 
-Loads when working under `src/`. Design system → `docs/STYLEGUIDE.md` (tokens: `src/lib/styles.js`); routing/state/live-tracking detail → `docs/FRONTEND.md`.
+Loads when working under `src/`. Routing/state detail → `docs/FRONTEND.md`. (The design-token file `src/lib/styles.js` was deleted 2026-08-04 — unimported; `MakerBoardPage` inlines its own styles.)
 
 ### Frontend: Vite + React (`src/`)
 
@@ -9,6 +9,5 @@ Loads when working under `src/`. Design system → `docs/STYLEGUIDE.md` (tokens:
 - `lib/useReportData.js` — shadow-report state + fetchers; MakerBoardPage's only data source
 - `lib/useAuth.js` / `lib/useAuthFlow.js` — login/logout for the board header chip
 - `components/MakerBoardPage.jsx` — **the landing (and only) page** (self-contained: React only, inline styles): category × band heatmap + a `PreregTracker` block rendering the report's `preregistrations[]`; login/logout + read-only Kalshi-balance/committed-capital chip in its header
-- `lib/styles.js` — design tokens; currently unimported (MakerBoardPage inlines its own styles)
 
 **Dev proxy**: `vite.config.js` proxies `/api` to production so `npm run dev` works without a local backend.
