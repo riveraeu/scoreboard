@@ -16,8 +16,6 @@ export { buildBallparkWeather } from "./mlb-weather.js";
 // Args:
 //   cache  — Vercel KV / Upstash cache (CACHE2)
 //   PT_FMT — Intl.DateTimeFormat for PT date strings (passed in to avoid re-importing pt.js)
-//   parseGameOdds — utils helper (passed in to avoid cross-lib cycles)
-import { parseGameOdds as _parseGameOdds } from "./utils.js";
 import { PT_FMT } from "./pt.js";
 
 // byteam:mlb is a large consolidated blob (~40 maps incl. historical per-team H2H/splits). It is
@@ -59,30 +57,8 @@ export async function buildMlbByteam(cache) {
   const MLB_ESPN_NORM = { CHW: "CWS", KCR: "KC", SFG: "SF", SDP: "SD", TBR: "TB", AZ: "ARI", OAK: "ATH", WSN: "WSH", WAS: "WSH" };
   const normMlbAbbr = (a) => MLB_ESPN_NORM[a] || a;
 
-  const probables = {};
-  for (const event of sbData.events || []) {
-    for (const comp of event.competitions || []) {
-      const gameAbbrs = (comp.competitors || []).map((c) => normMlbAbbr(c.team?.abbreviation)).filter(Boolean);
-      for (const competitor of comp.competitors || []) {
-        const abbr = normMlbAbbr(competitor.team?.abbreviation);
-        const probable = (competitor.probables || [])[0];
-        if (!abbr || !probable) continue;
-        const stats = probable.statistics || [];
-        const eraStat = stats.find((s) => s.abbreviation === "ERA");
-        const era = eraStat ? parseFloat(eraStat.displayValue) : null;
-        const whipStat = stats.find((s) => s.abbreviation === "WHIP");
-        const whip = whipStat ? parseFloat(whipStat.displayValue) : null;
-        const name = probable.athlete?.displayName || probable.athlete?.fullName || null;
-        const id = probable.athlete?.id || null;
-        const opp = gameAbbrs.find((a) => a !== abbr) || null;
-        probables[abbr] = { name, era, whip, id, opp };
-      }
-    }
-  }
-  const gameOddsRaw = _parseGameOdds(sbData.events);
-  const gameOdds = Object.fromEntries(Object.entries(gameOddsRaw).map(([k, v]) => [normMlbAbbr(k), v]));
-  const gameOddsTomorrowRaw = _parseGameOdds(sbData.eventsTomorrow || []);
-  const gameOddsTomorrow = Object.fromEntries(Object.entries(gameOddsTomorrowRaw).map(([k, v]) => [normMlbAbbr(k), v]));
+  // probables + gameOdds/gameOddsTomorrow were dropped 2026-08-04 — the only reader was the
+  // now-deleted mlbMeta response block.
   // Game scores for matchup cards (includes finished games with no active Kalshi markets).
   // Iterate today+tomorrow merged events so both day tabs see scheduled/finished games.
   // Key includes gameDate (today vs tomorrow collision) AND event.date (same-day
@@ -126,10 +102,7 @@ export async function buildMlbByteam(cache) {
   ]);
   const { lineupSpotByName, gameHomeTeams, projectedLineupTeams } = lineupResult;
 
-  const byteam = {
-    probables, gameOdds, gameOddsTomorrow, gameScores,
-    gameHomeTeams, lineupSpotByName, projectedLineupTeams, weatherByTeam,
-  };
+  const byteam = { gameScores, gameHomeTeams, lineupSpotByName, projectedLineupTeams, weatherByTeam };
 
   // Short TTL (60s) if lineups/home-away aren't confirmed yet, else 600s.
   const _mlbDataReady = Object.keys(lineupSpotByName || {}).length > 0

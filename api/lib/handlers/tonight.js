@@ -3,7 +3,7 @@
 // imports + helpers needed only by the tonight pipeline moved with the block. The
 // outer indentation level (8 spaces) is preserved from the original nesting; future
 // phases will reformat.
-import { jsonResponse, parseGameOdds, parseGameScores, parseTopPlayers } from "../utils.js";
+import { jsonResponse, parseGameScores } from "../utils.js";
 import { buildMlbByteam } from "../mlb.js";
 import { MLB_ID_TO_ABBR } from "../teams.js";
 import { buildNbaByteam } from "../nba.js";
@@ -77,39 +77,12 @@ function _homeAwayResolved(p, sportByteam) {
 // nhlSoftTeams / mlbSoftTeams (soft-matchup rank maps) + glCacheKey (gamelog cache key) were
 // model-only helpers — deleted with the model teardown (2026-08-04, slice 4).
 
-// Parse wind direction from ESPN displayValue: "Out to LF" → positive, "In from CF" → negative, crosswind → 0.
-const _parseWind = (dv) => {
-  if (!dv) return { windSpeed: null, windOutMph: null };
-  const v = dv.toLowerCase();
-  const m = v.match(/(\d+(?:\.\d+)?)\s*mph/);
-  const spd = m ? parseFloat(m[1]) : null;
-  if (spd == null) return { windSpeed: null, windOutMph: null };
-  if (spd === 0) return { windSpeed: 0, windOutMph: 0 };
-  const isOut = v.includes(" out to ") || v.includes(" out ") || v.endsWith(" out");
-  const isIn = v.includes(" in from ") || v.includes(" in to ") || (v.includes(" in ") && !isOut);
-  return { windSpeed: spd, windOutMph: isOut ? spd : isIn ? -spd : 0 };
-};
-
-const _extractMlbWeather = (events, byGame, nt) => {
-  for (const ev of events) {
-    const comps = ev.competitions?.[0];
-    const weather = comps?.weather;
-    if (!weather) continue;
-    const homeC = (comps?.competitors ?? []).find(c => c.homeAway === "home");
-    const awayC = (comps?.competitors ?? []).find(c => c.homeAway === "away");
-    if (!homeC || !awayC) continue;
-    const homeA = nt("mlb", homeC.team?.abbreviation ?? "");
-    const awayA = nt("mlb", awayC.team?.abbreviation ?? "");
-    if (!homeA || !awayA) continue;
-    const { windSpeed, windOutMph } = _parseWind(weather.displayValue ?? "");
-    byGame[`${homeA}|${awayA}`] = { temp: weather.temperature ?? null, condition: weather.displayValue ?? null, windSpeed, windOutMph };
-  }
-};
-
+// (_parseWind / _extractMlbWeather + the weatherByGame map they fed were deleted 2026-08-04 —
+// they only populated the now-removed mlbMeta.weather. The game-total team-total weather stamp
+// uses sportByteam.mlb.weatherByTeam from buildBallparkWeather, which is untouched.)
 
 export async function handleTonightRoute({ path, params, request, env, CACHE2 }) {
   if (path !== "tonight") return null;
-        // _parseWind / _extractMlbWeather — module-level helpers (weather feeds mlbMeta only).
         const isDebugMode = params.get("debug") === "1";
         // FD/socket pressure probe (EMFILE/EBUSY hunt 2026-07-05): snapshot open-FD count and
         // active libuv resource types at run start + response time. Debug-only, failure-closed.
@@ -780,44 +753,6 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
         // Falls back into nbaGameOdds for teams ESPN doesn't include in today's scoreboard odds.
         // Same fallback applied for MLB + NHL below — ESPN scoreboard only carries today's odds,
         // so tomorrow's games render with O/U "—" without a Kalshi-derived backfill.
-        const _buildKalshiOuMap = (sport, ticker) => {
-          const _map = {};
-          const _idx = seriesTickers.indexOf(ticker);
-          if (_idx < 0) return _map;
-          const _ouByGame = {};
-          for (const m of kalshiResults[_idx].markets || []) {
-            const _strike = parseFloat(m.floor_strike);
-            if (isNaN(_strike)) continue;
-            const _thr = Math.round(_strike + 0.5);
-            const _ask = parseFloat(m.yes_ask_dollars) || 0;
-            const _last = parseFloat(m.last_price_dollars) || 0;
-            const _bid = parseFloat(m.yes_bid_dollars) || 0;
-            const _price = (_ask >= 0.98 && _bid === 0 && _last > 0) ? _last : (_ask > 0 ? _ask : _last);
-            const _pct = Math.round(_price * 100);
-            if (_pct <= 0 || _pct >= 100) continue;
-            const [_t1, _t2] = parseGameTeams(m.event_ticker, sport);
-            if (!_t1 || !_t2) continue;
-            const _gk = `${_t1}|${_t2}`;
-            if (!_ouByGame[_gk]) _ouByGame[_gk] = [];
-            _ouByGame[_gk].push({ threshold: _thr, pct: _pct });
-          }
-          for (const [_gk, _mks] of Object.entries(_ouByGame)) {
-            _mks.sort((a, b) => a.threshold - b.threshold);
-            // Highest threshold where YES >= 50% → that threshold - 0.5 is implied O/U line
-            let _ouLine = null;
-            for (const _mk of _mks) { if (_mk.pct >= 50) _ouLine = _mk.threshold - 0.5; }
-            if (_ouLine != null) {
-              const [_t1, _t2] = _gk.split("|");
-              _map[_t1] = _ouLine;
-              _map[_t2] = _ouLine;
-            }
-          }
-          return _map;
-        };
-        const kalshiNbaOuMap = _buildKalshiOuMap("nba", "KXNBATOTAL");
-        const kalshiWnbaOuMap = _buildKalshiOuMap("wnba", "KXWNBATOTAL");
-        const kalshiMlbOuMap = _buildKalshiOuMap("mlb", "KXMLBTOTAL");
-        const kalshiNhlOuMap = _buildKalshiOuMap("nhl", "KXNHLTOTAL");
         // Blended fill price (player props): re-price kalshiPct to the true cost of sweeping a
         // unit-sized position, not just top-of-book ask. Depth comes from the snapshot cron's
         // cached `_depth` (kalshi:snap:{ticker}) — NO live orderbook fetch on the hot path
@@ -946,29 +881,6 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
             m.gameDate = _reattrMlbGameDate(m.gameDate, m.gameTeam1, m.gameTeam2, _isMlbResolvedMarket(m));
           }
         }
-        // NBA scoring (offensive PPG) — load from KV cache or fetch fresh when nba byteam was served from cache
-        if (sportsNeeded.has("nba") && !sportByteam.nbaScoring) {
-          if (CACHE2 && !isBustCache) sportByteam.nbaScoring = await CACHE2.get("byteam:nba:scoring", "json").catch(() => null);
-          if (!sportByteam.nbaScoring) {
-            sportByteam.nbaScoring = await fetch("https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=50&category=scoring&seasontype=2", {
-              headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" }
-            }).then(r => r.ok ? r.json() : {}).then(d => d.teams || []).catch(() => []);
-            if (CACHE2 && Array.isArray(sportByteam.nbaScoring) && sportByteam.nbaScoring.length > 0) {
-              await CACHE2.put("byteam:nba:scoring", JSON.stringify(sportByteam.nbaScoring), { expirationTtl: 21600 }).catch(() => {});
-            }
-          }
-        }
-        if (sportsNeeded.has("wnba") && !sportByteam.wnbaScoring) {
-          if (CACHE2 && !isBustCache) sportByteam.wnbaScoring = await CACHE2.get("byteam:wnba:scoring", "json").catch(() => null);
-          if (!sportByteam.wnbaScoring) {
-            sportByteam.wnbaScoring = await fetch("https://site.web.api.espn.com/apis/common/v3/sports/basketball/wnba/statistics/byteam?region=us&lang=en&contentorigin=espn&isqualified=true&page=1&limit=20&category=scoring&seasontype=2&season=2025", {
-              headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" }
-            }).then(r => r.ok ? r.json() : {}).then(d => d.teams || []).catch(() => []);
-            if (CACHE2 && Array.isArray(sportByteam.wnbaScoring) && sportByteam.wnbaScoring.length > 0) {
-              await CACHE2.put("byteam:wnba:scoring", JSON.stringify(sportByteam.wnbaScoring), { expirationTtl: 21600 }).catch(() => {});
-            }
-          }
-        }
         // Fetch game start times + NBA player availability for tonight's games
         const todayDateStr = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10).replace(/-/g, "");
         // Today's PT date in ISO (YYYY-MM-DD) — used by lineupConfirmed checks to refuse
@@ -996,12 +908,10 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
         let wnbaStarters = (sportsNeeded.has("wnba") && CACHE2 && !isBustCache)
           ? await CACHE2.get(`wnba:starters:${todayDateStr}`, "json").catch(() => null)
           : null;
-        let [gameTimes, nbaPlayerStatus, _cachedWeather] = await Promise.all([
+        let [gameTimes, nbaPlayerStatus] = await Promise.all([
           CACHE2 && !isBustCache ? CACHE2.get(`gameTimes:v2:${todayDateStr}`, "json").catch(() => null) : null,
           CACHE2 ? CACHE2.get(`nbaStatus:${todayDateStr}`, "json").catch(() => null) : null,
-          CACHE2 && !isBustCache ? CACHE2.get(`weather:mlb:${todayDateStr}`, "json").catch(() => null) : null,
         ]);
-        const weatherByGame = _cachedWeather ? { ..._cachedWeather } : {}; // keyed "homeAbbr|awayAbbr" → {temp, condition}
         const needGameTimes = !gameTimes;
         const needNbaStatus = !nbaPlayerStatus && sportsNeeded.has("nba");
         const needNbaStarters = !nbaStarters && sportsNeeded.has("nba");
@@ -1037,9 +947,8 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
                 fetch(`${base}?dates=${dayAfterDateStr}`, { headers: H2 }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
               ]);
               // The D+2 events are deliberately kept OUT of `events` and exposed separately.
-              // Every `events` consumer below (parseGameOdds, parseGameScores, _extractMlbWeather,
-              // parseTopPlayers) is keyed by TEAM with last-event-wins, so folding D+2 in would let
-              // a further-out game overwrite a nearer game's odds. Only the gameTimes map — which
+              // `parseGameScores` is keyed by TEAM with last-event-wins, so folding D+2 in would let
+              // a further-out game overwrite a nearer game's scores. Only the gameTimes map — which
               // keys by `sport:team:ptDate` and so cannot collide across dates — reads this.
               return {
                 sport: s,
@@ -1066,27 +975,19 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
               }
             }
             if (CACHE2 && Object.keys(gameTimes).length > 0) await CACHE2.put(`gameTimes:v2:${todayDateStr}`, JSON.stringify(gameTimes), { expirationTtl: 600 }).catch(() => {});
-            // Extract MLB weather from already-fetched scoreboard events (no extra request)
-            const _mlbSbResult = sbResults.find(r => r.sport === "mlb");
-            _extractMlbWeather(_mlbSbResult?.events ?? [], weatherByGame, normTeam);
-            if (CACHE2 && Object.keys(weatherByGame).length > 0) await CACHE2.put(`weather:mlb:${todayDateStr}`, JSON.stringify(weatherByGame), { expirationTtl: 600 }).catch(() => {});
-            // Extract NHL game odds + scores from already-fetched ESPN events (no extra request)
+            // Extract NHL game scores from already-fetched ESPN events (no extra request)
             const _nhlSbResult = sbResults.find(r => r.sport === "nhl");
             if (_nhlSbResult?.events.length > 0) {
-              const _raw = parseGameOdds(_nhlSbResult.events);
-              sportByteam.nhlGameOdds = Object.fromEntries(Object.entries(_raw).map(([k, v]) => [normTeam("nhl", k), v]));
               sportByteam.nhlGameScores = parseGameScores(_nhlSbResult.events, a => normTeam("nhl", a));
-              sportByteam.nhlTopPlayers = parseTopPlayers(_nhlSbResult.eventsAll || _nhlSbResult.events, a => normTeam("nhl", a), "nhl");
             }
             // Extract NBA game scores from already-fetched ESPN events
             const _nbaSbResult = sbResults.find(r => r.sport === "nba");
             if (_nbaSbResult?.events.length > 0 && !sportByteam.nbaGameScores) {
               sportByteam.nbaGameScores = parseGameScores(_nbaSbResult.events, a => normTeam("nba", a));
             }
-            // Extract WNBA game odds + scores from already-fetched ESPN events
+            // Extract WNBA game scores from already-fetched ESPN events
             const _wnbaSbResult = sbResults.find(r => r.sport === "wnba");
             if (_wnbaSbResult?.events.length > 0) {
-              if (!sportByteam.wnbaGameOdds) sportByteam.wnbaGameOdds = Object.fromEntries(Object.entries(parseGameOdds(_wnbaSbResult.events)).map(([k, v]) => [normTeam("wnba", k), v]));
               if (!sportByteam.wnbaGameScores) sportByteam.wnbaGameScores = parseGameScores(_wnbaSbResult.events, a => normTeam("wnba", a));
             }
           }
@@ -1162,16 +1063,8 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
         // or by the parallel cache load at the top of this section (warm path).
         sportByteam.nbaStarters = nbaStarters || { confirmedTeams: [], startersByTeam: {} };
         sportByteam.wnbaStarters = wnbaStarters || { confirmedTeams: [], startersByTeam: {} };
-        // Refresh MLB weather independently if cache was empty (gameTimes may have been cached)
-        if (sportsNeeded.has("mlb") && Object.keys(weatherByGame).length === 0 && !isBustCache) {
-          try {
-            const _wRes = await fetch(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${todayDateStr}`, { headers: { "User-Agent": "Mozilla/5.0" } }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
-            _extractMlbWeather(_wRes.events || [], weatherByGame, normTeam);
-            if (CACHE2 && Object.keys(weatherByGame).length > 0) await CACHE2.put(`weather:mlb:${todayDateStr}`, JSON.stringify(weatherByGame), { expirationTtl: 600 }).catch(() => {});
-          } catch {}
-        }
-        // Fetch NHL game odds + scores if nhl byteam was loaded from cache (scoreboard not fetched above)
-        if (sportsNeeded.has("nhl") && !sportByteam.nhlGameOdds) {
+        // Fetch NHL game scores if nhl byteam was loaded from cache (scoreboard not fetched above)
+        if (sportsNeeded.has("nhl") && !sportByteam.nhlGameScores) {
           const _nd3a = new Date(Date.now() - 7 * 3600 * 1000); const _nd3b = new Date(_nd3a); _nd3b.setDate(_nd3b.getDate() + 1);
           const _ns3fmt = (d) => d.toISOString().slice(0,10).replace(/-/g,'');
           const _nh3 = { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" };
@@ -1179,14 +1072,11 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
             fetch(`https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard?dates=${_ns3fmt(_nd3a)}`, { headers: _nh3 }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
             fetch(`https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard?dates=${_ns3fmt(_nd3b)}`, { headers: _nh3 }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
           ]);
-          const _nhlFbToday = _nhlFbSb0.events || [];
-          const _nhlFbAll = [..._nhlFbToday, ...(_nhlFbSb1.events || [])];
-          sportByteam.nhlGameOdds = Object.fromEntries(Object.entries(parseGameOdds(_nhlFbToday)).map(([k, v]) => [normTeam("nhl", k), v]));
+          const _nhlFbAll = [...(_nhlFbSb0.events || []), ...(_nhlFbSb1.events || [])];
           if (!sportByteam.nhlGameScores) sportByteam.nhlGameScores = parseGameScores(_nhlFbAll, a => normTeam("nhl", a));
-          if (!sportByteam.nhlTopPlayers) sportByteam.nhlTopPlayers = parseTopPlayers(_nhlFbAll, a => normTeam("nhl", a), "nhl");
         }
-        // Fetch WNBA game odds + scores if wnba byteam was loaded from cache (scoreboard not fetched above)
-        if (sportsNeeded.has("wnba") && !sportByteam.wnbaGameOdds) {
+        // Fetch WNBA game scores if wnba byteam was loaded from cache (scoreboard not fetched above)
+        if (sportsNeeded.has("wnba") && !sportByteam.wnbaGameScores) {
           const _wd2a = new Date(Date.now() - 7 * 3600 * 1000); const _wd2b = new Date(_wd2a); _wd2b.setDate(_wd2b.getDate() + 1);
           const _ws2fmt = (d) => d.toISOString().slice(0,10).replace(/-/g,'');
           const _wh2 = { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" };
@@ -1194,14 +1084,11 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
             fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard?dates=${_ws2fmt(_wd2a)}`, { headers: _wh2 }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
             fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard?dates=${_ws2fmt(_wd2b)}`, { headers: _wh2 }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
           ]);
-          const _wnbaFbToday = _wnbaFbSb0.events || [];
-          const _wnbaFbAll = [..._wnbaFbToday, ...(_wnbaFbSb1.events || [])];
-          sportByteam.wnbaGameOdds = Object.fromEntries(Object.entries(parseGameOdds(_wnbaFbToday)).map(([k, v]) => [normTeam("wnba", k), v]));
+          const _wnbaFbAll = [...(_wnbaFbSb0.events || []), ...(_wnbaFbSb1.events || [])];
           if (!sportByteam.wnbaGameScores) sportByteam.wnbaGameScores = parseGameScores(_wnbaFbAll, a => normTeam("wnba", a));
-          if (!sportByteam.wnbaTopPlayers) sportByteam.wnbaTopPlayers = parseTopPlayers(_wnbaFbAll, a => normTeam("wnba", a), "wnba");
         }
-        // Fetch NBA game odds + scores if nba byteam was loaded from cache (scoreboard not fetched above)
-        if (sportsNeeded.has("nba") && !sportByteam.nbaGameOdds) {
+        // Fetch NBA game scores if nba byteam was loaded from cache (scoreboard not fetched above)
+        if (sportsNeeded.has("nba") && !sportByteam.nbaGameScores) {
           const _nd2a = new Date(Date.now() - 7 * 3600 * 1000); const _nd2b = new Date(_nd2a); _nd2b.setDate(_nd2b.getDate() + 1);
           const _ns2fmt = (d) => d.toISOString().slice(0,10).replace(/-/g,'');
           const _nh2 = { "User-Agent": "Mozilla/5.0", "Referer": "https://www.espn.com/" };
@@ -1209,44 +1096,8 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
             fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${_ns2fmt(_nd2a)}`, { headers: _nh2 }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
             fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${_ns2fmt(_nd2b)}`, { headers: _nh2 }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
           ]);
-          const _nbaFbToday = _nbaFbSb0.events || [];
-          const _nbaFbAll = [..._nbaFbToday, ...(_nbaFbSb1.events || [])];
-          sportByteam.nbaGameOdds = parseGameOdds(_nbaFbToday);
+          const _nbaFbAll = [...(_nbaFbSb0.events || []), ...(_nbaFbSb1.events || [])];
           if (!sportByteam.nbaGameScores) sportByteam.nbaGameScores = parseGameScores(_nbaFbAll, a => normTeam("nba", a));
-          if (!sportByteam.nbaTopPlayers) sportByteam.nbaTopPlayers = parseTopPlayers(_nbaFbAll, a => normTeam("nba", a), "nba");
-        }
-        // Fill in missing NBA game O/U totals from Kalshi (ESPN omits odds for live/imminent games)
-        if (Object.keys(kalshiNbaOuMap).length > 0) {
-          if (!sportByteam.nbaGameOdds) sportByteam.nbaGameOdds = {};
-          for (const [_team, _ouLine] of Object.entries(kalshiNbaOuMap)) {
-            if (!sportByteam.nbaGameOdds[_team]) sportByteam.nbaGameOdds[_team] = {};
-            if (sportByteam.nbaGameOdds[_team].total == null) sportByteam.nbaGameOdds[_team].total = _ouLine;
-          }
-        }
-        if (Object.keys(kalshiWnbaOuMap).length > 0) {
-          if (!sportByteam.wnbaGameOdds) sportByteam.wnbaGameOdds = {};
-          for (const [_team, _ouLine] of Object.entries(kalshiWnbaOuMap)) {
-            if (!sportByteam.wnbaGameOdds[_team]) sportByteam.wnbaGameOdds[_team] = {};
-            if (sportByteam.wnbaGameOdds[_team].total == null) sportByteam.wnbaGameOdds[_team].total = _ouLine;
-          }
-        }
-        // Same Kalshi fallback for MLB — covers tomorrow's games where today's ESPN scoreboard
-        // doesn't carry odds and `mlbMetaTomorrow.gameOdds` is intentionally empty.
-        if (Object.keys(kalshiMlbOuMap).length > 0) {
-          if (!sportByteam.mlb) sportByteam.mlb = {};
-          if (!sportByteam.mlb.gameOdds) sportByteam.mlb.gameOdds = {};
-          for (const [_team, _ouLine] of Object.entries(kalshiMlbOuMap)) {
-            if (!sportByteam.mlb.gameOdds[_team]) sportByteam.mlb.gameOdds[_team] = {};
-            if (sportByteam.mlb.gameOdds[_team].total == null) sportByteam.mlb.gameOdds[_team].total = _ouLine;
-          }
-        }
-        // Same Kalshi fallback for NHL.
-        if (Object.keys(kalshiNhlOuMap).length > 0) {
-          if (!sportByteam.nhlGameOdds) sportByteam.nhlGameOdds = {};
-          for (const [_team, _ouLine] of Object.entries(kalshiNhlOuMap)) {
-            if (!sportByteam.nhlGameOdds[_team]) sportByteam.nhlGameOdds[_team] = {};
-            if (sportByteam.nhlGameOdds[_team].total == null) sportByteam.nhlGameOdds[_team].total = _ouLine;
-          }
         }
         await _fdMark("afterScoreboards");
         // Model-free capture (2026-08-04, teardown slice 4): emit every captured prop market — the
