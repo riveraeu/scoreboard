@@ -3,13 +3,12 @@
 // imports + helpers needed only by the tonight pipeline moved with the block. The
 // outer indentation level (8 spaces) is preserved from the original nesting; future
 // phases will reformat.
-import { jsonResponse, fetchSafe, parseGameOdds, parseGameScores, parseTopPlayers, buildSoftTeamAbbrs, buildTeamRankMap, pLimit } from "../utils.js";
-import { buildBarrelPct, buildMlbByteam, buildMlbInjuryReport } from "../mlb.js";
-import { MLB_ID_TO_ABBR, NHL_ABBR_MAP } from "../teams.js";
-import { buildNbaDepthChartPos, buildNbaDvpFromBettingPros, buildNbaPaceData, buildNbaUsageRate, buildNbaInjuryReport, buildNbaByteam } from "../nba.js";
-import { buildWnbaPaceData, buildWnbaUsageRate, buildWnbaInjuryReport, buildWnbaDvp, buildWnbaByteam } from "../wnba.js";
+import { jsonResponse, parseGameOdds, parseGameScores, parseTopPlayers } from "../utils.js";
+import { buildMlbByteam } from "../mlb.js";
+import { MLB_ID_TO_ABBR } from "../teams.js";
+import { buildNbaByteam } from "../nba.js";
+import { buildWnbaByteam } from "../wnba.js";
 import { SERIES_CONFIG } from "../series-config.js";
-import { buildNhlGoalieData, buildNhlInjuryReport, buildNhlSpecialTeams } from "../nhl.js";
 import { PT_FMT } from "../pt.js";
 import { computeDataConfidence } from "../tonight/dc.js";
 import { applyClosingSnapshot } from "../tonight/closing-odds.js";
@@ -75,49 +74,8 @@ function _homeAwayResolved(p, sportByteam) {
   return "fallback";
 }
 
-function nhlSoftTeams(arr, sortKey, label, unit, n = 10) {
-  const sorted = [...arr].sort((a, b) => b[sortKey] - a[sortKey]);
-  const softTeams = new Set();
-  const rankMap = {};
-  sorted.forEach((t, i) => {
-    const abbr = NHL_ABBR_MAP[t.teamId];
-    if (!abbr) return;
-    rankMap[abbr] = { rank: i + 1, value: parseFloat((t[sortKey] || 0).toFixed(2)), label, unit };
-    if (i < n) softTeams.add(abbr);
-  });
-  return { softTeams, rankMap };
-}
-
-function mlbSoftTeams(data, isPitcherStat, n = 10) {
-  const topCats = data?.categories || [];
-  const catName = isPitcherStat ? "batting" : "pitching";
-  const keyword = isPitcherStat ? "strikeout" : "era";
-  const label = isPitcherStat ? "lineup Ks" : "ERA";
-  const unit = isPitcherStat ? "" : "ERA";
-  const topCat = topCats.find((c) => c.name === catName);
-  const statIdx = (topCat?.names || []).findIndex((nm) => nm.toLowerCase().includes(keyword));
-  if (statIdx === -1) return { softTeams: new Set(), rankMap: {} };
-  const sorted = [...data?.teams || []].map((team) => {
-    const teamCat = (team.categories || []).find((c) => c.name === catName);
-    const val = parseFloat(teamCat?.values?.[statIdx] ?? 0);
-    return { abbr: team.team?.abbreviation || "", val };
-  }).filter((t) => t.abbr).sort((a, b) => b.val - a.val);
-  const softTeams = new Set(sorted.slice(0, n).map((t) => t.abbr));
-  const rankMap = {};
-  sorted.forEach((t, i) => {
-    rankMap[t.abbr] = { rank: i + 1, value: parseFloat(t.val.toFixed(2)), label, unit };
-  });
-  return { softTeams, rankMap };
-}
-
-function glCacheKey(key) {
-  const [sport] = key.split("|");
-  // Non-MLB version bumped v2→v3 on 2026-05-16: gamelog event shape now includes
-  // `isHome` (was missing from `parseEspnGamelog`), which the NBA/WNBA home-away
-  // split adjustment depends on. Old v2 cache entries lack isHome → splitAdj always
-  // falls back to 1.0. Bumping invalidates them in one cycle.
-  return sport === "mlb" ? `gl:mlb242526v2|${key}` : `gl:v3|${key}`;
-}
+// nhlSoftTeams / mlbSoftTeams (soft-matchup rank maps) + glCacheKey (gamelog cache key) were
+// model-only helpers — deleted with the model teardown (2026-08-04, slice 4).
 
 // Parse wind direction from ESPN displayValue: "Out to LF" → positive, "In from CF" → negative, crosswind → 0.
 const _parseWind = (dv) => {
@@ -151,8 +109,7 @@ const _extractMlbWeather = (events, byGame, nt) => {
 
 export async function handleTonightRoute({ path, params, request, env, CACHE2 }) {
   if (path !== "tonight") return null;
-        // nhlSoftTeams / mlbSoftTeams / glCacheKey / _parseWind / _extractMlbWeather
-        // / injury helpers — moved to module level (Phase B, 2026-05-29).
+        // _parseWind / _extractMlbWeather — module-level helpers (weather feeds mlbMeta only).
         const isDebugMode = params.get("debug") === "1";
         // FD/socket pressure probe (EMFILE/EBUSY hunt 2026-07-05): snapshot open-FD count and
         // active libuv resource types at run start + response time. Debug-only, failure-closed.
@@ -922,7 +879,6 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
         }
         const sportsNeeded = new Set([...qualifyingMarkets.map((m) => m.sport), ...totalMarkets.map((m) => m.sport)]);
         const sportByteam = {};
-        // NHL_ABBR_MAP imported from ../nhl.js (moved Phase B, 2026-05-29).
         if (CACHE2) {
           await Promise.all([...sportsNeeded].map(async (sport) => {
             // When busting, skip the cache read for MLB so fresh computation is forced.
@@ -937,37 +893,10 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
           await Promise.all([
             sportsNeedingFetch.has("nba") && buildNbaByteam(CACHE2, normTeam).then(r => Object.assign(sportByteam, r)),
             sportsNeedingFetch.has("wnba") && buildWnbaByteam(CACHE2, normTeam).then(r => Object.assign(sportByteam, r)),
-            sportsNeedingFetch.has("nhl") && Promise.all([
-              fetchSafe("tonight:nhl-gaa", "https://api.nhle.com/stats/rest/en/team/summary?isAggregate=false&isGame=false&sort=goalsAgainstPerGame&start=0&limit=50&cayenneExp=seasonId%3D20252026%20and%20gameTypeId%3D2", { headers: { "User-Agent": "Mozilla/5.0" } }),
-              fetchSafe("tonight:nhl-sa",  "https://api.nhle.com/stats/rest/en/team/summary?isAggregate=false&isGame=false&sort=shotsAgainstPerGame&start=0&limit=50&cayenneExp=seasonId%3D20252026%20and%20gameTypeId%3D2", { headers: { "User-Agent": "Mozilla/5.0" } }),
-              buildNhlGoalieData(CACHE2).catch(() => ({ goalieByTeam: {}, leagueAvgSV: 0.905 })),
-              buildNhlInjuryReport(CACHE2).catch(() => new Map()),
-              buildNhlSpecialTeams(CACHE2, NHL_ABBR_MAP).catch(() => ({ byTeam: {}, leaguePPPct: 0.21, leaguePKPct: 0.79 }))
-            ]).then(async ([gaData, saData, goalieData, injuryMap, stData]) => {
-              // Serialize Map → plain object for the byteam:nhl JSON cache; the consumer site
-              // does NOT need a Map (just object lookups by team abbr).
-              const _nhlInjuryObj = {};
-              for (const [k, v] of (injuryMap || new Map()).entries()) _nhlInjuryObj[k] = v;
-              sportByteam.nhl = {
-                ga: gaData.data || [],
-                sa: saData.data || [],
-                goalieByTeam: goalieData?.goalieByTeam || {},
-                leagueAvgSV: goalieData?.leagueAvgSV ?? 0.905,
-                injuryByTeam: _nhlInjuryObj,
-                specialTeams: stData || { byTeam: {}, leaguePPPct: 0.21, leaguePKPct: 0.79 },
-              };
-              if (CACHE2) await CACHE2.put("byteam:nhl", JSON.stringify(sportByteam.nhl), { expirationTtl: 21600 });
-            }),
-            sportsNeedingFetch.has("mlb") && Promise.all([
-              buildMlbByteam(CACHE2),
-              buildMlbInjuryReport(CACHE2).catch(() => new Map())
-            ]).then(([d, injuryMap]) => {
-              sportByteam.mlb = d || {};
-              // Serialize Map → plain object (consumer uses object lookups by abbr; same pattern as NHL).
-              const _mlbInjuryObj = {};
-              for (const [k, v] of (injuryMap || new Map()).entries()) _mlbInjuryObj[k] = v;
-              sportByteam.mlb.injuryByTeam = _mlbInjuryObj;
-            }),
+            // NHL byteam (goalie/injury/special-teams/GAA) was model-only hydration — deleted with
+            // the model teardown (2026-08-04, slice 4). NHL home/away + odds + top players come from
+            // the scoreboard parse (parseGameScores fallbacks / nhlGameScores etc.), not from here.
+            sportsNeedingFetch.has("mlb") && buildMlbByteam(CACHE2).then((d) => { sportByteam.mlb = d || {}; }),
             sportsNeedingFetch.has("nfl") && fetch("https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/statistics/byteam?region=us&lang=en&isqualified=true&page=1&limit=32&category=passing", { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.ok ? r.json() : {}).catch(() => ({})).then(async (d) => {
               sportByteam.nfl = d.teams || [];
               if (CACHE2) await CACHE2.put("byteam:nfl", JSON.stringify(sportByteam.nfl), { expirationTtl: 1800 });
@@ -1320,546 +1249,15 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
           }
         }
         await _fdMark("afterScoreboards");
-        const STAT_SOFT = {};
-        if (sportByteam.nba) {
-          for (const st of ["points", "rebounds", "assists", "threePointers"]) {
-            STAT_SOFT[`nba|${st}`] = { softTeams: new Set(buildSoftTeamAbbrs(sportByteam.nba, st)), rankMap: buildTeamRankMap(sportByteam.nba, st) };
-          }
-          // Normalize short ESPN codes (GS→GSW, SA→SAS, etc.) so game-total lookups find the right key
-          const _nbaAbbrs = TEAM_NORM.nba;
-          for (const st of ["points", "rebounds", "assists", "threePointers"]) {
-            const ss = STAT_SOFT[`nba|${st}`];
-            if (!ss) continue;
-            for (const [raw, val] of Object.entries(ss.rankMap)) {
-              const norm = _nbaAbbrs[raw];
-              if (norm && !ss.rankMap[norm]) ss.rankMap[norm] = val;
-            }
-            for (const raw of [...ss.softTeams]) {
-              const norm = _nbaAbbrs[raw];
-              if (norm) ss.softTeams.add(norm);
-            }
-          }
-        }
-        if (sportByteam.wnba) {
-          for (const st of ["points", "rebounds", "assists", "threePointers"]) {
-            STAT_SOFT[`wnba|${st}`] = { softTeams: new Set(buildSoftTeamAbbrs(sportByteam.wnba, st)), rankMap: buildTeamRankMap(sportByteam.wnba, st) };
-          }
-          // Normalize ESPN's irregular WNBA codes (CONNECTICU→CONN, DALLAS→DAL) to canonical
-          const _wnbaAbbrs = TEAM_NORM.wnba;
-          for (const st of ["points", "rebounds", "assists", "threePointers"]) {
-            const ss = STAT_SOFT[`wnba|${st}`];
-            if (!ss) continue;
-            for (const [raw, val] of Object.entries(ss.rankMap)) {
-              const norm = _wnbaAbbrs[raw];
-              if (norm && !ss.rankMap[norm]) ss.rankMap[norm] = val;
-            }
-            for (const raw of [...ss.softTeams]) {
-              const norm = _wnbaAbbrs[raw];
-              if (norm) ss.softTeams.add(norm);
-            }
-          }
-        }
-        let nhlSaRankMap = {}, nhlLeagueAvgSa = null;
-        if (sportByteam.nhl) {
-          const { ga, sa } = sportByteam.nhl;
-          STAT_SOFT["nhl|points"] = nhlSoftTeams(ga, "goalsAgainstPerGame", "Goals against/game", "GAA");
-          if (sa?.length) {
-            const _nhlSa = nhlSoftTeams(sa, "shotsAgainstPerGame", "Shots against/game", "SA");
-            nhlSaRankMap = _nhlSa.rankMap;
-            const _saVals = Object.values(nhlSaRankMap).map(r => r.value).filter(v => v > 0);
-            if (_saVals.length >= 15) nhlLeagueAvgSa = parseFloat((_saVals.reduce((a, b) => a + b, 0) / _saVals.length).toFixed(2));
-          }
-        }
-        if (sportByteam.mlb) {
-          const { pitching, batting, probables = {} } = sportByteam.mlb;
-          const LEAGUE_AVG_ERA = 4;
-          const teamFallback = mlbSoftTeams(pitching, false);
-          const pitcherEntries = Object.entries(probables).filter(([, p]) => p.era !== null && !isNaN(p.era)).sort(([, a], [, b]) => b.era - a.era);
-          const hitterSoftTeams = /* @__PURE__ */ new Set();
-          const hitterRankMap = { ...teamFallback.rankMap };
-          pitcherEntries.forEach(([abbr, { name, era }], i) => {
-            if (era > LEAGUE_AVG_ERA) hitterSoftTeams.add(abbr);
-            hitterRankMap[abbr] = { rank: i + 1, value: era, label: `${name || abbr} ERA`, unit: "ERA" };
-          });
-          for (const abbr of teamFallback.softTeams) {
-            if (!probables[abbr]) hitterSoftTeams.add(abbr);
-          }
-          for (const st of ["hits", "hrr", "totalBases"]) {
-            STAT_SOFT[`mlb|${st}`] = { softTeams: hitterSoftTeams, rankMap: hitterRankMap };
-          }
-          STAT_SOFT["mlb|strikeouts"] = mlbSoftTeams(batting, true);
-        }
-        if (sportByteam.nfl) {
-          const NFL_STAT_METRIC = {
-            passingYards: { hint: "opponent passing", idx: 8, label: "Pass yds allowed", unit: "PAYDS" },
-            rushingYards: { hint: "opponent rushing", idx: 1, label: "Rush yds allowed", unit: "RUYDS" },
-            receivingYards: { hint: "opponent receiving", idx: 3, label: "Rec yds allowed", unit: "REYDS" },
-            touchdowns: { hint: "opponent passing", idx: 8, label: "Pass yds allowed", unit: "PAYDS" }
-          };
-          for (const [st, { hint, idx, label, unit }] of Object.entries(NFL_STAT_METRIC)) {
-            const sorted = [...sportByteam.nfl].map((t) => {
-              const cat = (t.categories || []).find((c) => c.displayName?.toLowerCase().includes(hint));
-              return { abbr: t.team?.abbreviation || "", val: parseFloat(cat?.values?.[idx] ?? 0) };
-            }).filter((t) => t.abbr).sort((a, b) => b.val - a.val);
-            const softTeams = new Set(sorted.slice(0, 10).map((t) => t.abbr));
-            const rankMap = {};
-            sorted.forEach((t, i) => {
-              rankMap[t.abbr] = { rank: i + 1, value: parseFloat(t.val.toFixed(1)), label, unit };
-            });
-            STAT_SOFT[`nfl|${st}`] = { softTeams, rankMap };
-          }
-        }
-        // Read all secondary caches in parallel, then fire any cold fallbacks in parallel too.
-        let [allPositionsDvp, nbaDepthChartPos, _cachedBarrel, _cachedPace] = await Promise.all([
-          CACHE2 ? CACHE2.get("dvp:nba:all-positions", "json").catch(() => null) : null,
-          CACHE2 ? CACHE2.get("dvp:nba:depth-chart-pos", "json").catch(() => null) : null,
-          (sportsNeeded.has("mlb") && CACHE2) ? CACHE2.get("mlb:barrelPct", "json").catch(() => null) : null,
-          (sportsNeeded.has("nba") && CACHE2 && !isBustCache) ? CACHE2.get("nba:pace:2526", "json").catch(() => null) : null
-        ]);
-        // WNBA: pace + DVP (cached first, cold-build if missing). Mirrors NBA pace+depthchart pair.
-        let _cachedWnbaPace = (sportsNeeded.has("wnba") && CACHE2 && !isBustCache) ? await CACHE2.get("wnba:pace:2025", "json").catch(() => null) : null;
-        let _cachedWnbaDvp = (sportsNeeded.has("wnba") && CACHE2 && !isBustCache) ? await CACHE2.get(`wnba:dvp:2025:${(/* @__PURE__ */ new Date()).toISOString().slice(0,10)}`, "json").catch(() => null) : null;
-        // Fire cold fallbacks in parallel
-        [allPositionsDvp, nbaDepthChartPos, _cachedBarrel, _cachedPace, _cachedWnbaPace, _cachedWnbaDvp] = await Promise.all([
-          (!allPositionsDvp && CACHE2) ? buildNbaDvpFromBettingPros(CACHE2).catch(() => null) : allPositionsDvp,
-          (!nbaDepthChartPos && CACHE2) ? buildNbaDepthChartPos(CACHE2).catch(() => null) : nbaDepthChartPos,
-          (!_cachedBarrel && sportsNeeded.has("mlb")) ? buildBarrelPct().then(async m => { if (CACHE2 && Object.keys(m).length > 0) await CACHE2.put("mlb:barrelPct", JSON.stringify(m), { expirationTtl: 21600 }).catch(() => {}); return m; }).catch(() => null) : _cachedBarrel,
-          (!_cachedPace && sportsNeeded.has("nba")) ? buildNbaPaceData(CACHE2).catch(() => null) : _cachedPace,
-          (!_cachedWnbaPace && sportsNeeded.has("wnba")) ? buildWnbaPaceData(CACHE2, 2025).catch(() => null) : _cachedWnbaPace,
-          (!_cachedWnbaDvp && sportsNeeded.has("wnba")) ? buildWnbaDvp(CACHE2, 2025).catch(() => null) : _cachedWnbaDvp
-        ]);
-        if (sportByteam.mlb && _cachedBarrel) sportByteam.mlb.barrelPctMap = _cachedBarrel;
-        const nbaPaceData = _cachedPace;
-        const wnbaPaceData = _cachedWnbaPace;
-        const wnbaDvpMap = _cachedWnbaDvp;
-        const preFilteredMarkets = [];
-        const preDropped = [];
-        for (const m of qualifyingMarkets) {
-          const softData = STAT_SOFT[`${m.sport}|${m.stat}`];
-          if (!softData) { preDropped.push({ ...m, reason: "no_soft_data" }); continue; }
-          if (m.sport === "mlb") {
-            if (!m.gameTeam1 || !m.gameTeam2) { preDropped.push({ ...m, reason: "no_opp" }); continue; }
-            if (m.stat === "strikeouts") {
-              const _gs26 = sportByteam.mlb?.pitcherGS26?.[m.kalshiPlayerTeam] ?? null;
-              const _hasAnchor = sportByteam.mlb?.pitcherHasAnchor?.[m.kalshiPlayerTeam] ?? null;
-              // No 2025 anchor (TJ return, pure reliever, etc.): require 8 GS in 2026.
-              // Treat null 2026 data as 0 — if the API can't confirm starts, don't trust the model.
-              // Has valid 2025 anchor (gs25≥5, bf25≥100): pass through regardless of gs26 — the anchor IS the reliability signal.
-              if (_hasAnchor !== true) {
-                if ((_gs26 ?? 0) < 8) { preDropped.push({ ...m, reason: "insufficient_starts", gs26: _gs26 ?? 0, hasAnchor: _hasAnchor }); continue; }
-              }
-              preFilteredMarkets.push(m); continue;
-            }
-            const playerTeam2 = m.kalshiPlayerTeam;
-            if (!playerTeam2) { preDropped.push({ ...m, reason: "no_opp" }); continue; }
-            const opp2 = m.gameTeam1 === playerTeam2 ? m.gameTeam2 : m.gameTeam2 === playerTeam2 ? m.gameTeam1 : null;
-            if (!opp2) { preDropped.push({ ...m, reason: "no_opp" }); continue; }
-            preFilteredMarkets.push(m);
-            continue;
-          }
-          if (m.sport === "nhl") { preFilteredMarkets.push(m); continue; }
-          // NBA (and others) — no soft-matchup gate; all markets enter the main loop
-          const playerTeam = m.kalshiPlayerTeam;
-          if (!playerTeam || !m.gameTeam1 || !m.gameTeam2) { preFilteredMarkets.push(m); continue; }
-          const opp = m.gameTeam1 === playerTeam ? m.gameTeam2 : m.gameTeam2 === playerTeam ? m.gameTeam1 : null;
-          if (!opp) { preDropped.push({ ...m, reason: "no_opp" }); continue; }
-          preFilteredMarkets.push(m);
-        }
-        // Model-free capture (2026-08-04): emit every captured prop market — the full curve, no
-        // player-data preFilter (there is no model to skip data-less markets for). preFilteredMarkets
-        // is still built above for the debug `preFilteredCount` + is removed with the model hydration.
+        // Model-free capture (2026-08-04, teardown slice 4): emit every captured prop market — the
+        // full curve. The STAT_SOFT soft-matchup maps, the NBA/WNBA DVP/pace + MLB barrel caches, and
+        // the player-data preFilter loop were all model-only and are gone (there is no model to skip
+        // data-less markets for). loopMarkets is just the parsed qualifying markets.
         const loopMarkets = qualifyingMarkets;
-        const uniquePlayerKeys = [...new Map(loopMarkets.map((m) => [`${m.sport}|${m.playerName}`, m])).keys()];
-        const playerInfoMap = {};
-        const keysNeedingInfo = [];
-        // Shared network-concurrency gate for the player-hydration fan-outs below. Unbounded
-        // Promise.all over 100+ players exhausted the instance's file descriptors on big
-        // slates (EMFILE/EBUSY 2026-07-05) and took down every subsequent fetch in the run.
-        const _netLimit = pLimit(20);
-        if (CACHE2) {
-          // Batched cache reads — one MGET pipeline instead of N parallel GET connections
-          // (getMany falls back to parallel GETs only on non-Upstash cache bindings).
-          const _pinfoKeys = uniquePlayerKeys.map(k => `pinfo:${k}`);
-          const pinfoVals = CACHE2.getMany
-            ? await CACHE2.getMany(_pinfoKeys, "json")
-            : await Promise.all(_pinfoKeys.map(k => CACHE2.get(k, "json").catch(() => null)));
-          for (let i = 0; i < uniquePlayerKeys.length; i++) {
-            const key = uniquePlayerKeys[i], cached = pinfoVals[i];
-            if (cached) {
-              playerInfoMap[key] = cached;
-              if ((cached.position === null || cached.position === "G" || cached.position === "F") && key.startsWith("nba|")) keysNeedingInfo.push(key);
-            } else {
-              keysNeedingInfo.push(key);
-            }
-          }
-        } else {
-          keysNeedingInfo.push(...uniquePlayerKeys);
-        }
-        const ESPN_SEARCH_HEADERS = {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          "Referer": "https://www.espn.com/",
-          "Accept": "application/json"
-        };
-        const MAX_PINFO_FETCHES = 150;
-        const pInfoErrors = [];
-        // ESPN player-info fetches, concurrency-capped (pinfo cached 7 days so this is rare on warm caches)
-        await Promise.all(keysNeedingInfo.slice(0, MAX_PINFO_FETCHES).map(key => _netLimit(async () => {
-          const [sport, ...nameParts] = key.split("|");
-          const playerName = nameParts.join("|");
-          try {
-            const r = await fetch(
-              `${ESPN_BASE}/search/v2?query=${encodeURIComponent(playerName)}&lang=en&region=us&limit=5&type=player`,
-              { headers: ESPN_SEARCH_HEADERS, signal: AbortSignal.timeout(5000) }
-            );
-            if (!r.ok) { pInfoErrors.push({ key, reason: `http_${r.status}` }); return; }
-            const d = await r.json();
-            const allContents = d.results?.find((x) => x.type === "player")?.contents || [];
-            const players = allContents.filter((p2) => p2.defaultLeagueSlug === sport);
-            if (!players.length) { pInfoErrors.push({ key, reason: "no_league_match", sport, found: allContents.map((c) => c.defaultLeagueSlug) }); return; }
-            const p = players[0];
-            const id = p.uid?.split("~a:")?.[1];
-            if (!id) { pInfoErrors.push({ key, reason: "no_id", uid: p.uid }); return; }
-            const posMatch = (p.description || p.subtitle || "").match(/\b(QB|RB|WR|TE|K|P|PG|SG|SF|PF|Center|Forward|Guard|C|G|F|SP|RP|OF|1B|2B|3B|SS|LW|RW|D)\b/i);
-            const rawPos = posMatch ? posMatch[1].toUpperCase() : null;
-            const POS_NORMALIZE = { CENTER: "C", GUARD: null, FORWARD: null };
-            const info = { id, teamAbbr: "", position: rawPos ? rawPos in POS_NORMALIZE ? POS_NORMALIZE[rawPos] : rawPos === "G" || rawPos === "F" ? null : rawPos : null };
-            playerInfoMap[key] = info;
-            if (CACHE2) CACHE2.put(`pinfo:${key}`, JSON.stringify(info), { expirationTtl: 604800 }).catch(() => {});
-          } catch (e) {
-            pInfoErrors.push({ key, reason: "exception", error: String(e), cause: String(e?.cause?.code || e?.cause?.message || e?.cause || "") || undefined });
-          }
-        })));
         const isDebug = isDebugMode || params.get("debug") === "true";
-        const GAMELOG_API = {
-          nba: /* @__PURE__ */ __name((id) => `https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/${id}/gamelog?season=2026`, "nba"),
-          // WNBA anchors on 2025 (most-complete signal; 2026 season just opening). Trust ramps via vals26.
-          wnba: /* @__PURE__ */ __name((id) => `https://site.web.api.espn.com/apis/common/v3/sports/basketball/wnba/athletes/${id}/gamelog?season=2025`, "wnba"),
-          nfl: /* @__PURE__ */ __name((id) => `https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/athletes/${id}/gamelog?season=2025`, "nfl"),
-          nhl: /* @__PURE__ */ __name((id) => `https://site.web.api.espn.com/apis/common/v3/sports/hockey/nhl/athletes/${id}/gamelog?season=2026`, "nhl"),
-          mlb: /* @__PURE__ */ __name((id) => `https://site.web.api.espn.com/apis/common/v3/sports/baseball/mlb/athletes/${id}/gamelog?season=2026`, "mlb")
-        };
-        const playerGamelogs = {};
-        const keysForGamelog = uniquePlayerKeys.filter((k) => playerInfoMap[k]?.id);
-        const gamelogErrors = [];
-        const keysNeedingGamelog = [];
-        const _mlbAbbrNorm = { CHW: "CWS", KCR: "KC", SFG: "SF", SDP: "SD", TBR: "TB", AZ: "ARI", OAK: "ATH", WSN: "WSH", WAS: "WSH" };
-        const _normGlOpp = (gl) => gl && gl.events ? { ...gl, events: gl.events.map((ev) => ev.oppAbbr && _mlbAbbrNorm[ev.oppAbbr] ? { ...ev, oppAbbr: _mlbAbbrNorm[ev.oppAbbr] } : ev) } : gl;
-        // Two-way players (e.g. Ohtani) need &category=pitching for strikeout markets
-        const _pitchPlayerKeys = new Set(loopMarkets.filter(m => m.stat === "strikeouts" && m.sport === "mlb").map(m => `mlb|${m.playerName}`));
-        const _pitchGlCacheKey = (k) => glCacheKey(k).replace("242526v2", "242526pv1");
-        if (CACHE2) {
-          // Batched cache lookups — one MGET pipeline instead of N parallel GET connections
-          const _glKeys = keysForGamelog.map(k => _pitchPlayerKeys.has(k) ? _pitchGlCacheKey(k) : glCacheKey(k));
-          const cachedVals = CACHE2.getMany
-            ? await CACHE2.getMany(_glKeys, "json")
-            : await Promise.all(_glKeys.map(k => CACHE2.get(k, "json").catch(() => null)));
-          for (let i = 0; i < keysForGamelog.length; i++) {
-            if (cachedVals[i]) playerGamelogs[keysForGamelog[i]] = keysForGamelog[i].startsWith("mlb|") ? _normGlOpp(cachedVals[i]) : cachedVals[i];
-            else keysNeedingGamelog.push(keysForGamelog[i]);
-          }
-        } else {
-          keysNeedingGamelog.push(...keysForGamelog);
-        }
-        const ESPN_HEADERS = {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          "Accept": "application/json",
-          "Accept-Language": "en-US,en;q=0.9",
-          "Referer": "https://www.espn.com/",
-          "Origin": "https://www.espn.com"
-        };
-        async function parseEspnGamelog(url2, debugKey) {
-          try {
-            const r = await fetch(url2, { headers: ESPN_HEADERS, signal: AbortSignal.timeout(6000) });
-            if (!r.ok) {
-              if (isDebug) gamelogErrors.push({ key: debugKey, status: r.status, url: url2 });
-              return null;
-            }
-            const d = await r.json();
-            const ul = (d.labels || []).map((l) => (l || "").toUpperCase());
-            const events = [];
-            const seenIds = /* @__PURE__ */ new Set();
-            for (const st of d.seasonTypes || []) {
-              const _stDn = (st.displayName || "").toLowerCase();
-              if (_stDn.includes("pre") || _stDn.includes("spring") || _stDn.includes("exhibition")) continue;
-              // Postseason detection — preserved per-event for playoff-aware prop lambdas
-              // (added 2026-05-26). Both "postseason" and "playoff" surface in ESPN labels
-              // depending on sport; checking both covers NBA/WNBA/NHL.
-              const _isPlayoff = _stDn.includes("post") || _stDn.includes("playoff");
-              for (const cat of st.categories || []) {
-                for (const ev of cat.events || []) {
-                  if (seenIds.has(ev.eventId)) continue;
-                  const meta = d.events?.[ev.eventId];
-                  if (!meta || meta.opponent?.isAllStar) continue;
-                  seenIds.add(ev.eventId);
-                  // isHome: ESPN's atVs field is "vs"/"@" depending on home/away. Required by
-                  // the NBA/WNBA home-away split adjustment (nbaSplitAdj / wnbaSplitAdj) which
-                  // filters gamelog events by location. Without this field on each event the
-                  // splitAdj computation silently falls back to 1.0.
-                  events.push({
-                    stats: ev.stats || [],
-                    oppAbbr: meta.opponent?.abbreviation || "",
-                    isHome: meta.atVs != null ? meta.atVs !== "@" : null,
-                    isPlayoff: _isPlayoff,
-                  });
-                }
-              }
-            }
-            return events.length ? { ul, events } : null;
-          } catch (e) {
-            if (isDebug) gamelogErrors.push({ key: debugKey, err: String(e), cause: String(e?.cause?.code || e?.cause?.message || e?.cause || "") || undefined });
-            return null;
-          }
-        }
-        __name(parseEspnGamelog, "parseEspnGamelog");
-        async function fetchGamelog(key, overrideId = null, forcePitching = false) {
-          const [sport] = key.split("|");
-          const info = playerInfoMap[key];
-          const athleteId = overrideId || info?.id;
-          if (!athleteId) return;
-          if (sport === "mlb") {
-            const catSuffix = forcePitching ? "&category=pitching" : "";
-            const pSfx = forcePitching ? "p" : "";
-            const baseUrl = `https://site.web.api.espn.com/apis/common/v3/sports/baseball/mlb/athletes/${athleteId}/gamelog`;
-            const key24 = `gl:mlb2024${pSfx}|${key}`;
-            const key25 = `gl:mlb2025${pSfx}|${key}`;
-            const key26 = `gl:mlb2026${pSfx}|${key}`;
-            let [gl24, gl25] = CACHE2 ? await Promise.all([
-              CACHE2.get(key24, "json").catch(() => null),
-              CACHE2.get(key25, "json").catch(() => null)
-            ]) : [null, null];
-            const fetchSeasons = [2026];
-            if (!gl25) fetchSeasons.push(2025);
-            if (!gl24) fetchSeasons.push(2024);
-            const results = await Promise.all(fetchSeasons.map((yr) => parseEspnGamelog(`${baseUrl}?season=${yr}${catSuffix}`, key)));
-            const seasonResults = Object.fromEntries(fetchSeasons.map((yr, i) => [yr, results[i]]));
-            const gl26 = seasonResults[2026] || null;
-            if (!gl25) {
-              gl25 = seasonResults[2025] || null;
-              if (gl25 && CACHE2) await CACHE2.put(key25, JSON.stringify(gl25), { expirationTtl: 86400 });
-            }
-            if (!gl24) {
-              gl24 = seasonResults[2024] || null;
-              if (gl24 && CACHE2) await CACHE2.put(key24, JSON.stringify(gl24), { expirationTtl: 86400 });
-            }
-            if (gl26 && CACHE2) await CACHE2.put(key26, JSON.stringify(gl26), { expirationTtl: 21600 });
-            const anyGl = gl26 || gl25 || gl24;
-            if (anyGl) {
-              const ul = anyGl.ul;
-              const _mlbNorm = { CHW: "CWS", KCR: "KC", SFG: "SF", SDP: "SD", TBR: "TB", AZ: "ARI", OAK: "ATH", WSN: "WSH", WAS: "WSH" };
-              const normOpp = (o) => _mlbNorm[o] || o;
-              const events = [
-                ...(gl26?.events || []).map((ev) => ({ ...ev, season: 2026, oppAbbr: normOpp(ev.oppAbbr) })),
-                ...(gl25?.events || []).map((ev) => ({ ...ev, season: 2025, oppAbbr: normOpp(ev.oppAbbr) })),
-                ...(gl24?.events || []).map((ev) => ({ ...ev, season: 2024, oppAbbr: normOpp(ev.oppAbbr) }))
-              ];
-              playerGamelogs[key] = { ul, events };
-              const combinedKey = forcePitching ? _pitchGlCacheKey(key) : glCacheKey(key);
-              if (CACHE2) await CACHE2.put(combinedKey, JSON.stringify({ ul, events }), { expirationTtl: 21600 });
-            }
-          } else {
-            const glUrl = GAMELOG_API[sport]?.(athleteId);
-            if (!glUrl) return;
-            const gl = await parseEspnGamelog(glUrl, key);
-            if (gl) {
-              playerGamelogs[key] = gl;
-              if (CACHE2) await CACHE2.put(glCacheKey(key), JSON.stringify(gl), { expirationTtl: 21600 });
-            }
-          }
-        }
-        __name(fetchGamelog, "fetchGamelog");
-        // Fetch all uncached gamelogs through the shared concurrency gate — full parallel
-        // (pre-2026-07-05) hit the FD ceiling on big slates; fixed delay batching (pre-2026-05)
-        // added ~26s for 60 players. pLimit keeps the pipe full without the burst.
-        await _fdMark("beforeGamelogs");
-        await Promise.all(keysNeedingGamelog.map((k) => _netLimit(() => fetchGamelog(k, null, _pitchPlayerKeys.has(k)))));
-        await _fdMark("afterGamelogs");
-        const pitcherGamelogs = {};
-        // Merge probables (ESPN source) with pitcherInfoByTeam (MLB Stats API source).
-        // pitcherInfoByTeam is more reliable for early-day requests before ESPN announces probables.
-        const _allPitcherEntries = new Map();
-        for (const [abbr, info] of Object.entries(sportByteam.mlb?.pitcherInfoByTeam || {})) {
-          if (info?.name && info?.id) _allPitcherEntries.set(abbr, { name: info.name, id: info.id });
-        }
-        // ESPN probables take precedence (override MLB API entry with ESPN name/id if available)
-        for (const [abbr, info] of Object.entries(sportByteam.mlb?.probables || {})) {
-          if (info?.name && info?.id) _allPitcherEntries.set(abbr, { name: info.name, id: info.id });
-        }
-        const pitcherEntriesToLoad = [..._allPitcherEntries.entries()];
-        if (pitcherEntriesToLoad.length > 0) {
-          if (CACHE2) {
-            const _pKeys = pitcherEntriesToLoad.map(([, { name }]) => _pitchGlCacheKey(`mlb|${name}`));
-            const _pVals = CACHE2.getMany
-              ? await CACHE2.getMany(_pKeys, "json")
-              : await Promise.all(_pKeys.map(k => CACHE2.get(k, "json").catch(() => null)));
-            for (let i = 0; i < pitcherEntriesToLoad.length; i++) {
-              const [teamAbbr, { name }] = pitcherEntriesToLoad[i];
-              if (_pVals[i]) pitcherGamelogs[teamAbbr] = { name, gl: _normGlOpp(_pVals[i]) };
-            }
-          }
-          const uncachedPitchers = pitcherEntriesToLoad.filter(([teamAbbr]) => !pitcherGamelogs[teamAbbr]);
-          await Promise.all(uncachedPitchers.map(([teamAbbr, { name, id }]) => _netLimit(async () => {
-            const pitcherKey = `mlb|${name}`;
-            await fetchGamelog(pitcherKey, id, true);
-            const gl = playerGamelogs[pitcherKey] || null;
-            if (gl) pitcherGamelogs[teamAbbr] = { name, gl };
-          })));
-        }
-        const leagueAvgCache = {};
-        for (const key of ["nba|points", "nba|rebounds", "nba|assists", "nba|threePointers", "wnba|points", "wnba|rebounds", "wnba|assists", "wnba|threePointers", "nhl|points"]) {
-          const sd = STAT_SOFT[key];
-          if (!sd) continue;
-          const vals = Object.values(sd.rankMap).map((r) => r.value).filter((v) => v > 0);
-          if (vals.length >= 15) leagueAvgCache[key] = vals.reduce((a, b) => a + b, 0) / vals.length;
-        }
-        // ── Game total: team stat maps (RPG, GPG, PPG) ──────────────────────────────────────────
-        const mlbRPGMap = {};
-        if (sportByteam.mlb?.batting) {
-          const _bt = sportByteam.mlb.batting;
-          const _btTop = (_bt.categories || []).find(c => c.name === "batting");
-          const _gIdx = (_btTop?.names || []).findIndex(n => n === "G" || n === "GP" || n === "gamesPlayed");
-          const _rIdx = (_btTop?.names || []).findIndex(n => n === "R" || n === "runs");
-          const _MLB2 = { CHW: "CWS", KCR: "KC", SFG: "SF", SDP: "SD", TBR: "TB", AZ: "ARI", OAK: "ATH", WSN: "WSH", WAS: "WSH" };
-          if (_gIdx !== -1 && _rIdx !== -1) {
-            for (const team of (_bt.teams || [])) {
-              const abbr = _MLB2[team.team?.abbreviation] || team.team?.abbreviation;
-              if (!abbr) continue;
-              const tc = (team.categories || []).find(c => c.name === "batting");
-              const gp = parseFloat(tc?.values?.[_gIdx] ?? 0);
-              const runs = parseFloat(tc?.values?.[_rIdx] ?? 0);
-              if (gp > 0 && runs > 0) mlbRPGMap[abbr] = parseFloat((runs / gp).toFixed(2));
-            }
-          }
-        }
-        const mlbLeagueAvgRPG = (() => { const vals = Object.values(mlbRPGMap).filter(v => v > 0); return vals.length >= 15 ? parseFloat((vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2)) : 4.5; })();
-        // Road RPG and team ERA maps (for park-clean lambdas and 60/40 bullpen proxy)
-        const mlbRoadRPGMap = sportByteam.mlb?.roadRPGMap || {};
-        const mlbTeamERAMap = sportByteam.mlb?.teamERAMap || {};
-        const mlbTeamWHIPMap = sportByteam.mlb?.teamWHIPMap || {};
-        // Bullpen-only maps. Used in MLB game-total + team-total lambda's 40% rest-of-game share
-        // to replace whole-staff teamERA (which double-counts the starter). Falls back to teamERA
-        // when bullpen aggregate is missing (rare — MLB Stats API is reliable).
-        const mlbBullpenERAMap = sportByteam.mlb?.bullpenERAMap || {};
-        const mlbBullpenWHIPMap = sportByteam.mlb?.bullpenWHIPMap || {};
-        const nhlGPGMap = {};
-        const nhlGAAMap = {};
-        if (sportByteam.nhl) {
-          for (const team of (sportByteam.nhl.ga || [])) {
-            const abbr = NHL_ABBR_MAP[team.teamId];
-            if (!abbr) continue;
-            if (team.goalsForPerGame != null) nhlGPGMap[abbr] = parseFloat(team.goalsForPerGame.toFixed(2));
-            if (team.goalsAgainstPerGame != null) nhlGAAMap[abbr] = parseFloat(team.goalsAgainstPerGame.toFixed(2));
-          }
-        }
-        const nhlLeagueAvgGAA = leagueAvgCache["nhl|points"] ?? 3.0;
-        const nhlLeagueAvgGPG = (() => { const vals = Object.values(nhlGPGMap).filter(v => v > 0); return vals.length >= 15 ? parseFloat((vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2)) : 2.9; })();
-        // Starting-goalie data (buildNhlGoalieData). goalieByTeam[abbr] = {starterName, starterSV, starterGS, source}.
-        // Used in NHL game-total lambda to shift opponent factor toward tonight's actual goaltender instead of
-        // team-aggregate GAA (which conflates starter and backup). Fallback to team GAA when goalie absent.
-        const nhlGoalieByTeam = sportByteam.nhl?.goalieByTeam || {};
-        const nhlLeagueAvgSV = sportByteam.nhl?.leagueAvgSV ?? 0.905;
-        const nbaOffPPGMap = {};
-        if (Array.isArray(sportByteam.nbaScoring)) {
-          for (const team of sportByteam.nbaScoring) {
-            const rawAbbr = team.team?.abbreviation || "";
-            const abbr = TEAM_NORM.nba[rawAbbr] || rawAbbr;
-            if (!abbr) continue;
-            const offCat = (team.categories || []).find(c => { const dn = (c.displayName || c.name || "").toLowerCase(); return dn.includes("offensive") || dn.includes("scoring"); });
-            const ppg = parseFloat(offCat?.values?.[0] ?? 0);
-            if (ppg > 0) nbaOffPPGMap[abbr] = parseFloat(ppg.toFixed(1));
-          }
-        }
-        const nbaLeagueAvgOffPPG = (() => { const vals = Object.values(nbaOffPPGMap).filter(v => v > 0); return vals.length >= 15 ? parseFloat((vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2)) : 113.0; })();
-        // C1: NBA usage rate map (espnId → { usg, source })
-        const nbaUsageMap = {};
-        // C2: NBA injury report (teamAbbr → [{name, status}])
-        let nbaInjuryMap = new Map();
-        if (sportsNeeded.has("nba")) {
-          const _nbaPlayerIds = [...new Set(
-            Object.entries(playerInfoMap)
-              .filter(([k]) => k.startsWith("nba|"))
-              .map(([, v]) => v?.id)
-              .filter(Boolean)
-          )];
-          const [_usgResult, _injResult] = await Promise.all([
-            _nbaPlayerIds.length > 0 ? buildNbaUsageRate(_nbaPlayerIds, CACHE2) : Promise.resolve({}),
-            buildNbaInjuryReport(CACHE2)
-          ]);
-          Object.assign(nbaUsageMap, _usgResult);
-          nbaInjuryMap = _injResult;
-          // Supplementary usage fetch for Out players not in the Kalshi-driven playerInfoMap
-          // (e.g., a 7th man with no prop markets). Lets the totals lambda's offRtgAdj cover
-          // every Out player, not just those who happen to have Kalshi props tonight.
-          const _injOutIds = [];
-          for (const players of nbaInjuryMap.values()) {
-            for (const p of players) {
-              if (p.id && p.status === "out" && !nbaUsageMap[p.id]) _injOutIds.push(p.id);
-            }
-          }
-          if (_injOutIds.length > 0) {
-            const _injUsg = await buildNbaUsageRate(_injOutIds, CACHE2);
-            Object.assign(nbaUsageMap, _injUsg);
-          }
-        }
-        // Same pattern for WNBA — 2025-anchored USG; injuries.
-        const wnbaUsageMap = {};
-        let wnbaInjuryMap = new Map();
-        if (sportsNeeded.has("wnba")) {
-          const _wnbaPlayerIds = [...new Set(
-            Object.entries(playerInfoMap)
-              .filter(([k]) => k.startsWith("wnba|"))
-              .map(([, v]) => v?.id)
-              .filter(Boolean)
-          )];
-          const [_wusgResult, _winjResult] = await Promise.all([
-            _wnbaPlayerIds.length > 0 ? buildWnbaUsageRate(_wnbaPlayerIds, CACHE2, 2025) : Promise.resolve({}),
-            buildWnbaInjuryReport(CACHE2)
-          ]);
-          Object.assign(wnbaUsageMap, _wusgResult);
-          wnbaInjuryMap = _winjResult;
-          const _wInjOutIds = [];
-          for (const players of wnbaInjuryMap.values()) {
-            for (const p of players) {
-              if (p.id && p.status === "out" && !wnbaUsageMap[p.id]) _wInjOutIds.push(p.id);
-            }
-          }
-          if (_wInjOutIds.length > 0) {
-            const _wInjUsg = await buildWnbaUsageRate(_wInjOutIds, CACHE2, 2025);
-            Object.assign(wnbaUsageMap, _wInjUsg);
-          }
-        }
-        // Backfill gameTimes from the (independently-fetched) per-sport gameScores maps. The
-        // dedicated scoreboard fetch above can silently come back empty on an ESPN hiccup/429
-        // (`.then(r => r.ok ? r.json() : {})` swallows non-OK), which would leave every play with
-        // gameTime:null → duplicate matchup cards client-side AND the started-game pre-game drop
-        // below no-ops (keeps !gameTime plays). gameScores is a SEPARATE request (MLB from
-        // buildMlbByteam, others from their byteam builders), so it fills the gap. Only sets
-        // absent keys — preserves the dedicated fetch's doubleheader "latest UTC time wins"
-        // entries. Not written back to the gameTimes:v2 cache: the dedicated fetch retries next
-        // request and stays the authoritative source; this is a per-request gap-fill only.
-        for (const [_gtSport, _gtScores] of [
-          ["mlb", sportByteam.mlb?.gameScores],
-          ["nba", sportByteam.nbaGameScores],
-          ["nhl", sportByteam.nhlGameScores],
-          ["wnba", sportByteam.wnbaGameScores],
-        ]) {
-          if (!_gtScores) continue;
-          for (const gs of Object.values(_gtScores)) {
-            if (!gs?.gameTime || !gs.gameDate) continue;
-            for (const team of [gs.homeTeam, gs.awayTeam]) {
-              if (!team) continue;
-              const _dk = `${_gtSport}:${team}:${gs.gameDate}`;
-              if (!gameTimes[_dk]) gameTimes[_dk] = gs.gameTime;
-              const _bk = `${_gtSport}:${team}`;
-              if (!gameTimes[_bk]) gameTimes[_bk] = gs.gameTime;
-            }
-          }
-        }
-        // _OFFRTG_INJ_CAP / _injuryOffRtgFactor / _NBAshortNorm / _injuryOffRtgAdj — module level.
-        // ── Player prop plays — all sports ──────────────────────────────────────────────
-        // Extracted to api/lib/tonight/props.js (Phase B6, 2026-05-29).
-        // Model-free prop capture consumes only the parsed markets + gameTimes (2026-08-04 teardown).
-        // The model hydration (gamelogs, injury/usage/DVP/pace maps) is still built for game-totals /
-        // ml-spread below and is removed with them in the next teardown slice.
+        // ── Player prop plays — all sports (model-free capture) ──────────────────────────
+        // api/lib/tonight/props.js. Consumes only the parsed markets + gameTimes; all model
+        // hydration (gamelogs, player info, DVP/pace/usage/injury maps) was deleted 2026-08-04.
         const { plays, dropped, nbaDropped } = await emitPropPlays({ loopMarkets, gameTimes, isDebug });
         // Filter out plays from old dates (yesterday cutoff handles UTC/local differences
         // for late games: a 9:40pm ET game = 1:40am UTC next day).
@@ -2101,18 +1499,15 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
           CACHE2.put(`shadow:staging:${_todayPT}`, JSON.stringify({ plays: [...plays, ...tennisPlays, ...fightPlays, ...nascarPlays, ...lmbPlays, ...modelFreeAllPlays, ...clubSoccerThresholdPlays, ...scocupPlays, ...outsPlays], dropped, schedule: _schedCounts, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, writtenAt: Date.now() }), { expirationTtl: 21600 }).catch(() => {});
         }
         if (isDebug) {
-          const nbaGlLabels = Object.fromEntries(Object.entries(playerGamelogs).filter(([k]) => k.startsWith("nba|")).map(([k, gl]) => [k, gl?.ul ?? null]));
-          const nbaGlSample = Object.fromEntries(Object.entries(playerGamelogs).filter(([k]) => k.startsWith("nba|")).map(([k, gl]) => [k, gl?.events?.slice(0, 3).map(ev => ({ stats: ev.stats?.slice(0, 3), statsLen: ev.stats?.length })) ?? null]));
           const sf = reportSportFilter;
           const debugPlays = sf ? plays.filter(m => m.sport === sf) : plays;
           const debugDropped = sf ? dropped.filter(m => m.sport === sf) : dropped;
-          const debugPreDropped = sf ? preDropped.filter(m => m.sport === sf) : preDropped;
           const _kalshiSnapDebug = {
             usedSnaps: kalshiUsedSnaps,
             meta: kalshiSnapMeta,
             ageMs: kalshiSnapMeta?.lastRunAt ? Date.now() - kalshiSnapMeta.lastRunAt : null,
           };
-          return jsonResponse({ fdProbe: { milestones: _fdMilestones, atEnd: await _fdProbe() }, plays: debugPlays, dropped: debugDropped, preDropped: debugPreDropped, tennisPlays, tennisMarketCount: tennisMatchMarkets.length, fightPlays, fightMarketCount: fightMarkets.length, nascarPlays, nascarMarketCount: nascarMarkets.length, lmbPlays, lmbMarketCount: lmbMarkets.length, clubSoccerPlays: modelFreePlays.mls, clubSoccerMarketCount: (modelFreeMarkets.mls || []).length, brasileiraoPlays: modelFreePlays.brasileirao, brasileiraoMarketCount: (modelFreeMarkets.brasileirao || []).length, nwslPlays: modelFreePlays.nwsl, nwslMarketCount: (modelFreeMarkets.nwsl || []).length, chnslPlays: modelFreePlays.chnsl, chnslMarketCount: (modelFreeMarkets.chnsl || []).length, ligamxPlays: modelFreePlays.ligamx, ligamxMarketCount: (modelFreeMarkets.ligamx || []).length, argPremPlays: modelFreePlays.argprem, argPremMarketCount: (modelFreeMarkets.argprem || []).length, modelFreePlays, modelFreeMarketCounts: Object.fromEntries(MODEL_FREE_LEAGUE_KEYS.map(k => [k, (modelFreeMarkets[k] || []).length])), modelFreePlayCounts: Object.fromEntries(MODEL_FREE_LEAGUE_KEYS.map(k => [k, (modelFreePlays[k] || []).length])), clubSoccerThresholdPlays, clubSoccerThresholdMarketCount: clubSoccerThresholdMarkets.length, scocupPlays, scocupSpreadMarketCount: scocupSpreadMarkets.length, scocupTotalMarketCount: scocupTotalMarkets.length, outsPlays, outsMarketCount: outsMarkets.length, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, gamelogErrors, pInfoErrors, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length, preFilteredCount: preFilteredMarkets.length, uniquePlayersSearched: uniquePlayerKeys.length, playersWithInfo: Object.keys(playerInfoMap).length, playersWithGamelog: Object.keys(playerGamelogs).length, lineupKPct: sportByteam.mlb?.lineupKPct ?? null, lineupKPctVR: sportByteam.mlb?.lineupKPctVR ?? null, pitcherKPctCache: sportByteam.mlb?.pitcherKPct ?? null, pitcherAvgPitchesCache: sportByteam.mlb?.pitcherAvgPitches ?? null, nbaGlLabels, nbaGlSample }, true);
+          return jsonResponse({ fdProbe: { milestones: _fdMilestones, atEnd: await _fdProbe() }, plays: debugPlays, dropped: debugDropped, tennisPlays, tennisMarketCount: tennisMatchMarkets.length, fightPlays, fightMarketCount: fightMarkets.length, nascarPlays, nascarMarketCount: nascarMarkets.length, lmbPlays, lmbMarketCount: lmbMarkets.length, clubSoccerPlays: modelFreePlays.mls, clubSoccerMarketCount: (modelFreeMarkets.mls || []).length, brasileiraoPlays: modelFreePlays.brasileirao, brasileiraoMarketCount: (modelFreeMarkets.brasileirao || []).length, nwslPlays: modelFreePlays.nwsl, nwslMarketCount: (modelFreeMarkets.nwsl || []).length, chnslPlays: modelFreePlays.chnsl, chnslMarketCount: (modelFreeMarkets.chnsl || []).length, ligamxPlays: modelFreePlays.ligamx, ligamxMarketCount: (modelFreeMarkets.ligamx || []).length, argPremPlays: modelFreePlays.argprem, argPremMarketCount: (modelFreeMarkets.argprem || []).length, modelFreePlays, modelFreeMarketCounts: Object.fromEntries(MODEL_FREE_LEAGUE_KEYS.map(k => [k, (modelFreeMarkets[k] || []).length])), modelFreePlayCounts: Object.fromEntries(MODEL_FREE_LEAGUE_KEYS.map(k => [k, (modelFreePlays[k] || []).length])), clubSoccerThresholdPlays, clubSoccerThresholdMarketCount: clubSoccerThresholdMarkets.length, scocupPlays, scocupSpreadMarketCount: scocupSpreadMarkets.length, scocupTotalMarketCount: scocupTotalMarkets.length, outsPlays, outsMarketCount: outsMarkets.length, polymarketDeltas, polymarketDeltaSummary, sportsbookDeltas, sportsbookDeltaSummary, staleKalshiSeries, kalshiSnap: _kalshiSnapDebug, qualifyingCount: qualifyingMarkets.length, totalMarketsCount: totalMarkets.length }, true);
         }
         // Build mlbMeta: pitchers, ML odds, umpires, weather — keyed by team abbr or "home|away"
         // Pitcher entries: { name, id, era, wins, losses }. MLB Stats API (pitcherInfoByTeam) preferred
@@ -2432,7 +1827,7 @@ export async function handleTonightRoute({ path, params, request, env, CACHE2 })
           'nhlClosingOdds', sportByteam.nhlGameOdds, {},
           sportByteam.nhlGameScores, sportByteam.nhlTopPlayers
         );
-        const playsResult = { plays, nbaDropped, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta, staleKalshiSeries, qualifyingCount: qualifyingMarkets.length, preFilteredCount: preFilteredMarkets.length };
+        const playsResult = { plays, nbaDropped, mlbMeta, mlbMetaTomorrow, nbaMeta, wnbaMeta, nhlMeta, staleKalshiSeries, qualifyingCount: qualifyingMarkets.length };
         const sportsInPlays = new Set(plays.map((p) => p.sport));
         if (CACHE2 && sportsInPlays.size >= 2) {
           const summary = {
