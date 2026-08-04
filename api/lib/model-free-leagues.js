@@ -20,6 +20,12 @@
 //
 // TO ADD A LEAGUE: add one entry here + a `teams.js` registry + a SERIES_CONFIG row with
 // `gameType: "modelFreeMl"`. No new files, no parse branch, no resolver block.
+// ONE EXCEPTION (copadobrasil, 2026-08-04): if the registry has any 2-char abbr mixed with 3-char
+// (Remo's "CR"), the league MUST also be added to parseGameTeams' variable-length-split allowlist
+// in tonight/parse-teams.js. That branch validates splits against _VALID_TEAMS; the generic path it
+// otherwise falls to keys `has2charPrefix` on TEAM_NORM, which is EMPTY for a registry with no
+// kalshi aliases (canonical = Kalshi abbr) — so CRSAN silently mis-parses as CRS+AN and the fixture
+// vanishes. Uniform-3-char registries (dimayor/chnsl/ligamx) don't need it.
 // Verify the ESPN slug against live data before trusting it, and send `--compressed` — a gzipped
 // body silently parses as empty and looks exactly like "league not covered". Two live examples:
 // `aus.1` is Australian *soccer*, not the Australian Football League (KXAFLGAME) that shares the
