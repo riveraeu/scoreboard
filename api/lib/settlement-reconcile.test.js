@@ -15,15 +15,19 @@ const graded = (entries) => new Map(entries.map(([id, won, sport = "lmb"]) => [i
 const voided = (entries) => new Map(entries.map(([id, sport = "lmb", result = "scalar"]) => [id, { sport, result }]));
 const byId = (res) => new Map(res.updates.map(u => [u.id, u]));
 
-test("authoritative set covers exactly the 16 shadow-only sports, and no calibrated family", () => {
-  assert.strictEqual(SETTLEMENT_AUTHORITATIVE_SPORTS.size, 16);
+test("authoritative set covers the shadow-only sports + mlb/wnba; nba/nhl/nfl stay ESPN", () => {
+  // 16 shadow-only/model-free + mlb + wnba (folded in 2026-08-04, post model teardown — no model
+  // accuracy to protect, and settlement grading makes the Kalshi side apples-to-apples with Poly's
+  // own UMA settlement for the cross-venue vig).
+  assert.strictEqual(SETTLEMENT_AUTHORITATIVE_SPORTS.size, 18);
   for (const s of ["tennis", "soccer", "fight", "golf", "nascar", "nbasl", "lmb",
                    "mls", "brasileirao", "nwsl", "chnsl", "ligamx", "scocup", "argprem", "dimayor",
-                   "copadobrasil"]) {
+                   "copadobrasil", "mlb", "wnba"]) {
     assert.ok(isSettlementAuthoritative(s), `${s} should be authoritative`);
   }
-  // The calibrated families must stay ESPN-graded — model accuracy needs physical reality.
-  for (const s of ["mlb", "nba", "wnba", "nhl", "nfl"]) {
+  // nba/nhl/nfl stay ESPN-graded FOR NOW — off-season / not yet started, no Poly overlap. Fold the
+  // same way when they return in season.
+  for (const s of ["nba", "nhl", "nfl"]) {
     assert.ok(!isSettlementAuthoritative(s), `${s} must NOT be authoritative`);
   }
 });

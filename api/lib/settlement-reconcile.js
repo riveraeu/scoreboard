@@ -10,25 +10,38 @@ import { kalshiTickerDate } from "./kalshi-ticker.js";
 // only thing that data measures is ROI — and settlement is definitionally what a position would
 // have been paid. That stays true even on the rare occasion Kalshi settles contrary to physical
 // reality (confirmed once, 2026-07-24: KXMLBTEAMTOTAL-26JUL242215LAASF-SF8 settled "SF over 7.5" =
-// yes on a 7-run game; the over really did pay). Model-ACCURACY analysis wants reality instead,
-// which is why the calibrated families (MLB/NBA/WNBA/NHL/NFL props, totals, ML, spread, segments —
-// everything the resolver calls `teamRows`) are deliberately absent from
-// SETTLEMENT_AUTHORITATIVE_SPORTS and stay ESPN-graded.
+// yes on a 7-run game; the over really did pay).
 //
-// ESPN keeps running on authoritative rows rather than being skipped, purely so disagreements stay
-// observable — that cross-check is the only reason we know about the mis-settlement above.
-// Excluding those rows from the ESPN pass would be less work and would blind the sole tripwire we
-// have on either feed.
+// The historical reason MLB/NBA/WNBA/NHL/NFL stayed ESPN-graded was model-ACCURACY analysis, which
+// wants physical reality rather than what the market paid. **That reason is GONE (2026-08-04 model
+// teardown): no per-sport model, no accuracy analysis, every row is model-free ROI capture.** So
+// MLB and WNBA are folded in here — additionally because the Polymarket cross-venue vig
+// (venueVig / polymarket_plays, graded off Poly's own UMA settlement) is only apples-to-apples if
+// the Kalshi side is graded by Kalshi's own settlement too: grading one venue by settlement and the
+// other by a third-party (ESPN) view would make venue-vig deltas partly a grading-source artifact.
+// NBA/NHL/NFL are left ESPN-graded FOR NOW only because they're off-season / not yet started (no
+// Poly overlap, no rows); fold them the same way when they return.
+//
+// MLB/WNBA grade settlement-ONLY, exactly like the shadow-only families: the resolver also adds
+// them to `_ownResolverSports`, so they leave `teamRows` and ESPN never runs on them. This was the
+// deliberate choice over keeping ESPN as a cross-check: the makeup-reattribution escape (a forward-
+// dated postponement makeup landing on the wrong doubleheader game) assumes an authoritative sport
+// is never ESPN-graded, so leaving MLB in teamRows would re-expose that exact class during the
+// settlement-pending window. The price is the ESPN-vs-settlement disagreement tripwire (the only
+// reason we caught the mis-settlement above), accepted here: post-model there is no calibration to
+// protect, settlement is definitionally correct for an ROI/vig row, and every other settlement
+// family already runs with no such cross-check.
 
-// The shadow-only families whose grading Kalshi settlement wins. Every one is either model-free
-// (the 6 club-soccer leagues + scocup — truePct is null, there is no calibration to protect) or
-// shadow-only Phase-1 (tennis/soccer/fight/golf/nascar/nbasl/lmb), where the row's purpose is
-// price/ROI measurement. Adding a sport here makes settlement authoritative for it; removing a
-// sport falls straight back to ESPN with no other change.
+// The families whose grading Kalshi settlement wins. Model-free / shadow-only price-ROI capture,
+// where settlement is definitionally correct: the club-soccer leagues + scocup, the Phase-1 shadow
+// sports (tennis/soccer/fight/golf/nascar/nbasl/lmb), and — post model teardown (2026-08-04) — mlb
+// and wnba. Adding a sport here makes settlement authoritative for it; removing one falls straight
+// back to ESPN with no other change.
 export const SETTLEMENT_AUTHORITATIVE_SPORTS = new Set([
   "tennis", "soccer", "fight", "golf", "nascar", "nbasl", "lmb",
   "mls", "brasileirao", "nwsl", "chnsl", "ligamx", "scocup", "argprem", "dimayor",
   "copadobrasil",
+  "mlb", "wnba",
 ]);
 
 export function isSettlementAuthoritative(sport) {
@@ -40,6 +53,10 @@ export function isSettlementAuthoritative(sport) {
 // `won` written BY the settlement grader, so comparing it against settlement is circular and would
 // report a tautological 100%. Rows resolved before it carry a genuine ESPN grade and stay a real
 // comparison. Bump this only if the cutover is ever re-run from scratch.
+// NOTE: mlb/wnba only became authoritative 2026-08-04 (their rows resolved 7/25→8/03 are still
+// genuine ESPN grades), but this single global date treats them as circular from 7/25 — a
+// CONSERVATIVE effect (it drops a few genuine MLB/WNBA comparisons from the dryrun diagnostic; it
+// never manufactures a tautological agreement). Not worth a per-sport cutover for an ADMIN readout.
 export const SETTLEMENT_CUTOVER_DATE = "2026-07-25";
 
 // ── Row-level settlement authority: postponed games and their makeups (2026-07-29) ──────────

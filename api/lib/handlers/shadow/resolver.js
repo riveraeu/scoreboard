@@ -333,9 +333,11 @@ async function handleShadowResolver({ path, request, env, cache }) {
   //   • authoritative sport + finalized binary  → `settlementGraded`, wins over ESPN at the
   //     reconcile chokepoint below (ESPN still runs on these rows, so disagreements stay visible).
   //   • authoritative sport + void ("scalar")   → `settlementVoided`, resolved with won=NULL.
-  //   • everything else (the calibrated teamRows families) → `dryRunById`, comparison ONLY, exactly
-  //     as it behaved before. Those stay ESPN-graded: model accuracy wants physical reality, not
-  //     what the market paid. See the doctrine note atop settlement-reconcile.js.
+  //   • everything else (nba/nhl/nfl — the still-ESPN teamRows families) → `dryRunById`, comparison
+  //     ONLY. They stay ESPN-graded for now (off-season / not started). NOTE: mlb/wnba were folded
+  //     INTO the authoritative branch 2026-08-04 (post model teardown) AND out of teamRows (added to
+  //     _ownResolverSports below), so they now grade settlement-only like the shadow families — ESPN
+  //     no longer runs on them. See the doctrine note atop settlement-reconcile.js.
   //
   // Failure-closed: any throw leaves all three maps empty and every row falls through to ESPN
   // precisely as it did before this existed.
@@ -405,16 +407,24 @@ async function handleShadowResolver({ path, request, env, cache }) {
   // still be kept OUT of teamRows below, or /api/live would try to grade e.g. a tennis row (whose
   // home/away are player names) and mis-resolve it.
   //
-  // Everything that resolves through its OWN scoreboard rather than the team-based /api/live path.
-  // The model-free leagues are spread from MODEL_FREE_LEAGUE_KEYS rather than listed by name: this
-  // was a hand-maintained `!==` chain and it had already drifted — `dimayor` (7th league, shipped
-  // 2026-07-28) was never added, so its rows fell into teamRows, got dropped by /api/live's
-  // SPORT_PATHS filter, and landed in `noData` every pass. Harmless only by luck (dimayor is
-  // settlement-authoritative, so it still graded correctly) but it inflated noData and padded the
-  // games param. Deriving it keeps the registry's contract honest — adding league #8 stays "one
-  // MODEL_FREE_LEAGUES entry + teams.js + a SERIES_CONFIG row", with no Nth place to forget.
+  // **mlb/wnba joined this set 2026-08-04** (post model teardown): they were folded into
+  // SETTLEMENT_AUTHORITATIVE_SPORTS and grade settlement-only now, so they too must leave teamRows.
+  // Unlike the others they DO have a working /api/live scoreboard, so this isn't about ESPN
+  // mis-resolving them — it's that keeping them ESPN-graded would re-expose the makeup-reattribution
+  // bug for authoritative sports (see the doctrine note atop settlement-reconcile.js). nba/nhl/nfl
+  // are NOT here — still ESPN-graded (off-season / not started); fold them the same way in season.
+  //
+  // Everything that resolves through its OWN scoreboard or off settlement rather than the team-based
+  // /api/live path. The model-free leagues are spread from MODEL_FREE_LEAGUE_KEYS rather than listed
+  // by name: this was a hand-maintained `!==` chain and it had already drifted — `dimayor` (7th
+  // league, shipped 2026-07-28) was never added, so its rows fell into teamRows, got dropped by
+  // /api/live's SPORT_PATHS filter, and landed in `noData` every pass. Harmless only by luck
+  // (dimayor is settlement-authoritative, so it still graded correctly) but it inflated noData and
+  // padded the games param. Deriving it keeps the registry's contract honest — adding league #8
+  // stays "one MODEL_FREE_LEAGUES entry + teams.js + a SERIES_CONFIG row", with no Nth place to forget.
   const _ownResolverSports = new Set([
     "tennis", "soccer", "fight", "golf", "nascar", "nbasl", "lmb", "scocup",
+    "mlb", "wnba",
     ...MODEL_FREE_LEAGUE_KEYS,
   ]);
   const teamRows = rows.filter(r => !_ownResolverSports.has(r.sport));
