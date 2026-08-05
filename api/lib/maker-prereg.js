@@ -9,12 +9,24 @@
 // docs/MAKER_*_PREREG.md; changing any threshold voids that pre-registration, so maker-prereg.test.js
 // pins every value. Adding a pre-registered cell is a new array entry + a new PREREG doc.
 //
-// Currently EMPTY. The one entry, `f5total-5054` (docs/MAKER_F5TOTAL_PREREG.md), was KILLED EARLY on
-// 2026-08-03 — day 3 of 8, below the sample floor but failing every mechanism/PnL criterion (mean
-// −4.8¢, sideWon 0.565 vs the < 0.45 bar, day-clustered CI-lo −14.7). A discretionary stop-risk
-// kill, not a checkpoint verdict; per the KILL rule a failed forward test is the answer and the cell
-// is not re-sliced. The next forward test is a new id + a new doc, not a re-open of this one.
-export const PREREG_CELLS = [];
+// `f5total-5054` (docs/MAKER_F5TOTAL_PREREG.md) was KILLED EARLY on 2026-08-03 — day 3 of 8, below
+// the sample floor but failing every mechanism/PnL criterion (mean −4.8¢, sideWon 0.565 vs the < 0.45
+// bar, day-clustered CI-lo −14.7). A discretionary stop-risk kill, not a checkpoint verdict; per the
+// KILL rule a failed forward test is the answer and the cell is not re-sliced. It is NOT in this
+// registry — a new forward test is a new id + a new doc, never a re-open.
+//
+// `hrr-7074` (docs/MAKER_HRR_PREREG.md) added 2026-08-05 — the only cell to clear the robustCandidates
+// structural bar on the 8/05 tripwire (in-sample +20.29¢/ct, 66 fills / 10 days, day-clustered CI
+// [+4.39, +36.18], sideWon ~0.52 vs ~0.72 priced). Criteria fixed before the 2026-08-05 forward window
+// opened; sideWonBelow is 0.60 not 0.45 because this favorite is priced ~72¢, not a coinflip.
+export const PREREG_CELLS = [
+  {
+    id: "hrr-7074", sport: "mlb", category: "hrr", band: "70-74",
+    doc: "docs/MAKER_HRR_PREREG.md", label: "MLB HRR favorite 70-74¢",
+    forwardStart: "2026-08-05", checkpoint: "2026-08-19",
+    criteria: { ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.60, minDays: 8, minFills: 50 },
+  },
+];
 
 // Pure evaluation of a forward result against a spec's fixed criteria. `result` carries exactly the
 // fields the report's makerCell aggregation produces for the forward window (so the verdict matches

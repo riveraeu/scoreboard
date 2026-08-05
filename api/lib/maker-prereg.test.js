@@ -19,6 +19,23 @@ test("every PREREG_CELLS entry carries its render-critical + doc fields", () => 
   }
 });
 
+// Exact-value pin for the live cell (the "new id + new doc re-adds its own pin" rule). These numbers
+// are FIXED by docs/MAKER_HRR_PREREG.md before its 2026-08-05 forward window opened — moving any of
+// them post-hoc voids the pre-registration, so a diff here is a tripwire, not a routine edit.
+test("hrr-7074 pins the pre-registered criteria fixed on 2026-08-05", () => {
+  const spec = PREREG_CELLS.find((s) => s.id === "hrr-7074");
+  assert.ok(spec, "hrr-7074 must be present");
+  assert.equal(spec.doc, "docs/MAKER_HRR_PREREG.md");
+  assert.equal(spec.sport, "mlb");
+  assert.equal(spec.category, "hrr");
+  assert.equal(spec.band, "70-74");
+  assert.equal(spec.forwardStart, "2026-08-05");
+  assert.equal(spec.checkpoint, "2026-08-19");
+  assert.deepEqual(spec.criteria, {
+    ciLoAbove: 0, meanFloorC: 5, positiveDayFrac: 0.60, sideWonBelow: 0.60, minDays: 8, minFills: 50,
+  });
+});
+
 // evaluatePrereg is pure; exercise it against a synthetic spec so these tests stand independent of
 // what is (or isn't) in PREREG_CELLS. checkpoint mirrors the killed f5total cell's so the dated
 // PASS/KILL cases below read naturally.
