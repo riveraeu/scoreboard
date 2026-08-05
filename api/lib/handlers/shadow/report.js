@@ -627,6 +627,26 @@ async function handleShadowReport({ path, request, env, cache }) {
     } catch (e) { return errorResponse(`makerLeadTime failed: ${e?.message}`, 500); }
   }
 
+  // ── ?venuevigdebug=1 — diagnose the Kalshi side of venueVig (TEMP) ────────────────────────────
+  if (new URL(request.url).searchParams.get("venuevigdebug")) {
+    const _since = new Date(Date.now() - 30 * 864e5).toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+    try {
+      const [census, totals, mapped] = await Promise.all([
+        neonQuery(`SELECT split_part(kalshi_ticker,'-',1) AS series, COUNT(*)::int AS graded_rows,
+          COUNT(DISTINCT game_date)::int AS days
+          FROM shadow_plays WHERE won IS NOT NULL AND model_free = TRUE AND kalshi_ticker IS NOT NULL
+          AND game_date >= $1 GROUP BY 1 ORDER BY 2 DESC LIMIT 25`, [_since], env, { write: true }),
+        neonQuery(`SELECT COUNT(*)::int AS total_mf, COUNT(*) FILTER (WHERE won IS NOT NULL)::int AS graded,
+          COUNT(*) FILTER (WHERE won IS NOT NULL AND kalshi_ticker IS NOT NULL)::int AS graded_with_ticker
+          FROM shadow_plays WHERE model_free = TRUE AND game_date >= $1`, [_since], env, { write: true }),
+        neonQuery(`SELECT (${_kalshiCatCaseSql}) AS category, COUNT(*)::int AS n
+          FROM shadow_plays WHERE won IS NOT NULL AND model_free = TRUE AND kalshi_ticker IS NOT NULL
+          AND game_date >= $1 AND (${_kalshiTickerFilterSql}) GROUP BY 1`, [_since], env, { write: true }),
+      ]);
+      return jsonResponse({ ok: true, since: _since, totals: totals[0], seriesCensus: census, mappedCategories: mapped });
+    } catch (e) { return errorResponse(`venuevigdebug: ${e?.message}`, 500); }
+  }
+
   // ── ?makerCell=sport|category|band — drill into ONE heatmap cell ──────────────────────────────
   // The heatmap tooltip gives a cell's summary; this answers whether the edge is spread across
   // days or concentrated in one. Per day: fills/contracts/sideWon/¢/contract + top tickers.
