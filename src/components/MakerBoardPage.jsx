@@ -196,22 +196,17 @@ function CategoryBandHeatmap({ cells, maxRows = 40 }) {
 }
 
 // ---- CROSS-VENUE VIG (Kalshi vs Polymarket) --------------------------------------------------
-// The [ Kalshi | Polymarket | Δ ] toggle over the SAME category × band grid, cell = favorite-ask
-// VIG (avg captured ask − realized win rate, ¢) — a quantity computable on both venues from
-// capture+resolution alone (reads `venueVig` from the report). This is NOT the maker-PnL grid above;
-// it is a DIVERGENCE MONITOR. Expected ≈0 (the 2026-07-04 Poly kill found ML median |Δ|~0.5¢); a lit
-// Δ cell is a prompt to pre-register a mechanism, never a bet. The Poly column fills in ~1 day after
-// capture (rows must resolve first), so it reads "collecting" until then; the Kalshi column is live
-// day one off graded shadow_plays.
-function _venueCell(cell, venue, bar) {
-  if (venue === "delta") return { v: cell.deltaVig, reliable: cell.reliable, present: cell.deltaVig != null };
-  const s = venue === "kalshi" ? cell.kalshi : cell.poly;
-  if (!s || s.vig == null) return { v: null, reliable: false, present: false };
-  return { v: s.vig, reliable: s.n >= bar.minN && s.days >= bar.minDays, present: true };
-}
+// One merged grid over the SAME category × band cells — each populated cell stacks Kalshi vig over
+// Poly vig (favorite-ask VIG = avg captured ask − realized win rate, ¢), a quantity computable on
+// both venues from capture+resolution alone (reads `venueVig` from the report). NOT the maker-PnL
+// grid above; it is a DIVERGENCE MONITOR. The cell COLOR is the Δ (Kalshi − Poly): expected ≈0 (the
+// 2026-07-04 Poly kill found ML median |Δ|~0.5¢), so a lit cell is the divergence itself — a prompt
+// to pre-register a mechanism, never a bet. Kalshi is live day one off graded shadow_plays; Poly
+// rows resolve ~1 day after capture, so the bottom line reads "—" and cells stay uncolored (Δ=null)
+// until Poly accrues. `c.reliable` = both venues clear the sample bar → full brightness; else dim.
+const _vfmt = v => v == null ? "—" : `${v > 0 ? "+" : ""}${Math.round(v)}`;
 
 function VenueVigHeatmap({ venueVig }) {
-  const [venue, setVenue] = React.useState("kalshi");
   const bar = venueVig?.bar || { minN: 50, minDays: 3 };
   const cells = venueVig?.cells || [];
   const rows = React.useMemo(() => {
@@ -226,33 +221,25 @@ function VenueVigHeatmap({ venueVig }) {
     return [...byCat.values()].sort((a, b) => b.n - a.n);
   }, [cells]);
 
-  const TABS = [["kalshi", "Kalshi"], ["poly", "Polymarket"], ["delta", "Δ (K−P)"]];
   const polyEmpty = (venueVig?.venuesPresent?.poly || 0) === 0;
-  const scale = Math.max(2, ...cells.map(c => Math.abs(_venueCell(c, venue, bar).v ?? 0)));
+  const scale = Math.max(2, ...cells.map(c => Math.abs(c.deltaVig ?? 0)));
   const colW = 46;
 
   return (
     <div>
-      <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6 }}>
-        {TABS.map(([key, txt]) => (
-          <button key={key} onClick={() => setVenue(key)} style={{
-            background: venue === key ? C.card : "transparent", cursor:"pointer",
-            border:`1px solid ${venue === key ? C.blue : C.border}`, borderRadius:4,
-            color: venue === key ? C.text : C.gray, fontSize:11, fontWeight:700, padding:"3px 10px" }}>{txt}</button>
-        ))}
-        <span style={{ color:C.dim, fontSize:9, marginLeft:6 }}>
-          vig ¢ = avg captured ask − realized win rate{venue === "delta" ? " · Δ = Kalshi − Poly (green = Kalshi richer / Poly cheaper)" : ""}
-        </span>
+      <div style={{ display:"flex", alignItems:"baseline", gap:6, marginBottom:6, fontSize:9, color:C.dim }}>
+        <span>each cell — <b style={{ color:C.text }}>K</b> = Kalshi vig ¢ (top), <b style={{ color:C.text }}>P</b> = Poly vig ¢ (bottom); color = Δ (K−P), green = Kalshi richer / Poly cheaper</span>
       </div>
       {!cells.length ? (
         <div style={{ color:C.dim, fontSize:10, padding:"6px 0" }}>Cross-venue vig appears once graded capture rows accrue.</div>
-      ) : (venue !== "kalshi" && polyEmpty) ? (
-        <div style={{ color:C.dim, fontSize:10, padding:"6px 0" }}>
-          Polymarket rows resolve ~1 day after capture — {venue === "delta" ? "Δ" : "the Poly column"} is collecting. Kalshi vig is live now.
-        </div>
       ) : (
         <div style={{ overflowX:"auto" }}>
           <div style={{ minWidth: 150 + _BANDS.length * colW }}>
+            {polyEmpty && (
+              <div style={{ color:C.dim, fontSize:9, marginBottom:4 }}>
+                Polymarket rows resolve ~1 day after capture — the P line reads “—” and cells stay uncolored until Poly accrues. Kalshi vig is live now.
+              </div>
+            )}
             <div style={{ display:"flex", fontSize:9, color:C.dim, fontWeight:700, marginBottom:2 }}>
               <span style={{ width:150 }} />
               {_BANDS.map(b => <span key={b} style={{ width:colW, textAlign:"center" }}>{b}</span>)}
@@ -262,26 +249,27 @@ function VenueVigHeatmap({ venueVig }) {
                 <span style={{ width:150, color:C.text, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", alignSelf:"center" }}>{r.label}</span>
                 {_BANDS.map(b => {
                   const c = r.cells[b];
-                  const vc = c ? _venueCell(c, venue, bar) : null;
-                  if (!c || !vc.present) return <span key={b} style={{ width:colW, height:22, border:`1px solid ${C.border}`, boxSizing:"border-box", marginRight:1 }} />;
-                  const k = c.kalshi, p = c.poly;
+                  const k = c?.kalshi, p = c?.poly;
+                  // A cell is populated once EITHER venue has a vig (Kalshi is day-one).
+                  if (!c || (k?.vig == null && p?.vig == null)) return <span key={b} style={{ width:colW, height:30, border:`1px solid ${C.border}`, boxSizing:"border-box", marginRight:1 }} />;
                   const tip = `${r.label} ${b}¢\n` +
-                    `Kalshi: ${k ? `vig ${k.vig}¢ (ask ${k.avgAsk} − win ${k.winPct}%) · n=${k.n} · ${k.days}d` : "—"}\n` +
-                    `Poly:   ${p ? `vig ${p.vig}¢ (ask ${p.avgAsk} − win ${p.winPct}%) · n=${p.n} · ${p.days}d` : "—"}\n` +
-                    `Δ (K−P): ${c.deltaVig != null ? `${c.deltaVig > 0 ? "+" : ""}${c.deltaVig}¢` : "n/a (needs both)"} · ${vc.reliable ? "both clear sample bar" : "thin — below bar, greyed"}`;
+                    `Kalshi: ${k?.vig != null ? `vig ${k.vig}¢ (ask ${k.avgAsk} − win ${k.winPct}%) · n=${k.n} · ${k.days}d` : "—"}\n` +
+                    `Poly:   ${p?.vig != null ? `vig ${p.vig}¢ (ask ${p.avgAsk} − win ${p.winPct}%) · n=${p.n} · ${p.days}d` : "—"}\n` +
+                    `Δ (K−P): ${c.deltaVig != null ? `${c.deltaVig > 0 ? "+" : ""}${c.deltaVig}¢` : "n/a (needs both)"} · ${c.reliable ? "both clear sample bar" : "thin — below bar, greyed"}`;
                   return (
-                    <span key={b} title={tip} style={{ width:colW, height:22, marginRight:1, boxSizing:"border-box",
-                      display:"flex", alignItems:"center", justifyContent:"center", fontVariantNumeric:"tabular-nums",
-                      color: vc.reliable ? C.text : C.gray, opacity: vc.reliable ? 1 : 0.5,
-                      background:_cellBg(vc.v, scale, vc.reliable), border:`1px solid ${C.border}` }}>
-                      {vc.v != null ? `${vc.v > 0 ? "+" : ""}${Math.round(vc.v)}` : ""}
+                    <span key={b} title={tip} style={{ width:colW, height:30, marginRight:1, boxSizing:"border-box",
+                      display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", lineHeight:1.15,
+                      fontVariantNumeric:"tabular-nums", opacity: c.reliable ? 1 : 0.5,
+                      background:_cellBg(c.deltaVig, scale, c.reliable), border:`1px solid ${C.border}` }}>
+                      <span style={{ fontSize:9, color: k?.vig != null ? C.text : C.dim }}><span style={{ color:C.dim }}>K</span>{_vfmt(k?.vig)}</span>
+                      <span style={{ fontSize:9, color: p?.vig != null ? C.text : C.dim }}><span style={{ color:C.dim }}>P</span>{_vfmt(p?.vig)}</span>
                     </span>
                   );
                 })}
               </div>
             ))}
             <div style={{ color:C.dim, fontSize:9, marginTop:5, lineHeight:1.5 }}>
-              Divergence monitor, <b>not a ranking</b> — expected ≈0 (the 7/04 Poly kill found ML median |Δ|~0.5¢). A lit Δ cell is a prompt to <b>pre-register a mechanism, never a bet</b> · brightness = reliability (both venues ≥{bar.minN} rows, ≥{bar.minDays}d); thin cells greyed · hover for both venues + Δ
+              Divergence monitor, <b>not a ranking</b> — expected ≈0 (the 7/04 Poly kill found ML median |Δ|~0.5¢). A lit (colored) cell is a prompt to <b>pre-register a mechanism, never a bet</b> · color = Δ (K−P); brightness = reliability (both venues ≥{bar.minN} rows, ≥{bar.minDays}d); thin cells greyed · hover for both venues + Δ
             </div>
           </div>
         </div>
