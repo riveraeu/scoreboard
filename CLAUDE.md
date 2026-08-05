@@ -52,8 +52,8 @@ Two gates at collection, both quote-sanity (not price-preference): (1) **band** 
 | Topic | File |
 |---|---|
 | Cache keys/TTLs, Upstash, env vars, deployment, testing, route contracts, cron table + DST re-pin | `docs/INFRA.md` |
-| URL routing, App.jsx state, MakerBoardPage, live tracking, sizing, color doctrine | `docs/FRONTEND.md` |
-| Design system: palette, typography, spacing, component patterns | `docs/STYLEGUIDE.md` (tokens: `src/lib/styles.js`) |
+| App.jsx + MakerBoardPage (the only view): heatmaps, prereg tracker, auth | `docs/FRONTEND.md` |
+| Design system: palette, typography, spacing, component patterns | `docs/STYLEGUIDE.md` (MakerBoardPage inlines its own styles) |
 | Common debugging recipes | `docs/DEBUGGING.md` |
 | What would justify betting again (re-entry conditions + required method) | `docs/REENTRY.md` — read before any work premised on a new edge |
 
