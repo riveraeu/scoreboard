@@ -12,9 +12,10 @@ import { backfillMakerDay, listDayMarkets, compareSourcesForDay, dayHasLiveSegme
 import { shadowId } from "../../shadow-id.js";
 import { deriveKalshiSide, fetchKalshiSettlementsWithMeta, classifyRowViaKalshi } from "../../kalshi-settlement.js";
 import { kalshiTickerDate } from "../../kalshi-ticker.js";
+import { capturePolymarketPlays } from "../../polymarket-capture.js";
 import {
   SHADOW_TABLE, COLUMNS, CREATE_TABLE_SQL, ADD_MODEL_FREE_COLS_SQL, ADD_KALSHI_SETTLEMENT_COLS_SQL,
-  CREATE_POLY_DELTAS_SQL, ADD_POLY_EXEC_COLS_SQL, CREATE_SB_DELTAS_SQL,
+  CREATE_POLY_DELTAS_SQL, ADD_POLY_EXEC_COLS_SQL, CREATE_SB_DELTAS_SQL, CREATE_POLY_PLAYS_SQL,
   POLY_DELTAS_TABLE, POLY_DELTAS_COLUMNS, SB_DELTAS_TABLE, SB_DELTAS_COLUMNS, _resolveRow,
 } from "./common.js";
 
@@ -584,6 +585,13 @@ async function handleShadowSnapshot({ path, request, env, cache }) {
       await neonExec(ADD_KALSHI_SETTLEMENT_COLS_SQL, env);
       if (cache) cache.put(_kalshiSettlementSchemaKey, "1", { expirationTtl: 86400 * 30 }).catch(() => {});
     }
+    // Own schema key (v7 is already flagged in prod, so its DDL block is skipped on live instances).
+    const _polyPlaysSchemaKey = "shadow:schema:polyplays:v1";
+    const _polyPlaysSchemaOk = cache ? await cache.get(_polyPlaysSchemaKey).catch(() => null) : null;
+    if (!_polyPlaysSchemaOk) {
+      await neonExec(CREATE_POLY_PLAYS_SQL, env);
+      if (cache) cache.put(_polyPlaysSchemaKey, "1", { expirationTtl: 86400 * 30 }).catch(() => {});
+    }
 
     // Try KV staging written by tonight cron — avoids the 55s re-fetch that hits the 60s wall-clock.
     let rawPlays = null;
@@ -786,6 +794,16 @@ async function handleShadowSnapshot({ path, request, env, cache }) {
       } catch (e) { console.error("[shadow-snapshot] sportsbook deltas failed:", e?.message); }
     }
 
+    // Polymarket capture-all (2026-08-04) — logs every quoted game-ML/total/F5 side to its own
+    // polymarket_plays table (Poly analog of shadow_plays). Own try/catch + its own Gamma+CLOB
+    // fetches (independent of the ML-only staging deltas above); a Poly failure must never break
+    // the shadow_plays snapshot. Graded later by the resolver's resolvePolymarketPlays pass.
+    let polymarketPlaysLogged = 0;
+    try {
+      const _pc = await capturePolymarketPlays({ env, snapshotDate });
+      polymarketPlaysLogged = _pc.logged;
+    } catch (e) { console.error("[shadow-snapshot] polymarket capture failed:", e?.message); }
+
     // Coverage check: distinct games per sport in the logged rows vs the ESPN slate stamped
     // into staging by tonight. Warn-only at <80% — not every ESPN game has Kalshi markets,
     // and doubleheaders collapse to one game on the rows side (sorted-pair keying).
@@ -826,6 +844,7 @@ async function handleShadowSnapshot({ path, request, env, cache }) {
       snapshotDate,
       logged: rows.length,
       polymarketLogged,
+      polymarketPlaysLogged,
       sportsbookLogged,
       qualified: _qualifiedCount,
       dropped: _droppedCount,

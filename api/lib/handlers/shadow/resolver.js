@@ -15,6 +15,7 @@ import { MODEL_FREE_LEAGUE_KEYS } from "../../model-free-leagues.js";
 import { fetchKalshiSettlements, fetchKalshiSettlementsWithMeta, resolveRowViaKalshi, classifyRowViaKalshi } from "../../kalshi-settlement.js";
 import { reconcileGrades, isSettlementAuthoritative, isMakeupReattributed, isNonFinalTerminal, SETTLEMENT_AUTHORITATIVE_SPORTS, SETTLEMENT_CUTOVER_DATE } from "../../settlement-reconcile.js";
 import { kalshiTickerDate } from "../../kalshi-ticker.js";
+import { resolvePolymarketPlays } from "../../polymarket-capture.js";
 import {
   SHADOW_TABLE, _resolveRow,
   _RESOLUTION_SQL, _parseResolutionRow, _RESOLUTION_KV_PREFIX, _stampResolutionFloor,
@@ -711,6 +712,16 @@ async function handleShadowResolver({ path, request, env, cache }) {
   // `noDataNetOfSettlement` is the real "still unresolved" number.
   const noDataNetOfSettlement = Math.max(0, noData - rec.espnAbsent);
   console.log(`[shadow-resolver] resolved=${finalUpdates.length} skipped=${skipped} noData=${noData} (netOfSettlement=${noDataNetOfSettlement}) games=${liveByKey.size} durationMs=${Date.now() - t0}`);
+
+  // Polymarket capture-all grading (2026-08-04) — grades polymarket_plays off Poly's own UMA
+  // settlement (winner = the outcome that settled to $1). Fully decoupled from the shadow_plays
+  // path above (own table, own settlement source); own try/catch so a Gamma failure never touches
+  // the shadow resolver's result. See polymarket-capture.js resolvePolymarketPlays.
+  let polymarketPlays = null;
+  try {
+    polymarketPlays = await resolvePolymarketPlays({ env });
+  } catch (e) { console.error(`[shadow-resolver] polymarket resolve failed: ${e?.message}`); }
+
   return jsonResponse({
     ok: true,
     resolved: finalUpdates.length,
@@ -753,6 +764,8 @@ async function handleShadowResolver({ path, request, env, cache }) {
     } : null,
     // Comparison-only, calibrated teamRows families (still ESPN-authoritative).
     kalshiDryRun: kalshiDryRunSummary,
+    // Polymarket capture-all grading (its own table + UMA settlement source; see polymarket-capture.js).
+    polymarketPlays,
     durationMs: Date.now() - t0,
   });
 }

@@ -132,6 +132,49 @@ ALTER TABLE ${POLY_DELTAS_TABLE} ADD COLUMN IF NOT EXISTS poly_slip_cents NUMERI
 ALTER TABLE ${POLY_DELTAS_TABLE} ADD COLUMN IF NOT EXISTS exec_delta_cents NUMERIC
 `;
 
+// Polymarket capture-all plays (2026-08-04) — the Poly analog of shadow_plays: ONE model-free row
+// per quoted side of every game-ML / total / first-five (F5) market, captured pre-game with its own
+// CLOB best-ask + spread (same capture doctrine as Kalshi: band [1,99]¢, capturableSpread ≤15¢, own
+// ask never 1−yes). Separate from polymarket_deltas (that's ML-only Kalshi-vs-Poly price deltas with
+// NO resolution); this table CARRIES resolution — `won` is graded off Poly's own UMA settlement
+// (winner = the outcome that settles to $1). Substrate for the venue-vig cross-venue view; NOT the
+// maker-fill instrument. id = `${snapshot_date}|${token_id}` (one capture per side per day, latest
+// snapshot wins). market_id = the Gamma market id, the resolver's per-market refetch key.
+export const POLY_PLAYS_TABLE = "polymarket_plays";
+export const POLY_PLAYS_COLUMNS = [
+  "id", "snapshot_date", "sport", "event_ticker", "market_id", "category", "game", "game_date",
+  "token_id", "outcome", "side", "line", "ask_c", "bid_c", "spread_c", "gamma_price_c",
+  "model_free", "won", "resolved",
+];
+export const CREATE_POLY_PLAYS_SQL = `
+CREATE TABLE IF NOT EXISTS ${POLY_PLAYS_TABLE} (
+  id TEXT PRIMARY KEY,
+  snapshot_date DATE NOT NULL,
+  sport TEXT NOT NULL,
+  event_ticker TEXT NOT NULL,
+  market_id TEXT NOT NULL,
+  category TEXT NOT NULL,
+  game TEXT,
+  game_date TEXT,
+  token_id TEXT NOT NULL,
+  outcome TEXT,
+  side TEXT,
+  line NUMERIC,
+  ask_c NUMERIC,
+  bid_c NUMERIC,
+  spread_c NUMERIC,
+  gamma_price_c NUMERIC,
+  model_free BOOLEAN DEFAULT TRUE,
+  won BOOLEAN,
+  resolved BOOLEAN DEFAULT FALSE,
+  resolved_at TIMESTAMPTZ,
+  captured_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS polymarket_plays_date_idx ON ${POLY_PLAYS_TABLE} (snapshot_date);
+CREATE INDEX IF NOT EXISTS polymarket_plays_sport_idx ON ${POLY_PLAYS_TABLE} (sport);
+CREATE INDEX IF NOT EXISTS polymarket_plays_unresolved_idx ON ${POLY_PLAYS_TABLE} (resolved) WHERE resolved = FALSE;
+`;
+
 // Sportsbook-reference deltas (Phase 1a, 2026-06-29) — de-vigged sharp-book ML fair value vs the
 // Kalshi price. One row per game-side per day. delta_cents = book_fair_pct − kalshi_pct (+ = Kalshi
 // cheap vs the sharp book = lagging = edge to BUY). No resolution — measures price divergence, not
