@@ -8,6 +8,6 @@ Loads when working under `src/`. Routing/state detail → `docs/FRONTEND.md`. (T
 
 - `lib/useReportData.js` — shadow-report state + fetchers; MakerBoardPage's only data source
 - `lib/useAuth.js` / `lib/useAuthFlow.js` — login/logout for the board header chip
-- `components/MakerBoardPage.jsx` — **the landing (and only) page** (self-contained: React only, inline styles): category × band heatmap + a `PreregTracker` block rendering the report's `preregistrations[]`; login/logout + read-only Kalshi-balance/committed-capital chip in its header
+- `components/MakerBoardPage.jsx` — **the landing (and only) page** (self-contained: React only, inline styles): category × band **PnL** heatmap + a `PreregTracker` block rendering the report's `preregistrations[]`; login/logout + read-only Kalshi-balance/committed-capital chip in its header. **`VenueVigHeatmap` added 2026-08-04** — a SECOND grid below the PnL one, reading the report's `venueVig`, with a `[ Kalshi | Polymarket | Δ(K−P) ]` toggle; cell = favorite-ask **VIG** (¢), a DIFFERENT quantity from the PnL grid above (reuses `_BANDS`/`_cellBg`, defaults to the Kalshi tab which is live day one; the Poly/Δ tabs read "collecting" until Poly rows resolve ~1 day after capture). A divergence monitor — the legend says "not a ranking, pre-register never bet"; thin cells (below the report's sample bar) are greyed
 
 **Dev proxy**: `vite.config.js` proxies `/api` to production so `npm run dev` works without a local backend.

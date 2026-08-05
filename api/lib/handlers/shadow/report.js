@@ -54,6 +54,72 @@ const _makerBandCase = (col) => `CASE
   WHEN ${col} < 75 THEN '70-74' WHEN ${col} < 80 THEN '75-79'
   WHEN ${col} < 85 THEN '80-84' WHEN ${col} < 90 THEN '85-89' ELSE '90-96' END`;
 
+// ── Cross-venue vig (Kalshi vs Polymarket) ────────────────────────────────────────────────────
+// The category×band favorite-ask VIG (avg captured ask − realized win rate, in ¢), computed
+// identically on BOTH venues from capture + resolution alone — no fills, no model. The substrate for
+// the [ Kalshi | Polymarket | Δ ] heatmap toggle. A DIVERGENCE MONITOR, not a ranking: expected ≈0
+// (the 2026-07-04 Poly kill found ML median |Δ|~0.5¢), and a lit Δ cell is a prompt to pre-register
+// a mechanism, never a bet (feedback_no_insample_target_picker_ui). This is VIG, distinct from the
+// maker-PnL the categoryBands heatmap shows.
+//
+// Kalshi category is derived from the market's OWN series prefix (kalshi_ticker) so it maps onto
+// Polymarket's three families exactly: ml = game winner, total = full-game total, f5 = first-five
+// winner. `startsWith(PREFIX + "-")` isolates KXMLBF5- (f5 winner) from KXMLBF5TOTAL-/KXMLBF5SPREAD-,
+// and KXMLBTOTAL- (total) from KXMLBTEAMTOTAL-. A wrong/absent series name fails safe (empty cell).
+export const KALSHI_VENUE_CATEGORY_PREFIXES = {
+  ml:    ["KXMLBGAME", "KXWNBAGAME", "KXNBAGAME", "KXNHLGAME"],
+  total: ["KXMLBTOTAL", "KXWNBATOTAL", "KXNBATOTAL", "KXNHLTOTAL"],
+  f5:    ["KXMLBF5"],
+};
+export function venueCategoryFromKalshiTicker(ticker) {
+  const t = String(ticker || "");
+  for (const [cat, prefixes] of Object.entries(KALSHI_VENUE_CATEGORY_PREFIXES)) {
+    if (prefixes.some((p) => t.startsWith(`${p}-`))) return cat;
+  }
+  return null;
+}
+const _VENUE_VIG_BAR = { minN: 50, minDays: 3 };
+// SQL fragments built from the SAME prefix map so the SQL classifier and the JS one can't drift.
+const _kalshiCatCaseSql = `CASE ${Object.entries(KALSHI_VENUE_CATEGORY_PREFIXES)
+  .map(([cat, pre]) => `WHEN ${pre.map((p) => `kalshi_ticker LIKE '${p}-%'`).join(" OR ")} THEN '${cat}'`)
+  .join(" ")} ELSE NULL END`;
+const _kalshiTickerFilterSql = Object.values(KALSHI_VENUE_CATEGORY_PREFIXES).flat()
+  .map((p) => `kalshi_ticker LIKE '${p}-%'`).join(" OR ");
+
+// Pure: assemble the venueVig cells from the two aggregation result sets. Each row: {sport, category,
+// band, n, days, avg_ask, win_pct}. vig = avg_ask − win_pct (¢). deltaVig = kalshiVig − polyVig, only
+// where BOTH venues have the cell. `reliable` = both sides clear the sample bar (the UI greys the
+// rest, so thin cells can't read as precise).
+export function computeVenueVig(kalshiRows, polyRows, bar = _VENUE_VIG_BAR) {
+  const cells = new Map();
+  const _side = (r) => {
+    const avgAsk = r.avg_ask != null ? Number(r.avg_ask) : null;
+    const winPct = r.win_pct != null ? Number(r.win_pct) : null;
+    return { n: Number(r.n || 0), days: Number(r.days || 0), avgAsk, winPct,
+      vig: (avgAsk != null && winPct != null) ? parseFloat((avgAsk - winPct).toFixed(1)) : null };
+  };
+  const _get = (r) => {
+    const key = `${r.sport}|${r.category}|${r.band}`;
+    let c = cells.get(key);
+    if (!c) { c = { sport: r.sport, category: r.category, band: r.band, kalshi: null, poly: null }; cells.set(key, c); }
+    return c;
+  };
+  for (const r of (kalshiRows || [])) _get(r).kalshi = _side(r);
+  for (const r of (polyRows || [])) _get(r).poly = _side(r);
+  const _sum = (rows) => (rows || []).reduce((a, r) => a + Number(r.n || 0), 0);
+  return {
+    bar,
+    cells: [...cells.values()].map((c) => {
+      const k = c.kalshi, p = c.poly;
+      const bothVig = k?.vig != null && p?.vig != null;
+      const reliable = !!(k && p && k.n >= bar.minN && p.n >= bar.minN && k.days >= bar.minDays && p.days >= bar.minDays);
+      return { ...c, deltaVig: bothVig ? parseFloat((k.vig - p.vig).toFixed(1)) : null, reliable };
+    }),
+    venuesPresent: { kalshi: _sum(kalshiRows), poly: _sum(polyRows) },
+    note: "Divergence monitor, NOT a ranking. Δ = Kalshi vig − Poly vig per category×band (vig = avg captured ask − realized win rate, ¢). Expected ≈0 (the 2026-07-04 Poly kill found ML median |Δ|~0.5¢). A lit Δ cell is a prompt to pre-register a mechanism, never a bet.",
+  };
+}
+
 // Per-day graded-fill aggregation for ONE category × band cell, optionally restricted to a forward
 // window (`since` → game_date >= since). One definition shared by the ?makerCell drill-down and the
 // pre-registration tracker, so both bucket bands identically (`_makerBandCase`) and a forward
@@ -1067,6 +1133,39 @@ async function handleShadowReport({ path, request, env, cache }) {
     };
   } catch (e) { console.error("[shadow-report] discovery skipped:", e?.message); }
 
+  // ── Cross-venue vig (Kalshi vs Polymarket) — the [Kalshi|Poly|Δ] heatmap toggle's data ───────
+  // Own try/catch, failure-closed. Kalshi vig from graded model-free shadow_plays (works day one);
+  // Poly vig from graded polymarket_plays (fills in as rows resolve, ~1 day after capture). Both use
+  // the graded SIDE's own ask + whether that side won, bucketed by _makerBandCase so the two align.
+  let venueVig = null;
+  try {
+    const [_kVig, _pVig] = await Promise.all([
+      neonQuery(`
+        SELECT sport, category, ${_makerBandCase("ask")} AS band,
+          COUNT(*)::int AS n, COUNT(DISTINCT game_date)::int AS days,
+          ROUND(AVG(ask), 1) AS avg_ask, ROUND(AVG((won)::int::numeric) * 100, 1) AS win_pct
+        FROM (
+          SELECT sport, game_date, won,
+            (CASE WHEN kalshi_side = 'no' THEN no_kalshi_pct ELSE kalshi_pct END) AS ask,
+            (${_kalshiCatCaseSql}) AS category
+          FROM shadow_plays
+          WHERE won IS NOT NULL AND model_free = TRUE AND kalshi_ticker IS NOT NULL
+            AND game_date >= $1 AND (${_kalshiTickerFilterSql})
+        ) s
+        WHERE ask IS NOT NULL AND category IS NOT NULL
+        GROUP BY sport, category, ${_makerBandCase("ask")}`, [since], env, { write: true }),
+      neonQuery(`
+        SELECT sport, category, ${_makerBandCase("ask_c")} AS band,
+          COUNT(*)::int AS n, COUNT(DISTINCT game_date)::int AS days,
+          ROUND(AVG(ask_c), 1) AS avg_ask, ROUND(AVG((won)::int::numeric) * 100, 1) AS win_pct
+        FROM polymarket_plays
+        WHERE won IS NOT NULL AND ask_c IS NOT NULL AND category IN ('ml','total','f5')
+          AND COALESCE(game_date, snapshot_date::varchar) >= $1
+        GROUP BY sport, category, ${_makerBandCase("ask_c")}`, [since], env, { write: true }),
+    ]);
+    venueVig = computeVenueVig(_kVig, _pVig);
+  } catch (e) { console.error("[shadow-report] venueVig skipped:", e?.message); }
+
   // ── UI health — the landing page's rendered payload is present + complete ────────────────────
   // MakerBoardPage draws exactly two things: PreregTracker(preregistrations) and
   // CategoryBandHeatmap(makerBoard.categoryBands). This asserts BOTH against the fields those
@@ -1083,7 +1182,7 @@ async function handleShadowReport({ path, request, env, cache }) {
   const robustCandidates = computeRobustCandidates(makerBoard);
 
   const report = { reportDate, generatedAt: new Date().toISOString(), since, makerBoard,
-    preregistrations, dataFreshness, discovery, uiHealth, robustCandidates, durationMs: Date.now() - t0 };
+    preregistrations, dataFreshness, discovery, uiHealth, robustCandidates, venueVig, durationMs: Date.now() - t0 };
 
   if (cache) cache.put(cacheKey, JSON.stringify(report), { expirationTtl: REPORT_TTL }).catch(() => {});
   return jsonResponse(report);

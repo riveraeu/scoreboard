@@ -195,6 +195,101 @@ function CategoryBandHeatmap({ cells, maxRows = 40 }) {
   );
 }
 
+// ---- CROSS-VENUE VIG (Kalshi vs Polymarket) --------------------------------------------------
+// The [ Kalshi | Polymarket | Δ ] toggle over the SAME category × band grid, cell = favorite-ask
+// VIG (avg captured ask − realized win rate, ¢) — a quantity computable on both venues from
+// capture+resolution alone (reads `venueVig` from the report). This is NOT the maker-PnL grid above;
+// it is a DIVERGENCE MONITOR. Expected ≈0 (the 2026-07-04 Poly kill found ML median |Δ|~0.5¢); a lit
+// Δ cell is a prompt to pre-register a mechanism, never a bet. The Poly column fills in ~1 day after
+// capture (rows must resolve first), so it reads "collecting" until then; the Kalshi column is live
+// day one off graded shadow_plays.
+function _venueCell(cell, venue, bar) {
+  if (venue === "delta") return { v: cell.deltaVig, reliable: cell.reliable, present: cell.deltaVig != null };
+  const s = venue === "kalshi" ? cell.kalshi : cell.poly;
+  if (!s || s.vig == null) return { v: null, reliable: false, present: false };
+  return { v: s.vig, reliable: s.n >= bar.minN && s.days >= bar.minDays, present: true };
+}
+
+function VenueVigHeatmap({ venueVig }) {
+  const [venue, setVenue] = React.useState("kalshi");
+  const bar = venueVig?.bar || { minN: 50, minDays: 3 };
+  const cells = venueVig?.cells || [];
+  const rows = React.useMemo(() => {
+    const byCat = new Map();
+    for (const c of cells) {
+      const k = `${c.sport}|${c.category}`;
+      let row = byCat.get(k);
+      if (!row) { row = { key: k, label: `${c.sport} ${c.category}`, n: 0, cells: {} }; byCat.set(k, row); }
+      row.cells[c.band] = c;
+      row.n += (c.kalshi?.n || 0) + (c.poly?.n || 0);
+    }
+    return [...byCat.values()].sort((a, b) => b.n - a.n);
+  }, [cells]);
+
+  const TABS = [["kalshi", "Kalshi"], ["poly", "Polymarket"], ["delta", "Δ (K−P)"]];
+  const polyEmpty = (venueVig?.venuesPresent?.poly || 0) === 0;
+  const scale = Math.max(2, ...cells.map(c => Math.abs(_venueCell(c, venue, bar).v ?? 0)));
+  const colW = 46;
+
+  return (
+    <div>
+      <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6 }}>
+        {TABS.map(([key, txt]) => (
+          <button key={key} onClick={() => setVenue(key)} style={{
+            background: venue === key ? C.card : "transparent", cursor:"pointer",
+            border:`1px solid ${venue === key ? C.blue : C.border}`, borderRadius:4,
+            color: venue === key ? C.text : C.gray, fontSize:11, fontWeight:700, padding:"3px 10px" }}>{txt}</button>
+        ))}
+        <span style={{ color:C.dim, fontSize:9, marginLeft:6 }}>
+          vig ¢ = avg captured ask − realized win rate{venue === "delta" ? " · Δ = Kalshi − Poly (green = Kalshi richer / Poly cheaper)" : ""}
+        </span>
+      </div>
+      {!cells.length ? (
+        <div style={{ color:C.dim, fontSize:10, padding:"6px 0" }}>Cross-venue vig appears once graded capture rows accrue.</div>
+      ) : (venue !== "kalshi" && polyEmpty) ? (
+        <div style={{ color:C.dim, fontSize:10, padding:"6px 0" }}>
+          Polymarket rows resolve ~1 day after capture — {venue === "delta" ? "Δ" : "the Poly column"} is collecting. Kalshi vig is live now.
+        </div>
+      ) : (
+        <div style={{ overflowX:"auto" }}>
+          <div style={{ minWidth: 150 + _BANDS.length * colW }}>
+            <div style={{ display:"flex", fontSize:9, color:C.dim, fontWeight:700, marginBottom:2 }}>
+              <span style={{ width:150 }} />
+              {_BANDS.map(b => <span key={b} style={{ width:colW, textAlign:"center" }}>{b}</span>)}
+            </div>
+            {rows.map(r => (
+              <div key={r.key} style={{ display:"flex", alignItems:"stretch", marginBottom:2, fontSize:10 }}>
+                <span style={{ width:150, color:C.text, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", alignSelf:"center" }}>{r.label}</span>
+                {_BANDS.map(b => {
+                  const c = r.cells[b];
+                  const vc = c ? _venueCell(c, venue, bar) : null;
+                  if (!c || !vc.present) return <span key={b} style={{ width:colW, height:22, border:`1px solid ${C.border}`, boxSizing:"border-box", marginRight:1 }} />;
+                  const k = c.kalshi, p = c.poly;
+                  const tip = `${r.label} ${b}¢\n` +
+                    `Kalshi: ${k ? `vig ${k.vig}¢ (ask ${k.avgAsk} − win ${k.winPct}%) · n=${k.n} · ${k.days}d` : "—"}\n` +
+                    `Poly:   ${p ? `vig ${p.vig}¢ (ask ${p.avgAsk} − win ${p.winPct}%) · n=${p.n} · ${p.days}d` : "—"}\n` +
+                    `Δ (K−P): ${c.deltaVig != null ? `${c.deltaVig > 0 ? "+" : ""}${c.deltaVig}¢` : "n/a (needs both)"} · ${vc.reliable ? "both clear sample bar" : "thin — below bar, greyed"}`;
+                  return (
+                    <span key={b} title={tip} style={{ width:colW, height:22, marginRight:1, boxSizing:"border-box",
+                      display:"flex", alignItems:"center", justifyContent:"center", fontVariantNumeric:"tabular-nums",
+                      color: vc.reliable ? C.text : C.gray, opacity: vc.reliable ? 1 : 0.5,
+                      background:_cellBg(vc.v, scale, vc.reliable), border:`1px solid ${C.border}` }}>
+                      {vc.v != null ? `${vc.v > 0 ? "+" : ""}${Math.round(vc.v)}` : ""}
+                    </span>
+                  );
+                })}
+              </div>
+            ))}
+            <div style={{ color:C.dim, fontSize:9, marginTop:5, lineHeight:1.5 }}>
+              Divergence monitor, <b>not a ranking</b> — expected ≈0 (the 7/04 Poly kill found ML median |Δ|~0.5¢). A lit Δ cell is a prompt to <b>pre-register a mechanism, never a bet</b> · brightness = reliability (both venues ≥{bar.minN} rows, ≥{bar.minDays}d); thin cells greyed · hover for both venues + Δ
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Landing page — single element by design (see top-of-file note). The read-only Kalshi balance +
 // committed-maker-capital chip (relocated here 2026-07-30 from the removed taker picks drawer)
 // rides in the header when logged in; `kalshiBalance`/`makerCommitted` come from /api/kalshi-balance.
@@ -247,6 +342,12 @@ export default function MakerBoardPage({ shadowReportData, shadowReportLoading, 
           </div>
           {mb ? <CategoryBandHeatmap cells={mb.categoryBands} />
               : <div style={{ color:C.dim, fontSize:12, padding:12 }}>Maker board not in this report yet — Refresh regenerates it.</div>}
+
+          {/* Cross-venue vig — Kalshi vs Polymarket, same category × band grid, VIG (not PnL). */}
+          <div style={{ color:C.dim, fontSize:9, fontWeight:700, textTransform:"uppercase", letterSpacing:0.4, margin:"22px 0 6px" }}>
+            Cross-venue vig · Kalshi vs Polymarket — do the two venues price the same category × band differently?
+          </div>
+          <VenueVigHeatmap venueVig={shadowReportData?.venueVig} />
         </>
       )}
     </div>
