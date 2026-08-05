@@ -120,6 +120,43 @@ export function computeVenueVig(kalshiRows, polyRows, bar = _VENUE_VIG_BAR) {
   };
 }
 
+// Pure: assemble the morning-report Polymarket TRACKING block from (a) a polymarket_plays aggregate
+// row, (b) the most-recent-capture per-sport breakdown, and (c) the already-computed venueVig. This
+// is the daily data-HEALTH readout for the Poly capture instrument — is capture accruing, is
+// resolution keeping up, and a compact divergence summary. `vig.topDivergences` is a MONITOR, never
+// a bet list (same doctrine as the heatmap read). NOT read by the frontend; for the morning report.
+export function computePolymarketTracking({ agg = {}, recentBySport = [], venueVig = null } = {}) {
+  const vv = venueVig || { cells: [], venuesPresent: { kalshi: 0, poly: 0 } };
+  const bothCells = (vv.cells || []).filter((c) => c.kalshi && c.poly);
+  const topDivergences = bothCells
+    .filter((c) => c.deltaVig != null)
+    .sort((x, y) => Math.abs(y.deltaVig) - Math.abs(x.deltaVig))
+    .slice(0, 5)
+    .map((c) => ({ cell: `${c.sport}|${c.category}|${c.band}`, deltaVig: c.deltaVig,
+      kalshiVig: c.kalshi.vig, polyVig: c.poly.vig, reliable: c.reliable }));
+  return {
+    capture: {
+      total: Number(agg.total || 0),
+      captureDays: Number(agg.capture_days || 0),
+      lastCapture: agg.last_capture || null,
+      lastCaptureRows: (recentBySport || []).reduce((s, r) => s + Number(r.n || 0), 0),
+      recentBySport: (recentBySport || []).map((r) => ({ sport: r.sport, n: Number(r.n || 0), graded: Number(r.graded || 0) })),
+    },
+    resolution: {
+      graded: Number(agg.graded || 0),
+      voided: Number(agg.voided || 0),
+      pending: Number(agg.pending || 0),
+    },
+    vig: {
+      venuesPresent: vv.venuesPresent,
+      bothVenueCells: bothCells.length,
+      reliableCells: bothCells.filter((c) => c.reliable).length,
+      topDivergences,
+    },
+    note: "Capture+resolve health for the Polymarket cross-venue instrument. `vig.topDivergences` is a DIVERGENCE MONITOR (expected ≈0), never a bet list — a persistent lit cell is a prompt to pre-register a mechanism. Empty vig cells while both venues accrue is the normal early state.",
+  };
+}
+
 // Per-day graded-fill aggregation for ONE category × band cell, optionally restricted to a forward
 // window (`since` → game_date >= since). One definition shared by the ?makerCell drill-down and the
 // pre-registration tracker, so both bucket bands identically (`_makerBandCase`) and a forward
@@ -1166,6 +1203,25 @@ async function handleShadowReport({ path, request, env, cache }) {
     venueVig = computeVenueVig(_kVig, _pVig);
   } catch (e) { console.error("[shadow-report] venueVig skipped:", e?.message); }
 
+  // ── Polymarket tracking — capture+resolve health for the morning report (not read by the UI) ──
+  // Own try/catch, failure-closed. Two cheap aggregates over polymarket_plays + the venueVig summary.
+  let polymarketTracking = null;
+  try {
+    const [_agg, _recent] = await Promise.all([
+      neonQuery(`SELECT COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE won IS NOT NULL)::int AS graded,
+        COUNT(*) FILTER (WHERE resolved AND won IS NULL)::int AS voided,
+        COUNT(*) FILTER (WHERE NOT resolved)::int AS pending,
+        COUNT(DISTINCT snapshot_date)::int AS capture_days,
+        MAX(snapshot_date)::text AS last_capture
+        FROM polymarket_plays`, [], env, { write: true }),
+      neonQuery(`SELECT sport, COUNT(*)::int AS n, COUNT(*) FILTER (WHERE won IS NOT NULL)::int AS graded
+        FROM polymarket_plays WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM polymarket_plays)
+        GROUP BY 1 ORDER BY 2 DESC`, [], env, { write: true }),
+    ]);
+    polymarketTracking = computePolymarketTracking({ agg: _agg[0] || {}, recentBySport: _recent, venueVig });
+  } catch (e) { console.error("[shadow-report] polymarketTracking skipped:", e?.message); }
+
   // ── UI health — the landing page's rendered payload is present + complete ────────────────────
   // MakerBoardPage draws exactly two things: PreregTracker(preregistrations) and
   // CategoryBandHeatmap(makerBoard.categoryBands). This asserts BOTH against the fields those
@@ -1182,7 +1238,7 @@ async function handleShadowReport({ path, request, env, cache }) {
   const robustCandidates = computeRobustCandidates(makerBoard);
 
   const report = { reportDate, generatedAt: new Date().toISOString(), since, makerBoard,
-    preregistrations, dataFreshness, discovery, uiHealth, robustCandidates, venueVig, durationMs: Date.now() - t0 };
+    preregistrations, dataFreshness, discovery, uiHealth, robustCandidates, venueVig, polymarketTracking, durationMs: Date.now() - t0 };
 
   if (cache) cache.put(cacheKey, JSON.stringify(report), { expirationTtl: REPORT_TTL }).catch(() => {});
   return jsonResponse(report);

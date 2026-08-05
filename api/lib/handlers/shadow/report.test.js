@@ -1,7 +1,7 @@
 // node --test api/lib/handlers/shadow/report.test.js
 import test from "node:test";
 import assert from "node:assert/strict";
-import { computeRobustCandidates, ROBUST_BAR, computeVenueVig, venueCategoryFromKalshiTicker } from "./report.js";
+import { computeRobustCandidates, ROBUST_BAR, computeVenueVig, venueCategoryFromKalshiTicker, computePolymarketTracking } from "./report.js";
 
 // computeRobustCandidates is the heatmap-robustness TRIPWIRE, not a shortlist. A cell must clear a
 // strict STRUCTURAL bar — day-clustered CI already excludes zero (`reliable`), >= 8 days, >= 50 fills,
@@ -102,4 +102,38 @@ test("computeVenueVig: vig = ask − win; Δ only when both venues present; reli
   assert.equal(tot.reliable, false);  // thin + one-sided
   assert.deepEqual(r.venuesPresent, { kalshi: 210, poly: 120 });
   assert.match(r.note, /never a bet/);
+});
+
+test("computePolymarketTracking: capture/resolution rollup + venueVig divergence summary", () => {
+  const venueVig = {
+    venuesPresent: { kalshi: 300, poly: 180 },
+    cells: [
+      { sport: "mlb", category: "ml", band: "60-64", kalshi: { vig: 4 }, poly: { vig: 2 }, deltaVig: 2, reliable: true },
+      { sport: "mlb", category: "total", band: "50-54", kalshi: { vig: 3 }, poly: { vig: -3 }, deltaVig: 6, reliable: false },
+      { sport: "mlb", category: "f5", band: "55-59", kalshi: { vig: 1 }, poly: null, deltaVig: null, reliable: false }, // one-sided
+    ],
+  };
+  const agg = { total: 900, graded: 300, voided: 12, pending: 588, capture_days: 3, last_capture: "2026-08-06" };
+  const recentBySport = [{ sport: "mlb", n: 240, graded: 0 }, { sport: "wnba", n: 60, graded: 0 }];
+  const r = computePolymarketTracking({ agg, recentBySport, venueVig });
+
+  assert.equal(r.capture.total, 900);
+  assert.equal(r.capture.captureDays, 3);
+  assert.equal(r.capture.lastCapture, "2026-08-06");
+  assert.equal(r.capture.lastCaptureRows, 300); // 240 + 60
+  assert.deepEqual(r.resolution, { graded: 300, voided: 12, pending: 588 });
+  assert.deepEqual(r.vig.venuesPresent, { kalshi: 300, poly: 180 });
+  assert.equal(r.vig.bothVenueCells, 2);   // ml + total (f5 is one-sided)
+  assert.equal(r.vig.reliableCells, 1);    // only ml
+  // top divergence sorted by |deltaVig|: total (|6|) before ml (|2|); one-sided cell excluded
+  assert.deepEqual(r.vig.topDivergences.map((d) => d.cell), ["mlb|total|50-54", "mlb|ml|60-64"]);
+  assert.match(r.note, /never a bet list/);
+});
+
+test("computePolymarketTracking: empty/early state is well-formed, not null", () => {
+  const r = computePolymarketTracking({ agg: {}, recentBySport: [], venueVig: null });
+  assert.equal(r.capture.total, 0);
+  assert.equal(r.capture.lastCapture, null);
+  assert.deepEqual(r.vig.topDivergences, []);
+  assert.deepEqual(r.vig.venuesPresent, { kalshi: 0, poly: 0 });
 });
