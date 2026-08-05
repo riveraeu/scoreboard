@@ -21,9 +21,16 @@ import { CAPTURE_GATE, CAPTURE_CAP } from "../config.js";
 import { getMlsSchedule } from "../mls.js";
 import { getLigaMxSchedule } from "../ligamx.js";
 import { getArgPremSchedule } from "../argprem.js";
+import { leagueSource } from "../model-free-leagues.js";
 
 const inWindow = (pct) => pct >= CAPTURE_GATE && pct <= CAPTURE_CAP;
-const SCHEDULE_BY_SPORT = { mls: getMlsSchedule, ligamx: getLigaMxSchedule, argprem: getArgPremSchedule };
+// copadobrasil (full-game total/spread, added 2026-08-05) has no per-league shim file — its ML path
+// runs straight off the MODEL_FREE_LEAGUES registry, so pull its ESPN schedule from the same source
+// (identical getSchedule signature) rather than adding a shim just to feed this one entry.
+const SCHEDULE_BY_SPORT = {
+  mls: getMlsSchedule, ligamx: getLigaMxSchedule, argprem: getArgPremSchedule,
+  copadobrasil: leagueSource("copadobrasil").getSchedule,
+};
 
 export async function emitClubSoccerThresholdPlays(ctx) {
   const { clubSoccerThresholdMarkets, clubSoccerThresholdPlays, cutoffStr, cache, isBustCache } = ctx;

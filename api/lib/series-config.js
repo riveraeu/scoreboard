@@ -129,6 +129,8 @@ export const SERIES_CONFIG = {
   // DIMAYOR. Surfaced by the morning-report discovery vet queue (REAL_BOOK, 2¢ median spread,
   // overround 1.02). ESPN slug bra.copa_do_brazil; registry shares brasileirao's espnScore aliases.
   KXCOPADOBRASILGAME: { sport: "copadobrasil", league: "copadobrasil", stat: "game", col: "ML", gameType: "modelFreeMl" },
+  KXCOPADOBRASILTOTAL:  { sport: "copadobrasil", league: "copadobrasil", stat: "total",  col: "G", gameType: "clubSoccerThreshold", subtype: "total" },
+  KXCOPADOBRASILSPREAD: { sport: "copadobrasil", league: "copadobrasil", stat: "spread", col: "G", gameType: "clubSoccerThreshold", subtype: "spread" },
   KXARGPREMDIVGAME:   { sport: "argprem", league: "argprem", stat: "game",     col: "ML", gameType: "modelFreeMl" },
   KXARGPREMDIVSPREAD: { sport: "argprem", league: "argprem", stat: "spread",   col: "G",  gameType: "clubSoccerThreshold", subtype: "spread" },
   KXARGPREMDIVTOTAL:  { sport: "argprem", league: "argprem", stat: "total",    col: "G",  gameType: "clubSoccerThreshold", subtype: "total" },
